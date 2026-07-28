@@ -157,7 +157,65 @@ impl PropFlags {
     /// props (e.g. Line `Conductors`). The named-query (`?`) and props-table
     /// (`PROPS_015X` allowlist) surfaces still expose the property. Drop the flag
     /// when the class's Dump/JSON goldens regenerate on capi015. Carried by Line
-    /// `EpsRMedium`/`HeightOffset`/`HeightUnit` (WP-U1.4).
+    /// `EpsRMedium`/`HeightOffset`/`HeightUnit`/`Conductors` and LineGeometry
+    /// `Conductors` (WP-U1.4) — the exact set
+    /// `exec::tests::compat_quirks::hide_015x_carrier_set_is_the_measured_escape`
+    /// pins.
+    ///
+    /// # Stage F status (F.3aa) — ESCAPED, and now measured rather than argued
+    ///
+    /// *(The prose below names this flag as "the flag": `UPGRADE_PLAN` §5 makes
+    /// a grep for its name a plan-exit metric, and — per `CLAUDE.md`'s rule for
+    /// the compat tag — a metric that counts prose as well as uses is not an
+    /// index. Documenting the escape must not inflate the number it is about.)*
+    ///
+    /// `UPGRADE_PLAN` §5 makes "`rg` … empty" a plan-exit criterion for this flag
+    /// and hands it to DE_PASCALIZE Stage F; the settled disposition is
+    /// `docs/upgrade/DIVERGENCES.md` §"Line/LineGeometry Conductors" ("the
+    /// masquerade + [the flag] are retained deliberately"). Stage F ran the flip
+    /// — `hidden_from_full_enum` reduced to `HIDE_R4133` alone, i.e. all five
+    /// props exposed in both lanes — and gated it. Three facts came out, none of
+    /// which the earlier argument had:
+    ///
+    /// 1. **No physics moves.** The unconditional 520-case corpus gate is
+    ///    completely unchanged (40/40, 136.9 s). This is a *surface-structure*
+    ///    row, not a numeric one — the flip is invisible to every solve.
+    /// 2. **Exactly 13 byte goldens move, all by row insertion**: `golden_json`
+    ///    ×2 (`json_line_micro`, `json_circuit_micro`), `golden_reports` ×8
+    ///    (`dump_line_geo`/`dump_line_lc`/`dump_line_sym`/`dump_line_switch`
+    ///    +4 rows each, `dump_linegeometry` +1, `dump3_bare` +4, `dump3_debug`
+    ///    +4, `dump3_commands` +5), `golden_schema` ×3 (two of them —
+    ///    `ported_class_defs_bytes_match_oracle` and
+    ///    `full_document_reconciles_with_oracle` — on
+    ///    `schema_divergences.json`'s now-stale `port_hidden_property` rows,
+    ///    naming `Line.EpsRMedium` first; the third on the port-golden document
+    ///    drift). +4/+1 is precisely the carrier count per class, so nothing
+    ///    else is disturbed.
+    /// 3. **The naive flip emits a duplicate JSON key** — the reason it cannot
+    ///    land alone. Line's `Wires` prop carries `json_name = "Conductors"`
+    ///    (the masquerade that has owned the key since wt-u14props), so with the
+    ///    real `Conductors` un-hidden the FULL view of `Line.l1` contains
+    ///    `"Conductors":[]` **twice**, once after `Spacing` and once after
+    ///    `HeightUnit` (observed bytes, `json_line_micro`). The flag and the
+    ///    masquerade are therefore one atomic change, exactly as `UPGRADE_PLAN`
+    ///    §5 spells it; the collision precondition is pinned by
+    ///    `exec::tests::compat_quirks::line_json_conductors_key_is_owned_by_the_masquerade`.
+    ///
+    /// So the blocker is not "the flip is risky" but *where it belongs*: the 13
+    /// artifacts are 0.14.5-oracle byte goldens the **parity lane may never
+    /// re-baseline**, and re-pinning them (`gen_json.py` taught an engine
+    /// switch) is the UPGRADE rung §5 describes. Exposing them in the default
+    /// lane only would need default-lane self-goldens for those 13 — which is
+    /// the plan's **single** sanctioned re-baseline, already sequenced at F.4
+    /// (F-FMT), not a second one in F.3.
+    ///
+    /// Finally, the criterion as written is unreachable while the mechanism
+    /// survives — proven by the sibling: [`HIDE_R4133`] has **zero** carriers
+    /// today and still leaves 7 `rg` matches, because a flag's definition, its
+    /// arm in `hidden_from_full_enum` and the comments naming it are not uses.
+    /// Retiring this flag's *carriers* leaves the same residue, so the successor
+    /// should restate the criterion as "zero carriers" — the form the pin above
+    /// checks — or delete both flags together.
     pub const HIDE_015X: Self = Self(1 << 48);
     /// **EPRI r4133 `GetTccCurve('none')` semantics** (WP-U2.1, delta D1/E3). On a
     /// single `DSSObjectReferenceProperty` (a TCC_Curve ref), a value of literal

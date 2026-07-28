@@ -253,3 +253,152 @@ fn export_profile_ll_pu_is_the_lane_kernel() {
 
     let _ = std::fs::remove_file(dir.join("prof_EXP_Profile.csv"));
 }
+
+/// Every property in the live class table that carries `flag`, as
+/// `Class.PropName`, sorted so the assertion does not depend on class
+/// registration order (which is an IV.1 permanent semantic and must stay
+/// unobservable here).
+fn carriers_of(dss: &crate::exec::Dss, flag: crate::obj::props::PropFlags) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for cls in &dss.classes {
+        let props = &cls.props;
+        for i in 1..=props.num_properties() {
+            if props.prop(i).flags.contains(flag) {
+                out.push(format!("{}.{}", props.class_name(), props.property_name(i)));
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// Escape pin for the **0.15.x hide-flag waiver** — the one Stage F exit item
+/// that is not a compat marker (`UPGRADE_PLAN` §5 wants a grep for the flag's
+/// name to come back empty; disposition in `docs/upgrade/DIVERGENCES.md`
+/// §"Line/LineGeometry Conductors"; the F.3aa measurement lives on the flag
+/// itself, [`crate::obj::props::PropFlags::HIDE_015X`], and this file follows
+/// that doc's convention of not repeating the name in prose — see it for why).
+///
+/// The escape is quantified — "13 byte goldens move, the corpus does not" — and
+/// a measurement is only worth as much as the population it was taken over. So
+/// this pins that population: the flag's carrier set. If a later WP adds a sixth
+/// carrier, or moves one, the recorded blast radius silently stops describing
+/// the tree; this test fails instead.
+///
+/// It also pins the sibling [`crate::obj::props::PropFlags::HIDE_R4133`] as
+/// **carrier-free** (WP-U2.5 retired its last one), which is what makes
+/// `hidden_from_full_enum` today a synonym for the 0.15.x flag — the premise of
+/// the measurement — and is simultaneously the empirical proof that the §5
+/// criterion as worded is unreachable: a flag with zero carriers still leaves
+/// its definition, its predicate arm and the comments naming it for `rg` to
+/// find.
+#[test]
+fn hide_015x_carrier_set_is_the_measured_escape() {
+    let dss = dss_with_circuit();
+
+    assert_eq!(
+        carriers_of(&dss, crate::obj::props::PropFlags::HIDE_015X),
+        [
+            "Line.Conductors",
+            "Line.EpsRMedium",
+            "Line.HeightOffset",
+            "Line.HeightUnit",
+            "LineGeometry.Conductors",
+        ],
+        "this carrier set is the population the Stage F escape was measured over \
+         (13 byte goldens: +4 Dump rows on Line, +1 on LineGeometry, the two \
+         JSON micro views and the three schema walks). Changing it invalidates \
+         that record — re-measure and update the flag's doc in \
+         `obj/props/prop_flags.rs` before touching this list"
+    );
+
+    assert!(
+        carriers_of(&dss, crate::obj::props::PropFlags::HIDE_R4133).is_empty(),
+        "the r4133 hide flag lost its carrier-free state (WP-U2.5): \
+         `hidden_from_full_enum` is no longer a synonym for the 0.15.x flag, so \
+         the F.3aa measurement no longer isolates that row"
+    );
+}
+
+/// Escape pin for the **collision** that makes the 0.15.x hide flag and the
+/// `Line.Wires → "Conductors"` `json_name` masquerade one atomic change.
+///
+/// Line declares *two* properties that render the JSON key `Conductors`: the
+/// legacy `Wires` array, given `json_name = "Conductors"` at class build so the
+/// port emits dss_capi's key from the 0.14.5-era storage, and the real 0.15.x
+/// `Conductors` proxy array, hidden by the flag. Exactly one of the two is
+/// hidden, so exactly one key is emitted — and dropping the flag on its own
+/// makes the FULL view of a Line carry `"Conductors":[]` **twice** (measured in
+/// F.3aa: once after `Spacing`, once after `HeightUnit`).
+///
+/// That is why `UPGRADE_PLAN` §5 lists the masquerade drop *inside* the same
+/// exit item, and it is the half of the argument no golden states: the byte
+/// goldens would fail on the flip either way, but only this says *why the naive
+/// flip is wrong* rather than merely stale. Both halves are asserted here, in
+/// both lanes, because the row is reproduced in both.
+#[test]
+fn line_json_conductors_key_is_owned_by_the_masquerade() {
+    let mut dss = dss_with_circuit();
+    dss.command("new Line.l1 bus1=b1 bus2=b2 phases=3 length=1");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // (1) The structural precondition: two props, one key, exactly one hidden.
+    let line = &dss.classes[dss.class_by_name["line"]].props;
+    let colliding: Vec<(&str, bool)> = (1..=line.num_properties())
+        .filter(|&i| line.prop(i).json_key(false) == "Conductors")
+        .map(|i| {
+            (
+                line.property_name(i),
+                line.prop(i).flags.hidden_from_full_enum(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        colliding,
+        [("Wires", false), ("Conductors", true)],
+        "Line must declare exactly two props rendering the JSON key \
+         \"Conductors\" — the visible `Wires` masquerade and the hidden real \
+         `Conductors`. If either half moved, the other must move with it \
+         (UPGRADE_PLAN §5)"
+    );
+
+    // (2) The observable that precondition buys: one key in the emitted bytes
+    //     of the FULL view (`build.rs`'s full-enumeration branch).
+    let full = dss
+        .obj_to_json("Line.l1", crate::report::export::json::JsonOpts::FULL)
+        .expect("Line.l1 renders as JSON");
+    assert_eq!(
+        full.matches("\"Conductors\"").count(),
+        1,
+        "the FULL Line view must carry exactly one \"Conductors\" key; two means \
+         the hide flag was dropped without dropping the `Wires` masquerade: \
+         {full}"
+    );
+    assert!(
+        !full.contains("EpsRMedium"),
+        "a hidden 0.15.x prop must not reach the FULL JSON view: {full}"
+    );
+
+    // (3) The flag's cost, and the other gated branch: the *set-order* view
+    //     drops a hidden 0.15.x property the user explicitly typed, so a JSON
+    //     round-trip of this Line loses `EpsRMedium=2.5` — while the `?` query,
+    //     which the flag does not gate, still answers it. That asymmetry is the
+    //     product-visible price of the waiver, and the reason the row is worth
+    //     an UPGRADE rung rather than indefinite deferral.
+    dss.command("edit Line.l1 epsrmedium=2.5");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let set_order = dss
+        .obj_to_json("Line.l1", Default::default())
+        .expect("Line.l1 renders as JSON");
+    assert!(
+        !set_order.contains("EpsRMedium"),
+        "a hidden 0.15.x prop is dropped from the set-order view even when set: \
+         {set_order}"
+    );
+    assert_eq!(
+        query(&mut dss, "Line.l1.EpsRMedium"),
+        "2.5",
+        "the `?` named-query surface must still expose a hidden 0.15.x prop — \
+         that is what makes the flag a rendering deferral rather than a deletion"
+    );
+}

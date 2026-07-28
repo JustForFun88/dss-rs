@@ -7,6 +7,136 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3aa — the `HIDE_015X` waiver stops being the one argued escape: measured, and the naive flip is *wrong*, not merely stale (branch `depas-stagef`, 2026-07-28)
+
+Every other Stage F escape on this branch carries its own number. `HIDE_015X`
+— the one exit item that is not a compat marker (`UPGRADE_PLAN` §5: "`rg
+HIDE_015X` must be empty", handed to Stage F) — did not: F.3's escape register
+argued it from the *shape* of the change ("a byte-golden re-baseline against a
+different oracle, which the parity lane may never do") and stopped there. This
+commit runs the flip and gates it. The escape stands, but for a sharper reason
+and with a bill attached, and one of the three findings contradicts the naive
+form of the fix outright. `TODO(compat)` stays **22**; `rg HIDE_015X crates`
+goes **17 → 19** — the two new matches are the pin's own `PropFlags::HIDE_015X`
+argument and its rustdoc link, i.e. *uses*, and the count is held there
+deliberately (see the last section); both lanes green; no golden, tolerance,
+ledger or deck touched, and no engine behaviour changed.
+
+**The flip that was run.** `hidden_from_full_enum()` reduced to `HIDE_R4133`
+alone — i.e. all five carriers (`Line.EpsRMedium`/`HeightOffset`/`HeightUnit`/
+`Conductors`, `LineGeometry.Conductors`) exposed on the full-enumeration
+surfaces in **both** lanes — then `cargo test --workspace`, whole suite, no
+filters. Reverted before the commit; the committed diff is documentation and
+two pins.
+
+**1. No physics moves — this is a surface-structure row, not a numeric one.**
+The unconditional 520-case corpus gate is *completely unchanged*: **40/40 in
+136.9 s**, as are all 1355 lib unit tests and every checkpoint/feeder/control
+binary. That is a materially different picture from the truncated-constant
+bucket next door, where a flip costs 35 corpus cases; nothing about this row
+touches a solve.
+
+**2. Exactly 13 byte goldens move, every one of them by row insertion.**
+`golden_reports` ×8 — `dump_line_geo`/`dump_line_lc`/`dump_line_sym`/
+`dump_line_switch` **+4 rows each** (44 vs 40), `dump_linegeometry` **+1** (33
+vs 32), `dump3_bare` **+4** (769 vs 765), `dump3_debug` **+4** (1300 vs 1296),
+`dump3_commands` **+5** (2333 vs 2328); `golden_json` ×2 (`json_line_micro`,
+`json_circuit_micro`); `golden_schema` ×3 — two of them
+(`ported_class_defs_bytes_match_oracle`, `full_document_reconciles_with_oracle`)
+on `schema_divergences.json`'s `port_hidden_property` rows going stale (they
+name `Line.EpsRMedium` first), the third on the port-golden document drift. +4
+per Line and +1 per LineGeometry is exactly the carrier count, so the blast
+radius is closed: nothing outside those five props is disturbed.
+
+**3. And the finding that changes the shape of the fix: the naive flip emits a
+duplicate JSON key.** Line declares **two** properties that render the JSON key
+`Conductors` — the legacy `Wires` array carrying `json_name = "Conductors"` (the
+masquerade that has owned the key since wt-u14props) and the real 0.15.x
+`Conductors` proxy. With only `HIDE_015X` dropped, the FULL view of `Line.l1`
+contains `"Conductors":[]` **twice** in one object, once after `Spacing` and
+once after `HeightUnit` — observed bytes, not a prediction. So the flag and the
+masquerade are *one atomic change*, which is precisely how `UPGRADE_PLAN` §5
+words the exit item ("the masquerade drops, and the real `Conductors` prop owns
+the JSON key") — a sequencing detail the earlier escape record did not carry,
+and the difference between "these goldens are stale" and "this output is
+wrong".
+
+**Why it still escapes — now a question of *where*, not *whether*.** The 13
+artifacts are 0.14.5-oracle byte goldens; the parity lane may never re-baseline
+them, and re-pinning them means teaching `gen_json.py` an engine switch — the
+UPGRADE rung §5 describes and `DIVERGENCES.md` §"Line/LineGeometry Conductors"
+already measured as disproportionate for this tail. Exposing them in the
+**default lane only** is a real option, and cheap now that the cost is known
+(13 self-goldens, zero corpus movement) — but it needs default-lane self-goldens
+for those 13, i.e. the plan's **single** sanctioned re-baseline, which is
+already sequenced at **F.4** (F-FMT re-layouts the same Dump/Show surface). F.3
+must not open a second re-baseline event, so the row is handed forward with its
+numbers rather than flipped here.
+
+**And the criterion as worded is unreachable anyway — proven by its own
+sibling.** `HIDE_R4133` has had **zero carriers** since WP-U2.5 and still leaves
+**7** `rg` matches: a flag's definition, its arm in `hidden_from_full_enum`, and
+the comments naming it are not uses. Retiring the five 0.15.x carriers leaves
+the same residue — of the 17 matches at HEAD, only **5** are carriers and one is
+the predicate; the other **11** are the definition and comments *about* the flag
+(the earlier record's "six" undercounted). "`rg` empty" therefore means *delete
+the mechanism*, which `HIDE_R4133`'s own doc explicitly declines ("retained … as
+the mechanism a future r4133-only prop re-uses"). The successor should restate
+the criterion as **zero carriers** — the form the new pin checks — or delete both
+flags together.
+
+**A note on the number, because this commit is a live demonstration of the
+problem.** Writing the measurement up in full, naming the flag naturally
+throughout, took `rg HIDE_015X crates` from 17 to **39**: documenting an escape
+made the metric that tracks it three-quarters worse, while the substance (five
+carriers) did not move at all. That is the same failure `CLAUDE.md` already
+solved for the compat tag — "it must stay greppable", enforced by
+`compat_tag_is_only_ever_a_marker_never_prose`. So the same discipline is
+applied here by hand: the new prose says "the flag" / "the 0.15.x hide flag",
+and the name is spelled only where it is a real code reference. Final count
+**19**, +2 for the pin's flag argument and its doc link. Gaming would be
+choosing words to move a number; this is the opposite — refusing to let prose
+count as a use, so the number keeps meaning what the plan intended.
+
+**Two pins, so the measurement cannot rot.** Both run in **both** lanes (the row
+is reproduced in both):
+
+* `hide_015x_carrier_set_is_the_measured_escape` — the flag's carrier set read
+  off the live class table and asserted to be exactly those five, because a
+  blast-radius measurement is only worth the population it was taken over; plus
+  `HIDE_R4133` asserted carrier-free, which is both what makes
+  `hidden_from_full_enum` a synonym for the 0.15.x flag today (the premise of
+  the measurement) and the empirical proof of the paragraph above.
+* `line_json_conductors_key_is_owned_by_the_masquerade` — the collision
+  precondition stated executably: Line must declare exactly two props rendering
+  the key `Conductors`, `("Wires", visible)` and `("Conductors", hidden)`, and
+  the FULL view must carry the key exactly **once**. It also pins the flag's
+  cost in the *other* gated branch — a `Line` edited with `epsrmedium=2.5` loses
+  that value from the set-order JSON view (so a JSON round-trip drops it) while
+  `? Line.l1.EpsRMedium` still answers `2.5`. That asymmetry is the
+  product-visible price of keeping the waiver, and it is the argument for the
+  rung actually being scheduled.
+
+**Escape register — unchanged in content, one entry upgraded from argued to
+measured.** The **11** truncated physical constants (F.3x/z, each with its own
+number at its own site), the **7** F-FMT rendering markers (F.4's defined
+scope), the **4** single-site quirks (F.3v, all whole-artifact exclusions), and
+the 0.15.x hide flag (**5 carriers**) — now carrying the 13-artifact /
+0-corpus-case bill and the duplicate-key finding above. 11 + 7 + 4 = the 22
+remaining markers. `rg "TODO\(compat\)" crates` = **22**,
+`rg HIDE_015X crates` = **19** (5 carriers + 1 predicate + 13 references).
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy
+--workspace --all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace --no-fail-fast` and the same
+with the feature, including the unconditional 520-case corpus gate in each.
+Tests **+2** (`hide_015x_carrier_set_is_the_measured_escape`,
+`line_json_conductors_key_is_owned_by_the_masquerade`), 0 removed, 0 new
+`#[ignore]`. `git diff -- tests/` empty — no golden, tolerance, ledger or deck
+touched; `git status --short tests/corpus` empty after every run (the known
+intermittent `Test/AutoTrans/*` leak deleted by exact name). The probe edit to
+`hidden_from_full_enum` was reverted in full before the gate.
+
 ### DE_PASCALIZE Stage F.3z — the truncated-constant bucket is fully measured: one row splits, and the other four now carry their own numbers (branch `depas-stagef`, 2026-07-28)
 
 F.3v filed **14** truncated physical constants under one blanket escape reason;
