@@ -59,6 +59,37 @@ fn corpus_dir() -> PathBuf {
     .collect()
 }
 
+/// The `Set CktModel=` line exactly as the pinned oracle emits it for a
+/// positive-sequence circuit — see [`lane_expected_json`].
+const CKT_MODEL_PARITY: &str = "\"Set CktModel=\"";
+/// What the default lane emits in its place.
+const CKT_MODEL_DEFAULT: &str = "\"Set CktModel=Positive\"";
+
+/// Stage F (`DE_PASCALIZE_PLAN.md` Part IV.2) — the AltDSS JSON export's one
+/// **deliberate default-lane divergence**, as an expected-value transform of the
+/// oracle capture.
+///
+/// The JSON goldens are byte-compared in *both* lanes (`tests/harness/lane.rs`:
+/// their writer renders numbers through its own `{:.16E}` helper, outside the
+/// F-FMT inventory). `compat::CKT_MODEL_RENDERED_ORDINAL` moves exactly one line
+/// of one capture: the `PreCommands` entry that upstream renders from a
+/// `LongBool` -1 and therefore emits value-less. Rather than re-baselining that
+/// golden, the default lane compares against the oracle capture with this single
+/// enumerated rewrite applied; every other byte stays pinned to the oracle, and
+/// the parity-lane transform is the identity.
+///
+/// Returns the lane-expected text plus the number of rewrites, which
+/// [`json_ckt_model_divergence_is_pinned`] uses to keep it non-vacuous.
+fn lane_expected_json(oracle: &str) -> (String, usize) {
+    if dss_core::compat::ORACLE_PARITY {
+        return (oracle.to_string(), 0);
+    }
+    (
+        oracle.replace(CKT_MODEL_PARITY, CKT_MODEL_DEFAULT),
+        oracle.matches(CKT_MODEL_PARITY).count(),
+    )
+}
+
 fn run_deck(stem: &str) {
     let path = json_dir().join(format!("{stem}.json"));
     let text =
@@ -120,10 +151,11 @@ fn run_deck(stem: &str) {
                 .unwrap_or_else(|| panic!("{}: no active circuit", golden.name)),
             other => panic!("{}: unknown capture kind {other}", golden.name),
         };
+        let expected = lane_expected_json(&cap.expected).0;
         assert_eq!(
-            got, cap.expected,
+            got, expected,
             "\n[{}] {} {} opts={} (bits {})\n  Rust:   {}\n  oracle: {}\n",
-            golden.name, cap.kind, cap.target, cap.opts, cap.bits, got, cap.expected
+            golden.name, cap.kind, cap.target, cap.opts, cap.bits, got, expected
         );
     }
 }
@@ -385,6 +417,86 @@ fn json_circuit_ieee13() {
 #[test]
 fn json_circuit_positive_seq() {
     run_deck("circuit_positive_seq");
+}
+
+/// The expected-value pin of `compat::CKT_MODEL_RENDERED_ORDINAL`, asserted
+/// against `compat::ORACLE_PARITY` so it is meaningful in **both** lanes.
+///
+/// Three things at once, over the whole committed JSON golden set:
+///
+/// 1. **Non-vacuity of the oracle side** — exactly one capture, in exactly one
+///    deck, still carries the value-less `"Set CktModel="`. If that golden is
+///    ever regenerated without it the split becomes dead code and this fails
+///    instead of passing silently.
+/// 2. **Non-vacuity and scope of the transform** — the default lane rewrites
+///    exactly that one occurrence, the parity lane none, and no other capture is
+///    touched.
+/// 3. **Direction** — after the transform the default-lane expectation carries
+///    `Set CktModel=Positive` and no value-less form; `json_circuit_positive_seq`
+///    then holds the engine to it byte-for-byte.
+#[test]
+fn json_ckt_model_divergence_is_pinned() {
+    let parity = dss_core::compat::ORACLE_PARITY;
+    let mut oracle_hits = 0usize;
+    let mut rewrites = 0usize;
+    let mut decks = 0usize;
+
+    let mut paths: Vec<PathBuf> = std::fs::read_dir(json_dir())
+        .expect("read the JSON golden dir")
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().map(|x| x == "json").unwrap_or(false))
+        .collect();
+    paths.sort();
+
+    for path in &paths {
+        let text = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let value: serde_json::Value =
+            serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
+        // `gen_schema.py`'s fixtures share this directory and carry no combos —
+        // the same filter `json_every_deck_golden_has_a_driver` uses.
+        if value.get("combo_names").is_none() {
+            continue;
+        }
+        decks += 1;
+        let golden: DeckGolden = serde_json::from_str(&text)
+            .unwrap_or_else(|e| panic!("{}: not a deck golden: {e}", path.display()));
+        for cap in &golden.captures {
+            oracle_hits += cap.expected.matches(CKT_MODEL_PARITY).count();
+            let (expected, n) = lane_expected_json(&cap.expected);
+            rewrites += n;
+            if parity {
+                assert_eq!(
+                    expected,
+                    cap.expected,
+                    "{}: the parity lane must expect the oracle capture verbatim",
+                    path.display()
+                );
+            } else {
+                assert!(
+                    !expected.contains(CKT_MODEL_PARITY),
+                    "{}: the default lane must not expect a value-less `Set CktModel=`",
+                    path.display()
+                );
+            }
+        }
+    }
+
+    assert!(
+        decks >= 20,
+        "expected the whole JSON golden set, saw {decks}"
+    );
+    assert_eq!(
+        oracle_hits, 1,
+        "the committed JSON goldens no longer pin the value-less `Set CktModel=` \
+         — the lane split would be dead code"
+    );
+    assert_eq!(
+        rewrites,
+        if parity { 0 } else { oracle_hits },
+        "the default lane must rewrite exactly that one line and the parity lane none"
+    );
 }
 
 /// Directory-completeness guard. Every deck is wired by hand with its own

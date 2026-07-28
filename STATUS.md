@@ -7,6 +7,105 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3p — the `Set CktModel=` LongBool row, and the two unmarked port divergences it uncovered (branch `depas-stagef`, 2026-07-28)
+
+One marker, three engine sites — and the row's real value is that only **one**
+of the three was reproducing upstream at all. `TODO(compat)` **34 → 33**; both
+lanes green; no golden, tolerance, ledger or deck touched.
+
+| row | upstream | what says it is a slip | default lane |
+|---|---|---|---|
+| `CKT_MODEL_RENDERED_ORDINAL` | `CktModelEnum.OrdinalToString(Integer(PositiveSequence))` with `PositiveSequence: LongBool` (`Circuit.pas:180`) → `Integer(True)` = **-1**, out of the enum's `[0,1]` range → `''`, so a positive-sequence circuit reports `Set CktModel=` with no value | the oracle's **own** JSON round-trip golden records the loss: `rt_positive_seq.json`'s J0 carries `Set CktModel=` and J1 — the oracle re-exporting *its own import of J0* — carries no `CktModel` line at all | ordinal `1` → `Positive` |
+
+**The finding.** The three surfaces that render this datum
+(`CAPI_Obj.pas:2537` → `report/export/json/circuit.rs`, `Circuit.pas:2768` →
+`exec/save_circuit.rs`, `ExecOptions.pas:919` → `exec/get_cmd.rs`) all use the
+identical Pascal expression, but only the JSON one had been ported that way. The
+`Save` writer had been ported as `ordinal_to_string(1)` and the `Get` reader as
+`positive_sequence as i32` — i.e. **the fixed form, in both lanes, with no
+marker**. Neither is covered by any golden or gated corpus case (no `Save`-golden
+circuit is positive-sequence; nothing captures `Get cktmodel`), which is why the
+port has been silently diverging there since the 1:1 stage. Routing all three
+through the one Stage F row makes the parity lane faithful on two surfaces where
+it was not, and gives the default lane a single answer everywhere.
+
+**Why the fix is a fix and not a spelling preference — stated as a consequence,
+not an opinion.** `Set CktModel=` does not survive its own re-import: the
+value-less form parses as `Multiphase`, so a saved circuit silently loses the
+flag the file was written to record. `ckt_model_rendered_ordinal_is_lane_split`
+asserts exactly that end to end — it saves a positive-sequence circuit,
+re-compiles the produced `Master.dss` in a fresh engine, and requires
+`Get cktmodel` to answer `Multiphase` in the parity lane and `Positive` in the
+default one. The parity lane thereby *pins the data loss* rather than merely
+tolerating it.
+
+**No golden is re-baselined.** The one gated surface, `tests/golden/json/
+circuit_positive_seq.json`, is compared through the same enumerated
+expected-value transform F.3n introduced for CIM — `golden_json.rs::
+lane_expected_json` rewrites exactly the one `"Set CktModel="` capture line in
+the default lane and nothing else in any of the 20+ deck goldens.
+`json_ckt_model_divergence_is_pinned` walks the whole directory (skipping the
+`gen_schema.py` fixtures with the same `combo_names` filter the existing
+completeness guard uses) and asserts the oracle side still carries exactly one
+occurrence, that the default lane rewrites exactly that one and the parity lane
+none, and that the default-lane expectation contains no value-less form left.
+The **import** side is untouched in both lanes, so the oracle's J0 — which
+carries the value-less line — still round-trips identically
+(`golden_json_import` unchanged and green in both lanes).
+
+**Scope discipline.** One `compat` row for three reproduction sites, entered
+under the *Single-site upstream quirks* membership rule. Escape register
+unchanged: the **14** truncated physical constants, the **7** F-FMT rendering
+markers, `HIDE_015X` ×17; the single-site quirk census drops **13 → 12**, and
+14 + 7 + 12 = the 33 remaining markers.
+
+**Two more quirk rows measured and blocked this session — recorded so the next
+pass does not re-derive them.** Both have the GIC `%R1` shape (F.3k): the flip is
+unambiguous, but it moves a *gated deck's primary physical channel*, so it needs
+its own commit with a field-scoped exclusion + a replacement in-engine assertion
++ a transitive cover, and a blanket exclusion would gut the case rather than trim
+a field.
+
+* **`load_shape/compute.rs`'s MMF accept-set** (bytes `[46,58)`, dropping sign
+  and exponent). `tests/corpus/modes/inputformat/shape_mmf/shape_mmf.dss` was
+  *built* to be sensitive to it — its own header says the `pq` shape's P column
+  "is written in exponent notation … so P reads as {1.51, 2.01, …} under MMF vs
+  {0.15, 0.20, …} without it — a large, oracle-observable divergence in `ld_pq`'s
+  power". Honouring sign/exponent therefore moves that deck's load multiplier,
+  and through it the whole (small) circuit's voltages — not one field.
+* **`support/line_constants/mod.rs`'s `set_user_height_unit` re-conversion.** The
+  marker's note ("goldens will pin it when the Line-level HeightUnit/HeightOffset
+  slice lands") is stale: that slice landed as WP-U1.4, and
+  `tests/corpus/modes/upgrade/upgrade_linecs_heightoffset.dss` now drives exactly
+  the `SetHeightOffset` → `SetUserHeightUnit` pair through the equivalent-spacing
+  Carson path, so the re-scaled offset is live in that deck's Z/Yc. (Both of the
+  marker's two suggested clean fixes reduce to the same thing — leave the stored
+  meters value alone — so the fix itself is unambiguous; only its gate cost
+  blocks it.)
+
+**The F.3m corpus-scheduler intermittent recurred — and this occurrence pins its
+shape.** F.3m saw `519/520 … 1 failed` in the *default* lane with the parity lane
+green on the same tree; this commit saw it in the **parity** lane with the
+default lane green, and re-running the *same test binary* unchanged gave
+`520/520`. So it is lane-independent, change-independent and not reproducible on
+a fixed binary — i.e. the `CorpusGuard` / same-directory race F.3m diagnosed
+(`electricdss-tst/Test/AutoTrans` writes fixed-name export files, and the
+scheduler runs two cases from that directory concurrently), not anything the
+engine computes. It is still an **open harness item for the coordinator** — fix
+= serialize (or per-case-scratch) same-directory cases in
+`corpus_gate::scheduler`. The failing case label was again lost: the panic body
+goes to the redirect while only the two `eprintln` summaries survive, which is
+its own small fix (print the label from the scheduler, not the panic).
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace --no-fail-fast` and the same
+with the feature, including the unconditional 520-case corpus gate. Tests +2
+(`json_ckt_model_divergence_is_pinned`,
+`ckt_model_rendered_ordinal_is_lane_split`), 0 removed, 0 new `#[ignore]`.
+`git diff -- tests/` touches no golden, tolerance, ledger or deck; `git status
+--short tests/corpus` empty after both runs.
+
 ### DE_PASCALIZE Stage F.3o — the two CIM `grounded := TRUE` TODOs answered by the writer in the same unit that already answers them (branch `depas-stagef`, 2026-07-28)
 
 The remaining pair of `cim/export.rs` markers, and the one row in this sweep

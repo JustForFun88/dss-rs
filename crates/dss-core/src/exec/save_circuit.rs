@@ -648,9 +648,17 @@ impl Dss {
         out.push_str(&format!("New Circuit.{name}\n"));
         out.push('\n');
         if positive_sequence {
+            // Pascal `OrdinalToString(Integer(PositiveSequence))`
+            // (`Circuit.pas:2768`) — the same `LongBool` -1 as the JSON
+            // `PreCommands` writer, routed through the one Stage F row
+            // (`compat::CKT_MODEL_RENDERED_ORDINAL`). This site had been ported
+            // as a bare `1`, i.e. the *fixed* form in both lanes with no marker;
+            // the parity lane now emits upstream's value-less `Set Cktmodel=`.
             out.push_str(&format!(
                 "Set Cktmodel={}\n",
-                self.enums.get(self.enums.ckt_model).ordinal_to_string(1)
+                self.enums
+                    .get(self.enums.ckt_model)
+                    .ordinal_to_string(crate::compat::CKT_MODEL_RENDERED_ORDINAL)
             ));
         }
         if duplicates {

@@ -1067,3 +1067,47 @@ pub const CIM_WYE_GROUNDED_IS_HARDCODED_TRUE_DEFAULT_IMPL: bool = false;
 pub use CIM_WYE_GROUNDED_IS_HARDCODED_TRUE_DEFAULT_IMPL as CIM_WYE_GROUNDED_IS_HARDCODED_TRUE;
 #[cfg(feature = "oracle-parity")]
 pub use CIM_WYE_GROUNDED_IS_HARDCODED_TRUE_PARITY_IMPL as CIM_WYE_GROUNDED_IS_HARDCODED_TRUE;
+
+/// The `CktModelEnum` ordinal every surface renders the circuit model from when
+/// the circuit is **positive-sequence**.
+///
+/// `-1` reproduces the upstream quirk. All three surfaces render
+/// `CktModelEnum.OrdinalToString(Integer(PositiveSequence))` — the AltDSS JSON
+/// `PreCommands` (`CAPI_Obj.pas:2537`), `SaveMasterFile` (`Circuit.pas:2768`)
+/// and the `Get cktmodel` reader (`ExecOptions.pas:919`) — and
+/// `PositiveSequence` is a Pascal `LongBool`
+/// (`Circuit.pas:180`), so FPC's `Boolean → LongBool` conversion makes
+/// `Integer(True)` **-1** (all ones). That is outside the enum's `[0, 1]`
+/// ordinal range, where `OrdinalToString` answers `''`, so both surfaces emit
+/// the value-less line `Set CktModel=`.
+///
+/// It is a **round-trip-losing** emission, and the oracle's own goldens prove
+/// it rather than any argument of ours: `tests/golden/json_import/
+/// rt_positive_seq.json` records the oracle's export `J0` carrying `Set
+/// CktModel=` and `J1` — the oracle's re-export *of its own import of J0* —
+/// carrying no `CktModel` line at all, because the empty value re-imports as
+/// `Multiphase`. The flag does not survive its own serialization.
+///
+/// `1` renders `Set CktModel=Positive`, the ordinal the enum declares for the
+/// state being written (`['Multiphase', 'Positive']`), which re-imports as the
+/// circuit that was saved. Only the emitted string moves: the *reader* is
+/// untouched in both lanes, so an oracle-produced `Set CktModel=` still imports
+/// identically everywhere.
+///
+/// Three engine sites share this row, and they did **not** agree before it.
+/// `report/export/json/circuit.rs` reproduced the quirk and is pinned by
+/// `tests/golden/json/circuit_positive_seq.json`. `exec/save_circuit.rs`
+/// (`OrdinalToString(1)`) and `exec/get_cmd.rs` (`positive_sequence as i32`)
+/// were ported as the *fixed* form in both lanes with no marker — unmarked
+/// divergences that no golden and no gated corpus case covers (no `Save`-golden
+/// circuit is positive-sequence, and nothing captures `Get cktmodel`). Routing
+/// all three through this row makes the parity lane faithful on two surfaces
+/// where it silently was not, and gives the default lane one answer everywhere.
+pub const CKT_MODEL_RENDERED_ORDINAL_PARITY_IMPL: i32 = -1;
+/// See the parity twin above.
+pub const CKT_MODEL_RENDERED_ORDINAL_DEFAULT_IMPL: i32 = 1;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use CKT_MODEL_RENDERED_ORDINAL_DEFAULT_IMPL as CKT_MODEL_RENDERED_ORDINAL;
+#[cfg(feature = "oracle-parity")]
+pub use CKT_MODEL_RENDERED_ORDINAL_PARITY_IMPL as CKT_MODEL_RENDERED_ORDINAL;
