@@ -7,6 +7,99 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3y — the "less precise FPC primitives" row: two of the three were already `num_complex`, and the third is the better kernel (branch `depas-stagef`, 2026-07-28)
+
+F.3x closed the audit of the two truncated-constant rows whose escape reason was
+still a prediction. This commit takes the bucket's remaining *kernel* row — the
+`cabs_fpc`/`csqrt_fpc`/`cln_fpc` trio in `support/line_constants/mod.rs` — and
+measures it instead of arguing it. The marker's own claim was that all three
+"reproduce FPC's *less precise* forms only to match the oracle bit-for-bit" and
+that "the clean fix is to drop all three for `num_complex`'s
+`.norm()`/`.sqrt()`/`.ln()`". **Measured against a 60-digit `mpmath` reference,
+that claim is false for every one of the three, in two opposite directions**, and
+the row resolves with **no lane split at all**. `TODO(compat)` **24 → 23**;
+`HIDE_015X` **17**; both lanes green; no golden, tolerance, ledger or deck
+touched.
+
+**The measurement** (F.3e's protocol: the shipped kernels dumped as raw f64 bits
+from a Rust probe, the error analysis done in `mpmath` at 60 digits, 20 000
+operands, deterministic xorshift, |z| sweep 1e-12…1e12 for accuracy and
+1e-150…1e150 for the equality claim; probe removed before commit):
+
+| kernel | mean ULP err | worst ULP err | worst rel err |
+|---|---|---|---|
+| `csqrt` FPC algebraic (NR), real part | **0.339** | **1.82** | **2.45e-16** |
+| `csqrt` `num_complex` polar, real part | 2.413 | **12818** | **1.88e-12** |
+| `csqrt` FPC vs polar, imag part | 0.339 / 0.472 | 1.73 / 2.44 | 2.38e-16 / 3.51e-16 |
+| `cabs` naive vs `f64::hypot` | 0.292 / 0.292 | 1.11 / 1.11 | identical |
+
+**1. `Cabs` and `Cln` were never warts — they were `.norm()` and `.ln()` all
+along.** Over the entire range where `re²+im²` is representable, the naive
+`√(re²+im²)` is **bit-for-bit** `f64::hypot` on this toolchain: **0
+disagreements in 20 000 samples** spanning |z| ∈ 1e-150…1e150. And because
+`cln`'s imaginary part is literally `im.atan2(re)` — the same expression
+`Complex::arg` evaluates — `cln_fpc` was bit-identical to `.ln()` as a
+consequence, with nothing left to check. Where the two forms *do* part is
+outside that band, and there the hand-rolled one is simply broken: `re²+im²`
+over/underflows, so it returns `inf`/`0` (measured at `(1.5e154, 2.5e154)` and
+`(1e-170, 1e-170)`) where `hypot` stays exact. Equal wherever any gate can look,
+strictly more robust where none can — so both are now used **unconditionally, in
+both lanes**, the two helpers are deleted, and the marker closes without a
+`compat` row.
+
+**2. `Csqrt` stays FPC's — and *not* for parity.** `num_complex`'s `.sqrt()` is
+the polar form `from_polar(√r, θ/2)`, which routes through `atan2` and `cos`;
+as `θ → ±π` (just off the negative real axis) `cos(θ/2)` cancels
+catastrophically. That costs it **7× the mean** and **7000× the worst-case**
+error of the branch-split Numerical-Recipes form the port already had. Flipping
+this row would have made the *product* lane strictly less accurate for nothing —
+the identical verdict F.3e reached for `compat::cdiv` (Smith's division), and the
+same IV.1 principle: legitimate numerics stay shared by both lanes. So the
+plan's expectation was inverted here too, and for the second time in this stage
+the "idiomatic" candidate is the worse kernel.
+
+**Why this is a resolution and not an escape.** The row needed lane branching
+only under the marker's premise that the parity forms were deliberately
+imprecise. With that premise measured false, one arm of the trio is a pure
+robustness upgrade that no gate can observe and the other is a kernel the port
+should keep on merit — neither needs a lane. That is the same shape as the
+"complex division", "dense inverse" and "Y triplet dedup" rows, which is why it
+adds no row to IV.2's closed table.
+
+**Both ends are pinned, in both lanes.**
+`naive_modulus_equals_hypot_until_the_square_overflows` re-runs a slice of the
+equality sweep (4 000 operands over the same 1e-150…1e150 band) with the deleted
+naive form kept locally as the reference, asserting bit-equality of the modulus
+*and* of both `cln` components — then asserts the extreme-range collapse
+(`inf`/`0` vs the exact `hypot` values) that motivates the switch. This matters
+for the **parity** lane specifically: the whole justification for letting the
+1:1 engine call `.norm()` is that it is bit-identical, so if a future toolchain's
+`hypot` ever stopped agreeing, this fails loudly instead of drifting the DERI
+goldens in silence. `csqrt_algebraic_beats_the_polar_form` pins the other
+verdict with the measured worst-case operand as literals: `csqrt_fpc` returns
+the **correctly rounded** result bit-for-bit, `z.sqrt()` is 12 818 ULP away, and
+a "modernizing" swap fails on the number that forbids it.
+`fpc_complex_primitives_match_ucomplex_not_num_complex` keeps every RTL bit pin
+it had, with the `cmod`/`cln` halves now asserted through `.norm()`/`.ln()` —
+i.e. the crate reproducing the x86_64 FPC `ucomplex` RTL exactly.
+
+**Escape register.** Unchanged except that the truncated-constant bucket drops
+its one *kernel* member: the **12** remaining truncated physical constants
+(Kxg ×3 and `2.3026` ×2 measured in F.3x; CALPHA ×2, `1732.0`, `0.3183`,
+`mu0`/`Twopi` and the `complexutil` pair still carrying the category reason),
+the **7** F-FMT
+rendering markers (F.4's defined scope), the **4** single-site quirks (F.3v),
+and `HIDE_015X` ×17. 12 + 7 + 4 = the 23 remaining markers.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy
+--workspace --all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace --no-fail-fast` (2354 passed /
+0 failed / 5 ignored) and the same with the feature (2354 / 0 / 5), including
+the unconditional 520-case corpus gate in each. Tests **+2**, 0 removed, 0 new
+`#[ignore]`. `git diff -- tests/` empty — no golden, tolerance, ledger or deck
+touched; `git status --short tests/corpus` empty after both runs (the known
+intermittent `Test/AutoTrans/*` leak deleted by exact name).
+
 ### DE_PASCALIZE Stage F.3x — the truncated-constant bucket stops being one blanket claim: two rows measured, one of them from the source (branch `depas-stagef`, 2026-07-28)
 
 F.3w re-opened one member of F.3v's "14 truncated physical constants" escape

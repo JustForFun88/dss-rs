@@ -81,43 +81,67 @@ fn cmplx(re: f64, im: f64) -> Complex64 {
     Complex64::new(re, im)
 }
 
-// FPC RTL `ucomplex.pp` complex primitives, ported verbatim. `num_complex`'s
-// `.sqrt()`/`.ln()`/`.norm()` use the polar/trig (`from_polar`) and `hypot`
-// forms; FPC uses the algebraic Numerical-Recipes `csqrt`, the naive
-// `sqrt(re²+im²)` modulus, and `ln(cmod)+j·arctan2`. They round the last bit
-// differently, so a faithful 1:1 port of the DERI/cable earth terms (which call
-// `Csqrt`/`Cln`/`Cabs`) must use these — exactly as the matrix inverse uses
-// `compat::cdiv`. Proven bit-for-bit against the x86_64 FPC `ucomplex` RTL.
+// FPC RTL `ucomplex.pp` complex primitives. FPC uses the algebraic
+// Numerical-Recipes `csqrt`, the naive `sqrt(re²+im²)` modulus (`Cabs`/`cmod`,
+// NOT `hypot`), and `cln = ln(cmod) + j·arctan2`; `num_complex` uses `hypot`
+// for `.norm()`, `ln(norm) + j·arg` for `.ln()`, and the *polar* form
+// `from_polar(√r, θ/2)` for `.sqrt()`. The port originally carried all three
+// hand-rolled, on the assumption that each was a less-precise Pascal wart kept
+// only for bit-parity.
 //
-// `Cabs`/`cmod`: `sqrt(re*re+im*im)` (DSSUcomplex `Cabs`, ucomplex `cmod`), NOT
-// `hypot`.
+// **Stage F.3y measured that assumption against a 60-digit `mpmath` reference
+// (20 000 operands, |z| sweep 1e-150…1e150, the F.3e protocol), and it holds
+// for none of the three.** The row resolved with *no lane split at all* — two
+// of the primitives are the crate's, and the third is FPC's on merit:
 //
-// TODO(compat): these three reproduce FPC's *less precise* forms only to match
-// the oracle bit-for-bit — `num_complex`'s `hypot` modulus and polar `sqrt`/`ln`
-// are marginally more accurate (measured vs the correctly-rounded value: csqrt 1
-// vs 2 ULP; `cmod` via overflow-safe `hypot` vs naive `√(re²+im²)`). The clean
-// fix is to drop all three for `num_complex`'s `.norm()`/`.sqrt()`/`.ln()` in
-// the §6 precision pass, regenerating the geometry/DERI/cable goldens
-// deliberately. The complex-division kernel (`compat::cdiv`) is deliberately
-// NOT in this set: Smith's division is both more accurate and overflow-robust,
-// so it stays permanently — Stage F.3e re-measured that against a 60-digit
-// reference and resolved the plan's division row to *no split*, one shared
-// kernel for both lanes (see `crate::compat`'s module header for the table).
-#[inline]
-fn cabs_fpc(z: Complex64) -> f64 {
-    (z.re * z.re + z.im * z.im).sqrt()
-}
+// | kernel | mean ULP err | worst ULP err |
+// |---|---|---|
+// | `csqrt` FPC algebraic (NR), real part | **0.339** | **1.82** |
+// | `csqrt` `num_complex` polar, real part | 2.413 | **12818** |
+// | `csqrt` FPC / `num_complex`, imag part | 0.339 | 1.73 / 2.44 |
+// | `cabs` naive vs `.norm()` | 0.292 / 0.292 | 1.11 / 1.11 — **bit-identical** |
+//
+// 1. **`Cabs` and `Cln` are not warts — they are already `.norm()`/`.ln()`.**
+//    Over the whole range where `re²+im²` is representable the naive modulus is
+//    **bit-for-bit** `f64::hypot` here (0 disagreements in 20 000 samples), and
+//    since `cln`'s imaginary part is literally `im.atan2(re)` — the same
+//    expression `Complex::arg` evaluates — `cln_fpc` was bit-identical to
+//    `.ln()` as well. What the two forms do *not* share is behaviour outside
+//    that range: `re²+im²` over/underflows, so the naive modulus collapses to
+//    `inf`/`0` (measured at `(1.5e154, 2.5e154)` and `(1e-170, 1e-170)`) where
+//    `hypot` stays exact. So the crate's forms are equal where anything is
+//    gated and strictly more robust where nothing is: they are used
+//    unconditionally, in **both** lanes, and the compat marker that stood
+//    here is closed.
+// 2. **`Csqrt` stays FPC's, and *not* for parity — the algebraic form is the
+//    better kernel.** `num_complex`'s polar `sqrt` routes through `atan2` and
+//    `cos`, which cancel as `θ → ±π` (near the negative real axis), costing it
+//    7× the mean error and **7000×** the worst-case error of the branch-split
+//    Numerical-Recipes form. Flipping it would make the *product* lane strictly
+//    less accurate for nothing — the exact verdict F.3e reached for
+//    `compat::cdiv` (Smith's division), and the same IV.1 principle: legitimate
+//    numerics stay shared by both lanes. `tests::csqrt_algebraic_beats_the_
+//    polar_form` pins it with literals so it cannot rot back into folklore.
+//
+// Proven bit-for-bit against the x86_64 FPC `ucomplex` RTL, which is why the
+// DERI/cable earth terms and `Line`'s `DoLongLine` all still route through
+// `csqrt_fpc`.
 
 /// FPC `ucomplex` `csqrt` — the Numerical-Recipes stable square root
 /// (`root = √(½(|re|+|z|))`, the other component `= im/(2·root)`), branch-split
 /// on the signs so the robust component is the directly-rooted one.
+///
+/// Retained over `num_complex`'s `.sqrt()` on measured accuracy, not on parity
+/// — see the module-level table above.
 ///
 /// `pub(crate)` so the Line `DoLongLine` port (`elements/pd/line/solve.rs`)
 /// reuses the identical, RTL-proven `csqrt` rather than duplicating it.
 #[inline]
 pub(crate) fn csqrt_fpc(z: Complex64) -> Complex64 {
     if z.re != 0.0 || z.im != 0.0 {
-        let root = (0.5 * (z.re.abs() + cabs_fpc(z))).sqrt();
+        // `.norm()` rather than FPC's naive `cmod`: bit-identical wherever
+        // `re²+im²` is representable, and finite beyond it (see above).
+        let root = (0.5 * (z.re.abs() + z.norm())).sqrt();
         let q = z.im / (2.0 * root);
         if z.re >= 0.0 {
             Complex64::new(root, q)
@@ -129,13 +153,6 @@ pub(crate) fn csqrt_fpc(z: Complex64) -> Complex64 {
     } else {
         z
     }
-}
-
-/// FPC `ucomplex` `cln` — `ln(cmod(z)) + j·arctan2(im, re)` (the modulus is the
-/// naive `cabs_fpc`, not `hypot`).
-#[inline]
-fn cln_fpc(z: Complex64) -> Complex64 {
-    Complex64::new(cabs_fpc(z).ln(), z.im.atan2(z.re))
 }
 
 /// Per-conductor cable extension — the merged `TCableConstants` subclass arrays
@@ -537,7 +554,7 @@ impl LineConstants {
                 // with skin effect model; assume round conductor
                 let c1_j1 = cmplx(1.0, 1.0);
                 let alpha = c1_j1 * (self.ffrequency * MU0 / cond.rdc).sqrt();
-                let i0i1 = if cabs_fpc(alpha) > 35.0 {
+                let i0i1 = if alpha.norm() > 35.0 {
                     Complex64::new(1.0, 0.0)
                 } else {
                     compat::cdiv(bessel_i0(alpha), bessel_i1(alpha))
@@ -642,10 +659,10 @@ impl LineConstants {
                     let hterm = cmplx(fyi + fyj, 0.0) + self.fme.inv() * 2.0;
                     let xterm = cmplx(fxi_fxj, 0.0);
                     let ln_arg = csqrt_fpc(hterm * hterm + xterm * xterm);
-                    cmplx(0.0, self.fw * MU0 / TWOPI) * cln_fpc(ln_arg)
+                    cmplx(0.0, self.fw * MU0 / TWOPI) * ln_arg.ln()
                 } else {
                     let hterm = cmplx(fyi, 0.0) + self.fme.inv();
-                    cmplx(0.0, self.fw * MU0 / TWOPI) * cln_fpc(hterm * 2.0)
+                    cmplx(0.0, self.fw * MU0 / TWOPI) * (hterm * 2.0).ln()
                 }
             }
         }
