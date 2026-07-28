@@ -218,6 +218,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // `LowerCase(CondClass)`; the reproduced capi015 `GetDSSClass` case bug was
         // dropped in the 0.15.x-adoption sweep) — see `parse_conductor_proxy`; the
         // JSON "Conductors" key is still emitted via the `Wires` masquerade below.
+        // Un-hiding this prop WITHOUT dropping that masquerade emits the key
+        // twice in one object (measured, Stage F.3aa — see the flag's doc in
+        // `obj/props/prop_flags.rs` and the two pins in `exec/tests/compat_quirks.rs`).
         PropDef::object_ref_array_proxy(
             "Conductors",
             CONDUCTOR_PROXY_NAME,
