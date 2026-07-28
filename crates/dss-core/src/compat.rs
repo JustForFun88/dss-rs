@@ -1246,3 +1246,57 @@ pub const FAULT_DUMP_TAIL_REPRINTS_MINAMPS_DEFAULT_IMPL: bool = false;
 pub use FAULT_DUMP_TAIL_REPRINTS_MINAMPS_DEFAULT_IMPL as FAULT_DUMP_TAIL_REPRINTS_MINAMPS;
 #[cfg(feature = "oracle-parity")]
 pub use FAULT_DUMP_TAIL_REPRINTS_MINAMPS_PARITY_IMPL as FAULT_DUMP_TAIL_REPRINTS_MINAMPS;
+
+/// Whether a **Storage**'s `MakePosSequence` leaves its property writes
+/// *unbracketed*, so each one is its own edit and the trailing `EndEdit` closes
+/// an edit that was never opened.
+///
+/// `true` reproduces the upstream slip: `TStorageObj.MakePosSequence`
+/// (`Storage.pas:3325-3355`) counts its writes into `changes` (`:3337` `= 3`,
+/// `:3342` `+ 2`) and hands that count to a single `EndEdit(changes)` (`:3352`)
+/// — the bookkeeping of *one* edit covering all five sets — but never opens it
+/// with `BeginEdit(True)`. Each `SetInteger`/`SetDouble` therefore
+/// auto-brackets itself (its own recalc, at half-converted property values),
+/// and the dangling `EndEdit` adds one more.
+///
+/// `false` opens the edit, so the five writes land as one and recalc runs once.
+/// Three independent readings of the source say that is what was meant:
+///
+/// * **The sibling with the same body.** `TPVsystemObj.MakePosSequence`
+///   (`PVsystem.pas:2642-2673`) is the same procedure — same `changes := 3`
+///   / `+ 2` counter, same five writes, same `EndEdit(changes)` — and it opens
+///   with `BeginEdit(True)` at `:2649`.
+/// * **Every other class in the tree.** Of the eleven `MakePosSequence` bodies
+///   that call `EndEdit` at all, ten open a `BeginEdit(True)` first —
+///   `generator.pas:2827`, `Load.pas:2237`, `Line.pas:1541`,
+///   `Transformer.pas:1739`, `AutoTrans.pas:1780`, `Reactor.pas:1058`,
+///   `Capacitor.pas:790`, `VSource.pas:1208`, `GICLine.pas:668`,
+///   `PVsystem.pas:2649`. Storage is the only one that does not.
+/// * **EPRI r4133, which predates the refactor** (the `DIVERGENCES.md` §D14
+///   rule: a 0.15.x/0.14.x shape is not authority on its own). There both
+///   classes are written the *old* way — one command string handed to a single
+///   `Edit(ActorID)`: `Version8/Source/PCElements/Storage.pas:3962-3987` and
+///   `PVsystem.pas:2846-2863`. One edit, one recalc, for both. The typed-setter
+///   refactor kept that for PVSystem via `BeginEdit` and lost it for Storage,
+///   so the default lane moves *towards* the pre-refactor engine, not away.
+///
+/// **What it costs is recalc count, and nothing else — measured, not argued.**
+/// The port's `end_edit` is `recalc` + `yprim_invalid` (`storage/accessors.rs`),
+/// and `recalc` (`storage/nominal.rs`) derives every field it writes from the
+/// element's *current* property values. Its one state-carrying step —
+/// `CheckStateTriggerLevel` / `ComputePresentkW`, which can latch `f_state` —
+/// reads only `kWhStored`, `kWhRating`, `kWhReserve`, the two triggers and the
+/// dispatch level, none of which `MakePosSequence` writes; so repeating it at
+/// the intermediate property values is idempotent. That is asserted directly by
+/// `storage::tests::makeposseq_begin_edit_moves_only_the_recalc_count`, which
+/// drives both action lists over the same element and compares the resulting
+/// state field by field, and it is why no golden, deck or ledger row moves in
+/// either lane.
+pub const STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED_DEFAULT_IMPL as STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED;
+#[cfg(feature = "oracle-parity")]
+pub use STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED_PARITY_IMPL as STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED;

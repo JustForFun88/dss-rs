@@ -7,6 +7,75 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3t — the Storage conversion's missing `BeginEdit`, settled by the engine it was refactored from (branch `depas-stagef`, 2026-07-28)
+
+F.3s left this row argued but unimplemented, with a hypothesis about how it
+could be pinned. The hypothesis was **wrong** and the measurement replaces it:
+the row costs five recalcs and moves nothing else — which is what makes it the
+first split in the sweep that the gate does not have to pay for.
+`TODO(compat)` **28 → 27**; both lanes green; no golden, tolerance, ledger or
+deck touched.
+
+| row | upstream | what says it is a slip | default lane |
+|---|---|---|---|
+| `STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED` | `TStorageObj.MakePosSequence` counts its writes into `changes` (`Storage.pas:3337` `= 3`, `:3342` `+ 2`) and hands the count to a single `EndEdit(changes)` (`:3352`) — the bookkeeping of *one* edit — but never opens it with `BeginEdit(True)`. Each `SetInteger`/`SetDouble` therefore auto-brackets itself and the dangling `EndEdit` adds one more | **three** independent readings: (i) the sibling with the identical body, `TPVsystemObj.MakePosSequence` (`PVsystem.pas:2642-2673`) — same `changes` counter, same five writes — opens at `:2649`; (ii) of the **eleven** `MakePosSequence` bodies in the tree that call `EndEdit`, **ten** open first (`generator.pas:2827`, `Load.pas:2237`, `Line.pas:1541`, `Transformer.pas:1739`, `AutoTrans.pas:1780`, `Reactor.pas:1058`, `Capacitor.pas:790`, `VSource.pas:1208`, `GICLine.pas:668`, `PVsystem.pas:2649`) — Storage is the only one that does not; (iii) **r4133, which predates the refactor**: `Version8/…/Storage.pas:3962-3987` and `PVsystem.pas:2846-2863` both build one command string and call `Edit(ActorID)` **once** — one edit, one recalc, for *both* classes | the writes are bracketed |
+
+**The r4133 reading is the load-bearing one** (`DIVERGENCES.md` §D14 — a
+0.15.x/0.14.x shape is never authority on its own): the pre-refactor engine
+gives Storage and PVSystem the *same* single-edit semantics, so the typed-setter
+rewrite kept it for PVSystem via `BeginEdit` and lost it for Storage. The
+default lane therefore moves **towards** one gating oracle, not away from either.
+
+**What it costs is the recalc count and nothing else — measured, not argued.**
+F.3s guessed that an intermediate recalc "can flip `storage_state` in
+`dispmode=Load`/`Price` and the final recalc need not flip it back". It cannot:
+the port's `end_edit` is `recalc` + `yprim_invalid`, `recalc` derives every
+field it writes from the element's *current* property values, and its one
+state-carrying step — `CheckStateTriggerLevel` / `ComputePresentkW` — reads only
+`kWhStored`, `kWhRating`, `kWhReserve`, the two triggers and the dispatch level,
+**none of which `MakePosSequence` writes**. Repeating it at half-converted
+property values is therefore idempotent. That is asserted rather than narrated:
+`makeposseq_begin_edit_moves_only_the_recalc_count` builds two identical
+`DispMode=Load` 3-phase elements whose trigger pair straddles the dispatch level
+(so the state machine is live and the fixture asserts it settled to
+DISCHARGING), drives the unbracketed list over one and the bracketed list over
+the other through the real property engine with the applier's own VM semantics,
+and then asserts `(6, 1)` recalcs and bit-for-bit equality of six discrete
+fields and twenty-six numeric ones (`kWrating`, `VBase`, `Yeq`, `YeqDischarge`,
+`kW_out`, `PnomPerPhase`, `pctkWout`, `Rthev`, `CutInkW`, …).
+
+**So the gate pays nothing.** `tests/corpus/modes/makeposseq/makeposseq_pc.dss`
+— the gated deck that runs `makeposseq` twice over a 3-phase `Storage.st1` — is
+byte-identical on its channel in both lanes, and no `LANE_SKIP_*` entry, ledger
+row or golden was needed. Every other split so far has cost either a field-scoped
+exclusion or a golden transform; this one is free because the divergence is
+confined to how many times an idempotent recalc runs.
+
+**Replacement pins.** `makeposseq_plan_brackets_its_writes_only_in_the_default_lane`
+is the expected-value test for the row itself (the bracket appears iff the lane
+fixes the slip; the five writes, their values and their order are asserted
+identical in both lanes). The two pre-existing plan tests are now lane-aware
+through one `posseq_head()` helper — `makeposseq_storage_three_phase_no_begin_edit`
+loses the now-lane-dependent half of its name and becomes
+`makeposseq_storage_three_phase`, and the 1-phase twin keeps its list.
+
+**Scope discipline.** No IV.2 kernel row was added; the split enters under the
+*Single-site upstream quirks* membership rule, and passes criterion (ii) —
+nothing in the source says the missing bracket was meant; the `changes := 3 + 2`
+counter says the opposite. Escape register unchanged: the **14** truncated
+physical constants, the **7** F-FMT rendering markers, `HIDE_015X` ×17; the
+single-site quirk census drops **7 → 6**, and 14 + 7 + 6 = the 27 remaining
+markers.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace --no-fail-fast` and the same
+with the feature, including the unconditional 520-case corpus gate. Tests +2
+(`makeposseq_plan_brackets_its_writes_only_in_the_default_lane`,
+`makeposseq_begin_edit_moves_only_the_recalc_count`), 0 removed, 0 new
+`#[ignore]`. `git diff -- tests/` touches no golden, tolerance, ledger or deck;
+`git status --short tests/corpus` empty after both runs.
+
 ### DE_PASCALIZE Stage F.3s — the Fault dump's off-by-one tail, and two carry-over cleanups (branch `depas-stagef`, 2026-07-28)
 
 One marker, one line of dump text, and the shortest sibling argument in the
