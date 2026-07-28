@@ -224,26 +224,34 @@ impl Monitor {
     pub fn num_channels(&self) -> usize {
         self.record_size
     }
+    /// How many records `Save`/`SaveAll` has made visible to
+    /// [`Self::channel`]/[`Self::dbl_hour`] (Pascal `MonitorStream` length in
+    /// records). `0` means nothing was ever flushed — the state in which the
+    /// two lanes' `channel` reads differ (`compat::
+    /// MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM`).
+    pub fn flushed_records(&self) -> usize {
+        self.flushed_records
+    }
     /// `Channel(i)` (1-based): the i-th recorded value across every **flushed**
     /// sample (Pascal `Monitors_Get_Channel`/`Monitors.Channel` read
     /// `MonitorStream`, not the live `SampleCount` — a sample taken since the
     /// last `Save`/`SaveAll` is invisible here; see [`Self::flushed_records`]).
     ///
-    /// TODO(compat): when nothing has been flushed yet (`flushed_records ==
-    /// 0`), dss-python's `IMonitors.Channel` (not the raw C-API — the Python
-    /// wrapper itself, `IMonitors.py`) special-cases an all-header
-    /// `MonitorStream` (byte size `== 272`, oracle-probed) into a **one**-
-    /// element `[0.0]` placeholder rather than an empty array; reproduced
-    /// here for oracle parity, since that is what a live comparison actually
-    /// observes. Clean fix (report an honest empty/absent channel) would need
-    /// its own gate on the raw C-API instead of dss-python's convenience
-    /// wrapper.
+    /// When nothing has been flushed yet (`flushed_records == 0`) the answer is
+    /// the lane row [`crate::compat::MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM`]:
+    /// the empty channel the C-API returns (default), or dss-python's
+    /// one-element `[0.0]` placeholder (parity, because that wrapper *is* the
+    /// pinned oracle). See the const for the two sources.
     pub fn channel(&self, i: usize) -> Vec<f32> {
         if i < 1 || i > self.record_size {
             return Vec::new();
         }
         if self.flushed_records == 0 {
-            return vec![0.0];
+            return if crate::compat::MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM {
+                vec![0.0]
+            } else {
+                Vec::new()
+            };
         }
         let stride = self.record_size + 2;
         (0..self.flushed_records)
@@ -347,20 +355,46 @@ mod tests {
         m
     }
 
+    /// The unflushed channel per lane — the expected-value pin for
+    /// [`crate::compat::MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM`]. Parity
+    /// reproduces dss-python's `[0.0]`; the default lane reports the empty
+    /// channel the C-API does.
+    fn unflushed_channel() -> Vec<f32> {
+        if crate::compat::ORACLE_PARITY {
+            vec![0.0]
+        } else {
+            Vec::new()
+        }
+    }
+
     /// Pascal `Monitors_Get_Channel` reads `MonitorStream` (the flushed data),
     /// not the live `SampleCount`: before any `Save`/`SaveAll`, `Channel` sees
-    /// nothing. dss-python's `IMonitors.Channel` then reports the all-header
-    /// stream as a one-element `[0.0]` placeholder (reproduced for oracle
-    /// parity). After `save()` the full history is visible.
+    /// nothing — reported as the lane's [`unflushed_channel`]. `dblHour`, whose
+    /// oracle surface dss-python does not special-case, is empty in both lanes,
+    /// so the default lane is the one where the two reads agree. After `save()`
+    /// the full history is visible in both.
     #[test]
     fn channel_reflects_flush_state() {
         let mut m = staged_monitor(4);
-        // Unflushed: the dss-python 272-byte-stream placeholder.
-        assert_eq!(m.channel(1), vec![0.0]);
+        assert_eq!(m.flushed_records(), 0);
+        assert_eq!(m.channel(1), unflushed_channel());
         assert_eq!(m.dbl_hour(), Vec::<f64>::new());
         m.save();
+        assert_eq!(m.flushed_records(), 4);
         assert_eq!(m.channel(1), vec![10.0, 11.0, 12.0, 13.0]);
         assert_eq!(m.dbl_hour(), vec![0.0, 1.0, 2.0, 3.0]);
+    }
+
+    /// The placeholder is *only* the unflushed state: an out-of-range index is
+    /// an empty channel in both lanes, and a flushed monitor never pads.
+    #[test]
+    fn channel_placeholder_is_confined_to_the_unflushed_stream() {
+        let mut m = staged_monitor(2);
+        assert_eq!(m.channel(0), Vec::<f32>::new());
+        assert_eq!(m.channel(2), Vec::<f32>::new()); // record_size == 1
+        m.save();
+        assert_eq!(m.channel(1), vec![10.0, 11.0]);
+        assert_eq!(m.channel(2), Vec::<f32>::new());
     }
 
     /// Pascal `TranslateToCSV` runs `Save;` first (Monitor.pas:1713), so
@@ -370,7 +404,7 @@ mod tests {
     #[test]
     fn to_csv_flushes_like_pascal_save() {
         let mut m = staged_monitor(3);
-        assert_eq!(m.channel(1), vec![0.0]); // unflushed before export
+        assert_eq!(m.channel(1), unflushed_channel()); // unflushed before export
         let csv = m.to_csv(0.0); // not mode 4 -> kv_base unused
         // Body carries all three samples (values 10/11/12).
         assert_eq!(csv.lines().count(), 4); // header + 3 rows

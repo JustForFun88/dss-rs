@@ -236,6 +236,31 @@ fn reset_device_name(line: &str) -> Option<&str> {
     is_reset.then_some(name)
 }
 
+/// One oracle monitor-channel capture as the **current lane** expects to see
+/// it: the identity in the parity lane; in the default lane, dss-python's
+/// unflushed-stream placeholder rewritten to the empty channel the engine
+/// actually reports (`compat::MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM`).
+///
+/// `flushed_records` is the Rust monitor's own flush cursor, and it is what
+/// makes this transform safe rather than circular. The rewrite fires **only**
+/// when that cursor is 0 — the one state in which `Monitors.Channel`'s
+/// `cnt == 272` short-circuit can trigger — and it insists the capture really
+/// is the placeholder (exactly one sample, exactly `0.0`). So:
+///
+/// * a monitor that flushed records is compared strictly, in both lanes;
+/// * an engine that lost real samples reports `flushed_records > 0` with an
+///   empty channel and fails the length check as before;
+/// * an oracle that stops emitting the placeholder (a dss-python change) makes
+///   `is_placeholder` false, and the untransformed capture then fails loudly —
+///   the transform can never rot into a silent pass.
+pub fn expected_monitor_channel(flushed_records: usize, capture: &[f64]) -> Vec<f64> {
+    let is_placeholder = capture.len() == 1 && capture[0] == 0.0;
+    if PARITY || flushed_records != 0 || !is_placeholder {
+        return capture.to_vec();
+    }
+    Vec::new()
+}
+
 /// Whether the current lane oracle-compares the probe cell `(label, element,
 /// prop)` — always in the parity lane, everywhere but
 /// [`LANE_SKIP_PROBE_PROPS`] in the default lane.
@@ -397,7 +422,8 @@ mod tests {
     use super::{
         ElemChannels, ITER_SLACK, LANE_SKIP_ELEM_POWERS, LANE_SKIP_PROBE_PROPS, PARITY,
         assert_bytes_eq, compare_iterations, compare_iterations_le, compare_report,
-        elem_channels_for, exact_value_policy, expected_eventlog, probe_is_gated,
+        elem_channels_for, exact_value_policy, expected_eventlog, expected_monitor_channel,
+        probe_is_gated,
     };
 
     /// Run `f`, returning `true` when it passed. Silences the panic hook so a
@@ -422,6 +448,35 @@ mod tests {
             dss_core::compat::ORACLE_PARITY,
             "the test crate and the engine disagree about the lane"
         );
+    }
+
+    /// The monitor transform is exactly dss-python's unflushed placeholder, and
+    /// nothing else: it fires only at `flushed_records == 0` and only on a
+    /// literal one-element `[0.0]` capture, so real data — including a genuine
+    /// single zero sample on a *flushed* monitor — is compared strictly in both
+    /// lanes.
+    #[test]
+    fn monitor_transform_is_the_unflushed_placeholder() {
+        let placeholder = [0.0];
+        // The one rewritten cell.
+        assert_eq!(
+            expected_monitor_channel(0, &placeholder),
+            if PARITY { vec![0.0] } else { Vec::new() },
+            "the placeholder is dropped in the default lane only"
+        );
+        // Same capture, flushed monitor: never rewritten.
+        assert_eq!(expected_monitor_channel(1, &placeholder), vec![0.0]);
+        // Unflushed, but not the placeholder shape: never rewritten, so an
+        // oracle that stops padding fails loudly instead of passing silently.
+        for cap in [vec![0.0, 0.0], vec![1.0], vec![]] {
+            let expect = cap.clone();
+            assert_eq!(
+                expected_monitor_channel(0, &cap),
+                expect,
+                "only a literal [0.0] is the placeholder"
+            );
+        }
+        assert_eq!(expected_monitor_channel(0, &[1e-30]), vec![1e-30]);
     }
 
     /// The one element-channel exclusion: the `newton*` decks' `Powers`/

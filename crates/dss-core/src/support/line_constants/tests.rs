@@ -737,3 +737,84 @@ fn matrix_unit_and_length_conversion() {
         }
     }
 }
+
+const FT: i32 = 5; // LineUnits::Ft code
+const IN: i32 = 6; // LineUnits::Inch code
+
+/// Expected-value pin for
+/// [`crate::compat::HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD`].
+///
+/// A height-unit change re-reads a number under the new unit. Which number is
+/// the lane row — and the two readings are *equal* on the only sequence any
+/// caller performs today (offset stored while the engine still carries its
+/// constructed `UNITS_M`, then the unit set), so the first half of this test is
+/// lane-independent and guards the gated deck
+/// `modes/upgrade/upgrade_linecs_heightoffset.dss` (`HeightOffset=5
+/// HeightUnit=ft` → 1.524 m) in both lanes.
+///
+/// They part on a *second* unit change, where the outgoing unit is no longer
+/// metres: the parity lane feeds the stored metres (1.524) into the inch
+/// setter and compounds the conversions, the default lane re-reads the typed 5.
+#[test]
+fn height_unit_change_rereads_the_typed_number() {
+    // The universal path: store under the default metre unit, then set ft.
+    let mut lc = build(&COORDS3);
+    let y0: Vec<f64> = (0..3).map(|i| lc.cond[i].y).collect();
+    lc.set_height_offset(5.0);
+    lc.set_user_height_unit(FT);
+    assert_eq!(
+        lc.height_offset_meters().to_bits(),
+        (5.0f64 * 0.3048).to_bits(),
+        "5 typed under metres, re-read as ft, must be 5 ft in both lanes"
+    );
+    // The getter round-trips the typed number through metres and back, so it is
+    // 5 to within the ft→m→ft rounding (one ULP) — never a lane difference,
+    // which is a factor 0.3048 away.
+    let round_trip = |got: f64, want: f64, what: &str| {
+        assert!(
+            (got - want).abs() <= 4.0 * f64::EPSILON * want.abs(),
+            "{what}: got {got:.17e}, want {want:.17e}"
+        );
+    };
+    round_trip(lc.height_offset(), 5.0, "typed number after m→ft");
+    for (i, y) in y0.iter().enumerate() {
+        assert_eq!(
+            lc.cond[i].y.to_bits(),
+            (y + 5.0 * 0.3048).to_bits(),
+            "conductor {i} height must carry the same offset in both lanes"
+        );
+    }
+
+    // The second change, ft → in: the readings diverge.
+    lc.set_user_height_unit(IN);
+    let expect_m: f64 = if crate::compat::ORACLE_PARITY {
+        5.0 * 0.3048 * 0.0254 // the stored metres re-read as inches
+    } else {
+        5.0 * 0.0254 // the typed 5, now inches
+    };
+    round_trip(
+        lc.height_offset_meters(),
+        expect_m,
+        &format!("ft→in re-read (parity = {})", crate::compat::ORACLE_PARITY),
+    );
+    // The two readings really are far apart here — a factor 0.3048, twelve
+    // orders above the round-trip bound above.
+    let other = if crate::compat::ORACLE_PARITY {
+        5.0 * 0.0254
+    } else {
+        5.0 * 0.3048 * 0.0254
+    };
+    assert!(
+        (lc.height_offset_meters() - other).abs() > 0.5 * other.abs(),
+        "the lanes must not agree on the second change"
+    );
+    // The default lane's invariant: the typed number survives every unit change.
+    if !crate::compat::ORACLE_PARITY {
+        round_trip(lc.height_offset(), 5.0, "typed number after ft→in");
+    }
+
+    // A no-op change stays a no-op in both lanes (Pascal's `If Value <> …`).
+    let before = lc.height_offset_meters();
+    lc.set_user_height_unit(IN);
+    assert_eq!(lc.height_offset_meters().to_bits(), before.to_bits());
+}
