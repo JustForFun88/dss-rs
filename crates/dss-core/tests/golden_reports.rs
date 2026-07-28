@@ -5588,6 +5588,98 @@ fn save_class_disabled_load_writes_enabled_no() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
+/// The expected-value pin of `compat::CKT_MODEL_RENDERED_ORDINAL` on the two
+/// surfaces no golden covers — `Save circuit`'s `Master.dss` and the
+/// `Get cktmodel` reader — asserted against `compat::ORACLE_PARITY` so it is
+/// meaningful in both lanes. (The third surface, the AltDSS JSON `PreCommands`,
+/// is pinned by `golden_json::json_circuit_positive_seq` against the oracle
+/// capture itself.)
+///
+/// Upstream renders `CktModelEnum.OrdinalToString(Integer(PositiveSequence))`
+/// on all three, and `PositiveSequence` is a `LongBool`, so `Integer(True)` is
+/// -1 — out of the enum's `[0, 1]` range, where `OrdinalToString` answers `''`.
+/// Both surfaces therefore report the model **without a value**.
+///
+/// The test also states the *consequence* that makes it a defect rather than a
+/// spelling: the saved `Master.dss` is re-compiled here, and only the default
+/// lane's survives the round trip as a positive-sequence circuit — upstream's
+/// value-less `Set Cktmodel=` re-imports as `Multiphase`, silently dropping the
+/// flag the file was written to preserve. That is the same loss the *oracle's
+/// own* JSON round-trip golden records (`tests/golden/json_import/
+/// rt_positive_seq.json`: J0 carries `Set CktModel=`, J1 carries no CktModel
+/// line at all).
+#[test]
+fn ckt_model_rendered_ordinal_is_lane_split() {
+    let parity = dss_core::compat::ORACLE_PARITY;
+    let want = if parity { "" } else { "Positive" };
+
+    let scratch = scratch_dir("cktmodel_save");
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.ckmdl basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "set cktmodel=positive",
+        "new line.l1 bus1=src bus2=b1 phases=3 r1=0.1 x1=0.3 c1=0 length=1",
+        "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 pf=0.95",
+        "set voltagebases=[12.47]",
+        "calcv",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // Surface 1 — the `Get` reader.
+    dss.command("get cktmodel");
+    assert_eq!(
+        dss.result().trim(),
+        want,
+        "`Get cktmodel` renders the LongBool ordinal in the parity lane and the \
+         enum's own in the default lane (parity = {parity})"
+    );
+
+    // Surface 2 — `Save circuit`'s Master.dss header.
+    let out = scratch.join("saved");
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        out.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let master = std::fs::read_to_string(out.join("Master.dss"))
+        .unwrap_or_else(|e| panic!("read Master.dss: {e}"));
+    let line = master
+        .lines()
+        .find(|l| {
+            l.trim_start()
+                .to_ascii_lowercase()
+                .starts_with("set cktmodel=")
+        })
+        .unwrap_or_else(|| panic!("Master.dss has no `Set Cktmodel=` line:\n{master}"));
+    assert_eq!(
+        line.trim(),
+        format!("Set Cktmodel={want}"),
+        "the saved header carries the same rendering as the `Get` reader"
+    );
+
+    // The consequence: only the default lane's file round-trips the flag.
+    let mut back = Dss::new();
+    back.command("clear");
+    back.command(&format!(
+        "compile \"{}\"",
+        out.join("Master.dss").to_string_lossy().replace('\\', "/")
+    ));
+    back.command("get cktmodel");
+    assert_eq!(
+        back.result().trim(),
+        if parity { "Multiphase" } else { "Positive" },
+        "only the default lane's saved header restores the positive-sequence \
+         flag: the parity lane's value-less `Set Cktmodel=` re-imports as \
+         Multiphase, so upstream's own `Save circuit` output silently drops the \
+         very flag it was written to record (parity = {parity})"
+    );
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// The GlobalResult delimiter of `do_save_cmd` — the Stage F single-site quirk
 /// `compat::SAVE_CLASS_JOINS_ITS_REPORTED_PATH_AS_STRINGS`.
 ///

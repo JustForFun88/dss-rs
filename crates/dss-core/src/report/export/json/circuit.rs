@@ -172,14 +172,15 @@ fn pre_commands(
     }
 
     if ckt.positive_sequence {
-        // Pascal `CktModelEnum.OrdinalToString(Integer(ckt.PositiveSequence))`.
-        // TODO(compat): `PositiveSequence` is a Pascal `LongBool`, so
-        // `Integer(True)` is **-1** (all-ones), which falls outside the enum's
-        // [0,1] ordinal range → `OrdinalToString` returns `''`. The line is
-        // therefore always `Set CktModel=` (empty) when positive-sequence is on.
-        // Reproduced 1:1 (`ordinal_to_string(-1)` yields the same empty string).
-        // The clean fix is `OrdinalToString(1)` → `Positive`.
-        let model = enums.get(enums.ckt_model).ordinal_to_string(-1);
+        // Pascal `CktModelEnum.OrdinalToString(Integer(ckt.PositiveSequence))`
+        // (`CAPI_Obj.pas:2537`). Stage F `compat::CKT_MODEL_RENDERED_ORDINAL`:
+        // `PositiveSequence` is a `LongBool`, so `Integer(True)` is -1 and the
+        // out-of-range ordinal renders `''` — the parity lane keeps that
+        // value-less `Set CktModel=`; the default lane writes the ordinal of
+        // the state it is saving, which is the one that re-imports.
+        let model = enums
+            .get(enums.ckt_model)
+            .ordinal_to_string(crate::compat::CKT_MODEL_RENDERED_ORDINAL);
         cmds.push(Json::Str(format!("Set CktModel={model}")));
     }
     if ckt.duplicates_allowed {
