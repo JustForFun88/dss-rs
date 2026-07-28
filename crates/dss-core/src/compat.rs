@@ -794,15 +794,19 @@ pub use LINECODE_SYM_CLEAR_OMITS_C0_DEFAULT_IMPL as LINECODE_SYM_CLEAR_OMITS_C0;
 pub use LINECODE_SYM_CLEAR_OMITS_C0_PARITY_IMPL as LINECODE_SYM_CLEAR_OMITS_C0;
 
 // The **GICTransformer `G2` off `%R1`** row belongs here by shape but is NOT
-// split: the flip was implemented, gated and reverted in F.3k because it is not
-// gate-invisible. `tests/corpus/asymmetric/gic/gictransformer_gic.dss:18` builds
-// `GICTransformer.tg3 … %R1=0.2 %R2=0.15`, so honouring `%R2` moves that deck's
-// GIC current 4.50e-4 against `capi_v0145` (allowed 1.00e-6) and `gic_midi.dss`'s
-// 1.02e-4 (allowed 1.07e-6). Both gating oracles reproduce the quirk, so the fix
-// costs those two decks' primary physical channel in the default lane — the
-// Newton-row shape (a field-scoped exclusion + a replacement in-engine assertion
-// + a transitive cover), which is a commit of its own. The site keeps its marker
-// and its reproduction pin; see `elements/pd/gic_transformer/solve.rs`.
+// split: the flip was implemented and gated in F.3k, and re-measured in F.3v,
+// which corrects what the cost actually is. `type=Auto` puts the G1 and G2
+// blocks in series on the H→X→neutral path, so honouring `%R2` changes the
+// element's admittance, the system Y and the node voltages — the channel both
+// runs abort on is the **node voltages** (`gictransformer_gic.dss` 4.502e-4 vs
+// an allowed 1.001e-6; `gic_midi.dss` 1.021e-4 vs 1.074e-6), not the "GIC
+// current" F.3k named. The treatment is therefore a **whole-case** default-lane
+// exclusion — not the Newton row's field-scoped one — costing two of 520 gated
+// cases their entire default-lane oracle comparison, including their unrelated
+// GICLine/GICsource surface. That is an owner decision, so the site keeps its
+// marker and its reproduction pin; see `elements/pd/gic_transformer/solve.rs`
+// for the full measurement and for the `R1=`/`R2=` transitive cover it leaves
+// ready for whoever lands it.
 
 /// Whether `Export SeqCurrents` prints a non-positive current rating **raw** in
 /// its `%Normal`/`%Emergency` percentage columns.
@@ -1378,3 +1382,16 @@ pub const MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM_DEFAULT_IMPL: bool = false;
 pub use MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM_DEFAULT_IMPL as MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM;
 #[cfg(feature = "oracle-parity")]
 pub use MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM_PARITY_IMPL as MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM;
+
+// The **LoadShape MMF plain-text accept-set** row belongs here by shape but is
+// NOT split, and F.3v measured why rather than assuming it. The quirk is real
+// and its witness is as strong as this section's rule asks for — `TLoadShapeObj`
+// owns a *second* reader for the same format, `ReadCSVFile`'s non-mapped branch
+// (`LoadShape.pas:1044`), which parses each row with the aux parser and so
+// honours the sign and the exponent the mapped branch deletes (`:1374`). But
+// `tests/corpus/modes/inputformat/shape_mmf/shape_mmf.dss` exists *to observe*
+// the quirk: its `mmpq8.csv` P column is written in exponent notation on
+// purpose, so honouring it moves that deck's node voltages by 1.641e1 V against
+// an allowed 8.179e-6. Whole-case default-lane exclusion again — including the
+// deck's unrelated sng/dbl/`mult=(sngfile=)` MMF-reader coverage — so the row
+// keeps its marker; see `elements/general/load_shape/compute.rs`.
