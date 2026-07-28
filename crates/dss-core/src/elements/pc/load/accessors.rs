@@ -33,10 +33,20 @@ impl CktElement for Load {
     /// Pascal `TLoadObj.MakePosSequence` (`Load.pas:2215`). Convert to a single
     /// phase, line-neutral wye load carrying one third of the total power.
     ///
-    /// TODO(compat): the power divisor is a hard-coded `3.0`, NOT `Fnphases`
-    /// (upstream "assume load is distributed equally among the 3 phases", RCD
-    /// 2016). A second `makeposseq` therefore divides again (400 → 133.33 →
-    /// 44.44), pinned by `tests/corpus/modes/makeposseq/makeposseq_pc.dss`.
+    /// The power divisor is a hard-coded `3.0`, not `Fnphases` — and unlike the
+    /// sibling PC classes (Generator/PVSystem/Storage all divide by the phase
+    /// count) that is **upstream's stated intent, not a slip**, so both lanes
+    /// keep it: `Load.pas:2230` carries the decision and its date in the source
+    /// — "New Method: Assume load is distributed equally among the 3 phases --
+    /// works better // 1-5-2016 RCD" — replacing an earlier `/Fnphases` the
+    /// comment still shows. `MakePosSequence` is a one-shot model conversion,
+    /// not an idempotent one, so a second call divides again (400 → 133.33 →
+    /// 44.44); `tests/corpus/modes/makeposseq/makeposseq_pc.dss` runs it twice
+    /// and pins exactly that against both gating oracles.
+    ///
+    /// Stage F disposition (`DE_PASCALIZE_PLAN.md` IV.1): permanent semantics,
+    /// documented rather than split — a lane that "fixed" this would be
+    /// changing a modelling choice, not repairing a defect.
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
         use super::prop;
 
