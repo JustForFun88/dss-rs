@@ -1149,3 +1149,69 @@ pub const GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS_DEFAULT_IMPL: bool = fal
 pub use GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS_DEFAULT_IMPL as GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS;
 #[cfg(feature = "oracle-parity")]
 pub use GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS_PARITY_IMPL as GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS;
+
+/// Whether a **Relay**'s per-`Sample` state-trace line is written to the event
+/// log unconditionally, instead of under the `DebugTrace` guard every other
+/// trace line in the class carries.
+///
+/// `true` reproduces the upstream quirk: `TRelayObj.Sample` closes its
+/// `FPresentState` resync with a bare
+/// `AppendtoEventLog('Debug Sample: Relay.' + Name, 'FPresentState: …')`
+/// (r4133 `Version8/Source/Controls/Relay.pas:1325`) — no `if DebugTrace`, and
+/// not gated on `ShowEventLog` either. Every relay therefore writes one
+/// `Debug Sample` line per control sample into the *user-facing* event log,
+/// whatever the user asked for.
+///
+/// `false` gates it on `DebugTrace`, which is what the same source says twice
+/// over: the **Recloser**'s byte-identical line is written
+/// `if DebugTrace then AppendtoEventLog('Debug Sample: Recloser.' + Name, …)`
+/// (`Recloser.pas:1044`), and *every other* `Debug Sample` line in Relay.pas
+/// itself — the instantaneous/curve trip traces at `:1822`, `:1837`, … — is
+/// guarded. Exactly one line lost its guard.
+///
+/// The port already carries the guarded form as a helper (`Relay::dbg`), so the
+/// default lane simply routes this line through it. `DebugTrace` defaults off,
+/// so the default lane's event log loses the trace lines and keeps every
+/// protection event; the parity lane is unchanged, which is what the 13 gated
+/// `oracle: "r4133"` protection decks compare. `harness::lane::expected_eventlog`
+/// drops exactly those lines from the oracle capture in the default lane.
+pub const RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE_DEFAULT_IMPL as RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE;
+#[cfg(feature = "oracle-parity")]
+pub use RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE_PARITY_IMPL as RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE;
+
+/// Whether a **Relay**'s operation-count reset event names the device
+/// `Recloser.<name>`.
+///
+/// `true` reproduces the upstream quirk: both `CTRL_RESET` arms of
+/// `TRelayObj.DoPendingAction` write
+/// `AppendtoEventLog('Recloser.' + Self.Name, 'Phase %d reset (1ph reset)')`
+/// and its `'Phase ALL reset (3ph reset)'` twin (r4133 `Relay.pas:1196` and
+/// `:1212`). The event log then attributes a relay's reset to a recloser that
+/// does not exist — and if the circuit *does* contain a recloser of that name,
+/// to the wrong device.
+///
+/// `false` names the class that emitted it. The fix is not a preference: the
+/// two lines are a verbatim copy of `Recloser.pas:909`/`:924` (same format
+/// strings, same guard), while *every other* event in the very same
+/// `DoPendingAction` — the 1ph/3ph trips, the lockouts, the reclosings at
+/// `Relay.pas:1087`-`:1176` — writes `'Relay.' + Self.Name`. Two lines out of a
+/// dozen carry the donor's class name.
+///
+/// Only the log label moves; the reset itself (`OperationCount := 1`, the TD21
+/// quiet window) is identical in both lanes.
+/// `harness::lane::expected_eventlog` rewrites exactly these lines in the
+/// oracle capture in the default lane, and only where the named device is a
+/// Relay and not a Recloser.
+pub const RELAY_RESET_EVENT_IS_LABELLED_RECLOSER_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const RELAY_RESET_EVENT_IS_LABELLED_RECLOSER_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use RELAY_RESET_EVENT_IS_LABELLED_RECLOSER_DEFAULT_IMPL as RELAY_RESET_EVENT_IS_LABELLED_RECLOSER;
+#[cfg(feature = "oracle-parity")]
+pub use RELAY_RESET_EVENT_IS_LABELLED_RECLOSER_PARITY_IMPL as RELAY_RESET_EVENT_IS_LABELLED_RECLOSER;

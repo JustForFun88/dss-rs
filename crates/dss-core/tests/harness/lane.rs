@@ -177,6 +177,58 @@ const LANE_SKIP_PROBE_PROPS: &[(&str, &str, &str)] = &[
     ),
 ];
 
+/// The oracle event-log capture as the **current lane** expects to see it: the
+/// identity in the parity lane, and in the default lane the two Relay rows of
+/// Stage F applied to it as an *enumerated* rewrite.
+///
+/// The oracle stays the source of truth for every other line — this is the same
+/// expected-value-transform shape `golden_cim`/`golden_json` use, chosen for the
+/// same reason: the relay decks' event logs are the whole point of those 13
+/// gated cases, so re-capturing them for the default lane would trade an oracle
+/// proof for two label changes.
+///
+/// * `compat::RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE` — the unguarded
+///   `Debug Sample: Relay.<name>` state trace disappears from the default
+///   lane's log, so those lines are dropped from the expectation. Only the
+///   Relay's are: the Recloser writes the byte-identical line *guarded*, so an
+///   oracle `Debug Sample: Recloser.…` line means the user asked for it and
+///   both lanes must still produce it.
+/// * `compat::RELAY_RESET_EVENT_IS_LABELLED_RECLOSER` — the copy-pasted
+///   `Recloser.<name>` label on a relay's reset event becomes `Relay.<name>`.
+///   `device_is_relay` decides which lines those are: it must answer "the
+///   circuit has a Relay of this name and no Recloser of it", so a genuine
+///   recloser reset (identical wording, `Recloser.pas:909`/`:924`) is never
+///   touched, and a circuit holding both classes under one name is left alone
+///   to fail the compare loudly rather than be silently rewritten.
+pub fn expected_eventlog(lines: &[String], device_is_relay: impl Fn(&str) -> bool) -> Vec<String> {
+    if PARITY {
+        return lines.to_vec();
+    }
+    lines
+        .iter()
+        .filter(|l| !l.contains(", Element=Debug Sample: Relay."))
+        .map(|l| match reset_device_name(l) {
+            Some(name) if device_is_relay(name) => l
+                .replace(&format!(", Element=Recloser.{name},"), &{
+                    format!(", Element=Relay.{name},")
+                }),
+            _ => l.clone(),
+        })
+        .collect()
+}
+
+/// The device name of a `Recloser.<name>` **reset** event line, or `None` for
+/// any other line. Matches only the two wordings the copy-paste produced
+/// (`Relay.pas:1196`/`:1212` == `Recloser.pas:909`/`:924`), so no other event of
+/// a real recloser can be caught by the rewrite above.
+fn reset_device_name(line: &str) -> Option<&str> {
+    let rest = line.split_once(", Element=Recloser.")?.1;
+    let (name, action) = rest.split_once(", Action=")?;
+    let is_reset = action.starts_with("PHASE ")
+        && (action.ends_with("RESET (1PH RESET)") || action.ends_with("RESET (3PH RESET)"));
+    is_reset.then_some(name)
+}
+
 /// Whether the current lane oracle-compares the probe cell `(label, element,
 /// prop)` — always in the parity lane, everywhere but
 /// [`LANE_SKIP_PROBE_PROPS`] in the default lane.
@@ -338,7 +390,7 @@ mod tests {
     use super::{
         ElemChannels, ITER_SLACK, LANE_SKIP_ELEM_POWERS, LANE_SKIP_PROBE_PROPS, PARITY,
         assert_bytes_eq, compare_iterations, compare_iterations_le, compare_report,
-        elem_channels_for, exact_value_policy, probe_is_gated,
+        elem_channels_for, exact_value_policy, expected_eventlog, probe_is_gated,
     };
 
     /// Run `f`, returning `true` when it passed. Silences the panic hook so a
@@ -432,6 +484,62 @@ mod tests {
                 "only the named element's cell is excluded"
             );
         }
+    }
+
+    /// The event-log transform touches exactly the two Relay rows and nothing
+    /// else: it drops the relay's unguarded state trace, relabels the relay's
+    /// reset event, and leaves every recloser line — including the *identically
+    /// worded* recloser reset and the recloser's own (guarded) trace — alone.
+    /// Asserted against the lane, so the parity arm's identity is checked too.
+    #[test]
+    fn eventlog_transform_is_the_two_relay_rows() {
+        let ev = |el: &str, action: &str| {
+            format!("Hour=0, Sec=0.5, ControlIter=1, Element={el}, Action={action}")
+        };
+        let lines = vec![
+            ev(
+                "Debug Sample: Relay.r1",
+                "FPRESENTSTATE: [CLOSED, CLOSED, ]",
+            ),
+            ev("Debug Sample: Recloser.rc1", "FPRESENTSTATE: [CLOSED, ]"),
+            ev("Relay.r1", "PHASE 1 OPENED ON PH CURVE (1PH TRIP)"),
+            ev("Recloser.r1", "PHASE ALL RESET (3PH RESET)"),
+            ev("Recloser.rc1", "PHASE ALL RESET (3PH RESET)"),
+            ev("Recloser.r1", "PHASE 1 CLOSED (1PH RECLOSING)"),
+        ];
+        let out = expected_eventlog(&lines, |n| n.eq_ignore_ascii_case("r1"));
+        if PARITY {
+            assert_eq!(out, lines, "the parity arm must be the identity");
+            return;
+        }
+        assert_eq!(
+            out,
+            vec![
+                lines[1].clone(),
+                lines[2].clone(),
+                ev("Relay.r1", "PHASE ALL RESET (3PH RESET)"),
+                lines[4].clone(),
+                // Not a reset wording -> the copy-paste rewrite must not fire,
+                // even though the device name is a relay's.
+                lines[5].clone(),
+            ]
+        );
+    }
+
+    /// The relabel is refused when the name is ambiguous — a circuit holding a
+    /// Relay *and* a Recloser called `r1` must fail its compare loudly instead
+    /// of having a genuine recloser event rewritten into a relay's.
+    #[test]
+    fn eventlog_reset_relabel_needs_an_unambiguous_relay() {
+        let line = "Hour=0, Sec=1, ControlIter=1, Element=Recloser.r1, \
+                    Action=PHASE 1 RESET (1PH RESET)"
+            .to_string();
+        let lines = vec![line];
+        assert_eq!(
+            expected_eventlog(&lines, |_| false),
+            lines,
+            "no relay of that name (or a recloser shares it): leave it alone"
+        );
     }
 
     /// A **rendering-only** difference (same value, different glyphs) is the
