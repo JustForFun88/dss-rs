@@ -1159,9 +1159,9 @@ oracle* is neither deleted (that loses 1:1 verifiability forever) nor kept as th
 
 | Item | parity kernel (`oracle-parity`) | default kernel (idiomatic) |
 |---|---|---|
-| complex division | `cdiv_fpc` (FPC Smith) | `num_complex` `/` |
-| dense inverse | `CMatrix::invert`/`etk_invert` no-row-exchange GJ | partial-pivot (or faer dense) |
-| sym components | `SymComp::official` (via compat invert) | `SymComp::precise` (already exists) |
+| complex division | `cdiv_fpc` (FPC Smith) | ~~`num_complex` `/`~~ → ***no split*, measured** (F.3e) — note ¹ |
+| dense inverse | `CMatrix::invert`/`etk_invert` no-row-exchange GJ | ~~partial-pivot (or faer dense)~~ → ***no split*, measured** (F.3f→F.3i) — note ¹ |
+| sym components | ~~`SymComp::official` (via compat invert)~~ → `SymComp::precise` | `SymComp::precise` — ***no split*, measured** — note ¹ |
 | RPN pi | `3.14159265359` | `f64::consts::PI` |
 | FPC round | `pascal_round_to_i32` (integer-indefinite artifact) | `round_ties_even` + saturation |
 | single-point stddev | value itself (upstream bug) | `0.0` |
@@ -1170,6 +1170,45 @@ oracle* is neither deleted (that loses 1:1 verifiability forever) nor kept as th
 | multi-meter `Bus_Int_Duration` | reproduced cross-zone overwrite | foreign section ids skipped |
 | solver execution | `Par::Seq`, no refinement (iterate paths pinned) | `Par::rayon` allowed (`MULTITHREADING_PLAN` M3c), WP-R1 iterative refinement on (`RESONANCE_PLAN`) |
 | **report text rendering (F-FMT)** | `fmt_g` FPC `%g`/`Str` emulation + `comma_text` + the `report/format.rs` width/pad family, moved as-is | native `format!` precision via one `compat::fmt` seam; `Show` tables through a table crate (pick ONE at Stage F: `tabled` or `comfy-table`, plain no-color output); CSV keeps columns/order, native numbers |
+
+**¹ Three rows resolved to *no split* — the proposal was disproven by
+measurement, not quietly dropped (F.3, 2026-07-26/28).** Stage F is the only
+stage allowed to change arithmetic, so each proposed default kernel was
+implemented, gated, and kept only if it was actually better. Three were not. The
+losing impl stays **compiled** in `compat.rs` and its inferiority stays
+*asserted* by a unit test, so these verdicts cannot decay into folklore; the full
+measurement for each is in that file's module doc.
+
+- **complex division** — FPC `ucomplex`'s `/` **is** Smith's algorithm (C99
+  `_Cdivd`, LAPACK `dladiv`), not a Pascal wart kept for parity. Against a
+  60-digit reference over 20 000 operand pairs the naive kernel is the worse one
+  (worst rel. error 4.26e-16 vs Smith's 3.82e-16) and returns `0`/`NaN` outside
+  `|den| ∈ [1e-154, 1e154]` where Smith stays exact. Flipping would make the
+  **product** lane less accurate and less robust, buying nothing the parity lane
+  does not already provide — the IV.1 "legitimate numerics" rule applies.
+- **dense inverse** — a partial-pivot inverse differs from the parity kernel by
+  **1 ULP** on an ideal switch (`switch=yes r1=1e-6` → `Z = 1e-9·I`), and an
+  ideal switch is exactly the amplifier: 1 ULP of admittance → 1 ULP of node
+  voltage → 15 mA → **1.45 kW** on `Test/AutoTrans/Auto1bus-step1.dss`, against a
+  floor `TOLERANCE_NOTES.md` calibrated *from a bit-identical Y*. The candidate
+  is the **closer** of the two to the exact reciprocal, so being more accurate
+  does not rescue it and a faer LU would meet the same wall. Independently, the
+  two kernels disagree about what a **singular** matrix leaves behind — the
+  parity kernel leaves the input partially transformed, the candidate restores
+  it — and the fault-study and line-constants sites consume precisely that
+  (`solution::fault_study::compute_ysc`, `report::{show,export}::fault_study`,
+  `support::line_constants`' `FYc`), so flipping would silently change those
+  reports on a degenerate bus.
+- **sym components** — the parity kernel proposed here is **unreachable in the
+  pinned oracle**: `mathutil.pas:548` ends the unit's initialization with
+  `SelectAs2pVersion(False)` ("select ours by default"), and the truncated
+  `official` pair is reachable only through upstream's `DSSCompatFlag.BadPrecision`
+  (`CAPI_DSS.pas:315`), which no gating oracle sets. So parity == default ==
+  `SymComp::precise` and a cfg alias would select the same impl twice.
+
+The remaining rows split as specified, except `solver execution` — declared, but
+both lanes still select the sequential impl, because M3c / WP-R1 own that flip —
+and `report text rendering`, which is F.4's.
 
 **Mechanism — no cfg spaghetti, and both kernels always compiled:**
 - One `compat` module per affected crate (`dss-core/src/compat.rs`, `dss-sparse/src/compat.rs`)

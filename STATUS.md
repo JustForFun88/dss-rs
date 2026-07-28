@@ -7,6 +7,70 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3ae — the plan's own dual-kernel table still specified three kernels this stage disproved (branch `depas-stagef`, 2026-07-29)
+
+F.3ab→F.3ad made the stage's findings executable *in the tree*: the escape
+register, the tag-spelling gate, the pin rule. The one place they were never
+written back is the document that ordered the work. `DE_PASCALIZE_PLAN.md` IV.2's
+dual-kernel table is the closed inventory a Stage F executor is told to follow —
+and for **three of its eleven rows** it has specified, since F.3e/F.3i measured
+otherwise, a default kernel the code deliberately does not use. A reader of the
+spec alone would conclude the product lane divides with `num_complex` `/` and
+inverts with partial pivoting, and that the parity lane uses
+`SymComp::official`. All three are false, all three on purpose. This commit
+records the deviations at the spec. `TODO(compat)` stays **22** in `crates` (25
+tree-wide), `HIDE_015X` **19**; no code, golden, tolerance, ledger or deck moved
+— the diff is two Markdown files.
+
+**Inherited state re-verified before building on it.** F.3ad's tree
+(`1d2d4fd2`) was re-gated from scratch in both lanes before any edit: `cargo fmt
+--all --check` clean, `cargo clippy --workspace --all-targets -- -D warnings` and
+the same with `--features dss-core/oracle-parity` both exit 0, `cargo test
+--workspace --no-fail-fast` **2359 passed / 0 failed / 5 ignored** and the
+parity-lane twin identically **2359 / 0 / 5**, with the unconditional 520-case
+corpus gate green inside each. `git status --short tests/corpus` empty after
+both. The counts F.3ad states were re-measured rather than read: `rg` gives 22
+and 19 exactly.
+
+**Why a spec that contradicts the code is not a cosmetic problem here.** Every
+other Stage F verdict is anchored twice — a measurement at the site and a gate
+that fails if it rots. These three were anchored only in `compat.rs`'s module
+doc, i.e. in the answer, never in the question. The next two steps are F.4 and
+F.5, whose executors are pointed at IV.2's table by the brief; the closed-
+inventory rule ("do not invent new compat items") makes that table the authority
+on what may exist, so a stale row there is exactly the input that produces a
+re-litigation — or worse, a "fix" restoring a kernel this stage rejected on
+measurement.
+
+**The three, each with its disproof at the spec.** `complex division` — FPC
+`ucomplex`'s `/` *is* Smith's algorithm, so the proposed `num_complex` default is
+the worse and less robust kernel (4.26e-16 vs 3.82e-16 worst relative error;
+`0`/`NaN` outside `|den| ∈ [1e-154, 1e154]`). `dense inverse` — the partial-pivot
+candidate is 1 ULP from the parity kernel on an ideal switch and *closer* to the
+exact reciprocal, yet that ULP is worth 1.45 kW on `Auto1bus-step1.dss` against a
+floor calibrated from a bit-identical Y; it also disagrees on what a singular
+matrix leaves behind, which three call sites consume. `sym components` — the
+proposed **parity** kernel is unreachable in the pinned oracle at all:
+`mathutil.pas:548` closes initialization with `SelectAs2pVersion(False)` and the
+truncated pair sits behind `DSSCompatFlag.BadPrecision` (`CAPI_DSS.pas:315`),
+which no gating oracle sets. Both Pascal citations were re-read in the vendored
+source for this commit rather than copied from `compat.rs`.
+
+**Scope, deliberately.** Only the rows whose *content* the stage disproved are
+touched. The plan's status markers ("Stage F not started"), the `HIDE_015X` exit
+criterion that F.3aa proved unreachable as worded, and the `ORPHANED_GAPS.md` row
+are **F.5's** listed scope and stay untouched here — this is the deviation
+record F.3 owes, not an early landing.
+
+**Proof.** Both lanes green on the exact committed tree: `cargo fmt --all
+--check`; `cargo clippy --workspace --all-targets -- -D warnings` and the same
+with `--features dss-core/oracle-parity` both exit 0; `cargo test --workspace
+--no-fail-fast` **2359 passed / 0 failed / 5 ignored** and the parity-lane twin
+identically **2359 / 0 / 5**, with the unconditional 520-case corpus gate green
+inside each. Tests ±0, 0 removed, 0 new `#[ignore]` (the 5 are the four manual
+generation binaries plus one `define_properties` doctest). `git status --short
+tests/corpus` empty after every run.
+
 ### DE_PASCALIZE Stage F.3ad — the *flipped* half of the register becomes a gate: every deliberate divergence has to name its pin (branch `depas-stagef`, 2026-07-29)
 
 F.3ab made the stage's **escapes** executable and F.3ac widened their walk. The
