@@ -483,24 +483,28 @@ impl LineConstants {
     }
 
     /// `SetUserHeightUnit`: re-express the existing height offset in the new
-    /// unit (Pascal re-runs `SetHeightOffset(heightOffset)`).
+    /// unit — i.e. keep the *number* the user typed and re-read it under the new
+    /// unit (Pascal re-runs `SetHeightOffset(…)`, "This updates the existing
+    /// value to fit the new user units", `LineConstants.pas:694`).
+    ///
+    /// Which number is re-read is the lane row
+    /// [`crate::compat::HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD`]: upstream
+    /// feeds the *metres* field into a setter whose argument is a user-unit
+    /// value, the default lane feeds the typed number ([`Self::height_offset`],
+    /// read before the unit moves). Both are identical while the outgoing unit
+    /// is metres — which is every path that reaches here today; see the const's
+    /// doc.
     pub fn set_user_height_unit(&mut self, value: i32) {
         if value == self.user_height_unit {
             return;
         }
+        let typed = if crate::compat::HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD {
+            self.height_offset
+        } else {
+            self.height_offset()
+        };
         self.user_height_unit = value;
-        // TODO(compat): upstream re-conversion quirk. Pascal `Set_FUserHeightUnit`
-        // passes `FHeightOffset` — a value already stored in METERS — straight into
-        // `Set_FHeightOffset`, which multiplies its argument by `To_Meters(new unit)`.
-        // So a stored 10 m offset, on switching the unit to ft, is re-scaled to
-        // 10*0.3048 = 3.048 m: a meters value is treated as if it were in the new
-        // user unit, physically changing the offset. Reproduce it exactly (goldens
-        // will pin it when the Line-level HeightUnit/HeightOffset slice lands).
-        // Clean fix: convert the stored meters value into the new unit before
-        // re-applying (`FHeightOffset * From_Meters(new unit)`), or leave the meters
-        // field untouched and only re-express the reported value.
-        let offset_field = self.height_offset;
-        self.set_height_offset(offset_field);
+        self.set_height_offset(typed);
     }
 
     /// `GetUserHeightUnit`.

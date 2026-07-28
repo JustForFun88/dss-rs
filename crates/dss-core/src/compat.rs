@@ -1300,3 +1300,81 @@ pub const STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED_DEFAULT_IMPL: bool = false;
 pub use STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED_DEFAULT_IMPL as STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED;
 #[cfg(feature = "oracle-parity")]
 pub use STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED_PARITY_IMPL as STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED;
+
+/// Whether a **height-unit change** on the Carson engine re-reads the *stored
+/// metres* as if it were a number typed in the new unit.
+///
+/// `true` reproduces the upstream slip: `TLineConstants.Set_FuserHeightUnit`
+/// updates `FuserHeightUnit` and then calls `Set_FheightOffset(FheightOffset)`
+/// (`LineConstants.pas:689-695`, byte-identical in r4133
+/// `Version8/…/LineConstants.pas:689-696`) — but `FheightOffset` is declared
+/// "always saved in meters here" (`:71`, `:97`) while `Set_FheightOffset`'s
+/// argument is a *user-unit* number it multiplies by `To_Meters(new unit)`
+/// (`:676-687`). A metres value is therefore fed into a user-unit parameter.
+///
+/// `false` re-reads the number the user actually typed —
+/// `FheightOffset * From_Meters(old unit)`, captured **before** the unit field
+/// moves — which is what the line's own comment says it is doing: *"This
+/// updates the existing value to fit the new user units"*. `Get_FheightOffset`
+/// (`:396-399`) computes exactly that expression, so the fix is the getter the
+/// class already has, called one statement earlier.
+///
+/// **The two agree wherever anything reaches them today, which is why this is a
+/// lane row and not a re-baseline.** The only consumer is the Line → Carson
+/// push `makeZFromGeometry`/`makeZFromSpacing`, whose fixed call order is
+/// `SetEpsRMedium`, `SetHeightOffset`, `SetUserHeightUnit`
+/// (`line_geometry::matrix::set_line_constants_medium`): the offset is stored
+/// while the engine's unit is still the constructed default `UNITS_M`, so
+/// `From_Meters(m) = 1` and both readings re-apply the same number. That is the
+/// path `tests/corpus/modes/upgrade/upgrade_linecs_heightoffset.dss`
+/// (`HeightOffset=5 HeightUnit=ft`) gates, and it is byte-identical in both
+/// lanes. They diverge only when a unit change lands while the engine already
+/// carries a *non-metre* unit — a second Z build after the user edits
+/// `HeightUnit` — where the parity lane compounds the two conversions
+/// (5 ft → 1.524 m → 1.524 in) and the default lane keeps the typed 5.
+/// `line_constants::tests::height_unit_change_rereads_the_typed_number` pins
+/// both readings, including the equality on the first (metre-sourced) change.
+pub const HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD_DEFAULT_IMPL as HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD;
+#[cfg(feature = "oracle-parity")]
+pub use HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD_PARITY_IMPL as HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD;
+
+/// Whether `Monitor::channel` reports a **one-element `[0.0]` placeholder** for
+/// a monitor that has flushed nothing, instead of an empty channel.
+///
+/// `true` reproduces the oracle *client*, and it is the only row in this module
+/// whose upstream is not Pascal: dss-python's `IMonitors.Channel`
+/// (`dss/IMonitors.py:28-55`) does not call the engine's `Monitors_Get_Channel`
+/// at all — it pulls the raw `ByteStream` and short-circuits
+/// `if cnt == 272: return np.zeros((1,), dtype=np.float32)`, 272 being the
+/// header-only stream size. The **engine** does the honest thing:
+/// `CAPI_Monitors.pas:295-331` returns `DefaultResult` (an empty array) when
+/// nothing is there. So the placeholder is a wrapper artifact, reproduced here
+/// only because the pinned oracle channel is that wrapper.
+///
+/// `false` returns the empty channel the C-API returns and the caller means:
+/// a `Vec<f32>` of length 0, not a fabricated zero sample. `dbl_hour` — the
+/// same stream, read through a surface dss-python does *not* special-case — is
+/// already empty in both lanes, so this row also makes the two reads agree.
+///
+/// **A monitor is unflushed whenever `Save`/`SaveAll` has not run**, which the
+/// gated corpus does reach (`SolveGeneralTime` never calls `SaveAll` — e.g.
+/// `tests/corpus/modes/time/generaltime_duty.dss` and its two monitors). The
+/// default lane therefore maps the oracle capture rather than dropping it:
+/// `harness::lane::expected_monitor_channel` requires the placeholder to be
+/// exactly `[0.0]` before rewriting it to the empty channel, and only for a
+/// monitor whose Rust view reports **zero flushed records** — so an engine that
+/// lost real samples still fails loudly, and an oracle that stops emitting the
+/// placeholder fails the transform instead of passing silently.
+pub const MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM_DEFAULT_IMPL as MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM;
+#[cfg(feature = "oracle-parity")]
+pub use MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM_PARITY_IMPL as MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM;

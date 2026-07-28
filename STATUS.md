@@ -7,6 +7,102 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3u — a unit conversion that reads the wrong field, and the one row whose upstream is not Pascal (branch `depas-stagef`, 2026-07-28)
+
+Two markers, two split rows, and between them the sweep's two extremes of
+reach: one that no gated deck can currently distinguish and one that two gated
+monitors hit on every run. `TODO(compat)` **27 → 25**; both lanes green; no
+golden, tolerance, ledger or deck touched.
+
+| row | upstream | what says it is a slip | default lane |
+|---|---|---|---|
+| `HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD` | `TLineConstants.Set_FuserHeightUnit` moves the unit field and then calls `Set_FheightOffset(FheightOffset)` (`LineConstants.pas:689-695`; byte-identical in r4133 `Version8/…:689-696`) | `FheightOffset` is declared *"The height is always saved in meters here"* (`:71`, `:97`) while `Set_FheightOffset`'s argument is a **user-unit** number it multiplies by `To_Meters` (`:676-687`) — a metres value fed into a user-unit parameter. The line's own comment states the intent the fix implements: *"This updates the existing value to fit the new user units"* | re-reads the number the user typed — `Get_FheightOffset()`, the expression the class already has (`:396-399`), captured before the unit field moves |
+| `MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM` | for a monitor that has flushed nothing, `Channel(i)` reports a one-element `[0.0]` | the **engine** does not do this: `CAPI_Monitors.pas:295-331` returns `DefaultResult` — an empty array. The padding is dss-python's Python-side `IMonitors.Channel` (`dss/IMonitors.py:28-55`), which bypasses `Monitors_Get_Channel` entirely, reads the raw `ByteStream` and short-circuits `if cnt == 272: return np.zeros((1,))` | the empty channel, which also makes `Channel` agree with `dblHour` — the same stream through a surface dss-python does *not* special-case, already empty in both lanes |
+
+**The height row is a lane split precisely because it changes nothing yet.**
+Its only consumer is the Line → Carson push, whose call order is fixed —
+`SetEpsRMedium`, `SetHeightOffset`, `SetUserHeightUnit`
+(`line_geometry::matrix::set_line_constants_medium`, `Line.pas:2049-2051`).
+The offset is stored while the engine still carries its constructed `UNITS_M`,
+so `From_Meters(m) = 1` and both readings re-apply the same number: that is
+what makes `HeightUnit=ft` mean anything at all on
+`tests/corpus/modes/upgrade/upgrade_linecs_heightoffset.dss`
+(`HeightOffset=5 HeightUnit=ft` → 1.524 m), and the deck is byte-identical in
+both lanes. They part only on a *second* unit change, where the outgoing unit is
+no longer metres — parity compounds the conversions (5 ft → 1.524 m → 1.524 in),
+the default lane keeps the typed 5.
+`height_unit_change_rereads_the_typed_number` pins both halves: the shared
+metre-sourced change bit-for-bit (offset **and** every conductor `Y`), then the
+ft→in divergence, plus a discriminator asserting the two readings are a factor
+0.3048 apart — never confusable with the one-ULP ft→m→ft round-trip the same
+test tolerates by name.
+
+**The monitor row is the opposite, and it is the first row in the sweep whose
+upstream is a *client*, not the Pascal.** Reproducing dss-python's convenience
+wrapper inside the engine means a caller asking a freshly-sampled monitor for a
+channel is handed a fabricated zero sample. And the unflushed state is not a
+corner of the corpus: instrumenting the transform for one default-lane corpus
+run (throwaway probe, reverted before commit) shows it firing **787** times —
+`SolveGeneralTime` never calls `SaveAll`, and neither does a case captured
+before its monitors are saved. So this row could not be flipped by leaving the
+oracle comparison alone.
+
+**So the oracle keeps gating those monitors; the capture is mapped, not
+dropped.** `harness::lane::expected_monitor_channel` rewrites a capture to the
+empty channel only when **both** hold: the Rust monitor's own flush cursor is 0
+(now exposed as `MonitorView::flushed_records`, `Monitor::flushed_records()`),
+and the capture really is the placeholder — exactly one sample, exactly `0.0`.
+The parity arm is the identity. That keeps the transform from rotting in either
+direction, which `monitor_transform_is_the_unflushed_placeholder` asserts:
+a *flushed* monitor's identical `[0.0]` is compared strictly in both lanes (so
+an engine that lost real samples still fails the length check), and an
+unflushed capture of any other shape — `[0.0, 0.0]`, `[1.0]`, `[]`, `[1e-30]` —
+is passed through untouched, so if dss-python ever stops padding, the compare
+fails loudly instead of passing silently. Every other monitor assertion is
+unchanged: header, `SampleCount`, channel count and every sample stay exact in
+both lanes.
+
+**Replacement pins.** `monitor::tests::channel_reflects_flush_state` now asserts
+the lane's unflushed reading (and the flush cursor on both sides of `save()`),
+and the new `channel_placeholder_is_confined_to_the_unflushed_stream` fences it
+in from the other side — an out-of-range index is empty in both lanes, and a
+flushed monitor never pads. `to_csv_flushes_like_pascal_save` reads the same
+lane helper.
+
+**Carry-over, corrected: the Capacitor `Cuf` row's proposed direction was
+wrong, and the source says why.** F.3s recorded that
+`SetDouble(ord(TProp.Cuf), Cs - Cm)` is silently discarded (no array arm in
+`SetObjDouble`) while r4133 `Capacitor.pas:829` *does* write it, and concluded
+"the default lane should therefore **write** it… what blocks the flip is the
+array semantics, and that needs an `epri-worker` probe". No probe is needed —
+`InterpretDblArray` (r4133 `Common/Utilities.pas:788-791`) answers it in a
+comment: *"Fills array with zeros if we run out of numbers"*. So r4133's
+`Cuf=<scalar>` on an `N`-step bank sets step 1 and **zeroes steps 2..N**, which
+is not a behaviour to adopt as-is. Two consequences for whoever picks this up:
+(i) for the common `NumSteps=1` capacitor the divergence is real and r4133 is
+right; (ii) the faithful default-lane fix is not "write the scalar" but "write
+it through the array path the *parser* would have taken" — first element, zeros
+after — which reproduces r4133 exactly instead of inventing a third behaviour.
+The marker stays, unchanged and green, with this now on the record.
+
+**Scope discipline.** No IV.2 kernel row was added; both enter under the
+*Single-site upstream quirks* membership rule (the monitor row with the stronger
+form of criterion (ii) — the *engine's* own C-API is the sibling that
+contradicts the padding). Escape register unchanged: the **14** truncated
+physical constants, the **7** F-FMT rendering markers, `HIDE_015X` ×17; the
+single-site quirk census drops **6 → 4**, and 14 + 7 + 4 = the 25 remaining
+markers.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace --no-fail-fast` and the same
+with the feature, including the unconditional 520-case corpus gate. Tests +3
+(`height_unit_change_rereads_the_typed_number`,
+`channel_placeholder_is_confined_to_the_unflushed_stream`,
+`monitor_transform_is_the_unflushed_placeholder`), 0 removed, 0 new
+`#[ignore]`. `git diff -- tests/` touches no golden, tolerance, ledger or deck;
+`git status --short tests/corpus` empty after both runs.
+
 ### DE_PASCALIZE Stage F.3t — the Storage conversion's missing `BeginEdit`, settled by the engine it was refactored from (branch `depas-stagef`, 2026-07-28)
 
 F.3s left this row argued but unimplemented, with a hypothesis about how it

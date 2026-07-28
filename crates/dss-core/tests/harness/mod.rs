@@ -1855,6 +1855,10 @@ pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tolerances, ctx: &str)
         if exp.skip_channels.contains(&ch) {
             continue;
         }
+        // The lane's reading of the capture: identical to it except for
+        // dss-python's unflushed-stream `[0.0]` placeholder in the default lane
+        // (`lane::expected_monitor_channel`).
+        let e = &lane::expected_monitor_channel(view.flushed_records, e);
         assert_eq!(
             act.len(),
             e.len(),
