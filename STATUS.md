@@ -7,6 +7,86 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3v — the four remaining quirks stop being predictions: all four are whole-artifact exclusions (branch `depas-stagef`, 2026-07-28)
+
+The single-site quirk sweep opened at 28 rows (F.3k) and came down to four. Each
+of those four carried a *prescription* inherited from F.3k — "a field-scoped
+default-lane exclusion plus a replacement in-engine assertion and a transitive
+cover, the Newton row's shape" — and none of them carried a measurement. This
+session implemented and gated all four flips. **The prescription is wrong for
+every one of them**: each moves the *node voltages* (or, for the Generator, the
+whole dynamics surface), so each is a **whole-case / whole-golden** default-lane
+exclusion, not a field-scoped one. All four are therefore escape-recorded with
+their numbers, per the executor escape protocol, and the sweep closes here at the
+executor's authority. `TODO(compat)` stays **25**; both lanes green; no golden,
+tolerance, ledger or deck touched, and no engine behaviour changed.
+
+| row | the flip that was run | what it moves | measured |
+|---|---|---|---|
+| GICTransformer `G2` off `%R1` (`gic_transformer/solve.rs`) | `g2 = 100/(z_base2 * pct_r2)` | `type=Auto` puts the G1 and G2 blocks in **series** on the H→X→neutral path (the `BusX` side effect sets terminal 2 to `BusX`, `GICTransformer.pas:251`), so honouring `%R2` changes the element admittance, the system Y and every node voltage downstream. What F.3k called "the deck's GIC current" is in fact `corpus_gate::runner`'s **first** comparison — the node voltages — which is why both runs abort at its `entry 0` | `gictransformer_gic.dss` 4.502e-4 (allowed 1.001e-6); `gic_midi.dss` 1.021e-4 (allowed 1.074e-6) |
+| Capacitor `Cuf` discarded write (`capacitor/solve.rs`) | `SetStructF64s(CUF, [Cs-Cm, 0…])` plus the `CUF` arm `set_struct_f64_array` still lacks | r4133 predates the typed-setter refactor and *does* apply the write — `S := S + Format(' Cuf=%-.5g', [Cs-Cm])` then one `Edit(ActorID)` (`Capacitor.pas:829`) — through `InterpretDblArray`, whose own comment says it "fills array with zeros if we run out of numbers" (`Common/Utilities.pas:788-791`). So the faithful fix is the array write the parser would have made, which collapses `cap_cmat` (`cmatrix=[10 / -2 10 / -2 -2 10]`) to `Cs - Cm = 4 µF` where parity keeps reading the 10 µF diagonal. Node voltages again | `makeposseq_shunt.dss` 1.438e-1 V (allowed 3.339e-6) |
+| LoadShape MMF plain-text accept-set (`load_shape/compute.rs`) | column taken verbatim, trimmed, through the float parser (comma walk unchanged) | the witness is as strong as the membership rule asks — `TLoadShapeObj` owns a *second* reader for the same format, `ReadCSVFile`'s non-mapped branch (`LoadShape.pas:1044`), which honours sign and exponent. But `tests/corpus/modes/inputformat/shape_mmf/shape_mmf.dss` exists **to observe** the quirk: `mmpq8.csv`'s P column is deliberately exponent notation, so `ls_pq` reads `{1.51, 2.01, …}` mapped vs `{0.15, 0.20, …}` unmapped | `shape_mmf.dss` **1.641e1 V** (allowed 8.179e-6) |
+| Generator Model=6 stale `Vterminal` seed (`generator/user_model.rs`) | one `compute_vterminal(node_v)` ahead of the two `FInit` calls | the site guessed this would shift the initial state "less than the power-flow convergence tolerance (~1e-4 pu)". It seeds `E1` for the *whole* dynamics run | the entire `wasm_gen_dyn` r4133 golden: `dSpeed` **3.449e-2 relative** (-118.32 vs -122.55 Deg/sec), `Slip` 9.824e-5, `Is1`/`Ir1` ≈5.3e-4, stator/rotor losses ≈1.1e-3, six of twelve node-voltage components past their floors, and all four step-1 trajectory channels |
+
+**Why that ends the sweep here rather than four commits later.** The IV.2 drift
+model sanctions excluding a deliberate divergence "from oracle comparison **at
+those fields**". A whole-case exclusion is not that: landing GIC costs **two of
+520 gated cases** their entire default-lane oracle comparison — and with them
+their unrelated GICLine-geodesy / GICsource / ordinary-Line surface; Capacitor
+costs `makeposseq_shunt.dss`; LoadShape costs `shape_mmf.dss` *including* its
+sng/dbl/`mult=(sngfile=)` MMF-reader coverage, which has nothing to do with the
+accept-set; the Generator costs every node voltage and all 34 variables of the
+only deck exercising a Model=6 user model **and** a ShaftModel, on an r4133
+golden the parity lane may never re-baseline. That is a coverage trade plus a
+piece of harness machinery (a whole-case lane skip) the plan does not sanction,
+and the brief's escape protocol covers exactly this case: "leave the site, green,
+list it".
+
+**What is left behind is executable, not narrated.** Each of the four markers now
+carries its own measurement and the shape of the fix, so the owner decides from
+numbers rather than from a prescription. Two new tests keep the LoadShape finding
+from rotting, and both run in **both** lanes because the row is reproduced in
+both:
+
+* `mmf_text_reader_disagrees_with_its_non_mapped_twin` — the same bytes
+  (`-0.500`, `1.5e-3`, `+2.000`, ` 0.250`) through the mapped and the non-mapped
+  reader, each pinned at its exact value, with the disagreement asserted to be a
+  *deletion* (rows 1-2 differ by >0.9 and >1.5) while the two rows carrying
+  neither a sign nor an exponent are asserted **equal** — which is what makes it
+  a filter artifact rather than two unrelated parsers.
+* `mmf_accept_set_quirk_is_gated_by_exactly_one_deck` — the corpus-byte
+  measurement that decided the row, kept live: the vendored
+  `ckt24/LS_Phase_AOK.{txt,csv}` must stay *inside* the accept-set (so the three
+  gated ckt24 MMF-text cases cannot see a fix) and `mmpq8.csv` must keep its
+  exponent bytes (`45`, `101`, so `shape_mmf.dss` still can). Either half moving
+  fails this test instead of silently invalidating the escape record.
+
+GIC additionally leaves the transitive cover it would need, spelled out at the
+site: a GICTransformer given `R1=`/`R2=` in **ohms** takes the `else` branch, has
+no quirk and is identical in both lanes (`tg2` in the very same deck is one), so
+a corrected `%R` path can be pinned against the oracle-gated `R` path instead of
+against a re-baselined deck.
+
+**Escape register, final for F.3 at executor authority.** The **14** truncated
+physical constants (their 5.4e-4-class distance from the exact constant is above
+the calibrated oracle floors — an UPGRADE-rung re-baseline, not a lane flip), the
+**7** F-FMT rendering markers (F.4's defined scope), the now-measured **4**
+single-site quirks above, and `HIDE_015X` ×17 (retiring it needs a byte-golden
+re-baseline against a different oracle, which the parity lane may never do).
+14 + 7 + 4 = the 25 remaining markers. `rg "TODO\(compat\)" crates` = **25**,
+`rg HIDE_015X crates` = **17**.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace --no-fail-fast` and the same
+with the feature, including the unconditional 520-case corpus gate. Tests +2
+(`mmf_text_reader_disagrees_with_its_non_mapped_twin`,
+`mmf_accept_set_quirk_is_gated_by_exactly_one_deck`), 0 removed, 0 new
+`#[ignore]`. `git diff -- tests/` is empty — no golden, tolerance, ledger or
+deck touched; `git status --short tests/corpus` empty after both runs (the known
+intermittent `Test/AutoTrans/*` + `asymmetric/line/DA1FC.tmp` leak deleted by
+exact name).
+
 ### DE_PASCALIZE Stage F.3u — a unit conversion that reads the wrong field, and the one row whose upstream is not Pascal (branch `depas-stagef`, 2026-07-28)
 
 Two markers, two split rows, and between them the sweep's two extremes of

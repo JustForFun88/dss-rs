@@ -910,6 +910,113 @@ fn mmf_plaintext_accept_set_quirk() {
     assert!((obj.get_mult_at_hour(3.0).re - 1.0).abs() < 1e-12);
 }
 
+/// The witness that the accept-set is a *slip* and not a dialect: the class's
+/// **other** reader for the very same format disagrees with it.
+///
+/// `MemoryMapping=Yes` selects how a shape is stored, not what its file means,
+/// and `TLoadShapeObj` ships both readers — the mapped `InterpretDblArrayMMF`
+/// PlainText branch (`LoadShape.pas:1361-1400`) and `ReadCSVFile`'s non-mapped
+/// branch (`:1044`), which hands each row to the aux parser. Given identical
+/// bytes they should agree; they do not, because the mapped one deletes the
+/// sign, the `+`, the exponent and the whitespace before `strtofloat` sees the
+/// token.
+///
+/// This is the Stage F escape record for the row, kept executable so it cannot
+/// rot: both readings are pinned at their exact values in **both** lanes (the
+/// row is reproduced in both — see `compute.rs::mmf_text_value` for the
+/// measurement that blocked the split), and the gap is asserted to be a
+/// deletion rather than a rounding difference.
+#[test]
+fn mmf_text_reader_disagrees_with_its_non_mapped_twin() {
+    // Uniform-width rows: outside the `mmLineLen` UB the accept-set filter is
+    // the only thing that can separate the two readers.
+    const CONTENT: &str = "-0.500\n1.5e-3\n+2.000\n 0.250\n";
+    // What the file says…
+    let verbatim = [-0.5, 1.5e-3, 2.0, 0.25];
+    // …and what the mapped reader makes of it once the filter has run.
+    let filtered = [0.5, 1.53, 2.0, 0.25];
+
+    let (_c, mut mmf, _) = edited(&[("memorymapping", "yes"), ("npts", "4"), ("interval", "1")]);
+    mmf.read_csv_file(CONTENT);
+    let (_c, mut plain, _) = edited(&[("npts", "4"), ("interval", "1")]);
+    plain.read_csv_file(CONTENT);
+
+    for (h, (&want_plain, &want_mmf)) in (1..=4).zip(verbatim.iter().zip(filtered.iter())) {
+        assert!(
+            (plain.get_mult_at_hour(h as f64).re - want_plain).abs() < 1e-12,
+            "non-mapped hour {h}: {} vs {want_plain}",
+            plain.get_mult_at_hour(h as f64).re
+        );
+        assert!(
+            (mmf.get_mult_at_hour(h as f64).re - want_mmf).abs() < 1e-12,
+            "mapped hour {h}: {} vs {want_mmf}",
+            mmf.get_mult_at_hour(h as f64).re
+        );
+    }
+    // The rows carrying a sign or an exponent really do disagree — a deletion,
+    // not a rounding difference. The other two agree, which is what makes the
+    // first two a filter artifact and not two unrelated parsers.
+    assert!((mmf.get_mult_at_hour(1.0).re - plain.get_mult_at_hour(1.0).re).abs() > 0.9);
+    assert!((mmf.get_mult_at_hour(2.0).re - plain.get_mult_at_hour(2.0).re).abs() > 1.5);
+    assert_eq!(mmf.get_mult_at_hour(3.0).re, plain.get_mult_at_hour(3.0).re);
+    assert_eq!(mmf.get_mult_at_hour(4.0).re, plain.get_mult_at_hour(4.0).re);
+}
+
+/// Exactly which gated artifacts can see the accept-set quirk — measured on the
+/// corpus bytes, because that measurement is what settled the row's Stage F
+/// disposition (`compute.rs::mmf_text_value`).
+///
+/// * The **vendored** mapped text files,
+///   `Examples/MemoryMappingLoadShapes/ckt24/LS_Phase_AOK.{txt,csv}` (loaded by
+///   `master_ckt24-mm-txt-p`, `-mm-txt-pq`, `-mm-csv-pq`), contain nothing but
+///   `.`, digits, the comma separator and the newline — the filter is the
+///   identity there, so those three cases could never observe a fix.
+/// * The **synthetic** `modes/inputformat/shape_mmf/mmpq8.csv` deliberately
+///   does: its P column is exponent notation (`-` = 45, `e` = 101 are in the
+///   file), which is why `shape_mmf.dss` reads `ls_pq` as `{1.51, 2.01, …}`
+///   instead of `{0.15, 0.20, …}` and why honouring the exponent moves that
+///   deck's node voltages 1.641e1 V past an 8.179e-6 floor.
+///
+/// So the row is gated by exactly one deck, and this test says so in bytes. If
+/// a corpus refresh moves either half — a sign appearing in the vendored files,
+/// or `mmpq8.csv` losing its exponents — the escape record is stale and this
+/// fails instead of the finding silently rotting.
+#[test]
+fn mmf_accept_set_quirk_is_gated_by_exactly_one_deck() {
+    fn stray_bytes(path: &std::path::Path) -> Vec<u8> {
+        let bytes = std::fs::read(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        let mut stray: Vec<u8> = bytes
+            .into_iter()
+            .filter(|&b| !((46..58).contains(&b) || b == 44 || b == 10 || b == 13))
+            .collect();
+        stray.sort_unstable();
+        stray.dedup();
+        stray
+    }
+
+    let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/corpus");
+
+    let vendored =
+        corpus.join("electricdss-tst/Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24");
+    for name in ["LS_Phase_AOK.txt", "LS_Phase_AOK.csv"] {
+        let stray = stray_bytes(&vendored.join(name));
+        assert!(
+            stray.is_empty(),
+            "{name} left the MMF accept-set (bytes {stray:?}): the three gated \
+             ckt24 MMF-text cases can now see the quirk, which the escape record \
+             says they cannot"
+        );
+    }
+
+    let stray = stray_bytes(&corpus.join("modes/inputformat/shape_mmf/mmpq8.csv"));
+    assert!(
+        stray.contains(&101) && stray.contains(&45),
+        "mmpq8.csv no longer carries exponent notation (stray bytes {stray:?}): \
+         shape_mmf.dss was written to observe the accept-set quirk and no longer \
+         does"
+    );
+}
+
 /// D13 (dss_capi `c4590d16`): the single-column `csvfile=` MMF path loads its P
 /// data. In 0.14.5 the `ReadCSVFile` single-column branch exits on CreateMMF
 /// **success** (the "missing not"), so the shape stays empty → daily solve

@@ -24,21 +24,44 @@ impl GicTransformer {
             // clean fix reads `FPctR2` — the only value under which the `else`
             // branch below is its inverse.
             //
-            // Stage F status (F.3k, **measured**): this is NOT a
-            // gate-invisible row. The flip was implemented, gated, and reverted
-            // — `tests/corpus/asymmetric/gic/gictransformer_gic.dss:18` builds
-            // `GICTransformer.tg3 … %R1=0.2 %R2=0.15`, and honouring %R2 moves
-            // that deck's GIC current 4.50e-4 against the `capi_v0145` oracle
-            // (allowed 1.00e-6) and `gic/gic_midi.dss`'s 1.02e-4 (allowed
-            // 1.07e-6). Both gating oracles reproduce the quirk, so landing the
-            // fix in the default lane means excluding those two decks' primary
-            // physical channel from oracle comparison — the same shape as the
-            // Newton row (F.3j) and owed the same treatment: a field-scoped
-            // default-lane exclusion plus a replacement in-engine assertion and
-            // a transitive cover. That is a commit of its own, not a line in a
-            // batch, so the row stays reproduced in both lanes for now. The
+            // Stage F status (F.3k, re-measured F.3v): this is NOT a
+            // gate-invisible row, and it is NOT the Newton row's shape either.
+            // The flip has now been implemented and gated twice.
+            // `tests/corpus/asymmetric/gic/gictransformer_gic.dss:18` builds
+            // `GICTransformer.tg3 … %R1=0.2 %R2=0.15` and `gic/gic_midi.dss`
+            // the same at `tg5`; both are `type=Auto`, where the `BusX` side
+            // effect puts terminal 2 on `BusX` (GICTransformer.pas:251), so the
+            // G1 and G2 blocks sit in *series* on the H→X→neutral path.
+            // Honouring %R2 therefore changes the element's admittance (here by
+            // 4/3), the system Y, and every node voltage downstream of it.
+            //
+            // What F.3k recorded as "the deck's GIC current" is in fact the
+            // **node-voltage** channel — the first thing `corpus_gate::runner`
+            // compares, which is why both runs abort at its `entry 0`:
+            // `gictransformer_gic.dss` reads 4.502e-4 against `capi_v0145`
+            // (allowed 1.001e-6) and `gic_midi.dss` 1.021e-4 (allowed
+            // 1.074e-6). Both gating oracles reproduce the quirk (r4133
+            // `Version8/Source/PDElements/GICTransformer.pas:495` is the same
+            // line), so the default lane's answer is deliberately unlike either.
+            //
+            // That makes the treatment a **whole-case** default-lane exclusion,
+            // not the field-scoped one the Newton row (F.3j) needed: there the
+            // only moving channels were Powers/Losses, here the voltages, Y,
+            // YPrim, currents and powers move together. Two of 520 gated cases
+            // would stop being oracle-compared in the default lane, and with
+            // them their unrelated GICLine-geodesy / GICsource / ordinary-Line
+            // surface. That trade is the owner's to make, not this pass's, so
+            // the row stays reproduced in both lanes and keeps its marker. The
             // reproduced value is pinned by
             // `exec::tests::compat_quirks::gic_transformer_g2_reproduces_the_pct_r1_bug`.
+            //
+            // Note for whoever lands it: the `else` branch below is not only the
+            // "the only value under which it is an inverse" argument — it is
+            // also a ready-made transitive cover. A GICTransformer given
+            // `R1=`/`R2=` in ohms takes that branch, has no quirk, and is
+            // identical in both lanes (these very decks carry one: `tg2` with
+            // `R1=0.2 R2=0.1`), so a corrected `%R` path can be pinned against
+            // the oracle-gated `R` path instead of against a re-baselined deck.
             self.g2 = 100.0 / (self.z_base2 * self.pct_r1);
         } else {
             self.pct_r1 = 100.0 / (self.z_base1 * self.g1);

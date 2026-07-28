@@ -732,10 +732,29 @@ impl Generator {
     /// built-in model seeds from the fresh `NodeV` (`:2409-2413`). Deterministic
     /// and defined in BOTH oracle channels (0.14.5 == r4133 to ≤1e-13, the D2
     /// three-way experiment), pinned by the `wasm_gen_dyn` numeric golden. The
-    /// clean fix — a self-consistent `(V_n, I(V_n))` seed — shifts the initial
-    /// state by less than the power-flow convergence tolerance (~1e-4 pu) but
-    /// breaks bit-parity with both oracles; decide at DE_PASCALIZE Stage F
-    /// (default-lane candidate, parity lane keeps the stale seed).
+    /// clean fix is a self-consistent `(V_n, I(V_n))` seed — one
+    /// `compute_vterminal(node_v)` ahead of the two `FInit` calls.
+    ///
+    /// Stage F status (F.3v, **measured**). The earlier note guessed the shift
+    /// would be "less than the power-flow convergence tolerance (~1e-4 pu)". It
+    /// is not: driving that one line through `tests/wasm_usermodels.rs` moves
+    /// the whole `wasm_gen_dyn` surface — `dSpeed` by **3.449e-2 relative**
+    /// (-118.32 vs the oracle's -122.55 Deg/sec), `Slip` 9.824e-5, `Is1`/`Ir1`
+    /// ≈5.3e-4, the stator/rotor losses ≈1.1e-3, and six of the twelve node
+    /// voltage components past their floors as well; the step-1 trajectory guard
+    /// `wasm_gen_dyn_step1_trajectory_matches_oracle` fails on four of its four
+    /// channels. That is because the seed sets `E1` for the *whole* dynamics
+    /// run, not just its first evaluation — the D2 experiment recorded the same
+    /// sensitivity from the other direction (`|Is1| = 189.207` vs the power-flow
+    /// `189.10`).
+    ///
+    /// So the split is not a field-scoped exclusion but a **whole-golden** one:
+    /// the default lane would stop oracle-comparing every node voltage and all
+    /// 34 variables of the one deck that exercises a Model=6 user model plus a
+    /// ShaftModel, on an r4133 golden the parity lane may never re-baseline.
+    /// Like the GICTransformer `%R2` and Capacitor `Cuf` rows, that is an owner
+    /// decision rather than a sweep line, so the row keeps its marker and stays
+    /// reproduced in both lanes.
     pub(super) fn user_model_finit(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         if !(self.user_model_exists() || self.shaft_model_exists()) {
             return;
