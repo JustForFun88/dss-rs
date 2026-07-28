@@ -510,7 +510,7 @@ fn do_help_cmd(msg: &mut dyn FnMut(&[u8])) {
 /// Pascal `InitTraceFile` (`IndMach012Model.pas:559-570`) writes
 /// `IndMach012_Trace.CSV`. Deliberately a no-op here: the WASM sandbox has no
 /// filesystem (plan §2.9-7 / ABI §6); the trace is a local debugging aid with
-/// no numeric or host-observable contract. NOT a `TODO(compat)` — this is the
+/// no numeric or host-observable contract. NOT a compat marker — this is the
 /// documented sandbox policy, not an inexactness reproduction.
 fn init_trace_file() {}
 
