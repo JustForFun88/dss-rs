@@ -7,6 +7,135 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3af — the stage's own flips falsified five documents, and no gate could see it (branch `depas-stagef`, 2026-07-29)
+
+F.3ae wrote this stage's deviations back to the plan that ordered the work. The
+same failure had a second and larger instance that nobody had gone looking for:
+F.3 resolved ~100 markers and flipped 30 aliases, and **every document outside
+`crates/` that cited one of those sites by name was silently falsified**. Five
+were. Nothing objected, because every Stage F gate — the cfg gate, the tag
+spelling gate, the escape register, the pin rule — walks `.rs` files only. That
+is exactly F.3ac's finding (the instrument scoped narrower than the claim it
+serves) in the last place it could still hide. `TODO(compat)` stays **22** in
+`crates` (25 tree-wide), `HIDE_015X` **19**; no engine code, golden, tolerance,
+ledger entry or deck moved.
+
+**Inherited state re-verified before building on it.** F.3ae's tree
+(`02793a79`) was re-gated from scratch in both lanes before any edit: `cargo fmt
+--all --check` clean, `cargo clippy --workspace --all-targets -- -D warnings`
+and the same with `--features dss-core/oracle-parity` both exit 0, `cargo test
+--workspace --no-fail-fast` **2359 passed / 0 failed / 5 ignored** and the
+parity-lane twin identically **2359 / 0 / 5**, with the unconditional 520-case
+corpus gate green inside each. `git status --short tests/corpus` empty after
+both. The two counts were re-measured, not read: `rg` gives 22 and 19.
+
+**The five, each checked at the site rather than assumed.**
+
+| document | what it still claimed | what F.3 had made true |
+|---|---|---|
+| `tests/TOLERANCE_NOTES.md` | a marker in `seq_currents.rs`, and "the clean fix **is** the per-terminal slice" | F.3c *took* that fix: `compat::IRESIDUAL_FROM_TERMINAL_1` |
+| `tests/TOLERANCE_NOTES.md` | a marker at `obj/props/class_props/value.rs` "reproduces by rendering a deterministic zero matrix" | `compat::SYM_MATRIX_GETTER_RENDERS_ZEROS`; only the parity lane renders zeros |
+| `tests/corpus/modes/manifest.json` | a marker in `exec/view.rs` is "what actually verifies Newton dispatch is wired" | F.3j lane-split that read; the default lane drops this deck's element powers entirely |
+| `tools/golden/gen_props.py` | "see the port's marker" for the Isource `Bus1`/`Bus2` ordering | `compat::ISOURCE_BUS2_NEVER_LATCHES`; the ordering is the *parity* lane's requirement |
+| `tools/golden/gen_json.py` | the `CktModel=` empty-value quirk is a marker | `compat::CKT_MODEL_RENDERED_ORDINAL`; the capture's value-less line is now the parity answer |
+
+Plus `gen_plot_callback.py`'s unrecognized-`type=` note, stale the other way:
+that arm was resolved earlier in this stage to IV.1 **permanent semantics in
+both lanes** (`exec/plot.rs`, `PlotOptions.pas:305`'s empty `else`), so it is
+not a compat row at all and the golden pins the same bytes either way.
+
+**The manifest one is the load-bearing member of that list.** It sits inside a
+**gated artifact** and told whoever triages `newton.dss` that the deck's element
+powers are the signal proving Newton dispatch. In the default lane they are not
+compared at all: `elem_channels_for` drops that case (and `newton_feeder.dss`)
+to `CURRENTS_ONLY` via `LANE_SKIP_ELEM_POWERS`, and the verification moved to
+the in-engine tripwire
+`exec::tests::newton::newton_dispatch_leaves_a_valid_but_stale_iterminal_cache`
+plus the pin `newton_powers_are_the_lane_kernel`. A triager following the old
+note in the default lane would have been hunting a channel that is switched off.
+
+**The correction is not "delete the tag".** Each sentence now names the lane row
+and says which lane answers what, because that is the fact a reader needs: the
+tolerance note explains that the default lane excludes only the `Terminal >= 2`
+cells (`GateSpec::ColAbove(1, 1.5)`) and keeps the column's `abs = 1e-8` — an
+exclusion, never a loosened band; `gen_json.py` now says to keep capturing the
+oracle's value-less line because the golden stays byte-compared in *both* lanes
+with one enumerated rewrite (`golden_json.rs::lane_expected_json`) rather than a
+re-baseline; `gen_props.py` says to keep the `Bus2`-after-`Bus1` order because
+the capture comes from the engine the parity lane reproduces. The
+`TOLERANCE_NOTES.md` section that described the marker convention as "removed in
+one pass after final acceptance" now states Stage F's actual outcome — a lane
+split, with the parity lane's floors unmoved and the default lane excluding
+fields rather than widening bands.
+
+**The gate.** `oracle_parity_cfg_gate::operational_docs_cite_the_compat_
+machinery_accurately` checks the surface the other four gates cannot see, in
+two independent directions. (1) A doc line that spells the tag **and** names a
+Rust file is a claim about where a marker lives: it must carry a row in
+`TAG_PATH_CITATIONS` saying `Present` or `Absent`, and the marker index must
+agree. (2) Every `compat::<ident>` a doc names must be declared by a compat
+module — inside `crates/` rustdoc links are compiler-checked, but Markdown,
+Python and JSON get no such help, so a rename leaves a lying sentence. Half (2)
+is populated by the corrections above, so it is load-bearing on landing rather
+than a promise.
+
+**Scoped by what a document is *for*, not by where it sits.** The surface is
+`CLAUDE.md`, `TESTING.md`, `tests/TOLERANCE_NOTES.md`, the corpus manifests and
+`ledger.json`, and the `tools/` generators and READMEs — files that describe the
+tree *as it is*. Plans and records are deliberately excluded: `DE_PASCALIZE_
+PLAN.md`, `PORTING_PLAN.md`, `STATUS.md` and `docs/**` state intent or history
+and are *allowed* to differ from HEAD; mechanising that would burden every
+historical record and invite editing the log to please a test. The one plan row
+whose content this stage disproved was corrected by hand in F.3ae, which is the
+right shape for that class.
+
+**Two under-scopings of the new instrument, both caught by its own probes
+before the commit.** (a) The first cut of `rust_paths_in` required a `/`, so it
+did **not** match the very citation it was written for — the real staleness
+spelled the file bare (`seq_currents.rs`). Probe 1 failed to fire, which is how
+it was found; the helper now accepts full, partial and bare spellings, resolved
+against the marker index by suffix. (b) The first walk pulled 33 files of the
+**vendored** `electricdss-tst` checkout into "our documentation" — upstream's
+own `.py`/`.md`, which make no claim about this tree and would fail the suite on
+a routine re-vendor. The walk is now per-subtree (`tests/corpus` contributes
+only the manifests we author), and the exclusion is asserted, so widening it
+back fails by name.
+
+**Five probes, each run and reverted.** (1) Re-adding the stale bare-name
+citation to `TOLERANCE_NOTES.md` → `names ["seq_currents.rs"]`, unregistered.
+(2) Flipping the ledger row to `Present` → "claims Present of
+`crates/dss-core/src/exec/view.rs`, tree says Absent". (3) Renaming a cited
+alias to `compat::IRESIDUAL_FROM_TERMINAL_9` → named as undeclared. (4) Widening
+the corpus filter to `.py` → "the doc walk descended into the vendored corpus
+(30 files…)". (5) Pointing a `Present` row at a marker-free file → the same
+inverted-claim failure as (2). Every arm of the gate is load-bearing.
+
+**One documentation gap closed as a side effect.** The wasm reference model's
+README listed its three surviving markers but never said which files they live
+in — the only reader-facing pointer at `Escape::WasmGuest`, and unanchored. It
+now names `models/indmach012a/src/{symcomp,model}.rs` and records why they are
+escapes (workspace-excluded crate: a lane split there is a second `.wasm`
+fixture, not a `cfg` alias), and those two claims are the gate's `Present` rows.
+
+**What this does not change.** The F.3 verdict stands: 25 markers survive, each
+with a measured blocker owned by a named successor (`UpgradeRung` 11, `Ffmt` 7,
+`WholeCase` 4, `WasmGuest` 3); `HIDE_015X` keeps its F.3aa disposition; the
+sanctioned re-baseline is still measurably empty (`git diff 6f691ecb..HEAD --
+tests/golden tests/corpus` shows only this commit's one manifest `note`) and
+still handed to Stage F landing. No engine behaviour moved in either lane.
+
+**Proof.** Both lanes green on the exact committed tree: `cargo fmt --all
+--check`; `cargo clippy --workspace --all-targets -- -D warnings` and the same
+with `--features dss-core/oracle-parity` both exit 0; `cargo test --workspace
+--no-fail-fast` **2360 passed / 0 failed / 5 ignored** and the parity-lane twin
+identically **2360 / 0 / 5**, with the unconditional 520-case corpus gate green
+inside each. Tests **+1**, 0 removed,
+0 new `#[ignore]` (the 5 are the four manual generation binaries plus one
+`define_properties` doctest). Both runs leaked the known intermittent
+`Test/AutoTrans/*` artifacts (17 files); deleted by exact name, after which
+`git status --short tests/corpus` shows only this commit's `modes/manifest.json`
+edit.
+
 ### DE_PASCALIZE Stage F.3ae — the plan's own dual-kernel table still specified three kernels this stage disproved (branch `depas-stagef`, 2026-07-29)
 
 F.3ab→F.3ad made the stage's findings executable *in the tree*: the escape

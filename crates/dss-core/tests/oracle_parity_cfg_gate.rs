@@ -822,3 +822,377 @@ fn every_lane_split_alias_is_pinned_by_an_expected_value_test() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// The citation surface: docs that point *into* the compat machinery
+// ---------------------------------------------------------------------------
+
+/// The **operational** documentation surface — files that describe what the
+/// tree does *right now*, as opposed to what someone intended or what was once
+/// true.
+///
+/// Why this exists: F.3 flipped 30 rows and resolved ~100 markers, and every
+/// flip silently falsified whatever outside `crates/` had cited the old site.
+/// Five had: `tests/TOLERANCE_NOTES.md` still sent a tolerance author looking
+/// for a marker in `seq_currents.rs` and named the per-terminal slice as the
+/// *unfinished* clean fix; `tests/corpus/modes/manifest.json` told a triager
+/// that a marker in `exec/view.rs` was "what actually verifies Newton dispatch
+/// is wired", after F.3j had made that read lane-split and moved the
+/// verification to an in-engine tripwire; three golden generators described
+/// captures whose meaning had become lane-dependent. Nothing objected, because
+/// every Stage F gate before this one walks `.rs` files only — F.3ac's finding
+/// (the instrument scoped narrower than the claim) in the last place it could
+/// still hide.
+///
+/// **Deliberately excluded: plans and records.** `DE_PASCALIZE_PLAN.md`,
+/// `PORTING_PLAN.md`, `STATUS.md` and everything under `docs/` state intent or
+/// history; they are *allowed* to differ from HEAD, and mechanically demanding
+/// otherwise would both burden every historical record and invite editing the
+/// log to please a test. The one plan row whose content this stage disproved
+/// was corrected by hand in F.3ae, which is the right shape for that class.
+fn operational_docs(root: &Path) -> Vec<PathBuf> {
+    // Named individually, because each is a specific promise about the current
+    // tree. A missing one is a failure, not a skip.
+    let fixed = [
+        "CLAUDE.md",
+        "TESTING.md",
+        "tests/TOLERANCE_NOTES.md",
+        "tests/corpus/ledger.json",
+    ];
+    let mut out: Vec<PathBuf> = Vec::new();
+    for rel in fixed {
+        let path = root.join(rel);
+        assert!(
+            path.is_file(),
+            "{rel} is gone — it is part of the operational doc surface this \
+             gate checks; if it moved, update this list"
+        );
+        out.push(path);
+    }
+
+    // Plus two walked subtrees, each with its OWN filter — the filter is not
+    // cosmetic. `tests/corpus` contains the **vendored** `electricdss-tst`
+    // checkout, 33 files of upstream's own `.py`/`.md`; those are not this
+    // project's documentation, they make no claim about our tree, and gating on
+    // them would fail the suite on a routine re-vendor. Only the manifests we
+    // write are in scope there. Under `tools/` the reverse holds: the `.py`
+    // generators and their `README`s are ours and are exactly where a capture's
+    // meaning is explained.
+    //
+    // `SKIP_DIRS` keeps the walk out of the `.venv` and `.inputs` **junctions**
+    // — following one reads main's checkout, and `tools/opendss/.venv` is
+    // exactly such a link (CLAUDE.md, "Git worktrees").
+    let roots: [(PathBuf, &[&str]); 2] = [
+        (root.join("tests").join("corpus"), &["json"]),
+        (root.join("tools"), &["md", "py"]),
+    ];
+    for (subtree, exts) in roots {
+        let mut dirs = vec![subtree];
+        while let Some(dir) = dirs.pop() {
+            let Ok(entries) = fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let name = entry.file_name().to_string_lossy().to_lowercase();
+                if path.is_dir() {
+                    // `models` is the wasm reference user model: real Rust,
+                    // already walked by `rust_sources`. `bin` holds the vendored
+                    // r4133 binary; `__pycache__` is build output.
+                    let skip = SKIP_DIRS.contains(&name.as_str())
+                        || matches!(name.as_str(), "models" | "bin" | "__pycache__");
+                    if !skip {
+                        dirs.push(path);
+                    }
+                    continue;
+                }
+                let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase());
+                let Some(ext) = ext else { continue };
+                if !exts.contains(&ext.as_str()) {
+                    continue;
+                }
+                // JSON is in scope only for the manifests we author.
+                if ext == "json" && name != "manifest.json" {
+                    continue;
+                }
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Whether the file a documentation line points at still carries a compat
+/// marker.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Cited {
+    /// The named file must still carry a marker — the doc describes a live
+    /// reproduction site.
+    Present,
+    /// The named file must **not** carry one — the doc records that the marker
+    /// was resolved. Checked the same fail-on-stale way, so the sentence cannot
+    /// quietly become false in the other direction either.
+    Absent,
+}
+
+/// Every line in the operational surface that spells the compat tag *and* names
+/// a Rust file: every documented claim about where a marker lives.
+///
+/// Keyed like [`ESCAPE_REGISTER`]: `(doc file, distinctive slice of the line,
+/// the source file it names, what must be true of that file)`.
+const TAG_PATH_CITATIONS: &[(&str, &str, &str, Cited)] = &[
+    // The NCIM cause entry records a marker that WP-U2 removed when the port
+    // dropped capi015's one-conductor VSource offset. `exec/view.rs` has been
+    // marker-free ever since — including after F.3j, which routed the Newton
+    // read through `compat::POWERS_REUSE_STALE_NEWTON_ITERMINAL` instead of
+    // re-opening a marker there.
+    (
+        "tests/corpus/ledger.json",
+        "was removed",
+        "crates/dss-core/src/exec/view.rs",
+        Cited::Absent,
+    ),
+    // The wasm reference user model's three surviving markers — `Escape::
+    // WasmGuest` in the register above. Its README is the only doc that points
+    // a reader at them, so these two rows are what keeps that pointer honest if
+    // `WASM_USERMODELS_PLAN` ever resolves them.
+    (
+        "tools/wasm_usermodel/README.md",
+        "0.866025403",
+        "tools/wasm_usermodel/models/indmach012a/src/symcomp.rs",
+        Cited::Present,
+    ),
+    (
+        "tools/wasm_usermodel/README.md",
+        "1.732",
+        "tools/wasm_usermodel/models/indmach012a/src/model.rs",
+        Cited::Present,
+    ),
+];
+
+/// The Rust files a documentation line names, in any spelling docs actually
+/// use: a full `crates/dss-core/src/util.rs`, a partial `exec/view.rs`, or a
+/// **bare** `seq_currents.rs`.
+///
+/// The bare form is not an edge case — it is the one the real staleness took
+/// (a compat-tagged heading naming `SeqCurrents`, then "(`seq_currents.rs`)"),
+/// and a first cut of this helper required a `/` and therefore did not catch
+/// the very citation it was written for. The probe caught that, and it is the
+/// same lesson as F.3ac/F.3ad: the instrument, not the tree, was the narrow
+/// part.
+fn rust_paths_in(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for (i, _) in line.match_indices(".rs") {
+        let head = &line[..i];
+        let start = head
+            .rfind(|c: char| !(c.is_alphanumeric() || c == '_' || c == '/' || c == '.'))
+            .map_or(0, |p| p + 1);
+        let candidate = &line[start..i + ".rs".len()];
+        // Reject a bare `.rs` with nothing in front of it (e.g. the literal
+        // extension quoted in prose).
+        if candidate.len() > ".rs".len() {
+            out.push(candidate.to_string());
+        }
+    }
+    out
+}
+
+/// Does the marker index contain `cited`, allowing the partial and bare
+/// spellings [`rust_paths_in`] accepts?
+fn marker_index_has(marked: &[String], cited: &str) -> bool {
+    marked
+        .iter()
+        .any(|m| m == cited || m.ends_with(&format!("/{cited}")))
+}
+
+/// The operational docs' references into the compat machinery are accurate.
+///
+/// Two independent checks, because the two ways such a reference rots are
+/// independent:
+///
+/// 1. **Marker locations.** A line that spells the tag and names a `.rs` file
+///    is making a claim about that file; it must be registered above, and the
+///    claim must hold. Everything it would have caught was fixed in the commit
+///    that added it, so what remains is the tripwire for the next flip.
+/// 2. **Alias names.** Every `compat::<ident>` a doc names must be declared by
+///    a compat module. Inside `crates/` rustdoc links are compiler-checked;
+///    Markdown, Python and JSON get no such help, so a rename leaves a lying
+///    sentence behind. This half is populated *now* — the corrected citations
+///    point at real rows — so it is load-bearing immediately, not a promise.
+#[test]
+fn operational_docs_cite_the_compat_machinery_accurately() {
+    let root = repo_root();
+    let tag = compat_tag();
+    let docs = operational_docs(&root);
+    assert!(
+        docs.len() > 20,
+        "the doc walk found only {} files — it is broken",
+        docs.len()
+    );
+
+    let rel_of = |p: &Path| {
+        p.strip_prefix(&root)
+            .unwrap_or(p)
+            .to_string_lossy()
+            .replace('\\', "/")
+    };
+    let rels: Vec<String> = docs.iter().map(|p| rel_of(p)).collect();
+
+    // Non-vacuity of the walk, both directions. It must REACH the surfaces the
+    // corrected citations live in...
+    for expected in [
+        "tests/TOLERANCE_NOTES.md",
+        "tests/corpus/modes/manifest.json",
+        "tools/golden/gen_json.py",
+    ] {
+        assert!(
+            rels.iter().any(|r| r == expected),
+            "the doc walk no longer reaches {expected} — its compat citations \
+             just stopped being checked"
+        );
+    }
+    // ...and it must NOT reach the vendored upstream checkout, whose `.py`/`.md`
+    // files are not ours to gate and would fail the suite on a re-vendor.
+    let vendored: Vec<&String> = rels
+        .iter()
+        .filter(|r| r.contains("corpus/electricdss-tst/"))
+        .collect();
+    assert!(
+        vendored.is_empty(),
+        "the doc walk descended into the vendored corpus ({} files, e.g. {:?}) \
+         — upstream's own files make no claim about this tree",
+        vendored.len(),
+        vendored.first()
+    );
+
+    // The files carrying a marker today, as repo-relative `/` paths.
+    let marked: Vec<String> = markers_in_tree(&root)
+        .into_iter()
+        .map(|(rel, _)| rel)
+        .collect();
+
+    // Everything the compat modules declare (token match is enough to catch a
+    // rename or a deletion, which is the failure this half exists for).
+    let compat_text: String = COMPAT_MODULES
+        .iter()
+        .map(|m| fs::read_to_string(root.join(m)).unwrap_or_else(|e| panic!("{m}: {e}")))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let mut hits = vec![0usize; TAG_PATH_CITATIONS.len()];
+    let mut unregistered = Vec::new();
+    let mut wrong = Vec::new();
+    let mut bad_alias = Vec::new();
+    let mut alias_refs = 0usize;
+
+    for path in &docs {
+        let Ok(text) = fs::read_to_string(path) else {
+            continue;
+        };
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        for (i, line) in text.lines().enumerate() {
+            // (2) alias references — every line.
+            for (col, _) in line.match_indices("compat::") {
+                let ident: String = line[col + "compat::".len()..]
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
+                if ident.is_empty() {
+                    continue;
+                }
+                alias_refs += 1;
+                if !names_token(&compat_text, &ident) {
+                    bad_alias.push(format!("    {rel}:{}: compat::{ident}", i + 1));
+                }
+            }
+
+            // (1) marker-location claims.
+            if !line.contains(&tag) {
+                continue;
+            }
+            let named = rust_paths_in(line);
+            if named.is_empty() {
+                continue;
+            }
+            let matched: Vec<usize> = TAG_PATH_CITATIONS
+                .iter()
+                .enumerate()
+                .filter(|(_, (doc, key, _, _))| *doc == rel && line.contains(key))
+                .map(|(i, _)| i)
+                .collect();
+            match matched.len() {
+                1 => {
+                    hits[matched[0]] += 1;
+                    let (_, _, src, want) = TAG_PATH_CITATIONS[matched[0]];
+                    let is_marked = marker_index_has(&marked, src);
+                    let ok = match want {
+                        Cited::Present => is_marked,
+                        Cited::Absent => !is_marked,
+                    };
+                    if !ok {
+                        wrong.push(format!(
+                            "    {rel}:{}: claims {want:?} of {src}, tree says {}",
+                            i + 1,
+                            if is_marked { "Present" } else { "Absent" }
+                        ));
+                    }
+                }
+                0 => unregistered.push(format!("    {rel}:{}: names {named:?}", i + 1)),
+                n => panic!(
+                    "{rel}:{}: matches {n} citation rows — sharpen their keys",
+                    i + 1
+                ),
+            }
+        }
+    }
+
+    assert!(
+        unregistered.is_empty(),
+        "documentation line(s) spelling the compat tag AND naming a Rust file, \
+         with no row in `TAG_PATH_CITATIONS`. Such a line claims where a marker \
+         lives, and a Stage F flip falsifies exactly that claim: either drop the \
+         tag from the sentence (write \"the lane row `compat::X`\" instead) or \
+         register the claim so it is checked:\n{}",
+        unregistered.join("\n")
+    );
+    assert!(
+        wrong.is_empty(),
+        "documentation describing the marker population incorrectly:\n{}",
+        wrong.join("\n")
+    );
+    assert!(
+        bad_alias.is_empty(),
+        "documentation naming a `compat::` alias no compat module declares. \
+         Outside `crates/` nothing compiler-checks these references, so a \
+         rename leaves the sentence lying:\n{}",
+        bad_alias.join("\n")
+    );
+
+    let stale: Vec<String> = TAG_PATH_CITATIONS
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| hits[*i] != 1)
+        .map(|(i, (doc, key, _, _))| format!("    {doc}: {key:?} — {} matches", hits[i]))
+        .collect();
+    assert!(
+        stale.is_empty(),
+        "citation-register row(s) matching other than exactly one line — if the \
+         sentence was reworded, re-key the row; if it is gone, delete it:\n{}",
+        stale.join("\n")
+    );
+
+    // Non-vacuity: the alias half must actually be reading references. The
+    // citations corrected in this commit are the floor.
+    assert!(
+        alias_refs >= 4,
+        "only {alias_refs} `compat::` reference(s) across the doc surface — the \
+         walk shrank and this half of the gate went vacuous"
+    );
+}

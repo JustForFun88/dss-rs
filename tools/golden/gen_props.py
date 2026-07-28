@@ -2789,7 +2789,12 @@ SCENARIOS = [
         # Every own property explicit, on a 3-phase unit; Bus2 set AFTER Bus1
         # on the same New command so the explicit value sticks (Isource's
         # PropertySideEffects re-derives the grounded-Y default unconditionally
-        # whenever Bus1 is (re)set — see the port's TODO(compat) note).
+        # whenever Bus1 is (re)set — it never sets Bus2Defined, unlike Vsource).
+        # KEEP THIS ORDER: the golden is captured from the oracle, and the port
+        # reproduces that engine in its parity lane
+        # (`compat::ISOURCE_BUS2_NEVER_LATCHES`). The default lane latches Bus2
+        # like the sibling class, which makes the ordering merely redundant
+        # there — never the other way round.
         "name": "isource_full",
         "target": "Isource.i1",
         "commands": [

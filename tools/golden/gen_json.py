@@ -688,8 +688,13 @@ DECKS = [
     {
         "name": "circuit_positive_seq",
         # Pins the three PreCommands conditionals that no other circuit deck
-        # reaches: the `CktModel=` empty-value TODO(compat) quirk (positive
-        # sequence → Pascal `OrdinalToString(Integer(True)=-1)` = ''),
+        # reaches: the `CktModel=` empty-value quirk (positive sequence → Pascal
+        # `OrdinalToString(Integer(True)=-1)` = ''; lane row
+        # `compat::CKT_MODEL_RENDERED_ORDINAL`). Keep capturing the oracle's
+        # value-less line: this golden stays byte-compared in BOTH lanes, and
+        # the default lane (which emits `Set CktModel=Positive`) applies one
+        # enumerated rewrite to the capture rather than re-baselining it
+        # (`golden_json.rs::lane_expected_json`),
         # `AllowDuplicates=True` and `LongLineCorrection=True`. Also sets fractional
         # ueweight/lossweight at `%8.2f` rounding boundaries (0.125→0.13,
         # 2.675→2.68) to pin the FPC-faithful fixed formatter (15-sig intermediate
