@@ -509,6 +509,15 @@ fn produce_deck_show(stem: &str) -> (String, String, PathBuf) {
 /// [`dump_script_policy`] — every `Key=Value` token key-verbatim and every value
 /// bit-identical, only the spelling free (Part IV.2 drift model).
 fn run_deck_dump_exact(stem: &str) {
+    run_deck_dump_exact_expected(stem, |oracle| oracle.to_string());
+}
+
+/// [`run_deck_dump_exact`] with a lane-scoped **expected-value transform** on
+/// the oracle text (`DE_PASCALIZE_PLAN.md` IV.2 "deliberate divergences"): the
+/// committed golden stays the source of truth, and `expected` states — as code,
+/// enumerated — the one edit a Stage F row makes to it in the default lane.
+/// `expected` must be the identity in the parity lane.
+fn run_deck_dump_exact_expected(stem: &str, expected: impl Fn(&str) -> String) {
     let dir = reports_dir();
     let meta: DeckMeta = {
         let p = dir.join(format!("{stem}.meta.json"));
@@ -534,7 +543,7 @@ fn run_deck_dump_exact(stem: &str) {
     let produced = dss.last_result_file();
     let rust = std::fs::read_to_string(produced)
         .unwrap_or_else(|e| panic!("{stem}: read produced {produced}: {e}"));
-    lane::compare_report(&oracle, &rust, &dump_script_policy(), stem);
+    lane::compare_report(&expected(&oracle), &rust, &dump_script_policy(), stem);
     std::fs::remove_dir_all(&scratch).ok();
 }
 
@@ -5315,20 +5324,110 @@ fn dump_spectrum_matches_oracle() {
     run_deck_dump_exact("dump_spectrum");
 }
 
+/// The oracle `Dump fault.…` text as the current lane expects it: unchanged in
+/// the parity lane; in the default lane with the **second** of the two
+/// consecutive `~ MinAmps=` lines removed — the Stage F row
+/// `compat::FAULT_DUMP_TAIL_REPRINTS_MINAMPS`, whose default kernel starts the
+/// generic tail at `NormAmps` instead of re-emitting `MinAmps`.
+///
+/// Positional, like the `b0ch` transform in `golden_cim`: it removes the second
+/// member of an adjacent pair, never "a line whose value looks generic", so it
+/// cannot silently eat a differently-rendered `MinAmps`. The pair must be there
+/// — `fault_dump_goldens_carry_the_double_print` asserts it on every golden this
+/// is applied to (one pair per Fault in the fixture), so the transform cannot
+/// rot into a no-op if a golden is ever recaptured.
+fn fault_dump_expected(oracle: &str) -> String {
+    if lane::PARITY {
+        return oracle.to_string();
+    }
+    let mut out = String::with_capacity(oracle.len());
+    let mut prev_was_minamps = false;
+    for line in oracle.split_inclusive('\n') {
+        let is_minamps = line.trim_start().starts_with("~ MinAmps=");
+        if is_minamps && prev_was_minamps {
+            prev_was_minamps = false; // only ever drop the second of a pair
+            continue;
+        }
+        prev_was_minamps = is_minamps;
+        out.push_str(line);
+    }
+    out
+}
+
+/// Non-vacuity of [`fault_dump_expected`], in both lanes and over **every**
+/// golden it is applied to: each committed oracle golden really does carry the
+/// double print — one pair per Fault in its fixture — the default-lane
+/// expectation keeps exactly one line per pair, and the parity-lane expectation
+/// is the oracle byte-for-byte.
+///
+/// The `(stem, faults)` list must stay in step with the
+/// `run_deck_dump_exact_expected(…, fault_dump_expected)` call sites: a
+/// Fault-bearing dump golden that forgets the transform fails its own compare,
+/// and one that gains the transform without a row here is not proven
+/// non-vacuous.
+#[test]
+fn fault_dump_goldens_carry_the_double_print() {
+    for (stem, faults) in [
+        ("dump_fault", 1),
+        ("dump_fault_gmatrix", 1),
+        ("dump3_bare", 2),
+        ("dump3_debug", 2),
+    ] {
+        let p = reports_dir().join(format!("{stem}.txt"));
+        let oracle =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        let minamps = |t: &str| -> Vec<String> {
+            t.lines()
+                .filter(|l| l.trim_start().starts_with("~ MinAmps="))
+                .map(str::to_string)
+                .collect()
+        };
+        let o = minamps(&oracle);
+        assert_eq!(
+            o.len(),
+            2 * faults,
+            "{stem}: the oracle double-prints MinAmps once per Fault"
+        );
+        let expected = fault_dump_expected(&oracle);
+        let e = minamps(&expected);
+        assert_eq!(
+            e.len(),
+            if lane::PARITY { 2 * faults } else { faults },
+            "{stem}: the default lane keeps one MinAmps line per Fault"
+        );
+        if lane::PARITY {
+            assert_eq!(expected, oracle, "{stem}: the parity arm is the identity");
+            continue;
+        }
+        // One line removed per pair, and it is the *second* of each: what
+        // survives is the custom `%.1f` spelling (`~ MinAmps=5.0`), never the
+        // generic one the tail re-emits (`~ MinAmps=5`).
+        assert_eq!(expected.lines().count() + faults, oracle.lines().count());
+        for (i, kept) in e.iter().enumerate() {
+            assert_eq!(kept, &o[2 * i], "{stem}: the FIRST of pair {i} survives");
+            assert!(
+                kept.contains('.'),
+                "{stem}: the surviving line is the custom %.1f render: {kept}"
+            );
+        }
+    }
+}
+
 /// `Dump fault.f1 debug` — `TFaultObj.DumpProperties` (`SpecType=1`, single
 /// `r`): the custom Bus1/Bus2/Phases/R/pctStdDev/OnTime/Temporary/MinAmps
-/// lines, then the tail from `MinAmps` — pinning the upstream double-print
-/// quirk (`MinAmps` appears twice: the custom `%.1f` line, then generically).
+/// lines, then the generic tail. The parity lane pins the upstream double-print
+/// quirk (`MinAmps` twice: the custom `%.1f` line, then generically); the
+/// default lane starts the tail one property later — see [`fault_dump_expected`].
 #[test]
 fn dump_fault_matches_oracle() {
-    run_deck_dump_exact("dump_fault");
+    run_deck_dump_exact_expected("dump_fault", fault_dump_expected);
 }
 
 /// `Dump fault.fg debug` — `TFaultObj.DumpProperties` (`SpecType=2`, a
 /// `Gmatrix`): pins the custom `~ GMatrix= (…)` lower-triangle render.
 #[test]
 fn dump_fault_gmatrix_matches_oracle() {
-    run_deck_dump_exact("dump_fault_gmatrix");
+    run_deck_dump_exact_expected("dump_fault_gmatrix", fault_dump_expected);
 }
 
 /// `Dump capacitor.cm1 debug` (a `CMatrix`-spec bank) — `TCapacitorObj.
@@ -5840,7 +5939,9 @@ fn save_voltages_and_meterless_save_leave_last_result_file() {
 /// Spectrum/TCC_Curve library objects.
 #[test]
 fn dump3_bare_matches_oracle() {
-    run_deck_dump_exact("dump3_bare");
+    // Two Fault objects in the fixture, so two `~ MinAmps=` pairs — the same
+    // Stage F row as `dump_fault`, see [`fault_dump_expected`].
+    run_deck_dump_exact_expected("dump3_bare", fault_dump_expected);
 }
 
 /// `Dump debug` — the whole-circuit form with Complete=TRUE: the
@@ -5849,7 +5950,7 @@ fn dump3_bare_matches_oracle() {
 /// system-Y compressed-column dump (`[%4d,%4d] = %12.5g + j%12.5g`).
 #[test]
 fn dump3_debug_matches_oracle() {
-    run_deck_dump_exact("dump3_debug");
+    run_deck_dump_exact_expected("dump3_debug", fault_dump_expected);
 }
 
 /// `Dump solution` — `Solution.DumpProperties(F, Complete=FALSE, Leaf=TRUE)`

@@ -7,6 +7,76 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3s — the Fault dump's off-by-one tail, and two carry-over cleanups (branch `depas-stagef`, 2026-07-28)
+
+One marker, one line of dump text, and the shortest sibling argument in the
+sweep so far. `TODO(compat)` **29 → 28**; both lanes green; no golden,
+tolerance, ledger or deck touched.
+
+| row | upstream | what says it is a slip | default lane |
+|---|---|---|---|
+| `FAULT_DUMP_TAIL_REPRINTS_MINAMPS` | `TFaultObj.DumpProperties` runs its generic tail as `for i := NumPropsthisClass to ParentClass.NumProperties` (`Fault.pas:533`), and `NumPropsThisClass = Ord(High(TProp)) = 9 = MinAmps`, so the first iteration re-emits the property the custom `%.1f` line just wrote — `~ MinAmps=5.0` then `~ MinAmps=5` | the **three** other classes with this exact loop all write `NumPropsthisClass + 1`: `Transformer.pas:1276`, `AutoTrans.pas:1307`, `XfmrCode.pas:663`. No class double-prints a property on purpose | the tail starts at `NormAmps` |
+
+**The goldens stay the oracle's.** `golden_reports::fault_dump_expected` removes
+the **second** member of each adjacent `~ MinAmps=` pair in the default lane and
+nothing else, so all **four** goldens that carry a Fault dump —
+`dump_fault{,_gmatrix}.txt` (one Fault each) and the whole-circuit
+`dump3_{bare,debug}.txt` (two each; caught by the first gate run, which is what
+the gate is for) — remain pinned to the captured oracle in both lanes. The engine
+is then held to that expectation line-for-line, which is the expected-value pin
+in both directions (twice per Fault in parity, once in default). The transform is
+*positional* — "the second of two adjacent lines" — never "the line that looks
+generic", so a differently-rendered `MinAmps` can never be eaten by it.
+`fault_dump_goldens_carry_the_double_print` keeps it honest across all four: the
+oracle side must still carry exactly two lines per Fault (so a recapture cannot
+rot the transform into a no-op), the default-lane expectation exactly one, and
+each survivor must be the *first* of its pair — the custom `%.1f` render, not the
+generic one. `run_deck_dump_exact` grew an `_expected` twin for this; every other
+dump golden passes the identity.
+
+**Two carry-overs from F.3r, gated by this commit's run.** (i) `corpus_gate::
+runner`'s new `class_member_names` helper had been inserted *between*
+`run_rust_capture`'s doc comment and the function — moved above it. (ii)
+`lane::expected_eventlog` now documents that its `Debug Sample: Relay.` drop is
+unconditional, which is exact only while no gated deck sets `DebugTrace=yes`
+(verified empty over `tests/corpus/controls`), and that the failure mode if one
+ever does is a loud length mismatch, never a silent pass.
+
+**Scope discipline.** No IV.2 kernel row was added. Escape register unchanged:
+the **14** truncated physical constants, the **7** F-FMT rendering markers,
+`HIDE_015X` ×17; the single-site quirk census drops **8 → 7**, and
+14 + 7 + 7 = the 28 remaining markers.
+
+**Two rows argued but NOT implemented, recorded so the next pass does not
+re-derive them.**
+
+* **Capacitor `SetDouble(ord(TProp.Cuf), Cs - Cm)` silently discarded**
+  (`Capacitor.pas:814`, `pd/capacitor/solve.rs`). The site's own marker proposes
+  "drop the discarded write"; that is the **wrong** fix, and r4133 says so:
+  `Version8/Source/PDElements/Capacitor.pas:829` builds `' Cuf=%-.5g'` and parses
+  it, so the pre-refactor EPRI engine *does* write the value — the dss_capi move
+  to typed setters lost it, because `SetObjDouble` has no array arm and `Cuf` is
+  a `DoubleArrayProperty`. The default lane should therefore **write** it (which
+  also moves us *towards* one gating oracle, not away). What blocks the flip is
+  the array semantics of that write — which step(s) of a multi-step bank the
+  scalar lands on — and that needs an `epri-worker` probe, not an argument.
+* **Storage `MakePosSequence` has no `BeginEdit`** (`Storage.pas:3339`; the
+  PVSystem sibling at `:2649` opens one). Measured this session: the difference
+  is not merely "one extra recalc". `recalc` → `set_nominal_der_output` →
+  `check_state_trigger_level` **latches** `storage_state` in `dispmode=Load`/
+  `Price`, so an intermediate recalc — run at `phases=1` with the *old* `kV`/
+  `kWrated` — can flip the state and the final recalc need not flip it back.
+  A pin is therefore constructible (a `dispmode=load` bank whose trigger
+  straddles the intermediate configuration); building it is the next step.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace --no-fail-fast` and the same
+with the feature, including the unconditional 520-case corpus gate. Tests +1
+(`fault_dump_goldens_carry_the_double_print`), 0 removed, 0 new `#[ignore]`.
+`git diff -- tests/` touches no golden, tolerance, ledger or deck; `git status
+--short tests/corpus` empty after both runs.
+
 ### DE_PASCALIZE Stage F.3r — the Relay's two event-log slips, each contradicted by its own Recloser donor (branch `depas-stagef`, 2026-07-28)
 
 Both markers are r4133 copy-paste damage in the same class, and for both the

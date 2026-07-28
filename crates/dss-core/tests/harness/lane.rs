@@ -193,6 +193,13 @@ const LANE_SKIP_PROBE_PROPS: &[(&str, &str, &str)] = &[
 ///   Relay's are: the Recloser writes the byte-identical line *guarded*, so an
 ///   oracle `Debug Sample: Recloser.…` line means the user asked for it and
 ///   both lanes must still produce it.
+///
+///   The drop is unconditional, which is exact only while no gated deck sets
+///   `DebugTrace=yes` on a relay — verified (`rg -li debugtrace
+///   tests/corpus/controls` is empty), and the failure mode if one ever does is
+///   a loud length mismatch here, never a silent pass: the default lane would
+///   then emit a line the expectation dropped. Such a deck adds its relay's
+///   `DebugTrace` to this predicate rather than widening the drop.
 /// * `compat::RELAY_RESET_EVENT_IS_LABELLED_RECLOSER` — the copy-pasted
 ///   `Recloser.<name>` label on a relay's reset event becomes `Relay.<name>`.
 ///   `device_is_relay` decides which lines those are: it must answer "the
