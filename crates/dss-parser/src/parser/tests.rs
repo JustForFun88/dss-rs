@@ -208,8 +208,9 @@ fn make_integer_rounds_ties_to_even() {
     assert_eq!(p.make_integer(&vars).unwrap(), 0);
 }
 
-/// The **deliberate divergence** of the Stage F round row, at the one boundary
-/// a deck can observe it: an integer property whose value is out of range.
+/// The **deliberate divergence** of the Stage F round row
+/// ([`crate::compat::round_i32`]), at the one boundary a deck can observe it: an
+/// integer property whose value is out of range.
 ///
 /// The parity lane reproduces FPC's integer-indefinite artifact — `Round`
 /// returns the `i64::MIN` sentinel, and the Pascal `Integer := Round(…)`
