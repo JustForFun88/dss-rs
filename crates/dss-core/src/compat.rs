@@ -1111,3 +1111,41 @@ pub const CKT_MODEL_RENDERED_ORDINAL_DEFAULT_IMPL: i32 = 1;
 pub use CKT_MODEL_RENDERED_ORDINAL_DEFAULT_IMPL as CKT_MODEL_RENDERED_ORDINAL;
 #[cfg(feature = "oracle-parity")]
 pub use CKT_MODEL_RENDERED_ORDINAL_PARITY_IMPL as CKT_MODEL_RENDERED_ORDINAL;
+
+/// Whether a **Generator**'s `MakePosSequence` decides "the user set `kVA=` /
+/// `MVA=`" from the property-sequence slots of `Xdp` / `Xdpp`.
+///
+/// `true` reproduces the upstream quirk: `TGeneratorObj.MakePosSequence`
+/// (`generator.pas:2804-2805`) tests `PrpSequence[26] > 0` and
+/// `PrpSequence[27] > 0` — the only two *raw* ordinals in a procedure that
+/// names every other property symbolically, up to and including the
+/// `SetDouble(ord(TProp.kVA), …)` each guard protects (`:2841`). In the current
+/// `TGeneratorProp` enum 26/27 are `Xdp` and `Xdpp`; `kVA` and `MVA` are 23 and
+/// 24. The guards therefore answer a question nobody asked, and get it wrong
+/// both ways: a 3-phase generator declared with `kVA=250` keeps 250 after
+/// `makeposseq` (its rating is *not* divided by the phase count), while one
+/// declared with `Xdp=` has its untouched kVA rating divided.
+///
+/// `false` reads `kVA`/`MVA` — the fix upstream itself spells out three ways:
+/// the local variable names (`had_kVA`, `had_MVA`), the `SetDouble` each guard
+/// gates, and the third guard of the same block, `had_kvars`, which uses the
+/// raw pair `[19]`/`[20]` — the slots that still *are* `Maxkvar`/`Minkvar`. The
+/// stale pair is a rename that outran its literals, not a decision.
+///
+/// **Observable only through the two ratings, and only after `makeposseq` on a
+/// multi-phase generator.** `kVArating` reaches a power-flow solve through
+/// nothing at all: it scales `Xdp`/`Xdpp` (`generator.pas:1281-1282`) and the
+/// dynamics inertia constants (`:2436-2437`), so a snapshot/daily solve is
+/// bit-identical in both lanes. The gated deck built for this quirk,
+/// `tests/corpus/modes/makeposseq/makeposseq_pc.dss`, therefore diverges in
+/// exactly one probed cell — `Generator.g_kva.kva` — which
+/// `harness::lane::LANE_SKIP_PROBE_PROPS` drops in the default lane only, with
+/// the replacement pins in `elements/pc/generator/tests.rs`.
+pub const GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS_DEFAULT_IMPL as GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS;
+#[cfg(feature = "oracle-parity")]
+pub use GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS_PARITY_IMPL as GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS;

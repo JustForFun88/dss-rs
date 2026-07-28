@@ -4,6 +4,7 @@
 
 use num_complex::Complex64;
 
+use crate::compat;
 use crate::elements::ckt::{CktElementData, ElemFlags};
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
@@ -29,13 +30,14 @@ impl CktElement for Generator {
     /// phase count (PF preserved), and — conditionally — its kvar limits, kVA
     /// and MVA ratings.
     ///
-    /// TODO(compat): the `had_kVA`/`had_MVA` guards read `PrpSequence[26]` and
-    /// `[27]` (`generator.pas:2744-2745`). Those hard-coded ordinals point at
-    /// `Xdp`/`Xdpp` in the current `TGeneratorProp` enum — NOT `kVA`/`MVA`
-    /// (ordinals 23/24). So setting `kVA=`/`MVA=` never triggers the divide
-    /// (oracle: `g_kva` keeps `kVA=250`); only setting `Xdp=`/`Xdpp=` does.
-    /// `had_kvars` reads `[19]`/`[20]` (`Maxkvar`/`Minkvar`), which are correct.
-    /// Reproduced 1:1 via the raw indices; the clean fix is `ord(TProp.kVA)` etc.
+    /// The `had_kVA`/`had_MVA` guards are the Stage F row
+    /// [`compat::GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS`]: upstream reads
+    /// the raw slots `[26]`/`[27]` (`generator.pas:2804-2805`), which the
+    /// current `TGeneratorProp` enum spells `Xdp`/`Xdpp` — `kVA`/`MVA` are
+    /// 23/24 — so the parity lane divides the rating when `Xdp=` was set and
+    /// leaves it alone when `kVA=` was. The default lane reads the two
+    /// properties the guards are named after. `had_kvars` reads `[19]`/`[20]`
+    /// (`Maxkvar`/`Minkvar`) in both lanes: those raw slots are still correct.
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
         // Make sure voltage is line-neutral.
         let v = if self.cd.nphases > 1 || self.connection != Connection::Wye {
@@ -54,10 +56,19 @@ impl CktElement for Generator {
 
         if old_phases > 1 {
             let nph = self.cd.nphases as f64;
-            // Raw PrpSequence indices — the compat marker is on the method doc.
-            let had_kva = self.cd.obj.prp_specified(26); // upstream: intends kVA (23)
-            let had_mva = self.cd.obj.prp_specified(27); // upstream: intends MVA (24)
-            let had_kvars = self.cd.obj.prp_specified(19) || self.cd.obj.prp_specified(20);
+            // The lane row on the method doc: which slots the two rating guards
+            // read. `prop::XDP`/`XDPP` *are* the raw 26/27 upstream hard-codes.
+            let (kva_slot, mva_slot) = if compat::GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS {
+                (prop::XDP, prop::XDPP)
+            } else {
+                (prop::KVA, prop::MVA)
+            };
+            let had_kva = self.cd.obj.prp_specified(kva_slot);
+            let had_mva = self.cd.obj.prp_specified(mva_slot);
+            // 19/20 are `Maxkvar`/`Minkvar` — upstream's raw pair that is still
+            // right, so this guard is the same in both lanes.
+            let had_kvars = self.cd.obj.prp_specified(prop::MAXKVAR)
+                || self.cd.obj.prp_specified(prop::MINKVAR);
 
             let kw_new = self.kw_base / nph;
             let pf_new = self.pf_nominal;

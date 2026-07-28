@@ -7,6 +7,79 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3q — the `MakePosSequence` family: one guard split, one divisor kept (branch `depas-stagef`, 2026-07-28)
+
+Two markers on the same conversion procedure, and they resolve in **opposite**
+directions — which is the point of arguing each site against the Pascal instead
+of counting them. `TODO(compat)` **33 → 31**; both lanes green; no golden,
+tolerance, ledger or deck touched.
+
+| row | upstream | disposition | default lane |
+|---|---|---|---|
+| `GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS` | `had_kVA := PrpSequence[26] > 0` / `had_MVA := PrpSequence[27] > 0` (`generator.pas:2804-2805`) — the only two raw ordinals in a procedure that names every other property `ord(TProp.…)`; 26/27 are `Xdp`/`Xdpp`, `kVA`/`MVA` are 23/24 | **lane split** | the guards read the two properties they are named after |
+| Load's `kW/3.0` divisor (`Load.pas:2230`) | a hard-coded 3, where Generator/PVSystem/Storage all divide by `Fnphases` | **permanent semantics, both lanes** — marker replaced by documentation | unchanged |
+
+**Why one is a defect and the other is a decision — stated from the source, not
+from symmetry.** The Load divisor carries upstream's own rationale *and its
+date*: "New Method: Assume load is distributed equally among the 3 phases --
+works better // 1-5-2016 RCD", written where the replaced `/Fnphases` still
+shows in the comment. That is criterion (ii) of the single-site membership rule
+failing in the strongest possible way: the source says the 3 **is** what was
+meant, so a lane that "fixed" it would be changing a modelling choice. The
+generator guards have the opposite evidence: the local names (`had_kVA`,
+`had_MVA`), the `SetDouble(ord(TProp.kVA), …)` each one gates (`:2841`), and the
+third guard of the same block — `had_kvars`, raw `[19]`/`[20]`, slots that still
+*are* `Maxkvar`/`Minkvar`. It is a rename that outran its literals. It also gets
+the answer wrong in both directions, which is what the pins assert: `kVA=250`
+survives a `makeposseq` unscaled, while setting a *reactance* (`Xdp=`) divides
+the kVA rating.
+
+**The gate cost is four cells, and they are four because upstream aliases two
+properties onto one field.** `makeposseq_pc.dss` was built for this quirk, so
+the default lane necessarily moves there. `PropertyOffset` aims both `kVA`
+(`:620`) and `MVA` (`:640`) at `GenVars.kVArating`, so the rating shows twice per
+generator: `(g_kva|g_mva) × (kva|mva)`. Those four cells — of a deck with 13
+elements, 4 probes and a full-property dump — are what the new
+`harness::lane::LANE_SKIP_PROBE_PROPS` drops in the **default lane only**, at
+both surfaces that read them (the probe loop and `compare_all_properties`, the
+latter through the same oracle-value rewrite a ledger `property` scope uses).
+Nothing else about the deck is relaxed: the same generators' `phases`/`kv`/`kw`,
+`g_kvar`'s four probes, every other property of the same two elements, the
+element channels, voltages, system Y, discrete state and iteration count stay
+oracle-compared in both lanes.
+
+**That exclusion is safe because the rating is not a power-flow quantity, which
+is measured rather than assumed**: `kVArating` is read in exactly two places
+(`rg` over `generator.pas`) — the `Xdp`/`Xdpp` ohm conversion (`:1281-1282`) and
+the dynamics inertia constants `Mmass`/`D` (`:2436-2437`). Neither is touched by
+the deck's snapshot solve, and the live run confirms it: with the four cells
+excluded the case is byte-clean on both channels, i.e. no voltage, current,
+power or iteration count moved.
+
+**Replacement pins.** The three `generator/tests.rs` cases that used to pin the
+quirk now pin the *row*, asserted as an equality against `compat::ORACLE_PARITY`
+so they are load-bearing in both lanes: `kVA=` and `MVA=` each emit their divide
+in the default lane and nothing in the parity lane, and `Xdp=` trips the kVA
+divide only in the parity lane. `harness::lane::probe_exclusion_is_one_cell_wide`
+keeps the exclusion honest from the other side — the listed cells are dropped in
+the default lane only, and their siblings (another property of the same element,
+the same property on another element, the same cell on a label with a suffix)
+must still be gated in both lanes.
+
+**Scope discipline.** No IV.2 kernel row was added; the split enters under the
+*Single-site upstream quirks* membership rule. Escape register unchanged: the
+**14** truncated physical constants, the **7** F-FMT rendering markers,
+`HIDE_015X` ×17; the single-site quirk census drops **12 → 10**, and
+14 + 7 + 10 = the 31 remaining markers.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace --no-fail-fast` and the same
+with the feature, including the unconditional 520-case corpus gate. Tests +1
+(`probe_exclusion_is_one_cell_wide`), 0 removed, 0 new `#[ignore]`. `git diff --
+tests/` touches no golden, tolerance, ledger or deck; `git status --short
+tests/corpus` empty after both runs.
+
 ### DE_PASCALIZE Stage F.3p — the `Set CktModel=` LongBool row, and the two unmarked port divergences it uncovered (branch `depas-stagef`, 2026-07-28)
 
 One marker, three engine sites — and the row's real value is that only **one**

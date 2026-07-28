@@ -125,6 +125,88 @@ pub fn elem_channels_for(label: &str) -> ElemChannels {
     }
 }
 
+/// The individual `(case label, element, property)` probe cells the **default**
+/// lane does not oracle-compare, because a Stage F row deliberately moves that
+/// one number. The drift model's "deliberate divergences … excluded
+/// field-by-field" row again, at the finest granularity the corpus gate has:
+/// one property of one element of one case. Everything else about the case —
+/// every other probe, every element channel, the voltages, the system Y, the
+/// discrete state and the iteration count — stays oracle-gated in both lanes.
+///
+/// * `Generator.g_kva` / `Generator.g_mva`, properties `kva` and `mva`, on
+///   `makeposseq_pc.dss`:
+///   `compat::GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS`. Upstream's
+///   `had_kVA`/`had_MVA` guards read the `Xdp`/`Xdpp` slots, so the oracle
+///   leaves each rating exactly as declared across the deck's two `makeposseq`
+///   calls (250 kVA, 0.30 MVA); the default lane divides by the phase count on
+///   the first call (→ 83.33 kVA, → 0.10 MVA; the second call is a no-op
+///   because the machine is 1-phase by then). Both property names are listed
+///   for each generator because they are **one field**: `PropertyOffset` aims
+///   `kVA` and `MVA` at the same `GenVars.kVArating` (`generator.pas:620` and
+///   `:640`), so a divergence in the rating necessarily shows in both readouts.
+///
+///   The rating reaches no power-flow quantity — it scales `Xdp`/`Xdpp`
+///   (`:1281-1282`) and the dynamics inertia (`:2436-2437`), neither of which a
+///   snapshot solve touches — so these four cells are all that moves. The two
+///   generators' own `phases`/`kv`/`kw` probes, `g_kvar`'s four probes, every
+///   other property of the same two elements, and the full-model compare of all
+///   13 elements stay oracle-gated in both lanes. Replacement pins:
+///   `dss_core::elements::pc::generator::tests::
+///   makeposseq_generator_{kva,mva}_guard_is_the_lane_slot` and
+///   `…::makeposseq_generator_xdp_trips_the_kva_divide_only_in_parity`.
+const LANE_SKIP_PROBE_PROPS: &[(&str, &str, &str)] = &[
+    (
+        "modes:makeposseq/makeposseq_pc.dss",
+        "Generator.g_kva",
+        "kva",
+    ),
+    (
+        "modes:makeposseq/makeposseq_pc.dss",
+        "Generator.g_kva",
+        "mva",
+    ),
+    (
+        "modes:makeposseq/makeposseq_pc.dss",
+        "Generator.g_mva",
+        "kva",
+    ),
+    (
+        "modes:makeposseq/makeposseq_pc.dss",
+        "Generator.g_mva",
+        "mva",
+    ),
+];
+
+/// Whether the current lane oracle-compares the probe cell `(label, element,
+/// prop)` — always in the parity lane, everywhere but
+/// [`LANE_SKIP_PROBE_PROPS`] in the default lane.
+pub fn probe_is_gated(label: &str, element: &str, prop: &str) -> bool {
+    PARITY
+        || !LANE_SKIP_PROBE_PROPS.iter().any(|(l, e, p)| {
+            *l == label && e.eq_ignore_ascii_case(element) && p.eq_ignore_ascii_case(prop)
+        })
+}
+
+/// The same cells as [`probe_is_gated`], spelled the way the whole-element
+/// property dump keys them: lowercase `(element, property)` pairs for the case
+/// `label`, empty in the parity lane.
+///
+/// A case that requests `compare_all_properties` reads the excluded cell a
+/// second time, through `AllPropertyNames`; the runner neutralizes it exactly
+/// as a ledger `property` scope does — by rewriting that one oracle value to
+/// the Rust `?`-surface value — so the dump's count/order contract and every
+/// other property of the same element stay gated.
+pub fn skipped_prop_keys(label: &str) -> Vec<(String, String)> {
+    if PARITY {
+        return Vec::new();
+    }
+    LANE_SKIP_PROBE_PROPS
+        .iter()
+        .filter(|(l, _, _)| *l == label)
+        .map(|(_, e, p)| (e.to_lowercase(), p.to_lowercase()))
+        .collect()
+}
+
 /// Byte-exact line comparison (only CRLF→LF normalized), with a per-line
 /// failure message pointing at the first divergence.
 ///
@@ -254,9 +336,9 @@ pub fn compare_iterations_le(rust: i32, oracle: i32, ctx: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        ElemChannels, ITER_SLACK, LANE_SKIP_ELEM_POWERS, PARITY, assert_bytes_eq,
-        compare_iterations, compare_iterations_le, compare_report, elem_channels_for,
-        exact_value_policy,
+        ElemChannels, ITER_SLACK, LANE_SKIP_ELEM_POWERS, LANE_SKIP_PROBE_PROPS, PARITY,
+        assert_bytes_eq, compare_iterations, compare_iterations_le, compare_report,
+        elem_channels_for, exact_value_policy, probe_is_gated,
     };
 
     /// Run `f`, returning `true` when it passed. Silences the panic hook so a
@@ -314,6 +396,40 @@ mod tests {
                 elem_channels_for(label),
                 ElemChannels::ALL,
                 "{label} must stay fully gated in both lanes"
+            );
+        }
+    }
+
+    /// The probe-cell exclusion is exactly one cell wide, in the default lane
+    /// only: the excluded `(case, element, prop)` triple stops being gated
+    /// there, and its *siblings* — another property of the same element, the
+    /// same property on another element, the same cell on another case — keep
+    /// their oracle compare in both lanes. Asserted as an equality against the
+    /// lane so the test is meaningful in both.
+    #[test]
+    fn probe_exclusion_is_one_cell_wide() {
+        for (label, element, prop) in LANE_SKIP_PROBE_PROPS {
+            assert_eq!(
+                probe_is_gated(label, element, prop),
+                PARITY,
+                "{label} {element}.{prop} is dropped in the default lane only"
+            );
+            // Case-insensitive on the element/property, exact on the label —
+            // the same spelling rules the oracle capture and the manifest use.
+            assert_eq!(probe_is_gated(label, &element.to_uppercase(), prop), PARITY);
+            assert!(
+                probe_is_gated(&format!("{label} step 0"), element, prop),
+                "the case label match is exact, not a prefix"
+            );
+            for other in ["kv", "kw", "phases"] {
+                assert!(
+                    probe_is_gated(label, element, other),
+                    "{label} {element}.{other} must stay gated in both lanes"
+                );
+            }
+            assert!(
+                probe_is_gated(label, "Generator.g_plain", prop),
+                "only the named element's cell is excluded"
             );
         }
     }
