@@ -7,6 +7,98 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3ac — the sweep's own instrument was under-scoped: three compat markers were hiding outside `crates/` (branch `depas-stagef`, 2026-07-29)
+
+F.3ab closed with a register that checks the surviving markers **both ways** and
+a population of 22. Both halves of that claim were true only of the subtree the
+walk looked at. `rust_sources` — the walk every Stage F gate is built on —
+enumerated `crates/*/{src,tests,benches,examples}` and nothing else, because
+Stage F's exit criterion is written as `rg "TODO\(compat\)" crates`. `CLAUDE.md`
+is not: it says the markers "are **all** absorbed in one dedicated pass". Those
+two scopes differ by a real crate, and the difference was hiding three markers
+that name Stage F as their owner in their own text ("deferred to the
+DE_PASCALIZE Stage F sweep"). The population is **22 → 25**; no engine code, no
+golden, tolerance, ledger or deck moved, and both lanes stay green.
+
+**Where they were.** `tools/wasm_usermodel/models/indmach012a` — the WM.2
+reference user model — is a hand-ported Rust crate, not tooling scaffolding. It
+is **workspace-excluded on purpose**: its `Cargo.toml` carries an empty
+`[workspace]` table so the fixture toolchain stays pinned separately from the
+product gate (`WASM_USERMODELS_PLAN.md` §2.6). That is exactly what made it
+invisible — it is Rust the port owns, in a directory the port's own tag index
+never read. The same blind spot also swallowed a **prose** mention of the tag
+(`model.rs:513`, "NOT a `TODO(compat)` — …"), the precise thing F.3g's spelling
+gate exists to reject; widening the walk makes it fail, so it is reworded here.
+
+**Inherited state re-verified before building on it.** F.3ab's tree
+(`64bc94f2`) was re-gated from scratch in both lanes before any edit: `cargo fmt
+--all --check` clean, `cargo clippy --workspace --all-targets -- -D warnings`
+and the same with `--features dss-core/oracle-parity` both exit 0, `cargo test
+--workspace --no-fail-fast` and the parity-lane twin both exit 0 with the
+unconditional 520-case corpus gate inside each. The parity run leaked the known
+intermittent `Test/AutoTrans/Auto3bus_*` artifacts; deleted by exact name,
+`git status --short tests/corpus` empty.
+
+**Why all three escape — measured per row, not argued as a category.** The
+fixture crate carries its own host-target twin tests, so each constant's flip
+was run *in isolation* against the native FPC twin's bit-exact generated pins
+(`tests/twin_expected.rs`, "GENERATED … DO NOT EDIT"), 2026-07-29:
+
+| row | flip | first pin it breaks | relative |
+|---|---|---|---|
+| `symcomp.rs` | `0.866025403` → exact `sin 120°` | `pf_i_1_0` −1436.051530295505 vs −1436.0515303730524 | 5.40e-11 |
+| `model.rs` `Compute_dSdP` | `1.732` → `sqrt(3)` | `vars_initial_10` (`Ir1`) 1723.6616943288936 vs 1723.7122572967085 | **2.93e-5** |
+| `model.rs` var 14 | f32-folded `3.0/746.0` → f64 | `vars_initial_14` (`HPshaft`) −1848.1305807400754 vs −1848.1305331200504 | 2.58e-8 |
+
+They are the same truncated-constant family as the engine-side `UpgradeRung`
+rows, but with a **structurally stronger** blocker, which is why they get their
+own owner (`Escape::WasmGuest`) rather than joining that bucket: the Stage F
+mechanism does not exist here. `dss-core/oracle-parity` cannot reach a crate
+that is not in the workspace, and the gated artifact is ONE committed binary
+(`tests/fixtures/wasm/indmach012a.wasm`, regenerated manually under
+`tools/wasm_usermodel/PIN.txt`). A lane split is therefore not a `cfg` alias but
+a *second `.wasm` fixture* — a WASM_USERMODELS_PLAN decision, not an executor's.
+The third row is also the one place where the truncation is not a wart at all:
+FPC folds `3.0/746.0` at SINGLE precision, so the f32 quotient *is* the twin's
+arithmetic.
+
+**The instrument, fixed.** `rust_sources` now walks the whole repository with a
+named skip list. `.claude` is on it for a specific reason: it holds the
+parallel-agent worktrees, which are complete copies of this repository, so a
+naive widening would report every marker two or three times and fail the gate on
+a clean checkout. The widening is pinned against being tidied back:
+`rust_sources` asserts it reaches both `crates/dss-core/src/compat.rs` **and**
+`tools/wasm_usermodel/models/indmach012a/src/model.rs`. The walk stays
+`.rs`-only, which is the right boundary and was checked rather than assumed:
+the tag's remaining tree-wide hits are cross-references *about* markers in
+Markdown and in the golden-generator Python (`tools/golden/gen_*.py`,
+`tools/fpc/fmt_battery/gen_values.py`, `docs/wasm/USERMODEL_ABI.md`) — capture-
+side notes, not ported reproduction sites. `tools/wasm_usermodel/README.md:56`
+already listed these three constants, which is corroboration that they were
+known and simply had nowhere to be counted.
+
+**Non-vacuity, probed rather than asserted.** Restoring the prose mention makes
+`compat_tag_is_only_ever_a_marker_never_prose` fail *naming the `tools/` path*;
+re-keying one `WasmGuest` row makes the register report the orphaned marker,
+also by its `tools/` path. Both probes were run and reverted — the widening is
+load-bearing in both directions, not decoration.
+
+**What this does not change.** The F.3 verdict stands: every marker whose clean
+fix fits the IV.2 drift model is flipped, and each of the 25 survivors carries a
+measured blocker owned by a named successor (`UpgradeRung` 11, `Ffmt` 7,
+`WholeCase` 4, `WasmGuest` 3). The re-baseline is still empty and still handed
+to Stage F landing (`git diff 6f691ecb..HEAD -- tests/golden tests/corpus`
+remains empty), and `HIDE_015X` keeps its F.3aa disposition.
+
+**Proof.** Both lanes green on the exact committed tree: `cargo fmt --all
+--check`; `cargo clippy --workspace --all-targets -- -D warnings` and the same
+with `--features dss-core/oracle-parity`; `cargo test --workspace
+--no-fail-fast` **2358 passed / 0 failed / 5 ignored** and the parity-lane twin
+identically **2358 / 0 / 5**, with the unconditional 520-case corpus gate green
+inside each. Tests ±0, 0 removed, 0 new `#[ignore]` (the 5 are the four manual
+generation binaries plus one `define_properties` doctest). `git status --short
+tests/corpus` empty after every run.
+
 ### DE_PASCALIZE Stage F.3ab — the escape register becomes a gate, and the missing re-baseline turns out to be empty (branch `depas-stagef`, 2026-07-28)
 
 F.3 drove the compat-marker population **123 → 22** (`rg "TODO\(compat\)" crates`,

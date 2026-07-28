@@ -34,29 +34,48 @@ fn repo_root() -> PathBuf {
     [env!("CARGO_MANIFEST_DIR"), "..", ".."].iter().collect()
 }
 
-/// Every `.rs` file under `crates/*/{src,tests,benches,examples}`.
+/// Directory names the source walk never descends into.
+///
+/// `target` and `node_modules` are build output. `.git`, `.inputs` and `.venv`
+/// are VCS or vendored trees (the latter two are Windows **junctions** into the
+/// main checkout — see `CLAUDE.md`, "Git worktrees"). `.claude` holds the
+/// parallel-agent worktrees, which are *complete copies of this repository*:
+/// descending there would report every marker in the tree two or three times
+/// and fail this gate on an otherwise clean checkout.
+const SKIP_DIRS: &[&str] = &[
+    ".git",
+    ".claude",
+    ".inputs",
+    ".venv",
+    "target",
+    "node_modules",
+];
+
+/// Every `.rs` file in the repository.
+///
+/// Deliberately the **whole tree**, not just `crates/*/{src,tests,benches,
+/// examples}`. The compat tag is an index of the ported Rust that deliberately
+/// reproduces an upstream inexactness, and `CLAUDE.md` says all of them are
+/// absorbed in one pass — not "all of them under `crates/`". F.3ac found three
+/// markers living outside that prefix: `tools/wasm_usermodel/models/
+/// indmach012a` is a real hand-ported Rust crate (the WM.2 reference user
+/// model) that is **workspace-excluded by design** — it carries its own empty
+/// `[workspace]` table so the fixture toolchain stays pinned separately from
+/// the product gate (`WASM_USERMODELS_PLAN.md` §2.6). A `crates/`-shaped walk
+/// can never see it, so its markers named Stage F as their owner while being
+/// invisible to every Stage F gate, including the exit count.
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    let crates = root.join("crates");
-    let mut dirs: Vec<PathBuf> = fs::read_dir(&crates)
-        .expect("crates/ is readable")
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.is_dir())
-        .flat_map(|p| {
-            ["src", "tests", "benches", "examples"]
-                .iter()
-                .map(|sub| p.join(sub))
-                .collect::<Vec<_>>()
-        })
-        .filter(|p| p.is_dir())
-        .collect();
+    let mut dirs = vec![root.to_path_buf()];
 
     while let Some(dir) = dirs.pop() {
         for entry in fs::read_dir(&dir).expect("directory is readable").flatten() {
             let path = entry.path();
             if path.is_dir() {
-                dirs.push(path);
+                let name = entry.file_name().to_string_lossy().to_lowercase();
+                if !SKIP_DIRS.contains(&name.as_str()) {
+                    dirs.push(path);
+                }
             } else if path.extension().is_some_and(|e| e == "rs") {
                 out.push(path);
             }
@@ -68,6 +87,20 @@ fn rust_sources(root: &Path) -> Vec<PathBuf> {
         "source scan found only {} files — the walk is broken",
         out.len()
     );
+    // Non-vacuity of the *widening*: both halves of the tree must be reached,
+    // so a future "tidy the walk" cannot silently shrink it back to `crates/`
+    // and drop the fixture crates' markers out of the register again.
+    for expected in [
+        "crates/dss-core/src/compat.rs",
+        "tools/wasm_usermodel/models/indmach012a/src/model.rs",
+    ] {
+        let want = root.join(expected);
+        assert!(
+            out.contains(&want),
+            "the source walk no longer reaches {expected} — every compat marker \
+             in that subtree just left the Stage F register unnoticed"
+        );
+    }
     out
 }
 
@@ -213,10 +246,11 @@ fn compat_tag_is_only_ever_a_marker_never_prose() {
 ///
 /// F.3 flipped every marker whose clean fix fits the IV.2 drift model — a
 /// field-scoped default-lane exclusion plus an expected-value pin — and
-/// *measured* the cost of every one that does not. These three variants are the
-/// three reasons a measurement came back "no": the fix is another step's job,
-/// the fix needs an oracle re-baseline, or the fix costs a whole gated case its
-/// default-lane oracle comparison.
+/// *measured* the cost of every one that does not. These variants are the
+/// reasons a measurement came back "no": the fix is another step's job, the fix
+/// needs an oracle re-baseline, the fix costs a whole gated case its
+/// default-lane oracle comparison, or the marker sits in a build the lane
+/// mechanism cannot reach at all.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Escape {
     /// **F.4 (`F-FMT`).** A rendering marker: it belongs to the `compat::fmt`
@@ -236,6 +270,20 @@ enum Escape {
     /// fields"; a whole-case skip is a coverage trade the plan does not grant
     /// the executor.
     WholeCase,
+    /// **`WASM_USERMODELS_PLAN`.** The marker lives in a wasm reference user
+    /// model (`tools/wasm_usermodel/models/…`), where the Stage F mechanism
+    /// does not exist: the model is a **workspace-excluded** crate with its own
+    /// `[workspace]` table (plan §2.6), so `dss-core/oracle-parity` cannot
+    /// reach it, and the gated artifact is ONE committed binary
+    /// (`tests/fixtures/wasm/*.wasm`, regenerated manually with the toolchain
+    /// pinned in `tools/wasm_usermodel/PIN.txt`). A lane split here is not a
+    /// `cfg` alias but a second `.wasm` fixture, and the guest's numbers are
+    /// pinned bit-exactly against the **native FPC twin**
+    /// (`tests/twin_expected.rs`, "GENERATED … DO NOT EDIT", probed into
+    /// `docs/wasm/probes/p6_twin_expected.txt`) as well as by the
+    /// `wasm_usermodels` oracle goldens the parity lane may never re-baseline.
+    /// Each row's flip was run against that twin; the number is at the site.
+    WasmGuest,
 }
 
 /// Every compat marker still standing at the Stage F.3 exit, keyed by the file
@@ -406,17 +454,49 @@ const ESCAPE_REGISTER: &[(&str, &str, Escape)] = &[
         "this deliberately reproduces an upstream inconsistency",
         Escape::WholeCase,
     ),
+    // ---- the wasm reference user model → WASM_USERMODELS_PLAN (3) ----
+    // Each flip was run in isolation against the crate's own native-FPC-twin
+    // pins (`cargo test` in the excluded crate, 2026-07-29); every one of them
+    // fails a *bit-exact* generated pin, which is the whole contract of that
+    // fixture. Same truncated-constant family as the engine-side rows next
+    // door, but with no lane to flip into.
+    //
+    // Truncated `sqrt(3)/2` in the symmetrical-component `A` matrix →
+    // `pf_i_1_0` -1436.051530295505 vs the twin's -1436.0515303730524
+    // (5.40e-11 relative).
+    (
+        "tools/wasm_usermodel/models/indmach012a/src/symcomp.rs",
+        "0.866025403",
+        Escape::WasmGuest,
+    ),
+    // Truncated `sqrt(3)` in `Compute_dSdP`'s rated voltage → `vars_initial_10`
+    // (`Ir1`) 1723.6616943288936 vs the twin's 1723.7122572967085 (2.93e-5
+    // relative) — the largest of the three by four orders of magnitude.
+    (
+        "tools/wasm_usermodel/models/indmach012a/src/model.rs",
+        "`1.732` reproduces upstream",
+        Escape::WasmGuest,
+    ),
+    // FPC's SINGLE-precision constant folding of `3.0/746.0` → `vars_initial_14`
+    // (`HPshaft`) -1848.1305807400754 vs the twin's -1848.1305331200504
+    // (2.58e-8 relative, confirming the 2.6e-8 the marker already claimed).
+    (
+        "tools/wasm_usermodel/models/indmach012a/src/model.rs",
+        "FPC folds the all-constant",
+        Escape::WasmGuest,
+    ),
 ];
 
 /// The Stage F.3 exit population, per handoff owner.
 ///
-/// Update these three numbers in the same commit that closes a row — that is
-/// the point of stating them: the count is the plan's exit criterion, so it
-/// should move only on purpose.
-const EXIT_POPULATION: [(Escape, usize); 3] = [
+/// Update these numbers in the same commit that closes a row — that is the
+/// point of stating them: the count is the plan's exit criterion, so it should
+/// move only on purpose.
+const EXIT_POPULATION: [(Escape, usize); 4] = [
     (Escape::UpgradeRung, 11),
     (Escape::Ffmt, 7),
     (Escape::WholeCase, 4),
+    (Escape::WasmGuest, 3),
 ];
 
 /// Collect `(repo-relative path with `/` separators, marker text)` for every
