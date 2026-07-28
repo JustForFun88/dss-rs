@@ -297,6 +297,18 @@ fn assert_expected_warnings(dss: &Dss, expect: &[String], ctx: &str) {
 /// Compile + post + reconcile warnings; return the driven [`Dss`] (not yet
 /// solved) and the baseline error count. The Rust engine runs ONCE per case;
 /// [`compare_capture`] then advances + compares it step by step.
+/// The lowercase object names of one class among the snapshotted circuit
+/// elements (`snapshot_elements` walks `Circuit.ckt_elements`, which holds the
+/// control elements too).
+fn class_member_names(snaps: &[dss_core::exec::ElementSnapshot], class: &str) -> BTreeSet<String> {
+    snaps
+        .iter()
+        .filter_map(|s| s.name.split_once('.'))
+        .filter(|(cls, _)| cls.eq_ignore_ascii_case(class))
+        .map(|(_, name)| name.to_lowercase())
+        .collect()
+}
+
 pub(crate) fn run_rust_capture(label: &str, case_path: &str, c: &SolvableCase) -> (Dss, usize) {
     let mut dss = Dss::new();
     dss.command("clear");
@@ -533,17 +545,24 @@ pub(crate) fn compare_capture(
             // A ledger eventlog `line_re` scope normalizes the diffing oracle line
             // (e.g. trailing-whitespace artifact) before the compare; unmatched
             // lines pass through unchanged.
-            match ledger {
-                Some(v) => {
-                    let masked: Vec<String> = cp
-                        .eventlog
-                        .iter()
-                        .map(|l| v.mask_line("eventlog", l))
-                        .collect();
-                    compare_eventlog(dss, &masked, channel.eventlog_spec(), &ctx);
-                }
-                None => compare_eventlog(dss, &cp.eventlog, channel.eventlog_spec(), &ctx),
-            }
+            let masked: Vec<String> = match ledger {
+                Some(v) => cp
+                    .eventlog
+                    .iter()
+                    .map(|l| v.mask_line("eventlog", l))
+                    .collect(),
+                None => cp.eventlog.clone(),
+            };
+            // Then the Stage F Relay rows (identity in the parity lane). The
+            // relay/recloser split is read from the Rust circuit, which the
+            // element-name set above has already pinned against the oracle.
+            let relays: BTreeSet<String> = class_member_names(&snaps, "relay");
+            let reclosers: BTreeSet<String> = class_member_names(&snaps, "recloser");
+            let expected = lane::expected_eventlog(&masked, |name| {
+                let n = name.to_lowercase();
+                relays.contains(&n) && !reclosers.contains(&n)
+            });
+            compare_eventlog(dss, &expected, channel.eventlog_spec(), &ctx);
         }
         if c.compare_ctrlqueue {
             match ledger {

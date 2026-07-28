@@ -7,6 +7,77 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3r — the Relay's two event-log slips, each contradicted by its own Recloser donor (branch `depas-stagef`, 2026-07-28)
+
+Both markers are r4133 copy-paste damage in the same class, and for both the
+Recloser — the file the text was copied *from* — spells the fix.
+`TODO(compat)` **31 → 29**; both lanes green; no golden, tolerance, ledger or
+deck touched.
+
+| row | upstream | what says it is a slip | default lane |
+|---|---|---|---|
+| `RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE` | `TRelayObj.Sample` closes its state resync with a bare `AppendtoEventLog('Debug Sample: Relay.'+Name, 'FPresentState: …')` (r4133 `Relay.pas:1325`) — no `DebugTrace` guard, and not gated on `ShowEventLog` either | the Recloser's byte-identical line **is** guarded (`Recloser.pas:1044`), and so is every *other* `Debug Sample` line in `Relay.pas` itself (`:1822`, `:1837`, …) — exactly one line lost its guard | written only under `DebugTrace`, through the `Relay::dbg` helper the port already had |
+| `RELAY_RESET_EVENT_IS_LABELLED_RECLOSER` | both `CTRL_RESET` arms of `TRelayObj.DoPendingAction` log `'Recloser.'+Self.Name` (`Relay.pas:1196`, `:1212`) | they are verbatim copies of `Recloser.pas:909`/`:924` — same format strings, same guard — while all ~10 other events in the same procedure (`:1087`-`:1176`) write `'Relay.'+Self.Name` | `Relay.<name>` |
+
+**Why this is worth splitting and not just noise.** The first row puts a *debug*
+line into the user-facing event log on every control sample of every relay,
+which is the one thing `ShowEventLog`/`DebugTrace` exist to prevent. The second
+attributes a relay's reset to a class that may not exist in the circuit — or, if
+it does, to the wrong device.
+
+**The oracle stays the source of truth on all 11 gated relay-bearing decks**
+(the nine `controls/relay/*` plus `controls/combo/{combo,midi}_protection.dss`;
+the other two eventlog-gated `controls/fuse/indmach_r4133/*` decks declare no
+relay). Their event logs are the *point* of those `oracle: "r4133"` cases, so
+re-capturing them for the default lane would trade an oracle proof for two label
+changes.
+Instead `harness::lane::expected_eventlog` applies an enumerated transform to the
+oracle capture — drop the `Debug Sample: Relay.` lines, relabel the relay reset
+lines — and the engine is still held to the result line-for-line, count
+included. The parity arm is the identity.
+
+**The relabel refuses to guess.** It fires only on the two copied wordings
+(`PHASE … RESET (1PH RESET)` / `(3PH RESET)`) and only when the named device is
+a Relay of the circuit **and not** a Recloser of it — the names come from the
+Rust element set, which the same case has already pinned against the oracle. A
+genuine recloser reset (identical wording) is never touched, and a circuit
+carrying both classes under one name is left alone to fail the compare loudly
+rather than be silently rewritten. `eventlog_transform_is_the_two_relay_rows`
+asserts exactly that, including that a `Debug Sample: Recloser.` line — which
+only appears when the user *asked* for it — survives in both lanes.
+
+**Non-vacuity, measured rather than assumed.** A parity-lane `dss-cli` run of
+each of those 11 decks emits 1–2 `Debug Sample: Relay.` lines per solve
+(`relay_4647_asym`, `midi_relay_4647`, `relay_generic` two; the other eight
+one), so the drop is load-bearing on every one of them. The **reset** relabel is *not* reached by a
+single-solve run of any of them (0 `Element=Recloser.` lines); it is pinned by
+`do_pending_reset_only_resets_opcount_d4`, which now asserts both directions —
+the parity lane must log `Recloser.r1` and must *not* log `Relay.r1`, and the
+default lane the reverse.
+
+**Replacement pin for the trace row.** `sample_state_trace_is_the_lane_guard`
+walks all four `DebugTrace × ShowEventLog` combinations and asserts the line
+appears iff `debug_trace || ORACLE_PARITY` — so the row cannot degrade into "the
+line is gone": with `DebugTrace=yes` both lanes must still write it, and
+`ShowEventLog` must gate it in neither, which is what distinguishes this line
+from every protection event around it.
+
+**Scope discipline.** No IV.2 kernel row was added; both rows enter under the
+*Single-site upstream quirks* membership rule. Escape register unchanged: the
+**14** truncated physical constants, the **7** F-FMT rendering markers,
+`HIDE_015X` ×17; the single-site quirk census drops **10 → 8**, and
+14 + 7 + 8 = the 29 remaining markers.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace --no-fail-fast` and the same
+with the feature, including the unconditional 520-case corpus gate. Tests +3
+(`sample_state_trace_is_the_lane_guard`,
+`eventlog_transform_is_the_two_relay_rows`,
+`eventlog_reset_relabel_needs_an_unambiguous_relay`), 0 removed, 0 new
+`#[ignore]`. `git diff -- tests/` touches no golden, tolerance, ledger or deck;
+`git status --short tests/corpus` empty after both runs.
+
 ### DE_PASCALIZE Stage F.3q — the `MakePosSequence` family: one guard split, one divisor kept (branch `depas-stagef`, 2026-07-28)
 
 Two markers on the same conversion procedure, and they resolve in **opposite**

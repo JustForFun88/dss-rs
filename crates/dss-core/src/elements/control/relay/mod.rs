@@ -43,8 +43,9 @@
 //! - **Event-log overhaul (E2/E3):** per-phase `'Phase %d opened on %s (…trip) …'`
 //!   wording, descriptive relay targets (`'Gnd Curve + Ph Curve'` etc.), and an
 //!   **unconditional** `'Debug Sample: Relay.<name> FPresentState: […]'` line on
-//!   every `Sample` (r4133 forgot the `DebugTrace` guard the Recloser has — a
-//!   deterministic, defined behavior, reproduced under a compat marker).
+//!   every `Sample` (r4133 forgot the `DebugTrace` guard the Recloser has —
+//!   the Stage F row `compat::RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE`, which the
+//!   default lane guards and the parity lane keeps).
 //!
 //! Concern split mirrors the Recloser: this file holds the property metadata, the
 //! [`Relay`] struct, construction/`recalc`, and `Sample`/`DoPendingAction`/`Reset`;
@@ -59,6 +60,7 @@ mod logic;
 
 use num_complex::Complex64;
 
+use crate::compat;
 use crate::elements::control::control_elem::{
     ControlAction, ControlElemData, CtrlCtx, RefSnapshot,
 };
@@ -821,23 +823,22 @@ impl Relay {
                 ControlAction::Open
             };
         }
-        // TODO(compat): r4133 emits this "Debug Sample" line UNCONDITIONALLY on
-        // every Sample — it forgot the `if DebugTrace` guard the Recloser has
-        // (Relay.pas:1325 vs Recloser.pas). Deterministic and defined, so it is
-        // reproduced 1:1. The line is NOT gated on ShowEventLog either. The
-        // clean fix (a DebugTrace guard) is an event-log text change that the
-        // relay goldens pin, so it needs a lane branch Stage F's closed table
-        // does not sanction — escaped, see STATUS §"F.3 escape register".
+        // The Stage F row [`compat::RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE`]:
+        // r4133 writes this trace line on every Sample with no `if DebugTrace`
+        // (`Relay.pas:1325`) — the one such line in the class that lost the
+        // guard its Recloser twin (`Recloser.pas:1044`) and its own siblings
+        // keep. It is not gated on `ShowEventLog` either, so the parity lane
+        // appends it directly; the default lane routes it through `dbg`.
         {
             let s = self.render_state_array();
             let el = format!("Debug Sample: Relay.{}", self.ccd.cd.obj.name());
-            ctx.events.append(
-                &el,
-                &format!("FPresentState: {s} "),
-                ctx.int_hour,
-                ctx.t,
-                ctx.control_iter,
-            );
+            let action = format!("FPresentState: {s} ");
+            if compat::RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE {
+                ctx.events
+                    .append(&el, &action, ctx.int_hour, ctx.t, ctx.control_iter);
+            } else {
+                self.dbg(ctx, &el, &action);
+            }
         }
 
         match self.control_type {
@@ -992,30 +993,30 @@ impl Relay {
             }
             ControlAction::Reset => {
                 // D4: no longer runs the full Reset — only resets OperationCount to
-                // 1 for closed phases (+ the TD21 quiet window). NB: r4133 logs this
-                // event as `Recloser.<name>` (upstream copy-paste bug — deterministic
-                // and defined, reproduced under the compat marker below).
+                // 1 for closed phases (+ the TD21 quiet window). Both arms label the
+                // event through the Stage F row
+                // [`compat::RELAY_RESET_EVENT_IS_LABELLED_RECLOSER`]: r4133 copied
+                // them verbatim from `Recloser.pas:909`/`:924`, class name included,
+                // while every other event in this procedure says `Relay.<name>`.
+                let reset_device = if compat::RELAY_RESET_EVENT_IS_LABELLED_RECLOSER {
+                    format!("Recloser.{}", self.ccd.cd.obj.name())
+                } else {
+                    format!("Relay.{}", self.ccd.cd.obj.name())
+                };
                 if self.single_ph_trip {
                     if self.present_state[ph_idx] == ControlAction::Close
                         && !self.armed_for_open[ph_idx]
                     {
                         self.operation_count[ph_idx] = 1;
-                        // TODO(compat): r4133 logs the reset as `Recloser.<name>`,
-                        // not `Relay.<name>` (Relay.pas:1196 copy-paste from the
-                        // Recloser). Deterministic; reproduced. Clean fix deferred.
-                        let el = format!("Recloser.{}", self.ccd.cd.obj.name());
                         let m = format!("Phase {ph_idx} reset (1ph reset)");
-                        self.log(ctx, &el, &m);
+                        self.log(ctx, &reset_device, &m);
                     }
                 } else {
                     for i in 1..=nphases {
                         if self.present_state[i] == ControlAction::Close {
                             if !self.armed_for_open[ph_idx] {
                                 self.operation_count[ph_idx] = 1;
-                                // Same upstream mislabel as the 1ph branch above
-                                // (its compat marker covers both sites).
-                                let el = format!("Recloser.{}", self.ccd.cd.obj.name());
-                                self.log(ctx, &el, "Phase ALL reset (3ph reset)");
+                                self.log(ctx, &reset_device, "Phase ALL reset (3ph reset)");
                             }
                             break; // no need to loop over all closed phases
                         }
