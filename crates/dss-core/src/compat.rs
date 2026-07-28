@@ -44,7 +44,7 @@
 //! | Monitor `BaseFrequency` 60.0 (CLAUDE.md bug 6, deferred here by name) | [`monitor_base_frequency`] — this file | **yes** (F.3c) |
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
 //! | report text rendering | F.4 (`F-FMT`) — `compat::fmt` seam | no |
-//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…) |
+//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w) |
 //!
 //! Rows 12–13 are not in IV.2's table and do not extend it: they are the two
 //! *reproduced* CLAUDE.md upstream bugs whose clean fix that document defers
@@ -1382,6 +1382,53 @@ pub const MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM_DEFAULT_IMPL: bool = false;
 pub use MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM_DEFAULT_IMPL as MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM;
 #[cfg(feature = "oracle-parity")]
 pub use MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM_PARITY_IMPL as MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM;
+
+/// The scale `CalcVoltageBases` applies to a bus's solved L-N magnitude before
+/// searching the legal-base list — the **truncated `√3/1000`** of upstream's
+/// own statement.
+///
+/// [`kv_base_search_scale_truncated_impl`] (`0.001732`) reproduces the literal:
+/// `SetVoltageBases` computes
+/// `kVBase := NearestBasekV(Cabs(NodeV^[GetRef(1)]) * 0.001732) / SQRT3`
+/// (`Common/Solution.pas:1103`; the identical statement in r4133
+/// `Version8/Source/Common/Solution.pas:2541`). `SQRT3` there is the
+/// full-precision `Sqrt(3.0)` the unit computes at startup, so **one statement
+/// carries `√3` twice** — truncated on the way in, exact on the way out — and
+/// the estimate it searches with is 2.93e-5 relative *low*. That is the
+/// section's rule (ii) satisfied by the source itself: the constant the author
+/// meant is named, at full precision, in the same line.
+///
+/// [`kv_base_search_scale_exact_impl`] is that named constant, `SQRT3 / 1000`.
+///
+/// **What the two lanes can move is *which base is picked*, and nothing else.**
+/// The scaled estimate is never stored: it is consumed by the relative-distance
+/// argmin `nearestBasekV` (`|1 − kv/base|` over `Set VoltageBases`), and the bus
+/// records `matched / SQRT3` — a number taken verbatim from the user's list, not
+/// from the estimate. So the lanes write **bit-identical** `kVBase` for every
+/// bus whose estimate is not within 2.93e-5 of a tie between two adjacent legal
+/// bases (the tie of `a` and `b` in this metric being their harmonic mean
+/// `2ab/(a+b)`). Measured: with the flip selected, every golden and all 520
+/// gated corpus cases are unchanged in the default lane — the row moves no
+/// oracle-compared number anywhere in the suite.
+///
+/// The divergence is pinned where it is observable rather than narrated:
+/// `solution::solution::dispatch::tests` drives the argmin at a constructed tie
+/// (both scales, both outcomes) and then the whole `CalcVoltageBases` command
+/// through a deck built to sit in that window, asserting the per-lane `kVBase`.
+pub fn kv_base_search_scale_truncated_impl() -> f64 {
+    0.001732
+}
+
+/// See the parity twin above — the full-precision `SQRT3 / 1000` upstream's own
+/// statement names one operator later.
+pub fn kv_base_search_scale_exact_impl() -> f64 {
+    crate::util::sqrt3() / 1000.0
+}
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use kv_base_search_scale_exact_impl as kv_base_search_scale;
+#[cfg(feature = "oracle-parity")]
+pub use kv_base_search_scale_truncated_impl as kv_base_search_scale;
 
 // The **LoadShape MMF plain-text accept-set** row belongs here by shape but is
 // NOT split, and F.3v measured why rather than assuming it. The quirk is real

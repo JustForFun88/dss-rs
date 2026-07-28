@@ -538,3 +538,28 @@ fn stddev_single_point_kernels_are_a_deliberate_divergence() {
         assert_eq!(stddev_single_point_zero_impl(v), 0.0);
     }
 }
+
+// ---------------------------------------------------------------------------
+// `CalcVoltageBases` search scale
+// ---------------------------------------------------------------------------
+
+/// The truncated `√3/1000` of `SetVoltageBases` against the full-precision
+/// constant its own statement names one operator later. The gap is one-sided
+/// (the literal is *low*) and is the whole reason the row can only move a tied
+/// base selection — `dispatch::tests` pins that consequence.
+#[test]
+fn kv_base_search_scale_kernels_differ_by_the_truncation() {
+    let trunc = kv_base_search_scale_truncated_impl();
+    let exact = kv_base_search_scale_exact_impl();
+    assert_eq!(trunc, 0.001732);
+    assert_eq!(exact, crate::util::sqrt3() / 1000.0);
+    assert!(trunc < exact, "the literal truncates downwards");
+    let rel = (trunc / exact - 1.0).abs();
+    assert!(
+        (2.9333e-5..2.9334e-5).contains(&rel),
+        "documented truncation gap moved: {rel:e}"
+    );
+    // Both are ordinary positive scales — nothing here changes the sign or the
+    // magnitude class of the estimate the argmin searches with.
+    assert!(trunc > 0.0 && exact < 1.0e-2);
+}

@@ -7,6 +7,79 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3w — one Pascal statement spells `√3` twice, and only one of the two is truncated (branch `depas-stagef`, 2026-07-28)
+
+F.3v closed the *single-site quirk* sweep at the four rows whose fix costs a
+whole artifact. It did not re-open the row this session lands, because F.3v's
+escape register filed it under "the 14 truncated physical constants" — a
+category whose blanket reason ("their 5.4e-4-class distance from the exact
+constant is above the calibrated oracle floors") is right for the constants that
+feed an impedance and **wrong for this one**, which feeds a *discrete argmin*.
+Re-measuring the category one member at a time is what found it. `TODO(compat)`
+**25 → 24**; both lanes green; no golden, tolerance, ledger or deck touched.
+
+**The row.** `SetVoltageBases` (the `CalcVoltageBases` command) writes
+
+```pascal
+kVBase := NearestBasekV(Cabs(NodeV^[GetRef(1)]) * 0.001732) / SQRT3;  // l-n base kV
+```
+
+— `Common/Solution.pas:1103`, and the identical statement in EPRI r4133
+`Version8/Source/Common/Solution.pas:2541`, so **both** gating oracles carry it.
+The same `√3` appears twice in one line: truncated to four digits on the way in,
+and as the unit's full-precision startup `SQRT3` on the way out. That is the
+single-site membership rule (ii) — "the Pascal itself … says what was meant" —
+satisfied inside one statement, so the marker's own "clean fix is a single
+constant" needed no probe. Parity keeps `0.001732`; the default lane scales by
+`SQRT3/1000` (`compat::kv_base_search_scale`).
+
+**Why it is a lane row and not a re-baseline: the scaled estimate is never
+stored.** It is consumed by `nearestBasekV`, a **relative**-distance argmin
+(`|1 − kv/base|`) over the `Set VoltageBases` list, and the bus then records
+`matched / SQRT3` — a number taken verbatim from the user's list, not from the
+estimate. A 2.93e-5-low estimate therefore writes a **bit-identical** `kVBase`
+unless it sits within 2.93e-5 of a tie between two adjacent legal bases, the tie
+of `a` and `b` in this metric being their harmonic mean `2ab/(a+b)`. Measured,
+not assumed: with the flip selected the entire suite — every byte golden and all
+520 gated corpus cases — is unchanged in the default lane.
+
+**Pins, at both ends of the row.**
+`compat::tests::kv_base_search_scale_kernels_differ_by_the_truncation` holds the
+two `_impl`s against each other (one-sided, 2.9333e-5..2.9334e-5) in both lanes.
+`dispatch::tests::kv_base_search_scale_moves_only_a_tied_selection` drives the
+argmin itself: at a constructed tie (`12.47`/`13.2`, harmonic mean 12.8246…) the
+two scales select **different** bases, and at four voltages away from it they
+select the same one — so the test states the divergence *and* the reason the
+suite does not move. `dispatch::tests::calc_voltage_bases_snaps_to_the_lane_
+estimate` then runs the real command on a source built to sit inside that
+2.93e-5 window (`basekv=12.8248`): the parity lane stores `12.47/√3` on every
+bus, the default lane `13.2/√3`.
+
+**Housekeeping.** `nearest_base_kv` now takes the legal-base slice instead of
+the whole `&Circuit` (it read one field), which is what makes the argmin
+directly testable; its doc states the metric, the scan order and the tie rule.
+
+**The `CorpusGuard` same-directory race recurred — third occurrence, same
+shape.** The first parity-lane run of this commit's gate reported
+`519/520 … 1 failed`; re-running the *same, unchanged* test binary gave
+`520/520`, and the full parity workspace re-run gave 2352/0/5. Lane-independent
+(F.3m saw it in the default lane, F.3p in the parity lane), change-independent
+(the parity alias here **is** the pre-existing literal, so the parity engine is
+bit-identical to `HEAD~1`), and not reproducible on a fixed binary. It remains
+the open harness item F.3m diagnosed — `electricdss-tst/Test/AutoTrans` writes
+fixed-name export files and the scheduler runs two cases from that directory
+concurrently; the fix is to serialize (or per-case-scratch) same-directory cases
+in `corpus_gate::scheduler`, and to print the failing label from the scheduler
+rather than the panic body, which the redirect again swallowed.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy
+--workspace --all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace --no-fail-fast` (2352 passed /
+0 failed / 5 ignored) and the same with the feature (2352 / 0 / 5), including
+the unconditional 520-case corpus gate. Tests +3, 0 removed, 0 new `#[ignore]`.
+`git diff -- tests/` empty; `git status --short tests/corpus` empty after both
+runs (the known intermittent `Test/AutoTrans/*` leak deleted by exact name).
+
 ### DE_PASCALIZE Stage F.3v — the four remaining quirks stop being predictions: all four are whole-artifact exclusions (branch `depas-stagef`, 2026-07-28)
 
 The single-site quirk sweep opened at 28 rows (F.3k) and came down to four. Each
