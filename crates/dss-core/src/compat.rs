@@ -1430,6 +1430,53 @@ pub use kv_base_search_scale_exact_impl as kv_base_search_scale;
 #[cfg(feature = "oracle-parity")]
 pub use kv_base_search_scale_truncated_impl as kv_base_search_scale;
 
+/// The divisor `Export Profile` uses to turn a **line-to-line** volt magnitude
+/// into per-unit: upstream's truncated `1000·√3`.
+///
+/// [`profile_ll_pu_divisor_truncated_impl`] reproduces the literal `1732.0`
+/// (`Common/ExportResults.pas:3207/3231/3256`; r4133
+/// `Version8/Source/CMD_Lazz/Common/ExportResults.pas:2979/2995/3012`, so both
+/// gating oracles carry it). `Bus.kVBase` is the **line-to-neutral** base kV, so
+/// the L-L base is `√3` times it and the correct divisor is `1000·√3 =
+/// 1732.0508…`; the literal is 2.93e-5 relative *low*, which makes every
+/// reported L-L per-unit 2.93e-5 relative *high*.
+///
+/// **The section's rule (ii) is satisfied inside the same procedure, by the
+/// sibling branch.** `ExportProfile`'s line-to-neutral arms divide by the exact
+/// `1000.0` (eight sites, e.g. `:3152`/`:3167`) while its three line-to-line
+/// arms divide by the four-digit `1732.0` — one routine, one quantity, one
+/// branch exact and the other truncated. Nothing else in the procedure differs,
+/// so the intended constant is named by the code next to it, exactly as
+/// [`kv_base_search_scale`]'s `SQRT3` is named one operator later.
+///
+/// [`profile_ll_pu_divisor_exact_impl`] is that constant.
+///
+/// **Reach: one number, in one report.** `pu_ll` is local to
+/// `report::export::profile` and feeds only the `puV1`/`puV2` column of the
+/// `Export Profile` L-L variants (`ll3ph`, `llall`, `llprimary`). It reaches no
+/// solve, no `Y`, no element state and no other report — measured: with the flip
+/// selected the *only* moving assertion in the whole suite is
+/// `export_profile_ll3ph` row 0 field 2 (`1.04672` vs the oracle's `1.04675`),
+/// and all 520 gated corpus cases are unchanged. That is why this row is the
+/// drift model's "excluded from oracle comparison **at those fields**" and not a
+/// whole-artifact escape: the default lane keeps byte/parsed gating on every
+/// other column of the same goldens, and on the L-N variants of the same report
+/// in full.
+pub fn profile_ll_pu_divisor_truncated_impl() -> f64 {
+    1732.0
+}
+
+/// See the parity twin above — the exact `1000·√3` the sibling L-N branch's
+/// `1000.0` names.
+pub fn profile_ll_pu_divisor_exact_impl() -> f64 {
+    1000.0 * crate::util::sqrt3()
+}
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use profile_ll_pu_divisor_exact_impl as profile_ll_pu_divisor;
+#[cfg(feature = "oracle-parity")]
+pub use profile_ll_pu_divisor_truncated_impl as profile_ll_pu_divisor;
+
 // The **LoadShape MMF plain-text accept-set** row belongs here by shape but is
 // NOT split, and F.3v measured why rather than assuming it. The quirk is real
 // and its witness is as strong as this section's rule asks for — `TLoadShapeObj`
