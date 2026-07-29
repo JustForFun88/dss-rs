@@ -42,6 +42,18 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               parallel porting branches inherited it. Ran FIRST post-acceptance:
                               freshest porting context, avoided double-touching code DE_PASCALIZE
                               would refactor, and lets Stage F pin r4133-parity (not r3723).
+                              OPEN TAIL (recorded 2026-07-29): the §5 exit criterion
+                              "`PropFlags::HIDE_015X` retired" (itself deferred from
+                              WP-U1.4) was NOT met at the Rung 1/2 exit and remains
+                              owned by the UPGRADE line's NEXT rung. Stage F measured
+                              why it cannot ride along (F.3aa): the un-hide is atomic
+                              with dropping the `Line.Wires → "Conductors"` json_name
+                              masquerade + regenerating the 13 Dump/JSON/schema
+                              goldens, i.e. it belongs to the next oracle-surface
+                              switch, not to any Stage F step (F.3ag re-homing,
+                              commit 1936f638). Tracked in ORPHANED_GAPS.md §2; two
+                              pins in `crates/dss-core/tests/oracle_parity_cfg_gate.rs`
+                              trip on any partial touch of the bundle.
  5. DE_PASCALIZE_PLAN.md      IN FLIGHT (resumed after the 2026-07-17 pause).
                               Merged: wave 1 2026-07-17 (R0 + P1-partial + P2 + P6,
                               `e7cfc1e`); the v2 reruns of the salvaged wave-2 WIP
