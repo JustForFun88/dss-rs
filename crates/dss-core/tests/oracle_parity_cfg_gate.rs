@@ -687,7 +687,7 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// gating oracles, so every one owes an expected-value pin.
 ///
 /// Move this number only in the commit that flips (or un-flips) a row.
-const SPLIT_ALIAS_POPULATION: usize = 36;
+const SPLIT_ALIAS_POPULATION: usize = 37;
 
 /// Files that may never count as a pin: the compat modules themselves (their
 /// own `tests` submodules assert the *kernels* against each other, which is a

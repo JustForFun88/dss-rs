@@ -80,6 +80,98 @@ fn device_name_column_width_is_the_lane_kernel() {
     );
 }
 
+/// Expected-value pin for the F-FMT **table-rendering** row
+/// [`crate::compat::render_rows`] — §F-FMT step 2's table crate.
+///
+/// The observable is a real `Show` report, not the renderer in isolation: the
+/// same solved circuit is rendered by the lane's kernel and three claims are
+/// asserted as equalities against the lane, so both builds are checked.
+///
+/// 1. **The parity lane's bytes are still Pascal's.** `Show Losses`'s aggregate
+///    block is `Pad(label, 30) + Format('%10.1f') + ' kW'`, so the unit lands at
+///    column 40 exactly; the table kernel puts it wherever the column ends up.
+/// 2. **The default lane really is the table crate**, i.e. it sizes the
+///    element-name column from its own content: the two rows' quoted names have
+///    different lengths and their following field starts at the *same* column
+///    only when a table sized them.
+/// 3. **Neither kernel moves a field**: both renderings carry the identical
+///    token stream — the property `report::table` guarantees structurally and
+///    this pins at a report the executive actually produced.
+#[test]
+fn show_table_layout_is_the_lane_kernel() {
+    let parity = crate::compat::ORACLE_PARITY;
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.probe basekv=12.47 pu=1.0 phases=3 bus1=sourcebus");
+    dss.command("new line.l1 bus1=sourcebus bus2=b2 phases=3 r1=0.1 x1=0.2 length=1");
+    dss.command("new line.a_much_longer_line_name bus1=b2 bus2=b3 phases=3 r1=0.1 x1=0.2 length=1");
+    dss.command("new load.ld bus1=b3 phases=3 kv=12.47 kw=1000 pf=0.95");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let text = {
+        let Dss {
+            classes, circuit, ..
+        } = &mut dss;
+        let ckt = circuit.as_ref().expect("solved circuit");
+        let sys = crate::solution::solution::sys_ctx(ckt);
+        let node_v = ckt.solution.node_v.clone();
+        crate::report::show::show_losses(classes, ckt, &sys, &node_v)
+    };
+
+    // Where the field after `prefix_len` characters of `l` begins.
+    let next_field = |l: &str, from: usize| {
+        from + l[from..]
+            .find(|c: char| c != ' ')
+            .unwrap_or_else(|| panic!("no field after column {from} of {l:?}"))
+    };
+
+    // 1. the aggregate block's line, reconstructed from Pascal's own arithmetic:
+    //    `Pad(label, 30) + Format('%10.1f') + ' kW'`. Asserting the whole line
+    //    rather than a column index keeps the claim content-independent — the
+    //    parity kernel must reproduce that formula whatever the value is, and
+    //    the table kernel must not (it sizes both columns from the run).
+    let total = text
+        .lines()
+        .find(|l| l.starts_with("TOTAL LOSSES="))
+        .unwrap_or_else(|| panic!("no TOTAL LOSSES row in\n{text}"));
+    let toks: Vec<&str> = total.split_whitespace().collect();
+    assert_eq!(toks, ["TOTAL", "LOSSES=", toks[2], "kW"], "{total:?}");
+    let pascal = format!(
+        "{}{:>10} kW",
+        crate::report::format::pad("TOTAL LOSSES=", 30),
+        toks[2]
+    );
+    assert_eq!(
+        *total == pascal,
+        parity,
+        "the parity kernel writes Pad(label,30)+%10.1f+' kW' exactly; the table \
+         kernel sizes the columns instead ({total:?} vs {pascal:?})"
+    );
+
+    // 2. the element-name column is content-sized in the default lane only.
+    //    (The kW field's `', '` separator is the table kernel's gutter there, so
+    //    the row is matched by its quoted name, not by a comma.)
+    let rows: Vec<&str> = text.lines().filter(|l| l.starts_with('"')).collect();
+    assert_eq!(rows.len(), 2, "one row per Line: {rows:?}");
+    let kw_col = |l: &str| next_field(l, l.rfind('"').expect("the closing quote") + 1);
+    assert_eq!(
+        kw_col(rows[0]) == kw_col(rows[1]),
+        !parity,
+        "the table kernel pads both names to one column; the parity kernel's \
+         `Pad(name, 0 + 2)` leaves each row its own width ({rows:?})"
+    );
+
+    // 3. …and no field moved between the two.
+    let fields = |l: &str| {
+        l.split(|c: char| c.is_whitespace() || c == ',')
+            .filter(|f| !f.is_empty())
+            .count()
+    };
+    assert_eq!(fields(rows[0]), fields(rows[1]), "{rows:?}");
+    assert_eq!(fields(rows[0]), 4, "name, kW, % of power, kvar: {rows:?}");
+}
+
 /// Expected-value pin for the Stage F single-site quirk
 /// [`crate::compat::SYM_MATRIX_GETTER_RENDERS_ZEROS`].
 ///

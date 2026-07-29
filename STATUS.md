@@ -7,6 +7,91 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.4d — the table crate lands: `Show` rows become data, and the escape's blocker dissolves (branch `depas-stagef`, 2026-07-29)
+
+F.4b/c handed on §F-FMT step 2's **table-crate rendering** as an escape, with one
+entry condition: a byte gate for the `Show` family, which no lane has (the
+oracle's own name-column padding is the nondeterministic `max_bus_name_length`
+quirk the port does not reproduce, so `run_feeder_show` token-compares in *both*
+lanes). That reading is what this commit falsifies. The refactor needs the
+before/after bytes of **our** renderer, not a committed artifact: a throwaway
+probe dumped all **72** `show_*` fixtures on `HEAD` and again on this tree in the
+parity lane, and every one is **byte-identical**. No golden was generated, so the
+coordinator's "F.4 opens no re-baseline event" ruling holds exactly as written —
+the proof was a diff, not a file.
+
+**The model.** `report/table.rs` holds the column arithmetic Pascal spread across
+`ShowResults.pas`: a `Cell` is one field (text, Pascal width, which padding
+primitive fills it, and the literal that follows it), a `Row` is a line, a
+`Report` interleaves free text with runs of rows. Two kernels, both always
+compiled, `compat::render_rows` selecting: parity replays `Pad`/`PadDots`/
+`Format('%W…')` in order; default hands the run to **comfy-table 7.2.2**
+(`default-features = false`, `NOTHING` preset, `ContentArrangement::Disabled` so
+a wide cell widens its column instead of wrapping a row onto two lines) and lets
+each column size itself. The crate choice is the plan's own criterion, re-measured
+here: comfy-table's whole closure — itself, `unicode-width`,
+`unicode-segmentation` — is `forbid`/`deny(unsafe_code)`, `tabled` 0.21's
+mandatory `papergrid` is not.
+
+**Why the table kernel cannot silently drop a field.** The default lane compares
+these reports parsed-numeric against the same oracle captures, so a merged or
+lost column fails — but only on a report some fixture covers. `Cell::sep`
+closes it structurally instead: a separator may contain **only whitespace and
+commas**, i.e. exactly the characters the comparator splits on, so every token
+lives in a cell and the gutters the table kernel substitutes carry nothing.
+A separator that tried to smuggle content (`' kW'`, which is why `Show Losses`'
+unit is a cell) panics at the call site. The single shape in which the two
+kernels' token streams *can* differ is a text overflowing its Pascal width with
+an empty separator — the `Show BusFlow` glue F.4b already enumerated — and
+`table::tests::overflow_glue_is_the_only_token_difference` pins that it is the
+only one.
+
+**Converted this commit (5 of the 14 `Pad`-using `Show` modules):** `Losses`,
+`Unserved`, `Taps`, `Overloads`, `DeltaV` — including their **header** literals,
+decomposed into the columns they draw (the offsets are in each call site's
+comment), so the default lane's headers sit over their own data instead of at
+Pascal's hand-counted positions. Two details the conversion had to get right and
+that the byte diff caught the shape of: a comma written *after* a padded field
+(`'%s,  %4d'`) belongs to the separator, while `Pad('Element,', …)` pads the
+comma itself; and `Show Losses`' final `Percent Losses` label is emitted by
+Pascal **without** a trailing newline when the load power is zero, so that arm
+leaves the row model.
+
+`SPLIT_ALIAS_POPULATION` 36 → **37**, pinned by
+`exec::tests::compat_quirks::show_table_layout_is_the_lane_kernel`, which asserts
+at a report the executive really produced. Its first claim is content-independent
+on purpose: it *reconstructs* the aggregate line from Pascal's own formula
+(`Pad(label,30) + Format('%10.1f') + ' kW'`) around whatever number the solve
+produced and requires equality in the parity lane and inequality in the default
+one — a column index would have pinned this fixture's values instead of the rule.
+The other two: the default lane pads two differently-long quoted names into one
+column (the parity lane's `Pad(name, 0 + 2)` cannot), and both lanes carry the
+same four fields per row. No
+`TODO(compat)` marker moved (the F-FMT bucket was already empty), and no golden,
+tolerance, ledger entry or deck was regenerated.
+
+**ESCAPE — nine `Show` modules still write their own widths.** `bus_powers`,
+`buses`, `currents`, `diagnostics`, `elements`, `fault_study`, `meters`,
+`powers`, `voltages` (47 `Pad`/`PadDots` sites) keep the hand-built `String`.
+They are unaffected — the seam is additive — and the recipe is now mechanical and
+proven: express the line as cells, keep every literal that is not whitespace or a
+comma in a cell of its own, and re-run the byte probe. What is *not* mechanical,
+and is why they are handed on rather than rushed: `powers`/`currents`/`voltages`
+carry per-element blocks whose column count varies with the terminal and phase
+count, so their runs have to be cut where the Pascal sections are, and
+`fault_study`/`diagnostics` mix matrix dumps into the same file.
+
+**Proof.** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity` both exit 0; `cargo test --workspace --no-fail-fast`
+**2473 passed / 0 failed / 5 ignored** and the parity-lane twin identically
+**2473 / 0 / 5** (+9 over F.4c: the eight `report::table` kernel tests and the
+lane pin), with the unconditional 520-case corpus gate green inside each. The
+runs leaked the known intermittent artifact set (`Test/AutoTrans/*` and
+`Examples/StoCtrl_Current_PeakShave/ckt7*`), deleted by exact name;
+`git status --short tests/corpus` empty after each. `git diff -- tests/golden
+tests/corpus` empty: no artifact moved.
+
 ### DE_PASCALIZE Stage F.4b/c — the `Show` column that was measured to zero, the `Save`→Y guard, and the one table-crate step that is escaped (branch `depas-stagef`, 2026-07-29)
 
 F.4a left one `Ffmt` escape row and two of F-FMT's four sub-steps. This commit

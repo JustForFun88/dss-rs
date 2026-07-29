@@ -16,6 +16,7 @@ use crate::elements::traits::SysCtx;
 use crate::exec::registry::DssClass;
 use crate::report::export::for_each_enabled_elem;
 use crate::report::format;
+use crate::report::table::{Cell, Report, Row};
 use crate::support::mathutil::SymComp;
 
 /// Build the `Show Overloads` text (Pascal `ShowOverloads`). Walks the PDElements
@@ -33,16 +34,29 @@ pub(crate) fn show_overloads(
     // the bare quoted name), while the default lane sizes it from its content.
     let mdnl = crate::compat::max_device_name_length(super::device_name_width(classes, ckt));
 
-    let mut s = String::new();
-    s.push('\n');
-    s.push_str("Power Delivery Element Overload Report\n");
-    s.push('\n');
-    s.push_str("SYMMETRICAL COMPONENT CURRENTS BY CIRCUIT ELEMENT \n");
-    s.push('\n');
-    s.push_str(
-        "Element                             Term    I1    IOver %Normal  %Emerg     I2    %I2/I1    I0    %I0/I1\n",
+    let mut rep = Report::new();
+    rep.blank();
+    rep.line("Power Delivery Element Overload Report");
+    rep.blank();
+    rep.line("SYMMETRICAL COMPONENT CURRENTS BY CIRCUIT ELEMENT ");
+    rep.blank();
+    // `'Element                             Term    I1    IOver %Normal  %Emerg
+    //      I2    %I2/I1    I0    %I0/I1'` — the header literal as its ten columns
+    // (offsets 0/36/44/50/56/65/76/82/92/98).
+    rep.row(
+        Row::new()
+            .cell(Cell::left("Element", 36))
+            .cell(Cell::left("Term", 8))
+            .cell(Cell::left("I1", 6))
+            .cell(Cell::left("IOver", 6))
+            .cell(Cell::left("%Normal", 9))
+            .cell(Cell::left("%Emerg", 11))
+            .cell(Cell::left("I2", 6))
+            .cell(Cell::left("%I2/I1", 10))
+            .cell(Cell::left("I0", 6))
+            .cell(Cell::plain("%I0/I1")),
     );
-    s.push('\n');
+    rep.row(Row::blank(10));
 
     let sc = SymComp::default();
     for_each_enabled_elem(classes, &ckt.pd_elements, |name, elem| {
@@ -85,41 +99,47 @@ pub(crate) fn show_overloads(
             return;
         }
 
+        // The degenerate branches emit the literal `0.0` at one decimal, exactly
+        // as Pascal's `'     0.0'` (8 chars) does.
+        let zero = || format::fixed(0.0, 1);
+        // IOver (`Cmax - NormAmps`) / %Normal, or `0.0` twice when `NormAmps <= 0`.
+        let (iover, pct_norm) = if norm_amps > 0.0 {
+            (
+                format::fixed(cmax - norm_amps, 2),
+                format::fixed(cmax / norm_amps * 100.0, 1),
+            )
+        } else {
+            (zero(), zero())
+        };
+        // %Emergency, then %I2/I1 and %I0/I1 (`0.0` when `I1 == 0`).
+        let pct_emerg = if emerg_amps > 0.0 {
+            format::fixed(cmax / emerg_amps * 100.0, 1)
+        } else {
+            zero()
+        };
+        let pct_of_i1 = |v: f64| {
+            if i1 > 0.0 {
+                format::fixed(100.0 * v / i1, 1)
+            } else {
+                zero()
+            }
+        };
         // `Pad(EncloseQuotes(FullName), MaxDeviceNameLength+2)` then `%3d%8.1f`
-        // [term=1, I1] (the `%3d` and `%8.1f` are glued in Pascal — the tokenizer
-        // still splits on the whitespace within `%8.1f`).
-        s.push_str(&format::pad(&format::enclose_quotes(name), mdnl + 2));
-        s.push_str(&format::fixed_w_int(1, 3));
-        s.push_str(&format::fixed_w(i1, 8, 1));
-        // IOver (`Cmax - NormAmps`) / %Normal, or the literal `     0.0` twice when
-        // `NormAmps <= 0`.
-        if norm_amps > 0.0 {
-            s.push_str(&format::fixed_w(cmax - norm_amps, 8, 2));
-            s.push_str(&format::fixed_w(cmax / norm_amps * 100.0, 8, 1));
-        } else {
-            s.push_str("     0.0");
-            s.push_str("     0.0");
-        }
-        // %Emergency, or the literal `     0.0`.
-        if emerg_amps > 0.0 {
-            s.push_str(&format::fixed_w(cmax / emerg_amps * 100.0, 8, 1));
-        } else {
-            s.push_str("     0.0");
-        }
-        // I2, then %I2/I1 (`     0.0` when `I1 == 0`), then I0, then %I0/I1.
-        s.push_str(&format::fixed_w(i2, 8, 1));
-        if i1 > 0.0 {
-            s.push_str(&format::fixed_w(100.0 * i2 / i1, 8, 1));
-        } else {
-            s.push_str("     0.0");
-        }
-        s.push_str(&format::fixed_w(i0, 8, 1));
-        if i1 > 0.0 {
-            s.push_str(&format::fixed_w(100.0 * i0 / i1, 8, 1));
-        } else {
-            s.push_str("     0.0");
-        }
-        s.push('\n');
+        // [term=1, I1] and seven more `%8.*f` fields, all butted together in
+        // Pascal — each is its own column here.
+        rep.row(
+            Row::new()
+                .cell(Cell::left(format::enclose_quotes(name), mdnl + 2))
+                .cell(Cell::right("1", 3))
+                .cell(Cell::right(format::fixed(i1, 1), 8))
+                .cell(Cell::right(iover, 8))
+                .cell(Cell::right(pct_norm, 8))
+                .cell(Cell::right(pct_emerg, 8))
+                .cell(Cell::right(format::fixed(i2, 1), 8))
+                .cell(Cell::right(pct_of_i1(i2), 8))
+                .cell(Cell::right(format::fixed(i0, 1), 8))
+                .cell(Cell::right(pct_of_i1(i0), 8)),
+        );
     });
-    s
+    rep.finish()
 }

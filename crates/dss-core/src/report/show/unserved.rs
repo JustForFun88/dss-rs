@@ -13,6 +13,7 @@ use crate::elements::pc::load::Load;
 use crate::elements::traits::SysCtx;
 use crate::exec::registry::DssClass;
 use crate::report::format;
+use crate::report::table::{Cell, Report, Row};
 
 /// Build the `Show Unserved` text (Pascal `ShowUnserved`). Walks the Loads calling
 /// the mutating `Unserved`/`ExceedsNormal` criteria (they recompute the per-phase
@@ -30,12 +31,21 @@ pub(crate) fn show_unserved(
     let norm_min = ckt.normal_min_volts;
     let emerg_min = ckt.emerg_min_volts;
 
-    let mut s = String::new();
-    s.push('\n');
-    s.push_str("UNSERVED  LOAD  REPORT\n");
-    s.push('\n');
-    s.push_str("Load Element        Bus        Load kW  EEN Factor  UE Factor\n");
-    s.push('\n');
+    let mut rep = Report::new();
+    rep.blank();
+    rep.line("UNSERVED  LOAD  REPORT");
+    rep.blank();
+    // `'Load Element        Bus        Load kW  EEN Factor  UE Factor'` — the
+    // header literal as its five columns (offsets 0/20/31/40/52).
+    rep.row(
+        Row::new()
+            .cell(Cell::left("Load Element", 20))
+            .cell(Cell::left("Bus", 11))
+            .cell(Cell::left("Load kW", 9))
+            .cell(Cell::left("EEN Factor", 12))
+            .cell(Cell::plain("UE Factor")),
+    );
+    rep.row(Row::blank(5));
 
     for &r in &ckt.loads {
         let obj = &mut classes[r.class_ord()].arena[r.index()];
@@ -58,12 +68,14 @@ pub(crate) fn show_unserved(
         // Pascal `Pad(Name,20)`, `Pad(GetBus(1),10)`, `%8.0f kWBase`, `%9.3f
         // EEN_Factor`, `%9.3f UE_Factor` (all space-padded; the tokenizer collapses
         // the padding so the widths are not gate-load-bearing).
-        s.push_str(&format::pad(&name, 20));
-        s.push_str(&format::pad(load.cd.get_bus(1), 10));
-        s.push_str(&format::fixed_w(load.kw_base, 8, 0));
-        s.push_str(&format::fixed_w(load.een_factor, 9, 3));
-        s.push_str(&format::fixed_w(load.ue_factor, 9, 3));
-        s.push('\n');
+        rep.row(
+            Row::new()
+                .cell(Cell::left(name, 20))
+                .cell(Cell::left(load.cd.get_bus(1), 10))
+                .cell(Cell::right(format::fixed(load.kw_base, 0), 8))
+                .cell(Cell::right(format::fixed(load.een_factor, 3), 9))
+                .cell(Cell::right(format::fixed(load.ue_factor, 3), 9)),
+        );
     }
-    s
+    rep.finish()
 }

@@ -21,6 +21,7 @@ dss-sparse = { path = "../dss-sparse" }
 # replacement for the upstream user-written-DLL loader. Consumed by the
 # Generator (WM.3) / Storage / PVSystem / CapControl (WM.4/WM.5) call sites.
 dss-usermodel = { path = "../dss-usermodel" }
+comfy-table.workspace = true
 miette.workspace = true
 num-complex.workspace = true
 regex.workspace = true

@@ -23,6 +23,7 @@ pub mod help_catalog;
 pub mod output;
 pub mod save;
 pub mod show;
+pub mod table;
 
 /// Pascal `TExportOption` names in ordinal order (`ExportOptions.pas`
 /// `DefineOptions` → `GetEnumName`). Ordinals 58–61 (`ZLL`/`ZCC`/`Contours`/
