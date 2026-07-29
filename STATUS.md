@@ -7,6 +7,83 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3 — CLOSED: the coordinator's exit ruling, and the one hand-off it moves (branch `depas-stagef`, 2026-07-29)
+
+F.3ag ended with the 0.15.x hide-flag escape parked on **F.5**, having disproved
+F.4 as its host but with the choice between "Stage F's landing generation" and
+"`UPGRADE_PLAN` §5's engine-switch re-pin" still open — F.3ag itself named §5 the
+*preferred* end state and handed F.5 the row only because F.5 is the one
+generation event Stage F sanctions. The coordinator settled it: **§5**, and with
+it the whole step. This commit writes that ruling into the tree and re-verifies
+the exit against it. `TODO(compat)` stays **22** in `crates` (25 tree-wide),
+`HIDE_015X` **19**, `SPLIT_ALIAS_POPULATION` **30**; no engine code, test, golden,
+tolerance, ledger entry or deck moved — the diff is one flag's doc.
+
+**The exit criterion, as ruled.** The plan's literal "0 markers" is unreachable
+inside F.3's sanctioned scope — F.3ag proved that with the two blocked classes
+(whole-case default-lane oracle exclusion; UPGRADE-rung oracle re-baseline),
+neither of which any Stage F step may authorize. The **escape register is the
+accepted exit**: (a) every sanctioned flip done, each with an expected-value pin;
+(b) the one default-lane self-golden re-baseline done and measurably empty;
+(c) every surviving marker either plan-placed in F.4 or a recorded escape pinned
+by a gate test — zero unclassified, and no hide-flag carrier outside the pinned
+13-artifact row. All three hold at `fe66821b`, and each is enforced by a test
+rather than asserted here: `surviving_compat_markers_are_exactly_the_recorded_
+escape_register` (25 = `UpgradeRung` 11 + `Ffmt` 7 + `WholeCase` 4 + `WasmGuest`
+3, no more and no fewer), `every_lane_split_alias_is_pinned_by_an_expected_value_
+test` (30 split aliases, 2 declared-not-wired), `hide_015x_carrier_set_is_the_
+measured_escape` + `the_hide_flag_escape_population_is_pinned_by_surface` (5
+carriers, 13 artifacts), `oracle_parity_cfg_appears_only_in_compat_modules_and_
+tests`, `compat_tag_is_only_ever_a_marker_never_prose`, and
+`operational_docs_cite_the_compat_machinery_accurately`. The re-baseline is still
+empty by measurement: `git diff 6f691ecb..HEAD -- tests/golden tests/corpus` shows
+only F.3af's manifest `note`.
+
+**Why the host moves off F.5.** Both candidate hosts were live because both can
+produce the 13 artifacts; they differ in what the tree looks like afterwards. The
+landing host generates *default-lane* self-goldens for them, i.e. it buys the zero
+carrier count by exposing the five props in one lane only — a permanent fork of a
+surface with **no numeric content**, paid for with 13 lane-specific artifacts that
+nothing but their own generator would ever read again. §5's re-pin teaches
+`gen_json.py` the engine switch and retires the flag in **both** lanes, moving the
+parity goldens with it; that is the only form in which 0.14.5-pinned byte goldens
+may legitimately change, since the parity lane may never re-baseline. The row is
+therefore not deferred *inside* Stage F at all: **F.4 and F.5 both leave it
+alone.** The flag's doc now says so, in place of F.3ag's "F.5, whose executor has
+to be told the row exists".
+
+**Nothing else in the tree pointed at F.5 for this.** Checked, not assumed: the
+two remaining `F.5` mentions under `crates/` (`compat.rs`'s alias-label note,
+`golden_reports.rs`'s layout note) are about the differential job, and
+`docs/upgrade/DIVERGENCES.md` §"Line/LineGeometry Conductors" never named a Stage
+F step — it records the deliberate retention plus `UPGRADE_PLAN` §1.4's
+"disproportionate → keep the flag and document why", which is the same disposition
+this ruling confirms. The surface pin and the carrier pin are untouched: their
+subject is the measurement's population, not its host.
+
+**Proof.** Both lanes green on the exact committed tree: `cargo fmt --all
+--check`; `cargo clippy --workspace --all-targets -- -D warnings` and the same
+with `--features dss-core/oracle-parity` both exit 0; `cargo test --workspace
+--no-fail-fast` **2361 passed / 0 failed / 5 ignored** and the parity-lane twin
+identically **2361 / 0 / 5**, with the unconditional 520-case corpus gate green
+inside each. Tests unchanged (0 added, 0 removed, 0 new `#[ignore]`). The 5 ignored
+were re-enumerated rather than copied from the previous record, which described
+them as "four manual generation binaries plus one doctest": they are **three**
+manual generation binaries (`dss-epri`'s `gen_wasm_usermodels{,_wm4,_wm5}`, each
+needing an env-gated twin DLL), the `ckt24_graph_diagnostic` inventory report in
+`adiakoptics.rs`, and the ```ignore` doctest on `obj/props/mod.rs`'s
+`define_properties`. The default-lane run leaked the known intermittent
+`Test/AutoTrans/auto3bus_{load_power,lt_current,lt_losses}.txt` trio, deleted by
+exact name; the parity-lane run leaked nothing. `git status --short tests/corpus`
+empty after both.
+
+**Handoff.** F.4 (F-FMT) owns the 7 `Ffmt` markers and nothing else from this
+list; F.5 owns lanes + differential gate + docs and **no golden event**;
+`UPGRADE_PLAN` §5 owns the hide-flag row (flag + `Wires`→`Conductors` masquerade,
+one atomic change, 13 artifacts, both lanes); the 4 `WholeCase` rows need a
+default-lane oracle-exclusion policy no Stage F step may grant; the 3 `WasmGuest`
+rows need a second `.wasm` fixture (`WASM_USERMODELS_PLAN`).
+
 ### DE_PASCALIZE Stage F.3ag — the last escape was handed to a step that never opens the event it needs (branch `depas-stagef`, 2026-07-29)
 
 F.3af closed the loop on documents that cite the compat machinery. This commit
