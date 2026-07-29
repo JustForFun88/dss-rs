@@ -1653,3 +1653,28 @@ pub use crate::report::show::max_device_name_length_measured_impl as max_device_
 /// `exec::tests::compat_quirks::device_name_column_width_is_the_lane_kernel`.
 #[cfg(feature = "oracle-parity")]
 pub use crate::report::show::max_device_name_length_zero_impl as max_device_name_length;
+
+/// How a run of fixed-width `Show` rows becomes text — the **table-layout**
+/// kernel of F-FMT (§F-FMT step 2), the counterpart of the number formats above.
+///
+/// * parity — [`crate::report::table::render_rows_pad_impl`]: replays the Pascal
+///   primitives (`Pad`, `PadDots`, `Format('%W…')`) cell by cell, so the bytes
+///   are those the hand-built `Format` concatenation produced.
+/// * default — [`crate::report::table::render_rows_table_impl`]: `comfy-table`
+///   with the `NOTHING` preset, sizing every column from its own content.
+///
+/// The crate was chosen by the plan's own criterion — a `forbid(unsafe_code)`-
+/// clean dependency tree. `comfy-table` 7.2's whole closure (itself,
+/// `unicode-width`, `unicode-segmentation`) forbids or denies `unsafe_code`,
+/// while `tabled` 0.21's mandatory `papergrid` carries real `unsafe` blocks.
+///
+/// What may move between the lanes is padding, and nothing else:
+/// [`crate::report::table::Cell::sep`] refuses a separator that is not
+/// whitespace or a comma, so every token lives in a cell and the table kernel
+/// cannot drop one. Pinned by `report::table::tests::both_kernels_tokenize_alike`
+/// and, at the report level, by the `Show` goldens in both lanes.
+#[cfg(feature = "oracle-parity")]
+pub use crate::report::table::render_rows_pad_impl as render_rows;
+/// See the parity-lane twin above.
+#[cfg(not(feature = "oracle-parity"))]
+pub use crate::report::table::render_rows_table_impl as render_rows;
