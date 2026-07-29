@@ -596,6 +596,101 @@ fn surviving_compat_markers_are_exactly_the_recorded_escape_register() {
 }
 
 // ---------------------------------------------------------------------------
+// The one non-marker escape: its artifact population, by surface
+// ---------------------------------------------------------------------------
+
+/// The `Dump` half of the 0.15.x hide-flag escape's blast radius, relative to
+/// `tests/golden/reports/`.
+///
+/// `+4` rows per Line-bearing dump and `+1` per LineGeometry one — the carrier
+/// count per class, which is what makes the radius closed.
+const HIDE_FLAG_DUMP_GOLDENS: [&str; 8] = [
+    "dump3_bare.txt",
+    "dump3_commands.txt",
+    "dump3_debug.txt",
+    "dump_line_geo.txt",
+    "dump_line_lc.txt",
+    "dump_line_sym.txt",
+    "dump_line_switch.txt",
+    "dump_linegeometry.txt",
+];
+
+/// The JSON half, relative to `tests/golden/json/`: two AltDSS captures and the
+/// three schema walks.
+const HIDE_FLAG_JSON_GOLDENS: [&str; 5] = [
+    "circuit_micro.json",
+    "line_micro.json",
+    "schema_divergences.json",
+    "schema_full_oracle.json",
+    "schema_full_port.json",
+];
+
+/// Pins the population the **0.15.x hide-flag** escape was measured over — the
+/// half the carrier-set pin
+/// (`dss_core::exec::tests::compat_quirks::hide_015x_carrier_set_is_the_measured_escape`,
+/// which pins the *five carriers*) does not cover: the 13 gated artifacts the
+/// flip moves.
+///
+/// # Why the surface, and not just the names
+///
+/// F.3aa handed this row forward to **F.4** because "F-FMT re-layouts the same
+/// Dump/Show surface", i.e. F.4 would be regenerating these goldens anyway.
+/// F.3ag found that false at the step it cites: `DE_PASCALIZE_PLAN.md` §F-FMT
+/// re-layouts **`Show`-style reports only** (step 2), step 3 keeps row/column
+/// structure so the default lane compares the *same* committed goldens through
+/// the parsed-numeric tokenizer, and free re-layout — the thing that does force
+/// self-goldens — is the optional **v2**. The disproof is therefore a claim
+/// about *which surfaces these 13 sit on*, so that is what this test pins:
+/// eight `Dump` texts and five JSON documents, and **not one `Show` table**. A
+/// later WP that renames one of them, drops one, or re-points the measurement at
+/// a `Show` report fails here instead of quietly invalidating the record.
+#[test]
+fn the_hide_flag_escape_population_is_pinned_by_surface() {
+    let root = repo_root();
+    let mut missing = Vec::new();
+
+    for (dir, names) in [
+        ("tests/golden/reports", &HIDE_FLAG_DUMP_GOLDENS[..]),
+        ("tests/golden/json", &HIDE_FLAG_JSON_GOLDENS[..]),
+    ] {
+        for name in names {
+            let path = root.join(dir).join(name);
+            if !path.is_file() {
+                missing.push(format!("    {dir}/{name}"));
+            }
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "gated artifact(s) the 0.15.x hide-flag escape was measured over no \
+         longer exist. The recorded blast radius (13 artifacts, no corpus \
+         movement) stops describing the tree: re-measure the flip and update \
+         the flag's doc in `obj/props/prop_flags.rs` before editing this \
+         list:\n{}",
+        missing.join("\n")
+    );
+
+    // The surface classification *is* the disproof of the F.4 hand-off, so it
+    // is asserted rather than narrated: every text artifact is a `Dump`, and a
+    // `Show` report may never enter this population without re-opening that
+    // question.
+    for name in HIDE_FLAG_DUMP_GOLDENS {
+        assert!(
+            name.starts_with("dump"),
+            "{name} is not a `Dump` golden — F-FMT's re-layout step covers \
+             `Show`-style reports, so a non-`Dump` text artifact here reopens \
+             whether F.4 hosts this row"
+        );
+    }
+
+    assert_eq!(
+        HIDE_FLAG_DUMP_GOLDENS.len() + HIDE_FLAG_JSON_GOLDENS.len(),
+        13,
+        "the escape record says 13 artifacts move; this list must say the same"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // The flipped half of the register: every deliberate divergence is pinned
 // ---------------------------------------------------------------------------
 
