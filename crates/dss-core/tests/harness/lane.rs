@@ -28,32 +28,39 @@
 //!
 //! **Which goldens are lane-split, and why (the scoping rule).** A byte golden
 //! is routed through [`compare_report`] iff its writer renders a number through
-//! the **F-FMT seam** — `util::fmt_g`, `report::format`'s `g`/`fixed*`/`g_w`/
-//! `fpc_sci_w`/`pad` family, `comma_text` — i.e. iff F.4 can change its bytes.
-//! Everything else keeps the byte compare in *both* lanes, because it is the
-//! strictly stronger check and nothing in Stage F can move it:
+//! the **F-FMT seam** — `compat::fmt_g`, `report::format`'s `g`/`fixed*`/`g_w`/
+//! `fpc_sci_w`/`pad` family — i.e. iff F.4 can change its bytes. Everything else
+//! keeps the byte compare in *both* lanes, because it is the strictly stronger
+//! check and nothing in Stage F can move it:
 //!
 //! * `Show Loops`/`Zone`/`Controlled`/`Isolated`/`Topology`, `Export UUIDs`,
 //!   `Show PV2PQ_Conversions`, the incidence-matrix CSVs — identifier / tree /
 //!   integer text, no float rendered at all → byte-exact in both lanes.
-//! * the CIM XML profiles and the AltDSS JSON captures — their writers call no
-//!   `report::format` float helper (JSON renders through its own `{:.16E}`
-//!   helper in `export/json/mod.rs`, which is outside the F-FMT inventory) →
-//!   byte-exact in both lanes. (`export/json/circuit.rs`'s two `fixed_w_fpc`
-//!   calls render *DSS script text* inside the payload; if F.4 moves them, that
-//!   commit routes whatever golden covers them, per this same rule.)
+//! * the CIM XML profiles — their writers call no `report::format` float helper
+//!   → byte-exact in both lanes.
 //! * the `Action=SngSave/DblSave` binary goldens — raw little-endian f32/f64,
 //!   zero formatting freedom → byte-exact in both lanes.
 //!
-//! **F.2 staging (this commit).** Both lanes still select the parity kernels
-//! everywhere (`compat`'s F.1 staging) and rendering is untouched, so every
-//! branch below is exercised on byte-identical engine output: the default lane
-//! passes its parsed-numeric compare *and* would pass a byte compare, and the
-//! whole gate is green in both lanes trivially. The branches become load-bearing
-//! in F.3 (kernel flips) and F.4 (F-FMT). Their non-vacuity is proven by the
-//! unit tests at the bottom of this file, which assert the *split itself*: a
-//! rendering-only difference must pass in the default lane and FAIL in the
-//! parity lane, in whichever lane the suite is running.
+//! **F.4 added one more shape.** The AltDSS JSON captures used to sit in the
+//! byte-exact group; F.4 gave their writer two lane rows of its own
+//! (`compat::json_float`, `compat::JSON_LINE_BREAK`), so they now go through
+//! [`compare_json`] — byte-exact in the parity lane, token-for-token with
+//! bit-exact numeric equality in the default one. `export/json/circuit.rs`'s
+//! `%8.2f` weights render *DSS script text* inside the payload, and strings are
+//! compared verbatim, so that one row is enumerated at the driver
+//! (`golden_json.rs::WEIGHT_TIES_AWAY`) instead.
+//!
+//! **Where a rendering row cannot be absorbed by a comparator, it is
+//! enumerated, never widened.** Three helpers do that, each fail-on-stale:
+//! [`expected_eventlog`]'s [`EVENTLOG_REROUNDED`] cells, [`expected_rerounded`]
+//! for the `Dump` goldens, and the driver-local JSON lists. `CLAUDE.md`'s
+//! no-fudging rule is why: a widened band would also absorb a real last-digit
+//! change of a *value*, and these rows only re-spell one.
+//!
+//! Non-vacuity of the whole split is proven by the unit tests at the bottom of
+//! this file, which assert the *split itself*: a rendering-only difference must
+//! pass in the default lane and FAIL in the parity lane, in whichever lane the
+//! suite is running.
 
 use super::{ColSel, ColTol, ElemChannels, ExportPolicy, GateSpec, RowPolicy, compare_export};
 
@@ -207,6 +214,8 @@ const LANE_SKIP_PROBE_PROPS: &[(&str, &str, &str)] = &[
 ///   recloser reset (identical wording, `Recloser.pas:909`/`:924`) is never
 ///   touched, and a circuit holding both classes under one name is left alone
 ///   to fail the compare loudly rather than be silently rewritten.
+/// * `compat::fmt_g` (F.4) — [`EVENTLOG_REROUNDED`], the enumerated cells where
+///   the F-FMT `%g` row re-spells a **traced** number's last printed digit.
 pub fn expected_eventlog(lines: &[String], device_is_relay: impl Fn(&str) -> bool) -> Vec<String> {
     if PARITY {
         return lines.to_vec();
@@ -221,7 +230,59 @@ pub fn expected_eventlog(lines: &[String], device_is_relay: impl Fn(&str) -> boo
                 }),
             _ => l.clone(),
         })
+        .map(|l| {
+            EVENTLOG_REROUNDED
+                .iter()
+                .fold(l, |acc, (key, from, to)| reround_cell(&acc, key, from, to))
+        })
         .collect()
+}
+
+/// The event-log cells F-FMT's `%g` row (`compat::fmt_g`) re-spells in the
+/// default lane, as `(parity spelling, default spelling)`.
+///
+/// **The one carrier, found by measurement over the whole 520-case gate:**
+/// `controls:invcontrol/midi_invcontrol_drc.dss`, the DRC trigger trace
+/// (`InvControl.pas`; `inv_control/compute.rs` renders `QoutPU` with
+/// `fmt_g(v, 3)`). `QoutputDRCpu` there is ≈ -0.00187499999…, i.e. just *below*
+/// the 3-significant-digit half boundary: FPC's `GRISU1_F2A_AGRESSIVE_ROUNDUP`
+/// sees a `4` followed by 9s and forces the round-up to `-0.00188`, while one
+/// correct rounding of the `f64` gives `-0.00187`. It is a **traced display
+/// value** — the DRC trigger itself compares the `f64`s — so nothing about the
+/// control decision moves, and the rest of that log line (and every other line
+/// of that case) stays compared against the oracle.
+///
+/// A cell that stops occurring degrades to a no-op, never to a false pass: the
+/// comparison stays strict for every line the list does not name, so a stale
+/// entry can only fail to help. What it must never do is match a line it was not
+/// written for, which is why the keys carry the property name.
+const EVENTLOG_REROUNDED: &[(&str, &str, &str)] = &[
+    ("QoutPU=", "-0.00188", "-0.00187"),
+    ("QoutPU=", "-0.00113", "-0.00112"),
+];
+
+/// Re-spell one `<key><value>` cell of an event-log line: locate `key`
+/// **case-insensitively** (the capture reaches this transform in the engine's
+/// wording, and the comparator upper-cases before matching, so a cell must not
+/// depend on which of the two it sees) and replace `from` with `to` only where
+/// it immediately follows. The key's own characters are left exactly as found —
+/// the comparator's structural check reads them too.
+fn reround_cell(line: &str, key: &str, from: &str, to: &str) -> String {
+    let (lower_l, lower_k) = (line.to_lowercase(), key.to_lowercase());
+    let mut out = String::with_capacity(line.len());
+    let mut i = 0usize;
+    while let Some(rel) = lower_l[i..].find(&lower_k) {
+        let value_at = i + rel + key.len();
+        out.push_str(&line[i..value_at]);
+        if line[value_at..].starts_with(from) {
+            out.push_str(to);
+            i = value_at + from.len();
+        } else {
+            i = value_at;
+        }
+    }
+    out.push_str(&line[i..]);
+    out
 }
 
 /// The device name of a `Recloser.<name>` **reset** event line, or `None` for
@@ -289,6 +350,192 @@ pub fn skipped_prop_keys(label: &str) -> Vec<(String, String)> {
         .filter(|(l, _, _)| *l == label)
         .map(|(_, e, p)| (e.to_lowercase(), p.to_lowercase()))
         .collect()
+}
+
+/// The oracle capture as the **current lane** spells it after F-FMT's `%g` row
+/// — the identity in the parity lane, and in the default lane the enumerated
+/// set of cells where `compat::fmt_g`'s two kernels round the *last printed
+/// digit* differently.
+///
+/// # Why an enumeration and not a tolerance
+///
+/// The two `%g` kernels render the same `f64`; they disagree only where FPC's
+/// two-stage decimal rounding (a correctly-rounded 17-digit form, re-rounded to
+/// `sig` digits half-away-from-zero) crosses a boundary a single correct
+/// rounding does not — measured at 225 of the 52 792 renders of the committed
+/// FPC battery, always a last-digit difference
+/// (`crates/dss-core/tests/fmt_battery.rs`). Relaxing [`exact_value_policy`] to
+/// absorb that would silently absorb a *real* last-digit value change too, and
+/// `CLAUDE.md` forbids widening a band to make a comparison pass. So the golden
+/// keeps `rel = abs = 0` and each affected cell is named here instead, in the
+/// shape `golden_cim`/`golden_json`/`fault_dump_expected` already use: a
+/// literal `from → to` pair that must match **exactly once**, so a recaptured
+/// golden or a moved engine value fails loudly rather than being rewritten.
+///
+/// Each pair is verifiable by hand: `from` is what FPC prints for the value,
+/// `to` is what one correct rounding prints, and they differ in the final digit
+/// only.
+pub fn expected_rerounded(oracle: &str, cells: &[(&str, &str)]) -> String {
+    if PARITY {
+        return oracle.to_string();
+    }
+    let mut out = oracle.to_string();
+    for (from, to) in cells {
+        assert_eq!(
+            out.matches(from).count(),
+            1,
+            "the F-FMT re-rounding cell {from:?} matches {} times, not once — \
+             if the golden was recaptured or the engine value moved, re-derive \
+             the pair; do not loosen the compare",
+            out.matches(from).count()
+        );
+        assert!(
+            is_last_digit_respelling(from, to),
+            "{from:?} → {to:?} is not a last-digit re-spelling: this helper may \
+             only change how a number is printed, never which number it is"
+        );
+        out = out.replace(from, to);
+    }
+    out
+}
+
+/// Are `a` and `b` the same `Key=Number` cell with the number re-rounded in its
+/// last printed place?
+///
+/// Checked, not assumed: the keys must be identical, both values must parse,
+/// and they must differ by no more than one unit in the last decimal place `a`
+/// prints (plus the ≤½-ulp each side that re-parsing costs). A pair that edits
+/// a value — or a key — fails.
+fn is_last_digit_respelling(a: &str, b: &str) -> bool {
+    let (Some((ka, va)), Some((kb, vb))) = (a.rsplit_once('='), b.rsplit_once('=')) else {
+        return false;
+    };
+    if ka != kb || va == vb {
+        return false;
+    }
+    let (Ok(x), Ok(y)) = (va.parse::<f64>(), vb.parse::<f64>()) else {
+        return false;
+    };
+    let frac = va.split_once('.').map_or(0, |(_, f)| {
+        f.trim_end_matches(|c: char| !c.is_ascii_digit()).len()
+    });
+    let unit = 10f64.powi(-(frac as i32)) + 2.0 * f64::EPSILON * x.abs().max(y.abs());
+    (x - y).abs() <= unit
+}
+
+/// The lane policy for an **AltDSS JSON byte golden**: byte-exact in the parity
+/// lane, token-for-token with numeric equality in the default lane.
+///
+/// F.4 gave the JSON writer two lane rows — `compat::json_float` (fpjson's fixed
+/// 17-significant scientific vs the shortest round-tripping literal) and
+/// `compat::JSON_LINE_BREAK` (the Windows `sLineBreak` the oracle captured vs a
+/// plain `\n`). Both change how the document *looks* and neither changes what it
+/// *says*, which is exactly the F-FMT contract, so the default lane compares the
+/// same committed golden as a token stream:
+///
+/// * every structural character, in order — so key order, nesting, array length
+///   and the object/array shape stay pinned exactly as before;
+/// * every string **verbatim**, including its escaping — the DSS script text the
+///   `PostCommands` carry is therefore still byte-gated;
+/// * every number by **value**, bit-for-bit (`f64::to_bits`, so `-0` stays
+///   distinct from `0`) — no tolerance whatsoever, only the spelling is free;
+/// * `true`/`false`/`null` verbatim.
+///
+/// What it stops pinning is whitespace and float spelling, and nothing else.
+pub fn compare_json(oracle: &str, rust: &str, ctx: &str) {
+    if PARITY {
+        assert_eq!(rust, oracle, "{ctx}");
+        return;
+    }
+    let want = json_tokens(oracle, &format!("{ctx} (golden)"));
+    let got = json_tokens(rust, &format!("{ctx} (rust)"));
+    for (i, (a, b)) in want.iter().zip(got.iter()).enumerate() {
+        assert_eq!(a, b, "{ctx}: JSON token {i} differs");
+    }
+    assert_eq!(
+        want.len(),
+        got.len(),
+        "{ctx}: JSON token count differs (golden {}, rust {})",
+        want.len(),
+        got.len()
+    );
+}
+
+/// One lexical item of a JSON document, at the granularity [`compare_json`]
+/// compares: numbers by value, everything else verbatim.
+#[derive(Debug, PartialEq, Eq)]
+enum JsonTok {
+    /// A structural character: `{ } [ ] : ,`.
+    Punct(char),
+    /// A string literal **including** its quotes and escapes, verbatim.
+    Str(String),
+    /// A number, as its `f64` bit pattern — `0` and `-0` stay distinct and no
+    /// two different values can ever compare equal.
+    Num(u64),
+    /// `true`, `false` or `null`.
+    Lit(String),
+}
+
+/// Lex `text` into [`JsonTok`]s, skipping whitespace. Panics with `ctx` on
+/// anything that is not well-formed JSON lexically — a malformed document must
+/// fail loudly rather than compare as a short token stream.
+fn json_tokens(text: &str, ctx: &str) -> Vec<JsonTok> {
+    let b = text.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < b.len() {
+        let c = b[i];
+        match c {
+            b' ' | b'\t' | b'\r' | b'\n' => i += 1,
+            b'{' | b'}' | b'[' | b']' | b':' | b',' => {
+                out.push(JsonTok::Punct(c as char));
+                i += 1;
+            }
+            b'"' => {
+                let start = i;
+                i += 1;
+                while i < b.len() {
+                    match b[i] {
+                        b'\\' => i += 2,
+                        b'"' => {
+                            i += 1;
+                            break;
+                        }
+                        _ => i += 1,
+                    }
+                }
+                assert!(i <= b.len(), "{ctx}: unterminated string at byte {start}");
+                out.push(JsonTok::Str(text[start..i].to_string()));
+            }
+            b't' | b'f' | b'n' => {
+                let start = i;
+                while i < b.len() && b[i].is_ascii_alphabetic() {
+                    i += 1;
+                }
+                let lit = &text[start..i];
+                assert!(
+                    matches!(lit, "true" | "false" | "null"),
+                    "{ctx}: unknown literal {lit:?} at byte {start}"
+                );
+                out.push(JsonTok::Lit(lit.to_string()));
+            }
+            _ => {
+                let start = i;
+                while i < b.len()
+                    && (b[i].is_ascii_digit() || matches!(b[i], b'+' | b'-' | b'.' | b'e' | b'E'))
+                {
+                    i += 1;
+                }
+                let num = &text[start..i];
+                let v: f64 = num
+                    .parse()
+                    .unwrap_or_else(|_| panic!("{ctx}: not a JSON number: {num:?}"));
+                out.push(JsonTok::Num(v.to_bits()));
+            }
+        }
+    }
+    assert!(!out.is_empty(), "{ctx}: empty JSON document");
+    out
 }
 
 /// Byte-exact line comparison (only CRLF→LF normalized), with a per-line
@@ -627,6 +874,43 @@ mod tests {
                 lines[5].clone(),
             ]
         );
+    }
+
+    /// The F-FMT event-log cell: the traced `QoutPU` is re-spelled in the
+    /// default lane only, case-insensitively (the capture reaches the transform
+    /// in the engine's wording, the comparator upper-cases), and no other number
+    /// on the same line — or a `QoutPU` carrying a different value — is touched.
+    #[test]
+    fn eventlog_reround_is_the_one_traced_cell() {
+        let line = |q: &str| {
+            format!(
+                "Hour=1, Sec=0, ControlIter=2, Element=InvControl.ic, PVSystem.pv1c, \
+                 Action=**Ready to change var output due to DRC trigger in DRC mode**, \
+                 Vavgpu= 0.99868, VPriorpu=0.99892, QoutPU={q}, QDesiredEndpu=0"
+            )
+        };
+        let out = expected_eventlog(&[line("-0.00188")], |_| false);
+        assert_eq!(
+            out,
+            vec![line(if PARITY { "-0.00188" } else { "-0.00187" })],
+            "the traced cell is re-spelled in the default lane only"
+        );
+        // Upper-cased capture: same rewrite, the rest of the line untouched.
+        let upper = line("-0.00188").to_uppercase();
+        let got = expected_eventlog(std::slice::from_ref(&upper), |_| false);
+        assert_eq!(
+            got[0].contains("-0.00187"),
+            !PARITY,
+            "the match must not depend on the capture's case"
+        );
+        assert!(got[0].contains("VAVGPU= 0.99868"), "no other cell moves");
+        // A different value under the same key is left alone in both lanes.
+        for other in ["-0.00187", "-0.0019", "0.00188"] {
+            assert_eq!(
+                expected_eventlog(&[line(other)], |_| false),
+                vec![line(other)]
+            );
+        }
     }
 
     /// The relabel is refused when the name is ambiguous — a circuit holding a

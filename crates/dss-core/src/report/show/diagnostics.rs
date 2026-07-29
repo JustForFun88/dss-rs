@@ -363,16 +363,19 @@ pub(crate) fn show_control_queue(classes: &[DssClass], ckt: &Circuit) -> String 
 /// One `Show controlqueue` row (Pascal `Format('%d, %d, %-.g, %d, %d, %s ', …)`,
 /// `ControlQueue.pas:496`) — the trailing space after the device name is Pascal's.
 ///
-/// TODO(compat): `%-.g` is FPC `ffGeneral` with an *empty* precision after the
-/// dot (`.` → precision 0); its rendered significant-digit count cannot be
-/// confirmed against the oracle because the queue is always drained before any
-/// text-interface `show controlqueue` (probe-proven). `%.6g` (6 sig) is used as a
-/// reasonable stand-in — for the whole-second / simple-fraction times a real queue
-/// carries it is indistinguishable — flagged for the WP8.8 byte-faithfulness pass.
+/// `%-.g` is FPC `ffGeneral` with an *empty* precision after the dot, and its
+/// rendered significant-digit count cannot be confirmed against either gating
+/// oracle: the queue is always drained before any text-interface
+/// `show controlqueue` (probe-proven), so no capture reaches this row. The
+/// digit count is therefore the lane's — [`crate::compat::CONTROL_QUEUE_SEC_DIGITS`]
+/// — which keeps the parity lane on the 6-significant stand-in the byte contract
+/// was written against and gives the default lane a *defined* rendering (the
+/// seam's full `ffGeneral` precision) instead of a second guess at an
+/// unobservable one.
 fn queue_row_line(handle: i32, hour: i32, sec: f64, code: i32, proxy: i32, name: &str) -> String {
     format!(
         "{handle}, {hour}, {}, {code}, {proxy}, {name} \n",
-        format::g(sec, 6),
+        format::g(sec, crate::compat::CONTROL_QUEUE_SEC_DIGITS),
     )
 }
 
@@ -391,6 +394,7 @@ mod tests {
     //! queue (oracle-probed), so no golden reaches it. Pin it here against the
     //! Pascal `WriteQueue` format string instead.
     use super::queue_row_line;
+    use crate::compat::{CONTROL_QUEUE_SEC_DIGITS, ORACLE_PARITY};
 
     #[test]
     fn control_queue_row_format() {
@@ -404,6 +408,32 @@ mod tests {
         assert_eq!(
             queue_row_line(1, 0, 0.5, 1, 7, "swtcontrol.sw1"),
             "1, 0, 0.5, 1, 7, swtcontrol.sw1 \n"
+        );
+    }
+
+    /// The F-FMT row `compat::CONTROL_QUEUE_SEC_DIGITS` at its observable: a
+    /// `Sec` needing more than the parity stand-in's six significant digits is
+    /// truncated there and printed in full in the default lane. Asserted as an
+    /// equality against the lane, so both arms are checked in either build.
+    ///
+    /// `1/3` of an hour in seconds is the shape a real queue carries (a delay
+    /// divided by a count), and it is exactly the case the stand-in cannot
+    /// render: no whole-second or simple-fraction time distinguishes the two.
+    #[test]
+    fn control_queue_sec_digits_is_the_lane_kernel() {
+        assert_eq!(
+            CONTROL_QUEUE_SEC_DIGITS,
+            if ORACLE_PARITY { 6 } else { 15 },
+            "the Sec column's digit count is the lane's"
+        );
+        let row = queue_row_line(9, 2, 1200.0 / 7.0, 4, 0, "regcontrol.rg1");
+        assert_eq!(
+            row,
+            if ORACLE_PARITY {
+                "9, 2, 171.429, 4, 0, regcontrol.rg1 \n"
+            } else {
+                "9, 2, 171.428571428571, 4, 0, regcontrol.rg1 \n"
+            }
         );
     }
 }

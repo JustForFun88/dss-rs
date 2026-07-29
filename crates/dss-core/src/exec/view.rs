@@ -508,6 +508,24 @@ impl Dss {
     /// port-authored (`golden_schema.rs`). The result is independent of circuit
     /// state (all constant), so it needs no `&mut self` and no `New circuit`.
     pub fn extract_schema_json(&self) -> String {
+        let doc = self.schema_document();
+        let mut out = String::new();
+        crate::report::export::json::write_pretty(&doc, 0, &mut out);
+        out
+    }
+
+    /// The schema document as a [`Json`](crate::report::export::json::Json)
+    /// tree, before it is spelled out — what [`Dss::extract_schema_json`]
+    /// renders.
+    ///
+    /// Separate from the rendering step because the *document* is what is
+    /// contractual (envelope, `$defs` order, per-class blocks, ordinals) while
+    /// how its numbers and line breaks are spelled is the F-FMT seam's lane
+    /// choice (`compat::json_float`, `compat::JSON_LINE_BREAK`). A consumer that
+    /// needs a specific spelling — `golden_schema.rs`'s byte gate needs the
+    /// oracle's — renders this tree with
+    /// [`write_pretty_with`](crate::report::export::json::write_pretty_with).
+    pub fn schema_document(&self) -> crate::report::export::json::Json {
         use crate::report::export::json::schema;
         // Build the per-class `$defs/<Class>` list in `DSS.DSSClassList` order
         // (Pascal `CAPI_Schema.pas:1479`), keyed by the class's canonical name.
@@ -540,10 +558,7 @@ impl Dss {
             class_defs.len(),
             self.classes.len(),
         );
-        let doc = schema::assemble_full_document(&class_defs);
-        let mut out = String::new();
-        crate::report::export::json::write_pretty(&doc, 0, &mut out);
-        out
+        schema::assemble_full_document(&class_defs)
     }
 
     /// The schema `$defs/<Class>` for one registered class — Pascal

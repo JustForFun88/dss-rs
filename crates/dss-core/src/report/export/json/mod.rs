@@ -126,11 +126,12 @@ impl std::ops::BitOrAssign for JsonOpts {
 /// and a 3-digit zero-padded exponent (an f64 decimal exponent is always ≤3
 /// digits).
 ///
-/// TODO(compat): this reproduces fpjson's fixed 17-significant-digit scientific
-/// format 1:1 (`12.47 → 1.2470000000000001E+001`). The clean fix is the
-/// shortest round-tripping representation; the goldens pin this exact form, so
-/// improved precision would be indistinguishable from a porting bug.
-pub fn fpjson_float(x: f64) -> String {
+/// **The parity kernel of the JSON float row** ([`crate::compat::json_float`]):
+/// it reproduces fpjson's fixed 17-significant-digit scientific format 1:1
+/// (`12.47 → 1.2470000000000001E+001`). The default lane selects
+/// [`json_float_shortest_impl`], the shortest round-tripping literal — the same
+/// `f64`, spelled the way every other JSON producer spells it.
+pub fn fpjson_float_fpc_impl(x: f64) -> String {
     // NaN/Inf are handled by the caller (the Double arm emits null) and never
     // reach here; guard anyway so a stray value can't produce `NaN`/`inf`
     // tokens that would silently corrupt a golden.
@@ -144,6 +145,32 @@ pub fn fpjson_float(x: f64) -> String {
     let exp_val: i32 = exp.parse().expect("exponent parses as i32");
     let sign = if exp_val < 0 { '-' } else { '+' };
     format!("{mantissa}E{sign}{:03}", exp_val.unsigned_abs())
+}
+
+/// **The default kernel of the JSON float row** ([`crate::compat::json_float`]):
+/// the shortest literal that round-trips to the same `f64`.
+///
+/// Rust's `{}` is already shortest-round-trip, but it never switches to
+/// scientific notation, so `1e300` would be written as 301 digits; `{:e}` is
+/// shortest-round-trip *in* scientific form. Taking whichever is shorter gives
+/// the conventional JSON spelling at every magnitude (`12.47`, `0.1`, `1e30`)
+/// while staying exactly as precise as the parity kernel — both literals re-read
+/// as the identical `f64`, which is what `read::parse_json` asserts.
+///
+/// The one thing shortest-round-trip must **not** cost is the number's *kind*:
+/// `{}` renders `1.0` as `1`, which JSON — and this module's own reader — then
+/// take for an integer, losing the float/int distinction the [`Json`] tree
+/// carries and, for `-0.0`, the sign as well. So a plain rendering with neither
+/// `.` nor `e` gets a `.0` suffix, exactly as every other JSON producer does.
+pub fn json_float_shortest_impl(x: f64) -> String {
+    debug_assert!(x.is_finite(), "json_float called with non-finite value");
+    let mut plain = format!("{x}");
+    if !plain.contains(['.', 'e']) {
+        plain.push_str(".0");
+    }
+    // `{:e}` always carries an `e`, so it is float-shaped by construction.
+    let sci = format!("{x:e}");
+    if sci.len() < plain.len() { sci } else { plain }
 }
 
 /// fpjson `StringToJSON`: escape a string for a JSON double-quoted literal.
@@ -170,22 +197,59 @@ fn escape_into(s: &str, out: &mut String) {
     out.push('"');
 }
 
+/// How the writers below spell a float and separate two members — the two
+/// F-FMT lane rows of the JSON surface, bundled so a caller that needs one
+/// specific spelling can ask for it explicitly.
+///
+/// Two instances exist and no more: [`FPJSON_SPELLING`], which is fpjson's own
+/// (what the oracle wrote into the byte goldens), and [`LANE_SPELLING`], which
+/// is whatever the current lane selects. Everything in the engine writes through
+/// the latter; the former exists so a *test* can render the same tree the way
+/// the golden spells it without having to be compiled in the parity lane.
+#[derive(Clone, Copy)]
+pub struct JsonSpelling {
+    /// How a `Json::Float` is written.
+    pub float: fn(f64) -> String,
+    /// What the pretty writer puts between members.
+    pub nl: &'static str,
+}
+
+/// fpjson's own spelling: FPC `Str(Double)` floats and the Windows `sLineBreak`
+/// — i.e. exactly what the pinned oracle emitted into the committed goldens.
+pub const FPJSON_SPELLING: JsonSpelling = JsonSpelling {
+    float: fpjson_float_fpc_impl,
+    nl: "\r\n",
+};
+
+/// The current lane's spelling ([`crate::compat::json_float`] /
+/// [`crate::compat::JSON_LINE_BREAK`]) — what every engine path writes with.
+pub const LANE_SPELLING: JsonSpelling = JsonSpelling {
+    float: crate::compat::json_float,
+    nl: crate::compat::JSON_LINE_BREAK,
+};
+
 /// Render a scalar (non-container) value; shared by both writers.
-fn write_scalar(v: &Json, out: &mut String) {
+fn write_scalar(sp: JsonSpelling, v: &Json, out: &mut String) {
     match v {
         Json::Null => out.push_str("null"),
         Json::Bool(true) => out.push_str("true"),
         Json::Bool(false) => out.push_str("false"),
         Json::Int(i) => out.push_str(&i.to_string()),
-        Json::Float(f) => out.push_str(&fpjson_float(*f)),
+        Json::Float(f) => out.push_str(&(sp.float)(*f)),
         Json::Str(s) => escape_into(s, out),
         Json::Arr(_) | Json::Obj(_) => unreachable!("write_scalar on a container"),
     }
 }
 
 /// Compact writer — fpjson `FormatJSON([foSingleLineArray, foSingleLineObject,
-/// foSkipWhiteSpace], 0)`: zero whitespace, insertion order preserved.
+/// foSkipWhiteSpace], 0)`: zero whitespace, insertion order preserved. Carries
+/// no line breaks, so only the float spelling can differ between lanes.
 pub fn write_compact(v: &Json, out: &mut String) {
+    write_compact_with(LANE_SPELLING, v, out);
+}
+
+/// [`write_compact`] with an explicit spelling.
+pub fn write_compact_with(sp: JsonSpelling, v: &Json, out: &mut String) {
     match v {
         Json::Arr(items) => {
             out.push('[');
@@ -193,7 +257,7 @@ pub fn write_compact(v: &Json, out: &mut String) {
                 if i > 0 {
                     out.push(',');
                 }
-                write_compact(item, out);
+                write_compact_with(sp, item, out);
             }
             out.push(']');
         }
@@ -205,69 +269,67 @@ pub fn write_compact(v: &Json, out: &mut String) {
                 }
                 escape_into(k, out);
                 out.push(':');
-                write_compact(val, out);
+                write_compact_with(sp, val, out);
             }
             out.push('}');
         }
-        scalar => write_scalar(scalar, out),
+        scalar => write_scalar(sp, scalar, out),
     }
 }
-
-/// fpjson pretty-mode line break. TODO(compat): fpjson `FormatJSON` writes the
-/// RTL platform `sLineBreak` between members — CRLF on Windows (the platform the
-/// oracle and the byte goldens are pinned on), LF on Unix. We emit CRLF to match
-/// the Windows-captured goldens byte-for-byte; the clean fix is a single `\n`
-/// (or a caller-chosen separator). Compact mode has no line breaks, so it is
-/// platform-independent.
-const NL: &str = "\r\n";
 
 /// Pretty writer — fpjson `FormatJSON([], 2)`: 2-space indent, `"key" : value`
 /// (space-colon-space), one member per line, closing bracket at parent indent.
 /// An **empty** container is `[` + line-break + parent-indent + `]` (probe-pinned:
 /// `"Conductors" : [\r\n  ]`), NOT inline `[]`.
 pub fn write_pretty(v: &Json, indent: usize, out: &mut String) {
+    write_pretty_with(LANE_SPELLING, v, indent, out);
+}
+
+/// [`write_pretty`] with an explicit spelling.
+pub fn write_pretty_with(sp: JsonSpelling, v: &Json, indent: usize, out: &mut String) {
     let pad = |n: usize| " ".repeat(n * 2);
+    let nl = sp.nl;
     match v {
         Json::Arr(items) => {
             out.push('[');
-            out.push_str(NL);
+            out.push_str(nl);
             for (i, item) in items.iter().enumerate() {
                 if i > 0 {
                     out.push(',');
-                    out.push_str(NL);
+                    out.push_str(nl);
                 }
                 out.push_str(&pad(indent + 1));
-                write_pretty(item, indent + 1, out);
+                write_pretty_with(sp, item, indent + 1, out);
             }
             // Non-empty: the last item is followed by a line-break before the
             // closing bracket. Empty: no items were written, so the single
             // line-break after `[` leads straight into the parent-indented `]`.
             if !items.is_empty() {
-                out.push_str(NL);
+                out.push_str(nl);
             }
             out.push_str(&pad(indent));
             out.push(']');
         }
         Json::Obj(members) => {
             out.push('{');
-            out.push_str(NL);
+            out.push_str(nl);
             for (i, (k, val)) in members.iter().enumerate() {
                 if i > 0 {
                     out.push(',');
-                    out.push_str(NL);
+                    out.push_str(nl);
                 }
                 out.push_str(&pad(indent + 1));
                 escape_into(k, out);
                 out.push_str(" : ");
-                write_pretty(val, indent + 1, out);
+                write_pretty_with(sp, val, indent + 1, out);
             }
             if !members.is_empty() {
-                out.push_str(NL);
+                out.push_str(nl);
             }
             out.push_str(&pad(indent));
             out.push('}');
         }
-        scalar => write_scalar(scalar, out),
+        scalar => write_scalar(sp, scalar, out),
     }
 }
 

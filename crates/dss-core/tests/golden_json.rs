@@ -2,9 +2,17 @@
 //! `tests/golden/json/<deck>.json` carries the deck plus the oracle's exact
 //! `DSSElement_ToJSON` / `IActiveClass.ToJSON` bytes for a matrix of option
 //! combos. This driver replays the identical deck through `Dss`, calls
-//! `obj_to_json` / `class_batch_to_json` with the same option bits, and asserts
-//! **byte-equality** — the strongest gate, valid because the export is a pure
-//! dump of parsed input properties (no solve, no faer-vs-KLU last-ULP exposure).
+//! `obj_to_json` / `class_batch_to_json` with the same option bits, and compares
+//! against the recorded bytes — a very strong gate, valid because the export is a
+//! pure dump of parsed input properties (no solve, no faer-vs-KLU last-ULP
+//! exposure).
+//!
+//! **Stage F.4:** the JSON writer's float spelling and pretty-mode line break
+//! became lane rows (`compat::json_float`, `compat::JSON_LINE_BREAK`), so the
+//! comparison goes through `harness::lane::compare_json`: byte-exact in the
+//! parity lane, token-for-token with bit-exact numeric equality in the default
+//! one. Structure, key order and every *string* — including the DSS script text
+//! in `PostCommands` — stay pinned in both.
 //!
 //! Regenerate only manually: `python tools/golden/gen_json.py`.
 
@@ -13,6 +21,9 @@ use std::path::PathBuf;
 use dss_core::exec::Dss;
 use dss_core::report::export::json::JsonOpts;
 use serde::Deserialize;
+
+mod harness;
+use harness::lane;
 
 fn json_dir() -> PathBuf {
     [
@@ -80,15 +91,37 @@ const CKT_MODEL_DEFAULT: &str = "\"Set CktModel=Positive\"";
 ///
 /// Returns the lane-expected text plus the number of rewrites, which
 /// [`json_ckt_model_divergence_is_pinned`] uses to keep it non-vacuous.
-fn lane_expected_json(oracle: &str) -> (String, usize) {
+///
+/// A **second** row rides along since F.4: the two `Set …weight=%8.2f`
+/// PostCommands render through `compat::fixed_w_script`, whose parity kernel
+/// re-rounds FPC's 15-significant intermediate ties-away-from-zero and whose
+/// default kernel rounds once, correctly. `circuit_positive_seq`'s fixture sets
+/// those weights to `0.125` and `2.675` *on purpose* — they are the two values
+/// `report::format`'s own oracle table names as the reachable boundary cases —
+/// so this is the one golden that observes the row. They are `String`s inside
+/// the JSON, so [`lane::compare_json`] compares them verbatim; the divergence is
+/// therefore enumerated here rather than absorbed by the comparator.
+fn lane_expected_json(oracle: &str) -> (String, usize, usize) {
     if dss_core::compat::ORACLE_PARITY {
-        return (oracle.to_string(), 0);
+        return (oracle.to_string(), 0, 0);
     }
-    (
-        oracle.replace(CKT_MODEL_PARITY, CKT_MODEL_DEFAULT),
-        oracle.matches(CKT_MODEL_PARITY).count(),
-    )
+    let mut out = oracle.replace(CKT_MODEL_PARITY, CKT_MODEL_DEFAULT);
+    let ckt_model = oracle.matches(CKT_MODEL_PARITY).count();
+    let mut weights = 0usize;
+    for (from, to) in WEIGHT_TIES_AWAY {
+        weights += out.matches(from).count();
+        out = out.replace(from, to);
+    }
+    (out, ckt_model, weights)
 }
+
+/// The `compat::fixed_w_script` cells of the JSON goldens: `(parity spelling,
+/// default spelling)` for the two `%8.2f` circuit weights — see
+/// [`lane_expected_json`]. Same width, last digit re-rounded, nothing else.
+const WEIGHT_TIES_AWAY: [(&str, &str); 2] = [
+    ("Set ueweight=    0.13", "Set ueweight=    0.12"),
+    ("Set lossweight=    2.68", "Set lossweight=    2.67"),
+];
 
 fn run_deck(stem: &str) {
     let path = json_dir().join(format!("{stem}.json"));
@@ -152,10 +185,13 @@ fn run_deck(stem: &str) {
             other => panic!("{}: unknown capture kind {other}", golden.name),
         };
         let expected = lane_expected_json(&cap.expected).0;
-        assert_eq!(
-            got, expected,
-            "\n[{}] {} {} opts={} (bits {})\n  Rust:   {}\n  oracle: {}\n",
-            golden.name, cap.kind, cap.target, cap.opts, cap.bits, got, expected
+        lane::compare_json(
+            &expected,
+            &got,
+            &format!(
+                "[{}] {} {} opts={} (bits {})",
+                golden.name, cap.kind, cap.target, cap.opts, cap.bits
+            ),
         );
     }
 }
@@ -439,6 +475,8 @@ fn json_ckt_model_divergence_is_pinned() {
     let parity = dss_core::compat::ORACLE_PARITY;
     let mut oracle_hits = 0usize;
     let mut rewrites = 0usize;
+    let mut weight_hits = 0usize;
+    let mut weight_rewrites = 0usize;
     let mut decks = 0usize;
 
     let mut paths: Vec<PathBuf> = std::fs::read_dir(json_dir())
@@ -464,8 +502,12 @@ fn json_ckt_model_divergence_is_pinned() {
             .unwrap_or_else(|e| panic!("{}: not a deck golden: {e}", path.display()));
         for cap in &golden.captures {
             oracle_hits += cap.expected.matches(CKT_MODEL_PARITY).count();
-            let (expected, n) = lane_expected_json(&cap.expected);
+            for (from, _) in WEIGHT_TIES_AWAY {
+                weight_hits += cap.expected.matches(from).count();
+            }
+            let (expected, n, w) = lane_expected_json(&cap.expected);
             rewrites += n;
+            weight_rewrites += w;
             if parity {
                 assert_eq!(
                     expected,
@@ -496,6 +538,22 @@ fn json_ckt_model_divergence_is_pinned() {
         rewrites,
         if parity { 0 } else { oracle_hits },
         "the default lane must rewrite exactly that one line and the parity lane none"
+    );
+
+    // The `compat::fixed_w_script` row, pinned the same way: exactly one capture
+    // in the whole golden set carries the two `%8.2f` boundary weights
+    // (`circuit_positive_seq`'s single `circuit` capture — only that kind emits
+    // `PostCommands`), and the default lane re-rounds both.
+    assert_eq!(
+        weight_hits, 2,
+        "the committed JSON goldens no longer carry exactly the two `%8.2f` \
+         boundary weights — the `compat::fixed_w_script` row would stop being \
+         observed here"
+    );
+    assert_eq!(
+        weight_rewrites,
+        if parity { 0 } else { weight_hits },
+        "the default lane must re-round every weight cell and the parity lane none"
     );
 }
 

@@ -10,23 +10,28 @@
 //! `Obj_ToJSON`/`Batch_ToJSON`, driven by the same `joptions`.
 //!
 //! ## PostCommands number formats
-//! TODO(compat): one marker for the whole family below — it belongs to the
-//! F-FMT rendering seam (`DE_PASCALIZE_PLAN.md` Part IV.2 §F-FMT, step F.4),
-//! not to a numeric kernel; the individual call sites point back here.
-//! The ~33 `Set …` PostCommands reproduce the exact FPC `Format` specs the
-//! oracle uses (`%-g` → default 15-significant `%g`, `%-.4g` → 4-significant,
-//! `%8.2f` → width-8 fixed 2-decimal, `IntToStr`, `StrYorN` → `Yes`/`No`,
-//! `GetDSSArray`/`IntArrayToString`). These are pinned byte-for-byte by the
-//! circuit goldens; the clean fix (a canonical machine format) would be
-//! indistinguishable from a porting bug against those goldens.
+//!
+//! The ~33 `Set …` PostCommands carry the exact FPC `Format` specs the oracle
+//! uses (`%-g` → default 15-significant `%g`, `%-.4g` → 4-significant, `%8.2f` →
+//! width-8 fixed 2-decimal, `IntToStr`, `StrYorN` → `Yes`/`No`,
+//! `GetDSSArray`/`IntArrayToString`). **Which** commands are emitted, in which
+//! order, with which spec, is permanent contract, not compat: this block is DSS
+//! script that our own parser must re-compile into the same circuit
+//! (`DE_PASCALIZE_PLAN.md` IV.1, `Save` round-trip), so the specs stay.
+//!
+//! How each number inside them is *spelled* is the F-FMT seam's business
+//! (Part IV.2 §F-FMT, step F.4), and both spellings used here route through it:
+//! `%g` through [`crate::util::fmt_g`] (via [`g`]) and `%8.2f` through
+//! [`crate::compat::fixed_w_script`]. Neither call site decides a lane.
 
 use std::collections::HashMap;
 
 use crate::circuit::Circuit;
+use crate::compat::fixed_w_script;
 use crate::exec::registry::DssClass;
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
-use crate::report::format::{fixed_w_fpc, g};
+use crate::report::format::g;
 use crate::report::save::dump::commands::PASCAL_CLASS_ORDER;
 
 use super::build::obj_to_json_data;
@@ -280,14 +285,16 @@ fn post_commands(ckt: &Circuit, classes: &[DssClass], enums: &EnumRegistry) -> V
                 .ordinal_to_string(aa.add_type.ordinal())
         ));
         push(format!("Set zonelock={}", str_y_or_n(ckt.zones_locked)));
-        // `%8.2f` = width-8 fixed 2-decimal, right-justified (compat family, see module).
-        // Byte-exact FPC `ffFixed`: 15-sig intermediate + ties-away rounding
-        // (see `fixed_w_fpc`); pinned by `circuit_positive_seq`'s fractional
-        // weights, which Rust's native `{:.2}` renders differently.
-        push(format!("Set ueweight={}", fixed_w_fpc(ckt.ue_weight, 8, 2)));
+        // `%8.2f` = width-8 fixed 2-decimal, right-justified. The rounding rule
+        // is the lane's (`compat::fixed_w_script`): FPC's 15-sig intermediate +
+        // ties-away in the parity lane, one correct rounding in the default one.
+        push(format!(
+            "Set ueweight={}",
+            fixed_w_script(ckt.ue_weight, 8, 2)
+        ));
         push(format!(
             "Set lossweight={}",
-            fixed_w_fpc(ckt.loss_weight, 8, 2)
+            fixed_w_script(ckt.loss_weight, 8, 2)
         ));
         push(format!("Set ueregs={}", int_array_to_string(&ckt.ue_regs)));
         push(format!(

@@ -319,11 +319,21 @@ mod tests {
 
     #[test]
     fn float_literal_is_bit_exact() {
-        // The 17-significant export literal must read back to the identical f64.
-        let v = 12.47_f64;
-        let lit = super::super::fpjson_float(v);
-        let got = parse_json(&lit).expect("parse");
-        assert_eq!(got, Json::Float(v));
+        // Either lane's export literal must read back to the identical f64 —
+        // the 17-significant parity spelling and the shortest default one.
+        for v in [12.47_f64, 0.1, 1e30, 1e-30, -0.0, 123456789.12345679] {
+            for lit in [
+                super::super::fpjson_float_fpc_impl(v),
+                super::super::json_float_shortest_impl(v),
+                crate::compat::json_float(v),
+            ] {
+                let got = parse_json(&lit).expect("parse");
+                let Json::Float(back) = got else {
+                    panic!("{lit} did not read back as a float")
+                };
+                assert_eq!(back.to_bits(), v.to_bits(), "{lit}");
+            }
+        }
     }
 
     #[test]
