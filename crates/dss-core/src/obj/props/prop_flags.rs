@@ -205,9 +205,42 @@ impl PropFlags {
     /// artifacts are 0.14.5-oracle byte goldens the **parity lane may never
     /// re-baseline**, and re-pinning them (`gen_json.py` taught an engine
     /// switch) is the UPGRADE rung §5 describes. Exposing them in the default
-    /// lane only would need default-lane self-goldens for those 13 — which is
-    /// the plan's **single** sanctioned re-baseline, already sequenced at F.4
-    /// (F-FMT), not a second one in F.3.
+    /// lane only would need default-lane self-goldens for those 13.
+    ///
+    /// # Where that lands — corrected in F.3ag (the F.3aa record named F.4, wrongly)
+    ///
+    /// F.3aa handed the row to **F.4** on the premise that "F-FMT re-layouts the
+    /// same Dump/Show surface", so the self-goldens would ride an event F.4 was
+    /// opening anyway. That premise does not survive reading the step it names.
+    /// `DE_PASCALIZE_PLAN.md` §F-FMT re-layouts **`Show`-style reports only**
+    /// (step 2, line 1258: "`Show`-style reports assemble rows as data"), and
+    /// step 3 (line 1268) states the opposite of a re-baseline for everything
+    /// else — the default lane compares the **same committed goldens** through
+    /// the parsed-numeric tokenizer, "valid as long as F-FMT v1 keeps row/column
+    /// structure (it does; only rendering changes)". Free re-layout, the thing
+    /// that *does* force self-goldens (drift model, line 1232: "re-layouted
+    /// reports get default-lane self-goldens"), is the explicitly **optional
+    /// v2**, "GUI era, separate decision" (step 4, line 1270).
+    ///
+    /// And none of the 13 is a `Show` report: **8** are `Dump` texts
+    /// (`tests/golden/reports/dump_*.txt`, written by
+    /// [`report::save::dump`](crate::report::save::dump)), **2** are AltDSS-JSON
+    /// captures and **3** are schema walks (`tests/golden/json/*.json`) — no
+    /// text table among them. The population is pinned by name and by surface
+    /// directory in
+    /// `oracle_parity_cfg_gate::the_hide_flag_escape_population_is_pinned_by_surface`,
+    /// so this classification fails rather than rots.
+    ///
+    /// F.4 therefore opens no self-golden event these 13 could ride, and F.3aa's
+    /// "not a second one in F.3" reasoning loses its first one. The only host
+    /// Stage F actually sanctions is the **landing** generation — "default-build
+    /// self-goldens for regression detection only, **regenerated once at Stage F
+    /// landing**" (line 1292) — i.e. **F.5**, whose executor has to be told the
+    /// row exists because "lanes + differential gate + docs" does not imply it.
+    /// The preferred end state is still UPGRADE §5's engine-switch re-pin, which
+    /// retires the flag in *both* lanes instead of forking them permanently;
+    /// a default-lane-only exposure buys a zero carrier count at the price of a
+    /// standing lane difference in a surface that has no numeric content.
     ///
     /// Finally, the criterion as written is unreachable while the mechanism
     /// survives — proven by the sibling: [`HIDE_R4133`] has **zero** carriers

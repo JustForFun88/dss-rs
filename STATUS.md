@@ -7,6 +7,81 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3ag — the last escape was handed to a step that never opens the event it needs (branch `depas-stagef`, 2026-07-29)
+
+F.3af closed the loop on documents that cite the compat machinery. This commit
+closes it on the one hand-off nobody had re-read: **where the 0.15.x hide-flag
+escape actually lands.** F.3aa deferred it to **F.4** on the premise that
+"F-FMT re-layouts the same Dump/Show surface", so the 13 self-goldens it needs
+would ride an event F.4 was opening anyway. Read at the step it names, that
+premise is false — and it is the *only* thing holding the deferral, because
+F.3aa's own conclusion is worded as "not a **second** re-baseline in F.3",
+which presupposes a first one. `TODO(compat)` stays **22** in `crates` (25
+tree-wide), `HIDE_015X` stays **19** (the correction deliberately never spells
+the flag — see F.3aa on why that count must not be inflated by prose about it);
+no engine code, golden, tolerance, ledger entry or deck moved.
+
+**Inherited state re-verified before building on it.** F.3af's tree
+(`0b599d77`) was re-gated from scratch in both lanes before any edit: `cargo fmt
+--all --check` clean, `cargo clippy --workspace --all-targets -- -D warnings`
+and the same with `--features dss-core/oracle-parity` both exit 0, `cargo test
+--workspace --no-fail-fast` **2360 passed / 0 failed / 5 ignored** and the
+parity-lane twin identically **2360 / 0 / 5**, with the unconditional 520-case
+corpus gate green inside each. The two counts were re-measured, not read: `rg`
+gives 22 and 19. The default-lane run leaked nothing; the parity-lane run leaked
+the known intermittent `Test/AutoTrans/*` trio, deleted by exact name, after
+which `git status --short` is empty.
+
+**The premise, checked at `DE_PASCALIZE_PLAN.md` §F-FMT rather than assumed.**
+Step 2 (line 1258) re-layouts **`Show`-style reports only** — "`Show`-style
+reports assemble rows as data". Step 3 (line 1268) states the *opposite* of a
+re-baseline for everything else: the default lane compares the **same committed
+goldens** through the parsed-numeric tokenizer, "valid as long as F-FMT v1 keeps
+row/column structure (it does; only rendering changes)". The one clause that
+does force self-goldens — "re-layouted reports get default-lane self-goldens"
+(drift model, line 1232) — is reached only by the **optional v2**, "GUI era,
+separate decision" (step 4, line 1270). So F-FMT v1 re-baselines nothing.
+
+**And the 13 artifacts are on the wrong surface for that step anyway.** Eight
+are `Dump` texts (`tests/golden/reports/dump*.txt`, written by
+`report::save::dump`), two are AltDSS-JSON captures and three are schema walks
+(`tests/golden/json/*.json`). Not one is a `Show` table — the only surface F.4
+re-layouts. F.4 therefore opens no self-golden event these could ride, in v1 by
+its own text and in fact by where they live.
+
+**Re-homed, not re-litigated.** The escape itself stands exactly as F.3aa
+measured it (no physics moves, 13 artifacts by row insertion, the flip is atomic
+with the `Wires`→`Conductors` JSON-key masquerade). Only its *host* changes: the
+sole generation event Stage F sanctions is the landing one — "default-build
+self-goldens for regression detection only, **regenerated once at Stage F
+landing**" (line 1292) — i.e. **F.5**, whose brief scope ("lanes + differential
+gate + docs") does not imply a golden event, so its executor has to be told the
+row exists. The preferred end state is unchanged and still better than either:
+UPGRADE §5's engine-switch re-pin retires the flag in *both* lanes, where a
+default-lane-only exposure buys a zero carrier count at the price of a permanent
+lane difference in a surface with no numeric content.
+
+**The correction is pinned, because the disproof is a claim about the tree.**
+The argument turns on which surfaces those 13 sit on, so
+`oracle_parity_cfg_gate::the_hide_flag_escape_population_is_pinned_by_surface`
+asserts it: all 13 exist by name under their surface directory, and every text
+artifact is a `Dump`. This is the half the carrier-set pin never covered —
+`compat_quirks::hide_015x_carrier_set_is_the_measured_escape` pins the *five
+carriers*, i.e. one of the measurement's two populations; the 13 gated artifacts
+were prose until now. Both probes run and reverted: renaming `dump_line_geo.txt`
+in the list → "gated artifact(s) … no longer exist"; substituting the real
+`show_buses.txt` → "is not a `Dump` golden … reopens whether F.4 hosts this
+row".
+
+**Proof.** Both lanes green on the exact committed tree: `cargo fmt --all
+--check`; `cargo clippy --workspace --all-targets -- -D warnings` and the same
+with `--features dss-core/oracle-parity` both exit 0; `cargo test --workspace
+--no-fail-fast` **2361 passed / 0 failed / 5 ignored** and the parity-lane twin
+identically **2361 / 0 / 5**, with the unconditional 520-case corpus gate green
+inside each. Tests **+1**, 0 removed, 0 new `#[ignore]` (the 5 are the four
+manual generation binaries plus one `define_properties` doctest). `git status
+--short tests/corpus` empty after every run, run-artifacts deleted by exact name.
+
 ### DE_PASCALIZE Stage F.3af — the stage's own flips falsified five documents, and no gate could see it (branch `depas-stagef`, 2026-07-29)
 
 F.3ae wrote this stage's deviations back to the plan that ordered the work. The
