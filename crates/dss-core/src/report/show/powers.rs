@@ -26,7 +26,7 @@ pub(crate) fn show_powers(
     node_v: &[Complex64],
     opt: i32,
 ) -> String {
-    let mdnl = super::max_device_name_length(classes, ckt);
+    let mdnl = crate::compat::max_device_name_length(super::device_name_width(classes, ckt));
 
     let mut s = String::new();
     s.push('\n');

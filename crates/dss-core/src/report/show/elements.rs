@@ -24,7 +24,7 @@ pub(crate) fn show_elements(
     class_name: &str,
 ) -> (String, String) {
     let mbnl = super::max_bus_name_length(ckt);
-    let mdnl = super::max_device_name_length(classes, ckt);
+    let mdnl = crate::compat::max_device_name_length(super::device_name_width(classes, ckt));
     let mut main = String::new();
     let mut disabled = String::new();
 

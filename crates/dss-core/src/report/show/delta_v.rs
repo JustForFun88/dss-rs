@@ -11,7 +11,7 @@ use crate::support::complexutil::cdang;
 /// Build the `Show DeltaV` text (Pascal `ShowDeltaV`). Walks Sources → PD → PC,
 /// writing the delta-voltage block for every **enabled 2-terminal** element.
 pub(crate) fn show_delta_v(classes: &[DssClass], ckt: &Circuit) -> String {
-    let mdnl = super::max_device_name_length(classes, ckt);
+    let mdnl = crate::compat::max_device_name_length(super::device_name_width(classes, ckt));
     let hdr = |s: &mut String| {
         s.push_str(&format::pad("Element,", mdnl));
         s.push_str(" Conductor,     Volts,   Percent,           kVBase,  Angle\n");

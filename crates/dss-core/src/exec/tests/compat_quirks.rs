@@ -9,6 +9,76 @@
 //! value outright, and say what blocked the flip.
 
 use super::common::{dss_with_circuit, query, query_f64};
+use crate::exec::Dss;
+
+/// Expected-value pin for the F-FMT **table-layout** row
+/// [`crate::compat::max_device_name_length`] — the `Show` half of §F-FMT step 2.
+///
+/// Two claims, both asserted as equalities against the lane so they are checked
+/// in either build:
+///
+/// 1. the width itself — 0 in the parity lane (what the pinned 0.14.5 backend
+///    returns regardless of the names) versus the longest `Class.Name` in the
+///    circuit in the default lane;
+/// 2. what that width *does*, at the one place it is observable: `Show BusFlow`
+///    writes `Pad(EncloseQuotes(FullName), width + 2) + IntToStr(term)`
+///    (`ShowResults.pas:1375`), so at width 0 the terminal number is glued to the
+///    closing quote and at the honest width it is a column of its own. Asserting
+///    the rendered row, not just the number, is what keeps this a *layout* pin
+///    rather than a restatement of the constant.
+#[test]
+fn device_name_column_width_is_the_lane_kernel() {
+    let parity = crate::compat::ORACLE_PARITY;
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.probe basekv=12.47 pu=1.0 phases=3 bus1=sourcebus");
+    dss.command("new line.l1 bus1=sourcebus bus2=b2 phases=3 r1=0.1 x1=0.2 length=1");
+    // The longest full name in the circuit: `Capacitor.cap_with_a_long_name`.
+    dss.command("new capacitor.cap_with_a_long_name bus1=b2 phases=3 kvar=600 kv=12.47");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let longest = "Capacitor.cap_with_a_long_name";
+    assert_eq!(longest.len(), 30, "the fixture's longest full name");
+
+    let ckt = dss.circuit().expect("solved circuit");
+    let measured = crate::report::show::device_name_width(&dss.classes, ckt);
+    assert_eq!(
+        measured,
+        longest.len(),
+        "the honest width is computed in both lanes"
+    );
+    let width = crate::compat::max_device_name_length(measured);
+    assert_eq!(
+        width,
+        if parity { 0 } else { longest.len() },
+        "the device-name column width is the lane's (parity = {parity})"
+    );
+
+    // The layout consequence, on the row the width actually formats. Note the
+    // column is sized `width + 2` where `width` already counts the *unquoted*
+    // name, so the longest element exactly fills it and still glues in **both**
+    // lanes — the split shows on every shorter name, which is what a column is
+    // for.
+    let row = |full: &str| {
+        format!(
+            "{}{}",
+            crate::report::format::pad(&crate::report::format::enclose_quotes(full), width + 2),
+            1
+        )
+    };
+    let short = row("Line.l1");
+    assert_eq!(
+        short.contains("\"1"),
+        parity,
+        "at width 0 the terminal number is glued to the closing quote; at the \
+         honest width it is a separate column ({short:?})"
+    );
+    assert!(
+        row(longest).contains("\"1"),
+        "the longest name fills the column exactly in either lane"
+    );
+}
 
 /// Expected-value pin for the Stage F single-site quirk
 /// [`crate::compat::SYM_MATRIX_GETTER_RENDERS_ZEROS`].

@@ -381,8 +381,15 @@ fn assert_show_bytes_eq(oracle: &str, rust: &str, stem: &str) {
 /// `GlobalResult`) and the golden policy tokenizes on whitespace+commas
 /// (`sep: ' '`) since `Show` emits space-padded tables, not CSV.
 fn run_feeder_show(stem: &str, policy: &ExportPolicy) {
+    run_feeder_show_expected(stem, policy, |oracle| oracle.to_string());
+}
+
+/// [`run_feeder_show`] with a lane-scoped **expected-value transform** on the
+/// oracle text, for the `Show` reports a Stage F row re-lays-out. `expected`
+/// must be the identity in the parity lane.
+fn run_feeder_show_expected(stem: &str, policy: &ExportPolicy, expected: impl Fn(&str) -> String) {
     let (oracle, rust, scratch) = produce_feeder_show(stem);
-    compare_export(&oracle, &rust, policy, stem);
+    compare_export(&expected(&oracle), &rust, policy, stem);
     std::fs::remove_dir_all(&scratch).ok();
 }
 
@@ -2225,9 +2232,118 @@ fn busflow_elem_policy() -> ExportPolicy {
     }
 }
 
+/// The oracle's `Show BusFlow` text as the **current lane** lays it out — the
+/// identity in the parity lane, and in the default lane one enumerated rule.
+///
+/// `compat::max_device_name_length` (F.4b) sizes the device-name column from its
+/// content instead of collapsing it to 0. The power rows are
+/// `Pad(EncloseQuotes(FullName), width + 2) + IntToStr(term)`
+/// (`ShowResults.pas:1375`) — `IntToStr` carries no width, so at width 0 the
+/// terminal number is glued to the closing quote (`"Capacitor.cap1"1`) and at
+/// the honest width it becomes its own column. The tokenizer sees one field
+/// where the default lane produces two, so the *oracle* expectation is split at
+/// exactly that seam.
+///
+/// The rule is deliberately narrow: a closing `"` **immediately** followed by an
+/// ASCII digit, nowhere else. The seq-currents rows of the same report already
+/// carry a literal space before their `%3d` terminal, so they never match; a
+/// digit inside a name cannot match either, because the quote must precede it.
+///
+/// Note the *longest* device still glues in both lanes — `width` counts the
+/// unquoted name, so `width + 2` is exactly the longest quoted name's length —
+/// which is why this is a per-row rule and not a whole-column one.
+fn busflow_expected(oracle: &str) -> String {
+    if lane::PARITY {
+        return oracle.to_string();
+    }
+    oracle
+        .lines()
+        .map(|line| match split_glued_terminal(line) {
+            Some(split) => split,
+            None => line.to_string(),
+        })
+        .map(|l| format!("{l}\n"))
+        .collect()
+}
+
+/// `"<name>"<digit>` → `"<name>" <digit>` for the *first* such seam in `line`,
+/// or `None` when the line has none.
+fn split_glued_terminal(line: &str) -> Option<String> {
+    let rest = line.strip_prefix('"')?;
+    let close = rest.find('"')? + 1; // index of the closing quote in `line`
+    let after = line.get(close + 1..)?;
+    after
+        .starts_with(|c: char| c.is_ascii_digit())
+        .then(|| format!("{} {}", &line[..=close], after))
+}
+
 #[test]
 fn show_busflow_matches_oracle() {
-    run_feeder_show("show_busflow", &busflow_seq_policy());
+    run_feeder_show_expected("show_busflow", &busflow_seq_policy(), busflow_expected);
+}
+
+/// Non-vacuity and scope of [`busflow_expected`], in both lanes: each committed
+/// golden really carries glued rows, the parity expectation is the oracle
+/// verbatim, the default one splits exactly those rows and no others, and the
+/// rule leaves an already-separated row alone.
+#[test]
+fn busflow_glue_transform_is_the_terminal_column() {
+    // The rule, at the character level.
+    assert_eq!(
+        split_glued_terminal("\"Capacitor.cap1\"1        0.0"),
+        Some("\"Capacitor.cap1\" 1        0.0".to_string())
+    );
+    assert_eq!(
+        split_glued_terminal("\"CAPACITOR.CAP1\"   1      82.7"),
+        None
+    );
+    assert_eq!(split_glued_terminal("   -               2      82.7"), None);
+    assert_eq!(split_glued_terminal("\"Line.6926\"  2  -853.7"), None);
+
+    for stem in ["show_busflow", "show_busflow_mva", "show_busflow_1ph"] {
+        let p = reports_dir().join(format!("{stem}.txt"));
+        let oracle =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        let glued = oracle
+            .lines()
+            .filter(|l| split_glued_terminal(l).is_some())
+            .count();
+        assert!(
+            glued > 0,
+            "{stem}: the oracle golden no longer carries a glued terminal column \
+             — the `compat::max_device_name_length` row would stop being observed"
+        );
+        let expected = busflow_expected(&oracle);
+        if lane::PARITY {
+            assert_eq!(
+                expected.lines().collect::<Vec<_>>(),
+                oracle.lines().collect::<Vec<_>>(),
+                "{stem}: the parity arm is the identity"
+            );
+            continue;
+        }
+        assert_eq!(
+            expected.lines().count(),
+            oracle.lines().count(),
+            "{stem}: the transform never adds or drops a row"
+        );
+        assert_eq!(
+            expected
+                .lines()
+                .filter(|l| split_glued_terminal(l).is_some())
+                .count(),
+            0,
+            "{stem}: every glued row was split"
+        );
+        // Only whitespace was inserted: with *all* whitespace removed the two
+        // texts are identical, so no character of the report moved or changed.
+        let strip = |t: &str| t.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+        assert_eq!(
+            strip(&expected),
+            strip(&oracle),
+            "{stem}: the transform inserts a space and changes nothing else"
+        );
+    }
 }
 
 /// `Show busflow 675 m` (MVA form, audit-tests step-15 follow-up): the `×0.001`
@@ -2236,7 +2352,7 @@ fn show_busflow_matches_oracle() {
 /// near-zero cells here.
 #[test]
 fn show_busflow_mva_matches_oracle() {
-    run_feeder_show("show_busflow_mva", &busflow_seq_policy());
+    run_feeder_show_expected("show_busflow_mva", &busflow_seq_policy(), busflow_expected);
 }
 
 /// `Show busflow 675 m e` (MVA element form): the `write_terminal_power` `×0.001`
@@ -2252,7 +2368,7 @@ fn show_busflow_mva_elem_matches_oracle() {
 /// `<3`-phase cells are exact zeros → fully exact.
 #[test]
 fn show_busflow_1ph_matches_oracle() {
-    run_feeder_show("show_busflow_1ph", &busflow_seq_policy());
+    run_feeder_show_expected("show_busflow_1ph", &busflow_seq_policy(), busflow_expected);
 }
 
 /// `Show busflow 611 e` (1-phase element form): the per-terminal branch currents/powers

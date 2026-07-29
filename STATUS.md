@@ -7,6 +7,76 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.4b/c — the `Show` column that was measured to zero, the `Save`→Y guard, and the one table-crate step that is escaped (branch `depas-stagef`, 2026-07-29)
+
+F.4a left one `Ffmt` escape row and two of F-FMT's four sub-steps. This commit
+closes the row and the `Save` step, and records — with its measurement — why the
+table-crate rendering of `Show` tables is **not** landed here. `TODO(compat)` in
+`crates` drops **16 → 15** (19 → 18 tree-wide): the `Ffmt` bucket is now **empty**
+and the `Escape::Ffmt` variant is deleted, leaving `UpgradeRung` 11 + `WholeCase`
+4 + `WasmGuest` 3 = 18. `SPLIT_ALIAS_POPULATION` 35 → **36**. No golden,
+tolerance, ledger entry or deck regenerated.
+
+**F.4b — `compat::max_device_name_length` (§F-FMT step 2's `Show`-layout row).**
+Pascal `SetMaxDeviceNameLength` computes the longest `Class.Name` in the circuit;
+the pinned 0.14.5 backend returns **0** whatever the names are, so every
+`Show Currents`/`Powers`/`Losses`/`Elements`/`BusFlow`/… device-name column
+collapses. The honest computation now runs in **both** lanes
+(`show::device_name_width`) and the lane decides whether the column *uses* it.
+The observable is `Show BusFlow`, whose power rows are
+`Pad(EncloseQuotes(FullName), width + 2) + IntToStr(term)`
+(`ShowResults.pas:1375`): `IntToStr` carries no width, so at width 0 the terminal
+number is glued to the closing quote and at the honest width it is its own
+column. The three `show_busflow*` goldens are compared through one enumerated
+default-lane rule — a closing `"` **immediately** followed by an ASCII digit gets
+a space — proven non-vacuous, row-count-preserving and whitespace-only by
+`busflow_glue_transform_is_the_terminal_column`. A detail worth recording because
+it shaped the rule: `width` counts the *unquoted* name, so `width + 2` is exactly
+the longest quoted name's length and the **longest** element still glues in both
+lanes; the split is per-row, not per-column.
+
+**F.4c — `Save` → `Compile` → same checkpoint Y (§F-FMT's sequencing guard).**
+`save_roundtrip.rs`'s seven feeder round trips now also capture the assembled
+system Y through `Dss::system_y_csc`, keyed by `(row node name, col node name)`
+with duplicate stamps summed, and compare it entry for entry. This is strictly
+stronger than the node-voltage compare beside it — a wrong impedance the power
+flow happens to absorb still fails here — and it is precisely what a rendering
+change could break, since every number in the emitted script is printed through
+the F-FMT seam. The floor was **measured, then set**: worst relative entry
+difference 2.875e-15 on IEEE-8500 (46 259 entries) and ≤ 1.9e-16 on the other six,
+so `Y_TOL = 1e-14` (≈3.5× headroom); each run re-prints its own figure rather than
+leaving the number in a comment.
+
+**ESCAPE — §F-FMT step 2's *table crate* is not landed, and the reason is a
+missing gate, not effort.** The crate choice was made by measurement and is
+recorded for whoever picks it up: **comfy-table 7.2.1 with
+`default-features = false`** — its whole closure (comfy-table, `unicode-width`,
+`unicode-segmentation`) is `forbid`/`deny(unsafe_code)`, while `tabled 0.21`'s
+mandatory `papergrid 0.18` carries three real `unsafe` blocks, so the plan's own
+criterion ("`forbid(unsafe_code)`-clean dependency tree") selects comfy-table and
+rejects tabled. What blocks the conversion is this: **no numeric `Show` report has
+a byte gate in either lane.** `run_feeder_show`/`run_deck_show` call
+`compare_export` (token-level) in *both* lanes, and byte comparison is impossible
+there because the oracle's own padding is the nondeterministic
+`max_bus_name_length` quirk the port deliberately does not reproduce
+(`show::max_bus_name_length`). Rewriting 23 report modules' width arithmetic into
+a row/cell model with only a whitespace-tokenizing comparator watching would let a
+parity-lane byte regression land unnoticed — the one thing Stage F must never do.
+Making it safe needs a parity-lane byte **self**-golden for the `Show` family
+first, which is a golden-generation event the coordinator's F.3 exit ruling does
+not grant F.4. Handed on with that as its entry condition; nothing in the tree
+depends on it, and the marker it would have carried is already resolved.
+
+**Proof.** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity` both exit 0; `cargo test --workspace --no-fail-fast`
+**2464 passed / 0 failed / 5 ignored** and the parity-lane twin identically
+**2464 / 0 / 5** (+2 over F.4a: the device-name pin and the busflow transform's
+non-vacuity test), with the unconditional 520-case corpus gate green inside each.
+Both runs leaked the known intermittent `Test/AutoTrans/*` set, deleted by exact
+name; `git status --short tests/corpus` empty after each. `git diff --
+tests/golden tests/corpus` empty: no artifact moved.
+
 ### DE_PASCALIZE Stage F.4a — F-FMT step 1: the number-rendering seam, and what a re-rounded last digit actually costs (branch `depas-stagef`, 2026-07-29)
 
 The first of F.4's three steps (`DE_PASCALIZE_PLAN.md` Part IV.2 §F-FMT): **every
