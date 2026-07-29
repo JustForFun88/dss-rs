@@ -207,7 +207,7 @@ impl PropFlags {
     /// switch) is the UPGRADE rung §5 describes. Exposing them in the default
     /// lane only would need default-lane self-goldens for those 13.
     ///
-    /// # Where that lands — corrected in F.3ag (the F.3aa record named F.4, wrongly)
+    /// # Where that lands — **`UPGRADE_PLAN` §5** (F.3aa said F.4; F.3ag said F.5)
     ///
     /// F.3aa handed the row to **F.4** on the premise that "F-FMT re-layouts the
     /// same Dump/Show surface", so the self-goldens would ride an event F.4 was
@@ -232,15 +232,22 @@ impl PropFlags {
     /// so this classification fails rather than rots.
     ///
     /// F.4 therefore opens no self-golden event these 13 could ride, and F.3aa's
-    /// "not a second one in F.3" reasoning loses its first one. The only host
-    /// Stage F actually sanctions is the **landing** generation — "default-build
+    /// "not a second one in F.3" reasoning loses its first one. That left two
+    /// candidate hosts: Stage F's own **landing** generation — "default-build
     /// self-goldens for regression detection only, **regenerated once at Stage F
-    /// landing**" (line 1292) — i.e. **F.5**, whose executor has to be told the
-    /// row exists because "lanes + differential gate + docs" does not imply it.
-    /// The preferred end state is still UPGRADE §5's engine-switch re-pin, which
-    /// retires the flag in *both* lanes instead of forking them permanently;
-    /// a default-lane-only exposure buys a zero carrier count at the price of a
-    /// standing lane difference in a surface that has no numeric content.
+    /// landing**" (line 1292), i.e. F.5 — and `UPGRADE_PLAN` §5's engine-switch
+    /// re-pin. **Settled on 2026-07-29 for §5**, which is also what §5 already
+    /// says it does. The landing host would buy a zero carrier count by exposing
+    /// the five props in the **default lane only**: a permanent fork of a surface
+    /// that carries no numeric content, paid for with 13 lane-specific artifacts
+    /// that nothing but their own generator would ever check again. §5's re-pin
+    /// (`gen_json.py` taught the engine switch) instead retires the flag in
+    /// **both** lanes and moves the parity goldens with it, which is the only
+    /// form in which these 13 may legitimately change.
+    ///
+    /// So **no Stage F step hosts this row** — F.4 and F.5 both leave it alone,
+    /// and the 13 stay 0.14.5-pinned until the rung that re-pins them lands. The
+    /// escape is Stage F's accepted exit for this flag, not a deferral inside it.
     ///
     /// Finally, the criterion as written is unreachable while the mechanism
     /// survives — proven by the sibling: [`HIDE_R4133`] has **zero** carriers
