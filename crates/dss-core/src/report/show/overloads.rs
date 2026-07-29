@@ -27,10 +27,11 @@ pub(crate) fn show_overloads(
     sys: &SysCtx,
     node_v: &[Complex64],
 ) -> String {
-    // `SetMaxDeviceNameLength(DSS)` — the pinned backend returns 0, so the name
-    // column is unpadded (`Pad(EncloseQuotes(FullName), 0 + 2)` = the bare quoted
-    // name); reproduced 1:1 via [`super::max_device_name_length`].
-    let mdnl = super::max_device_name_length(classes, ckt);
+    // `SetMaxDeviceNameLength(DSS)` — the lane's ([`crate::compat::
+    // max_device_name_length`]): the pinned backend returns 0, so the parity
+    // lane's name column is unpadded (`Pad(EncloseQuotes(FullName), 0 + 2)` =
+    // the bare quoted name), while the default lane sizes it from its content.
+    let mdnl = crate::compat::max_device_name_length(super::device_name_width(classes, ckt));
 
     let mut s = String::new();
     s.push('\n');

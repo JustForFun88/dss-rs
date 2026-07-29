@@ -45,7 +45,7 @@ pub(crate) fn show_bus_powers(
     code: i32,
 ) -> String {
     let mbnl = super::max_bus_name_length(ckt);
-    let mdnl = super::max_device_name_length(classes, ckt);
+    let mdnl = crate::compat::max_device_name_length(super::device_name_width(classes, ckt));
     if code == 0 {
         show_bus_powers_seq(classes, ckt, sys, node_v, bus_idx, opt, mbnl, mdnl)
     } else {

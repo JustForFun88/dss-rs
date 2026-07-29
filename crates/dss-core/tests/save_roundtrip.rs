@@ -2,10 +2,20 @@
 //! gate #3). Faithfulness of `Circuit.Save` is **round-trip**, not byte-equality
 //! with the oracle's Save output (§2.4): we save a solved circuit to a scratch
 //! directory, `clear`, re-`compile` the emitted `Master.dss` on OUR engine, and
-//! re-`solve` — the node voltages must match the pre-save solution (≤1e-6 rel)
-//! and the iteration count must be identical. A structural test additionally
-//! pins the emitted **file set** against the oracle's probe-proven set (captured
-//! with the pinned dss-python `Circuit.Save`, 2026-07-07).
+//! re-`solve` — the node voltages must match the pre-save solution (≤1e-6 rel),
+//! the iteration count must be identical, the discrete control state must match
+//! exactly, and the assembled **checkpoint Y** must match entry for entry
+//! ([`Y_TOL`]). A structural test additionally pins the emitted **file set**
+//! against the oracle's probe-proven set (captured with the pinned dss-python
+//! `Circuit.Save`, 2026-07-07).
+//!
+//! **Stage F.4c** added the checkpoint-Y half, which is `DE_PASCALIZE_PLAN.md`
+//! §F-FMT's sequencing guard made executable: "`Save` output in the default lane
+//! must stay re-compilable by our own parser (add a round-trip test: Save →
+//! Compile → same checkpoint Y)". Every number in the emitted script is printed
+//! through the F-FMT seam, so this is the test that says a rendering change may
+//! not alter the model the deck rebuilds — and it says it on the admittance
+//! matrix, which a power flow cannot absorb.
 
 use dss_core::exec::Dss;
 use std::collections::BTreeSet;
@@ -41,6 +51,50 @@ fn scratch_dir(tag: &str) -> PathBuf {
     std::fs::create_dir_all(&d).unwrap_or_else(|e| panic!("mkdir {}: {e}", d.display()));
     d
 }
+
+/// The assembled system **Y** keyed by `(row node name, col node name)`, with
+/// duplicate coordinate stamps summed — the checkpoint the golden suite calls
+/// "checkpoint Y", captured through the same `Dss::system_y_csc` API.
+///
+/// Keyed by node *name* for the same reason [`snapshot`] is: a re-compile of the
+/// emitted deck may number the buses differently, and the claim under test is
+/// about the electrical model, not about the ordering.
+type YCheckpoint = std::collections::BTreeMap<(String, String), (f64, f64)>;
+
+fn y_checkpoint(dss: &mut Dss) -> YCheckpoint {
+    let (n, coords) = dss.system_y_csc().expect("a solved circuit has a system Y");
+    assert!(n > 0, "empty system Y");
+    let ckt = dss.circuit().expect("solved circuit");
+    let mut out: YCheckpoint = std::collections::BTreeMap::new();
+    for (r, c, v) in coords {
+        let key = (ckt.node_name(r + 1), ckt.node_name(c + 1));
+        let e = out.entry(key).or_insert((0.0, 0.0));
+        e.0 += v.re;
+        e.1 += v.im;
+    }
+    out
+}
+
+/// Relative floor for the [`y_checkpoint`] comparison across a `Save` round
+/// trip.
+///
+/// This is **not** a physical tolerance: `Save` re-emits every property as text
+/// through the F-FMT seam at 15 significant digits (`util::float_to_str`), so a
+/// re-compiled property is the nearest `f64` to a 15-digit decimal — up to
+/// ~5e-16 relative from the original — and the element `YPrim`s assembled from
+/// it inherit that. The floor is therefore a *rendering* floor, and it is the
+/// exact quantity §F-FMT's sequencing guard asks this test to bound: whatever
+/// F-FMT does to how numbers are printed, the saved deck must still rebuild the
+/// same admittance model.
+///
+/// **Measured**, not guessed (each run re-prints its own figure, see the
+/// `eprintln!` at the comparison): worst relative entry difference is
+/// **2.875e-15** on `IEEE-8500` (46 259 entries) and ≤ **1.9e-16** on the other
+/// six feeders — i.e. one to a few ulp, which is exactly what a 15-significant
+/// decimal round trip costs. The floor is set a factor ~3.5 above the measured
+/// worst; it tightens if the rendering ever gets more faithful, and a value that
+/// needs it *widened* is a Save bug, not a floor to raise.
+const Y_TOL: f64 = 1e-14;
 
 /// Snapshot the solved state as (node-name → complex V) plus the iteration
 /// count. Keyed by node NAME so a re-compile that renumbers buses still lines up.
@@ -127,7 +181,9 @@ fn round_trip_full(tag: &str, master: PathBuf, pre_only: &[&str], both: &[&str],
     );
     let (pre, pre_iter) = snapshot(&dss);
     let pre_discrete = discrete_state(&dss);
+    let pre_y = y_checkpoint(&mut dss);
     assert!(!pre.is_empty(), "{tag}: no nodes pre-save");
+    assert!(!pre_y.is_empty(), "{tag}: empty checkpoint Y pre-save");
 
     dss.command(&format!(
         "save circuit dir=\"{}\"",
@@ -168,6 +224,52 @@ fn round_trip_full(tag: &str, master: PathBuf, pre_only: &[&str], both: &[&str],
     );
     let (post, post_iter) = snapshot(&dss);
     let post_discrete = discrete_state(&dss);
+    let post_y = y_checkpoint(&mut dss);
+
+    // Checkpoint Y (`DE_PASCALIZE_PLAN.md` §F-FMT sequencing guard: "Save output
+    // in the default lane must stay re-compilable by our own parser — Save →
+    // Compile → same checkpoint Y"). The strongest statement of that guard: the
+    // *assembled admittance model* of the re-compiled deck, entry for entry,
+    // keyed by node name. It is stricter than the node-voltage compare it sits
+    // next to — a wrong impedance that the power flow happens to absorb still
+    // shows here — and it is exactly what a rendering change could break, since
+    // every number in the emitted script is printed through the F-FMT seam.
+    assert_eq!(
+        pre_y.len(),
+        post_y.len(),
+        "{tag}: checkpoint Y entry count changed across save round-trip ({} -> {})",
+        pre_y.len(),
+        post_y.len()
+    );
+    let mut worst = (0.0f64, String::new());
+    for (key, &(pre_re, pre_im)) in &pre_y {
+        let &(post_re, post_im) = post_y.get(key).unwrap_or_else(|| {
+            panic!("{tag}: checkpoint Y entry {key:?} missing after round-trip")
+        });
+        let mag = pre_re.hypot(pre_im);
+        let d = (post_re - pre_re).hypot(post_im - pre_im);
+        let rel = if mag > 0.0 { d / mag } else { d };
+        if rel > worst.0 {
+            worst = (
+                rel,
+                format!("{key:?} pre=({pre_re:e},{pre_im:e}) post=({post_re:e},{post_im:e})"),
+            );
+        }
+    }
+    assert!(
+        worst.0 <= Y_TOL,
+        "{tag}: checkpoint Y diverged across save round-trip: rel={:.3e} > {Y_TOL:.1e} at {}",
+        worst.0,
+        worst.1
+    );
+    // The measured headroom, printed rather than only asserted: `Y_TOL` is a
+    // rendering floor, and the number that justifies it should be visible in the
+    // log of every run instead of living only in a comment.
+    eprintln!(
+        "{tag}: checkpoint Y worst rel across save round-trip = {:.3e} ({} entries)",
+        worst.0,
+        pre_y.len()
+    );
 
     // Iteration count exact (warm re-solve on both sides).
     assert_eq!(

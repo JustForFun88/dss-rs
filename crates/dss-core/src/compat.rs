@@ -44,7 +44,7 @@
 //! | Monitor `BaseFrequency` 60.0 (CLAUDE.md bug 6, deferred here by name) | [`monitor_base_frequency`] — this file | **yes** (F.3c) |
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
 //! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
-//! | report text rendering — `Show` table layout | not yet — F.4's table-rendering step (§F-FMT step 2) owns it | no |
+//! | report text rendering — `Show` device-name column width | [`max_device_name_length`] — same section | **yes** (F.4b) |
 //! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w) |
 //!
 //! Rows 12–13 are not in IV.2's table and do not extend it: they are the two
@@ -1633,3 +1633,23 @@ pub use JSON_LINE_BREAK_PARITY_IMPL as JSON_LINE_BREAK;
 pub const JSON_LINE_BREAK_PARITY_IMPL: &str = "\r\n";
 /// The platform-independent line break — see [`JSON_LINE_BREAK`].
 pub const JSON_LINE_BREAK_DEFAULT_IMPL: &str = "\n";
+
+/// See the parity-lane twin above.
+#[cfg(not(feature = "oracle-parity"))]
+pub use crate::report::show::max_device_name_length_measured_impl as max_device_name_length;
+/// The width of the device-name column in the fixed-width `Show` tables — the
+/// **table-layout** half of F-FMT (§F-FMT step 2), as opposed to the number
+/// formats above.
+///
+/// * parity — [`crate::report::show::max_device_name_length_zero_impl`]: the
+///   pinned 0.14.5 backend returns **0** whatever the element names are, so the
+///   column collapses and `Show BusFlow` glues the terminal number onto the
+///   quoted name.
+/// * default — [`crate::report::show::max_device_name_length_measured_impl`]:
+///   the width the Pascal *source* computes, i.e. the column sized from its own
+///   content.
+///
+/// Pinned by
+/// `exec::tests::compat_quirks::device_name_column_width_is_the_lane_kernel`.
+#[cfg(feature = "oracle-parity")]
+pub use crate::report::show::max_device_name_length_zero_impl as max_device_name_length;

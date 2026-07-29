@@ -253,10 +253,6 @@ fn compat_tag_is_only_ever_a_marker_never_prose() {
 /// mechanism cannot reach at all.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Escape {
-    /// **F.4 (`F-FMT`).** A rendering marker: it belongs to the `compat::fmt`
-    /// seam and the table-layout step, which is where `DE_PASCALIZE_PLAN.md`
-    /// Part IV.2 §F-FMT puts it. Not a numeric kernel.
-    Ffmt,
     /// **An UPGRADE rung.** A truncated physical constant whose corrected value
     /// moves gated *oracle* artifacts — live corpus cases and/or byte goldens —
     /// past their calibrated floors. Both gating oracles carry the literal, so
@@ -384,24 +380,17 @@ const ESCAPE_REGISTER: &[(&str, &str, Escape)] = &[
         "Pascal's `LPFTau * 2.3026`",
         Escape::UpgradeRung,
     ),
-    // ---- the rendering seam → F.4 (`F-FMT`) (1 left of the original 7) ----
-    // F.4a resolved the six *number-rendering* rows by routing them through the
-    // `compat` seam: `util.rs`'s `%g` two-stage rounding (`compat::fmt_g`),
+    // ---- the rendering seam → F.4 (`F-FMT`): all 7 resolved, none left ----
+    // F.4a took the six *number-rendering* rows through the `compat` seam:
+    // `util.rs`'s `%g` two-stage rounding (`compat::fmt_g`),
     // `report/format.rs`'s script fixed-point (`compat::fixed_w_script`),
     // `show/diagnostics.rs`'s unobservable control-queue precision
     // (`compat::CONTROL_QUEUE_SEC_DIGITS`), `export/json/mod.rs`'s fpjson float
     // literal (`compat::json_float`) and platform line break
     // (`compat::JSON_LINE_BREAK`), and `export/json/circuit.rs`'s PostCommands
     // umbrella — whose two spellings are the `%g` and fixed rows above and whose
-    // command set is IV.1 contract, not compat.
-    //
-    // What is left is not a number format at all: it is the `Show` table
-    // *layout* row, whose fix is F.4's table-rendering step (§F-FMT step 2).
-    (
-        "crates/dss-core/src/report/show/mod.rs",
-        "empirically returns **0**",
-        Escape::Ffmt,
-    ),
+    // command set is IV.1 contract, not compat. F.4b took the seventh, the
+    // `Show` device-name column width (`compat::max_device_name_length`).
     // ---- whole-case default-lane exclusions → not the executor's to grant (4) ----
     // `type=Auto` puts the G1 and G2 blocks in series, so honouring `%R2`
     // changes the element admittance and every node voltage downstream:
@@ -474,9 +463,8 @@ const ESCAPE_REGISTER: &[(&str, &str, Escape)] = &[
 /// Update these numbers in the same commit that closes a row — that is the
 /// point of stating them: the count is the plan's exit criterion, so it should
 /// move only on purpose.
-const EXIT_POPULATION: [(Escape, usize); 4] = [
+const EXIT_POPULATION: [(Escape, usize); 3] = [
     (Escape::UpgradeRung, 11),
-    (Escape::Ffmt, 1),
     (Escape::WholeCase, 4),
     (Escape::WasmGuest, 3),
 ];
@@ -699,7 +687,7 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// gating oracles, so every one owes an expected-value pin.
 ///
 /// Move this number only in the commit that flips (or un-flips) a row.
-const SPLIT_ALIAS_POPULATION: usize = 35;
+const SPLIT_ALIAS_POPULATION: usize = 36;
 
 /// Files that may never count as a pin: the compat modules themselves (their
 /// own `tests` submodules assert the *kernels* against each other, which is a
