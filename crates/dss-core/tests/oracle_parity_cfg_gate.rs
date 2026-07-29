@@ -384,40 +384,22 @@ const ESCAPE_REGISTER: &[(&str, &str, Escape)] = &[
         "Pascal's `LPFTau * 2.3026`",
         Escape::UpgradeRung,
     ),
-    // ---- the rendering seam → F.4 (`F-FMT`) (7) ----
-    (
-        "crates/dss-core/src/util.rs",
-        "the final cut to `sig` digits is **not correctly rounded**",
-        Escape::Ffmt,
-    ),
-    (
-        "crates/dss-core/src/report/format.rs",
-        "reproduces FPC's two-stage decimal rounding",
-        Escape::Ffmt,
-    ),
+    // ---- the rendering seam → F.4 (`F-FMT`) (1 left of the original 7) ----
+    // F.4a resolved the six *number-rendering* rows by routing them through the
+    // `compat` seam: `util.rs`'s `%g` two-stage rounding (`compat::fmt_g`),
+    // `report/format.rs`'s script fixed-point (`compat::fixed_w_script`),
+    // `show/diagnostics.rs`'s unobservable control-queue precision
+    // (`compat::CONTROL_QUEUE_SEC_DIGITS`), `export/json/mod.rs`'s fpjson float
+    // literal (`compat::json_float`) and platform line break
+    // (`compat::JSON_LINE_BREAK`), and `export/json/circuit.rs`'s PostCommands
+    // umbrella — whose two spellings are the `%g` and fixed rows above and whose
+    // command set is IV.1 contract, not compat.
+    //
+    // What is left is not a number format at all: it is the `Show` table
+    // *layout* row, whose fix is F.4's table-rendering step (§F-FMT step 2).
     (
         "crates/dss-core/src/report/show/mod.rs",
         "empirically returns **0**",
-        Escape::Ffmt,
-    ),
-    (
-        "crates/dss-core/src/report/show/diagnostics.rs",
-        "`%-.g` is FPC `ffGeneral`",
-        Escape::Ffmt,
-    ),
-    (
-        "crates/dss-core/src/report/export/json/circuit.rs",
-        "one marker for the whole family below",
-        Escape::Ffmt,
-    ),
-    (
-        "crates/dss-core/src/report/export/json/mod.rs",
-        "fpjson's fixed 17-significant-digit scientific",
-        Escape::Ffmt,
-    ),
-    (
-        "crates/dss-core/src/report/export/json/mod.rs",
-        "fpjson `FormatJSON` writes",
         Escape::Ffmt,
     ),
     // ---- whole-case default-lane exclusions → not the executor's to grant (4) ----
@@ -494,7 +476,7 @@ const ESCAPE_REGISTER: &[(&str, &str, Escape)] = &[
 /// move only on purpose.
 const EXIT_POPULATION: [(Escape, usize); 4] = [
     (Escape::UpgradeRung, 11),
-    (Escape::Ffmt, 7),
+    (Escape::Ffmt, 1),
     (Escape::WholeCase, 4),
     (Escape::WasmGuest, 3),
 ];
@@ -717,7 +699,7 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// gating oracles, so every one owes an expected-value pin.
 ///
 /// Move this number only in the commit that flips (or un-flips) a row.
-const SPLIT_ALIAS_POPULATION: usize = 30;
+const SPLIT_ALIAS_POPULATION: usize = 35;
 
 /// Files that may never count as a pin: the compat modules themselves (their
 /// own `tests` submodules assert the *kernels* against each other, which is a

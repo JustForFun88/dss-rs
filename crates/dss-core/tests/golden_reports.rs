@@ -5201,8 +5201,21 @@ fn dump_transformer_disabled_matches_oracle() {
 /// dump is solve-independent (the auto YPrim/solve path is Stage B).
 #[test]
 fn dump_autotrans_matches_oracle() {
-    run_deck_dump_exact("dump_autotrans");
+    run_deck_dump_exact_expected("dump_autotrans", |o| {
+        lane::expected_rerounded(o, &AUTOTRANS_RDC_REROUND)
+    });
 }
+
+/// The one F-FMT `%g` re-rounding cell of `dump_autotrans` (see
+/// [`lane::expected_rerounded`]): winding 2's `RdcOhms` is
+/// `kVLL²/(kVA/1000)·Rdcpu` = 34.5²/40 · 0.001/0.1414… , whose value sits just
+/// **below** the 7-significant-digit half-boundary `0.0084309375`. `dump.rs`
+/// prints it with `g(v, 7)`: FPC's re-round of its own 17-digit form goes
+/// half-away-from-zero to `…938`, one correct rounding of the true `f64` gives
+/// `…937`. Winding 1's `Rdcohms=0.04590177` is nowhere near a boundary and is
+/// compared unchanged in both lanes, which is what makes this a *cell*
+/// exclusion and not a report-wide one.
+const AUTOTRANS_RDC_REROUND: [(&str, &str); 1] = [("Rdcohms=0.008430938", "Rdcohms=0.008430937")];
 
 /// `Dump autotrans.t3` (3-winding, delta tertiary) — the 3-winding Xscmatrix
 /// (three off-diagonals) and the wye/delta/Series `conn` render arms.
@@ -5417,6 +5430,84 @@ fn fault_dump_goldens_carry_the_double_print() {
             assert!(
                 kept.contains('.'),
                 "{stem}: the surviving line is the custom %.1f render: {kept}"
+            );
+        }
+    }
+}
+
+/// Non-vacuity of the F-FMT `%g` re-rounding cells, in both lanes and over
+/// every golden they are applied to.
+///
+/// Each committed oracle golden really carries the FPC spelling exactly once,
+/// the parity expectation is the oracle byte-for-byte, and the default
+/// expectation carries the correctly-rounded spelling and no longer the FPC
+/// one. The `(stem, cells)` list must stay in step with the
+/// `lane::expected_rerounded` call sites: a golden that gains a cell without a
+/// row here is not proven non-vacuous, and a cell whose token stops appearing
+/// fails inside the helper.
+///
+/// The **kernel link** — that a pair really is the two `%g` kernels rendering
+/// one `f64`, not an edited value — is asserted for the `Mean` cell against the
+/// value the parity kernel's documentation names; the helper additionally
+/// re-checks every pair as a last-digit re-spelling of the same key. What each
+/// cell finally proves is the golden test itself: the default engine has to
+/// produce that exact spelling.
+#[test]
+fn ffmt_reround_cells_are_present_and_lane_scoped() {
+    use dss_core::util::{fmt_g_fpc_impl, fmt_g_native_impl};
+
+    // The documented `loadshape.default` FMean: FPC's two-stage round-up vs one
+    // correct rounding, at the 15 significant digits `float_to_str` prints.
+    let fmean = 0.8258283333333335_f64;
+    assert_eq!(
+        format!("Mean={}", fmt_g_fpc_impl(fmean, 15)),
+        LOADSHAPE_MEAN_REROUND[0].0
+    );
+    assert_eq!(
+        format!("Mean={}", fmt_g_native_impl(fmean, 15)),
+        LOADSHAPE_MEAN_REROUND[0].1
+    );
+
+    for (stem, cells) in [
+        ("dump3_bare", &LOADSHAPE_MEAN_REROUND[..]),
+        ("dump3_debug", &LOADSHAPE_MEAN_REROUND[..]),
+        ("dump_autotrans", &AUTOTRANS_RDC_REROUND[..]),
+    ] {
+        let p = reports_dir().join(format!("{stem}.txt"));
+        let oracle =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        for (from, to) in cells {
+            assert_eq!(
+                oracle.matches(from).count(),
+                1,
+                "{stem}: the oracle golden must carry {from:?} exactly once"
+            );
+            assert_eq!(
+                oracle.matches(to).count(),
+                0,
+                "{stem}: the corrected spelling {to:?} must not already be there"
+            );
+        }
+        let expected = lane::expected_rerounded(&oracle, cells);
+        if lane::PARITY {
+            assert_eq!(expected, oracle, "{stem}: the parity arm is the identity");
+            continue;
+        }
+        assert_eq!(
+            expected.len(),
+            oracle.len(),
+            "{stem}: same-width re-spelling"
+        );
+        for (from, to) in cells {
+            assert_eq!(
+                expected.matches(from).count(),
+                0,
+                "{stem}: {from:?} rewritten"
+            );
+            assert_eq!(
+                expected.matches(to).count(),
+                1,
+                "{stem}: {to:?} present once"
             );
         }
     }
@@ -5949,9 +6040,29 @@ fn save_voltages_and_meterless_save_leave_last_result_file() {
 #[test]
 fn dump3_bare_matches_oracle() {
     // Two Fault objects in the fixture, so two `~ MinAmps=` pairs — the same
-    // Stage F row as `dump_fault`, see [`fault_dump_expected`].
-    run_deck_dump_exact_expected("dump3_bare", fault_dump_expected);
+    // Stage F row as `dump_fault`, see [`fault_dump_expected`] — plus the one
+    // F-FMT `%g` cell, [`LOADSHAPE_MEAN_REROUND`].
+    run_deck_dump_exact_expected("dump3_bare", dump3_expected);
 }
+
+/// `dump3_*`'s two Stage F rows composed: the Fault `MinAmps` double-print
+/// (`fault_dump_expected`) and the F-FMT `%g` re-rounding of the default
+/// LoadShape's computed `Mean` ([`LOADSHAPE_MEAN_REROUND`]).
+fn dump3_expected(oracle: &str) -> String {
+    lane::expected_rerounded(&fault_dump_expected(oracle), &LOADSHAPE_MEAN_REROUND)
+}
+
+/// The one F-FMT `%g` re-rounding cell of the `dump3_*` goldens (see
+/// [`lane::expected_rerounded`]): `loadshape.default`'s **computed** `Mean`.
+///
+/// This is the exact value the parity kernel's own documentation names — the
+/// true `f64` is 0.82582833333333349745…, whose correctly-rounded 17-digit form
+/// ends `…3350`, which FPC then re-rounds half-away-from-zero to `…334` while a
+/// single correct rounding of the value itself keeps `…333`. The dump's other
+/// LoadShape numbers (`%Mean=50`, `Set %mean=82.58`, every `Interval`/`Npts`)
+/// are compared unchanged in both lanes.
+const LOADSHAPE_MEAN_REROUND: [(&str, &str); 1] =
+    [("Mean=0.825828333333334", "Mean=0.825828333333333")];
 
 /// `Dump debug` — the whole-circuit form with Complete=TRUE: the
 /// `Circuit.DebugDump` bus/device/node-map header, per-element Y/terminal/
@@ -5959,7 +6070,7 @@ fn dump3_bare_matches_oracle() {
 /// system-Y compressed-column dump (`[%4d,%4d] = %12.5g + j%12.5g`).
 #[test]
 fn dump3_debug_matches_oracle() {
-    run_deck_dump_exact_expected("dump3_debug", fault_dump_expected);
+    run_deck_dump_exact_expected("dump3_debug", dump3_expected);
 }
 
 /// `Dump solution` — `Solution.DumpProperties(F, Complete=FALSE, Leaf=TRUE)`

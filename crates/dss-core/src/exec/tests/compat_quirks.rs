@@ -59,8 +59,15 @@ fn sym_matrix_text_getter_is_lane_split() {
     let json = dss
         .obj_to_json("Capacitor.c1", Default::default())
         .expect("Capacitor.c1 renders as JSON");
+    // Spelled through the seam (`compat::json_float`), because *this* assertion
+    // is about the stored values reaching the JSON view at all — not about the
+    // F-FMT row that decides how they are printed.
+    let (diag, off) = (
+        crate::compat::json_float(2.8),
+        crate::compat::json_float(-0.6),
+    );
     assert!(
-        json.contains("2.7999999999999998E+000") && json.contains("-5.9999999999999998E-001"),
+        json.contains(&diag) && json.contains(&off),
         "the JSON view must carry the stored matrix in every lane: {json}"
     );
 }

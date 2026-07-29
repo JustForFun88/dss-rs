@@ -27,8 +27,11 @@ use std::path::PathBuf;
 
 use dss_core::exec::Dss;
 use dss_core::report::export::json::schema;
-use dss_core::report::export::json::{Json, write_pretty};
+use dss_core::report::export::json::{FPJSON_SPELLING, Json, write_pretty_with};
 use serde_json::Value;
+
+mod harness;
+use harness::lane;
 
 fn golden_path() -> PathBuf {
     [
@@ -53,10 +56,29 @@ fn load_golden() -> Value {
 
 /// Render a `$defs`/`properties` value alone at indent 0 — exactly what the
 /// golden stores (see `gen_schema.py`).
+///
+/// **Stage F.4:** deliberately rendered with [`FPJSON_SPELLING`] rather than the
+/// lane's, in *both* lanes. This whole file is a **byte** gate whose subject is
+/// the schema's own content — every property block, ordinal, enum and `$ref`, and
+/// the exact line-oriented shape its divergence surgery below edits by literal
+/// `\r\n`-terminated lines. The F-FMT rows (`compat::json_float`,
+/// `compat::JSON_LINE_BREAK`) change only the *spelling* of that document, so
+/// letting them vary here would trade a strong structural gate for a weaker one
+/// and force ~23 line patterns to be written twice. Instead the spelling is
+/// pinned to the oracle's and the default writer is held to the same document by
+/// [`lane_spelling_renders_the_same_schema_document`] — the same "assert the
+/// parity kernel in both lanes, then assert the default kernel against it" shape
+/// `fmt_battery.rs` uses.
 fn render(v: &Json) -> String {
     let mut out = String::new();
-    write_pretty(v, 0, &mut out);
+    write_pretty_with(FPJSON_SPELLING, v, 0, &mut out);
     out
+}
+
+/// The full `DSS_ExtractSchema` document in the oracle's spelling — the
+/// document-level twin of [`render`], and for the same reason.
+fn render_document(dss: &Dss) -> String {
+    render(&dss.schema_document())
 }
 
 #[test]
@@ -407,7 +429,7 @@ fn skeleton_envelope_is_well_formed() {
     // The public Dss surface returns the same static core, independent of any
     // circuit state (no `New circuit` needed).
     let dss = Dss::new();
-    let out = dss.extract_schema_json();
+    let out = render_document(&dss);
 
     // Valid JSON with the expected envelope keys in order.
     let v: Value = serde_json::from_str(&out).expect("schema is valid JSON");
@@ -580,13 +602,29 @@ fn dedent(region: &str) -> String {
     out
 }
 
+/// The document the **engine** actually emits (`Dss::extract_schema_json`, the
+/// lane's spelling) is the same document the byte gates above check in the
+/// oracle's spelling.
+///
+/// This is what keeps [`render`]'s decision — pin the spelling to fpjson's in
+/// both lanes — from quietly turning the whole file into a parity-only gate:
+/// every number is compared bit-for-bit and every structural token and string
+/// verbatim, so the only thing the default lane is allowed to do differently is
+/// spell a float and break a line. In the parity lane the two renders are
+/// byte-identical and `compare_json` says so directly.
+#[test]
+fn lane_spelling_renders_the_same_schema_document() {
+    let dss = Dss::new();
+    lane::compare_json(&render_document(&dss), &dss.extract_schema_json(), "schema");
+}
+
 /// (A) The full port document is byte-identical to its pinned golden — a
 /// regression guard over the whole `DSS_ExtractSchema` output (envelope, all
 /// `$defs`, `<Class>List`/`<Class>Container` triples, `circuitProperties`).
 /// Regenerate deliberately with `REGEN_SCHEMA_PORT=1` after a reviewed change.
 #[test]
 fn full_document_matches_port_golden() {
-    let out = Dss::new().extract_schema_json();
+    let out = render_document(&Dss::new());
     let path = json_dir().join("schema_full_port.json");
     if std::env::var("REGEN_SCHEMA_PORT").is_ok() {
         std::fs::write(&path, &out).unwrap();
@@ -615,7 +653,7 @@ fn full_document_matches_port_golden() {
 #[test]
 fn full_document_reconciles_with_oracle() {
     let dss = Dss::new();
-    let port = dss.extract_schema_json();
+    let port = render_document(&dss);
     let oracle = read_golden("schema_full_oracle.json");
     let inv = load_divergences();
     let divergences = inv["divergences"].as_array().expect("divergences array");

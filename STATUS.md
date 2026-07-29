@@ -7,6 +7,90 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.4a — F-FMT step 1: the number-rendering seam, and what a re-rounded last digit actually costs (branch `depas-stagef`, 2026-07-29)
+
+The first of F.4's three steps (`DE_PASCALIZE_PLAN.md` Part IV.2 §F-FMT): **every
+number-to-text call in the engine now goes through a `compat` alias**, and the
+five aliases that carry a genuine difference are flipped. `TODO(compat)` in
+`crates` drops **22 → 16** (25 → 19 tree-wide) — six of the seven `Ffmt` escape
+rows resolved; the survivor is the `Show` *table-layout* row, which is step 2's,
+not a number format at all. `SPLIT_ALIAS_POPULATION` 30 → **35**. No golden,
+tolerance, ledger entry or deck was regenerated: F.4 opens no re-baseline event,
+per the coordinator's F.3 exit ruling and §F-FMT step 3.
+
+**The five rows, each with its measurement.**
+
+* `compat::fmt_g` — `util::fmt_g_fpc_impl` (the FPC 3.2.2 Grisu1 + `ffGeneral`
+  pipeline) vs `fmt_g_native_impl` (~40 lines: one correctly-rounded
+  `format!("{:.*e}")`, then FPC's own notation window and trailing-zero rules).
+  The native kernel deliberately keeps the *digit count* and the
+  fixed-vs-scientific threshold (`-6 < exp < digits`, one decade wider than C's
+  `%g`) — those are the layout policy the fixed-width tables are built around,
+  not an inexactness. What it drops is the one thing IV.2 calls a wart: FPC's
+  **two-stage** decimal re-rounding. Measured over the committed 13 198-value FPC
+  battery at precisions 2/5/8/15 (52 792 renders): **225 divergences**, worst
+  9.86e-15 relative, every one a last-digit difference, notation never moved, and
+  the default render at most **1 character longer** (a round-up into a trailing
+  zero that FPC then strips — `0.4020128841512195`).
+* `compat::fixed_w_script` — the AltDSS `%8.2f` PostCommands: FPC's 15-sig
+  intermediate + ties-away vs one correct rounding (`0.125` → `0.13` vs `0.12`).
+* `compat::CONTROL_QUEUE_SEC_DIGITS` — `Show ControlQueue`'s `Sec` column. Its
+  `%-.g` precision is *unobservable* (the queue is always drained before any
+  text-interface `show controlqueue`), so the parity lane keeps the 6-significant
+  stand-in the byte contract was written against and the default lane stops
+  guessing: 15, FPC's documented `ffGeneral` default.
+* `compat::json_float` — fpjson's fixed 17-significant scientific vs the shortest
+  round-tripping literal. **A `.0` suffix is part of the fix**: `format!("{}")`
+  renders `1.0` as `1`, which this module's own reader then takes for an
+  *integer* (and `-0.0` loses its sign) — caught by
+  `read::tests::round_trips_writer_output`, which is exactly the regression a
+  "shortest is shortest" flip would have shipped.
+* `compat::JSON_LINE_BREAK` — fpjson writes the RTL platform `sLineBreak`, so the
+  goldens carry Windows CRLF; the default lane writes `\n` on every platform.
+
+**What the flips cost the gate, measured rather than assumed.** Exactly **five
+cells** in the whole suite, each a last-digit re-spelling of the *same* `f64`,
+each enumerated as a fail-on-stale expected-value transform of the oracle
+capture — never as a widened tolerance, because `exact_value_policy` is `rel =
+abs = 0` on purpose and a band would also absorb a real change:
+`dump3_bare`/`dump3_debug`'s `Mean=0.825828333333334` (the `loadshape.default`
+FMean the parity kernel's own doc names), `dump_autotrans`'s
+`Rdcohms=0.008430938` (winding 2, printed at `g(v, 7)`), and — the only corpus
+movement in 520 cases — two `QoutPU=` cells of
+`controls:invcontrol/midi_invcontrol_drc.dss`'s DRC trace, printed at
+`fmt_g(v, 3)` where FPC's `AGRESSIVE_ROUNDUP` turns `…4999` into a round-up. All
+four are *display* values; the DRC trigger itself compares `f64`s.
+
+**The JSON goldens changed comparator, not content.** They used to be byte-equal
+in both lanes; `harness::lane::compare_json` now lexes both sides and compares
+token-for-token — structure and key order exactly, every **string** verbatim
+(so the `PostCommands` DSS script stays byte-gated), numbers by `f64::to_bits`
+with no tolerance at all. `golden_schema.rs` took the other route: its 23
+`\r\n`-anchored divergence patterns make it a *layout* gate, so it now renders
+through the new `write_pretty_with(FPJSON_SPELLING, …)` in both lanes and a new
+`lane_spelling_renders_the_same_schema_document` holds the default writer to the
+same document through `compare_json`. `Dss::schema_document()` was split out of
+`extract_schema_json()` to make that possible.
+
+**Both kernels stay compiled and asserted, in either build.**
+`fmt_battery_matches_fpc_rtl` now pins `fmt_g_fpc_impl` (not "whatever the seam
+selects") against the real FPC RTL on all 13 198 × 7 renders *in both lanes* —
+strictly stronger than before — and
+`native_kernel_differs_from_fpc_only_by_the_rounding_rule` records the divergence
+population as a number that has to be re-measured, not silenced.
+
+**Proof.** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity` both exit 0; `cargo test --workspace --no-fail-fast`
+**2462 passed / 0 failed / 5 ignored** and the parity-lane twin identically
+**2462 / 0 / 5**, with the unconditional 520-case corpus gate green inside each.
+That is +101 over F.3's 2361, all of it the two test binaries that gained the
+harness (`golden_json`, `golden_json_import`) plus the new lane pins; 0 removed,
+0 new `#[ignore]`. The default-lane run leaked the known intermittent
+`Test/AutoTrans/*` set and the parity-lane run a different one; both deleted by
+exact name, after which `git status --short tests/corpus` is empty. `git diff --
+tests/golden tests/corpus` is empty: no artifact moved.
+
 ### DE_PASCALIZE Stage F.3 — CLOSED: the coordinator's exit ruling, and the one hand-off it moves (branch `depas-stagef`, 2026-07-29)
 
 F.3ag ended with the 0.15.x hide-flag escape parked on **F.5**, having disproved

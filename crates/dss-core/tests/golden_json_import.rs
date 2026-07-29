@@ -14,9 +14,13 @@
 
 use std::path::PathBuf;
 
+use dss_core::compat::JSON_LINE_BREAK;
 use dss_core::exec::Dss;
 use dss_core::report::export::json::JsonOpts;
 use serde::Deserialize;
+
+mod harness;
+use harness::lane;
 
 /// The generator's `Circuit_ToJSON` bits: SkipTimestamp only (bit 9).
 const SKIP_TIMESTAMP_BITS: u32 = 512;
@@ -68,12 +72,19 @@ fn run_deck(stem: &str) {
     let j1 = dss
         .circuit_to_json(opts())
         .unwrap_or_else(|| panic!("{}: no circuit after import", g.name));
-    assert_eq!(
-        j1,
-        g.expected_json,
-        "{}: re-export after import != oracle J1\nfirst diff at {:?}",
-        g.name,
-        first_diff(&j1, &g.expected_json)
+    // Stage F.4: the JSON writer's float spelling and line break are lane rows
+    // (`compat::json_float`, `compat::JSON_LINE_BREAK`), so the *oracle* side is
+    // compared token-for-token in the default lane and byte-for-byte in the
+    // parity one — structure, key order and every string exactly, numbers by
+    // bit pattern. See `harness::lane::compare_json`.
+    lane::compare_json(
+        &g.expected_json,
+        &j1,
+        &format!(
+            "{}: re-export after import != oracle J1 (first diff at {:?})",
+            g.name,
+            first_diff(&j1, &g.expected_json)
+        ),
     );
 
     // Idempotency: a second import/export cycle must reproduce J1 exactly, the
@@ -258,9 +269,12 @@ fn missing_required_property_errors() {
     // "<prop>"`. Oracle-confirmed (dss-python 0.15.7) by dropping a Load's Bus1.
     let j0 = tiny_circuit_json();
     // Drop only the Load's Bus1 (the Vsource keeps its own).
+    // The injection anchors are cut from the engine's *own* export, so they use
+    // the lane's line break (`compat::JSON_LINE_BREAK`), not a literal CRLF.
+    let nl = JSON_LINE_BREAK;
     let injected = j0.replace(
-        "\"Name\" : \"l1\",\r\n      \"Bus1\" : \"sourcebus\",\r\n",
-        "\"Name\" : \"l1\",\r\n",
+        &format!("\"Name\" : \"l1\",{nl}      \"Bus1\" : \"sourcebus\",{nl}"),
+        &format!("\"Name\" : \"l1\",{nl}"),
     );
     assert_ne!(injected, j0, "injection point exists");
     let mut dss = Dss::new();
@@ -280,9 +294,12 @@ fn bus_kvln_kvll_conflict_aborts() {
     // no try/except in `Obj_Circuit_FromJSON_` it aborts the whole load via the C
     // wrapper. Oracle-confirmed (error 20230919). Must abort, not skip-and-continue.
     let j0 = tiny_circuit_json();
+    let nl = JSON_LINE_BREAK;
     let injected = j0.replace(
-        "\"Name\" : \"sourcebus\"\r\n    }",
-        "\"Name\" : \"sourcebus\",\r\n      \"kVLN\" : 7.2,\r\n      \"kVLL\" : 12.47\r\n    }",
+        &format!("\"Name\" : \"sourcebus\"{nl}    }}"),
+        &format!(
+            "\"Name\" : \"sourcebus\",{nl}      \"kVLN\" : 7.2,{nl}      \"kVLL\" : 12.47{nl}    }}"
+        ),
     );
     assert_ne!(injected, j0, "injection point exists");
     let mut dss = Dss::new();

@@ -43,7 +43,8 @@
 //! | multi-meter `Bus_Int_Duration` | [`BUS_INT_DURATION_WALKS_ALL_BUSES`] — this file | **yes** (F.3c) |
 //! | Monitor `BaseFrequency` 60.0 (CLAUDE.md bug 6, deferred here by name) | [`monitor_base_frequency`] — this file | **yes** (F.3c) |
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
-//! | report text rendering | F.4 (`F-FMT`) — `compat::fmt` seam | no |
+//! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
+//! | report text rendering — `Show` table layout | not yet — F.4's table-rendering step (§F-FMT step 2) owns it | no |
 //! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w) |
 //!
 //! Rows 12–13 are not in IV.2's table and do not extend it: they are the two
@@ -1489,3 +1490,146 @@ pub use profile_ll_pu_divisor_truncated_impl as profile_ll_pu_divisor;
 // an allowed 8.179e-6. Whole-case default-lane exclusion again — including the
 // deck's unrelated sng/dbl/`mult=(sngfile=)` MMF-reader coverage — so the row
 // keeps its marker; see `elements/general/load_shape/compute.rs`.
+
+// ---------------------------------------------------------------------------
+// Report text rendering — the F-FMT seam (IV.2 row 11, step F.4)
+// ---------------------------------------------------------------------------
+//
+// `DE_PASCALIZE_PLAN.md` Part IV.2 §F-FMT step 1: *every* number-to-text call
+// goes through an alias declared here, so the lane makes one decision per
+// rendering rule instead of one per call site. The parity kernels are the FPC
+// RTL emulations moved as-is; the default kernels are native `format!` with
+// explicit precision.
+//
+// **What F-FMT is allowed to move, and what it is not.** The rows below change
+// how a number is *spelled* — never which number it is, never a column set,
+// never a row order. IV.1 keeps `Export`/CSV column sets and order, `Save`
+// re-compilability and monitor channel precision contractual, and the default
+// kernels below preserve digit counts and notation windows precisely so the
+// fixed-width tables keep their columns. What they drop is FPC's *two-stage
+// decimal re-rounding*, which is the one thing in this family that is an
+// inexactness rather than a layout policy.
+//
+// **Why the default lane's goldens still gate.** §F-FMT step 3: the byte-golden
+// families are compared through the already-existing parsed-numeric tokenizer
+// (`tests/harness/lane.rs::compare_report`) against the *same committed
+// goldens*, at `rel = abs = 0`. So a re-spelled number passes only while it
+// parses to the identical `f64`; a changed value, a changed column count or a
+// changed row order fails in both lanes. F.4 opens no re-baseline event.
+//
+// **`comma_text` — declared, and measured to need *no* split.** IV.2's table
+// bundles FPC `TStrings.CommaText` into the parity kernel. Read at the source
+// (`crate::util::comma_text`), its rule is "quote an item containing any char
+// `<= ' '`, the delimiter, or the quote char; double an embedded quote" — which
+// is the RFC-4180 quoting rule restricted to this alphabet, not an FPC wart:
+// a native CSV writer produces the identical bytes for every monitor header
+// label the engine can emit. It carries no compat marker for the same reason.
+// Splitting it would therefore select the same behaviour twice, so it stays one
+// shared kernel — same disposition as "Y triplet dedup", reached the same way.
+
+/// General (`%g`) number rendering — the seam every report, dump, event-log and
+/// trace line lands in ([`crate::util::fmt_g`]).
+///
+/// * parity — [`crate::util::fmt_g_fpc_impl`]: the FPC 3.2.2 Grisu1 +
+///   `ffGeneral` pipeline, whose final cut to `sig` digits re-rounds a decimal
+///   string **half-away-from-zero** on top of an already-rounded 17-digit form.
+/// * default — [`crate::util::fmt_g_native_impl`]: the same digit count and the
+///   same fixed-vs-scientific window, produced by **one** correctly-rounded
+///   conversion.
+///
+/// Pinned at its observable by `crates/dss-core/tests/fmt_battery.rs`, which
+/// asserts the parity kernel byte-for-byte against the real FPC RTL in *both*
+/// lanes and measures the exact population where the default kernel disagrees.
+#[cfg(feature = "oracle-parity")]
+pub use crate::util::fmt_g_fpc_impl as fmt_g;
+/// See the parity-lane twin above.
+#[cfg(not(feature = "oracle-parity"))]
+pub use crate::util::fmt_g_native_impl as fmt_g;
+
+/// See the parity-lane twin above.
+#[cfg(not(feature = "oracle-parity"))]
+pub use crate::report::format::fixed_w as fixed_w_script;
+/// Fixed-point rendering of a number embedded in **emitted DSS script** — the
+/// AltDSS whole-circuit `PostCommands` (`Set ueweight=%8.2f`,
+/// `Set lossweight=%8.2f`, `CAPI_Obj.pas:2593-2594`).
+///
+/// * parity — [`crate::report::format::fixed_w_fpc_impl`]: FPC's two-stage
+///   rounding (render at 15 significant digits, then round *that decimal*
+///   ties-away-from-zero).
+/// * default — [`crate::report::format::fixed_w`]: Rust's single correctly-
+///   rounded `{:.N}`, which is what the fixed-width `Show` tables already use in
+///   both lanes.
+///
+/// Pinned by `report::format::tests::fixed_w_script_is_the_lane_kernel`.
+#[cfg(feature = "oracle-parity")]
+pub use crate::report::format::fixed_w_fpc_impl as fixed_w_script;
+
+/// See the parity-lane twin above.
+#[cfg(not(feature = "oracle-parity"))]
+pub use CONTROL_QUEUE_SEC_DIGITS_DEFAULT_IMPL as CONTROL_QUEUE_SEC_DIGITS;
+/// How many significant digits a `Show ControlQueue` row prints its `Sec`
+/// column with (`ControlQueue.pas:496`, `Format('%d, %d, %-.g, …')`).
+///
+/// `%-.g` is FPC `ffGeneral` with an **empty** precision after the dot, and the
+/// row is unreachable from the executive — a `show controlqueue` after any
+/// `solve` sees a drained queue (probe-proven) — so no oracle capture exists to
+/// settle what it renders. The parity lane therefore keeps the 6-digit stand-in
+/// the port has always used: it is the value the byte contract was written
+/// against, and guessing differently now would trade one unverifiable number for
+/// another. The default lane does not guess at all — it renders the column at
+/// the seam's full [`fmt_g`] precision (15 significant digits, FPC's own
+/// `ffGeneral` default when a precision is omitted), which is a *defined*
+/// rendering rather than a reconstruction of an unobservable one.
+///
+/// Pinned by `report::show::diagnostics::tests::control_queue_row_format`.
+#[cfg(feature = "oracle-parity")]
+pub use CONTROL_QUEUE_SEC_DIGITS_PARITY_IMPL as CONTROL_QUEUE_SEC_DIGITS;
+
+/// The 6-significant-digit stand-in for FPC's `%-.g` — see
+/// [`CONTROL_QUEUE_SEC_DIGITS`].
+pub const CONTROL_QUEUE_SEC_DIGITS_PARITY_IMPL: usize = 6;
+/// FPC `ffGeneral`'s documented default precision — see
+/// [`CONTROL_QUEUE_SEC_DIGITS`].
+pub const CONTROL_QUEUE_SEC_DIGITS_DEFAULT_IMPL: usize = 15;
+
+/// How a float is spelled in the AltDSS JSON export.
+///
+/// * parity — [`crate::report::export::json::fpjson_float_fpc_impl`]: fpjson's
+///   `TJSONFloatNumber` default, FPC `Str(Double)` — a fixed
+///   17-significant-digit scientific literal with a 3-digit zero-padded
+///   exponent (`12.47` → `1.2470000000000001E+001`).
+/// * default — [`crate::report::export::json::json_float_shortest_impl`]: the
+///   shortest literal that round-trips to the same `f64` (`12.47`).
+///
+/// The *value* is identical either way — the port's own reader
+/// (`report::export::json::read::parse_json`) reads both back to the same
+/// `f64`, which its `float_literal_is_bit_exact` test asserts on the lane's
+/// kernel. What changes is only how a consumer sees it.
+///
+/// Pinned by `report::export::json::tests::json_float_is_the_lane_kernel`.
+#[cfg(feature = "oracle-parity")]
+pub use crate::report::export::json::fpjson_float_fpc_impl as json_float;
+/// See the parity-lane twin above.
+#[cfg(not(feature = "oracle-parity"))]
+pub use crate::report::export::json::json_float_shortest_impl as json_float;
+
+/// See the parity-lane twin above.
+#[cfg(not(feature = "oracle-parity"))]
+pub use JSON_LINE_BREAK_DEFAULT_IMPL as JSON_LINE_BREAK;
+/// The line break fpjson's pretty writer puts between members.
+///
+/// fpjson emits the RTL platform `sLineBreak`, so the oracle's own output — and
+/// therefore the byte goldens — carry **CRLF**, because the pinned oracle runs
+/// on Windows. The parity lane reproduces that; the default lane emits `\n`, so
+/// the document it writes is the same on every platform. Compact mode has no
+/// line breaks and is identical in both lanes.
+///
+/// Pinned by `report::export::json::tests::json_line_break_is_the_lane_kernel`.
+#[cfg(feature = "oracle-parity")]
+pub use JSON_LINE_BREAK_PARITY_IMPL as JSON_LINE_BREAK;
+
+/// The Windows `sLineBreak` fpjson wrote into the goldens — see
+/// [`JSON_LINE_BREAK`].
+pub const JSON_LINE_BREAK_PARITY_IMPL: &str = "\r\n";
+/// The platform-independent line break — see [`JSON_LINE_BREAK`].
+pub const JSON_LINE_BREAK_DEFAULT_IMPL: &str = "\n";
