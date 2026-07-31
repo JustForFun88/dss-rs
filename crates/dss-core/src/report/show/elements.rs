@@ -14,6 +14,7 @@ use crate::circuit::Circuit;
 use crate::elements::traits::CktElement;
 use crate::exec::registry::DssClass;
 use crate::report::format;
+use crate::report::table::{Cell, Report, Row};
 
 /// Build the `Show Elements` text for both files (Pascal `ShowElements`).
 /// `class_name` is the already-lowercased class filter (empty = the default
@@ -24,75 +25,67 @@ pub(crate) fn show_elements(
     class_name: &str,
 ) -> (String, String) {
     let mbnl = super::max_bus_name_length(ckt);
-    let mdnl = super::max_device_name_length(classes, ckt);
-    let mut main = String::new();
-    let mut disabled = String::new();
+    let mdnl = crate::compat::max_device_name_length(super::device_name_width(classes, ckt));
+    let mut main = Report::new();
+    let mut disabled = Report::new();
 
     if !class_name.is_empty() {
         // Class filter (`SetObjectClass` + walk `ActiveDSSClass`). An unknown class
-        // leaves both strings empty (Pascal still creates the two files).
+        // leaves both strings empty (Pascal still creates the two files). One name
+        // per line — no columns, so no rows.
         if let Some(ci) = classes
             .iter()
             .position(|c| c.props.class_name().eq_ignore_ascii_case(class_name))
         {
-            main.push_str(&format!("All Elements in Class \"{class_name}\"\n\n"));
-            disabled.push_str(&format!(
+            main.text(&format!("All Elements in Class \"{class_name}\"\n\n"));
+            disabled.text(&format!(
                 "All DISABLED Elements in Class \"{class_name}\"\n\n"
             ));
             let arena = &classes[ci].arena;
             for i in 0..arena.len() {
-                let uname = arena.obj(i).data().name().to_uppercase();
+                let uname = arena.obj(i).data().name().to_ascii_uppercase();
                 // Pascal `(DSSClassType and BASECLASSMASK) > 0` = a circuit element:
                 // route by `Enabled`. A non-CktElement object always goes to `main`.
                 match arena.try_ckt_elem(i) {
-                    Some(elem) if !elem.cd().enabled => {
-                        disabled.push_str(&uname);
-                        disabled.push('\n');
-                    }
-                    _ => {
-                        main.push_str(&uname);
-                        main.push('\n');
-                    }
+                    Some(elem) if !elem.cd().enabled => disabled.line(&uname),
+                    _ => main.line(&uname),
                 }
             }
         }
-        return (main, disabled);
+        return (main.finish(), disabled.finish());
     }
 
-    // Default form: PD then PC elements, each `WriteElementRecord`.
-    let header = |disabled_prefix: &str| {
-        let elem_col = if disabled_prefix.is_empty() {
-            "Element".to_string()
-        } else {
-            format!("{disabled_prefix}Element")
-        };
-        format!(
-            "{}{}{}{} ...\n",
-            format::pad(&elem_col, mdnl + 2),
-            format::pad(" Bus1", mbnl),
-            format::pad(" Bus2", mbnl),
-            format::pad(" Bus3", mbnl),
-        )
+    // Default form: PD then PC elements, each `WriteElementRecord`. The header is
+    // the columns the records draw: `Pad(' BusN', mbnl)`'s leading space is the
+    // previous column's gutter, so the label sits in a `mbnl - 1` field (`Pad`
+    // only appends — the bytes are identical).
+    let header = |rep: &mut Report, disabled_prefix: &str| {
+        let elem_col = format!("{disabled_prefix}Element");
+        let mut row = Row::new().cell(Cell::left(elem_col, mdnl + 2).sep(" "));
+        for b in ["Bus1", "Bus2", "Bus3"] {
+            row = row.cell(Cell::left(b, mbnl.saturating_sub(1)).sep(" "));
+        }
+        rep.row(row.cell(Cell::plain("...")));
     };
 
-    main.push('\n');
-    main.push_str(&format!("Elements in Active Circuit: {}\n", ckt.name));
-    main.push('\n');
-    main.push_str("Power Delivery Elements\n");
-    main.push('\n');
-    main.push_str(&header(""));
-    main.push('\n');
+    main.blank();
+    main.line(&format!("Elements in Active Circuit: {}", ckt.name));
+    main.blank();
+    main.line("Power Delivery Elements");
+    main.blank();
+    header(&mut main, "");
+    main.blank();
 
-    disabled.push('\n');
-    disabled.push_str(&format!(
-        "DISABLED Elements in Active Circuit: {}\n",
+    disabled.blank();
+    disabled.line(&format!(
+        "DISABLED Elements in Active Circuit: {}",
         ckt.name
     ));
-    disabled.push('\n');
-    disabled.push_str("DISABLED Power Delivery Elements\n");
-    disabled.push('\n');
-    disabled.push_str(&header("DISABLED "));
-    disabled.push('\n');
+    disabled.blank();
+    disabled.line("DISABLED Power Delivery Elements");
+    disabled.blank();
+    header(&mut disabled, "DISABLED ");
+    disabled.blank();
 
     write_records(
         classes,
@@ -104,17 +97,17 @@ pub(crate) fn show_elements(
         &mut disabled,
     );
 
-    main.push('\n');
-    main.push_str("Power Conversion Elements\n");
-    main.push('\n');
-    main.push_str(&header(""));
-    main.push('\n');
+    main.blank();
+    main.line("Power Conversion Elements");
+    main.blank();
+    header(&mut main, "");
+    main.blank();
 
-    disabled.push('\n');
-    disabled.push_str("DISABLED Power Conversion Elements\n");
-    disabled.push('\n');
-    disabled.push_str(&header("DISABLED "));
-    disabled.push('\n');
+    disabled.blank();
+    disabled.line("DISABLED Power Conversion Elements");
+    disabled.blank();
+    header(&mut disabled, "DISABLED ");
+    disabled.blank();
 
     write_records(
         classes,
@@ -126,10 +119,10 @@ pub(crate) fn show_elements(
         &mut disabled,
     );
 
-    (main, disabled)
+    (main.finish(), disabled.finish())
 }
 
-/// Walk a circuit list, writing each element's `WriteElementRecord` to `main`
+/// Walk a circuit list, writing each element's `WriteElementRecord` row to `main`
 /// (enabled) or `disabled`.
 #[allow(clippy::too_many_arguments)]
 fn write_records(
@@ -138,19 +131,19 @@ fn write_records(
     refs: &[crate::elements::traits::ElemId],
     mbnl: usize,
     mdnl: usize,
-    main: &mut String,
-    disabled: &mut String,
+    main: &mut Report,
+    disabled: &mut Report,
 ) {
     for &r in refs {
         let class_name = classes[r.class_ord()].props.class_name();
         let obj = &classes[r.class_ord()].arena[r.index()];
         let name = format!("{}.{}", class_name, obj.data().name());
         if let Some(elem) = classes[r.class_ord()].arena.try_ckt_elem(r.index()) {
-            let rec = write_element_record(ckt, &name, elem, mbnl, mdnl);
+            let rec = element_record_row(ckt, &name, elem, mbnl, mdnl);
             if elem.cd().enabled {
-                main.push_str(&rec);
+                main.row(rec);
             } else {
-                disabled.push_str(&rec);
+                disabled.row(rec);
             }
         }
     }
@@ -158,25 +151,22 @@ fn write_records(
 
 /// One element's `"Name"  Bus1 Bus2 …` row (Pascal `WriteElementRecord`). The
 /// bus names are the terminals' stored (stripped) names, uppercased.
-fn write_element_record(
+fn element_record_row(
     ckt: &Circuit,
     name: &str,
     elem: &dyn CktElement,
     mbnl: usize,
     mdnl: usize,
-) -> String {
+) -> Row {
     let cd = elem.cd();
-    let mut s = format::pad(&format::enclose_quotes(name), mdnl + 2);
-    s.push(' ');
+    let mut row = Row::new().cell(Cell::left(format::enclose_quotes(name), mdnl + 2).sep(" "));
     for j in 0..cd.nterms {
         let bus = cd.terminals[j]
             .bus_ref
             .and_then(|b| ckt.buses.get(b))
             .map(|b| b.name.as_str())
             .unwrap_or("");
-        s.push_str(&format::pad(bus, mbnl).to_uppercase());
-        s.push(' ');
+        row = row.cell(Cell::left(bus.to_ascii_uppercase(), mbnl).sep(" "));
     }
-    s.push('\n');
-    s
+    row
 }

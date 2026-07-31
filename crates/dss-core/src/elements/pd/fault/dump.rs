@@ -7,11 +7,16 @@
 //! right after its custom `%.1f` line above, before continuing into the real
 //! tail (`NormAmps..Enabled`). Complete adds `// SpecType=%d`.
 //!
-//! TODO(compat): the `MinAmps` double-print above is a deterministic upstream
-//! off-by-one (`NumPropsThisClass` should have started the tail one property
-//! later); faithfully reproduced, not "fixed" — the oracle genuinely
-//! double-prints it, pinned byte-exact by `dump_fault`/`dump_fault_gmatrix`.
+//! The `MinAmps` double-print is the Stage F row
+//! [`crate::compat::FAULT_DUMP_TAIL_REPRINTS_MINAMPS`]: a deterministic upstream
+//! off-by-one that the three other classes with the same tail loop
+//! (`Transformer.pas:1276`, `AutoTrans.pas:1307`, `XfmrCode.pas:663`) do not
+//! have — they start at `NumPropsThisClass + 1`. The parity lane reproduces it
+//! (the oracle genuinely double-prints, pinned byte-exact by
+//! `dump_fault`/`dump_fault_gmatrix`); the default lane starts the tail at the
+//! next property.
 
+use crate::compat;
 use crate::report::format::fixed;
 use crate::report::save::dump::{self, DumpCtx};
 
@@ -61,8 +66,14 @@ impl Fault {
         ));
 
         // Pascal `for i := NumPropsThisClass to NumProperties` — starts AT
-        // MinAmps (9): the reprint quirk documented above.
-        dump::generic_props_from(out, cx, self, prop::MINAMPS);
+        // MinAmps (9) in the parity lane (the reprint quirk documented above)
+        // and at its successor, NormAmps (10), in the default lane.
+        let tail_start = if compat::FAULT_DUMP_TAIL_REPRINTS_MINAMPS {
+            prop::MINAMPS
+        } else {
+            prop::NORMAMPS
+        };
+        dump::generic_props_from(out, cx, self, tail_start);
 
         if complete {
             out.push_str(&format!("// SpecType={}\n", self.spec_type));

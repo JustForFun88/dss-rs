@@ -221,13 +221,14 @@ fn cdiv_fpc_matches_fpc_smith_not_naive() {
     // Pascal `TcMatrix.Invert`/`Kron` cross-terms use. It rounds the last bit
     // differently from `num_complex`'s naive `(ac+bd)/(c²+d²)` operator. Both
     // branches of Smith's are pinned here (bits straight from that f64 formula);
-    // the naive operator gives the listed *different* bits, so reverting
-    // `cdiv_fpc` to `/` flips them and fails this test.
+    // the naive operator gives the listed *different* bits, so pointing the
+    // parity kernel (`compat::cdiv_fpc_impl`) at `/` flips them and fails this
+    // test.
 
     // |den.re| > |den.im| branch.
     let num = c(0.0012433, 0.0012433);
     let den = c(0.0012433, 0.0011);
-    let q = cdiv_fpc(num, den);
+    let q = crate::compat::cdiv_fpc_impl(num, den);
     assert_eq!(q.re.to_bits(), 0x3ff0ea49fd1e0356);
     assert_eq!(q.im.to_bits(), 0x3fb08cf7c22f85eb);
     let naive = num / den; // num_complex naive operator — 1 ULP off
@@ -236,7 +237,7 @@ fn cdiv_fpc_matches_fpc_smith_not_naive() {
 
     // |den.re| <= |den.im| branch.
     let den = c(0.0012433, 0.36);
-    let q = cdiv_fpc(num, den);
+    let q = crate::compat::cdiv_fpc_impl(num, den);
     assert_eq!(q.re.to_bits(), 0x3f6c63aca54cccd3);
     assert_eq!(q.im.to_bits(), 0xbf6c31a5d17ddb1d);
     let naive = num / den;

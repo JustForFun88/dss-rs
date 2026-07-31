@@ -96,13 +96,17 @@ impl CapControl {
         self.monitored_full_name = other.monitored_full_name.clone();
         self.ctrl_snap = other.ctrl_snap.clone();
         self.mon_snap = other.mon_snap.clone();
-        // TODO(compat): Pascal `TCapControlObj.MakeLike` (`CapControl.pas`
-        // l.446-490) never copies `ctrlSignalShape`/its name — `Like` on a
-        // Follow-type CapControl silently drops the ControlSignal reference on
-        // the new object (every other reference/field is copied). Reproduced
-        // verbatim: `control_signal_name`/`ctrl_signal_shape` are deliberately
-        // left at their `new()` defaults here. Clean fix (post-1:1-port
-        // sweep): also copy them like `ctrl_snap`/`mon_snap` above.
+        // Stage F `CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL`: Pascal
+        // `TCapControlObj.MakeLike` (`CapControl.pas:446-490`) copies every
+        // other reference and field but never `ctrlSignalShape`/its name, so a
+        // clone of a `type=Follow` CapControl has no signal to follow. The
+        // parity lane reproduces that (the fields stay at their `new()`
+        // defaults); the default lane copies them like `ctrl_snap`/`mon_snap`
+        // above.
+        if !crate::compat::CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL {
+            self.control_signal_name = other.control_signal_name.clone();
+            self.ctrl_signal_shape = other.ctrl_signal_shape.clone();
+        }
 
         self.ccd.element_terminal = other.ccd.element_terminal;
         self.pt_ratio = other.pt_ratio;

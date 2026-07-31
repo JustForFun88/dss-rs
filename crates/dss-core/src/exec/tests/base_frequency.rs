@@ -81,39 +81,60 @@ fn all_elements_inherit_the_50hz_base_frequency() {
             "{elem} base frequency"
         );
     }
-    // The Monitor is the lone exception — always 60 Hz (Monitor.pas:472).
+    // The Monitor is the lane-split exception (Monitor.pas:472) — see the
+    // dedicated test below.
     assert_eq!(
         query_f64(&mut dss, "monitor.m1.basefreq"),
-        60.0,
-        "monitor base frequency is hard-pinned to 60"
+        if dss_parity() { 60.0 } else { 50.0 },
+        "monitor base frequency"
     );
 }
 
-/// Dedicated pin for the reproduced UPSTREAM Monitor BaseFrequency bug (the
-/// `TODO(compat)` at `create_object_no_edit`): `TMonitorObj.Create` hard-pins
-/// `Basefrequency := 60.0` (Monitor.pas:472 == r4133:552), overriding the
-/// base-class `BaseFrequency := ActiveCircuit.Fundamental`. Under `Set
-/// DefaultBaseFrequency=50` every other element reads 50, but the monitor reads
-/// 60 — and that value is the `fBase` a mode-4 monitor feeds into `FlickerMeter`,
-/// where `fBase = 50.0` would select the IEC 61000-4-15 230V/50 Hz lamp curve.
-/// So a 50 Hz mode-4 monitor computes Pst with the wrong (60 Hz) lamp curve
-/// unless `basefreq=50` is set. Both gating oracles pin 60.0; a "clean" inherit
-/// would break parity — hence reproduced, not fixed (until Stage F).
+/// The lane the engine was compiled in, read from the engine itself.
+fn dss_parity() -> bool {
+    crate::compat::ORACLE_PARITY
+}
+
+/// The Stage F `monitor_base_frequency` row — the CLAUDE.md upstream bug #6,
+/// deferred here by name.
+///
+/// `TMonitorObj.Create` hard-pins `Basefrequency := 60.0` (Monitor.pas:472 ==
+/// r4133:552), overriding the base-class `BaseFrequency :=
+/// ActiveCircuit.Fundamental`. Under `Set DefaultBaseFrequency=50` every other
+/// element reads 50; upstream's monitor reads 60 — and that value is the
+/// `fBase` a mode-4 monitor feeds into `FlickerMeter`, where `fBase = 50.0`
+/// selects the IEC 61000-4-15 230 V/50 Hz lamp curve. So upstream computes a
+/// 50 Hz feeder's Pst with the wrong (60 Hz) lamp curve unless `basefreq=50`
+/// is written by hand.
+///
+/// **Parity lane**: 60.0, the value both gating oracles pin. **Default lane**:
+/// the inherited 50.0 — the deliberate divergence, expected-value pinned here
+/// (and only observable off 60 Hz, which is why no golden or corpus case
+/// moves). Asserted as an equality against the lane, so the test is meaningful
+/// in both.
 #[test]
-fn monitor_basefreq_pins_60hz_upstream_bug() {
+fn monitor_basefreq_is_the_lane_kernel() {
     let mut dss = Dss::new();
     dss.command("Set DefaultBaseFrequency=50");
     dss.command("New circuit.euro basekv=11");
     dss.command("New Line.l1 bus1=sourcebus bus2=b2 length=1 r1=0.1 x1=0.1 c1=0 c0=0");
     dss.command("New Monitor.m1 element=line.l1 terminal=1 mode=4");
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
-    // The circuit fundamental is 50, but the monitor is hard-pinned to 60.
+    // The circuit fundamental is 50 in both lanes.
     assert_eq!(dss.circuit().unwrap().fundamental, 50.0);
     assert_eq!(
         query_f64(&mut dss, "monitor.m1.basefreq"),
-        60.0,
-        "monitor basefreq must reproduce the upstream 60.0 override (Monitor.pas:472)"
+        if dss_parity() { 60.0 } else { 50.0 },
+        "parity reproduces the upstream 60.0 override (Monitor.pas:472); \
+         the default lane inherits the circuit fundamental"
     );
+    // A 60 Hz circuit — every golden and every gated corpus deck — is
+    // bit-identical in both lanes, which is why this row moves nothing.
+    let mut sixty = Dss::new();
+    sixty.command("New circuit.us basekv=12.47");
+    sixty.command("New Line.l1 bus1=sourcebus bus2=b2 length=1 r1=0.1 x1=0.1 c1=0 c0=0");
+    sixty.command("New Monitor.m1 element=line.l1 terminal=1 mode=4");
+    assert_eq!(query_f64(&mut sixty, "monitor.m1.basefreq"), 60.0);
     // An explicit `basefreq=` still lets the user correct it (flows into
     // FlickerMeter correctly on both engines).
     dss.command("Edit monitor.m1 basefreq=50");

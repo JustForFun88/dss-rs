@@ -25,7 +25,7 @@ use super::{Connection, Generator};
 
 // Pascal `DSSGlobals.TwoPi = 2.0 * PI` and `RadiansToDegrees = 180.0 / PI` —
 // both full precision in the vendored 0.14.5 source (the `57.2957795130823...`
-// alternative on the line above is commented out there). NOT a TODO(compat):
+// alternative on the line above is commented out there). NO compat marker:
 // the truncated `57.29577951` lives only in `DSSUcomplex` (`cdang`/`pdeg`),
 // which `Get_Variable` does not use.
 pub(super) const TWO_PI: f64 = 2.0 * std::f64::consts::PI;

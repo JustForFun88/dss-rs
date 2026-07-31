@@ -150,10 +150,10 @@ fn run_scenario(sc: &Scenario, tol: &harness::Tolerances) {
             ckt.solution.dbl_hour,
             step.dbl_hour
         );
-        assert_eq!(
-            ckt.solution.iteration, step.iterations,
-            "{} step {i}: iteration count differs",
-            sc.name
+        harness::lane::compare_iterations(
+            ckt.solution.iteration,
+            step.iterations,
+            &format!("{} step {i}", sc.name),
         );
 
         let names: Vec<String> = (1..=ckt.num_nodes).map(|j| ckt.node_name(j)).collect();

@@ -104,14 +104,12 @@ fn ieee8500_matches_oracle() {
         dss.errors()
     );
 
-    // Convergence + total iteration count, exact.
+    // Convergence + total iteration count (exact in the parity lane,
+    // ±`lane::ITER_SLACK` in the default lane — Stage F drift model).
     let ckt = dss.circuit().expect("circuit after compile");
     assert!(golden.snap.converged, "oracle did not converge");
     assert!(ckt.is_solved, "Rust solution did not converge");
-    assert_eq!(
-        ckt.solution.iteration, golden.snap.iterations,
-        "iteration count differs"
-    );
+    harness::lane::compare_iterations(ckt.solution.iteration, golden.snap.iterations, "ieee8500");
 
     // Node order, exact.
     assert_eq!(ckt.num_nodes, golden.node_order.len(), "node count differs");

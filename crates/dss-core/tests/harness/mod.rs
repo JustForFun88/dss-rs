@@ -6,12 +6,24 @@
 //!
 //! The structs mirror the full golden schema; each integration-test binary
 //! uses only a subset, so dead-code analysis is suppressed module-wide.
+//!
+//! **Stage F (`DE_PASCALIZE_PLAN.md` Part IV.2):** the suite runs in two lanes.
+//! Everything lane-dependent lives in [`lane`] — the drift-model table turned
+//! into code (report goldens, iteration counts) — and every golden driver goes
+//! through it instead of reading the feature cfg itself. The comparators in
+//! *this* file are lane-independent by design: the continuous floors
+//! ([`tol_for`]) and the discrete-state compares are identical in both lanes,
+//! which is exactly what the drift model prescribes. The one exception is
+//! [`field_eq`]'s `Key=Value` fallback, marked in place.
 #![allow(dead_code)]
 
 /// Command-replay scenario gate shared by `golden_line_constants.rs`,
 /// `golden_der_controls.rs`, and `golden_harmonics.rs` (the split of the former
 /// Phase-7 golden bucket).
 pub mod scenario;
+
+/// Stage F two-lane test policy (parity vs default build).
+pub mod lane;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -1033,43 +1045,107 @@ pub fn assert_power_close(
     }
 }
 
+/// Which sub-channels of an element capture [`compare_element_channels`] checks.
+///
+/// Exists for the Stage F lane policy: a *deliberate* divergence (the default
+/// lane's post-Newton `Powers`/`Losses`, `compat::
+/// POWERS_REUSE_STALE_NEWTON_ITERMINAL`) is excluded **field-by-field**, never
+/// case-by-case — the element name set, terminal currents, node voltages,
+/// discrete state and iteration count of such a case stay fully oracle-gated.
+/// [`lane::elem_channels_for`] is the only thing that ever returns a value other
+/// than [`ElemChannels::ALL`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ElemChannels {
+    pub currents: bool,
+    pub powers: bool,
+    pub losses: bool,
+}
+
+impl ElemChannels {
+    /// Every sub-channel — what every caller but the Stage F lane policy uses.
+    pub const ALL: Self = Self {
+        currents: true,
+        powers: true,
+        losses: true,
+    };
+    /// Currents only: the `S = V·conj(I)` channels are a deliberate divergence
+    /// in this lane and are pinned by their own expected-value test instead.
+    pub const CURRENTS_ONLY: Self = Self {
+        currents: true,
+        powers: false,
+        losses: false,
+    };
+}
+
 /// Compare one element's terminal currents and powers against a capture.
 pub fn compare_element(snaps: &[ElementSnapshot], exp: &ElementCap, tol: &Tolerances, ctx: &str) {
+    compare_element_channels(snaps, exp, tol, ctx, ElemChannels::ALL);
+}
+
+/// [`compare_element`] restricted to `channels` — see [`ElemChannels`].
+pub fn compare_element_channels(
+    snaps: &[ElementSnapshot],
+    exp: &ElementCap,
+    tol: &Tolerances,
+    ctx: &str,
+    channels: ElemChannels,
+) {
+    // The element must exist in the Rust snapshot under EVERY channel policy:
+    // excluding a value channel must never excuse a missing element.
     let snap = snaps
         .iter()
         .find(|s| s.name.eq_ignore_ascii_case(&exp.name))
         .unwrap_or_else(|| panic!("{ctx}: no element {}", exp.name));
+    // …and neither may it excuse a SHAPE mismatch: conductor counts are
+    // structure, not value, so they are asserted under every channel policy
+    // (`assert_power_close` also checks them, but only when it runs).
+    assert_eq!(
+        snap.powers.len(),
+        exp.p_kw.len(),
+        "{ctx} {}: power length mismatch",
+        exp.name
+    );
+    assert_eq!(
+        snap.currents.len(),
+        exp.i_re.len(),
+        "{ctx} {}: current length mismatch",
+        exp.name
+    );
     let ei: Vec<Complex64> = exp
         .i_re
         .iter()
         .zip(&exp.i_im)
         .map(|(re, im)| Complex64::new(*re, *im))
         .collect();
-    assert_complex_close_c(
-        &snap.currents,
-        &ei,
-        tol.i_rel,
-        tol.i_abs,
-        &format!("{ctx} {} currents", exp.name),
-    );
+    if channels.currents {
+        assert_complex_close_c(
+            &snap.currents,
+            &ei,
+            tol.i_rel,
+            tol.i_abs,
+            &format!("{ctx} {} currents", exp.name),
+        );
+    }
     // Powers use a terminal-voltage-scaled abs floor (see `assert_power_close`):
     // `P = V·conj(I)` so the power floor must be the current floor times |V|, or
     // high-voltage near-cancellation through-power (switch/busbar connectors)
     // fails on solver roundoff the current floor already absorbs.
-    assert_power_close(
-        &snap.powers,
-        exp,
-        tol.i_rel,
-        tol.i_abs,
-        &format!("{ctx} {} powers", exp.name),
-    );
+    if channels.powers {
+        assert_power_close(
+            &snap.powers,
+            exp,
+            tol.i_rel,
+            tol.i_abs,
+            &format!("{ctx} {} powers", exp.name),
+        );
+    }
     // Losses (`Get_Losses` — the engine's own losses path, distinct from the
     // per-conductor powers above even though mathematically it is their sum).
     // Captured by the live gate only; old checkpoint goldens leave it empty.
     // The allowed error is the exact accumulation of the per-conductor power
     // tolerance: losses = Σ_k S_k, so |δ(losses)| ≤ Σ_k (abs·|V_k| + rel·|S_k|)
     // — no new tolerance class, just the conductor policy summed.
-    if exp.loss_w.len() == 2 {
+    if channels.losses && exp.loss_w.len() == 2 {
         let mut allowed_kw = 0.0;
         for k in 0..exp.p_kw.len() {
             let p_mag = (exp.p_kw[k].powi(2) + exp.p_kvar[k].powi(2)).sqrt();
@@ -1170,8 +1246,8 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     // loosening. Grouped by cause:
     //
     // (a) DoubleSymMatrixProperty getter reads uninitialized memory (a dss_capi
-    //     bug; TODO(compat) in obj/props/class_props/value.rs renders a
-    //     deterministic zero matrix). The oracle returns nondeterministic garbage
+    //     bug; the compat-tagged site in obj/props/class_props/value.rs renders
+    //     a deterministic zero matrix). The oracle returns nondeterministic garbage
     //     (denormals ~1e-310 OR huge ~1e123, process-dependent) — oracle UB, not
     //     reproduced (CLAUDE.md).
     ("Capacitor", "CMatrix"),
@@ -1221,7 +1297,51 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     ("Fuse", "RatedCurrent"),
 ];
 
+/// The one property whose **value** the *default* lane excludes: a Stage F
+/// deliberate divergence, not a comparability problem.
+///
+/// `Monitor.BaseFreq` — upstream's `TMonitorObj.Create` hard-pins 60.0 over the
+/// inherited `ActiveCircuit.Fundamental` (Monitor.pas:472 == r4133:552; the
+/// value is what selects mode-4 flicker's lamp curve), and the default lane
+/// inherits like every other element. The two lanes agree in every 60 Hz deck; the one
+/// gated corpus case that disagrees is the 50 Hz `LVTestCase`, whose monitors
+/// then read 50 instead of 60. Excluded **only in the default lane** (the
+/// parity lane still compares it, and the property *name*/order is checked in
+/// both), and pinned by its own expected-value test
+/// `exec::tests::base_frequency::monitor_basefreq_is_the_lane_kernel`, which
+/// asserts both lanes' values on a 50 Hz deck and their agreement on a 60 Hz
+/// one.
+///
+/// Keyed by `(class, prop)` rather than by case, unlike the sibling
+/// `lane::LANE_SKIP_PROBE_PROPS`, so it drops the value compare on every case
+/// and not just the one that needs it. That is a real if small coverage loss,
+/// bounded by measurement: exactly one gated deck sets a 50 Hz fundamental
+/// (`electricdss-tst/Version8/Distrib/IEEETestCases/LVTestCase/Master.dss`) and
+/// every mode-4 flicker deck in the corpus is 60 Hz, so no Pst output moves;
+/// and what the exclusion gives up on the 60 Hz decks — that both lanes still
+/// report 60 — is exactly what the pin above asserts directly.
+const LANE_SKIP_PROPS: &[(&str, &str)] = &[("Monitor", "BaseFreq")];
+
 pub fn skip_prop(class: &str, prop: &str) -> bool {
+    let lane_skipped = !lane::PARITY
+        && LANE_SKIP_PROPS
+            .iter()
+            .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p));
+    lane_skipped || skip_prop_ub(class, prop)
+}
+
+/// The [`SKIP_PROPS`] half of [`skip_prop`] **only** — the properties whose
+/// upstream getter renders uninitialized heap memory.
+///
+/// Kept separate because [`skip_prop`] has a second consumer that wants a
+/// different question answered: `corpus_gate::write_gate_dump` nulls these
+/// values in the three-way contamination artifact, and its whole argument is
+/// that the stripped set is order-dependent *by construction*. A Stage F lane
+/// exclusion is not — `Monitor.BaseFreq` is a deterministic function of the
+/// deck — so folding it in would quietly drop a deterministic property from the
+/// bit-diff and leave that artifact's stated rationale describing a set it no
+/// longer had (F-settle W4).
+pub fn skip_prop_ub(class: &str, prop: &str) -> bool {
     SKIP_PROPS
         .iter()
         .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p))
@@ -1758,6 +1878,10 @@ pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tolerances, ctx: &str)
         if exp.skip_channels.contains(&ch) {
             continue;
         }
+        // The lane's reading of the capture: identical to it except for
+        // dss-python's unflushed-stream `[0.0]` placeholder in the default lane
+        // (`lane::expected_monitor_channel`).
+        let e = &lane::expected_monitor_channel(view.flushed_records, e);
         assert_eq!(
             act.len(),
             e.len(),
@@ -2064,6 +2188,19 @@ pub enum GateSpec {
     /// current/voltage (a residual or an open-terminal conductor) is faer-vs-KLU
     /// noise, gated on its own magnitude in the column just before it.
     PrevCol(f64),
+    /// Skip when the oracle's value in column `col` is **above** `threshold` —
+    /// the mirror of [`GateSpec::Col`], and **not** a tolerance concept at all.
+    ///
+    /// Its one use is a Stage F **deliberate divergence** confined to
+    /// identifiable rows: `Export SeqCurrents`' `Iresidual` reproduces an
+    /// upstream indexing bug that prints *terminal 1's* residual on every
+    /// terminal row, and the default lane fixes it — so exactly the rows with
+    /// `Terminal ≥ 2` are excluded there (gate `ColAbove(1, 1.5)`), while every
+    /// terminal-1 cell stays compared against the oracle in both lanes. The
+    /// excluded cells are pinned instead by their own expected-value test
+    /// (`export_seqcurrents_iresidual_is_the_lane_kernel`), which is why this
+    /// is an *exclusion with a replacement gate*, not a relaxation.
+    ColAbove(usize, f64),
     /// **Always** skip the matched column — a non-deterministic column that
     /// carries no comparable value (a wall-clock timestamp or an absolute path).
     /// Not a tolerance relaxation of any *value*: the column is genuinely
@@ -2127,6 +2264,9 @@ impl ExportPolicy {
                             _ => false,
                         };
                     }
+                    Some(GateSpec::ColAbove(col, thresh)) => {
+                        return num(col).is_some_and(|v| v > thresh);
+                    }
                     Some(GateSpec::Mask) => return true,
                     None => return false,
                 };
@@ -2176,16 +2316,60 @@ fn report_lines(s: &str) -> Vec<String> {
 
 /// A field is numeric iff it parses *whole* as `f64` (so a class name like
 /// `IndMach012` stays text while a count `2` is a number).
+///
+/// Stage F: a non-numeric field that is a **`Key=Value` script token** — the
+/// shape of the `Dump`/`Save` DSS text, which a whitespace tokenizer cannot
+/// split further — gets one extra chance in the **default lane** under an
+/// **exact-value policy** only (see [`kv_value_eq`]).
 fn field_eq(actual: &str, expected: &str, rel: f64, abs: f64, ctx: &str) {
-    match (actual.trim().parse::<f64>(), expected.trim().parse::<f64>()) {
-        (Ok(_), Ok(_)) => assert_value_matches_tol(actual.trim(), expected.trim(), rel, abs, ctx),
-        _ => assert!(
-            actual.trim().eq_ignore_ascii_case(expected.trim()),
-            "{ctx}: text field differs (actual {:?} vs expected {:?})",
-            actual.trim(),
-            expected.trim()
-        ),
+    let (a, e) = (actual.trim(), expected.trim());
+    match (a.parse::<f64>(), e.parse::<f64>()) {
+        (Ok(_), Ok(_)) => assert_value_matches_tol(a, e, rel, abs, ctx),
+        _ => {
+            if a.eq_ignore_ascii_case(e) {
+                return;
+            }
+            // Scoped to the *exact-value* policies, not merely to the lane.
+            // `field_eq` is the leaf of every `compare_export`, including the
+            // corpus gate's `global_result_policy` (rel 1e-10) and
+            // `autoadd_log_policy` (energy floors); gated on the lane alone,
+            // the first report combining a physical floor with `key=value`
+            // cells would silently turn a verbatim text compare into a
+            // tolerant numeric one. With `rel == abs == 0` the fallback means
+            // exactly what its doc says: the f64 must be bit-identical, only
+            // its spelling may move.
+            if !lane::PARITY && rel == 0.0 && abs == 0.0 && kv_value_eq(a, e, rel, abs, ctx) {
+                return;
+            }
+            panic!("{ctx}: text field differs (actual {a:?} vs expected {e:?})");
+        }
     }
+}
+
+/// Stage F **default-lane** fallback for a `Key=Value` token (`~ R=1.1`,
+/// `kV=12.47`): compare the key verbatim (case-insensitively) and the value as
+/// a number, so a pure *rendering* change (F-FMT, Part IV.2) passes while the
+/// key, the token structure and the value itself stay pinned — the byte-golden
+/// policies pass `rel = abs = 0`, so "as a number" means bit-identical `f64`.
+///
+/// Returns `false` (→ the caller's verbatim compare fails, as before) unless
+/// **both** sides are `key=<number>` with matching keys; a differing value
+/// panics from here with the key in the context. The parity lane never calls
+/// this — it keeps the verbatim token compare.
+fn kv_value_eq(actual: &str, expected: &str, rel: f64, abs: f64, ctx: &str) -> bool {
+    let (Some((ak, av)), Some((ek, ev))) = (actual.split_once('='), expected.split_once('='))
+    else {
+        return false;
+    };
+    if !ak.eq_ignore_ascii_case(ek) {
+        return false;
+    }
+    let (av, ev) = (av.trim(), ev.trim());
+    if av.parse::<f64>().is_err() || ev.parse::<f64>().is_err() {
+        return false;
+    }
+    assert_value_matches_tol(av, ev, rel, abs, &format!("{ctx} [{ak}=]"));
+    true
 }
 
 /// Compare two report bodies (oracle vs Rust) per [`ExportPolicy`] (§2.3).

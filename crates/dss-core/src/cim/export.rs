@@ -531,8 +531,11 @@ fn attach_load_phases(
     if nphases == 3 {
         return;
     }
-    // TODO(compat): Pascal's `bAllowSec := (pLoad.LoadClass <= 1)` is a coarse
-    // filter for PNNL-taxonomy secondary loads; reproduced verbatim.
+    // Pascal's `bAllowSec := (pLoad.LoadClass <= 1)` — the CIM exporter's rule
+    // for "this load may be a PNNL-taxonomy secondary": a deliberate convention
+    // of the exporter, not an inexactness or a bug, so it carries no compat
+    // marker. There is nothing to "fix": changing the threshold would change
+    // which loads the profile calls secondary, i.e. the exported model.
     let allow_sec = load_class <= 1;
     let p = 1000.0 * kw_base / nphases as f64;
     let q = 1000.0 * kvar_base / nphases as f64;
@@ -3326,12 +3329,21 @@ pub(crate) fn export_cdpsm(
             emerg_amps: f64,
             bus_specs: Vec<String>,
             bus_refs: Vec<usize>,
+            /// Terminal-2 node refs — the wye point's actual connection, i.e.
+            /// the "bus 2" `compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`'s TODO
+            /// names. Empty before `SetNodeRef`, which reads as grounded.
+            term2_nodes: Vec<usize>,
         }
         let snap = {
             let Some(cap) = classes[r.class_ord()].arena.get::<Capacitor>(r.index()) else {
                 continue;
             };
             CapSnap {
+                term2_nodes: if cap.cd.node_ref.is_empty() || cap.cd.nterms < 2 {
+                    Vec::new()
+                } else {
+                    cap.cd.term_nodes(1).to_vec()
+                },
                 enabled: cap.cd.enabled,
                 nphases: cap.cd.nphases,
                 total_kvar: cap.total_kvar(),
@@ -3399,13 +3411,17 @@ pub(crate) fn export_cdpsm(
                 "ShuntCompensator",
                 "Y",
             );
-            // TODO(compat): Pascal hard-codes `grounded := TRUE` for wye banks
-            // (`3700`, "TODO - check bus 2").
+            // Stage F `compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`: upstream
+            // writes `TRUE` unconditionally here (`ExportCIMXML.pas:3700`,
+            // "TODO - check bus 2"). The default lane answers that TODO the way
+            // the same unit's transformer writer does — the wye point is the
+            // second terminal, grounded iff every one of its node refs is 0.
             writer::boolean_node(
                 &mut buf,
                 ProfileChoice::Fun,
                 "ShuntCompensator.grounded",
-                true,
+                crate::compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE
+                    || snap.term2_nodes.iter().all(|&n| n == 0),
             );
             writer::double_node(
                 &mut buf,
@@ -3420,14 +3436,20 @@ pub(crate) fn export_cdpsm(
                 "ShuntCompensator",
                 "D",
             );
-            // TODO(compat): the delta branch emits `grounded` under the
-            // `LinearShuntCompensator.` prefix while the wye branch uses
-            // `ShuntCompensator.` — an upstream inconsistency reproduced verbatim
-            // (`ExportCIMXML.pas:3706` vs `3700`).
+            // Stage F `compat::CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX`:
+            // upstream emits this arm's `grounded` under the
+            // `LinearShuntCompensator.` prefix while the wye arm six lines above
+            // uses `ShuntCompensator.` (`ExportCIMXML.pas:3706` vs `3700`).
+            // Parity keeps the inconsistency; the default lane writes the name
+            // the sibling arm — and the CIM100 schema — spell.
             writer::boolean_node(
                 &mut buf,
                 ProfileChoice::Fun,
-                "LinearShuntCompensator.grounded",
+                if crate::compat::CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX {
+                    "LinearShuntCompensator.grounded"
+                } else {
+                    "ShuntCompensator.grounded"
+                },
                 false,
             );
             writer::double_node(
@@ -4090,10 +4112,22 @@ pub(crate) fn export_cdpsm(
                     "ACLineSegment.b0ch",
                     snap.len * snap.c0 * val,
                 );
-                // TODO(compat): Pascal writes `ACLineSegment.b0ch` a second time,
-                // = 0.0 (`ExportCIMXML.pas:4367`, an upstream typo for `g0ch`);
-                // reproduced verbatim so the golden matches.
-                writer::double_node(&mut buf, ProfileChoice::Ep, "ACLineSegment.b0ch", 0.0);
+                // Stage F `compat::CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH`:
+                // upstream writes `ACLineSegment.b0ch` a second time here
+                // (`ExportCIMXML.pas:4367`) — the `g0ch` of the
+                // `bch`/`gch`/`b0ch`/`g0ch` quartet the four nodes above open.
+                // Parity keeps the duplicate name; the default lane writes the
+                // name the `PerLengthSequenceImpedance` sibling spells.
+                writer::double_node(
+                    &mut buf,
+                    ProfileChoice::Ep,
+                    if crate::compat::CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH {
+                        "ACLineSegment.b0ch"
+                    } else {
+                        "ACLineSegment.g0ch"
+                    },
+                    0.0,
+                );
             } else {
                 bval = true;
                 puz_local = format!("{}_PUZ", snap.name);
@@ -4340,6 +4374,11 @@ pub(crate) fn export_cdpsm(
             yearly: String,
             cvr: String,
             spectrum: String,
+            /// The neutral conductor's node ref — `NodeRef[Nphases]` of the
+            /// load's only terminal, the wye analogue of the transformer
+            /// writer's `j2` (`compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`).
+            /// `0` (ground) before `SetNodeRef`, which reads as grounded.
+            neutral_node: usize,
         }
         let snap = {
             let Some(load) = classes[r.class_ord()].arena.get::<Load>(r.index()) else {
@@ -4351,6 +4390,15 @@ pub(crate) fn export_cdpsm(
                 o.map(|s| s.data().name().to_string()).unwrap_or_default()
             };
             LoadSnap {
+                neutral_node: if load.cd.node_ref.is_empty() {
+                    0
+                } else {
+                    load.cd
+                        .term_nodes(0)
+                        .get(load.cd.nphases)
+                        .copied()
+                        .unwrap_or(0)
+                },
                 enabled: load.cd.enabled,
                 load_model: load.load_model,
                 kw_base: load.kw_base,
@@ -4436,13 +4484,16 @@ pub(crate) fn export_cdpsm(
         );
         if snap.connection == Connection::Wye {
             writer::shunt_connection_kind_node(&mut buf, ProfileChoice::Fun, "EnergyConsumer", "Y");
-            // TODO(compat): Pascal hard-codes `grounded := TRUE` for wye loads
-            // (`4478`, "TODO - check bus 2").
+            // Stage F `compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`: upstream
+            // writes `TRUE` unconditionally here (`ExportCIMXML.pas:4478`,
+            // "TODO - check bus 2"). A Load has one terminal, so its wye point
+            // is that terminal's `Nphases+1`-th conductor — the transformer
+            // writer's `NodeRef[j2] = 0` test, applied to the load's neutral.
             writer::boolean_node(
                 &mut buf,
                 ProfileChoice::Fun,
                 "EnergyConsumer.grounded",
-                true,
+                crate::compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE || snap.neutral_node == 0,
             );
         } else {
             writer::shunt_connection_kind_node(&mut buf, ProfileChoice::Fun, "EnergyConsumer", "D");

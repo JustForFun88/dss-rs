@@ -15,6 +15,19 @@ use super::{ExpControl, prop};
 // ln(10) literal (the full value is 2.302585092994046…); reproducing the exact bits
 // keeps the open-loop low-pass filter bit-identical to the oracle. The clean fix
 // (`std::f64::consts::LN_10`) lands in the post-port compat sweep (PORTING_PLAN §6).
+//
+// Stage F status (F.3x, argued from the source — NOT a lane split, and not only
+// for the usual floor reason). Both gating oracles carry the literal in both of
+// its places (dss_capi `Controls/ExpControl.pas:392` and
+// `Common/ExportCIMXML.pas:2523`; r4133 `:296`/`:380` and `:2164`), and r4133
+// states it in the **user-facing property help**: `Tresponse` "corresponds to a
+// low-pass filter having tau = Tresponse / 2.3026" (`ExpControl.pas:184`). So
+// `2.3026` is a *documented model constant*, not the kind of slip the
+// single-site membership rule (ii) admits — nothing in either source says
+// `LN_10` was meant. Replacing it would move `FOpenTau` by 6.47e-6 relative
+// and, through the open-loop filter, every gated ExpControl deck's trajectory,
+// i.e. it is an UPGRADE-rung re-baseline of a specified constant, not a
+// parity/default kernel. Escape-recorded.
 #[allow(clippy::approx_constant)]
 const LN10_TRUNCATED: f64 = 2.3026;
 

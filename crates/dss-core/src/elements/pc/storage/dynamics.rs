@@ -273,10 +273,13 @@ impl Storage {
             } else {
                 // Not discharging (charging or idling).
                 //
-                // TODO(compat): Pascal leaves `OFFVal` uninitialized in the `else`
-                // branch (Vgrid.mag < MinVS AND NOT ResetIBR) — FPC local var is
-                // indeterminate; we use 0.0. Unreachable in the gated corpus
-                // (idling storages stay >= MinVS when the circuit is energized).
+                // Pascal leaves `OFFVal` uninitialized in the `else` branch
+                // (Vgrid.mag < MinVS AND NOT ResetIBR) — an FPC local var, so
+                // its value is indeterminate. Per the CLAUDE.md rule, UB is NOT
+                // reproduced (there is nothing well-defined to reproduce): we
+                // use 0.0. No compat marker for that reason. Unreachable in the
+                // gated corpus anyway (idling storages stay >= MinVS when the
+                // circuit is energized).
                 let off_val = if self.base.dyn_vars.vgrid[i].mag >= min_vs || reset_ibr {
                     p_idling / self.base.dyn_vars.vgrid[i].mag // to match idling losses
                 } else {

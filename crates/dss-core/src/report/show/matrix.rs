@@ -14,6 +14,7 @@ use num_complex::Complex64;
 
 use crate::circuit::Circuit;
 use crate::report::format;
+use crate::report::table::{Cell, Report, Row};
 
 /// Build the `Show Y` body. `n`/`coords` are the assembled system Y from
 /// `Dss::system_y_csc` (0-based COO). `_ckt` is unused (the report is node-index
@@ -30,21 +31,28 @@ pub(crate) fn show_y(_n: usize, coords: &[(usize, usize, Complex64)], _ckt: &Cir
         }
     }
 
-    let mut s = String::new();
-    s.push_str("System Y Matrix (Lower Triangle by Columns)\n");
-    s.push('\n');
-    s.push_str("  Row  Col               G               B\n");
-    s.push('\n');
+    let mut rep = Report::new();
+    rep.line("System Y Matrix (Lower Triangle by Columns)");
+    rep.blank();
+    // `Row`/`Col` name the two numbers *inside* the bracketed cell below, so the
+    // header has no cell-per-column form — it stays free text (see
+    // `report::show`'s module note).
+    rep.line("  Row  Col               G               B");
+    rep.blank();
     for ((c, r), v) in m {
         // Pascal `Format('[%4d,%4d] = %13.10g + j%13.10g', [row, col, re, im])`
-        // (1-based node indices).
-        s.push_str(&format!(
-            "[{},{}] = {} + j{}\n",
-            format::fixed_w_int(r as i64 + 1, 4),
-            format::fixed_w_int(c as i64 + 1, 4),
-            format::g_w(v.re, 13, 10),
-            format::g_w(v.im, 13, 10),
-        ));
+        // (1-based node indices). The brackets and the `j` are written flush
+        // against right-justified numbers, so each stays **inside** its cell
+        // (F.4e rule 1): a `[` or `j` column of its own would move a token in
+        // the table kernel.
+        rep.row(
+            Row::new()
+                .cell(Cell::plain(format!("[{:>4},{:>4}]", r + 1, c + 1)).sep(" "))
+                .cell(Cell::plain("=").sep(" "))
+                .cell(Cell::right(format::g(v.re, 10), 13).sep(" "))
+                .cell(Cell::plain("+").sep(" "))
+                .cell(Cell::plain(format!("j{:>13}", format::g(v.im, 10)))),
+        );
     }
-    s
+    rep.finish()
 }

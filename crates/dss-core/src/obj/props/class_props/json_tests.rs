@@ -11,6 +11,17 @@ use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::report::export::json::{JsonOpts, serialize};
 
+/// The **lane's** JSON float spelling (`compat::json_float`).
+///
+/// These arm tests pin the *shape* a `PropType` renders — `null` vs a scalar vs
+/// a flat array vs a nested one, and where the brackets and commas fall — not
+/// how F-FMT spells a number, so their expectations are built from the seam
+/// rather than from one lane's literals (which is what
+/// `report::export::json::tests::json_float_is_the_lane_kernel` pins).
+fn f(v: f64) -> String {
+    crate::compat::json_float(v)
+}
+
 /// A minimal object returning fixed values for every accessor an arm may call.
 #[derive(Clone)]
 struct Mock {
@@ -98,10 +109,7 @@ fn double_finite_and_nan_null() {
     let mut obj = Mock::new(cls.num_properties());
     obj.f64s[1] = 12.47;
     obj.f64s[2] = f64::NAN;
-    assert_eq!(
-        render(&cls, &obj, 1, JsonOpts::NONE).unwrap(),
-        "1.2470000000000001E+001"
-    );
+    assert_eq!(render(&cls, &obj, 1, JsonOpts::NONE).unwrap(), f(12.47));
     // NaN → null (never reaches the float formatter).
     assert_eq!(render(&cls, &obj, 2, JsonOpts::NONE).unwrap(), "null");
     // +Inf also → null.
@@ -133,7 +141,7 @@ fn boolean_and_complex() {
     assert_eq!(render(&cls, &obj, 1, JsonOpts::NONE).unwrap(), "true");
     assert_eq!(
         render(&cls, &obj, 2, JsonOpts::NONE).unwrap(),
-        "[1.5000000000000000E+000,-2.5000000000000000E+000]"
+        format!("[{},{}]", f(1.5), f(-2.5))
     );
 }
 
@@ -160,7 +168,7 @@ fn double_array_null_and_values() {
     obj.f64_arr = Some(vec![1.0, 2.0, 3.0]);
     assert_eq!(
         render(&cls, &obj, 2, JsonOpts::NONE).unwrap(),
-        "[1.0000000000000000E+000,2.0000000000000000E+000,3.0000000000000000E+000]"
+        format!("[{},{},{}]", f(1.0), f(2.0), f(3.0))
     );
 }
 
@@ -206,8 +214,7 @@ fn sym_matrix_nested_and_null() {
     obj.matrix = Some((vec![1.0, 2.0, 3.0, 4.0], 2));
     assert_eq!(
         render(&cls, &obj, 1, JsonOpts::NONE).unwrap(),
-        "[[1.0000000000000000E+000,3.0000000000000000E+000],\
-         [2.0000000000000000E+000,4.0000000000000000E+000]]"
+        format!("[[{},{}],[{},{}]]", f(1.0), f(3.0), f(2.0), f(4.0))
     );
 }
 
@@ -324,7 +331,7 @@ fn double_array_allow_none_null() {
     obj.f64_arr = Some(vec![1.0, 2.0]);
     assert_eq!(
         render(&cls, &obj, 2, JsonOpts::NONE).unwrap(),
-        "[1.0000000000000000E+000,2.0000000000000000E+000]"
+        format!("[{},{}]", f(1.0), f(2.0))
     );
 }
 

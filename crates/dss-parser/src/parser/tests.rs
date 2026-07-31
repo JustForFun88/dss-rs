@@ -201,11 +201,38 @@ fn make_integer_rounds_ties_to_even() {
         p.next_param(&vars);
         assert_eq!(p.make_integer(&vars).unwrap(), expected, "input {s:?}");
     }
-    // non-finite values collapse to 0 through the integer-indefinite path
-    for s in ["inf", "nan"] {
+    // NaN lands on 0 in both lanes (`round_ties_even` keeps it NaN, and both
+    // casts map NaN to 0).
+    let (mut p, vars) = parser_with("n=nan");
+    p.next_param(&vars);
+    assert_eq!(p.make_integer(&vars).unwrap(), 0);
+}
+
+/// The **deliberate divergence** of the Stage F round row
+/// ([`crate::compat::round_i32`]), at the one boundary a deck can observe it: an
+/// integer property whose value is out of range.
+///
+/// The parity lane reproduces FPC's integer-indefinite artifact — `Round`
+/// returns the `i64::MIN` sentinel, and the Pascal `Integer := Round(…)`
+/// assignment truncates it to **0**, so `inf` and `1e10` become `0` and
+/// `1410065408`. The default lane converts to the nearest representable
+/// integer instead (`i32::MAX`), because silently turning "too big" into "zero"
+/// (or into an unrelated wrapped value) is exactly the class of upstream
+/// artifact Stage F exists to drop. Expected values, not tolerances: both are
+/// pinned literally.
+#[test]
+fn make_integer_out_of_range_is_the_lane_kernel() {
+    let parity = crate::compat::ORACLE_PARITY;
+    for (s, fpc, saturating) in [
+        ("inf", 0, i32::MAX),
+        ("-inf", 0, i32::MIN),
+        ("1e10", 1_410_065_408, i32::MAX),
+        ("-1e10", -1_410_065_408, i32::MIN),
+    ] {
         let (mut p, vars) = parser_with(&format!("n={s}"));
         p.next_param(&vars);
-        assert_eq!(p.make_integer(&vars).unwrap(), 0, "input {s:?}");
+        let expected = if parity { fpc } else { saturating };
+        assert_eq!(p.make_integer(&vars).unwrap(), expected, "input {s:?}");
     }
 }
 
@@ -261,6 +288,38 @@ fn rpn_operations_and_functions() {
     let (mut p, vars) = parser_with("x=(30 sin)");
     p.next_param(&vars);
     assert!((p.make_double(&vars).unwrap() - 0.5).abs() < 1e-12);
+}
+
+/// The **deck-language boundary** pin of the Stage F pi row (F.3d): an RPN
+/// degree-trig expression evaluates through `compat::PI`, so its last digits
+/// are the lane's. Expected values, no tolerance — the parity lane must keep
+/// reproducing the Pascal literal's `0.5000000000000299` forever, and the
+/// default lane must produce the correctly-scaled `0.49999999999999994`.
+///
+/// `pi` (`EnterPi`) is the control: FPC's builtin is full precision upstream
+/// too, so the `pi` token pushes `f64::consts::PI` in **both** lanes — a
+/// mistaken re-pointing of *that* entry at the truncated literal shows up here.
+#[test]
+fn rpn_degree_trig_is_the_lane_kernel() {
+    let eval = |expr: &str| {
+        let (mut p, vars) = parser_with(&format!("x={expr}"));
+        p.next_param(&vars);
+        p.make_double(&vars).unwrap()
+    };
+
+    let expected = if crate::compat::ORACLE_PARITY {
+        0.5000000000000299
+    } else {
+        0.49999999999999994
+    };
+    assert_eq!(eval("(30 sin)"), expected);
+
+    // Non-vacuity: the two constants really do separate here.
+    assert_ne!(0.5000000000000299, 0.49999999999999994);
+
+    // `pi` stays full-precision in both lanes (RPN `sin` always takes degrees,
+    // so the token is pinned directly rather than through a trig entry).
+    assert_eq!(eval("(pi)"), std::f64::consts::PI);
 }
 
 #[test]

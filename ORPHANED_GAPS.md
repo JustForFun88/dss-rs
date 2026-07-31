@@ -231,21 +231,27 @@ Oracle-backed pin without a new capture: the `est8` deck minus its
 
 | Deferred item | Owner plan (status) |
 |---|---|
-| `TODO(compat)` wipe (×123 workspace-wide / ×117 in `crates/dss-core/src`, re-measured 2026-07-26) + `HIDE_015X` ×15 → the oracle-parity feature split | **DE_PASCALIZE Stage F** (plan in flight: Parts II–III + R0–R2b merged; R3 executing 2026-07-26, then P1 tail + P3; Stage F is the final stage) |
+| `TODO(compat)` wipe (×123 workspace-wide / ×117 in `crates/dss-core/src`, re-measured 2026-07-26) → the oracle-parity feature split | **DE_PASCALIZE Stage F** (**COMPLETE 2026-07-31**, branch `depas-stagef`: 117 → **18**, every survivor a registered escape owned by a named successor and gated by a test — see the three rows below and `DE_PASCALIZE_PLAN.md` §"Stage F as executed") |
+| **`HIDE_015X` retirement** — un-hide the 5 Line/LineGeometry props, drop the `Line.Wires → "Conductors"` `json_name` masquerade, regenerate the 13 gated artifacts (8 `Dump` + 5 JSON), delete the flag: **one atomic change, both lanes** | **UPGRADE_PLAN §5** (open tail of the UPGRADE line; §5's "`rg HIDE_015X` must be empty" was not met at the Rung 1/2 exit). NOT Stage F's: it moves *parity-lane* byte goldens, which only an oracle-surface switch may do (`gen_json.py` is hard-pinned to 0.14.5). Measured in Stage F F.3aa; re-homed in F.3ag + the F.3 close. Tripwires: `oracle_parity_cfg_gate.rs::the_hide_flag_escape_population_is_pinned_by_surface` (13 artifacts) and `exec::tests::compat_quirks::hide_015x_carrier_set_is_the_measured_escape` (5 carriers) — a partial touch fails the gate. Disposition: `docs/upgrade/DIVERGENCES.md` §"Line/LineGeometry Conductors" |
+| The 4 `WholeCase` compat markers (GICTransformer `%R2`, Capacitor `Cs − Cm` posseq write, LoadShape MMF accept-set, Generator user-model `E1` seeding) — each clean fix moves node voltages, so the default lane would have to drop a **whole gated case** from oracle comparison, not a field | **unowned policy call** — the Stage F drift model sanctions field-scoped exclusions only; granting a whole-case exclusion is a coverage trade no Stage F step could authorize. Per-row bills at the sites; register in `oracle_parity_cfg_gate.rs::ESCAPE_REGISTER` |
+| The 3 `WasmGuest` compat markers (truncated `sqrt(3)/2`, `1.732`, FPC single-precision `3.0/746.0` in the reference user model) | **WASM_USERMODELS** — the model is a workspace-excluded crate `dss-core/oracle-parity` cannot reach; a lane split there is a second `.wasm` fixture, not a cfg alias |
 | A-Diakoptics `AggregateProfiles` + D9(d) r3723 AD-replay + WP-AD.6 threaded children | **DIAKOPTICS_PSTCALC Part II** (partial) |
 | User-model native DLLs (Gen/PVSystem/Storage/CapControl `UserModel`) | **WASM_USERMODELS** (**COMPLETE 2026-07-25** — WM.0–WM.7 merged; DLLs re-homed to wasmi-sandboxed models, r4133 oracle-of-record) |
 | Actor / parallel-machine (`DSS_CAPI_PM`) mode | **MULTITHREADING M2** (not started) |
 | Near-singular / floating-delta tolerance retighten (SubXFMR, GFM common-mode) | **RESONANCE WP-R1/R2** (not started) |
 
-> **What "Stage F" is** (referenced above): the final stage of `DE_PASCALIZE_PLAN.md`
-> (Part IV.2, "oracle-parity feature split"). In one pass it (1) wipes all `TODO(compat)`
-> shims, (2) splits the engine with a cargo feature `oracle-parity` into a **default**
-> lane (clean numerics — true π, honest `Round`, …) and an **oracle-parity** lane (keeps
-> 1:1 bug-for-bug behavior so the byte-exact golden gates stay green forever), and (3)
-> stands up the two CI lanes + a default↔parity differential job. Parity target = r4133.
-> Stage F itself is NOT started; DE_PASCALIZE is **in flight** (R3 executing as of
-> 2026-07-26, then the P1 deferred tail + P3 — Stage F runs last). It is a prerequisite
-> for RESONANCE WP-R1 and MULTITHREADING M3c.
+> **What "Stage F" was** (referenced above): the final stage of `DE_PASCALIZE_PLAN.md`
+> (Part IV.2, "oracle-parity feature split"). It (1) swept the `TODO(compat)` shims,
+> (2) split the engine with a cargo feature `oracle-parity` into a **default** lane
+> (clean numerics — true π, honest `Round`, upstream bugs fixed, native report
+> rendering) and an **oracle-parity** lane (keeps 1:1 bug-for-bug behavior so the
+> byte-exact golden gates stay green forever), and (3) stood up the two gate lanes + the
+> on-demand default↔parity differential job (`tools/lanes/lane_diff.ps1`). Parity target
+> = r4133. **Completed 2026-07-31**; its exit metric is *zero unclassified markers, zero
+> carriers beyond the pinned escape, every escape gated by a test* — the literal "0
+> markers" was ruled unreachable inside the stage's sanctioned scope, by measurement, at
+> the F.3 close. It was the prerequisite for RESONANCE WP-R1 and MULTITHREADING M3c,
+> which are now unblocked.
 
 ## 3. Permanent by-design non-ports (do NOT port)
 

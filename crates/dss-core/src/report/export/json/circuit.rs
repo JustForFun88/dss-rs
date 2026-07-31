@@ -9,21 +9,29 @@
 //! embedded object comes from the same [`obj_to_json_data`] used by
 //! `Obj_ToJSON`/`Batch_ToJSON`, driven by the same `joptions`.
 //!
-//! ## PostCommands number formats (each a `TODO(compat)`)
-//! The ~33 `Set …` PostCommands reproduce the exact FPC `Format` specs the
-//! oracle uses (`%-g` → default 15-significant `%g`, `%-.4g` → 4-significant,
-//! `%8.2f` → width-8 fixed 2-decimal, `IntToStr`, `StrYorN` → `Yes`/`No`,
-//! `GetDSSArray`/`IntArrayToString`). These are pinned byte-for-byte by the
-//! circuit goldens; the clean fix (a canonical machine format) would be
-//! indistinguishable from a porting bug against those goldens.
+//! ## PostCommands number formats
+//!
+//! The ~33 `Set …` PostCommands carry the exact FPC `Format` specs the oracle
+//! uses (`%-g` → default 15-significant `%g`, `%-.4g` → 4-significant, `%8.2f` →
+//! width-8 fixed 2-decimal, `IntToStr`, `StrYorN` → `Yes`/`No`,
+//! `GetDSSArray`/`IntArrayToString`). **Which** commands are emitted, in which
+//! order, with which spec, is permanent contract, not compat: this block is DSS
+//! script that our own parser must re-compile into the same circuit
+//! (`DE_PASCALIZE_PLAN.md` IV.1, `Save` round-trip), so the specs stay.
+//!
+//! How each number inside them is *spelled* is the F-FMT seam's business
+//! (Part IV.2 §F-FMT, step F.4), and both spellings used here route through it:
+//! `%g` through [`crate::util::fmt_g`] (via [`g`]) and `%8.2f` through
+//! [`crate::compat::fixed_w_script`]. Neither call site decides a lane.
 
 use std::collections::HashMap;
 
 use crate::circuit::Circuit;
+use crate::compat::fixed_w_script;
 use crate::exec::registry::DssClass;
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
-use crate::report::format::{fixed_w_fpc, g};
+use crate::report::format::g;
 use crate::report::save::dump::commands::PASCAL_CLASS_ORDER;
 
 use super::build::obj_to_json_data;
@@ -41,8 +49,8 @@ fn str_y_or_n(b: bool) -> &'static str {
 /// ` %g` (a leading space + FPC default-15-significant `%g`) per value, then `]`
 /// — e.g. `[ 0.208 0.48 12.47]`.
 ///
-/// TODO(compat): the `%g` fidelity (15-significant general format). The clean fix
-/// is a canonical numeric format; the goldens pin this exact spelling.
+/// The `%g` fidelity (15-significant general format) belongs to the module's
+/// F-FMT compat family above; the goldens pin this exact spelling.
 ///
 /// Pascal returns the empty string (not `[]`) for a NIL/empty array (`dbls = NIL`
 /// → `Result := ''`); the empty `ArrayOfDouble` overload passes `@dbls[0] = NIL`.
@@ -169,14 +177,15 @@ fn pre_commands(
     }
 
     if ckt.positive_sequence {
-        // Pascal `CktModelEnum.OrdinalToString(Integer(ckt.PositiveSequence))`.
-        // TODO(compat): `PositiveSequence` is a Pascal `LongBool`, so
-        // `Integer(True)` is **-1** (all-ones), which falls outside the enum's
-        // [0,1] ordinal range → `OrdinalToString` returns `''`. The line is
-        // therefore always `Set CktModel=` (empty) when positive-sequence is on.
-        // Reproduced 1:1 (`ordinal_to_string(-1)` yields the same empty string).
-        // The clean fix is `OrdinalToString(1)` → `Positive`.
-        let model = enums.get(enums.ckt_model).ordinal_to_string(-1);
+        // Pascal `CktModelEnum.OrdinalToString(Integer(ckt.PositiveSequence))`
+        // (`CAPI_Obj.pas:2537`). Stage F `compat::CKT_MODEL_RENDERED_ORDINAL`:
+        // `PositiveSequence` is a `LongBool`, so `Integer(True)` is -1 and the
+        // out-of-range ordinal renders `''` — the parity lane keeps that
+        // value-less `Set CktModel=`; the default lane writes the ordinal of
+        // the state it is saving, which is the one that re-imports.
+        let model = enums
+            .get(enums.ckt_model)
+            .ordinal_to_string(crate::compat::CKT_MODEL_RENDERED_ORDINAL);
         cmds.push(Json::Str(format!("Set CktModel={model}")));
     }
     if ckt.duplicates_allowed {
@@ -223,7 +232,7 @@ fn post_commands(ckt: &Circuit, classes: &[DssClass], enums: &EnumRegistry) -> V
                 .get(enums.random_mode)
                 .ordinal_to_string(sol.random_type.ordinal())
         ));
-        // `%-g` = FPC default-15-significant general format (TODO(compat), see module).
+        // `%-g` = FPC default-15-significant general format (compat family, see module).
         push(format!("Set frequency={}", g(sol.frequency, 15)));
         push(format!("Set stepsize={}", g(sol.h, 15)));
         push(format!("Set number={}", sol.number_of_times));
@@ -244,7 +253,7 @@ fn post_commands(ckt: &Circuit, classes: &[DssClass], enums: &EnumRegistry) -> V
         push(format!("Set Normvmaxpu={}", g(ckt.normal_max_volts, 15)));
         push(format!("Set Emergvminpu={}", g(ckt.emerg_min_volts, 15)));
         push(format!("Set Emergvmaxpu={}", g(ckt.emerg_max_volts, 15)));
-        // `%-.4g` = 4-significant general format (TODO(compat)).
+        // `%-.4g` = 4-significant general format (compat family, see module).
         let daily_mean = ckt
             .default_daily_shape_obj
             .as_ref()
@@ -276,14 +285,16 @@ fn post_commands(ckt: &Circuit, classes: &[DssClass], enums: &EnumRegistry) -> V
                 .ordinal_to_string(aa.add_type.ordinal())
         ));
         push(format!("Set zonelock={}", str_y_or_n(ckt.zones_locked)));
-        // `%8.2f` = width-8 fixed 2-decimal, right-justified (TODO(compat)).
-        // Byte-exact FPC `ffFixed`: 15-sig intermediate + ties-away rounding
-        // (see `fixed_w_fpc`); pinned by `circuit_positive_seq`'s fractional
-        // weights, which Rust's native `{:.2}` renders differently.
-        push(format!("Set ueweight={}", fixed_w_fpc(ckt.ue_weight, 8, 2)));
+        // `%8.2f` = width-8 fixed 2-decimal, right-justified. The rounding rule
+        // is the lane's (`compat::fixed_w_script`): FPC's 15-sig intermediate +
+        // ties-away in the parity lane, one correct rounding in the default one.
+        push(format!(
+            "Set ueweight={}",
+            fixed_w_script(ckt.ue_weight, 8, 2)
+        ));
         push(format!(
             "Set lossweight={}",
-            fixed_w_fpc(ckt.loss_weight, 8, 2)
+            fixed_w_script(ckt.loss_weight, 8, 2)
         ));
         push(format!("Set ueregs={}", int_array_to_string(&ckt.ue_regs)));
         push(format!(

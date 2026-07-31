@@ -50,12 +50,15 @@ impl CktElement for Storage {
     /// line-neutral; a multi-phase unit's `kWrated` is divided by the phase
     /// count and `PF` is set to the nominal PF.
     ///
-    /// TODO(compat): the Pascal body has NO `BeginEdit` before its `Set*` calls
-    /// yet a trailing `EndEdit(changes)` (`Storage.pas:3339-3347`). Each `Set*`
-    /// is therefore its own auto-bracketed single edit (own recalc), and the
-    /// dangling `EndEdit` forces one extra recalc. Reproduced by emitting the
-    /// `Set*` actions with no leading `BeginEdit` and one trailing `EndEdit` —
-    /// the recalc count is observable. (PVSystem, by contrast, wraps its sets.)
+    /// The Pascal body has NO `BeginEdit` before its `Set*` calls yet a trailing
+    /// `EndEdit(changes)` (`Storage.pas:3339-3352`), so each `Set*` is its own
+    /// auto-bracketed edit (own recalc) and the dangling `EndEdit` adds one
+    /// more. That is the lane row
+    /// [`crate::compat::STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED`]: the parity
+    /// lane emits the unbracketed list, the default lane opens the edit like
+    /// PVSystem (`PVsystem.pas:2649`), every other `MakePosSequence` in the tree
+    /// and pre-refactor r4133 do — see the const's doc for the evidence and for
+    /// the measurement that only the recalc *count* moves.
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
         // Make sure voltage is line-neutral.
         let v = if self.cd.nphases > 1 || self.base.connection as i32 != 0 {
@@ -65,11 +68,15 @@ impl CktElement for Storage {
         };
 
         let old_phases = self.cd.nphases;
-        let mut actions = vec![
+        let mut actions = Vec::with_capacity(6);
+        if !crate::compat::STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED {
+            actions.push(PosSeqAction::BeginEdit);
+        }
+        actions.extend([
             PosSeqAction::SetI32(prop::PHASES, 1),
             PosSeqAction::SetI32(prop::CONN, 0),
             PosSeqAction::SetF64(prop::KV, v),
-        ];
+        ]);
         if old_phases > 1 {
             let new_kw = self.kw_rating / self.cd.nphases as f64;
             actions.push(PosSeqAction::SetF64(prop::KW_RATED, new_kw));

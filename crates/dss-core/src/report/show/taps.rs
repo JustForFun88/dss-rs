@@ -7,19 +7,33 @@ use crate::circuit::Circuit;
 use crate::elements::control::reg_control::RegControl;
 use crate::exec::registry::DssClass;
 use crate::report::format;
+use crate::report::table::{Cell, Report, Row};
 
 /// Build the `Show Taps` text (Pascal `ShowRegulatorTaps`). Read-only: walks
 /// `RegControls` (the RegControl objects in `ckt.controls`, creation order) and
 /// reads the controlled transformer's tap data live.
 pub(crate) fn show_taps(classes: &[DssClass], ckt: &Circuit) -> String {
-    let mut s = String::new();
-    s.push('\n');
-    s.push_str("CONTROLLED TRANSFORMER TAP SETTINGS\n");
-    s.push('\n');
-    s.push_str(
-        "Name    RegControl        Tap      Min       Max     Step      Position      Winding      Direction       CogenMode\n",
+    let mut rep = Report::new();
+    rep.blank();
+    rep.line("CONTROLLED TRANSFORMER TAP SETTINGS");
+    rep.blank();
+    // `'Name    RegControl        Tap      Min       Max     Step      Position
+    //   Winding      Direction       CogenMode'` — the header literal as its ten
+    // columns (offsets 0/8/26/35/45/53/63/77/90/106).
+    rep.row(
+        Row::new()
+            .cell(Cell::left("Name", 8))
+            .cell(Cell::left("RegControl", 18))
+            .cell(Cell::left("Tap", 9))
+            .cell(Cell::left("Min", 10))
+            .cell(Cell::left("Max", 8))
+            .cell(Cell::left("Step", 10))
+            .cell(Cell::left("Position", 14))
+            .cell(Cell::left("Winding", 13))
+            .cell(Cell::left("Direction", 16))
+            .cell(Cell::plain("CogenMode")),
     );
-    s.push('\n');
+    rep.row(Row::blank(10));
 
     for &r in &ckt.controls {
         let obj = &classes[r.class_ord()].arena[r.index()];
@@ -45,7 +59,7 @@ pub(crate) fn show_taps(classes: &[DssClass], ckt: &Circuit) -> String {
             tr.tap_increment(iwind as usize),
         );
         // Pascal `TapPosition(iWind) = Round((PresentTap - (Max+Min)/2)/Increment)`.
-        // TODO(compat): FPC `Round` is ties-to-even (see RegControl `get_tap_num`).
+        // Pascal `Round` = ties-to-even (see RegControl `get_tap_num`).
         let position = if inc == 0.0 {
             0
         } else {
@@ -60,23 +74,21 @@ pub(crate) fn show_taps(classes: &[DssClass], ckt: &Circuit) -> String {
         let cogen = if rc.in_cogen_mode() { "True" } else { "False" };
 
         // Pascal `Pad(Name, 12)` (transformer name) then `Pad(pReg.Name, 12)`,
-        // each followed by a space, then the fixed-format numeric row.
-        s.push_str(&format::pad(tobj.data().name(), 12));
-        s.push(' ');
-        s.push_str(&format::pad(obj.data().name(), 12));
-        s.push(' ');
+        // each followed by a space, then
         // `Format('%8.5f %8.5f %8.5f %8.5f     %d      %d      %s      %s')`.
-        s.push_str(&format!(
-            "{} {} {} {}     {}      {}      {}      {}\n",
-            format::fixed_w(present, 8, 5),
-            format::fixed_w(min_tap, 8, 5),
-            format::fixed_w(max_tap, 8, 5),
-            format::fixed_w(inc, 8, 5),
-            position,
-            iwind,
-            direction,
-            cogen,
-        ));
+        rep.row(
+            Row::new()
+                .cell(Cell::left(tobj.data().name(), 12).sep(" "))
+                .cell(Cell::left(obj.data().name(), 12).sep(" "))
+                .cell(Cell::right(format::fixed(present, 5), 8).sep(" "))
+                .cell(Cell::right(format::fixed(min_tap, 5), 8).sep(" "))
+                .cell(Cell::right(format::fixed(max_tap, 5), 8).sep(" "))
+                .cell(Cell::right(format::fixed(inc, 5), 8).sep("     "))
+                .cell(Cell::plain(position.to_string()).sep("      "))
+                .cell(Cell::plain(iwind.to_string()).sep("      "))
+                .cell(Cell::plain(direction).sep("      "))
+                .cell(Cell::plain(cogen)),
+        );
     }
-    s
+    rep.finish()
 }

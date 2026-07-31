@@ -305,8 +305,12 @@ impl LineGeometryObj {
     /// (Line.pas:2049-2051 / 2111-2113): push the consuming Line's medium
     /// permittivity + height offset into the Carson engine, in the exact upstream
     /// call order (`SetEpsRMedium`, then `SetHeightOffset`, then
-    /// `SetUserHeightUnit`) — the last re-applies the offset in the new unit
-    /// (the `set_user_height_unit` re-conversion quirk). Each setter flags
+    /// `SetUserHeightUnit`) — the last re-applies the offset in the new unit,
+    /// which is what makes `HeightUnit=` mean anything here: the offset is
+    /// stored while the engine still carries its constructed `UNITS_M`, so the
+    /// unit set re-reads the typed number under the declared unit. (Both
+    /// readings of `compat::HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD` agree
+    /// on this order — see that const.) Each setter flags
     /// `rhoChanged`, so the next `z_matrix`/`yc_matrix` (or a still-pending
     /// `update_line_geometry_data`) recomputes. A no-op when no engine exists yet
     /// (Pascal's `lineConstants` is always allocated for a real geometry).

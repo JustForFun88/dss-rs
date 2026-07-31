@@ -14,6 +14,7 @@
 
 pub mod cim;
 pub mod circuit;
+pub mod compat;
 pub mod diag;
 pub mod elements;
 pub mod exec;

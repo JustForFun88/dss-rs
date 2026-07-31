@@ -92,22 +92,50 @@ fn bus1_side_effect_defaults_bus2_to_grounded_y() {
     assert_eq!(isrc.cd.get_bus(2), "b1.0.0.0");
 }
 
-/// TODO(compat) coverage: Isource never sets `bus2_defined = true` (unlike
-/// VSource), so a later Bus1 re-set clobbers an already-explicit Bus2 back to
-/// the grounded-Y default.
+/// The Stage F [`ISOURCE_BUS2_NEVER_LATCHES`] row, pinned by expected value in
+/// both lanes.
+///
+/// `TIsourceObj.PropertySideEffects` (`Isource.pas:221`) has no `Bus2` case, so
+/// upstream never latches `Bus2Defined` and a later `Bus1=` clobbers an
+/// already-explicit `Bus2` back to the grounded-Y default —
+/// `TVsourceObj.PropertySideEffects` (`Vsource.pas:498`) does latch it on the
+/// very same property. **Parity lane**: the clobber, the value both gating
+/// oracles pin. **Default lane**: `b2` survives, matching the sibling class.
+///
+/// [`ISOURCE_BUS2_NEVER_LATCHES`]: crate::compat::ISOURCE_BUS2_NEVER_LATCHES
 #[test]
-fn bus1_reset_overwrites_explicit_bus2_because_bus2_defined_never_latches() {
+fn bus2_latching_is_the_lane_kernel() {
     let mut isrc = Isource::new("i1");
     isrc.cd.set_bus(1, "b1");
     isrc.side_effects(prop::BUS1, 0);
-    isrc.cd.set_bus(2, "b2"); // explicit Bus2=b2
-    assert_eq!(isrc.cd.get_bus(2), "b2");
 
-    // Re-setting Bus1 clobbers the explicit Bus2 back to the default, because
-    // `bus2_defined` was never latched true.
+    // An explicit `Bus2=b2`, through the property side effect the parser runs.
+    isrc.cd.set_bus(2, "b2");
+    isrc.side_effects(prop::BUS2, 0);
+    assert_eq!(isrc.cd.get_bus(2), "b2");
+    // Expectations are derived from the *lane*, never from the row's own alias:
+    // reading `ISOURCE_BUS2_NEVER_LATCHES` on both sides would make this pass
+    // for whatever the alias happens to say, so a silent revert of the flip
+    // would sail through (reproduced, F-settle W4).
+    let parity = crate::compat::ORACLE_PARITY;
+    assert_eq!(isrc.bus2_defined, !parity);
+
+    // Re-setting Bus1 re-derives the grounded-Y default only while the flag is
+    // unlatched — i.e. always, upstream.
     isrc.cd.set_bus(1, "b1");
     isrc.side_effects(prop::BUS1, 0);
-    assert_eq!(isrc.cd.get_bus(2), "b1.0.0.0");
+    assert_eq!(
+        isrc.cd.get_bus(2),
+        if parity { "b1.0.0.0" } else { "b2" },
+        "parity reproduces the missing `Bus2` side-effect case (Isource.pas:221); \
+         the default lane latches it like TVsourceObj does"
+    );
+
+    // Both lanes agree when `Bus2` was never given: the default is re-derived.
+    let mut plain = Isource::new("i2");
+    plain.cd.set_bus(1, "c1");
+    plain.side_effects(prop::BUS1, 0);
+    assert_eq!(plain.cd.get_bus(2), "c1.0.0.0");
 }
 
 #[test]

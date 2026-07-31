@@ -34,6 +34,27 @@ enum Record {
     Vector { size: usize, vector: Vec<f64> },
 }
 
+/// Stage F **deliberate divergences** (`DE_PASCALIZE_PLAN.md` IV.2, drift-model
+/// row 5): golden records whose oracle value is produced by a `compat` kernel
+/// the *default* lane flips. Each row replaces the oracle comparison **for that
+/// one record** with an independently-derived expectation; every other record
+/// — including every other record of the same case — stays oracle-compared in
+/// both lanes.
+///
+/// `(case, record index, expected, abs tolerance, why)`.
+const DEFAULT_LANE_DIVERGENCES: &[(&str, usize, f64, f64, &str)] = &[(
+    "rpn_expressions",
+    9,
+    0.5,
+    f64::EPSILON * 0.5,
+    "(30 sin) — Stage F pi row (F.3d). The oracle's 0.5000000000000299 is the \
+     truncated-pi degree conversion the parity lane keeps; the default lane \
+     scales by f64::consts::PI, so its answer must be the correctly-rounded \
+     sin 30 deg = 1/2. Pinned within one ulp of that exact value — an \
+     independent target, NOT our own constant re-evaluated, so an arbitrary \
+     drift cannot satisfy it (the parity value is 60 ulp away and fails here).",
+)];
+
 /// Trig results may differ from FPC's RTL by a few ULPs (and across the CI
 /// platforms' libm); parsed literals must match exactly, which this still
 /// guarantees at 1e-14 relative.
@@ -70,10 +91,36 @@ fn replay_parser_golden_from_oracle() {
     let mut parser = Parser::new();
     let vars = ParserVars::new();
 
+    // The parity lane compares EVERY record against the oracle; the default
+    // lane replaces exactly the rows below. Tracked so a stale row (one whose
+    // case/index moved because the golden was regenerated) fails the test
+    // instead of silently disarming the exception.
+    let parity = dss_parser::compat::ORACLE_PARITY;
+    let mut divergences_hit = vec![false; DEFAULT_LANE_DIVERGENCES.len()];
+
     for case in &golden.cases {
         parser.set_cmd_string(&case.cmd);
         for (i, record) in case.records.iter().enumerate() {
             let what = format!("case {} record {i}", case.name);
+            if !parity
+                && let Some((n, &(_, _, expected, tol, why))) = DEFAULT_LANE_DIVERGENCES
+                    .iter()
+                    .enumerate()
+                    .find(|(_, r)| r.0 == case.name && r.1 == i)
+            {
+                divergences_hit[n] = true;
+                let Record::Dbl { .. } = record else {
+                    panic!("{what}: a divergence row must name a `dbl` record");
+                };
+                let got = parser
+                    .make_double(&vars)
+                    .unwrap_or_else(|e| panic!("{what}: make_double failed: {e}"));
+                assert!(
+                    (got - expected).abs() <= tol,
+                    "{what}: default lane got {got:?}, want {expected:?} +/- {tol:e}\n  {why}"
+                );
+                continue;
+            }
             match record {
                 Record::Next { param, token } => {
                     let got_param = parser.next_param(&vars);
@@ -103,6 +150,17 @@ fn replay_parser_golden_from_oracle() {
                     }
                 }
             }
+        }
+    }
+
+    if !parity {
+        for (n, hit) in divergences_hit.iter().enumerate() {
+            let (case, rec, ..) = DEFAULT_LANE_DIVERGENCES[n];
+            assert!(
+                hit,
+                "stale Stage F divergence row: {case} record {rec} never \
+                 appeared in the golden"
+            );
         }
     }
 }

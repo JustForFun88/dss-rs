@@ -5,6 +5,7 @@
 //! whose Y hasn't been built) prints `Yprim matrix is Nil`.
 
 use crate::report::format;
+use crate::report::table::{Cell, Report, Row};
 use crate::support::cmatrix::CMatrix;
 
 /// Build the `Show Yprim` text (Pascal `ShowYPrim`) for the active element named
@@ -13,37 +14,36 @@ use crate::support::cmatrix::CMatrix;
 /// triangle by rows** — `for i in 0..yorder`, `for j in 0..=i` — with each entry
 /// `%13.10g ` (10 sig figs, the real part for `G`, the imag for `jB`).
 pub(crate) fn show_yprim(full_name: &str, yprim: Option<&CMatrix>, yorder: usize) -> String {
-    let mut s = String::new();
-    s.push_str("Yprim of active circuit element: ");
-    s.push_str(full_name);
-    s.push('\n');
-    s.push('\n');
+    let mut rep = Report::new();
+    rep.line(&format!("Yprim of active circuit element: {full_name}"));
+    rep.blank();
 
     let Some(y) = yprim else {
-        s.push_str("Yprim matrix is Nil\n");
-        return s;
+        rep.line("Yprim matrix is Nil");
+        return rep.finish();
     };
 
     // `G` (real part) then `jB` (imag part), each a blank line + banner + blank
-    // line + the lower-triangle rows.
+    // line + the lower-triangle rows. Each triangle is one run, so the lane sizes
+    // its columns across the whole matrix.
     for (banner, real_part) in [
         ("G matrix (conductance), S", true),
         ("jB matrix (Susceptance), S", false),
     ] {
-        s.push('\n');
-        s.push_str(banner);
-        s.push('\n');
-        s.push('\n');
+        rep.blank();
+        rep.line(banner);
+        rep.blank();
         for i in 0..yorder {
+            let mut row = Row::new();
             for j in 0..=i {
                 let v = y.get(i, j);
                 let val = if real_part { v.re } else { v.im };
-                // Pascal `Format('%13.10g ', [val])`.
-                s.push_str(&format::g_w(val, 13, 10));
-                s.push(' ');
+                // Pascal `Format('%13.10g ', [val])` — the trailing space is the
+                // column's gutter.
+                row = row.cell(Cell::right(format::g(val, 10), 13).sep(" "));
             }
-            s.push('\n');
+            rep.row(row);
         }
     }
-    s
+    rep.finish()
 }

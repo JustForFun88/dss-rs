@@ -511,12 +511,32 @@ impl DssObject for Line {
             }
             XG | RHO => {
                 // TODO(compat): 658.5, NOT the 658.8530451057239 used by
-                // `LineConstants::get_ze` (SimpleCarson). dss_capi 0.15.x
-                // corrected the De constant in `LineConstants.pas` but left
-                // `Line`'s own `Kxg` at the old 658.5 (Line.pas:531/741/1077) —
-                // a genuine upstream inconsistency reproduced 1:1 (UPGRADE_PLAN
-                // WP-U1.2 B2/D1, ledger DIVERGENCES.md §B2/D1). Clean fix in the
-                // §6 sweep unifies both to 658.8530451057239.
+                // `LineConstants::get_ze` (SimpleCarson) — one engine holding
+                // two values of Carson's equivalent earth-return depth. Both
+                // gating oracles keep 658.5 in `Line` itself (dss_capi
+                // `src/PDElements/Line.pas:520`, `:704`, `:959`; r4133
+                // `Version8/Source/PDElements/Line.pas:410`, `:702`, `:832`)
+                // while r4133's own `General/LineConstants.pas:492` already
+                // reads 658.8530451057239 — which the port adopted in
+                // UPGRADE_PLAN WP-U1.2 B2/D1 (ledger DIVERGENCES.md §B2/D1).
+                // So the *fix* is unambiguous (unify on the sibling unit's
+                // corrected constant); what blocks it is its gate cost.
+                //
+                // Stage F status (F.3x, MEASURED — this row is NOT a lane
+                // split). `kxg` has exactly one consumer,
+                // `line/solve.rs`'s `xgmod = 0.5 * kxg * ln(freq_multiplier)`
+                // under `xg != 0`, so at the base frequency `ln(1) == 0` and
+                // the constant is invisible; it becomes observable in an
+                // off-nominal solve, where it moves the line's series
+                // reactance. Flipping all three sites was implemented and run:
+                // `tests/golden/harmonics/harmonics_doall` fails on
+                // `Line.l1 Yprim[0,0]` — actual `(2.007606e-2, -2.487370e-1)`
+                // vs oracle `(2.007673e-2, -2.487385e-1)`, `|diff| = 1.732e-6`
+                // against an allowed `1.002e-6`. That is an **oracle** golden
+                // compared in **both** lanes at a calibrated floor, so the
+                // default lane cannot take the fix without excluding the whole
+                // harmonics YPrim surface — a re-baseline decision (an UPGRADE
+                // rung), not a lane flip. Escape-recorded with these numbers.
                 self.kxg = self.xg / (658.5 * (self.rho / self.cd.base_frequency).sqrt()).ln();
             }
             SEASONS => {

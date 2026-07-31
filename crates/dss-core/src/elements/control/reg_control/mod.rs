@@ -336,9 +336,21 @@ impl RegControl {
         if inc == 0.0 {
             return 0; // NumTaps = 0 winding; Pascal would divide by zero
         }
-        // TODO(compat): FPC `Round` is ties-to-even with an integer-indefinite
-        // path for out-of-Int64 magnitudes; tap positions are tiny integers, so
-        // plain ties-to-even matches. Wiped with the other compat shims.
+        // Pascal `Round` — round-half-to-**even**, which `round_ties_even`
+        // reproduces exactly. (This is the reference site for the whole engine:
+        // the other bare `round_ties_even` calls point here.)
+        //
+        // FPC's out-of-Int64 "integer indefinite" artifact is observable
+        // wherever a *raw deck double* reaches a `Round`, and every such site
+        // goes through the Stage F round row's kernel
+        // (`dss_parser::compat::round_i32`) rather than a bare saturating cast:
+        // `make_integer`, `Set time=`, PstCalc's `CyclesPerSample`, the two
+        // `Round(24/stepsize)` day counts, and GrowthShape's base year. A bare
+        // cast is correct only where the magnitude is bounded by construction
+        // — here, a tap position — or where the site carries its own recorded
+        // disposition (load-shape indexing, the `Cardinal` plot channels).
+        // Do not restore the older blanket claim that *every* engine-internal
+        // `Round` is bounded: `Set time=(3e9,0)` disproved it (F-settle W4).
         ((tap - (max_tap + min_tap) / 2.0) / inc).round_ties_even() as i32
     }
 
@@ -386,7 +398,7 @@ impl RegControl {
             return 0; // NumTaps = 0 winding; Pascal would divide by zero
         }
         let mid = (tr.max_tap(w as usize) + tr.min_tap(w as usize)) / 2.0;
-        // TODO(compat): FPC `Round` ties-to-even (see `get_tap_num`).
+        // Pascal `Round` = ties-to-even (see `get_tap_num`).
         ((tr.present_tap(w as usize) - mid) / inc).round_ties_even() as i32
     }
 

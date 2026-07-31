@@ -3,6 +3,12 @@ name = "dss-parser"
 version = "0.1.0"
 edition = "2024"
 
+# Stage F lane split (DE_PASCALIZE Part IV.2): `oracle-parity` is additive and
+# selects the bit-compat kernels — see `src/compat.rs` (truncated RPN pi, FPC
+# `Round`). Enabling `dss-core/oracle-parity` turns it on here too.
+[features]
+oracle-parity = []
+
 [dependencies]
 
 [dev-dependencies]

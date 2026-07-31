@@ -310,32 +310,43 @@ fn makeposseq_generator_plain() {
     assert_eq!(plan.actions, expect);
 }
 
-/// `kVA=` set (PrpSequence slot 23). The upstream `had_kVA` guard reads slot 26
-/// (`Xdp`), so this does NOT trigger a kVA divide — kVA stays as-is (oracle:
-/// `g_kva` keeps kVA=250). Pins the `generator.pas:2744` wrong-index quirk.
+/// Expected-value pin for [`crate::compat::GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS`],
+/// `kVA=` half: the property is set (slot 23), so the parity lane — whose
+/// `had_kVA` reads slot 26, `Xdp` — emits **no** kVA action and the oracle's
+/// `g_kva` keeps `kVA=250`, while the default lane divides the rating by the
+/// phase count like every other quantity in the same block.
 #[test]
-fn makeposseq_generator_kva_set_is_ignored_wrong_index() {
+fn makeposseq_generator_kva_guard_is_the_lane_slot() {
     let mut g = gen_3ph();
     g.cd.obj.set_as_next_seq(prop::KVA); // slot 23
     let plan = g.make_pos_sequence(&PosSeqCtx::default());
     let v = 12.47 / 3.0_f64.sqrt();
     let mut expect = common_head(v);
+    if !crate::compat::ORACLE_PARITY {
+        expect.push(PosSeqAction::SetF64(prop::KVA, 250.0 / 3.0));
+    }
     expect.push(PosSeqAction::EndEdit);
-    assert_eq!(plan.actions, expect, "kVA= must not divide (reads slot 26)");
-    assert!(!plan.actions.iter().any(|a| matches!(
-        a,
-        PosSeqAction::SetF64(i, _) if *i == prop::KVA
-    )));
+    assert_eq!(
+        plan.actions,
+        expect,
+        "`kVA=` divides iff the guard reads its own slot (lane parity = {})",
+        crate::compat::ORACLE_PARITY
+    );
 }
 
-/// `MVA=` set (slot 24). `had_MVA` reads slot 27 (`Xdpp`) → no MVA action.
+/// The `MVA=` half of the same row (slot 24 vs the parity read of 27, `Xdpp`).
+/// The emitted value is `kVArating / 1000 / phases` — upstream converts to MVA
+/// from the kVA field, which holds the same rating in both lanes here.
 #[test]
-fn makeposseq_generator_mva_set_is_ignored_wrong_index() {
+fn makeposseq_generator_mva_guard_is_the_lane_slot() {
     let mut g = gen_3ph();
     g.cd.obj.set_as_next_seq(prop::MVA); // slot 24
     let plan = g.make_pos_sequence(&PosSeqCtx::default());
     let v = 12.47 / 3.0_f64.sqrt();
     let mut expect = common_head(v);
+    if !crate::compat::ORACLE_PARITY {
+        expect.push(PosSeqAction::SetF64(prop::MVA, 250.0 / 1000.0 / 3.0));
+    }
     expect.push(PosSeqAction::EndEdit);
     assert_eq!(plan.actions, expect);
 }
@@ -356,17 +367,25 @@ fn makeposseq_generator_kvars_divided() {
     assert_eq!(plan.actions, expect);
 }
 
-/// Setting `Xdp=` (slot 26) is what actually trips `had_kVA` — the wrong-index
-/// quirk in reverse: kVA IS divided even though the user never touched kVA.
+/// The same row read from the other side, which is what makes it a defect
+/// rather than a naming preference: setting `Xdp=` — a *reactance* — divides
+/// the kVA rating in the parity lane, and touches nothing in the default one.
 #[test]
-fn makeposseq_generator_xdp_trips_kva_divide() {
+fn makeposseq_generator_xdp_trips_the_kva_divide_only_in_parity() {
     let mut g = gen_3ph();
-    g.cd.obj.set_as_next_seq(prop::XDP); // slot 26 == the buggy had_kVA index
+    g.cd.obj.set_as_next_seq(prop::XDP); // slot 26 == upstream's had_kVA index
     let plan = g.make_pos_sequence(&PosSeqCtx::default());
-    assert!(plan.actions.iter().any(|a| matches!(
-        a,
-        PosSeqAction::SetF64(i, val) if *i == prop::KVA && (*val - 250.0 / 3.0).abs() < 1e-9
-    )));
+    let divided = plan.actions.iter().any(|a| {
+        matches!(
+            a,
+            PosSeqAction::SetF64(i, val) if *i == prop::KVA && (*val - 250.0 / 3.0).abs() < 1e-9
+        )
+    });
+    assert_eq!(
+        divided,
+        crate::compat::ORACLE_PARITY,
+        "`Xdp=` may divide the kVA rating only where the guard reads slot 26"
+    );
 }
 
 // --- CF-C Port 2: UserModel/UserData property surface (warn + fallback) ---

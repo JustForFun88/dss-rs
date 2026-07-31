@@ -12,7 +12,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::support::cmatrix::{CMatrix, cdiv_fpc};
+use crate::compat;
+use crate::support::cmatrix::CMatrix;
 use crate::support::line_units::LineUnits;
 use crate::support::mathutil::{bessel_i0, bessel_i1};
 use num_complex::Complex64;
@@ -68,11 +69,34 @@ pub enum ConductorType {
 // TODO(compat): these reproduce the upstream truncated literals exactly —
 // `mu0` and `Twopi` are short of the precise values, and `Twopi` is used as a
 // distinct quantity from `2*pi` (the FullCarson/Zint earth terms use the full
-// `PI`). Goldens pin them; the clean fix (precise constants) lands in the
-// post-port precision pass.
+// `PI`). Goldens pin them; the clean fix (precise constants) is a re-baseline,
+// not a lane flip.
+//
+// **Stage F.3z measured both halves separately rather than escaping the pair as
+// one category** (`LineConstants.pas:128-129`; r4133 `:152-153`, so both gating
+// oracles carry them):
+//
+// * `mu0 = 12.56637e-7` is **4.889e-8** relative below `4πe-7`, and it scales
+//   the whole series impedance. Flipping it fails **35 of the 520** gated
+//   corpus cases, 33 unit tests (the `1e-8`-toleranced Carson/cable reference
+//   matrices) and the `dump_line_geo` + `show_lineconstants` goldens. Nothing
+//   field-scoped survives that.
+// * `Twopi = 6.283185307` is only **2.858e-11** relative below `TAU`, and it has
+//   exactly one consumer (`LFactor := Cmplx(0, Fw·mu0/twopi)`, `:184`). Flipping
+//   it alone fails **one** corpus case —
+//   `IEEETestCases/4Bus-YYD/YYD-Master-step1.DSS` on the r4133 channel, entry 12
+//   at |diff| 1.380e-4 against an allowed 1.338e-4, i.e. **1.031x** its floor,
+//   the same deck the dense-inverse row (F.3f) already found sitting on its
+//   calibration boundary — plus the DERI bit pin. Still an oracle floor the
+//   default lane must meet, so it escapes; but it is 1.03x, not a category.
+//
+// The physically meaningful group is `mu0/twopi`, which the exact constants make
+// exactly `2e-7` (both truncated: 1.99999990e-7). So a correct fix flips **both**
+// and lands with `mu0`'s 35-case cost — an UPGRADE-rung re-baseline against a
+// re-captured oracle, which the parity lane may never do.
 const E0: f64 = 8.854e-12; // dielectric constant F/m
 const MU0: f64 = 12.56637e-7; // hy/m
-#[allow(clippy::approx_constant)] // TODO(compat): truncated upstream `Twopi`, not `TAU`
+#[allow(clippy::approx_constant)] // truncated upstream `Twopi`, not `TAU` — see above
 const TWOPI: f64 = 6.283185307;
 
 #[inline]
@@ -80,41 +104,67 @@ fn cmplx(re: f64, im: f64) -> Complex64 {
     Complex64::new(re, im)
 }
 
-// FPC RTL `ucomplex.pp` complex primitives, ported verbatim. `num_complex`'s
-// `.sqrt()`/`.ln()`/`.norm()` use the polar/trig (`from_polar`) and `hypot`
-// forms; FPC uses the algebraic Numerical-Recipes `csqrt`, the naive
-// `sqrt(re²+im²)` modulus, and `ln(cmod)+j·arctan2`. They round the last bit
-// differently, so a faithful 1:1 port of the DERI/cable earth terms (which call
-// `Csqrt`/`Cln`/`Cabs`) must use these — exactly as the matrix inverse uses
-// `cdiv_fpc`. Proven bit-for-bit against the x86_64 FPC `ucomplex` RTL.
+// FPC RTL `ucomplex.pp` complex primitives. FPC uses the algebraic
+// Numerical-Recipes `csqrt`, the naive `sqrt(re²+im²)` modulus (`Cabs`/`cmod`,
+// NOT `hypot`), and `cln = ln(cmod) + j·arctan2`; `num_complex` uses `hypot`
+// for `.norm()`, `ln(norm) + j·arg` for `.ln()`, and the *polar* form
+// `from_polar(√r, θ/2)` for `.sqrt()`. The port originally carried all three
+// hand-rolled, on the assumption that each was a less-precise Pascal wart kept
+// only for bit-parity.
 //
-// `Cabs`/`cmod`: `sqrt(re*re+im*im)` (DSSUcomplex `Cabs`, ucomplex `cmod`), NOT
-// `hypot`.
+// **Stage F.3y measured that assumption against a 60-digit `mpmath` reference
+// (20 000 operands, |z| sweep 1e-150…1e150, the F.3e protocol), and it holds
+// for none of the three.** The row resolved with *no lane split at all* — two
+// of the primitives are the crate's, and the third is FPC's on merit:
 //
-// TODO(compat): these three reproduce FPC's *less precise* forms only to match
-// the oracle bit-for-bit — `num_complex`'s `hypot` modulus and polar `sqrt`/`ln`
-// are marginally more accurate (measured vs the correctly-rounded value: csqrt 1
-// vs 2 ULP; `cmod` via overflow-safe `hypot` vs naive `√(re²+im²)`). The clean
-// fix is to drop all three for `num_complex`'s `.norm()`/`.sqrt()`/`.ln()` in
-// the §6 precision pass, regenerating the geometry/DERI/cable goldens
-// deliberately. `cdiv_fpc` is deliberately NOT in this set: Smith's division is
-// both more accurate (2 ULP, vs naive 4 / `Complex::fdiv` 9) and overflow-robust,
-// so it stays permanently.
-#[inline]
-fn cabs_fpc(z: Complex64) -> f64 {
-    (z.re * z.re + z.im * z.im).sqrt()
-}
+// | kernel | mean ULP err | worst ULP err |
+// |---|---|---|
+// | `csqrt` FPC algebraic (NR), real part | **0.339** | **1.82** |
+// | `csqrt` `num_complex` polar, real part | 2.413 | **12818** |
+// | `csqrt` FPC / `num_complex`, imag part | 0.339 | 1.73 / 2.44 |
+// | `cabs` naive vs `.norm()` | 0.292 / 0.292 | 1.11 / 1.11 — **bit-identical** |
+//
+// 1. **`Cabs` and `Cln` are not warts — they are already `.norm()`/`.ln()`.**
+//    Over the whole range where `re²+im²` is representable the naive modulus is
+//    **bit-for-bit** `f64::hypot` here (0 disagreements in 20 000 samples), and
+//    since `cln`'s imaginary part is literally `im.atan2(re)` — the same
+//    expression `Complex::arg` evaluates — `cln_fpc` was bit-identical to
+//    `.ln()` as well. What the two forms do *not* share is behaviour outside
+//    that range: `re²+im²` over/underflows, so the naive modulus collapses to
+//    `inf`/`0` (measured at `(1.5e154, 2.5e154)` and `(1e-170, 1e-170)`) where
+//    `hypot` stays exact. So the crate's forms are equal where anything is
+//    gated and strictly more robust where nothing is: they are used
+//    unconditionally, in **both** lanes, and the compat marker that stood
+//    here is closed.
+// 2. **`Csqrt` stays FPC's, and *not* for parity — the algebraic form is the
+//    better kernel.** `num_complex`'s polar `sqrt` routes through `atan2` and
+//    `cos`, which cancel as `θ → ±π` (near the negative real axis), costing it
+//    7× the mean error and **7000×** the worst-case error of the branch-split
+//    Numerical-Recipes form. Flipping it would make the *product* lane strictly
+//    less accurate for nothing — the exact verdict F.3e reached for
+//    `compat::cdiv` (Smith's division), and the same IV.1 principle: legitimate
+//    numerics stay shared by both lanes. `tests::csqrt_algebraic_beats_the_
+//    polar_form` pins it with literals so it cannot rot back into folklore.
+//
+// Proven bit-for-bit against the x86_64 FPC `ucomplex` RTL, which is why the
+// DERI/cable earth terms and `Line`'s `DoLongLine` all still route through
+// `csqrt_fpc`.
 
 /// FPC `ucomplex` `csqrt` — the Numerical-Recipes stable square root
 /// (`root = √(½(|re|+|z|))`, the other component `= im/(2·root)`), branch-split
 /// on the signs so the robust component is the directly-rooted one.
+///
+/// Retained over `num_complex`'s `.sqrt()` on measured accuracy, not on parity
+/// — see the module-level table above.
 ///
 /// `pub(crate)` so the Line `DoLongLine` port (`elements/pd/line/solve.rs`)
 /// reuses the identical, RTL-proven `csqrt` rather than duplicating it.
 #[inline]
 pub(crate) fn csqrt_fpc(z: Complex64) -> Complex64 {
     if z.re != 0.0 || z.im != 0.0 {
-        let root = (0.5 * (z.re.abs() + cabs_fpc(z))).sqrt();
+        // `.norm()` rather than FPC's naive `cmod`: bit-identical wherever
+        // `re²+im²` is representable, and finite beyond it (see above).
+        let root = (0.5 * (z.re.abs() + z.norm())).sqrt();
         let q = z.im / (2.0 * root);
         if z.re >= 0.0 {
             Complex64::new(root, q)
@@ -126,13 +176,6 @@ pub(crate) fn csqrt_fpc(z: Complex64) -> Complex64 {
     } else {
         z
     }
-}
-
-/// FPC `ucomplex` `cln` — `ln(cmod(z)) + j·arctan2(im, re)` (the modulus is the
-/// naive `cabs_fpc`, not `hypot`).
-#[inline]
-fn cln_fpc(z: Complex64) -> Complex64 {
-    Complex64::new(cabs_fpc(z).ln(), z.im.atan2(z.re))
 }
 
 /// Per-conductor cable extension — the merged `TCableConstants` subclass arrays
@@ -480,24 +523,28 @@ impl LineConstants {
     }
 
     /// `SetUserHeightUnit`: re-express the existing height offset in the new
-    /// unit (Pascal re-runs `SetHeightOffset(heightOffset)`).
+    /// unit — i.e. keep the *number* the user typed and re-read it under the new
+    /// unit (Pascal re-runs `SetHeightOffset(…)`, "This updates the existing
+    /// value to fit the new user units", `LineConstants.pas:694`).
+    ///
+    /// Which number is re-read is the lane row
+    /// [`crate::compat::HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD`]: upstream
+    /// feeds the *metres* field into a setter whose argument is a user-unit
+    /// value, the default lane feeds the typed number ([`Self::height_offset`],
+    /// read before the unit moves). Both are identical while the outgoing unit
+    /// is metres — which is every path that reaches here today; see the const's
+    /// doc.
     pub fn set_user_height_unit(&mut self, value: i32) {
         if value == self.user_height_unit {
             return;
         }
+        let typed = if crate::compat::HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD {
+            self.height_offset
+        } else {
+            self.height_offset()
+        };
         self.user_height_unit = value;
-        // TODO(compat): upstream re-conversion quirk. Pascal `Set_FUserHeightUnit`
-        // passes `FHeightOffset` — a value already stored in METERS — straight into
-        // `Set_FHeightOffset`, which multiplies its argument by `To_Meters(new unit)`.
-        // So a stored 10 m offset, on switching the unit to ft, is re-scaled to
-        // 10*0.3048 = 3.048 m: a meters value is treated as if it were in the new
-        // user unit, physically changing the offset. Reproduce it exactly (goldens
-        // will pin it when the Line-level HeightUnit/HeightOffset slice lands).
-        // Clean fix: convert the stored meters value into the new unit before
-        // re-applying (`FHeightOffset * From_Meters(new unit)`), or leave the meters
-        // field untouched and only re-express the reported value.
-        let offset_field = self.height_offset;
-        self.set_height_offset(offset_field);
+        self.set_height_offset(typed);
     }
 
     /// `GetUserHeightUnit`.
@@ -530,10 +577,10 @@ impl LineConstants {
                 // with skin effect model; assume round conductor
                 let c1_j1 = cmplx(1.0, 1.0);
                 let alpha = c1_j1 * (self.ffrequency * MU0 / cond.rdc).sqrt();
-                let i0i1 = if cabs_fpc(alpha) > 35.0 {
+                let i0i1 = if alpha.norm() > 35.0 {
                     Complex64::new(1.0, 0.0)
                 } else {
-                    cdiv_fpc(bessel_i0(alpha), bessel_i1(alpha))
+                    compat::cdiv(bessel_i0(alpha), bessel_i1(alpha))
                 };
                 c1_j1 * i0i1 * ((cond.rdc * self.ffrequency * MU0).sqrt() / 2.0)
             }
@@ -580,7 +627,7 @@ impl LineConstants {
             // value). UPGRADE_PLAN.md WP-U1.2 row B2/D1; ledger
             // docs/upgrade/DIVERGENCES.md §B2/D1. NB — this is DELIBERATELY
             // inconsistent with `Line`'s `Kxg`, which upstream KEEPS 658.5
-            // (Line.pas:531/741/1077); see the `TODO(compat)` at the `kxg`
+            // (Line.pas:531/741/1077); see the compat markers at the `kxg`
             // sites in elements/pd/line/{accessors,code,mod}.rs.
             SIMPLE_CARSON => cmplx(
                 self.fw * MU0 / 8.0,
@@ -635,10 +682,10 @@ impl LineConstants {
                     let hterm = cmplx(fyi + fyj, 0.0) + self.fme.inv() * 2.0;
                     let xterm = cmplx(fxi_fxj, 0.0);
                     let ln_arg = csqrt_fpc(hterm * hterm + xterm * xterm);
-                    cmplx(0.0, self.fw * MU0 / TWOPI) * cln_fpc(ln_arg)
+                    cmplx(0.0, self.fw * MU0 / TWOPI) * ln_arg.ln()
                 } else {
                     let hterm = cmplx(fyi, 0.0) + self.fme.inv();
-                    cmplx(0.0, self.fw * MU0 / TWOPI) * cln_fpc(hterm * 2.0)
+                    cmplx(0.0, self.fw * MU0 / TWOPI) * (hterm * 2.0).ln()
                 }
             }
         }

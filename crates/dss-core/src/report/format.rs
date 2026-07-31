@@ -39,8 +39,10 @@ pub fn fixed(v: f64, decimals: usize) -> String {
 /// text/CSV comparator collapses the padding, but the separation must exist).
 ///
 /// This uses Rust's native `{:.N}` (round-half-to-even on the true `f64`), which
-/// is *faithful* for the value-parsed Show tables but **not** byte-exact to FPC.
-/// The byte-exact whole-circuit JSON PostCommands use [`fixed_w_fpc`] instead.
+/// is *faithful* for the value-parsed Show tables — and, since F.4, it is also
+/// the **default kernel** the whole-circuit JSON PostCommands render through
+/// ([`crate::compat::fixed_w_script`]); the parity lane keeps the byte-exact
+/// [`fixed_w_fpc_impl`] there.
 pub fn fixed_w(v: f64, width: usize, decimals: usize) -> String {
     format!("{v:>width$.decimals$}")
 }
@@ -57,14 +59,18 @@ pub fn fixed_w(v: f64, width: usize, decimals: usize) -> String {
 /// `99999.995 -> 100000.00`. Empirically pinned against the pinned oracle
 /// (`tools/golden/gen_json.py` `circuit_positive_seq`).
 ///
-/// TODO(compat): reproduces FPC's two-stage decimal rounding (15-sig then
-/// away-from-zero); the clean fix is a single correctly-rounded fixed format.
-pub fn fixed_w_fpc(v: f64, width: usize, decimals: usize) -> String {
+/// **The parity kernel of the F-FMT seam's fixed renderer**
+/// ([`crate::compat::fixed_w_script`]). The two-stage decimal rounding it
+/// reproduces is the row's deliberate inexactness; the default lane selects
+/// [`fixed_w`], which is the single correctly-rounded fixed format that
+/// inexactness stands in for. Both stay compiled and are asserted against each
+/// other by this module's tests.
+pub fn fixed_w_fpc_impl(v: f64, width: usize, decimals: usize) -> String {
     let s = fpc_fixed(v, decimals);
     format!("{s:>width$}")
 }
 
-/// Core of [`fixed_w_fpc`] without the width padding: the FPC `ffFixed` string.
+/// Core of [`fixed_w_fpc_impl`] without the width padding: the FPC `ffFixed` string.
 fn fpc_fixed(v: f64, decimals: usize) -> String {
     if !v.is_finite() {
         // Inf/NaN — unreachable for the circuit weights; defer to Rust.
@@ -187,6 +193,17 @@ pub fn g_left_w(v: f64, width: usize, sig: usize) -> String {
 /// value, so any last-digit rounding difference (FPC-vs-Rust `{:E}`) is
 /// absorbed by the column's printing-floor tol.
 pub fn fpc_sci_w(v: f64, width: usize) -> String {
+    let body = fpc_sci_body(v, width);
+    format!("{body:>width$}")
+}
+
+/// [`fpc_sci_w`] without the right-justification — the *minimum* FPC `Str(v: w)`
+/// representation (sign slot, mantissa, `E±ddd`), whose fraction-digit count is
+/// still set by `width`. Split out for the `Show` table model, where the field
+/// width belongs to the [`crate::report::table::Cell`] and the padding is the
+/// lane's ([`crate::compat::render_rows`]); `fpc_sci_w` = this body in a
+/// `width`-wide right-justified field, byte for byte.
+pub fn fpc_sci_body(v: f64, width: usize) -> String {
     let frac = ((width as i64) - 8).max(1) as usize;
     let sign = if v.is_sign_negative() { '-' } else { ' ' };
     // Rust `{:.*E}` → `6.639353E4`; reformat the exponent to a sign plus an
@@ -197,13 +214,26 @@ pub fn fpc_sci_w(v: f64, width: usize) -> String {
         Some(r) => ('-', r),
         None => ('+', exp.trim_start_matches('+')),
     };
-    let body = format!("{sign}{mant}E{esign}{edig:0>3}");
-    format!("{body:>width$}")
+    format!("{sign}{mant}E{esign}{edig:0>3}")
 }
 
 /// Pascal `Pad(S, Width)` (`Common/Utilities.pas`): `S` right-padded with **spaces**
 /// to `Width` chars; a string already `>= Width` is returned unchanged. Uses byte
 /// length (`str::len`), matching Pascal's `Length(S)` (byte-1:1).
+///
+/// **Case-fold before padding with `to_ascii_uppercase`, never `to_uppercase`.**
+/// `ShowResults.pas` pads first and upper-cases second
+/// (`FromBus := Pad(StripExtension(...), MaxBusNameLength)` then
+/// `AnsiUpperCase(FromBus)`), and F.4e's table model necessarily inverts that —
+/// the `Cell` owns the padding, so the text reaching it is already folded. The
+/// two orders agree **iff** folding preserves byte length. Pascal's
+/// `AnsiUpperCase` on an `AnsiString` does; Rust's Unicode-aware
+/// `str::to_uppercase` does not (`U+0131` → `I` is 2 bytes → 1, `U+FB01` → `FI`
+/// is 3 → 2), and a deck may legally name a bus that way — verified: the engine
+/// accepts `bus2=busı1` without error. ASCII folding restores the invariant by
+/// construction, so the reorder is provably byte-neutral.
+///
+/// Same rule for [`pad_dots`], which measures byte length too.
 pub fn pad(s: &str, width: usize) -> String {
     if s.len() >= width {
         s.to_string()
@@ -257,11 +287,14 @@ pub fn upper_elem_name(full_name: &str) -> String {
 mod tests {
     use super::*;
 
-    /// [`fixed_w_fpc`] must reproduce FPC `Format('%8.2f')` byte-for-byte. Every
-    /// pair below is a value fed to the pinned oracle's circuit `ueweight`
+    /// [`fixed_w_fpc_impl`] must reproduce FPC `Format('%8.2f')` byte-for-byte.
+    /// Every pair below is a value fed to the pinned oracle's circuit `ueweight`
     /// PostCommand and the exact width-8 string it emitted — the divergence from
     /// Rust's native `{:>8.2}` (ties-to-even on the true f64) is real and reachable
     /// (a fractional weight at a rounding boundary).
+    ///
+    /// Asserted against the **impl**, not the seam, so it pins the parity kernel
+    /// in *both* lanes (the F-FMT mechanism: both kernels always compiled).
     #[test]
     fn fixed_w_fpc_matches_oracle_percent_8_2f() {
         // (input weight, oracle `Set ueweight=` value with its width-8 padding)
@@ -297,14 +330,47 @@ mod tests {
             (0.115, "    0.12"),
         ];
         for &(v, want) in cases {
-            assert_eq!(fixed_w_fpc(v, 8, 2), want, "fixed_w_fpc({v})");
+            assert_eq!(fixed_w_fpc_impl(v, 8, 2), want, "fixed_w_fpc_impl({v})");
         }
     }
 
     #[test]
     fn fixed_w_fpc_zero_and_sign() {
-        assert_eq!(fixed_w_fpc(0.0, 8, 2), "    0.00");
-        assert_eq!(fixed_w_fpc(-0.0, 8, 2), "    0.00"); // no `-0.00`
-        assert_eq!(fixed_w_fpc(-0.005, 8, 2), "   -0.01"); // ties-away, sign kept
+        assert_eq!(fixed_w_fpc_impl(0.0, 8, 2), "    0.00");
+        assert_eq!(fixed_w_fpc_impl(-0.0, 8, 2), "    0.00"); // no `-0.00`
+        assert_eq!(fixed_w_fpc_impl(-0.005, 8, 2), "   -0.01"); // ties-away, sign kept
+    }
+
+    /// The F-FMT fixed row, at its observable: the seam
+    /// [`crate::compat::fixed_w_script`] resolves to FPC's two-stage rounding in
+    /// the parity lane and to the single correctly-rounded [`fixed_w`] in the
+    /// default lane — and the two genuinely disagree, so this is a real split
+    /// and not a rename.
+    ///
+    /// The expected values are the *documented* difference between the rules:
+    /// `0.125` is an exact binary half, so ties-away gives `0.13` and Rust's
+    /// ties-to-even gives `0.12`; `2.675` is really `2.67499999999999982…`, which
+    /// FPC's 15-significant intermediate (`2.67500000000000`) rounds up to `2.68`
+    /// while a single correct rounding of the true value gives `2.67`.
+    #[test]
+    fn fixed_w_script_is_the_lane_kernel() {
+        use crate::compat::{ORACLE_PARITY, fixed_w_script};
+        for (v, parity, default) in [
+            (0.125_f64, "    0.13", "    0.12"),
+            (2.675, "    2.68", "    2.67"),
+            (99999.995, "100000.00", "99999.99"),
+        ] {
+            assert_eq!(
+                fixed_w_script(v, 8, 2),
+                if ORACLE_PARITY { parity } else { default },
+                "fixed_w_script({v}) in the {} lane",
+                if ORACLE_PARITY { "parity" } else { "default" }
+            );
+            assert_ne!(parity, default, "the two kernels must actually differ");
+        }
+        // Away from a boundary the lanes agree — the split is exactly the
+        // rounding rule, not a different renderer.
+        assert_eq!(fixed_w_script(1.0, 8, 2), "    1.00");
+        assert_eq!(fixed_w_script(123.4, 8, 2), "  123.40");
     }
 }

@@ -171,3 +171,58 @@ fn make_like_copies_geometry() {
     assert_eq!(get(&cls, &dst, "x"), "[ -1.2 0 1.2 0]");
     assert_eq!(get(&cls, &dst, "h"), "[ 28 28 28 24]");
 }
+
+/// The Stage F [`LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING`] row, pinned by
+/// expected value in both lanes.
+///
+/// `TLineSpacingObj.MakeLike` copies `NConds`/`NPhases`/`FX`/`FY`/`Units` and
+/// stops, so the five equivalent-spacing fields stay at their `Create` defaults
+/// (`detailed = true`, the rest `0.0`) even though the base class has already
+/// copied the `PrpSequence` that marks them set. **Parity lane**: the defaults,
+/// what both gating oracles report. **Default lane**: the source's values.
+///
+/// [`LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING`]: crate::compat::LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING
+#[test]
+fn make_like_equivalent_spacing_is_the_lane_kernel() {
+    let enums = EnumRegistry::new();
+    let cls = class_props(&enums);
+    let mut src = LineSpacingObj::new("s1");
+    apply(
+        &cls,
+        &mut src,
+        &[
+            ("nconds", "4"),
+            ("nphases", "3"),
+            ("x", "-1.2 0 1.2 0"),
+            ("h", "28 28 28 24"),
+            ("units", "m"),
+        ],
+    );
+    // Put the equivalent-spacing block off its `Create` defaults on the source.
+    src.detailed = false;
+    src.eq_dist_ph_ph = 4.5;
+    src.eq_dist_ph_n = 3.25;
+    src.avg_phase_height = 28.0;
+    src.avg_neutral_height = 24.0;
+
+    let mut dst = LineSpacingObj::new("s2");
+    dst.make_like(&src);
+
+    // The geometry proper is copied in both lanes (unchanged contract).
+    assert_eq!(get(&cls, &dst, "nconds"), "4");
+    assert_eq!(get(&cls, &dst, "x"), "[ -1.2 0 1.2 0]");
+
+    // Derived from the *lane*, never from the row's own alias — see
+    // `isource::tests` for why (F-settle W4).
+    let parity = crate::compat::ORACLE_PARITY;
+    assert_eq!(
+        dst.detailed, parity,
+        "parity keeps `Create`'s detailed = true (MakeLike never copies it); \
+         the default lane copies the source's false"
+    );
+    let expect = |source: f64| if parity { 0.0 } else { source };
+    assert_eq!(dst.eq_dist_ph_ph, expect(4.5));
+    assert_eq!(dst.eq_dist_ph_n, expect(3.25));
+    assert_eq!(dst.avg_phase_height, expect(28.0));
+    assert_eq!(dst.avg_neutral_height, expect(24.0));
+}

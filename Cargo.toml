@@ -3,6 +3,14 @@ resolver = "3"
 members = ["crates/dss-cli", "crates/dss-core", "crates/dss-epri", "crates/dss-metis", "crates/dss-parser", "crates/dss-sparse", "crates/dss-usermodel"]
 
 [workspace.dependencies]
+# Stage F / F-FMT step 2 (DE_PASCALIZE Part IV.2): the default lane renders the
+# fixed-width `Show` tables through a table crate instead of hand-measured
+# `Pad` widths. Chosen over `tabled` by the plan's own criterion — the whole
+# closure (comfy-table, unicode-width, unicode-segmentation) is
+# `forbid`/`deny(unsafe_code)`, while `tabled`'s mandatory `papergrid` is not.
+# `default-features = false` drops the crossterm/tty/colour stack; only the
+# plain-ASCII layout engine is used.
+comfy-table = { version = "7", default-features = false }
 num-complex = "0.4"
 regex = "1"
 thiserror = "2"

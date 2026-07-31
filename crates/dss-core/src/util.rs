@@ -21,8 +21,17 @@ pub fn inv_sqrt3_x1000() -> f64 {
 }
 /// TODO(compat): Pascal `CALPHA = (-0.5, -0.866025)` — a deliberately
 /// low-precision −120° phasor (DSSGlobals.pas even carries a TODO about it).
-/// Used by the Vsource asymmetric-matrix path; replace with the exact value
-/// in the post-port cleanup pass, regenerating affected goldens.
+/// Used by the Vsource asymmetric-matrix path; the clean fix is the exact
+/// `1∠−120°`, and it is a re-baseline rather than a lane flip.
+///
+/// **Stage F.3z measured it** instead of filing it under "truncated constants".
+/// The imaginary part is **4.37e-7** relative short of `−sin 120° =
+/// −0.8660254037844386` — only ~2x below the 1e-6-class oracle floors before
+/// the solve amplifies it, which is exactly why this one does not survive:
+/// with the exact value selected (here *and* at the `Reactor` twin), **33 of
+/// the 520** gated corpus cases fail plus the `dump_reactor_symcomp` byte
+/// golden. Whole-artifact cost on a third of a hundred decks, so it escapes
+/// with that number; the flip belongs to an UPGRADE-rung re-capture.
 pub const CALPHA: Complex64 = Complex64::new(-0.5, -0.866025);
 /// Pascal `CDOUBLEONE` (DSSUcomplex.pas).
 pub const CDOUBLEONE: Complex64 = Complex64::new(1.0, 1.0);
@@ -255,6 +264,41 @@ pub fn comma_text(items: &[String]) -> String {
         .join(",")
 }
 
+/// The **F-FMT seam** entry point for "general" (`%g`) number rendering
+/// (`DE_PASCALIZE_PLAN.md` Part IV.2 §F-FMT, step F.4).
+///
+/// Every engine path that turns an `f64` into general-notation text calls this
+/// one function; *which* kernel it lands in is the lane's single choice, made
+/// in [`crate::compat::fmt_g`]:
+///
+/// * parity lane — [`fmt_g_fpc_impl`], the loop-for-loop FPC 3.2.2 RTL
+///   pipeline (Grisu1 + `ffGeneral` post-processing), byte-identical to the
+///   pinned oracle;
+/// * default lane — [`fmt_g_native_impl`], the same *notation policy* rendered
+///   with Rust's correctly-rounded `format!`.
+///
+/// Both kernels are always compiled and are asserted against each other by
+/// `crates/dss-core/tests/fmt_battery.rs` over the 13 198-value FPC battery.
+#[inline]
+pub fn fmt_g(v: f64, sig: usize) -> String {
+    crate::compat::fmt_g(v, sig)
+}
+
+/// The number of significant digits an FPC `%.<sig>g` actually prints.
+///
+/// `FloatToStrFIntl` clamps the requested precision to `maxdigits` (= 15
+/// without `FPC_HAS_TYPE_EXTENDED`), and Grisu1's `n_digits_sci` — derived from
+/// the `Str(v : precision + 7)` width as `width - 1 - 1 - 1 - 1 - 3` — is then
+/// floored at 2.
+///
+/// Called by **both** kernels, so the shared-digit-count claim is true by
+/// construction rather than by coincidence: the parity kernel used to spell its
+/// half as a separate `sig.min(15)` and lean on Grisu1's internal floor for the
+/// lower bound, which agreed but asserted nothing.
+pub fn fpc_general_digits(sig: usize) -> usize {
+    sig.clamp(2, 15)
+}
+
 /// FPC `Format('%-.Ng', …)` / `FloatToStrF(ffGeneral, sig)`: a faithful port of
 /// the FPC 3.2.2 RTL float→string pipeline the pinned oracle runs —
 /// `Str(v : sig+7)` = the **Grisu1** `str_real` (`rtl/inc/flt_core.inc`, the
@@ -265,27 +309,107 @@ pub fn comma_text(items: &[String]) -> String {
 /// `P + Exponent < PE` and `Exponent > -6` (hence the long-observed "fixed
 /// notation down to 1e-5" FPC threshold) and strips trailing zeros.
 ///
-/// TODO(compat): the final cut to `sig` digits is **not correctly rounded** —
-/// Grisu1 first produces 17 ties-to-even digits, then `round_digits` re-rounds
-/// that *decimal string* to `sig` digits **half-away-from-zero** (the FPC
-/// `GRISU1_F2A_HALF_ROUNDUP` + `GRISU1_F2A_AGRESSIVE_ROUNDUP` build flags), so
-/// a value just below a decimal half-boundary can round up where a correctly
-/// rounded `%.Ng` rounds down (oracle-probed: `loadshape.default`'s computed
-/// `FMean` = 0.82582833333333349745… → 17 digits `…33350` → prints
-/// `0.825828333333334`, where correct 15-digit rounding gives `…333`). The
-/// whole pipeline is pinned bit-exact against the real FPC 3.2.2 RTL by the
-/// committed battery `tests/golden/fmt_battery.csv` — 13 198 values × 7
-/// render forms, 0 mismatches (`crates/dss-core/tests/fmt_battery.rs`;
-/// generator: `tools/fpc/fmt_battery/`) — plus the byte-exact Dump/Save
-/// goldens; the clean fix (correctly rounded formatting) lands with the
-/// post-acceptance compat sweep + golden regeneration.
-pub fn fmt_g(v: f64, sig: usize) -> String {
+/// **The parity kernel of the F-FMT seam** ([`fmt_g`]). Its one deliberate
+/// inexactness — the reason the row is lane-split at all — is that the final
+/// cut to `sig` digits is **not correctly rounded**: Grisu1 first produces 17
+/// ties-to-even digits, then `round_digits` re-rounds that *decimal string* to
+/// `sig` digits **half-away-from-zero** (the FPC `GRISU1_F2A_HALF_ROUNDUP` +
+/// `GRISU1_F2A_AGRESSIVE_ROUNDUP` build flags), so a value just below a decimal
+/// half-boundary can round up where a correctly rounded `%.Ng` rounds down
+/// (oracle-probed: `loadshape.default`'s computed `FMean` =
+/// 0.82582833333333349745… → 17 digits `…33350` → prints `0.825828333333334`,
+/// where correct 15-digit rounding gives `…333`). That is exactly what
+/// [`fmt_g_native_impl`] fixes in the default lane; here it is *reproduced*,
+/// and pinned bit-exact against the real FPC 3.2.2 RTL by the committed battery
+/// `tests/golden/fmt_battery.csv` — 13 198 values × 7 render forms
+/// (`crates/dss-core/tests/fmt_battery.rs`; generator: `tools/fpc/fmt_battery/`)
+/// — plus the byte-exact Dump/Save goldens.
+pub fn fmt_g_fpc_impl(v: f64, sig: usize) -> String {
     // `FloatToStrFIntl`: `If (Precision = -1) Or (Precision > maxdigits) Then
     // Precision := maxdigits` (= 15 without FPC_HAS_TYPE_EXTENDED), then
-    // `Str(Double(Value) : precision + 7, Result)`.
-    let precision = sig.min(15) as i32;
+    // `Str(Double(Value) : precision + 7, Result)`. Through the shared
+    // `fpc_general_digits` so both kernels demonstrably take the same digit
+    // budget; its lower clamp is Grisu1's own floor, which this path would
+    // otherwise reach only implicitly.
+    let precision = fpc_general_digits(sig) as i32;
     let sci = grisu_str_real(precision + 7, v);
     fpc_general_post(sci)
+}
+
+/// The **default kernel** of the F-FMT seam ([`fmt_g`]): the same general
+/// notation, rendered through Rust's correctly-rounded `format!`.
+///
+/// What it keeps from FPC, deliberately, and why: the *digit count*
+/// ([`fpc_general_digits`]), the *fixed-vs-scientific window* (`-6 < exp <
+/// digits` — one decade wider than C's `%g`, which stops at `-4`), trailing-zero
+/// stripping and the uppercase `E` exponent with no `+` and no zero padding.
+/// None of those is an inexactness: they are the layout policy the fixed-width
+/// `Show` tables and the `Export` column widths are built around
+/// (`DE_PASCALIZE_PLAN.md` IV.1 keeps report *structure* contractual), so
+/// changing them would move columns, not precision. What it drops is the one
+/// thing IV.2 §F-FMT calls a wart — FPC's two-stage decimal re-rounding: here
+/// every digit comes from a single correctly-rounded conversion, so
+/// `0.82582833333333349745…` prints `0.825828333333333` at 15 digits.
+///
+/// The two kernels therefore agree except where the FPC round-up rules bite;
+/// `fmt_battery.rs` measures that population over the committed FPC battery.
+pub fn fmt_g_native_impl(v: f64, sig: usize) -> String {
+    if !v.is_finite() {
+        // `str_real`'s `return_special` (GRISU1_F2A_NAN_SIGNLESS), post-processed
+        // by `fpc_general_post`'s "no `.` → return as-is" early exit. Not a
+        // number, so correct rounding has nothing to say about it: both kernels
+        // spell it the same way.
+        return if v.is_nan() {
+            "Nan".to_string()
+        } else if v.is_sign_negative() {
+            "-Inf".to_string()
+        } else {
+            "+Inf".to_string()
+        };
+    }
+
+    let digits = fpc_general_digits(sig);
+    // One correctly-rounded conversion supplies both the decimal exponent and
+    // the digits; `{:.*e}` is exact in Rust (no double rounding).
+    let sci = format!("{:.*e}", digits - 1, v);
+    let (mantissa, exp) = sci.split_once('e').expect("scientific form has an `e`");
+    let exp: i32 = exp.parse().expect("exponent parses as i32");
+
+    let mut out = if exp > -6 && exp < digits as i32 {
+        // Fixed notation: `digits` significant figures means `digits-1-exp`
+        // fractional places. Re-rendering from `v` (rather than shifting the
+        // mantissa string) keeps the single-rounding property, and the two
+        // roundings agree because `exp` already reflects any carry out of the
+        // leading digit (9.999 → 1.000e1).
+        let decimals = (digits as i32 - 1 - exp).max(0) as usize;
+        strip_trailing_zeros(format!("{v:.decimals$}"))
+    } else {
+        // Scientific: FPC drops the `+` and the exponent's leading zeros.
+        format!("{}E{exp}", strip_trailing_zeros(mantissa.to_string()))
+    };
+
+    // `RemoveLeadingNegativeSign`: a value that rounded to zero prints `0`,
+    // never `-0` (same character set as the parity kernel's guard).
+    if out.len() > 1
+        && out.starts_with('-')
+        && out[1..]
+            .bytes()
+            .all(|c| matches!(c, b'0' | b'.' | b'E' | b'+' | b','))
+    {
+        out.remove(0);
+    }
+    out
+}
+
+/// Drop a decimal string's trailing zeros and any dangling decimal point
+/// (`1.500` → `1.5`, `2.000` → `2`); an integer-shaped string is untouched.
+fn strip_trailing_zeros(s: String) -> String {
+    if !s.contains('.') {
+        return s;
+    }
+    let t = s.trim_end_matches('0');
+    let t = t.strip_suffix('.').unwrap_or(t);
+    t.to_string()
 }
 
 // =========================================================================

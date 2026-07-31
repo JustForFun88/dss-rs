@@ -286,6 +286,11 @@ impl CktElement for Reactor {
                     // (-0.5, -0.866025) (DSSGlobals.pas:74), not the exact 1∠-120°.
                     // `Calpha1 := cong(Calpha)` then flips it to 1∠+120° "to agree
                     // with textbooks". The clean fix uses an exact 120° rotation.
+                    //
+                    // Escaped with the twin at `util::CALPHA`, measured in Stage
+                    // F.3z: the exact value (both sites) costs 33 of the 520
+                    // gated corpus cases and the `dump_reactor_symcomp` golden.
+                    // See that constant's note for the number and the reasoning.
                     let calpha = Complex64::new(-0.5, -0.866025);
                     let calpha1 = calpha.conj();
                     let calpha2 = calpha1 * calpha1;

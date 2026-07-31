@@ -17,17 +17,18 @@
 //!   ordering the generic dump path can't select for a `NON_PCPD_ELEM`
 //!   `TPCElement` — see that file's header for why.
 //!
-//! TODO(compat): Pascal `TIsourceObj.PropertySideEffects` (`Isource.pas:221`)
-//! never sets `Bus2Defined := TRUE` on the `Bus2` case — unlike
-//! `TVsourceObj.PropertySideEffects` (`Vsource.pas:498`), which does. So an
-//! explicit `Bus2=` is only sticky if it is parsed *after* `Bus1=` on the same
-//! edit (the `Bus1` side effect unconditionally re-derives the grounded-Y
-//! default whenever it runs, since `Bus2Defined` never becomes true). This is
-//! a genuine, deterministic upstream quirk — reproduced 1:1 by simply never
-//! writing `true` into [`Isource::bus2_defined`] from the `BUS2` case. None of
-//! the WPG.14 corpus decks exercise the reversed order (`Bus2=` before
-//! `Bus1=`), so nothing pins it as a golden; the omission is documented here
-//! for the next reader who wonders why `bus2_defined` looks unused on writes.
+//! Pascal `TIsourceObj.PropertySideEffects` (`Isource.pas:221`) never sets
+//! `Bus2Defined := TRUE` on the `Bus2` case — unlike
+//! `TVsourceObj.PropertySideEffects` (`Vsource.pas:498`), which does. So
+//! upstream an explicit `Bus2=` is only sticky if it is parsed *after* `Bus1=`
+//! on the same edit (the `Bus1` side effect unconditionally re-derives the
+//! grounded-Y default whenever it runs, since `Bus2Defined` never becomes
+//! true). That is Stage F's [`ISOURCE_BUS2_NEVER_LATCHES`] row: the parity lane
+//! reproduces it, the default lane latches the flag like the sibling class
+//! does. See `accessors.rs`'s `BUS2` arm and
+//! `tests::bus2_latching_is_the_lane_kernel`.
+//!
+//! [`ISOURCE_BUS2_NEVER_LATCHES`]: crate::compat::ISOURCE_BUS2_NEVER_LATCHES
 
 #[cfg(test)]
 mod tests;

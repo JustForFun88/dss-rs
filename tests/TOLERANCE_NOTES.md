@@ -639,10 +639,17 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
     code-faithful but unexercised by IEEE13 (no Fault objects; full 3-phase deck).
     A feeder with a genuine 2-phase nonzero-`%NEMA` terminal would close the last;
     deferred (no corpus deck), recorded in STATUS §1f.
-  - **`TODO(compat)` in `SeqCurrents`** (`seq_currents.rs`): `Iresidual` sums the
-    *terminal-1* conductors for **every** terminal row (Pascal indexes `cBuffer^[i]`,
-    not `cBuffer^[(j-1)*Ncond+i]`) — an upstream quirk reproduced verbatim so the
-    golden's `Iresidual` column matches; the clean fix is the per-terminal slice.
+  - **Lane-split `Iresidual` in `SeqCurrents`** (`seq_currents.rs`, alias
+    `compat::IRESIDUAL_FROM_TERMINAL_1`): `Iresidual` sums the *terminal-1*
+    conductors for **every** terminal row (Pascal indexes `cBuffer^[i]`, not
+    `cBuffer^[(j-1)*Ncond+i]`). Since DE_PASCALIZE Stage F.3c the parity lane
+    reproduces the quirk verbatim, so the golden's `Iresidual` column still
+    matches byte-for-byte; the default lane takes the clean fix (the row's own
+    terminal slice), which makes only the `Terminal >= 2` cells differ. Those
+    cells alone are excluded there (`GateSpec::ColAbove(1, 1.5)`) — the
+    terminal-1 cells stay oracle-compared in both lanes — and the excluded ones
+    are pinned by `export_seqcurrents_iresidual_is_the_lane_kernel`. This is an
+    exclusion, never a loosened tolerance: the column keeps its `abs = 1e-8`.
 
 - **WP8.2 sub-step 2c — the per-terminal/per-conductor element exports**
   (`Currents`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`NodeOrder`/`Taps` on
@@ -680,7 +687,7 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
     `[Vsource; 0]` (≈ but ≠ `NodeV`), which would print the isolated-source
     `-612.936` 2a surfaced. Computing `iterminal` first, then `vterminal`, restores
     `Vterminal = NodeV`, reproducing the oracle's observable `NodeV·conj(I)`
-    (`-612.729`). Not a `TODO(compat)` — it reproduces the oracle exactly; the note
+    (`-612.729`). Not a compat row at all — it reproduces the oracle exactly; the note
     records *why* the order is inverted from the Pascal source text.
   - **`Taps`** is exact (`rel = 0, abs = 0`): the tap value is the discrete
     `mid + position·increment`, so both engines print the identical value once they
@@ -829,8 +836,12 @@ is genuinely non-comparable, not merely loose:
 
 - **`Capacitor.CMatrix`, `Reactor.RMatrix`, `Reactor.XMatrix`, `Fault.GMatrix`**
   (`DoubleSymMatrixProperty`) — the dss_capi getter reads **uninitialized memory**
-  (the same bug the `TODO(compat)` at `obj/props/class_props/value.rs` reproduces
-  by rendering a deterministic zero matrix). The live oracle returns
+  (the same bug the lane row `compat::SYM_MATRIX_GETTER_RENDERS_ZEROS` at
+  `obj/props/class_props/value.rs` answers — the parity lane renders the
+  deterministic zero matrix the captured goldens hold, which is the *defined*
+  part of the upstream behaviour and never the garbage itself; the default lane
+  renders the stored lower triangle, as the same property's JSON exporter
+  already does in both engines). The live oracle returns
   **process-dependent garbage** (denormals ~1e-310 in one run, huge ~1e123 in
   another — proven nondeterministic). Oracle UB → not reproduced (CLAUDE.md rule),
   so not comparable.
@@ -1042,9 +1053,25 @@ f64-ulp Newton match above) — an explicit, documented compensation (never a si
 Y regularization, §5). Open item (WP-AD.4): bit-level confirm the freeze cause
 (run the frozen reference-free child through faer AND KLU) so the re-seed can drop.
 
-## `TODO(compat)`
+## Deliberately-reproduced upstream inexactnesses
 
-Tolerances absorb f64/ULP differences only. Deliberately-reproduced upstream
-inexactnesses are **not** handled here — they are marked `TODO(compat)` in the
-code and pinned by exact golden values, removed in one pass after the 1:1 port
-reaches final acceptance (PORTING_PLAN.md §4.1 / §6).
+Tolerances absorb f64/ULP differences only. A deliberately-reproduced upstream
+inexactness is **never** handled here — widening a band to cover one is exactly
+the fudging this file forbids.
+
+DE_PASCALIZE Stage F was that "one pass" (PORTING_PLAN.md §4.1 / §6). Its
+outcome is not a deletion but a **lane split**: each resolved inexactness became
+a `crate::compat::` row with two always-compiled impls, the parity lane
+(`--features dss-core/oracle-parity`) keeping the upstream answer its goldens
+pin and the default lane taking the clean fix. Consequences for tolerance work:
+
+- **The parity lane's floors never move.** It is the oracle-compared lane, so
+  every number in this file applies to it unchanged.
+- **The default lane excludes, it does not loosen.** Where a row makes the
+  product answer something the oracle does not, the affected *fields* drop out
+  of the oracle compare (`GateSpec`/`LANE_SKIP_*`) and are pinned by their own
+  expected-value tests. A tolerance is never widened to cover a lane split; if
+  you find yourself wanting to, the row is mis-scoped.
+- A marker still spelled `TODO(compat)` in the tree is one Stage F **escaped**
+  with a measured blocker, and every survivor is registered in
+  `oracle_parity_cfg_gate::ESCAPE_REGISTER` with its owner.

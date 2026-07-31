@@ -231,10 +231,11 @@ fn solve_ld1_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         return Ok(());
     }
     // Time must be set before entering this routine.
-    // TODO(compat): FPC `Round` is banker's rounding (ties-to-even); this
-    // index is always in i32 range, so `round_ties_even` reproduces it.
-    // Wiped with the other compat shims.
-    let ndaily = (24.0 / ckt.solution.h * 3600.0).round_ties_even() as i32;
+    // Pascal `SolutionAlgs.pas:576`: `NDaily := Round(24.0 / DynaVars.h *
+    // 3600.0)` — an Int64 `Round` into an `Integer`, and `h` is a raw deck
+    // value (`Set stepsize=0` makes the quotient infinite), so it goes through
+    // the round row's kernel rather than a bare saturating cast.
+    let ndaily = dss_parser::compat::round_i32(24.0 / ckt.solution.h * 3600.0);
     if !ckt.em_di.di_files_are_open {
         crate::solution::meters::open_all_di_files(ckt, env.store);
     }
@@ -282,7 +283,7 @@ fn solve_ld1_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 /// runs. The mid-loop abort re-check `SolveLD1` has per outer step does not
 /// exist here: Pascal tests `SolutionAbort` exactly once, before the
 /// curve-point loop, never inside it — ported verbatim (a control-flow fact,
-/// not a numeric approximation, so no `TODO(compat)`).
+/// not a numeric approximation, so no compat marker).
 pub(super) fn solve_ld2(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     if ckt.load_dur_curve_obj.is_none() {
         env.errors.push(LDCURVE_NOT_DEFINED.to_string());
