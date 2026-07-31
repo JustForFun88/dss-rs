@@ -7,6 +7,45 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F settlement (wave 4), part 3 — the last gate hole: a lane split that is not an alias (branch `depas-stagef`, 2026-08-01)
+
+Three residuals from the audit round, closed.
+
+**A lane split written as two cfg-selected *definitions* was invisible to the
+whole pin machinery.** `lane_aliases` recognises one shape — a `#[cfg(...)]`
+line immediately followed by `pub use X as Y;` — so a row spelled instead as
+
+    #[cfg(feature = "oracle-parity")]     pub const ROW: f64 = 1.0;
+    #[cfg(not(feature = "oracle-parity"))] pub const ROW: f64 = 2.0;
+
+is a genuine split that never counts toward `SPLIT_ALIAS_POPULATION` and is
+never asked for a pin. Reproduced: appending such a pair to a *sanctioned*
+compat module passed every test in the file. `every_lane_cfg_in_a_compat_module_
+selects_an_alias` now requires every needle-bearing cfg in a compat module to be
+an alias arm (or one of the six `ORACLE_PARITY` arms the lane model itself
+needs), and fails on the probe. A comment between the attribute and its item
+breaks the parser the same way and is rejected too. That was the last of the
+five gate holes the round found.
+
+**`GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS` gains its r4133 evidence.**
+The row rested on internal dss_capi evidence alone, which §D14 says is not
+enough for adopting a fix. r4133 settles it: it writes the same two literals
+`PrpSequence^[26]`/`^[27]` (`generator.pas:3061-3062`), but there they are
+*correct* — its registration puts `kVA` at 26 and `MVA` at 27 (`:459`/`:460`)
+with `Xdp`/`Xdpp` at 29/30. The guards were right upstream and were broken by
+the 0.14.5 enum reorder, so the default lane is what upstream does.
+
+**`fpc_general_digits` is `pub`**, which removes the one rustdoc warning F.4
+introduced (`fmt_g_native_impl` linking a private item) now that both `%g`
+kernels call it.
+
+**Proof.** `cargo fmt --all --check` clean; both clippy invocations exit 0;
+`cargo test --workspace` and its parity twin both **69 test binaries, 0
+failed** (the cfg gate is now 8 tests), corpus gate green inside each;
+`git status --short tests/corpus` empty after each, artifacts deleted by exact
+name; `git diff --stat 6ef40238 -- tests/` **empty** across the whole
+settlement — no golden, ledger entry, deck or tolerance moved.
+
 ### DE_PASCALIZE Stage F settlement (wave 4), part 2 — the operational docs stop over-claiming, CI grows its second lane, and the no-split evidence becomes re-runnable (branch `depas-stagef`, 2026-08-01)
 
 Part 1 settled the code. This one settles the record: the audits found several
