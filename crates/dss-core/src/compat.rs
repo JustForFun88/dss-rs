@@ -1170,6 +1170,16 @@ pub use CKT_MODEL_RENDERED_ORDINAL_PARITY_IMPL as CKT_MODEL_RENDERED_ORDINAL;
 /// raw pair `[19]`/`[20]` — the slots that still *are* `Maxkvar`/`Minkvar`. The
 /// stale pair is a rename that outran its literals, not a decision.
 ///
+/// **r4133 confirms it is a dss_capi regression, not upstream behaviour.** The
+/// EPRI source writes the same two literals — `PrpSequence^[26]`/`^[27]`
+/// (`.inputs/electricdss-code-r4133-trunk/Version8/Source/PCElements/
+/// generator.pas:3061-3062`) — but there they are *correct*, because its
+/// property registration puts `kVA` at 26 and `MVA` at 27 (`:459`/`:460`) with
+/// `Xdp`/`Xdpp` out at 29/30 (`:463`/`:465`). Only the 0.14.5 enum reorder
+/// slid `Xdp`/`Xdpp` into 26/27 and left the guards behind. So the default
+/// lane is what upstream does, which is the corroboration `DIVERGENCES.md`
+/// §D14 asks for before adopting a fix.
+///
 /// **Observable only through the two ratings, and only after `makeposseq` on a
 /// multi-phase generator.** `kVArating` reaches a power-flow solve through
 /// nothing at all: it scales `Xdp`/`Xdpp` (`generator.pas:1281-1282`) and the

@@ -913,6 +913,82 @@ fn lane_aliases(root: &Path) -> Vec<(String, Vec<String>)> {
     out
 }
 
+/// Every lane cfg inside a `compat` module selects an **alias**, never a
+/// definition — so [`lane_aliases`] can see the whole split.
+///
+/// `lane_aliases` recognises exactly one shape: a `#[cfg(…)]` line immediately
+/// followed by `pub use X as Y;`. A row written instead as two cfg-selected
+/// *definitions* of the same name —
+///
+/// ```ignore
+/// #[cfg(feature = "oracle-parity")]
+/// pub const ROW: f64 = 1.0;
+/// #[cfg(not(feature = "oracle-parity"))]
+/// pub const ROW: f64 = 2.0;
+/// ```
+///
+/// — is a genuine lane split that the parser never sees, so it would not count
+/// toward [`SPLIT_ALIAS_POPULATION`] and would never be asked for a pin.
+/// Reproduced (F-settle W4): appending such a pair to a *sanctioned* compat
+/// module passed every test in this file.
+///
+/// The rule is therefore mechanical rather than stylistic: inside a compat
+/// module, a needle-bearing cfg attribute must be an alias arm, or be one of
+/// the [`LANE_CONST_ARMS`] the model itself needs. A comment between the
+/// attribute and its item breaks the parser the same way and is rejected here
+/// too.
+#[test]
+fn every_lane_cfg_in_a_compat_module_selects_an_alias() {
+    let root = repo_root();
+    let needle = needle();
+    let mut offenders = Vec::new();
+    let mut alias_arms = 0usize;
+    let mut const_arms = 0usize;
+
+    for module in COMPAT_MODULES {
+        let text =
+            fs::read_to_string(root.join(module)).unwrap_or_else(|e| panic!("{module}: {e}"));
+        let lines: Vec<&str> = text.lines().collect();
+        for (i, line) in lines.iter().enumerate() {
+            let trimmed = line.trim();
+            if !trimmed.starts_with("#[cfg(") || !trimmed.contains(&needle) {
+                continue;
+            }
+            let next = lines.get(i + 1).map(|l| l.trim()).unwrap_or("");
+            if next.starts_with("pub use ") && next.contains(" as ") {
+                alias_arms += 1;
+            } else if LANE_CONST_ARMS.iter().any(|c| next.starts_with(c)) {
+                const_arms += 1;
+            } else {
+                offenders.push(format!("    {module}:{}: {next}", i + 2));
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "a lane cfg in a compat module must be followed immediately by          `pub use <impl> as <alias>;` — anything else is a split the alias          parser cannot see, so it escapes SPLIT_ALIAS_POPULATION and the pin          requirement. Write both kernels as plain sibling `_impl` items and let          the cfg select only the alias:\n{}",
+        offenders.join("\n")
+    );
+    // Non-vacuity: the walk must have found the real arms.
+    assert_eq!(
+        alias_arms,
+        (SPLIT_ALIAS_POPULATION + DECLARED_NOT_WIRED.len()) * 2,
+        "expected two cfg arms per alias"
+    );
+    assert_eq!(
+        const_arms,
+        COMPAT_MODULES.len() * 2,
+        "each compat module declares `ORACLE_PARITY` in two arms"
+    );
+}
+
+/// The only non-alias items a lane cfg may guard inside a compat module: the
+/// per-crate lane constant, which is what lets a test state a per-lane
+/// expectation without repeating the cfg (and what proves the feature reached
+/// the crate at all).
+const LANE_CONST_ARMS: [&str; 1] = ["pub const ORACLE_PARITY:"];
+
 /// Every lane-split alias is pinned by an expected-value test at an observable.
 ///
 /// The escape register above governs the markers Stage F did *not* resolve. This

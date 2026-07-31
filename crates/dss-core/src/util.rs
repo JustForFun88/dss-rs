@@ -295,7 +295,7 @@ pub fn fmt_g(v: f64, sig: usize) -> String {
 /// construction rather than by coincidence: the parity kernel used to spell its
 /// half as a separate `sig.min(15)` and lean on Grisu1's internal floor for the
 /// lower bound, which agreed but asserted nothing.
-pub(crate) fn fpc_general_digits(sig: usize) -> usize {
+pub fn fpc_general_digits(sig: usize) -> usize {
     sig.clamp(2, 15)
 }
 
