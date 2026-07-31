@@ -48,6 +48,15 @@ pub const ORACLE_PARITY: bool = true;
 pub const ORACLE_PARITY: bool = false;
 
 /// Parity lane: factorization must be reproducible — no parallel LU.
+///
+/// **A declaration awaiting M3c, not a contract the build honours today.** No
+/// call site reads it, and both arms alias to it, so today *both* lanes
+/// factorize under faer's global parallelism: `Lu::try_new_with_symbolic`
+/// (faer 0.24.0 `src/sparse/solvers.rs`) takes no `Par` and calls
+/// `get_global_parallelism()`, which initializes to `Par::rayon(0)` under
+/// faer's default feature set. The `_PARITY_IMPL` suffix reads like an
+/// enforced invariant, which is why this note is on the const itself and not
+/// only in the module header — `MULTITHREADING_PLAN` M3c owns making it true.
 pub const PARALLEL_FACTORIZATION_PARITY_IMPL: bool = false;
 /// Default lane: faer's parallel LU is permitted (M3c).
 pub const PARALLEL_FACTORIZATION_DEFAULT_IMPL: bool = true;

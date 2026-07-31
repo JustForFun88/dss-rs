@@ -107,8 +107,8 @@ lane takes the clean fix, pinned by its own expected-value test.
   (plus the expected-value pin `newton_powers_are_the_lane_kernel`).
 - **Monitor `BaseFrequency` 60.0** — `TMonitorObj.Create` hard-pins
   `Basefrequency := 60.0` (Monitor.pas:472 == r4133:552), overriding the base-class
-  `BaseFrequency := ActiveCircuit.Fundamental` (CktElement.pas:233) that every other
-  element inherits. Its one physical consumer is mode-4 flicker: it is passed as
+  `BaseFrequency := ActiveCircuit.Fundamental` (CktElement.pas:203 — the last
+  statement of `TDSSCktElement.Create`) that every other element inherits. Its one physical consumer is mode-4 flicker: it is passed as
   `fBase` into `FlickerMeter` (Monitor.pas:1657 → Pstcalc.pas:594), where `fBase =
   50.0` selects the IEC 61000-4-15 230V/50Hz lamp weighting coefficients vs the
   120V/60Hz set (Pstcalc.pas:609-626) — so a mode-4 monitor in a 50 Hz circuit
@@ -150,18 +150,31 @@ introduces **no** tolerance anywhere — the default-lane report policy is
 `rel = abs = 0`.
 
 A third, **on-demand** job compares the two lanes against each other:
-`pwsh -File tools/lanes/lane_diff.ps1` builds both, dumps the full corpus
-checkpoint stream from each and diffs them within the documented bounds
-(`crates/dss-core/examples/lane_dump.rs`; `TESTING.md`
-§"The parity↔default differential gate"). Since parity == oracle bitwise,
-`default ≈ parity` measured there is the transitive proof `default ≈ oracle`.
+`pwsh -File tools/lanes/lane_diff.ps1` builds both, dumps each one's solved-state
+checkpoint stream (errors, convergence, iterations, node voltages, element
+currents/powers/losses, the assembled Y — not meters, monitors, the event log or
+report text, which the corpus gate compares live in both lanes) and diffs them
+within the documented bounds (`crates/dss-core/examples/lane_dump.rs`;
+`TESTING.md` §"The parity↔default differential gate").
+
+The parity lane is byte-exact on the committed goldens and oracle-gated at the
+calibrated `tests/TOLERANCE_NOTES.md` floors — it is **not** bitwise equal to
+the oracle — so the honest chain is
+`|default − oracle| ≤ |default − parity| + |parity − oracle|`. What makes this
+job the transitive proof `default ≈ oracle` is the *measured* left term: the
+2026-07-31 run came back `max |Δ| = 0` exactly on every gated kind, which makes
+the default lane bit-identical to the parity lane and gives it precisely the
+parity lane's oracle standing. Read the second term back in the moment Δ stops
+being zero (expected at MULTITHREADING M3c and RESONANCE WP-R1).
+
 It is not part of `cargo test` (two release builds, ~215 MB of dumps per lane):
 run it whenever a `compat` kernel, a lane alias or the solver changes.
 
 The unified live corpus gate
 (`crates/dss-core/tests/corpus_gate.rs`, successor of `corpus_live.rs`) is part
 of `cargo test` and runs **unconditionally**: one scheduler-driven test
-(`corpus_gate_all_cases_match_engines`) compiles + solves all 514 manifest cases
+(`corpus_gate_all_cases_match_engines`) walks all 520 manifest cases — solving
+the 516 that are not abort-by-design
 (vendored `tests/corpus/electricdss-tst` decks + the three synthetic families)
 on the Rust engine and live-compares the full model against each case's gating
 channel(s) — the pinned dss-python oracle (`capi_v0145`) and/or the EPRI r4133

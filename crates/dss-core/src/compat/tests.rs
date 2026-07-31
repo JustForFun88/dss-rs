@@ -188,7 +188,9 @@ fn cdiv_parity_kernel_is_fpc_smith_bitwise() {
 /// Each row is `(num, den, correctly-rounded quotient)`. **Re-derived
 /// 2026-08-01 from the operands' exact binary values** (`Fraction(float)`, the
 /// quotient rounded once to `f64`), which is what "correctly rounded" has to
-/// mean here. The previous references were computed from the decimal
+/// mean here. The derivation is committed, not narrated:
+/// `python tools/lanes/cdiv_sweep.py references` prints these very literals,
+/// and `… sweep` prints the aggregate below. The previous references were computed from the decimal
 /// *literals* instead, and that conversion's own half-ULP slip is the same
 /// order as the quantity being measured: three rows (0, 1 and 5, all in the
 /// imaginary part) were 1 ULP off, and every one of those errors flattered

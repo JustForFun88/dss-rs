@@ -98,20 +98,40 @@ pwsh -File tools/lanes/lane_diff.ps1 -SkipDump  # re-diff existing dumps
 
 It builds `crates/dss-core/examples/lane_dump.rs` once per lane (each into its
 own target dir under `target/lanes/`, so re-runs do not thrash the other lane's
-cache), solves **all 520 manifest cases** on each engine, and writes one record
-per compared quantity: engine error count, per-step convergence flag and
-iteration count, every node voltage, every element's terminal currents, powers
-and losses, and the assembled system Y. The diff compares record *keys* exactly
+cache), walks **all 520 manifest cases** on each engine — solving the 516 that
+are not abort-by-design — and writes one record per compared quantity: engine
+error *count* (not the message text; the corpus gate reconciles that), per-step
+convergence flag and iteration count, every node voltage, every element's
+terminal currents, powers and losses, and the assembled system Y. That list is
+the whole dump: meter registers, monitor channels, the event log, the control
+queue, property probes and report text are **not** in it — the corpus gate
+compares those live against the oracles, in both lanes. The diff compares record *keys* exactly
 and in order (a renamed, reordered, dropped or added record fails structurally)
 and the values against the **tightest** calibrated oracle tier
 (`tol_for("micro")`: `|Δ| ≤ 1e-6 + 1e-9·|parity|`) plus the same ±1 iteration
 band the default lane uses against the oracle.
 
-Why it is the strongest default-lane test: the parity lane is bit-identical to
-the pinned oracle, so `default ≈ parity` measured here **is** the transitive
-proof `default ≈ oracle` — at a bound orders below the 1e-6-class floors the
-corpus gate itself uses. A default-lane kernel regression hiding inside a tier
-floor passes the corpus gate and fails here.
+Why it is the strongest default-lane test. The parity lane is byte-exact
+against the committed goldens and, on the live oracles, compared at the
+calibrated floors of `tests/TOLERANCE_NOTES.md` (with its own pinned entries in
+`tests/corpus/ledger.json`) — it is *not* bitwise equal to the oracle, since the
+faer-vs-KLU last-ulp floors `CLAUDE.md` documents are real in both lanes. So the
+chain is the triangle inequality
+`|default − oracle| ≤ |default − parity| + |parity − oracle|`, and what carries
+the transitive proof is the **measured** left term rather than an assumed
+premise: the landing run came back `max |Δ| = 0` exactly on every gated kind,
+which makes the default lane bit-identical to the parity lane and so gives it
+precisely the parity lane's oracle standing. While that holds, the job is also
+sharper than the oracle comparison — the floors are 1e-6-class, the lanes differ
+only by kernel ulps — so a default-lane kernel regression hiding inside a tier
+floor passes the corpus gate and fails here. The moment `|Δ|` stops being zero,
+the bound on `|default − oracle|` is this job's bound **plus** the case's tier,
+not this job's bound alone.
+
+The job also checks itself: the two dumps must declare *different* lanes
+(`{default, parity}`), a non-finite value on either side is a hard failure
+rather than a comparison that silently evaluates false, and every
+`DOCUMENTED_DIVERGENCES` entry must still be hit.
 
 It is **not** part of `cargo test`: it costs two release builds and ~3 minutes
 of solving, and it writes ~215 MB per lane into `target/lanes/`. Run it when a
@@ -123,10 +143,12 @@ The Stage F landing measurement (2026-07-31, 520 cases / 3 219 862 records /
 ~4.8 M compared values) is recorded in `STATUS.md`: every gated kind
 **bit-identical** (`max |Δ| = 0` on `v`, `cur`, `pow`, `loss`, `y`, `errs`,
 `conv`, `iter`), the only measurable divergence being the deliberate Newton
-`Powers`/`Losses` row. The job's `DOCUMENTED_DIVERGENCES` list mirrors
-`harness::lane`'s field-scoped exclusions, so the two instruments cannot
-disagree about what is deliberate; a divergence there is measured and printed,
-never silently skipped.
+`Powers`/`Losses` row. The job's `DOCUMENTED_DIVERGENCES` list is **hand**-mirrored
+from `harness::lane`'s field-scoped exclusions — an example cannot import the
+test harness, and nothing checks the two lists against each other, so keep them
+in step by hand. What *is* checked is that every entry still fires: a stale one
+fails the job rather than quietly exempting a field. A divergence there is
+measured and printed, never silently skipped.
 
 Corpus hygiene is part of the job: decks write their reports next to
 themselves, so the script deletes the untracked artifacts it produced and
