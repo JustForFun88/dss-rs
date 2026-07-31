@@ -54,21 +54,33 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               commit 1936f638). Tracked in ORPHANED_GAPS.md §2; two
                               pins in `crates/dss-core/tests/oracle_parity_cfg_gate.rs`
                               trip on any partial touch of the bundle.
- 5. DE_PASCALIZE_PLAN.md      IN FLIGHT (resumed after the 2026-07-17 pause).
+ 5. DE_PASCALIZE_PLAN.md      COMPLETE (2026-07-31, branch depas-stagef).
                               Merged: wave 1 2026-07-17 (R0 + P1-partial + P2 + P6,
                               `e7cfc1e`); the v2 reruns of the salvaged wave-2 WIP
                               2026-07-19/20 (P5a, P1b, P12+P13, P15 incl. M1 benches,
                               P9); R1(+P7), P10, P11, P8+P14, P5b/c 2026-07-25;
                               R2 (M3b seam) + R2b (a–e: make_like closed, from_ref
-                              bridges, try_ckt_elem tag) 2026-07-25/26. All
-                              [A]/bit-neutral, parallel worktrees + opus audits;
-                              records docs/phase-records/depascalize-*.md + STATUS.
-                              Remaining: R3 (store flip + downcast elimination —
-                              executing 2026-07-26 in worktree depas-r3) → P1
-                              deferred tail · P3 → Stage F — the `oracle-parity`
-                              feature split (absorbs the TODO(compat) sweep;
-                              creates the two CI lanes; parity target = r4133 per
-                              UPGRADE_PLAN §5)
+                              bridges, try_ckt_elem tag) 2026-07-25/26; R3 + the P1
+                              deferred tail + P3 + wave 3 (depas-final) 2026-07-26…29.
+                              All of the above [A]/bit-neutral, parallel worktrees +
+                              opus audits; records docs/phase-records/depascalize-*.md
+                              + STATUS. **Stage F** (the only [C] stage — the
+                              `oracle-parity` feature split, parity target r4133)
+                              executed 2026-07-26…31: F.1 seam → F.2 lane test policy
+                              → F.3 kernel flips + TODO(compat) sweep (117 → 18, every
+                              survivor a registered escape) → F.4 F-FMT → F.5 (the
+                              parity↔default differential job, the two-lane gate
+                              definition in CLAUDE.md, the success-metric gates). The
+                              sanctioned default-lane re-baseline came back EMPTY (no
+                              golden/tolerance/ledger/deck moved), and the differential
+                              job measures the two lanes' solved-state checkpoint
+                              stream bit-identical outside the one deliberate Newton
+                              row (max |d| = 0 on every gated kind).
+                              Hands forward, none of it open plan work: HIDE_015X →
+                              UPGRADE_PLAN §5 (see item 4's open tail), the 4
+                              whole-case exclusions → an unowned policy call, the 3
+                              wasm-guest markers → WASM_USERMODELS. From here "gate
+                              green" means BOTH lanes (CLAUDE.md, TESTING.md).
  6. RESONANCE_PLAN.md         WP-R1 iterative refinement (default lane on, parity off —
                               needs Stage F), WP-R2 resonance analysis, WP-R3 diagnostics
                               (UPGRADE_PLAN §1.3-1 already grants target-rev cases the

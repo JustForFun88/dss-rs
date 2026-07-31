@@ -232,6 +232,39 @@ fn default_is_3ph_closed_relay() {
     assert!(r.ccd.cd.yprim.is_none());
 }
 
+/// Expected-value pin for `compat::RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE`: the
+/// per-`Sample` state trace is written whatever the user asked for in the parity
+/// lane, and only under `DebugTrace` in the default lane.
+///
+/// Asserted in all four combinations, so the row cannot degrade into "the line
+/// is gone": with `DebugTrace=yes` **both** lanes must write it (the guard is
+/// the only thing that moves), and `ShowEventLog` must not gate it in either
+/// lane — that is what distinguishes this line from every protection event.
+#[test]
+fn sample_state_trace_is_the_lane_guard() {
+    let trace = "Element=Debug Sample: Relay.r1,";
+    for debug_trace in [false, true] {
+        for show_event_log in [false, true] {
+            let mut r = armed_relay();
+            r.debug_trace = debug_trace;
+            r.ccd.show_event_log = show_event_log;
+            let mut ctrl = MockElem::new(3);
+            let mut mon = MockElem::new(3).with_current(0.1); // below pickup: no event
+            let mut sc = Scratch::new();
+            r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+            let expected = debug_trace || crate::compat::ORACLE_PARITY;
+            assert_eq!(
+                log_has(&sc, trace),
+                expected,
+                "debug_trace={debug_trace} show_event_log={show_event_log} \
+                 lane parity={}: log = {:?}",
+                crate::compat::ORACLE_PARITY,
+                sc.events.entries()
+            );
+        }
+    }
+}
+
 // --- Overcurrent (Type=Current) ---------------------------------------------
 
 #[test]
@@ -591,10 +624,21 @@ fn do_pending_reset_only_resets_opcount_d4() {
     assert_eq!(r.operation_count[G], 1, "opcount reset to 1");
     assert!(ctrl.cd.terminal_all_phases_closed(1)); // element NOT forced (still closed)
     assert!(!sc.y_changed, "D4 reset does not force the element / Y");
-    // TODO(compat): reset event logged as Recloser.<name> (upstream copy-paste;
-    // the element name keeps its case, only the Action is uppercased).
-    assert!(
-        log_has(&sc, "Recloser.r1"),
+    // Expected-value pin for `compat::RELAY_RESET_EVENT_IS_LABELLED_RECLOSER`:
+    // the parity lane keeps upstream's copy-pasted `Recloser.<name>` label, the
+    // default lane names the class that emitted the event. The element name
+    // keeps its case; only the Action is uppercased. Asserted as an equality
+    // against the lane, and in both directions, so neither label can leak into
+    // the wrong lane.
+    assert_eq!(
+        log_has(&sc, "Element=Recloser.r1,"),
+        crate::compat::ORACLE_PARITY,
+        "log = {:?}",
+        sc.events.entries()
+    );
+    assert_eq!(
+        log_has(&sc, "Element=Relay.r1,"),
+        !crate::compat::ORACLE_PARITY,
         "log = {:?}",
         sc.events.entries()
     );

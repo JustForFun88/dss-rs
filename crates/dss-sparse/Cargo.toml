@@ -3,6 +3,12 @@ name = "dss-sparse"
 version = "0.1.0"
 edition = "2024"
 
+# Stage F lane split (DE_PASCALIZE Part IV.2): `oracle-parity` is additive and
+# selects the bit-compat kernels — see `src/compat.rs`. Enabling
+# `dss-core/oracle-parity` turns it on here too.
+[features]
+oracle-parity = []
+
 [dependencies]
 faer = "0.24.0"
 num-complex.workspace = true

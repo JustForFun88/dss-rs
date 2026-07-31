@@ -16,8 +16,8 @@ use super::IndMach012;
 
 // Pascal `DSSGlobals.TwoPi = 2·PI` and `RadiansToDegrees = 180/PI` — full
 // precision in the vendored 0.14.5 source (the truncated `57.29577951` line is
-// commented out there); using it would diverge from the oracle. Not a
-// TODO(compat) on this path. (Same convention as the Generator dynamics port.)
+// commented out there); using it would diverge from the oracle. No compat
+// marker on this path. (Same convention as the Generator dynamics port.)
 const TWO_PI: f64 = std::f64::consts::TAU;
 const RADIANS_TO_DEGREES: f64 = 180.0 / std::f64::consts::PI;
 

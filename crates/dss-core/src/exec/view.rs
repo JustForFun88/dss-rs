@@ -17,6 +17,12 @@ pub struct MonitorView {
     pub dbl_hour: Vec<f64>,
     /// `channels[i]` = the (i+1)-th channel across all samples (f32).
     pub channels: Vec<Vec<f32>>,
+    /// How many records `Save`/`SaveAll` made visible (Pascal `MonitorStream`
+    /// length in records). `0` — nothing flushed — is the state in which
+    /// `channels`/`dbl_hour` are empty in the default lane and dss-python's
+    /// `Channel` reports its `[0.0]` placeholder
+    /// (`compat::MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM`).
+    pub flushed_records: usize,
 }
 
 /// Raw `ElemId` lists copied out of an [`energymeter::EnergyMeter`] before
@@ -160,42 +166,40 @@ impl Dss {
             // here so `compute_iterminal` recomputes fresh at the present `NodeV`,
             // and the single-frequency reasoning in the block comment above holds.
             //
-            // TODO(compat): after a Newton solve they diverge. `DoNewtonSolution`'s
-            // final `SumAllCurrents` stamps `Iterminal` at the pre-final voltage
-            // guess `NodeV_{n-1}` (the `NodeV -= dV` update follows it), so the
-            // cache-aware path (Powers/Losses) returns a one-step-stale current
-            // while `GetCurrents` (Currents) recomputes at the converged `NodeV_n`
-            // — a deterministic upstream quirk (`Vsource.pas` `GetCurrents` reads
-            // `NodeV` directly, whereas `CktElement.pas` `Get_Powers`/`Get_Losses`
-            // reuse `ComputeIterminal`). Clean fix: recompute `Iterminal` at
-            // `NodeV_n` for all three reads.
+            // After a **Newton** solve the two read paths diverge upstream, and
+            // that is the Stage F `POWERS_REUSE_STALE_NEWTON_ITERMINAL` row
+            // (CLAUDE.md known bug 5). `DoNewtonSolution`'s final
+            // `SumAllCurrents` stamps `Iterminal` at the pre-final voltage guess
+            // `NodeV_{n-1}` and marks it solved for this `SolutionCount` (the
+            // `NodeV -= dV` update follows it), so the cache-aware path
+            // (Powers/Losses) returns a one-step-stale current while
+            // `GetCurrents` (Currents) recomputes at the converged `NodeV_n`
+            // — i.e. upstream reports `S != V·conj(I)` (`Vsource.pas`
+            // `GetCurrents` reads `NodeV` directly, whereas `CktElement.pas`
+            // `Get_Powers`/`Get_Losses` reuse `ComputeIterminal`).
             //
-            // GATE NOTE: this staleness is the ONLY feature-sensitive signal that
-            // distinguishes `algorithm=Newton` from the normal fixed-point on the
-            // `newton.dss` / `newton_feeder.dss` gates — both algorithms converge to
-            // the SAME voltages in the SAME iteration count, so only the Powers/
-            // Losses channel (this cache split) diverges when Newton silently falls
-            // back to `DoNormalSolution`. The de-compat pass that takes the clean
-            // fix above MUST add a replacement Newton-specific assertion, else those
-            // two decks stop verifying that Newton dispatch is wired at all.
+            // Parity lane: `compute_iterminal`, the cache-aware read — the quirk
+            // reproduced, oracle-compared as before (it is in every vendored
+            // official rev, so bumping the oracle was never an option). Default
+            // lane: `refresh_iterminal`, the clean fix — one fresh current at
+            // `NodeV_n` feeds Powers, Losses AND Currents, so `S = V·conj(I)`
+            // holds identically under every algorithm. Nothing else moves: after
+            // a fixed-point / direct / harmonic solve the cache is invalid here,
+            // so both aliases recompute the same value.
             //
-            // REMOVAL is NOT the usual "apply fix + regenerate goldens" (PORTING_PLAN
-            // §6): this quirk is pinned by the ALWAYS-ON LIVE oracle (the corpus_live
-            // `modes` gate — there is no golden for `newton*`), and the pinned
-            // dss-python permanently reports the stale post-Newton Powers. So making
-            // Powers fresh would make Rust DIVERGE from the live oracle (~4e-4 kW) →
-            // gate red, unregenerable. Eliminating it is a de-compat DECISION, not a
-            // local edit. Option (a) "bump the pinned oracle to a rev without the
-            // bug" is RULED OUT: the EPRI channel confirms the quirk is present in
-            // every vendored official rev incl. the latest — v9.8 (r3723), v10.2
-            // (r4088), v11.0 (r4133), all fingerprint 0.478 kVA, checked 2026-07-08.
-            // The remaining path (b): convert the `newton*` Powers/Losses compare to
-            // a documented live-gate exclusion (Rust intentionally more correct than
-            // the oracle, the VSConverter "gate around" pattern) plus the replacement
-            // Newton assertion above.
+            // GATE NOTE: this staleness was the ONLY feature-sensitive signal
+            // distinguishing `algorithm=Newton` from the normal fixed point on
+            // the `newton.dss` / `newton_feeder.dss` corpus decks (same voltages,
+            // same iteration count). The default lane, which no longer exposes
+            // it, is covered by `exec::tests::newton`'s in-engine Newton-dispatch
+            // tripwire — see the `compat` doc for the full disposition.
             // See investigations/newton_stale_iterminal_bug_report.md.
             if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
-                elem.compute_iterminal(&sys, &node_v);
+                if crate::compat::POWERS_REUSE_STALE_NEWTON_ITERMINAL {
+                    elem.compute_iterminal(&sys, &node_v);
+                } else {
+                    elem.refresh_iterminal(&sys, &node_v);
+                }
                 let cd = elem.cd();
                 for ((p, &n), i) in powers
                     .iter_mut()
@@ -219,8 +223,9 @@ impl Dss {
                 }
             }
             // The element's own losses path (`Get_Losses`) — the same cache-aware
-            // `ComputeIterminal` (stale after Newton), read BEFORE the fresh
-            // currents refresh below so it reuses the powers-path cache.
+            // `ComputeIterminal`, read BEFORE the currents refresh below so it
+            // reuses whichever current the Powers block just left in the cache
+            // (parity: the stale post-Newton one; default: the fresh one).
             let loss = elem.losses(&sys, &node_v);
             // Currents: fresh recompute from the converged `NodeV` (oracle
             // `GetCurrents`), overwriting the `Iterminal` cache after Powers/Losses.
@@ -503,6 +508,24 @@ impl Dss {
     /// port-authored (`golden_schema.rs`). The result is independent of circuit
     /// state (all constant), so it needs no `&mut self` and no `New circuit`.
     pub fn extract_schema_json(&self) -> String {
+        let doc = self.schema_document();
+        let mut out = String::new();
+        crate::report::export::json::write_pretty(&doc, 0, &mut out);
+        out
+    }
+
+    /// The schema document as a [`Json`](crate::report::export::json::Json)
+    /// tree, before it is spelled out — what [`Dss::extract_schema_json`]
+    /// renders.
+    ///
+    /// Separate from the rendering step because the *document* is what is
+    /// contractual (envelope, `$defs` order, per-class blocks, ordinals) while
+    /// how its numbers and line breaks are spelled is the F-FMT seam's lane
+    /// choice (`compat::json_float`, `compat::JSON_LINE_BREAK`). A consumer that
+    /// needs a specific spelling — `golden_schema.rs`'s byte gate needs the
+    /// oracle's — renders this tree with
+    /// [`write_pretty_with`](crate::report::export::json::write_pretty_with).
+    pub fn schema_document(&self) -> crate::report::export::json::Json {
         use crate::report::export::json::schema;
         // Build the per-class `$defs/<Class>` list in `DSS.DSSClassList` order
         // (Pascal `CAPI_Schema.pas:1479`), keyed by the class's canonical name.
@@ -535,10 +558,7 @@ impl Dss {
             class_defs.len(),
             self.classes.len(),
         );
-        let doc = schema::assemble_full_document(&class_defs);
-        let mut out = String::new();
-        crate::report::export::json::write_pretty(&doc, 0, &mut out);
-        out
+        schema::assemble_full_document(&class_defs)
     }
 
     /// The schema `$defs/<Class>` for one registered class — Pascal
@@ -631,6 +651,7 @@ impl Dss {
                         sample_count: m.sample_count(),
                         dbl_hour: m.dbl_hour(),
                         channels: (1..=nch).map(|i| m.channel(i)).collect(),
+                        flushed_records: m.flushed_records(),
                     });
                 }
             }

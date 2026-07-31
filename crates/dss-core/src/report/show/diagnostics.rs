@@ -22,6 +22,7 @@ use crate::elements::traits::{ElemId, SysCtx};
 use crate::exec::registry::DssClass;
 use crate::report::export::for_each_enabled_elem;
 use crate::report::format;
+use crate::report::table::{Cell, Report, Row};
 
 /// `Show Result` (Pascal `ShowResult`): the `@result` parser var value on one line.
 pub(crate) fn show_result(result: &str) -> String {
@@ -131,51 +132,55 @@ pub(crate) fn show_mismatch(
     });
 
     let mbnl = super::max_bus_name_length(ckt) + 2;
-    let mut s = String::new();
-    s.push('\n');
-    s.push_str("Node Current Mismatch Report\n");
-    s.push('\n');
-    s.push('\n');
-    s.push_str(&format::pad("Bus,", mbnl));
-    s.push_str(" Node, \"Current Sum (A)\", \"%error\", \"Max Current (A)\"\n");
+    let mut rep = Report::new();
+    rep.blank();
+    rep.line("Node Current Mismatch Report");
+    rep.blank();
+    rep.blank();
+    rep.row(
+        Row::new()
+            .cell(Cell::left("Bus,", mbnl).sep(" "))
+            .cell(Cell::plain("Node,").sep(" "))
+            .cell(Cell::plain("\"Current Sum (A)\",").sep(" "))
+            .cell(Cell::plain("\"%error\",").sep(" "))
+            .cell(Cell::plain("\"Max Current (A)\"")),
+    );
 
-    let row = |s: &mut String, bname: &str, node: i32, nref: usize| {
+    let row = |name: Cell, node: i32, nref: usize| {
         let dtemp = currents[nref].norm();
         // `%error`: 0 when the node has no current or its sum equals its max
         // (a single-branch node balances trivially), else `sum/max·100`.
         let pcterr = if max_node[nref] == 0.0 || max_node[nref] == dtemp {
-            format::fixed_w(0.0, 10, 1)
+            format::fixed(0.0, 1)
         } else {
-            format::fixed_w(dtemp / max_node[nref] * 100.0, 10, 6)
+            format::fixed(dtemp / max_node[nref] * 100.0, 6)
         };
         // `'%s, %2d, %10.5f,       %s, %10.5f'`.
-        s.push_str(&format!(
-            "{}, {}, {},       {}, {}\n",
-            bname,
-            format::fixed_w_int(node as i64, 2),
-            format::fixed_w(dtemp, 10, 5),
-            pcterr,
-            format::fixed_w(max_node[nref], 10, 5),
-        ));
+        Row::new()
+            .cell(name.sep(", "))
+            .cell(Cell::right(node.to_string(), 2).sep(", "))
+            .cell(Cell::right(format::fixed(dtemp, 5), 10).sep(",       "))
+            .cell(Cell::right(pcterr, 10).sep(", "))
+            .cell(Cell::right(format::fixed(max_node[nref], 5), 10))
     };
 
     // Ground bus (node ref 0) first.
-    row(&mut s, &format::pad("\"System Ground\"", mbnl), 0, 0);
+    rep.row(row(Cell::left("\"System Ground\"", mbnl), 0, 0));
     for i in 0..ckt.buses.len() {
         let bus = &ckt.buses[i];
         for j in 0..bus.num_nodes_this_bus() {
             let bname = if j == 0 {
-                format::pad_dots(
-                    &format::enclose_quotes(ckt.bus_list.name(i).unwrap_or("")),
+                Cell::dots(
+                    format::enclose_quotes(ckt.bus_list.name(i).unwrap_or("")),
                     mbnl,
                 )
             } else {
-                format::pad("\"   -\"", mbnl)
+                Cell::left("\"   -\"", mbnl)
             };
-            row(&mut s, &bname, bus.get_num(j), bus.get_ref(j));
+            rep.row(row(bname, bus.get_num(j), bus.get_ref(j)));
         }
     }
-    s
+    rep.finish()
 }
 
 /// `Show Convergence` (Pascal `TSolutionObj.WriteConvergenceReport`): for every
@@ -185,32 +190,34 @@ pub(crate) fn show_mismatch(
 /// solution arrays carry a dummy slot 0, so we walk `1..=num_nodes`.
 pub(crate) fn show_convergence(ckt: &Circuit) -> String {
     let sol = &ckt.solution;
-    let mut s = String::new();
-    s.push('\n');
-    s.push_str("-------------------\n");
-    s.push_str("Convergence Report:\n");
-    s.push_str("-------------------\n");
-    s.push_str("\"Bus.Node\", \"Error\", \"|V|\",\"Vbase\"\n");
+    let mut rep = Report::new();
+    rep.blank();
+    rep.line("-------------------");
+    rep.line("Convergence Report:");
+    rep.line("-------------------");
+    rep.line("\"Bus.Node\", \"Error\", \"|V|\",\"Vbase\"");
     for i in 1..=ckt.num_nodes {
         let nb = ckt.map_node_to_bus[i];
         let bus_name = ckt.bus_list.name(nb.bus_ref).unwrap_or("");
         // Pascal `'"' + pad(BusName + '.' + NodeNum + '"', 18)` (the trailing
-        // quote is *inside* the padded field, the leading one before it).
-        let label = format::pad(&format!("{bus_name}.{}\"", nb.node_num), 18);
-        s.push_str(&format!(
-            "\"{}, {}, {}, {}\n",
-            label,
-            format::fixed_w(sol.error_saved[i], 10, 5),
-            format::fpc_sci_w(sol.vmag_saved[i], 14),
-            format::fpc_sci_w(sol.node_vbase[i], 14),
-        ));
+        // quote is *inside* the padded field, the leading one before it) — one
+        // cell, so the field is the 18 plus that leading quote (`Pad` only
+        // appends, so the bytes are the same).
+        let label = format!("\"{bus_name}.{}\"", nb.node_num);
+        rep.row(
+            Row::new()
+                .cell(Cell::left(label, 19).sep(", "))
+                .cell(Cell::right(format::fixed(sol.error_saved[i], 5), 10).sep(", "))
+                .cell(Cell::right(format::fpc_sci_body(sol.vmag_saved[i], 14), 14).sep(", "))
+                .cell(Cell::right(format::fpc_sci_body(sol.node_vbase[i], 14), 14)),
+        );
     }
-    s.push('\n');
-    s.push_str(&format!(
-        "Max Error = {}\n",
+    rep.blank();
+    rep.line(&format!(
+        "Max Error = {}",
         format::fixed_w(sol.max_error, 10, 5)
     ));
-    s
+    rep.finish()
 }
 
 /// `Show kvbasemismatch` (Pascal `ShowkVBaseMismatch`): the loads (then the
@@ -363,16 +370,19 @@ pub(crate) fn show_control_queue(classes: &[DssClass], ckt: &Circuit) -> String 
 /// One `Show controlqueue` row (Pascal `Format('%d, %d, %-.g, %d, %d, %s ', …)`,
 /// `ControlQueue.pas:496`) — the trailing space after the device name is Pascal's.
 ///
-/// TODO(compat): `%-.g` is FPC `ffGeneral` with an *empty* precision after the
-/// dot (`.` → precision 0); its rendered significant-digit count cannot be
-/// confirmed against the oracle because the queue is always drained before any
-/// text-interface `show controlqueue` (probe-proven). `%.6g` (6 sig) is used as a
-/// reasonable stand-in — for the whole-second / simple-fraction times a real queue
-/// carries it is indistinguishable — flagged for the WP8.8 byte-faithfulness pass.
+/// `%-.g` is FPC `ffGeneral` with an *empty* precision after the dot, and its
+/// rendered significant-digit count cannot be confirmed against either gating
+/// oracle: the queue is always drained before any text-interface
+/// `show controlqueue` (probe-proven), so no capture reaches this row. The
+/// digit count is therefore the lane's — [`crate::compat::CONTROL_QUEUE_SEC_DIGITS`]
+/// — which keeps the parity lane on the 6-significant stand-in the byte contract
+/// was written against and gives the default lane a *defined* rendering (the
+/// seam's full `ffGeneral` precision) instead of a second guess at an
+/// unobservable one.
 fn queue_row_line(handle: i32, hour: i32, sec: f64, code: i32, proxy: i32, name: &str) -> String {
     format!(
         "{handle}, {hour}, {}, {code}, {proxy}, {name} \n",
-        format::g(sec, 6),
+        format::g(sec, crate::compat::CONTROL_QUEUE_SEC_DIGITS),
     )
 }
 
@@ -391,6 +401,7 @@ mod tests {
     //! queue (oracle-probed), so no golden reaches it. Pin it here against the
     //! Pascal `WriteQueue` format string instead.
     use super::queue_row_line;
+    use crate::compat::{CONTROL_QUEUE_SEC_DIGITS, ORACLE_PARITY};
 
     #[test]
     fn control_queue_row_format() {
@@ -404,6 +415,32 @@ mod tests {
         assert_eq!(
             queue_row_line(1, 0, 0.5, 1, 7, "swtcontrol.sw1"),
             "1, 0, 0.5, 1, 7, swtcontrol.sw1 \n"
+        );
+    }
+
+    /// The F-FMT row `compat::CONTROL_QUEUE_SEC_DIGITS` at its observable: a
+    /// `Sec` needing more than the parity stand-in's six significant digits is
+    /// truncated there and printed in full in the default lane. Asserted as an
+    /// equality against the lane, so both arms are checked in either build.
+    ///
+    /// `1/3` of an hour in seconds is the shape a real queue carries (a delay
+    /// divided by a count), and it is exactly the case the stand-in cannot
+    /// render: no whole-second or simple-fraction time distinguishes the two.
+    #[test]
+    fn control_queue_sec_digits_is_the_lane_kernel() {
+        assert_eq!(
+            CONTROL_QUEUE_SEC_DIGITS,
+            if ORACLE_PARITY { 6 } else { 15 },
+            "the Sec column's digit count is the lane's"
+        );
+        let row = queue_row_line(9, 2, 1200.0 / 7.0, 4, 0, "regcontrol.rg1");
+        assert_eq!(
+            row,
+            if ORACLE_PARITY {
+                "9, 2, 171.429, 4, 0, regcontrol.rg1 \n"
+            } else {
+                "9, 2, 171.428571428571, 4, 0, regcontrol.rg1 \n"
+            }
         );
     }
 }

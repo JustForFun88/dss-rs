@@ -22,6 +22,7 @@ mod harness;
 use std::path::{Path, PathBuf};
 
 use dss_core::exec::Dss;
+use harness::lane;
 use harness::{
     ColSel, ColTol, ExportPolicy, GateSpec, RowPolicy, assert_value_matches_tol, compare_export,
 };
@@ -96,6 +97,36 @@ fn run_deck_export(stem: &str, policy: &ExportPolicy) {
     compare_export(&oracle, &rust, policy, stem);
 
     std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// Run a deck-fixture export exactly like [`run_deck_export`] but **return the
+/// produced text** instead of comparing it. Used by the Stage F
+/// expected-value pins, which assert a lane-specific value the oracle golden
+/// cannot carry.
+fn run_deck_export_capture(stem: &str) -> String {
+    let dir = reports_dir();
+    let meta: DeckMeta = {
+        let p = dir.join(format!("{stem}.meta.json"));
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+
+    let scratch = scratch_dir(&format!("{stem}_capture"));
+    let mut dss = Dss::new();
+    dss.command("clear");
+    for c in &meta.deck {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command(&format!("export {}", meta.report));
+    assert!(dss.errors().is_empty(), "{stem}: {:?}", dss.errors());
+
+    let produced = dss.last_result_file();
+    let text = std::fs::read_to_string(produced)
+        .unwrap_or_else(|e| panic!("read produced {produced}: {e}"));
+    std::fs::remove_dir_all(&scratch).ok();
+    text
 }
 
 /// A unique scratch dir for this test process (no `tempfile` dep; cleaned up at
@@ -251,6 +282,54 @@ fn run_feeder_export(stem: &str, policy: &ExportPolicy) {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
+/// Compile the `export_seqcurrents` golden's own feeder (IEEE13) exactly as
+/// `run_feeder_export` does, then capture **both** `Export SeqCurrents` and
+/// `Export Currents` from the same solved circuit. Used by the `Iresidual`
+/// expected-value pin, which derives its expectation from the per-terminal
+/// currents instead of a captured literal.
+fn ieee13_seqcurrents_and_currents() -> (String, String) {
+    let dir = reports_dir();
+    let meta: FeederMeta = {
+        let p = dir.join("export_seqcurrents.meta.json");
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let master: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        "electricdss-tst",
+    ]
+    .iter()
+    .collect::<PathBuf>()
+    .join(&meta.master);
+
+    let scratch = scratch_dir("seqcurrents_iresidual_lane");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        master.to_string_lossy().replace('\\', "/")
+    ));
+    for c in &meta.post {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("export seqcurrents");
+    let seq = std::fs::read_to_string(dss.last_result_file())
+        .unwrap_or_else(|e| panic!("read seqcurrents: {e}"));
+    dss.command("export currents");
+    let currents = std::fs::read_to_string(dss.last_result_file())
+        .unwrap_or_else(|e| panic!("read currents: {e}"));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    std::fs::remove_dir_all(&scratch).ok();
+    (seq, currents)
+}
+
 /// Locate the single `*_<suffix>` report a `Show` command wrote into `scratch`
 /// (the same fixed-name suffix glob the oracle generator uses) and read it back.
 /// Shared by the feeder/deck show runners; asserts exactly one match — a wrong
@@ -277,35 +356,21 @@ fn locate_show_report(scratch: &Path, suffix: &str, stem: &str) -> String {
         .unwrap_or_else(|e| panic!("read produced {}: {e}", produced.display()))
 }
 
-/// Byte-exact line comparison (no tokenization) for pure-text `Show` reports whose
-/// layout has **no** backend width quirk — the zone-tree reports (`Show Loops`/
-/// `Show Zone`) indent with deterministic `TABCHAR`s and print no numbers, so the
-/// oracle bytes are reproducible in full. Stronger than `compare_export`'s token
-/// diff: it also pins the leading indentation and trailing spaces (a formatter-side
-/// off-by-one in the tab depth, invisible to the whitespace tokenizer, fails here).
-/// Only CRLF→LF is normalized (the oracle golden is stored LF; the port writes LF).
+/// Byte-exact line comparison for pure-text `Show` reports whose layout has **no**
+/// backend width quirk — the zone-tree reports (`Show Loops`/`Show Zone`) indent
+/// with deterministic `TABCHAR`s and print no numbers, so the oracle bytes are
+/// reproducible in full. Stronger than `compare_export`'s token diff: it also pins
+/// the leading indentation and trailing spaces (a formatter-side off-by-one in the
+/// tab depth, invisible to the whitespace tokenizer, fails here). Only CRLF→LF is
+/// normalized (the oracle golden is stored LF; the port writes LF).
+///
+/// Stage F: these goldens render **no number through the F-FMT seam**, so F.4
+/// cannot move their bytes and they stay byte-exact in *both* lanes — the
+/// implementation moved to `harness::lane::assert_bytes_eq` (shared with the
+/// parity-lane arm of `lane::compare_report`); this alias keeps the local name
+/// and documents the determination at the point of use.
 fn assert_show_bytes_eq(oracle: &str, rust: &str, stem: &str) {
-    let o = oracle.replace("\r\n", "\n");
-    let r = rust.replace("\r\n", "\n");
-    if o != r {
-        let ol: Vec<&str> = o.split('\n').collect();
-        let rl: Vec<&str> = r.split('\n').collect();
-        for (i, (a, b)) in ol.iter().zip(rl.iter()).enumerate() {
-            assert_eq!(
-                a,
-                b,
-                "{stem}: line {} differs\n  oracle: {a:?}\n  rust:   {b:?}",
-                i + 1
-            );
-        }
-        assert_eq!(
-            ol.len(),
-            rl.len(),
-            "{stem}: line count differs (oracle {}, rust {})",
-            ol.len(),
-            rl.len()
-        );
-    }
+    lane::assert_bytes_eq(oracle, rust, stem);
 }
 
 /// Drive one `Show` report (PHASE8_PLAN §WP8.4): compile the same master the
@@ -316,8 +381,37 @@ fn assert_show_bytes_eq(oracle: &str, rust: &str, stem: &str) {
 /// `GlobalResult`) and the golden policy tokenizes on whitespace+commas
 /// (`sep: ' '`) since `Show` emits space-padded tables, not CSV.
 fn run_feeder_show(stem: &str, policy: &ExportPolicy) {
+    run_feeder_show_expected(stem, policy, |oracle| oracle.to_string());
+}
+
+/// [`run_feeder_show`] with a lane-scoped **expected-value transform** on the
+/// oracle text, for the `Show` reports a Stage F row re-lays-out. `expected`
+/// must be the identity in the parity lane.
+fn run_feeder_show_expected(stem: &str, policy: &ExportPolicy, expected: impl Fn(&str) -> String) {
     let (oracle, rust, scratch) = produce_feeder_show(stem);
-    compare_export(&oracle, &rust, policy, stem);
+    // Token compare in BOTH lanes — deliberately *not* `lane::compare_report`.
+    //
+    // A parity-lane byte gate was tried here (F-settle W4) and is impossible
+    // for this family: the numeric `Show` goldens are not byte-reproducible in
+    // any lane, for two independent and long-standing reasons. (1) Physical
+    // near-zero cancellation — `show_losses` line 26 is `-4.36557E-14` kvar in
+    // the oracle and `-1.45519E-14` in Rust; `show_currents` prints `2.0651E-11`
+    // vs `1.5194E-11`. That is the faer-vs-KLU floor, which is exactly what
+    // this policy's `GateSpec` columns exist to absorb. (2) The bus-name column
+    // width: `max_bus_name_length` differs from the oracle's `MaxBusNameLength`,
+    // so `Show Voltages`' header is `"Bus" + 8 spaces` here against the
+    // oracle's `+ 3`. Both predate F.4 — the pre-F.4 writer builds that header
+    // with the identical `format::pad("Bus", mbnl)` — and both are why this
+    // family has tokenized since PHASE8_PLAN §2.3.
+    //
+    // So `Show` layout has no byte contract in either lane. What carries it
+    // instead: the structural layout pins
+    // (`exec::tests::compat_quirks::show_table_layout_is_the_lane_kernel` and
+    // `show_voltage_table_layout_is_the_lane_kernel`), `report::table`'s own
+    // unit tests, and the number-free `Show` goldens
+    // (`Loops`/`Zone`/`Controlled`/`Isolated`/`Topology`), which *are*
+    // byte-exact in both lanes via `run_feeder_show_exact`.
+    compare_export(&expected(&oracle), &rust, policy, stem);
     std::fs::remove_dir_all(&scratch).ok();
 }
 
@@ -389,6 +483,8 @@ fn run_feeder_show_exact(stem: &str) {
 /// `<CaseName_><suffix>` name in the datapath (`Show` sets no `GlobalResult`).
 fn run_deck_show(stem: &str, policy: &ExportPolicy) {
     let (oracle, rust, scratch) = produce_deck_show(stem);
+    // Token compare in both lanes; see [`run_feeder_show_expected`] for why a
+    // parity-lane byte gate is not available to this family.
     compare_export(&oracle, &rust, policy, stem);
     std::fs::remove_dir_all(&scratch).ok();
 }
@@ -435,9 +531,24 @@ fn produce_deck_show(stem: &str) -> (String, String, PathBuf) {
 /// output into a scratch dir, issue `Dump <report>`, and byte-compare the produced
 /// `<case>_PropertyDump.txt` against the oracle golden. Unlike `Show`, `Dump` sets
 /// `GlobalResult` to the produced path, so the file is read via
-/// `dss.last_result_file()` (no suffix glob). Byte-exact: the dump is pure DSS
-/// script text (no padded columns), so the oracle bytes are reproducible in full.
+/// `dss.last_result_file()` (no suffix glob). Byte-exact in the parity lane: the
+/// dump is pure DSS script text (no padded columns), so the oracle bytes are
+/// reproducible in full.
+///
+/// Stage F: the dump renders its property values through the F-FMT seam
+/// (`report::format`), so the default lane compares the SAME golden through
+/// [`dump_script_policy`] — every `Key=Value` token key-verbatim and every value
+/// bit-identical, only the spelling free (Part IV.2 drift model).
 fn run_deck_dump_exact(stem: &str) {
+    run_deck_dump_exact_expected(stem, |oracle| oracle.to_string());
+}
+
+/// [`run_deck_dump_exact`] with a lane-scoped **expected-value transform** on
+/// the oracle text (`DE_PASCALIZE_PLAN.md` IV.2 "deliberate divergences"): the
+/// committed golden stays the source of truth, and `expected` states — as code,
+/// enumerated — the one edit a Stage F row makes to it in the default lane.
+/// `expected` must be the identity in the parity lane.
+fn run_deck_dump_exact_expected(stem: &str, expected: impl Fn(&str) -> String) {
     let dir = reports_dir();
     let meta: DeckMeta = {
         let p = dir.join(format!("{stem}.meta.json"));
@@ -463,8 +574,15 @@ fn run_deck_dump_exact(stem: &str) {
     let produced = dss.last_result_file();
     let rust = std::fs::read_to_string(produced)
         .unwrap_or_else(|e| panic!("{stem}: read produced {produced}: {e}"));
-    assert_show_bytes_eq(&oracle, &rust, stem);
+    lane::compare_report(&expected(&oracle), &rust, &dump_script_policy(), stem);
     std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// The default-lane policy for the `Dump` / `Save`-script goldens: whitespace +
+/// comma tokenization, row-for-row, **exact values** (`rel = abs = 0`). The
+/// parity lane never uses it (it byte-compares); see `harness::lane`.
+fn dump_script_policy() -> ExportPolicy {
+    lane::exact_value_policy(' ')
 }
 
 /// `run_deck_dump_exact` twin for the Capacitor decks: the oracle golden was
@@ -504,7 +622,7 @@ fn run_deck_dump_exact_masked(stem: &str, mask_prefixes: &[&str]) {
         .filter(|ln| !mask_prefixes.iter().any(|p| ln.starts_with(p)))
         .map(|ln| format!("{ln}\n"))
         .collect();
-    assert_show_bytes_eq(&oracle, &masked, stem);
+    lane::compare_report(&oracle, &masked, &dump_script_policy(), stem);
     std::fs::remove_dir_all(&scratch).ok();
 }
 
@@ -583,7 +701,7 @@ fn run_deck_dump_exact_block_masked(stem: &str, block_headers: &[&str]) {
             out.push('\n');
         }
     }
-    assert_show_bytes_eq(&oracle, &out, stem);
+    lane::compare_report(&oracle, &out, &dump_script_policy(), stem);
     std::fs::remove_dir_all(&scratch).ok();
 }
 
@@ -1475,7 +1593,15 @@ fn show_powers_elem_autotrans_matches_oracle() {
         }],
     };
     let (oracle, rust, scratch) = produce_deck_show("show_powers_elem_autotrans");
-    compare_export(&oracle, &rust, &policy, "show_powers_elem_autotrans");
+    // The terminal-total label glues to its first number in this deck (the
+    // `PadDots` field is exactly consumed); the default lane's table kernel
+    // separates them, through the one enumerated rule.
+    compare_export(
+        &terminal_total_expected(&oracle),
+        &rust,
+        &policy,
+        "show_powers_elem_autotrans",
+    );
     // The per-family whitespace layouts (WP8.8: Sources `%s %4d` one-space
     // rows, PC width-6 rows + `kW   +j  kvar` header + `'  TERMINAL TOTAL '`
     // label — `ShowResults.pas:1128/1162/1240/1264/1297/1302`), pinned
@@ -1489,6 +1615,10 @@ fn show_powers_elem_autotrans_matches_oracle() {
     // those rows are numerically pinned by the tokenizing twin (0.0 == -0.0)
     // and excluded from the byte compare here (the layout is amply pinned by
     // the non-degenerate rows).
+    // Stage F: this is a *layout* pin (column widths and pad glyphs), which is
+    // exactly what F-FMT re-renders in the default lane — so it runs in the
+    // PARITY lane only. The numeric content above is lane-independent, and the
+    // default lane's layout is covered by the F.5 differential job.
     let degenerate = |l: &str| l.split_whitespace().rev().nth(1) == Some("0.0");
     let select = move |s: &str, pred: fn(&str) -> bool| -> Vec<String> {
         s.lines()
@@ -1508,11 +1638,13 @@ fn show_powers_elem_autotrans_matches_oracle() {
                 .any(|b| l.starts_with(b))
         }),
     ];
-    for (what, pred) in preds {
-        let o = select(&oracle, pred);
-        let r = select(&rust, pred);
-        assert!(!o.is_empty(), "{what}: golden must contain such lines");
-        assert_eq!(o, r, "{what}: byte-exact layout");
+    if lane::PARITY {
+        for (what, pred) in preds {
+            let o = select(&oracle, pred);
+            let r = select(&rust, pred);
+            assert!(!o.is_empty(), "{what}: golden must contain such lines");
+            assert_eq!(o, r, "{what}: byte-exact layout");
+        }
     }
     std::fs::remove_dir_all(&scratch).ok();
 }
@@ -2069,19 +2201,25 @@ fn show_controlled_multi_matches_oracle() {
 }
 
 /// Drive one `Show LineConstants` case: replay `<stem>`'s deck, issue its `show
-/// lineconstants <args>`, and verify **both** produced files byte-exact — the report
+/// lineconstants <args>`, and verify **both** produced files — the report
 /// `<case>_LineConstants.txt` (via the deck harness) and the `LineConstantsCode.dss`
 /// LineCode script (no `<case>_` prefix, read directly from the scratch dir, golden
-/// `<stem>_code.txt`).
+/// `<stem>_code.txt`). Byte-exact in the parity lane.
+///
+/// Stage F: both files are dense float text rendered through the F-FMT seam (the
+/// R/X/C matrices, and the `LineCode` script's `Rmatrix=(…)` values), so the
+/// default lane compares the same two goldens value-exact (`rel = abs = 0`) with
+/// the rendering free — Part IV.2 drift model.
 fn run_lineconstants_show(stem: &str) {
     let (oracle_main, rust_main, scratch) = produce_deck_show(stem);
-    assert_show_bytes_eq(&oracle_main, &rust_main, stem);
+    let policy = lane::exact_value_policy(' ');
+    lane::compare_report(&oracle_main, &rust_main, &policy, stem);
     let code_path = scratch.join("LineConstantsCode.dss");
     let rust_code = std::fs::read_to_string(&code_path)
         .unwrap_or_else(|e| panic!("read {}: {e}", code_path.display()));
     let oracle_code = std::fs::read_to_string(reports_dir().join(format!("{stem}_code.txt")))
         .unwrap_or_else(|e| panic!("read {stem}_code golden: {e}"));
-    assert_show_bytes_eq(&oracle_code, &rust_code, &format!("{stem}_code"));
+    lane::compare_report(&oracle_code, &rust_code, &policy, &format!("{stem}_code"));
     std::fs::remove_dir_all(&scratch).ok();
 }
 
@@ -2126,9 +2264,219 @@ fn busflow_elem_policy() -> ExportPolicy {
     }
 }
 
+/// The oracle's `Show BusFlow` text as the **current lane** lays it out — the
+/// identity in the parity lane, and in the default lane one enumerated rule.
+///
+/// `compat::max_device_name_length` (F.4b) sizes the device-name column from its
+/// content instead of collapsing it to 0. The power rows are
+/// `Pad(EncloseQuotes(FullName), width + 2) + IntToStr(term)`
+/// (`ShowResults.pas:1375`) — `IntToStr` carries no width, so at width 0 the
+/// terminal number is glued to the closing quote (`"Capacitor.cap1"1`) and at
+/// the honest width it becomes its own column. The tokenizer sees one field
+/// where the default lane produces two, so the *oracle* expectation is split at
+/// exactly that seam.
+///
+/// The rule is deliberately narrow: a closing `"` **immediately** followed by an
+/// ASCII digit, nowhere else. The seq-currents rows of the same report already
+/// carry a literal space before their `%3d` terminal, so they never match; a
+/// digit inside a name cannot match either, because the quote must precede it.
+///
+/// Note the *longest* device still glues in both lanes — `width` counts the
+/// unquoted name, so `width + 2` is exactly the longest quoted name's length —
+/// which is why this is a per-row rule and not a whole-column one.
+fn busflow_expected(oracle: &str) -> String {
+    if lane::PARITY {
+        return oracle.to_string();
+    }
+    oracle
+        .lines()
+        .map(|line| match split_glued_terminal(line) {
+            Some(split) => split,
+            None => line.to_string(),
+        })
+        .map(|l| format!("{l}\n"))
+        .collect()
+}
+
+/// `"<name>"<digit>` → `"<name>" <digit>` for the *first* such seam in `line`,
+/// or `None` when the line has none.
+fn split_glued_terminal(line: &str) -> Option<String> {
+    let rest = line.strip_prefix('"')?;
+    let close = rest.find('"')? + 1; // index of the closing quote in `line`
+    let after = line.get(close + 1..)?;
+    after
+        .starts_with(|c: char| c.is_ascii_digit())
+        .then(|| format!("{} {}", &line[..=close], after))
+}
+
+/// The oracle's `Show Powers` element-form text as the **current lane** lays it
+/// out — the identity in the parity lane, and in the default lane one enumerated
+/// rule, the `Show BusFlow` glue's twin (see [`busflow_expected`]).
+///
+/// `ShowPowers` case 1 writes each terminal total as
+/// `PadDots('   TERMINAL TOTAL', MaxBusNameLength + 10) + Format('%8.1f', …)`
+/// (`ShowResults.pas:1230`). `PadDots` pads with a **leading space** then dots,
+/// so a padded label always separates — but when the field is *exactly* consumed
+/// (a 17-char label at `MaxBusNameLength = 7`) nothing is inserted at all and a
+/// width-filling number (`-25808.0`) lands flush against `TOTAL`. The table
+/// kernel (F.4e) gives the number its own column, so the tokenizer sees two
+/// fields where the oracle has one; the *oracle* expectation is split at exactly
+/// that seam.
+///
+/// The rule is deliberately narrow: the literal `TERMINAL TOTAL` **immediately**
+/// followed by a digit or a `-`. A padded label never matches (the pad's first
+/// character is a space), and the string appears nowhere else in the report.
+fn terminal_total_expected(oracle: &str) -> String {
+    if lane::PARITY {
+        return oracle.to_string();
+    }
+    oracle
+        .lines()
+        .map(|line| split_glued_total(line).unwrap_or_else(|| line.to_string()))
+        .map(|l| format!("{l}\n"))
+        .collect()
+}
+
+/// `TERMINAL TOTAL<number>` → `TERMINAL TOTAL <number>`, or `None` when the line
+/// has no such seam.
+fn split_glued_total(line: &str) -> Option<String> {
+    const LABEL: &str = "TERMINAL TOTAL";
+    let at = line.find(LABEL)? + LABEL.len();
+    let after = line.get(at..)?;
+    after
+        .starts_with(|c: char| c.is_ascii_digit() || c == '-')
+        .then(|| format!("{} {}", &line[..at], after))
+}
+
+/// Non-vacuity and scope of [`terminal_total_expected`], in both lanes: the
+/// committed golden really carries glued totals, the parity expectation is the
+/// oracle verbatim, the default one splits exactly those rows and no others, and
+/// it inserts nothing but a space.
+#[test]
+fn terminal_total_glue_transform_is_the_power_column() {
+    assert_eq!(
+        split_glued_total("   TERMINAL TOTAL-25808.0 +j -15318.1"),
+        Some("   TERMINAL TOTAL -25808.0 +j -15318.1".to_string())
+    );
+    assert_eq!(
+        split_glued_total("   TERMINAL TOTAL 25808.0 +j  15318.1"),
+        None
+    );
+    assert_eq!(split_glued_total("   TERMINAL TOTAL ....  3567.1"), None);
+    assert_eq!(
+        split_glued_total("SRC1       1    -3567.1 +j  -1736.4"),
+        None
+    );
+
+    let p = reports_dir().join("show_powers_elem_autotrans.txt");
+    let oracle =
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+    let glued = oracle
+        .lines()
+        .filter(|l| split_glued_total(l).is_some())
+        .count();
+    assert!(
+        glued > 0,
+        "the oracle golden no longer carries a glued terminal total — the \
+         `Show Powers` table-kernel row would stop being observed"
+    );
+    let expected = terminal_total_expected(&oracle);
+    if lane::PARITY {
+        assert_eq!(
+            expected.lines().collect::<Vec<_>>(),
+            oracle.lines().collect::<Vec<_>>(),
+            "the parity arm is the identity"
+        );
+        return;
+    }
+    assert_eq!(
+        expected.lines().count(),
+        oracle.lines().count(),
+        "the transform never adds or drops a row"
+    );
+    assert_eq!(
+        expected
+            .lines()
+            .filter(|l| split_glued_total(l).is_some())
+            .count(),
+        0,
+        "every glued total was split"
+    );
+    let strip = |t: &str| t.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+    assert_eq!(
+        strip(&expected),
+        strip(&oracle),
+        "the transform inserts a space and changes nothing else"
+    );
+}
+
 #[test]
 fn show_busflow_matches_oracle() {
-    run_feeder_show("show_busflow", &busflow_seq_policy());
+    run_feeder_show_expected("show_busflow", &busflow_seq_policy(), busflow_expected);
+}
+
+/// Non-vacuity and scope of [`busflow_expected`], in both lanes: each committed
+/// golden really carries glued rows, the parity expectation is the oracle
+/// verbatim, the default one splits exactly those rows and no others, and the
+/// rule leaves an already-separated row alone.
+#[test]
+fn busflow_glue_transform_is_the_terminal_column() {
+    // The rule, at the character level.
+    assert_eq!(
+        split_glued_terminal("\"Capacitor.cap1\"1        0.0"),
+        Some("\"Capacitor.cap1\" 1        0.0".to_string())
+    );
+    assert_eq!(
+        split_glued_terminal("\"CAPACITOR.CAP1\"   1      82.7"),
+        None
+    );
+    assert_eq!(split_glued_terminal("   -               2      82.7"), None);
+    assert_eq!(split_glued_terminal("\"Line.6926\"  2  -853.7"), None);
+
+    for stem in ["show_busflow", "show_busflow_mva", "show_busflow_1ph"] {
+        let p = reports_dir().join(format!("{stem}.txt"));
+        let oracle =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        let glued = oracle
+            .lines()
+            .filter(|l| split_glued_terminal(l).is_some())
+            .count();
+        assert!(
+            glued > 0,
+            "{stem}: the oracle golden no longer carries a glued terminal column \
+             — the `compat::max_device_name_length` row would stop being observed"
+        );
+        let expected = busflow_expected(&oracle);
+        if lane::PARITY {
+            assert_eq!(
+                expected.lines().collect::<Vec<_>>(),
+                oracle.lines().collect::<Vec<_>>(),
+                "{stem}: the parity arm is the identity"
+            );
+            continue;
+        }
+        assert_eq!(
+            expected.lines().count(),
+            oracle.lines().count(),
+            "{stem}: the transform never adds or drops a row"
+        );
+        assert_eq!(
+            expected
+                .lines()
+                .filter(|l| split_glued_terminal(l).is_some())
+                .count(),
+            0,
+            "{stem}: every glued row was split"
+        );
+        // Only whitespace was inserted: with *all* whitespace removed the two
+        // texts are identical, so no character of the report moved or changed.
+        let strip = |t: &str| t.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+        assert_eq!(
+            strip(&expected),
+            strip(&oracle),
+            "{stem}: the transform inserts a space and changes nothing else"
+        );
+    }
 }
 
 /// `Show busflow 675 m` (MVA form, audit-tests step-15 follow-up): the `×0.001`
@@ -2137,7 +2485,7 @@ fn show_busflow_matches_oracle() {
 /// near-zero cells here.
 #[test]
 fn show_busflow_mva_matches_oracle() {
-    run_feeder_show("show_busflow_mva", &busflow_seq_policy());
+    run_feeder_show_expected("show_busflow_mva", &busflow_seq_policy(), busflow_expected);
 }
 
 /// `Show busflow 675 m e` (MVA element form): the `write_terminal_power` `×0.001`
@@ -2153,7 +2501,7 @@ fn show_busflow_mva_elem_matches_oracle() {
 /// `<3`-phase cells are exact zeros → fully exact.
 #[test]
 fn show_busflow_1ph_matches_oracle() {
-    run_feeder_show("show_busflow_1ph", &busflow_seq_policy());
+    run_feeder_show_expected("show_busflow_1ph", &busflow_seq_policy(), busflow_expected);
 }
 
 /// `Show busflow 611 e` (1-phase element form): the per-terminal branch currents/powers
@@ -2548,6 +2896,26 @@ fn export_seqcurrents_matches_oracle() {
         abs: 1e-9,
         gate: Some(GateSpec::Col(2, 1e-6)),
     };
+    let mut col_tol = vec![i1_gated("%i"), i1_gated("%nema")];
+    // Stage F deliberate divergence (`compat::IRESIDUAL_FROM_TERMINAL_1`): the
+    // default lane prints each row's OWN terminal residual instead of repeating
+    // terminal 1's, so on this golden the `Terminal >= 2` rows genuinely differ
+    // from the oracle by construction. Exclude exactly those cells there — the
+    // terminal-1 cells (where the two lanes agree) stay compared against the
+    // oracle in both lanes, and the excluded ones are pinned by
+    // `export_seqcurrents_iresidual_is_the_lane_kernel`.
+    if !lane::PARITY {
+        col_tol.push(ColTol {
+            sel: ColSel::Prefix("iresidual".to_string()),
+            // Same tolerance the policy default gives this column (the
+            // amp-scale cancellation `abs`); this entry exists only to attach
+            // the row gate, and must not tighten or loosen the terminal-1
+            // cells it still compares.
+            rel: 0.0,
+            abs: 1e-8,
+            gate: Some(GateSpec::ColAbove(1, 1.5)),
+        });
+    }
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
@@ -2559,9 +2927,113 @@ fn export_seqcurrents_matches_oracle() {
         // (`%NEMA`); `%Normal`/`%Emergency` divide by NormAmps (never near-zero)
         // and fall through to the exact default, so a regression there stays
         // checked even on the one gated noise row (audit follow-up).
-        col_tol: vec![i1_gated("%i"), i1_gated("%nema")],
+        col_tol,
     };
     run_feeder_export("export_seqcurrents", &policy);
+}
+
+/// The Stage F `Iresidual` row, as an **expected-value** pin (plan IV.2:
+/// deliberate divergences are excluded from the oracle compare at those fields
+/// and pinned by their own tests).
+///
+/// Upstream's `CalcAndWriteSeqCurrents` sums `cBuffer^[i]`, i = 1..Ncond inside
+/// the per-terminal loop — missing the `(j-1)*Ncond` offset — so every terminal
+/// row repeats terminal 1's residual. On IEEE13's `Line.671680` that is
+/// oracle-proven: the true terminal-2 residual is ~1e-11 A, the export prints
+/// terminal 1's 2.83e-5 A.
+///
+/// Rather than a captured literal, the expectation is *derived* from an
+/// independent report: `Export Currents` writes a per-terminal `Iresid<j>`
+/// column through a different code path (`export/currents.rs`), and its values
+/// are oracle-anchored by that report's own byte golden. So the printed
+/// `Iresidual` of `(elem, terminal j)` must equal `Iresid_j` in the default
+/// lane and `Iresid_1` in the parity lane. Asserted for every row of the
+/// report, plus a non-vacuity check that some row actually separates the two.
+#[test]
+fn export_seqcurrents_iresidual_is_the_lane_kernel() {
+    let (seq, currents) = ieee13_seqcurrents_and_currents();
+
+    // How many terminals each element has, from the seq report itself.
+    let mut nterms: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for line in seq.lines().skip(1).filter(|l| !l.trim().is_empty()) {
+        let name = line
+            .split(',')
+            .next()
+            .expect("element field")
+            .trim()
+            .trim_matches('"')
+            .to_lowercase();
+        *nterms.entry(name).or_insert(0) += 1;
+    }
+
+    // `Export Currents` row layout: `Element,` then per terminal `ncond`
+    // (mag, ang) pairs followed by (Iresid, AngResid) — i.e.
+    // `1 + nterm * (2*ncond + 2)` fields.
+    let mut residual: std::collections::HashMap<(String, usize), f64> =
+        std::collections::HashMap::new();
+    for line in currents.lines().skip(1).filter(|l| !l.trim().is_empty()) {
+        let f: Vec<&str> = line.split(',').map(str::trim).collect();
+        let name = f[0].trim_matches('"').to_lowercase();
+        let Some(&nterm) = nterms.get(&name) else {
+            continue;
+        };
+        let per_term = (f.len() - 1) / nterm;
+        if nterm == 0
+            || per_term < 4
+            || !(f.len() - 1).is_multiple_of(nterm)
+            || !per_term.is_multiple_of(2)
+        {
+            continue;
+        }
+        for j in 1..=nterm {
+            let idx = 1 + (j - 1) * per_term + per_term - 2;
+            if let Ok(v) = f[idx].parse::<f64>() {
+                residual.insert((name.clone(), j), v);
+            }
+        }
+    }
+    assert!(
+        residual.len() > 50,
+        "the Currents export gave too few rows to derive from: {}",
+        residual.len()
+    );
+
+    let mut checked = 0usize;
+    let mut lanes_would_differ = false;
+    for line in seq.lines().skip(1).filter(|l| !l.trim().is_empty()) {
+        let f: Vec<&str> = line.split(',').map(str::trim).collect();
+        if f.len() < 10 {
+            continue;
+        }
+        let name = f[0].trim_matches('"').to_lowercase();
+        let j: usize = f[1].parse().expect("terminal number");
+        let printed: f64 = f[9].parse().expect("Iresidual");
+        let (Some(&own), Some(&first)) = (
+            residual.get(&(name.clone(), j)),
+            residual.get(&(name.clone(), 1)),
+        ) else {
+            continue;
+        };
+        if (own - first).abs() > 1e-9 {
+            lanes_would_differ = true;
+        }
+        let expected = if lane::PARITY { first } else { own };
+        // The report prints 6 significant digits; compare at that resolution.
+        let tol = 1e-6 * expected.abs().max(1e-12) + 1e-12;
+        assert!(
+            (printed - expected).abs() <= tol,
+            "{name} terminal {j}: printed Iresidual {printed:e}, expected \
+             {expected:e} (own-terminal {own:e}, terminal-1 {first:e}, lane \
+             parity = {})",
+            lane::PARITY
+        );
+        checked += 1;
+    }
+    assert!(checked > 50, "only {checked} rows checked");
+    assert!(
+        lanes_would_differ,
+        "no row separates the two kernels — the pin would be vacuous"
+    );
 }
 
 /// `Export SeqPowers` (Pascal `ExportSeqPowers`): per-terminal sequence powers
@@ -3363,15 +3835,31 @@ fn export_meters_append_accumulates() {
     });
 }
 
-/// The Storage `/m` path reproduces an **upstream copy-paste bug** — its per-file
-/// prefix is `EXP_PV_`, not `EXP_STORAGE_` (`ExportResults.pas:2240`,
-/// `TODO(compat)`). Pin that exact filename (and the transitively-oracle-anchored
-/// row) so the deliberately-faithful quirk cannot silently drift to `EXP_STORAGE_`.
+/// The Storage `/m` per-element file name is the Stage F single-site quirk
+/// `compat::STORAGE_MULTIFILE_USES_THE_PV_PREFIX`.
+///
+/// `WriteMultipleStorageMeterFiles` (`ExportResults.pas:2240`) was cloned from
+/// the PVSystem writer and kept its `'EXP_PV_'` literal, so upstream writes a
+/// Storage fleet's registers into `EXP_PV_<NAME>.csv` — colliding with the
+/// PVSystem export's own files in the same directory. The parity lane
+/// reproduces it; the default lane uses `EXP_STORAGE_`, the prefix the
+/// single-file sibling of the very same command (`EXP_STORAGEMeters.csv`)
+/// already implies.
+///
+/// Asserted against `compat::ORACLE_PARITY` so both builds pin a name, and the
+/// *other* name is asserted absent in each — the quirk cannot silently drift in
+/// either direction. The rows are compared against the oracle-anchored
+/// single-file golden in both lanes: only the file name is lane-split.
 #[test]
-fn export_storage_multifile_uses_pv_prefix() {
+fn export_storage_multifile_prefix_is_lane_split() {
     let single = {
         let p = reports_dir().join("export_storage_meters.txt");
         std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+    let (expected, forbidden) = if dss_core::compat::ORACLE_PARITY {
+        ("EXP_PV_ST1.csv", "EXP_STORAGE_ST1.csv")
+    } else {
+        ("EXP_STORAGE_ST1.csv", "EXP_PV_ST1.csv")
     };
     with_register_fixture(
         "export_storage_meters",
@@ -3381,18 +3869,18 @@ fn export_storage_multifile_uses_pv_prefix() {
             assert!(dss.errors().is_empty(), "{:?}", dss.errors());
             assert_eq!(dss.last_result_file(), "/m");
 
-            // The copy-paste-bug prefix: EXP_PV_<NAME>.csv, NOT EXP_STORAGE_.
-            let pv = scratch.join("EXP_PV_ST1.csv");
+            let want = scratch.join(expected);
             assert!(
-                pv.is_file(),
-                "storage /m must write EXP_PV_ST1.csv (the EXP_PV_ prefix bug)"
+                want.is_file(),
+                "storage /m must write {expected} in this lane (parity = {})",
+                dss_core::compat::ORACLE_PARITY
             );
             assert!(
-                !scratch.join("EXP_STORAGE_ST1.csv").exists(),
-                "storage /m must NOT use an EXP_STORAGE_ prefix"
+                !scratch.join(forbidden).exists(),
+                "storage /m must NOT also write {forbidden}"
             );
-            let multi = std::fs::read_to_string(&pv)
-                .unwrap_or_else(|e| panic!("read {}: {e}", pv.display()));
+            let multi = std::fs::read_to_string(&want)
+                .unwrap_or_else(|e| panic!("read {}: {e}", want.display()));
             compare_export(
                 &single,
                 &multi,
@@ -3585,15 +4073,98 @@ fn export_busreliability_matches_oracle() {
 /// byte-identical arithmetic as the single-meter case — exact equality.
 #[test]
 fn export_busreliability_multimeter_matches_oracle() {
+    // Stage F deliberate divergence (`compat::BUS_INT_DURATION_WALKS_ALL_BUSES`):
+    // the default lane's duration loop stays inside each meter's own zone, so
+    // the `Duration` column of the *first* meter's buses no longer carries the
+    // second meter's sections. There is no row key in this report that
+    // identifies "a bus of the earlier meter", so the default lane excludes the
+    // whole column here and pins it — every row — in
+    // `export_busreliability_multimeter_duration_is_the_lane_kernel`. Lambda /
+    // interruptions / customers / cust-interruptions / miles stay compared
+    // against the oracle in both lanes.
+    let col_tol = if lane::PARITY {
+        vec![]
+    } else {
+        vec![ColTol {
+            sel: ColSel::Prefix("duration".to_string()),
+            rel: 0.0,
+            abs: 0.0,
+            gate: Some(GateSpec::Mask),
+        }]
+    };
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
         abs: 0.0,
-        col_tol: vec![],
+        col_tol,
     };
     run_deck_export("export_busreliability_multimeter", &policy);
+}
+
+/// The Stage F `Bus_Int_Duration` row as an **expected-value** pin, on the
+/// two-meter fixture whose `Duration` column the lane split moves.
+///
+/// The fixture is two independent two-section feeders off `SRC`: meter `m1`
+/// covers `l1` (repair 4 h) → `B1` and `l2` (repair 5 h) → `B2`; meter `m2`
+/// covers `l3` (repair 6 h) → `C1` and `l4` (repair 9 h) → `C2`. Each section
+/// holds exactly one line, so a bus's own-zone duration *is* that line's repair
+/// time (`source_int_dur = 0` here).
+///
+/// **Parity lane** reproduces upstream: `m2`'s duration loop walks *every*
+/// circuit bus, so it re-reads `B1`/`B2`'s section ids (1 and 2, written by
+/// `m1`) against **its own** `FeederSections` and overwrites them with `l3`'s
+/// and `l4`'s repair times — `B1 → 6`, `B2 → 9`, i.e. the C-feeder's numbers on
+/// the B-feeder's buses. That is what the oracle golden contains.
+/// **Default lane** keeps each meter inside its own zone: `B1 → 4`, `B2 → 5`.
+///
+/// Both columns are asserted literally, so the fix cannot silently become a
+/// no-op and the reproduction cannot silently become the fix.
+#[test]
+fn export_busreliability_multimeter_duration_is_the_lane_kernel() {
+    let text = run_deck_export_capture("export_busreliability_multimeter");
+    let durations: Vec<(String, f64)> = text
+        .lines()
+        .skip(1)
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let f: Vec<&str> = l.split(',').map(str::trim).collect();
+            (
+                f[0].to_uppercase(),
+                f[5].parse::<f64>().expect("Duration column"),
+            )
+        })
+        .collect();
+
+    let expected: &[(&str, f64)] = if lane::PARITY {
+        &[
+            ("SRC", 0.0),
+            ("B1", 6.0),
+            ("B2", 9.0),
+            ("C1", 6.0),
+            ("C2", 9.0),
+        ]
+    } else {
+        &[
+            ("SRC", 0.0),
+            ("B1", 4.0),
+            ("B2", 5.0),
+            ("C1", 6.0),
+            ("C2", 9.0),
+        ]
+    };
+    assert_eq!(durations.len(), expected.len(), "rows: {durations:?}");
+    for (got, want) in durations.iter().zip(expected) {
+        assert_eq!(got.0, want.0, "bus order");
+        assert_eq!(
+            got.1,
+            want.1,
+            "{} interruption duration (lane parity = {})",
+            got.0,
+            lane::PARITY
+        );
+    }
 }
 
 /// `Export BranchReliability` (Pascal `ExportBranchReliability`): per-branch
@@ -4360,9 +4931,18 @@ fn export_profile_variants_match_oracle() {
         ("export_profile", profile_policy()),
         ("export_profile_all", profile_policy()),
         ("export_profile_primary", profile_policy()),
-        ("export_profile_ll3ph", profile_policy()),
-        ("export_profile_llall", profile_policy()),
-        ("export_profile_llprimary", profile_policy()),
+        (
+            "export_profile_ll3ph",
+            lane::profile_ll_policy(profile_policy()),
+        ),
+        (
+            "export_profile_llall",
+            lane::profile_ll_policy(profile_policy()),
+        ),
+        (
+            "export_profile_llprimary",
+            lane::profile_ll_policy(profile_policy()),
+        ),
         ("export_profile_ph2", profile_policy()),
     ]);
 }
@@ -4870,8 +5450,21 @@ fn dump_transformer_disabled_matches_oracle() {
 /// dump is solve-independent (the auto YPrim/solve path is Stage B).
 #[test]
 fn dump_autotrans_matches_oracle() {
-    run_deck_dump_exact("dump_autotrans");
+    run_deck_dump_exact_expected("dump_autotrans", |o| {
+        lane::expected_rerounded(o, &AUTOTRANS_RDC_REROUND)
+    });
 }
+
+/// The one F-FMT `%g` re-rounding cell of `dump_autotrans` (see
+/// [`lane::expected_rerounded`]): winding 2's `RdcOhms` is
+/// `kVLL²/(kVA/1000)·Rdcpu` = 34.5²/40 · 0.001/0.1414… , whose value sits just
+/// **below** the 7-significant-digit half-boundary `0.0084309375`. `dump.rs`
+/// prints it with `g(v, 7)`: FPC's re-round of its own 17-digit form goes
+/// half-away-from-zero to `…938`, one correct rounding of the true `f64` gives
+/// `…937`. Winding 1's `Rdcohms=0.04590177` is nowhere near a boundary and is
+/// compared unchanged in both lanes, which is what makes this a *cell*
+/// exclusion and not a report-wide one.
+const AUTOTRANS_RDC_REROUND: [(&str, &str); 1] = [("Rdcohms=0.008430938", "Rdcohms=0.008430937")];
 
 /// `Dump autotrans.t3` (3-winding, delta tertiary) — the 3-winding Xscmatrix
 /// (three off-diagonals) and the wye/delta/Series `conn` render arms.
@@ -5002,20 +5595,188 @@ fn dump_spectrum_matches_oracle() {
     run_deck_dump_exact("dump_spectrum");
 }
 
+/// The oracle `Dump fault.…` text as the current lane expects it: unchanged in
+/// the parity lane; in the default lane with the **second** of the two
+/// consecutive `~ MinAmps=` lines removed — the Stage F row
+/// `compat::FAULT_DUMP_TAIL_REPRINTS_MINAMPS`, whose default kernel starts the
+/// generic tail at `NormAmps` instead of re-emitting `MinAmps`.
+///
+/// Positional, like the `b0ch` transform in `golden_cim`: it removes the second
+/// member of an adjacent pair, never "a line whose value looks generic", so it
+/// cannot silently eat a differently-rendered `MinAmps`. The pair must be there
+/// — `fault_dump_goldens_carry_the_double_print` asserts it on every golden this
+/// is applied to (one pair per Fault in the fixture), so the transform cannot
+/// rot into a no-op if a golden is ever recaptured.
+fn fault_dump_expected(oracle: &str) -> String {
+    if lane::PARITY {
+        return oracle.to_string();
+    }
+    let mut out = String::with_capacity(oracle.len());
+    let mut prev_was_minamps = false;
+    for line in oracle.split_inclusive('\n') {
+        let is_minamps = line.trim_start().starts_with("~ MinAmps=");
+        if is_minamps && prev_was_minamps {
+            prev_was_minamps = false; // only ever drop the second of a pair
+            continue;
+        }
+        prev_was_minamps = is_minamps;
+        out.push_str(line);
+    }
+    out
+}
+
+/// Non-vacuity of [`fault_dump_expected`], in both lanes and over **every**
+/// golden it is applied to: each committed oracle golden really does carry the
+/// double print — one pair per Fault in its fixture — the default-lane
+/// expectation keeps exactly one line per pair, and the parity-lane expectation
+/// is the oracle byte-for-byte.
+///
+/// The `(stem, faults)` list must stay in step with the
+/// `run_deck_dump_exact_expected(…, fault_dump_expected)` call sites: a
+/// Fault-bearing dump golden that forgets the transform fails its own compare,
+/// and one that gains the transform without a row here is not proven
+/// non-vacuous.
+#[test]
+fn fault_dump_goldens_carry_the_double_print() {
+    for (stem, faults) in [
+        ("dump_fault", 1),
+        ("dump_fault_gmatrix", 1),
+        ("dump3_bare", 2),
+        ("dump3_debug", 2),
+    ] {
+        let p = reports_dir().join(format!("{stem}.txt"));
+        let oracle =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        let minamps = |t: &str| -> Vec<String> {
+            t.lines()
+                .filter(|l| l.trim_start().starts_with("~ MinAmps="))
+                .map(str::to_string)
+                .collect()
+        };
+        let o = minamps(&oracle);
+        assert_eq!(
+            o.len(),
+            2 * faults,
+            "{stem}: the oracle double-prints MinAmps once per Fault"
+        );
+        let expected = fault_dump_expected(&oracle);
+        let e = minamps(&expected);
+        assert_eq!(
+            e.len(),
+            if lane::PARITY { 2 * faults } else { faults },
+            "{stem}: the default lane keeps one MinAmps line per Fault"
+        );
+        if lane::PARITY {
+            assert_eq!(expected, oracle, "{stem}: the parity arm is the identity");
+            continue;
+        }
+        // One line removed per pair, and it is the *second* of each: what
+        // survives is the custom `%.1f` spelling (`~ MinAmps=5.0`), never the
+        // generic one the tail re-emits (`~ MinAmps=5`).
+        assert_eq!(expected.lines().count() + faults, oracle.lines().count());
+        for (i, kept) in e.iter().enumerate() {
+            assert_eq!(kept, &o[2 * i], "{stem}: the FIRST of pair {i} survives");
+            assert!(
+                kept.contains('.'),
+                "{stem}: the surviving line is the custom %.1f render: {kept}"
+            );
+        }
+    }
+}
+
+/// Non-vacuity of the F-FMT `%g` re-rounding cells, in both lanes and over
+/// every golden they are applied to.
+///
+/// Each committed oracle golden really carries the FPC spelling exactly once,
+/// the parity expectation is the oracle byte-for-byte, and the default
+/// expectation carries the correctly-rounded spelling and no longer the FPC
+/// one. The `(stem, cells)` list must stay in step with the
+/// `lane::expected_rerounded` call sites: a golden that gains a cell without a
+/// row here is not proven non-vacuous, and a cell whose token stops appearing
+/// fails inside the helper.
+///
+/// The **kernel link** — that a pair really is the two `%g` kernels rendering
+/// one `f64`, not an edited value — is asserted for the `Mean` cell against the
+/// value the parity kernel's documentation names; the helper additionally
+/// re-checks every pair as a last-digit re-spelling of the same key. What each
+/// cell finally proves is the golden test itself: the default engine has to
+/// produce that exact spelling.
+#[test]
+fn ffmt_reround_cells_are_present_and_lane_scoped() {
+    use dss_core::util::{fmt_g_fpc_impl, fmt_g_native_impl};
+
+    // The documented `loadshape.default` FMean: FPC's two-stage round-up vs one
+    // correct rounding, at the 15 significant digits `float_to_str` prints.
+    let fmean = 0.8258283333333335_f64;
+    assert_eq!(
+        format!("Mean={}", fmt_g_fpc_impl(fmean, 15)),
+        LOADSHAPE_MEAN_REROUND[0].0
+    );
+    assert_eq!(
+        format!("Mean={}", fmt_g_native_impl(fmean, 15)),
+        LOADSHAPE_MEAN_REROUND[0].1
+    );
+
+    for (stem, cells) in [
+        ("dump3_bare", &LOADSHAPE_MEAN_REROUND[..]),
+        ("dump3_debug", &LOADSHAPE_MEAN_REROUND[..]),
+        ("dump_autotrans", &AUTOTRANS_RDC_REROUND[..]),
+    ] {
+        let p = reports_dir().join(format!("{stem}.txt"));
+        let oracle =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        for (from, to) in cells {
+            assert_eq!(
+                oracle.matches(from).count(),
+                1,
+                "{stem}: the oracle golden must carry {from:?} exactly once"
+            );
+            assert_eq!(
+                oracle.matches(to).count(),
+                0,
+                "{stem}: the corrected spelling {to:?} must not already be there"
+            );
+        }
+        let expected = lane::expected_rerounded(&oracle, cells);
+        if lane::PARITY {
+            assert_eq!(expected, oracle, "{stem}: the parity arm is the identity");
+            continue;
+        }
+        assert_eq!(
+            expected.len(),
+            oracle.len(),
+            "{stem}: same-width re-spelling"
+        );
+        for (from, to) in cells {
+            assert_eq!(
+                expected.matches(from).count(),
+                0,
+                "{stem}: {from:?} rewritten"
+            );
+            assert_eq!(
+                expected.matches(to).count(),
+                1,
+                "{stem}: {to:?} present once"
+            );
+        }
+    }
+}
+
 /// `Dump fault.f1 debug` — `TFaultObj.DumpProperties` (`SpecType=1`, single
 /// `r`): the custom Bus1/Bus2/Phases/R/pctStdDev/OnTime/Temporary/MinAmps
-/// lines, then the tail from `MinAmps` — pinning the upstream double-print
-/// quirk (`MinAmps` appears twice: the custom `%.1f` line, then generically).
+/// lines, then the generic tail. The parity lane pins the upstream double-print
+/// quirk (`MinAmps` twice: the custom `%.1f` line, then generically); the
+/// default lane starts the tail one property later — see [`fault_dump_expected`].
 #[test]
 fn dump_fault_matches_oracle() {
-    run_deck_dump_exact("dump_fault");
+    run_deck_dump_exact_expected("dump_fault", fault_dump_expected);
 }
 
 /// `Dump fault.fg debug` — `TFaultObj.DumpProperties` (`SpecType=2`, a
 /// `Gmatrix`): pins the custom `~ GMatrix= (…)` lower-triangle render.
 #[test]
 fn dump_fault_gmatrix_matches_oracle() {
-    run_deck_dump_exact("dump_fault_gmatrix");
+    run_deck_dump_exact_expected("dump_fault_gmatrix", fault_dump_expected);
 }
 
 /// `Dump capacitor.cm1 debug` (a `CMatrix`-spec bank) — `TCapacitorObj.
@@ -5150,8 +5911,11 @@ fn produce_deck_save(stem: &str) -> (String, String, Dss, PathBuf) {
 /// in-memory stream flush — NO file, probe-proven; the fixture's mon1 must
 /// produce nothing) + every EnergyMeter `SaveRegisters` → `MTR_em1.csv` with
 /// the `Year, 0,` header and all 67 `"<RegName>",<value :0:0>` rounded-integer
-/// register lines. Byte-exact; `GlobalResult`/`LastResultFile` = the RELATIVE
-/// CSV name (`EnergyMeter.pas:1249-1251`, probe-proven).
+/// register lines. Byte-exact in the parity lane; `GlobalResult`/`LastResultFile`
+/// = the RELATIVE CSV name (`EnergyMeter.pas:1249-1251`, probe-proven).
+///
+/// Stage F: the register values render through the F-FMT seam, so the default
+/// lane compares the same golden value-exact (`rel = abs = 0`) on CSV fields.
 #[test]
 fn save_meters_mtr_matches_oracle_exact() {
     let (oracle, rust, dss, scratch) = produce_deck_save("save_mtr");
@@ -5166,7 +5930,7 @@ fn save_meters_mtr_matches_oracle_exact() {
         .filter(|n| n.to_lowercase().contains("mon"))
         .collect();
     assert!(mon_files.is_empty(), "monitor Save wrote {mon_files:?}");
-    assert_show_bytes_eq(&oracle, &rust, "save_mtr");
+    lane::compare_report(&oracle, &rust, &lane::exact_value_policy(','), "save_mtr");
     std::fs::remove_dir_all(&scratch).ok();
 }
 
@@ -5272,17 +6036,117 @@ fn save_class_disabled_load_writes_enabled_no() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-/// The `TODO(compat)` GlobalResult delimiter parity of `do_save_cmd`: Pascal
-/// composes `SaveFile := SaveDir + PathDelim + SaveFile` as raw STRINGS
+/// The expected-value pin of `compat::CKT_MODEL_RENDERED_ORDINAL` on the two
+/// surfaces no golden covers — `Save circuit`'s `Master.dss` and the
+/// `Get cktmodel` reader — asserted against `compat::ORACLE_PARITY` so it is
+/// meaningful in both lanes. (The third surface, the AltDSS JSON `PreCommands`,
+/// is pinned by `golden_json::json_circuit_positive_seq` against the oracle
+/// capture itself.)
+///
+/// Upstream renders `CktModelEnum.OrdinalToString(Integer(PositiveSequence))`
+/// on all three, and `PositiveSequence` is a `LongBool`, so `Integer(True)` is
+/// -1 — out of the enum's `[0, 1]` range, where `OrdinalToString` answers `''`.
+/// Both surfaces therefore report the model **without a value**.
+///
+/// The test also states the *consequence* that makes it a defect rather than a
+/// spelling: the saved `Master.dss` is re-compiled here, and only the default
+/// lane's survives the round trip as a positive-sequence circuit — upstream's
+/// value-less `Set Cktmodel=` re-imports as `Multiphase`, silently dropping the
+/// flag the file was written to preserve. That is the same loss the *oracle's
+/// own* JSON round-trip golden records (`tests/golden/json_import/
+/// rt_positive_seq.json`: J0 carries `Set CktModel=`, J1 carries no CktModel
+/// line at all).
+#[test]
+fn ckt_model_rendered_ordinal_is_lane_split() {
+    let parity = dss_core::compat::ORACLE_PARITY;
+    let want = if parity { "" } else { "Positive" };
+
+    let scratch = scratch_dir("cktmodel_save");
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.ckmdl basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "set cktmodel=positive",
+        "new line.l1 bus1=src bus2=b1 phases=3 r1=0.1 x1=0.3 c1=0 length=1",
+        "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 pf=0.95",
+        "set voltagebases=[12.47]",
+        "calcv",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // Surface 1 — the `Get` reader.
+    dss.command("get cktmodel");
+    assert_eq!(
+        dss.result().trim(),
+        want,
+        "`Get cktmodel` renders the LongBool ordinal in the parity lane and the \
+         enum's own in the default lane (parity = {parity})"
+    );
+
+    // Surface 2 — `Save circuit`'s Master.dss header.
+    let out = scratch.join("saved");
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        out.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let master = std::fs::read_to_string(out.join("Master.dss"))
+        .unwrap_or_else(|e| panic!("read Master.dss: {e}"));
+    let line = master
+        .lines()
+        .find(|l| {
+            l.trim_start()
+                .to_ascii_lowercase()
+                .starts_with("set cktmodel=")
+        })
+        .unwrap_or_else(|| panic!("Master.dss has no `Set Cktmodel=` line:\n{master}"));
+    assert_eq!(
+        line.trim(),
+        format!("Set Cktmodel={want}"),
+        "the saved header carries the same rendering as the `Get` reader"
+    );
+
+    // The consequence: only the default lane's file round-trips the flag.
+    let mut back = Dss::new();
+    back.command("clear");
+    back.command(&format!(
+        "compile \"{}\"",
+        out.join("Master.dss").to_string_lossy().replace('\\', "/")
+    ));
+    back.command("get cktmodel");
+    assert_eq!(
+        back.result().trim(),
+        if parity { "Multiphase" } else { "Positive" },
+        "only the default lane's saved header restores the positive-sequence \
+         flag: the parity lane's value-less `Set Cktmodel=` re-imports as \
+         Multiphase, so upstream's own `Save circuit` output silently drops the \
+         very flag it was written to record (parity = {parity})"
+    );
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// The GlobalResult delimiter of `do_save_cmd` — the Stage F single-site quirk
+/// `compat::SAVE_CLASS_JOINS_ITS_REPORTED_PATH_AS_STRINGS`.
+///
+/// Pascal composes `SaveFile := SaveDir + PathDelim + SaveFile` as raw STRINGS
 /// (`ExecHelper.pas:835-841`), so with the default `SaveDir = OutputDirectory`
 /// (already ending in a delimiter) the observable `GlobalResult` carries a
-/// DOUBLED one (`…\\load`), while an explicit `dir=` is the raw parameter
-/// (single — `sub1\load`) and the file lands under the mkdir'd subdir. An
-/// unknown class silently writes nothing but still runs the tail:
-/// `GlobalResult`/`LastResultFile` = the raw `file=` value or empty. All four
-/// forms oracle-probed 2026-07-07.
+/// DOUBLED one (`…\\load`) — a path a consumer cannot open verbatim where `\\`
+/// starts a UNC name. The parity lane reproduces it; the default lane reports
+/// the normalized path the writer actually used. An explicit `dir=` is the raw
+/// parameter (single — `sub1\load`) in **both** lanes and the file lands under
+/// the mkdir'd subdir. An unknown class silently writes nothing but still runs
+/// the tail: `GlobalResult`/`LastResultFile` = the raw `file=` value or empty.
+/// All four forms oracle-probed 2026-07-07.
+///
+/// Asserted against `compat::ORACLE_PARITY`, and the *file on disk* is asserted
+/// at the same normalized location in both lanes — the split moves the reported
+/// string only.
 #[test]
-fn save_class_global_result_pascal_delimiters() {
+fn save_class_global_result_delimiter_is_lane_split() {
     let sep = std::path::MAIN_SEPARATOR;
     let deck = [
         "clear",
@@ -5299,10 +6163,17 @@ fn save_class_global_result_pascal_delimiters() {
     dss.command(&format!("set datapath=\"{}\"", scratch.display()));
     dss.command("save load");
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let want = if dss_core::compat::ORACLE_PARITY {
+        format!("{}{sep}{sep}load", scratch.display())
+    } else {
+        scratch.join("load").display().to_string()
+    };
     assert_eq!(
         dss.result(),
-        format!("{}{sep}{sep}load", scratch.display()),
-        "bare `save load` must carry the Pascal doubled delimiter"
+        want,
+        "bare `save load` reports the Pascal doubled delimiter in the parity \
+         lane and the normalized path in the default lane (parity = {})",
+        dss_core::compat::ORACLE_PARITY
     );
     assert_eq!(dss.last_result_file(), dss.result());
     assert!(
@@ -5417,8 +6288,30 @@ fn save_voltages_and_meterless_save_leave_last_result_file() {
 /// Spectrum/TCC_Curve library objects.
 #[test]
 fn dump3_bare_matches_oracle() {
-    run_deck_dump_exact("dump3_bare");
+    // Two Fault objects in the fixture, so two `~ MinAmps=` pairs — the same
+    // Stage F row as `dump_fault`, see [`fault_dump_expected`] — plus the one
+    // F-FMT `%g` cell, [`LOADSHAPE_MEAN_REROUND`].
+    run_deck_dump_exact_expected("dump3_bare", dump3_expected);
 }
+
+/// `dump3_*`'s two Stage F rows composed: the Fault `MinAmps` double-print
+/// (`fault_dump_expected`) and the F-FMT `%g` re-rounding of the default
+/// LoadShape's computed `Mean` ([`LOADSHAPE_MEAN_REROUND`]).
+fn dump3_expected(oracle: &str) -> String {
+    lane::expected_rerounded(&fault_dump_expected(oracle), &LOADSHAPE_MEAN_REROUND)
+}
+
+/// The one F-FMT `%g` re-rounding cell of the `dump3_*` goldens (see
+/// [`lane::expected_rerounded`]): `loadshape.default`'s **computed** `Mean`.
+///
+/// This is the exact value the parity kernel's own documentation names — the
+/// true `f64` is 0.82582833333333349745…, whose correctly-rounded 17-digit form
+/// ends `…3350`, which FPC then re-rounds half-away-from-zero to `…334` while a
+/// single correct rounding of the value itself keeps `…333`. The dump's other
+/// LoadShape numbers (`%Mean=50`, `Set %mean=82.58`, every `Interval`/`Npts`)
+/// are compared unchanged in both lanes.
+const LOADSHAPE_MEAN_REROUND: [(&str, &str); 1] =
+    [("Mean=0.825828333333334", "Mean=0.825828333333333")];
 
 /// `Dump debug` — the whole-circuit form with Complete=TRUE: the
 /// `Circuit.DebugDump` bus/device/node-map header, per-element Y/terminal/
@@ -5426,7 +6319,7 @@ fn dump3_bare_matches_oracle() {
 /// system-Y compressed-column dump (`[%4d,%4d] = %12.5g + j%12.5g`).
 #[test]
 fn dump3_debug_matches_oracle() {
-    run_deck_dump_exact("dump3_debug");
+    run_deck_dump_exact_expected("dump3_debug", dump3_expected);
 }
 
 /// `Dump solution` — `Solution.DumpProperties(F, Complete=FALSE, Leaf=TRUE)`
@@ -5737,4 +6630,91 @@ fn query_indmach012_pf_empty_after_solve() {
     assert!(dss.errors().is_empty());
     dss.command("? indmach012.m1.pf");
     assert_eq!(dss.result(), "");
+}
+
+/// The Stage F `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING` row, pinned by
+/// expected value in both lanes.
+///
+/// `ExportResults.pas:409-414` seeds `iNormal := NormAmps` and only
+/// *overwrites* it with `I1/NormAmps*100` when the rating is `> 0`, so upstream
+/// leaks a non-positive rating straight into a column whose header says
+/// "percent": `normamps=-1` prints `-1`, `normamps=0` prints `0`. **Parity
+/// lane**: the raw rating. **Default lane**: `0` — an undefined rating is not a
+/// percentage.
+///
+/// The site was marked "unpinnable" for the whole port because every element on
+/// IEEE13 is rated positively; this deck rates one line negatively on purpose,
+/// which is why no committed golden and no gated corpus case moves with the
+/// flip. The positively-rated control line in the same deck proves the normal
+/// path is untouched in both lanes.
+#[test]
+fn export_seqcurrents_nonpositive_rating_is_the_lane_kernel() {
+    let scratch = scratch_dir("seqcurrents_rating_lane");
+    let mut dss = Dss::new();
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("clear");
+    dss.command("new circuit.rating basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000");
+    // `bad` carries an undefined (negative) rating; `good` a normal one.
+    dss.command(
+        "new line.bad bus1=src bus2=b length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 \
+         c1=0 c0=0 normamps=-1 emergamps=-2",
+    );
+    dss.command(
+        "new line.good bus1=b bus2=c length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 \
+         c1=0 c0=0 normamps=400 emergamps=600",
+    );
+    dss.command("new load.ld bus1=c phases=3 kv=12.47 kw=500 pf=0.95 model=1");
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("export seqcurrents");
+    let produced = std::fs::read_to_string(dss.last_result_file())
+        .unwrap_or_else(|e| panic!("read seqcurrents: {e}"));
+
+    // Row layout: Element, Terminal, I1, %Normal, %Emergency, I2, %I2/I1, I0,
+    // %I0/I1, Iresidual, %NEMA
+    let row = |elem: &str| -> (f64, f64) {
+        let line = produced
+            .lines()
+            .skip(1)
+            .find(|l| {
+                let f = l.split(',').next().unwrap_or("").trim().trim_matches('"');
+                f.eq_ignore_ascii_case(elem)
+            })
+            .unwrap_or_else(|| panic!("no row for {elem} in:\n{produced}"));
+        let f: Vec<&str> = line.split(',').map(str::trim).collect();
+        (
+            f[3].parse().expect("%Normal"),
+            f[4].parse().expect("%Emergency"),
+        )
+    };
+
+    // Derived from the *lane*, never from the row's own alias
+    // (`SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING`): reading the alias on both
+    // sides makes the pin assert engine-agrees-with-declaration, so a silent
+    // revert of the flip passes (reproduced, F-settle W4).
+    let parity = dss_core::compat::ORACLE_PARITY;
+    let (bad_n, bad_e) = row("Line.bad");
+    assert_eq!(
+        (bad_n, bad_e),
+        if parity { (-1.0, -2.0) } else { (0.0, 0.0) },
+        "parity reproduces the raw non-positive rating (ExportResults.pas:409-414); \
+         the default lane prints 0 for an undefined rating"
+    );
+
+    // Control: a positively-rated element is a real percentage in BOTH lanes.
+    let (good_n, good_e) = row("Line.good");
+    assert!(
+        good_n > 0.0 && good_e > 0.0 && good_n > good_e,
+        "a rated element must still print I1/rating*100 in both lanes, got \
+         %Normal={good_n} %Emergency={good_e}"
+    );
+    // The report renders these to ~4 significant digits (`6.1` / `4.067`), so
+    // the ratio is checked at rendering precision — the lane assertion above is
+    // the exact one.
+    assert!(
+        (good_n / good_e - 600.0 / 400.0).abs() < 1e-3,
+        "%Normal/%Emergency must be emergamps/normamps = 1.5, got {good_n}/{good_e}"
+    );
 }

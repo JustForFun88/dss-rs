@@ -33,11 +33,23 @@ jobs:
       # present for the test step. Versions MUST match tools/golden/PIN.txt exactly.
       - name: Install pinned oracle (tools/golden/PIN.txt)
         run: pip install "dss-python==0.15.7" "dss-python-backend==0.14.5"
+      # The mandatory gate is five commands over BOTH Stage F lanes (CLAUDE.md,
+      # TESTING.md §"The two lanes"). The parity lane is not a variant to spot
+      # check: it is the lane that carries the byte goldens and the exact
+      # iteration pins against the oracle, and it is the compensating control
+      # for every band the default lane is allowed. Running only the default
+      # lane here would leave both of those unchecked on every PR.
       - name: Format
         run: cargo fmt --all --check
-      - name: Clippy
+      - name: Clippy (default lane)
         run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: Test
+      - name: Clippy (parity lane)
+        run: cargo clippy --workspace --all-targets --features dss-core/oracle-parity -- -D warnings
+      - name: Test (default lane)
         env:
           DSS_ORACLE_TIMEOUT_SECS: "600"
         run: cargo test --workspace -- --test-threads=1
+      - name: Test (parity lane)
+        env:
+          DSS_ORACLE_TIMEOUT_SECS: "600"
+        run: cargo test --workspace --features dss-core/oracle-parity -- --test-threads=1

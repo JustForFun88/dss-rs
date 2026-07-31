@@ -16,9 +16,9 @@ use serde_json::json;
 use crate::engines::{CaseResult, Channel, Oracle};
 use crate::harness::{
     self, ExportPolicy, RowPolicy, Tolerances, compare_all_properties, compare_ctrlqueue,
-    compare_discrete, compare_element, compare_eventlog, compare_export, compare_fingerprint,
-    compare_injection, compare_meter, compare_monitor, compare_probe, compare_system_y,
-    compare_variables, compare_yprim, tol_for,
+    compare_discrete, compare_element_channels, compare_eventlog, compare_export,
+    compare_fingerprint, compare_injection, compare_meter, compare_monitor, compare_probe,
+    compare_system_y, compare_variables, compare_yprim, lane, tol_for,
 };
 use crate::manifest::{EngineChannel, SolvableCase};
 
@@ -294,6 +294,18 @@ fn assert_expected_warnings(dss: &Dss, expect: &[String], ctx: &str) {
 // run_rust_capture + compare_capture (the split of the old run_and_compare).
 // ---------------------------------------------------------------------------
 
+/// The lowercase object names of one class among the snapshotted circuit
+/// elements (`snapshot_elements` walks `Circuit.ckt_elements`, which holds the
+/// control elements too).
+fn class_member_names(snaps: &[dss_core::exec::ElementSnapshot], class: &str) -> BTreeSet<String> {
+    snaps
+        .iter()
+        .filter_map(|s| s.name.split_once('.'))
+        .filter(|(cls, _)| cls.eq_ignore_ascii_case(class))
+        .map(|(_, name)| name.to_lowercase())
+        .collect()
+}
+
 /// Compile + post + reconcile warnings; return the driven [`Dss`] (not yet
 /// solved) and the baseline error count. The Rust engine runs ONCE per case;
 /// [`compare_capture`] then advances + compares it step by step.
@@ -362,29 +374,25 @@ pub(crate) fn compare_capture(
             // allows the port to converge in FEWER iterations — never more. A
             // ledger `iterations` scope overrides both (exact pair, or an explicit
             // rust_le_oracle where a target-rev delta needs pinning).
+            //
+            // Stage F (Part IV.2 drift model): both non-ledgered shapes go
+            // through `harness::lane`, which keeps them exactly as above in the
+            // parity lane and grants the default lane its documented
+            // ±`ITER_SLACK` band. Ledger-scoped pins stay exact in BOTH lanes:
+            // they are hit-tracked (fail-on-stale), so a default-lane flip that
+            // moves one must be re-triaged in the ledger, not silently absorbed.
             let iters_ledgered = ledger.is_some_and(|v| {
                 v.iterations_handled(i, ckt.solution.iteration, cp.iterations, &ctx)
             });
             if !iters_ledgered {
                 if channel.iterations_exact() {
-                    assert_eq!(
-                        ckt.solution.iteration, cp.iterations,
-                        "{ctx}: iteration count differs"
-                    );
+                    harness::lane::compare_iterations(ckt.solution.iteration, cp.iterations, &ctx);
                 } else {
-                    assert!(
-                        ckt.solution.iteration <= cp.iterations,
-                        "{ctx}: Rust used MORE iterations than the r4133 oracle ({} > {})",
+                    harness::lane::compare_iterations_le(
                         ckt.solution.iteration,
-                        cp.iterations
+                        cp.iterations,
+                        &ctx,
                     );
-                    if ckt.solution.iteration < cp.iterations {
-                        eprintln!(
-                            "{ctx}: NOTE Rust converged in {} iterations vs the r4133 \
-                             oracle's {} (allowed: <=; investigate if unexpected)",
-                            ckt.solution.iteration, cp.iterations
-                        );
-                    }
                 }
             }
             let names: Vec<String> = (1..=ckt.num_nodes).map(|j| ckt.node_name(j)).collect();
@@ -482,10 +490,15 @@ pub(crate) fn compare_capture(
         let el_rewrites = ledger
             .map(|v| v.element_rewrites(i, &snaps, &cp.elements, tol, &ctx))
             .unwrap_or_default();
+        // The Stage F lane policy drops the two `S = V·conj(I)` sub-channels on
+        // the `newton*` decks in the DEFAULT lane only (a deliberate divergence,
+        // pinned by its own expected-value test) — every other case and the whole
+        // parity lane get `ElemChannels::ALL`. See `harness::lane`.
+        let channels = lane::elem_channels_for(label);
         for ec in &cp.elements {
             match el_rewrites.get(&ec.name.to_lowercase()) {
-                Some(rw) => compare_element(&snaps, rw, tol, &ctx),
-                None => compare_element(&snaps, ec, tol, &ctx),
+                Some(rw) => compare_element_channels(&snaps, rw, tol, &ctx, channels),
+                None => compare_element_channels(&snaps, ec, tol, &ctx, channels),
             }
         }
 
@@ -510,6 +523,12 @@ pub(crate) fn compare_capture(
             "{ctx}: oracle probe count differs from the manifest spec"
         );
         for p in &cp.probes {
+            // A Stage F deliberate divergence drops its own cell in the DEFAULT
+            // lane only (`harness::lane::LANE_SKIP_PROBE_PROPS`); every other
+            // probe of the same case stays oracle-gated in both lanes.
+            if !lane::probe_is_gated(label, &p.element, &p.prop) {
+                continue;
+            }
             if !ledger.is_some_and(|v| v.probe_handled(dss, p, tol, &ctx)) {
                 compare_probe(dss, p, tol, &ctx);
             }
@@ -526,17 +545,24 @@ pub(crate) fn compare_capture(
             // A ledger eventlog `line_re` scope normalizes the diffing oracle line
             // (e.g. trailing-whitespace artifact) before the compare; unmatched
             // lines pass through unchanged.
-            match ledger {
-                Some(v) => {
-                    let masked: Vec<String> = cp
-                        .eventlog
-                        .iter()
-                        .map(|l| v.mask_line("eventlog", l))
-                        .collect();
-                    compare_eventlog(dss, &masked, channel.eventlog_spec(), &ctx);
-                }
-                None => compare_eventlog(dss, &cp.eventlog, channel.eventlog_spec(), &ctx),
-            }
+            let masked: Vec<String> = match ledger {
+                Some(v) => cp
+                    .eventlog
+                    .iter()
+                    .map(|l| v.mask_line("eventlog", l))
+                    .collect(),
+                None => cp.eventlog.clone(),
+            };
+            // Then the Stage F Relay rows (identity in the parity lane). The
+            // relay/recloser split is read from the Rust circuit, which the
+            // element-name set above has already pinned against the oracle.
+            let relays: BTreeSet<String> = class_member_names(&snaps, "relay");
+            let reclosers: BTreeSet<String> = class_member_names(&snaps, "recloser");
+            let expected = lane::expected_eventlog(label, &masked, |name| {
+                let n = name.to_lowercase();
+                relays.contains(&n) && !reclosers.contains(&n)
+            });
+            compare_eventlog(dss, &expected, channel.eventlog_spec(), &ctx);
         }
         if c.compare_ctrlqueue {
             match ledger {
@@ -574,9 +600,14 @@ pub(crate) fn compare_capture(
             // value compare, rewrite its oracle value to the Rust `?`-surface value
             // (the ledger already asserted the Rust value against the pin/envelope),
             // so the standard compare treats it as equal.
-            let prop_keys = ledger
+            // The Stage F default-lane cell exclusions are neutralized the same
+            // way, from the same list the probe loop above reads — a cell that
+            // is dropped there must not come back through the whole-element
+            // dump. Empty in the parity lane.
+            let mut prop_keys = ledger
                 .map(|v| v.property_handled_keys(dss, &cp.all_properties, tol, &ctx))
                 .unwrap_or_default();
+            prop_keys.extend(lane::skipped_prop_keys(label));
             if prop_keys.is_empty() {
                 compare_all_properties(dss, &cp.all_properties, tol, &ctx);
             } else {

@@ -188,7 +188,7 @@ pub struct IndMach012 {
     /// `MachineData.Dpu` — **no property maps to it**, so it stays at its record
     /// default (0.0). Pascal `InitStateVars` then sets `D := Dpu·kVA·1000/w0 = 0`,
     /// so the machine is effectively undamped in dynamics regardless of `D=`. A
-    /// faithful reproduction of the upstream wiring (not a `TODO(compat)` — the
+    /// faithful reproduction of the upstream wiring (no compat marker — the
     /// numbers depend on it).
     pub dpu: f64,
     pub w0: f64,

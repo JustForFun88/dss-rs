@@ -182,10 +182,7 @@ fn run_scenario(sc: &Scenario) {
                 ckt.solution.dbl_hour,
                 cp.dbl_hour
             );
-            assert_eq!(
-                ckt.solution.iteration, cp.iterations,
-                "{ctx}: iteration count differs"
-            );
+            harness::lane::compare_iterations(ckt.solution.iteration, cp.iterations, &ctx);
             // Node order (captured once in the golden; constant across steps).
             let names: Vec<String> = (1..=ckt.num_nodes).map(|j| ckt.node_name(j)).collect();
             assert_eq!(names, sc.node_order, "{ctx}: node order differs");

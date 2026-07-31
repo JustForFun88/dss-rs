@@ -181,11 +181,18 @@ impl DssObject for Isource {
                 };
                 self.cd.set_nconds(n); // Force reallocation of terminal info
             }
+            // Stage F `ISOURCE_BUS2_NEVER_LATCHES`: `TIsourceObj.
+            // PropertySideEffects` (`Isource.pas:221`) has no `Bus2` case at
+            // all, unlike `TVsourceObj`'s (`Vsource.pas:498`), so the flag
+            // never latches and the `Bus1` branch below always re-derives the
+            // grounded-Y default. The default lane latches it like the sibling
+            // class; the parity lane keeps the quirk.
+            BUS2 if !crate::compat::ISOURCE_BUS2_NEVER_LATCHES => {
+                self.bus2_defined = true;
+            }
             BUS1 => {
                 // Default Bus2 to the zero node of Bus1 (grounded-Y), unless
-                // Bus2Defined — which Isource, unlike VSource, never sets true
-                // (see the TODO(compat) note on `Isource::bus2_defined` in
-                // `mod.rs`): this branch always fires when Bus1 is (re)set.
+                // Bus2Defined — see the `BUS2` arm above.
                 if !self.bus2_defined {
                     let s = self.cd.get_bus(1).to_string();
                     let mut s2 = match s.find('.') {

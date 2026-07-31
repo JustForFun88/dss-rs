@@ -455,11 +455,20 @@ fn direct_shortcut_excluded_in_gfm_mode() {
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
 use crate::elements::traits::CktElement;
 
-/// 3-phase Storage: kWrated ÷ phases, PF set. The Pascal body has NO leading
-/// `BeginEdit` (each `Set*` auto-brackets) and a dangling trailing `EndEdit`,
-/// so the plan starts with a bare `Set*` and ends with a lone `EndEdit`.
+/// The lane's leading action: `BeginEdit` unless the lane reproduces the
+/// unbracketed Pascal body (`STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED`).
+fn posseq_head() -> Vec<PosSeqAction> {
+    if crate::compat::ORACLE_PARITY {
+        Vec::new()
+    } else {
+        vec![PosSeqAction::BeginEdit]
+    }
+}
+
+/// 3-phase Storage: kWrated ÷ phases, PF set, one trailing `EndEdit`. Whether
+/// the writes are bracketed is the lane row; the writes themselves are not.
 #[test]
-fn makeposseq_storage_three_phase_no_begin_edit() {
+fn makeposseq_storage_three_phase() {
     let mut st = Storage::new("s");
     st.base.connection = Connection::Wye;
     st.cd.nphases = 3;
@@ -469,24 +478,21 @@ fn makeposseq_storage_three_phase_no_begin_edit() {
 
     let plan = st.make_pos_sequence(&PosSeqCtx::default());
     assert!(plan.run_base);
-    // No BeginEdit anywhere; exactly one trailing EndEdit.
-    assert!(!plan.actions.contains(&PosSeqAction::BeginEdit));
     assert_eq!(plan.actions.last(), Some(&PosSeqAction::EndEdit));
     let v = 12.47 / 3.0_f64.sqrt();
-    assert_eq!(
-        plan.actions,
-        vec![
-            PosSeqAction::SetI32(prop::PHASES, 1),
-            PosSeqAction::SetI32(prop::CONN, 0),
-            PosSeqAction::SetF64(prop::KV, v),
-            PosSeqAction::SetF64(prop::KW_RATED, 100.0 / 3.0),
-            PosSeqAction::SetF64(prop::PF, 1.0),
-            PosSeqAction::EndEdit,
-        ]
-    );
+    let mut expect = posseq_head();
+    expect.extend([
+        PosSeqAction::SetI32(prop::PHASES, 1),
+        PosSeqAction::SetI32(prop::CONN, 0),
+        PosSeqAction::SetF64(prop::KV, v),
+        PosSeqAction::SetF64(prop::KW_RATED, 100.0 / 3.0),
+        PosSeqAction::SetF64(prop::PF, 1.0),
+        PosSeqAction::EndEdit,
+    ]);
+    assert_eq!(plan.actions, expect);
 }
 
-/// 1-phase Storage: base kV kept, no kW/PF split, still the dangling EndEdit.
+/// 1-phase Storage: base kV kept, no kW/PF split.
 #[test]
 fn makeposseq_storage_single_phase() {
     let mut st = Storage::new("s");
@@ -496,15 +502,14 @@ fn makeposseq_storage_single_phase() {
     st.kw_rating = 100.0;
 
     let plan = st.make_pos_sequence(&PosSeqCtx::default());
-    assert_eq!(
-        plan.actions,
-        vec![
-            PosSeqAction::SetI32(prop::PHASES, 1),
-            PosSeqAction::SetI32(prop::CONN, 0),
-            PosSeqAction::SetF64(prop::KV, 7.2),
-            PosSeqAction::EndEdit,
-        ]
-    );
+    let mut expect = posseq_head();
+    expect.extend([
+        PosSeqAction::SetI32(prop::PHASES, 1),
+        PosSeqAction::SetI32(prop::CONN, 0),
+        PosSeqAction::SetF64(prop::KV, 7.2),
+        PosSeqAction::EndEdit,
+    ]);
+    assert_eq!(plan.actions, expect);
 }
 
 // --- WASM_USERMODELS WM.4: DynaDLL/DynaData/UserModel/UserData property surface ---
@@ -674,4 +679,208 @@ fn set_variable_state_stores_out_of_set_values_verbatim() {
     assert_eq!(st.f_state.ordinal(), 7);
     st.set_variable(2, -1.0, &ctx());
     assert_eq!(st.f_state, StorageState::Charging);
+}
+
+// --- `MakePosSequence` bracketing (compat row
+// `STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED`) -------------------------------
+
+/// A 3-phase Storage whose state machine is *live* during the conversion:
+/// `DispMode=Load` runs `CheckStateTriggerLevel` on every recalc, and the
+/// trigger pair straddles the dispatch level the context below supplies, so a
+/// recalc at a half-converted property set has every opportunity to latch a
+/// different state than the final one.
+fn storage_3ph_dispatched() -> Storage {
+    edit_storage(&[
+        ("phases", "3"),
+        ("kv", "12.47"),
+        ("kWrated", "100"),
+        ("kWhrated", "200"),
+        ("%stored", "50"),
+        ("DispMode", "Load"),
+        ("DischargeTrigger", "0.5"),
+        ("ChargeTrigger", "0.2"),
+    ])
+}
+
+/// The dispatch level `CheckStateTriggerLevel` sees in `DispMode=Load`
+/// (`SetNominalDEROutput` → `sys.generator_dispatch_reference`): above the
+/// discharge trigger, so the element resolves to DISCHARGING.
+fn dispatch_ctx() -> SysCtx {
+    let mut sys = ctx();
+    sys.generator_dispatch_reference = 0.8;
+    sys
+}
+
+/// Apply a `MakePosSequence` action list exactly like the executive's applier
+/// (`exec/make_pos_seq.rs`): `BeginEdit` suppresses the per-write `end_edit`,
+/// `EndEdit` always runs one. Returns how many `end_edit`
+/// (= `RecalcElementData`) calls the list costs — the quantity this row moves.
+fn apply_pos_seq(st: &mut Storage, actions: &[PosSeqAction], sys: &SysCtx) -> usize {
+    let enums = EnumRegistry::new();
+    let cls = super::class_props(&enums);
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = crate::diag::ErrorLog::new();
+    let mut editing = false;
+    let mut recalcs = 0usize;
+    for action in actions {
+        let mut eng = PropEngine {
+            parser: &mut parser,
+            vars: &vars,
+            enums: &enums,
+            errors: &mut errors,
+            foreign: None,
+        };
+        match action {
+            PosSeqAction::BeginEdit => editing = true,
+            PosSeqAction::EndEdit => {
+                st.end_edit(sys);
+                recalcs += 1;
+                editing = false;
+            }
+            PosSeqAction::SetI32(idx, v) => {
+                cls.set_prop_i32(st, *idx, *v, &mut eng);
+                if !editing {
+                    st.end_edit(sys);
+                    recalcs += 1;
+                }
+            }
+            PosSeqAction::SetF64(idx, v) => {
+                cls.set_prop_f64(st, *idx, *v, &mut eng);
+                if !editing {
+                    st.end_edit(sys);
+                    recalcs += 1;
+                }
+            }
+            other => panic!("Storage MakePosSequence emits no {other:?}"),
+        }
+    }
+    assert!(errors.is_empty(), "{errors:?}");
+    recalcs
+}
+
+/// Expected-value pin for
+/// [`crate::compat::STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED`]: the parity
+/// lane reproduces `Storage.pas:3344-3352` — five writes, no `BeginEdit`, one
+/// dangling `EndEdit`; the default lane opens the edit first, like
+/// `PVsystem.pas:2649` and the nine other `MakePosSequence` bodies that close
+/// with `EndEdit`. Nothing else about the list moves: same five writes, same
+/// values, same order, in both lanes.
+#[test]
+fn makeposseq_plan_brackets_its_writes_only_in_the_default_lane() {
+    let mut st = storage_3ph_dispatched();
+    let plan = st.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.run_base);
+
+    let v = 12.47 / 3.0_f64.sqrt();
+    let mut expect = posseq_head();
+    expect.extend([
+        PosSeqAction::SetI32(prop::PHASES, 1),
+        PosSeqAction::SetI32(prop::CONN, 0),
+        PosSeqAction::SetF64(prop::KV, v),
+        PosSeqAction::SetF64(prop::KW_RATED, 100.0 / 3.0),
+        PosSeqAction::SetF64(prop::PF, st.base.pf_nominal),
+        PosSeqAction::EndEdit,
+    ]);
+    assert_eq!(
+        plan.actions,
+        expect,
+        "the write list is bracketed iff the lane fixes the slip (parity = {})",
+        crate::compat::ORACLE_PARITY
+    );
+}
+
+/// The measurement behind the row: bracketing changes the number of recalcs
+/// (six → one) and **nothing else**. Both lists are driven over two identical
+/// live-dispatch elements through the real property engine, and every field
+/// `RecalcElementData` / `SetNominalDEROutput` writes is compared bit-for-bit
+/// afterwards — including the one piece of carried state, `FState`.
+///
+/// This is what makes the flip safe to land in the default lane without
+/// excluding anything from oracle comparison: `makeposseq_pc.dss` (the gated
+/// deck that runs `makeposseq` over a 3-phase Storage) cannot move, because the
+/// converted element is identical either way.
+#[test]
+fn makeposseq_begin_edit_moves_only_the_recalc_count() {
+    let sys = dispatch_ctx();
+    let mut probe = storage_3ph_dispatched();
+    probe.recalc(&sys);
+    let writes: Vec<PosSeqAction> = probe
+        .make_pos_sequence(&PosSeqCtx::default())
+        .actions
+        .into_iter()
+        .filter(|a| !matches!(a, PosSeqAction::BeginEdit))
+        .collect();
+    let mut bracketed = vec![PosSeqAction::BeginEdit];
+    bracketed.extend(writes.iter().cloned());
+
+    // Both lanes' lists, over two elements that start out identical.
+    let mut lhs = storage_3ph_dispatched();
+    let mut rhs = storage_3ph_dispatched();
+    lhs.recalc(&sys);
+    rhs.recalc(&sys);
+    assert_eq!(
+        lhs.f_state,
+        StorageState::Discharging,
+        "fixture must have a live state machine before the conversion"
+    );
+
+    let unbracketed_recalcs = apply_pos_seq(&mut lhs, &writes, &sys);
+    let bracketed_recalcs = apply_pos_seq(&mut rhs, &bracketed, &sys);
+    assert_eq!(
+        (unbracketed_recalcs, bracketed_recalcs),
+        (6, 1),
+        "the slip costs five extra RecalcElementData passes"
+    );
+
+    // Everything the conversion is *for* is identical.
+    let discrete = |s: &Storage| {
+        (
+            s.cd.nphases,
+            s.cd.yorder,
+            s.base.connection,
+            s.f_state,
+            s.state_desired,
+            s.dispatch_mode,
+        )
+    };
+    assert_eq!(discrete(&lhs), discrete(&rhs), "discrete state moved");
+
+    let numeric = |s: &Storage| {
+        vec![
+            ("kVStorageBase", s.kv_storage_base),
+            ("kWrating", s.kw_rating),
+            ("kVArating", s.f_kva_rating),
+            ("PFNominal", s.base.pf_nominal),
+            ("VBase", s.base.v_base),
+            ("VBaseMin", s.base.v_base_min),
+            ("VBaseMax", s.base.v_base_max),
+            ("kW_out", s.base.kw_out),
+            ("kvar_out", s.base.kvar_out),
+            ("PnomPerPhase", s.base.p_nominal_per_phase),
+            ("QnomPerPhase", s.base.q_nominal_per_phase),
+            ("Yeq.re", s.base.yeq.re),
+            ("Yeq.im", s.base.yeq.im),
+            ("YeqMin.re", s.base.yeq_min.re),
+            ("YeqMax.re", s.base.yeq_max.re),
+            ("YeqDischarge.re", s.yeq_discharge.re),
+            ("kWhStored", s.kwh_stored),
+            ("kWhReserve", s.kwh_reserve),
+            ("pctkWout", s.pct_kw_out),
+            ("pctkWin", s.pct_kw_in),
+            ("Pidling", s.p_idling),
+            ("kWOutIdling", s.kw_out_idling),
+            ("Rthev", s.r_thev),
+            ("Xthev", s.x_thev),
+            ("CutInkW", s.base.cut_in_kw),
+            ("CutOutkW", s.base.cut_out_kw),
+        ]
+    };
+    for ((name, a), (_, b)) in numeric(&lhs).into_iter().zip(numeric(&rhs)) {
+        assert_eq!(
+            a.to_bits(),
+            b.to_bits(),
+            "{name} moved: unbracketed {a} vs bracketed {b}"
+        );
+    }
 }

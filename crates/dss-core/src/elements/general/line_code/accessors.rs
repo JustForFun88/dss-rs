@@ -208,9 +208,18 @@ impl DssObject for LineCodeObj {
         }
 
         match idx {
-            // TODO(compat): Pascal omits `C0` from this list (the source has a
-            // "-- Missing?" comment), so setting only C0 neither forces the sym
-            // model nor clears the matrix property tracking. Reproduced as-is.
+            // Stage F `LINECODE_SYM_CLEAR_OMITS_C0`: Pascal omits `C0` from
+            // this list — the source itself flags the slip with a "-- Missing?"
+            // comment — so upstream `c0=` alone neither forces the sym model
+            // nor clears the matrix property tracking. The parity lane
+            // reproduces that; the default lane treats `C0` like its seven
+            // siblings (the guarded arm below).
+            C0 if !crate::compat::LINECODE_SYM_CLEAR_OMITS_C0 => {
+                self.sym_components_model = true;
+                self.data.clear_seq(RMATRIX);
+                self.data.clear_seq(XMATRIX);
+                self.data.clear_seq(CMATRIX);
+            }
             NPHASES | R1 | X1 | R0 | X0 | C1 | B1 | B0 => {
                 self.sym_components_model = true;
                 self.data.clear_seq(RMATRIX);

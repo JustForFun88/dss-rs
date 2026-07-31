@@ -83,9 +83,13 @@ impl LoadShapeObj {
 
         // --- Fixed (even) interval ---
         if self.interval > 0.0 {
-            // TODO(compat): FPC `Round` is banker's rounding (ties-to-even);
-            // these indices are always in i64 range, so `round_ties_even`
-            // reproduces it. Wiped with the other compat shims.
+            // Pascal `Round` = ties-to-even (see RegControl `get_tap_num`).
+            // For every index this can produce from a well-formed shape the two
+            // agree bit-for-bit; a degenerate `interval` small enough to push
+            // `hr/interval` out of Int64 range is upstream UB either way (FPC's
+            // indefinite sentinel then indexes the array out of bounds), so
+            // there is nothing defined to reproduce — the port saturates and
+            // the bounds check below is real.
             let mut i = if self.interpolation == LoadShapeInterp::Edge {
                 (hr / self.interval).floor() as i64
             } else {
@@ -219,7 +223,7 @@ impl LoadShapeObj {
 
         // --- Fixed (even) interval ---
         if self.interval > 0.0 {
-            // TODO(compat): FPC `Round` = ties-to-even (see the f64 twin).
+            // Pascal `Round` = ties-to-even (see the f64 twin above).
             let mut i = if self.interpolation == LoadShapeInterp::Edge {
                 (hr / self.interval).floor() as i64
             } else {
@@ -893,9 +897,32 @@ impl LoadShapeObj {
     /// `/` (47), and digits `0`–`9` (48–57) — dropping sign, `+`, `e`/`E`
     /// exponent and whitespace. So `-0.5` → `0.5`, `1.5e-3` → `1.53`, and `/`
     /// is kept into the token (`LoadShape.pas:1374`). Empty content defaults to
-    /// `1.0` (`:1389-1390`). The non-MM CSV reader uses the full aux parser
-    /// (sign/exponent honoured) — a deliberate MMF-path divergence, wiped with
-    /// the other compat shims.
+    /// `1.0` (`:1389-1390`).
+    ///
+    /// The clean fix is the column verbatim, parsed by the ordinary float
+    /// parser, and the witness is not an opinion: `TLoadShapeObj` owns a
+    /// *second* reader for the same format — `ReadCSVFile`'s non-mapped branch
+    /// (`:1044`, [`Self::read_csv_file`] below) — which hands each row to the
+    /// aux parser and therefore honours sign and exponent.
+    /// `MemoryMapping=Yes` selects how a shape is stored, not what its file
+    /// means, so the two disagreeing is a slip in the mapped one;
+    /// `tests::mmf_text_reader_disagrees_with_its_non_mapped_twin` pins that
+    /// disagreement at its exact values.
+    ///
+    /// Stage F status (F.3v, **measured**): the flip is *not* gate-invisible.
+    /// `tests/corpus/modes/inputformat/shape_mmf/shape_mmf.dss` was written to
+    /// observe this quirk — its `mmpq8.csv` P column is deliberately in exponent
+    /// notation (bytes `45` and `101` are in the file) so that `ls_pq` reads
+    /// `{1.51, 2.01, …}` mapped versus `{0.15, 0.20, …}` unmapped. Honouring the
+    /// exponent therefore moves that deck's **node voltages** by 1.641e1 V
+    /// against an allowed 8.179e-6, i.e. a *whole-case* default-lane exclusion
+    /// (the same shape as the GICTransformer `%R2`, Capacitor `Cuf` and
+    /// Generator Model=6 rows, and not the Newton row's field-scoped one), which
+    /// would also cost that deck's sng/dbl/`mult=(sngfile=)` MMF-reader
+    /// coverage. Owner decision; the row keeps its marker and stays reproduced
+    /// in both lanes. The vendored MMF text corpus cannot see it either way —
+    /// `tests::mmf_accept_set_quirk_is_gated_by_exactly_one_deck` measures both
+    /// halves of that.
     fn mmf_text_value(&mut self, line: &str, column: i32) -> f64 {
         let mut content = String::new();
         let mut j = 0i32;

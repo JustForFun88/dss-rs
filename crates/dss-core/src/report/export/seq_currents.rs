@@ -65,40 +65,55 @@ pub(crate) fn export_seq_currents(
                 (0.0, 0.0)
             };
 
-            // TODO(compat): a non-positive rating is printed **raw** in the
-            // `%Normal`/`%Emergency` columns — Pascal seeds `iNormal := NormAmps`
-            // and only *overwrites* it with the percentage when the rating is
-            // `> 0` (`ExportResults.pas:409-414`), so e.g. `normamps=-1` prints
-            // `-1` as a "percent". Reproduced verbatim (unpinnable on IEEE13 —
-            // all ratings positive); the clean fix is printing 0 for an
-            // undefined rating.
+            // Stage F `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING`: Pascal seeds
+            // `iNormal := NormAmps` and only *overwrites* it with the
+            // percentage when the rating is `> 0` (`ExportResults.pas:409-414`),
+            // so upstream leaks a non-positive rating into a column whose header
+            // says "percent" (`normamps=-1` prints `-1`). The parity lane
+            // reproduces that; the default lane prints 0 for an undefined
+            // rating.
+            let undefined_rating = |rating: f64| {
+                if crate::compat::SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING {
+                    rating
+                } else {
+                    0.0
+                }
+            };
             let (i_normal, i_emerg) = if do_ratings && j == 1 {
                 let n = if norm_amps > 0.0 {
                     i1 / norm_amps * 100.0
                 } else {
-                    norm_amps
+                    undefined_rating(norm_amps)
                 };
                 let e = if emerg_amps > 0.0 {
                     i1 / emerg_amps * 100.0
                 } else {
-                    emerg_amps
+                    undefined_rating(emerg_amps)
                 };
                 (n, e)
             } else {
                 (0.0, 0.0)
             };
 
-            // TODO(compat): Iresidual sums the *terminal-1* conductors
-            // (`cBuffer^[i]`, i = 1..Ncond) for **every** terminal row — Pascal
-            // `CalcAndWriteSeqCurrents` indexes `cBuffer^[i]`, not
-            // `cBuffer^[(j-1)*Ncond+i]`. Reproduced verbatim (goldens pin it); the
-            // clean fix is the per-terminal slice `cd.iterminal[(j-1)*ncond..]`.
-            // Oracle-proven (API vs export, IEEE13 Line.671680: true t2 residual
-            // 9.8e-12 A, printed 2.83e-5 = t1's); upstream bug report:
-            // `tmp/seqcurrents_iresidual_bug_report.md` (for dss-extensions/dss_capi).
+            // The residual (neutral/ground) current of this row's terminal.
+            //
+            // Upstream sums the *terminal-1* conductors (`cBuffer^[i]`,
+            // i = 1..Ncond) for **every** terminal row — `CalcAndWriteSeqCurrents`
+            // indexes `cBuffer^[i]`, not `cBuffer^[(j-1)*Ncond+i]` — so every row
+            // repeats terminal 1's residual (oracle-proven on IEEE13
+            // `Line.671680`: true terminal-2 residual 9.8e-12 A, printed 2.83e-5
+            // = terminal 1's; upstream bug report
+            // `tmp/seqcurrents_iresidual_bug_report.md`). Stage F's
+            // `IRESIDUAL_FROM_TERMINAL_1` row: parity keeps the bug (goldens pin
+            // it), the default lane sums the row's own terminal.
+            let base = if crate::compat::IRESIDUAL_FROM_TERMINAL_1 {
+                0
+            } else {
+                (j - 1) * ncond
+            };
             let mut iresidual = Complex64::ZERO;
             for i in 0..ncond {
-                iresidual += cd.iterminal[i];
+                iresidual += cd.iterminal[base + i];
             }
 
             // `'"%s", %3d, %10.6g, %8.4g, %8.4g, %10.6g, %8.4g, %10.6g, %8.4g, %10.6g, %8.4g'`

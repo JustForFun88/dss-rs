@@ -4,8 +4,14 @@
 /// FPC `Val` for doubles. Rust's `f64::from_str` matches it on every probed
 /// case except the verbose `infinity` spelling, which is rejected here.
 ///
-/// TODO(compat): the `infinity` rejection only mirrors FPC's narrower
-/// grammar; collapse to plain `f64::from_str` once the 1:1 port is complete.
+/// The rejection stays in **both** lanes: which literals the deck language
+/// accepts is command-input semantics, not a numeric kernel — the product
+/// contract is that a deck parses the same everywhere, and any widening or
+/// tightening of the accepted grammar belongs to the strict-parsing layer
+/// (`DE_PASCALIZE_PLAN.md` IV.1b, explicitly sequenced *after* Stage F), where
+/// it can be opt-in and diagnosed. Note `f64::from_str` would map `infinity`
+/// to `inf`, so "collapsing" it here would silently turn a conversion error
+/// into a non-finite property value.
 pub fn val_f64(s: &str) -> Option<f64> {
     let t = s.strip_prefix(['+', '-']).unwrap_or(s);
     if t.eq_ignore_ascii_case("infinity") {
@@ -42,20 +48,9 @@ pub fn val_i32(s: &str) -> Option<i32> {
     i32::try_from(value).ok()
 }
 
-/// FPC `Round`: round-to-nearest-even to Int64 (x87/SSE default mode; out of
-/// range and non-finite give the "integer indefinite" `i64::MIN`), then
-/// truncated to i32 like the Pascal `Integer := Round(...)` assignment.
-///
-/// TODO(compat): the integer-indefinite path (`inf`/`nan`/overflow → wrapped
-/// `i64::MIN`, e.g. "inf" → 0) reproduces an FPC/x86 implementation artifact
-/// verified via probe_val.py; make it a proper error once the 1:1 port is
-/// complete.
+/// `Round(x)` assigned to a Pascal `Integer`, through the Stage F lane seam:
+/// the parity kernel reproduces FPC's integer-indefinite artifact, the default
+/// kernel saturates — see [`crate::compat::round_i32`].
 pub(super) fn pascal_round_to_i32(x: f64) -> i32 {
-    let r = x.round_ties_even();
-    let wide = if r >= -(2f64.powi(63)) && r < 2f64.powi(63) {
-        r as i64 // r is finite here: NaN comparisons are false
-    } else {
-        i64::MIN
-    };
-    wide as i32
+    crate::compat::round_i32(x)
 }

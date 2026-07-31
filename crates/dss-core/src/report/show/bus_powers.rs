@@ -18,10 +18,11 @@ use crate::elements::traits::{CktElement, SysCtx};
 use crate::exec::registry::DssClass;
 use crate::report::export::for_each_enabled_elem;
 use crate::report::format;
+use crate::report::table::{Cell, Report, Row};
 use crate::support::mathutil::power_factor;
 
-use super::currents::{get_i0i1i2, write_seq_currents, write_terminal_currents};
-use super::powers::write_terminal_power_seq;
+use super::currents::{get_i0i1i2, seq_currents_row, write_terminal_currents};
+use super::powers::terminal_power_seq_row;
 use super::voltages::{bus_voltage_block, seq_voltage_row};
 
 /// Pascal `CheckBusReference`: the 1-based terminal of `elem` connected to bus index
@@ -45,7 +46,7 @@ pub(crate) fn show_bus_powers(
     code: i32,
 ) -> String {
     let mbnl = super::max_bus_name_length(ckt);
-    let mdnl = super::max_device_name_length(classes, ckt);
+    let mdnl = crate::compat::max_device_name_length(super::device_name_width(classes, ckt));
     if code == 0 {
         show_bus_powers_seq(classes, ckt, sys, node_v, bus_idx, opt, mbnl, mdnl)
     } else {
@@ -66,55 +67,57 @@ fn show_bus_powers_seq(
     mbnl: usize,
     mdnl: usize,
 ) -> String {
-    let mut s = String::new();
+    let mut rep = Report::new();
 
     // Bus voltage (seq form, always LN).
-    s.push('\n');
-    s.push_str("Bus      V1 (kV)    p.u.    V2 (kV)      %V2/V1    V0 (kV)  %V0/V1\n");
-    s.push('\n');
-    s.push_str(&seq_voltage_row(ckt, bus_idx, false, mbnl));
+    rep.blank();
+    rep.line("Bus      V1 (kV)    p.u.    V2 (kV)      %V2/V1    V0 (kV)  %V0/V1");
+    rep.blank();
+    rep.row(seq_voltage_row(ckt, bus_idx, false, mbnl));
 
     // Sequence currents (all terminals of every matched element).
-    s.push('\n');
-    s.push_str("SYMMETRICAL COMPONENT CURRENTS BY CIRCUIT ELEMENT (first 3 phases)\n");
-    s.push('\n');
-    s.push_str(
-        "Element                Term      I1         I2       %I2/I1       I0      %I0/I1   %Normal %Emergency\n",
+    rep.blank();
+    rep.line("SYMMETRICAL COMPONENT CURRENTS BY CIRCUIT ELEMENT (first 3 phases)");
+    rep.blank();
+    rep.line(
+        "Element                Term      I1         I2       %I2/I1       I0      %I0/I1   %Normal %Emergency",
     );
-    s.push('\n');
+    rep.blank();
 
     for refs in [&ckt.sources, &ckt.pd_elements, &ckt.pc_elements] {
         for_each_enabled_elem(classes, refs, |name, elem| {
-            write_seq_current_rows(&mut s, name, elem, bus_idx, sys, node_v, mdnl);
+            write_seq_current_rows(&mut rep, name, elem, bus_idx, sys, node_v, mdnl);
         });
     }
 
     // Sequence powers (the matched terminal only).
-    s.push('\n');
-    s.push_str("SYMMETRICAL COMPONENT POWERS BY CIRCUIT ELEMENT (first 3 phases)\n");
-    s.push('\n');
+    rep.blank();
+    rep.line("SYMMETRICAL COMPONENT POWERS BY CIRCUIT ELEMENT (first 3 phases)");
+    rep.blank();
     if opt == 1 {
-        s.push_str("Element                      Term    P1(MW)   Q1(Mvar)       P2         Q2      P0      Q0   \n");
+        rep.line("Element                      Term    P1(MW)   Q1(Mvar)       P2         Q2      P0      Q0   ");
     } else {
-        s.push_str("Element                      Term    P1(kW)   Q1(kvar)         P2         Q2      P0      Q0  \n");
+        rep.line("Element                      Term    P1(kW)   Q1(kvar)         P2         Q2      P0      Q0  ");
     }
-    s.push('\n');
+    rep.blank();
 
     for refs in [&ckt.sources, &ckt.pd_elements, &ckt.pc_elements] {
         for_each_enabled_elem(classes, refs, |name, elem| {
             if let Some(j) = check_bus_reference(elem, bus_idx) {
-                write_terminal_power_seq(&mut s, name, elem, sys, node_v, j, opt, mdnl);
+                rep.row(terminal_power_seq_row(
+                    name, elem, sys, node_v, j, opt, mdnl,
+                ));
             }
         });
     }
-    s
+    rep.finish()
 }
 
 /// One matched element's seq-current rows (all terminals) for [`show_bus_powers_seq`]
 /// (Pascal's `for j:=1 to NTerm do WriteSeqCurrents(…, 0, 0, j, …)` inner body).
 #[allow(clippy::too_many_arguments)]
 fn write_seq_current_rows(
-    s: &mut String,
+    rep: &mut Report,
     name: &str,
     elem: &mut dyn CktElement,
     bus_idx: usize,
@@ -132,12 +135,23 @@ fn write_seq_current_rows(
         .next()
         .is_some_and(|c| c.eq_ignore_ascii_case("capacitor"));
     // `Paddots(EncloseQuotes(FullName), MaxDeviceNameLength+2)` (native case).
-    let padded = format::pad_dots(&format::enclose_quotes(name), mdnl + 2);
+    let quoted = format::enclose_quotes(name);
     let cd = elem.cd();
     for jj in 1..=nterm {
         let (i0, i1, i2, cmax) = get_i0i1i2(cd.term_i(jj - 1), nphases);
         // Pascal passes NormAmps = EmergAmps = 0 here (no overload columns).
-        write_seq_currents(s, &padded, i0, i1, i2, cmax, 0.0, 0.0, jj, is_cap);
+        rep.row(seq_currents_row(
+            &quoted,
+            mdnl + 2,
+            i0,
+            i1,
+            i2,
+            cmax,
+            0.0,
+            0.0,
+            jj,
+            is_cap,
+        ));
     }
 }
 
@@ -154,97 +168,99 @@ fn show_bus_powers_elem(
     mbnl: usize,
     mdnl: usize,
 ) -> String {
-    let mut s = String::new();
+    let mut rep = Report::new();
 
     // Bus node voltages.
-    s.push('\n');
-    s.push_str("  Bus   (node ref)  Node       V (kV)    Angle    p.u.   Base kV\n");
-    s.push('\n');
-    s.push_str(&bus_voltage_block(ckt, bus_idx, false, mbnl));
+    rep.blank();
+    rep.line("  Bus   (node ref)  Node       V (kV)    Angle    p.u.   Base kV");
+    rep.blank();
+    for row in bus_voltage_block(ckt, bus_idx, false, mbnl) {
+        rep.row(row);
+    }
 
     // Element currents into the bus.
-    s.push('\n');
-    s.push_str("CIRCUIT ELEMENT CURRENTS\n");
-    s.push('\n');
-    s.push_str("(Currents into element from indicated bus)\n");
-    s.push('\n');
-    s.push_str("Power Delivery Elements\n");
-    s.push('\n');
-    s.push_str("  Bus         Phase    Magnitude, A     Angle      (Real)   +j  (Imag)\n");
-    s.push('\n');
+    rep.blank();
+    rep.line("CIRCUIT ELEMENT CURRENTS");
+    rep.blank();
+    rep.line("(Currents into element from indicated bus)");
+    rep.blank();
+    rep.line("Power Delivery Elements");
+    rep.blank();
+    rep.line("  Bus         Phase    Magnitude, A     Angle      (Real)   +j  (Imag)");
+    rep.blank();
 
     // Sources (no residual) → PDElements (residual), each followed by a blank line.
     for_each_enabled_elem(classes, &ckt.sources, |n, e| {
-        matched_terminal_currents(&mut s, ckt, n, e, bus_idx, sys, node_v, mbnl, false);
+        matched_terminal_currents(&mut rep, ckt, n, e, bus_idx, sys, node_v, mbnl, false);
     });
     for_each_enabled_elem(classes, &ckt.pd_elements, |n, e| {
-        matched_terminal_currents(&mut s, ckt, n, e, bus_idx, sys, node_v, mbnl, true);
+        matched_terminal_currents(&mut rep, ckt, n, e, bus_idx, sys, node_v, mbnl, true);
     });
 
-    s.push_str("= = = = = = = = = = = = = = = = = = =  = = = = = = = = = = =  = =\n");
-    s.push('\n');
-    s.push_str("Power Conversion Elements\n");
-    s.push('\n');
-    s.push_str("  Bus         Phase    Magnitude, A     Angle      (Real)   +j  (Imag)\n");
-    s.push('\n');
+    rep.line("= = = = = = = = = = = = = = = = = = =  = = = = = = = = = = =  = =");
+    rep.blank();
+    rep.line("Power Conversion Elements");
+    rep.blank();
+    rep.line("  Bus         Phase    Magnitude, A     Angle      (Real)   +j  (Imag)");
+    rep.blank();
     for_each_enabled_elem(classes, &ckt.pc_elements, |n, e| {
-        matched_terminal_currents(&mut s, ckt, n, e, bus_idx, sys, node_v, mbnl, false);
+        matched_terminal_currents(&mut rep, ckt, n, e, bus_idx, sys, node_v, mbnl, false);
     });
     for_each_enabled_elem(classes, &ckt.faults, |n, e| {
-        matched_terminal_currents(&mut s, ckt, n, e, bus_idx, sys, node_v, mbnl, false);
+        matched_terminal_currents(&mut rep, ckt, n, e, bus_idx, sys, node_v, mbnl, false);
     });
 
     // Branch power flow.
-    s.push('\n');
-    s.push_str("CIRCUIT ELEMENT POWER FLOW\n");
-    s.push('\n');
-    s.push_str("(Power Flow into element from indicated Bus)\n");
-    s.push('\n');
+    rep.blank();
+    rep.line("CIRCUIT ELEMENT POWER FLOW");
+    rep.blank();
+    rep.line("(Power Flow into element from indicated Bus)");
+    rep.blank();
     if opt == 1 {
-        s.push_str("  Bus       Phase     MW     +j   Mvar           MVA           PF\n");
+        rep.line("  Bus       Phase     MW     +j   Mvar           MVA           PF");
     } else {
-        s.push_str("  Bus       Phase     kW     +j   kvar           kVA           PF\n");
+        rep.line("  Bus       Phase     kW     +j   kvar           kVA           PF");
     }
-    s.push('\n');
+    rep.blank();
 
     // Sources: WriteTerminalPower at the matched terminal, then a blank line.
     for_each_enabled_elem(classes, &ckt.sources, |name, elem| {
         if let Some(j) = check_bus_reference(elem, bus_idx) {
-            write_terminal_power(&mut s, ckt, name, elem, j, opt, sys, node_v, mdnl);
-            s.push('\n');
+            write_terminal_power(&mut rep, ckt, name, elem, j, opt, sys, node_v, mdnl);
+            rep.blank();
         }
     });
     // PDElements: the matched terminal, then every OTHER terminal after a `------------`.
     for_each_enabled_elem(classes, &ckt.pd_elements, |name, elem| {
         if let Some(jterm) = check_bus_reference(elem, bus_idx) {
             let nterm = elem.cd().nterms;
-            write_terminal_power(&mut s, ckt, name, elem, jterm, opt, sys, node_v, mdnl);
+            write_terminal_power(&mut rep, ckt, name, elem, jterm, opt, sys, node_v, mdnl);
             for j in 1..=nterm {
                 if j != jterm {
-                    s.push_str("------------\n");
-                    write_terminal_power(&mut s, ckt, name, elem, j, opt, sys, node_v, mdnl);
+                    rep.row(Row::new().cell(Cell::plain("------------")));
+                    write_terminal_power(&mut rep, ckt, name, elem, j, opt, sys, node_v, mdnl);
                 }
             }
         }
     });
 
-    s.push_str("= = = = = = = = = = = = = = = = = = =  = = = = = = = = = = =  = =\n");
-    s.push('\n');
-    s.push_str("Power Conversion Elements\n");
-    s.push('\n');
+    rep.line("= = = = = = = = = = = = = = = = = = =  = = = = = = = = = = =  = =");
+    rep.blank();
+    rep.line("Power Conversion Elements");
+    rep.blank();
     if opt == 1 {
-        s.push_str("  Bus         Phase     MW   +j  Mvar         MVA         PF\n");
+        rep.line("  Bus         Phase     MW   +j  Mvar         MVA         PF");
     } else {
-        s.push_str("  Bus         Phase     kW   +j  kvar         kVA         PF\n");
+        rep.line("  Bus         Phase     kW   +j  kvar         kVA         PF");
     }
-    s.push('\n');
+    rep.blank();
     for_each_enabled_elem(classes, &ckt.pc_elements, |name, elem| {
         if let Some(jterm) = check_bus_reference(elem, bus_idx) {
-            write_terminal_power(&mut s, ckt, name, elem, jterm, opt, sys, node_v, mdnl);
-            s.push('\n');
+            write_terminal_power(&mut rep, ckt, name, elem, jterm, opt, sys, node_v, mdnl);
+            rep.blank();
         }
     });
-    s
+    rep.finish()
 }
 
 /// One element's per-conductor terminal power flow (Pascal `WriteTerminalPower`,
@@ -254,7 +270,7 @@ fn show_bus_powers_elem(
 /// 12 and uppercased.
 #[allow(clippy::too_many_arguments)]
 fn write_terminal_power(
-    s: &mut String,
+    rep: &mut Report,
     ckt: &Circuit,
     name: &str,
     elem: &mut dyn CktElement,
@@ -271,11 +287,19 @@ fn write_terminal_power(
         .and_then(|b| ckt.buses.get(b))
         .map(|b| b.name.as_str())
         .unwrap_or("");
-    let from_bus = format::pad(from_bus, 12).to_uppercase();
-    s.push_str(&format!(
-        "ELEMENT = {}\n",
+    let from_bus = from_bus.to_ascii_uppercase();
+    rep.line(&format!(
+        "ELEMENT = {}",
         format::pad(&format::enclose_quotes(name), mdnl + 2)
     ));
+    // The four power columns shared by the conductor rows and the total row.
+    let power_cells = |row: Row, sp: Complex64| {
+        row.cell(Cell::right(format::g(sp.re / 1000.0, 5), 10).sep(" "))
+            .cell(Cell::plain("+j").sep(" "))
+            .cell(Cell::right(format::g(sp.im / 1000.0, 5), 10).sep("    "))
+            .cell(Cell::right(format::g(sp.norm() / 1000.0, 5), 10).sep("    "))
+            .cell(Cell::right(format::fixed(power_factor(sp), 4), 8))
+    };
     let mut saccum = Complex64::ZERO;
     for (&nref, &ci) in cd.term_nodes(jterm - 1).iter().zip(cd.term_i(jterm - 1)) {
         let mut sp = node_v[nref] * ci.conj();
@@ -287,24 +311,18 @@ fn write_terminal_power(
         }
         saccum += sp;
         // `'%s %4d %10.5g +j %10.5g    %10.5g    %8.4f'`.
-        s.push_str(&format!(
-            "{} {} {} +j {}    {}    {}\n",
-            from_bus,
-            format::fixed_w_int(ckt.map_node_to_bus[nref].node_num as i64, 4),
-            format::g_w(sp.re / 1000.0, 10, 5),
-            format::g_w(sp.im / 1000.0, 10, 5),
-            format::g_w(sp.norm() / 1000.0, 10, 5),
-            format::fixed_w(power_factor(sp), 8, 4),
-        ));
+        let row = Row::new()
+            .cell(Cell::left(from_bus.clone(), 12).sep(" "))
+            .cell(Cell::right(ckt.map_node_to_bus[nref].node_num.to_string(), 4).sep(" "));
+        rep.row(power_cells(row, sp));
     }
-    // `' TERMINAL TOTAL   %10.5g +j %10.5g    %10.5g    %8.4f'`.
-    s.push_str(&format!(
-        " TERMINAL TOTAL   {} +j {}    {}    {}\n",
-        format::g_w(saccum.re / 1000.0, 10, 5),
-        format::g_w(saccum.im / 1000.0, 10, 5),
-        format::g_w(saccum.norm() / 1000.0, 10, 5),
-        format::fixed_w(power_factor(saccum), 8, 4),
-    ));
+    // `' TERMINAL TOTAL   %10.5g +j %10.5g    %10.5g    %8.4f'` — the label spans
+    // the bus and node columns, so the row carries an empty cell for the node
+    // (width 0: nothing in the parity kernel, an aligned gap in the table one).
+    let row = Row::new()
+        .cell(Cell::plain(" TERMINAL TOTAL").sep("   "))
+        .cell(Cell::plain(""));
+    rep.row(power_cells(row, saccum));
 }
 
 /// One matched element's `WriteTerminalCurrents` block (+ its trailing blank),
@@ -312,7 +330,7 @@ fn write_terminal_power(
 /// sections.
 #[allow(clippy::too_many_arguments)]
 fn matched_terminal_currents(
-    s: &mut String,
+    rep: &mut Report,
     ckt: &Circuit,
     name: &str,
     elem: &mut dyn CktElement,
@@ -323,7 +341,7 @@ fn matched_terminal_currents(
     resid: bool,
 ) {
     if check_bus_reference(elem, bus_idx).is_some() {
-        write_terminal_currents(s, ckt, name, elem, sys, node_v, mbnl, resid);
-        s.push('\n');
+        write_terminal_currents(rep, ckt, name, elem, sys, node_v, mbnl, resid);
+        rep.blank();
     }
 }

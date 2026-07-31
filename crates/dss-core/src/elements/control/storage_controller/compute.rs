@@ -15,6 +15,7 @@
 
 use num_complex::Complex64;
 
+use crate::compat;
 use crate::elements::pc::storage::StorageState;
 use crate::solution::SolveMode;
 use crate::util::fmt_g;
@@ -272,6 +273,25 @@ impl StorageController {
         }
         self.fleet_state = StorageState::Idling;
     }
+
+    /// The guard both terminal branches put in front of [`Self::set_fleet_to_idle`]
+    /// — Pascal `if not FleetState = STORE_IDLING`
+    /// (`StorageController.pas:1350` "Ran out of OOMPH", `:1619` "Fully charged").
+    ///
+    /// Lane split `compat::STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL`:
+    /// Object Pascal binds `not` tighter than `=` and `FleetState` is an
+    /// `Integer`, so upstream evaluates `(not FleetState) = 0`, which holds only
+    /// for `FleetState = -1 = STORE_CHARGING`. The parity lane reproduces that
+    /// on the raw ordinals; the default lane asks the intended question,
+    /// `FleetState <> STORE_IDLING`.
+    pub(super) fn fleet_needs_idling(&self) -> bool {
+        if compat::STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL {
+            (!self.fleet_state.ordinal()) == StorageState::Idling.ordinal()
+        } else {
+            self.fleet_state != StorageState::Idling
+        }
+    }
+
     /// Pascal `SetFleetDesiredState(state)`.
     fn set_fleet_desired_state(&self, env: &mut dyn StorageDispatchEnv, state: StorageState) {
         for i in 0..self.fleet.len() {
@@ -779,12 +799,9 @@ impl StorageController {
                     }
                 }
             } else {
-                // TODO(compat): Pascal `if not FleetState = STORE_IDLING` — `not`
-                // binds tighter than `=`, so this is `(not FleetState) = 0`, i.e.
-                // it fires only when FleetState = STORE_CHARGING (bitwise not of
-                // an integer). Reproduced verbatim on the raw ordinals; the clean
-                // fix is `FleetState <> STORE_IDLING`.
-                if (!self.fleet_state.ordinal()) == StorageState::Idling.ordinal() {
+                // Pascal `if not FleetState = STORE_IDLING` (`:1350`) — see
+                // [`Self::fleet_needs_idling`] for the operator-precedence split.
+                if self.fleet_needs_idling() {
                     self.set_fleet_to_idle(env);
                     env.push_immediate(StorageState::Idling); // force a new power flow
                 }
@@ -1007,9 +1024,9 @@ impl StorageController {
                 }
             }
         } else {
-            // TODO(compat): Pascal `if not FleetState = STORE_IDLING` — see
-            // DoLoadFollowMode; fires only when FleetState = STORE_CHARGING.
-            if (!self.fleet_state.ordinal()) == StorageState::Idling.ordinal() {
+            // Pascal `if not FleetState = STORE_IDLING` (`:1619`) — see
+            // [`Self::fleet_needs_idling`].
+            if self.fleet_needs_idling() {
                 self.set_fleet_to_idle(env);
                 env.push_immediate(StorageState::Idling); // force a new power flow
             }

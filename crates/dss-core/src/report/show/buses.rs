@@ -4,64 +4,70 @@
 
 use crate::circuit::Circuit;
 use crate::report::format;
+use crate::report::table::{Cell, Report, Row};
 use crate::util::sqrt3;
 
 /// Build the `Show Buses` text (Pascal `ShowBuses`). Read-only over the circuit's
 /// bus list.
+///
+/// F-FMT step 2: the bus lines are [`Row`]s, so the lane renders the columns
+/// ([`crate::compat::render_rows`]). The coordinate parentheses are cells of
+/// their own — a `)` written flush against a coordinate that happens to fill its
+/// 13-char field is the one shape in which the two kernels' tokens could differ,
+/// and a cell keeps it a token in both. The two header lines stay free text:
+/// Pascal spans them across the data columns (`Coord` sits over the `(`/`x`/`y`/
+/// `)` group, `Number of` over one column), so no cell-per-column decomposition
+/// of them exists; only a v2 re-layout (plan §F-FMT step 4) could move them.
 pub(crate) fn show_buses(ckt: &Circuit) -> String {
     // Pascal `SetMaxBusNameLength; Inc(MaxBusNameLength, 2)`.
     let mbnl = super::max_bus_name_length(ckt) + 2;
 
-    let mut s = String::new();
-    s.push('\n');
-    s.push_str(&format!(
-        "BUSES AND NODES IN ACTIVE CIRCUIT: {}\n",
-        ckt.name
+    let mut rep = Report::new();
+    rep.blank();
+    rep.line(&format!("BUSES AND NODES IN ACTIVE CIRCUIT: {}", ckt.name));
+    rep.blank();
+    rep.line(&format!(
+        "{}{}",
+        format::pad("     ", mbnl),
+        "                         Coord                                 Number of     Nodes"
     ));
-    s.push('\n');
-    s.push_str(&format::pad("     ", mbnl));
-    s.push_str(
-        "                         Coord                                 Number of     Nodes\n",
-    );
-    s.push_str(&format::pad("  Bus", mbnl));
-    s.push_str("    Base kV             (x, y)                      Keep?       Nodes        connected ...\n");
-    s.push('\n');
+    rep.line(&format!(
+        "{}{}",
+        format::pad("  Bus", mbnl),
+        "    Base kV             (x, y)                      Keep?       Nodes        connected ..."
+    ));
+    rep.blank();
 
     for i in 0..ckt.buses.len() {
         let bus = &ckt.buses[i];
         let name = ckt.bus_list.name(i).unwrap_or("");
-        s.push_str(&format::pad(&format::enclose_quotes(name), mbnl));
-        s.push(' ');
-        if bus.kv_base > 0.0 {
-            s.push_str(&format::fixed_w(bus.kv_base * sqrt3(), 7, 3));
+        let mut row = Row::new().cell(Cell::left(format::enclose_quotes(name), mbnl).sep(" "));
+        // `Format('%7.3f')` when the base is set, else the literal `'   NA '` —
+        // one space narrower, which is why each arm carries its own separator.
+        row = if bus.kv_base > 0.0 {
+            row.cell(Cell::right(format::fixed(bus.kv_base * sqrt3(), 3), 7).sep("          "))
         } else {
-            s.push_str("   NA ");
-        }
-        s.push_str("          (");
-        if bus.coord_defined {
-            s.push_str(&format!(
-                " {}, {})",
-                format::g_left_w(bus.x, 13, 11),
-                format::g_left_w(bus.y, 13, 11)
-            ));
+            row.cell(Cell::right("NA", 5).sep("           "))
+        };
+        row = if bus.coord_defined {
+            row.cell(Cell::plain("(").sep(" "))
+                .cell(Cell::left(format::g(bus.x, 11), 13).sep(", "))
+                .cell(Cell::left(format::g(bus.y, 11), 13))
+                .cell(Cell::plain(")").sep("     "))
         } else {
-            s.push_str("           NA,            NA )");
-        }
-        if bus.keep {
-            s.push_str("     Yes  ");
-        } else {
-            s.push_str("     No  ");
-        }
-        s.push_str("     ");
-        s.push_str(&format::fixed_w_int(bus.num_nodes_this_bus() as i64, 5));
-        s.push_str("       ");
+            // `'           NA,            NA )'`.
+            row.cell(Cell::plain("(").sep("           "))
+                .cell(Cell::plain("NA").sep(",            "))
+                .cell(Cell::plain("NA").sep(" "))
+                .cell(Cell::plain(")").sep("     "))
+        };
+        row = row
+            .cell(Cell::plain(if bus.keep { "Yes" } else { "No" }).sep("       "))
+            .cell(Cell::right(bus.num_nodes_this_bus().to_string(), 5).sep("       "));
         for j in 0..bus.num_nodes_this_bus() {
-            s.push_str(&format!(
-                "{} ",
-                format::fixed_w_int(bus.get_num(j) as i64, 4)
-            ));
+            row = row.cell(Cell::right(bus.get_num(j).to_string(), 4).sep(" "));
         }
-        s.push('\n');
+        rep.row(row);
     }
-    s
+    rep.finish()
 }

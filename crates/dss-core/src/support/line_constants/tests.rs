@@ -192,14 +192,20 @@ fn deri_full_3cond() {
     check_c(&lc, &C3_NF);
 }
 
-/// `cabs_fpc`/`csqrt_fpc`/`cln_fpc` reproduce the FPC `ucomplex`
-/// `cmod`/`csqrt`/`cln` bit-for-bit: the naive `sqrt(re²+im²)` modulus (not
-/// `hypot`), the Numerical-Recipes stable `csqrt` (not the polar `from_polar`
-/// form), and `ln(cmod)+j·atan2`. The Carson DERI and cable earth terms call
-/// these; `num_complex`'s `.sqrt()`/`.ln()` round the last bit differently,
-/// which surfaced as a 1-ULP gap in the earth-return resistance part — the same
-/// class of bug as the `cdiv_fpc` division mismatch. Bits captured from the
-/// x86_64 FPC `ucomplex` RTL.
+/// The FPC `ucomplex` bit pins, and the half of that trio that the crate
+/// already reproduces exactly.
+///
+/// `csqrt_fpc` is still the Numerical-Recipes stable `csqrt` (not the polar
+/// `from_polar` form) and still matches the x86_64 FPC `ucomplex` RTL
+/// bit-for-bit, which is what the Carson DERI and cable earth terms need.
+///
+/// The `cmod`/`cln` halves are now asserted the other way round: the port used
+/// to hand-roll them (naive `√(re²+im²)`, `ln(cmod)+j·atan2`) on the assumption
+/// that `num_complex` would round differently, and F.3y measured that it does
+/// not — `.norm()`/`.ln()` land on the **same RTL bits**. So the hand-rolled
+/// pair is gone and this test pins the equality that let it go: if a future
+/// toolchain's `hypot` ever stopped agreeing with the naive form, this fails
+/// loudly instead of drifting the parity lane's DERI goldens in silence.
 #[test]
 fn fpc_complex_primitives_match_ucomplex_not_num_complex() {
     // General sqrt: FPC algebraic (NR) vs num_complex polar — 1 ULP apart.
@@ -225,19 +231,125 @@ fn fpc_complex_primitives_match_ucomplex_not_num_complex() {
     assert_eq!(la.re.to_bits(), 0x4084EDFB5C679BD3);
     assert_eq!(la.im.to_bits(), 0xC0844DF9CF27F050);
 
-    // cln = ln(cabs) + j·atan2; cabs is the naive sqrt(re²+im²).
-    let l = cln_fpc(Complex64::new(3.0, 4.0));
+    // `cln = ln(cmod) + j·atan2` and `cmod = √(re²+im²)`: the RTL bits, now
+    // produced by `.ln()` / `.norm()` themselves.
+    let l = Complex64::new(3.0, 4.0).ln();
     assert_eq!(l.re.to_bits(), 0x3FF9C041F7ED8D33);
     assert_eq!(l.im.to_bits(), 0x3FEDAC670561BB4F);
     assert_eq!(
-        cabs_fpc(Complex64::new(1.5, -2.25)).to_bits(),
+        Complex64::new(1.5, -2.25).norm().to_bits(),
         0x4005A22073490377
     );
 }
 
+/// The naive FPC modulus and `f64::hypot` are the *same function* on every
+/// operand the engine can reach, and differ only where the naive one breaks.
+///
+/// This is the measurement that removed `cabs_fpc`/`cln_fpc` from the engine
+/// (F.3y) — stated as an executable claim rather than as a note, because the
+/// whole justification for using the crate's forms in the **parity** lane is
+/// that they are bit-identical there.
+///
+/// Sweep: a deterministic xorshift over |z| ∈ 1e-150…1e150 (i.e. everywhere
+/// `re²+im²` is representable). 20 000 samples showed zero disagreements; this
+/// runs a fast slice of the same generator. Outside that band `re²+im²`
+/// over/underflows and the naive form collapses to `inf`/`0` while `hypot`
+/// stays exact — the reason the switch is an improvement and not a wash.
+#[test]
+fn naive_modulus_equals_hypot_until_the_square_overflows() {
+    // The naive FPC `cmod` / `Cabs`, kept here as the reference the engine
+    // no longer carries.
+    fn cmod_naive(z: Complex64) -> f64 {
+        (z.re * z.re + z.im * z.im).sqrt()
+    }
+
+    let mut s: u64 = 0x2545F4914F6CDD1D;
+    let mut next = || {
+        s ^= s << 13;
+        s ^= s >> 7;
+        s ^= s << 17;
+        s
+    };
+    let mut checked = 0u32;
+    for _ in 0..4000 {
+        let e = ((next() % 301) as i32) - 150;
+        let f1 = (next() >> 11) as f64 / (1u64 << 53) as f64;
+        let f2 = (next() >> 11) as f64 / (1u64 << 53) as f64;
+        let scale = 10f64.powi(e);
+        let z = Complex64::new(f1 * scale, -f2 * scale);
+        if z.re == 0.0 || z.im == 0.0 {
+            continue;
+        }
+        assert_eq!(
+            cmod_naive(z).to_bits(),
+            z.norm().to_bits(),
+            "naive modulus and hypot diverged at {z:?}"
+        );
+        // …and therefore so do the two `cln` forms, whose imaginary parts are
+        // literally the same `atan2` expression.
+        assert_eq!(cmod_naive(z).ln().to_bits(), z.ln().re.to_bits());
+        assert_eq!(z.im.atan2(z.re).to_bits(), z.ln().im.to_bits());
+        checked += 1;
+    }
+    assert!(checked > 3900, "sweep degenerated to {checked} samples");
+
+    // Beyond the band the naive square overflows/underflows; `hypot` does not.
+    let big = Complex64::new(1.5e154, 2.5e154);
+    assert!(cmod_naive(big).is_infinite());
+    assert_eq!(big.norm(), 2.91547594742265e154);
+    let tiny = Complex64::new(1e-170, 1e-170);
+    assert_eq!(cmod_naive(tiny), 0.0);
+    assert_eq!(tiny.norm(), 1.4142135623730951e-170);
+}
+
+/// `csqrt_fpc` is kept over `num_complex`'s `.sqrt()` because it is the **more
+/// accurate** kernel, not because the oracle needs it — the same verdict F.3e
+/// reached for `compat::cdiv`, and the reason this row carries no lane split.
+///
+/// Measured against a 60-digit `mpmath` reference over 20 000 operands
+/// (|z| ∈ 1e-12…1e12): mean error 0.339 ULP (FPC, real part) vs 2.413 ULP
+/// (polar), worst 1.82 ULP vs **12818 ULP**. The polar form computes
+/// `√r·cos(θ/2)`, and as `θ → ±π` — i.e. just off the negative real axis —
+/// `cos(θ/2) → 0` cancels catastrophically; the branch-split algebraic form
+/// roots the *robust* component directly and never divides by a cancelled one.
+///
+/// The literals below are that worst case, so a "modernizing" swap to
+/// `.sqrt()` fails here with the number that forbids it.
+#[test]
+fn csqrt_algebraic_beats_the_polar_form() {
+    // The measured worst case: essentially on the negative real axis.
+    let z = Complex64::new(
+        f64::from_bits(0xC2620C0CDED36FBB), // -620092651163.4916
+        f64::from_bits(0x4172397AE3ED3E7B), //   19109806.245420914
+    );
+    // Nearest f64 to the 60-digit `mpmath` reference for `Re √z`,
+    // 12.13383250906393071331818…
+    let correctly_rounded = f64::from_bits(0x4028_4485_B1D3_2475);
+
+    // The algebraic kernel hits the correctly rounded result exactly.
+    assert_eq!(csqrt_fpc(z).re.to_bits(), correctly_rounded.to_bits());
+
+    // The polar one is 12 818 ULP away — 1.88e-12 relative, six orders past
+    // the last-bit floor everything else in this file is calibrated against.
+    let polar = z.sqrt().re;
+    assert_eq!(polar.to_bits(), 0x4028_4485_B1D2_F263);
+    let err_polar = (polar - correctly_rounded).abs() / correctly_rounded;
+    assert!(
+        (1.8e-12..1.9e-12).contains(&err_polar),
+        "polar sqrt error moved off its measured value: {err_polar:e}"
+    );
+
+    // Both agree to the last bit on well-conditioned operands, so the kernel
+    // choice is invisible except where it matters.
+    let easy = Complex64::new(4.0, 0.0);
+    assert_eq!(csqrt_fpc(easy).re, 2.0);
+    assert_eq!(easy.sqrt().re, 2.0);
+}
+
 /// DERI overhead per-meter `Z` is **bit-for-bit** to the oracle wherever the
 /// remaining libm floor doesn't bite: the diagonal (Bessel skin-effect `Zint` +
-/// earth `Ze`, via `csqrt_fpc`/`cln_fpc`/`cdiv_fpc`) and the distance-2 mutual.
+/// earth `Ze`, via `csqrt_fpc`/`Complex64::ln`/`compat::cdiv`) and the distance-2
+/// mutual.
 /// The adjacent mutual's *real* part keeps a proven 1-ULP `arctan2` (`carg`)
 /// floor — `Fme`/`Cinv`/`hterm`/`Csqrt`/`ln(cmod)` are all bit-exact, only the
 /// final `arctan2` in `Cln`'s imag differs (the same external-libm last-bit
@@ -736,4 +848,85 @@ fn matrix_unit_and_length_conversion() {
             );
         }
     }
+}
+
+const FT: i32 = 5; // LineUnits::Ft code
+const IN: i32 = 6; // LineUnits::Inch code
+
+/// Expected-value pin for
+/// [`crate::compat::HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD`].
+///
+/// A height-unit change re-reads a number under the new unit. Which number is
+/// the lane row — and the two readings are *equal* on the only sequence any
+/// caller performs today (offset stored while the engine still carries its
+/// constructed `UNITS_M`, then the unit set), so the first half of this test is
+/// lane-independent and guards the gated deck
+/// `modes/upgrade/upgrade_linecs_heightoffset.dss` (`HeightOffset=5
+/// HeightUnit=ft` → 1.524 m) in both lanes.
+///
+/// They part on a *second* unit change, where the outgoing unit is no longer
+/// metres: the parity lane feeds the stored metres (1.524) into the inch
+/// setter and compounds the conversions, the default lane re-reads the typed 5.
+#[test]
+fn height_unit_change_rereads_the_typed_number() {
+    // The universal path: store under the default metre unit, then set ft.
+    let mut lc = build(&COORDS3);
+    let y0: Vec<f64> = (0..3).map(|i| lc.cond[i].y).collect();
+    lc.set_height_offset(5.0);
+    lc.set_user_height_unit(FT);
+    assert_eq!(
+        lc.height_offset_meters().to_bits(),
+        (5.0f64 * 0.3048).to_bits(),
+        "5 typed under metres, re-read as ft, must be 5 ft in both lanes"
+    );
+    // The getter round-trips the typed number through metres and back, so it is
+    // 5 to within the ft→m→ft rounding (one ULP) — never a lane difference,
+    // which is a factor 0.3048 away.
+    let round_trip = |got: f64, want: f64, what: &str| {
+        assert!(
+            (got - want).abs() <= 4.0 * f64::EPSILON * want.abs(),
+            "{what}: got {got:.17e}, want {want:.17e}"
+        );
+    };
+    round_trip(lc.height_offset(), 5.0, "typed number after m→ft");
+    for (i, y) in y0.iter().enumerate() {
+        assert_eq!(
+            lc.cond[i].y.to_bits(),
+            (y + 5.0 * 0.3048).to_bits(),
+            "conductor {i} height must carry the same offset in both lanes"
+        );
+    }
+
+    // The second change, ft → in: the readings diverge.
+    lc.set_user_height_unit(IN);
+    let expect_m: f64 = if crate::compat::ORACLE_PARITY {
+        5.0 * 0.3048 * 0.0254 // the stored metres re-read as inches
+    } else {
+        5.0 * 0.0254 // the typed 5, now inches
+    };
+    round_trip(
+        lc.height_offset_meters(),
+        expect_m,
+        &format!("ft→in re-read (parity = {})", crate::compat::ORACLE_PARITY),
+    );
+    // The two readings really are far apart here — a factor 0.3048, twelve
+    // orders above the round-trip bound above.
+    let other = if crate::compat::ORACLE_PARITY {
+        5.0 * 0.0254
+    } else {
+        5.0 * 0.3048 * 0.0254
+    };
+    assert!(
+        (lc.height_offset_meters() - other).abs() > 0.5 * other.abs(),
+        "the lanes must not agree on the second change"
+    );
+    // The default lane's invariant: the typed number survives every unit change.
+    if !crate::compat::ORACLE_PARITY {
+        round_trip(lc.height_offset(), 5.0, "typed number after ft→in");
+    }
+
+    // A no-op change stays a no-op in both lanes (Pascal's `If Value <> …`).
+    let before = lc.height_offset_meters();
+    lc.set_user_height_unit(IN);
+    assert_eq!(lc.height_offset_meters().to_bits(), before.to_bits());
 }

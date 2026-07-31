@@ -142,10 +142,14 @@ fn run_scenario(sc: &Scenario) {
         // level — `build_y_matrix` was not restamping it per step. With that
         // fixed the whole trajectory tracks the oracle and the iteration counts
         // are identical.)
-        assert_eq!(
-            ckt.solution.iteration, step.iterations,
-            "{} step {i}: iteration count differs",
-            sc.name
+        // Stage F: the **parity lane keeps that exact pin forever**, so the
+        // `Yeq`-class regression above stays caught there; the default lane
+        // allows the drift model's ±`lane::ITER_SLACK` (kernel-ulp shift at the
+        // convergence boundary) and prints a NOTE on any nonzero drift.
+        harness::lane::compare_iterations(
+            ckt.solution.iteration,
+            step.iterations,
+            &format!("{} step {i}", sc.name),
         );
 
         // Node order is captured once (it cannot change between steps).

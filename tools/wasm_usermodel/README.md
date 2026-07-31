@@ -51,12 +51,22 @@ python tools/wasm_usermodel/twin_probe.py $env:TEMP\indmach012a_native_twin\IndM
 ## Fidelity notes (see the crate's module docs for the full list)
 
 - The port reproduces the **r3723 unit bodies the DLL links**, not dss-core's
-  FPC-RTL helpers: naive `CDIV`/`Cabs` (`Ucomplex.pas`), the numerically
-  inverted `Ap2s` matrix (`TcMatrix.Invert` at unit init), truncated
-  `0.866025403` / `1.732` constants (`TODO(compat)`).
-- `TODO(compat)`: FPC folds the all-constant `3.0/746.0` (HPshaft, var 14) at
-  **single** precision — proven by decomposition against the twin (a plain
-  f64 quotient misses by 2.6e-8 rel); reproduced as `(3.0f32/746.0f32) as f64`.
+  FPC-RTL helpers: naive `CDIV`/`Cabs` (`Ucomplex.pas`) and the numerically
+  inverted `Ap2s` matrix (`TcMatrix.Invert` at unit init).
+- `TODO(compat)` in `models/indmach012a/src/symcomp.rs` — truncated `0.866025403`
+  for `sqrt(3)/2` in the symmetrical-component `A` matrix.
+- `TODO(compat)` in `models/indmach012a/src/model.rs` — truncated `1.732` for
+  `sqrt(3)` in `Compute_dSdP`'s rated voltage, and FPC's folding of the
+  all-constant `3.0/746.0` (HPshaft, var 14) at **single** precision, proven by
+  decomposition against the twin (a plain f64 quotient misses by 2.6e-8 rel) and
+  reproduced as `(3.0f32/746.0f32) as f64`.
+
+  Those three are DE_PASCALIZE Stage F **escapes**, not oversights: this crate is
+  workspace-excluded (plan §2.6), so `dss-core/oracle-parity` cannot reach it and
+  a lane split here would mean a second committed `.wasm` fixture, not a `cfg`
+  alias. Each flip was run in isolation against the native-FPC-twin pins and each
+  breaks a bit-exact one; the numbers are at the sites and in
+  `oracle_parity_cfg_gate::ESCAPE_REGISTER`.
 - The debug-trace file (`IndMach012_Trace.CSV`) is a no-op in the sandbox (no
   filesystem — ABI §6); `option=debug` still toggles the flag.
 - RPN inline math inside quoted `UserData=` values is not implemented: a real

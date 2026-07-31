@@ -309,8 +309,36 @@ impl CktElement for Capacitor {
                         // Begin/End side effects run. We emit the action to preserve
                         // that side-effect shape, and the applier's `set_obj_double`
                         // mirrors the fall-through by skipping the write for non-scalar
-                        // types (see `obj/props/setters.rs:147-160`). Clean fix once
-                        // the 1:1 port is done: drop this discarded write entirely.
+                        // types (see `obj/props/setters.rs:147-160`).
+                        //
+                        // Stage F status (F.3s argued, F.3u corrected, F.3v
+                        // **measured**). The clean fix is *not* "drop the
+                        // discarded write": r4133 predates the typed-setter
+                        // refactor and formats the same value into a command
+                        // string — `S := S + Format(' Cuf=%-.5g', [Cs - Cm])`
+                        // then one `Edit(ActorID)`
+                        // (`Version8/Source/PDElements/Capacitor.pas:829`) — so
+                        // the pre-refactor engine *does* apply it, through
+                        // `InterpretDblArray`, whose own comment says it "fills
+                        // array with zeros if we run out of numbers"
+                        // (`Common/Utilities.pas:788-791`). The faithful fix is
+                        // therefore the array write the parser would have made
+                        // (element 1 = `Cs - Cm`, steps 2..N zeroed), which also
+                        // trips the `Cuf` side effect `SpecType := 2`.
+                        //
+                        // What blocks it is the cost, now measured rather than
+                        // guessed. Driving that write through
+                        // `PosSeqAction::SetStructF64s` (plus the `CUF` arm
+                        // `set_struct_f64_array` still lacks) moves
+                        // `tests/corpus/modes/makeposseq/makeposseq_shunt.dss`
+                        // — `Capacitor.cap_cmat`'s `cmatrix=[10 | -2 10 | -2 -2
+                        // 10]` collapses to `Cs - Cm = 4 µF` where the parity
+                        // lane keeps reading the 10 µF matrix diagonal — and the
+                        // channel that fails is the **node voltages**: 1.438e-1
+                        // V against an allowed 3.339e-6. Like the GICTransformer
+                        // `%R2` row, that is a *whole-case* default-lane
+                        // exclusion, not the Newton row's field-scoped one, so
+                        // it is an owner decision and the row keeps its marker.
                         PosSeqAction::SetF64(CUF, cs - cm),
                         PosSeqAction::EndEdit,
                     ]

@@ -62,20 +62,27 @@ Six proven dss_capi/OpenDSS engine bugs. The first five each have a full deep-di
 report in the (gitignored, local-only) `investigations/` folder — check there
 before chasing a divergence in those areas. The sixth (Monitor BaseFrequency) is a
 plain hardcoded-constant bug with a single fully-traced consumer, so it is
-documented inline (`TODO(compat)` + pin) rather than in a separate report. Rule:
-a *deterministic, defined* upstream bug is reproduced 1:1 (`TODO(compat)` +
-golden); UB or state-mutating-read bugs are NOT reproduced — document and gate
-around them.
+documented inline (a `compat` row + pin) rather than in a separate report. Rule:
+a *deterministic, defined* upstream bug is reproduced 1:1; UB or
+state-mutating-read bugs are NOT reproduced — document and gate around them.
+Since DE_PASCALIZE Stage F all four that *are* reproduced carry a `compat` lane
+row: the parity lane reproduces them (oracle-compared as before), the default
+lane takes the clean fix, pinned by its own expected-value test.
 
 - **Export SeqCurrents `Iresidual`** — every terminal row prints *terminal 1*'s
-  residual (missing `(j-1)*Ncond` offset). Reproduced (`TODO(compat)` in
-  `report/export/seq_currents.rs`).
+  residual (missing `(j-1)*Ncond` offset). **Lane-split** since Stage F.3c
+  (`compat::IRESIDUAL_FROM_TERMINAL_1` in `report/export/seq_currents.rs`):
+  parity reproduces it (the goldens pin it), the default lane sums the row's own
+  terminal.
 - **Multi-meter `Bus_Int_Duration`** — the `CalcReliabilityIndices` duration loop
   walks ALL circuit buses, indexing foreign section ids into this meter's
-  `FeederSections`. In-range id → deterministic cross-zone overwrite, reproduced
-  (`TODO(compat)` in `solution/meters/reliability.rs`, golden
+  `FeederSections`. In-range id → deterministic cross-zone overwrite,
+  **lane-split** since Stage F.3c
+  (`compat::BUS_INT_DURATION_WALKS_ALL_BUSES` in
+  `solution/meters/reliability.rs`; parity keeps the overwrite, golden
   `export_busreliability_multimeter`); out-of-range id → OOB heap read, proven
-  nondeterministic, not reproduced (safe `.get()` skip; nothing to pin).
+  nondeterministic, not reproduced in either lane (safe `.get()` skip; nothing
+  to pin).
 - **VSConverter `GetCurrents`** — self-aliased `MVMult` over `ComplexBuffer`:
   reported currents violate KCL and every read mutates state (can poison the next
   solve). Not reproduced — the port computes physically-correct currents, gated
@@ -88,34 +95,86 @@ around them.
   `DoNewtonSolution` stamps `Iterminal` at `NodeV_{n-1}` then does `NodeV -= dV`,
   so `Get_Powers`/`Get_Losses` (cache-aware) return a one-Newton-step-stale
   current while `Currents` recompute fresh (`S ≠ V·conj(I)`). Deterministic,
-  defined, not state-poisoning → reproduced (`TODO(compat)` in
-  `exec/view.rs::snapshot_elements`); it is the only channel distinguishing
-  Newton from the normal fixed-point on the `newton*` gates.
+  defined, not state-poisoning → **lane-split** since DE_PASCALIZE Stage F.3j
+  (`compat::POWERS_REUSE_STALE_NEWTON_ITERMINAL`, applied in
+  `exec/view.rs::snapshot_elements`): the parity lane reproduces it and stays
+  oracle-compared, the default lane recomputes all three reads at the converged
+  `NodeV`. It was the only channel distinguishing Newton from the normal
+  fixed-point on the `newton*` gates, so the default lane excludes those two
+  decks' powers/losses (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`) and
+  replaces the signal with the in-engine dispatch tripwire
+  `exec::tests::newton::newton_dispatch_leaves_a_valid_but_stale_iterminal_cache`
+  (plus the expected-value pin `newton_powers_are_the_lane_kernel`).
 - **Monitor `BaseFrequency` 60.0** — `TMonitorObj.Create` hard-pins
   `Basefrequency := 60.0` (Monitor.pas:472 == r4133:552), overriding the base-class
-  `BaseFrequency := ActiveCircuit.Fundamental` (CktElement.pas:233) that every other
-  element inherits. Its one physical consumer is mode-4 flicker: it is passed as
+  `BaseFrequency := ActiveCircuit.Fundamental` (CktElement.pas:203 — the last
+  statement of `TDSSCktElement.Create`) that every other element inherits. Its one physical consumer is mode-4 flicker: it is passed as
   `fBase` into `FlickerMeter` (Monitor.pas:1657 → Pstcalc.pas:594), where `fBase =
   50.0` selects the IEC 61000-4-15 230V/50Hz lamp weighting coefficients vs the
   120V/60Hz set (Pstcalc.pas:609-626) — so a mode-4 monitor in a 50 Hz circuit
   computes Pst with the wrong (60 Hz) lamp curve unless the user sets `basefreq=50`.
-  Deterministic, defined, not state-poisoning → reproduced (`TODO(compat)` in
-  `exec/command.rs::create_object_no_edit`, pin `monitor_basefreq_pins_60hz_upstream_bug`);
-  both gating oracles pin 60.0. Clean fix (inherit `Fundamental`) deferred to
-  DE_PASCALIZE Stage F.
+  Deterministic, defined, not state-poisoning → **lane-split** since DE_PASCALIZE
+  Stage F.3c (`compat::monitor_base_frequency`, applied in
+  `exec/command.rs::create_object_no_edit`, pin `monitor_basefreq_is_the_lane_kernel`):
+  the parity lane reproduces the 60.0 both gating oracles pin, the default lane
+  inherits `Fundamental` (identical in a 60 Hz circuit, so no golden or corpus case
+  moves).
 
 ## Gate (must be green before any commit)
 
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --all-targets --features dss-core/oracle-parity -- -D warnings
 cargo test --workspace
+cargo test --workspace --features dss-core/oracle-parity
 ```
 
-Those three commands are the mandatory gate. The unified live corpus gate
+Those five commands are the mandatory gate. Since DE_PASCALIZE **Stage F**
+(the `oracle-parity` feature split) the engine ships in **two lanes**, and both
+must be green:
+
+- **parity** (`--features dss-core/oracle-parity`) — the bit-compat engine:
+  byte goldens, checkpoint Y, corpus floors, exact iteration counts and
+  discrete state. This lane **never re-baselines**; it is the permanent 1:1
+  record against the pinned oracles.
+- **default** (no features) — the idiomatic product: upstream bugs fixed,
+  reports rendered natively. Same oracle floors on continuous quantities,
+  discrete state still exact, iteration counts ±1, each deliberate divergence
+  excluded field-by-field and pinned by its own expected-value test.
+
+The lane policy is implemented once in `crates/dss-core/tests/harness/lane.rs`;
+`#[cfg(feature = "oracle-parity")]` may appear only inside the three `compat`
+modules and test code (gated by `oracle_parity_cfg_gate.rs`). Stage F
+introduces **no** tolerance anywhere — the default-lane report policy is
+`rel = abs = 0`.
+
+A third, **on-demand** job compares the two lanes against each other:
+`pwsh -File tools/lanes/lane_diff.ps1` builds both, dumps each one's solved-state
+checkpoint stream (errors, convergence, iterations, node voltages, element
+currents/powers/losses, the assembled Y — not meters, monitors, the event log or
+report text, which the corpus gate compares live in both lanes) and diffs them
+within the documented bounds (`crates/dss-core/examples/lane_dump.rs`;
+`TESTING.md` §"The parity↔default differential gate").
+
+The parity lane is byte-exact on the committed goldens and oracle-gated at the
+calibrated `tests/TOLERANCE_NOTES.md` floors — it is **not** bitwise equal to
+the oracle — so the honest chain is
+`|default − oracle| ≤ |default − parity| + |parity − oracle|`. What makes this
+job the transitive proof `default ≈ oracle` is the *measured* left term: the
+2026-07-31 run came back `max |Δ| = 0` exactly on every gated kind, which makes
+the default lane bit-identical to the parity lane and gives it precisely the
+parity lane's oracle standing. Read the second term back in the moment Δ stops
+being zero (expected at MULTITHREADING M3c and RESONANCE WP-R1).
+
+It is not part of `cargo test` (two release builds, ~215 MB of dumps per lane):
+run it whenever a `compat` kernel, a lane alias or the solver changes.
+
+The unified live corpus gate
 (`crates/dss-core/tests/corpus_gate.rs`, successor of `corpus_live.rs`) is part
 of `cargo test` and runs **unconditionally**: one scheduler-driven test
-(`corpus_gate_all_cases_match_engines`) compiles + solves all 514 manifest cases
+(`corpus_gate_all_cases_match_engines`) walks all 520 manifest cases — solving
+the 516 that are not abort-by-design
 (vendored `tests/corpus/electricdss-tst` decks + the three synthetic families)
 on the Rust engine and live-compares the full model against each case's gating
 channel(s) — the pinned dss-python oracle (`capi_v0145`) and/or the EPRI r4133

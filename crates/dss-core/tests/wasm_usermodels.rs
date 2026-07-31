@@ -192,11 +192,7 @@ fn gate_deck(deck: &str, numeric: bool) {
     assert!(g.converged, "{deck}: oracle golden did not converge");
     assert!(is_solved, "{deck}: Rust engine did not converge");
     if numeric {
-        assert_eq!(
-            iteration as u32, g.iterations,
-            "{deck}: final-solve iteration count differs (Rust {iteration} vs oracle {})",
-            g.iterations
-        );
+        harness::lane::compare_iterations(iteration, g.iterations as i32, deck);
     }
 
     // Tolerance floors. The Rust engine (faer) and the r4133 oracle (KLU) solve

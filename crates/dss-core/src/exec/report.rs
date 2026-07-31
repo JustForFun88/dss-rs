@@ -9,6 +9,7 @@
 //! stubs; the real per-report formatters land in WP8.2–8.5.
 
 use super::*;
+use crate::compat;
 use crate::report::EXPORT_OPTIONS;
 
 /// Which register-dump export is running (Pascal `ExportMeters`/`ExportGenMeters`/
@@ -1233,12 +1234,18 @@ impl Dss {
                         })
                     })
                     .collect();
-                // TODO(compat): the Storage multi-file prefix is `EXP_PV_`, not
-                // `EXP_STORAGE_` — an upstream copy-paste bug in
-                // `WriteMultipleStorageMeterFiles` (`ExportResults.pas:2240`,
-                // cloned from the PVSystem writer). Reproduced for the `/m` path;
-                // clean fix = `EXP_STORAGE_` in the post-1:1 pass.
-                ("Storage", "EXP_STORAGEMeters.csv", "EXP_PV_", names, rows)
+                // Lane split `compat::STORAGE_MULTIFILE_USES_THE_PV_PREFIX`:
+                // `WriteMultipleStorageMeterFiles` (`ExportResults.pas:2240`)
+                // was cloned from the PVSystem writer and kept its `EXP_PV_`
+                // literal, so upstream's per-element Storage files collide with
+                // the PVSystem export's. Parity keeps it; the default lane uses
+                // the prefix the single-file sibling already implies.
+                let prefix = if compat::STORAGE_MULTIFILE_USES_THE_PV_PREFIX {
+                    "EXP_PV_"
+                } else {
+                    "EXP_STORAGE_"
+                };
+                ("Storage", "EXP_STORAGEMeters.csv", prefix, names, rows)
             }
         }
     }
@@ -2308,7 +2315,7 @@ impl Dss {
     ///    2026-07-07). Pascal's raw string concat doubles the path delimiter
     ///    when `SaveDir` is the default `OutputDirectory` (which already ends
     ///    with one — `…\\load`); reproduced for the observable
-    ///    `GlobalResult`/`LastResultFile` (`TODO(compat)` below) while the
+    ///    `GlobalResult`/`LastResultFile` (compat-tagged below) while the
     ///    file I/O uses the normalized join (same file either way).
     pub(crate) fn do_save_cmd(&mut self) {
         // Pascal `ExecCommands.pas` `SaveCommands := TCommandList.Create(...)`
@@ -2389,18 +2396,21 @@ impl Dss {
             }
             let path = dir_path.join(&save_file);
             self.write_class_file(ci, &path);
-            // TODO(compat): Pascal composes `SaveFile := SaveDir + PathDelim +
-            // SaveFile` as raw STRINGS (`ExecHelper.pas:835-841`). With the
-            // default `SaveDir = OutputDirectory` — a string that already ends
-            // in a PathDelim — the observable `GlobalResult`/`LastResultFile`
-            // carries a DOUBLED delimiter (`…\\load`); an explicit `dir=` is
-            // the raw parameter, so a single one (`sub1\load`). Oracle-probed
-            // 2026-07-07. The file I/O above uses the normalized `path` (the
-            // same file either way; `output_directory` stores no trailing
-            // delimiter). Clean fix: a normalized path join here too.
+            // Lane split `compat::SAVE_CLASS_JOINS_ITS_REPORTED_PATH_AS_STRINGS`:
+            // Pascal composes `SaveFile := SaveDir + PathDelim + SaveFile` as
+            // raw STRINGS (`ExecHelper.pas:835-841`), and the default
+            // `SaveDir = OutputDirectory` already ends in a PathDelim, so the
+            // reported `GlobalResult`/`LastResultFile` carries a DOUBLED
+            // delimiter (`…\\load`). Oracle-probed 2026-07-07. An explicit
+            // `dir=` is the raw parameter and is single in both lanes. The file
+            // I/O above always used the normalized `path`, so only the reported
+            // string moves.
             let sep = std::path::MAIN_SEPARATOR;
             final_file = match &save_dir {
-                None => format!("{}{sep}{sep}{save_file}", self.output_directory.display()),
+                None if compat::SAVE_CLASS_JOINS_ITS_REPORTED_PATH_AS_STRINGS => {
+                    format!("{}{sep}{sep}{save_file}", self.output_directory.display())
+                }
+                None => path.display().to_string(),
                 Some(d) => format!("{d}{sep}{save_file}"),
             };
         }

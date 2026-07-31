@@ -16,17 +16,22 @@ so Stage F pins **r4133** parity, not r3723).
 > re-run the counting greps at WP start — absolute counts only grow until the WP lands,
 > which is the point of fixing the architecture.
 >
-> **Execution status (freshness pass 2026-07-26 @ `update` `67d2965`, R3 in flight):**
+> **Execution status — the plan is COMPLETE (2026-07-31, branch `depas-stagef`).**
 > wave 1 (R0 + P1-partial + P2 + P6) merged 2026-07-17 (`e7cfc1e`); the wave-2 v2
 > branches (P5a `wt-p5a-v2`, P1b `wt-p1b-v2`, P12+P13 `wt-p1213-v2`, P15 `wt-p15`,
 > P9 `wt-p9`) merged 2026-07-19/20 — the old salvage branches `wt-p5a`/`wt-p1b`/
 > `wt-p1213` are superseded; R1(+P7) `depas-r1`, P10 `depas-p10`, P11 `depas-p11`,
 > P8+P14 `depas-p8p14`, P5b/c `depas-p5bc` merged 2026-07-25; R2 (M3b seam) + R2b
-> (a–e) merged 2026-07-25/26. Part I remainder = **R3** (store flip + downcast
-> elimination — executing in worktree `depas-r3` as of 2026-07-26); Part II remainder
-> = the P1 deferred tail (`docs/phase-records/depascalize-p1.md` §Deferred) and P3
-> (after R3); then Stage F (not started, last). Per-WP status markers below; full
-> records in `STATUS.md` + `docs/phase-records/depascalize-*.md`.
+> (a–e) merged 2026-07-25/26; **R3** (store flip + downcast elimination), the P1
+> deferred tail, **P3**, and wave 3 (`depas-final`) merged 2026-07-26…29; **Stage F**
+> (F.1 seam → F.2 lane test policy → F.3 kernel flips + marker sweep → F.4 F-FMT →
+> F.5 lanes/differential gate/docs) executed on `depas-stagef` 2026-07-26…31. Per-WP
+> status markers below; full records in `STATUS.md` +
+> `docs/phase-records/depascalize-*.md`. The three items the plan hands **forward**
+> (they are not open plan work): the `HIDE_015X` retirement bundle → `UPGRADE_PLAN`
+> §5, the four `WholeCase` default-lane exclusions → whoever grants that policy, the
+> three wasm-guest markers → `WASM_USERMODELS_PLAN`. Each is gated by a test today
+> (see §Verification).
 
 Companion: `MULTITHREADING_PLAN.md` (Phase 9 parallelism). This plan's job is to make sure
 the de-Pascalized architecture is the one that plan builds on.
@@ -133,7 +138,7 @@ down and where mechanical execution is enough:
 | Part III P8/P9/P11/P12/P13/P14 | opus-medium+ | opus-high+ | bit-neutrality: after each rewritten file, run that WP's named pinning tests; a failing golden means *your* rewrite changed arithmetic |
 | P10 (transformer core) | opus-high+ | opus-high+ | densest index math in the tree; same bit-neutrality invariant |
 | P15 | opus-high+ (**item 2: opus-xhigh**) | opus-high+ (item 2: xhigh) | the dedup-mapping cache + its invalidation is the subtle part; everything else follows the file:line list; checkpoint Y goldens are the bit-exact proof |
-| **Stage F** | **opus-xhigh** | **opus-xhigh** | follow the compat sketch below; the dual-kernel table in Part IV.2 is the complete, closed inventory — do not invent new compat items |
+| **Stage F** | **opus-xhigh** | **opus-xhigh** | follow the compat sketch below; Part IV.2's dual-kernel table is the closed list of **shared arithmetic kernels** — do not invent new ones. Per-site upstream quirks are a different class, governed by `PORTING_PLAN.md` §4.1 rule 4, and are counted mechanically by `SPLIT_ALIAS_POPULATION` |
 
 Tier vocabulary and the step-0 refuse protocol: `PLAN_SEQUENCE.md` §Model-tier protocol.
 
@@ -1155,13 +1160,14 @@ oracle* is neither deleted (that loses 1:1 verifiability forever) nor kept as th
   oracle gate (byte goldens, checkpoint Y, `corpus_live` floors, **iteration counts**)
   stays green, permanently re-runnable against pinned dss-python.
 
-**Dual-kernel inventory** (small and closed — this is the entire list):
+**Dual-kernel inventory** — the **shared arithmetic kernels**, small and closed;
+this is the entire list *of that class*:
 
 | Item | parity kernel (`oracle-parity`) | default kernel (idiomatic) |
 |---|---|---|
-| complex division | `cdiv_fpc` (FPC Smith) | `num_complex` `/` |
-| dense inverse | `CMatrix::invert`/`etk_invert` no-row-exchange GJ | partial-pivot (or faer dense) |
-| sym components | `SymComp::official` (via compat invert) | `SymComp::precise` (already exists) |
+| complex division | `cdiv_fpc` (FPC Smith) | ~~`num_complex` `/`~~ → ***no split*, measured** (F.3e) — note ¹ |
+| dense inverse | `CMatrix::invert`/`etk_invert` no-row-exchange GJ | ~~partial-pivot (or faer dense)~~ → ***no split*, measured** (F.3f→F.3i) — note ¹ |
+| sym components | ~~`SymComp::official` (via compat invert)~~ → `SymComp::precise` | `SymComp::precise` — ***no split*, measured** — note ¹ |
 | RPN pi | `3.14159265359` | `f64::consts::PI` |
 | FPC round | `pascal_round_to_i32` (integer-indefinite artifact) | `round_ties_even` + saturation |
 | single-point stddev | value itself (upstream bug) | `0.0` |
@@ -1171,8 +1177,69 @@ oracle* is neither deleted (that loses 1:1 verifiability forever) nor kept as th
 | solver execution | `Par::Seq`, no refinement (iterate paths pinned) | `Par::rayon` allowed (`MULTITHREADING_PLAN` M3c), WP-R1 iterative refinement on (`RESONANCE_PLAN`) |
 | **report text rendering (F-FMT)** | `fmt_g` FPC `%g`/`Str` emulation + `comma_text` + the `report/format.rs` width/pad family, moved as-is | native `format!` precision via one `compat::fmt` seam; `Show` tables through a table crate (pick ONE at Stage F: `tabled` or `comfy-table`, plain no-color output); CSV keeps columns/order, native numbers |
 
+**The second class: per-site upstream quirks.** The table above is the shared
+*arithmetic* kernels. Stage F as executed also carries ~23 rows of a different
+kind — one upstream slip each, at one site, with no arithmetic shared by anything
+else (`ISOURCE_BUS2_NEVER_LATCHES`, `LINECODE_SYM_CLEAR_OMITS_C0`,
+`SYM_MATRIX_GETTER_RENDERS_ZEROS`, the CIM writer's three, …). They are **not**
+inventions against the rule above: `PORTING_PLAN.md` §4.1 rule 4 (Update
+2026-07-06) rules that "compat quirks are **not deleted** — each becomes a dual
+kernel behind `#[cfg(feature = "oracle-parity")]`", which is exactly this class,
+and `crates/dss-core/src/compat.rs` states the membership test they must each
+pass. They are enumerated where they live, not here, because the list is
+per-site and moves with the code; what keeps it honest is mechanical rather than
+editorial — `oracle_parity_cfg_gate.rs` pins `SPLIT_ALIAS_POPULATION` (38 as of
+the wave-4 settlement) and requires every row to carry an expected-value pin
+that branches on `compat::ORACLE_PARITY`.
+
+**¹ Three rows resolved to *no split* — the proposal was disproven by
+measurement, not quietly dropped (F.3, 2026-07-26/28).** Stage F is the only
+stage allowed to change arithmetic, so each proposed default kernel was
+implemented, gated, and kept only if it was actually better. Three were not. The
+losing impl stays **compiled** in `compat.rs` and its inferiority stays
+*asserted* by a unit test, so these verdicts cannot decay into folklore; the full
+measurement for each is in that file's module doc.
+
+- **complex division** — FPC `ucomplex`'s `/` **is** Smith's algorithm (C99
+  `_Cdivd`, LAPACK `dladiv`), not a Pascal wart kept for parity. Against an
+  exact-rational reference over 20 000 operand pairs the naive kernel is the
+  worse one (mean rel. error 7.73e-17 / worst 4.50e-16, against Smith's
+  5.68e-17 / 3.68e-16) and returns `0`/`NaN` outside
+  `|den| ∈ [1e-154, 1e154]` where Smith stays exact. *(Re-measured at the
+  wave-4 settlement and now re-runnable: `python tools/lanes/cdiv_sweep.py
+  sweep`. The earlier figures — 3.82e-16 vs 4.26e-16 — came from
+  decimal-literal references rather than the operands' binary values; same
+  ordering, different magnitudes. Note the aggregate is the verdict: Smith is
+  strictly worse on ~25% of individual pairs.)* Flipping would make the
+  **product** lane less accurate and less robust, buying nothing the parity lane
+  does not already provide — the IV.1 "legitimate numerics" rule applies.
+- **dense inverse** — a partial-pivot inverse differs from the parity kernel by
+  **1 ULP** on an ideal switch (`switch=yes r1=1e-6` → `Z = 1e-9·I`), and an
+  ideal switch is exactly the amplifier: 1 ULP of admittance → 1 ULP of node
+  voltage → 15 mA → **1.45 kW** on `Test/AutoTrans/Auto1bus-step1.dss`, against a
+  floor `TOLERANCE_NOTES.md` calibrated *from a bit-identical Y*. The candidate
+  is the **closer** of the two to the exact reciprocal, so being more accurate
+  does not rescue it and a faer LU would meet the same wall. Independently, the
+  two kernels disagree about what a **singular** matrix leaves behind — the
+  parity kernel leaves the input partially transformed, the candidate restores
+  it — and the fault-study and line-constants sites consume precisely that
+  (`solution::fault_study::compute_ysc`, `report::{show,export}::fault_study`,
+  `support::line_constants`' `FYc`), so flipping would silently change those
+  reports on a degenerate bus.
+- **sym components** — the parity kernel proposed here is **unreachable in the
+  pinned oracle**: `mathutil.pas:548` ends the unit's initialization with
+  `SelectAs2pVersion(False)` ("select ours by default"), and the truncated
+  `official` pair is reachable only through upstream's `DSSCompatFlag.BadPrecision`
+  (`CAPI_DSS.pas:315`), which no gating oracle sets. So parity == default ==
+  `SymComp::precise` and a cfg alias would select the same impl twice.
+
+The remaining rows split as specified, except `solver execution` — declared, but
+both lanes still select the sequential impl, because M3c / WP-R1 own that flip —
+and `report text rendering`, which is F.4's.
+
 **Mechanism — no cfg spaghetti, and both kernels always compiled:**
-- One `compat` module per affected crate (`dss-core/src/compat.rs`, `dss-sparse/src/compat.rs`)
+- One `compat` module per affected crate — as executed, three:
+  `dss-core/src/compat.rs`, `dss-parser/src/compat.rs`, `dss-sparse/src/compat.rs` —
   holds *all* `#[cfg(feature = "oracle-parity")]`-selected definitions; call sites are
   unconditional (`compat::cdiv(a, b)`, `compat::round_i32(x)`, `compat::PI`). CI grep
   gate: the cfg string appears **only** inside `compat` modules (plus test attributes).
@@ -1261,11 +1328,57 @@ arithmetic).
 - `CLAUDE.md`'s gate definition is updated at Stage F landing to name both lanes + the
   differential job.
 
-**Risks:** dual-path drift — mitigated by the closed inventory (a new compat item requires
-editing this table), the centralized `compat` modules, both lanes in CI, and the
-parity-vs-default kernel unit tests. **Sequencing:** Stage F runs after Parts I–III (the
+**Risks:** dual-path drift — mitigated by the closed kernel inventory (a new *kernel* row
+requires editing this table), the centralized `compat` modules, both lanes in CI, the
+parity-vs-default kernel unit tests, and — for the per-site quirk rows — the pinned
+`SPLIT_ALIAS_POPULATION`, which fails the gate whenever a row is added or removed. **Sequencing:** Stage F runs after Parts I–III (the
 [A] rewrites need the goldens *stable* as their equivalence proof; Stage F is the single
 re-baseline event for the default lane).
+
+### Stage F as executed (✅ 2026-07-31) — outcome, exit metric, and the three hand-offs
+
+**Outcome.** F.1 (seam, bit-neutral) → F.2 (default-lane drift-model test policy, all of it
+in `crates/dss-core/tests/harness/lane.rs`) → F.3 (the kernel flips + the marker sweep, 33
+commits) → F.4 (F-FMT: the number seam, `Show` rows as data through one table crate, the
+`Save`→checkpoint-Y round-trip guard) → F.5 (the differential job, the two-lane gate
+definition, the success-metric gates). **The sanctioned default-lane re-baseline was never
+spent**: no golden, tolerance, ledger entry or deck moved in the whole stage — measured, not
+asserted (`git diff` over `tests/golden`/`tests/corpus` at the F.3 close; F.4's per-report
+probes; F.5's differential job, which found the two lanes' full corpus checkpoint stream
+**bit-identical** outside the one deliberate Newton row). Three of the eleven proposed dual
+kernels were disproven by measurement and resolved to *no split* (note ¹ above) — the losing
+implementations stay compiled and their inferiority stays asserted.
+
+**Exit metric (ruled at the F.3 close; supersedes the literal "0 markers"):** *zero
+**unclassified** markers; zero carriers beyond the pinned escape; every escape gated by a
+test.* See §Verification for the full wording and the tests that enforce it.
+
+**The three hand-offs — none of them open Stage F work:**
+
+1. **`HIDE_015X` → `UPGRADE_PLAN` §5.** Its §5 exit criterion ("`rg HIDE_015X` must be
+   empty") is **not** a Stage F item and was deliberately re-homed there (F.3aa measured it,
+   F.3ag disproved F.4 as its host, the F.3 close ruled §5). The reason is that the flag
+   cannot be retired alone: un-hiding the five props, dropping the `Line.Wires →
+   "Conductors"` `json_name` masquerade, and regenerating the **13** gated artifacts (8
+   `Dump` texts + 5 JSON documents — no `Show` report, no corpus case) is **one atomic
+   change in both lanes**, and it moves *parity-lane* byte goldens, which only an
+   oracle-surface switch may do (`gen_json.py` is hard-pinned to 0.14.5; §5 re-pins it).
+   Doing it inside Stage F would instead buy a zero count by forking a numeric-content-free
+   surface into 13 default-lane-only artifacts. Tripwires, so the bundle cannot be half-done
+   or quietly lost: `the_hide_flag_escape_population_is_pinned_by_surface` (the 13 artifacts
+   and their surface classification) and
+   `exec::tests::compat_quirks::hide_015x_carrier_set_is_the_measured_escape` (the 5
+   carriers, plus the sibling flag's carrier-free state that makes the measurement isolate
+   this row). Disposition text: `docs/upgrade/DIVERGENCES.md` §"Line/LineGeometry Conductors";
+   tracked in `ORPHANED_GAPS.md` §2 and `PLAN_SEQUENCE.md` (UPGRADE's open tail).
+2. **The 4 `WholeCase` markers** — each one's clean fix moves node voltages, so the default
+   lane would have to drop a *whole gated case* from oracle comparison rather than a field.
+   The drift model sanctions field-scoped exclusions only; a whole-case skip is a coverage
+   trade no Stage F step may grant. Measured per row (the bill is at each site).
+3. **The 3 `WasmGuest` markers** (`WASM_USERMODELS_PLAN`) — they live in a
+   workspace-excluded reference model where `dss-core/oracle-parity` does not reach; a lane
+   split there is a second `.wasm` fixture, not a cfg alias. Each flip was run against the
+   crate's native-FPC-twin pins and fails a bit-exact generated pin.
 
 ---
 
@@ -1374,19 +1487,22 @@ on behavior traits is the target architecture, not a leftover.
 # Ordering & staging summary
 
 ```
-1. Part I  R0 ✅ → R1(+P7) ✅ → R2 ✅(M3b seam; rest → R2b ✅ a–e) → R3 ◀ IN FLIGHT
-           (worktree depas-r3, 2026-07-26)        — arenas, downcast removal      [A]
-2. Part II P1 (partial — deferred tail open) · P2 ✅ · P6 ✅ · P5 ✅ (a/b/c)     [A]
+1. Part I  R0 ✅ → R1(+P7) ✅ → R2 ✅(M3b seam; rest → R2b ✅ a–e) → R3 ✅
+                                                — arenas, downcast removal      [A]
+2. Part II P1 ✅ (incl. the deferred tail) · P2 ✅ · P6 ✅ · P5 ✅ (a/b/c) · P3 ✅ [A]
 3. Part III P8✅ → P10✅ → P11✅ → P12✅ → P13✅ → P14✅ · P9✅ · P15✅ (M1 benches
-   created there) · P3 (open, after R3) — de-indexing + solver hot-path hygiene [A]
+   created there) — de-indexing + solver hot-path hygiene                       [A]
    ── all [A] stages BEFORE Stage F: the still-stable byte-exact goldens are the free
       equivalence proof for every [A] rewrite ──
-4. Stage F (Part IV.2) — NOT started; last, after R3 + the P1 tail + P3. The
-   `oracle-parity` feature split; absorbs the TODO(compat) sweep (117 sites in
-   `crates/dss-core/src` / 123 workspace-wide, re-measured 2026-07-26) + the UPGRADE
-   `HIDE_015X` ×15 waiver; includes F-FMT (native rendering + parsed-numeric
-   default-lane goldens); ONE default-lane re-baseline; parity lane keeps every existing
-   gate forever.
+4. Stage F (Part IV.2) ✅ 2026-07-31 — the `oracle-parity` feature split, last. F.1
+   seam (bit-neutral) → F.2 default-lane drift-model test policy → F.3 kernel flips +
+   the TODO(compat) sweep (117 sites in `crates/dss-core/src` at the 2026-07-26
+   measurement → 15, all registered escapes) → F.4 F-FMT (number seam, `Show` tables
+   as data, `Save` round-trip) → F.5 (the differential gate, the two-lane gate
+   definition, the success-metric gates). The default-lane re-baseline it was granted
+   turned out **empty by measurement**; the parity lane never re-baselined. The
+   `HIDE_015X` waiver is NOT part of this: measured in F.3aa, re-homed in F.3ag/F.3
+   close to `UPGRADE_PLAN` §5 (see IV.2).
 ```
 
 P1 before P10/P14 (the `Connection`/mode enums feed the rewritten match arms). Each WP = one
@@ -1397,38 +1513,74 @@ lane) — see `PLAN_SEQUENCE.md` for the cross-plan order.
 # Verification
 
 - **Gate at every stage:** `cargo fmt --all --check` · `cargo clippy --workspace --all-targets
-  -- -D warnings` · `cargo test --workspace` (includes the unconditional live-oracle
-  `corpus_live` comparison — the permanent behavior contract).
+  -- -D warnings` · `cargo test --workspace` (includes the unconditional live-oracle corpus
+  comparison — the permanent behavior contract). **From Stage F on, each of the two latter
+  commands runs twice** — once per lane (`--features dss-core/oracle-parity`); `CLAUDE.md`
+  carries the canonical five-command form.
 - **Strata discipline:** [A] stages — goldens byte-identical, zero test churn (that *is* the
   equivalence proof; a failing golden in an [A] stage means the rewrite changed arithmetic —
   fix the rewrite, never regenerate). [C] changes exist only inside Stage F's `compat`
   split: parity lane unchanged forever, default lane re-baselined once with documented
-  parity-vs-default kernel bounds.
-- **Stage F gates:** both CI lanes green (`--features oracle-parity` = the full historical
-  gate; default = tolerance lane); `#[cfg(feature = "oracle-parity")]` appears only inside
-  `compat` modules (grep gate); the dual-kernel inventory table in Part IV.2 matches
-  `rg -l 'oracle-parity'` exactly.
-- **Success metrics (CI grep gates added at the end; current values re-measured
-  2026-07-26 @ `update` `67d2965` — R3 closes the Part I set):**
-  - `rg "downcast_ref|downcast_mut|as_any" crates/dss-core/src` → **zero** (R3)
-    *(2026-07-26: 369 downcasts / 716 `as_any|as_ckt_element`)*.
-  - `rg "RefCell|Rc<|static mut|thread_local" crates/*/src` → **zero** (P7).
-  - flat-offset arithmetic (`\* nconds`, `\* ncond\b`, `(… - 1) \*` index forms): from
-    **64 sites / 32 files** (2026-07-12) down to **accessor-internal only** (P8/P10/P11 —
-    target ≤10, each inside a named view type); `rg "term_ref\[" ` → zero outside `TermRef`
-    *(2026-07-26: MET — ~23 raw-pattern matches, accessor-internal/STAYS per the P8
-    settle; `term_ref[` = 0)*.
-  - `rg "for .* in 1\.\.=" crates/dss-core/src/elements` → boundary accessors only (P14)
-    *(2026-07-26: 106 matches remain, all verified STAYS-by-design — report text /
-    1-based user API / Pascal state arrays; the P10-scoped storage remnants are gone —
-    see the P14 audit settle)*.
-  - after P1: `rg "pub const .*: i32 = " crates/dss-core/src/elements` shrinks to the
-    keep-list families only (property indices are `usize` and exempt)
-    *(2026-07-26: 7 lines — the P1 deferred-tail families)*.
+  parity-vs-default kernel bounds. *(Executed: the one sanctioned re-baseline came back
+  **empty** — F.3ab measured it, F.3's close re-verified it, and F.4 landed F-FMT without
+  regenerating a single golden.)*
+- **Stage F gates (all live):** both lanes green; `#[cfg(feature = "oracle-parity")]` appears
+  only inside `compat` modules and test code
+  (`oracle_parity_cfg_gate.rs::oracle_parity_cfg_appears_only_in_compat_modules_and_tests`);
+  every lane-split alias is pinned by an expected-value test at an observable
+  (`every_lane_split_alias_is_pinned_by_an_expected_value_test`, 37 split + 2
+  declared-not-wired); the surviving compat markers are exactly the recorded escape register
+  (`surviving_compat_markers_are_exactly_the_recorded_escape_register`, fail-on-stale both
+  ways); the compat tag is a marker and never prose
+  (`compat_tag_is_only_ever_a_marker_never_prose`); the operational docs' references into the
+  machinery are accurate (`operational_docs_cite_the_compat_machinery_accurately`); the
+  hide-flag escape's population is pinned by surface and by carrier set
+  (`the_hide_flag_escape_population_is_pinned_by_surface` +
+  `exec::tests::compat_quirks::hide_015x_carrier_set_is_the_measured_escape`). Plus the
+  on-demand **parity↔default differential job** (`tools/lanes/lane_diff.ps1`), the transitive
+  `default ≈ oracle` proof — see `TESTING.md`.
+- **Stage F exit metric (as ruled at the F.3 close, and the wording that supersedes the
+  earlier literal "0 markers"):** *zero **unclassified** markers; zero carriers beyond the
+  pinned escape; every escape gated by a test.* The literal zero was unreachable inside the
+  stage's sanctioned scope — two whole classes of clean fix (a whole-case default-lane oracle
+  exclusion; an UPGRADE-rung oracle re-baseline) are not a Stage F step's to authorize, which
+  F.3 established by measuring each one rather than by argument. What replaces it is stronger
+  than a count, because it cannot rot: an unregistered marker fails the gate, a registered
+  marker that disappeared fails the gate, and each surviving row names the successor that
+  owns it. Current population: **18** markers = 11 `UpgradeRung` + 4 `WholeCase` + 3
+  `WasmGuest`, plus the single non-marker escape (the `HIDE_015X` bundle, → `UPGRADE_PLAN`
+  §5).
+- **Success metrics — now executable** (`crates/dss-core/tests/depascalize_metrics_gate.rs`,
+  added in F.5; each metric below is one test, counting **code** only, i.e. ignoring the
+  documentation that names the banned shapes). Values re-measured 2026-07-31 on
+  `depas-stagef`:
+  - `rg "downcast_ref|downcast_mut|as_any" crates/dss-core/src` → **zero** ✅ (R3)
+    *(was 369 downcasts / 716 `as_any|as_ckt_element` on 2026-07-26)*.
+  - `rg "RefCell|Rc<|static mut|thread_local" crates/*/src` → **zero** ✅ (P7) — the 3
+    remaining textual hits are prose in comments that *document* the ban.
+  - flat-offset arithmetic (`\* nconds`, `\* ncond\b`): from **64 sites / 32 files**
+    (2026-07-12) to **15** — the count the gate measures, since it strips comment-only
+    lines (a raw `rg` reports 17, two of them prose in `elements/ckt.rs`) — gated as a
+    ceiling that may only shrink; `rg "term_ref\["` → **zero** ✅. Most are
+    accessor-internal (P8/P10/P11) but not all: `relay/logic.rs` ×2, `meter_element.rs`
+    and `report/export/seq_currents.rs` are not view accessors, the last being F.3c's
+    `Iresidual` fix. The base wording also named a third form, `(… - 1) \*`; it is **not**
+    gated (24 sites in `dss-core/src`) — retired as too noisy, recorded rather than
+    dropped silently. *(Re-measured and re-scoped at the wave-4 settlement: the ceiling
+    stood at 17 against a measured 15, i.e. two free slots.)*
+  - `rg "for .* in 1\.\.=" crates/dss-core/src/elements` → **106**, every one verified
+    STAYS-by-design at the P14 audit settle (report text / 1-based user API / Pascal state
+    arrays) — gated as a ceiling.
+  - `rg "pub const .*: i32 = " crates/dss-core/src/elements` → **zero** ✅ — the P1 deferred
+    tail closed the last 7 keep-list families, so this metric is now an absolute zero rather
+    than "shrinks to the keep list" (property indices are `usize` and were always exempt).
 - **Perf check:** criterion baseline from `MULTITHREADING_PLAN.md` M1 before/after Part III —
   expect neutral-to-positive (views are zero-cost; `Vec<Conductor>` improves locality; P3
   removes hot-loop allocations); any regression >2% on `snapshot_8500` is investigated before
   merge.
 - Spot-checks: `dispatch.rs` and meter guards read as `match`/trait calls — no `Any`;
   InvControl `compute.rs` mode chains read as `match` over enums; `seq_currents.rs` reads as
-  `for phases in elem.terminals_i()` — no `(j-1)*ncond` in sight.
+  a terminal walk — the flat `(j-1)*ncond` form survives there only as the *default* lane's
+  `Iresidual` base behind `compat::IRESIDUAL_FROM_TERMINAL_1` (F.3c's fix for the upstream
+  bug), pinned by that row's expected-value test. **Corrected at the wave-4 settlement:**
+  this bullet used to claim the form was gone, which Stage F's own Iresidual fix falsified.

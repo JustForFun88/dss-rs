@@ -67,7 +67,7 @@ pub(crate) fn show_loops(classes: &[DssClass], ckt: &Circuit) -> String {
             let name_up = classes[br.class_ord()].arena[br.index()]
                 .data()
                 .name()
-                .to_uppercase();
+                .to_ascii_uppercase();
             if node.is_parallel {
                 let partner = node
                     .loop_elem

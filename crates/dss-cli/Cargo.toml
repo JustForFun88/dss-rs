@@ -3,6 +3,12 @@ name = "dss-cli"
 version = "0.1.0"
 edition = "2024"
 
+# Stage F lane split (DE_PASCALIZE Part IV.2): the binary's build option for
+# the bit-compat engine — `cargo build -p dss-cli --features oracle-parity`
+# produces the parity-lane CLI, the default build the idiomatic one.
+[features]
+oracle-parity = ["dss-core/oracle-parity"]
+
 [dependencies]
 dss-core = { path = "../dss-core" }
 # P5c: the binary owns diagnostic presentation. `fancy-no-backtrace` is the

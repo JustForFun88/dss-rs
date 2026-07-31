@@ -15,6 +15,7 @@ pub use rng::FpcRng;
 use num_complex::Complex64;
 
 use super::cmatrix::CMatrix;
+use crate::compat;
 
 /// Three-phase complex triple (Pascal `Complex3`).
 pub type Complex3 = [Complex64; 3];
@@ -61,12 +62,21 @@ impl SymComp {
         Self { as2p, ap2s }
     }
 
-    /// Upstream-compatible variant (`SetAMatrix_official` + `Invert`), used
-    /// when the engine compat flag asks for official OpenDSS numerics.
+    /// Upstream-compatible variant (`SetAMatrix_official` + `Invert`): the
+    /// truncated `sin 60°` literal plus a numerically *inverted* `Ap2s`, which
+    /// together reproduce official OpenDSS's rounding.
+    ///
+    /// **Not a compat site, and not selected in either lane** (Stage F row 3,
+    /// resolved as *no split*): `mathutil.pas:548` ends its initialization with
+    /// `SelectAs2pVersion(False)`, so the pinned oracle uses [`Self::precise`],
+    /// and this pair is reachable upstream only through the
+    /// `DSSCompatFlag.BadPrecision` env flag (`CAPI_DSS.pas:315`) that no gating
+    /// oracle sets. It is kept compiled — like `compat::cdiv_std_impl` — as the
+    /// measured comparison partner that keeps the "no split" verdict asserted
+    /// rather than narrated (`tests::sym_comp_official_vs_precise_gap_is_the_
+    /// truncated_sin60_constant` pins the 4.50e-10 relative gap). Deleting it
+    /// would delete the evidence; see `dss_core::compat`'s module header.
     pub fn official() -> Self {
-        // TODO(compat): truncated sin(60°) constant and the numerically
-        // inverted Ap2s reproduce official OpenDSS rounding; drop this whole
-        // variant in favor of `precise` once the 1:1 port is complete.
         let a = c(-0.5, 0.866025403);
         let aa = c(-0.5, -0.866025403);
         let mut as2p = CMatrix::new(3);
@@ -165,59 +175,13 @@ pub fn parallel_z(z1: Complex64, z2: Complex64) -> Complex64 {
     }
 }
 
-/// In-place inversion of a real square matrix in column-major order, the same
-/// pivoting algorithm as [`CMatrix::invert`] (Pascal `ETKInvert`).
-/// Pascal error code 2 (singular) maps to `Err`.
+/// In-place inversion of a real square matrix in column-major order (Pascal
+/// `ETKInvert`), through the Stage F lane seam: the parity kernel is the same
+/// no-row-exchange algorithm as [`CMatrix::invert`], the default kernel pivots
+/// partially — see [`compat::etk_invert`]. Pascal error code 2 (singular) maps
+/// to `Err`.
 pub fn etk_invert(a: &mut [f64], norder: usize) -> Result<(), super::cmatrix::SingularMatrix> {
-    let l = norder;
-    debug_assert_eq!(a.len(), l * l);
-    let idx = |i: usize, j: usize| j * l + i;
-
-    let mut used = vec![false; l];
-    let mut t1 = 0.0f64;
-    let mut k = 0usize;
-
-    for _m in 0..l {
-        for ll in 0..l {
-            if !used[ll] {
-                let rmy = a[idx(ll, ll)].abs() - t1.abs();
-                if rmy > 0.0 {
-                    t1 = a[idx(ll, ll)];
-                    k = ll;
-                }
-            }
-        }
-
-        if t1.abs() == 0.0 {
-            return Err(super::cmatrix::SingularMatrix);
-        }
-
-        t1 = 0.0;
-        used[k] = true;
-        for i in 0..l {
-            if i != k {
-                for j in 0..l {
-                    if j != k {
-                        a[idx(i, j)] -= a[idx(i, k)] * a[idx(k, j)] / a[idx(k, k)];
-                    }
-                }
-            }
-        }
-
-        a[idx(k, k)] = -1.0 / a[idx(k, k)];
-
-        for i in 0..l {
-            if i != k {
-                a[idx(i, k)] *= a[idx(k, k)];
-                a[idx(k, i)] *= a[idx(k, k)];
-            }
-        }
-    }
-
-    for v in a.iter_mut() {
-        *v = -*v;
-    }
-    Ok(())
+    compat::etk_invert(a, norder)
 }
 
 /// Normally distributed random variable via the 12-uniform-sum method
@@ -238,10 +202,13 @@ pub fn quasi_log_normal(mean: f64, rand: impl FnMut() -> f64) -> f64 {
 
 /// Sample mean and standard deviation (Pascal `RCDMeanAndStdDev`).
 pub fn mean_and_std_dev(data: &[f64]) -> (f64, f64) {
-    // TODO(compat): for a single point the Pascal code returns the point
-    // itself as the "standard deviation" (not 0); reproduced bug-for-bug.
+    // A one-element sample has no spread. The Pascal code nevertheless returns
+    // the point *itself* as the "standard deviation" (it falls through to the
+    // `Mean` assignment and never clears `StdDev`) — the Stage F
+    // `stddev_single_point` row: reproduced in the parity lane, `0.0` in the
+    // default lane. Same at the three siblings below.
     if data.len() == 1 {
-        return (data[0], data[0]);
+        return (data[0], compat::stddev_single_point(data[0]));
     }
     let n = data.len() as f64;
     let mean = data.iter().sum::<f64>() / n;
@@ -258,10 +225,12 @@ pub fn mean_and_std_dev(data: &[f64]) -> (f64, f64) {
 /// rounding step verified bit-exact against an FPC 3.2.2 x86_64 probe
 /// (ppcrossx64; `tools/fpc/single_prec_probe.pas`).
 pub fn mean_and_std_dev_single(data: &[f32]) -> (f64, f64) {
-    // TODO(compat): single-point "standard deviation" equals the point itself
-    // (see mean_and_std_dev).
+    // Single-point sample — see `mean_and_std_dev`.
     if data.len() == 1 {
-        return (f64::from(data[0]), f64::from(data[0]));
+        return (
+            f64::from(data[0]),
+            compat::stddev_single_point(f64::from(data[0])),
+        );
     }
     let n = data.len() as f64;
     let mean = data.iter().map(|&d| f64::from(d)).sum::<f64>() / n;
@@ -285,10 +254,12 @@ pub fn mean_and_std_dev_single(data: &[f32]) -> (f64, f64) {
 pub fn curve_mean_and_std_dev_single(y: &[f32], x: &[f32]) -> (f64, f64) {
     let n = y.len();
     debug_assert_eq!(x.len(), n);
-    // TODO(compat): single-point "standard deviation" equals the point itself
-    // (see mean_and_std_dev).
+    // Single-point curve — see `mean_and_std_dev`.
     if n == 1 {
-        return (f64::from(y[0]), f64::from(y[0]));
+        return (
+            f64::from(y[0]),
+            compat::stddev_single_point(f64::from(y[0])),
+        );
     }
     let mut s = 0.0f64;
     for i in 0..n - 1 {
@@ -312,10 +283,9 @@ pub fn curve_mean_and_std_dev_single(y: &[f32], x: &[f32]) -> (f64, f64) {
 pub fn curve_mean_and_std_dev(y: &[f64], x: &[f64]) -> (f64, f64) {
     let n = y.len();
     debug_assert_eq!(x.len(), n);
-    // TODO(compat): single-point "standard deviation" equals the point
-    // itself, like the Pascal original (see mean_and_std_dev).
+    // Single-point curve — see `mean_and_std_dev`.
     if n == 1 {
-        return (y[0], y[0]);
+        return (y[0], compat::stddev_single_point(y[0]));
     }
     let mut s = 0.0;
     for i in 0..n - 1 {

@@ -19,8 +19,10 @@
 use num_complex::Complex64;
 
 use crate::circuit::Circuit;
+use crate::compat;
 use crate::report::format;
-use crate::support::cmatrix::{CMatrix, cdiv_fpc};
+use crate::report::table::{Cell, Report, Row};
+use crate::support::cmatrix::CMatrix;
 use crate::support::mathutil::get_xr;
 
 /// Build the `Show Faults` text (Pascal `ShowFaultStudy`). Reads the precomputed
@@ -29,102 +31,129 @@ use crate::support::mathutil::get_xr;
 pub(crate) fn show_fault_study(ckt: &Circuit) -> String {
     let mbnl = super::max_bus_name_length(ckt);
     let gfault = Complex64::new(10000.0, 0.0);
-    let mut s = String::new();
+    let mut rep = Report::new();
 
     // ── Section 1: All-Node Fault Currents ─────────────────────────────────
-    s.push_str("FAULT STUDY REPORT\n");
-    s.push('\n');
-    s.push_str("ALL-Node Fault Currents\n");
-    s.push('\n');
+    rep.line("FAULT STUDY REPORT");
+    rep.blank();
+    rep.line("ALL-Node Fault Currents");
+    rep.blank();
     // Header: `Pad('Bus',mbnl)` + 3×(`Node` + 12sp + `Amps` + 3sp + `X/R `), the
-    // last group ending `X/R ...`.
-    s.push_str(&format::pad("Bus", mbnl));
+    // last group ending `X/R ...` — one cell per column the rows draw (each bus
+    // repeats the `node / amps / X-over-R` group per node).
+    let mut hdr = Row::new().cell(Cell::left("Bus", mbnl));
     for k in 0..3 {
-        s.push_str("Node");
-        s.push_str(&" ".repeat(12));
-        s.push_str("Amps");
-        s.push_str(&" ".repeat(3));
-        s.push_str(if k == 2 { "X/R ..." } else { "X/R " });
+        hdr = hdr
+            .cell(Cell::plain("Node").sep("            "))
+            .cell(Cell::plain("Amps").sep("   "));
+        hdr = if k == 2 {
+            hdr.cell(Cell::plain("X/R").sep(" "))
+                .cell(Cell::plain("..."))
+        } else {
+            hdr.cell(Cell::plain("X/R").sep(" "))
+        };
     }
-    s.push('\n');
-    s.push('\n');
+    rep.row(hdr);
+    rep.row(Row::blank(10));
 
     for bus in &ckt.buses {
         let n = bus.num_nodes_this_bus();
-        // `Pad(EncloseQuotes(UPPER(name)) + ' ', mbnl + 2)`.
-        let name = bus.name.to_uppercase();
-        s.push_str(&format::pad(
-            &format!("{} ", format::enclose_quotes(&name)),
-            mbnl + 2,
-        ));
+        // `Pad(EncloseQuotes(UPPER(name)) + ' ', mbnl + 2)` — the trailing space
+        // is the column gutter, so the quoted name fills `mbnl + 1` (`Pad` only
+        // appends; the bytes are the same).
+        let name = bus.name.to_ascii_uppercase();
+        let mut row = Row::new().cell(Cell::left(format::enclose_quotes(&name), mbnl + 1).sep(" "));
         for i in 0..n {
-            if i > 0 {
-                s.push_str("    ");
-            }
             let curr_mag = bus.bus_current[i].norm();
             // `GetNum(i)` (no field width) then `CurrMag:15:0`.
-            s.push_str(&bus.get_num(i).to_string());
-            s.push_str(&format::fixed_w(curr_mag, 15, 0));
+            row = row.cell(Cell::plain(bus.get_num(i).to_string()));
+            let amps = Cell::right(format::fixed(curr_mag, 0), 15);
+            // The next node's group is four spaces along; the last carries none.
+            let tail_sep = if i + 1 < n { "    " } else { "" };
             if curr_mag > 0.0 {
-                let zbus = cdiv_fpc(bus.vbus[i], bus.bus_current[i]);
-                s.push(' ');
-                s.push_str(&format::fixed_w(get_xr(zbus), 5, 1));
+                let zbus = compat::cdiv(bus.vbus[i], bus.bus_current[i]);
+                row = row
+                    .cell(amps.sep(" "))
+                    .cell(Cell::right(format::fixed(get_xr(zbus), 1), 5).sep(tail_sep));
             } else {
-                s.push_str("   N/A");
+                // `'   N/A'` — the same six-wide field, right-justified.
+                row = row.cell(amps).cell(Cell::right("N/A", 6).sep(tail_sep));
             }
         }
-        s.push('\n');
+        rep.row(row);
     }
-    s.push('\n');
+    rep.blank();
+
+    // The pu-voltage cell of both fault sections: `%10.3f` of the pu magnitude, or
+    // the raw volts at `%10.1f` when the bus has no kV base.
+    let pu_cell = |kv_base: f64, vphs: f64| {
+        if kv_base > 0.0 {
+            Cell::right(format::fixed(0.001 * vphs / kv_base, 3), 10)
+        } else {
+            Cell::right(format::fixed(vphs, 1), 10)
+        }
+    };
 
     // ── Section 2: One-Node to ground Faults ───────────────────────────────
-    s.push('\n');
-    s.push_str("ONE-Node to ground Faults\n");
-    s.push('\n');
-    s.push_str("                                      pu Node Voltages (L-N Volts if no base)\n");
-    s.push_str(&format::pad("Bus", mbnl));
-    s.push_str("   Node  Amps         Node 1     Node 2     Node 3    ...\n");
-    s.push('\n');
+    rep.blank();
+    rep.line("ONE-Node to ground Faults");
+    rep.blank();
+    rep.line("                                      pu Node Voltages (L-N Volts if no base)");
+    rep.row(
+        Row::new()
+            .cell(Cell::left("Bus", mbnl).sep("   "))
+            .cell(Cell::plain("Node").sep("  "))
+            .cell(Cell::plain("Amps").sep("         "))
+            .cell(Cell::plain("Node 1").sep("     "))
+            .cell(Cell::plain("Node 2").sep("     "))
+            .cell(Cell::plain("Node 3").sep("    "))
+            .cell(Cell::plain("...")),
+    );
+    rep.row(Row::blank(7));
 
     for bus in &ckt.buses {
         let n = bus.num_nodes_this_bus();
         let Some(zsc) = &bus.zsc else { continue };
-        let padded = format::pad(&format::enclose_quotes(&bus.name.to_uppercase()), mbnl + 2);
+        let quoted = format::enclose_quotes(&bus.name.to_ascii_uppercase());
         for iphs in 0..n {
             // `IFault := VBus[iphs] / Zsc[iphs,iphs]` (FPC `ucomplex` `/`).
-            let ifault = cdiv_fpc(bus.vbus[iphs], zsc.get(iphs, iphs));
+            let ifault = compat::cdiv(bus.vbus[iphs], zsc.get(iphs, iphs));
             // `Format('%s %4u %12.0f ', …)` then `'   '`.
-            s.push_str(&padded);
-            s.push(' ');
-            s.push_str(&format::fixed_w_int(bus.get_num(iphs) as i64, 4));
-            s.push(' ');
-            s.push_str(&format::fixed_w(ifault.norm(), 12, 0));
-            s.push_str("    "); // the '%12.0f ' trailing space + the '   ' literal
+            let mut row = Row::new()
+                .cell(Cell::left(quoted.clone(), mbnl + 2).sep(" "))
+                .cell(Cell::right(bus.get_num(iphs).to_string(), 4).sep(" "))
+                // the `'%12.0f '` trailing space + the `'   '` literal, then the
+                // one space each pu column is preceded by
+                .cell(Cell::right(format::fixed(ifault.norm(), 0), 12).sep("     "));
             for i in 0..n {
                 let vphs = (bus.vbus[i] - zsc.get(i, iphs) * ifault).norm();
-                s.push(' ');
-                if bus.kv_base > 0.0 {
-                    s.push_str(&format::fixed_w(0.001 * vphs / bus.kv_base, 10, 3));
-                } else {
-                    s.push_str(&format::fixed_w(vphs, 10, 1));
-                }
+                row = row.cell(pu_cell(bus.kv_base, vphs).sep(if i + 1 < n { " " } else { "" }));
             }
-            s.push('\n');
+            rep.row(row);
         }
     }
 
     // ── Section 3: Adjacent Node-Node Faults ───────────────────────────────
-    s.push('\n');
-    s.push_str("Adjacent Node-Node Faults\n");
-    s.push('\n');
-    s.push_str("                                        pu Node Voltages (L-N Volts if no base)\n");
-    s.push_str("Bus          Node-Node      Amps        Node 1     Node 2     Node 3    ...\n");
-    s.push('\n');
+    rep.blank();
+    rep.line("Adjacent Node-Node Faults");
+    rep.blank();
+    rep.line("                                        pu Node Voltages (L-N Volts if no base)");
+    rep.row(
+        Row::new()
+            .cell(Cell::left("Bus", 13))
+            .cell(Cell::plain("Node-Node").sep("      "))
+            .cell(Cell::plain("Amps").sep("        "))
+            .cell(Cell::plain("Node 1").sep("     "))
+            .cell(Cell::plain("Node 2").sep("     "))
+            .cell(Cell::plain("Node 3").sep("    "))
+            .cell(Cell::plain("...")),
+    );
+    rep.row(Row::blank(7));
 
     for bus in &ckt.buses {
         let n = bus.num_nodes_this_bus();
         let Some(ysc) = &bus.ysc else { continue };
-        let padded = format::pad(&format::enclose_quotes(&bus.name.to_uppercase()), mbnl + 2);
+        let quoted = format::enclose_quotes(&bus.name.to_ascii_uppercase());
         for iphs in 0..n {
             for iphs2 in 0..n {
                 if iphs >= iphs2 {
@@ -142,26 +171,24 @@ pub(crate) fn show_fault_study(ckt: &Circuit) -> String {
                 yfault.mv_mult(&mut vfault, &bus.bus_current);
                 let iamps = ((vfault[iphs] - vfault[iphs2]) * gfault).norm();
                 // `Pad(name,mbnl+2), GetNum(iphs):4, GetNum(iphs2):4, Cabs():12:0, '   '`.
-                s.push_str(&padded);
-                s.push_str(&format::fixed_w_int(bus.get_num(iphs) as i64, 4));
-                s.push_str(&format::fixed_w_int(bus.get_num(iphs2) as i64, 4));
-                s.push_str(&format::fixed_w(iamps, 12, 0));
-                s.push_str("   ");
-                for vf in &vfault {
-                    let vphs = vf.norm();
-                    s.push(' ');
-                    if bus.kv_base > 0.0 {
-                        s.push_str(&format::fixed_w(0.001 * vphs / bus.kv_base, 10, 3));
+                let mut row = Row::new()
+                    .cell(Cell::left(quoted.clone(), mbnl + 2))
+                    .cell(Cell::right(bus.get_num(iphs).to_string(), 4))
+                    .cell(Cell::right(bus.get_num(iphs2).to_string(), 4))
+                    .cell(Cell::right(format::fixed(iamps, 0), 12).sep("    "));
+                for (i, vf) in vfault.iter().enumerate() {
+                    row = row.cell(pu_cell(bus.kv_base, vf.norm()).sep(if i + 1 < n {
+                        " "
                     } else {
-                        s.push_str(&format::fixed_w(vphs, 10, 1));
-                    }
+                        ""
+                    }));
                 }
-                s.push('\n');
+                rep.row(row);
             }
         }
     }
 
-    s
+    rep.finish()
 }
 
 #[cfg(test)]
