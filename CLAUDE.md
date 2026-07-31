@@ -125,10 +125,40 @@ lane takes the clean fix, pinned by its own expected-value test.
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --all-targets --features dss-core/oracle-parity -- -D warnings
 cargo test --workspace
+cargo test --workspace --features dss-core/oracle-parity
 ```
 
-Those three commands are the mandatory gate. The unified live corpus gate
+Those five commands are the mandatory gate. Since DE_PASCALIZE **Stage F**
+(the `oracle-parity` feature split) the engine ships in **two lanes**, and both
+must be green:
+
+- **parity** (`--features dss-core/oracle-parity`) — the bit-compat engine:
+  byte goldens, checkpoint Y, corpus floors, exact iteration counts and
+  discrete state. This lane **never re-baselines**; it is the permanent 1:1
+  record against the pinned oracles.
+- **default** (no features) — the idiomatic product: upstream bugs fixed,
+  reports rendered natively. Same oracle floors on continuous quantities,
+  discrete state still exact, iteration counts ±1, each deliberate divergence
+  excluded field-by-field and pinned by its own expected-value test.
+
+The lane policy is implemented once in `crates/dss-core/tests/harness/lane.rs`;
+`#[cfg(feature = "oracle-parity")]` may appear only inside the three `compat`
+modules and test code (gated by `oracle_parity_cfg_gate.rs`). Stage F
+introduces **no** tolerance anywhere — the default-lane report policy is
+`rel = abs = 0`.
+
+A third, **on-demand** job compares the two lanes against each other:
+`pwsh -File tools/lanes/lane_diff.ps1` builds both, dumps the full corpus
+checkpoint stream from each and diffs them within the documented bounds
+(`crates/dss-core/examples/lane_dump.rs`; `TESTING.md`
+§"The parity↔default differential gate"). Since parity == oracle bitwise,
+`default ≈ parity` measured there is the transitive proof `default ≈ oracle`.
+It is not part of `cargo test` (two release builds, ~215 MB of dumps per lane):
+run it whenever a `compat` kernel, a lane alias or the solver changes.
+
+The unified live corpus gate
 (`crates/dss-core/tests/corpus_gate.rs`, successor of `corpus_live.rs`) is part
 of `cargo test` and runs **unconditionally**: one scheduler-driven test
 (`corpus_gate_all_cases_match_engines`) compiles + solves all 514 manifest cases
