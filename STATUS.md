@@ -7,6 +7,45 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.4f — the two matrix dumps close F.4e's escape; §F-FMT step 2 has no report left (branch `depas-stagef`, 2026-07-31)
+
+F.4e's own escape row was `Show Y` and `Show Yprim`: they use no `Pad`, so they
+were outside F.4d's list of fourteen, but they *do* print fixed-width numeric
+matrices. Both now build rows through the same seam, and with them **every**
+`Show` report the port emits is row data — `rg "format::(pad|pad_dots|g_w|
+fixed_w|fixed_w_int|g_left_w)" crates/dss-core/src/report/show` is down to
+**15** sites, none of them a column: nine section-header literals, three
+single-value footer lines (`Total Circuit Losses = …` ×2, `Max Error = …`), and
+the two padded one-off labels Pascal writes outside any table (`Show busflow`'s
+`ELEMENT = <padded name>` line, `Show Losses`' newline-less
+`Percent Losses for Circuit = ` arm).
+
+`Show Yprim` was the trivial half (each triangle is one run of
+`Cell::right(g(v, 10), 13)` with a space gutter). `Show Y` is the interesting
+one, and it is F.4e's **rule 1** in its purest form: Pascal writes
+`Format('[%4d,%4d] = %13.10g + j%13.10g')`, so the brackets *and* the `j` sit
+flush against right-justified numbers. Given a `[` or a `j` column of its own,
+the table kernel would emit `[ 1 , 1 ] = … j -4.63` where the oracle has
+`[   1,   1]` and `j -4.636999108` — three extra tokens per row. So the bracket
+pair is one cell (`format!("[{:>4},{:>4}]", …)`) and the susceptance cell bakes
+its `j` and the Pascal width into its own text; both render identically in the
+two kernels, which is exactly what the golden comparator requires.
+
+**Proof.** The same throwaway probe over all 72 `show_*` fixtures: parity lane
+**byte-identical, 86/86** against `HEAD~1`'s dump; default lane **token-identical,
+86/86** against F.4e's (so the one enumerated `TERMINAL TOTAL` rule is still the
+only default-lane token move in the whole family). No golden, tolerance, ledger
+entry or deck regenerated; `SPLIT_ALIAS_POPULATION` stays 37 and `TODO(compat)`
+15 in `crates` / 18 tree-wide.
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D
+warnings` and the `--features dss-core/oracle-parity` twin both exit 0;
+`cargo test --workspace --no-fail-fast` **2475 passed / 0 failed / 5 ignored**
+and the parity-lane twin identically **2475 / 0 / 5** (F.4e's count — this
+commit adds no test), the 520-case corpus gate green inside each,
+`git status --short tests/corpus` empty afterwards (the known intermittent
+`Test/AutoTrans/*` artifacts deleted by exact name).
+
 ### DE_PASCALIZE Stage F.4e — the nine escaped `Show` modules join the table seam; one glued token was Pascal's, not ours (branch `depas-stagef`, 2026-07-31)
 
 F.4d converted 5 of the 14 `Pad`-using `Show` modules and handed on the other
