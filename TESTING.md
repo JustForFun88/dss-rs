@@ -10,8 +10,15 @@ triage a divergence into the ledger, re-vendor the r4133 binary).
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --all-targets --features dss-core/oracle-parity -- -D warnings
 cargo test --workspace
+cargo test --workspace --features dss-core/oracle-parity
 ```
+
+Since DE_PASCALIZE **Stage F** the engine ships in two builds, so the gate runs
+in **two lanes** — see [The two lanes](#the-two-lanes-stage-f) below for what
+each one asserts, and [the differential gate](#the-paritydefault-differential-gate)
+for the job that compares them (run on demand, not per commit).
 
 `cargo test` runs everything below. The unified corpus gate compares the Rust
 engine live against **two oracles**, and both are mandatory prerequisites:
@@ -52,6 +59,80 @@ opt-level and stay on: slice bounds checks are never removed at any opt-level,
 and `overflow-checks`/`debug-assertions` are pinned `true` explicitly in the
 overrides — the reason the gate uses this instead of `--release` (which sets
 overflow-checks=false).
+
+### The two lanes (Stage F)
+
+`DE_PASCALIZE_PLAN.md` Part IV.2 split the engine into two builds of the same
+source. The difference is confined to three `compat` modules
+(`crates/{dss-core,dss-parser,dss-sparse}/src/compat.rs`), each of which selects
+between two always-compiled sibling implementations; `oracle_parity_cfg_gate.rs`
+fails if the cfg string appears anywhere else.
+
+| lane | build | what it asserts |
+|---|---|---|
+| **parity** | `--features dss-core/oracle-parity` | the bit-compat engine: byte goldens, checkpoint Y, corpus tier floors, **exact** iteration counts and discrete state, every upstream quirk reproduced. This lane is the permanent 1:1 record and **never re-baselines**. |
+| **default** | no features | the idiomatic product: the F.3 upstream-bug fixes are live, report text is rendered natively (F.4). Continuous quantities keep the **same** oracle floors, discrete state stays exact, iteration counts get a documented ±1 band, and each deliberate divergence is excluded field-by-field and pinned by its own expected-value test. |
+
+The whole lane policy lives in **one** file, `crates/dss-core/tests/harness/lane.rs`
+(`PARITY`, `ITER_SLACK`, `compare_report`, `expected_eventlog`, the
+field-scoped exclusion lists) — no golden driver reads the cfg directly, and
+the module's own unit tests assert the *split itself* (a rendering-only
+difference must pass in the default lane and fail in the parity lane, in
+whichever lane the suite runs). Stage F introduces **no** tolerance: the
+default-lane report policy is `rel = abs = 0`, so only the spelling of a number
+may move, never its value.
+
+Both lanes must be green before any commit. Everything else in this document —
+oracles, goldens, ledger, knobs — is identical in the two lanes unless the table
+above says otherwise.
+
+### The parity↔default differential gate
+
+The two lanes are two *builds*, so no `#[test]` can compare them. That
+comparison is a **scripted job**:
+
+```
+pwsh -File tools/lanes/lane_diff.ps1            # build both lanes, dump, diff
+pwsh -File tools/lanes/lane_diff.ps1 -SkipDump  # re-diff existing dumps
+```
+
+It builds `crates/dss-core/examples/lane_dump.rs` once per lane (each into its
+own target dir under `target/lanes/`, so re-runs do not thrash the other lane's
+cache), solves **all 520 manifest cases** on each engine, and writes one record
+per compared quantity: engine error count, per-step convergence flag and
+iteration count, every node voltage, every element's terminal currents, powers
+and losses, and the assembled system Y. The diff compares record *keys* exactly
+and in order (a renamed, reordered, dropped or added record fails structurally)
+and the values against the **tightest** calibrated oracle tier
+(`tol_for("micro")`: `|Δ| ≤ 1e-6 + 1e-9·|parity|`) plus the same ±1 iteration
+band the default lane uses against the oracle.
+
+Why it is the strongest default-lane test: the parity lane is bit-identical to
+the pinned oracle, so `default ≈ parity` measured here **is** the transitive
+proof `default ≈ oracle` — at a bound orders below the 1e-6-class floors the
+corpus gate itself uses. A default-lane kernel regression hiding inside a tier
+floor passes the corpus gate and fails here.
+
+It is **not** part of `cargo test`: it costs two release builds and ~3 minutes
+of solving, and it writes ~215 MB per lane into `target/lanes/`. Run it when a
+`compat` kernel, a lane alias or the solver changes — and expect it in the
+`MULTITHREADING` M3c and `RESONANCE` WP-R1 rungs, which are the two planned
+changes that will make the lanes genuinely diverge.
+
+The Stage F landing measurement (2026-07-31, 520 cases / 3 219 862 records /
+~4.8 M compared values) is recorded in `STATUS.md`: every gated kind
+**bit-identical** (`max |Δ| = 0` on `v`, `cur`, `pow`, `loss`, `y`, `errs`,
+`conv`, `iter`), the only measurable divergence being the deliberate Newton
+`Powers`/`Losses` row. The job's `DOCUMENTED_DIVERGENCES` list mirrors
+`harness::lane`'s field-scoped exclusions, so the two instruments cannot
+disagree about what is deliberate; a divergence there is measured and printed,
+never silently skipped.
+
+Corpus hygiene is part of the job: decks write their reports next to
+themselves, so the script deletes the untracked artifacts it produced and
+`git restore`s the three vendored files some decks overwrite
+(`Test/LineConstantsCode.DSS`, the two `IEEE_519_Mon_mpcc_1.csv`) — by exact
+path, never a wide `git clean`.
 
 ## The layers
 

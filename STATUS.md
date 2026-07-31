@@ -7,6 +7,103 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.5a — the differential gate lands, and the two lanes come back **bit-identical** (branch `depas-stagef`, 2026-07-31)
+
+Plan IV.2 specifies the parity↔default differential gate as "a CI job, not a
+unit test — the two kernels live in different builds", and calls it "the single
+strongest default-lane test". This commit lands it as a locally runnable
+scripted job, runs it once, and records what it measured.
+
+**Shape.** The moving part is `crates/dss-core/examples/lane_dump.rs` — an
+*example*, so `cargo clippy --workspace --all-targets` lints it and `cargo test`
+compiles it in **both** lanes (proven, not assumed: a deliberate `len_zero`
+planted in it fails the default-lane clippy gate). It has two subcommands.
+`dump` walks all **520** manifest cases exactly as `run_rust_capture` does
+(`clear`; `compile`; the manifest's `post`; `n_steps` × `solve`) and writes one
+record per compared quantity; `diff` streams two dumps and checks them. Neither
+depends on the lane, so the same binary serves both. `tools/lanes/lane_diff.ps1`
+drives all three steps into `target/lanes/`, each lane into its own target dir
+so a re-run does not thrash the other lane's cache.
+
+**What it compares, and against what.** Engine error count, per-step
+convergence flag and iteration count, every node voltage, every element's
+terminal currents / powers / losses, and the assembled system Y (once per case,
+in the state the last step left it). Record *keys* are compared exactly and in
+order — a renamed, reordered, dropped or added record fails structurally before
+any number is read. Values go against the **tightest calibrated oracle tier**,
+`tol_for("micro")`: `|Δ| ≤ 1e-6 + 1e-9·|parity|`, plus the same ±1 iteration
+band `harness::lane` grants the default lane against the oracle. Reusing the
+micro tier is deliberate and is a *tightening* — the corpus's feeder/large
+tiers are 1e-8 … 5e-6, so every case is held here to a bound at or below its
+own oracle comparison's.
+
+**The measurement (2026-07-31).** 520 cases, **3 219 862 records**, ~4.8 M
+compared values: `v` 375 692, `cur` 1 169 132, `pow` 1 169 058, `loss` 366 219,
+`y` 1 738 004, `iter` 2 141, `conv` 2 141, `errs` 516 — **`max |Δ| = 0` on every
+one**. Not "inside the bound": bit-identical. Iteration counts that drifted: 0.
+The only measurable divergence is the deliberate Newton row — `newton.dss` `pow`
+max |Δ| 4.856e-4 (rel 8.195e-7), `loss` 4.516e-1 (rel 4.449e-7);
+`newton_feeder.dss` `pow` 3.084e-3 (rel 9.630e-7), `loss` 5.213e0 (rel
+7.024e-7). That 4.86e-4 independently reproduces, from the other side, the
+number `harness::lane::LANE_SKIP_ELEM_POWERS` documents for the same exclusion.
+
+**Why bit-identical is the right answer and not a dead instrument.** F.3
+measured each kernel row on the corpus *before* flipping it, and flipped only
+the ones that moved no corpus case; the rows that would have moved one are
+exactly the ones it blocked (the four `WholeCase` escapes) or handed to
+`UPGRADE_PLAN` (the eleven truncated-constant rows). The flipped rows'
+observables are reports, event logs and property surfaces — which this job does
+not dump, and which the two golden lanes gate instead. So the corpus-level
+electrical model agreeing bit-for-bit is what F.3's records predict. The
+non-vacuity is asserted (the diff refuses to print PASS below 100 000 records
+or without the `v`/`y` kinds) and demonstrated (the same comparator reports the
+Newton rows).
+
+**Two findings from the first run**, both of which would have silently
+corrupted the record:
+
+1. `|` is not a safe field separator for DSS names — the corpus contains a
+   `Line.b1||b2`, which reshapes a `|`-separated record into extra fields. The
+   record separator is a **tab**, with a `debug_assert` on the key.
+2. A corpus run pollutes in **three** shapes, not the one the previous records
+   describe: untracked report files (the known `Test/AutoTrans` set), whole
+   created directories (`DI_yr_*` EnergyMeter output, six of them), and three
+   *tracked vendored* files that decks overwrite under their own name
+   (`Test/LineConstantsCode.DSS` from `Show LineConstants`, the two
+   `IEEE_519_Mon_mpcc_1.csv` monitor exports). The script deletes the first two
+   by exact path (refusing any reparse point) and `git restore`s the third —
+   never a wide `git clean`.
+
+**Docs.** `CLAUDE.md`'s gate definition now names **both lanes** (five commands)
+plus the on-demand differential job; `TESTING.md` gains §"The two lanes (Stage
+F)" — what each lane asserts, and that Stage F introduces no tolerance — and
+§"The parity↔default differential gate" with how to run it, what it costs
+(~215 MB per lane, two release builds, ~3 min of solving) and when to run it
+(any `compat` kernel / lane alias / solver change; M3c and WP-R1 are the two
+planned changes that will make the lanes genuinely diverge).
+
+**Proof.** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -- -D warnings` and the `--features dss-core/oracle-parity` twin
+both exit 0; `cargo test --workspace --no-fail-fast` **2475 passed / 0 failed /
+5 ignored** and the parity-lane twin identically **2475 / 0 / 5** (F.4f's
+counts — this commit adds no test), the 520-case corpus gate green inside each,
+`git status --short tests/corpus` empty afterwards (the known intermittent
+`Test/AutoTrans/*` artifacts deleted by exact name). No golden, tolerance,
+ledger entry or deck was regenerated; `SPLIT_ALIAS_POPULATION` stays **37** and
+`TODO(compat)` **15** in `crates` / 18 tree-wide.
+
+**One flake seen and re-verified, recorded rather than swallowed.** An
+intermediate default-lane run reported `corpus_gate 519/520 … 1 failed` on a
+tree whose only delta from the green run before it was three Markdown files
+(no test reads them; `operational_docs_cite_the_compat_machinery_accurately`
+lives in a different binary and passed). Re-running `corpus_gate` alone came
+back green in 134.6 s, and both full lanes are green above — so this is the
+worker-transport flake class the gate already retries around
+(`DSS_ORACLE_TIMEOUT_SECS` → kill/respawn/retry-once), not a result. Worth
+noting for the next session: the failing case's name did not survive into the
+captured log, so if it recurs, capture the panic message (run the gate alone
+with `--nocapture`) before assuming the same cause.
+
 ### DE_PASCALIZE Stage F.4f — the two matrix dumps close F.4e's escape; §F-FMT step 2 has no report left (branch `depas-stagef`, 2026-07-31)
 
 F.4e's own escape row was `Show Y` and `Show Yprim`: they use no `Pad`, so they
