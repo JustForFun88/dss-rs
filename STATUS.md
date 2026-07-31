@@ -7,6 +7,88 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.4e — the nine escaped `Show` modules join the table seam; one glued token was Pascal's, not ours (branch `depas-stagef`, 2026-07-31)
+
+F.4d converted 5 of the 14 `Pad`-using `Show` modules and handed on the other
+nine ("the recipe is mechanical and proven"). This commit executes it: `buses`,
+`meters` (+`generators`), `elements`, `fault_study`, `diagnostics`
+(`Mismatch` + `Convergence`), `voltages` (all three forms and the two per-bus
+blocks `busflow` shares), `currents` (seq + terminal), `powers` (seq + element)
+and `bus_powers` (both forms) — the **47** `Pad`/`PadDots` sites — now build
+[`report::table::Row`]s and let `compat::render_rows` lay them out. §F-FMT step 2
+is complete: no `Show` report measures its own data columns any more.
+
+**Proof, in both directions.** A throwaway probe replayed all **72** `show_*`
+fixtures and copied every file each one produced (**86**, `Elements` writes two)
+on `HEAD` and on this tree. Parity lane: **byte-identical, 86/86** — the
+refactor moved no glyph in the lane that must never re-baseline. Default lane:
+the token streams the golden comparator sees are identical for **85** files and
+differ on exactly **one row**, below. No golden was generated; the ruling that
+F.4 opens no re-baseline event holds.
+
+**The one row, and why it is a lane row rather than a bug.**
+`show_powers_elem_autotrans` line 9 reads `TERMINAL TOTAL-25808.0`. Pascal writes
+that label as `PadDots('   TERMINAL TOTAL', MaxBusNameLength + 10)`
+(`ShowResults.pas:1230`); `PadDots` pads with a *leading space* then dots, so a
+padded label always separates — but this deck's `MaxBusNameLength` is 7, the
+field is exactly 17, the pad inserts **nothing**, and the following `%8.1f`
+(`-25808.0`, exactly 8 characters) lands flush. The table kernel gives the number
+its own column. Handled exactly like F.4b's `Show BusFlow` glue: an enumerated
+default-lane expectation on the *oracle* text (`terminal_total_expected`, narrow
+to the literal `TERMINAL TOTAL` immediately followed by a digit or `-`), with
+`terminal_total_glue_transform_is_the_power_column` proving it is non-vacuous
+(the committed golden really carries three such rows), row-count-preserving,
+whitespace-only, and the identity in the parity lane.
+
+**Two structural rules the conversion had to obey** (both are token-stream
+correctness, not taste, and both are now written at their call sites):
+
+1. **A literal glued to a right-justified number stays inside one cell.**
+   `Show Voltages`' element form writes `'  (%3d) %4d … (%8.4g) /_'`: the
+   parity lane's `( 12)` is *two* fields to the comparator, and a `(` cell of its
+   own would make it three. So those cells carry `format!("({:>3})", …)` — the
+   Pascal width baked into the content, identical bytes, identical tokens in both
+   kernels. The same rule governs `Show Y`'s `[row,col]` (untouched here).
+2. **A label whose field spans two data columns carries an explicit empty cell**
+   for the column it swallows (`   TERMINAL TOTAL` over bus+node in `Show
+   Powers`/`busflow`). A width-0 empty cell contributes nothing in the parity
+   kernel and keeps the four power columns under their headings in the table one.
+
+**Headers: decomposed where they *are* the columns, free text where they are
+not.** `Show Currents`' nine seq columns, `Show Faults`' three node groups,
+`Show Mismatch`, `Show Meters`/`Generators` and `Show Elements` map one label per
+column and became header rows. `Show Voltages`' `Mag:` label, the `(Real)`/
+`(Imag)` pair over an `= re +j im` group, and `Show Buses`' two-line `Coord`
+banner span several data columns and have no such decomposition — they stay
+free text, which keeps their bytes and their tokens exactly as Pascal wrote them.
+The determination is recorded in `report/show/mod.rs`; re-laying them out is
+plan §F-FMT **step 4** (the v2 decision), not this step.
+
+One helper moved: `format::fpc_sci_body` is `fpc_sci_w` without the
+right-justification, so the convergence report's `Str(v:14)` cells carry the
+number and the *lane* fills the field (`fpc_sci_w` is now that body in a
+width-wide field, byte for byte). New pin
+`exec::tests::compat_quirks::show_voltage_table_layout_is_the_lane_kernel`
+asserts at a real `Show Voltages` report that the bus column is `PadDots`ed in
+one lane and content-sized in the other while every row keeps its twelve fields.
+`SPLIT_ALIAS_POPULATION` stays **37** (no new alias — this is the same
+`compat::render_rows` seam), `TODO(compat)` stays 15 in `crates` / 18 tree-wide,
+and no golden, tolerance, ledger entry or deck was regenerated.
+
+**ESCAPE — `Show Y` and `Show Yprim`.** They use no `Pad`, so they were outside
+F.4d's list, but they do print fixed-width numeric matrices (`%13.10g`,
+`[%4d,%4d]`). Unaffected (the seam is additive); the recipe is rule 1 above for
+the `[row,col]`/`j<value>` glue plus a plain right cell per value.
+
+**Proof.** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity` both exit 0; `cargo test --workspace --no-fail-fast`
+**2475 passed / 0 failed / 5 ignored** and the parity-lane twin identically
+**2475 / 0 / 5** (+2 over F.4d: the glue-transform proof and the voltage lane
+pin), with the unconditional 520-case corpus gate green inside each. `git status --short tests/corpus` empty
+after each run (the known intermittent artifacts deleted by exact name);
+`git diff -- tests/golden tests/corpus` empty.
+
 ### DE_PASCALIZE Stage F.4d — the table crate lands: `Show` rows become data, and the escape's blocker dissolves (branch `depas-stagef`, 2026-07-29)
 
 F.4b/c handed on §F-FMT step 2's **table-crate rendering** as an escape, with one

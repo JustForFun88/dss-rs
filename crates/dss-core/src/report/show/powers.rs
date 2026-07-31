@@ -13,6 +13,7 @@ use crate::elements::traits::{CktElement, SysCtx};
 use crate::exec::registry::DssClass;
 use crate::report::export::for_each_enabled_elem;
 use crate::report::format;
+use crate::report::table::{Cell, Report, Row};
 use crate::support::mathutil::{SymComp, power_factor};
 
 /// Build the `Show Powers` (code 0) text (Pascal `ShowPowers` case 0). Walks
@@ -28,18 +29,23 @@ pub(crate) fn show_powers(
 ) -> String {
     let mdnl = crate::compat::max_device_name_length(super::device_name_width(classes, ckt));
 
-    let mut s = String::new();
-    s.push('\n');
-    s.push_str("SYMMETRICAL COMPONENT POWERS BY CIRCUIT ELEMENT (first 3 phases)                                     Excess Power\n");
-    s.push('\n');
-    if opt == 1 {
-        s.push_str(&format::pad("Element", mdnl + 2));
-        s.push_str(" Term    P1(MW)   Q1(Mvar)       P2         Q2      P0      Q0       P_Norm      Q_Norm     P_Emerg    Q_Emerg\n");
-    } else {
-        s.push_str(&format::pad("Element", mdnl + 2));
-        s.push_str(" Term    P1(kW)   Q1(kvar)       P2         Q2      P0      Q0       P_Norm      Q_Norm     P_Emerg    Q_Emerg\n");
-    }
-    s.push('\n');
+    let mut rep = Report::new();
+    rep.blank();
+    rep.line("SYMMETRICAL COMPONENT POWERS BY CIRCUIT ELEMENT (first 3 phases)                                     Excess Power");
+    rep.blank();
+    // The header's labels do stand one per column, but Pascal's widths are its
+    // own (`Term` sits over a `%3d`), so it stays free text like the other
+    // multi-group `Show` headers.
+    rep.line(&format!(
+        "{}{}",
+        format::pad("Element", mdnl + 2),
+        if opt == 1 {
+            " Term    P1(MW)   Q1(Mvar)       P2         Q2      P0      Q0       P_Norm      Q_Norm     P_Emerg    Q_Emerg"
+        } else {
+            " Term    P1(kW)   Q1(kvar)       P2         Q2      P0      Q0       P_Norm      Q_Norm     P_Emerg    Q_Emerg"
+        }
+    ));
+    rep.blank();
 
     let sc = SymComp::default();
     let pos_seq = sys.positive_sequence;
@@ -85,36 +91,29 @@ pub(crate) fn show_powers(
             let mva = if opt == 1 { 0.001 } else { 1.0 };
             let seq = |k: usize| -> Complex64 { v012[k] * i012[k].conj() * mva };
             let (s1, s2, s0) = (seq(1), seq(2), seq(0));
-            s.push_str(&format::pad(&format::enclose_quotes(name), mdnl + 2));
-            s.push_str(&format::fixed_w_int(j as i64, 3));
-            s.push_str(&format!(
-                "{}{}",
-                format::fixed_w(s1.re * 0.003, 11, 1),
-                format::fixed_w(s1.im * 0.003, 11, 1)
-            ));
-            s.push_str(&format!(
-                "{}{}",
-                format::fixed_w(s2.re * 0.003, 11, 1),
-                format::fixed_w(s2.im * 0.003, 11, 1)
-            ));
-            s.push_str(&format!(
-                "{}{}",
-                format::fixed_w(s0.re * 0.003, 8, 1),
-                format::fixed_w(s0.im * 0.003, 8, 1)
-            ));
+            // Every field is a bare `Format('%W.1f')` — no literal separators at
+            // all, so each cell carries its Pascal width and an empty gutter.
+            let f = |v: f64, w: usize| Cell::right(format::fixed(v, 1), w);
+            let mut row = Row::new()
+                .cell(Cell::left(format::enclose_quotes(name), mdnl + 2))
+                .cell(Cell::right(j.to_string(), 3))
+                .cell(f(s1.re * 0.003, 11))
+                .cell(f(s1.im * 0.003, 11))
+                .cell(f(s2.re * 0.003, 11))
+                .cell(f(s2.im * 0.003, 11))
+                .cell(f(s0.re * 0.003, 8))
+                .cell(f(s0.im * 0.003, 8));
             // PD terminal-1 excess power (Pascal only writes it for `j = 1`).
             if do_excess && j == 1 {
                 let en = exc_norm * mva;
                 let ee = exc_emerg * mva;
-                s.push_str(&format!(
-                    "{}{}{}{}",
-                    format::fixed_w(en.re, 11, 1),
-                    format::fixed_w(en.im, 11, 1),
-                    format::fixed_w(ee.re, 11, 1),
-                    format::fixed_w(ee.im, 11, 1)
-                ));
+                row = row
+                    .cell(f(en.re, 11))
+                    .cell(f(en.im, 11))
+                    .cell(f(ee.re, 11))
+                    .cell(f(ee.im, 11));
             }
-            s.push('\n');
+            rep.row(row);
         }
     };
 
@@ -135,15 +134,15 @@ pub(crate) fn show_powers(
     if opt == 1 {
         losses *= 0.001;
     }
-    s.push('\n');
+    rep.blank();
     // Pascal `WriteStr(sout, 'Total Circuit Losses = ', S.re:6:1, ' +j ', S.im:6:1)`
     // — the `:6:1` field width (right-justified, 1 decimal).
-    s.push_str(&format!(
-        "Total Circuit Losses = {} +j {}\n",
+    rep.line(&format!(
+        "Total Circuit Losses = {} +j {}",
         format::fixed_w(losses.re, 6, 1),
         format::fixed_w(losses.im, 6, 1)
     ));
-    s
+    rep.finish()
 }
 
 /// Build the `Show Powers` (code 1) text (Pascal `ShowPowers` case 1): the
@@ -164,30 +163,33 @@ pub(crate) fn show_powers_elements(
     // The `Bus Phase …` column header. The PD-section and PC-section headers use
     // different inter-column whitespace (Pascal `ShowResults.pas:1128/1264`):
     // PD `kW     +j   kvar`, PC `kW   +j  kvar`.
-    let hdr = |s: &mut String, mw: bool, pc: bool| {
-        s.push_str(&format::pad("  Bus", mbnl));
-        s.push_str(match (mw, pc) {
-            (true, false) => " Phase     MW     +j   Mvar         MVA         PF\n",
-            (false, false) => " Phase     kW     +j   kvar         kVA         PF\n",
-            (true, true) => " Phase     MW   +j  Mvar         MVA         PF\n",
-            (false, true) => " Phase     kW   +j  kvar         kVA         PF\n",
-        });
-        s.push('\n');
+    let hdr = |rep: &mut Report, mw: bool, pc: bool| {
+        rep.line(&format!(
+            "{}{}",
+            format::pad("  Bus", mbnl),
+            match (mw, pc) {
+                (true, false) => " Phase     MW     +j   Mvar         MVA         PF",
+                (false, false) => " Phase     kW     +j   kvar         kVA         PF",
+                (true, true) => " Phase     MW   +j  Mvar         MVA         PF",
+                (false, true) => " Phase     kW   +j  kvar         kVA         PF",
+            }
+        ));
+        rep.blank();
     };
 
-    let mut s = String::new();
-    s.push('\n');
-    s.push_str("CIRCUIT ELEMENT POWER FLOW\n");
-    s.push('\n');
-    s.push_str("(Power Flow into element from indicated Bus)\n");
-    s.push('\n');
-    s.push_str("Power Delivery Elements\n");
-    s.push('\n');
-    hdr(&mut s, opt == 1, false);
+    let mut rep = Report::new();
+    rep.blank();
+    rep.line("CIRCUIT ELEMENT POWER FLOW");
+    rep.blank();
+    rep.line("(Power Flow into element from indicated Bus)");
+    rep.blank();
+    rep.line("Power Delivery Elements");
+    rep.blank();
+    hdr(&mut rep, opt == 1, false);
 
     for_each_enabled_elem(classes, &ckt.sources, |n, e| {
         write_powers_element(
-            &mut s,
+            &mut rep,
             ckt,
             mbnl,
             pos_seq,
@@ -201,7 +203,7 @@ pub(crate) fn show_powers_elements(
     });
     for_each_enabled_elem(classes, &ckt.pd_elements, |n, e| {
         write_powers_element(
-            &mut s,
+            &mut rep,
             ckt,
             mbnl,
             pos_seq,
@@ -214,14 +216,14 @@ pub(crate) fn show_powers_elements(
         )
     });
 
-    s.push_str("= = = = = = = = = = = = = = = = = = =  = = = = = = = = = = =  = =\n");
-    s.push('\n');
-    s.push_str("Power Conversion Elements\n");
-    s.push('\n');
-    hdr(&mut s, opt == 1, true);
+    rep.line("= = = = = = = = = = = = = = = = = = =  = = = = = = = = = = =  = =");
+    rep.blank();
+    rep.line("Power Conversion Elements");
+    rep.blank();
+    hdr(&mut rep, opt == 1, true);
     for_each_enabled_elem(classes, &ckt.pc_elements, |n, e| {
         write_powers_element(
-            &mut s,
+            &mut rep,
             ckt,
             mbnl,
             pos_seq,
@@ -246,13 +248,13 @@ pub(crate) fn show_powers_elements(
     if opt == 1 {
         losses *= 0.001;
     }
-    s.push('\n');
-    s.push_str(&format!(
-        "Total Circuit Losses = {} +j {}\n",
+    rep.blank();
+    rep.line(&format!(
+        "Total Circuit Losses = {} +j {}",
         format::fixed_w(losses.re, 6, 1),
         format::fixed_w(losses.im, 6, 1)
     ));
-    s
+    rep.finish()
 }
 
 /// One symmetrical-component power row for terminal `j` (Pascal
@@ -262,8 +264,7 @@ pub(crate) fn show_powers_elements(
 /// name label is `Pad(EncloseQuotes(FullName), mdnl+2) + IntToStr(j)` (native case,
 /// no space before `j`). Reproduces the Pascal 1-/2-phase `S1` special cases.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn write_terminal_power_seq(
-    s: &mut String,
+pub(crate) fn terminal_power_seq_row(
     name: &str,
     elem: &mut dyn CktElement,
     sys: &SysCtx,
@@ -271,7 +272,7 @@ pub(crate) fn write_terminal_power_seq(
     j: usize,
     opt: i32,
     mdnl: usize,
-) {
+) -> Row {
     elem.compute_iterminal(sys, node_v);
     let nphases = elem.cd().nphases;
     let cd = elem.cd();
@@ -292,8 +293,6 @@ pub(crate) fn write_terminal_power_seq(
         v012[1] = vph[0];
         i012[1] = iph[0];
     }
-    s.push_str(&format::pad(&format::enclose_quotes(name), mdnl + 2));
-    s.push_str(&j.to_string());
     let mva = if opt == 1 { 0.001 } else { 1.0 };
     // P1/Q1: 1-phase → Vph1·conj(Iph1); 2-phase → +Vph2·conj(Iph3); else pos seq.
     let s1 = match nphases {
@@ -301,17 +300,23 @@ pub(crate) fn write_terminal_power_seq(
         2 => vph[0] * iph[0].conj() + vph[1] * iph[2].conj(),
         _ => v012[1] * i012[1].conj(),
     } * mva;
-    s.push_str(&format::fixed_w(s1.re * 0.003, 11, 1));
-    s.push_str(&format::fixed_w(s1.im * 0.003, 11, 1));
     // P2/Q2: neg seq (V012[3]·conj(I012[3]); 0-based [2]).
     let s2 = v012[2] * i012[2].conj() * mva;
-    s.push_str(&format::fixed_w(s2.re * 0.003, 11, 1));
-    s.push_str(&format::fixed_w(s2.im * 0.003, 11, 1));
     // P0/Q0: zero seq (V012[1]·conj(I012[1]); 0-based [0]).
     let s0 = v012[0] * i012[0].conj() * mva;
-    s.push_str(&format::fixed_w(s0.re * 0.003, 8, 1));
-    s.push_str(&format::fixed_w(s0.im * 0.003, 8, 1));
-    s.push('\n');
+    let f = |v: f64, w: usize| Cell::right(format::fixed(v, 1), w);
+    Row::new()
+        .cell(Cell::left(format::enclose_quotes(name), mdnl + 2))
+        // Pascal writes the terminal with `IntToStr` — no width of its own, so
+        // it glues to a name that overflows the field (the F.4b `Show BusFlow`
+        // lane row).
+        .cell(Cell::plain(j.to_string()))
+        .cell(f(s1.re * 0.003, 11))
+        .cell(f(s1.im * 0.003, 11))
+        .cell(f(s2.re * 0.003, 11))
+        .cell(f(s2.im * 0.003, 11))
+        .cell(f(s0.re * 0.003, 8))
+        .cell(f(s0.im * 0.003, 8))
 }
 
 /// Which `ShowPowers` case-1 walk an element belongs to. Pascal uses three
@@ -332,7 +337,7 @@ enum PowersFamily {
 /// special case and the AutoTrans `Ntimes = Nphases` arm.
 #[allow(clippy::too_many_arguments)]
 fn write_powers_element(
-    s: &mut String,
+    rep: &mut Report,
     ckt: &Circuit,
     mbnl: usize,
     pos_seq: bool,
@@ -350,38 +355,40 @@ fn write_powers_element(
         PowersFamily::Pd => ("  ", 8),
         PowersFamily::Pc => ("  ", 6),
     };
-    let row = |s: &mut String, from_bus: &str, node_num: i32, sp: Complex64| {
-        s.push_str(&format!(
-            "{}{}{}    {} +j {}   {}     {}\n",
-            from_bus,
-            bus_sep,
-            format::fixed_w_int(node_num as i64, 4),
-            format::fixed_w(sp.re / 1000.0, pw, 1),
-            format::fixed_w(sp.im / 1000.0, pw, 1),
-            format::fixed_w(sp.norm() / 1000.0, 8, 1),
-            format::fixed_w(power_factor(sp), 8, 4),
-        ));
+    // The four power columns both row shapes end with.
+    let power_cells = |row: Row, sp: Complex64, w: usize| {
+        row.cell(Cell::right(format::fixed(sp.re / 1000.0, 1), w).sep(" "))
+            .cell(Cell::plain("+j").sep(" "))
+            .cell(Cell::right(format::fixed(sp.im / 1000.0, 1), w).sep("   "))
+            .cell(Cell::right(format::fixed(sp.norm() / 1000.0, 1), 8).sep("     "))
+            .cell(Cell::right(format::fixed(power_factor(sp), 4), 8))
+    };
+    let row = |rep: &mut Report, from_bus: &str, node_num: i32, sp: Complex64| {
+        let r = Row::new()
+            .cell(Cell::left(from_bus, mbnl).sep(bus_sep))
+            .cell(Cell::right(node_num.to_string(), 4).sep("    "));
+        rep.row(power_cells(r, sp, pw));
     };
     let total_label = if family == PowersFamily::Pc {
         "  TERMINAL TOTAL "
     } else {
         "   TERMINAL TOTAL"
     };
-    let total = |s: &mut String, saccum: Complex64| {
-        s.push_str(&format::pad_dots(total_label, mbnl + 10));
-        s.push_str(&format!(
-            "{} +j {}   {}     {}\n",
-            format::fixed_w(saccum.re / 1000.0, 8, 1),
-            format::fixed_w(saccum.im / 1000.0, 8, 1),
-            format::fixed_w(saccum.norm() / 1000.0, 8, 1),
-            format::fixed_w(power_factor(saccum), 8, 4),
-        ));
+    let total = |rep: &mut Report, saccum: Complex64| {
+        // The label's `PadDots` field spans the bus **and** node columns, so the
+        // row carries an empty cell for the node: in the parity kernel it is
+        // width 0 and contributes nothing, and in the table kernel it keeps the
+        // four power columns under their headings.
+        let r = Row::new()
+            .cell(Cell::dots(total_label, mbnl + 10))
+            .cell(Cell::plain(""));
+        rep.row(power_cells(r, saccum, 8));
     };
 
     elem.compute_iterminal(sys, node_v);
     let (ncond, nterm, nphases) = (elem.cd().nconds, elem.cd().nterms, elem.cd().nphases);
     let cd = elem.cd();
-    s.push_str(&format!("ELEMENT = {}\n", format::enclose_quotes(name)));
+    rep.line(&format!("ELEMENT = {}", format::enclose_quotes(name)));
     // AutoTrans special case (`ShowResults.pas:1190`): only `Nphases` conductor
     // rows per terminal. The Pascal `Inc(k, Ntimes)` at `:1252` sits AFTER the
     // terminal loop where `k` is element-local — it is dead, so terminal 2's rows
@@ -391,13 +398,15 @@ fn write_powers_element(
     } else {
         ncond
     };
-    let bus_pad = |t: usize| {
-        let b = cd.terminals[t]
+    // The terminal's from-bus, uppercased; the `Pad(…, MaxBusNameLength)` field
+    // itself belongs to the row's [`Cell`], so the lane fills it.
+    let bus_name = |t: usize| {
+        cd.terminals[t]
             .bus_ref
             .and_then(|b| ckt.buses.get(b))
             .map(|x| x.name.as_str())
-            .unwrap_or("");
-        format::pad(b, mbnl).to_uppercase()
+            .unwrap_or("")
+            .to_uppercase()
     };
     let power = |k: usize, volts: Complex64| -> Complex64 {
         let mut sp = volts * cd.iterminal[k].conj();
@@ -413,30 +422,30 @@ fn write_powers_element(
         let volts = node_v[cd.node_ref[0]] - node_v[cd.node_ref[1]];
         let sp = power(0, volts);
         row(
-            s,
-            &bus_pad(0),
+            rep,
+            &bus_name(0),
             ckt.map_node_to_bus[cd.node_ref[0]].node_num,
             sp,
         );
-        total(s, sp);
+        total(rep, sp);
     } else {
         let mut k = 0usize;
         for j in 0..nterm {
-            let from_bus = bus_pad(j);
+            let from_bus = bus_name(j);
             let mut saccum = Complex64::ZERO;
             for _ in 0..ntimes {
                 let sp = power(k, node_v[cd.node_ref[k]]);
                 saccum += sp;
                 row(
-                    s,
+                    rep,
                     &from_bus,
                     ckt.map_node_to_bus[cd.node_ref[k]].node_num,
                     sp,
                 );
                 k += 1;
             }
-            total(s, saccum);
+            total(rep, saccum);
         }
     }
-    s.push('\n');
+    rep.blank();
 }

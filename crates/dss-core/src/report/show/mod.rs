@@ -7,6 +7,17 @@
 //! text golden (`golden_reports.rs`) diffs them after tokenizing on whitespace +
 //! commas (PHASE8_PLAN §2.3), so the exact padding is not gate-load-bearing — but
 //! the field structure and the number formats are ported faithfully.
+//!
+//! **Stage F (F-FMT step 2, `DE_PASCALIZE_PLAN.md` Part IV.2).** Those tables are
+//! built as **row data** ([`crate::report::table`]) and rendered by the lane's
+//! kernel: the parity lane replays Pascal's `Pad`/`PadDots`/`Format` in order
+//! (byte for byte), the default lane hands each run to the table crate, which
+//! sizes every column from its own content. Only the padding moves — the module
+//! keeps every field, in order, in both lanes (`Cell::sep` enforces it
+//! structurally). Section *headers* stay free text wherever a Pascal label spans
+//! several data columns (`Show Voltages`' `Mag:`, `Show Currents`' `(Real)`/
+//! `(Imag)` pair, `Show Buses`' two-line `Coord` banner); a v2 re-layout of them
+//! is plan §F-FMT step 4, a separate decision.
 
 mod bus_powers;
 mod buses;

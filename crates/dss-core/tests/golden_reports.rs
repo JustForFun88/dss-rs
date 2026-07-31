@@ -1569,7 +1569,15 @@ fn show_powers_elem_autotrans_matches_oracle() {
         }],
     };
     let (oracle, rust, scratch) = produce_deck_show("show_powers_elem_autotrans");
-    compare_export(&oracle, &rust, &policy, "show_powers_elem_autotrans");
+    // The terminal-total label glues to its first number in this deck (the
+    // `PadDots` field is exactly consumed); the default lane's table kernel
+    // separates them, through the one enumerated rule.
+    compare_export(
+        &terminal_total_expected(&oracle),
+        &rust,
+        &policy,
+        "show_powers_elem_autotrans",
+    );
     // The per-family whitespace layouts (WP8.8: Sources `%s %4d` one-space
     // rows, PC width-6 rows + `kW   +j  kvar` header + `'  TERMINAL TOTAL '`
     // label — `ShowResults.pas:1128/1162/1240/1264/1297/1302`), pinned
@@ -2275,6 +2283,107 @@ fn split_glued_terminal(line: &str) -> Option<String> {
     after
         .starts_with(|c: char| c.is_ascii_digit())
         .then(|| format!("{} {}", &line[..=close], after))
+}
+
+/// The oracle's `Show Powers` element-form text as the **current lane** lays it
+/// out — the identity in the parity lane, and in the default lane one enumerated
+/// rule, the `Show BusFlow` glue's twin (see [`busflow_expected`]).
+///
+/// `ShowPowers` case 1 writes each terminal total as
+/// `PadDots('   TERMINAL TOTAL', MaxBusNameLength + 10) + Format('%8.1f', …)`
+/// (`ShowResults.pas:1230`). `PadDots` pads with a **leading space** then dots,
+/// so a padded label always separates — but when the field is *exactly* consumed
+/// (a 17-char label at `MaxBusNameLength = 7`) nothing is inserted at all and a
+/// width-filling number (`-25808.0`) lands flush against `TOTAL`. The table
+/// kernel (F.4e) gives the number its own column, so the tokenizer sees two
+/// fields where the oracle has one; the *oracle* expectation is split at exactly
+/// that seam.
+///
+/// The rule is deliberately narrow: the literal `TERMINAL TOTAL` **immediately**
+/// followed by a digit or a `-`. A padded label never matches (the pad's first
+/// character is a space), and the string appears nowhere else in the report.
+fn terminal_total_expected(oracle: &str) -> String {
+    if lane::PARITY {
+        return oracle.to_string();
+    }
+    oracle
+        .lines()
+        .map(|line| split_glued_total(line).unwrap_or_else(|| line.to_string()))
+        .map(|l| format!("{l}\n"))
+        .collect()
+}
+
+/// `TERMINAL TOTAL<number>` → `TERMINAL TOTAL <number>`, or `None` when the line
+/// has no such seam.
+fn split_glued_total(line: &str) -> Option<String> {
+    const LABEL: &str = "TERMINAL TOTAL";
+    let at = line.find(LABEL)? + LABEL.len();
+    let after = line.get(at..)?;
+    after
+        .starts_with(|c: char| c.is_ascii_digit() || c == '-')
+        .then(|| format!("{} {}", &line[..at], after))
+}
+
+/// Non-vacuity and scope of [`terminal_total_expected`], in both lanes: the
+/// committed golden really carries glued totals, the parity expectation is the
+/// oracle verbatim, the default one splits exactly those rows and no others, and
+/// it inserts nothing but a space.
+#[test]
+fn terminal_total_glue_transform_is_the_power_column() {
+    assert_eq!(
+        split_glued_total("   TERMINAL TOTAL-25808.0 +j -15318.1"),
+        Some("   TERMINAL TOTAL -25808.0 +j -15318.1".to_string())
+    );
+    assert_eq!(
+        split_glued_total("   TERMINAL TOTAL 25808.0 +j  15318.1"),
+        None
+    );
+    assert_eq!(split_glued_total("   TERMINAL TOTAL ....  3567.1"), None);
+    assert_eq!(
+        split_glued_total("SRC1       1    -3567.1 +j  -1736.4"),
+        None
+    );
+
+    let p = reports_dir().join("show_powers_elem_autotrans.txt");
+    let oracle =
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+    let glued = oracle
+        .lines()
+        .filter(|l| split_glued_total(l).is_some())
+        .count();
+    assert!(
+        glued > 0,
+        "the oracle golden no longer carries a glued terminal total — the \
+         `Show Powers` table-kernel row would stop being observed"
+    );
+    let expected = terminal_total_expected(&oracle);
+    if lane::PARITY {
+        assert_eq!(
+            expected.lines().collect::<Vec<_>>(),
+            oracle.lines().collect::<Vec<_>>(),
+            "the parity arm is the identity"
+        );
+        return;
+    }
+    assert_eq!(
+        expected.lines().count(),
+        oracle.lines().count(),
+        "the transform never adds or drops a row"
+    );
+    assert_eq!(
+        expected
+            .lines()
+            .filter(|l| split_glued_total(l).is_some())
+            .count(),
+        0,
+        "every glued total was split"
+    );
+    let strip = |t: &str| t.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+    assert_eq!(
+        strip(&expected),
+        strip(&oracle),
+        "the transform inserts a space and changes nothing else"
+    );
 }
 
 #[test]

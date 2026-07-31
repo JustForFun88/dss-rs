@@ -14,6 +14,7 @@ use crate::elements::traits::{CktElement, SysCtx};
 use crate::exec::registry::DssClass;
 use crate::report::export::for_each_enabled_elem;
 use crate::report::format;
+use crate::report::table::{Cell, Report, Row};
 use crate::support::complexutil::cdang;
 use crate::support::mathutil::SymComp;
 
@@ -29,15 +30,24 @@ pub(crate) fn show_currents(
 ) -> String {
     let mdnl = crate::compat::max_device_name_length(super::device_name_width(classes, ckt));
 
-    let mut s = String::new();
-    s.push('\n');
-    s.push_str("SYMMETRICAL COMPONENT CURRENTS BY CIRCUIT ELEMENT (first 3 phases)\n");
-    s.push('\n');
-    s.push_str(&format::pad("Element", mdnl + 2));
-    s.push_str(
-        " Term      I1         I2         %I2/I1    I0         %I0/I1   %Normal %Emergency\n",
+    let mut rep = Report::new();
+    rep.blank();
+    rep.line("SYMMETRICAL COMPONENT CURRENTS BY CIRCUIT ELEMENT (first 3 phases)");
+    rep.blank();
+    // The header, as the nine columns the rows draw.
+    rep.row(
+        Row::new()
+            .cell(Cell::left("Element", mdnl + 2).sep(" "))
+            .cell(Cell::plain("Term").sep("      "))
+            .cell(Cell::plain("I1").sep("         "))
+            .cell(Cell::plain("I2").sep("         "))
+            .cell(Cell::plain("%I2/I1").sep("    "))
+            .cell(Cell::plain("I0").sep("         "))
+            .cell(Cell::plain("%I0/I1").sep("   "))
+            .cell(Cell::plain("%Normal").sep(" "))
+            .cell(Cell::plain("%Emergency")),
     );
-    s.push('\n');
+    rep.row(Row::blank(9));
 
     let sc = SymComp::default();
 
@@ -53,13 +63,12 @@ pub(crate) fn show_currents(
             .split('.')
             .next()
             .is_some_and(|c| c.eq_ignore_ascii_case("capacitor"));
-        // The padded, quoted, UPPERCASED full name (`WriteSeqCurrents` writes
-        // `AnsiUpperCase(Name)`); a `-` continuation for terminals > 1. The
-        // continuation width is Pascal `Pad('   -', Length(PaddedBrName))` — the
-        // **byte** length of the *un-uppercased* padded name (`str::len`).
-        let padded_raw = format::pad_dots(&format::enclose_quotes(name), mdnl + 2);
-        let padded = padded_raw.to_uppercase();
-        let cont = format::pad("   -", padded_raw.len());
+        // The quoted, UPPERCASED full name in a `PadDots` field
+        // (`WriteSeqCurrents` writes `AnsiUpperCase(Name)`); a `-` continuation
+        // for terminals > 1, whose width is Pascal `Pad('   -',
+        // Length(PaddedBrName))` — the **byte** length of the *un-uppercased*
+        // padded name (`str::len`).
+        let quoted = format::enclose_quotes(name);
         let cd = elem.cd();
 
         for j in 1..=nterm {
@@ -104,19 +113,16 @@ pub(crate) fn show_currents(
 
             // `'%s %3d  %10.5g   %10.5g %8.2f  %10.5g %8.2f  %8.2f %8.2f'` — note
             // the literal space between the `%s` name and the `%3d` terminal.
-            let label = if j == 1 { &padded } else { &cont };
-            s.push_str(label);
-            s.push(' ');
-            s.push_str(&format::fixed_w_int(j as i64, 3));
-            s.push_str(&format!(
-                "  {}   {} {}  {} {}  {} {}\n",
-                format::g_w(i1, 10, 5),
-                format::g_w(i2, 10, 5),
-                format::fixed_w(i2i1, 8, 2),
-                format::g_w(i0, 10, 5),
-                format::fixed_w(i0i1, 8, 2),
-                format::fixed_w(inormal, 8, 2),
-                format::fixed_w(iemerg, 8, 2),
+            rep.row(seq_current_row(
+                name_cell(&quoted, mdnl + 2, j),
+                i0,
+                i1,
+                i2,
+                i2i1,
+                i0i1,
+                inormal,
+                iemerg,
+                j,
             ));
         }
     };
@@ -125,7 +131,47 @@ pub(crate) fn show_currents(
     for_each_enabled_elem(classes, &ckt.pd_elements, |n, e| calc(n, e, true));
     for_each_enabled_elem(classes, &ckt.pc_elements, |n, e| calc(n, e, false));
     for_each_enabled_elem(classes, &ckt.faults, |n, e| calc(n, e, false));
-    s
+    rep.finish()
+}
+
+/// The name column of a symmetrical-component current row: the UPPERCASED quoted
+/// full name in a `PadDots(…, width)` field on terminal 1, the `Pad('   -',
+/// Length(PaddedBrName))` continuation after it (Pascal `WriteSeqCurrents`,
+/// `ShowResults.pas:542`).
+fn name_cell(quoted: &str, width: usize, j: usize) -> Cell {
+    if j == 1 {
+        Cell::dots(quoted.to_uppercase(), width)
+    } else {
+        Cell::left("   -", quoted.len().max(width))
+    }
+}
+
+/// The shared body of the two symmetrical-component current writers: the nine
+/// columns of `'%s %3d  %10.5g   %10.5g %8.2f  %10.5g %8.2f  %8.2f %8.2f'`
+/// (`ShowResults.pas:542/…`), with the already-padded name label as its first
+/// cell.
+#[allow(clippy::too_many_arguments)]
+fn seq_current_row(
+    label: Cell,
+    i0: f64,
+    i1: f64,
+    i2: f64,
+    i2i1: f64,
+    i0i1: f64,
+    inormal: f64,
+    iemerg: f64,
+    j: usize,
+) -> Row {
+    Row::new()
+        .cell(label.sep(" "))
+        .cell(Cell::right(j.to_string(), 3).sep("  "))
+        .cell(Cell::right(format::g(i1, 5), 10).sep("   "))
+        .cell(Cell::right(format::g(i2, 5), 10).sep(" "))
+        .cell(Cell::right(format::fixed(i2i1, 2), 8).sep("  "))
+        .cell(Cell::right(format::g(i0, 5), 10).sep(" "))
+        .cell(Cell::right(format::fixed(i0i1, 2), 8).sep("  "))
+        .cell(Cell::right(format::fixed(inormal, 2), 8).sep(" "))
+        .cell(Cell::right(format::fixed(iemerg, 2), 8))
 }
 
 /// Build the `Show Currents` (code 1) text (Pascal `ShowCurrents` case 1 +
@@ -140,43 +186,48 @@ pub(crate) fn show_currents_elements(
     show_residual: bool,
 ) -> String {
     let mbnl = super::max_bus_name_length(ckt);
-    let hdr = |s: &mut String| {
-        s.push_str(&format::pad("  Bus", mbnl));
-        s.push_str(" Phase    Magnitude, A     Angle      (Real)   +j  (Imag)\n");
-        s.push('\n');
+    // The header's `(Real)`/`(Imag)` labels stand over the `= <re> +j <im>` pair,
+    // not over one column each, so it is free text (see `voltages`' note).
+    let hdr = |rep: &mut Report| {
+        rep.line(&format!(
+            "{}{}",
+            format::pad("  Bus", mbnl),
+            " Phase    Magnitude, A     Angle      (Real)   +j  (Imag)"
+        ));
+        rep.blank();
     };
 
-    let mut s = String::new();
-    s.push('\n');
-    s.push_str("CIRCUIT ELEMENT CURRENTS\n");
-    s.push('\n');
-    s.push_str("(Currents into element from indicated bus)\n");
-    s.push('\n');
-    s.push_str("Power Delivery Elements\n");
-    s.push('\n');
-    hdr(&mut s);
+    let mut rep = Report::new();
+    rep.blank();
+    rep.line("CIRCUIT ELEMENT CURRENTS");
+    rep.blank();
+    rep.line("(Currents into element from indicated bus)");
+    rep.blank();
+    rep.line("Power Delivery Elements");
+    rep.blank();
+    hdr(&mut rep);
 
     // PD section: Sources (no residual) → PDElements (residual per option) →
     // Faults (no residual).
     for_each_enabled_elem(classes, &ckt.sources, |name, elem| {
-        write_terminal_currents(&mut s, ckt, name, elem, sys, node_v, mbnl, false);
+        write_terminal_currents(&mut rep, ckt, name, elem, sys, node_v, mbnl, false);
     });
     for_each_enabled_elem(classes, &ckt.pd_elements, |name, elem| {
-        write_terminal_currents(&mut s, ckt, name, elem, sys, node_v, mbnl, show_residual);
+        write_terminal_currents(&mut rep, ckt, name, elem, sys, node_v, mbnl, show_residual);
     });
     for_each_enabled_elem(classes, &ckt.faults, |name, elem| {
-        write_terminal_currents(&mut s, ckt, name, elem, sys, node_v, mbnl, false);
+        write_terminal_currents(&mut rep, ckt, name, elem, sys, node_v, mbnl, false);
     });
 
-    s.push_str("= = = = = = = = = = = = = = = = = = =  = = = = = = = = = = =  = =\n");
-    s.push('\n');
-    s.push_str("Power Conversion Elements\n");
-    s.push('\n');
-    hdr(&mut s);
+    rep.line("= = = = = = = = = = = = = = = = = = =  = = = = = = = = = = =  = =");
+    rep.blank();
+    rep.line("Power Conversion Elements");
+    rep.blank();
+    hdr(&mut rep);
     for_each_enabled_elem(classes, &ckt.pc_elements, |name, elem| {
-        write_terminal_currents(&mut s, ckt, name, elem, sys, node_v, mbnl, false);
+        write_terminal_currents(&mut rep, ckt, name, elem, sys, node_v, mbnl, false);
     });
-    s
+    rep.finish()
 }
 
 /// Pascal `GetI0I1I2(I0, I1, I2, Cmax, Nphases, koff, cBuffer)`: over the first
@@ -201,13 +252,14 @@ pub(crate) fn get_i0i1i2(term_i: &[Complex64], nphases: usize) -> (f64, f64, f64
 /// `ShowResults.pas:542`): `I1 I2 %I2/I1 I0 %I0/I1 %Normal %Emergency`. `Show
 /// busflow` calls this per matched element+terminal with `norm_amps = emerg_amps =
 /// 0` (so the overload columns are `0.00`); the `-` continuation for `j > 1` is
-/// handled internally. `padded_br_name` is `pad_dots(enclose_quotes(FullName),
-/// mdnl+2)` (native case; uppercased here, matching Pascal `AnsiUpperCase(Name)`).
-/// `is_cap` gates the overload columns off for capacitors.
+/// handled internally. `quoted_name` is `enclose_quotes(FullName)` (native case;
+/// uppercased here, matching Pascal `AnsiUpperCase(Name)`) and `width` the
+/// `MaxDeviceNameLength + 2` field it is `PadDots`ed into. `is_cap` gates the
+/// overload columns off for capacitors.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn write_seq_currents(
-    s: &mut String,
-    padded_br_name: &str,
+pub(crate) fn seq_currents_row(
+    quoted_name: &str,
+    width: usize,
     i0: f64,
     i1: f64,
     i2: f64,
@@ -216,12 +268,7 @@ pub(crate) fn write_seq_currents(
     emerg_amps: f64,
     j: usize,
     is_cap: bool,
-) {
-    let name = if j == 1 {
-        padded_br_name.to_string()
-    } else {
-        format::pad("   -", padded_br_name.len())
-    };
+) -> Row {
     let (i2i1, i0i1) = if i1 > 0.0 {
         (100.0 * i2 / i1, 100.0 * i0 / i1)
     } else {
@@ -244,27 +291,24 @@ pub(crate) fn write_seq_currents(
     } else {
         (0.0, 0.0)
     };
-    // `'%s %3d  %10.5g   %10.5g %8.2f  %10.5g %8.2f  %8.2f %8.2f'`.
-    s.push_str(&name.to_uppercase());
-    s.push(' ');
-    s.push_str(&format::fixed_w_int(j as i64, 3));
-    s.push_str(&format!(
-        "  {}   {} {}  {} {}  {} {}\n",
-        format::g_w(i1, 10, 5),
-        format::g_w(i2, 10, 5),
-        format::fixed_w(i2i1, 8, 2),
-        format::g_w(i0, 10, 5),
-        format::fixed_w(i0i1, 8, 2),
-        format::fixed_w(inormal, 8, 2),
-        format::fixed_w(iemerg, 8, 2),
-    ));
+    seq_current_row(
+        name_cell(quoted_name, width, j),
+        i0,
+        i1,
+        i2,
+        i2i1,
+        i0i1,
+        inormal,
+        iemerg,
+        j,
+    )
 }
 
 /// One element's terminal-current block (Pascal `WriteTerminalCurrents`). Shared by
 /// [`show_currents_elements`] and `Show busflow` (the per-bus branch-current form).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn write_terminal_currents(
-    s: &mut String,
+    rep: &mut Report,
     ckt: &Circuit,
     name: &str,
     elem: &mut dyn CktElement,
@@ -277,7 +321,7 @@ pub(crate) fn write_terminal_currents(
     let (ncond, nterm, nphases) = (elem.cd().nconds, elem.cd().nterms, elem.cd().nphases);
     let cd = elem.cd();
     // Pascal `'ELEMENT = ', EncloseQuotes(FullName)` — the full name, native case.
-    s.push_str(&format!("ELEMENT = {}\n", format::enclose_quotes(name)));
+    rep.line(&format!("ELEMENT = {}", format::enclose_quotes(name)));
 
     // AutoTrans special case (`ShowResults.pas:604/624`): `Ntimes = Nphases` rows
     // per terminal, and after each terminal the extra `Inc(k, Ntimes)` skips the
@@ -292,7 +336,17 @@ pub(crate) fn write_terminal_currents(
             .and_then(|b| ckt.buses.get(b))
             .map(|b| b.name.as_str())
             .unwrap_or("");
-        let from_bus = format::pad(from_bus, mbnl).to_uppercase();
+        let from_bus = from_bus.to_uppercase();
+        // The tail of both row shapes: `<mag> /_ <angle> = <re> +j <im>`.
+        let tail = |row: Row, eq_sep: &'static str, c: Complex64| {
+            row.cell(Cell::right(format::g(c.norm(), 5), 13).sep(" "))
+                .cell(Cell::plain("/_").sep(" "))
+                .cell(Cell::right(format::fixed(cdang(c), 1), 6).sep(" "))
+                .cell(Cell::plain("=").sep(eq_sep))
+                .cell(Cell::right(format::g(c.re, 5), 9).sep(" "))
+                .cell(Cell::plain("+j").sep(" "))
+                .cell(Cell::right(format::g(c.im, 5), 9))
+        };
         let mut ctotal = Complex64::ZERO;
         for _ in 0..ntimes {
             let ck = cd.iterminal[k];
@@ -301,35 +355,31 @@ pub(crate) fn write_terminal_currents(
             }
             // `'%s  %4d    %13.5g /_ %6.1f =  %9.5g +j %9.5g'`
             // [UpperCase(FromBus), GetNodeNum(NodeRef[k]), Cabs, cdang, re, im].
-            s.push_str(&format!(
-                "{}  {}    {} /_ {} =  {} +j {}\n",
-                from_bus,
-                format::fixed_w_int(ckt.map_node_to_bus[cd.node_ref[k]].node_num as i64, 4),
-                format::g_w(ck.norm(), 13, 5),
-                format::fixed_w(cdang(ck), 6, 1),
-                format::g_w(ck.re, 9, 5),
-                format::g_w(ck.im, 9, 5),
-            ));
+            let row = Row::new()
+                .cell(Cell::left(from_bus.clone(), mbnl).sep("  "))
+                .cell(
+                    Cell::right(ckt.map_node_to_bus[cd.node_ref[k]].node_num.to_string(), 4)
+                        .sep("    "),
+                );
+            rep.row(tail(row, "  ", ck));
             k += 1;
         }
         if show_residual && nphases > 1 {
             // `CtoPolardeg(-Ctotal)`: mag = |Ctotal|, ang = cdang(-Ctotal).
             let resid = -ctotal;
-            s.push_str(&format!(
-                "{} Resid    {} /_ {} =   {} +j {}\n",
-                from_bus,
-                format::g_w(resid.norm(), 13, 5),
-                format::fixed_w(cdang(resid), 6, 1),
-                format::g_w(resid.re, 9, 5),
-                format::g_w(resid.im, 9, 5),
-            ));
+            // The residual row labels the node column `Resid` and pads the `=`
+            // one space wider (Pascal's own literal).
+            let row = Row::new()
+                .cell(Cell::left(from_bus.clone(), mbnl).sep(" "))
+                .cell(Cell::plain("Resid").sep("    "));
+            rep.row(tail(row, "   ", resid));
         }
         if j < nterm - 1 {
-            s.push_str("------------\n");
+            rep.row(Row::new().cell(Cell::plain("------------")));
         }
         if autotrans {
             k += ntimes; // Pascal `Inc(k, Ntimes)` — skip the rest of the block.
         }
     }
-    s.push('\n'); // Pascal writes a blank line after each element.
+    rep.blank(); // Pascal writes a blank line after each element.
 }
