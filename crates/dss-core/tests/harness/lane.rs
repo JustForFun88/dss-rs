@@ -714,13 +714,42 @@ mod tests {
         probe_is_gated,
     };
 
-    /// Run `f`, returning `true` when it passed. Silences the panic hook so a
-    /// deliberate failure does not print a scary backtrace.
+    thread_local! {
+        /// Set while [`passes`] is running its closure — the *only* panics this
+        /// module's hook is allowed to swallow.
+        ///
+        /// Thread-local because the panic hook is **process-global** and these
+        /// tests share their binary with `corpus_gate_all_cases_match_engines`:
+        /// the first version of `passes` installed a no-op hook for the duration
+        /// of its closure, which silenced *every other thread's* panic message
+        /// for that window. That is not hypothetical — it swallowed the corpus
+        /// gate's failing-case list on an F.5 gate run (the test reported
+        /// "519/520, 1 failed" with no case name and no way to get one, since
+        /// the message is produced by the hook). Two `passes` calls overlapping
+        /// could also restore each other's saved hook and leave the no-op
+        /// installed permanently.
+        static SILENCE_PANICS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+
+    /// Run `f`, returning `true` when it passed.
+    ///
+    /// A deliberate failure must not print a scary backtrace, but silence is
+    /// scoped to *this thread inside this helper*: the hook is installed once
+    /// and delegates to the previous one for every panic that is not ours, so a
+    /// concurrent test's panic message survives intact.
     fn passes(f: impl FnOnce() + std::panic::UnwindSafe) -> bool {
-        let prev = std::panic::take_hook();
-        std::panic::set_hook(Box::new(|_| {}));
+        static HOOK: std::sync::Once = std::sync::Once::new();
+        HOOK.call_once(|| {
+            let prev = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                if !SILENCE_PANICS.with(std::cell::Cell::get) {
+                    prev(info);
+                }
+            }));
+        });
+        SILENCE_PANICS.with(|s| s.set(true));
         let r = std::panic::catch_unwind(f);
-        std::panic::set_hook(prev);
+        SILENCE_PANICS.with(|s| s.set(false));
         r.is_ok()
     }
 
