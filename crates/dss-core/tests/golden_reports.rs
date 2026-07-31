@@ -389,6 +389,28 @@ fn run_feeder_show(stem: &str, policy: &ExportPolicy) {
 /// must be the identity in the parity lane.
 fn run_feeder_show_expected(stem: &str, policy: &ExportPolicy, expected: impl Fn(&str) -> String) {
     let (oracle, rust, scratch) = produce_feeder_show(stem);
+    // Token compare in BOTH lanes — deliberately *not* `lane::compare_report`.
+    //
+    // A parity-lane byte gate was tried here (F-settle W4) and is impossible
+    // for this family: the numeric `Show` goldens are not byte-reproducible in
+    // any lane, for two independent and long-standing reasons. (1) Physical
+    // near-zero cancellation — `show_losses` line 26 is `-4.36557E-14` kvar in
+    // the oracle and `-1.45519E-14` in Rust; `show_currents` prints `2.0651E-11`
+    // vs `1.5194E-11`. That is the faer-vs-KLU floor, which is exactly what
+    // this policy's `GateSpec` columns exist to absorb. (2) The bus-name column
+    // width: `max_bus_name_length` differs from the oracle's `MaxBusNameLength`,
+    // so `Show Voltages`' header is `"Bus" + 8 spaces` here against the
+    // oracle's `+ 3`. Both predate F.4 — the pre-F.4 writer builds that header
+    // with the identical `format::pad("Bus", mbnl)` — and both are why this
+    // family has tokenized since PHASE8_PLAN §2.3.
+    //
+    // So `Show` layout has no byte contract in either lane. What carries it
+    // instead: the structural layout pins
+    // (`exec::tests::compat_quirks::show_table_layout_is_the_lane_kernel` and
+    // `show_voltage_table_layout_is_the_lane_kernel`), `report::table`'s own
+    // unit tests, and the number-free `Show` goldens
+    // (`Loops`/`Zone`/`Controlled`/`Isolated`/`Topology`), which *are*
+    // byte-exact in both lanes via `run_feeder_show_exact`.
     compare_export(&expected(&oracle), &rust, policy, stem);
     std::fs::remove_dir_all(&scratch).ok();
 }
@@ -461,6 +483,8 @@ fn run_feeder_show_exact(stem: &str) {
 /// `<CaseName_><suffix>` name in the datapath (`Show` sets no `GlobalResult`).
 fn run_deck_show(stem: &str, policy: &ExportPolicy) {
     let (oracle, rust, scratch) = produce_deck_show(stem);
+    // Token compare in both lanes; see [`run_feeder_show_expected`] for why a
+    // parity-lane byte gate is not available to this family.
     compare_export(&oracle, &rust, policy, stem);
     std::fs::remove_dir_all(&scratch).ok();
 }
@@ -6666,7 +6690,11 @@ fn export_seqcurrents_nonpositive_rating_is_the_lane_kernel() {
         )
     };
 
-    let parity = dss_core::compat::SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING;
+    // Derived from the *lane*, never from the row's own alias
+    // (`SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING`): reading the alias on both
+    // sides makes the pin assert engine-agrees-with-declaration, so a silent
+    // revert of the flip passes (reproduced, F-settle W4).
+    let parity = dss_core::compat::ORACLE_PARITY;
     let (bad_n, bad_e) = row("Line.bad");
     assert_eq!(
         (bad_n, bad_e),

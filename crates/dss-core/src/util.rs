@@ -289,10 +289,13 @@ pub fn fmt_g(v: f64, sig: usize) -> String {
 /// `FloatToStrFIntl` clamps the requested precision to `maxdigits` (= 15
 /// without `FPC_HAS_TYPE_EXTENDED`), and Grisu1's `n_digits_sci` — derived from
 /// the `Str(v : precision + 7)` width as `width - 1 - 1 - 1 - 1 - 3` — is then
-/// floored at 2. Shared by both kernels so the two lanes always print the same
-/// *number of digits* (and therefore the same column widths); only the value of
-/// the last digit may differ.
-fn fpc_general_digits(sig: usize) -> usize {
+/// floored at 2.
+///
+/// Called by **both** kernels, so the shared-digit-count claim is true by
+/// construction rather than by coincidence: the parity kernel used to spell its
+/// half as a separate `sig.min(15)` and lean on Grisu1's internal floor for the
+/// lower bound, which agreed but asserted nothing.
+pub(crate) fn fpc_general_digits(sig: usize) -> usize {
     sig.clamp(2, 15)
 }
 
@@ -324,8 +327,11 @@ fn fpc_general_digits(sig: usize) -> usize {
 pub fn fmt_g_fpc_impl(v: f64, sig: usize) -> String {
     // `FloatToStrFIntl`: `If (Precision = -1) Or (Precision > maxdigits) Then
     // Precision := maxdigits` (= 15 without FPC_HAS_TYPE_EXTENDED), then
-    // `Str(Double(Value) : precision + 7, Result)`.
-    let precision = sig.min(15) as i32;
+    // `Str(Double(Value) : precision + 7, Result)`. Through the shared
+    // `fpc_general_digits` so both kernels demonstrably take the same digit
+    // budget; its lower clamp is Grisu1's own floor, which this path would
+    // otherwise reach only implicitly.
+    let precision = fpc_general_digits(sig) as i32;
     let sci = grisu_str_real(precision + 7, v);
     fpc_general_post(sci)
 }

@@ -558,7 +558,7 @@ pub(crate) fn compare_capture(
             // element-name set above has already pinned against the oracle.
             let relays: BTreeSet<String> = class_member_names(&snaps, "relay");
             let reclosers: BTreeSet<String> = class_member_names(&snaps, "recloser");
-            let expected = lane::expected_eventlog(&masked, |name| {
+            let expected = lane::expected_eventlog(label, &masked, |name| {
                 let n = name.to_lowercase();
                 relays.contains(&n) && !reclosers.contains(&n)
             });

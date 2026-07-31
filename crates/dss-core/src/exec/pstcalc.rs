@@ -63,9 +63,11 @@ impl Dss {
                         .as_ref()
                         .map_or(self.default_base_freq, |ckt| ckt.solution.frequency);
                     let dv = self.parser.make_double(&self.vars).unwrap_or(0.0);
-                    // Pascal `Round` = ties-to-even; `round_ties_even`
-                    // reproduces it exactly (see RegControl `get_tap_num`).
-                    cycles_per_sample = (solution_freq * dv).round_ties_even() as i32;
+                    // Pascal `ExecHelper.pas:4821`:
+                    // `CyclesPerSample := Round(Frequency * Parser.dblvalue)`
+                    // — an Int64 `Round` into an `Integer`, over a raw deck
+                    // double, so it goes through the round row's kernel.
+                    cycles_per_sample = dss_parser::compat::round_i32(solution_freq * dv);
                 }
                 4 => freq = self.parser.make_double(&self.vars).unwrap_or(0.0),
                 5 => lamp = self.parser.make_integer(&self.vars).unwrap_or(0),

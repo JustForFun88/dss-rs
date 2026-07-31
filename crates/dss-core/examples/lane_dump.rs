@@ -16,20 +16,39 @@
 //!
 //! # Why this is the strongest default-lane test
 //!
-//! The parity lane is bit-identical to the pinned oracle (that is what its
-//! gates assert, permanently). So `default ≈ parity`, measured here over the
-//! whole corpus, **is** the transitive proof `default ≈ oracle` — and it is
-//! sharper than the oracle comparison itself: the oracle floors are the
-//! calibrated 1e-6-class tiers of `tests/TOLERANCE_NOTES.md`, whereas the two
-//! lanes differ only by kernel ulps and must therefore agree *orders below*
-//! those floors. A default-lane kernel regression that stayed inside a 1e-6
-//! tier would pass the corpus gate and fail here.
+//! The parity lane is byte-exact against the committed report goldens and, on
+//! the live oracles, is compared at the calibrated floors of
+//! `tests/TOLERANCE_NOTES.md` (with its own pinned entries in
+//! `tests/corpus/ledger.json`). It is *not* bitwise equal to the oracle — the
+//! faer-vs-KLU last-ulp floors `CLAUDE.md` documents are real in both lanes —
+//! so the honest chain is the triangle inequality:
+//!
+//! ```text
+//! |default − oracle|  ≤  |default − parity|  +  |parity − oracle|
+//! ```
+//!
+//! What makes this job the transitive proof is therefore not an assumed
+//! premise but the **measured** left term. The 2026-07-31 run came back
+//! `max |Δ| = 0` exactly on every gated kind, which makes the default lane
+//! bit-identical to the parity lane and so gives it precisely the parity
+//! lane's oracle standing — nothing is inherited by assumption.
+//!
+//! Read the second term back in whenever the first stops being zero: a future
+//! non-zero `|Δ|` bounds `|default − oracle|` at *this job's bound plus the
+//! case's tier*, not at this job's bound. Expect that in the MULTITHREADING
+//! M3c and RESONANCE WP-R1 rungs, which are the two planned changes that make
+//! the lanes genuinely diverge.
+//!
+//! While `|Δ| = 0` holds, the job is also sharper than the oracle comparison:
+//! the oracle floors are 1e-6-class, the two lanes differ only by kernel ulps,
+//! so a default-lane kernel regression that stayed inside a 1e-6 tier would
+//! pass the corpus gate and fail here.
 //!
 //! # What is compared, and against what bound
 //!
 //! | record | quantity | rule |
 //! |---|---|---|
-//! | `errs` | engine error count after compile+post | exact |
+//! | `errs` | engine error **count** after compile+post (not the text — the corpus gate reconciles messages) | exact |
 //! | `conv` | converged flag per step | exact |
 //! | `iter` | iteration count per step | ±[`ITER_SLACK`], the drift model's band |
 //! | `v` | node voltage, per node per step | [`REL`] / [`ABS`] |
@@ -41,6 +60,16 @@
 //! Record *keys* (case label, step, node/element name, matrix coordinate) are
 //! compared **exactly** and in order, so a lane that renames, reorders, drops or
 //! adds anything fails structurally before any number is looked at.
+//!
+//! That table is the whole dump — it is the solved-state checkpoint, not
+//! "everything the corpus gate compares". Deliberately **not** dumped:
+//! EnergyMeter registers, monitor channels, the event log, the control-action
+//! queue, property probes and all report text; tap and switch changes appear
+//! only indirectly, through `y` and `v`. Those surfaces are live-compared
+//! against the oracles by the corpus gate in *both* lanes, which is where their
+//! coverage comes from — so do not describe this job as dumping the "full"
+//! checkpoint stream, and do not lean on it as the numeric guard for report
+//! content it never reads.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -82,9 +111,13 @@ const ITER_SLACK: i64 = 1;
 ///
 /// These are **not** silently skipped: the diff measures them like everything
 /// else and prints what it measured, it just does not fail on them. Every entry
-/// mirrors an exclusion the corpus gate already carries in
-/// `harness::lane`, so the two instruments cannot disagree about what is
-/// deliberate.
+/// is hand-mirrored from an exclusion the corpus gate carries in
+/// `harness::lane` (`LANE_SKIP_ELEM_POWERS`) — hand-mirrored, because an
+/// example cannot import the test harness. Nothing checks the two lists against
+/// each other, so keep them in step by hand; what *is* checked is that every
+/// entry here still fires, so a stale one cannot sit around un-gating a field
+/// (fail-on-stale, added F-settle W4 — the discipline the ledger,
+/// `ESCAPE_REGISTER` and `expected_rerounded` already carry).
 ///
 /// * the two `newton` decks' `pow`/`loss` —
 ///   `compat::POWERS_REUSE_STALE_NEWTON_ITERMINAL` (`CLAUDE.md` upstream bug 5,
@@ -210,7 +243,11 @@ fn num(x: f64) -> String {
 /// record silently reshapes into extra fields (it did, until the first run of
 /// this job hit that deck).
 fn rec(w: &mut impl Write, kind: &str, key: &str, values: &[f64]) {
-    debug_assert!(
+    // A plain `assert!`, not `debug_assert!`: the job runs `--release`
+    // (`tools/lanes/lane_diff.ps1`) and the workspace sets no
+    // `[profile.release] debug-assertions`, so a debug assertion here would be
+    // switched off in the only configuration that ever executes this code.
+    assert!(
         !key.contains('\t'),
         "record key contains the separator: {key}"
     );
@@ -229,11 +266,11 @@ fn rec(w: &mut impl Write, kind: &str, key: &str, values: &[f64]) {
 /// to `out`.
 ///
 /// The case label and the step index are carried by their own `case`/`step`
-/// records rather than repeated in every key — the dump is ~250 MB per lane
-/// even so, and repeating an 80-character corpus path on each of its ~4 million
-/// value records would nearly triple that for no added information. The diff
-/// tracks the same two registers while streaming, so a failure still names its
-/// case and step.
+/// records rather than repeated in every key — the dump is ~215 MB per lane
+/// even so, and repeating an 80-character corpus path on each of its ~3.2
+/// million value records would nearly triple that for no added information. The
+/// diff tracks the same two registers while streaming, so a failure still names
+/// its case and step.
 fn dump(out: &Path) {
     let file = File::create(out).unwrap_or_else(|e| panic!("create {}: {e}", out.display()));
     let mut w = BufWriter::new(file);
@@ -381,6 +418,11 @@ fn diff(a: &Path, b: &Path) {
     // the case label on every value line.
     let mut case = String::new();
     let mut step = String::new();
+    // The `lane` headers of the two dumps, checked after the walk.
+    let mut lanes: Option<(String, String)> = None;
+    // Non-finite values on either side, which the bound checks below cannot
+    // see: every comparison against a NaN is false, in both directions.
+    let mut nonfinite: Vec<String> = Vec::new();
 
     loop {
         let (ra, rb) = (la.next(), lb.next());
@@ -399,7 +441,17 @@ fn diff(a: &Path, b: &Path) {
                 let (ka, key_a, va) = split_record(&ra, a, n);
                 let (kb, key_b, vb) = split_record(&rb, b, n);
                 if ka == "lane" {
-                    continue; // the two headers name different lanes by design
+                    // The two headers must name *different* lanes, and between
+                    // them exactly {default, parity}. Skipping the comparison
+                    // (what this did until F-settle W4) meant the one job that
+                    // certifies default ≈ oracle could not tell a lane from
+                    // itself: two dumps both headed `default` diffed clean and
+                    // exited 0, so a Cargo slip that stopped `oracle-parity`
+                    // reaching the example, or a stale `parity.dump` under
+                    // `-SkipDump`, read as a green "bit-identical" run that
+                    // proved nothing. Verified by probe.
+                    lanes = Some((key_a.clone(), key_b.clone()));
+                    continue;
                 }
                 if ka != kb || key_a != key_b || va.len() != vb.len() {
                     structural = Some(format!(
@@ -427,6 +479,20 @@ fn diff(a: &Path, b: &Path) {
 
                 let deliberate = is_documented(&case, &ka);
                 let where_ = format!("{case}#{step} {ka} {key_a}");
+
+                // A NaN or an infinity is never a documented divergence, and it
+                // is invisible to every bound below (`d > allowed` and
+                // `diff > max_abs` are both false for NaN, so it does not even
+                // reach the statistics). A default lane that started producing
+                // NaN voltages while still flagging converged is the single
+                // worst regression this job exists to catch, so it is a hard
+                // failure regardless of `deliberate` (probe-confirmed silent
+                // pass before F-settle W4).
+                for (side, vals) in [(a, &va), (b, &vb)] {
+                    if let Some(bad) = vals.iter().find(|x| !x.is_finite()) {
+                        nonfinite.push(format!("  {where_}: {bad} in {}", side.display()));
+                    }
+                }
                 let bucket = if deliberate {
                     documented.entry(format!("{case} {ka}")).or_default()
                 } else {
@@ -527,6 +593,39 @@ fn diff(a: &Path, b: &Path) {
         println!("VERDICT: FAIL (structural)\n{msg}");
         std::process::exit(1);
     }
+    // The job's whole claim is "these two builds agree", so it has to have
+    // compared two different builds.
+    match &lanes {
+        None => {
+            println!("VERDICT: FAIL (structural)\n  neither dump carries a `lane` header");
+            std::process::exit(1);
+        }
+        Some((la, lb)) => {
+            let mut got = [la.as_str(), lb.as_str()];
+            got.sort_unstable();
+            if got != ["default", "parity"] {
+                println!(
+                    "VERDICT: FAIL (structural)\n  the two dumps are lanes {la:?} and {lb:?} — \
+                     expected one `default` and one `parity`. Comparing a lane with itself \
+                     proves nothing; rebuild the missing lane (see tools/lanes/lane_diff.ps1)."
+                );
+                std::process::exit(1);
+            }
+        }
+    }
+    if !nonfinite.is_empty() {
+        println!(
+            "VERDICT: FAIL — {} non-finite value(s); no bound can see these:",
+            nonfinite.len()
+        );
+        for f in nonfinite.iter().take(40) {
+            println!("{f}");
+        }
+        if nonfinite.len() > 40 {
+            println!("  … and {} more", nonfinite.len() - 40);
+        }
+        std::process::exit(1);
+    }
     if !failures.is_empty() {
         println!(
             "VERDICT: FAIL — {} value(s) outside the bound:",
@@ -545,6 +644,18 @@ fn diff(a: &Path, b: &Path) {
         n > 100_000 && stats.contains_key("v") && stats.contains_key("y"),
         "the diff compared {n} records and {} kinds — that is not a corpus dump",
         stats.len()
+    );
+    // Fail-on-stale: an entry that no longer matches anything is an ungated
+    // field nobody is watching.
+    let stale: Vec<String> = DOCUMENTED_DIVERGENCES
+        .iter()
+        .flat_map(|(label, kinds)| kinds.iter().map(move |k| format!("{label} {k}")))
+        .filter(|key| !documented.contains_key(key))
+        .collect();
+    assert!(
+        stale.is_empty(),
+        "stale DOCUMENTED_DIVERGENCES entries — these matched no record in this \
+         dump, so they exempt a field that is no longer there: {stale:?}"
     );
     println!("VERDICT: PASS");
 }

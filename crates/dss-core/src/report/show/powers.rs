@@ -406,7 +406,7 @@ fn write_powers_element(
             .and_then(|b| ckt.buses.get(b))
             .map(|x| x.name.as_str())
             .unwrap_or("")
-            .to_uppercase()
+            .to_ascii_uppercase()
     };
     let power = |k: usize, volts: Complex64| -> Complex64 {
         let mut sp = volts * cd.iterminal[k].conj();

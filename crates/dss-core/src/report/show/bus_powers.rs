@@ -287,7 +287,7 @@ fn write_terminal_power(
         .and_then(|b| ckt.buses.get(b))
         .map(|b| b.name.as_str())
         .unwrap_or("");
-    let from_bus = from_bus.to_uppercase();
+    let from_bus = from_bus.to_ascii_uppercase();
     rep.line(&format!(
         "ELEMENT = {}",
         format::pad(&format::enclose_quotes(name), mdnl + 2)

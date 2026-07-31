@@ -61,7 +61,7 @@ pub(crate) fn show_fault_study(ckt: &Circuit) -> String {
         // `Pad(EncloseQuotes(UPPER(name)) + ' ', mbnl + 2)` — the trailing space
         // is the column gutter, so the quoted name fills `mbnl + 1` (`Pad` only
         // appends; the bytes are the same).
-        let name = bus.name.to_uppercase();
+        let name = bus.name.to_ascii_uppercase();
         let mut row = Row::new().cell(Cell::left(format::enclose_quotes(&name), mbnl + 1).sep(" "));
         for i in 0..n {
             let curr_mag = bus.bus_current[i].norm();
@@ -114,7 +114,7 @@ pub(crate) fn show_fault_study(ckt: &Circuit) -> String {
     for bus in &ckt.buses {
         let n = bus.num_nodes_this_bus();
         let Some(zsc) = &bus.zsc else { continue };
-        let quoted = format::enclose_quotes(&bus.name.to_uppercase());
+        let quoted = format::enclose_quotes(&bus.name.to_ascii_uppercase());
         for iphs in 0..n {
             // `IFault := VBus[iphs] / Zsc[iphs,iphs]` (FPC `ucomplex` `/`).
             let ifault = compat::cdiv(bus.vbus[iphs], zsc.get(iphs, iphs));
@@ -153,7 +153,7 @@ pub(crate) fn show_fault_study(ckt: &Circuit) -> String {
     for bus in &ckt.buses {
         let n = bus.num_nodes_this_bus();
         let Some(ysc) = &bus.ysc else { continue };
-        let quoted = format::enclose_quotes(&bus.name.to_uppercase());
+        let quoted = format::enclose_quotes(&bus.name.to_ascii_uppercase());
         for iphs in 0..n {
             for iphs2 in 0..n {
                 if iphs >= iphs2 {

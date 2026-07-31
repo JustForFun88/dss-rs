@@ -99,24 +99,39 @@ fn fmt_battery_matches_fpc_rtl() {
 }
 
 /// The default kernel's disagreement with FPC is exactly the rounding rule the
-/// F-FMT row exists for — nothing structural.
+/// F-FMT row exists for — nothing that moves a *value*.
 ///
-/// Three things are asserted about every divergence, over all four `%g`
-/// precisions of the battery:
+/// Swept over [`ENGINE_SIGS`], the `%g` precisions the engine actually renders
+/// at, not the four the battery was first written for. That distinction is the
+/// point: the earlier version asserted, as a structural property, that a
+/// divergence can never change the notation and can never make the default
+/// render more than one character wider — justified by the two kernels sharing
+/// a digit budget and a notation window. **Both claims are false**, and the
+/// committed battery itself disproves them at `sig = 6`, the engine's
+/// second-most-used precision. The window rule *is* shared, but it is applied
+/// to the **rounded** decimal exponent, and the two kernels round differently:
 ///
-/// * the **notation** is unchanged (both kernels share the same
-///   fixed-vs-scientific window), so a divergence can never widen a column of a
-///   fixed-width table;
-/// * the **digit count** moves by at most one (a round-up out of the leading
-///   digit shortens `9.9…` to `10`, which FPC does too);
-/// * the difference is a **last-digit** one: the two strings re-parse to `f64`s
-///   no further apart than one unit in the last printed place. That is what
-///   makes the default lane's parsed-numeric golden comparison meaningful —
-///   F-FMT re-spells numbers, it never moves them. The bound comes from the
-///   printed precision itself, not from a tolerance.
+/// * `9.999994999999999e5` at sig 6 → FPC `"1E6"`, native `"999999"` — a
+///   notation flip, and three characters wider;
+/// * `8.999999999999995e-13` at sig 15 → FPC `"9E-13"` (5 chars), native
+///   `"8.99999999999999E-13"` (20) — FPC's aggressive round-up collapses the
+///   mantissa to one digit that trailing-zero stripping then leaves alone;
+/// * `9.95e-6` at sig 2 → FPC `"0.00001"`, native `"9.9E-6"`.
 ///
-/// The population size is pinned, not merely bounded, so a change to either
-/// kernel shows up as a number rather than as silence.
+/// So notation and width are **measured populations, pinned as data**
+/// ([`NOTATION_FLIPS`], [`WIDEST_DEFAULT_EXCESS`]) rather than asserted
+/// invariants. What genuinely *is* a kernel property, and is still asserted on
+/// every render, is the value: the two strings re-parse to `f64`s no further
+/// apart than one unit in the last printed place. That is what makes the
+/// default lane's parsed-numeric golden comparison meaningful — F-FMT re-spells
+/// numbers, it never moves them — and the bound comes from the printed
+/// precision itself, not from a tolerance.
+///
+/// The width population is not a live column hazard: after F.4 the `Show`
+/// tables are content-sized and `Export` is comma-separated, and the surviving
+/// fixed-width `%g` sites (`report/save/dump/solution.rs`, `report/save/dump.rs`,
+/// `exec/solve.rs`) would fail their default-lane token compare *loudly* on a
+/// widened render, never silently. It is pinned so that stays a checked claim.
 #[test]
 fn native_kernel_differs_from_fpc_only_by_the_rounding_rule() {
     let rows = battery();
@@ -125,9 +140,11 @@ fn native_kernel_differs_from_fpc_only_by_the_rounding_rule() {
     let mut widest = 0usize;
     let mut widest_at: Option<(f64, usize, String, String)> = None;
     let mut example: Option<(f64, usize, String, String)> = None;
+    let mut flips = 0usize;
+    let mut flip_at: Option<(f64, usize, String, String)> = None;
 
     for (v, _) in &rows {
-        for sig in [2usize, 5, 8, 15] {
+        for sig in ENGINE_SIGS {
             let fpc = fmt_g_fpc_impl(*v, sig);
             let native = fmt_g_native_impl(*v, sig);
             if fpc == native {
@@ -135,11 +152,10 @@ fn native_kernel_differs_from_fpc_only_by_the_rounding_rule() {
             }
             diverged += 1;
 
-            assert_eq!(
-                fpc.contains('E'),
-                native.contains('E'),
-                "notation moved for v={v:e} sig={sig}: {fpc} vs {native}"
-            );
+            if fpc.contains('E') != native.contains('E') {
+                flips += 1;
+                flip_at = Some((*v, sig, fpc.clone(), native.clone()));
+            }
             let grew = native.len().saturating_sub(fpc.len());
             if grew > widest {
                 widest = grew;
@@ -166,7 +182,7 @@ fn native_kernel_differs_from_fpc_only_by_the_rounding_rule() {
         }
     }
 
-    // Measured over the committed battery (13 198 values × 4 precisions):
+    // Measured over the committed battery (13 198 values × 11 precisions):
     // FPC's `GRISU1_F2A_HALF_ROUNDUP` + `GRISU1_F2A_AGRESSIVE_ROUNDUP`
     // re-round of an already-rounded 17-digit decimal disagrees with a single
     // correct rounding on this many renders. Move the number only in the commit
@@ -183,30 +199,42 @@ fn native_kernel_differs_from_fpc_only_by_the_rounding_rule() {
         worst < 5.1e-2,
         "divergence beyond a last-digit difference: {worst:e} at {example:?}"
     );
-    // Column widths. A divergence can make the default render **one character**
-    // longer, and only in one way: FPC rounded *up* into a trailing zero, which
-    // its (and our) trailing-zero stripping then removed — measured at
-    // `0.4020128841512195` (sig 15), where FPC prints the 14-digit
-    // `0.40201288415122` and a single correct rounding keeps the 15-digit
-    // `0.402012884151219`.
-    //
-    // That is not a column hazard: both kernels are capped at the same
-    // significant-digit budget (`util::fpc_general_digits`) and share the
-    // notation window, so the default render never exceeds the width the
-    // *parity* kernel already needs at that precision — it just fails to get
-    // shorter. A value of `2` here would mean something structural moved.
+    // Notation and width, pinned as measured populations (see the doc above for
+    // why these are not invariants). Both are carried entirely by `sig = 6`:
+    // `9.999994999999999e5` and its negative, FPC `1E6` vs native `999999`.
     assert_eq!(
-        widest, 1,
-        "the default-vs-parity render width difference moved — a wider default \
+        flips, NOTATION_FLIPS,
+        "the fixed-vs-scientific notation population moved ({flip_at:?}) — \
+         re-measure and record it; it is data, not an invariant"
+    );
+    assert_eq!(
+        widest, WIDEST_DEFAULT_EXCESS,
+        "the default-vs-parity render width population moved — a wider default \
          render can glue two cells of a fixed-width `Show` table together, so \
          re-measure rather than widen ({widest_at:?})"
     );
 }
 
+/// The `%g` significant-digit counts the engine renders at, from a sweep of
+/// every `g`/`g_w`/`g_left_w`/`fmt_g` call site in `crates/dss-core/src`.
+///
+/// The battery used to sweep `[2, 5, 8, 15]`, which happens to be exactly the
+/// subset on which the notation and width claims above hold.
+const ENGINE_SIGS: [usize; 11] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 15];
+
+/// Renders where the two kernels choose a different **notation**: 2, both at
+/// `sig = 6` (`±9.999994999999999e5`).
+const NOTATION_FLIPS: usize = 2;
+
+/// The largest number of characters by which the default render exceeds the
+/// parity one: **3**, at the same `sig = 6` pair (`1E6` → `999999`).
+const WIDEST_DEFAULT_EXCESS: usize = 3;
+
 /// The measured FPC-vs-native `%g` divergence count over the committed battery
-/// at precisions 2/5/8/15 — see
+/// at every precision in [`ENGINE_SIGS`] — 225 at sig 15, 2 at sig 6, 2 at
+/// sig 11 — see
 /// [`native_kernel_differs_from_fpc_only_by_the_rounding_rule`].
-const FPC_VS_NATIVE_DIVERGENCES: usize = 225;
+const FPC_VS_NATIVE_DIVERGENCES: usize = 229;
 
 /// One unit in the last printed decimal place of `s` (e.g. `1.25` → 0.01,
 /// `1.2E-3` → 1e-4).

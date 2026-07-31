@@ -36,8 +36,9 @@ pub const ORACLE_PARITY: bool = false;
 // RPN pi (IV.2 row 4)
 // ---------------------------------------------------------------------------
 
-/// The truncated pi of the Pascal original (`RPN.pas` `TRPNCalc`, via
-/// `fff.pas:69`) — **not** the full-precision constant. It scales the degree
+/// The shortened pi of the Pascal original (`RPN.pas:69-70`, `TRPNCalc`'s
+/// `DegToRad`/`RadToDeg` constants) — **not** the full-precision constant. It
+/// sits 2.069e-13 *above* `std::f64::consts::PI`. It scales the degree
 /// conversions of the RPN calculator's trig entries, so results differ in the
 /// last ~3 digits (`"30 sin"` gives `0.5000000000000299` instead of
 /// `0.49999999999999994`). The parity lane keeps it so the deck language
@@ -78,14 +79,52 @@ pub use PI_STD_IMPL as PI;
 /// like the oracle; the default lane saturates instead
 /// ([`round_i32_saturating_impl`]).
 pub fn round_i32_fpc_impl(x: f64) -> i32 {
+    round_i64_fpc(x) as i32
+}
+
+/// FPC `Round` proper: ties-to-even into an `Int64`, with the x87/SSE "integer
+/// indefinite" sentinel (`i64::MIN`) for anything out of range or non-finite.
+///
+/// The two FPC-lane kernels of the round row differ only in what the Pascal
+/// assignment target is: an `Integer` truncates this ([`round_i32_fpc_impl`]),
+/// a `Double` widens it back ([`round_f64_fpc_impl`]).
+fn round_i64_fpc(x: f64) -> i64 {
     let r = x.round_ties_even();
-    let wide = if r >= -(2f64.powi(63)) && r < 2f64.powi(63) {
+    if r >= -(2f64.powi(63)) && r < 2f64.powi(63) {
         r as i64 // r is finite here: NaN comparisons are false
     } else {
         i64::MIN
-    };
-    wide as i32
+    }
 }
+
+/// FPC `Round` written **back into a Double** — Pascal's
+/// `doubles[i] := Round(doubles[i])` (`DSSObjectHelper.pas`, the
+/// `TPropertyFlag.ApplyRound` array path). `Round` yields an `Int64`, so an
+/// out-of-range magnitude does not stay put: it becomes the integer-indefinite
+/// sentinel widened back to floating point. Probed on the pinned oracle —
+/// `new growthshape.g npts=2 year=[1e20,2]` then `? growthshape.g.year` gives
+/// `[ -9.22337203685478E18 2]`, which is exactly `i64::MIN as f64`.
+///
+/// It is the **parity** kernel; the default lane rounds in place
+/// ([`round_f64_native_impl`]).
+pub fn round_f64_fpc_impl(x: f64) -> f64 {
+    round_i64_fpc(x) as f64
+}
+
+/// Idiomatic rounding in place: ties-to-even, magnitude preserved. Identical to
+/// [`round_f64_fpc_impl`] on every value an `Int64` can hold; a larger or
+/// non-finite one keeps its own value instead of collapsing to the FPC
+/// sentinel. The difference is a **deliberate divergence**, pinned by `tests`
+/// and, at the deck-language boundary it is observable from, by
+/// `growth_shape::tests::apply_round_out_of_range_is_the_lane_kernel`.
+pub fn round_f64_native_impl(x: f64) -> f64 {
+    x.round_ties_even()
+}
+
+#[cfg(feature = "oracle-parity")]
+pub use round_f64_fpc_impl as round_f64;
+#[cfg(not(feature = "oracle-parity"))]
+pub use round_f64_native_impl as round_f64;
 
 /// Idiomatic rounding: ties-to-even followed by Rust's **saturating** float →
 /// int cast. Identical to [`round_i32_fpc_impl`] on every in-range finite

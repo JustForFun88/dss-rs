@@ -212,7 +212,9 @@ fn make_like_equivalent_spacing_is_the_lane_kernel() {
     assert_eq!(get(&cls, &dst, "nconds"), "4");
     assert_eq!(get(&cls, &dst, "x"), "[ -1.2 0 1.2 0]");
 
-    let parity = crate::compat::LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING;
+    // Derived from the *lane*, never from the row's own alias — see
+    // `isource::tests` for why (F-settle W4).
+    let parity = crate::compat::ORACLE_PARITY;
     assert_eq!(
         dst.detailed, parity,
         "parity keeps `Create`'s detailed = true (MakeLike never copies it); \

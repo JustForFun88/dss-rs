@@ -1311,6 +1311,15 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 /// `exec::tests::base_frequency::monitor_basefreq_is_the_lane_kernel`, which
 /// asserts both lanes' values on a 50 Hz deck and their agreement on a 60 Hz
 /// one.
+///
+/// Keyed by `(class, prop)` rather than by case, unlike the sibling
+/// `lane::LANE_SKIP_PROBE_PROPS`, so it drops the value compare on every case
+/// and not just the one that needs it. That is a real if small coverage loss,
+/// bounded by measurement: exactly one gated deck sets a 50 Hz fundamental
+/// (`electricdss-tst/Version8/Distrib/IEEETestCases/LVTestCase/Master.dss`) and
+/// every mode-4 flicker deck in the corpus is 60 Hz, so no Pst output moves;
+/// and what the exclusion gives up on the 60 Hz decks — that both lanes still
+/// report 60 — is exactly what the pin above asserts directly.
 const LANE_SKIP_PROPS: &[(&str, &str)] = &[("Monitor", "BaseFreq")];
 
 pub fn skip_prop(class: &str, prop: &str) -> bool {
@@ -1318,10 +1327,24 @@ pub fn skip_prop(class: &str, prop: &str) -> bool {
         && LANE_SKIP_PROPS
             .iter()
             .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p));
-    lane_skipped
-        || SKIP_PROPS
-            .iter()
-            .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p))
+    lane_skipped || skip_prop_ub(class, prop)
+}
+
+/// The [`SKIP_PROPS`] half of [`skip_prop`] **only** — the properties whose
+/// upstream getter renders uninitialized heap memory.
+///
+/// Kept separate because [`skip_prop`] has a second consumer that wants a
+/// different question answered: `corpus_gate::write_gate_dump` nulls these
+/// values in the three-way contamination artifact, and its whole argument is
+/// that the stripped set is order-dependent *by construction*. A Stage F lane
+/// exclusion is not — `Monitor.BaseFreq` is a deterministic function of the
+/// deck — so folding it in would quietly drop a deterministic property from the
+/// bit-diff and leave that artifact's stated rationale describing a set it no
+/// longer had (F-settle W4).
+pub fn skip_prop_ub(class: &str, prop: &str) -> bool {
+    SKIP_PROPS
+        .iter()
+        .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p))
 }
 
 /// Transformer per-winding SINGULAR getters that index the ActiveWinding cursor
@@ -2296,8 +2319,8 @@ fn report_lines(s: &str) -> Vec<String> {
 ///
 /// Stage F: a non-numeric field that is a **`Key=Value` script token** — the
 /// shape of the `Dump`/`Save` DSS text, which a whitespace tokenizer cannot
-/// split further — gets one extra chance in the **default lane** only (see
-/// [`kv_value_eq`]).
+/// split further — gets one extra chance in the **default lane** under an
+/// **exact-value policy** only (see [`kv_value_eq`]).
 fn field_eq(actual: &str, expected: &str, rel: f64, abs: f64, ctx: &str) {
     let (a, e) = (actual.trim(), expected.trim());
     match (a.parse::<f64>(), e.parse::<f64>()) {
@@ -2306,7 +2329,16 @@ fn field_eq(actual: &str, expected: &str, rel: f64, abs: f64, ctx: &str) {
             if a.eq_ignore_ascii_case(e) {
                 return;
             }
-            if !lane::PARITY && kv_value_eq(a, e, rel, abs, ctx) {
+            // Scoped to the *exact-value* policies, not merely to the lane.
+            // `field_eq` is the leaf of every `compare_export`, including the
+            // corpus gate's `global_result_policy` (rel 1e-10) and
+            // `autoadd_log_policy` (energy floors); gated on the lane alone,
+            // the first report combining a physical floor with `key=value`
+            // cells would silently turn a verbatim text compare into a
+            // tolerant numeric one. With `rel == abs == 0` the fallback means
+            // exactly what its doc says: the f64 must be bit-identical, only
+            // its spelling may move.
+            if !lane::PARITY && rel == 0.0 && abs == 0.0 && kv_value_eq(a, e, rel, abs, ctx) {
                 return;
             }
             panic!("{ctx}: text field differs (actual {a:?} vs expected {e:?})");

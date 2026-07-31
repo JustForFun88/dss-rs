@@ -860,11 +860,14 @@ fn make_like_control_signal_is_the_lane_kernel() {
     assert_eq!(dst.pt_ratio, 77.0);
     assert_eq!(dst.control_type, CapControlType::Follow);
 
-    let parity = crate::compat::CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL;
+    // Derived from the *lane*, never from the row's own alias — reading
+    // `CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL` on both sides would let a
+    // silent revert of the flip pass (reproduced, F-settle W4).
+    let parity = crate::compat::ORACLE_PARITY;
     assert_eq!(
         dst.control_signal_name,
         if parity { "" } else { "sig" },
-        "parity reproduces MakeLike's dropped ControlSignal (CapControl.pas:446-490); \
+        "parity reproduces MakeLike's dropped ControlSignal (CapControl.pas:445-489); \
          the default lane copies it like every other reference"
     );
     assert_eq!(dst.ctrl_signal_shape.is_none(), parity);
