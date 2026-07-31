@@ -172,6 +172,56 @@ fn show_table_layout_is_the_lane_kernel() {
     assert_eq!(fields(rows[0]), 4, "name, kW, % of power, kvar: {rows:?}");
 }
 
+/// Expected-value pin for the F-FMT table row at the **per-bus / per-element**
+/// reports F.4e converted (`Show Voltages`' node form here — the same seam
+/// carries `Currents`/`Powers`/`BusFlow`/`Buses`/`Elements`/`Meters`/`Faults`/
+/// `Mismatch`).
+///
+/// Two claims, both equalities against the lane so either build checks both:
+///
+/// 1. **The name column is the lane's.** Pascal fills it with `PadDots` — a
+///    space then dots — so the parity lane's short bus names carry a dot run and
+///    the table kernel's, which pads with its own gutter, carries none.
+/// 2. **No field moved.** Every node row of a 3-phase bus carries the same
+///    twelve fields in either lane (name, node, |V|, `/_`, angle, pu, base kV,
+///    then the line-line group) — the token-stream guarantee of `report::table`,
+///    asserted here on a report the executive really produced.
+#[test]
+fn show_voltage_table_layout_is_the_lane_kernel() {
+    let parity = crate::compat::ORACLE_PARITY;
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.probe basekv=12.47 pu=1.0 phases=3 bus1=sourcebus");
+    dss.command("new line.l1 bus1=sourcebus bus2=b2 phases=3 r1=0.1 x1=0.2 length=1");
+    dss.command("new line.l2 bus1=b2 bus2=a_much_longer_bus_name phases=3 r1=0.1 x1=0.2 length=1");
+    dss.command("new load.ld bus1=a_much_longer_bus_name phases=3 kv=12.47 kw=1000 pf=0.95");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let ckt = dss.circuit().expect("solved circuit");
+    let text = crate::report::show::show_voltages_nodes(ckt, false);
+
+    // 1. `PadDots` vs the table kernel's gutter.
+    let dotted = text.lines().filter(|l| l.contains(" ....")).count();
+    assert_eq!(
+        dotted > 0,
+        parity,
+        "the parity kernel fills the bus column with Pascal's dots; the table \
+         kernel sizes it from content\n{text}"
+    );
+
+    // 2. …and every row still carries its twelve fields.
+    let rows: Vec<&str> = text.lines().filter(|l| l.contains("/_")).collect();
+    assert!(rows.len() >= 9, "three 3-phase buses: {rows:?}");
+    for r in &rows {
+        let fields = r
+            .split(|c: char| c.is_whitespace() || c == ',')
+            .filter(|f| !f.is_empty() && !f.bytes().all(|b| b == b'.'))
+            .count();
+        assert_eq!(fields, 12, "line-ground + line-line groups: {r:?}");
+    }
+}
+
 /// Expected-value pin for the Stage F single-site quirk
 /// [`crate::compat::SYM_MATRIX_GETTER_RENDERS_ZEROS`].
 ///

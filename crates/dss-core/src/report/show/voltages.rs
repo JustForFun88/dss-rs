@@ -17,6 +17,7 @@ use crate::circuit::Circuit;
 use crate::elements::traits::CktElement;
 use crate::exec::registry::DssClass;
 use crate::report::format;
+use crate::report::table::{Cell, Report, Row};
 use crate::support::complexutil::cdang;
 use crate::support::mathutil::SymComp;
 use crate::util::sqrt3;
@@ -27,29 +28,37 @@ use crate::util::sqrt3;
 pub(crate) fn show_voltages(ckt: &Circuit, ll: bool) -> String {
     let mbnl = super::max_bus_name_length(ckt);
 
-    let mut s = String::new();
-    s.push('\n');
+    let mut rep = Report::new();
+    rep.blank();
     if ll {
-        s.push_str("SYMMETRICAL COMPONENT PHASE-PHASE VOLTAGES BY BUS (for 3-phase buses)\n");
+        rep.line("SYMMETRICAL COMPONENT PHASE-PHASE VOLTAGES BY BUS (for 3-phase buses)");
     } else {
-        s.push_str("SYMMETRICAL COMPONENT VOLTAGES BY BUS (for 3-phase buses)\n");
+        rep.line("SYMMETRICAL COMPONENT VOLTAGES BY BUS (for 3-phase buses)");
     }
-    s.push('\n');
-    s.push_str(&format::pad("Bus", mbnl));
-    s.push_str("  Mag:   V1 (kV)    p.u.     V2 (kV)   %V2/V1    V0 (kV)    %V0/V1\n");
-    s.push('\n');
+    rep.blank();
+    // Pascal's header carries a `Mag:` label *between* the bus column and the
+    // six value columns, so it has no cell-per-column decomposition (unlike the
+    // F.4d reports, whose headers were exactly their columns) — it stays free
+    // text until a v2 re-layout (plan §F-FMT step 4). Same for the two other
+    // `Show Voltages` forms below.
+    rep.line(&format!(
+        "{}{}",
+        format::pad("Bus", mbnl),
+        "  Mag:   V1 (kV)    p.u.     V2 (kV)   %V2/V1    V0 (kV)    %V0/V1"
+    ));
+    rep.blank();
 
     for i in 0..ckt.buses.len() {
-        s.push_str(&seq_voltage_row(ckt, i, ll, mbnl));
+        rep.row(seq_voltage_row(ckt, i, ll, mbnl));
     }
-    s
+    rep.finish()
 }
 
 /// One bus's symmetrical-component voltage line (Pascal `WriteSeqVoltages(F, i,
 /// LL)`): V1(kV)/pu/V2/%V2·V1⁻¹/V0/%V0·V1⁻¹. Shared by [`show_voltages`] (looped
 /// over all buses) and `Show busflow` (a single bus). `mbnl` is
 /// [`super::max_bus_name_length`].
-pub(crate) fn seq_voltage_row(ckt: &Circuit, i: usize, ll: bool, mbnl: usize) -> String {
+pub(crate) fn seq_voltage_row(ckt: &Circuit, i: usize, ll: bool, mbnl: usize) -> Row {
     let node_v = &ckt.solution.node_v;
     let sc = SymComp::default();
     let bus = &ckt.buses[i];
@@ -98,17 +107,15 @@ pub(crate) fn seq_voltage_row(ckt: &Circuit, i: usize, ll: bool, mbnl: usize) ->
     // `Format('%s %9.4g  %9.4g  %9.4g  %9.4g %9.4g %9.4g', [Pad(BusName,…), V1,
     // Vpu, V2, V2V1, V0, V0V1])` — bus name space-padded, not uppercased/quoted.
     let bus_name = ckt.bus_list.name(i).unwrap_or("");
-    let mut s = format::pad(bus_name, mbnl);
-    s.push_str(&format!(
-        " {}  {}  {}  {} {} {}\n",
-        format::g_w(v1, 9, 4),
-        format::g_w(vpu, 9, 4),
-        format::g_w(v2, 9, 4),
-        format::g_w(v2v1, 9, 4),
-        format::g_w(v0, 9, 4),
-        format::g_w(v0v1, 9, 4),
-    ));
-    s
+    let g9 = |v: f64| Cell::right(format::g(v, 4), 9);
+    Row::new()
+        .cell(Cell::left(bus_name, mbnl).sep(" "))
+        .cell(g9(v1).sep("  "))
+        .cell(g9(vpu).sep("  "))
+        .cell(g9(v2).sep("  "))
+        .cell(g9(v2v1).sep(" "))
+        .cell(g9(v0).sep(" "))
+        .cell(g9(v0v1))
 }
 
 /// Build the `Show Voltages` (code 1) text (Pascal `ShowVoltages` case 1 +
@@ -118,36 +125,39 @@ pub(crate) fn seq_voltage_row(ckt: &Circuit, i: usize, ll: bool, mbnl: usize) ->
 pub(crate) fn show_voltages_nodes(ckt: &Circuit, ll: bool) -> String {
     let mbnl = super::max_bus_name_length(ckt);
 
-    let mut s = String::new();
-    s.push('\n');
+    let mut rep = Report::new();
+    rep.blank();
     if ll {
-        s.push_str("LINE-LINE VOLTAGES BY BUS & NODE\n");
+        rep.line("LINE-LINE VOLTAGES BY BUS & NODE");
     } else {
-        s.push_str("LINE-GROUND and LINE-LINE VOLTAGES BY BUS & NODE\n");
+        rep.line("LINE-GROUND and LINE-LINE VOLTAGES BY BUS & NODE");
     }
-    s.push('\n');
-    s.push_str(&format::pad("Bus", mbnl));
-    if ll {
-        s.push_str(" Node    VLN (kV)   Angle      pu     Base kV \n");
-    } else {
-        s.push_str(
-            " Node    VLN (kV)   Angle      pu     Base kV    Node-Node   VLL (kV)  Angle      pu\n",
-        );
-    }
-    s.push('\n');
+    rep.blank();
+    rep.line(&format!(
+        "{}{}",
+        format::pad("Bus", mbnl),
+        if ll {
+            " Node    VLN (kV)   Angle      pu     Base kV "
+        } else {
+            " Node    VLN (kV)   Angle      pu     Base kV    Node-Node   VLL (kV)  Angle      pu"
+        }
+    ));
+    rep.blank();
 
     for i in 0..ckt.buses.len() {
-        s.push_str(&bus_voltage_block(ckt, i, ll, mbnl));
+        for row in bus_voltage_block(ckt, i, ll, mbnl) {
+            rep.row(row);
+        }
     }
-    s
+    rep.finish()
 }
 
 /// One bus's line-ground (+ line-line) node-voltage block (Pascal `WriteBusVoltages(F,
 /// i, LL)`). Shared by [`show_voltages_nodes`] (looped) and `Show busflow` (single
 /// bus). `mbnl` is [`super::max_bus_name_length`].
-pub(crate) fn bus_voltage_block(ckt: &Circuit, i: usize, ll: bool, mbnl: usize) -> String {
+pub(crate) fn bus_voltage_block(ckt: &Circuit, i: usize, ll: bool, mbnl: usize) -> Vec<Row> {
     let node_v = &ckt.solution.node_v;
-    let mut s = String::new();
+    let mut rows = Vec::new();
     {
         let bus = &ckt.buses[i];
         let nn = bus.num_nodes_this_bus();
@@ -155,7 +165,9 @@ pub(crate) fn bus_voltage_block(ckt: &Circuit, i: usize, ll: bool, mbnl: usize) 
         // on a node present on the bus). `bname` carries the padded bus name for
         // node 1, then the `'   -'` continuation for the rest.
         let mut jj: i32 = 1;
-        let mut bname = String::new();
+        // The name column: the `PadDots`ed bus name on the bus's first row, the
+        // `'   -'` continuation (space-padded to the same field) on the rest.
+        let mut bname = Cell::plain("");
         for j in 0..nn {
             // Advance `jj` to the next present node number (Pascal `repeat FindIdx
             // until >0`); `node_idx` is the 0-based slot on the bus.
@@ -194,50 +206,57 @@ pub(crate) fn bus_voltage_block(ckt: &Circuit, i: usize, ll: bool, mbnl: usize) 
             } else {
                 (0.0, 0.0)
             };
-            let node_name = format!("{}  ", bus.get_num(node_idx));
+            let node_num = bus.get_num(node_idx);
 
             if j == 0 {
-                bname = format::pad_dots(ckt.bus_list.name(i).unwrap_or(""), mbnl);
+                bname = Cell::dots(ckt.bus_list.name(i).unwrap_or("").to_uppercase(), mbnl);
             }
+            // The continuation label for every row after the bus's first.
+            let cont = || Cell::left("   -", mbnl);
 
             if ll {
                 if kk.is_some() {
-                    s.push_str(&format!(
-                        "{} {} {} /_ {} {} {}\n",
-                        bname.to_uppercase(),
-                        node_name_ll,
-                        format::g_w(vmag_ll, 10, 5),
-                        format::fixed_w(cdang(volts_ll), 6, 1),
-                        format::g_w(vpu_ll, 9, 5),
-                        format::fixed_w(bus.kv_base * sqrt3(), 9, 3),
-                    ));
-                    bname = format::pad("   -", mbnl);
+                    rows.push(
+                        Row::new()
+                            .cell(bname.clone().sep(" "))
+                            .cell(Cell::plain(node_name_ll).sep(" "))
+                            .cell(Cell::right(format::g(vmag_ll, 5), 10).sep(" "))
+                            .cell(Cell::plain("/_").sep(" "))
+                            .cell(Cell::right(format::fixed(cdang(volts_ll), 1), 6).sep(" "))
+                            .cell(Cell::right(format::g(vpu_ll, 5), 9).sep(" "))
+                            .cell(Cell::right(format::fixed(bus.kv_base * sqrt3(), 3), 9)),
+                    );
+                    bname = cont();
                 }
             } else {
-                s.push_str(&format!(
-                    "{} {} {} /_ {} {} {}",
-                    bname.to_uppercase(),
-                    node_name,
-                    format::g_w(vmag, 10, 5),
-                    format::fixed_w(cdang(volts), 6, 1),
-                    format::g_w(vpu, 9, 5),
-                    format::fixed_w(bus.kv_base * sqrt3(), 9, 3),
-                ));
+                // `'%s %s %10.5g /_ %6.1f %9.5g %9.3f'`, where the node column is
+                // `IntToStr(node) + '  '` — the two trailing spaces are the
+                // column's gutter, so they join the separator.
+                let mut row = Row::new()
+                    .cell(bname.clone().sep(" "))
+                    .cell(Cell::plain(node_num.to_string()).sep("   "))
+                    .cell(Cell::right(format::g(vmag, 5), 10).sep(" "))
+                    .cell(Cell::plain("/_").sep(" "))
+                    .cell(Cell::right(format::fixed(cdang(volts), 1), 6).sep(" "))
+                    .cell(Cell::right(format::g(vpu, 5), 9).sep(" "));
+                let kvb = Cell::right(format::fixed(bus.kv_base * sqrt3(), 3), 9);
                 if nn > 1 && kk.is_some() && jj <= 4 {
-                    s.push_str(&format!(
-                        "        {} {} /_ {} {}",
-                        node_name_ll,
-                        format::g_w(vmag_ll, 10, 5),
-                        format::fixed_w(cdang(volts_ll), 6, 1),
-                        format::g_w(vpu_ll, 9, 5),
-                    ));
+                    row = row
+                        .cell(kvb.sep("        "))
+                        .cell(Cell::plain(node_name_ll).sep(" "))
+                        .cell(Cell::right(format::g(vmag_ll, 5), 10).sep(" "))
+                        .cell(Cell::plain("/_").sep(" "))
+                        .cell(Cell::right(format::fixed(cdang(volts_ll), 1), 6).sep(" "))
+                        .cell(Cell::right(format::g(vpu_ll, 5), 9));
+                } else {
+                    row = row.cell(kvb);
                 }
-                s.push('\n');
-                bname = format::pad("   -", mbnl);
+                rows.push(row);
+                bname = cont();
             }
         }
     }
-    s
+    rows
 }
 
 /// Build the `Show Voltages` (code 2) text (Pascal `ShowVoltages` case 2 +
@@ -246,32 +265,35 @@ pub(crate) fn bus_voltage_block(ckt: &Circuit, i: usize, ll: bool, mbnl: usize) 
 /// no terminal recompute).
 pub(crate) fn show_voltages_elements(classes: &[DssClass], ckt: &Circuit, ll: bool) -> String {
     let mbnl = super::max_bus_name_length(ckt);
-    let hdr = |s: &mut String| {
-        s.push_str(&format::pad("Bus", mbnl));
-        s.push_str(" (node ref)  Phase    Magnitude, kV (pu)    Angle\n");
-        s.push('\n');
+    let hdr = |rep: &mut Report| {
+        rep.line(&format!(
+            "{}{}",
+            format::pad("Bus", mbnl),
+            " (node ref)  Phase    Magnitude, kV (pu)    Angle"
+        ));
+        rep.blank();
     };
 
-    let mut s = String::new();
-    s.push('\n');
-    s.push_str("NODE-GROUND VOLTAGES BY CIRCUIT ELEMENT\n");
-    s.push('\n');
-    s.push_str("Power Delivery Elements\n");
-    s.push('\n');
-    hdr(&mut s);
+    let mut rep = Report::new();
+    rep.blank();
+    rep.line("NODE-GROUND VOLTAGES BY CIRCUIT ELEMENT");
+    rep.blank();
+    rep.line("Power Delivery Elements");
+    rep.blank();
+    hdr(&mut rep);
 
     // SOURCES first, then PDELEMENTS (Pascal's PD section; faults are NON_PCPD so
     // not walked here).
-    walk_element_voltages(&mut s, classes, ckt, &ckt.sources, mbnl, ll);
-    walk_element_voltages(&mut s, classes, ckt, &ckt.pd_elements, mbnl, ll);
+    walk_element_voltages(&mut rep, classes, ckt, &ckt.sources, mbnl, ll);
+    walk_element_voltages(&mut rep, classes, ckt, &ckt.pd_elements, mbnl, ll);
 
-    s.push_str("= = = = = = = = = = = = = = = = = = =  = = = = = = = = = = =  = =\n");
-    s.push('\n');
-    s.push_str("Power Conversion Elements\n");
-    s.push('\n');
-    hdr(&mut s);
-    walk_element_voltages(&mut s, classes, ckt, &ckt.pc_elements, mbnl, ll);
-    s
+    rep.line("= = = = = = = = = = = = = = = = = = =  = = = = = = = = = = =  = =");
+    rep.blank();
+    rep.line("Power Conversion Elements");
+    rep.blank();
+    hdr(&mut rep);
+    walk_element_voltages(&mut rep, classes, ckt, &ckt.pc_elements, mbnl, ll);
+    rep.finish()
 }
 
 /// Walk a circuit list, writing each **enabled** element's node-ground voltage
@@ -281,7 +303,7 @@ pub(crate) fn show_voltages_elements(classes: &[DssClass], ckt: &Circuit, ll: bo
 /// invisible to the token/blank-filtering golden gate but reproduced for byte
 /// faithfulness (audit-code WP8.4 step 4).
 fn walk_element_voltages(
-    s: &mut String,
+    rep: &mut Report,
     classes: &[DssClass],
     ckt: &Circuit,
     refs: &[crate::elements::traits::ElemId],
@@ -294,16 +316,16 @@ fn walk_element_voltages(
         if let Some(elem) = classes[r.class_ord()].arena.try_ckt_elem(r.index()) {
             if elem.cd().enabled {
                 let name = format!("{}.{}", class_name, obj.data().name());
-                write_element_voltages(s, ckt, &name, elem, mbnl, ll);
+                write_element_voltages(rep, ckt, &name, elem, mbnl, ll);
             }
-            s.push('\n');
+            rep.blank();
         }
     }
 }
 
 /// One element's node-ground voltage block (Pascal `WriteElementVoltages`).
 fn write_element_voltages(
-    s: &mut String,
+    rep: &mut Report,
     ckt: &Circuit,
     name: &str,
     elem: &dyn CktElement,
@@ -314,10 +336,7 @@ fn write_element_voltages(
     let (ncond, nterm) = (cd.nconds, cd.nterms);
     let node_v = &ckt.solution.node_v;
     // Pascal `'ELEMENT = "' + dssclassname + '.' + AnsiUpperCase(Name) + '"'`.
-    s.push_str(&format!(
-        "ELEMENT = \"{}\"\n",
-        format::upper_elem_name(name)
-    ));
+    rep.line(&format!("ELEMENT = \"{}\"", format::upper_elem_name(name)));
     let mut k = 0usize;
     for j in 0..nterm {
         // Terminal bus name (`StripExtension(FirstBus/NextBus)`, uppercased at
@@ -327,7 +346,7 @@ fn write_element_voltages(
             .and_then(|b| ckt.buses.get(b))
             .map(|b| b.name.as_str())
             .unwrap_or("");
-        let bus_name = format::pad(bus_name, mbnl).to_uppercase();
+        let bus_name = bus_name.to_uppercase();
         for _ in 0..ncond {
             let nref = cd.node_ref[k];
             k += 1;
@@ -345,18 +364,24 @@ fn write_element_voltages(
             }
             // Pascal `'%s  (%3d) %4d    %13.5g (%8.4g) /_ %6.1f'`
             // [UpperCase(BusName), nref, MapNodeToBus[nref].nodenum, Vmag, Vpu, cdang(Volts)].
-            s.push_str(&format!(
-                "{}  ({}) {}    {} ({}) /_ {}\n",
-                bus_name,
-                format::fixed_w_int(nref as i64, 3),
-                format::fixed_w_int(ckt.map_node_to_bus[nref].node_num as i64, 4),
-                format::g_w(vmag, 13, 5),
-                format::g_w(vpu, 8, 4),
-                format::fixed_w(cdang(volts), 6, 1),
-            ));
+            // The two parenthesised fields keep their bracket **inside** the cell:
+            // `(` is written flush against a right-justified number, so splitting
+            // it into a cell of its own would move a token in the table kernel.
+            rep.row(
+                Row::new()
+                    .cell(Cell::left(bus_name.clone(), mbnl).sep("  "))
+                    .cell(Cell::plain(format!("({:>3})", nref)).sep(" "))
+                    .cell(
+                        Cell::right(ckt.map_node_to_bus[nref].node_num.to_string(), 4).sep("    "),
+                    )
+                    .cell(Cell::right(format::g(vmag, 5), 13).sep(" "))
+                    .cell(Cell::plain(format!("({:>8})", format::g(vpu, 4))).sep(" "))
+                    .cell(Cell::plain("/_").sep(" "))
+                    .cell(Cell::right(format::fixed(cdang(volts), 1), 6)),
+            );
         }
         if j < nterm - 1 {
-            s.push_str("------------\n");
+            rep.row(Row::new().cell(Cell::plain("------------")));
         }
     }
 }

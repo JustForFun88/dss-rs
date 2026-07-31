@@ -193,6 +193,17 @@ pub fn g_left_w(v: f64, width: usize, sig: usize) -> String {
 /// value, so any last-digit rounding difference (FPC-vs-Rust `{:E}`) is
 /// absorbed by the column's printing-floor tol.
 pub fn fpc_sci_w(v: f64, width: usize) -> String {
+    let body = fpc_sci_body(v, width);
+    format!("{body:>width$}")
+}
+
+/// [`fpc_sci_w`] without the right-justification — the *minimum* FPC `Str(v: w)`
+/// representation (sign slot, mantissa, `E±ddd`), whose fraction-digit count is
+/// still set by `width`. Split out for the `Show` table model, where the field
+/// width belongs to the [`crate::report::table::Cell`] and the padding is the
+/// lane's ([`crate::compat::render_rows`]); `fpc_sci_w` = this body in a
+/// `width`-wide right-justified field, byte for byte.
+pub fn fpc_sci_body(v: f64, width: usize) -> String {
     let frac = ((width as i64) - 8).max(1) as usize;
     let sign = if v.is_sign_negative() { '-' } else { ' ' };
     // Rust `{:.*E}` → `6.639353E4`; reformat the exponent to a sign plus an
@@ -203,8 +214,7 @@ pub fn fpc_sci_w(v: f64, width: usize) -> String {
         Some(r) => ('-', r),
         None => ('+', exp.trim_start_matches('+')),
     };
-    let body = format!("{sign}{mant}E{esign}{edig:0>3}");
-    format!("{body:>width$}")
+    format!("{sign}{mant}E{esign}{edig:0>3}")
 }
 
 /// Pascal `Pad(S, Width)` (`Common/Utilities.pas`): `S` right-padded with **spaces**
