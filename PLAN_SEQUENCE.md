@@ -61,8 +61,9 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               definition in CLAUDE.md, the success-metric gates). The
                               sanctioned default-lane re-baseline came back EMPTY (no
                               golden/tolerance/ledger/deck moved), and the differential
-                              job measures the two lanes' full corpus checkpoint stream
-                              bit-identical outside the one deliberate Newton row.
+                              job measures the two lanes' solved-state checkpoint
+                              stream bit-identical outside the one deliberate Newton
+                              row (max |d| = 0 on every gated kind).
                               Hands forward, none of it open plan work: HIDE_015X →
                               UPGRADE_PLAN §5 (see item 4's open tail), the 4
                               whole-case exclusions → an unowned policy call, the 3

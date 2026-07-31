@@ -90,7 +90,14 @@ pub const PARITY: bool = cfg!(feature = "oracle-parity");
 /// M3c (parallel LU) and WP-R1 (iterative refinement) may later need a wider,
 /// *measured* band; they must raise it here with the measurement, per case.
 ///
-/// The parity lane ignores this constant entirely — it stays exact forever.
+/// The parity lane ignores this constant entirely — it stays exact forever,
+/// and that is where the band's **compensating control** lives: the same 13
+/// routed sites compare `assert_eq!(rust, oracle)` in the parity build, which
+/// is one of the five mandatory gate commands (and now a CI step), so an
+/// iteration count that moved at all still fails somewhere in `cargo test`.
+/// The band is not backstopped by `tools/lanes/lane_diff.ps1` — that job
+/// compares the two *lanes*, not either lane against the oracle, and is not
+/// part of `cargo test` at all.
 pub const ITER_SLACK: i32 = 1;
 
 /// The corpus cases whose element `Powers`/`Losses` the **default** lane does
@@ -1086,9 +1093,7 @@ mod tests {
             let twice = std::panic::catch_unwind(|| {
                 expected_eventlog(
                     "controls:invcontrol/midi_invcontrol_drc.dss",
-                    &[format!(
-                        "Hour=1, QoutPU=-0.00188, Then=1, QoutPU=-0.00188, End=0"
-                    )],
+                    &["Hour=1, QoutPU=-0.00188, Then=1, QoutPU=-0.00188, End=0".to_string()],
                     |_| false,
                 )
             });

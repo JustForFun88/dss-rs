@@ -7,6 +7,117 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F settlement (wave 4), part 2 — the operational docs stop over-claiming, CI grows its second lane, and the no-split evidence becomes re-runnable (branch `depas-stagef`, 2026-08-01)
+
+Part 1 settled the code. This one settles the record: the audits found several
+places where a document asserts more than the instrument delivers, and one where
+the instrument was genuinely missing.
+
+**CI ran one lane while `CLAUDE.md` declared two.** `.github/workflows/ci.yml`
+ran `cargo fmt` + one clippy + one `cargo test --workspace` — the *default*
+lane only. But the parity lane is not a variant worth spot-checking: it is the
+lane that carries the byte goldens and the **exact** iteration comparison
+against the oracle, i.e. it is the compensating control for every band the
+default lane is allowed. CI now runs all five gate commands.
+
+That also disposes of an audit finding rather than confirming it. The ±1
+iteration band was reported as having its control outside `cargo test`, on the
+grounds that the control is `tools/lanes/lane_diff.ps1`. It is not: the 13
+routed sites are `assert_eq!(rust, oracle)` in the parity build, which is a
+mandatory gate command; `lane_diff.ps1` compares the two *lanes*, not either
+lane against the oracle. Recorded at `ITER_SLACK` so the next reader does not
+re-derive it the wrong way round.
+
+**"parity == oracle bitwise" was a false premise for a true conclusion.** Four
+places said it (`CLAUDE.md`, `TESTING.md`, `lane_dump.rs`, the plan). The parity
+lane is byte-exact on the committed goldens and oracle-gated at the calibrated
+`TOLERANCE_NOTES` floors — it has its own pinned ledger entry on the
+`capi_v0145` channel — so the honest chain is the triangle inequality. The
+conclusion survives only because the measured `|default − parity|` came back
+**exactly 0** on every gated kind, which makes the default lane bit-identical to
+the parity lane and hands it that lane's oracle standing outright. All four now
+say that, and say what to do when Δ stops being zero (bound = job bound **plus**
+the case's tier) — which `TESTING.md` itself predicts for M3c and WP-R1.
+
+Two neighbouring over-claims went with it: the differential job does not dump
+"the full corpus checkpoint stream" (no meter registers, monitor channels, event
+log, control queue, probes or report text — the corpus gate compares those live,
+in both lanes), and it walks 520 cases while *solving* the 516 that are not
+abort-by-design. `CLAUDE.md`'s corpus-gate paragraph still said 514.
+
+**The plan's "closed inventory" contradicted the tree, 11 rows against 38.**
+IV.2 says its dual-kernel table is "the complete, closed inventory — do not
+invent new compat items", and the executor guidance repeats it. The tree carries
+38 lane-split aliases. The extra ~23 are not inventions — they are per-site
+upstream quirks, the class `PORTING_PLAN.md` §4.1 rule 4 (Update 2026-07-06)
+rules must "become a dual kernel behind `#[cfg(feature = "oracle-parity")]`" —
+but the reconciliation existed only in `compat.rs`'s module header, so the plan
+alone read as either a stale inventory or a violated rule. IV.2 now scopes its
+table to the **shared arithmetic kernels** (which is what it is), names the
+second class with its governing rule, and points at `SPLIT_ALIAS_POPULATION` as
+the mechanical counter. The Mechanism paragraph also listed two compat modules;
+there are three (`dss-parser`'s was missing).
+
+`§Verification`'s spot-check list still claimed `seq_currents.rs` has "no
+`(j-1)*ncond` in sight" — falsified by Stage F's own F.3c fix, which
+reintroduced exactly that form as the default lane's `Iresidual` base. Corrected
+in place, since a stale self-check is precisely what makes an acceptance
+checklist useless. The flat-offset metric was re-scoped the same way (see part
+1): 17 → **15**, "all accessor-internal" → the four survivors that are not, and
+the `(… - 1) *` form recorded as deliberately retired rather than silently
+dropped.
+
+**Two no-split verdicts were prose-only; one now has its script.**
+`tools/lanes/cdiv_sweep.py` re-derives the complex-division row: `references`
+prints the exact `from_bits` literals the test carries, `sweep` prints the
+aggregate. Running it also corrected the recorded figures — the old
+9.42e-17 / 3.82e-16 against 1.05e-16 / 4.26e-16 came from decimal-literal
+references rather than the operands' binary values; the honest pair is
+5.68e-17 / 3.68e-16 against 7.73e-17 / 4.50e-16, same ordering. The dense-inverse
+row's "495 872 `Zb` inversions" is left as prose but relabelled a *survey*: it
+came from a one-off instrumented build and is not what the verdict rests on —
+that is `dense_inverse_kernels_differ_by_one_ulp_on_an_ideal_switch` and
+`tests/compat_dense_inverse.rs`, both re-runnable in-tree.
+
+**Audit findings disposed of as refuted, with the evidence.**
+
+- *"Load-bearing r4133 citations are not re-checkable from the repo."* They are:
+  `.inputs/electricdss-code-r4133-trunk` holds **949** `.pas`, and every cited
+  line resolves exactly. Two rows were being read against the wrong file — the
+  height-unit row cites r4133 throughout, and that surface does not exist in the
+  0.14.5 backend at all; the row now says so.
+- *"`LANE_SKIP_PROBE_PROPS` has three inert cells."* All four are load-bearing:
+  `MODES` sets `compare_all_properties`, so three of them feed the
+  whole-element dump rather than a manifest probe. Dropping any of them fails
+  the case.
+- *"The ±1 iteration band has no in-gate control."* See above.
+
+**Also recorded, deliberately not changed.** `lane::compare_report`'s scoping
+guard accepts `inf`/`nan`/integer text, so it cannot mechanically detect a
+golden routed into the split whose numbers are all integer text — the
+"iff its writer renders a number through the F-FMT seam" rule stays a review
+obligation. Tightening the predicate to require a rendered *float* would reject
+goldens that legitimately carry only integers, which is a worse failure mode
+than the one it prevents. `PARALLEL_FACTORIZATION_PARITY_IMPL` keeps its name
+but gains a note on the const itself: no call site reads it, both arms alias to
+it, and faer 0.24's `Lu::try_new_with_symbolic` calls `get_global_parallelism()`
+regardless — so it is a declaration awaiting M3c, not a contract the build
+honours.
+
+**For the coordinator, on merge.** `PLAN_SEQUENCE.md`'s HIDE_015X row points at
+"item 4's open tail", which exists on `update` (commit `e352dc1c`, after this
+branch point) and not here — verify it is present after merging. That commit's
+text also says both HIDE_015X tripwires live in
+`crates/dss-core/tests/oracle_parity_cfg_gate.rs`; one of them,
+`hide_015x_carrier_set_is_the_measured_escape`, is at
+`crates/dss-core/src/exec/tests/compat_quirks.rs:515`.
+
+**Proof.** `cargo fmt --all --check` clean; both clippy invocations exit 0;
+`cargo test --workspace` and its parity twin both **69 test binaries, 0
+failed**, corpus gate green inside each, `git status --short tests/corpus` empty
+after each (known intermittent `Test/AutoTrans/*` artifacts deleted by exact
+name).
+
 ### DE_PASCALIZE Stage F settlement (wave 4), part 1 — one real parity-lane divergence closed, four gate holes shut, the evidence re-measured (branch `depas-stagef`, 2026-08-01)
 
 Seven scoped audits ran over the whole Stage F range, each finding then

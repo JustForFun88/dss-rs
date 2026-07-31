@@ -48,8 +48,13 @@
 //! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w) |
 //!
 //! Rows 12–13 are not in IV.2's table and do not extend it: they are the two
-//! *reproduced* CLAUDE.md upstream bugs whose clean fix that document defers
-//! to this pass by name. With them the named-bug set is closed: of the six, two
+//! *reproduced* CLAUDE.md upstream bugs whose clean fix is deferred to this
+//! pass — row 12 (Monitor) **by name**, in that document's own bug bullet; row
+//! 13 (Newton) under `PORTING_PLAN.md` §4.1 rule 4's blanket deferral, quoted
+//! ten lines below, which is what sanctions it. (CLAUDE.md's Newton bullet
+//! named no Stage F deferral until F.3j wrote one; the earlier claim that both
+//! were deferred "by name" overreached.) With them the named-bug set is closed:
+//! of the six, two
 //! were never reproduced at all (VSConverter's self-aliased `MVMult`, harmonics
 //! `Powers`-after-`Currents`) — as is the out-of-range half of
 //! `Bus_Int_Duration` — and all four that *are* reproduced now carry the
@@ -118,7 +123,10 @@
 //! It was also *not* a branch flip: **(F.3h) 495 872 `Zb` inversions across the
 //! 520-case gate, zero `Err` from either kernel** (max disagreement 1.01e-15
 //! relative), so the Pascal error-117 substitution never fires and the lanes
-//! build the same circuits.
+//! build the same circuits. That figure came from a one-off instrumented build
+//! and is a *survey*, not the verdict's basis — what the verdict rests on is
+//! re-runnable in-tree: `tests::dense_inverse_kernels_differ_by_one_ulp_on_an_
+//! ideal_switch` and `tests/compat_dense_inverse.rs`.
 //!
 //! The row therefore resolves like "complex division" and "Y triplet dedup":
 //! **one shared kernel, no `cfg`**. [`invert_partial_pivot_impl`] /
@@ -141,14 +149,21 @@
 //! kept only for bit-parity. It is not: FPC `ucomplex`'s `/` is **Smith's
 //! algorithm**, the standard robust complex division (C99 `_Cdivd`, LAPACK
 //! `dladiv`) — legitimate numerics that happen to also be what upstream uses.
-//! Measured against the correctly-rounded quotient (60-digit `Decimal`
-//! reference, 20 000 operand pairs spanning 1e-6…1e6 in both Smith branches,
-//! 2026-07-27):
+//! Measured against the correctly-rounded quotient — an **exact-rational**
+//! reference over 20 000 operand pairs spanning 1e-6…1e6 in both Smith
+//! branches, re-runnable as `python tools/lanes/cdiv_sweep.py sweep`
+//! (re-measured 2026-08-01):
 //!
 //! | kernel | mean rel. error | worst rel. error | outside `|den|` ∈ [1e-154, 1e154] |
 //! |---|---|---|---|
-//! | Smith (`cdiv_fpc_impl`) | **9.42e-17** | **3.82e-16** | still exact |
-//! | naive (`cdiv_std_impl`) | 1.05e-16 | 4.26e-16 | `0` or `NaN` — total loss |
+//! | Smith (`cdiv_fpc_impl`) | **5.68e-17** | **3.68e-16** | still exact |
+//! | naive (`cdiv_std_impl`) | 7.73e-17 | 4.50e-16 | `0` or `NaN` — total loss |
+//!
+//! The 2026-07-27 figures (9.42e-17 / 3.82e-16 against 1.05e-16 / 4.26e-16)
+//! took their reference from the operands' *decimal spellings* rather than
+//! their binary values; same ordering, different magnitudes. Note also that the
+//! verdict is the **aggregate**: on ~25% of individual pairs Smith is the
+//! worse of the two, so a per-pair claim would be false.
 //!
 //! So flipping this row would make the *product* lane strictly less accurate
 //! and strictly less robust, buying nothing: the parity lane already provides
