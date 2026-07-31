@@ -62,6 +62,8 @@
 //! pass in the default lane and FAIL in the parity lane, in whichever lane the
 //! suite is running.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use super::{ColSel, ColTol, ElemChannels, ExportPolicy, GateSpec, RowPolicy, compare_export};
 
 /// `true` in the parity build (`--features dss-core/oracle-parity`), `false` in
@@ -216,11 +218,19 @@ const LANE_SKIP_PROBE_PROPS: &[(&str, &str, &str)] = &[
 ///   to fail the compare loudly rather than be silently rewritten.
 /// * `compat::fmt_g` (F.4) — [`EVENTLOG_REROUNDED`], the enumerated cells where
 ///   the F-FMT `%g` row re-spells a **traced** number's last printed digit.
-pub fn expected_eventlog(lines: &[String], device_is_relay: impl Fn(&str) -> bool) -> Vec<String> {
+pub fn expected_eventlog(
+    label: &str,
+    lines: &[String],
+    device_is_relay: impl Fn(&str) -> bool,
+) -> Vec<String> {
     if PARITY {
         return lines.to_vec();
     }
-    lines
+    let cells: Vec<&(&str, &str, &str, &str)> =
+        EVENTLOG_REROUNDED.iter().filter(|c| c.0 == label).collect();
+    let mut hits = vec![0usize; cells.len()];
+
+    let out: Vec<String> = lines
         .iter()
         .filter(|l| !l.contains(", Element=Debug Sample: Relay."))
         .map(|l| match reset_device_name(l) {
@@ -231,11 +241,77 @@ pub fn expected_eventlog(lines: &[String], device_is_relay: impl Fn(&str) -> boo
             _ => l.clone(),
         })
         .map(|l| {
-            EVENTLOG_REROUNDED
+            cells
                 .iter()
-                .fold(l, |acc, (key, from, to)| reround_cell(&acc, key, from, to))
+                .zip(hits.iter_mut())
+                .fold(l, |acc, ((_, key, from, to), hit)| {
+                    let (next, n) = reround_cell(&acc, key, from, to);
+                    *hit += n;
+                    next
+                })
         })
-        .collect()
+        .collect();
+
+    for (idx, ((case, key, from, to), hit)) in cells.iter().zip(&hits).enumerate() {
+        // Over-broad guard: a cell re-spells ONE rendered number, so it may
+        // never match twice within one log.
+        assert!(
+            *hit <= 1,
+            "over-broad event-log re-round cell: ({case}, {key}, {from} -> {to}) \
+             fired {hit} times in one log; a cell names a single rendered \
+             number, not a pattern"
+        );
+        // Liveness is a per-*case* property, not a per-step one: the event log
+        // grows as the case steps, so a cell legitimately fires 0 times at the
+        // steps before its line is emitted (measured on the carrier: cell 1
+        // fires in all 24 compared checkpoints, cell 2 in 23 of them).
+        // Accumulated here and asserted once, after the gate has walked every
+        // case, by [`assert_reround_cells_are_live`].
+        REROUND_VISITS[idx].fetch_add(1, Ordering::Relaxed);
+        REROUND_HITS[idx].fetch_add(*hit, Ordering::Relaxed);
+    }
+    out
+}
+
+/// Per-cell counters behind [`assert_reround_cells_are_live`], indexed exactly
+/// like [`EVENTLOG_REROUNDED`].
+///
+/// The per-case filter in [`expected_eventlog`] preserves order and every cell
+/// today belongs to the same case, so the filtered index is the global one; a
+/// future second carrier must key these by the cell's position in the constant.
+static REROUND_VISITS: [AtomicUsize; EVENTLOG_REROUNDED.len()] =
+    [const { AtomicUsize::new(0) }; EVENTLOG_REROUNDED.len()];
+static REROUND_HITS: [AtomicUsize; EVENTLOG_REROUNDED.len()] =
+    [const { AtomicUsize::new(0) }; EVENTLOG_REROUNDED.len()];
+
+/// **Fail-on-stale for [`EVENTLOG_REROUNDED`]**, asserted once at the end of the
+/// corpus gate.
+///
+/// A cell whose case was compared but which never fired is exempting a number
+/// that is no longer there — the staleness the ledger, `ESCAPE_REGISTER` and
+/// [`expected_rerounded`] are all guarded against, and the one this list lacked
+/// until F-settle W4 (probe: two invented rows, one with a key occurring
+/// nowhere in the corpus, passed the whole gate unremarked — while the module
+/// doc above already claimed this helper was fail-on-stale).
+///
+/// Silent when a cell's case was never visited, so `DSS_GATE_ONLY` runs and the
+/// parity lane (which rewrites nothing) do not trip it.
+pub fn assert_reround_cells_are_live() {
+    if PARITY {
+        return;
+    }
+    for (idx, (case, key, from, to)) in EVENTLOG_REROUNDED.iter().enumerate() {
+        let visits = REROUND_VISITS[idx].load(Ordering::Relaxed);
+        let hits = REROUND_HITS[idx].load(Ordering::Relaxed);
+        assert!(
+            visits == 0 || hits > 0,
+            "stale event-log re-round cell: ({case}, {key}, {from} -> {to}) \
+             matched nothing across {visits} compared step(s) of its case. Each \
+             cell is a number the default lane stops comparing against the \
+             oracle, so it must name a cell that is really there — drop it, or \
+             re-measure it."
+        );
+    }
 }
 
 /// The event-log cells F-FMT's `%g` row (`compat::fmt_g`) re-spells in the
@@ -252,37 +328,68 @@ pub fn expected_eventlog(lines: &[String], device_is_relay: impl Fn(&str) -> boo
 /// control decision moves, and the rest of that log line (and every other line
 /// of that case) stays compared against the oracle.
 ///
-/// A cell that stops occurring degrades to a no-op, never to a false pass: the
-/// comparison stays strict for every line the list does not name, so a stale
-/// entry can only fail to help. What it must never do is match a line it was not
-/// written for, which is why the keys carry the property name.
-const EVENTLOG_REROUNDED: &[(&str, &str, &str)] = &[
-    ("QoutPU=", "-0.00188", "-0.00187"),
-    ("QoutPU=", "-0.00113", "-0.00112"),
+/// Each cell names its **case**, and is applied only to that case's log — the
+/// list used to be applied to every line of every gated case, which is far
+/// wider than the one carrier it was measured on. It is also fail-on-stale:
+/// [`expected_eventlog`] asserts every cell of the case it is comparing fired
+/// exactly once. Until F-settle W4 nothing checked that, so a stale entry sat
+/// there silently exempting a cell (probe: two invented rows, one with a key
+/// that occurs nowhere, passed the gate unremarked) — while the module doc two
+/// screens up already claimed this helper was fail-on-stale.
+///
+/// A cell that stops occurring can therefore no longer degrade quietly; and it
+/// must never match a line it was not written for, which is why the keys carry
+/// the property name and the entries carry the case.
+const EVENTLOG_REROUNDED: &[(&str, &str, &str, &str)] = &[
+    (
+        "controls:invcontrol/midi_invcontrol_drc.dss",
+        "QoutPU=",
+        "-0.00188",
+        "-0.00187",
+    ),
+    (
+        "controls:invcontrol/midi_invcontrol_drc.dss",
+        "QoutPU=",
+        "-0.00113",
+        "-0.00112",
+    ),
 ];
 
-/// Re-spell one `<key><value>` cell of an event-log line: locate `key`
-/// **case-insensitively** (the capture reaches this transform in the engine's
-/// wording, and the comparator upper-cases before matching, so a cell must not
-/// depend on which of the two it sees) and replace `from` with `to` only where
-/// it immediately follows. The key's own characters are left exactly as found —
-/// the comparator's structural check reads them too.
-fn reround_cell(line: &str, key: &str, from: &str, to: &str) -> String {
-    let (lower_l, lower_k) = (line.to_lowercase(), key.to_lowercase());
+/// Re-spell one `<key><value>` cell of an event-log line, returning the rewritten
+/// line and **how many times it fired**.
+///
+/// The key is located **case-insensitively** (the capture reaches this transform
+/// in the engine's wording, and the comparator upper-cases before matching, so a
+/// cell must not depend on which of the two it sees); `from` is then matched
+/// case-**sensitively** — it is a digit string, so there is no case to fold. The
+/// key's own characters are left exactly as found: the comparator's structural
+/// check reads them too.
+///
+/// Lower-casing is **ASCII-only**, deliberately. `str::to_lowercase` is
+/// Unicode-aware and can change a string's byte length (`U+0130` → `i` + a
+/// combining dot, 2 bytes → 3), while the offsets it produces are used to slice
+/// the *original* line — a skew that silently missed the rewrite on one probe
+/// input and panicked with "byte index is not a char boundary" on another
+/// (F-settle W4). ASCII folding is length-preserving, so the offsets are
+/// correct by construction, and it matches the port's P6 convention.
+fn reround_cell(line: &str, key: &str, from: &str, to: &str) -> (String, usize) {
+    let (lower_l, lower_k) = (line.to_ascii_lowercase(), key.to_ascii_lowercase());
     let mut out = String::with_capacity(line.len());
     let mut i = 0usize;
+    let mut hits = 0usize;
     while let Some(rel) = lower_l[i..].find(&lower_k) {
         let value_at = i + rel + key.len();
         out.push_str(&line[i..value_at]);
         if line[value_at..].starts_with(from) {
             out.push_str(to);
+            hits += 1;
             i = value_at + from.len();
         } else {
             i = value_at;
         }
     }
     out.push_str(&line[i..]);
-    out
+    (out, hits)
 }
 
 /// The device name of a `Recloser.<name>` **reset** event line, or `None` for
@@ -709,9 +816,9 @@ pub fn profile_ll_policy(base: ExportPolicy) -> ExportPolicy {
 mod tests {
     use super::{
         ElemChannels, ITER_SLACK, LANE_SKIP_ELEM_POWERS, LANE_SKIP_PROBE_PROPS, PARITY,
-        assert_bytes_eq, compare_iterations, compare_iterations_le, compare_report,
-        elem_channels_for, exact_value_policy, expected_eventlog, expected_monitor_channel,
-        probe_is_gated,
+        assert_bytes_eq, assert_reround_cells_are_live, compare_iterations, compare_iterations_le,
+        compare_report, elem_channels_for, exact_value_policy, expected_eventlog,
+        expected_monitor_channel, probe_is_gated,
     };
 
     thread_local! {
@@ -886,7 +993,9 @@ mod tests {
             ev("Recloser.rc1", "PHASE ALL RESET (3PH RESET)"),
             ev("Recloser.r1", "PHASE 1 CLOSED (1PH RECLOSING)"),
         ];
-        let out = expected_eventlog(&lines, |n| n.eq_ignore_ascii_case("r1"));
+        let out = expected_eventlog("synthetic:relay/relabel.dss", &lines, |n| {
+            n.eq_ignore_ascii_case("r1")
+        });
         if PARITY {
             assert_eq!(out, lines, "the parity arm must be the identity");
             return;
@@ -918,28 +1027,82 @@ mod tests {
                  Vavgpu= 0.99868, VPriorpu=0.99892, QoutPU={q}, QDesiredEndpu=0"
             )
         };
-        let out = expected_eventlog(&[line("-0.00188")], |_| false);
+        // The carrier's log must contain *both* recorded cells, each exactly
+        // once — that is what `expected_eventlog` now asserts, so the synthetic
+        // input has to be a faithful stand-in for the real capture.
+        const CARRIER: &str = "controls:invcontrol/midi_invcontrol_drc.dss";
+        let both = [line("-0.00188"), line("-0.00113")];
+        let out = expected_eventlog(CARRIER, &both, |_| false);
         assert_eq!(
             out,
-            vec![line(if PARITY { "-0.00188" } else { "-0.00187" })],
-            "the traced cell is re-spelled in the default lane only"
+            if PARITY {
+                vec![line("-0.00188"), line("-0.00113")]
+            } else {
+                vec![line("-0.00187"), line("-0.00112")]
+            },
+            "the traced cells are re-spelled in the default lane only"
         );
         // Upper-cased capture: same rewrite, the rest of the line untouched.
-        let upper = line("-0.00188").to_uppercase();
-        let got = expected_eventlog(std::slice::from_ref(&upper), |_| false);
+        let upper: Vec<String> = both.iter().map(|l| l.to_uppercase()).collect();
+        let got = expected_eventlog(CARRIER, &upper, |_| false);
         assert_eq!(
             got[0].contains("-0.00187"),
             !PARITY,
             "the match must not depend on the capture's case"
         );
         assert!(got[0].contains("VAVGPU= 0.99868"), "no other cell moves");
-        // A different value under the same key is left alone in both lanes.
+
+        // A different value under the same key is left alone in both lanes —
+        // checked on a case that owns no cells, since a carrier whose cells are
+        // absent is exactly the staleness the assertion above now rejects.
         for other in ["-0.00187", "-0.0019", "0.00188"] {
             assert_eq!(
-                expected_eventlog(&[line(other)], |_| false),
+                expected_eventlog("synthetic:no/cells.dss", &[line(other)], |_| false),
                 vec![line(other)]
             );
         }
+    }
+
+    /// A cell that names a case is applied to that case **only**, and a cell
+    /// that no longer occurs in its own case fails loudly rather than sitting
+    /// there un-gating a number.
+    #[test]
+    fn eventlog_reround_cells_are_case_scoped_and_fail_on_stale() {
+        let line = |q: &str| format!("Hour=1, Element=InvControl.ic, QoutPU={q}, End=0");
+
+        // Same text, a different case: untouched in both lanes.
+        assert_eq!(
+            expected_eventlog("controls:invcontrol/other.dss", &[line("-0.00188")], |_| {
+                false
+            }),
+            vec![line("-0.00188")],
+            "a re-round cell must not reach a case it does not name"
+        );
+
+        // The over-broad guard: one cell may re-spell one rendered number, so a
+        // log carrying the same cell twice is refused. (The parity lane
+        // rewrites nothing at all, so there is nothing to over-match there.)
+        if !PARITY {
+            let twice = std::panic::catch_unwind(|| {
+                expected_eventlog(
+                    "controls:invcontrol/midi_invcontrol_drc.dss",
+                    &[format!(
+                        "Hour=1, QoutPU=-0.00188, Then=1, QoutPU=-0.00188, End=0"
+                    )],
+                    |_| false,
+                )
+            });
+            assert!(
+                twice.is_err(),
+                "a cell matching twice in one log is a pattern, not a cell"
+            );
+        }
+
+        // Liveness is asserted per *case*, not per step — the log grows as the
+        // case steps, so a cell fires 0 times before its line is emitted. With
+        // no case visited, the check must stay silent (this is also what makes
+        // it safe under `DSS_GATE_ONLY`).
+        assert_reround_cells_are_live();
     }
 
     /// The relabel is refused when the name is ambiguous — a circuit holding a
@@ -952,7 +1115,7 @@ mod tests {
             .to_string();
         let lines = vec![line];
         assert_eq!(
-            expected_eventlog(&lines, |_| false),
+            expected_eventlog("synthetic:relay/ambiguous.dss", &lines, |_| false),
             lines,
             "no relay of that name (or a recloser shares it): leave it alone"
         );

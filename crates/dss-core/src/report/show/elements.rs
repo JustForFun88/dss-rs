@@ -43,7 +43,7 @@ pub(crate) fn show_elements(
             ));
             let arena = &classes[ci].arena;
             for i in 0..arena.len() {
-                let uname = arena.obj(i).data().name().to_uppercase();
+                let uname = arena.obj(i).data().name().to_ascii_uppercase();
                 // Pascal `(DSSClassType and BASECLASSMASK) > 0` = a circuit element:
                 // route by `Enabled`. A non-CktElement object always goes to `main`.
                 match arena.try_ckt_elem(i) {
@@ -166,7 +166,7 @@ fn element_record_row(
             .and_then(|b| ckt.buses.get(b))
             .map(|b| b.name.as_str())
             .unwrap_or("");
-        row = row.cell(Cell::left(bus.to_uppercase(), mbnl).sep(" "));
+        row = row.cell(Cell::left(bus.to_ascii_uppercase(), mbnl).sep(" "));
     }
     row
 }

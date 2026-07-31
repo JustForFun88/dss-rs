@@ -257,13 +257,18 @@ impl LineCodeObj {
             emerg_amps: 600.0,
             fault_rate: 0.1,
             pct_perm: 20.0,
-            // Pascal `Create` sets `HrsToRepair := 3`, but the oracle's
-            // `? linecode.x.repair` reads back 0 for a default code (Line keeps
-            // 3), because the field is deprecated/unused since 2014 and never
-            // propagated to lines. We store the value the getter actually
-            // reports, so this **matches the oracle exactly** — no divergence is
-            // being reproduced and no compat marker applies. What is left is
-            // plain dead-field hygiene: drop the field once nothing reads it.
+            // `TLineCodeObj.Create` (`LineCode.pas:456-501`) never assigns
+            // `HrsToRepair` at all — the `:= 3.0` belongs to `TLineObj.Create`
+            // (`Line.pas:979`), a different class. So a LineCode's field is
+            // whatever zero-initialization left, and the oracle agrees: probed,
+            // `? linecode.lc1.repair` reads back 0 while `? line.l1.repair`
+            // reads 3. (An earlier comment here asserted the opposite — that
+            // `Create` sets 3 — and reached the right value anyway; the claim
+            // was never in the source.) We store what the getter reports, so
+            // this **matches the oracle exactly**: no divergence is reproduced
+            // and no compat marker applies. What is left is plain dead-field
+            // hygiene — the field is unused since 2014 and never propagated to
+            // lines; drop it once nothing reads it.
             hrs_to_repair: 0.0,
             rg: 0.01805, // ohms per 1000'
             xg: 0.155081,

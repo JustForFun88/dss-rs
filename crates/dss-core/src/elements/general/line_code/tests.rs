@@ -257,7 +257,9 @@ fn c0_model_selection_is_the_lane_kernel() {
     ]);
     assert!(errors.is_empty(), "{errors:?}");
 
-    let parity = crate::compat::LINECODE_SYM_CLEAR_OMITS_C0;
+    // Derived from the *lane*, never from the row's own alias — see
+    // `isource::tests` for why (F-settle W4).
+    let parity = crate::compat::ORACLE_PARITY;
     assert_eq!(
         obj.sym_components_model, !parity,
         "parity reproduces the missing `C0` side-effect case (the source's own \

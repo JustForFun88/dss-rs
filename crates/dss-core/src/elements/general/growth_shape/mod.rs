@@ -104,11 +104,11 @@ impl GrowthShapeObj {
         if self.npts <= 0 {
             return 1.0;
         }
-        // Pascal `Round` = ties-to-even; a base year is a small integer, so
-        // `round_ties_even` reproduces it exactly (see RegControl
-        // `get_tap_num` for the engine-wide rule).
+        // Pascal `GrowthShape.pas:283`: `Index := Yr - Round(Year[1])` — an
+        // Int64 `Round` into an `Integer` over a raw deck array element, so it
+        // goes through the round row's kernel.
         let base = match self.year.as_ref().and_then(|y| y.first()) {
-            Some(&y0) => y0.round_ties_even() as i32,
+            Some(&y0) => dss_parser::compat::round_i32(y0),
             None => return 1.0,
         };
         let index = yr - base;
@@ -169,10 +169,18 @@ impl GrowthShapeObj {
         let mut mult_inc = cur;
         out[0] = cur;
         let mut data_ptr = 0usize;
-        // Pascal `Round` = ties-to-even (see `get_mult`); years are integral.
-        let mut cur_year = year[0].round_ties_even() as i32;
+        // Pascal `GrowthShape.pas:310`: `Yr := Round(Year[1])` into an
+        // `Integer` over a raw deck array element (see `get_mult`).
+        let mut cur_year = dss_parser::compat::round_i32(year[0]);
         for slot in out.iter_mut().skip(1) {
-            cur_year += 1;
+            // Pascal `Inc(Yr)` on an `Integer` with range checks off, so it
+            // wraps at MaxInt rather than trapping. Reachable: the base year is
+            // a raw deck double, and a magnitude past i32 leaves `cur_year`
+            // pinned at a bound in the default lane, where a plain `+= 1` is a
+            // debug-build panic (found by `apply_round_out_of_range_is_the_
+            // lane_kernel`). Neither lane consults the wrapped value for
+            // anything but the `year[..] == cur_year` equality below.
+            cur_year = cur_year.wrapping_add(1);
             if data_ptr + 1 < npts && year[data_ptr + 1] == cur_year as f64 {
                 data_ptr += 1;
                 mult_inc = mult[data_ptr];

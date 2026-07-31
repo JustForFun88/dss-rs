@@ -104,9 +104,18 @@ fn rust_sources(root: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// A file may carry the cfg string when it is part of a `compat` module
-/// (`.../compat.rs` or anything under `.../compat/`) or when it is test code
-/// (`crates/*/tests/**`, or a `tests.rs` unit-test module).
+/// A file may carry the cfg string when it belongs to one of the **three
+/// registered** compat modules ([`COMPAT_MODULES`] or that module's own
+/// `compat/` submodule directory) or when it is test code (`crates/*/tests/**`,
+/// or a `tests.rs` unit-test module).
+///
+/// The registration is deliberate. An earlier version whitelisted *any* path
+/// with a component named `compat`, which meant a fourth `…/src/<anything>/
+/// compat.rs` could carry lane cfgs with nothing objecting — against IV.2's
+/// "one `compat` module per affected crate", and invisible to the alias-pin
+/// gate too, since that walks [`COMPAT_MODULES`] and would never see the new
+/// module's rows. Adding a crate to the split now means adding it here, which
+/// is the point.
 fn is_sanctioned(path: &Path, root: &Path) -> bool {
     let rel = path.strip_prefix(root).unwrap_or(path);
     let parts: Vec<String> = rel
@@ -115,7 +124,23 @@ fn is_sanctioned(path: &Path, root: &Path) -> bool {
         .collect();
     let file = parts.last().expect("a file name");
 
-    let in_compat = file == "compat.rs" || parts.iter().any(|p| p == "compat");
+    // `crates/<crate>/src/compat.rs` and its sibling `crates/<crate>/src/
+    // compat/**` directory, for exactly the registered crates.
+    let in_compat = COMPAT_MODULES.iter().any(|m| {
+        let m_parts: Vec<String> = Path::new(m)
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
+            .collect();
+        let stem = &m_parts[..m_parts.len() - 1]; // crates/<crate>/src
+        if !parts.starts_with(stem) {
+            return false;
+        }
+        let tail = &parts[stem.len()..];
+        matches!(
+            tail.first().map(String::as_str),
+            Some("compat.rs") | Some("compat")
+        )
+    });
     let in_tests = parts.iter().any(|p| p == "tests") || file == "tests.rs";
     in_compat || in_tests
 }
@@ -160,11 +185,7 @@ fn oracle_parity_cfg_appears_only_in_compat_modules_and_tests() {
     // Non-vacuity: the three compat modules that carry the split must each be
     // present and actually cfg-selecting, or this gate would pass on a tree
     // where the seam was accidentally deleted.
-    for expected in [
-        "crates/dss-core/src/compat.rs",
-        "crates/dss-parser/src/compat.rs",
-        "crates/dss-sparse/src/compat.rs",
-    ] {
+    for expected in COMPAT_MODULES {
         let path = root.join(expected);
         let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("{expected}: {e}"));
         assert!(
@@ -172,7 +193,91 @@ fn oracle_parity_cfg_appears_only_in_compat_modules_and_tests() {
             "{expected} carries no `{needle}` — the Stage F seam is gone"
         );
     }
-    assert!(sanctioned_hits.len() >= 3);
+    assert_eq!(
+        sanctioned_hits.len(),
+        sanctioned_hits.len().max(COMPAT_MODULES.len()),
+        "fewer cfg-carrying files than there are registered compat modules"
+    );
+}
+
+/// The **second** lane-branch channel, policed the same way as the cfg string.
+///
+/// `compat::ORACLE_PARITY` is a plain `bool` const, so product code could write
+/// `if compat::ORACLE_PARITY { .. } else { .. }` and get exactly the lane
+/// spaghetti forbidden move 4 bans — while carrying none of the cfg text the
+/// gate above searches for. Reproduced (F-settle W4): a one-line
+/// `pub fn probe(x: f64) -> f64 { if compat::ORACLE_PARITY { x * 2.0 } else
+/// { x * 3.0 } }` dropped into `dss-core/src` passed every test in this file.
+///
+/// The rule is the same as for the cfg: the branch belongs in a `compat`
+/// module behind an unconditional alias. Reads inside test code are the whole
+/// point of the constant and stay allowed, and so is `crates/*/examples/**` —
+/// build-time instruments that never link into the shipped library. There is
+/// exactly one such reader, and it is the reason the allowance exists:
+/// `lane_dump` stamps the lane it was built in into its dump header, which is
+/// how the differential job knows it compared two *different* lanes.
+#[test]
+fn the_lane_constant_is_read_only_by_compat_modules_and_tests() {
+    let root = repo_root();
+
+    let mut offenders = Vec::new();
+    let mut sanctioned = 0usize;
+    for path in rust_sources(&root) {
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        if !names_token(&text, "ORACLE_PARITY") {
+            continue;
+        }
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let in_examples = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .components()
+            .any(|c| c.as_os_str().eq_ignore_ascii_case("examples"));
+        if is_sanctioned(&path, &root) || in_examples {
+            sanctioned += 1;
+            continue;
+        }
+        // A plain source file may read it only from inside its test region.
+        let head = match test_region(&path, &root, &text) {
+            Some((start, _)) => &text[..start],
+            None => text.as_str(),
+        };
+        if names_token(head, "ORACLE_PARITY") {
+            let lines: Vec<String> = head
+                .lines()
+                .enumerate()
+                .filter(|(_, l)| {
+                    !l.trim_start().starts_with("//") && names_token(l, "ORACLE_PARITY")
+                })
+                .map(|(i, l)| format!("    {rel}:{}: {}", i + 1, l.trim()))
+                .collect();
+            if !lines.is_empty() {
+                offenders.push(lines.join("\n"));
+            }
+        } else {
+            sanctioned += 1;
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "`compat::ORACLE_PARITY` read outside the compat modules and test code \
+         — that is a lane branch in product code (DE_PASCALIZE IV.2 forbidden \
+         move 4). Move it into the crate's `compat` module and call an \
+         unconditional `compat::` alias:\n{}",
+        offenders.join("\n")
+    );
+    // Non-vacuity: the constant is read by the compat modules and by the pins.
+    assert!(
+        sanctioned >= COMPAT_MODULES.len(),
+        "the walk stopped reaching the lane constant's legitimate readers"
+    );
 }
 
 /// The compat tag, assembled at runtime so this gate file carries no literal
@@ -687,13 +792,48 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// gating oracles, so every one owes an expected-value pin.
 ///
 /// Move this number only in the commit that flips (or un-flips) a row.
-const SPLIT_ALIAS_POPULATION: usize = 37;
+///
+/// 37 at the close of F.5; 38 after the W4 settlement completed the round row
+/// with its **array** kernel (`round_f64` — Pascal's `ApplyRound`, which writes
+/// `Round`'s Int64 back into a Double).
+const SPLIT_ALIAS_POPULATION: usize = 38;
+
+/// The slice of `text` that is **test code**, or `None` if the file has none.
+///
+/// Three shapes, all present in the tree: an integration test under
+/// `crates/*/tests/`, an extracted sibling `tests.rs`, or an inline
+/// `#[cfg(test)] mod tests` in a plain source file — for which only the part
+/// *after* the attribute counts. That last distinction is the point: matching
+/// the whole file let a production call site satisfy the pin gate on its own,
+/// so gutting `dispatch.rs`'s test module while leaving `#[cfg(test)] mod tests
+/// {}` behind kept the gate green with `kv_base_search_scale` unpinned
+/// (reproduced, F-settle W4). A region must also contain a `#[test]`, or there
+/// is nothing in it that can assert anything.
+fn test_region(path: &Path, root: &Path, text: &str) -> Option<(usize, usize)> {
+    let rel = path.strip_prefix(root).unwrap_or(path);
+    let parts: Vec<String> = rel
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
+        .collect();
+    let file = parts.last().expect("a file name");
+
+    let start = if parts.iter().any(|p| p == "tests") || file == "tests.rs" {
+        0
+    } else {
+        text.find("#[cfg(test)]")?
+    };
+    let region = &text[start..];
+    if !region.contains("#[test]") {
+        return None;
+    }
+    Some((start, text.len()))
+}
 
 /// Files that may never count as a pin: the compat modules themselves (their
 /// own `tests` submodules assert the *kernels* against each other, which is a
 /// different obligation — the pin has to be at an observable), and this gate,
 /// which names rows for bookkeeping.
-fn is_pin_candidate(path: &Path, root: &Path, text: &str) -> bool {
+fn is_pin_candidate(path: &Path, root: &Path, text: &str) -> Option<(usize, usize)> {
     let rel = path.strip_prefix(root).unwrap_or(path);
     let parts: Vec<String> = rel
         .components()
@@ -702,18 +842,12 @@ fn is_pin_candidate(path: &Path, root: &Path, text: &str) -> bool {
     let file = parts.last().expect("a file name");
 
     if file == "compat.rs" || parts.iter().any(|p| p == "compat") {
-        return false;
+        return None;
     }
     if file == "oracle_parity_cfg_gate.rs" {
-        return false;
+        return None;
     }
-    // Test code in every shape the tree uses: an integration test under
-    // `crates/*/tests/`, an extracted sibling `tests.rs`, or an inline
-    // `#[cfg(test)] mod tests` in a plain source file. The last one is not
-    // optional: `kv_base_search_scale`'s pin lives in
-    // `solution/solution/dispatch.rs`, and a walk shaped like "tests live in
-    // files called tests" reports it as unpinned (it did, while writing this).
-    parts.iter().any(|p| p == "tests") || file == "tests.rs" || text.contains("#[cfg(test)]")
+    test_region(path, root, text)
 }
 
 /// `token` occurs in `text` as a whole identifier, not inside a longer one.
@@ -727,16 +861,18 @@ fn names_token(text: &str, token: &str) -> bool {
 }
 
 /// A pin has to *branch on the lane*, or it pins one lane's value in both and
-/// the other lane's behavior is unasserted. Two accepted forms, both in the
-/// tree: read the lane constant (`ORACLE_PARITY`), or read the row's own alias
-/// in code (`compat::<alias>`), which is what the kernels returning values do.
-fn branches_on_lane(text: &str, alias: &str) -> bool {
-    if names_token(text, "ORACLE_PARITY") {
-        return true;
-    }
-    let qualified = format!("compat::{alias}");
-    text.lines()
-        .any(|l| !l.trim_start().starts_with("//") && names_token(l, &qualified))
+/// the other lane's behavior is unasserted.
+///
+/// The only accepted form is a read of the lane constant `ORACLE_PARITY`.
+/// Deriving the expectation from the row's **own** alias was accepted until
+/// F-settle W4 and is now rejected: engine and test then read the same
+/// constant, so the pin asserts "the engine agrees with the declaration" — true
+/// by construction whichever way the alias points. Flipping five such rows'
+/// `*_DEFAULT_IMPL` back to the parity value (a silently reverted fix) passed
+/// the entire workspace suite, in both lanes. No oracle gate can catch that
+/// class either: reverting the fix restores exactly what the oracles return.
+fn branches_on_lane(text: &str, _alias: &str) -> bool {
+    names_token(text, "ORACLE_PARITY")
 }
 
 /// `(alias, the impl each cfg arm selects)` for every lane-selected alias in the
@@ -830,16 +966,19 @@ fn every_lane_split_alias_is_pinned_by_an_expected_value_test() {
         let Ok(text) = fs::read_to_string(&path) else {
             continue;
         };
-        if !is_pin_candidate(&path, &root, &text) {
+        let Some((start, end)) = is_pin_candidate(&path, &root, &text) else {
             continue;
-        }
+        };
+        // Only the test region counts — a production call site above the
+        // `#[cfg(test)]` boundary must not be able to pin its own row.
+        let region = &text[start..end];
         let rel = path
             .strip_prefix(&root)
             .unwrap_or(&path)
             .to_string_lossy()
             .replace('\\', "/");
         for (alias, found) in pins.iter_mut() {
-            if names_token(&text, alias) && branches_on_lane(&text, alias) {
+            if names_token(region, alias) && branches_on_lane(region, alias) {
                 found.push(rel.clone());
             }
         }

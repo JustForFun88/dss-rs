@@ -384,14 +384,16 @@ impl ClassProps {
                 let mut buf = vec![0.0; max];
                 interpret_dbl_array(eng.parser, eng.vars, value, max, &mut buf)?;
                 if pd.flags.contains(PropFlags::APPLY_ROUND) {
-                    // Pascal `Round` = ties-to-even. For array rounding (years,
-                    // point counts) the magnitudes are in range, so this
-                    // reproduces the oracle exactly; FPC's out-of-Int64
-                    // integer-indefinite artifact is modeled only at the
-                    // scalar deck-language boundary that can observe it
-                    // (`dss_parser::compat::round_i32`, the Stage F round row).
+                    // Pascal `TPropertyFlag.ApplyRound` is
+                    // `doubles[i] := Round(doubles[i])` — an Int64 `Round`
+                    // widened back into the Double, over raw deck array
+                    // elements. Out of Int64 range the parity lane therefore
+                    // stores FPC's integer-indefinite sentinel (probed:
+                    // `year=[1e20]` reads back `-9.22337203685478E18`) while
+                    // the default lane rounds in place; that is the round
+                    // row's array kernel.
                     for v in &mut buf {
-                        *v = v.round_ties_even();
+                        *v = dss_parser::compat::round_f64(*v);
                     }
                 }
                 if pd.flags.contains(PropFlags::NON_ZERO) && buf.contains(&0.0) {

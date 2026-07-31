@@ -209,7 +209,10 @@ pub(crate) fn bus_voltage_block(ckt: &Circuit, i: usize, ll: bool, mbnl: usize) 
             let node_num = bus.get_num(node_idx);
 
             if j == 0 {
-                bname = Cell::dots(ckt.bus_list.name(i).unwrap_or("").to_uppercase(), mbnl);
+                bname = Cell::dots(
+                    ckt.bus_list.name(i).unwrap_or("").to_ascii_uppercase(),
+                    mbnl,
+                );
             }
             // The continuation label for every row after the bus's first.
             let cont = || Cell::left("   -", mbnl);
@@ -346,7 +349,7 @@ fn write_element_voltages(
             .and_then(|b| ckt.buses.get(b))
             .map(|b| b.name.as_str())
             .unwrap_or("");
-        let bus_name = bus_name.to_uppercase();
+        let bus_name = bus_name.to_ascii_uppercase();
         for _ in 0..ncond {
             let nref = cd.node_ref[k];
             k += 1;

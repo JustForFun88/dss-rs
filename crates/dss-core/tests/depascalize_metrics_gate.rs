@@ -79,8 +79,16 @@ fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) {
 ///
 /// Not a Rust tokenizer, and it does not need to be — a `//` inside a string
 /// literal would only ever *under*-count, i.e. make this gate miss a hit on a
-/// line that already contains a comment marker in a string. No such line exists
-/// in the tree (checked by the non-vacuity anchors below, which are real code).
+/// line that already contains a comment marker in a string.
+///
+/// Such lines do exist: measured 2026-08-01, ~19–26 lines under
+/// `crates/{dss-core,dss-parser,dss-sparse}/src` carry a `//` strictly inside a
+/// string literal (CIM/schema namespace URLs, help-catalog text, the
+/// `Dump`/monitor writers that emit literal `// Hour=` headers, a parser test's
+/// `"conn=delta // trailing comment"`). None of them carries a metric needle
+/// *after* the in-string `//`, so the hole is real but currently unexploited.
+/// The anchors below cannot rule it out — they check file-set membership and
+/// non-emptiness, not tokenization — so this is a measurement, not a proof.
 fn code_of(line: &str) -> &str {
     line.split_once("//").map_or(line, |(code, _)| code)
 }
@@ -142,7 +150,13 @@ fn part1_metric_no_downcasting_in_the_engine() {
     let root = repo_root();
     let files = engine_sources(&root, &["dss-core"]);
     assert_walk_reaches(&root, &files, 300, "crates/dss-core/src/circuit/circuit.rs");
-    let found = hits(&root, &files, &["downcast_ref", "downcast_mut", "as_any"]);
+    // `downcast::<` catches the `Box<dyn Any>::downcast` form, which the three
+    // needles the plan's own `rg` used would miss (none in the tree today).
+    let found = hits(
+        &root,
+        &files,
+        &["downcast_ref", "downcast_mut", "as_any", "downcast::<"],
+    );
     assert!(
         found.is_empty(),
         "DE_PASCALIZE Part I metric broken: {} downcast site(s) in the engine. \
@@ -257,9 +271,26 @@ fn p1_metric_no_i32_constant_families_in_elements() {
 const CEILING_ONE_BASED_LOOPS: usize = 106;
 
 /// **P8/P10/P11** — the flat-offset multiplication forms (`* nconds`,
-/// `* ncond`): 17, all accessor-internal (the views themselves have to compute
-/// the offset once, somewhere).
-const CEILING_FLAT_OFFSET: usize = 17;
+/// `* ncond`) that survive in `dss-core/src`.
+///
+/// **15**, which is what this gate actually counts: [`code_of`] drops
+/// comment-only lines, so the 17 a raw `rg` reports include two lines of prose
+/// in `elements/ckt.rs`. The ceiling sat at 17 until F-settle W4, i.e. two
+/// free slots — a new flat-offset call site could land with the gate green.
+///
+/// Not "all accessor-internal", either: four of the survivors are not view
+/// accessors — `elements/control/relay/logic.rs` (×2, TD21 sample indexing),
+/// `elements/meter/meter_element.rs`, and
+/// `report/export/seq_currents.rs`, whose `(j - 1) * ncond` is the *default*
+/// lane's `Iresidual` base and exists precisely because F.3c fixed that
+/// upstream bug. Each stays because the offset is what the code is about; the
+/// metric's point is that the number may only shrink.
+///
+/// The plan's original wording also named a third form, `(… - 1) *`. It is not
+/// gated here (24 sites in `dss-core/src`, up one from base for the
+/// `seq_currents` fix above) — retired as too noisy to gate, recorded rather
+/// than dropped silently.
+const CEILING_FLAT_OFFSET: usize = 15;
 
 /// The two audited populations Parts III left standing may shrink, never grow.
 ///

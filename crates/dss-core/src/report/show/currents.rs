@@ -140,7 +140,7 @@ pub(crate) fn show_currents(
 /// `ShowResults.pas:542`).
 fn name_cell(quoted: &str, width: usize, j: usize) -> Cell {
     if j == 1 {
-        Cell::dots(quoted.to_uppercase(), width)
+        Cell::dots(quoted.to_ascii_uppercase(), width)
     } else {
         Cell::left("   -", quoted.len().max(width))
     }
@@ -336,7 +336,7 @@ pub(crate) fn write_terminal_currents(
             .and_then(|b| ckt.buses.get(b))
             .map(|b| b.name.as_str())
             .unwrap_or("");
-        let from_bus = from_bus.to_uppercase();
+        let from_bus = from_bus.to_ascii_uppercase();
         // The tail of both row shapes: `<mag> /_ <angle> = <re> +j <im>`.
         let tail = |row: Row, eq_sep: &'static str, c: Complex64| {
             row.cell(Cell::right(format::g(c.norm(), 5), 13).sep(" "))

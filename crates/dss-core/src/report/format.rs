@@ -220,6 +220,20 @@ pub fn fpc_sci_body(v: f64, width: usize) -> String {
 /// Pascal `Pad(S, Width)` (`Common/Utilities.pas`): `S` right-padded with **spaces**
 /// to `Width` chars; a string already `>= Width` is returned unchanged. Uses byte
 /// length (`str::len`), matching Pascal's `Length(S)` (byte-1:1).
+///
+/// **Case-fold before padding with `to_ascii_uppercase`, never `to_uppercase`.**
+/// `ShowResults.pas` pads first and upper-cases second
+/// (`FromBus := Pad(StripExtension(...), MaxBusNameLength)` then
+/// `AnsiUpperCase(FromBus)`), and F.4e's table model necessarily inverts that —
+/// the `Cell` owns the padding, so the text reaching it is already folded. The
+/// two orders agree **iff** folding preserves byte length. Pascal's
+/// `AnsiUpperCase` on an `AnsiString` does; Rust's Unicode-aware
+/// `str::to_uppercase` does not (`U+0131` → `I` is 2 bytes → 1, `U+FB01` → `FI`
+/// is 3 → 2), and a deck may legally name a bus that way — verified: the engine
+/// accepts `bus2=busı1` without error. ASCII folding restores the invariant by
+/// construction, so the reorder is provably byte-neutral.
+///
+/// Same rule for [`pad_dots`], which measures byte length too.
 pub fn pad(s: &str, width: usize) -> String {
     if s.len() >= width {
         s.to_string()

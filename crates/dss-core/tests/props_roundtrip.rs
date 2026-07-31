@@ -132,13 +132,22 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
 ///   lanes by `elements::pc::isource::tests::bus2_latching_is_the_lane_kernel`.
 const LANE_SKIP_SCENARIO_PROPS: &[(&str, &str)] = &[("isource_bus2_clobbered_by_bus1", "Bus2")];
 
-/// Stage F deliberate divergence, by **property name across every scenario**:
-/// the `DoubleSymMatrixProperty` text getter
+/// Stage F deliberate divergence, as **`(class, property)` pairs**: the
+/// `DoubleSymMatrixProperty` text getter
 /// (`compat::SYM_MATRIX_GETTER_RENDERS_ZEROS`). Upstream's arm reads
 /// uninitialized memory and prints ~0 whatever was stored, so every one of these
 /// oracle values is an all-zero matrix; the default lane renders the stored
 /// values — the same numbers this property's own JSON exporter already emits in
 /// both engines.
+///
+/// The class half is load-bearing, not decoration. `DoubleSymMatrixProperty` is
+/// declared by exactly three classes in the pinned backend — `Capacitor.pas`,
+/// `Fault.pas`, `Reactor.pas` — but `RMatrix`/`XMatrix`/`CMatrix` are *also*
+/// property names on `Line` and `LineCode`, where they are ordinary matrices
+/// whose oracle values are real numbers. Keyed by name alone this list dropped
+/// the value compare on 69 pairs instead of these 33, and corrupting a
+/// `LineCode.RMatrix` golden number went undetected in the default lane
+/// (reproduced, F-settle W4).
 ///
 /// The exclusion is **values only**: [`assert_shape_matches`] still compares the
 /// numeric *skeleton* in the default lane, so the parenthesised
@@ -146,7 +155,23 @@ const LANE_SKIP_SCENARIO_PROPS: &[(&str, &str)] = &[("isource_bus2_clobbered_by_
 /// there; the parity lane compares the values too. The rendered numbers are
 /// pinned in both lanes by `dss_core::exec::tests::compat_quirks::
 /// sym_matrix_text_getter_is_lane_split`.
-const LANE_SKIP_PROP_VALUES: &[&str] = &["CMatrix", "GMatrix", "RMatrix", "XMatrix"];
+const LANE_SKIP_PROP_VALUES: &[(&str, &str)] = &[
+    ("Capacitor", "CMatrix"),
+    ("Fault", "GMatrix"),
+    ("Reactor", "RMatrix"),
+    ("Reactor", "XMatrix"),
+];
+
+/// How many `(class, property)` cells [`LANE_SKIP_PROP_VALUES`] actually
+/// removes from the default lane's value compare, measured over the committed
+/// goldens: Capacitor `CMatrix` ×7, Fault `GMatrix` ×6, Reactor
+/// `RMatrix`/`XMatrix` ×20.
+///
+/// Asserted as an **equality**, so the list is fail-on-stale in both
+/// directions: an entry that stops matching shrinks it, and one that starts
+/// matching something new grows it. The `>=` it replaced was satisfied by any
+/// count at all.
+const LANE_SKIP_PROP_VALUE_CELLS: usize = 33;
 
 /// The value-free half of [`assert_value_matches`]: the rendered *shape* only —
 /// the literal text around the numbers and how many numbers there are. Used in
@@ -228,10 +253,11 @@ fn props_roundtrip_matches_oracle() {
             dss.command(&format!("? {}.{}", sc.target, prop));
             let actual = dss.result().to_string();
             let ctx = format!("scenario {} property {prop}", sc.name);
+            let target_class = sc.target.split('.').next().unwrap_or(&sc.target);
             if !dss_core::compat::ORACLE_PARITY
-                && LANE_SKIP_PROP_VALUES
-                    .iter()
-                    .any(|p| p.eq_ignore_ascii_case(prop))
+                && LANE_SKIP_PROP_VALUES.iter().any(|(c, p)| {
+                    c.eq_ignore_ascii_case(target_class) && p.eq_ignore_ascii_case(prop)
+                })
             {
                 assert_shape_matches(&actual, expected, &ctx);
                 value_skips += 1;
@@ -241,17 +267,19 @@ fn props_roundtrip_matches_oracle() {
         }
     }
 
-    // Non-vacuity: the by-property exclusion must actually name properties the
-    // goldens carry, so a rename cannot silently turn it into a no-op. (In the
-    // parity lane nothing is skipped — the count is asserted zero there.)
+    // Fail-on-stale, both directions: the exclusion must remove exactly the
+    // measured set of cells, so neither a rename that makes an entry inert nor
+    // a widening that swallows a class it was never meant to cover can pass.
+    // (In the parity lane nothing is skipped — the count is asserted zero.)
     if dss_core::compat::ORACLE_PARITY {
         assert_eq!(value_skips, 0, "the parity lane compares every value");
     } else {
-        assert!(
-            value_skips >= LANE_SKIP_PROP_VALUES.len(),
-            "stale lane exclusion: only {value_skips} of the {} \
-             LANE_SKIP_PROP_VALUES properties were seen in the goldens",
-            LANE_SKIP_PROP_VALUES.len()
+        assert_eq!(
+            value_skips, LANE_SKIP_PROP_VALUE_CELLS,
+            "the default lane's sym-matrix value exclusion moved: {value_skips} \
+             cells skipped, {LANE_SKIP_PROP_VALUE_CELLS} recorded. Every skipped \
+             cell is a value the oracle no longer checks, so this number only \
+             moves in the commit that argues for the new set."
         );
     }
 }

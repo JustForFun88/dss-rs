@@ -7,6 +7,179 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F settlement (wave 4), part 1 — one real parity-lane divergence closed, four gate holes shut, the evidence re-measured (branch `depas-stagef`, 2026-08-01)
+
+Seven scoped audits ran over the whole Stage F range, each finding then
+re-verified empirically. This commit settles the code half. Nothing here
+re-baselines a golden, moves a ledger entry or touches a tolerance:
+`git diff --stat 6ef40238..HEAD -- tests/golden tests/corpus` is **empty**.
+
+**The one real defect: `Set time=` never reached the round row.** F.3a retired
+19 `TODO(compat): FPC Round` markers on the premise that "every engine-internal
+`Round` this port makes operates on bounded magnitudes". That is false wherever
+the input is a *raw deck double*, and the parity lane was measurably wrong
+because of it. Probed against the pinned oracle: `set time=(3e9,0)` then
+`Solution.Hour` gives `-1294967296` upstream and gave `2147483647` here, while
+the sibling `set hour=3e9` — routed through `dss_parser::compat::round_i32`
+since F.1 — matched exactly. Five sites are now routed through the row's kernel
+(bit-neutral in the default lane, which *is* the saturating cast): `Set time=`,
+PstCalc's `CyclesPerSample`, both `Round(24/stepsize)` day counts, and
+GrowthShape's base year. The premise at `reg_control/mod.rs` is rewritten to
+what is true, and told not to be restored.
+
+The same sweep left the `ApplyRound` **array** path unrouted, and that one is
+observable too: Pascal writes `Round`'s Int64 *back into the Double*, so
+`year=[1e20]` reads back `-9.22337203685478E18` from the oracle where we kept
+`1e20`. The round row gains its array kernel (`compat::round_f64` — the same
+`Round`, differing only in the Pascal assignment target), so
+`SPLIT_ALIAS_POPULATION` moves **37 → 38**. Writing its pin also surfaced a
+pre-existing default-lane panic: GrowthShape's `Inc(Yr)` is a Pascal `Integer`
+increment with range checks off, and a saturated base year made `cur_year += 1`
+overflow in debug — now `wrapping_add`, as Pascal has it.
+
+**Four gate holes, each reproduced before and after the fix.**
+
+- *A silently reverted flip used to pass everything.* Five of the 38 rows
+  derived their expected value from the row's **own** alias, so engine and test
+  read the same constant and the pin asserted only "the engine agrees with the
+  declaration" — true whichever way the alias points. Flipping those five
+  `*_DEFAULT_IMPL`s back to the parity value passed the entire workspace suite
+  in both lanes; no oracle gate can catch that class, because reverting a fix
+  restores exactly what the oracles return. All five now derive from
+  `compat::ORACLE_PARITY`, and `branches_on_lane` **rejects** the
+  self-referential form outright, so it cannot come back.
+- *A fourth `compat` module was sanctioned by construction.* `is_sanctioned`
+  whitelisted any path with a component named `compat`; it is now the three
+  registered modules. Probe: an unregistered `src/audit_probe_zone/compat.rs`
+  carrying two cfg arms passed before, fails now.
+- *A gutted test module still satisfied the pin gate.* `is_pin_candidate`
+  accepted any file containing the substring `#[cfg(test)]`, and
+  `branches_on_lane` matched anywhere in it — so a **production** call site
+  satisfied its own row. Probe: emptying `dispatch.rs`'s test module (leaving
+  `#[cfg(test)] mod tests { #[test] fn placeholder() {} }`) kept the gate green
+  with `kv_base_search_scale` unpinned; it now fails. Only the region after the
+  `#[cfg(test)]` boundary counts, and it must contain a `#[test]`.
+- *`compat::ORACLE_PARITY` was an unpoliced second lane-branch channel.*
+  Product code could write `if compat::ORACLE_PARITY { .. } else { .. }` and
+  carry none of the cfg text the grep gate searches for. A new test rejects
+  reads outside the compat modules and test code; it found exactly one
+  legitimate reader — `lane_dump`'s dump header — which is why
+  `crates/*/examples/**` is allowed, and why that header exists at all.
+
+**The differential job could not tell a lane from itself.** `diff` skipped the
+`lane` header before comparing it, so two dumps both headed `default` returned
+`VERDICT: PASS`, exit 0 — the one instrument that certifies default ≈ oracle,
+degrading into comparing a lane with itself exactly when the feature failed to
+propagate. It now requires `{default, parity}` (probe-confirmed both ways). A
+NaN on either side was also invisible — every comparison against NaN is false,
+so it did not even reach the statistics — and is now a hard failure;
+`DOCUMENTED_DIVERGENCES` became fail-on-stale; the tab guard became a real
+`assert!`, since the job runs `--release` where `debug_assert!` is off.
+
+**The event-log re-round list was the one Stage F list that was not
+fail-on-stale** — while the module doc claimed all three were. Two invented
+cells, one with a key occurring nowhere in the corpus, passed the whole gate
+unremarked. Cells are now keyed by **case** (they were applied to every line of
+every gated case), guarded against matching twice in one log, and their
+liveness is asserted once at the end of the corpus gate. Wiring it up found the
+right shape empirically: the carrier has 24 compared checkpoints, cell 1 fires
+in all of them and cell 2 in 23 — the log grows as the case steps — so liveness
+is a per-case property, not a per-step one. Probe: a third, bogus cell on the
+same case now fails the gate. `reround_cell` also indexed the original line
+with offsets computed on a Unicode-lowercased copy, which silently missed one
+probe input and panicked on another; ASCII folding makes the offsets correct by
+construction.
+
+**`props_roundtrip` excluded 69 value comparisons where 33 were sanctioned.**
+`LANE_SKIP_PROP_VALUES` matched on property *name* alone, and
+`RMatrix`/`XMatrix`/`CMatrix` are also property names on `Line` and `LineCode`,
+where the oracle values are real numbers and nothing about
+`SYM_MATRIX_GETTER_RENDERS_ZEROS` applies — only `Capacitor`, `Fault` and
+`Reactor` declare `DoubleSymMatrixProperty` in the pinned backend. Proven live:
+corrupting a `LineCode.RMatrix` golden number passed the default lane and
+failed the parity lane. Now keyed `(class, property)`, with the cell count
+asserted as an **equality** (33) instead of a `>=` that any count satisfied.
+
+**Evidence re-measured rather than re-asserted.** The `DIV_REFERENCE` table was
+computed from the decimal *literals* rather than the operands' exact binary
+values, and that conversion's own half-ULP slip is the same order as the
+quantity being measured: three of six rows were 1 ULP off, all in the imaginary
+part, and every error flattered the kernel that was kept — the table scored the
+kernels 1 vs 14 ULP where the truth is **5 vs 12**. Re-derived in exact
+rationals; the verdict is unchanged and the score is now pinned. The docstring
+also claimed Smith must be at least as close "on every row"; an unfiltered
+20 000-pair sweep has Smith strictly *worse* on 24.7%, so the rows are labelled
+what they are — a Smith-wins filtered sample — and the headline is the
+aggregate the test actually asserts. `INVERT_REL_BOUND`'s recorded triple still
+described the pre-F.3i kernel; re-measured to 1.93e-16 / 2.30e-16 / 1.31e-16.
+
+**The `%g` battery asserted two invariants that are false.** "Notation never
+moves" and "at most one character wider" were justified structurally, but both
+kernels apply the shared window to the *rounded* exponent and they round
+differently. The committed battery itself disproves both at `sig = 6` — the
+engine's second-most-used precision, which the battery's `[2, 5, 8, 15]` sweep
+never reached: `9.999994999999999e5` renders `1E6` against `999999`, a notation
+flip three characters wide. The battery now sweeps the **11** precisions the
+engine actually renders at (229 divergences, up from 225) and pins notation
+flips and width excess as *measured populations*. The genuine kernel property —
+that the two renders re-parse within one unit in the last printed place — is
+still asserted on every render.
+
+**Not fixed, and why.** The audits asked for a parity-lane byte gate on the
+numeric `Show` goldens. Tried, and it is impossible for that family: those
+goldens are not byte-reproducible in *any* lane, for two independent
+long-standing reasons — physical near-zero cancellation (`show_losses` line 26
+is `-4.36557E-14` kvar in the oracle against `-1.45519E-14` here) and the
+bus-name column width (`max_bus_name_length` differs from the oracle's, so
+`Show Voltages`' header is `"Bus" + 8` spaces against `+ 3`). Both predate F.4:
+the pre-F.4 writer builds that header with the identical
+`format::pad("Bus", mbnl)`. Recorded at the driver, with what carries the
+layout contract instead. Routing those drivers through `lane::compare_report`
+fails 27 goldens; do not retry it.
+
+Also settled: the `Pad`→uppercase reorder F.4e introduced is made provably
+byte-neutral by ASCII folding (Pascal's `AnsiUpperCase` is byte-length
+preserving; `str::to_uppercase` is not, and the engine accepts a bus named
+`busı1`); the flat-offset ceiling drops 17 → **15**, the number the gate
+actually counts, closing two free slots; `kv_value_eq` is scoped to the
+exact-value policies rather than to the lane, so a future report combining a
+physical floor with `key=value` cells cannot silently become a tolerant
+compare; the contamination artifact keeps `Monitor.BaseFreq`, which is
+deterministic and never belonged in a strip set justified by upstream UB;
+`fpc_general_digits` is now called by both `%g` kernels; and
+`monitor_base_frequency` gains the direct both-impls test IV.2's Mechanism
+clause requires — it was the only row without one.
+
+**Citations.** Six were wrong or unresolvable and are corrected against the
+vendored source: `fff.pas:69` (a file that exists nowhere) → `RPN.pas:69-70`;
+`CktElement.pas:233` → `:203`; `Line.pas:1791`/`:1793` → `:1776`/`:1778`;
+`DSSPointerList.pas:66` → `:88`; `CapControl.pas:446-490` → `:445-489`; and
+LineCode's "`Create` sets `HrsToRepair := 3`", which is simply not in the
+source — `TLineCodeObj.Create` never assigns the field; the `:= 3.0` belongs to
+`TLineObj.Create` (`Line.pas:979`). The pi row's measured gap was recorded in
+the wrong direction: `3.14159265359` is *above* pi, which is why the parity
+lane's `sin 30°` is the larger `0.5000000000000299`.
+
+**Two rows re-grounded on r4133, which is vendored.** The audits called their
+citations unverifiable; `.inputs/electricdss-code-r4133-trunk` holds 949 `.pas`
+and every one resolves exactly (`ExpControl.pas:184`, `Relay.pas:1196`/`:1212`/
+`:1325`, `LineConstants.pas:71`/`:97`/`:689-696`/`:396-399`). The height-unit
+row's citations were being resolved against the *0.14.5* backend, which has no
+such surface at all — noted in the row so the next reader does not repeat it.
+`LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING` genuinely rested on 0.15.x alone,
+and §D14 says that is not an authority: r4133's `TLineSpacing.MakeLike`
+(`Version8/Source/General/LineSpacing.pas:236-262`) copies all five
+equivalent-spacing fields explicitly, so the **default** lane is what upstream
+does and the 0.15.x omission is the regression. Recorded in the row.
+
+**Proof.** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity` both exit 0; `cargo test --workspace` and its parity
+twin both **69 test binaries, 0 failed**, with the unconditional 520-case
+corpus gate green inside each. Both runs leaked the known intermittent
+`Test/AutoTrans/*` artifacts, deleted by exact name; `git status --short
+tests/corpus` empty after each.
+
 ### DE_PASCALIZE Stage F.5 — CLOSED, and with it the whole plan: the metrics become tests, the exit criterion becomes a sentence that can fail (branch `depas-stagef`, 2026-07-31)
 
 F.5a landed the differential job. This commit closes the step, the stage and

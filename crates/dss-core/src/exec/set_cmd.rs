@@ -205,8 +205,16 @@ impl Dss {
                         let mut buf = vec![0.0; 2];
                         match parser.parse_as_vector(vars, &mut buf, false) {
                             Ok(_) => {
-                                // Pascal `Round` = ties-to-even, on the hour.
-                                ckt.solution.int_hour = buf[0].round_ties_even() as i32;
+                                // Pascal `Set_Time` (`ExecHelper.pas:1406`):
+                                // `DynaVars.intHour := Round(TimeArray[1])` —
+                                // an Int64 `Round` assigned to an `Integer`,
+                                // over a number the deck supplies raw. That is
+                                // the deck-language conversion boundary, so it
+                                // goes through the round row's kernel (the
+                                // default lane saturates, the parity lane
+                                // reproduces FPC's wrapped integer-indefinite);
+                                // `Solution.Hour` reads the result back.
+                                ckt.solution.int_hour = dss_parser::compat::round_i32(buf[0]);
                                 ckt.solution.t = buf[1];
                                 ckt.solution.update_dbl_hour();
                             }

@@ -137,6 +137,11 @@ fn corpus_gate_all_cases_match_engines() {
     {
         panic!("{stale}");
     }
+    // The same discipline for the Stage F default-lane event-log re-round
+    // cells: each one exempts a rendered number from the oracle compare, so one
+    // that stopped occurring must fail rather than quietly become a no-op.
+    // Self-silencing under `DSS_GATE_ONLY` and in the parity lane.
+    harness::lane::assert_reround_cells_are_live();
 }
 
 /// Write the contamination-proof artifact: a label-sorted
@@ -145,8 +150,11 @@ fn corpus_gate_all_cases_match_engines() {
 /// one-shot, persistent parallel, persistent parallel shuffled) must bit-diff
 /// EMPTY.
 ///
-/// Only the `harness::skip_prop` (`SKIP_PROPS`) property VALUES are stripped from
-/// each checkpoint's `all_properties` before dumping — NOT the whole block. Those
+/// Only the `harness::skip_prop_ub` (`SKIP_PROPS`) property VALUES are stripped
+/// from each checkpoint's `all_properties` before dumping — NOT the whole block,
+/// and deliberately **not** the Stage F lane exclusions, which are deterministic
+/// and so belong in the bit-diff (that is why the predicate is `skip_prop_ub`
+/// and not `skip_prop`). Those
 /// pairs (DoubleSymMatrix `RMatrix`/`XMatrix`/`CMatrix`/`GMatrix` and the shunt-PD
 /// reliability inputs) render UNINITIALIZED heap memory in the upstream dss_capi
 /// getter: a persistent worker's heap carries residue from prior cases where a
@@ -190,7 +198,7 @@ fn write_gate_dump(path: &str, run: &GateRun) {
                             .to_string();
                         // Null the VALUE (keep the name) for the UB heap-garbage
                         // props the gate itself excludes from the value compare.
-                        if arr.len() >= 2 && harness::skip_prop(&class, &name) {
+                        if arr.len() >= 2 && harness::skip_prop_ub(&class, &name) {
                             arr[1] = Value::Null;
                         }
                     }

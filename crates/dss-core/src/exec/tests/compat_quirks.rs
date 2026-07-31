@@ -237,6 +237,110 @@ fn show_voltage_table_layout_is_the_lane_kernel() {
 /// asserted here too — the JSON view is checked to carry the stored values in
 /// *both* lanes, which is what makes the text getter a defect rather than a
 /// convention.
+/// Expected-value pin for the round row at the **`Set time=`** boundary
+/// (`dss_parser::compat::round_i32`).
+///
+/// `TExecHelper.Set_Time` (`ExecHelper.pas:1406`) is
+/// `DynaVars.intHour := Round(TimeArray[1])` — an Int64 `Round` assigned to an
+/// `Integer`, over a number the deck supplies raw — and `Solution.Hour` reads
+/// it straight back, so the conversion is observable from the deck language.
+///
+/// The values are the pinned oracle's, probed with `set time=(x,0)` then
+/// `Solution.Hour`: `3e9 → -1294967296`, `1e10 → 1410065408`,
+/// `1e20 → 0`. Those are FPC's wrapped integer-indefinite results; the default
+/// lane saturates instead. Its sibling `set hour=` has always gone through the
+/// same kernel (via `make_integer`), and this test asserts the two commands
+/// agree — which is what F-settle W4 found they did *not* do: `Set time=` was
+/// left on a bare saturating cast, so the parity lane silently diverged from
+/// the oracle it is defined to reproduce.
+#[test]
+fn set_time_hour_is_the_lane_kernel() {
+    let parity = crate::compat::ORACLE_PARITY;
+    // (deck value, oracle/parity hour, default-lane saturating hour)
+    let cases: [(&str, i64, i64); 5] = [
+        ("3e9", -1_294_967_296, i32::MAX as i64),
+        ("1e10", 1_410_065_408, i32::MAX as i64),
+        ("1e20", 0, i32::MAX as i64),
+        ("-1e20", 0, i32::MIN as i64),
+        ("2147483648", -2_147_483_648, i32::MAX as i64),
+    ];
+
+    for (deck, parity_hour, default_hour) in cases {
+        let expected = if parity { parity_hour } else { default_hour };
+
+        let mut dss = dss_with_circuit();
+        dss.command(&format!("set time=({deck},0)"));
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let via_time = i64::from(dss.circuit().unwrap().solution.int_hour);
+        assert_eq!(
+            via_time, expected,
+            "`set time=({deck},0)` hour, lane parity = {parity}"
+        );
+
+        // `set hour=` is the same Pascal `Round` into the same field; the two
+        // spellings must not disagree in either lane.
+        let mut dss = dss_with_circuit();
+        dss.command(&format!("set hour={deck}"));
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let via_hour = i64::from(dss.circuit().unwrap().solution.int_hour);
+        assert_eq!(
+            via_hour, via_time,
+            "`set hour={deck}` and `set time=({deck},0)` must round alike"
+        );
+    }
+}
+
+/// Expected-value pin for the round row's **array** kernel
+/// (`dss_parser::compat::round_f64`) at the `TPropertyFlag.ApplyRound`
+/// boundary, whose carrier is `GrowthShape.year`
+/// (`GrowthShape.pas:165` sets the flag).
+///
+/// Pascal applies `doubles[i] := Round(doubles[i])`, so an out-of-Int64 element
+/// does not keep its magnitude — it becomes the integer-indefinite sentinel
+/// widened back to floating point. Probed on the pinned oracle:
+/// `new growthshape.g npts=2 year=[1e20,2] mult=[1,1]` then
+/// `? growthshape.g.year` gives `[ -9.22337203685478E18 2]`. The default lane
+/// rounds in place and keeps `1e20`.
+#[test]
+fn apply_round_out_of_range_is_the_lane_kernel() {
+    let mut dss = dss_with_circuit();
+    dss.command("New GrowthShape.g npts=2 year=[1e20,2] mult=[1.0,1.0]");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let text = query(&mut dss, "GrowthShape.g.year");
+    let first: f64 = text
+        .trim_matches(|c| c == '[' || c == ']')
+        .split_whitespace()
+        .next()
+        .expect("year array renders at least one element")
+        .parse()
+        .expect("the first year element is numeric");
+
+    let expected = if crate::compat::ORACLE_PARITY {
+        -9_223_372_036_854_775_808.0 // i64::MIN as f64
+    } else {
+        1e20
+    };
+    // Compared through the property *text*, which renders 15 significant
+    // digits (`-9.22337203685478E18` — byte-identical to the oracle's), so the
+    // last few bits of the sentinel do not survive the round trip. A relative
+    // bound of 1e-12 is still ~8 orders tighter than the gap between the two
+    // lanes' values, which differ in sign and by a factor of ten.
+    assert!(
+        ((first - expected) / expected).abs() < 1e-12,
+        "ApplyRound writes Round's Int64 back into the Double: got {first:e}, \
+         expected {expected:e} (lane parity = {})",
+        crate::compat::ORACLE_PARITY
+    );
+
+    // The in-range element is untouched in both lanes — so this pins the
+    // sentinel path, not "rounding is broken".
+    assert!(
+        text.contains('2'),
+        "the second year element survives: {text}"
+    );
+}
+
 #[test]
 fn sym_matrix_text_getter_is_lane_split() {
     let mut dss = dss_with_circuit();

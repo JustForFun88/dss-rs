@@ -608,7 +608,8 @@ pub use BUS_INT_DURATION_WALKS_ALL_BUSES_PARITY_IMPL as BUS_INT_DURATION_WALKS_A
 /// A new Monitor's `BaseFrequency`, upstream-faithful: `TMonitorObj.Create`
 /// hard-pins `Basefrequency := 60.0` *after* the inherited constructor
 /// (`Monitor.pas:472` == r4133 `:552`), overriding the base-class
-/// `BaseFrequency := ActiveCircuit.Fundamental` (`CktElement.pas:233`) that
+/// `BaseFrequency := ActiveCircuit.Fundamental` (`CktElement.pas:203` — the
+/// last statement of `TDSSCktElement.Create`; `:233` is inside `Destroy`) that
 /// every other element gets. Both gating oracles pin 60.0.
 ///
 /// This is not cosmetic: the value is the `fBase` a mode-4 monitor passes into
@@ -750,17 +751,34 @@ pub use CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL_PARITY_IMPL as CAPCONTROL_MAKEL
 
 /// Whether `Like=` on a **LineSpacing** drops the equivalent-spacing fields.
 ///
-/// `true` reproduces the upstream quirk: `TLineSpacingObj.MakeLike` copies
+/// `true` reproduces the quirk of **dss_capi 0.15.x**, which is where these
+/// five fields exist at all: its `TLineSpacingObj.MakeLike`
+/// (`0.15.x src/General/LineSpacing.pas:213-227`) copies
 /// `NConds`/`NPhases`/`FX`/`FY`/`Units` and stops, leaving `detailed`,
 /// `eqDistPhPh`, `eqDistPhN`, `avgPhaseHeight` and `avgNeutralHeight` at their
 /// `Create` defaults — even though the base class has already copied the
 /// `PrpSequence` that marks them as set. The clone therefore reports a spacing
 /// the source object does not have.
 ///
-/// `false` copies them too — the clean fix named at the site. Those five fields
-/// are derived from `FX`/`FY` whenever a `LineGeometry` consumes the spacing,
-/// so the lanes differ only in what the *object* reports between the `Like=`
-/// and the next recalculation; no golden or gated corpus deck reads it there.
+/// **Provenance, per the `DIVERGENCES.md` §D14 rule that 0.15.x is not an
+/// authority.** The pinned 0.14.5 backend has no such fields — its
+/// `TLineSpacingObj` declares only `FX`/`FY`/`FNConds`/`NPhases`/`Units`
+/// (`.inputs/dss_capi/src/General/LineSpacing.pas:50-75`) — so *neither* gating
+/// oracle can observe this row, and the parity value is inherited from the
+/// capi015-sourced golden `tests/golden/props/linespacing_eqspacing.json`
+/// (`engine_spec: capi015`) rather than from a gating channel. The EPRI r4133
+/// source settles which side is right, and it is the default lane: r4133's
+/// `TLineSpacing.MakeLike`
+/// (`.inputs/electricdss-code-r4133-trunk/Version8/Source/General/
+/// LineSpacing.pas:236-262`) copies `FEquivalentSpacing`, `FEqDistPhPh`,
+/// `FEqDistPhN`, `FAvgHeightPh` and `FAvgHeightN` explicitly. So `false` is not
+/// merely "the clean fix" — it is what the upstream authority does, and the
+/// 0.15.x omission is the regression.
+///
+/// Those five fields are derived from `FX`/`FY` whenever a `LineGeometry`
+/// consumes the spacing, so the lanes differ only in what the *object* reports
+/// between the `Like=` and the next recalculation; no golden or gated corpus
+/// deck reads it there.
 pub const LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING_PARITY_IMPL: bool = true;
 /// See the parity twin above.
 pub const LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING_DEFAULT_IMPL: bool = false;
@@ -840,7 +858,7 @@ pub use SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING_PARITY_IMPL as SEQ_CURRENTS_P
 /// but advances it with `PresentBranch.NextShuntObject()` — a cross-node cursor
 /// mix. The present branch's `TDSSPointerList` cursor still sits at its last
 /// item from tree construction (`Add` sets `ActiveItem := Count`,
-/// `DSSPointerList.pas:66`), so the very first `Next` overflows and returns
+/// `DSSPointerList.pas:88`, in `Add`), so the very first `Next` overflows and returns
 /// `NIL` (`:113-131`), ending the loop after one element. A capacitor or
 /// reactor at parent-shunt position ≥ 2 therefore fails to block the merge and
 /// is silently moved to another bus.
@@ -1311,11 +1329,21 @@ pub use STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED_PARITY_IMPL as STORAGE_POSSEQ
 ///
 /// `true` reproduces the upstream slip: `TLineConstants.Set_FuserHeightUnit`
 /// updates `FuserHeightUnit` and then calls `Set_FheightOffset(FheightOffset)`
-/// (`LineConstants.pas:689-695`, byte-identical in r4133
-/// `Version8/…/LineConstants.pas:689-696`) — but `FheightOffset` is declared
-/// "always saved in meters here" (`:71`, `:97`) while `Set_FheightOffset`'s
-/// argument is a *user-unit* number it multiplies by `To_Meters(new unit)`
-/// (`:676-687`). A metres value is therefore fed into a user-unit parameter.
+/// — but `FheightOffset` is declared "always saved in meters here" while
+/// `Set_FheightOffset`'s argument is a *user-unit* number it multiplies by
+/// `To_Meters(new unit)`. A metres value is therefore fed into a user-unit
+/// parameter.
+///
+/// **Every line reference in this row is to the r4133 source**, at
+/// `.inputs/electricdss-code-r4133-trunk/Version8/Source/General/
+/// LineConstants.pas`: `Set_FuserHeightUnit` is `:689-696`, the field
+/// declarations `FheightOffset`/`FuserHeightUnit` are `:71-72` with the
+/// "The height is always saved in meters here" comment at `:97`,
+/// `Set_FheightOffset` is `:676-687` and `Get_FheightOffset` is `:396-399`.
+/// The height-offset surface does not exist in the pinned 0.14.5 backend at
+/// all (grep its 186 `.pas` for `FheightOffset`: no match), so do **not**
+/// resolve these numbers against `.inputs/dss_capi` — they land on unrelated
+/// code there, which is what made this row read as uncited.
 ///
 /// `false` re-reads the number the user actually typed —
 /// `FheightOffset * From_Meters(old unit)`, captured **before** the unit field

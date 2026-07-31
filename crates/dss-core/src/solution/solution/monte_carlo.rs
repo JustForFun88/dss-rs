@@ -106,9 +106,11 @@ pub(super) fn solve_monte2(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult
 
 fn solve_monte2_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     let random_type = ckt.solution.random_type;
-    // Pascal `Round` = ties-to-even; this index is always in i32 range, so
-    // `round_ties_even` reproduces it exactly (see RegControl `get_tap_num`).
-    let ndaily = (24.0 / ckt.solution.interval_hrs).round_ties_even() as i32;
+    // Pascal `SolutionAlgs.pas:432`: `Ndaily := Round(24.0 / IntervalHrs)` —
+    // an Int64 `Round` into an `Integer`, and the step size is a raw deck
+    // value (`Set stepsize=0` makes the quotient infinite), so it goes through
+    // the round row's kernel rather than a bare saturating cast.
+    let ndaily = dss_parser::compat::round_i32(24.0 / ckt.solution.interval_hrs);
     for _ in 1..=ckt.solution.number_of_times {
         if ckt.solution.solution_abort {
             // Note the trailing period — Monte2's abort text differs from

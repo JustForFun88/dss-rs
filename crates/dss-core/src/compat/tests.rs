@@ -185,19 +185,36 @@ fn cdiv_parity_kernel_is_fpc_smith_bitwise() {
 /// The evidence behind the row's **no split** verdict, kept executable so it
 /// cannot decay into folklore.
 ///
-/// Each row is `(num, den, correctly-rounded quotient)`; the reference was
-/// computed in 60-digit `Decimal` (independent of both kernels) and the rows
-/// were selected as cases where the two kernels genuinely disagree. Smith's
-/// division must be **at least as close** to the true quotient as the naive
-/// form on every row, and strictly closer on at least one — which is the whole
-/// argument for keeping it in the product lane.
+/// Each row is `(num, den, correctly-rounded quotient)`. **Re-derived
+/// 2026-08-01 from the operands' exact binary values** (`Fraction(float)`, the
+/// quotient rounded once to `f64`), which is what "correctly rounded" has to
+/// mean here. The previous references were computed from the decimal
+/// *literals* instead, and that conversion's own half-ULP slip is the same
+/// order as the quantity being measured: three rows (0, 1 and 5, all in the
+/// imaginary part) were 1 ULP off, and every one of those errors flattered
+/// Smith — the committed table scored the kernels 1 vs 14 ULP where the truth
+/// is 5 vs 12. The verdict is unchanged; the evidence for it was not sound,
+/// which is exactly the decay this constant exists to prevent.
+///
+/// The rows are a **disagreement sample, filtered to Smith wins** — that is
+/// what they were, and the doc now says so. Smith being at least as close on
+/// every row is therefore a property of *this table*, not of the kernels: an
+/// unfiltered 20 000-pair sweep (uniform sign, magnitudes 1e-6…1e6, exact
+/// binary reference) has the kernels disagreeing on 12 658 pairs and Smith
+/// strictly *worse* on 4 944 of them (24.7%). What actually settles the row is
+/// the aggregate, which is what [`cdiv_shared_kernel_is_the_more_accurate_one`]
+/// asserts as its headline — Smith's total ULP error over the sample is below
+/// the naive form's — together with the robustness half that no sample can
+/// average away (`naive_division_collapses_where_smith_stays_exact`: the naive
+/// form overflows `|den|² ` outside `sqrt(DBL_MIN)…sqrt(DBL_MAX)`, where Smith
+/// is still exact).
 const DIV_REFERENCE: [(Complex64, Complex64, Complex64); 6] = [
     (
         c(0.002321729484, -0.006576942029),
         c(4.635502e-06, -1.7351297e-05),
         c(
             f64::from_bits(0x4078329354f0ea98),
-            f64::from_bits(0x403e5ff9e9aed9e9),
+            f64::from_bits(0x403e5ff9e9aed9e7),
         ),
     ),
     (
@@ -205,7 +222,7 @@ const DIV_REFERENCE: [(Complex64, Complex64, Complex64); 6] = [
         c(-1.056509107804, -1.005279277728),
         c(
             f64::from_bits(0x3ec5c1141db80686),
-            f64::from_bits(0xbebeef12399752f4),
+            f64::from_bits(0xbebeef12399752f3),
         ),
     ),
     (
@@ -237,7 +254,7 @@ const DIV_REFERENCE: [(Complex64, Complex64, Complex64); 6] = [
         c(-8.8600379e-05, -6.1824964e-05),
         c(
             f64::from_bits(0x400259a9e312c329),
-            f64::from_bits(0x3ffa1a482d26e7b8),
+            f64::from_bits(0x3ffa1a482d26e7b7),
         ),
     ),
 ];
@@ -248,6 +265,14 @@ fn ulp_distance(a: f64, b: f64) -> u64 {
     ia.abs_diff(ib)
 }
 
+/// The headline is the **aggregate**, not the per-row comparison: over
+/// [`DIV_REFERENCE`] Smith's total ULP error must stay below the naive form's
+/// (re-measured 2026-08-01: 5 vs 12). The per-row `ds <= dn` still holds on
+/// this table and is asserted, but only because the table is a Smith-wins
+/// filtered sample — it is *not* a kernel property, and a wider sample will
+/// break it (24.7% of an unfiltered 20 000-pair sweep has Smith strictly
+/// worse). Widen this table and you must drop the per-row assertion, not
+/// re-filter the rows.
 #[test]
 fn cdiv_shared_kernel_is_the_more_accurate_one() {
     let mut smith_total = 0u64;
@@ -262,7 +287,8 @@ fn cdiv_shared_kernel_is_the_more_accurate_one() {
         assert!(
             ds <= dn,
             "Smith lost to the naive form on {num}/{den}: {ds} vs {dn} ULP \
-             from the Decimal-60 reference"
+             from the exact-binary reference — expected on a wider sample, but \
+             not on this filtered table"
         );
         strictly_better_somewhere |= ds < dn;
         smith_total += ds;
@@ -270,6 +296,14 @@ fn cdiv_shared_kernel_is_the_more_accurate_one() {
     }
 
     assert!(strictly_better_somewhere);
+    // The measured pair, pinned: a silent re-derivation of the references
+    // (e.g. back to the decimal literals, which scored this 1 vs 14) moves it.
+    assert_eq!(
+        (smith_total, naive_total),
+        (5, 12),
+        "the reference table's ULP score moved; re-derive the references from \
+         the operands' exact binary values before touching this"
+    );
     assert!(
         smith_total < naive_total,
         "shared-kernel verdict no longer holds: Smith {smith_total} ULP vs \
@@ -377,10 +411,20 @@ fn inverse_residual(a: &CMatrix, inv: &CMatrix) -> f64 {
 }
 
 /// Documented parity-vs-default bound for the dense complex inverse on a
-/// well-conditioned matrix, measured 2026-07-26: max |Δ| / max |A⁻¹| =
-/// **2.15e-16** (≈ 1 ULP; the residuals ‖A·A⁻¹ − I‖ are 2.30e-16 for the
-/// parity kernel and 1.27e-16 for the partial-pivoting one). Asserted with a
-/// decade of headroom.
+/// well-conditioned matrix, **re-measured 2026-08-01**: max |Δ| / max |A⁻¹| =
+/// **1.93e-16** (≈ 1 ULP; the residuals ‖A·A⁻¹ − I‖ are **2.30e-16** for the
+/// parity kernel and **1.31e-16** for the partial-pivoting one). Asserted with
+/// a decade of headroom.
+///
+/// The earlier record (2.15e-16 / 2.30e-16 / 1.27e-16) described the kernel
+/// *before* F.3i, which switched `invert_partial_pivot_impl`'s pivot-row
+/// normalization from `num_complex`'s `/` to Smith's `cdiv` (see the row's doc
+/// in `compat.rs`). Feeding the naive division back into that kernel reproduces
+/// the old pair exactly, which is what pins the cause — the parity residual is
+/// unchanged because its kernel was not touched. Re-measure here whenever
+/// either kernel moves: this triple is the evidence for the row's *no-split*
+/// verdict, and the plan requires that verdict stay measured rather than
+/// narrated.
 const INVERT_REL_BOUND: f64 = 5.0e-15;
 
 #[test]
@@ -562,4 +606,30 @@ fn kv_base_search_scale_kernels_differ_by_the_truncation() {
     // Both are ordinary positive scales — nothing here changes the sign or the
     // magnitude class of the estimate the argmin searches with.
     assert!(trunc > 0.0 && exact < 1.0e-2);
+}
+
+/// The Monitor base-frequency row is the only dual-`_impl` row whose engine-side
+/// pin (`exec::tests::base_frequency::monitor_basefreq_is_the_lane_kernel`)
+/// reads through the *alias*, so in each build only the selected kernel is ever
+/// executed. IV.2's Mechanism clause asks for the other half — both `_impl`s
+/// called directly and asserted, in **any** build — and this supplies it.
+#[test]
+fn monitor_base_frequency_impls_are_the_pin_and_the_inherit() {
+    // The upstream hard-pin ignores its argument entirely; the clean fix is
+    // exactly the identity on the circuit's fundamental.
+    assert_eq!(monitor_base_frequency_60hz_impl(50.0), 60.0);
+    assert_eq!(monitor_base_frequency_60hz_impl(400.0), 60.0);
+    assert_eq!(monitor_base_frequency_inherit_impl(50.0), 50.0);
+    assert_eq!(monitor_base_frequency_inherit_impl(400.0), 400.0);
+
+    // Why every committed golden and gated corpus deck is blind to the row:
+    // at 60 Hz the two kernels are bit-identical.
+    assert_eq!(
+        monitor_base_frequency_60hz_impl(60.0),
+        monitor_base_frequency_inherit_impl(60.0)
+    );
+
+    // And the alias is the lane's kernel.
+    let expected = if ORACLE_PARITY { 60.0 } else { 50.0 };
+    assert_eq!(monitor_base_frequency(50.0), expected);
 }

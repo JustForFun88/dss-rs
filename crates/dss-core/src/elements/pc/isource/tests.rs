@@ -113,10 +113,12 @@ fn bus2_latching_is_the_lane_kernel() {
     isrc.cd.set_bus(2, "b2");
     isrc.side_effects(prop::BUS2, 0);
     assert_eq!(isrc.cd.get_bus(2), "b2");
-    assert_eq!(
-        isrc.bus2_defined,
-        !crate::compat::ISOURCE_BUS2_NEVER_LATCHES
-    );
+    // Expectations are derived from the *lane*, never from the row's own alias:
+    // reading `ISOURCE_BUS2_NEVER_LATCHES` on both sides would make this pass
+    // for whatever the alias happens to say, so a silent revert of the flip
+    // would sail through (reproduced, F-settle W4).
+    let parity = crate::compat::ORACLE_PARITY;
+    assert_eq!(isrc.bus2_defined, !parity);
 
     // Re-setting Bus1 re-derives the grounded-Y default only while the flag is
     // unlatched — i.e. always, upstream.
@@ -124,11 +126,7 @@ fn bus2_latching_is_the_lane_kernel() {
     isrc.side_effects(prop::BUS1, 0);
     assert_eq!(
         isrc.cd.get_bus(2),
-        if crate::compat::ISOURCE_BUS2_NEVER_LATCHES {
-            "b1.0.0.0"
-        } else {
-            "b2"
-        },
+        if parity { "b1.0.0.0" } else { "b2" },
         "parity reproduces the missing `Bus2` side-effect case (Isource.pas:221); \
          the default lane latches it like TVsourceObj does"
     );
