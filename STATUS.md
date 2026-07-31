@@ -7,6 +7,112 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.5 — CLOSED, and with it the whole plan: the metrics become tests, the exit criterion becomes a sentence that can fail (branch `depas-stagef`, 2026-07-31)
+
+F.5a landed the differential job. This commit closes the step, the stage and
+`DE_PASCALIZE_PLAN.md`: the plan's §Verification success metrics stop being a
+paragraph someone re-greps by hand, the exit criterion is written in the form
+that was actually *ruled*, and the three things the stage hands forward are
+recorded in all three places that could otherwise lose them.
+
+**The success metrics are now a test**
+(`crates/dss-core/tests/depascalize_metrics_gate.rs`, 5 tests). Each metric in
+§Verification was an `rg` with a target, re-measured by hand per stage and
+recorded in prose — a *report*, not a contract. Nothing re-ran them, so a later
+WP could reintroduce a downcast, an `Rc`, or a flat offset and no gate would
+notice; making those shapes impossible to have is the entire point of Parts
+I–III. Re-measured on this tree, and each one gated:
+
+| metric (plan §Verification) | 2026-07-26 | now | form |
+|---|---|---|---|
+| `downcast_ref\|downcast_mut\|as_any` in `dss-core/src` | 369 / 716 | **0** | zero |
+| `RefCell\|Rc<\|static mut\|thread_local` in `crates/*/src` | 0 | **0** | zero |
+| `term_ref[` | 0 | **0** | zero |
+| `pub const …: i32` in `elements/` | 7 | **0** | zero (the P1 tail closed the keep list) |
+| `for … in 1..=` in `elements/` | 106 | **106**, all STAYS-by-design | ceiling |
+| flat-offset `* nconds` / `* ncond` | ~23 | **17**, accessor-internal | ceiling |
+
+Two shapes, deliberately: *zero* for the architectural invariants, *ceiling* for
+the audited populations Part III left standing (they may shrink — that is a
+welcome diff — but not grow). Counting is **code-only**: a hit counts only
+before any `//` on its line, because `lib.rs` documents the `Rc`/`RefCell` ban
+using the words it bans and `plot/tests.rs` explains what the pre-R1 design
+used; a gate that counted prose would force the documentation to stop naming
+what it forbids. Every walk carries a file-count floor **and** a named anchor
+file (a broken walk fails loudly instead of reporting a clean zero), and the two
+ceilings assert their populations are non-empty for the same reason.
+
+**The exit metric, restated as it was ruled.** The plan's literal "at Stage F
+exit: **0** markers" is replaced, in the plan and in `ORPHANED_GAPS.md`, by
+*zero **unclassified** markers; zero carriers beyond the pinned escape; every
+escape gated by a test*. This is not a softening after the fact: F.3 established
+by **measurement** that two whole classes of clean fix are outside any Stage F
+step's authority (a whole-case default-lane oracle exclusion; an UPGRADE-rung
+oracle re-baseline), and the register that replaces the count is strictly
+stronger than a number, because a number cannot rot while a fail-on-stale
+register can only be moved deliberately: an unregistered marker fails, a
+registered marker that vanished fails, and each survivor names its successor.
+Population at exit: **18** = 11 `UpgradeRung` + 4 `WholeCase` + 3 `WasmGuest`,
+plus the one non-marker escape.
+
+**The `HIDE_015X` hand-off, written into all three places.** F.5 opens **no**
+golden event, so the hide-flag bundle is `UPGRADE_PLAN` §5's — recorded now in
+`DE_PASCALIZE_PLAN.md` §"Stage F as executed" (with the reasoning and both
+tripwires), `ORPHANED_GAPS.md` §2 (its own row, no longer buried in the Stage F
+row), and `PLAN_SEQUENCE.md` item 5 (which item 4 already carries as the UPGRADE
+line's open tail). It is *one atomic change in both lanes* — un-hide the five
+props, drop the `Line.Wires → "Conductors"` `json_name` masquerade, regenerate
+the 13 gated artifacts (8 `Dump` texts + 5 JSON documents; no `Show` report, no
+corpus case), delete the flag — and it moves **parity-lane byte goldens**, which
+only an oracle-surface switch may do (`gen_json.py` is hard-pinned to 0.14.5;
+§5 re-pins it). Its tripwires are named at every mention so a partial touch
+fails a gate rather than passing quietly:
+`oracle_parity_cfg_gate.rs::the_hide_flag_escape_population_is_pinned_by_surface`
+(the 13 artifacts + their surface classification) and
+`exec::tests::compat_quirks::hide_015x_carrier_set_is_the_measured_escape` (the
+5 carriers + the sibling flag's carrier-free state that makes the measurement
+isolate this row). Note for whoever reads `PLAN_SEQUENCE.md`'s tail entry
+(added on `update` after this worktree branched, so it is not edited here): it
+says "two pins in `oracle_parity_cfg_gate.rs`" — one of the two actually lives
+in `exec/tests/compat_quirks.rs`.
+
+**A diagnosability bug found by the flake in F.5a's record, and fixed here.**
+That record advised "if it recurs, capture the panic message with
+`--nocapture`". That advice was **wrong**, and finding out why is the more
+useful result: `harness::lane::tests::passes` — the helper F.2 added so a
+deliberately-failing comparison does not print a backtrace — installed a
+**no-op panic hook for the whole process** while its closure ran. The panic
+hook is global and those tests share their binary with
+`corpus_gate_all_cases_match_engines`, so any panic on any thread inside that
+window printed nothing; the corpus gate's failing-case list is produced by
+exactly that mechanism, which is why the log said "519/520, 1 failed" and named
+no case, twice, with `--nocapture` making no difference. Two overlapping calls
+could also restore each other's saved hook and leave the no-op installed for
+good. `passes` now installs its hook **once** and delegates to the previous one
+unless a **thread-local** flag says the panic is its own — silence stays scoped
+to that thread inside that helper, and a concurrent failure keeps its message.
+(The flake itself remains unidentified and did not reproduce in three targeted
+re-runs — including the whole 41-test `corpus_gate` binary, which reproduces the
+same intra-binary concurrency. Both lanes are green on the committed tree. The
+next occurrence will now name its case.)
+
+**Plan status.** `DE_PASCALIZE_PLAN.md` header, §Ordering summary, §Verification
+and Part IV.2 now read COMPLETE with the executed outcome; `ORPHANED_GAPS.md`
+§2's Stage F row is closed and the three hand-offs each have their own row;
+`PLAN_SEQUENCE.md` item 5 is COMPLETE, which unblocks RESONANCE WP-R1 and
+MULTITHREADING M3c — the two rungs that will make the lanes genuinely diverge,
+and therefore the first real consumers of F.5a's differential job.
+
+**Proof.** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -- -D warnings` and the `--features dss-core/oracle-parity` twin
+both exit 0; `cargo test --workspace --no-fail-fast` **2480 passed / 0 failed /
+5 ignored** and the parity-lane twin identically **2480 / 0 / 5** (+5 = the new
+metric gates), the 520-case corpus gate green inside each, `git status --short
+tests/corpus` empty afterwards. No golden, tolerance, ledger entry or deck was
+regenerated — the whole stage never spent its one sanctioned re-baseline.
+`SPLIT_ALIAS_POPULATION` stays **37**, `TODO(compat)` **15** in `crates` / 18
+tree-wide.
+
 ### DE_PASCALIZE Stage F.5a — the differential gate lands, and the two lanes come back **bit-identical** (branch `depas-stagef`, 2026-07-31)
 
 Plan IV.2 specifies the parity↔default differential gate as "a CI job, not a
