@@ -73,44 +73,51 @@ fn corpus_dir() -> PathBuf {
 /// The `Set CktModel=` line exactly as the pinned oracle emits it for a
 /// positive-sequence circuit — see [`lane_expected_json`].
 const CKT_MODEL_PARITY: &str = "\"Set CktModel=\"";
-/// What the default lane emits in its place.
+/// What the engine emits in its place, in both lanes.
 const CKT_MODEL_DEFAULT: &str = "\"Set CktModel=Positive\"";
 
-/// Stage F (`DE_PASCALIZE_PLAN.md` Part IV.2) — the AltDSS JSON export's one
-/// **deliberate default-lane divergence**, as an expected-value transform of the
-/// oracle capture.
+/// The AltDSS JSON export's deliberate divergences from the oracle capture, as
+/// an expected-value transform.
 ///
 /// The JSON goldens are byte-compared in *both* lanes (`tests/harness/lane.rs`:
 /// their writer renders numbers through its own `{:.16E}` helper, outside the
-/// F-FMT inventory). `compat::CKT_MODEL_RENDERED_ORDINAL` moves exactly one line
-/// of one capture: the `PreCommands` entry that upstream renders from a
-/// `LongBool` -1 and therefore emits value-less. Rather than re-baselining that
-/// golden, the default lane compares against the oracle capture with this single
-/// enumerated rewrite applied; every other byte stays pinned to the oracle, and
-/// the parity-lane transform is the identity.
+/// F-FMT inventory).
 ///
-/// Returns the lane-expected text plus the number of rewrites, which
-/// [`json_ckt_model_divergence_is_pinned`] uses to keep it non-vacuous.
+/// **The `Set CktModel=` line — an oracle bug, rewritten in both lanes.**
+/// dss_capi renders `OrdinalToString(Integer(PositiveSequence))` from a
+/// `LongBool` -1, an out-of-range ordinal, so the `PreCommands` entry is emitted
+/// value-less and the flag does not survive its own serialization (the oracle's
+/// own `tests/golden/json_import/rt_positive_seq.json` records the re-export of
+/// its own import carrying no `CktModel` line at all). The authority writes the
+/// state being saved as a literal (r4133 `Version8/Source/Common/
+/// Circuit.pas:2757`), which is what the engine emits. The golden is **not**
+/// re-baselined: it stays the oracle capture and this single enumerated rewrite
+/// is applied to the expectation in both lanes, so every other byte remains
+/// pinned to the oracle.
 ///
-/// A **second** row rides along since F.4: the two `Set …weight=%8.2f`
-/// PostCommands render through `compat::fixed_w_script`, whose parity kernel
-/// re-rounds FPC's 15-significant intermediate ties-away-from-zero and whose
-/// default kernel rounds once, correctly. `circuit_positive_seq`'s fixture sets
-/// those weights to `0.125` and `2.675` *on purpose* — they are the two values
-/// `report::format`'s own oracle table names as the reachable boundary cases —
-/// so this is the one golden that observes the row. They are `String`s inside
-/// the JSON, so [`lane::compare_json`] compares them verbatim; the divergence is
-/// therefore enumerated here rather than absorbed by the comparator.
+/// **The two `%8.2f` weights — a precision row, still lane-split.** The
+/// `Set …weight=%8.2f` PostCommands render through `compat::fixed_w_script`,
+/// whose parity kernel re-rounds FPC's 15-significant intermediate
+/// ties-away-from-zero and whose default kernel rounds once, correctly.
+/// `circuit_positive_seq`'s fixture sets those weights to `0.125` and `2.675`
+/// *on purpose* — the two values `report::format`'s own oracle table names as
+/// the reachable boundary cases — so this is the one golden that observes the
+/// row. They are `String`s inside the JSON, so [`lane::compare_json`] compares
+/// them verbatim; the divergence is therefore enumerated here rather than
+/// absorbed by the comparator.
+///
+/// Returns the lane-expected text plus the two rewrite counts, which
+/// [`json_ckt_model_is_rewritten_to_the_correct_value`] uses to keep both
+/// non-vacuous.
 fn lane_expected_json(oracle: &str) -> (String, usize, usize) {
-    if dss_core::compat::ORACLE_PARITY {
-        return (oracle.to_string(), 0, 0);
-    }
     let mut out = oracle.replace(CKT_MODEL_PARITY, CKT_MODEL_DEFAULT);
     let ckt_model = oracle.matches(CKT_MODEL_PARITY).count();
     let mut weights = 0usize;
-    for (from, to) in WEIGHT_TIES_AWAY {
-        weights += out.matches(from).count();
-        out = out.replace(from, to);
+    if !dss_core::compat::ORACLE_PARITY {
+        for (from, to) in WEIGHT_TIES_AWAY {
+            weights += out.matches(from).count();
+            out = out.replace(from, to);
+        }
     }
     (out, ckt_model, weights)
 }
@@ -455,23 +462,23 @@ fn json_circuit_positive_seq() {
     run_deck("circuit_positive_seq");
 }
 
-/// The expected-value pin of `compat::CKT_MODEL_RENDERED_ORDINAL`, asserted
-/// against `compat::ORACLE_PARITY` so it is meaningful in **both** lanes.
+/// The expected-value pin of the `Set CktModel=` golden rewrite, meaningful in
+/// **both** lanes (the rewrite is unconditional; only the `%8.2f` weight row
+/// below it is still lane-split).
 ///
 /// Three things at once, over the whole committed JSON golden set:
 ///
 /// 1. **Non-vacuity of the oracle side** — exactly one capture, in exactly one
 ///    deck, still carries the value-less `"Set CktModel="`. If that golden is
-///    ever regenerated without it the split becomes dead code and this fails
+///    ever regenerated without it the rewrite becomes dead code and this fails
 ///    instead of passing silently.
-/// 2. **Non-vacuity and scope of the transform** — the default lane rewrites
-///    exactly that one occurrence, the parity lane none, and no other capture is
-///    touched.
-/// 3. **Direction** — after the transform the default-lane expectation carries
+/// 2. **Non-vacuity and scope of the transform** — exactly that one occurrence
+///    is rewritten, in both lanes, and no other capture is touched.
+/// 3. **Direction** — after the transform the expectation carries
 ///    `Set CktModel=Positive` and no value-less form; `json_circuit_positive_seq`
 ///    then holds the engine to it byte-for-byte.
 #[test]
-fn json_ckt_model_divergence_is_pinned() {
+fn json_ckt_model_is_rewritten_to_the_correct_value() {
     let parity = dss_core::compat::ORACLE_PARITY;
     let mut oracle_hits = 0usize;
     let mut rewrites = 0usize;
@@ -508,17 +515,26 @@ fn json_ckt_model_divergence_is_pinned() {
             let (expected, n, w) = lane_expected_json(&cap.expected);
             rewrites += n;
             weight_rewrites += w;
+            assert!(
+                !expected.contains(CKT_MODEL_PARITY),
+                "{}: no lane may expect a value-less `Set CktModel=`",
+                path.display()
+            );
             if parity {
+                // The parity lane still expects the oracle capture verbatim
+                // apart from this one rewrite — the `%8.2f` weight row is its
+                // kernel, so it must not fire here.
                 assert_eq!(
                     expected,
-                    cap.expected,
-                    "{}: the parity lane must expect the oracle capture verbatim",
+                    cap.expected.replace(CKT_MODEL_PARITY, CKT_MODEL_DEFAULT),
+                    "{}: the parity lane expects the oracle capture with only \
+                     the `Set CktModel=` rewrite applied",
                     path.display()
                 );
-            } else {
-                assert!(
-                    !expected.contains(CKT_MODEL_PARITY),
-                    "{}: the default lane must not expect a value-less `Set CktModel=`",
+                assert_eq!(
+                    w,
+                    0,
+                    "{}: the parity lane must not re-round the `%8.2f` weights",
                     path.display()
                 );
             }
@@ -531,13 +547,12 @@ fn json_ckt_model_divergence_is_pinned() {
     );
     assert_eq!(
         oracle_hits, 1,
-        "the committed JSON goldens no longer pin the value-less `Set CktModel=` \
-         — the lane split would be dead code"
+        "the committed JSON goldens no longer carry the value-less \
+         `Set CktModel=` — the rewrite would be dead code"
     );
     assert_eq!(
-        rewrites,
-        if parity { 0 } else { oracle_hits },
-        "the default lane must rewrite exactly that one line and the parity lane none"
+        rewrites, oracle_hits,
+        "exactly that one line is rewritten, in both lanes"
     );
 
     // The `compat::fixed_w_script` row, pinned the same way: exactly one capture

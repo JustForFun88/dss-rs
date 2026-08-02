@@ -222,21 +222,6 @@ fn show_voltage_table_layout_is_the_lane_kernel() {
     }
 }
 
-/// Expected-value pin for the Stage F single-site quirk
-/// [`crate::compat::SYM_MATRIX_GETTER_RENDERS_ZEROS`].
-///
-/// Upstream's `GetObjPropertyValue` arm for a `DoubleSymMatrixProperty` reads
-/// uninitialized memory, so the `?` query answers a matrix of denormal garbage
-/// (~0) whatever the object stores. The parity lane keeps the deterministic
-/// surrogate the captured goldens hold — a zero matrix of the declared order —
-/// and the default lane renders the stored lower triangle.
-///
-/// The clean fix needs no argument beyond upstream itself: the **same
-/// property's** JSON exporter reads `darray[(i-1)*Norder + j] / scale` and emits
-/// the real numbers in both engines, so only the text path is wrong. That is
-/// asserted here too — the JSON view is checked to carry the stored values in
-/// *both* lanes, which is what makes the text getter a defect rather than a
-/// convention.
 /// Expected-value pin for the round row at the **`Set time=`** boundary
 /// (`dss_parser::compat::round_i32`).
 ///
@@ -341,8 +326,30 @@ fn apply_round_out_of_range_is_the_lane_kernel() {
     );
 }
 
+/// Expected-value pin, in both lanes, for the text getter of a
+/// `DoubleSymMatrixProperty`: it renders the matrix the object stores.
+///
+/// The authority renders the stored values. r4133 has no typed property table:
+/// `Fault.GMatrix` is rendered by hand from the dereferenced pointer under an
+/// `If Assigned` (`Version8/Source/PDElements/Fault.pas:695-717`), and
+/// Capacitor/Reactor fall through to `TDSSObject.GetPropertyValue`, i.e. the
+/// stored property text (`Version8/Source/General/DSSObject.pas:112-115`).
+/// Neither path can print zeros.
+///
+/// dss_capi's generic arm addresses the *pointer field* as if it were the array
+/// (`src/General/DSSObjectHelper.pas:2296-2313`), so it reads uninitialized
+/// memory and answers denormal garbage (~0) whatever was stored — the captured
+/// `props` goldens hold that as an all-zero matrix. Reading uninitialized memory
+/// is UB, so neither the garbage nor its zero surrogate is reproduced in any
+/// lane; the 33 affected golden cells keep their **shape** compared and drop
+/// only their values (`props_roundtrip::LANE_SKIP_PROP_VALUES`), with the real
+/// numbers pinned here.
+///
+/// Its JSON arm repeats the very same slip (`:1242-1266`), so this is not a
+/// case of upstream disagreeing with itself — both dss_capi paths are wrong and
+/// both of ours are right. The JSON view is asserted below for that reason.
 #[test]
-fn sym_matrix_text_getter_is_lane_split() {
+fn sym_matrix_text_getter_renders_the_stored_matrix() {
     let mut dss = dss_with_circuit();
     dss.command(
         "New Capacitor.c1 bus1=b1 phases=3 \
@@ -351,27 +358,17 @@ fn sym_matrix_text_getter_is_lane_split() {
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
 
     let text = query(&mut dss, "Capacitor.c1.CMatrix");
-    let expected = if crate::compat::ORACLE_PARITY {
-        "(0 |0 0 |0 0 0 )"
-    } else {
-        "(2.8 |-0.6 2.8 |-0.6 -0.6 2.8 )"
-    };
     assert_eq!(
-        text,
-        expected,
-        "the text getter prints zeros in the parity lane and the stored lower \
-         triangle in the default lane (lane parity = {})",
-        crate::compat::ORACLE_PARITY
+        text, "(2.8 |-0.6 2.8 |-0.6 -0.6 2.8 )",
+        "the text getter prints the stored lower triangle in both lanes"
     );
 
-    // The shape is identical in both lanes — only the numbers move. (This is
-    // what `props_roundtrip::LANE_SKIP_PROP_VALUES` still gates by comparing the
-    // rendered skeleton against the oracle in the default lane.)
+    // The shape is what the goldens still compare in both lanes — only the
+    // numbers are dropped there (`props_roundtrip::LANE_SKIP_PROP_VALUES`).
     assert!(text.starts_with('(') && text.ends_with(" )"));
     assert_eq!(text.matches('|').count(), 2, "3×3 lower triangle: two rows");
 
-    // The JSON exporter of the very same property has always emitted the stored
-    // values, in every lane — upstream disagreeing with itself is the evidence.
+    // The JSON view carries the same stored values, in every lane.
     let json = dss
         .obj_to_json("Capacitor.c1", Default::default())
         .expect("Capacitor.c1 renders as JSON");
@@ -384,7 +381,7 @@ fn sym_matrix_text_getter_is_lane_split() {
     );
     assert!(
         json.contains(&diag) && json.contains(&off),
-        "the JSON view must carry the stored matrix in every lane: {json}"
+        "the JSON view carries the stored matrix in every lane: {json}"
     );
 }
 

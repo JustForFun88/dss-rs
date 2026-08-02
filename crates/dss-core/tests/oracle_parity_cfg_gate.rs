@@ -795,8 +795,13 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 ///
 /// 37 at the close of F.5; 38 after the W4 settlement completed the round row
 /// with its **array** kernel (`round_f64` — Pascal's `ApplyRound`, which writes
-/// `Round`'s Int64 back into a Double).
-const SPLIT_ALIAS_POPULATION: usize = 38;
+/// `Round`'s Int64 back into a Double); **31** after the R4133-alignment pass of
+/// 2026-08-02 dismantled seven bug kernels whose defect r4133 does not share
+/// (LineSpacing `MakeLike`, LineCode `C0`, the `DoubleSymMatrix` text getter,
+/// `Save <class>`'s reported path, Storage `MakePosSequence` bracketing, the
+/// `CktModel` ordinal and the Generator rating guards) — both lanes now take the
+/// authority's behaviour and each row keeps an unconditional expected-value pin.
+const SPLIT_ALIAS_POPULATION: usize = 31;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///

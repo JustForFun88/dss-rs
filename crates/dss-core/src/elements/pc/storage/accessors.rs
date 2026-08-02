@@ -50,15 +50,16 @@ impl CktElement for Storage {
     /// line-neutral; a multi-phase unit's `kWrated` is divided by the phase
     /// count and `PF` is set to the nominal PF.
     ///
-    /// The Pascal body has NO `BeginEdit` before its `Set*` calls yet a trailing
-    /// `EndEdit(changes)` (`Storage.pas:3339-3352`), so each `Set*` is its own
-    /// auto-bracketed edit (own recalc) and the dangling `EndEdit` adds one
-    /// more. That is the lane row
-    /// [`crate::compat::STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED`]: the parity
-    /// lane emits the unbracketed list, the default lane opens the edit like
-    /// PVSystem (`PVsystem.pas:2649`), every other `MakePosSequence` in the tree
-    /// and pre-refactor r4133 do — see the const's doc for the evidence and for
-    /// the measurement that only the recalc *count* moves.
+    /// The writes are **bracketed**, so they land as one edit with one recalc.
+    /// That is what the authority does: r4133's body assembles a single command
+    /// string and hands it to one `Edit(ActorID)`
+    /// (`Version8/Source/PCElements/Storage.pas:3984-3985`), exactly like its
+    /// twin `TPVsystemObj.MakePosSequence` (`PVsystem.pas:2846`). dss_capi's
+    /// typed-setter refactor kept the bracket for PVSystem (`BeginEdit(True)`)
+    /// and lost it for Storage, leaving a dangling `EndEdit(changes)` after
+    /// five auto-bracketed `Set*` calls — six recalcs instead of one. Not
+    /// reproduced; `storage::tests::makeposseq_begin_edit_moves_only_the_recalc_count`
+    /// measures that the recalc *count* is the only thing it ever moved.
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
         // Make sure voltage is line-neutral.
         let v = if self.cd.nphases > 1 || self.base.connection as i32 != 0 {
@@ -69,9 +70,7 @@ impl CktElement for Storage {
 
         let old_phases = self.cd.nphases;
         let mut actions = Vec::with_capacity(6);
-        if !crate::compat::STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED {
-            actions.push(PosSeqAction::BeginEdit);
-        }
+        actions.push(PosSeqAction::BeginEdit);
         actions.extend([
             PosSeqAction::SetI32(prop::PHASES, 1),
             PosSeqAction::SetI32(prop::CONN, 0),

@@ -273,13 +273,16 @@ impl Storage {
             } else {
                 // Not discharging (charging or idling).
                 //
-                // Pascal leaves `OFFVal` uninitialized in the `else` branch
-                // (Vgrid.mag < MinVS AND NOT ResetIBR) — an FPC local var, so
-                // its value is indeterminate. Per the CLAUDE.md rule, UB is NOT
-                // reproduced (there is nothing well-defined to reproduce): we
-                // use 0.0. No compat marker for that reason. Unreachable in the
-                // gated corpus anyway (idling storages stay >= MinVS when the
-                // circuit is energized).
+                // The `else` arm (Vgrid.mag < MinVS AND NOT ResetIBR) is 0.0
+                // because that is what the authority assigns: r4133 writes
+                // `OFFVal := 0` (`Version8/Source/PCElements/Storage.pas:3672`,
+                // consumed at `:3673`). dss_capi commented that assignment out
+                // (`src/PCElements/Storage.pas:2965-2966`), leaving an
+                // uninitialized FPC local carried over from the previous
+                // iteration — UB, so there is nothing to reproduce and no
+                // compat marker is owed. Unreachable in the gated corpus anyway
+                // (idling storages stay >= MinVS when the circuit is
+                // energized).
                 let off_val = if self.base.dyn_vars.vgrid[i].mag >= min_vs || reset_ibr {
                     p_idling / self.base.dyn_vars.vgrid[i].mag // to match idling losses
                 } else {

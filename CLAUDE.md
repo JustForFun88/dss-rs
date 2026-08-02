@@ -41,20 +41,47 @@ binding invariants that survive it are:
   TESTING.md). See `tools/opendss/README.md` for the artifact + bridge.
 - Any phase may freely refactor earlier code; passing tests are the only contract.
 
+## Policy (2026-08-02, user decision — binding): r4133 is the behavioral authority; bugs are NEVER reproduced
+
+- The official EPRI OpenDSS **r4133** trunk (`.inputs/electricdss-code-r4133-trunk`)
+  is the **primary behavioral reference**. The pinned dss_capi 0.14.5 is outdated:
+  it remains a *numeric oracle only* (goldens, the `capi_v0145` corpus channel) and
+  is **never** a behavioral authority over r4133.
+- **Upstream bugs are never reproduced — in any lane, parity included.** The engine
+  computes the correct value; each resulting divergence from an oracle channel is
+  excluded field-by-field and pinned by its own expected-value test (lane.rs
+  exclusions, `ledger.json` entries, golden-comparison fix-ups). Where r4133 does
+  not share the bug, prefer gating the affected case on the `r4133` channel.
+- What *may* still be reproduced is precision-compat only: truncated constants,
+  FPC rounding/formatting, algorithm-identity numerics. The `oracle-parity` lane
+  therefore shrinks to a *precision-compat* lane and is **scheduled for full
+  teardown** — do not add new bug kernels to it, ever.
+- The old doctrine "the parity lane must mirror dss_capi bugs" is **rescinded**;
+  any statement to that effect elsewhere in the docs is historical.
+- Status: the nine capi-only bugs (absent in r4133 — see
+  `investigations/to_opendss/NOT-APPLICABLE-TO-R4133.md`) are removed from both
+  lanes by the R4133-alignment pass (2026-08-02). The bug kernels shared with
+  r4133 (Iresidual, Bus_Int_Duration, Newton stale Iterminal, Monitor
+  BaseFrequency, single-point stddev, …) are queued for the same removal in a
+  dedicated follow-up WP.
+
 ## `TODO(compat)` convention (see PORTING_PLAN.md §4.1)
 
-Every place where we deliberately reproduce an upstream inexactness or bug
+Every place where we deliberately reproduce an upstream *precision* quirk
 (truncated `pi = 3.14159265359`, `rad→deg = 57.29577951`, FPC `Round`'s
-integer-indefinite path, single-point stddev = the value itself, ...) **must** be
-marked `TODO(compat):` with an explanation and the intended clean fix.
+integer-indefinite path, ...) **must** be marked `TODO(compat):` with an
+explanation and the intended clean fix.
 
-- Do **not** "fix" these during the port — goldens pin them; improved precision is
-  indistinguishable from a porting bug in the gates.
+- Since the 2026-08-02 policy the tag covers **precision/convention sites only**:
+  logic bugs are never tagged — they are fixed outright in all lanes (see the
+  policy section above).
 - Do not use the `TODO(compat)` tag for anything else; it must stay greppable
   (`rg "TODO\(compat\)"`).
-- They are all absorbed in one dedicated pass — `DE_PASCALIZE_PLAN.md` Stage F
-  (the `oracle-parity` feature split; the Part IV dual-kernel table is the
-  closed inventory). Never delete a `TODO(compat)` site outside that pass.
+- The historical sweep was `DE_PASCALIZE_PLAN.md` Stage F (the `oracle-parity`
+  feature split; the Part IV dual-kernel table was its closed inventory).
+  Bug-reproducing kernels and sites are deleted by the R4133-alignment WPs;
+  surviving precision sites are removed only with empirical proof (see the
+  tolerance rules below).
 
 ## Known upstream bugs (`investigations/`)
 
@@ -62,12 +89,15 @@ Six proven dss_capi/OpenDSS engine bugs. The first five each have a full deep-di
 report in the (gitignored, local-only) `investigations/` folder — check there
 before chasing a divergence in those areas. The sixth (Monitor BaseFrequency) is a
 plain hardcoded-constant bug with a single fully-traced consumer, so it is
-documented inline (a `compat` row + pin) rather than in a separate report. Rule:
-a *deterministic, defined* upstream bug is reproduced 1:1; UB or
-state-mutating-read bugs are NOT reproduced — document and gate around them.
-Since DE_PASCALIZE Stage F all four that *are* reproduced carry a `compat` lane
-row: the parity lane reproduces them (oracle-compared as before), the default
-lane takes the clean fix, pinned by its own expected-value test.
+documented inline (a `compat` row + pin) rather than in a separate report.
+**Rule (since 2026-08-02): no upstream bug is reproduced in ANY lane** — the
+engine computes the correct value and every observable divergence from an oracle
+channel is excluded field-by-field and pinned by an expected-value test. The
+per-bug notes below describe the historical Stage-F lane-splits; their
+parity-side reproductions are being dismantled (the nine capi-only bugs done
+2026-08-02; the ones below — all shared with r4133 — queued for a dedicated WP).
+English upstream-ready reports for all confirmed r4133 bugs live in
+`investigations/to_opendss/`.
 
 - **Export SeqCurrents `Iresidual`** — every terminal row prints *terminal 1*'s
   residual (missing `(j-1)*Ncond` offset). **Lane-split** since Stage F.3c
@@ -134,10 +164,13 @@ Those five commands are the mandatory gate. Since DE_PASCALIZE **Stage F**
 (the `oracle-parity` feature split) the engine ships in **two lanes**, and both
 must be green:
 
-- **parity** (`--features dss-core/oracle-parity`) — the bit-compat engine:
-  byte goldens, checkpoint Y, corpus floors, exact iteration counts and
-  discrete state. This lane **never re-baselines**; it is the permanent 1:1
-  record against the pinned oracles.
+- **parity** (`--features dss-core/oracle-parity`) — the *precision-compat*
+  engine: byte goldens, checkpoint Y, corpus floors, exact iteration counts and
+  discrete state. Its no-re-baseline discipline applies to **precision numerics
+  only**; since the 2026-08-02 policy it does **not** mirror upstream bugs — bug
+  fixes land in both lanes, with each observable divergence from the pinned
+  oracles excluded field-by-field and pinned by an expected-value test. The lane
+  is scheduled for full teardown.
 - **default** (no features) — the idiomatic product: upstream bugs fixed,
   reports rendered natively. Same oracle floors on continuous quantities,
   discrete state still exact, iteration counts ±1, each deliberate divergence

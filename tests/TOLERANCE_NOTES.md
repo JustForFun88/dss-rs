@@ -836,15 +836,18 @@ is genuinely non-comparable, not merely loose:
 
 - **`Capacitor.CMatrix`, `Reactor.RMatrix`, `Reactor.XMatrix`, `Fault.GMatrix`**
   (`DoubleSymMatrixProperty`) — the dss_capi getter reads **uninitialized memory**
-  (the same bug the lane row `compat::SYM_MATRIX_GETTER_RENDERS_ZEROS` at
-  `obj/props/class_props/value.rs` answers — the parity lane renders the
-  deterministic zero matrix the captured goldens hold, which is the *defined*
-  part of the upstream behaviour and never the garbage itself; the default lane
-  renders the stored lower triangle, as the same property's JSON exporter
-  already does in both engines). The live oracle returns
-  **process-dependent garbage** (denormals ~1e-310 in one run, huge ~1e123 in
-  another — proven nondeterministic). Oracle UB → not reproduced (CLAUDE.md rule),
-  so not comparable.
+  (`src/General/DSSObjectHelper.pas:2296-2313` addresses the pointer field as if
+  it were the array; its JSON arm at `:1242-1266` repeats the slip). The live
+  oracle returns **process-dependent garbage** (denormals ~1e-310 in one run,
+  huge ~1e123 in another — proven nondeterministic); the captured `props`
+  goldens froze it as an all-zero matrix. Oracle UB → not reproduced (CLAUDE.md
+  rule), so not comparable. **Both lanes** render the stored lower triangle, as
+  the authority does (r4133 `PDElements/Fault.pas:695-717`, `General/
+  DSSObject.pas:112-115`), and neither lane compares these values against an
+  oracle channel: the corpus gate skips them here, the `props` goldens keep only
+  their shape (`props_roundtrip::LANE_SKIP_PROP_VALUES`), and the real numbers
+  are pinned by `exec::tests::compat_quirks::
+  sym_matrix_text_getter_renders_the_stored_matrix`.
 - **`Transformer.WdgCurrents`** — renders `mag, (angle)` phasor pairs. A winding
   whose current is ~1e-12 A (a numerically-zero internal/neutral current, e.g. the
   delta/wye tertiary) has an **undefined angle**: both engines agree the magnitude

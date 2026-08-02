@@ -2396,20 +2396,23 @@ impl Dss {
             }
             let path = dir_path.join(&save_file);
             self.write_class_file(ci, &path);
-            // Lane split `compat::SAVE_CLASS_JOINS_ITS_REPORTED_PATH_AS_STRINGS`:
-            // Pascal composes `SaveFile := SaveDir + PathDelim + SaveFile` as
-            // raw STRINGS (`ExecHelper.pas:835-841`), and the default
-            // `SaveDir = OutputDirectory` already ends in a PathDelim, so the
-            // reported `GlobalResult`/`LastResultFile` carries a DOUBLED
-            // delimiter (`…\\load`). Oracle-probed 2026-07-07. An explicit
-            // `dir=` is the raw parameter and is single in both lanes. The file
-            // I/O above always used the normalized `path`, so only the reported
-            // string moves.
+            // The reported path is the normalized one the writer used. The
+            // authority never concatenates a default directory: `DoSaveCmd`
+            // initializes `SaveDir := ''` (r4133 `Version8/Source/Executive/
+            // ExecHelper.pas:913`) and joins only under a non-empty `dir=`
+            // (`:968-975`), producing exactly one separator. dss_capi seeds
+            // `SaveDir := DSS.OutputDirectory` — which already ends in a
+            // delimiter — and then appends another as raw strings, so its
+            // `GlobalResult`/`LastResultFile` reads `…\\load`, a path no
+            // consumer can open verbatim where `\\` starts a UNC name
+            // (oracle-probed 2026-07-07). That doubling is not reproduced.
+            //
+            // r4133's literal semantics for the bare form — a relative
+            // `load` resolved against the process CWD — is *not* adopted: a
+            // library has no process CWD, it has `output_directory`, which is
+            // where the file is written in both engines.
             let sep = std::path::MAIN_SEPARATOR;
             final_file = match &save_dir {
-                None if compat::SAVE_CLASS_JOINS_ITS_REPORTED_PATH_AS_STRINGS => {
-                    format!("{}{sep}{sep}{save_file}", self.output_directory.display())
-                }
                 None => path.display().to_string(),
                 Some(d) => format!("{d}{sep}{save_file}"),
             };

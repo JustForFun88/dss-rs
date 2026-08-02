@@ -172,18 +172,18 @@ fn make_like_copies_geometry() {
     assert_eq!(get(&cls, &dst, "h"), "[ 28 28 28 24]");
 }
 
-/// The Stage F [`LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING`] row, pinned by
-/// expected value in both lanes.
+/// `Like=` copies the equivalent-spacing block, pinned by expected value in
+/// both lanes.
 ///
-/// `TLineSpacingObj.MakeLike` copies `NConds`/`NPhases`/`FX`/`FY`/`Units` and
-/// stops, so the five equivalent-spacing fields stay at their `Create` defaults
-/// (`detailed = true`, the rest `0.0`) even though the base class has already
-/// copied the `PrpSequence` that marks them set. **Parity lane**: the defaults,
-/// what both gating oracles report. **Default lane**: the source's values.
-///
-/// [`LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING`]: crate::compat::LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING
+/// The authority copies all five fields explicitly: r4133
+/// `TLineSpacing.MakeLike` assigns `FEquivalentSpacing`, `FEqDistPhPh`,
+/// `FEqDistPhN`, `FAvgHeightPh` and `FAvgHeightN` right after the X/Y arrays
+/// (`Version8/Source/General/LineSpacing.pas:251-255`). Only dss_capi 0.15.x
+/// stops after `Units`, leaving the clone at its `Create` defaults while the
+/// base class has already copied the `PrpSequence` marking them set — a
+/// regression this port does not reproduce in either lane.
 #[test]
-fn make_like_equivalent_spacing_is_the_lane_kernel() {
+fn make_like_copies_the_equivalent_spacing_block() {
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let mut src = LineSpacingObj::new("s1");
@@ -212,17 +212,14 @@ fn make_like_equivalent_spacing_is_the_lane_kernel() {
     assert_eq!(get(&cls, &dst, "nconds"), "4");
     assert_eq!(get(&cls, &dst, "x"), "[ -1.2 0 1.2 0]");
 
-    // Derived from the *lane*, never from the row's own alias — see
-    // `isource::tests` for why (F-settle W4).
-    let parity = crate::compat::ORACLE_PARITY;
-    assert_eq!(
-        dst.detailed, parity,
-        "parity keeps `Create`'s detailed = true (MakeLike never copies it); \
-         the default lane copies the source's false"
+    // The source's values, in both lanes (r4133 `LineSpacing.pas:251-255`).
+    assert!(
+        !dst.detailed,
+        "`MakeLike` copies `FEquivalentSpacing`, so the clone leaves \
+         `Create`'s detailed = true behind"
     );
-    let expect = |source: f64| if parity { 0.0 } else { source };
-    assert_eq!(dst.eq_dist_ph_ph, expect(4.5));
-    assert_eq!(dst.eq_dist_ph_n, expect(3.25));
-    assert_eq!(dst.avg_phase_height, expect(28.0));
-    assert_eq!(dst.avg_neutral_height, expect(24.0));
+    assert_eq!(dst.eq_dist_ph_ph, 4.5);
+    assert_eq!(dst.eq_dist_ph_n, 3.25);
+    assert_eq!(dst.avg_phase_height, 28.0);
+    assert_eq!(dst.avg_neutral_height, 24.0);
 }
