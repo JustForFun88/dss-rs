@@ -48,14 +48,18 @@ WP-G2 is emptying it, this row included.
 its shape, arms `Close` and raises no error, so copying only the name would
 still fail. The new `…::like_on_a_follow_capcontrol_keeps_following` pins the
 same row where a user meets it: a deck writing `New CapControl.b like=a` over a
-`type=Follow` source, then `? CapControl.b.ControlSignal` = `sig`, no 10362 in
-the error log, and a converged solve — which is the property observable
+`type=Follow` source, then — read straight after `solve`, before any further
+command — no `solution_abort` and no 10362 in the error log, and only then
+`? CapControl.b.ControlSignal` = `sig`, which is the property observable
 (`accessors.rs` `CONTROLSIGNAL`) and the exec `like=` applier that the unit pin
 does not reach. Both carry the
 `EXPECTED-VALUE-PIN(CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL)` marker, and both
 were confirmed non-vacuous by commenting the two copies out (both fail, on the
-name and on the property respectively). No kernel-vs-kernel test existed for
-this row, so none was deleted.
+name and on the property respectively) — and the deck pin again in the fix pass
+against the *harder* half alone, the shape copy removed while the name still
+copies. No kernel-vs-kernel test existed for this row, so none was deleted. The trailing `converged_flag` assert is sanity,
+not discrimination — this deck converges either way (`solve_snap` never reads
+`solution_abort`) — and says so at the site (G2.1b fix pass, below).
 
 **Zero-footprint, measured not assumed.** Exactly one `like=` on a CapControl
 exists in the whole tree — `tests/golden/props/capcontrol.json::capcontrol_makelike`
@@ -81,6 +85,33 @@ again here: the only mentions outside the code are STATUS and the plan, neither
 of which the walk reads), so no citation was struck and the non-vacuity floor is
 untouched. CLAUDE.md names this row nowhere — it is not one of the six
 named bugs — so its policy §Status sentence is unchanged.
+
+**Fix pass (audits).** Three findings, all minor, all real, all fixed; nothing
+was deferred. (1)+(3) — the same finding twice: the row's `Evidence::Site` slice
+`self.ctrl_signal_shape = other.ctrl_signal_shape.clone();` was byte-identical
+in the *pre*-teardown tree (`0e89651f` `accessors.rs:106-109` merely wrapped it
+in `if !compat::…`), so the register's rot-check #3 could only catch outright
+deletion while `Evidence::Site`'s doc claimed every such slice discriminates a
+revert. The slice now carries the leading line break and `make_like`'s own eight
+spaces of indentation, so re-wrapping the copy in *any* lane branch re-indents it
+past the needle — proven by re-wrapping it and watching
+`every_torn_down_row_keeps_its_pin_and_its_evidence` fail. The `\n` matches an LF
+and a CRLF checkout alike (`\r\n` contains `\n`). The `Evidence::Site` doc now
+states this as the convention for rows whose fixed form is an ordinary statement
+the split form also contained — which most of G2.1c–h will be — instead of
+claiming discrimination comes free. (2) — the deck pin's third assert
+(`converged_flag`) cannot fail on the pre-fix engine: `solve_snap`
+(`solution/power_flow.rs:448-494`) never reads `solution_abort` and
+`converged_flag` comes from the voltage-mismatch test alone, so this 3-bus deck
+converges with or without the copies. The pin now asserts the flag the FOLLOW arm
+actually sets (`!solution.solution_abort`) — the *state* half of the abort, next
+to the message half the 10362 assert already carried — and keeps `converged_flag`
+as an explicitly labelled sanity check. The auditor's suggested placement would
+have been vacuous and the probe caught it: `Dss::command` clears `solution_abort`
+on every external entry (`exec/command.rs:41-50`), so the assert had to move
+*ahead* of the `? CapControl.b.ControlSignal` query; with only the shape copy
+removed (name copied, reference not) it then fires, and at the auditor's
+placement it would not have.
 
 ### GOLDEN_REBASE G2.1a — `stddev_single_point` torn down: one sample has no spread, in both lanes (branch `golden-g2`, 2026-08-03)
 

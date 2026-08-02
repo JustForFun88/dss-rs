@@ -1156,6 +1156,22 @@ enum Evidence {
     /// key is a *comment marker*; here the evidence is a kernel, and a
     /// re-introduced alias would re-route the call while leaving any nearby
     /// sentence — however carefully worded — matching.
+    ///
+    /// It must also **discriminate the torn-down state**, which is not
+    /// automatic. Where the fix replaced the call (G2.1a's
+    /// `return (data[0], 0.0);` did not exist while the alias did), the
+    /// statement is discriminating on its own. Where the fixed form is an
+    /// ordinary statement the *split* form also contained — the split merely
+    /// wrapped it in a lane branch, which is the common shape — the bare
+    /// statement matches both states and the check degrades to "the mechanism
+    /// was not deleted outright". Anchor those on the line break plus the
+    /// statement's top-level indentation (`"\n        self.x = …"`): re-wrapping
+    /// the copy in an `if` re-indents it, so the revert stops matching. The
+    /// leading `\n` matches an LF and a CRLF checkout alike (`\r\n` contains
+    /// `\n`), and `fs::read_to_string` does no normalization. If even that is
+    /// impossible for a row, say so in the row's comment and name the checks
+    /// that carry the discrimination instead (the census tie, the ghost check,
+    /// and the row's now-unconditional pin run in **both** lanes).
     Site(&'static str, &'static str),
     /// `(file, distinctive slice)` for a **harness exclusion** made
     /// unconditional — the same key and the same slice check as
@@ -1225,7 +1241,9 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         // explains it: a revert re-routes this `return` through the alias while
         // an explanatory sentence next to it can survive untouched. That is the
         // anchor convention for every `Evidence::Site` row — point at code that
-        // exists only in the torn-down state.
+        // exists only in the torn-down state. Here that is free (the split form
+        // called the alias on this very line); where it is not, see the
+        // indentation anchor documented on [`Evidence::Site`].
         Evidence::Site(
             "crates/dss-core/src/support/mathutil/mod.rs",
             "return (data[0], 0.0);",
@@ -1247,17 +1265,17 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     (
         "CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL",
         Kind::SplitAlias,
-        // The copy itself. Unlike G2.1a's row the *fixed* form here is an
-        // ordinary statement — a reverted arm would wrap this very line in an
-        // `if` rather than replace it — so the slice alone cannot tell the two
-        // states apart, and what does is the pair of checks below: a
-        // re-introduced alias fails the census tie **and** the ghost check (the
-        // row's name would be back in the live split set). The slice's own job
-        // is the other failure mode: the copy being deleted outright, which
-        // would leave the register claiming a fix that is gone.
+        // The copy itself. Unlike G2.1a's row the *fixed* form is an ordinary
+        // statement the split form also contained — the split only wrapped it in
+        // `if !compat::…` — so the bare statement would match a revert just as
+        // well. Hence the leading line break and the eight spaces of `make_like`'s
+        // own body: any re-wrapping in a lane branch indents the copy past this
+        // needle. Deleting it outright fails the same check, and a revert through
+        // a re-introduced alias additionally fails the census tie and the ghost
+        // check below.
         Evidence::Site(
             "crates/dss-core/src/elements/control/cap_control/accessors.rs",
-            "self.ctrl_signal_shape = other.ctrl_signal_shape.clone();",
+            "\n        self.ctrl_signal_shape = other.ctrl_signal_shape.clone();",
         ),
         Some((
             "crates/dss-core/src/elements/control/cap_control/tests.rs",
