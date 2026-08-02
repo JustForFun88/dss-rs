@@ -7,6 +7,65 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### GOLDEN_REBASE G2.1a — `stddev_single_point` torn down: one sample has no spread, in both lanes (branch `golden-g2`, 2026-08-03)
+
+**Frontier.** The **first actual teardown** of `GOLDEN_REBASE_PLAN.md` WP-G2 has
+landed, on the rails G2.0 laid the day before. `SPLIT_ALIAS_POPULATION` **31 →
+30**, `TORN_DOWN_ROWS` carries its first row, and the WP's acceptance criterion
+holds: `git diff --stat -- tests/golden` over the range is **empty**, and both
+lanes' `oracle_parity_cfg_gate` is green at this commit. Next: G2.1b
+(`CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL`, `issue-15`), same ritual.
+
+**The bug.** `RCDMeanAndStdDev` and its three siblings handle a one-element
+sample in a dedicated branch, and that branch assigns the mean and then repeats
+the *same right-hand side* into the second out-param: `Mean := Data^[1];
+StdDev := Data^[1];` — r4133 `Version8/Source/Shared/mathutil.pas:405` (and
+`:429` in `CurveMeanAndStdDev`), identical in the pinned dss_capi 0.14.5 at
+`:323`, `:349`, `:370`, `:398`, where the copy-paste ran to four procedures
+(0.14.5 added the two `Single` variants r4133 does not have). So a `{3.5}`
+sample is reported with a "standard deviation" of 3.5 — 100 % spread where by
+construction there is none. Both gating oracles carry it, which is exactly why
+the 2026-08-02 policy applies rather than exempts: r4133 sharing a defect is not
+authority for reproducing it. Deep dive: `investigations/issue-11-stddev-single-point.md`
+(English upstream copy in `investigations/to_opendss/`).
+
+**What landed.** `compat::stddev_single_point` and both its `*_impl` twins are
+**deleted**; the four `support::mathutil` entry points (`mean_and_std_dev`,
+`mean_and_std_dev_single`, `curve_mean_and_std_dev`,
+`curve_mean_and_std_dev_single`) return `0.0` outright, each with the upstream
+line it declines to reproduce cited in place. The default lane already computed
+`0.0`, so **only the parity lane moves**; the compat module-doc inventory row
+now records the row as torn down.
+
+**The pins became unconditional** — both of them, since the alias had two:
+`mathutil::tests::single_point_std_dev_is_zero` (renamed from
+`…_is_the_lane_kernel`) asserts `(3.5, 0.0)` at all four entry points plus an
+`assert_ne!` that the std-dev is not the mean, so a re-introduced quirk fails
+loudly; `load_shape::tests::single_point_shape_stddev_property_is_zero` pins the
+observable — `? LoadShape.one.stddev` on `npts=1 mult=(0.4)` reads `0` while
+`mean` reads `0.4`, so a broken accessor cannot fake it by returning nothing.
+Both carry the `EXPECTED-VALUE-PIN(stddev_single_point)` marker. The two
+kernel-vs-kernel tests in `compat/tests.rs` (`stddev_alias_is_the_lane_kernel`,
+`stddev_single_point_kernels_are_a_deliberate_divergence`) are deleted with the
+kernels they compared — they asserted the two impls against each other, which is
+meaningless once there is one.
+
+**Zero-footprint, measured not assumed.** No golden and no gated corpus case
+reads a one-point shape's std-dev (the `props` decks that read `stddev` all use
+`npts=4` with an explicit `stddev=` value), so no golden byte, no
+`ledger.json` entry and no `population.lock.json` field moves. The **parity**
+lane's full suite — including the unconditional 520-case corpus gate against
+both oracle channels — is green, which is the measurement that confirms the
+classification rather than assuming it. `lane_diff.ps1` re-run because a lane
+alias was deleted: max |Δ| = 0, so the default lane keeps the parity lane's
+oracle standing.
+
+**Doc surface.** The row was never cited as `compat::stddev_single_point` on the
+walked doc surface (G2.0's measurement, re-confirmed here), so no citation was
+struck and the non-vacuity floor is untouched. CLAUDE.md's policy §Status
+sentence did name "single-point stddev" in prose as *queued* for removal; it now
+names WP-G2 as the owner and records this row as done.
+
 ### GOLDEN_REBASE G2.0 — the teardown gets its rails before the first deletion (branch `golden-g2`, 2026-08-02)
 
 **Frontier.** `GOLDEN_REBASE_PLAN.md` WP-G0 is complete (below); **WP-G2 opens
