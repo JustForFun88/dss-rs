@@ -7,6 +7,76 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### GOLDEN_REBASE G2.1b — `CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL` torn down: a clone keeps its signal (branch `golden-g2`, 2026-08-03)
+
+**Frontier.** WP-G2's second teardown. `SPLIT_ALIAS_POPULATION` **30 → 29**,
+`TORN_DOWN_ROWS` carries its second row, and the WP acceptance criterion still
+holds at this commit: `git diff --stat -- tests/golden` over the range is
+**empty** and both lanes' `oracle_parity_cfg_gate` is green. Next: G2.1c
+(`SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING`, `issue-12`), same ritual.
+
+**The bug.** `TCapControlObj.MakeLike` is a hand-written list of assignments,
+and the list is complete only as far as it was carried: it copies the controlled
+and monitored element, the capacitor name, the terminal, the whole `ControlVars`
+block, the user model, `FpctMinkvar` and `ShowEventLog` — every reference the
+object holds **except** the `ControlSignal` shape (`.inputs/dss_capi/src/
+Controls/CapControl.pas:445-489`, field `ctrlSignalShape` declared `:169`,
+`Create` leaves it `NIL` at `:500`). `ControlType` *is* copied, so the clone of a
+`type=Follow` controller stays a Follow controller with nothing to follow: the
+first sample takes the `ctrlSignalShape = NIL` branch (`:1150-1168`), raises
+message **10362** and sets `SolutionAbort` — a deck that solves fine when the
+controller is written out longhand aborts when it is written `like=`. r4133
+shares the omission (`Version8/Source/Controls/CapControl.pas:410-465`, field
+`myShapeObj` `:76`) and additionally copies the whole `PropertyValue` array
+(`:460`), which makes the loss *invisible* to a property read there while the
+controller is just as dead. Both gating oracles carry it; the 2026-08-02 policy
+therefore applies rather than exempts. Deep dive:
+`investigations/issue-15-capcontrol-copy-loses-controlsignal.md`.
+
+**What landed.** `compat::CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL` and both its
+`*_impl` twins are **deleted**; `cap_control/accessors.rs::make_like` copies
+`control_signal_name` and `ctrl_signal_shape` unconditionally, next to the two
+snapshots it already copied, with both upstream sites cited in place. The
+default lane already did this, so **only the parity lane moves**; the compat
+module-doc row for the *Single-site upstream quirks* section now records that
+WP-G2 is emptying it, this row included.
+
+**The pins became unconditional — and gained a second one.**
+`cap_control::tests::make_like_copies_the_control_signal` (renamed from
+`…_is_the_lane_kernel`) asserts three separable halves literally: the name
+(`"sig"`), the reference (`is_some()`), and the consequence — the clone samples
+its shape, arms `Close` and raises no error, so copying only the name would
+still fail. The new `…::like_on_a_follow_capcontrol_keeps_following` pins the
+same row where a user meets it: a deck writing `New CapControl.b like=a` over a
+`type=Follow` source, then `? CapControl.b.ControlSignal` = `sig`, no 10362 in
+the error log, and a converged solve — which is the property observable
+(`accessors.rs` `CONTROLSIGNAL`) and the exec `like=` applier that the unit pin
+does not reach. Both carry the
+`EXPECTED-VALUE-PIN(CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL)` marker, and both
+were confirmed non-vacuous by commenting the two copies out (both fail, on the
+name and on the property respectively). No kernel-vs-kernel test existed for
+this row, so none was deleted.
+
+**Zero-footprint, measured not assumed.** Exactly one `like=` on a CapControl
+exists in the whole tree — `tests/golden/props/capcontrol.json::capcontrol_makelike`
+(`New CapControl.cc1 like=base capacitor=cap2`) — and its source `base` is
+`type=kvar` with an empty `ControlSignal`, so the copy moves an empty string and
+a `None`: the golden's `"ControlSignal": ""` is unchanged. The three decks that
+*do* use a Follow controller with a signal (`corpus/controls/capcontrol/
+capcontrol_follow.dss`, `…_follow_noshape.dss`, vendored
+`Test/CapControlFollow.dss`) contain no `like=` at all. So no golden byte, no
+`ledger.json` entry and no `population.lock.json` field moves; the **parity**
+lane's full suite, the unconditional 520-case corpus gate against both oracle
+channels included, is green, which is the measurement that confirms the
+classification rather than assuming it. `lane_diff.ps1` re-run because a lane
+alias was deleted: max |Δ| = 0.
+
+**Doc surface.** The alias was never cited on the walked doc surface (measured
+again here: the only mentions outside the code are STATUS and the plan, neither
+of which the walk reads), so no citation was struck and the non-vacuity floor is
+untouched. CLAUDE.md names this row nowhere — it is not one of the six
+named bugs — so its policy §Status sentence is unchanged.
+
 ### GOLDEN_REBASE G2.1a — `stddev_single_point` torn down: one sample has no spread, in both lanes (branch `golden-g2`, 2026-08-03)
 
 **Frontier.** The **first actual teardown** of `GOLDEN_REBASE_PLAN.md` WP-G2 has
