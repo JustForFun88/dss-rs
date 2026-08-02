@@ -1,0 +1,4464 @@
+{
+  "comment": "Provenance lock over the committed golden corpus (GOLDEN_REBASE_PLAN.md §1.2, G0.1): tests/golden/** plus the registered out-of-tree witness crates/dss-core/tests/data/adiakoptics/r3723_ref/. That enumeration is the scope; golden-shaped trees left outside it (today: crates/dss-metis/tests/golden, the vendored METIS 5.2.1 fixtures) are named with their reason in golden_lock.rs::EXCLUDED_TREES and revisited in G3.6. Each row records the artifact's content digest and where the truth in those bytes comes from (anchor), plus - for self-anchored rows - a mandatory reason and the lane allowed to (re)produce them. crates/dss-core/tests/golden_lock.rs asserts, fail-on-stale in both directions: every artifact has a row, every row an artifact, every digest matches, and every row's anchor+reason are exactly what the test's provenance registers (DEANCHORED / CAPI015_ARTIFACTS / R4133_FAMILIES / FPC_ARTIFACT / R3723_TREE, capi_v0145 as the residue) derive for its path - so re-anchoring an artifact is a reviewed edit to a register, never a hand-edit here. Digests are taken over the COMMITTED content: CRLF is normalized to LF for text artifacts (core.autocrlf=true here, so the working tree carries CRLF while git stores LF), while reports/*.bin streams - `binary` in .gitattributes, cross-checked against that file - are hashed raw; an EOL-only working-tree change therefore moves no digest because it moves no committed byte (see the golden_lock.rs module docs, assertion 3, for what that means for G4.3). Regenerate DELIBERATELY with `DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock`; it moves digests only - provenance is re-derived from the registers, and every re-anchored or newly seeded path is announced on stderr - and the diff is the review artifact. The regeneration rules R1-R4 and the operational walkthrough land in TESTING.md with the snapshot helpers (plan sub-step G0.2); until then the authority is the golden_lock.rs module documentation.",
+  "artifacts": [
+    {
+      "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee123/PROVENANCE.txt",
+      "sha256": "7c5cbebd1204d6b25e702ff84602f2a9d9c5cafd23781fca020feee6bc3e97e0",
+      "anchor": "r3723",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py; that revision is retired, so the tree is frozen (§1.2).",
+      "produced_by": null
+    },
+    {
+      "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee123/voltages.csv",
+      "sha256": "9e2486500b706c6208f7252f0d388b15672ea90d3b4d8acb8d0255999f213c87",
+      "anchor": "r3723",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py; that revision is retired, so the tree is frozen (§1.2).",
+      "produced_by": null
+    },
+    {
+      "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee123/y4.csv",
+      "sha256": "a444d5211ba0ba31c97a25215e9131ba8635d2b70921613e696dd3aacff8d7b2",
+      "anchor": "r3723",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py; that revision is retired, so the tree is frozen (§1.2).",
+      "produced_by": null
+    },
+    {
+      "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee123/zcc.csv",
+      "sha256": "64794410671b102a5ad98150f18ac818c5bda4c71f9fe0c1202c197c9d03931d",
+      "anchor": "r3723",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py; that revision is retired, so the tree is frozen (§1.2).",
+      "produced_by": null
+    },
+    {
+      "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee123/zll.csv",
+      "sha256": "93f8cf9bf5156671b864f3a7a692ec6e47d5e9ef6e0c52969d41d1fb09c84e5e",
+      "anchor": "r3723",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py; that revision is retired, so the tree is frozen (§1.2).",
+      "produced_by": null
+    },
+    {
+      "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee13/PROVENANCE.txt",
+      "sha256": "a92c72bcd428a5e41040ba3dfa9807a01351adc882823fc0c527c35913e3973d",
+      "anchor": "r3723",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py; that revision is retired, so the tree is frozen (§1.2).",
+      "produced_by": null
+    },
+    {
+      "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee13/voltages.csv",
+      "sha256": "b851548f06d051a9e38fae94d05d2cb7abc6957f9bf51cd7f387d73f88766fb7",
+      "anchor": "r3723",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py; that revision is retired, so the tree is frozen (§1.2).",
+      "produced_by": null
+    },
+    {
+      "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee13/y4.csv",
+      "sha256": "2e0d759b8ef67fbe0f1e7eb46d1a52c5ab5677a14b2d17ecb38da9c7aa627512",
+      "anchor": "r3723",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py; that revision is retired, so the tree is frozen (§1.2).",
+      "produced_by": null
+    },
+    {
+      "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee13/zcc.csv",
+      "sha256": "598f8ddffe062991ecf286b40e162ae76a244b3dabcad631c755112591a019be",
+      "anchor": "r3723",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py; that revision is retired, so the tree is frozen (§1.2).",
+      "produced_by": null
+    },
+    {
+      "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee13/zll.csv",
+      "sha256": "bb0c616a66e23385ca47075730f5be0c70831c82eff7924bf3f6e207e9a44388",
+      "anchor": "r3723",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py; that revision is retired, so the tree is frozen (§1.2).",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/adiakoptics/midi_torn_tree.txt",
+      "sha256": "ef50daceac2e4a7c7d5ddc1ddd26ce216e6bfd6681f13e6680ab9ffb2315d988",
+      "anchor": "self",
+      "reason": "born-self: the emitted Torn_Circuit tree is our own D2 partitioner + Format_SubCircuits output; no oracle emits a comparable tree (the external A-Diakoptics witness is the separate r3723 numeric fixture set). Regen today bypasses the rails via DSS_REGEN_AD_GOLDEN (adiakoptics.rs::torn_tree_matches_golden); G3.6 routes it through harness::snapshot_*.",
+      "produced_by": "parity"
+    },
+    {
+      "path": "tests/golden/allocation.json",
+      "sha256": "4edf8466add403df7f365973bbc29a5ed274e77466e4b9fd96f0b6ae08eaa4f8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/autoadd_reduce.json",
+      "sha256": "f1f829222994f5f5fdbbc2b91be4168e904d9a2ee8b200f4671a28c7341ab9e7",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/checkpoints/ieee123_snap.json",
+      "sha256": "5c571cc10d8bd13b6222ea7bc4f997f20af24df06973909f00a1001e94b576c7",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/checkpoints/ieee13_daily.json",
+      "sha256": "80cd95b7e29d54ee8f785b542981dbfcb056042934d352e8d9fd4d87a20ab4ad",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/checkpoints/micro_yeq_steps.json",
+      "sha256": "c73d213e8e26d9985e5055904a00a34ff621edca5a05f096d2697ad96cbfb4bd",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/IEEE13Nodeckt.meta.json",
+      "sha256": "015125010f2c23b61c381181ca887db99f7887081f943ec04ac7879a3776c60d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/IEEE13Nodeckt.xml",
+      "sha256": "b98e2bc77fd1227df49cb5c129e5114b442415e1827f2df6a71fc0df82ef6335",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_der.meta.json",
+      "sha256": "33e7cf6d53b00ffe219bb37432b023d94586f4a0a25cb6e753f51d20294f2d78",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_der.xml",
+      "sha256": "7fc651343b40d1a3c90c16728788220c2f3b8be44a30a9a5bc3d02138c147280",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_der_CAT.xml",
+      "sha256": "7f57a0985ca7d1d5ff360b48a878e65a30d264cd73441b9f27505aa695b2339f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_der_DYN.xml",
+      "sha256": "5da88c46ae1ca5936ead06539e036ed7a63a5ce467a75556135639e3a0eef6f8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_der_EP.xml",
+      "sha256": "6e89aa3d55106b2fe2069111195e6c26add74a90d45590399d91e7d759d8495a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_der_FUN.xml",
+      "sha256": "ef334c9aafb9b07717194c50e9a0022fcd9198a76ca366bb9ffce79c9eda4a8d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_der_GEO.xml",
+      "sha256": "7838beac3cb2d5235efb8c786d1bde01a99652eb4b445b2f4118b53796f78501",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_der_SSH.xml",
+      "sha256": "e99f568218127be9adbe6131538e5d12e9e9732e024470e8f8f7968a331de78a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_der_TOPO.xml",
+      "sha256": "4100f0ce06c6c31df3cbfa2d79730dbea87fc7a936a474771c45349b20973dd1",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_lines.meta.json",
+      "sha256": "095b5300ca8c6a737da9773fc5db0128a74ce26dcb2a05ee2bef06f07a26abf0",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_lines.xml",
+      "sha256": "5eec2a418aacff8f7665c292df578a5774126340d63aa870de638c4a8ea86fe3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_load.meta.json",
+      "sha256": "5e0953b8a6936a95981be1d2d33ac897302a121a06076f97cabca416d4d54dfe",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_load.xml",
+      "sha256": "350616947b51baf66d59d2df6f4d4759d2fb876e54cc7cd1e64b4e23ace95a37",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_shunt.meta.json",
+      "sha256": "9a3de77d5b3285c1660a9ddd152a367324bae67e77692aa095fcaf2dd616265c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_shunt.xml",
+      "sha256": "78cadc316cedb2fbf5fcaa1032e5e1af4b6edf580174a68c131674aa4e4ba292",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_src.meta.json",
+      "sha256": "bcdfd80077a94b942a6660a5ed81ad3832b14bb2655632173d1b94b66f8ae58c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_src.xml",
+      "sha256": "768ed30376ecfb39976632036e14324883f0f3748856745521c650621618a843",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_xfmr.meta.json",
+      "sha256": "af6de1338d308b451479f7c16734ec1505e8f7cc30f9607c6822409eed486565",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/cim_xfmr.xml",
+      "sha256": "21ce3d0ba74564269dbf6830ca7f03e63834c55e648b9258ba0fce21fb30d1aa",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/ieee123.meta.json",
+      "sha256": "8b0c7f7a0248253278a96f64a28e99df133c6213ca3fc571b7b6732e10e57fe4",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/cim/ieee123.xml",
+      "sha256": "0baf50cf911dda5a72b6a8706ceed1a4454ca7d43924ea30e2914f53a589f668",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/expcontrol_24h.json",
+      "sha256": "0e666d448859f4fa779b89b984a3925da7d3f169e64a07341b49a8db51d6bd51",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/expcontrol_daily.json",
+      "sha256": "0be415daa003e0a78753c392cdbdfa6e4b9f8d21c4855f562c1b1b70cd7ba866",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/expcontrol_daily_preferq.json",
+      "sha256": "54995886a52fb8171f8bd29067964b6553a82a59f658efefcd917cbee696d31a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/expcontrol_duty.json",
+      "sha256": "dd3229553ada544bb72b469ed635fa4648cbea69085cc7462e587c0a904a4faa",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_avr.json",
+      "sha256": "25d5aa504eeb629a838de33cb4cb7ea2adf18dafab7af2bf286d03558754c362",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_avr_24h.json",
+      "sha256": "13fc54ba4fc848fe3a23df0a6125afe30b2f6fdfe95f5073c45807cc1f554433",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_avr_daily.json",
+      "sha256": "07e8afe4a5447a3ffd69672873a31033106e868f642be511c37a03ecce444f73",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_avr_kvarlim.json",
+      "sha256": "7ac2b8c0f00869b76ed4f4ea54208105ec47fd3170e6d04ffe15486a66b8d063",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_avr_storage.json",
+      "sha256": "ced4149329f22f00bdf7f98f1410ec560c657f646a54de4a3e3aab67b3b75a99",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_avr_storage_24h.json",
+      "sha256": "9d3ef97b9d9cd0890c31bb64796af516b5ef2a900b2a87fc07679c7ddfb6d3ed",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_avr_storage_wattprio.json",
+      "sha256": "124c3f712e6129ae690c8a587991ea40e32cb9921096762e821f0a6ceb025bca",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_drc.json",
+      "sha256": "7a528f19d34f1ddda0fb826206791e4d52f6da3b8a7a163db419fa1bda5e3a80",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_voltvar.json",
+      "sha256": "30b473b394cd795dedb44b7e2b1ac72cb16f2f1a1d100e1e8d4ac6e426f1019d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_voltvar_avg.json",
+      "sha256": "907cee8dc3908f5f42c763cbee5143155b30df500b0b66ff3c8ea0cb39ad5e7e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_voltvar_avg_24h.json",
+      "sha256": "367ece66afc7709b8f47fa1a035f5339ce4958ad105398ee0973228b7ed88ae3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_voltvar_lpf.json",
+      "sha256": "2bfb17f2addd7124482a88663b920124d7bfde294c6f2b5fabdc3ce970b72ca2",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_voltvar_mixed_24h.json",
+      "sha256": "1b84e941b57a141c66c31e70e85258cd59a76cf458be6a486e6bedf21e4daf3c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_voltvar_monbus.json",
+      "sha256": "23c3f27941f0d0c7b0a28122641c784eefc3da290593115216037e7220897b87",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_voltvar_risefall.json",
+      "sha256": "c100702628bad96891fcc3af9f4279b74132aea8640a69d7b0d208261209f443",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_voltwatt.json",
+      "sha256": "5d83559e99aa74fe700df2edb0b5698cdee6402ec545bd05aca3ea562ec33024",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_voltwatt_adaptive.json",
+      "sha256": "88c83af2416507009419a07b62b0a9978f3c4ff71f6c404c3fcd4b17add5cca9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_voltwatt_daily.json",
+      "sha256": "255cfd2d86c1c325d552e92ad3e7ca77f00e2fbc7b559e90e34b7cc30502a990",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_voltwatt_lpf.json",
+      "sha256": "655a949db871737d7dfb8e42bd6b706a5083b1e800d5ede07261754a13e4c67d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_voltwatt_risefall.json",
+      "sha256": "4799580a8d5efaa8ea470b811b5988fe15e9083d1d25eae99ce5add283c78d39",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_vv_drc.json",
+      "sha256": "2fc789b99013d10dc023836e6f091b69112b76ed310de55e6eeea5ec0255a670",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_vv_vw.json",
+      "sha256": "8a5503690c231738b2b11d8e2ded3be63224bf43c8d408cef255955869fbe0d1",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_wattpf.json",
+      "sha256": "8f0c6af2544f05e914c85756c39e812ba7f428ae8a936d3915a9f2f84c89761d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_wattpf_24h.json",
+      "sha256": "9c0c5b116b648256c3ad50e46913be1de9836657be9c49527bd69d91cc3f62ed",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_wattpf_storage.json",
+      "sha256": "050fdf62f4fa9d4749388aa179dd4b48d694cff5a7a9678bacae5424f2d86ac0",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_wattpf_storage_24h.json",
+      "sha256": "0cd8c4e6f460e3d07424bac3854fc6299f769979bf5f92adc1ccf55bd6df1f35",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_wattvar.json",
+      "sha256": "702beb9c6bd3c2d74c7845f9ccfb6e90dc4e0655c069e9455261c87aaf54d782",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_wattvar_24h.json",
+      "sha256": "4787e704064cb64f7a0d9dbedeab3b57468c70d219a6ad1a41785c4f4fc8ea1d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_wattvar_asym.json",
+      "sha256": "a85fb124ecd6384e327c268b76c10e62ebf215356773a8ade803afef9c7590db",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_wattvar_qlim.json",
+      "sha256": "5e8d3fdd6815981c4c61cf492e45912b4120ba292574dd5365140bcc430ad0fb",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_wattvar_storage.json",
+      "sha256": "79f9a8c3da109ebd6f330f11854a4b04c4d5bc57c7e071c8f1ccdee6a08dd69f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/invcontrol_wattvar_storage_24h.json",
+      "sha256": "ad10b5cc58f132922c9067a49c0796332cbcd4f1b61d990c4e66598361ad546e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/pvsystem_clamps.json",
+      "sha256": "f2e9a537da81e32cb82e09835b8031708d063886b3f7d0a691f11a9920e5913d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/pvsystem_curves.json",
+      "sha256": "dec745d328619d9fac7d4cd64daf38de214b4ea7add695537e2a04ee95e0c58c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/pvsystem_snapshot.json",
+      "sha256": "2c436535e06edf78a9a32ecfe4d74eec677b4521d95a8a6523a9402c06a087cc",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/storage_clamps.json",
+      "sha256": "c2ab601e390d78dddafd0614f29c8fa0ba428a8d0f2180e957f8252d60c70917",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/storage_daily.json",
+      "sha256": "4a77fccc3306c351536925b76b2c60b8211149f4134fde6d8c361424bd5dbefe",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/storage_daily_charge.json",
+      "sha256": "6e79fa84956f90901c0716c311b779a00db0ae7ab78e73dddb5be70da191617e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/storage_snapshot.json",
+      "sha256": "61b741aee4c86b9660afe2510cd699b81f9eec5a858c6cc107e43cd5ce310acf",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/storagecontroller_daily.json",
+      "sha256": "603ec9d04fd09a14342807fef4d51671c8bd74899f2f7a6e2b625c4962b6fe1f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/der_controls/storagecontroller_peakshave.json",
+      "sha256": "59107f6c3a699f1eb2aaa6cd41482c803d5fd74b529653702e0a1035774dad60",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/feeders_controlsoff.json",
+      "sha256": "c97c44a984b0bf6b9287bb8384fa1f207cc232f2ef39248b2bbb5a98560d6594",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/feeders_controlsoff/ieee123_controlsoff.dss",
+      "sha256": "118bcc1f08d182b73be3dd7e96e0dfbe2d0e4ccb899f7fa8f6187edb70a10cd8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/feeders_controlsoff/ieee13_controlsoff.dss",
+      "sha256": "2f49e6d2e264586b0ae904090e35e29e2df045d9f8d19beb0409e7bd55cc9d2d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/feeders_controlsoff/ieee37_controlsoff.dss",
+      "sha256": "d7eac12de2ef77d7782c788e8086ed3cfd89a07731a4819e01029491b4b9102c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/flicker/pst_demo.json",
+      "sha256": "ddf22f554357de1e6d85a79641c7bbe92af518e93ee982149108943676c691c3",
+      "anchor": "r4133",
+      "reason": "the monitor mode-4 IEC 61000-4-15 Pst gate (the Pstcalc command results are a separate family, pstcalc/). The COMMITTED bytes are the frozen capture from the official EPRI r3723 binary via the retired Oddie bridge, which the artifact's own oracle block records; the anchor is r4133 because that is the only surviving regeneration path (tools/golden/gen_flicker.py, epri-worker) and its payload reproduces the r3723 capture byte-identically (proven, STATUS 'EPRI bridge parity round'). The pinned 0.14.5 oracle cannot produce this family at all (its DoFlickerCalculations segfaults).",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/fmt_battery.csv",
+      "sha256": "27e684e425ea1a52dd297f19ac33bceb4371ecab5b40d0cad2e671d5ec414cd5",
+      "anchor": "fpc_3.2.2",
+      "reason": "a Free Pascal 3.2.2 RTL print capture (the %g/%f spelling battery behind the compat print kernels), not an engine capture. Retires with those kernels in WP-G4 (G4.6, measure-first).",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/gendispatcher.json",
+      "sha256": "2bd4d22d2fbb0f92c60bd039f415645ea0d5348e6c2f767294a2b7855cec4234",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/harmonics/harmonics_doall.json",
+      "sha256": "9349e9ef5d74b325ad3c9cac360f85a064fb07d93394e59bd15f1641e5a65a4d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/harmonics/harmonics_doall_t.json",
+      "sha256": "3f238eb82bc33cacee983e7543718232fe275092fc0e16d28357073abb8cfc71",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/harmonics/harmonics_generator_delta_h5.json",
+      "sha256": "c443257305e0a95ee208658bdb6964c5565c938e0d2ec4453bab8549458cb0dc",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/harmonics/harmonics_generator_h5.json",
+      "sha256": "36f6a8677984edaaa8475cefb4333d5a710c5df564c1fcee458644f76edd9670",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/harmonics/harmonics_load_h5.json",
+      "sha256": "f823eb776b9d353d9e7fafb0bcb6d13fc1c2edd7f6c7397b60282684ce54424b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/harmonics/harmonics_load_h7.json",
+      "sha256": "8b28796db28299a0fb8f5a0903fbf6760cf7448a279674c83fa61c22e93f753c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/harmonics/harmonics_load_motor_h5.json",
+      "sha256": "9e1e70efe1ae13c9145325dd1e87ad3a9d9919e67cff5e9bf67c0555c8564658",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/harmonics/harmonics_pvsystem_h5.json",
+      "sha256": "ce0487fbcf8a3c02d27dadd6dc38de3e7716036bd34aa30585ceb367be4cdc5f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/harmonics/harmonics_storage_h5.json",
+      "sha256": "64080fdce83953f87134142711fedd52ef08bc004cfb203b44ba9c7210e47c97",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/harmonics/harmonics_vsource.json",
+      "sha256": "7db5601825c29a53e0a200acfa1dcdd31f82be77a37e87615c0064dd8de9d0f3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/ieee123.json",
+      "sha256": "55dbab30892ccd1ff4a3a3527884c367167dc03cd4e6b5647d50de2db533cfd2",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/ieee13.json",
+      "sha256": "c59a4469de36fe2fb0d4c6d0a25470d07333b23c59f4f62b4a902814ad44f2f3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/ieee34mod1.json",
+      "sha256": "d4c67407d3ae7901234e87b7ca4fbbe9042146c5967b96920e3a288e54013ce3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/ieee37.json",
+      "sha256": "dc751012802fa980b754269fc4baecf17578835a60f19c03f5e2a630a31acfcd",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/ieee8500.json",
+      "sha256": "0874bd0b550dbae91a10093e309990e47c3765e2b33cff683b0c7d8aea9e62df",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee123_flat_incmatrix.meta.json",
+      "sha256": "2d5f2337c02b0940c3ac18d6f8e136036fe36b460f8dfe4deb9f697558e7a7b8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee123_flat_incmatrix.txt",
+      "sha256": "4f9f201037fe23f7284c841ddde72f47e90194aea3374ed92d71d060faf0457a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee123_flat_rows.meta.json",
+      "sha256": "937ffd88ff39cebf0d9bf3acf619b35c4df19e28038722b56ea1aab75dc9258a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee123_flat_rows.txt",
+      "sha256": "bf6b8771fd61a782b2b27d53e4d99fed5f9efc273ccb4722334c37f616adb01d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee123_org_cols.meta.json",
+      "sha256": "c6fa007a1936d0cec826ae16ccfde96c9e92a6676502d0e474f85c88fb002f04",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee123_org_cols.txt",
+      "sha256": "db5065b6e2c5c93a7808886a2e21724b2572a3e1f455eb5b1b243729a6838cca",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee123_org_incmatrix.meta.json",
+      "sha256": "419c43ff627dbfb2ca2a5ff806ed10f850db3d1b72625f7cafa4b8d8775a2182",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee123_org_incmatrix.txt",
+      "sha256": "cebd7ed4ceb81d6a6204428f7374f0a040d53f4d46ce647794ab6da27d6b6210",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee123_org_laplacian.meta.json",
+      "sha256": "7c72a7a5c863c70d7791cb8189e9adc56b21d49f58592e9012922d1a44c9de8d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee123_org_laplacian.txt",
+      "sha256": "1f0aa01f90b1d8f04dd38e07e8527b916cda5e6c4503b86568bc9207ad5138e8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee123_org_levels.meta.json",
+      "sha256": "b41210922a265dbe76dc5e4bc5925cf9bfae1705ca22effe8c5bc2ae0384ae76",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee123_org_levels.txt",
+      "sha256": "9719c5c204be291849a2b3de6f9146f83b772277e0b4e859584afe61dcaec2f8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee123_org_rows.meta.json",
+      "sha256": "8ec7ea8a795fb00e1c776c5b5f0465e9e67214ab785e38732adc5acd2bb2f25e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee123_org_rows.txt",
+      "sha256": "cd7ce0553bbea46c860c6a30db4e08e9daeea16e05895a2423b0506266f6a933",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee13_flat_incmatrix.meta.json",
+      "sha256": "fa4bd67c40a464f832f3a823541a391e814c5c91e292e2408581860db6f1ff0f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee13_flat_incmatrix.txt",
+      "sha256": "b3cd6697bfbed5bd331ad8b89375781e2d89ea2c360e74fd33aeeb3aa408bc3d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee13_flat_rows.meta.json",
+      "sha256": "49dd8407c89abe02eab1315b7be4800e996eb964a474f92496da5c80965c8ff0",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee13_flat_rows.txt",
+      "sha256": "836dfeb7dec86ee134726a2de85b6dfe419c46b252f7a745ed4dade61344eeed",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee13_org_cols.meta.json",
+      "sha256": "4bc5e26fd34f437ff209b12e268c5bf59ef8c5523a502feefc46ddb84305281f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee13_org_cols.txt",
+      "sha256": "a8a09a09af0813a5a3d852d10217977b7d0e46d3647ce801f1cf1972a5541aef",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee13_org_incmatrix.meta.json",
+      "sha256": "e9a3b9e7084094a604b7115594fa6252ccca1da8a8532e9a53691f210e24104b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee13_org_incmatrix.txt",
+      "sha256": "58e54b105b916531c7677e385de5851628591a5e0d997553df03f417733d4acd",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee13_org_laplacian.meta.json",
+      "sha256": "db41bdd2957db45564cd4b22290cde9322c04d89303eece43113e18d4553cd27",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee13_org_laplacian.txt",
+      "sha256": "a9f61f60cb7803b654c9b6df40f356dc77fc8a0aa4de4b70c2b05a8daedad566",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee13_org_levels.meta.json",
+      "sha256": "ca5ef464602646628c68d88cf1fc700120186a82dc6509e3f80c04189ae62c47",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee13_org_levels.txt",
+      "sha256": "69741d9f2dc434fb7d7a061a1c333a45a58a6b882368c7f004fc148ed6d7f042",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee13_org_rows.meta.json",
+      "sha256": "2e9b0e47e826ff6624495fbfec6b4447f92ab34aa1ca280a328ea92a951933fc",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/ieee13_org_rows.txt",
+      "sha256": "6b31769ac8c14ce1cfb13db57f8458aa12000d976096babbad4573c7e7b8e90a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/sercap_flat_incmatrix.meta.json",
+      "sha256": "fe0ff3d9971fa74be7416248253efddd63d5107610b3e62c045b641c16cb1256",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/sercap_flat_incmatrix.txt",
+      "sha256": "ddf250b43a2c16666fa701afc329e2718ce90c4ef748a4f9e22b1d458154e8d8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/sercap_flat_rows.meta.json",
+      "sha256": "9b5acdbd86d857dcbdc58ac2138a000cd746700a3fbd0bed4d9c96cb40e73e47",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/sercap_flat_rows.txt",
+      "sha256": "36a3b8cd5e5fb64f4d3dbfee048e8da2eed14f0707373eef52b0ff704d9b56a8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/sercap_org_cols.meta.json",
+      "sha256": "72c1cd96e3f24d7b883d768745b31fefc93a564b76575f0047f99f2ebfd87f6c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/sercap_org_cols.txt",
+      "sha256": "68db681fd6c7c8e31808263bf4c3fec119cb07b04eed45248c7d6a0ea25c3f21",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/sercap_org_incmatrix.meta.json",
+      "sha256": "8809628a23963737a2c80ae9ff11d85821860706543b1de6f752eec5b23a59db",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/sercap_org_incmatrix.txt",
+      "sha256": "91705efd84df4964eab57bb9eb1fb5d0bb68e2a42341aa079dc86848dee60f6c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/sercap_org_laplacian.meta.json",
+      "sha256": "3ce9bb01f1dc37486ec4921e30e6e6efe26bb1233cad62668d1e60a976903270",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/sercap_org_laplacian.txt",
+      "sha256": "44b91be7e45fc539294d9265fa817194dc15a31818d7aa72ce19698459b79433",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/sercap_org_levels.meta.json",
+      "sha256": "80f428c54f572168368bf549f3ac226a583d33801bab82286ee341ee087c0700",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/sercap_org_levels.txt",
+      "sha256": "1fc1be42390f3a30f002f6a91d372bf33b15ba3ad6dd83babc236d3b83c2fc08",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/sercap_org_rows.meta.json",
+      "sha256": "12929a53f1db783cdc22def679f8e42c01d1d531031e75ced409ce928f50236b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/sercap_org_rows.txt",
+      "sha256": "2aae90e997cfc0abbe11ca722b79b80255d54246fdc7e56f6a596ba7020598ac",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/serreac_flat_incmatrix.meta.json",
+      "sha256": "298ec7a9c1b9e55e66be2077d745513bfe6bc1549286dc44deb6fe7592bcced0",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/serreac_flat_incmatrix.txt",
+      "sha256": "ddf250b43a2c16666fa701afc329e2718ce90c4ef748a4f9e22b1d458154e8d8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/serreac_flat_rows.meta.json",
+      "sha256": "312b7923e2dce18c3bd6d7e2e88a30989d835ef5df325ca27e237075de3f967d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/serreac_flat_rows.txt",
+      "sha256": "6b2c9f59bdf3eac94bed33c460a69182fb3f20980aba1f07366cd9a616c6bfa8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/serreac_org_cols.meta.json",
+      "sha256": "5b5565f7e4a8fee9e68b6cc8c8acf92978294d009d256c31f5f2cde83d6fc139",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/serreac_org_cols.txt",
+      "sha256": "68db681fd6c7c8e31808263bf4c3fec119cb07b04eed45248c7d6a0ea25c3f21",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/serreac_org_incmatrix.meta.json",
+      "sha256": "c53d40fbff45716a2ae0d0ca228bbead26225d2c3f1798bd5b8bd06041c81f45",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/serreac_org_incmatrix.txt",
+      "sha256": "91705efd84df4964eab57bb9eb1fb5d0bb68e2a42341aa079dc86848dee60f6c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/serreac_org_laplacian.meta.json",
+      "sha256": "2be6161a2112309e0d3a6f514b6960c36a41f7b9b0f9ac74723613da6c02d1fa",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/serreac_org_laplacian.txt",
+      "sha256": "44b91be7e45fc539294d9265fa817194dc15a31818d7aa72ce19698459b79433",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/serreac_org_levels.meta.json",
+      "sha256": "7580b2465033cf7b822200899e9550aa150a24db62b59e3c3752b527337e11e6",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/serreac_org_levels.txt",
+      "sha256": "1fc1be42390f3a30f002f6a91d372bf33b15ba3ad6dd83babc236d3b83c2fc08",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/serreac_org_rows.meta.json",
+      "sha256": "2eae6cba6ccb2117503afb64fe3df11ee1a42528d05104f52ff7f5cbcf4815fd",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/inc_matrix/serreac_org_rows.txt",
+      "sha256": "29e3ca8f38ebf789ac8fc75e19c373d08b9afcc84628de2142ee97f39afd3429",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/autotrans_micro.json",
+      "sha256": "c1d3683b8ca215825562381cd8b231c67306f894c618c22572dc6588d571ecf7",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/autotrans_solved.json",
+      "sha256": "bbd36b951a9fa8b3b787d0c474ae841f28a5d27d41bd87734ab07147a1800af2",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/batch_micro.json",
+      "sha256": "43246694fa79a04c78ffc617ef62012e9c530819172881ed9d54073e2951810c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/circuit_edited_default.json",
+      "sha256": "cebfb739cb831ef59fa79ec6f4b7045c2077f991bc8ed764955e094f75223705",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/circuit_ieee13.json",
+      "sha256": "462f031e7cd82d416c41861b0863a8d3dbd0819a61db5fe06ced5e7ba97efd4b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/circuit_micro.json",
+      "sha256": "28a98e9ce9179d44f5c22e1455a50686464326553dc288db90a46095c952088c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/circuit_positive_seq.json",
+      "sha256": "8bac392c060279c94494663c9105d5ab01ff9f9eee860c14b5498d925e69ba89",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/der_usermodel_assigned.json",
+      "sha256": "b67536736262f97663d553577c2ea43724432ef2961875217ce4488cc31135de",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/der_usermodel_full.json",
+      "sha256": "5c5cd767fd02fcb3c1db51db5654c09f7c4a67ec8480362c993a103a39e5ce93",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/dyneq_full.json",
+      "sha256": "eb139fc55c3216d63f6d6b9ccb1aae5b5b14ccb6d534c3998cbe9eb7b5c06150",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/dyneq_micro.json",
+      "sha256": "ed731b8e263a26276cd4d28ebc8a353fd21e98744fa671e4446c61c887c5245c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/escape_micro.json",
+      "sha256": "35feca8aa90c0a42c43964cd6a1c24b41b25397e8455ac85f4f4d0049159bdeb",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/ieee13_samples.json",
+      "sha256": "451dbf660ad85c26841fc29c507016b8d8632c2aef843413dd62d3f821d02cef",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/line_matrix.json",
+      "sha256": "1cc89200c7b378a350dc96f10872e41f78e68ce9508c0233140dd8cd61ddcac9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/line_micro.json",
+      "sha256": "0b62c8bcca7b26f411884037162d4eca8e5d8931edd6c35b5b3c7a57e244d580",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/load_micro.json",
+      "sha256": "9535611d471a9d653a274fd6b084a61a9beec8b05fd441785cc5495239f18509",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/schema_divergences.json",
+      "sha256": "47e617f326e0a8f9f3c53622b1f49fec847d6fc924f2c0a39fc11a4f934e8c15",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/schema_full_oracle.json",
+      "sha256": "b2fe5ba45728498fd6c98c04f74e46c2e8de01848d79a6426d9c7be80f1f7511",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/schema_full_port.json",
+      "sha256": "ce255ca943c75106207b78389315071510dc77b35defbe33c064667d8379657f",
+      "anchor": "self",
+      "reason": "born-self: the port's own DSS_ExtractSchema document, spelled in the fpjson/CRLF rendering the parity lane produces. Its external half (json/schema_full_oracle.json + json/schema_divergences.json) stays capi_v0145 and frozen. Regen today bypasses the rails via REGEN_SCHEMA_PORT (golden_schema.rs::full_document_matches_port_golden); G3.6 routes it through harness::snapshot_*.",
+      "produced_by": "parity"
+    },
+    {
+      "path": "tests/golden/json/schema_static_core.json",
+      "sha256": "1c51b31eed5112d2d99a16a3f433e69510e2445e8ad6029c693ef96e1c7722e9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/spectrum_refs.json",
+      "sha256": "5ed22aba2dae45ea9fa0fc005d118db349fd7531f03e68117bd6fcfe774b1367",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/transformer_derived_rdc.json",
+      "sha256": "06fb3a55903208f84d2cee139183ae76ff6fdab101799630cb459fbd6da69004",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/transformer_micro.json",
+      "sha256": "0b63f94dac268302932d637e4470dec87a93939e06ba5d7d3d3a5f5a97fa446d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/transformer_solved.json",
+      "sha256": "ac79c181aaa6076d44ed2f2ea4fd6e35405639db926c1127ad88c5febff09a27",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json/vsource_micro.json",
+      "sha256": "c3a4ea24ba84d3fce13b99583331016badbbd2dd4f2132becea0147a58e307dc",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json_import/rt_edited_default.json",
+      "sha256": "471c6dda061ee54f93c57866e84c5f8b63f842581f3a6c3e9392f362a71552be",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json_import/rt_generator.json",
+      "sha256": "f0e454f237053faa04ce5ce835aecaad57496eafb2d507c499237e3dbbd9ff70",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json_import/rt_ieee13.json",
+      "sha256": "c3b528303d242b80118aa9536f50ae88369c4e81719b08dcf8ef3333d35e6973",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json_import/rt_micro.json",
+      "sha256": "cb55a3c977454c5f0d318b3bc4e9fa669cfc95f1587f4c56862546819b13639c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json_import/rt_positive_seq.json",
+      "sha256": "f19d4936997bf72a90f95fceb81fe5e1efda777dbda5d96a8c845493925f1dd0",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/json_import/rt_transformer.json",
+      "sha256": "ab8a4c1a6a639ab54d4acc286fe78cfc3e2411638d37bd9cf4053b220f7e1054",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/line_constants/cable_cn.json",
+      "sha256": "705b7e2410a5650bd187c58527a7412f904d6b5d6b8e49f4c027f3533f158eaa",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/line_constants/cable_ts.json",
+      "sha256": "12857bc2f270c3f6cf7a40cf686f380d0ff92d9e05e6864bcb6b14a2e5ad26e2",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/line_constants/line_geometry.json",
+      "sha256": "f2ca90b407182943f582e55936a977a7377eb76b494d4cf3945d1ad3650bb9bb",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/line_constants/line_geometry_carson.json",
+      "sha256": "8d207032e633fa53ab815d9cf38b5c439cc91412f7f0644d807f7444f4d60403",
+      "anchor": "capi015",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/line_constants/line_geometry_reduce.json",
+      "sha256": "5a6662f9ea00166ef8bee074bff063abb945b216f8bc099a30de68f0afb28ce3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/line_constants/line_spacing.json",
+      "sha256": "e191568134697969058d0e39c95e61944e42b87dac991f1c9298fed78979e7b1",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/metering_monitors/generator_snap.json",
+      "sha256": "6c04112eb273b31a3d9e158f89126920d3be90d584ebb8518130e3fe3c38753e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/metering_monitors/meter_daily_ieee13.json",
+      "sha256": "889a7ce5713a557661bc1dc08a6e08fcb853a7e51cbfb5becfa0926b204908dd",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/metering_monitors/meter_zone_micro.json",
+      "sha256": "d368135b2d61362671ac4cdf59092b2978a6ef9c4ae472f39b9bcf118e55f005",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/metering_monitors/monitor_daily_ieee13.json",
+      "sha256": "2cb0a59761129683111f00f0c8b4264daa3a06c609aa0842c6a8cdfbad77a23b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/metering_monitors/monitor_windings.json",
+      "sha256": "97bb4af6edc84b32fada234d7e4811c8eb02dc87925c391a871ab7312f13da1d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/ncim/pq.meta.json",
+      "sha256": "f404d7867bb2422a18ea37d3990044642ea1abed03e318f2eb3ca11cdbecdab5",
+      "anchor": "capi015",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/ncim/pq_Jacobian.csv",
+      "sha256": "27ec6472e8ccb75b57f5eda9a6a83e6a71880d3988feb23a89b80cec1150bd82",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/ncim/pq_PV2PQ.txt",
+      "sha256": "a87d0dbe72f1322349fa6eddc2eaa0d158edfec56b94ba086c7e6b2767d9826c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/ncim/pv_qlimit.meta.json",
+      "sha256": "9831228f906291d049715cdc9be34d89580c27a88527d872cc7ea8bcc03aa5e4",
+      "anchor": "capi015",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/ncim/pv_qlimit_Jacobian.csv",
+      "sha256": "70e59bae8dafce168cb23fc502ad57da060130ca6275cd6e961e730b6e37d3cd",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/ncim/pv_qlimit_PV2PQ.txt",
+      "sha256": "88d27eb411fce7e0a6c7011bcb101d8623174b8e1b3ad558e1e236be97c9439e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/parser.json",
+      "sha256": "8c18f4700241e7b8db3058566e2869a457625879ad1e53f6721e78966624d6d3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/busmarkers.json",
+      "sha256": "f5943c1cb4a57dc83444052c15adc2e366fccd469c10f1a2a4b6a6b56f6f8974",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/circuit_c2_c3.json",
+      "sha256": "754717494b9e6a9aaaa85fbfca2d0a9f70cf8b65f613c6ffa6e363fc414708fa",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/circuit_losses_hex.json",
+      "sha256": "fdde97036eb26541fe90086930e6b2e139d063c4a5b356eee5f3433eccb035c0",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/circuit_marked.json",
+      "sha256": "e466bd56975f083ce906f15975b39a32de87daab7aaee9e048ffed6498a37003",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/circuit_min_five.json",
+      "sha256": "46c9ad16ae550926c90ecfe3e0dcba8895bc65fcfa9b46bc0758138ae619dbbe",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/circuit_min_zero.json",
+      "sha256": "c3212bccdea9b36ba9e52981746bd0653624e36fd519e67a643134a37c03317a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/circuit_power.json",
+      "sha256": "e0ba43ade1c1a9238b18a3c0bd8dc31156883e2319f092eb1b37d5c2fef0ba3d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/circuit_showloops.json",
+      "sha256": "619a68c3c0863d54f963463cd0c70f5913c0a4d934cdc096593a8b9efb137695",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/circuit_styled.json",
+      "sha256": "b306f6d05dbf1df3c42405745c68d5fb1cf34dfd674355f80f238cdc821920ab",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/circuit_voltage.json",
+      "sha256": "733bf7e3f5015261ec7eceb7b36aa09f277f465b83b68c6321b0c678799dadd4",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/daisy.json",
+      "sha256": "89f9bdc2a2035dc0ae3109c1f0c47724db9b7d5ad758cd67c23b43734641f395",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/daisy_buslist.json",
+      "sha256": "6602440aa00e63dd3170d30044d77032ea841eb663a4de576477fa9584328121",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/losses_loadshape.json",
+      "sha256": "2f2a285e67d90e7a5505a9eefd20068e89b2b52a03861ef1a8f071e1d9fe8327",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/meta.json",
+      "sha256": "c13f72650458edce81f31cacb33989ced437e11ea37790dd70e024551eb7303a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/monitor.json",
+      "sha256": "3bfa1dc82c0a29ddfa7831fbcc11e83006564f1e83009d3adc62f1f957a13105",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/profile_all.json",
+      "sha256": "e7a010a6d24e57f5724bc10876df013707c4236e9a0c7297bf1c2790d1c04a1c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/profile_default.json",
+      "sha256": "58245cc3279262a8b63c0bf43deca3f7cce94b06bc7a4fd83f57e6c47f338572",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/profile_primary.json",
+      "sha256": "e139c98d9211fea7f509d4fd64b79c08b33810b594299c7857857caa0eb5d16b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/profile_scale_kft.json",
+      "sha256": "33773df88a5a35e96887b4d9cf4d69ca28325ea7682c43aa44d1520cb3198a69",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/type_unrecognized.json",
+      "sha256": "143f0fa58e5cd1f6744fc813cb0488c8283be375187e4321fa2793f4f9b0317a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/visualize_current.json",
+      "sha256": "45cd9e694bb7a410023331a7d14f27f21c5517bb4b4613b3e994bc50df30c05a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/visualize_power.json",
+      "sha256": "ee54a9e4c56905eef20e7930e03ebd6eb25daf47e7aaf7b6a0f99ea80089626f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/plot_callback/visualize_voltage.json",
+      "sha256": "5a4176c3775290c810e30b963639c50ab98ead3bddd6ab4ab3560eda2289208c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/autotrans.json",
+      "sha256": "084957fc41bd75b875c978876407bd6b3d840ccf0681e6822a42e2f7198928f0",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/autotrans_bh.json",
+      "sha256": "c8a0d77b7152684b62e713264eee7a9105166c5d2ba6e2e9bd807d9ff7349ed9",
+      "anchor": "capi015",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/cap.json",
+      "sha256": "5c7d0cdddb79ec0f406678ff725da49a2f9baf8114bc0d24eaa0e950987ef166",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/capcontrol.json",
+      "sha256": "dff93a0f6673bc86b3e30eaeadf7c92699cac27a27c8f8b53d2c793c26df1861",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/cndata.json",
+      "sha256": "c91cc64aa4a6d60cc4c86d92819f2c0c7a9cab96132fc0dfcfc1843b59a32133",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/dynamicexp.json",
+      "sha256": "31b8f2493a7fbf6831c540df597da842f6ef3404f79930be891e238f39dbc379",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/energymeter.json",
+      "sha256": "3de52a85d1e64a5052ffa48afe3072ecdc09a73eda98598b4a5bbb263b00564d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/espvlcontrol.json",
+      "sha256": "1261f15b6803b14af534455467f817c356123ee68f84d5f5b0c726ca45024769",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/expcontrol.json",
+      "sha256": "160f66b9a0c3f26b39c0f781bdf91ce99ff8fd3f6f8781c9461f97ffcc80d767",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/fault.json",
+      "sha256": "854a43af3f87a40cf2ad927f0d15ef3614145aefbefff2f5ddf3f24760a17626",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/fuse.json",
+      "sha256": "ffbd4fce9e5aa652276660fe913839e6228ec35ae66f82e77f403f8bf654af7f",
+      "anchor": "r4133",
+      "reason": "the WP-U2.1 r4133 Fuse surface (RatedCurrent -> informational, new CurveMultiplier / InterruptingRating, default FuseCurve tlink -> none, props 10 -> 12), which NO capi-line engine has (tools/golden/gen_fuse_r4133.py:11) — the artifact declares engine_spec \"r4133\" itself. The bytes are DERIVED: the retired 0.14.5 dump supplies the rendering the port reproduces bit-for-bit, and every r4133 value delta overlaid on it was verified on the official EPRI r4133 engine (Oddie). The value authority, hence the anchor, is r4133.",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/gendispatcher.json",
+      "sha256": "d8a4d5557d59ccce44f6f253786f7004b9b4b690ab94a15ff9348f67d9729e44",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/generator.json",
+      "sha256": "1a0d1d5f4635df787de669b76b369c0eaca01f513720e7a55137aa93b29f6456",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/gicline.json",
+      "sha256": "caa9e1696409fca332db6f72557ec0668481122b4671f971a7ae4e008130a6ad",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/gicsource.json",
+      "sha256": "ce47a13be3a154c989ebe66bd5db532cfa7c99aa5cea8f54a286c7b811f021f8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/gictransformer.json",
+      "sha256": "567e8e89d992efd9422c0bee90114b5c980c051b3c7012e7d8e7d065dcaed6b9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/growthshape.json",
+      "sha256": "fc7def4851e10af6d4098c034ca518e8bc5c94f66ee7e0f0ed3a7db226352737",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/indmach012.json",
+      "sha256": "e5268c17c6a136581d6c923d3acf319d97100ed278b948072c89da830fccc65d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/invcontrol.json",
+      "sha256": "f8339d258b8b209ee667ac0f3f62b9012a1a15f8f02359383aa04c1ba2d53768",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/isource.json",
+      "sha256": "9aa01112ebcbe085e3c4ca9949311c6481f622dd8f50d7a5d3142f77a4caea3a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/line.json",
+      "sha256": "fd36e1142a70953869ecc5b03c1937cd23c9e0cf46e2b24944edbeedafb9d03d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/linecode.json",
+      "sha256": "2d69d2efb7d4f070edaa861cc33c7e1e7add043a04d98f0720a30d219d5f9b04",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/linegeometry.json",
+      "sha256": "360ff920cd6419258f01018d77cb4cb34e762976e091747718b1dc8c07c1881e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/linemedium.json",
+      "sha256": "146cd6cfab0528b6a8da62aace1170881ed8897a6a70d65ef56e0ea16f732190",
+      "anchor": "capi015",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/linespacing.json",
+      "sha256": "217e44cc29110e1d359a45da9e92f7f4d3f2f0d5e4c711b0574bdd2bcd285024",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/linespacing_eqspacing.json",
+      "sha256": "d89928225bc857c44ca7008ed77188ee8842cbbc65f9dd906e76d46a9e887cad",
+      "anchor": "capi015",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/loadshape.json",
+      "sha256": "89f63a1268a36608cde92aad4e30c0ff2ea732f31a768e6d4e2295e2653c1c31",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/monitor.json",
+      "sha256": "0e313d6a45e063d6258552864b74d09d51b09db7b72df5907982cf230b45e37f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/priceshape.json",
+      "sha256": "dd19b53fbb01a90080f2ec6dfd49b678aa788b80bee279405bac8720754f4d1e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/pvsystem.json",
+      "sha256": "2f803eb5d1063cc305edef84295d1f7a062d1c457e4989b62642ca5cfa8ff9a6",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/reactor.json",
+      "sha256": "3e38e79c66601d466bb83c4e966f1a1d864dda57c29713868def73147d569905",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/recloser.json",
+      "sha256": "fdad4e0ee02a9896086f1eebd3aca59d513cd7c866a4b40099468a2afeb3235b",
+      "anchor": "self",
+      "reason": "de-anchored by the WP-U2.2 r4133 Recloser rewrite (24 -> 46 props), long before this lock: no capi-line engine renders that surface, so the committed values are the PORT's own renders and props_roundtrip compares Rust output back to them (the file's own note says so) — a self-consistency regression pin. SwitchedObj/RecloseIntervals/Enabled/EventLog were cross-validated MANUALLY (non-CI) against oddie:r4133; a regen must repeat that cross-validation. Independent r4133 coverage lives in the live controls-family decks.",
+      "produced_by": "parity"
+    },
+    {
+      "path": "tests/golden/props/regcontrol.json",
+      "sha256": "6fe79f7cb2b0899b6a6665242930f23ebbd14a050374cced2e07617557bccf38",
+      "anchor": "capi015",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/relay.json",
+      "sha256": "1ec9a9f5acc589be0f4d5abcceaa05c7c5fa8d925b8f433890b899c4676b4b82",
+      "anchor": "self",
+      "reason": "de-anchored by the WP-U2.3 r4133 Relay per-phase rewrite (50 -> 71 props), long before this lock: no capi-line engine renders that surface, so the committed values are the PORT's own renders — the file's own note calls it a REGRESSION PIN (self-consistency), explicitly NOT an independent oracle gate. The load-bearing discrete state (Normal/State) plus SwitchedObj/RecloseIntervals/Enabled were cross-validated MANUALLY (non-CI) against oddie:r4133; a regen must repeat that cross-validation. Independent r4133 coverage lives in the live controls-family relay decks.",
+      "produced_by": "parity"
+    },
+    {
+      "path": "tests/golden/props/sensor.json",
+      "sha256": "2699aa1aa5305727879f6a7732a6f62b828d4a616542b92a796f07a72a2f6a7a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/spectrum.json",
+      "sha256": "1a5e24e3ea40986cd04bb95c51c2205f5fd4e91bbd12b623615119ba30cd2e46",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/storage.json",
+      "sha256": "f9fac638a83e03a32fbc5811f6b06e57e40359080ad5b8d98a370004db818b2b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/storagecontroller.json",
+      "sha256": "12488e8df3e66303ebebec97abda5dfdb035ad6378667e517d05ff763f17fce1",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/swtcontrol.json",
+      "sha256": "1cbee02df1c7edc85df47a759d4a89ac8a6e483466dae31ea8b878e99266f3fb",
+      "anchor": "capi015",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/tcc.json",
+      "sha256": "207d47833dcf4a07e02864f50bf999b178c9abbe531e7894b6696427218713fa",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/transformer.json",
+      "sha256": "e92ede798eb76b26afb3c3f1a587c671cc03f9f94cf0c7c4a3f6019509228ff9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/transformer_bh.json",
+      "sha256": "684208c58206376f21aec2cc42fd1a1d63994ed0396971ada53a53f934a6a29c",
+      "anchor": "capi015",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/tsdata.json",
+      "sha256": "c509b064f760c8231c4f5606bf6c550c2d5685cda34d87118c6accc493c4ad52",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/tshape.json",
+      "sha256": "51854167c12deb554b0a8e4c3bce459a5a70aa015bee40259010ff037abb4f0c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/upfc.json",
+      "sha256": "534f089360f9bc2dc47121110fdba469ad5e8cec63780d6aff42d27fd8c4e573",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/upfccontrol.json",
+      "sha256": "182f2d9fd5bf75d8d65129157fdbc01cce06e653be56f9c8096399c7cb543c32",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/vccs.json",
+      "sha256": "31b06dec38012799823f693e187e7413e8983ed4a6cfffd92900d17a9021fb8d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/vsconverter.json",
+      "sha256": "b4f7fc8788ab2ffa96d2adf3840fa38f4ae44277a71bf5dbe80b00971618abc1",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/wiredata.json",
+      "sha256": "5979c42f681507b2ab8799bc7ffebea4c5fe4fa20cd563f05ea3cf50dcab9f7c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/xfmrcode.json",
+      "sha256": "79d974781a88b3ba55f9dd2f1ce90d90d996d0c9211a09f087d4c87d49938b87",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/props/xycurve.json",
+      "sha256": "c3067973a6ff81d87ee1cb6354eabc423b191817e88cd9c6c1ac8b61d10cf7c0",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/protection/fuse_blow.json",
+      "sha256": "7d9ada27061c7465fae501e3c20de07b1fd18eda9ff45c97279885a2a217dbe4",
+      "anchor": "r4133",
+      "reason": "fuse/SwtControl scenarios captured on r4133 (tools/golden/gen_protection.py EPRI_SCENARIOS): the WP-U2.1 fuse overhaul and the WP-U2.4 SwtControl Action fix exist only in r4133, so the pinned 0.14.5 oracle is not the authority here.",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/protection/swt_manual.json",
+      "sha256": "af2e15531392abd130c9796d0a1606c8fc5cda7339ae6d2e679a44967db0f46f",
+      "anchor": "r4133",
+      "reason": "fuse/SwtControl scenarios captured on r4133 (tools/golden/gen_protection.py EPRI_SCENARIOS): the WP-U2.1 fuse overhaul and the WP-U2.4 SwtControl Action fix exist only in r4133, so the pinned 0.14.5 oracle is not the authority here.",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/pstcalc/cmd_results.json",
+      "sha256": "9b76d3d830f21e061505b0555840f7e033556a75f6df81c9ca28e5fd5d64629b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reliability.json",
+      "sha256": "bebccf53808f01dcf5b4050b3386154c387284f70fadb7b47685faa9bcfec957",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_em1.meta.json",
+      "sha256": "45a26b71ba0616d037dd9e98adeb0e774fb034b25b65f2d4c9913dcc1dac0912",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_em1.txt",
+      "sha256": "f3033439c693447827bdbcd8b0dbe1f2221ff3f5b0b939bc5ef787c5d9db7c0c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_em1_phv.meta.json",
+      "sha256": "6afd796310a26ebc2e9b29e44091c3a22d2af738d6f9c53dfc955d43321be640",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_em1_phv.txt",
+      "sha256": "895b0d7d62c486c86329220fbb3e45d5a13f0961f108aa7150f443ce1a5fad4d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_energymetertotals.meta.json",
+      "sha256": "ef28d029310a85d6df0a20f7be0c24d9e54084c05a0a9e2f8aaab3f5fd161fa8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_energymetertotals.txt",
+      "sha256": "1f24980afe22fb9409a160e72ee3e1f669b19a9596288b081d71c3608e8228b3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_grand_totals.meta.json",
+      "sha256": "37227be6ca2f60554dcbffb593f9f26685b24b7cb264206d8ccbd6e16c3d4197",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_grand_totals.txt",
+      "sha256": "6b6d65c5aaf40a6810171e1903af0af770897734ec96e9ec3684af8cacc4f7e9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_overloads.meta.json",
+      "sha256": "bdf088dd2e8eba9d5c4388248d06a6211d414fe09500acf134dcaac0cad19eab",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_overloads.txt",
+      "sha256": "085a16efac7768e8d1fa9bcd57f4160f23a55202f643b011af8a1db24c7c6954",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_overloads_1ph.meta.json",
+      "sha256": "367288fe1c2747d94855f4024813295b707d8e8884aa01b533361bda155fe505",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_overloads_1ph.txt",
+      "sha256": "cdffe528511aa7776abcaabfe9c4204a560d863421553a6b19830050bc654f86",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_systemmeter.meta.json",
+      "sha256": "deac4a01f7e59871d8db040e1d433c5d4d6085200729317ea1c7c155bb89cd86",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_systemmeter.txt",
+      "sha256": "360f956516822ea4c4325e42d41c02e22dffc24c9f163b6c92705a8db5556aea",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_systemmeter_registers.meta.json",
+      "sha256": "908b0a525196453ca434465c6e308ff9cb5d17d4de906ae6057e6690424d0262",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_systemmeter_registers.txt",
+      "sha256": "b1183b47ae6d1b47e3131cd4afdb13f9a1353bcff03e1bc2dd747bd859c30826",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_totals.meta.json",
+      "sha256": "47b7a235914c8aa0d6433a227e7874e798c4424eadbd9f64af931718ad5fa47a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_totals.txt",
+      "sha256": "c8abdf6031e792edb88dad96792825824a61426a31cbbeb3dd05790a7db180ce",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_voltexceptions.meta.json",
+      "sha256": "d967d8b843f2674a65f386012ea55b0be866ed2190b09e10dbbd76cfad554341",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/di_voltexceptions.txt",
+      "sha256": "040ffa90fa76d9c13f5201e685b2818908e2bc033e5f47ad3298a53785d86df1",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/distrib_load.meta.json",
+      "sha256": "305c69e466101e139cfb38d97212b8aaff99b873cde6f21e382740aa259d93c0",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/distrib_load.txt",
+      "sha256": "b9601b5adfe1b4bfd077c349585e198d545d1d4858405ce403ed209f35c79208",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/distrib_mw.meta.json",
+      "sha256": "f25e3d20e226cdc8ed89cb6cdfbc05eb9ba9a63073b4bdaed7e02c82ba0ecfc9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/distrib_mw.txt",
+      "sha256": "77c0c75e45c82c366d3afe17534ca4507f2c20e51926b45ac6125229cf09c433",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/distrib_proportional.meta.json",
+      "sha256": "5d349023c3bd1bb2b798d2394e518dbd420cc1beb63e1e8061bed00daa95966a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/distrib_proportional.txt",
+      "sha256": "77c0c75e45c82c366d3afe17534ca4507f2c20e51926b45ac6125229cf09c433",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/distrib_skip.meta.json",
+      "sha256": "7074cb5d5a4030117a6d5c97295f171781852605251b5f82d95cd7a0eaef2b9c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/distrib_skip.txt",
+      "sha256": "bc1c409f158856fe7775c2cc74c23459770ba17266f36fd6bc1cb426edc8ec9c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/distrib_uniform.meta.json",
+      "sha256": "74cea3269f6aec79cb00fcf9c8ad56ac29adb339602228bd7f916ebaa194517e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/distrib_uniform.txt",
+      "sha256": "e473b9ff330c16bb1772dacec05a00989c81aab84e14e86f02bebf56d4a26a2f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump3_alloc.meta.json",
+      "sha256": "dc81e4d71379c45eaf30d44d4b743132cee1717044ed20bdacddb2f475219d38",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump3_alloc.txt",
+      "sha256": "793376a6557c74ed9a3a5c15b51d9011ac05dbcaf8a30b31bebaaadd6453e13b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump3_bare.meta.json",
+      "sha256": "f89f639eac0ca976c724b209882804801415b2958f6e695c8d249dee9b49fa05",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump3_bare.txt",
+      "sha256": "6de7ee60b397b8c2caf39da43843083950e954a3aeb1183d01c7c38bc7d3a967",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump3_buslist.meta.json",
+      "sha256": "5d8108e2adb74b2507afe7050529ec56674db1a990a87b256ea0b25af637c93d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump3_buslist.txt",
+      "sha256": "8363af5cf99925be2dccefe807ce9578d7188604998e6c19911aac3fcaf750cb",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump3_commands.meta.json",
+      "sha256": "b02e3d8374eaba51af41a7fc39d7a3186e94dba6a4bae60f0274f3819d0eeba9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump3_commands.txt",
+      "sha256": "ee449c29845edc495f379cae2fa74684354444649afc438863b6544a16d45ec6",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump3_debug.meta.json",
+      "sha256": "14a3735c9a6856e73f53086b8a6a447210129e477d9e87fa68b59a286cad63cd",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump3_debug.txt",
+      "sha256": "640fb0b48b03105475aca5007affb426cd313d7d2883595390f12e5e8d6d0867",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump3_devicelist.meta.json",
+      "sha256": "8ae603ac5a6fa89f7972681fbc28c48f55ed69c575c140269d504fb085007a14",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump3_devicelist.txt",
+      "sha256": "6af3c1ac594334e6fb28234df697442acf70038bdbeda6dc22365afc15ae1875",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump3_solution.meta.json",
+      "sha256": "f0b69b7cace510aa731595cafb3ce6f2fd5bd97c08b54e2f38d07363ac173b80",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump3_solution.txt",
+      "sha256": "4751b4b18bd3e2e64361eab1396e5bd066b08223d073ef77d385bc89ef013cd4",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_autotrans.meta.json",
+      "sha256": "739fbb17d2c94ff10d855a58a41395c6e57df6f11bea2b6a6509110f41b58ec0",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_autotrans.txt",
+      "sha256": "159ee8f6b2cbea34f40a0acdf09962bd522b7db6a888f412597fefff91e4e167",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_autotrans3.meta.json",
+      "sha256": "7fb32d483ddaf48bc464d9a5f1ccf930df3aeed6b8a09c17c4e8388a553ccc5f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_autotrans3.txt",
+      "sha256": "bcde48944261c3f8f2ca5aa96c99c04705f44516b98bd81c040703495b98c83c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_capacitor_cmatrix.meta.json",
+      "sha256": "4184fa327f1569f01dbac89b6c85a423fc5979a49060c667b532dbbb1e2df9af",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_capacitor_cmatrix.txt",
+      "sha256": "bbf3a5f90b4a6c5db9972b6ae4f3bfd4235beeb274479980635befac60f18519",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_capacitor_steps.meta.json",
+      "sha256": "03234cfb34d4986bf09bfaf3ca9da0af1bffe639f3b7d0506e0e5b9b581da3c9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_capacitor_steps.txt",
+      "sha256": "f5ee8c79bed3e8aa89099c95e3ccf746b311bf68652e84e268ff82f45254713b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_energymeter.meta.json",
+      "sha256": "c9b332f4746c09a7abef1fe858af3e81bf73a152826abbbd03b73341b2223845",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_energymeter.txt",
+      "sha256": "90ea162f087348d4a7fc0674584affeb2d7a6ea5290f752457b852b394a94a86",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_fault.meta.json",
+      "sha256": "a0f6d6a011066a6b1b25b7e49e457c8e3f9273eca17f79cfca124b9e8d29ac94",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_fault.txt",
+      "sha256": "742204e6a4d89da1c3cba6054bebc8ffd391c877ec0651cf66b4b2dda7178680",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_fault_gmatrix.meta.json",
+      "sha256": "a44b98ce9c1d39d4eb9462de14e61140841fd5f479c083b879c84ce35dcf48c5",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_fault_gmatrix.txt",
+      "sha256": "8f4d02272d22f7958bd90c0769f95de3ceb36297257dc3f67e88dddcf991f535",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_gicline.meta.json",
+      "sha256": "aeddc345ead9a6bbbd8a3d656cd4c239fc8515c7b1ab1a9aaaedef34c53ef5f3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_gicline.txt",
+      "sha256": "fdae639ac4ad168763a4a8b58ab059213dab749f1334785617d5745d5f0924b4",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_gicline_debug.meta.json",
+      "sha256": "2d9912a81dc50d0e4bedab004d81a8e3a38b664bbc4ec65607070a1cf631215b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_gicline_debug.txt",
+      "sha256": "076b6b5b49c835e70465877cf56d597adb692b9a8fbcc09902f9ef0d20cf46d6",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_gicsource.meta.json",
+      "sha256": "545ba9d4d9b3927a06563517e6a8a7832b5c0fec4c33543afef8ec1aba134dff",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_gicsource.txt",
+      "sha256": "ef22b0032f63dc1c75cdbe17d78e2df0b7a3ace36530701af9b8240d48f51e9f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_gicsource_debug.meta.json",
+      "sha256": "8e7ff01269bbd92efd2bf66ddf1496975299f9fcc34bb49f5160c52648948c28",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_gicsource_debug.txt",
+      "sha256": "f9d18560e7af063c661e497400d82515953dc79b8b1a6be2f17c5917172c876a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_gictransformer.meta.json",
+      "sha256": "6c6a4d30a14fc6b9ef885a365a70e9ab685aa38df1aad339a768764d8c1ae55f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_gictransformer.txt",
+      "sha256": "10c5b90da9974b4180c0dea57fb1dc81f7959b7d6a45bfc8607e08f5252953f2",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_gictransformer_debug.meta.json",
+      "sha256": "9d1e249edcd9a6e7728dc5f521ce11467f1a58709b474746721a11d20a32b76d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_gictransformer_debug.txt",
+      "sha256": "8385cac8252c497e0312e39978958055fa5e46b1f3fc1a619bb316ec23c2c094",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_isource.meta.json",
+      "sha256": "4cbbd3c3700f5c2336afacadffadea533db938f305e5b4bd8a75f228a6683afd",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_isource.txt",
+      "sha256": "e6bd863ff6ea228ec273e7af73a7c6075a7eb8f76b47fcb94be0a0b366d12a47",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_isource_debug.meta.json",
+      "sha256": "451bad6ff2a07db112e377de0aac2a7e5f536f394ace616383e2cd5544a9c574",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_isource_debug.txt",
+      "sha256": "0e385517578937a0806ab954f3d3487a086aabe8c0824bbe55891fb116ee3244",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_line_geo.meta.json",
+      "sha256": "61f054c761919cf6decc6166761302afe393c89b60acc6ae8134eeaba19f57f4",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_line_geo.txt",
+      "sha256": "b63e6430cf14e9d9ab305a0dbd70d89cd82ad1050c37aec113c6731c0fc7934f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_line_lc.meta.json",
+      "sha256": "c86589025d6469fac4742ad5769a64bbd34488e939269fa3609d65bff05109c6",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_line_lc.txt",
+      "sha256": "e1bf17cf4df66c1a460f166e3798315e121f000d15c87b276822d3741e3d7ca7",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_line_switch.meta.json",
+      "sha256": "09610befc474eebccf658a34346fa329468248a273d9e99ce51c6e9630cca83d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_line_switch.txt",
+      "sha256": "3b04e0871ecc57e15e8591cae273838f16c0aa0d4006fa11d012b995ae090cd2",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_line_sym.meta.json",
+      "sha256": "a19a0bee0b0d110a1d3a9d163ed9764a8ff269f2d5e785a61c9ac05a719535a9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_line_sym.txt",
+      "sha256": "92b141346f8b2c841f307692e348ba7c9ddaae51b584e9cdfbf77a39a218fe3c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_linecode_matrix.meta.json",
+      "sha256": "26a326027b5b87a3fc7bb7d55ed9cd54be20e61a55d787a62d705d5ffdead2fe",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_linecode_matrix.txt",
+      "sha256": "6f270f4d75243c6b7495fec33e01c830faeeff18eb0bb3391791fc1dff8e03eb",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_linecode_sym.meta.json",
+      "sha256": "fe528d122c2ee457cb5a7bff65e755d84b4c32ec063b57a2e21f64b25f4d5e6c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_linecode_sym.txt",
+      "sha256": "0a74009021df93deba460856b7e9a89d06f6e841c111986c4d4ab1734b9d7e5c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_linegeometry.meta.json",
+      "sha256": "cb7af295f0cfcb4dde1500a4f2ab994c82f6f1403fb42af431958b6e9cbe7ce7",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_linegeometry.txt",
+      "sha256": "631c4e2eda59791db18dc15a5067d33a261583f94fc1ace11523cd8da47b2fa3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_loadshape.meta.json",
+      "sha256": "acd10fed981fc488accdea8d20152c694286d34b7db007caa3691a20bc7c5b62",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_loadshape.txt",
+      "sha256": "63b6bdc8e1f78c4099f51f8cecc43e767e4644f1154f108857417e48ddbd800e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_monitor.meta.json",
+      "sha256": "29ed223c0e978b96099588bb2b6adf2dc439eab4942030b7ea79edeaa63257f1",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_monitor.txt",
+      "sha256": "e4581d435c026f0330c9da6bef6340194999e225b8f63879353f7bc0eda7da9b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_monitor_montime.meta.json",
+      "sha256": "6ac05fce36e54385f22ac41a008c14223041cd9105f15869aa5fc7ed6b9a3617",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_monitor_montime.txt",
+      "sha256": "a3d31ec0356e3cb75d33ad4f658b33041b66c557a8a91921ad5b60a3fdc079f6",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_reactor.meta.json",
+      "sha256": "811c418cd1e7a5365354110045ae7fccd181ea2ef402913cddbfce878f0d3431",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_reactor.txt",
+      "sha256": "36c759e8c43640e891da8949e19683c8a460769a89ffe2fc7f750a9231169cd3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_reactor_debug.meta.json",
+      "sha256": "c33c1ba6c7c653084b84a3f8ba2c23a7598f2d9816e30feacb8b5bcabf3c62a0",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_reactor_debug.txt",
+      "sha256": "83693d57cb1eaa10b25991de558a2f28a483068d1404aecacb1b8c96ccb69d44",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_reactor_disabled.meta.json",
+      "sha256": "15de38443f280614a11083c39a369a23a2ba8d07f993ca013211917b210f5eac",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_reactor_disabled.txt",
+      "sha256": "4788aaa50d82d873e6329775d0bf49665392b82e186459e8f24a381d4d566896",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_reactor_symcomp.meta.json",
+      "sha256": "a51d864dcb456469b9d651a915db202b93a88781d80b1925aae442eafc16daf0",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_reactor_symcomp.txt",
+      "sha256": "e0a7b99810f5e41506ef8d812809001e3441f2d3505962d5299e275b403ab576",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_regcontrol.meta.json",
+      "sha256": "03900f8393ef187e7d654b704383125db062c38ddf884146be16a8f8672a6eb7",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_regcontrol.txt",
+      "sha256": "3978444a76269df7b1b57d1157fbc0abb2cac030a21288f456bd0deac92dc7bf",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_spectrum.meta.json",
+      "sha256": "133291505938f585ea68bdbd52b8d1ab8955924d693ce562f9a04a909eab48b8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_spectrum.txt",
+      "sha256": "9afb1223ce6b7708afcf9cca933c447202b2ad72199b8a975e8357e8761633cf",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_transformer.meta.json",
+      "sha256": "f14a504a5a34c8477e38995ee248c91b120f24c78013cb3a5f24baace19ed78d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_transformer.txt",
+      "sha256": "4346c56bcdc0c2471766c7f3436abbc0da89b4f222447b4a8baf41ed62f8f684",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_transformer3.meta.json",
+      "sha256": "54270d3ba9f42d6984d449d64d428b27f1cfb03385cf94d508fc4c27610d04bc",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_transformer3.txt",
+      "sha256": "df8600c6c21f6207ec378e454fb198c4e3d94a418590159a83c2684357b63e90",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_transformer_disabled.meta.json",
+      "sha256": "e6d02f5b40c9ba69ef5eb7bf7cf23ac9a08f1aa3dce8af09a2b96f69da9da0fa",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_transformer_disabled.txt",
+      "sha256": "dd79e5ad4241957a8c85096cb579faf5bd12e370576df851b07557eeb50baf65",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_upfc.meta.json",
+      "sha256": "6dc6869f0774c852aecf6a68ebc73cdad61c8e7a6f93d5a7b35347fd76026e27",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_upfc.txt",
+      "sha256": "de8bffc9637b3c789067cc42e16a60405e7fcac821105b078f1a1f0da45b0d16",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_vsource.meta.json",
+      "sha256": "1548f54e5ed7bc5ee54c5e4aa92f10373d76b72b29288ab06eeed94beebf379d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_vsource.txt",
+      "sha256": "24f37bf580330d5bcfddb9d5bb034412b68ee84fc4b3d3acbaee30f6b20f6ffe",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_xfmrcode.meta.json",
+      "sha256": "42b63e4979419efc05584b2a7a934724d6f2cdf708c5817e7e6fce9e7c7fe745",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/dump_xfmrcode.txt",
+      "sha256": "1bd9b103cc8a2249bfa23e6634f4ebddf24204134d85a0e90ac080c2e58e582e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export8500_counts.meta.json",
+      "sha256": "3587502ec64c705d7ac1539aeb253e92eb3acf61c6cd78400dd96166198292be",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export8500_counts.txt",
+      "sha256": "88b9ccb9302f654901767187092f754cf84bd5367a4dc1052258f7299b70d9a7",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export8500_summary.meta.json",
+      "sha256": "e0eb8a74f5f6fdf1c0d13cca71401616403706efc922dab5397fafd3906dceaf",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export8500_summary.txt",
+      "sha256": "f29ca30fe46261663919e91462ed330ba80496510560b409230f1fd7c883482d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export8500_voltages.meta.json",
+      "sha256": "63c551741b5000996fdadd54abf558c72bf45615714a8b2473acd24c36c131d9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export8500_voltages.txt",
+      "sha256": "d398c90f1b2484d114da0269f2cabf6a7dd1811ec3a51853fdf3f7a90ac3cde1",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_allocationfactors.meta.json",
+      "sha256": "9e44c8ac00a4107350f8fa0363529bb70dbfa5aa35ec76263a0bf6e83331fe60",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_allocationfactors.txt",
+      "sha256": "4b0fea1679ce3fe77700af64bd652fb73a60d58ee67f53d5da1b24c89fb16749",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_branchreliability.meta.json",
+      "sha256": "c0b9afc24a158d99f76414ffc3b21200adcb4ac28aa8cecbed4934877853a524",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_branchreliability.txt",
+      "sha256": "c726402698b5abd8b5e9c6b07e6aa51ab200a8625d186f7940959526f9b94322",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_buscoords.meta.json",
+      "sha256": "11641be6c19e01d2a85735453252ec0d0fcf3fb31ab1f016ec40661004acd62f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_buscoords.txt",
+      "sha256": "cab84a15d118b2b3accbedcc72fcb9f4c743daa6aacf3670933e30cec5262164",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_buscoords_interp.meta.json",
+      "sha256": "c0896d35f7f045761b35765bc40217f38b99747d34b7951f8c241731c8b16075",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_buscoords_interp.txt",
+      "sha256": "e34989242e5407975b9331330653982b69bf4ccf9e38f4ab638b3981351ee56d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_busreliability.meta.json",
+      "sha256": "8cc1900680c23e1d9ae1594a692092f59423e93326ad41d05822f435611b1f39",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_busreliability.txt",
+      "sha256": "5fa1de83da67756991712281789f309bbb77de7372d30c65890a7a1381184520",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_busreliability_multimeter.meta.json",
+      "sha256": "1fbd8bb38760cd3df492c426d66e5211217d494cc417fd84431d81c5f0cdc571",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_busreliability_multimeter.txt",
+      "sha256": "6bcfa71b5c3bc5293ed4fd18e26d637eadedad571dd4fbf384bf6f063ac6bab8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_capacity.meta.json",
+      "sha256": "3f4e9af32db8d9e762b51cab4945573a2e73384b97ffd26d00e57cc91a54bf68",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_capacity.txt",
+      "sha256": "69ca309380c3954b350ae0788d845e852d57ea68dc3cce021dda5d6039aaeedf",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_capacity_seasonal.meta.json",
+      "sha256": "b85436ee90eae99e018258ed6526e4abf7d599b248737fb50ef548447633b089",
+      "anchor": "capi015",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_capacity_seasonal.txt",
+      "sha256": "ee093018fa29626a791d677e1b11002052eafbff690303b8929b4833fc877a83",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_counts.meta.json",
+      "sha256": "5e8c693c714fddbd61d5f18aa3afef6146e88d9a620b45db0f2e32c1986a406b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_counts.txt",
+      "sha256": "4c0d9eae9e0d853a7efd5cd3900a9853a3de8565b6c84966557ac5ef470fc049",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_currents.meta.json",
+      "sha256": "e2666e0546fbaa2b5c69321f3ca5cd09a50cc40c08228926d289f3cc42f57da3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_currents.txt",
+      "sha256": "aac2996f1c13b467dd2364a48ca9e93f3bdf421953850893ba32570d6ff41591",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_elemcurrents.meta.json",
+      "sha256": "d52685fd47695b601a8c04c826acfd3d2b53dd3f05f2a68efc7c6b88adcaba82",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_elemcurrents.txt",
+      "sha256": "6efd25d79084a0c104510a74d7b5cb1cc14afa47c56a5b95b497c5e6f4be0cc6",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_elempowers.meta.json",
+      "sha256": "44f8045c9d9f8308410ccad9af1258d11e83f1c2eb3ccb13798bf8883c476cd9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_elempowers.txt",
+      "sha256": "cbb01480a013064f88987d3197008cc3e3148782efcb598af650a0e938cf3368",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_elemvoltages.meta.json",
+      "sha256": "3e5d8f30d963b0577d55f87c80c99630093efba8d0959b4d16bd15a930929ae2",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_elemvoltages.txt",
+      "sha256": "fb256182d39676e25a70decd81a3888385a012f4f81fee943f39eacc3c13cd91",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_errorlog.meta.json",
+      "sha256": "0319841f3b77b6f902560ea1a8a0b99fa12b0140421ec5b65f38818d305b1577",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_errorlog.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_estimation.meta.json",
+      "sha256": "ba0f9be12b6b740d50c62d8bd66413dd4b63a81ed98cfa18f96e6d36cd3b882d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_estimation.txt",
+      "sha256": "eb64edd871c162ebb852d8d03af39c8cb74a041809cba820fc5d81f77fad7b4b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_estimation_empty.meta.json",
+      "sha256": "5e0bd8e6a4b87ddda8a0a44b7c2227f2a9e8069bd034d61298c0b4c68ad82e53",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_estimation_empty.txt",
+      "sha256": "b062e8f85eb690144a70ea6c47f1816adde05d6ff3df48c6ffc357d63739b24c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_estimation_noalloc.meta.json",
+      "sha256": "f8edffa2759bb7fb1d5d316d869766b3d6ed3279b506c64f4e4dbbf079fd84b1",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_estimation_noalloc.txt",
+      "sha256": "a6ebc0e63dd87949d29d4cd49264b41f64123928a55393213340aef50aea7854",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_eventlog.meta.json",
+      "sha256": "eb391e3ff5d54d73119b2ff4e17c5b7ac1b2f8bbae136d631414490aff56b0e1",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_eventlog.txt",
+      "sha256": "115055733ec93f3d059bf03798d5653b43e661c2696f6d406743de1dc9601564",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_faultstudy.meta.json",
+      "sha256": "f10db86f80544140ae5c727eccb7d51ce7984afce4df27809761e94b3c3f7d4b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_faultstudy.txt",
+      "sha256": "4aad55d73b6b242993e93b9ee1de4365efc27f87c865770a7e8516ef59701c64",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_generators.meta.json",
+      "sha256": "f80e23217e60d1ca8d5d1accb2f259f6485ccec2b3de5ed1a0d38658cb1fe50c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_generators.txt",
+      "sha256": "eeedae7d47340085d4c0f985257d2f07f5a7adf0b2249ea0918e93f51ad290cb",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_gicmvars.meta.json",
+      "sha256": "4dd6aa9448cbec94db6664fea7fd1fc2bedf6d3526166778b0b2dfd658d39e05",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_gicmvars.txt",
+      "sha256": "34d3555f8e724c5778fcef2e95c061b9588f2e82eca993db6c705c17c9b05021",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee123_currents.meta.json",
+      "sha256": "386a4de35e33eb7e65d3468e8362de016780f1bd8805de3656aca13a9c78617e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee123_currents.txt",
+      "sha256": "320ffe1c9367857c3ce4b13b79338427035012adcf756ea1af77e926fc9e9f08",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee123_powers.meta.json",
+      "sha256": "1017571f12ed618b12d4858c6b230ba22a223380d744bc87e9b69f3d97c4e0c9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee123_powers.txt",
+      "sha256": "5ef75b290f8e1607055975c183da6007b3efea3452598ba5686632fe65cb4405",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee123_voltages.meta.json",
+      "sha256": "3d7cd2b8359cdce01312a0da160923131c47d7e8bfbee2efe1d2972d274ae1b8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee123_voltages.txt",
+      "sha256": "a08f5176153feeaa43dc6f4e8a90866dfdedc3fba82bd636e3d8866e61e1f238",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee34_currents.meta.json",
+      "sha256": "1cfcc66937f61d768de50c09889c0af18e6b8052807d96737518c9d7e19713c2",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee34_currents.txt",
+      "sha256": "a65231b40a2d0351dce9de6e34bbac0096fc243744d60f63fa5664f5ea690e96",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee34_powers.meta.json",
+      "sha256": "141d73222af32c6edf696be9cf7cb81e1230316b1f94afb4238991f06fbfeefb",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee34_powers.txt",
+      "sha256": "074a8293c4adfd1b53678f5d516f0ae78e5502c30a6e322d322144cfe313bac3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee34_voltages.meta.json",
+      "sha256": "640effff62d0bf5eb28f949df84bc9df07cd01667e99c7cf0b4a04551d18ac2e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee34_voltages.txt",
+      "sha256": "b00e75d401add118c65614872e2e98608e0d98617145d4619de046e0b9bbf611",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee37_currents.meta.json",
+      "sha256": "c3b99ea14b63046d5dbe0f03ba8e691bafdcabb55c3eb0f9377f454bea9bbff6",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee37_currents.txt",
+      "sha256": "190a246385085b070741142f36f74e4eee10cbe9ca8076c24f897661279fd06c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee37_powers.meta.json",
+      "sha256": "7018be124da4a3bdef244298aba9aa5d26ba9f0193d6168b076f9447f1b66a44",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee37_powers.txt",
+      "sha256": "8acbcb72b0c4186bfebee836f1ba27c28ba800ed627224dbc177d422880a249b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee37_voltages.meta.json",
+      "sha256": "75ee64d928fa13bfa8c4a7fe8183c17248ef8a9b6c218d039f062267999a1def",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ieee37_voltages.txt",
+      "sha256": "489ed1b0679f62e03337a64aae08f4c4dbbe4a92184e76150d78ccf1f2aaa074",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_loads.meta.json",
+      "sha256": "69e2378f8b1876878d6475f2c2667066fd9f69361a714266c49a2091875d0384",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_loads.txt",
+      "sha256": "8ea94aab3a22f868d0925ebc5d6431acf39a39c7b72ffccfe8ce863c06e9e996",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_losses.meta.json",
+      "sha256": "1ae27edb22b0df7e1ce914c5b2729a0d21f3d6846ed8d613c152b10973af19b6",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_losses.txt",
+      "sha256": "bae685fdd48094b715e5dd1f4a0de332df794ca4d815cf264ca3bbd468440fe3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_meters.meta.json",
+      "sha256": "9fde5e80b2568c297f1dc34a1b969f6ba86dce2e718c7a3c831880b6b4db2be9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_meters.txt",
+      "sha256": "c298147566a5033618b243e8e70c35c21911a376424d75161c1727785bf22d6a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_mon_pow.meta.json",
+      "sha256": "9b8df784f22a3aa947e25cd5e61ce8ed0ae872d39c64034b96f2f7da7859e414",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_mon_pow.txt",
+      "sha256": "828dd074888345a8d433e9716103054a1c0cb1768f5e8d6352b04e15b3495c8a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_mon_tap.meta.json",
+      "sha256": "61641d3761bad603847e32b51a33a43f36267767f8011c114495b40067d145ae",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_mon_tap.txt",
+      "sha256": "4457aee55dbedc2badaa5fc046c1ed0adbf163ba6ff3be871fd5f45e6c24d4f4",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_mon_vi.meta.json",
+      "sha256": "53587c2ea00006a2324e2cbfab638e6b4c02a06a2ffba6eff79bf57f5d985bc5",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_mon_vi.txt",
+      "sha256": "52496183d163a826c32494ca630a5dfc98cd242b241fe20619a2f91afd33abb5",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_nodenames.meta.json",
+      "sha256": "001388a2a00753299f613ffff5abb47c357d910e59c38040952c0e9c35182c37",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_nodenames.txt",
+      "sha256": "52f828a443e7eeff50634587eb8cd70729887f492624b975bb254df5aa6e6454",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_nodeorder.meta.json",
+      "sha256": "5bd2416fce8005e78ad06c8701a504c59cffd5a4410663248624a189aba3cd1e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_nodeorder.txt",
+      "sha256": "0f4397d19d61d2ff98dffc553d4794b2ec7dcc97e96c068868e0e78195768316",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_overloads.meta.json",
+      "sha256": "435d377e154904b88eef3a0c4257a6a07355cf5d1800b19846e357d87e92f5d5",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_overloads.txt",
+      "sha256": "80c665c3b9e47fbaad96baed0f4d97d7b655fbd59cf99457a7db6da9faf66e9b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_overloads_seasonal.meta.json",
+      "sha256": "e5b7fb026e52cdf78d49d12bca52a7688119af3a6d52bfbbfd06f57abc3cc498",
+      "anchor": "capi015",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_overloads_seasonal.txt",
+      "sha256": "3e4eab3d14bff8951d56c8d6cb265224686dda52bbeb610d0cf50f01544728f1",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_overloads_unbal.meta.json",
+      "sha256": "8e34cd738577b66f4470ed7db759c114b4206271b138ca24235e9d49d5d998d5",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_overloads_unbal.txt",
+      "sha256": "ce38cfc834bda857b6e0e249b96aab6a525dc7460a42447e4353d0da1398e5c3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_p_byphase.meta.json",
+      "sha256": "8060c4768c1362816d78cb5c1d35e0aac2f3039d2b06c6edf082ac090877f7be",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_p_byphase.txt",
+      "sha256": "5f4828502158cfdf8a5b205e351af91c79be8768fac7d69b9eef939f7cbfb5f1",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_p_byphase_mva.meta.json",
+      "sha256": "5b6bbaa4e09a015d4d23af226489b37fe6172a2e3e6962776db513bfd58a1dc2",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_p_byphase_mva.txt",
+      "sha256": "592381f5257960d254340b80629e754fe8fe95eb800ea1d0d2b9f12caecf42df",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_powers.meta.json",
+      "sha256": "f8211ab7c855242ba9d56b324dca22d6ade613af509283d30e9c378db518c9bc",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_powers.txt",
+      "sha256": "6bfaf496dc45720c9972419b1dd8a1b46fb5109c268b9ef5ef60f9ac004ce189",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_powers_mva.meta.json",
+      "sha256": "3c882f68024dba901ed394743d8eaf7754d041b3d9bc713955e1ba865cb1faf7",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_powers_mva.txt",
+      "sha256": "d7eb5a9241d33a52fb32a71b0a037ba68343b5866362fde502331589977f583e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_profile.meta.json",
+      "sha256": "80bc174067b32b649bf34a95c0a986427fa5a8c6bd6c0f4fe6cf151605e241d9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_profile.txt",
+      "sha256": "044c4be73877c9bdeb490a187569962127857d3333521d97049445459a33ba1a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_profile_all.meta.json",
+      "sha256": "e02b958c9e4919acc90b043352ed5719026e8d42d579116a22be143702635d48",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_profile_all.txt",
+      "sha256": "9ccf833bd82e319b034f62e532a8e413e45855df2a222829bc8f7be00e85bb33",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_profile_ll3ph.meta.json",
+      "sha256": "c25eb5a21cd08d11b69948aefe70e937899b59bab94b3c124b327b0d20cea2a5",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_profile_ll3ph.txt",
+      "sha256": "f89957bdea129d77f62bd79c8e45f2e26b03fd5099ad28637df0858dba23ad74",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_profile_llall.meta.json",
+      "sha256": "b5097cf2904fa7598e2cc26abb8429643d4f1c308b543878feed7138a7ba8284",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_profile_llall.txt",
+      "sha256": "07cdd77caed30f212bac9910f8d33fa57b1cc13f36321f1db6792c9645edd0b5",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_profile_llprimary.meta.json",
+      "sha256": "a6070f723761f2ce5011875f959e831e3ed1f24a1d030fd09866d14159bf2925",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_profile_llprimary.txt",
+      "sha256": "07cdd77caed30f212bac9910f8d33fa57b1cc13f36321f1db6792c9645edd0b5",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_profile_ph2.meta.json",
+      "sha256": "f4a4f9b71abf62ad7cbdb59be43cfa1b6117f197213e2aca6dabe1648e386d0b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_profile_ph2.txt",
+      "sha256": "75c3ea8763ae17a5f12f158d433c0392abc2014b1dff6aa8e1faea32d5fd1f14",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_profile_primary.meta.json",
+      "sha256": "c285375b6b51458e18a0af3f534e048b5303c1801a828f5c936b250665c9b318",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_profile_primary.txt",
+      "sha256": "9ccf833bd82e319b034f62e532a8e413e45855df2a222829bc8f7be00e85bb33",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_pvsystem_meters.meta.json",
+      "sha256": "473daedbf339699a96ac4ecdecc6b41938544c5876df251408e342b87092b9a6",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_pvsystem_meters.txt",
+      "sha256": "8bcee5cca415ffad305a75f2d63f60e53bb6686c36e0986abea32ae1f0a5bb18",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_result.meta.json",
+      "sha256": "606a2ae925f1f6547b77cd0e2ef95b5d072934937fd12bcf463b4586bc34986c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_result.txt",
+      "sha256": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_sections.meta.json",
+      "sha256": "c4c7b8b7edaed1ec7b734222341827e94480915da8aeab9b1a103c8d4839fcef",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_sections.txt",
+      "sha256": "e5eefeb10a0c79f911346f0dfc490e012a3e53f1d78507ec5b106dfb1081d942",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_sections_meter.meta.json",
+      "sha256": "889230720ef26682e0c4e318cd4911c085cf7c56b03b2eb9dc9435997bf066b3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_sections_meter.txt",
+      "sha256": "0e5db0703af13dec82fb711f19427f555af0ecbbe4ac6e0f6ba6baa89248e2df",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_seqcurrents.meta.json",
+      "sha256": "43dd59c1e00756819f34b10918929d8a6e9af07f45773050e8a0a8d6a720eb1d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_seqcurrents.txt",
+      "sha256": "6db7cb2a2443cea5eb3aed454d1d4f1fad5f6d0cadf6f4f488c55cb7c948e6bb",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_seqpowers.meta.json",
+      "sha256": "b7bc6394a97f2addf0b78e10d9ac6c5c62043f284ebbdd8a2c92ad608d39d79a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_seqpowers.txt",
+      "sha256": "bcc5c89bf2f47fd8dbe0c0eddda2f275ac81f82f8f894963c2edeec883133c9e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_seqvoltages.meta.json",
+      "sha256": "13e9d72b1e7ddd8f4efbce1f5305cee47e90a5b38fbfdef128a7fc2ed2433e0e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_seqvoltages.txt",
+      "sha256": "8c476b4b12aec8949ebc5ccc0d228298311ffef15d47c01dc8d9994b9783cfca",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_seqz.meta.json",
+      "sha256": "699e8d30674b5d0a41365413e27aab5c1d54d12b04b68d8caba8d29fc15ea258",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_seqz.txt",
+      "sha256": "270b5c8005c64b1f0a014827dbe6cf36091005cf4f36c9ccd9476f0466ed399a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_storage_meters.meta.json",
+      "sha256": "72d2e5096c962b864363659d11ebce50315d7413be132134e9be8bfb34d5761a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_storage_meters.txt",
+      "sha256": "3696244a56bab83e13533e90df0fcb74706d5f2901d5e4b3832f5e332ef58acf",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_summary.meta.json",
+      "sha256": "faf3ad4feeca4eddb1b42be3a04661f67aa204ba7afb8ad5ebbed610ed9a87b2",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_summary.txt",
+      "sha256": "b568a0334ad8b564afd21dac5490839ee4ade5987ec11e46495f8dff85403393",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_taps.meta.json",
+      "sha256": "cff136794ba4ed3a1db8b6528259da6aa4c6a59a1a0705b0b42310080c694d8f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_taps.txt",
+      "sha256": "cbcd9dcf1560ea3b20220b02a2c6aa05e90fda59fa3613a4ffacd35f2950be35",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_unserved.meta.json",
+      "sha256": "634451974149df47392df64cc26a128761d404c3544dc77cd3ee403c7c4b6f8f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_unserved.txt",
+      "sha256": "3800c7f80c7305b7c4461148ed725a767f05b4a483a1e29bf9c971c248aae422",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_unserved_ue.meta.json",
+      "sha256": "324b796d506045b661f68185430ef6795c5e031e7a580f3c364d0aaa5bfd5ee2",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_unserved_ue.txt",
+      "sha256": "78ec333cea95f60d2fe0a8f0705634728b66b7aa1e451f05e37dbde9c8d2bc4d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_uuids.meta.json",
+      "sha256": "958cc0aed30b61536edd50bf5ebb3d2f2b42bb7119ea49f3214730cb657306a4",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_uuids.txt",
+      "sha256": "8fa5d40022ab10904bd103fdeff2a9662832c4e620241fa8e7c6b0a6df52eb15",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_voltages.meta.json",
+      "sha256": "c107641520f9eda4a8386c1f3d707db29d1727e8f8d20816d394be2cb4b02cfe",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_voltages.txt",
+      "sha256": "c8112189fb4834ba73b36d8c9c878cfd4a8430795764d3b5d8f3cef0b5cb44a7",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_voltageselements.meta.json",
+      "sha256": "56897bcf8088bba3854cbedb0481c15acb97173c88ef3cdead86a198f17a5c9d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_voltageselements.txt",
+      "sha256": "358f03a366cd18cae87f3f116f029e1ed7996edf9d7d0ae935e518f76c0bd27f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_y_triplet.meta.json",
+      "sha256": "8fe6cb6575f0c2c883edc5a2b35ce4eeda18235996716bec7d134fde23cc5c46",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_y_triplet.txt",
+      "sha256": "0fe948df056e543d952df39aaba8597d84588730e5f526e9779378f5790340a3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ycurrents.meta.json",
+      "sha256": "a2f83d5b938790952477015b4a88c3b84f7621810ca518c785019c59ad0acd10",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ycurrents.txt",
+      "sha256": "5ba9cf40d4042ff3eaedac4baba63e28bb0d3b427bda173f8a4c0350c84d3992",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ynodelist.meta.json",
+      "sha256": "b9638ded5659de8771cdc8c4a240b1d56455c1ec0e2a1a8352d7671bab24804f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_ynodelist.txt",
+      "sha256": "baa6c64d82d220ea4992a5037af6d1aac6b502d3df1711af267b3342ea75bb9c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_yprims.meta.json",
+      "sha256": "1614e5823b645ee31b6d42c589797e7cb6e75a8df9e4b83d2041e49396b5b060",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_yprims.txt",
+      "sha256": "3a4ec25104d9fb52ab013d504afcb167edf9c40e7396a77153309c23c4f1ddef",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_yvoltages.meta.json",
+      "sha256": "1474672e3ef24de73db10a0da8e1acf03bb477543c50dbaabba8813bd4673582",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/export_yvoltages.txt",
+      "sha256": "f47c4e5f0f8256647ed0614fcfd43b2b23ca767c5d0bd4b2a6f94728aa72bc3e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/loadshape_binsave.meta.json",
+      "sha256": "95963862d7cfb99f3cde2610e9cbc56011638049eb7e930de1ca8c07e683237f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/loadshape_binsave_mmf.meta.json",
+      "sha256": "a11e1d589d32dd41d62a17532dc119420612f8c6f20079fb3600ea5988bf7645",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/loadshape_binsave_mmf_md_p_dbl.bin",
+      "sha256": "3907b821888b25ad08e8b70e4216605b668f4dc5d8569ef2b22c40b2859a5541",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/loadshape_binsave_mmf_md_p_sng.bin",
+      "sha256": "3e733f1f147c2d6b1e2d65e84bb9967729c6b7d584656ae497702df20b32f178",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/loadshape_binsave_mmf_mp_p_dbl.bin",
+      "sha256": "9cb73a9f8e401fd836d9383c3ea670bc04ef9a527d6b0747d3d8239c9ce893ee",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/loadshape_binsave_mmf_mp_p_sng.bin",
+      "sha256": "f1bd55d7df432bfc02ba79dc5f7bbd2caf13a6ca80a3428b75d00be9aac19b08",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/loadshape_binsave_mmf_mp_q_dbl.bin",
+      "sha256": "7ee95c009aeb80ad21dc46fc9d75df76adbe5187cb877c3969872ee382888841",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/loadshape_binsave_mmf_mp_q_sng.bin",
+      "sha256": "958be38e5b5bdd8fa2cb4efd7df7fcbbed8ff20f30fd6821eacc966137e6ccde",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/loadshape_binsave_p_dbl.bin",
+      "sha256": "38657c53aa724be485be2d72adb2633b780c291739f1459d0d5123a6751179f7",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/loadshape_binsave_p_sng.bin",
+      "sha256": "f1bd55d7df432bfc02ba79dc5f7bbd2caf13a6ca80a3428b75d00be9aac19b08",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/loadshape_binsave_q_dbl.bin",
+      "sha256": "538d5a758011f8c8236d0fd972b83aae833c9cace13fc185de36736ac64c3e3c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/loadshape_binsave_q_sng.bin",
+      "sha256": "958be38e5b5bdd8fa2cb4efd7df7fcbbed8ff20f30fd6821eacc966137e6ccde",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/priceshape_binsave_dbl.bin",
+      "sha256": "ad1461355d664226df0a9dd36082ce06afa03d52a19beb8e90853216ef6b221e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/priceshape_binsave_sng.bin",
+      "sha256": "bc7280150a400968ee578e3bb3a783d36e12ee252e41dd8e04486692b7d709d6",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/save_class_load.meta.json",
+      "sha256": "b972fa83abe38c1188fb678281cd409072f3d65f63edd6adaa69de8513468069",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/save_class_load.txt",
+      "sha256": "61222b84dfcb6c57fee9b2ecc996f522484e97e707827e48af786b71e9c35212",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/save_mtr.meta.json",
+      "sha256": "7502a627f1c2ae97fcd6babd5af22fed3567490c2121a9766e742b3ecb99c40e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/save_mtr.txt",
+      "sha256": "c6a3a0e50b7b00a3a52113a039262d0384c5cc273e7bb309092a1d8d8c55919c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/save_voltages.meta.json",
+      "sha256": "e426f9508f4e9392e4549cee302d8746edd49d0c746a21eb3164d2f50082dd27",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/save_voltages.txt",
+      "sha256": "2957d7a0a096f202d5ddc2ccb6666a840505e67f82c46d1309e6f4c4ebc0e92c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_buses.meta.json",
+      "sha256": "b2e334ac4bc58b914548b004b37d1ee85257475a323bbe22091eba67a1a78e2a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_buses.txt",
+      "sha256": "245ea8994c626dd3f37d2aef0c91fdb8c078145d622eb2a8b88caa05c3f8c3b9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_busflow.meta.json",
+      "sha256": "95fc3f39b20c57913f463365a1570add0198c772abfdfa62c3c95d1b90f4c240",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_busflow.txt",
+      "sha256": "bc0266061211816ce69c8ec103125947f4785d9c9bc3b806941f85a07eb32270",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_busflow_1ph.meta.json",
+      "sha256": "aa0bb1f2a9c12626a280f03f41e37687539354514190556167c76f4ca258bd5a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_busflow_1ph.txt",
+      "sha256": "c45e6f9ccc372c460c301e600c3e68acc4e8b0a1f7ffeefa9d428ae3a1a04635",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_busflow_1ph_elem.meta.json",
+      "sha256": "d38178dd1d7cccdda1988d5c07d253a0b313f4b2c16b5e566a90a0e285e63d87",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_busflow_1ph_elem.txt",
+      "sha256": "367ce0dfe6f0ecd9a50af7471aa68f5f2c3b5ba685265a57215e570833c327a9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_busflow_elem.meta.json",
+      "sha256": "e7cd3769daf40d96f99022008e6a8a196a6c9fe5e726c22a75d18d958acdb723",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_busflow_elem.txt",
+      "sha256": "c4075baf15bbe0ce293334ec7897c6efe55c09c09424ef921e8027538c9fc207",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_busflow_mva.meta.json",
+      "sha256": "508608978ba58983f8392aa8500c8abae66caa8d062f90f6983e028e3a368226",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_busflow_mva.txt",
+      "sha256": "b5a56c98bb078979a6bb5d334a4c59dba41e9b05d27dc35b97023bb5ad321005",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_busflow_mva_elem.meta.json",
+      "sha256": "995f719b38efe39d5cac01c4ccc34dac008f06f3af7541c3bff4170ed4a57832",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_busflow_mva_elem.txt",
+      "sha256": "9327f09333cf8dae18686b9b95baf4f43ca6f34e19b114d06273f5b18f560d18",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_controlled.meta.json",
+      "sha256": "b9141d47725e0903e616e8d2fee831f289bb9c47581703694f7994c69d3b216d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_controlled.txt",
+      "sha256": "e2dc61a61bf86ffd520783af6635aef04b7d1173277479fe13ecb10bb75d0286",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_controlled_multi.meta.json",
+      "sha256": "98a3db016c3796f2fe9654bf34af5eb08f7faa8d0aad0868f8cc590fe1fc0fa1",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_controlled_multi.txt",
+      "sha256": "c0a866d41acd542b2d3cf44a925affd54d274c0c31571fd75675e603852aae9f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_controlqueue.meta.json",
+      "sha256": "753cd04807866556176321033ee429153d395b550cf5e80976ade79fe9a51883",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_controlqueue.txt",
+      "sha256": "95d6601b4d02f91171742ec90773546876dd39d5ea286f862384e0ba19f8973a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_convergence.meta.json",
+      "sha256": "76e9b9cb0312b0a55da9b310e89a76ac977df348fe5de8023884992a625ecb48",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_convergence.txt",
+      "sha256": "2d55f2b3633470571b8e5b39f35cb6e76d68fdabf609176fd6f3db473515af2c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_currents.meta.json",
+      "sha256": "0bf36924785cb56d532c6d965fac6f191ce434290212c6af0915ef6ca495a7e0",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_currents.txt",
+      "sha256": "935de0dfe6a22a57e40f46b671d6527d3b938cb200bb3aae1a3d09df5b382f07",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_currents_elem.meta.json",
+      "sha256": "47140d6f056d5229ea0755fa4c0f472ecbfef917ee845e4930d773843c5ffd91",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_currents_elem.txt",
+      "sha256": "86dc280816634f1b61d06b001b97ac445d9e08c2c40b07f8d821d5f594b929e7",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_currents_elem_autotrans.meta.json",
+      "sha256": "534de315228614b91981a374fc88a35104958f3592a2e7fc11a7a79f8f46d189",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_currents_elem_autotrans.txt",
+      "sha256": "095680881831b536eb65b574449119a2d3572a341aab599cf54869479c794256",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_deltav.meta.json",
+      "sha256": "ab71831d6f4cd4fb9ea518b46625ff21ce22654b1690bd87196d6b47f896f145",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_deltav.txt",
+      "sha256": "c592e8bcfe3e08bf3f9716e951305de6c0dcfc444f72c035074cf620ecdfb43a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_elements.meta.json",
+      "sha256": "8f4847ef0f8ac46771b8ccf1f150460230ad1c6e01c4e7b663fe793dbe84236f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_elements.txt",
+      "sha256": "fa13a7df050f40fa44be7c793417895a5ddd8b7b1504811df8a3fc6f624e8e11",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_elements_class.meta.json",
+      "sha256": "5f28dc744f5f91fe2c0ec5c14a041e01c26ef826eecf4e13edc96fd7bb2cf9e7",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_elements_class.txt",
+      "sha256": "9b169a9f775abe6f7a78dd8efbdc9aaaf1cc074dde9e20f7e098c1301b4e4d19",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_eventlog.meta.json",
+      "sha256": "e88b07067e960f28a303c2a770f91fe6f9d31a6ffad0296e566faac1d7c33612",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_eventlog.txt",
+      "sha256": "115055733ec93f3d059bf03798d5653b43e661c2696f6d406743de1dc9601564",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_faultstudy.meta.json",
+      "sha256": "b71aff486c16a9d810bbbfc9118c0aa296a9829ebb302be40afb00d8f451963c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_faultstudy.txt",
+      "sha256": "a1869cd284db154cdbd053e6784a110b70820f7cd24d98e99cff0debd46e917f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_faultstudy_unbased.meta.json",
+      "sha256": "f72993048cdb371a6bb28afc39eb37c6388962e46b8de0ab2304aa203870bf55",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_faultstudy_unbased.txt",
+      "sha256": "59659564b311e9abdf64f3cffff0fe7cf3fd706de39753986fe60ca533eeebde",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_generators.meta.json",
+      "sha256": "55993ccf704dcb165ac1abb9895bbe0da98d03b9d8bd841f55d79bb72c6c8853",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_generators.txt",
+      "sha256": "e11a9c68b1a287946c0570d4e9761537df5de542f20695d5f383834d13b1b8b3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_generators_none.meta.json",
+      "sha256": "895415ea7bdf4391d29ca324a31b35116226cdd5f793527b535a2ccfecd1dbe4",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_generators_none.txt",
+      "sha256": "36f16fcd82df343b17ac438fd4cd889fb98fa8da3e7f361f9b457eb3f696c4cb",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_isolated.meta.json",
+      "sha256": "b4466d3471fd8ba425d46c21bfb826eed4b0a97ecdbb520fdad518b52f8779da",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_isolated.txt",
+      "sha256": "958b0d6ef9e3c857be8a52f62cd18b680322e2e526b921ebb5eceae2310f6db3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_isolated_disabled.meta.json",
+      "sha256": "23724238d4b7ebe1c6a05cf52b06175c862e8535ba7f706b48c077cf622e20a1",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_isolated_disabled.txt",
+      "sha256": "cd8b725d5300a4f56e845cd95bdc73ff1e5c2a26e6f79dfc2898533b43bad455",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_isolated_iso.meta.json",
+      "sha256": "258907120bfd9a23eab2d071504343de23951b4656615c5b5547ff79f02045f6",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_isolated_iso.txt",
+      "sha256": "00d0ab570f88cfc1990d10926d39586f7527b7fecca8520be686da2c18701a97",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_isolated_orphan.meta.json",
+      "sha256": "190a648bc0c16a75f6981e588bb06024624b849532c2db23f2d57b0d7bea60e5",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_isolated_orphan.txt",
+      "sha256": "d3a7dd23d81433b8ae9c5541e08cecb07e09454c8a1d9aef3f129d0d23a869c9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_isolated_unsolved.meta.json",
+      "sha256": "1ed63aeb29e9ea55c82532bf1025c624e2eab6c524f64ab32eb3e88ee1b4e071",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_isolated_unsolved.txt",
+      "sha256": "cd8b725d5300a4f56e845cd95bdc73ff1e5c2a26e6f79dfc2898533b43bad455",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_kvbasemismatch.meta.json",
+      "sha256": "2c50f4c1c6258a258050e96c28bfdab7f7a059994681c70212f385755e56c2f2",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_kvbasemismatch.txt",
+      "sha256": "6947763ae38547616191b721cb31ef54e6bf212038d46ef8d8f9c6299b42443b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_kvbasemismatch_vals.meta.json",
+      "sha256": "27a8cf6c2139c9e20bc239d625f20bed57f6a6f8d85e0f7089d38f8297d3b755",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_kvbasemismatch_vals.txt",
+      "sha256": "27b94c37dc2fb9b6828f79a2a51a90ec7fa4a8f9075e39613914386495996930",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_lineconstants.meta.json",
+      "sha256": "9dddfa15f5545937af5c8a33577d008705134132fd72f8095e05214b93860583",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_lineconstants.txt",
+      "sha256": "011b3a4080f0caa9694dbd820d9c19357c1c96cf9c58c470301f6c4a66a3dc8d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_lineconstants_code.meta.json",
+      "sha256": "41582d4c35a38dbc173ade7518fdc1a56dda8b8cb4949e0a3539c0e3fe02ccd1",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_lineconstants_code.txt",
+      "sha256": "02221d792e47f70f4ed64ac642c21cdad0a06510d9e576088f45800b5234f7bf",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_lineconstants_empty.meta.json",
+      "sha256": "f3bc874c1f8d9d121e81ae8c0579ec81fde9c72378f84e8becdeab5a089fcdac",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_lineconstants_empty.txt",
+      "sha256": "37ec26fb824902b38fa11f5f4b0cdc10347de19213d85592155d595afbb897af",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_lineconstants_empty_code.meta.json",
+      "sha256": "94ad5de7c07fa61ff322ed2f50c4267fbb575c692eb523f05f24364e6d39f5bd",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_lineconstants_empty_code.txt",
+      "sha256": "319b54fea9e0dc7b30476d8c909a04a14b62a4cd2690b3d827dfc0a9d4bf909e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_lineconstants_f50.meta.json",
+      "sha256": "2bf470be34bc59d30cb05c87c2edf58966ef489334e9741ecf2bd006215f2f95",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_lineconstants_f50.txt",
+      "sha256": "a9bca2b0b1c3e7a934be311e0e980e9b1d416027204efa35572941477124744d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_lineconstants_f50_code.meta.json",
+      "sha256": "51c6d109cd51867585d59ebc80932e850643327fb44d081674282c7b03157033",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_lineconstants_f50_code.txt",
+      "sha256": "d9f44088b1914cd773ac0526ec3fba704e1e9070aafe45fe42d66aefb24cdc22",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_lineconstants_mi250.meta.json",
+      "sha256": "c651f14adf7b985831f15fd223a758edfe309d38448499703dfab18ba0057b04",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_lineconstants_mi250.txt",
+      "sha256": "44d1cff895171dc60afe01292e220ac59079c80d7f05be982aea73d271d2e71f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_lineconstants_mi250_code.meta.json",
+      "sha256": "06ee617abba1a3ee69cfe05974662577b893502ccd7c6bd3c0bfac0d357517d8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_lineconstants_mi250_code.txt",
+      "sha256": "14bcf1592f660b5158b0a5e5d00247a047d75313ccbffb5119f03f6dda0acff2",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_loops.meta.json",
+      "sha256": "22510bc238a34bf3a5dab83c5b022e9b33e963a6e21b28444ebcf876f37f65a6",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_loops.txt",
+      "sha256": "d5ebf08e58123da1b0bc03af23841fb3c88ffc6fde86ee7941af3ab894b11761",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_loops_mesh.meta.json",
+      "sha256": "bb0846c02cdb887a80f8ed7f11d1e392eddbefc0c06612b478d7178060c60787",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_loops_mesh.txt",
+      "sha256": "b69aac6e0c69bce3ea890c6ed72ba3396bee893d8f0f3d1c17daee9465e15438",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_loops_multi.meta.json",
+      "sha256": "7bbc50dd7416e8a8f20381beb1a7201a0a850dc413d02918c31ebf4fa57a1098",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_loops_multi.txt",
+      "sha256": "6cc1385ce3f5f16c38f7b6d377a52ae0ae97a511347b483f96ede966cd03e32c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_losses.meta.json",
+      "sha256": "fc19c0378a938cc8e8ee4c1d635cacecef6629bd64febf3bf991f00a05b57160",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_losses.txt",
+      "sha256": "56586d800783b8c8b9ab2a301d81ea894f8148316c1b50436234a7bc2c810cda",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_meters.meta.json",
+      "sha256": "ac4754414022d3ee79712b20acd0b7cfd697854c381e2363510d0858b7c6a496",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_meters.txt",
+      "sha256": "37c63c9fd021127ecde90fb034e647df0e6b629b91bb16ee13a05a8bfc504bd9",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_meters_multi.meta.json",
+      "sha256": "7b283f7fee76839c631e50ff9ada3bd1795cc556ac5cba892ec36295623475dc",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_meters_multi.txt",
+      "sha256": "7d9291d626c4de8483ca03ac37e5748798a19af5b8e385af1e4eb70bf3bddb3a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_meters_none.meta.json",
+      "sha256": "76da4b0c51da02b1f5b3f23d065fcdac374849c44f18865a3326c690b4421375",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_meters_none.txt",
+      "sha256": "73c61bbba4570653cb5cff8907f79daa91a59d9948c3fe0b3c809081e88afd7b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_mismatch.meta.json",
+      "sha256": "6b36c4d303717c5cc03b2f340112fc7720cd5305f8e580d10c0048f15d9522e7",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_mismatch.txt",
+      "sha256": "a57e7276c50b4f63cc110b6eda2966d4a666066751dff92feba3ca0675f7ef0a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_mismatch_autotrans.meta.json",
+      "sha256": "d8ee63c157cf74b78f4aab9088347e5b9ffa1c7bb5552b813b7043d209638095",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_mismatch_autotrans.txt",
+      "sha256": "59af5e358fd06ba4030a5afea9baabccc8a99d7ee8d26371c256cc8d6f76487e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_monitor.meta.json",
+      "sha256": "e3207614c559d8617922187b9cd871fb344138a2fab9f8fe8fc5a1cf1079a27b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_monitor.txt",
+      "sha256": "52496183d163a826c32494ca630a5dfc98cd242b241fe20619a2f91afd33abb5",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_overloads.meta.json",
+      "sha256": "03a4594adaa192f8073b755b4e5c0efd4cdb3e24d65745290a73f0ef301b650f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_overloads.txt",
+      "sha256": "cf91869848f7a201e2cc2575bf9f3627b58c4e6de9cbcfd44de17311926923af",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_overloads_1ph.meta.json",
+      "sha256": "c2ba83a1b611bd2febacec97da3961f291cf3a31bb2aab1166acaac7ba338201",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_overloads_1ph.txt",
+      "sha256": "b4028c0dfedd9af7d32548d72c5ab22f3e876059093fe04c5ff70d1621749aa0",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_overloads_unbal.meta.json",
+      "sha256": "0a83dfda02fa9b3a06b5dee390121e6bc88d2b6c13a6747261792200b29e78cf",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_overloads_unbal.txt",
+      "sha256": "7e1cebfd00a9c647645cf56ac08b1017029e03158cfc6d4d0b07a92fa9dc438e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_powers.meta.json",
+      "sha256": "5cfe5226807f5c724575052b3a7b9ee5a23e42f93b37f29122d2fe4299fec7a4",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_powers.txt",
+      "sha256": "dc28b0864bf0b2627085e3c3418af1c9bae1e1b06c8be73da90498016795ce48",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_powers_elem.meta.json",
+      "sha256": "6ad36a0f57ec979fb8b6b4396a4f1dfb0ac2cce86be1cf3900058523b930c806",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_powers_elem.txt",
+      "sha256": "fcff734a5d5ec223d9637b7fdccd704a0fa7b8c73b5b8dd7adda3a0507dc03c1",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_powers_elem_autotrans.meta.json",
+      "sha256": "fab5045d2067bbee1274ebcb0cafc2bd717def01748bd0a2e705476f40804657",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_powers_elem_autotrans.txt",
+      "sha256": "2ab2827774dc1ff8abfecd3f8933e6c604225511eedaac0195052f2bf005b091",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_ratings.meta.json",
+      "sha256": "1a82b46e755fee523597940c502300ddbb2c7dd9f6044219870b4e5e8dda6e8d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_ratings.txt",
+      "sha256": "d5fa7b5d9f5b3f3858fcd2611386b69db8431f71646d0215595faf47ad2c82aa",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_result.meta.json",
+      "sha256": "0c0a5d544b0780d0736b4a9fb1eac9f3ab7e79e3240c9fd39dd49cdfe3403dc3",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_result.txt",
+      "sha256": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_taps.meta.json",
+      "sha256": "80adb2ddc86b00bf1825c90512401e30bd74e01598c6670e2af5f7fc0a76bd69",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_taps.txt",
+      "sha256": "d5a052aec3e6d03c871a645ea34c92153132d8a26874f2138bc6a4e580da9b51",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_topology.meta.json",
+      "sha256": "0ebb68663e244b0d2321cf5c1674258c899fd3183748bd6e33d7bc4b3a0a061a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_topology.txt",
+      "sha256": "c8cb03f9d5811d960ffb212e95441b952c475d16a896f6e5262cdd16bc1e8e7e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_topology_mesh.meta.json",
+      "sha256": "d0cdc082dab61ab5006cd363e1408f1d46239db8a14a3a75785e365c8e693d1b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_topology_mesh.txt",
+      "sha256": "bab82ef9e633983cbb5ffdcf61c1e2a17686f9fc596c4102911bb07766e479bd",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_topology_mesh_tree.meta.json",
+      "sha256": "ce52fe4cdb93f24fdd872780abd5109fe81e8570c7b82ab33dd07d8ee17e8b52",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_topology_mesh_tree.txt",
+      "sha256": "1e01202aebb751c0a075bb6b2568c2d50358ac84fb9af2ad872d47c6e4395e14",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_topology_tree.meta.json",
+      "sha256": "be4752442a81bf96ac86080b72b3ea559c6f273c6c98d6b8bc24a36a11be3489",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_topology_tree.txt",
+      "sha256": "4b74cb2444dbde2f644af15ede4bd31e999d39a7ffdae840e968baa1b861ae35",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_unserved.meta.json",
+      "sha256": "c932a3780295d60bd3a1bff8e512df4df05c98a3f58dd1eff5869a0697a1731d",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_unserved.txt",
+      "sha256": "3812e7b716acf9288066132c69cbb59332d792398e1b0fe45bba62f8b156fba7",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_unserved_normal.meta.json",
+      "sha256": "13397184d8f7b50c88b1b3edb13f95e05cfc9f6c11e2527948623417dbc715f5",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_unserved_normal.txt",
+      "sha256": "3e58df79ea3d81e1027a027e4217318381e42e8aaaa67de2624a2c457796815e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_unserved_ue.meta.json",
+      "sha256": "c8bd19a1d652f4c555593c4c4870b5ac5e88a7a74dfebb3353af63ef944cdff6",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_unserved_ue.txt",
+      "sha256": "0b8f98050a60fe41a7c261bb4bdc3d5f23a68b95ec011d13c8e41213cdb3a943",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_variables.meta.json",
+      "sha256": "4774265bfc3b928c6c8661911a0b707588a9d35ed9c445875c66e60dd2d9e381",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_variables.txt",
+      "sha256": "de96a6a78a1927a70912a7b7497242da80d421c48e83b406dfb46fd4f29b4847",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_voltages.meta.json",
+      "sha256": "62c510e7490da9c854379cebb5d37b506748cb102248c7abe606cb32b68dcb90",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_voltages.txt",
+      "sha256": "7ced6e2a1f8e09cfd840c582a3baa31a9276f122acc8f2aec707201f1b4cf8d6",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_voltages_elem.meta.json",
+      "sha256": "128b521791a6fc5a29a34a8d0da131b1124b79f72155bfa27ed4e0d823bc4e7b",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_voltages_elem.txt",
+      "sha256": "ce550eda3695a69a1df9248575a67d7f4e4f81859ad702dfb02e6341a30de136",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_voltages_ll_node.meta.json",
+      "sha256": "c4c1e2cb195669979d56167bfd234c2c5e553d2e71e450ab7b1b5865573f7912",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_voltages_ll_node.txt",
+      "sha256": "eb4a5ab7b3e0c5cb00ff08c56d4cb184dcdb17171547708c916bf3e99fb584c8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_voltages_node.meta.json",
+      "sha256": "e743db845052ed0176280e88fd27595f2ee76aff7a0b3edbed2272272b1da9ee",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_voltages_node.txt",
+      "sha256": "73f6ff21e0e241a36871da86f7a52e5a495816bda591d741b260523ebd0d9d17",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_y.meta.json",
+      "sha256": "e7ed7719b7d9f5a428e6576a919a9e143360f7062fee5d0c7e7c9289a66e8317",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_y.txt",
+      "sha256": "caccc395e9d77b44c4200a4a02125007418f2b2c59778b18090871c36b37259e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_yprim.meta.json",
+      "sha256": "a1030dbbd4df398050cbacb47f26c5a56ef2faf882898d3228bc2be4952c86c8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_yprim.txt",
+      "sha256": "04be7f39b8670edff2d9160b8c6ae3afc537259b3c935bfc8318395d77cfce24",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_zone.meta.json",
+      "sha256": "288a788bfb4868e433fa23249080eab7cad8930461207d5b95b89e51f929996c",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_zone.txt",
+      "sha256": "4ea309142fb669423a59e01772a0ae285be56adb2daac40737553ae68be35b3f",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_zone_mesh.meta.json",
+      "sha256": "e2177d31b0c76f511df1b08a056005903fa91b26ac7d8459d8e7b1345a4e2c45",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/show_zone_mesh.txt",
+      "sha256": "72e6cb9d4cf3dc12e8124b53664e1e72bc5dc507f0949ab7efff1fabcc4f6eb0",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/tshape_binsave_dbl.bin",
+      "sha256": "dacc3e6fa04b58efcd61bef0393827d52873f4ccfd8b1742498c25ca421da2c0",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/reports/tshape_binsave_sng.bin",
+      "sha256": "ee0053802d7a5ad4b883a2e76a4532e5a14f60b6e177f580886a3b5b82bce78e",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/slice.json",
+      "sha256": "2d14209cc04f097215bcd8543466144e2adef07cf16790de657f049857d0fbc8",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/timeseries_controls/capcontrol_micro.json",
+      "sha256": "dab12e8f5e5f9db2ae39c7b0b13443ea6610f3b8653d6438810b1a2f85a1060a",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/timeseries_controls/daily_ieee13.json",
+      "sha256": "59bb4d853f494758e9740ac62f0c32cb28507bc0a748297b8b05991e0c2389cc",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/timeseries_controls/duty_2bus.json",
+      "sha256": "7f7ed37709f437532d0bc86bf5c7f8fe229a825f3726c2f15b49193360204eef",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/timeseries_controls/eventlog_ieee13.json",
+      "sha256": "8415585f4304e19b542d1a33fd1403079fe70b21a1d0733af1ec01a4b2fe29f4",
+      "anchor": "capi_v0145",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/wasm_usermodels/wasm_capcontrol.json",
+      "sha256": "b3582ee509032523185b1d9d088b1d84f92909acd0f3c728fef7089e6098ad39",
+      "anchor": "r4133",
+      "reason": "user-model trajectories captured on r4133 via crates/dss-epri (gen_wasm_usermodels*.rs); the wasm host must reproduce the authority engine's DLL-model behavior, so these stay externally anchored (§1.2 frozen set).",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/wasm_usermodels/wasm_gen_dyn.json",
+      "sha256": "0c5c068e1a85c5dba538a61963337e052177046f89f6a7f4015fbfc3ca7e604c",
+      "anchor": "r4133",
+      "reason": "user-model trajectories captured on r4133 via crates/dss-epri (gen_wasm_usermodels*.rs); the wasm host must reproduce the authority engine's DLL-model behavior, so these stay externally anchored (§1.2 frozen set).",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/wasm_usermodels/wasm_gen_edit.json",
+      "sha256": "c4702b55665dfbb57802e0484bfc60451f2f4e9c8abb6b5bffa61c44a636217a",
+      "anchor": "r4133",
+      "reason": "user-model trajectories captured on r4133 via crates/dss-epri (gen_wasm_usermodels*.rs); the wasm host must reproduce the authority engine's DLL-model behavior, so these stay externally anchored (§1.2 frozen set).",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/wasm_usermodels/wasm_gen_pflow.json",
+      "sha256": "0f236ad219e6f635b45e885baad4cf584ab3f446f803ec555ee665a5731c412e",
+      "anchor": "r4133",
+      "reason": "user-model trajectories captured on r4133 via crates/dss-epri (gen_wasm_usermodels*.rs); the wasm host must reproduce the authority engine's DLL-model behavior, so these stay externally anchored (§1.2 frozen set).",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/wasm_usermodels/wasm_gen_vars.json",
+      "sha256": "a152ce8f5b72e4521ce88975119844bcc48ce45cc8af47db9822e9ffeaab8a17",
+      "anchor": "r4133",
+      "reason": "user-model trajectories captured on r4133 via crates/dss-epri (gen_wasm_usermodels*.rs); the wasm host must reproduce the authority engine's DLL-model behavior, so these stay externally anchored (§1.2 frozen set).",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/wasm_usermodels/wasm_pv_pflow.json",
+      "sha256": "4c7a066929afc4569f58e11a00056a6a4ecb6b592f196eb21778436428940003",
+      "anchor": "r4133",
+      "reason": "user-model trajectories captured on r4133 via crates/dss-epri (gen_wasm_usermodels*.rs); the wasm host must reproduce the authority engine's DLL-model behavior, so these stay externally anchored (§1.2 frozen set).",
+      "produced_by": null
+    },
+    {
+      "path": "tests/golden/wasm_usermodels/wasm_storage_dyn.json",
+      "sha256": "29d4b3aee4d833ec17d008256abee34c648f064e56e54951c8d0a22244cf73eb",
+      "anchor": "r4133",
+      "reason": "user-model trajectories captured on r4133 via crates/dss-epri (gen_wasm_usermodels*.rs); the wasm host must reproduce the authority engine's DLL-model behavior, so these stay externally anchored (§1.2 frozen set).",
+      "produced_by": null
+    }
+  ]
+}
