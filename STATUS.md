@@ -7,11 +7,99 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### GOLDEN_REBASE G0.2 — the regen button gets its guards before it gets a caller (branch `golden-g0`, 2026-08-02)
+
+**Frontier.** `GOLDEN_REBASE_PLAN.md` WP-G0 (safety rails) is **complete**: G0.1
+locked the corpus's provenance, G0.2 lands the guarded writer that reads that lock.
+WP-G1 (live-gate expansion to fastdss parity) is next. Nothing in WP-G1/G2/G3 has
+started, and **no golden byte has moved** — `git status tests/golden` is empty
+after full runs of both lanes.
+
+**What landed.** `crates/dss-core/tests/harness/regen.rs`: `harness::regen()` — the
+shared `DSS_UPDATE_GOLDENS` plumbing — with `harness::snapshot_text()` /
+`snapshot_bytes()` routed through it. Without the knob they return
+`Outcome::NotRequested` and touch nothing, which is what keeps a driver from
+blessing the very output it is about to compare. Armed, every write passes the two
+§1.2 guards, read from `golden.lock.json`:
+
+1. **anchor** — anything not anchored `self` is refused (`ExternallyAnchored`): those
+   bytes are another engine's capture, and de-anchoring is the reviewed
+   `golden_lock.rs::DEANCHORED` edit, never a regen side effect. This is what will
+   let G3.3a snapshot 144 of `reports/export*`'s 146 files while the two `capi015`
+   `.meta.json` sidecars are skipped, untouched.
+2. **producing lane** — a `parity`-produced family is refused from the default build
+   (`WrongLane`); `lane-invariant` — only ever set after a cross-lane regen measured
+   it — is writable from either. Until WP-G4 the lanes render different bytes, so
+   writing a parity family from the default lane would re-baseline the strict lane's
+   byte contract onto the other lane's rendering.
+
+Two further refusals fall out of the same read: `Unlocked` (no row — writing there
+would smuggle an unfingerprinted artifact into the corpus, the hole G0.1 closed) and
+`NoProducingLane` (`anchor: self` with a null `produced_by`, i.e. a hand-edited lock;
+`golden_lock.rs` asserts the equivalence, so the rails refuse rather than guess).
+
+**Design decisions worth carrying forward.**
+
+*A refusal is a skip, not a panic.* A family regen legitimately sweeps artifacts it
+must not touch (G3.3a above; G3.5's six `capi015` `props/` scenarios), so a panic
+would make the documented per-family procedure impossible. Instead every refusal is
+announced on stderr **with its remedy** and the artifact is left byte-identical —
+which the unit tests assert by re-reading it after the refusal.
+
+*The rails read the lock; they never write it.* `golden_lock.rs` owns the lock and
+re-derives every anchor from its registers, so a writer that also rewrote rows could
+launder a provenance claim — and 21 test binaries regenerating concurrently would
+race over one file. A regen run therefore leaves the lock **stale on purpose**:
+`golden_lock.rs` goes red with `DIGEST MOVED` until the operator reviews the diff and
+runs `DSS_UPDATE_GOLDEN_LOCK=1`. That red is the reviewed event the design exists to
+force; the rails print the command once per run.
+
+*The lock schema is mirrored, and the mirror is bound.* `golden_lock.rs` is a separate
+test binary, so its `Anchor`/`ProducedBy`/row types cannot be imported. The harness
+mirror carries `deny_unknown_fields` and is checked against the **real** committed
+lock by `the_committed_lock_parses_into_this_mirror`: >700 rows parse, every one of
+the 733 non-`self` rows is proven unwritable, the born-`self`
+`json/schema_full_port.json` is writable from parity and refused from default. A
+renamed anchor value or a new row field fails there instead of silently defaulting a
+guard into "accept".
+
+**Acceptance (all three guard outcomes proven over a scratch fixture).** Hermetic
+tempdir roots + a mini lock: refusal for **every** external anchor (`capi_v0145`,
+`r4133`, `r3723`, `capi015`, `fpc_3.2.2`), each leaving the seeded bytes unchanged;
+refusal from the non-producing lane **and** an accepted write from the producing one,
+in the same test, so neither arm can go untested in either gate run; `lane-invariant`
+accepted from both lanes; `Unlocked` and `NoProducingLane` refused; the text/binary
+split bound to the lock's own digest classification (a `.bin` path through
+`snapshot_text` and a NUL payload in a text artifact both fail loudly); escaping path
+shapes (`..`, absolute, backslashes, drive letters) rejected before any guard runs.
+Live probe with the knob set: the rails arm, load the real 737-row lock, announce
+`SNAPSHOT`/`REFUSED` lines, and the repo tree stays clean.
+
+**`props_roundtrip.rs` population lock.** `PROPS_CLASS_FILES = 51`,
+`PROPS_SCENARIOS = 322`, asserted as equalities in both lanes, plus a per-file
+"holds no scenarios" guard. G0.1 closed the *file* half from the corpus side (a
+deleted `props/` artifact fails the lock as `STALE ROW`), but nothing watched the
+scenario count **inside** a file and nothing tied either count to the driver that
+consumes them — 50 files pass a non-emptiness check exactly as well as 51 do. Probe:
+flipping the constant to 321 fails with the intended message; reverted.
+
+**Docs.** TESTING.md gains "Golden provenance lock (`golden_lock.rs`) and the
+self-golden write rails" beside the population-lock section (row schema, the four
+lock assertions, the anchor histogram, `EXCLUDED_TREES`, the two write guards, and
+the fact that no driver calls them yet), the R1–R4 regeneration rules as a new
+Procedures entry ("Regenerate a self-golden"), and `DSS_UPDATE_GOLDENS` /
+`DSS_UPDATE_GOLDEN_LOCK` in the environment-variable table. The existing "Regenerate
+a golden" procedure now says what it covers — the externally anchored artifacts only.
+`tools/golden/README.md`'s regen paragraph is replaced by a pointer to those three
+TESTING.md sections plus the per-file lock.
+
+**Scope.** No driver calls the helpers (that is WP-G3), no golden byte moved, no new
+dependency, no tolerance touched. Gate green in both lanes.
+
 ### GOLDEN_REBASE G0.1 — the golden corpus gets a provenance lock before it gets a regen button (branch `golden-g0`, 2026-08-02)
 
-**Frontier.** `GOLDEN_REBASE_PLAN.md` WP-G0 (safety rails) opens. G0.1 is landed;
-G0.2 (the `harness::snapshot_*` helpers + the TESTING.md regen procedure) is next.
-Nothing in WP-G1/G2/G3 has started, and no golden byte has moved.
+**Record.** `GOLDEN_REBASE_PLAN.md` WP-G0 (safety rails) opened here; G0.2 above
+completes it. No golden byte moved.
 
 **Why now.** WP-G3 will convert most golden families into self-snapshots and WP-G4
 will regenerate them again when the FPC print kernels die. That hands the project a
@@ -95,8 +183,9 @@ this lock existed.
 the §1.2 conservative default — until WP-G4 the lanes render different bytes, so the
 lane holding the strictest byte contract is the producer. `lane-invariant` is
 reserved for families a cross-lane regen has *measured*, which is G4.6's job; it is
-never assumed here. The field is bookkeeping today and becomes load-bearing in G0.2,
-where `snapshot_*` refuses to write from the non-producing lane.
+never assumed here. The field was bookkeeping when G0.1 landed and became
+load-bearing in G0.2, where `snapshot_*` refuses to write from the non-producing
+lane.
 
 **Regen cannot move provenance.** `DSS_UPDATE_GOLDEN_LOCK=1` recomputes digests and
 re-derives `anchor`/`reason` from the registers — it never carries them over from the
@@ -123,9 +212,13 @@ key was silently ignored, so `Artifact`/`GoldenLock` now carry
 
 **Scope.** `sha2 = "0.10"` added as a `dss-core` dev-dependency; it was already in
 `Cargo.lock` via `dss-usermodel`'s fixture-hash scaffold, so the dependency closure
-does not grow. TESTING.md is deliberately untouched — the "Golden provenance lock"
-section and the R1–R4 regen rules belong to G0.2, and the lock's own module
-documentation is the authority until then.
+does not grow. TESTING.md was deliberately untouched in this sub-step — the "Golden
+provenance lock" section and the R1–R4 regen rules belong to G0.2 (landed above),
+and the lock's own module documentation was the authority until then. The
+`comment` field inside `golden.lock.json` still carries that "until then" wording;
+it is documentation, never compared, and rewriting it would move a byte under
+`tests/golden` — G3.6 refreshes it in a commit that legitimately regenerates the
+lock.
 
 **Audit round (two fresh auditors, 12 findings; all settled, no golden byte moved).**
 The round found one class of real defect and one class of missing enforcement, and

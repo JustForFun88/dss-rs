@@ -37,9 +37,36 @@ struct Scenario {
     allow_errors: bool,
 }
 
+/// How many `<class>.json` files the gate replays, and how many scenarios they
+/// hold in total — the **population lock** of this gate
+/// (`GOLDEN_REBASE_PLAN.md` G0.2).
+///
+/// [`props_roundtrip_matches_oracle`] used to assert only that the flattened
+/// scenario list was non-empty, so a class file (or a scenario inside one)
+/// could leave the gate and take its coverage with it silently: 50 files still
+/// pass a non-emptiness check exactly as well as 51 do. `golden_lock.rs` (G0.1)
+/// closes the *file* half from the corpus side — a deleted `props/` artifact
+/// fails the lock as a `STALE ROW` — but nothing watches the **scenario** count
+/// inside a file, and nothing tied either count to the driver that consumes
+/// them. These two constants do, as equalities in both lanes, so shrinking the
+/// gate is a reviewed diff here rather than a silent loss.
+///
+/// They are counts, not a content fingerprint: the artifacts' bytes are pinned
+/// by `golden.lock.json`, and their values by this file's comparators. Moving
+/// either number belongs in the commit that argues for the new population.
+const PROPS_CLASS_FILES: usize = 51;
+const PROPS_SCENARIOS: usize = 322;
+
+/// The `props/` corpus as the gate sees it: the flattened scenarios plus the
+/// number of class files they came from ([`PROPS_CLASS_FILES`]).
+struct PropsCorpus {
+    class_files: usize,
+    scenarios: Vec<Scenario>,
+}
+
 /// Load every `*.json` class file from `tests/golden/props/` (sorted by file
 /// name for deterministic order) and flatten their scenarios.
-fn load_scenarios() -> Vec<Scenario> {
+fn load_scenarios() -> PropsCorpus {
     let dir: PathBuf = [
         env!("CARGO_MANIFEST_DIR"),
         "..",
@@ -63,9 +90,17 @@ fn load_scenarios() -> Vec<Scenario> {
         let f: PropsFile = serde_json::from_str(&text)
             .unwrap_or_else(|e| panic!("cannot parse {}: {e}", p.display()));
         assert_eq!(f.schema, 1, "{}: props golden schema mismatch", p.display());
+        assert!(
+            !f.scenarios.is_empty(),
+            "{}: props class file holds no scenarios",
+            p.display()
+        );
         scenarios.extend(f.scenarios);
     }
-    scenarios
+    PropsCorpus {
+        class_files: files.len(),
+        scenarios,
+    }
 }
 
 /// Split a value string into its non-numeric "skeleton" (each number replaced
@@ -207,8 +242,27 @@ fn assert_value_matches(actual: &str, expected: &str, ctx: &str) {
 
 #[test]
 fn props_roundtrip_matches_oracle() {
-    let scenarios = load_scenarios();
+    let corpus = load_scenarios();
+    let scenarios = &corpus.scenarios;
     assert!(!scenarios.is_empty(), "no scenarios in golden");
+
+    // The population lock (see the constants): a class file or a scenario
+    // cannot leave this gate without moving a number here.
+    assert_eq!(
+        corpus.class_files, PROPS_CLASS_FILES,
+        "the props gate replays {} class files, {PROPS_CLASS_FILES} are locked. A file that \
+         leaves takes its whole class's property coverage with it — move this number only in the \
+         commit that argues for the new population.",
+        corpus.class_files
+    );
+    assert_eq!(
+        scenarios.len(),
+        PROPS_SCENARIOS,
+        "the props gate replays {} scenarios, {PROPS_SCENARIOS} are locked. A scenario dropped \
+         inside a class file is invisible to golden_lock.rs (the file still exists) — move this \
+         number only in the commit that argues for the new population.",
+        scenarios.len()
+    );
 
     // Stale-entry guard: every exclusion below must still name a real
     // `(scenario, property)` pair, so a renamed or deleted scenario fails the
@@ -225,7 +279,7 @@ fn props_roundtrip_matches_oracle() {
     }
 
     let mut value_skips = 0usize;
-    for sc in &scenarios {
+    for sc in scenarios {
         let mut dss = Dss::new();
         // gen_props.py runs this preamble before every scenario (the `?`
         // query is circuit-gated in ProcessCommand, so the oracle needed a

@@ -25,6 +25,11 @@ pub mod scenario;
 /// Stage F two-lane test policy (parity vs default build).
 pub mod lane;
 
+/// Self-golden regeneration rails: the `DSS_UPDATE_GOLDENS` knob plus the
+/// anchor and producing-lane write guards of `GOLDEN_REBASE_PLAN.md` §1.2.
+/// No driver calls them yet — that is WP-G3.
+pub mod regen;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 

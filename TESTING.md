@@ -390,6 +390,66 @@ DSS_UPDATE_POPULATION_LOCK=1 cargo test -p dss-core --test population_lock
 writes the lock from the current manifests. Commit the `population.lock.json`
 diff **together with** the manifest/ledger change that caused it.
 
+### Golden provenance lock (`golden_lock.rs`) and the self-golden write rails
+
+The population lock above protects the *live* gate's population; this one
+protects the **committed golden corpus** — and, unlike the population lock, it
+also decides who is allowed to rewrite a golden at all.
+
+`tests/golden/golden.lock.json` fingerprints every committed golden artifact:
+the 727 files under `tests/golden/**` plus the registered out-of-tree witness
+`crates/dss-core/tests/data/adiakoptics/r3723_ref/` (10 files) — 737 rows of
+`{path, sha256, anchor, reason, produced_by}`.
+
+| field | meaning |
+|---|---|
+| `sha256` | digest over the **committed** content — CRLF→LF for text artifacts, raw for the `reports/*.bin` streams (declared `binary` in `.gitattributes`; the test binds its classifier to that declaration, both directions, over every scanned path) |
+| `anchor` | where the truth in those bytes comes from: `capi_v0145` (the pinned dss-python oracle), `r4133`, `r3723`, `capi015` (a dead 0.15.x beta stack), `fpc_3.2.2` (an FPC RTL print capture), or `self` (our own engine — a pure anti-regression snapshot of report *form*) |
+| `reason` | mandatory on every `self` row (G3.6 extends the requirement to the rest) |
+| `produced_by` | which lane may *write* a `self` artifact: `parity` or `lane-invariant`. `null` on every oracle-anchored row — nothing in this repo produces those bytes |
+
+`crates/dss-core/tests/golden_lock.rs` (unconditional, plain `cargo test`)
+asserts, fail-on-stale in both directions: every artifact on disk has a row,
+every row has an artifact on disk, every digest matches, and every row's
+`anchor`+`reason` equal what the in-test provenance registers (`DEANCHORED`,
+`CAPI015_ARTIFACTS`, `R4133_FAMILIES`, `FPC_ARTIFACT`, `R3723_TREE`, with
+`capi_v0145` as the residue) derive for its path — every register entry must
+cover at least one row, and `anchor == self` holds **iff** `produced_by` is set.
+Re-anchoring an artifact is therefore a reviewed Rust edit to a register, never
+a lock hand-edit and never a side effect of pressing a regen button. Anchor
+histogram today: 700 `capi_v0145`, 11 `capi015`, 11 `r4133`, 10 `r3723`, 1
+`fpc_3.2.2`, 4 `self`. One golden-shaped tree is deliberately **outside** the
+lock's scope and named with its reason in the test (`EXCLUDED_TREES`):
+`crates/dss-metis/tests/golden`, the vendored METIS 5.2.1 partitioner fixtures,
+which witness a third-party C algorithm rather than any DSS oracle.
+
+**The write rails** (`crates/dss-core/tests/harness/regen.rs`).
+`harness::regen()` arms `harness::snapshot_text()` / `snapshot_bytes()` when
+`DSS_UPDATE_GOLDENS` is set; without the knob they are inert, so a driver can
+never bless the output it is about to compare. Armed, every write passes two
+guards read from the lock:
+
+- **anchor** — an artifact anchored anywhere but `self` is refused: those bytes
+  are another engine's capture, and de-anchoring is the reviewed register edit
+  above. This is what keeps the frozen sets (`capi015`, `fpc_3.2.2`, `r3723`,
+  the r4133 families) unwritable while a family regen sweeps past them.
+- **producing lane** — until WP-G4 the two lanes render different report/JSON
+  bytes, so a `parity`-produced family is refused from the default build.
+  `lane-invariant` — set only after a cross-lane regen has *measured* it, never
+  assumed — is writable from either lane. A self-golden is produced by the lane
+  holding the family's strictest contract, which today (parity-only byte arms in
+  `lane::compare_report` / `lane::compare_json`) is the parity lane.
+
+A refusal is a **skip**, not a panic — a family regen legitimately sweeps
+artifacts it must not touch — announced on stderr with its remedy, leaving the
+artifact byte-identical. The rails **read** the lock and never write it: after a
+regen run `golden_lock.rs` is red with `DIGEST MOVED` until the operator reviews
+the diff and regenerates the lock deliberately (below). That red is the feature.
+
+No golden driver calls the helpers yet — wiring them is WP-G3 of
+`GOLDEN_REBASE_PLAN.md`; the rails, their guards and the R1–R4 rules below land
+first, so the capability to rewrite a golden never exists unguarded.
+
 ### 0.15.x property-table allowlist (`PROPS_015X`)
 
 The corpus gate's property-parity check (`harness::compare_all_properties`)
@@ -431,6 +491,8 @@ All verified against the consumers named. The `DSS_GATE_*` knobs live in
 | `DSS_GATE_SEED_ONLY` | corpus_gate | substring filter for the seeding run |
 | `DSS_LEDGER_MEASURE` | corpus_gate | `1` → numeric ledger handlers print the live divergence per scope (envelope sizing; no gating change) |
 | `DSS_UPDATE_POPULATION_LOCK` | population_lock | `1` → rewrite `population.lock.json` from the current manifests (deliberate regen) |
+| `DSS_UPDATE_GOLDENS` | `harness::regen` | `1` → arm the self-golden write rails (`snapshot_text`/`snapshot_bytes`). Refuses any artifact not anchored `self` in `golden.lock.json`, and any family whose `produced_by` is not this build's lane. Inert otherwise; no driver calls the helpers yet (WP-G3) |
+| `DSS_UPDATE_GOLDEN_LOCK` | golden_lock | `1` → recompute every digest and rewrite `tests/golden/golden.lock.json` (deliberate regen). Provenance is re-derived from the test's registers, never carried over from the stored row, and every re-anchored or newly seeded path is announced on stderr |
 | `DSS_LIVE_CLASSIFY` | corpus_gate | `1` → probe `skipped_needs_investigation` candidates, write `tmp/classify_report.json` |
 | `DSS_LIVE_PROPS` / `DSS_LIVE_PROPS_MAX` | corpus_gate | `1` → opt-in all-property parity sweep over the capi-gating corpus (diagnostic); `_MAX` caps the case count |
 | `DSS_EXPENSIVE_TESTS` | adiakoptics | `1` → run the 168-step (yearly) A-Diakoptics time-series variant instead of daily-24 |
@@ -467,7 +529,36 @@ EPRI-bridge parity round — the **r4133 arms of `gen_protection.py` and
 payload byte-identity vs the committed golden is the acceptance). The
 capi015-arm generators are frozen dead paths whose environment no longer
 exists (see "Frozen historical generator arms" above); their goldens stay
-pinned as-is.
+pinned as-is. It covers the **externally anchored** artifacts only — everything
+`golden.lock.json` anchors `capi_v0145`, `r4133`, `r3723`, `capi015` or
+`fpc_3.2.2`. Artifacts anchored `self` are our own engine's snapshots and are
+regenerated by the rails instead, under R1–R4 below.
+
+**Regenerate a self-golden (R1–R4)** — the *other* regeneration procedure, for
+artifacts the lock anchors `self`. It never touches an oracle capture: the write
+rails refuse every other anchor (see "Golden provenance lock" above). Four
+rules, in order:
+
+- **R1 — clean tree only.** Regenerate from a committed state, so the diff a
+  reviewer reads is exactly what the run produced and nothing else.
+- **R2 — never to fix a red gate.** The sequence is: fix the engine → pin the
+  intended new value with an expected-value test → regenerate → verify the diff
+  moved **only** the predicted cells. A golden byte moved to make a gate green
+  is the single failure this whole mechanism exists to prevent.
+- **R3 — per family.** No bare "regenerate everything": a run rewrites the
+  family under review and nothing else.
+- **R4 — the lock digest diff is the review artifact.** The commit body names
+  every moved artifact and its cause, and `tests/golden/golden.lock.json` is
+  committed together with the change that moved the bytes.
+
+Mechanics, once WP-G3 has wired a family's driver to the rails: run that driver
+in the family's producing lane with the knob set —
+`DSS_UPDATE_GOLDENS=1 cargo test -p dss-core --features dss-core/oracle-parity --test <driver>` —
+review the resulting artifact diff against the prediction R2 required, then
+`DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock`, then
+re-run the full five-command gate in both lanes. The rails announce every write
+and every refusal on stderr; a refusal means the artifact is not yours to
+rewrite, never that the knob needs forcing.
 
 **Re-vendor the corpus** — `python tools/corpus/vendor.py --force`, then review
 the `tests/corpus/SHA256SUMS` diff.
