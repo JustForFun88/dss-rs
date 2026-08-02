@@ -37,9 +37,46 @@ struct Scenario {
     allow_errors: bool,
 }
 
+/// How many `<class>.json` files the gate replays, how many scenarios they hold
+/// in total, and how many property cells those scenarios pin — the **population
+/// lock** of this gate (`GOLDEN_REBASE_PLAN.md` G0.2).
+///
+/// [`props_roundtrip_matches_oracle`] used to assert only that the flattened
+/// scenario list was non-empty, so a class file (or a scenario, or a property
+/// inside one) could leave the gate and take its coverage with it silently: 50
+/// files still pass a non-emptiness check exactly as well as 51 do.
+/// `golden_lock.rs` (G0.1) digests each artifact's committed content, so an
+/// edit that drops a scenario or a property *does* red the lock as a `DIGEST
+/// MOVED` — what it cannot see is the same drop made across a deliberate
+/// `DSS_UPDATE_GOLDEN_LOCK=1` regen, where the digest moves with the bytes.
+/// Nor does the lock say anything about the *driver*: what this file loads,
+/// replays and actually compares is a separate question from what is committed.
+/// These three constants tie the two together as equalities in both lanes, so
+/// shrinking the gate — from the corpus side or the code side — is a reviewed
+/// diff here rather than a silent loss.
+///
+/// They are counts, not a content fingerprint: the artifacts' bytes are pinned
+/// by `golden.lock.json`, and their values by this file's comparators. Moving
+/// any of them belongs in the commit that argues for the new population.
+///
+/// [`PROPS_PROPERTY_CELLS`] counts every `(scenario, property)` pair the driver
+/// reaches, and is checked as `compared + lane_skips`, both counted at the
+/// comparison site itself — an added `continue` that stopped comparing cells
+/// would move `compared` without moving the corpus.
+const PROPS_CLASS_FILES: usize = 51;
+const PROPS_SCENARIOS: usize = 322;
+const PROPS_PROPERTY_CELLS: usize = 8343;
+
+/// The `props/` corpus as the gate sees it: the flattened scenarios plus the
+/// number of class files they came from ([`PROPS_CLASS_FILES`]).
+struct PropsCorpus {
+    class_files: usize,
+    scenarios: Vec<Scenario>,
+}
+
 /// Load every `*.json` class file from `tests/golden/props/` (sorted by file
 /// name for deterministic order) and flatten their scenarios.
-fn load_scenarios() -> Vec<Scenario> {
+fn load_scenarios() -> PropsCorpus {
     let dir: PathBuf = [
         env!("CARGO_MANIFEST_DIR"),
         "..",
@@ -63,9 +100,17 @@ fn load_scenarios() -> Vec<Scenario> {
         let f: PropsFile = serde_json::from_str(&text)
             .unwrap_or_else(|e| panic!("cannot parse {}: {e}", p.display()));
         assert_eq!(f.schema, 1, "{}: props golden schema mismatch", p.display());
+        assert!(
+            !f.scenarios.is_empty(),
+            "{}: props class file holds no scenarios",
+            p.display()
+        );
         scenarios.extend(f.scenarios);
     }
-    scenarios
+    PropsCorpus {
+        class_files: files.len(),
+        scenarios,
+    }
 }
 
 /// Split a value string into its non-numeric "skeleton" (each number replaced
@@ -207,8 +252,27 @@ fn assert_value_matches(actual: &str, expected: &str, ctx: &str) {
 
 #[test]
 fn props_roundtrip_matches_oracle() {
-    let scenarios = load_scenarios();
+    let corpus = load_scenarios();
+    let scenarios = &corpus.scenarios;
     assert!(!scenarios.is_empty(), "no scenarios in golden");
+
+    // The population lock (see the constants): a class file or a scenario
+    // cannot leave this gate without moving a number here.
+    assert_eq!(
+        corpus.class_files, PROPS_CLASS_FILES,
+        "the props gate replays {} class files, {PROPS_CLASS_FILES} are locked. A file that \
+         leaves takes its whole class's property coverage with it — move this number only in the \
+         commit that argues for the new population.",
+        corpus.class_files
+    );
+    assert_eq!(
+        scenarios.len(),
+        PROPS_SCENARIOS,
+        "the props gate replays {} scenarios, {PROPS_SCENARIOS} are locked. A scenario dropped \
+         inside a class file survives a deliberate golden_lock regen (the digest moves with the \
+         bytes) — move this number only in the commit that argues for the new population.",
+        scenarios.len()
+    );
 
     // Stale-entry guard: every exclusion below must still name a real
     // `(scenario, property)` pair, so a renamed or deleted scenario fails the
@@ -225,7 +289,13 @@ fn props_roundtrip_matches_oracle() {
     }
 
     let mut value_skips = 0usize;
-    for sc in &scenarios {
+    // The cell half of the population lock, counted where the comparison
+    // happens: `compared` is every cell this run actually checked (by value or,
+    // for the sym-matrix exclusion, by shape), `lane_skips` every cell the
+    // default lane deliberately does not compare.
+    let mut compared = 0usize;
+    let mut lane_skips = 0usize;
+    for sc in scenarios {
         let mut dss = Dss::new();
         // gen_props.py runs this preamble before every scenario (the `?`
         // query is circuit-gated in ProcessCommand, so the oracle needed a
@@ -248,6 +318,7 @@ fn props_roundtrip_matches_oracle() {
                     .iter()
                     .any(|(s, p)| *s == sc.name && p.eq_ignore_ascii_case(prop))
             {
+                lane_skips += 1;
                 continue;
             }
             dss.command(&format!("? {}.{}", sc.target, prop));
@@ -260,9 +331,11 @@ fn props_roundtrip_matches_oracle() {
             {
                 assert_shape_matches(&actual, expected, &ctx);
                 value_skips += 1;
+                compared += 1;
                 continue;
             }
             assert_value_matches(&actual, expected, &ctx);
+            compared += 1;
         }
     }
 
@@ -270,6 +343,29 @@ fn props_roundtrip_matches_oracle() {
     // exactly the measured set of cells, so neither a rename that makes an entry
     // inert nor a widening that swallows a class it was never meant to cover can
     // pass.
+    // The cell half of the population lock, both directions: every pinned
+    // property cell was reached, and every cell the default lane drops is one
+    // the exclusion register names.
+    assert_eq!(
+        compared + lane_skips,
+        PROPS_PROPERTY_CELLS,
+        "the props gate reached {} property cells ({compared} compared + {lane_skips} lane-\
+         skipped), {PROPS_PROPERTY_CELLS} are locked. Cells leave this gate either with their \
+         golden or through a code path that stops comparing them; both are a reviewed diff.",
+        compared + lane_skips
+    );
+    assert_eq!(
+        lane_skips,
+        if dss_core::compat::ORACLE_PARITY {
+            0
+        } else {
+            LANE_SKIP_SCENARIO_PROPS.len()
+        },
+        "the default lane skipped {lane_skips} scenario-property cells; \
+         LANE_SKIP_SCENARIO_PROPS names {} (and the parity lane must skip none)",
+        LANE_SKIP_SCENARIO_PROPS.len()
+    );
+
     assert_eq!(
         value_skips, LANE_SKIP_PROP_VALUE_CELLS,
         "the sym-matrix value exclusion moved: {value_skips} cells skipped, \
