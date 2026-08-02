@@ -11,7 +11,8 @@
 
 **Frontier.** `GOLDEN_REBASE_PLAN.md` WP-G0 is complete (below); **WP-G2 opens
 here with rails only** — no compat kernel, no alias and no engine line was
-touched, so `lane_diff.ps1` is not part of this sub-step's gate and
+touched (the fix round edited two `dss-parser/src/compat.rs` doc comments, so
+`lane_diff.ps1` was run regardless: max |Δ| = 0), and
 `git diff --stat -- tests/golden` is empty. G2.1a (`stddev_single_point`) is the
 first actual teardown. WP-G1 may still interleave at sub-step granularity under
 §0's constraints (G2.2a before G1.6, G2.4 before any G1 step re-touching
@@ -38,17 +39,22 @@ tag and a `.rs` path.
 **(b) `TORN_DOWN_ROWS`, created empty.** In `oracle_parity_cfg_gate.rs` (not a new
 binary — `repo_root`/`rust_sources`/`test_region`/`is_pin_candidate`/`names_token`
 are private to it, and that file already *is* the compat-machinery register):
-`(row name, Kind::{SplitAlias,WholeCase}, Evidence::{Site,Ledger,None}, Option<(pin
-file, pin fn)>)`. Both censuses are single integers, so "row X was torn down" and
-"row X quietly stopped being counted" are the same edit today; the register makes
-them different edits. `every_torn_down_row_keeps_its_pin_and_its_evidence` checks
-four independent rots: the pin file still names the pin fn **inside a real test
-region** (`is_pin_candidate`, so a compat module's kernel-vs-kernel test or this
-bookkeeping file cannot pose as one); an `Evidence::Site` slice still matches; an
-`Evidence::Ledger` id still exists in `tests/corpus/ledger.json`; and the two
-arithmetic ties `31 − count(SplitAlias) == SPLIT_ALIAS_POPULATION` and
-`4 − count(WholeCase) == EXIT_POPULATION[WholeCase]`, which is what makes a
-census decrement impossible without a row and vice versa.
+`(row name, Kind::{SplitAlias,WholeCase}, Evidence::{Site,Exclusion,Ledger,None},
+Option<(pin file, pin fn)>)`. Both censuses are single integers, so "row X was torn
+down" and "row X quietly stopped being counted" are the same edit today; the
+register makes them different edits.
+`every_torn_down_row_keeps_its_pin_and_its_evidence` checks six independent rots:
+the pin fn is still **declared** `#[test]` inside a real test region
+(`is_pin_candidate`, so a compat module's kernel-vs-kernel test or this bookkeeping
+file cannot pose as one — and `test_fn_body`, so a comment mentioning a deleted
+test cannot pose as one either); that pin's **body no longer branches on the
+lane**, which is what "the exclusion/pin becomes unconditional" actually means; an
+`Evidence::Site`/`Exclusion` slice still matches; an `Evidence::Ledger` id still
+exists in `tests/corpus/ledger.json` (`Evidence::None` is refused outright until
+WP-G4); the two arithmetic ties `31 − count(SplitAlias) == SPLIT_ALIAS_POPULATION`
+and `4 − count(WholeCase) == EXIT_POPULATION[WholeCase]`; and — because those ties
+are *counts* — that no `SplitAlias` row's name is still in the live split set, so
+a delete-one/register-another swap cannot balance them.
 
 **(c) The greppable markers.** `// LANE-EXCLUSION(<row>): <why>` at every
 exclusion a teardown makes unconditional and `// EXPECTED-VALUE-PIN(<row>): <why>`
@@ -56,11 +62,14 @@ at every pin, checked by `teardown_markers_and_the_register_agree` both ways in
 the `markers_in_tree` discipline: a marker naming a row the register does not
 carry fails (with the register empty, that is *every* marker — the convention is
 live before the first row lands), and a registered row whose recorded pin file
-carries no marker naming it fails too. Exclusion markers carry no per-row
-obligation — a row whose fix needed no harness exclusion has none — but every one
-that exists must name a registered row. Malformed occurrences (outside a comment,
-empty row name, missing `):`) are a hard failure rather than a silent skip, since
-an unparseable marker is invisible to the grep it exists for.
+carries no marker naming it fails too — as does one whose evidence is an
+`Evidence::Exclusion` whose file carries no `LANE-EXCLUSION` naming it. A *blanket*
+exclusion-marker obligation would be wrong (a row whose fix touched no harness has
+none), so the row declares which of its evidence is an exclusion and the check
+cashes that declaration. Malformed occurrences (outside a comment, empty row name,
+missing `):`) are a hard failure rather than a silent skip, since an unparseable
+marker is invisible to the grep it exists for; and the walk carries a non-vacuity
+floor (`rust_sources > 300`) so an empty walk cannot pass as a clean tree.
 
 **Design decisions worth carrying forward.**
 
@@ -96,6 +105,69 @@ its closing `):`: malformed-shape failure.
 still claims the parity lane reproduces "every upstream quirk" and "never
 re-baselines" — stale since the 2026-08-02 policy. `GOLDEN_REBASE_PLAN.md` G5.1
 already owns that exact line, so it is left to it rather than rewritten here.
+
+**Audit settlement (fix agent, 2026-08-03).** Nine findings (2 major, 7 minor;
+two of the minors were the same defect reported by both auditors). **All nine
+fixed** — none refuted, none deferred.
+
+*The two majors were the same class: a rail that claims more than it checks.*
+(1) TESTING.md named `make_integer_rounds_ties_to_even` as the `compat::round_i32`
+pin; that test (`dss-parser/src/parser/tests.rs:196`) asserts only ties-to-even —
+behaviour **both** kernels share — so it cannot fail if the flip is reverted. The
+lane pin is `make_integer_out_of_range_is_the_lane_kernel` (`:224`, reads
+`ORACLE_PARITY`). The wrong name came from `dss-parser/src/compat.rs:135`, fixed
+there too, along with its sibling at `:119` (`growth_shape::tests::…` — the test
+lives in `dss-core/src/exec/tests/compat_quirks.rs:290`). This matters beyond a
+typo: the plan has each teardown copy that name into the register's pin slot, so a
+stale name would seed a row whose "pin" cannot detect a silently reverted fix.
+(2) The register checked that a pin *exists*, not that it became *unconditional* —
+so a pin rewritten as `if ORACLE_PARITY { /* nothing */ } else { assert_eq!(…) }`
+would pass while asserting nothing on the parity side, and once the row leaves the
+census `every_lane_split_alias_is_pinned_by_an_expected_value_test` stops looking
+at it. Now `test_fn_body` slices the pin's brace-balanced body (a five-state
+scanner: raw strings, `{}` placeholders and commented-out code all unbalance a
+naive count) and `reads_the_lane` fails it on any of the **three** spellings — the
+engine constant `ORACLE_PARITY`, the cfg, and the harness constant
+`harness::lane::PARITY` (`lane.rs:78`). The third is not optional: `golden_reports.rs`,
+which will hold most of G2.2's exclusion-flavoured pins, branches only that way, so
+a check that knew the engine constant alone would wave through exactly the pins the
+largest sub-steps produce. Body, not file, because `compat_quirks.rs` legitimately
+holds still-split rows' lane-branching pins next door.
+
+*Minors, all real.* Bare-token pin matching (a leftover `// superseded by <fn>`
+comment kept a deleted pin "present") → the declaration form `#[test] fn <func>` is
+now required. `Evidence::None` accepted for any row → refused until WP-G4's
+rendering rows, mirroring the pin slot's "first exception is a visible edit".
+Census-as-count instead of set → the live split set is now consulted. No
+non-vacuity floor on the marker walk → `rust_sources > 300`. Exclusion markers had
+no row→marker direction → `Evidence::Exclusion`. TESTING.md's column header claimed
+the parity kernel is "what both gating oracles do", but `round_f64`'s mechanism is
+the pinned capi's `TPropertyFlag.ApplyRound` array path, which **r4133 does not
+have at all** (no `DSSObjectHelper.pas`, no `ApplyRound`; its `GrowthShape.Year` is
+`pIntegerArray` — `GrowthShape.pas:82/224` — i.e. the `round_i32` row) → header
+narrowed to "parity kernel", the capi-only mechanism called out in the row, and the
+other four rows' r4133 lines cited inline after verification (`Parser/RPN.pas:247`,
+`Common/Solution.pas:2541`, `Common/ExportResults.pas:3455/3471/3488`). Last, the
+`profile_ll_pu_divisor` row mixed units — "three line-to-line arms" (branches) vs
+"the eight line-to-neutral arms" (there are four; eight is the *division* count) →
+"the eight line-to-neutral divisions".
+
+*Every new check was probed red before being trusted*, on throwaway register rows
+(reverted, tree verified clean): a pin that still reads `ORACLE_PARITY`, and a
+second that reads `lane::PARITY` instead → the unconditionality failure, naming the
+spelling; a pin named only in a comment → the declaration failure;
+`Evidence::None` → the evidence failure; a `SplitAlias` row naming a still-split
+alias with the arithmetic balanced → the ghost failure; an `Evidence::Exclusion`
+whose file carries the pin marker but no exclusion marker → the exclusion-marker
+failure. The negative control matters as much: a row pinned by
+`make_integer_rounds_ties_to_even` (and one by `show_busflow_matches_oracle`),
+whose bodies end immediately above a lane-branching test, reported **nothing** —
+which is what proves `balanced_block` stops at the right brace instead of bleeding
+into the neighbour.
+
+Gate green in both lanes; `git diff --stat -- tests/golden` still empty. The only
+non-test source touched is `dss-parser/src/compat.rs`, doc comments only — no
+alias, no kernel — and `lane_diff.ps1` was run anyway: **max |Δ| = 0**.
 
 ### GOLDEN_REBASE G0.2 — the regen button gets its guards before it gets a caller (branch `golden-g0`, 2026-08-02)
 
