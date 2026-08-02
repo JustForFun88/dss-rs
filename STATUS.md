@@ -69,7 +69,12 @@ capcontrol_follow.dss`, `…_follow_noshape.dss`, vendored
 lane's full suite, the unconditional 520-case corpus gate against both oracle
 channels included, is green, which is the measurement that confirms the
 classification rather than assuming it. `lane_diff.ps1` re-run because a lane
-alias was deleted: max |Δ| = 0.
+alias was deleted: over 520 cases / 3 219 862 records every gated kind
+(`conv`/`cur`/`errs`/`iter`/`loss`/`pow`/`v`/`y`) is **identical**, max |Δ| =
+0, zero iteration drift; the only entries are the *documented* Newton
+pow/loss divergences on the two `newton` decks — the still-live
+`POWERS_REUSE_STALE_NEWTON_ITERMINAL` row that G2.3 removes — so the default
+lane keeps the parity lane's oracle standing.
 
 **Doc surface.** The alias was never cited on the walked doc surface (measured
 again here: the only mentions outside the code are STATUS and the plan, neither
