@@ -1145,8 +1145,21 @@ enum Kind {
 enum Evidence {
     /// `(file, distinctive slice)` — keyed exactly like [`ESCAPE_REGISTER`]:
     /// the file must still contain the slice. The WP-G2 shape for a row whose
-    /// teardown made an exclusion or a kernel unconditional.
+    /// teardown made an **engine kernel** unconditional.
     Site(&'static str, &'static str),
+    /// `(file, distinctive slice)` for a **harness exclusion** made
+    /// unconditional — the same key and the same slice check as
+    /// [`Evidence::Site`], plus the obligation that the file carries the
+    /// `LANE-EXCLUSION` marker naming the row.
+    ///
+    /// The two are separate variants only because that obligation cannot be
+    /// guessed: `GOLDEN_REBASE_PLAN.md` §G2.0(b) asks for the marker convention
+    /// checked "both ways", and only the register knows which of its evidence
+    /// sites is an exclusion. A blanket requirement would be wrong — a row
+    /// whose fix touched no harness has no exclusion to mark — so the row says
+    /// which it is, and [`teardown_markers_and_the_register_agree`] holds it to
+    /// it.
+    Exclusion(&'static str, &'static str),
     /// The `id` of the `tests/corpus/ledger.json` entry that pins the
     /// divergence the fix opened against an oracle channel — the shape G2.5's
     /// engine fixes take, where the observable is a gated corpus case rather
@@ -1155,6 +1168,11 @@ enum Evidence {
     /// Nothing beyond the pin. Reserved for rows whose teardown leaves no
     /// distinctive site and moves no oracle-compared number — WP-G4's
     /// rendering rows (`GOLDEN_REBASE_PLAN.md` §WP-G4 preamble).
+    ///
+    /// **Rejected until then**, exactly like a missing pin: every WP-G2
+    /// teardown does leave a mechanism, so the first legitimate `None` row
+    /// lands by editing the assert that refuses it rather than by slipping
+    /// through a hole in it.
     None,
 }
 
@@ -1265,24 +1283,172 @@ fn teardown_markers(root: &Path) -> (Vec<TeardownMarker>, Vec<String>) {
     (out, malformed)
 }
 
+/// The brace-balanced block starting at the `{` at byte `open`.
+///
+/// A five-state scanner rather than a brace count, because the bodies it is
+/// pointed at are *test* bodies: they hold deck text in raw strings, `assert!`
+/// messages with `{}` placeholders, and commented-out code, any of which
+/// unbalances a naive count and would silently hand back the rest of the file.
+fn balanced_block(text: &str, open: usize) -> Option<&str> {
+    let b = text.as_bytes();
+    let ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let mut i = open;
+    let mut depth = 0usize;
+
+    while i < b.len() {
+        match b[i] {
+            b'{' => {
+                depth += 1;
+                i += 1;
+            }
+            b'}' => {
+                depth = depth.checked_sub(1)?;
+                i += 1;
+                if depth == 0 {
+                    return Some(&text[open..i]);
+                }
+            }
+            b'/' if b.get(i + 1) == Some(&b'/') => {
+                i = text[i..].find('\n').map_or(b.len(), |n| i + n + 1);
+            }
+            b'/' if b.get(i + 1) == Some(&b'*') => {
+                i = text[i + 2..].find("*/").map_or(b.len(), |n| i + n + 4);
+            }
+            // A raw string: `r"…"`, `r#"…"#`, `br##"…"##`, … The `r` must not
+            // be the tail of an identifier, or `for"` would start one.
+            b'r' | b'b'
+                if !i
+                    .checked_sub(1)
+                    .and_then(|p| b.get(p))
+                    .copied()
+                    .is_some_and(ident) =>
+            {
+                let mut j = i;
+                if b[j] == b'b' {
+                    j += 1;
+                }
+                if b.get(j) != Some(&b'r') {
+                    i += 1;
+                    continue;
+                }
+                j += 1;
+                let hashes = b[j..].iter().take_while(|c| **c == b'#').count();
+                if b.get(j + hashes) != Some(&b'"') {
+                    i += 1;
+                    continue;
+                }
+                let close = format!("\"{}", "#".repeat(hashes));
+                let from = j + hashes + 1;
+                i = text[from..]
+                    .find(&close)
+                    .map_or(b.len(), |n| from + n + close.len());
+            }
+            b'"' => {
+                i += 1;
+                while i < b.len() && b[i] != b'"' {
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+                i += 1;
+            }
+            // A char literal — but `'a` in `&'a str` is a lifetime, and eating
+            // to the next quote there would swallow the body.
+            b'\'' if b.get(i + 1) == Some(&b'\\') || b.get(i + 2) == Some(&b'\'') => {
+                i += 1;
+                while i < b.len() && b[i] != b'\'' {
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// The spelling by which `body` still branches on the lane, if it does.
+///
+/// Three, and the third is why this is a function: the engine constant
+/// `ORACLE_PARITY`, the cfg itself, and the **harness** constant
+/// `harness::lane::PARITY` (`lane.rs:78`, `cfg!(feature = …)`), which is how the
+/// integration tests that hold most of the exclusion-flavoured pins —
+/// `golden_reports.rs` above all — read the lane. A check that knew only the
+/// first would wave through exactly the pins WP-G2's largest sub-steps produce.
+fn reads_the_lane(body: &str) -> Option<&'static str> {
+    if names_token(body, "ORACLE_PARITY") {
+        return Some("ORACLE_PARITY");
+    }
+    if names_token(body, "PARITY") {
+        return Some("lane::PARITY");
+    }
+    body.contains(&needle()).then_some("the lane cfg")
+}
+
+/// The body of the `#[test] fn <func>` **declaration** inside `region`.
+///
+/// `None` when the region merely *mentions* the name. That distinction is the
+/// point: a bare-token match is satisfied by a leftover `// superseded by
+/// <func>` comment sitting where the test used to be, so the register would go
+/// on reporting a pin that no longer runs. The attribute is required the same
+/// way [`test_region`] requires one — an unattributed helper asserts nothing on
+/// its own.
+fn test_fn_body<'a>(region: &'a str, func: &str) -> Option<&'a str> {
+    let ident = |c: char| c.is_alphanumeric() || c == '_';
+    let mut from = 0usize;
+
+    while let Some(rel) = region[from..].find("fn ") {
+        let at = from + rel;
+        from = at + 3;
+        let name: String = region[at + 3..].chars().take_while(|c| ident(*c)).collect();
+        if name != func {
+            continue;
+        }
+        let head = &region[..at];
+        // The nearest `#[test]` above must belong to *this* fn: no other `fn`
+        // may sit between the two.
+        let Some(attr) = head.rfind("#[test]") else {
+            continue;
+        };
+        if head[attr..].contains("fn ") {
+            continue;
+        }
+        let sig = at + 3 + name.len();
+        let open = sig + region[sig..].find('{')?;
+        return balanced_block(region, open);
+    }
+    None
+}
+
 /// Every torn-down row keeps its pin, its evidence, and its census arithmetic.
 ///
-/// Four independent ways the record could rot, all checked:
+/// Six independent ways the record could rot, all checked:
 ///
 /// 1. **The pin is gone.** A teardown's contract is that the row's
-///    expected-value test survives it *unconditionally* — the named test must
-///    still exist, in a real test region, in a file that could pin anything
-///    ([`is_pin_candidate`]: not a compat module's kernel-vs-kernel test, not
-///    this bookkeeping file).
-/// 2. **The mechanism is gone.** An [`Evidence::Site`] slice that no longer
-///    matches means the unconditional exclusion or kernel was reverted or
-///    reworded; an [`Evidence::Ledger`] id that no longer exists means the
-///    divergence the fix opened is no longer pinned at all.
-/// 3. **A census moved without a row.** The two ties are the reason a row
+///    expected-value test survives it — the named test must still be *declared*
+///    ([`test_fn_body`], not a bare mention), in a real test region, in a file
+///    that could pin anything ([`is_pin_candidate`]: not a compat module's
+///    kernel-vs-kernel test, not this bookkeeping file).
+/// 2. **The pin is still conditional.** The contract is not "a test with that
+///    name exists" but "it became *unconditional*" — one expected value
+///    asserted in both lanes. A pin that still reads the lane in any of
+///    [`reads_the_lane`]'s three spellings can assert nothing on one side, and
+///    once the row leaves the census
+///    [`every_lane_split_alias_is_pinned_by_an_expected_value_test`] stops
+///    looking at it, so nothing else would notice. Checked on the pin's own
+///    body, not its file: files like `exec/tests/compat_quirks.rs` legitimately
+///    hold *still-split* rows' lane-branching pins next door.
+/// 3. **The mechanism is gone.** An [`Evidence::Site`]/[`Evidence::Exclusion`]
+///    slice that no longer matches means the unconditional kernel or exclusion
+///    was reverted or reworded; an [`Evidence::Ledger`] id that no longer
+///    exists means the divergence the fix opened is no longer pinned at all;
+///    [`Evidence::None`] is refused outright until WP-G4.
+/// 4. **A census moved without a row.** The two ties are the reason a row
 ///    cannot be skipped: dropping [`SPLIT_ALIAS_POPULATION`] by one without
 ///    adding a `SplitAlias` row fails here, and so does adding a row without
 ///    dropping the number.
-/// 4. **Two rows with one name**, which would make the marker check below
+/// 5. **A row that never left.** The ties are *counts*, so deleting alias A's
+///    split while registering a still-split row B balances them. The names are
+///    therefore checked against the live split set too.
+/// 6. **Two rows with one name**, which would make the marker check below
 ///    ambiguous.
 #[test]
 fn every_torn_down_row_keeps_its_pin_and_its_evidence() {
@@ -1321,32 +1487,51 @@ fn every_torn_down_row_keeps_its_pin_and_its_evidence() {
                         None => problems.push(format!(
                             "    {name}: {file} has no test region — it cannot hold a pin"
                         )),
-                        Some((start, end)) => {
-                            if !names_token(&text[start..end], func) {
-                                problems.push(format!(
-                                    "    {name}: {file} no longer names `{func}` inside its \
-                                     test region — the pin was renamed or deleted"
-                                ));
+                        Some((start, end)) => match test_fn_body(&text[start..end], func) {
+                            None => problems.push(format!(
+                                "    {name}: {file} declares no `#[test] fn {func}` inside \
+                                 its test region — the pin was renamed, deleted, or is only \
+                                 mentioned in a comment"
+                            )),
+                            Some(body) => {
+                                if let Some(how) = reads_the_lane(body) {
+                                    problems.push(format!(
+                                        "    {name}: `{func}` in {file} still branches on the \
+                                         lane (`{how}`). A teardown makes the pin \
+                                         *unconditional* — one expected value asserted in both \
+                                         lanes. Once the row left the census nothing else looks \
+                                         at this test, so a parity arm that asserts nothing \
+                                         would be invisible"
+                                    ));
+                                }
                             }
-                        }
+                        },
                     },
                 }
             }
         }
 
         match evidence {
-            Evidence::None => {}
-            Evidence::Site(file, slice) => match fs::read_to_string(root.join(file)) {
-                Err(e) => problems.push(format!("    {name}: evidence file {file}: {e}")),
-                Ok(text) => {
-                    if !text.contains(*slice) {
-                        problems.push(format!(
-                            "    {name}: {file} no longer contains {slice:?} — the \
-                             unconditional site this teardown left behind is gone"
-                        ));
+            Evidence::None => problems.push(format!(
+                "    {name}: no evidence. Every WP-G2 teardown leaves a mechanism behind — \
+                 the kernel or exclusion it made unconditional (`Evidence::Site` / \
+                 `Evidence::Exclusion`) or the ledger entry pinning the divergence it \
+                 opened (`Evidence::Ledger`). `Evidence::None` is reserved for WP-G4's \
+                 rendering rows; the first of those lands by editing this arm"
+            )),
+            Evidence::Site(file, slice) | Evidence::Exclusion(file, slice) => {
+                match fs::read_to_string(root.join(file)) {
+                    Err(e) => problems.push(format!("    {name}: evidence file {file}: {e}")),
+                    Ok(text) => {
+                        if !text.contains(*slice) {
+                            problems.push(format!(
+                                "    {name}: {file} no longer contains {slice:?} — the \
+                                 unconditional site this teardown left behind is gone"
+                            ));
+                        }
                     }
                 }
-            },
+            }
             Evidence::Ledger(key) => {
                 let ledger = root.join("tests").join("corpus").join("ledger.json");
                 let text = fs::read_to_string(&ledger).expect("read ledger.json");
@@ -1395,6 +1580,27 @@ fn every_torn_down_row_keeps_its_pin_and_its_evidence() {
          A row leaves the split only by landing here with its pin"
     );
 
+    // …and the tie is a *count*, which a delete-one/register-another swap
+    // satisfies. The names have to be gone from the live split set too.
+    let still_split: Vec<String> = lane_aliases(&root)
+        .into_iter()
+        .filter(|(_, impls)| impls.len() == 2 && impls[0] != impls[1])
+        .map(|(alias, _)| alias)
+        .collect();
+    let ghosts: Vec<&str> = TORN_DOWN_ROWS
+        .iter()
+        .filter(|(_, kind, _, _)| *kind == Kind::SplitAlias)
+        .map(|(name, _, _, _)| *name)
+        .filter(|name| still_split.iter().any(|a| a == name))
+        .collect();
+    assert!(
+        ghosts.is_empty(),
+        "teardown register row(s) whose alias still selects two different impls: \
+         {ghosts:?}. The census arithmetic balances, so some *other* row's split was \
+         deleted instead — the register would then credit the teardown to the wrong \
+         row and leave a live split unpinned"
+    );
+
     let whole_case_down = TORN_DOWN_ROWS
         .iter()
         .filter(|(_, k, _, _)| *k == Kind::WholeCase)
@@ -1429,13 +1635,28 @@ fn every_torn_down_row_keeps_its_pin_and_its_evidence() {
 ///   is at G2.0, *every* marker fails — which is the point: the convention is
 ///   live before the first row lands);
 /// * row → marker: a row's recorded pin file must carry the pin marker naming
-///   it, so the grep `<pin marker><row>` finds the test the register promises.
-///   Exclusion markers have no such obligation — a row whose fix needed no
-///   harness exclusion has none — but every one that exists must name a row.
+///   it, so the grep `<pin marker><row>` finds the test the register promises;
+///   and a row whose evidence is an [`Evidence::Exclusion`] must likewise carry
+///   the exclusion marker in that file. A *blanket* exclusion-marker obligation
+///   would be wrong — a row whose fix touched no harness has no exclusion — so
+///   the row declares which of its evidence is one, and this is where the
+///   declaration is cashed.
 #[test]
 fn teardown_markers_and_the_register_agree() {
     let root = repo_root();
     let (markers, malformed) = teardown_markers(&root);
+
+    // Non-vacuity of the *walk*. With the register empty (its state through
+    // G2.0) every assert below passes on zero data, so a `rust_sources`
+    // regression that returned nothing would look exactly like a clean tree.
+    assert!(
+        rust_sources(&root).len() > 300,
+        "the teardown-marker walk reached only {} `.rs` files — it is supposed to \
+         cover the whole repository, and an empty walk makes every check below \
+         vacuous",
+        rust_sources(&root).len()
+    );
+
     let (exclusion, pin) = (exclusion_marker(), pin_marker());
     let (ex_name, pin_name) = (
         exclusion.trim_end_matches('('),
@@ -1467,14 +1688,17 @@ fn teardown_markers_and_the_register_agree() {
         unregistered.join("\n")
     );
 
+    let marked = |marker: &str, row: &str, file: &str| {
+        markers
+            .iter()
+            .any(|(m, r, at, _)| m.as_str() == marker && r.as_str() == row && at.as_str() == file)
+    };
+
     let missing: Vec<String> = TORN_DOWN_ROWS
         .iter()
         .filter_map(|(name, _, _, pin_at)| {
             let (file, func) = (*pin_at)?;
-            let marked = markers.iter().any(|(marker, row, at, _)| {
-                marker.as_str() == pin_name && row.as_str() == *name && at.as_str() == file
-            });
-            (!marked).then(|| format!("    {name}: {file} (pin `{func}`)"))
+            (!marked(&pin_name, name, file)).then(|| format!("    {name}: {file} (pin `{func}`)"))
         })
         .collect();
     assert!(
@@ -1483,6 +1707,23 @@ fn teardown_markers_and_the_register_agree() {
          the register knows where the pin is, but a reader grepping the tree does \
          not:\n{}",
         missing.join("\n")
+    );
+
+    let unmarked: Vec<String> = TORN_DOWN_ROWS
+        .iter()
+        .filter_map(|(name, _, evidence, _)| match evidence {
+            Evidence::Exclusion(file, _) if !marked(ex_name, name, file) => {
+                Some(format!("    {name}: {file}"))
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(
+        unmarked.is_empty(),
+        "torn-down row(s) whose exclusion file carries no `{ex_name}` marker naming \
+         them — the register says the harness exclusion at that file became \
+         unconditional for this row, so the site has to say so too:\n{}",
+        unmarked.join("\n")
     );
 }
 
