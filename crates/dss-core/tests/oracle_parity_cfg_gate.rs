@@ -804,8 +804,9 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// **30** after `GOLDEN_REBASE_PLAN.md` G2.1a tore down `stddev_single_point`,
 /// the first of WP-G2's rows (a defect r4133 *does* share — see
 /// [`TORN_DOWN_ROWS`] for what each teardown leaves behind); **29** after G2.1b
-/// did the same to `CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL`.
-const SPLIT_ALIAS_POPULATION: usize = 29;
+/// did the same to `CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL`; **28** after
+/// G2.1c did the same to `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING`.
+const SPLIT_ALIAS_POPULATION: usize = 28;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -1280,6 +1281,34 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         Some((
             "crates/dss-core/src/elements/control/cap_control/tests.rs",
             "make_like_copies_the_control_signal",
+        )),
+    ),
+    // G2.1c. `CalcAndWriteSeqCurrents` seeds `iNormal := NormAmps` and
+    // overwrites that seed with `I1/NormAmps*100` only when the rating is `> 0`
+    // (`.inputs/dss_capi/src/Common/ExportResults.pas:409-414`; r4133
+    // `Version8/Source/Common/ExportResults.pas:355-358` is the same four
+    // lines), so a column headed "percent" reports `normamps=-1` as a loading
+    // of −1 %. Both gating oracles carry it; both lanes now print the `0` the
+    // report's own `else` arm already writes for every unrated row.
+    // Zero-footprint: no golden and no gated corpus deck rates an element
+    // negatively (at `normamps=0` the two readings coincide), so nothing moved
+    // but the pin.
+    (
+        "SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING",
+        Kind::SplitAlias,
+        // Both columns going through **one** kernel is the torn-down state: the
+        // split computed each of them inline with its own lane-branching
+        // fallback, so this call pair never existed while the alias did. The
+        // leading line break plus the sixteen spaces of the `do_ratings && j
+        // == 1` arm hold the anchor convention on [`Evidence::Site`] as well —
+        // re-wrapping the pair in a lane branch indents it past this needle.
+        Evidence::Site(
+            "crates/dss-core/src/report/export/seq_currents.rs",
+            "\n                (pct_of_rating(norm_amps), pct_of_rating(emerg_amps))",
+        ),
+        Some((
+            "crates/dss-core/tests/golden_reports.rs",
+            "export_seqcurrents_prints_zero_for_an_undefined_rating",
         )),
     ),
 ];

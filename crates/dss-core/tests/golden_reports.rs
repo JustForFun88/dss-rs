@@ -6628,24 +6628,30 @@ fn query_indmach012_pf_empty_after_solve() {
     assert_eq!(dss.result(), "");
 }
 
-/// The Stage F `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING` row, pinned by
-/// expected value in both lanes.
+// EXPECTED-VALUE-PIN(SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING): an undefined
+// rating renders as 0 % in both lanes, and a defined one still renders its
+// loading.
+/// `Export SeqCurrents` prints `0` in the `%Normal`/`%Emergency` columns of an
+/// element whose rating is not positive.
 ///
-/// `ExportResults.pas:409-414` seeds `iNormal := NormAmps` and only
-/// *overwrites* it with `I1/NormAmps*100` when the rating is `> 0`, so upstream
-/// leaks a non-positive rating straight into a column whose header says
-/// "percent": `normamps=-1` prints `-1`, `normamps=0` prints `0`. **Parity
-/// lane**: the raw rating. **Default lane**: `0` — an undefined rating is not a
-/// percentage.
+/// Upstream prints the rating itself: `CalcAndWriteSeqCurrents` seeds
+/// `iNormal := NormAmps` and only *overwrites* it with `I1/NormAmps*100` when
+/// the rating is `> 0` (`.inputs/dss_capi/src/Common/ExportResults.pas:409-414`;
+/// r4133 `Version8/Source/Common/ExportResults.pas:355-358` is the same four
+/// lines), so a column headed "percent" reports `normamps=-1` as a loading of
+/// −1 %. `normamps=0` is the one input on which the two readings agree, which
+/// is why the negative rating is what this deck is built around. Both gating
+/// oracles carry the quirk; neither lane reproduces it (`GOLDEN_REBASE_PLAN.md`
+/// G2.1c; `issue-12`).
 ///
 /// The site was marked "unpinnable" for the whole port because every element on
 /// IEEE13 is rated positively; this deck rates one line negatively on purpose,
-/// which is why no committed golden and no gated corpus case moves with the
-/// flip. The positively-rated control line in the same deck proves the normal
-/// path is untouched in both lanes.
+/// which is why no committed golden and no gated corpus case moved when the
+/// parity lane stopped reproducing it. The positively-rated control line in the
+/// same deck proves the normal percentage path is untouched.
 #[test]
-fn export_seqcurrents_nonpositive_rating_is_the_lane_kernel() {
-    let scratch = scratch_dir("seqcurrents_rating_lane");
+fn export_seqcurrents_prints_zero_for_an_undefined_rating() {
+    let scratch = scratch_dir("seqcurrents_rating");
     let mut dss = Dss::new();
     dss.command(&format!("set datapath=\"{}\"", scratch.display()));
     dss.command("clear");
@@ -6659,7 +6665,14 @@ fn export_seqcurrents_nonpositive_rating_is_the_lane_kernel() {
         "new line.good bus1=b bus2=c length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 \
          c1=0 c0=0 normamps=400 emergamps=600",
     );
-    dss.command("new load.ld bus1=c phases=3 kv=12.47 kw=500 pf=0.95 model=1");
+    // The boundary: an unset (zero) rating is the input on which the upstream
+    // reading and the fixed one coincide, and it carries load current here, so
+    // it also proves the guard is still `> 0` rather than, say, an `abs`.
+    dss.command(
+        "new line.zero bus1=c bus2=d length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 \
+         c1=0 c0=0 normamps=0 emergamps=0",
+    );
+    dss.command("new load.ld bus1=d phases=3 kv=12.47 kw=500 pf=0.95 model=1");
     dss.command("set voltagebases=[12.47]");
     dss.command("calcvoltagebases");
     dss.command("solve");
@@ -6686,29 +6699,33 @@ fn export_seqcurrents_nonpositive_rating_is_the_lane_kernel() {
         )
     };
 
-    // Derived from the *lane*, never from the row's own alias
-    // (`SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING`): reading the alias on both
-    // sides makes the pin assert engine-agrees-with-declaration, so a silent
-    // revert of the flip passes (reproduced, F-settle W4).
-    let parity = dss_core::compat::ORACLE_PARITY;
+    // One expected value, asserted in both lanes: `-1`/`-2` here would be the
+    // upstream reading leaking back in.
     let (bad_n, bad_e) = row("Line.bad");
     assert_eq!(
         (bad_n, bad_e),
-        if parity { (-1.0, -2.0) } else { (0.0, 0.0) },
-        "parity reproduces the raw non-positive rating (ExportResults.pas:409-414); \
-         the default lane prints 0 for an undefined rating"
+        (0.0, 0.0),
+        "a non-positive rating is undefined, so its loading column prints 0 — \
+         printing the rating itself is the upstream quirk (ExportResults.pas:409-414)"
     );
 
-    // Control: a positively-rated element is a real percentage in BOTH lanes.
+    let (zero_n, zero_e) = row("Line.zero");
+    assert_eq!(
+        (zero_n, zero_e),
+        (0.0, 0.0),
+        "an unset rating prints 0 — the reading both the quirk and the fix share"
+    );
+
+    // Control: a positively-rated element still prints a real percentage.
     let (good_n, good_e) = row("Line.good");
     assert!(
         good_n > 0.0 && good_e > 0.0 && good_n > good_e,
-        "a rated element must still print I1/rating*100 in both lanes, got \
+        "a rated element must still print I1/rating*100, got \
          %Normal={good_n} %Emergency={good_e}"
     );
     // The report renders these to ~4 significant digits (`6.1` / `4.067`), so
-    // the ratio is checked at rendering precision — the lane assertion above is
-    // the exact one.
+    // the ratio is checked at rendering precision — the undefined-rating
+    // assertion above is the exact one.
     assert!(
         (good_n / good_e - 600.0 / 400.0).abs() < 1e-3,
         "%Normal/%Emergency must be emergamps/normamps = 1.5, got {good_n}/{good_e}"

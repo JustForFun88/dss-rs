@@ -7,6 +7,78 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### GOLDEN_REBASE G2.1c — `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING` torn down: an undefined rating is not a percentage (branch `golden-g2`, 2026-08-03)
+
+**Frontier.** WP-G2's third teardown. `SPLIT_ALIAS_POPULATION` **29 → 28**,
+`TORN_DOWN_ROWS` carries its third row, and the WP acceptance criterion still
+holds at this commit: `git diff --stat -- tests/golden` over the range is
+**empty** and both lanes' `oracle_parity_cfg_gate` is green. Next: G2.1d
+(`REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT`, `issue-31`), same ritual.
+
+**The bug.** `CalcAndWriteSeqCurrents` uses one variable for two different
+quantities: it seeds `iNormal := TPDElement(Pelem).NormAmps` — an ampere rating
+— and then *overwrites* that seed with the loading `I1/NormAmps*100`, but only
+`if iNormal > 0.0` (`.inputs/dss_capi/src/Common/ExportResults.pas:409-414`;
+r4133 `Version8/Source/Common/ExportResults.pas:355-358` is the same four lines,
+so both gating oracles carry it). The guard reads as division-by-zero
+protection, and it is — but on the branch it protects, the variable keeps a
+value of the *other* meaning and the *other* dimension, and that is what reaches
+the `%Normal`/`%Emergency` columns of the written row (`:428`). So an element
+with `normamps=-1` is reported as loaded to −1 %, silently: downstream
+processing that thresholds or sorts on that column takes the rating for a
+percentage. `normamps=0` is the one input on which the two readings coincide.
+The clean fix is what the report's own `else` arm already writes for every other
+terminal and every non-PD element (`:416-420`): `0`. Deep dive:
+`investigations/issue-12-seqcurrents-normamps-passthrough.md`.
+
+**What landed.** `compat::SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING` and both
+its `*_impl` twins are **deleted**; `report/export/seq_currents.rs` computes both
+columns through one `pct_of_rating` closure that returns `0.0` for a
+non-positive rating, with both upstream sites cited in place. The default lane
+already did this, so **only the parity lane moves**; the compat module-doc row
+for the *Single-site upstream quirks* section records this row as G2.1c. The
+report's second, independent upstream bug — `IRESIDUAL_FROM_TERMINAL_1`, ten
+lines below in the same loop — is untouched and still lane-split; G2.2a owns it.
+
+**The pin became unconditional.**
+`golden_reports::export_seqcurrents_prints_zero_for_an_undefined_rating`
+(renamed from `…_nonpositive_rating_is_the_lane_kernel`) lost its
+`ORACLE_PARITY` branch and asserts `(0.0, 0.0)` for `Line.bad`
+(`normamps=-1 emergamps=-2`) outright, carrying the
+`EXPECTED-VALUE-PIN(SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING)` marker. Its deck
+gained a third line, `Line.zero` (`normamps=0 emergamps=0`), placed in series
+*ahead of* the load so it carries current: that is the boundary of the surviving
+`> 0` guard and the input on which the quirk and the fix agree, so a "fix"
+written as `abs(rating)` or as a `>=` fails on `Line.bad` and a guard dropped
+altogether fails on `Line.zero`. The positively-rated `Line.good` still proves
+the ordinary percentage path is untouched. Non-vacuity was measured, not
+assumed: restoring the upstream seed in the closure fails the pin with
+`left: (-1.0, -2.0)`. No kernel-vs-kernel test existed for this row, so none was
+deleted.
+
+**Zero-footprint, measured not assumed.** The lanes could only differ on an
+element with a *negative* `normamps`/`emergamps`, and no committed golden and no
+gated corpus deck has one — the corpus's unset ratings are zeros
+(`EPRITestCircuits/ckt7/LineCodes_ckt7.dss:137`/`:161`,
+`ckt5/WireData_ckt5.dss:5`), where both readings print `0`. So no golden byte, no
+`ledger.json` entry and no `population.lock.json` field moves; the **parity**
+lane's full suite, the unconditional 520-case corpus gate against both oracle
+channels included, is green, which is the measurement that confirms the
+classification rather than assuming it. `lane_diff.ps1` re-run because a lane
+alias was deleted: over 520 cases / 3 219 862 records every gated kind
+(`conv`/`cur`/`errs`/`iter`/`loss`/`pow`/`v`/`y`) is **identical**, max |Δ| = 0,
+zero iteration drift; the only entries are the documented Newton pow/loss
+divergences on the two `newton` decks — the still-live
+`POWERS_REUSE_STALE_NEWTON_ITERMINAL` row that G2.3 removes.
+
+**Doc surface.** The alias was never cited on the walked doc surface (measured
+again here: the only mentions outside the code are STATUS and the plan, neither
+of which `operational_docs` reads), so no citation was struck and the
+non-vacuity floor is untouched. CLAUDE.md names this row nowhere — it is not one
+of the six named bugs — so its policy §Status sentence is unchanged. The
+`Export SeqCurrents` sentence in `tests/TOLERANCE_NOTES.md` is about the
+`Iresidual` row, not this one, and stays for G2.2a.
+
 ### GOLDEN_REBASE G2.1b — `CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL` torn down: a clone keeps its signal (branch `golden-g2`, 2026-08-03)
 
 **Frontier.** WP-G2's second teardown. `SPLIT_ALIAS_POPULATION` **30 → 29**,
