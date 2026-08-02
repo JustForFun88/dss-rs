@@ -649,16 +649,14 @@ impl Dss {
         out.push('\n');
         if positive_sequence {
             // Pascal `OrdinalToString(Integer(PositiveSequence))`
-            // (`Circuit.pas:2768`) — the same `LongBool` -1 as the JSON
-            // `PreCommands` writer, routed through the one Stage F row
-            // (`compat::CKT_MODEL_RENDERED_ORDINAL`). This site had been ported
-            // as a bare `1`, i.e. the *fixed* form in both lanes with no marker;
-            // the parity lane now emits upstream's value-less `Set Cktmodel=`.
+            // (`Circuit.pas:2768`) renders the `LongBool` -1 as `''` and loses
+            // the flag on re-import. The authority writes the literal
+            // (`If PositiveSequence Then Writeln(F, 'Set Cktmodel=Positive')`,
+            // r4133 `Version8/Source/Common/Circuit.pas:2757`), so ordinal 1 is
+            // written here, in both lanes.
             out.push_str(&format!(
                 "Set Cktmodel={}\n",
-                self.enums
-                    .get(self.enums.ckt_model)
-                    .ordinal_to_string(crate::compat::CKT_MODEL_RENDERED_ORDINAL)
+                self.enums.get(self.enums.ckt_model).ordinal_to_string(1)
             ));
         }
         if duplicates {

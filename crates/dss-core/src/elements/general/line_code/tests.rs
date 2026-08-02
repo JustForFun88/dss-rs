@@ -232,20 +232,18 @@ fn line_type_pins_enum_ordinals() {
     assert_eq!(LineType::from_ordinal(13), None);
 }
 
-/// The Stage F [`LINECODE_SYM_CLEAR_OMITS_C0`] row, pinned by expected value in
+/// `c0=` selects the symmetrical-component model, pinned by expected value in
 /// both lanes.
 ///
-/// `TLineCodeObj.PropertySideEffects` lists every sequence quantity *except*
-/// `C0` as one that sets `SymComponentsModel := TRUE` and clears the matrix
-/// property tracking — a slip the Pascal source itself flags with a
-/// `-- Missing?` comment. So upstream a LineCode left on the matrix model stays
-/// there when only `C0=` is edited, and the value is inert. **Parity lane**:
-/// the omission, what both gating oracles reproduce. **Default lane**: `C0`
-/// behaves like its seven siblings.
-///
-/// [`LINECODE_SYM_CLEAR_OMITS_C0`]: crate::compat::LINECODE_SYM_CLEAR_OMITS_C0
+/// The authority routes all six sequence quantities through one setter: r4133's
+/// `SetZ1Z0` sets `SymComponentsModel := TRUE` unconditionally and takes `C0`
+/// as its case 6 (`Version8/Source/General/LineCode.pas:318-337`, dispatched
+/// from `c0=` at `:417`). dss_capi's `PropertySideEffects` omits `C0` from the
+/// equivalent list and flags its own slip with a `-- Missing?` comment
+/// (`src/General/LineCode.pas:360`), leaving the object on the matrix model and
+/// the written value inert — a regression this port does not reproduce.
 #[test]
-fn c0_model_selection_is_the_lane_kernel() {
+fn c0_selects_the_symmetric_model_like_its_siblings() {
     // Start on the *matrix* model (an rmatrix edit clears the sym flag), then
     // edit only `C0` — the one property whose side-effect case is missing.
     let (cls, obj, errors) = edited(&[
@@ -257,22 +255,17 @@ fn c0_model_selection_is_the_lane_kernel() {
     ]);
     assert!(errors.is_empty(), "{errors:?}");
 
-    // Derived from the *lane*, never from the row's own alias — see
-    // `isource::tests` for why (F-settle W4).
-    let parity = crate::compat::ORACLE_PARITY;
-    assert_eq!(
-        obj.sym_components_model, !parity,
-        "parity reproduces the missing `C0` side-effect case (the source's own \
-         `-- Missing?`); the default lane selects the sym model like `C1` does"
+    assert!(
+        obj.sym_components_model,
+        "`c0=` selects the sym model like `c1=` does (r4133 `SetZ1Z0`)"
     );
     // The consequence at the property surface: `C0` is only *displayed* on the
-    // sym model (`is_visible`), so upstream's `c0=` is not merely inert — the
-    // value the user just wrote does not even read back.
+    // sym model (`is_visible`), so under dss_capi's omission the value the user
+    // just wrote does not even read back. Here it does.
     assert_eq!(
         get(&cls, &obj, "c0"),
-        if parity { "----" } else { "1.5" },
-        "parity keeps the object on the matrix model, where `C0` renders as \
-         `----`; the default lane switched models, so the written value shows"
+        "1.5",
+        "the model switched, so the written value reads back"
     );
 
     // Control: `C1` — the sibling the Pascal *does* list — switches the model

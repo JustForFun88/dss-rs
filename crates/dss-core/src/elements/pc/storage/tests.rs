@@ -455,18 +455,13 @@ fn direct_shortcut_excluded_in_gfm_mode() {
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
 use crate::elements::traits::CktElement;
 
-/// The lane's leading action: `BeginEdit` unless the lane reproduces the
-/// unbracketed Pascal body (`STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED`).
+/// The plan's leading action: the writes are bracketed, as r4133's single
+/// `Edit(ActorID)` is (`Version8/Source/PCElements/Storage.pas:3984-3985`).
 fn posseq_head() -> Vec<PosSeqAction> {
-    if crate::compat::ORACLE_PARITY {
-        Vec::new()
-    } else {
-        vec![PosSeqAction::BeginEdit]
-    }
+    vec![PosSeqAction::BeginEdit]
 }
 
-/// 3-phase Storage: kWrated ÷ phases, PF set, one trailing `EndEdit`. Whether
-/// the writes are bracketed is the lane row; the writes themselves are not.
+/// 3-phase Storage: kWrated ÷ phases, PF set, one trailing `EndEdit`.
 #[test]
 fn makeposseq_storage_three_phase() {
     let mut st = Storage::new("s");
@@ -681,8 +676,7 @@ fn set_variable_state_stores_out_of_set_values_verbatim() {
     assert_eq!(st.f_state, StorageState::Charging);
 }
 
-// --- `MakePosSequence` bracketing (compat row
-// `STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED`) -------------------------------
+// --- `MakePosSequence` bracketing -------------------------------------------
 
 /// A 3-phase Storage whose state machine is *live* during the conversion:
 /// `DispMode=Load` runs `CheckStateTriggerLevel` on every recalc, and the
@@ -759,15 +753,14 @@ fn apply_pos_seq(st: &mut Storage, actions: &[PosSeqAction], sys: &SysCtx) -> us
     recalcs
 }
 
-/// Expected-value pin for
-/// [`crate::compat::STORAGE_POSSEQ_LEAVES_ITS_SETS_UNBRACKETED`]: the parity
-/// lane reproduces `Storage.pas:3344-3352` — five writes, no `BeginEdit`, one
-/// dangling `EndEdit`; the default lane opens the edit first, like
-/// `PVsystem.pas:2649` and the nine other `MakePosSequence` bodies that close
-/// with `EndEdit`. Nothing else about the list moves: same five writes, same
-/// values, same order, in both lanes.
+/// Expected-value pin, in both lanes: the plan opens with `BeginEdit`, so the
+/// five writes land as one edit. The authority hands one command string to a
+/// single `Edit(ActorID)` (r4133 `Version8/Source/PCElements/
+/// Storage.pas:3984-3985`), as does its twin `PVsystem.pas:2846`; dss_capi's
+/// refactor kept PVSystem's `BeginEdit(True)` and lost Storage's, leaving five
+/// auto-bracketed `Set*` calls plus a dangling `EndEdit`. Not reproduced.
 #[test]
-fn makeposseq_plan_brackets_its_writes_only_in_the_default_lane() {
+fn makeposseq_plan_brackets_its_writes() {
     let mut st = storage_3ph_dispatched();
     let plan = st.make_pos_sequence(&PosSeqCtx::default());
     assert!(plan.run_base);
@@ -782,24 +775,19 @@ fn makeposseq_plan_brackets_its_writes_only_in_the_default_lane() {
         PosSeqAction::SetF64(prop::PF, st.base.pf_nominal),
         PosSeqAction::EndEdit,
     ]);
-    assert_eq!(
-        plan.actions,
-        expect,
-        "the write list is bracketed iff the lane fixes the slip (parity = {})",
-        crate::compat::ORACLE_PARITY
-    );
+    assert_eq!(plan.actions, expect, "the write list is bracketed");
 }
 
-/// The measurement behind the row: bracketing changes the number of recalcs
-/// (six → one) and **nothing else**. Both lists are driven over two identical
-/// live-dispatch elements through the real property engine, and every field
-/// `RecalcElementData` / `SetNominalDEROutput` writes is compared bit-for-bit
-/// afterwards — including the one piece of carried state, `FState`.
+/// The measurement that made the flip safe: bracketing changes the number of
+/// recalcs (six → one) and **nothing else**. Both lists are driven over two
+/// identical live-dispatch elements through the real property engine, and every
+/// field `RecalcElementData` / `SetNominalDEROutput` writes is compared
+/// bit-for-bit afterwards — including the one piece of carried state, `FState`.
 ///
-/// This is what makes the flip safe to land in the default lane without
-/// excluding anything from oracle comparison: `makeposseq_pc.dss` (the gated
-/// deck that runs `makeposseq` over a 3-phase Storage) cannot move, because the
-/// converted element is identical either way.
+/// This is what makes the flip safe in both lanes without excluding anything
+/// from oracle comparison: `makeposseq_pc.dss` (the gated deck that runs
+/// `makeposseq` over a 3-phase Storage) cannot move, because the converted
+/// element is identical either way.
 #[test]
 fn makeposseq_begin_edit_moves_only_the_recalc_count() {
     let sys = dispatch_ctx();
@@ -830,7 +818,7 @@ fn makeposseq_begin_edit_moves_only_the_recalc_count() {
     assert_eq!(
         (unbracketed_recalcs, bracketed_recalcs),
         (6, 1),
-        "the slip costs five extra RecalcElementData passes"
+        "dss_capi's missing BeginEdit costs five extra RecalcElementData passes"
     );
 
     // Everything the conversion is *for* is identical.

@@ -523,12 +523,6 @@ pub(crate) fn compare_capture(
             "{ctx}: oracle probe count differs from the manifest spec"
         );
         for p in &cp.probes {
-            // A Stage F deliberate divergence drops its own cell in the DEFAULT
-            // lane only (`harness::lane::LANE_SKIP_PROBE_PROPS`); every other
-            // probe of the same case stays oracle-gated in both lanes.
-            if !lane::probe_is_gated(label, &p.element, &p.prop) {
-                continue;
-            }
             if !ledger.is_some_and(|v| v.probe_handled(dss, p, tol, &ctx)) {
                 compare_probe(dss, p, tol, &ctx);
             }
@@ -600,14 +594,9 @@ pub(crate) fn compare_capture(
             // value compare, rewrite its oracle value to the Rust `?`-surface value
             // (the ledger already asserted the Rust value against the pin/envelope),
             // so the standard compare treats it as equal.
-            // The Stage F default-lane cell exclusions are neutralized the same
-            // way, from the same list the probe loop above reads — a cell that
-            // is dropped there must not come back through the whole-element
-            // dump. Empty in the parity lane.
-            let mut prop_keys = ledger
+            let prop_keys = ledger
                 .map(|v| v.property_handled_keys(dss, &cp.all_properties, tol, &ctx))
                 .unwrap_or_default();
-            prop_keys.extend(lane::skipped_prop_keys(label));
             if prop_keys.is_empty() {
                 compare_all_properties(dss, &cp.all_properties, tol, &ctx);
             } else {

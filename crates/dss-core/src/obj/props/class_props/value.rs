@@ -2,7 +2,6 @@
 //! `DumpProperties` emit (Pascal `DSSObjectHelper.GetObjPropertyValue`). Split
 //! out of `class_props/mod.rs` (no behavioral change).
 
-use crate::compat;
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::setters::get_obj_double;
@@ -81,13 +80,17 @@ impl ClassProps {
                 // lower triangle, each element trailed by a space, rows split by
                 // `|`, parenthesised — `(r |r r |r r r )`.
                 //
-                // Lane split `compat::SYM_MATRIX_GETTER_RENDERS_ZEROS`: upstream's
-                // text getter reads uninitialized memory and prints denormal
-                // garbage (~0) whatever the stored matrix is; the parity lane
-                // emits a deterministic zero matrix of the declared order (which
-                // is what the captured goldens hold), the default lane renders
-                // the stored values — exactly the numbers this property's own
-                // JSON exporter already emits (`class_props/json.rs`).
+                // The stored matrix is rendered, as the authority does: r4133
+                // has no typed property table, so `Fault.GMatrix` is rendered by
+                // hand from the dereferenced pointer under an `If Assigned`
+                // (`Version8/Source/PDElements/Fault.pas:695-717`) and
+                // Capacitor/Reactor fall through to `TDSSObject.GetPropertyValue`
+                // = the stored property text (`General/DSSObject.pas:112-115`).
+                // dss_capi's generic arm addresses the *pointer field* as if it
+                // were the array (`src/General/DSSObjectHelper.pas:2296-2313`;
+                // its JSON arm at `:1242-1266` repeats the same slip), so it
+                // reads uninitialized memory and prints ~0 whatever was stored.
+                // That is UB and is not reproduced in any lane.
                 let order = obj.get_i32(pd.size_prop).max(0) as usize;
                 let vals = obj.get_f64_array(idx);
                 if order == 0 {
@@ -99,17 +102,13 @@ impl ClassProps {
                         s.push('|');
                     }
                     for j in 0..=i {
-                        let v = if compat::SYM_MATRIX_GETTER_RENDERS_ZEROS {
-                            0.0
-                        } else {
-                            // Pascal reads the stored order×order matrix
-                            // row-major, `darray[(i-1)*Norder + j] / scale`
-                            // (`DSSObjectHelper.pas:1270-1283`); the text form
-                            // prints its lower triangle.
-                            vals.as_ref()
-                                .and_then(|v| v.get(i * order + j).copied())
-                                .map_or(0.0, |v| if pd.scale == 1.0 { v } else { v / pd.scale })
-                        };
+                        // The stored order×order matrix, read row-major
+                        // (`darray[(i-1)*Norder + j] / scale`); the text form
+                        // prints its lower triangle.
+                        let v = vals
+                            .as_ref()
+                            .and_then(|v| v.get(i * order + j).copied())
+                            .map_or(0.0, |v| if pd.scale == 1.0 { v } else { v / pd.scale });
                         s.push_str(&float_to_str_ex(v));
                         s.push(' ');
                     }

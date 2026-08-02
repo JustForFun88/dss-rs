@@ -28,9 +28,7 @@ pub struct RollAvgWindow {
     sample_time: VecDeque<f64>,
     /// `runningsumsample` — Σ of the values currently in `sample`.
     running_sum_sample: f64,
-    /// `runningsumsampletime` — Pascal's running sum of `sampletime` (see the
-    /// asymmetry note in [`add`](Self::add); only ever read by the upstream-dead
-    /// `AccumSec`).
+    /// `runningsumsampletime` — Σ of the times currently in `sample_time`.
     running_sum_sample_time: f64,
     /// `bufferfull` — latches true once the window has filled.
     buffer_full: bool,
@@ -68,18 +66,20 @@ impl RollAvgWindow {
             }
             self.sample.pop_front();
             self.sample.push_back(incoming_sample_value);
+            // Symmetric with the value sum above: the *evicted* time leaves the
+            // running sum, as the authority does — both of r4133's conditionally
+            // compiled arms subtract the dequeued element
+            // (`Version8/Source/Controls/InvControl.pas:4320`
+            // `- sampletime.Dequeue`, and `:4351` `- sampletime.front;
+            // sampletime.pop`). dss_capi's extracted class merged pop+push
+            // (`src/Controls/RollAvgWindow.pas:40`) and left the subtraction
+            // after it (`:43`), so it removes the *new* head and the sum drifts
+            // from Σ `sampletime`. Not reproduced.
+            self.running_sum_sample_time -= *self.sample_time.front().unwrap();
             self.sample_time.pop_front();
             self.sample_time.push_back(incoming_sample_time);
 
             self.running_sum_sample += incoming_sample_value;
-            // NOTE: upstream asymmetry, reproduced verbatim — for the *time* sum
-            // Pascal reads `sampletime.front` *after* the pop+push (the new
-            // front), not the evicted value it just removed, so this sum drifts
-            // from the true Σ of `sampletime`. Harmless: its only reader,
-            // `AccumSec` (-> [`accum_sec`](Self::accum_sec)), is dead in the
-            // upstream tree, so the drift is never observed. Carries no compat
-            // marker (no golden pins it).
-            self.running_sum_sample_time -= *self.sample_time.front().unwrap();
             self.running_sum_sample_time += incoming_sample_time;
         } else {
             if self.buffer_length == 0 {
@@ -110,8 +110,8 @@ impl RollAvgWindow {
     }
 
     /// Pascal `TRollAvgWindow.AccumSec` — the accumulated sample time (0 if
-    /// empty). Upstream-dead (no caller in the Pascal tree); ported for
-    /// completeness, see the asymmetry note on [`add`](Self::add).
+    /// empty), i.e. Σ of the times currently in the window. Upstream-dead (no
+    /// caller in either Pascal tree); ported for completeness.
     pub fn accum_sec(&self) -> f64 {
         if self.sample.is_empty() {
             0.0
@@ -134,8 +134,7 @@ mod tests {
     }
 
     /// Fill a length-3 window (large time threshold so it fills by count), then
-    /// one eviction. Pins the exact running-sum arithmetic, including the
-    /// `sampletime`-front asymmetry on the eviction.
+    /// one eviction. Pins the exact running-sum arithmetic on both sums.
     #[test]
     fn fills_by_count_then_evicts() {
         let mut w = RollAvgWindow::new();
@@ -151,9 +150,15 @@ mod tests {
         // Eviction: drop value 10 / time 1, push 40 / time 4.
         w.add(40.0, 4.0, 1000.0);
         assert_eq!(w.avg_val(), 30.0); // (20+30+40)/3
-        // Quirk: the time sum subtracts the *new* front (2), not the evicted
-        // value (1): 6 - 2 + 4 = 8 (symmetric logic would give 6 - 1 + 4 = 9).
-        assert_eq!(w.accum_sec(), 8.0);
+        // The *evicted* time leaves the sum: 6 - 1 + 4 = 9. (dss_capi subtracts
+        // the new front instead and would read 8 — r4133 subtracts the dequeued
+        // element, `InvControl.pas:4320`/`:4351`.)
+        assert_eq!(w.accum_sec(), 9.0);
+        assert_eq!(
+            w.accum_sec(),
+            w.sample_time.iter().sum::<f64>(),
+            "the running time sum is Σ of the window's contents"
+        );
     }
 
     /// `bufferlength = 0` forces every stored value to 0 but still records the
@@ -170,8 +175,13 @@ mod tests {
 
         w.add(40.0, 1.0, 5.0); // eviction, value still 0
         assert_eq!(w.avg_val(), 0.0);
-        // 9 - new_front(2) + 1 = 8.
-        assert_eq!(w.accum_sec(), 8.0);
+        // 9 - evicted(1) + 1 = 9.
+        assert_eq!(w.accum_sec(), 9.0);
+        assert_eq!(
+            w.accum_sec(),
+            w.sample_time.iter().sum::<f64>(),
+            "the running time sum is Σ of the window's contents"
+        );
     }
 
     /// The window can latch full by the accumulated-time threshold before it
@@ -187,8 +197,13 @@ mod tests {
 
         w.add(30.0, 2.0, 5.0); // eviction at size 2
         assert_eq!(w.avg_val(), 25.0); // (20+30)/2
-        // 7 - new_front(4) + 2 = 5.
-        assert_eq!(w.accum_sec(), 5.0);
+        // 7 - evicted(3) + 2 = 6.
+        assert_eq!(w.accum_sec(), 6.0);
+        assert_eq!(
+            w.accum_sec(),
+            w.sample_time.iter().sum::<f64>(),
+            "the running time sum is Σ of the window's contents"
+        );
     }
 
     /// The time-threshold latch is strict `>` (Pascal `runningsumsampletime >

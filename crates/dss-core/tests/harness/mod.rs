@@ -1246,10 +1246,11 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     // loosening. Grouped by cause:
     //
     // (a) DoubleSymMatrixProperty getter reads uninitialized memory (a dss_capi
-    //     bug; the compat-tagged site in obj/props/class_props/value.rs renders
-    //     a deterministic zero matrix). The oracle returns nondeterministic garbage
-    //     (denormals ~1e-310 OR huge ~1e123, process-dependent) — oracle UB, not
-    //     reproduced (CLAUDE.md).
+    //     bug, DSSObjectHelper.pas:2296-2313; the port renders the stored lower
+    //     triangle in BOTH lanes per r4133 — Fault.pas:695-717, DSSObject.pas:112-115
+    //     — pinned by compat_quirks::sym_matrix_text_getter_renders_the_stored_matrix).
+    //     The oracle returns nondeterministic garbage (denormals ~1e-310 OR huge
+    //     ~1e123, process-dependent) — oracle UB, never compared (CLAUDE.md).
     ("Capacitor", "CMatrix"),
     ("Reactor", "RMatrix"),
     ("Reactor", "XMatrix"),
@@ -1312,9 +1313,9 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 /// asserts both lanes' values on a 50 Hz deck and their agreement on a 60 Hz
 /// one.
 ///
-/// Keyed by `(class, prop)` rather than by case, unlike the sibling
-/// `lane::LANE_SKIP_PROBE_PROPS`, so it drops the value compare on every case
-/// and not just the one that needs it. That is a real if small coverage loss,
+/// Keyed by `(class, prop)` rather than by case, so it drops the value compare
+/// on every case and not just the one that needs it. That is a real if small
+/// coverage loss,
 /// bounded by measurement: exactly one gated deck sets a 50 Hz fundamental
 /// (`electricdss-tst/Version8/Distrib/IEEETestCases/LVTestCase/Master.dss`) and
 /// every mode-4 flicker deck in the corpus is 60 Hz, so no Pst output moves;

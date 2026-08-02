@@ -6036,30 +6036,31 @@ fn save_class_disabled_load_writes_enabled_no() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-/// The expected-value pin of `compat::CKT_MODEL_RENDERED_ORDINAL` on the two
-/// surfaces no golden covers — `Save circuit`'s `Master.dss` and the
-/// `Get cktmodel` reader — asserted against `compat::ORACLE_PARITY` so it is
-/// meaningful in both lanes. (The third surface, the AltDSS JSON `PreCommands`,
-/// is pinned by `golden_json::json_circuit_positive_seq` against the oracle
-/// capture itself.)
+/// The expected-value pin, in both lanes, for the two `CktModel` surfaces no
+/// golden covers — `Save circuit`'s `Master.dss` and the `Get cktmodel` reader.
+/// (The third surface, the AltDSS JSON `PreCommands`, is pinned by
+/// `golden_json::json_circuit_positive_seq` against the oracle capture with the
+/// one enumerated rewrite.)
 ///
-/// Upstream renders `CktModelEnum.OrdinalToString(Integer(PositiveSequence))`
-/// on all three, and `PositiveSequence` is a `LongBool`, so `Integer(True)` is
-/// -1 — out of the enum's `[0, 1]` range, where `OrdinalToString` answers `''`.
-/// Both surfaces therefore report the model **without a value**.
+/// dss_capi renders `CktModelEnum.OrdinalToString(Integer(PositiveSequence))` on
+/// all three, and `PositiveSequence` is a `LongBool`, so `Integer(True)` is -1 —
+/// out of the enum's `[0, 1]` range, where `OrdinalToString` answers `''`, and
+/// the model is reported **without a value**. The authority has no such path:
+/// the writer is a conditional literal (`If PositiveSequence Then Writeln(F,
+/// 'Set Cktmodel=Positive')`, r4133 `Version8/Source/Common/Circuit.pas:2757`)
+/// and the reader a conditional `AppendGlobalResult`
+/// (`Version8/Source/Executive/ExecOptions.pas:1257`).
 ///
 /// The test also states the *consequence* that makes it a defect rather than a
-/// spelling: the saved `Master.dss` is re-compiled here, and only the default
-/// lane's survives the round trip as a positive-sequence circuit — upstream's
-/// value-less `Set Cktmodel=` re-imports as `Multiphase`, silently dropping the
-/// flag the file was written to preserve. That is the same loss the *oracle's
-/// own* JSON round-trip golden records (`tests/golden/json_import/
-/// rt_positive_seq.json`: J0 carries `Set CktModel=`, J1 carries no CktModel
-/// line at all).
+/// spelling: the saved `Master.dss` is re-compiled here and survives the round
+/// trip as a positive-sequence circuit. dss_capi's value-less `Set Cktmodel=`
+/// re-imports as `Multiphase`, silently dropping the flag the file was written
+/// to preserve — the same loss the *oracle's own* JSON round-trip golden records
+/// (`tests/golden/json_import/rt_positive_seq.json`: J0 carries
+/// `Set CktModel=`, J1 carries no CktModel line at all).
 #[test]
-fn ckt_model_rendered_ordinal_is_lane_split() {
-    let parity = dss_core::compat::ORACLE_PARITY;
-    let want = if parity { "" } else { "Positive" };
+fn ckt_model_render_round_trips() {
+    let want = "Positive";
 
     let scratch = scratch_dir("cktmodel_save");
     let mut dss = Dss::new();
@@ -6082,8 +6083,7 @@ fn ckt_model_rendered_ordinal_is_lane_split() {
     assert_eq!(
         dss.result().trim(),
         want,
-        "`Get cktmodel` renders the LongBool ordinal in the parity lane and the \
-         enum's own in the default lane (parity = {parity})"
+        "`Get cktmodel` renders the enum's own ordinal for the state it reads"
     );
 
     // Surface 2 — `Save circuit`'s Master.dss header.
@@ -6109,7 +6109,7 @@ fn ckt_model_rendered_ordinal_is_lane_split() {
         "the saved header carries the same rendering as the `Get` reader"
     );
 
-    // The consequence: only the default lane's file round-trips the flag.
+    // The consequence: the saved file round-trips the flag.
     let mut back = Dss::new();
     back.command("clear");
     back.command(&format!(
@@ -6119,34 +6119,36 @@ fn ckt_model_rendered_ordinal_is_lane_split() {
     back.command("get cktmodel");
     assert_eq!(
         back.result().trim(),
-        if parity { "Multiphase" } else { "Positive" },
-        "only the default lane's saved header restores the positive-sequence \
-         flag: the parity lane's value-less `Set Cktmodel=` re-imports as \
-         Multiphase, so upstream's own `Save circuit` output silently drops the \
-         very flag it was written to record (parity = {parity})"
+        "Positive",
+        "the saved header restores the positive-sequence flag; dss_capi's \
+         value-less `Set Cktmodel=` re-imports as Multiphase, so its own \
+         `Save circuit` output silently drops the very flag it was written to \
+         record"
     );
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-/// The GlobalResult delimiter of `do_save_cmd` — the Stage F single-site quirk
-/// `compat::SAVE_CLASS_JOINS_ITS_REPORTED_PATH_AS_STRINGS`.
+/// The GlobalResult path of `do_save_cmd`, pinned by expected value in both
+/// lanes: the normalized path the writer actually used.
 ///
-/// Pascal composes `SaveFile := SaveDir + PathDelim + SaveFile` as raw STRINGS
-/// (`ExecHelper.pas:835-841`), so with the default `SaveDir = OutputDirectory`
-/// (already ending in a delimiter) the observable `GlobalResult` carries a
-/// DOUBLED one (`…\\load`) — a path a consumer cannot open verbatim where `\\`
-/// starts a UNC name. The parity lane reproduces it; the default lane reports
-/// the normalized path the writer actually used. An explicit `dir=` is the raw
-/// parameter (single — `sub1\load`) in **both** lanes and the file lands under
-/// the mkdir'd subdir. An unknown class silently writes nothing but still runs
-/// the tail: `GlobalResult`/`LastResultFile` = the raw `file=` value or empty.
-/// All four forms oracle-probed 2026-07-07.
+/// The authority never concatenates a default directory — `DoSaveCmd`
+/// initializes `SaveDir := ''` (r4133 `Version8/Source/Executive/
+/// ExecHelper.pas:913`) and joins only under a non-empty `dir=` (`:968-975`),
+/// so exactly one separator appears. dss_capi seeds
+/// `SaveDir := DSS.OutputDirectory`, which already ends in a delimiter, and
+/// appends another as raw strings, so its `GlobalResult` carries a DOUBLED one
+/// (`…\\load`) — a path a consumer cannot open verbatim where `\\` starts a UNC
+/// name. Not reproduced.
 ///
-/// Asserted against `compat::ORACLE_PARITY`, and the *file on disk* is asserted
-/// at the same normalized location in both lanes — the split moves the reported
-/// string only.
+/// An explicit `dir=` is the raw parameter (single — `sub1\load`) and the file
+/// lands under the mkdir'd subdir. An unknown class silently writes nothing but
+/// still runs the tail: `GlobalResult`/`LastResultFile` = the raw `file=` value
+/// or empty. All four forms oracle-probed 2026-07-07.
+///
+/// The *file on disk* is asserted at the normalized location too — that has
+/// always been where both engines write it; only the reported string moved.
 #[test]
-fn save_class_global_result_delimiter_is_lane_split() {
+fn save_class_reports_the_normalized_path() {
     let sep = std::path::MAIN_SEPARATOR;
     let deck = [
         "clear",
@@ -6154,7 +6156,7 @@ fn save_class_global_result_delimiter_is_lane_split() {
         "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 pf=0.92",
     ];
 
-    // Bare form: doubled delimiter in GlobalResult; normalized file on disk.
+    // Bare form: the normalized path, both reported and on disk.
     let scratch = scratch_dir("save_delims_bare");
     let mut dss = Dss::new();
     for c in deck {
@@ -6163,17 +6165,11 @@ fn save_class_global_result_delimiter_is_lane_split() {
     dss.command(&format!("set datapath=\"{}\"", scratch.display()));
     dss.command("save load");
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
-    let want = if dss_core::compat::ORACLE_PARITY {
-        format!("{}{sep}{sep}load", scratch.display())
-    } else {
-        scratch.join("load").display().to_string()
-    };
     assert_eq!(
         dss.result(),
-        want,
-        "bare `save load` reports the Pascal doubled delimiter in the parity \
-         lane and the normalized path in the default lane (parity = {})",
-        dss_core::compat::ORACLE_PARITY
+        scratch.join("load").display().to_string(),
+        "bare `save load` reports the normalized path, not dss_capi's doubled \
+         delimiter"
     );
     assert_eq!(dss.last_result_file(), dss.result());
     assert!(

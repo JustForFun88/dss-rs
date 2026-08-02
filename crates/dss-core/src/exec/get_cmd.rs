@@ -290,20 +290,17 @@ impl Dss {
                         .unwrap_or_default(),
                 ),
                 // Pascal `OrdinalToString(Integer(positiveSequence))`
-                // (`ExecOptions.pas:919`) — the `LongBool` -1 of
-                // `compat::CKT_MODEL_RENDERED_ORDINAL`, shared with the JSON
-                // `PreCommands` and `SaveMasterFile` writers. This site had been
-                // ported as `positive_sequence as i32` (= 1), i.e. the *fixed*
-                // form in both lanes with no marker.
+                // (`ExecOptions.pas:919`) renders the `LongBool` -1 as `''`.
+                // The authority answers the state itself
+                // (`IF positiveSequence THEN AppendGlobalResult('positive')
+                // ELSE AppendGlobalResult('multiphase')`, r4133
+                // `Version8/Source/Executive/ExecOptions.pas:1257`), so the
+                // ordinal of the state is rendered here, in both lanes.
                 opt::CKT_MODEL => append_result(
                     &mut result,
                     &enums
                         .get(enums.ckt_model)
-                        .ordinal_to_string(if ckt.positive_sequence {
-                            crate::compat::CKT_MODEL_RENDERED_ORDINAL
-                        } else {
-                            0
-                        }),
+                        .ordinal_to_string(i32::from(ckt.positive_sequence)),
                 ),
                 opt::PRICE_SIGNAL => append_result(&mut result, &float_to_str(ckt.price_signal)),
                 opt::PRICE_CURVE => append_result(

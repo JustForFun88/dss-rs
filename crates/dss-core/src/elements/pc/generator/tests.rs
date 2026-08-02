@@ -310,43 +310,38 @@ fn makeposseq_generator_plain() {
     assert_eq!(plan.actions, expect);
 }
 
-/// Expected-value pin for [`crate::compat::GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS`],
-/// `kVA=` half: the property is set (slot 23), so the parity lane — whose
-/// `had_kVA` reads slot 26, `Xdp` — emits **no** kVA action and the oracle's
-/// `g_kva` keeps `kVA=250`, while the default lane divides the rating by the
-/// phase count like every other quantity in the same block.
+/// Expected-value pin, in both lanes, for the `had_kVA` guard: the property is
+/// set, so the rating is divided by the phase count like every other quantity
+/// in the same block.
+///
+/// The authority's raw slot is its own: r4133 tests `PrpSequence^[26]`
+/// (`Version8/Source/PCElements/generator.pas:3061`) and registers `kVA` at 26
+/// (`:459`). dss_capi's enum reorder put `Xdp` there and left the literal
+/// behind (`Generator.pas:2804`), so its `kVA=250` survives `makeposseq`
+/// undivided — the divergence pinned per-case in `tests/corpus/ledger.json`.
 #[test]
-fn makeposseq_generator_kva_guard_is_the_lane_slot() {
+fn makeposseq_generator_kva_guard_reads_its_own_slot() {
     let mut g = gen_3ph();
-    g.cd.obj.set_as_next_seq(prop::KVA); // slot 23
+    g.cd.obj.set_as_next_seq(prop::KVA);
     let plan = g.make_pos_sequence(&PosSeqCtx::default());
     let v = 12.47 / 3.0_f64.sqrt();
     let mut expect = common_head(v);
-    if !crate::compat::ORACLE_PARITY {
-        expect.push(PosSeqAction::SetF64(prop::KVA, 250.0 / 3.0));
-    }
+    expect.push(PosSeqAction::SetF64(prop::KVA, 250.0 / 3.0));
     expect.push(PosSeqAction::EndEdit);
-    assert_eq!(
-        plan.actions,
-        expect,
-        "`kVA=` divides iff the guard reads its own slot (lane parity = {})",
-        crate::compat::ORACLE_PARITY
-    );
+    assert_eq!(plan.actions, expect, "`kVA=` divides the rating");
 }
 
-/// The `MVA=` half of the same row (slot 24 vs the parity read of 27, `Xdpp`).
-/// The emitted value is `kVArating / 1000 / phases` — upstream converts to MVA
-/// from the kVA field, which holds the same rating in both lanes here.
+/// The `MVA=` half of the same guard (r4133 slot 27, `generator.pas:3061` /
+/// `:460`). The emitted value is `kVArating / 1000 / phases` — upstream
+/// converts to MVA from the kVA field.
 #[test]
-fn makeposseq_generator_mva_guard_is_the_lane_slot() {
+fn makeposseq_generator_mva_guard_reads_its_own_slot() {
     let mut g = gen_3ph();
-    g.cd.obj.set_as_next_seq(prop::MVA); // slot 24
+    g.cd.obj.set_as_next_seq(prop::MVA);
     let plan = g.make_pos_sequence(&PosSeqCtx::default());
     let v = 12.47 / 3.0_f64.sqrt();
     let mut expect = common_head(v);
-    if !crate::compat::ORACLE_PARITY {
-        expect.push(PosSeqAction::SetF64(prop::MVA, 250.0 / 1000.0 / 3.0));
-    }
+    expect.push(PosSeqAction::SetF64(prop::MVA, 250.0 / 1000.0 / 3.0));
     expect.push(PosSeqAction::EndEdit);
     assert_eq!(plan.actions, expect);
 }
@@ -367,24 +362,21 @@ fn makeposseq_generator_kvars_divided() {
     assert_eq!(plan.actions, expect);
 }
 
-/// The same row read from the other side, which is what makes it a defect
-/// rather than a naming preference: setting `Xdp=` — a *reactance* — divides
-/// the kVA rating in the parity lane, and touches nothing in the default one.
+/// The same guard read from the other side, which is what makes dss_capi's
+/// stale literal a defect rather than a naming preference: setting `Xdp=` — a
+/// *reactance* — must not touch the kVA rating.
 #[test]
-fn makeposseq_generator_xdp_trips_the_kva_divide_only_in_parity() {
+fn makeposseq_generator_xdp_does_not_touch_the_kva_rating() {
     let mut g = gen_3ph();
-    g.cd.obj.set_as_next_seq(prop::XDP); // slot 26 == upstream's had_kVA index
+    g.cd.obj.set_as_next_seq(prop::XDP); // dss_capi's stale had_kVA index
     let plan = g.make_pos_sequence(&PosSeqCtx::default());
-    let divided = plan.actions.iter().any(|a| {
-        matches!(
-            a,
-            PosSeqAction::SetF64(i, val) if *i == prop::KVA && (*val - 250.0 / 3.0).abs() < 1e-9
-        )
-    });
-    assert_eq!(
-        divided,
-        crate::compat::ORACLE_PARITY,
-        "`Xdp=` may divide the kVA rating only where the guard reads slot 26"
+    assert!(
+        !plan
+            .actions
+            .iter()
+            .any(|a| matches!(a, PosSeqAction::SetF64(i, _) if *i == prop::KVA)),
+        "`Xdp=` is a reactance and never divides the kVA rating: {:?}",
+        plan.actions
     );
 }
 
