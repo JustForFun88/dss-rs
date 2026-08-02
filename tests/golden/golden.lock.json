@@ -1,5 +1,5 @@
 {
-  "comment": "Provenance lock over every committed golden artifact (GOLDEN_REBASE_PLAN.md §1.2, G0.1): tests/golden/** plus the registered out-of-tree witness crates/dss-core/tests/data/adiakoptics/r3723_ref/. Each row records the artifact's content digest and where the truth in those bytes comes from (anchor), plus - for self-anchored rows - a mandatory reason and the lane allowed to (re)produce them. crates/dss-core/tests/golden_lock.rs asserts, fail-on-stale in both directions: every artifact has a row, every row an artifact, every digest matches, and every anchor=self row is registered in the test's DEANCHORED family register. Digests are taken over the COMMITTED content: CRLF is normalized to LF for text artifacts (core.autocrlf=true here, so the working tree carries CRLF while git stores LF), while reports/*.bin streams - `binary` in .gitattributes - are hashed raw. Regenerate DELIBERATELY with `DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock`; it moves digests only, never provenance, and the diff is the review artifact. The regeneration rules R1-R4 and the operational walkthrough land in TESTING.md with the snapshot helpers (plan sub-step G0.2); until then the authority is the golden_lock.rs module documentation.",
+  "comment": "Provenance lock over the committed golden corpus (GOLDEN_REBASE_PLAN.md §1.2, G0.1): tests/golden/** plus the registered out-of-tree witness crates/dss-core/tests/data/adiakoptics/r3723_ref/. That enumeration is the scope; golden-shaped trees left outside it (today: crates/dss-metis/tests/golden, the vendored METIS 5.2.1 fixtures) are named with their reason in golden_lock.rs::EXCLUDED_TREES and revisited in G3.6. Each row records the artifact's content digest and where the truth in those bytes comes from (anchor), plus - for self-anchored rows - a mandatory reason and the lane allowed to (re)produce them. crates/dss-core/tests/golden_lock.rs asserts, fail-on-stale in both directions: every artifact has a row, every row an artifact, every digest matches, and every row's anchor+reason are exactly what the test's provenance registers (DEANCHORED / CAPI015_ARTIFACTS / R4133_FAMILIES / FPC_ARTIFACT / R3723_TREE, capi_v0145 as the residue) derive for its path - so re-anchoring an artifact is a reviewed edit to a register, never a hand-edit here. Digests are taken over the COMMITTED content: CRLF is normalized to LF for text artifacts (core.autocrlf=true here, so the working tree carries CRLF while git stores LF), while reports/*.bin streams - `binary` in .gitattributes, cross-checked against that file - are hashed raw; an EOL-only working-tree change therefore moves no digest because it moves no committed byte (see the golden_lock.rs module docs, assertion 3, for what that means for G4.3). Regenerate DELIBERATELY with `DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock`; it moves digests only - provenance is re-derived from the registers, and every re-anchored or newly seeded path is announced on stderr - and the diff is the review artifact. The regeneration rules R1-R4 and the operational walkthrough land in TESTING.md with the snapshot helpers (plan sub-step G0.2); until then the authority is the golden_lock.rs module documentation.",
   "artifacts": [
     {
       "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee123/PROVENANCE.txt",
@@ -544,7 +544,7 @@
       "path": "tests/golden/flicker/pst_demo.json",
       "sha256": "ddf22f554357de1e6d85a79641c7bbe92af518e93ee982149108943676c691c3",
       "anchor": "r4133",
-      "reason": "IEC 61000-4-15 Pst captured on the official EPRI r4133 engine; r4133 is the behavioral authority for the flicker meter and this family is the only Pst oracle gate.",
+      "reason": "the monitor mode-4 IEC 61000-4-15 Pst gate (the Pstcalc command results are a separate family, pstcalc/). The COMMITTED bytes are the frozen capture from the official EPRI r3723 binary via the retired Oddie bridge, which the artifact's own oracle block records; the anchor is r4133 because that is the only surviving regeneration path (tools/golden/gen_flicker.py, epri-worker) and its payload reproduces the r3723 capture byte-identically (proven, STATUS 'EPRI bridge parity round'). The pinned 0.14.5 oracle cannot produce this family at all (its DoFlickerCalculations segfaults).",
       "produced_by": null
     },
     {
@@ -1486,7 +1486,8 @@
     {
       "path": "tests/golden/props/fuse.json",
       "sha256": "ffbd4fce9e5aa652276660fe913839e6228ec35ae66f82e77f403f8bf654af7f",
-      "anchor": "capi_v0145",
+      "anchor": "r4133",
+      "reason": "the WP-U2.1 r4133 Fuse surface (RatedCurrent -> informational, new CurveMultiplier / InterruptingRating, default FuseCurve tlink -> none, props 10 -> 12), which NO capi-line engine has (tools/golden/gen_fuse_r4133.py:11) — the artifact declares engine_spec \"r4133\" itself. The bytes are DERIVED: the retired 0.14.5 dump supplies the rendering the port reproduces bit-for-bit, and every r4133 value delta overlaid on it was verified on the official EPRI r4133 engine (Oddie). The value authority, hence the anchor, is r4133.",
       "produced_by": null
     },
     {
@@ -1614,8 +1615,9 @@
     {
       "path": "tests/golden/props/recloser.json",
       "sha256": "fdad4e0ee02a9896086f1eebd3aca59d513cd7c866a4b40099468a2afeb3235b",
-      "anchor": "capi_v0145",
-      "produced_by": null
+      "anchor": "self",
+      "reason": "de-anchored by the WP-U2.2 r4133 Recloser rewrite (24 -> 46 props), long before this lock: no capi-line engine renders that surface, so the committed values are the PORT's own renders and props_roundtrip compares Rust output back to them (the file's own note says so) — a self-consistency regression pin. SwitchedObj/RecloseIntervals/Enabled/EventLog were cross-validated MANUALLY (non-CI) against oddie:r4133; a regen must repeat that cross-validation. Independent r4133 coverage lives in the live controls-family decks.",
+      "produced_by": "parity"
     },
     {
       "path": "tests/golden/props/regcontrol.json",
@@ -1627,8 +1629,9 @@
     {
       "path": "tests/golden/props/relay.json",
       "sha256": "1ec9a9f5acc589be0f4d5abcceaa05c7c5fa8d925b8f433890b899c4676b4b82",
-      "anchor": "capi_v0145",
-      "produced_by": null
+      "anchor": "self",
+      "reason": "de-anchored by the WP-U2.3 r4133 Relay per-phase rewrite (50 -> 71 props), long before this lock: no capi-line engine renders that surface, so the committed values are the PORT's own renders — the file's own note calls it a REGRESSION PIN (self-consistency), explicitly NOT an independent oracle gate. The load-bearing discrete state (Normal/State) plus SwitchedObj/RecloseIntervals/Enabled were cross-validated MANUALLY (non-CI) against oddie:r4133; a regen must repeat that cross-validation. Independent r4133 coverage lives in the live controls-family relay decks.",
+      "produced_by": "parity"
     },
     {
       "path": "tests/golden/props/sensor.json",
