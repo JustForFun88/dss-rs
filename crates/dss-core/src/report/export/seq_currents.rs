@@ -65,32 +65,28 @@ pub(crate) fn export_seq_currents(
                 (0.0, 0.0)
             };
 
-            // Stage F `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING`: Pascal seeds
-            // `iNormal := NormAmps` and only *overwrites* it with the
-            // percentage when the rating is `> 0` (`ExportResults.pas:409-414`),
-            // so upstream leaks a non-positive rating into a column whose header
-            // says "percent" (`normamps=-1` prints `-1`). The parity lane
-            // reproduces that; the default lane prints 0 for an undefined
-            // rating.
-            let undefined_rating = |rating: f64| {
-                if crate::compat::SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING {
-                    rating
+            // A rating that is not positive is *undefined*, so the loading it
+            // would express does not exist and the column prints 0 — the same
+            // value the `else` arm below already writes for every other
+            // terminal and every non-PD element (`ExportResults.pas:416-420`).
+            //
+            // Upstream prints the rating itself there: it seeds
+            // `iNormal := NormAmps` and only *overwrites* that seed with
+            // `I1/NormAmps*100` when the rating is `> 0`
+            // (`.inputs/dss_capi/src/Common/ExportResults.pas:409-414`; r4133
+            // `Version8/Source/Common/ExportResults.pas:355-358` is the same
+            // four lines), so `normamps=-1` renders as a loading of −1 %. Both
+            // gating oracles carry it and neither lane reproduces it
+            // (`GOLDEN_REBASE_PLAN.md` G2.1c; `issue-12`).
+            let pct_of_rating = |rating: f64| {
+                if rating > 0.0 {
+                    i1 / rating * 100.0
                 } else {
                     0.0
                 }
             };
             let (i_normal, i_emerg) = if do_ratings && j == 1 {
-                let n = if norm_amps > 0.0 {
-                    i1 / norm_amps * 100.0
-                } else {
-                    undefined_rating(norm_amps)
-                };
-                let e = if emerg_amps > 0.0 {
-                    i1 / emerg_amps * 100.0
-                } else {
-                    undefined_rating(emerg_amps)
-                };
-                (n, e)
+                (pct_of_rating(norm_amps), pct_of_rating(emerg_amps))
             } else {
                 (0.0, 0.0)
             };

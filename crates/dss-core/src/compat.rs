@@ -45,7 +45,7 @@
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
 //! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
 //! | report text rendering — `Show` device-name column width | [`max_device_name_length`] — same section | **yes** (F.4b) |
-//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b |
+//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c |
 //!
 //! Rows 12–13 are not in IV.2's table and do not extend it: they are the two
 //! *reproduced* CLAUDE.md upstream bugs whose clean fix is deferred to this
@@ -730,29 +730,6 @@ pub use ISOURCE_BUS2_NEVER_LATCHES_PARITY_IMPL as ISOURCE_BUS2_NEVER_LATCHES;
 // marker and its reproduction pin; see `elements/pd/gic_transformer/solve.rs`
 // for the full measurement and for the `R1=`/`R2=` transitive cover it leaves
 // ready for whoever lands it.
-
-/// Whether `Export SeqCurrents` prints a non-positive current rating **raw** in
-/// its `%Normal`/`%Emergency` percentage columns.
-///
-/// `true` reproduces the upstream quirk: `ExportResults.pas:409-414` seeds
-/// `iNormal := NormAmps` and only *overwrites* it with `I1/NormAmps*100` when
-/// the rating is `> 0`, so an undefined or negative rating leaks the rating
-/// itself into a column whose header says "percent" (`normamps=-1` prints
-/// `-1`).
-///
-/// `false` prints `0` for an undefined rating — the clean fix named at the
-/// site, and the only value that keeps the column's declared meaning. The lanes
-/// differ only for an element with a non-positive `normamps`/`emergamps`; every
-/// golden and gated corpus deck rates every element positively, which is why
-/// the quirk was marked "unpinnable" at the site until now.
-pub const SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING_DEFAULT_IMPL as SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING;
-#[cfg(feature = "oracle-parity")]
-pub use SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING_PARITY_IMPL as SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING;
 
 /// Whether the short-line **merge-with-parent** reduction inspects only the
 /// parent branch's *first* shunt when looking for a capacitor/reactor.
