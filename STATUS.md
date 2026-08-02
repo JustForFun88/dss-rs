@@ -76,12 +76,19 @@ Live probe with the knob set: the rails arm, load the real 737-row lock, announc
 `SNAPSHOT`/`REFUSED` lines, and the repo tree stays clean.
 
 **`props_roundtrip.rs` population lock.** `PROPS_CLASS_FILES = 51`,
-`PROPS_SCENARIOS = 322`, asserted as equalities in both lanes, plus a per-file
-"holds no scenarios" guard. G0.1 closed the *file* half from the corpus side (a
-deleted `props/` artifact fails the lock as `STALE ROW`), but nothing watched the
-scenario count **inside** a file and nothing tied either count to the driver that
-consumes them — 50 files pass a non-emptiness check exactly as well as 51 do. Probe:
-flipping the constant to 321 fails with the intended message; reverted.
+`PROPS_SCENARIOS = 322`, `PROPS_PROPERTY_CELLS = 8343`, asserted as equalities in
+both lanes, plus a per-file "holds no scenarios" guard. G0.1 closed the *file* half
+from the corpus side (a deleted `props/` artifact fails the lock as `STALE ROW`),
+and its digests do see a scenario dropped **inside** a file — what neither sees is
+the same drop made across a deliberate `DSS_UPDATE_GOLDEN_LOCK=1` regen (the digest
+moves with the bytes), nor anything about the **driver**: what this file loads,
+replays and actually compares is a separate question from what is committed. 50
+files pass a non-emptiness check exactly as well as 51 do. The cell constant closes
+the level below: `compared + lane_skips`, both counted at the comparison site, so a
+code path that stops comparing cells moves a number here even with the corpus
+untouched (`lane_skips` is itself tied to `LANE_SKIP_SCENARIO_PROPS.len()`, 0 in
+parity). Probe: flipping the scenario constant to 321 fails with the intended
+message; reverted.
 
 **Docs.** TESTING.md gains "Golden provenance lock (`golden_lock.rs`) and the
 self-golden write rails" beside the population-lock section (row schema, the four
@@ -89,12 +96,82 @@ lock assertions, the anchor histogram, `EXCLUDED_TREES`, the two write guards, a
 the fact that no driver calls them yet), the R1–R4 regeneration rules as a new
 Procedures entry ("Regenerate a self-golden"), and `DSS_UPDATE_GOLDENS` /
 `DSS_UPDATE_GOLDEN_LOCK` in the environment-variable table. The existing "Regenerate
-a golden" procedure now says what it covers — the externally anchored artifacts only.
+a golden" procedure now says what it covers — every externally anchored artifact
+plus, for now, the two `self` `props/` rows `gen_props.py` still writes.
 `tools/golden/README.md`'s regen paragraph is replaced by a pointer to those three
 TESTING.md sections plus the per-file lock.
 
 **Scope.** No driver calls the helpers (that is WP-G3), no golden byte moved, no new
 dependency, no tolerance touched. Gate green in both lanes.
+
+**Audit round (two fresh auditors, opus-high; fix agent, same tier).** Eleven
+findings, one major, no duplicates lost:
+
+- *The rails' announcements were invisible in their own documented command* (major,
+  real). libtest captures `eprintln!` and discards it for a **passing** test — and a
+  regen run passes by design. Every documented regen command now ends in
+  `-- --nocapture` (TESTING.md mechanics, the `LOCK_REGEN_CMD` const the refusal
+  messages print, the module doc, which now explains why), and `Outcome` is
+  `#[must_use]`, so a WP-G3 driver asserts its family's expected refusals in code
+  instead of trusting stderr. The same flag was missing from the *lock* regen
+  command, whose `SEEDED`/`RE-ANCHORED` provenance announcements are the G0.1 review
+  surface; it is there now.
+- *`is_binary_artifact` was duplicated from `golden_lock.rs` with nothing binding
+  the copies* (real). Both are now tied to the same third source of truth: new
+  `the_binary_classifier_matches_gitattributes` pins the `.gitattributes` binary
+  pathspecs inside the §1.2 lock scope (set equality, so a new binary family cannot
+  appear unnoticed) and asserts the predicate against them, both directions, over
+  every locked path. Negative probe: predicate flipped to `.PROBE` → red naming a
+  real `reports/*.bin` row; reverted.
+- *The documented API did not exist* (real): `harness/mod.rs` only declared
+  `pub mod regen`, so the plan's, TESTING.md's and STATUS's `harness::regen()` /
+  `harness::snapshot_text()` spelling would not resolve. Added
+  `pub use regen::{regen, snapshot_bytes, snapshot_text}` (module in the type
+  namespace, fn in the value namespace), with `allow(unused_imports)` for the same
+  reason the module already allows `dead_code` — until WP-G3 wires the first driver,
+  every test binary's subset of it is empty.
+- *The armed public entry points were never exercised* (real): every guard test drove
+  the inner `Rails` methods, so a delegation that skipped `write_text`'s binary-path
+  assert would have passed. `snapshot_{text,bytes}` now delegate to a testable
+  `snapshot_*_with(Option<&Rails>, …)`, and
+  `the_armed_public_helpers_delegate_through_the_guards` drives an accepted write, a
+  refused one, a raw stream and the binary-path rejection through the public shape.
+- *TESTING.md claimed `self` artifacts "are regenerated by the rails"* (real, and it
+  contradicted two other sentences in the file): no driver calls the rails yet, and
+  all four `self` rows are written today by paths that bypass them — `gen_props.py`
+  (`props/{recloser,relay}.json`), `DSS_REGEN_AD_GOLDEN` (`adiakoptics.rs:578`) and
+  `REGEN_SCHEMA_PORT` (`golden_schema.rs:629`). The procedure now names all three,
+  says WP-G3/G3.6 routes them through the rails, and `REGEN_SCHEMA_PORT` joins the
+  env-var table beside `DSS_REGEN_AD_GOLDEN`.
+- *The props lock's stated rationale was wrong* (real): the golden lock digests
+  content, so a scenario dropped inside a class file **does** red it. The true hole
+  is a deliberate lock regen (the digest moves with the bytes) and the driver side,
+  which no digest describes; the comment, the assertion message and the STATUS
+  paragraph above say that now. The auditors' companion suggestion landed too:
+  `PROPS_PROPERTY_CELLS = 8343`, checked as `compared + lane_skips` counted at the
+  comparison sites, closes the level below the scenario count.
+
+**Deliberately not fixed (recorded, not dropped).**
+
+- *A `FROZEN` register in `golden_lock.rs` (+ a `Refusal::Frozen` variant) so §1.2's
+  frozen set cannot be de-anchored by a future `DEANCHORED` directory glob.* Not
+  done here, for three reasons. §1.2 specifies this guard exactly as implemented
+  ("refuse any artifact whose lock anchor ≠ `self`") and assigns frozen-set
+  bookkeeping to **G3.6** ("This is the **initial** frozen set — G3.1/G3.2a may add
+  rows, each with a reason, mirrored in G3.6"); every named frozen path is non-`self`
+  today, hence already hard-refused; and the hypothesized de-anchoring is not silent
+  — it takes an added register entry carrying a written reason, `golden_lock.rs` reds
+  with `WRONG ANCHOR` until the lock is deliberately regenerated, and that regen
+  announces `RE-ANCHORED <path>`. Carried to G3.6 as an explicit item.
+- *Syncing `golden_lock.rs`'s four spellings of the lock-regen command with the new
+  `-- --nocapture`.* One of them is `COMMENT`, which is baked into the committed
+  `tests/golden/golden.lock.json`; this WP may not move a golden byte, and changing
+  the const without rewriting the lock would put the two out of sync silently.
+  TESTING.md and the rails' printed remedy carry the flag; the first sub-step allowed
+  to move the lock (G3.6) syncs the four citations.
+- *The over-long commit body of `1a841cb1`.* Rewriting landed history is out of
+  scope and the content is accurate; the one-clause-per-bullet discipline applies
+  from this commit on.
 
 ### GOLDEN_REBASE G0.1 — the golden corpus gets a provenance lock before it gets a regen button (branch `golden-g0`, 2026-08-02)
 

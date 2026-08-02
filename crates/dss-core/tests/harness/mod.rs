@@ -30,6 +30,17 @@ pub mod lane;
 /// No driver calls them yet — that is WP-G3.
 pub mod regen;
 
+/// The rails' entry points at the spelling the plan (§G0.2), TESTING.md and the
+/// WP-G3 call sites use: `harness::regen()` / `harness::snapshot_text()` /
+/// `harness::snapshot_bytes()`. The module keeps its own name (type namespace)
+/// alongside the function (value namespace).
+///
+/// `allow(unused_imports)` for the same reason this module allows `dead_code`:
+/// it is compiled into every golden test binary and each uses a subset — and
+/// until WP-G3 wires the first driver, that subset is empty everywhere.
+#[allow(unused_imports)]
+pub use regen::{regen, snapshot_bytes, snapshot_text};
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
