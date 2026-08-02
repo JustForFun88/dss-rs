@@ -39,9 +39,12 @@ now records the row as torn down.
 
 **The pins became unconditional** — both of them, since the alias had two:
 `mathutil::tests::single_point_std_dev_is_zero` (renamed from
-`…_is_the_lane_kernel`) asserts `(3.5, 0.0)` at all four entry points plus an
-`assert_ne!` that the std-dev is not the mean, so a re-introduced quirk fails
-loudly; `load_shape::tests::single_point_shape_stddev_property_is_zero` pins the
+`…_is_the_lane_kernel`) asserts the pair `(v, 0.0)` literally — both out-params,
+so an entry point returning nothing fails as loudly as one repeating the sample
+— at all four entry points over four magnitudes (`0.0`, `3.5`, `-12.25`,
+`1.0e9`); the three non-zero ones are what separate the fixed kernel from
+`StdDev := Data[1]`, which reproduces `0.0` for free on a zero sample;
+`load_shape::tests::single_point_shape_stddev_property_is_zero` pins the
 observable — `? LoadShape.one.stddev` on `npts=1 mult=(0.4)` reads `0` while
 `mean` reads `0.4`, so a broken accessor cannot fake it by returning nothing.
 Both carry the `EXPECTED-VALUE-PIN(stddev_single_point)` marker. The two
@@ -51,20 +54,48 @@ kernels they compared — they asserted the two impls against each other, which 
 meaningless once there is one.
 
 **Zero-footprint, measured not assumed.** No golden and no gated corpus case
-reads a one-point shape's std-dev (the `props` decks that read `stddev` all use
-`npts=4` with an explicit `stddev=` value), so no golden byte, no
-`ledger.json` entry and no `population.lock.json` field moves. The **parity**
-lane's full suite — including the unconditional 520-case corpus gate against
-both oracle channels — is green, which is the measurement that confirms the
-classification rather than assuming it. `lane_diff.ps1` re-run because a lane
-alias was deleted: max |Δ| = 0, so the default lane keeps the parity lane's
-oracle standing.
+reads a *one-point* shape's std-dev: no golden scenario anywhere builds an
+`npts=1` shape (measured over `tests/golden/props/{loadshape,tshape,priceshape}.json`
+— the shapes that pin a computed `StdDev`, e.g. `loadshape_abbrev`'s `np=3`, all
+have ≥ 3 points, and the single-point branch is unreachable for them). So no
+golden byte, no `ledger.json` entry and no `population.lock.json` field moves.
+The **parity** lane's full suite — including the unconditional 520-case corpus
+gate against both oracle channels — is green, which is the measurement that
+confirms the classification rather than assuming it. `lane_diff.ps1` re-run
+because a lane alias was deleted: max |Δ| = 0, so the default lane keeps the
+parity lane's oracle standing.
 
 **Doc surface.** The row was never cited as `compat::stddev_single_point` on the
 walked doc surface (G2.0's measurement, re-confirmed here), so no citation was
 struck and the non-vacuity floor is untouched. CLAUDE.md's policy §Status
 sentence did name "single-point stddev" in prose as *queued* for removal; it now
 names WP-G2 as the owner and records this row as done.
+
+**Audit settlement (fix pass, same branch).** Both auditors returned six minor
+findings, all record-vs-tree mismatches; none disputed the teardown, and none was
+declined. Three (both auditors raised the first) were STATUS text describing
+something the tree does not have, corrected above: the pin's `assert_ne!` (it has
+none — four literal `assert_eq!`s over four magnitudes) and the zero-footprint
+justification (the `props` decks that read a *computed* `stddev` are `np=3`, not
+`npts=4 stddev=…`; what carries the claim is that no golden scenario builds an
+`npts=1` shape at all — the pin's own doc comment, which said "three magnitudes"
+of the four it iterates, is corrected with them). Two were mechanism
+fixes: the `TORN_DOWN_ROWS` evidence slice now anchors on the unconditional
+kernel `return (data[0], 0.0);` instead of the sentence explaining it — a
+comment survives a revert that re-routes the call, code does not, and that is now
+the documented `Evidence::Site` convention for G2.1b–h; and
+`investigations/issue-11-stddev-single-point.md` (local-only) still described the
+lane split as current and cited three deleted tests — rewritten to the post-G2.1a
+state, matching the registry entry §3.3 that the implementation pass had already
+updated. The sixth named the value's **second** consumer: `std_dev()` feeds the
+Gaussian draws at `solution/solution/monte_carlo.rs:188` (`Set random=gaussian`
+LoadMultiplier) and `elements/pc/load/nominal.rs:118` (`Load::randomize`), where
+a one-point yearly shape used to draw `G01·0.4 + 0.4` — ±100 % of mean, with a
+negative tail that turns the load into a source. No gated deck reaches it (every
+Monte deck runs `random=none`; `lane_diff` max |Δ| = 0 over the 520 cases), so it
+moved no byte, but the path now has its own unconditional pin,
+`load::tests::randomize_gaussian_with_single_point_yearly_is_constant`, carrying
+the row marker: the shape randomizes to exactly `0.4` whatever the RNG draws.
 
 ### GOLDEN_REBASE G2.0 — the teardown gets its rails before the first deletion (branch `golden-g2`, 2026-08-02)
 

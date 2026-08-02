@@ -484,6 +484,35 @@ fn randomize_gaussian_with_yearly_uses_shape_mean_std() {
     assert_eq!(load.random_mult, expected);
 }
 
+// EXPECTED-VALUE-PIN(stddev_single_point): the second consumer of the torn-down
+// value — the one that turns it into physics rather than into a printed field.
+/// A one-point yearly shape randomizes to a **constant**: `Gauss(m, s)` is
+/// `G01·s + m`, so at `s = 0` `RandomMult` is the multiplier itself whatever
+/// the RNG draws.
+///
+/// Upstream's `StdDev := Data^[1];` (r4133
+/// `Version8/Source/Shared/mathutil.pas:405`) makes the same shape draw
+/// `G01·0.4 + 0.4` — a ±100 %-of-mean spread on a sample that has none, with a
+/// tail of *negative* multipliers turning the load into a source. Not
+/// reproduced in either lane (GOLDEN_REBASE G2.1a; `issue-11`), and pinned here
+/// because no gated deck reaches this path: every Monte deck runs
+/// `random=none`.
+#[test]
+fn randomize_gaussian_with_single_point_yearly_is_constant() {
+    let mut load = Load::new("lr");
+    // Set DIFFERENTLY from the shape, so the no-shape fallback fails the test.
+    load.pu_mean = 0.8;
+    load.pu_std_dev = 0.3;
+    load.yearly_shape_obj = Some(build_shape(&[
+        ("npts", "1"),
+        ("interval", "1"),
+        ("mult", "(0.4)"),
+    ]));
+    let mut rng = FpcRng::from_seed(12345);
+    load.randomize(RandomType::Gaussian, &mut rng);
+    assert_eq!(load.random_mult, 0.4);
+}
+
 #[test]
 fn randomize_lognormal_no_yearly_uses_pu_mean() {
     let mut load = Load::new("lr");

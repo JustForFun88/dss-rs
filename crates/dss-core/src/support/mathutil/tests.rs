@@ -186,10 +186,11 @@ fn mean_and_std_dev_basics() {
 ///
 /// Expected values, not tolerances: **both** out-params are pinned literally —
 /// the mean is the sample, the std-dev is `0.0` — so an entry point that
-/// returned nothing fails as loudly as one that repeats the sample. Three
-/// magnitudes (all exact in f32, so the single-precision pair is exact too),
-/// because the quirk is `StdDev := Data[1]`: it reproduces `0.0` for free on a
-/// zero sample and only shows on a non-zero one.
+/// returned nothing fails as loudly as one that repeats the sample. Four
+/// samples — zero plus three non-zero magnitudes, all exact in f32 so the
+/// single-precision pair is exact too — because the quirk is
+/// `StdDev := Data[1]`: it reproduces `0.0` for free on a zero sample and only
+/// shows on a non-zero one, so the zero sample alone would pin nothing.
 #[test]
 fn single_point_std_dev_is_zero() {
     for v in [0.0f64, 3.5, -12.25, 1.0e9] {

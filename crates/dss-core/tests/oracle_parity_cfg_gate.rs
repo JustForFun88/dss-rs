@@ -1149,6 +1149,12 @@ enum Evidence {
     /// `(file, distinctive slice)` — keyed exactly like [`ESCAPE_REGISTER`]:
     /// the file must still contain the slice. The WP-G2 shape for a row whose
     /// teardown made an **engine kernel** unconditional.
+    ///
+    /// The slice must be the unconditional **code**, not the comment that
+    /// explains it. [`ESCAPE_REGISTER`]'s slices are prose because what they
+    /// key is a *comment marker*; here the evidence is a kernel, and a
+    /// re-introduced alias would re-route the call while leaving any nearby
+    /// sentence — however carefully worded — matching.
     Site(&'static str, &'static str),
     /// `(file, distinctive slice)` for a **harness exclusion** made
     /// unconditional — the same key and the same slice check as
@@ -1214,9 +1220,14 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     (
         "stddev_single_point",
         Kind::SplitAlias,
+        // The slice is the unconditional *kernel*, not the comment that
+        // explains it: a revert re-routes this `return` through the alias while
+        // an explanatory sentence next to it can survive untouched. That is the
+        // anchor convention for every `Evidence::Site` row — point at code that
+        // exists only in the torn-down state.
         Evidence::Site(
             "crates/dss-core/src/support/mathutil/mod.rs",
-            "A one-element sample has no spread, so its standard deviation is `0.0`.",
+            "return (data[0], 0.0);",
         ),
         Some((
             "crates/dss-core/src/support/mathutil/tests.rs",
