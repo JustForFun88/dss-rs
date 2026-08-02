@@ -50,6 +50,17 @@ New-Item -ItemType Directory -Force -Path $out | Out-Null
 $defaultDump = Join-Path $out "default.dump"
 $parityDump = Join-Path $out "parity.dump"
 
+# Paths under `tests/corpus` that were ALREADY dirty before this run — an
+# in-flight edit to `ledger.json`, a manifest, `population.lock.json`. The
+# cleanup below must never touch them: it exists to undo what the *dumps* wrote,
+# and a blind `git restore` over everything dirty silently discards the working
+# tree the job was invoked to validate (it did, 2026-08-02, taking a ledger
+# entry and its lock line with it).
+$preDirty = @{}
+foreach ($line in (& git status --porcelain -- tests/corpus)) {
+    $preDirty[$line.Substring(3).Trim('"')] = $line.Substring(0, 2).Trim()
+}
+
 function Invoke-Lane {
     param(
         [string]$Lane,
@@ -115,7 +126,10 @@ if ($dirty) {
         $state = $line.Substring(0, 2).Trim()
         $path = $line.Substring(3).Trim('"')
         $full = Join-Path $root $path
-        if ($state -eq "??") {
+        if ($preDirty.ContainsKey($path)) {
+            Write-Host "  pre-existing working-tree change, NOT touched: $path"
+        }
+        elseif ($state -eq "??") {
             $item = Get-Item -LiteralPath $full -Force
             if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
                 Write-Warning "  reparse point under tests/corpus, NOT touched: $path"
