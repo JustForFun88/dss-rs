@@ -45,7 +45,7 @@
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
 //! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
 //! | report text rendering — `Show` device-name column width | [`max_device_name_length`] — same section | **yes** (F.4b) |
-//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w) |
+//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b |
 //!
 //! Rows 12–13 are not in IV.2's table and do not extend it: they are the two
 //! *reproduced* CLAUDE.md upstream bugs whose clean fix is deferred to this
@@ -715,26 +715,6 @@ pub const ISOURCE_BUS2_NEVER_LATCHES_DEFAULT_IMPL: bool = false;
 pub use ISOURCE_BUS2_NEVER_LATCHES_DEFAULT_IMPL as ISOURCE_BUS2_NEVER_LATCHES;
 #[cfg(feature = "oracle-parity")]
 pub use ISOURCE_BUS2_NEVER_LATCHES_PARITY_IMPL as ISOURCE_BUS2_NEVER_LATCHES;
-
-/// Whether `Like=` on a **CapControl** drops the `ControlSignal` reference.
-///
-/// `true` reproduces the upstream quirk: `TCapControlObj.MakeLike`
-/// (`CapControl.pas:446-490`) copies every other reference and field —
-/// `ControlledElement`, `MonitoredElement`, the user model, both snapshots —
-/// but never `ctrlSignalShape` or its name, so a clone of a `type=Follow`
-/// CapControl is left with no signal to follow and silently controls nothing.
-///
-/// `false` copies them alongside the other references — the clean fix named at
-/// the site. The lanes differ only for `Like=` on a Follow-type CapControl,
-/// which no golden and no gated corpus deck contains.
-pub const CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL_DEFAULT_IMPL as CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL;
-#[cfg(feature = "oracle-parity")]
-pub use CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL_PARITY_IMPL as CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL;
 
 // The **GICTransformer `G2` off `%R1`** row belongs here by shape but is NOT
 // split: the flip was implemented and gated in F.3k, and re-measured in F.3v,

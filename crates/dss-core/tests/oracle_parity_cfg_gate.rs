@@ -803,8 +803,9 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// authority's behaviour and each row keeps an unconditional expected-value pin.
 /// **30** after `GOLDEN_REBASE_PLAN.md` G2.1a tore down `stddev_single_point`,
 /// the first of WP-G2's rows (a defect r4133 *does* share — see
-/// [`TORN_DOWN_ROWS`] for what each teardown leaves behind).
-const SPLIT_ALIAS_POPULATION: usize = 30;
+/// [`TORN_DOWN_ROWS`] for what each teardown leaves behind); **29** after G2.1b
+/// did the same to `CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL`.
+const SPLIT_ALIAS_POPULATION: usize = 29;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -1232,6 +1233,35 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         Some((
             "crates/dss-core/src/support/mathutil/tests.rs",
             "single_point_std_dev_is_zero",
+        )),
+    ),
+    // G2.1b. `TCapControlObj.MakeLike` copies every reference a CapControl
+    // holds — controlled and monitored element, the user model, both snapshots
+    // — except the `ControlSignal` shape (`.inputs/dss_capi/src/Controls/
+    // CapControl.pas:445-489`, field `:169`; r4133 `Version8/Source/Controls/
+    // CapControl.pas:410-465`, field `myShapeObj` `:76`), so a clone of a
+    // `type=Follow` controller has nothing to follow and aborts the solve with
+    // message 10362. Both lanes now copy it. Zero-footprint: no golden and no
+    // gated corpus deck clones a Follow CapControl, so nothing moved but the
+    // pins.
+    (
+        "CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL",
+        Kind::SplitAlias,
+        // The copy itself. Unlike G2.1a's row the *fixed* form here is an
+        // ordinary statement — a reverted arm would wrap this very line in an
+        // `if` rather than replace it — so the slice alone cannot tell the two
+        // states apart, and what does is the pair of checks below: a
+        // re-introduced alias fails the census tie **and** the ghost check (the
+        // row's name would be back in the live split set). The slice's own job
+        // is the other failure mode: the copy being deleted outright, which
+        // would leave the register claiming a fix that is gone.
+        Evidence::Site(
+            "crates/dss-core/src/elements/control/cap_control/accessors.rs",
+            "self.ctrl_signal_shape = other.ctrl_signal_shape.clone();",
+        ),
+        Some((
+            "crates/dss-core/src/elements/control/cap_control/tests.rs",
+            "make_like_copies_the_control_signal",
         )),
     ),
 ];
