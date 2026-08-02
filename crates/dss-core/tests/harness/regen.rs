@@ -33,6 +33,18 @@
 //! six `capi015` `props/` scenarios). Every refusal is announced on stderr with
 //! its remedy, and the artifact is left byte-identical.
 //!
+//! # The announcements need `-- --nocapture`
+//!
+//! libtest captures everything a test writes through `print!`/`eprintln!` and
+//! **discards it when the test passes** — and a regen run passes by design (it
+//! writes goldens instead of comparing them). Every documented regen command
+//! therefore ends in `-- --nocapture`; without it the SNAPSHOT/REFUSED lines and
+//! the stale-lock reminder below are dropped, and a sweep that silently refused
+//! N artifacts is indistinguishable from one that wrote them. The refusal
+//! *outcome* is still observable without the flag — [`snapshot_text`] /
+//! [`snapshot_bytes`] return a `#[must_use]` [`Outcome`], so a driver can assert
+//! against its family's expected refusal list rather than trusting stderr.
+//!
 //! # Relationship to the lock
 //!
 //! The rails **read** `tests/golden/golden.lock.json`; they never write it. The
@@ -44,7 +56,7 @@
 //! operator reviews the diff and runs
 //!
 //! ```text
-//! DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock
+//! DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock -- --nocapture
 //! ```
 //!
 //! which is the reviewed event the whole design exists to force. The rails print
@@ -73,8 +85,11 @@ pub const UPDATE_ENV: &str = "DSS_UPDATE_GOLDENS";
 pub const LOCK_PATH: &str = "tests/golden/golden.lock.json";
 
 /// What the operator must run after a regen so the lock stops being stale.
+/// `--nocapture` because that run *passes* (it rewrites the lock and returns),
+/// and libtest discards a passing test's stderr — including the `SEEDED` /
+/// `RE-ANCHORED` provenance announcements the operator is supposed to review.
 pub const LOCK_REGEN_CMD: &str =
-    "DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock";
+    "DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock -- --nocapture";
 
 /// Where the truth in an artifact's bytes comes from — the mirror of
 /// `golden_lock.rs::Anchor`. Only `self` is writable.
@@ -241,6 +256,12 @@ impl Refusal {
 }
 
 /// The result of a [`snapshot_text`] / [`snapshot_bytes`] call.
+///
+/// `must_use`: a dropped `Refused` is a refusal nobody saw — libtest hides the
+/// stderr announcement of a passing test unless the run carries `--nocapture`,
+/// so the returned outcome is the only refusal signal a driver can assert on.
+#[must_use = "a snapshot outcome carries the guard's refusal; assert it against the family's \
+              expected outcome instead of dropping it"]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     /// `DSS_UPDATE_GOLDENS` is not set — this is a comparison run and nothing
@@ -288,12 +309,35 @@ struct LockDoc {
 
 /// `reports/*.bin` are raw little-endian IEEE-754 streams, declared `binary` in
 /// `.gitattributes`. The same predicate `golden_lock.rs::is_binary_artifact`
-/// uses to decide how a digest is taken — kept identical so
+/// uses to decide how a digest is taken — it must stay identical so
 /// [`snapshot_text`]'s payload guard and the lock's digest rule cannot disagree
 /// about what a text artifact is.
+///
+/// The duplication is *bound*, not merely intended: `golden_lock.rs` is a
+/// separate test binary, so both copies are tied to the same third source of
+/// truth — the `.gitattributes` declaration — its own copy by
+/// `assert_binary_classification_matches_gitattributes`, this one by
+/// [`the_binary_classifier_matches_gitattributes`]. A future binary family with
+/// another extension therefore reds *both* files instead of drifting past this
+/// one.
 fn is_binary_artifact(rel: &str) -> bool {
     rel.ends_with(".bin")
 }
+
+/// The `.gitattributes` pathspecs that declare a locked artifact `binary`,
+/// pinned here so a *new* one cannot appear without this module being revisited
+/// ([`the_binary_classifier_matches_gitattributes`] asserts the set both ways).
+/// Kept to the one shape the file actually uses, `<dir>/*<suffix>`.
+#[cfg(test)]
+const GITATTRIBUTES_BINARY_PATHSPECS: &[&str] = &["tests/golden/reports/*.bin"];
+
+/// The §1.2 lock scope, as path prefixes: a `.gitattributes` declaration
+/// outside it cannot classify an artifact these rails may write.
+#[cfg(test)]
+const LOCK_SCOPE_PREFIXES: &[&str] = &[
+    "tests/golden/",
+    "crates/dss-core/tests/data/adiakoptics/r3723_ref/",
+];
 
 fn repo_root() -> PathBuf {
     [env!("CARGO_MANIFEST_DIR"), "..", ".."].iter().collect()
@@ -472,15 +516,30 @@ pub fn regen() -> Option<&'static Rails> {
 /// Snapshot a text artifact (`tests/golden/...`, repo-relative). Inert unless
 /// `DSS_UPDATE_GOLDENS` is set; guarded by the lock's anchor and producing lane.
 pub fn snapshot_text(rel: &str, text: &str) -> Outcome {
-    match regen() {
+    snapshot_text_with(regen(), rel, text)
+}
+
+/// Snapshot a binary artifact (the `reports/*.bin` streams). Same guards.
+pub fn snapshot_bytes(rel: &str, bytes: &[u8]) -> Outcome {
+    snapshot_bytes_with(regen(), rel, bytes)
+}
+
+/// The body of [`snapshot_text`], with the process-global rails passed in.
+///
+/// Split out purely so the **armed** public path is testable: the `OnceLock` in
+/// [`regen`] is process-global and reads the real repo, so a test driving
+/// `snapshot_text` directly could only ever exercise the disarmed branch — and a
+/// delegation that skipped `write_text`'s binary-path assert would pass unseen.
+fn snapshot_text_with(rails: Option<&Rails>, rel: &str, text: &str) -> Outcome {
+    match rails {
         None => Outcome::NotRequested,
         Some(rails) => rails.write_text(rel, text),
     }
 }
 
-/// Snapshot a binary artifact (the `reports/*.bin` streams). Same guards.
-pub fn snapshot_bytes(rel: &str, bytes: &[u8]) -> Outcome {
-    match regen() {
+/// The body of [`snapshot_bytes`]; see [`snapshot_text_with`].
+fn snapshot_bytes_with(rails: Option<&Rails>, rel: &str, bytes: &[u8]) -> Outcome {
+    match rails {
         None => Outcome::NotRequested,
         Some(rails) => rails.write_bytes(rel, bytes),
     }
@@ -807,6 +866,130 @@ mod tests {
                 Lane::Default
             },
             "the regen rails and the lane policy disagree about the build"
+        );
+    }
+
+    /// The **armed** public entry points, driven over a scratch fixture: the
+    /// same two guard outcomes plus `write_text`'s binary-path rejection, this
+    /// time through `snapshot_text`/`snapshot_bytes`' own delegation rather than
+    /// through `Rails` directly. Without this, a future edit routing
+    /// `snapshot_text` straight at `write_bytes` (skipping that assert) would
+    /// pass the whole suite.
+    #[test]
+    fn the_armed_public_helpers_delegate_through_the_guards() {
+        let root = scratch("armed");
+        let writable = "tests/golden/reports/show_armed.txt";
+        let refused = "tests/golden/reports/export_armed.txt";
+        let stream = "tests/golden/reports/dump3_armed.bin";
+        let writable_abs = seed(&root, writable);
+        let refused_abs = seed(&root, refused);
+        let stream_abs = seed(&root, stream);
+        let rails = Rails::from_lock_text(
+            root.clone(),
+            Lane::Parity,
+            &mini_lock(&[
+                (writable, "self", Some("parity")),
+                (refused, "capi_v0145", None),
+                (stream, "self", Some("parity")),
+            ]),
+        );
+        let armed = Some(&rails);
+
+        assert_eq!(
+            snapshot_text_with(armed, writable, "armed rendering\n"),
+            Outcome::Wrote
+        );
+        assert_eq!(read(&writable_abs), b"armed rendering\n");
+
+        assert_eq!(
+            snapshot_text_with(armed, refused, "armed rendering\n"),
+            Outcome::Refused(Refusal::ExternallyAnchored(Anchor::CapiV0145))
+        );
+        assert_eq!(read(&refused_abs), ORIGINAL);
+
+        assert_eq!(
+            snapshot_bytes_with(armed, stream, &[0x00, 0x7f]),
+            Outcome::Wrote
+        );
+        assert_eq!(read(&stream_abs), vec![0x00, 0x7f]);
+
+        // The text helper still rejects a binary-classified path after the
+        // delegation — the assert lives in `write_text`, which it must go
+        // through.
+        let wrong_helper = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            snapshot_text_with(armed, stream, "x")
+        }));
+        assert!(
+            wrong_helper.is_err(),
+            "snapshot_text must not reach a binary-classified path"
+        );
+
+        // Disarmed, the same calls touch nothing.
+        assert_eq!(
+            snapshot_text_with(None, writable, "ignored\n"),
+            Outcome::NotRequested
+        );
+        assert_eq!(read(&writable_abs), b"armed rendering\n");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The binder for this module's copy of `is_binary_artifact`: it must agree
+    /// with the `.gitattributes` declaration `golden_lock.rs::is_binary_artifact`
+    /// is bound to, over every path the committed lock knows — so the two copies
+    /// cannot drift apart through their shared source of truth.
+    #[test]
+    fn the_binary_classifier_matches_gitattributes() {
+        let root = repo_root();
+        let attrs =
+            std::fs::read_to_string(root.join(".gitattributes")).expect("read .gitattributes");
+        let declared: Vec<String> = attrs
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .filter_map(|l| {
+                let mut f = l.split_whitespace();
+                let pattern = f.next()?;
+                let binary = f.any(|a| a == "binary" || a == "-text");
+                // Only declarations that can classify a locked artifact: the
+                // §1.2 lock scope (tests/golden/** plus the registered
+                // out-of-tree r3723 witness). The vendored corpus's `-text`
+                // pathspecs classify nothing this module can write.
+                let in_scope = LOCK_SCOPE_PREFIXES.iter().any(|r| pattern.starts_with(r));
+                (binary && in_scope).then(|| pattern.to_string())
+            })
+            .collect();
+        assert_eq!(
+            declared, GITATTRIBUTES_BINARY_PATHSPECS,
+            "the `binary` declarations over the locked roots moved. is_binary_artifact() here and \
+             in golden_lock.rs both emulate them, so teach BOTH copies the new family (and this \
+             register) rather than letting one keep hashing/guarding it as text."
+        );
+
+        // Both directions over the real corpus: every locked path is classified
+        // binary by this module exactly when .gitattributes declares it so.
+        let rails = Rails::load(root, Lane::Parity);
+        let mut binary_rows = 0usize;
+        for rel in rails.rows.keys() {
+            let attr_binary = GITATTRIBUTES_BINARY_PATHSPECS.iter().any(|p| {
+                let (dir, base) = p.rsplit_once('/').expect("pathspec has a directory");
+                let suffix = base
+                    .strip_prefix('*')
+                    .expect("pathspec shape <dir>/*<suffix>");
+                rel.rsplit_once('/')
+                    .is_some_and(|(d, b)| d == dir && b.ends_with(suffix))
+            });
+            assert_eq!(
+                is_binary_artifact(rel),
+                attr_binary,
+                "{rel}: the rails classify it {}, .gitattributes says {attr_binary}",
+                is_binary_artifact(rel)
+            );
+            binary_rows += usize::from(attr_binary);
+        }
+        assert!(
+            binary_rows > 0,
+            "no locked artifact is binary-classified — this binder went vacuous"
         );
     }
 
