@@ -919,15 +919,31 @@ solve";
             dss.command(t);
         }
     }
-    // The name survives the copy…
-    dss.command("? capcontrol.b.ControlSignal");
-    assert_eq!(dss.result().trim(), "sig");
-    // …and so does the reference: no 10362, and the solve ran to completion.
+    // The reference survives the copy, read at the two places the FOLLOW arm's
+    // failure path writes: the message and `solution_abort`
+    // (`control_loop.rs:329-337` → `controls/dispatch.rs:975-977`). The flag is
+    // read **here**, before any further command: `Dss::command` clears it on
+    // every external entry (`exec/command.rs:41-50`, CAPI `Text_Set_Command`'s
+    // "Reset for commands entered from outside"), so the same assert placed
+    // after the query below would pass on a clone that did abort — measured.
+    assert!(
+        dss.circuit().is_some_and(|c| !c.solution.solution_abort),
+        "the clone aborted the solution: {:?}",
+        dss.error_texts()
+    );
     assert!(
         !dss.errors().iter().any(|d| d.code == Some(10362)),
         "the clone lost its ControlSignal: {:?}",
         dss.error_texts()
     );
+    // …and so does the name, through the property a user reads.
+    dss.command("? capcontrol.b.ControlSignal");
+    assert_eq!(dss.result().trim(), "sig");
+    // Sanity, not discrimination: this 3-bus deck converges either way —
+    // `solve_snap` (`solution/solution/power_flow.rs:448-494`) never reads
+    // `solution_abort`, and `converged_flag` is set by the voltage-mismatch test
+    // alone (`solution/solution/state.rs::converged`). It is here so the pin
+    // fails loudly if the deck ever stops solving for an unrelated reason.
     assert!(
         dss.circuit().is_some_and(|c| c.solution.converged_flag),
         "the deck must solve: {:?}",
