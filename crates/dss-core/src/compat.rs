@@ -33,7 +33,7 @@
 //! |---|---|---|
 //! | complex division | [`cdiv`] — this file | *no split* — measured, see below |
 //! | dense inverse (`CMatrix::invert`, `etk_invert`) | [`invert`], [`etk_invert`] — this file | *no split* — measured, see below |
-//! | single-point stddev | [`stddev_single_point`] — this file | **yes** (F.3b) |
+//! | single-point stddev | *torn down* (GOLDEN_REBASE G2.1a) — `support::mathutil` returns `0.0` in both lanes | — |
 //! | RPN pi | `dss-parser` `compat::PI` | **yes** (F.3d) |
 //! | FPC round | `dss-parser` `compat::round_i32` | **yes** (F.3a) |
 //! | solver execution (`Par`, refinement) | `dss-sparse` `compat` | no — declaration only, M3c / WP-R1 own the flip |
@@ -534,34 +534,6 @@ pub fn etk_invert_partial_pivot_impl(a: &mut [f64], norder: usize) -> Result<(),
 /// The real dense-inverse kernel — the counterpart of [`invert`], and **one
 /// shared implementation** for the same measured reasons (F.3i).
 pub use etk_invert_gj_no_exchange_impl as etk_invert;
-
-// ---------------------------------------------------------------------------
-// Single-point standard deviation (IV.2 row 6)
-// ---------------------------------------------------------------------------
-
-/// The "standard deviation" of a one-element sample, upstream-faithful: for a
-/// single point the Pascal code returns the point *itself* (not 0), reproduced
-/// bug-for-bug at the four [`crate::support::mathutil`] entry points.
-#[inline]
-pub fn stddev_single_point_value_impl(value: f64) -> f64 {
-    value
-}
-
-/// The standard deviation of a one-element sample: `0.0` — the mathematically
-/// correct answer, and a **deliberate divergence** from the oracle (not a
-/// tolerance question), pinned by expected-value tests at the four
-/// [`crate::support::mathutil`] entry points and at the observable
-/// `LoadShape`/`TShape`/`PriceShape` property.
-#[inline]
-pub fn stddev_single_point_zero_impl(_value: f64) -> f64 {
-    0.0
-}
-
-#[cfg(feature = "oracle-parity")]
-pub use stddev_single_point_value_impl as stddev_single_point;
-// F.3: a one-point sample has no spread; the default lane says so.
-#[cfg(not(feature = "oracle-parity"))]
-pub use stddev_single_point_zero_impl as stddev_single_point;
 
 // ---------------------------------------------------------------------------
 // Export SeqCurrents `Iresidual` (IV.2 row 9)

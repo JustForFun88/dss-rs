@@ -801,7 +801,10 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// `Save <class>`'s reported path, Storage `MakePosSequence` bracketing, the
 /// `CktModel` ordinal and the Generator rating guards) — both lanes now take the
 /// authority's behaviour and each row keeps an unconditional expected-value pin.
-const SPLIT_ALIAS_POPULATION: usize = 31;
+/// **30** after `GOLDEN_REBASE_PLAN.md` G2.1a tore down `stddev_single_point`,
+/// the first of WP-G2's rows (a defect r4133 *does* share — see
+/// [`TORN_DOWN_ROWS`] for what each teardown leaves behind).
+const SPLIT_ALIAS_POPULATION: usize = 30;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -1136,11 +1139,11 @@ enum Kind {
 /// `tests/corpus/ledger.json` are checked fail-on-stale. The pin (below) proves
 /// the *behaviour*; this proves the *mechanism* the teardown left behind.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-// The register is born **empty** (G2.0), so no variant is constructed yet and
-// every one of them is dead code. `expect` rather than `allow` on purpose: the
-// day the last variant gets its first row, this attribute becomes unfulfilled
-// and has to be deleted, instead of quietly covering a variant that later goes
-// unused for real.
+// Only the variants WP-G2 has reached so far are constructed (`Site`, since
+// G2.1a); the rest are dead code until their first row. `expect` rather than
+// `allow` on purpose: the day the last variant gets its first row, this
+// attribute becomes unfulfilled and has to be deleted, instead of quietly
+// covering a variant that later goes unused for real.
 #[expect(dead_code)]
 enum Evidence {
     /// `(file, distinctive slice)` — keyed exactly like [`ESCAPE_REGISTER`]:
@@ -1200,7 +1203,27 @@ enum Evidence {
 /// row **this** WP adds must carry one, and the check below demands it of every
 /// row. Narrowing it is then a deliberate edit in the commit that lands the
 /// first pinless row — which is the register's whole point.
-const TORN_DOWN_ROWS: &[TornDownRow] = &[];
+const TORN_DOWN_ROWS: &[TornDownRow] = &[
+    // G2.1a. Upstream's single-point branch assigns the mean and repeats the
+    // same right-hand side into `StdDev` (r4133
+    // `Version8/Source/Shared/mathutil.pas:405`/`:429`, identical in the pinned
+    // dss_capi 0.14.5) — a `{3.5}` sample reported as 100 % spread. Both gating
+    // oracles carry it; the four `mathutil` entry points now return `0.0` in
+    // both lanes. Zero-footprint: no golden and no gated corpus case reads a
+    // one-point shape's std-dev, so nothing moved but the two pins.
+    (
+        "stddev_single_point",
+        Kind::SplitAlias,
+        Evidence::Site(
+            "crates/dss-core/src/support/mathutil/mod.rs",
+            "A one-element sample has no spread, so its standard deviation is `0.0`.",
+        ),
+        Some((
+            "crates/dss-core/src/support/mathutil/tests.rs",
+            "single_point_std_dev_is_zero",
+        )),
+    ),
+];
 
 /// One row of [`TORN_DOWN_ROWS`]: `(former row name, which census it left,
 /// evidence in the tree, `Some((pin file, pin fn))`)`.
