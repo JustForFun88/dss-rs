@@ -1109,6 +1109,384 @@ fn every_lane_split_alias_is_pinned_by_an_expected_value_test() {
 }
 
 // ---------------------------------------------------------------------------
+// The teardown register: the rows that LEFT the two censuses (GOLDEN_REBASE WP-G2)
+// ---------------------------------------------------------------------------
+
+/// Which census a torn-down row was counted by *before* it was torn down.
+///
+/// The two censuses above are decrements-only: a row leaves
+/// [`SPLIT_ALIAS_POPULATION`] when its alias stops selecting two different
+/// impls, and it leaves [`EXIT_POPULATION`]'s [`Escape::WholeCase`] bucket when
+/// its marker is resolved. Neither decrement says *where the fix went*, which is
+/// what [`TORN_DOWN_ROWS`] adds.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Kind {
+    /// A `compat::` alias whose two cfg arms selected different impls.
+    SplitAlias,
+    /// A surviving compat marker owned by [`Escape::WholeCase`] — the F.3
+    /// measurement priced its clean fix at a whole gated case's default-lane
+    /// oracle comparison, which WP-G2 pays with a ledger entry plus a pin.
+    WholeCase,
+}
+
+/// What, in the tree, still shows that a teardown actually landed.
+///
+/// A register of past events is only worth reading if it rots when the tree
+/// moves under it — the same reason [`ESCAPE_REGISTER`] and
+/// `tests/corpus/ledger.json` are checked fail-on-stale. The pin (below) proves
+/// the *behaviour*; this proves the *mechanism* the teardown left behind.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+// The register is born **empty** (G2.0), so no variant is constructed yet and
+// every one of them is dead code. `expect` rather than `allow` on purpose: the
+// day the last variant gets its first row, this attribute becomes unfulfilled
+// and has to be deleted, instead of quietly covering a variant that later goes
+// unused for real.
+#[expect(dead_code)]
+enum Evidence {
+    /// `(file, distinctive slice)` — keyed exactly like [`ESCAPE_REGISTER`]:
+    /// the file must still contain the slice. The WP-G2 shape for a row whose
+    /// teardown made an exclusion or a kernel unconditional.
+    Site(&'static str, &'static str),
+    /// The `id` of the `tests/corpus/ledger.json` entry that pins the
+    /// divergence the fix opened against an oracle channel — the shape G2.5's
+    /// engine fixes take, where the observable is a gated corpus case rather
+    /// than a source site.
+    Ledger(&'static str),
+    /// Nothing beyond the pin. Reserved for rows whose teardown leaves no
+    /// distinctive site and moves no oracle-compared number — WP-G4's
+    /// rendering rows (`GOLDEN_REBASE_PLAN.md` §WP-G4 preamble).
+    None,
+}
+
+/// Every row removed from a census above, with the proof the removal landed.
+///
+/// `(former row name, which census it left, evidence in the tree, the pin)`.
+///
+/// # Why a register and not just a smaller number
+///
+/// Both censuses are single integers, so "row X was torn down" and "row X was
+/// quietly stopped being counted" are the same edit. `GOLDEN_REBASE_PLAN.md`
+/// WP-G2 removes twenty split aliases and three `WholeCase` markers on the
+/// promise that each one's expected-value pin becomes *unconditional* — i.e.
+/// that the coverage moved rather than evaporated. That promise is exactly what
+/// nothing re-reads unless it is written down executably, so it is written here:
+/// the arithmetic ties below make a census decrement impossible without a row,
+/// and the checks make a row impossible without a pin that still exists.
+///
+/// Created **empty** in G2.0, before any deletion, so the first teardown commit
+/// has somewhere to land and the rails cannot be retro-fitted around whatever
+/// happened to be convenient.
+///
+/// The pin slot is an `Option` because WP-G4's rendering rows will carry none
+/// (plan §WP-G4: "the pin slot is mandatory only for WP-G2 bug rows"), but every
+/// row **this** WP adds must carry one, and the check below demands it of every
+/// row. Narrowing it is then a deliberate edit in the commit that lands the
+/// first pinless row — which is the register's whole point.
+const TORN_DOWN_ROWS: &[TornDownRow] = &[];
+
+/// One row of [`TORN_DOWN_ROWS`]: `(former row name, which census it left,
+/// evidence in the tree, `Some((pin file, pin fn))`)`.
+type TornDownRow = (
+    &'static str,
+    Kind,
+    Evidence,
+    Option<(&'static str, &'static str)>,
+);
+
+/// [`SPLIT_ALIAS_POPULATION`] at the WP-G2 start line, the fixed point the
+/// register's arithmetic tie is anchored on (`4f977d9e`'s 31).
+const SPLIT_ALIASES_AT_WP_G2_START: usize = 31;
+
+/// The [`Escape::WholeCase`] bucket at the same start line.
+const WHOLE_CASE_MARKERS_AT_WP_G2_START: usize = 4;
+
+/// The comment marker that names a lane exclusion made unconditional by a
+/// teardown, assembled at runtime so this file does not carry a literal
+/// occurrence of its own needle (the [`compat_tag`] trick). Spelled out for
+/// humans in `TESTING.md` §"Precision-compat rows still split by lane".
+fn exclusion_marker() -> String {
+    format!("LANE-EXCLUSIO{}(", "N")
+}
+
+/// The comment marker that names a torn-down row's expected-value pin. Same
+/// runtime assembly, same reason.
+fn pin_marker() -> String {
+    format!("EXPECTED-VALUE-PI{}(", "N")
+}
+
+/// One teardown marker: `(marker, row, file, line)`.
+type TeardownMarker = (String, String, String, usize);
+
+/// Every teardown marker in the tree, plus the malformed occurrences.
+///
+/// Shape — `// <marker>(<row>): <why>` — is the [`markers_in_tree`] discipline
+/// applied to the second kind of comment this plan introduces: the tag marks a
+/// site that *reproduces* an upstream inexactness, these mark the sites where
+/// one stopped. Malformed occurrences are returned rather than ignored, so a
+/// typo cannot silently drop a site out of the register.
+fn teardown_markers(root: &Path) -> (Vec<TeardownMarker>, Vec<String>) {
+    let markers = [exclusion_marker(), pin_marker()];
+    let mut out = Vec::new();
+    let mut malformed = Vec::new();
+
+    for path in rust_sources(root) {
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        if !markers.iter().any(|m| text.contains(m)) {
+            continue;
+        }
+        let rel = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        for (i, line) in text.lines().enumerate() {
+            for marker in &markers {
+                for (col, _) in line.match_indices(marker.as_str()) {
+                    let before = &line[..col];
+                    let after = &line[col + marker.len()..];
+                    let row = after.chars().take_while(|c| *c != ')').collect::<String>();
+                    let closed = after[row.len()..].starts_with("):");
+                    if !before.contains("//") || row.trim().is_empty() || !closed {
+                        malformed.push(format!("    {rel}:{}: {}", i + 1, line.trim()));
+                        continue;
+                    }
+                    out.push((
+                        marker.trim_end_matches('(').to_string(),
+                        row.trim().to_string(),
+                        rel.clone(),
+                        i + 1,
+                    ));
+                }
+            }
+        }
+    }
+    (out, malformed)
+}
+
+/// Every torn-down row keeps its pin, its evidence, and its census arithmetic.
+///
+/// Four independent ways the record could rot, all checked:
+///
+/// 1. **The pin is gone.** A teardown's contract is that the row's
+///    expected-value test survives it *unconditionally* — the named test must
+///    still exist, in a real test region, in a file that could pin anything
+///    ([`is_pin_candidate`]: not a compat module's kernel-vs-kernel test, not
+///    this bookkeeping file).
+/// 2. **The mechanism is gone.** An [`Evidence::Site`] slice that no longer
+///    matches means the unconditional exclusion or kernel was reverted or
+///    reworded; an [`Evidence::Ledger`] id that no longer exists means the
+///    divergence the fix opened is no longer pinned at all.
+/// 3. **A census moved without a row.** The two ties are the reason a row
+///    cannot be skipped: dropping [`SPLIT_ALIAS_POPULATION`] by one without
+///    adding a `SplitAlias` row fails here, and so does adding a row without
+///    dropping the number.
+/// 4. **Two rows with one name**, which would make the marker check below
+///    ambiguous.
+#[test]
+fn every_torn_down_row_keeps_its_pin_and_its_evidence() {
+    let root = repo_root();
+
+    let mut names: Vec<&str> = TORN_DOWN_ROWS.iter().map(|(n, _, _, _)| *n).collect();
+    names.sort_unstable();
+    let before = names.len();
+    names.dedup();
+    assert_eq!(
+        names.len(),
+        before,
+        "duplicate row name(s) in the teardown register: {names:?}"
+    );
+    assert!(
+        TORN_DOWN_ROWS
+            .iter()
+            .all(|(n, _, _, _)| !n.trim().is_empty()),
+        "a teardown row needs the name the marker comments refer to"
+    );
+
+    let mut problems: Vec<String> = Vec::new();
+
+    for (name, _kind, evidence, pin) in TORN_DOWN_ROWS {
+        match pin {
+            None => problems.push(format!(
+                "    {name}: no pin. Every WP-G2 teardown row records the \
+                 expected-value test that became unconditional; a pinless row \
+                 means the coverage evaporated with the alias"
+            )),
+            Some((file, func)) => {
+                let path = root.join(file);
+                match fs::read_to_string(&path) {
+                    Err(e) => problems.push(format!("    {name}: pin file {file}: {e}")),
+                    Ok(text) => match is_pin_candidate(&path, &root, &text) {
+                        None => problems.push(format!(
+                            "    {name}: {file} has no test region — it cannot hold a pin"
+                        )),
+                        Some((start, end)) => {
+                            if !names_token(&text[start..end], func) {
+                                problems.push(format!(
+                                    "    {name}: {file} no longer names `{func}` inside its \
+                                     test region — the pin was renamed or deleted"
+                                ));
+                            }
+                        }
+                    },
+                }
+            }
+        }
+
+        match evidence {
+            Evidence::None => {}
+            Evidence::Site(file, slice) => match fs::read_to_string(root.join(file)) {
+                Err(e) => problems.push(format!("    {name}: evidence file {file}: {e}")),
+                Ok(text) => {
+                    if !text.contains(*slice) {
+                        problems.push(format!(
+                            "    {name}: {file} no longer contains {slice:?} — the \
+                             unconditional site this teardown left behind is gone"
+                        ));
+                    }
+                }
+            },
+            Evidence::Ledger(key) => {
+                let ledger = root.join("tests").join("corpus").join("ledger.json");
+                let text = fs::read_to_string(&ledger).expect("read ledger.json");
+                let value: serde_json::Value =
+                    serde_json::from_str(&text).expect("parse ledger.json");
+                let present = value["entries"]
+                    .as_array()
+                    .expect("ledger.json has an `entries` array")
+                    .iter()
+                    .any(|e| e["id"].as_str() == Some(*key));
+                if !present {
+                    problems.push(format!(
+                        "    {name}: no `{key}` entry in tests/corpus/ledger.json — the \
+                         divergence this fix opened is unpinned"
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        problems.is_empty(),
+        "teardown register row(s) whose record no longer describes the tree:\n{}",
+        problems.join("\n")
+    );
+
+    // The two arithmetic ties. Stated as subtractions from the WP-G2 start line
+    // so that both halves of a teardown — the decrement and the row — have to
+    // land in the same commit.
+    let split_down = TORN_DOWN_ROWS
+        .iter()
+        .filter(|(_, k, _, _)| *k == Kind::SplitAlias)
+        .count();
+    let remaining = SPLIT_ALIASES_AT_WP_G2_START
+        .checked_sub(split_down)
+        .unwrap_or_else(|| {
+            panic!(
+                "{split_down} torn-down split aliases against a start line of \
+                 {SPLIT_ALIASES_AT_WP_G2_START} — the register outgrew the census it decrements"
+            )
+        });
+    assert_eq!(
+        remaining, SPLIT_ALIAS_POPULATION,
+        "the split-alias census and the teardown register disagree: \
+         {SPLIT_ALIASES_AT_WP_G2_START} − {split_down} torn down ≠ {SPLIT_ALIAS_POPULATION}. \
+         A row leaves the split only by landing here with its pin"
+    );
+
+    let whole_case_down = TORN_DOWN_ROWS
+        .iter()
+        .filter(|(_, k, _, _)| *k == Kind::WholeCase)
+        .count();
+    let whole_case_now = EXIT_POPULATION
+        .iter()
+        .find(|(owner, _)| *owner == Escape::WholeCase)
+        .map(|(_, n)| *n)
+        .expect("EXIT_POPULATION carries a WholeCase bucket");
+    let remaining = WHOLE_CASE_MARKERS_AT_WP_G2_START
+        .checked_sub(whole_case_down)
+        .unwrap_or_else(|| {
+            panic!(
+                "{whole_case_down} torn-down WholeCase rows against a start line of \
+                 {WHOLE_CASE_MARKERS_AT_WP_G2_START}"
+            )
+        });
+    assert_eq!(
+        remaining, whole_case_now,
+        "the `Escape::WholeCase` bucket and the teardown register disagree: \
+         {WHOLE_CASE_MARKERS_AT_WP_G2_START} − {whole_case_down} torn down ≠ {whole_case_now}"
+    );
+}
+
+/// The teardown markers in the tree and the register name the same rows.
+///
+/// Checked **both ways**, exactly like
+/// [`surviving_compat_markers_are_exactly_the_recorded_escape_register`]:
+///
+/// * marker → row: a marker naming a row the register does not carry is a
+///   claim about a teardown that never happened (with the register empty, as it
+///   is at G2.0, *every* marker fails — which is the point: the convention is
+///   live before the first row lands);
+/// * row → marker: a row's recorded pin file must carry the pin marker naming
+///   it, so the grep `<pin marker><row>` finds the test the register promises.
+///   Exclusion markers have no such obligation — a row whose fix needed no
+///   harness exclusion has none — but every one that exists must name a row.
+#[test]
+fn teardown_markers_and_the_register_agree() {
+    let root = repo_root();
+    let (markers, malformed) = teardown_markers(&root);
+    let (exclusion, pin) = (exclusion_marker(), pin_marker());
+    let (ex_name, pin_name) = (
+        exclusion.trim_end_matches('('),
+        pin.trim_end_matches('(').to_string(),
+    );
+
+    assert!(
+        malformed.is_empty(),
+        "teardown marker(s) not in the documented shape `// {ex_name}(<row>): <why>` \
+         (or the pin spelling) — a marker outside a comment, with an empty row name, or \
+         without the closing `):` is invisible to the grep it exists for:\n{}",
+        malformed.join("\n")
+    );
+
+    let unregistered: Vec<String> = markers
+        .iter()
+        .filter(|(_, row, _, _)| {
+            !TORN_DOWN_ROWS
+                .iter()
+                .any(|(name, _, _, _)| *name == row.as_str())
+        })
+        .map(|(marker, row, file, line)| format!("    {file}:{line}: {marker}({row})"))
+        .collect();
+    assert!(
+        unregistered.is_empty(),
+        "teardown marker(s) naming a row with no entry in `TORN_DOWN_ROWS`. The marker \
+         claims a lane row was dismantled here; the register is what proves it, so add \
+         the row (with its pin and its census decrement) or drop the marker:\n{}",
+        unregistered.join("\n")
+    );
+
+    let missing: Vec<String> = TORN_DOWN_ROWS
+        .iter()
+        .filter_map(|(name, _, _, pin_at)| {
+            let (file, func) = (*pin_at)?;
+            let marked = markers.iter().any(|(marker, row, at, _)| {
+                marker.as_str() == pin_name && row.as_str() == *name && at.as_str() == file
+            });
+            (!marked).then(|| format!("    {name}: {file} (pin `{func}`)"))
+        })
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "torn-down row(s) whose pin file carries no `{pin_name}` marker naming them — \
+         the register knows where the pin is, but a reader grepping the tree does \
+         not:\n{}",
+        missing.join("\n")
+    );
+}
+
+// ---------------------------------------------------------------------------
 // The citation surface: docs that point *into* the compat machinery
 // ---------------------------------------------------------------------------
 

@@ -7,6 +7,96 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### GOLDEN_REBASE G2.0 — the teardown gets its rails before the first deletion (branch `golden-g2`, 2026-08-02)
+
+**Frontier.** `GOLDEN_REBASE_PLAN.md` WP-G0 is complete (below); **WP-G2 opens
+here with rails only** — no compat kernel, no alias and no engine line was
+touched, so `lane_diff.ps1` is not part of this sub-step's gate and
+`git diff --stat -- tests/golden` is empty. G2.1a (`stddev_single_point`) is the
+first actual teardown. WP-G1 may still interleave at sub-step granularity under
+§0's constraints (G2.2a before G1.6, G2.4 before any G1 step re-touching
+`compare_monitor`), on this one branch.
+
+**What landed — (a) the doc-citation re-anchor.** New TESTING.md subsection
+*"Precision-compat rows still split by lane"*: the five **numeric** survivors —
+`compat::PI`, `compat::round_f64`, `compat::round_i32` (dss-parser),
+`compat::kv_base_search_scale`, `compat::profile_ll_pu_divisor` (dss-core) — with
+each row's parity kernel, default kernel and the expected-value test that pins
+it, plus the marker convention below. Why it had to land *before* the first
+deletion: `oracle_parity_cfg_gate.rs::operational_docs_cite_the_compat_machinery_accurately`
+carries a non-vacuity floor of four `compat::` references across the walked doc
+surface, and **all seven** live references name rows this WP deletes (CLAUDE.md
+×4, `tests/TOLERANCE_NOTES.md` ×1, `tools/golden/gen_props.py` ×1,
+`tests/corpus/modes/manifest.json` ×1) — each struck in the commit that deletes
+its row. The surface now carries 17 references, 10 of them on rows neither WP-G2
+nor WP-G4 touches (they are UPGRADE-line property), so the floor stays
+load-bearing through the whole teardown instead of being re-argued per sub-step.
+The new lines deliberately spell no compat tag, so none of them can trip the
+`TAG_PATH_CITATIONS` "unregistered" assert that fires on a line carrying both the
+tag and a `.rs` path.
+
+**(b) `TORN_DOWN_ROWS`, created empty.** In `oracle_parity_cfg_gate.rs` (not a new
+binary — `repo_root`/`rust_sources`/`test_region`/`is_pin_candidate`/`names_token`
+are private to it, and that file already *is* the compat-machinery register):
+`(row name, Kind::{SplitAlias,WholeCase}, Evidence::{Site,Ledger,None}, Option<(pin
+file, pin fn)>)`. Both censuses are single integers, so "row X was torn down" and
+"row X quietly stopped being counted" are the same edit today; the register makes
+them different edits. `every_torn_down_row_keeps_its_pin_and_its_evidence` checks
+four independent rots: the pin file still names the pin fn **inside a real test
+region** (`is_pin_candidate`, so a compat module's kernel-vs-kernel test or this
+bookkeeping file cannot pose as one); an `Evidence::Site` slice still matches; an
+`Evidence::Ledger` id still exists in `tests/corpus/ledger.json`; and the two
+arithmetic ties `31 − count(SplitAlias) == SPLIT_ALIAS_POPULATION` and
+`4 − count(WholeCase) == EXIT_POPULATION[WholeCase]`, which is what makes a
+census decrement impossible without a row and vice versa.
+
+**(c) The greppable markers.** `// LANE-EXCLUSION(<row>): <why>` at every
+exclusion a teardown makes unconditional and `// EXPECTED-VALUE-PIN(<row>): <why>`
+at every pin, checked by `teardown_markers_and_the_register_agree` both ways in
+the `markers_in_tree` discipline: a marker naming a row the register does not
+carry fails (with the register empty, that is *every* marker — the convention is
+live before the first row lands), and a registered row whose recorded pin file
+carries no marker naming it fails too. Exclusion markers carry no per-row
+obligation — a row whose fix needed no harness exclusion has none — but every one
+that exists must name a registered row. Malformed occurrences (outside a comment,
+empty row name, missing `):`) are a hard failure rather than a silent skip, since
+an unparseable marker is invisible to the grep it exists for.
+
+**Design decisions worth carrying forward.**
+
+*The pin slot is `Option` but every row must fill it.* WP-G4's rendering rows are
+planned as `(SplitAlias, Evidence::None, None)` — the plan's G4 preamble makes the
+pin mandatory "only for WP-G2 bug rows". Rather than guess a discriminator the row
+shape does not carry, the check demands a pin from **every** row, so the first
+pinless row is a deliberate edit to this assert in the commit that lands it. That
+is the register's whole purpose applied to itself.
+
+*`#[expect(dead_code)]`, not `#[allow]`, on `Evidence`.* No variant is constructed
+while the register is empty. `expect` retires itself: once the last variant gets
+its first row the attribute becomes unfulfilled and must be deleted, where an
+`allow` would keep covering a variant that later goes unused for real. `Kind` needs
+no attribute — both its variants are named as *values* by the census filters.
+
+*The marker strings are assembled at runtime* (`format!("LANE-EXCLUSIO{}(", "N")`),
+the same trick `compat_tag()`/`needle()` use, so the file that polices the markers
+carries no literal occurrence of one and cannot trip its own walk. The
+human-readable spelling therefore lives in TESTING.md, which the doc comment names.
+
+**Negative probes** (each run, observed red, reverted — tree verified clean
+afterwards). (1) A register row pointing at a nonexistent pin fn *and* a
+nonexistent evidence slice: both reported, plus the missing marker. (2) The same
+row made valid (real pin fn, real site slice, tie adjusted): only the
+row→marker direction fails — then adding the marker turns the whole file green,
+which is the accept path proven end-to-end rather than assumed. (3) A deliberately
+wrong tie (a row with the census left at 31): `31 − 1 torn down ≠ 31`. (4) A stray
+marker with the register empty: unregistered-marker failure. (5) A marker without
+its closing `):`: malformed-shape failure.
+
+**Recorded, not fixed (out of G2.0 scope).** The two-lane table at `TESTING.md:73`
+still claims the parity lane reproduces "every upstream quirk" and "never
+re-baselines" — stale since the 2026-08-02 policy. `GOLDEN_REBASE_PLAN.md` G5.1
+already owns that exact line, so it is left to it rather than rewritten here.
+
 ### GOLDEN_REBASE G0.2 — the regen button gets its guards before it gets a caller (branch `golden-g0`, 2026-08-02)
 
 **Frontier.** `GOLDEN_REBASE_PLAN.md` WP-G0 (safety rails) is **complete**: G0.1

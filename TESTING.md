@@ -86,6 +86,38 @@ Both lanes must be green before any commit. Everything else in this document —
 oracles, goldens, ledger, knobs — is identical in the two lanes unless the table
 above says otherwise.
 
+### Precision-compat rows still split by lane
+
+The split is being taken apart again. Since the 2026-08-02 policy no upstream bug
+is reproduced in **any** lane, so `GOLDEN_REBASE_PLAN.md` WP-G2 tears down the
+bug-reproducing kernels and WP-G4 the FPC print emulation. Five rows survive both
+and are the only lane split expected to outlive this plan: `compat::PI`,
+`compat::round_f64`, `compat::round_i32` (`crates/dss-parser/src/compat.rs`),
+`compat::kv_base_search_scale` and `compat::profile_ll_pu_divisor`
+(`crates/dss-core/src/compat.rs`) — truncated upstream constants and FPC `Round`
+semantics *in computation*, owned by the UPGRADE line. None of them is a bug
+reproduction or a rendering row.
+
+| row | parity kernel (what both gating oracles do) | default kernel | pinned at |
+|---|---|---|---|
+| `compat::PI` | the RPN calculator's degree conversions use upstream's shortened `3.14159265359` (`RPN.pas:69-70`), 2.07e-13 above π | `std::f64::consts::PI` | `dss_parser::parser::tests::rpn_degree_trig_is_the_lane_kernel` |
+| `compat::round_i32` | FPC `Round` into an `Integer`: ties-to-even, and out-of-range/non-finite inputs wrap the x87 integer-indefinite sentinel (`inf` → `0`) | ties-to-even, then a saturating cast | `dss_parser::parser::tests::make_integer_rounds_ties_to_even` |
+| `compat::round_f64` | the same `Round` written back into a `Double` (the `ApplyRound` array path), so `1e20` becomes `-9.22337203685478e18` | ties-to-even in place, magnitude preserved | `exec::tests::compat_quirks::apply_round_out_of_range_is_the_lane_kernel` |
+| `compat::kv_base_search_scale` | `CalcVoltageBases` scales the solved L-N magnitude by the truncated `0.001732` before the legal-base argmin (`Common/Solution.pas:1103`, r4133 `:2541`) | `SQRT3 / 1000`, the constant the same statement names one operator later | `solution::solution::dispatch::tests` (a constructed tie, then the whole command) |
+| `compat::profile_ll_pu_divisor` | `Export Profile`'s three line-to-line arms divide by the truncated `1732.0` (`Common/ExportResults.pas:3207/3231/3256`) | `1000·√3`, matching the eight line-to-neutral arms' exact `1000.0` | `exec::tests::compat_quirks::export_profile_ll_pu_is_the_lane_kernel` |
+
+Two rails keep this list honest as the teardown proceeds, both in
+`crates/dss-core/tests/oracle_parity_cfg_gate.rs`: every `compat::` alias any
+operational document names must still be declared by a compat module (so the
+sentences above cannot survive their rows), and `TORN_DOWN_ROWS` records every
+row that *left* the split — its census decrement, the evidence in the tree, and
+the expected-value pin that became unconditional. Teardown commits mark their
+sites with the greppable comments `// LANE-EXCLUSION(<row>): <why>` at an
+exclusion made unconditional and `// EXPECTED-VALUE-PIN(<row>): <why>` at the
+pin; both are checked against the register in either direction, so a marker
+naming an unregistered row and a registered row whose pin lost its marker fail
+the same way.
+
 ### The parity↔default differential gate
 
 The two lanes are two *builds*, so no `#[test]` can compare them. That
