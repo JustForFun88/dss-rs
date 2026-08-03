@@ -1380,11 +1380,27 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         Kind::SplitAlias,
         // The comparison was the split's *default* arm, so the bare expression
         // would match a revert; the needle therefore carries the line break and
-        // the eight spaces of the function body, which is the whole of it. The
-        // split held the same expression at twelve spaces inside an `else`, and
-        // so would any re-split — a lane branch cannot put this statement back
-        // at top level. Single-line by necessity: this repo checks Rust sources
-        // out with CRLF, which no multi-line needle survives.
+        // the eight spaces of the function body, which is the whole of it, so
+        // the shape the alias actually had — the same expression at twelve
+        // spaces inside an `else` — stops matching.
+        //
+        // It does **not** discriminate every revert, and per the last paragraph
+        // of [`Evidence::Site`] this row says so rather than over-claiming: an
+        // early-return re-split (`if compat::… { return (!…) == …; }`, or the
+        // same with a `#[cfg]`-guarded `return`) leaves this statement at
+        // exactly these eight spaces while the lane branch is fully restored.
+        // The multi-line needle that would catch it is not available: the check
+        // is a plain `contains` over the file as checked out, and with
+        // `core.autocrlf=true` and no `*.rs` rule in `.gitattributes` a fresh
+        // checkout is CRLF, which only a single-line needle with a leading `\n`
+        // survives. For that shape the check degrades to "the kernel was not
+        // deleted outright" and the discrimination is carried by: the row's
+        // now-unconditional pin
+        // `fleet_idle_guard_fires_unless_the_fleet_is_already_idling`, which
+        // asserts the `Discharging` answer in *both* lanes, so a restored
+        // complement fails it wherever it is written; the ghost check below,
+        // which fails if this alias ever selects two impls again; and the
+        // census tie, which fails if the row leaves the register.
         Evidence::Site(
             "crates/dss-core/src/elements/control/storage_controller/compute.rs",
             "\n        self.fleet_state != StorageState::Idling",

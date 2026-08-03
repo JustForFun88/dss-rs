@@ -255,6 +255,11 @@ struct MockStorage {
     pct_reserve: f64,
     state_desired: StorageState,
     nominal_calls: usize,
+    /// Every `Set_kW` write, in order. Pascal's zero arm only flips `FState`
+    /// (`Storage.pas:3444-3461`), so a `kW := 0` is otherwise invisible on the
+    /// element until the next `SetNominalDEROutput` — recording the writes is
+    /// how a test can see one at all.
+    kw_writes: Vec<f64>,
 }
 
 impl MockStorage {
@@ -281,6 +286,7 @@ impl MockStorage {
             pct_reserve: 20.0,
             state_desired: StorageState::Idling,
             nominal_calls: 0,
+            kw_writes: Vec::new(),
         }
     }
 
@@ -296,8 +302,11 @@ impl MockStorage {
         };
     }
 
-    /// Pascal `Set_kW`.
+    /// Pascal `Set_kW` (`Storage.pas:3444-3461`) — the zero arm sets the state
+    /// and nothing else, exactly like upstream; the write is recorded so it is
+    /// observable at all.
     fn set_kw(&mut self, value: f64) {
+        self.kw_writes.push(value);
         if value > 0.0 {
             self.state = StorageState::Discharging;
             self.pct_kw_out = value / self.kw_rating * 100.0;
@@ -1106,9 +1115,18 @@ fn storage_ctrl_mode_and_action_pin_pascal_ordinals() {
 ///    discriminating one is `Discharging`, where upstream's complement answers
 ///    `false` and this engine answers `true`, so it cannot be dropped silently;
 /// 2. the observable — a fleet reaching "Ran out of OOMPH" *while discharging*
-///    ends the sample with every member idled and `STORE_IDLING` pushed onto
-///    the control queue ("force a new power flow solution"), which is the whole
-///    point of the branch and what upstream skips.
+///    ends the sample with every member idled, its `kW` written to zero and
+///    `STORE_IDLING` pushed onto the control queue ("force a new power flow
+///    solution"), which is the whole point of the branch and what upstream
+///    skips.
+///
+/// Level 2 lives at the discharge branch because the *charge* branch cannot
+/// carry it: "Fully charged" is reachable only with `FleetState = CHARGING`
+/// (`DoPeakShaveModeLow` returns early on `actual_kWh >= total_rating_kWh` for
+/// a discharging or idling fleet, `compute.rs` — the `skip_kw_charge` block),
+/// and `CHARGING = -1` is exactly the state upstream's complement fires in, so
+/// the two readings agree there. [`fully_charged_branch_idles_the_fleet`]
+/// covers that caller against losing the guard, not against the complement.
 #[test]
 fn fleet_idle_guard_fires_unless_the_fleet_is_already_idling() {
     let mut sc = StorageController::new("sc1");
@@ -1143,6 +1161,8 @@ fn fleet_idle_guard_fires_unless_the_fleet_is_already_idling() {
     let mut store = MockStorage::new("a", 2000.0, 500.0, 0.2); // stored == reserve
     store.kwh_stored = store.kwh_reserve;
     store.state = StorageState::Discharging;
+    // The 400 kW upstream leaves in place: with the guard false it never runs
+    // `SetFleetToIdle`, so neither the state nor the `kW := 0` write happens.
     store.kw_out = 400.0;
     store.present_kw = 400.0;
     let mut env = MockEnv::new(11_000.0, vec![store]);
@@ -1159,11 +1179,63 @@ fn fleet_idle_guard_fires_unless_the_fleet_is_already_idling() {
     assert_eq!(
         env.fleet[0].state,
         StorageState::Idling,
-        "`SetFleetToIdle` walks the fleet: `StorageState := STORE_IDLING; kW := 0`"
+        "`SetFleetToIdle` walks the fleet: `StorageState := STORE_IDLING`"
+    );
+    assert_eq!(
+        env.fleet[0].kw_writes,
+        vec![0.0],
+        "…and the second half of `SetFleetToIdle`, `kW := 0`. Pascal's zero arm \
+         only flips `FState` (`Storage.pas:3444-3461`) and this branch queues no \
+         `SetNominalDEROutput`, so the element's own `kW_out` still reads the \
+         400 kW staged above — the write is only visible as the write"
     );
     assert!(
         env.pushes.contains(&StorageState::Idling),
         "`PushTimeOntoControlQueue(STORE_IDLING)` — without it the stale kW is \
          never re-solved on this step"
     );
+}
+
+/// The second caller of [`StorageController::fleet_needs_idling`] — "Fully
+/// charged", Pascal `DoPeakShaveModeLow`
+/// (`.inputs/dss_capi/src/Controls/StorageController.pas:1619`; r4133
+/// `Version8/Source/Controls/StorageController.pas:2042`) — still consults the
+/// guard and still idles the fleet behind it.
+///
+/// This is a caller pin, not a lane pin: the branch is reachable only with
+/// `FleetState = CHARGING` (a discharging or idling fleet returns at the
+/// `actual_kWh >= total_rating_kWh` skip above it), and `CHARGING = -1` is the
+/// one state where upstream's `(not FleetState) = 0` also answers `true`. So
+/// the teardown of `STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL` moves
+/// nothing here; what this catches is the branch losing its `SetFleetToIdle`
+/// (or its queue push) — see
+/// [`fleet_idle_guard_fires_unless_the_fleet_is_already_idling`] for the level
+/// that discriminates the two readings.
+#[test]
+fn fully_charged_branch_idles_the_fleet() {
+    // PeakShave below target (charging allowed, no discharge dispatch) + a
+    // PeakShaveLow charge mode below kWTargetLow, on a fleet that is already
+    // charging and already full.
+    let mut sc = peakshave_controller(10_000.0);
+    sc.charge_mode = StorageCtrlMode::PeakShaveLow;
+    sc.set_f64(prop::KW_TARGET_LOW, 4000.0);
+    sc.side_effects(prop::KW_TARGET_LOW, 0);
+    sc.fleet_state = StorageState::Charging;
+
+    let mut store = MockStorage::new("a", 2000.0, 500.0, 1.0); // stored == rating
+    store.state = StorageState::Charging;
+    store.kw_out = -400.0;
+    store.present_kw = -400.0;
+    let mut env = MockEnv::new(3000.0, vec![store]);
+    sc.sample(&mut env);
+
+    assert!(
+        !sc.charging_allowed,
+        "the `Fully charged` branch is the one under test (it clears \
+         ChargingAllowed)"
+    );
+    assert_eq!(sc.fleet_state, StorageState::Idling);
+    assert_eq!(env.fleet[0].state, StorageState::Idling);
+    assert_eq!(env.fleet[0].kw_writes, vec![0.0]);
+    assert!(env.pushes.contains(&StorageState::Idling));
 }
