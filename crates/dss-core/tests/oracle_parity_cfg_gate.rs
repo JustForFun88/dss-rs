@@ -805,8 +805,9 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// the first of WP-G2's rows (a defect r4133 *does* share — see
 /// [`TORN_DOWN_ROWS`] for what each teardown leaves behind); **29** after G2.1b
 /// did the same to `CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL`; **28** after
-/// G2.1c did the same to `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING`.
-const SPLIT_ALIAS_POPULATION: usize = 28;
+/// G2.1c did the same to `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING`; **27**
+/// after G2.1d did the same to `REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT`.
+const SPLIT_ALIAS_POPULATION: usize = 27;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -1325,6 +1326,36 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         Some((
             "crates/dss-core/tests/golden_reports.rs",
             "export_seqcurrents_prints_zero_for_an_undefined_rating",
+        )),
+    ),
+    // G2.1d. `DoReduceShortLines`' merge-with-parent branch opens its
+    // capacitor/reactor scan on `ParentNode.FirstShuntObject()` and advances it
+    // with `PresentBranch.NextShuntObject()`
+    // (`.inputs/dss_capi/src/Meters/ReduceAlgs.pas:200`/`:209`; r4133
+    // `Version8/Source/Meters/ReduceAlgs.pas:199`/`:206` is the same pair) — a
+    // cross-node cursor mix whose second list is already exhausted
+    // (`DSSPointerList.pas:88` leaves `ActiveItem` at the last `Add`), so the
+    // scan ends after ONE element and a capacitor at position ≥ 2 is merged
+    // onto another bus instead of blocking. Both gating oracles carry it; both
+    // lanes now scan the whole list, exactly as the merge-with-child branch of
+    // the same procedure (`:246-258`) always did. Zero-footprint: no golden and
+    // no gated corpus deck reduces a parent branch whose first shunt is not a
+    // capacitor while a later one is.
+    (
+        "REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT",
+        Kind::SplitAlias,
+        // The `any` was the split's *default* arm, so the bare call would match
+        // a revert; the needle therefore carries the line break, the twelve
+        // spaces of the merge-with-parent block, and the `if` that consumes the
+        // scan directly — the split bound it to `parent_blocked` from inside a
+        // 16-space `else`, so no lane-branching form of this code can match.
+        Evidence::Site(
+            "crates/dss-core/src/exec/reduce.rs",
+            "\n            if parent_shunts.iter().any(|&s| self.red_is_cap_or_reactor(s)) {",
+        ),
+        Some((
+            "crates/dss-core/src/exec/tests/reduce.rs",
+            "short_line_merge_scans_every_parent_shunt",
         )),
     ),
 ];

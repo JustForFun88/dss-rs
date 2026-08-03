@@ -45,7 +45,7 @@
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
 //! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
 //! | report text rendering — `Show` device-name column width | [`max_device_name_length`] — same section | **yes** (F.4b) |
-//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c |
+//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d |
 //!
 //! Rows 12–13 are not in IV.2's table and do not extend it: they are the two
 //! *reproduced* CLAUDE.md upstream bugs whose clean fix is deferred to this
@@ -730,37 +730,6 @@ pub use ISOURCE_BUS2_NEVER_LATCHES_PARITY_IMPL as ISOURCE_BUS2_NEVER_LATCHES;
 // marker and its reproduction pin; see `elements/pd/gic_transformer/solve.rs`
 // for the full measurement and for the `R1=`/`R2=` transitive cover it leaves
 // ready for whoever lands it.
-
-/// Whether the short-line **merge-with-parent** reduction inspects only the
-/// parent branch's *first* shunt when looking for a capacitor/reactor.
-///
-/// `true` reproduces the upstream quirk: `DoReduceShortLines`
-/// (`ReduceAlgs.pas:200-210`) opens the scan with `ParentNode.FirstShuntObject()`
-/// but advances it with `PresentBranch.NextShuntObject()` — a cross-node cursor
-/// mix. The present branch's `TDSSPointerList` cursor still sits at its last
-/// item from tree construction (`Add` sets `ActiveItem := Count`,
-/// `DSSPointerList.pas:88`, in `Add`), so the very first `Next` overflows and returns
-/// `NIL` (`:113-131`), ending the loop after one element. A capacitor or
-/// reactor at parent-shunt position ≥ 2 therefore fails to block the merge and
-/// is silently moved to another bus.
-///
-/// `false` scans every parent shunt. That the **merge-with-child** branch of the
-/// same procedure (`:246-258`) spells the identical loop with a single cursor
-/// (`PresentBranch.First…`/`PresentBranch.Next…`) — and that this port already
-/// renders it as an `any()` — is what makes the parent branch a slip rather than
-/// a rule.
-///
-/// The lanes differ only when a parent branch carries ≥ 2 shunts whose *first*
-/// is not a capacitor/reactor while a later one is; no golden and no gated
-/// corpus deck reduces such a topology.
-pub const REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT_DEFAULT_IMPL as REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT;
-#[cfg(feature = "oracle-parity")]
-pub use REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT_PARITY_IMPL as REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT;
 
 /// Whether the StorageController's "is the fleet already idling?" test is
 /// written as a **bitwise complement** of the state ordinal.

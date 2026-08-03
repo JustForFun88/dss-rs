@@ -7,6 +7,90 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### GOLDEN_REBASE G2.1d — `REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT` torn down: the merge scans the whole shunt list (branch `golden-g2`, 2026-08-03)
+
+**Frontier.** WP-G2's fourth teardown. `SPLIT_ALIAS_POPULATION` **28 → 27**,
+`TORN_DOWN_ROWS` carries its fourth row, and the WP acceptance criterion still
+holds at this commit: `git diff --stat -- tests/golden` over the range is
+**empty** and both lanes' `oracle_parity_cfg_gate` is green. Next: G2.1e
+(`STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL`, `issue-18`), same
+ritual.
+
+**The bug.** `DoReduceShortLines`' merge-with-parent branch must not merge a
+short line into its parent while the intermediate bus carries a capacitor or a
+reactor — the merge deletes that bus, and the compensating element would be
+silently relocated. The guard is written as a loop over the *parent* node's
+shunt list, but the loop opens on one node and continues on another: `ShuntElement
+:= ParentNode.FirstShuntObject()` (`.inputs/dss_capi/src/Meters/
+ReduceAlgs.pas:200`) and `ShuntElement := PresentBranch.NextShuntObject()`
+(`:209`). Each `TDSSPointerList` carries its own cursor, and the present
+branch's still sits where tree construction left it — `Add` sets `ActiveItem :=
+Result`, i.e. the last item (`.inputs/dss_capi/src/Shared/DSSPointerList.pas:88`)
+— so the very first `Next` runs off the end and returns `NIL` (`:113-131`). The
+scan therefore ends after **one** element: a capacitor at position ≥ 2 does not
+block the merge and is moved onto the merged line's far bus (`:226`), changing
+where reactive power is injected, with no message to the user. The case is
+typical rather than exotic: the bus shunt list is filled with PC elements first
+and shunt PD elements after, so a capacitor at a bus that also carries any load
+is *never* first — the one-element scan is blind exactly where it was written to
+look. That it is a slip and not a rule is proven inside the same procedure: the
+second loop of this very branch, the one that relocates the shunts after a
+successful merge, uses the parent for both calls (`:223`/`:228`), and the
+merge-with-child branch forty lines below uses one node throughout
+(`:248`/`:257`). r4133 carries the identical pair
+(`.inputs/electricdss-code-r4133-trunk/Version8/Source/Meters/
+ReduceAlgs.pas:199`/`:206`), so both gating oracles have it and the 2026-08-02
+policy applies rather than exempts. Deep dive:
+`investigations/issue-31-reduce-parent-shunt-first-only.md`.
+
+**What landed.** `compat::REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT` and both its
+`*_IMPL` twins are **deleted**; `exec/reduce.rs::red_short_line_step` scans the
+parent's whole shunt list with one unconditional
+`parent_shunts.iter().any(red_is_cap_or_reactor)` — byte-for-byte the predicate
+the merge-with-child branch twenty lines below has always used — with both
+upstream sites and the cursor mechanism cited in place. The default lane already
+did this, so **only the parity lane moves**; `reduce.rs` no longer imports
+`compat` at all. The compat module-doc row for the *Single-site upstream quirks*
+section records this row as G2.1d.
+
+**The pin became unconditional.**
+`exec::tests::reduce::short_line_merge_scans_every_parent_shunt` (renamed from
+`short_line_parent_shunt_scan_is_lane_split`) lost its `ORACLE_PARITY` branch and
+carries the `EXPECTED-VALUE-PIN(REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT)`
+marker. Its builder `reduce_shortlines_keeps_b2` now takes **two** flags (load at
+`b2`, capacitor at `b2`) instead of one, and the pin asserts three inputs on the
+one feeder `src —lfeed(long)→ b1 —l1(short)→ b2 —l2(short)→ b3`: capacitor
+second (a load ahead of it) → `b2` stands; capacitor first (alone at `b2`) → `b2`
+stands; **no capacitor at all** → `b2` is eliminated. The third input is the one
+the lane-split version could not have: with both lanes now answering "kept" to
+the first two, "`b2` survived" would otherwise also be satisfied by a reduction
+that never ran, and the pin would go green on a no-op `reduce`. The second keeps
+the claim about scan *length* rather than about the predicate. No
+kernel-vs-kernel test existed for this row, so none was deleted.
+
+**Zero-footprint, measured not assumed.** The lanes could only differ on a
+topology reduced with `ReduceOption=ShortLines` whose parent branch carries ≥ 2
+shunts, the first of them not a capacitor/reactor and a later one being one. No
+committed golden and no gated corpus deck reduces such a topology — which is why
+the **default** lane, which has scanned the whole list since F.3l, has been byte-
+green on every golden all along. So no golden byte, no `ledger.json` entry and no
+`population.lock.json` field moves; the **parity** lane's full suite, the
+unconditional 520-case corpus gate against both oracle channels included, is
+green, and that is the measurement confirming the classification rather than
+assuming it. `lane_diff.ps1` re-run because a lane alias was deleted: over 520
+cases / 3 219 862 records every gated kind
+(`conv`/`cur`/`errs`/`iter`/`loss`/`pow`/`v`/`y`) is **identical**, max |Δ| = 0,
+zero iteration drift, `VERDICT: PASS`; the only entries are the
+documented Newton pow/loss divergences on the two `newton` decks — the still-live
+`POWERS_REUSE_STALE_NEWTON_ITERMINAL` row that G2.3 removes.
+
+**Doc surface.** The alias was never cited on the walked doc surface (measured
+again here: outside `crates/` the only mentions are STATUS, the plan and the
+gitignored `investigations/`, none of which `operational_docs` reads), so no
+citation was struck and the non-vacuity floor is untouched. CLAUDE.md names this
+row nowhere — it is not one of the six named bugs — so its policy §Status
+sentence is unchanged.
+
 ### GOLDEN_REBASE G2.1c — `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING` torn down: an undefined rating is not a percentage (branch `golden-g2`, 2026-08-03)
 
 **Frontier.** WP-G2's third teardown. `SPLIT_ALIAS_POPULATION` **29 → 28**,
