@@ -1300,8 +1300,24 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         // split computed each of them inline with its own lane-branching
         // fallback, so this call pair never existed while the alias did. The
         // leading line break plus the sixteen spaces of the `do_ratings && j
-        // == 1` arm hold the anchor convention on [`Evidence::Site`] as well —
-        // re-wrapping the pair in a lane branch indents it past this needle.
+        // == 1` arm hold the indentation half of the anchor convention on
+        // [`Evidence::Site`]: re-wrapping the *pair* in a lane branch indents it
+        // past this needle.
+        //
+        // It does **not** discriminate every revert, and per that doc's last
+        // paragraph this row says so rather than over-claiming: a re-split
+        // written *inside* the closure (`} else if compat::… { rating }`) leaves
+        // this line byte-identical, and the whole-closure needle that would
+        // catch it is not available — the check is a plain `contains` over the
+        // file as checked out, and this repo checks Rust sources out with CRLF
+        // (`git ls-files --eol`), which only a **single**-line needle with a
+        // leading `\n` survives. For that shape the check degrades to "the
+        // kernel was not deleted outright" and the discrimination is carried by:
+        // the row's now-unconditional pin, which asserts `(0.0, 0.0)` for
+        // `Line.bad` in *both* lanes, so any lane branch that restores the
+        // upstream reading fails it wherever it is written; the ghost check
+        // below, which fails if this alias ever selects two impls again; and the
+        // census tie, which fails if the row leaves the register.
         Evidence::Site(
             "crates/dss-core/src/report/export/seq_currents.rs",
             "\n                (pct_of_rating(norm_amps), pct_of_rating(emerg_amps))",

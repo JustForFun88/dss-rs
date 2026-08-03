@@ -6666,8 +6666,13 @@ fn export_seqcurrents_prints_zero_for_an_undefined_rating() {
          c1=0 c0=0 normamps=400 emergamps=600",
     );
     // The boundary: an unset (zero) rating is the input on which the upstream
-    // reading and the fixed one coincide, and it carries load current here, so
-    // it also proves the guard is still `> 0` rather than, say, an `abs`.
+    // reading and the fixed one coincide, and this line sits in series ahead of
+    // the load, so it carries current. That is what makes it the line which
+    // kills a guard relaxed to `>=` or dropped altogether — either one divides
+    // by the undefined rating and renders an infinity where `0` is asserted.
+    // `Line.bad` kills the complementary mutation, a sign-blind rewrite such as
+    // `rating.abs()`, which would report its −1 A rating as a loading of +1 %
+    // (and passes on this line, since `abs(0)` is still not `> 0`).
     dss.command(
         "new line.zero bus1=c bus2=d length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 \
          c1=0 c0=0 normamps=0 emergamps=0",
