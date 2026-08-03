@@ -7,6 +7,107 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### GOLDEN_REBASE G2.1e — `STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL` torn down: the fleet guard asks the state test it reads as (branch `golden-g2`, 2026-08-03)
+
+**Frontier.** WP-G2's fifth teardown. `SPLIT_ALIAS_POPULATION` **27 → 26**,
+`TORN_DOWN_ROWS` carries its fifth row, and the WP acceptance criterion still
+holds at this commit: `git diff --stat -- tests/golden` over the range is
+**empty** and both lanes' `oracle_parity_cfg_gate` is green. Next: G2.1f
+(`STORAGE_MULTIFILE_USES_THE_PV_PREFIX`, `issue-20`), same ritual.
+
+**The bug.** `TStorageControllerObj` ends both of its terminal dispatch branches
+by idling the fleet and forcing a re-solve, and guards both with
+`if not FleetState = STORE_IDLING` — "Ran out of OOMPH"
+(`.inputs/dss_capi/src/Controls/StorageController.pas:1350`) and "Fully charged"
+(`:1619`). In Object Pascal `not` binds tighter than `=`, and `FleetState` is an
+`Integer`, so the compiler reads `(not FleetState) = STORE_IDLING`, i.e. a
+**bitwise complement** compared against 0. That holds for exactly one value,
+`-1 = STORE_CHARGING` (`Storage.pas:35-37`): `not 0 = -1`, `not 1 = -2`. The
+guard therefore fires only when the fleet is *charging* and is false in the very
+state that reaches "Ran out of OOMPH" — discharging. Such a fleet keeps
+`STORE_DISCHARGING` and its old dispatched kW, no `PushTimeOntoControlQueue`
+re-solves the step, and the event log prints "Fleet has been set to idling
+state" anyway (`:1357-1359`, outside the guard). The charge branch is masked:
+it is reached *from* charging, the one state the complement happens to accept.
+That it is a precedence slip and not a convention is written seven times in the
+same unit — every other test of this field is parenthesised, including the
+literal `if not (FleetState = STORE_IDLING)` at `:1162` and `:1450`, plus
+`:872`, `:969`, `:994`, `:1252`, `:1515`. r4133 carries the identical
+unparenthesised pair
+(`.inputs/electricdss-code-r4133-trunk/Version8/Source/Controls/StorageController.pas:1771`
+and `:2042`), so both gating oracles have it and the 2026-08-02 policy applies
+rather than exempts. Deep dive:
+`investigations/issue-18-storagecontroller-idle-condition.md`.
+
+**What landed.** `compat::STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL`
+and both its `*_IMPL` twins are **deleted**;
+`storage_controller/compute.rs::fleet_needs_idling` — the single method both
+Pascal sites are ported through — is one unconditional
+`self.fleet_state != StorageState::Idling`, with both upstream sites, both r4133
+lines and the seven parenthesised siblings cited in place. The default lane
+already did this, so **only the parity lane moves**; `compute.rs` no longer
+imports `compat` at all. The compat module-doc row for the *Single-site upstream
+quirks* section records this row as G2.1e.
+
+**The pin became unconditional, and grew the observable.**
+`storage_controller::tests::fleet_idle_guard_fires_unless_the_fleet_is_already_idling`
+(renamed from `fleet_idle_guard_is_lane_split`) lost its `ORACLE_PARITY` branch
+and carries the
+`EXPECTED-VALUE-PIN(STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL)`
+marker. It asserts two levels: the predicate over all three fleet states
+(`Discharging` is where upstream disagrees), the three complement values that
+make `Charging` upstream's only firing state — and, new here, the **observable**
+a deck sees: a PeakShave fleet already `Discharging` into a 1 MW overage with
+`kWhStored == kWhReserve` takes the "Ran out of OOMPH" branch and must end the
+sample with `FleetState = STORE_IDLING`, its member idled, and `STORE_IDLING`
+pushed onto the control queue. Without that second level the pin would not
+notice a caller that stopped consulting the guard at all — the predicate is only
+half the claim the register promises moved. Both levels were mutation-checked
+against the upstream kernel (`(!ordinal) == Idling.ordinal()` restored in
+`fleet_needs_idling`): each one reds on its own — the predicate at `Discharging`
+(`false` vs `true`), the observable at `sc.fleet_state` (`Discharging` vs
+`Idling`). Both mutations were reverted; `git diff` over `compute.rs` matches
+what this commit ships, so the register's `Evidence::Site` needle
+(`"\n        self.fleet_state != StorageState::Idling"` — the eight-space
+function-body indentation a re-split cannot reproduce) still matches
+byte-for-byte. No kernel-vs-kernel test existed for this row, so none was
+deleted.
+
+**Zero-footprint, measured not assumed.** The lanes could only differ for a
+fleet that reaches "Ran out of OOMPH" or "Fully charged" in a state that is
+neither idling nor charging — in practice, energy exhausted mid-discharge. No
+committed golden and no gated corpus deck drives a StorageController there,
+which is why the **default** lane, which has asked the state test since F.3l,
+has been byte-green on every golden all along. So no golden byte, no
+`ledger.json` entry and no `population.lock.json` field moves; the **parity**
+lane's full suite, the unconditional 520-case corpus gate against both oracle
+channels included, is green, and that is the measurement confirming the
+classification rather than assuming it. `lane_diff.ps1` re-run because a lane
+alias was deleted: over 520 cases / 3 219 862 records every gated kind
+(`conv`/`cur`/`errs`/`iter`/`loss`/`pow`/`v`/`y`) is **identical**, max |Δ| = 0,
+zero iteration drift, `VERDICT: PASS`; the only entries are the documented
+Newton pow/loss divergences on the two `newton` decks — the still-live
+`POWERS_REUSE_STALE_NEWTON_ITERMINAL` row that G2.3 removes.
+
+**One gate flake, named.** The first `cargo test --workspace` run reddened on
+`corpus_gate` with an **oracle-side** I/O error on a deck this row cannot reach:
+`[R4133] oracle case failed: DSS error #303 … export losses
+file=Auto1bus_HL_losses.txt … I/O error 103` (`Test/AutoTrans/Auto1bus.dss`, an
+autotransformer deck with no StorageController). A clean re-run of
+`corpus_gate` alone came back 53/53, and the full five-command gate was then
+re-run end to end on both lanes, green. The export artifacts the aborted case
+left under `tests/corpus/electricdss-tst/Test/AutoTrans/` were removed
+file-by-file, never committed; the failure is filed here as an r4133-channel
+export-path flake under the parallel scheduler, not a result.
+
+**Doc surface.** The alias was never cited on the walked doc surface (measured
+again here: outside `crates/` the only mentions are STATUS, the plan and the
+gitignored `investigations/`, none of which `operational_docs` reads), so no
+citation was struck and the non-vacuity floor is untouched. CLAUDE.md names this
+row nowhere — it is not one of the six named bugs — so its policy §Status
+sentence is unchanged. The historical DE_PASCALIZE F.3l record below keeps its
+text and gains a supersession marker on its table row and its paragraph.
+
 ### GOLDEN_REBASE G2.1d — `REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT` torn down: the merge scans the whole shunt list (branch `golden-g2`, 2026-08-03)
 
 **Frontier.** WP-G2's fourth teardown. `SPLIT_ALIAS_POPULATION` **28 → 27**,
@@ -3658,7 +3759,7 @@ both lanes green; no golden, tolerance, ledger or deck touched.
 | row | upstream | what says it is a slip | default lane |
 |---|---|---|---|
 | `REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT` (**torn down by GOLDEN_REBASE G2.1d** — the split is gone, both lanes scan them all) | `DoReduceShortLines`' merge-with-parent scan reads exactly ONE parent shunt | the merge-with-**child** branch 40 lines below (`ReduceAlgs.pas:246-258`) spells the same loop with a single cursor | scans them all |
-| `STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL` | `if not FleetState = STORE_IDLING` is `(not FleetState) = 0` — fires only for `STORE_CHARGING` | the branch it guards calls `SetFleetToIdle` + "force a new power flow" | `FleetState <> STORE_IDLING` |
+| `STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL` (**torn down by GOLDEN_REBASE G2.1e** — the split is gone, both lanes ask `FleetState <> STORE_IDLING`) | `if not FleetState = STORE_IDLING` is `(not FleetState) = 0` — fires only for `STORE_CHARGING` | the branch it guards calls `SetFleetToIdle` + "force a new power flow" | `FleetState <> STORE_IDLING` |
 | `STORAGE_MULTIFILE_USES_THE_PV_PREFIX` | `Export Storage_Meters /m` writes `EXP_PV_<NAME>.csv` | the same command's single-file sibling writes `EXP_STORAGEMeters.csv` | `EXP_STORAGE_` |
 
 **The reduce row is a cross-node cursor mix, and the fix is measured, not
@@ -3696,6 +3797,10 @@ OOMPH", `:1619` "Fully charged") evaluates `(not FleetState) = 0`, true only for
 branches by discharging. `fleet_idle_guard_is_lane_split` pins the predicate over
 all three fleet states plus the three complement values (`not (-1) = 0`,
 `not 0 = -1`, `not 1 = -2`) that make `Charging` upstream's only firing state.
+(**Superseded by GOLDEN_REBASE G2.1e**: the lane split and this test's
+`ORACLE_PARITY` assertion are gone; the pin lives on unconditional as
+`storage_controller::tests::fleet_idle_guard_fires_unless_the_fleet_is_already_idling`,
+on the same three states plus the "Ran out of OOMPH" observable.)
 
 **Why none of the three moves a gated artifact — checked by the gate, not
 asserted.** Their lanes diverge only on inputs no gated artifact contains: a

@@ -45,7 +45,7 @@
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
 //! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
 //! | report text rendering — `Show` device-name column width | [`max_device_name_length`] — same section | **yes** (F.4b) |
-//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d |
+//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e |
 //!
 //! Rows 12–13 are not in IV.2's table and do not extend it: they are the two
 //! *reproduced* CLAUDE.md upstream bugs whose clean fix is deferred to this
@@ -730,37 +730,6 @@ pub use ISOURCE_BUS2_NEVER_LATCHES_PARITY_IMPL as ISOURCE_BUS2_NEVER_LATCHES;
 // marker and its reproduction pin; see `elements/pd/gic_transformer/solve.rs`
 // for the full measurement and for the `R1=`/`R2=` transitive cover it leaves
 // ready for whoever lands it.
-
-/// Whether the StorageController's "is the fleet already idling?" test is
-/// written as a **bitwise complement** of the state ordinal.
-///
-/// `true` reproduces the upstream quirk: `TStorageControllerObj` guards both of
-/// its terminal branches with `if not FleetState = STORE_IDLING`
-/// (`StorageController.pas:1350` in the discharge path, `:1619` in the charge
-/// path). In Object Pascal `not` binds tighter than `=`, and `FleetState` is an
-/// `Integer`, so this parses as `(not FleetState) = 0` — a bitwise complement,
-/// true only for `FleetState = -1 = STORE_CHARGING`. The branch it guards
-/// ("Ran out of OOMPH" / "Fully charged") therefore fails to idle the fleet in
-/// exactly the state that reaches it: a fleet that runs out of energy *while
-/// discharging* is left discharging, and only a *charging* fleet is idled.
-///
-/// `false` asks the question the code reads as: `FleetState <> STORE_IDLING`.
-/// That the two sites' own comments (`// force a new power flow solution`) and
-/// the `SetFleetToIdle` call they guard describe an unconditional
-/// idle-unless-already-idle is what makes it a precedence slip rather than a
-/// convention.
-///
-/// The lanes differ only for a fleet that reaches "out of OOMPH"/"fully charged"
-/// in a non-idle, non-charging state; the parity lane keeps it, so every gating
-/// oracle comparison is unchanged there.
-pub const STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL_DEFAULT_IMPL as STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL;
-#[cfg(feature = "oracle-parity")]
-pub use STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL_PARITY_IMPL as STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL;
 
 /// Whether `Export Storage_Meters /m` names its per-element files with the
 /// **PVSystem** prefix.

@@ -15,7 +15,6 @@
 
 use num_complex::Complex64;
 
-use crate::compat;
 use crate::elements::pc::storage::StorageState;
 use crate::solution::SolveMode;
 use crate::util::fmt_g;
@@ -276,20 +275,28 @@ impl StorageController {
 
     /// The guard both terminal branches put in front of [`Self::set_fleet_to_idle`]
     /// — Pascal `if not FleetState = STORE_IDLING`
-    /// (`StorageController.pas:1350` "Ran out of OOMPH", `:1619` "Fully charged").
+    /// (`StorageController.pas:1350` "Ran out of OOMPH", `:1619` "Fully
+    /// charged") — asked as the state test it reads as, in **both** lanes.
     ///
-    /// Lane split `compat::STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL`:
-    /// Object Pascal binds `not` tighter than `=` and `FleetState` is an
-    /// `Integer`, so upstream evaluates `(not FleetState) = 0`, which holds only
-    /// for `FleetState = -1 = STORE_CHARGING`. The parity lane reproduces that
-    /// on the raw ordinals; the default lane asks the intended question,
-    /// `FleetState <> STORE_IDLING`.
+    /// Upstream asks something else: Object Pascal binds `not` tighter than `=`
+    /// and `FleetState` is an `Integer`, so both sites evaluate
+    /// `(not FleetState) = 0`, a bitwise complement that holds only for
+    /// `FleetState = -1 = STORE_CHARGING`. The guard therefore fails in exactly
+    /// the state that reaches "Ran out of OOMPH" — a fleet discharging until
+    /// its energy is gone is left discharging at its old kW, with no
+    /// `PushTimeOntoControlQueue` to re-solve, while the event log says
+    /// "Fleet has been set to idling state" regardless. r4133 carries the same
+    /// two unparenthesised lines
+    /// (`Version8/Source/Controls/StorageController.pas:1771`/`:2042`), so both
+    /// gating oracles have it and it is fixed rather than reproduced
+    /// (`GOLDEN_REBASE_PLAN.md` G2.1e; `issue-18`).
+    ///
+    /// That it is a precedence slip and not a convention is written seven times
+    /// in the same unit: every *other* test of this field is parenthesised —
+    /// `if not (FleetState = STORE_IDLING)` at `:1162` and `:1450`, and five
+    /// more at `:872`, `:969`, `:994`, `:1252`, `:1515`.
     pub(super) fn fleet_needs_idling(&self) -> bool {
-        if compat::STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL {
-            (!self.fleet_state.ordinal()) == StorageState::Idling.ordinal()
-        } else {
-            self.fleet_state != StorageState::Idling
-        }
+        self.fleet_state != StorageState::Idling
     }
 
     /// Pascal `SetFleetDesiredState(state)`.
@@ -800,7 +807,8 @@ impl StorageController {
                 }
             } else {
                 // Pascal `if not FleetState = STORE_IDLING` (`:1350`) — see
-                // [`Self::fleet_needs_idling`] for the operator-precedence split.
+                // [`Self::fleet_needs_idling`] for the operator-precedence slip
+                // neither lane reproduces.
                 if self.fleet_needs_idling() {
                     self.set_fleet_to_idle(env);
                     env.push_immediate(StorageState::Idling); // force a new power flow

@@ -1081,47 +1081,89 @@ fn storage_ctrl_mode_and_action_pin_pascal_ordinals() {
     }
 }
 
-/// Expected-value pin for the Stage F single-site quirk
-/// [`crate::compat::STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL`].
+// EXPECTED-VALUE-PIN(STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL): the
+// terminal branches idle the fleet in every non-idle state, in both lanes —
+// asserted on the predicate over all three fleet states and on the observable a
+// deck sees when a discharging fleet runs out of energy.
+/// The "is the fleet already idling?" guard both terminal branches put in front
+/// of `SetFleetToIdle` answers the state test it reads as — in **both** lanes.
 ///
-/// Both terminal branches of the controller ("Ran out of OOMPH",
-/// `StorageController.pas:1350`; "Fully charged", `:1619`) guard
-/// `SetFleetToIdle` with `if not FleetState = STORE_IDLING`. Object Pascal binds
-/// `not` tighter than `=` and `FleetState` is an `Integer`, so upstream actually
-/// evaluates `(not FleetState) = 0` — true only for `STORE_CHARGING = -1`, i.e.
-/// the guard fires in the one state the branches do NOT reach by discharging.
-/// The parity lane reproduces that; the default lane asks the intended question.
+/// Upstream answers a different question. "Ran out of OOMPH"
+/// (`.inputs/dss_capi/src/Controls/StorageController.pas:1350`; r4133
+/// `Version8/Source/Controls/StorageController.pas:1771`) and "Fully charged"
+/// (`:1619`; r4133 `:2042`) both guard the call with
+/// `if not FleetState = STORE_IDLING`, and Object Pascal binds `not` tighter
+/// than `=` over an `Integer` field — so the guard is `(not FleetState) = 0`,
+/// true only for `STORE_CHARGING = -1`. It therefore fires in the one state
+/// those branches do NOT reach by discharging, and a fleet that exhausts its
+/// energy is left discharging. Both gating oracles carry it; neither lane
+/// reproduces it (`GOLDEN_REBASE_PLAN.md` G2.1e; `issue-18`).
 ///
-/// Asserted against `compat::ORACLE_PARITY` so it is load-bearing in both
-/// builds, and exhaustive over the three fleet states so the discriminating one
-/// (`Discharging` — the state a fleet is in when it runs out of energy) cannot
-/// be dropped silently.
+/// Two levels, because the predicate alone would not notice a caller that
+/// stopped consulting it:
+///
+/// 1. the predicate, exhaustive over the three fleet states — the
+///    discriminating one is `Discharging`, where upstream's complement answers
+///    `false` and this engine answers `true`, so it cannot be dropped silently;
+/// 2. the observable — a fleet reaching "Ran out of OOMPH" *while discharging*
+///    ends the sample with every member idled and `STORE_IDLING` pushed onto
+///    the control queue ("force a new power flow solution"), which is the whole
+///    point of the branch and what upstream skips.
 #[test]
-fn fleet_idle_guard_is_lane_split() {
+fn fleet_idle_guard_fires_unless_the_fleet_is_already_idling() {
     let mut sc = StorageController::new("sc1");
-    for (state, parity_fires) in [
-        (StorageState::Charging, true),
-        (StorageState::Idling, false),
-        (StorageState::Discharging, false),
+    for state in [
+        StorageState::Charging,
+        StorageState::Idling,
+        StorageState::Discharging,
     ] {
         sc.fleet_state = state;
-        let want = if crate::compat::ORACLE_PARITY {
-            parity_fires
-        } else {
-            state != StorageState::Idling
-        };
         assert_eq!(
             sc.fleet_needs_idling(),
-            want,
-            "fleet state {state:?}: upstream complements the ordinal, the \
-             default lane compares it (lane parity = {})",
-            crate::compat::ORACLE_PARITY
+            state != StorageState::Idling,
+            "fleet state {state:?}: the guard asks `FleetState <> STORE_IDLING`; \
+             upstream complements the ordinal instead — `(not FleetState) = 0` — \
+             and answers {} here",
+            (!state.ordinal()) == StorageState::Idling.ordinal()
         );
     }
 
-    // The bitwise reading is what makes `Charging` the *only* firing state
-    // upstream: `not (-1) = 0`, while `not 1 = -2` and `not 0 = -1`.
+    // The complement reading, spelled out: it is what makes `Charging` the only
+    // state upstream idles from (`not (-1) = 0`, `not 0 = -1`, `not 1 = -2`), so
+    // `Discharging` above is a genuine disagreement and not a restatement.
     assert_eq!(!StorageState::Charging.ordinal(), 0);
     assert_eq!(!StorageState::Idling.ordinal(), -1);
     assert_eq!(!StorageState::Discharging.ordinal(), -2);
+
+    // The observable. A PeakShave fleet that is discharging into a 1 MW overage
+    // with nothing above its reserve left takes the "Ran out of OOMPH" branch
+    // (`remaining_kWh <= reserve_kWh`) in the state upstream's guard misses.
+    let mut sc = peakshave_controller(10_000.0);
+    sc.fleet_state = StorageState::Discharging;
+    let mut store = MockStorage::new("a", 2000.0, 500.0, 0.2); // stored == reserve
+    store.kwh_stored = store.kwh_reserve;
+    store.state = StorageState::Discharging;
+    store.kw_out = 400.0;
+    store.present_kw = 400.0;
+    let mut env = MockEnv::new(11_000.0, vec![store]);
+    sc.sample(&mut env);
+
+    assert!(sc.out_of_oomph, "the OOMPH branch is the one under test");
+    assert_eq!(
+        sc.fleet_state,
+        StorageState::Idling,
+        "`SetFleetToIdle` must run: upstream's guard is false while discharging, \
+         so upstream leaves the fleet discharging and only its event log claims \
+         otherwise"
+    );
+    assert_eq!(
+        env.fleet[0].state,
+        StorageState::Idling,
+        "`SetFleetToIdle` walks the fleet: `StorageState := STORE_IDLING; kW := 0`"
+    );
+    assert!(
+        env.pushes.contains(&StorageState::Idling),
+        "`PushTimeOntoControlQueue(STORE_IDLING)` — without it the stale kW is \
+         never re-solved on this step"
+    );
 }
