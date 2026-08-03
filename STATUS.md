@@ -68,10 +68,9 @@ against the upstream kernel (`(!ordinal) == Idling.ordinal()` restored in
 (`false` vs `true`), the observable at `sc.fleet_state` (`Discharging` vs
 `Idling`). Both mutations were reverted; `git diff` over `compute.rs` matches
 what this commit ships, so the register's `Evidence::Site` needle
-(`"\n        self.fleet_state != StorageState::Idling"` — the eight-space
-function-body indentation a re-split cannot reproduce) still matches
-byte-for-byte. No kernel-vs-kernel test existed for this row, so none was
-deleted.
+(`"\n        self.fleet_state != StorageState::Idling"`, anchored on the
+eight-space function-body indentation) still matches byte-for-byte. No
+kernel-vs-kernel test existed for this row, so none was deleted.
 
 **Zero-footprint, measured not assumed.** The lanes could only differ for a
 fleet that reaches "Ran out of OOMPH" or "Fully charged" in a state that is
@@ -107,6 +106,43 @@ citation was struck and the non-vacuity floor is untouched. CLAUDE.md names this
 row nowhere — it is not one of the six named bugs — so its policy §Status
 sentence is unchanged. The historical DE_PASCALIZE F.3l record below keeps its
 text and gains a supersession marker on its table row and its paragraph.
+
+**Fix pass (audits).** Four findings, all minor; three fixed as stated, the
+fourth fixed **against a corrected premise**. No engine line moved. (1) The
+`TORN_DOWN_ROWS` row repeated the over-claim G2.1c's fix pass had corrected
+three sub-steps earlier: an early-return re-split
+(`if compat::… { return (!…) == …; }` followed by the anchored line, or the same
+with a `#[cfg]`-guarded `return`) leaves the statement at exactly the eight
+spaces the needle anchors on, so a lane branch *can* be restored around it. The
+row now takes `Evidence::Site`'s documented fallback — it says the check degrades
+to "not deleted outright" for that shape and names what carries the
+discrimination instead (the unconditional pin, which asserts the `Discharging`
+answer in both lanes; the ghost check; the census tie) — and the sentence above
+was corrected the same way. (3) Its CRLF justification was stated as a fact about
+the file, which `git ls-files --eol` contradicts (`compute.rs` is `w/lf` right
+now, this sub-step's own write). Restated as the portability argument it always
+was: `core.autocrlf=true` with no `*.rs` rule in `.gitattributes`, so a fresh
+checkout is CRLF and only a single-line needle with a leading `\n` survives both.
+(2) The observable staged the bug's other half — the 400 kW upstream leaves
+dispatched — and never asserted it; worse, `SetFleetToIdle`'s `env.set_kw(r, 0.0)`
+could be deleted without reddening anything. The auditor's suggested fix (clear
+`pctkWOut`/`kW_out` in the mock's zero arm) is **refuted**: Pascal `Set_kW`'s zero
+arm sets `FState := STORE_IDLING` and nothing else
+(`.inputs/dss_capi/src/PCElements/Storage.pas:3444-3461`), and this branch queues
+no `SetNominalDEROutput`, so the element genuinely keeps its old `kW_out` —
+clearing it would be the falsification. `MockStorage` instead records its `Set_kW`
+writes (the `nominal_calls` pattern already in the mock), and the pin asserts
+`kw_writes == [0.0]`; deleting the write now reds it (measured). (4) The "Fully
+charged" caller (`compute.rs:1037`, Pascal `:1619`) had no observable — true, and
+now fixed by `fully_charged_branch_idles_the_fleet`. But the finding's framing is
+**refuted**: that site cannot discriminate this row. `DoPeakShaveModeLow` returns
+at its `actual_kWh >= total_rating_kWh` skip for a discharging or idling fleet, so
+the branch is reachable only with `FleetState = CHARGING` — the one value
+upstream's `(not FleetState) = 0` also accepts. Measured: restoring the complement
+at that site alone leaves all 42 storage-controller tests green, while hardcoding
+the guard `false` there reds the new test and nothing else. The new test is
+therefore documented as a caller pin, not a lane pin, and the main pin's doc says
+why level 2 lives at the discharge branch.
 
 ### GOLDEN_REBASE G2.1d — `REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT` torn down: the merge scans the whole shunt list (branch `golden-g2`, 2026-08-03)
 
