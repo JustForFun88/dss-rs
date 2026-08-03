@@ -3835,31 +3835,41 @@ fn export_meters_append_accumulates() {
     });
 }
 
-/// The Storage `/m` per-element file name is the Stage F single-site quirk
-/// `compat::STORAGE_MULTIFILE_USES_THE_PV_PREFIX`.
+// EXPECTED-VALUE-PIN(STORAGE_MULTIFILE_USES_THE_PV_PREFIX): `Export
+// Storage_Meters /m` names its per-element files `EXP_STORAGE_<NAME>.csv` in
+// both lanes — asserted as a file that exists, a PVSystem-prefixed one that
+// does not, and rows still byte-equal to the single-file golden.
+/// `Export Storage_Meters /m` writes `EXP_STORAGE_<NAME>.csv` — in **both**
+/// lanes.
 ///
-/// `WriteMultipleStorageMeterFiles` (`ExportResults.pas:2240`) was cloned from
-/// the PVSystem writer and kept its `'EXP_PV_'` literal, so upstream writes a
-/// Storage fleet's registers into `EXP_PV_<NAME>.csv` — colliding with the
-/// PVSystem export's own files in the same directory. The parity lane
-/// reproduces it; the default lane uses `EXP_STORAGE_`, the prefix the
-/// single-file sibling of the very same command (`EXP_STORAGEMeters.csv`)
-/// already implies.
+/// Upstream writes `EXP_PV_<NAME>.csv`: `WriteMultipleStorageMeterFiles`
+/// (`.inputs/dss_capi/src/Common/ExportResults.pas:2240`; r4133
+/// `Version8/Source/Common/ExportResults.pas:2280`, repeated at `:2335` for
+/// `Storage2`) was cloned from `WriteMultiplePVSystemMeterFiles` (`:2095`) and
+/// kept its `'EXP_PV_'` literal, so a Storage fleet's registers land in the
+/// PVSystem export's own files. The multi-file writer emits a header only when
+/// the file does not yet exist and otherwise **appends** (`:2242`), so a
+/// PVSystem and a Storage sharing a name (legal — names are unique per class)
+/// interleave their rows under whichever class's header was written first.
+/// Both gating oracles carry it; neither lane reproduces it
+/// (`GOLDEN_REBASE_PLAN.md` G2.1f; `issue-20`).
 ///
-/// Asserted against `compat::ORACLE_PARITY` so both builds pin a name, and the
-/// *other* name is asserted absent in each — the quirk cannot silently drift in
-/// either direction. The rows are compared against the oracle-anchored
-/// single-file golden in both lanes: only the file name is lane-split.
+/// That the fixed prefix is `EXP_STORAGE_` and not some third spelling is not a
+/// choice: the *same command's* single-file mode already writes
+/// `EXP_STORAGEMeters.csv` (`ExportOptions.pas:411`), distinct from
+/// `EXP_PVMeters.csv` (`:409`), and every other class carries its own prefix
+/// (`EXP_MTR_`, `EXP_GEN_`).
+///
+/// Both names are asserted — the expected one present, the upstream one absent
+/// — so the prefix cannot drift in either direction, and the produced rows are
+/// compared against the oracle-anchored single-file golden
+/// `tests/golden/reports/export_storage_meters.txt`: only the *file name*
+/// changed, the payload is untouched.
 #[test]
-fn export_storage_multifile_prefix_is_lane_split() {
+fn export_storage_multifile_uses_the_storage_prefix() {
     let single = {
         let p = reports_dir().join("export_storage_meters.txt");
         std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
-    };
-    let (expected, forbidden) = if dss_core::compat::ORACLE_PARITY {
-        ("EXP_PV_ST1.csv", "EXP_STORAGE_ST1.csv")
-    } else {
-        ("EXP_STORAGE_ST1.csv", "EXP_PV_ST1.csv")
     };
     with_register_fixture(
         "export_storage_meters",
@@ -3869,15 +3879,16 @@ fn export_storage_multifile_prefix_is_lane_split() {
             assert!(dss.errors().is_empty(), "{:?}", dss.errors());
             assert_eq!(dss.last_result_file(), "/m");
 
-            let want = scratch.join(expected);
+            let want = scratch.join("EXP_STORAGE_ST1.csv");
             assert!(
                 want.is_file(),
-                "storage /m must write {expected} in this lane (parity = {})",
-                dss_core::compat::ORACLE_PARITY
+                "storage /m must write EXP_STORAGE_ST1.csv — the prefix the \
+                 single-file sibling (EXP_STORAGEMeters.csv) already implies"
             );
             assert!(
-                !scratch.join(forbidden).exists(),
-                "storage /m must NOT also write {forbidden}"
+                !scratch.join("EXP_PV_ST1.csv").exists(),
+                "storage /m must NOT write EXP_PV_ST1.csv — that is upstream's \
+                 cloned PVSystem literal, which neither lane reproduces"
             );
             let multi = std::fs::read_to_string(&want)
                 .unwrap_or_else(|e| panic!("read {}: {e}", want.display()));
