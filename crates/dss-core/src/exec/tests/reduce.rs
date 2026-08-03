@@ -185,15 +185,15 @@ fn reduce_command_merges_inline_lines() {
     );
 }
 
-/// Build a `shortlines`-reducible feeder whose **parent** branch carries a
-/// capacitor at `b2` — optionally preceded by a load — and report whether the
-/// reduction left `b2` standing.
+/// Build a `shortlines`-reducible feeder whose **parent** branch carries the
+/// requested shunts at `b2` and report whether the reduction left `b2`
+/// standing.
 ///
 /// Shape: `src —lfeed(long)→ b1 —l1(short)→ b2 —l2(short)→ b3`. `lfeed` is long
 /// enough never to be flagged, `l1`'s own merge-with-child attempt is blocked by
-/// the `b2` capacitor in every lane (that branch always scanned all shunts), so
-/// the only decision left is `l2`'s merge **with its parent** — the site of the
-/// quirk.
+/// a `b2` capacitor when there is one (that branch always scanned all shunts),
+/// so the only decision left is `l2`'s merge **with its parent** — the site of
+/// the quirk.
 ///
 /// The shunt list is the bus PC-adjacency list, which
 /// `build_active_bus_adjacency_lists` fills from `pc_elements` **first** and
@@ -202,16 +202,18 @@ fn reduce_command_merges_inline_lines() {
 /// bus that also carries any load/generator is *never* the first shunt — which
 /// is exactly what makes upstream's one-element scan blind to the elements it
 /// was written to find.
-fn reduce_shortlines_keeps_b2(load_ahead_of_the_capacitor: bool) -> bool {
+fn reduce_shortlines_keeps_b2(load_at_b2: bool, capacitor_at_b2: bool) -> bool {
     let mut dss = Dss::new();
     dss.command("New circuit.c1 basekv=12.47 bus1=src phases=3");
     dss.command("New line.lfeed bus1=src bus2=b1 length=20 r1=0.3 x1=0.6");
     dss.command("New line.l1 bus1=b1 bus2=b2 length=1 r1=0.3 x1=0.6");
     dss.command("New line.l2 bus1=b2 bus2=b3 length=1 r1=0.3 x1=0.6");
-    if load_ahead_of_the_capacitor {
+    if load_at_b2 {
         dss.command("New load.ldb2 bus1=b2 phases=3 kv=12.47 kw=50 pf=0.95");
     }
-    dss.command("New capacitor.cb2 bus1=b2 phases=3 kvar=600 kv=12.47");
+    if capacitor_at_b2 {
+        dss.command("New capacitor.cb2 bus1=b2 phases=3 kvar=600 kv=12.47");
+    }
     // A shunt on l2's own TO bus keeps l2 off the "dangling, just discard it"
     // path, so it reaches the merge-with-parent branch.
     dss.command("New load.ld3 bus1=b3 phases=3 kv=12.47 kw=300 pf=0.95");
@@ -230,37 +232,49 @@ fn reduce_shortlines_keeps_b2(load_ahead_of_the_capacitor: bool) -> bool {
     ckt.buses.iter().any(|b| b.name.eq_ignore_ascii_case("b2"))
 }
 
-/// Expected-value pin for the Stage F single-site quirk
-/// `compat::REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT`.
+// EXPECTED-VALUE-PIN(REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT): a capacitor
+// anywhere in the parent's shunt list blocks the short-line merge-with-parent,
+// in both lanes — first, second, and nowhere are all asserted here.
+/// The short-line **merge-with-parent** reduction refuses to merge whenever the
+/// parent branch carries a capacitor/reactor shunt — at *any* position in its
+/// shunt list.
 ///
-/// `DoReduceShortLines`' merge-with-parent branch (`ReduceAlgs.pas:200-210`)
-/// opens its capacitor scan on `ParentNode.FirstShuntObject()` but advances it
-/// with `PresentBranch.NextShuntObject()`, whose cursor is already past the end
-/// — so upstream inspects exactly one parent shunt and a capacitor sitting
-/// second is merged away (onto another bus) instead of blocking. The parity lane
-/// reproduces that; the default lane scans them all, like the merge-with-child
-/// branch of the same procedure (`:246-258`) already does.
+/// Upstream inspects exactly one: `DoReduceShortLines`' merge-with-parent
+/// branch opens its capacitor scan on `ParentNode.FirstShuntObject()` but
+/// advances it with `PresentBranch.NextShuntObject()`, whose cursor is already
+/// past the end (`.inputs/dss_capi/src/Meters/ReduceAlgs.pas:200`/`:209`; r4133
+/// `Version8/Source/Meters/ReduceAlgs.pas:199`/`:206` is the same pair), so a
+/// capacitor sitting second is merged away — moved onto another bus — instead
+/// of blocking. Both gating oracles carry that; neither lane reproduces it
+/// (`GOLDEN_REBASE_PLAN.md` G2.1d; `issue-31`), because the merge-with-child
+/// branch of the same procedure (`:246-258`) spells the identical loop with a
+/// single cursor.
 ///
-/// Asserted against `compat::ORACLE_PARITY` so the test is load-bearing in
-/// **both** builds.
+/// Three inputs, one rule: the capacitor second (a load ahead of it), the
+/// capacitor first (alone at `b2`), and no capacitor at all. The third is what
+/// keeps the first two honest — without it "b2 survived" would also be
+/// satisfied by a reduction that never ran.
 #[test]
-fn short_line_parent_shunt_scan_is_lane_split() {
-    let kept = reduce_shortlines_keeps_b2(true);
-    assert_eq!(
-        kept,
-        !crate::compat::ORACLE_PARITY,
-        "with a load ahead of it the capacitor is the parent's SECOND shunt, so \
-         upstream's one-element scan misses it and merges b2 out; the default \
-         lane finds it and blocks the merge (lane parity = {})",
-        crate::compat::ORACLE_PARITY
+fn short_line_merge_scans_every_parent_shunt() {
+    assert!(
+        reduce_shortlines_keeps_b2(true, true),
+        "with a load ahead of it the capacitor is the parent's SECOND shunt; it \
+         must still block the merge and leave b2 standing — merging it out is \
+         upstream's one-element scan (ReduceAlgs.pas:200/:209)"
     );
 
-    // Control: the same capacitor, alone at b2, is the FIRST shunt — both lanes
-    // see it and both refuse the merge. That is what makes the case above a
-    // scan-length difference and not a changed predicate.
+    // The same capacitor alone at b2 is the FIRST shunt: the position, not the
+    // predicate, is what upstream's scan length changes.
     assert!(
-        reduce_shortlines_keeps_b2(false),
-        "a capacitor at the head of the parent's shunt list must block the \
-         merge in every lane"
+        reduce_shortlines_keeps_b2(false, true),
+        "a capacitor at the head of the parent's shunt list must block the merge"
+    );
+
+    // Non-vacuity: strip the capacitor and the very same feeder reduces, so b2
+    // survives above *because of* the scan and not because nothing happened.
+    assert!(
+        !reduce_shortlines_keeps_b2(true, false),
+        "with no capacitor at b2 the short lines merge and b2 is eliminated — \
+         otherwise the two assertions above pin a reduction that never ran"
     );
 }
