@@ -48,9 +48,13 @@ lines below in the same loop — is untouched and still lane-split; G2.2a owns i
 `EXPECTED-VALUE-PIN(SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING)` marker. Its deck
 gained a third line, `Line.zero` (`normamps=0 emergamps=0`), placed in series
 *ahead of* the load so it carries current: that is the boundary of the surviving
-`> 0` guard and the input on which the quirk and the fix agree, so a "fix"
-written as `abs(rating)` or as a `>=` fails on `Line.bad` and a guard dropped
-altogether fails on `Line.zero`. The positively-rated `Line.good` still proves
+`> 0` guard and the input on which the quirk and the fix agree. The two lines
+kill complementary mutations: a sign-blind `abs(rating)` reports `Line.bad`'s
+−1 A rating as a loading of +1 % and fails there (it passes on `Line.zero`,
+where `abs(0)` is still not `> 0`), while a guard relaxed to `>=` or dropped
+altogether divides by `Line.zero`'s undefined rating and fails there (a `>=`
+passes on `Line.bad`, whose −1 takes the `else` arm either way). The
+positively-rated `Line.good` still proves
 the ordinary percentage path is untouched. Non-vacuity was measured, not
 assumed: restoring the upstream seed in the closure fails the pin with
 `left: (-1.0, -2.0)`. No kernel-vs-kernel test existed for this row, so none was
@@ -78,6 +82,34 @@ non-vacuity floor is untouched. CLAUDE.md names this row nowhere — it is not o
 of the six named bugs — so its policy §Status sentence is unchanged. The
 `Export SeqCurrents` sentence in `tests/TOLERANCE_NOTES.md` is about the
 `Iresidual` row, not this one, and stays for G2.2a.
+
+**Fix pass (audits).** Four findings, all minor, all real, all fixed; nothing
+deferred, no engine line moved (the code the auditors traced is correct — every
+mutation they enumerated does die on one of the deck's three lines). (1) The
+row's `Evidence::Site` slice claimed the same completeness G2.1b's fix pass had
+just corrected for the CapControl row: it discriminates a re-split that wraps the
+*call pair* in a lane branch, but not one written inside `pct_of_rating` itself
+(`} else if compat::… { rating }`), which leaves the anchored line byte-identical.
+Re-anchoring on the whole closure is not available — the register's check is a
+plain `contains` over the file as checked out, and Rust sources here check out
+CRLF (`git ls-files --eol`), which only a single-line needle with a leading `\n`
+survives — so the row now takes `Evidence::Site`'s documented fallback: it states
+that for that shape the check degrades to "not deleted outright" and names what
+carries the discrimination instead (the unconditional pin, which asserts
+`(0.0, 0.0)` for `Line.bad` in *both* lanes so any restored lane branch fails it
+wherever it is written; the ghost check; the census tie). (2)+(4) — the same
+finding twice: the mutant attributions in the deck comment and in the paragraph
+above were inverted. Traced against the kernel, `Line.bad` is what kills a
+sign-blind `abs` (its −1 A rating would render +1 %) and `Line.zero` is what
+uniquely kills a `>=` boundary slip (`-1.0 >= 0.0` is false, so `Line.bad` passes
+that mutation while `Line.zero` divides by zero); a dropped guard dies on both.
+Both sentences corrected. (3) The `issue-12` deep dive still described the row as
+a live lane split, citing the deleted `compat.rs:859`/`:861` twins, the deleted
+`undefined_rating` closure and the pre-rename pin — the report bodies for G2.1a
+and G2.1b were rewritten in their own sub-steps, and this one had been missed
+(the registry's «Судьба» entry, which the plan demands explicitly, *was* correct).
+Rewritten to the issue-11/issue-15 shape. `investigations/` is gitignored, so
+that half is local-only and outside the gate.
 
 ### GOLDEN_REBASE G2.1b — `CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL` torn down: a clone keeps its signal (branch `golden-g2`, 2026-08-03)
 
