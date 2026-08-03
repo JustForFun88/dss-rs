@@ -806,8 +806,10 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// [`TORN_DOWN_ROWS`] for what each teardown leaves behind); **29** after G2.1b
 /// did the same to `CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL`; **28** after
 /// G2.1c did the same to `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING`; **27**
-/// after G2.1d did the same to `REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT`.
-const SPLIT_ALIAS_POPULATION: usize = 27;
+/// after G2.1d did the same to `REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT`;
+/// **26** after G2.1e did the same to
+/// `STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL`.
+const SPLIT_ALIAS_POPULATION: usize = 26;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -1356,6 +1358,40 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         Some((
             "crates/dss-core/src/exec/tests/reduce.rs",
             "short_line_merge_scans_every_parent_shunt",
+        )),
+    ),
+    // G2.1e. Both of `TStorageControllerObj`'s terminal branches guard
+    // `SetFleetToIdle` with `if not FleetState = STORE_IDLING`
+    // (`.inputs/dss_capi/src/Controls/StorageController.pas:1350` "Ran out of
+    // OOMPH", `:1619` "Fully charged"; r4133
+    // `Version8/Source/Controls/StorageController.pas:1771`/`:2042` is the same
+    // unparenthesised pair). Object Pascal binds `not` tighter than `=` over the
+    // `Integer` field, so the guard is `(not FleetState) = 0` — true only for
+    // `STORE_CHARGING = -1`, i.e. never in the discharging state that reaches
+    // "Ran out of OOMPH": the fleet is left discharging at its old kW with no
+    // re-solve queued while the event log announces the idling anyway. Both
+    // gating oracles carry it; both lanes now ask `FleetState <> STORE_IDLING`,
+    // which is how the same unit spells the same test seven other times
+    // (`:872`, `:969`, `:994`, `:1162`, `:1252`, `:1450`, `:1515`).
+    // Zero-footprint: no golden and no gated corpus deck runs a fleet out of
+    // energy while discharging.
+    (
+        "STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL",
+        Kind::SplitAlias,
+        // The comparison was the split's *default* arm, so the bare expression
+        // would match a revert; the needle therefore carries the line break and
+        // the eight spaces of the function body, which is the whole of it. The
+        // split held the same expression at twelve spaces inside an `else`, and
+        // so would any re-split — a lane branch cannot put this statement back
+        // at top level. Single-line by necessity: this repo checks Rust sources
+        // out with CRLF, which no multi-line needle survives.
+        Evidence::Site(
+            "crates/dss-core/src/elements/control/storage_controller/compute.rs",
+            "\n        self.fleet_state != StorageState::Idling",
+        ),
+        Some((
+            "crates/dss-core/src/elements/control/storage_controller/tests.rs",
+            "fleet_idle_guard_fires_unless_the_fleet_is_already_idling",
         )),
     ),
 ];
