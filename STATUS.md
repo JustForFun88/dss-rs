@@ -7,13 +7,126 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### GOLDEN_REBASE G2.1f — `STORAGE_MULTIFILE_USES_THE_PV_PREFIX` torn down: the Storage `/m` export gets its own prefix (branch `golden-g2`, 2026-08-03)
+
+**Frontier.** WP-G2's sixth teardown. `SPLIT_ALIAS_POPULATION` **26 → 25**,
+`TORN_DOWN_ROWS` carries its sixth row, and the WP acceptance criterion still
+holds at this commit: `git diff --stat -- tests/golden` over the range is
+**empty** and both lanes' `oracle_parity_cfg_gate` is green. Next: G2.1g
+(`CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`, `issue-23`) — whose plan row carries a
+measurement caveat: check first whether any committed `cim/` golden observes the
+grounded flag, because if one does the row moves to G2.2c.
+
+**The bug.** `Export Storage_Meters /m` writes one file per Storage element and
+builds its name from a per-class prefix. `WriteMultipleStorageMeterFiles`
+(`.inputs/dss_capi/src/Common/ExportResults.pas:2240`) was cloned line-for-line
+from `WriteMultiplePVSystemMeterFiles` (`:2076`, prefix at `:2095`) and kept its
+`'EXP_PV_'` literal, so a Storage fleet's registers land in the PVSystem
+export's own files. The writer emits a header only when the file does not yet
+exist and otherwise **appends** (`:2242`), so a PVSystem and a Storage sharing a
+name — legal, names are unique per class — interleave their rows under whichever
+class's header was written first, and the file no longer says which row is
+whose. That it is a copy-paste slip and not a convention is settled inside the
+same command: its single-file mode writes `EXP_STORAGEMeters.csv`
+(`ExportOptions.pas:411`) next to `EXP_PVMeters.csv` (`:409`), and every other
+class carries its own prefix (`EXP_MTR_` `:1792`, `EXP_GEN_` `:1948`). r4133 has
+the identical line (`Version8/Source/Common/ExportResults.pas:2280`, and again
+at `:2335` for `Storage2`), so both gating oracles have it and the 2026-08-02
+policy applies rather than exempts. Deep dive:
+`investigations/issue-20-storage-meters-pvsystem-prefix.md`.
+
+**What landed.** `compat::STORAGE_MULTIFILE_USES_THE_PV_PREFIX` and both its
+`*_IMPL` twins are **deleted**; `exec/report.rs::gather_register_rows`'
+`RegKind::Storage` arm returns `"EXP_STORAGE_"` as a plain tuple element, with
+both upstream lines, the cloned source procedure, the sibling prefixes and the
+single-file names cited in place. The default lane already did this, so **only
+the parity lane moves**; `report.rs` no longer imports `compat` at all. The
+compat module-doc row for the *Single-site upstream quirks* section records this
+row as G2.1f.
+
+**The pin became unconditional.**
+`golden_reports::export_storage_multifile_uses_the_storage_prefix` (renamed from
+`export_storage_multifile_prefix_is_lane_split`) lost its `ORACLE_PARITY` branch
+and carries the `EXPECTED-VALUE-PIN(STORAGE_MULTIFILE_USES_THE_PV_PREFIX)`
+marker. In **both** lanes it now asserts the same three things it used to assert
+per-lane: `EXP_STORAGE_ST1.csv` exists, `EXP_PV_ST1.csv` does **not** (so the
+prefix cannot drift in either direction), and the produced rows still compare
+byte-for-byte against the oracle-anchored single-file golden
+`tests/golden/reports/export_storage_meters.txt` — which is what keeps the claim
+"only the file *name* moved" load-bearing rather than asserted. The register's
+`Evidence::Site` needle is the literal as rustfmt lays it out
+(`"\n                    \"EXP_STORAGE_\","`, anchored on the tuple element's
+twenty-space indentation **and** its trailing comma): in the split form the same
+literal was the tail expression of an `else` block at the same depth with no
+comma, so a restored lane branch stops matching.
+
+**Zero-footprint, measured not assumed.** The lanes could only ever differ in a
+*file name* produced by `Export Storage_Meters /m`, and nothing gated runs that
+switch: the golden generator `tools/golden/gen_reports.py:338` captures the
+single-file `EXP_STORAGEMeters.csv`, and no corpus deck exports Storage meters
+at all — the only `/m` caller in the tree is this pin. So no golden byte, no
+`ledger.json` entry and no `population.lock.json` field moves, and the parity
+lane's full suite (the unconditional 520-case corpus gate against both oracle
+channels included) is green, which is the measurement confirming the
+classification rather than assuming it.
+
+**A gap in the pin walk, found by the deletion.**
+`oracle_parity_cfg_gate::branches_on_lane` accepted only the spelling
+`ORACLE_PARITY`, while the walk matches per **file**. Deleting this row's pin
+branch removed the last `ORACLE_PARITY` token from `tests/golden_reports.rs`,
+and `every_lane_split_alias_is_pinned_by_an_expected_value_test` immediately
+reddened for three **still-split** rows pinned in that file —
+`IRESIDUAL_FROM_TERMINAL_1`, `BUS_INT_DURATION_WALKS_ALL_BUSES`,
+`FAULT_DUMP_TAIL_REPRINTS_MINAMPS` — every one of which branches through the
+harness alias `lane::PARITY` and had been credited only by a neighbouring test's
+constant. The three pins are real; the predicate could not see their spelling.
+Fixed in this commit by accepting `PARITY` as well — the same two spellings
+`reads_the_lane` already recognises, and legitimate because `harness/lane.rs:78`
+defines `PARITY` as `cfg!(feature = "oracle-parity")` and `lane.rs:795` asserts
+it equals `dss_core::compat::ORACLE_PARITY`. `names_token` keeps the two apart
+(`PARITY` inside `ORACLE_PARITY` is preceded by an identifier character, so it
+does not match), and the rejection this predicate exists for — deriving a pin's
+expectation from the row's **own** alias — is untouched.
+
+**Doc surface.** The alias was never cited on the walked doc surface (measured
+again here: outside `crates/` the only mentions are STATUS, the plan,
+`docs/phase-records/phase-8.md` and the gitignored `investigations/`, none of
+which `operational_docs` reads), so no citation was struck and the non-vacuity
+floor is untouched. CLAUDE.md names this row nowhere — it is not one of the six
+named bugs — so its policy §Status sentence is unchanged. The historical
+DE_PASCALIZE F.3l record below keeps its text and gains a supersession marker on
+its table row and its paragraph.
+
+**Proof.** Every Pascal citation this commit adds was read out of the vendored
+sources, not recalled: `ExportResults.pas:2240`/`:2242` and the PVSystem twin at
+`:2076`/`:2095`, the `EXP_MTR_`/`EXP_GEN_` lines `:1792`/`:1948`, the
+`ExportOptions.pas:409`/`:411` default names, and on the r4133 side
+`WriteMultipleStorageMeterFiles` at `:2260` with the buggy line at `:2280` plus
+`WriteMultipleStorage2MeterFiles` at `:2315` with its copy at `:2335`. The pin
+was mutation-checked: restoring `"EXP_PV_"` in the tuple reds
+`export_storage_multifile_uses_the_storage_prefix` in **both** lanes (measured,
+same assertion, `golden_reports.rs:3883`); the mutation was reverted and the
+tree re-verified green. Both lanes clean on the five commands
+(`cargo fmt --all --check`; `cargo clippy --workspace --all-targets -- -D
+warnings` and the same with `--features dss-core/oracle-parity`; `cargo test
+--workspace` and the same with the feature — exit 0 in each, the unconditional
+520-case corpus gate 53/53 in both). `lane_diff.ps1`, re-run because a lane
+alias was deleted: over 520 cases / 3 219 862 records every gated kind
+(`conv`/`cur`/`errs`/`iter`/`loss`/`pow`/`v`/`y`) is **identical**, max |Δ| = 0,
+zero iteration drift, `VERDICT: PASS`; the only entries are the documented
+Newton pow/loss divergences on the two `newton` decks — the still-live
+`POWERS_REUSE_STALE_NEWTON_ITERMINAL` row that G2.3 removes. Tests 0 added, 1
+renamed, 0 removed, 0 new `#[ignore]`. `git diff --stat -- tests/golden` is
+empty; `git status --short tests/corpus` is clean after both runs (the
+`Test/AutoTrans/*` export leak deleted by exact name, never committed).
+
 ### GOLDEN_REBASE G2.1e — `STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL` torn down: the fleet guard asks the state test it reads as (branch `golden-g2`, 2026-08-03)
 
-**Frontier.** WP-G2's fifth teardown. `SPLIT_ALIAS_POPULATION` **27 → 26**,
+**Frontier (superseded by G2.1f above).** WP-G2's fifth teardown.
+`SPLIT_ALIAS_POPULATION` **27 → 26**,
 `TORN_DOWN_ROWS` carries its fifth row, and the WP acceptance criterion still
 holds at this commit: `git diff --stat -- tests/golden` over the range is
-**empty** and both lanes' `oracle_parity_cfg_gate` is green. Next: G2.1f
-(`STORAGE_MULTIFILE_USES_THE_PV_PREFIX`, `issue-20`), same ritual.
+**empty** and both lanes' `oracle_parity_cfg_gate` is green.
 
 **The bug.** `TStorageControllerObj` ends both of its terminal dispatch branches
 by idling the fleet and forcing a re-solve, and guards both with
@@ -3796,7 +3909,7 @@ both lanes green; no golden, tolerance, ledger or deck touched.
 |---|---|---|---|
 | `REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT` (**torn down by GOLDEN_REBASE G2.1d** — the split is gone, both lanes scan them all) | `DoReduceShortLines`' merge-with-parent scan reads exactly ONE parent shunt | the merge-with-**child** branch 40 lines below (`ReduceAlgs.pas:246-258`) spells the same loop with a single cursor | scans them all |
 | `STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL` (**torn down by GOLDEN_REBASE G2.1e** — the split is gone, both lanes ask `FleetState <> STORE_IDLING`) | `if not FleetState = STORE_IDLING` is `(not FleetState) = 0` — fires only for `STORE_CHARGING` | the branch it guards calls `SetFleetToIdle` + "force a new power flow" | `FleetState <> STORE_IDLING` |
-| `STORAGE_MULTIFILE_USES_THE_PV_PREFIX` | `Export Storage_Meters /m` writes `EXP_PV_<NAME>.csv` | the same command's single-file sibling writes `EXP_STORAGEMeters.csv` | `EXP_STORAGE_` |
+| `STORAGE_MULTIFILE_USES_THE_PV_PREFIX` (**torn down by GOLDEN_REBASE G2.1f** — the split is gone, both lanes write `EXP_STORAGE_`) | `Export Storage_Meters /m` writes `EXP_PV_<NAME>.csv` | the same command's single-file sibling writes `EXP_STORAGEMeters.csv` | `EXP_STORAGE_` |
 
 **The reduce row is a cross-node cursor mix, and the fix is measured, not
 argued.** `ReduceAlgs.pas:200-210` opens the capacitor scan on
@@ -3848,7 +3961,11 @@ are unchanged in both builds. The `/m` row's pin was already a Rust-side test
 `…_uses_pv_prefix`); it now asserts the lane's name **and** the absence of the
 other lane's name, so the quirk cannot drift in either direction, and it still
 compares the produced rows against the oracle-anchored single-file golden in
-both lanes.
+both lanes. (**Superseded by GOLDEN_REBASE G2.1f**: the `/m` split is gone and
+both lanes write `EXP_STORAGE_`; the pin lives on unconditional as
+`golden_reports::export_storage_multifile_uses_the_storage_prefix`, asserting
+the `EXP_STORAGE_` file present, the `EXP_PV_` one absent, and the same
+golden-anchored row compare.)
 
 **Scope discipline.** No IV.2 kernel row was added. The escape register is
 unchanged except that F.3k's GIC row keeps its measurement: the **14** truncated

@@ -808,8 +808,9 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// G2.1c did the same to `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING`; **27**
 /// after G2.1d did the same to `REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT`;
 /// **26** after G2.1e did the same to
-/// `STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL`.
-const SPLIT_ALIAS_POPULATION: usize = 26;
+/// `STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL`; **25** after G2.1f
+/// did the same to `STORAGE_MULTIFILE_USES_THE_PV_PREFIX`.
+const SPLIT_ALIAS_POPULATION: usize = 25;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -876,16 +877,29 @@ fn names_token(text: &str, token: &str) -> bool {
 /// A pin has to *branch on the lane*, or it pins one lane's value in both and
 /// the other lane's behavior is unasserted.
 ///
-/// The only accepted form is a read of the lane constant `ORACLE_PARITY`.
-/// Deriving the expectation from the row's **own** alias was accepted until
-/// F-settle W4 and is now rejected: engine and test then read the same
-/// constant, so the pin asserts "the engine agrees with the declaration" — true
-/// by construction whichever way the alias points. Flipping five such rows'
-/// `*_DEFAULT_IMPL` back to the parity value (a silently reverted fix) passed
-/// the entire workspace suite, in both lanes. No oracle gate can catch that
-/// class either: reverting the fix restores exactly what the oracles return.
+/// The accepted forms are a read of the lane constant `ORACLE_PARITY` or of the
+/// harness alias `lane::PARITY` — the same two spellings [`reads_the_lane`]
+/// recognises, and for the same reason: `harness/lane.rs:78` defines `PARITY`
+/// as `cfg!(feature = "oracle-parity")` and asserts it equals
+/// `dss_core::compat::ORACLE_PARITY` (`lane.rs:795`), so reading it *is*
+/// reading the lane. Deriving the expectation from the row's **own** alias was
+/// accepted until F-settle W4 and is now rejected: engine and test then read
+/// the same constant, so the pin asserts "the engine agrees with the
+/// declaration" — true by construction whichever way the alias points. Flipping
+/// five such rows' `*_DEFAULT_IMPL` back to the parity value (a silently
+/// reverted fix) passed the entire workspace suite, in both lanes. No oracle
+/// gate can catch that class either: reverting the fix restores exactly what
+/// the oracles return.
+///
+/// The `lane::PARITY` spelling was added in G2.1f, which exposed the gap by
+/// deleting the last `ORACLE_PARITY` token in `tests/golden_reports.rs`: the
+/// walk matches per **file**, so three still-split rows pinned there through
+/// `lane::PARITY` alone (`IRESIDUAL_FROM_TERMINAL_1`,
+/// `BUS_INT_DURATION_WALKS_ALL_BUSES`, `FAULT_DUMP_TAIL_REPRINTS_MINAMPS`) had
+/// been credited by a *neighbouring* test's constant. Their pins do branch on
+/// the lane; only this predicate could not see how.
 fn branches_on_lane(text: &str, _alias: &str) -> bool {
-    names_token(text, "ORACLE_PARITY")
+    names_token(text, "ORACLE_PARITY") || names_token(text, "PARITY")
 }
 
 /// `(alias, the impl each cfg arm selects)` for every lane-selected alias in the
@@ -1408,6 +1422,44 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         Some((
             "crates/dss-core/src/elements/control/storage_controller/tests.rs",
             "fleet_idle_guard_fires_unless_the_fleet_is_already_idling",
+        )),
+    ),
+    // G2.1f. `WriteMultipleStorageMeterFiles` (`.inputs/dss_capi/src/Common/
+    // ExportResults.pas:2240`; r4133 `Version8/Source/Common/
+    // ExportResults.pas:2280`, and again at `:2335` for `Storage2`) was cloned
+    // from `WriteMultiplePVSystemMeterFiles` (`:2095`) and kept its `'EXP_PV_'`
+    // literal, so `Export Storage_Meters /m` drops a Storage fleet's registers
+    // into the PVSystem export's own files — and because that writer emits a
+    // header only for a file that does not yet exist and otherwise appends
+    // (`:2242`), a same-named PVSystem and Storage interleave their rows under
+    // whichever class's header landed first. The same command's single-file
+    // mode already writes `EXP_STORAGEMeters.csv` (`ExportOptions.pas:411`)
+    // next to `EXP_PVMeters.csv` (`:409`), and `EXP_MTR_`/`EXP_GEN_` (`:1792`,
+    // `:1948`) show the one-prefix-per-class rule, so the fixed spelling is not
+    // a choice. Both gating oracles carry it; both lanes now write
+    // `EXP_STORAGE_`. Zero-footprint: only a *file name* moves — the rows are
+    // byte-identical (the pin still compares them against the oracle-anchored
+    // single-file golden), the single-file path is untouched, and no golden or
+    // gated corpus deck runs `Export Storage_Meters /m` at all.
+    (
+        "STORAGE_MULTIFILE_USES_THE_PV_PREFIX",
+        Kind::SplitAlias,
+        // The literal was the split's *default* arm, so the bare string would
+        // match a revert. The needle therefore carries the line break and the
+        // twenty spaces of the tuple element, plus the trailing comma: in the
+        // split form the same literal sat at the same depth as the tail
+        // expression of an `else` block — no comma — and the tuple's third
+        // element was the `prefix` binding. Re-introducing a lane branch cannot
+        // leave the literal as a comma-terminated tuple element. Single-line by
+        // necessity: this repo checks Rust sources out with CRLF, which no
+        // multi-line needle survives.
+        Evidence::Site(
+            "crates/dss-core/src/exec/report.rs",
+            "\n                    \"EXP_STORAGE_\",",
+        ),
+        Some((
+            "crates/dss-core/tests/golden_reports.rs",
+            "export_storage_multifile_uses_the_storage_prefix",
         )),
     ),
 ];

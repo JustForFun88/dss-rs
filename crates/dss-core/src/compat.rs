@@ -45,7 +45,7 @@
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
 //! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
 //! | report text rendering — `Show` device-name column width | [`max_device_name_length`] — same section | **yes** (F.4b) |
-//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e |
+//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f |
 //!
 //! Rows 12–13 are not in IV.2's table and do not extend it: they are the two
 //! *reproduced* CLAUDE.md upstream bugs whose clean fix is deferred to this
@@ -730,28 +730,6 @@ pub use ISOURCE_BUS2_NEVER_LATCHES_PARITY_IMPL as ISOURCE_BUS2_NEVER_LATCHES;
 // marker and its reproduction pin; see `elements/pd/gic_transformer/solve.rs`
 // for the full measurement and for the `R1=`/`R2=` transitive cover it leaves
 // ready for whoever lands it.
-
-/// Whether `Export Storage_Meters /m` names its per-element files with the
-/// **PVSystem** prefix.
-///
-/// `true` reproduces the upstream quirk: `WriteMultipleStorageMeterFiles`
-/// (`ExportResults.pas:2240`) was cloned from the PVSystem writer and kept its
-/// `'EXP_PV_'` literal, so a Storage fleet's per-element registers land in
-/// `EXP_PV_<NAME>.csv` — colliding with the PVSystem export's own files
-/// whenever both are written into one directory.
-///
-/// `false` uses `EXP_STORAGE_`, which is what the single-file sibling of the
-/// same command already writes (`EXP_STORAGEMeters.csv`) and what the PVSystem
-/// writer's own prefix implies. Only the *file name* moves; the rows are
-/// byte-identical, and the single-file path is untouched in both lanes.
-pub const STORAGE_MULTIFILE_USES_THE_PV_PREFIX_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const STORAGE_MULTIFILE_USES_THE_PV_PREFIX_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use STORAGE_MULTIFILE_USES_THE_PV_PREFIX_DEFAULT_IMPL as STORAGE_MULTIFILE_USES_THE_PV_PREFIX;
-#[cfg(feature = "oracle-parity")]
-pub use STORAGE_MULTIFILE_USES_THE_PV_PREFIX_PARITY_IMPL as STORAGE_MULTIFILE_USES_THE_PV_PREFIX;
 
 /// Whether the CIM `LinearShuntCompensator` writer puts the **delta** branch's
 /// `grounded` flag under the `LinearShuntCompensator.` prefix.
