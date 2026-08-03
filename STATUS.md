@@ -57,16 +57,27 @@ section records this row as G2.1d.
 `exec::tests::reduce::short_line_merge_scans_every_parent_shunt` (renamed from
 `short_line_parent_shunt_scan_is_lane_split`) lost its `ORACLE_PARITY` branch and
 carries the `EXPECTED-VALUE-PIN(REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT)`
-marker. Its builder `reduce_shortlines_keeps_b2` now takes **two** flags (load at
-`b2`, capacitor at `b2`) instead of one, and the pin asserts three inputs on the
-one feeder `src —lfeed(long)→ b1 —l1(short)→ b2 —l2(short)→ b3`: capacitor
-second (a load ahead of it) → `b2` stands; capacitor first (alone at `b2`) → `b2`
-stands; **no capacitor at all** → `b2` is eliminated. The third input is the one
-the lane-split version could not have: with both lanes now answering "kept" to
-the first two, "`b2` survived" would otherwise also be satisfied by a reduction
-that never ran, and the pin would go green on a no-op `reduce`. The second keeps
-the claim about scan *length* rather than about the predicate. No
-kernel-vs-kernel test existed for this row, so none was deleted.
+marker. Its builder `reduce_shortlines_keeps_b2` now takes a `ShortLineFeeder`
+(load at `b2`, capacitor at `b2`, `l1` short or long) instead of one flag, and
+the pin asserts **five** inputs on the one feeder
+`src —lfeed(long)→ b1 —l1→ b2 —l2(short)→ b3`. With `l1` short: capacitor second
+(a load ahead of it) → `b2` stands; capacitor first (alone at `b2`) → `b2`
+stands; no capacitor at all → `b2` is eliminated. With `l1` **long** — which
+takes `l1`'s own merge-with-**child** arm out of the walk and leaves `l2`'s
+merge-with-**parent**, the site under test, as the only reduction available:
+load only → `b2` is eliminated; load + capacitor → `b2` stands.
+No kernel-vs-kernel test existed for this row, so none was deleted.
+
+The two long-`l1` inputs are the fix agent's answer to the audits (below); the
+three short-`l1` ones are what the implementation commit shipped. The `l1`-short
+non-vacuity input eliminates `b2` through the merge-with-**child** arm, so on
+its own it proves the deck reduces but not that the arm under test can ever
+*succeed* — a guard that over-blocks (`!parent_shunts.is_empty()`) passed all
+three. Mutation-checked at the fix: over-block → input 4 red; scan the head only
+(the upstream bug) → input 1 red; drop the guard → input 1 red. Every mutation
+was applied to `red_short_line_step`, run, and reverted; `git diff` over
+`exec/reduce.rs` is empty against the implementation commit, so the register's
+`Evidence::Site` needle still matches byte-for-byte.
 
 **Zero-footprint, measured not assumed.** The lanes could only differ on a
 topology reduced with `ReduceOption=ShortLines` whose parent branch carries ≥ 2
@@ -90,6 +101,32 @@ gitignored `investigations/`, none of which `operational_docs` reads), so no
 citation was struck and the non-vacuity floor is untouched. CLAUDE.md names this
 row nowhere — it is not one of the six named bugs — so its policy §Status
 sentence is unchanged.
+
+**Fix pass (audits).** Three findings — two of them (one filed `major`, one
+`minor`) the same defect, all real, all fixed; nothing deferred, no engine line
+moved. (1)+(2) The pin's inputs never witnessed the merge-with-parent arm
+*succeeding*. Both auditors traced the non-vacuity input (load at `b2`, no
+capacitor) to `l1`'s merge-with-**child** arm — with `l1` short the walk reaches
+it first, its `present_shunts = [ldb2]` carries no capacitor, so it merges `b2`
+out itself and `red_reduce_short_lines`' extra `GoForward` consumes `l2` before
+the site under test is ever reached. Confirmed by mutation rather than by
+reading: `if !parent_shunts.is_empty()` in place of the scan left all three
+inputs green. The deleted parity arm had carried that witness (`assert_eq!(kept,
+!ORACLE_PARITY)` positively required `b2` to be merged out **through** the parent
+arm), so the teardown had shrunk the pin's mutation coverage against the
+register's "the coverage moved rather than evaporated" promise. Fixed with the
+two long-`l1` inputs described above; the over-blocking mutation now dies on
+input 4, and both auditors' other enumerated mutations were re-checked as still
+dying (see the pin paragraph). (3) The historical DE_PASCALIZE F.3l section
+(`§F.3l`) still described the row as a live lane split and named the pre-rename
+test in the present tense; it keeps its history and gains a supersession marker
+on both the table row and the paragraph. Its Pascal citation `Add` sets
+`ActiveItem := Count`, `DSSPointerList.pas:66` was wrong twice over — `:68` is
+`ActiveItem := 0` in `Create`, and `Add` ends at `:88` with `ActiveItem :=
+Result` — and the same correction is already recorded at §"Citations" above, so
+the F.3l occurrence is now fixed to match rather than left as the one place that
+disagrees. Local-only `investigations/` (the `issue-31` report and the registry's
+«Судьба» entry) re-synced to the five inputs.
 
 ### GOLDEN_REBASE G2.1c — `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING` torn down: an undefined rating is not a percentage (branch `golden-g2`, 2026-08-03)
 
@@ -3620,7 +3657,7 @@ both lanes green; no golden, tolerance, ledger or deck touched.
 
 | row | upstream | what says it is a slip | default lane |
 |---|---|---|---|
-| `REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT` | `DoReduceShortLines`' merge-with-parent scan reads exactly ONE parent shunt | the merge-with-**child** branch 40 lines below (`ReduceAlgs.pas:246-258`) spells the same loop with a single cursor | scans them all |
+| `REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT` (**torn down by GOLDEN_REBASE G2.1d** — the split is gone, both lanes scan them all) | `DoReduceShortLines`' merge-with-parent scan reads exactly ONE parent shunt | the merge-with-**child** branch 40 lines below (`ReduceAlgs.pas:246-258`) spells the same loop with a single cursor | scans them all |
 | `STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL` | `if not FleetState = STORE_IDLING` is `(not FleetState) = 0` — fires only for `STORE_CHARGING` | the branch it guards calls `SetFleetToIdle` + "force a new power flow" | `FleetState <> STORE_IDLING` |
 | `STORAGE_MULTIFILE_USES_THE_PV_PREFIX` | `Export Storage_Meters /m` writes `EXP_PV_<NAME>.csv` | the same command's single-file sibling writes `EXP_STORAGEMeters.csv` | `EXP_STORAGE_` |
 
@@ -3629,7 +3666,7 @@ argued.** `ReduceAlgs.pas:200-210` opens the capacitor scan on
 `ParentNode.FirstShuntObject()` and then advances it with
 `PresentBranch.NextShuntObject()`. The present branch's `TDSSPointerList` cursor
 still sits at its last item from tree construction (`Add` sets
-`ActiveItem := Count`, `DSSPointerList.pas:66`), so the very first `Next`
+`ActiveItem := Result`, `DSSPointerList.pas:88`), so the very first `Next`
 overflows and returns `NIL` (`:113-131`): the loop ends after one element and a
 capacitor at parent-shunt position ≥ 2 is merged onto another bus instead of
 blocking the merge. What makes that *reachable* rather than theoretical is the
@@ -3646,6 +3683,10 @@ at `b2` and asserts the outcome against `compat::ORACLE_PARITY`: the parity lane
 merges `b2` out, the default lane keeps it. Its control puts the same capacitor
 alone at `b2` — first in the list — where **both** lanes refuse the merge, which
 is what makes the row a scan-length difference rather than a changed predicate.
+(**Superseded by GOLDEN_REBASE G2.1d**: the lane split and this test's
+`ORACLE_PARITY` assertion are gone; the pin lives on unconditional as
+`exec::tests::reduce::short_line_merge_scans_every_parent_shunt`, on the same
+feeder plus a long-`l1` variant that isolates the merge-with-parent arm.)
 
 **The StorageController row is an operator-precedence slip on the raw ordinal.**
 Object Pascal binds `not` tighter than `=` and `FleetState` is an `Integer`, so
