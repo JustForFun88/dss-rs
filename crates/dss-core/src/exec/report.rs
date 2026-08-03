@@ -1235,9 +1235,10 @@ impl Dss {
                     .collect();
                 // The `/m` prefix is `EXP_STORAGE_` in **both** lanes.
                 // `WriteMultipleStorageMeterFiles` (`ExportResults.pas:2240`;
-                // r4133 `Version8/Source/Common/ExportResults.pas:2280`, and
-                // again at `:2335` for `Storage2`) was cloned from
-                // `WriteMultiplePVSystemMeterFiles` (`:2095`) and kept its
+                // r4133 `Version8/Source/Common/ExportResults.pas:2280` — the
+                // live line; the `Storage2` twin repeats it at `:2335` but is
+                // inert, inside the `(*` … `*)` block `:2314-:2368`) was cloned
+                // from `WriteMultiplePVSystemMeterFiles` (`:2095`) and kept its
                 // `'EXP_PV_'` literal, so upstream drops a Storage fleet's
                 // per-element registers into the PVSystem export's own files —
                 // and since the multi-file writer appends when the file exists,
