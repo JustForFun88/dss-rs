@@ -878,10 +878,9 @@ fn names_token(text: &str, token: &str) -> bool {
 /// the other lane's behavior is unasserted.
 ///
 /// The accepted forms are a read of the lane constant `ORACLE_PARITY` or of the
-/// harness alias `lane::PARITY` — the same two spellings [`reads_the_lane`]
-/// recognises, and for the same reason: `harness/lane.rs:78` defines `PARITY`
-/// as `cfg!(feature = "oracle-parity")` and asserts it equals
-/// `dss_core::compat::ORACLE_PARITY` (`lane.rs:795`), so reading it *is*
+/// harness alias `lane::PARITY` — legitimate because `harness/lane.rs:78`
+/// defines `PARITY` as `cfg!(feature = "oracle-parity")` and asserts it equals
+/// `dss_core::compat::ORACLE_PARITY` (`lane.rs:795-796`), so reading it *is*
 /// reading the lane. Deriving the expectation from the row's **own** alias was
 /// accepted until F-settle W4 and is now rejected: engine and test then read
 /// the same constant, so the pin asserts "the engine agrees with the
@@ -898,8 +897,19 @@ fn names_token(text: &str, token: &str) -> bool {
 /// `BUS_INT_DURATION_WALKS_ALL_BUSES`, `FAULT_DUMP_TAIL_REPRINTS_MINAMPS`) had
 /// been credited by a *neighbouring* test's constant. Their pins do branch on
 /// the lane; only this predicate could not see how.
+///
+/// The second arm is the **qualified** path only, not the bare word
+/// [`reads_the_lane`] settles for (`:1657`). The two are not symmetric: there a
+/// loose match makes the caller *reject* more (a pin that still reads the lane
+/// fails the teardown check — fail-safe), here it makes the caller *accept*
+/// more, so an English `PARITY` in a comment would satisfy the rail. Two such
+/// comments exist in-tree (`tests/golden_reports.rs:1620`,
+/// `tests/corpus_gate/scheduler.rs:358`) while every real read is written
+/// `lane::PARITY` (`golden_reports.rs` ×15, `harness/mod.rs:1343`, `:2358`);
+/// `harness/lane.rs`, which uses the bare name because it declares it, names
+/// `ORACLE_PARITY` in that same assert and is credited by the first arm.
 fn branches_on_lane(text: &str, _alias: &str) -> bool {
-    names_token(text, "ORACLE_PARITY") || names_token(text, "PARITY")
+    names_token(text, "ORACLE_PARITY") || names_token(text, "lane::PARITY")
 }
 
 /// `(alias, the impl each cfg arm selects)` for every lane-selected alias in the
@@ -1097,10 +1107,13 @@ fn every_lane_split_alias_is_pinned_by_an_expected_value_test() {
         "lane-split alias(es) with no expected-value pin: {unpinned:?}\n  A pin \
          is a test that (a) names the alias — in an assertion or in the doc \
          comment that says which row it pins — and (b) branches on the lane, \
-         either through `ORACLE_PARITY` or by reading `compat::<alias>`. \
-         Kernel-vs-kernel tests inside the compat module do not count: they \
-         assert the two impls against each other, not the observable a deck \
-         sees."
+         either through `compat::ORACLE_PARITY` or through the harness alias \
+         `lane::PARITY` (qualified — the bare word does not count). Deriving \
+         the expectation from the row's own `compat::<alias>` does NOT count \
+         either (F-settle W4): engine and test then read the same constant, so \
+         the pin holds whichever way the alias points. Kernel-vs-kernel tests \
+         inside the compat module do not count: they assert the two impls \
+         against each other, not the observable a deck sees."
     );
 
     // Non-vacuity of the *walk*, in both shapes a pin is allowed to take — a
@@ -1426,8 +1439,10 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     ),
     // G2.1f. `WriteMultipleStorageMeterFiles` (`.inputs/dss_capi/src/Common/
     // ExportResults.pas:2240`; r4133 `Version8/Source/Common/
-    // ExportResults.pas:2280`, and again at `:2335` for `Storage2`) was cloned
-    // from `WriteMultiplePVSystemMeterFiles` (`:2095`) and kept its `'EXP_PV_'`
+    // ExportResults.pas:2280` — the live line; the `Storage2` twin repeats it
+    // at `:2335` but is inert, sitting inside the `(*` … `*)` block that spans
+    // `:2314-:2368`) was cloned from `WriteMultiplePVSystemMeterFiles`
+    // (`:2095`) and kept its `'EXP_PV_'`
     // literal, so `Export Storage_Meters /m` drops a Storage fleet's registers
     // into the PVSystem export's own files — and because that writer emits a
     // header only for a file that does not yet exist and otherwise appends

@@ -30,8 +30,10 @@ whose. That it is a copy-paste slip and not a convention is settled inside the
 same command: its single-file mode writes `EXP_STORAGEMeters.csv`
 (`ExportOptions.pas:411`) next to `EXP_PVMeters.csv` (`:409`), and every other
 class carries its own prefix (`EXP_MTR_` `:1792`, `EXP_GEN_` `:1948`). r4133 has
-the identical line (`Version8/Source/Common/ExportResults.pas:2280`, and again
-at `:2335` for `Storage2`), so both gating oracles have it and the 2026-08-02
+the identical line, live, at `Version8/Source/Common/ExportResults.pas:2280` (the
+`Storage2` twin repeats it at `:2335`, but that whole procedure is commented out
+— `(*` `:2314` … `*)` `:2368` — so it is dead code, not a second live site), so
+both gating oracles have it and the 2026-08-02
 policy applies rather than exempts. Deep dive:
 `investigations/issue-20-storage-meters-pvsystem-prefix.md`.
 
@@ -80,13 +82,16 @@ reddened for three **still-split** rows pinned in that file —
 `FAULT_DUMP_TAIL_REPRINTS_MINAMPS` — every one of which branches through the
 harness alias `lane::PARITY` and had been credited only by a neighbouring test's
 constant. The three pins are real; the predicate could not see their spelling.
-Fixed in this commit by accepting `PARITY` as well — the same two spellings
-`reads_the_lane` already recognises, and legitimate because `harness/lane.rs:78`
-defines `PARITY` as `cfg!(feature = "oracle-parity")` and `lane.rs:795` asserts
-it equals `dss_core::compat::ORACLE_PARITY`. `names_token` keeps the two apart
-(`PARITY` inside `ORACLE_PARITY` is preceded by an identifier character, so it
-does not match), and the rejection this predicate exists for — deriving a pin's
-expectation from the row's **own** alias — is untouched.
+Fixed by accepting the **qualified** `lane::PARITY` as a second spelling —
+legitimate because `harness/lane.rs:78` defines `PARITY` as
+`cfg!(feature = "oracle-parity")` and `lane.rs:795-796` asserts it equals
+`dss_core::compat::ORACLE_PARITY`. `names_token` keeps the arms apart (`PARITY`
+inside `ORACLE_PARITY` is preceded by an identifier character, so it does not
+match), and the rejection this predicate exists for — deriving a pin's
+expectation from the row's **own** alias — is untouched. The bare word is
+deliberately **not** accepted (audit fix, below): unlike `reads_the_lane`, where
+a loose match rejects more, here it accepts more, so a prose `PARITY` in a
+comment would satisfy the rail.
 
 **Doc surface.** The alias was never cited on the walked doc surface (measured
 again here: outside `crates/` the only mentions are STATUS, the plan,
@@ -102,7 +107,9 @@ sources, not recalled: `ExportResults.pas:2240`/`:2242` and the PVSystem twin at
 `:2076`/`:2095`, the `EXP_MTR_`/`EXP_GEN_` lines `:1792`/`:1948`, the
 `ExportOptions.pas:409`/`:411` default names, and on the r4133 side
 `WriteMultipleStorageMeterFiles` at `:2260` with the buggy line at `:2280` plus
-`WriteMultipleStorage2MeterFiles` at `:2315` with its copy at `:2335`. The pin
+`WriteMultipleStorage2MeterFiles` at `:2315` with its copy at `:2335` — the
+latter inside the commented-out block `:2314`–`:2368`, so `:2280` is the only
+live occurrence and the only one the citation leans on. The pin
 was mutation-checked: restoring `"EXP_PV_"` in the tuple reds
 `export_storage_multifile_uses_the_storage_prefix` in **both** lanes (measured,
 same assertion, `golden_reports.rs:3883`); the mutation was reverted and the
@@ -119,6 +126,57 @@ Newton pow/loss divergences on the two `newton` decks — the still-live
 renamed, 0 removed, 0 new `#[ignore]`. `git diff --stat -- tests/golden` is
 empty; `git status --short tests/corpus` is clean after both runs (the
 `Test/AutoTrans/*` export leak deleted by exact name, never committed).
+
+**Audit settlement (fix agent, same branch).** Five findings, all `minor`, none
+touching the engine, a golden byte, the ledger or a tolerance — four distinct
+defects, since two auditors reported the same stale assert message. Three fixed,
+one deferred with its reason.
+
+- *The `branches_on_lane` widening is fail-open* — **real, fixed.** The second
+  arm now matches the qualified `lane::PARITY`, not the bare word: in
+  `reads_the_lane` (`:1657`) a loose match makes its caller reject more
+  (fail-safe), here it makes the caller accept more, so an English `PARITY` in a
+  comment satisfied the rail. Measured sufficient before tightening: the only
+  bare-word occurrences outside the arm's own definition site are two prose
+  comments (`golden_reports.rs:1620`, `corpus_gate/scheduler.rs:358`), every real
+  read is written `lane::PARITY` (`golden_reports.rs` ×15, `harness/mod.rs:1343`
+  and `:2358`), and `harness/lane.rs` — which spells it bare because it declares
+  it — is credited by the first arm through `ORACLE_PARITY` at `:796`. Both
+  lanes' `oracle_parity_cfg_gate` stays green, so no row lost its pin.
+- *The pin-walk failure message still advertises the rejected `compat::<alias>`
+  form and omits `lane::PARITY`* — **real, fixed** (reported twice, by both
+  auditors). Message text only: it now names `compat::ORACLE_PARITY` and the
+  qualified `lane::PARITY`, and states explicitly that deriving the expectation
+  from the row's own alias does not count (F-settle W4). The clause pre-dated
+  G2.1f, which rewrote the predicate's doc comment and left the assert text.
+- *The r4133 `:2335` "Storage2 copy" citation points inside a commented-out
+  block* — **real, fixed.** Verified in the vendored trunk: `(*` at
+  `ExportResults.pas:2314`, `*)` at `:2368`, with
+  `Procedure WriteMultipleStorage2MeterFiles` (`:2315`) and its `'EXP_PV_'`
+  (`:2335`) between them, so the twin is dead code. The load-bearing citation —
+  the live `:2280` inside `WriteMultipleStorageMeterFiles` (`:2260`) — is
+  unaffected, and the vendored capi source has no `Storage2` procedure at all
+  (its only two `EXP_PV_` lines are `:2095` and `:2240`), so nothing about the
+  pinned value moves. All five sites reworded (`exec/report.rs`,
+  `golden_reports.rs`, the `TORN_DOWN_ROWS` rationale, STATUS ×2).
+- *The walk still credits per **file**, so a pin can be credited by a lane branch
+  in a neighbouring test* — **real as a mechanism, deliberately deferred**, as
+  the auditor itself proposed; its worked example is **refuted**. The mechanism
+  is real and predates G2.1f — it is the very gap this teardown exposed, and
+  `every_lane_split_alias_is_pinned_by_an_expected_value_test` still evaluates
+  `names_token(region, alias) && branches_on_lane(region, alias)` over a whole
+  file's test region (`:1094`). The example offered for it does not hold:
+  `FAULT_DUMP_TAIL_REPRINTS_MINAMPS` is named at `golden_reports.rs:5614` and
+  read as `lane::PARITY` at `:5624` — the *same* helper `fault_dump_expected`,
+  not a neighbouring test — so no live row in this tree is credited across a
+  function boundary. Closing the mechanism needs per-row pin-fn names for the
+  *live* split aliases — a second register beside `TORN_DOWN_ROWS`, which
+  already carries them and already scopes its own check with `test_fn_body`
+  (`:1671`). That is a new rail, not a teardown, so it is out of G2.1f's scope
+  and recorded here as an open item for the next sub-step that touches this walk
+  anyway — **G2.2a**, which must re-anchor the walk's non-vacuity const onto a
+  numeric survivor. Tightening the spelling above does not widen it: same file
+  granularity, one spelling narrower.
 
 ### GOLDEN_REBASE G2.1e — `STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL` torn down: the fleet guard asks the state test it reads as (branch `golden-g2`, 2026-08-03)
 

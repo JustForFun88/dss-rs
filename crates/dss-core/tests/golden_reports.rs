@@ -3844,9 +3844,11 @@ fn export_meters_append_accumulates() {
 ///
 /// Upstream writes `EXP_PV_<NAME>.csv`: `WriteMultipleStorageMeterFiles`
 /// (`.inputs/dss_capi/src/Common/ExportResults.pas:2240`; r4133
-/// `Version8/Source/Common/ExportResults.pas:2280`, repeated at `:2335` for
-/// `Storage2`) was cloned from `WriteMultiplePVSystemMeterFiles` (`:2095`) and
-/// kept its `'EXP_PV_'` literal, so a Storage fleet's registers land in the
+/// `Version8/Source/Common/ExportResults.pas:2280` — the live line; the
+/// `Storage2` twin repeats it at `:2335` but is inert, inside the `(*` … `*)`
+/// block spanning `:2314-:2368`) was cloned from
+/// `WriteMultiplePVSystemMeterFiles` (`:2095`) and kept its `'EXP_PV_'`
+/// literal, so a Storage fleet's registers land in the
 /// PVSystem export's own files. The multi-file writer emits a header only when
 /// the file does not yet exist and otherwise **appends** (`:2242`), so a
 /// PVSystem and a Storage sharing a name (legal — names are unique per class)
