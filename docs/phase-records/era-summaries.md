@@ -1,0 +1,1709 @@
+# Archived completed-plan records and condensed era summaries
+
+> Moved verbatim from `STATUS.md` on 2026-08-05 (STATUS.md history archiving);
+> order preserved, nothing rewritten.
+
+## 1a. Archived — completed plan records (100% done)
+
+> Moved out of the active §1 frontier on 2026-07-17. These are the records of plans whose own work-package scope is closed and gate-green: the 1:1 FINAL ACCEPTANCE, JSON export (Stages A+B), DIAKOPTICS/PSTCALC **Part I**, and the full **UPGRADE** Rung 1 + Rung 2 (r4133 parity). A few carried a documented item forward to a successor plan that has **not** finished it yet (TODO(compat) sweep + HIDE_015X → DE_PASCALIZE Stage F; GICMvars export → Phase 9; JSON DynInit/Full-mode tail → a follow-up WP; IEEE118 NCIM → a future UPGRADE rung) — those open items are surfaced in §1's **Standing open follow-ups**, not buried here. Frozen history — superseded only by the code and tests. In-progress / not-started plans (DE_PASCALIZE, DIAKOPTICS Part II, RESONANCE, MULTITHREADING, WASM_USERMODELS) stay in the active §1 above.
+
+**Late-UPGRADE work records (historical — all landed; kept for the §UPGRADE
+cross-refs).**
+- **D14 (DynamicExp RPN "index-bug fix") — REVERTED 2026-07-19 (BUG WP DynExp).**
+  ~~landed, pulled ahead of WP-U1.6~~ Superseded: adopting the 0.15.x `2a8bdb78`
+  no-op `SolveEq` was a mistake — it targeted the retired **non-gating** capi015
+  and the port matched neither surviving oracle. Both gating channels (pinned
+  0.14.5 `DynamicExp.pas:377` AND EPRI r4133 `:497`) run the full RHS evaluator
+  and integrate. `solve_eq` is restored to that full evaluator and the DynExp
+  gates re-pinned to the swinging-oracle values. See the **BUG WP DynExp** record
+  in §1 and DIVERGENCES.md §D14.
+- **WP-U1.8 (WindGen + WTG3 dynamics) — LANDED** on branch `wp-u18` (new PC element +
+  the general dynamics-entry Y-rebuild fix + the `micro_wtg3_dynamics` floor tier).
+  See the UPGRADE record below.
+- **WP-U1.7 (NCIM solver)** — **Stages 1–4 core landed** (branch `wt-u17`): Stage 1
+  (`RealSparseSet`) + the full `NCIMSolutionHelper.pas` port (`ncim.rs`), PDE_ONLY Y
+  build, generator PV fields, `Set Algorithm=NCIM` dispatch, and the
+  `IgnoreGenQLimits`/`NCIMQGain` options. Post-audit, every electrical value in
+  `exec/tests/ncim.rs` is pinned against capi015 NCIM captures (incl. the PV-bus
+  path: regulating / Q-limit PV→PQ / faithful nonconvergence). **Remaining:** the
+  capi015 corpus deck matrix (micro/PV/midi decks flip `pending:false`) and the
+  `Export Jacobian/deltaF/deltaZ` + `Show PV2PQ_Conversions` reports. See the
+  §UPGRADE WP-U1.7 record below.
+- **WP-U1.2 (numeric long tail)** — rows B2/D1, D7, D6, B1, D8 landed; **B3-r3723**
+  (Load.GrowthFactor Year=0) landed under WP-U1.6; **remaining: D3** (report-only
+  spacing ratings — needs an overload-report deck). See the resume note under
+  §UPGRADE below.
+- **B5 GFM `Isc1` ×1000 — SETTLED (GFM WP, branch `gfm-wp`).** Adopted the r4133
+  `Isc1` (drop the `·1000`) in `calc_gfm_yprim`. The feared "injection-vs-YPrim
+  gap" does **not** exist at this base: the Rust GFM op-point is already
+  Isc1-invariant (proven — the positive-sequence Norton impedance `Zs−Zm = R1+jX1`
+  is `Isc1`-free; only the zero sequence moves, and delta/balanced GFM loads see
+  only the positive sequence). 8 vendored + 4 controls GFM decks flipped to
+  `oracle:capi015` (whole-model green); non-discharging-GFM decks stay 0.14.5-green.
+  Also settled the unrelated capi015 daily `CktElement.Losses` staleness quirk (not
+  reproduced; harness `loss_w` self-validating skip). See §UPGRADE + DIVERGENCES.md.
+- **WP-U1.5 — LANDED complete** and **WP-U1.9 — LANDED complete** (2026-07-16
+  round); **WP-U1.4 / WP-U1.6 — PARTIAL** (blockers in the Rung-1 remaining-tail
+  list above). Full records in §UPGRADE below.
+- Part II A-Diakoptics (AD.2–AD.5) merged 2026-07-12 — records in
+  `docs/phase-records/part2-adiakoptics.md`; AD.6 (threaded children) remains
+  sequenced after MULTITHREADING M2.
+
+**SKIPPED-SWEEP (branch `skipped-sweep`, 2026-07-12).** Gave every in-scope entry
+in `skipped_needs_investigation.json` a real disposition (19 entries; the 2
+`upgrade_straddle_gfm_wp` + 1 `upgrade_straddle_u16_dynexp` decks were left to their
+dedicated WPs). Probed each on the official EPRI engines (r3723/r4088/r4133 via the
+Oddie bridge) and the pinned 0.14.5 oracle; verified Rust behaviour first-hand.
+**9 promoted to `solvable_now`, 10 kept parked with refreshed evidence** (settle
+2026-07-12 promoted 2 more 4wire-Delta decks — see the settle note below).
+
+- **Root cause found for 6 "oracle_nonconvergence" decks: the deck's `maxiterations`
+  cap was simply below what the (convergent) circuit needs** — not a solver defect.
+  With `post: ["Set maxiterations=200"]` the pinned 0.14.5 oracle AND Rust converge
+  at the **exact same** iteration count with bit-identical node voltages:
+  StevensonPflow (90), StevensonPflow-3ph (106), IEEE 30 Bus/Master (19; its own
+  sibling `Run_IEEE30.DSS` sets maxiterations=100), 8500-Node/Master-unbal (62),
+  GFM_IEEE8500/Master (67), GFM_IEEE8500/Master-unbal (62). Promoted `kind=large`.
+- **1 "user_model" deck promoted via a harness change:** `Test/indmachtest/Master.DSS`
+  (Generator model=6 with an unvendored user-model DLL). The oracle server learned a
+  `warn_and_continue` mode (driven by the case's existing `expect_warnings`): set
+  `DSS.Error.EarlyAbort=False` + tolerate the user-model DoSimpleMsg (#567/#570/#1570)
+  at compile, every solve, and the priming currents read — 1:1 with the official
+  Direct DLL's warn-and-solve. Rust 8 iters == pinned 8, node V bit-identical.
+- **Kept parked (refreshed):** `vsctest` + `Torn_Circuit`
+  Master/Interconnected (GENUINE non-convergence on r3723/r4088/r4133 even at
+  maxiterations=1000); `IEEE118Bus` (convergence is an r4088/r4133-only solver change,
+  Rust mirrors r3723=NO → BLOCKED_PENDING UPGRADE); the 2 `oracle_timeout` TnD decks
+  (A-Diakoptics not ported → not promotable regardless); `ieee9500_base` (pathological
+  voltage-collapse deck, NO on r3723/r4088/r4133); the 2 `conditioning_floor` decks
+  (`CIM/IEEE13_Assets`, `SecondaryTestCircuit_modified` — proven cross-solver floors
+  re-affirmed by decomposition, no honest band fits).
+- Harness change: `tools/oracle/oracle_server.py` (`warn_and_continue`,
+  `_USER_MODEL_ERRNOS`, EarlyAbort toggle in `main`, priming retry in
+  `capture_all_elements`) + `corpus_live.rs` (send `warn_and_continue` when
+  `expect_warnings` is set). `solvable_now` 283→290, `skipped_needs_investigation`
+  22→15; `population.lock` regenerated in-commit.
+
+**SKIPPED-SWEEP settle (2026-07-12).** Audit found the two 4wire-Delta `Kersting4wire_Lagging`
+/ `Kersting4wire_Leading` decks were parked on a false premise. The "Rust 3 iters vs oracle 2"
+claim compared Rust COLD (the deck's internal compile-time Solve, 3) against the oracle WARM
+re-solve (2). Measured symmetrically on both engines: **cold 3 / warm 2 on BOTH**, and the live
+harness (compile + explicit solve) compares the WARM re-solve → 2 == 2. Warm node V is
+bit-identical (Lagging SOURCEBUS.1 7200.002150, Leading 7199.557591; all 12 nodes agree to 6+
+figures on both engines). Promoted both via the same `warn_and_continue` path as `indmachtest`
+(`kind=feeder`, `expect_warnings=["Not Loaded"]`). `Kersting4wireIndMotor` stays parked, note
+corrected: its real blocker is NOT iterations (also cold 3 / warm 2) but a genuine 4th-wire/
+neutral-node divergence — its `LineCode.556MCM` declares `nphases=4` yet supplies only a 3×3
+(6-entry) cmatrix; safe Rust rejects the malformed 4-phase Cmatrix while the oracle tolerates
+it, so PRIMARY.4 diverges 13.363452 vs 13.363170 (|diff| 2.82e-4), above the feeder floor. The
+`warn_and_continue`→`expect_warnings` coupling remains non-masking (all 5 opted-in decks are
+genuine user-model DoSimpleMsg cases; Rust independently enforces convergence + exact iterations
++ bit-identical V). `solvable_now` 290→292, `skipped_needs_investigation` 15→13; `population.lock`
+regenerated in-commit.
+
+> Working cadence and the standing toolchain note are just below; the full
+> per-step ritual is `PLAN_SEQUENCE.md` / the active plan's §0.
+
+---
+
+### Condensed era summaries (full records in `docs/phase-records/`)
+
+**FINAL ACCEPTANCE — ACCEPT (2026-07-11).** Max-effort referee round on
+`final-acceptance` returned `criteria_met=true`, `blocking_items=[]` (B1 CIM
+cross-class panic, B2 8500 save-floor, B3 anti-shrink guard all resolved with
+re-verified evidence). §6 criteria met: `corpus_live` live-compares every
+`solvable_now` deck (full Y/V/I/P + injection + discrete state per step) at the
+calibrated floors; `save_roundtrip` 6/6 (IEEE 13/34/37/123/8500 + structural);
+`golden_reports` 193/0; gate green (pinned dss-python 0.15.7 / dss_capi 0.14.5).
+Gated population at acceptance **245/335 solvable_now (73.1%)**; the unported tail
+is exclusively Phase-9 actor/parallel mode + `CapControl.ControlSignal`, explicitly
+outside 1:1 acceptance. **Named non-blocking residuals** (all documented): the
+RegControl/LDC `SubXFMR` family, `LVTestCase` entry-0 unenergized, UTF-8 BOM,
+`CapControl.ControlSignal`, SecondaryTestCircuit_modified, GFM_IEEE8500 near-floor.
+Several were later resolved (see corpus summary). Detail + the §6 criterion→evidence
+table + FA settle + FA fix 1/2/3: **`docs/phase-records/final-acceptance.md`**.
+
+**Corpus completeness.** Post-acceptance CF / CF2 / coverage-wave rounds drove
+`solvable_now` to **~286/329 entry points (86.9%)**; synthetic families reorganized
+into per-element subfolders and grown to **asymmetric 47 / controls 92 / modes 49**
+live decks. Full blow-by-blow: **`docs/phase-records/corpus-rounds.md`**.
+- Fixed real port bugs (one line each):
+  - LongLineCorrection stored-but-never-applied → ported `TLineObj.DoLongLine` (asymmetric wave).
+  - DIRECT-mode PCElement `GetCurrents` `LastSolutionWasDirect` shortcut → ported (FIX-DIRECT).
+  - Dynamics-mode `ShapeFactor` ignored `ActiveLoadShapeClass` (PVSystem + the VSource/Isource/IndMach012 siblings) → fixed (CF2-G).
+  - Element `base_frequency` hardcoded 60 instead of circuit fundamental → fixed (CF-A); resolves `LVTestCase`.
+  - UTF-8 BOM not stripped on redirect; undefined-monitor export hard-error; bare-quote inline comment → fixed (CF-A).
+  - CapControl `Type=follow` self-monitor dispatch aborted with "Monitored element not set" → fixed (CF-C).
+- Proven floors (NOT bugs, reproduced/documented, never band-fudged):
+  - `SubXFMR` family = ultra-switch conditioning (1e-8 Ω switch, Y≈1e8 S) + Carson libm floor (CF-D) — the acceptance "RegControl/LDC" label was disproven.
+  - #485 control-settling family = hunting-truncation reproduced 1:1; the "divergence" was a harness second-solve measurement artifact (CF2-R).
+  - DOCTechNote ×4 + GFMSnap = floating-zeroseq common-mode floor (FA fix 2).
+  - SecondaryTestCircuit_modified / IEEE13_Assets = conditioning floors (documented, too wide to band).
+  - GFM_IEEE8500 Snap/Daily = near-floor faer-vs-KLU.
+
+**JSON export (A+B) — COMPLETE.** `Obj_ToJSON` / `Batch_ToJSON` (Stage A) +
+`Obj_Circuit_ToJSON_` (Stage B), ~130-byte goldens. Detail in
+`docs/phase-records/gaps.md`.
+
+**Part I DIAKOPTICS/PSTCALC — COMPLETE; Part II sequenced later.** WP-PF.1
+(`Pstcalc` command), WP-PF.2 (Monitor mode-4 flicker), WP-AD.1 (incidence matrix +
+`Sparse_Math` + exports 53–57) all gate-green. Part II (A-Diakoptics WP-AD.2–AD.6)
+is deliberately outside final acceptance, sequenced after MULTITHREADING M2. Detail:
+**`docs/phase-records/part2-adiakoptics.md`**.
+
+**UPGRADE Rung 1 (U0 / U1.1 / U1.2).** Multi-oracle test infra (WP-U0: per-case
+`oracle` manifest field routing to capi015 / r3723 / r4088 / r4133; `capi015`
+engine; `Rust ≤ oracle` iteration policy for target-rev cases; r4133 pilot in every
+`cargo test`). **WP-U0.2** = report-only `ab_compare` inventory sweeps over 378
+cases/pair across the three rung pairs + reconciliation of the `delta_*.md` ledgers.
+**WP-U1.1 (parser/property semantics) — items 1–5 all landed:** L2 `DblValueNZ`
+zero-`kW`/`kVA` clamp, `ParseAsSymMatrix` incomplete-matrix reject, `AllowNoneItem`
+(`none` in conductor lists), `TCC_Curve.none`, C11 class-command activation.
+**WP-U1.2 (numeric long tail) — landed rows:** B2/D1 (SimpleCarson De
+`658.5→658.8530451057239`), D7 (PVSystem dynamics current-limit base
+`PanelkW→FkVArating`), D6 (Transformer seasonal AmpRatings drop `1.1×`), B1
+(Capacitor Cmatrix YPrim diagonal `×1.000001`), D8 (settled, no code change — not a
+0.14.5→0.15.x delta). **WP-U1.3 (InvControl cluster) — all 6 rows settled:** D1/ledger-L1
+InvControlDeltaV per-control 2-slot buffer (adopt capi015 fix; the r4133 `i=1`
+cursor gating cataloged as a known upstream bug), D2 per-DER basekV, D3
+sqrt-guard (EPSILON=1e-12), D4 delta-DER LL monitored voltage (sign-flipping,
+capi015==r4133; unit + capi015 deck pinned), D5 no-delta, C8 (a)
+`VV_RefReactivePower` removal NOT adopted (r4133 keeps it) + (b) MonBus
+#2024111/#2024112 validations. Known limit: the capi015 oracle cannot gate
+multi-step decks (per-step capture re-nominalizes shapes) — capi015 corpus cases
+are snapshots; follow-up logged for the oracle-infra owner. Full detail:
+**`docs/phase-records/upgrade-rung1.md`**.
+
+**WP-U1.5 (EnergyMeter seasonal / allocation / monitor-header) — LANDED (branch
+`wt-u15`).** Five spec rows settled (detail in `docs/upgrade/DIVERGENCES.md`):
+- **E2 / ledger L4 (SeasonalRating reimplementation) — adopted capi015 = r4133.**
+  New global `Circuit::seasonal_rating_idx` synced by
+  `solution::meters::sync_seasonal_rating_idx` at every solve (Pascal
+  `SyncSeasonalRatingIdx`, `55400a29`); new `CktElement::get_ratings(idx)` trait
+  method (`TPDElement.GetRatings`) overridden by Line + Transformer `num_amp_ratings`/
+  `amp_ratings`; wired into `export_capacity`/`export_overloads`/`write_overload_report`
+  so the seasonal `AmpRatings[idx]` applies to ANY PDElement (0.14.5 restricted
+  `DI_Overloads` to lines and never applied it in `Export Overloads`). The
+  0.14.5 state-mutating `SeasonalRating := FALSE`-on-miss read is not reproduced
+  (precomputed index removes it). Gate: 2 new **capi015** report goldens
+  (`export_{overloads,capacity}_seasonal`, `.meta.json` `oracle:capi015`,
+  regenerated via the new `DSS_ORACLE_ENGINE=capi015` branch in `gen_reports.py`;
+  deck = overhead Line + Transformer + CN cable, all `Seasons=4`, validated
+  bit-identical capi015 == oddie:r4133 §1.7) + feature-sensitive `get_ratings`
+  unit tests (Line + Transformer). Probe: 0.14.5 reports base `%Normal=134.5`,
+  capi015/r4133 the seasonal `336.3` — revision-sensitive.
+- **D9 (AllocateLoad/CalcAllocationFactors skip disabled meters/sensors) — adopted
+  capi015 (r4115 `fb728364`).** Two `if !enabled` guards in
+  `sampling/allocate.rs`. 0.14.5 hit an Access Violation walking a disabled
+  meter (UB, not reproduced). Gate: `allocateloads_ignores_disabled_meter`
+  (feature-sensitive — meter enabled at zone-build then disabled; factors stay 0.5
+  vs 6.3725 enabled).
+- **D8-r3723 (manual-ZoneList child from-bus/terminal) — adopted r4133.**
+  `zones/build.rs`: `add_new_child(terminals[0].bus_ref, 1)` (was `(NO_BUS, 0)` =
+  0.14.5). IS a code delta (verify verdict), but its effect is **masked** in our
+  path (from-bus already volt-base-listed; DistFromMeter not propagated for manual
+  zones); 0.14.5 AVs so no oracle golden — the memory-safe
+  `energymeter_manual_zonelist` test guards it.
+- **D16 (zone counter skips disabled + non-PD) — NOT a delta for us.** Already in
+  the 0.14.5 baseline and already ported (`zones/build.rs` `if !enabled ||
+  !is_pd_element`); 0.15.x only flattened the guard. No code change.
+- **E1 / ledger L3 (Monitor header) — keep the dss_capi form.** The quote-removal
+  + `MonitorHeader` flag are CSV-render only (flag off by default); probed
+  capi015 `Monitors.Header` tokens == 0.14.5 == Rust. No code change; the
+  `monitor-header-whitespace` known_diff (KEPT vs EPRI) stays.
+- known_diffs burn-down: no seasonal/allocation entry ever existed (reports were
+  NOT_PORTED); `meter-zonepce-count` (r3723-only) + `monitor-header-whitespace`
+  both document behaviors this WP does not change → retained.
+- **Audit fixes (branch `wt-u15`).** (1) `get_ratings` blocker REBUTTED: the
+  auditor cited r4133/pre-refactor `NumAmpRatings > 1`, but the port ports
+  `55400a29`'s `GetRatings` guard `0 <= idx < NumAmpRatings` (no `>1`); the pinned
+  capi015 oracle (0.15.0b4/SVN4103) confirms it — a single-season Line at idx 0
+  reports `%Normal == %Emergency` (AmpRatings[0] overrides both). No code change;
+  docs corrected to stop misquoting the guard. (2) Set-command sync (real
+  divergence): `Set Hour`/`SeasonRating`/`SeasonSignal` now re-sync
+  `seasonal_rating_idx` (`55400a29` ExecOptions 3/114/115), verified on capi015
+  (`solve; set hour; export` reads the new index) —
+  `set_commands_resync_seasonal_rating_idx`. (3) Seasonal report goldens tightened
+  to exact `0.0/0.0` (Rust == capi015 byte-for-byte; the faer-vs-KLU floor was
+  unnecessary). (4) Added `di_overloads_applies_seasonal_rating` (DI-path seasonal
+  wiring).
+
+**WP-U1.9 (PCE force hooks) — LANDED (branch `wt-u19`).** Ported the dss_capi
+0.15.0b4 pyControl engine hooks — spec read via `git show 0.15.0b4:` because the
+vendored working tree `.inputs/dss_capi_with_git` sits at a later `master`
+(`f5728aec`) where these options were **removed** upstream; the capi015 oracle
+(tag `e936d210`) still carries them, so it remains the authoritative spec.
+Landed: `Set`/`Get` `InjCurrent`/`ITerminal`/`YPrim`/`StateVar`/`IterNumber`/
+`CtrlIterNumber`/`IntegrationFlag` + `Flg.ForceInjCurrents`/`ForceYPrim`, honored
+in the injection loop (`solution/solution/power_flow.rs` injects the stored
+`InjCurrent` directly, per `TPCElement.InjCurrents`) and `ReCalcAllYPrims`
+(`solution/ymatrix.rs` skips `CalcYPrim` when `ForceYPrim`); the five PCE
+`GetTerminalCurrents` (Load/Generator/PVsystem/Storage/IndMach012) skip the model
+recompute when forced. `Set IterNumber`/`CtrlIterNumber`/`IntegrationFlag` are
+read-only; `Set PyPath=` + the pyControl component stay NOT_PORTED (loud, §0).
+`SampleControlDevices` was already ported (present in 0.14.5, `Solution.pas:1974`
+→ `solution/controls/sampling.rs`) — NOT a delta; `delta_capi_0145_015x.md` A3
+over-claimed it as new. Parser gained `make_complex`/`parse_as_complex_vector`/
+`parse_as_complex_matrix` (`ParserDel.pas`, `(f64,f64)`-tuple, dep-free). Gated by
+the live `modes/upgrade_forcehooks.dss` (oracle:capi015, validated bit-identical
+across two capi015 processes; `Set InjCurrent=[80 0 80 0 80 0]` moves b2 Vmag
+7187.45→7224.14 V) + the capi015-pinned unit suite `exec/tests/force_hooks.rs`
+(forced Vmag 7224.143523 @1e-6, frozen `Get InjCurrent`/`ITerminal`, read-only
+sets, `Set YPrim` survives a rebuild, `Set/Get StateVar`, and **`Clear` resets
+the force flags**). Ledger: `docs/upgrade/DIVERGENCES.md §A3/A5`.
+
+**WP-U1.9 audit follow-up — LANDED (branch `wt-u19`).** Addressed 7 audit
+findings against the capi015 oracle. Fixed: `Set/Get AllowForms`/
+`AllowProgressBar` now accepted headless no-ops (round-trip, default `No`) —
+were erroring "not ported"; `Set/Get StateVar` non-PCE now gives the Pascal 7103
+"is not a valid PC element" (guard runs before the 7101 NumVariables check); the
+force-hook error arms now `Exit` (break) the option loop like Pascal. Corrected
+the false "Set/Get StateVar covered" claim: `Set StateVar` via text is
+**upstream-broken** (positional `DoSetCmd` parse never reaches the arm →
+capi015 `#303`, reproduced as error + no write); `Get StateVar` is the
+functional read path. Grew the unit suite to 12 tests (added: `Set ITerminal`
+freeze, Generator 2nd-PCE force-skip, oversize-row `#3004`, natural-syntax `Set
+StateVar` error, both 7103 guards, AllowForms round-trip). The `#3004` YPrim
+error zeroes capi015's live matrix (its own known error-state imperfection) —
+**not reproduced** (scratch-buffer parse leaves the real YPrim intact; transient,
+next `ReCalcAllYPrims` recomputes). Ledger updated in DIVERGENCES §A3/A5.
+
+**WP-U1.8 (WindGen + WTG3 dynamics) — LANDED (branch `wp-u18`).** New PC element
+`elements/pc/windgen/` (Generator-shaped negative load): aerodynamic power-flow
+(`Pm=0.5·ρ·π·Rad²·v³·Cp`, the load shape supplies WIND SPEED not a pu multiplier;
+kWBase curtailment + cut-in/cut-out; 4 models 1/2/4/5) + the embedded GE WTG type-3
+dynamics (`wtg3.rs`, 1:1 of `WTG3_Model.pas`: PLL, seq-current PI regulators,
+LVPL/LVQL ride-through, Cp 5×5 aero, MPPT/torque/pitch/inertia, one-mass swing, the
+**odd-substep 50 µs trapezoidal sub-cycle**, all 22 state vars). Harmonics DISABLED
+upstream → reproduced as a loud abort. `windgen_model`/`windgen_qmode` enums,
+`ElemKind::WindGen`, PASCAL_CLASS_ORDER slot after Generator. 5 live `modes/windgen/`
+capi015 decks (snap wye/delta, daily single-step, dynamics, dynamics+fault) + 11
+unit tests. Two cross-cutting findings: (1) a **general dynamics-entry Y-rebuild
+fix** — `calc_initial_machine_states` now raises `system_y_changed` (Pascal
+`InitStateVars`→`SetYprimInvalid`→`SystemYChanged`, lost in the port), without which
+the WTG3 Norton injection ran the terminal voltage away; (2) the new
+`micro_wtg3_dynamics` tolerance tier (decomposition-proven: snapshot input matches
+1e-8, the PLL derivative `×60000` amplifies the near-cancellation `Vq` into a ~1e-5
+state / ~1e-6-rel terminal-V floor that DECAYS as the transient settles — a WPG.13
+amplification floor, NOT a bug). WindGen energy-meter registers not ported
+(`EnergyMeter.SampleAll` never samples WindGenClass — unreachable). Daily deck is
+single-step: dss_capi 0.15.x caches per-element `Losses` and WindGen doesn't
+invalidate it (bucket-F API quirk, out of scope).
+- **WP-U1.8 settle (audit).** (1) The `micro_wtg3_dynamics` tier is empirically
+  confirmed a genuine cancellation floor, not a masked state-leak: a per-variable +
+  per-node decomposition vs capi015 (throwaway probe, reverted) shows the gap is
+  confined to exactly the 3 PLL-derivative-fed vars (`dOmg`/`Pgen`/`Qgen`, ~1e-5
+  healthy / ~4e-5 fault) while 14 of 22 vars are bit-exact and the other 5 are ≤5e-7;
+  the worst node-V is always WBUS (the terminal bus) at 9.6e-7 rel healthy / 3.4e-6
+  fault, so the default `v_rel=1e-7` genuinely fails and `8e-6` covers it at ×2.3
+  (not over-loose). (2) Fixed a robustness defect: a 1-phase WindGen entering
+  dynamics used to **panic** (OOB in `wtg3` `instrumentation`, which reads V[1..3] —
+  the WTG3 model is 3-phase-only; upstream over-reads = heap UB, NOT reproduced). Now
+  a loud clean abort — `init_state_vars` aborts non-3φ before the model init, and
+  `do_dynamic_mode` guards the per-step path (external `solve` clears the init abort);
+  `calc_initial_machine_states` now drains+propagates element init aborts to
+  `solution_abort` (also surfaces the latent >3φ silent-garbage path for all
+  machines). New unit test `single_phase_dynamics_aborts_cleanly`. (3) The 5
+  `windgen/*` decks joined the `MODES_REQUIRED` anti-deletion floor.
+- **Resume note (WP-U1.2 remaining).** Row **D3** (report-only spacing ratings —
+  overload-report deck) still to port. **B3-r3723** (Load.GrowthFactor Year=0)
+  LANDED under WP-U1.6 (branch wt-u16). The golden engine switch
+  (`gen_checkpoints::check_pin` `DSS_ORACLE_ENGINE`) and the
+  same-commit flip/regen/retire workflow are proven. NB the modes manifest is NOT
+  `json.dumps`-round-trippable (mixed manual `\uXXXX` escaping + CRLF) — append new
+  cases with a surgical text edit.
+
+**WP-U1.6 (controls & misc long tail) — PARTIAL, LANDED (branch wt-u16).**
+Landed rows (each unit/deck-pinned, gate-green):
+- **B3-r3723** (own commit) — `Load.GrowthFactor` Year=0 with a GrowthShape now
+  tracks the simulated hours (`calcYear=dblHour/8760`; `GetMult(Ceil)` or
+  `GetMultIdx(1)` when firstY=0 & <1yr) instead of a flat 1.0. Added GrowthShape
+  `get_year`/`get_mult_idx`. **Oracle-validated + deck-gated** (audit-U1.6
+  settlement): `git show 0.15.0b4:src/PCElements/Load.pas` carries the rewrite
+  verbatim (the working-tree checkout f5728aec predates it, see DIVERGENCES.md
+  version note), and capi015 probes confirm 120 kW (factor 1.2) vs 0.14.5's flat
+  100 kW. New corpus deck `modes/upgrade/upgrade_growth_year0.dss` (`oracle:
+  "capi015"`, snapshot, feature-sensitive 120-vs-100 kW; §1.7 two-process
+  determinism confirmed). Unit tests
+  `growth_factor_year0_tracks_simulated_hours_with_growthshape` (probe-cited) +
+  `get_year_and_mult_idx_are_one_based`.
+- **D10** StorageController — (a) `a14c3f1f` FpctkWBandLow typo fix (was reproduced
+  as `TODO(compat)`; adopted, `FpctkWBandLow := FkWBandLow/FkWTargetLow*100`);
+  (b) `1b3123ce` force a new power flow on control iter 1 when peakshave(-low)
+  moves the fleet into (dis)charge even when the condition matched last step
+  (added `control_iteration()` to `StorageDispatchEnv`). Both in capi015 0.15.0b4
+  (= r4103; `StorageController.pas:547`). **Oracle-validated** (audit-U1.6):
+  capi015 `%kWBand=16.667`/`%kWBandLow=20` vs 0.14.5 typo `6.667`/`2`. Unit tests
+  `kw_band_low_side_effect_syncs_the_low_pct_pair` (property sync, added under
+  audit) + `d10_discharge_transition_forces_resolve_on_first_iteration`
+  (force-resolve). Unit-pinned (no single-step corpus witness: property-only sync +
+  multi-step force-resolve; precedent B1/D6/D7).
+- **D15** (`4366b126`) — `LookupVariable` case-insensitivity: the only
+  equivalent in the port (relay) already uses `eq_ignore_ascii_case` (= the fixed
+  side); not-a-delta, upper-case query pinned in `lookup_variable_prefix_match`.
+- **A7-r3723** — GenController deregistration: the r3723 port never registered the
+  class, so `New GenController.…` already errors "not found"; not-a-delta, pinned
+  by `gen_controller_class_is_not_registered`.
+
+Not landed (documented for a follow-up — each needs oracle-validated decks and/or a
+property-count-comparison flip beyond this pass's safe budget):
+- **C5** RegControl `FwdThreshold` (`8a898cba`, SVN r4086) — the flagship: adds 4
+  new props (`Idle`/`IdleReverse`/`IdleForward` [new in 0.15.x, absent from the
+  r3723 port] + `FwdThreshold`) → RegControl property-count change (entangles the
+  RegControl deck property-count compare, C8-class), PLUS the signed
+  `RevPowerThreshold`/`FwdPowerThreshold` rework (defaults −100kW/+100kW, EndEdit
+  legacy fallback `Fwd:=abs(Rev); Rev:=−Fwd`), the idle-zone `SetPointCalc` logic,
+  and the reverse-power detection rewrite. Precise hunks in
+  `.inputs/dss_capi_with_git` commit `8a898cba`. Needs the RegControl reverse-power
+  deck matrix (legacy-input equivalence + new-property divergence) on capi015.
+- **C6** Transformer/AutoTrans `BHpoints`/`BHcurrent`/`BHflux` (`90962ae8`) — 3
+  new `Unused` data props on BOTH classes → property-count change entangles every
+  default-oracle transformer/autotrans deck (C8-class); needs a coordinated flip.
+- **C5-r3723** LoadShape `Mode` prop (22) + `Interpolation` shift 22→23 — new
+  prop → property-count change (LoadShape decks) + property-index parity; same
+  entanglement class as C6.
+- **D12** SwtControl `Normal`/`State` field mapping (`bb9c9785`) — **RE-LANDED**
+  (branch wt-u16ind); see the "WP-U1.6 tail" block below. The revert's multi-step
+  entanglement was resolved by flipping `swtcontrol_time`/`midi_swtcontrol`/
+  `civanlar` to capi015 (multi-step capi015 proven viable) and leaving the
+  unaffected `swtcontrol_lock` on 0.14.5.
+- **D11** part 2 (`b9bc87b8`: TIMECONTROL requires + uses a monitored element) —
+  **LANDED** (branch wt-u16ind); see the "WP-U1.6 tail" block below. Part 1
+  (PT/CTPhase validation scope) was already aligned.
+- **D13** LoadShape MMF fixes (`c4590d16`) — **LANDED as not-a-delta** (branch
+  wt-u16ind); the eager MMF reader already matches the fix, gated by a fresh
+  single-column capi015 deck + unit. See the "WP-U1.6 tail" block below.
+- **B4-capi** harmonics init-failure abort (`6ad39597`) — the port's
+  `solve_harmonic_t_body` ALREADY returns on `!initialize_for_harmonics` (aborts
+  the sweep); the `In_ReDirect → Redirect_Abort` nuance is unreachable (no ported
+  `init_harmonics` sets `solution_abort`; see `harmonics.rs` doc). Faithful as-is;
+  no feature-sensitive deck possible.
+- **C4** `SolveAll` (`cmd::SOLVE_ALL`=123) — **LANDED** (branch wt-u16ind); see the
+  "WP-U1.6 tail" block below.
+
+**WP-U1.4 (line/cable-constants cluster) — PARTIAL: equivalent-spacing model LANDED
+(branch wt-u14).** Ported the **B3/C1 equivalent-spacing model** (dss_capi 0.15.x
+`LineSpacing.pas`/`LineConstants.pas`, SVN r3913-era) end-to-end, gate-safe (defaults
+preserve 0.14.5 numerics):
+- `LineSpacing` gains `Detailed` (bool, default `true`) + `EqDistPhPh`/`EqDistPhN`/
+  `AvgPhaseHeight`/`AvgNeutralHeight` (double, default 0) + `EquivalentSpacing() =
+  !detailed` + the `Detailed` prop-tracking side effect.
+- `LineConstants` engine gains `equivalent_spacing`/`eps_r_medium` (1.0)/`height_offset`
+  (0)/`user_height_unit` + the four equivalent distances; `calc_overhead`/`get_ze`/
+  `cisp_overhead` branch on equivalent spacing 1:1 with the Pascal. `EpsRMedium`
+  (`pfactor /= E0*eps_r_medium`, `E0*1.0==E0`) and `HeightOffset` engine numerics are
+  ported default-off (the Line-level *properties* that drive them are deferred, below).
+- `LineGeometry` copies the spacing's equivalent state (`apply_spacing`/
+  `load_spacing_and_wires`) and threads it into `UpdateLineGeometryData`
+  (distances × `To_Meters(FLastUnit)`; skips `SetX`/`SetY`).
+- **Validation:** unit `line_geometry::tests::matrices_equivalent_spacing_match_capi015`
+  (reduced 3×3 Z = capi015 to 1e-8), new capi015 corpus deck
+  `modes/upgrade/upgrade_linecs_eqspacing.dss` (live YPrim compare green; §1.7
+  two-process bit-identical), new capi015 props golden
+  `props/linespacing_eqspacing.json`. No existing golden/live case moves
+  (`Detailed` default true; 0 corpus decks set the props). DIVERGENCES.md §B3/C1.
+- **Audit follow-up (both minor findings fixed):** the always-on unit test now also
+  pins the equivalent-spacing **Yc/capacitance** branch (reduced 3×3 C = capi015
+  `? line.l1.cmatrix` 16.16 / -4.087 nF/mi to 1e-8), so the shunt branch no longer
+  relies solely on the live YPrim compare; and the `Set_FUserHeightUnit` meters-value
+  re-conversion quirk in `support/line_constants` now carries a greppable
+  `TODO(compat)` marker (dead scaffolding today — height_offset is always 0 and the
+  Line-level HeightUnit prop is deferred; golden pins it when that slice lands).
+- **Remaining WP-U1.4 rows (documented, not landed):** `Line.EpsRMedium`/
+  `HeightOffset`/`HeightUnit`/`Conductors` **Line-level properties** — BLOCKED on the
+  `compare_all_properties` count-equality harness (adding a property to the
+  circuit-element class `Line` breaks every default-oracle feeder's property-table-
+  shape assert; needs a harness accommodation for 0.15.x-only trailing props, a
+  design decision — the engine numerics are already in place); the merged
+  `CNTSLineConstants` mixed-conductor class + `CNData.SemiconLayer` capacitance
+  (an engine architectural refactor: 0.15.x moves the CN/TS choice per-conductor via
+  `SetCondType(i, CN|TS)` — the port still has per-*engine* CN/TS kinds); `LineCode`
+  FaultRate/PctPerm/Repair deprecation (catalog, adds Deprecated/Unused flags);
+  LineType enum width; and **WP-U1.2 D3** spacing ratings + overload deck.
+
+**GFM WP (branch `gfm-wp`) — B5 + injection-vs-YPrim + 0.15.x YPrim delta —
+SETTLED.** Adopted B5 (`calc_gfm_yprim` `Isc1` drops the `·1000`, dss_capi
+`de6a5a42` = SVN r3865). The deliverable-3 "0.15.x GFM Storage YPrim delta" is the
+SAME one-line change (Storage/PVSystem share `CalcGFMYprim`; the Storage
+`CalcYPrimMatrix` GFM branch is otherwise byte-identical across 0.14.5/0.15.x). The
+deliverable-1 "pre-existing injection-vs-YPrim gap" was **disproven at this base** —
+the Rust GFM op-point is already Isc1-invariant (positive-seq Norton impedance
+`Zs−Zm = R1+jX1` is Isc1-free; only the zero seq moves; delta/balanced GFM loads see
+only the positive seq). Empirically: `gfm_micro` `Load.isl`/`islbus` bit-identical
+under old vs new `Isc1`, both equal to the bit-identical 0.14.5/capi015 value; the
+storage YPrim moves to the capi015 live-probe value. **8 vendored GFM decks flipped
+to `oracle:capi015`** (2 re-promoted from `skipped_needs_investigation` +
+`CannotPickUpLoad` + 5 Microgrid GFMSnap/SwapRef/8500-GFMSnap whose gated state ends
+discharging-GFM) **+ 4 `controls/gfm` decks** — all whole-model live green vs
+capi015 (system Y + V/I/P per step). Non-discharging-GFM decks (Microgrid GFMDaily/
+Snap-A/B/WholeDaily, 8500 Daily/Unbal) stay 0.14.5-green (their YPrim never reaches
+`CalcGFMYprim`; confirmed by per-deck capi015-vs-0.14.5 assembled-Y diff). Also
+settled the **unrelated capi015 daily `CktElement.Losses` staleness** (Losses freezes
+at step 0 while Powers scale; general 0.15.x quirk, NOT reproduced — Rust matches
+0.14.5/r4133 fresh losses; `harness::compare_element` now self-validating-skips the
+redundant `loss_w` channel when the oracle's own Losses ≠ Σ its own Powers). New unit
+tests: `gfm_calc_yprim_matches_capi015_isc1_no_1000`,
+`gfm_norton_positive_seq_admittance_is_isc1_invariant`,
+`storage_gfm_micro_op_point_isc1_invariant`. Detail: DIVERGENCES.md §B5 +
+§capi015-daily-losses.
+
+**WP-U1.7 (NCIM solver) — Stage 1 landed; Stages 2–4 handed off.** Spec = A1,
+`Common/NCIMSolutionHelper.pas` (1048, FPC). **Stage 1 (done, own commit,
+gate-green):** the `dss-sparse` **real-valued** KLU-shaped path
+(`crates/dss-sparse/src/real.rs`, `RealSparseSet`) that the NCIM Jacobian needs —
+Pascal `NewSparseSet` + `SetOptions(…MatrixFormat_DoublePrecisionReal)` +
+`SetMatrixElement`/`SolveSparseSet`. Mirrors the complex `SparseSet` (triplet
+accumulate in insertion order = CSparse `cs_dupl`; KLU `scale=2` row
+equilibration) but over `f64`. **`set_element` ACCUMULATES** (not replace): NCIM
+stamps each non-swing diagonal 2×2 block from the PDE-only `Y_ii` (`[B,G;G,−B]`)
+in `NCIM_BuildJacobian`, then adds the load/gen injection derivative onto the same
+cells in `NCIM_ApplyCurr`; the current-injection Newton diagonal is
+`Y_ii_block + g'_ii_block`, so the two stamps must sum (under replace a PQ node
+loses its network coupling → wrong Jacobian). 9 unit tests from hand Jacobians
+(2×2, a 4×4 two-block CI-shaped Jacobian, insertion-order sum, singular, bad
+scaling, zero/rebuild, dim-mismatch, **zero-stamp-dropped**). The accumulate
+semantics are proven from the NCIM algorithm AND corroborated by the vendored
+EPRI KLUSolve C++ (`VersionC/klusolve/KLUSolve/Source/KLUSystem.cpp`:
+`SetMatrixElement`→`AddElement` appends, `GetElement` sums duplicates); the
+DSS-Extensions KLUSolveX *fork* (the real `DoublePrecisionReal` format) is not
+vendored but inherits the CSparse pipeline. **Settle fix:** `set_element` now
+drops a zero value (`if value == 0.0 return`), matching `AddElement`
+(`KLUSystem.cpp:442-444`) — an earlier doc comment claimed the no-op but the code
+did not implement it, so an exact-zero cell (pure-R load `B`-diagonal, pure-R/-X
+branch off-diagonal) would have inflated `nnz`/`Export Jacobian` vs the capi015
+oracle in Stage 3; a covering test (`zero_stamp_is_dropped`) was added.
+- **Stages 2–4 remaining (integration map for the next executor):**
+  - **State** (`solution/solution/state.rs`): add `NCIMSOLVE=2` + the ~15 NCIM
+    fields (Solution.pas l.243-271). Node i (1-based, ground=0) → Jacobian
+    0-based rows `2*(i-1)`, `2*(i-1)+1`; swing = nodes 1..3 → rows 0..5 (the
+    `<6` guards).
+  - **Y build PDE_ONLY** (`solution/ymatrix.rs`): add `BuildOption::PdeOnly` —
+    stamps **ALL_YPRIM** for PD **or SOURCE** (VSource) elements into the series
+    handle; PC elements excluded (YMatrix.pas l.442-497). NCIM reads it back via
+    the triplet dump (`coo_entries`) into `ncim_y/row/col`.
+  - **NCIM helper** (new `solution/solution/ncim.rs`): port
+    `NCIMSolutionHelper.pas` loop-for-loop — `NCIM_GetPowers` (Load ConstZ→ZBus
+    else PQ; Gen model 3=PV/4=PQ/else Z), `NCIM_Do{PV,PQ,Z}Bus`,
+    `NCIM_CalcInjCurr` (`I=Y·V`, first 6 deltaF=0), `NCIM_BuildJacobian` (fresh
+    `RealSparseSet` each iter), `NCIM_GetNumGenerators`, `NCIM_UpdateGenQ`
+    (PV↔PQ switching + Q-limits), `NCIM_Init`, `DoNCIMSolution` (repeat:
+    CalcInjCurr→BuildJacobian→GetPowers→ApplyCurr→solve→`NodeV -= dV`→Converged→
+    UpdateGenQ), `NCIM_Converged` (`max|deltaF| <= ConvergenceTolerance`).
+  - **Generator** (`elements/pc/generator/`): `GenVars.delta_q_nom: Vec<f64>`,
+    `vtarget`, `ncim_idx`, `NCIM_InitPVBusJac`, a `NCIM_ExPV` flag; GenModel 3
+    (PV) / 4 (PQ) semantics + kvarMax/kvarMin. **VSource** `CalcInjCurrAtBus`.
+  - **Dispatch**: `do_pflow_solution` match gains `NCIMSOLVE => do_ncim_solution`
+    (Solution.pas l.1031-1037); `converged()` gains the NCIM branch (l.730-733);
+    `check_controls` resets `ncim_ready=false` + early-returns when
+    `system_y_changed && algorithm==NCIM` (l.1182-1186).
+  - **Options** (`exec/set_cmd.rs`): add `NCIM` to `solve_alg` at ordinal 2
+    (prefix `nc`); new `IgnoreGenQLimits`→`ncim_ignore_q_limit`,
+    `NCIMQGain`→`ncim_gen_gain` (ExecOptions.pas l.794-797) + `Get` readback.
+  - **Reports**: `Export Jacobian/deltaF/deltaZ`, `Show PV2PQ_Conversions`
+    (numeric-token gates).
+  - **Decks** (`tests/corpus/modes/ncim/`, all `oracle:"capi015"`,
+    `pending:true` until the WP flips): micro PQ-only snapshot; PV-bus generator
+    deck (Q-limit hit → PV→PQ via `Show PV2PQ_Conversions` token + iter ≤); midi
+    IEEE123-class re-solve. Cross-check one on `oddie:r4088`. Iteration policy:
+    Rust ≤ oracle (§1.3-1); first-divergence trajectory dump on any gap.
+
+**WP-COV-PARKED (Refine_BusLevels parked-test closure) — LANDED (branch
+wt-coverage).** Root-caused and closed the `#[ignore]`d
+`circuit::coverage::tests::refine_bus_levels_reports_paths_on_radial` "infinite
+loop": a **test-harness bug**, not a port bug. The test fed its whole 8-line
+deck to ONE `Dss::command` call (`command` = Pascal `ProcessCommand`, one
+command line) — the lines/loads after `new circuit.covtest …` were consumed as
+extra parameters of the `new circuit` command (last `bus1=b5` re-based the
+Vsource; no lines existed), so `CalcIncMatrix_O` yielded a 1-bus incidence
+matrix (`cols=["b5"]`, `levels=[0]`) whose coverage plateau is 0 — on such a
+degenerate input the state machine's sole exit (Circuit.pas:909) genuinely
+never fires, faithfully to upstream. WP-AD.5's `Get_paths_4_Coverage` /
+`get_longest_path` / `Normalize_graph` and WP-AD.1's `Calc_Inc_Matrix_Org` are
+verified correct line-by-line vs r3723 Delphi AND empirically: fed line-by-line
+the port bit-matches the official r3723 engine (Oddie probes 2026-07-16,
+both < 50 µs wall): cov=0.5 → "0 new paths detected"/`Actual_Coverage
+0.666666666666667`; default 0.9 → "2 new paths detected"/`1`. Tests un-ignored
++ a new default-coverage test, both pinning result strings, `ad.actual_coverage`
+values, and the `get coverage` formatted strings to the official engine. Also
+disproved the old "0.9 unreachable, plateau 5/6" hypothesis (`Buses_Covered`
+are index spans; the sum overshoots `Sys_Size`) and corrected the
+NOTE(upstream-quirk) at `get_paths_4_coverage` accordingly. No engine code
+changed; no new decks.
+
+**WP-U1.7 (NCIM solver) Stages 2–4 core — LANDED (branch `wt-u17`).** Spec = A1,
+`Common/NCIMSolutionHelper.pas` (1047, FPC) + the Solution/YMatrix/Generator hooks.
+Three commits on top of Stage 1:
+- **State** (`solution/solution/state.rs`): `NCIMSOLVE=2`, `NCIM_PQ_NODE`/
+  `NCIM_PV_NODE`, the ~15 `ncim_*` fields (1-based-with-slot-0 node arrays; the
+  Jacobian's own 0-based `2*(i-1)` layout), and the `Converged` NCIM branch
+  (`ncim_converged` = max|deltaF| ≤ ConvergenceTolerance).
+- **Y build** (`solution/ymatrix.rs`): `BuildOption::PdeOnly` — stamps the FULL
+  (`ALL_YPRIM`) primitive of every PD element **or** SOURCE into the series handle,
+  PC elements excluded (Ymatrix.pas l.442-497); NCIM reads it back via `coo_entries`.
+- **NCIM helper** (new `solution/solution/ncim.rs`, ~660 lines): loop-for-loop port
+  of every `NCIMSolutionHelper.pas` routine — `NCIM_GetPowers` (Load ConstZ→ZBus
+  else PQ; Gen model 3=PV/4=PQ/else Z), `Do{PV,PQ,Z}Bus`, `CalcInjCurr` (I=Y·V,
+  first-6 deltaF=0), `BuildJacobian` (fresh `RealSparseSet`, `[B,G;G,−B]` blocks,
+  swing identity via the `<6` guards, PV-bus `InitPVBusJac` placeholder cells),
+  `GetNumGenerators` (PV-bus indexing + Q-limits), `UpdateGenQ` (PV↔PQ switching),
+  `Init` (PDE_ONLY build + flat start), `DoNCIMSolution`. KLUSolveX `SetMatrixElement`
+  is 1-based → mapped to the 0-based `RealSparseSet::set_element` by `−1`.
+- **Generator** (`elements/pc/generator/mod.rs`): `delta_q_nom`/`ncim_idx`/`ncim_expv`
+  (transient solver state, not copied by MakeLike — same convention as dynamics state).
+- **Dispatch**: `do_pflow_solution` NCIMSOLVE → `do_ncim_solution`; `check_controls`
+  resets `ncim_ready=false`+early-returns when `system_y_changed && algorithm==NCIM`.
+- **Options** (`exec/set_cmd.rs`/`get_cmd.rs`/`tables.rs`, `dss_enum/registry/solution.rs`):
+  `solve_alg` enum gains `NCIM` (ordinal 2, min-abbrev 2 = prefix `nc`);
+  `IgnoreGenQLimits`→`ncim_ignore_q_limit`, `NCIMQGain`→`ncim_gen_gain` at ordinals
+  129/130 (the `DSS_CAPI_ADIAKOPTICS` block is ifdef'd out of the capi oracle, so the
+  NCIM options follow `NUMANodes=128`) + Get readback. `dump3_commands`: the two
+  execoptions lines are dropped by the WP-U1.9 `run_deck_dump_exact_block_masked`
+  0.15.x-options mask (integration fix at the wt-u17×wt-u19 merge — u17's
+  hand-added golden lines were superseded by u19's uniform mask; the golden stays
+  the pure 0.14.5-oracle text).
+- **Validation**: `exec/tests/ncim.rs` — every electrical assertion now pinned
+  against **capi015** NCIM captures (dss_capi 0.15.0b4 / SVN r4103; the pinned 0.14.5
+  gate oracle has no NCIM), embedded golden-style, matched to <5e-11 V (faer-vs-KLU
+  floor) under a 1e-6 V band: PQ, ConstZ, PV **regulating within Q-limits** (vpu=1.0,
+  Q≈1217 kvar, reported `present_kvar` matched), PV **Q-limit → PV→PQ** (vpu=1.01,
+  8 iters, Q=1500), and the **faithful shared non-convergence** (vpu=1.02: capi015
+  NCIM also stalls at max iters at the identical `|genbus|=7343.55` fixpoint — pinned
+  so a future silent "fix" that diverges from the oracle is caught). Plus warm-resolve
+  stability and option round-trip. Gate green (fmt/clippy/`cargo test --workspace`).
+- **Audit (Stages 2-4) findings addressed (branch `wt-u17`):**
+  - PV-bus path is oracle-validated (above); the earlier "PV bus does not converge"
+    concern is a **faithful upstream limitation**, not a port bug — capi015 NCIM fails
+    on the same aggressive deck node-for-node.
+  - The source bus sitting at the ideal EMF (`7199.56+0i`, no droop) under NCIM —
+    flagged as an unported `VSource.NCIM_CalcInjCurrAtBus` bug — is the **correct**
+    NCIM value (matches capi015 exactly). `NCIM_CalcInjCurrAtBus` is a *reporting*
+    path (`GetCurrents` at the source terminal); it does **not** touch node voltages.
+    The old vs-`Normal` self-consistency comparison was the wrong baseline and is
+    replaced by the vs-oracle pins.
+  - `NCIM_GetPowers` now persists `deltaQNom → Qnominalperphase` (Pascal l.121) so the
+    reported model-3 generator Q matches the oracle (was a stale-nominal reporting
+    divergence). `exec::Dss::generator_present_kw_kvar` reads the solved `(kW,kvar)`.
+  - The two new exec-option help rows (129/130) render the catalog-miss placeholder
+    (raw key) — verified empirically that the **pinned 0.15.7 catalog lacks both
+    keys**, so `help_catalog.rs` is not stale; identical to the `LongLineCorrection`
+    precedent, resolved in the acceptance help-catalog regeneration pass.
+- **Remaining (Stage 3 infra / reporting — keeps the gate green because NCIM only
+  activates on `Set Algorithm=NCIM` and no corpus deck does yet):**
+  1. Fold the above decks into the live-gate `tests/corpus/modes/ncim/` matrix
+     (`oracle:"capi015"`, §1.7 manifest + population.lock) — the numerics are already
+     oracle-pinned in `exec/tests/ncim.rs`; this is the corpus/manifest plumbing.
+  2. `Export Jacobian/deltaF/deltaZ` + `Show PV2PQ_Conversions` reports (numeric-token
+     gates) and `VSource.NCIM_CalcInjCurrAtBus` (swing-source reported *currents* under
+     NCIM — reporting-only, node voltages already correct).
+  3. `oddie:r4088` cross-check of one deck (report-only).
+
+**WP-U1.6 tail (harness-independent rows C4/D11/D13/D12) — LANDED (branch
+wt-u16ind).** The four rows that need no 0.15.x property allowlist; each
+gate-green, one logical commit.
+- **C4** `SolveAll` (cmd 123, the `DSS_CAPI_PM`-only command word) now dispatched —
+  single-actor semantics = plain `Solve` (`ExecCommands.pas:346`; `IsSolveAll`
+  only steers the parallel/A-Diakoptics path). Oracle-confirmed (dss-python
+  0.15.7): `SolveAll` solves like `Solve`; the *spaced* `Solve all` errors
+  `Object Class "all" not found` (`Solve` + option token `all`) — the port already
+  matched that. Unit `solve_all_alias_matches_plain_solve`.
+- **D11 part 2** (`b9bc87b8`) — CapControl TIMECONTROL now REQUIRES a monitored
+  element and uses it as `effElement` (dropped the `<> TIMECONTROL` guard in
+  `recalc`; only FOLLOWCONTROL falls back to the capacitor + terminal 1). **capi015
+  probe** (0.15.0b4): `type=time` with no `element=` errors "Element is not set,
+  aborting"; `type=time element=line.l1 terminal=2` keeps `Terminal=2` (0.14.5
+  forces →1) and binds to the monitored element. Units re-pinned
+  (`time_control_requires_monitored_element` + `time_control_uses_monitored_element_terminal`).
+  `capcontrol_time.dss` reworked to `terminal=1` (engine-agnostic readback; it has
+  a `daily=` load so it can't flip to capi015, and the only moved observable is the
+  static `Terminal`) — stays 0.14.5-green. Props golden `capcontrol.json`
+  `capcontrol_time` scenario rebased to `element=Line.l1 terminal=1` (both engines
+  identical). Part 1 (PT/CTPhase validation scope) was already aligned.
+- **D13** (`c4590d16`) — LoadShape MMF fixes = **not-a-delta** (the port's
+  forbid-unsafe eager MMF reader already matches). The behaviorally-live hunk is
+  the single-column `csvfile=` `CreateMMF` "missing not": 0.14.5 exits on CreateMMF
+  success → empty shape → daily solve `#482 Division by zero`; the fix loads it.
+  **Probe:** 0.14.5 aborts #482, capi015 (0.15.0b4) drives the load to P/phase
+  `[20 40 70 110 160 130 90 50]` kW. New capi015 live deck
+  `modes/upgrade/mmf_singlecol/mmf_singlecol.dss` (`n_steps=8`, whole-model;
+  **the first multi-step capi015 live deck** — cannot gate 0.14.5, it *is* the
+  bug; §1.7 two-process fingerprint `0ead40d7199b0781`) + unit
+  `mmf_single_column_csvfile_loads_like_capi015`. Hunks 2/3 (mmDataSizeQ debug
+  field, Linux fpMUnMap disposal) have no forbid-unsafe port equivalent.
+- **D12** (`bb9c9785`) — SwtControl `Normal`/`State` field mapping **RE-LANDED**
+  (the earlier 82d62c3→0c918ab revert is undone). `Normal`→`NormalState`,
+  `State`→`PresentState`, `Action`→`CurrentAction` (distinct offsets); side effects
+  sync `CurrentAction` from them. Props golden `swtcontrol.json` re-baselined to
+  capi015 (probe 2026-07-16; `swtcontrol_locked_then_action` dropped = the
+  not-adopted strict read-only #2024106). The revert's blocker (moved `state`/
+  `normal` readback on default-oracle multi-step decks) is **resolved**:
+  `swtcontrol_time.dss` + `midi_swtcontrol.dss` **flipped to capi015** (armed
+  `action=open` opens at its delay; the port reads `State=Closed` until step 3 then
+  `Open`, matching capi015 `GetState`=live element; 0.14.5 read `Open` from the
+  arm). `civanlar.dss` (snapshot) **flipped to capi015** (`SwtControl.5_11`
+  `Action=c` then `edit action=o`: D12/capi015 `Normal=NormalState=closed`, 0.14.5
+  `CurrentAction=open`; physics unchanged, target-rev cases don't property-compare).
+  `swtcontrol_lock.dss` **unaffected** (locked switch never operates → both
+  readbacks `closed` on every engine; it also can't flip since capi015's strict
+  read-only rejects its locked `action=` post). Unit
+  `d12_normal_and_state_readbacks_are_independent`.
+- **Multi-step capi015 is viable** (correcting the earlier L1 "re-nominalization
+  blocks multi-step flips" note): the re-nominalization affects only the
+  `getYSparse` element-state re-read, NOT the per-step Monitor/probe/eventlog/node-V
+  captures — proven 2026-07-16 by the passing `mmf_singlecol` (loadshape-driven
+  load, 8 steps) + `swtcontrol_time`/`midi_swtcontrol` (12 steps) capi015 live
+  gates. This unblocked the D12 deck flips.
+- **Sibling scope (NOT this branch):** C5 RegControl `FwdThreshold`+idle props, C6
+  Transformer/AutoTrans BH props, C5-r3723 LoadShape `Mode` — all property-adding
+  rows owned by `wt-u16tail`. B4-capi harmonics init-abort stays faithful-as-is
+  (no feature-sensitive deck possible). DIVERGENCES.md D11/D12/D13/C4.
+
+**WP-H015 — 0.15.x property-table allowlist (`PROPS_015X`).** Resolves Rung-1
+remaining-tail item 1. The corpus property-parity gate
+(`harness::compare_all_properties`) asserts the Rust property-table **shape**
+(count + name order) against the oracle capture; the pinned default oracle is
+dss_capi **0.14.5**, so a deliberately ported 0.15.x-added property (Line
+`EpsRMedium`/`HeightOffset`/`HeightUnit`/`Conductors`; RegControl `Idle`/
+`IdleReverse`/`IdleForward`/`FwdThreshold`; Transformer+AutoTrans `BHpoints`/
+`BHcurrent`/`BHflux`; LoadShape `Mode`) would break nearly every default-oracle
+deck's shape assert.
+- **Decision (adopted, coordinator-approved): a named per-class allowlist** —
+  `PROPS_015X: &[(&str, &[&str])]` in `tests/harness/mod.rs`. A Rust-side prop
+  whose `(class, name)` is in the table **and** whose name is absent from the
+  oracle capture is excluded from the count/order/name/value walk (a §1.3-style
+  *shape* relaxation, NEVER a value-tolerance change). Handles **inserted** props,
+  not only trailing (the Rust list is filtered to what a 0.14.5 capture can know,
+  then compared position-for-position). If the capture DOES contain the prop
+  (capi015-regenerated), it is NOT excluded → full name+value compare, so capi015
+  decks keep pinning the new props' values. A non-allowlisted extra/missing/
+  misordered prop still fails exactly as before; the count-mismatch panic names
+  the allowlist for triage.
+- **Implementation:** extracted the list-comparison core into `compare_prop_lists`
+  (allowlist injectable) so the shipped-empty table is validated by 6 inline
+  `props_015x_tests` self-tests with synthetic data (trailing extra passes;
+  inserted extra passes with order preserved; non-allowlisted extra panics;
+  allowlisted-present-in-oracle value mismatch panics + match passes; missing +
+  misordered panic).
+- **Surface survey (item 3):** `compare_all_properties` is the **only** surface
+  that asserts Rust property count/order against a 0.14.5-pinned capture.
+  `props_roundtrip.rs` + the props goldens (`golden_feeders_controls`,
+  `scenario.rs`) iterate only the props present in the (0.14.5) golden — no
+  Rust-side shape assert. `save_roundtrip.rs` round-trips through our own engine
+  (node-V + discrete state), not oracle property tables. `population_lock.rs`
+  fingerprints manifest membership/rigor, not property-table shape. None need the
+  allowlist.
+- **Ships EMPTY** — rows land with the three sibling Rung-1 WPs that port each
+  property (one class per line, merge-friendly; duplicate class rows OR).
+- Docs: `tests/TOLERANCE_NOTES.md` §"0.15.x property-table allowlist (shape
+  relaxation)"; `TESTING.md` pointer. Gate green (fmt/clippy/`cargo test
+  --workspace`) — nothing moves, the table is empty.
+
+**WP-U1.7 (NCIM solver) tail — COMPLETE (branch `wt-u17tail`).** The three
+"Remaining (Stage 3 infra / reporting)" items above are done; WP-U1.7 is fully
+landed. Spec = `Common/ExportResults.pas` (`ExportJacobian`/`ExportdeltaF`/
+`ExportdeltaZ` l.3903-3988), `Common/ShowResults.pas` (`ShowPV2PQGen` l.3978),
+`PCElements/vsource.pas` (`NCIM_CalcInjCurrAtBus` l.1225), all 0.15.x.
+- **Reports** (`report/export/ncim.rs`, `report/show/pv2pq.rs`, wired at export opts
+  62-64 / show opt 35 in `exec/report.rs`; `EXPORT_OPTIONS`/`SHOW_OPTIONS`):
+  `Export Jacobian` dumps the last NCIM Jacobian triplets (`RealSparseSet::coo_entries`,
+  0-based column-major `Row,Col,Value`); `Export deltaF`/`deltaZ` dump the mismatch/
+  correction vectors; `Show PV2PQ_Conversions` lists generators carrying `NCIM_ExPV`.
+  Gated vs **capi015** in `crates/dss-core/tests/ncim_reports.rs` (goldens
+  `tests/golden/ncim/`, `tools/golden/gen_ncim_reports.py`): Jacobian numeric-token
+  compare (row/col exact, value 1e-6 — built from node V pinned <5e-11), PV2PQ
+  byte-exact, deltaF/deltaZ **structural** (line count `2·NumNodes+PVphases`, six
+  leading swing zeros, converged floor — the vectors are ~1e-11 faer-vs-KLU noise, so
+  value-pinning them is meaningless; documented in the test). `Export Jacobian` with
+  no NCIM solve raises #222 "Jacobian matrix not built."; deltaF/deltaZ silently no-op
+  (unit-pinned in `exec/tests/ncim.rs`).
+- **`VSource.NCIM_CalcInjCurrAtBus`** (`exec/view.rs::snapshot_elements` post-pass):
+  under NCIM the swing bus sits at the ideal EMF, so `YPrim·V - Iinj` reports ~0; the
+  swing source's reported currents are the KCL sum at its bus (− PDE terminal currents,
+  + other PCE terminal currents). Reproduces the upstream 0-based/1-based `ElmCurrents`
+  **off-by-one** (`TODO(compat)`: the reported phase-A current is the negated phase-**B**
+  branch current — deterministic, in-range). Pinned vs capi015 currents/powers/losses
+  (`ncim_vsource_reported_currents_match_oracle`).
+- **Two engine reporting fixes** the corpus decks exposed: (1) `system_y_csc` now reads
+  the **active** Y handle (Pascal's moving `hY`), so after an NCIM `PDE_ONLY` build it
+  reports the PDE-only network Y (no load `Yeq`), matching `getYSparse`; (2) NCIM
+  generator terminal currents are overridden in the snapshot from the solver's
+  `-conj((Pnom+j·deltaQNom)/V)` — the post-NCIM `YPrim`/`Yeq` is stale, so the general
+  `YPrim·V-Iinj` recompute no longer collapses to it (`ncim_generator_currents`).
+- **Corpus decks** `tests/corpus/modes/ncim/` (all `oracle:"capi015"`, `pending:false`,
+  live-compared in `modes_cases_match_oracle`, `population.lock` regenerated):
+  `ncim_pq` (micro PQ, 9 nodes, 3 iters), `ncim_pv_pq` (PV→PQ Q-limit, 6 nodes, 8 iters),
+  `ncim_midi` (27-node IEEE123-class radial, PV→PQ, 8 iters). Each §1.7-validated on
+  capi015 (converged + bit-identical across two processes).
+- **`oddie:r4088` cross-check** (report-only, `docs/upgrade/DIVERGENCES.md`): r4088
+  (OpenDSS 10.2) supports NCIM and reaches **bit-identical** converged node voltages,
+  but converges the PV→PQ decks in 4 iters vs capi015's 8 (PQ-only matches at 3). Pinned
+  to capi015; iteration policy already `<=` for capi015 cases; not gated.
+- **Audit follow-ups settled** (this branch): (1) the NCIM swing/generator loss override
+  in `exec/view.rs` now applies the positive-sequence ×3 that the general `elem.losses()`
+  path does, so overridden `loss_w` stays consistent with the per-conductor powers under a
+  positive-sequence CktModel (latent — the ncim decks run full 3-phase); (2) the deliberate
+  non-reproduction of Pascal's PC-loop `myTerm` accumulation (`NCIM_CalcInjCurrAtBus`
+  l.1268 — a stateful cross-element index that can run OOB; we compute it fresh per element,
+  identical on the defined path) now carries an explanatory comment beside the `+1`
+  `TODO(compat)`; (3) the deltaF/deltaZ structural bound tightened 1e-6→1e-8 (observed max
+  ~2.2e-10, ~45x headroom) to catch a systematic ~1e-8-scale offset without value-pinning
+  the genuine ~1e-11 cancellation noise.
+
+**WP-U1.4 property tail + WP-U1.2 D3 (branch wt-u14props) — LANDED.** Ported the
+0.15.x Line-level property surface + catalog fixes on top of the already-landed
+equivalent-spacing engine numerics (the WP-U1.4 partial), gate-safe (existing
+line_constants goldens byte-untouched):
+- **Line `EpsRMedium`/`HeightOffset`/`HeightUnit`** (Line.pas:59-61,375-431): raw
+  double/double + MappedStringEnum(UnitsEnum) props with the `HeightUnit` none->m
+  side effect (Line.pas:646). Threaded into `make_z_from_geometry` /
+  `make_z_from_spacing` in the exact upstream order (`SetEpsRMedium`,
+  `SetHeightOffset`, `SetUserHeightUnit`) *before* the matrix read, so the
+  `set_user_height_unit` meters re-conversion `TODO(compat)` is now live. `EpsRMedium`
+  divides the shunt Pfactor (moves Yc on both paths); `HeightOffset` folds into the
+  equivalent-spacing average heights (observable there) and is a no-op on the
+  detailed-coordinate path (SetY re-sets FY) — reproduced 1:1, probe-confirmed on
+  capi015. Defaults (1.0/0/m) preserve 0.14.5 numerics. `PROPS_015X` allowlist gains
+  `("Line", ["EpsRMedium","HeightOffset","HeightUnit"])` (`Conductors` is the sibling
+  wt-u14cnts row). Pins: capi015 props golden `props/linemedium.json`
+  (default/set/none/units rendering), capi015 decks `modes/upgrade/
+  upgrade_linecs_epsrmedium` + `_heightoffset` (YPrim live compare, §1.7
+  bit-identical across two processes). The three props insert at their upstream
+  index (shifting NormAmps 31->34), breaking every *index-absolute* 0.14.5-gated
+  surface; new `PropFlags::HIDE_015X` defers them from the `Dump` text report +
+  AltDSS JSON export, and the `Dump commands` catalog renumbers via a running
+  counter (0.14.5 props keep their indices). The `?`/props-table surface still
+  exposes them; drop `HIDE_015X` when the Line Dump/JSON/catalog goldens flip to
+  capi015 alongside the sibling's `Conductors`.
+- **LineType enum width 4->5** (DSSClass.pas:1071): the eight `swt_*` names share the
+  4-char prefix `swt_`, so 5-char abbreviations (`swt_l`->swt_ldbrk, ...) fell back to
+  `oh` under width 4. One-char fix in `dss_enum/registry/pd.rs`; unit test
+  `line_type_abbreviations_widened_to_five_chars` + capi015 deck
+  `upgrade_linetype_width` (LineType probes; the 0.14.5 oracle renders these as `oh`).
+  No corpus deck used `linetype=`, so the default gate is unaffected.
+- **LineCode FaultRate/PctPerm/Repair deprecation** (LineCode.pas:283-288): new
+  metadata-only `PropFlags::DEPRECATED`/`UNUSED` set on the three props. Schema-only —
+  probe-confirmed capi015 stores the values silently (no runtime warning), so no
+  golden/behaviour moves.
+- **WP-U1.2 row D3 spacing ratings** (LineGeometry.pas:1060-1064): the Line
+  `makeZFromSpacing` throwaway geometry now derives NormAmps/EmergAmps as the *minimum
+  over the phase conductors* (`j <= FNphases`), not conductor 1. Localized to
+  `load_spacing_and_wires` (the NIL/actualNConds sizing stays the sibling's row); unit
+  test `spacing_ratings_min_over_phase_conductors` + capi015 deck
+  `upgrade_spacing_ratings` (min 600/400/600 -> 400/500 via probes). The existing
+  `asymmetric/line/line_spacing_asym` deck (distinct phase wires) moved NormAmps
+  730->230, so it flipped to `oracle:capi015` with ratings probes — YPrim is
+  bit-identical 0.14.5==capi015 (ratings-only flip).
+- **Remaining WP-U1.4 (sibling wt-u14cnts):** `Line.Conductors` mixed wire/CN/TS
+  list, the merged `CNTSLineConstants` per-conductor class, `CNData.SemiconLayer`.
+- Gate green (fmt/clippy/`cargo test --workspace`); population.lock regenerated for
+  the 4 new decks + the asym oracle flip.
+
+**WP-U1.4 heavy tail (branch wt-u14cnts) — merged TCableConstants per-conductor
+model + CNData.SemiconLayer — LANDED.** dss_capi 0.15.x merges the separate
+`TCNLineConstants`/`TTSLineConstants` classes into one `TCableConstants`
+(`CableConstants.pas`): the CN-vs-TS choice moves from the engine kind to a
+per-conductor `FCondType[i]` (`SetCondType`), so one engine carries **mixed
+wire/CN/TS conductors** (Kersting). Ported 1:1, defaults byte-green:
+- `support/line_constants`: `LineConstantsKind` collapses to `{Overhead, Cable}`;
+  new `ConductorType` (Invalid/Cn/Ts/Bare) + per-conductor `fcond_type`/
+  `fsemicon_layer`; the two `calc_cn`/`calc_ts` merge into one `calc_cable` (in
+  `cable.rs`) branching per conductor, with the `GetDij` equivalent-spacing helper
+  and the semicon capacitance branch; `cn.rs`/`ts.rs` keep only their setters.
+  `new_cn`/`new_ts` become convenience presets over the merged cable engine.
+- `CNData.SemiconLayer` (prop 5, LongBool default `true` = classic
+  `ln(RadOut/RadIn)`; `false` = Synergi/Kersting no-semicon
+  `ln(RadCN/RadIn)-(1/k)·ln(k·RadStrand/RadCN)`). Threaded through
+  `CableGeom::Cn` + `UpdateLineGeometryData`'s `SetSemiconLayer`. Harness
+  `PROPS_015X += ("CNData", ["SemiconLayer"])` (inserted prop).
+- **Byte-green proof.** A pure-CN/TS geometry reproduces the old `Calc`
+  bit-for-bit (the whole `line_constants`/`line_geometry` golden family +
+  `props_roundtrip` stay green untouched); `GetDij` = old raw `sqrt` in the
+  default path.
+- **New numeric surface pinned vs capi015 (1e-8):** engine
+  `cn_cable_no_semicon_capacitance` (C 167.168 vs 283.089 nF/km) and LineGeometry
+  `matrices_mixed_cn_ts_wire_match_capi015` (mixed CN/TS/wire reduced Z/Yc);
+  CNData `cndata_semicon_layer_roundtrip` (Yes/No render + make_like).
+- **Gate decks (capi015):** `modes/upgrade/upgrade_linecs_mixed.dss` (mixed
+  conductors on one line) + `upgrade_linecs_semicon.dss` (`SemiconLayer=no`) —
+  both converge (2 iters), two-process bit-identical, whole-model + YPrim
+  live-green. `population.lock` regenerated (modes 58→60). DIVERGENCES.md
+  §"Merged TCableConstants".
+- **DEFERRED — `Line.Conductors`** (the 0.15.x Line-level mixed-conductor
+  *property*, prop 34): the engine (its whole point) is landed and mixed
+  conductors already work via a `LineGeometry`; the property itself needs a
+  net-new 3-class proxy-array resolver (WireData|CNData|TSData), a JSON-export
+  restructure (the `"Conductors"` key today maps from `Wires`), and a Line
+  property-table insertion coordinated with the parallel wt-u14props branch
+  (Conductors must land at 34, after that branch's EpsRMedium/HeightOffset/
+  HeightUnit at 31–33). Left for a follow-up to keep the gate green.
+**WP-U1.6 tail (C5 / C6 / C5-r3723) — LANDED (branch wt-u16tail).** Three of the
+previously-deferred WP-U1.6 rows, gate-green (fmt/clippy/`cargo test --workspace`),
+built on the `PROPS_015X` harness allowlist:
+
+- **C5** RegControl `FwdThreshold` + idle zones (`8a898cba`, SVN r4086, in capi015
+  0.15.0b4). `RevThreshold` is now a **signed W** field (default −100 kW, kW→W via
+  property `scale`), joined by `FwdThreshold` (+100 kW) and the
+  `Idle`/`IdleReverse`/`IdleForward` flags. The reverse-power detection sign moved
+  into the stored value (`FwdPower < RevPowerThreshold`, no unary −) so **legacy
+  decks are behavior-identical**: the new `EndEdit` fallback (`Fwd:=abs(Rev);
+  Rev:=−Fwd`) restores the old symmetric band. The fallback is **per-edit**, via a
+  new `DssObjData` BeginEdit boundary (`PrpSequence[NumProps+1]`, wired at the
+  executive edit-start) — a later rev-only edit re-symmetrizes and clobbers an
+  earlier Fwd, reproduced 1:1 (capi015-probed). The base `MakeLike`
+  (`copy_prp_sequence_from`) copies the counter + property slots but **not** the
+  boundary slot (Pascal `MakeLike` copies `NumProps+1` ints, excluding index
+  `NumProps+1`), so a `New … like=parent` child keeps its own boundary and the
+  fallback fires per the child's own edit — audit fix, regression-tested in
+  `obj/base/tests.rs`. Idle no-load test ported verbatim
+  incl. the `>=/<=` OR (spans the whole axis at the default band; **not** "fixed"
+  to AND). **Gate:** capi015 props golden re-baseline
+  (`tests/golden/props/regcontrol.json` via `gen_regcontrol_capi015.py`) pinning the
+  signed defaults + the two-edit fallback; `PROPS_015X` RegControl row; capi015 deck
+  `regcontrol_idle.dss` (idle holds tapnum 0/tap 1.0 where a non-idle reg reaches
+  tapnum 15/1.09375, |ΔV|≈0.075 pu; §1.7 two-process deterministic); 5 RegControl
+  unit tests. Legacy equivalence rides the unchanged default-oracle
+  `regcontrol_reverse.dss`. DIVERGENCES.md §C5.
+- **C6** Transformer/AutoTrans `BHpoints`/`BHcurrent`/`BHflux` (`90962ae8`, SVN
+  r4064). Three GICharm `Unused` data props on both classes — parse+store only,
+  never consumed (no GICharm port): the props, the `BHpoints` realloc side effect
+  (zeroes both arrays), and the MakeLike copy. **Upstream crash NOT reproduced**
+  (CLAUDE.md UB rule): parsing a non-empty `BHcurrent` **segfaults** the capi015
+  backend and reading with `BHpoints>0` errors — the `Unused` DoubleVArray getter
+  reads its count from an **unset `PropertyOffset2`** (only `Offset3` is wired) →
+  garbage `Norder`. Only the empty default is well-defined (`GetDSSArray` NIL-guards
+  to `''`); the port matches (empty Vec ⇒ `''`) and renders the set-state safely.
+  **Gate:** capi015 default-state props goldens (`transformer_bh.json`/
+  `autotrans_bh.json` via `gen_bh_capi015.py`); `PROPS_015X` rows for both classes;
+  set-state unit-pinned on both classes. DIVERGENCES.md §C6.
+- **C5-r3723** LoadShape `Mode` — **NOT a delta for us; unported.** EPRI SVN r40xx
+  inserts `Mode` at 22 (shifting `Interpolation` 22→23), but dss_capi 0.15.x
+  declines it (`// Mode = 22, -- not useful to implement this yet`, `Interpolation
+  = 22` in **both** 0.14.5 and 0.15.0b4). capi015 has 23 props, `Interpolation` at
+  22, no `Mode` (probed) — the port already matches. Porting Mode would break every
+  LoadShape deck's count parity against the oracle, so it stays unported; guard test
+  `no_mode_prop_interpolation_stays_at_22`. DIVERGENCES.md §C5-r3723.
+
+(Merge note 2026-07-17: the sibling `wt-u16ind` landed C4/D11-part-2/D12/D13 in
+the same round — see its block above — and B4-capi stays faithful-as-is, so
+WP-U1.6 is COMPLETE.) `known_diffs.json`: none of C5/C6/C5-r3723 had a prior
+Rust↔EPRI entry — nothing to retire.
+
+**WP-U1.4 final row — `Conductors` property — LANDED (branch wt-u14cond); WP-U1.4
+now COMPLETE.** The last deferred WP-U1.4 row: the dss_capi 0.15.x `Conductors`
+mixed `WireData|CNData|TSData` object-reference-array on both classes (Line prop
+**34**, `Line.pas:62`; LineGeometry prop **20**, `LineGeometry.pas:80`), resolved
+through a `TProxyClass` created with `fullNames=True`, `.Name = "Conductor"`
+(`DSSClass.pas:2603`). Inserting Line prop 34 shifts NormAmps 34→35 (tail +1).
+- **The text property is upstream-BROKEN** (probed capi015 0.15.0b4) and is
+  reproduced 1:1. `TProxyClass.GetDSSClass` compares an `AnsiLowerCase`d class
+  token against the original-case target names, so every real item errors #10103
+  "Invalid class (wiredata)…"; a bare item errors #10103 "You must define the
+  Conductor class…"; a pre-spacing list errors #402 "No objects are expected!";
+  an all-`none` list parses on Line (NIL slots, overhead model) but is rejected on
+  LineGeometry (#10103 "At least one valid conductor must be provided"). The text
+  getter `? …Conductors` Access-Violates in capi015 (UB, not reproduced). The
+  property is thus effectively JSON-only. Ported in `parse_conductor_proxy`
+  (`obj/props/class_props/parse.rs`, new `PropDef::object_ref_array_proxy` +
+  `object_classes`/`proxy_name` fields), the Line/LineGeometry property tables
+  (`HIDE_015X`), Line `set_conductors`/`conductors_phase_choice` + side effect,
+  LineGeometry `apply_conductors` side effect. `TODO(compat)` on the GetDSSClass
+  case bug (clean fix = compare lowercased names, §6 sweep).
+- **JSON export unchanged / no golden movement.** dss_capi emits
+  `"Conductors":[FullName…]`; the Rust port already emits the same bytes via the
+  `Line.Wires → "Conductors"` `json_name` masquerade (since wt-u14props). The real
+  `Conductors` prop carries `HIDE_015X`, so it is invisible to the byte-exact
+  0.14.5 Dump / FULL-JSON / `Dump commands` goldens (catalog running-counter skips
+  it) and the masquerade keeps owning the JSON key. The flip to a capi015
+  Dump/JSON surface + dropping the masquerade is deferred to the §6 sweep:
+  `gen_json.py` is 0.14.5-pinned (no capi015 engine switch), so flipping is
+  disproportionate for this row (UPGRADE_PLAN §1.4 fallback). Residual (latent,
+  untested): the masquerade renders a mixed-class list with one `WireData.` prefix
+  vs capi015's per-conductor class — no golden/deck exercises it. DIVERGENCES.md
+  §"Line/LineGeometry Conductors (text upstream-broken)".
+- **Gate.** `PROPS_015X` gains `Conductors` on the Line row + a new `LineGeometry`
+  row (inserted props excluded from the 0.14.5 shape walk);
+  `tests/upgrade_conductors.rs` pins all four capi015 diagnostics + the all-`none`
+  split. The net-new **resolved-ref** fill (unreachable via the broken text parse;
+  the path the §6-fixed parser + a JSON-import round-trip take) is gated by whitebox
+  equivalence tests that call `set_object_ref_array(CONDUCTORS)` + the side effect
+  directly — Line `conductors_array_matches_buried_neutral_and_oracle` /
+  `conductors_array_overhead_matches_wires_and_oracle` /
+  `conductors_all_none_after_wires_clears_wires_seq`, LineGeometry
+  `conductors_array_matches_mixed_capi015` /
+  `conductors_array_defaults_ratings_from_first_valid` — each pinned to the same
+  capi015 Z/Yc/ratings as the traditional `wires=`/`cncables=` paths, so
+  `set_conductors`/`conductors_phase_choice`/`apply_conductors`/per-conductor
+  `change_line_constants_type`/`default_amps_from`/`conductor_choice_of` and the
+  last-writer `clear_seq` are covered (audit wt-u14cond, major finding). No
+  solvable-corpus / byte-golden case moves; fmt/clippy/`cargo test --workspace`
+  green (incl. the live oracle gate). `known_diffs.json`: no prior Rust↔EPRI entry
+  (0.14.5 has no `Conductors` prop) — nothing to retire.
+
+**WP-U1.10 — Rung 1 EXITED (2026-07-16, branch wt-u110).** The formal rung-1 exit:
+the opt-in EPRI r4088 sweep (`DSS_LIVE_OPENDSS=r4088 DSS_LIVE_OPENDSS_ASSERT=1
+cargo test -p dss-core --test corpus_live`) is **green** — every remaining
+Rust↔r4088 divergence is a justified `known_diffs.json` entry or a Rung-2 item;
+**zero unexplained**.
+- **Sweep.** 430 cases (71 target-rev `oracle:capi015` excluded): 313 matched, 113
+  known-diverged, 4 known-skipped, **0 NEW**. An informational r3723 ASSERT sweep
+  (also green) supplied the prune criterion + confirmed the new-deck classes are
+  rev-independent (classic power flow / injection / meter zone / harmonics /
+  reduction byte-identical r3723=r4088, `delta_r3723_r4088.md`).
+- **No Rung-1 regression (proof spine).** Every swept case is ALSO in the mandatory
+  gate vs the pinned dss_capi 0.14.5 oracle, which is green → the port equals the
+  FPC oracle on all 55 new divergences → the r4088 gap is purely the
+  FPC(0.14.5)↔Delphi(r4088) layer, corroborated by the committed capi015↔r4088
+  engine sweep (`docs/upgrade/sweeps/capi015_vs_r4088.md`). A Rung-1 regression
+  would have turned the mandatory gate red.
+- **Catalog burn-down (11→22 entries).** PRUNED `epri-gendispatcher-propname` (dead
+  on both revs — 0 hits; the gendispatcher decks diverge on control-iteration count,
+  not a property name. The decks do set `kvarlimit`/`genlist`/`weights`, all seven of
+  which exist in dss_capi 0.14.5 `GenDispatcher.pas` so the port accepts them; no
+  engine surfaces the original `#34` "Invalid property name" on the swept decks;
+  residual iteration delta folded into `iteration-count-delta`). EXTENDED 5 to r4088
+  (iteration-count-delta, storage-kwhstored-drift [kWhStored idling-loss drift],
+  injection-fpc-delphi-ulp, meter-zonepce-count, harmonics-yfingerprint-drift). NEW:
+  7 cross-solver FPC-vs-Delphi floors (autotrans reg-tap, makeposseq, reduce, ckt24
+  SubXFMR conditioning, PVSystem-kvar Delphi 6-sf display, Storage-`kw` Delphi 6-sf
+  display [`.kw:`-scoped, split from storage-kwhstored-drift], Vsource near-zero
+  power), 1 r3723-only (invcontrol-fixpoint-drift-synthetic), 4 `skip` (EPRI r4088
+  #303 crashes:
+  binary-shape [+r3723], IEEE13 line-spacing, IEEE13 line+cable-spacing,
+  CapControlFollow). Full ledger: `docs/upgrade/known_diffs_burndown.md`.
+- **Docs.** `tests/corpus/COVERAGE.md` refreshed (solvable_now **295/329 = 89.7%**,
+  skipped_needs_investigation 19→10); `tools/corpus/coverage_report.py` fixed to
+  report only the true partition buckets — it was globbing all `manifests/*.json`
+  and double-counting the `ad_sweep.json` disposition list (295, overlaps
+  solvable_now) + the empty `population.lock` row into the total. Marker sweep:
+  `rg "NOT_PORTED\(U1"` is empty across all source (pinned; only prose in the plan
+  docs references the tag).
+- **Rung 1 is COMPLETE** (U1.1–U1.10). Next: Rung 2 (WP-U2.* — r4133 protection
+  overhaul + the r4133-side IEEE_519/InductionMachine moves, `delta_r4088_r4133.md`).
+
+**WP-U2.1 — Fuse overhaul (r4133) — LANDED (branch wt-u21).** Ported the
+`Controls/fuse.pas` r4088→r4133 delta (rows C3/D1/E3) loop-for-loop:
+- **Defaults/semantics:** `RatedCurrent` repurposed to an informational continuous
+  rating (default 1.0 → **0.0**, unused in `Sample`); new **`CurveMultiplier`**
+  (default 1.0) is the TCC divisor — `GetTCCTime(Cmag/CurveMultiplier)`, not
+  `RatedCurrent`; default `FuseCurve` `tlink` → **`none`** (a default-constructed
+  fuse **never blows**); new informational `InterruptingRating`. Props 10 → **12**
+  (BaseFreq/Enabled/NumProps shift +2). `elements/pd/fuse/{mod,accessors}.rs`.
+- **`GetTccCurve('none')` → NIL silently** (E3/D1): new `PropFlags::ALLOW_NONE_REF`
+  on the Fuse `FuseCurve` single ref — literal `none` resolves to NIL with **no
+  #401** and renders `none` (Pascal `if FuseCurve<>nil then Name else 'none'`).
+  Fuse-local; Recloser/Relay keep the not-found path until U2.2/U2.3. Supersedes
+  the Rung-1 capi015 clear+#401 pin (`exec::tests::lifecycle` updated to r4133).
+- **Property surfaces:** the 0.14.5-absent `CurveMultiplier`/`InterruptingRating`
+  carry `HIDE_015X` (byte Dump/`Dump commands`/JSON goldens stay green) + a
+  `PROPS_015X` Fuse row (shape walk). The changed defaults `FuseCurve`/`RatedCurrent`
+  get `SKIP_PROPS` rows (value mask on the 0.14.5 all-props walk, RegControl
+  RevThreshold precedent (e)→(f)); pinned instead on the r4133 side.
+- **Goldens:** `tests/golden/props/fuse.json` regenerated to the r4133 surface
+  (derived from the retired 0.14.5 golden + Oddie-verified r4133 value deltas —
+  no capi engine has the r4133 fuse behavior; `gen_fuse_r4133.py`). Protection
+  golden `fuse_blow.json` captured on the **r4133 Oddie** engine (blow trajectory
+  preserved via `fusecurve=tlink curvemultiplier=40`, reproducing the old
+  RatedCurrent=40 divisor; `gen_protection.py` gained an oddie route).
+- **Deck matrix** (`controls/fuse/`, §1.7 two-process-validated on r4133): new
+  `fuse_curvemult_blow` (SLG, `curvemultiplier=40` → single-phase blow at Sec=0.4;
+  feature-sensitive — `curvemultiplier=1` melts all three; pins the divisor) and
+  `fuse_legacy_noblow` (legacy RatedCurrent-only → never blows). Existing
+  `fuse_blow_3ph`/`fuse_blow_asym`/`midi_fuse` flipped `oracle:"r4133"` (now
+  never-blows; re-probed).
+- **Breaking-default fallout:** the fuse-save combo decks `combo/combo_protection`
+  and `combo/midi_protection` are entangled with the **unported** Recloser default-
+  curve removal (proven inert on r4133) + Relay r4133 wording — they cannot flip
+  to r4133 (recloser/relay diverge) nor stay on 0.14.5 (fuse diverges), so their
+  fuse tier is temporarily **neutralized** (ratedcurrent raised → never blows on
+  0.14.5, matching the port) with a documented deferral to the protection-rung
+  completion. Vendored `InductionMachine/{Master.DSS,Run.dss}` go **non-convergent
+  under r4133** — proven on the EPRI r4133 engine itself (explicit-curve fuses
+  blow at Sec=0, island the transformer) — so they move `solvable_now` →
+  `skipped_needs_investigation` (tag `r4133_breaking_nonconvergence`); the port
+  correctly reproduces the r4133 divergence. `population.lock` regenerated.
+- **known_diffs:** no fuse-scoped entries present (nothing to retire).
+
+**WP-U2.2 — Recloser per-phase rewrite (2026-07-17, branch wt-u22).**
+Ported `Controls/Recloser.pas` r4088→r4133 (delta rows B3/B4/C2/D2/D3/E2/E3) into
+`elements/control/recloser/` — a full per-phase rewrite validated exactly against
+the `oddie:r4133` engine (v11.0.0.1 Charlottesville).
+- **Per-phase state machine.** `FPresentState`/`FNormalState` are per-phase state
+  arrays; `OperationCount`/`LockedOut`/`ArmedForOpen/Close`/`PhaseTarget`/
+  `RecloserTarget` are per-phase with the ganged `IdxMultiPh = NPhases+1` slot
+  (frozen at 4). Arrays are 1-based (`[T; RCMAX+2]`, slot 0 unused) — Pascal's
+  >3-phase OOB (arrays frozen at IdxMultiPh=4) is UB, **not** reproduced (sized to
+  avoid it; ≤3-phase — every real deck — is exact).
+- **Single-phase trip/reclose/lockout** (`SinglePhTrip`/`SinglePhLockout`): the
+  phase index rides the control-queue **proxy handle** — plumbed through
+  `ControlOp::Action{code, proxy}` (dispatch/actions/multi_rate) to
+  `Recloser::do_pending_action(code, proxy, …)`; every other control ignores it.
+- **Fast/slow pickup split** (`PhFastPickup`/`PhSlowPickup`, `Gnd*`); legacy
+  `PhaseTrip`/`GroundTrip` set both. **D2 breaking default:** the A/D default
+  curves are removed → a curveless recloser is **inert**. **D3:** inst trip time
+  is a bare `0.01` (MechanicalDelay added once at push).
+- **Props 24 → 46** with deprecated aliases (`PhaseFast→PhFastCurve`, `Reset→
+  ResetTime`, `Delay→MechanicalDelay`, TD renames…), `Lock`/`Reset` actions,
+  `EventLog`/`DebugTrace`, `RatedCurrent`/`InterruptingRating`, `Normal`/`State`
+  per-phase arrays (`[closed, closed, closed, ]`, ganged scalar or quoted list).
+  `ShowEventLog := EventLogDefault` (global **False**) — no override (the oracle
+  logs nothing until `EventLog=yes`, empirically confirmed).
+- **Event-log wording overhaul (E2/E3):** the r4133 per-phase messages
+  (`Phase %d opened on %s (…trip) & locked out (…lockout)` etc.) reproduce the
+  oracle **byte-for-byte** (proven for single-phase, ganged, ground and
+  pickup-split decks — no mask row needed).
+- **Gate.** Family decks `recloser_temp/perm/ground` + midi twins flipped to
+  `oracle: "r4133"`. `temp`/`midi_temp` are curveless → inert on r4133, pinning the
+  D2 removed-default witness; `ground` trips via the ground curve; `perm`/`midi_perm`
+  carry explicit A/D curves and exercise the ganged lockout-to-OPEN sequence (see
+  the audit-fix addendum below).
+  New decks `recloser_1ph.dss` (single-phase trip/lockout) + `recloser_pickup_split.dss`
+  (fast≠slow pickup) — all §1.7-validated on r4133. `props/recloser.json`
+  regenerated to the r4133 46-prop surface (props_roundtrip green); the
+  `golden_protection` recloser scenarios retired (§1.3-2, superseded by the live
+  r4133 gate). **controls family live gate: 96 decks match the oracle.**
+- **Event-log mask infra CREATED** (`harness::EVENTLOG_MASKS`, §1.3-3):
+  per-oracle-spec `(find→to)` substitutions applied to both engines' lines, never
+  dropping/reordering; **the shipped r4133 table is EMPTY** (the port is exact —
+  the empty table is the proof), with self-tests + TOLERANCE_NOTES doc, generic
+  for WP-U2.3 to extend. Enabling fix: `oracle_server.capture_eventlog` now reads
+  the `export eventlog` CSV for the Oddie engine (its `Solution.EventLog`
+  accessor returns empty — a bridge gap that blocked every r4133 event-log
+  compare).
+- **compare_all_properties** skips the Recloser class (its table moved to the
+  r4133 46-prop shape; ungateable vs the 0.14.5 oracle — shape is code-verified +
+  `recloser.json` gates values by name). Cross-chain combo decks
+  (`combo/midi_protection`, `combo/combo_protection`) kept on the 0.14.5 oracle by
+  naming the recloser's A/D curves explicitly (identical ganged behavior) and
+  dropping their Recloser probe + `compare_eventlog` until Fuse (U2.1) + Relay
+  (U2.3) land and the whole suite flips at rung exit (U2.6). population.lock
+  regenerated.
+
+**WP-U2.2 audit fixes (2026-07-17, wt-u22).** Three findings addressed:
+- **(major) Restored ganged lockout-to-OPEN oracle coverage.** `recloser_perm` +
+  `midi_recloser_perm` were flipped to `oracle:"r4133"` but left **curveless** →
+  inert no-ops (they asserted nothing about trip/reclose/lockout, matching r4133
+  only because both engines did nothing), so the `do_open_ganged` lockout branch was
+  validated by a Rust-only unit test against no oracle. Gave both decks explicit
+  `phasefast=a phasedelayed=d` (the engine's built-in A/D curves — r4133 D2 removed
+  the defaults) so a 3ph permanent fault now drives FAST→reclose→SLOW→reclose→lockout
+  → ends `[open,open,open]`, re-validated **exactly** against `oddie:r4133`.
+  `midi_recloser_perm` also fixed at its generator (`tools/decks/gen_midi_decks.py`).
+  `temp`/`midi_temp` kept curveless **on purpose** as the D2 removed-default witness
+  (the reclose-to-CLOSED path is covered by `ground`); manifest notes added to all
+  four so the intent is explicit. controls live gate still 96/96 vs r4133.
+- **(minor) DebugTrace wording matched to Recloser.pas r4133.** The ground-trip trace
+  now emits the distinct inst line (`Gnd Instantaneous Trip`, raw `Cmag`) vs curve
+  line (`Gnd %s Curve Trip`, `Cmag/GroundCurveMultiplier`); the single-phase and
+  three-phase **curve-branch** traces (`Ph %s (1-Phase)/(3-Phase) Trip`), previously
+  missing, are now logged (probe-confirmed). Latent path (no deck sets
+  `DebugTrace=yes`); the residual `%.3g`-vs-`{:.3}` sig-fig rendering is absorbed by
+  the numeric-skeleton comparator and left as-is.
+- **(minor, DEFERRED) quoted single-element `state=[open]` parses as ganged.** Delphi
+  branches on `Parser.WasQuoted` (a quoted single-element list sets only phase 1);
+  the Rust `set_enum_array` sees only the parsed ordinal array. A faithful fix must
+  plumb `WasQuoted` through the **shared** `MappedStringEnumArray` parse dispatch +
+  the shared `set_enum_array` trait (which also drives **Fuse**, U2.1/U2.4 territory)
+  — out of this WP's recloser-local scope, latent (no deck/test exercises it, no
+  oracle channel to validate), and already documented at `accessors.rs:272-277`.
+
+**WP-U2.4 — SwtControl D6 + RatedCurrent, batchedit `where`, TCC/DoNewCmd/AllocateLoad
+verify — LANDED (branch wt-u24, base `1287ec4`).** Rung-2 rows C4/C5/C6/D6/E1 of
+`delta_r4088_r4133.md`. Spec = the Delphi r4088→r4133 diff (`.inputs/electricdss-code-
+r4133-trunk`); oracle = `oddie:r4133`. Gate green (fmt/clippy/`cargo test --workspace`).
+
+- **SwtControl D6 (`elements/control/swt_control/`).** The deprecated `Action` (prop 3)
+  now sets the ACTUAL state — like `State` (prop 7) — instead of only the normal state
+  (r4088/0.14.5 bug), and fires the "normal defaults to state on first set" side effect
+  (Edit supplemental `case 3, 7`). Ported by making `side_effects(ACTION)` mirror
+  `STATE`: force `present_state`, default `normal` on first set, push the `SetSwitchClosed`
+  RefAction (guarded by `Locked`). Probed on r4133: `action=open` opens the switch
+  immediately (no queue/delay, empty event log), `normal` stays as declared (or defaults
+  to the action value when Action/State is the first setter), `lock=yes` still ignores it.
+- **RatedCurrent (prop 9, C4).** New informational continuous rating (default 0.0; "Not
+  used internally for either power flow or reporting"). Parse-accept + store; ordinals
+  shift (BaseFreq 9→10, Enabled 10→11, NUM_PROPS 11→12). r4133-only ⇒ hidden from the
+  0.14.5-pinned full-enumeration surfaces via the new **`PropFlags::HIDE_R4133`** (sibling
+  of `HIDE_015X`; Dump / `Dump commands` / JSON skip it, `?`/props-table still expose it)
+  + a **`PROPS_015X`** allowlist row (excludes it from the shape walk on the 0.14.5 AND
+  capi015 captures). Added `hidden_from_full_enum()` helper; the four Dump/JSON check
+  sites now test both flags.
+- **`batchedit … where` conditionals + E1 (`exec/batchedit.rs`, new module).** Faithful
+  port of r4133 `DoCheckConditionals`/`DoEvalConditionals`/`DoLocalizeOp_Index`: filter
+  regex matches by `>,<,>=,<=,=,!=` combined with `and/or/xor` before editing. The Delphi
+  tokenizer quirks are reproduced (probed on r4133): whole clause lowercased; logic op
+  chosen by list order `and`>`or`>`xor` (first text anywhere wins → `and` beats an earlier
+  `or` and absorbs the rest into the value; any `xor` matches `or` first → behaves as
+  `or`); missing property → empty value (numeric 0) → silently false, no abort. `=`/`!=`
+  are string compares against the (lowercased) LHS, `>`/`<`/… numeric via `AuxParser`
+  DblValue. E1: **every** batchedit now sets `GlobalResult := 'Elements edited: N'`
+  (ExecCommands cmd 95), with or without `where`; the without-`where` model effect is
+  unchanged (default-oracle decks stay green — they compare the model, not the result
+  string). Property resolution is exact case-insensitive (Delphi `PropertyIndex`), not
+  abbreviated.
+- **TCC `none` + DoNewCmd abort + AllocateLoad — VERIFIED, no port.** (1) TCC_Curve `none`
+  reserved-name rejection + the `DoNewCmd` `if Result=0 then Exit` abort: already ported
+  (`exec/command.rs` `add_object`, returns before `edit_active`/`dss_objs.push`), tested
+  by `tcc_curve_none_is_reserved` (proves NO phantom object created); matches r4133 (probed:
+  `new tcc_curve.none` never resolves). (2) AllocateLoad D5 disabled-meter/sensor skip:
+  already ported at the loop level (`solution/meters/sampling/allocate.rs`, `if !enabled()
+  continue` for CalcAllocationFactors AND AllocateLoad), tested by
+  `allocateloads_ignores_disabled_meter` (WP-U1.5 D9, r4115 == r4133 form).
+- **Decks / goldens.** New `tests/corpus/modes/batchedit/batchedit_where.dss` (`oracle:
+  r4133`, §1.7 two-process determinant): pins the where-filtered edit sets via the live
+  r4133 model + per-load kw probes; the `Elements edited: N` token is pinned by the
+  `batchedit_where_conditionals_match_r4133` exec_tail unit test (8 probed cases incl. the
+  and-first quirk). Flipped `swtcontrol_time.dss` + `midi_swtcontrol.dss` capi015→r4133
+  (D6 makes `action=open` open at parse; the capi015 `Closed×3→Open` trajectory was exactly
+  the r4088→r4133 move) — render-form probes (state/normal `[open,..]` arrays = E3/U2.5
+  scope; Delphi drops prop-5 Delay so `delay` renders 120) dropped, whole-model + empty
+  eventlog/ctrlqueue pin the physics. `swtcontrol_lock.dss` stays default-oracle: locked ⇒
+  Action ignored ⇒ switch unchanged, but the deeper reason it CANNOT move to r4133 is a
+  latent Sample divergence OUTSIDE the r4088→r4133 delta — Delphi (both r4088 and r4133)
+  comments out the ENTIRE `TSwtControlObj.Sample` body ("action/lock are instantaneous"),
+  whereas our FPC 0.14.5 port still pushes `CTRL_LOCK` onto the control queue; the deck's
+  `compare_ctrlqueue` pins that FPC push, so it can only stay on capi015 (documented at the
+  `sample()` doc-comment; closing this gap = retiring the Sample body, deferred). **civanlar.dss (vendored corpus) flipped capi015→r4133**:
+  its `edit action=o` on the 3 tie switches now opens them at parse (D6), converging in 2
+  iters to the open-tie topology — PROVEN bit-identical to r4133 (node0 V (13261.309423,
+  -34.747502) both); capi015's Rung-1 control-loop path took 5 iters to a
+  physically-equivalent-but-not-bit-identical point (8e-4 above the feeder tier floor — a
+  solve-PATH difference, not conditioning). Regenerated `swt_manual.json` protection golden
+  on `oddie:r4133` (empty event log; `gen_protection.py` routes it via `ODDIE_SCENARIOS`,
+  merged with the WP-U2.1 oddie route). `props/swtcontrol.json`: removed the D6-superseded `swtcontrol_action_open`
+  scenario (r4133 forces State=open, not capi015-pinnable) and re-based `swtcontrol_makelike`
+  on `state=open` (State=open, the oracle-derived value shared with `swtcontrol_state_open`).
+  `population.lock` regenerated (modes 68→69; civanlar oracle). `known_diffs.json` unchanged:
+  no swtcontrol-BEHAVIOR entry exists that this delta kills (the `property-format-brackets`
+  row is the E3 array render = WP-U2.5 scope). New SwtControl unit tests: `d6_*` (3) +
+  `rated_current_parses_and_reads_back`; `action_open_opens_switched_line` rewritten to
+  pin the D6 immediate-force (no OPENED event); `batchedit_where_conditionals_match_r4133`.
+
+**WP-U2.3 — Relay per-phase rewrite (r4133, 2026-07-17, branch wt-u23).** Ported
+`Controls/Relay.pas` r4088→r4133 (the delta's largest unit: 1403+/808−) into
+`elements/control/relay/` (mod/logic/accessors), mirroring the landed recloser
+per-phase machinery but from Relay's own Pascal. Delivered B1 (per-phase
+`StateArray` for `type=current`: `SinglePhTrip`/`SinglePhLockout`, per-phase
+TCC eval of `cBuffer^[i+CondOffset]`, phase index on the control-queue proxy,
+`MaxOperatingCount` curve selection, ≥1-phase sampling gate; `IdxMultiPh`
+ganged slot drives all non-overcurrent sub-types — those changed *only* by the
+`^[IdxMultiPh]` indexing, verified by the r4088↔r4133 per-method diff), B2
+(`VoltageLogic` OV/UV over `Vmax_closed`/`Vmin_closed`, reclose still all-phase),
+B4 (sample continues while ≥1 phase closed), D3 (inst time bare `0.01`, delay
+added once at push), D4 (queued `CTRL_RESET` only resets `OperationCount` for
+closed phases — no full `Reset`, no element force), C1 (props **50→71** with 15
+deprecated aliases sharing fields + `Normal`/`State` per-phase arrays +
+`Lock`/`Reset` actions + `RatedCurrent`/`InterruptingRating`), D7 (first-`State`
+side effect defaults `Normal` per phase), E2/E3 (per-phase event wording,
+descriptive targets `Gnd Curve + Ph Curve`/`Ph Instantaneous`/…, separate
+Phase/Ground Target lines dropped). Two upstream bugs reproduced with
+`TODO(compat)`: the **unconditional** `Debug Sample: Relay.<name> FPresentState:
+[…]` line on every `Sample` (r4133 forgot the `DebugTrace` guard the recloser
+has), and reset events logged as `Recloser.<name>` (copy-paste); both
+oracle-verified (oddie:r4133 emits them). **Empirical source-vs-binary
+resolution (RUNG2 oracle-authoritative):** the r4133 *source* Edit CASE 5 still
+writes `'[5.0]'`/`'[0.5,2,2]'` reclose defaults for voltage/current, but the
+r4133 *binary* applies neither — every non-DOC type keeps the constructor
+`(0.5,2,2)`/Shots 4 (probed current/voltage/46/47/distance/td21); only DOC forces
+`NumReclose 0`. `type_side_effect` matches the binary. Dispatch: Relay `Action`
+op now carries the phase proxy. Harness: Relay added to the
+`compare_all_properties` skip list (71-prop table can't match 0.14.5, as
+Recloser). `relay.json` props golden regenerated (74 props, 10 scenarios incl. a
+single-phase-trip scenario), Rust r4133 renders cross-validated against
+oddie:r4133 (only report-format diffs remain: `SwitchedObj` empty-echo, and
+`reset=20` legacy-collision hitting the new Reset action while `ResetTime`
+correctly stays 15). Retired `relay_current` 0.14.5 protection golden (event-log
+behavior moved off 0.14.5, as the recloser scenarios). **Decks:** all 9 relay
+controls decks (`relay_{oc_sym,4647_asym,voltage,revpower,generic,distance,
+td21,doc}` + `midi_relay_4647`) flipped to `oracle:"r4133"` — event log (incl.
+the Debug Sample lines) + ctrlqueue + probes match oddie:r4133; `relay_generic`
+`delay` 0→0.1 (a delay=0 generic trip fires in-step and oscillates the control
+loop, #485 on r4133; 0.1 queues it, both converge). Vendored r4088→r4133
+witnesses `Test/{Distance,TD21,Reverse*}RelayTest` + Version8 twins (8 decks)
+flipped to r4133. `combo/{combo,midi}_protection` kept on 0.14.5 with the
+now-array Relay `state`/`normal` probes dropped (can't compare vs scalar 0.14.5;
+`check_meters_monitors` blocks an r4133 flip on the Oddie monitor-header format)
+— `delay` probe + ctrlqueue + meters retained. `population.lock` regenerated
+(solvable_now 293→292). **Deferred follow-ups:** (1) `59NRelayDemo` (a
+`type=voltage` relay across an open point) excluded from `solvable_now` — my
+correct B2 + dropped-voltage-reclose move it off 0.14.5, but a ~7e-4 residual vs
+oddie:r4133 on this open-point *dynamics* topology needs decomposition triage
+(`relay_voltage` passes on r4133, so the standard voltage relay is correct); (2)
+the `known_diffs` `eventlog-trailing-space` row (r3723/r4088/r4133) is untouched
+— retiring its r4133 portion needs a proving partition re-run, deferred to
+WP-U2.6's sweep; (3) new SinglePhTrip/partial-open-voltage synthetic *corpus*
+deck families (the brief's synthesize list) not added — single-phase machinery
+is covered by inline unit tests (`single_phase_trip_arms_only_faulted_phase`,
+`single_phase_do_open_opens_only_that_phase`,
+`single_phase_lockout_escalates_to_3ph`) + the props golden, but a live
+`oracle:"r4133"` family deck is still owed; (4) the `help_catalog.rs` relay
+entries + the `dump3_commands` golden's `[Relay]` block still carry 0.14.5 help
+text (props 50→71 renamed) — masked out of the dump golden for now (as
+`[WindGen]`), the r4133 relay help-catalog/dump-surface regeneration is WP-U2.5
+(protection report/log surface) scope (the property NAMES/values are already
+gated by `relay.json` + the live r4133 decks + the `compare_all_properties`
+skip). Full mandatory gate green; 57 relay inline unit tests pass.
+
+**WP-U2.3 audit-fix pass (2026-07-17, wt-u23).** (1) *Major — `Normal`/`State`/
+`Action` discrete-state parse.* The r4133 surface reused the 0.14.5 `trip`→open
+enum alias, so `normal=trip` rendered `[open,open,open]` while oddie:r4133 leaves
+it `[closed,closed,closed]` (`InterpretRelayState`, Relay.pas:1237 — first char
+`o`/`c` only, no else arm ⇒ non-o/c leaves the slot unchanged). Reworked the
+relay-only `relay_state`/`relay_action` enums to reproduce it exactly:
+`allow_longer` + `max_chars=1` (leading-char match: `openZ`→open, `cs`→closed)
+and `default_value = CTRL_STATE_KEEP` (new sentinel; unmatched ⇒ keep the phase,
+no parse error), with the state-array setter/`do_action` skipping KEEP slots.
+Empirically re-verified on oddie:r4133 (`trip`/`xyz`→unchanged, `openZ`→open,
+`[open trip closed]`→`[open,closed,closed]`); recloser/fuse enums untouched
+(their own defs). Fixed the `relay_normal_trip` props golden (`Normal` open→closed)
+and added an inline pin `state_parse_is_first_char_only_r4133`. (2) *Minor —
+props-golden note.* `relay.json` is a self-referential regression pin (Rust
+renders compared back to Rust), not an independent oracle gate; softened the
+`oracle.note` to say so and to scope the r4133 cross-validation as a manual
+(non-CI) spot check — genuine oracle coverage is the live `oracle:"r4133"` relay
+decks. (3) *Minor — `59NRelayDemo`* stays parked in
+`skipped_needs_investigation` (tag `relay_voltage_dynamics_residual`) with its
+decomposition plan; the ~7e-4 open-point residual is un-triaged (suspected bug
+until proven a floor per CLAUDE.md) and the live-f64 trip-time + per-node
+trajectory decomposition is owed to WP-U2.6's rung-exit sweep — an honest
+deferral, not tolerance-masked. Full mandatory gate re-run green.
+
+**WP-U2.5 — Protection report/log surface (r4133, 2026-07-17, branch wt-u25).**
+E-bucket of `delta_r4088_r4133.md` + the WP-U2.3-deferred (commit fb6db95)
+relay help-catalog/dump surface. Oracle = oddie:r4133.
+
+- **`Dump commands` help-catalog surface → full r4133 for all four protection
+  classes.** The `help_catalog.rs` help text (rendered by `Dump commands`) was
+  0.14.5 for the renamed/new Relay/Fuse/SwtControl props. Added
+  `tools/golden/r4133_help.py` — a generator supplement holding the r4133
+  protection help, captured **verbatim from the oddie:r4133 binary's own `Dump
+  commands`** (its `PropertyHelp` arrays = `Version8/Source/Controls/{Relay,
+  Recloser,fuse,SwtControl}.pas`). `gen_help_catalog.py` applies it over the
+  0.14.5 wheel parse. The supplement ALSO carries the recloser r4133 help that
+  WP-U2.2 had **hand-edited** into the "GENERATED" file (+ the earlier
+  CNData.SemiconLayer / LineSpacing-0.15.x / A-Diakoptics tear_circuit non-wheel
+  edits), so `python gen_help_catalog.py` reproduces the committed file exactly
+  instead of silently reverting them (verified: only Relay/Fuse/SwtControl
+  runtime values changed vs HEAD; Recloser render byte-identical).
+- **`[Relay]` unmasked** from the `dump3_commands` golden (was masked as
+  `[WindGen]` since fb6db95); `[Fuse]`/`[SwtControl]` brought to their full
+  r4133 12/9-prop shapes by dropping `HIDE_015X`/`HIDE_R4133` from
+  CurveMultiplier/InterruptingRating/RatedCurrent (matching Recloser, which
+  never carried a HIDE flag). Empirically only `dump3_commands` pinned these —
+  no element-Dump or JSON-export golden does — so the un-hide is clean;
+  `compare_all_properties` still excludes them from the 0.14.5 property walk via
+  the name-based `PROPS_015X` rows (independent of the HIDE flag: the `?`-surface
+  always shows them). The four blocks are **self-referential regression pins**
+  (our render vs our render; the r4133 property NAMES/VALUES are gated live vs
+  oddie:r4133 by the `oracle:"r4133"` controls decks + `props/*.json`).
+- **Property-value render `[closed, closed, closed, ]`** — verified the shared
+  `MappedStringEnumArray` render already backs Relay/Recloser/Fuse/SwtControl
+  Normal/State (nothing to port); Fuse GetPropertyValue special cases 5/6/12
+  (FuseCurve→`none`, RatedCurrent/InterruptingRating `%-.6g`) already match r4133.
+- **`known_diffs` `property-format-brackets` — NOT retired (empirically still
+  live on r4133).** Probed oddie:r4133: EPRI renders `sensor.currents` PLAIN
+  (`100,90,80`) while our dss_capi-based port brackets numeric arrays
+  (`[ 100 90 80]`, `util.get_dss_array_f64`) — the dss_capi property-system
+  rework difference persists on r4133. The row's E3 *protection-state-array*
+  portion IS resolved (our `[closed,..]` render now matches EPRI r4133's own
+  bracketed `GetPropertyValue` state render, so the row no longer fires for
+  those), but the generic numeric-array class stands — a DIVERGENCES ledger item
+  owned by WP-U2.6's r4133 ASSERT sweep. Retiring the whole row would re-expose
+  it as an uncataloged sweep failure; kept, documented here (deviates from the
+  literal U2.4 "retire in U2.5" note, which pre-dated this probe).
+- **Event-log §1.3-3.** `compare_eventlog` was already `true` on every non-combo
+  protection deck (relay_*/recloser_*/fuse_*/swtcontrol_* + midi twins) — nothing
+  to re-enable; the two combo decks (owned by a parallel WP) are untouched.
+  `EVENTLOG_MASKS` stays **EMPTY** (the port emits r4133 wording 1:1).
+- **Save round-trip.** New `save_roundtrip_protection` (crates/dss-core/tests/
+  save_roundtrip.rs): a Relay+Recloser+Fuse+SwtControl deck carrying r4133-surface
+  values (PhCurve/PhFastCurve/CurveMultiplier, SinglePhTrip/Lock/RatedCurrent/
+  InterruptingRating) `Save circuit`→`clear`→re-compile→re-solve; every control's
+  full property list (via `element_properties`) round-trips (numeric-token) +
+  node V ≤1e-6. Pins that Save does not drop/corrupt the renamed/new/array surface.
+- **§E4 help-only edits.** LineSpacing 7-10 already r4133-aligned (the U1.4
+  equivalent-spacing help, "geometric mean distance", matches the r4133 binary
+  verbatim — verified). Line prop 20 (units-reset warning) + AutoTrans
+  normamps/emergamps "(Read only)" left at 0.14.5: those surfaces are NOT
+  r4133-ported (their `dump3_commands` blocks stay byte-exact 0.14.5), so per the
+  brief's "where our surface claims r4133 text" qualifier they are out of scope.
+- **Pre-existing environmental fix (not WP-U2.5 behavior).** The mandatory gate
+  was RED on this machine's base `update` branch (proven by re-running with my
+  changes stashed): the official r4133 Oddie DLL prefixes its `export eventlog`
+  CSV (and some `Text.Result`) with a UTF-8 BOM (`﻿`), which the oracle capture
+  read as plain utf-8 → a lone `['﻿']` line for an inert deck's empty log
+  (`recloser_temp`) and a char-boundary panic in `numeric_skeleton` on a
+  corpus_live property. Fixed at the source (`capture_eventlog` → `utf-8-sig`) +
+  defensively in `numeric_skeleton` (strip a *leading* `﻿`, spurious export
+  cruft, never real data). Not a tolerance/divergence change.
+
+**WP-U2.5 audit fixes (2026-07-17, wt-u25).** Four minor findings addressed:
+- `save_roundtrip_protection` now forces DISTINCT mixed per-phase arrays on the
+  relay (`normal=(closed open closed) state=(open closed closed)`) so the Save
+  round-trip covers serialization + re-parse of a non-default `[open, closed,
+  closed, ]` array (and an actual locked-out open phase) — not just the all-closed
+  default. Probed: both round-trip exactly (dV=0, iter 2→2).
+- `gen_help_catalog.py` comment corrected (it wrongly said Recloser was NOT in the
+  supplement; `r4133_help.py` carries the full Recloser block, folded in at U2.5).
+  Re-verified: `gen_help_catalog.py` + `cargo fmt` reproduces the committed
+  `help_catalog.rs` byte-for-byte.
+- `PropFlags::HIDE_R4133` doc now records it has NO live application site after U2.5
+  (retained as infrastructure like `HIDE_015X`); the stale harness comment that
+  cited the flag for the name-based `PROPS_015X` SwtControl row is corrected.
+- dump3 `[Relay]/[Fuse]/[SwtControl]` self-referential circular-derivation +
+  save-roundtrip self-consistency are already documented at their sites (no code
+  change) — surfaced as sanctioned by UPGRADE_PLAN §1.3-2 / WP8.5.
+
+**WP-U2.1 handoff — combo fuse-save restore (r4133, 2026-07-17, branch wt-combo).**
+The WP-U2.1 deferral (STATUS `Standing open follow-ups`, UPGRADE_PLAN WP-U2.1 handoff):
+now that Fuse (U2.1) / Recloser (U2.2) / Relay (U2.3) all landed on `update`, the
+two cross-chain fuse-save decks are version-consistent on r4133.
+- **Decks re-armed.** `combo/combo_protection` + `combo/midi_protection` flipped to
+  `oracle:"r4133"`; the fuse-tier neutralization (`ratedcurrent=100000/5000`, which
+  existed only so the fuse never blew on 0.14.5) removed. r4133's default `FuseCurve`
+  moved `tlink`→`none` (a curveless fuse never blows), so the fuse is given an
+  explicit curve: `fusecurve=tlink curvemultiplier=40` (combo) / `=50` (midi) — the
+  CurveMultiplier divisor reproduces the pre-WP r4088-era `RatedCurrent=40/50`
+  divisor (WP-U2.1 CurveMultiplier semantics). The midi recloser also gained explicit
+  `phasefast=a phasedelayed=d` (r4133 D2 removed the built-in defaults). midi is
+  generated — fixed at `tools/decks/gen_midi_decks.py` (`PROTECTION_EXTRA`) and
+  regenerated.
+- **Race re-exercised end-to-end** (probe-verified on oddie:r4133): recloser FAST
+  shot clears the fault, on reclose the fault persists and the fuse melts the faulted
+  phase on the delayed cycle (`Fuse.fz PHASE 1 BLOWN` at Sec=0.5 combo / 0.9 midi),
+  the recloser recloses and restores service except the blown phase, and the
+  substation backup relay never trips. Both decks converge every step; two-process
+  determinant bit-identical (§1.7).
+- **Probes/eventlog restored** (dropped by WP-U2.2/U2.3 while the tiers were
+  version-split): `Recloser.r` (`state`/`normal` [+`shots`/`numfast` on midi]),
+  `Fuse.fz` (`state`/`normal`/`fusecurve`/`curvemultiplier`), `Relay.backup`
+  (`state`/`normal` [+`delay` on midi]), and `compare_eventlog:true`. The r4133 relay
+  `Debug Sample: FPresentState` lines + the fuse `PHASE n BLOWN` line reproduce the
+  oracle (the Rust port's TODO(compat) relay lines + fuse blow). controls live gate
+  **96→98** decks matched.
+- **Pre-existing infra bug fixed** (`tools/oracle/oracle_server.py::capture_eventlog`,
+  NOT combo-scoped but the enabling infra): Delphi's `export eventlog` writes a UTF-8
+  BOM, so an EMPTY Oddie event log read back as `['﻿']` (one lone-BOM line) and a
+  non-empty first record was BOM-glued. This made the length assert (0 vs 1) fire on
+  every empty r4133 event-log step and the numeric-skeleton comparator panic on the
+  multi-byte BOM — pristine `update` was RED here on `recloser_temp` step 0 (proven by
+  running the pristine controls gate). Fix strips the BOM per line: empty→`[]`, line-0
+  matches the BOM-free Rust `event_log()` / capi `Solution.EventLog`. Restores the
+  whole r4133 event-log channel (recloser/relay decks too), not just the combo pair.
+- **Meter/monitor compare RE-ENABLED** on these two decks (audit fix 2026-07-17;
+  `check_meters_monitors: true`). The blocker was the Oddie monitor CSV `Header`:
+  Delphi renders it with a leading space after each comma + a trailing comma, so
+  `Monitors.Header` reads back `['V1',' VAngle1',…,'']` (leading-space columns +
+  trailing empty) which the harness `compare_monitor` exact-header assert could not
+  match against the clean dss_capi/Rust `['V1','VAngle1',…]`. Fixed by normalizing
+  the header in `compare_monitor` (trim each column + drop trailing whitespace-only
+  columns) before the equality assert — a test-comparator normalization that does
+  not weaken the check (channel COUNT + every channel's samples are still asserted).
+  **Audit fix (2026-07-17, wt-combo).** `compare_monitor` is shared with the strict
+  golden path (`golden_metering_monitors.rs`/`golden_ieee8500.rs`/`scenario.rs`), so
+  the normalization is now applied to the **expected side only**, keeping the Rust
+  `view.header` strict: `monitor_view().header` is built structurally in
+  `monitor/header.rs` (`push("V1")`/`push(format!("P{i}W{j}"))`, no CSV round-trip)
+  → clean by construction, so a genuine Rust-side header defect (leading space /
+  phantom trailing column) still fails, exactly as before combo restore. The two
+  oracle-capture normalizations (`_lst` trailing-empty drop, `capture_eventlog` BOM
+  strip) only ever remove empty/whitespace/BOM content that is never a real element
+  name or event record, so they cannot equalize distinct values. `controls_cases_match_oracle`
+  green (26 cases, oddie:r4133).
+  A second Oddie array artifact surfaced under the re-enabled compare and was fixed
+  the same way: the Oddie `ZonePCE`/`AllBranchesInZone`/`AllEndElements` string
+  arrays carry a trailing empty element (`['load.a',…,'']`), so `capture_all_meters`'s
+  `_lst` helper (which already dropped the `['NONE']` placeholder) now also strips
+  empty/whitespace-only entries — else midi's zone PCE set read 33 (32 real + phantom
+  empty) vs Rust's 32.
+  Empirically verified vs oddie:r4133: EnergyMeter registers match (duty mode does
+  not integrate → registers 0 / Max drag-hands -1e50, the identical `-1.0e50`
+  sentinel on both engines) with the zone branch/end/PCE membership compared as a
+  set, and the mode-0 V/I monitor channels match the already-pinned full-model
+  trajectory. The product-side header normalization (what the Rust engine *emits*
+  — the WP-U1.5 E1 `monitor-header-whitespace` known_diff) is unrelated and stays
+  scoped there.
+- `population.lock` unchanged: the two combo decks are controls-family cases (the
+  lock fingerprints per-case rigor flags only for `solvable_now.json`; the synthetic
+  families track counts + path lists, both unchanged here).
+  `known_diffs.json` untouched (no combo-scoped entry).
+
+**WP-U2.6 — 59NRelayDemo decomposition (2026-07-17, branch wt-59n).** Owed at the
+Rung-2 exit. Reproduced the deck's ~7e-4 residual vs oddie:r4133 and found the
+**first diverging quantity** by a per-step trajectory on both engines (Rust
+instrumentation vs an Oddie r4133 probe reading live-f64 `YNodeVarray` +
+`AllVariableValues`, not the f32 monitor). **PORT BUG FOUND + FIXED:** the relay
+`state_size()` sized the per-phase state arrays + `VoltageLogic` loop by the
+relay's OWN Nphases, but Pascal forces `Nphases := MonitoredElement.NPhases`
+(RecalcElementData:906) — for this deck the 1-phase broken-delta PT — while every
+state-array path (`VoltageLogic` Relay.pas:2852, `GetPropertyValue` 39/40, Sample,
+Reset) iterates `Min(RELAYCONTROLMAXDIM, ControlledElement.NPhases)` = the 3-phase
+switched Line1. The relay's own count feeds only `vbase`/`cBuffer`/`CondOffset`
+(read separately via `ccd.cd.nphases`/`mon_offset`), so the two counts coincide
+for every existing relay deck (mon==ctrl phases) and this is the only deck that
+distinguishes them. With the wrong count=1 the VoltageLogic loop read only
+`cBuffer[1]` (the 3V0 ≈438 V) leaving `Vmag`>0, so the relay tripped Line1
+(438/277=1.58 pu ≫ 0.3 pu pickup); count=3 makes the loop's final *phantom* phase
+(beyond the PT terminal's 2 conds) read 0 → `Vmag`=0 → the `IF Vmag>0` guard fails
+→ `OVTime`=-1 → no trip, matching oddie:r4133 (state `[closed,closed,closed]` all
+10 steps, iteration counts identical every step). Fix: `state_size` → `ctrl_snap`
+(controlled element) nphases; regression-guarded by the new relay unit test
+`voltage_relay_open_point_sizes_state_by_controlled_nphases_59n` (a 1-ph-monitored
+/ 3-ph-switched voltage relay must not trip on the open-point 3V0). **Residual
+after the fix = proven chaotic-dynamics floor, NOT gateable:** the un-tripped
+generator (D=1) pole-slips under the sustained fault on BOTH engines (θ 12→777°,
+f 60→79 Hz by t=1.0). Rust then matches oddie:r4133 to the solver floor with
+identical iteration counts, and the generator live-f64 state matches to machine-eps
+early (dθ 7e-15, df 1.4e-14 at t=0.1); the pole-slip's positive Lyapunov exponent
+amplifies the faer-vs-KLU last-ulp difference exponentially (~2×/step): node-V Linf
+4.5e-6 (t=1.1) → 7.8e-3 (t=1.9) → O(1 V) by t≈2.5, unbounded. The harness
+checkpoint (deck runs `number=10` inline to t=1.0 during compile, then n_steps≥1
+solves → t≥2.0) necessarily lands in this chaotic regime, where no fixed tolerance
+honestly bounds the node-V (the t=2.0 value 1.9e-5 is a deterministic chaotic dip,
+not a floor) — masking it with a tolerance is exactly what CLAUDE.md forbids. So
+the deck STAYS in `skipped_needs_investigation`, re-tagged
+`relay_voltage_dynamics_chaos_floor` with the full decomposition; the fix itself is
+proven vs oddie:r4133 and unit-gated. Mandatory gate green.
+
+*Audit fixes (2026-07-17, wt-59n).* (1) The same phase-count port bug lived in
+`TRelayObj.MakeLike` (accessors.rs): the per-phase `FPresentState`/`FNormalState`
+copy loop was bounded by the source relay's OWN Nphases (= MonitoredElement.NPhases)
+instead of `Min(RELAYCONTROLMAXDIM, ControlledElement.Nphases)` (Relay.pas:683). For
+an asymmetric `like=` source (mon != ctrl phases) an OPEN state latched on a high
+phase was dropped (left CTRL_CLOSE). Fixed to reuse `state_size()` (ctrl_snap is
+already copied from the source before the loop, so the count matches Pascal);
+regression-guarded by `make_like_copies_state_by_controlled_nphases`. (2) The
+chaos-floor classification (finding: proof is prose from the non-gating Oddie r4133
+channel, not a checked-in artifact) stays as documented — the `state_size` fix is
+independently proven (Pascal citations + full live gate green + unit test) and the
+chaotic pole-slip residual is legitimately NOT tolerance-maskable per CLAUDE.md, so
+continued parking is the correct (and only honest) call. No code change. Mandatory
+gate re-run green.
+
+**WP-U2.5 audit fixes, round 2 (2026-07-17, wt-u25).** Three minor findings:
+- `numeric_skeleton` BOM strip **narrowed to leading-only** (`strip_prefix('﻿')`,
+  was a whole-string `replace`). The whole-string strip was broader than the
+  actual Oddie failure mode (a *leading* export BOM that mid-slices the ASCII
+  loop) and would have silently swallowed a spurious interior BOM on one side.
+  The else-branch now advances char-wise, so an interior BOM flows into the
+  skeleton and surfaces as a structure mismatch (flagged, no panic) — the primary
+  fix (oracle_server `capture_eventlog` → `utf-8-sig`, scoped to the IOddieDSS
+  path) is unchanged. New `comparator_tests::bom_strip_is_leading_only` pins both
+  halves (leading stripped ⇒ match; interior kept ⇒ flagged).
+- dump3 protection help-blocks are a self-referential pin (our-render → golden →
+  our-render) with no automated oracle gate on the help TEXT: **sanctioned** —
+  UPGRADE_PLAN §1.3-2 deliberately has no byte-exact-vs-Delphi help gate; the
+  `r4133_help.py` transcription was independently re-verified verbatim against the
+  vendored r4133 Pascal (Fuse/SwtControl/Relay `PropertyHelp`). No code change.
+- `known_diffs` `property-format-brackets` mask: **retained by design** (see the
+  WP-U2.5 note above — the generic numeric-array class is empirically still live
+  on oddie:r4133). It lives ONLY in the opt-in, report-only EPRI A/B channel
+  (never gates commits), `reason_contains` requires ALL substrings
+  (`["probe ","structure differs"]`, `.all()` at corpus_live.rs), and zero-hit
+  entries self-report — so a stale mask surfaces. Closure is owned by WP-U2.6's
+  r4133 ASSERT sweep, not U2.5.
+
+*Audit fixes, round 2 (2026-07-17, wt-59n).* Follow-up findings all flagged the
+same confidence-inflation risk: the post-fix `chaos_floor` classification and the
+r4133 no-trip outcome rested on non-checked-in prose from the opt-in Oddie r4133
+channel, verifiable only by manual eyeballing. Addressed by turning the prose into
+a **checked-in, re-runnable oracle read**, `tools/opendss/probe_59n.py`, and
+confirming both claims empirically on the r4133 engine: (A) the engine's OWN
+`Relay.State` property reads `[closed, closed, closed, ]` — byte-identical to the
+port's `render_state_array()` and the unit test's asserted `no_trip` — with
+Line.line1 still at ~1381 A, so the encoded outcome reflects oddie:r4133, not a
+self-pinned value (the unit-test doc comment now cites this); (B) the generator
+frequency leaves 60 Hz (78.88 Hz at t=1.0) and wanders unboundedly over 67–115 Hz
+across the next 15 s = pole-slip, so no fixed node-V tolerance honestly bounds the
+faer-vs-KLU residual (the parking is correct, not a masked bug). The probe exits 0
+iff r4133 reads all-closed. Manifest note + unit-test doc updated to point at the
+probe; the residual stays parked (unchanged), now backed by a regenerable artifact
+rather than eyeball-only prose. No engine code changed; mandatory gate re-run green.
+
+**GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
+14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
+**`docs/phase-records/gaps.md`**. Phase 8 (reporting/executive) is COMPLETE — detail
+in **`docs/phase-records/phase-8.md`**. Phase 7 (DER/protection/line-constants/
+harmonics/dynamics) is COMPLETE on `phase-7-extended-elements` (not merged to `main`)
+— roll-up in §1e and **`docs/phase-records/phase-7.md`**.
+
+**Prior — UPGRADE Rung 2 EXITED — WP-U2.6 the 11.0.0.1 (r4133)
+parity claim (branch wt-u26).** The opt-in EPRI sweep
+`DSS_LIVE_OPENDSS=r4133 DSS_LIVE_OPENDSS_ASSERT=1` is **GREEN** (326 matched, 70
+known-diverged, 4 known-skipped, **0 NEW** of 400; 103 target-rev `oracle`-flipped
+cases excluded — gated in the mandatory gate). Every surviving Rust↔r4133
+divergence is a documented `known_diffs.json` class: FPC↔Delphi last-ulp /
+display-precision floors, dss_capi's bracketed numeric-array PropertyValue render
+(`property-format-brackets` ×10 — the WP-U2.5-deferred numeric-array class,
+**closed** here), EPRI's InvControl event-log trailing space
+(`eventlog-trailing-space` ×6 — the WP-U2.3-deferred class, **keeps** its r4133 tag,
+still witnessed), or the four EPRI-DLL #303 crash decks. The **58** raw NEW
+divergences were all dispositioned (mandatory gate green ⇒ port == pinned 0.14.5 ⇒
+the r4133 gap is purely FPC↔Delphi, never a Rung-2 regression): 48 cases (44 diff
++ 4 skip) extend an existing r4088 floor/skip entry on a **behaviorally-identical
+r4088=r4133 path** (source-verified; 14 entries), 10 cases → 3 new entries
+(`storage-pctstored-display-precision`, `monitor-seq-magnitude-drift`,
+`harmonics-ieee519-r4133`); separately 2 entries narrowed to r3723
+(`monitor-header-whitespace` now handled by the harness header-normalization,
+`meter-zonepce-count` decks now match). **Direction check** — `r4088` re-run green
+(329 matched, 0 NEW after the same %stored/monitor_seqmag cataloging); the only
+sweep-set difference vs r4133 is the r4133-only IEEE_519 harmonics move + the
+r4088-only harmonics-Y witness = exactly the r4088→r4133 delta this rung owns. The
+**IEEE_519 harmonics surprise is source-confirmed "nothing to port"**
+(SolutionAlgs/Load/Spectrum/YMatrix byte-identical r4088=r4133; Solution.pas diff =
+progress-form + commented debug only) — a determinism-proven build-drift amplified
+by the 519-filter near-resonance, cataloged `harmonics-ieee519-r4133`; the
+InductionMachine converged-flip was already resolved by WP-U2.1. `DIVERGENCES.md`
++ `known_diffs_burndown.md` carry the full Rung-2 exit record; `PLAN_SEQUENCE.md`
+marks UPGRADE COMPLETE; new root `README.md` states the parity claim. **Engine
+behavior = OpenDSS 11.0.0.1 (r4133) except the documented ledger.** `rg
+"NOT_PORTED\(U2"` empty; zero `pending` upgrade decks. Mandatory gate (fmt +
+clippy + `cargo test --workspace`) green.
+
+**Audit fixes (post-merge, wt-u26).** Wording-accuracy pass on the Rung-2 ledger
+after re-`cmp`ing the vendored r4088/r4133 Version8 trees: the summary phrase
+"byte-identical r4088=r4133" is literally false for the **solver**
+(`Common/Solution.pas` differs — progress-form/GUI plumbing + a commented-out debug
+`WriteLn`, numerically inert) and `PDElements/AutoTrans.pas` (two read-only
+PropertyHelp strings). All non-`Solution.pas`/`AutoTrans.pas` units named in these
+entries (`PCElements/`, `Meters/Monitor.pas`, `SolutionAlgs.pas`, `YMatrix.pas`,
+`ReduceAlgs.pas`, injection/reduction/ckt24 feeder) ARE byte-identical, so the
+behavioral conclusion (no algorithm changed) stands. Reworded the overstated
+claims to "behaviorally identical (only progress-form/PropertyHelp text differs)"
+in `known_diffs.json` (iteration-count-delta, ckt24-regcontrol-conditioning),
+`DIVERGENCES.md`, `known_diffs_burndown.md`, and this record. Also: documented that
+the `monitor-header-whitespace` r3723 tag is likely already dead (the
+`compare_monitor` header normalization is rev-independent — a future r3723 re-sweep
+prunes it), and scope-noted `harmonics-ieee519-r4133`'s deliberately-broad match
+(mirrors sibling floor entries; re-triage a materially different IEEE_519 move). No
+code/behavior change; mandatory gate re-run green.
+
+**Prior — WP-U2.5 (protection report/log surface) + WP-U2.6
+(59NRelayDemo decomposition) MERGED.** WP-U2.6 found + fixed a relay port bug:
+`state_size()` / `MakeLike` sized the per-phase state arrays by the relay's OWN
+Nphases, but the state-array paths iterate `Min(RELAYCONTROLMAXDIM,
+ControlledElement.NPhases)` (Pascal Relay.pas) — the two counts diverge only on a
+1-ph-monitored / 3-ph-switched voltage relay (59NRelayDemo), where count=1 made
+the VoltageLogic loop read the 3V0 open-point residual and spuriously trip;
+count=3 (controlled) reads the phantom phase → 0 → no trip, matching oddie:r4133.
+Unit-gated (`voltage_relay_open_point_sizes_state_by_controlled_nphases_59n`,
+`make_like_copies_state_by_controlled_nphases`); the deck itself STAYS in
+`skipped_needs_investigation` (re-tagged `relay_voltage_dynamics_chaos_floor`) —
+post-fix residual is a proven chaotic pole-slip floor, not tolerance-maskable.
+The r4133 protection `Dump commands`
+help-catalog surface is complete for all four classes: `[Relay]` unmasked from
+the `dump3_commands` golden (71-prop r4133 shape), `[Fuse]`/`[SwtControl]`
+brought to their full r4133 12/9-prop shapes (HIDE flags dropped — matching the
+already-r4133 Recloser), all pinned self-referentially against our own render.
+The r4133 help text now lives in a generator supplement (`tools/golden/
+r4133_help.py`, captured verbatim from the oddie:r4133 binary's own `Dump
+commands`), which ALSO folds in the recloser help that WP-U2.2 had hand-edited
+into the "GENERATED" `help_catalog.rs` (+ the CNData/LineSpacing/tear_circuit
+pre-r4133 edits) — so `python gen_help_catalog.py` is fully reproducible again.
+Property-render `[closed, closed, closed, ]` verified shared across all four
+classes (already landed). New `save_roundtrip_protection` gate: a
+Relay+Recloser+Fuse+SwtControl deck round-trips its full r4133 property surface
+(renamed/new props + array renders) through our own `Save circuit`→re-parse.
+compare_eventlog was already enabled on every non-combo protection deck (combo
+decks untouched — parallel WP owns them); EVENTLOG_MASKS stays EMPTY. Two
+findings: (1) the `known_diffs` `property-format-brackets` row was NOT retired —
+empirically it still masks a LIVE r4133 divergence (our `[ 100 90 80]` numeric-
+array render vs EPRI's plain `100,90,80`, e.g. sensor.currents); only its E3
+protection-state-array portion is resolved (our `[closed,..]` now matches EPRI
+r4133's own bracketed state render) — the numeric-array class is a DIVERGENCES
+ledger item owned by WP-U2.6's sweep. (2) A **pre-existing** environmental gate
+failure (reproduces on pristine `update`): the r4133 Oddie DLL emits a UTF-8 BOM
+in `export eventlog` / some `Text.Result` that the oracle capture didn't strip —
+fixed at the source (`capture_eventlog` → `utf-8-sig`) + defensively in
+`numeric_skeleton`. §E4 help-only: LineSpacing already r4133-aligned; Line prop
+20 / AutoTrans "(Read only)" left 0.14.5 (those surfaces don't claim r4133).
+
+**Also merged this session — WP-U2.1 handoff RESTORED (branch wt-combo):** the
+combo fuse-save decks `combo/{combo,midi}_protection` flipped to `oracle:"r4133"`
+with the fuse tier re-armed (`fusecurve=tlink curvemultiplier=40/50`, reproducing
+the pre-WP r4088-era RatedCurrent divisor) and the Recloser probe + Relay
+`state`/`normal` probe + `compare_eventlog` restored (dropped by WP-U2.2/U2.3
+while the tiers were version-split). The classic three-tier fuse-save race
+(backup relay → midline recloser → lateral fuse) now runs end-to-end on the
+version-consistent r4133 chain, two-process-determinant + live-compared vs
+oddie:r4133 (controls live gate 96→**98**). Also fixed a **pre-existing** oracle
+capture bug uncovered here: `capture_eventlog` returned a lone `['﻿']` for
+an EMPTY Oddie event log (Delphi BOM) and BOM-glued the first record — which made
+`recloser_temp`/etc. r4133 event-log compares RED on this machine; now the BOM is
+stripped per line so empty→`[]` and line-0 matches the BOM-free Rust log. The
+`Standing open follow-ups` combo-restore entry is retired. **Audit fixes
+(2026-07-17):** meter/monitor oracle compare RE-ENABLED on both decks
+(`check_meters_monitors: true`) — the harness `compare_monitor` now normalizes
+the Delphi monitor-CSV header artifact (leading-space + trailing-empty columns,
+`['V1',' VAngle1',…,'']`) so the Oddie r4133 header compares against the clean
+dss_capi/Rust header without weakening the channel-count/value asserts. Verified
+against oddie:r4133: EnergyMeter registers match (duty mode → 0 / -1e50 drag-hand
+sentinel, identical on both engines) and the mode-0 V/I monitor channels match
+the already-pinned full-model trajectory. The product-side monitor-header
+normalization (what the Rust engine *emits*) remains WP-U1.5 E1 scope; this is a
+test-comparator normalization only.
+
+**Prior frontier — Rung 2 wave 2 MERGED: WP-U2.3 (Relay r4133
+per-phase rewrite) landed on `update`** via a port→audit→fix worktree chain
+(wt-u23, opus-audited, major finding fixed in-branch; full mandatory gate
+green, 47/47 suites). The delta's largest unit (Controls/Relay.pas
+r4088→r4133) ported loop-for-loop: per-phase StateArray for type=current
+(SinglePhTrip/Lockout, phase-proxy queue), VoltageLogic closed-phase OV/UV
+(B2), CTRL_RESET opcount-only (D4), inst single-count (D3), props 50→71 with
+15 aliases + Normal/State arrays. Two upstream bugs reproduced with
+TODO(compat), oracle-verified (unconditional `Debug Sample` event line;
+reset events logged as `Recloser.<name>`); the r4133 source-vs-binary
+voltage/current-reclose-default divergence settled empirically for the BINARY
+(oracle-authoritative). Audit fix: Normal/State/Action discrete parse is
+first-char-only (`o`/`c`, else keep) per r4133 `InterpretRelayState` — the
+0.14.5 `trip`→open alias dropped, re-proven on oddie:r4133. 9 relay controls
+decks + 8 vendored Distance/TD21 decks flipped to `oracle:"r4133"`;
+relay_current 0.14.5 golden retired; relay.json props golden regenerated (74
+props, self-referential regression pin — noted as such). INFRA: the missing
+Oddie r4133 venv created from vendored wheels (was blocking the whole r4133
+channel). solvable_now **292/329** (59NRelayDemo → `skipped_needs_investigation`:
+its ~7e-4 open-point voltage-relay residual is now **DECOMPOSED** — a real
+`state_size` phase-count port bug (fixed on wt-59n) plus a proven chaotic
+pole-slip floor; see the WP-U2.6 59N record below). Wave 1 (WP-U2.1
+Fuse / U2.2 Recloser / U2.4 SwtControl+batchedit-where) merged earlier the
+same day; Rung 1 EXITED 2026-07-16. Integration branch is `update` (pushed to
+origin); main untouched until an explicit merge request. **Next: WP-U2.5
+(protection report/log surface — incl. r4133 relay/recloser help-catalog +
+dump3 `[Relay]` unmasking, per-phase `[closed,...]` renders, Save round-trip),
+then WP-U2.6 (rung exit: r4133 ASSERT sweep + combo-deck restores +
+59NRelayDemo decomposition — **59N done on wt-59n: `state_size` phase-count port
+bug fixed + chaotic pole-slip floor proven; see the WP-U2.6 record**).**
+
+**Deferred to the §6 sweep** (documented, was never rung-blocking; now also a
+plan-wide exit criterion in `UPGRADE_PLAN.md` §5): JSON/Dump golden surface
+flip to capi015 + dropping the Wires→"Conductors" JSON masquerade
+(gen_json.py is hard-pinned to the 0.14.5 oracle; HIDE_015X retained on the
+0.15.x-only Line/LineGeometry props — see DIVERGENCES §Conductors).
+
+**PARKED TEST — RESOLVED (2026-07-16, branch wt-coverage):**
+`circuit::coverage::tests::refine_bus_levels_reports_paths_on_radial` is
+un-ignored and green. Root cause was the **test harness, not the port**: the
+test passed its whole 8-line deck string to a single `Dss::command` call —
+`command` is Pascal `ProcessCommand` (ONE command line), so everything after
+`new circuit.covtest …` became extra parameters of that command (the trailing
+`bus1=b5` from load ld2 landed on the Vsource; no lines were ever created).
+`CalcIncMatrix_O` on that 1-bus circuit yields `Inc_Mat_Cols=["b5"]`,
+`levels=[0]`: every traced path covers 0, the coverage plateau is 0, and the
+state machine's sole exit (Circuit.pas:909, "changed AND >= Coverage") can then
+never fire — a genuine, upstream-faithful degenerate-input nontermination fed
+by a corrupted circuit. Fed line-by-line, the port terminates instantly and
+bit-matches the official r3723 engine (Oddie probe 2026-07-16, both variants
+< 50 µs): `set coverage=0.5` → "0 new paths detected", `Actual_Coverage =
+0.666666666666667`; default 0.9 → "2 new paths detected", `Actual_Coverage =
+1`. Both are now pinned in the tests (including the `get coverage` strings).
+The second old hypothesis ("0.9 default unreachable, plateau 5/6") was also
+disproven: `Buses_Covered` entries are bus-index SPANS whose sum overshoots
+`Sys_Size` (r3723 reaches 1.0); the function's NOTE(upstream-quirk) was
+corrected accordingly. See the WP-COV-PARKED record in §UPGRADE.
+
+**AD dispositions — `off:unclassified-new-deck` bucket (2026-07-12):** at the
+part2→update integration merge, every deck added after the WP-AD.4 sweep
+(9 skipped-sweep promotions in `ad_sweep.json` + 63 new family decks: windgen,
+U1.3 invcontrol, LINE-DEEP, coverage waves) received the explicit pending
+disposition `off:unclassified-new-deck` (allowlisted in `AD_OFF_REASONS` with
+the same note). This is a declared backlog, not a measured verdict — a
+follow-up classification round runs DSS_AD_CLASSIFY/DSS_AD_DECOMPOSE over the
+bucket and retires the reason.

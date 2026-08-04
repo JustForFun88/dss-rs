@@ -214,3 +214,317 @@ agreement). Two `low` notes, each settled empirically:
   behavior change beyond the P1b mandate and blind to the unproven Pascal
   semantics; deferred to the main-P1 / registry-fidelity pass alongside the
   `relay_action`/`relay_state` `default_value = CTRL_STATE_KEEP` family.
+
+
+---
+
+> Appended verbatim from `STATUS.md` on 2026-08-05 (STATUS.md history archiving);
+> order preserved, nothing rewritten.
+
+### DE_PASCALIZE P1-tail (5/n) — four small self-contained families + the P1-tail escape record (branch `depas-p1p3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Closes most of deferred item **7-residue**.
+
+| family | new enum | discriminants (proven) |
+|---|---|---|
+| Generator `DispatchMode` | **`GenDispatchMode`** (`pc/generator/mod.rs`) | `Generator.pas:436-437`: Default=0, LoadLevel=1 (`LOADMODE`), Price=2 (`PRICEMODE`) → `Generator: Dispatch Mode` `[0,1,2]` |
+| ESPVLControl `Ftype` | **`EspvlControlType`** (`control/espvl_control/mod.rs`) | `ESPVLControl.pas:82`: Unset=0, SystemController=1, LocalController=2 → `ESPVLControl: Type` `[1,2]` |
+| LoadShape `interpolation` | **`LoadShapeInterp`** (`general/load_shape/mod.rs`) | `TLoadShapeInterp`, `LoadShape.pas:293-295`: Avg=0, Edge=1 → `LoadShape: Interpolation` `[0,1]` |
+| ExpControl `FPendingChange` | **`ExpPendingChange`** (`control/exp_control/mod.rs`) | `ExpControl.pas:169-170`: None=0, ChangeVarLevel=1 (queue codes, not a `DssEnum`) |
+
+Four pin tests, one per family. `EspvlControlType::Unset` is a **real** state, not
+a placeholder: `Create` zero-inits `Ftype := 0`, which is deliberately outside the
+registry's `[1, 2]` so the dump renders `''` — the variant keeps that observable.
+`ExpDispatchEnv::push_change` now takes `ExpPendingChange` and `.ordinal()`s at the
+`ControlQueue` seam (same pattern as `InvPendingChange` / `StorageCtrlAction`);
+`set_pending_change` still writes `DblTraceParameter := Value` as
+`value.ordinal() as f64`, bit-identical.
+
+Conversions here were done with **explicit** string replacements only — see the
+record 4/n note on why a bulk identifier rename is unsafe in this codebase.
+Re-verified with the same mechanical string-literal diff vs `634aac9`: the only
+deltas are new test-assertion messages, `"state {}" → "state {:?}"` (the field is
+now `Debug`, not `Display`), `"Monte2 LOGNORMAL…" → "…LogNormal…"` (a test message)
+and new doc prose. **Zero** runtime/user-visible strings changed — no `push_error`,
+event-log or report text anywhere in the wave.
+
+## P1-tail escape record — what is still open
+
+Left as raw `i32`, deliberately, with the reason. None was partially touched.
+
+1. **Relay / CapControl present+normal `state` ordinals** (`CTRL_NONE=0` …
+   `CTRL_UNLOCK=5` + `CTRL_STATE_KEEP = i32::MIN`, `control_elem.rs:23-36`). This is
+   the shared `EControlAction` channel across SwtControl / Fuse / Recloser / Relay /
+   CapControl **and** the `relay_action`/`relay_state`/`fuse_*`/`recloser_*`/
+   `swt_control_*` registry families, several of which map two different `DssEnum`s
+   onto one field. `CTRL_STATE_KEEP = i32::MIN` is a *sentinel outside every*
+   registry (the "leave as is" default value), so the enum needs a `Keep` variant
+   plus the six actions, and every one of the five control classes converts in the
+   same commit or the family is half-done. Out of this step's safe blast radius
+   after the wave already grew to 68 files; deferred as one dedicated unit.
+   **CLOSED 2026-07-26 by the W3.1 record at the top of this file** (branch
+   `depas-final`): the shared `ControlAction` enum, all five classes in one
+   commit, `Keep` + `Other(i32)` for the two out-of-`EControlAction` values.
+2. **Item 8 — the remaining bare-`i32` `DssEnum` fields**: `reactor.spec_type` /
+   `capacitor.spec_type` (a *derived* code written by six different property side
+   effects, with `_` fall-throughs in three `match`es in `reactor/solve.rs`),
+   `vsource.{z_spec_type, scan_type, sequence_type}`, `vs_converter.f_mode`,
+   `energymeter.ocp_device_type` (the `== 0` "unset" sentinel plus the
+   reliability-report ripple the P1 record already flagged).
+   **CLOSED 2026-07-26 by the two W3.2 records at the top of this file**
+   (branch `depas-final`): (a) `ReactorSpecType` + `CapacitorSpecType`, seven
+   `_` fall-throughs eliminated; (b) the shared `ScanType`/`SequenceType` across
+   **three** classes (VSource / Isource / GICLine — the pair is a shared
+   `DssEnum`, so this listing's VSource-only scope understated it),
+   `VsourceZSpec`, `VscMode` and `OcpDeviceType` (whose `Unset = 0` sentinel is
+   a `#[default]` variant, keeping the zero-allocation semantics exactly).
+3. **Item 10 (Tier-2) — `DynamicExp` RPN token sentinels** (`CONST_CODE = 50001`,
+   `EQ_MARK = -50` in the token stream). These are *payload-carrying* codes (a token
+   is either an opcode, a variable index, or a constant index offset by
+   `CONST_CODE`), so the faithful model is a payload enum over the whole token
+   stream — a real refactor of the evaluator, not a field retype. Not started.
+   **CLOSED 2026-07-26 by the W3.3 record at the top of this file** (branch
+   `depas-final`): `DynToken`/`DynOp`/`Lexeme`/`VarRef` in a new
+   `dynamic_exp/tokens.rs`; `cmds: Vec<i32>` → `Vec<DynToken>`, both sentinels
+   gone from the engine (they survive only in the `#[cfg(test)]` `ordinal()`
+   encoding the unit tests pin the compiled stream against).
+
+Everything else from `docs/phase-records/depascalize-p1.md` §Deferred is closed by
+records 1/n-5/n: items **1, 2, 3, 4, 5, 6, 9** in full, item **7** except the
+`CTRL_*` state channel, and the `SolveMode` name collision (already resolved by
+P1 itself as `DynSolveMode`).
+
+**Gate:** fmt · clippy `-D warnings` · `cargo test --workspace` (corpus gate, both
+channels) — green; `tests/corpus` pristine; goldens untouched; `TODO(compat)` 117.
+
+### DE_PASCALIZE P1-tail (4/n) — Storage `f_state` + StorageController modes/fleet-state + the control-queue action-code seam (branch `depas-p1p3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Closes deferred item **5** — deferred as one unit
+because the storage state ordinals are pushed through the *generic* control-queue
+`i32` action channel.
+
+| family | new enum | discriminants (proven) |
+|---|---|---|
+| `TStorageObj.FState` / `.state_desired` / `StorageSnap.state` / `StorageController.fleet_state` | **`StorageState`** (`elements/pc/storage/mod.rs`) | `Storage.pas:35-37`: Charging=-1, Idling=0, Discharging=1, **+ `Other(i32)`** → `Storage: State` `DssEnum` `[-1,0,1]` |
+| `DischargeMode` / `ChargeMode` | **`StorageCtrlMode`** (`storage_controller/mod.rs`) | `StorageController.pas:268-276`: Follow=1, LoadShape=2, Support=3, Time=4, PeakShave=5, Schedule=6, PeakShaveLow=7, CurrentPeakShave=8, CurrentPeakShaveLow=9 |
+| `RELEASE_INHIBIT` queue code | **`StorageCtrlAction`** | `StorageController.pas:279`: ReleaseInhibit=999 |
+
+**Why `StorageState` carries a payload.** Upstream declares `FState: Integer`
+(`Storage.pas:269`) and `TStorageObj.Set_Variable`'s state channel writes
+`Fstate := Trunc(Value)` **unguarded** (`Storage.pas:3135`) — a script can put any
+integer in the field. A closed 3-variant enum would silently drop those, so
+`StorageState::Other(i32)` keeps `ordinal()`/`from_ordinal` total and mutually
+inverse (the `MonPhase` precedent from record 2/n). Pinned by three tests:
+`storage_state_pins_enum_ordinals`,
+`storage_state_round_trips_every_out_of_set_ordinal`, and a **behavioral**
+`set_variable_state_stores_out_of_set_values_verbatim` (drives
+`set_variable(2, 7.9)` and asserts `Other(7)` reads back as `7`).
+
+**One enum for both mode fields.** `ModeDischarge=` and `ModeCharge=` are two
+separate `DssEnum`s over one shared Pascal ordinal space (`[5,1,3,2,4,6,8]` and
+`[2,4,7,9]`), so a single `StorageCtrlMode` covers both fields and each `Sample`
+arm names the ordinals *its* mode rejects — the pre-enum `_ => push_error("Invalid
+DisCharging/Charging Mode: {}")` arms become the explicit complements
+(`PeakShaveLow | CurrentPeakShaveLow` for discharge; `Follow | Support | PeakShave
+| Schedule | CurrentPeakShave` for charge), with the message still formatting the
+raw `.ordinal()` so the diagnostic text is byte-identical.
+`storage_ctrl_mode_and_action_pin_pascal_ordinals` asserts every value of *both*
+registry lists resolves.
+
+**The control-queue seam (the item-5 rider).** `ControlQueue`'s `code: i32` stays
+`i32` — it is genuinely class-polymorphic — and each class converts at its own
+push/pop boundary (the P1b `RegControlAction` precedent):
+`StorageDispatchEnv::push_immediate(StorageState)` (upstream really does push the
+storage-state ordinal as the immediate re-solve marker) and
+`push_release_inhibit` emit `.ordinal()`; `do_pending_action(code: i32)` keeps the
+raw popped code and tests `StorageCtrlAction::from_ordinal(code) ==
+Some(ReleaseInhibit)`, so the `StorageState` markers on the same queue are ignored
+exactly as before. `set_state`/`set_state_desired`/`der_storage_state` are now
+`StorageState`-typed.
+
+**Two `TODO(compat)` sites preserved verbatim.** `DoLoadFollowMode` /
+`DoPeakShaveModeLow` reproduce Pascal's `if not FleetState = STORE_IDLING` operator-
+precedence bug (bitwise-NOT of an integer, so it fires only for `STORE_CHARGING`).
+They now read `(!self.fleet_state.ordinal()) == StorageState::Idling.ordinal()` —
+the same integer arithmetic on the same values, tag and comment untouched.
+`TODO(compat)` count still **117**.
+
+### Corpus-gate catch, recorded (why this record exists at all)
+
+The **first** full-gate run of the InvControl wave (record 3/n) came back with
+**10 failing `controls:invcontrol/*` cases**, every one an *event-log text*
+mismatch (e.g. `Action=INVCONTROLMODE::VOLTVAR MODE REQUESTED…` vs
+`Action=VOLTVAR MODE REQUESTED…`). Cause: the bulk identifier rename that
+converted the constants also rewrote the **string literals** of the Pascal
+`AppendToEventLog` messages (20 literals in `inv_control/compute.rs`, 2 in its
+tests). Fixed by restoring every literal, then re-verified with a mechanical
+string-literal diff of **all** changed files against the wave base `634aac9` — the
+multiset of literals per file is now identical to the base everywhere. Five
+Pascal-citing *comments* (`if FState <> STORE_DISCHARGING`, `STORE_CHARGING = -1`,
+the CIM `BatteryStateKind` doc) were restored to their Pascal spelling for the
+same reason.
+
+Nothing shipped with the corruption: the failure was found by the gate before any
+commit, and both waves are committed only after a clean run.
+
+**Gate:** fmt · clippy `-D warnings` · `cargo test --workspace` (corpus gate,
+both channels) — green; `tests/corpus` pristine; goldens untouched.
+
+### DE_PASCALIZE P1-tail (3/n) — the InvControl family (6 enums) + the shared DER `VarMode` (branch `depas-p1p3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Closes deferred items **4** and **6** — the P1 record's
+"largest if-else family", deferred as one unit precisely because its internal
+comparisons drive the `der_set_modes`/`der_set_var_mode` env channel shared with the
+DER var-mode field.
+
+| family | new enum | discriminants (Pascal → registry) |
+|---|---|---|
+| `ControlMode` (`Mode=`) | **`InvControlMode`** | `TInvControlControlMode`, `InvControl.pas:119-128` (`{$Z4}` int32): NoneMode=0, VoltVar=1, VoltWatt=2, Drc=3, WattPf=4, WattVar=5, Avr=6, Gfm=7 → `InvControl: Control Mode` `[1..7]` |
+| `CombiMode` | **`InvCombiMode`** | `:131-135`: NoneCombMode=0, VvVw=1, VvDrc=2 → `InvControl: Combi Mode` `[1,2]` |
+| `RateofChangeMode` | **`RateOfChangeMode`** | `ERateofChangeMode`, `:143-147`: Inactive=0, Lpf=1, RiseFall=2 → `InvControl: Rate-of-change Mode` `[0,1,2]` |
+| `FPendingChange` | **`InvPendingChange`** | `:407-411`: None=0, ChangeVarLevel=1, ChangeWattLevel=2, ChangeWattVarLevel=3, ChangeDrcVVarLevel=4 (queue action codes — not a `DssEnum`) |
+| `FReacPower_ref` | **`ReacPowerRef`** | `:404-405`: VarAval=0, VarMax=1 → `InvControl: Reactive Power Reference` `[0,1]` |
+| `CtrlModel` | **`InvControlModel`** | `TInvControlModel`, `:137-140`: Linear=0, Exponential=1 → `InvControl: Control Model` `[0,1]` |
+| DER `varMode` (`InvBasedPceData`) | **`VarMode`** (`elements/pc/inv_based_pce.rs`) | `PVsystem.pas:32-33`: Pf=0, Kvar=1 (the identical pair in `Storage.pas`) |
+
+Two pin tests: `invcontrol_enums_pin_pascal_and_registry_ordinals` (all six, each
+ordinal + `from_ordinal` inverse + the out-of-range `None` + the `Create` defaults)
+and `var_mode_pins_pascal_ordinals`.
+
+**Channel changes (the reason items 4+6 had to land together).**
+`InvDispatchEnv::der_set_modes(.., var_mode: VarMode)` and `der_set_var_mode(_,
+VarMode)`; `ExpDispatchEnv::pv_set_var_mode(_, VarMode)`;
+`InvDispatchEnv::push_change(delay, InvPendingChange)`. The **generic
+`ControlQueue` action-code channel stays `i32`** — it is genuinely
+class-polymorphic — so the conversion happens at each class's own push/pop seam,
+exactly the P1b `RegControlAction` precedent: `push_change`'s impl in
+`solution/controls/dispatch.rs` calls `code.ordinal()` into `queue.push_delay`.
+The `pub(crate) const VARMODE_PF/VARMODE_KVAR` pairs in **both** `pvsystem/mod.rs`
+and `storage/mod.rs` are gone (they were duplicate declarations of the same
+Pascal constant).
+
+**One structural simplification, disclosed.** `Sample`'s mode gate was
+
+```
+if combi != NONE_COMBMODE { if combi != VV_VW && combi != VV_DRC { Err(not_ported) } }
+else { match control_mode { <all 8 ordinals> => {} , _ => Err(not_ported) } }
+```
+
+The `_ =>` arm of that inner `match` listed **every** `TInvControlControlMode`
+value, so it was already unreachable for any in-range ordinal; with the closed
+enum it is `unreachable_patterns` (a clippy `-D warnings` error). It is folded to
+the single combi test, and a comment records that every control mode is ported.
+`not_ported_mode()`'s message still formats the raw ordinals (`.ordinal()`), so
+the error text is byte-identical.
+
+`validate_xy_curve(.., mode: InvControlMode)`'s `_ => {}` likewise became the
+explicit five non-checked variants; `InvPendingChange` is `pub` (like
+`RegControlAction`) because it appears on the `pub f_pending_change` field.
+
+CIM boundary (`cim/ieee1547.rs`, `cim/export.rs`) keeps its `i32` snapshot
+fields and takes `.ordinal()` — no writer change.
+
+**Gate:** fmt · clippy `-D warnings` · `cargo test --workspace` (corpus gate
+included) — green; `tests/corpus` pristine; goldens untouched; `TODO(compat)` 117.
+
+### DE_PASCALIZE P1-tail (2/n) — the shared `MonPhase` hybrid enum kills four sentinel-triple copies (branch `depas-p1p3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Closes deferred item **9**. Four control classes each
+carried a private copy of the *same* `AVGPHASES=-1 / MAXPHASE=-2 / MINPHASE=-3`
+sentinel triple; all four resolve to the one `MonPhaseEnum`
+(`obj/dss_enum/registry/control.rs`, **`hybrid = true`**, values `[-3,-2,-1]`).
+
+New module `elements/control/mon_phase.rs` → `pub enum MonPhase { Avg, Max, Min,
+Phase(i32) }`, re-exported as `elements::control::MonPhase`. Discriminants proven
+against `CapControl.pas:230-232` **and** `StorageController.pas:38-40` (identical
+triple) and against the registry values.
+
+**Why a payload variant.** The backing `DssEnum` is `hybrid`: a token that does
+not match `min`/`max`/`avg` is parsed as an *integer* and stored verbatim (a
+1-based phase number). A closed 3-variant enum would silently drop those, so
+`MonPhase::Phase(i32)` carries the raw ordinal and `ordinal()`/`from_ordinal()`
+are **total and mutually inverse over all of `i32`** — the property boundary
+round-trips byte-for-byte exactly as the pre-enum bare field did. Two pin tests:
+`mon_phase_pins_enum_ordinals` (the three sentinels) and
+`mon_phase_round_trips_every_non_sentinel_ordinal` (totality, incl. `0`, `-4`,
+`±1000`, and that *only* `-1/-2/-3` are non-`Phase`).
+
+| field retyped | file | old private consts removed |
+|---|---|---|
+| `CapControl.fct_phase` / `.fpt_phase` | `cap_control/{mod,accessors,control_loop,tests}.rs` | `AVGPHASES`/`MAXPHASE`/`MINPHASE` |
+| `RegControl.fpt_phase` | `reg_control/{mod,accessors,control_loop}.rs` | `MAXPHASE`/`MINPHASE` |
+| `InvControl.mon_buses_phase` | `inv_control/{mod,accessors,compute,tests}.rs` | `AVGPHASES`/`MAXPHASE`/`MINPHASE` |
+| `StorageController.f_mon_phase` (+ `StorageDispatchEnv::control_power`/`control_current` signatures) | `storage_controller/{mod,accessors,tests}.rs`, `solution/controls/dispatch.rs` | `AVG`/`MAXPHASE`/`MINPHASE` |
+
+**The one semantic subtlety, handled explicitly.** RegControl's own registry
+entry (`RegControl: Phase Selection`) has **no `avg`** — only `min`/`max` + the
+integer fallback — so its `get_control_voltage` `_ =>` arm used to absorb an
+`Avg` (-1) ordinal as `(-1-1).max(0) = 0` (phase 0). The converted match keeps
+that exactly: the specific-phase arm is `MonPhase::Avg | MonPhase::Phase(_)` and
+still computes `(self.fpt_phase.ordinal() - 1).max(0)`. Every other converted
+match is a straight 1:1 arm rename, and the two 1-based indexers
+(`cbuffer[(p as usize) - 1]`, `cd.iterminal[(p - 1) as usize]`) now bind the
+payload instead of casting the field — identical arithmetic, plus the upstream
+0-based-`cBuffer` MonBus quirk left verbatim (`cbuffer.get(p as usize)`).
+
+Validation writes (`if f_*_phase.ordinal() > nphases { … = MonPhase::Phase(1) }`)
+are unchanged in effect: the sentinels are negative, so they never trip the
+bound, exactly as before.
+
+**Gate:** fmt · clippy `-D warnings` · `cargo test --workspace` (corpus gate
+included) — green; `tests/corpus` pristine; goldens untouched; `TODO(compat)` 117.
+
+### DE_PASCALIZE P1-tail (1/n) — the solution enum trio: `ControlMode` / `LoadSolutionModel` / `RandomType` (branch `depas-p1p3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Base = `update` @ `634aac9`. Ritual 0 held (186 `.pas`
+under `.inputs/dss_capi`; `cargo` = the rustup MSVC `.cargo\bin` one). Closes items
+**1-3** of the `docs/phase-records/depascalize-p1.md` §Deferred list — the three
+`Solution` fields that were bare `i32` const-chains threaded through the control
+subsystem, every PC element's `SysCtx`, and the MonteCarlo drivers.
+
+| Deferred item | New enum | Location | Discriminants (proven) | Pin test |
+|---|---|---|---|---|
+| 1 Solution `control_mode`/`default_control_mode` | **`ControlMode`** | `solution/solution/state.rs` | ControlsOff=-1, Static=0, EventDriven=1, TimeDriven=2, MultiRate=3 | `control_mode_pins_enum_ordinals` |
+| 2 Solution `load_model`/`default_load_model` + `SysCtx.load_model` | **`LoadSolutionModel`** | same | PowerFlow=1, Admittance=2 | `load_solution_model_pins_enum_ordinals` |
+| 3 Solution `random_type` | **`RandomType`** | same | None=0, Gaussian=1, Uniform=2, LogNormal=3 | `random_type_pins_enum_ordinals` |
+
+Every discriminant proven **twice**: against the Pascal (`DSSGlobals.pas:99-103`
+control modes, `:90-91` load model, `:106-108` random) **and** against the `DssEnum`
+registry values in `obj/dss_enum/registry/solution.rs` (`Control Mode` `[-1,0,1,2,3]`,
+`Load Solution Model` `[1,2]`, `Random Type` `[0,1,2,3]`). The `ADMITTANCE` /
+`POWERFLOW` / `GAUSSIAN` / `UNIFORM` / `LOGNORMAL` / `CONTROLSOFF` / `CTRLSTATIC` /
+`EVENTDRIVEN` / `TIMEDRIVEN` / `MULTIRATE` `pub const`s are **gone**; `i32` now
+survives only at the `Set`/`Get`/dump/JSON boundary (`ordinal()` out,
+`from_ordinal().unwrap_or(current)` in — the P1 boundary pattern).
+
+**Naming decision.** The solution-side load model is `LoadSolutionModel`, not
+`LoadModel`: the Load element already owns a `LoadModel` enum (`Model=`
+ConstPQ/ConstZ/…). The registry's own label is literally "Load Solution Model".
+
+**Signature ripples (all bit-neutral; exhaustive matches replace the old `_ =>`):**
+`Load::randomize(RandomType, …)` / `Fault::randomize(RandomType, …)` /
+`draw_load_multiplier(…, RandomType, …)` / `randomize_all_loads`; `CtrlCtx.control_mode`,
+the `ExpDispatchEnv::control_mode() -> ControlMode` trait method + `ExpDispEnv` impl,
+`FaultStatusCtx.control_mode`; `SysCtx.load_model`. Wildcard arms that previously
+swallowed the unlisted ordinals became explicit final variants
+(`ControlMode::ControlsOff => {}` in `do_control_actions`,
+`RandomType::None | RandomType::LogNormal => {}` in `draw_load_multiplier`,
+`ControlMode::Static | ControlMode::ControlsOff => return false` in
+`Fault::check_status`) — the swallowed set is identical because each enum is closed
+over exactly the old const set.
+
+**Fenced-file ripples (for the merge coordinator).** The retype forced a mechanical
+one-token `.ordinal()` at the enum→`ordinal_to_string` boundary in two files the
+sibling `depas-og2` worktree owns: `exec/report.rs:1367` (1 line) and
+`report/export/json/circuit.rs` (3 lines). No logic touched in either.
+
+**Test-side note (disclosed).** `exp_control/tests.rs` carried a local
+`const TIMEDRIVEN: i32 = 1` — mislabeled (1 is EVENTDRIVEN). It is replaced by
+`ControlMode::TimeDriven` (2). Behaviorally identical: every ExpControl comparison is
+`== / != CTRLSTATIC` and both ordinals are non-static; the const is removed with a
+comment recording the correction.
+
+**Gate:** `cargo fmt --all --check` · `clippy --workspace --all-targets -D warnings` ·
+`cargo test --workspace` (unified corpus gate included) — all green; `tests/corpus`
+pristine (run artifacts removed by exact name); goldens untouched; `TODO(compat)`
+still **117**.
