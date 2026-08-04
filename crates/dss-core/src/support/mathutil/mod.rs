@@ -202,13 +202,15 @@ pub fn quasi_log_normal(mean: f64, rand: impl FnMut() -> f64) -> f64 {
 
 /// Sample mean and standard deviation (Pascal `RCDMeanAndStdDev`).
 pub fn mean_and_std_dev(data: &[f64]) -> (f64, f64) {
-    // A one-element sample has no spread. The Pascal code nevertheless returns
-    // the point *itself* as the "standard deviation" (it falls through to the
-    // `Mean` assignment and never clears `StdDev`) — the Stage F
-    // `stddev_single_point` row: reproduced in the parity lane, `0.0` in the
-    // default lane. Same at the three siblings below.
+    // A one-element sample has no spread, so its standard deviation is `0.0`.
+    // Upstream's single-point branch returns the point *itself* — a copy of the
+    // line above it with only the left-hand name changed
+    // (`StdDev := Data^[1];`, r4133 `Version8/Source/Shared/mathutil.pas:405`,
+    // == `.inputs/dss_capi/src/Shared/mathutil.pas:323`) — which reports 100 %
+    // spread where there is none. Both gating oracles carry it; neither lane
+    // reproduces it. Same at the three siblings below.
     if data.len() == 1 {
-        return (data[0], compat::stddev_single_point(data[0]));
+        return (data[0], 0.0);
     }
     let n = data.len() as f64;
     let mean = data.iter().sum::<f64>() / n;
@@ -225,12 +227,11 @@ pub fn mean_and_std_dev(data: &[f64]) -> (f64, f64) {
 /// rounding step verified bit-exact against an FPC 3.2.2 x86_64 probe
 /// (ppcrossx64; `tools/fpc/single_prec_probe.pas`).
 pub fn mean_and_std_dev_single(data: &[f32]) -> (f64, f64) {
-    // Single-point sample — see `mean_and_std_dev`.
+    // Single-point sample — see `mean_and_std_dev` (upstream's twin of the same
+    // slip: `.inputs/dss_capi/src/Shared/mathutil.pas:349`; r4133 has no
+    // single-precision procedure).
     if data.len() == 1 {
-        return (
-            f64::from(data[0]),
-            compat::stddev_single_point(f64::from(data[0])),
-        );
+        return (f64::from(data[0]), 0.0);
     }
     let n = data.len() as f64;
     let mean = data.iter().map(|&d| f64::from(d)).sum::<f64>() / n;
@@ -254,12 +255,10 @@ pub fn mean_and_std_dev_single(data: &[f32]) -> (f64, f64) {
 pub fn curve_mean_and_std_dev_single(y: &[f32], x: &[f32]) -> (f64, f64) {
     let n = y.len();
     debug_assert_eq!(x.len(), n);
-    // Single-point curve — see `mean_and_std_dev`.
+    // Single-point curve — see `mean_and_std_dev` (upstream twin:
+    // `.inputs/dss_capi/src/Shared/mathutil.pas:398`).
     if n == 1 {
-        return (
-            f64::from(y[0]),
-            compat::stddev_single_point(f64::from(y[0])),
-        );
+        return (f64::from(y[0]), 0.0);
     }
     let mut s = 0.0f64;
     for i in 0..n - 1 {
@@ -283,9 +282,11 @@ pub fn curve_mean_and_std_dev_single(y: &[f32], x: &[f32]) -> (f64, f64) {
 pub fn curve_mean_and_std_dev(y: &[f64], x: &[f64]) -> (f64, f64) {
     let n = y.len();
     debug_assert_eq!(x.len(), n);
-    // Single-point curve — see `mean_and_std_dev`.
+    // Single-point curve — see `mean_and_std_dev` (upstream twin: r4133
+    // `Version8/Source/Shared/mathutil.pas:429` == `.inputs/dss_capi/src/
+    // Shared/mathutil.pas:370`).
     if n == 1 {
-        return (y[0], compat::stddev_single_point(y[0]));
+        return (y[0], 0.0);
     }
     let mut s = 0.0;
     for i in 0..n - 1 {

@@ -445,17 +445,20 @@ fn csvfile_through_executive_matches_oracle() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// The observable end of the Stage F `stddev_single_point` row: a one-point
-/// shape's `stddev` property, read the way a deck reads it.
+// EXPECTED-VALUE-PIN(stddev_single_point): the observable end — the property a
+// deck reads — pinned unconditionally.
+/// A one-point shape's `stddev` property, read the way a deck reads it: `0` in
+/// both lanes, because one sample has no spread.
 ///
-/// The parity lane prints the upstream quirk (`stddev` = the single multiplier
-/// itself — 0.4), the default lane prints `0` because one sample has no
-/// spread. `mean` is 0.4 in both lanes, so a broken accessor cannot fake
-/// either result. `npts=1` shapes are real corpus input (`epri_dpv/{J1,K1,M1}`
-/// load shapes), which is why the divergence gets a deck-level pin and not
-/// only a unit-level one.
+/// Upstream prints the multiplier itself (0.4) — `StdDev := Data^[1];`, r4133
+/// `Version8/Source/Shared/mathutil.pas:405`, identical in the pinned dss_capi
+/// 0.14.5 (`:323`) — which is not reproduced (GOLDEN_REBASE G2.1a;
+/// `issue-11`). `mean` is 0.4, so a broken accessor cannot fake the result by
+/// returning nothing. `npts=1` shapes are real corpus input
+/// (`epri_dpv/{J1,K1,M1}` load shapes), which is why the fix gets a deck-level
+/// pin and not only a unit-level one.
 #[test]
-fn single_point_shape_stddev_property_is_the_lane_kernel() {
+fn single_point_shape_stddev_property_is_zero() {
     use crate::exec::Dss;
     let mut dss = Dss::new();
     dss.command("clear");
@@ -466,12 +469,7 @@ fn single_point_shape_stddev_property_is_the_lane_kernel() {
     dss.command("? LoadShape.one.mean");
     assert_eq!(dss.result(), "0.4");
     dss.command("? LoadShape.one.stddev");
-    let expected = if crate::compat::ORACLE_PARITY {
-        "0.4"
-    } else {
-        "0"
-    };
-    assert_eq!(dss.result(), expected);
+    assert_eq!(dss.result(), "0");
 }
 
 /// A missing CSV file is Pascal error 613 (recorded, edit continues).

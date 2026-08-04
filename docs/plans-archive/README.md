@@ -2,8 +2,9 @@
 
 Moved here 2026-07-18. Each plan below completed **100 % of its own declared
 work-package scope** and is gate-green; they are frozen history, superseded only by the
-code and tests. Their condensed STATUS records live in `STATUS.md` §1a ("Archived —
-completed plan records"); per-phase execution logs are in `docs/phase-records/`.
+code and tests. Their condensed STATUS records live in `docs/phase-records/era-summaries.md`
+§1a ("Archived — completed plan records", moved out of `STATUS.md` by the 2026-08-05
+archiving); per-phase execution logs are in `docs/phase-records/`.
 
 | Plan | Scope | Status |
 |---|---|---|

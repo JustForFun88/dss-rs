@@ -3835,31 +3835,43 @@ fn export_meters_append_accumulates() {
     });
 }
 
-/// The Storage `/m` per-element file name is the Stage F single-site quirk
-/// `compat::STORAGE_MULTIFILE_USES_THE_PV_PREFIX`.
+// EXPECTED-VALUE-PIN(STORAGE_MULTIFILE_USES_THE_PV_PREFIX): `Export
+// Storage_Meters /m` names its per-element files `EXP_STORAGE_<NAME>.csv` in
+// both lanes — asserted as a file that exists, a PVSystem-prefixed one that
+// does not, and rows still byte-equal to the single-file golden.
+/// `Export Storage_Meters /m` writes `EXP_STORAGE_<NAME>.csv` — in **both**
+/// lanes.
 ///
-/// `WriteMultipleStorageMeterFiles` (`ExportResults.pas:2240`) was cloned from
-/// the PVSystem writer and kept its `'EXP_PV_'` literal, so upstream writes a
-/// Storage fleet's registers into `EXP_PV_<NAME>.csv` — colliding with the
-/// PVSystem export's own files in the same directory. The parity lane
-/// reproduces it; the default lane uses `EXP_STORAGE_`, the prefix the
-/// single-file sibling of the very same command (`EXP_STORAGEMeters.csv`)
-/// already implies.
+/// Upstream writes `EXP_PV_<NAME>.csv`: `WriteMultipleStorageMeterFiles`
+/// (`.inputs/dss_capi/src/Common/ExportResults.pas:2240`; r4133
+/// `Version8/Source/Common/ExportResults.pas:2280` — the live line; the
+/// `Storage2` twin repeats it at `:2335` but is inert, inside the `(*` … `*)`
+/// block spanning `:2314-:2368`) was cloned from
+/// `WriteMultiplePVSystemMeterFiles` (`:2095`) and kept its `'EXP_PV_'`
+/// literal, so a Storage fleet's registers land in the
+/// PVSystem export's own files. The multi-file writer emits a header only when
+/// the file does not yet exist and otherwise **appends** (`:2242`), so a
+/// PVSystem and a Storage sharing a name (legal — names are unique per class)
+/// interleave their rows under whichever class's header was written first.
+/// Both gating oracles carry it; neither lane reproduces it
+/// (`GOLDEN_REBASE_PLAN.md` G2.1f; `issue-20`).
 ///
-/// Asserted against `compat::ORACLE_PARITY` so both builds pin a name, and the
-/// *other* name is asserted absent in each — the quirk cannot silently drift in
-/// either direction. The rows are compared against the oracle-anchored
-/// single-file golden in both lanes: only the file name is lane-split.
+/// That the fixed prefix is `EXP_STORAGE_` and not some third spelling is not a
+/// choice: the *same command's* single-file mode already writes
+/// `EXP_STORAGEMeters.csv` (`ExportOptions.pas:411`), distinct from
+/// `EXP_PVMeters.csv` (`:409`), and every other class carries its own prefix
+/// (`EXP_MTR_`, `EXP_GEN_`).
+///
+/// Both names are asserted — the expected one present, the upstream one absent
+/// — so the prefix cannot drift in either direction, and the produced rows are
+/// compared against the oracle-anchored single-file golden
+/// `tests/golden/reports/export_storage_meters.txt`: only the *file name*
+/// changed, the payload is untouched.
 #[test]
-fn export_storage_multifile_prefix_is_lane_split() {
+fn export_storage_multifile_uses_the_storage_prefix() {
     let single = {
         let p = reports_dir().join("export_storage_meters.txt");
         std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
-    };
-    let (expected, forbidden) = if dss_core::compat::ORACLE_PARITY {
-        ("EXP_PV_ST1.csv", "EXP_STORAGE_ST1.csv")
-    } else {
-        ("EXP_STORAGE_ST1.csv", "EXP_PV_ST1.csv")
     };
     with_register_fixture(
         "export_storage_meters",
@@ -3869,15 +3881,16 @@ fn export_storage_multifile_prefix_is_lane_split() {
             assert!(dss.errors().is_empty(), "{:?}", dss.errors());
             assert_eq!(dss.last_result_file(), "/m");
 
-            let want = scratch.join(expected);
+            let want = scratch.join("EXP_STORAGE_ST1.csv");
             assert!(
                 want.is_file(),
-                "storage /m must write {expected} in this lane (parity = {})",
-                dss_core::compat::ORACLE_PARITY
+                "storage /m must write EXP_STORAGE_ST1.csv — the prefix the \
+                 single-file sibling (EXP_STORAGEMeters.csv) already implies"
             );
             assert!(
-                !scratch.join(forbidden).exists(),
-                "storage /m must NOT also write {forbidden}"
+                !scratch.join("EXP_PV_ST1.csv").exists(),
+                "storage /m must NOT write EXP_PV_ST1.csv — that is upstream's \
+                 cloned PVSystem literal, which neither lane reproduces"
             );
             let multi = std::fs::read_to_string(&want)
                 .unwrap_or_else(|e| panic!("read {}: {e}", want.display()));
@@ -6628,24 +6641,30 @@ fn query_indmach012_pf_empty_after_solve() {
     assert_eq!(dss.result(), "");
 }
 
-/// The Stage F `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING` row, pinned by
-/// expected value in both lanes.
+// EXPECTED-VALUE-PIN(SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING): an undefined
+// rating renders as 0 % in both lanes, and a defined one still renders its
+// loading.
+/// `Export SeqCurrents` prints `0` in the `%Normal`/`%Emergency` columns of an
+/// element whose rating is not positive.
 ///
-/// `ExportResults.pas:409-414` seeds `iNormal := NormAmps` and only
-/// *overwrites* it with `I1/NormAmps*100` when the rating is `> 0`, so upstream
-/// leaks a non-positive rating straight into a column whose header says
-/// "percent": `normamps=-1` prints `-1`, `normamps=0` prints `0`. **Parity
-/// lane**: the raw rating. **Default lane**: `0` — an undefined rating is not a
-/// percentage.
+/// Upstream prints the rating itself: `CalcAndWriteSeqCurrents` seeds
+/// `iNormal := NormAmps` and only *overwrites* it with `I1/NormAmps*100` when
+/// the rating is `> 0` (`.inputs/dss_capi/src/Common/ExportResults.pas:409-414`;
+/// r4133 `Version8/Source/Common/ExportResults.pas:355-358` is the same four
+/// lines), so a column headed "percent" reports `normamps=-1` as a loading of
+/// −1 %. `normamps=0` is the one input on which the two readings agree, which
+/// is why the negative rating is what this deck is built around. Both gating
+/// oracles carry the quirk; neither lane reproduces it (`GOLDEN_REBASE_PLAN.md`
+/// G2.1c; `issue-12`).
 ///
 /// The site was marked "unpinnable" for the whole port because every element on
 /// IEEE13 is rated positively; this deck rates one line negatively on purpose,
-/// which is why no committed golden and no gated corpus case moves with the
-/// flip. The positively-rated control line in the same deck proves the normal
-/// path is untouched in both lanes.
+/// which is why no committed golden and no gated corpus case moved when the
+/// parity lane stopped reproducing it. The positively-rated control line in the
+/// same deck proves the normal percentage path is untouched.
 #[test]
-fn export_seqcurrents_nonpositive_rating_is_the_lane_kernel() {
-    let scratch = scratch_dir("seqcurrents_rating_lane");
+fn export_seqcurrents_prints_zero_for_an_undefined_rating() {
+    let scratch = scratch_dir("seqcurrents_rating");
     let mut dss = Dss::new();
     dss.command(&format!("set datapath=\"{}\"", scratch.display()));
     dss.command("clear");
@@ -6659,7 +6678,19 @@ fn export_seqcurrents_nonpositive_rating_is_the_lane_kernel() {
         "new line.good bus1=b bus2=c length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 \
          c1=0 c0=0 normamps=400 emergamps=600",
     );
-    dss.command("new load.ld bus1=c phases=3 kv=12.47 kw=500 pf=0.95 model=1");
+    // The boundary: an unset (zero) rating is the input on which the upstream
+    // reading and the fixed one coincide, and this line sits in series ahead of
+    // the load, so it carries current. That is what makes it the line which
+    // kills a guard relaxed to `>=` or dropped altogether — either one divides
+    // by the undefined rating and renders an infinity where `0` is asserted.
+    // `Line.bad` kills the complementary mutation, a sign-blind rewrite such as
+    // `rating.abs()`, which would report its −1 A rating as a loading of +1 %
+    // (and passes on this line, since `abs(0)` is still not `> 0`).
+    dss.command(
+        "new line.zero bus1=c bus2=d length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 \
+         c1=0 c0=0 normamps=0 emergamps=0",
+    );
+    dss.command("new load.ld bus1=d phases=3 kv=12.47 kw=500 pf=0.95 model=1");
     dss.command("set voltagebases=[12.47]");
     dss.command("calcvoltagebases");
     dss.command("solve");
@@ -6686,29 +6717,33 @@ fn export_seqcurrents_nonpositive_rating_is_the_lane_kernel() {
         )
     };
 
-    // Derived from the *lane*, never from the row's own alias
-    // (`SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING`): reading the alias on both
-    // sides makes the pin assert engine-agrees-with-declaration, so a silent
-    // revert of the flip passes (reproduced, F-settle W4).
-    let parity = dss_core::compat::ORACLE_PARITY;
+    // One expected value, asserted in both lanes: `-1`/`-2` here would be the
+    // upstream reading leaking back in.
     let (bad_n, bad_e) = row("Line.bad");
     assert_eq!(
         (bad_n, bad_e),
-        if parity { (-1.0, -2.0) } else { (0.0, 0.0) },
-        "parity reproduces the raw non-positive rating (ExportResults.pas:409-414); \
-         the default lane prints 0 for an undefined rating"
+        (0.0, 0.0),
+        "a non-positive rating is undefined, so its loading column prints 0 — \
+         printing the rating itself is the upstream quirk (ExportResults.pas:409-414)"
     );
 
-    // Control: a positively-rated element is a real percentage in BOTH lanes.
+    let (zero_n, zero_e) = row("Line.zero");
+    assert_eq!(
+        (zero_n, zero_e),
+        (0.0, 0.0),
+        "an unset rating prints 0 — the reading both the quirk and the fix share"
+    );
+
+    // Control: a positively-rated element still prints a real percentage.
     let (good_n, good_e) = row("Line.good");
     assert!(
         good_n > 0.0 && good_e > 0.0 && good_n > good_e,
-        "a rated element must still print I1/rating*100 in both lanes, got \
+        "a rated element must still print I1/rating*100, got \
          %Normal={good_n} %Emergency={good_e}"
     );
     // The report renders these to ~4 significant digits (`6.1` / `4.067`), so
-    // the ratio is checked at rendering precision — the lane assertion above is
-    // the exact one.
+    // the ratio is checked at rendering precision — the undefined-rating
+    // assertion above is the exact one.
     assert!(
         (good_n / good_e - 600.0 / 400.0).abs() < 1e-3,
         "%Normal/%Emergency must be emergamps/normamps = 1.5, got {good_n}/{good_e}"

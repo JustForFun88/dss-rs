@@ -525,24 +525,56 @@ impl LineConstants {
     /// `SetUserHeightUnit`: re-express the existing height offset in the new
     /// unit — i.e. keep the *number* the user typed and re-read it under the new
     /// unit (Pascal re-runs `SetHeightOffset(…)`, "This updates the existing
-    /// value to fit the new user units", `LineConstants.pas:694`).
+    /// value to fit the new user units", r4133
+    /// `Version8/Source/General/LineConstants.pas:689-696`; the height-offset
+    /// surface does not exist in the pinned 0.14.5 backend at all — grep its
+    /// 186 `.pas` for `FheightOffset`, no match — so its line numbers must not
+    /// be resolved against `.inputs/dss_capi`).
     ///
-    /// Which number is re-read is the lane row
-    /// [`crate::compat::HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD`]: upstream
-    /// feeds the *metres* field into a setter whose argument is a user-unit
-    /// value, the default lane feeds the typed number ([`Self::height_offset`],
-    /// read before the unit moves). Both are identical while the outgoing unit
-    /// is metres — which is every path that reaches here today; see the const's
-    /// doc.
+    /// Upstream re-reads the **wrong number**: it passes the `FheightOffset`
+    /// field, declared *"The height is always saved in meters here"* (`:71`,
+    /// `:97`), into `Set_FheightOffset` (`:676-687`), whose argument is a
+    /// *user-unit* value it multiplies by `To_Meters(new unit)` — so a metres
+    /// value is fed to a user-unit parameter and the same number is converted
+    /// twice (5 ft → 1.524 m, then re-read as 1.524 in). The number the comment
+    /// asks for is what `Get_FheightOffset` (`:396-399`) returns, i.e.
+    /// [`Self::height_offset`] read **before** the unit field moves — the fix is
+    /// the getter this class already has, called one statement earlier
+    /// (`GOLDEN_REBASE_PLAN.md` G2.1h; `issue-28`).
+    ///
+    /// The two readings coincide exactly when the **outgoing** unit is metres,
+    /// and nothing gated ever leaves that case — by two separate mechanisms, not
+    /// one. The only consumer is the Line → Carson push
+    /// `makeZFromGeometry`/`makeZFromSpacing`
+    /// (`line_geometry::matrix::set_line_constants_medium`), whose fixed order is
+    /// `SetHeightOffset` then `SetUserHeightUnit`. (a) The **first** push into a
+    /// freshly built engine finds the constructed `UNITS_M`, so
+    /// `From_Meters(m) = 1` and both readings re-apply the same number; the
+    /// spacing path rebuilds its throwaway geometry on every Z build
+    /// (`elements::pd::line::solve::make_z_from_spacing`), so it is always in
+    /// this case. (b) The geometry path keeps **one** engine for the life of the
+    /// Line's geometry snapshot (`elements::pd::line::code::fetch_geometry_code`
+    /// clones it; only a later `geometry=` replaces it), so every subsequent
+    /// push re-enters here carrying the *previous* build's unit — but with the
+    /// pushed unit unchanged unless the user edited `HeightUnit=` in between,
+    /// hence returning early at the guard below.
+    ///
+    /// The readings therefore part only after a user `Edit Line.<n> HeightUnit=`
+    /// followed by a rebuild — a frequency change, since the edit itself does not
+    /// invalidate `FZFrequency`
+    /// (`elements::pd::line::accessors::side_effects`) — which no golden and no
+    /// gated deck performs (measured: 5 typed under ft then re-read as inches is
+    /// 0.127 m here against upstream's compounded 0.0387 m). That change is
+    /// covered at this level by
+    /// `line_constants::tests::height_unit_change_rereads_the_typed_number`.
     pub fn set_user_height_unit(&mut self, value: i32) {
         if value == self.user_height_unit {
             return;
         }
-        let typed = if crate::compat::HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD {
-            self.height_offset
-        } else {
-            self.height_offset()
-        };
+        // The number the user typed, read under the *outgoing* unit — captured
+        // before the unit field moves, which is what makes it the typed number
+        // and not the stored metres.
+        let typed = self.height_offset();
         self.user_height_unit = value;
         self.set_height_offset(typed);
     }

@@ -172,33 +172,38 @@ fn mean_and_std_dev_basics() {
     assert!((s - (32.0f64 / 7.0).sqrt()).abs() < 1e-12);
 }
 
-/// The **deliberate divergence** of the Stage F `stddev_single_point` row, at
-/// all four entry points: the parity lane reproduces the upstream quirk (a
-/// one-element sample's "standard deviation" is the sample itself — Pascal
-/// assigns `Mean` and never clears `StdDev`), the default lane returns the
-/// mathematically correct `0.0`. The *mean* is the value in both lanes, so a
-/// lane cannot pass by returning nothing.
+// EXPECTED-VALUE-PIN(stddev_single_point): the four entry points, one
+// unconditional expected value per lane-free assertion.
+/// A one-element sample has **no spread**, at all four entry points, in both
+/// lanes.
 ///
-/// Expected values, not tolerances: `3.5` and `0.0` are pinned literally, and
-/// the two impls are asserted to disagree so neither branch is vacuous.
+/// Upstream's single-point branch assigns the mean and then repeats the same
+/// right-hand side into `StdDev` — `StdDev := Data^[1];`, r4133
+/// `Version8/Source/Shared/mathutil.pas:405` and `:429`, identical in the
+/// pinned dss_capi 0.14.5 (`:323`, `:349`, `:370`, `:398`) — so a `{3.5}`
+/// sample is reported as 100 % spread. Both gating oracles carry it and
+/// neither lane reproduces it (GOLDEN_REBASE G2.1a; `issue-11`).
+///
+/// Expected values, not tolerances: **both** out-params are pinned literally —
+/// the mean is the sample, the std-dev is `0.0` — so an entry point that
+/// returned nothing fails as loudly as one that repeats the sample. Four
+/// samples — zero plus three non-zero magnitudes, all exact in f32 so the
+/// single-precision pair is exact too — because the quirk is
+/// `StdDev := Data[1]`: it reproduces `0.0` for free on a zero sample and only
+/// shows on a non-zero one, so the zero sample alone would pin nothing.
 #[test]
-fn single_point_std_dev_is_the_lane_kernel() {
-    let expected = if crate::compat::ORACLE_PARITY {
-        3.5
-    } else {
-        0.0
-    };
-    assert_eq!(mean_and_std_dev(&[3.5]), (3.5, expected));
-    assert_eq!(mean_and_std_dev_single(&[3.5f32]), (3.5, expected));
-    assert_eq!(curve_mean_and_std_dev(&[3.5], &[0.0]), (3.5, expected));
-    assert_eq!(
-        curve_mean_and_std_dev_single(&[3.5f32], &[0.0f32]),
-        (3.5, expected)
-    );
-
-    // Non-vacuity: the two kernels really do disagree on this input.
-    assert_eq!(crate::compat::stddev_single_point_value_impl(3.5), 3.5);
-    assert_eq!(crate::compat::stddev_single_point_zero_impl(3.5), 0.0);
+fn single_point_std_dev_is_zero() {
+    for v in [0.0f64, 3.5, -12.25, 1.0e9] {
+        let s = v as f32;
+        assert_eq!(mean_and_std_dev(&[v]), (v, 0.0), "sample {v}");
+        assert_eq!(mean_and_std_dev_single(&[s]), (v, 0.0), "sample {v}");
+        assert_eq!(curve_mean_and_std_dev(&[v], &[0.0]), (v, 0.0), "curve {v}");
+        assert_eq!(
+            curve_mean_and_std_dev_single(&[s], &[0.0f32]),
+            (v, 0.0),
+            "curve {v}"
+        );
+    }
 }
 
 #[test]

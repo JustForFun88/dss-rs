@@ -833,19 +833,29 @@ solve";
     assert_eq!(dss.result().trim(), "notreal.dll");
 }
 
-/// The Stage F [`CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL`] row, pinned by
-/// expected value in both lanes.
+// EXPECTED-VALUE-PIN(CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL): `Like=` carries
+// the control signal over, in both lanes — name, reference and behaviour.
+/// `MakeLike` copies the `ControlSignal` reference, so a clone of a
+/// `type=Follow` CapControl follows the same shape the source does.
 ///
-/// `TCapControlObj.MakeLike` (`CapControl.pas:446-490`) copies every other
-/// reference and field — controlled/monitored element, both snapshots, the user
-/// model — but never `ctrlSignalShape` or its name, so a clone of a
-/// `type=Follow` CapControl has nothing to follow and aborts the solve on its
-/// first sample. **Parity lane**: the dropped reference, what both gating
-/// oracles reproduce. **Default lane**: copied, like every sibling field.
+/// Upstream drops it: `TCapControlObj.MakeLike`
+/// (`.inputs/dss_capi/src/Controls/CapControl.pas:445-489`) lists every other
+/// reference — controlled and monitored element, the user model, both
+/// snapshots — and never `ctrlSignalShape` (`:169`), so its clone has nothing
+/// to follow and aborts the solve on its first sample with message 10362.
+/// r4133 shares the omission (`Version8/Source/Controls/CapControl.pas:410-465`,
+/// field `myShapeObj` at `:76`) and copies the `PropertyValue` array on top
+/// (`:460`), which hides the loss from a property read while leaving the same
+/// dead controller. Both gating oracles carry it; neither lane reproduces it
+/// (GOLDEN_REBASE G2.1b; `issue-15`).
 ///
-/// [`CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL`]: crate::compat::CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL
+/// Expected values, not tolerances, and three of them, because the fix has
+/// three separable halves: the *name* (what `? CapControl.dst.ControlSignal`
+/// reports), the *reference* (what the FOLLOW arm dereferences), and the
+/// *consequence* — copying only the name would leave the clone aborting just
+/// the same.
 #[test]
-fn make_like_control_signal_is_the_lane_kernel() {
+fn make_like_copies_the_control_signal() {
     let mut src = CapControl::new("src");
     src.control_type = CapControlType::Follow;
     src.control_signal_name = "sig".to_string();
@@ -860,24 +870,83 @@ fn make_like_control_signal_is_the_lane_kernel() {
     assert_eq!(dst.pt_ratio, 77.0);
     assert_eq!(dst.control_type, CapControlType::Follow);
 
-    // Derived from the *lane*, never from the row's own alias — reading
-    // `CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL` on both sides would let a
-    // silent revert of the flip pass (reproduced, F-settle W4).
-    let parity = crate::compat::ORACLE_PARITY;
-    assert_eq!(
-        dst.control_signal_name,
-        if parity { "" } else { "sig" },
-        "parity reproduces MakeLike's dropped ControlSignal (CapControl.pas:445-489); \
-         the default lane copies it like every other reference"
-    );
-    assert_eq!(dst.ctrl_signal_shape.is_none(), parity);
+    assert_eq!(dst.control_signal_name, "sig");
+    assert!(dst.ctrl_signal_shape.is_some());
 
-    // The consequence, at the behavioral boundary: upstream's clone of a Follow
-    // CapControl aborts the solve; the default lane's clone follows the signal.
+    // The consequence, at the behavioral boundary: the clone samples its signal
+    // and arms the switch instead of aborting the solve.
     let mut cap = MockCap::one_step(false); // bank open → wants CLOSE on a 1.0 signal
     let mut mon = MockMon::new(3);
     let mut sc = Scratch::new();
     let abort = dst.sample(&mut cap, &mut mon, &mut sc.ctx(ControlMode::Static, 0, 0.0));
-    assert_eq!(abort, parity, "no ControlSignal ⇒ solution abort");
-    assert_eq!(dst.should_switch, !parity);
+    assert!(!abort, "a copied ControlSignal must not abort the solve");
+    assert!(dst.should_switch);
+    assert_eq!(dst.pending_change, ControlAction::Close);
+    assert!(sc.errors.is_empty(), "unexpected errors: {:?}", sc.errors);
+}
+
+// EXPECTED-VALUE-PIN(CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL): the same row at
+// the deck surface — `Like=` through the command layer, the property read a user
+// sees, and a solve that does not abort.
+/// The same row where a user meets it: `New CapControl.b Like=a` on a
+/// `type=Follow` controller.
+///
+/// The unit pin above calls `make_like` directly; this one drives the exec
+/// applier, so it also covers the property observable
+/// (`? CapControl.b.ControlSignal`, `accessors.rs` `CONTROLSIGNAL`) and the
+/// abort path the clone used to take — upstream's clone raises message 10362
+/// ("Type is set to \"Follow\", but not \"ControlSignal\" was provided.
+/// Aborting solution.") on the first sample, which is the error text this deck
+/// must *not* produce (GOLDEN_REBASE G2.1b; `issue-15`).
+#[test]
+fn like_on_a_follow_capcontrol_keeps_following() {
+    use crate::exec::Dss;
+    let deck = "\
+clear
+new circuit.t basekv=12.47 phases=3 bus1=sb R1=0.01 X1=0.03 R0=0.01 X0=0.03
+new line.l phases=3 bus1=sb bus2=b1 length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0
+new capacitor.c bus1=b1 phases=3 kv=12.47 kvar=600
+new loadshape.sig npts=1 interval=1 mult=[1.0]
+new capcontrol.a element=line.l terminal=1 capacitor=c type=follow ControlSignal=sig
+new capcontrol.b like=a
+set voltagebases=[12.47]
+calcvoltagebases
+solve";
+    let mut dss = Dss::new();
+    for line in deck.lines() {
+        let t = line.trim();
+        if !t.is_empty() {
+            dss.command(t);
+        }
+    }
+    // The reference survives the copy, read at the two places the FOLLOW arm's
+    // failure path writes: the message and `solution_abort`
+    // (`control_loop.rs:329-337` → `controls/dispatch.rs:975-977`). The flag is
+    // read **here**, before any further command: `Dss::command` clears it on
+    // every external entry (`exec/command.rs:41-50`, CAPI `Text_Set_Command`'s
+    // "Reset for commands entered from outside"), so the same assert placed
+    // after the query below would pass on a clone that did abort — measured.
+    assert!(
+        dss.circuit().is_some_and(|c| !c.solution.solution_abort),
+        "the clone aborted the solution: {:?}",
+        dss.error_texts()
+    );
+    assert!(
+        !dss.errors().iter().any(|d| d.code == Some(10362)),
+        "the clone lost its ControlSignal: {:?}",
+        dss.error_texts()
+    );
+    // …and so does the name, through the property a user reads.
+    dss.command("? capcontrol.b.ControlSignal");
+    assert_eq!(dss.result().trim(), "sig");
+    // Sanity, not discrimination: this 3-bus deck converges either way —
+    // `solve_snap` (`solution/solution/power_flow.rs:448-494`) never reads
+    // `solution_abort`, and `converged_flag` is set by the voltage-mismatch test
+    // alone (`solution/solution/state.rs::converged`). It is here so the pin
+    // fails loudly if the deck ever stops solving for an unrelated reason.
+    assert!(
+        dss.circuit().is_some_and(|c| c.solution.converged_flag),
+        "the deck must solve: {:?}",
+        dss.error_texts()
+    );
 }

@@ -801,7 +801,19 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// `Save <class>`'s reported path, Storage `MakePosSequence` bracketing, the
 /// `CktModel` ordinal and the Generator rating guards) — both lanes now take the
 /// authority's behaviour and each row keeps an unconditional expected-value pin.
-const SPLIT_ALIAS_POPULATION: usize = 31;
+/// **30** after `GOLDEN_REBASE_PLAN.md` G2.1a tore down `stddev_single_point`,
+/// the first of WP-G2's rows (a defect r4133 *does* share — see
+/// [`TORN_DOWN_ROWS`] for what each teardown leaves behind); **29** after G2.1b
+/// did the same to `CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL`; **28** after
+/// G2.1c did the same to `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING`; **27**
+/// after G2.1d did the same to `REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT`;
+/// **26** after G2.1e did the same to
+/// `STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL`; **25** after G2.1f
+/// did the same to `STORAGE_MULTIFILE_USES_THE_PV_PREFIX`; **24** after G2.1g
+/// did the same to `CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`; **23** after G2.1h did
+/// the same to `HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD`, the last of the
+/// G2.1 zero-footprint rows.
+const SPLIT_ALIAS_POPULATION: usize = 23;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -868,16 +880,39 @@ fn names_token(text: &str, token: &str) -> bool {
 /// A pin has to *branch on the lane*, or it pins one lane's value in both and
 /// the other lane's behavior is unasserted.
 ///
-/// The only accepted form is a read of the lane constant `ORACLE_PARITY`.
-/// Deriving the expectation from the row's **own** alias was accepted until
-/// F-settle W4 and is now rejected: engine and test then read the same
-/// constant, so the pin asserts "the engine agrees with the declaration" — true
-/// by construction whichever way the alias points. Flipping five such rows'
-/// `*_DEFAULT_IMPL` back to the parity value (a silently reverted fix) passed
-/// the entire workspace suite, in both lanes. No oracle gate can catch that
-/// class either: reverting the fix restores exactly what the oracles return.
+/// The accepted forms are a read of the lane constant `ORACLE_PARITY` or of the
+/// harness alias `lane::PARITY` — legitimate because `harness/lane.rs:78`
+/// defines `PARITY` as `cfg!(feature = "oracle-parity")` and asserts it equals
+/// `dss_core::compat::ORACLE_PARITY` (`lane.rs:795-796`), so reading it *is*
+/// reading the lane. Deriving the expectation from the row's **own** alias was
+/// accepted until F-settle W4 and is now rejected: engine and test then read
+/// the same constant, so the pin asserts "the engine agrees with the
+/// declaration" — true by construction whichever way the alias points. Flipping
+/// five such rows' `*_DEFAULT_IMPL` back to the parity value (a silently
+/// reverted fix) passed the entire workspace suite, in both lanes. No oracle
+/// gate can catch that class either: reverting the fix restores exactly what
+/// the oracles return.
+///
+/// The `lane::PARITY` spelling was added in G2.1f, which exposed the gap by
+/// deleting the last `ORACLE_PARITY` token in `tests/golden_reports.rs`: the
+/// walk matches per **file**, so three still-split rows pinned there through
+/// `lane::PARITY` alone (`IRESIDUAL_FROM_TERMINAL_1`,
+/// `BUS_INT_DURATION_WALKS_ALL_BUSES`, `FAULT_DUMP_TAIL_REPRINTS_MINAMPS`) had
+/// been credited by a *neighbouring* test's constant. Their pins do branch on
+/// the lane; only this predicate could not see how.
+///
+/// The second arm is the **qualified** path only, not the bare word
+/// [`reads_the_lane`] settles for (`:1657`). The two are not symmetric: there a
+/// loose match makes the caller *reject* more (a pin that still reads the lane
+/// fails the teardown check — fail-safe), here it makes the caller *accept*
+/// more, so an English `PARITY` in a comment would satisfy the rail. Two such
+/// comments exist in-tree (`tests/golden_reports.rs:1620`,
+/// `tests/corpus_gate/scheduler.rs:358`) while every real read is written
+/// `lane::PARITY` (`golden_reports.rs` ×15, `harness/mod.rs:1343`, `:2358`);
+/// `harness/lane.rs`, which uses the bare name because it declares it, names
+/// `ORACLE_PARITY` in that same assert and is credited by the first arm.
 fn branches_on_lane(text: &str, _alias: &str) -> bool {
-    names_token(text, "ORACLE_PARITY")
+    names_token(text, "ORACLE_PARITY") || names_token(text, "lane::PARITY")
 }
 
 /// `(alias, the impl each cfg arm selects)` for every lane-selected alias in the
@@ -1075,10 +1110,13 @@ fn every_lane_split_alias_is_pinned_by_an_expected_value_test() {
         "lane-split alias(es) with no expected-value pin: {unpinned:?}\n  A pin \
          is a test that (a) names the alias — in an assertion or in the doc \
          comment that says which row it pins — and (b) branches on the lane, \
-         either through `ORACLE_PARITY` or by reading `compat::<alias>`. \
-         Kernel-vs-kernel tests inside the compat module do not count: they \
-         assert the two impls against each other, not the observable a deck \
-         sees."
+         either through `compat::ORACLE_PARITY` or through the harness alias \
+         `lane::PARITY` (qualified — the bare word does not count). Deriving \
+         the expectation from the row's own `compat::<alias>` does NOT count \
+         either (F-settle W4): engine and test then read the same constant, so \
+         the pin holds whichever way the alias points. Kernel-vs-kernel tests \
+         inside the compat module do not count: they assert the two impls \
+         against each other, not the observable a deck sees."
     );
 
     // Non-vacuity of the *walk*, in both shapes a pin is allowed to take — a
@@ -1106,6 +1144,969 @@ fn every_lane_split_alias_is_pinned_by_an_expected_value_test() {
              shape of test file, fix the walk"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// The teardown register: the rows that LEFT the two censuses (GOLDEN_REBASE WP-G2)
+// ---------------------------------------------------------------------------
+
+/// Which census a torn-down row was counted by *before* it was torn down.
+///
+/// The two censuses above are decrements-only: a row leaves
+/// [`SPLIT_ALIAS_POPULATION`] when its alias stops selecting two different
+/// impls, and it leaves [`EXIT_POPULATION`]'s [`Escape::WholeCase`] bucket when
+/// its marker is resolved. Neither decrement says *where the fix went*, which is
+/// what [`TORN_DOWN_ROWS`] adds.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Kind {
+    /// A `compat::` alias whose two cfg arms selected different impls.
+    SplitAlias,
+    /// A surviving compat marker owned by [`Escape::WholeCase`] — the F.3
+    /// measurement priced its clean fix at a whole gated case's default-lane
+    /// oracle comparison, which WP-G2 pays with a ledger entry plus a pin.
+    WholeCase,
+}
+
+/// What, in the tree, still shows that a teardown actually landed.
+///
+/// A register of past events is only worth reading if it rots when the tree
+/// moves under it — the same reason [`ESCAPE_REGISTER`] and
+/// `tests/corpus/ledger.json` are checked fail-on-stale. The pin (below) proves
+/// the *behaviour*; this proves the *mechanism* the teardown left behind.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+// Only the variants WP-G2 has reached so far are constructed (`Site`, since
+// G2.1a); the rest are dead code until their first row. `expect` rather than
+// `allow` on purpose: the day the last variant gets its first row, this
+// attribute becomes unfulfilled and has to be deleted, instead of quietly
+// covering a variant that later goes unused for real.
+#[expect(dead_code)]
+enum Evidence {
+    /// `(file, distinctive slices)` — keyed exactly like [`ESCAPE_REGISTER`]:
+    /// the file must still contain **every** slice. The WP-G2 shape for a row
+    /// whose teardown made an **engine kernel** unconditional.
+    ///
+    /// The list is one entry per *site*, not per taste: a single row can carry
+    /// two writers (G2.1g's capacitor and load `grounded` kernels), and a row
+    /// anchored on only one of them lets the other be reverted with the
+    /// register still green — the row→tree direction
+    /// `GOLDEN_REBASE_PLAN.md` §G2.0(b) asks to mechanize would then cover half
+    /// the teardown. An empty list is refused for the same reason
+    /// [`Evidence::None`] is.
+    ///
+    /// The slice must be the unconditional **code**, not the comment that
+    /// explains it. [`ESCAPE_REGISTER`]'s slices are prose because what they
+    /// key is a *comment marker*; here the evidence is a kernel, and a
+    /// re-introduced alias would re-route the call while leaving any nearby
+    /// sentence — however carefully worded — matching.
+    ///
+    /// It must also **discriminate the torn-down state**, which is not
+    /// automatic. Where the fix replaced the call (G2.1a's
+    /// `return (data[0], 0.0);` did not exist while the alias did), the
+    /// statement is discriminating on its own. Where the fixed form is an
+    /// ordinary statement the *split* form also contained — the split merely
+    /// wrapped it in a lane branch, which is the common shape — the bare
+    /// statement matches both states and the check degrades to "the mechanism
+    /// was not deleted outright". Anchor those on the line break plus the
+    /// statement's top-level indentation (`"\n        self.x = …"`): re-wrapping
+    /// the copy in an `if` re-indents it, so the revert stops matching. The
+    /// leading `\n` matches an LF and a CRLF checkout alike (`\r\n` contains
+    /// `\n`), and `fs::read_to_string` does no normalization. If even that is
+    /// impossible for a row, say so in the row's comment and name the checks
+    /// that carry the discrimination instead (the census tie, the ghost check,
+    /// and the row's now-unconditional pin run in **both** lanes).
+    Site(&'static str, &'static [&'static str]),
+    /// `(file, distinctive slices)` for a **harness exclusion** made
+    /// unconditional — the same key and the same slice check as
+    /// [`Evidence::Site`], plus the obligation that the file carries the
+    /// `LANE-EXCLUSION` marker naming the row.
+    ///
+    /// The two are separate variants only because that obligation cannot be
+    /// guessed: `GOLDEN_REBASE_PLAN.md` §G2.0(b) asks for the marker convention
+    /// checked "both ways", and only the register knows which of its evidence
+    /// sites is an exclusion. A blanket requirement would be wrong — a row
+    /// whose fix touched no harness has no exclusion to mark — so the row says
+    /// which it is, and [`teardown_markers_and_the_register_agree`] holds it to
+    /// it.
+    Exclusion(&'static str, &'static [&'static str]),
+    /// The `id` of the `tests/corpus/ledger.json` entry that pins the
+    /// divergence the fix opened against an oracle channel — the shape G2.5's
+    /// engine fixes take, where the observable is a gated corpus case rather
+    /// than a source site.
+    Ledger(&'static str),
+    /// Nothing beyond the pin. Reserved for rows whose teardown leaves no
+    /// distinctive site and moves no oracle-compared number — WP-G4's
+    /// rendering rows (`GOLDEN_REBASE_PLAN.md` §WP-G4 preamble).
+    ///
+    /// **Rejected until then**, exactly like a missing pin: every WP-G2
+    /// teardown does leave a mechanism, so the first legitimate `None` row
+    /// lands by editing the assert that refuses it rather than by slipping
+    /// through a hole in it.
+    None,
+}
+
+/// Every row removed from a census above, with the proof the removal landed.
+///
+/// `(former row name, which census it left, evidence in the tree, the pin)`.
+///
+/// # Why a register and not just a smaller number
+///
+/// Both censuses are single integers, so "row X was torn down" and "row X was
+/// quietly stopped being counted" are the same edit. `GOLDEN_REBASE_PLAN.md`
+/// WP-G2 removes twenty split aliases and three `WholeCase` markers on the
+/// promise that each one's expected-value pin becomes *unconditional* — i.e.
+/// that the coverage moved rather than evaporated. That promise is exactly what
+/// nothing re-reads unless it is written down executably, so it is written here:
+/// the arithmetic ties below make a census decrement impossible without a row,
+/// and the checks make a row impossible without a pin that still exists.
+///
+/// Created **empty** in G2.0, before any deletion, so the first teardown commit
+/// has somewhere to land and the rails cannot be retro-fitted around whatever
+/// happened to be convenient.
+///
+/// The pin slot is an `Option` because WP-G4's rendering rows will carry none
+/// (plan §WP-G4: "the pin slot is mandatory only for WP-G2 bug rows"), but every
+/// row **this** WP adds must carry one, and the check below demands it of every
+/// row. Narrowing it is then a deliberate edit in the commit that lands the
+/// first pinless row — which is the register's whole point.
+const TORN_DOWN_ROWS: &[TornDownRow] = &[
+    // G2.1a. Upstream's single-point branch assigns the mean and repeats the
+    // same right-hand side into `StdDev` (r4133
+    // `Version8/Source/Shared/mathutil.pas:405`/`:429`, identical in the pinned
+    // dss_capi 0.14.5) — a `{3.5}` sample reported as 100 % spread. Both gating
+    // oracles carry it; the four `mathutil` entry points now return `0.0` in
+    // both lanes. Zero-footprint: no golden and no gated corpus case reads a
+    // one-point shape's std-dev, so nothing moved but the two pins.
+    (
+        "stddev_single_point",
+        Kind::SplitAlias,
+        // The slice is the unconditional *kernel*, not the comment that
+        // explains it: a revert re-routes this `return` through the alias while
+        // an explanatory sentence next to it can survive untouched. That is the
+        // anchor convention for every `Evidence::Site` row — point at code that
+        // exists only in the torn-down state. Here that is free (the split form
+        // called the alias on this very line); where it is not, see the
+        // indentation anchor documented on [`Evidence::Site`].
+        Evidence::Site(
+            "crates/dss-core/src/support/mathutil/mod.rs",
+            &["return (data[0], 0.0);"],
+        ),
+        Some((
+            "crates/dss-core/src/support/mathutil/tests.rs",
+            "single_point_std_dev_is_zero",
+        )),
+    ),
+    // G2.1b. `TCapControlObj.MakeLike` copies every reference a CapControl
+    // holds — controlled and monitored element, the user model, both snapshots
+    // — except the `ControlSignal` shape (`.inputs/dss_capi/src/Controls/
+    // CapControl.pas:445-489`, field `:169`; r4133 `Version8/Source/Controls/
+    // CapControl.pas:410-465`, field `myShapeObj` `:76`), so a clone of a
+    // `type=Follow` controller has nothing to follow and aborts the solve with
+    // message 10362. Both lanes now copy it. Zero-footprint: no golden and no
+    // gated corpus deck clones a Follow CapControl, so nothing moved but the
+    // pins.
+    (
+        "CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL",
+        Kind::SplitAlias,
+        // The copy itself. Unlike G2.1a's row the *fixed* form is an ordinary
+        // statement the split form also contained — the split only wrapped it in
+        // `if !compat::…` — so the bare statement would match a revert just as
+        // well. Hence the leading line break and the eight spaces of `make_like`'s
+        // own body: any re-wrapping in a lane branch indents the copy past this
+        // needle. Deleting it outright fails the same check, and a revert through
+        // a re-introduced alias additionally fails the census tie and the ghost
+        // check below.
+        Evidence::Site(
+            "crates/dss-core/src/elements/control/cap_control/accessors.rs",
+            &["\n        self.ctrl_signal_shape = other.ctrl_signal_shape.clone();"],
+        ),
+        Some((
+            "crates/dss-core/src/elements/control/cap_control/tests.rs",
+            "make_like_copies_the_control_signal",
+        )),
+    ),
+    // G2.1c. `CalcAndWriteSeqCurrents` seeds `iNormal := NormAmps` and
+    // overwrites that seed with `I1/NormAmps*100` only when the rating is `> 0`
+    // (`.inputs/dss_capi/src/Common/ExportResults.pas:409-414`; r4133
+    // `Version8/Source/Common/ExportResults.pas:355-358` is the same four
+    // lines), so a column headed "percent" reports `normamps=-1` as a loading
+    // of −1 %. Both gating oracles carry it; both lanes now print the `0` the
+    // report's own `else` arm already writes for every unrated row.
+    // Zero-footprint: no golden and no gated corpus deck rates an element
+    // negatively (at `normamps=0` the two readings coincide), so nothing moved
+    // but the pin.
+    (
+        "SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING",
+        Kind::SplitAlias,
+        // Both columns going through **one** kernel is the torn-down state: the
+        // split computed each of them inline with its own lane-branching
+        // fallback, so this call pair never existed while the alias did. The
+        // leading line break plus the sixteen spaces of the `do_ratings && j
+        // == 1` arm hold the indentation half of the anchor convention on
+        // [`Evidence::Site`]: re-wrapping the *pair* in a lane branch indents it
+        // past this needle.
+        //
+        // It does **not** discriminate every revert, and per that doc's last
+        // paragraph this row says so rather than over-claiming: a re-split
+        // written *inside* the closure (`} else if compat::… { rating }`) leaves
+        // this line byte-identical, and the whole-closure needle that would
+        // catch it is not available — the check is a plain `contains` over the
+        // file as checked out, and this repo checks Rust sources out with CRLF
+        // (`git ls-files --eol`), which only a **single**-line needle with a
+        // leading `\n` survives. For that shape the check degrades to "the
+        // kernel was not deleted outright" and the discrimination is carried by:
+        // the row's now-unconditional pin, which asserts `(0.0, 0.0)` for
+        // `Line.bad` in *both* lanes, so any lane branch that restores the
+        // upstream reading fails it wherever it is written; the ghost check
+        // below, which fails if this alias ever selects two impls again; and the
+        // census tie, which fails if the row leaves the register.
+        Evidence::Site(
+            "crates/dss-core/src/report/export/seq_currents.rs",
+            &["\n                (pct_of_rating(norm_amps), pct_of_rating(emerg_amps))"],
+        ),
+        Some((
+            "crates/dss-core/tests/golden_reports.rs",
+            "export_seqcurrents_prints_zero_for_an_undefined_rating",
+        )),
+    ),
+    // G2.1d. `DoReduceShortLines`' merge-with-parent branch opens its
+    // capacitor/reactor scan on `ParentNode.FirstShuntObject()` and advances it
+    // with `PresentBranch.NextShuntObject()`
+    // (`.inputs/dss_capi/src/Meters/ReduceAlgs.pas:200`/`:209`; r4133
+    // `Version8/Source/Meters/ReduceAlgs.pas:199`/`:206` is the same pair) — a
+    // cross-node cursor mix whose second list is already exhausted
+    // (`DSSPointerList.pas:88` leaves `ActiveItem` at the last `Add`), so the
+    // scan ends after ONE element and a capacitor at position ≥ 2 is merged
+    // onto another bus instead of blocking. Both gating oracles carry it; both
+    // lanes now scan the whole list, exactly as the merge-with-child branch of
+    // the same procedure (`:246-258`) always did. Zero-footprint: no golden and
+    // no gated corpus deck reduces a parent branch whose first shunt is not a
+    // capacitor while a later one is.
+    (
+        "REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT",
+        Kind::SplitAlias,
+        // The `any` was the split's *default* arm, so the bare call would match
+        // a revert; the needle therefore carries the line break, the twelve
+        // spaces of the merge-with-parent block, and the `if` that consumes the
+        // scan directly — the split bound it to `parent_blocked` from inside a
+        // 16-space `else`, so no lane-branching form of this code can match.
+        Evidence::Site(
+            "crates/dss-core/src/exec/reduce.rs",
+            &["\n            if parent_shunts.iter().any(|&s| self.red_is_cap_or_reactor(s)) {"],
+        ),
+        Some((
+            "crates/dss-core/src/exec/tests/reduce.rs",
+            "short_line_merge_scans_every_parent_shunt",
+        )),
+    ),
+    // G2.1e. Both of `TStorageControllerObj`'s terminal branches guard
+    // `SetFleetToIdle` with `if not FleetState = STORE_IDLING`
+    // (`.inputs/dss_capi/src/Controls/StorageController.pas:1350` "Ran out of
+    // OOMPH", `:1619` "Fully charged"; r4133
+    // `Version8/Source/Controls/StorageController.pas:1771`/`:2042` is the same
+    // unparenthesised pair). Object Pascal binds `not` tighter than `=` over the
+    // `Integer` field, so the guard is `(not FleetState) = 0` — true only for
+    // `STORE_CHARGING = -1`, i.e. never in the discharging state that reaches
+    // "Ran out of OOMPH": the fleet is left discharging at its old kW with no
+    // re-solve queued while the event log announces the idling anyway. Both
+    // gating oracles carry it; both lanes now ask `FleetState <> STORE_IDLING`,
+    // which is how the same unit spells the same test seven other times
+    // (`:872`, `:969`, `:994`, `:1162`, `:1252`, `:1450`, `:1515`).
+    // Zero-footprint: no golden and no gated corpus deck runs a fleet out of
+    // energy while discharging.
+    (
+        "STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL",
+        Kind::SplitAlias,
+        // The comparison was the split's *default* arm, so the bare expression
+        // would match a revert; the needle therefore carries the line break and
+        // the eight spaces of the function body, which is the whole of it, so
+        // the shape the alias actually had — the same expression at twelve
+        // spaces inside an `else` — stops matching.
+        //
+        // It does **not** discriminate every revert, and per the last paragraph
+        // of [`Evidence::Site`] this row says so rather than over-claiming: an
+        // early-return re-split (`if compat::… { return (!…) == …; }`, or the
+        // same with a `#[cfg]`-guarded `return`) leaves this statement at
+        // exactly these eight spaces while the lane branch is fully restored.
+        // The multi-line needle that would catch it is not available: the check
+        // is a plain `contains` over the file as checked out, and with
+        // `core.autocrlf=true` and no `*.rs` rule in `.gitattributes` a fresh
+        // checkout is CRLF, which only a single-line needle with a leading `\n`
+        // survives. For that shape the check degrades to "the kernel was not
+        // deleted outright" and the discrimination is carried by: the row's
+        // now-unconditional pin
+        // `fleet_idle_guard_fires_unless_the_fleet_is_already_idling`, which
+        // asserts the `Discharging` answer in *both* lanes, so a restored
+        // complement fails it wherever it is written; the ghost check below,
+        // which fails if this alias ever selects two impls again; and the
+        // census tie, which fails if the row leaves the register.
+        Evidence::Site(
+            "crates/dss-core/src/elements/control/storage_controller/compute.rs",
+            &["\n        self.fleet_state != StorageState::Idling"],
+        ),
+        Some((
+            "crates/dss-core/src/elements/control/storage_controller/tests.rs",
+            "fleet_idle_guard_fires_unless_the_fleet_is_already_idling",
+        )),
+    ),
+    // G2.1f. `WriteMultipleStorageMeterFiles` (`.inputs/dss_capi/src/Common/
+    // ExportResults.pas:2240`; r4133 `Version8/Source/Common/
+    // ExportResults.pas:2280` — the live line; the `Storage2` twin repeats it
+    // at `:2335` but is inert, sitting inside the `(*` … `*)` block that spans
+    // `:2314-:2368`) was cloned from `WriteMultiplePVSystemMeterFiles`
+    // (`:2095`) and kept its `'EXP_PV_'`
+    // literal, so `Export Storage_Meters /m` drops a Storage fleet's registers
+    // into the PVSystem export's own files — and because that writer emits a
+    // header only for a file that does not yet exist and otherwise appends
+    // (`:2242`), a same-named PVSystem and Storage interleave their rows under
+    // whichever class's header landed first. The same command's single-file
+    // mode already writes `EXP_STORAGEMeters.csv` (`ExportOptions.pas:411`)
+    // next to `EXP_PVMeters.csv` (`:409`), and `EXP_MTR_`/`EXP_GEN_` (`:1792`,
+    // `:1948`) show the one-prefix-per-class rule, so the fixed spelling is not
+    // a choice. Both gating oracles carry it; both lanes now write
+    // `EXP_STORAGE_`. Zero-footprint: only a *file name* moves — the rows are
+    // byte-identical (the pin still compares them against the oracle-anchored
+    // single-file golden), the single-file path is untouched, and no golden or
+    // gated corpus deck runs `Export Storage_Meters /m` at all.
+    (
+        "STORAGE_MULTIFILE_USES_THE_PV_PREFIX",
+        Kind::SplitAlias,
+        // The literal was the split's *default* arm, so the bare string would
+        // match a revert. The needle therefore carries the line break and the
+        // twenty spaces of the tuple element, plus the trailing comma: in the
+        // split form the same literal sat at the same depth as the tail
+        // expression of an `else` block — no comma — and the tuple's third
+        // element was the `prefix` binding. Re-introducing a lane branch cannot
+        // leave the literal as a comma-terminated tuple element. Single-line by
+        // necessity: this repo checks Rust sources out with CRLF, which no
+        // multi-line needle survives.
+        Evidence::Site(
+            "crates/dss-core/src/exec/report.rs",
+            &["\n                    \"EXP_STORAGE_\","],
+        ),
+        Some((
+            "crates/dss-core/tests/golden_reports.rs",
+            "export_storage_multifile_uses_the_storage_prefix",
+        )),
+    ),
+    // G2.1g. The CIM writer answers "is this wye point earthed?" with a
+    // hard-coded `TRUE` for a capacitor (`.inputs/dss_capi/src/Common/
+    // ExportCIMXML.pas:3700`; r4133 `Version8/Source/Common/
+    // ExportCIMXML.pas:3183`) and for a load (`:4478`; r4133 `:3854`), each
+    // under upstream's own `// TODO - check bus 2` — so a wye with an isolated
+    // or impedance-earthed neutral is handed to the receiving tool as solidly
+    // grounded, which changes its earth-fault and zero-sequence answers. The
+    // fix is the **same unit's** transformer writer's test
+    // (`XfmrTankPhasesAndGround` `:1531-1570`: `NodeRef[j2] = 0`, "last
+    // conductor is grounded solidly") applied where each shunt class keeps its
+    // neutral — the capacitor's second terminal, the load's `Nphases+1`-th
+    // conductor. Both gating oracles carry the quirk; both lanes now read the
+    // model. Zero-footprint, measured: no CIM golden deck and no gated corpus
+    // deck has a wye capacitor with an explicit `bus2=` or a wye load with a
+    // non-ground neutral, so all 15 CIM goldens stay byte-identical (the
+    // `lane_expected_cim` transform gained no third entry) and nothing moved
+    // but the pin.
+    (
+        "CIM_WYE_GROUNDED_IS_HARDCODED_TRUE",
+        Kind::SplitAlias,
+        // Both halves of this two-site row — the capacitor's terminal-2 reading
+        // and the load's neutral reading — get their own needle: the pin
+        // asserts both, but a register anchored on one of them would stay green
+        // while the other was reverted, and the row→tree direction is exactly
+        // what this register exists to mechanize.
+        //
+        // Each reading existed in the split form too, as the right operand of
+        // `alias ||`. The capacitor's was pushed onto its own line four spaces
+        // deeper by rustfmt's binary-operator wrap; the load's shared the line
+        // with `crate::compat::…` at this very indentation. So both needles
+        // carry the line break and the sixteen spaces of `boolean_node`'s own
+        // argument list plus the trailing comma: neither can match a line that
+        // begins with a lane branch, and deleting a reading outright fails the
+        // same check. Single-line by necessity (CRLF checkout).
+        Evidence::Site(
+            "crates/dss-core/src/cim/export.rs",
+            &[
+                "\n                snap.term2_nodes.iter().all(|&n| n == 0),",
+                "\n                snap.neutral_node == 0,",
+            ],
+        ),
+        Some((
+            "crates/dss-core/tests/golden_cim.rs",
+            "cim_wye_grounded_reads_the_neutral",
+        )),
+    ),
+    // G2.1h. A height-unit change on the Carson engine re-reads the offset
+    // under the new unit — and upstream re-reads the wrong number:
+    // `Set_FuserHeightUnit` moves the unit field and then calls
+    // `Set_FheightOffset(FheightOffset)` (r4133 `Version8/Source/General/
+    // LineConstants.pas:689-696`), passing a field declared "The height is
+    // always saved in meters here" (`:71`, `:97`) into a setter whose argument
+    // is a *user-unit* number it multiplies by `To_Meters` (`:676-687`), so the
+    // same number is converted twice (5 ft → 1.524 m → 1.524 in). The fix is
+    // the getter the class already has, called one statement earlier
+    // (`Get_FheightOffset`, `:396-399`). The height-offset surface does not
+    // exist in the pinned 0.14.5 backend at all (no `FheightOffset` in its 186
+    // `.pas`), so this row is cited against r4133 only and gates on the `r4133`
+    // channel. Zero-footprint, measured: the sole consumer
+    // (`line_geometry::matrix::set_line_constants_medium`) pushes into a
+    // freshly built engine at its constructed `UNITS_M` on the first build,
+    // where both readings coincide, and re-enters with the unit unchanged on
+    // every later build, where the setter returns early. The readings part only
+    // after an `Edit Line.<n> HeightUnit=` plus a rebuild, which no golden and
+    // no gated deck performs — so the gated deck
+    // `modes/upgrade/upgrade_linecs_heightoffset.dss` and every golden are
+    // byte-identical either way and nothing moved but the pin.
+    (
+        "HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD",
+        Kind::SplitAlias,
+        // The `self.height_offset()` read existed in the split form too — as
+        // the `else` arm of the lane branch, indented four spaces deeper and
+        // without the binding. The needle therefore carries the line break, the
+        // method body's own eight spaces and the `let typed =` binding the
+        // fixed form introduced: re-wrapping the read in a lane branch re-indents
+        // it and drops the binding, and deleting it outright fails the same
+        // check. Single-line by necessity (CRLF checkout).
+        Evidence::Site(
+            "crates/dss-core/src/support/line_constants/mod.rs",
+            &["\n        let typed = self.height_offset();"],
+        ),
+        Some((
+            "crates/dss-core/src/support/line_constants/tests.rs",
+            "height_unit_change_rereads_the_typed_number",
+        )),
+    ),
+];
+
+/// One row of [`TORN_DOWN_ROWS`]: `(former row name, which census it left,
+/// evidence in the tree, `Some((pin file, pin fn))`)`.
+type TornDownRow = (
+    &'static str,
+    Kind,
+    Evidence,
+    Option<(&'static str, &'static str)>,
+);
+
+/// [`SPLIT_ALIAS_POPULATION`] at the WP-G2 start line, the fixed point the
+/// register's arithmetic tie is anchored on (`4f977d9e`'s 31).
+const SPLIT_ALIASES_AT_WP_G2_START: usize = 31;
+
+/// The [`Escape::WholeCase`] bucket at the same start line.
+const WHOLE_CASE_MARKERS_AT_WP_G2_START: usize = 4;
+
+/// The comment marker that names a lane exclusion made unconditional by a
+/// teardown, assembled at runtime so this file does not carry a literal
+/// occurrence of its own needle (the [`compat_tag`] trick). Spelled out for
+/// humans in `TESTING.md` §"Precision-compat rows still split by lane".
+fn exclusion_marker() -> String {
+    format!("LANE-EXCLUSIO{}(", "N")
+}
+
+/// The comment marker that names a torn-down row's expected-value pin. Same
+/// runtime assembly, same reason.
+fn pin_marker() -> String {
+    format!("EXPECTED-VALUE-PI{}(", "N")
+}
+
+/// One teardown marker: `(marker, row, file, line)`.
+type TeardownMarker = (String, String, String, usize);
+
+/// Every teardown marker in the tree, plus the malformed occurrences.
+///
+/// Shape — `// <marker>(<row>): <why>` — is the [`markers_in_tree`] discipline
+/// applied to the second kind of comment this plan introduces: the tag marks a
+/// site that *reproduces* an upstream inexactness, these mark the sites where
+/// one stopped. Malformed occurrences are returned rather than ignored, so a
+/// typo cannot silently drop a site out of the register.
+fn teardown_markers(root: &Path) -> (Vec<TeardownMarker>, Vec<String>) {
+    let markers = [exclusion_marker(), pin_marker()];
+    let mut out = Vec::new();
+    let mut malformed = Vec::new();
+
+    for path in rust_sources(root) {
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        if !markers.iter().any(|m| text.contains(m)) {
+            continue;
+        }
+        let rel = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        for (i, line) in text.lines().enumerate() {
+            for marker in &markers {
+                for (col, _) in line.match_indices(marker.as_str()) {
+                    let before = &line[..col];
+                    let after = &line[col + marker.len()..];
+                    let row = after.chars().take_while(|c| *c != ')').collect::<String>();
+                    let closed = after[row.len()..].starts_with("):");
+                    if !before.contains("//") || row.trim().is_empty() || !closed {
+                        malformed.push(format!("    {rel}:{}: {}", i + 1, line.trim()));
+                        continue;
+                    }
+                    out.push((
+                        marker.trim_end_matches('(').to_string(),
+                        row.trim().to_string(),
+                        rel.clone(),
+                        i + 1,
+                    ));
+                }
+            }
+        }
+    }
+    (out, malformed)
+}
+
+/// The brace-balanced block starting at the `{` at byte `open`.
+///
+/// A five-state scanner rather than a brace count, because the bodies it is
+/// pointed at are *test* bodies: they hold deck text in raw strings, `assert!`
+/// messages with `{}` placeholders, and commented-out code, any of which
+/// unbalances a naive count and would silently hand back the rest of the file.
+fn balanced_block(text: &str, open: usize) -> Option<&str> {
+    let b = text.as_bytes();
+    let ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let mut i = open;
+    let mut depth = 0usize;
+
+    while i < b.len() {
+        match b[i] {
+            b'{' => {
+                depth += 1;
+                i += 1;
+            }
+            b'}' => {
+                depth = depth.checked_sub(1)?;
+                i += 1;
+                if depth == 0 {
+                    return Some(&text[open..i]);
+                }
+            }
+            b'/' if b.get(i + 1) == Some(&b'/') => {
+                i = text[i..].find('\n').map_or(b.len(), |n| i + n + 1);
+            }
+            b'/' if b.get(i + 1) == Some(&b'*') => {
+                i = text[i + 2..].find("*/").map_or(b.len(), |n| i + n + 4);
+            }
+            // A raw string: `r"…"`, `r#"…"#`, `br##"…"##`, … The `r` must not
+            // be the tail of an identifier, or `for"` would start one.
+            b'r' | b'b'
+                if !i
+                    .checked_sub(1)
+                    .and_then(|p| b.get(p))
+                    .copied()
+                    .is_some_and(ident) =>
+            {
+                let mut j = i;
+                if b[j] == b'b' {
+                    j += 1;
+                }
+                if b.get(j) != Some(&b'r') {
+                    i += 1;
+                    continue;
+                }
+                j += 1;
+                let hashes = b[j..].iter().take_while(|c| **c == b'#').count();
+                if b.get(j + hashes) != Some(&b'"') {
+                    i += 1;
+                    continue;
+                }
+                let close = format!("\"{}", "#".repeat(hashes));
+                let from = j + hashes + 1;
+                i = text[from..]
+                    .find(&close)
+                    .map_or(b.len(), |n| from + n + close.len());
+            }
+            b'"' => {
+                i += 1;
+                while i < b.len() && b[i] != b'"' {
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+                i += 1;
+            }
+            // A char literal — but `'a` in `&'a str` is a lifetime, and eating
+            // to the next quote there would swallow the body.
+            b'\'' if b.get(i + 1) == Some(&b'\\') || b.get(i + 2) == Some(&b'\'') => {
+                i += 1;
+                while i < b.len() && b[i] != b'\'' {
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// The spelling by which `body` still branches on the lane, if it does.
+///
+/// Three, and the third is why this is a function: the engine constant
+/// `ORACLE_PARITY`, the cfg itself, and the **harness** constant
+/// `harness::lane::PARITY` (`lane.rs:78`, `cfg!(feature = …)`), which is how the
+/// integration tests that hold most of the exclusion-flavoured pins —
+/// `golden_reports.rs` above all — read the lane. A check that knew only the
+/// first would wave through exactly the pins WP-G2's largest sub-steps produce.
+fn reads_the_lane(body: &str) -> Option<&'static str> {
+    if names_token(body, "ORACLE_PARITY") {
+        return Some("ORACLE_PARITY");
+    }
+    if names_token(body, "PARITY") {
+        return Some("lane::PARITY");
+    }
+    body.contains(&needle()).then_some("the lane cfg")
+}
+
+/// The body of the `#[test] fn <func>` **declaration** inside `region`.
+///
+/// `None` when the region merely *mentions* the name. That distinction is the
+/// point: a bare-token match is satisfied by a leftover `// superseded by
+/// <func>` comment sitting where the test used to be, so the register would go
+/// on reporting a pin that no longer runs. The attribute is required the same
+/// way [`test_region`] requires one — an unattributed helper asserts nothing on
+/// its own.
+fn test_fn_body<'a>(region: &'a str, func: &str) -> Option<&'a str> {
+    let ident = |c: char| c.is_alphanumeric() || c == '_';
+    let mut from = 0usize;
+
+    while let Some(rel) = region[from..].find("fn ") {
+        let at = from + rel;
+        from = at + 3;
+        let name: String = region[at + 3..].chars().take_while(|c| ident(*c)).collect();
+        if name != func {
+            continue;
+        }
+        let head = &region[..at];
+        // The nearest `#[test]` above must belong to *this* fn: no other `fn`
+        // may sit between the two.
+        let Some(attr) = head.rfind("#[test]") else {
+            continue;
+        };
+        if head[attr..].contains("fn ") {
+            continue;
+        }
+        let sig = at + 3 + name.len();
+        let open = sig + region[sig..].find('{')?;
+        return balanced_block(region, open);
+    }
+    None
+}
+
+/// Every torn-down row keeps its pin, its evidence, and its census arithmetic.
+///
+/// Six independent ways the record could rot, all checked:
+///
+/// 1. **The pin is gone.** A teardown's contract is that the row's
+///    expected-value test survives it — the named test must still be *declared*
+///    ([`test_fn_body`], not a bare mention), in a real test region, in a file
+///    that could pin anything ([`is_pin_candidate`]: not a compat module's
+///    kernel-vs-kernel test, not this bookkeeping file).
+/// 2. **The pin is still conditional.** The contract is not "a test with that
+///    name exists" but "it became *unconditional*" — one expected value
+///    asserted in both lanes. A pin that still reads the lane in any of
+///    [`reads_the_lane`]'s three spellings can assert nothing on one side, and
+///    once the row leaves the census
+///    [`every_lane_split_alias_is_pinned_by_an_expected_value_test`] stops
+///    looking at it, so nothing else would notice. Checked on the pin's own
+///    body, not its file: files like `exec/tests/compat_quirks.rs` legitimately
+///    hold *still-split* rows' lane-branching pins next door.
+/// 3. **The mechanism is gone.** An [`Evidence::Site`]/[`Evidence::Exclusion`]
+///    slice that no longer matches means the unconditional kernel or exclusion
+///    was reverted or reworded; an [`Evidence::Ledger`] id that no longer
+///    exists means the divergence the fix opened is no longer pinned at all;
+///    [`Evidence::None`] is refused outright until WP-G4.
+/// 4. **A census moved without a row.** The two ties are the reason a row
+///    cannot be skipped: dropping [`SPLIT_ALIAS_POPULATION`] by one without
+///    adding a `SplitAlias` row fails here, and so does adding a row without
+///    dropping the number.
+/// 5. **A row that never left.** The ties are *counts*, so deleting alias A's
+///    split while registering a still-split row B balances them. The names are
+///    therefore checked against the live split set too.
+/// 6. **Two rows with one name**, which would make the marker check below
+///    ambiguous.
+#[test]
+fn every_torn_down_row_keeps_its_pin_and_its_evidence() {
+    let root = repo_root();
+
+    let mut names: Vec<&str> = TORN_DOWN_ROWS.iter().map(|(n, _, _, _)| *n).collect();
+    names.sort_unstable();
+    let before = names.len();
+    names.dedup();
+    assert_eq!(
+        names.len(),
+        before,
+        "duplicate row name(s) in the teardown register: {names:?}"
+    );
+    assert!(
+        TORN_DOWN_ROWS
+            .iter()
+            .all(|(n, _, _, _)| !n.trim().is_empty()),
+        "a teardown row needs the name the marker comments refer to"
+    );
+
+    let mut problems: Vec<String> = Vec::new();
+
+    for (name, _kind, evidence, pin) in TORN_DOWN_ROWS {
+        match pin {
+            None => problems.push(format!(
+                "    {name}: no pin. Every WP-G2 teardown row records the \
+                 expected-value test that became unconditional; a pinless row \
+                 means the coverage evaporated with the alias"
+            )),
+            Some((file, func)) => {
+                let path = root.join(file);
+                match fs::read_to_string(&path) {
+                    Err(e) => problems.push(format!("    {name}: pin file {file}: {e}")),
+                    Ok(text) => match is_pin_candidate(&path, &root, &text) {
+                        None => problems.push(format!(
+                            "    {name}: {file} has no test region — it cannot hold a pin"
+                        )),
+                        Some((start, end)) => match test_fn_body(&text[start..end], func) {
+                            None => problems.push(format!(
+                                "    {name}: {file} declares no `#[test] fn {func}` inside \
+                                 its test region — the pin was renamed, deleted, or is only \
+                                 mentioned in a comment"
+                            )),
+                            Some(body) => {
+                                if let Some(how) = reads_the_lane(body) {
+                                    problems.push(format!(
+                                        "    {name}: `{func}` in {file} still branches on the \
+                                         lane (`{how}`). A teardown makes the pin \
+                                         *unconditional* — one expected value asserted in both \
+                                         lanes. Once the row left the census nothing else looks \
+                                         at this test, so a parity arm that asserts nothing \
+                                         would be invisible"
+                                    ));
+                                }
+                            }
+                        },
+                    },
+                }
+            }
+        }
+
+        match evidence {
+            Evidence::None => problems.push(format!(
+                "    {name}: no evidence. Every WP-G2 teardown leaves a mechanism behind — \
+                 the kernel or exclusion it made unconditional (`Evidence::Site` / \
+                 `Evidence::Exclusion`) or the ledger entry pinning the divergence it \
+                 opened (`Evidence::Ledger`). `Evidence::None` is reserved for WP-G4's \
+                 rendering rows; the first of those lands by editing this arm"
+            )),
+            Evidence::Site(file, slices) | Evidence::Exclusion(file, slices) => {
+                if slices.is_empty() {
+                    problems.push(format!(
+                        "    {name}: an evidence site with no slices proves nothing — every \
+                         unconditional site the teardown left behind gets its own anchor"
+                    ));
+                }
+                match fs::read_to_string(root.join(file)) {
+                    Err(e) => problems.push(format!("    {name}: evidence file {file}: {e}")),
+                    Ok(text) => {
+                        for slice in *slices {
+                            if !text.contains(*slice) {
+                                problems.push(format!(
+                                    "    {name}: {file} no longer contains {slice:?} — the \
+                                     unconditional site this teardown left behind is gone"
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+            Evidence::Ledger(key) => {
+                let ledger = root.join("tests").join("corpus").join("ledger.json");
+                let text = fs::read_to_string(&ledger).expect("read ledger.json");
+                let value: serde_json::Value =
+                    serde_json::from_str(&text).expect("parse ledger.json");
+                let present = value["entries"]
+                    .as_array()
+                    .expect("ledger.json has an `entries` array")
+                    .iter()
+                    .any(|e| e["id"].as_str() == Some(*key));
+                if !present {
+                    problems.push(format!(
+                        "    {name}: no `{key}` entry in tests/corpus/ledger.json — the \
+                         divergence this fix opened is unpinned"
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        problems.is_empty(),
+        "teardown register row(s) whose record no longer describes the tree:\n{}",
+        problems.join("\n")
+    );
+
+    // The two arithmetic ties. Stated as subtractions from the WP-G2 start line
+    // so that both halves of a teardown — the decrement and the row — have to
+    // land in the same commit.
+    let split_down = TORN_DOWN_ROWS
+        .iter()
+        .filter(|(_, k, _, _)| *k == Kind::SplitAlias)
+        .count();
+    let remaining = SPLIT_ALIASES_AT_WP_G2_START
+        .checked_sub(split_down)
+        .unwrap_or_else(|| {
+            panic!(
+                "{split_down} torn-down split aliases against a start line of \
+                 {SPLIT_ALIASES_AT_WP_G2_START} — the register outgrew the census it decrements"
+            )
+        });
+    assert_eq!(
+        remaining, SPLIT_ALIAS_POPULATION,
+        "the split-alias census and the teardown register disagree: \
+         {SPLIT_ALIASES_AT_WP_G2_START} − {split_down} torn down ≠ {SPLIT_ALIAS_POPULATION}. \
+         A row leaves the split only by landing here with its pin"
+    );
+
+    // …and the tie is a *count*, which a delete-one/register-another swap
+    // satisfies. The names have to be gone from the live split set too.
+    let still_split: Vec<String> = lane_aliases(&root)
+        .into_iter()
+        .filter(|(_, impls)| impls.len() == 2 && impls[0] != impls[1])
+        .map(|(alias, _)| alias)
+        .collect();
+    let ghosts: Vec<&str> = TORN_DOWN_ROWS
+        .iter()
+        .filter(|(_, kind, _, _)| *kind == Kind::SplitAlias)
+        .map(|(name, _, _, _)| *name)
+        .filter(|name| still_split.iter().any(|a| a == name))
+        .collect();
+    assert!(
+        ghosts.is_empty(),
+        "teardown register row(s) whose alias still selects two different impls: \
+         {ghosts:?}. The census arithmetic balances, so some *other* row's split was \
+         deleted instead — the register would then credit the teardown to the wrong \
+         row and leave a live split unpinned"
+    );
+
+    let whole_case_down = TORN_DOWN_ROWS
+        .iter()
+        .filter(|(_, k, _, _)| *k == Kind::WholeCase)
+        .count();
+    let whole_case_now = EXIT_POPULATION
+        .iter()
+        .find(|(owner, _)| *owner == Escape::WholeCase)
+        .map(|(_, n)| *n)
+        .expect("EXIT_POPULATION carries a WholeCase bucket");
+    let remaining = WHOLE_CASE_MARKERS_AT_WP_G2_START
+        .checked_sub(whole_case_down)
+        .unwrap_or_else(|| {
+            panic!(
+                "{whole_case_down} torn-down WholeCase rows against a start line of \
+                 {WHOLE_CASE_MARKERS_AT_WP_G2_START}"
+            )
+        });
+    assert_eq!(
+        remaining, whole_case_now,
+        "the `Escape::WholeCase` bucket and the teardown register disagree: \
+         {WHOLE_CASE_MARKERS_AT_WP_G2_START} − {whole_case_down} torn down ≠ {whole_case_now}"
+    );
+}
+
+/// The teardown markers in the tree and the register name the same rows.
+///
+/// Checked **both ways**, exactly like
+/// [`surviving_compat_markers_are_exactly_the_recorded_escape_register`]:
+///
+/// * marker → row: a marker naming a row the register does not carry is a
+///   claim about a teardown that never happened (with the register empty, as it
+///   is at G2.0, *every* marker fails — which is the point: the convention is
+///   live before the first row lands);
+/// * row → marker: a row's recorded pin file must carry the pin marker naming
+///   it, so the grep `<pin marker><row>` finds the test the register promises;
+///   and a row whose evidence is an [`Evidence::Exclusion`] must likewise carry
+///   the exclusion marker in that file. A *blanket* exclusion-marker obligation
+///   would be wrong — a row whose fix touched no harness has no exclusion — so
+///   the row declares which of its evidence is one, and this is where the
+///   declaration is cashed.
+#[test]
+fn teardown_markers_and_the_register_agree() {
+    let root = repo_root();
+    let (markers, malformed) = teardown_markers(&root);
+
+    // Non-vacuity of the *walk*. With the register empty (its state through
+    // G2.0) every assert below passes on zero data, so a `rust_sources`
+    // regression that returned nothing would look exactly like a clean tree.
+    assert!(
+        rust_sources(&root).len() > 300,
+        "the teardown-marker walk reached only {} `.rs` files — it is supposed to \
+         cover the whole repository, and an empty walk makes every check below \
+         vacuous",
+        rust_sources(&root).len()
+    );
+
+    let (exclusion, pin) = (exclusion_marker(), pin_marker());
+    let (ex_name, pin_name) = (
+        exclusion.trim_end_matches('('),
+        pin.trim_end_matches('(').to_string(),
+    );
+
+    assert!(
+        malformed.is_empty(),
+        "teardown marker(s) not in the documented shape `// {ex_name}(<row>): <why>` \
+         (or the pin spelling) — a marker outside a comment, with an empty row name, or \
+         without the closing `):` is invisible to the grep it exists for:\n{}",
+        malformed.join("\n")
+    );
+
+    let unregistered: Vec<String> = markers
+        .iter()
+        .filter(|(_, row, _, _)| {
+            !TORN_DOWN_ROWS
+                .iter()
+                .any(|(name, _, _, _)| *name == row.as_str())
+        })
+        .map(|(marker, row, file, line)| format!("    {file}:{line}: {marker}({row})"))
+        .collect();
+    assert!(
+        unregistered.is_empty(),
+        "teardown marker(s) naming a row with no entry in `TORN_DOWN_ROWS`. The marker \
+         claims a lane row was dismantled here; the register is what proves it, so add \
+         the row (with its pin and its census decrement) or drop the marker:\n{}",
+        unregistered.join("\n")
+    );
+
+    let marked = |marker: &str, row: &str, file: &str| {
+        markers
+            .iter()
+            .any(|(m, r, at, _)| m.as_str() == marker && r.as_str() == row && at.as_str() == file)
+    };
+
+    let missing: Vec<String> = TORN_DOWN_ROWS
+        .iter()
+        .filter_map(|(name, _, _, pin_at)| {
+            let (file, func) = (*pin_at)?;
+            (!marked(&pin_name, name, file)).then(|| format!("    {name}: {file} (pin `{func}`)"))
+        })
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "torn-down row(s) whose pin file carries no `{pin_name}` marker naming them — \
+         the register knows where the pin is, but a reader grepping the tree does \
+         not:\n{}",
+        missing.join("\n")
+    );
+
+    let unmarked: Vec<String> = TORN_DOWN_ROWS
+        .iter()
+        .filter_map(|(name, _, evidence, _)| match evidence {
+            Evidence::Exclusion(file, _) if !marked(ex_name, name, file) => {
+                Some(format!("    {name}: {file}"))
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(
+        unmarked.is_empty(),
+        "torn-down row(s) whose exclusion file carries no `{ex_name}` marker naming \
+         them — the register says the harness exclusion at that file became \
+         unconditional for this row, so the site has to say so too:\n{}",
+        unmarked.join("\n")
+    );
 }
 
 // ---------------------------------------------------------------------------

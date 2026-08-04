@@ -123,21 +123,6 @@ fn cdiv_is_one_shared_kernel_in_both_lanes() {
     );
 }
 
-/// The **flipped** row: `stddev_single_point` resolves to the upstream quirk
-/// under `oracle-parity` and to the correct `0.0` otherwise. Asserted on a
-/// value where the impls disagree, so neither lane passes vacuously; the
-/// engine-visible end of the same divergence is pinned by
-/// `mathutil::tests::single_point_std_dev_is_the_lane_kernel` and by the
-/// `LoadShape.stddev` deck-level test.
-#[test]
-fn stddev_alias_is_the_lane_kernel() {
-    assert_eq!(stddev_single_point_value_impl(3.5), 3.5);
-    assert_eq!(stddev_single_point_zero_impl(3.5), 0.0);
-
-    let expected = if ORACLE_PARITY { 3.5 } else { 0.0 };
-    assert_eq!(stddev_single_point(3.5), expected);
-}
-
 /// Feature propagation is **measured, not assumed**. Two of the plan's kernel
 /// rows (the RPN pi and FPC `Round`) live in `dss-parser` and the solver knobs
 /// live in `dss-sparse`, reached only through
@@ -567,22 +552,6 @@ fn etk_invert_kernels_on_singular_and_off_diagonal_input() {
     let mut pp = anti;
     etk_invert_partial_pivot_impl(&mut pp, 2).unwrap();
     assert_eq!(pp, anti);
-}
-
-// ---------------------------------------------------------------------------
-// Single-point standard deviation
-// ---------------------------------------------------------------------------
-
-/// Not a numeric bound but a **deliberate divergence**: the parity kernel
-/// reproduces the upstream bug (stddev of one sample = the sample), the
-/// default kernel returns the correct `0.0`. F.3 pins the default lane with
-/// expected-value tests at the four `mathutil` call sites.
-#[test]
-fn stddev_single_point_kernels_are_a_deliberate_divergence() {
-    for v in [0.0, 3.5, -12.25, 1.0e9] {
-        assert_eq!(stddev_single_point_value_impl(v), v);
-        assert_eq!(stddev_single_point_zero_impl(v), 0.0);
-    }
 }
 
 // ---------------------------------------------------------------------------

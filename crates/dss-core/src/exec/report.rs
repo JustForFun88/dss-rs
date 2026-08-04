@@ -9,7 +9,6 @@
 //! stubs; the real per-report formatters land in WP8.2–8.5.
 
 use super::*;
-use crate::compat;
 use crate::report::EXPORT_OPTIONS;
 
 /// Which register-dump export is running (Pascal `ExportMeters`/`ExportGenMeters`/
@@ -1234,18 +1233,31 @@ impl Dss {
                         })
                     })
                     .collect();
-                // Lane split `compat::STORAGE_MULTIFILE_USES_THE_PV_PREFIX`:
-                // `WriteMultipleStorageMeterFiles` (`ExportResults.pas:2240`)
-                // was cloned from the PVSystem writer and kept its `EXP_PV_`
-                // literal, so upstream's per-element Storage files collide with
-                // the PVSystem export's. Parity keeps it; the default lane uses
-                // the prefix the single-file sibling already implies.
-                let prefix = if compat::STORAGE_MULTIFILE_USES_THE_PV_PREFIX {
-                    "EXP_PV_"
-                } else {
-                    "EXP_STORAGE_"
-                };
-                ("Storage", "EXP_STORAGEMeters.csv", prefix, names, rows)
+                // The `/m` prefix is `EXP_STORAGE_` in **both** lanes.
+                // `WriteMultipleStorageMeterFiles` (`ExportResults.pas:2240`;
+                // r4133 `Version8/Source/Common/ExportResults.pas:2280` — the
+                // live line; the `Storage2` twin repeats it at `:2335` but is
+                // inert, inside the `(*` … `*)` block `:2314-:2368`) was cloned
+                // from `WriteMultiplePVSystemMeterFiles` (`:2095`) and kept its
+                // `'EXP_PV_'` literal, so upstream drops a Storage fleet's
+                // per-element registers into the PVSystem export's own files —
+                // and since the multi-file writer appends when the file exists,
+                // a same-named PVSystem and Storage interleave their rows under
+                // whichever class's header was written first. That it is a
+                // copy-paste slip and not a convention is settled by the same
+                // command's other half: the single-file mode writes
+                // `EXP_STORAGEMeters.csv` (`ExportOptions.pas:411`), separate
+                // from `EXP_PVMeters.csv` (`:409`), and every other class has
+                // its own prefix (`EXP_MTR_` `:1792`, `EXP_GEN_` `:1948`).
+                // Both gating oracles carry it; neither lane reproduces it
+                // (`GOLDEN_REBASE_PLAN.md` G2.1f; `issue-20`).
+                (
+                    "Storage",
+                    "EXP_STORAGEMeters.csv",
+                    "EXP_STORAGE_",
+                    names,
+                    rows,
+                )
             }
         }
     }

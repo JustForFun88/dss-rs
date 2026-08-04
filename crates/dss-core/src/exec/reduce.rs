@@ -22,7 +22,6 @@
 use super::*;
 use crate::circuit::ReductionStrategy;
 use crate::circuit::ckt_tree::CktTree;
-use crate::compat;
 use crate::elements::ckt::ElemFlags;
 use crate::elements::control::control_elem::ControlElemData;
 use crate::report::format::strip_extension;
@@ -644,24 +643,26 @@ impl Dss {
             if to_keep {
                 return false; // check keeplist
             }
-            // Skip if the parent carries a capacitor/reactor shunt.
+            // Skip if the parent carries a capacitor/reactor shunt — ALL of
+            // them are scanned, in both lanes.
             //
-            // Lane split `compat::REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT`:
-            // the parity lane reproduces upstream's cross-node cursor mix
-            // (`ReduceAlgs.pas:200-210` opens on `ParentNode.FirstShuntObject()`
-            // and advances with `PresentBranch.NextShuntObject()`, whose cursor
-            // is already exhausted, so the scan stops after ONE element); the
-            // default lane scans them all, like the merge-with-child branch of
-            // the same procedure does below.
+            // Upstream inspects exactly one: `DoReduceShortLines` opens the
+            // scan on `ParentNode.FirstShuntObject()` and advances it with
+            // `PresentBranch.NextShuntObject()` (`ReduceAlgs.pas:200`/`:209`;
+            // r4133 `Version8/Source/Meters/ReduceAlgs.pas:199`/`:206` is the
+            // same pair), a cross-node cursor mix. The present branch's
+            // `TDSSPointerList` cursor still sits at its last item from tree
+            // construction (`Add` ends with `ActiveItem := Result`, the new
+            // count — `DSSPointerList.pas:88`), so the first `Next` overflows and
+            // returns `NIL` (`:113-131`), ending the loop after one element —
+            // a capacitor at position ≥ 2 fails to block the merge and is
+            // silently moved to another bus. That the merge-with-child branch
+            // of the same procedure (`:246-258`) spells the identical loop
+            // with a single cursor is what makes the parent branch a slip
+            // rather than a rule, so neither lane reproduces it
+            // (`GOLDEN_REBASE_PLAN.md` G2.1d; `issue-31`).
             let parent_shunts = tree.node(parent).shunts.clone();
-            let parent_blocked = if compat::REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT {
-                parent_shunts
-                    .first()
-                    .is_some_and(|&s| self.red_is_cap_or_reactor(s))
-            } else {
-                parent_shunts.iter().any(|&s| self.red_is_cap_or_reactor(s))
-            };
-            if parent_blocked {
+            if parent_shunts.iter().any(|&s| self.red_is_cap_or_reactor(s)) {
                 return false;
             }
             let line_elem2 = tree.node(parent).elem;

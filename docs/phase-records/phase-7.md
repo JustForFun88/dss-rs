@@ -578,3 +578,54 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 (`5f27a25`). Their full logs and the per-WP detail live under `docs/phase-records/`
 (§1b–1d indexes them) and the §1 table below.
 
+
+
+---
+
+> Appended verbatim from `STATUS.md` on 2026-08-05 (STATUS.md history archiving);
+> order preserved, nothing rewritten.
+
+## 7. Phase 7 — inherited deferrals & architecture in place
+
+> **The current frontier** (active step, branch, what's next, commit state) lives
+> in the header up top and in **§1e** — not restated here, to avoid the two drifting
+> apart. This section is the stable Phase-7 reference: what the phase inherits and
+> what is already wired for it. Execute per `PHASE7_PLAN.md §0` (six
+> independently-gated sub-blocks, risk-ascending: line constants → protection →
+> DER → harmonics → dynamics → faultstudy/AutoAdd-modes/`Feeder`).
+
+**What Phase 7 inherits / must finish (deferrals Phase 6 left explicit):**
+- **DER classes** `Storage`/`PVSystem` (+ `InvControl`/`ExpControl`) and the real
+  `StorageController` behavior — ✅ **all done**: `PVSystem` (WP7.3), `Storage` +
+  `StorageController` (WP7.4), and `InvControl` + `ExpControl` (WP7.5) (the WP6.8
+  StorageController parse-only skeleton is replaced by the real fleet dispatch;
+  `is_zone_pce` now admits Storage/PVSystem).
+- **Protection** `Relay`/`Recloser`/`Fuse`/`SwtControl`/`Fault` — ✅ **done
+  (WP7.2)**: all five classes ported on the control sweep, the `Open`/`Close` exec
+  verbs landed, and an enabled Relay/Recloser/Fuse sets `Flg.HasOCPDevice` so
+  `RelCalc` no longer aborts (#52902) and `GetOCPDeviceType` is live — the
+  SAIFI/SAIDI/section math runs on a protected zone.
+- **Line constants** `WireData/CNData/TSData/CableData/LineSpacing/LineGeometry`
+  + Carson — ✅ **done (WP7.1)**: Line's
+  `geometry`/`spacing`/`wires`/`cncables`/`tscables` resolve and drive the Carson
+  Z/Yc (one plural-cable reset + the `DG_Prot_Fdr` ~3e-5 line-Y precision case
+  tracked-open, §1e).
+- **Harmonics** (`DoHarmonicMode` for VSource/Load + Generator/PVSystem/Storage,
+  the frequency sweep + the harmonic monitor header) — ✅ **done (WP7.6)**.
+- **Dynamics** (Generator/Storage `DoDynamicMode`, state vars beyond names/count)
+  + `MakePosSequence` everywhere; Monitor modes 3/4/7/8/10/12 build their header
+  but defer the sample body; Transformer GIC (<0.51 Hz) elements — WP7.7+ / Phase 9.
+- **AutoAdd solve mode** (`circuit/auto_add.rs` skeleton) — needs aux-current
+  injection (`UseAuxCurrents`) + meter-register sampling in the solve loop; the
+  options round-trip but the mode keeps its "Unknown solution mode" error.
+- **ReduceAlgs** zone reduction — blocked on the unported `TLineObj.MergeWith`.
+
+**Architecture already in place for Phase 7:** the control loop dispatches
+through `ElemStore::{obj,pair_mut,triple_mut}` + `DssObject::as_any_mut`; the
+meter/monitor `sample_all_monitors_and_meters`/`end_of_time_step_cleanup` hooks
+have real bodies; the zone-build dispatcher (`solution/meters/mod.rs`) fires from
+`build_y_matrix` after bus reprocessing; `TakeSample`/`Integrate` + the
+reliability fault-rate sweep are ported. Still Phase 8: the `SystemMeter`
+register core and all demand-interval/phase-voltage/`Show`/`Export` files.
+
+---
