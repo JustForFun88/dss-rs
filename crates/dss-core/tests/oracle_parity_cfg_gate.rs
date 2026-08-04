@@ -810,8 +810,10 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// **26** after G2.1e did the same to
 /// `STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL`; **25** after G2.1f
 /// did the same to `STORAGE_MULTIFILE_USES_THE_PV_PREFIX`; **24** after G2.1g
-/// did the same to `CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`.
-const SPLIT_ALIAS_POPULATION: usize = 24;
+/// did the same to `CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`; **23** after G2.1h did
+/// the same to `HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD`, the last of the
+/// G2.1 zero-footprint rows.
+const SPLIT_ALIAS_POPULATION: usize = 23;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -1530,6 +1532,43 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         Some((
             "crates/dss-core/tests/golden_cim.rs",
             "cim_wye_grounded_reads_the_neutral",
+        )),
+    ),
+    // G2.1h. A height-unit change on the Carson engine re-reads the offset
+    // under the new unit — and upstream re-reads the wrong number:
+    // `Set_FuserHeightUnit` moves the unit field and then calls
+    // `Set_FheightOffset(FheightOffset)` (r4133 `Version8/Source/General/
+    // LineConstants.pas:689-696`), passing a field declared "The height is
+    // always saved in meters here" (`:71`, `:97`) into a setter whose argument
+    // is a *user-unit* number it multiplies by `To_Meters` (`:676-687`), so the
+    // same number is converted twice (5 ft → 1.524 m → 1.524 in). The fix is
+    // the getter the class already has, called one statement earlier
+    // (`Get_FheightOffset`, `:396-399`). The height-offset surface does not
+    // exist in the pinned 0.14.5 backend at all (no `FheightOffset` in its 186
+    // `.pas`), so this row is cited against r4133 only and gates on the `r4133`
+    // channel. Zero-footprint, measured: the sole consumer
+    // (`line_geometry::matrix::set_line_constants_medium`) stores the offset
+    // while the engine still carries its constructed `UNITS_M`, where both
+    // readings coincide, so the gated deck
+    // `modes/upgrade/upgrade_linecs_heightoffset.dss` and every golden are
+    // byte-identical either way and nothing moved but the pin.
+    (
+        "HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD",
+        Kind::SplitAlias,
+        // The `self.height_offset()` read existed in the split form too — as
+        // the `else` arm of the lane branch, indented four spaces deeper and
+        // without the binding. The needle therefore carries the line break, the
+        // method body's own eight spaces and the `let typed =` binding the
+        // fixed form introduced: re-wrapping the read in a lane branch re-indents
+        // it and drops the binding, and deleting it outright fails the same
+        // check. Single-line by necessity (CRLF checkout).
+        Evidence::Site(
+            "crates/dss-core/src/support/line_constants/mod.rs",
+            &["\n        let typed = self.height_offset();"],
+        ),
+        Some((
+            "crates/dss-core/src/support/line_constants/tests.rs",
+            "height_unit_change_rereads_the_typed_number",
         )),
     ),
 ];
