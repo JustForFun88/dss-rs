@@ -3418,13 +3418,27 @@ pub(crate) fn export_cdpsm(
             // "TODO - check bus 2" — so a bank whose wye point is tied to a live
             // bus still exports as solidly grounded. Both lanes answer that TODO
             // the way the **same unit's** transformer writer already answers it
-            // (`XfmrTankPhasesAndGround`, `:1531-1570`: `NodeRef[j2] = 0` →
-            // "last conductor is grounded solidly", ported at `cim/
-            // power_xfmr.rs`): a Capacitor's wye point *is* its second terminal
-            // — literally the "bus 2" the TODO names, defaulting to `.0.0.0` —
-            // so grounded iff every one of its node refs is 0. Pre-`SetNodeRef`
-            // the vector is empty and this reads `true`, which is what the
-            // transformer sibling does with the same data.
+            // (`XfmrTankPhasesAndGround`, `:1531-1570`; r4133 `:1242`:
+            // `NodeRef[j2] = 0` → "last conductor is grounded solidly", ported
+            // at `cim/power_xfmr.rs`): a Capacitor's wye point *is* its second
+            // terminal — literally the "bus 2" the TODO names, defaulting to
+            // `.0.0.0`.
+            //
+            // The sibling tests one conductor because a wye *winding* has one
+            // neutral conductor. A wye capacitor has none: `Nconds = Nphases`
+            // (`Capacitor.pas:340`; r4133 `:299`) and its terminal-2 conductors
+            // are the per-phase returns, so `all` is the deliberate widening —
+            // the bank is solidly earthed only when *every* phase returns to
+            // ground. A partially earthed `bus2=nb.1.0.0` is three independent
+            // single-phase units, not an earthed wye point, and reads `false`
+            // (`golden_cim::cim_wye_grounded_reads_the_neutral`'s mixed deck
+            // pins exactly that against an `any` reading).
+            //
+            // `term2_nodes` above is empty — and this reads `true` — either
+            // pre-`SetNodeRef`, where the transformer sibling does the same
+            // with the same data, or at `nterms < 2`, which `conn=wye` cannot
+            // produce: it forces `Nterms := 2` (`Capacitor.pas:334-339`; r4133
+            // `:298`), ported at `elements/pd/capacitor/accessors.rs:210-211`.
             // (`GOLDEN_REBASE_PLAN.md` G2.1g; `issue-23`.)
             writer::boolean_node(
                 &mut buf,

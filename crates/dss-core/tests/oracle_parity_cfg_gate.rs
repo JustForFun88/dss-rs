@@ -1179,9 +1179,17 @@ enum Kind {
 // covering a variant that later goes unused for real.
 #[expect(dead_code)]
 enum Evidence {
-    /// `(file, distinctive slice)` — keyed exactly like [`ESCAPE_REGISTER`]:
-    /// the file must still contain the slice. The WP-G2 shape for a row whose
-    /// teardown made an **engine kernel** unconditional.
+    /// `(file, distinctive slices)` — keyed exactly like [`ESCAPE_REGISTER`]:
+    /// the file must still contain **every** slice. The WP-G2 shape for a row
+    /// whose teardown made an **engine kernel** unconditional.
+    ///
+    /// The list is one entry per *site*, not per taste: a single row can carry
+    /// two writers (G2.1g's capacitor and load `grounded` kernels), and a row
+    /// anchored on only one of them lets the other be reverted with the
+    /// register still green — the row→tree direction
+    /// `GOLDEN_REBASE_PLAN.md` §G2.0(b) asks to mechanize would then cover half
+    /// the teardown. An empty list is refused for the same reason
+    /// [`Evidence::None`] is.
     ///
     /// The slice must be the unconditional **code**, not the comment that
     /// explains it. [`ESCAPE_REGISTER`]'s slices are prose because what they
@@ -1204,8 +1212,8 @@ enum Evidence {
     /// impossible for a row, say so in the row's comment and name the checks
     /// that carry the discrimination instead (the census tie, the ghost check,
     /// and the row's now-unconditional pin run in **both** lanes).
-    Site(&'static str, &'static str),
-    /// `(file, distinctive slice)` for a **harness exclusion** made
+    Site(&'static str, &'static [&'static str]),
+    /// `(file, distinctive slices)` for a **harness exclusion** made
     /// unconditional — the same key and the same slice check as
     /// [`Evidence::Site`], plus the obligation that the file carries the
     /// `LANE-EXCLUSION` marker naming the row.
@@ -1217,7 +1225,7 @@ enum Evidence {
     /// whose fix touched no harness has no exclusion to mark — so the row says
     /// which it is, and [`teardown_markers_and_the_register_agree`] holds it to
     /// it.
-    Exclusion(&'static str, &'static str),
+    Exclusion(&'static str, &'static [&'static str]),
     /// The `id` of the `tests/corpus/ledger.json` entry that pins the
     /// divergence the fix opened against an oracle channel — the shape G2.5's
     /// engine fixes take, where the observable is a gated corpus case rather
@@ -1278,7 +1286,7 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         // indentation anchor documented on [`Evidence::Site`].
         Evidence::Site(
             "crates/dss-core/src/support/mathutil/mod.rs",
-            "return (data[0], 0.0);",
+            &["return (data[0], 0.0);"],
         ),
         Some((
             "crates/dss-core/src/support/mathutil/tests.rs",
@@ -1307,7 +1315,7 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         // check below.
         Evidence::Site(
             "crates/dss-core/src/elements/control/cap_control/accessors.rs",
-            "\n        self.ctrl_signal_shape = other.ctrl_signal_shape.clone();",
+            &["\n        self.ctrl_signal_shape = other.ctrl_signal_shape.clone();"],
         ),
         Some((
             "crates/dss-core/src/elements/control/cap_control/tests.rs",
@@ -1351,7 +1359,7 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         // census tie, which fails if the row leaves the register.
         Evidence::Site(
             "crates/dss-core/src/report/export/seq_currents.rs",
-            "\n                (pct_of_rating(norm_amps), pct_of_rating(emerg_amps))",
+            &["\n                (pct_of_rating(norm_amps), pct_of_rating(emerg_amps))"],
         ),
         Some((
             "crates/dss-core/tests/golden_reports.rs",
@@ -1381,7 +1389,7 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         // 16-space `else`, so no lane-branching form of this code can match.
         Evidence::Site(
             "crates/dss-core/src/exec/reduce.rs",
-            "\n            if parent_shunts.iter().any(|&s| self.red_is_cap_or_reactor(s)) {",
+            &["\n            if parent_shunts.iter().any(|&s| self.red_is_cap_or_reactor(s)) {"],
         ),
         Some((
             "crates/dss-core/src/exec/tests/reduce.rs",
@@ -1431,7 +1439,7 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         // census tie, which fails if the row leaves the register.
         Evidence::Site(
             "crates/dss-core/src/elements/control/storage_controller/compute.rs",
-            "\n        self.fleet_state != StorageState::Idling",
+            &["\n        self.fleet_state != StorageState::Idling"],
         ),
         Some((
             "crates/dss-core/src/elements/control/storage_controller/tests.rs",
@@ -1471,7 +1479,7 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         // multi-line needle survives.
         Evidence::Site(
             "crates/dss-core/src/exec/report.rs",
-            "\n                    \"EXP_STORAGE_\",",
+            &["\n                    \"EXP_STORAGE_\","],
         ),
         Some((
             "crates/dss-core/tests/golden_reports.rs",
@@ -1498,17 +1506,26 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     (
         "CIM_WYE_GROUNDED_IS_HARDCODED_TRUE",
         Kind::SplitAlias,
-        // The capacitor half of the two-site row (the load half is asserted by
-        // the same pin). The `all(|&n| n == 0)` reading existed in the split
-        // form too — as the right operand of `alias ||`, indented four spaces
-        // deeper by rustfmt's binary-operator wrap — so the needle carries the
-        // line break and the sixteen spaces of `boolean_node`'s own argument
-        // list plus the trailing comma: re-introducing a lane branch re-wraps
-        // and re-indents it past this anchor, and deleting the reading outright
-        // fails the same check. Single-line by necessity (CRLF checkout).
+        // Both halves of this two-site row — the capacitor's terminal-2 reading
+        // and the load's neutral reading — get their own needle: the pin
+        // asserts both, but a register anchored on one of them would stay green
+        // while the other was reverted, and the row→tree direction is exactly
+        // what this register exists to mechanize.
+        //
+        // Each reading existed in the split form too, as the right operand of
+        // `alias ||`. The capacitor's was pushed onto its own line four spaces
+        // deeper by rustfmt's binary-operator wrap; the load's shared the line
+        // with `crate::compat::…` at this very indentation. So both needles
+        // carry the line break and the sixteen spaces of `boolean_node`'s own
+        // argument list plus the trailing comma: neither can match a line that
+        // begins with a lane branch, and deleting a reading outright fails the
+        // same check. Single-line by necessity (CRLF checkout).
         Evidence::Site(
             "crates/dss-core/src/cim/export.rs",
-            "\n                snap.term2_nodes.iter().all(|&n| n == 0),",
+            &[
+                "\n                snap.term2_nodes.iter().all(|&n| n == 0),",
+                "\n                snap.neutral_node == 0,",
+            ],
         ),
         Some((
             "crates/dss-core/tests/golden_cim.rs",
@@ -1834,15 +1851,23 @@ fn every_torn_down_row_keeps_its_pin_and_its_evidence() {
                  opened (`Evidence::Ledger`). `Evidence::None` is reserved for WP-G4's \
                  rendering rows; the first of those lands by editing this arm"
             )),
-            Evidence::Site(file, slice) | Evidence::Exclusion(file, slice) => {
+            Evidence::Site(file, slices) | Evidence::Exclusion(file, slices) => {
+                if slices.is_empty() {
+                    problems.push(format!(
+                        "    {name}: an evidence site with no slices proves nothing — every \
+                         unconditional site the teardown left behind gets its own anchor"
+                    ));
+                }
                 match fs::read_to_string(root.join(file)) {
                     Err(e) => problems.push(format!("    {name}: evidence file {file}: {e}")),
                     Ok(text) => {
-                        if !text.contains(*slice) {
-                            problems.push(format!(
-                                "    {name}: {file} no longer contains {slice:?} — the \
-                                 unconditional site this teardown left behind is gone"
-                            ));
+                        for slice in *slices {
+                            if !text.contains(*slice) {
+                                problems.push(format!(
+                                    "    {name}: {file} no longer contains {slice:?} — the \
+                                     unconditional site this teardown left behind is gone"
+                                ));
+                            }
                         }
                     }
                 }

@@ -414,7 +414,9 @@ fn only_grounded(xml: &str, owner: &str) -> bool {
 
 // EXPECTED-VALUE-PIN(CIM_WYE_GROUNDED_IS_HARDCODED_TRUE): a wye shunt whose
 // neutral is tied to a live node exports as `grounded = false` in both lanes,
-// while the same circuit with the default ground neutrals still exports `true`.
+// while the same circuit with the default ground neutrals still exports `true`;
+// a bank earthed on some phases and live on the rest reads `false` too, which
+// pins the aggregation as `all` and not `any`.
 /// The CIM `grounded` flag of a wye capacitor and a wye load reads the
 /// **neutral**, in *both* lanes.
 ///
@@ -434,13 +436,22 @@ fn only_grounded(xml: &str, owner: &str) -> bool {
 /// capacitor's is its second terminal (the "bus 2" the TODO names), the load's
 /// is its terminal's `Nphases+1`-th conductor.
 ///
-/// Two decks, so this pins a *reading* and not a flipped constant:
+/// Three decks, so this pins the *reading* — which value comes out, and how the
+/// per-conductor answers are aggregated — and not a flipped constant:
 ///
 /// * the **probe** deck ties both neutrals to real nodes — the capacitor's
 ///   second terminal to a live bus, the load's 4th conductor to a grounding
 ///   reactor's node — where both lanes must now answer `false`;
 /// * the **control** deck is the same circuit with the default (ground)
-///   neutrals, where both lanes must answer `true`.
+///   neutrals, where both lanes must answer `true`;
+/// * the **mixed** deck is what separates `all` from `any`, the one choice the
+///   uniform decks above cannot see. Its capacitor is earthed on two phases and
+///   live on the third (`bus2=nb.1.0.0`) — the impedance-earthed-on-one-phase
+///   shape — and must read `false`: a bank is solidly grounded only when *every*
+///   phase returns to ground, so one live return disqualifies it (an `any`
+///   aggregation would call it grounded). Its load is single-phase with a live
+///   neutral, which is also the only deck exercising the load reading's derived
+///   index `node_ref[nphases]` off the 3-phase path.
 #[test]
 fn cim_wye_grounded_reads_the_neutral() {
     let build = |circuit: &str, cap: &str, load: &str| -> String {
@@ -499,6 +510,28 @@ fn cim_wye_grounded_reads_the_neutral() {
     assert!(
         only_grounded(&control, "EnergyConsumer"),
         "a wye load with the default ground neutral is `grounded` in every lane"
+    );
+
+    // Mixed: the aggregation probe. The capacitor returns phases B and C to
+    // ground and phase A to a live node, so `all(node == 0)` answers `false`
+    // while `any(node == 0)` would answer `true` — the two uniform decks above
+    // agree on both readings and cannot tell them apart. The load is
+    // single-phase, so its neutral is `node_ref[1]`, the derived index the
+    // 3-phase decks never exercise.
+    let mixed = build(
+        "grndmixed",
+        "new capacitor.capmixed bus1=b1.1.2.3 bus2=nb.1.0.0 phases=3 kv=4.16 kvar=600",
+        "new load.ldmixed bus1=b1.1.4 phases=1 conn=wye kv=2.4 kw=30 kvar=10 model=1",
+    );
+    assert!(
+        !only_grounded(&mixed, "ShuntCompensator"),
+        "a wye capacitor earthed on two phases and live on the third is not `grounded`: \
+         the flag is `all` over terminal 2's node refs, not `any`"
+    );
+    assert!(
+        !only_grounded(&mixed, "EnergyConsumer"),
+        "a single-phase wye load whose neutral is a live node is not `grounded` — the \
+         reading is `node_ref[nphases]`, off the 3-phase path too"
     );
 }
 

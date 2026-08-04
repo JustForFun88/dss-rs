@@ -67,18 +67,23 @@ section records this row as G2.1g.
 **The pin became unconditional.** `golden_cim::cim_wye_grounded_reads_the_neutral`
 (renamed from `cim_wye_grounded_is_lane_split`) lost its `ORACLE_PARITY` branch
 and carries the `EXPECTED-VALUE-PIN(CIM_WYE_GROUNDED_IS_HARDCODED_TRUE)` marker.
-Its two-deck shape is what makes it a pin of a *reading* rather than of a flipped
-constant, and both halves now assert one value in both lanes: the **probe** deck
-(capacitor `bus2=nb.1.2.3` on a live bus, load `bus1=b1.1.2.3.4` with `b1.4` held
-by `reactor.ng`) must export `false` for both classes; the **control** deck — the
-same feeder with default neutrals — must still export `true` for both. Its
+Its multi-deck shape is what makes it a pin of a *reading* rather than of a
+flipped constant, and every half asserts one value in both lanes: the **probe**
+deck (capacitor `bus2=nb.1.2.3` on a live bus, load `bus1=b1.1.2.3.4` with `b1.4`
+held by `reactor.ng`) must export `false` for both classes; the **control** deck
+— the same feeder with default neutrals — must still export `true` for both; and
+the **mixed** deck added by the audit settlement below (capacitor
+`bus2=nb.1.0.0`, single-phase load with a live neutral) separates `all` from
+`any` and exercises the load reading's derived index off the 3-phase path. Its
 `only_grounded` reader still asserts exactly one node of each kind, so a later
-deck edit that adds a second shunt fails loudly instead of reading the wrong one.
-The register's `Evidence::Site` needle is the capacitor reading as rustfmt lays
-it out (`"\n                snap.term2_nodes.iter().all(|&n| n == 0),"`): in the
-split form that same expression was the right operand of `alias ||`, wrapped four
-spaces deeper, so a restored lane branch stops matching; the load half is covered
-by the same pin.
+deck edit that adds a second shunt fails loudly instead of reading the wrong one
+— which is why each deck is its own circuit. The register's `Evidence::Site`
+needles are the two readings as rustfmt lays them out
+(`"\n                snap.term2_nodes.iter().all(|&n| n == 0),"` and
+`"\n                snap.neutral_node == 0,"`): in the split form each expression
+was the right operand of `alias ||` — the capacitor's wrapped four spaces deeper,
+the load's sharing the line with `crate::compat::…` — so a restored lane branch
+stops matching either one.
 
 **Zero-footprint.** No golden byte, no `ledger.json` entry and no
 `population.lock.json` field moves — the flag is written only by the CIM export,
@@ -105,6 +110,55 @@ pow/loss divergences on the two `newton` decks (the still-live
 `POWERS_REUSE_STALE_NEWTON_ITERMINAL` row G2.3 removes). Tests 0 added, 1
 renamed, 0 removed, 0 new `#[ignore]`. `git diff --stat -- tests/golden` is
 empty; `git status --short tests/corpus` clean after both runs.
+
+**Audit settlement (fix agent, same branch).** Three findings, all `minor`, none
+touching the engine's behaviour, a golden byte, the ledger or a tolerance — the
+only non-comment edits are inside two test binaries. All three settled by
+change; none deferred, none refuted.
+
+- *The register anchors only the capacitor half* — **real, fixed.**
+  `Evidence::Site`/`Evidence::Exclusion` now carry a **slice list**
+  (`&'static [&'static str]`, empty list refused) instead of a single needle, and
+  this row lists both writers. The finding was right that the shortfall was
+  structural rather than an oversight: the old tuple could name one site, so
+  reverting `snap.neutral_node == 0` to `true` left
+  `every_torn_down_row_keeps_its_pin_and_its_evidence` green while the pin — and
+  only the pin — went red. The row→tree direction is what `GOLDEN_REBASE_PLAN.md`
+  §G2.0(b) asks this register to mechanize, so half a teardown anchored is a real
+  hole in it. Mutation-checked in the fixed shape: the same revert now names the
+  missing load needle in the register's own failure text. The list also gives the
+  later multi-site rows (G2.2c, G2.2d) a shape to land in; the six pre-existing
+  rows became one-element lists with no other change.
+- *The `all` reading is a widening of the single-conductor sibling, and answers
+  `true` on the degenerate `nterms < 2`* — **real as a documentation gap, no
+  behaviour change; narrated at the site.** The reading is deliberate and
+  correct: `XfmrTankPhasesAndGround` tests one conductor because a wye *winding*
+  has one neutral conductor, whereas a wye capacitor has none (`Nconds = Nphases`
+  — `Capacitor.pas:340`, r4133 `:299`) and its terminal-2 conductors are the
+  per-phase returns, so a bank is solidly earthed only when *every* return is at
+  ground. The `nterms < 2` fallback was confirmed unreachable for the wye arm
+  that reads it: `conn=wye` forces `Nterms := 2` (`Capacitor.pas:334-339`; r4133
+  `:298`), ported at `elements/pd/capacitor/accessors.rs:210-211`. Both facts now
+  sit in the site comment with those citations instead of only in the plan.
+- *The pin cannot tell `all` from `any`* — **real, fixed.** Both existing decks
+  are uniform (probe: every terminal-2 conductor live; control: every one at
+  ground), so the two aggregations agreed on them and the mutation `all → any`
+  survived green. Since this reading is the engine's **own** semantic — divergent
+  from both gating oracles, with no oracle to fall back on — an under-determined
+  pin is the whole exposure. A third **mixed** deck now carries a capacitor
+  earthed on two phases and live on the third (`bus2=nb.1.0.0`, the
+  impedance-earthed-on-one-phase shape) asserted `false`, plus a single-phase wye
+  load with a live neutral asserted `false` — the only deck exercising
+  `node_ref[nphases]` off the 3-phase path. Mutation-checked both ways: `all →
+  any` now reds the mixed capacitor assertion (`golden_cim.rs:526`) and reverting
+  the load reading to `true` still reds the probe; both were reverted and the
+  tree re-verified green. No golden byte, no new test file, no deck outside the
+  pin.
+
+Gate re-run in full for these edits (five commands, both lanes).
+`lane_diff.ps1` re-run as well although the engine change is comment-only:
+`VERDICT: PASS`, max |Δ| = 0 on every gated kind, same two documented Newton
+entries.
 
 ### GOLDEN_REBASE G2.1f — `STORAGE_MULTIFILE_USES_THE_PV_PREFIX` torn down: the Storage `/m` export gets its own prefix (branch `golden-g2`, 2026-08-03)
 
@@ -3880,7 +3934,8 @@ one node of each kind, so a future edit that adds a second shunt fails loudly
 instead of reading the wrong one. (**Superseded by GOLDEN_REBASE G2.1g**: the
 split is gone and both lanes read the neutral; the pin lives on unconditional as
 `golden_cim::cim_wye_grounded_reads_the_neutral`, asserting `false` for both
-classes on the probe deck and `true` for both on the control deck. The
+classes on the probe deck, `true` for both on the control deck and `false` on the
+mixed deck G2.1g's audit settlement added to pin the aggregation as `all`. The
 "no golden moves" measurement above was re-run from the parity side, which is the
 lane that actually moved, and holds.)
 
