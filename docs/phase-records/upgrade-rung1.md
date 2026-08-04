@@ -468,3 +468,80 @@ The D1 time-series hysteresis divergence is therefore unit-test-pinned, not
 live-gated. A dedicated fix (capture element/injection state before the
 `getYSparse`/fingerprint that re-nominalizes) would unlock multi-step capi015 for
 future WPs — logged for the oracle-infra owner, out of WP-U1.3 scope.
+
+
+---
+
+> Appended verbatim from `STATUS.md` on 2026-08-05 (STATUS.md history archiving);
+> order preserved, nothing rewritten.
+
+### NCIM re-gate — oracle-of-record flip capi015→r4133 (branch `ncim-regate`, 2026-07-20)
+
+User-approved decision (2026-07-20): **r4133 is the oracle-of-record for NCIM.**
+The capi015 0.15.0b4 probe venv is retired (gone from disk), so it can never again
+be a live oracle; the only live NCIM-capable channel is r4133 via `epri-worker`.
+The capi015 `NCIM_CalcInjCurrAtBus` off-by-one is no longer worth carrying — drop it
+and live-gate.
+
+- **Report path fixed.** `exec/view.rs::ncim_swing_source_currents` re-derived
+  loop-for-loop against r4133 `PCElements/VSource.pas` `TVsourceObj.CalcInjCurrAtBus`
+  (l.1085, reached from `GetCurrents` l.1194-1195 under `Algorithm=NCIMSOLVE`). r4133
+  fills `Yorder+1` `ElmCurrents` with an **offset write** `GetCurrents(@(ElmCurrents[1]))`
+  (l.1123 PD / l.1158 PC) then reads `ElmCurrents[(myTerm*stride)+j]`, `j:=1..NPhases`
+  (l.1135 / l.1169) — a 1-based read of the offset-written array = **unshifted**. The
+  port dropped the `+1` on both loop indices and the `TODO(compat)` was removed. The
+  PC-loop stateful `myTerm` cross-element accumulation (r4133 still has it: `myTerm:=0`
+  once at l.1146, not reset) stays NON-reproduced (UB refusal, comment re-cited to
+  r4133 lines).
+- **Re-pinned vs live r4133.** `ncim_vsource_reported_currents_match_oracle` now pins
+  the r4133 `Vsource.source` currents/powers/losses captured via `epri-worker`
+  (r4133 = `Version 11.0.0.1 (64-bit build) - Charlottesville`, own probe 2026-07-20).
+  Before (capi015 shifted): conductor 0 = `70.71692 + 55.78569i` A. After (r4133
+  unshifted): conductor 0 = `-83.67029 + 33.34980i` A (= negated Line.l1 terminal-1
+  conductor 0); per-conductor power `-602.38906 - 240.10383i` kVA, losses
+  `-1807167.18 - 720311.50i`. The node-V / regulation / warm-restart pins did NOT move
+  (they already match r4133 ~1e-12) — all 10 `exec::tests::ncim` tests green.
+- **4 cases live-gated on r4133, NO ledger entry.** `defer_ledger` removed from
+  `modes/ncim/{ncim_pq,ncim_pv_pq,ncim_midi}` + `solvable_now Xmission_System_Kundur2Area`;
+  filtered gate `4/4 passed`. The whole-model compare (node V digit-identical ~1e-12,
+  system Y, the Vsource swing current/power/loss now matching to the tier floor, the
+  NCIM generators) is clean, and the **warm-resolve** iteration count matches r4133
+  EXACTLY (`ncim_pq=2, ncim_pv_pq=2, ncim_midi=2, Kundur=1`; no `rust<oracle` NOTE) — so
+  the anticipated iterations divergence never materializes in the gate (it was a
+  cold-solve artifact) and NOTHING is ledgered (a stale entry would fail the gate). The
+  `ncim-oppoint` ledger cause is rewritten to the resolved reality (documentary), and
+  the population lock flips `defer=1→0` on all 4 (the only lock change).
+- **Docs.** `docs/upgrade/DIVERGENCES.md` NCIM section gained the flip decision with
+  r4133 source lines + probe numbers; `tools/golden/gen_ncim_reports.py` header marks
+  the capi015 venv retired and `tests/golden/ncim/` frozen/unregenerable (goldens
+  byte-untouched — solver internals unaffected by the swing-report path).
+
+**Settle (2026-07-20).** Two independent read-only audits (audit-code + audit-tests)
+over `d0b59a9..853edff`. Audit-code verdict FAITHFUL, audit-tests verdict verification
+STRENGTHENED — both re-derived the four mandate items from r4133 `VSource.pas` and each
+ran its OWN `epri-worker` r4133 probe (`Version 11.0.0.1 (64-bit build) - Charlottesville`)
+that reproduced the new `ncim_vsource_reported_currents_match_oracle` pins bit-for-bit
+(independent solve, not port self-agreement). Settlement re-verified the load-bearing
+invariants: `tests/golden/ncim/` byte-untouched (empty diff vs base); `ledger.json` has
+NO new/widened structural row (only the documentary `ncim-oppoint` cause prose changed —
+no `id`/`channel`/`case`/`max_rel`/`num_rel` edit → no disguised tolerance loosening);
+`population.lock.json` diff is exactly the four `defer=1→0` flips on the NCIM fingerprints
+and nothing else. Full three-command gate green at defaults; corpus pristine; 186 `.pas`
+under `.inputs/dss_capi`.
+
+Finding dispositions:
+
+- **`ncim-deck-comment-stale-name` (audit-code, low) → DELIBERATE NON-FIX.**
+  Reproduced: `git grep NCIM_CalcInjCurrAtBus` (excluding append-only STATUS history)
+  leaves exactly one live hit — `tests/corpus/modes/ncim/ncim_pq.dss:7`, a DSS `!`
+  comment still naming the retired capi015 `NCIM_CalcInjCurrAtBus` rather than the
+  r4133 `CalcInjCurrAtBus` the port now targets. Proven inert: it is a comment line
+  (not parsed — the deck solves identically), and `population_lock.rs` fingerprints
+  only manifest fields + ledger entries, never deck bytes, so the stale name touches
+  no gate, pin, or lock. Every *behavioral* citation is already r4133 (`view.rs` doc +
+  comments, `exec/tests/ncim.rs`, `DIVERGENCES.md`, `ledger.json`, `modes/manifest.json`
+  note). Not fixed because the settlement mandate constrains the corpus to path-limited
+  cleanup only and the `.dss` deck fixtures were outside this WP's declared edit surface
+  by design; editing a corpus deck comment is neither. Left as a one-line follow-up for
+  a future corpus-touching pass to re-cite. No behavior/gate/pin impact either way.
+- **audit-tests: no findings.**
