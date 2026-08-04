@@ -853,20 +853,30 @@ fn matrix_unit_and_length_conversion() {
 const FT: i32 = 5; // LineUnits::Ft code
 const IN: i32 = 6; // LineUnits::Inch code
 
-/// Expected-value pin for
-/// [`crate::compat::HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD`].
+// EXPECTED-VALUE-PIN(HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD): a height-unit
+// change re-reads the number the user typed, in both lanes — the assertion that
+// discriminates is the *second* change (ft → in, the first whose outgoing unit
+// is not metres), where upstream compounds the two conversions and this pins the
+// compounded reading as absent by a factor 0.3048.
+/// The number the user **typed** survives every height-unit change, in *both*
+/// lanes.
 ///
-/// A height-unit change re-reads a number under the new unit. Which number is
-/// the lane row — and the two readings are *equal* on the only sequence any
-/// caller performs today (offset stored while the engine still carries its
-/// constructed `UNITS_M`, then the unit set), so the first half of this test is
-/// lane-independent and guards the gated deck
+/// Upstream re-reads the stored *metres* instead: `Set_FuserHeightUnit` moves
+/// the unit field and then calls `Set_FheightOffset(FheightOffset)` (r4133
+/// `Version8/Source/General/LineConstants.pas:689-696`), feeding a value
+/// declared "always saved in meters here" (`:71`, `:97`) into a setter whose
+/// argument is a user-unit number (`:676-687`) — so 5 ft becomes 1.524 m and is
+/// then re-read as 1.524 in. Neither lane reproduces it
+/// (`GOLDEN_REBASE_PLAN.md` G2.1h; `issue-28`): both call the class's own
+/// `Get_FheightOffset` (`:396-399`, [`LineConstants::height_offset`]) one
+/// statement earlier. The pinned 0.14.5 backend has no height-offset surface at
+/// all, so these line numbers resolve against r4133 only.
+///
+/// The first half is the only sequence any caller performs today — offset stored
+/// while the engine still carries its constructed `UNITS_M`, then the unit set —
+/// where the two readings coincide anyway; it guards the gated deck
 /// `modes/upgrade/upgrade_linecs_heightoffset.dss` (`HeightOffset=5
-/// HeightUnit=ft` → 1.524 m) in both lanes.
-///
-/// They part on a *second* unit change, where the outgoing unit is no longer
-/// metres: the parity lane feeds the stored metres (1.524) into the inch
-/// setter and compounds the conversions, the default lane re-reads the typed 5.
+/// HeightUnit=ft` → 1.524 m). The second half is the change that separates them.
 #[test]
 fn height_unit_change_rereads_the_typed_number() {
     // The universal path: store under the default metre unit, then set ft.
@@ -897,32 +907,34 @@ fn height_unit_change_rereads_the_typed_number() {
         );
     }
 
-    // The second change, ft → in: the readings diverge.
+    // The second change, ft → in — the first whose outgoing unit is not metres,
+    // and the one upstream gets wrong: the typed 5 is re-read as 5 inches.
     lc.set_user_height_unit(IN);
-    let expect_m: f64 = if crate::compat::ORACLE_PARITY {
-        5.0 * 0.3048 * 0.0254 // the stored metres re-read as inches
-    } else {
-        5.0 * 0.0254 // the typed 5, now inches
-    };
     round_trip(
         lc.height_offset_meters(),
-        expect_m,
-        &format!("ft→in re-read (parity = {})", crate::compat::ORACLE_PARITY),
+        5.0 * 0.0254,
+        "ft→in re-read must be the typed 5, now inches",
     );
-    // The two readings really are far apart here — a factor 0.3048, twelve
-    // orders above the round-trip bound above.
-    let other = if crate::compat::ORACLE_PARITY {
-        5.0 * 0.0254
-    } else {
-        5.0 * 0.3048 * 0.0254
-    };
+    // …and not the compounded reading (the stored 1.524 m re-read as inches),
+    // which sits a whole factor 0.3048 away — some fifteen orders above the
+    // round-trip bound above (0.695 relative against 8.9e-16), so this
+    // discriminates the fix from a revert instead of measuring rounding.
+    let compounded = 5.0 * 0.3048 * 0.0254;
     assert!(
-        (lc.height_offset_meters() - other).abs() > 0.5 * other.abs(),
-        "the lanes must not agree on the second change"
+        (lc.height_offset_meters() - compounded).abs() > 0.5 * compounded,
+        "the stored metres must not be re-read as a user-unit number: got {:.17e}, \
+         upstream's compounded reading is {compounded:.17e}",
+        lc.height_offset_meters()
     );
-    // The default lane's invariant: the typed number survives every unit change.
-    if !crate::compat::ORACLE_PARITY {
-        round_trip(lc.height_offset(), 5.0, "typed number after ft→in");
+    // The invariant this row exists for: the typed number survives every unit
+    // change, so every conductor keeps the height the user asked for.
+    round_trip(lc.height_offset(), 5.0, "typed number after ft→in");
+    for (i, y) in y0.iter().enumerate() {
+        round_trip(
+            lc.cond[i].y,
+            y + 5.0 * 0.0254,
+            &format!("conductor {i} height after ft→in"),
+        );
     }
 
     // A no-op change stays a no-op in both lanes (Pascal's `If Value <> …`).

@@ -7,6 +7,107 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### GOLDEN_REBASE G2.1h — `HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD` torn down: a height-unit change re-reads the typed number in both lanes (branch `golden-g2`, 2026-08-05)
+
+**Frontier.** WP-G2's eighth teardown and the **last of the eight zero-footprint
+G2.1 rows**. `SPLIT_ALIAS_POPULATION` **24 → 23**, `TORN_DOWN_ROWS` carries its
+eighth row, and the WP acceptance criterion still holds at this commit:
+`git diff --stat -- tests/golden` over the range is **empty** and both lanes'
+`oracle_parity_cfg_gate` is green. Next: G2.2a (the existing-exclusion rows —
+`IRESIDUAL_FROM_TERMINAL_1` and `BUS_INT_DURATION_WALKS_ALL_BUSES`), which is
+also where the pin-walk non-vacuity anchor moves onto a numeric survivor.
+
+**The bug.** `TLineConstants.Set_FuserHeightUnit` moves the unit field and then
+re-applies the offset under it — `FuserHeightUnit := Value; Set_FheightOffset(
+FheightOffset);`, with upstream's own comment *"This updates the existing value
+to fit the new user units"* (r4133
+`Version8/Source/General/LineConstants.pas:689-696`). But the two sides of that
+call disagree on units, and the same unit says so twice: `FheightOffset` is
+declared *"The height is always saved in meters here"* (`:71`, `:97`), while
+`Set_FheightOffset`'s argument is a **user-unit** number whose first statement is
+`NewHeightOffset_m := Value * To_Meters(FuserHeightUnit)` (`:676-687`). A metres
+value is therefore fed to a user-unit parameter and one number is converted
+twice: 5 typed as feet is stored 1.524 m and, on a change to inches, re-read as
+1.524 *inches* — 0.0387 m instead of 0.127 m, the entire outgoing-unit factor
+0.3048 off. The offset lands in the conductor heights that Carson's equations
+integrate, so a wrong offset is a wrong Z/Yc. **The correct number is written out
+in the same class**: `Get_FheightOffset` (`:396-399`) is exactly
+`FheightOffset * From_Meters(FuserHeightUnit)`, the typed number — the fix is
+that getter called one statement earlier. Deep dive:
+`investigations/issue-28-line-height-units-reread.md`.
+
+**Cited against r4133 only, deliberately.** The `HeightOffset=`/`HeightUnit=`
+surface **does not exist** in the pinned dss_capi 0.14.5 backend at all — its 186
+`.pas` files contain no `FheightOffset` — so these line numbers must not be
+resolved against `.inputs/dss_capi`, where they land on unrelated code. That is
+what once made the row read as uncited; the deleted const, the surviving kernel
+doc and the register row all now say so in place. The gated deck is on the
+`r4133` channel for the same reason.
+
+**What landed.** `compat::HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD` and both
+its `*_IMPL` twins are **deleted**; `LineConstants::set_user_height_unit` reads
+`self.height_offset()` unconditionally, before the unit field moves. The default
+lane already did this, so **only the parity lane moves** — and only on a path
+nothing reaches today: the sole caller is the Line → Carson push
+`makeZFromGeometry`/`makeZFromSpacing`, whose fixed order is `SetEpsRMedium`,
+`SetHeightOffset`, `SetUserHeightUnit`
+(`line_geometry::matrix::set_line_constants_medium`), so the offset is always
+stored while the engine still carries its constructed `UNITS_M`, where
+`From_Meters(m) = 1` makes both readings the same number. The two part only on a
+*second* unit change with a non-metre outgoing unit. The compat module-doc row
+for the *Single-site upstream quirks* section records this row as G2.1h, and the
+`matrix.rs` call-order comment no longer names a const that is gone.
+
+**The pin became unconditional.**
+`support::line_constants::tests::height_unit_change_rereads_the_typed_number`
+lost its `ORACLE_PARITY` branches and carries the
+`EXPECTED-VALUE-PIN(HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD)` marker. Its
+first half is unchanged and stays the guard on the gated deck
+`modes/upgrade/upgrade_linecs_heightoffset.dss` (`HeightOffset=5 HeightUnit=ft` →
+1.524 m, bit-exact, plus the three conductor heights). Its second half is what
+the teardown makes assertable: after the ft → in change the offset is the typed
+5 inches (0.127 m), the compounded upstream reading (1.524 in) is asserted
+**absent** by more than half its own magnitude — a factor 0.3048, some fifteen
+orders above the test's 4-ULP round-trip bound (0.695 relative against 8.9e-16),
+so the assertion discriminates the fix from a revert rather than measuring
+rounding — and the invariant the row exists
+for is stated directly: the typed number, and every conductor height derived from
+it, survives every unit change. The register's `Evidence::Site` needle is the
+fixed statement with its line break and the method body's own indentation
+(`"\n        let typed = self.height_offset();"`): the split form had this read
+as an `else` arm, four spaces deeper and without the binding, so a restored lane
+branch stops matching.
+
+**Zero-footprint.** No golden byte, no `ledger.json` entry and no
+`population.lock.json` field moves: the only consumer stores the offset under
+metres, so both readings coincide everywhere anything is gated, and
+`upgrade_linecs_heightoffset.dss` is byte-identical in both lanes. Doc surface:
+the alias was never cited on the walked surface (measured again — outside
+`crates/` it appears only in STATUS, the plan and the gitignored
+`investigations/`), so no citation was struck and the non-vacuity floor is
+untouched; CLAUDE.md does not name this row (it is not one of the six named
+bugs).
+
+**Proof.** Every Pascal citation here was read out of the vendored r4133 source,
+and the "absent from 0.14.5" claim re-measured by grepping its 186 `.pas` for
+`FheightOffset` (no match). The pin was mutation-checked: restoring upstream's
+reading (`let typed = self.height_offset;`) reds
+`height_unit_change_rereads_the_typed_number` in **both** lanes; the mutation was
+reverted and the tree re-verified green. Both lanes clean on the five gate
+commands (`cargo fmt --all --check`; `cargo clippy --workspace --all-targets --
+-D warnings` and the same with `--features dss-core/oracle-parity`; `cargo test
+--workspace` and the same with the feature — the unconditional 520-case corpus
+gate included, exit 0 in both lanes). `lane_diff.ps1`, re-run because a lane
+alias was deleted: 520 cases, 3 219 862 records, `max |Δ| = 0` **exactly** on
+every gated kind (`conv`, `cur`, `errs`, `iter`, `loss`, `pow`, `v`, `y`), 0
+iteration counts drifted, `VERDICT: PASS` — the only entries being the documented
+Newton pow/loss divergences on the two `newton` decks (the still-live
+`POWERS_REUSE_STALE_NEWTON_ITERMINAL` row G2.3 removes). Tests 0 added, 0
+renamed, 0 removed, 0 new
+`#[ignore]`. `git diff --stat -- tests/golden` is empty; `git status --short
+tests/corpus` clean after both runs (the eight `AutoTrans/*.txt` run artifacts
+were removed per file, never recursively).
+
 ### GOLDEN_REBASE G2.1g — `CIM_WYE_GROUNDED_IS_HARDCODED_TRUE` torn down: the CIM `grounded` flag reads the neutral in both lanes (branch `golden-g2`, 2026-08-04)
 
 **Frontier.** WP-G2's seventh teardown. `SPLIT_ALIAS_POPULATION` **25 → 24**,

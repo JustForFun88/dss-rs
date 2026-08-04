@@ -45,7 +45,7 @@
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
 //! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
 //! | report text rendering — `Show` device-name column width | [`max_device_name_length`] — same section | **yes** (F.4b) |
-//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f, the CIM wye `grounded` flag G2.1g |
+//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f, the CIM wye `grounded` flag G2.1g, the Line height-unit re-read G2.1h |
 //!
 //! Rows 12–13 are not in IV.2's table and do not extend it: they are the two
 //! *reproduced* CLAUDE.md upstream bugs whose clean fix is deferred to this
@@ -878,58 +878,6 @@ pub const FAULT_DUMP_TAIL_REPRINTS_MINAMPS_DEFAULT_IMPL: bool = false;
 pub use FAULT_DUMP_TAIL_REPRINTS_MINAMPS_DEFAULT_IMPL as FAULT_DUMP_TAIL_REPRINTS_MINAMPS;
 #[cfg(feature = "oracle-parity")]
 pub use FAULT_DUMP_TAIL_REPRINTS_MINAMPS_PARITY_IMPL as FAULT_DUMP_TAIL_REPRINTS_MINAMPS;
-
-/// Whether a **height-unit change** on the Carson engine re-reads the *stored
-/// metres* as if it were a number typed in the new unit.
-///
-/// `true` reproduces the upstream slip: `TLineConstants.Set_FuserHeightUnit`
-/// updates `FuserHeightUnit` and then calls `Set_FheightOffset(FheightOffset)`
-/// — but `FheightOffset` is declared "always saved in meters here" while
-/// `Set_FheightOffset`'s argument is a *user-unit* number it multiplies by
-/// `To_Meters(new unit)`. A metres value is therefore fed into a user-unit
-/// parameter.
-///
-/// **Every line reference in this row is to the r4133 source**, at
-/// `.inputs/electricdss-code-r4133-trunk/Version8/Source/General/
-/// LineConstants.pas`: `Set_FuserHeightUnit` is `:689-696`, the field
-/// declarations `FheightOffset`/`FuserHeightUnit` are `:71-72` with the
-/// "The height is always saved in meters here" comment at `:97`,
-/// `Set_FheightOffset` is `:676-687` and `Get_FheightOffset` is `:396-399`.
-/// The height-offset surface does not exist in the pinned 0.14.5 backend at
-/// all (grep its 186 `.pas` for `FheightOffset`: no match), so do **not**
-/// resolve these numbers against `.inputs/dss_capi` — they land on unrelated
-/// code there, which is what made this row read as uncited.
-///
-/// `false` re-reads the number the user actually typed —
-/// `FheightOffset * From_Meters(old unit)`, captured **before** the unit field
-/// moves — which is what the line's own comment says it is doing: *"This
-/// updates the existing value to fit the new user units"*. `Get_FheightOffset`
-/// (`:396-399`) computes exactly that expression, so the fix is the getter the
-/// class already has, called one statement earlier.
-///
-/// **The two agree wherever anything reaches them today, which is why this is a
-/// lane row and not a re-baseline.** The only consumer is the Line → Carson
-/// push `makeZFromGeometry`/`makeZFromSpacing`, whose fixed call order is
-/// `SetEpsRMedium`, `SetHeightOffset`, `SetUserHeightUnit`
-/// (`line_geometry::matrix::set_line_constants_medium`): the offset is stored
-/// while the engine's unit is still the constructed default `UNITS_M`, so
-/// `From_Meters(m) = 1` and both readings re-apply the same number. That is the
-/// path `tests/corpus/modes/upgrade/upgrade_linecs_heightoffset.dss`
-/// (`HeightOffset=5 HeightUnit=ft`) gates, and it is byte-identical in both
-/// lanes. They diverge only when a unit change lands while the engine already
-/// carries a *non-metre* unit — a second Z build after the user edits
-/// `HeightUnit` — where the parity lane compounds the two conversions
-/// (5 ft → 1.524 m → 1.524 in) and the default lane keeps the typed 5.
-/// `line_constants::tests::height_unit_change_rereads_the_typed_number` pins
-/// both readings, including the equality on the first (metre-sourced) change.
-pub const HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD_DEFAULT_IMPL as HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD;
-#[cfg(feature = "oracle-parity")]
-pub use HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD_PARITY_IMPL as HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD;
 
 /// Whether `Monitor::channel` reports a **one-element `[0.0]` placeholder** for
 /// a monitor that has flushed nothing, instead of an empty channel.
