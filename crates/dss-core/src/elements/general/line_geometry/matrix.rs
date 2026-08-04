@@ -307,11 +307,13 @@ impl LineGeometryObj {
     /// call order (`SetEpsRMedium`, then `SetHeightOffset`, then
     /// `SetUserHeightUnit`) — the last re-applies the offset in the new unit,
     /// which is what makes `HeightUnit=` mean anything here: the offset is
-    /// stored while the engine still carries its constructed `UNITS_M`, so the
-    /// unit set re-reads the typed number under the declared unit. This order is
-    /// also what keeps that re-read metre-sourced — see
-    /// `LineConstants::set_user_height_unit`, where the outgoing unit decides
-    /// which number is re-read. Each setter flags
+    /// stored under whatever unit the engine currently carries (the constructed
+    /// `UNITS_M` on the first push into a fresh engine), and the unit set then
+    /// re-reads the typed number under the declared one. Which number that is
+    /// depends on the *outgoing* unit — see
+    /// `LineConstants::set_user_height_unit`, whose doc works the two cases (a
+    /// fresh engine at metres, and the persistent geometry engine re-entered on a
+    /// later build) out in full. Each setter flags
     /// `rhoChanged`, so the next `z_matrix`/`yc_matrix` (or a still-pending
     /// `update_line_geometry_data`) recomputes. A no-op when no engine exists yet
     /// (Pascal's `lineConstants` is always allocated for a real geometry).

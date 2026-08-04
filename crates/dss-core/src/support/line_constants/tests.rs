@@ -872,11 +872,16 @@ const IN: i32 = 6; // LineUnits::Inch code
 /// statement earlier. The pinned 0.14.5 backend has no height-offset surface at
 /// all, so these line numbers resolve against r4133 only.
 ///
-/// The first half is the only sequence any caller performs today — offset stored
-/// while the engine still carries its constructed `UNITS_M`, then the unit set —
-/// where the two readings coincide anyway; it guards the gated deck
+/// The first half is the sequence every gated caller performs — the offset
+/// stored into a freshly built engine at its constructed `UNITS_M`, then the
+/// unit set — where the two readings coincide anyway; it guards the gated deck
 /// `modes/upgrade/upgrade_linecs_heightoffset.dss` (`HeightOffset=5
-/// HeightUnit=ft` → 1.524 m). The second half is the change that separates them.
+/// HeightUnit=ft` → 1.524 m). The second half is the change that separates them,
+/// and it needs a **non-metre outgoing** unit: in the engine that takes an
+/// `Edit Line.<n> HeightUnit=` plus a Z rebuild, because the geometry path keeps
+/// one Carson engine across builds (see
+/// [`LineConstants::set_user_height_unit`]). Nothing gated performs that
+/// sequence, so this test is the only cover the diverging half has.
 #[test]
 fn height_unit_change_rereads_the_typed_number() {
     // The universal path: store under the default metre unit, then set ft.

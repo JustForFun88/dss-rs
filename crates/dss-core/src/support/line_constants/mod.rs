@@ -542,12 +542,30 @@ impl LineConstants {
     /// the getter this class already has, called one statement earlier
     /// (`GOLDEN_REBASE_PLAN.md` G2.1h; `issue-28`).
     ///
-    /// The two readings coincide while the outgoing unit is metres, which is
-    /// every path that reaches here today: the only consumer is the Line →
-    /// Carson push `makeZFromGeometry`/`makeZFromSpacing`, whose fixed call
-    /// order stores the offset while the engine still carries its constructed
-    /// `UNITS_M` (`line_geometry::matrix::set_line_constants_medium`). They part
-    /// on a *second* unit change, pinned by
+    /// The two readings coincide exactly when the **outgoing** unit is metres,
+    /// and nothing gated ever leaves that case — by two separate mechanisms, not
+    /// one. The only consumer is the Line → Carson push
+    /// `makeZFromGeometry`/`makeZFromSpacing`
+    /// (`line_geometry::matrix::set_line_constants_medium`), whose fixed order is
+    /// `SetHeightOffset` then `SetUserHeightUnit`. (a) The **first** push into a
+    /// freshly built engine finds the constructed `UNITS_M`, so
+    /// `From_Meters(m) = 1` and both readings re-apply the same number; the
+    /// spacing path rebuilds its throwaway geometry on every Z build
+    /// (`elements::pd::line::solve::make_z_from_spacing`), so it is always in
+    /// this case. (b) The geometry path keeps **one** engine for the life of the
+    /// Line's geometry snapshot (`elements::pd::line::code::fetch_geometry_code`
+    /// clones it; only a later `geometry=` replaces it), so every subsequent
+    /// push re-enters here carrying the *previous* build's unit — but with the
+    /// pushed unit unchanged unless the user edited `HeightUnit=` in between,
+    /// hence returning early at the guard below.
+    ///
+    /// The readings therefore part only after a user `Edit Line.<n> HeightUnit=`
+    /// followed by a rebuild — a frequency change, since the edit itself does not
+    /// invalidate `FZFrequency`
+    /// (`elements::pd::line::accessors::side_effects`) — which no golden and no
+    /// gated deck performs (measured: 5 typed under ft then re-read as inches is
+    /// 0.127 m here against upstream's compounded 0.0387 m). That change is
+    /// covered at this level by
     /// `line_constants::tests::height_unit_change_rereads_the_typed_number`.
     pub fn set_user_height_unit(&mut self, value: i32) {
         if value == self.user_height_unit {
