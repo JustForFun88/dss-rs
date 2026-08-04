@@ -39,8 +39,8 @@
 //! | solver execution (`Par`, refinement) | `dss-sparse` `compat` | no — declaration only, M3c / WP-R1 own the flip |
 //! | Y triplet dedup | *no split* — one shared kernel serves both lanes (IV.1) | — |
 //! | sym components | *no split* — measured, see below | — |
-//! | Export SeqCurrents `Iresidual` | [`IRESIDUAL_FROM_TERMINAL_1`] — this file | **yes** (F.3c) |
-//! | multi-meter `Bus_Int_Duration` | [`BUS_INT_DURATION_WALKS_ALL_BUSES`] — this file | **yes** (F.3c) |
+//! | Export SeqCurrents `Iresidual` | *torn down* (GOLDEN_REBASE G2.2a) — `report::export::seq_currents` sums the row's own terminal in both lanes | — |
+//! | multi-meter `Bus_Int_Duration` | *torn down* (GOLDEN_REBASE G2.2a) — `solution::meters::reliability` walks only its own zone in both lanes | — |
 //! | Monitor `BaseFrequency` 60.0 (CLAUDE.md bug 6, deferred here by name) | [`monitor_base_frequency`] — this file | **yes** (F.3c) |
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
 //! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
@@ -57,9 +57,11 @@
 //! of the six, two
 //! were never reproduced at all (VSConverter's self-aliased `MVMult`, harmonics
 //! `Powers`-after-`Currents`) — as is the out-of-range half of
-//! `Bus_Int_Duration` — and all four that *are* reproduced now carry the
-//! parity/default split (`Iresidual`, the in-range `Bus_Int_Duration`
-//! cross-zone overwrite, Monitor `BaseFrequency`, Newton stale `Iterminal`).
+//! `Bus_Int_Duration`. Of the four that *were* reproduced, two are gone:
+//! `GOLDEN_REBASE_PLAN.md` G2.2a tore down `Iresidual` and the in-range
+//! `Bus_Int_Duration` cross-zone overwrite, so both lanes now compute the
+//! correct value. The remaining two still carry the parity/default split
+//! (Monitor `BaseFrequency`, Newton stale `Iterminal`).
 //!
 //! The last row is likewise not a new *kernel*. IV.2's table enumerates the
 //! shared arithmetic kernels — the primitives called from hundreds of sites —
@@ -534,59 +536,6 @@ pub fn etk_invert_partial_pivot_impl(a: &mut [f64], norder: usize) -> Result<(),
 /// The real dense-inverse kernel — the counterpart of [`invert`], and **one
 /// shared implementation** for the same measured reasons (F.3i).
 pub use etk_invert_gj_no_exchange_impl as etk_invert;
-
-// ---------------------------------------------------------------------------
-// Export SeqCurrents `Iresidual` (IV.2 row 9)
-// ---------------------------------------------------------------------------
-
-/// Whether `Export SeqCurrents` prints **terminal 1's** residual current on
-/// every terminal row.
-///
-/// `true` reproduces the upstream bug: Pascal `CalcAndWriteSeqCurrents` sums
-/// `cBuffer^[i]` for `i = 1..Ncond` inside the per-terminal loop, missing the
-/// `(j-1)*Ncond` offset, so every row repeats terminal 1's residual
-/// (`ExportResults.pas`; oracle-proven on IEEE13 `Line.671680`, whose true
-/// terminal-2 residual is 9.8e-12 A while the export prints terminal 1's
-/// 2.83e-5 A). Deterministic and defined, so the parity lane keeps it.
-///
-/// `false` sums the row's **own** terminal — the clean fix. The value is what
-/// the element's `Iterminal` already holds; only the slice changes, so this
-/// is a reporting fix with no effect on any solved quantity.
-pub const IRESIDUAL_FROM_TERMINAL_1_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const IRESIDUAL_FROM_TERMINAL_1_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use IRESIDUAL_FROM_TERMINAL_1_DEFAULT_IMPL as IRESIDUAL_FROM_TERMINAL_1;
-#[cfg(feature = "oracle-parity")]
-pub use IRESIDUAL_FROM_TERMINAL_1_PARITY_IMPL as IRESIDUAL_FROM_TERMINAL_1;
-
-// ---------------------------------------------------------------------------
-// Multi-meter `Bus_Int_Duration` (IV.2 row 10)
-// ---------------------------------------------------------------------------
-
-/// Whether `CalcReliabilityIndices`' bus-interruption-duration loop walks
-/// **every circuit bus** instead of only this meter's zone.
-///
-/// `true` reproduces the upstream bug (`EnergyMeter.pas:2521`): with more than
-/// one EnergyMeter, a bus whose `BusSectionID` was written by *another* meter's
-/// sweep is indexed into **this** meter's `FeederSections`, so the later meter
-/// overwrites foreign buses' durations from its own sections. In-range section
-/// ids make that a deterministic cross-zone overwrite the parity lane keeps
-/// (golden `export_busreliability_multimeter`); out-of-range ids are an OOB
-/// heap read, proven nondeterministic and never reproduced in either lane (the
-/// `.get()` returns `None`).
-///
-/// `false` walks only the buses this meter's own zone sweep assigned — the
-/// clean fix, which makes each meter's durations independent of meter order.
-pub const BUS_INT_DURATION_WALKS_ALL_BUSES_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const BUS_INT_DURATION_WALKS_ALL_BUSES_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use BUS_INT_DURATION_WALKS_ALL_BUSES_DEFAULT_IMPL as BUS_INT_DURATION_WALKS_ALL_BUSES;
-#[cfg(feature = "oracle-parity")]
-pub use BUS_INT_DURATION_WALKS_ALL_BUSES_PARITY_IMPL as BUS_INT_DURATION_WALKS_ALL_BUSES;
 
 // ---------------------------------------------------------------------------
 // Monitor base frequency (CLAUDE.md §Known upstream bugs — deferred to Stage F)

@@ -2208,15 +2208,15 @@ pub enum GateSpec {
     /// Skip when the oracle's value in column `col` is **above** `threshold` —
     /// the mirror of [`GateSpec::Col`], and **not** a tolerance concept at all.
     ///
-    /// Its one use is a Stage F **deliberate divergence** confined to
-    /// identifiable rows: `Export SeqCurrents`' `Iresidual` reproduces an
-    /// upstream indexing bug that prints *terminal 1's* residual on every
-    /// terminal row, and the default lane fixes it — so exactly the rows with
-    /// `Terminal ≥ 2` are excluded there (gate `ColAbove(1, 1.5)`), while every
-    /// terminal-1 cell stays compared against the oracle in both lanes. The
-    /// excluded cells are pinned instead by their own expected-value test
-    /// (`export_seqcurrents_iresidual_is_the_lane_kernel`), which is why this
-    /// is an *exclusion with a replacement gate*, not a relaxation.
+    /// Its one use is a **deliberate divergence** confined to identifiable
+    /// rows: the captured `Export SeqCurrents` carries an upstream indexing bug
+    /// that prints *terminal 1's* residual on every terminal row, and both
+    /// lanes fix it (GOLDEN_REBASE G2.2a) — so exactly the rows with
+    /// `Terminal ≥ 2` are excluded (gate `ColAbove(1, 1.5)`), while every
+    /// terminal-1 cell stays compared against the oracle. The excluded cells
+    /// are pinned instead by their own expected-value test
+    /// (`export_seqcurrents_iresidual_sums_the_rows_own_terminal`), which is
+    /// why this is an *exclusion with a replacement gate*, not a relaxation.
     ColAbove(usize, f64),
     /// **Always** skip the matched column — a non-deterministic column that
     /// carries no comparable value (a wall-clock timestamp or an absolute path).

@@ -61,9 +61,10 @@ binding invariants that survive it are:
 - Status: the nine capi-only bugs (absent in r4133 — see
   `investigations/to_opendss/NOT-APPLICABLE-TO-R4133.md`) are removed from both
   lanes by the R4133-alignment pass (2026-08-02). The bug kernels shared with
-  r4133 are being removed by `GOLDEN_REBASE_PLAN.md` WP-G2: single-point stddev
-  is done (G2.1a, 2026-08-03); Iresidual, Bus_Int_Duration, Newton stale
-  Iterminal, Monitor BaseFrequency and the rest are queued behind it.
+  r4133 are being removed by `GOLDEN_REBASE_PLAN.md` WP-G2: the eight
+  zero-footprint rows (G2.1a–G2.1h, 2026-08-03…05, single-point stddev first)
+  and then Iresidual + Bus_Int_Duration (G2.2a, 2026-08-05) are done; Newton
+  stale Iterminal, Monitor BaseFrequency and the rest are queued behind them.
 
 ## `TODO(compat)` convention (see PORTING_PLAN.md §4.1)
 
@@ -93,26 +94,31 @@ documented inline (a `compat` row + pin) rather than in a separate report.
 **Rule (since 2026-08-02): no upstream bug is reproduced in ANY lane** — the
 engine computes the correct value and every observable divergence from an oracle
 channel is excluded field-by-field and pinned by an expected-value test. The
-per-bug notes below describe the historical Stage-F lane-splits; their
-parity-side reproductions are being dismantled (the nine capi-only bugs done
-2026-08-02; the ones below — all shared with r4133 — queued for a dedicated WP).
+per-bug notes below record how each one stands; the parity-side reproductions
+are being dismantled by `GOLDEN_REBASE_PLAN.md` WP-G2 (the nine capi-only bugs
+done 2026-08-02; of the ones below — all shared with r4133 — `Iresidual` and
+`Bus_Int_Duration` fell in G2.2a, Newton stale `Iterminal` and Monitor
+`BaseFrequency` are next).
 English upstream-ready reports for all confirmed r4133 bugs live in
 `investigations/to_opendss/`.
 
 - **Export SeqCurrents `Iresidual`** — every terminal row prints *terminal 1*'s
-  residual (missing `(j-1)*Ncond` offset). **Lane-split** since Stage F.3c
-  (`compat::IRESIDUAL_FROM_TERMINAL_1` in `report/export/seq_currents.rs`):
-  parity reproduces it (the goldens pin it), the default lane sums the row's own
-  terminal.
+  residual (missing `(j-1)*Ncond` offset). **Not reproduced in either lane**
+  since GOLDEN_REBASE G2.2a: `report/export/seq_currents.rs` sums the row's own
+  terminal, the `Terminal >= 2` cells of the `export_seqcurrents` golden are
+  excluded unconditionally, and the pin
+  `export_seqcurrents_iresidual_sums_the_rows_own_terminal` derives them from
+  `Export Currents`' `Iresid_j`.
 - **Multi-meter `Bus_Int_Duration`** — the `CalcReliabilityIndices` duration loop
   walks ALL circuit buses, indexing foreign section ids into this meter's
-  `FeederSections`. In-range id → deterministic cross-zone overwrite,
-  **lane-split** since Stage F.3c
-  (`compat::BUS_INT_DURATION_WALKS_ALL_BUSES` in
-  `solution/meters/reliability.rs`; parity keeps the overwrite, golden
-  `export_busreliability_multimeter`); out-of-range id → OOB heap read, proven
-  nondeterministic, not reproduced in either lane (safe `.get()` skip; nothing
-  to pin).
+  `FeederSections`. In-range id → deterministic cross-zone overwrite, **not
+  reproduced in either lane** since GOLDEN_REBASE G2.2a
+  (`solution/meters/reliability.rs` walks only its own zone; the `Duration`
+  column of the golden `export_busreliability_multimeter` is masked
+  unconditionally and pinned literally by
+  `export_busreliability_multimeter_duration_stays_in_the_meters_zone`);
+  out-of-range id → OOB heap read, proven nondeterministic, not reproduced in
+  either lane (safe `.get()` skip; nothing to pin).
 - **VSConverter `GetCurrents`** — self-aliased `MVMult` over `ComplexBuffer`:
   reported currents violate KCL and every read mutates state (can poison the next
   solve). Not reproduced — the port computes physically-correct currents, gated

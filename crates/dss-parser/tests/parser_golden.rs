@@ -47,8 +47,8 @@ const DEFAULT_LANE_DIVERGENCES: &[(&str, usize, f64, f64, &str)] = &[(
     9,
     0.5,
     f64::EPSILON * 0.5,
-    "(30 sin) — Stage F pi row (F.3d). The oracle's 0.5000000000000299 is the \
-     truncated-pi degree conversion the parity lane keeps; the default lane \
+    "(30 sin) — the `compat::PI` row (F.3d). The oracle's 0.5000000000000299 is \
+     the truncated-pi degree conversion the parity lane keeps; the default lane \
      scales by f64::consts::PI, so its answer must be the correctly-rounded \
      sin 30 deg = 1/2. Pinned within one ulp of that exact value — an \
      independent target, NOT our own constant re-evaluated, so an arbitrary \
