@@ -153,6 +153,21 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   movement: no live gate reads `Bus.Int_Duration` or report text yet (WP-G1's
   G1.6 adds the reliability columns, which is why the plan orders this row
   first), and the corpus gate stayed green in both lanes.
+  Audit: 6 minor, **all upheld and fixed** (docs plus one rail), no engine code
+  touched. Five were doc-rot the teardown left behind — `run_deck_export_capture`
+  and `GateSpec::Mask` still described their pre-G2.2a roles, the
+  `branches_on_lane` census still said `golden_reports.rs` ×15 (now ×9), the
+  `Evidence` `expect(dead_code)` note still claimed only `Site` is constructed,
+  and `GOLDEN_REBASE_PLAN.md`'s G5.1 list still promised a TOLERANCE_NOTES
+  *move* that was a rewrite-in-place (both plan lines now say so, so G5.1 does
+  not chase it). The sixth was real coverage: the re-anchored pin-walk
+  non-vacuity const keys on the bare token `PI`, which
+  `parser_golden.rs`'s incidental `f64::consts::PI` satisfies, so deleting the
+  deliberate `compat::PI` citation left the anchor green on a std-library
+  homonym — reproduced, then closed by re-checking the **qualified**
+  `compat::<alias>` spelling in the region the walk credited (the probe now
+  fails on that assert alone). `lane_diff.ps1` not re-run: the fix touches no
+  compat kernel, lane alias or solver.
 
 ### Live escape register — the 18 surviving `TODO(compat)` markers
 

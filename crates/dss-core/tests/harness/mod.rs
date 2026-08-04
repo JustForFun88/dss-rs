@@ -2223,6 +2223,19 @@ pub enum GateSpec {
     /// Not a tolerance relaxation of any *value*: the column is genuinely
     /// unpinnable (`Summary`'s `DateTimeToStr(Now)`), documented in
     /// `tests/TOLERANCE_NOTES.md`.
+    ///
+    /// It carries a **second** role, the whole-column sibling of
+    /// [`GateSpec::ColAbove`]: a column every one of whose cells diverges from
+    /// the capture because a torn-down bug row moved it in both lanes, and
+    /// whose rows no key in the report can separate. `export_busreliability`'s
+    /// multi-meter `Duration` is the one such use (GOLDEN_REBASE G2.2a — each
+    /// meter's duration loop now stays in its own zone, while the capture, from
+    /// both gating engines, carries the cross-zone overwrite). That column is
+    /// neither non-deterministic nor unpinnable: it is replaced bus-by-bus by
+    /// its own expected-value test
+    /// (`export_busreliability_multimeter_duration_stays_in_the_meters_zone`),
+    /// which is what keeps this an exclusion-with-a-replacement rather than
+    /// silence.
     Mask,
 }
 
