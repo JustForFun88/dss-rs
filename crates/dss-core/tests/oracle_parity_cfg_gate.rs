@@ -1547,9 +1547,12 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     // exist in the pinned 0.14.5 backend at all (no `FheightOffset` in its 186
     // `.pas`), so this row is cited against r4133 only and gates on the `r4133`
     // channel. Zero-footprint, measured: the sole consumer
-    // (`line_geometry::matrix::set_line_constants_medium`) stores the offset
-    // while the engine still carries its constructed `UNITS_M`, where both
-    // readings coincide, so the gated deck
+    // (`line_geometry::matrix::set_line_constants_medium`) pushes into a
+    // freshly built engine at its constructed `UNITS_M` on the first build,
+    // where both readings coincide, and re-enters with the unit unchanged on
+    // every later build, where the setter returns early. The readings part only
+    // after an `Edit Line.<n> HeightUnit=` plus a rebuild, which no golden and
+    // no gated deck performs — so the gated deck
     // `modes/upgrade/upgrade_linecs_heightoffset.dss` and every golden are
     // byte-identical either way and nothing moved but the pin.
     (

@@ -48,13 +48,15 @@ doc and the register row all now say so in place. The gated deck is on the
 its `*_IMPL` twins are **deleted**; `LineConstants::set_user_height_unit` reads
 `self.height_offset()` unconditionally, before the unit field moves. The default
 lane already did this, so **only the parity lane moves** — and only on a path
-nothing reaches today: the sole caller is the Line → Carson push
+nothing gated reaches: the sole caller is the Line → Carson push
 `makeZFromGeometry`/`makeZFromSpacing`, whose fixed order is `SetEpsRMedium`,
 `SetHeightOffset`, `SetUserHeightUnit`
-(`line_geometry::matrix::set_line_constants_medium`), so the offset is always
-stored while the engine still carries its constructed `UNITS_M`, where
-`From_Meters(m) = 1` makes both readings the same number. The two part only on a
-*second* unit change with a non-metre outgoing unit. The compat module-doc row
+(`line_geometry::matrix::set_line_constants_medium`). On the **first** push into
+a freshly built engine the outgoing unit is the constructed `UNITS_M`, where
+`From_Meters(m) = 1` makes both readings the same number; every later push
+re-enters with the unit unchanged and returns early. The two part only on a
+*second* unit change with a non-metre outgoing unit — see the audit settlement
+below for the exact reachability. The compat module-doc row
 for the *Single-site upstream quirks* section records this row as G2.1h, and the
 `matrix.rs` call-order comment no longer names a const that is gone.
 
@@ -79,8 +81,8 @@ as an `else` arm, four spaces deeper and without the binding, so a restored lane
 branch stops matching.
 
 **Zero-footprint.** No golden byte, no `ledger.json` entry and no
-`population.lock.json` field moves: the only consumer stores the offset under
-metres, so both readings coincide everywhere anything is gated, and
+`population.lock.json` field moves: everything gated pushes at metres or with the
+unit unchanged, so both readings coincide there, and
 `upgrade_linecs_heightoffset.dss` is byte-identical in both lanes. Doc surface:
 the alias was never cited on the walked surface (measured again — outside
 `crates/` it appears only in STATUS, the plan and the gitignored
@@ -107,6 +109,46 @@ renamed, 0 removed, 0 new
 `#[ignore]`. `git diff --stat -- tests/golden` is empty; `git status --short
 tests/corpus` clean after both runs (the eight `AutoTrans/*.txt` run artifacts
 were removed per file, never recursively).
+
+**Audit settlement (both findings upheld, docs only — no engine change).** Two
+independent auditors flagged the same over-stated clause — *"the offset is stored
+while the engine still carries its constructed `UNITS_M`"*, which the Stage F.3u
+record below states and this teardown's four texts repeated as *"every path that
+reaches here today"*. That is a structural guarantee only for the **first** push. The Carson engine is
+built at geometry-edit time
+(`line_geometry::edit::realloc_conductors`/`change_line_constants_type`,
+`LineConstants::new`), snapshot-cloned into the Line by
+`elements::pd::line::code::fetch_geometry_code` (`geom.clone()`, replaced only by
+a later `geometry=`), and **never rebuilt per Z build** — so every later push
+from `line::solve::make_z_from_geometry` re-enters
+`set_user_height_unit` with the *previous* build's unit. What actually keeps the
+gated corpus on the coinciding branch is a second, different mechanism: the unit
+is unchanged on those pushes, so the setter returns early at `if value ==
+self.user_height_unit`. The two readings are reachable apart only after an
+`Edit Line.<n> HeightUnit=` plus a rebuild — the edit alone does not invalidate
+`FZFrequency` (`line::accessors::side_effects`, `HEIGHT_UNIT` arm), a frequency
+change does. Measured with a throwaway probe over the real geometry API (two
+`set_line_constants_medium` pushes on one persistent geometry, then removed):
+push 1 `ft` → 1.524 m; push 2 `in` on the stale `ft` → **0.127 m** (the typed 5
+inches, i.e. the fix) against upstream's compounded 0.0387 m; push 3, unit
+unchanged → early return, bit-identical. The conclusion the four texts drew is
+therefore right and stays — zero footprint, `lane_diff` `max |Δ| = 0`, zero
+golden and corpus bytes — but the *reason* was wrong, so the clause is reworded
+in all four places (`line_constants/mod.rs` kernel doc, `line_geometry/matrix.rs`
+call-order comment, the `TORN_DOWN_ROWS` register comment, the pin doc in
+`line_constants/tests.rs`) to name both mechanisms and the edit-plus-rebuild
+sequence that separates them. **Follow-up, deliberately not done here:** the
+diverging sequence has no deck-level cover — only the unit-level pin. A two-build
+corpus case (`HeightOffset=5 HeightUnit=ft`, solve, `Edit Line.l1 HeightUnit=in`,
+solve at a new frequency, `r4133` channel with a ledger entry for the upstream
+gap) belongs to a WP allowed to move corpus bytes; WP-G2 forbids it (acceptance
+criterion: zero bytes under `tests/golden`, and the same discipline applied to
+`tests/corpus` across these sub-steps). Recorded for G3/G4. The settlement
+changes **comments only** — every `+`/`-` line under `crates/` is a `///` or `//`
+line — and was re-verified on the full five-command gate in both lanes plus
+`lane_diff.ps1` (520 cases, 3 219 862 records, `max |Δ| = 0` exactly on `conv`,
+`cur`, `errs`, `iter`, `loss`, `pow`, `v`, `y`, 0 iteration drift, `VERDICT:
+PASS`, the two `newton` decks the only documented entries).
 
 ### GOLDEN_REBASE G2.1g — `CIM_WYE_GROUNDED_IS_HARDCODED_TRUE` torn down: the CIM `grounded` flag reads the neutral in both lanes (branch `golden-g2`, 2026-08-04)
 
