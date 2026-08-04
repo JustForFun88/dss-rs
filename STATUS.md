@@ -157,7 +157,11 @@ the site comment carries each row's measured cost.
 > → Stage F — NOT started" and "`HIDE_015X` → Stage F — NOT started" handoffs
 > were executed by DE_PASCALIZE Stage F (complete, `depascalize-stagef.md`) and
 > are now finished by GOLDEN_REBASE WP-G2/WP-G4; the live marker population is
-> the 18-row table above, not §5's 2026-07-17 count of 123.
+> the 18-row table above, not §5's 2026-07-17 count of 123. Their in-place
+> back-references now resolve outside this file: `§OG-1.x … below` in
+> [`orphaned-gaps.md`](docs/phase-records/orphaned-gaps.md), `§1a archive` in
+> [`era-summaries.md`](docs/phase-records/era-summaries.md). §7 states the
+> general forwarding rule.
 
 ### Standing open follow-ups (actionable)
 
@@ -385,6 +389,18 @@ commands filtered — recorded per case so promotion work doesn't naively
 
 Frozen history, superseded only by the code and tests. Every file is verbatim
 STATUS.md text; nothing here is a summary.
+
+**Forwarding rule for `STATUS §X` citations.** Code comments, plans and manifests
+across the repo cite this file by section (~70 such references outside
+`docs/phase-records/` at archiving time). A citation is history — it names the
+section it was written against, and the call sites were deliberately **not**
+rewritten. Resolve it in whichever file below holds §X; `rg '§X'
+docs/phase-records/` finds it. The moved anchors most often cited: §1a →
+`era-summaries.md`; §1b–1f and §2 → `phase-index.md`; §3/§3.4 and §4 →
+`design-decisions.md`; §OG-1.x → `orphaned-gaps.md`; §7 (**caution** — the old
+"Phase 7 — inherited deferrals" section, unrelated to *this* §7) →
+`phase-7.md`; the per-WP records (§WP7.5, §WP8.3, §WP-AD.*, §WM.*, §W3.*,
+§R2/R3, …) → the per-plan file named in the table.
 
 | File | What it holds |
 | --- | --- |
