@@ -41,11 +41,11 @@ has shrunk to a precision-compat lane and is scheduled for full teardown.
 
 **In flight.** `GOLDEN_REBASE_PLAN.md` on branch **`golden-g2`**. WP-G0 (safety
 rails) is complete and merged to `update`; WP-G2 (tear down the shared-with-r4133
-bug kernels) is running — G2.0 rails + G2.1a…G2.1h + G2.2a landed,
-`SPLIT_ALIAS_POPULATION` **31 → 21**, and the WP acceptance criterion still holds
+bug kernels) is running — G2.0 rails + G2.1a…G2.1h + G2.2a + G2.2b landed,
+`SPLIT_ALIAS_POPULATION` **31 → 19**, and the WP acceptance criterion still holds
 at HEAD: `git diff --stat -- tests/golden` over the whole range is **empty** in
-both lanes. Next step: **G2.2b** — the property-exclusion rows
-`monitor_base_frequency` and `ISOURCE_BUS2_NEVER_LATCHES`. Queued behind
+both lanes. Next step: **G2.2c** — the text-transform rows
+(`FAULT_DUMP_TAIL_REPRINTS_MINAMPS`, the two CIM writers). Queued behind
 GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, the
 UPGRADE line.
 
@@ -168,6 +168,44 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   `compat::<alias>` spelling in the region the walk credited (the probe now
   fails on that assert alone). `lane_diff.ps1` not re-run: the fix touches no
   compat kernel, lane alias or solver.
+- **G2.2b** (2026-08-05) — the two **property**-exclusion rows.
+  `monitor_base_frequency`: `TMonitorObj.Create` re-assigns `Basefrequency :=
+  60.0` after the inherited `TDSSCktElement.Create` already wrote
+  `ActiveCircuit.Fundamental` (`Monitor.pas:472` == r4133 `:552`;
+  `CktElement.pas:203`) — left-over, not meant, since `Line.pas:974` /
+  `GICLine.pas:373` carry the same statement commented out with "set in base
+  class" and EnergyMeter/Sensor never write the field. Its one physical consumer
+  is mode-4 flicker (`Monitor.pas:1657` → `Pstcalc.pas:594`, where `fBase = 50`
+  picks the IEC 61000-4-15 230 V/50 Hz lamp weighting, `:609-626`).
+  `create_object_no_edit` now seeds `base_frequency = fundamental` for every
+  element with no Monitor arm at all; `harness::skip_prop`'s `LANE_SKIP_PROPS`
+  consultation is unconditional, and the pin was renamed to
+  `monitor_basefreq_inherits_the_fundamental` (inherited 50 on a 50 Hz deck,
+  unchanged 60 on a 60 Hz one, explicit `basefreq=` still overrides); the
+  kernel-vs-kernel test in `compat/tests.rs` went with the two kernels, and the
+  neighbouring `all_elements_inherit_the_50hz_base_frequency` simply gained the
+  monitor in its element list instead of a lane branch.
+  `ISOURCE_BUS2_NEVER_LATCHES`: `TIsourceObj.PropertySideEffects` has no `bus2`
+  case (`Isource.pas:221-262`; r4133 `Isource.pas` declares `Bus2Defined` `:61`,
+  copies `:335`, clears `:398` and never sets it), so the `bus1` case's
+  `if not Bus2Defined then SetBus(2, S2)` clobbers an explicit `Bus2=` parsed
+  first — while `Vsource.pas:498` (r4133 `:468`) and `Capacitor.pas:349` latch
+  on that very property. The `BUS2` arm now latches in both lanes;
+  `props_roundtrip.rs`'s `LANE_SKIP_SCENARIO_PROPS` is unconditional (its
+  `lane_skips` assert is now a plain equality against the list length, in both
+  lanes) and the pin is `bus2_latches_like_the_sibling_class`. 21 → 19, both
+  rows `Evidence::Exclusion`. **`LANE_SKIP_PROP_VALUE_CELLS = 33` did not move**
+  — it is the unrelated both-lane sym-matrix exclusion, and the plan calls a
+  movement there a finding, not a re-measurement. Doc strikes in the same
+  commit: CLAUDE.md's Monitor bullet, its WP-G2 status line and its
+  "documented inline" sentence (the row has had `investigations/
+  issue-06-monitor-basefrequency-60.md` for a while), and
+  `tools/golden/gen_props.py`'s `isource_full` KEEP-THIS-ORDER note — the
+  capture still needs the ordering, the port no longer does. No golden byte, no
+  ledger and no `population.lock.json` movement; the corpus gate stayed green in
+  both lanes, which is the classification check for both rows (the 50 Hz
+  `LVTestCase` monitors and the props `Bus2` cell are the only observables).
+  `lane_diff.ps1`: max |Δ| = 0.
 
 ### Live escape register — the 18 surviving `TODO(compat)` markers
 

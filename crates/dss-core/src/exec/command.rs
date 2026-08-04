@@ -1077,29 +1077,31 @@ impl Dss {
         // circuit`) makes a European feeder run at 50 Hz. `edit_active` (below) can
         // still override via `basefreq=`.
         //
-        // EXCEPTION — Monitor: `TMonitorObj.Create` re-hardcodes `Basefrequency :=
-        // 60.0` AFTER the inherited `Create` (Monitor.pas:472), overriding the
-        // fundamental every other element inherits (EnergyMeter/Sensor do NOT
-        // override). That is a proven upstream bug with one physical consumer
-        // (mode-4 flicker's lamp curve), and it is the Stage F
-        // `monitor_base_frequency` row: the parity lane reproduces the hard 60.0
-        // both gating oracles pin, the default lane inherits `Fundamental`. Full
-        // analysis on the two kernels in `compat`.
+        // **Every** element, Monitor included — which upstream is not. There
+        // `TMonitorObj.Create` re-hardcodes `Basefrequency := 60.0` AFTER the
+        // inherited `Create` (`.inputs/dss_capi/src/Meters/Monitor.pas:472`;
+        // r4133 `Version8/Source/Meters/Monitor.pas:552`), overriding the
+        // fundamental every other element inherits — the sibling measurement
+        // classes (EnergyMeter, Sensor) do not, and `Line.pas:974` /
+        // `GICLine.pas:373` carry the very same assignment *commented out* with
+        // "set in base class", so the Monitor's is left-over rather than meant.
+        // It has one physical consumer, mode-4 flicker: the field is the `fBase`
+        // handed to `FlickerMeter` (`Monitor.pas:1657` → `Pstcalc.pas:594`),
+        // where `fBase = 50.0` selects the IEC 61000-4-15 230 V/50 Hz lamp
+        // weighting instead of the 120 V/60 Hz set (`Pstcalc.pas:609-626`), so a
+        // 50 Hz feeder's Pst comes out on the wrong lamp curve unless the user
+        // writes `basefreq=50` by hand. `GOLDEN_REBASE_PLAN.md` G2.2b tore the
+        // reproduction down: both lanes inherit, and the property compare that
+        // observes it (`Monitor.BaseFreq` on the 50 Hz LVTestCase) is excluded in
+        // both lanes and pinned by
+        // `exec::tests::base_frequency::monitor_basefreq_inherits_the_fundamental`.
         let fundamental = self.circuit.as_ref().expect("checked above").fundamental;
-        let is_monitor = self.classes[ci]
-            .arena
-            .get_mut::<monitor::Monitor>(idx)
-            .is_some();
         self.classes[ci]
             .arena
             .try_ckt_elem_mut(idx)
             .expect("circuit element class builds circuit elements")
             .cd_mut()
-            .base_frequency = if is_monitor {
-            crate::compat::monitor_base_frequency(fundamental)
-        } else {
-            fundamental
-        };
+            .base_frequency = fundamental;
 
         // Pascal `TVsourceObj.Create`/`TIsourceObj.Create`: `SrcFrequency :=
         // BaseFrequency` (VSource.pas:644, Isource.pas:319) — the source frequency

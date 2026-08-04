@@ -1314,20 +1314,20 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     ("Fuse", "RatedCurrent"),
 ];
 
-/// The one property whose **value** the *default* lane excludes: a Stage F
-/// deliberate divergence, not a comparability problem.
+/// The one property whose **value** this gate excludes as a deliberate
+/// divergence from the capture, not as a comparability problem.
 ///
 /// `Monitor.BaseFreq` — upstream's `TMonitorObj.Create` hard-pins 60.0 over the
 /// inherited `ActiveCircuit.Fundamental` (Monitor.pas:472 == r4133:552; the
-/// value is what selects mode-4 flicker's lamp curve), and the default lane
-/// inherits like every other element. The two lanes agree in every 60 Hz deck; the one
-/// gated corpus case that disagrees is the 50 Hz `LVTestCase`, whose monitors
-/// then read 50 instead of 60. Excluded **only in the default lane** (the
-/// parity lane still compares it, and the property *name*/order is checked in
-/// both), and pinned by its own expected-value test
-/// `exec::tests::base_frequency::monitor_basefreq_is_the_lane_kernel`, which
-/// asserts both lanes' values on a 50 Hz deck and their agreement on a 60 Hz
-/// one.
+/// value is what selects mode-4 flicker's lamp curve), and this engine inherits
+/// like every other element. Both gating oracles report the 60.0, so the
+/// exclusion applies in **both** lanes since GOLDEN_REBASE G2.2b (it was
+/// default-lane-only while the parity lane still reproduced the hard pin). The
+/// property *name* and its index order are still checked in both lanes, and the
+/// value is pinned by its own expected-value test
+/// `exec::tests::base_frequency::monitor_basefreq_inherits_the_fundamental`,
+/// which asserts the inherited 50 on a 50 Hz deck, the unchanged 60 on a 60 Hz
+/// one, and that an explicit `basefreq=` still overrides.
 ///
 /// Keyed by `(class, prop)` rather than by case, so it drops the value compare
 /// on every case and not just the one that needs it. That is a real if small
@@ -1335,15 +1335,18 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 /// bounded by measurement: exactly one gated deck sets a 50 Hz fundamental
 /// (`electricdss-tst/Version8/Distrib/IEEETestCases/LVTestCase/Master.dss`) and
 /// every mode-4 flicker deck in the corpus is 60 Hz, so no Pst output moves;
-/// and what the exclusion gives up on the 60 Hz decks — that both lanes still
-/// report 60 — is exactly what the pin above asserts directly.
+/// and what the exclusion gives up on the 60 Hz decks — that the engine still
+/// reports 60 — is exactly what the pin above asserts directly.
 const LANE_SKIP_PROPS: &[(&str, &str)] = &[("Monitor", "BaseFreq")];
 
 pub fn skip_prop(class: &str, prop: &str) -> bool {
-    let lane_skipped = !lane::PARITY
-        && LANE_SKIP_PROPS
-            .iter()
-            .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p));
+    // LANE-EXCLUSION(monitor_base_frequency): both lanes inherit the circuit
+    // fundamental now, so both drop the value compare on `Monitor.BaseFreq`.
+    // Under the split this list was consulted in the default lane only, behind
+    // a lane read on this very line.
+    let lane_skipped = LANE_SKIP_PROPS
+        .iter()
+        .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p));
     lane_skipped || skip_prop_ub(class, prop)
 }
 

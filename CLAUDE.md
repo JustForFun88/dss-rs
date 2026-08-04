@@ -62,9 +62,10 @@ binding invariants that survive it are:
   `investigations/to_opendss/NOT-APPLICABLE-TO-R4133.md`) are removed from both
   lanes by the R4133-alignment pass (2026-08-02). The bug kernels shared with
   r4133 are being removed by `GOLDEN_REBASE_PLAN.md` WP-G2: the eight
-  zero-footprint rows (G2.1a–G2.1h, 2026-08-03…05, single-point stddev first)
-  and then Iresidual + Bus_Int_Duration (G2.2a, 2026-08-05) are done; Newton
-  stale Iterminal, Monitor BaseFrequency and the rest are queued behind them.
+  zero-footprint rows (G2.1a–G2.1h, 2026-08-03…05, single-point stddev first),
+  then Iresidual + Bus_Int_Duration (G2.2a, 2026-08-05) and Monitor BaseFrequency
+  + the Isource Bus2 latch (G2.2b, 2026-08-05) are done; Newton stale Iterminal
+  and the rest are queued behind them.
 
 ## `TODO(compat)` convention (see PORTING_PLAN.md §4.1)
 
@@ -86,19 +87,19 @@ explanation and the intended clean fix.
 
 ## Known upstream bugs (`investigations/`)
 
-Six proven dss_capi/OpenDSS engine bugs. The first five each have a full deep-dive
-report in the (gitignored, local-only) `investigations/` folder — check there
-before chasing a divergence in those areas. The sixth (Monitor BaseFrequency) is a
-plain hardcoded-constant bug with a single fully-traced consumer, so it is
-documented inline (a `compat` row + pin) rather than in a separate report.
+Six proven dss_capi/OpenDSS engine bugs, each with a full deep-dive report in
+the (gitignored, local-only) `investigations/` folder — check there before
+chasing a divergence in those areas. The sixth (Monitor BaseFrequency) is a
+plain hardcoded-constant bug with a single fully-traced consumer and lived
+inline for a while; its report is `issue-06-monitor-basefrequency-60.md`.
 **Rule (since 2026-08-02): no upstream bug is reproduced in ANY lane** — the
 engine computes the correct value and every observable divergence from an oracle
 channel is excluded field-by-field and pinned by an expected-value test. The
 per-bug notes below record how each one stands; the parity-side reproductions
 are being dismantled by `GOLDEN_REBASE_PLAN.md` WP-G2 (the nine capi-only bugs
 done 2026-08-02; of the ones below — all shared with r4133 — `Iresidual` and
-`Bus_Int_Duration` fell in G2.2a, Newton stale `Iterminal` and Monitor
-`BaseFrequency` are next).
+`Bus_Int_Duration` fell in G2.2a and Monitor `BaseFrequency` in G2.2b, leaving
+Newton stale `Iterminal` as the last one still reproduced).
 English upstream-ready reports for all confirmed r4133 bugs live in
 `investigations/to_opendss/`.
 
@@ -149,12 +150,13 @@ English upstream-ready reports for all confirmed r4133 bugs live in
   50.0` selects the IEC 61000-4-15 230V/50Hz lamp weighting coefficients vs the
   120V/60Hz set (Pstcalc.pas:609-626) — so a mode-4 monitor in a 50 Hz circuit
   computes Pst with the wrong (60 Hz) lamp curve unless the user sets `basefreq=50`.
-  Deterministic, defined, not state-poisoning → **lane-split** since DE_PASCALIZE
-  Stage F.3c (`compat::monitor_base_frequency`, applied in
-  `exec/command.rs::create_object_no_edit`, pin `monitor_basefreq_is_the_lane_kernel`):
-  the parity lane reproduces the 60.0 both gating oracles pin, the default lane
-  inherits `Fundamental` (identical in a 60 Hz circuit, so no golden or corpus case
-  moves).
+  **Not reproduced in either lane** since GOLDEN_REBASE G2.2b:
+  `exec/command.rs::create_object_no_edit` inherits `Fundamental` for every
+  element, the Monitor included; the one oracle-compared observable
+  (`Monitor.BaseFreq` on the 50 Hz LVTestCase) is excluded in both lanes
+  (`tests/harness/mod.rs::LANE_SKIP_PROPS`) and pinned by
+  `monitor_basefreq_inherits_the_fundamental`. In a 60 Hz circuit the two
+  readings coincide, so no golden byte and no Pst number moves.
 
 ## Gate (must be green before any commit)
 
