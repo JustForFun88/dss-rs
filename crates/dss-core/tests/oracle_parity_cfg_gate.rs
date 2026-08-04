@@ -809,8 +809,9 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// after G2.1d did the same to `REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT`;
 /// **26** after G2.1e did the same to
 /// `STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL`; **25** after G2.1f
-/// did the same to `STORAGE_MULTIFILE_USES_THE_PV_PREFIX`.
-const SPLIT_ALIAS_POPULATION: usize = 25;
+/// did the same to `STORAGE_MULTIFILE_USES_THE_PV_PREFIX`; **24** after G2.1g
+/// did the same to `CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`.
+const SPLIT_ALIAS_POPULATION: usize = 24;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -1475,6 +1476,43 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         Some((
             "crates/dss-core/tests/golden_reports.rs",
             "export_storage_multifile_uses_the_storage_prefix",
+        )),
+    ),
+    // G2.1g. The CIM writer answers "is this wye point earthed?" with a
+    // hard-coded `TRUE` for a capacitor (`.inputs/dss_capi/src/Common/
+    // ExportCIMXML.pas:3700`; r4133 `Version8/Source/Common/
+    // ExportCIMXML.pas:3183`) and for a load (`:4478`; r4133 `:3854`), each
+    // under upstream's own `// TODO - check bus 2` — so a wye with an isolated
+    // or impedance-earthed neutral is handed to the receiving tool as solidly
+    // grounded, which changes its earth-fault and zero-sequence answers. The
+    // fix is the **same unit's** transformer writer's test
+    // (`XfmrTankPhasesAndGround` `:1531-1570`: `NodeRef[j2] = 0`, "last
+    // conductor is grounded solidly") applied where each shunt class keeps its
+    // neutral — the capacitor's second terminal, the load's `Nphases+1`-th
+    // conductor. Both gating oracles carry the quirk; both lanes now read the
+    // model. Zero-footprint, measured: no CIM golden deck and no gated corpus
+    // deck has a wye capacitor with an explicit `bus2=` or a wye load with a
+    // non-ground neutral, so all 15 CIM goldens stay byte-identical (the
+    // `lane_expected_cim` transform gained no third entry) and nothing moved
+    // but the pin.
+    (
+        "CIM_WYE_GROUNDED_IS_HARDCODED_TRUE",
+        Kind::SplitAlias,
+        // The capacitor half of the two-site row (the load half is asserted by
+        // the same pin). The `all(|&n| n == 0)` reading existed in the split
+        // form too — as the right operand of `alias ||`, indented four spaces
+        // deeper by rustfmt's binary-operator wrap — so the needle carries the
+        // line break and the sixteen spaces of `boolean_node`'s own argument
+        // list plus the trailing comma: re-introducing a lane branch re-wraps
+        // and re-indents it past this anchor, and deleting the reading outright
+        // fails the same check. Single-line by necessity (CRLF checkout).
+        Evidence::Site(
+            "crates/dss-core/src/cim/export.rs",
+            "\n                snap.term2_nodes.iter().all(|&n| n == 0),",
+        ),
+        Some((
+            "crates/dss-core/tests/golden_cim.rs",
+            "cim_wye_grounded_reads_the_neutral",
         )),
     ),
 ];

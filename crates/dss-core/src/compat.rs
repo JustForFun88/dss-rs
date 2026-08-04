@@ -45,7 +45,7 @@
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
 //! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
 //! | report text rendering — `Show` device-name column width | [`max_device_name_length`] — same section | **yes** (F.4b) |
-//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f |
+//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f, the CIM wye `grounded` flag G2.1g |
 //!
 //! Rows 12–13 are not in IV.2's table and do not extend it: they are the two
 //! *reproduced* CLAUDE.md upstream bugs whose clean fix is deferred to this
@@ -781,50 +781,6 @@ pub const CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_DEFAULT_IMPL: bool = false;
 pub use CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_DEFAULT_IMPL as CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH;
 #[cfg(feature = "oracle-parity")]
 pub use CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_PARITY_IMPL as CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH;
-
-/// Whether the CIM shunt-connection writers hard-code `grounded = TRUE` for a
-/// **wye** capacitor or load instead of reading the connection's neutral.
-///
-/// `true` reproduces the upstream quirk. `BooleanNode(FunPrf,
-/// 'ShuntCompensator.grounded', TRUE)` (`ExportCIMXML.pas:3700`) and
-/// `BooleanNode(FunPrf, 'EnergyConsumer.grounded', TRUE)` (`:4478`) are both
-/// written unconditionally, and both carry upstream's own `// TODO - check
-/// bus 2`. Every wye bank and every wye load therefore exports as solidly
-/// grounded — including one whose neutral is tied to a real node rather than to
-/// ground.
-///
-/// `false` answers the question that TODO asks, the way the **same unit's**
-/// transformer writer already answers it: `XfmrTankPhasesAndGround`
-/// (`:1531-1570`, ported at `cim/power_xfmr.rs`) writes `grounded = true` for a
-/// wye winding exactly when `NodeRef[j2] = 0` — "last conductor is grounded
-/// solidly". Applied to the two shunt classes, whose neutral side the DSS data
-/// model puts in different places:
-///
-/// * a **Capacitor** is a two-terminal element (`Nterms = 2`,
-///   `Nconds = Nphases`) whose wye point *is* its second terminal — literally
-///   the "bus 2" the TODO names — defaulting to `.0.0.0`;
-/// * a **Load** has one terminal, and `SetNcondsForConnection` gives a wye
-///   connection `Nconds = Nphases + 1`, so its neutral is that terminal's
-///   `Nphases+1`-th conductor.
-///
-/// so the default lane writes `grounded` = "every neutral-side node ref is
-/// ground". Pre-`SetNodeRef` (an export issued before any solve) `node_ref` is
-/// empty and both lanes answer `true`, which is what the transformer sibling
-/// already does with the same data.
-///
-/// No golden and no gated corpus deck contains a wye capacitor with an explicit
-/// `bus2=`, nor a wye load with a non-ground neutral node, so every CIM golden
-/// is byte-identical in both lanes; the divergence is pinned by
-/// `golden_cim::cim_wye_grounded_is_lane_split`, which exports a deck that has
-/// both.
-pub const CIM_WYE_GROUNDED_IS_HARDCODED_TRUE_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const CIM_WYE_GROUNDED_IS_HARDCODED_TRUE_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use CIM_WYE_GROUNDED_IS_HARDCODED_TRUE_DEFAULT_IMPL as CIM_WYE_GROUNDED_IS_HARDCODED_TRUE;
-#[cfg(feature = "oracle-parity")]
-pub use CIM_WYE_GROUNDED_IS_HARDCODED_TRUE_PARITY_IMPL as CIM_WYE_GROUNDED_IS_HARDCODED_TRUE;
 
 /// Whether a **Relay**'s per-`Sample` state-trace line is written to the event
 /// log unconditionally, instead of under the `DebugTrace` guard every other

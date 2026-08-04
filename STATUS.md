@@ -7,15 +7,112 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### GOLDEN_REBASE G2.1g — `CIM_WYE_GROUNDED_IS_HARDCODED_TRUE` torn down: the CIM `grounded` flag reads the neutral in both lanes (branch `golden-g2`, 2026-08-04)
+
+**Frontier.** WP-G2's seventh teardown. `SPLIT_ALIAS_POPULATION` **25 → 24**,
+`TORN_DOWN_ROWS` carries its seventh row, and the WP acceptance criterion still
+holds at this commit: `git diff --stat -- tests/golden` over the range is
+**empty** and both lanes' `oracle_parity_cfg_gate` is green. Next: G2.1h
+(`HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD`, `issue-28`), the last of the
+eight zero-footprint rows.
+
+**The measurement the plan asked for first, and its answer.** G2.1g's row
+carries a caveat: if any committed `cim/` golden *observes* the wye `grounded`
+flag at a value the fix moves, the row leaves G2.1 for G2.2c and gets a
+`lane_expected_cim` rewrite rule instead of a plain flip. Measured, twice and
+from both sides. (a) The goldens do carry the flag — 114 `EnergyConsumer.grounded
+= true`, 12 `= false` (the delta arm), 8 `ShuntCompensator.grounded = true`, 1
+`LinearShuntCompensator.grounded = false` (`issue-24`'s misprefixed delta node)
+— so the question is not vacuous. (b) No golden deck puts a wye neutral anywhere
+but ground, so none of those `true`s moves: with the fixed kernel selected in
+**both** lanes the parity lane's own byte compare of all 15 CIM goldens is green,
+and `lane_expected_cim` — whose two rules rewrite element *names* only, never the
+`grounded` value — gained no third entry. G3.4's predicted-diff list therefore
+does **not** gain this row.
+
+**The bug.** The CIM writer answers "is this wye point earthed?" with a
+hard-coded constant. `BooleanNode(FunPrf, 'ShuntCompensator.grounded', TRUE)`
+(`.inputs/dss_capi/src/Common/ExportCIMXML.pas:3700`; r4133
+`Version8/Source/Common/ExportCIMXML.pas:3183`) and `BooleanNode(FunPrf,
+'EnergyConsumer.grounded', TRUE)` (`:4478`; r4133 `:3854`) are written
+unconditionally, and each carries upstream's own `// TODO - check bus 2` — the
+authors wrote the open question down and shipped the placeholder. So a wye bank
+with `bus2=` on a live bus, and a wye load whose 4th conductor lands on a
+neutral-earthing reactor, both export as *solidly grounded*. The calculation is
+untouched (the flag lives only in the export), but the export exists to hand the
+model to another tool, and solidly-earthed vs isolated/impedance-earthed are
+qualitatively different machines for single-phase-fault, zero-sequence and
+earth-fault-protection work. Both gating oracles carry the line, so the
+2026-08-02 policy applies rather than exempts. Deep dive:
+`investigations/issue-23-cim-grounded-always-true.md`.
+
+**What landed.** `compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE` and both its
+`*_IMPL` twins are **deleted**; the two writers in `cim/export.rs` read the model
+unconditionally — the capacitor through `snap.term2_nodes.iter().all(|&n| n ==
+0)`, the load through `snap.neutral_node == 0`. The default lane already did
+this, so **only the parity lane moves**. The fix is not an invented semantic: it
+is the test the **same unit's** transformer writer already applies
+(`XfmrTankPhasesAndGround` `:1531-1570` — `if (pXf.NodeRef[j2] = 0)` → "last
+conductor is grounded solidly"), pointed at where each shunt class keeps its
+neutral — a Capacitor is two-terminal (`Nterms = 2`, `Nconds = Nphases`) and its
+wye point *is* terminal 2, literally the "bus 2" the TODO names; a Load is
+one-terminal and `SetNcondsForConnection` (`Load.pas:479-492`) gives a wye
+connection `Nconds = Nphases + 1`, so its neutral is that terminal's
+`Nphases+1`-th conductor. The pre-solve case is unchanged and stays consistent
+with the transformer sibling: before `SetNodeRef` has run the node refs are empty
+and both readings answer `true`. Each site now cites both oracles' lines in
+place, and the compat module-doc row for the *Single-site upstream quirks*
+section records this row as G2.1g.
+
+**The pin became unconditional.** `golden_cim::cim_wye_grounded_reads_the_neutral`
+(renamed from `cim_wye_grounded_is_lane_split`) lost its `ORACLE_PARITY` branch
+and carries the `EXPECTED-VALUE-PIN(CIM_WYE_GROUNDED_IS_HARDCODED_TRUE)` marker.
+Its two-deck shape is what makes it a pin of a *reading* rather than of a flipped
+constant, and both halves now assert one value in both lanes: the **probe** deck
+(capacitor `bus2=nb.1.2.3` on a live bus, load `bus1=b1.1.2.3.4` with `b1.4` held
+by `reactor.ng`) must export `false` for both classes; the **control** deck — the
+same feeder with default neutrals — must still export `true` for both. Its
+`only_grounded` reader still asserts exactly one node of each kind, so a later
+deck edit that adds a second shunt fails loudly instead of reading the wrong one.
+The register's `Evidence::Site` needle is the capacitor reading as rustfmt lays
+it out (`"\n                snap.term2_nodes.iter().all(|&n| n == 0),"`): in the
+split form that same expression was the right operand of `alias ||`, wrapped four
+spaces deeper, so a restored lane branch stops matching; the load half is covered
+by the same pin.
+
+**Zero-footprint.** No golden byte, no `ledger.json` entry and no
+`population.lock.json` field moves — the flag is written only by the CIM export,
+which no corpus case runs, and the goldens' measurement above settles the rest.
+Doc surface: the alias was never cited on the walked surface (measured again —
+outside `crates/` it appears only in STATUS, the plan and the gitignored
+`investigations/`), so no citation was struck and the non-vacuity floor is
+untouched; CLAUDE.md does not name this row (it is not one of the six named
+bugs).
+
+**Proof.** Every Pascal citation added here was read out of the vendored sources,
+not recalled: `ExportCIMXML.pas:3697-3701` and `:4475-4479` with their TODOs, the
+transformer sibling at `:1546-1554`, and on the r4133 side `:3180-3186` and
+`:3851-3857`. The pin was mutation-checked: replacing both readings with `true`
+(upstream's constant) reds `cim_wye_grounded_reads_the_neutral` in **both** lanes
+at the probe assertion (`golden_cim.rs:476`); the mutation was reverted and the
+tree re-verified green. Both lanes clean on the five gate commands (`cargo fmt
+--all --check`; `cargo clippy --workspace --all-targets -- -D warnings` and the
+same with `--features dss-core/oracle-parity`; `cargo test --workspace` and the
+same with the feature — the unconditional 520-case corpus gate included).
+`lane_diff.ps1`, re-run because a lane alias was deleted: max |Δ| = 0 on every
+gated kind, `VERDICT: PASS`, the only entries being the documented Newton
+pow/loss divergences on the two `newton` decks (the still-live
+`POWERS_REUSE_STALE_NEWTON_ITERMINAL` row G2.3 removes). Tests 0 added, 1
+renamed, 0 removed, 0 new `#[ignore]`. `git diff --stat -- tests/golden` is
+empty; `git status --short tests/corpus` clean after both runs.
+
 ### GOLDEN_REBASE G2.1f — `STORAGE_MULTIFILE_USES_THE_PV_PREFIX` torn down: the Storage `/m` export gets its own prefix (branch `golden-g2`, 2026-08-03)
 
-**Frontier.** WP-G2's sixth teardown. `SPLIT_ALIAS_POPULATION` **26 → 25**,
+**Frontier (superseded by G2.1g above).** WP-G2's sixth teardown.
+`SPLIT_ALIAS_POPULATION` **26 → 25**,
 `TORN_DOWN_ROWS` carries its sixth row, and the WP acceptance criterion still
 holds at this commit: `git diff --stat -- tests/golden` over the range is
-**empty** and both lanes' `oracle_parity_cfg_gate` is green. Next: G2.1g
-(`CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`, `issue-23`) — whose plan row carries a
-measurement caveat: check first whether any committed `cim/` golden observes the
-grounded flag, because if one does the row moves to G2.2c.
+**empty** and both lanes' `oracle_parity_cfg_gate` is green.
 
 **The bug.** `Export Storage_Meters /m` writes one file per Storage element and
 builds its name from a per-class prefix. `WriteMultipleStorageMeterFiles`
@@ -3747,7 +3844,7 @@ both lanes green; no golden, tolerance, ledger or deck touched.
 
 | row | upstream | what says it is a slip | default lane |
 |---|---|---|---|
-| `CIM_WYE_GROUNDED_IS_HARDCODED_TRUE` (2 sites) | `BooleanNode('ShuntCompensator.grounded', TRUE)` (`ExportCIMXML.pas:3700`) and `BooleanNode('EnergyConsumer.grounded', TRUE)` (`:4478`), each carrying `// TODO - check bus 2` | `XfmrTankPhasesAndGround` in the **same unit** (`:1531-1570`) already decides `TransformerEnd.grounded` from `NodeRef[j2] = 0`, "last conductor is grounded solidly" | the neutral-side node refs |
+| `CIM_WYE_GROUNDED_IS_HARDCODED_TRUE` (2 sites) (**torn down by GOLDEN_REBASE G2.1g** — the split is gone, both lanes read the neutral-side node refs) | `BooleanNode('ShuntCompensator.grounded', TRUE)` (`ExportCIMXML.pas:3700`) and `BooleanNode('EnergyConsumer.grounded', TRUE)` (`:4478`), each carrying `// TODO - check bus 2` | `XfmrTankPhasesAndGround` in the **same unit** (`:1531-1570`) already decides `TransformerEnd.grounded` from `NodeRef[j2] = 0`, "last conductor is grounded solidly" | the neutral-side node refs |
 
 **The fix is not an invented semantic — it is the sibling's, applied to where
 each class keeps its neutral.** The transformer writer's test is "the winding
@@ -3780,7 +3877,12 @@ disagree, asserted as equality against `compat::ORACLE_PARITY`), and a *control*
 circuit is the same feeder with the default ground neutrals (both lanes must
 still answer `true`). Its `only_grounded` reader asserts the deck yields exactly
 one node of each kind, so a future edit that adds a second shunt fails loudly
-instead of reading the wrong one.
+instead of reading the wrong one. (**Superseded by GOLDEN_REBASE G2.1g**: the
+split is gone and both lanes read the neutral; the pin lives on unconditional as
+`golden_cim::cim_wye_grounded_reads_the_neutral`, asserting `false` for both
+classes on the probe deck and `true` for both on the control deck. The
+"no golden moves" measurement above was re-run from the parity side, which is the
+lane that actually moved, and holds.)
 
 **Scope discipline.** One `compat` row for two reproduction sites (the
 StorageController precedent of F.3l), entered under the *Single-site upstream
