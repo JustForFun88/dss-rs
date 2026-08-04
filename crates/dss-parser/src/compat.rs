@@ -116,7 +116,7 @@ pub fn round_f64_fpc_impl(x: f64) -> f64 {
 /// non-finite one keeps its own value instead of collapsing to the FPC
 /// sentinel. The difference is a **deliberate divergence**, pinned by `tests`
 /// and, at the deck-language boundary it is observable from, by
-/// `growth_shape::tests::apply_round_out_of_range_is_the_lane_kernel`.
+/// `dss_core::exec::tests::compat_quirks::apply_round_out_of_range_is_the_lane_kernel`.
 pub fn round_f64_native_impl(x: f64) -> f64 {
     x.round_ties_even()
 }
@@ -132,7 +132,9 @@ pub use round_f64_native_impl as round_f64;
 /// instead of wrapping the FPC integer-indefinite sentinel to `0` (NaN maps to
 /// `0` in both). The difference is a **deliberate divergence**, pinned by
 /// `tests` and, at the deck-language boundary it is observable from, by
-/// `parser::tests::make_integer_rounds_ties_to_even`.
+/// `parser::tests::make_integer_out_of_range_is_the_lane_kernel` — the
+/// lane-branching pin. (`make_integer_rounds_ties_to_even` next to it asserts
+/// only the ties-to-even half, which both kernels share.)
 pub fn round_i32_saturating_impl(x: f64) -> i32 {
     x.round_ties_even() as i32
 }

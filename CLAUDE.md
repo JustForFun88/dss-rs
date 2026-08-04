@@ -61,9 +61,9 @@ binding invariants that survive it are:
 - Status: the nine capi-only bugs (absent in r4133 — see
   `investigations/to_opendss/NOT-APPLICABLE-TO-R4133.md`) are removed from both
   lanes by the R4133-alignment pass (2026-08-02). The bug kernels shared with
-  r4133 (Iresidual, Bus_Int_Duration, Newton stale Iterminal, Monitor
-  BaseFrequency, single-point stddev, …) are queued for the same removal in a
-  dedicated follow-up WP.
+  r4133 are being removed by `GOLDEN_REBASE_PLAN.md` WP-G2: single-point stddev
+  is done (G2.1a, 2026-08-03); Iresidual, Bus_Int_Duration, Newton stale
+  Iterminal, Monitor BaseFrequency and the rest are queued behind it.
 
 ## `TODO(compat)` convention (see PORTING_PLAN.md §4.1)
 

@@ -3330,8 +3330,9 @@ pub(crate) fn export_cdpsm(
             bus_specs: Vec<String>,
             bus_refs: Vec<usize>,
             /// Terminal-2 node refs — the wye point's actual connection, i.e.
-            /// the "bus 2" `compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`'s TODO
-            /// names. Empty before `SetNodeRef`, which reads as grounded.
+            /// the "bus 2" upstream's `grounded` TODO names (see the
+            /// `ShuntCompensator.grounded` writer below). Empty before
+            /// `SetNodeRef`, which reads as grounded.
             term2_nodes: Vec<usize>,
         }
         let snap = {
@@ -3411,17 +3412,39 @@ pub(crate) fn export_cdpsm(
                 "ShuntCompensator",
                 "Y",
             );
-            // Stage F `compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`: upstream
-            // writes `TRUE` unconditionally here (`ExportCIMXML.pas:3700`,
-            // "TODO - check bus 2"). The default lane answers that TODO the way
-            // the same unit's transformer writer does — the wye point is the
-            // second terminal, grounded iff every one of its node refs is 0.
+            // Upstream writes `TRUE` unconditionally here
+            // (`.inputs/dss_capi/src/Common/ExportCIMXML.pas:3700`; r4133
+            // `Version8/Source/Common/ExportCIMXML.pas:3183`), under its own
+            // "TODO - check bus 2" — so a bank whose wye point is tied to a live
+            // bus still exports as solidly grounded. Both lanes answer that TODO
+            // the way the **same unit's** transformer writer already answers it
+            // (`XfmrTankPhasesAndGround`, `:1531-1570`; r4133 `:1242`:
+            // `NodeRef[j2] = 0` → "last conductor is grounded solidly", ported
+            // at `cim/power_xfmr.rs`): a Capacitor's wye point *is* its second
+            // terminal — literally the "bus 2" the TODO names, defaulting to
+            // `.0.0.0`.
+            //
+            // The sibling tests one conductor because a wye *winding* has one
+            // neutral conductor. A wye capacitor has none: `Nconds = Nphases`
+            // (`Capacitor.pas:340`; r4133 `:299`) and its terminal-2 conductors
+            // are the per-phase returns, so `all` is the deliberate widening —
+            // the bank is solidly earthed only when *every* phase returns to
+            // ground. A partially earthed `bus2=nb.1.0.0` is three independent
+            // single-phase units, not an earthed wye point, and reads `false`
+            // (`golden_cim::cim_wye_grounded_reads_the_neutral`'s mixed deck
+            // pins exactly that against an `any` reading).
+            //
+            // `term2_nodes` above is empty — and this reads `true` — either
+            // pre-`SetNodeRef`, where the transformer sibling does the same
+            // with the same data, or at `nterms < 2`, which `conn=wye` cannot
+            // produce: it forces `Nterms := 2` (`Capacitor.pas:334-339`; r4133
+            // `:298`), ported at `elements/pd/capacitor/accessors.rs:210-211`.
+            // (`GOLDEN_REBASE_PLAN.md` G2.1g; `issue-23`.)
             writer::boolean_node(
                 &mut buf,
                 ProfileChoice::Fun,
                 "ShuntCompensator.grounded",
-                crate::compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE
-                    || snap.term2_nodes.iter().all(|&n| n == 0),
+                snap.term2_nodes.iter().all(|&n| n == 0),
             );
             writer::double_node(
                 &mut buf,
@@ -4376,7 +4399,7 @@ pub(crate) fn export_cdpsm(
             spectrum: String,
             /// The neutral conductor's node ref — `NodeRef[Nphases]` of the
             /// load's only terminal, the wye analogue of the transformer
-            /// writer's `j2` (`compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`).
+            /// writer's `j2` (see the `EnergyConsumer.grounded` writer below).
             /// `0` (ground) before `SetNodeRef`, which reads as grounded.
             neutral_node: usize,
         }
@@ -4484,16 +4507,20 @@ pub(crate) fn export_cdpsm(
         );
         if snap.connection == Connection::Wye {
             writer::shunt_connection_kind_node(&mut buf, ProfileChoice::Fun, "EnergyConsumer", "Y");
-            // Stage F `compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`: upstream
-            // writes `TRUE` unconditionally here (`ExportCIMXML.pas:4478`,
-            // "TODO - check bus 2"). A Load has one terminal, so its wye point
-            // is that terminal's `Nphases+1`-th conductor — the transformer
-            // writer's `NodeRef[j2] = 0` test, applied to the load's neutral.
+            // The load half of the same upstream TODO: `TRUE` written
+            // unconditionally (`.inputs/dss_capi/src/Common/
+            // ExportCIMXML.pas:4478`; r4133 `Version8/Source/Common/
+            // ExportCIMXML.pas:3854`), again under "TODO - check bus 2". A Load
+            // has one terminal, and `SetNcondsForConnection` (`Load.pas:479-492`)
+            // gives a wye connection `Nconds = Nphases + 1`, so its neutral is
+            // that terminal's `Nphases+1`-th conductor — the transformer
+            // writer's `NodeRef[j2] = 0` test, applied where this class keeps
+            // its neutral. (`GOLDEN_REBASE_PLAN.md` G2.1g; `issue-23`.)
             writer::boolean_node(
                 &mut buf,
                 ProfileChoice::Fun,
                 "EnergyConsumer.grounded",
-                crate::compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE || snap.neutral_node == 0,
+                snap.neutral_node == 0,
             );
         } else {
             writer::shunt_connection_kind_node(&mut buf, ProfileChoice::Fun, "EnergyConsumer", "D");

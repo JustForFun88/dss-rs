@@ -33,7 +33,7 @@
 //! |---|---|---|
 //! | complex division | [`cdiv`] — this file | *no split* — measured, see below |
 //! | dense inverse (`CMatrix::invert`, `etk_invert`) | [`invert`], [`etk_invert`] — this file | *no split* — measured, see below |
-//! | single-point stddev | [`stddev_single_point`] — this file | **yes** (F.3b) |
+//! | single-point stddev | *torn down* (GOLDEN_REBASE G2.1a) — `support::mathutil` returns `0.0` in both lanes | — |
 //! | RPN pi | `dss-parser` `compat::PI` | **yes** (F.3d) |
 //! | FPC round | `dss-parser` `compat::round_i32` | **yes** (F.3a) |
 //! | solver execution (`Par`, refinement) | `dss-sparse` `compat` | no — declaration only, M3c / WP-R1 own the flip |
@@ -45,7 +45,7 @@
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
 //! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
 //! | report text rendering — `Show` device-name column width | [`max_device_name_length`] — same section | **yes** (F.4b) |
-//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w) |
+//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f, the CIM wye `grounded` flag G2.1g, the Line height-unit re-read G2.1h |
 //!
 //! Rows 12–13 are not in IV.2's table and do not extend it: they are the two
 //! *reproduced* CLAUDE.md upstream bugs whose clean fix is deferred to this
@@ -536,34 +536,6 @@ pub fn etk_invert_partial_pivot_impl(a: &mut [f64], norder: usize) -> Result<(),
 pub use etk_invert_gj_no_exchange_impl as etk_invert;
 
 // ---------------------------------------------------------------------------
-// Single-point standard deviation (IV.2 row 6)
-// ---------------------------------------------------------------------------
-
-/// The "standard deviation" of a one-element sample, upstream-faithful: for a
-/// single point the Pascal code returns the point *itself* (not 0), reproduced
-/// bug-for-bug at the four [`crate::support::mathutil`] entry points.
-#[inline]
-pub fn stddev_single_point_value_impl(value: f64) -> f64 {
-    value
-}
-
-/// The standard deviation of a one-element sample: `0.0` — the mathematically
-/// correct answer, and a **deliberate divergence** from the oracle (not a
-/// tolerance question), pinned by expected-value tests at the four
-/// [`crate::support::mathutil`] entry points and at the observable
-/// `LoadShape`/`TShape`/`PriceShape` property.
-#[inline]
-pub fn stddev_single_point_zero_impl(_value: f64) -> f64 {
-    0.0
-}
-
-#[cfg(feature = "oracle-parity")]
-pub use stddev_single_point_value_impl as stddev_single_point;
-// F.3: a one-point sample has no spread; the default lane says so.
-#[cfg(not(feature = "oracle-parity"))]
-pub use stddev_single_point_zero_impl as stddev_single_point;
-
-// ---------------------------------------------------------------------------
 // Export SeqCurrents `Iresidual` (IV.2 row 9)
 // ---------------------------------------------------------------------------
 
@@ -744,26 +716,6 @@ pub use ISOURCE_BUS2_NEVER_LATCHES_DEFAULT_IMPL as ISOURCE_BUS2_NEVER_LATCHES;
 #[cfg(feature = "oracle-parity")]
 pub use ISOURCE_BUS2_NEVER_LATCHES_PARITY_IMPL as ISOURCE_BUS2_NEVER_LATCHES;
 
-/// Whether `Like=` on a **CapControl** drops the `ControlSignal` reference.
-///
-/// `true` reproduces the upstream quirk: `TCapControlObj.MakeLike`
-/// (`CapControl.pas:446-490`) copies every other reference and field —
-/// `ControlledElement`, `MonitoredElement`, the user model, both snapshots —
-/// but never `ctrlSignalShape` or its name, so a clone of a `type=Follow`
-/// CapControl is left with no signal to follow and silently controls nothing.
-///
-/// `false` copies them alongside the other references — the clean fix named at
-/// the site. The lanes differ only for `Like=` on a Follow-type CapControl,
-/// which no golden and no gated corpus deck contains.
-pub const CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL_DEFAULT_IMPL as CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL;
-#[cfg(feature = "oracle-parity")]
-pub use CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL_PARITY_IMPL as CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL;
-
 // The **GICTransformer `G2` off `%R1`** row belongs here by shape but is NOT
 // split: the flip was implemented and gated in F.3k, and re-measured in F.3v,
 // which corrects what the cost actually is. `type=Auto` puts the G1 and G2
@@ -778,113 +730,6 @@ pub use CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL_PARITY_IMPL as CAPCONTROL_MAKEL
 // marker and its reproduction pin; see `elements/pd/gic_transformer/solve.rs`
 // for the full measurement and for the `R1=`/`R2=` transitive cover it leaves
 // ready for whoever lands it.
-
-/// Whether `Export SeqCurrents` prints a non-positive current rating **raw** in
-/// its `%Normal`/`%Emergency` percentage columns.
-///
-/// `true` reproduces the upstream quirk: `ExportResults.pas:409-414` seeds
-/// `iNormal := NormAmps` and only *overwrites* it with `I1/NormAmps*100` when
-/// the rating is `> 0`, so an undefined or negative rating leaks the rating
-/// itself into a column whose header says "percent" (`normamps=-1` prints
-/// `-1`).
-///
-/// `false` prints `0` for an undefined rating — the clean fix named at the
-/// site, and the only value that keeps the column's declared meaning. The lanes
-/// differ only for an element with a non-positive `normamps`/`emergamps`; every
-/// golden and gated corpus deck rates every element positively, which is why
-/// the quirk was marked "unpinnable" at the site until now.
-pub const SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING_DEFAULT_IMPL as SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING;
-#[cfg(feature = "oracle-parity")]
-pub use SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING_PARITY_IMPL as SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING;
-
-/// Whether the short-line **merge-with-parent** reduction inspects only the
-/// parent branch's *first* shunt when looking for a capacitor/reactor.
-///
-/// `true` reproduces the upstream quirk: `DoReduceShortLines`
-/// (`ReduceAlgs.pas:200-210`) opens the scan with `ParentNode.FirstShuntObject()`
-/// but advances it with `PresentBranch.NextShuntObject()` — a cross-node cursor
-/// mix. The present branch's `TDSSPointerList` cursor still sits at its last
-/// item from tree construction (`Add` sets `ActiveItem := Count`,
-/// `DSSPointerList.pas:88`, in `Add`), so the very first `Next` overflows and returns
-/// `NIL` (`:113-131`), ending the loop after one element. A capacitor or
-/// reactor at parent-shunt position ≥ 2 therefore fails to block the merge and
-/// is silently moved to another bus.
-///
-/// `false` scans every parent shunt. That the **merge-with-child** branch of the
-/// same procedure (`:246-258`) spells the identical loop with a single cursor
-/// (`PresentBranch.First…`/`PresentBranch.Next…`) — and that this port already
-/// renders it as an `any()` — is what makes the parent branch a slip rather than
-/// a rule.
-///
-/// The lanes differ only when a parent branch carries ≥ 2 shunts whose *first*
-/// is not a capacitor/reactor while a later one is; no golden and no gated
-/// corpus deck reduces such a topology.
-pub const REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT_DEFAULT_IMPL as REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT;
-#[cfg(feature = "oracle-parity")]
-pub use REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT_PARITY_IMPL as REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT;
-
-/// Whether the StorageController's "is the fleet already idling?" test is
-/// written as a **bitwise complement** of the state ordinal.
-///
-/// `true` reproduces the upstream quirk: `TStorageControllerObj` guards both of
-/// its terminal branches with `if not FleetState = STORE_IDLING`
-/// (`StorageController.pas:1350` in the discharge path, `:1619` in the charge
-/// path). In Object Pascal `not` binds tighter than `=`, and `FleetState` is an
-/// `Integer`, so this parses as `(not FleetState) = 0` — a bitwise complement,
-/// true only for `FleetState = -1 = STORE_CHARGING`. The branch it guards
-/// ("Ran out of OOMPH" / "Fully charged") therefore fails to idle the fleet in
-/// exactly the state that reaches it: a fleet that runs out of energy *while
-/// discharging* is left discharging, and only a *charging* fleet is idled.
-///
-/// `false` asks the question the code reads as: `FleetState <> STORE_IDLING`.
-/// That the two sites' own comments (`// force a new power flow solution`) and
-/// the `SetFleetToIdle` call they guard describe an unconditional
-/// idle-unless-already-idle is what makes it a precedence slip rather than a
-/// convention.
-///
-/// The lanes differ only for a fleet that reaches "out of OOMPH"/"fully charged"
-/// in a non-idle, non-charging state; the parity lane keeps it, so every gating
-/// oracle comparison is unchanged there.
-pub const STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL_DEFAULT_IMPL as STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL;
-#[cfg(feature = "oracle-parity")]
-pub use STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL_PARITY_IMPL as STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL;
-
-/// Whether `Export Storage_Meters /m` names its per-element files with the
-/// **PVSystem** prefix.
-///
-/// `true` reproduces the upstream quirk: `WriteMultipleStorageMeterFiles`
-/// (`ExportResults.pas:2240`) was cloned from the PVSystem writer and kept its
-/// `'EXP_PV_'` literal, so a Storage fleet's per-element registers land in
-/// `EXP_PV_<NAME>.csv` — colliding with the PVSystem export's own files
-/// whenever both are written into one directory.
-///
-/// `false` uses `EXP_STORAGE_`, which is what the single-file sibling of the
-/// same command already writes (`EXP_STORAGEMeters.csv`) and what the PVSystem
-/// writer's own prefix implies. Only the *file name* moves; the rows are
-/// byte-identical, and the single-file path is untouched in both lanes.
-pub const STORAGE_MULTIFILE_USES_THE_PV_PREFIX_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const STORAGE_MULTIFILE_USES_THE_PV_PREFIX_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use STORAGE_MULTIFILE_USES_THE_PV_PREFIX_DEFAULT_IMPL as STORAGE_MULTIFILE_USES_THE_PV_PREFIX;
-#[cfg(feature = "oracle-parity")]
-pub use STORAGE_MULTIFILE_USES_THE_PV_PREFIX_PARITY_IMPL as STORAGE_MULTIFILE_USES_THE_PV_PREFIX;
 
 /// Whether the CIM `LinearShuntCompensator` writer puts the **delta** branch's
 /// `grounded` flag under the `LinearShuntCompensator.` prefix.
@@ -936,50 +781,6 @@ pub const CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_DEFAULT_IMPL: bool = false;
 pub use CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_DEFAULT_IMPL as CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH;
 #[cfg(feature = "oracle-parity")]
 pub use CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_PARITY_IMPL as CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH;
-
-/// Whether the CIM shunt-connection writers hard-code `grounded = TRUE` for a
-/// **wye** capacitor or load instead of reading the connection's neutral.
-///
-/// `true` reproduces the upstream quirk. `BooleanNode(FunPrf,
-/// 'ShuntCompensator.grounded', TRUE)` (`ExportCIMXML.pas:3700`) and
-/// `BooleanNode(FunPrf, 'EnergyConsumer.grounded', TRUE)` (`:4478`) are both
-/// written unconditionally, and both carry upstream's own `// TODO - check
-/// bus 2`. Every wye bank and every wye load therefore exports as solidly
-/// grounded — including one whose neutral is tied to a real node rather than to
-/// ground.
-///
-/// `false` answers the question that TODO asks, the way the **same unit's**
-/// transformer writer already answers it: `XfmrTankPhasesAndGround`
-/// (`:1531-1570`, ported at `cim/power_xfmr.rs`) writes `grounded = true` for a
-/// wye winding exactly when `NodeRef[j2] = 0` — "last conductor is grounded
-/// solidly". Applied to the two shunt classes, whose neutral side the DSS data
-/// model puts in different places:
-///
-/// * a **Capacitor** is a two-terminal element (`Nterms = 2`,
-///   `Nconds = Nphases`) whose wye point *is* its second terminal — literally
-///   the "bus 2" the TODO names — defaulting to `.0.0.0`;
-/// * a **Load** has one terminal, and `SetNcondsForConnection` gives a wye
-///   connection `Nconds = Nphases + 1`, so its neutral is that terminal's
-///   `Nphases+1`-th conductor.
-///
-/// so the default lane writes `grounded` = "every neutral-side node ref is
-/// ground". Pre-`SetNodeRef` (an export issued before any solve) `node_ref` is
-/// empty and both lanes answer `true`, which is what the transformer sibling
-/// already does with the same data.
-///
-/// No golden and no gated corpus deck contains a wye capacitor with an explicit
-/// `bus2=`, nor a wye load with a non-ground neutral node, so every CIM golden
-/// is byte-identical in both lanes; the divergence is pinned by
-/// `golden_cim::cim_wye_grounded_is_lane_split`, which exports a deck that has
-/// both.
-pub const CIM_WYE_GROUNDED_IS_HARDCODED_TRUE_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const CIM_WYE_GROUNDED_IS_HARDCODED_TRUE_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use CIM_WYE_GROUNDED_IS_HARDCODED_TRUE_DEFAULT_IMPL as CIM_WYE_GROUNDED_IS_HARDCODED_TRUE;
-#[cfg(feature = "oracle-parity")]
-pub use CIM_WYE_GROUNDED_IS_HARDCODED_TRUE_PARITY_IMPL as CIM_WYE_GROUNDED_IS_HARDCODED_TRUE;
 
 /// Whether a **Relay**'s per-`Sample` state-trace line is written to the event
 /// log unconditionally, instead of under the `DebugTrace` guard every other
@@ -1077,58 +878,6 @@ pub const FAULT_DUMP_TAIL_REPRINTS_MINAMPS_DEFAULT_IMPL: bool = false;
 pub use FAULT_DUMP_TAIL_REPRINTS_MINAMPS_DEFAULT_IMPL as FAULT_DUMP_TAIL_REPRINTS_MINAMPS;
 #[cfg(feature = "oracle-parity")]
 pub use FAULT_DUMP_TAIL_REPRINTS_MINAMPS_PARITY_IMPL as FAULT_DUMP_TAIL_REPRINTS_MINAMPS;
-
-/// Whether a **height-unit change** on the Carson engine re-reads the *stored
-/// metres* as if it were a number typed in the new unit.
-///
-/// `true` reproduces the upstream slip: `TLineConstants.Set_FuserHeightUnit`
-/// updates `FuserHeightUnit` and then calls `Set_FheightOffset(FheightOffset)`
-/// — but `FheightOffset` is declared "always saved in meters here" while
-/// `Set_FheightOffset`'s argument is a *user-unit* number it multiplies by
-/// `To_Meters(new unit)`. A metres value is therefore fed into a user-unit
-/// parameter.
-///
-/// **Every line reference in this row is to the r4133 source**, at
-/// `.inputs/electricdss-code-r4133-trunk/Version8/Source/General/
-/// LineConstants.pas`: `Set_FuserHeightUnit` is `:689-696`, the field
-/// declarations `FheightOffset`/`FuserHeightUnit` are `:71-72` with the
-/// "The height is always saved in meters here" comment at `:97`,
-/// `Set_FheightOffset` is `:676-687` and `Get_FheightOffset` is `:396-399`.
-/// The height-offset surface does not exist in the pinned 0.14.5 backend at
-/// all (grep its 186 `.pas` for `FheightOffset`: no match), so do **not**
-/// resolve these numbers against `.inputs/dss_capi` — they land on unrelated
-/// code there, which is what made this row read as uncited.
-///
-/// `false` re-reads the number the user actually typed —
-/// `FheightOffset * From_Meters(old unit)`, captured **before** the unit field
-/// moves — which is what the line's own comment says it is doing: *"This
-/// updates the existing value to fit the new user units"*. `Get_FheightOffset`
-/// (`:396-399`) computes exactly that expression, so the fix is the getter the
-/// class already has, called one statement earlier.
-///
-/// **The two agree wherever anything reaches them today, which is why this is a
-/// lane row and not a re-baseline.** The only consumer is the Line → Carson
-/// push `makeZFromGeometry`/`makeZFromSpacing`, whose fixed call order is
-/// `SetEpsRMedium`, `SetHeightOffset`, `SetUserHeightUnit`
-/// (`line_geometry::matrix::set_line_constants_medium`): the offset is stored
-/// while the engine's unit is still the constructed default `UNITS_M`, so
-/// `From_Meters(m) = 1` and both readings re-apply the same number. That is the
-/// path `tests/corpus/modes/upgrade/upgrade_linecs_heightoffset.dss`
-/// (`HeightOffset=5 HeightUnit=ft`) gates, and it is byte-identical in both
-/// lanes. They diverge only when a unit change lands while the engine already
-/// carries a *non-metre* unit — a second Z build after the user edits
-/// `HeightUnit` — where the parity lane compounds the two conversions
-/// (5 ft → 1.524 m → 1.524 in) and the default lane keeps the typed 5.
-/// `line_constants::tests::height_unit_change_rereads_the_typed_number` pins
-/// both readings, including the equality on the first (metre-sourced) change.
-pub const HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD_DEFAULT_IMPL as HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD;
-#[cfg(feature = "oracle-parity")]
-pub use HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD_PARITY_IMPL as HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD;
 
 /// Whether `Monitor::channel` reports a **one-element `[0.0]` placeholder** for
 /// a monitor that has flushed nothing, instead of an empty channel.
