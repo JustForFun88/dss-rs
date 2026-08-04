@@ -161,20 +161,24 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
     None
 }
 
-/// Stage F deliberate divergences: `(scenario, property)` pairs whose **value**
-/// the *default* lane does not compare against the oracle, because its clean fix
-/// intentionally reports a different one. The **parity** lane still compares
-/// every pair, and both lanes still compare every *other* property of these
-/// scenarios — the exclusion is value-only and per-property, never per-scenario.
+/// Deliberate divergences: `(scenario, property)` pairs whose **value** neither
+/// lane compares against the capture, because the engine's fix intentionally
+/// reports a different one. Both lanes still compare every *other* property of
+/// these scenarios — the exclusion is value-only and per-property, never
+/// per-scenario.
 ///
 /// * `isource_bus2_clobbered_by_bus1` / `Bus2` — the scenario exists to pin the
-///   upstream quirk that `TIsourceObj.PropertySideEffects` (`Isource.pas:221`)
-///   has no `Bus2` case, so `Bus2Defined` never latches and the `Bus1` side
-///   effect re-derives `b1.0.0.0` over the explicit `b2` this deck wrote first.
-///   `TVsourceObj.PropertySideEffects` (`Vsource.pas:498`) latches it on the
-///   very same property; the default lane does too
-///   (`compat::ISOURCE_BUS2_NEVER_LATCHES`), so it reports `b2`. Pinned in both
-///   lanes by `elements::pc::isource::tests::bus2_latching_is_the_lane_kernel`.
+///   upstream quirk that `TIsourceObj.PropertySideEffects`
+///   (`.inputs/dss_capi/src/PCElements/Isource.pas:221`; r4133 keeps the same
+///   hole, `Version8/Source/PCElements/Isource.pas:354-366`) has no `Bus2`
+///   case, so `Bus2Defined` never latches and the `Bus1` side effect re-derives
+///   `b1.0.0.0` over the explicit `b2` this deck wrote first.
+///   `TVsourceObj.PropertySideEffects` (`Vsource.pas:498`; r4133 `:468`)
+///   latches it on the very same property, and since GOLDEN_REBASE G2.2b so
+///   does this engine — in **both** lanes, which is why the exclusion is
+///   unconditional (it was default-lane-only while the parity lane still
+///   reproduced the clobber). Pinned by
+///   `elements::pc::isource::tests::bus2_latches_like_the_sibling_class`.
 const LANE_SKIP_SCENARIO_PROPS: &[(&str, &str)] = &[("isource_bus2_clobbered_by_bus1", "Bus2")];
 
 /// An **oracle-bug** exclusion, as `(class, property)` pairs, applied in **both
@@ -291,8 +295,9 @@ fn props_roundtrip_matches_oracle() {
     let mut value_skips = 0usize;
     // The cell half of the population lock, counted where the comparison
     // happens: `compared` is every cell this run actually checked (by value or,
-    // for the sym-matrix exclusion, by shape), `lane_skips` every cell the
-    // default lane deliberately does not compare.
+    // for the sym-matrix exclusion, by shape), `lane_skips` every cell
+    // [`LANE_SKIP_SCENARIO_PROPS`] deliberately does not compare (in both
+    // lanes since G2.2b).
     let mut compared = 0usize;
     let mut lane_skips = 0usize;
     for sc in scenarios {
@@ -313,10 +318,13 @@ fn props_roundtrip_matches_oracle() {
         );
 
         for (prop, expected) in &sc.properties {
-            if !dss_core::compat::ORACLE_PARITY
-                && LANE_SKIP_SCENARIO_PROPS
-                    .iter()
-                    .any(|(s, p)| *s == sc.name && p.eq_ignore_ascii_case(prop))
+            // LANE-EXCLUSION(ISOURCE_BUS2_NEVER_LATCHES): both lanes latch
+            // `Bus2Defined` now, so both drop the value compare on this
+            // scenario's `Bus2`. Under the split the same `any(…)` sat behind a
+            // negated read of the engine's lane constant on this very line.
+            if LANE_SKIP_SCENARIO_PROPS
+                .iter()
+                .any(|(s, p)| *s == sc.name && p.eq_ignore_ascii_case(prop))
             {
                 lane_skips += 1;
                 continue;
@@ -344,8 +352,8 @@ fn props_roundtrip_matches_oracle() {
     // inert nor a widening that swallows a class it was never meant to cover can
     // pass.
     // The cell half of the population lock, both directions: every pinned
-    // property cell was reached, and every cell the default lane drops is one
-    // the exclusion register names.
+    // property cell was reached, and every cell the run drops is one the
+    // exclusion register names.
     assert_eq!(
         compared + lane_skips,
         PROPS_PROPERTY_CELLS,
@@ -356,13 +364,10 @@ fn props_roundtrip_matches_oracle() {
     );
     assert_eq!(
         lane_skips,
-        if dss_core::compat::ORACLE_PARITY {
-            0
-        } else {
-            LANE_SKIP_SCENARIO_PROPS.len()
-        },
-        "the default lane skipped {lane_skips} scenario-property cells; \
-         LANE_SKIP_SCENARIO_PROPS names {} (and the parity lane must skip none)",
+        LANE_SKIP_SCENARIO_PROPS.len(),
+        "the run skipped {lane_skips} scenario-property cells; \
+         LANE_SKIP_SCENARIO_PROPS names {} — every entry must be reached, in \
+         both lanes, or the exclusion has gone inert",
         LANE_SKIP_SCENARIO_PROPS.len()
     );
 

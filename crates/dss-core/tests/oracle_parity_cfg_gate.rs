@@ -815,8 +815,10 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// G2.1 zero-footprint rows; **21** after G2.2a tore down the first two rows
 /// whose teardown a golden compare observes — `IRESIDUAL_FROM_TERMINAL_1` and
 /// `BUS_INT_DURATION_WALKS_ALL_BUSES`, whose harness exclusions became
-/// unconditional instead of moving a golden byte.
-const SPLIT_ALIAS_POPULATION: usize = 21;
+/// unconditional instead of moving a golden byte; **19** after G2.2b did the
+/// same for the two *property* exclusions, `monitor_base_frequency` and
+/// `ISOURCE_BUS2_NEVER_LATCHES`.
+const SPLIT_ALIAS_POPULATION: usize = 19;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -914,7 +916,8 @@ fn names_token(text: &str, token: &str) -> bool {
 /// comments exist in-tree (`tests/golden_reports.rs:1620`,
 /// `tests/corpus_gate/scheduler.rs:358`) while every real read is written
 /// `lane::PARITY` (`golden_reports.rs` ×9 — it was ×15 until G2.2a tore down
-/// two rows pinned there — plus `harness/mod.rs:1343`, `:2358`);
+/// two rows pinned there — plus `harness/mod.rs:2373`, the kV-value compare;
+/// `skip_prop`'s read, the file's second one, went unconditional in G2.2b);
 /// `harness/lane.rs`, which uses the bare name because it declares it, names
 /// `ORACLE_PARITY` in that same assert and is credited by the first arm.
 fn branches_on_lane(text: &str, _alias: &str) -> bool {
@@ -1682,6 +1685,94 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         Some((
             "crates/dss-core/tests/golden_reports.rs",
             "export_busreliability_multimeter_duration_stays_in_the_meters_zone",
+        )),
+    ),
+    // G2.2b, row 1. `TMonitorObj.Create` re-assigns `Basefrequency := 60.0`
+    // after the inherited `TDSSCktElement.Create` already set `BaseFrequency :=
+    // ActiveCircuit.Fundamental` (`.inputs/dss_capi/src/Meters/Monitor.pas:472`
+    // == r4133 `Version8/Source/Meters/Monitor.pas:552`; the base-class
+    // statement is `Common/CktElement.pas:203`), so the Monitor is the one
+    // element that does not know the circuit's frequency. That it is left-over
+    // and not meant is the same file family's own testimony: `Line.pas:974` and
+    // `GICLine.pas:373` carry the identical assignment commented out with "set
+    // in base class", and the sibling measurement classes (EnergyMeter, Sensor)
+    // never write the field. Its one physical consumer is mode-4 flicker —
+    // `Monitor.pas:1657` hands the field to `FlickerMeter` as `fBase`
+    // (`Pstcalc.pas:594`), where `fBase = 50.0` selects the IEC 61000-4-15
+    // 230 V/50 Hz lamp weighting over the 120 V/60 Hz set (`:609-626`) — so a
+    // 50 Hz feeder's Pst comes out on the wrong curve. Both gating oracles
+    // report the 60.0; both lanes now inherit. The only oracle-compared
+    // observable is `Monitor.BaseFreq` on the single 50 Hz gated deck
+    // (`LVTestCase`), whose property exclusion was default-lane-only and is now
+    // unconditional; no golden byte moves (every golden deck is 60 Hz, where
+    // the two readings coincide) and no Pst number moves (every mode-4 deck in
+    // the corpus is 60 Hz).
+    (
+        "monitor_base_frequency",
+        Kind::SplitAlias,
+        // The harness exclusion, which is the half carrying the
+        // [`Evidence::Exclusion`] marker obligation. The needle is the
+        // unconditional binding: under the split this line read
+        // `let lane_skipped = !lane::PARITY` with the list on the next one, so
+        // no lane-branching form of *this statement* matches, and deleting the
+        // exclusion outright fails the same check.
+        //
+        // Per the last paragraph of [`Evidence::Site`], what it does not
+        // discriminate is named rather than left implied: a re-split written as
+        // an early `if lane::PARITY { return skip_prop_ub(class, prop); }`
+        // above this line would leave the needle intact. That shape is carried
+        // by the row's now-unconditional pin — which asserts the inherited 50 in
+        // *both* lanes, so any restored 60.0 kernel fails it however the branch
+        // is written — plus the ghost check and the census tie below. The engine
+        // half (`exec/command.rs`: `.base_frequency = fundamental;` with no
+        // `is_monitor` arm at all) is carried by the same pin.
+        Evidence::Exclusion(
+            "crates/dss-core/tests/harness/mod.rs",
+            &["\n    let lane_skipped = LANE_SKIP_PROPS"],
+        ),
+        Some((
+            "crates/dss-core/src/exec/tests/base_frequency.rs",
+            "monitor_basefreq_inherits_the_fundamental",
+        )),
+    ),
+    // G2.2b, row 2. `TIsourceObj.PropertySideEffects`
+    // (`.inputs/dss_capi/src/PCElements/Isource.pas:221-262`) has three cases —
+    // `Phases`, `bus1`, `Daily` — and no `bus2`, so the `Bus2Defined` flag the
+    // class declares (`:76`), copies in `MakeLike` (`:302`) and clears in the
+    // constructor (`:323`) is never set, and the `bus1` case's
+    // `if not Bus2Defined then SetBus(2, S2)` (`:242-255`) re-derives the
+    // grounded-Y default over an explicit `Bus2=` parsed earlier in the same
+    // edit. r4133 shares the hole exactly (`Version8/Source/PCElements/
+    // Isource.pas`: declaration `:61`, copy `:335`, constructor `:398`, the
+    // `If Not Bus2Defined Then` guard inside `IsourceSetBus1` `:354-366`, no
+    // assignment anywhere). The sibling classes set the flag on that very
+    // property — `Vsource.pas:497-498`, r4133 `:468`; `Capacitor.pas:346-350` —
+    // so the omission is a hole, not a design. Both gating oracles carry it;
+    // both lanes now latch. The one observable is the props scenario
+    // `isource_bus2_clobbered_by_bus1`'s `Bus2` cell, whose exclusion was
+    // default-lane-only and is now unconditional; the golden
+    // `tests/golden/props/isource.json` keeps its captured `b1.0.0.0` byte for
+    // byte, and no solved deck writes `bus2=` before `bus1=` on one Isource
+    // edit.
+    (
+        "ISOURCE_BUS2_NEVER_LATCHES",
+        Kind::SplitAlias,
+        // Same shape as the row above: the recorded half is the harness
+        // exclusion, and the needle is the unconditional `if`, which under the
+        // split read `if !dss_core::compat::ORACLE_PARITY` with the list on the
+        // following line. A lane-branching form of this statement cannot match
+        // it, and deleting the exclusion fails the same check; an early-return
+        // re-split placed above it would not, which the row's pin
+        // (`b2` survives the second `Bus1=`, asserted in both lanes), the ghost
+        // check and the census tie cover instead. The engine half is
+        // `elements/pc/isource/accessors.rs`'s bare `BUS2 =>` arm.
+        Evidence::Exclusion(
+            "crates/dss-core/tests/props_roundtrip.rs",
+            &["\n            if LANE_SKIP_SCENARIO_PROPS"],
+        ),
+        Some((
+            "crates/dss-core/src/elements/pc/isource/tests.rs",
+            "bus2_latches_like_the_sibling_class",
         )),
     ),
 ];
