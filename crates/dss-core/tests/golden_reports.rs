@@ -2897,25 +2897,24 @@ fn export_seqcurrents_matches_oracle() {
         gate: Some(GateSpec::Col(2, 1e-6)),
     };
     let mut col_tol = vec![i1_gated("%i"), i1_gated("%nema")];
-    // Stage F deliberate divergence (`compat::IRESIDUAL_FROM_TERMINAL_1`): the
-    // default lane prints each row's OWN terminal residual instead of repeating
-    // terminal 1's, so on this golden the `Terminal >= 2` rows genuinely differ
-    // from the oracle by construction. Exclude exactly those cells there — the
-    // terminal-1 cells (where the two lanes agree) stay compared against the
-    // oracle in both lanes, and the excluded ones are pinned by
-    // `export_seqcurrents_iresidual_is_the_lane_kernel`.
-    if !lane::PARITY {
-        col_tol.push(ColTol {
-            sel: ColSel::Prefix("iresidual".to_string()),
-            // Same tolerance the policy default gives this column (the
-            // amp-scale cancellation `abs`); this entry exists only to attach
-            // the row gate, and must not tighten or loosen the terminal-1
-            // cells it still compares.
-            rel: 0.0,
-            abs: 1e-8,
-            gate: Some(GateSpec::ColAbove(1, 1.5)),
-        });
-    }
+    // LANE-EXCLUSION(IRESIDUAL_FROM_TERMINAL_1): both lanes print each row's OWN
+    // terminal residual instead of repeating terminal 1's, so on this golden the
+    // `Terminal >= 2` rows genuinely differ from the oracle capture by
+    // construction (the capture carries the upstream bug both gating oracles
+    // share). Exclude exactly those cells — the terminal-1 cells, where the
+    // correct reading and the upstream one coincide, stay compared against the
+    // oracle — and the excluded ones are pinned by
+    // `export_seqcurrents_iresidual_sums_the_rows_own_terminal`.
+    col_tol.push(ColTol {
+        sel: ColSel::Prefix("iresidual".to_string()),
+        // Same tolerance the policy default gives this column (the amp-scale
+        // cancellation `abs`); this entry exists only to attach the row gate,
+        // and must not tighten or loosen the terminal-1 cells it still
+        // compares.
+        rel: 0.0,
+        abs: 1e-8,
+        gate: Some(GateSpec::ColAbove(1, 1.5)),
+    });
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
@@ -2932,25 +2931,31 @@ fn export_seqcurrents_matches_oracle() {
     run_feeder_export("export_seqcurrents", &policy);
 }
 
-/// The Stage F `Iresidual` row, as an **expected-value** pin (plan IV.2:
-/// deliberate divergences are excluded from the oracle compare at those fields
-/// and pinned by their own tests).
+// EXPECTED-VALUE-PIN(IRESIDUAL_FROM_TERMINAL_1): the `Terminal >= 2` residual
+// cells the golden compare above excludes are asserted here — in both lanes —
+// against an independently anchored report, so the exclusion buys silence
+// nowhere.
+/// The `Iresidual` of a `SeqCurrents` row is the residual of **that row's**
+/// terminal, in *both* lanes.
 ///
 /// Upstream's `CalcAndWriteSeqCurrents` sums `cBuffer^[i]`, i = 1..Ncond inside
-/// the per-terminal loop — missing the `(j-1)*Ncond` offset — so every terminal
-/// row repeats terminal 1's residual. On IEEE13's `Line.671680` that is
-/// oracle-proven: the true terminal-2 residual is ~1e-11 A, the export prints
-/// terminal 1's 2.83e-5 A.
+/// the per-terminal loop — missing the `(j-1)*Ncond` offset the same procedure
+/// applies to its symmetric components — so every terminal row repeats terminal
+/// 1's residual. On IEEE13's `Line.671680` that is oracle-proven: the true
+/// terminal-2 residual is ~1e-11 A, the export prints terminal 1's 2.83e-5 A.
+/// Both gating oracles carry it; since `GOLDEN_REBASE_PLAN.md` G2.2a neither
+/// lane does.
 ///
 /// Rather than a captured literal, the expectation is *derived* from an
 /// independent report: `Export Currents` writes a per-terminal `Iresid<j>`
 /// column through a different code path (`export/currents.rs`), and its values
 /// are oracle-anchored by that report's own byte golden. So the printed
-/// `Iresidual` of `(elem, terminal j)` must equal `Iresid_j` in the default
-/// lane and `Iresid_1` in the parity lane. Asserted for every row of the
-/// report, plus a non-vacuity check that some row actually separates the two.
+/// `Iresidual` of `(elem, terminal j)` must equal `Iresid_j` — asserted for
+/// every row of the report, in both lanes, plus a non-vacuity check that some
+/// row actually separates that reading from terminal 1's (without one the
+/// assertion would hold on a report that still carried the bug).
 #[test]
-fn export_seqcurrents_iresidual_is_the_lane_kernel() {
+fn export_seqcurrents_iresidual_sums_the_rows_own_terminal() {
     let (seq, currents) = ieee13_seqcurrents_and_currents();
 
     // How many terminals each element has, from the seq report itself.
@@ -2999,7 +3004,7 @@ fn export_seqcurrents_iresidual_is_the_lane_kernel() {
     );
 
     let mut checked = 0usize;
-    let mut lanes_would_differ = false;
+    let mut readings_would_differ = false;
     for line in seq.lines().skip(1).filter(|l| !l.trim().is_empty()) {
         let f: Vec<&str> = line.split(',').map(str::trim).collect();
         if f.len() < 10 {
@@ -3015,24 +3020,24 @@ fn export_seqcurrents_iresidual_is_the_lane_kernel() {
             continue;
         };
         if (own - first).abs() > 1e-9 {
-            lanes_would_differ = true;
+            readings_would_differ = true;
         }
-        let expected = if lane::PARITY { first } else { own };
+        let expected = own;
         // The report prints 6 significant digits; compare at that resolution.
         let tol = 1e-6 * expected.abs().max(1e-12) + 1e-12;
         assert!(
             (printed - expected).abs() <= tol,
-            "{name} terminal {j}: printed Iresidual {printed:e}, expected \
-             {expected:e} (own-terminal {own:e}, terminal-1 {first:e}, lane \
-             parity = {})",
-            lane::PARITY
+            "{name} terminal {j}: printed Iresidual {printed:e}, expected the \
+             row's own terminal {expected:e} (terminal-1 residual {first:e} — \
+             printing that one is the upstream bug)"
         );
         checked += 1;
     }
     assert!(checked > 50, "only {checked} rows checked");
     assert!(
-        lanes_would_differ,
-        "no row separates the two kernels — the pin would be vacuous"
+        readings_would_differ,
+        "no row separates the own-terminal residual from terminal 1's — the pin \
+         would be vacuous"
     );
 }
 
@@ -4075,36 +4080,33 @@ fn export_busreliability_matches_oracle() {
     run_deck_export("export_busreliability", &policy);
 }
 
-/// `Export BusReliability` on a **two-meter** feeder — pins the port's faithful
-/// reproduction of the upstream multi-meter `Bus_Int_Duration` cross-zone
-/// contamination (the second meter's duration loop walks the first meter's zone
-/// buses and overwrites their `Duration` from *its own* `FeederSections`; see
+/// `Export BusReliability` on a **two-meter** feeder — the deck that exercises
+/// the upstream multi-meter `Bus_Int_Duration` cross-zone contamination (the
+/// second meter's duration loop walks the first meter's zone buses and
+/// overwrites their `Duration` from *its own* `FeederSections`; see
 /// `investigations/reliability_bus_int_duration_oob_bug_report.md`). Both meters
 /// have two sections, so every cross-zone read is **in range** — a deterministic
-/// overwrite both engines agree on bus-for-bus (no out-of-bounds read; the OOB
-/// regime is proven-nondeterministic UB and deliberately not gated). Same
-/// byte-identical arithmetic as the single-meter case — exact equality.
+/// overwrite both gating engines agree on bus-for-bus (no out-of-bounds read;
+/// the OOB regime is proven-nondeterministic UB and deliberately not gated).
+/// Every other column is the same byte-identical arithmetic as the single-meter
+/// case — exact equality.
 #[test]
 fn export_busreliability_multimeter_matches_oracle() {
-    // Stage F deliberate divergence (`compat::BUS_INT_DURATION_WALKS_ALL_BUSES`):
-    // the default lane's duration loop stays inside each meter's own zone, so
-    // the `Duration` column of the *first* meter's buses no longer carries the
-    // second meter's sections. There is no row key in this report that
-    // identifies "a bus of the earlier meter", so the default lane excludes the
-    // whole column here and pins it — every row — in
-    // `export_busreliability_multimeter_duration_is_the_lane_kernel`. Lambda /
-    // interruptions / customers / cust-interruptions / miles stay compared
-    // against the oracle in both lanes.
-    let col_tol = if lane::PARITY {
-        vec![]
-    } else {
-        vec![ColTol {
-            sel: ColSel::Prefix("duration".to_string()),
-            rel: 0.0,
-            abs: 0.0,
-            gate: Some(GateSpec::Mask),
-        }]
-    };
+    // LANE-EXCLUSION(BUS_INT_DURATION_WALKS_ALL_BUSES): the duration loop stays
+    // inside each meter's own zone in both lanes, so the `Duration` column of
+    // the *first* meter's buses no longer carries the second meter's sections —
+    // while the oracle capture, which both gating engines produce, does. There
+    // is no row key in this report that identifies "a bus of the earlier
+    // meter", so the whole column is excluded here and pinned — every row — by
+    // `export_busreliability_multimeter_duration_stays_in_the_meters_zone`.
+    // Lambda / interruptions / customers / cust-interruptions / miles stay
+    // compared against the oracle.
+    let col_tol = vec![ColTol {
+        sel: ColSel::Prefix("duration".to_string()),
+        rel: 0.0,
+        abs: 0.0,
+        gate: Some(GateSpec::Mask),
+    }];
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
@@ -4116,26 +4118,33 @@ fn export_busreliability_multimeter_matches_oracle() {
     run_deck_export("export_busreliability_multimeter", &policy);
 }
 
-/// The Stage F `Bus_Int_Duration` row as an **expected-value** pin, on the
-/// two-meter fixture whose `Duration` column the lane split moves.
+// EXPECTED-VALUE-PIN(BUS_INT_DURATION_WALKS_ALL_BUSES): the `Duration` column
+// the golden compare above excludes is asserted here bus by bus, in both lanes,
+// as literals — the masked column is the only one this deck loses, and it loses
+// it to a stricter check, not to silence.
+/// Each meter's `Bus_Int_Duration` comes from its **own** zone, in *both* lanes
+/// — the two-meter fixture whose `Duration` column the exclusion above masks.
 ///
 /// The fixture is two independent two-section feeders off `SRC`: meter `m1`
 /// covers `l1` (repair 4 h) → `B1` and `l2` (repair 5 h) → `B2`; meter `m2`
 /// covers `l3` (repair 6 h) → `C1` and `l4` (repair 9 h) → `C2`. Each section
 /// holds exactly one line, so a bus's own-zone duration *is* that line's repair
-/// time (`source_int_dur = 0` here).
+/// time (`source_int_dur = 0` here) — the values asserted below.
 ///
-/// **Parity lane** reproduces upstream: `m2`'s duration loop walks *every*
-/// circuit bus, so it re-reads `B1`/`B2`'s section ids (1 and 2, written by
-/// `m1`) against **its own** `FeederSections` and overwrites them with `l3`'s
-/// and `l4`'s repair times — `B1 → 6`, `B2 → 9`, i.e. the C-feeder's numbers on
-/// the B-feeder's buses. That is what the oracle golden contains.
-/// **Default lane** keeps each meter inside its own zone: `B1 → 4`, `B2 → 5`.
+/// Upstream, and therefore the oracle capture, reports something else: `m2`'s
+/// duration loop walks *every* circuit bus, so it re-reads `B1`/`B2`'s section
+/// ids (1 and 2, written by `m1`) against **its own** `FeederSections` and
+/// overwrites them with `l3`'s and `l4`'s repair times — `B1 → 6`, `B2 → 9`,
+/// i.e. the C-feeder's numbers on the B-feeder's buses, and the whole column
+/// then depends on meter order. Since `GOLDEN_REBASE_PLAN.md` G2.2a neither
+/// lane does that.
 ///
-/// Both columns are asserted literally, so the fix cannot silently become a
-/// no-op and the reproduction cannot silently become the fix.
+/// The expectations are literals, one per bus, so the fix cannot silently
+/// become a no-op: `B1`/`B2` would read 6/9 the moment the loop leaves the
+/// zone again, and `C1`/`C2` — the last meter's own buses, which the two
+/// readings share — keep a bug-independent value under assertion.
 #[test]
-fn export_busreliability_multimeter_duration_is_the_lane_kernel() {
+fn export_busreliability_multimeter_duration_stays_in_the_meters_zone() {
     let text = run_deck_export_capture("export_busreliability_multimeter");
     let durations: Vec<(String, f64)> = text
         .lines()
@@ -4150,32 +4159,21 @@ fn export_busreliability_multimeter_duration_is_the_lane_kernel() {
         })
         .collect();
 
-    let expected: &[(&str, f64)] = if lane::PARITY {
-        &[
-            ("SRC", 0.0),
-            ("B1", 6.0),
-            ("B2", 9.0),
-            ("C1", 6.0),
-            ("C2", 9.0),
-        ]
-    } else {
-        &[
-            ("SRC", 0.0),
-            ("B1", 4.0),
-            ("B2", 5.0),
-            ("C1", 6.0),
-            ("C2", 9.0),
-        ]
-    };
+    let expected: &[(&str, f64)] = &[
+        ("SRC", 0.0),
+        ("B1", 4.0),
+        ("B2", 5.0),
+        ("C1", 6.0),
+        ("C2", 9.0),
+    ];
     assert_eq!(durations.len(), expected.len(), "rows: {durations:?}");
     for (got, want) in durations.iter().zip(expected) {
         assert_eq!(got.0, want.0, "bus order");
         assert_eq!(
-            got.1,
-            want.1,
-            "{} interruption duration (lane parity = {})",
-            got.0,
-            lane::PARITY
+            got.1, want.1,
+            "{} interruption duration: each meter's duration loop stays in its \
+             own zone (upstream would report 6/9 on B1/B2)",
+            got.0
         );
     }
 }

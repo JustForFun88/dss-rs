@@ -41,13 +41,13 @@ has shrunk to a precision-compat lane and is scheduled for full teardown.
 
 **In flight.** `GOLDEN_REBASE_PLAN.md` on branch **`golden-g2`**. WP-G0 (safety
 rails) is complete and merged to `update`; WP-G2 (tear down the shared-with-r4133
-bug kernels) is running — G2.0 rails + G2.1a…G2.1h landed, `SPLIT_ALIAS_POPULATION`
-**31 → 23**, and the WP acceptance criterion still holds at HEAD: `git diff --stat
--- tests/golden` over the whole range is **empty** in both lanes. Next step:
-**G2.2a** — the existing-exclusion rows `IRESIDUAL_FROM_TERMINAL_1` and
-`BUS_INT_DURATION_WALKS_ALL_BUSES`, which is also where the pin-walk non-vacuity
-anchor moves onto a numeric survivor. Queued behind GOLDEN_REBASE:
-`WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, the UPGRADE line.
+bug kernels) is running — G2.0 rails + G2.1a…G2.1h + G2.2a landed,
+`SPLIT_ALIAS_POPULATION` **31 → 21**, and the WP acceptance criterion still holds
+at HEAD: `git diff --stat -- tests/golden` over the whole range is **empty** in
+both lanes. Next step: **G2.2b** — the property-exclusion rows
+`monitor_base_frequency` and `ISOURCE_BUS2_NEVER_LATCHES`. Queued behind
+GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, the
+UPGRADE line.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
@@ -122,6 +122,37 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   `LineConstants.pas:689-696`; the surface does not exist in 0.14.5, so the row is
   cited and gated on `r4133` only). 24 → 23. Audit: both findings upheld,
   docs-only.
+- **G2.2a** (2026-08-05) — the first two rows whose teardown a **golden compare
+  observes**, both dismantled by making an existing exclusion unconditional
+  rather than by moving a golden byte. `IRESIDUAL_FROM_TERMINAL_1`:
+  `CalcAndWriteSeqCurrents` applies the `(j-1)*Ncond` offset to its symmetric
+  components (r4133 `Version8/Source/Common/ExportResults.pas:323`) but not to
+  the residual sum (`:365-366`, dss_capi `:422-424`), so every terminal row
+  repeats terminal 1's residual; both lanes now sum the row's own terminal, and
+  the golden's `Terminal >= 2` `Iresidual` cells are excluded in **both** lanes
+  and pinned by `export_seqcurrents_iresidual_sums_the_rows_own_terminal`
+  (derived from `Export Currents`' `Iresid_j`, an independent anchor).
+  `BUS_INT_DURATION_WALKS_ALL_BUSES`: `CalcReliabilityIndices` sizes
+  `FeederSections` to its own zone (r4133 `Meters/EnergyMeter.pas:2507`) but
+  writes bus durations while walking every circuit bus (`:2567-2574`), and the
+  section-id zeroing that would clear a foreign id is itself per-zone (`:2472`),
+  so with two meters the later one overwrites the earlier one's durations; both
+  lanes now walk only their own zone, the `Duration` column of
+  `export_busreliability_multimeter` is masked in both lanes and pinned
+  literally by `export_busreliability_multimeter_duration_stays_in_the_meters_zone`
+  (`B1 = 4`, `B2 = 5`, not upstream's 6/9). 23 → 21; both rows carry
+  `Evidence::Exclusion`, the first use of that variant. The pin-walk
+  non-vacuity anchor for the integration-test shape moved off the torn-down
+  `IRESIDUAL_FROM_TERMINAL_1` onto the numeric survivor `PI`
+  (`crates/dss-parser/tests/parser_golden.rs`), which outlives WP-G2 and WP-G4.
+  Doc strikes in the same commit: CLAUDE.md's two bug bullets and its WP-G2
+  status line, `tests/TOLERANCE_NOTES.md`'s `Iresidual` note (rewritten in
+  place — it is a note about the `SeqCurrents` compare policy, and the
+  "deliberately-reproduced" section it might otherwise move to is about
+  reproductions, which this no longer is). No ledger or `population.lock.json`
+  movement: no live gate reads `Bus.Int_Duration` or report text yet (WP-G1's
+  G1.6 adds the reliability columns, which is why the plan orders this row
+  first), and the corpus gate stayed green in both lanes.
 
 ### Live escape register — the 18 surviving `TODO(compat)` markers
 

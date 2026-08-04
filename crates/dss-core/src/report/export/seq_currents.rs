@@ -91,22 +91,24 @@ pub(crate) fn export_seq_currents(
                 (0.0, 0.0)
             };
 
-            // The residual (neutral/ground) current of this row's terminal.
+            // The residual (neutral/ground) current of this row's terminal: the
+            // conductors of terminal `j` start at `(j-1)*ncond` in the element's
+            // whole-element current buffer — the same offset the symmetric
+            // components above already apply (r4133
+            // `Version8/Source/Common/ExportResults.pas:323`, dss_capi
+            // `ExportResults.pas:367`).
             //
-            // Upstream sums the *terminal-1* conductors (`cBuffer^[i]`,
-            // i = 1..Ncond) for **every** terminal row — `CalcAndWriteSeqCurrents`
-            // indexes `cBuffer^[i]`, not `cBuffer^[(j-1)*Ncond+i]` — so every row
-            // repeats terminal 1's residual (oracle-proven on IEEE13
-            // `Line.671680`: true terminal-2 residual 9.8e-12 A, printed 2.83e-5
-            // = terminal 1's; upstream bug report
-            // `tmp/seqcurrents_iresidual_bug_report.md`). Stage F's
-            // `IRESIDUAL_FROM_TERMINAL_1` row: parity keeps the bug (goldens pin
-            // it), the default lane sums the row's own terminal.
-            let base = if crate::compat::IRESIDUAL_FROM_TERMINAL_1 {
-                0
-            } else {
-                (j - 1) * ncond
-            };
+            // Upstream's residual loop omits it: it sums `cBuffer^[i]`,
+            // i = 1..Ncond, for **every** terminal row (r4133
+            // `Version8/Source/Common/ExportResults.pas:365-366`; dss_capi
+            // `ExportResults.pas:422-424` is the same three lines), so every row
+            // of an element repeats terminal 1's residual while the rest of that
+            // row describes terminal `j` — oracle-proven on IEEE13
+            // `Line.671680`, whose true terminal-2 residual is 9.8e-12 A against
+            // the 2.83e-5 A of terminal 1 that gets printed. Both gating oracles
+            // carry it and neither lane reproduces it
+            // (`GOLDEN_REBASE_PLAN.md` G2.2a; `issue-01`).
+            let base = (j - 1) * ncond;
             let mut iresidual = Complex64::ZERO;
             for i in 0..ncond {
                 iresidual += cd.iterminal[base + i];

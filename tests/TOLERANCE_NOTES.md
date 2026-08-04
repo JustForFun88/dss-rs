@@ -639,17 +639,17 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
     code-faithful but unexercised by IEEE13 (no Fault objects; full 3-phase deck).
     A feeder with a genuine 2-phase nonzero-`%NEMA` terminal would close the last;
     deferred (no corpus deck), recorded in STATUS §1f.
-  - **Lane-split `Iresidual` in `SeqCurrents`** (`seq_currents.rs`, alias
-    `compat::IRESIDUAL_FROM_TERMINAL_1`): `Iresidual` sums the *terminal-1*
-    conductors for **every** terminal row (Pascal indexes `cBuffer^[i]`, not
-    `cBuffer^[(j-1)*Ncond+i]`). Since DE_PASCALIZE Stage F.3c the parity lane
-    reproduces the quirk verbatim, so the golden's `Iresidual` column still
-    matches byte-for-byte; the default lane takes the clean fix (the row's own
-    terminal slice), which makes only the `Terminal >= 2` cells differ. Those
-    cells alone are excluded there (`GateSpec::ColAbove(1, 1.5)`) — the
-    terminal-1 cells stay oracle-compared in both lanes — and the excluded ones
-    are pinned by `export_seqcurrents_iresidual_is_the_lane_kernel`. This is an
-    exclusion, never a loosened tolerance: the column keeps its `abs = 1e-8`.
+  - **Excluded `Iresidual` cells in `SeqCurrents`** (`seq_currents.rs`): the
+    captured oracle sums the *terminal-1* conductors for **every** terminal row
+    (Pascal indexes `cBuffer^[i]`, not `cBuffer^[(j-1)*Ncond+i]` — an upstream
+    bug both gating engines share). Since `GOLDEN_REBASE_PLAN.md` G2.2a neither
+    lane reproduces it: both sum the row's own terminal, which moves only the
+    `Terminal >= 2` cells. Those cells alone are excluded, in both lanes
+    (`GateSpec::ColAbove(1, 1.5)`) — the terminal-1 cells, where the two
+    readings coincide, stay oracle-compared — and the excluded ones are pinned
+    by `export_seqcurrents_iresidual_sums_the_rows_own_terminal`, which derives
+    them from `Export Currents`' own `Iresid_j` column. This is an exclusion,
+    never a loosened tolerance: the column keeps its `abs = 1e-8`.
 
 - **WP8.2 sub-step 2c — the per-terminal/per-conductor element exports**
   (`Currents`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`NodeOrder`/`Taps` on

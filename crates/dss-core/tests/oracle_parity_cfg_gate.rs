@@ -812,8 +812,11 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// did the same to `STORAGE_MULTIFILE_USES_THE_PV_PREFIX`; **24** after G2.1g
 /// did the same to `CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`; **23** after G2.1h did
 /// the same to `HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD`, the last of the
-/// G2.1 zero-footprint rows.
-const SPLIT_ALIAS_POPULATION: usize = 23;
+/// G2.1 zero-footprint rows; **21** after G2.2a tore down the first two rows
+/// whose teardown a golden compare observes — `IRESIDUAL_FROM_TERMINAL_1` and
+/// `BUS_INT_DURATION_WALKS_ALL_BUSES`, whose harness exclusions became
+/// unconditional instead of moving a golden byte.
+const SPLIT_ALIAS_POPULATION: usize = 21;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -899,7 +902,9 @@ fn names_token(text: &str, token: &str) -> bool {
 /// `lane::PARITY` alone (`IRESIDUAL_FROM_TERMINAL_1`,
 /// `BUS_INT_DURATION_WALKS_ALL_BUSES`, `FAULT_DUMP_TAIL_REPRINTS_MINAMPS`) had
 /// been credited by a *neighbouring* test's constant. Their pins do branch on
-/// the lane; only this predicate could not see how.
+/// the lane; only this predicate could not see how. (G2.2a has since torn down
+/// the first two of those rows, whose pins are unconditional now; the third
+/// still needs this arm.)
 ///
 /// The second arm is the **qualified** path only, not the bare word
 /// [`reads_the_lane`] settles for (`:1657`). The two are not symmetric: there a
@@ -1121,16 +1126,18 @@ fn every_lane_split_alias_is_pinned_by_an_expected_value_test() {
 
     // Non-vacuity of the *walk*, in both shapes a pin is allowed to take — a
     // narrowing of `is_pin_candidate` that dropped either would otherwise show
-    // up as "everything still passes".
+    // up as "everything still passes". The integration-test shape was anchored
+    // on `IRESIDUAL_FROM_TERMINAL_1` until G2.2a tore that row down; it now
+    // names `PI`, one of the five **numeric** precision-compat survivors
+    // (TESTING.md §"Precision-compat rows still split by lane"), which outlive
+    // WP-G2 and WP-G4 both — so this anchor does not have to move again with
+    // the next teardown.
     for (alias, expected) in [
         (
             "kv_base_search_scale",
             "crates/dss-core/src/solution/solution/dispatch.rs",
         ),
-        (
-            "IRESIDUAL_FROM_TERMINAL_1",
-            "crates/dss-core/tests/golden_reports.rs",
-        ),
+        ("PI", "crates/dss-parser/tests/parser_golden.rs"),
     ] {
         let found = pins
             .iter()
@@ -1572,6 +1579,87 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         Some((
             "crates/dss-core/src/support/line_constants/tests.rs",
             "height_unit_change_rereads_the_typed_number",
+        )),
+    ),
+    // G2.2a, row 1. `CalcAndWriteSeqCurrents` is called once per terminal `j`
+    // over a buffer that holds **all** terminals, and applies the offset that
+    // fact requires — `k := (j-1)*Ncond + i` — to its symmetric components
+    // (r4133 `Version8/Source/Common/ExportResults.pas:323`; dss_capi
+    // `ExportResults.pas:367`) but not to the residual sum three dozen lines
+    // later, which accumulates `cBuffer^[i]`, i = 1..Ncond (r4133 `:365-366`;
+    // dss_capi `:422-424`). Every terminal row of an element therefore prints
+    // terminal 1's residual beside its own I1/I2/I0/%NEMA — oracle-proven on
+    // IEEE13 `Line.671680`, true terminal-2 residual 9.8e-12 A against the
+    // printed 2.83e-5 A. Both gating oracles carry it; both lanes now sum the
+    // row's own terminal, which is the slice the element's `Iterminal` already
+    // holds (no solved quantity moves). The first WP-G2 row a golden compare
+    // observes: the `Terminal >= 2` cells of `export_seqcurrents` were excluded
+    // in the default lane only and are now excluded unconditionally — an
+    // exclusion, not a regenerated golden, so no golden byte moved.
+    (
+        "IRESIDUAL_FROM_TERMINAL_1",
+        Kind::SplitAlias,
+        // The first row whose teardown left a mechanism in *two* files — the
+        // engine kernel (`seq_currents.rs`: `let base = (j - 1) * ncond;`) and
+        // the harness exclusion — while `Evidence` keys one file per row. The
+        // exclusion is what is recorded, because it is the half that carries
+        // the [`Evidence::Exclusion`] marker obligation; the needle is the
+        // unconditional `push`, which under the split sat four spaces deeper
+        // inside `if !lane::PARITY { … }`, so no lane-branching form matches it.
+        // Single-line by necessity (this repo checks Rust sources out with
+        // CRLF, which no multi-line needle survives).
+        //
+        // Per the last paragraph of [`Evidence::Site`], what carries the engine
+        // half instead is named rather than left implied: the row's pin asserts
+        // the own-terminal reading in **both** lanes, so a re-split engine fails
+        // it whichever way the branch is written; and re-conditioning the
+        // exclusion alone fails `export_seqcurrents_matches_oracle` in the
+        // parity lane, where the golden still carries the upstream residual.
+        Evidence::Exclusion(
+            "crates/dss-core/tests/golden_reports.rs",
+            &["\n    col_tol.push(ColTol {"],
+        ),
+        Some((
+            "crates/dss-core/tests/golden_reports.rs",
+            "export_seqcurrents_iresidual_sums_the_rows_own_terminal",
+        )),
+    ),
+    // G2.2a, row 2. `CalcReliabilityIndices` sizes `FeederSections` to **this**
+    // meter's `SectionCount` (r4133 `Version8/Source/Meters/EnergyMeter.pas:2507`;
+    // dss_capi `EnergyMeter.pas:2461`) and keeps its per-section loop inside it
+    // (r4133 `:2561-2563`), then writes the bus durations while walking **every
+    // circuit bus** (r4133 `:2567-2574`; dss_capi `:2521-2526`). A foreign
+    // `BusSectionID` survives to be read there because the zeroing that clears
+    // it is itself per-zone (r4133 `:2472` walks this meter's `SequenceList`),
+    // so with two meters the later one overwrites the earlier one's bus
+    // durations from its own unrelated sections and the reported column depends
+    // on meter order. Both gating oracles carry that (in-range) regime; both
+    // lanes now walk only the buses this meter's own forward sweep numbered.
+    // The out-of-range regime — an OOB heap read, proven nondeterministic — was
+    // never reproduced in either lane and has no defined value to pin. The
+    // `Duration` column of `export_busreliability_multimeter` was excluded in
+    // the default lane only and is now excluded unconditionally; no golden byte
+    // moved, and no live gate reads `Bus.Int_Duration` yet (WP-G1's G1.6 adds
+    // it, which is why the plan orders this row first).
+    (
+        "BUS_INT_DURATION_WALKS_ALL_BUSES",
+        Kind::SplitAlias,
+        // Same two-file shape as the row above, recorded the same way: the
+        // needle is the unconditional `let col_tol = vec![ColTol {`, which under
+        // the split read `let col_tol = if lane::PARITY { vec![] } else { … }`.
+        // The engine half (`reliability.rs`: the duration loop at the function
+        // body's own four spaces, four spaces shallower than the `else` arm the
+        // split gave it) is carried by the row's pin, which asserts the
+        // zone-scoped durations in **both** lanes, and by
+        // `export_busreliability_multimeter_matches_oracle`, which fails in the
+        // parity lane if the exclusion alone is re-conditioned.
+        Evidence::Exclusion(
+            "crates/dss-core/tests/golden_reports.rs",
+            &["\n    let col_tol = vec![ColTol {"],
+        ),
+        Some((
+            "crates/dss-core/tests/golden_reports.rs",
+            "export_busreliability_multimeter_duration_stays_in_the_meters_zone",
         )),
     ),
 ];
