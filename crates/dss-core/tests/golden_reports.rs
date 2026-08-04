@@ -100,9 +100,12 @@ fn run_deck_export(stem: &str, policy: &ExportPolicy) {
 }
 
 /// Run a deck-fixture export exactly like [`run_deck_export`] but **return the
-/// produced text** instead of comparing it. Used by the Stage F
-/// expected-value pins, which assert a lane-specific value the oracle golden
-/// cannot carry.
+/// produced text** instead of comparing it. Used by the expected-value pins,
+/// which assert a value the oracle golden cannot carry — the golden is the
+/// capture of an engine whose reading the fix moves away from (an upstream bug
+/// both gating engines share), so the pin has to read the produced text
+/// directly. Since `GOLDEN_REBASE_PLAN.md` WP-G2 those pins are
+/// lane-independent: they assert the one value **both** lanes now compute.
 fn run_deck_export_capture(stem: &str) -> String {
     let dir = reports_dir();
     let meta: DeckMeta = {

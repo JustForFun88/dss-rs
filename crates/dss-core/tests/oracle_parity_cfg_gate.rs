@@ -913,7 +913,8 @@ fn names_token(text: &str, token: &str) -> bool {
 /// more, so an English `PARITY` in a comment would satisfy the rail. Two such
 /// comments exist in-tree (`tests/golden_reports.rs:1620`,
 /// `tests/corpus_gate/scheduler.rs:358`) while every real read is written
-/// `lane::PARITY` (`golden_reports.rs` ×15, `harness/mod.rs:1343`, `:2358`);
+/// `lane::PARITY` (`golden_reports.rs` ×9 — it was ×15 until G2.2a tore down
+/// two rows pinned there — plus `harness/mod.rs:1343`, `:2358`);
 /// `harness/lane.rs`, which uses the bare name because it declares it, names
 /// `ORACLE_PARITY` in that same assert and is credited by the first arm.
 fn branches_on_lane(text: &str, _alias: &str) -> bool {
@@ -1150,6 +1151,25 @@ fn every_lane_split_alias_is_pinned_by_an_expected_value_test() {
              pin moved, re-anchor it here; if the walk stopped reaching that \
              shape of test file, fix the walk"
         );
+        // The walk credits a **bare** token, which is the right rule for a pin
+        // (a test may name its row in prose) but too weak for an anchor whose
+        // job is to fail loudly: `PI` also occurs in `parser_golden.rs` as the
+        // incidental `f64::consts::PI`, so deleting the deliberate `compat::PI`
+        // citation would leave this assert green on a std-library homonym —
+        // exactly the "everything still passes" outcome the anchor exists to
+        // prevent. So re-check the **qualified** spelling in the same region
+        // the walk credited. `IRESIDUAL_FROM_TERMINAL_1`, the anchor before
+        // G2.2a, had no homonym and needed no such guard; the numeric survivors
+        // this WP must anchor on are short names, so the guard travels with them.
+        let path = root.join(expected);
+        let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("{expected}: {e}"));
+        let (start, end) = is_pin_candidate(&path, &root, &text)
+            .unwrap_or_else(|| panic!("{expected} no longer counts as a pin candidate"));
+        assert!(
+            names_token(&text[start..end], &format!("compat::{alias}")),
+            "{expected} no longer cites `compat::{alias}` by its qualified name \
+             — the anchor above was being satisfied by a bare-token homonym"
+        );
     }
 }
 
@@ -1181,8 +1201,10 @@ enum Kind {
 /// `tests/corpus/ledger.json` are checked fail-on-stale. The pin (below) proves
 /// the *behaviour*; this proves the *mechanism* the teardown left behind.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-// Only the variants WP-G2 has reached so far are constructed (`Site`, since
-// G2.1a); the rest are dead code until their first row. `expect` rather than
+// Only the variants WP-G2 has reached so far are constructed (`Site` since
+// G2.1a, `Exclusion` since G2.2a); the rest — `Ledger` (G2.5) and `None`
+// (WP-G4) — are dead code until their first row, and this list is amended by
+// the sub-step that lands it. `expect` rather than
 // `allow` on purpose: the day the last variant gets its first row, this
 // attribute becomes unfulfilled and has to be deleted, instead of quietly
 // covering a variant that later goes unused for real.

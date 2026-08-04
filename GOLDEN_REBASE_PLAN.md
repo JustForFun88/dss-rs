@@ -644,7 +644,8 @@ predicted-diff list gains it.)
   `report/export/seq_currents.rs:107-109`): the `ColTol` exclusion at
   `golden_reports.rs:2907` becomes unconditional; the derived pin at `:2953` stays
   (it derives truth from `Export Currents`' `Iresid_j` — an independent anchor).
-  Move `tests/TOLERANCE_NOTES.md:642-653`; strike CLAUDE.md:104 and
+  Move `tests/TOLERANCE_NOTES.md:642-653` (**as executed:** rewritten in place —
+  see the G5.1 doc list for why); strike CLAUDE.md:104 and
   TOLERANCE_NOTES.md:643 in the same commit; **re-anchor the pin-walk non-vacuity
   const (`oracle_parity_cfg_gate.rs:1087-1108`) onto one of the five numeric
   survivors (the G2.0(a) list).**
@@ -1003,7 +1004,10 @@ from the enum.
   (`TESTING.md:89-158`); golden lock beside the population lock; the WP-G4
   outcome (both lanes render identically).
 - `tests/TOLERANCE_NOTES.md`: the G1 floor derivations live here; the Iresidual
-  note moved by G2.2a.
+  note **rewritten in place** by G2.2a (it stayed in §Field-specific exceptions —
+  it describes the `SeqCurrents` compare policy, and §Deliberately-reproduced
+  upstream inexactnesses, the move target the sub-step text named, is about
+  reproductions, which that row no longer is; STATUS records the deviation).
 - Every edit keeps `oracle_parity_cfg_gate.rs:1310`
   (`operational_docs_cite_the_compat_machinery_accurately`) green — including its
   `alias_refs >= 4` floor (the G2.0 citations must survive every edit);
