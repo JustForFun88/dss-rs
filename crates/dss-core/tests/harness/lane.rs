@@ -147,11 +147,14 @@ pub fn elem_channels_for(label: &str) -> ElemChannels {
 ///
 /// The oracle stays the source of truth for every other line — this is the same
 /// expected-value-transform shape `golden_cim`/`golden_json` use, chosen for the
-/// same reason: the relay decks' event logs are the whole point of the 15 gated
+/// same reason: the relay decks' event logs are the whole point of the 17 gated
 /// `oracle: "r4133"` cases that carry a relay and compare one (nine under
-/// `controls/relay/`, two under `controls/combo/`, the four TD21 decks —
-/// measured over `population.lock.json`'s `evlog=1` rigor fields), so
-/// re-capturing them would trade an oracle proof for two label changes.
+/// `controls/relay/`, two under `controls/combo/`, two under
+/// `controls/fuse/indmach_r4133/`, the four TD21 decks — measured over
+/// `population.lock.json`'s `evlog=1` rigor fields, whose `family_rigor` map
+/// covers the synthetic families and whose `solvable_now` map covers the
+/// vendored decks), so re-capturing them would trade an oracle proof for two
+/// label changes.
 ///
 /// # Both lanes: the two Relay rows (`GOLDEN_REBASE_PLAN.md` G2.2d)
 ///
@@ -284,7 +287,9 @@ static REROUND_HITS: [AtomicUsize; EVENTLOG_REROUNDED.len()] =
 /// doc above already claimed this helper was fail-on-stale).
 ///
 /// Silent when a cell's case was never visited, so `DSS_GATE_ONLY` runs and the
-/// parity lane (which rewrites nothing) do not trip it.
+/// parity lane (which applies no re-round cell — it returns from
+/// [`expected_eventlog`] above the fold, after the two unconditional Relay
+/// label rewrites) do not trip it.
 pub fn assert_reround_cells_are_live() {
     if PARITY {
         return;
@@ -1006,8 +1011,9 @@ mod tests {
         );
 
         // The over-broad guard: one cell may re-spell one rendered number, so a
-        // log carrying the same cell twice is refused. (The parity lane
-        // rewrites nothing at all, so there is nothing to over-match there.)
+        // log carrying the same cell twice is refused. (The parity lane returns
+        // before the re-round fold, so no cell runs there and there is nothing
+        // to over-match.)
         if !PARITY {
             let twice = std::panic::catch_unwind(|| {
                 expected_eventlog(

@@ -330,6 +330,33 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   parenthetical still claimed the compared log includes the `Debug Sample` lines
   (`note` is not fingerprinted by `Case::rigor`). No doc-surface citation exists
   for either row.
+  **Audit settlement** (2026-08-05, three minor findings, all real, all prose —
+  no behavior changed, so `lane_diff.ps1` was not re-run): (1) the blast-radius
+  enumeration "the 15 gated `oracle: \"r4133\"` cases that carry a relay and
+  compare an event log" undercounted by two. Re-measured over the family
+  manifests' `compare_eventlog` + `engines` fields and confirmed against
+  `population.lock.json`, the set is **17** — nine `controls/relay/`, two
+  `controls/combo/`, **two `controls/fuse/indmach_r4133/`** (both instantiate
+  `Relay.mfrov/uv`, `Relay.mfr46`, `Relay.mfr47`), four TD21 decks. Corrected in
+  `harness/lane.rs` and `oracle_parity_cfg_gate.rs` plus the local
+  `investigations/issue-29-…` report that seeded the number. Behaviourally inert
+  (the `Debug Sample` drop is unconditional and case-independent, and neither
+  indmach deck sets `debugtrace`). The auditor's side claim that
+  `population.lock.json` "covers only the vendored electricdss-tst cases" is
+  **wrong** — its `family_rigor` map carries the synthetic families too, and both
+  indmach rows are in it with `evlog=1 engines=r4133`; the lock was a valid
+  source, the original reading of it was not. (2) Two surviving comments still
+  said the parity lane "rewrites nothing" (`lane.rs` `assert_reround_cells_are_
+  live` doc, and the over-broad-guard comment in
+  `eventlog_reround_cells_are_case_scoped_and_fail_on_stale`) — false since the
+  two Relay rewrites moved above the `if PARITY` return; both narrowed to "no
+  re-round cell runs there". (3) `golden_protection.rs` (:11-15, :229-231) called
+  the `Debug Sample` line "unconditional" — still true of upstream r4133, which
+  is what those sentences describe, but ambiguous now that the port gates it;
+  annotated in place rather than rewritten, since the retirement rationale is
+  unchanged. This file is not on the walked doc surface of
+  `operational_docs_cite_the_compat_machinery_accurately`, so nothing catches it
+  mechanically.
 
 ### Live escape register — the 18 surviving `TODO(compat)` markers
 

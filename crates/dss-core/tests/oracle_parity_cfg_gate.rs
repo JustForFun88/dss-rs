@@ -1930,8 +1930,10 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     // `:1845`), and r4088 had no such line in `Sample` at all — it arrived with
     // the r4133 per-phase rewrite. Both lanes now route it through the
     // `Relay::dbg` helper the port already had. No golden byte moves (no golden
-    // captures a relay event log); the 15 gated `oracle: "r4133"` cases that
-    // carry a relay and compare an event log keep every other line
+    // captures a relay event log); the 17 gated `oracle: "r4133"` cases that
+    // carry a relay and compare an event log (nine under `controls/relay/`, two
+    // under `controls/combo/`, two under `controls/fuse/indmach_r4133/`, the
+    // four TD21 decks) keep every other line
     // oracle-compared, because `harness::lane::expected_eventlog` drops these
     // lines from the capture in **both** lanes.
     (
