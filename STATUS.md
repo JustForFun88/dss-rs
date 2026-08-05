@@ -206,6 +206,27 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   both lanes, which is the classification check for both rows (the 50 Hz
   `LVTestCase` monitors and the props `Bus2` cell are the only observables).
   `lane_diff.ps1`: max |Δ| = 0.
+- **G2.2b fix** (2026-08-05) — three comment corrections, no code: the
+  `branches_on_lane` doc's surviving-read citation (`harness/mod.rs:2374`, and
+  `skip_prop`'s was the *first* of that file's two reads, not the second);
+  `compat.rs`'s "they **are** the two reproduced bugs" prose, now past-tense and
+  keyed by row *name* rather than by an ordinal that goes stale every teardown;
+  and `props_roundtrip.rs`'s `assert_shape_matches` header, which still said
+  "used in the default lane" of an exclusion its own list doc and call site call
+  both-lane. **Refuted, not fixed:** the audit claim that `LANE_SKIP_PROPS` is
+  unreachable inside `cargo test` — that `compare_all_properties` is opt-in per
+  case and only `corpus_live_properties` (`DSS_LIVE_PROPS=1`) turns it on. It
+  misses `corpus_gate/scheduler.rs:102-110 force_properties`, which sets the flag
+  in code for **every** live `solvable_now` case that gates capi and is not
+  `kind: large` — the manifest never needs the key. `LVTestCase/Master.dss` is
+  exactly that (`engines: both`, `kind: feeder`, no ledger entry), so the compare
+  runs in the mandatory gate. Measured by emptying the list and re-running the
+  gated case: `Monitor.line558_vi_vs_time property BaseFreq: actual 50 vs
+  expected 60` on the CapiV0145 channel. The exclusion is load-bearing, and its
+  going inert is itself loud (that red), so the fail-on-stale counter the finding
+  proposed as a safety net would be measuring a failure mode the gate already
+  reports. `lane_diff.ps1` not re-run: comments only — no compat kernel, lane
+  alias or solver touched.
 
 ### Live escape register — the 18 surviving `TODO(compat)` markers
 
