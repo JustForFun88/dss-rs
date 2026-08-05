@@ -915,11 +915,14 @@ fn names_token(text: &str, token: &str) -> bool {
 /// `max_device_name_length` row.)
 ///
 /// The second arm is the **qualified** path only, not the bare word
-/// [`reads_the_lane`] settles for (`:1657`). The two are not symmetric: there a
-/// loose match makes the caller *reject* more (a pin that still reads the lane
-/// fails the teardown check — fail-safe), here it makes the caller *accept*
-/// more, so an English `PARITY` in a comment would satisfy the rail. Two such
-/// comments exist in-tree (`tests/golden_reports.rs:1620`,
+/// [`reads_the_lane`] settles for. (No line number: the two in-file citations
+/// this sentence used to carry both went stale under the teardowns' own line
+/// shifts — the rustdoc link resolves without one, and the sibling
+/// cross-file numbers below are re-measured with each edit.) The two are not
+/// symmetric: there a loose match makes the caller *reject* more (a pin that
+/// still reads the lane fails the teardown check — fail-safe), here it makes
+/// the caller *accept* more, so an English `PARITY` in a comment would satisfy
+/// the rail. Two such comments exist in-tree (`tests/golden_reports.rs:1628`,
 /// `tests/corpus_gate/scheduler.rs:358`) while every real read is written
 /// `lane::PARITY` (`golden_reports.rs` ×6 — it was ×15 until G2.2a tore down
 /// two rows pinned there and ×9 until G2.2c tore down the Fault dump row —
@@ -1885,13 +1888,19 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     (
         "CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH",
         Kind::SplitAlias,
-        // `"ACLineSegment.g0ch"` exists nowhere else in the tree — the sibling
-        // writer spells `"PerLengthSequenceImpedance.g0ch"` — and under the
-        // split it sat alone on its line inside an `else` arm eight spaces
-        // deeper, inside a call rustfmt had to break across six lines. The
-        // needle is the whole *one-line* call at `double_node`'s own sixteen
-        // spaces, which only the unbranched form can be. Single-line by
-        // necessity (CRLF checkout).
+        // Inside the keyed file `cim/export.rs` the literal
+        // `"ACLineSegment.g0ch"` is unique — the sibling writer earlier in the
+        // same file spells `"PerLengthSequenceImpedance.g0ch"` — so the needle
+        // cannot be satisfied by some other writer in the same file. (It is
+        // *not* unique tree-wide: `golden_cim.rs`'s rewrite names it too, and so
+        // does this register's own needle. Both are outside the keyed file,
+        // which the check never reads for this row, and neither could keep it
+        // green — the slice is looked up in `cim/export.rs` alone.) What
+        // discriminates the torn-down state is the needle's *shape*: under the
+        // split the call sat inside an `else` arm eight spaces deeper, which
+        // rustfmt had to break across six lines, so only the unbranched form can
+        // be this whole one-line call at `double_node`'s own sixteen spaces.
+        // Single-line by necessity (CRLF checkout).
         //
         // The harness half is carried the same way as row 2's: by the shared pin
         // (which asserts, in both lanes, that no two consecutive `b0ch` nodes
