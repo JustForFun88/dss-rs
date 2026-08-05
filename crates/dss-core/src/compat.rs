@@ -47,13 +47,16 @@
 //! | report text rendering — `Show` device-name column width | [`max_device_name_length`] — same section | **yes** (F.4b) |
 //! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f, the CIM wye `grounded` flag G2.1g, the Line height-unit re-read G2.1h, the Isource `Bus2` latch G2.2b |
 //!
-//! Rows 12–13 are not in IV.2's table and do not extend it: they are the two
-//! *reproduced* CLAUDE.md upstream bugs whose clean fix was deferred to this
-//! pass — row 12 (Monitor) **by name**, in that document's own bug bullet; row
-//! 13 (Newton) under `PORTING_PLAN.md` §4.1 rule 4's blanket deferral, quoted
-//! ten lines below, which is what sanctions it. (CLAUDE.md's Newton bullet
-//! named no Stage F deferral until F.3j wrote one; the earlier claim that both
-//! were deferred "by name" overreached.) With them the named-bug set is closed:
+//! The Monitor `BaseFrequency` and Newton stale-`Iterminal` rows are not in
+//! IV.2's table and do not extend it: they *were* the two **reproduced**
+//! CLAUDE.md upstream bugs whose clean fix was deferred to this pass — Monitor
+//! **by name**, in that document's own bug bullet; Newton under
+//! `PORTING_PLAN.md` §4.1 rule 4's blanket deferral, quoted ten lines below,
+//! which is what sanctions it. (Named here, not numbered: the table above loses
+//! a row per teardown, so an ordinal goes stale on its own. And CLAUDE.md's
+//! Newton bullet named no Stage F deferral until F.3j wrote one; the earlier
+//! claim that both were deferred "by name" overreached.) With them the
+//! named-bug set is closed:
 //! of the six, two
 //! were never reproduced at all (VSConverter's self-aliased `MVMult`, harmonics
 //! `Powers`-after-`Currents`) — as is the out-of-range half of

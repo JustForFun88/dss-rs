@@ -916,8 +916,9 @@ fn names_token(text: &str, token: &str) -> bool {
 /// comments exist in-tree (`tests/golden_reports.rs:1620`,
 /// `tests/corpus_gate/scheduler.rs:358`) while every real read is written
 /// `lane::PARITY` (`golden_reports.rs` ×9 — it was ×15 until G2.2a tore down
-/// two rows pinned there — plus `harness/mod.rs:2373`, the kV-value compare;
-/// `skip_prop`'s read, the file's second one, went unconditional in G2.2b);
+/// two rows pinned there — plus `harness/mod.rs:2374`, the kV-value compare and
+/// that file's only remaining read; `skip_prop`'s, which was the *first* of its
+/// two, went unconditional in G2.2b);
 /// `harness/lane.rs`, which uses the bare name because it declares it, names
 /// `ORACLE_PARITY` in that same assert and is credited by the first arm.
 fn branches_on_lane(text: &str, _alias: &str) -> bool {

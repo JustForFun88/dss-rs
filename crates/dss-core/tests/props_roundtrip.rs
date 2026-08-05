@@ -223,8 +223,8 @@ const LANE_SKIP_PROP_VALUES: &[(&str, &str)] = &[
 const LANE_SKIP_PROP_VALUE_CELLS: usize = 33;
 
 /// The value-free half of [`assert_value_matches`]: the rendered *shape* only —
-/// the literal text around the numbers and how many numbers there are. Used in
-/// the default lane for [`LANE_SKIP_PROP_VALUES`], where the values are a
+/// the literal text around the numbers and how many numbers there are. Used for
+/// [`LANE_SKIP_PROP_VALUES`] in **both** lanes, where the values are a
 /// deliberate divergence but the layout is not.
 fn assert_shape_matches(actual: &str, expected: &str, ctx: &str) {
     let (askel, anums) = numeric_skeleton(actual);
