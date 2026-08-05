@@ -627,7 +627,10 @@ bytes move — these rows have no harness exclusion anywhere. (G2.1g caveat:
 measure first whether any committed `cim/` golden observes the grounded flag —
 the default-lane byte compare is green today, which says none should; if one
 does, the row moves into G2.2c with a `lane_expected_cim` rule, and G3.4's
-predicted-diff list gains it.)
+predicted-diff list gains it. **As executed: measured, and it did not fire** —
+no committed `cim/` golden observes the flag, so the row stayed in G2.1g, the
+transform kept exactly its two rewrites, and G3.4's list is unchanged. The
+transform is `expected_cim` since G2.2c renamed it.)
 
 - **G2.1a** `stddev_single_point` (`compat.rs:561`; issue-11)
 - **G2.1b** `CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL` (`:763`; issue-15)

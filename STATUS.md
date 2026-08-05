@@ -261,7 +261,9 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   redundant: the expectation is the same length as the oracle and differs from it
   in exactly the counted lines. 19 → 16. Evidence variants: `Site` for the Fault
   row (the engine's `generic_props_from(…, prop::NORMAMPS)`) and for the `g0ch`
-  row (`"ACLineSegment.g0ch"` exists nowhere else in the tree); `Exclusion` for
+  row (`"ACLineSegment.g0ch"` is unique inside the keyed `cim/export.rs`, and
+  the needle is the whole one-line call, which the split form could not be);
+  `Exclusion` for
   the delta-prefix row, whose engine half a needle **cannot** discriminate — the
   fixed delta arm's `"ShuntCompensator.grounded"` line is byte-identical to the
   wye arm's, which the split form also carried, so the recorded anchor is the
@@ -273,6 +275,20 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   observable — no gated case exports CIM or dumps a Fault). `lane_diff.ps1`:
   **PASS**, max |Δ| = 0 on every gated kind (3 219 862 records, 520 cases), with
   only the two pre-existing Newton decks in the documented-divergence list.
+  Audit: 3 minor, all upheld and fixed, comments/docs only — the `g0ch` row's
+  `Evidence::Site` justification claimed tree-wide uniqueness for a literal that
+  also appears in `golden_cim.rs` and in the needle itself (reworded to the
+  claim that carries the check: uniqueness *inside the keyed file* plus the
+  one-line call shape the split form could not have; same correction in
+  `STATUS.md` and the local registry, which additionally mis-stated the split
+  form's extra indentation as four spaces where it was eight); the G2.1g caveat
+  at `GOLDEN_REBASE_PLAN.md:629` still named `lane_expected_cim` (annotated
+  **as executed: measured, did not fire**, so the row stayed in G2.1g); and two
+  stale citations in `branches_on_lane`'s doc comment (`golden_reports.rs:1620`
+  → `:1628`; the `reads_the_lane` line number dropped — the rustdoc link
+  resolves without one and the number had drifted ~430 lines). `lane_diff.ps1`
+  not re-run for the settle: comments and docs only, no compat kernel, lane
+  alias or solver touched.
 
 ### Live escape register — the 18 surviving `TODO(compat)` markers
 
