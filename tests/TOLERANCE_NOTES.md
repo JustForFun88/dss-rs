@@ -1070,10 +1070,14 @@ pin and the default lane taking the clean fix. Consequences for tolerance work:
 
 - **The parity lane's floors never move.** It is the oracle-compared lane, so
   every number in this file applies to it unchanged.
-- **The default lane excludes, it does not loosen.** Where a row makes the
-  product answer something the oracle does not, the affected *fields* drop out
+- **The lanes exclude, they do not loosen.** Where a row makes the product
+  answer something an oracle channel does not, the affected *fields* drop out
   of the oracle compare (`GateSpec`/`LANE_SKIP_*`) and are pinned by their own
-  expected-value tests. A tolerance is never widened to cover a lane split; if
+  expected-value tests. Since the 2026-08-02 policy (CLAUDE.md) a bug fix lands
+  in **both** lanes, so such an exclusion is unconditional rather than
+  default-lane-only — `LANE_SKIP_ELEM_POWERS` (the two `modes:newton` decks'
+  element powers/losses, no oracle rev reports them at the converged `NodeV`)
+  is the live example. A tolerance is never widened to cover either shape; if
   you find yourself wanting to, the row is mis-scoped.
 - A marker still spelled `TODO(compat)` in the tree is one Stage F **escaped**
   with a measured blocker, and every survivor is registered in

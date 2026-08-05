@@ -457,10 +457,39 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   3 219 862 records, 0 iteration counts drifted, `VERDICT: PASS`, and
   "documented divergences: none present in this dump". The measurement is
   stronger than the previous runs' rather than merely equal to them: the two
-  `newton` decks' 1 169 132 `pow` and 366 234 `loss` values are now inside the
-  gated `pow`/`loss` totals instead of exempt from them, and they came back
-  bit-identical — the lanes agree on exactly the channels that used to be the
-  reason the list existed.
+  `newton` decks' 74 `pow` and 15 `loss` compared pairs (148 and 30 scalars in
+  the dump, counted per `(re, im)` chunk) are now inside the gated `pow`/`loss`
+  totals — 1 169 132 and 366 234 pairs respectively — instead of exempt from
+  them, and they came back bit-identical; the lanes agree on exactly the
+  channels that used to be the reason the list existed.
+  **Audit settlement** (2026-08-05, three minor findings; one prose fix here,
+  one one-line doc fix, one deviation ratified — no behavior changed, so
+  `lane_diff.ps1` was not re-run). (1) This paragraph originally credited the
+  two `newton` decks with "1 169 132 `pow` and 366 234 `loss` values" — those
+  are the run's **global** per-kind compared columns, copied off the wrong line
+  of the report. Re-counted directly on `target/lanes/default.dump` (the 09:08
+  run this record describes), the two decks contribute 148 `pow` and 30 `loss`
+  scalars = 74 and 15 compared pairs; the conclusion (newly gated, and
+  bit-identical) is unchanged, its magnitude was not. (2) `tests/TOLERANCE_NOTES.md`
+  still told the reader "**The default lane excludes, it does not loosen**",
+  which reads as *only* the default lane excluding. Not falsified by this
+  sub-step — `LANE_SKIP_PROPS` was already unconditional at 09f15731 (G2.2b) and
+  the file's own Iresidual note says "in both lanes" — but stale since the
+  2026-08-02 policy and inconsistent inside one file, so the bullet was reworded
+  to "**The lanes exclude, they do not loosen**" with `LANE_SKIP_ELEM_POWERS`
+  named as the live unconditional example. No tolerance number moved. The
+  section's wider Stage-F framing ("the parity lane keeping the upstream
+  answer") still holds for the surviving *precision* rows and stays G5.1's to
+  retire. (3) The register row's `Evidence::Exclusion` on `harness/lane.rs`
+  instead of an `Evidence::Site` on the engine is **ratified**, not a deviation
+  to repair: re-verified that `git show 09f15731:…/exec/view.rs:232-233` is
+  byte-for-byte the post-teardown `:201-202` (`cat -A`: sixteen spaces,
+  `elem.refresh_iterminal(&sys, &node_v);` then `let cd = elem.cd();`), so no
+  single- *or* multi-line needle over that file can discriminate a revert, which
+  is exactly the escape clause the last paragraph of `Evidence::Site` documents
+  and the shape G2.2c row 2 already used. The recorded slice does not exist in
+  the split tree, and the marker obligation `Evidence::Exclusion` carries is met
+  at `harness/lane.rs:136-139`.
 
 ### Live escape register — the 18 surviving `TODO(compat)` markers
 
