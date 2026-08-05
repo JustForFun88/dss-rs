@@ -41,11 +41,11 @@
 //!   `Lock`/`Reset` actions, `RatedCurrent`/`InterruptingRating`, and the
 //!   `Normal`/`State` per-phase arrays.
 //! - **Event-log overhaul (E2/E3):** per-phase `'Phase %d opened on %s (…trip) …'`
-//!   wording, descriptive relay targets (`'Gnd Curve + Ph Curve'` etc.), and an
-//!   **unconditional** `'Debug Sample: Relay.<name> FPresentState: […]'` line on
-//!   every `Sample` (r4133 forgot the `DebugTrace` guard the Recloser has —
-//!   the Stage F row `compat::RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE`, which the
-//!   default lane guards and the parity lane keeps).
+//!   wording, descriptive relay targets (`'Gnd Curve + Ph Curve'` etc.), and a
+//!   `'Debug Sample: Relay.<name> FPresentState: […]'` line on every `Sample`
+//!   (r4133 forgot the `DebugTrace` guard the Recloser has and its own sibling
+//!   traces keep; both lanes write the line under that guard —
+//!   `GOLDEN_REBASE_PLAN.md` G2.2d).
 //!
 //! Concern split mirrors the Recloser: this file holds the property metadata, the
 //! [`Relay`] struct, construction/`recalc`, and `Sample`/`DoPendingAction`/`Reset`;
@@ -60,7 +60,6 @@ mod logic;
 
 use num_complex::Complex64;
 
-use crate::compat;
 use crate::elements::control::control_elem::{
     ControlAction, ControlElemData, CtrlCtx, RefSnapshot,
 };
@@ -799,8 +798,8 @@ impl Relay {
     }
 
     /// Pascal `TRelayObj.Sample` (r4133): resync the live per-phase state from the
-    /// controlled terminal, emit the (unconditional) `Debug Sample` line, then
-    /// dispatch to the sub-type sensing logic.
+    /// controlled terminal, emit the `Debug Sample` trace line, then dispatch to
+    /// the sub-type sensing logic.
     ///
     /// Returns `true` if a sub-type requested a solution abort (only `TD21Logic`'s
     /// coarse-time-step guard, error 388).
@@ -823,22 +822,18 @@ impl Relay {
                 ControlAction::Open
             };
         }
-        // The Stage F row [`compat::RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE`]:
         // r4133 writes this trace line on every Sample with no `if DebugTrace`
-        // (`Relay.pas:1325`) — the one such line in the class that lost the
-        // guard its Recloser twin (`Recloser.pas:1044`) and its own siblings
-        // keep. It is not gated on `ShowEventLog` either, so the parity lane
-        // appends it directly; the default lane routes it through `dbg`.
+        // (`Version8/Source/Controls/Relay.pas:1325`) — the one such line in the
+        // class that lost the guard its Recloser twin (`Recloser.pas:1044`) and
+        // its own siblings (`Relay.pas:1822`, `:1845`) keep, and one r4088 did
+        // not have at all. It is a debug trace, so it goes through `dbg`, which
+        // is `if DebugTrace` and (like upstream's line) not gated on
+        // `ShowEventLog`.
         {
             let s = self.render_state_array();
             let el = format!("Debug Sample: Relay.{}", self.ccd.cd.obj.name());
             let action = format!("FPresentState: {s} ");
-            if compat::RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE {
-                ctx.events
-                    .append(&el, &action, ctx.int_hour, ctx.t, ctx.control_iter);
-            } else {
-                self.dbg(ctx, &el, &action);
-            }
+            self.dbg(ctx, &el, &action);
         }
 
         match self.control_type {
@@ -890,7 +885,8 @@ impl Relay {
     }
 
     /// `if ShowEventLog then AppendToEventLog` — every Relay protection event line
-    /// is gated on `ShowEventLog` (the `Debug Sample` line above is NOT).
+    /// is gated on `ShowEventLog` (the `Debug Sample` lines are gated on
+    /// `DebugTrace` instead, in [`Self::dbg`], and never on this flag).
     fn log(&self, ctx: &mut CtrlCtx, element: &str, action: &str) {
         if self.ccd.show_event_log {
             ctx.events
@@ -994,15 +990,12 @@ impl Relay {
             ControlAction::Reset => {
                 // D4: no longer runs the full Reset — only resets OperationCount to
                 // 1 for closed phases (+ the TD21 quiet window). Both arms label the
-                // event through the Stage F row
-                // [`compat::RELAY_RESET_EVENT_IS_LABELLED_RECLOSER`]: r4133 copied
-                // them verbatim from `Recloser.pas:909`/`:924`, class name included,
-                // while every other event in this procedure says `Relay.<name>`.
-                let reset_device = if compat::RELAY_RESET_EVENT_IS_LABELLED_RECLOSER {
-                    format!("Recloser.{}", self.ccd.cd.obj.name())
-                } else {
-                    format!("Relay.{}", self.ccd.cd.obj.name())
-                };
+                // event with the class that emitted it: r4133 copied them verbatim
+                // from `Recloser.pas:909`/`:924`, class name included
+                // (`Relay.pas:1196`, `:1212`), while every other event in this
+                // procedure — and both earlier revisions of these two lines (r4088
+                // `Relay.pas:971`, 0.14.5 `Relay.pas:1003`) — says `Relay.<name>`.
+                let reset_device = format!("Relay.{}", self.ccd.cd.obj.name());
                 if self.single_ph_trip {
                     if self.present_state[ph_idx] == ControlAction::Close
                         && !self.armed_for_open[ph_idx]

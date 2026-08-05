@@ -821,8 +821,12 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// *text-transform* rows — `FAULT_DUMP_TAIL_REPRINTS_MINAMPS` and the two CIM
 /// attribute names, `CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX` and
 /// `CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH`, whose oracle-text rewrites became
-/// unconditional instead of moving a golden byte.
-const SPLIT_ALIAS_POPULATION: usize = 16;
+/// unconditional instead of moving a golden byte; **14** after G2.2d did the
+/// same for the two *event-log* rows, `RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE`
+/// and `RELAY_RESET_EVENT_IS_LABELLED_RECLOSER`, whose two rewrites moved above
+/// `expected_eventlog`'s lane guard while the `compat::fmt_g` re-round fold in
+/// the same function — a precision row, alive until G4.1 — stayed behind it.
+const SPLIT_ALIAS_POPULATION: usize = 14;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -1914,6 +1918,72 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         Some((
             "crates/dss-core/tests/golden_cim.rs",
             "cim_writer_divergences_are_pinned",
+        )),
+    ),
+    // G2.2d, row 1. `TRelayObj.Sample` closes its `FPresentState` resync with a
+    // bare `AppendtoEventLog('Debug Sample: Relay.' + Name, 'FPresentState: …')`
+    // (r4133 `Version8/Source/Controls/Relay.pas:1325`) — no `if DebugTrace`,
+    // and not gated on `ShowEventLog` either, so every relay writes one debug
+    // line per control sample straight into the user-facing event log. Exactly
+    // one line lost that guard: the Recloser's byte-identical line carries it
+    // (`Recloser.pas:1044`), so do the class's own sibling traces (`:1822`,
+    // `:1845`), and r4088 had no such line in `Sample` at all — it arrived with
+    // the r4133 per-phase rewrite. Both lanes now route it through the
+    // `Relay::dbg` helper the port already had. No golden byte moves (no golden
+    // captures a relay event log); the 15 gated `oracle: "r4133"` cases that
+    // carry a relay and compare an event log keep every other line
+    // oracle-compared, because `harness::lane::expected_eventlog` drops these
+    // lines from the capture in **both** lanes.
+    (
+        "RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE",
+        Kind::SplitAlias,
+        // The engine kernel. The split form called `self.dbg(…)` too — in the
+        // `else` arm of `if compat::…`, four spaces deeper — so per
+        // [`Evidence::Site`]'s indentation convention the needle carries the
+        // line break plus the twelve spaces of the trace block's own level: a
+        // re-wrap in a lane branch re-indents the call past it. Single-line by
+        // necessity (CRLF checkout), and the only `self.dbg(` call in the keyed
+        // file.
+        Evidence::Site(
+            "crates/dss-core/src/elements/control/relay/mod.rs",
+            &["\n            self.dbg(ctx, &el, &action);"],
+        ),
+        Some((
+            "crates/dss-core/src/elements/control/relay/tests.rs",
+            "sample_state_trace_follows_debugtrace",
+        )),
+    ),
+    // G2.2d, row 2. Both `CTRL_RESET` arms of `TRelayObj.DoPendingAction` log
+    // `'Recloser.' + Self.Name` (r4133 `Relay.pas:1196` and `:1212`) — verbatim
+    // copies of `Recloser.pas:909`/`:924`, format strings and `ShowEventLog`
+    // guard included — while all eight other events of the same procedure
+    // (`:1087`-`:1176`) write `'Relay.' + Self.Name`, and both earlier revisions
+    // of these two lines label them correctly (r4088 `Relay.pas:971`, the pinned
+    // 0.14.5 `Relay.pas:1003` via `Self.FullName`). The log then attributes a
+    // relay's reset to a recloser that does not exist — or, if the circuit holds
+    // one of that name, to the wrong device. Only the label moves; the reset
+    // itself (`OperationCount := 1`, the TD21 quiet window) is untouched. Both
+    // lanes now name the emitting class, and `expected_eventlog` relabels the
+    // capture in both — but only where the named device really is a Relay of
+    // that circuit and not a Recloser, so a genuine recloser reset (identical
+    // wording) is never rewritten.
+    (
+        "RELAY_RESET_EVENT_IS_LABELLED_RECLOSER",
+        Kind::SplitAlias,
+        // The engine kernel, and it discriminates on its own: the split form
+        // was `let reset_device = if compat::… {` with the two `format!`s in
+        // its arms, so the whole `let` on one line at the sixteen spaces of the
+        // `ControlAction::Reset` arm exists only in the torn-down state.
+        // Single-line by necessity (CRLF checkout).
+        Evidence::Site(
+            "crates/dss-core/src/elements/control/relay/mod.rs",
+            &[
+                "\n                let reset_device = format!(\"Relay.{}\", self.ccd.cd.obj.name());",
+            ],
+        ),
+        Some((
+            "crates/dss-core/src/elements/control/relay/tests.rs",
+            "do_pending_reset_only_resets_opcount_d4",
         )),
     ),
 ];
