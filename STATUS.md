@@ -330,8 +330,40 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   parenthetical still claimed the compared log includes the `Debug Sample` lines
   (`note` is not fingerprinted by `Case::rigor`). No doc-surface citation exists
   for either row.
+  `lane_diff.ps1`: **max |Δ| = 0** on all eight gated kinds (520 cases, 3 219 862
+  records; 0 iteration counts drifted, `VERDICT: PASS`) — run at the settle
+  because the teardown edited two compat kernels and the implementation commit
+  had not recorded one. The only entries under "documented divergences" are the
+  two `modes:newton/` decks that G2.3 owns; no relay deck contributes, as
+  expected — `lane_dump` compares solved state, and both rows are event-log
+  labels.
+  **OPEN — one unexplained `corpus_gate` failure, not dismissed as a flake.**
+  During the settle, one default-lane `cargo test --workspace` failed at
+  `corpus_gate.rs:127` (the "N of M case(s) failed" panic); the failing case's
+  identity was lost to the output filter and **has not been reproduced** in seven
+  subsequent full runs (three default `--workspace`, one parity `--workspace`,
+  and a dedicated `--test corpus_gate` loop), so it is recorded here rather than
+  closed. What is established: it cannot originate in the settle commit — every
+  changed line under `crates/` there is a comment (`git diff 35ab18ee..f385d094
+  -- crates/` filtered of comment and blank lines is empty), so the built engine
+  and test binaries are behaviourally identical to the implementation commit,
+  whose own five-command gate was green. The suspected area is corpus-gate
+  infrastructure, not the engine: the scheduler runs cases in parallel across
+  directories several decks share, and `corpus_gate/runner.rs:42-55` already
+  documents nondeterministic pollution of exactly this kind ("reproduced on two
+  full `cargo test --workspace` runs, a different file set each time"). The same
+  signature was observed live here — the untracked artifact set left under
+  `tests/corpus/electricdss-tst/Test/AutoTrans/` differed run to run (15, then 9,
+  then 14 files), and that folder's decks emit export names that collide
+  case-insensitively on NTFS (`Auto3bus_noload_power.txt` from the positional
+  `export powers kva …` form vs the `file=`-form spelling). Next step when this
+  is picked up: re-run with `DSS_GATE_JOBS=1` to test the parallelism hypothesis,
+  and capture the full panic body rather than a filtered tail. Refuted along the
+  way: that `lane_diff.ps1`'s artifact cleanup removed a deck input — the
+  `LineConstantsCode.dss` files it deletes are pure `Show` output with no
+  `Redirect` consumer anywhere in the corpus.
   **Audit settlement** (2026-08-05, three minor findings, all real, all prose —
-  no behavior changed, so `lane_diff.ps1` was not re-run): (1) the blast-radius
+  no engine behavior changed): (1) the blast-radius
   enumeration "the 15 gated `oracle: \"r4133\"` cases that carry a relay and
   compare an event log" undercounted by two. Re-measured over the family
   manifests' `compare_eventlog` + `engines` fields and confirmed against
