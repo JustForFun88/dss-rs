@@ -142,50 +142,73 @@ pub fn elem_channels_for(label: &str) -> ElemChannels {
 }
 
 /// The oracle event-log capture as the **current lane** expects to see it: the
-/// identity in the parity lane, and in the default lane the two Relay rows of
-/// Stage F applied to it as an *enumerated* rewrite.
+/// two Relay label rewrites in *both* lanes, plus — in the default lane only —
+/// the enumerated `%g` re-spellings.
 ///
 /// The oracle stays the source of truth for every other line — this is the same
 /// expected-value-transform shape `golden_cim`/`golden_json` use, chosen for the
-/// same reason: the relay decks' event logs are the whole point of those 13
-/// gated cases, so re-capturing them for the default lane would trade an oracle
-/// proof for two label changes.
+/// same reason: the relay decks' event logs are the whole point of the 15 gated
+/// `oracle: "r4133"` cases that carry a relay and compare one (nine under
+/// `controls/relay/`, two under `controls/combo/`, the four TD21 decks —
+/// measured over `population.lock.json`'s `evlog=1` rigor fields), so
+/// re-capturing them would trade an oracle proof for two label changes.
 ///
-/// * `compat::RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE` — the unguarded
-///   `Debug Sample: Relay.<name>` state trace disappears from the default
-///   lane's log, so those lines are dropped from the expectation. Only the
-///   Relay's are: the Recloser writes the byte-identical line *guarded*, so an
-///   oracle `Debug Sample: Recloser.…` line means the user asked for it and
-///   both lanes must still produce it.
+/// # Both lanes: the two Relay rows (`GOLDEN_REBASE_PLAN.md` G2.2d)
 ///
-///   The drop is unconditional, which is exact only while no gated deck sets
-///   `DebugTrace=yes` on a relay — verified (`rg -li debugtrace
-///   tests/corpus/controls` is empty), and the failure mode if one ever does is
-///   a loud length mismatch here, never a silent pass: the default lane would
-///   then emit a line the expectation dropped. Such a deck adds its relay's
-///   `DebugTrace` to this predicate rather than widening the drop.
-/// * `compat::RELAY_RESET_EVENT_IS_LABELLED_RECLOSER` — the copy-pasted
-///   `Recloser.<name>` label on a relay's reset event becomes `Relay.<name>`.
-///   `device_is_relay` decides which lines those are: it must answer "the
-///   circuit has a Relay of this name and no Recloser of it", so a genuine
-///   recloser reset (identical wording, `Recloser.pas:909`/`:924`) is never
-///   touched, and a circuit holding both classes under one name is left alone
-///   to fail the compare loudly rather than be silently rewritten.
-/// * `compat::fmt_g` (F.4) — [`EVENTLOG_REROUNDED`], the enumerated cells where
-///   the F-FMT `%g` row re-spells a **traced** number's last printed digit.
+/// Neither is a precision row — they are upstream label mistakes, so the engine
+/// emits the correct log in both lanes and the rewrite here is what keeps every
+/// other line oracle-compared.
+///
+// LANE-EXCLUSION(RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE): the `Debug Sample:
+// Relay.` drop below is unconditional — both lanes gate the line on
+// `DebugTrace`, so neither emits it for the gated decks.
+/// * The unguarded `Debug Sample: Relay.<name>` state trace
+///   (`Relay.pas:1325`, no `if DebugTrace`) is absent from **both** lanes' logs
+///   now, so those lines are dropped from the expectation. Only the Relay's
+///   are: the Recloser writes the byte-identical line *guarded*
+///   (`Recloser.pas:1044`), so an oracle `Debug Sample: Recloser.…` line means
+///   the user asked for it and both lanes must still produce it.
+///
+///   The drop is unconditional in the other sense too — it does not consult the
+///   relay's `DebugTrace` — which is exact only while no deck that compares an
+///   event log turns the flag **on**. Measured over the whole corpus: the only
+///   `debugtrace=yes` on a relay is the `BatchEdit Relay..* debugtrace=yes` of
+///   `Examples/DOCTechNote/ExamplesMaster.dss`, whose four including decks carry
+///   `evlog=0`; every relay in the four gated TD21 decks spells `debugtrace=no`
+///   explicitly, and no other gated deck names the property at all. The failure
+///   mode if one ever does turn it on is a loud length mismatch here, never a
+///   silent pass: the engine would then emit a line the expectation dropped.
+///   Such a deck adds its relay's `DebugTrace` to this predicate rather than
+///   widening the drop.
+///
+// LANE-EXCLUSION(RELAY_RESET_EVENT_IS_LABELLED_RECLOSER): the `Recloser.<n>` →
+// `Relay.<n>` relabel below is unconditional — both lanes name the class that
+// emitted the reset event.
+/// * The copy-pasted `Recloser.<name>` label on a relay's reset event
+///   (`Relay.pas:1196`/`:1212`, verbatim from `Recloser.pas:909`/`:924`)
+///   becomes `Relay.<name>`. `device_is_relay` decides which lines those are:
+///   it must answer "the circuit has a Relay of this name and no Recloser of
+///   it", so a genuine recloser reset (identical wording) is never touched, and
+///   a circuit holding both classes under one name is left alone to fail the
+///   compare loudly rather than be silently rewritten.
+///
+/// # Default lane only: the `%g` cells
+///
+/// `compat::fmt_g` (F.4) is a **precision** row and is still lane-split (until
+/// `GOLDEN_REBASE_PLAN.md` G4.1), so [`EVENTLOG_REROUNDED`] — the enumerated
+/// cells where its two kernels spell a *traced* number's last printed digit
+/// differently — stays behind the parity guard, together with its
+/// [`REROUND_VISITS`]/[`REROUND_HITS`] accounting. Applying it in the parity
+/// lane would hand that lane the native `%g` spelling against FPC-spelled
+/// engine output — a 1e-5 gap against `compare_eventlog`'s
+/// `assert_value_matches_tol(…, 1e-6, 1e-9)` on the carrier case. The mixed
+/// shape is the one `golden_json::lane_expected_json` uses for the same reason.
 pub fn expected_eventlog(
     label: &str,
     lines: &[String],
     device_is_relay: impl Fn(&str) -> bool,
 ) -> Vec<String> {
-    if PARITY {
-        return lines.to_vec();
-    }
-    let cells: Vec<&(&str, &str, &str, &str)> =
-        EVENTLOG_REROUNDED.iter().filter(|c| c.0 == label).collect();
-    let mut hits = vec![0usize; cells.len()];
-
-    let out: Vec<String> = lines
+    let relabelled: Vec<String> = lines
         .iter()
         .filter(|l| !l.contains(", Element=Debug Sample: Relay."))
         .map(|l| match reset_device_name(l) {
@@ -195,6 +218,17 @@ pub fn expected_eventlog(
                 }),
             _ => l.clone(),
         })
+        .collect();
+    if PARITY {
+        return relabelled;
+    }
+
+    let cells: Vec<&(&str, &str, &str, &str)> =
+        EVENTLOG_REROUNDED.iter().filter(|c| c.0 == label).collect();
+    let mut hits = vec![0usize; cells.len()];
+
+    let out: Vec<String> = relabelled
+        .into_iter()
         .map(|l| {
             cells
                 .iter()
@@ -866,7 +900,13 @@ mod tests {
     /// else: it drops the relay's unguarded state trace, relabels the relay's
     /// reset event, and leaves every recloser line — including the *identically
     /// worded* recloser reset and the recloser's own (guarded) trace — alone.
-    /// Asserted against the lane, so the parity arm's identity is checked too.
+    ///
+    /// Asserted **without** a lane branch since `GOLDEN_REBASE_PLAN.md` G2.2d:
+    /// both rows are upstream label mistakes, both lanes emit the corrected log,
+    /// so both lanes apply both rewrites to the oracle capture. (The synthetic
+    /// case owns no [`super::EVENTLOG_REROUNDED`] cell, so the still-lane-split
+    /// `%g` fold cannot reach this expectation either way — that row has its own
+    /// tests below.)
     #[test]
     fn eventlog_transform_is_the_two_relay_rows() {
         let ev = |el: &str, action: &str| {
@@ -886,10 +926,6 @@ mod tests {
         let out = expected_eventlog("synthetic:relay/relabel.dss", &lines, |n| {
             n.eq_ignore_ascii_case("r1")
         });
-        if PARITY {
-            assert_eq!(out, lines, "the parity arm must be the identity");
-            return;
-        }
         assert_eq!(
             out,
             vec![
@@ -995,7 +1031,9 @@ mod tests {
 
     /// The relabel is refused when the name is ambiguous — a circuit holding a
     /// Relay *and* a Recloser called `r1` must fail its compare loudly instead
-    /// of having a genuine recloser event rewritten into a relay's.
+    /// of having a genuine recloser event rewritten into a relay's. Since G2.2d
+    /// the rewrite runs in both lanes, so this refusal is asserted in both: the
+    /// predicate, not the lane, is what holds it back.
     #[test]
     fn eventlog_reset_relabel_needs_an_unambiguous_relay() {
         let line = "Hour=0, Sec=1, ControlIter=1, Element=Recloser.r1, \

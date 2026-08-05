@@ -41,11 +41,11 @@ has shrunk to a precision-compat lane and is scheduled for full teardown.
 
 **In flight.** `GOLDEN_REBASE_PLAN.md` on branch **`golden-g2`**. WP-G0 (safety
 rails) is complete and merged to `update`; WP-G2 (tear down the shared-with-r4133
-bug kernels) is running — G2.0 rails + G2.1a…G2.1h + G2.2a + G2.2b + G2.2c
-landed, `SPLIT_ALIAS_POPULATION` **31 → 16**, and the WP acceptance criterion
-still holds at HEAD: `git diff --stat -- tests/golden` over the whole range is
-**empty** in both lanes. Next step: **G2.2d** — the event-log transform rows
-(the two Relay rows, `expected_eventlog`). Queued behind
+bug kernels) is running — G2.0 rails + G2.1a…G2.1h + G2.2a + G2.2b + G2.2c +
+G2.2d landed, `SPLIT_ALIAS_POPULATION` **31 → 14**, and the WP acceptance
+criterion still holds at HEAD: `git diff --stat -- tests/golden` over the whole
+range is **empty** in both lanes. Next step: **G2.3** — Newton
+(`POWERS_REUSE_STALE_NEWTON_ITERMINAL`). Queued behind
 GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, the
 UPGRADE line.
 
@@ -289,6 +289,47 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   resolves without one and the number had drifted ~430 lines). `lane_diff.ps1`
   not re-run for the settle: comments and docs only, no compat kernel, lane
   alias or solver touched.
+- **G2.2d** (2026-08-05) — the two **event-log** rows, both label-only.
+  `RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE`: `TRelayObj.Sample` closes its
+  `FPresentState` resync with a bare `AppendtoEventLog('Debug Sample: Relay.' +
+  Name, 'FPresentState: …')` (r4133 `Controls/Relay.pas:1325`) — no
+  `if DebugTrace`, and not gated on `ShowEventLog` either, so every relay writes
+  one debug line per control sample into the user-facing log. Exactly one line
+  lost that guard: the Recloser's byte-identical line keeps it
+  (`Recloser.pas:1044`), so do the class's own sibling traces (`:1822`, `:1845`),
+  and r4088 had no such line in `Sample` at all. `RELAY_RESET_EVENT_IS_LABELLED_
+  RECLOSER`: both `CTRL_RESET` arms of `TRelayObj.DoPendingAction` log
+  `'Recloser.' + Self.Name` (`Relay.pas:1196`, `:1212`), verbatim copies of
+  `Recloser.pas:909`/`:924`, while all eight other events of that procedure
+  (`:1087`-`:1176`) write `'Relay.' + Self.Name` and both earlier revisions of
+  these two lines label them correctly (r4088 `:971`, 0.14.5 `:1003`). Both lanes
+  now route the trace through the `Relay::dbg` helper the port already had and
+  name the emitting class on the reset. In `harness::lane::expected_eventlog` the
+  two Relay rewrites moved **above** the `if PARITY` early return, so they apply
+  in both lanes; the `EVENTLOG_REROUNDED` fold and its `REROUND_VISITS`/
+  `REROUND_HITS` accounting deliberately stayed **behind** it — that is the
+  `compat::fmt_g` precision row, alive until G4.1, and unconditionalizing it
+  would hand the parity lane the native `%g` spelling against FPC-spelled engine
+  output (a 1e-5 gap vs `compare_eventlog`'s 1e-6/1e-9 floor on
+  `controls:invcontrol/midi_invcontrol_drc.dss`). Same mixed shape as
+  `golden_json::lane_expected_json`. 16 → 14. Both rows recorded with
+  `Evidence::Site` on the engine kernels (`relay/mod.rs`: the `self.dbg(…)` call
+  at the trace block's own twelve spaces — the split form had it four deeper in
+  an `else` arm, and it is the file's only `self.dbg(` — and the one-line
+  `let reset_device = format!("Relay.{}", …)`, which the split form could not
+  be), plus the two `LANE-EXCLUSION` markers on the now-unconditional rewrites in
+  `harness/lane.rs`. Pins unconditional: `sample_state_trace_follows_debugtrace`
+  (renamed from `…_is_the_lane_guard`; still walks all four `DebugTrace` ×
+  `ShowEventLog` combinations, so the fix cannot degrade into "the line is gone")
+  and `do_pending_reset_only_resets_opcount_d4` (asserts both directions —
+  `Element=Relay.r1,` present, `Element=Recloser.r1,` absent). The two harness
+  unit tests that guarded the narrowness of the relabel became unconditional too.
+  No golden byte moves — no committed golden captures a relay event log
+  (measured) — and no ledger or `population.lock.json` field moves; the only
+  non-code edit is the `tests/corpus/controls/manifest.json` note, whose
+  parenthetical still claimed the compared log includes the `Debug Sample` lines
+  (`note` is not fingerprinted by `Case::rigor`). No doc-surface citation exists
+  for either row.
 
 ### Live escape register — the 18 surviving `TODO(compat)` markers
 

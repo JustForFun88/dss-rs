@@ -45,7 +45,7 @@
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
 //! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
 //! | report text rendering — `Show` device-name column width | [`max_device_name_length`] — same section | **yes** (F.4b) |
-//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f, the CIM wye `grounded` flag G2.1g, the Line height-unit re-read G2.1h, the Isource `Bus2` latch G2.2b, the two CIM attribute names and the Fault `Dump` `MinAmps` reprint G2.2c |
+//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f, the CIM wye `grounded` flag G2.1g, the Line height-unit re-read G2.1h, the Isource `Bus2` latch G2.2b, the two CIM attribute names and the Fault `Dump` `MinAmps` reprint G2.2c, the two Relay event-log labels G2.2d |
 //!
 //! The Monitor `BaseFrequency` and Newton stale-`Iterminal` rows are not in
 //! IV.2's table and do not extend it: they *were* the two **reproduced**
@@ -638,71 +638,31 @@ pub use POWERS_REUSE_STALE_NEWTON_ITERMINAL_PARITY_IMPL as POWERS_REUSE_STALE_NE
 // spells. Both lanes now write them; `tests/golden_cim.rs` applies the two
 // renames to the oracle goldens unconditionally, so no golden byte moved.
 
-/// Whether a **Relay**'s per-`Sample` state-trace line is written to the event
-/// log unconditionally, instead of under the `DebugTrace` guard every other
-/// trace line in the class carries.
-///
-/// `true` reproduces the upstream quirk: `TRelayObj.Sample` closes its
-/// `FPresentState` resync with a bare
-/// `AppendtoEventLog('Debug Sample: Relay.' + Name, 'FPresentState: …')`
-/// (r4133 `Version8/Source/Controls/Relay.pas:1325`) — no `if DebugTrace`, and
-/// not gated on `ShowEventLog` either. Every relay therefore writes one
-/// `Debug Sample` line per control sample into the *user-facing* event log,
-/// whatever the user asked for.
-///
-/// `false` gates it on `DebugTrace`, which is what the same source says twice
-/// over: the **Recloser**'s byte-identical line is written
-/// `if DebugTrace then AppendtoEventLog('Debug Sample: Recloser.' + Name, …)`
-/// (`Recloser.pas:1044`), and *every other* `Debug Sample` line in Relay.pas
-/// itself — the instantaneous/curve trip traces at `:1822`, `:1837`, … — is
-/// guarded. Exactly one line lost its guard.
-///
-/// The port already carries the guarded form as a helper (`Relay::dbg`), so the
-/// default lane simply routes this line through it. `DebugTrace` defaults off,
-/// so the default lane's event log loses the trace lines and keeps every
-/// protection event; the parity lane is unchanged, which is what the 13 gated
-/// `oracle: "r4133"` protection decks compare. `harness::lane::expected_eventlog`
-/// drops exactly those lines from the oracle capture in the default lane.
-pub const RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE_DEFAULT_IMPL as RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE;
-#[cfg(feature = "oracle-parity")]
-pub use RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE_PARITY_IMPL as RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE;
-
-/// Whether a **Relay**'s operation-count reset event names the device
-/// `Recloser.<name>`.
-///
-/// `true` reproduces the upstream quirk: both `CTRL_RESET` arms of
-/// `TRelayObj.DoPendingAction` write
-/// `AppendtoEventLog('Recloser.' + Self.Name, 'Phase %d reset (1ph reset)')`
-/// and its `'Phase ALL reset (3ph reset)'` twin (r4133 `Relay.pas:1196` and
-/// `:1212`). The event log then attributes a relay's reset to a recloser that
-/// does not exist — and if the circuit *does* contain a recloser of that name,
-/// to the wrong device.
-///
-/// `false` names the class that emitted it. The fix is not a preference: the
-/// two lines are a verbatim copy of `Recloser.pas:909`/`:924` (same format
-/// strings, same guard), while *every other* event in the very same
-/// `DoPendingAction` — the 1ph/3ph trips, the lockouts, the reclosings at
-/// `Relay.pas:1087`-`:1176` — writes `'Relay.' + Self.Name`. Two lines out of a
-/// dozen carry the donor's class name.
-///
-/// Only the log label moves; the reset itself (`OperationCount := 1`, the TD21
-/// quiet window) is identical in both lanes.
-/// `harness::lane::expected_eventlog` rewrites exactly these lines in the
-/// oracle capture in the default lane, and only where the named device is a
-/// Relay and not a Recloser.
-pub const RELAY_RESET_EVENT_IS_LABELLED_RECLOSER_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const RELAY_RESET_EVENT_IS_LABELLED_RECLOSER_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use RELAY_RESET_EVENT_IS_LABELLED_RECLOSER_DEFAULT_IMPL as RELAY_RESET_EVENT_IS_LABELLED_RECLOSER;
-#[cfg(feature = "oracle-parity")]
-pub use RELAY_RESET_EVENT_IS_LABELLED_RECLOSER_PARITY_IMPL as RELAY_RESET_EVENT_IS_LABELLED_RECLOSER;
+// The two **Relay event-log** rows left together
+// (`GOLDEN_REBASE_PLAN.md` G2.2d), both of them label-only — no computed value
+// moves in either lane:
+//
+// * the per-`Sample` state trace. `TRelayObj.Sample` closes its `FPresentState`
+//   resync with a bare `AppendtoEventLog('Debug Sample: Relay.' + Name,
+//   'FPresentState: …')` (r4133 `Version8/Source/Controls/Relay.pas:1325`) — no
+//   `if DebugTrace`, and not gated on `ShowEventLog` either, so every relay
+//   writes one debug line per control sample into the *user-facing* log. The
+//   Recloser's byte-identical line **is** guarded (`Recloser.pas:1044`), and so
+//   is every other `Debug Sample` line in Relay.pas itself (`:1822`, `:1845`);
+//   exactly one line lost its guard, and r4088 did not have the line at all.
+//   Both lanes now route it through the `Relay::dbg` helper the port already
+//   had, so it is written when — and only when — `DebugTrace` says so.
+// * the operation-count reset label. Both `CTRL_RESET` arms of
+//   `TRelayObj.DoPendingAction` write `'Recloser.' + Self.Name`
+//   (`Relay.pas:1196`, `:1212`), a verbatim copy of `Recloser.pas:909`/`:924`,
+//   while all eight other events of that same procedure (`:1087`-`:1176`) write
+//   `'Relay.' + Self.Name` — and both earlier revisions of this code (r4088
+//   `Relay.pas:971`, dss_capi 0.14.5 `Relay.pas:1003`) label it correctly. Both
+//   lanes now name the class that emitted the event.
+//
+// `harness::lane::expected_eventlog` applies both rewrites to the oracle
+// capture in **both** lanes, so the gated `oracle: "r4133"` protection decks
+// keep comparing every other line against the oracle and no golden byte moved.
 
 // The **Fault `Dump` reprints `MinAmps`** row left with the two CIM ones
 // (`GOLDEN_REBASE_PLAN.md` G2.2c): `TFaultObj.DumpProperties` starts its generic

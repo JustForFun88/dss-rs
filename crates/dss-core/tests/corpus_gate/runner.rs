@@ -547,9 +547,10 @@ pub(crate) fn compare_capture(
                     .collect(),
                 None => cp.eventlog.clone(),
             };
-            // Then the Stage F Relay rows (identity in the parity lane). The
-            // relay/recloser split is read from the Rust circuit, which the
-            // element-name set above has already pinned against the oracle.
+            // Then the two Relay label rows, which apply in **both** lanes
+            // (GOLDEN_REBASE_PLAN.md G2.2d). The relay/recloser split is read
+            // from the Rust circuit, which the element-name set above has
+            // already pinned against the oracle.
             let relays: BTreeSet<String> = class_member_names(&snaps, "relay");
             let reclosers: BTreeSet<String> = class_member_names(&snaps, "recloser");
             let expected = lane::expected_eventlog(label, &masked, |name| {
