@@ -817,8 +817,12 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// `BUS_INT_DURATION_WALKS_ALL_BUSES`, whose harness exclusions became
 /// unconditional instead of moving a golden byte; **19** after G2.2b did the
 /// same for the two *property* exclusions, `monitor_base_frequency` and
-/// `ISOURCE_BUS2_NEVER_LATCHES`.
-const SPLIT_ALIAS_POPULATION: usize = 19;
+/// `ISOURCE_BUS2_NEVER_LATCHES`; **16** after G2.2c did the same for the three
+/// *text-transform* rows — `FAULT_DUMP_TAIL_REPRINTS_MINAMPS` and the two CIM
+/// attribute names, `CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX` and
+/// `CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH`, whose oracle-text rewrites became
+/// unconditional instead of moving a golden byte.
+const SPLIT_ALIAS_POPULATION: usize = 16;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -904,9 +908,11 @@ fn names_token(text: &str, token: &str) -> bool {
 /// `lane::PARITY` alone (`IRESIDUAL_FROM_TERMINAL_1`,
 /// `BUS_INT_DURATION_WALKS_ALL_BUSES`, `FAULT_DUMP_TAIL_REPRINTS_MINAMPS`) had
 /// been credited by a *neighbouring* test's constant. Their pins do branch on
-/// the lane; only this predicate could not see how. (G2.2a has since torn down
-/// the first two of those rows, whose pins are unconditional now; the third
-/// still needs this arm.)
+/// the lane; only this predicate could not see how. (All three are torn down
+/// now — the first two by G2.2a, the third by G2.2c — and their pins are
+/// unconditional. The arm stays load-bearing: `golden_reports.rs` still reads
+/// the lane in this spelling only, and it is a pin file for the surviving
+/// `max_device_name_length` row.)
 ///
 /// The second arm is the **qualified** path only, not the bare word
 /// [`reads_the_lane`] settles for (`:1657`). The two are not symmetric: there a
@@ -915,8 +921,9 @@ fn names_token(text: &str, token: &str) -> bool {
 /// more, so an English `PARITY` in a comment would satisfy the rail. Two such
 /// comments exist in-tree (`tests/golden_reports.rs:1620`,
 /// `tests/corpus_gate/scheduler.rs:358`) while every real read is written
-/// `lane::PARITY` (`golden_reports.rs` ×9 — it was ×15 until G2.2a tore down
-/// two rows pinned there — plus `harness/mod.rs:2374`, the kV-value compare and
+/// `lane::PARITY` (`golden_reports.rs` ×6 — it was ×15 until G2.2a tore down
+/// two rows pinned there and ×9 until G2.2c tore down the Fault dump row —
+/// plus `harness/mod.rs:2374`, the kV-value compare and
 /// that file's only remaining read; `skip_prop`'s, which was the *first* of its
 /// two, went unconditional in G2.2b);
 /// `harness/lane.rs`, which uses the bare name because it declares it, names
@@ -1536,8 +1543,9 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     // model. Zero-footprint, measured: no CIM golden deck and no gated corpus
     // deck has a wye capacitor with an explicit `bus2=` or a wye load with a
     // non-ground neutral, so all 15 CIM goldens stay byte-identical (the
-    // `lane_expected_cim` transform gained no third entry) and nothing moved
-    // but the pin.
+    // `golden_cim::expected_cim` transform — `lane_expected_cim` until G2.2c
+    // made it lane-independent — gained no third entry) and nothing moved but
+    // the pin.
     (
         "CIM_WYE_GROUNDED_IS_HARDCODED_TRUE",
         Kind::SplitAlias,
@@ -1774,6 +1782,129 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         Some((
             "crates/dss-core/src/elements/pc/isource/tests.rs",
             "bus2_latches_like_the_sibling_class",
+        )),
+    ),
+    // G2.2c, row 1. `TFaultObj.DumpProperties` writes its own
+    // `~ MinAmps=%.1f` line and then runs the generic tail from
+    // `NumPropsthisClass`, which this class defines as `Ord(High(TProp))` = 9 =
+    // `MinAmps` itself (`.inputs/dss_capi/src/PDElements/Fault.pas:533` with
+    // `:134`; r4133 `Version8/Source/PDElements/Fault.pas:594` with
+    // `Const NumPropsthisclass = 9` `:107`), so the loop's first iteration
+    // re-emits the property just written — in the generic spelling, giving the
+    // pair `~ MinAmps=3.0` / `~ MinAmps=3`. The `+ 1` every sibling class with
+    // that loop writes (`Transformer.pas:1276`, `AutoTrans.pas:1307`,
+    // `XfmrCode.pas:663`) is the fix, and no class prints a property twice on
+    // purpose. Both gating oracles carry the reprint; both lanes now start the
+    // tail at `NormAmps`. The four dump goldens that carry the pair keep every
+    // byte: `golden_reports::fault_dump_expected` drops the second line of each
+    // pair from the oracle text in both lanes instead.
+    (
+        "FAULT_DUMP_TAIL_REPRINTS_MINAMPS",
+        Kind::SplitAlias,
+        // The engine kernel, which is the half a needle can discriminate: the
+        // split wrote `let tail_start = if compat::… { prop::MINAMPS } else {
+        // prop::NORMAMPS };` and passed `tail_start`, so a re-introduced branch
+        // cannot leave `prop::NORMAMPS` as this call's argument. Single-line by
+        // necessity (CRLF checkout).
+        //
+        // Per the last paragraph of [`Evidence::Site`], the other half is named
+        // rather than left implied: the harness drop (`golden_reports.rs`, which
+        // carries this row's `LANE-EXCLUSION` marker) is held by the row's pin —
+        // it asserts, in both lanes, that the expectation keeps exactly one
+        // `~ MinAmps=` per Fault and that the survivor is the custom `%.1f`
+        // render — and re-conditioning the drop alone fails
+        // `dump_fault_matches_oracle` and its three siblings, which compare the
+        // engine against that expectation in both lanes.
+        Evidence::Site(
+            "crates/dss-core/src/elements/pd/fault/dump.rs",
+            &["\n        dump::generic_props_from(out, cx, self, prop::NORMAMPS);"],
+        ),
+        Some((
+            "crates/dss-core/tests/golden_reports.rs",
+            "fault_dump_goldens_carry_the_double_print",
+        )),
+    ),
+    // G2.2c, row 2. One `if` in the CIM shunt-compensator writer emits the same
+    // attribute under two class prefixes: `BooleanNode(FunPrf,
+    // 'ShuntCompensator.grounded', TRUE)` for a wye bank
+    // (`.inputs/dss_capi/src/Common/ExportCIMXML.pas:3700`; r4133
+    // `Version8/Source/Common/ExportCIMXML.pas:3183`) and `BooleanNode(FunPrf,
+    // 'LinearShuntCompensator.grounded', FALSE)` for a delta one six lines below
+    // (`:3706`; r4133 `:3187`). CIM100 declares `grounded` on
+    // `ShuntCompensator`, so the delta spelling resolves against no property —
+    // a strict consumer rejects it, a lenient one drops the flag. Both gating
+    // oracles carry it; both lanes now write the sibling arm's name. Only the
+    // element name moves (the value is `false` in both), and no golden byte
+    // moves: `golden_cim::expected_cim` applies the rename to the oracle text in
+    // both lanes.
+    (
+        "CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX",
+        Kind::SplitAlias,
+        // This is the row whose engine half a needle genuinely cannot
+        // discriminate, and [`Evidence::Site`]'s last paragraph says to record
+        // that rather than pretend: the fixed delta arm writes
+        // `"ShuntCompensator.grounded"` as `boolean_node`'s third argument at
+        // sixteen spaces — byte-identical to the line the *wye* arm of the same
+        // `if` already had, split form included, because that arm's own value
+        // argument keeps the call broken across lines. Any needle over
+        // `cim/export.rs` therefore matches the reverted tree too.
+        //
+        // So the recorded evidence is the harness half, which does
+        // discriminate: `expected_cim` was `lane_expected_cim` — a name that
+        // began with a lane early-return — until this teardown made the rewrite
+        // unconditional and renamed it. What holds the engine half is the row's
+        // pin, which asserts in **both** lanes that the expectation carries the
+        // corrected name and none of the upstream one, plus the CIM byte
+        // compares that hold the writer to that expectation in both lanes: a
+        // re-split engine fails them whichever way its branch is written, and so
+        // does re-conditioning the rewrite alone.
+        Evidence::Exclusion(
+            "crates/dss-core/tests/golden_cim.rs",
+            &["\nfn expected_cim(oracle: &str) -> (String, [usize; 2]) {"],
+        ),
+        Some((
+            "crates/dss-core/tests/golden_cim.rs",
+            "cim_writer_divergences_are_pinned",
+        )),
+    ),
+    // G2.2c, row 3. The symmetrical-components branch of the CIM line writer
+    // closes its `bch`/`gch`/`b0ch`/`g0ch` quartet with `DoubleNode(EpPrf,
+    // 'ACLineSegment.b0ch', 0.0)` immediately after the real
+    // `DoubleNode(EpPrf, 'ACLineSegment.b0ch', Len * C0 * val)`
+    // (`.inputs/dss_capi/src/Common/ExportCIMXML.pas:4367` after `:4366`; r4133
+    // `Version8/Source/Common/ExportCIMXML.pas:3756` after `:3755`) — a copied
+    // line whose value was replaced and whose name was not. The segment is
+    // exported with no `g0ch` and two contradictory `b0ch` nodes, so a consumer
+    // taking the last one reads the zero-sequence susceptance as 0. The
+    // `PerLengthSequenceImpedance` sibling of the same procedure (`:4521-4522`;
+    // r4133 `:3895-3896`) writes the quartet correctly, which is where the fix
+    // comes from. Both gating oracles carry the duplicate; both lanes now name
+    // it `g0ch`. Only the element name moves (the value stays `0.0`), and no
+    // golden byte moves — `golden_cim::expected_cim` renames the second node in
+    // both lanes.
+    (
+        "CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH",
+        Kind::SplitAlias,
+        // `"ACLineSegment.g0ch"` exists nowhere else in the tree — the sibling
+        // writer spells `"PerLengthSequenceImpedance.g0ch"` — and under the
+        // split it sat alone on its line inside an `else` arm eight spaces
+        // deeper, inside a call rustfmt had to break across six lines. The
+        // needle is the whole *one-line* call at `double_node`'s own sixteen
+        // spaces, which only the unbranched form can be. Single-line by
+        // necessity (CRLF checkout).
+        //
+        // The harness half is carried the same way as row 2's: by the shared pin
+        // (which asserts, in both lanes, that no two consecutive `b0ch` nodes
+        // survive in the expectation) and by the CIM byte compares.
+        Evidence::Site(
+            "crates/dss-core/src/cim/export.rs",
+            &[
+                "\n                writer::double_node(&mut buf, ProfileChoice::Ep, \"ACLineSegment.g0ch\", 0.0);",
+            ],
+        ),
+        Some((
+            "crates/dss-core/tests/golden_cim.rs",
+            "cim_writer_divergences_are_pinned",
         )),
     ),
 ];

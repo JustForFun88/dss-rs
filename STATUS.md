@@ -41,11 +41,11 @@ has shrunk to a precision-compat lane and is scheduled for full teardown.
 
 **In flight.** `GOLDEN_REBASE_PLAN.md` on branch **`golden-g2`**. WP-G0 (safety
 rails) is complete and merged to `update`; WP-G2 (tear down the shared-with-r4133
-bug kernels) is running — G2.0 rails + G2.1a…G2.1h + G2.2a + G2.2b landed,
-`SPLIT_ALIAS_POPULATION` **31 → 19**, and the WP acceptance criterion still holds
-at HEAD: `git diff --stat -- tests/golden` over the whole range is **empty** in
-both lanes. Next step: **G2.2c** — the text-transform rows
-(`FAULT_DUMP_TAIL_REPRINTS_MINAMPS`, the two CIM writers). Queued behind
+bug kernels) is running — G2.0 rails + G2.1a…G2.1h + G2.2a + G2.2b + G2.2c
+landed, `SPLIT_ALIAS_POPULATION` **31 → 16**, and the WP acceptance criterion
+still holds at HEAD: `git diff --stat -- tests/golden` over the whole range is
+**empty** in both lanes. Next step: **G2.2d** — the event-log transform rows
+(the two Relay rows, `expected_eventlog`). Queued behind
 GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, the
 UPGRADE line.
 
@@ -227,6 +227,52 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   proposed as a safety net would be measuring a failure mode the gate already
   reports. `lane_diff.ps1` not re-run: comments only — no compat kernel, lane
   alias or solver touched.
+- **G2.2c** (2026-08-05) — the three **text-transform** rows, all dismantled by
+  making an existing oracle-text rewrite unconditional. `FAULT_DUMP_TAIL_
+  REPRINTS_MINAMPS`: `TFaultObj.DumpProperties` runs its generic tail from
+  `NumPropsThisClass`, which this class defines as `Ord(High(TProp))` = 9 =
+  `MinAmps` itself (`Fault.pas:533` with `:134`; r4133 `PDElements/Fault.pas:594`
+  with `Const NumPropsthisclass = 9` `:107`), so the loop's first iteration
+  reprints the property the custom `~ MinAmps=%.1f` line just wrote — the pair
+  `~ MinAmps=3.0` / `~ MinAmps=3`. Every sibling class with that loop writes
+  `NumPropsThisClass + 1` (`Transformer.pas:1276`, `AutoTrans.pas:1307`,
+  `XfmrCode.pas:663`), so both lanes now start at `NormAmps`;
+  `golden_reports::fault_dump_expected` drops the second line of each pair from
+  the oracle text in both lanes, and `fault_dump_goldens_carry_the_double_print`
+  (the row's pin, now unconditional) holds the four goldens it is applied to to
+  one `~ MinAmps=` per Fault, always the custom `%.1f` render.
+  `CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX`: one `if` in the CIM
+  shunt-compensator writer emits `grounded` under two class prefixes —
+  `ShuntCompensator.` for a wye bank (`ExportCIMXML.pas:3700`; r4133 `:3183`) and
+  `LinearShuntCompensator.` for a delta one six lines below (`:3706`; r4133
+  `:3187`) — and CIM100 declares the property on `ShuntCompensator`, so the delta
+  spelling resolves against no class at all. `CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_
+  B0CH`: the symmetrical-components line writer closes its `bch`/`gch`/`b0ch`/
+  `g0ch` quartet with a second `ACLineSegment.b0ch` (`:4367` after `:4366`; r4133
+  `:3756` after `:3755`), a copied line whose value was replaced and whose name
+  was not, leaving the segment with no `g0ch` and two contradictory `b0ch` nodes;
+  the `PerLengthSequenceImpedance` sibling of the same procedure (`:4521-4522`;
+  r4133 `:3895-3896`) spells the quartet correctly. Both lanes now write
+  `ShuntCompensator.grounded` and `ACLineSegment.g0ch`; `golden_cim`'s rewrite —
+  renamed `lane_expected_cim` → `expected_cim`, and its pin
+  `cim_lane_divergences_are_pinned` → `cim_writer_divergences_are_pinned`, since
+  neither reads the lane any more — applies both renames to the oracle text in
+  both lanes, and the pin gained two assertions the lane branch used to make
+  redundant: the expectation is the same length as the oracle and differs from it
+  in exactly the counted lines. 19 → 16. Evidence variants: `Site` for the Fault
+  row (the engine's `generic_props_from(…, prop::NORMAMPS)`) and for the `g0ch`
+  row (`"ACLineSegment.g0ch"` exists nowhere else in the tree); `Exclusion` for
+  the delta-prefix row, whose engine half a needle **cannot** discriminate — the
+  fixed delta arm's `"ShuntCompensator.grounded"` line is byte-identical to the
+  wye arm's, which the split form also carried, so the recorded anchor is the
+  renamed transform and the row's comment names the pin and the CIM byte compares
+  as what carries the engine half. No golden byte, no ledger and no
+  `population.lock.json` movement; no doc-surface citation exists for any of the
+  three (measured — the doc walk finds none), so no strikes. The corpus gate
+  stayed green in both lanes (the CIM writers and the Fault dump have no live
+  observable — no gated case exports CIM or dumps a Fault). `lane_diff.ps1`:
+  **PASS**, max |Δ| = 0 on every gated kind (3 219 862 records, 520 cases), with
+  only the two pre-existing Newton decks in the documented-divergence list.
 
 ### Live escape register — the 18 surviving `TODO(compat)` markers
 

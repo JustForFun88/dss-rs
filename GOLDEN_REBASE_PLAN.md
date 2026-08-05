@@ -675,7 +675,9 @@ predicted-diff list gains it.)
   (`golden_reports.rs:5610-5626`) unconditional; non-vacuity assert stays.
 - `CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX` + `CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH`
   (`:909`, `:936`; issue-24, issue-25): `golden_cim.rs:64-92 lane_expected_cim`
-  rewrite unconditional.
+  rewrite unconditional (**as executed:** renamed `expected_cim`, and its pin
+  `cim_lane_divergences_are_pinned` → `cim_writer_divergences_are_pinned`, since
+  neither reads the lane any more).
 
 ### G2.2d — existing-exclusion rows: event-log transforms
 
@@ -873,8 +875,10 @@ Same mechanics. `json/schema_full_oracle.json` + `schema_divergences.json` stay
 frozen (§1.2); `cim/` value semantics are witnessed by G1.1's live props + the
 r4133 CIM bug fixes from G2.2c (and G2.1g, only if its measurement showed a
 committed golden observes the flag) land here as predicted diffs. Order inside
-the commit: self-snapshot `cim/` **first**, then retire `lane_expected_cim`
-(`golden_cim.rs:64-92`) and `cim_lane_divergences_are_pinned` — the transform
+the commit: self-snapshot `cim/` **first**, then retire `expected_cim`
+(`golden_cim.rs`, `lane_expected_cim` until G2.2c made it lane-independent) and
+`cim_writer_divergences_are_pinned` (`cim_lane_divergences_are_pinned` until the
+same sub-step) — the transform
 becomes the identity only against the new reference (deleting it before the
 snapshot reds the gate); the CIM pins stay.
 
