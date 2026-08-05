@@ -826,7 +826,12 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// and `RELAY_RESET_EVENT_IS_LABELLED_RECLOSER`, whose two rewrites moved above
 /// `expected_eventlog`'s lane guard while the `compat::fmt_g` re-round fold in
 /// the same function — a precision row, alive until G4.1 — stayed behind it.
-const SPLIT_ALIAS_POPULATION: usize = 14;
+/// **13** after G2.3 tore down `POWERS_REUSE_STALE_NEWTON_ITERMINAL`, the last
+/// of the six CLAUDE.md upstream bugs still reproduced anywhere: both lanes
+/// recompute `Iterminal` at the converged `NodeV`, and the two `modes/newton/`
+/// decks' powers/losses — which no oracle channel reports that way — became an
+/// unconditional harness exclusion instead of a lane split.
+const SPLIT_ALIAS_POPULATION: usize = 13;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -1988,6 +1993,57 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
             "do_pending_reset_only_resets_opcount_d4",
         )),
     ),
+    // G2.3. `DoNewtonSolution` increments `SolutionCount` *before* its
+    // per-iteration `SumAllCurrents` ("SumAllCurrents Uses ITerminal So must
+    // force a recalc", `.inputs/dss_capi/src/Common/Solution.pas:944`, the sum
+    // at `:947-948`), so every element leaves that loop with `Iterminal`
+    // stamped from the pre-final guess `NodeV_{n-1}` and *marked solved for the
+    // live `SolutionCount`* (`CktElement.pas:542-550`, the mark at `:548`);
+    // only then does `NodeV -= dV` run (`:965-968`). A post-solve
+    // `Get_Powers`/`Get_Losses` therefore takes the cache-aware path, finds the
+    // mark fresh, and multiplies the converged `NodeV_n` by the conjugate of
+    // the *previous* step's current, while `CktElement.Currents` recomputes at
+    // `NodeV_n` — one element, one read, `S != V·conj(I)`, which is the
+    // identity `Powers` is defined by. Not escapable by bumping the oracle: the
+    // EPRI channel reproduces it in v9.8 (r3723), v10.2 (r4088) and v11.0
+    // (r4133) alike, all fingerprint 0.478 kVA (checked 2026-07-08). Both lanes
+    // now call `refresh_iterminal` once and feed Powers, Losses and Currents
+    // from that one current. Its only oracle-compared observable is the two
+    // gated `modes/newton/` decks' element powers/losses (4.86e-4 and 2.46e-3
+    // kVA on `Vsource.source` conductor 0, ~60x and ~35x their tier floors),
+    // whose `LANE_SKIP_ELEM_POWERS` exclusion was default-lane-only and is now
+    // unconditional; their currents, voltages, Y, discrete state and iteration
+    // count stay oracle-compared, and no golden byte moves (no golden deck runs
+    // a Newton solve).
+    (
+        "POWERS_REUSE_STALE_NEWTON_ITERMINAL",
+        Kind::SplitAlias,
+        // The harness exclusion, which is also the half that discriminates: the
+        // needle is the unconditional `if`, which under the split read
+        // `if !PARITY && LANE_SKIP_ELEM_POWERS.contains(&label) {`.
+        //
+        // Per the last paragraph of [`Evidence::Site`], the engine half is named
+        // rather than left implied, because no needle over `exec/view.rs` can
+        // carry it: the torn-down form is a bare
+        // `elem.refresh_iterminal(&sys, &node_v);` at `snapshot_elements`'
+        // sixteen spaces — byte-identical to the line the *Currents* read three
+        // dozen lines below already had, split form included — so every
+        // candidate slice matches a reverted tree too. What holds it instead is
+        // the row's now-unconditional pin (Newton powers == the normal
+        // algorithm's, asserted in both lanes, ten orders of magnitude away from
+        // the stale reading) together with the tripwire next to it, which
+        // asserts in both lanes that a Newton solve really does leave that stale
+        // cache behind — so a re-split engine fails the pin whichever way its
+        // branch is written.
+        Evidence::Exclusion(
+            "crates/dss-core/tests/harness/lane.rs",
+            &["\n    if LANE_SKIP_ELEM_POWERS.contains(&label) {"],
+        ),
+        Some((
+            "crates/dss-core/src/exec/tests/newton.rs",
+            "newton_powers_match_the_normal_algorithm",
+        )),
+    ),
 ];
 
 /// One row of [`TORN_DOWN_ROWS`]: `(former row name, which census it left,
@@ -2645,9 +2701,9 @@ enum Cited {
 const TAG_PATH_CITATIONS: &[(&str, &str, &str, Cited)] = &[
     // The NCIM cause entry records a marker that WP-U2 removed when the port
     // dropped capi015's one-conductor VSource offset. `exec/view.rs` has been
-    // marker-free ever since — including after F.3j, which routed the Newton
-    // read through `compat::POWERS_REUSE_STALE_NEWTON_ITERMINAL` instead of
-    // re-opening a marker there.
+    // marker-free ever since — F.3j routed the Newton read through a lane alias
+    // rather than re-opening a marker there, and GOLDEN_REBASE G2.3 deleted that
+    // alias too, leaving the file with one unconditional `refresh_iterminal`.
     (
         "tests/corpus/ledger.json",
         "was removed",

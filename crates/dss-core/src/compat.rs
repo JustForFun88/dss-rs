@@ -42,29 +42,28 @@
 //! | Export SeqCurrents `Iresidual` | *torn down* (GOLDEN_REBASE G2.2a) — `report::export::seq_currents` sums the row's own terminal in both lanes | — |
 //! | multi-meter `Bus_Int_Duration` | *torn down* (GOLDEN_REBASE G2.2a) — `solution::meters::reliability` walks only its own zone in both lanes | — |
 //! | Monitor `BaseFrequency` 60.0 (CLAUDE.md bug 6) | *torn down* (GOLDEN_REBASE G2.2b) — `exec::command::create_object_no_edit` inherits `Fundamental` for every element, Monitor included, in both lanes | — |
-//! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
+//! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5) | *torn down* (GOLDEN_REBASE G2.3) — `exec::view::snapshot_elements` recomputes `Iterminal` at the converged `NodeV` for Powers, Losses and Currents alike, in both lanes | — |
 //! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
 //! | report text rendering — `Show` device-name column width | [`max_device_name_length`] — same section | **yes** (F.4b) |
 //! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f, the CIM wye `grounded` flag G2.1g, the Line height-unit re-read G2.1h, the Isource `Bus2` latch G2.2b, the two CIM attribute names and the Fault `Dump` `MinAmps` reprint G2.2c, the two Relay event-log labels G2.2d |
 //!
-//! The Monitor `BaseFrequency` and Newton stale-`Iterminal` rows are not in
-//! IV.2's table and do not extend it: they *were* the two **reproduced**
+//! The Monitor `BaseFrequency` and Newton stale-`Iterminal` rows were not in
+//! IV.2's table and did not extend it: they *were* the two **reproduced**
 //! CLAUDE.md upstream bugs whose clean fix was deferred to this pass — Monitor
 //! **by name**, in that document's own bug bullet; Newton under
 //! `PORTING_PLAN.md` §4.1 rule 4's blanket deferral, quoted ten lines below,
-//! which is what sanctions it. (Named here, not numbered: the table above loses
+//! which is what sanctioned it. (Named here, not numbered: the table above loses
 //! a row per teardown, so an ordinal goes stale on its own. And CLAUDE.md's
 //! Newton bullet named no Stage F deferral until F.3j wrote one; the earlier
 //! claim that both were deferred "by name" overreached.) With them the
-//! named-bug set is closed:
-//! of the six, two
-//! were never reproduced at all (VSConverter's self-aliased `MVMult`, harmonics
-//! `Powers`-after-`Currents`) — as is the out-of-range half of
-//! `Bus_Int_Duration`. Of the four that *were* reproduced, three are gone:
-//! `GOLDEN_REBASE_PLAN.md` G2.2a tore down `Iresidual` and the in-range
-//! `Bus_Int_Duration` cross-zone overwrite, and G2.2b tore down Monitor
-//! `BaseFrequency`, so all three now compute the correct value in both lanes.
-//! Only Newton stale `Iterminal` still carries the parity/default split.
+//! named-bug set is closed, and since `GOLDEN_REBASE_PLAN.md` G2.3 it is closed
+//! in the strong sense — **no** CLAUDE.md upstream bug is reproduced in either
+//! lane. Of the six, two were never reproduced at all (VSConverter's
+//! self-aliased `MVMult`, harmonics `Powers`-after-`Currents`) — as is the
+//! out-of-range half of `Bus_Int_Duration`. The four that *were* reproduced are
+//! all gone: G2.2a tore down `Iresidual` and the in-range `Bus_Int_Duration`
+//! cross-zone overwrite, G2.2b tore down Monitor `BaseFrequency`, and G2.3 tore
+//! down the Newton stale `Iterminal`.
 //!
 //! The last row is likewise not a new *kernel*. IV.2's table enumerates the
 //! shared arithmetic kernels — the primitives called from hundreds of sites —
@@ -540,55 +539,28 @@ pub fn etk_invert_partial_pivot_impl(a: &mut [f64], norder: usize) -> Result<(),
 /// shared implementation** for the same measured reasons (F.3i).
 pub use etk_invert_gj_no_exchange_impl as etk_invert;
 
-// ---------------------------------------------------------------------------
-// Newton stale `Iterminal` in Powers/Losses
-// (CLAUDE.md §Known upstream bugs — deferred here as a de-compat DECISION)
-// ---------------------------------------------------------------------------
-
-/// Whether reported `Powers`/`Losses` reuse the terminal current the **Newton**
-/// solver left cached, instead of recomputing it at the converged voltage.
-///
-/// `true` reproduces the upstream quirk. `DoNewtonSolution`'s final
-/// `SumAllCurrents` stamps `Iterminal` from the *pre-final* voltage guess
-/// `NodeV_{n-1}` and marks it solved for the current `SolutionCount`; the
-/// `NodeV -= dV` update follows it. `CktElement.Get_Powers`/`Get_Losses` read
-/// through the cache-aware `ComputeIterminal` and therefore return that
-/// one-step-stale current, while `CktElement.Currents` (`GetCurrents`)
-/// recomputes fresh at `NodeV_n` — so after `Set algorithm=Newton` upstream
-/// reports `S != V·conj(I)` for the same element in the same read. It is
-/// deterministic, defined and not state-poisoning, so the parity lane keeps it,
-/// and it cannot be escaped by bumping the oracle: the EPRI channel confirms
-/// the quirk in every vendored official rev — v9.8 (r3723), v10.2 (r4088),
-/// v11.0 (r4133), all fingerprint 0.478 kVA (checked 2026-07-08). See
-/// `investigations/newton_stale_iterminal_bug_report.md`.
-///
-/// `false` recomputes `Iterminal` at `NodeV_n` for all three reads — the clean
-/// fix named at the reproduction site since the port, which restores the
-/// identity `S = V·conj(I)` that `Powers` is *defined* by, in every algorithm.
-/// The lanes differ **only** after a Newton solve: after every fixed-point /
-/// direct / harmonic solve the cache is already invalid at read time, so both
-/// lanes recompute the same current and every other deck is bit-identical.
-///
-/// **What replaces the lost gate signal.** Newton and the normal fixed point
-/// converge to the same voltages in the same iteration count on the `newton*`
-/// corpus decks, so this staleness was the *only* channel there that proved
-/// Newton dispatch was wired at all — the default lane no longer exposes it
-/// (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS` excludes those decks'
-/// powers/losses in that lane only; the parity lane still compares them against
-/// both oracles). The replacement is stronger and runs in **both** lanes:
-/// `exec::tests::newton` asserts the staleness *inside the engine* — after
-/// `algorithm=Newton` the solver-cached `Iterminal` differs from a fresh
-/// recompute at the converged `NodeV`, and after the normal algorithm it does
-/// not — which is a direct assertion that `DoNewtonSolution` ran, rather than
-/// an inference from a reported power.
-pub const POWERS_REUSE_STALE_NEWTON_ITERMINAL_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const POWERS_REUSE_STALE_NEWTON_ITERMINAL_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use POWERS_REUSE_STALE_NEWTON_ITERMINAL_DEFAULT_IMPL as POWERS_REUSE_STALE_NEWTON_ITERMINAL;
-#[cfg(feature = "oracle-parity")]
-pub use POWERS_REUSE_STALE_NEWTON_ITERMINAL_PARITY_IMPL as POWERS_REUSE_STALE_NEWTON_ITERMINAL;
+// The **Newton stale `Iterminal`** row is gone (`GOLDEN_REBASE_PLAN.md` G2.3).
+// `DoNewtonSolution`'s final `SumAllCurrents` stamps every element's
+// `Iterminal` from the *pre-final* voltage guess `NodeV_{n-1}` and marks it
+// solved for the current `SolutionCount` (`Common/Solution.pas:944-948`, the
+// `NodeV -= dV` update at `:965-968`; r4133
+// `Version8/Source/Common/Solution.pas` is the same order), so upstream's
+// cache-aware `Get_Powers`/`Get_Losses` (`CktElement.pas:542-550`) return a
+// one-Newton-step-stale current while `CktElement.Currents` recomputes fresh at
+// `NodeV_n` — one read of one element reporting `S != V·conj(I)`, the identity
+// `Powers` is *defined* by. Both lanes now recompute all three reads at the
+// converged `NodeV` (`exec::view::snapshot_elements`), which is what every
+// other algorithm already got: after a fixed-point / direct / harmonic solve
+// the cache is invalid at read time, so nothing but a Newton solve moves.
+//
+// Its observable is the two gated `modes/newton/` decks' element
+// powers/losses, which no oracle channel reports correctly (the quirk is in
+// v9.8/r3723, v10.2/r4088 and v11.0/r4133 alike, fingerprint 0.478 kVA, checked
+// 2026-07-08): `harness::lane::LANE_SKIP_ELEM_POWERS` now excludes those two
+// channels in **both** lanes, and `exec::tests::newton` carries the replacement
+// — the in-engine dispatch tripwire plus the expected-value pin that Newton's
+// powers equal the normal algorithm's. See
+// `investigations/issue-05-newton-stale-iterminal.md`.
 
 // ---------------------------------------------------------------------------
 // Single-site upstream quirks

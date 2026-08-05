@@ -1063,11 +1063,13 @@ pub fn assert_power_close(
 
 /// Which sub-channels of an element capture [`compare_element_channels`] checks.
 ///
-/// Exists for the Stage F lane policy: a *deliberate* divergence (the default
-/// lane's post-Newton `Powers`/`Losses`, `compat::
-/// POWERS_REUSE_STALE_NEWTON_ITERMINAL`) is excluded **field-by-field**, never
-/// case-by-case — the element name set, terminal currents, node voltages,
-/// discrete state and iteration count of such a case stay fully oracle-gated.
+/// Exists for the lane policy: a *deliberate* divergence (the engine's
+/// post-Newton `Powers`/`Losses`, recomputed at the converged `NodeV` where
+/// every oracle channel reports the one-step-stale current — CLAUDE.md upstream
+/// bug 5, torn down in both lanes by `GOLDEN_REBASE_PLAN.md` G2.3) is excluded
+/// **field-by-field**, never case-by-case — the element name set, terminal
+/// currents, node voltages, discrete state and iteration count of such a case
+/// stay fully oracle-gated.
 /// [`lane::elem_channels_for`] is the only thing that ever returns a value other
 /// than [`ElemChannels::ALL`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -100,41 +100,48 @@ pub const PARITY: bool = cfg!(feature = "oracle-parity");
 /// part of `cargo test` at all.
 pub const ITER_SLACK: i32 = 1;
 
-/// The corpus cases whose element `Powers`/`Losses` the **default** lane does
-/// not oracle-compare — the drift model's "deliberate divergences … excluded
+/// The corpus cases whose element `Powers`/`Losses` **neither** lane
+/// oracle-compares — the drift model's "deliberate divergences … excluded
 /// field-by-field" row, and the only such exclusion in the suite.
 ///
-/// `compat::POWERS_REUSE_STALE_NEWTON_ITERMINAL` (CLAUDE.md upstream bug 5):
-/// `DoNewtonSolution` leaves `Iterminal` stamped from the pre-final voltage
-/// guess, so upstream's cache-aware `Get_Powers`/`Get_Losses` report a
-/// one-step-stale current after `Set algorithm=Newton` while `Currents`
-/// recomputes fresh. The parity lane reproduces that and still compares both
-/// channels against **both** gating oracles; the default lane recomputes all
-/// three reads at the converged `NodeV`, which is deliberately *not* what any
-/// oracle reports (measured: 4.86e-4 kVA on `newton.dss`, 2.46e-3 kVA on
+/// CLAUDE.md upstream bug 5, torn down in both lanes by
+/// `GOLDEN_REBASE_PLAN.md` G2.3: `DoNewtonSolution` leaves `Iterminal` stamped
+/// from the pre-final voltage guess, so upstream's cache-aware
+/// `Get_Powers`/`Get_Losses` report a one-step-stale current after
+/// `Set algorithm=Newton` while `Currents` recomputes fresh — one read of one
+/// element with `S != V·conj(I)`. The engine recomputes all three reads at the
+/// converged `NodeV`, which is deliberately *not* what any oracle reports
+/// (measured against `capi_v0145`: 4.86e-4 kVA on `newton.dss`, 2.46e-3 kVA on
 /// `newton_feeder.dss`, both on `Vsource.source` conductor 0 — ~60× and ~35×
-/// their tiers' floors, so this can never be mistaken for drift).
+/// their tiers' floors, so this can never be mistaken for drift). Bumping the
+/// oracle is no escape: the quirk is in every vendored official rev (r3723,
+/// r4088, r4133), so the `r4133` channel misreports these two channels too.
 ///
-/// These are the only two gated decks that run a Newton solve, and the quirk is
+/// These are the only two gated decks that run a Newton solve, and the bug is
 /// unobservable after every other algorithm (the cache is invalid at read time,
-/// so both lanes recompute the same current).
+/// so the cache-aware read recomputes the same current) — which is why the
+/// exclusion stays these two decks' two channels and nothing wider.
 ///
-/// **What still gates them in the default lane**: the element name set, terminal
-/// **currents**, node voltages, the system Y, discrete state, and the iteration
-/// count — everything except the two `S = V·conj(I)` channels. Those are pinned
-/// by `dss_core::exec::tests::newton::newton_powers_are_the_lane_kernel`, which
-/// asserts the default lane's Newton powers equal the *normal* algorithm's on
-/// the same deck to 1e-8 kVA (the parity lane's differ by ≥ 1e-1 kVA) — and the
+/// **What still gates them**: the element name set, terminal **currents**, node
+/// voltages, the system Y, discrete state, and the iteration count — everything
+/// except the two `S = V·conj(I)` channels. Those are pinned by
+/// `dss_core::exec::tests::newton::newton_powers_match_the_normal_algorithm`,
+/// which asserts the Newton powers equal the *normal* algorithm's on the same
+/// deck to 1e-8 kVA (upstream's stale read differs by ≥ 1e-1 kVA) — and the
 /// normal algorithm's powers are oracle-gated on ~500 other corpus cases, which
 /// closes the loop transitively.
 const LANE_SKIP_ELEM_POWERS: &[&str] =
     &["modes:newton/newton.dss", "modes:newton/newton_feeder.dss"];
 
-/// Which element sub-channels the current lane oracle-compares for the corpus
-/// case `label` — [`ElemChannels::ALL`] everywhere except
-/// [`LANE_SKIP_ELEM_POWERS`] in the default lane.
+// LANE-EXCLUSION(POWERS_REUSE_STALE_NEWTON_ITERMINAL): the two decks' powers and
+// losses are dropped from the oracle compare in **both** lanes — no oracle
+// channel reports them at the converged `NodeV`, so there is no lane in which
+// comparing them would be right.
+/// Which element sub-channels the corpus gate oracle-compares for the case
+/// `label` — [`ElemChannels::ALL`] everywhere except [`LANE_SKIP_ELEM_POWERS`],
+/// in either lane.
 pub fn elem_channels_for(label: &str) -> ElemChannels {
-    if !PARITY && LANE_SKIP_ELEM_POWERS.contains(&label) {
+    if LANE_SKIP_ELEM_POWERS.contains(&label) {
         ElemChannels::CURRENTS_ONLY
     } else {
         ElemChannels::ALL
@@ -867,9 +874,9 @@ mod tests {
     }
 
     /// The one element-channel exclusion: the `newton*` decks' `Powers`/
-    /// `Losses` are dropped in the default lane only, their **currents** are
-    /// kept in both, and no other case is touched. Asserted as an equality
-    /// against the lane so the test is meaningful in both.
+    /// `Losses` are dropped in **both** lanes since `GOLDEN_REBASE_PLAN.md`
+    /// G2.3 (no oracle channel reports them at the converged `NodeV`), their
+    /// **currents** are kept in both, and no other case is touched.
     #[test]
     fn newton_powers_are_the_only_element_channel_exclusion() {
         for label in LANE_SKIP_ELEM_POWERS {
@@ -877,12 +884,8 @@ mod tests {
             assert!(ch.currents, "{label}: currents stay gated in every lane");
             assert_eq!(
                 ch,
-                if PARITY {
-                    ElemChannels::ALL
-                } else {
-                    ElemChannels::CURRENTS_ONLY
-                },
-                "{label}: powers/losses are excluded in the default lane only"
+                ElemChannels::CURRENTS_ONLY,
+                "{label}: powers/losses are excluded in both lanes"
             );
         }
         // Nothing else is excluded — including a label that merely *contains* an
