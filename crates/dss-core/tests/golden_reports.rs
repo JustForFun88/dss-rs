@@ -546,11 +546,16 @@ fn run_deck_dump_exact(stem: &str) {
     run_deck_dump_exact_expected(stem, |oracle| oracle.to_string());
 }
 
-/// [`run_deck_dump_exact`] with a lane-scoped **expected-value transform** on
-/// the oracle text (`DE_PASCALIZE_PLAN.md` IV.2 "deliberate divergences"): the
-/// committed golden stays the source of truth, and `expected` states — as code,
-/// enumerated — the one edit a Stage F row makes to it in the default lane.
-/// `expected` must be the identity in the parity lane.
+/// [`run_deck_dump_exact`] with an **expected-value transform** on the oracle
+/// text (`DE_PASCALIZE_PLAN.md` IV.2 "deliberate divergences"): the committed
+/// golden stays the source of truth, and `expected` states — as code,
+/// enumerated — every edit a row makes to it.
+///
+/// Two kinds of edit compose here, and they differ in lane scope. A **precision**
+/// row (F-FMT's `%g` re-rounding, [`lane::expected_rerounded`]) is a default-lane
+/// re-spelling and is the identity in the parity lane. A **torn-down bug** row
+/// (the Fault `MinAmps` reprint, [`fault_dump_expected`]) is a divergence from
+/// the oracles that both lanes now carry, so its edit applies in both.
 fn run_deck_dump_exact_expected(stem: &str, expected: impl Fn(&str) -> String) {
     let dir = reports_dir();
     let meta: DeckMeta = {
@@ -5609,11 +5614,20 @@ fn dump_spectrum_matches_oracle() {
     run_deck_dump_exact("dump_spectrum");
 }
 
-/// The oracle `Dump fault.…` text as the current lane expects it: unchanged in
-/// the parity lane; in the default lane with the **second** of the two
-/// consecutive `~ MinAmps=` lines removed — the Stage F row
-/// `compat::FAULT_DUMP_TAIL_REPRINTS_MINAMPS`, whose default kernel starts the
-/// generic tail at `NormAmps` instead of re-emitting `MinAmps`.
+// LANE-EXCLUSION(FAULT_DUMP_TAIL_REPRINTS_MINAMPS): the second of each pair of
+// consecutive `~ MinAmps=` lines is dropped from the oracle text in **both**
+// lanes — the engine no longer re-emits the property, so that line is the one
+// place the committed goldens can no longer be compared against.
+/// The oracle `Dump fault.…` text as **both** lanes expect it: with the
+/// **second** of the two consecutive `~ MinAmps=` lines removed.
+///
+/// Upstream's generic tail starts at `MinAmps` itself and so reprints it
+/// (`Fault.pas:533` with `NumPropsThisClass = 9`; r4133 `:594` with `:107`),
+/// which every sibling class with that loop avoids by starting at
+/// `NumPropsThisClass + 1`. Both gating oracles carry the reprint and the
+/// goldens are their capture; the engine starts the tail at `NormAmps` in both
+/// lanes since `GOLDEN_REBASE_PLAN.md` G2.2c, so the excluded line is stated
+/// here — as code, positionally — rather than by recapturing a golden.
 ///
 /// Positional, like the `b0ch` transform in `golden_cim`: it removes the second
 /// member of an adjacent pair, never "a line whose value looks generic", so it
@@ -5622,9 +5636,6 @@ fn dump_spectrum_matches_oracle() {
 /// is applied to (one pair per Fault in the fixture), so the transform cannot
 /// rot into a no-op if a golden is ever recaptured.
 fn fault_dump_expected(oracle: &str) -> String {
-    if lane::PARITY {
-        return oracle.to_string();
-    }
     let mut out = String::with_capacity(oracle.len());
     let mut prev_was_minamps = false;
     for line in oracle.split_inclusive('\n') {
@@ -5639,11 +5650,32 @@ fn fault_dump_expected(oracle: &str) -> String {
     out
 }
 
-/// Non-vacuity of [`fault_dump_expected`], in both lanes and over **every**
-/// golden it is applied to: each committed oracle golden really does carry the
-/// double print — one pair per Fault in its fixture — the default-lane
-/// expectation keeps exactly one line per pair, and the parity-lane expectation
-/// is the oracle byte-for-byte.
+// EXPECTED-VALUE-PIN(FAULT_DUMP_TAIL_REPRINTS_MINAMPS): the expected `Dump`
+// text carries `~ MinAmps=` exactly once per Fault — the custom `%.1f` line —
+// in both lanes, and the surviving line is always the FIRST of the oracle's
+// pair, never the generic reprint.
+/// Non-vacuity of [`fault_dump_expected`] and the expected-value pin of the
+/// Fault dump tail, over **every** golden the transform is applied to.
+///
+/// Three things at once, all lane-independent since `GOLDEN_REBASE_PLAN.md`
+/// G2.2c:
+///
+/// 1. **Non-vacuity of the oracle side** — each committed golden really does
+///    carry the double print, one pair per Fault in its fixture. If a golden is
+///    ever regenerated without it, the transform becomes a no-op and this fails
+///    instead of silently passing.
+/// 2. **Non-vacuity of the transform** — the expectation keeps exactly one
+///    `~ MinAmps=` line per Fault and is exactly `faults` lines shorter than the
+///    oracle, so the drop cannot widen into a second line.
+/// 3. **Direction** — what survives is the *first* of each pair, i.e. the class's
+///    own `%.1f` render (`~ MinAmps=3.0`), never the generic reprint
+///    (`~ MinAmps=3`) the tail loop emitted.
+///
+/// The engine is then held to that expectation by the four compares that use the
+/// transform — `dump_fault_matches_oracle`, `dump_fault_gmatrix_matches_oracle`,
+/// `dump3_bare_matches_oracle`, `dump3_debug_matches_oracle` — which run in both
+/// lanes (byte-exact in the parity lane), so a tail that started at `MinAmps`
+/// again would fail them whichever lane it was built in.
 ///
 /// The `(stem, faults)` list must stay in step with the
 /// `run_deck_dump_exact_expected(…, fault_dump_expected)` call sites: a
@@ -5677,13 +5709,9 @@ fn fault_dump_goldens_carry_the_double_print() {
         let e = minamps(&expected);
         assert_eq!(
             e.len(),
-            if lane::PARITY { 2 * faults } else { faults },
-            "{stem}: the default lane keeps one MinAmps line per Fault"
+            faults,
+            "{stem}: the expectation keeps one MinAmps line per Fault"
         );
-        if lane::PARITY {
-            assert_eq!(expected, oracle, "{stem}: the parity arm is the identity");
-            continue;
-        }
         // One line removed per pair, and it is the *second* of each: what
         // survives is the custom `%.1f` spelling (`~ MinAmps=5.0`), never the
         // generic one the tail re-emits (`~ MinAmps=5`).
@@ -5778,9 +5806,10 @@ fn ffmt_reround_cells_are_present_and_lane_scoped() {
 
 /// `Dump fault.f1 debug` — `TFaultObj.DumpProperties` (`SpecType=1`, single
 /// `r`): the custom Bus1/Bus2/Phases/R/pctStdDev/OnTime/Temporary/MinAmps
-/// lines, then the generic tail. The parity lane pins the upstream double-print
-/// quirk (`MinAmps` twice: the custom `%.1f` line, then generically); the
-/// default lane starts the tail one property later — see [`fault_dump_expected`].
+/// lines, then the generic tail. The oracle golden double-prints `MinAmps` (the
+/// custom `%.1f` line, then generically); both lanes start the tail one property
+/// later, so the compare runs against the golden with the reprint removed — see
+/// [`fault_dump_expected`].
 #[test]
 fn dump_fault_matches_oracle() {
     run_deck_dump_exact_expected("dump_fault", fault_dump_expected);
@@ -6299,14 +6328,15 @@ fn save_voltages_and_meterless_save_leave_last_result_file() {
 #[test]
 fn dump3_bare_matches_oracle() {
     // Two Fault objects in the fixture, so two `~ MinAmps=` pairs — the same
-    // Stage F row as `dump_fault`, see [`fault_dump_expected`] — plus the one
+    // torn-down row as `dump_fault`, see [`fault_dump_expected`] — plus the one
     // F-FMT `%g` cell, [`LOADSHAPE_MEAN_REROUND`].
     run_deck_dump_exact_expected("dump3_bare", dump3_expected);
 }
 
-/// `dump3_*`'s two Stage F rows composed: the Fault `MinAmps` double-print
-/// (`fault_dump_expected`) and the F-FMT `%g` re-rounding of the default
-/// LoadShape's computed `Mean` ([`LOADSHAPE_MEAN_REROUND`]).
+/// `dump3_*`'s two rows composed: the Fault `MinAmps` double-print, dropped in
+/// both lanes (`fault_dump_expected`), and the F-FMT `%g` re-rounding of the
+/// default LoadShape's computed `Mean`, a default-lane re-spelling
+/// ([`LOADSHAPE_MEAN_REROUND`]).
 fn dump3_expected(oracle: &str) -> String {
     lane::expected_rerounded(&fault_dump_expected(oracle), &LOADSHAPE_MEAN_REROUND)
 }

@@ -45,7 +45,7 @@
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
 //! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
 //! | report text rendering — `Show` device-name column width | [`max_device_name_length`] — same section | **yes** (F.4b) |
-//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f, the CIM wye `grounded` flag G2.1g, the Line height-unit re-read G2.1h, the Isource `Bus2` latch G2.2b |
+//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f, the CIM wye `grounded` flag G2.1g, the Line height-unit re-read G2.1h, the Isource `Bus2` latch G2.2b, the two CIM attribute names and the Fault `Dump` `MinAmps` reprint G2.2c |
 //!
 //! The Monitor `BaseFrequency` and Newton stale-`Iterminal` rows are not in
 //! IV.2's table and do not extend it: they *were* the two **reproduced**
@@ -629,56 +629,14 @@ pub use POWERS_REUSE_STALE_NEWTON_ITERMINAL_PARITY_IMPL as POWERS_REUSE_STALE_NE
 // for the full measurement and for the `R1=`/`R2=` transitive cover it leaves
 // ready for whoever lands it.
 
-/// Whether the CIM `LinearShuntCompensator` writer puts the **delta** branch's
-/// `grounded` flag under the `LinearShuntCompensator.` prefix.
-///
-/// `true` reproduces the upstream quirk: the two arms of one `if` in
-/// `ExportCIMXML.pas` write the same CIM attribute under two different class
-/// prefixes — `BooleanNode(FunPrf, 'ShuntCompensator.grounded', TRUE)` for a
-/// wye bank (`:3700`) and `BooleanNode(FunPrf, 'LinearShuntCompensator.
-/// grounded', FALSE)` for a delta one (`:3706`).
-///
-/// `false` writes `ShuntCompensator.grounded` in both arms — the clean fix its
-/// own *sibling arm* spells out six lines above, and the only one CIM sanctions:
-/// `grounded` is declared on `ShuntCompensator`, and `LinearShuntCompensator` is
-/// a subclass, so an RDF consumer resolving the delta form against the CIM100
-/// schema finds no such property. Only the element **name** moves; the value
-/// (`false`) and the emission order are identical in both lanes.
-pub const CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX_DEFAULT_IMPL as CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX;
-#[cfg(feature = "oracle-parity")]
-pub use CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX_PARITY_IMPL as CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX;
-
-/// Whether the CIM `ACLineSegment` writer emits its zero-sequence **shunt
-/// conductance** under the `b0ch` (susceptance) name.
-///
-/// `true` reproduces the upstream quirk: the symmetrical-components branch of
-/// the line writer closes with two `b0ch` nodes in a row —
-/// `DoubleNode(EpPrf, 'ACLineSegment.b0ch', Len * C0 * val)` immediately
-/// followed by `DoubleNode(EpPrf, 'ACLineSegment.b0ch', 0.0)`
-/// (`ExportCIMXML.pas:4366-4367`). The second is the `g0ch` line: the four
-/// preceding nodes are the `bch`/`gch`/`r0`/`x0` set, so the quartet was meant
-/// to be `bch, gch, b0ch, g0ch`, and the duplicate leaves the segment with no
-/// `g0ch` at all and two conflicting `b0ch` values.
-///
-/// `false` names the second node `ACLineSegment.g0ch`. The fix is spelled out
-/// by the sibling writer in the same unit: `PerLengthSequenceImpedance` emits
-/// `bch`/`gch`/`b0ch`/`g0ch` in exactly this order with exactly these values,
-/// and the goldens carry both forms side by side. Only the element **name**
-/// moves — the value stays `0.0` and the emission order is identical in both
-/// lanes.
-pub const CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_DEFAULT_IMPL as CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH;
-#[cfg(feature = "oracle-parity")]
-pub use CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_PARITY_IMPL as CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH;
+// The two **CIM attribute-name** rows are gone the same way
+// (`GOLDEN_REBASE_PLAN.md` G2.2c): the delta shunt arm writes
+// `ShuntCompensator.grounded` — the name its own wye sibling six lines above
+// uses and the only class CIM100 declares `grounded` on — and the
+// symmetrical-components line writer closes its `bch`/`gch`/`b0ch` quartet with
+// `ACLineSegment.g0ch`, the name the `PerLengthSequenceImpedance` sibling
+// spells. Both lanes now write them; `tests/golden_cim.rs` applies the two
+// renames to the oracle goldens unconditionally, so no golden byte moved.
 
 /// Whether a **Relay**'s per-`Sample` state-trace line is written to the event
 /// log unconditionally, instead of under the `DebugTrace` guard every other
@@ -746,36 +704,16 @@ pub use RELAY_RESET_EVENT_IS_LABELLED_RECLOSER_DEFAULT_IMPL as RELAY_RESET_EVENT
 #[cfg(feature = "oracle-parity")]
 pub use RELAY_RESET_EVENT_IS_LABELLED_RECLOSER_PARITY_IMPL as RELAY_RESET_EVENT_IS_LABELLED_RECLOSER;
 
-/// Whether a **Fault**'s `Dump` starts its generic property tail *at* `MinAmps`,
-/// so the property is printed twice.
-///
-/// `true` reproduces the upstream quirk: `TFaultObj.DumpProperties` writes its
-/// custom `~ MinAmps=%.1f` line and then runs
-/// `for i := NumPropsthisClass to ParentClass.NumProperties`
-/// (`Fault.pas:533`). `NumPropsThisClass` is `Ord(High(TProp))` = 9 = `MinAmps`
-/// itself, so the tail's first iteration re-emits the very property just
-/// written — in its generic spelling, giving the pair `~ MinAmps=3.0` /
-/// `~ MinAmps=3` before the real tail (`NormAmps`…`Enabled`).
-///
-/// `false` starts the tail at `MinAmps + 1` (`NormAmps`). The off-by-one is a
-/// slip and not a convention: every other class with this exact loop writes the
-/// `+ 1` — `Transformer.pas:1276`, `AutoTrans.pas:1307`, `XfmrCode.pas:663` —
-/// and no class prints a property twice on purpose.
-///
-/// Only the `Dump` text moves, in one class, by one line; the property table,
-/// the `Save` script and the `?` getter are untouched in both lanes. The two
-/// goldens that carry the pair (`tests/golden/reports/dump_fault{,_gmatrix}.txt`)
-/// stay pinned to the oracle in both lanes — `golden_reports`'
-/// `fault_dump_expected` drops exactly the second of the two consecutive
-/// `~ MinAmps=` lines in the default lane.
-pub const FAULT_DUMP_TAIL_REPRINTS_MINAMPS_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const FAULT_DUMP_TAIL_REPRINTS_MINAMPS_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use FAULT_DUMP_TAIL_REPRINTS_MINAMPS_DEFAULT_IMPL as FAULT_DUMP_TAIL_REPRINTS_MINAMPS;
-#[cfg(feature = "oracle-parity")]
-pub use FAULT_DUMP_TAIL_REPRINTS_MINAMPS_PARITY_IMPL as FAULT_DUMP_TAIL_REPRINTS_MINAMPS;
+// The **Fault `Dump` reprints `MinAmps`** row left with the two CIM ones
+// (`GOLDEN_REBASE_PLAN.md` G2.2c): `TFaultObj.DumpProperties` starts its generic
+// tail at `NumPropsThisClass` = `Ord(High(TProp))` = 9 = `MinAmps` itself
+// (`Fault.pas:533`; r4133 `Version8/Source/PDElements/Fault.pas:594` with
+// `NumPropsthisclass = 9` `:107`), so the loop's first iteration re-emits the
+// property the custom `~ MinAmps=%.1f` line just wrote. Every other class with
+// that loop writes `NumPropsThisClass + 1` (`Transformer.pas:1276`,
+// `AutoTrans.pas:1307`, `XfmrCode.pas:663`), so both lanes now start the tail at
+// `NormAmps`; `golden_reports`' `fault_dump_expected` drops the second of each
+// pair from the oracle goldens unconditionally, so no golden byte moved.
 
 /// Whether `Monitor::channel` reports a **one-element `[0.0]` placeholder** for
 /// a monitor that has flushed nothing, instead of an empty channel.
