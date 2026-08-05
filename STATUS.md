@@ -42,10 +42,12 @@ has shrunk to a precision-compat lane and is scheduled for full teardown.
 **In flight.** `GOLDEN_REBASE_PLAN.md` on branch **`golden-g2`**. WP-G0 (safety
 rails) is complete and merged to `update`; WP-G2 (tear down the shared-with-r4133
 bug kernels) is running — G2.0 rails + G2.1a…G2.1h + G2.2a + G2.2b + G2.2c +
-G2.2d landed, `SPLIT_ALIAS_POPULATION` **31 → 14**, and the WP acceptance
+G2.2d + G2.3 landed, `SPLIT_ALIAS_POPULATION` **31 → 13**, and the WP acceptance
 criterion still holds at HEAD: `git diff --stat -- tests/golden` over the whole
-range is **empty** in both lanes. Next step: **G2.3** — Newton
-(`POWERS_REUSE_STALE_NEWTON_ITERMINAL`). Queued behind
+range is **empty** in both lanes. With G2.3 **none of the six CLAUDE.md
+§"Known upstream bugs" is reproduced in any lane**. Next step: **G2.4** — the
+monitor-channel padding reclassify (a dss-python *wrapper* artifact, not an
+engine bug). Queued behind
 GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, the
 UPGRADE line.
 
@@ -389,6 +391,76 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   unchanged. This file is not on the walked doc surface of
   `operational_docs_cite_the_compat_machinery_accurately`, so nothing catches it
   mechanically.
+- **G2.3** (2026-08-05) — the **Newton stale `Iterminal`** row
+  (`POWERS_REUSE_STALE_NEWTON_ITERMINAL`), the last CLAUDE.md upstream bug still
+  reproduced anywhere. `DoNewtonSolution` bumps `SolutionCount` *before* its
+  per-iteration `SumAllCurrents` — with the author's own comment "SumAllCurrents
+  Uses ITerminal So must force a recalc" (`Common/Solution.pas:944`, the sum at
+  `:947-948`) — so every element leaves the loop with `Iterminal` computed at the
+  pre-final guess `NodeV_{n-1}` *and marked solved for the live `SolutionCount`*
+  (`CktElement.pas:542-550`); `NodeV -= dV` runs only afterwards (`:965-968`). A
+  post-solve `Get_Powers`/`Get_Losses` therefore finds the cache mark fresh and
+  multiplies the converged `NodeV_n` by the conjugate of the *previous* step's
+  current, while `CktElement.Currents` recomputes at `NodeV_n` — one element, one
+  read, `S != V·conj(I)`, the identity `Powers` is defined by. Both lanes now
+  call `refresh_iterminal` once in `exec::view::snapshot_elements` and feed
+  Powers, Losses and Currents from that one current; nothing but a Newton solve
+  moves, because after every other algorithm the cache is already invalid at read
+  time. 14 → 13.
+  **Coverage note — what this costs, and why there was no cheaper option.** The
+  staleness is in *every* oracle channel (EPRI v9.8/r3723, v10.2/r4088,
+  v11.0/r4133, all fingerprint 0.478 kVA, checked 2026-07-08, plus the pinned
+  dss_capi 0.14.5), so no channel reports these decks' powers at the converged
+  `NodeV` and gating on `r4133` would not have helped. `LANE_SKIP_ELEM_POWERS`
+  (`harness/lane.rs`) therefore became **unconditional**: the two gated
+  `modes:newton/newton.dss` and `modes:newton/newton_feeder.dss` decks lose their
+  element powers/losses against **both** oracles in **both** lanes (measured
+  divergence 4.86e-4 and 2.46e-3 kVA on `Vsource.source` conductor 0 — ~60× and
+  ~35× their tier floors, so it could never be mistaken for drift). Everything
+  else about those two decks stays oracle-compared in both lanes: element names,
+  terminal **currents**, node voltages, the system Y, discrete state and the
+  iteration count. What replaces the lost signal is unchanged and now runs
+  identically in both lanes — the in-engine tripwire
+  `newton_dispatch_leaves_a_valid_but_stale_iterminal_cache` (untouched: it reads
+  the solver's leftover cache directly, so it fails if `Set algorithm=Newton`
+  ever falls back to `DoNormalSolution`) plus the pin below. No third deck is
+  affected: these are the only two gated decks that run a Newton solve.
+  **Pin.** `newton_powers_are_the_lane_kernel` → `newton_powers_match_the_normal_
+  algorithm`, unconditional: Newton's reported powers/losses equal the *normal*
+  algorithm's on the same 3-bus deck (< 1e-8 kVA / < 1e-5 W, measured 3.256e-11
+  kVA / 3.329e-8 W) — ten orders of magnitude from the stale reading (5.283e-1
+  kVA / 6.248e2 W), with the algorithm-independent currents (4.5e-12 A) as the
+  control. The normal algorithm's powers are oracle-gated on ~500 other corpus
+  cases, which closes the loop transitively.
+  **Bookkeeping.** Register row `Evidence::Exclusion` on `harness/lane.rs`
+  (needle: the unconditional `if LANE_SKIP_ELEM_POWERS.contains(&label) {`, which
+  under the split read `if !PARITY && …`) rather than the engine kernel:
+  `exec/view.rs`'s torn-down form is a bare
+  `elem.refresh_iterminal(&sys, &node_v);` at `snapshot_elements`' own
+  indentation — byte-identical to the line the *Currents* read three dozen lines
+  below already had, split form included — so no needle over that file can
+  discriminate a revert, and the row's comment names the pin + tripwire as what
+  carries the engine half instead (the same "say so in the row's comment" clause
+  `Evidence::Site` documents, used by G2.2c row 2). Both
+  `DOCUMENTED_DIVERGENCES` rows deleted from `examples/lane_dump.rs` — the list
+  is now **empty**, so every record in the lane dump is held to the ordinary
+  bound (it was fail-on-stale in the "entry must still fire" sense only, but
+  leaving them would have exempted two now-identical fields from the differential
+  gate). Doc strikes in the same commit: CLAUDE.md's bug-5 bullet and the WP-G2
+  status line, `TESTING.md`'s lane-diff paragraph, and the
+  `tests/corpus/modes/manifest.json` note for `newton.dss` (note text only —
+  `population_lock.rs::Case::rigor` does not fingerprint `note`, and
+  `population.lock.json` did not move). No golden byte moved (no golden deck runs
+  a Newton solve), no ledger entry moved.
+  `lane_diff.ps1` (mandatory here — this row *was* the lane differential's only
+  documented divergence): **max |Δ| = 0** on all eight gated kinds, 520 cases /
+  3 219 862 records, 0 iteration counts drifted, `VERDICT: PASS`, and
+  "documented divergences: none present in this dump". The measurement is
+  stronger than the previous runs' rather than merely equal to them: the two
+  `newton` decks' 1 169 132 `pow` and 366 234 `loss` values are now inside the
+  gated `pow`/`loss` totals instead of exempt from them, and they came back
+  bit-identical — the lanes agree on exactly the channels that used to be the
+  reason the list existed.
 
 ### Live escape register — the 18 surviving `TODO(compat)` markers
 

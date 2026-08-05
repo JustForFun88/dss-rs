@@ -63,9 +63,13 @@ binding invariants that survive it are:
   lanes by the R4133-alignment pass (2026-08-02). The bug kernels shared with
   r4133 are being removed by `GOLDEN_REBASE_PLAN.md` WP-G2: the eight
   zero-footprint rows (G2.1a–G2.1h, 2026-08-03…05, single-point stddev first),
-  then Iresidual + Bus_Int_Duration (G2.2a, 2026-08-05) and Monitor BaseFrequency
-  + the Isource Bus2 latch (G2.2b, 2026-08-05) are done; Newton stale Iterminal
-  and the rest are queued behind them.
+  then Iresidual + Bus_Int_Duration (G2.2a), Monitor BaseFrequency + the Isource
+  Bus2 latch (G2.2b), the Fault `Dump` `MinAmps` reprint + the two CIM attribute
+  names (G2.2c), the two Relay event-log labels (G2.2d) and the Newton stale
+  `Iterminal` (G2.3, 2026-08-05) are done — with G2.3 **none** of the six
+  §"Known upstream bugs" is reproduced in any lane. The corpus-blocked
+  `WholeCase` fixes (G2.5) and the `Show` column width (G2.6) are queued behind
+  them.
 
 ## `TODO(compat)` convention (see PORTING_PLAN.md §4.1)
 
@@ -96,10 +100,10 @@ inline for a while; its report is `issue-06-monitor-basefrequency-60.md`.
 engine computes the correct value and every observable divergence from an oracle
 channel is excluded field-by-field and pinned by an expected-value test. The
 per-bug notes below record how each one stands; the parity-side reproductions
-are being dismantled by `GOLDEN_REBASE_PLAN.md` WP-G2 (the nine capi-only bugs
-done 2026-08-02; of the ones below — all shared with r4133 — `Iresidual` and
-`Bus_Int_Duration` fell in G2.2a and Monitor `BaseFrequency` in G2.2b, leaving
-Newton stale `Iterminal` as the last one still reproduced).
+were dismantled by `GOLDEN_REBASE_PLAN.md` WP-G2 (the nine capi-only bugs done
+2026-08-02; of the ones below — all shared with r4133 — `Iresidual` and
+`Bus_Int_Duration` fell in G2.2a, Monitor `BaseFrequency` in G2.2b and Newton
+stale `Iterminal` in G2.3, so **none of the six is reproduced in any lane**).
 English upstream-ready reports for all confirmed r4133 bugs live in
 `investigations/to_opendss/`.
 
@@ -131,17 +135,20 @@ English upstream-ready reports for all confirmed r4133 bugs live in
 - **Newton `Powers`/`Losses` stale `Iterminal`** — after `Set algorithm=Newton`,
   `DoNewtonSolution` stamps `Iterminal` at `NodeV_{n-1}` then does `NodeV -= dV`,
   so `Get_Powers`/`Get_Losses` (cache-aware) return a one-Newton-step-stale
-  current while `Currents` recompute fresh (`S ≠ V·conj(I)`). Deterministic,
-  defined, not state-poisoning → **lane-split** since DE_PASCALIZE Stage F.3j
-  (`compat::POWERS_REUSE_STALE_NEWTON_ITERMINAL`, applied in
-  `exec/view.rs::snapshot_elements`): the parity lane reproduces it and stays
-  oracle-compared, the default lane recomputes all three reads at the converged
-  `NodeV`. It was the only channel distinguishing Newton from the normal
-  fixed-point on the `newton*` gates, so the default lane excludes those two
-  decks' powers/losses (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`) and
-  replaces the signal with the in-engine dispatch tripwire
+  current while `Currents` recompute fresh (`S ≠ V·conj(I)`). **Not reproduced in
+  either lane** since GOLDEN_REBASE G2.3: `exec/view.rs::snapshot_elements`
+  recomputes once at the converged `NodeV` and feeds Powers, Losses and Currents
+  from that one current. It was the only channel distinguishing Newton from the
+  normal fixed-point on the `newton*` gates and no oracle rev reports it
+  correctly (r3723/r4088/r4133 all carry the bug), so **both** lanes now exclude
+  those two decks' powers/losses
+  (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`, unconditional) and the signal
+  is carried by the in-engine dispatch tripwire
   `exec::tests::newton::newton_dispatch_leaves_a_valid_but_stale_iterminal_cache`
-  (plus the expected-value pin `newton_powers_are_the_lane_kernel`).
+  plus the expected-value pin `newton_powers_match_the_normal_algorithm` (Newton
+  powers == the normal algorithm's, in both lanes). Everything else about those
+  decks — currents, voltages, Y, discrete state, iteration count — stays
+  oracle-compared.
 - **Monitor `BaseFrequency` 60.0** — `TMonitorObj.Create` hard-pins
   `Basefrequency := 60.0` (Monitor.pas:472 == r4133:552), overriding the base-class
   `BaseFrequency := ActiveCircuit.Fundamental` (CktElement.pas:203 — the last

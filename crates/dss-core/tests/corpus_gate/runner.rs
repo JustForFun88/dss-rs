@@ -490,10 +490,11 @@ pub(crate) fn compare_capture(
         let el_rewrites = ledger
             .map(|v| v.element_rewrites(i, &snaps, &cp.elements, tol, &ctx))
             .unwrap_or_default();
-        // The Stage F lane policy drops the two `S = V·conj(I)` sub-channels on
-        // the `newton*` decks in the DEFAULT lane only (a deliberate divergence,
-        // pinned by its own expected-value test) — every other case and the whole
-        // parity lane get `ElemChannels::ALL`. See `harness::lane`.
+        // The lane policy drops the two `S = V·conj(I)` sub-channels on the
+        // `newton*` decks in **both** lanes since `GOLDEN_REBASE_PLAN.md` G2.3
+        // (no oracle channel reports them at the converged `NodeV`; pinned by
+        // its own expected-value test) — every other case gets
+        // `ElemChannels::ALL`. See `harness::lane`.
         let channels = lane::elem_channels_for(label);
         for ec in &cp.elements {
             match el_rewrites.get(&ec.name.to_lowercase()) {

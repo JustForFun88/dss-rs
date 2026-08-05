@@ -106,29 +106,29 @@ const ABS: f64 = 1e-6;
 /// convergence test one step early or late and nothing more.
 const ITER_SLACK: i64 = 1;
 
-/// The Stage F rows that make the default lane deliberately answer something
-/// the parity lane does not, keyed by `(case label, record kinds)`.
+/// The rows that make the default lane deliberately answer something the parity
+/// lane does not, keyed by `(case label, record kinds)`.
 ///
 /// These are **not** silently skipped: the diff measures them like everything
 /// else and prints what it measured, it just does not fail on them. Every entry
 /// is hand-mirrored from an exclusion the corpus gate carries in
-/// `harness::lane` (`LANE_SKIP_ELEM_POWERS`) — hand-mirrored, because an
-/// example cannot import the test harness. Nothing checks the two lists against
-/// each other, so keep them in step by hand; what *is* checked is that every
-/// entry here still fires, so a stale one cannot sit around un-gating a field
-/// (fail-on-stale, added F-settle W4 — the discipline the ledger,
-/// `ESCAPE_REGISTER` and `expected_rerounded` already carry).
+/// `harness::lane` — hand-mirrored, because an example cannot import the test
+/// harness. Nothing checks the two lists against each other, so keep them in
+/// step by hand; what *is* checked is that every entry here still fires, so a
+/// stale one cannot sit around un-gating a field (fail-on-stale, added F-settle
+/// W4 — the discipline the ledger, `ESCAPE_REGISTER` and `expected_rerounded`
+/// already carry).
 ///
-/// * the two `newton` decks' `pow`/`loss` —
-///   `compat::POWERS_REUSE_STALE_NEWTON_ITERMINAL` (`CLAUDE.md` upstream bug 5,
-///   `harness::lane::LANE_SKIP_ELEM_POWERS`): the parity lane reproduces
-///   upstream's one-step-stale `Iterminal` cache, the default lane recomputes
-///   at the converged `NodeV`. Their **currents**, voltages, Y, iteration count
-///   and convergence stay compared here exactly as everywhere else.
-const DOCUMENTED_DIVERGENCES: &[(&str, &[&str])] = &[
-    ("modes:newton/newton.dss", &["pow", "loss"]),
-    ("modes:newton/newton_feeder.dss", &["pow", "loss"]),
-];
+/// **Empty since `GOLDEN_REBASE_PLAN.md` G2.3.** Its only rows were the two
+/// `modes:newton/` decks' `pow`/`loss`, where the parity lane reproduced
+/// upstream's one-step-stale post-Newton `Iterminal` cache while the default
+/// lane recomputed at the converged `NodeV` (`CLAUDE.md` upstream bug 5). Both
+/// lanes now recompute, so those records are held to the ordinary bound like
+/// every other one — and the exclusion that survives the teardown is against
+/// the *oracles* (`harness::lane::LANE_SKIP_ELEM_POWERS`, now unconditional),
+/// which this job never consults. A future lane split that is deliberate rather
+/// than a bug adds its rows back here.
+const DOCUMENTED_DIVERGENCES: &[(&str, &[&str])] = &[];
 
 // ---------------------------------------------------------------------------
 // Corpus enumeration
