@@ -155,14 +155,15 @@ pub(super) fn set_obj_double(
     // Pascal `SetObjDouble`'s trailing `case PropertyType` writes ONLY the
     // scalar double types (`DoubleProperty` / `DoubleOnArrayProperty` /
     // `DoubleOnStructArrayProperty`); every array/matrix type falls through with
-    // no write. The string edit path only reaches here for `PropType::Double`,
-    // but the MakePosSequence typed setter (`ClassProps::set_prop_f64`) may aim a
-    // `SetDouble` at a `DoubleArrayProperty` — e.g. `TCapacitorObj.MakePosSequence`
-    // does `SetDouble(ord(TProp.Cuf), Cs - Cm)` on the `Cuf` array. Upstream that
-    // is a silent no-op on the value (oracle-verified: `cuf` is unchanged across
-    // `makeposseq`); the seq-mark + side effects still run (in the caller, since
-    // `ErrorNumber` stays 0). Mirror the fall-through: skip the write for the
-    // non-scalar types instead of panicking in the element's scalar `set_f64`.
+    // no write (`src/General/DSSObjectHelper.pas:2812-2834` — three arms, no
+    // `else`). The string edit path only reaches here for `PropType::Double`,
+    // and since `GOLDEN_REBASE_PLAN.md` G2.5 no typed `MakePosSequence` setter
+    // aims a scalar `SetDouble` at an array property either (the one that did,
+    // `TCapacitorObj.MakePosSequence`'s `Cuf`, was upstream's own slip and now
+    // goes through the array setter). Keep mirroring the fall-through anyway —
+    // it is the ported shape of the `case`, so a future scalar write onto an
+    // array property behaves like upstream instead of panicking in the
+    // element's scalar `set_f64`.
     if pd.ptype == PropType::Double {
         obj.set_f64(idx, value);
     }

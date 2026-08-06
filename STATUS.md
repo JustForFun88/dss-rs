@@ -42,13 +42,16 @@ has shrunk to a precision-compat lane and is scheduled for full teardown.
 **In flight.** `GOLDEN_REBASE_PLAN.md` on branch **`golden-g2`**. WP-G0 (safety
 rails) is complete and merged to `update`; WP-G2 (tear down the shared-with-r4133
 bug kernels) is running — G2.0 rails + G2.1a…G2.1h + G2.2a + G2.2b + G2.2c +
-G2.2d + G2.3 + G2.4 landed, `SPLIT_ALIAS_POPULATION` **31 → 12**, and the WP
-acceptance criterion still holds at HEAD: `git diff --stat -- tests/golden` over
-the whole range is **empty** in both lanes. With G2.3 **none of the six CLAUDE.md
-§"Known upstream bugs" is reproduced in any lane**. Next step: **G2.5** — the
-three corpus-blocked `WholeCase` bug fixes (`opus-xhigh`). Queued behind
-GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, the
-UPGRADE line.
+G2.2d + G2.3 + G2.4 + G2.5 landed, `SPLIT_ALIAS_POPULATION` **31 → 12** and
+`Escape::WholeCase` **4 → 1**, and the WP acceptance criterion still holds at
+HEAD: `git diff --stat -- tests/golden` over the whole range is **empty** in
+both lanes. With G2.3 **none of the six CLAUDE.md §"Known upstream bugs" is
+reproduced in any lane**; with G2.5 the three corpus-blocked `WholeCase` bugs
+(GICTransformer `%R2`, Capacitor `MakePosSequence` `Cuf`, LoadShape MMF
+accept-set) are fixed in both lanes as well, leaving the Generator Model=6 row
+as that bucket's only survivor. Next step: **G2.6** — the `Show` device-name
+column width. Queued behind GOLDEN_REBASE: `WASM_USERMODELS` follow-ups,
+RESONANCE, MULTITHREADING, the UPGRADE line.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
@@ -636,7 +639,139 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   doc gate's walk (`oracle_parity_cfg_gate.rs::operational_docs`, "deliberately
   excluded: plans and records").
 
-### Live escape register — the 18 surviving `TODO(compat)` markers
+- **G2.5** (2026-08-07) — the **three corpus-blocked `WholeCase` bug fixes**:
+  GICTransformer `%R2` ignored, Capacitor `MakePosSequence` `Cuf` discarded,
+  LoadShape memory-mapped text accept-set. `Escape::WholeCase` **4 → 1** (the
+  survivor is the Generator Model=6 user-model row, deferred to
+  `WASM_USERMODELS_PLAN`); `SPLIT_ALIAS_POPULATION` does **not** move — none of
+  the three was ever a lane split, all three were reproduced identically in both
+  lanes, and all three are now fixed in both.
+  **The three fixes.** (1) `gic_transformer/solve.rs::recalc` derives winding 2's
+  conductance from `%R2`; both oracle revisions copied the `G1` line and renamed
+  the base but not the percentage (`GICTransformer.pas:441` == r4133
+  `Version8/Source/PDElements/GICTransformer.pas:495`), which the same
+  procedure's `else` arm — restoring `FPctR2` **from** `G2` — proves is a slip:
+  the two arms are mutual inverses only under `FPctR2`. (2)
+  `capacitor/solve.rs::make_pos_sequence` writes `Cs - Cm` through the **array**
+  setter in the property's own µF units, plus the `CUF` arm
+  `set_struct_f64_array` never had. 0.14.5 aims the scalar `SetDouble` at the
+  array property `Cuf` (`Capacitor.pas:814` + `DSSObjectHelper.pas:2812-2834`,
+  three scalar arms and no `else`), dropping the value with no error while still
+  running the `SpecType := 2` side effect — so the bank computed from the
+  `kvar=1200 kv=12.47` creation defaults (20.47 µF, ~5× the intended reactive
+  output) and the user's `cmatrix` left the Y build for good; r4133 *does* apply
+  it (`Capacitor.pas:829` → `InterpretDblArray`) but re-applies the `1.0e-6`
+  scale (`:411`) to an already-farad value, landing 4e-12 F where 4e-6 F was
+  meant. Neither revision produces the intended bank, and r4133 spells out what
+  was intended, so the port performs that write. (3)
+  `load_shape/compute.rs::mmf_text_value` takes the column verbatim through the
+  **same** aux parser the class's non-mapped reader uses; both revisions filter
+  it through an accept-set of bytes in `[46,58)` (`LoadShape.pas:1374` == r4133
+  `Common/Utilities.pas:834`), deleting sign, `+`, the exponent letter and
+  whitespace while keeping `/` inside the token. The witness that this is a slip
+  and not a dialect is the class itself: two readers, one file, and
+  `MemoryMapping=Yes` chooses storage, not meaning.
+  **What it cost, measured (2026-08-06, `DSS_GATE_ONLY` on both channels).** Four
+  gated decks move against their gating oracle(s) across the solved model —
+  `asymmetric:gic/gictransformer_gic.dss` (node V 4.502e-4 V, allowed 1.001e-6),
+  `asymmetric:gic/gic_midi.dss` (1.021e-4 vs 1.074e-6), both on **both** channels
+  since r4133 carries the identical line; `modes:makeposseq/makeposseq_shunt.dss`
+  (1.158e-1 V vs 3.339e-6) and `modes:inputformat/shape_mmf/shape_mmf.dss`
+  (1.641e1 V vs 8.179e-6) on `capi_v0145`. Each (deck, channel) is an
+  `exclusion` entry in `tests/corpus/ledger.json` — 6 entries — scoped
+  field-by-field to what was **measured** to move, not to what plausibly could:
+  `voltages`, `y`, `y_fingerprint`, the **named** YPrim(s) and `element` on all
+  four, plus `injection` and the four monitors on `shape_mmf` alone. Two
+  candidate scopes were probed and dropped as inert — the injection RHS on the
+  GIC and `makeposseq` decks (the GICLine/GICsource drives do not depend on the
+  solution) and `shape_mmf`'s `ls_pq` loadshape probes — so those keep comparing
+  against the oracle, as does everything else on those decks. The property jumps are pinned instead of skipped:
+  3 exact-pair `divergence` entries hold `GICTransformer.tg3/tg5.R2` (0.09522
+  ours vs 0.12696 upstream) and `Capacitor.cap_cmat.Cuf`/`NormAmps`/`EmergAmps`.
+  Ledger 27 → 36 entries over 23 causes; each `cause` cites its pin by full test
+  path, as the plan requires.
+  **New ledger machinery, and why it was unavoidable.** All three fixes move the
+  assembled **system Y** (the GIC transformer's and the capacitor's YPrim
+  directly; `shape_mmf` through `Load.ld_pq`'s `Yeq`), and the ledger had no
+  field that could name it — `y`/`y_fingerprint`/`yprim`/`meter` were the
+  §1.3-planned-but-unimplemented set the loader **rejects**. G2.5 implements
+  them as **exclusion-only** fields (`LedgerView::excluded`,
+  `EXCLUSION_ONLY_FIELDS`, refused on a `divergence` by `assert_structural`):
+  each names a whole compared
+  artifact with no remainder to tier-check and no envelope to re-assert, so the
+  only honest statement is "this (case, channel) does not compare it" — still
+  hit-accounted, so an exclusion whose scope stops matching fails the gate as
+  NEVER APPLIED. `injection` also learned to honour an exclusion (it had a
+  `Divergence`-only handler, and the RHS has no sub-selector either way), and
+  the probe/property exact-pair *pin* requirement is now scoped to `divergence`
+  entries, where it belongs. And because "has a runtime handler" had just become
+  **kind-dependent**, the whitelist grew its mirror: `EXCLUSION_FIELDS` refuses
+  an `exclusion` on `iterations`/`property`/`eventlog`/`ctrlqueue`, whose
+  handlers re-assert a pin or rewrite the oracle's line and would otherwise load
+  cleanly and then do nothing — the exact rot `LEDGER_FIELDS` exists to prevent.
+  **`shape_mmf.dss` keeps its job; its coverage moved before it was excluded.**
+  The deck exists *to observe* the quirk (its `mmpq8.csv` P column is exponent
+  notation on purpose), so it is the one that pays. Its unrelated surface — the
+  `sngfile=`/`dblfile=` MMF readers, the raw `mult=(sngfile=)` directive form
+  (Pascal `CustomSetRaw`), the two-column `pqcsvfile=` reader, the
+  `(<directive>)` array-property round-trip and the `Set/Get totaltime` option
+  surface — moved to the new sibling deck
+  `modes:inputformat/shape_mmf_io/shape_mmf_io.dss`, whose `mmpq8_plain.csv`
+  holds the same numbers in plain decimal (so the upstream filter is the
+  identity on it) and which gates **clean** against the pinned oracle on the
+  first run. Corpus population 520 → 521 cases (517 solvable), which is growth,
+  not a shrink; `population.lock.json` regenerated in the same commit and its
+  diff is 6 lines. `tools/decks/gen_shape_mmf_fixtures.py` now writes both
+  fixture sets.
+  **Golden side: zero bytes moved, two field-scoped exclusions added.** Two
+  committed artifacts observe the GICTransformer row and were excluded, never
+  re-baselined. (a) `tests/golden/props/gictransformer.json`'s
+  `gictransformer_auto` scenario — `("gictransformer_auto", "R2")` joins
+  `props_roundtrip.rs::LANE_SKIP_SCENARIO_PROPS`, value-only and property-scoped,
+  so `%R1`/`%R2`/`R1`/the bases/the `type=Auto` bus promotion stay compared (the
+  file's cell-count lock is unchanged: one cell moves from `compared` to
+  `lane_skips`). (b) `tests/golden/reports/export_gicmvars.txt` — both value
+  columns masked with `GateSpec::Mask` (the `export_busreliability` `Duration`
+  precedent from G2.2a), since every row moves (8.8e-4 relative even on `b1`,
+  the row furthest from `tg3`) and no row key separates them. Its replacement,
+  `export_gicmvars_matches_the_equivalent_ohms_spec`, does more than restate the
+  new numbers: it rebuilds the fixture with `tg3` given `R1=0.7935 R2=0.12696` —
+  upstream's *effective* conductances, reached through the `R1=`/`R2=` arm
+  neither revision ever got wrong — and demands the committed capture back
+  inside the golden's own band, so the report path, the quasi-DC solve, the
+  K-factor Mvar path and the VarCurve path are re-earned against the oracle
+  bytes; then it rebuilds with `R2=0.09522` (`ZBase2·%R2/100`) and demands
+  equality with the live `%R` spec, cell for cell; then it asserts the masked
+  cells really moved, so the mask cannot buy silence.
+  **Pins.** `exec::tests::compat_quirks::gic_transformer_pct_r2_drives_winding_two`
+  (the `%R` spec equals its ohms twin on `R1`, `R2` **and** the stamped YPrim, on
+  deliberately asymmetric bases where the three candidate readings — 4 Ω, 3 Ω and
+  upstream's 1 Ω — are pairwise distinct);
+  `capacitor::tests::make_pos_sequence_cmatrix_applies_the_positive_sequence_cuf`
+  (the reduced bank is indistinguishable from one declared `phases=1 cuf=4`,
+  YPrim for YPrim — an anchor that is neither a captured number nor the fixed
+  kernel) and `...::make_pos_sequence_cmatrix` for the emitted action's shape;
+  `load_shape::tests::mmf_text_reader_agrees_with_its_non_mapped_twin` (the two
+  readers agree bit-for-bit on content carrying `-`, `e-`, `+` and leading
+  whitespace, *and* are not the accept-set's readings) plus
+  `...::mmf_plaintext_reader_keeps_sign_and_exponent` and
+  `...::mmf_accept_set_fix_is_gated_by_exactly_one_deck`, which measures in corpus
+  bytes that exactly one deck can see the change — the vendored
+  `MemoryMappingLoadShapes/ckt24` files and the new sibling's fixture are all on
+  the identity side of the upstream filter.
+  **Bookkeeping.** Three `TORN_DOWN_ROWS` rows with `Kind::WholeCase` and
+  `Evidence::Ledger` (its first use — the variant's `expect(dead_code)` note
+  amended accordingly), each carrying its `EXPECTED-VALUE-PIN` marker; three
+  `ESCAPE_REGISTER` rows and their `TODO(compat)` markers deleted;
+  `EXIT_POPULATION[WholeCase]` 4 → 1; the two `compat.rs` narrative paragraphs
+  rewritten in place; `TESTING.md` (ledger kinds/fields/counts, 521/517) and
+  `CLAUDE.md` (521/517) updated; the local `investigations/TODO_COMPAT_REGISTRY.md`
+  §2.6/§2.7/§2.8 «fate» entries rewritten. No doc-surface `compat::` citation
+  named any of the three rows, so the alias-citation floor is untouched.
+  `lane_diff.ps1`: **max |Δ| = 0** on every gated kind — the three fixes are
+  single kernels, identical in both lanes, so the lanes stay bit-identical.
+
+### Live escape register — the 15 surviving `TODO(compat)` markers
 
 The register itself is executable: `oracle_parity_cfg_gate.rs::ESCAPE_REGISTER`
 (+ `EXIT_POPULATION`) checks it **both ways** — an unregistered marker fails, a
@@ -656,10 +791,7 @@ the site comment carries each row's measured cost.
 | `UpgradeRung` | `elements/pd/line/accessors.rs` | the same `658.5` |
 | `UpgradeRung` | `elements/control/exp_control/accessors.rs` | `FOpenTau := Tresponse / 2.3026` (documented r4133 model constant) |
 | `UpgradeRung` | `cim/ieee1547.rs` | `LPFTau * 2.3026` |
-| `WholeCase` | `elements/pd/gic_transformer/solve.rs` | Pascal uses `FPctR1`, not `FPctR2` (`gictransformer_gic`, `gic_midi`) |
-| `WholeCase` | `elements/pd/capacitor/solve.rs` | `SetDouble(ord(TProp.Cuf), Cs - Cm)` (`makeposseq_shunt`) |
-| `WholeCase` | `elements/general/load_shape/compute.rs` | the MMF accept-set keeps only bytes in `[46, 58)` (`shape_mmf`) |
-| `WholeCase` | `elements/pc/generator/user_model.rs` | the Model=6 dynamics-entry `E1` seed (`wasm_gen_dyn`) |
+| `WholeCase` | `elements/pc/generator/user_model.rs` | the Model=6 dynamics-entry `E1` seed (`wasm_gen_dyn`) — the last of four; the GICTransformer `%R2`, Capacitor `Cuf` and LoadShape MMF rows were torn down by G2.5 |
 | `WasmGuest` | `tools/wasm_usermodel/models/indmach012a/src/symcomp.rs` | truncated `sqrt(3)/2` = `0.866025403` |
 | `WasmGuest` | `.../indmach012a/src/model.rs` | truncated `sqrt(3)` = `1.732` |
 | `WasmGuest` | `.../indmach012a/src/model.rs` | FPC single-precision folding of `3.0/746.0` |
@@ -670,7 +802,7 @@ the site comment carries each row's measured cost.
 > → Stage F — NOT started" and "`HIDE_015X` → Stage F — NOT started" handoffs
 > were executed by DE_PASCALIZE Stage F (complete, `depascalize-stagef.md`) and
 > are now finished by GOLDEN_REBASE WP-G2/WP-G4; the live marker population is
-> the 18-row table above, not §5's 2026-07-17 count of 123. Their in-place
+> the 15-row table above, not §5's 2026-07-17 count of 123. Their in-place
 > back-references now resolve outside this file: `§OG-1.x … below` in
 > [`orphaned-gaps.md`](docs/phase-records/orphaned-gaps.md), `§1a archive` in
 > [`era-summaries.md`](docs/phase-records/era-summaries.md). §7 states the

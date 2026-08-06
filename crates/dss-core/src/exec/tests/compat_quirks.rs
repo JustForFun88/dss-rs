@@ -385,70 +385,82 @@ fn sym_matrix_text_getter_renders_the_stored_matrix() {
     );
 }
 
-/// GICTransformer's `%R`-specified second-winding conductance scales off
-/// **`%R1`**, not `%R2` — reproduced in **both** lanes, pinned here.
+/// EXPECTED-VALUE-PIN(GIC_TRANSFORMER_G2_SCALES_OFF_PCT_R1): a GICTransformer's
+/// `%R`-specified second winding takes **`%R2`**, in both lanes.
 ///
-/// `TGICTransformerObj.RecalcElementData` (`GICTransformer.pas:441`) computes
-/// `G2 := 100.0 / (FZBase2 * FPctR1)`; the line above it is
-/// `G1 := 100.0 / (FZBase1 * FPctR1)`, so the copy-paste left `FPctR1` driving
-/// both and a user's `%R2` is silently ignored. That the `else` branch inverts
-/// the pair correctly (`FPctR2 := 100.0 / (FZBase2 * G2)`) is what makes it a
-/// slip rather than a convention.
+/// `TGICTransformerObj.RecalcElementData` computes
+/// `G2 := 100.0 / (FZBase2 * FPctR1)` in both oracle revisions — pinned
+/// dss_capi 0.14.5 `src/PDElements/GICTransformer.pas:441`, EPRI r4133
+/// `Version8/Source/PDElements/GICTransformer.pas:495` — a copy of the `G1`
+/// line above it with the base renamed and the percentage not, so a user's
+/// `%R2` is stored, read back, and never used. That the same procedure's
+/// `else` arm inverts the pair honestly (`FPctR2 := 100.0 / (FZBase2 * G2)`)
+/// is what makes it a slip rather than a "winding 2 repeats winding 1"
+/// convention; `GOLDEN_REBASE_PLAN.md` G2.5 fixed it in both lanes.
 ///
-/// **Why it is not (yet) a lane split.** F.3k implemented the fix, ran the
-/// 520-case gate against it and reverted: `asymmetric/gic/gictransformer_gic.dss`
-/// builds `GICTransformer.tg3 … %R1=0.2 %R2=0.15`, and honouring `%R2` moves
-/// that deck's GIC current 4.50e-4 vs the `capi_v0145` oracle where 1.00e-6 is
-/// allowed (`gic/gic_midi.dss`: 1.02e-4 vs 1.07e-6). Both gating oracles
-/// reproduce the quirk, so the default-lane fix costs those decks' primary
-/// physical channel and owes the Newton row's full treatment.
-///
-/// `R2` is stored as the conductance `G2` behind the property `INVERSE_VALUE`
-/// flag, so `? GICTransformer.g.R2` reads back `1/G2` = `ZBase2·%R_used/100` —
-/// the observable pinned below. With `kv1 == kv2` and a shared `MVA`,
-/// `ZBase1 == ZBase2`, so `R2` must collapse onto `R1` whatever `%R2` said.
+/// **The assertion is a transitive cover, not a captured number.** The ohms
+/// spec (`R1=`/`R2=`) takes that `else` arm, never had the slip, and is
+/// oracle-gated unchanged on both channels (`asymmetric/gic/*` carry one:
+/// `tg2`/`tg3` with `R1=0.2 R2=0.1`). So the `%R` path is pinned against the
+/// `R` path: given `%R_w` on bases that make `ZBase_w` a round number, the two
+/// specs must produce the *same element*. `R2` is stored as the conductance
+/// `G2` behind the property `INVERSE_VALUE` flag, so `? …R2` reads back `1/G2`
+/// — the observable below.
 #[test]
-fn gic_transformer_g2_reproduces_the_pct_r1_bug() {
-    let mut dss = dss_with_circuit();
-    // %R-specified spec, deliberately asymmetric, on a symmetric voltage/MVA
-    // base so ZBase1 == ZBase2 = 100²/100 = 100 Ω.
-    dss.command(
-        "new GICTransformer.g busH=b1 busNH=b2 busX=b3 busNX=b4 type=YY \
-         kvll1=100 kvll2=100 mva=100 %R1=1 %R2=4",
-    );
-    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+fn gic_transformer_pct_r2_drives_winding_two() {
+    // Asymmetric bases AND asymmetric percentages, so neither winding can
+    // borrow the other's number unnoticed: ZBase1 = 200²/100 = 400 Ω and
+    // ZBase2 = 100²/100 = 100 Ω, so %R1 = 1 → R1 = 4 Ω and %R2 = 3 → R2 = 3 Ω,
+    // while the upstream reading (ZBase2·%R1/100) would be 1 Ω — three distinct
+    // values, so no pair of them can coincide by accident.
+    let build = |spec: &str| {
+        let mut dss = dss_with_circuit();
+        dss.command(&format!(
+            "new GICTransformer.g busH=sourcebus busNH=sourcebus.0.0.0 \
+             busX=bx busNX=bx.0.0.0 type=YY kvll1=200 kvll2=100 mva=100 {spec}"
+        ));
+        dss.command("calcvoltagebases");
+        dss.command("solve");
+        assert!(dss.errors().is_empty(), "{spec}: {:?}", dss.errors());
+        dss
+    };
 
-    let z_base = 100.0f64 * 100.0 / 100.0;
-    let r1 = query_f64(&mut dss, "GICTransformer.g.R1");
-    let r2 = query_f64(&mut dss, "GICTransformer.g.R2");
+    let mut pct = build("%R1=1 %R2=3");
+    // The same element written the other way: R_w = ZBase_w · %R_w / 100.
+    let mut ohms = build("R1=4 R2=3");
 
-    // Winding 1 is correct upstream: R1 = ZBase1·%R1/100.
+    for prop in ["R1", "R2"] {
+        let from_pct = query_f64(&mut pct, &format!("GICTransformer.g.{prop}"));
+        let from_ohms = query_f64(&mut ohms, &format!("GICTransformer.g.{prop}"));
+        assert!(
+            (from_pct - from_ohms).abs() <= 1e-12 * from_ohms.abs(),
+            "{prop}: the %R spec gives {from_pct}, the ohms spec {from_ohms} — \
+             the two arms of RecalcElementData must be mutual inverses"
+        );
+    }
+    // Explicitly not the upstream reading, which reused %R1 for winding 2 and
+    // would report R2 = ZBase2·%R1/100 = 1 Ω here.
+    let r2 = query_f64(&mut pct, "GICTransformer.g.R2");
     assert!(
-        (r1 - z_base * 0.01).abs() < 1e-12,
-        "R1 must be ZBase·%R1/100, got {r1}"
-    );
-    // Winding 2 ignores %R2=4 and reuses %R1=1 — the reproduced bug.
-    assert!(
-        (r2 - z_base * 0.01).abs() < 1e-12,
-        "upstream scales G2 off %R1 (GICTransformer.pas:441), so R2 must equal \
-         R1 = {r1} despite %R2=4; got {r2}"
-    );
-    assert!(
-        (r2 - z_base * 0.04).abs() > 1e-6,
-        "if this now equals ZBase·%R2/100 the quirk was fixed — see the Stage F \
-         note at the reproduction site before re-baselining anything"
+        (r2 - 1.0).abs() > 1e-6,
+        "R2 came back as ZBase2·%R1/100 = 1 Ω — the `%R1` slip is back"
     );
 
-    // The conductance spec (`R1=`/`R2=`, the `else` branch) never went through
-    // the quirk: it is the exact inverse map, and it honours both windings.
-    let mut ohms = dss_with_circuit();
-    ohms.command(
-        "new GICTransformer.g busH=b1 busNH=b2 busX=b3 busNX=b4 type=YY \
-         kvll1=100 kvll2=100 mva=100 R1=1 R2=4",
-    );
-    assert!(ohms.errors().is_empty(), "{:?}", ohms.errors());
-    assert!((query_f64(&mut ohms, "GICTransformer.g.R1") - 1.0).abs() < 1e-12);
-    assert!((query_f64(&mut ohms, "GICTransformer.g.R2") - 4.0).abs() < 1e-12);
+    // …and the admittance really moved with it: the `%R`-specified element
+    // stamps the same YPrim as its ohms twin.
+    let (order_p, yp) = pct
+        .element_yprim("GICTransformer.g")
+        .expect("%R-spec YPrim");
+    let (order_o, yo) = ohms
+        .element_yprim("GICTransformer.g")
+        .expect("ohms-spec YPrim");
+    assert_eq!(order_p, order_o);
+    for (i, (x, y)) in yp.iter().zip(yo.iter()).enumerate() {
+        assert!(
+            (x - y).norm() <= 1e-18 + 1e-12 * y.norm(),
+            "YPrim[{i}]: %R spec {x} vs ohms spec {y}"
+        );
+    }
 }
 
 /// Expected-value pin for the Stage F single-site quirk
