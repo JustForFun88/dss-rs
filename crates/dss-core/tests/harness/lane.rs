@@ -405,26 +405,51 @@ fn reset_device_name(line: &str) -> Option<&str> {
     is_reset.then_some(name)
 }
 
-/// One oracle monitor-channel capture as the **current lane** expects to see
-/// it: the identity in the parity lane; in the default lane, dss-python's
-/// unflushed-stream placeholder rewritten to the empty channel the engine
-/// actually reports (`compat::MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM`).
+// LANE-EXCLUSION(MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM): the `[0.0]` a
+// header-only monitor stream is read back as is fabricated by the oracles'
+// **client** stream decoders, not by any engine, so it is normalized away from
+// the capture unconditionally — in both lanes and on both gating channels.
+/// One oracle monitor-channel capture with the client-side unflushed-stream
+/// placeholder normalized away.
+///
+/// **Not a lane row, and not a channel row.** `dss-python`'s
+/// `IMonitors.Channel` (`dss/IMonitors.py:28-55`) never calls the engine's
+/// `Monitors_Get_Channel`: it pulls the raw `ByteStream` and short-circuits
+/// `if cnt == 272: return np.zeros((1,), dtype=np.float32)`, 272 being the
+/// header-only stream size, while the function underneath returns an empty
+/// array (`CAPI_Monitors.pas:295-331`). The r4133 channel pads the same way and
+/// for the same reason — our bridge decodes that ByteStream "exactly like
+/// dss-python" (`crates/dss-epri/src/dss.rs:625-634`), and so does the **native**
+/// DDLL accessor, which sets `myDBLArray := [0]` and overwrites it only
+/// `If pMon.SampleCount > 0` (`DMonitors.pas:509-516`); with a header-only
+/// stream it would read past the data it never wrote, so no official r4133
+/// reader reports an empty channel either.
+///
+/// So the placeholder is a **client artifact of every reader we gate against**,
+/// never an engine value in either lane. `GOLDEN_REBASE_PLAN.md` G2.4 therefore
+/// reclassified it from a lane split into this capture normalization: both
+/// lanes' engines report the empty channel, and both lanes strip the
+/// placeholder from either channel's capture. (Scoping the strip to
+/// `capi_v0145` was measured and rejected — it reds the three gated
+/// `modes/time/generaltime*` decks on `r4133`, which pad exactly like
+/// dss-python.)
 ///
 /// `flushed_records` is the Rust monitor's own flush cursor, and it is what
 /// makes this transform safe rather than circular. The rewrite fires **only**
-/// when that cursor is 0 — the one state in which `Monitors.Channel`'s
-/// `cnt == 272` short-circuit can trigger — and it insists the capture really
-/// is the placeholder (exactly one sample, exactly `0.0`). So:
+/// when that cursor is 0 — the one state in which the `cnt == 272`
+/// short-circuit (and the native accessor's untouched `[0]`) can appear — and
+/// it insists the capture really is the placeholder (exactly one sample,
+/// exactly `0.0`). So:
 ///
 /// * a monitor that flushed records is compared strictly, in both lanes;
 /// * an engine that lost real samples reports `flushed_records > 0` with an
 ///   empty channel and fails the length check as before;
-/// * an oracle that stops emitting the placeholder (a dss-python change) makes
+/// * an oracle that stops emitting the placeholder (a client-side change) makes
 ///   `is_placeholder` false, and the untransformed capture then fails loudly —
 ///   the transform can never rot into a silent pass.
 pub fn expected_monitor_channel(flushed_records: usize, capture: &[f64]) -> Vec<f64> {
     let is_placeholder = capture.len() == 1 && capture[0] == 0.0;
-    if PARITY || flushed_records != 0 || !is_placeholder {
+    if flushed_records != 0 || !is_placeholder {
         return capture.to_vec();
     }
     Vec::new()
@@ -844,7 +869,7 @@ mod tests {
         );
     }
 
-    /// The monitor transform is exactly dss-python's unflushed placeholder, and
+    /// The monitor transform is exactly the clients' unflushed placeholder, and
     /// nothing else: it fires only at `flushed_records == 0` and only on a
     /// literal one-element `[0.0]` capture, so real data — including a genuine
     /// single zero sample on a *flushed* monitor — is compared strictly in both
@@ -852,11 +877,13 @@ mod tests {
     #[test]
     fn monitor_transform_is_the_unflushed_placeholder() {
         let placeholder = [0.0];
-        // The one rewritten cell.
+        // The one rewritten cell — rewritten in BOTH lanes since
+        // `GOLDEN_REBASE_PLAN.md` G2.4: the pad is the oracle clients' stream
+        // decoder, not an engine's, so no lane of ours ever emits it.
         assert_eq!(
             expected_monitor_channel(0, &placeholder),
-            if PARITY { vec![0.0] } else { Vec::new() },
-            "the placeholder is dropped in the default lane only"
+            Vec::<f64>::new(),
+            "the client placeholder is dropped in both lanes"
         );
         // Same capture, flushed monitor: never rewritten.
         assert_eq!(expected_monitor_channel(1, &placeholder), vec![0.0]);

@@ -42,12 +42,11 @@ has shrunk to a precision-compat lane and is scheduled for full teardown.
 **In flight.** `GOLDEN_REBASE_PLAN.md` on branch **`golden-g2`**. WP-G0 (safety
 rails) is complete and merged to `update`; WP-G2 (tear down the shared-with-r4133
 bug kernels) is running — G2.0 rails + G2.1a…G2.1h + G2.2a + G2.2b + G2.2c +
-G2.2d + G2.3 landed, `SPLIT_ALIAS_POPULATION` **31 → 13**, and the WP acceptance
-criterion still holds at HEAD: `git diff --stat -- tests/golden` over the whole
-range is **empty** in both lanes. With G2.3 **none of the six CLAUDE.md
-§"Known upstream bugs" is reproduced in any lane**. Next step: **G2.4** — the
-monitor-channel padding reclassify (a dss-python *wrapper* artifact, not an
-engine bug). Queued behind
+G2.2d + G2.3 + G2.4 landed, `SPLIT_ALIAS_POPULATION` **31 → 12**, and the WP
+acceptance criterion still holds at HEAD: `git diff --stat -- tests/golden` over
+the whole range is **empty** in both lanes. With G2.3 **none of the six CLAUDE.md
+§"Known upstream bugs" is reproduced in any lane**. Next step: **G2.5** — the
+three corpus-blocked `WholeCase` bug fixes (`opus-xhigh`). Queued behind
 GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, the
 UPGRADE line.
 
@@ -490,6 +489,86 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   and the shape G2.2c row 2 already used. The recorded slice does not exist in
   the split tree, and the marker obligation `Evidence::Exclusion` carries is met
   at `harness/lane.rs:136-139`.
+- **G2.4** (2026-08-06) — the **monitor-channel padding** row
+  (`MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM`), *reclassified* rather than
+  fixed: it was the only row the compat module ever carried whose upstream was
+  not Pascal, and it is not an engine behaviour at all. 13 → 12.
+  **The blocked measurement, and the owner decision.** The plan's G2.4 section
+  asked for a **channel-scoped** normalization firing only for `capi_v0145`, on
+  the premise "on r4133 there is no wrapper, so a `[0.0]` capture is a real
+  value". The sub-step's first attempt returned **blocked** because that premise
+  is false in this tree: the pad is a client-layer artifact on **both** gating
+  channels — dss-python pads in `dss/IMonitors.py` (`if cnt == 272: return
+  np.zeros((1,))`, 272 = the header-only `ByteStream`); our own bridge replicates
+  that decoder by design (`crates/dss-epri/src/dss.rs:625-634`, "exactly like
+  dss-python"); and the **native** r4133 accessor pads too
+  (`Version8/Source/DDLL/DMonitors.pas:509-516` sets `myDBLArray := [0]` and
+  overwrites it only `If pMon.SampleCount > 0` — with a header-only stream it
+  would read past data it never wrote, so no official r4133 reader can report an
+  empty channel). Channel-scoping was **measured** to red three gated `r4133`
+  cases (`modes:time/generaltime.dss`, `generaltime_yearly.dss`,
+  `generaltime_duty.dss`). The plan owner chose **resolution (A)** on 2026-08-06
+  and this commit amends the falsified plan text: keep the normalization
+  channel-**independent** and make it lane-independent. Rejected alternatives,
+  recorded so they are not re-proposed: (B) changing the `dss-epri` decoder would
+  make our bridge unlike *both* dss-python and the native DDLL; (C) three ledger
+  entries would legitimize a client artifact as an r4133 *engine* divergence.
+  **What landed.** The alias, both impls and both cfg arms are gone;
+  `Monitor::channel` folds the unflushed case into its index guard and returns
+  the empty channel in both lanes (which is what the neighbouring `dbl_hour`
+  read of the same stream always did, and what `Monitors_Get_Channel` itself
+  returns — `CAPI_Monitors.pas:295-331`). `harness::lane::expected_monitor_
+  channel` lost its `PARITY` early return and is now an unconditional capture
+  normalization carrying the row's `LANE-EXCLUSION` marker; no `EngineChannel`
+  parameter was threaded through `harness::compare_monitor` — nothing needs one
+  under (A). Its anti-rot guards are unchanged: the rewrite fires only at
+  `flushed_records == 0` and only on a literal one-element `[0.0]`, so an engine
+  that loses real samples, or an oracle that stops padding, still fails loudly.
+  **Pin** (this row had none): `monitor_channel_of_an_unflushed_stream_is_empty`
+  in `elements/meter/monitor/mod.rs` — four samples staged in `MonBuffer`, none
+  flushed, *every* channel empty and `dbl_hour` empty beside it, asserted
+  unconditionally, so "empty" means "nothing flushed", never "nothing sampled".
+  Register row `Evidence::Site` on the engine kernel: the folded
+  `if i < 1 || i > self.record_size || self.flushed_records == 0 {` exists only
+  after the teardown (the split had a second early return below it), so unlike
+  G2.3 a needle here does discriminate a revert.
+  **Bookkeeping.** No golden byte moved (no golden deck leaves a monitor
+  unflushed), no ledger entry and no `population.lock.json` field moved, and the
+  three `generaltime*` decks stay green on **both** channels in both lanes. No
+  doc-surface citation existed for this row (the walked surface never named it);
+  the stale claims that *did* exist were corrected in the same commit —
+  `GOLDEN_REBASE_PLAN.md` §G2.4 (the falsified premise → the measurement +
+  resolution A) and the compat module's "the only row whose upstream is not
+  Pascal" sentence, whose provenance is now stated as the client wrapper of both
+  oracle read paths. `docs/phase-records/depascalize-stagef.md` keeps its Stage-F
+  wording as history.
+  `lane_diff.ps1` (mandatory — a lane alias was deleted): **max |Δ| = 0** on all
+  eight gated kinds (520 cases, 3 219 862 records, 0 iteration counts drifted,
+  `VERDICT: PASS`, "documented divergences: none present in this dump"). As
+  predicted: monitors are not in the dump set, and the engine's default-lane
+  answer did not move — in that lane the teardown is behaviourally inert (the
+  alias already selected the empty channel and `expected_monitor_channel`'s
+  `PARITY ||` was already false), so only the parity lane's reading changed.
+  **Gate flakes seen on the way, both proven infrastructural, both in
+  `corpus_gate` and neither reproducible once the corpus tree was clean.**
+  (1) With ~28 untracked export artifacts left in `tests/corpus/electricdss-tst`
+  by an aborted run, two runs failed with 20 and then 7 *different* cases
+  diverging on `[R4133]` step-0 node voltages (rel ~5e-7) — decks with no
+  monitors among them; both vanished after deleting the artifacts file by file,
+  and the same binary then passed 53/53 twice. (2) Twice, one case failed with
+  the oracle's own `Show Voltage LN Nodes` raising DSS error 303 — "Unable to
+  create file … The process cannot access the file because it is being used by
+  another process" (`GFM_IEEE8500/IEEE8500u_VLN_Node.txt`) — the file-collision
+  class `corpus_gate/runner.rs:42-55` already documents, and the same
+  still-open item recorded at the G2.2d settle. The final green runs were made
+  from a clean corpus tree; the artifacts produced by each run were removed by
+  explicit per-file deletion, never a recursive one.
+  **One real defect caught by the gate and fixed in the same commit**: the new
+  pin first walked its channels as `for i in 1..=m.num_channels()`, which
+  `depascalize_metrics_gate::part3_metrics_audited_populations_do_not_grow`
+  rejected (P14: 107 `for … in 1..=` loops in `elements/`, ceiling 106). Rewritten
+  0-based with the `+ 1` at the 1-based `Channel(i)` boundary — same coverage, the
+  port's own indexing convention.
 
 ### Live escape register — the 18 surviving `TODO(compat)` markers
 

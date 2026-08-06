@@ -19,9 +19,10 @@ pub struct MonitorView {
     pub channels: Vec<Vec<f32>>,
     /// How many records `Save`/`SaveAll` made visible (Pascal `MonitorStream`
     /// length in records). `0` — nothing flushed — is the state in which
-    /// `channels`/`dbl_hour` are empty in the default lane and dss-python's
-    /// `Channel` reports its `[0.0]` placeholder
-    /// (`compat::MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM`).
+    /// `channels` and `dbl_hour` are both empty, in both lanes; the oracle
+    /// clients read the same stream back as a `[0.0]` placeholder, which the
+    /// harness normalizes out of their captures
+    /// (`harness::lane::expected_monitor_channel`).
     pub flushed_records: usize,
 }
 

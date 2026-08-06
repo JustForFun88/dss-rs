@@ -830,8 +830,13 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// of the six CLAUDE.md upstream bugs still reproduced anywhere: both lanes
 /// recompute `Iterminal` at the converged `NodeV`, and the two `modes/newton/`
 /// decks' powers/losses — which no oracle channel reports that way — became an
-/// unconditional harness exclusion instead of a lane split.
-const SPLIT_ALIAS_POPULATION: usize = 13;
+/// unconditional harness exclusion instead of a lane split. **12** after G2.4
+/// *reclassified* `MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM`: the `[0.0]` an
+/// unflushed monitor stream reads back as is fabricated by the client-side
+/// ByteStream decoders of **both** gating channels — and by the native r4133
+/// accessor — not by any engine, so both lanes report the empty channel and the
+/// harness normalizes the placeholder out of every capture.
+const SPLIT_ALIAS_POPULATION: usize = 12;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -2042,6 +2047,54 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         Some((
             "crates/dss-core/src/exec/tests/newton.rs",
             "newton_powers_match_the_normal_algorithm",
+        )),
+    ),
+    // G2.4. The only row this module ever carried whose upstream was not Pascal
+    // — and, measured, not an engine behaviour at all. dss-python's
+    // `IMonitors.Channel` (`dss/IMonitors.py:28-55`) never calls
+    // `Monitors_Get_Channel`: it pulls the raw `ByteStream` and short-circuits
+    // `if cnt == 272: return np.zeros((1,), dtype=np.float32)`, 272 being the
+    // header-only stream size, while the function underneath returns
+    // `DefaultResult` — an empty array (`CAPI_Monitors.pas:295-331`). The r4133
+    // channel pads identically: our bridge decodes that stream "exactly like
+    // dss-python" (`crates/dss-epri/src/dss.rs:625-634`), and the **native**
+    // DDLL accessor sets `myDBLArray := [0]` and overwrites it only
+    // `If pMon.SampleCount > 0` (`Version8/Source/DDLL/DMonitors.pas:509-516`),
+    // so no official r4133 reader reports an empty channel either. The `[0.0]`
+    // is therefore fabricated by every *reader* we gate against, and the parity
+    // lane was reproducing a client library rather than an oracle engine.
+    // Hence a reclassification, not a bug fix: both lanes report the empty
+    // channel (which is also what the neighbouring `dbl_hour` read of the same
+    // stream has always reported), and `expected_monitor_channel` normalizes
+    // the placeholder out of the capture lane-independently *and*
+    // channel-independently — scoping it to `capi_v0145` was measured and reds
+    // the three gated `modes/time/generaltime*` decks on `r4133`. No golden
+    // byte moves (no golden deck leaves a monitor unflushed) and no ledger
+    // entry is owed: the pad is not an r4133 engine divergence.
+    (
+        "MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM",
+        Kind::SplitAlias,
+        // The engine kernel, and it discriminates on its own: the split had two
+        // separate early returns — an index guard, then `if self.flushed_records
+        // == 0 { return if compat::… { vec![0.0] } else { Vec::new() }; }` — and
+        // the torn-down form folds the second condition into the first, so this
+        // whole `if` line at `channel`'s own eight spaces exists only after the
+        // teardown. Single-line by necessity (CRLF checkout).
+        //
+        // The harness half — the now unconditional `expected_monitor_channel`,
+        // which carries this row's `LANE-EXCLUSION` marker — is held by the pin
+        // (the empty channel asserted in both lanes, so a re-split engine fails
+        // it however its branch is written) together with the
+        // `monitor_transform_is_the_unflushed_placeholder` unit test next to the
+        // transform, which asserts in both lanes that the rewrite fires for the
+        // placeholder and for nothing else.
+        Evidence::Site(
+            "crates/dss-core/src/elements/meter/monitor/mod.rs",
+            &["\n        if i < 1 || i > self.record_size || self.flushed_records == 0 {"],
+        ),
+        Some((
+            "crates/dss-core/src/elements/meter/monitor/mod.rs",
+            "monitor_channel_of_an_unflushed_stream_is_empty",
         )),
     ),
 ];
