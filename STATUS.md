@@ -903,7 +903,8 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   `Show busflow` text from the executive's own formatter, so the seven call sites
   are covered and not just the measuring function. That third claim bites in the
   parity lane, where `compat::render_rows` replays Pascal's `Pad`; the default
-  lane's table kernel would separate the columns anyway.
+  lane's table kernel would separate the columns anyway. (As first written that
+  claim did not discriminate at all — corrected at the settle below.)
   **Collateral, found by the parity gate and repaired in the same sub-step.**
   The neighbouring `render_rows` pin `show_table_layout_is_the_lane_kernel`
   claimed "the two `Show Losses` rows' numbers start at the same column only when
@@ -947,6 +948,58 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   was deleted: **max |Δ| = 0** on all eight gated kinds over 521 cases /
   3 220 212 records, zero drifted iteration counts — as predicted, report text is
   not in the dump set, so the flip is invisible there.
+
+- **G2.6 settle** (2026-08-07) — five auditor findings, four fixed and one
+  refuted-then-fixed-anyway; no engine behaviour changed (every edit is a test
+  assertion or a doc comment), so `lane_diff.ps1` was not re-run and zero golden
+  bytes moved.
+  **The pin's third claim was vacuous** (major). It asserted `!row.contains("\"1")`
+  on `Line.l1`'s seq-power row, but `Line.l1` reaches `b2` by its **second**
+  terminal (`check_bus_reference` returns the matched terminal), so the row
+  carries a `2` and the needle could not match at *either* width. Proven by
+  mutation, not by reading: forcing `show_bus_powers`' `mdnl` to 0 — the exact
+  value G2.6 tore down — left the pin **green** in the parity lane. It now
+  asserts that the first two whitespace tokens are `"Line.l1"` and `2` (a glued
+  row fails: the mutation reports `["\"Line.l1\"2", "-0.0"]`) **and** that the
+  terminal starts no earlier than column `measured + 2`, which a shrunk-but-still-
+  separating width fails too (`mdnl = 20` → column 22 against the measured 32).
+  Both mutations were re-run against the repaired pin and both go red. The claim
+  bites in the parity lane only, and now for a stated reason: the table kernel
+  builds columns from cell *text* and ignores the declared width, so no default-lane
+  report can observe a width regression — what covers that lane is claim 1, on the
+  measuring function both lanes share. Claim 2 is relabelled as what it is: an
+  assertion about Pascal's `Pad`, not about a report.
+  **`show_table_layout_is_the_lane_kernel` claim 2 is an equality again.** G2.6
+  had rewritten it as `kw_col >= width + 2`, which accepts any over-padding on the
+  parity side; each row is now reconstructed whole from `Pad(EncloseQuotes(name),
+  width + 2) + Format('%10.5f, ', …)` and compared, the way claim 1 treats the
+  aggregate line. Verified by mutation: padding the name cell to `width + 12`
+  passes the old bound and fails the equality.
+  **Doc corrections.** `report/show/powers.rs`'s glue note claimed the honest
+  width glues the longest name "in both lanes" — only the parity kernel glues
+  (`report::table::render_rows_table_impl` gives every cell its own column);
+  `golden_reports.rs::run_feeder_show_expected` still required its transform to be
+  the identity in the parity lane, an invariant G2.6 deliberately dropped for
+  `busflow_expected` — it now states that the reach is the caller's row
+  (identity while a split survives, unconditional once the row is torn down).
+  **The `max_bus_name_length` diagnosis was wrong and is now evidence-backed.**
+  The note called the backend's effective width "nondeterministic (no single value
+  reproduces it)". It is the *same* shadowing defect as the device-name one, one
+  identifier over: `SetMaxBusNameLength` assigns 4 to the unit variable
+  (`ShowResults.pas:105`, declared `:81`) and max-accumulates inside
+  `with DSS.ActiveCircuit do` (`:106-108`) into the shadowing field
+  (`Circuit.pas:100`, init 12 at `:380`). Two reachable values, and both are
+  visible in committed captures: `show_voltages.txt:4` is `Pad('Bus', …)` from
+  `ShowVoltages` (`:414`, outside the `with`) at width 4, while the bus rows below
+  it come from `WriteSeqVoltages`, whose whole body is a `with` (`:135`), at width
+  12; `show_powers_elem.txt:8` is `Pad('  Bus', …)` from `ShowPowers` (`:1130`,
+  outside) at width 4. r4133 has no such field (`ShowResults.pas:65`, loop
+  `:75-76`). The disposition is unchanged — the honest width stays — but it now
+  rests on the 2026-08-02 policy instead of the UB rule, and no row was ever owed
+  because the width only feeds padding no oracle-compared token can see.
+  Recorded in the local-only docs: `TODO_COMPAT_REGISTRY.md` §3.32 and a sibling
+  section in `investigations/issue-36-*.md` naming it a candidate row for the
+  series (no `to_opendss` row: it is capi-only and unobservable).
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

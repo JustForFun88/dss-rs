@@ -387,9 +387,16 @@ fn run_feeder_show(stem: &str, policy: &ExportPolicy) {
     run_feeder_show_expected(stem, policy, |oracle| oracle.to_string());
 }
 
-/// [`run_feeder_show`] with a lane-scoped **expected-value transform** on the
-/// oracle text, for the `Show` reports a Stage F row re-lays-out. `expected`
-/// must be the identity in the parity lane.
+/// [`run_feeder_show`] with an **expected-value transform** on the oracle text,
+/// for the `Show` reports a Stage F row re-lays-out.
+///
+/// How far `expected` reaches is the caller's row, not this helper's: while a
+/// row is still split by lane the transform is the identity in the parity lane
+/// (`terminal_total_expected`, `compat::render_rows`, alive until WP-G4.5); once
+/// the row is torn down and both lanes lay the report out the same way, the
+/// transform applies unconditionally (`busflow_expected`,
+/// `GOLDEN_REBASE_PLAN.md` G2.6). Either way it re-lays-out the **oracle** text
+/// — nothing is re-baselined.
 fn run_feeder_show_expected(stem: &str, policy: &ExportPolicy, expected: impl Fn(&str) -> String) {
     let (oracle, rust, scratch) = produce_feeder_show(stem);
     // Token compare in BOTH lanes — deliberately *not* `lane::compare_report`.
@@ -403,9 +410,12 @@ fn run_feeder_show_expected(stem: &str, policy: &ExportPolicy, expected: impl Fn
     // this policy's `GateSpec` columns exist to absorb. (2) The bus-name column
     // width: `max_bus_name_length` differs from the oracle's `MaxBusNameLength`,
     // so `Show Voltages`' header is `"Bus" + 8 spaces` here against the
-    // oracle's `+ 3`. Both predate F.4 — the pre-F.4 writer builds that header
-    // with the identical `format::pad("Bus", mbnl)` — and both are why this
-    // family has tokenized since PHASE8_PLAN §2.3.
+    // oracle's `+ 3` — that `+ 3` is the dss_capi field/unit-variable shadowing
+    // defect leaving the header's width at 4 while the bus rows below it get 12
+    // (diagnosed at `report::show::max_bus_name_length`). Both predate F.4 — the
+    // pre-F.4 writer builds that header with the identical
+    // `format::pad("Bus", mbnl)` — and both are why this family has tokenized
+    // since PHASE8_PLAN §2.3.
     //
     // So `Show` layout has no byte contract in either lane. What carries it
     // instead: the structural layout pins
