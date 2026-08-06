@@ -943,7 +943,10 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   not carry the defect.
   Zero golden bytes moved (`git diff --stat -- tests/golden` empty over the
   range); the corpus gate is green in both lanes, which is what would have
-  falsified the classification.
+  falsified the classification. `lane_diff.ps1` re-run because a compat kernel
+  was deleted: **max |Δ| = 0** on all eight gated kinds over 521 cases /
+  3 220 212 records, zero drifted iteration counts — as predicted, report text is
+  not in the dump set, so the flip is invisible there.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 
