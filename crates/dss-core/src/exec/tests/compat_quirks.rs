@@ -29,19 +29,37 @@ use crate::exec::Dss;
 /// Three claims, all unconditional:
 ///
 /// 1. the width itself is the longest `Class.Name` in the circuit;
-/// 2. what that width *does*, at the one place it is observable: `Show BusFlow`
-///    writes `Pad(EncloseQuotes(FullName), width + 2) + IntToStr(term)`
-///    (`ShowResults.pas:1375`), so a name shorter than the field gets a terminal
-///    column of its own — while the *longest* name, which fills `width + 2`
-///    exactly, still glues. Asserting both sides of that boundary is what keeps
-///    the pin from passing on an engine that merely padded everything, and it is
-///    the boundary `golden_reports.rs::busflow_expected` is written around;
+/// 2. what `Pad(EncloseQuotes(FullName), width + 2) + IntToStr(term)`
+///    (`ShowResults.pas:1375`) *does* with that width — asserted on the Pascal
+///    primitive the parity kernel replays, not on a report: a name shorter than
+///    the field gets a terminal column of its own, while the *longest* name,
+///    which fills `width + 2` exactly, still glues. That boundary is the one
+///    `golden_reports.rs::busflow_expected` is written around, which is why it
+///    is stated here rather than left implicit;
 /// 3. that the width the report *formatter* uses is that same measured one —
 ///    asserted on the real `Show busflow` text, so the seven `report::show`
-///    call sites are covered too and not just the measuring function. Claim 3
-///    bites in the parity lane, whose `compat::render_rows` replays Pascal's
-///    `Pad`; the default lane's table kernel gives every cell its own column, so
-///    there a reverted call site would still separate. Both lanes run it.
+///    call sites are covered too and not just the measuring function. Two
+///    assertions: the terminal is a token of its own (a width at or below the
+///    quoted name's length would glue it to the closing quote, which is exactly
+///    the torn-down layout), and it starts no earlier than column `width + 2`
+///    (so a width merely *smaller* than the measured one, which still separates,
+///    fails too).
+///
+/// Claim 3 is what bites when a call site regresses, and it bites in the
+/// **parity** lane: `compat::render_rows` replays Pascal's `Pad`, so the width
+/// reaches the bytes there. The default lane's table kernel builds its columns
+/// from the cell *text* and ignores the declared width entirely
+/// (`report::table::render_rows_table_impl`), so no report can observe a width
+/// regression there — what covers the default lane is claim 1, on the measuring
+/// function both lanes share. The pin is unconditional all the same (a teardown
+/// pin may not branch on the lane), and its `width + 2` bound holds in both:
+/// measured on this fixture, the terminal lands at column 32 under `Pad` and at
+/// 34 under the table kernel, whose widest cell here is the same 30-char name.
+///
+/// The bound is a `>=` and not an equality because the two kernels legitimately
+/// place the column differently (32 vs 34); its lower end is precisely the
+/// parity kernel's own `width + 2`, i.e. the value the torn-down row collapsed
+/// to 2.
 #[test]
 fn device_name_column_is_sized_from_its_content() {
     let mut dss = Dss::new();
@@ -66,10 +84,11 @@ fn device_name_column_is_sized_from_its_content() {
         "the honest width is the longest `Class.Name` in the circuit"
     );
 
-    // The layout consequence, on the row the width actually formats. Note the
-    // column is sized `width + 2` where `width` already counts the *unquoted*
-    // name, so the longest element exactly fills it and still glues — the split
-    // shows on every shorter name, which is what a column is for.
+    // The layout `Pad` gives that width — Pascal's primitive in isolation, which
+    // is what the parity kernel replays. The column is sized `width + 2` where
+    // `width` already counts the *unquoted* name, so the longest element exactly
+    // fills it and still glues; the split shows on every shorter name, which is
+    // what a column is for. (The engine's own text is claim 3, below.)
     let row = |full: &str| {
         format!(
             "{}{}",
@@ -89,8 +108,11 @@ fn device_name_column_is_sized_from_its_content() {
          honest width — the boundary this row's transform is written around"
     );
 
-    // …and the report formatter really uses that width: `Line.l1`'s seq-power
-    // row carries its terminal as a token of its own.
+    // …and the report formatter really uses that width. `Line.l1` reaches `b2`
+    // by its **second** terminal (`check_bus_reference` returns the matched
+    // terminal), so its seq-power row carries a `2`; the seq-*current* rows
+    // above it are uppercased by `WriteSeqCurrents`, so this prefix selects the
+    // power row unambiguously.
     let text = {
         let Dss {
             classes, circuit, ..
@@ -105,10 +127,23 @@ fn device_name_column_is_sized_from_its_content() {
         .lines()
         .find(|l| l.starts_with("\"Line.l1\""))
         .unwrap_or_else(|| panic!("no `Line.l1` seq-power row in\n{text}"));
+    let close = power_row.rfind('"').expect("the closing quote of the name") + 1;
+    let term_col = close
+        + power_row[close..]
+            .find(|c: char| c != ' ')
+            .unwrap_or_else(|| panic!("nothing after the name in {power_row:?}"));
+    assert_eq!(
+        power_row.split_whitespace().take(2).collect::<Vec<_>>(),
+        ["\"Line.l1\"", "2"],
+        "the terminal number must be a token of its own; glued to the closing \
+         quote it is upstream's collapsed layout ({power_row:?})"
+    );
     assert!(
-        !power_row.contains("\"1"),
-        "the `Show busflow` writer padded the name column to a width below the \
-         measured one — upstream's collapsed layout is back ({power_row:?})"
+        term_col >= measured + 2,
+        "the `Show busflow` writer placed the terminal at column {term_col}, \
+         before the measured column {} — it padded the name field to less than \
+         the width the engine computed ({power_row:?})",
+        measured + 2
     );
 }
 
@@ -128,9 +163,11 @@ fn device_name_column_is_sized_from_its_content() {
 ///    MaxDeviceNameLength + 2)`, a circuit-wide maximum. The fixture separates
 ///    the two by carrying a **Load** whose name is far longer than either Line's:
 ///    `Show Losses` lists only power-delivery elements, so that name never
-///    reaches the table, yet it does set the Pascal field width. The parity rows
-///    therefore start their numbers at or past `width + 2` and the table rows
-///    well before it.
+///    reaches the table, yet it does set the Pascal field width. Each row is
+///    then reconstructed whole from `Pad(EncloseQuotes(name), width + 2) +
+///    Format('%10.5f, ', …)` and compared as an **equality**, the same way claim
+///    1 treats the aggregate line: a bound on the number's column would accept a
+///    parity kernel that padded to any width past the field.
 ///
 ///    (Until `GOLDEN_REBASE_PLAN.md` G2.6 this claim was written as "the two
 ///    rows' numbers start at the *same* column only when a table sized them" —
@@ -180,13 +217,6 @@ fn show_table_layout_is_the_lane_kernel() {
         crate::report::show::show_losses(classes, ckt, &sys, &node_v)
     };
 
-    // Where the field after `prefix_len` characters of `l` begins.
-    let next_field = |l: &str, from: usize| {
-        from + l[from..]
-            .find(|c: char| c != ' ')
-            .unwrap_or_else(|| panic!("no field after column {from} of {l:?}"))
-    };
-
     // 1. the aggregate block's line, reconstructed from Pascal's own arithmetic:
     //    `Pad(label, 30) + Format('%10.1f') + ' kW'`. Asserting the whole line
     //    rather than a column index keeps the claim content-independent — the
@@ -213,17 +243,30 @@ fn show_table_layout_is_the_lane_kernel() {
     // 2. the element-name column is content-sized in the default lane only: the
     //    parity kernel pads it to the engine's circuit-wide `width + 2`, which
     //    the Load's name inflates past anything this table renders.
+    //
+    //    Like claim 1 this is Pascal's own arithmetic reconstructed and compared
+    //    whole — `Pad(EncloseQuotes(name), width + 2)` then
+    //    `Format('%10.5f, ', kLosses.re)` (`ShowResults.pas` `ShowLosses`) — not
+    //    a bound on a column index. A bound would let the parity kernel pad to
+    //    any width past the field and still pass; the equality pins the field.
     let rows: Vec<&str> = text.lines().filter(|l| l.starts_with('"')).collect();
     assert_eq!(rows.len(), 2, "one row per Line: {rows:?}");
-    let kw_col = |l: &str| next_field(l, l.rfind('"').expect("the closing quote") + 1);
     for row in &rows {
+        let close = row.rfind('"').expect("the closing quote") + 1;
+        let (name, rest) = row.split_at(close);
+        let kw = rest
+            .split_whitespace()
+            .next()
+            .unwrap_or_else(|| panic!("no kW number after the name in {row:?}"))
+            .trim_end_matches(',');
+        let pascal = format!("{}{kw:>10},", crate::report::format::pad(name, width + 2));
         assert_eq!(
-            kw_col(row) >= width + 2,
+            row.starts_with(&pascal),
             parity,
             "the parity kernel writes `Pad(EncloseQuotes(name), width + 2)` with \
-             the circuit-wide width ({width} + 2 here); the table kernel sizes \
-             the column from the names it actually prints, which are far shorter \
-             ({row:?})"
+             the circuit-wide width ({width} + 2 here) then `%10.5f, `; the table \
+             kernel sizes the column from the names it actually prints, which are \
+             far shorter, and carries no comma ({row:?} vs {pascal:?})"
         );
     }
 

@@ -77,20 +77,37 @@ use crate::exec::registry::DssClass;
 /// identical to char count for the ASCII corpus names).
 ///
 /// This is the clean source value (`max(4, longest_bus_name)`). The pinned dss_capi
-/// 0.14.5 backend's *effective* `MaxBusNameLength` is an **inconsistent per-report
-/// quirk** (probe-proven: `ShowVoltages`/`WriteBusVoltages` floors it at 12,
-/// `ShowPowers` at ~5 — even each run in isolation, so it is not the SetMax… loop
-/// producing them and not reproducible with any single value). It only ever feeds
-/// name-column *padding* — space pads (invisible to the whitespace-tokenizing
-/// golden) or `PadDots` runs (the golden's `split_fields` drops pure dot-runs, so
-/// the quirk cannot affect a token). SETTLED at the WP8.8 exit sweep: the quirk is
-/// nondeterministic (no single value reproduces it), so per the CLAUDE.md UB rule
-/// it is NOT reproduced — the honest source value stays, the padding widths are
-/// masked cosmetics under the tokenizing comparator (the same class as the
-/// device-name column's backend `= 0` — see [`device_name_width`], whose
-/// reproduction `GOLDEN_REBASE_PLAN.md` G2.6 tore down; this one never had a
-/// reproduction to tear down, because no single value reproduces the quirk in
-/// the first place).
+/// 0.14.5 backend's *effective* `MaxBusNameLength` varies **within one report**,
+/// and it is the very defect [`device_name_width`] documents, one identifier over:
+///
+/// * `SetMaxBusNameLength` assigns `4` to the **unit** variable
+///   (`.inputs/dss_capi/src/Common/ShowResults.pas:105`, declared `:81`) and then
+///   max-accumulates inside `with DSS.ActiveCircuit do` (`:106-108`), where the
+///   name resolves to the shadowing `TDSSCircuit` field (`src/Common/Circuit.pas:100`,
+///   initialized to 12 at `:380`). So the loop fills a field, the unit variable
+///   keeps `4`, and which of the two a writer sees is decided by whether it sits
+///   inside such a `with` block.
+/// * Both values are visible in one committed capture. `tests/golden/reports/show_voltages.txt`
+///   line 4 is `Pad('Bus', …)` from `ShowVoltages` itself (`:414`, outside the
+///   `with`) and comes back 4 wide; the bus rows under it are `WriteSeqVoltages`
+///   (`:196`), whose whole body *is* a `with DSS.ActiveCircuit do` (`:135`), and
+///   they are 12 wide. `show_powers_elem.txt` line 8 is `Pad('  Bus', …)` from
+///   `ShowPowers` (`:1130`, outside), 5 characters for a 4-wide field.
+/// * r4133 has no such field: `MaxBusNameLength` is a unit variable only
+///   (`Version8/Source/Common/ShowResults.pas:65`, loop `:75-76`), so every writer
+///   there sees the honest width.
+///
+/// So this is a second capi-only shadowing defect, deterministic and with two
+/// reachable values — **not** the "nondeterministic, no single value reproduces
+/// it" reading recorded at the WP8.8 exit sweep, which this sub-step's G2.6
+/// settle corrected against the Pascal and the captures above. The disposition is
+/// unchanged and now rests on the 2026-08-02 policy rather than on the UB rule:
+/// an upstream defect the authority does not share is not reproduced in any lane,
+/// so the honest source value stays. It stays *unobservable* as well — the width
+/// only ever feeds name-column padding, i.e. space pads (invisible to the
+/// whitespace-tokenizing golden) or `PadDots` runs (`harness::split_fields` drops
+/// pure dot-runs) — which is why, unlike the device-name column, it never needed
+/// a lane row to tear down: no oracle-compared token can see it.
 pub(crate) fn max_bus_name_length(ckt: &Circuit) -> usize {
     let mut m = 4;
     for i in 0..ckt.buses.len() {
