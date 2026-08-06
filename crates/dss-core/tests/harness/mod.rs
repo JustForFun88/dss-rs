@@ -1900,9 +1900,9 @@ pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tolerances, ctx: &str)
         if exp.skip_channels.contains(&ch) {
             continue;
         }
-        // The lane's reading of the capture: identical to it except for
-        // dss-python's unflushed-stream `[0.0]` placeholder in the default lane
-        // (`lane::expected_monitor_channel`).
+        // The capture as its reader means it: identical to it except for the
+        // client-side unflushed-stream `[0.0]` placeholder, which both oracle
+        // channels emit and both lanes drop (`lane::expected_monitor_channel`).
         let e = &lane::expected_monitor_channel(view.flushed_records, e);
         assert_eq!(
             act.len(),

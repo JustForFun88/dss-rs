@@ -718,16 +718,33 @@ at `tests/corpus/modes/manifest.json:488` in the same commit.
 
 ### G2.4 — monitor-channel padding reclassify
 
-`MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM` (`:1165`) is a dss-python **wrapper**
-artifact (`dss/IMonitors.py`), not an engine bug. Thread `channel: EngineChannel`
-through `harness::compare_monitor` (`harness/mod.rs:1831`; called at
-`corpus_gate/runner.rs:512-513` where the channel is already in scope) and turn
-`lane::expected_monitor_channel` (`lane.rs:379-385`) into a channel-scoped,
-lane-independent capture normalization that fires **only** for
-`EngineChannel::Capi0145` — on `r4133` there is no wrapper, so a `[0.0]` capture
-is a real value and is compared raw. Drop the alias, document it as a wrapper
-artifact, and ADD an expected-value pin (e.g.
-`monitor_channel_of_an_unflushed_stream_is_empty`) — this row has none today.
+`MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM` (`:1165`) is a **client** artifact,
+not an engine bug. The plan first asked for a *channel-scoped* normalization
+firing only for `capi_v0145`, on the premise that "on `r4133` there is no
+wrapper, so a `[0.0]` capture is a real value". **That premise is false, and the
+sub-step's first attempt returned blocked with the measurement** (owner
+resolution 2026-08-06, recorded here): the pad is a client-layer artifact on
+**both** gating channels — dss-python pads in `dss/IMonitors.py`; our own bridge
+replicates that decoder by design (`crates/dss-epri/src/dss.rs:625-634`,
+`cnt == 272 -> [0.0]`); and the *native* r4133 accessor pads too
+(`Version8/Source/DDLL/DMonitors.pas:509-516` initializes `myDBLArray` to `[0]`
+and overwrites it only `If SampleCount > 0`, so with a header-only stream no
+official r4133 reader can report an empty channel). Channel-scoping was measured
+to red three gated `r4133` cases (`modes:time/generaltime.dss`,
+`generaltime_yearly.dss`, `generaltime_duty.dss`).
+
+**Resolution (A), as executed.** Drop the alias; the engine's `Monitor::channel`
+returns the empty channel in both lanes; `lane::expected_monitor_channel`
+(`lane.rs:379-385`) becomes an **unconditional** capture normalization — both
+lanes, both channels — documented as a client-wrapper artifact of every oracle
+read path, carrying the row's `LANE-EXCLUSION` marker. No `EngineChannel`
+parameter is threaded through `harness::compare_monitor` (nothing needs it), the
+`dss-epri` decoder is left alone (making it unlike both dss-python and the native
+DDLL would be a worse lie), and **no ledger entry is added** — legitimizing a
+client artifact as an r4133 engine divergence is exactly what the ledger must not
+say. ADD the expected-value pin `monitor_channel_of_an_unflushed_stream_is_empty`
+(this row had none today) and register the row with `SPLIT_ALIAS_POPULATION`
+13 → 12.
 
 ### G2.5 — the three corpus-blocked WholeCase bug fixes
 
