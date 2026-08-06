@@ -181,8 +181,10 @@ changes that will make the lanes genuinely diverge.
 The Stage F landing measurement (2026-07-31, 520 cases / 3 219 862 records /
 ~4.8 M compared values) is recorded in `STATUS.md`: every gated kind
 **bit-identical** (`max |Δ| = 0` on `v`, `cur`, `pow`, `loss`, `y`, `errs`,
-`conv`, `iter`), the only measurable divergence being the deliberate Newton
-`Powers`/`Losses` row. The job's `DOCUMENTED_DIVERGENCES` list is **hand**-mirrored
+`conv`, `iter`), the only measurable divergence being the then-deliberate Newton
+`Powers`/`Losses` row — which `GOLDEN_REBASE_PLAN.md` G2.3 tore down, leaving
+`DOCUMENTED_DIVERGENCES` **empty**: both lanes now recompute at the converged
+`NodeV`, so every record in the dump is held to the ordinary bound. The list is **hand**-mirrored
 from `harness::lane`'s field-scoped exclusions — an example cannot import the
 test harness, and nothing checks the two lists against each other, so keep them
 in step by hand. What *is* checked is that every entry still fires: a stale one

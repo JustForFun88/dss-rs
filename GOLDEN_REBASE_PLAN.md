@@ -627,7 +627,10 @@ bytes move — these rows have no harness exclusion anywhere. (G2.1g caveat:
 measure first whether any committed `cim/` golden observes the grounded flag —
 the default-lane byte compare is green today, which says none should; if one
 does, the row moves into G2.2c with a `lane_expected_cim` rule, and G3.4's
-predicted-diff list gains it.)
+predicted-diff list gains it. **As executed: measured, and it did not fire** —
+no committed `cim/` golden observes the flag, so the row stayed in G2.1g, the
+transform kept exactly its two rewrites, and G3.4's list is unchanged. The
+transform is `expected_cim` since G2.2c renamed it.)
 
 - **G2.1a** `stddev_single_point` (`compat.rs:561`; issue-11)
 - **G2.1b** `CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL` (`:763`; issue-15)
@@ -644,7 +647,8 @@ predicted-diff list gains it.)
   `report/export/seq_currents.rs:107-109`): the `ColTol` exclusion at
   `golden_reports.rs:2907` becomes unconditional; the derived pin at `:2953` stays
   (it derives truth from `Export Currents`' `Iresid_j` — an independent anchor).
-  Move `tests/TOLERANCE_NOTES.md:642-653`; strike CLAUDE.md:104 and
+  Move `tests/TOLERANCE_NOTES.md:642-653` (**as executed:** rewritten in place —
+  see the G5.1 doc list for why); strike CLAUDE.md:104 and
   TOLERANCE_NOTES.md:643 in the same commit; **re-anchor the pin-walk non-vacuity
   const (`oracle_parity_cfg_gate.rs:1087-1108`) onto one of the five numeric
   survivors (the G2.0(a) list).**
@@ -674,7 +678,9 @@ predicted-diff list gains it.)
   (`golden_reports.rs:5610-5626`) unconditional; non-vacuity assert stays.
 - `CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX` + `CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH`
   (`:909`, `:936`; issue-24, issue-25): `golden_cim.rs:64-92 lane_expected_cim`
-  rewrite unconditional.
+  rewrite unconditional (**as executed:** renamed `expected_cim`, and its pin
+  `cim_lane_divergences_are_pinned` → `cim_writer_divergences_are_pinned`, since
+  neither reads the lane any more).
 
 ### G2.2d — existing-exclusion rows: event-log transforms
 
@@ -712,16 +718,61 @@ at `tests/corpus/modes/manifest.json:488` in the same commit.
 
 ### G2.4 — monitor-channel padding reclassify
 
-`MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM` (`:1165`) is a dss-python **wrapper**
-artifact (`dss/IMonitors.py`), not an engine bug. Thread `channel: EngineChannel`
-through `harness::compare_monitor` (`harness/mod.rs:1831`; called at
-`corpus_gate/runner.rs:512-513` where the channel is already in scope) and turn
-`lane::expected_monitor_channel` (`lane.rs:379-385`) into a channel-scoped,
-lane-independent capture normalization that fires **only** for
-`EngineChannel::Capi0145` — on `r4133` there is no wrapper, so a `[0.0]` capture
-is a real value and is compared raw. Drop the alias, document it as a wrapper
-artifact, and ADD an expected-value pin (e.g.
-`monitor_channel_of_an_unflushed_stream_is_empty`) — this row has none today.
+The `[0.0]` that `MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM` (`:1165`)
+reproduced is a **client** artifact, not an engine value. The plan first asked
+for a *channel-scoped* normalization firing only for `capi_v0145`, on the
+premise that "on `r4133` there is no wrapper, so a `[0.0]` capture is a real
+value". **That premise is false, and the sub-step's first attempt returned
+blocked with the measurement** (owner resolution 2026-08-06, recorded here): the
+pad is a client-layer artifact on **both** gating channels — dss-python pads in
+`dss/IMonitors.py`, and the `r4133` channel's captures come from our own bridge,
+which replicates that decoder by design (`crates/dss-epri/src/dss.rs:625-634`,
+`cnt == 272 -> [0.0]`). Channel-scoping was measured to red three gated `r4133`
+cases (`modes:time/generaltime.dss`, `generaltime_yearly.dss`,
+`generaltime_duty.dss`).
+
+**The engine half (corrected 2026-08-06 after audit — the first write-up of this
+section overstated the Pascal).** Neither authority engine returns an *empty*
+channel in the gated state either, so this sub-step is not a pure
+reclassification: it also declines an upstream defect, per the 2026-08-02
+policy. `Monitors_Get_Channel` keeps its empty `DefaultResult`
+(`CAPI_Monitors.pas:304`) only for `SampleCount <= 0` (`:308`) or an invalid
+index (`:313-320`); the `generaltime*` decks have `SampleCount > 0` with a
+header-only stream (`TakeSample` increments the counter, `Monitor.pas:1195`,
+while only `Save` grows the stream, `:1122-1125`), so it allocates `SampleCount`
+doubles (`:321`) and fills them from a zero-filled `AllocMem` buffer (`:325`)
+whose reads all fail at EOF — i.e. it fabricates `SampleCount` zeros out of
+bytes it never wrote. r4133's native accessor is the same: `DMonitors.pas:509-516`
+pads `myDBLArray := [0]` only while `SampleCount = 0`, and at `SampleCount > 0`
+takes the read branch (`:517-541`) over that same unwritten region. Neither is
+reachable through a gating client (both short-circuit at `cnt == 272` and never
+call the accessor), so the divergence is **unobservable on either channel** —
+which is why it owes no ledger entry, and why an upstream-ready report
+(`investigations/to_opendss/`) is the only artifact it produces.
+
+**Resolution (A), as executed.** Drop the alias; the engine's `Monitor::channel`
+returns the empty channel in both lanes; `lane::expected_monitor_channel`
+(`lane.rs:379-385`) becomes an **unconditional** capture normalization — both
+lanes, both channels — documented as a client-decoder artifact of both oracle
+read paths, carrying the row's `LANE-EXCLUSION` marker. No `EngineChannel`
+parameter is threaded through `harness::compare_monitor` (nothing needs it) and
+**no ledger entry is added** — legitimizing a client artifact as an r4133 engine
+divergence is exactly what the ledger must not say. Rejected alternatives, with
+their *correct* reasons: (B) making the `dss-epri` decoder return the honest
+empty channel would not make the bridge engine-faithful either — the r4133
+accessor's answer in this state is `SampleCount` zeros, so `[]` merely swaps one
+client fabrication for another, while breaking the bridge's design contract of
+being a dss-python-shaped reader so both channels' captures stay comparable;
+(C) three ledger entries would name a divergence the gate cannot see. ADD the
+expected-value pin `monitor_channel_of_an_unflushed_stream_is_empty` (this row
+had none today) and register the row with `SPLIT_ALIAS_POPULATION` 13 → 12.
+
+**Fail-on-stale (added at the settle).** Once both lanes report `[]`, a client
+that stopped padding would return `[]` too and the normalization would silently
+become dead code — the one rot its shape guards cannot see. `lane.rs` therefore
+counts placeholder hits vs non-placeholder unflushed captures and
+`assert_monitor_pad_is_live` (called from `corpus_gate.rs` beside
+`assert_reround_cells_are_live`) fails on any miss.
 
 ### G2.5 — the three corpus-blocked WholeCase bug fixes
 
@@ -872,8 +923,10 @@ Same mechanics. `json/schema_full_oracle.json` + `schema_divergences.json` stay
 frozen (§1.2); `cim/` value semantics are witnessed by G1.1's live props + the
 r4133 CIM bug fixes from G2.2c (and G2.1g, only if its measurement showed a
 committed golden observes the flag) land here as predicted diffs. Order inside
-the commit: self-snapshot `cim/` **first**, then retire `lane_expected_cim`
-(`golden_cim.rs:64-92`) and `cim_lane_divergences_are_pinned` — the transform
+the commit: self-snapshot `cim/` **first**, then retire `expected_cim`
+(`golden_cim.rs`, `lane_expected_cim` until G2.2c made it lane-independent) and
+`cim_writer_divergences_are_pinned` (`cim_lane_divergences_are_pinned` until the
+same sub-step) — the transform
 becomes the identity only against the new reference (deleting it before the
 snapshot reds the gate); the CIM pins stay.
 
@@ -1003,7 +1056,10 @@ from the enum.
   (`TESTING.md:89-158`); golden lock beside the population lock; the WP-G4
   outcome (both lanes render identically).
 - `tests/TOLERANCE_NOTES.md`: the G1 floor derivations live here; the Iresidual
-  note moved by G2.2a.
+  note **rewritten in place** by G2.2a (it stayed in §Field-specific exceptions —
+  it describes the `SeqCurrents` compare policy, and §Deliberately-reproduced
+  upstream inexactnesses, the move target the sub-step text named, is about
+  reproductions, which that row no longer is; STATUS records the deviation).
 - Every edit keeps `oracle_parity_cfg_gate.rs:1310`
   (`operational_docs_cite_the_compat_machinery_accurately`) green — including its
   `alias_refs >= 4` floor (the G2.0 citations must survive every edit);

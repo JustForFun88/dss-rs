@@ -3459,20 +3459,24 @@ pub(crate) fn export_cdpsm(
                 "ShuntCompensator",
                 "D",
             );
-            // Stage F `compat::CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX`:
-            // upstream emits this arm's `grounded` under the
-            // `LinearShuntCompensator.` prefix while the wye arm six lines above
-            // uses `ShuntCompensator.` (`ExportCIMXML.pas:3706` vs `3700`).
-            // Parity keeps the inconsistency; the default lane writes the name
-            // the sibling arm — and the CIM100 schema — spell.
+            // The delta arm names the same class the wye arm above does.
+            // Upstream writes this one `BooleanNode(FunPrf,
+            // 'LinearShuntCompensator.grounded', FALSE)` six lines below its own
+            // `BooleanNode(FunPrf, 'ShuntCompensator.grounded', TRUE)`
+            // (`.inputs/dss_capi/src/Common/ExportCIMXML.pas:3706` vs `:3700`;
+            // r4133 `Version8/Source/Common/ExportCIMXML.pas:3187` vs `:3183`) —
+            // one object emitting one attribute under two class prefixes,
+            // decided by its connection. CIM100 declares `grounded` on
+            // `ShuntCompensator`, and `LinearShuntCompensator` is a subclass, so
+            // the delta spelling resolves against no property at all: a strict
+            // consumer rejects it, a lenient one drops the flag. Both gating
+            // oracles carry it; both lanes now write the sibling arm's name
+            // (`GOLDEN_REBASE_PLAN.md` G2.2c; `issue-24`). Only the element name
+            // moves — the value and the emission order are untouched.
             writer::boolean_node(
                 &mut buf,
                 ProfileChoice::Fun,
-                if crate::compat::CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX {
-                    "LinearShuntCompensator.grounded"
-                } else {
-                    "ShuntCompensator.grounded"
-                },
+                "ShuntCompensator.grounded",
                 false,
             );
             writer::double_node(
@@ -4135,22 +4139,23 @@ pub(crate) fn export_cdpsm(
                     "ACLineSegment.b0ch",
                     snap.len * snap.c0 * val,
                 );
-                // Stage F `compat::CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH`:
-                // upstream writes `ACLineSegment.b0ch` a second time here
-                // (`ExportCIMXML.pas:4367`) — the `g0ch` of the
-                // `bch`/`gch`/`b0ch`/`g0ch` quartet the four nodes above open.
-                // Parity keeps the duplicate name; the default lane writes the
-                // name the `PerLengthSequenceImpedance` sibling spells.
-                writer::double_node(
-                    &mut buf,
-                    ProfileChoice::Ep,
-                    if crate::compat::CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH {
-                        "ACLineSegment.b0ch"
-                    } else {
-                        "ACLineSegment.g0ch"
-                    },
-                    0.0,
-                );
+                // The zero-sequence shunt **conductance** closes the quartet.
+                // Upstream writes `DoubleNode(EpPrf, 'ACLineSegment.b0ch', 0.0)`
+                // immediately after the real `b0ch`
+                // (`.inputs/dss_capi/src/Common/ExportCIMXML.pas:4367` after
+                // `:4366`; r4133 `Version8/Source/Common/ExportCIMXML.pas:3756`
+                // after `:3755`) — a copied line whose value was replaced and
+                // whose name was not, leaving the segment with no `g0ch` and two
+                // contradictory `b0ch` nodes (a consumer taking the last one
+                // reads the zero-sequence susceptance as 0). The pair `bch`/
+                // `gch` written just above and the `PerLengthSequenceImpedance`
+                // sibling of the same procedure (`:4521-4522`; r4133
+                // `:3895-3896`, ported at `write_line_code_catalog`) both spell
+                // the quartet `bch, gch, b0ch, g0ch`. Both gating oracles carry
+                // the duplicate; both lanes now name it `g0ch`
+                // (`GOLDEN_REBASE_PLAN.md` G2.2c; `issue-25`). Only the element
+                // name moves — the value stays `0.0`, the order is untouched.
+                writer::double_node(&mut buf, ProfileChoice::Ep, "ACLineSegment.g0ch", 0.0);
             } else {
                 bval = true;
                 puz_local = format!("{}_PUZ", snap.name);

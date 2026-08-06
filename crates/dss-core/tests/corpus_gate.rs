@@ -142,6 +142,12 @@ fn corpus_gate_all_cases_match_engines() {
     // that stopped occurring must fail rather than quietly become a no-op.
     // Self-silencing under `DSS_GATE_ONLY` and in the parity lane.
     harness::lane::assert_reround_cells_are_live();
+    // And for G2.4's monitor-channel normalization, which needs it for the
+    // opposite reason: since both lanes' engines now report the empty channel, a
+    // client that stopped padding would make the transform a silent no-op rather
+    // than a loud mismatch. Self-silencing when no unflushed monitor was
+    // compared, so `DSS_GATE_ONLY` runs do not trip it.
+    harness::lane::assert_monitor_pad_is_live();
 }
 
 /// Write the contamination-proof artifact: a label-sorted

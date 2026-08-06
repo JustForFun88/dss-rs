@@ -52,9 +52,11 @@ fn european_50hz_feeder_is_alive() {
 }
 
 /// Every circuit element — not just the source — inherits the 50 Hz base
-/// frequency (the generic `add_object` seeding, Pascal's base-class constructor),
-/// EXCEPT a Monitor, which `TMonitorObj.Create` hard-pins to 60 Hz
-/// (Monitor.pas:472) — oracle-verified.
+/// frequency (the generic `add_object` seeding, Pascal's base-class
+/// constructor), the Monitor included: upstream hard-pins it to 60 Hz
+/// (`Monitor.pas:472` == r4133 `:552`), which
+/// [`monitor_basefreq_inherits_the_fundamental`] pins as this engine's
+/// deliberate divergence.
 #[test]
 fn all_elements_inherit_the_50hz_base_frequency() {
     let mut dss = Dss::new();
@@ -74,6 +76,7 @@ fn all_elements_inherit_the_50hz_base_frequency() {
         "vsource.source",
         "energymeter.em1",
         "sensor.se1",
+        "monitor.m1",
     ] {
         assert_eq!(
             query_f64(&mut dss, &format!("{elem}.basefreq")),
@@ -81,64 +84,60 @@ fn all_elements_inherit_the_50hz_base_frequency() {
             "{elem} base frequency"
         );
     }
-    // The Monitor is the lane-split exception (Monitor.pas:472) — see the
-    // dedicated test below.
-    assert_eq!(
-        query_f64(&mut dss, "monitor.m1.basefreq"),
-        if dss_parity() { 60.0 } else { 50.0 },
-        "monitor base frequency"
-    );
 }
 
-/// The lane the engine was compiled in, read from the engine itself.
-fn dss_parity() -> bool {
-    crate::compat::ORACLE_PARITY
-}
-
-/// The Stage F `monitor_base_frequency` row — the CLAUDE.md upstream bug #6,
-/// deferred here by name.
+// EXPECTED-VALUE-PIN(monitor_base_frequency): a Monitor created in a 50 Hz
+// circuit reads back the inherited 50 — the fixed value, asserted outright in
+// both lanes, where upstream and both gating oracles report the hard-coded
+// 60.0. The pin also holds the two boundaries the fix must not move: a 60 Hz
+// circuit (every golden and every gated corpus deck) is unchanged, and an
+// explicit `basefreq=` still wins over the inherited value.
+/// The CLAUDE.md upstream bug #6, torn down by `GOLDEN_REBASE_PLAN.md` G2.2b.
 ///
-/// `TMonitorObj.Create` hard-pins `Basefrequency := 60.0` (Monitor.pas:472 ==
-/// r4133:552), overriding the base-class `BaseFrequency :=
-/// ActiveCircuit.Fundamental`. Under `Set DefaultBaseFrequency=50` every other
-/// element reads 50; upstream's monitor reads 60 — and that value is the
-/// `fBase` a mode-4 monitor feeds into `FlickerMeter`, where `fBase = 50.0`
-/// selects the IEC 61000-4-15 230 V/50 Hz lamp curve. So upstream computes a
-/// 50 Hz feeder's Pst with the wrong (60 Hz) lamp curve unless `basefreq=50`
-/// is written by hand.
+/// `TMonitorObj.Create` hard-pins `Basefrequency := 60.0`
+/// (`.inputs/dss_capi/src/Meters/Monitor.pas:472` == r4133
+/// `Version8/Source/Meters/Monitor.pas:552`) *after* the inherited
+/// `TDSSCktElement.Create` set `BaseFrequency := ActiveCircuit.Fundamental`
+/// (`CktElement.pas:203`). Under `Set DefaultBaseFrequency=50` every other
+/// element reads 50 and upstream's monitor reads 60 — and that value is the
+/// `fBase` a mode-4 monitor feeds into `FlickerMeter` (`Monitor.pas:1657` →
+/// `Pstcalc.pas:594`), where `fBase = 50.0` selects the IEC 61000-4-15
+/// 230 V/50 Hz lamp weighting (`Pstcalc.pas:609-626`). So upstream computes a
+/// 50 Hz feeder's Pst on the wrong lamp curve unless `basefreq=50` is written
+/// by hand.
 ///
-/// **Parity lane**: 60.0, the value both gating oracles pin. **Default lane**:
-/// the inherited 50.0 — the deliberate divergence, expected-value pinned here
-/// (and only observable off 60 Hz, which is why no golden or corpus case
-/// moves). Asserted as an equality against the lane, so the test is meaningful
-/// in both.
+/// Both lanes now inherit. The single oracle-compared observable that moves is
+/// `Monitor.BaseFreq` on the one 50 Hz gated deck (`LVTestCase`), excluded in
+/// both lanes by `tests/harness/mod.rs::LANE_SKIP_PROPS` and pinned here; no
+/// golden byte and no Pst number moves, because every golden and every gated
+/// mode-4 deck runs at 60 Hz, where the two readings coincide.
 #[test]
-fn monitor_basefreq_is_the_lane_kernel() {
+fn monitor_basefreq_inherits_the_fundamental() {
     let mut dss = Dss::new();
     dss.command("Set DefaultBaseFrequency=50");
     dss.command("New circuit.euro basekv=11");
     dss.command("New Line.l1 bus1=sourcebus bus2=b2 length=1 r1=0.1 x1=0.1 c1=0 c0=0");
     dss.command("New Monitor.m1 element=line.l1 terminal=1 mode=4");
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
-    // The circuit fundamental is 50 in both lanes.
     assert_eq!(dss.circuit().unwrap().fundamental, 50.0);
     assert_eq!(
         query_f64(&mut dss, "monitor.m1.basefreq"),
-        if dss_parity() { 60.0 } else { 50.0 },
-        "parity reproduces the upstream 60.0 override (Monitor.pas:472); \
-         the default lane inherits the circuit fundamental"
+        50.0,
+        "the monitor inherits the circuit fundamental like every other element; \
+         upstream and both gating oracles report the hard-coded 60.0 \
+         (Monitor.pas:472 == r4133:552)"
     );
     // A 60 Hz circuit — every golden and every gated corpus deck — is
-    // bit-identical in both lanes, which is why this row moves nothing.
+    // unchanged by the fix, which is why no golden byte moves.
     let mut sixty = Dss::new();
     sixty.command("New circuit.us basekv=12.47");
     sixty.command("New Line.l1 bus1=sourcebus bus2=b2 length=1 r1=0.1 x1=0.1 c1=0 c0=0");
     sixty.command("New Monitor.m1 element=line.l1 terminal=1 mode=4");
     assert_eq!(query_f64(&mut sixty, "monitor.m1.basefreq"), 60.0);
-    // An explicit `basefreq=` still lets the user correct it (flows into
-    // FlickerMeter correctly on both engines).
-    dss.command("Edit monitor.m1 basefreq=50");
-    assert_eq!(query_f64(&mut dss, "monitor.m1.basefreq"), 50.0);
+    // An explicit `basefreq=` is applied after the seeding and still wins —
+    // and it is what a user had to write to get correct flicker upstream.
+    dss.command("Edit monitor.m1 basefreq=60");
+    assert_eq!(query_f64(&mut dss, "monitor.m1.basefreq"), 60.0);
 }
 
 /// A LineCode (a DSS_OBJECT) created after `New circuit` at 50 Hz inherits the

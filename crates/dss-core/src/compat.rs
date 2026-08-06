@@ -39,27 +39,31 @@
 //! | solver execution (`Par`, refinement) | `dss-sparse` `compat` | no — declaration only, M3c / WP-R1 own the flip |
 //! | Y triplet dedup | *no split* — one shared kernel serves both lanes (IV.1) | — |
 //! | sym components | *no split* — measured, see below | — |
-//! | Export SeqCurrents `Iresidual` | [`IRESIDUAL_FROM_TERMINAL_1`] — this file | **yes** (F.3c) |
-//! | multi-meter `Bus_Int_Duration` | [`BUS_INT_DURATION_WALKS_ALL_BUSES`] — this file | **yes** (F.3c) |
-//! | Monitor `BaseFrequency` 60.0 (CLAUDE.md bug 6, deferred here by name) | [`monitor_base_frequency`] — this file | **yes** (F.3c) |
-//! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
+//! | Export SeqCurrents `Iresidual` | *torn down* (GOLDEN_REBASE G2.2a) — `report::export::seq_currents` sums the row's own terminal in both lanes | — |
+//! | multi-meter `Bus_Int_Duration` | *torn down* (GOLDEN_REBASE G2.2a) — `solution::meters::reliability` walks only its own zone in both lanes | — |
+//! | Monitor `BaseFrequency` 60.0 (CLAUDE.md bug 6) | *torn down* (GOLDEN_REBASE G2.2b) — `exec::command::create_object_no_edit` inherits `Fundamental` for every element, Monitor included, in both lanes | — |
+//! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5) | *torn down* (GOLDEN_REBASE G2.3) — `exec::view::snapshot_elements` recomputes `Iterminal` at the converged `NodeV` for Powers, Losses and Currents alike, in both lanes | — |
 //! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
 //! | report text rendering — `Show` device-name column width | [`max_device_name_length`] — same section | **yes** (F.4b) |
-//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f, the CIM wye `grounded` flag G2.1g, the Line height-unit re-read G2.1h |
+//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f, the CIM wye `grounded` flag G2.1g, the Line height-unit re-read G2.1h, the Isource `Bus2` latch G2.2b, the two CIM attribute names and the Fault `Dump` `MinAmps` reprint G2.2c, the two Relay event-log labels G2.2d, and the unflushed monitor-channel pad G2.4 — that last one mostly *reclassified* rather than fixed: the `[0.0]` it reproduced comes from the oracle clients' stream decoder, not from an engine (the engines' own answer there, `SampleCount` fabricated zeros, is a separate upstream defect this port declines, unobservable through either client) |
 //!
-//! Rows 12–13 are not in IV.2's table and do not extend it: they are the two
-//! *reproduced* CLAUDE.md upstream bugs whose clean fix is deferred to this
-//! pass — row 12 (Monitor) **by name**, in that document's own bug bullet; row
-//! 13 (Newton) under `PORTING_PLAN.md` §4.1 rule 4's blanket deferral, quoted
-//! ten lines below, which is what sanctions it. (CLAUDE.md's Newton bullet
-//! named no Stage F deferral until F.3j wrote one; the earlier claim that both
-//! were deferred "by name" overreached.) With them the named-bug set is closed:
-//! of the six, two
-//! were never reproduced at all (VSConverter's self-aliased `MVMult`, harmonics
-//! `Powers`-after-`Currents`) — as is the out-of-range half of
-//! `Bus_Int_Duration` — and all four that *are* reproduced now carry the
-//! parity/default split (`Iresidual`, the in-range `Bus_Int_Duration`
-//! cross-zone overwrite, Monitor `BaseFrequency`, Newton stale `Iterminal`).
+//! The Monitor `BaseFrequency` and Newton stale-`Iterminal` rows were not in
+//! IV.2's table and did not extend it: they *were* the two **reproduced**
+//! CLAUDE.md upstream bugs whose clean fix was deferred to this pass — Monitor
+//! **by name**, in that document's own bug bullet; Newton under
+//! `PORTING_PLAN.md` §4.1 rule 4's blanket deferral, quoted ten lines below,
+//! which is what sanctioned it. (Named here, not numbered: the table above loses
+//! a row per teardown, so an ordinal goes stale on its own. And CLAUDE.md's
+//! Newton bullet named no Stage F deferral until F.3j wrote one; the earlier
+//! claim that both were deferred "by name" overreached.) With them the
+//! named-bug set is closed, and since `GOLDEN_REBASE_PLAN.md` G2.3 it is closed
+//! in the strong sense — **no** CLAUDE.md upstream bug is reproduced in either
+//! lane. Of the six, two were never reproduced at all (VSConverter's
+//! self-aliased `MVMult`, harmonics `Powers`-after-`Currents`) — as is the
+//! out-of-range half of `Bus_Int_Duration`. The four that *were* reproduced are
+//! all gone: G2.2a tore down `Iresidual` and the in-range `Bus_Int_Duration`
+//! cross-zone overwrite, G2.2b tore down Monitor `BaseFrequency`, and G2.3 tore
+//! down the Newton stale `Iterminal`.
 //!
 //! The last row is likewise not a new *kernel*. IV.2's table enumerates the
 //! shared arithmetic kernels — the primitives called from hundreds of sites —
@@ -535,146 +539,28 @@ pub fn etk_invert_partial_pivot_impl(a: &mut [f64], norder: usize) -> Result<(),
 /// shared implementation** for the same measured reasons (F.3i).
 pub use etk_invert_gj_no_exchange_impl as etk_invert;
 
-// ---------------------------------------------------------------------------
-// Export SeqCurrents `Iresidual` (IV.2 row 9)
-// ---------------------------------------------------------------------------
-
-/// Whether `Export SeqCurrents` prints **terminal 1's** residual current on
-/// every terminal row.
-///
-/// `true` reproduces the upstream bug: Pascal `CalcAndWriteSeqCurrents` sums
-/// `cBuffer^[i]` for `i = 1..Ncond` inside the per-terminal loop, missing the
-/// `(j-1)*Ncond` offset, so every row repeats terminal 1's residual
-/// (`ExportResults.pas`; oracle-proven on IEEE13 `Line.671680`, whose true
-/// terminal-2 residual is 9.8e-12 A while the export prints terminal 1's
-/// 2.83e-5 A). Deterministic and defined, so the parity lane keeps it.
-///
-/// `false` sums the row's **own** terminal — the clean fix. The value is what
-/// the element's `Iterminal` already holds; only the slice changes, so this
-/// is a reporting fix with no effect on any solved quantity.
-pub const IRESIDUAL_FROM_TERMINAL_1_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const IRESIDUAL_FROM_TERMINAL_1_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use IRESIDUAL_FROM_TERMINAL_1_DEFAULT_IMPL as IRESIDUAL_FROM_TERMINAL_1;
-#[cfg(feature = "oracle-parity")]
-pub use IRESIDUAL_FROM_TERMINAL_1_PARITY_IMPL as IRESIDUAL_FROM_TERMINAL_1;
-
-// ---------------------------------------------------------------------------
-// Multi-meter `Bus_Int_Duration` (IV.2 row 10)
-// ---------------------------------------------------------------------------
-
-/// Whether `CalcReliabilityIndices`' bus-interruption-duration loop walks
-/// **every circuit bus** instead of only this meter's zone.
-///
-/// `true` reproduces the upstream bug (`EnergyMeter.pas:2521`): with more than
-/// one EnergyMeter, a bus whose `BusSectionID` was written by *another* meter's
-/// sweep is indexed into **this** meter's `FeederSections`, so the later meter
-/// overwrites foreign buses' durations from its own sections. In-range section
-/// ids make that a deterministic cross-zone overwrite the parity lane keeps
-/// (golden `export_busreliability_multimeter`); out-of-range ids are an OOB
-/// heap read, proven nondeterministic and never reproduced in either lane (the
-/// `.get()` returns `None`).
-///
-/// `false` walks only the buses this meter's own zone sweep assigned — the
-/// clean fix, which makes each meter's durations independent of meter order.
-pub const BUS_INT_DURATION_WALKS_ALL_BUSES_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const BUS_INT_DURATION_WALKS_ALL_BUSES_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use BUS_INT_DURATION_WALKS_ALL_BUSES_DEFAULT_IMPL as BUS_INT_DURATION_WALKS_ALL_BUSES;
-#[cfg(feature = "oracle-parity")]
-pub use BUS_INT_DURATION_WALKS_ALL_BUSES_PARITY_IMPL as BUS_INT_DURATION_WALKS_ALL_BUSES;
-
-// ---------------------------------------------------------------------------
-// Monitor base frequency (CLAUDE.md §Known upstream bugs — deferred to Stage F)
-// ---------------------------------------------------------------------------
-
-/// A new Monitor's `BaseFrequency`, upstream-faithful: `TMonitorObj.Create`
-/// hard-pins `Basefrequency := 60.0` *after* the inherited constructor
-/// (`Monitor.pas:472` == r4133 `:552`), overriding the base-class
-/// `BaseFrequency := ActiveCircuit.Fundamental` (`CktElement.pas:203` — the
-/// last statement of `TDSSCktElement.Create`; `:233` is inside `Destroy`) that
-/// every other element gets. Both gating oracles pin 60.0.
-///
-/// This is not cosmetic: the value is the `fBase` a mode-4 monitor passes into
-/// `FlickerMeter` (`Monitor.pas:1657` → `Pstcalc.pas:594`), where `fBase =
-/// 50.0` selects the IEC 61000-4-15 230 V/50 Hz lamp weighting coefficients
-/// instead of the 120 V/60 Hz set (`Pstcalc.pas:609-626`) — so in a 50 Hz
-/// circuit upstream computes Pst with the wrong lamp curve unless the user
-/// writes `basefreq=50` by hand.
-#[inline]
-pub fn monitor_base_frequency_60hz_impl(_fundamental: f64) -> f64 {
-    60.0
-}
-
-/// A new Monitor's `BaseFrequency`, the clean fix: inherit the circuit's
-/// fundamental like every other element. In a 60 Hz circuit — every committed
-/// golden and every gated corpus deck that instantiates a Monitor — this is
-/// bit-identical to [`monitor_base_frequency_60hz_impl`]; in a 50 Hz circuit it
-/// is the **deliberate divergence** that also gives mode-4 flicker the right
-/// lamp curve.
-#[inline]
-pub fn monitor_base_frequency_inherit_impl(fundamental: f64) -> f64 {
-    fundamental
-}
-
-#[cfg(feature = "oracle-parity")]
-pub use monitor_base_frequency_60hz_impl as monitor_base_frequency;
-#[cfg(not(feature = "oracle-parity"))]
-pub use monitor_base_frequency_inherit_impl as monitor_base_frequency;
-
-// ---------------------------------------------------------------------------
-// Newton stale `Iterminal` in Powers/Losses
-// (CLAUDE.md §Known upstream bugs — deferred here as a de-compat DECISION)
-// ---------------------------------------------------------------------------
-
-/// Whether reported `Powers`/`Losses` reuse the terminal current the **Newton**
-/// solver left cached, instead of recomputing it at the converged voltage.
-///
-/// `true` reproduces the upstream quirk. `DoNewtonSolution`'s final
-/// `SumAllCurrents` stamps `Iterminal` from the *pre-final* voltage guess
-/// `NodeV_{n-1}` and marks it solved for the current `SolutionCount`; the
-/// `NodeV -= dV` update follows it. `CktElement.Get_Powers`/`Get_Losses` read
-/// through the cache-aware `ComputeIterminal` and therefore return that
-/// one-step-stale current, while `CktElement.Currents` (`GetCurrents`)
-/// recomputes fresh at `NodeV_n` — so after `Set algorithm=Newton` upstream
-/// reports `S != V·conj(I)` for the same element in the same read. It is
-/// deterministic, defined and not state-poisoning, so the parity lane keeps it,
-/// and it cannot be escaped by bumping the oracle: the EPRI channel confirms
-/// the quirk in every vendored official rev — v9.8 (r3723), v10.2 (r4088),
-/// v11.0 (r4133), all fingerprint 0.478 kVA (checked 2026-07-08). See
-/// `investigations/newton_stale_iterminal_bug_report.md`.
-///
-/// `false` recomputes `Iterminal` at `NodeV_n` for all three reads — the clean
-/// fix named at the reproduction site since the port, which restores the
-/// identity `S = V·conj(I)` that `Powers` is *defined* by, in every algorithm.
-/// The lanes differ **only** after a Newton solve: after every fixed-point /
-/// direct / harmonic solve the cache is already invalid at read time, so both
-/// lanes recompute the same current and every other deck is bit-identical.
-///
-/// **What replaces the lost gate signal.** Newton and the normal fixed point
-/// converge to the same voltages in the same iteration count on the `newton*`
-/// corpus decks, so this staleness was the *only* channel there that proved
-/// Newton dispatch was wired at all — the default lane no longer exposes it
-/// (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS` excludes those decks'
-/// powers/losses in that lane only; the parity lane still compares them against
-/// both oracles). The replacement is stronger and runs in **both** lanes:
-/// `exec::tests::newton` asserts the staleness *inside the engine* — after
-/// `algorithm=Newton` the solver-cached `Iterminal` differs from a fresh
-/// recompute at the converged `NodeV`, and after the normal algorithm it does
-/// not — which is a direct assertion that `DoNewtonSolution` ran, rather than
-/// an inference from a reported power.
-pub const POWERS_REUSE_STALE_NEWTON_ITERMINAL_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const POWERS_REUSE_STALE_NEWTON_ITERMINAL_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use POWERS_REUSE_STALE_NEWTON_ITERMINAL_DEFAULT_IMPL as POWERS_REUSE_STALE_NEWTON_ITERMINAL;
-#[cfg(feature = "oracle-parity")]
-pub use POWERS_REUSE_STALE_NEWTON_ITERMINAL_PARITY_IMPL as POWERS_REUSE_STALE_NEWTON_ITERMINAL;
+// The **Newton stale `Iterminal`** row is gone (`GOLDEN_REBASE_PLAN.md` G2.3).
+// `DoNewtonSolution`'s final `SumAllCurrents` stamps every element's
+// `Iterminal` from the *pre-final* voltage guess `NodeV_{n-1}` and marks it
+// solved for the current `SolutionCount` (`Common/Solution.pas:944-948`, the
+// `NodeV -= dV` update at `:965-968`; r4133
+// `Version8/Source/Common/Solution.pas` is the same order), so upstream's
+// cache-aware `Get_Powers`/`Get_Losses` (`CktElement.pas:542-550`) return a
+// one-Newton-step-stale current while `CktElement.Currents` recomputes fresh at
+// `NodeV_n` — one read of one element reporting `S != V·conj(I)`, the identity
+// `Powers` is *defined* by. Both lanes now recompute all three reads at the
+// converged `NodeV` (`exec::view::snapshot_elements`), which is what every
+// other algorithm already got: after a fixed-point / direct / harmonic solve
+// the cache is invalid at read time, so nothing but a Newton solve moves.
+//
+// Its observable is the two gated `modes/newton/` decks' element
+// powers/losses, which no oracle channel reports correctly (the quirk is in
+// v9.8/r3723, v10.2/r4088 and v11.0/r4133 alike, fingerprint 0.478 kVA, checked
+// 2026-07-08): `harness::lane::LANE_SKIP_ELEM_POWERS` now excludes those two
+// channels in **both** lanes, and `exec::tests::newton` carries the replacement
+// — the in-engine dispatch tripwire plus the expected-value pin that Newton's
+// powers equal the normal algorithm's. See
+// `investigations/issue-05-newton-stale-iterminal.md`.
 
 // ---------------------------------------------------------------------------
 // Single-site upstream quirks
@@ -694,27 +580,11 @@ pub use POWERS_REUSE_STALE_NEWTON_ITERMINAL_PARITY_IMPL as POWERS_REUSE_STALE_NE
 // says what was meant — and (iii) the divergence is pinned by a test rather
 // than merely narrated.
 
-/// Whether an explicit `Bus2=` on an **Isource** fails to latch, so a later
-/// `Bus1=` silently overwrites it.
-///
-/// `true` reproduces the upstream quirk: `TIsourceObj.PropertySideEffects`
-/// (`Isource.pas:221`) has no `Bus2` case at all, so `Bus2Defined` never
-/// becomes `TRUE` — while `TVsourceObj.PropertySideEffects` (`Vsource.pas:498`)
-/// sets it on exactly that property. The `Bus1` side effect then re-derives the
-/// grounded-Y default `bus1.0.0…` unconditionally, so on an Isource an explicit
-/// `Bus2` survives only if it is parsed *after* `Bus1` in the same edit.
-///
-/// `false` latches it like the sibling class does — the clean fix named at the
-/// site since the port. The lanes differ only when `Bus2=` precedes `Bus1=` on
-/// one Isource edit, which no golden and no gated corpus deck does.
-pub const ISOURCE_BUS2_NEVER_LATCHES_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const ISOURCE_BUS2_NEVER_LATCHES_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use ISOURCE_BUS2_NEVER_LATCHES_DEFAULT_IMPL as ISOURCE_BUS2_NEVER_LATCHES;
-#[cfg(feature = "oracle-parity")]
-pub use ISOURCE_BUS2_NEVER_LATCHES_PARITY_IMPL as ISOURCE_BUS2_NEVER_LATCHES;
+// The **Isource `Bus2` never latches** row was the first member of this
+// section and is gone: `GOLDEN_REBASE_PLAN.md` G2.2b tore it down, so
+// `elements::pc::isource`'s `BUS2` side effect latches `bus2_defined` in both
+// lanes, like `TVsourceObj.PropertySideEffects` (`Vsource.pas:498`; r4133
+// `Version8/Source/PCElements/Vsource.pas:468`) always did.
 
 // The **GICTransformer `G2` off `%R1`** row belongs here by shape but is NOT
 // split: the flip was implemented and gated in F.3k, and re-measured in F.3v,
@@ -731,189 +601,90 @@ pub use ISOURCE_BUS2_NEVER_LATCHES_PARITY_IMPL as ISOURCE_BUS2_NEVER_LATCHES;
 // for the full measurement and for the `R1=`/`R2=` transitive cover it leaves
 // ready for whoever lands it.
 
-/// Whether the CIM `LinearShuntCompensator` writer puts the **delta** branch's
-/// `grounded` flag under the `LinearShuntCompensator.` prefix.
-///
-/// `true` reproduces the upstream quirk: the two arms of one `if` in
-/// `ExportCIMXML.pas` write the same CIM attribute under two different class
-/// prefixes — `BooleanNode(FunPrf, 'ShuntCompensator.grounded', TRUE)` for a
-/// wye bank (`:3700`) and `BooleanNode(FunPrf, 'LinearShuntCompensator.
-/// grounded', FALSE)` for a delta one (`:3706`).
-///
-/// `false` writes `ShuntCompensator.grounded` in both arms — the clean fix its
-/// own *sibling arm* spells out six lines above, and the only one CIM sanctions:
-/// `grounded` is declared on `ShuntCompensator`, and `LinearShuntCompensator` is
-/// a subclass, so an RDF consumer resolving the delta form against the CIM100
-/// schema finds no such property. Only the element **name** moves; the value
-/// (`false`) and the emission order are identical in both lanes.
-pub const CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX_DEFAULT_IMPL: bool = false;
+// The two **CIM attribute-name** rows are gone the same way
+// (`GOLDEN_REBASE_PLAN.md` G2.2c): the delta shunt arm writes
+// `ShuntCompensator.grounded` — the name its own wye sibling six lines above
+// uses and the only class CIM100 declares `grounded` on — and the
+// symmetrical-components line writer closes its `bch`/`gch`/`b0ch` quartet with
+// `ACLineSegment.g0ch`, the name the `PerLengthSequenceImpedance` sibling
+// spells. Both lanes now write them; `tests/golden_cim.rs` applies the two
+// renames to the oracle goldens unconditionally, so no golden byte moved.
 
-#[cfg(not(feature = "oracle-parity"))]
-pub use CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX_DEFAULT_IMPL as CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX;
-#[cfg(feature = "oracle-parity")]
-pub use CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX_PARITY_IMPL as CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX;
+// The two **Relay event-log** rows left together
+// (`GOLDEN_REBASE_PLAN.md` G2.2d), both of them label-only — no computed value
+// moves in either lane:
+//
+// * the per-`Sample` state trace. `TRelayObj.Sample` closes its `FPresentState`
+//   resync with a bare `AppendtoEventLog('Debug Sample: Relay.' + Name,
+//   'FPresentState: …')` (r4133 `Version8/Source/Controls/Relay.pas:1325`) — no
+//   `if DebugTrace`, and not gated on `ShowEventLog` either, so every relay
+//   writes one debug line per control sample into the *user-facing* log. The
+//   Recloser's byte-identical line **is** guarded (`Recloser.pas:1044`), and so
+//   is every other `Debug Sample` line in Relay.pas itself (`:1822`, `:1845`);
+//   exactly one line lost its guard, and r4088 did not have the line at all.
+//   Both lanes now route it through the `Relay::dbg` helper the port already
+//   had, so it is written when — and only when — `DebugTrace` says so.
+// * the operation-count reset label. Both `CTRL_RESET` arms of
+//   `TRelayObj.DoPendingAction` write `'Recloser.' + Self.Name`
+//   (`Relay.pas:1196`, `:1212`), a verbatim copy of `Recloser.pas:909`/`:924`,
+//   while all eight other events of that same procedure (`:1087`-`:1176`) write
+//   `'Relay.' + Self.Name` — and both earlier revisions of this code (r4088
+//   `Relay.pas:971`, dss_capi 0.14.5 `Relay.pas:1003`) label it correctly. Both
+//   lanes now name the class that emitted the event.
+//
+// `harness::lane::expected_eventlog` applies both rewrites to the oracle
+// capture in **both** lanes, so the gated `oracle: "r4133"` protection decks
+// keep comparing every other line against the oracle and no golden byte moved.
 
-/// Whether the CIM `ACLineSegment` writer emits its zero-sequence **shunt
-/// conductance** under the `b0ch` (susceptance) name.
-///
-/// `true` reproduces the upstream quirk: the symmetrical-components branch of
-/// the line writer closes with two `b0ch` nodes in a row —
-/// `DoubleNode(EpPrf, 'ACLineSegment.b0ch', Len * C0 * val)` immediately
-/// followed by `DoubleNode(EpPrf, 'ACLineSegment.b0ch', 0.0)`
-/// (`ExportCIMXML.pas:4366-4367`). The second is the `g0ch` line: the four
-/// preceding nodes are the `bch`/`gch`/`r0`/`x0` set, so the quartet was meant
-/// to be `bch, gch, b0ch, g0ch`, and the duplicate leaves the segment with no
-/// `g0ch` at all and two conflicting `b0ch` values.
-///
-/// `false` names the second node `ACLineSegment.g0ch`. The fix is spelled out
-/// by the sibling writer in the same unit: `PerLengthSequenceImpedance` emits
-/// `bch`/`gch`/`b0ch`/`g0ch` in exactly this order with exactly these values,
-/// and the goldens carry both forms side by side. Only the element **name**
-/// moves — the value stays `0.0` and the emission order is identical in both
-/// lanes.
-pub const CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_DEFAULT_IMPL: bool = false;
+// The **Fault `Dump` reprints `MinAmps`** row left with the two CIM ones
+// (`GOLDEN_REBASE_PLAN.md` G2.2c): `TFaultObj.DumpProperties` starts its generic
+// tail at `NumPropsThisClass` = `Ord(High(TProp))` = 9 = `MinAmps` itself
+// (`Fault.pas:533`; r4133 `Version8/Source/PDElements/Fault.pas:594` with
+// `NumPropsthisclass = 9` `:107`), so the loop's first iteration re-emits the
+// property the custom `~ MinAmps=%.1f` line just wrote. Every other class with
+// that loop writes `NumPropsThisClass + 1` (`Transformer.pas:1276`,
+// `AutoTrans.pas:1307`, `XfmrCode.pas:663`), so both lanes now start the tail at
+// `NormAmps`; `golden_reports`' `fault_dump_expected` drops the second of each
+// pair from the oracle goldens unconditionally, so no golden byte moved.
 
-#[cfg(not(feature = "oracle-parity"))]
-pub use CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_DEFAULT_IMPL as CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH;
-#[cfg(feature = "oracle-parity")]
-pub use CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_PARITY_IMPL as CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH;
-
-/// Whether a **Relay**'s per-`Sample` state-trace line is written to the event
-/// log unconditionally, instead of under the `DebugTrace` guard every other
-/// trace line in the class carries.
-///
-/// `true` reproduces the upstream quirk: `TRelayObj.Sample` closes its
-/// `FPresentState` resync with a bare
-/// `AppendtoEventLog('Debug Sample: Relay.' + Name, 'FPresentState: …')`
-/// (r4133 `Version8/Source/Controls/Relay.pas:1325`) — no `if DebugTrace`, and
-/// not gated on `ShowEventLog` either. Every relay therefore writes one
-/// `Debug Sample` line per control sample into the *user-facing* event log,
-/// whatever the user asked for.
-///
-/// `false` gates it on `DebugTrace`, which is what the same source says twice
-/// over: the **Recloser**'s byte-identical line is written
-/// `if DebugTrace then AppendtoEventLog('Debug Sample: Recloser.' + Name, …)`
-/// (`Recloser.pas:1044`), and *every other* `Debug Sample` line in Relay.pas
-/// itself — the instantaneous/curve trip traces at `:1822`, `:1837`, … — is
-/// guarded. Exactly one line lost its guard.
-///
-/// The port already carries the guarded form as a helper (`Relay::dbg`), so the
-/// default lane simply routes this line through it. `DebugTrace` defaults off,
-/// so the default lane's event log loses the trace lines and keeps every
-/// protection event; the parity lane is unchanged, which is what the 13 gated
-/// `oracle: "r4133"` protection decks compare. `harness::lane::expected_eventlog`
-/// drops exactly those lines from the oracle capture in the default lane.
-pub const RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE_DEFAULT_IMPL as RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE;
-#[cfg(feature = "oracle-parity")]
-pub use RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE_PARITY_IMPL as RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE;
-
-/// Whether a **Relay**'s operation-count reset event names the device
-/// `Recloser.<name>`.
-///
-/// `true` reproduces the upstream quirk: both `CTRL_RESET` arms of
-/// `TRelayObj.DoPendingAction` write
-/// `AppendtoEventLog('Recloser.' + Self.Name, 'Phase %d reset (1ph reset)')`
-/// and its `'Phase ALL reset (3ph reset)'` twin (r4133 `Relay.pas:1196` and
-/// `:1212`). The event log then attributes a relay's reset to a recloser that
-/// does not exist — and if the circuit *does* contain a recloser of that name,
-/// to the wrong device.
-///
-/// `false` names the class that emitted it. The fix is not a preference: the
-/// two lines are a verbatim copy of `Recloser.pas:909`/`:924` (same format
-/// strings, same guard), while *every other* event in the very same
-/// `DoPendingAction` — the 1ph/3ph trips, the lockouts, the reclosings at
-/// `Relay.pas:1087`-`:1176` — writes `'Relay.' + Self.Name`. Two lines out of a
-/// dozen carry the donor's class name.
-///
-/// Only the log label moves; the reset itself (`OperationCount := 1`, the TD21
-/// quiet window) is identical in both lanes.
-/// `harness::lane::expected_eventlog` rewrites exactly these lines in the
-/// oracle capture in the default lane, and only where the named device is a
-/// Relay and not a Recloser.
-pub const RELAY_RESET_EVENT_IS_LABELLED_RECLOSER_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const RELAY_RESET_EVENT_IS_LABELLED_RECLOSER_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use RELAY_RESET_EVENT_IS_LABELLED_RECLOSER_DEFAULT_IMPL as RELAY_RESET_EVENT_IS_LABELLED_RECLOSER;
-#[cfg(feature = "oracle-parity")]
-pub use RELAY_RESET_EVENT_IS_LABELLED_RECLOSER_PARITY_IMPL as RELAY_RESET_EVENT_IS_LABELLED_RECLOSER;
-
-/// Whether a **Fault**'s `Dump` starts its generic property tail *at* `MinAmps`,
-/// so the property is printed twice.
-///
-/// `true` reproduces the upstream quirk: `TFaultObj.DumpProperties` writes its
-/// custom `~ MinAmps=%.1f` line and then runs
-/// `for i := NumPropsthisClass to ParentClass.NumProperties`
-/// (`Fault.pas:533`). `NumPropsThisClass` is `Ord(High(TProp))` = 9 = `MinAmps`
-/// itself, so the tail's first iteration re-emits the very property just
-/// written — in its generic spelling, giving the pair `~ MinAmps=3.0` /
-/// `~ MinAmps=3` before the real tail (`NormAmps`…`Enabled`).
-///
-/// `false` starts the tail at `MinAmps + 1` (`NormAmps`). The off-by-one is a
-/// slip and not a convention: every other class with this exact loop writes the
-/// `+ 1` — `Transformer.pas:1276`, `AutoTrans.pas:1307`, `XfmrCode.pas:663` —
-/// and no class prints a property twice on purpose.
-///
-/// Only the `Dump` text moves, in one class, by one line; the property table,
-/// the `Save` script and the `?` getter are untouched in both lanes. The two
-/// goldens that carry the pair (`tests/golden/reports/dump_fault{,_gmatrix}.txt`)
-/// stay pinned to the oracle in both lanes — `golden_reports`'
-/// `fault_dump_expected` drops exactly the second of the two consecutive
-/// `~ MinAmps=` lines in the default lane.
-pub const FAULT_DUMP_TAIL_REPRINTS_MINAMPS_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const FAULT_DUMP_TAIL_REPRINTS_MINAMPS_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use FAULT_DUMP_TAIL_REPRINTS_MINAMPS_DEFAULT_IMPL as FAULT_DUMP_TAIL_REPRINTS_MINAMPS;
-#[cfg(feature = "oracle-parity")]
-pub use FAULT_DUMP_TAIL_REPRINTS_MINAMPS_PARITY_IMPL as FAULT_DUMP_TAIL_REPRINTS_MINAMPS;
-
-/// Whether `Monitor::channel` reports a **one-element `[0.0]` placeholder** for
-/// a monitor that has flushed nothing, instead of an empty channel.
-///
-/// `true` reproduces the oracle *client*, and it is the only row in this module
-/// whose upstream is not Pascal: dss-python's `IMonitors.Channel`
-/// (`dss/IMonitors.py:28-55`) does not call the engine's `Monitors_Get_Channel`
-/// at all — it pulls the raw `ByteStream` and short-circuits
-/// `if cnt == 272: return np.zeros((1,), dtype=np.float32)`, 272 being the
-/// header-only stream size. The **engine** does the honest thing:
-/// `CAPI_Monitors.pas:295-331` returns `DefaultResult` (an empty array) when
-/// nothing is there. So the placeholder is a wrapper artifact, reproduced here
-/// only because the pinned oracle channel is that wrapper.
-///
-/// `false` returns the empty channel the C-API returns and the caller means:
-/// a `Vec<f32>` of length 0, not a fabricated zero sample. `dbl_hour` — the
-/// same stream, read through a surface dss-python does *not* special-case — is
-/// already empty in both lanes, so this row also makes the two reads agree.
-///
-/// **A monitor is unflushed whenever `Save`/`SaveAll` has not run**, which the
-/// gated corpus does reach (`SolveGeneralTime` never calls `SaveAll` — e.g.
-/// `tests/corpus/modes/time/generaltime_duty.dss` and its two monitors). The
-/// default lane therefore maps the oracle capture rather than dropping it:
-/// `harness::lane::expected_monitor_channel` requires the placeholder to be
-/// exactly `[0.0]` before rewriting it to the empty channel, and only for a
-/// monitor whose Rust view reports **zero flushed records** — so an engine that
-/// lost real samples still fails loudly, and an oracle that stops emitting the
-/// placeholder fails the transform instead of passing silently.
-pub const MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM_PARITY_IMPL: bool = true;
-/// See the parity twin above.
-pub const MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM_DEFAULT_IMPL: bool = false;
-
-#[cfg(not(feature = "oracle-parity"))]
-pub use MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM_DEFAULT_IMPL as MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM;
-#[cfg(feature = "oracle-parity")]
-pub use MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM_PARITY_IMPL as MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM;
+// `MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM` lived here until
+// `GOLDEN_REBASE_PLAN.md` G2.4 **reclassified** it — the only row this module
+// ever carried whose upstream was not Pascal. The `[0.0]` the parity lane used
+// to emit for a header-only monitor stream is fabricated by the **client layer
+// of both oracle channels**, never by an engine:
+//
+// * dss-python's `IMonitors.Channel` (`dss/IMonitors.py:28-55`) does not call
+//   `Monitors_Get_Channel` at all: it pulls the raw `ByteStream` and
+//   short-circuits `if cnt == 272: return np.zeros((1,), dtype=np.float32)`,
+//   272 being the header-only stream size.
+// * our own r4133 bridge reproduces that decoder by design
+//   (`crates/dss-epri/src/dss.rs:625-634`, "exactly like dss-python",
+//   `cnt == 272 -> vec![0.0]`) — and, since it is what the `r4133` channel's
+//   captures are actually made of, it is the load-bearing evidence for that
+//   channel, not any Pascal accessor.
+//
+// **Corrected 2026-08-06 (audit).** The engines are not innocent here, they are
+// simply never reached through those two clients. `Monitors_Get_Channel` keeps
+// its empty `DefaultResult` (`CAPI_Monitors.pas:304`) only for `SampleCount <=
+// 0` (`:308`) or an invalid index (`:313-320`); with samples taken and nothing
+// flushed — `TakeSample` increments `SampleCount` (`Monitor.pas:1195`) while
+// only `Save` grows the stream (`:1122-1125`) — it returns `SampleCount` zeros
+// read out of a zero-filled `AllocMem` buffer whose reads all fail at EOF
+// (`:321-330`). r4133's native accessor pads `myDBLArray := [0]` only while
+// `SampleCount = 0` and otherwise walks the same unwritten region
+// (`Version8/Source/DDLL/DMonitors.pas:509-541`). So no official reader reports
+// an empty channel, but neither engine reports `[0.0]` either: the placeholder
+// is purely a client artifact, and the `SampleCount` zeros are an upstream
+// defect this port does not reproduce (2026-08-02 policy). Neither is
+// observable through a gating client, which is why the row owes no ledger
+// entry.
+//
+// Hence both lanes report the empty channel
+// (`elements::meter::monitor::Monitor::channel`, which thereby also agrees with
+// its own `dbl_hour`) and the client placeholder is normalized out of the
+// capture — lane-independently **and** channel-independently, because both
+// gating channels' readers fabricate it
+// (`harness::lane::expected_monitor_channel`).
 
 /// The scale `CalcVoltageBases` applies to a bus's solved L-N magnitude before
 /// searching the legal-base list — the **truncated `√3/1000`** of upstream's

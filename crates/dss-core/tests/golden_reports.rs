@@ -100,9 +100,12 @@ fn run_deck_export(stem: &str, policy: &ExportPolicy) {
 }
 
 /// Run a deck-fixture export exactly like [`run_deck_export`] but **return the
-/// produced text** instead of comparing it. Used by the Stage F
-/// expected-value pins, which assert a lane-specific value the oracle golden
-/// cannot carry.
+/// produced text** instead of comparing it. Used by the expected-value pins,
+/// which assert a value the oracle golden cannot carry — the golden is the
+/// capture of an engine whose reading the fix moves away from (an upstream bug
+/// both gating engines share), so the pin has to read the produced text
+/// directly. Since `GOLDEN_REBASE_PLAN.md` WP-G2 those pins are
+/// lane-independent: they assert the one value **both** lanes now compute.
 fn run_deck_export_capture(stem: &str) -> String {
     let dir = reports_dir();
     let meta: DeckMeta = {
@@ -543,11 +546,16 @@ fn run_deck_dump_exact(stem: &str) {
     run_deck_dump_exact_expected(stem, |oracle| oracle.to_string());
 }
 
-/// [`run_deck_dump_exact`] with a lane-scoped **expected-value transform** on
-/// the oracle text (`DE_PASCALIZE_PLAN.md` IV.2 "deliberate divergences"): the
-/// committed golden stays the source of truth, and `expected` states — as code,
-/// enumerated — the one edit a Stage F row makes to it in the default lane.
-/// `expected` must be the identity in the parity lane.
+/// [`run_deck_dump_exact`] with an **expected-value transform** on the oracle
+/// text (`DE_PASCALIZE_PLAN.md` IV.2 "deliberate divergences"): the committed
+/// golden stays the source of truth, and `expected` states — as code,
+/// enumerated — every edit a row makes to it.
+///
+/// Two kinds of edit compose here, and they differ in lane scope. A **precision**
+/// row (F-FMT's `%g` re-rounding, [`lane::expected_rerounded`]) is a default-lane
+/// re-spelling and is the identity in the parity lane. A **torn-down bug** row
+/// (the Fault `MinAmps` reprint, [`fault_dump_expected`]) is a divergence from
+/// the oracles that both lanes now carry, so its edit applies in both.
 fn run_deck_dump_exact_expected(stem: &str, expected: impl Fn(&str) -> String) {
     let dir = reports_dir();
     let meta: DeckMeta = {
@@ -2897,25 +2905,24 @@ fn export_seqcurrents_matches_oracle() {
         gate: Some(GateSpec::Col(2, 1e-6)),
     };
     let mut col_tol = vec![i1_gated("%i"), i1_gated("%nema")];
-    // Stage F deliberate divergence (`compat::IRESIDUAL_FROM_TERMINAL_1`): the
-    // default lane prints each row's OWN terminal residual instead of repeating
-    // terminal 1's, so on this golden the `Terminal >= 2` rows genuinely differ
-    // from the oracle by construction. Exclude exactly those cells there — the
-    // terminal-1 cells (where the two lanes agree) stay compared against the
-    // oracle in both lanes, and the excluded ones are pinned by
-    // `export_seqcurrents_iresidual_is_the_lane_kernel`.
-    if !lane::PARITY {
-        col_tol.push(ColTol {
-            sel: ColSel::Prefix("iresidual".to_string()),
-            // Same tolerance the policy default gives this column (the
-            // amp-scale cancellation `abs`); this entry exists only to attach
-            // the row gate, and must not tighten or loosen the terminal-1
-            // cells it still compares.
-            rel: 0.0,
-            abs: 1e-8,
-            gate: Some(GateSpec::ColAbove(1, 1.5)),
-        });
-    }
+    // LANE-EXCLUSION(IRESIDUAL_FROM_TERMINAL_1): both lanes print each row's OWN
+    // terminal residual instead of repeating terminal 1's, so on this golden the
+    // `Terminal >= 2` rows genuinely differ from the oracle capture by
+    // construction (the capture carries the upstream bug both gating oracles
+    // share). Exclude exactly those cells — the terminal-1 cells, where the
+    // correct reading and the upstream one coincide, stay compared against the
+    // oracle — and the excluded ones are pinned by
+    // `export_seqcurrents_iresidual_sums_the_rows_own_terminal`.
+    col_tol.push(ColTol {
+        sel: ColSel::Prefix("iresidual".to_string()),
+        // Same tolerance the policy default gives this column (the amp-scale
+        // cancellation `abs`); this entry exists only to attach the row gate,
+        // and must not tighten or loosen the terminal-1 cells it still
+        // compares.
+        rel: 0.0,
+        abs: 1e-8,
+        gate: Some(GateSpec::ColAbove(1, 1.5)),
+    });
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
@@ -2932,25 +2939,31 @@ fn export_seqcurrents_matches_oracle() {
     run_feeder_export("export_seqcurrents", &policy);
 }
 
-/// The Stage F `Iresidual` row, as an **expected-value** pin (plan IV.2:
-/// deliberate divergences are excluded from the oracle compare at those fields
-/// and pinned by their own tests).
+// EXPECTED-VALUE-PIN(IRESIDUAL_FROM_TERMINAL_1): the `Terminal >= 2` residual
+// cells the golden compare above excludes are asserted here — in both lanes —
+// against an independently anchored report, so the exclusion buys silence
+// nowhere.
+/// The `Iresidual` of a `SeqCurrents` row is the residual of **that row's**
+/// terminal, in *both* lanes.
 ///
 /// Upstream's `CalcAndWriteSeqCurrents` sums `cBuffer^[i]`, i = 1..Ncond inside
-/// the per-terminal loop — missing the `(j-1)*Ncond` offset — so every terminal
-/// row repeats terminal 1's residual. On IEEE13's `Line.671680` that is
-/// oracle-proven: the true terminal-2 residual is ~1e-11 A, the export prints
-/// terminal 1's 2.83e-5 A.
+/// the per-terminal loop — missing the `(j-1)*Ncond` offset the same procedure
+/// applies to its symmetric components — so every terminal row repeats terminal
+/// 1's residual. On IEEE13's `Line.671680` that is oracle-proven: the true
+/// terminal-2 residual is ~1e-11 A, the export prints terminal 1's 2.83e-5 A.
+/// Both gating oracles carry it; since `GOLDEN_REBASE_PLAN.md` G2.2a neither
+/// lane does.
 ///
 /// Rather than a captured literal, the expectation is *derived* from an
 /// independent report: `Export Currents` writes a per-terminal `Iresid<j>`
 /// column through a different code path (`export/currents.rs`), and its values
 /// are oracle-anchored by that report's own byte golden. So the printed
-/// `Iresidual` of `(elem, terminal j)` must equal `Iresid_j` in the default
-/// lane and `Iresid_1` in the parity lane. Asserted for every row of the
-/// report, plus a non-vacuity check that some row actually separates the two.
+/// `Iresidual` of `(elem, terminal j)` must equal `Iresid_j` — asserted for
+/// every row of the report, in both lanes, plus a non-vacuity check that some
+/// row actually separates that reading from terminal 1's (without one the
+/// assertion would hold on a report that still carried the bug).
 #[test]
-fn export_seqcurrents_iresidual_is_the_lane_kernel() {
+fn export_seqcurrents_iresidual_sums_the_rows_own_terminal() {
     let (seq, currents) = ieee13_seqcurrents_and_currents();
 
     // How many terminals each element has, from the seq report itself.
@@ -2999,7 +3012,7 @@ fn export_seqcurrents_iresidual_is_the_lane_kernel() {
     );
 
     let mut checked = 0usize;
-    let mut lanes_would_differ = false;
+    let mut readings_would_differ = false;
     for line in seq.lines().skip(1).filter(|l| !l.trim().is_empty()) {
         let f: Vec<&str> = line.split(',').map(str::trim).collect();
         if f.len() < 10 {
@@ -3015,24 +3028,24 @@ fn export_seqcurrents_iresidual_is_the_lane_kernel() {
             continue;
         };
         if (own - first).abs() > 1e-9 {
-            lanes_would_differ = true;
+            readings_would_differ = true;
         }
-        let expected = if lane::PARITY { first } else { own };
+        let expected = own;
         // The report prints 6 significant digits; compare at that resolution.
         let tol = 1e-6 * expected.abs().max(1e-12) + 1e-12;
         assert!(
             (printed - expected).abs() <= tol,
-            "{name} terminal {j}: printed Iresidual {printed:e}, expected \
-             {expected:e} (own-terminal {own:e}, terminal-1 {first:e}, lane \
-             parity = {})",
-            lane::PARITY
+            "{name} terminal {j}: printed Iresidual {printed:e}, expected the \
+             row's own terminal {expected:e} (terminal-1 residual {first:e} — \
+             printing that one is the upstream bug)"
         );
         checked += 1;
     }
     assert!(checked > 50, "only {checked} rows checked");
     assert!(
-        lanes_would_differ,
-        "no row separates the two kernels — the pin would be vacuous"
+        readings_would_differ,
+        "no row separates the own-terminal residual from terminal 1's — the pin \
+         would be vacuous"
     );
 }
 
@@ -4075,36 +4088,33 @@ fn export_busreliability_matches_oracle() {
     run_deck_export("export_busreliability", &policy);
 }
 
-/// `Export BusReliability` on a **two-meter** feeder — pins the port's faithful
-/// reproduction of the upstream multi-meter `Bus_Int_Duration` cross-zone
-/// contamination (the second meter's duration loop walks the first meter's zone
-/// buses and overwrites their `Duration` from *its own* `FeederSections`; see
+/// `Export BusReliability` on a **two-meter** feeder — the deck that exercises
+/// the upstream multi-meter `Bus_Int_Duration` cross-zone contamination (the
+/// second meter's duration loop walks the first meter's zone buses and
+/// overwrites their `Duration` from *its own* `FeederSections`; see
 /// `investigations/reliability_bus_int_duration_oob_bug_report.md`). Both meters
 /// have two sections, so every cross-zone read is **in range** — a deterministic
-/// overwrite both engines agree on bus-for-bus (no out-of-bounds read; the OOB
-/// regime is proven-nondeterministic UB and deliberately not gated). Same
-/// byte-identical arithmetic as the single-meter case — exact equality.
+/// overwrite both gating engines agree on bus-for-bus (no out-of-bounds read;
+/// the OOB regime is proven-nondeterministic UB and deliberately not gated).
+/// Every other column is the same byte-identical arithmetic as the single-meter
+/// case — exact equality.
 #[test]
 fn export_busreliability_multimeter_matches_oracle() {
-    // Stage F deliberate divergence (`compat::BUS_INT_DURATION_WALKS_ALL_BUSES`):
-    // the default lane's duration loop stays inside each meter's own zone, so
-    // the `Duration` column of the *first* meter's buses no longer carries the
-    // second meter's sections. There is no row key in this report that
-    // identifies "a bus of the earlier meter", so the default lane excludes the
-    // whole column here and pins it — every row — in
-    // `export_busreliability_multimeter_duration_is_the_lane_kernel`. Lambda /
-    // interruptions / customers / cust-interruptions / miles stay compared
-    // against the oracle in both lanes.
-    let col_tol = if lane::PARITY {
-        vec![]
-    } else {
-        vec![ColTol {
-            sel: ColSel::Prefix("duration".to_string()),
-            rel: 0.0,
-            abs: 0.0,
-            gate: Some(GateSpec::Mask),
-        }]
-    };
+    // LANE-EXCLUSION(BUS_INT_DURATION_WALKS_ALL_BUSES): the duration loop stays
+    // inside each meter's own zone in both lanes, so the `Duration` column of
+    // the *first* meter's buses no longer carries the second meter's sections —
+    // while the oracle capture, which both gating engines produce, does. There
+    // is no row key in this report that identifies "a bus of the earlier
+    // meter", so the whole column is excluded here and pinned — every row — by
+    // `export_busreliability_multimeter_duration_stays_in_the_meters_zone`.
+    // Lambda / interruptions / customers / cust-interruptions / miles stay
+    // compared against the oracle.
+    let col_tol = vec![ColTol {
+        sel: ColSel::Prefix("duration".to_string()),
+        rel: 0.0,
+        abs: 0.0,
+        gate: Some(GateSpec::Mask),
+    }];
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
@@ -4116,26 +4126,33 @@ fn export_busreliability_multimeter_matches_oracle() {
     run_deck_export("export_busreliability_multimeter", &policy);
 }
 
-/// The Stage F `Bus_Int_Duration` row as an **expected-value** pin, on the
-/// two-meter fixture whose `Duration` column the lane split moves.
+// EXPECTED-VALUE-PIN(BUS_INT_DURATION_WALKS_ALL_BUSES): the `Duration` column
+// the golden compare above excludes is asserted here bus by bus, in both lanes,
+// as literals — the masked column is the only one this deck loses, and it loses
+// it to a stricter check, not to silence.
+/// Each meter's `Bus_Int_Duration` comes from its **own** zone, in *both* lanes
+/// — the two-meter fixture whose `Duration` column the exclusion above masks.
 ///
 /// The fixture is two independent two-section feeders off `SRC`: meter `m1`
 /// covers `l1` (repair 4 h) → `B1` and `l2` (repair 5 h) → `B2`; meter `m2`
 /// covers `l3` (repair 6 h) → `C1` and `l4` (repair 9 h) → `C2`. Each section
 /// holds exactly one line, so a bus's own-zone duration *is* that line's repair
-/// time (`source_int_dur = 0` here).
+/// time (`source_int_dur = 0` here) — the values asserted below.
 ///
-/// **Parity lane** reproduces upstream: `m2`'s duration loop walks *every*
-/// circuit bus, so it re-reads `B1`/`B2`'s section ids (1 and 2, written by
-/// `m1`) against **its own** `FeederSections` and overwrites them with `l3`'s
-/// and `l4`'s repair times — `B1 → 6`, `B2 → 9`, i.e. the C-feeder's numbers on
-/// the B-feeder's buses. That is what the oracle golden contains.
-/// **Default lane** keeps each meter inside its own zone: `B1 → 4`, `B2 → 5`.
+/// Upstream, and therefore the oracle capture, reports something else: `m2`'s
+/// duration loop walks *every* circuit bus, so it re-reads `B1`/`B2`'s section
+/// ids (1 and 2, written by `m1`) against **its own** `FeederSections` and
+/// overwrites them with `l3`'s and `l4`'s repair times — `B1 → 6`, `B2 → 9`,
+/// i.e. the C-feeder's numbers on the B-feeder's buses, and the whole column
+/// then depends on meter order. Since `GOLDEN_REBASE_PLAN.md` G2.2a neither
+/// lane does that.
 ///
-/// Both columns are asserted literally, so the fix cannot silently become a
-/// no-op and the reproduction cannot silently become the fix.
+/// The expectations are literals, one per bus, so the fix cannot silently
+/// become a no-op: `B1`/`B2` would read 6/9 the moment the loop leaves the
+/// zone again, and `C1`/`C2` — the last meter's own buses, which the two
+/// readings share — keep a bug-independent value under assertion.
 #[test]
-fn export_busreliability_multimeter_duration_is_the_lane_kernel() {
+fn export_busreliability_multimeter_duration_stays_in_the_meters_zone() {
     let text = run_deck_export_capture("export_busreliability_multimeter");
     let durations: Vec<(String, f64)> = text
         .lines()
@@ -4150,32 +4167,21 @@ fn export_busreliability_multimeter_duration_is_the_lane_kernel() {
         })
         .collect();
 
-    let expected: &[(&str, f64)] = if lane::PARITY {
-        &[
-            ("SRC", 0.0),
-            ("B1", 6.0),
-            ("B2", 9.0),
-            ("C1", 6.0),
-            ("C2", 9.0),
-        ]
-    } else {
-        &[
-            ("SRC", 0.0),
-            ("B1", 4.0),
-            ("B2", 5.0),
-            ("C1", 6.0),
-            ("C2", 9.0),
-        ]
-    };
+    let expected: &[(&str, f64)] = &[
+        ("SRC", 0.0),
+        ("B1", 4.0),
+        ("B2", 5.0),
+        ("C1", 6.0),
+        ("C2", 9.0),
+    ];
     assert_eq!(durations.len(), expected.len(), "rows: {durations:?}");
     for (got, want) in durations.iter().zip(expected) {
         assert_eq!(got.0, want.0, "bus order");
         assert_eq!(
-            got.1,
-            want.1,
-            "{} interruption duration (lane parity = {})",
-            got.0,
-            lane::PARITY
+            got.1, want.1,
+            "{} interruption duration: each meter's duration loop stays in its \
+             own zone (upstream would report 6/9 on B1/B2)",
+            got.0
         );
     }
 }
@@ -5608,11 +5614,20 @@ fn dump_spectrum_matches_oracle() {
     run_deck_dump_exact("dump_spectrum");
 }
 
-/// The oracle `Dump fault.…` text as the current lane expects it: unchanged in
-/// the parity lane; in the default lane with the **second** of the two
-/// consecutive `~ MinAmps=` lines removed — the Stage F row
-/// `compat::FAULT_DUMP_TAIL_REPRINTS_MINAMPS`, whose default kernel starts the
-/// generic tail at `NormAmps` instead of re-emitting `MinAmps`.
+// LANE-EXCLUSION(FAULT_DUMP_TAIL_REPRINTS_MINAMPS): the second of each pair of
+// consecutive `~ MinAmps=` lines is dropped from the oracle text in **both**
+// lanes — the engine no longer re-emits the property, so that line is the one
+// place the committed goldens can no longer be compared against.
+/// The oracle `Dump fault.…` text as **both** lanes expect it: with the
+/// **second** of the two consecutive `~ MinAmps=` lines removed.
+///
+/// Upstream's generic tail starts at `MinAmps` itself and so reprints it
+/// (`Fault.pas:533` with `NumPropsThisClass = 9`; r4133 `:594` with `:107`),
+/// which every sibling class with that loop avoids by starting at
+/// `NumPropsThisClass + 1`. Both gating oracles carry the reprint and the
+/// goldens are their capture; the engine starts the tail at `NormAmps` in both
+/// lanes since `GOLDEN_REBASE_PLAN.md` G2.2c, so the excluded line is stated
+/// here — as code, positionally — rather than by recapturing a golden.
 ///
 /// Positional, like the `b0ch` transform in `golden_cim`: it removes the second
 /// member of an adjacent pair, never "a line whose value looks generic", so it
@@ -5621,9 +5636,6 @@ fn dump_spectrum_matches_oracle() {
 /// is applied to (one pair per Fault in the fixture), so the transform cannot
 /// rot into a no-op if a golden is ever recaptured.
 fn fault_dump_expected(oracle: &str) -> String {
-    if lane::PARITY {
-        return oracle.to_string();
-    }
     let mut out = String::with_capacity(oracle.len());
     let mut prev_was_minamps = false;
     for line in oracle.split_inclusive('\n') {
@@ -5638,11 +5650,32 @@ fn fault_dump_expected(oracle: &str) -> String {
     out
 }
 
-/// Non-vacuity of [`fault_dump_expected`], in both lanes and over **every**
-/// golden it is applied to: each committed oracle golden really does carry the
-/// double print — one pair per Fault in its fixture — the default-lane
-/// expectation keeps exactly one line per pair, and the parity-lane expectation
-/// is the oracle byte-for-byte.
+// EXPECTED-VALUE-PIN(FAULT_DUMP_TAIL_REPRINTS_MINAMPS): the expected `Dump`
+// text carries `~ MinAmps=` exactly once per Fault — the custom `%.1f` line —
+// in both lanes, and the surviving line is always the FIRST of the oracle's
+// pair, never the generic reprint.
+/// Non-vacuity of [`fault_dump_expected`] and the expected-value pin of the
+/// Fault dump tail, over **every** golden the transform is applied to.
+///
+/// Three things at once, all lane-independent since `GOLDEN_REBASE_PLAN.md`
+/// G2.2c:
+///
+/// 1. **Non-vacuity of the oracle side** — each committed golden really does
+///    carry the double print, one pair per Fault in its fixture. If a golden is
+///    ever regenerated without it, the transform becomes a no-op and this fails
+///    instead of silently passing.
+/// 2. **Non-vacuity of the transform** — the expectation keeps exactly one
+///    `~ MinAmps=` line per Fault and is exactly `faults` lines shorter than the
+///    oracle, so the drop cannot widen into a second line.
+/// 3. **Direction** — what survives is the *first* of each pair, i.e. the class's
+///    own `%.1f` render (`~ MinAmps=3.0`), never the generic reprint
+///    (`~ MinAmps=3`) the tail loop emitted.
+///
+/// The engine is then held to that expectation by the four compares that use the
+/// transform — `dump_fault_matches_oracle`, `dump_fault_gmatrix_matches_oracle`,
+/// `dump3_bare_matches_oracle`, `dump3_debug_matches_oracle` — which run in both
+/// lanes (byte-exact in the parity lane), so a tail that started at `MinAmps`
+/// again would fail them whichever lane it was built in.
 ///
 /// The `(stem, faults)` list must stay in step with the
 /// `run_deck_dump_exact_expected(…, fault_dump_expected)` call sites: a
@@ -5676,13 +5709,9 @@ fn fault_dump_goldens_carry_the_double_print() {
         let e = minamps(&expected);
         assert_eq!(
             e.len(),
-            if lane::PARITY { 2 * faults } else { faults },
-            "{stem}: the default lane keeps one MinAmps line per Fault"
+            faults,
+            "{stem}: the expectation keeps one MinAmps line per Fault"
         );
-        if lane::PARITY {
-            assert_eq!(expected, oracle, "{stem}: the parity arm is the identity");
-            continue;
-        }
         // One line removed per pair, and it is the *second* of each: what
         // survives is the custom `%.1f` spelling (`~ MinAmps=5.0`), never the
         // generic one the tail re-emits (`~ MinAmps=5`).
@@ -5777,9 +5806,10 @@ fn ffmt_reround_cells_are_present_and_lane_scoped() {
 
 /// `Dump fault.f1 debug` — `TFaultObj.DumpProperties` (`SpecType=1`, single
 /// `r`): the custom Bus1/Bus2/Phases/R/pctStdDev/OnTime/Temporary/MinAmps
-/// lines, then the generic tail. The parity lane pins the upstream double-print
-/// quirk (`MinAmps` twice: the custom `%.1f` line, then generically); the
-/// default lane starts the tail one property later — see [`fault_dump_expected`].
+/// lines, then the generic tail. The oracle golden double-prints `MinAmps` (the
+/// custom `%.1f` line, then generically); both lanes start the tail one property
+/// later, so the compare runs against the golden with the reprint removed — see
+/// [`fault_dump_expected`].
 #[test]
 fn dump_fault_matches_oracle() {
     run_deck_dump_exact_expected("dump_fault", fault_dump_expected);
@@ -6298,14 +6328,15 @@ fn save_voltages_and_meterless_save_leave_last_result_file() {
 #[test]
 fn dump3_bare_matches_oracle() {
     // Two Fault objects in the fixture, so two `~ MinAmps=` pairs — the same
-    // Stage F row as `dump_fault`, see [`fault_dump_expected`] — plus the one
+    // torn-down row as `dump_fault`, see [`fault_dump_expected`] — plus the one
     // F-FMT `%g` cell, [`LOADSHAPE_MEAN_REROUND`].
     run_deck_dump_exact_expected("dump3_bare", dump3_expected);
 }
 
-/// `dump3_*`'s two Stage F rows composed: the Fault `MinAmps` double-print
-/// (`fault_dump_expected`) and the F-FMT `%g` re-rounding of the default
-/// LoadShape's computed `Mean` ([`LOADSHAPE_MEAN_REROUND`]).
+/// `dump3_*`'s two rows composed: the Fault `MinAmps` double-print, dropped in
+/// both lanes (`fault_dump_expected`), and the F-FMT `%g` re-rounding of the
+/// default LoadShape's computed `Mean`, a default-lane re-spelling
+/// ([`LOADSHAPE_MEAN_REROUND`]).
 fn dump3_expected(oracle: &str) -> String {
     lane::expected_rerounded(&fault_dump_expected(oracle), &LOADSHAPE_MEAN_REROUND)
 }

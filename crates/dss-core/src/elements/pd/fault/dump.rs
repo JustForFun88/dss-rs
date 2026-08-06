@@ -1,22 +1,26 @@
 //! Pascal `TFaultObj.DumpProperties` (`PDElements/Fault.pas:502`) — the
 //! `Dump fault.…` override. After the inherited `TDSSCktElement` prefix: custom
 //! `Bus1`/`Bus2`/`Phases`/`R`/`pctStdDev`/`Gmatrix`/`OnTime`/`Temporary`/
-//! `MinAmps` lines, then the generic tail from `NumPropsThisClass` (`Fault.pas:
-//! 533-536`) — an upstream quirk: `NumPropsThisClass = Ord(High(TProp)) = 9 =
-//! MinAmps`, so the tail loop **reprints `MinAmps` a second time**, generically,
-//! right after its custom `%.1f` line above, before continuing into the real
-//! tail (`NormAmps..Enabled`). Complete adds `// SpecType=%d`.
+//! `MinAmps` lines, then the generic tail (`Fault.pas:533-536`), which this port
+//! starts at `NormAmps`. Complete adds `// SpecType=%d`.
 //!
-//! The `MinAmps` double-print is the Stage F row
-//! [`crate::compat::FAULT_DUMP_TAIL_REPRINTS_MINAMPS`]: a deterministic upstream
-//! off-by-one that the three other classes with the same tail loop
-//! (`Transformer.pas:1276`, `AutoTrans.pas:1307`, `XfmrCode.pas:663`) do not
-//! have — they start at `NumPropsThisClass + 1`. The parity lane reproduces it
-//! (the oracle genuinely double-prints, pinned byte-exact by
-//! `dump_fault`/`dump_fault_gmatrix`); the default lane starts the tail at the
-//! next property.
+//! **Why `NormAmps` and not `MinAmps`.** Upstream's tail loop is
+//! `for i := NumPropsthisClass to ParentClass.NumProperties`, and this class's
+//! `NumPropsThisClass = Ord(High(TProp))` = 9 = `MinAmps` itself
+//! (`.inputs/dss_capi/src/PDElements/Fault.pas:533` with `:134`; r4133
+//! `Version8/Source/PDElements/Fault.pas:594` with `Const NumPropsthisclass = 9`
+//! `:107`), so the loop's first iteration re-emits the property the custom
+//! `~ MinAmps=%.1f` line above just wrote — generically, giving the pair
+//! `~ MinAmps=3.0` / `~ MinAmps=3` before the real tail. The off-by-one is a
+//! slip and not a convention: the three other classes with the same tail loop
+//! (`Transformer.pas:1276`, `AutoTrans.pas:1307`, `XfmrCode.pas:663`) all write
+//! `NumPropsThisClass + 1`, and no class prints a property twice on purpose.
+//! Both gating oracles carry the reprint and both lanes now drop it
+//! (`GOLDEN_REBASE_PLAN.md` G2.2c; `issue-13`); `golden_reports`'
+//! `fault_dump_expected` removes the second line of each pair from the oracle
+//! goldens, so the `dump_fault`/`dump_fault_gmatrix`/`dump3_*` compares stay
+//! oracle-anchored in both lanes.
 
-use crate::compat;
 use crate::report::format::fixed;
 use crate::report::save::dump::{self, DumpCtx};
 
@@ -65,15 +69,10 @@ impl Fault {
             fixed(self.min_amps, 1)
         ));
 
-        // Pascal `for i := NumPropsThisClass to NumProperties` — starts AT
-        // MinAmps (9) in the parity lane (the reprint quirk documented above)
-        // and at its successor, NormAmps (10), in the default lane.
-        let tail_start = if compat::FAULT_DUMP_TAIL_REPRINTS_MINAMPS {
-            prop::MINAMPS
-        } else {
-            prop::NORMAMPS
-        };
-        dump::generic_props_from(out, cx, self, tail_start);
+        // Pascal `for i := NumPropsThisClass to NumProperties`, started at the
+        // property *after* the last own one — `NormAmps` (10), not `MinAmps` (9),
+        // which the custom line above already wrote (see the module header).
+        dump::generic_props_from(out, cx, self, prop::NORMAMPS);
 
         if complete {
             out.push_str(&format!("// SpecType={}\n", self.spec_type));

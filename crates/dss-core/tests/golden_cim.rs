@@ -30,7 +30,7 @@ fn golden_dir() -> PathBuf {
 }
 
 /// The delta shunt-compensator `grounded` node exactly as the pinned oracle
-/// writes it — see [`lane_expected_cim`].
+/// writes it — see [`expected_cim`].
 const DELTA_GROUNDED: &str =
     "<cim:LinearShuntCompensator.grounded>false</cim:LinearShuntCompensator.grounded>";
 /// The opening tag shared by both `ACLineSegment.b0ch` nodes of the quartet.
@@ -38,34 +38,37 @@ const B0CH_OPEN: &str = "<cim:ACLineSegment.b0ch>";
 /// The misnamed `g0ch` node exactly as the pinned oracle writes it.
 const B0CH_ZERO: &str = "<cim:ACLineSegment.b0ch>0</cim:ACLineSegment.b0ch>";
 
-/// Stage F (`DE_PASCALIZE_PLAN.md` Part IV.2) — the CIM writer's **deliberate
-/// default-lane divergences**, as an expected-value transform of the oracle
-/// golden.
+// LANE-EXCLUSION(CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX): the delta shunt's
+// `grounded` node is compared under the class the wye arm names, in both lanes.
+// LANE-EXCLUSION(CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH): the second of two
+// consecutive `b0ch` nodes is compared as `g0ch`, in both lanes.
+/// The CIM writer's two **deliberate divergences from the oracle**, as an
+/// expected-value transform of the oracle golden — applied in *both* lanes since
+/// `GOLDEN_REBASE_PLAN.md` G2.2c.
 ///
-/// The CIM XML goldens are byte-compared in *both* lanes (`tests/harness/
-/// lane.rs`: their writer renders no number through the F-FMT seam, so nothing
-/// in Stage F may move them wholesale). Two single-site quirks *do* move exactly
-/// one line each in the default lane, and both are pure **element-name** fixes —
-/// no value, count, or ordering changes. Rather than re-baselining those goldens
-/// (which would drop the oracle as their source of truth), the default lane
-/// compares against the oracle text with these two enumerated rewrites applied:
-/// everything else stays byte-exact vs the pinned oracle.
+/// The CIM XML goldens are byte-compared in both lanes (`tests/harness/lane.rs`:
+/// their writer renders no number through the F-FMT seam, so nothing in Stage F
+/// may move them wholesale). Two single-site upstream mistakes move exactly one
+/// line each, and both are pure **element-name** fixes — no value, count, or
+/// ordering changes. Rather than re-baselining those goldens (which would drop
+/// the oracle as their source of truth), the engine is compared against the
+/// oracle text with these two enumerated rewrites applied: everything else stays
+/// byte-exact vs the pinned oracle.
 ///
-/// * `compat::CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX` — the delta arm of
-///   the shunt-compensator writer emits `grounded` under the
-///   `LinearShuntCompensator.` prefix; the wye arm six lines above uses
-///   `ShuntCompensator.`, which is where CIM100 declares the property.
-/// * `compat::CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH` — the line writer's
-///   `bch`/`gch`/`b0ch`/`g0ch` quartet ends with `b0ch` written twice; the
-///   second one is the `g0ch` its `PerLengthSequenceImpedance` sibling spells.
+/// * **the delta shunt's class prefix** — the delta arm of the
+///   shunt-compensator writer emits `grounded` under the
+///   `LinearShuntCompensator.` prefix (`ExportCIMXML.pas:3706`; r4133 `:3187`);
+///   the wye arm six lines above uses `ShuntCompensator.`, which is where CIM100
+///   declares the property (`issue-24`).
+/// * **the missing `g0ch`** — the line writer's `bch`/`gch`/`b0ch`/`g0ch`
+///   quartet ends with `b0ch` written twice (`ExportCIMXML.pas:4367`; r4133
+///   `:3756`); the second one is the `g0ch` its `PerLengthSequenceImpedance`
+///   sibling spells (`issue-25`).
 ///
-/// Returns the lane-expected text plus the per-quirk rewrite counts, which
-/// [`cim_lane_divergences_are_pinned`] uses to keep the list non-vacuous.
-fn lane_expected_cim(oracle: &str) -> (String, [usize; 2]) {
+/// Returns the expected text plus the per-rewrite counts, which
+/// [`cim_writer_divergences_are_pinned`] uses to keep the list non-vacuous.
+fn expected_cim(oracle: &str) -> (String, [usize; 2]) {
     let normalized = oracle.replace("\r\n", "\n");
-    if dss_core::compat::ORACLE_PARITY {
-        return (normalized, [0, 0]);
-    }
     let mut hits = [0usize; 2];
     let lines: Vec<&str> = normalized.split('\n').collect();
     let mut out: Vec<String> = Vec::with_capacity(lines.len());
@@ -188,7 +191,7 @@ fn run(circuit: &str, compile_path: &Path, post: &[&str]) {
     );
 
     let rust = locate_cim100(&scratch, circuit);
-    assert_cim_bytes_eq(&lane_expected_cim(&oracle).0, &rust, circuit);
+    assert_cim_bytes_eq(&expected_cim(&oracle).0, &rust, circuit);
     std::fs::remove_dir_all(&scratch).ok();
 }
 
@@ -247,11 +250,7 @@ fn run_case_fragments(circuit: &str) {
         let golden_path = golden_dir().join(format!("{circuit}_{prf}.xml"));
         let oracle = std::fs::read_to_string(&golden_path)
             .unwrap_or_else(|e| panic!("read {}: {e}", golden_path.display()));
-        assert_cim_bytes_eq(
-            &lane_expected_cim(&oracle).0,
-            &rust,
-            &format!("{circuit}_{prf}"),
-        );
+        assert_cim_bytes_eq(&expected_cim(&oracle).0, &rust, &format!("{circuit}_{prf}"));
     }
     std::fs::remove_dir_all(&scratch).ok();
 }
@@ -269,28 +268,31 @@ fn run_feeder(circuit: &str, master_rel: &str, post: &[&str]) {
     run(circuit, &master, post);
 }
 
-/// The expected-value pin of the two CIM single-site quirks
-/// (`compat::CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX`,
-/// `compat::CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH`), asserted against
-/// `compat::ORACLE_PARITY` so it is meaningful in **both** lanes.
+// EXPECTED-VALUE-PIN(CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX): the expected
+// text names the delta shunt's `grounded` node `ShuntCompensator.grounded`, and
+// carries no `LinearShuntCompensator.grounded` anywhere, in both lanes.
+// EXPECTED-VALUE-PIN(CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH): the expected text
+// carries no two consecutive `ACLineSegment.b0ch` nodes — the second is `g0ch` —
+// in both lanes.
+/// The expected-value pin of the CIM writer's two corrected attribute names,
+/// unconditional in **both** lanes since `GOLDEN_REBASE_PLAN.md` G2.2c.
 ///
 /// It walks every committed CIM golden and pins three things at once:
 ///
 /// 1. **Non-vacuity of the oracle side** — the committed goldens still carry
 ///    exactly one delta `LinearShuntCompensator.grounded` node and exactly two
 ///    duplicated `ACLineSegment.b0ch` nodes. If a golden is ever regenerated
-///    without them, the lane split becomes dead code and this fails instead of
+///    without them, the transform becomes dead code and this fails instead of
 ///    silently passing.
-/// 2. **Non-vacuity of the transform** — the default lane rewrites *exactly*
-///    those lines (one and two of them), the parity lane rewrites none.
-/// 3. **Direction** — after the transform the default-lane expectation carries
-///    the fixed names and none of the quirk names, while the parity-lane
-///    expectation is the oracle text unchanged. The engine is then held to that
-///    expectation byte-for-byte by every `run_case`/`run_feeder` below, so the
-///    quirk cannot drift in either lane.
+/// 2. **Non-vacuity of the transform** — [`expected_cim`] rewrites *exactly*
+///    those lines, one and two of them, and no others.
+/// 3. **Direction** — after the transform the expectation carries the fixed
+///    names and none of the upstream ones. The engine is then held to that
+///    expectation byte-for-byte by every `run_case`/`run_feeder` below, in both
+///    lanes, so a writer that went back to the upstream spelling fails whichever
+///    lane it was built in.
 #[test]
-fn cim_lane_divergences_are_pinned() {
-    let parity = dss_core::compat::ORACLE_PARITY;
+fn cim_writer_divergences_are_pinned() {
     let mut oracle_quirks = [0usize; 2];
     let mut rewrites = [0usize; 2];
     let mut files = 0usize;
@@ -319,34 +321,43 @@ fn cim_lane_divergences_are_pinned() {
             }
         }
 
-        let (expected, hits) = lane_expected_cim(&oracle);
+        let (expected, hits) = expected_cim(&oracle);
         rewrites[0] += hits[0];
         rewrites[1] += hits[1];
-        if parity {
-            assert_eq!(
-                expected,
-                normalized,
-                "{}: the parity lane must expect the oracle text verbatim",
-                path.display()
-            );
-        } else {
+        assert!(
+            !expected.contains(DELTA_GROUNDED),
+            "{}: the expectation must not carry the `LinearShuntCompensator.` prefix",
+            path.display()
+        );
+        // The *second* b0ch is gone; the first (the real susceptance) stays.
+        let exp_lines: Vec<&str> = expected.split('\n').collect();
+        for (i, line) in exp_lines.iter().enumerate() {
             assert!(
-                !expected.contains(DELTA_GROUNDED),
-                "{}: the default lane must not expect the `LinearShuntCompensator.` prefix",
+                !(line.trim_start() == B0CH_ZERO
+                    && i > 0
+                    && exp_lines[i - 1].trim_start().starts_with(B0CH_OPEN)),
+                "{}: the expectation must not carry a duplicated b0ch node",
                 path.display()
             );
-            // The *second* b0ch is gone; the first (the real susceptance) stays.
-            let exp_lines: Vec<&str> = expected.split('\n').collect();
-            for (i, line) in exp_lines.iter().enumerate() {
-                assert!(
-                    !(line.trim_start() == B0CH_ZERO
-                        && i > 0
-                        && exp_lines[i - 1].trim_start().starts_with(B0CH_OPEN)),
-                    "{}: the default lane must not expect a duplicated b0ch node",
-                    path.display()
-                );
-            }
         }
+        // Nothing but those lines moves: the expectation and the oracle differ
+        // only where a rewrite was counted, and never in length.
+        assert_eq!(
+            exp_lines.len(),
+            normalized.split('\n').count(),
+            "{}: the rewrites are renames — no line may be added or dropped",
+            path.display()
+        );
+        assert_eq!(
+            exp_lines
+                .iter()
+                .zip(normalized.split('\n'))
+                .filter(|(e, o)| *e != o)
+                .count(),
+            hits[0] + hits[1],
+            "{}: exactly the counted lines were rewritten",
+            path.display()
+        );
     }
 
     assert!(
@@ -356,13 +367,12 @@ fn cim_lane_divergences_are_pinned() {
     assert_eq!(
         oracle_quirks,
         [1, 2],
-        "the committed CIM goldens no longer pin both quirks (delta-grounded, duplicated b0ch) — \
-         the lane split would be dead code"
+        "the committed CIM goldens no longer carry both upstream spellings (delta-grounded, \
+         duplicated b0ch) — the rewrites would be dead code"
     );
     assert_eq!(
-        rewrites,
-        if parity { [0, 0] } else { oracle_quirks },
-        "the default lane must rewrite exactly the quirk lines and the parity lane none"
+        rewrites, oracle_quirks,
+        "the transform must rewrite exactly the lines the goldens carry"
     );
 }
 

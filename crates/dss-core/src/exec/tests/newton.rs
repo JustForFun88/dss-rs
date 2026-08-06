@@ -1,24 +1,23 @@
-//! `Set algorithm=Newton` — the Stage F [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`]
-//! row (CLAUDE.md known upstream bug 5) and the in-engine dispatch tripwire that
-//! replaces the gate signal the default lane gives up.
+//! `Set algorithm=Newton` — the expected-value pin of CLAUDE.md upstream bug 5
+//! (`GOLDEN_REBASE_PLAN.md` G2.3) and the in-engine dispatch tripwire that
+//! carries the gate signal both lanes give up with it.
 //!
-//! **The quirk.** `DoNewtonSolution`'s final `SumAllCurrents` stamps every
+//! **The bug.** `DoNewtonSolution`'s final `SumAllCurrents` stamps every
 //! element's `Iterminal` from the pre-final voltage guess `NodeV_{n-1}` and
 //! marks it solved for the current `SolutionCount`; `NodeV -= dV` follows. So a
 //! post-solve `Get_Powers`/`Get_Losses` (cache-aware `ComputeIterminal`) reads a
 //! one-step-stale current while `Currents` (`GetCurrents`) recomputes fresh —
-//! upstream reports `S != V·conj(I)` for the same element in the same read. The
-//! parity lane reproduces it; the default lane recomputes all three reads at
-//! `NodeV_n`.
+//! upstream reports `S != V·conj(I)` for the same element in the same read, in
+//! every vendored official rev (v9.8/r3723, v10.2/r4088, v11.0/r4133, all
+//! fingerprint 0.478 kVA, checked 2026-07-08). Both lanes now recompute all
+//! three reads at `NodeV_n` (`exec::view::snapshot_elements`).
 //!
 //! **Why the deck is the corpus feeder.** `modes/newton/newton.dss` is the gated
-//! case whose Powers/Losses channel the default lane excludes
-//! (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`), so the divergence is pinned
-//! here on exactly the model that stops being oracle-compared there. Its content
-//! is inlined rather than read from `tests/corpus/` because these are `src` unit
-//! tests.
-//!
-//! [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`]: crate::compat::POWERS_REUSE_STALE_NEWTON_ITERMINAL
+//! case whose Powers/Losses channel both lanes now exclude
+//! (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`, unconditional since G2.3 —
+//! no oracle channel reports it correctly), so the fix is pinned here on exactly
+//! the model that stopped being oracle-compared there. Its content is inlined
+//! rather than read from `tests/corpus/` because these are `src` unit tests.
 
 use crate::exec::Dss;
 
@@ -53,13 +52,12 @@ fn solve_with(algorithm: &str) -> Dss {
     dss
 }
 
-/// The lane the engine was compiled in, read from the engine itself.
-fn parity() -> bool {
-    crate::compat::ORACLE_PARITY
-}
-
-/// The Stage F `POWERS_REUSE_STALE_NEWTON_ITERMINAL` row, pinned by expected
-/// value against the algorithm that has no cache to be stale.
+// EXPECTED-VALUE-PIN(POWERS_REUSE_STALE_NEWTON_ITERMINAL): after a Newton solve
+// the reported powers and losses are the *normal* algorithm's — asserted
+// outright in both lanes, where upstream and all three vendored official revs
+// report a one-Newton-step-stale current instead.
+/// The CLAUDE.md upstream bug #5, torn down by `GOLDEN_REBASE_PLAN.md` G2.3,
+/// pinned against the algorithm that has no cache to be stale.
 ///
 /// Newton and the normal fixed point land on the same voltages (measured: max
 /// |ΔV| = 7.6e-12 V, both in 2 iterations), and the *normal* solve leaves no
@@ -67,18 +65,20 @@ fn parity() -> bool {
 /// Newton-vs-normal on the same deck is therefore a direct read of the stale
 /// current, in physical units:
 ///
-/// | quantity | parity lane (quirk reproduced) | default lane (clean fix) |
+/// | quantity | upstream / the pre-G2.3 parity lane | both lanes today |
 /// |---|---|---|
 /// | worst per-conductor \|ΔS\| | **5.283e-1 kVA** (`Vsource.source`) | 3.256e-11 kVA |
 /// | worst \|Δlosses\| | **6.248e2 W** | 3.329e-8 W |
 /// | worst \|ΔI\| | 4.547e-12 A | 4.547e-12 A |
 ///
-/// Ten orders of magnitude apart, so the bounds below sit far from both sides.
-/// The currents row is the control: `Currents` always recomputed fresh, so it is
-/// lane-independent — which is exactly why upstream's `S != V·conj(I)` after a
-/// Newton solve is a bug and not a convention.
+/// Ten orders of magnitude apart, so the bounds below sit far from both the
+/// value asserted and the value refused: a re-introduced stale read fails this
+/// test in whichever lane it is compiled into. The currents row is the control
+/// — `Currents` always recomputed fresh, in every lane and every revision, which
+/// is exactly why upstream's `S != V·conj(I)` after a Newton solve is a bug and
+/// not a convention.
 #[test]
-fn newton_powers_are_the_lane_kernel() {
+fn newton_powers_match_the_normal_algorithm() {
     let mut newton = solve_with("Newton");
     let mut normal = solve_with("Normal");
     assert_eq!(
@@ -118,31 +118,24 @@ fn newton_powers_are_the_lane_kernel() {
          {worst_i:.3e} A"
     );
 
-    if parity() {
-        assert!(
-            worst_s > 1e-1 && worst_loss > 1e2,
-            "the parity lane must REPRODUCE the upstream post-Newton staleness \
-             (measured 5.283e-1 kVA at Vsource.source / 6.248e2 W); got \
-             {worst_s:.3e} kVA at {worst_s_at} / {worst_loss:.3e} W"
-        );
-    } else {
-        assert!(
-            worst_s < 1e-8 && worst_loss < 1e-5,
-            "the default lane must report S = V·conj(I) under Newton too \
-             (measured 3.256e-11 kVA / 3.329e-8 W); got {worst_s:.3e} kVA at \
-             {worst_s_at} / {worst_loss:.3e} W"
-        );
-    }
+    assert!(
+        worst_s < 1e-8 && worst_loss < 1e-5,
+        "both lanes must report S = V·conj(I) under Newton too (measured \
+         3.256e-11 kVA / 3.329e-8 W; the upstream stale read is 5.283e-1 kVA at \
+         Vsource.source / 6.248e2 W); got {worst_s:.3e} kVA at {worst_s_at} / \
+         {worst_loss:.3e} W"
+    );
 }
 
 /// **The replacement Newton-dispatch tripwire** — stronger than the gate signal
-/// the default lane gives up, and running in *both* lanes.
+/// both lanes give up, and running in *both* lanes.
 ///
 /// On the `newton*` decks Newton and the normal fixed point converge to the same
-/// voltages in the same iteration count, so the stale-`Iterminal` split in the
-/// reported powers was the ONLY channel there that would notice `Set
-/// algorithm=Newton` silently falling back to `DoNormalSolution`. The default
-/// lane no longer exposes it, so the property is asserted at its source instead:
+/// voltages in the same iteration count, so the stale-`Iterminal` divergence in
+/// the reported powers was the ONLY channel there that would notice `Set
+/// algorithm=Newton` silently falling back to `DoNormalSolution`. Neither lane
+/// exposes it since G2.3 (nor did the default lane before that), so the property
+/// is asserted at its source instead:
 /// only `DoNewtonSolution`'s per-iteration `SumAllCurrents` stamps a **PD**
 /// element's `Iterminal` at the live `SolutionCount`, and it does so from the
 /// pre-update guess.
