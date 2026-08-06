@@ -1,7 +1,7 @@
 ! GAPS deck (GOLDEN_REBASE G2.5): the MMF *reader* coverage of shape_mmf.dss,
 ! kept oracle-comparable. Sibling of ../shape_mmf/shape_mmf.dss, which exists to
 ! observe the upstream MMF text accept-set (bytes [46,58), dropping sign and
-! exponent — dss_capi 0.14.5 LoadShape.pas:1374 == r4133 Utilities.pas:833) and
+! exponent — dss_capi 0.14.5 LoadShape.pas:1374 == r4133 Utilities.pas:834) and
 ! therefore diverges from the pinned oracle wholesale now that the port reads the
 ! column the file actually holds.
 ! Everything here is byte-identical in the two engines: the sng/dbl/raw-directive

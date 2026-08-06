@@ -1,11 +1,19 @@
 ! GAPS deck (WPG.17): LoadShape MemoryMapping=Yes + Set/Get TotalTime.
 ! Self-contained (no `var`, no non-MM File= arrays) — the gate-able MMF engine
 ! feature. sngfile/dblfile MMF are fixed-interval, so numerically identical to
-! non-MM (an I/O strategy) — they exercise the sng/dbl MMF readers. The pq shape
-! is the feature-sensitivity axis: its P column is written in exponent notation,
-! and the MMF text accept-set (Pascal InterpretDblArrayMMF, bytes [46,58)) drops
-! the sign/exponent, so P reads as {1.51, 2.01, ...} under MMF vs {0.15, 0.20,
-! ...} without it — a large, oracle-observable divergence in ld_pq's power.
+! non-MM (an I/O strategy). The pq shape is the feature-sensitivity axis: its P
+! column is written in exponent notation ON PURPOSE, so that this deck OBSERVES
+! the upstream MMF text accept-set — both oracle revisions filter the column
+! through bytes [46,58) (Pascal InterpretDblArrayMMF, dss_capi 0.14.5
+! LoadShape.pas:1374 == r4133 Utilities.pas:834), dropping sign and exponent, so
+! THE ORACLE reads P as {1.51, 2.01, ...} where the file says {0.15, 0.20, ...}.
+! Since GOLDEN_REBASE G2.5 the port reads the file verbatim (upstream bugs are
+! never reproduced), so this deck diverges from the pinned capi_v0145 oracle
+! across the solved model and is ledger-excluded as `mmf-accept-set-honoured-capi`
+! (correct values pinned by load_shape::tests). Its UNRELATED reader coverage —
+! sng/dbl/raw-directive MMF, the pqcsvfile= reader, the array round-trip and the
+! Set/Get totaltime surface — moved to ../shape_mmf_io/shape_mmf_io.dss, which
+! stays fully oracle-compared. Keep the exponent notation: it is this deck's job.
 ! Fixtures (committed) regenerate via tools/decks/gen_shape_mmf_fixtures.py.
 Clear
 New Circuit.gaps_mmf basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
