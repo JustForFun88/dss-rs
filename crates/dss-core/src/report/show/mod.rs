@@ -86,10 +86,11 @@ use crate::exec::registry::DssClass;
 /// the quirk cannot affect a token). SETTLED at the WP8.8 exit sweep: the quirk is
 /// nondeterministic (no single value reproduces it), so per the CLAUDE.md UB rule
 /// it is NOT reproduced — the honest source value stays, the padding widths are
-/// masked cosmetics under the tokenizing comparator (same class as
-/// [`max_device_name_length_zero_impl`]'s `= 0`, whose clean fix F.4b landed as
-/// a lane row; this one has no such fix because no single value reproduces the
-/// quirk in the first place).
+/// masked cosmetics under the tokenizing comparator (the same class as the
+/// device-name column's backend `= 0` — see [`device_name_width`], whose
+/// reproduction `GOLDEN_REBASE_PLAN.md` G2.6 tore down; this one never had a
+/// reproduction to tear down, because no single value reproduces the quirk in
+/// the first place).
 pub(crate) fn max_bus_name_length(ckt: &Circuit) -> usize {
     let mut m = 4;
     for i in 0..ckt.buses.len() {
@@ -105,11 +106,42 @@ pub(crate) fn max_bus_name_length(ckt: &Circuit) -> usize {
 /// `CktElements` master list — i.e. the longest `Class.Name` full name, 0 for an
 /// empty circuit.
 ///
-/// This is the honest source computation, and it is done in **both** lanes; what
-/// the lane decides is whether the `Show` tables actually *use* it
-/// ([`crate::compat::max_device_name_length`]).
-///
 /// Byte length, like [`max_bus_name_length`] and Pascal's `Length(AnsiString)`.
+///
+/// # The width every `Show` table uses, in both lanes
+///
+/// Until `GOLDEN_REBASE_PLAN.md` G2.6 the parity lane discarded this number and
+/// padded to **0** instead (`compat::max_device_name_length`), because that is
+/// what the pinned dss_capi 0.14.5 backend does. That was a **defect**, not a
+/// rendering convention, and since the 2026-08-02 policy no upstream defect is
+/// reproduced in any lane:
+///
+/// * dss_capi's `SetMaxDeviceNameLength` zeroes the *unit* variable
+///   (`.inputs/dss_capi/src/Common/ShowResults.pas:116`, declared `:82`) and
+///   then accumulates the maximum **inside `with DSS.ActiveCircuit do`**
+///   (`:117-121`), where the identifier resolves to the shadowing `TDSSCircuit`
+///   field (`src/Common/Circuit.pas:100`, initialized to 30 at `:379`). So the
+///   loop fills a field nothing reads, the unit variable keeps the 0 of `:116`,
+///   and every consumer that is *not* inside such a `with` block — the
+///   `Show BusFlow` power rows at `:1375` are the observable one — formats
+///   against width 0.
+/// * r4133 does not share it: there `MaxDeviceNameLength` exists only as a unit
+///   variable (`Version8/Source/Common/ShowResults.pas:66`), `TDSSCircuit`
+///   declares no such field, and the same loop (`:79-90`) therefore leaves the
+///   honest width behind. Its `WriteTerminalPowerSeq` also writes the terminal
+///   as `j:3` (`:1160`) rather than `IntToStr(j)`, so it could not glue even at
+///   width 0.
+///
+/// The glue is the only tokenizable consequence: `Pad(EncloseQuotes(FullName),
+/// width + 2) + IntToStr(j)` (`ShowResults.pas:1375`) has no width of its own,
+/// so at width 0 the terminal number lands on the closing quote
+/// (`"Capacitor.cap1"1  …`) and at the honest width it is a column. Every other
+/// consumer pads with spaces or `PadDots` runs, which the goldens' tokenizer
+/// drops. The three `show_busflow*` goldens are therefore compared — in **both**
+/// lanes since G2.6 — through an enumerated expectation that splits that one
+/// token (`golden_reports.rs::busflow_expected`); no golden byte was
+/// re-baselined. Pinned by
+/// `exec::tests::compat_quirks::device_name_column_is_sized_from_its_content`.
 pub(crate) fn device_name_width(classes: &[DssClass], ckt: &Circuit) -> usize {
     ckt.ckt_elements
         .iter()
@@ -119,39 +151,6 @@ pub(crate) fn device_name_width(classes: &[DssClass], ckt: &Circuit) -> usize {
         })
         .max()
         .unwrap_or(0)
-}
-
-/// The **parity kernel** of the `Show` device-name column width
-/// ([`crate::compat::max_device_name_length`]): the measured width is discarded
-/// and the column collapses.
-///
-/// The **pinned dss_capi 0.14.5 backend** empirically returns **0** from
-/// `SetMaxDeviceNameLength` regardless of the element names, so the device-name
-/// column in every `Show Currents`/`Powers`/`Losses`/… report is left
-/// **unpadded** (the `Paddots`/`Pad(…, width + 2)` never fires, since a 2-char
-/// width is below every `EncloseQuotes(name)`). Proven by probe: adding a
-/// 25-char-named line to a deck does not widen the column, and the per-row
-/// terminal number sits immediately after each (variable-length) name, not on a
-/// fixed column. A backend-vs-source divergence, reproduced here so the parity
-/// lane keeps matching the oracle it is measured against.
-pub fn max_device_name_length_zero_impl(_measured: usize) -> usize {
-    0
-}
-
-/// The **default kernel**: the column is sized from its own content, i.e. the
-/// width [`device_name_width`] computed.
-///
-/// This is the `Show`-table half of F-FMT (`DE_PASCALIZE_PLAN.md` Part IV.2
-/// §F-FMT step 2). Its most visible effect is on `Show BusFlow`, whose power
-/// rows are `Pad(EncloseQuotes(FullName), MaxDeviceNameLength + 2) +
-/// IntToStr(j)` (`ShowResults.pas:1375`) — `IntToStr` carries no width, so at
-/// width 0 the terminal number is *glued* to the name (`"Capacitor.cap1"1  …`)
-/// and at the honest width it is a separate column. The three `show_busflow*`
-/// goldens are therefore compared through an enumerated default-lane expectation
-/// that splits that one token (`golden_reports.rs::busflow_expected`); nothing is
-/// re-baselined.
-pub fn max_device_name_length_measured_impl(measured: usize) -> usize {
-    measured
 }
 
 /// Pascal `(CLASSMASK and DSSObjType) = AUTOTRANS_ELEMENT`, tested on the report

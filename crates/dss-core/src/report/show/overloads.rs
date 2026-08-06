@@ -28,11 +28,12 @@ pub(crate) fn show_overloads(
     sys: &SysCtx,
     node_v: &[Complex64],
 ) -> String {
-    // `SetMaxDeviceNameLength(DSS)` — the lane's ([`crate::compat::
-    // max_device_name_length`]): the pinned backend returns 0, so the parity
-    // lane's name column is unpadded (`Pad(EncloseQuotes(FullName), 0 + 2)` =
-    // the bare quoted name), while the default lane sizes it from its content.
-    let mdnl = crate::compat::max_device_name_length(super::device_name_width(classes, ckt));
+    // `SetMaxDeviceNameLength(DSS)`, sized from its own content in both lanes:
+    // the pinned dss_capi backend answers 0 here because its loop fills a
+    // shadowing circuit field instead of the unit variable the writers read
+    // (see [`super::device_name_width`]), and that defect is reproduced in no
+    // lane. Only padding moves; the tokenizing golden comparator drops it.
+    let mdnl = super::device_name_width(classes, ckt);
 
     let mut rep = Report::new();
     rep.blank();

@@ -26,7 +26,7 @@ fn header_row(mdnl: usize) -> Row {
 /// Build the `Show DeltaV` text (Pascal `ShowDeltaV`). Walks Sources → PD → PC,
 /// writing the delta-voltage block for every **enabled 2-terminal** element.
 pub(crate) fn show_delta_v(classes: &[DssClass], ckt: &Circuit) -> String {
-    let mdnl = crate::compat::max_device_name_length(super::device_name_width(classes, ckt));
+    let mdnl = super::device_name_width(classes, ckt);
 
     let mut rep = Report::new();
     rep.blank();

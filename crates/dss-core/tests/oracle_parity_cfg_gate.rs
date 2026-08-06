@@ -486,6 +486,12 @@ const ESCAPE_REGISTER: &[(&str, &str, Escape)] = &[
         Escape::UpgradeRung,
     ),
     // ---- the rendering seam → F.4 (`F-FMT`): all 7 resolved, none left ----
+    // Six of them are still lane rows (they die at WP-G4); the seventh is gone
+    // altogether — `GOLDEN_REBASE_PLAN.md` G2.6 tore down the `Show`
+    // device-name column width, which was never a rendering convention but a
+    // dss_capi-only defect (a shadowing `TDSSCircuit` field, absent in r4133).
+    // See its `TORN_DOWN_ROWS` entry.
+    //
     // F.4a took the six *number-rendering* rows through the `compat` seam:
     // `util.rs`'s `%g` two-stage rounding (`compat::fmt_g`),
     // `report/format.rs`'s script fixed-point (`compat::fixed_w_script`),
@@ -495,7 +501,8 @@ const ESCAPE_REGISTER: &[(&str, &str, Escape)] = &[
     // (`compat::JSON_LINE_BREAK`), and `export/json/circuit.rs`'s PostCommands
     // umbrella — whose two spellings are the `%g` and fixed rows above and whose
     // command set is IV.1 contract, not compat. F.4b took the seventh, the
-    // `Show` device-name column width (`compat::max_device_name_length`).
+    // `Show` device-name column width — the one G2.6 has since removed from the
+    // seam entirely (the paragraph above).
     // ---- whole-case default-lane exclusions → not the executor's to grant (1) ----
     // The GICTransformer `%R2`, Capacitor `Cuf` and LoadShape MMF accept-set
     // rows that used to sit here are gone: `GOLDEN_REBASE_PLAN.md` G2.5 fixed
@@ -821,8 +828,19 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// of every capture. (The engines' own answer in that state — `SampleCount`
 /// zeros conjured from unwritten stream bytes — is a separate upstream defect
 /// the port declines; no client reaches it. See the row's `TORN_DOWN_ROWS`
-/// entry.)
-const SPLIT_ALIAS_POPULATION: usize = 12;
+/// entry.) **11** after G2.6 tore down `max_device_name_length`, the last WP-G2
+/// row and the only one of the seven F-FMT *rendering* rows that was not a
+/// rendering convention at all: dss_capi's `SetMaxDeviceNameLength` fills a
+/// shadowing `TDSSCircuit` field while its writers read the unit variable it
+/// zeroed, so the `Show` device-name column collapses to 0 there and does not in
+/// r4133, which has no such field. Both lanes now size the column from its own
+/// content and the three `show_busflow*` goldens' oracle text is de-glued
+/// unconditionally. The eleven survivors are WP-G2's fixed point: the five
+/// numeric precision rows (`PI`, `round_f64`, `round_i32`,
+/// `kv_base_search_scale`, `profile_ll_pu_divisor`) and the six *rendering* ones
+/// (`fmt_g`, `fixed_w_script`, `CONTROL_QUEUE_SEC_DIGITS`, `json_float`,
+/// `JSON_LINE_BREAK`, `render_rows`), which WP-G4 takes down to five.
+const SPLIT_ALIAS_POPULATION: usize = 11;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -910,9 +928,16 @@ fn names_token(text: &str, token: &str) -> bool {
 /// been credited by a *neighbouring* test's constant. Their pins do branch on
 /// the lane; only this predicate could not see how. (All three are torn down
 /// now — the first two by G2.2a, the third by G2.2c — and their pins are
-/// unconditional. The arm stays load-bearing: `golden_reports.rs` still reads
-/// the lane in this spelling only, and it is a pin file for the surviving
-/// `max_device_name_length` row.)
+/// unconditional. The arm was still load-bearing while
+/// `max_device_name_length` lived, because `golden_reports.rs` pinned it and
+/// reads the lane in this spelling only. G2.6 tore that row down too, and the
+/// measurement now is: **no** surviving row's pin depends on this arm —
+/// `golden_reports.rs` names no split alias at all any more, and
+/// `harness/mod.rs`'s single `lane::PARITY` read belongs to no row. The arm
+/// stays because the spelling is still how the harness reads the lane (×4 in
+/// `golden_reports.rs`, ×2 in `harness/regen.rs`, ×1 in `harness/mod.rs`), so
+/// the next pin written there must be recognised; it is no longer what keeps
+/// any row pinned.)
 ///
 /// The second arm is the **qualified** path only, not the bare word
 /// [`reads_the_lane`] settles for. (No line number: the two in-file citations
@@ -924,9 +949,10 @@ fn names_token(text: &str, token: &str) -> bool {
 /// the caller *accept* more, so an English `PARITY` in a comment would satisfy
 /// the rail. Two such comments exist in-tree (`tests/golden_reports.rs:1628`,
 /// `tests/corpus_gate/scheduler.rs:358`) while every real read is written
-/// `lane::PARITY` (`golden_reports.rs` ×6 — it was ×15 until G2.2a tore down
-/// two rows pinned there and ×9 until G2.2c tore down the Fault dump row —
-/// plus `harness/mod.rs:2374`, the kV-value compare and
+/// `lane::PARITY` (`golden_reports.rs` ×4 — it was ×15 until G2.2a tore down
+/// two rows pinned there, ×9 until G2.2c tore down the Fault dump row and ×6
+/// until G2.6 tore down the device-name column width, whose two arms it also
+/// held — plus `harness/mod.rs:2374`, the kV-value compare and
 /// that file's only remaining read; `skip_prop`'s, which was the *first* of its
 /// two, went unconditional in G2.2b);
 /// `harness/lane.rs`, which uses the bare name because it declares it, names
@@ -2160,6 +2186,57 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         Some((
             "crates/dss-core/src/elements/general/load_shape/tests.rs",
             "mmf_text_reader_agrees_with_its_non_mapped_twin",
+        )),
+    ),
+    // G2.6, and the only row this WP took out of the *rendering* seam rather
+    // than out of a bug bullet — because it was never a rendering convention.
+    // dss_capi's `SetMaxDeviceNameLength` zeroes the unit variable
+    // (`.inputs/dss_capi/src/Common/ShowResults.pas:116`, declared `:82`) and
+    // then accumulates the maximum inside `with DSS.ActiveCircuit do`
+    // (`:117-121`), where the identifier resolves to the shadowing `TDSSCircuit`
+    // field (`src/Common/Circuit.pas:100`, initialized to 30 at `:379`). The
+    // writers read the unit variable, so the device-name column of every `Show`
+    // table is formatted against **0** — the `Pad(…, width + 2)` cannot fire,
+    // since two characters is below every `EncloseQuotes(name)`. r4133 does not
+    // share it: `MaxDeviceNameLength` is a unit variable only there
+    // (`Version8/Source/Common/ShowResults.pas:66`), `TDSSCircuit` declares no
+    // such field, and the same loop (`:79-90`) leaves the honest width behind;
+    // its `WriteTerminalPowerSeq` also writes the terminal as `j:3` (`:1160`)
+    // rather than `IntToStr(j)`, so it could not glue even at width 0. Both
+    // lanes now size the column from its own content.
+    //
+    // One tokenizable consequence, measured rather than assumed: only the
+    // `IntToStr` site (`ShowResults.pas:1375`) glues, so only the three
+    // `show_busflow*` goldens are affected — every other consumer pads with
+    // spaces or `PadDots` runs, which `harness::split_fields` drops. Their
+    // oracle text is de-glued unconditionally instead of being re-baselined, so
+    // no golden byte moves.
+    (
+        "max_device_name_length",
+        Kind::SplitAlias,
+        // The engine call site the *goldens* observe — `Show BusFlow`'s writer,
+        // the one place the width is tokenizable. The needle is its whole
+        // statement at its own four spaces; the split form spelled the same line
+        // `crate::compat::max_device_name_length(super::device_name_width(…))`,
+        // so it cannot match a revert.
+        //
+        // Per the last paragraph of [`Evidence::Site`]: the six sibling writers
+        // (`currents`, `losses`, `overloads`, `powers`, `elements`, `delta_v`)
+        // are deliberately not listed, and that is not the "half the teardown"
+        // hole the doc warns about. The alias itself is *deleted*, so a call
+        // site cannot quietly re-route through it — restoring one means
+        // restoring the split, which the census tie, the ghost check and the
+        // pin-walk all fail on. What those six could still lose is padding
+        // width, which no oracle-compared token can see (space pads and
+        // `PadDots` runs are dropped by `harness::split_fields`) — it is
+        // unobservable by construction, here as it was before the teardown.
+        Evidence::Site(
+            "crates/dss-core/src/report/show/bus_powers.rs",
+            &["\n    let mdnl = super::device_name_width(classes, ckt);"],
+        ),
+        Some((
+            "crates/dss-core/src/exec/tests/compat_quirks.rs",
+            "device_name_column_is_sized_from_its_content",
         )),
     ),
 ];

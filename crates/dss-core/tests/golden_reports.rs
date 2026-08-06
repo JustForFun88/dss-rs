@@ -2272,30 +2272,37 @@ fn busflow_elem_policy() -> ExportPolicy {
     }
 }
 
-/// The oracle's `Show BusFlow` text as the **current lane** lays it out — the
-/// identity in the parity lane, and in the default lane one enumerated rule.
+/// LANE-EXCLUSION(max_device_name_length): the oracle's `Show BusFlow` text as
+/// **both** lanes lay it out — one enumerated rule, applied unconditionally.
 ///
-/// `compat::max_device_name_length` (F.4b) sizes the device-name column from its
-/// content instead of collapsing it to 0. The power rows are
-/// `Pad(EncloseQuotes(FullName), width + 2) + IntToStr(term)`
+/// The engine sizes the device-name column from its own content
+/// (`report::show::device_name_width`) instead of collapsing it to 0, which is
+/// what the pinned dss_capi backend does — a defect (its `SetMaxDeviceNameLength`
+/// fills a shadowing `TDSSCircuit` field while the writers read the unit
+/// variable, `ShowResults.pas:116-121` vs `Circuit.pas:100`) that r4133 does not
+/// share (`Version8/Source/Common/ShowResults.pas:66`, no such field). The power
+/// rows are `Pad(EncloseQuotes(FullName), width + 2) + IntToStr(term)`
 /// (`ShowResults.pas:1375`) — `IntToStr` carries no width, so at width 0 the
 /// terminal number is glued to the closing quote (`"Capacitor.cap1"1`) and at
 /// the honest width it becomes its own column. The tokenizer sees one field
-/// where the default lane produces two, so the *oracle* expectation is split at
-/// exactly that seam.
+/// where the engine produces two, so the *oracle* expectation is split at
+/// exactly that seam; no golden byte moves. `GOLDEN_REBASE_PLAN.md` G2.6 tore
+/// the lane split down, which is why this rule no longer has a parity arm.
 ///
 /// The rule is deliberately narrow: a closing `"` **immediately** followed by an
 /// ASCII digit, nowhere else. The seq-currents rows of the same report already
 /// carry a literal space before their `%3d` terminal, so they never match; a
 /// digit inside a name cannot match either, because the quote must precede it.
 ///
-/// Note the *longest* device still glues in both lanes — `width` counts the
-/// unquoted name, so `width + 2` is exactly the longest quoted name's length —
-/// which is why this is a per-row rule and not a whole-column one.
+/// The *longest* device in the circuit would still glue in the parity lane —
+/// `width` counts the unquoted name, so `width + 2` is exactly the longest
+/// quoted name's length — but no such element appears in these three fixtures'
+/// rows (measured: ieee13's maximum is 16, `Transformer.XFM1` and the three
+/// `Transformer.Reg*`, none of which touches bus 675 or 611). That is why this
+/// is a per-row rule and not a whole-column one, and it is pinned at the
+/// boundary itself by
+/// `exec::tests::compat_quirks::device_name_column_is_sized_from_its_content`.
 fn busflow_expected(oracle: &str) -> String {
-    if lane::PARITY {
-        return oracle.to_string();
-    }
     oracle
         .lines()
         .map(|line| match split_glued_terminal(line) {
@@ -2424,9 +2431,13 @@ fn show_busflow_matches_oracle() {
 }
 
 /// Non-vacuity and scope of [`busflow_expected`], in both lanes: each committed
-/// golden really carries glued rows, the parity expectation is the oracle
-/// verbatim, the default one splits exactly those rows and no others, and the
-/// rule leaves an already-separated row alone.
+/// golden really carries glued rows, the transform splits exactly those rows and
+/// no others, and the rule leaves an already-separated row alone.
+///
+/// The capture-reading assert is deliberately kept after G2.6 made the transform
+/// unconditional: it reads the *committed oracle capture*, whose glue is a fact
+/// about dss_capi 0.14.5 rather than about our lane, so it stays valid in both
+/// builds. It dies at G3.3b, when the self-snapshot no longer carries glue.
 #[test]
 fn busflow_glue_transform_is_the_terminal_column() {
     // The rule, at the character level.
@@ -2452,17 +2463,9 @@ fn busflow_glue_transform_is_the_terminal_column() {
         assert!(
             glued > 0,
             "{stem}: the oracle golden no longer carries a glued terminal column \
-             — the `compat::max_device_name_length` row would stop being observed"
+             — the device-name column width would stop being observed"
         );
         let expected = busflow_expected(&oracle);
-        if lane::PARITY {
-            assert_eq!(
-                expected.lines().collect::<Vec<_>>(),
-                oracle.lines().collect::<Vec<_>>(),
-                "{stem}: the parity arm is the identity"
-            );
-            continue;
-        }
         assert_eq!(
             expected.lines().count(),
             oracle.lines().count(),
