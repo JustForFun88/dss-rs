@@ -238,21 +238,39 @@ impl Monitor {
     ///
     /// Nothing to report — an index outside `1..=RecordSize`, or a stream
     /// nothing has been flushed into yet — is the **empty** channel, in both
-    /// lanes: `Monitors_Get_Channel` returns `DefaultResult`, an empty array,
-    /// for either (`CAPI_Monitors.pas:295-331`). It is also what the
-    /// neighbouring [`Self::dbl_hour`] reads off the same stream.
+    /// lanes. It is also what the neighbouring [`Self::dbl_hour`] reads off the
+    /// same stream.
     ///
-    /// The one-element `[0.0]` an unflushed stream is *read back* as by the
-    /// oracle clients is not an engine value and never was: dss-python's
-    /// `IMonitors.Channel` (`dss/IMonitors.py:28-55`) bypasses that function,
-    /// pulls the raw `ByteStream` and short-circuits `if cnt == 272` (the
-    /// header-only stream size) to `np.zeros((1,))`; our r4133 bridge copies
-    /// that decoder (`crates/dss-epri/src/dss.rs:625-634`) and the native r4133
-    /// reader pads the same way (`DMonitors.pas:509-516` — `myDBLArray := [0]`,
-    /// overwritten only `If pMon.SampleCount > 0`). It is a client artifact of
-    /// every reader, so since `GOLDEN_REBASE_PLAN.md` G2.4 it is normalized out
-    /// of the *capture* (`harness::lane::expected_monitor_channel`) instead of
-    /// being reproduced here under a lane split.
+    /// **Two distinct upstream answers are refused here, and it is worth
+    /// keeping them apart** (the G2.4 record was corrected on 2026-08-06 —
+    /// `GOLDEN_REBASE_PLAN.md` §G2.4):
+    ///
+    /// 1. *The clients' `[0.0]`* — a client artifact, never an engine value.
+    ///    dss-python's `IMonitors.Channel` (`dss/IMonitors.py:28-55`) does not
+    ///    call `Monitors_Get_Channel` at all: it pulls the raw `ByteStream` and
+    ///    short-circuits `if cnt == 272` (the header-only stream size) to
+    ///    `np.zeros((1,))`; our r4133 bridge decodes that same stream the same
+    ///    way (`crates/dss-epri/src/dss.rs:625-634`). Since both gating
+    ///    channels read through such a decoder, that placeholder is normalized
+    ///    out of the *capture* (`harness::lane::expected_monitor_channel`)
+    ///    rather than reproduced here.
+    /// 2. *The engines' `SampleCount` fabricated zeros* — an upstream defect,
+    ///    fixed outright per the 2026-08-02 no-bug-reproduction policy. The
+    ///    empty `DefaultResult` of `Monitors_Get_Channel`
+    ///    (`CAPI_Monitors.pas:304`) survives only for `SampleCount <= 0`
+    ///    (`:308`) or an invalid index (`:313-320`). With samples taken but
+    ///    nothing flushed — `TakeSample` does `inc(SampleCount)`
+    ///    (`Monitor.pas:1195`) while the stream grows only in `Save`
+    ///    (`:1122-1125`) — it instead allocates `SampleCount` doubles (`:321`)
+    ///    and fills them from a zero-filled `AllocMem` buffer (`:325`) whose
+    ///    `MonitorStream.Read`s all fail at EOF, i.e. it returns `SampleCount`
+    ///    zeros conjured from stream bytes it never wrote. r4133's native
+    ///    accessor does the same: `DMonitors.pas:509-516` pads `myDBLArray :=
+    ///    [0]` only while `SampleCount = 0`, and at `SampleCount > 0` takes the
+    ///    read branch (`:517-541`) over the same unwritten region. Neither
+    ///    engine's answer is observable through either gating client (both
+    ///    short-circuit at `cnt == 272` and never reach the accessor), which is
+    ///    why the fix owes no ledger entry.
     pub fn channel(&self, i: usize) -> Vec<f32> {
         if i < 1 || i > self.record_size || self.flushed_records == 0 {
             return Vec::new();
@@ -342,43 +360,68 @@ impl Monitor {
 mod tests {
     use super::Monitor;
 
-    /// Build a monitor with `n` synthetic 1-channel records staged in
-    /// `mon_buffer` but NOT flushed (`flushed_records = 0`) — the `mode=Time`
-    /// state: `TakeSample` appended to `MonBuffer`, but `SolveGeneralTime` never
-    /// called `MonitorClass.SaveAll`.
-    fn staged_monitor(n: usize) -> Monitor {
+    /// Build a monitor with `n` synthetic records of `record_size` data
+    /// channels staged in `mon_buffer` but NOT flushed (`flushed_records = 0`)
+    /// — the `mode=Time` state: `TakeSample` appended to `MonBuffer`, but
+    /// `SolveGeneralTime` never called `MonitorClass.SaveAll`. Channel `c`
+    /// (0-based) of sample `s` carries `10 + s + 100 * c`, so a stride or
+    /// channel-index slip shows up in the *value*, not just the length.
+    fn staged_monitor_wide(n: usize, record_size: usize) -> Monitor {
         let mut m = Monitor::new("m");
-        m.record_size = 1; // one data channel -> stride 3 (hour, sec, ch1)
+        m.record_size = record_size; // stride = record_size + 2 (hour, sec)
         m.sample_count = n as i32;
         for s in 0..n {
             m.mon_buffer.push(s as f32); // hour
             m.mon_buffer.push(0.0); // sec
-            m.mon_buffer.push((10 + s) as f32); // ch1 value
+            for c in 0..record_size {
+                m.mon_buffer.push((10 + s + 100 * c) as f32);
+            }
         }
-        m.header = vec!["hour".into(), "t(sec)".into(), "V1".into()];
+        m.header = vec!["hour".into(), "t(sec)".into()];
+        for c in 0..record_size {
+            m.header.push(format!("V{}", c + 1));
+        }
         m
+    }
+
+    /// The single-channel staging the flush-lifecycle tests use (channel 1
+    /// carries 10, 11, …).
+    fn staged_monitor(n: usize) -> Monitor {
+        staged_monitor_wide(n, 1)
     }
 
     // EXPECTED-VALUE-PIN(MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM): the value
     // the engine reports for a stream nothing has been flushed into — the
-    // **empty** channel `Monitors_Get_Channel` returns
-    // (`CAPI_Monitors.pas:295-331`), asserted outright, in both lanes. The
-    // one-element `[0.0]` is fabricated by the oracles' client-side stream
-    // decoders (`dss/IMonitors.py:28-55`, `crates/dss-epri/src/dss.rs:625-634`,
-    // r4133 `DMonitors.pas:509-516`), so no engine value is asserted away here;
-    // the capture side normalizes it out instead
-    // (`harness::lane::expected_monitor_channel`).
+    // **empty** channel, asserted outright, in both lanes. Two upstream answers
+    // are refused, and the pin is the anchor for both (see [`Monitor::channel`]
+    // for the citations): the oracle clients' one-element `[0.0]`, which is
+    // fabricated by their ByteStream decoders (`dss/IMonitors.py:28-55`,
+    // `crates/dss-epri/src/dss.rs:625-634`) and is normalized out of the capture
+    // instead (`harness::lane::expected_monitor_channel`); and the `SampleCount`
+    // zeros both engine accessors conjure out of stream bytes they never wrote
+    // (`CAPI_Monitors.pas:321-330`, r4133 `DMonitors.pas:517-541`), which is an
+    // upstream defect fixed here rather than reproduced.
     /// Sharpened against [`channel_reflects_flush_state`], which walks the whole
     /// flush lifecycle: this one holds the *unflushed* answer still while the
-    /// samples are demonstrably there — four records staged in `MonBuffer`,
-    /// every channel of the monitor empty, and `dbl_hour` (the same stream read
-    /// through a surface no client special-cases) empty beside it. So "empty"
-    /// here means "nothing flushed", never "nothing sampled".
+    /// samples are demonstrably there — four records of a **three-channel**
+    /// monitor staged in `MonBuffer`, every channel empty, and `dbl_hour` — the
+    /// same stream, read through the port's other accessor — empty beside it.
+    /// So "empty" here means "nothing flushed", never "nothing sampled".
+    /// (Upstream's `dblHour` is `SampleCount`-driven exactly like its `Channel`
+    /// and fabricates the same zeros, so this is our two reads agreeing with
+    /// each other, not with an oracle; neither is oracle-compared.)
+    ///
+    /// The multi-channel staging is what makes the two halves of the guard
+    /// separable: after `save()` every in-range channel must carry its own four
+    /// samples (so a fold that kept the flush test but dropped the index test —
+    /// or one that quietly re-pads — fails), while the out-of-range index stays
+    /// empty on both sides of the flush.
     #[test]
     fn monitor_channel_of_an_unflushed_stream_is_empty() {
-        let m = staged_monitor(4);
+        let mut m = staged_monitor_wide(4, 3);
         assert_eq!(m.sample_count(), 4, "four samples were taken");
         assert_eq!(m.flushed_records(), 0, "and none of them flushed");
+        assert_eq!(m.num_channels(), 3, "across three channels");
         // 0-based loop, `+ 1` at the 1-based `Channel(i)` boundary — the port's
         // indexing convention (`DE_PASCALIZE` P14).
         for ch in 0..m.num_channels() {
@@ -386,7 +429,9 @@ mod tests {
             assert_eq!(
                 m.channel(i),
                 Vec::<f32>::new(),
-                "channel {i} of an unflushed stream is empty, not [0.0]"
+                "channel {i} of an unflushed stream is empty, not [0.0] and not \
+                 {} zeros",
+                m.sample_count()
             );
         }
         assert_eq!(
@@ -394,6 +439,22 @@ mod tests {
             Vec::<f64>::new(),
             "and it agrees with the neighbouring read of the same stream"
         );
+        // Out of range is empty whatever the flush state...
+        assert_eq!(m.channel(0), Vec::<f32>::new());
+        assert_eq!(m.channel(m.num_channels() + 1), Vec::<f32>::new());
+        // ...while "empty" is emphatically not the engine's answer once the
+        // samples are flushed: every in-range channel then carries its own.
+        m.save();
+        for ch in 0..m.num_channels() {
+            let base = (10 + 100 * ch) as f32;
+            assert_eq!(
+                m.channel(ch + 1),
+                vec![base, base + 1.0, base + 2.0, base + 3.0],
+                "channel {} carries its own four samples once flushed",
+                ch + 1
+            );
+        }
+        assert_eq!(m.channel(m.num_channels() + 1), Vec::<f32>::new());
     }
 
     /// Pascal `Monitors_Get_Channel` reads `MonitorStream` (the flushed data),

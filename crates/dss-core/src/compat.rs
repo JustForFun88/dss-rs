@@ -45,7 +45,7 @@
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5) | *torn down* (GOLDEN_REBASE G2.3) — `exec::view::snapshot_elements` recomputes `Iterminal` at the converged `NodeV` for Powers, Losses and Currents alike, in both lanes | — |
 //! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
 //! | report text rendering — `Show` device-name column width | [`max_device_name_length`] — same section | **yes** (F.4b) |
-//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f, the CIM wye `grounded` flag G2.1g, the Line height-unit re-read G2.1h, the Isource `Bus2` latch G2.2b, the two CIM attribute names and the Fault `Dump` `MinAmps` reprint G2.2c, the two Relay event-log labels G2.2d, and the unflushed monitor-channel pad G2.4 — that last one *reclassified* rather than fixed: its upstream was the oracle clients' stream decoder, not an engine |
+//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f, the CIM wye `grounded` flag G2.1g, the Line height-unit re-read G2.1h, the Isource `Bus2` latch G2.2b, the two CIM attribute names and the Fault `Dump` `MinAmps` reprint G2.2c, the two Relay event-log labels G2.2d, and the unflushed monitor-channel pad G2.4 — that last one mostly *reclassified* rather than fixed: the `[0.0]` it reproduced comes from the oracle clients' stream decoder, not from an engine (the engines' own answer there, `SampleCount` fabricated zeros, is a separate upstream defect this port declines, unobservable through either client) |
 //!
 //! The Monitor `BaseFrequency` and Newton stale-`Iterminal` rows were not in
 //! IV.2's table and did not extend it: they *were* the two **reproduced**
@@ -648,30 +648,42 @@ pub use etk_invert_gj_no_exchange_impl as etk_invert;
 // pair from the oracle goldens unconditionally, so no golden byte moved.
 
 // `MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM` lived here until
-// `GOLDEN_REBASE_PLAN.md` G2.4 **reclassified** it. It was the only row this
-// module ever carried whose upstream was not Pascal — and, measured, not an
-// engine behaviour at all: the `[0.0]` a header-only monitor stream reads back
-// as is fabricated by the **client layer of both oracle channels**, never by an
-// engine.
+// `GOLDEN_REBASE_PLAN.md` G2.4 **reclassified** it — the only row this module
+// ever carried whose upstream was not Pascal. The `[0.0]` the parity lane used
+// to emit for a header-only monitor stream is fabricated by the **client layer
+// of both oracle channels**, never by an engine:
 //
 // * dss-python's `IMonitors.Channel` (`dss/IMonitors.py:28-55`) does not call
-//   `Monitors_Get_Channel`: it pulls the raw `ByteStream` and short-circuits
-//   `if cnt == 272: return np.zeros((1,), dtype=np.float32)`, 272 being the
-//   header-only stream size — while the C-API function underneath returns
-//   `DefaultResult`, an empty array (`CAPI_Monitors.pas:295-331`).
+//   `Monitors_Get_Channel` at all: it pulls the raw `ByteStream` and
+//   short-circuits `if cnt == 272: return np.zeros((1,), dtype=np.float32)`,
+//   272 being the header-only stream size.
 // * our own r4133 bridge reproduces that decoder by design
 //   (`crates/dss-epri/src/dss.rs:625-634`, "exactly like dss-python",
-//   `cnt == 272 -> vec![0.0]`).
-// * and the **native** r4133 reader pads too: `DMonitors.pas:509-516`
-//   (`Version8/Source/DDLL`) sets `myDBLArray` to a single `0` and overwrites it
-//   only `If pMon.SampleCount > 0`, so no official r4133 reader reports an empty
-//   channel either.
+//   `cnt == 272 -> vec![0.0]`) — and, since it is what the `r4133` channel's
+//   captures are actually made of, it is the load-bearing evidence for that
+//   channel, not any Pascal accessor.
 //
-// A reader's fabrication is not a lane row to reproduce, so both lanes now
-// report the empty channel (`elements::meter::monitor::Monitor::channel`, which
-// thereby also agrees with its own `dbl_hour`) and the placeholder is normalized
-// out of the capture instead — lane-independently **and** channel-independently,
-// because both gating channels' readers fabricate it
+// **Corrected 2026-08-06 (audit).** The engines are not innocent here, they are
+// simply never reached through those two clients. `Monitors_Get_Channel` keeps
+// its empty `DefaultResult` (`CAPI_Monitors.pas:304`) only for `SampleCount <=
+// 0` (`:308`) or an invalid index (`:313-320`); with samples taken and nothing
+// flushed — `TakeSample` increments `SampleCount` (`Monitor.pas:1195`) while
+// only `Save` grows the stream (`:1122-1125`) — it returns `SampleCount` zeros
+// read out of a zero-filled `AllocMem` buffer whose reads all fail at EOF
+// (`:321-330`). r4133's native accessor pads `myDBLArray := [0]` only while
+// `SampleCount = 0` and otherwise walks the same unwritten region
+// (`Version8/Source/DDLL/DMonitors.pas:509-541`). So no official reader reports
+// an empty channel, but neither engine reports `[0.0]` either: the placeholder
+// is purely a client artifact, and the `SampleCount` zeros are an upstream
+// defect this port does not reproduce (2026-08-02 policy). Neither is
+// observable through a gating client, which is why the row owes no ledger
+// entry.
+//
+// Hence both lanes report the empty channel
+// (`elements::meter::monitor::Monitor::channel`, which thereby also agrees with
+// its own `dbl_hour`) and the client placeholder is normalized out of the
+// capture — lane-independently **and** channel-independently, because both
+// gating channels' readers fabricate it
 // (`harness::lane::expected_monitor_channel`).
 
 /// The scale `CalcVoltageBases` applies to a bus's solved L-N magnitude before

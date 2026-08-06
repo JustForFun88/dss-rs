@@ -2028,6 +2028,19 @@ golden, tolerance, ledger or deck touched.
 | `HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD` | `TLineConstants.Set_FuserHeightUnit` moves the unit field and then calls `Set_FheightOffset(FheightOffset)` (`LineConstants.pas:689-695`; byte-identical in r4133 `Version8/…:689-696`) | `FheightOffset` is declared *"The height is always saved in meters here"* (`:71`, `:97`) while `Set_FheightOffset`'s argument is a **user-unit** number it multiplies by `To_Meters` (`:676-687`) — a metres value fed into a user-unit parameter. The line's own comment states the intent the fix implements: *"This updates the existing value to fit the new user units"* | re-reads the number the user typed — `Get_FheightOffset()`, the expression the class already has (`:396-399`), captured before the unit field moves |
 | `MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM` | for a monitor that has flushed nothing, `Channel(i)` reports a one-element `[0.0]` | the **engine** does not do this: `CAPI_Monitors.pas:295-331` returns `DefaultResult` — an empty array. The padding is dss-python's Python-side `IMonitors.Channel` (`dss/IMonitors.py:28-55`), which bypasses `Monitors_Get_Channel` entirely, reads the raw `ByteStream` and short-circuits `if cnt == 272: return np.zeros((1,))` | the empty channel, which also makes `Channel` agree with `dblHour` — the same stream through a surface dss-python does *not* special-case, already empty in both lanes |
 
+> **Correction (2026-08-06, GOLDEN_REBASE G2.4 settle).** The monitor row's
+> middle cell overstates the Pascal, and the claim is repeated wherever it was
+> copied from here. `Monitors_Get_Channel` returns the empty `DefaultResult`
+> only for `SampleCount <= 0` (`CAPI_Monitors.pas:308`) or an invalid index
+> (`:313-320`). With samples taken and nothing flushed — the state the row is
+> about — it returns `SampleCount` zeros read out of a cleared `AllocMem` buffer
+> whose stream reads all fail at EOF (`:321-330`), and r4133's native accessors
+> do the same (`DDLL/DMonitors.pas:517-541`, `DLL/ImplMonitors.pas:419-465`).
+> The `[0.0]` is still purely dss-python's, as the cell says, and the default
+> lane's empty channel is still the right answer — but it is the right answer
+> because the engines' fabricated zeros are an upstream defect we decline, not
+> because the engines agree with us. See `GOLDEN_REBASE_PLAN.md` §G2.4.
+
 **The height row is a lane split precisely because it changes nothing yet.**
 Its only consumer is the Line → Carson push, whose call order is fixed —
 `SetEpsRMedium`, `SetHeightOffset`, `SetUserHeightUnit`

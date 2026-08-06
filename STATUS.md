@@ -490,44 +490,94 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   the split tree, and the marker obligation `Evidence::Exclusion` carries is met
   at `harness/lane.rs:136-139`.
 - **G2.4** (2026-08-06) — the **monitor-channel padding** row
-  (`MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM`), *reclassified* rather than
-  fixed: it was the only row the compat module ever carried whose upstream was
-  not Pascal, and it is not an engine behaviour at all. 13 → 12.
+  (`MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM`): the `[0.0]` it reproduced is a
+  client artifact, so the row is mostly *reclassified* rather than fixed — it was
+  the only row the compat module ever carried whose upstream was not Pascal.
+  13 → 12.
   **The blocked measurement, and the owner decision.** The plan's G2.4 section
   asked for a **channel-scoped** normalization firing only for `capi_v0145`, on
   the premise "on r4133 there is no wrapper, so a `[0.0]` capture is a real
   value". The sub-step's first attempt returned **blocked** because that premise
   is false in this tree: the pad is a client-layer artifact on **both** gating
   channels — dss-python pads in `dss/IMonitors.py` (`if cnt == 272: return
-  np.zeros((1,))`, 272 = the header-only `ByteStream`); our own bridge replicates
-  that decoder by design (`crates/dss-epri/src/dss.rs:625-634`, "exactly like
-  dss-python"); and the **native** r4133 accessor pads too
-  (`Version8/Source/DDLL/DMonitors.pas:509-516` sets `myDBLArray := [0]` and
-  overwrites it only `If pMon.SampleCount > 0` — with a header-only stream it
-  would read past data it never wrote, so no official r4133 reader can report an
-  empty channel). Channel-scoping was **measured** to red three gated `r4133`
+  np.zeros((1,))`, 272 = the header-only `ByteStream`), and the `r4133` channel's
+  captures come from our own bridge, which replicates that decoder by design
+  (`crates/dss-epri/src/dss.rs:625-634`, "exactly like dss-python"). That bridge
+  decoder, not any Pascal accessor, is the load-bearing evidence on the r4133
+  channel. Channel-scoping was **measured** to red three gated `r4133`
   cases (`modes:time/generaltime.dss`, `generaltime_yearly.dss`,
   `generaltime_duty.dss`). The plan owner chose **resolution (A)** on 2026-08-06
   and this commit amends the falsified plan text: keep the normalization
   channel-**independent** and make it lane-independent. Rejected alternatives,
-  recorded so they are not re-proposed: (B) changing the `dss-epri` decoder would
-  make our bridge unlike *both* dss-python and the native DDLL; (C) three ledger
-  entries would legitimize a client artifact as an r4133 *engine* divergence.
+  recorded so they are not re-proposed: (B) making the `dss-epri` decoder return
+  the honest empty channel would not make the bridge engine-faithful either (the
+  r4133 accessor's own answer here is `SampleCount` zeros, see below), it would
+  only swap one client fabrication for another while breaking the bridge's design
+  contract of being a dss-python-shaped reader so both channels' captures stay
+  comparable; (C) three ledger entries would name a divergence the gate cannot
+  see.
+  **The engine half — the settle's correction (2026-08-06, audit finding).** The
+  first write-up of this row said the engines return the *empty* channel for an
+  unflushed stream and that therefore "no engine value is asserted away". That is
+  false for the state actually gated. `Monitors_Get_Channel` keeps its empty
+  `DefaultResult` (`CAPI_Monitors.pas:304`) only for `SampleCount <= 0` (`:308`)
+  or an invalid index (`:313-320`); the `generaltime*` decks sit at
+  `SampleCount > 0` with a header-only stream (`TakeSample` increments the
+  counter, `Monitor.pas:1195`, while only `Save` grows the stream, `:1122-1125` —
+  and the harness compares `sample_count` strictly, so both sides agree it is 8),
+  so the C-API allocates `SampleCount` doubles (`:321`) and fills them from a
+  zero-filled `AllocMem` buffer (`:325`) whose `MonitorStream.Read`s all fail at
+  EOF: it returns `SampleCount` zeros conjured out of bytes it never wrote.
+  r4133's native accessor behaves the same — `DMonitors.pas:509-516` pads
+  `myDBLArray := [0]` only while `SampleCount = 0` and at `SampleCount > 0` takes
+  the read branch (`:517-541`) over that same unwritten region; so does the COM
+  wrapper (`DLL/ImplMonitors.pas:419-465`). So the value ladder is: both engines
+  `SampleCount` zeros, both clients `[0.0]`, this port `[]`. The port's answer is
+  the correct one under the 2026-08-02 no-bug-reproduction policy — fabricating
+  samples from unwritten stream bytes is an upstream defect, not a convention —
+  which makes G2.4 *also* a bug fix, not only a reclassification. It owes no
+  ledger entry because the defect is **unobservable through either gating
+  client**: both short-circuit at `cnt == 272` and never reach the accessor.
+  Recorded upstream-ready as
+  `investigations/to_opendss/35-monitors-channel-fabricates-zeros.md` (local-only
+  folder), the one artifact it produces. All the surfaces that carried the
+  overstated citation were corrected in this settle commit (engine doc, pin
+  comment, `compat.rs`, `lane.rs`, the `TORN_DOWN_ROWS` entry, plan §G2.4, the
+  Stage-F phase record, here).
   **What landed.** The alias, both impls and both cfg arms are gone;
   `Monitor::channel` folds the unflushed case into its index guard and returns
   the empty channel in both lanes (which is what the neighbouring `dbl_hour`
-  read of the same stream always did, and what `Monitors_Get_Channel` itself
-  returns — `CAPI_Monitors.pas:295-331`). `harness::lane::expected_monitor_
+  read of the same stream always did). `harness::lane::expected_monitor_
   channel` lost its `PARITY` early return and is now an unconditional capture
   normalization carrying the row's `LANE-EXCLUSION` marker; no `EngineChannel`
   parameter was threaded through `harness::compare_monitor` — nothing needs one
-  under (A). Its anti-rot guards are unchanged: the rewrite fires only at
+  under (A). Its shape guards are unchanged: the rewrite fires only at
   `flushed_records == 0` and only on a literal one-element `[0.0]`, so an engine
-  that loses real samples, or an oracle that stops padding, still fails loudly.
+  that loses real samples, or an oracle that starts reporting something else,
+  still fails loudly.
+  **The one rot the shape guards stopped catching, and its fix (settle).** Once
+  both lanes report `[]`, a client that *stopped* padding would also return `[]`
+  — equal to the engine's answer, so the compare would pass and the
+  normalization would quietly become dead code. (Pre-G2.4 the parity engine
+  emitted `[0.0]`, so that drift failed the length check there.) The first
+  write-up claimed "the transform can never rot into a silent pass", which is now
+  true only for captures that are neither `[0.0]` nor empty. Fixed rather than
+  merely re-worded: `lane.rs` counts placeholder hits vs non-placeholder
+  unflushed captures and `assert_monitor_pad_is_live` — called from
+  `corpus_gate.rs` beside `assert_reround_cells_are_live`, self-silencing when
+  nothing unflushed was visited — fails on any miss, held by the unit test
+  `monitor_pad_liveness_is_asserted_not_assumed`. Note the loss was
+  oracle-drift detection only: `sample_count` and the header stay strictly
+  compared for those monitors, and a flushed monitor is never rewritten.
   **Pin** (this row had none): `monitor_channel_of_an_unflushed_stream_is_empty`
-  in `elements/meter/monitor/mod.rs` — four samples staged in `MonBuffer`, none
-  flushed, *every* channel empty and `dbl_hour` empty beside it, asserted
-  unconditionally, so "empty" means "nothing flushed", never "nothing sampled".
+  in `elements/meter/monitor/mod.rs` — four samples of a **three-channel**
+  monitor staged in `MonBuffer`, none flushed, every channel empty and `dbl_hour`
+  empty beside it, asserted unconditionally, so "empty" means "nothing flushed",
+  never "nothing sampled". The multi-channel staging is the settle's second
+  correction (the pin's loop originally ran over a one-channel fixture, so
+  "every channel" was a single call): it separates the folded guard's two halves
+  — after `save()` every in-range channel must carry its own four samples, while
+  index `0` and `RecordSize + 1` stay empty on both sides of the flush.
   Register row `Evidence::Site` on the engine kernel: the folded
   `if i < 1 || i > self.record_size || self.flushed_records == 0 {` exists only
   after the teardown (the split had a second early return below it), so unlike
@@ -541,7 +591,9 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   resolution A) and the compat module's "the only row whose upstream is not
   Pascal" sentence, whose provenance is now stated as the client wrapper of both
   oracle read paths. `docs/phase-records/depascalize-stagef.md` keeps its Stage-F
-  wording as history.
+  table as history but carries a dated correction block under it: that table is
+  where the overstated `Monitors_Get_Channel` citation was originally written,
+  and every later copy of it descends from that cell.
   `lane_diff.ps1` (mandatory — a lane alias was deleted): **max |Δ| = 0** on all
   eight gated kinds (520 cases, 3 219 862 records, 0 iteration counts drifted,
   `VERDICT: PASS`, "documented divergences: none present in this dump"). As
@@ -569,6 +621,20 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   rejected (P14: 107 `for … in 1..=` loops in `elements/`, ceiling 106). Rewritten
   0-based with the `+ 1` at the 1-based `Channel(i)` boundary — same coverage, the
   port's own indexing convention.
+  **Settle gate (2026-08-07).** Full five-command gate re-run from a clean
+  corpus tree after the corrections above: `fmt --check` clean, both clippy
+  lanes clean, `cargo test --workspace` and
+  `cargo test --workspace --features dss-core/oracle-parity` both exit 0 —
+  including the new `assert_monitor_pad_is_live` (no miss recorded on either
+  lane, so both clients still pad every unflushed monitor the gate visits).
+  `git diff --stat -- tests/golden` still empty over the whole range.
+  `lane_diff.ps1` was **not** re-run and is not owed: the settle touches no
+  compat kernel and no engine code at all — the `src/` diff is doc comments plus
+  the `#[cfg(test)]` fixture, so the implementation commit's measured
+  `max |Δ| = 0` still stands. Two markdown surfaces edited here
+  (`STATUS.md`/`GOLDEN_REBASE_PLAN.md`) and `docs/` are explicitly outside the
+  doc gate's walk (`oracle_parity_cfg_gate.rs::operational_docs`, "deliberately
+  excluded: plans and records").
 
 ### Live escape register — the 18 surviving `TODO(compat)` markers
 
