@@ -496,32 +496,13 @@ const ESCAPE_REGISTER: &[(&str, &str, Escape)] = &[
     // umbrella — whose two spellings are the `%g` and fixed rows above and whose
     // command set is IV.1 contract, not compat. F.4b took the seventh, the
     // `Show` device-name column width (`compat::max_device_name_length`).
-    // ---- whole-case default-lane exclusions → not the executor's to grant (4) ----
-    // `type=Auto` puts the G1 and G2 blocks in series, so honouring `%R2`
-    // changes the element admittance and every node voltage downstream:
-    // `gictransformer_gic.dss` 4.502e-4 (allowed 1.001e-6), `gic_midi.dss`
-    // 1.021e-4 (allowed 1.074e-6).
-    (
-        "crates/dss-core/src/elements/pd/gic_transformer/solve.rs",
-        "Pascal uses `FPctR1` here, NOT `FPctR2`",
-        Escape::WholeCase,
-    ),
-    // The array write the parser would have made collapses `cap_cmat` to
-    // `Cs - Cm` where parity reads the 10 µF diagonal: `makeposseq_shunt.dss`
-    // 1.438e-1 V against an allowed 3.339e-6.
-    (
-        "crates/dss-core/src/elements/pd/capacitor/solve.rs",
-        "Pascal `SetDouble(ord(TProp.Cuf), Cs - Cm)`",
-        Escape::WholeCase,
-    ),
-    // `shape_mmf.dss` exists *to observe* this filter — its P column is
-    // deliberately exponent notation — so the fix costs that deck 1.641e1 V
-    // (allowed 8.179e-6) and with it its unrelated sng/dbl MMF-reader coverage.
-    (
-        "crates/dss-core/src/elements/general/load_shape/compute.rs",
-        "the accept-set keeps only bytes in `[46, 58)`",
-        Escape::WholeCase,
-    ),
+    // ---- whole-case default-lane exclusions → not the executor's to grant (1) ----
+    // The GICTransformer `%R2`, Capacitor `Cuf` and LoadShape MMF accept-set
+    // rows that used to sit here are gone: `GOLDEN_REBASE_PLAN.md` G2.5 fixed
+    // all three engines in both lanes and paid each one's price where this
+    // bucket said it had to be paid — a `tests/corpus/ledger.json` entry per
+    // (case, channel) plus an expected-value pin. See [`TORN_DOWN_ROWS`].
+    //
     // Seeding `E1` from a fresh `Vterminal` moves the whole dynamics run of the
     // only deck exercising a Model=6 user model: `wasm_gen_dyn`'s `dSpeed` by
     // 3.449e-2 relative, on an r4133 golden the parity lane may never re-baseline.
@@ -570,7 +551,9 @@ const ESCAPE_REGISTER: &[(&str, &str, Escape)] = &[
 /// move only on purpose.
 const EXIT_POPULATION: [(Escape, usize); 3] = [
     (Escape::UpgradeRung, 11),
-    (Escape::WholeCase, 4),
+    // 4 → 1 at `GOLDEN_REBASE_PLAN.md` G2.5; the survivor is the Generator
+    // Model=6 user-model row, deferred with WASM_USERMODELS_PLAN.
+    (Escape::WholeCase, 1),
     (Escape::WasmGuest, 3),
 ];
 
@@ -1233,8 +1216,8 @@ enum Kind {
 /// the *behaviour*; this proves the *mechanism* the teardown left behind.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 // Only the variants WP-G2 has reached so far are constructed (`Site` since
-// G2.1a, `Exclusion` since G2.2a); the rest — `Ledger` (G2.5) and `None`
-// (WP-G4) — are dead code until their first row, and this list is amended by
+// G2.1a, `Exclusion` since G2.2a, `Ledger` since G2.5); the last — `None`
+// (WP-G4) — is dead code until its first row, and this list is amended by
 // the sub-step that lands it. `expect` rather than
 // `allow` on purpose: the day the last variant gets its first row, this
 // attribute becomes unfulfilled and has to be deleted, instead of quietly
@@ -2113,6 +2096,70 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         Some((
             "crates/dss-core/src/elements/meter/monitor/mod.rs",
             "monitor_channel_of_an_unflushed_stream_is_empty",
+        )),
+    ),
+    // G2.5, row 1 of 3. `TGICTransformerObj.RecalcElementData` derives winding
+    // 2's conductance from `FPctR1` — the `G1` line copied with the base
+    // renamed and the percentage not (`.inputs/dss_capi/src/PDElements/
+    // GICTransformer.pas:441`; r4133 `Version8/Source/PDElements/
+    // GICTransformer.pas:495`, the same line) — so a user's `%R2` is stored,
+    // read back, and never reaches the admittance, while the same procedure's
+    // `else` arm inverts `FPctR2` out of `G2` (`:446` / r4133 `:498`). Both lanes now
+    // read `%R2`. This is a `WholeCase` row because the two gated decks that
+    // see it are `type=Auto`, where the `BusX` side effect puts the `G1` and
+    // `G2` blocks in series: the element admittance, the assembled Y and every
+    // downstream node voltage move away from *both* oracles at once.
+    (
+        "GIC_TRANSFORMER_G2_SCALES_OFF_PCT_R1",
+        Kind::WholeCase,
+        // One key per (case, channel); the other three
+        // (`…-gictransformer-r4133`, `…-midi-capi`, `…-midi-r4133`, plus the
+        // two exact-pair property entries) live beside it in the same file and
+        // are held by the ledger's own fail-on-stale accounting. The row names
+        // the deck-and-channel pair whose loss is largest.
+        Evidence::Ledger("gic-pct-r2-honoured-gictransformer-capi"),
+        Some((
+            "crates/dss-core/src/exec/tests/compat_quirks.rs",
+            "gic_transformer_pct_r2_drives_winding_two",
+        )),
+    ),
+    // G2.5, row 2 of 3. `TCapacitorObj.MakePosSequence`'s `CMatrix` arm computes
+    // the positive-sequence `Cs - Cm` and then loses it: dss_capi 0.14.5 aims
+    // the scalar `SetDouble` at the array property `Cuf`
+    // (`.inputs/dss_capi/src/PDElements/Capacitor.pas:814` +
+    // `src/General/DSSObjectHelper.pas:2812-2834`, three scalar arms and no
+    // `else`) while still running the `SpecType := 2` side effect, so the bank
+    // computes from stale `FC` and the user's `cmatrix` is switched out of
+    // `MakeYprimWork` for good; r4133 formats the same value into a command
+    // string (`Version8/Source/PDElements/Capacitor.pas:829`) but re-applies the
+    // `1.0e-6` property scale (`:411`) to an already-farad value. Both lanes now
+    // perform the array write in µF.
+    (
+        "MAKEPOSSEQ_CUF_LOST_ON_THE_SCALAR_SETTER",
+        Kind::WholeCase,
+        Evidence::Ledger("makeposseq-cuf-applied-capi"),
+        Some((
+            "crates/dss-core/src/elements/pd/capacitor/tests.rs",
+            "make_pos_sequence_cmatrix_applies_the_positive_sequence_cuf",
+        )),
+    ),
+    // G2.5, row 3 of 3. The memory-mapped LoadShape text reader filters each
+    // column through an accept-set of bytes in `[46, 58)`
+    // (`.inputs/dss_capi/src/General/LoadShape.pas:1374`; r4133
+    // `Version8/Source/Common/Utilities.pas:834`), deleting the sign, the `+`,
+    // the exponent letter and whitespace while keeping `/` inside the number —
+    // so the class's two readers for the *same* file disagree. Both lanes now
+    // take the column verbatim through the same aux parser the non-mapped twin
+    // uses. `shape_mmf.dss` was written to observe the quirk, so it is the deck
+    // that pays; its unrelated sng/dbl/`mult=(sngfile=)` MMF-reader coverage
+    // moved to the sibling `shape_mmf_io.dss`, which gates clean.
+    (
+        "MMF_TEXT_ACCEPT_SET_DROPS_SIGN_AND_EXPONENT",
+        Kind::WholeCase,
+        Evidence::Ledger("mmf-accept-set-honoured-capi"),
+        Some((
+            "crates/dss-core/src/elements/general/load_shape/tests.rs",
+            "mmf_text_reader_agrees_with_its_non_mapped_twin",
         )),
     ),
 ];

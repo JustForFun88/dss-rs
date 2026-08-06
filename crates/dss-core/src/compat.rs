@@ -586,20 +586,17 @@ pub use etk_invert_gj_no_exchange_impl as etk_invert;
 // lanes, like `TVsourceObj.PropertySideEffects` (`Vsource.pas:498`; r4133
 // `Version8/Source/PCElements/Vsource.pas:468`) always did.
 
-// The **GICTransformer `G2` off `%R1`** row belongs here by shape but is NOT
-// split: the flip was implemented and gated in F.3k, and re-measured in F.3v,
-// which corrects what the cost actually is. `type=Auto` puts the G1 and G2
-// blocks in series on the H→X→neutral path, so honouring `%R2` changes the
-// element's admittance, the system Y and the node voltages — the channel both
-// runs abort on is the **node voltages** (`gictransformer_gic.dss` 4.502e-4 vs
-// an allowed 1.001e-6; `gic_midi.dss` 1.021e-4 vs 1.074e-6), not the "GIC
-// current" F.3k named. The treatment is therefore a **whole-case** default-lane
-// exclusion — not the Newton row's field-scoped one — costing two of 520 gated
-// cases their entire default-lane oracle comparison, including their unrelated
-// GICLine/GICsource surface. That is an owner decision, so the site keeps its
-// marker and its reproduction pin; see `elements/pd/gic_transformer/solve.rs`
-// for the full measurement and for the `R1=`/`R2=` transitive cover it leaves
-// ready for whoever lands it.
+// The **GICTransformer `G2` off `%R1`** row is gone the same way
+// (`GOLDEN_REBASE_PLAN.md` G2.5): `elements/pd/gic_transformer/solve.rs`
+// derives winding 2's conductance from `%R2` in both lanes, the reading its own
+// `else` arm is the inverse of. `type=Auto` puts the G1 and G2 blocks in series
+// on the H→X→neutral path, so the two gated decks (`gictransformer_gic.dss`,
+// `gic_midi.dss`) move wholesale against both oracles; each (deck, channel) is
+// ledgered in `tests/corpus/ledger.json`, the `gictransformer_auto` props
+// scenario's `R2` and the `export_gicmvars` value columns are excluded
+// unconditionally, and the correct value is pinned by
+// `exec::tests::compat_quirks::gic_transformer_pct_r2_drives_winding_two`
+// against the `R1=`/`R2=` ohms path both oracles compute correctly.
 
 // The two **CIM attribute-name** rows are gone the same way
 // (`GOLDEN_REBASE_PLAN.md` G2.2c): the delta shunt arm writes
@@ -780,18 +777,18 @@ pub use profile_ll_pu_divisor_exact_impl as profile_ll_pu_divisor;
 #[cfg(feature = "oracle-parity")]
 pub use profile_ll_pu_divisor_truncated_impl as profile_ll_pu_divisor;
 
-// The **LoadShape MMF plain-text accept-set** row belongs here by shape but is
-// NOT split, and F.3v measured why rather than assuming it. The quirk is real
-// and its witness is as strong as this section's rule asks for — `TLoadShapeObj`
-// owns a *second* reader for the same format, `ReadCSVFile`'s non-mapped branch
-// (`LoadShape.pas:1044`), which parses each row with the aux parser and so
-// honours the sign and the exponent the mapped branch deletes (`:1374`). But
+// The **LoadShape MMF plain-text accept-set** row is gone too
+// (`GOLDEN_REBASE_PLAN.md` G2.5). Its witness was always as strong as this
+// section's rule asks for — `TLoadShapeObj` owns a *second* reader for the same
+// format, `ReadCSVFile`'s non-mapped branch (`LoadShape.pas:1044`), which parses
+// each row with the aux parser and so honours the sign and the exponent the
+// mapped branch deletes (`:1374`) — and both readers now take the column
+// verbatim through that same parser.
 // `tests/corpus/modes/inputformat/shape_mmf/shape_mmf.dss` exists *to observe*
-// the quirk: its `mmpq8.csv` P column is written in exponent notation on
-// purpose, so honouring it moves that deck's node voltages by 1.641e1 V against
-// an allowed 8.179e-6. Whole-case default-lane exclusion again — including the
-// deck's unrelated sng/dbl/`mult=(sngfile=)` MMF-reader coverage — so the row
-// keeps its marker; see `elements/general/load_shape/compute.rs`.
+// the quirk (its `mmpq8.csv` P column is exponent notation on purpose), so it
+// is the deck that pays: ledgered as `mmf-accept-set-honoured-capi`, with its
+// unrelated sng/dbl/`mult=(sngfile=)` MMF-reader coverage moved to the sibling
+// deck `shape_mmf_io.dss`. See `elements/general/load_shape/compute.rs`.
 
 // ---------------------------------------------------------------------------
 // Report text rendering — the F-FMT seam (IV.2 row 11, step F.4)

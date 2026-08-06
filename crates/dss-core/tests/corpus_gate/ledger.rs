@@ -353,11 +353,18 @@ impl LedgerRuntime {
 }
 
 /// Scope fields with a live runtime handler in [`LedgerView`]. The §1.3 schema
-/// also names `yprim` / `y_fingerprint` / `meter` / `global_result`, but NO
-/// handler exists for them yet — a scope naming one (or a typo'd field) would
-/// silently never apply, so loading rejects anything outside this list loudly
-/// (pre-E/F audit UGA-T4).
-const LEDGER_FIELDS: [&str; 9] = [
+/// also names `global_result`, but NO handler exists for it yet — a scope naming
+/// it (or a typo'd field) would silently never apply, so loading rejects
+/// anything outside this list loudly (pre-E/F audit UGA-T4).
+///
+/// The last four — `y`, `y_fingerprint`, `yprim`, `meter` — are
+/// **exclusion-only** ([`EXCLUSION_ONLY_FIELDS`]): they name a whole compared
+/// artifact rather than a value with a natural envelope, so the only thing the
+/// ledger can say about them is "this (case, channel) does not compare it".
+/// `GOLDEN_REBASE_PLAN.md` G2.5 added them, because an engine fix that declines
+/// an upstream bug moves the assembled admittance of the affected deck and
+/// nothing else in this file could express that.
+const LEDGER_FIELDS: [&str; 13] = [
     "iterations",
     "voltages",
     "injection",
@@ -367,15 +374,48 @@ const LEDGER_FIELDS: [&str; 9] = [
     "monitor",
     "eventlog",
     "ctrlqueue",
+    "y",
+    "y_fingerprint",
+    "yprim",
+    "meter",
+];
+
+/// Fields an entry may name only with `kind: "exclusion"` — see
+/// [`LEDGER_FIELDS`]. A `divergence` naming one would promise an envelope
+/// nothing re-asserts.
+const EXCLUSION_ONLY_FIELDS: [&str; 4] = ["y", "y_fingerprint", "yprim", "meter"];
+
+/// Fields an `exclusion` entry may name — the mirror obligation of
+/// [`LEDGER_FIELDS`], because "has a runtime handler" turned out to be
+/// **kind-dependent** once G2.5 added the coarse half.
+///
+/// `LEDGER_FIELDS` exists so a typo'd or unimplemented field cannot sit in the
+/// ledger silently never applying (pre-E/F audit UGA-T4). That guarantee has a
+/// hole the moment some fields are handled for one kind only: `iterations`,
+/// `property`, `eventlog` and `ctrlqueue` route through handlers that filter on
+/// [`Kind::Divergence`] (the first two re-assert a pin, the last two rewrite the
+/// oracle's line before the compare — none of which an exclusion can mean), so
+/// an `exclusion` naming one of them would pass the loader and then do nothing.
+/// Refused by `assert_structural` instead.
+const EXCLUSION_FIELDS: [&str; 9] = [
+    "voltages",
+    "element",
+    "injection",
+    "monitor",
+    "probe",
+    "y",
+    "y_fingerprint",
+    "yprim",
+    "meter",
 ];
 
 fn compile_scope(id: &str, s: &RawScope) -> Scope {
     assert!(
         LEDGER_FIELDS.contains(&s.field.as_str()),
         "ledger entry {id:?}: scope field {:?} has no runtime handler (implemented: \
-         {LEDGER_FIELDS:?}). The §1.3 fields yprim/y_fingerprint/meter/global_result \
-         need a handler implemented BEFORE they can be ledgered — an unhandled scope \
-         would silently never apply.",
+         {LEDGER_FIELDS:?}). The §1.3 field global_result needs a handler \
+         implemented BEFORE it can be ledgered — an unhandled scope would silently \
+         never apply.",
         s.field
     );
     let mk = |re: &Option<String>| -> Option<Regex> {
@@ -427,6 +467,46 @@ impl LedgerView<'_> {
 
     fn mark_exceeded(e: &Entry) {
         e.exceeded_floor.store(true, Ordering::Relaxed);
+    }
+
+    // --- whole-artifact exclusions ------------------------------------------
+
+    /// Is the comparison of `field` (of the artifact called `name`, where the
+    /// field has one) dropped for this (case, channel) by an `exclusion` entry?
+    ///
+    /// The coarse half of the ledger, added by `GOLDEN_REBASE_PLAN.md` G2.5.
+    /// The partitioning handlers below (`voltages`, `element`, …) split one
+    /// comparison into a scoped part and an unscoped remainder, which is the
+    /// right shape whenever the divergence is local. It is the wrong shape for
+    /// the artifacts an *engine* fix moves wholesale — the assembled system Y,
+    /// its fingerprint, the affected element's YPrim, an EnergyMeter's register
+    /// block — where there is no remainder and no envelope to re-assert, only
+    /// "the oracle computes this from the bug we declined". Those get a plain
+    /// skip, still hit-accounted (an exclusion that stops matching fails the
+    /// gate as NEVER APPLIED) and still bound by `assert_structural`'s rule
+    /// that only `kind: "exclusion"` may name them.
+    ///
+    /// `name = None` matches a scope with no `name_re`; a scope that carries a
+    /// `name_re` never applies to an unnamed artifact.
+    pub(crate) fn excluded(&self, field: &str, name: Option<&str>, step: usize) -> bool {
+        let mut hit = false;
+        for e in self.entries().filter(|e| e.kind == Kind::Exclusion) {
+            for sc in &e.scopes {
+                if sc.field != field || !sc.applies_step(step) {
+                    continue;
+                }
+                let m = match (&sc.name_re, name) {
+                    (Some(re), Some(n)) => re.is_match(n),
+                    (Some(_), None) => false,
+                    (None, _) => true,
+                };
+                if m {
+                    Self::mark_applied(e);
+                    hit = true;
+                }
+            }
+        }
+        hit
     }
 
     // --- iterations ---------------------------------------------------------
@@ -1284,10 +1364,39 @@ pub(crate) fn assert_structural(
                 e.id
             ),
         }
+        // Whole-artifact fields are exclusion-only: there is no remainder to
+        // tier-check and no envelope to re-assert, so a `divergence` naming one
+        // would claim a measurement the runtime never makes
+        // (`GOLDEN_REBASE_PLAN.md` G2.5).
+        for sc in &e.match_scopes {
+            assert!(
+                !(EXCLUSION_ONLY_FIELDS.contains(&sc.field.as_str()) && e.kind != "exclusion"),
+                "ledger entry {:?}: field {:?} is exclusion-only — a {} entry naming it \
+                 would pin an envelope nothing re-asserts",
+                e.id,
+                sc.field,
+                e.kind
+            );
+            assert!(
+                !(e.kind == "exclusion" && !EXCLUSION_FIELDS.contains(&sc.field.as_str())),
+                "ledger entry {:?}: field {:?} has no `exclusion` handler (it is \
+                 divergence-only: {:?}). The scope would load cleanly and then never \
+                 apply, which is exactly what the field whitelist exists to prevent",
+                e.id,
+                sc.field,
+                LEDGER_FIELDS
+                    .iter()
+                    .filter(|f| !EXCLUSION_FIELDS.contains(f))
+                    .collect::<Vec<_>>()
+            );
+        }
         // discrete-state guard: probe/property scopes must be exact pairs, never
         // envelopes (§1.3 — discrete state is ledgerable only as exact pairs).
+        // An `exclusion` drops the pair from comparison outright, so the pin
+        // requirement (which is about what a *divergence* re-asserts) does not
+        // apply to it.
         for sc in &e.match_scopes {
-            if matches!(sc.field.as_str(), "probe" | "property") {
+            if e.kind == "divergence" && matches!(sc.field.as_str(), "probe" | "property") {
                 assert!(
                     !(sc.oracle.is_none() && (sc.max_rel.is_some() || sc.max_abs.is_some())),
                     "ledger entry {:?}: {} scope must pin an exact `oracle` value, \

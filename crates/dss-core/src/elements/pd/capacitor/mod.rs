@@ -107,6 +107,13 @@ pub mod prop {
     pub const NUM_PROPS: usize = 21; // incl. Like
 }
 
+/// Pascal `PropertyScale[ord(TProp.cuf)] := 1.0e-6` (`Capacitor.pas:243`): the
+/// `Cuf` and `CMatrix` properties are stated in µF and stored in farads. Named
+/// so the property table below and `MakePosSequence`'s `Cuf` write (which has
+/// to divide it back out of a farad-valued `CMatrix` difference) cannot drift
+/// apart.
+pub(super) const CUF_SCALE: f64 = 1.0e-6;
+
 /// `TCapacitor.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -121,10 +128,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
             .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NON_NEGATIVE | PropFlags::UNITS_KV),
         PropDef::mapped_string_enum("Conn", enums.connection),
         PropDef::double_sym_matrix("CMatrix", PHASES)
-            .scale(1.0e-6)
+            .scale(CUF_SCALE)
             .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_UF),
         PropDef::double_array("Cuf", NUMSTEPS)
-            .scale(1.0e-6)
+            .scale(CUF_SCALE)
             .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NO_DEFAULT | PropFlags::UNITS_UF),
         PropDef::double_array("R", NUMSTEPS),
         PropDef::double_array("XL", NUMSTEPS),

@@ -12,7 +12,7 @@
   "family_counts": {
     "asymmetric": 52,
     "controls": 105,
-    "modes": 69
+    "modes": 70
   },
   "family_rigor": {
     "asymmetric": {
@@ -34,10 +34,10 @@
       "generator/gen_currentlimited_asym.dss": "kind=micro steps=1 sel=3 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
       "generator/generator_asym.dss": "kind=micro steps=1 sel=5 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
       "generator/midi_generator_asym.dss": "kind=micro steps=2 sel=1 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
-      "gic/gic_midi.dss": "kind=midi steps=1 sel=1 mm=0 probes=2 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
+      "gic/gic_midi.dss": "kind=midi steps=1 sel=1 mm=0 probes=2 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=capi_v0145:gic-pct-r2-honoured-midi-capi-props@f77470a35254b79e,gic-pct-r2-honoured-midi-capi@6fd9e0e89ab73741;r4133:gic-pct-r2-honoured-midi-r4133@c4e0fc9d4034e226",
       "gic/gicline_gic.dss": "kind=micro steps=1 sel=1 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
       "gic/gicsource_gic.dss": "kind=micro steps=1 sel=1 mm=0 probes=2 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
-      "gic/gictransformer_gic.dss": "kind=micro steps=1 sel=1 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
+      "gic/gictransformer_gic.dss": "kind=micro steps=1 sel=1 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=capi_v0145:gic-pct-r2-honoured-gictransformer-capi-props@a4729c3ffd515ca6,gic-pct-r2-honoured-gictransformer-capi@861c88bd60cc00f2;r4133:gic-pct-r2-honoured-gictransformer-r4133@c541cd56ed9657f2",
       "indmach/indmach_asym.dss": "kind=micro steps=1 sel=3 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=r4133:r4133-indmach-injection-ulp@e6a1df9188e31a1b",
       "indmach/midi_indmach_asym.dss": "kind=micro steps=2 sel=1 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=r4133:r4133-indmachmidi-injection-ulp@30e4f5106dd8a0f4",
       "isource/isource_snap.dss": "kind=micro steps=1 sel=1 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
@@ -188,13 +188,14 @@
       "harmonics/reactor_rlcurve.dss": "kind=micro steps=1 sel=1 mm=1 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
       "inputformat/shape_binfiles/shape_binfiles.dss": "kind=micro steps=8 sel=1 mm=1 probes=11 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=1 defer=0 ledger=r4133:r4133-binaryshape-303@2f8ec4bb6910ee1f",
       "inputformat/shape_filearr/shape_filearr.dss": "kind=micro steps=8 sel=1 mm=1 probes=9 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=capi_v0145 isolate=1 defer=0 ledger=",
-      "inputformat/shape_mmf/shape_mmf.dss": "kind=micro steps=8 sel=1 mm=1 probes=4 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=capi_v0145 isolate=1 defer=0 ledger=",
+      "inputformat/shape_mmf/shape_mmf.dss": "kind=micro steps=8 sel=1 mm=1 probes=4 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=capi_v0145 isolate=1 defer=0 ledger=capi_v0145:mmf-accept-set-honoured-capi@bf708f73d4c88300",
+      "inputformat/shape_mmf_io/shape_mmf_io.dss": "kind=micro steps=8 sel=1 mm=1 probes=4 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=capi_v0145 isolate=1 defer=0 ledger=",
       "inputformat/xycurve_files/xycurve_files.dss": "kind=micro steps=3 sel=2 mm=1 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
       "makeposseq/makeposseq_ctrl.dss": "kind=micro steps=1 sel=1 mm=0 probes=3 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=",
       "makeposseq/makeposseq_line.dss": "kind=micro steps=1 sel=1 mm=0 probes=3 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=",
       "makeposseq/makeposseq_pc.dss": "kind=micro steps=1 sel=1 mm=0 probes=4 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=capi_v0145:capi-generator-makeposseq-rating@3cc4f90bb9c0aa61",
       "makeposseq/makeposseq_report.dss": "kind=micro steps=1 sel=1 mm=1 probes=2 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=",
-      "makeposseq/makeposseq_shunt.dss": "kind=micro steps=1 sel=1 mm=0 probes=4 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=",
+      "makeposseq/makeposseq_shunt.dss": "kind=micro steps=1 sel=1 mm=0 probes=4 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=capi_v0145:makeposseq-cuf-applied-capi-props@a5b255cea3cc096d,makeposseq-cuf-applied-capi@a38452487da1a5a4",
       "makeposseq/makeposseq_xfmr.dss": "kind=micro steps=1 sel=1 mm=0 probes=4 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=",
       "montecarlo/monte1.dss": "kind=micro steps=5 sel=1 mm=1 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
       "montecarlo/monte2.dss": "kind=micro steps=24 sel=1 mm=1 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
