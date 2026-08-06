@@ -371,7 +371,19 @@ Entry kinds (`kind`):
   to re-assert — the correct value is pinned by an expected-value test the
   entry's `cause` names by full test path, and the scopes it moves are dropped
   here. Still hit-accounted: an exclusion whose scope stops matching fails the
-  gate as NEVER APPLIED.
+  gate as NEVER APPLIED. It is also **half fail-on-stale**: a `voltages` scope
+  is measured node-by-node against the tier floor exactly as a `divergence` is,
+  so an exclusion carrying one and never exceeding is reported STALE (the
+  engine fix it paid for always moves node voltages — that is what makes an
+  entry of this kind necessary). The coarser scopes carry no verdict — the
+  runner skips the artifact instead of comparing it — so for them the anti-rot
+  guard is the **expected-value pin** the `cause` names, which is mandatory and
+  registered both ways in `oracle_parity_cfg_gate.rs::TORN_DOWN_ROWS`: revert
+  the engine fix and the pin reds, whether or not the corpus gate notices.
+  A scope may carry only its **selectors** — `max_rel`/`max_abs`/`num_rel`/
+  `rust`/`oracle`/`policy`/`line_re` on an `exclusion` are refused at load,
+  because the exclusion path ignores them and they would read as a promise the
+  gate never keeps.
 
 Scope `field` must be one of the **13 implemented** handlers — `iterations`,
 `voltages`, `injection`, `element`, `probe`, `property`, `monitor`, `eventlog`,
@@ -393,11 +405,18 @@ that loads cleanly and then never applies is the one thing the field whitelist
 exists to prevent.
 
 Runtime rules: every applicable entry must be **hit** ≥ 1 (never-applied →
-gate fails), every `divergence` must still exceed the tier floor somewhere
-(fail-on-stale, proven live by canary in Phases D/E audits). The oracle-free
+gate fails), every `divergence` — and every `exclusion` carrying a `voltages`
+scope — must still exceed the tier floor somewhere (fail-on-stale; the
+`divergence` half proven live by canary in the Phase D/E audits, the
+`exclusion` half by `a_voltages_exclusion_that_masks_nothing_is_stale`). The
+oracle-free
 structural test (`ledger_is_structurally_valid`) checks unique ids, case ∈
 manifest, channel ∈ the case's `engines`, non-empty `match` for divergences,
-resolvable `cause`/`cause_ref`, compiling regexes. Every entry is fingerprinted
+resolvable `cause`/`cause_ref`, compiling regexes, and the two kind↔field rules
+above; `every_exclusion_field_is_honoured_by_the_runtime` drives
+`LedgerView::excluded` synthetically over **every** whitelisted exclusion field,
+so the two (`probe`, `meter`) with no live entry today are still proven to
+apply. Every entry is fingerprinted
 into the population lock as `id@FNV-1a64(entry JSON)` per channel — adding,
 widening, or re-scoping an entry is always a reviewable lock diff.
 

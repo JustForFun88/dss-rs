@@ -679,13 +679,20 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   (1.158e-1 V vs 3.339e-6) and `modes:inputformat/shape_mmf/shape_mmf.dss`
   (1.641e1 V vs 8.179e-6) on `capi_v0145`. Each (deck, channel) is an
   `exclusion` entry in `tests/corpus/ledger.json` — 6 entries — scoped
-  field-by-field to what was **measured** to move, not to what plausibly could:
+  **by field**, to the fields measured to move rather than to the whole case:
   `voltages`, `y`, `y_fingerprint`, the **named** YPrim(s) and `element` on all
   four, plus `injection` and the four monitors on `shape_mmf` alone. Two
   candidate scopes were probed and dropped as inert — the injection RHS on the
   GIC and `makeposseq` decks (the GICLine/GICsource drives do not depend on the
   solution) and `shape_mmf`'s `ls_pq` loadshape probes — so those keep comparing
-  against the oracle, as does everything else on those decks. The property jumps are pinned instead of skipped:
+  against the oracle, as does everything else on those decks. (The `ls_pq`
+  probes are inert *by construction*, not merely clean: under
+  `MemoryMapping=Yes` `mult`/`qmult` return the `(<directive>)` string,
+  `LoadShape.pas:1844-1851`/`:1863-1868`, and `SetMaxPandQ` exits at
+  `:2044-2049` so `pmax`/`qmax` keep their creation defaults `:1273`. The live
+  witness for the MMF readers is the sibling deck.) The `voltages`/`element`/
+  `monitor` scopes are **deck-wide**, and the settle below re-measured them
+  artifact-by-artifact. The property jumps are pinned instead of skipped:
   3 exact-pair `divergence` entries hold `GICTransformer.tg3/tg5.R2` (0.09522
   ours vs 0.12696 upstream) and `Capacitor.cap_cmat.Cuf`/`NormAmps`/`EmergAmps`.
   Ledger 27 → 36 entries over 23 causes; each `cause` cites its pin by full test
@@ -770,6 +777,88 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   named any of the three rows, so the alias-citation floor is untouched.
   `lane_diff.ps1`: **max |Δ| = 0** on every gated kind — the three fixes are
   single kernels, identical in both lanes, so the lanes stay bit-identical.
+
+- **G2.5 settle** (2026-08-07) — twelve audit findings (1 major, 11 minor; three
+  pairs raised independently by both auditors), all settled against measurement
+  or source, none dropped and none refuted-only. Nothing in the three engine
+  fixes changed; the settle is test machinery + audit trail.
+  **The exclusion kind gets the half of fail-on-stale it can honestly carry.**
+  Both auditors flagged that `LedgerView::excluded` never calls `mark_exceeded`,
+  so an `exclusion` could outlive its cause silently. Half of that is now
+  mechanical: a `voltages` scope IS measured node-by-node inside
+  `voltage_keep_mask` (the diff and the tier floor are already in hand), so the
+  `Kind::Exclusion` arm records the exceed and `assert_all_hit` reports an
+  applied-but-never-exceeding voltages exclusion as **STALE** — and every
+  exclusion that pays for an engine fix carries one, because moving node voltages
+  is what makes such a fix need this kind at all. Two sub-claims of that finding
+  are refuted on the record: TESTING.md never overclaimed (its Runtime rules
+  already read "every `divergence` must still exceed the tier floor"), and "no
+  mechanism can ever notice a revert" is false at the level of the five-command
+  gate — reverting the MMF fix reds
+  `mmf_plaintext_reader_keeps_sign_and_exponent`, reverting the other two reds
+  their pins *and* their sibling exact-pair `divergence` entries. What was
+  genuinely missing is the "the divergence disappeared for some other reason,
+  prune the entry" signal, and that is what landed. The other half is declined
+  with its reason: `y`/`y_fingerprint`/`yprim`/`meter`/`injection`/`monitor`/`probe`/
+  `element` exclusions make the runner *skip* the artifact, so a verdict would
+  mean a second copy of each comparator inside the ledger — a new drift surface —
+  and their anti-rot guard stays the expected-value pin the `cause` names
+  (mandatory, registered both ways in `TORN_DOWN_ROWS`; reverting any of the three
+  fixes reds a pin whether or not the corpus gate notices). Non-vacuity is a
+  canary, not a claim: `a_voltages_exclusion_that_masks_nothing_is_stale` drives
+  `assert_all_hit` over a synthetic applied-but-clean entry and asserts the STALE
+  text, that the same entry passes once something exceeds, and that a
+  coarse-field-only exclusion is *not* policed. All six live entries stayed green
+  (full corpus gate, both channels).
+  **The deck-wide scopes are now measured, artifact by artifact.** The G2.5
+  ledger `source` strings said "every element channel" moved; that was a physical
+  argument, not a measurement. Re-measured with a throwaway per-artifact verdict
+  probe (`catch_unwind` around each `compare_element`/`compare_monitor`, the
+  blanket scopes neutralized, `DSS_GATE_ONLY` on the four decks, both channels):
+  `gictransformer_gic` **9/9** elements and all nodes above floor;
+  `makeposseq_shunt` **14/14** and all nodes; `shape_mmf` **6/6**
+  electrically-connected elements, all 4 monitors and all nodes at every one of
+  its 8 steps (the 4 `Monitor` *elements* inside the blanket carry no
+  current/power channel at all, so they mask nothing that exists);
+  `gic_midi` **12/18** elements and **26/33** nodes — the one deck where the
+  blanket is wider than the above-floor set. It is kept, on the record that the
+  six sub-floor elements (`GICLine.gl12/gl23/gl34`, `GICTransformer.tg3`,
+  `Reactor.gg3`, `Reactor.g2`) and seven sub-floor nodes (`B3.*`, `B3X.*`) are
+  **not unaffected** — every one of them moves, they merely land under the floor
+  (`B3.1` 9.291e-7 against a 3.139e-6 floor) — and that a 12-name allowlist would
+  be twelve claims each needing its own liveness the exclusion kind does not
+  have. Every `source` string and the STATUS sentence above now say which scopes
+  are deck-wide and what the per-artifact verdict was.
+  **Smaller settlements.** `assert_structural` now refuses an `exclusion` scope
+  carrying `max_rel`/`max_abs`/`num_rel`/`rust`/`oracle`/`policy`/`line_re` (the
+  exclusion path ignores them, so they would read as a promise the gate never
+  keeps); `every_exclusion_field_is_honoured_by_the_runtime` drives
+  `LedgerView::excluded` synthetically over every whitelisted exclusion field, so
+  `probe` and `meter` — which no live entry uses — are proven to apply, along with
+  the `name_re`/`steps`/kind selector rules.
+  `mmf_accept_set_fix_is_gated_by_exactly_one_deck`
+  gained the corpus's **fourth** mapped plain-text fixture,
+  `modes/upgrade/mmf_singlecol/mm8.csv` (r4133-gated), which the enumeration had
+  missed. Two `Utilities.pas:833` citations corrected to `:834` (the accept-set
+  line; `:833` is its comment). `shape_mmf.dss`'s own header and its manifest
+  `notes` — the two documents the fix made false — rewritten to say the deck
+  exists to *observe* the quirk, that the port reads the file verbatim since
+  G2.5, that it is ledger-excluded, and that its reader coverage moved to
+  `shape_mmf_io`; no lock field moves (`Case::rigor` does not fingerprint
+  `note`/`notes`). The `recalc` doc comment and the `gic-pct-r2-ignored` cause now
+  state the true divergence class — **any** `%R`-specified GICTransformer, since a
+  deck writing only `%R1=` now takes the `%R2` creation default `0.2`
+  (`GICTransformer.pas:409-410`, r4133 `:458-459`) instead of repeating `%R1`;
+  no corpus deck has that shape (grep: the two ledgered decks are the only `%R`
+  decks and both set both). `ORPHANED_GAPS.md`'s "4 `WholeCase` compat markers /
+  unowned policy call" row now names only the Generator Model=6 survivor and
+  records the other three as closed by G2.5.
+  `population.lock.json` regenerated: the diff is exactly the six edited entries'
+  digests on four cases — no rigor field, no case membership. Zero golden bytes
+  moved (`git diff --stat -- tests/golden` empty over the whole range).
+  No engine kernel changed (the only engine-file edit is a doc comment), so
+  `lane_diff.ps1` was not re-run — G2.5's own run already reported max |Δ| = 0
+  and nothing since can move it.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

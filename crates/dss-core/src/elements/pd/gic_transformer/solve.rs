@@ -42,6 +42,21 @@ impl GicTransformer {
     /// `exec::tests::compat_quirks::gic_transformer_pct_r2_drives_winding_two`,
     /// which measures the `%R` path against the ohms path (`R1=`/`R2=`, the
     /// `else` arm) that never had the slip.
+    ///
+    /// **The divergence class is every `%R`-specified GICTransformer, not only
+    /// those two decks.** A deck that writes `%R1=` and leaves `%R2=` alone now
+    /// takes the *creation default* `%R2 = 0.2` for winding 2 (`mod.rs:175`;
+    /// Pascal `GICTransformer.pas:409-410`, r4133 `:458-459`) instead of
+    /// repeating `%R1` — the correct reading, because `%R2` is an independent
+    /// property with its own default, dumped and read back separately, and the
+    /// `else` arm's inverse settles which value winding 2 owns. No corpus deck
+    /// has that shape today (`gictransformer_gic.dss:18` and `gic_midi.dss:27`
+    /// are the only `%R` decks and both set **both** percentages; every other
+    /// GICTransformer, `GIC_Example.dss` and `makeposseq_shunt.dss:40`
+    /// included, uses the ohms `R1=`/`R2=` spec and the untouched `else` arm),
+    /// which is why only those two are ledgered — measured, not assumed. The
+    /// `gictransformer_default` props scenario is unaffected: both percentages
+    /// default to `0.2`, so the two readings coincide.
     pub(super) fn recalc(&mut self) {
         self.z_base1 = self.kv1 * self.kv1 / self.mva_rating;
         self.z_base2 = self.kv2 * self.kv2 / self.mva_rating;

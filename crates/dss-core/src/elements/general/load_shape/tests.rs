@@ -979,6 +979,13 @@ fn mmf_text_reader_agrees_with_its_non_mapped_twin() {
 ///   `.`, digits, the comma separator and the newline — the upstream filter is
 ///   the identity there, so those three cases cannot observe the fix and stay
 ///   fully oracle-compared.
+/// * The **synthetic** identity-side fixtures — the sibling deck's
+///   `modes/inputformat/shape_mmf_io/mmpq8_plain.csv` (which carries this
+///   deck's reader coverage forward) and `modes/upgrade/mmf_singlecol/mm8.csv`
+///   (the fourth mapped plain-text deck, gated on the `r4133` channel) — are
+///   plain decimal for the same reason and are asserted here too, so a corpus
+///   refresh that slips a sign or an exponent into either fails this pin
+///   instead of surfacing as an unexplained oracle divergence.
 /// * The **synthetic** `modes/inputformat/shape_mmf/mmpq8.csv` deliberately
 ///   does: its P column is exponent notation (`-` = 45, `e` = 101 are in the
 ///   file), which is why `shape_mmf.dss` was written to observe the quirk and
@@ -1017,17 +1024,25 @@ fn mmf_accept_set_fix_is_gated_by_exactly_one_deck() {
              says they cannot"
         );
     }
-    // The sibling deck carries the MMF-reader coverage forward and MUST stay on
-    // the identity side of the filter, or it would diverge from the oracle too
-    // and the coverage would not in fact have been preserved.
-    let stray = stray_bytes(&corpus.join("modes/inputformat/shape_mmf_io/mmpq8_plain.csv"));
-    assert!(
-        stray.is_empty(),
-        "shape_mmf_io/mmpq8_plain.csv left the MMF accept-set (bytes {stray:?}): \
-         the sibling deck exists to keep the sng/dbl/`mult=(sngfile=)` MMF-reader \
-         coverage oracle-compared, which it can only do while the upstream filter \
-         is the identity on its bytes"
-    );
+    // Every OTHER corpus fixture read through the mapped plain-text path must
+    // stay on the identity side of the filter, or its deck would diverge from
+    // its gating oracle too and the "exactly one deck" claim would be false.
+    // `shape_mmf_io/mmpq8_plain.csv` carries `shape_mmf`'s reader coverage
+    // forward on `capi_v0145`; `upgrade/mmf_singlecol/mm8.csv` is the fourth
+    // `MemoryMapping=Yes` + text-file deck in the corpus and gates on `r4133`.
+    for rel in [
+        "modes/inputformat/shape_mmf_io/mmpq8_plain.csv",
+        "modes/upgrade/mmf_singlecol/mm8.csv",
+    ] {
+        let stray = stray_bytes(&corpus.join(rel));
+        assert!(
+            stray.is_empty(),
+            "{rel} left the MMF accept-set (bytes {stray:?}): its deck reads the \
+             file through the mapped plain-text reader and is oracle-compared \
+             wholesale, which it can only be while the upstream filter is the \
+             identity on its bytes"
+        );
+    }
 
     let stray = stray_bytes(&corpus.join("modes/inputformat/shape_mmf/mmpq8.csv"));
     assert!(
