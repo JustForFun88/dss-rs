@@ -416,43 +416,108 @@ fn reset_device_name(line: &str) -> Option<&str> {
 /// `IMonitors.Channel` (`dss/IMonitors.py:28-55`) never calls the engine's
 /// `Monitors_Get_Channel`: it pulls the raw `ByteStream` and short-circuits
 /// `if cnt == 272: return np.zeros((1,), dtype=np.float32)`, 272 being the
-/// header-only stream size, while the function underneath returns an empty
-/// array (`CAPI_Monitors.pas:295-331`). The r4133 channel pads the same way and
-/// for the same reason — our bridge decodes that ByteStream "exactly like
-/// dss-python" (`crates/dss-epri/src/dss.rs:625-634`), and so does the **native**
-/// DDLL accessor, which sets `myDBLArray := [0]` and overwrites it only
-/// `If pMon.SampleCount > 0` (`DMonitors.pas:509-516`); with a header-only
-/// stream it would read past the data it never wrote, so no official r4133
-/// reader reports an empty channel either.
+/// header-only stream size. The `r4133` channel's captures come from our own
+/// bridge, which decodes that same ByteStream "exactly like dss-python"
+/// (`crates/dss-epri/src/dss.rs:625-634`) — **that** decoder, not any Pascal
+/// accessor, is what this transform is measured against on that channel.
 ///
-/// So the placeholder is a **client artifact of every reader we gate against**,
+/// So the placeholder is a **client artifact of both readers we gate against**,
 /// never an engine value in either lane. `GOLDEN_REBASE_PLAN.md` G2.4 therefore
 /// reclassified it from a lane split into this capture normalization: both
 /// lanes' engines report the empty channel, and both lanes strip the
 /// placeholder from either channel's capture. (Scoping the strip to
 /// `capi_v0145` was measured and rejected — it reds the three gated
-/// `modes/time/generaltime*` decks on `r4133`, which pad exactly like
-/// dss-python.)
+/// `modes/time/generaltime*` decks on `r4133`, whose bridge decoder pads
+/// exactly like dss-python.)
+///
+/// Neither *engine* accessor returns the empty channel in this state either,
+/// which is a separate upstream defect the port declines rather than a reason
+/// to pad: `Monitors_Get_Channel` keeps its empty `DefaultResult` only for
+/// `SampleCount <= 0`/an invalid index (`CAPI_Monitors.pas:304-320`) and
+/// otherwise hands back `SampleCount` zeros read out of stream bytes it never
+/// wrote (`:321-330`), and r4133's `DMonitors.pas:509-541` pads `[0]` only at
+/// `SampleCount = 0` and otherwise walks that same unwritten region. Both are
+/// unreachable through the two clients above, so nothing here observes them.
 ///
 /// `flushed_records` is the Rust monitor's own flush cursor, and it is what
 /// makes this transform safe rather than circular. The rewrite fires **only**
 /// when that cursor is 0 — the one state in which the `cnt == 272`
-/// short-circuit (and the native accessor's untouched `[0]`) can appear — and
-/// it insists the capture really is the placeholder (exactly one sample,
-/// exactly `0.0`). So:
+/// short-circuit can appear — and it insists the capture really is the
+/// placeholder (exactly one sample, exactly `0.0`). So:
 ///
 /// * a monitor that flushed records is compared strictly, in both lanes;
 /// * an engine that lost real samples reports `flushed_records > 0` with an
 ///   empty channel and fails the length check as before;
-/// * an oracle that stops emitting the placeholder (a client-side change) makes
-///   `is_placeholder` false, and the untransformed capture then fails loudly —
-///   the transform can never rot into a silent pass.
+/// * a capture that is neither the placeholder nor empty stays untransformed
+///   and fails loudly.
+///
+/// The one shape those guards do **not** catch is a client that stops padding
+/// and returns `[]`: since G2.4 both lanes' engines also report `[]`, so such a
+/// capture would compare equal and quietly turn this normalization into dead
+/// code. [`assert_monitor_pad_is_live`] closes that hole the way
+/// [`assert_reround_cells_are_live`] closes the event-log one — every
+/// unflushed-monitor capture the gate visits must actually have been the
+/// placeholder.
 pub fn expected_monitor_channel(flushed_records: usize, capture: &[f64]) -> Vec<f64> {
-    let is_placeholder = capture.len() == 1 && capture[0] == 0.0;
-    if flushed_records != 0 || !is_placeholder {
+    if flushed_records == 0 {
+        // Two independent counters rather than visits-vs-hits: the assert below
+        // reads them from another thread while the corpus gate is still
+        // comparing, and a single non-atomic "visit then hit" pair would make
+        // an honest run look momentarily stale.
+        if is_monitor_pad(capture) {
+            MONITOR_PAD_HITS.fetch_add(1, Ordering::Relaxed);
+        } else {
+            MONITOR_PAD_MISSES.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+    strip_monitor_pad(flushed_records, capture)
+}
+
+/// The client placeholder's exact shape: one sample, exactly `0.0`.
+fn is_monitor_pad(capture: &[f64]) -> bool {
+    capture.len() == 1 && capture[0] == 0.0
+}
+
+/// [`expected_monitor_channel`] without the liveness accounting — the pure
+/// transform, so the unit tests below can enumerate the shapes it must *not*
+/// rewrite without poisoning the counters of whatever test binary they run in.
+fn strip_monitor_pad(flushed_records: usize, capture: &[f64]) -> Vec<f64> {
+    if flushed_records != 0 || !is_monitor_pad(capture) {
         return capture.to_vec();
     }
     Vec::new()
+}
+
+/// Counters behind [`assert_monitor_pad_is_live`]: unflushed-monitor channel
+/// captures that **were** the client placeholder, and those that were not.
+static MONITOR_PAD_HITS: AtomicUsize = AtomicUsize::new(0);
+static MONITOR_PAD_MISSES: AtomicUsize = AtomicUsize::new(0);
+
+/// **Fail-on-stale for [`expected_monitor_channel`]**, asserted once at the end
+/// of the corpus gate.
+///
+/// Since G2.4 the engine reports the empty channel in both lanes, so an oracle
+/// client that stopped padding would produce a capture equal to the engine's
+/// answer and the normalization would silently become a no-op — the one rot the
+/// transform's own shape guards cannot see. Every unflushed-monitor capture the
+/// gate compares therefore has to *be* the placeholder; one that is not means
+/// the reader changed and the transform needs re-measuring, not silence.
+///
+/// Silent when nothing unflushed was visited, so `DSS_GATE_ONLY` runs (and any
+/// binary that compares no monitor at all) do not trip it.
+pub fn assert_monitor_pad_is_live() {
+    let hits = MONITOR_PAD_HITS.load(Ordering::Relaxed);
+    let misses = MONITOR_PAD_MISSES.load(Ordering::Relaxed);
+    assert_eq!(
+        misses, 0,
+        "the monitor-channel placeholder normalization is going stale: \
+         {misses} unflushed-monitor channel capture(s) were NOT the client \
+         `[0.0]` placeholder ({hits} were). Both gating clients pad a \
+         header-only ByteStream (`dss/IMonitors.py:28-55`, \
+         `crates/dss-epri/src/dss.rs:625-634`); if one stopped, an empty \
+         capture now matches the engine's own empty channel and this transform \
+         is dead code — re-measure it or drop it."
+    );
 }
 
 /// The oracle capture as the **current lane** spells it after F-FMT's `%g` row
@@ -811,9 +876,11 @@ pub fn profile_ll_policy(base: ExportPolicy) -> ExportPolicy {
 #[cfg(test)]
 mod tests {
     use super::{
-        ElemChannels, ITER_SLACK, LANE_SKIP_ELEM_POWERS, PARITY, assert_bytes_eq,
+        ElemChannels, ITER_SLACK, LANE_SKIP_ELEM_POWERS, MONITOR_PAD_HITS, MONITOR_PAD_MISSES,
+        Ordering, PARITY, assert_bytes_eq, assert_monitor_pad_is_live,
         assert_reround_cells_are_live, compare_iterations, compare_iterations_le, compare_report,
         elem_channels_for, exact_value_policy, expected_eventlog, expected_monitor_channel,
+        strip_monitor_pad,
     };
 
     thread_local! {
@@ -874,6 +941,13 @@ mod tests {
     /// literal one-element `[0.0]` capture, so real data — including a genuine
     /// single zero sample on a *flushed* monitor — is compared strictly in both
     /// lanes.
+    ///
+    /// The negative shapes are asserted against the pure [`strip_monitor_pad`],
+    /// not the public wrapper, precisely because the wrapper counts: a
+    /// non-placeholder visit charged here would sit in the same statics
+    /// [`assert_monitor_pad_is_live`] reads at the end of the corpus-gate
+    /// binary. The two wrapper calls this test does make are safe (one
+    /// placeholder, one flushed capture — a hit and a non-candidate).
     #[test]
     fn monitor_transform_is_the_unflushed_placeholder() {
         let placeholder = [0.0];
@@ -887,17 +961,56 @@ mod tests {
         );
         // Same capture, flushed monitor: never rewritten.
         assert_eq!(expected_monitor_channel(1, &placeholder), vec![0.0]);
-        // Unflushed, but not the placeholder shape: never rewritten, so an
-        // oracle that stops padding fails loudly instead of passing silently.
-        for cap in [vec![0.0, 0.0], vec![1.0], vec![]] {
+        // Unflushed, but not the placeholder shape: never rewritten. For
+        // `[0.0, 0.0]`, `[1.0]` and `[1e-30]` that is also what fails the
+        // compare loudly; the empty capture is the one shape the engine now
+        // reports too, so its loudness comes from `assert_monitor_pad_is_live`
+        // instead (asserted below).
+        for cap in [vec![0.0, 0.0], vec![1.0], vec![], vec![1e-30]] {
             let expect = cap.clone();
             assert_eq!(
-                expected_monitor_channel(0, &cap),
+                strip_monitor_pad(0, &cap),
                 expect,
                 "only a literal [0.0] is the placeholder"
             );
         }
-        assert_eq!(expected_monitor_channel(0, &[1e-30]), vec![1e-30]);
+    }
+
+    /// The liveness half of the monitor row: a run in which some
+    /// unflushed-monitor capture was *not* the placeholder is a reader that
+    /// stopped padding, and it must fail rather than leave the normalization
+    /// dead. Asserted on the real statics, which this test can only push in the
+    /// safe direction (it charges hits, never misses), so it stays
+    /// order-independent against a corpus gate sharing the same binary.
+    #[test]
+    fn monitor_pad_liveness_is_asserted_not_assumed() {
+        // Nothing visited, or only placeholders visited: silent, always.
+        assert_monitor_pad_is_live();
+        let before = MONITOR_PAD_HITS.load(Ordering::Relaxed);
+        assert_eq!(
+            expected_monitor_channel(0, &[0.0]),
+            Vec::<f64>::new(),
+            "a placeholder capture is a hit"
+        );
+        assert!(
+            MONITOR_PAD_HITS.load(Ordering::Relaxed) > before,
+            "the hit counter is wired to the transform"
+        );
+        assert_monitor_pad_is_live();
+        // A flushed capture is not accounted at all — only the unflushed state
+        // can carry the placeholder.
+        let misses = MONITOR_PAD_MISSES.load(Ordering::Relaxed);
+        assert_eq!(
+            expected_monitor_channel(3, &[1.0, 2.0, 3.0]),
+            vec![1.0, 2.0, 3.0]
+        );
+        assert_eq!(
+            MONITOR_PAD_MISSES.load(Ordering::Relaxed),
+            misses,
+            "a flushed monitor is not a placeholder candidate (a non-zero miss \
+             count here means the corpus gate sharing this binary just recorded \
+             a real miss — see assert_monitor_pad_is_live)"
+        );
     }
 
     /// The one element-channel exclusion: the `newton*` decks' `Powers`/

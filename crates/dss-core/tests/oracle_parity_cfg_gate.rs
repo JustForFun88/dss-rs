@@ -833,9 +833,12 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// unconditional harness exclusion instead of a lane split. **12** after G2.4
 /// *reclassified* `MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM`: the `[0.0]` an
 /// unflushed monitor stream reads back as is fabricated by the client-side
-/// ByteStream decoders of **both** gating channels — and by the native r4133
-/// accessor — not by any engine, so both lanes report the empty channel and the
-/// harness normalizes the placeholder out of every capture.
+/// ByteStream decoders of **both** gating channels, not by any engine, so both
+/// lanes report the empty channel and the harness normalizes the placeholder out
+/// of every capture. (The engines' own answer in that state — `SampleCount`
+/// zeros conjured from unwritten stream bytes — is a separate upstream defect
+/// the port declines; no client reaches it. See the row's `TORN_DOWN_ROWS`
+/// entry.)
 const SPLIT_ALIAS_POPULATION: usize = 12;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
@@ -2049,28 +2052,39 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
             "newton_powers_match_the_normal_algorithm",
         )),
     ),
-    // G2.4. The only row this module ever carried whose upstream was not Pascal
-    // — and, measured, not an engine behaviour at all. dss-python's
-    // `IMonitors.Channel` (`dss/IMonitors.py:28-55`) never calls
+    // G2.4. The only row this module ever carried whose upstream was not Pascal:
+    // the `[0.0]` the parity lane emitted is fabricated by the client-side
+    // ByteStream decoders of both gating channels, not by any engine.
+    // dss-python's `IMonitors.Channel` (`dss/IMonitors.py:28-55`) never calls
     // `Monitors_Get_Channel`: it pulls the raw `ByteStream` and short-circuits
     // `if cnt == 272: return np.zeros((1,), dtype=np.float32)`, 272 being the
-    // header-only stream size, while the function underneath returns
-    // `DefaultResult` — an empty array (`CAPI_Monitors.pas:295-331`). The r4133
-    // channel pads identically: our bridge decodes that stream "exactly like
-    // dss-python" (`crates/dss-epri/src/dss.rs:625-634`), and the **native**
-    // DDLL accessor sets `myDBLArray := [0]` and overwrites it only
-    // `If pMon.SampleCount > 0` (`Version8/Source/DDLL/DMonitors.pas:509-516`),
-    // so no official r4133 reader reports an empty channel either. The `[0.0]`
-    // is therefore fabricated by every *reader* we gate against, and the parity
-    // lane was reproducing a client library rather than an oracle engine.
-    // Hence a reclassification, not a bug fix: both lanes report the empty
-    // channel (which is also what the neighbouring `dbl_hour` read of the same
-    // stream has always reported), and `expected_monitor_channel` normalizes
-    // the placeholder out of the capture lane-independently *and*
+    // header-only stream size. The `r4133` channel's captures come from our own
+    // bridge, which decodes that same stream "exactly like dss-python"
+    // (`crates/dss-epri/src/dss.rs:625-634`) — that decoder, not any Pascal
+    // accessor, is the load-bearing evidence on that channel. So the parity lane
+    // was reproducing a client library rather than an oracle engine, and the
+    // teardown is mostly a reclassification: both lanes report the empty channel
+    // (which is also what the neighbouring `dbl_hour` read of the same stream
+    // has always reported), and `expected_monitor_channel` normalizes the
+    // placeholder out of the capture lane-independently *and*
     // channel-independently — scoping it to `capi_v0145` was measured and reds
-    // the three gated `modes/time/generaltime*` decks on `r4133`. No golden
-    // byte moves (no golden deck leaves a monitor unflushed) and no ledger
-    // entry is owed: the pad is not an r4133 engine divergence.
+    // the three gated `modes/time/generaltime*` decks on `r4133`.
+    //
+    // **The engine half, corrected 2026-08-06 after audit.** Neither authority
+    // returns the empty channel here either, so the teardown *also* declines an
+    // upstream defect (2026-08-02 policy) rather than being purely a
+    // reclassification. `Monitors_Get_Channel` keeps its empty `DefaultResult`
+    // (`CAPI_Monitors.pas:304`) only for `SampleCount <= 0` (`:308`) or an
+    // invalid index (`:313-320`); with samples taken and nothing flushed —
+    // `TakeSample` increments `SampleCount` (`Monitor.pas:1195`), only `Save`
+    // grows the stream (`:1122-1125`) — it returns `SampleCount` zeros read out
+    // of a zero-filled `AllocMem` buffer whose reads all fail at EOF
+    // (`:321-330`), and r4133's `DMonitors.pas:509-541` pads `[0]` only at
+    // `SampleCount = 0` and otherwise walks that same unwritten region. Neither
+    // is reachable through the two clients (both short-circuit at `cnt == 272`),
+    // so the divergence is unobservable on either gating channel: no golden byte
+    // moves (no golden deck leaves a monitor unflushed) and no ledger entry is
+    // owed — a ledger entry must name a divergence the gate can see.
     (
         "MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM",
         Kind::SplitAlias,
@@ -2084,10 +2098,14 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         // The harness half — the now unconditional `expected_monitor_channel`,
         // which carries this row's `LANE-EXCLUSION` marker — is held by the pin
         // (the empty channel asserted in both lanes, so a re-split engine fails
-        // it however its branch is written) together with the
-        // `monitor_transform_is_the_unflushed_placeholder` unit test next to the
-        // transform, which asserts in both lanes that the rewrite fires for the
-        // placeholder and for nothing else.
+        // it however its branch is written) together with two unit tests next to
+        // the transform: `monitor_transform_is_the_unflushed_placeholder`
+        // (the rewrite fires for the placeholder and for nothing else, in both
+        // lanes) and `monitor_pad_liveness_is_asserted_not_assumed`, which holds
+        // the counters `assert_monitor_pad_is_live` reads at the end of the
+        // corpus gate. That last one exists because the shape guards alone can
+        // no longer see one rot: a client that stops padding returns `[]`, which
+        // since G2.4 is also the engine's answer, so it would pass silently.
         Evidence::Site(
             "crates/dss-core/src/elements/meter/monitor/mod.rs",
             &["\n        if i < 1 || i > self.record_size || self.flushed_records == 0 {"],
