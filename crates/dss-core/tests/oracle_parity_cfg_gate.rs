@@ -812,8 +812,34 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// did the same to `STORAGE_MULTIFILE_USES_THE_PV_PREFIX`; **24** after G2.1g
 /// did the same to `CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`; **23** after G2.1h did
 /// the same to `HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD`, the last of the
-/// G2.1 zero-footprint rows.
-const SPLIT_ALIAS_POPULATION: usize = 23;
+/// G2.1 zero-footprint rows; **21** after G2.2a tore down the first two rows
+/// whose teardown a golden compare observes — `IRESIDUAL_FROM_TERMINAL_1` and
+/// `BUS_INT_DURATION_WALKS_ALL_BUSES`, whose harness exclusions became
+/// unconditional instead of moving a golden byte; **19** after G2.2b did the
+/// same for the two *property* exclusions, `monitor_base_frequency` and
+/// `ISOURCE_BUS2_NEVER_LATCHES`; **16** after G2.2c did the same for the three
+/// *text-transform* rows — `FAULT_DUMP_TAIL_REPRINTS_MINAMPS` and the two CIM
+/// attribute names, `CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX` and
+/// `CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH`, whose oracle-text rewrites became
+/// unconditional instead of moving a golden byte; **14** after G2.2d did the
+/// same for the two *event-log* rows, `RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE`
+/// and `RELAY_RESET_EVENT_IS_LABELLED_RECLOSER`, whose two rewrites moved above
+/// `expected_eventlog`'s lane guard while the `compat::fmt_g` re-round fold in
+/// the same function — a precision row, alive until G4.1 — stayed behind it.
+/// **13** after G2.3 tore down `POWERS_REUSE_STALE_NEWTON_ITERMINAL`, the last
+/// of the six CLAUDE.md upstream bugs still reproduced anywhere: both lanes
+/// recompute `Iterminal` at the converged `NodeV`, and the two `modes/newton/`
+/// decks' powers/losses — which no oracle channel reports that way — became an
+/// unconditional harness exclusion instead of a lane split. **12** after G2.4
+/// *reclassified* `MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM`: the `[0.0]` an
+/// unflushed monitor stream reads back as is fabricated by the client-side
+/// ByteStream decoders of **both** gating channels, not by any engine, so both
+/// lanes report the empty channel and the harness normalizes the placeholder out
+/// of every capture. (The engines' own answer in that state — `SampleCount`
+/// zeros conjured from unwritten stream bytes — is a separate upstream defect
+/// the port declines; no client reaches it. See the row's `TORN_DOWN_ROWS`
+/// entry.)
+const SPLIT_ALIAS_POPULATION: usize = 12;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -899,16 +925,27 @@ fn names_token(text: &str, token: &str) -> bool {
 /// `lane::PARITY` alone (`IRESIDUAL_FROM_TERMINAL_1`,
 /// `BUS_INT_DURATION_WALKS_ALL_BUSES`, `FAULT_DUMP_TAIL_REPRINTS_MINAMPS`) had
 /// been credited by a *neighbouring* test's constant. Their pins do branch on
-/// the lane; only this predicate could not see how.
+/// the lane; only this predicate could not see how. (All three are torn down
+/// now — the first two by G2.2a, the third by G2.2c — and their pins are
+/// unconditional. The arm stays load-bearing: `golden_reports.rs` still reads
+/// the lane in this spelling only, and it is a pin file for the surviving
+/// `max_device_name_length` row.)
 ///
 /// The second arm is the **qualified** path only, not the bare word
-/// [`reads_the_lane`] settles for (`:1657`). The two are not symmetric: there a
-/// loose match makes the caller *reject* more (a pin that still reads the lane
-/// fails the teardown check — fail-safe), here it makes the caller *accept*
-/// more, so an English `PARITY` in a comment would satisfy the rail. Two such
-/// comments exist in-tree (`tests/golden_reports.rs:1620`,
+/// [`reads_the_lane`] settles for. (No line number: the two in-file citations
+/// this sentence used to carry both went stale under the teardowns' own line
+/// shifts — the rustdoc link resolves without one, and the sibling
+/// cross-file numbers below are re-measured with each edit.) The two are not
+/// symmetric: there a loose match makes the caller *reject* more (a pin that
+/// still reads the lane fails the teardown check — fail-safe), here it makes
+/// the caller *accept* more, so an English `PARITY` in a comment would satisfy
+/// the rail. Two such comments exist in-tree (`tests/golden_reports.rs:1628`,
 /// `tests/corpus_gate/scheduler.rs:358`) while every real read is written
-/// `lane::PARITY` (`golden_reports.rs` ×15, `harness/mod.rs:1343`, `:2358`);
+/// `lane::PARITY` (`golden_reports.rs` ×6 — it was ×15 until G2.2a tore down
+/// two rows pinned there and ×9 until G2.2c tore down the Fault dump row —
+/// plus `harness/mod.rs:2374`, the kV-value compare and
+/// that file's only remaining read; `skip_prop`'s, which was the *first* of its
+/// two, went unconditional in G2.2b);
 /// `harness/lane.rs`, which uses the bare name because it declares it, names
 /// `ORACLE_PARITY` in that same assert and is credited by the first arm.
 fn branches_on_lane(text: &str, _alias: &str) -> bool {
@@ -1121,16 +1158,18 @@ fn every_lane_split_alias_is_pinned_by_an_expected_value_test() {
 
     // Non-vacuity of the *walk*, in both shapes a pin is allowed to take — a
     // narrowing of `is_pin_candidate` that dropped either would otherwise show
-    // up as "everything still passes".
+    // up as "everything still passes". The integration-test shape was anchored
+    // on `IRESIDUAL_FROM_TERMINAL_1` until G2.2a tore that row down; it now
+    // names `PI`, one of the five **numeric** precision-compat survivors
+    // (TESTING.md §"Precision-compat rows still split by lane"), which outlive
+    // WP-G2 and WP-G4 both — so this anchor does not have to move again with
+    // the next teardown.
     for (alias, expected) in [
         (
             "kv_base_search_scale",
             "crates/dss-core/src/solution/solution/dispatch.rs",
         ),
-        (
-            "IRESIDUAL_FROM_TERMINAL_1",
-            "crates/dss-core/tests/golden_reports.rs",
-        ),
+        ("PI", "crates/dss-parser/tests/parser_golden.rs"),
     ] {
         let found = pins
             .iter()
@@ -1142,6 +1181,25 @@ fn every_lane_split_alias_is_pinned_by_an_expected_value_test() {
             "{alias} is no longer pinned by {expected} (found {found:?}) — if the \
              pin moved, re-anchor it here; if the walk stopped reaching that \
              shape of test file, fix the walk"
+        );
+        // The walk credits a **bare** token, which is the right rule for a pin
+        // (a test may name its row in prose) but too weak for an anchor whose
+        // job is to fail loudly: `PI` also occurs in `parser_golden.rs` as the
+        // incidental `f64::consts::PI`, so deleting the deliberate `compat::PI`
+        // citation would leave this assert green on a std-library homonym —
+        // exactly the "everything still passes" outcome the anchor exists to
+        // prevent. So re-check the **qualified** spelling in the same region
+        // the walk credited. `IRESIDUAL_FROM_TERMINAL_1`, the anchor before
+        // G2.2a, had no homonym and needed no such guard; the numeric survivors
+        // this WP must anchor on are short names, so the guard travels with them.
+        let path = root.join(expected);
+        let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("{expected}: {e}"));
+        let (start, end) = is_pin_candidate(&path, &root, &text)
+            .unwrap_or_else(|| panic!("{expected} no longer counts as a pin candidate"));
+        assert!(
+            names_token(&text[start..end], &format!("compat::{alias}")),
+            "{expected} no longer cites `compat::{alias}` by its qualified name \
+             — the anchor above was being satisfied by a bare-token homonym"
         );
     }
 }
@@ -1174,8 +1232,10 @@ enum Kind {
 /// `tests/corpus/ledger.json` are checked fail-on-stale. The pin (below) proves
 /// the *behaviour*; this proves the *mechanism* the teardown left behind.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-// Only the variants WP-G2 has reached so far are constructed (`Site`, since
-// G2.1a); the rest are dead code until their first row. `expect` rather than
+// Only the variants WP-G2 has reached so far are constructed (`Site` since
+// G2.1a, `Exclusion` since G2.2a); the rest — `Ledger` (G2.5) and `None`
+// (WP-G4) — are dead code until their first row, and this list is amended by
+// the sub-step that lands it. `expect` rather than
 // `allow` on purpose: the day the last variant gets its first row, this
 // attribute becomes unfulfilled and has to be deleted, instead of quietly
 // covering a variant that later goes unused for real.
@@ -1503,8 +1563,9 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     // model. Zero-footprint, measured: no CIM golden deck and no gated corpus
     // deck has a wye capacitor with an explicit `bus2=` or a wye load with a
     // non-ground neutral, so all 15 CIM goldens stay byte-identical (the
-    // `lane_expected_cim` transform gained no third entry) and nothing moved
-    // but the pin.
+    // `golden_cim::expected_cim` transform — `lane_expected_cim` until G2.2c
+    // made it lane-independent — gained no third entry) and nothing moved but
+    // the pin.
     (
         "CIM_WYE_GROUNDED_IS_HARDCODED_TRUE",
         Kind::SplitAlias,
@@ -1572,6 +1633,486 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         Some((
             "crates/dss-core/src/support/line_constants/tests.rs",
             "height_unit_change_rereads_the_typed_number",
+        )),
+    ),
+    // G2.2a, row 1. `CalcAndWriteSeqCurrents` is called once per terminal `j`
+    // over a buffer that holds **all** terminals, and applies the offset that
+    // fact requires — `k := (j-1)*Ncond + i` — to its symmetric components
+    // (r4133 `Version8/Source/Common/ExportResults.pas:323`; dss_capi
+    // `ExportResults.pas:367`) but not to the residual sum three dozen lines
+    // later, which accumulates `cBuffer^[i]`, i = 1..Ncond (r4133 `:365-366`;
+    // dss_capi `:422-424`). Every terminal row of an element therefore prints
+    // terminal 1's residual beside its own I1/I2/I0/%NEMA — oracle-proven on
+    // IEEE13 `Line.671680`, true terminal-2 residual 9.8e-12 A against the
+    // printed 2.83e-5 A. Both gating oracles carry it; both lanes now sum the
+    // row's own terminal, which is the slice the element's `Iterminal` already
+    // holds (no solved quantity moves). The first WP-G2 row a golden compare
+    // observes: the `Terminal >= 2` cells of `export_seqcurrents` were excluded
+    // in the default lane only and are now excluded unconditionally — an
+    // exclusion, not a regenerated golden, so no golden byte moved.
+    (
+        "IRESIDUAL_FROM_TERMINAL_1",
+        Kind::SplitAlias,
+        // The first row whose teardown left a mechanism in *two* files — the
+        // engine kernel (`seq_currents.rs`: `let base = (j - 1) * ncond;`) and
+        // the harness exclusion — while `Evidence` keys one file per row. The
+        // exclusion is what is recorded, because it is the half that carries
+        // the [`Evidence::Exclusion`] marker obligation; the needle is the
+        // unconditional `push`, which under the split sat four spaces deeper
+        // inside `if !lane::PARITY { … }`, so no lane-branching form matches it.
+        // Single-line by necessity (this repo checks Rust sources out with
+        // CRLF, which no multi-line needle survives).
+        //
+        // Per the last paragraph of [`Evidence::Site`], what carries the engine
+        // half instead is named rather than left implied: the row's pin asserts
+        // the own-terminal reading in **both** lanes, so a re-split engine fails
+        // it whichever way the branch is written; and re-conditioning the
+        // exclusion alone fails `export_seqcurrents_matches_oracle` in the
+        // parity lane, where the golden still carries the upstream residual.
+        Evidence::Exclusion(
+            "crates/dss-core/tests/golden_reports.rs",
+            &["\n    col_tol.push(ColTol {"],
+        ),
+        Some((
+            "crates/dss-core/tests/golden_reports.rs",
+            "export_seqcurrents_iresidual_sums_the_rows_own_terminal",
+        )),
+    ),
+    // G2.2a, row 2. `CalcReliabilityIndices` sizes `FeederSections` to **this**
+    // meter's `SectionCount` (r4133 `Version8/Source/Meters/EnergyMeter.pas:2507`;
+    // dss_capi `EnergyMeter.pas:2461`) and keeps its per-section loop inside it
+    // (r4133 `:2561-2563`), then writes the bus durations while walking **every
+    // circuit bus** (r4133 `:2567-2574`; dss_capi `:2521-2526`). A foreign
+    // `BusSectionID` survives to be read there because the zeroing that clears
+    // it is itself per-zone (r4133 `:2472` walks this meter's `SequenceList`),
+    // so with two meters the later one overwrites the earlier one's bus
+    // durations from its own unrelated sections and the reported column depends
+    // on meter order. Both gating oracles carry that (in-range) regime; both
+    // lanes now walk only the buses this meter's own forward sweep numbered.
+    // The out-of-range regime — an OOB heap read, proven nondeterministic — was
+    // never reproduced in either lane and has no defined value to pin. The
+    // `Duration` column of `export_busreliability_multimeter` was excluded in
+    // the default lane only and is now excluded unconditionally; no golden byte
+    // moved, and no live gate reads `Bus.Int_Duration` yet (WP-G1's G1.6 adds
+    // it, which is why the plan orders this row first).
+    (
+        "BUS_INT_DURATION_WALKS_ALL_BUSES",
+        Kind::SplitAlias,
+        // Same two-file shape as the row above, recorded the same way: the
+        // needle is the unconditional `let col_tol = vec![ColTol {`, which under
+        // the split read `let col_tol = if lane::PARITY { vec![] } else { … }`.
+        // The engine half (`reliability.rs`: the duration loop at the function
+        // body's own four spaces, four spaces shallower than the `else` arm the
+        // split gave it) is carried by the row's pin, which asserts the
+        // zone-scoped durations in **both** lanes, and by
+        // `export_busreliability_multimeter_matches_oracle`, which fails in the
+        // parity lane if the exclusion alone is re-conditioned.
+        Evidence::Exclusion(
+            "crates/dss-core/tests/golden_reports.rs",
+            &["\n    let col_tol = vec![ColTol {"],
+        ),
+        Some((
+            "crates/dss-core/tests/golden_reports.rs",
+            "export_busreliability_multimeter_duration_stays_in_the_meters_zone",
+        )),
+    ),
+    // G2.2b, row 1. `TMonitorObj.Create` re-assigns `Basefrequency := 60.0`
+    // after the inherited `TDSSCktElement.Create` already set `BaseFrequency :=
+    // ActiveCircuit.Fundamental` (`.inputs/dss_capi/src/Meters/Monitor.pas:472`
+    // == r4133 `Version8/Source/Meters/Monitor.pas:552`; the base-class
+    // statement is `Common/CktElement.pas:203`), so the Monitor is the one
+    // element that does not know the circuit's frequency. That it is left-over
+    // and not meant is the same file family's own testimony: `Line.pas:974` and
+    // `GICLine.pas:373` carry the identical assignment commented out with "set
+    // in base class", and the sibling measurement classes (EnergyMeter, Sensor)
+    // never write the field. Its one physical consumer is mode-4 flicker —
+    // `Monitor.pas:1657` hands the field to `FlickerMeter` as `fBase`
+    // (`Pstcalc.pas:594`), where `fBase = 50.0` selects the IEC 61000-4-15
+    // 230 V/50 Hz lamp weighting over the 120 V/60 Hz set (`:609-626`) — so a
+    // 50 Hz feeder's Pst comes out on the wrong curve. Both gating oracles
+    // report the 60.0; both lanes now inherit. The only oracle-compared
+    // observable is `Monitor.BaseFreq` on the single 50 Hz gated deck
+    // (`LVTestCase`), whose property exclusion was default-lane-only and is now
+    // unconditional; no golden byte moves (every golden deck is 60 Hz, where
+    // the two readings coincide) and no Pst number moves (every mode-4 deck in
+    // the corpus is 60 Hz).
+    (
+        "monitor_base_frequency",
+        Kind::SplitAlias,
+        // The harness exclusion, which is the half carrying the
+        // [`Evidence::Exclusion`] marker obligation. The needle is the
+        // unconditional binding: under the split this line read
+        // `let lane_skipped = !lane::PARITY` with the list on the next one, so
+        // no lane-branching form of *this statement* matches, and deleting the
+        // exclusion outright fails the same check.
+        //
+        // Per the last paragraph of [`Evidence::Site`], what it does not
+        // discriminate is named rather than left implied: a re-split written as
+        // an early `if lane::PARITY { return skip_prop_ub(class, prop); }`
+        // above this line would leave the needle intact. That shape is carried
+        // by the row's now-unconditional pin — which asserts the inherited 50 in
+        // *both* lanes, so any restored 60.0 kernel fails it however the branch
+        // is written — plus the ghost check and the census tie below. The engine
+        // half (`exec/command.rs`: `.base_frequency = fundamental;` with no
+        // `is_monitor` arm at all) is carried by the same pin.
+        Evidence::Exclusion(
+            "crates/dss-core/tests/harness/mod.rs",
+            &["\n    let lane_skipped = LANE_SKIP_PROPS"],
+        ),
+        Some((
+            "crates/dss-core/src/exec/tests/base_frequency.rs",
+            "monitor_basefreq_inherits_the_fundamental",
+        )),
+    ),
+    // G2.2b, row 2. `TIsourceObj.PropertySideEffects`
+    // (`.inputs/dss_capi/src/PCElements/Isource.pas:221-262`) has three cases —
+    // `Phases`, `bus1`, `Daily` — and no `bus2`, so the `Bus2Defined` flag the
+    // class declares (`:76`), copies in `MakeLike` (`:302`) and clears in the
+    // constructor (`:323`) is never set, and the `bus1` case's
+    // `if not Bus2Defined then SetBus(2, S2)` (`:242-255`) re-derives the
+    // grounded-Y default over an explicit `Bus2=` parsed earlier in the same
+    // edit. r4133 shares the hole exactly (`Version8/Source/PCElements/
+    // Isource.pas`: declaration `:61`, copy `:335`, constructor `:398`, the
+    // `If Not Bus2Defined Then` guard inside `IsourceSetBus1` `:354-366`, no
+    // assignment anywhere). The sibling classes set the flag on that very
+    // property — `Vsource.pas:497-498`, r4133 `:468`; `Capacitor.pas:346-350` —
+    // so the omission is a hole, not a design. Both gating oracles carry it;
+    // both lanes now latch. The one observable is the props scenario
+    // `isource_bus2_clobbered_by_bus1`'s `Bus2` cell, whose exclusion was
+    // default-lane-only and is now unconditional; the golden
+    // `tests/golden/props/isource.json` keeps its captured `b1.0.0.0` byte for
+    // byte, and no solved deck writes `bus2=` before `bus1=` on one Isource
+    // edit.
+    (
+        "ISOURCE_BUS2_NEVER_LATCHES",
+        Kind::SplitAlias,
+        // Same shape as the row above: the recorded half is the harness
+        // exclusion, and the needle is the unconditional `if`, which under the
+        // split read `if !dss_core::compat::ORACLE_PARITY` with the list on the
+        // following line. A lane-branching form of this statement cannot match
+        // it, and deleting the exclusion fails the same check; an early-return
+        // re-split placed above it would not, which the row's pin
+        // (`b2` survives the second `Bus1=`, asserted in both lanes), the ghost
+        // check and the census tie cover instead. The engine half is
+        // `elements/pc/isource/accessors.rs`'s bare `BUS2 =>` arm.
+        Evidence::Exclusion(
+            "crates/dss-core/tests/props_roundtrip.rs",
+            &["\n            if LANE_SKIP_SCENARIO_PROPS"],
+        ),
+        Some((
+            "crates/dss-core/src/elements/pc/isource/tests.rs",
+            "bus2_latches_like_the_sibling_class",
+        )),
+    ),
+    // G2.2c, row 1. `TFaultObj.DumpProperties` writes its own
+    // `~ MinAmps=%.1f` line and then runs the generic tail from
+    // `NumPropsthisClass`, which this class defines as `Ord(High(TProp))` = 9 =
+    // `MinAmps` itself (`.inputs/dss_capi/src/PDElements/Fault.pas:533` with
+    // `:134`; r4133 `Version8/Source/PDElements/Fault.pas:594` with
+    // `Const NumPropsthisclass = 9` `:107`), so the loop's first iteration
+    // re-emits the property just written — in the generic spelling, giving the
+    // pair `~ MinAmps=3.0` / `~ MinAmps=3`. The `+ 1` every sibling class with
+    // that loop writes (`Transformer.pas:1276`, `AutoTrans.pas:1307`,
+    // `XfmrCode.pas:663`) is the fix, and no class prints a property twice on
+    // purpose. Both gating oracles carry the reprint; both lanes now start the
+    // tail at `NormAmps`. The four dump goldens that carry the pair keep every
+    // byte: `golden_reports::fault_dump_expected` drops the second line of each
+    // pair from the oracle text in both lanes instead.
+    (
+        "FAULT_DUMP_TAIL_REPRINTS_MINAMPS",
+        Kind::SplitAlias,
+        // The engine kernel, which is the half a needle can discriminate: the
+        // split wrote `let tail_start = if compat::… { prop::MINAMPS } else {
+        // prop::NORMAMPS };` and passed `tail_start`, so a re-introduced branch
+        // cannot leave `prop::NORMAMPS` as this call's argument. Single-line by
+        // necessity (CRLF checkout).
+        //
+        // Per the last paragraph of [`Evidence::Site`], the other half is named
+        // rather than left implied: the harness drop (`golden_reports.rs`, which
+        // carries this row's `LANE-EXCLUSION` marker) is held by the row's pin —
+        // it asserts, in both lanes, that the expectation keeps exactly one
+        // `~ MinAmps=` per Fault and that the survivor is the custom `%.1f`
+        // render — and re-conditioning the drop alone fails
+        // `dump_fault_matches_oracle` and its three siblings, which compare the
+        // engine against that expectation in both lanes.
+        Evidence::Site(
+            "crates/dss-core/src/elements/pd/fault/dump.rs",
+            &["\n        dump::generic_props_from(out, cx, self, prop::NORMAMPS);"],
+        ),
+        Some((
+            "crates/dss-core/tests/golden_reports.rs",
+            "fault_dump_goldens_carry_the_double_print",
+        )),
+    ),
+    // G2.2c, row 2. One `if` in the CIM shunt-compensator writer emits the same
+    // attribute under two class prefixes: `BooleanNode(FunPrf,
+    // 'ShuntCompensator.grounded', TRUE)` for a wye bank
+    // (`.inputs/dss_capi/src/Common/ExportCIMXML.pas:3700`; r4133
+    // `Version8/Source/Common/ExportCIMXML.pas:3183`) and `BooleanNode(FunPrf,
+    // 'LinearShuntCompensator.grounded', FALSE)` for a delta one six lines below
+    // (`:3706`; r4133 `:3187`). CIM100 declares `grounded` on
+    // `ShuntCompensator`, so the delta spelling resolves against no property —
+    // a strict consumer rejects it, a lenient one drops the flag. Both gating
+    // oracles carry it; both lanes now write the sibling arm's name. Only the
+    // element name moves (the value is `false` in both), and no golden byte
+    // moves: `golden_cim::expected_cim` applies the rename to the oracle text in
+    // both lanes.
+    (
+        "CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX",
+        Kind::SplitAlias,
+        // This is the row whose engine half a needle genuinely cannot
+        // discriminate, and [`Evidence::Site`]'s last paragraph says to record
+        // that rather than pretend: the fixed delta arm writes
+        // `"ShuntCompensator.grounded"` as `boolean_node`'s third argument at
+        // sixteen spaces — byte-identical to the line the *wye* arm of the same
+        // `if` already had, split form included, because that arm's own value
+        // argument keeps the call broken across lines. Any needle over
+        // `cim/export.rs` therefore matches the reverted tree too.
+        //
+        // So the recorded evidence is the harness half, which does
+        // discriminate: `expected_cim` was `lane_expected_cim` — a name that
+        // began with a lane early-return — until this teardown made the rewrite
+        // unconditional and renamed it. What holds the engine half is the row's
+        // pin, which asserts in **both** lanes that the expectation carries the
+        // corrected name and none of the upstream one, plus the CIM byte
+        // compares that hold the writer to that expectation in both lanes: a
+        // re-split engine fails them whichever way its branch is written, and so
+        // does re-conditioning the rewrite alone.
+        Evidence::Exclusion(
+            "crates/dss-core/tests/golden_cim.rs",
+            &["\nfn expected_cim(oracle: &str) -> (String, [usize; 2]) {"],
+        ),
+        Some((
+            "crates/dss-core/tests/golden_cim.rs",
+            "cim_writer_divergences_are_pinned",
+        )),
+    ),
+    // G2.2c, row 3. The symmetrical-components branch of the CIM line writer
+    // closes its `bch`/`gch`/`b0ch`/`g0ch` quartet with `DoubleNode(EpPrf,
+    // 'ACLineSegment.b0ch', 0.0)` immediately after the real
+    // `DoubleNode(EpPrf, 'ACLineSegment.b0ch', Len * C0 * val)`
+    // (`.inputs/dss_capi/src/Common/ExportCIMXML.pas:4367` after `:4366`; r4133
+    // `Version8/Source/Common/ExportCIMXML.pas:3756` after `:3755`) — a copied
+    // line whose value was replaced and whose name was not. The segment is
+    // exported with no `g0ch` and two contradictory `b0ch` nodes, so a consumer
+    // taking the last one reads the zero-sequence susceptance as 0. The
+    // `PerLengthSequenceImpedance` sibling of the same procedure (`:4521-4522`;
+    // r4133 `:3895-3896`) writes the quartet correctly, which is where the fix
+    // comes from. Both gating oracles carry the duplicate; both lanes now name
+    // it `g0ch`. Only the element name moves (the value stays `0.0`), and no
+    // golden byte moves — `golden_cim::expected_cim` renames the second node in
+    // both lanes.
+    (
+        "CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH",
+        Kind::SplitAlias,
+        // Inside the keyed file `cim/export.rs` the literal
+        // `"ACLineSegment.g0ch"` is unique — the sibling writer earlier in the
+        // same file spells `"PerLengthSequenceImpedance.g0ch"` — so the needle
+        // cannot be satisfied by some other writer in the same file. (It is
+        // *not* unique tree-wide: `golden_cim.rs`'s rewrite names it too, and so
+        // does this register's own needle. Both are outside the keyed file,
+        // which the check never reads for this row, and neither could keep it
+        // green — the slice is looked up in `cim/export.rs` alone.) What
+        // discriminates the torn-down state is the needle's *shape*: under the
+        // split the call sat inside an `else` arm eight spaces deeper, which
+        // rustfmt had to break across six lines, so only the unbranched form can
+        // be this whole one-line call at `double_node`'s own sixteen spaces.
+        // Single-line by necessity (CRLF checkout).
+        //
+        // The harness half is carried the same way as row 2's: by the shared pin
+        // (which asserts, in both lanes, that no two consecutive `b0ch` nodes
+        // survive in the expectation) and by the CIM byte compares.
+        Evidence::Site(
+            "crates/dss-core/src/cim/export.rs",
+            &[
+                "\n                writer::double_node(&mut buf, ProfileChoice::Ep, \"ACLineSegment.g0ch\", 0.0);",
+            ],
+        ),
+        Some((
+            "crates/dss-core/tests/golden_cim.rs",
+            "cim_writer_divergences_are_pinned",
+        )),
+    ),
+    // G2.2d, row 1. `TRelayObj.Sample` closes its `FPresentState` resync with a
+    // bare `AppendtoEventLog('Debug Sample: Relay.' + Name, 'FPresentState: …')`
+    // (r4133 `Version8/Source/Controls/Relay.pas:1325`) — no `if DebugTrace`,
+    // and not gated on `ShowEventLog` either, so every relay writes one debug
+    // line per control sample straight into the user-facing event log. Exactly
+    // one line lost that guard: the Recloser's byte-identical line carries it
+    // (`Recloser.pas:1044`), so do the class's own sibling traces (`:1822`,
+    // `:1845`), and r4088 had no such line in `Sample` at all — it arrived with
+    // the r4133 per-phase rewrite. Both lanes now route it through the
+    // `Relay::dbg` helper the port already had. No golden byte moves (no golden
+    // captures a relay event log); the 17 gated `oracle: "r4133"` cases that
+    // carry a relay and compare an event log (nine under `controls/relay/`, two
+    // under `controls/combo/`, two under `controls/fuse/indmach_r4133/`, the
+    // four TD21 decks) keep every other line
+    // oracle-compared, because `harness::lane::expected_eventlog` drops these
+    // lines from the capture in **both** lanes.
+    (
+        "RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE",
+        Kind::SplitAlias,
+        // The engine kernel. The split form called `self.dbg(…)` too — in the
+        // `else` arm of `if compat::…`, four spaces deeper — so per
+        // [`Evidence::Site`]'s indentation convention the needle carries the
+        // line break plus the twelve spaces of the trace block's own level: a
+        // re-wrap in a lane branch re-indents the call past it. Single-line by
+        // necessity (CRLF checkout), and the only `self.dbg(` call in the keyed
+        // file.
+        Evidence::Site(
+            "crates/dss-core/src/elements/control/relay/mod.rs",
+            &["\n            self.dbg(ctx, &el, &action);"],
+        ),
+        Some((
+            "crates/dss-core/src/elements/control/relay/tests.rs",
+            "sample_state_trace_follows_debugtrace",
+        )),
+    ),
+    // G2.2d, row 2. Both `CTRL_RESET` arms of `TRelayObj.DoPendingAction` log
+    // `'Recloser.' + Self.Name` (r4133 `Relay.pas:1196` and `:1212`) — verbatim
+    // copies of `Recloser.pas:909`/`:924`, format strings and `ShowEventLog`
+    // guard included — while all eight other events of the same procedure
+    // (`:1087`-`:1176`) write `'Relay.' + Self.Name`, and both earlier revisions
+    // of these two lines label them correctly (r4088 `Relay.pas:971`, the pinned
+    // 0.14.5 `Relay.pas:1003` via `Self.FullName`). The log then attributes a
+    // relay's reset to a recloser that does not exist — or, if the circuit holds
+    // one of that name, to the wrong device. Only the label moves; the reset
+    // itself (`OperationCount := 1`, the TD21 quiet window) is untouched. Both
+    // lanes now name the emitting class, and `expected_eventlog` relabels the
+    // capture in both — but only where the named device really is a Relay of
+    // that circuit and not a Recloser, so a genuine recloser reset (identical
+    // wording) is never rewritten.
+    (
+        "RELAY_RESET_EVENT_IS_LABELLED_RECLOSER",
+        Kind::SplitAlias,
+        // The engine kernel, and it discriminates on its own: the split form
+        // was `let reset_device = if compat::… {` with the two `format!`s in
+        // its arms, so the whole `let` on one line at the sixteen spaces of the
+        // `ControlAction::Reset` arm exists only in the torn-down state.
+        // Single-line by necessity (CRLF checkout).
+        Evidence::Site(
+            "crates/dss-core/src/elements/control/relay/mod.rs",
+            &[
+                "\n                let reset_device = format!(\"Relay.{}\", self.ccd.cd.obj.name());",
+            ],
+        ),
+        Some((
+            "crates/dss-core/src/elements/control/relay/tests.rs",
+            "do_pending_reset_only_resets_opcount_d4",
+        )),
+    ),
+    // G2.3. `DoNewtonSolution` increments `SolutionCount` *before* its
+    // per-iteration `SumAllCurrents` ("SumAllCurrents Uses ITerminal So must
+    // force a recalc", `.inputs/dss_capi/src/Common/Solution.pas:944`, the sum
+    // at `:947-948`), so every element leaves that loop with `Iterminal`
+    // stamped from the pre-final guess `NodeV_{n-1}` and *marked solved for the
+    // live `SolutionCount`* (`CktElement.pas:542-550`, the mark at `:548`);
+    // only then does `NodeV -= dV` run (`:965-968`). A post-solve
+    // `Get_Powers`/`Get_Losses` therefore takes the cache-aware path, finds the
+    // mark fresh, and multiplies the converged `NodeV_n` by the conjugate of
+    // the *previous* step's current, while `CktElement.Currents` recomputes at
+    // `NodeV_n` — one element, one read, `S != V·conj(I)`, which is the
+    // identity `Powers` is defined by. Not escapable by bumping the oracle: the
+    // EPRI channel reproduces it in v9.8 (r3723), v10.2 (r4088) and v11.0
+    // (r4133) alike, all fingerprint 0.478 kVA (checked 2026-07-08). Both lanes
+    // now call `refresh_iterminal` once and feed Powers, Losses and Currents
+    // from that one current. Its only oracle-compared observable is the two
+    // gated `modes/newton/` decks' element powers/losses (4.86e-4 and 2.46e-3
+    // kVA on `Vsource.source` conductor 0, ~60x and ~35x their tier floors),
+    // whose `LANE_SKIP_ELEM_POWERS` exclusion was default-lane-only and is now
+    // unconditional; their currents, voltages, Y, discrete state and iteration
+    // count stay oracle-compared, and no golden byte moves (no golden deck runs
+    // a Newton solve).
+    (
+        "POWERS_REUSE_STALE_NEWTON_ITERMINAL",
+        Kind::SplitAlias,
+        // The harness exclusion, which is also the half that discriminates: the
+        // needle is the unconditional `if`, which under the split read
+        // `if !PARITY && LANE_SKIP_ELEM_POWERS.contains(&label) {`.
+        //
+        // Per the last paragraph of [`Evidence::Site`], the engine half is named
+        // rather than left implied, because no needle over `exec/view.rs` can
+        // carry it: the torn-down form is a bare
+        // `elem.refresh_iterminal(&sys, &node_v);` at `snapshot_elements`'
+        // sixteen spaces — byte-identical to the line the *Currents* read three
+        // dozen lines below already had, split form included — so every
+        // candidate slice matches a reverted tree too. What holds it instead is
+        // the row's now-unconditional pin (Newton powers == the normal
+        // algorithm's, asserted in both lanes, ten orders of magnitude away from
+        // the stale reading) together with the tripwire next to it, which
+        // asserts in both lanes that a Newton solve really does leave that stale
+        // cache behind — so a re-split engine fails the pin whichever way its
+        // branch is written.
+        Evidence::Exclusion(
+            "crates/dss-core/tests/harness/lane.rs",
+            &["\n    if LANE_SKIP_ELEM_POWERS.contains(&label) {"],
+        ),
+        Some((
+            "crates/dss-core/src/exec/tests/newton.rs",
+            "newton_powers_match_the_normal_algorithm",
+        )),
+    ),
+    // G2.4. The only row this module ever carried whose upstream was not Pascal:
+    // the `[0.0]` the parity lane emitted is fabricated by the client-side
+    // ByteStream decoders of both gating channels, not by any engine.
+    // dss-python's `IMonitors.Channel` (`dss/IMonitors.py:28-55`) never calls
+    // `Monitors_Get_Channel`: it pulls the raw `ByteStream` and short-circuits
+    // `if cnt == 272: return np.zeros((1,), dtype=np.float32)`, 272 being the
+    // header-only stream size. The `r4133` channel's captures come from our own
+    // bridge, which decodes that same stream "exactly like dss-python"
+    // (`crates/dss-epri/src/dss.rs:625-634`) — that decoder, not any Pascal
+    // accessor, is the load-bearing evidence on that channel. So the parity lane
+    // was reproducing a client library rather than an oracle engine, and the
+    // teardown is mostly a reclassification: both lanes report the empty channel
+    // (which is also what the neighbouring `dbl_hour` read of the same stream
+    // has always reported), and `expected_monitor_channel` normalizes the
+    // placeholder out of the capture lane-independently *and*
+    // channel-independently — scoping it to `capi_v0145` was measured and reds
+    // the three gated `modes/time/generaltime*` decks on `r4133`.
+    //
+    // **The engine half, corrected 2026-08-06 after audit.** Neither authority
+    // returns the empty channel here either, so the teardown *also* declines an
+    // upstream defect (2026-08-02 policy) rather than being purely a
+    // reclassification. `Monitors_Get_Channel` keeps its empty `DefaultResult`
+    // (`CAPI_Monitors.pas:304`) only for `SampleCount <= 0` (`:308`) or an
+    // invalid index (`:313-320`); with samples taken and nothing flushed —
+    // `TakeSample` increments `SampleCount` (`Monitor.pas:1195`), only `Save`
+    // grows the stream (`:1122-1125`) — it returns `SampleCount` zeros read out
+    // of a zero-filled `AllocMem` buffer whose reads all fail at EOF
+    // (`:321-330`), and r4133's `DMonitors.pas:509-541` pads `[0]` only at
+    // `SampleCount = 0` and otherwise walks that same unwritten region. Neither
+    // is reachable through the two clients (both short-circuit at `cnt == 272`),
+    // so the divergence is unobservable on either gating channel: no golden byte
+    // moves (no golden deck leaves a monitor unflushed) and no ledger entry is
+    // owed — a ledger entry must name a divergence the gate can see.
+    (
+        "MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM",
+        Kind::SplitAlias,
+        // The engine kernel, and it discriminates on its own: the split had two
+        // separate early returns — an index guard, then `if self.flushed_records
+        // == 0 { return if compat::… { vec![0.0] } else { Vec::new() }; }` — and
+        // the torn-down form folds the second condition into the first, so this
+        // whole `if` line at `channel`'s own eight spaces exists only after the
+        // teardown. Single-line by necessity (CRLF checkout).
+        //
+        // The harness half — the now unconditional `expected_monitor_channel`,
+        // which carries this row's `LANE-EXCLUSION` marker — is held by the pin
+        // (the empty channel asserted in both lanes, so a re-split engine fails
+        // it however its branch is written) together with two unit tests next to
+        // the transform: `monitor_transform_is_the_unflushed_placeholder`
+        // (the rewrite fires for the placeholder and for nothing else, in both
+        // lanes) and `monitor_pad_liveness_is_asserted_not_assumed`, which holds
+        // the counters `assert_monitor_pad_is_live` reads at the end of the
+        // corpus gate. That last one exists because the shape guards alone can
+        // no longer see one rot: a client that stops padding returns `[]`, which
+        // since G2.4 is also the engine's answer, so it would pass silently.
+        Evidence::Site(
+            "crates/dss-core/src/elements/meter/monitor/mod.rs",
+            &["\n        if i < 1 || i > self.record_size || self.flushed_records == 0 {"],
+        ),
+        Some((
+            "crates/dss-core/src/elements/meter/monitor/mod.rs",
+            "monitor_channel_of_an_unflushed_stream_is_empty",
         )),
     ),
 ];
@@ -2231,9 +2772,9 @@ enum Cited {
 const TAG_PATH_CITATIONS: &[(&str, &str, &str, Cited)] = &[
     // The NCIM cause entry records a marker that WP-U2 removed when the port
     // dropped capi015's one-conductor VSource offset. `exec/view.rs` has been
-    // marker-free ever since — including after F.3j, which routed the Newton
-    // read through `compat::POWERS_REUSE_STALE_NEWTON_ITERMINAL` instead of
-    // re-opening a marker there.
+    // marker-free ever since — F.3j routed the Newton read through a lane alias
+    // rather than re-opening a marker there, and GOLDEN_REBASE G2.3 deleted that
+    // alias too, leaving the file with one unconditional `refresh_iterminal`.
     (
         "tests/corpus/ledger.json",
         "was removed",

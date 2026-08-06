@@ -19,9 +19,10 @@ pub struct MonitorView {
     pub channels: Vec<Vec<f32>>,
     /// How many records `Save`/`SaveAll` made visible (Pascal `MonitorStream`
     /// length in records). `0` — nothing flushed — is the state in which
-    /// `channels`/`dbl_hour` are empty in the default lane and dss-python's
-    /// `Channel` reports its `[0.0]` placeholder
-    /// (`compat::MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM`).
+    /// `channels` and `dbl_hour` are both empty, in both lanes; the oracle
+    /// clients read the same stream back as a `[0.0]` placeholder, which the
+    /// harness normalizes out of their captures
+    /// (`harness::lane::expected_monitor_channel`).
     pub flushed_records: usize,
 }
 
@@ -163,43 +164,42 @@ impl Dss {
             // Currents model the fresh `CktElement.Currents` (`GetCurrents`,
             // `CAPI_CktElement.pas`). The two `Iterminal` read paths agree after
             // every fixed-point / direct / harmonic solve — the cache is invalid
-            // here so `compute_iterminal` recomputes fresh at the present `NodeV`,
-            // and the single-frequency reasoning in the block comment above holds.
+            // there, so upstream's cache-aware read recomputes fresh at the
+            // present `NodeV` too, and the single-frequency reasoning in the
+            // block comment above holds.
             //
             // After a **Newton** solve the two read paths diverge upstream, and
-            // that is the Stage F `POWERS_REUSE_STALE_NEWTON_ITERMINAL` row
-            // (CLAUDE.md known bug 5). `DoNewtonSolution`'s final
-            // `SumAllCurrents` stamps `Iterminal` at the pre-final voltage guess
-            // `NodeV_{n-1}` and marks it solved for this `SolutionCount` (the
-            // `NodeV -= dV` update follows it), so the cache-aware path
-            // (Powers/Losses) returns a one-step-stale current while
-            // `GetCurrents` (Currents) recomputes at the converged `NodeV_n`
-            // — i.e. upstream reports `S != V·conj(I)` (`Vsource.pas`
+            // that divergence is an upstream bug we do NOT reproduce (CLAUDE.md
+            // known bug 5, torn down in both lanes by `GOLDEN_REBASE_PLAN.md`
+            // G2.3). `DoNewtonSolution`'s final `SumAllCurrents` stamps
+            // `Iterminal` at the pre-final voltage guess `NodeV_{n-1}` and marks
+            // it solved for this `SolutionCount` (the `NodeV -= dV` update
+            // follows it), so upstream's cache-aware path (Powers/Losses)
+            // returns a one-step-stale current while `GetCurrents` (Currents)
+            // recomputes at the converged `NodeV_n` — i.e. it reports
+            // `S != V·conj(I)` for one element in one read (`Vsource.pas`
             // `GetCurrents` reads `NodeV` directly, whereas `CktElement.pas`
             // `Get_Powers`/`Get_Losses` reuse `ComputeIterminal`).
             //
-            // Parity lane: `compute_iterminal`, the cache-aware read — the quirk
-            // reproduced, oracle-compared as before (it is in every vendored
-            // official rev, so bumping the oracle was never an option). Default
-            // lane: `refresh_iterminal`, the clean fix — one fresh current at
-            // `NodeV_n` feeds Powers, Losses AND Currents, so `S = V·conj(I)`
-            // holds identically under every algorithm. Nothing else moves: after
-            // a fixed-point / direct / harmonic solve the cache is invalid here,
-            // so both aliases recompute the same value.
+            // So this is `refresh_iterminal` unconditionally: one fresh current
+            // at `NodeV_n` feeds Powers, Losses AND Currents, and the identity
+            // `S = V·conj(I)` — which is what `Powers` *means* — holds under
+            // every algorithm. Nothing but a Newton solve moves: everywhere else
+            // the cache is invalid here, so the cache-aware read computed the
+            // same value.
             //
             // GATE NOTE: this staleness was the ONLY feature-sensitive signal
             // distinguishing `algorithm=Newton` from the normal fixed point on
             // the `newton.dss` / `newton_feeder.dss` corpus decks (same voltages,
-            // same iteration count). The default lane, which no longer exposes
-            // it, is covered by `exec::tests::newton`'s in-engine Newton-dispatch
-            // tripwire — see the `compat` doc for the full disposition.
-            // See investigations/newton_stale_iterminal_bug_report.md.
+            // same iteration count), and no oracle channel reports those decks'
+            // powers/losses correctly — so both lanes now drop exactly those two
+            // channels for those two decks
+            // (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`) and the signal is
+            // carried instead by `exec::tests::newton`'s in-engine
+            // Newton-dispatch tripwire plus its expected-value pin.
+            // See investigations/issue-05-newton-stale-iterminal.md.
             if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
-                if crate::compat::POWERS_REUSE_STALE_NEWTON_ITERMINAL {
-                    elem.compute_iterminal(&sys, &node_v);
-                } else {
-                    elem.refresh_iterminal(&sys, &node_v);
-                }
+                elem.refresh_iterminal(&sys, &node_v);
                 let cd = elem.cd();
                 for ((p, &n), i) in powers
                     .iter_mut()
@@ -224,8 +224,9 @@ impl Dss {
             }
             // The element's own losses path (`Get_Losses`) — the same cache-aware
             // `ComputeIterminal`, read BEFORE the currents refresh below so it
-            // reuses whichever current the Powers block just left in the cache
-            // (parity: the stale post-Newton one; default: the fresh one).
+            // reuses the fresh current the Powers block just left in the cache
+            // (`refresh_iterminal` stamps it for this `SolutionCount`), i.e.
+            // Powers and Losses are one and the same current by construction.
             let loss = elem.losses(&sys, &node_v);
             // Currents: fresh recompute from the converged `NodeV` (oracle
             // `GetCurrents`), overwriting the `Iterminal` cache after Powers/Losses.

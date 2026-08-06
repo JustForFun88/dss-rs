@@ -578,29 +578,3 @@ fn kv_base_search_scale_kernels_differ_by_the_truncation() {
     // magnitude class of the estimate the argmin searches with.
     assert!(trunc > 0.0 && exact < 1.0e-2);
 }
-
-/// The Monitor base-frequency row is the only dual-`_impl` row whose engine-side
-/// pin (`exec::tests::base_frequency::monitor_basefreq_is_the_lane_kernel`)
-/// reads through the *alias*, so in each build only the selected kernel is ever
-/// executed. IV.2's Mechanism clause asks for the other half — both `_impl`s
-/// called directly and asserted, in **any** build — and this supplies it.
-#[test]
-fn monitor_base_frequency_impls_are_the_pin_and_the_inherit() {
-    // The upstream hard-pin ignores its argument entirely; the clean fix is
-    // exactly the identity on the circuit's fundamental.
-    assert_eq!(monitor_base_frequency_60hz_impl(50.0), 60.0);
-    assert_eq!(monitor_base_frequency_60hz_impl(400.0), 60.0);
-    assert_eq!(monitor_base_frequency_inherit_impl(50.0), 50.0);
-    assert_eq!(monitor_base_frequency_inherit_impl(400.0), 400.0);
-
-    // Why every committed golden and gated corpus deck is blind to the row:
-    // at 60 Hz the two kernels are bit-identical.
-    assert_eq!(
-        monitor_base_frequency_60hz_impl(60.0),
-        monitor_base_frequency_inherit_impl(60.0)
-    );
-
-    // And the alias is the lane's kernel.
-    let expected = if ORACLE_PARITY { 60.0 } else { 50.0 };
-    assert_eq!(monitor_base_frequency(50.0), expected);
-}

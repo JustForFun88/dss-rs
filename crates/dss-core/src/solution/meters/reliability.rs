@@ -4,7 +4,6 @@
 //! feeder sections delimited by OCP devices), then SAIFI/SAIDI/CAIDI.
 
 use crate::circuit::{Bus, Circuit};
-use crate::compat;
 use crate::elements::ckt::ElemFlags;
 use crate::elements::meter::energymeter::FeederSection;
 use crate::elements::pc::load::Load;
@@ -125,7 +124,7 @@ fn calc_reliability_indices(
 
     // Forward sweep: number of interruptions + section assignment. The buses it
     // touches are exactly this meter's zone — recorded so the duration loop
-    // below can stay inside it (the default lane's clean fix).
+    // below can stay inside it (the clean fix, G2.2a).
     let mut section_count: i32 = 0;
     let mut zone_buses: Vec<usize> = Vec::with_capacity(seq.len() + 1);
     {
@@ -260,18 +259,27 @@ fn calc_reliability_indices(
         s.average_repair_time = s.sum_flt_rates_x_repair_hrs / s.sum_branch_flt_rates;
     }
 
-    // Bus interruption durations. Pascal walks **every circuit bus** here
-    // (EnergyMeter.pas:2521), not just this meter's zone — an upstream bug (see
-    // `investigations/reliability_bus_int_duration_oob_bug_report.md`): with
-    // multiple meters a bus whose `BusSectionID` was set by *another* meter's
-    // sweep is read against THIS meter's `FeederSections`. Two regimes:
+    // Bus interruption durations — over **this meter's own zone**, the buses
+    // its forward sweep above numbered (`zone_buses`). `FeederSections` is this
+    // meter's array, sized to this meter's `SectionCount` (r4133
+    // `Version8/Source/Meters/EnergyMeter.pas:2507`, dss_capi
+    // `EnergyMeter.pas:2461`), and a `BusSectionID` is only an index into it
+    // while the bus belongs to the zone that wrote it — which is exactly the
+    // scope the per-section loop just above already keeps to (r4133 `:2561-2563`).
+    //
+    // Upstream instead walks **every circuit bus** (r4133
+    // `Version8/Source/Meters/EnergyMeter.pas:2567-2574`, dss_capi
+    // `EnergyMeter.pas:2521-2526`), and a foreign `BusSectionID` survives to be
+    // read there because the zeroing that clears it is itself per-zone (r4133
+    // `:2472` walks this meter's `SequenceList`). Two regimes (full analysis in
+    // `investigations/reliability_bus_int_duration_oob_bug_report.md`):
     //   (a) in-range id (`≤ section_count`) — a **deterministic** cross-zone
-    //       overwrite, so it is a real lane row: `BUS_INT_DURATION_WALKS_ALL_BUSES`
-    //       reproduces it in the parity lane (gated by
-    //       `export_busreliability_multimeter_matches_oracle`), while the default
-    //       lane visits only `zone_buses` — the buses this meter's own forward
-    //       sweep assigned — so a meter's durations no longer depend on which
-    //       meters ran before it.
+    //       overwrite: the later meter replaces an earlier meter's bus duration
+    //       with the average repair time of its *own* unrelated section, so the
+    //       reported durations depend on meter order. Both gating oracles carry
+    //       it; neither lane reproduces it (`GOLDEN_REBASE_PLAN.md` G2.2a;
+    //       `issue-02`), so a meter's durations no longer depend on which meters
+    //       ran before it.
     //   (b) out-of-range id — Pascal reads `FeederSections[id]` past the
     //       `section_count + 1` allocation: an OOB heap read, **proven
     //       nondeterministic** (the report probes it across fresh processes —
@@ -280,7 +288,8 @@ fn calc_reliability_indices(
     //       6.0e-118). Safe Rust cannot and must not reproduce it in *either*
     //       lane: `.get()` returns `None`, so the bus keeps its own-zone
     //       duration. There is no defined upstream value to pin, so no gate can
-    //       observe the difference.
+    //       observe the difference — and with the zone-scoped walk a foreign id
+    //       is not read at all.
     let set_duration = |b: &mut Bus| {
         if b.bus_section_id > 0
             && let Some(s) = sections.get(b.bus_section_id as usize)
@@ -288,14 +297,8 @@ fn calc_reliability_indices(
             b.bus_int_duration = source_int_dur + s.average_repair_time;
         }
     };
-    if compat::BUS_INT_DURATION_WALKS_ALL_BUSES {
-        for b in ckt.buses.iter_mut() {
-            set_duration(b);
-        }
-    } else {
-        for &bi in &zone_buses {
-            set_duration(&mut ckt.buses[bi]);
-        }
+    for &bi in &zone_buses {
+        set_duration(&mut ckt.buses[bi]);
     }
 
     // SAIFI / SAIFIkW / CustInterrupts from the load list.

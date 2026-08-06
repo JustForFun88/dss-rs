@@ -490,10 +490,11 @@ pub(crate) fn compare_capture(
         let el_rewrites = ledger
             .map(|v| v.element_rewrites(i, &snaps, &cp.elements, tol, &ctx))
             .unwrap_or_default();
-        // The Stage F lane policy drops the two `S = V·conj(I)` sub-channels on
-        // the `newton*` decks in the DEFAULT lane only (a deliberate divergence,
-        // pinned by its own expected-value test) — every other case and the whole
-        // parity lane get `ElemChannels::ALL`. See `harness::lane`.
+        // The lane policy drops the two `S = V·conj(I)` sub-channels on the
+        // `newton*` decks in **both** lanes since `GOLDEN_REBASE_PLAN.md` G2.3
+        // (no oracle channel reports them at the converged `NodeV`; pinned by
+        // its own expected-value test) — every other case gets
+        // `ElemChannels::ALL`. See `harness::lane`.
         let channels = lane::elem_channels_for(label);
         for ec in &cp.elements {
             match el_rewrites.get(&ec.name.to_lowercase()) {
@@ -547,9 +548,10 @@ pub(crate) fn compare_capture(
                     .collect(),
                 None => cp.eventlog.clone(),
             };
-            // Then the Stage F Relay rows (identity in the parity lane). The
-            // relay/recloser split is read from the Rust circuit, which the
-            // element-name set above has already pinned against the oracle.
+            // Then the two Relay label rows, which apply in **both** lanes
+            // (GOLDEN_REBASE_PLAN.md G2.2d). The relay/recloser split is read
+            // from the Rust circuit, which the element-name set above has
+            // already pinned against the oracle.
             let relays: BTreeSet<String> = class_member_names(&snaps, "relay");
             let reclosers: BTreeSet<String> = class_member_names(&snaps, "recloser");
             let expected = lane::expected_eventlog(label, &masked, |name| {

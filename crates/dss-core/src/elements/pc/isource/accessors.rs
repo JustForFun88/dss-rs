@@ -181,13 +181,20 @@ impl DssObject for Isource {
                 };
                 self.cd.set_nconds(n); // Force reallocation of terminal info
             }
-            // Stage F `ISOURCE_BUS2_NEVER_LATCHES`: `TIsourceObj.
-            // PropertySideEffects` (`Isource.pas:221`) has no `Bus2` case at
-            // all, unlike `TVsourceObj`'s (`Vsource.pas:498`), so the flag
-            // never latches and the `Bus1` branch below always re-derives the
-            // grounded-Y default. The default lane latches it like the sibling
-            // class; the parity lane keeps the quirk.
-            BUS2 if !crate::compat::ISOURCE_BUS2_NEVER_LATCHES => {
+            // Upstream has no `Bus2` case here at all — neither in the pinned
+            // backend (`.inputs/dss_capi/src/PCElements/Isource.pas:221-262`,
+            // where the `case` holds only `Phases`, `bus1` and `Daily`) nor in
+            // r4133 (`Version8/Source/PCElements/Isource.pas`, whose
+            // `Bus2Defined` is declared `:61`, copied `:335` and cleared
+            // `:398`, and never set) — so the flag never latches and the `BUS1`
+            // branch below re-derives the grounded-Y default over an explicit
+            // `Bus2=` that was parsed first. The flag exists for exactly this
+            // test, and the sibling classes set it on this very property
+            // (`Vsource.pas:498`, r4133 `:468`; `Capacitor.pas:349`), so the
+            // omission is a hole, not a design. Latched in both lanes since
+            // `GOLDEN_REBASE_PLAN.md` G2.2b; pinned by
+            // `tests::bus2_latches_like_the_sibling_class`.
+            BUS2 => {
                 self.bus2_defined = true;
             }
             BUS1 => {

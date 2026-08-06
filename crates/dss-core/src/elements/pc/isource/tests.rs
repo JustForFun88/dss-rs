@@ -92,19 +92,23 @@ fn bus1_side_effect_defaults_bus2_to_grounded_y() {
     assert_eq!(isrc.cd.get_bus(2), "b1.0.0.0");
 }
 
-/// The Stage F [`ISOURCE_BUS2_NEVER_LATCHES`] row, pinned by expected value in
-/// both lanes.
+// EXPECTED-VALUE-PIN(ISOURCE_BUS2_NEVER_LATCHES): an explicit `Bus2=` survives
+// a later `Bus1=`, asserted outright in both lanes — where upstream and both
+// gating oracles re-derive the grounded-Y default over it. The control half (no
+// explicit `Bus2` ⇒ the default IS re-derived) is asserted in the same test, so
+// the fix cannot be mistaken for "the `Bus1` branch stopped working".
+/// The Isource `Bus2` latch, torn down as a lane row by
+/// `GOLDEN_REBASE_PLAN.md` G2.2b.
 ///
-/// `TIsourceObj.PropertySideEffects` (`Isource.pas:221`) has no `Bus2` case, so
-/// upstream never latches `Bus2Defined` and a later `Bus1=` clobbers an
-/// already-explicit `Bus2` back to the grounded-Y default —
-/// `TVsourceObj.PropertySideEffects` (`Vsource.pas:498`) does latch it on the
-/// very same property. **Parity lane**: the clobber, the value both gating
-/// oracles pin. **Default lane**: `b2` survives, matching the sibling class.
-///
-/// [`ISOURCE_BUS2_NEVER_LATCHES`]: crate::compat::ISOURCE_BUS2_NEVER_LATCHES
+/// `TIsourceObj.PropertySideEffects` (`.inputs/dss_capi/src/PCElements/
+/// Isource.pas:221-262`; r4133 `Version8/Source/PCElements/Isource.pas` sets
+/// `Bus2Defined` nowhere either) has no `Bus2` case, so upstream never latches
+/// `Bus2Defined` and a later `Bus1=` clobbers an already-explicit `Bus2` back
+/// to the grounded-Y default — while `TVsourceObj.PropertySideEffects`
+/// (`Vsource.pas:498`; r4133 `:468`) latches it on the very same property. This
+/// engine latches in both lanes, so `b2` survives.
 #[test]
-fn bus2_latching_is_the_lane_kernel() {
+fn bus2_latches_like_the_sibling_class() {
     let mut isrc = Isource::new("i1");
     isrc.cd.set_bus(1, "b1");
     isrc.side_effects(prop::BUS1, 0);
@@ -113,25 +117,25 @@ fn bus2_latching_is_the_lane_kernel() {
     isrc.cd.set_bus(2, "b2");
     isrc.side_effects(prop::BUS2, 0);
     assert_eq!(isrc.cd.get_bus(2), "b2");
-    // Expectations are derived from the *lane*, never from the row's own alias:
-    // reading `ISOURCE_BUS2_NEVER_LATCHES` on both sides would make this pass
-    // for whatever the alias happens to say, so a silent revert of the flip
-    // would sail through (reproduced, F-settle W4).
-    let parity = crate::compat::ORACLE_PARITY;
-    assert_eq!(isrc.bus2_defined, !parity);
+    assert!(
+        isrc.bus2_defined,
+        "the `Bus2` property side effect latches the flag (Vsource.pas:498 is \
+         the same line the Isource class is missing)"
+    );
 
     // Re-setting Bus1 re-derives the grounded-Y default only while the flag is
-    // unlatched — i.e. always, upstream.
+    // unlatched — always, upstream; never here once `Bus2=` was given.
     isrc.cd.set_bus(1, "b1");
     isrc.side_effects(prop::BUS1, 0);
     assert_eq!(
         isrc.cd.get_bus(2),
-        if parity { "b1.0.0.0" } else { "b2" },
-        "parity reproduces the missing `Bus2` side-effect case (Isource.pas:221); \
-         the default lane latches it like TVsourceObj does"
+        "b2",
+        "upstream re-derives `b1.0.0.0` here (the missing `Bus2` case in \
+         Isource.pas:221); this engine keeps the bus the user wrote"
     );
 
-    // Both lanes agree when `Bus2` was never given: the default is re-derived.
+    // The control: with no explicit `Bus2` the default IS re-derived, in both
+    // lanes — the `Bus1` branch is untouched by the fix.
     let mut plain = Isource::new("i2");
     plain.cd.set_bus(1, "c1");
     plain.side_effects(prop::BUS1, 0);

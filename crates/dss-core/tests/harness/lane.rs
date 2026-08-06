@@ -100,41 +100,48 @@ pub const PARITY: bool = cfg!(feature = "oracle-parity");
 /// part of `cargo test` at all.
 pub const ITER_SLACK: i32 = 1;
 
-/// The corpus cases whose element `Powers`/`Losses` the **default** lane does
-/// not oracle-compare — the drift model's "deliberate divergences … excluded
+/// The corpus cases whose element `Powers`/`Losses` **neither** lane
+/// oracle-compares — the drift model's "deliberate divergences … excluded
 /// field-by-field" row, and the only such exclusion in the suite.
 ///
-/// `compat::POWERS_REUSE_STALE_NEWTON_ITERMINAL` (CLAUDE.md upstream bug 5):
-/// `DoNewtonSolution` leaves `Iterminal` stamped from the pre-final voltage
-/// guess, so upstream's cache-aware `Get_Powers`/`Get_Losses` report a
-/// one-step-stale current after `Set algorithm=Newton` while `Currents`
-/// recomputes fresh. The parity lane reproduces that and still compares both
-/// channels against **both** gating oracles; the default lane recomputes all
-/// three reads at the converged `NodeV`, which is deliberately *not* what any
-/// oracle reports (measured: 4.86e-4 kVA on `newton.dss`, 2.46e-3 kVA on
+/// CLAUDE.md upstream bug 5, torn down in both lanes by
+/// `GOLDEN_REBASE_PLAN.md` G2.3: `DoNewtonSolution` leaves `Iterminal` stamped
+/// from the pre-final voltage guess, so upstream's cache-aware
+/// `Get_Powers`/`Get_Losses` report a one-step-stale current after
+/// `Set algorithm=Newton` while `Currents` recomputes fresh — one read of one
+/// element with `S != V·conj(I)`. The engine recomputes all three reads at the
+/// converged `NodeV`, which is deliberately *not* what any oracle reports
+/// (measured against `capi_v0145`: 4.86e-4 kVA on `newton.dss`, 2.46e-3 kVA on
 /// `newton_feeder.dss`, both on `Vsource.source` conductor 0 — ~60× and ~35×
-/// their tiers' floors, so this can never be mistaken for drift).
+/// their tiers' floors, so this can never be mistaken for drift). Bumping the
+/// oracle is no escape: the quirk is in every vendored official rev (r3723,
+/// r4088, r4133), so the `r4133` channel misreports these two channels too.
 ///
-/// These are the only two gated decks that run a Newton solve, and the quirk is
+/// These are the only two gated decks that run a Newton solve, and the bug is
 /// unobservable after every other algorithm (the cache is invalid at read time,
-/// so both lanes recompute the same current).
+/// so the cache-aware read recomputes the same current) — which is why the
+/// exclusion stays these two decks' two channels and nothing wider.
 ///
-/// **What still gates them in the default lane**: the element name set, terminal
-/// **currents**, node voltages, the system Y, discrete state, and the iteration
-/// count — everything except the two `S = V·conj(I)` channels. Those are pinned
-/// by `dss_core::exec::tests::newton::newton_powers_are_the_lane_kernel`, which
-/// asserts the default lane's Newton powers equal the *normal* algorithm's on
-/// the same deck to 1e-8 kVA (the parity lane's differ by ≥ 1e-1 kVA) — and the
+/// **What still gates them**: the element name set, terminal **currents**, node
+/// voltages, the system Y, discrete state, and the iteration count — everything
+/// except the two `S = V·conj(I)` channels. Those are pinned by
+/// `dss_core::exec::tests::newton::newton_powers_match_the_normal_algorithm`,
+/// which asserts the Newton powers equal the *normal* algorithm's on the same
+/// deck to 1e-8 kVA (upstream's stale read differs by ≥ 1e-1 kVA) — and the
 /// normal algorithm's powers are oracle-gated on ~500 other corpus cases, which
 /// closes the loop transitively.
 const LANE_SKIP_ELEM_POWERS: &[&str] =
     &["modes:newton/newton.dss", "modes:newton/newton_feeder.dss"];
 
-/// Which element sub-channels the current lane oracle-compares for the corpus
-/// case `label` — [`ElemChannels::ALL`] everywhere except
-/// [`LANE_SKIP_ELEM_POWERS`] in the default lane.
+// LANE-EXCLUSION(POWERS_REUSE_STALE_NEWTON_ITERMINAL): the two decks' powers and
+// losses are dropped from the oracle compare in **both** lanes — no oracle
+// channel reports them at the converged `NodeV`, so there is no lane in which
+// comparing them would be right.
+/// Which element sub-channels the corpus gate oracle-compares for the case
+/// `label` — [`ElemChannels::ALL`] everywhere except [`LANE_SKIP_ELEM_POWERS`],
+/// in either lane.
 pub fn elem_channels_for(label: &str) -> ElemChannels {
-    if !PARITY && LANE_SKIP_ELEM_POWERS.contains(&label) {
+    if LANE_SKIP_ELEM_POWERS.contains(&label) {
         ElemChannels::CURRENTS_ONLY
     } else {
         ElemChannels::ALL
@@ -142,50 +149,76 @@ pub fn elem_channels_for(label: &str) -> ElemChannels {
 }
 
 /// The oracle event-log capture as the **current lane** expects to see it: the
-/// identity in the parity lane, and in the default lane the two Relay rows of
-/// Stage F applied to it as an *enumerated* rewrite.
+/// two Relay label rewrites in *both* lanes, plus — in the default lane only —
+/// the enumerated `%g` re-spellings.
 ///
 /// The oracle stays the source of truth for every other line — this is the same
 /// expected-value-transform shape `golden_cim`/`golden_json` use, chosen for the
-/// same reason: the relay decks' event logs are the whole point of those 13
-/// gated cases, so re-capturing them for the default lane would trade an oracle
-/// proof for two label changes.
+/// same reason: the relay decks' event logs are the whole point of the 17 gated
+/// `oracle: "r4133"` cases that carry a relay and compare one (nine under
+/// `controls/relay/`, two under `controls/combo/`, two under
+/// `controls/fuse/indmach_r4133/`, the four TD21 decks — measured over
+/// `population.lock.json`'s `evlog=1` rigor fields, whose `family_rigor` map
+/// covers the synthetic families and whose `solvable_now` map covers the
+/// vendored decks), so re-capturing them would trade an oracle proof for two
+/// label changes.
 ///
-/// * `compat::RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE` — the unguarded
-///   `Debug Sample: Relay.<name>` state trace disappears from the default
-///   lane's log, so those lines are dropped from the expectation. Only the
-///   Relay's are: the Recloser writes the byte-identical line *guarded*, so an
-///   oracle `Debug Sample: Recloser.…` line means the user asked for it and
-///   both lanes must still produce it.
+/// # Both lanes: the two Relay rows (`GOLDEN_REBASE_PLAN.md` G2.2d)
 ///
-///   The drop is unconditional, which is exact only while no gated deck sets
-///   `DebugTrace=yes` on a relay — verified (`rg -li debugtrace
-///   tests/corpus/controls` is empty), and the failure mode if one ever does is
-///   a loud length mismatch here, never a silent pass: the default lane would
-///   then emit a line the expectation dropped. Such a deck adds its relay's
-///   `DebugTrace` to this predicate rather than widening the drop.
-/// * `compat::RELAY_RESET_EVENT_IS_LABELLED_RECLOSER` — the copy-pasted
-///   `Recloser.<name>` label on a relay's reset event becomes `Relay.<name>`.
-///   `device_is_relay` decides which lines those are: it must answer "the
-///   circuit has a Relay of this name and no Recloser of it", so a genuine
-///   recloser reset (identical wording, `Recloser.pas:909`/`:924`) is never
-///   touched, and a circuit holding both classes under one name is left alone
-///   to fail the compare loudly rather than be silently rewritten.
-/// * `compat::fmt_g` (F.4) — [`EVENTLOG_REROUNDED`], the enumerated cells where
-///   the F-FMT `%g` row re-spells a **traced** number's last printed digit.
+/// Neither is a precision row — they are upstream label mistakes, so the engine
+/// emits the correct log in both lanes and the rewrite here is what keeps every
+/// other line oracle-compared.
+///
+// LANE-EXCLUSION(RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE): the `Debug Sample:
+// Relay.` drop below is unconditional — both lanes gate the line on
+// `DebugTrace`, so neither emits it for the gated decks.
+/// * The unguarded `Debug Sample: Relay.<name>` state trace
+///   (`Relay.pas:1325`, no `if DebugTrace`) is absent from **both** lanes' logs
+///   now, so those lines are dropped from the expectation. Only the Relay's
+///   are: the Recloser writes the byte-identical line *guarded*
+///   (`Recloser.pas:1044`), so an oracle `Debug Sample: Recloser.…` line means
+///   the user asked for it and both lanes must still produce it.
+///
+///   The drop is unconditional in the other sense too — it does not consult the
+///   relay's `DebugTrace` — which is exact only while no deck that compares an
+///   event log turns the flag **on**. Measured over the whole corpus: the only
+///   `debugtrace=yes` on a relay is the `BatchEdit Relay..* debugtrace=yes` of
+///   `Examples/DOCTechNote/ExamplesMaster.dss`, whose four including decks carry
+///   `evlog=0`; every relay in the four gated TD21 decks spells `debugtrace=no`
+///   explicitly, and no other gated deck names the property at all. The failure
+///   mode if one ever does turn it on is a loud length mismatch here, never a
+///   silent pass: the engine would then emit a line the expectation dropped.
+///   Such a deck adds its relay's `DebugTrace` to this predicate rather than
+///   widening the drop.
+///
+// LANE-EXCLUSION(RELAY_RESET_EVENT_IS_LABELLED_RECLOSER): the `Recloser.<n>` →
+// `Relay.<n>` relabel below is unconditional — both lanes name the class that
+// emitted the reset event.
+/// * The copy-pasted `Recloser.<name>` label on a relay's reset event
+///   (`Relay.pas:1196`/`:1212`, verbatim from `Recloser.pas:909`/`:924`)
+///   becomes `Relay.<name>`. `device_is_relay` decides which lines those are:
+///   it must answer "the circuit has a Relay of this name and no Recloser of
+///   it", so a genuine recloser reset (identical wording) is never touched, and
+///   a circuit holding both classes under one name is left alone to fail the
+///   compare loudly rather than be silently rewritten.
+///
+/// # Default lane only: the `%g` cells
+///
+/// `compat::fmt_g` (F.4) is a **precision** row and is still lane-split (until
+/// `GOLDEN_REBASE_PLAN.md` G4.1), so [`EVENTLOG_REROUNDED`] — the enumerated
+/// cells where its two kernels spell a *traced* number's last printed digit
+/// differently — stays behind the parity guard, together with its
+/// [`REROUND_VISITS`]/[`REROUND_HITS`] accounting. Applying it in the parity
+/// lane would hand that lane the native `%g` spelling against FPC-spelled
+/// engine output — a 1e-5 gap against `compare_eventlog`'s
+/// `assert_value_matches_tol(…, 1e-6, 1e-9)` on the carrier case. The mixed
+/// shape is the one `golden_json::lane_expected_json` uses for the same reason.
 pub fn expected_eventlog(
     label: &str,
     lines: &[String],
     device_is_relay: impl Fn(&str) -> bool,
 ) -> Vec<String> {
-    if PARITY {
-        return lines.to_vec();
-    }
-    let cells: Vec<&(&str, &str, &str, &str)> =
-        EVENTLOG_REROUNDED.iter().filter(|c| c.0 == label).collect();
-    let mut hits = vec![0usize; cells.len()];
-
-    let out: Vec<String> = lines
+    let relabelled: Vec<String> = lines
         .iter()
         .filter(|l| !l.contains(", Element=Debug Sample: Relay."))
         .map(|l| match reset_device_name(l) {
@@ -195,6 +228,17 @@ pub fn expected_eventlog(
                 }),
             _ => l.clone(),
         })
+        .collect();
+    if PARITY {
+        return relabelled;
+    }
+
+    let cells: Vec<&(&str, &str, &str, &str)> =
+        EVENTLOG_REROUNDED.iter().filter(|c| c.0 == label).collect();
+    let mut hits = vec![0usize; cells.len()];
+
+    let out: Vec<String> = relabelled
+        .into_iter()
         .map(|l| {
             cells
                 .iter()
@@ -250,7 +294,9 @@ static REROUND_HITS: [AtomicUsize; EVENTLOG_REROUNDED.len()] =
 /// doc above already claimed this helper was fail-on-stale).
 ///
 /// Silent when a cell's case was never visited, so `DSS_GATE_ONLY` runs and the
-/// parity lane (which rewrites nothing) do not trip it.
+/// parity lane (which applies no re-round cell — it returns from
+/// [`expected_eventlog`] above the fold, after the two unconditional Relay
+/// label rewrites) do not trip it.
 pub fn assert_reround_cells_are_live() {
     if PARITY {
         return;
@@ -359,29 +405,119 @@ fn reset_device_name(line: &str) -> Option<&str> {
     is_reset.then_some(name)
 }
 
-/// One oracle monitor-channel capture as the **current lane** expects to see
-/// it: the identity in the parity lane; in the default lane, dss-python's
-/// unflushed-stream placeholder rewritten to the empty channel the engine
-/// actually reports (`compat::MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM`).
+// LANE-EXCLUSION(MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM): the `[0.0]` a
+// header-only monitor stream is read back as is fabricated by the oracles'
+// **client** stream decoders, not by any engine, so it is normalized away from
+// the capture unconditionally — in both lanes and on both gating channels.
+/// One oracle monitor-channel capture with the client-side unflushed-stream
+/// placeholder normalized away.
+///
+/// **Not a lane row, and not a channel row.** `dss-python`'s
+/// `IMonitors.Channel` (`dss/IMonitors.py:28-55`) never calls the engine's
+/// `Monitors_Get_Channel`: it pulls the raw `ByteStream` and short-circuits
+/// `if cnt == 272: return np.zeros((1,), dtype=np.float32)`, 272 being the
+/// header-only stream size. The `r4133` channel's captures come from our own
+/// bridge, which decodes that same ByteStream "exactly like dss-python"
+/// (`crates/dss-epri/src/dss.rs:625-634`) — **that** decoder, not any Pascal
+/// accessor, is what this transform is measured against on that channel.
+///
+/// So the placeholder is a **client artifact of both readers we gate against**,
+/// never an engine value in either lane. `GOLDEN_REBASE_PLAN.md` G2.4 therefore
+/// reclassified it from a lane split into this capture normalization: both
+/// lanes' engines report the empty channel, and both lanes strip the
+/// placeholder from either channel's capture. (Scoping the strip to
+/// `capi_v0145` was measured and rejected — it reds the three gated
+/// `modes/time/generaltime*` decks on `r4133`, whose bridge decoder pads
+/// exactly like dss-python.)
+///
+/// Neither *engine* accessor returns the empty channel in this state either,
+/// which is a separate upstream defect the port declines rather than a reason
+/// to pad: `Monitors_Get_Channel` keeps its empty `DefaultResult` only for
+/// `SampleCount <= 0`/an invalid index (`CAPI_Monitors.pas:304-320`) and
+/// otherwise hands back `SampleCount` zeros read out of stream bytes it never
+/// wrote (`:321-330`), and r4133's `DMonitors.pas:509-541` pads `[0]` only at
+/// `SampleCount = 0` and otherwise walks that same unwritten region. Both are
+/// unreachable through the two clients above, so nothing here observes them.
 ///
 /// `flushed_records` is the Rust monitor's own flush cursor, and it is what
 /// makes this transform safe rather than circular. The rewrite fires **only**
-/// when that cursor is 0 — the one state in which `Monitors.Channel`'s
-/// `cnt == 272` short-circuit can trigger — and it insists the capture really
-/// is the placeholder (exactly one sample, exactly `0.0`). So:
+/// when that cursor is 0 — the one state in which the `cnt == 272`
+/// short-circuit can appear — and it insists the capture really is the
+/// placeholder (exactly one sample, exactly `0.0`). So:
 ///
 /// * a monitor that flushed records is compared strictly, in both lanes;
 /// * an engine that lost real samples reports `flushed_records > 0` with an
 ///   empty channel and fails the length check as before;
-/// * an oracle that stops emitting the placeholder (a dss-python change) makes
-///   `is_placeholder` false, and the untransformed capture then fails loudly —
-///   the transform can never rot into a silent pass.
+/// * a capture that is neither the placeholder nor empty stays untransformed
+///   and fails loudly.
+///
+/// The one shape those guards do **not** catch is a client that stops padding
+/// and returns `[]`: since G2.4 both lanes' engines also report `[]`, so such a
+/// capture would compare equal and quietly turn this normalization into dead
+/// code. [`assert_monitor_pad_is_live`] closes that hole the way
+/// [`assert_reround_cells_are_live`] closes the event-log one — every
+/// unflushed-monitor capture the gate visits must actually have been the
+/// placeholder.
 pub fn expected_monitor_channel(flushed_records: usize, capture: &[f64]) -> Vec<f64> {
-    let is_placeholder = capture.len() == 1 && capture[0] == 0.0;
-    if PARITY || flushed_records != 0 || !is_placeholder {
+    if flushed_records == 0 {
+        // Two independent counters rather than visits-vs-hits: the assert below
+        // reads them from another thread while the corpus gate is still
+        // comparing, and a single non-atomic "visit then hit" pair would make
+        // an honest run look momentarily stale.
+        if is_monitor_pad(capture) {
+            MONITOR_PAD_HITS.fetch_add(1, Ordering::Relaxed);
+        } else {
+            MONITOR_PAD_MISSES.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+    strip_monitor_pad(flushed_records, capture)
+}
+
+/// The client placeholder's exact shape: one sample, exactly `0.0`.
+fn is_monitor_pad(capture: &[f64]) -> bool {
+    capture.len() == 1 && capture[0] == 0.0
+}
+
+/// [`expected_monitor_channel`] without the liveness accounting — the pure
+/// transform, so the unit tests below can enumerate the shapes it must *not*
+/// rewrite without poisoning the counters of whatever test binary they run in.
+fn strip_monitor_pad(flushed_records: usize, capture: &[f64]) -> Vec<f64> {
+    if flushed_records != 0 || !is_monitor_pad(capture) {
         return capture.to_vec();
     }
     Vec::new()
+}
+
+/// Counters behind [`assert_monitor_pad_is_live`]: unflushed-monitor channel
+/// captures that **were** the client placeholder, and those that were not.
+static MONITOR_PAD_HITS: AtomicUsize = AtomicUsize::new(0);
+static MONITOR_PAD_MISSES: AtomicUsize = AtomicUsize::new(0);
+
+/// **Fail-on-stale for [`expected_monitor_channel`]**, asserted once at the end
+/// of the corpus gate.
+///
+/// Since G2.4 the engine reports the empty channel in both lanes, so an oracle
+/// client that stopped padding would produce a capture equal to the engine's
+/// answer and the normalization would silently become a no-op — the one rot the
+/// transform's own shape guards cannot see. Every unflushed-monitor capture the
+/// gate compares therefore has to *be* the placeholder; one that is not means
+/// the reader changed and the transform needs re-measuring, not silence.
+///
+/// Silent when nothing unflushed was visited, so `DSS_GATE_ONLY` runs (and any
+/// binary that compares no monitor at all) do not trip it.
+pub fn assert_monitor_pad_is_live() {
+    let hits = MONITOR_PAD_HITS.load(Ordering::Relaxed);
+    let misses = MONITOR_PAD_MISSES.load(Ordering::Relaxed);
+    assert_eq!(
+        misses, 0,
+        "the monitor-channel placeholder normalization is going stale: \
+         {misses} unflushed-monitor channel capture(s) were NOT the client \
+         `[0.0]` placeholder ({hits} were). Both gating clients pad a \
+         header-only ByteStream (`dss/IMonitors.py:28-55`, \
+         `crates/dss-epri/src/dss.rs:625-634`); if one stopped, an empty \
+         capture now matches the engine's own empty channel and this transform \
+         is dead code — re-measure it or drop it."
+    );
 }
 
 /// The oracle capture as the **current lane** spells it after F-FMT's `%g` row
@@ -740,9 +876,11 @@ pub fn profile_ll_policy(base: ExportPolicy) -> ExportPolicy {
 #[cfg(test)]
 mod tests {
     use super::{
-        ElemChannels, ITER_SLACK, LANE_SKIP_ELEM_POWERS, PARITY, assert_bytes_eq,
+        ElemChannels, ITER_SLACK, LANE_SKIP_ELEM_POWERS, MONITOR_PAD_HITS, MONITOR_PAD_MISSES,
+        Ordering, PARITY, assert_bytes_eq, assert_monitor_pad_is_live,
         assert_reround_cells_are_live, compare_iterations, compare_iterations_le, compare_report,
         elem_channels_for, exact_value_policy, expected_eventlog, expected_monitor_channel,
+        strip_monitor_pad,
     };
 
     thread_local! {
@@ -798,39 +936,87 @@ mod tests {
         );
     }
 
-    /// The monitor transform is exactly dss-python's unflushed placeholder, and
+    /// The monitor transform is exactly the clients' unflushed placeholder, and
     /// nothing else: it fires only at `flushed_records == 0` and only on a
     /// literal one-element `[0.0]` capture, so real data — including a genuine
     /// single zero sample on a *flushed* monitor — is compared strictly in both
     /// lanes.
+    ///
+    /// The negative shapes are asserted against the pure [`strip_monitor_pad`],
+    /// not the public wrapper, precisely because the wrapper counts: a
+    /// non-placeholder visit charged here would sit in the same statics
+    /// [`assert_monitor_pad_is_live`] reads at the end of the corpus-gate
+    /// binary. The two wrapper calls this test does make are safe (one
+    /// placeholder, one flushed capture — a hit and a non-candidate).
     #[test]
     fn monitor_transform_is_the_unflushed_placeholder() {
         let placeholder = [0.0];
-        // The one rewritten cell.
+        // The one rewritten cell — rewritten in BOTH lanes since
+        // `GOLDEN_REBASE_PLAN.md` G2.4: the pad is the oracle clients' stream
+        // decoder, not an engine's, so no lane of ours ever emits it.
         assert_eq!(
             expected_monitor_channel(0, &placeholder),
-            if PARITY { vec![0.0] } else { Vec::new() },
-            "the placeholder is dropped in the default lane only"
+            Vec::<f64>::new(),
+            "the client placeholder is dropped in both lanes"
         );
         // Same capture, flushed monitor: never rewritten.
         assert_eq!(expected_monitor_channel(1, &placeholder), vec![0.0]);
-        // Unflushed, but not the placeholder shape: never rewritten, so an
-        // oracle that stops padding fails loudly instead of passing silently.
-        for cap in [vec![0.0, 0.0], vec![1.0], vec![]] {
+        // Unflushed, but not the placeholder shape: never rewritten. For
+        // `[0.0, 0.0]`, `[1.0]` and `[1e-30]` that is also what fails the
+        // compare loudly; the empty capture is the one shape the engine now
+        // reports too, so its loudness comes from `assert_monitor_pad_is_live`
+        // instead (asserted below).
+        for cap in [vec![0.0, 0.0], vec![1.0], vec![], vec![1e-30]] {
             let expect = cap.clone();
             assert_eq!(
-                expected_monitor_channel(0, &cap),
+                strip_monitor_pad(0, &cap),
                 expect,
                 "only a literal [0.0] is the placeholder"
             );
         }
-        assert_eq!(expected_monitor_channel(0, &[1e-30]), vec![1e-30]);
+    }
+
+    /// The liveness half of the monitor row: a run in which some
+    /// unflushed-monitor capture was *not* the placeholder is a reader that
+    /// stopped padding, and it must fail rather than leave the normalization
+    /// dead. Asserted on the real statics, which this test can only push in the
+    /// safe direction (it charges hits, never misses), so it stays
+    /// order-independent against a corpus gate sharing the same binary.
+    #[test]
+    fn monitor_pad_liveness_is_asserted_not_assumed() {
+        // Nothing visited, or only placeholders visited: silent, always.
+        assert_monitor_pad_is_live();
+        let before = MONITOR_PAD_HITS.load(Ordering::Relaxed);
+        assert_eq!(
+            expected_monitor_channel(0, &[0.0]),
+            Vec::<f64>::new(),
+            "a placeholder capture is a hit"
+        );
+        assert!(
+            MONITOR_PAD_HITS.load(Ordering::Relaxed) > before,
+            "the hit counter is wired to the transform"
+        );
+        assert_monitor_pad_is_live();
+        // A flushed capture is not accounted at all — only the unflushed state
+        // can carry the placeholder.
+        let misses = MONITOR_PAD_MISSES.load(Ordering::Relaxed);
+        assert_eq!(
+            expected_monitor_channel(3, &[1.0, 2.0, 3.0]),
+            vec![1.0, 2.0, 3.0]
+        );
+        assert_eq!(
+            MONITOR_PAD_MISSES.load(Ordering::Relaxed),
+            misses,
+            "a flushed monitor is not a placeholder candidate (a non-zero miss \
+             count here means the corpus gate sharing this binary just recorded \
+             a real miss — see assert_monitor_pad_is_live)"
+        );
     }
 
     /// The one element-channel exclusion: the `newton*` decks' `Powers`/
-    /// `Losses` are dropped in the default lane only, their **currents** are
-    /// kept in both, and no other case is touched. Asserted as an equality
-    /// against the lane so the test is meaningful in both.
+    /// `Losses` are dropped in **both** lanes since `GOLDEN_REBASE_PLAN.md`
+    /// G2.3 (no oracle channel reports them at the converged `NodeV`), their
+    /// **currents** are kept in both, and no other case is touched.
     #[test]
     fn newton_powers_are_the_only_element_channel_exclusion() {
         for label in LANE_SKIP_ELEM_POWERS {
@@ -838,12 +1024,8 @@ mod tests {
             assert!(ch.currents, "{label}: currents stay gated in every lane");
             assert_eq!(
                 ch,
-                if PARITY {
-                    ElemChannels::ALL
-                } else {
-                    ElemChannels::CURRENTS_ONLY
-                },
-                "{label}: powers/losses are excluded in the default lane only"
+                ElemChannels::CURRENTS_ONLY,
+                "{label}: powers/losses are excluded in both lanes"
             );
         }
         // Nothing else is excluded — including a label that merely *contains* an
@@ -866,7 +1048,13 @@ mod tests {
     /// else: it drops the relay's unguarded state trace, relabels the relay's
     /// reset event, and leaves every recloser line — including the *identically
     /// worded* recloser reset and the recloser's own (guarded) trace — alone.
-    /// Asserted against the lane, so the parity arm's identity is checked too.
+    ///
+    /// Asserted **without** a lane branch since `GOLDEN_REBASE_PLAN.md` G2.2d:
+    /// both rows are upstream label mistakes, both lanes emit the corrected log,
+    /// so both lanes apply both rewrites to the oracle capture. (The synthetic
+    /// case owns no [`super::EVENTLOG_REROUNDED`] cell, so the still-lane-split
+    /// `%g` fold cannot reach this expectation either way — that row has its own
+    /// tests below.)
     #[test]
     fn eventlog_transform_is_the_two_relay_rows() {
         let ev = |el: &str, action: &str| {
@@ -886,10 +1074,6 @@ mod tests {
         let out = expected_eventlog("synthetic:relay/relabel.dss", &lines, |n| {
             n.eq_ignore_ascii_case("r1")
         });
-        if PARITY {
-            assert_eq!(out, lines, "the parity arm must be the identity");
-            return;
-        }
         assert_eq!(
             out,
             vec![
@@ -970,8 +1154,9 @@ mod tests {
         );
 
         // The over-broad guard: one cell may re-spell one rendered number, so a
-        // log carrying the same cell twice is refused. (The parity lane
-        // rewrites nothing at all, so there is nothing to over-match there.)
+        // log carrying the same cell twice is refused. (The parity lane returns
+        // before the re-round fold, so no cell runs there and there is nothing
+        // to over-match.)
         if !PARITY {
             let twice = std::panic::catch_unwind(|| {
                 expected_eventlog(
@@ -995,7 +1180,9 @@ mod tests {
 
     /// The relabel is refused when the name is ambiguous — a circuit holding a
     /// Relay *and* a Recloser called `r1` must fail its compare loudly instead
-    /// of having a genuine recloser event rewritten into a relay's.
+    /// of having a genuine recloser event rewritten into a relay's. Since G2.2d
+    /// the rewrite runs in both lanes, so this refusal is asserted in both: the
+    /// predicate, not the lane, is what holds it back.
     #[test]
     fn eventlog_reset_relabel_needs_an_unambiguous_relay() {
         let line = "Hour=0, Sec=1, ControlIter=1, Element=Recloser.r1, \

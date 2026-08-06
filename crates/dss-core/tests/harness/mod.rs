@@ -1063,11 +1063,13 @@ pub fn assert_power_close(
 
 /// Which sub-channels of an element capture [`compare_element_channels`] checks.
 ///
-/// Exists for the Stage F lane policy: a *deliberate* divergence (the default
-/// lane's post-Newton `Powers`/`Losses`, `compat::
-/// POWERS_REUSE_STALE_NEWTON_ITERMINAL`) is excluded **field-by-field**, never
-/// case-by-case — the element name set, terminal currents, node voltages,
-/// discrete state and iteration count of such a case stay fully oracle-gated.
+/// Exists for the lane policy: a *deliberate* divergence (the engine's
+/// post-Newton `Powers`/`Losses`, recomputed at the converged `NodeV` where
+/// every oracle channel reports the one-step-stale current — CLAUDE.md upstream
+/// bug 5, torn down in both lanes by `GOLDEN_REBASE_PLAN.md` G2.3) is excluded
+/// **field-by-field**, never case-by-case — the element name set, terminal
+/// currents, node voltages, discrete state and iteration count of such a case
+/// stay fully oracle-gated.
 /// [`lane::elem_channels_for`] is the only thing that ever returns a value other
 /// than [`ElemChannels::ALL`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1314,20 +1316,20 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     ("Fuse", "RatedCurrent"),
 ];
 
-/// The one property whose **value** the *default* lane excludes: a Stage F
-/// deliberate divergence, not a comparability problem.
+/// The one property whose **value** this gate excludes as a deliberate
+/// divergence from the capture, not as a comparability problem.
 ///
 /// `Monitor.BaseFreq` — upstream's `TMonitorObj.Create` hard-pins 60.0 over the
 /// inherited `ActiveCircuit.Fundamental` (Monitor.pas:472 == r4133:552; the
-/// value is what selects mode-4 flicker's lamp curve), and the default lane
-/// inherits like every other element. The two lanes agree in every 60 Hz deck; the one
-/// gated corpus case that disagrees is the 50 Hz `LVTestCase`, whose monitors
-/// then read 50 instead of 60. Excluded **only in the default lane** (the
-/// parity lane still compares it, and the property *name*/order is checked in
-/// both), and pinned by its own expected-value test
-/// `exec::tests::base_frequency::monitor_basefreq_is_the_lane_kernel`, which
-/// asserts both lanes' values on a 50 Hz deck and their agreement on a 60 Hz
-/// one.
+/// value is what selects mode-4 flicker's lamp curve), and this engine inherits
+/// like every other element. Both gating oracles report the 60.0, so the
+/// exclusion applies in **both** lanes since GOLDEN_REBASE G2.2b (it was
+/// default-lane-only while the parity lane still reproduced the hard pin). The
+/// property *name* and its index order are still checked in both lanes, and the
+/// value is pinned by its own expected-value test
+/// `exec::tests::base_frequency::monitor_basefreq_inherits_the_fundamental`,
+/// which asserts the inherited 50 on a 50 Hz deck, the unchanged 60 on a 60 Hz
+/// one, and that an explicit `basefreq=` still overrides.
 ///
 /// Keyed by `(class, prop)` rather than by case, so it drops the value compare
 /// on every case and not just the one that needs it. That is a real if small
@@ -1335,15 +1337,18 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 /// bounded by measurement: exactly one gated deck sets a 50 Hz fundamental
 /// (`electricdss-tst/Version8/Distrib/IEEETestCases/LVTestCase/Master.dss`) and
 /// every mode-4 flicker deck in the corpus is 60 Hz, so no Pst output moves;
-/// and what the exclusion gives up on the 60 Hz decks — that both lanes still
-/// report 60 — is exactly what the pin above asserts directly.
+/// and what the exclusion gives up on the 60 Hz decks — that the engine still
+/// reports 60 — is exactly what the pin above asserts directly.
 const LANE_SKIP_PROPS: &[(&str, &str)] = &[("Monitor", "BaseFreq")];
 
 pub fn skip_prop(class: &str, prop: &str) -> bool {
-    let lane_skipped = !lane::PARITY
-        && LANE_SKIP_PROPS
-            .iter()
-            .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p));
+    // LANE-EXCLUSION(monitor_base_frequency): both lanes inherit the circuit
+    // fundamental now, so both drop the value compare on `Monitor.BaseFreq`.
+    // Under the split this list was consulted in the default lane only, behind
+    // a lane read on this very line.
+    let lane_skipped = LANE_SKIP_PROPS
+        .iter()
+        .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p));
     lane_skipped || skip_prop_ub(class, prop)
 }
 
@@ -1895,9 +1900,9 @@ pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tolerances, ctx: &str)
         if exp.skip_channels.contains(&ch) {
             continue;
         }
-        // The lane's reading of the capture: identical to it except for
-        // dss-python's unflushed-stream `[0.0]` placeholder in the default lane
-        // (`lane::expected_monitor_channel`).
+        // The capture as its reader means it: identical to it except for the
+        // client-side unflushed-stream `[0.0]` placeholder, which both oracle
+        // channels emit and both lanes drop (`lane::expected_monitor_channel`).
         let e = &lane::expected_monitor_channel(view.flushed_records, e);
         assert_eq!(
             act.len(),
@@ -2208,21 +2213,34 @@ pub enum GateSpec {
     /// Skip when the oracle's value in column `col` is **above** `threshold` —
     /// the mirror of [`GateSpec::Col`], and **not** a tolerance concept at all.
     ///
-    /// Its one use is a Stage F **deliberate divergence** confined to
-    /// identifiable rows: `Export SeqCurrents`' `Iresidual` reproduces an
-    /// upstream indexing bug that prints *terminal 1's* residual on every
-    /// terminal row, and the default lane fixes it — so exactly the rows with
-    /// `Terminal ≥ 2` are excluded there (gate `ColAbove(1, 1.5)`), while every
-    /// terminal-1 cell stays compared against the oracle in both lanes. The
-    /// excluded cells are pinned instead by their own expected-value test
-    /// (`export_seqcurrents_iresidual_is_the_lane_kernel`), which is why this
-    /// is an *exclusion with a replacement gate*, not a relaxation.
+    /// Its one use is a **deliberate divergence** confined to identifiable
+    /// rows: the captured `Export SeqCurrents` carries an upstream indexing bug
+    /// that prints *terminal 1's* residual on every terminal row, and both
+    /// lanes fix it (GOLDEN_REBASE G2.2a) — so exactly the rows with
+    /// `Terminal ≥ 2` are excluded (gate `ColAbove(1, 1.5)`), while every
+    /// terminal-1 cell stays compared against the oracle. The excluded cells
+    /// are pinned instead by their own expected-value test
+    /// (`export_seqcurrents_iresidual_sums_the_rows_own_terminal`), which is
+    /// why this is an *exclusion with a replacement gate*, not a relaxation.
     ColAbove(usize, f64),
     /// **Always** skip the matched column — a non-deterministic column that
     /// carries no comparable value (a wall-clock timestamp or an absolute path).
     /// Not a tolerance relaxation of any *value*: the column is genuinely
     /// unpinnable (`Summary`'s `DateTimeToStr(Now)`), documented in
     /// `tests/TOLERANCE_NOTES.md`.
+    ///
+    /// It carries a **second** role, the whole-column sibling of
+    /// [`GateSpec::ColAbove`]: a column every one of whose cells diverges from
+    /// the capture because a torn-down bug row moved it in both lanes, and
+    /// whose rows no key in the report can separate. `export_busreliability`'s
+    /// multi-meter `Duration` is the one such use (GOLDEN_REBASE G2.2a — each
+    /// meter's duration loop now stays in its own zone, while the capture, from
+    /// both gating engines, carries the cross-zone overwrite). That column is
+    /// neither non-deterministic nor unpinnable: it is replaced bus-by-bus by
+    /// its own expected-value test
+    /// (`export_busreliability_multimeter_duration_stays_in_the_meters_zone`),
+    /// which is what keeps this an exclusion-with-a-replacement rather than
+    /// silence.
     Mask,
 }
 

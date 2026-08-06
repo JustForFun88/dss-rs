@@ -639,17 +639,17 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
     code-faithful but unexercised by IEEE13 (no Fault objects; full 3-phase deck).
     A feeder with a genuine 2-phase nonzero-`%NEMA` terminal would close the last;
     deferred (no corpus deck), recorded in STATUS §1f.
-  - **Lane-split `Iresidual` in `SeqCurrents`** (`seq_currents.rs`, alias
-    `compat::IRESIDUAL_FROM_TERMINAL_1`): `Iresidual` sums the *terminal-1*
-    conductors for **every** terminal row (Pascal indexes `cBuffer^[i]`, not
-    `cBuffer^[(j-1)*Ncond+i]`). Since DE_PASCALIZE Stage F.3c the parity lane
-    reproduces the quirk verbatim, so the golden's `Iresidual` column still
-    matches byte-for-byte; the default lane takes the clean fix (the row's own
-    terminal slice), which makes only the `Terminal >= 2` cells differ. Those
-    cells alone are excluded there (`GateSpec::ColAbove(1, 1.5)`) — the
-    terminal-1 cells stay oracle-compared in both lanes — and the excluded ones
-    are pinned by `export_seqcurrents_iresidual_is_the_lane_kernel`. This is an
-    exclusion, never a loosened tolerance: the column keeps its `abs = 1e-8`.
+  - **Excluded `Iresidual` cells in `SeqCurrents`** (`seq_currents.rs`): the
+    captured oracle sums the *terminal-1* conductors for **every** terminal row
+    (Pascal indexes `cBuffer^[i]`, not `cBuffer^[(j-1)*Ncond+i]` — an upstream
+    bug both gating engines share). Since `GOLDEN_REBASE_PLAN.md` G2.2a neither
+    lane reproduces it: both sum the row's own terminal, which moves only the
+    `Terminal >= 2` cells. Those cells alone are excluded, in both lanes
+    (`GateSpec::ColAbove(1, 1.5)`) — the terminal-1 cells, where the two
+    readings coincide, stay oracle-compared — and the excluded ones are pinned
+    by `export_seqcurrents_iresidual_sums_the_rows_own_terminal`, which derives
+    them from `Export Currents`' own `Iresid_j` column. This is an exclusion,
+    never a loosened tolerance: the column keeps its `abs = 1e-8`.
 
 - **WP8.2 sub-step 2c — the per-terminal/per-conductor element exports**
   (`Currents`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`NodeOrder`/`Taps` on
@@ -1070,10 +1070,14 @@ pin and the default lane taking the clean fix. Consequences for tolerance work:
 
 - **The parity lane's floors never move.** It is the oracle-compared lane, so
   every number in this file applies to it unchanged.
-- **The default lane excludes, it does not loosen.** Where a row makes the
-  product answer something the oracle does not, the affected *fields* drop out
+- **The lanes exclude, they do not loosen.** Where a row makes the product
+  answer something an oracle channel does not, the affected *fields* drop out
   of the oracle compare (`GateSpec`/`LANE_SKIP_*`) and are pinned by their own
-  expected-value tests. A tolerance is never widened to cover a lane split; if
+  expected-value tests. Since the 2026-08-02 policy (CLAUDE.md) a bug fix lands
+  in **both** lanes, so such an exclusion is unconditional rather than
+  default-lane-only — `LANE_SKIP_ELEM_POWERS` (the two `modes:newton` decks'
+  element powers/losses, no oracle rev reports them at the converged `NodeV`)
+  is the live example. A tolerance is never widened to cover either shape; if
   you find yourself wanting to, the row is mis-scoped.
 - A marker still spelled `TODO(compat)` in the tree is one Stage F **escaped**
   with a measured blocker, and every survivor is registered in

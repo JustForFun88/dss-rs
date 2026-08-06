@@ -200,8 +200,9 @@ fn log_has(sc: &Scratch, needle: &str) -> bool {
     sc.events.entries().iter().any(|e| e.contains(needle))
 }
 
-/// Count non-`Debug Sample` event-log lines (the r4133 unconditional sample line
-/// is noise for these assertions).
+/// Count non-`Debug Sample` event-log lines — the trace lines are noise for the
+/// protection assertions, and the filter keeps them so whether or not the relay
+/// under test has `DebugTrace` on.
 fn non_debug_lines(sc: &Scratch) -> usize {
     sc.events
         .entries()
@@ -232,16 +233,20 @@ fn default_is_3ph_closed_relay() {
     assert!(r.ccd.cd.yprim.is_none());
 }
 
-/// Expected-value pin for `compat::RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE`: the
-/// per-`Sample` state trace is written whatever the user asked for in the parity
-/// lane, and only under `DebugTrace` in the default lane.
+// EXPECTED-VALUE-PIN(RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE): the per-`Sample`
+// state trace is a debug trace, so it is written exactly when `DebugTrace` says
+// so — in both lanes, since `GOLDEN_REBASE_PLAN.md` G2.2d tore the row down.
+/// Expected-value pin: the `Debug Sample` line of `TRelayObj.Sample` follows
+/// `DebugTrace`, the guard its Recloser twin (`Recloser.pas:1044`) and its own
+/// siblings (`Relay.pas:1822`, `:1845`) carry and r4133 dropped from this one
+/// line only (`Relay.pas:1325`).
 ///
-/// Asserted in all four combinations, so the row cannot degrade into "the line
-/// is gone": with `DebugTrace=yes` **both** lanes must write it (the guard is
-/// the only thing that moves), and `ShowEventLog` must not gate it in either
-/// lane — that is what distinguishes this line from every protection event.
+/// Asserted in all four combinations, so the fix cannot degrade into "the line
+/// is gone": with `DebugTrace=yes` it **must** be written — that is the whole
+/// content of a trace flag — and `ShowEventLog` must not gate it either way,
+/// which is what distinguishes this line from every protection event around it.
 #[test]
-fn sample_state_trace_is_the_lane_guard() {
+fn sample_state_trace_follows_debugtrace() {
     let trace = "Element=Debug Sample: Relay.r1,";
     for debug_trace in [false, true] {
         for show_event_log in [false, true] {
@@ -252,13 +257,10 @@ fn sample_state_trace_is_the_lane_guard() {
             let mut mon = MockElem::new(3).with_current(0.1); // below pickup: no event
             let mut sc = Scratch::new();
             r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
-            let expected = debug_trace || crate::compat::ORACLE_PARITY;
             assert_eq!(
                 log_has(&sc, trace),
-                expected,
-                "debug_trace={debug_trace} show_event_log={show_event_log} \
-                 lane parity={}: log = {:?}",
-                crate::compat::ORACLE_PARITY,
+                debug_trace,
+                "debug_trace={debug_trace} show_event_log={show_event_log}: log = {:?}",
                 sc.events.entries()
             );
         }
@@ -601,10 +603,13 @@ fn do_pending_open_close_are_wrong_state_no_ops() {
     }
 }
 
+// EXPECTED-VALUE-PIN(RELAY_RESET_EVENT_IS_LABELLED_RECLOSER): the reset event
+// names the class that emitted it, in both lanes, since `GOLDEN_REBASE_PLAN.md`
+// G2.2d tore the row down.
 /// **D4:** the queued `DoPendingAction(CTRL_RESET)` no longer runs the full
 /// `Reset` — it only resets `OperationCount` to 1 for closed phases, does NOT
-/// force the element back to normal state, and logs (upstream bug) as
-/// `Recloser.<name>`.
+/// force the element back to normal state, and logs the event as
+/// `Relay.<name>`.
 #[test]
 fn do_pending_reset_only_resets_opcount_d4() {
     let mut r = armed_relay();
@@ -624,21 +629,19 @@ fn do_pending_reset_only_resets_opcount_d4() {
     assert_eq!(r.operation_count[G], 1, "opcount reset to 1");
     assert!(ctrl.cd.terminal_all_phases_closed(1)); // element NOT forced (still closed)
     assert!(!sc.y_changed, "D4 reset does not force the element / Y");
-    // Expected-value pin for `compat::RELAY_RESET_EVENT_IS_LABELLED_RECLOSER`:
-    // the parity lane keeps upstream's copy-pasted `Recloser.<name>` label, the
-    // default lane names the class that emitted the event. The element name
-    // keeps its case; only the Action is uppercased. Asserted as an equality
-    // against the lane, and in both directions, so neither label can leak into
-    // the wrong lane.
-    assert_eq!(
-        log_has(&sc, "Element=Recloser.r1,"),
-        crate::compat::ORACLE_PARITY,
+    // The label half of the pin. Upstream copy-pasted `'Recloser.' + Self.Name`
+    // out of `Recloser.pas:909`/`:924` into both `CTRL_RESET` arms
+    // (`Relay.pas:1196`, `:1212`); the event belongs to the relay that emitted
+    // it, and both r4088 (`:971`) and 0.14.5 (`:1003`) label it that way. The
+    // element name keeps its case; only the Action is uppercased. Asserted in
+    // both directions, so the donor's class name cannot creep back in.
+    assert!(
+        log_has(&sc, "Element=Relay.r1,"),
         "log = {:?}",
         sc.events.entries()
     );
-    assert_eq!(
-        log_has(&sc, "Element=Relay.r1,"),
-        !crate::compat::ORACLE_PARITY,
+    assert!(
+        !log_has(&sc, "Element=Recloser.r1,"),
         "log = {:?}",
         sc.events.entries()
     );
