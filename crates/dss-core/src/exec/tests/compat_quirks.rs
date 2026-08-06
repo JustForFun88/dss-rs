@@ -11,24 +11,57 @@
 use super::common::{dss_with_circuit, query, query_f64};
 use crate::exec::Dss;
 
-/// Expected-value pin for the F-FMT **table-layout** row
-/// [`crate::compat::max_device_name_length`] — the `Show` half of §F-FMT step 2.
+/// EXPECTED-VALUE-PIN(max_device_name_length): the `Show` device-name column is
+/// sized from its own content, in **both** lanes.
 ///
-/// Two claims, both asserted as equalities against the lane so they are checked
-/// in either build:
+/// The row this replaces reproduced dss_capi's width of **0**: its
+/// `SetMaxDeviceNameLength` zeroes the unit variable
+/// (`.inputs/dss_capi/src/Common/ShowResults.pas:116`) and then accumulates the
+/// maximum inside `with DSS.ActiveCircuit do` (`:117-121`), where the name
+/// resolves to the shadowing `TDSSCircuit` field (`src/Common/Circuit.pas:100`,
+/// initialized to 30 at `:379`) — so the writers, which read the unit variable,
+/// format against 0. r4133 has no such field: `MaxDeviceNameLength` is a unit
+/// variable only (`Version8/Source/Common/ShowResults.pas:66`) and the same loop
+/// (`:79-90`) leaves the honest width behind. A defect on one side and the
+/// authority's honest width on the other, so `GOLDEN_REBASE_PLAN.md` G2.6 tore
+/// the reproduction down and this pin lost its lane branches.
 ///
-/// 1. the width itself — 0 in the parity lane (what the pinned 0.14.5 backend
-///    returns regardless of the names) versus the longest `Class.Name` in the
-///    circuit in the default lane;
-/// 2. what that width *does*, at the one place it is observable: `Show BusFlow`
-///    writes `Pad(EncloseQuotes(FullName), width + 2) + IntToStr(term)`
-///    (`ShowResults.pas:1375`), so at width 0 the terminal number is glued to the
-///    closing quote and at the honest width it is a column of its own. Asserting
-///    the rendered row, not just the number, is what keeps this a *layout* pin
-///    rather than a restatement of the constant.
+/// Three claims, all unconditional:
+///
+/// 1. the width itself is the longest `Class.Name` in the circuit;
+/// 2. what `Pad(EncloseQuotes(FullName), width + 2) + IntToStr(term)`
+///    (`ShowResults.pas:1375`) *does* with that width — asserted on the Pascal
+///    primitive the parity kernel replays, not on a report: a name shorter than
+///    the field gets a terminal column of its own, while the *longest* name,
+///    which fills `width + 2` exactly, still glues. That boundary is the one
+///    `golden_reports.rs::busflow_expected` is written around, which is why it
+///    is stated here rather than left implicit;
+/// 3. that the width the report *formatter* uses is that same measured one —
+///    asserted on the real `Show busflow` text, so the seven `report::show`
+///    call sites are covered too and not just the measuring function. Two
+///    assertions: the terminal is a token of its own (a width at or below the
+///    quoted name's length would glue it to the closing quote, which is exactly
+///    the torn-down layout), and it starts no earlier than column `width + 2`
+///    (so a width merely *smaller* than the measured one, which still separates,
+///    fails too).
+///
+/// Claim 3 is what bites when a call site regresses, and it bites in the
+/// **parity** lane: `compat::render_rows` replays Pascal's `Pad`, so the width
+/// reaches the bytes there. The default lane's table kernel builds its columns
+/// from the cell *text* and ignores the declared width entirely
+/// (`report::table::render_rows_table_impl`), so no report can observe a width
+/// regression there — what covers the default lane is claim 1, on the measuring
+/// function both lanes share. The pin is unconditional all the same (a teardown
+/// pin may not branch on the lane), and its `width + 2` bound holds in both:
+/// measured on this fixture, the terminal lands at column 32 under `Pad` and at
+/// 34 under the table kernel, whose widest cell here is the same 30-char name.
+///
+/// The bound is a `>=` and not an equality because the two kernels legitimately
+/// place the column differently (32 vs 34); its lower end is precisely the
+/// parity kernel's own `width + 2`, i.e. the value the torn-down row collapsed
+/// to 2.
 #[test]
-fn device_name_column_width_is_the_lane_kernel() {
-    let parity = crate::compat::ORACLE_PARITY;
+fn device_name_column_is_sized_from_its_content() {
     let mut dss = Dss::new();
     dss.command("clear");
     dss.command("new circuit.probe basekv=12.47 pu=1.0 phases=3 bus1=sourcebus");
@@ -41,42 +74,76 @@ fn device_name_column_width_is_the_lane_kernel() {
     let longest = "Capacitor.cap_with_a_long_name";
     assert_eq!(longest.len(), 30, "the fixture's longest full name");
 
-    let ckt = dss.circuit().expect("solved circuit");
-    let measured = crate::report::show::device_name_width(&dss.classes, ckt);
+    let measured = {
+        let ckt = dss.circuit().expect("solved circuit");
+        crate::report::show::device_name_width(&dss.classes, ckt)
+    };
     assert_eq!(
         measured,
         longest.len(),
-        "the honest width is computed in both lanes"
-    );
-    let width = crate::compat::max_device_name_length(measured);
-    assert_eq!(
-        width,
-        if parity { 0 } else { longest.len() },
-        "the device-name column width is the lane's (parity = {parity})"
+        "the honest width is the longest `Class.Name` in the circuit"
     );
 
-    // The layout consequence, on the row the width actually formats. Note the
-    // column is sized `width + 2` where `width` already counts the *unquoted*
-    // name, so the longest element exactly fills it and still glues in **both**
-    // lanes — the split shows on every shorter name, which is what a column is
-    // for.
+    // The layout `Pad` gives that width — Pascal's primitive in isolation, which
+    // is what the parity kernel replays. The column is sized `width + 2` where
+    // `width` already counts the *unquoted* name, so the longest element exactly
+    // fills it and still glues; the split shows on every shorter name, which is
+    // what a column is for. (The engine's own text is claim 3, below.)
     let row = |full: &str| {
         format!(
             "{}{}",
-            crate::report::format::pad(&crate::report::format::enclose_quotes(full), width + 2),
+            crate::report::format::pad(&crate::report::format::enclose_quotes(full), measured + 2),
             1
         )
     };
     let short = row("Line.l1");
-    assert_eq!(
-        short.contains("\"1"),
-        parity,
-        "at width 0 the terminal number is glued to the closing quote; at the \
-         honest width it is a separate column ({short:?})"
+    assert!(
+        !short.contains("\"1"),
+        "a name shorter than the field gets a terminal column of its own; the \
+         glued form is upstream's width-0 layout ({short:?})"
     );
     assert!(
         row(longest).contains("\"1"),
-        "the longest name fills the column exactly in either lane"
+        "the longest name fills the column exactly, so it glues even at the \
+         honest width — the boundary this row's transform is written around"
+    );
+
+    // …and the report formatter really uses that width. `Line.l1` reaches `b2`
+    // by its **second** terminal (`check_bus_reference` returns the matched
+    // terminal), so its seq-power row carries a `2`; the seq-*current* rows
+    // above it are uppercased by `WriteSeqCurrents`, so this prefix selects the
+    // power row unambiguously.
+    let text = {
+        let Dss {
+            classes, circuit, ..
+        } = &mut dss;
+        let ckt = circuit.as_ref().expect("solved circuit");
+        let bus_idx = ckt.bus_list.find("b2").expect("bus b2");
+        let sys = crate::solution::solution::sys_ctx(ckt);
+        let node_v = ckt.solution.node_v.clone();
+        crate::report::show::show_bus_powers(classes, ckt, &sys, &node_v, bus_idx, 0, 0)
+    };
+    let power_row = text
+        .lines()
+        .find(|l| l.starts_with("\"Line.l1\""))
+        .unwrap_or_else(|| panic!("no `Line.l1` seq-power row in\n{text}"));
+    let close = power_row.rfind('"').expect("the closing quote of the name") + 1;
+    let term_col = close
+        + power_row[close..]
+            .find(|c: char| c != ' ')
+            .unwrap_or_else(|| panic!("nothing after the name in {power_row:?}"));
+    assert_eq!(
+        power_row.split_whitespace().take(2).collect::<Vec<_>>(),
+        ["\"Line.l1\"", "2"],
+        "the terminal number must be a token of its own; glued to the closing \
+         quote it is upstream's collapsed layout ({power_row:?})"
+    );
+    assert!(
+        term_col >= measured + 2,
+        "the `Show busflow` writer placed the terminal at column {term_col}, \
+         before the measured column {} — it padded the name field to less than \
+         the width the engine computed ({power_row:?})",
+        measured + 2
     );
 }
 
@@ -91,9 +158,23 @@ fn device_name_column_width_is_the_lane_kernel() {
 ///    block is `Pad(label, 30) + Format('%10.1f') + ' kW'`, so the unit lands at
 ///    column 40 exactly; the table kernel puts it wherever the column ends up.
 /// 2. **The default lane really is the table crate**, i.e. it sizes the
-///    element-name column from its own content: the two rows' quoted names have
-///    different lengths and their following field starts at the *same* column
-///    only when a table sized them.
+///    element-name column from *its own rendered content* while the parity
+///    kernel pads to the width the engine hands it — `Pad(EncloseQuotes(name),
+///    MaxDeviceNameLength + 2)`, a circuit-wide maximum. The fixture separates
+///    the two by carrying a **Load** whose name is far longer than either Line's:
+///    `Show Losses` lists only power-delivery elements, so that name never
+///    reaches the table, yet it does set the Pascal field width. Each row is
+///    then reconstructed whole from `Pad(EncloseQuotes(name), width + 2) +
+///    Format('%10.5f, ', …)` and compared as an **equality**, the same way claim
+///    1 treats the aggregate line: a bound on the number's column would accept a
+///    parity kernel that padded to any width past the field.
+///
+///    (Until `GOLDEN_REBASE_PLAN.md` G2.6 this claim was written as "the two
+///    rows' numbers start at the *same* column only when a table sized them" —
+///    which worked only because the parity lane's width was stuck at 0, i.e.
+///    because of the defect G2.6 removed. With an honest width `Pad` aligns the
+///    rows with each other too, so that comparison stopped discriminating and
+///    the claim is now made against each kernel's own sizing rule.)
 /// 3. **Neither kernel moves a field**: both renderings carry the identical
 ///    token stream — the property `report::table` guarantees structurally and
 ///    this pins at a report the executive actually produced.
@@ -105,9 +186,26 @@ fn show_table_layout_is_the_lane_kernel() {
     dss.command("new circuit.probe basekv=12.47 pu=1.0 phases=3 bus1=sourcebus");
     dss.command("new line.l1 bus1=sourcebus bus2=b2 phases=3 r1=0.1 x1=0.2 length=1");
     dss.command("new line.a_much_longer_line_name bus1=b2 bus2=b3 phases=3 r1=0.1 x1=0.2 length=1");
-    dss.command("new load.ld bus1=b3 phases=3 kv=12.47 kw=1000 pf=0.95");
+    // Not a power-delivery element, so it never appears in `Show Losses` — but
+    // it *is* the circuit's longest full name, which is what sizes Pascal's
+    // field. That gap between "widest name in the circuit" and "widest name in
+    // this table" is what separates the two kernels (claim 2).
+    dss.command(
+        "new load.ld_with_a_name_longer_than_any_line bus1=b3 phases=3 kv=12.47 kw=1000 pf=0.95",
+    );
     dss.command("solve");
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let width = {
+        let ckt = dss.circuit().expect("solved circuit");
+        crate::report::show::device_name_width(&dss.classes, ckt)
+    };
+    assert_eq!(
+        width,
+        "Load.ld_with_a_name_longer_than_any_line".len(),
+        "the fixture's widest full name must be the Load's, or claim 2 stops \
+         separating the kernels"
+    );
 
     let text = {
         let Dss {
@@ -117,13 +215,6 @@ fn show_table_layout_is_the_lane_kernel() {
         let sys = crate::solution::solution::sys_ctx(ckt);
         let node_v = ckt.solution.node_v.clone();
         crate::report::show::show_losses(classes, ckt, &sys, &node_v)
-    };
-
-    // Where the field after `prefix_len` characters of `l` begins.
-    let next_field = |l: &str, from: usize| {
-        from + l[from..]
-            .find(|c: char| c != ' ')
-            .unwrap_or_else(|| panic!("no field after column {from} of {l:?}"))
     };
 
     // 1. the aggregate block's line, reconstructed from Pascal's own arithmetic:
@@ -149,18 +240,35 @@ fn show_table_layout_is_the_lane_kernel() {
          kernel sizes the columns instead ({total:?} vs {pascal:?})"
     );
 
-    // 2. the element-name column is content-sized in the default lane only.
-    //    (The kW field's `', '` separator is the table kernel's gutter there, so
-    //    the row is matched by its quoted name, not by a comma.)
+    // 2. the element-name column is content-sized in the default lane only: the
+    //    parity kernel pads it to the engine's circuit-wide `width + 2`, which
+    //    the Load's name inflates past anything this table renders.
+    //
+    //    Like claim 1 this is Pascal's own arithmetic reconstructed and compared
+    //    whole — `Pad(EncloseQuotes(name), width + 2)` then
+    //    `Format('%10.5f, ', kLosses.re)` (`ShowResults.pas` `ShowLosses`) — not
+    //    a bound on a column index. A bound would let the parity kernel pad to
+    //    any width past the field and still pass; the equality pins the field.
     let rows: Vec<&str> = text.lines().filter(|l| l.starts_with('"')).collect();
     assert_eq!(rows.len(), 2, "one row per Line: {rows:?}");
-    let kw_col = |l: &str| next_field(l, l.rfind('"').expect("the closing quote") + 1);
-    assert_eq!(
-        kw_col(rows[0]) == kw_col(rows[1]),
-        !parity,
-        "the table kernel pads both names to one column; the parity kernel's \
-         `Pad(name, 0 + 2)` leaves each row its own width ({rows:?})"
-    );
+    for row in &rows {
+        let close = row.rfind('"').expect("the closing quote") + 1;
+        let (name, rest) = row.split_at(close);
+        let kw = rest
+            .split_whitespace()
+            .next()
+            .unwrap_or_else(|| panic!("no kW number after the name in {row:?}"))
+            .trim_end_matches(',');
+        let pascal = format!("{}{kw:>10},", crate::report::format::pad(name, width + 2));
+        assert_eq!(
+            row.starts_with(&pascal),
+            parity,
+            "the parity kernel writes `Pad(EncloseQuotes(name), width + 2)` with \
+             the circuit-wide width ({width} + 2 here) then `%10.5f, `; the table \
+             kernel sizes the column from the names it actually prints, which are \
+             far shorter, and carries no comma ({row:?} vs {pascal:?})"
+        );
+    }
 
     // 3. …and no field moved between the two.
     let fields = |l: &str| {
@@ -385,70 +493,82 @@ fn sym_matrix_text_getter_renders_the_stored_matrix() {
     );
 }
 
-/// GICTransformer's `%R`-specified second-winding conductance scales off
-/// **`%R1`**, not `%R2` — reproduced in **both** lanes, pinned here.
+/// EXPECTED-VALUE-PIN(GIC_TRANSFORMER_G2_SCALES_OFF_PCT_R1): a GICTransformer's
+/// `%R`-specified second winding takes **`%R2`**, in both lanes.
 ///
-/// `TGICTransformerObj.RecalcElementData` (`GICTransformer.pas:441`) computes
-/// `G2 := 100.0 / (FZBase2 * FPctR1)`; the line above it is
-/// `G1 := 100.0 / (FZBase1 * FPctR1)`, so the copy-paste left `FPctR1` driving
-/// both and a user's `%R2` is silently ignored. That the `else` branch inverts
-/// the pair correctly (`FPctR2 := 100.0 / (FZBase2 * G2)`) is what makes it a
-/// slip rather than a convention.
+/// `TGICTransformerObj.RecalcElementData` computes
+/// `G2 := 100.0 / (FZBase2 * FPctR1)` in both oracle revisions — pinned
+/// dss_capi 0.14.5 `src/PDElements/GICTransformer.pas:441`, EPRI r4133
+/// `Version8/Source/PDElements/GICTransformer.pas:495` — a copy of the `G1`
+/// line above it with the base renamed and the percentage not, so a user's
+/// `%R2` is stored, read back, and never used. That the same procedure's
+/// `else` arm inverts the pair honestly (`FPctR2 := 100.0 / (FZBase2 * G2)`)
+/// is what makes it a slip rather than a "winding 2 repeats winding 1"
+/// convention; `GOLDEN_REBASE_PLAN.md` G2.5 fixed it in both lanes.
 ///
-/// **Why it is not (yet) a lane split.** F.3k implemented the fix, ran the
-/// 520-case gate against it and reverted: `asymmetric/gic/gictransformer_gic.dss`
-/// builds `GICTransformer.tg3 … %R1=0.2 %R2=0.15`, and honouring `%R2` moves
-/// that deck's GIC current 4.50e-4 vs the `capi_v0145` oracle where 1.00e-6 is
-/// allowed (`gic/gic_midi.dss`: 1.02e-4 vs 1.07e-6). Both gating oracles
-/// reproduce the quirk, so the default-lane fix costs those decks' primary
-/// physical channel and owes the Newton row's full treatment.
-///
-/// `R2` is stored as the conductance `G2` behind the property `INVERSE_VALUE`
-/// flag, so `? GICTransformer.g.R2` reads back `1/G2` = `ZBase2·%R_used/100` —
-/// the observable pinned below. With `kv1 == kv2` and a shared `MVA`,
-/// `ZBase1 == ZBase2`, so `R2` must collapse onto `R1` whatever `%R2` said.
+/// **The assertion is a transitive cover, not a captured number.** The ohms
+/// spec (`R1=`/`R2=`) takes that `else` arm, never had the slip, and is
+/// oracle-gated unchanged on both channels (`asymmetric/gic/*` carry one:
+/// `tg2`/`tg3` with `R1=0.2 R2=0.1`). So the `%R` path is pinned against the
+/// `R` path: given `%R_w` on bases that make `ZBase_w` a round number, the two
+/// specs must produce the *same element*. `R2` is stored as the conductance
+/// `G2` behind the property `INVERSE_VALUE` flag, so `? …R2` reads back `1/G2`
+/// — the observable below.
 #[test]
-fn gic_transformer_g2_reproduces_the_pct_r1_bug() {
-    let mut dss = dss_with_circuit();
-    // %R-specified spec, deliberately asymmetric, on a symmetric voltage/MVA
-    // base so ZBase1 == ZBase2 = 100²/100 = 100 Ω.
-    dss.command(
-        "new GICTransformer.g busH=b1 busNH=b2 busX=b3 busNX=b4 type=YY \
-         kvll1=100 kvll2=100 mva=100 %R1=1 %R2=4",
-    );
-    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+fn gic_transformer_pct_r2_drives_winding_two() {
+    // Asymmetric bases AND asymmetric percentages, so neither winding can
+    // borrow the other's number unnoticed: ZBase1 = 200²/100 = 400 Ω and
+    // ZBase2 = 100²/100 = 100 Ω, so %R1 = 1 → R1 = 4 Ω and %R2 = 3 → R2 = 3 Ω,
+    // while the upstream reading (ZBase2·%R1/100) would be 1 Ω — three distinct
+    // values, so no pair of them can coincide by accident.
+    let build = |spec: &str| {
+        let mut dss = dss_with_circuit();
+        dss.command(&format!(
+            "new GICTransformer.g busH=sourcebus busNH=sourcebus.0.0.0 \
+             busX=bx busNX=bx.0.0.0 type=YY kvll1=200 kvll2=100 mva=100 {spec}"
+        ));
+        dss.command("calcvoltagebases");
+        dss.command("solve");
+        assert!(dss.errors().is_empty(), "{spec}: {:?}", dss.errors());
+        dss
+    };
 
-    let z_base = 100.0f64 * 100.0 / 100.0;
-    let r1 = query_f64(&mut dss, "GICTransformer.g.R1");
-    let r2 = query_f64(&mut dss, "GICTransformer.g.R2");
+    let mut pct = build("%R1=1 %R2=3");
+    // The same element written the other way: R_w = ZBase_w · %R_w / 100.
+    let mut ohms = build("R1=4 R2=3");
 
-    // Winding 1 is correct upstream: R1 = ZBase1·%R1/100.
+    for prop in ["R1", "R2"] {
+        let from_pct = query_f64(&mut pct, &format!("GICTransformer.g.{prop}"));
+        let from_ohms = query_f64(&mut ohms, &format!("GICTransformer.g.{prop}"));
+        assert!(
+            (from_pct - from_ohms).abs() <= 1e-12 * from_ohms.abs(),
+            "{prop}: the %R spec gives {from_pct}, the ohms spec {from_ohms} — \
+             the two arms of RecalcElementData must be mutual inverses"
+        );
+    }
+    // Explicitly not the upstream reading, which reused %R1 for winding 2 and
+    // would report R2 = ZBase2·%R1/100 = 1 Ω here.
+    let r2 = query_f64(&mut pct, "GICTransformer.g.R2");
     assert!(
-        (r1 - z_base * 0.01).abs() < 1e-12,
-        "R1 must be ZBase·%R1/100, got {r1}"
-    );
-    // Winding 2 ignores %R2=4 and reuses %R1=1 — the reproduced bug.
-    assert!(
-        (r2 - z_base * 0.01).abs() < 1e-12,
-        "upstream scales G2 off %R1 (GICTransformer.pas:441), so R2 must equal \
-         R1 = {r1} despite %R2=4; got {r2}"
-    );
-    assert!(
-        (r2 - z_base * 0.04).abs() > 1e-6,
-        "if this now equals ZBase·%R2/100 the quirk was fixed — see the Stage F \
-         note at the reproduction site before re-baselining anything"
+        (r2 - 1.0).abs() > 1e-6,
+        "R2 came back as ZBase2·%R1/100 = 1 Ω — the `%R1` slip is back"
     );
 
-    // The conductance spec (`R1=`/`R2=`, the `else` branch) never went through
-    // the quirk: it is the exact inverse map, and it honours both windings.
-    let mut ohms = dss_with_circuit();
-    ohms.command(
-        "new GICTransformer.g busH=b1 busNH=b2 busX=b3 busNX=b4 type=YY \
-         kvll1=100 kvll2=100 mva=100 R1=1 R2=4",
-    );
-    assert!(ohms.errors().is_empty(), "{:?}", ohms.errors());
-    assert!((query_f64(&mut ohms, "GICTransformer.g.R1") - 1.0).abs() < 1e-12);
-    assert!((query_f64(&mut ohms, "GICTransformer.g.R2") - 4.0).abs() < 1e-12);
+    // …and the admittance really moved with it: the `%R`-specified element
+    // stamps the same YPrim as its ohms twin.
+    let (order_p, yp) = pct
+        .element_yprim("GICTransformer.g")
+        .expect("%R-spec YPrim");
+    let (order_o, yo) = ohms
+        .element_yprim("GICTransformer.g")
+        .expect("ohms-spec YPrim");
+    assert_eq!(order_p, order_o);
+    for (i, (x, y)) in yp.iter().zip(yo.iter()).enumerate() {
+        assert!(
+            (x - y).norm() <= 1e-18 + 1e-12 * y.norm(),
+            "YPrim[{i}]: %R spec {x} vs ohms spec {y}"
+        );
+    }
 }
 
 /// Expected-value pin for the Stage F single-site quirk

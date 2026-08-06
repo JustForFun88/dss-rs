@@ -20,7 +20,7 @@ pub(crate) fn show_losses(
     sys: &SysCtx,
     node_v: &[Complex64],
 ) -> String {
-    let mdnl = crate::compat::max_device_name_length(super::device_name_width(classes, ckt));
+    let mdnl = super::device_name_width(classes, ckt);
 
     let mut rep = Report::new();
     rep.blank();

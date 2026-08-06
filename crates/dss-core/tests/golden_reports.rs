@@ -387,9 +387,16 @@ fn run_feeder_show(stem: &str, policy: &ExportPolicy) {
     run_feeder_show_expected(stem, policy, |oracle| oracle.to_string());
 }
 
-/// [`run_feeder_show`] with a lane-scoped **expected-value transform** on the
-/// oracle text, for the `Show` reports a Stage F row re-lays-out. `expected`
-/// must be the identity in the parity lane.
+/// [`run_feeder_show`] with an **expected-value transform** on the oracle text,
+/// for the `Show` reports a Stage F row re-lays-out.
+///
+/// How far `expected` reaches is the caller's row, not this helper's: while a
+/// row is still split by lane the transform is the identity in the parity lane
+/// (`terminal_total_expected`, `compat::render_rows`, alive until WP-G4.5); once
+/// the row is torn down and both lanes lay the report out the same way, the
+/// transform applies unconditionally (`busflow_expected`,
+/// `GOLDEN_REBASE_PLAN.md` G2.6). Either way it re-lays-out the **oracle** text
+/// — nothing is re-baselined.
 fn run_feeder_show_expected(stem: &str, policy: &ExportPolicy, expected: impl Fn(&str) -> String) {
     let (oracle, rust, scratch) = produce_feeder_show(stem);
     // Token compare in BOTH lanes — deliberately *not* `lane::compare_report`.
@@ -403,9 +410,12 @@ fn run_feeder_show_expected(stem: &str, policy: &ExportPolicy, expected: impl Fn
     // this policy's `GateSpec` columns exist to absorb. (2) The bus-name column
     // width: `max_bus_name_length` differs from the oracle's `MaxBusNameLength`,
     // so `Show Voltages`' header is `"Bus" + 8 spaces` here against the
-    // oracle's `+ 3`. Both predate F.4 — the pre-F.4 writer builds that header
-    // with the identical `format::pad("Bus", mbnl)` — and both are why this
-    // family has tokenized since PHASE8_PLAN §2.3.
+    // oracle's `+ 3` — that `+ 3` is the dss_capi field/unit-variable shadowing
+    // defect leaving the header's width at 4 while the bus rows below it get 12
+    // (diagnosed at `report::show::max_bus_name_length`). Both predate F.4 — the
+    // pre-F.4 writer builds that header with the identical
+    // `format::pad("Bus", mbnl)` — and both are why this family has tokenized
+    // since PHASE8_PLAN §2.3.
     //
     // So `Show` layout has no byte contract in either lane. What carries it
     // instead: the structural layout pins
@@ -2272,30 +2282,37 @@ fn busflow_elem_policy() -> ExportPolicy {
     }
 }
 
-/// The oracle's `Show BusFlow` text as the **current lane** lays it out — the
-/// identity in the parity lane, and in the default lane one enumerated rule.
+/// LANE-EXCLUSION(max_device_name_length): the oracle's `Show BusFlow` text as
+/// **both** lanes lay it out — one enumerated rule, applied unconditionally.
 ///
-/// `compat::max_device_name_length` (F.4b) sizes the device-name column from its
-/// content instead of collapsing it to 0. The power rows are
-/// `Pad(EncloseQuotes(FullName), width + 2) + IntToStr(term)`
+/// The engine sizes the device-name column from its own content
+/// (`report::show::device_name_width`) instead of collapsing it to 0, which is
+/// what the pinned dss_capi backend does — a defect (its `SetMaxDeviceNameLength`
+/// fills a shadowing `TDSSCircuit` field while the writers read the unit
+/// variable, `ShowResults.pas:116-121` vs `Circuit.pas:100`) that r4133 does not
+/// share (`Version8/Source/Common/ShowResults.pas:66`, no such field). The power
+/// rows are `Pad(EncloseQuotes(FullName), width + 2) + IntToStr(term)`
 /// (`ShowResults.pas:1375`) — `IntToStr` carries no width, so at width 0 the
 /// terminal number is glued to the closing quote (`"Capacitor.cap1"1`) and at
 /// the honest width it becomes its own column. The tokenizer sees one field
-/// where the default lane produces two, so the *oracle* expectation is split at
-/// exactly that seam.
+/// where the engine produces two, so the *oracle* expectation is split at
+/// exactly that seam; no golden byte moves. `GOLDEN_REBASE_PLAN.md` G2.6 tore
+/// the lane split down, which is why this rule no longer has a parity arm.
 ///
 /// The rule is deliberately narrow: a closing `"` **immediately** followed by an
 /// ASCII digit, nowhere else. The seq-currents rows of the same report already
 /// carry a literal space before their `%3d` terminal, so they never match; a
 /// digit inside a name cannot match either, because the quote must precede it.
 ///
-/// Note the *longest* device still glues in both lanes — `width` counts the
-/// unquoted name, so `width + 2` is exactly the longest quoted name's length —
-/// which is why this is a per-row rule and not a whole-column one.
+/// The *longest* device in the circuit would still glue in the parity lane —
+/// `width` counts the unquoted name, so `width + 2` is exactly the longest
+/// quoted name's length — but no such element appears in these three fixtures'
+/// rows (measured: ieee13's maximum is 16, `Transformer.XFM1` and the three
+/// `Transformer.Reg*`, none of which touches bus 675 or 611). That is why this
+/// is a per-row rule and not a whole-column one, and it is pinned at the
+/// boundary itself by
+/// `exec::tests::compat_quirks::device_name_column_is_sized_from_its_content`.
 fn busflow_expected(oracle: &str) -> String {
-    if lane::PARITY {
-        return oracle.to_string();
-    }
     oracle
         .lines()
         .map(|line| match split_glued_terminal(line) {
@@ -2424,9 +2441,13 @@ fn show_busflow_matches_oracle() {
 }
 
 /// Non-vacuity and scope of [`busflow_expected`], in both lanes: each committed
-/// golden really carries glued rows, the parity expectation is the oracle
-/// verbatim, the default one splits exactly those rows and no others, and the
-/// rule leaves an already-separated row alone.
+/// golden really carries glued rows, the transform splits exactly those rows and
+/// no others, and the rule leaves an already-separated row alone.
+///
+/// The capture-reading assert is deliberately kept after G2.6 made the transform
+/// unconditional: it reads the *committed oracle capture*, whose glue is a fact
+/// about dss_capi 0.14.5 rather than about our lane, so it stays valid in both
+/// builds. It dies at G3.3b, when the self-snapshot no longer carries glue.
 #[test]
 fn busflow_glue_transform_is_the_terminal_column() {
     // The rule, at the character level.
@@ -2452,17 +2473,9 @@ fn busflow_glue_transform_is_the_terminal_column() {
         assert!(
             glued > 0,
             "{stem}: the oracle golden no longer carries a glued terminal column \
-             — the `compat::max_device_name_length` row would stop being observed"
+             — the device-name column width would stop being observed"
         );
         let expected = busflow_expected(&oracle);
-        if lane::PARITY {
-            assert_eq!(
-                expected.lines().collect::<Vec<_>>(),
-                oracle.lines().collect::<Vec<_>>(),
-                "{stem}: the parity arm is the identity"
-            );
-            continue;
-        }
         assert_eq!(
             expected.lines().count(),
             oracle.lines().count(),
@@ -4234,15 +4247,167 @@ fn export_capacity_matches_oracle() {
 /// phase in the `Curr` sum) shifts values far past the band and fails loudly.
 #[test]
 fn export_gicmvars_matches_oracle() {
+    // LANE-EXCLUSION(GIC_TRANSFORMER_G2_SCALES_OFF_PCT_R1): the fixture's `tg3`
+    // is the `%R`-specified Auto transformer, and since GOLDEN_REBASE G2.5 both
+    // lanes derive its second-winding conductance from `%R2` where both gating
+    // oracles derive it from `%R1`. In `type=Auto` the `G1` and `G2` blocks sit
+    // in series on the H→X→neutral path, so that changes the element
+    // admittance, the assembled Y and the whole quasi-DC solve: **every** row's
+    // Mvar and GIC magnitude moves (measured 8.8e-4 relative on `b1`, the row
+    // furthest from `tg3`), and no row key in this report separates a row the
+    // change reaches from one it does not. Both value columns are therefore
+    // masked here and replaced — cell by cell — by
+    // `export_gicmvars_matches_the_equivalent_ohms_spec`. The header, the row
+    // set and the `Bus` column stay compared against the oracle capture.
+    let col_tol = vec![
+        ColTol {
+            sel: ColSel::Prefix("mvar".to_string()),
+            rel: 0.0,
+            abs: 0.0,
+            gate: Some(GateSpec::Mask),
+        },
+        ColTol {
+            sel: ColSel::Prefix("gic amps".to_string()),
+            rel: 0.0,
+            abs: 0.0,
+            gate: Some(GateSpec::Mask),
+        },
+    ];
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: 1e-7,
         abs: 1e-8,
-        col_tol: vec![],
+        col_tol,
     };
     run_deck_export("export_gicmvars", &policy);
+}
+
+// EXPECTED-VALUE-PIN(GIC_TRANSFORMER_G2_SCALES_OFF_PCT_R1): the two value
+// columns the golden compare above masks are asserted here, cell by cell and in
+// both lanes — and the *oracle capture itself* is re-earned, so the mask costs
+// this report nothing but the one number the fix moved.
+/// `Export GICMvars` on the `%R`-specified fixture equals the report of the
+/// element written in **ohms** — and re-earns the committed oracle bytes when
+/// the ohms are upstream's.
+///
+/// The fixture's `tg3` is `%R1=0.2 %R2=0.15` on `kvll1=345 kvll2=138 mva=300`,
+/// i.e. `ZBase1 = 345²/300 = 396.75 Ω` and `ZBase2 = 138²/300 = 63.48 Ω`, so
+/// `R1 = 0.7935 Ω` either way while `R2` is `0.09522 Ω` read honestly and
+/// `0.12696 Ω` (= `ZBase2·%R1/100`) under the upstream copy-paste
+/// (`.inputs/dss_capi/src/PDElements/GICTransformer.pas:441`; r4133
+/// `Version8/Source/PDElements/GICTransformer.pas:495`). The ohms spec
+/// (`R1=`/`R2=`) takes the same procedure's `else` arm, which neither revision
+/// ever got wrong, so it is the independent anchor:
+///
+/// 1. **The report path is still oracle-exact.** Rebuild the fixture with `tg3`
+///    given `R1=0.7935 R2=0.12696` — upstream's *effective* conductances,
+///    reached without the slip — and the whole report must reproduce the
+///    committed capture inside the golden's own band. Nothing about `Export
+///    GICMvars`, the quasi-DC solve, the K-factor Mvar path or the VarCurve
+///    path may move; only which percentage feeds `G2`.
+/// 2. **And the fix is exactly `%R2`.** Rebuild it with `R1=0.7935
+///    R2=0.09522` — `ZBase2·%R2/100` — and the report must equal the live
+///    `%R`-specified one cell for cell.
+///
+/// Plus the non-vacuity the mask owes: the two readings must actually differ on
+/// every masked cell, or the exclusion would be buying silence for nothing.
+#[test]
+fn export_gicmvars_matches_the_equivalent_ohms_spec() {
+    /// The `(mvar, gic)` pair of each row, in row order.
+    fn values(text: &str) -> Vec<(f64, f64)> {
+        text.lines()
+            .skip(1)
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| {
+                let f: Vec<&str> = l.split(',').map(str::trim).collect();
+                (
+                    f[1].parse::<f64>().expect("Mvar column"),
+                    f[2].parse::<f64>().expect("GIC column"),
+                )
+            })
+            .collect()
+    }
+
+    // The fixture deck with `tg3`'s percentage spec swapped for an ohms one.
+    let ohms_variant = |r2: &str| -> String {
+        let dir = reports_dir();
+        let meta: DeckMeta = {
+            let p = dir.join("export_gicmvars.meta.json");
+            let text =
+                std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+            serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+        };
+        let needle = "%R1=0.2 %R2=0.15";
+        let swapped: Vec<String> = meta
+            .deck
+            .iter()
+            .map(|c| c.replace(needle, &format!("R1=0.7935 R2={r2}")))
+            .collect();
+        assert!(
+            swapped.iter().any(|c| c.contains(&format!("R2={r2}"))),
+            "the fixture no longer spells {needle:?} — re-derive the ohms twin"
+        );
+        let scratch = scratch_dir(&format!("gicmvars_ohms_{}", r2.replace('.', "_")));
+        let mut dss = Dss::new();
+        dss.command("clear");
+        for c in &swapped {
+            dss.command(c);
+        }
+        dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+        dss.command("export gicmvars");
+        assert!(dss.errors().is_empty(), "ohms twin: {:?}", dss.errors());
+        let produced = dss.last_result_file();
+        let text = std::fs::read_to_string(produced)
+            .unwrap_or_else(|e| panic!("read produced {produced}: {e}"));
+        std::fs::remove_dir_all(&scratch).ok();
+        text
+    };
+
+    let capture = std::fs::read_to_string(reports_dir().join("export_gicmvars.txt"))
+        .expect("read the committed export_gicmvars capture");
+    let oracle = values(&capture);
+    let upstream_ohms = values(&ohms_variant("0.12696"));
+    let honest_ohms = values(&ohms_variant("0.09522"));
+    let live = values(&run_deck_export_capture("export_gicmvars"));
+
+    assert_eq!(oracle.len(), 3, "the fixture has three GICTransformers");
+    assert_eq!(upstream_ohms.len(), oracle.len());
+    assert_eq!(honest_ohms.len(), oracle.len());
+    assert_eq!(live.len(), oracle.len());
+
+    // The golden's own band: this half must hold to the same precision the byte
+    // compare would have demanded, or the report path did move.
+    let close = |a: f64, b: f64| (a - b).abs() <= 1e-8 + 1e-7 * b.abs();
+    for (i, (got, want)) in upstream_ohms.iter().zip(&oracle).enumerate() {
+        assert!(
+            close(got.0, want.0) && close(got.1, want.1),
+            "row {i}: `R2=0.12696` (upstream's effective winding-2 resistance) must \
+             reproduce the captured report {want:?}, got {got:?} — the GICMvars path \
+             itself moved, which is not what G2.5 changed"
+        );
+    }
+    // …and the live `%R` spec is the honest ohms twin, to f64 round-off (the two
+    // spellings reach `G2` through different arithmetic: `100/(ZBase2·%R2)` vs
+    // the property's `1/R2` inverse).
+    let tight = |a: f64, b: f64| (a - b).abs() <= 1e-12 + 1e-9 * b.abs();
+    for (i, (got, want)) in live.iter().zip(&honest_ohms).enumerate() {
+        assert!(
+            tight(got.0, want.0) && tight(got.1, want.1),
+            "row {i}: the `%R1=0.2 %R2=0.15` spec must equal the `R1=0.7935 \
+             R2=0.09522` spec {want:?}, got {got:?}"
+        );
+    }
+    // Non-vacuity: every masked cell really is a different number now, so the
+    // exclusion above is replacing a comparison rather than hiding a no-op.
+    for (i, (got, want)) in live.iter().zip(&oracle).enumerate() {
+        assert!(
+            !close(got.0, want.0) && !close(got.1, want.1),
+            "row {i}: the live report still matches the captured {want:?} at {got:?} \
+             — the `%R1` slip is back, or the mask is masking nothing"
+        );
+    }
 }
 
 /// Split every non-empty CSV data line (after the header) into trimmed fields.

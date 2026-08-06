@@ -159,7 +159,58 @@
    "isolate": true,
    "note": "UNIFIED_GATE Phase B (settle 2026-07-18): a persistent pooled oracle worker, reused across up to 64 decks, intermittently misreads this deck's file-backed loadshape data (sng/dbl/csv MemoryMapping=Yes) after some prior deck on the same worker, yielding a ~2e-3 step-0 node-voltage drift on the ORACLE side (actual Rust value is bit-stable; #![forbid(unsafe_code)] => race-free). Proven fresh-process-stable: 150+ one-shot/in-process-reuse/12-way-concurrent oracle solves never drifted, the pre-Phase-B one-shot gate + the serial proof run were green, and only the pooled path drifts (~1-in-3 full-workspace runs, decks {shape_mmf,shape_filearr,shape_binfiles}). Isolated -> a fresh dedicated oracle process per run eliminates all cross-deck predecessor state (the exact pre-Phase-B execution these decks were validated under).",
    "wp": "WPG.17",
-   "notes": "WPG.17 LoadShape MemoryMapping=Yes + Set/Get TotalTime. Self-contained (no var, no non-MM File=). sngfile/dblfile/raw mult=(sngfile=) MMF are fixed-interval = I/O-only (numerically identical to non-MM, exercising the sng/dbl/raw MMF readers); the ls_pq shape is the feature axis: its P column is exponent notation and the MMF text accept-set drops sign/exponent, so ld_pq draws 501 kW (P mult 5.01) at hour 8 under MMF vs 50 kW (0.50) without it. Under MMF the array props dump the (<directive>) round-trip. Oracle-validated (pinned dss-python 0.15.7): compiles+solves+converges; AllBusVmag fingerprint bit-identical across TWO separate oracle processes (38c28c752fa5ecae); feature-sensitive \u2014 flipping MemoryMapping off the pq shape changes the fingerprint to e363c3929e7d692f (ld_pq_P 167->16.7 W/phase). The trailing Set/Get totaltime exercises the option surface (inert for the compared fingerprint)."
+   "notes": "WPG.17 LoadShape MemoryMapping=Yes + Set/Get TotalTime; since GOLDEN_REBASE G2.5 the deck's job is to OBSERVE the upstream MMF text accept-set. Self-contained (no var, no non-MM File=). The ls_pq shape is the feature axis: its P column is exponent notation on purpose, and BOTH oracle revisions filter the column through bytes [46,58) (dss_capi 0.14.5 LoadShape.pas:1374 == r4133 Utilities.pas:834), dropping sign/exponent - so THE ORACLE has ld_pq draw 501 kW (P mult 5.01) at hour 8 where the file says 50 kW (0.50). The port reads the file verbatim in both lanes (CLAUDE.md: upstream bugs are never reproduced), so this deck diverges from the pinned oracle across the solved model and is ledger-excluded as mmf-accept-set-honoured-capi; its unrelated sngfile/dblfile/raw mult=(sngfile=) MMF-reader coverage, the pqcsvfile= reader, the (<directive>) array-property round-trip and the Set/Get totaltime surface moved to the sibling inputformat/shape_mmf_io/shape_mmf_io.dss, which gates clean. Oracle-validated at authoring time (pinned dss-python 0.15.7): compiles+solves+converges; AllBusVmag fingerprint bit-identical across TWO separate oracle processes (38c28c752fa5ecae); the ORACLE-side feature sensitivity \u2014 flipping MemoryMapping off the pq shape changed its fingerprint to e363c3929e7d692f (ld_pq_P 167->16.7 W/phase) \u2014 is exactly the quirk, and the fixed port now reads the same numbers either way (pinned by load_shape::tests::mmf_text_reader_agrees_with_its_non_mapped_twin). The trailing Set/Get totaltime exercises the option surface (inert for the compared fingerprint)."
+  },
+  {
+   "path": "inputformat/shape_mmf_io/shape_mmf_io.dss",
+   "engines": "capi_v0145",
+   "ad": "off:save-roundtrip-relpath",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Loadshape.ls_sng",
+     "props": [
+      "npts",
+      "interval",
+      "mult",
+      "qmult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_dbl",
+     "props": [
+      "npts",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_mult",
+     "props": [
+      "npts",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_pq",
+     "props": [
+      "npts",
+      "mult",
+      "qmult",
+      "pmax",
+      "qmax"
+     ]
+    }
+   ],
+   "pending": false,
+   "isolate": true,
+   "note": "Same file-backed-loadshape class as its shape_mmf sibling (UNIFIED_GATE Phase B settle 2026-07-18): a pooled oracle worker reused across decks intermittently misreads MMF loadshape data after some prior deck, so every engine execution runs on a fresh one-shot worker.",
+   "wp": "GOLDEN_REBASE G2.5",
+   "notes": "GOLDEN_REBASE G2.5: the oracle-comparable half of shape_mmf.dss. shape_mmf.dss exists to OBSERVE the upstream MMF text accept-set (bytes [46,58), dropping sign/exponent - dss_capi 0.14.5 LoadShape.pas:1374 == r4133 Utilities.pas:834) and, now that the port reads the column its file actually holds, diverges from the pinned oracle wholesale (ledger mmf-accept-set-honoured-capi). This sibling keeps the deck's UNRELATED coverage gated: the sngfile=/dblfile= MMF readers, the raw mult=(sngfile=) directive form (Pascal CustomSetRaw), the pqcsvfile= two-column MMF text reader, the (<directive>) array-property round-trip, and the Set/Get totaltime option surface. Its pqcsvfile fixture mmpq8_plain.csv carries the same P/Q numbers in PLAIN decimal, so the upstream accept-set is the identity on it and the two engines read it identically (asserted in bytes by load_shape::tests::mmf_accept_set_fix_is_gated_by_exactly_one_deck)."
   },
   {
    "path": "inputformat/shape_filearr/shape_filearr.dss",

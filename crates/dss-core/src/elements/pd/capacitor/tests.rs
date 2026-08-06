@@ -323,8 +323,21 @@ fn make_pos_sequence_cuf_bare_set() {
     assert!(plan.run_base);
 }
 
-/// SpecType 3 (CMatrix): average self/mutual → Cuf. Deck `cap_cmat`
-/// cmatrix=[10|-2 10|-2 -2 10] µF → Cs=10, Cm=6 → Cuf=4 µF (stored farads).
+/// EXPECTED-VALUE-PIN(MAKEPOSSEQ_CUF_LOST_ON_THE_SCALAR_SETTER): the action half —
+/// SpecType 3 (CMatrix) averages self/mutual into `Cuf` and writes it with the
+/// **array** setter, in the property's own µF units.
+///
+/// Deck `cap_cmat` `cmatrix=[10|-2 10|-2 -2 10]` µF → Cs = 10, Cm = 6 →
+/// Cuf = 4 µF. dss_capi 0.14.5 aims the scalar `SetDouble` at the array
+/// property and drops the value (`Capacitor.pas:814` +
+/// `DSSObjectHelper.pas:2812-2834`); r4133 applies it but re-scales by 1e-6 a
+/// second time (`Capacitor.pas:829` + `:411`). Neither number appears here:
+/// the port writes the array the r4133 command string would have parsed —
+/// element 1 the value, the remaining steps zeroed, exactly
+/// `InterpretDblArray`'s "fills array with zeros if we run out of numbers"
+/// (`Common/Utilities.pas:788-791`). See
+/// [`make_pos_sequence_cmatrix_applies_the_positive_sequence_cuf`] for the
+/// end-to-end value pin.
 #[test]
 fn make_pos_sequence_cmatrix() {
     let mut c = Capacitor::new("cap_cmat");
@@ -339,14 +352,71 @@ fn make_pos_sequence_cmatrix() {
     assert_eq!(plan.actions[0], BeginEdit);
     assert_eq!(plan.actions[1], SetI32(prop::PHASES, 1));
     match plan.actions[2].clone() {
-        SetF64(idx, cuf) => {
+        SetStructF64s(idx, vals) => {
             assert_eq!(idx, prop::CUF);
-            assert!((cuf - 4e-6).abs() < 1e-18, "cuf {cuf}");
+            // One step by default; the setter multiplies by `CUF_SCALE`, so the
+            // action carries µF — 4, not 4e-6 (dropped by 0.14.5) and not
+            // 4e-12 (r4133's double scaling).
+            assert_eq!(vals.len(), 1);
+            assert!((vals[0].unwrap() - 4.0).abs() < 1e-12, "cuf {vals:?}");
         }
-        a => panic!("expected SetF64(CUF), got {a:?}"),
+        a => panic!("expected SetStructF64s(CUF), got {a:?}"),
     }
     assert_eq!(plan.actions[3], EndEdit);
     assert_eq!(plan.actions.len(), 4);
+}
+
+/// EXPECTED-VALUE-PIN(MAKEPOSSEQ_CUF_LOST_ON_THE_SCALAR_SETTER): the value half —
+/// after `MakePosSequence` the bank really *is* the positive-sequence
+/// capacitance, and it is indistinguishable from one declared that way.
+///
+/// The anchor is not a captured number: a second capacitor is declared
+/// `phases=1 cuf=4` — the `Cuf` spec path, which never had the defect — and the
+/// two must land on the same `YPrim`. That also cashes the `SpecType := 2` side
+/// effect (`Capacitor.pas:383-386`): before G2.5 it fired on a bank whose `FC`
+/// array had never received the value, so the element silently computed from
+/// the `kvar=1200 kv=12.47` creation defaults (20.4699706679377 µF, ~5× the
+/// intended reactive output) with the user's `cmatrix` switched out of
+/// `MakeYprimWork` for good.
+#[test]
+fn make_pos_sequence_cmatrix_applies_the_positive_sequence_cuf() {
+    let mut dss = crate::exec::Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.cufpsq basekv=12.47 phases=3 bus1=src");
+    dss.command("new line.l1 bus1=src bus2=b1 phases=3 r1=0.2 x1=0.5 c1=3 length=1 units=km");
+    dss.command("new capacitor.cmat bus1=b1 phases=3 cmatrix=[10 | -2 10 | -2 -2 10]");
+    dss.command("new capacitor.ref bus1=b1 phases=1 cuf=4");
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+    dss.command("solve");
+    dss.command("makeposseq");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    dss.command("? Capacitor.cmat.cuf");
+    let cuf: f64 = dss
+        .result()
+        .trim_matches(|c: char| c == '[' || c == ']' || c.is_whitespace())
+        .parse()
+        .unwrap_or_else(|e| panic!("cuf {:?}: {e}", dss.result()));
+    assert!(
+        (cuf - 4.0).abs() < 1e-9,
+        "Cs - Cm = 4 µF must reach the bank; got {cuf} (0.14.5 keeps the \
+         20.4699706679377 µF creation default, r4133 lands 4e-6 µF)"
+    );
+
+    let (order_a, ya) = dss.element_yprim("Capacitor.cmat").expect("cmat YPrim");
+    let (order_b, yb) = dss.element_yprim("Capacitor.ref").expect("ref YPrim");
+    assert_eq!(
+        order_a, order_b,
+        "both banks are single-phase after reduction"
+    );
+    for (i, (x, y)) in ya.iter().zip(yb.iter()).enumerate() {
+        assert!(
+            (x - y).norm() <= 1e-18 + 1e-12 * y.norm(),
+            "YPrim[{i}]: reduced {x} vs the `cuf=4` twin {y}"
+        );
+    }
 }
 
 /// SpecType 3 single-phase: the CMatrix branch is skipped → no actions at all

@@ -486,6 +486,12 @@ const ESCAPE_REGISTER: &[(&str, &str, Escape)] = &[
         Escape::UpgradeRung,
     ),
     // ---- the rendering seam → F.4 (`F-FMT`): all 7 resolved, none left ----
+    // Six of them are still lane rows (they die at WP-G4); the seventh is gone
+    // altogether — `GOLDEN_REBASE_PLAN.md` G2.6 tore down the `Show`
+    // device-name column width, which was never a rendering convention but a
+    // dss_capi-only defect (a shadowing `TDSSCircuit` field, absent in r4133).
+    // See its `TORN_DOWN_ROWS` entry.
+    //
     // F.4a took the six *number-rendering* rows through the `compat` seam:
     // `util.rs`'s `%g` two-stage rounding (`compat::fmt_g`),
     // `report/format.rs`'s script fixed-point (`compat::fixed_w_script`),
@@ -495,33 +501,15 @@ const ESCAPE_REGISTER: &[(&str, &str, Escape)] = &[
     // (`compat::JSON_LINE_BREAK`), and `export/json/circuit.rs`'s PostCommands
     // umbrella — whose two spellings are the `%g` and fixed rows above and whose
     // command set is IV.1 contract, not compat. F.4b took the seventh, the
-    // `Show` device-name column width (`compat::max_device_name_length`).
-    // ---- whole-case default-lane exclusions → not the executor's to grant (4) ----
-    // `type=Auto` puts the G1 and G2 blocks in series, so honouring `%R2`
-    // changes the element admittance and every node voltage downstream:
-    // `gictransformer_gic.dss` 4.502e-4 (allowed 1.001e-6), `gic_midi.dss`
-    // 1.021e-4 (allowed 1.074e-6).
-    (
-        "crates/dss-core/src/elements/pd/gic_transformer/solve.rs",
-        "Pascal uses `FPctR1` here, NOT `FPctR2`",
-        Escape::WholeCase,
-    ),
-    // The array write the parser would have made collapses `cap_cmat` to
-    // `Cs - Cm` where parity reads the 10 µF diagonal: `makeposseq_shunt.dss`
-    // 1.438e-1 V against an allowed 3.339e-6.
-    (
-        "crates/dss-core/src/elements/pd/capacitor/solve.rs",
-        "Pascal `SetDouble(ord(TProp.Cuf), Cs - Cm)`",
-        Escape::WholeCase,
-    ),
-    // `shape_mmf.dss` exists *to observe* this filter — its P column is
-    // deliberately exponent notation — so the fix costs that deck 1.641e1 V
-    // (allowed 8.179e-6) and with it its unrelated sng/dbl MMF-reader coverage.
-    (
-        "crates/dss-core/src/elements/general/load_shape/compute.rs",
-        "the accept-set keeps only bytes in `[46, 58)`",
-        Escape::WholeCase,
-    ),
+    // `Show` device-name column width — the one G2.6 has since removed from the
+    // seam entirely (the paragraph above).
+    // ---- whole-case default-lane exclusions → not the executor's to grant (1) ----
+    // The GICTransformer `%R2`, Capacitor `Cuf` and LoadShape MMF accept-set
+    // rows that used to sit here are gone: `GOLDEN_REBASE_PLAN.md` G2.5 fixed
+    // all three engines in both lanes and paid each one's price where this
+    // bucket said it had to be paid — a `tests/corpus/ledger.json` entry per
+    // (case, channel) plus an expected-value pin. See [`TORN_DOWN_ROWS`].
+    //
     // Seeding `E1` from a fresh `Vterminal` moves the whole dynamics run of the
     // only deck exercising a Model=6 user model: `wasm_gen_dyn`'s `dSpeed` by
     // 3.449e-2 relative, on an r4133 golden the parity lane may never re-baseline.
@@ -570,7 +558,9 @@ const ESCAPE_REGISTER: &[(&str, &str, Escape)] = &[
 /// move only on purpose.
 const EXIT_POPULATION: [(Escape, usize); 3] = [
     (Escape::UpgradeRung, 11),
-    (Escape::WholeCase, 4),
+    // 4 → 1 at `GOLDEN_REBASE_PLAN.md` G2.5; the survivor is the Generator
+    // Model=6 user-model row, deferred with WASM_USERMODELS_PLAN.
+    (Escape::WholeCase, 1),
     (Escape::WasmGuest, 3),
 ];
 
@@ -838,8 +828,19 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// of every capture. (The engines' own answer in that state — `SampleCount`
 /// zeros conjured from unwritten stream bytes — is a separate upstream defect
 /// the port declines; no client reaches it. See the row's `TORN_DOWN_ROWS`
-/// entry.)
-const SPLIT_ALIAS_POPULATION: usize = 12;
+/// entry.) **11** after G2.6 tore down `max_device_name_length`, the last WP-G2
+/// row and the only one of the seven F-FMT *rendering* rows that was not a
+/// rendering convention at all: dss_capi's `SetMaxDeviceNameLength` fills a
+/// shadowing `TDSSCircuit` field while its writers read the unit variable it
+/// zeroed, so the `Show` device-name column collapses to 0 there and does not in
+/// r4133, which has no such field. Both lanes now size the column from its own
+/// content and the three `show_busflow*` goldens' oracle text is de-glued
+/// unconditionally. The eleven survivors are WP-G2's fixed point: the five
+/// numeric precision rows (`PI`, `round_f64`, `round_i32`,
+/// `kv_base_search_scale`, `profile_ll_pu_divisor`) and the six *rendering* ones
+/// (`fmt_g`, `fixed_w_script`, `CONTROL_QUEUE_SEC_DIGITS`, `json_float`,
+/// `JSON_LINE_BREAK`, `render_rows`), which WP-G4 takes down to five.
+const SPLIT_ALIAS_POPULATION: usize = 11;
 
 /// The slice of `text` that is **test code**, or `None` if the file has none.
 ///
@@ -927,9 +928,16 @@ fn names_token(text: &str, token: &str) -> bool {
 /// been credited by a *neighbouring* test's constant. Their pins do branch on
 /// the lane; only this predicate could not see how. (All three are torn down
 /// now — the first two by G2.2a, the third by G2.2c — and their pins are
-/// unconditional. The arm stays load-bearing: `golden_reports.rs` still reads
-/// the lane in this spelling only, and it is a pin file for the surviving
-/// `max_device_name_length` row.)
+/// unconditional. The arm was still load-bearing while
+/// `max_device_name_length` lived, because `golden_reports.rs` pinned it and
+/// reads the lane in this spelling only. G2.6 tore that row down too, and the
+/// measurement now is: **no** surviving row's pin depends on this arm —
+/// `golden_reports.rs` names no split alias at all any more, and
+/// `harness/mod.rs`'s single `lane::PARITY` read belongs to no row. The arm
+/// stays because the spelling is still how the harness reads the lane (×4 in
+/// `golden_reports.rs`, ×2 in `harness/regen.rs`, ×1 in `harness/mod.rs`), so
+/// the next pin written there must be recognised; it is no longer what keeps
+/// any row pinned.)
 ///
 /// The second arm is the **qualified** path only, not the bare word
 /// [`reads_the_lane`] settles for. (No line number: the two in-file citations
@@ -941,9 +949,10 @@ fn names_token(text: &str, token: &str) -> bool {
 /// the caller *accept* more, so an English `PARITY` in a comment would satisfy
 /// the rail. Two such comments exist in-tree (`tests/golden_reports.rs:1628`,
 /// `tests/corpus_gate/scheduler.rs:358`) while every real read is written
-/// `lane::PARITY` (`golden_reports.rs` ×6 — it was ×15 until G2.2a tore down
-/// two rows pinned there and ×9 until G2.2c tore down the Fault dump row —
-/// plus `harness/mod.rs:2374`, the kV-value compare and
+/// `lane::PARITY` (`golden_reports.rs` ×4 — it was ×15 until G2.2a tore down
+/// two rows pinned there, ×9 until G2.2c tore down the Fault dump row and ×6
+/// until G2.6 tore down the device-name column width, whose two arms it also
+/// held — plus `harness/mod.rs:2374`, the kV-value compare and
 /// that file's only remaining read; `skip_prop`'s, which was the *first* of its
 /// two, went unconditional in G2.2b);
 /// `harness/lane.rs`, which uses the bare name because it declares it, names
@@ -1233,8 +1242,8 @@ enum Kind {
 /// the *behaviour*; this proves the *mechanism* the teardown left behind.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 // Only the variants WP-G2 has reached so far are constructed (`Site` since
-// G2.1a, `Exclusion` since G2.2a); the rest — `Ledger` (G2.5) and `None`
-// (WP-G4) — are dead code until their first row, and this list is amended by
+// G2.1a, `Exclusion` since G2.2a, `Ledger` since G2.5); the last — `None`
+// (WP-G4) — is dead code until its first row, and this list is amended by
 // the sub-step that lands it. `expect` rather than
 // `allow` on purpose: the day the last variant gets its first row, this
 // attribute becomes unfulfilled and has to be deleted, instead of quietly
@@ -2113,6 +2122,121 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         Some((
             "crates/dss-core/src/elements/meter/monitor/mod.rs",
             "monitor_channel_of_an_unflushed_stream_is_empty",
+        )),
+    ),
+    // G2.5, row 1 of 3. `TGICTransformerObj.RecalcElementData` derives winding
+    // 2's conductance from `FPctR1` — the `G1` line copied with the base
+    // renamed and the percentage not (`.inputs/dss_capi/src/PDElements/
+    // GICTransformer.pas:441`; r4133 `Version8/Source/PDElements/
+    // GICTransformer.pas:495`, the same line) — so a user's `%R2` is stored,
+    // read back, and never reaches the admittance, while the same procedure's
+    // `else` arm inverts `FPctR2` out of `G2` (`:446` / r4133 `:498`). Both lanes now
+    // read `%R2`. This is a `WholeCase` row because the two gated decks that
+    // see it are `type=Auto`, where the `BusX` side effect puts the `G1` and
+    // `G2` blocks in series: the element admittance, the assembled Y and every
+    // downstream node voltage move away from *both* oracles at once.
+    (
+        "GIC_TRANSFORMER_G2_SCALES_OFF_PCT_R1",
+        Kind::WholeCase,
+        // One key per (case, channel); the other three
+        // (`…-gictransformer-r4133`, `…-midi-capi`, `…-midi-r4133`, plus the
+        // two exact-pair property entries) live beside it in the same file and
+        // are held by the ledger's own fail-on-stale accounting. The row names
+        // the deck-and-channel pair whose loss is largest.
+        Evidence::Ledger("gic-pct-r2-honoured-gictransformer-capi"),
+        Some((
+            "crates/dss-core/src/exec/tests/compat_quirks.rs",
+            "gic_transformer_pct_r2_drives_winding_two",
+        )),
+    ),
+    // G2.5, row 2 of 3. `TCapacitorObj.MakePosSequence`'s `CMatrix` arm computes
+    // the positive-sequence `Cs - Cm` and then loses it: dss_capi 0.14.5 aims
+    // the scalar `SetDouble` at the array property `Cuf`
+    // (`.inputs/dss_capi/src/PDElements/Capacitor.pas:814` +
+    // `src/General/DSSObjectHelper.pas:2812-2834`, three scalar arms and no
+    // `else`) while still running the `SpecType := 2` side effect, so the bank
+    // computes from stale `FC` and the user's `cmatrix` is switched out of
+    // `MakeYprimWork` for good; r4133 formats the same value into a command
+    // string (`Version8/Source/PDElements/Capacitor.pas:829`) but re-applies the
+    // `1.0e-6` property scale (`:411`) to an already-farad value. Both lanes now
+    // perform the array write in µF.
+    (
+        "MAKEPOSSEQ_CUF_LOST_ON_THE_SCALAR_SETTER",
+        Kind::WholeCase,
+        Evidence::Ledger("makeposseq-cuf-applied-capi"),
+        Some((
+            "crates/dss-core/src/elements/pd/capacitor/tests.rs",
+            "make_pos_sequence_cmatrix_applies_the_positive_sequence_cuf",
+        )),
+    ),
+    // G2.5, row 3 of 3. The memory-mapped LoadShape text reader filters each
+    // column through an accept-set of bytes in `[46, 58)`
+    // (`.inputs/dss_capi/src/General/LoadShape.pas:1374`; r4133
+    // `Version8/Source/Common/Utilities.pas:834`), deleting the sign, the `+`,
+    // the exponent letter and whitespace while keeping `/` inside the number —
+    // so the class's two readers for the *same* file disagree. Both lanes now
+    // take the column verbatim through the same aux parser the non-mapped twin
+    // uses. `shape_mmf.dss` was written to observe the quirk, so it is the deck
+    // that pays; its unrelated sng/dbl/`mult=(sngfile=)` MMF-reader coverage
+    // moved to the sibling `shape_mmf_io.dss`, which gates clean.
+    (
+        "MMF_TEXT_ACCEPT_SET_DROPS_SIGN_AND_EXPONENT",
+        Kind::WholeCase,
+        Evidence::Ledger("mmf-accept-set-honoured-capi"),
+        Some((
+            "crates/dss-core/src/elements/general/load_shape/tests.rs",
+            "mmf_text_reader_agrees_with_its_non_mapped_twin",
+        )),
+    ),
+    // G2.6, and the only row this WP took out of the *rendering* seam rather
+    // than out of a bug bullet — because it was never a rendering convention.
+    // dss_capi's `SetMaxDeviceNameLength` zeroes the unit variable
+    // (`.inputs/dss_capi/src/Common/ShowResults.pas:116`, declared `:82`) and
+    // then accumulates the maximum inside `with DSS.ActiveCircuit do`
+    // (`:117-121`), where the identifier resolves to the shadowing `TDSSCircuit`
+    // field (`src/Common/Circuit.pas:100`, initialized to 30 at `:379`). The
+    // writers read the unit variable, so the device-name column of every `Show`
+    // table is formatted against **0** — the `Pad(…, width + 2)` cannot fire,
+    // since two characters is below every `EncloseQuotes(name)`. r4133 does not
+    // share it: `MaxDeviceNameLength` is a unit variable only there
+    // (`Version8/Source/Common/ShowResults.pas:66`), `TDSSCircuit` declares no
+    // such field, and the same loop (`:79-90`) leaves the honest width behind;
+    // its `WriteTerminalPowerSeq` also writes the terminal as `j:3` (`:1160`)
+    // rather than `IntToStr(j)`, so it could not glue even at width 0. Both
+    // lanes now size the column from its own content.
+    //
+    // One tokenizable consequence, measured rather than assumed: only the
+    // `IntToStr` site (`ShowResults.pas:1375`) glues, so only the three
+    // `show_busflow*` goldens are affected — every other consumer pads with
+    // spaces or `PadDots` runs, which `harness::split_fields` drops. Their
+    // oracle text is de-glued unconditionally instead of being re-baselined, so
+    // no golden byte moves.
+    (
+        "max_device_name_length",
+        Kind::SplitAlias,
+        // The engine call site the *goldens* observe — `Show BusFlow`'s writer,
+        // the one place the width is tokenizable. The needle is its whole
+        // statement at its own four spaces; the split form spelled the same line
+        // `crate::compat::max_device_name_length(super::device_name_width(…))`,
+        // so it cannot match a revert.
+        //
+        // Per the last paragraph of [`Evidence::Site`]: the six sibling writers
+        // (`currents`, `losses`, `overloads`, `powers`, `elements`, `delta_v`)
+        // are deliberately not listed, and that is not the "half the teardown"
+        // hole the doc warns about. The alias itself is *deleted*, so a call
+        // site cannot quietly re-route through it — restoring one means
+        // restoring the split, which the census tie, the ghost check and the
+        // pin-walk all fail on. What those six could still lose is padding
+        // width, which no oracle-compared token can see (space pads and
+        // `PadDots` runs are dropped by `harness::split_fields`) — it is
+        // unobservable by construction, here as it was before the teardown.
+        Evidence::Site(
+            "crates/dss-core/src/report/show/bus_powers.rs",
+            &["\n    let mdnl = super::device_name_width(classes, ckt);"],
+        ),
+        Some((
+            "crates/dss-core/src/exec/tests/compat_quirks.rs",
+            "device_name_column_is_sized_from_its_content",
         )),
     ),
 ];
