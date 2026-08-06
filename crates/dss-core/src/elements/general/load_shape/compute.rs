@@ -883,55 +883,68 @@ impl LoadShapeObj {
     fn mmf_read_text(&mut self, content: &str, column: i32, npts: usize) -> Vec<f64> {
         let mut out = Vec::with_capacity(npts);
         let mut lines = content.lines();
+        // The same aux parser the non-mapped twin uses, built once for the whole
+        // read (Pascal's `DSS.AuxParser` is a long-lived singleton too).
+        let mut parser = Parser::new();
+        parser.set_auto_increment(false);
+        let vars = ParserVars::new();
         for _ in 0..npts {
             let Some(line) = lines.next() else { break };
-            out.push(self.mmf_text_value(line, column));
+            out.push(self.mmf_text_value(&mut parser, &vars, line, column));
         }
         out
     }
 
     /// Pascal `InterpretDblArrayMMF` PlainText record (`LoadShape.pas:1361-
-    /// 1400`): accumulate one comma-delimited column's characters and parse.
+    /// 1400`): take one comma-delimited column of the record and parse it.
     ///
-    /// TODO(compat): the accept-set keeps only bytes in `[46, 58)` — `.` (46),
-    /// `/` (47), and digits `0`–`9` (48–57) — dropping sign, `+`, `e`/`E`
-    /// exponent and whitespace. So `-0.5` → `0.5`, `1.5e-3` → `1.53`, and `/`
-    /// is kept into the token (`LoadShape.pas:1374`). Empty content defaults to
-    /// `1.0` (`:1389-1390`).
+    /// The column is taken **verbatim** and handed to the ordinary aux float
+    /// parser — the same `Parser`/`make_double` pair the non-mapped twin uses
+    /// ([`Self::read_csv_file`], Pascal `ReadCSVFile`'s `:1044` branch, which
+    /// feeds each row to `DSS.AuxParser`). Both oracle revisions instead filter
+    /// the column through an accept-set of bytes in `[46, 58)` —
+    /// `.` (46), `/` (47) and the digits `0`–`9` (48–57) — pinned dss_capi
+    /// 0.14.5 `src/General/LoadShape.pas:1374` and EPRI r4133
+    /// `Version8/Source/Common/Utilities.pas:834`, the same line. That drops the
+    /// sign (45), `+` (43), the exponent letter `e`/`E` (101/69) and whitespace
+    /// while keeping `/` inside the number, so `-0.5` reads as `0.5`, `1.5e-3`
+    /// as `1.53`, and `1/2` reaches `strtofloat` as a malformed token.
     ///
-    /// The clean fix is the column verbatim, parsed by the ordinary float
-    /// parser, and the witness is not an opinion: `TLoadShapeObj` owns a
-    /// *second* reader for the same format — `ReadCSVFile`'s non-mapped branch
-    /// (`:1044`, [`Self::read_csv_file`] below) — which hands each row to the
-    /// aux parser and therefore honours sign and exponent.
-    /// `MemoryMapping=Yes` selects how a shape is stored, not what its file
-    /// means, so the two disagreeing is a slip in the mapped one;
-    /// `tests::mmf_text_reader_disagrees_with_its_non_mapped_twin` pins that
-    /// disagreement at its exact values.
+    /// It is a slip in the mapped reader, not a second file format, and the
+    /// witness is the class itself: `TLoadShapeObj` owns two readers for the
+    /// *same* file, and only the mapped one deletes those characters.
+    /// `MemoryMapping=Yes` selects how a shape is stored, not what its bytes
+    /// mean, so the two must agree byte-for-byte on the same input —
+    /// `tests::mmf_text_reader_agrees_with_its_non_mapped_twin` pins exactly
+    /// that, over content carrying a sign, an exponent and an explicit `+`.
     ///
-    /// Stage F status (F.3v, **measured**): the flip is *not* gate-invisible.
-    /// `tests/corpus/modes/inputformat/shape_mmf/shape_mmf.dss` was written to
-    /// observe this quirk — its `mmpq8.csv` P column is deliberately in exponent
-    /// notation (bytes `45` and `101` are in the file) so that `ls_pq` reads
-    /// `{1.51, 2.01, …}` mapped versus `{0.15, 0.20, …}` unmapped. Honouring the
-    /// exponent therefore moves that deck's **node voltages** by 1.641e1 V
-    /// against an allowed 8.179e-6, i.e. a *whole-case* default-lane exclusion
-    /// (the same shape as the GICTransformer `%R2`, Capacitor `Cuf` and
-    /// Generator Model=6 rows, and not the Newton row's field-scoped one), which
-    /// would also cost that deck's sng/dbl/`mult=(sngfile=)` MMF-reader
-    /// coverage. Owner decision; the row keeps its marker and stays reproduced
-    /// in both lanes. The vendored MMF text corpus cannot see it either way —
-    /// `tests::mmf_accept_set_quirk_is_gated_by_exactly_one_deck` measures both
-    /// halves of that.
-    fn mmf_text_value(&mut self, line: &str, column: i32) -> f64 {
+    /// Fixed in both lanes (CLAUDE.md 2026-08-02: upstream bugs are never
+    /// reproduced) by `GOLDEN_REBASE_PLAN.md` G2.5. Two consequences worth
+    /// naming: `tests/corpus/modes/inputformat/shape_mmf/shape_mmf.dss` exists
+    /// *to observe* the quirk (its `mmpq8.csv` P column is written in exponent
+    /// notation on purpose), so it now diverges from the `capi_v0145` oracle
+    /// across the whole run — ledgered as `mmf-accept-set-honoured-capi`, with
+    /// the deck's unrelated sng/dbl/`mult=(sngfile=)` MMF-reader coverage moved
+    /// to the sibling deck `shape_mmf_io.dss`; and the vendored MMF text corpus
+    /// (`Examples/MemoryMappingLoadShapes/ckt24`) cannot see the change at all,
+    /// its files holding nothing but digits, `.`, `,` and newlines, which
+    /// `tests::mmf_accept_set_fix_is_gated_by_exactly_one_deck` keeps measuring.
+    ///
+    /// The empty-column default of `1.0` (`:1389-1390`, r4133
+    /// `Utilities.pas:845`) is a deliberate default return value, not part of
+    /// the accept-set slip, and is kept.
+    fn mmf_text_value(
+        &mut self,
+        parser: &mut Parser,
+        vars: &ParserVars,
+        line: &str,
+        column: i32,
+    ) -> f64 {
         let mut content = String::new();
         let mut j = 0i32;
         for &b in line.as_bytes() {
             if b == 0x0A {
                 break; // lines() already strips this; kept for byte-faithfulness
-            }
-            if (46..58).contains(&b) {
-                content.push(b as char);
             }
             if b == 44 {
                 // a comma: advance the column counter, stop at the target column
@@ -940,22 +953,27 @@ impl LoadShapeObj {
                     break;
                 }
                 content.clear();
+                continue;
             }
+            content.push(b as char);
         }
-        if content.is_empty() {
+        let token = content.trim();
+        if token.is_empty() {
             return 1.0;
         }
-        match content.parse::<f64>() {
+        parser.set_cmd_string(token);
+        parser.next_param(vars);
+        match parser.make_double(vars) {
             Ok(v) => v,
             Err(_) => {
                 // NOT_PORTED(InterpretDblArrayMMF error-785 byte-offset return):
                 // Pascal returns `i - 1` (a heap byte index) on a `strtofloat`
-                // failure (`:1396`) — a defined-but-nonsensical value only
-                // reachable on a malformed token (e.g. one containing `/`). Not
-                // reproduced (UB-adjacent, unreachable from the corpus); surface
-                // a real error and fall back to the `1.0` default instead.
+                // failure (`:1396`) — a defined-but-nonsensical value, still
+                // reachable here on a genuinely malformed token. Not reproduced
+                // (UB-adjacent, unreachable from the corpus); surface a real
+                // error and fall back to the `1.0` default instead.
                 self.data.push_error(format!(
-                    "LoadShape.{}: invalid numeric token \"{content}\" in a \
+                    "LoadShape.{}: invalid numeric token \"{token}\" in a \
                      memory-mapped text file.",
                     self.data.name()
                 ));

@@ -889,98 +889,117 @@ fn mmf_dblfile_fixed_matches_non_mmf() {
     assert_eq!(mmf.num_points(), 6);
 }
 
-/// A.4 accept-set quirk (compat-tagged at `compute.rs`): the MMF text reader keeps only bytes
-/// `[46,58)`, dropping sign / `+` / exponent, and defaults empty → 1.0. So
-/// `-0.5`→0.5, `1.5e-3`→1.53, blank line → 1.0. Precision note (audit
-/// settlement): only row 0 is byte-for-byte what Pascal would read — Pascal
-/// indexes records by the FIRST line's byte stride (`mmLineLen`,
-/// `LoadShape.pas:609-615`), so this non-uniform-width input is upstream UB
-/// past row 0 (misaligned reads); the port reads line-by-line (documented
-/// divergence). What this test pins is the accept-set CHAR FILTER, which
-/// matches Pascal `:1361-1400` exactly; uniform-width files (every valid MMF
-/// fixture) are oracle-gated by the `shape_mmf` deck.
+/// EXPECTED-VALUE-PIN(MMF_TEXT_ACCEPT_SET_DROPS_SIGN_AND_EXPONENT): the MMF
+/// text reader reads the column the file actually contains.
+///
+/// Both oracle revisions filter it through an accept-set of bytes in `[46,58)`
+/// (dss_capi 0.14.5 `src/General/LoadShape.pas:1374`; EPRI r4133
+/// `Version8/Source/Common/Utilities.pas:834`), which deletes the sign, the
+/// `+` and the exponent letter and would read `-0.5` as `0.5` and `1.5e-3` as
+/// `1.53`. `GOLDEN_REBASE_PLAN.md` G2.5 fixed that in both lanes, so the three
+/// values below are the file's own. The empty-column default of `1.0`
+/// (`:1389-1390`) is a deliberate default return value and is kept.
+///
+/// Precision note (audit settlement, unchanged): only row 0 is byte-for-byte
+/// what Pascal would read — Pascal indexes records by the FIRST line's byte
+/// stride (`mmLineLen`, `LoadShape.pas:609-615`), so this non-uniform-width
+/// input is upstream UB past row 0 (misaligned reads); the port reads
+/// line-by-line (documented divergence). Uniform-width files (every valid MMF
+/// fixture) are oracle-gated by the `shape_mmf_io` deck.
 #[test]
-fn mmf_plaintext_accept_set_quirk() {
+fn mmf_plaintext_reader_keeps_sign_and_exponent() {
     let (_c, mut obj, _) = edited(&[("memorymapping", "yes"), ("npts", "3"), ("interval", "1")]);
     obj.read_csv_file("-0.5\n1.5e-3\n\n");
-    assert!((obj.get_mult_at_hour(1.0).re - 0.5).abs() < 1e-12);
-    assert!((obj.get_mult_at_hour(2.0).re - 1.53).abs() < 1e-12);
+    assert!((obj.get_mult_at_hour(1.0).re + 0.5).abs() < 1e-12);
+    assert!((obj.get_mult_at_hour(2.0).re - 1.5e-3).abs() < 1e-18);
     assert!((obj.get_mult_at_hour(3.0).re - 1.0).abs() < 1e-12);
+    // Guards against a silent revert to the upstream accept-set, whose two
+    // readings for this content were 0.5 and 1.53.
+    assert!((obj.get_mult_at_hour(1.0).re - 0.5).abs() > 0.9);
+    assert!((obj.get_mult_at_hour(2.0).re - 1.53).abs() > 1.5);
 }
 
-/// The witness that the accept-set is a *slip* and not a dialect: the class's
-/// **other** reader for the very same format disagrees with it.
+/// EXPECTED-VALUE-PIN(MMF_TEXT_ACCEPT_SET_DROPS_SIGN_AND_EXPONENT): the class's
+/// two readers for the very same format now agree, bit for bit.
 ///
-/// `MemoryMapping=Yes` selects how a shape is stored, not what its file means,
-/// and `TLoadShapeObj` ships both readers — the mapped `InterpretDblArrayMMF`
-/// PlainText branch (`LoadShape.pas:1361-1400`) and `ReadCSVFile`'s non-mapped
-/// branch (`:1044`), which hands each row to the aux parser. Given identical
-/// bytes they should agree; they do not, because the mapped one deletes the
-/// sign, the `+`, the exponent and the whitespace before `strtofloat` sees the
-/// token.
+/// This is the argument that made the accept-set a *slip* rather than a
+/// dialect, kept executable as the fix's pin. `MemoryMapping=Yes` selects how a
+/// shape is stored, not what its file means, and `TLoadShapeObj` ships both
+/// readers — the mapped `InterpretDblArrayMMF` PlainText branch
+/// (`LoadShape.pas:1361-1400`, r4133 `Common/Utilities.pas:820-848`) and
+/// `ReadCSVFile`'s non-mapped branch (`:1044`), which hands each row to the aux
+/// parser. Given identical bytes they must produce identical numbers; upstream
+/// they do not, because the mapped one deletes the sign, the `+`, the exponent
+/// and the whitespace before `strtofloat` sees the token. Since
+/// `GOLDEN_REBASE_PLAN.md` G2.5 both readers take the column verbatim through
+/// the same aux parser, in both lanes.
 ///
-/// This is the Stage F escape record for the row, kept executable so it cannot
-/// rot: both readings are pinned at their exact values in **both** lanes (the
-/// row is reproduced in both — see `compute.rs::mmf_text_value` for the
-/// measurement that blocked the split), and the gap is asserted to be a
-/// deletion rather than a rounding difference.
+/// The content is chosen so every deleted character class is represented: a
+/// leading `-`, an `e-` exponent, an explicit `+`, and leading whitespace.
 #[test]
-fn mmf_text_reader_disagrees_with_its_non_mapped_twin() {
-    // Uniform-width rows: outside the `mmLineLen` UB the accept-set filter is
-    // the only thing that can separate the two readers.
+fn mmf_text_reader_agrees_with_its_non_mapped_twin() {
+    // Uniform-width rows: outside the `mmLineLen` UB the number parser is the
+    // only thing that could separate the two readers.
     const CONTENT: &str = "-0.500\n1.5e-3\n+2.000\n 0.250\n";
-    // What the file says…
+    // What the file says — and, since G2.5, what BOTH readers return.
     let verbatim = [-0.5, 1.5e-3, 2.0, 0.25];
-    // …and what the mapped reader makes of it once the filter has run.
-    let filtered = [0.5, 1.53, 2.0, 0.25];
+    // What the upstream accept-set made of the first two rows; asserted absent.
+    let filtered = [0.5, 1.53];
 
     let (_c, mut mmf, _) = edited(&[("memorymapping", "yes"), ("npts", "4"), ("interval", "1")]);
     mmf.read_csv_file(CONTENT);
     let (_c, mut plain, _) = edited(&[("npts", "4"), ("interval", "1")]);
     plain.read_csv_file(CONTENT);
 
-    for (h, (&want_plain, &want_mmf)) in (1..=4).zip(verbatim.iter().zip(filtered.iter())) {
-        assert!(
-            (plain.get_mult_at_hour(h as f64).re - want_plain).abs() < 1e-12,
-            "non-mapped hour {h}: {} vs {want_plain}",
-            plain.get_mult_at_hour(h as f64).re
+    for (h, &want) in (1..=4).zip(verbatim.iter()) {
+        let (m, p) = (
+            mmf.get_mult_at_hour(h as f64).re,
+            plain.get_mult_at_hour(h as f64).re,
         );
+        assert_eq!(m, p, "hour {h}: mapped {m} vs non-mapped {p}");
+        assert!((p - want).abs() < 1e-18, "hour {h}: {p} vs {want}");
+    }
+    // …and specifically not the filtered readings: an equality-only assertion
+    // would still pass if BOTH readers regressed to the accept-set.
+    for (h, &bad) in (1..=2).zip(filtered.iter()) {
         assert!(
-            (mmf.get_mult_at_hour(h as f64).re - want_mmf).abs() < 1e-12,
-            "mapped hour {h}: {} vs {want_mmf}",
-            mmf.get_mult_at_hour(h as f64).re
+            (mmf.get_mult_at_hour(h as f64).re - bad).abs() > 0.9,
+            "hour {h} read back the upstream accept-set value {bad}"
         );
     }
-    // The rows carrying a sign or an exponent really do disagree — a deletion,
-    // not a rounding difference. The other two agree, which is what makes the
-    // first two a filter artifact and not two unrelated parsers.
-    assert!((mmf.get_mult_at_hour(1.0).re - plain.get_mult_at_hour(1.0).re).abs() > 0.9);
-    assert!((mmf.get_mult_at_hour(2.0).re - plain.get_mult_at_hour(2.0).re).abs() > 1.5);
-    assert_eq!(mmf.get_mult_at_hour(3.0).re, plain.get_mult_at_hour(3.0).re);
-    assert_eq!(mmf.get_mult_at_hour(4.0).re, plain.get_mult_at_hour(4.0).re);
 }
 
-/// Exactly which gated artifacts can see the accept-set quirk — measured on the
-/// corpus bytes, because that measurement is what settled the row's Stage F
-/// disposition (`compute.rs::mmf_text_value`).
+/// Exactly which gated artifacts can see the accept-set **fix** — measured on
+/// the corpus bytes, because that measurement is what bounds the divergence the
+/// fix opens against the pinned oracle (`compute.rs::mmf_text_value`).
 ///
 /// * The **vendored** mapped text files,
 ///   `Examples/MemoryMappingLoadShapes/ckt24/LS_Phase_AOK.{txt,csv}` (loaded by
 ///   `master_ckt24-mm-txt-p`, `-mm-txt-pq`, `-mm-csv-pq`), contain nothing but
-///   `.`, digits, the comma separator and the newline — the filter is the
-///   identity there, so those three cases could never observe a fix.
+///   `.`, digits, the comma separator and the newline — the upstream filter is
+///   the identity there, so those three cases cannot observe the fix and stay
+///   fully oracle-compared.
+/// * The **synthetic** identity-side fixtures — the sibling deck's
+///   `modes/inputformat/shape_mmf_io/mmpq8_plain.csv` (which carries this
+///   deck's reader coverage forward) and `modes/upgrade/mmf_singlecol/mm8.csv`
+///   (the fourth mapped plain-text deck, gated on the `r4133` channel) — are
+///   plain decimal for the same reason and are asserted here too, so a corpus
+///   refresh that slips a sign or an exponent into either fails this pin
+///   instead of surfacing as an unexplained oracle divergence.
 /// * The **synthetic** `modes/inputformat/shape_mmf/mmpq8.csv` deliberately
 ///   does: its P column is exponent notation (`-` = 45, `e` = 101 are in the
-///   file), which is why `shape_mmf.dss` reads `ls_pq` as `{1.51, 2.01, …}`
-///   instead of `{0.15, 0.20, …}` and why honouring the exponent moves that
-///   deck's node voltages 1.641e1 V past an 8.179e-6 floor.
+///   file), which is why `shape_mmf.dss` was written to observe the quirk and
+///   why it is now the one deck that diverges from the `capi_v0145` oracle
+///   (ledger `mmf-accept-set-honoured-capi`; its unrelated MMF-reader coverage
+///   moved to the sibling `shape_mmf_io.dss`, whose `mmpq8_plain.csv` carries
+///   no stray byte — asserted below).
 ///
-/// So the row is gated by exactly one deck, and this test says so in bytes. If
-/// a corpus refresh moves either half — a sign appearing in the vendored files,
-/// or `mmpq8.csv` losing its exponents — the escape record is stale and this
-/// fails instead of the finding silently rotting.
+/// So exactly one deck sees it, and this test says so in bytes. If a corpus
+/// refresh moves any half — a sign appearing in the vendored or sibling files,
+/// or `mmpq8.csv` losing its exponents — the record is stale and this fails
+/// instead of the finding silently rotting.
 #[test]
-fn mmf_accept_set_quirk_is_gated_by_exactly_one_deck() {
+fn mmf_accept_set_fix_is_gated_by_exactly_one_deck() {
     fn stray_bytes(path: &std::path::Path) -> Vec<u8> {
         let bytes = std::fs::read(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         let mut stray: Vec<u8> = bytes
@@ -1001,8 +1020,27 @@ fn mmf_accept_set_quirk_is_gated_by_exactly_one_deck() {
         assert!(
             stray.is_empty(),
             "{name} left the MMF accept-set (bytes {stray:?}): the three gated \
-             ckt24 MMF-text cases can now see the quirk, which the escape record \
+             ckt24 MMF-text cases can now see the fix, which the ledger record \
              says they cannot"
+        );
+    }
+    // Every OTHER corpus fixture read through the mapped plain-text path must
+    // stay on the identity side of the filter, or its deck would diverge from
+    // its gating oracle too and the "exactly one deck" claim would be false.
+    // `shape_mmf_io/mmpq8_plain.csv` carries `shape_mmf`'s reader coverage
+    // forward on `capi_v0145`; `upgrade/mmf_singlecol/mm8.csv` is the fourth
+    // `MemoryMapping=Yes` + text-file deck in the corpus and gates on `r4133`.
+    for rel in [
+        "modes/inputformat/shape_mmf_io/mmpq8_plain.csv",
+        "modes/upgrade/mmf_singlecol/mm8.csv",
+    ] {
+        let stray = stray_bytes(&corpus.join(rel));
+        assert!(
+            stray.is_empty(),
+            "{rel} left the MMF accept-set (bytes {stray:?}): its deck reads the \
+             file through the mapped plain-text reader and is oracle-compared \
+             wholesale, which it can only be while the upstream filter is the \
+             identity on its bytes"
         );
     }
 

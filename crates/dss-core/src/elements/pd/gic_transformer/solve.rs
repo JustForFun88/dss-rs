@@ -11,58 +11,59 @@ use crate::support::cmatrix::CMatrix;
 
 impl GicTransformer {
     /// Pascal `TGICTransformerObj.RecalcElementData` (GICTransformer.pas:433).
+    ///
+    /// Each winding's conductance is `100 / (ZBase_w · %R_w)` — winding 2 off
+    /// **`%R2`**, which is what makes the two arms below mutual inverses.
+    ///
+    /// Both oracle revisions get winding 2 wrong: the `G2` line was copied from
+    /// the `G1` line above and the percentage was never renamed, so
+    /// `G2 := 100.0 / (FZBase2 * FPctR1)` — pinned dss_capi 0.14.5
+    /// `src/PDElements/GICTransformer.pas:441` and EPRI r4133
+    /// `Version8/Source/PDElements/GICTransformer.pas:495`, byte-identical
+    /// lines. A user's `%R2` is then stored and read back through the property
+    /// surface but never reaches the admittance. That it is a slip and not a
+    /// "winding 2 repeats winding 1" convention is settled inside this very
+    /// procedure: the `else` arm restores `FPctR2` **from `G2`**
+    /// (`GICTransformer.pas:446`; r4133 `:498`), and the forward and reverse
+    /// maps are inverses of each other only when the forward one reads
+    /// `FPctR2`. Physically the same thing: `%R` is a winding resistance in
+    /// percent of that winding's own base `ZBase_w = kVLL_w² / MVA`, so
+    /// pairing `FZBase2` with `FPctR1` mixes two windings' data.
+    ///
+    /// Fixed in both lanes (CLAUDE.md 2026-08-02 — upstream bugs are never
+    /// reproduced) by `GOLDEN_REBASE_PLAN.md` G2.5. The two gated decks that
+    /// see it (`asymmetric/gic/gictransformer_gic.dss` `tg3`,
+    /// `asymmetric/gic/gic_midi.dss` `tg5`, both `type=Auto`, where the `BusX`
+    /// side effect (`:251`) puts the `G1` and `G2` blocks in *series* on the
+    /// H→X→neutral path) therefore diverge from both gating oracles across the
+    /// whole solved model; the divergence is ledgered
+    /// (`tests/corpus/ledger.json` `gic-pct-r2-honoured-*`) and the correct
+    /// value pinned by
+    /// `exec::tests::compat_quirks::gic_transformer_pct_r2_drives_winding_two`,
+    /// which measures the `%R` path against the ohms path (`R1=`/`R2=`, the
+    /// `else` arm) that never had the slip.
+    ///
+    /// **The divergence class is every `%R`-specified GICTransformer, not only
+    /// those two decks.** A deck that writes `%R1=` and leaves `%R2=` alone now
+    /// takes the *creation default* `%R2 = 0.2` for winding 2 (`mod.rs:175`;
+    /// Pascal `GICTransformer.pas:409-410`, r4133 `:458-459`) instead of
+    /// repeating `%R1` — the correct reading, because `%R2` is an independent
+    /// property with its own default, dumped and read back separately, and the
+    /// `else` arm's inverse settles which value winding 2 owns. No corpus deck
+    /// has that shape today (`gictransformer_gic.dss:18` and `gic_midi.dss:27`
+    /// are the only `%R` decks and both set **both** percentages; every other
+    /// GICTransformer, `GIC_Example.dss` and `makeposseq_shunt.dss:40`
+    /// included, uses the ohms `R1=`/`R2=` spec and the untouched `else` arm),
+    /// which is why only those two are ledgered — measured, not assumed. The
+    /// `gictransformer_default` props scenario is unaffected: both percentages
+    /// default to `0.2`, so the two readings coincide.
     pub(super) fn recalc(&mut self) {
         self.z_base1 = self.kv1 * self.kv1 / self.mva_rating;
         self.z_base2 = self.kv2 * self.kv2 / self.mva_rating;
 
         if self.pct_r_specified {
             self.g1 = 100.0 / (self.z_base1 * self.pct_r1);
-            // TODO(compat): Pascal uses `FPctR1` here, NOT `FPctR2`
-            // (GICTransformer.pas:441 — `G2 := 100.0 / (FZBase2 * FPctR1)`,
-            // copy-pasted from the `G1` line above), so both conductances scale
-            // off %R1 and a user's %R2 is silently ignored. Reproduced 1:1; the
-            // clean fix reads `FPctR2` — the only value under which the `else`
-            // branch below is its inverse.
-            //
-            // Stage F status (F.3k, re-measured F.3v): this is NOT a
-            // gate-invisible row, and it is NOT the Newton row's shape either.
-            // The flip has now been implemented and gated twice.
-            // `tests/corpus/asymmetric/gic/gictransformer_gic.dss:18` builds
-            // `GICTransformer.tg3 … %R1=0.2 %R2=0.15` and `gic/gic_midi.dss`
-            // the same at `tg5`; both are `type=Auto`, where the `BusX` side
-            // effect puts terminal 2 on `BusX` (GICTransformer.pas:251), so the
-            // G1 and G2 blocks sit in *series* on the H→X→neutral path.
-            // Honouring %R2 therefore changes the element's admittance (here by
-            // 4/3), the system Y, and every node voltage downstream of it.
-            //
-            // What F.3k recorded as "the deck's GIC current" is in fact the
-            // **node-voltage** channel — the first thing `corpus_gate::runner`
-            // compares, which is why both runs abort at its `entry 0`:
-            // `gictransformer_gic.dss` reads 4.502e-4 against `capi_v0145`
-            // (allowed 1.001e-6) and `gic_midi.dss` 1.021e-4 (allowed
-            // 1.074e-6). Both gating oracles reproduce the quirk (r4133
-            // `Version8/Source/PDElements/GICTransformer.pas:495` is the same
-            // line), so the default lane's answer is deliberately unlike either.
-            //
-            // That makes the treatment a **whole-case** default-lane exclusion,
-            // not the field-scoped one the Newton row (F.3j) needed: there the
-            // only moving channels were Powers/Losses, here the voltages, Y,
-            // YPrim, currents and powers move together. Two of 520 gated cases
-            // would stop being oracle-compared in the default lane, and with
-            // them their unrelated GICLine-geodesy / GICsource / ordinary-Line
-            // surface. That trade is the owner's to make, not this pass's, so
-            // the row stays reproduced in both lanes and keeps its marker. The
-            // reproduced value is pinned by
-            // `exec::tests::compat_quirks::gic_transformer_g2_reproduces_the_pct_r1_bug`.
-            //
-            // Note for whoever lands it: the `else` branch below is not only the
-            // "the only value under which it is an inverse" argument — it is
-            // also a ready-made transitive cover. A GICTransformer given
-            // `R1=`/`R2=` in ohms takes that branch, has no quirk, and is
-            // identical in both lanes (these very decks carry one: `tg2` with
-            // `R1=0.2 R2=0.1`), so a corrected `%R` path can be pinned against
-            // the oracle-gated `R` path instead of against a re-baselined deck.
-            self.g2 = 100.0 / (self.z_base2 * self.pct_r1);
+            self.g2 = 100.0 / (self.z_base2 * self.pct_r2);
         } else {
             self.pct_r1 = 100.0 / (self.z_base1 * self.g1);
             self.pct_r2 = 100.0 / (self.z_base2 * self.g2);

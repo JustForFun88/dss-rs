@@ -282,9 +282,29 @@ impl LedgerRuntime {
         skipped
     }
 
+    /// Does this entry carry a scope whose exclusion is *measured* against the
+    /// tier floor, so that "it stopped masking anything" is observable?
+    ///
+    /// Only `voltages` qualifies today: [`LedgerView::voltage_keep_mask`] walks
+    /// node by node and already computes `|Δ|` and the tier floor for every one
+    /// of them, so recording the exceed costs nothing and is exactly the
+    /// divergence kind's own staleness signal. The other exclusion fields name a
+    /// whole artifact the runner then never fetches a verdict for (`y`,
+    /// `y_fingerprint`, `yprim`, `meter`, `injection`, `monitor`, `probe`,
+    /// `element`) — re-deriving a verdict for them would mean a second copy of
+    /// each comparator inside the ledger, i.e. a new drift surface, so their
+    /// anti-rot guard stays the expected-value pin the entry's `cause` names
+    /// (mandatory, and registered both ways in
+    /// `oracle_parity_cfg_gate.rs::TORN_DOWN_ROWS`).
+    fn has_measurable_scope(e: &Entry) -> bool {
+        e.scopes.iter().any(|s| s.field == "voltages")
+    }
+
     /// Assert every entry was hit at least once and no divergence entry is stale
-    /// (applied but nothing exceeded the tier floor). The gate fails loudly with a
-    /// prune instruction otherwise (§1.3 runtime rule / §5 R3 fail-on-stale).
+    /// (applied but nothing exceeded the tier floor), and that an `exclusion`
+    /// carrying a measurable scope still masks something. The gate fails loudly
+    /// with a prune instruction otherwise (§1.3 runtime rule / §5 R3
+    /// fail-on-stale).
     pub(crate) fn assert_all_hit(&self) -> Result<(), String> {
         let mut problems = Vec::new();
         for e in &self.entries {
@@ -304,6 +324,25 @@ impl LedgerRuntime {
                     "  ledger entry `{}` ({:?}, {:?}) is STALE — every selected value \
                      is now within the tier floor (masks nothing). Prune it: the \
                      divergence it pinned is gone.",
+                    e.id, e.case, e.channel
+                ));
+                continue;
+            }
+            // An `exclusion` names whole artifacts, most of which carry no
+            // measurement at all (see [`LedgerView::excluded`]) — so it cannot be
+            // held to the divergence rule wholesale. It CAN be held to it on the
+            // scopes that do measure: a `voltages` scope compares node-by-node
+            // against the tier floor inside `voltage_keep_mask`, and an engine
+            // fix big enough to need this kind always moves node voltages (that
+            // is what made these rows `WholeCase`). So an exclusion that carries
+            // one and never exceeded is masking nothing, exactly like a stale
+            // divergence.
+            if e.kind == Kind::Exclusion && Self::has_measurable_scope(e) && !exceeded {
+                problems.push(format!(
+                    "  ledger entry `{}` ({:?}, {:?}) is STALE — it excludes node \
+                     voltages, yet every node is now within the tier floor (masks \
+                     nothing). Prune it: the divergence it paid for is gone, or \
+                     re-scope it onto whatever still diverges.",
                     e.id, e.case, e.channel
                 ));
                 continue;
@@ -353,11 +392,18 @@ impl LedgerRuntime {
 }
 
 /// Scope fields with a live runtime handler in [`LedgerView`]. The §1.3 schema
-/// also names `yprim` / `y_fingerprint` / `meter` / `global_result`, but NO
-/// handler exists for them yet — a scope naming one (or a typo'd field) would
-/// silently never apply, so loading rejects anything outside this list loudly
-/// (pre-E/F audit UGA-T4).
-const LEDGER_FIELDS: [&str; 9] = [
+/// also names `global_result`, but NO handler exists for it yet — a scope naming
+/// it (or a typo'd field) would silently never apply, so loading rejects
+/// anything outside this list loudly (pre-E/F audit UGA-T4).
+///
+/// The last four — `y`, `y_fingerprint`, `yprim`, `meter` — are
+/// **exclusion-only** ([`EXCLUSION_ONLY_FIELDS`]): they name a whole compared
+/// artifact rather than a value with a natural envelope, so the only thing the
+/// ledger can say about them is "this (case, channel) does not compare it".
+/// `GOLDEN_REBASE_PLAN.md` G2.5 added them, because an engine fix that declines
+/// an upstream bug moves the assembled admittance of the affected deck and
+/// nothing else in this file could express that.
+const LEDGER_FIELDS: [&str; 13] = [
     "iterations",
     "voltages",
     "injection",
@@ -367,15 +413,48 @@ const LEDGER_FIELDS: [&str; 9] = [
     "monitor",
     "eventlog",
     "ctrlqueue",
+    "y",
+    "y_fingerprint",
+    "yprim",
+    "meter",
+];
+
+/// Fields an entry may name only with `kind: "exclusion"` — see
+/// [`LEDGER_FIELDS`]. A `divergence` naming one would promise an envelope
+/// nothing re-asserts.
+const EXCLUSION_ONLY_FIELDS: [&str; 4] = ["y", "y_fingerprint", "yprim", "meter"];
+
+/// Fields an `exclusion` entry may name — the mirror obligation of
+/// [`LEDGER_FIELDS`], because "has a runtime handler" turned out to be
+/// **kind-dependent** once G2.5 added the coarse half.
+///
+/// `LEDGER_FIELDS` exists so a typo'd or unimplemented field cannot sit in the
+/// ledger silently never applying (pre-E/F audit UGA-T4). That guarantee has a
+/// hole the moment some fields are handled for one kind only: `iterations`,
+/// `property`, `eventlog` and `ctrlqueue` route through handlers that filter on
+/// [`Kind::Divergence`] (the first two re-assert a pin, the last two rewrite the
+/// oracle's line before the compare — none of which an exclusion can mean), so
+/// an `exclusion` naming one of them would pass the loader and then do nothing.
+/// Refused by `assert_structural` instead.
+const EXCLUSION_FIELDS: [&str; 9] = [
+    "voltages",
+    "element",
+    "injection",
+    "monitor",
+    "probe",
+    "y",
+    "y_fingerprint",
+    "yprim",
+    "meter",
 ];
 
 fn compile_scope(id: &str, s: &RawScope) -> Scope {
     assert!(
         LEDGER_FIELDS.contains(&s.field.as_str()),
         "ledger entry {id:?}: scope field {:?} has no runtime handler (implemented: \
-         {LEDGER_FIELDS:?}). The §1.3 fields yprim/y_fingerprint/meter/global_result \
-         need a handler implemented BEFORE they can be ledgered — an unhandled scope \
-         would silently never apply.",
+         {LEDGER_FIELDS:?}). The §1.3 field global_result needs a handler \
+         implemented BEFORE it can be ledgered — an unhandled scope would silently \
+         never apply.",
         s.field
     );
     let mk = |re: &Option<String>| -> Option<Regex> {
@@ -427,6 +506,46 @@ impl LedgerView<'_> {
 
     fn mark_exceeded(e: &Entry) {
         e.exceeded_floor.store(true, Ordering::Relaxed);
+    }
+
+    // --- whole-artifact exclusions ------------------------------------------
+
+    /// Is the comparison of `field` (of the artifact called `name`, where the
+    /// field has one) dropped for this (case, channel) by an `exclusion` entry?
+    ///
+    /// The coarse half of the ledger, added by `GOLDEN_REBASE_PLAN.md` G2.5.
+    /// The partitioning handlers below (`voltages`, `element`, …) split one
+    /// comparison into a scoped part and an unscoped remainder, which is the
+    /// right shape whenever the divergence is local. It is the wrong shape for
+    /// the artifacts an *engine* fix moves wholesale — the assembled system Y,
+    /// its fingerprint, the affected element's YPrim, an EnergyMeter's register
+    /// block — where there is no remainder and no envelope to re-assert, only
+    /// "the oracle computes this from the bug we declined". Those get a plain
+    /// skip, still hit-accounted (an exclusion that stops matching fails the
+    /// gate as NEVER APPLIED) and still bound by `assert_structural`'s rule
+    /// that only `kind: "exclusion"` may name them.
+    ///
+    /// `name = None` matches a scope with no `name_re`; a scope that carries a
+    /// `name_re` never applies to an unnamed artifact.
+    pub(crate) fn excluded(&self, field: &str, name: Option<&str>, step: usize) -> bool {
+        let mut hit = false;
+        for e in self.entries().filter(|e| e.kind == Kind::Exclusion) {
+            for sc in &e.scopes {
+                if sc.field != field || !sc.applies_step(step) {
+                    continue;
+                }
+                let m = match (&sc.name_re, name) {
+                    (Some(re), Some(n)) => re.is_match(n),
+                    (Some(_), None) => false,
+                    (None, _) => true,
+                };
+                if m {
+                    Self::mark_applied(e);
+                    hit = true;
+                }
+            }
+        }
+        hit
     }
 
     // --- iterations ---------------------------------------------------------
@@ -537,6 +656,17 @@ impl LedgerView<'_> {
                 keep[ni] = false;
                 if e.kind == Kind::Exclusion {
                     Self::mark_applied(e);
+                    // Liveness (settle of the G2.5 audit): an exclusion has no
+                    // envelope to re-assert, but a `voltages` scope DOES have a
+                    // measurement — the same `diff` vs tier `floor` the
+                    // divergence arm below records. Taking it here is what lets
+                    // `assert_all_hit` call a voltages-scoped exclusion STALE
+                    // once the divergence it pays for is gone, instead of
+                    // masking a deck forever. See [`Self::has_measurable_scope`].
+                    measure_note(&e.id, "voltages", diff, base, floor);
+                    if diff > floor {
+                        Self::mark_exceeded(e);
+                    }
                     continue;
                 }
                 // divergence: assert within envelope; record floor-exceed.
@@ -1284,10 +1414,69 @@ pub(crate) fn assert_structural(
                 e.id
             ),
         }
+        // Whole-artifact fields are exclusion-only: there is no remainder to
+        // tier-check and no envelope to re-assert, so a `divergence` naming one
+        // would claim a measurement the runtime never makes
+        // (`GOLDEN_REBASE_PLAN.md` G2.5).
+        for sc in &e.match_scopes {
+            assert!(
+                !(EXCLUSION_ONLY_FIELDS.contains(&sc.field.as_str()) && e.kind != "exclusion"),
+                "ledger entry {:?}: field {:?} is exclusion-only — a {} entry naming it \
+                 would pin an envelope nothing re-asserts",
+                e.id,
+                sc.field,
+                e.kind
+            );
+            assert!(
+                !(e.kind == "exclusion" && !EXCLUSION_FIELDS.contains(&sc.field.as_str())),
+                "ledger entry {:?}: field {:?} has no `exclusion` handler (it is \
+                 divergence-only: {:?}). The scope would load cleanly and then never \
+                 apply, which is exactly what the field whitelist exists to prevent",
+                e.id,
+                sc.field,
+                LEDGER_FIELDS
+                    .iter()
+                    .filter(|f| !EXCLUSION_FIELDS.contains(f))
+                    .collect::<Vec<_>>()
+            );
+            // …and an exclusion scope may carry only its SELECTORS. `excluded`
+            // (and the `Kind::Exclusion` arms of the voltages/element handlers)
+            // read `field`/`steps`/`node_re`/`name_re`/`channel_idx`/`channels`
+            // and nothing else, so an envelope or an exact pair written on one
+            // would load cleanly, be silently ignored, and read in review as a
+            // promise the gate never keeps — the same rot the field whitelist
+            // above exists to prevent (settle of the G2.5 audit).
+            if e.kind == "exclusion" {
+                let carried: Vec<&str> = [
+                    ("max_rel", sc.max_rel.is_some()),
+                    ("max_abs", sc.max_abs.is_some()),
+                    ("num_rel", sc.num_rel.is_some()),
+                    ("rust", sc.rust.is_some()),
+                    ("oracle", sc.oracle.is_some()),
+                    ("policy", sc.policy.is_some()),
+                    ("line_re", sc.line_re.is_some()),
+                ]
+                .into_iter()
+                .filter_map(|(k, present)| present.then_some(k))
+                .collect();
+                assert!(
+                    carried.is_empty(),
+                    "ledger entry {:?}: `exclusion` scope on {:?} carries \
+                     envelope/pin field(s) {carried:?}, which the exclusion path \
+                     ignores entirely — drop them, or make the entry a \
+                     `divergence` that actually re-asserts them",
+                    e.id,
+                    sc.field
+                );
+            }
+        }
         // discrete-state guard: probe/property scopes must be exact pairs, never
         // envelopes (§1.3 — discrete state is ledgerable only as exact pairs).
+        // An `exclusion` drops the pair from comparison outright, so the pin
+        // requirement (which is about what a *divergence* re-asserts) does not
+        // apply to it.
         for sc in &e.match_scopes {
-            if matches!(sc.field.as_str(), "probe" | "property") {
+            if e.kind == "divergence" && matches!(sc.field.as_str(), "probe" | "property") {
                 assert!(
                     !(sc.oracle.is_none() && (sc.max_rel.is_some() || sc.max_abs.is_some())),
                     "ledger entry {:?}: {} scope must pin an exact `oracle` value, \
@@ -1366,6 +1555,204 @@ fn manifest_engines_map() -> std::collections::BTreeMap<String, Vec<EngineChanne
         }
     }
     m
+}
+
+/// The fields of [`EXCLUSION_FIELDS`] whose exclusion is served by a dedicated
+/// **partitioning** handler rather than by [`LedgerView::excluded`]: they split
+/// one comparison into a scoped part and an unscoped remainder, so the runner
+/// never asks `excluded()` about them. Both are exercised live by the
+/// `GOLDEN_REBASE_PLAN.md` G2.5 entries in `tests/corpus/ledger.json`.
+const EXCLUSION_FIELDS_WITH_PARTITIONING_HANDLER: [&str; 2] = ["voltages", "element"];
+
+/// Every field [`EXCLUSION_FIELDS`] lets an `exclusion` name must actually be
+/// honoured at runtime — the same guarantee [`LEDGER_FIELDS`] gives one level
+/// up, at the kind granularity `GOLDEN_REBASE_PLAN.md` G2.5 introduced.
+///
+/// This is a **synthetic** drive because two of the nine (`probe`, `meter`) have
+/// no live entry in `tests/corpus/ledger.json` today: without it they would be
+/// whitelisted, pass `assert_structural`, and then be reachable only by a future
+/// author who has no way to know whether the branch works. The drive also pins
+/// the three selector rules `excluded()` implements — `name_re` matching, the
+/// "a named scope never applies to an unnamed artifact" asymmetry, and the
+/// `steps` filter — and that a `divergence`/`skip` entry is never treated as an
+/// exclusion.
+#[test]
+fn every_exclusion_field_is_honoured_by_the_runtime() {
+    fn scope(field: &str, name_re: Option<&str>, steps: Option<&[usize]>) -> Scope {
+        Scope {
+            field: field.to_string(),
+            policy: None,
+            steps: steps.map(|s| s.iter().copied().collect()),
+            node_re: None,
+            name_re: name_re.map(|r| Regex::new(r).expect("test regex")),
+            channel_idx: None,
+            channels: Vec::new(),
+            max_rel: 0.0,
+            max_abs: 0.0,
+            rust: None,
+            oracle: None,
+            num_rel: None,
+            line_re: None,
+        }
+    }
+    fn entry(id: &str, kind: Kind, scopes: Vec<Scope>) -> Entry {
+        Entry {
+            id: id.to_string(),
+            case: "synthetic:case.dss".to_string(),
+            channel: EngineChannel::CapiV0145,
+            kind,
+            scopes,
+            applied: AtomicBool::new(false),
+            exceeded_floor: AtomicBool::new(false),
+            hits: AtomicUsize::new(0),
+        }
+    }
+    fn runtime(entries: Vec<Entry>) -> LedgerRuntime {
+        LedgerRuntime {
+            causes: std::collections::BTreeMap::new(),
+            entries,
+        }
+    }
+    let case = "synthetic:case.dss";
+    let ch = EngineChannel::CapiV0145;
+
+    // (a) Every `excluded()`-routed field applies, and records the hit that makes
+    //     a scope which stops matching fail the gate as NEVER APPLIED.
+    for field in EXCLUSION_FIELDS {
+        if EXCLUSION_FIELDS_WITH_PARTITIONING_HANDLER.contains(&field) {
+            continue;
+        }
+        let rt = runtime(vec![entry(
+            "x",
+            Kind::Exclusion,
+            vec![scope(field, None, None)],
+        )]);
+        assert!(
+            rt.view(case, ch).excluded(field, Some("anything"), 0),
+            "exclusion field {field:?} is whitelisted but `excluded()` ignores it — \
+             a scope naming it would load cleanly and never apply"
+        );
+        assert!(
+            rt.view(case, ch).excluded(field, None, 0),
+            "exclusion field {field:?}: an unnamed artifact must match a scope with \
+             no `name_re`"
+        );
+        assert!(
+            rt.entries[0].applied.load(Ordering::Relaxed),
+            "exclusion field {field:?}: applying it recorded no hit"
+        );
+        // …and only for its own field.
+        assert!(
+            !rt.view(case, ch)
+                .excluded("iterations", Some("anything"), 0),
+            "exclusion field {field:?} leaked onto another field"
+        );
+    }
+
+    // (b) Selector semantics, driven on `meter` (no live entry uses them).
+    let rt = runtime(vec![entry(
+        "x",
+        Kind::Exclusion,
+        vec![scope("meter", Some("(?i)^em1$"), Some(&[2]))],
+    )]);
+    let v = rt.view(case, ch);
+    assert!(v.excluded("meter", Some("EM1"), 2), "name_re must match");
+    assert!(!v.excluded("meter", Some("em2"), 2), "name_re must select");
+    assert!(
+        !v.excluded("meter", None, 2),
+        "a named scope must not match an unnamed artifact"
+    );
+    assert!(
+        !v.excluded("meter", Some("EM1"), 1),
+        "the `steps` filter must hold"
+    );
+
+    // (c) Only `kind: "exclusion"` excludes. A divergence/skip entry naming the
+    //     same field must not silently drop the comparison.
+    for kind in [Kind::Divergence, Kind::Skip] {
+        let rt = runtime(vec![entry("x", kind, vec![scope("meter", None, None)])]);
+        assert!(
+            !rt.view(case, ch).excluded("meter", Some("em1"), 0),
+            "{kind:?} entry was honoured as an exclusion"
+        );
+    }
+
+    // (d) Both-ways: the partitioning-handler list names only real exclusion
+    //     fields, so it cannot silently excuse a field from clause (a).
+    for f in EXCLUSION_FIELDS_WITH_PARTITIONING_HANDLER {
+        assert!(
+            EXCLUSION_FIELDS.contains(&f),
+            "{f:?} is excused from the `excluded()` drive but is not an exclusion field"
+        );
+    }
+}
+
+/// The `exclusion` half of fail-on-stale, proven by canary rather than by
+/// reading the code — the same standard the `divergence` half was held to in the
+/// Phase D/E audits.
+///
+/// Three arms, because the rule has to fire, has to stop firing, and must not
+/// fire on the entries it deliberately does not police: an applied
+/// voltages-scoped exclusion that never exceeded the tier floor is STALE; the
+/// same entry once something exceeded is fine; and an exclusion with no
+/// measurable scope is fine either way (its anti-rot guard is the
+/// expected-value pin its `cause` names — see
+/// [`LedgerRuntime::has_measurable_scope`]).
+#[test]
+fn a_voltages_exclusion_that_masks_nothing_is_stale() {
+    fn scope(field: &str) -> Scope {
+        Scope {
+            field: field.to_string(),
+            policy: None,
+            steps: None,
+            node_re: None,
+            name_re: None,
+            channel_idx: None,
+            channels: Vec::new(),
+            max_rel: 0.0,
+            max_abs: 0.0,
+            rust: None,
+            oracle: None,
+            num_rel: None,
+            line_re: None,
+        }
+    }
+    let mk = |field: &str, exceeded: bool| LedgerRuntime {
+        causes: std::collections::BTreeMap::new(),
+        entries: vec![Entry {
+            id: "canary".to_string(),
+            case: "synthetic:case.dss".to_string(),
+            channel: EngineChannel::CapiV0145,
+            kind: Kind::Exclusion,
+            scopes: vec![scope(field)],
+            applied: AtomicBool::new(true),
+            exceeded_floor: AtomicBool::new(exceeded),
+            hits: AtomicUsize::new(1),
+        }],
+    };
+
+    let err = mk("voltages", false)
+        .assert_all_hit()
+        .expect_err("a voltages exclusion that masks nothing must fail the gate");
+    assert!(
+        err.contains("STALE") && err.contains("canary"),
+        "wrong failure text: {err}"
+    );
+    assert!(
+        mk("voltages", true).assert_all_hit().is_ok(),
+        "a voltages exclusion that still masks something must pass"
+    );
+    // The coarse fields carry no verdict, so they are not policed here — a rule
+    // that reported them stale would red the gate on every honest entry.
+    for field in EXCLUSION_FIELDS {
+        if field == "voltages" {
+            continue;
+        }
+        assert!(
+            mk(field, false).assert_all_hit().is_ok(),
+            "{field:?}-only exclusion was wrongly reported stale"
+        );
+    }
 }
 
 #[test]

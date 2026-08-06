@@ -27,7 +27,7 @@ pub(crate) fn show_powers(
     node_v: &[Complex64],
     opt: i32,
 ) -> String {
-    let mdnl = crate::compat::max_device_name_length(super::device_name_width(classes, ckt));
+    let mdnl = super::device_name_width(classes, ckt);
 
     let mut rep = Report::new();
     rep.blank();
@@ -308,8 +308,13 @@ pub(crate) fn terminal_power_seq_row(
     Row::new()
         .cell(Cell::left(format::enclose_quotes(name), mdnl + 2))
         // Pascal writes the terminal with `IntToStr` — no width of its own, so
-        // it glues to a name that overflows the field (the F.4b `Show BusFlow`
-        // lane row).
+        // it glues to a name that fills or overflows the field. Upstream that
+        // is *every* row, because dss_capi's width is stuck at 0
+        // (`super::device_name_width`); at the honest width the parity kernel
+        // glues only the longest name in the circuit, which fills `mdnl + 2`
+        // exactly. The default kernel never glues: it gives every cell its own
+        // column with a gutter and ignores the declared width
+        // (`report::table::render_rows_table_impl`).
         .cell(Cell::plain(j.to_string()))
         .cell(f(s1.re * 0.003, 11))
         .cell(f(s1.im * 0.003, 11))

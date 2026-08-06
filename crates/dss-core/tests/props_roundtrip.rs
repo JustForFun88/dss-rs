@@ -179,7 +179,22 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
 ///   unconditional (it was default-lane-only while the parity lane still
 ///   reproduced the clobber). Pinned by
 ///   `elements::pc::isource::tests::bus2_latches_like_the_sibling_class`.
-const LANE_SKIP_SCENARIO_PROPS: &[(&str, &str)] = &[("isource_bus2_clobbered_by_bus1", "Bus2")];
+/// * `gictransformer_auto` / `R2` — the scenario builds
+///   `GICTransformer.tg3 … %R1=0.2 %R2=0.15 kvll1=345 kvll2=138 mva=300`, and
+///   `R2` is the stored second-winding conductance read back through the
+///   property's `INVERSE_VALUE` flag. Both gating oracles derive `G2` from
+///   `FPctR1` (`.inputs/dss_capi/src/PDElements/GICTransformer.pas:441`; r4133
+///   `Version8/Source/PDElements/GICTransformer.pas:495` is the same line), so
+///   the capture holds `ZBase2·%R1/100 = 0.12696`; since GOLDEN_REBASE G2.5 the
+///   engine reads `%R2` in **both** lanes and reports `ZBase2·%R2/100 =
+///   0.09522`. Every other property of the scenario — including `%R1`, `%R2`,
+///   `R1`, the bases and the `type=Auto` bus promotion — still compares against
+///   the capture. Pinned by
+///   `exec::tests::compat_quirks::gic_transformer_pct_r2_drives_winding_two`.
+const LANE_SKIP_SCENARIO_PROPS: &[(&str, &str)] = &[
+    ("isource_bus2_clobbered_by_bus1", "Bus2"),
+    ("gictransformer_auto", "R2"),
+];
 
 /// An **oracle-bug** exclusion, as `(class, property)` pairs, applied in **both
 /// lanes**: the `DoubleSymMatrixProperty` text getter. dss_capi's generic arm
@@ -322,6 +337,10 @@ fn props_roundtrip_matches_oracle() {
             // `Bus2Defined` now, so both drop the value compare on this
             // scenario's `Bus2`. Under the split the same `any(…)` sat behind a
             // negated read of the engine's lane constant on this very line.
+            // LANE-EXCLUSION(GIC_TRANSFORMER_G2_SCALES_OFF_PCT_R1): and both
+            // lanes scale `G2` off `%R2`, so both drop the value compare on
+            // `gictransformer_auto`'s `R2` (the capture carries the upstream
+            // `%R1` reading). See the register above for both rows.
             if LANE_SKIP_SCENARIO_PROPS
                 .iter()
                 .any(|(s, p)| *s == sc.name && p.eq_ignore_ascii_case(prop))

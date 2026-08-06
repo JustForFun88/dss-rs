@@ -137,7 +137,7 @@ pwsh -File tools/lanes/lane_diff.ps1 -SkipDump  # re-diff existing dumps
 
 It builds `crates/dss-core/examples/lane_dump.rs` once per lane (each into its
 own target dir under `target/lanes/`, so re-runs do not thrash the other lane's
-cache), walks **all 520 manifest cases** on each engine — solving the 516 that
+cache), walks **all 521 manifest cases** on each engine — solving the 517 that
 are not abort-by-design — and writes one record per compared quantity: engine
 error *count* (not the message text; the corpus gate reconciles that), per-step
 convergence flag and iteration count, every node voltage, every element's
@@ -365,33 +365,76 @@ Entry kinds (`kind`):
   `DSS_GATE_SEED_LEDGER=1 DSS_GATE_SEED_ONLY=<case>`.
 - **`exclusion`** — a proven upstream bug poisons specific comparison scopes on
   a channel (`cause_ref` into a documented investigation); those scopes are
-  skipped, everything else compared.
+  skipped, everything else compared. Since `GOLDEN_REBASE_PLAN.md` G2.5 this is
+  also how an engine fix that *declines* an upstream bug is paid for: the fixed
+  engine's answer is deliberately unlike the oracle's, so there is no envelope
+  to re-assert — the correct value is pinned by an expected-value test the
+  entry's `cause` names by full test path, and the scopes it moves are dropped
+  here. Still hit-accounted: an exclusion whose scope stops matching fails the
+  gate as NEVER APPLIED. It is also **half fail-on-stale**: a `voltages` scope
+  is measured node-by-node against the tier floor exactly as a `divergence` is,
+  so an exclusion carrying one and never exceeding is reported STALE (the
+  engine fix it paid for always moves node voltages — that is what makes an
+  entry of this kind necessary). The coarser scopes carry no verdict — the
+  runner skips the artifact instead of comparing it — so for them the anti-rot
+  guard is the **expected-value pin** the `cause` names, which is mandatory and
+  registered both ways in `oracle_parity_cfg_gate.rs::TORN_DOWN_ROWS`: revert
+  the engine fix and the pin reds, whether or not the corpus gate notices.
+  A scope may carry only its **selectors** — `max_rel`/`max_abs`/`num_rel`/
+  `rust`/`oracle`/`policy`/`line_re` on an `exclusion` are refused at load,
+  because the exclusion path ignores them and they would read as a promise the
+  gate never keeps.
 
-Scope `field` must be one of the **9 implemented** handlers — `iterations`,
+Scope `field` must be one of the **13 implemented** handlers — `iterations`,
 `voltages`, `injection`, `element`, `probe`, `property`, `monitor`, `eventlog`,
-`ctrlqueue` — anything else (typo or the §1.3-planned but unimplemented
-`yprim`/`y_fingerprint`/`meter`/`global_result`) is rejected loudly at load.
+`ctrlqueue`, plus the four **exclusion-only** ones `y`, `y_fingerprint`,
+`yprim`, `meter` — anything else (typo or the §1.3-planned but unimplemented
+`global_result`) is rejected loudly at load. The exclusion-only four name a
+whole compared artifact rather than a value with a natural envelope (the
+assembled system Y, its fingerprint, one element's YPrim, one EnergyMeter's
+register block), so `assert_structural` refuses them on a `divergence`.
 Location selectors: `node_re`/`name_re`/`channel_idx` (0-based)/`channels`,
 optional `steps` (0-based). `iterations` takes exact `{rust, oracle}` pairs or
-`policy: "rust_le_oracle"`.
+`policy: "rust_le_oracle"`; `yprim`/`monitor`/`meter`/`probe` exclusions select
+the artifact by `name_re` (absent ⇒ all). The reverse rule holds too: an
+`exclusion` may name only a field the exclusion path actually handles
+(`voltages`, `element`, `injection`, `monitor`, `probe` + the four above) —
+`iterations`, `property`, `eventlog` and `ctrlqueue` are divergence-only,
+because their handlers re-assert a pin or rewrite the oracle's line, and a scope
+that loads cleanly and then never applies is the one thing the field whitelist
+exists to prevent.
 
 Runtime rules: every applicable entry must be **hit** ≥ 1 (never-applied →
-gate fails), every `divergence` must still exceed the tier floor somewhere
-(fail-on-stale, proven live by canary in Phases D/E audits). The oracle-free
+gate fails), every `divergence` — and every `exclusion` carrying a `voltages`
+scope — must still exceed the tier floor somewhere (fail-on-stale; the
+`divergence` half proven live by canary in the Phase D/E audits, the
+`exclusion` half by `a_voltages_exclusion_that_masks_nothing_is_stale`). The
+oracle-free
 structural test (`ledger_is_structurally_valid`) checks unique ids, case ∈
 manifest, channel ∈ the case's `engines`, non-empty `match` for divergences,
-resolvable `cause`/`cause_ref`, compiling regexes. Every entry is fingerprinted
+resolvable `cause`/`cause_ref`, compiling regexes, and the two kind↔field rules
+above; `every_exclusion_field_is_honoured_by_the_runtime` drives
+`LedgerView::excluded` synthetically over **every** whitelisted exclusion field,
+so the two (`probe`, `meter`) with no live entry today are still proven to
+apply. Every entry is fingerprinted
 into the population lock as `id@FNV-1a64(entry JSON)` per channel — adding,
 widening, or re-scoping an entry is always a reviewable lock diff.
 
-Current contents: 26 entries over 20 documented causes — 4 r4133 `skip`
+Current contents: 36 entries over 23 documented causes — 4 r4133 `skip`
 (#303 crash decks), 21 r4133 `divergence` (Delphi 6-sig-fig display-precision
 probes on Storage/PVSystem, FPC-vs-Delphi injection/element ulp floors on the
 IndMach asymmetric decks, one monitor sequence-magnitude drift, the GFM
 `%stored` rounding class, and the RegControl `idle`
-revThreshold/fwdThreshold getter-convention exact-pair), 1 capi_v0145
-`divergence` (the `line_spacing_asym` exact-pair-numeric
-`normamps`/`emergamps` upgrade pin).
+revThreshold/fwdThreshold getter-convention exact-pair), 5 capi_v0145
+`divergence` (the `line_spacing_asym` and the Generator `MakePosSequence`
+exact-pair-numeric upgrade pins, plus three G2.5 property-jump entries —
+`GICTransformer.tg3/tg5.R2` and `Capacitor.cap_cmat.Cuf`/`NormAmps`/`EmergAmps`,
+pinned as exact pairs rather than skipped), and 6 `exclusion` — 4 capi_v0145 + 2
+r4133 — from
+`GOLDEN_REBASE_PLAN.md` G2.5, where the engine stopped reproducing three
+upstream bugs (GICTransformer `%R2`, Capacitor `MakePosSequence` `Cuf`,
+LoadShape MMF accept-set) and the four decks that observe them therefore
+diverge from their gating channel(s) across the solved model.
 
 **The ledger is not a tolerance.** Envelopes are per-case, per-channel,
 per-scope **measured facts** (size them with `DSS_LEDGER_MEASURE=1`, record

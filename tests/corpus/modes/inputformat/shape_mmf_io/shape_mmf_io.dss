@@ -1,0 +1,34 @@
+! GAPS deck (GOLDEN_REBASE G2.5): the MMF *reader* coverage of shape_mmf.dss,
+! kept oracle-comparable. Sibling of ../shape_mmf/shape_mmf.dss, which exists to
+! observe the upstream MMF text accept-set (bytes [46,58), dropping sign and
+! exponent — dss_capi 0.14.5 LoadShape.pas:1374 == r4133 Utilities.pas:834) and
+! therefore diverges from the pinned oracle wholesale now that the port reads the
+! column the file actually holds.
+! Everything here is byte-identical in the two engines: the sng/dbl/raw-directive
+! MMF readers are fixed-interval I/O only, and mmpq8_plain.csv is written in plain
+! decimal, so the upstream accept-set is the identity on it (asserted by
+! load_shape::tests::mmf_accept_set_fix_is_gated_by_exactly_one_deck).
+! Fixtures (committed) regenerate via tools/decks/gen_shape_mmf_fixtures.py.
+Clear
+New Circuit.gaps_mmfio basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Loadshape.ls_sng npts=8 interval=1 MemoryMapping=Yes sngfile=mm8.sng
+New Loadshape.ls_dbl npts=8 interval=1 MemoryMapping=Yes dblfile=mm8.dbl
+! Raw mult=(sngfile=...) directive form (Pascal CustomSetRaw), MMF before mult.
+New Loadshape.ls_mult npts=8 interval=1 MemoryMapping=Yes mult=(sngfile=mm8.sng)
+New Loadshape.ls_pq npts=8 interval=1 MemoryMapping=Yes pqcsvfile=mmpq8_plain.csv
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Load.ld_sng bus1=b1 phases=3 kv=12.47 kw=800 pf=0.95 model=1 daily=ls_sng
+New Load.ld_dbl bus1=b1 phases=3 kv=12.47 kw=400 pf=0.92 model=1 daily=ls_dbl
+New Load.ld_mult bus1=b1 phases=3 kv=12.47 kw=200 pf=0.93 model=1 daily=ls_mult
+New Load.ld_pq bus1=b1 phases=3 kv=12.47 kw=100 pf=0.95 model=1 daily=ls_pq
+New Monitor.m_sng element=Load.ld_sng terminal=1 mode=1 ppolar=no
+New Monitor.m_dbl element=Load.ld_dbl terminal=1 mode=1 ppolar=no
+New Monitor.m_mult element=Load.ld_mult terminal=1 mode=1 ppolar=no
+New Monitor.m_pq element=Load.ld_pq terminal=1 mode=1 ppolar=no
+Set voltagebases=[12.47]
+Calcvoltagebases
+! Exercise the Set/Get TotalTime option surface (Pascal ExecOptions 107).
+Set totaltime=0
+Set mode=daily stepsize=1h number=8
+Solve
+Get totaltime

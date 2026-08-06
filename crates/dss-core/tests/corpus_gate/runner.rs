@@ -433,12 +433,24 @@ pub(crate) fn compare_capture(
             }
         }
 
+        // Whole-artifact ledger exclusions (`GOLDEN_REBASE_PLAN.md` G2.5): the
+        // assembled Y, its fingerprint, an element's YPrim and a meter's
+        // register block have no partition and no envelope, so an entry that
+        // names one drops it for this (case, channel) — hit-accounted, so it
+        // still fails the gate the day it stops matching. The oracle payload is
+        // still demanded (a missing Y is a protocol failure, not a divergence).
+        let excluded =
+            |field: &str, name: Option<&str>| ledger.is_some_and(|v| v.excluded(field, name, i));
         if let Some(y) = &cp.y {
-            compare_system_y(dss, y, &oc.node_order, tol, &ctx);
+            if !excluded("y", None) {
+                compare_system_y(dss, y, &oc.node_order, tol, &ctx);
+            }
         } else {
             panic!("{ctx}: oracle returned no full Y (the live gate requires it)");
         }
-        compare_fingerprint(dss, &cp.y_fingerprint, tol, &ctx);
+        if !excluded("y_fingerprint", None) {
+            compare_fingerprint(dss, &cp.y_fingerprint, tol, &ctx);
+        }
 
         let snaps = dss.snapshot_elements();
 
@@ -465,10 +477,16 @@ pub(crate) fn compare_capture(
             );
         }
         for yp in &cp.yprims {
-            compare_yprim(dss, yp, tol, &ctx);
+            if !excluded("yprim", Some(&yp.name)) {
+                compare_yprim(dss, yp, tol, &ctx);
+            }
         }
-        // A ledger `injection` scope envelope-checks the whole RHS here.
-        if !ledger.is_some_and(|v| v.injection_handled(i, dss, &cp.injection, tol, &ctx)) {
+        // A ledger `injection` scope envelope-checks the whole RHS here; an
+        // `exclusion` drops it (the RHS has no sub-selector, so both forms are
+        // all-or-nothing anyway).
+        if !excluded("injection", None)
+            && !ledger.is_some_and(|v| v.injection_handled(i, dss, &cp.injection, tol, &ctx))
+        {
             compare_injection(dss, &cp.injection, tol, &ctx);
         }
 
@@ -509,13 +527,18 @@ pub(crate) fn compare_capture(
         // it to the Rust samples after the envelope check); the header, sample
         // count, and every other channel still go through the standard comparator.
         for m in &cp.monitors {
+            if excluded("monitor", Some(&m.name)) {
+                continue;
+            }
             match ledger.and_then(|v| v.monitor_rewrite(dss, m, tol, &ctx)) {
                 Some(rw) => compare_monitor(dss, &rw, tol, &ctx),
                 None => compare_monitor(dss, m, tol, &ctx),
             }
         }
         for m in &cp.meters {
-            compare_meter(dss, m, tol, &ctx);
+            if !excluded("meter", Some(&m.name)) {
+                compare_meter(dss, m, tol, &ctx);
+            }
         }
 
         assert_eq!(
@@ -524,7 +547,10 @@ pub(crate) fn compare_capture(
             "{ctx}: oracle probe count differs from the manifest spec"
         );
         for p in &cp.probes {
-            if !ledger.is_some_and(|v| v.probe_handled(dss, p, tol, &ctx)) {
+            let key = format!("{}.{}", p.element.to_lowercase(), p.prop.to_lowercase());
+            if !excluded("probe", Some(&key))
+                && !ledger.is_some_and(|v| v.probe_handled(dss, p, tol, &ctx))
+            {
                 compare_probe(dss, p, tol, &ctx);
             }
         }

@@ -3,7 +3,7 @@
 
 use num_complex::Complex64;
 
-use super::{Capacitor, CapacitorSpecType};
+use super::{CUF_SCALE, Capacitor, CapacitorSpecType};
 use crate::elements::ckt::CktElementData;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
@@ -249,6 +249,48 @@ impl CktElement for Capacitor {
     ///   `BeginEdit`/`EndEdit` (the applier auto-brackets it).
     /// - 3 (CMatrix, only when multi-phase): average the self/mutual of `CMatrix`
     ///   into `Cuf` (the mutual loop includes the 2..N diagonals, as in Pascal).
+    ///
+    /// # The `Cuf` write of the `CMatrix` arm
+    ///
+    /// `Cuf` is a *double-array* property (per switched step;
+    /// `.inputs/dss_capi/src/PDElements/Capacitor.pas:240`), and neither oracle
+    /// revision actually applies the `Cs - Cm` it computes for it:
+    ///
+    /// * pinned dss_capi 0.14.5 aims the **scalar** setter at it —
+    ///   `SetDouble(ord(TProp.Cuf), (Cs - Cm), [])` (`Capacitor.pas:814`) —
+    ///   whose trailing `case PropertyType`
+    ///   (`src/General/DSSObjectHelper.pas:2812-2834`) enumerates only the three
+    ///   scalar double types and has no `else`, so the value is dropped with no
+    ///   error while `SetDouble`'s success path (`:3050-3054`) still marks the
+    ///   property sequence and runs the `Cuf` side effect `SpecType := 2`
+    ///   (`Capacitor.pas:383-386`). The bank is then computed from whatever
+    ///   `FC` happened to hold, and the `cmatrix` the user gave is switched out
+    ///   of `MakeYprimWork` for good (`:926-978`; the matrix arm needs
+    ///   `SpecType = 3`). Oracle-verified: `? Capacitor.…cuf` is unchanged
+    ///   across `makeposseq`. The sibling `kvar` arm two branches up writes its
+    ///   own array property correctly with `SetDoubles` (`:793`).
+    /// * EPRI r4133 predates the typed setters and formats the value into a
+    ///   command string instead — `S := S + Format(' Cuf=%-.5g', [(Cs - Cm)])`,
+    ///   then one `Edit(ActorID)`
+    ///   (`Version8/Source/PDElements/Capacitor.pas:829`, `:834-835`) — so it
+    ///   *does* apply it, through `InterpretDblArray`
+    ///   (`Version8/Source/Common/Utilities.pas:788-791`, "Fills array with
+    ///   zeros if we run out of numbers"). But `Cmatrix` is already in farads
+    ///   there (`:255`) while the `cuf` side effect multiplies the parsed array
+    ///   by `1.0e-6` again (`:411`), so r4133 lands 4e-12 F where 4e-6 F was
+    ///   meant — the same value, six orders of magnitude down.
+    ///
+    /// What both revisions *intend* is unambiguous — r4133 spells the array
+    /// write out — so `GOLDEN_REBASE_PLAN.md` G2.5 performs it in both lanes
+    /// (CLAUDE.md 2026-08-02: upstream bugs are never reproduced): the array
+    /// write the parser would have made, in the property's own µF units, so the
+    /// `SpecType := 2` the side effect sets is backed by the capacitance the
+    /// reduction computed. The gated deck that sees it
+    /// (`modes/makeposseq/makeposseq_shunt.dss`, `Capacitor.cap_cmat`) then
+    /// diverges from the `capi_v0145` oracle across the whole post-`makeposseq`
+    /// model; that is ledgered (`tests/corpus/ledger.json`
+    /// `makeposseq-cuf-applied-capi`) and the correct value pinned by
+    /// `elements::pd::capacitor::tests::make_pos_sequence_cmatrix_applies_the_positive_sequence_cuf`.
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
         use super::prop::*;
 
@@ -297,49 +339,21 @@ impl CktElement for Capacitor {
                         }
                     }
                     cm /= npf * (npf - 1.0) / 2.0;
+                    // `Cs - Cm` is the positive-sequence capacitance, and it is
+                    // written to the **array** property `Cuf` — element 1 the
+                    // value, steps 2..N zeroed — in the property's own µF units
+                    // (`PropertyScale = 1.0e-6`, `Capacitor.pas:243`, applied by
+                    // the setter; `Cmatrix` is stored in farads, `:255`, so the
+                    // difference is divided back out here). See the doc comment
+                    // above for why this is the reading both oracle revisions
+                    // meant and neither performs.
+                    let nsteps = self.fnumsteps.max(1) as usize;
+                    let mut new_cuf: Vec<Option<f64>> = vec![Some(0.0); nsteps];
+                    new_cuf[0] = Some((cs - cm) / CUF_SCALE);
                     vec![
                         PosSeqAction::BeginEdit,
                         PosSeqAction::SetI32(PHASES, 1),
-                        // TODO(compat): Pascal `SetDouble(ord(TProp.Cuf), Cs - Cm)`
-                        // aims a scalar `SetObjDouble` at `Cuf`, which is a
-                        // `DoubleArrayProperty`. Upstream `SetObjDouble`'s trailing
-                        // `case PropertyType` writes only the scalar double types, so
-                        // the array `Cuf` is silently NOT written (oracle-verified:
-                        // `cuf` unchanged across `makeposseq`); only the seq-mark +
-                        // Begin/End side effects run. We emit the action to preserve
-                        // that side-effect shape, and the applier's `set_obj_double`
-                        // mirrors the fall-through by skipping the write for non-scalar
-                        // types (see `obj/props/setters.rs:147-160`).
-                        //
-                        // Stage F status (F.3s argued, F.3u corrected, F.3v
-                        // **measured**). The clean fix is *not* "drop the
-                        // discarded write": r4133 predates the typed-setter
-                        // refactor and formats the same value into a command
-                        // string — `S := S + Format(' Cuf=%-.5g', [Cs - Cm])`
-                        // then one `Edit(ActorID)`
-                        // (`Version8/Source/PDElements/Capacitor.pas:829`) — so
-                        // the pre-refactor engine *does* apply it, through
-                        // `InterpretDblArray`, whose own comment says it "fills
-                        // array with zeros if we run out of numbers"
-                        // (`Common/Utilities.pas:788-791`). The faithful fix is
-                        // therefore the array write the parser would have made
-                        // (element 1 = `Cs - Cm`, steps 2..N zeroed), which also
-                        // trips the `Cuf` side effect `SpecType := 2`.
-                        //
-                        // What blocks it is the cost, now measured rather than
-                        // guessed. Driving that write through
-                        // `PosSeqAction::SetStructF64s` (plus the `CUF` arm
-                        // `set_struct_f64_array` still lacks) moves
-                        // `tests/corpus/modes/makeposseq/makeposseq_shunt.dss`
-                        // — `Capacitor.cap_cmat`'s `cmatrix=[10 | -2 10 | -2 -2
-                        // 10]` collapses to `Cs - Cm = 4 µF` where the parity
-                        // lane keeps reading the 10 µF matrix diagonal — and the
-                        // channel that fails is the **node voltages**: 1.438e-1
-                        // V against an allowed 3.339e-6. Like the GICTransformer
-                        // `%R2` row, that is a *whole-case* default-lane
-                        // exclusion, not the Newton row's field-scoped one, so
-                        // it is an owner decision and the row keeps its marker.
-                        PosSeqAction::SetF64(CUF, cs - cm),
+                        PosSeqAction::SetStructF64s(CUF, new_cuf),
                         PosSeqAction::EndEdit,
                     ]
                 } else {
