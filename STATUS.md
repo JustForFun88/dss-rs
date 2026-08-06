@@ -42,16 +42,19 @@ has shrunk to a precision-compat lane and is scheduled for full teardown.
 **In flight.** `GOLDEN_REBASE_PLAN.md` on branch **`golden-g2`**. WP-G0 (safety
 rails) is complete and merged to `update`; WP-G2 (tear down the shared-with-r4133
 bug kernels) is running — G2.0 rails + G2.1a…G2.1h + G2.2a + G2.2b + G2.2c +
-G2.2d + G2.3 + G2.4 + G2.5 landed, `SPLIT_ALIAS_POPULATION` **31 → 12** and
+G2.2d + G2.3 + G2.4 + G2.5 + G2.6 landed, `SPLIT_ALIAS_POPULATION` **31 → 11** and
 `Escape::WholeCase` **4 → 1**, and the WP acceptance criterion still holds at
 HEAD: `git diff --stat -- tests/golden` over the whole range is **empty** in
 both lanes. With G2.3 **none of the six CLAUDE.md §"Known upstream bugs" is
 reproduced in any lane**; with G2.5 the three corpus-blocked `WholeCase` bugs
 (GICTransformer `%R2`, Capacitor `MakePosSequence` `Cuf`, LoadShape MMF
 accept-set) are fixed in both lanes as well, leaving the Generator Model=6 row
-as that bucket's only survivor. Next step: **G2.6** — the `Show` device-name
-column width. Queued behind GOLDEN_REBASE: `WASM_USERMODELS` follow-ups,
-RESONANCE, MULTITHREADING, the UPGRADE line.
+as that bucket's only survivor; G2.6 closed the WP by tearing down the `Show`
+device-name column width, so the eleven surviving split rows are exactly WP-G2's
+fixed point (five numeric precision rows + six rendering rows, the latter WP-G4's
+scope). Next step: **WP-G1** / **WP-G3**, per `PLAN_SEQUENCE.md`. Queued behind
+GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, the
+UPGRADE line.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
@@ -859,6 +862,88 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   No engine kernel changed (the only engine-file edit is a doc comment), so
   `lane_diff.ps1` was not re-run — G2.5's own run already reported max |Δ| = 0
   and nothing since can move it.
+
+- **G2.6** (2026-08-07) — the **`Show` device-name column width**, the capi-only
+  row the `4f977d9e` alignment pass missed and the last of WP-G2.
+  `compat::max_device_name_length` reproduced a **defect**, not a rendering
+  convention: dss_capi's `SetMaxDeviceNameLength` zeroes the unit variable
+  (`Common/ShowResults.pas:116`, declared `:82`) and then accumulates the maximum
+  inside `with DSS.ActiveCircuit do` (`:117-121`), where the identifier resolves
+  to the **shadowing** `TDSSCircuit` field (`Common/Circuit.pas:100`, initialized
+  to 30 at `:379`) — so the writers, which read the unit variable, format every
+  `Show` name column against **0**. Verified against both sources in this
+  sub-step: r4133 has no such field, `MaxDeviceNameLength` lives there only as a
+  unit variable (`Version8/Source/Common/ShowResults.pas:66`, loop `:79-90`), and
+  its `WriteTerminalPowerSeq` writes the terminal as `j:3` (`:1160`) rather than
+  `IntToStr(j)` — two independent reasons the authority cannot glue. **Teardown:**
+  the alias and both `_impl` kernels are gone; all seven `report::show` writers
+  call `device_name_width` directly, in both lanes.
+  **Blast radius, re-measured rather than assumed.** Only the `IntToStr` site
+  (`ShowResults.pas:1375`) is tokenizable, so only the three `show_busflow*`
+  goldens are affected; every other consumer pads with spaces or `PadDots` runs,
+  which `harness::split_fields` drops. Measured by running the whole
+  `golden_reports` suite in the **parity** lane after the flip (249 tests green,
+  including every `Show` family) and by a tree-wide search for a closing quote
+  followed by a non-space in `tests/golden/reports/show_*.txt`: the only hits are
+  the three busflow files (5 + 5 + 3 rows) plus four reports that do not use this
+  width at all. Their oracle text is de-glued by `golden_reports::busflow_expected`,
+  now **unconditional** (`LANE-EXCLUSION(max_device_name_length)`); the parity
+  early return and the non-vacuity test's lane arm are gone, while that test's
+  capture-reading assert stays (it reads the committed oracle capture, a fact
+  about dss_capi 0.14.5, not about our lane — it dies at G3.3b).
+  `terminal_total_expected` and its non-vacuity lane arm were deliberately **not**
+  touched: they belong to `compat::render_rows` over `PadDots('   TERMINAL
+  TOTAL')`, which lives until WP-G4.5.
+  **Pin.** `device_name_column_width_is_the_lane_kernel` →
+  `exec::tests::compat_quirks::device_name_column_is_sized_from_its_content`
+  (`EXPECTED-VALUE-PIN(max_device_name_length)`), unconditional, and strengthened
+  while it lost its branches: besides the measured width and both sides of the
+  glue boundary (a short name gets its own terminal column; the *longest* name
+  fills `width + 2` exactly and still glues), it now asserts the real
+  `Show busflow` text from the executive's own formatter, so the seven call sites
+  are covered and not just the measuring function. That third claim bites in the
+  parity lane, where `compat::render_rows` replays Pascal's `Pad`; the default
+  lane's table kernel would separate the columns anyway.
+  **Collateral, found by the parity gate and repaired in the same sub-step.**
+  The neighbouring `render_rows` pin `show_table_layout_is_the_lane_kernel`
+  claimed "the two `Show Losses` rows' numbers start at the same column only when
+  a table sized them" — a discriminator that worked *because* the parity width
+  was 0: with an honest width, `Pad` aligns the rows with each other too, so the
+  claim went red in the parity lane. It was **not** relaxed: claim 2 is now made
+  against each kernel's own sizing rule (parity pads to the engine's circuit-wide
+  `width + 2`, the table sizes from the names it actually prints), and the
+  fixture was given a **Load** whose name is longer than either Line's — `Show
+  Losses` lists only PD elements, so that name sets Pascal's field width without
+  ever reaching the table, which re-separates the kernels by ~12 columns. The
+  fixture's discriminating property is itself asserted, so a rename cannot make
+  the test vacuous.
+  **Bookkeeping.** `SPLIT_ALIAS_POPULATION` 12 → 11 with the eleven survivors
+  enumerated at the constant; `TORN_DOWN_ROWS` gains the row (`Kind::SplitAlias`,
+  `Evidence::Site` on `report/show/bus_powers.rs` — the one call site a golden
+  observes, the other six being unobservable by construction now that the alias
+  itself is deleted); the F-FMT narrative at `oracle_parity_cfg_gate.rs:488`
+  records that six of F.4's seven rows survive and the seventh was never a
+  rendering convention; the `compat.rs:47` table row and the `max_bus_name_length`
+  note in `report/show/mod.rs` are re-pointed. **No doc-surface citation existed**
+  (measured over the walked surface — CLAUDE.md / TESTING.md / TOLERANCE_NOTES /
+  ledger / manifests / `tools/**`: zero hits for the alias), so no doc edit was
+  owed. The `branches_on_lane` doc-measurement is re-taken: `golden_reports.rs`
+  now reads the lane ×4 (was ×6) and, having lost its last split alias, is no
+  longer a pin file — so **no** surviving row's pin depends on the `lane::PARITY`
+  arm; it stays as the recogniser for the harness spelling, and the doc now says
+  so instead of claiming it load-bearing.
+  **Local-only docs (gitignored, written in this sub-step).** This row had neither
+  an `issue-*` report nor a registry section — it is the one bug the investigation
+  series missed. Both were written:
+  `investigations/issue-36-show-device-name-column-width-zero.md` and
+  `TODO_COMPAT_REGISTRY.md` §3.32, plus a correction to §3.31 (which had counted
+  the width among eleven FPC *formatting* places) and a tenth row in
+  `investigations/to_opendss/NOT-APPLICABLE-TO-R4133.md` carrying the
+  `Circuit.pas:100` field citation. No `to_opendss` report is owed — r4133 does
+  not carry the defect.
+  Zero golden bytes moved (`git diff --stat -- tests/golden` empty over the
+  range); the corpus gate is green in both lanes, which is what would have
+  falsified the classification.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

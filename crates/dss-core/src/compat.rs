@@ -44,7 +44,7 @@
 //! | Monitor `BaseFrequency` 60.0 (CLAUDE.md bug 6) | *torn down* (GOLDEN_REBASE G2.2b) — `exec::command::create_object_no_edit` inherits `Fundamental` for every element, Monitor included, in both lanes | — |
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5) | *torn down* (GOLDEN_REBASE G2.3) — `exec::view::snapshot_elements` recomputes `Iterminal` at the converged `NodeV` for Powers, Losses and Currents alike, in both lanes | — |
 //! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
-//! | report text rendering — `Show` device-name column width | [`max_device_name_length`] — same section | **yes** (F.4b) |
+//! | report text rendering — `Show` device-name column width | *torn down* (GOLDEN_REBASE G2.6) — [`crate::report::show::device_name_width`] sizes the column from its own content in both lanes; the reproduced `= 0` was a dss_capi-only **defect** (a shadowing `TDSSCircuit` field), not a rendering convention | — |
 //! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f, the CIM wye `grounded` flag G2.1g, the Line height-unit re-read G2.1h, the Isource `Bus2` latch G2.2b, the two CIM attribute names and the Fault `Dump` `MinAmps` reprint G2.2c, the two Relay event-log labels G2.2d, and the unflushed monitor-channel pad G2.4 — that last one mostly *reclassified* rather than fixed: the `[0.0]` it reproduced comes from the oracle clients' stream decoder, not from an engine (the engines' own answer there, `SampleCount` fabricated zeros, is a separate upstream defect this port declines, unobservable through either client) |
 //!
 //! The Monitor `BaseFrequency` and Newton stale-`Iterminal` rows were not in
@@ -932,26 +932,6 @@ pub use JSON_LINE_BREAK_PARITY_IMPL as JSON_LINE_BREAK;
 pub const JSON_LINE_BREAK_PARITY_IMPL: &str = "\r\n";
 /// The platform-independent line break — see [`JSON_LINE_BREAK`].
 pub const JSON_LINE_BREAK_DEFAULT_IMPL: &str = "\n";
-
-/// See the parity-lane twin above.
-#[cfg(not(feature = "oracle-parity"))]
-pub use crate::report::show::max_device_name_length_measured_impl as max_device_name_length;
-/// The width of the device-name column in the fixed-width `Show` tables — the
-/// **table-layout** half of F-FMT (§F-FMT step 2), as opposed to the number
-/// formats above.
-///
-/// * parity — [`crate::report::show::max_device_name_length_zero_impl`]: the
-///   pinned 0.14.5 backend returns **0** whatever the element names are, so the
-///   column collapses and `Show BusFlow` glues the terminal number onto the
-///   quoted name.
-/// * default — [`crate::report::show::max_device_name_length_measured_impl`]:
-///   the width the Pascal *source* computes, i.e. the column sized from its own
-///   content.
-///
-/// Pinned by
-/// `exec::tests::compat_quirks::device_name_column_width_is_the_lane_kernel`.
-#[cfg(feature = "oracle-parity")]
-pub use crate::report::show::max_device_name_length_zero_impl as max_device_name_length;
 
 /// How a run of fixed-width `Show` rows becomes text — the **table-layout**
 /// kernel of F-FMT (§F-FMT step 2), the counterpart of the number formats above.

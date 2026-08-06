@@ -11,24 +11,39 @@
 use super::common::{dss_with_circuit, query, query_f64};
 use crate::exec::Dss;
 
-/// Expected-value pin for the F-FMT **table-layout** row
-/// [`crate::compat::max_device_name_length`] — the `Show` half of §F-FMT step 2.
+/// EXPECTED-VALUE-PIN(max_device_name_length): the `Show` device-name column is
+/// sized from its own content, in **both** lanes.
 ///
-/// Two claims, both asserted as equalities against the lane so they are checked
-/// in either build:
+/// The row this replaces reproduced dss_capi's width of **0**: its
+/// `SetMaxDeviceNameLength` zeroes the unit variable
+/// (`.inputs/dss_capi/src/Common/ShowResults.pas:116`) and then accumulates the
+/// maximum inside `with DSS.ActiveCircuit do` (`:117-121`), where the name
+/// resolves to the shadowing `TDSSCircuit` field (`src/Common/Circuit.pas:100`,
+/// initialized to 30 at `:379`) — so the writers, which read the unit variable,
+/// format against 0. r4133 has no such field: `MaxDeviceNameLength` is a unit
+/// variable only (`Version8/Source/Common/ShowResults.pas:66`) and the same loop
+/// (`:79-90`) leaves the honest width behind. A defect on one side and the
+/// authority's honest width on the other, so `GOLDEN_REBASE_PLAN.md` G2.6 tore
+/// the reproduction down and this pin lost its lane branches.
 ///
-/// 1. the width itself — 0 in the parity lane (what the pinned 0.14.5 backend
-///    returns regardless of the names) versus the longest `Class.Name` in the
-///    circuit in the default lane;
+/// Three claims, all unconditional:
+///
+/// 1. the width itself is the longest `Class.Name` in the circuit;
 /// 2. what that width *does*, at the one place it is observable: `Show BusFlow`
 ///    writes `Pad(EncloseQuotes(FullName), width + 2) + IntToStr(term)`
-///    (`ShowResults.pas:1375`), so at width 0 the terminal number is glued to the
-///    closing quote and at the honest width it is a column of its own. Asserting
-///    the rendered row, not just the number, is what keeps this a *layout* pin
-///    rather than a restatement of the constant.
+///    (`ShowResults.pas:1375`), so a name shorter than the field gets a terminal
+///    column of its own — while the *longest* name, which fills `width + 2`
+///    exactly, still glues. Asserting both sides of that boundary is what keeps
+///    the pin from passing on an engine that merely padded everything, and it is
+///    the boundary `golden_reports.rs::busflow_expected` is written around;
+/// 3. that the width the report *formatter* uses is that same measured one —
+///    asserted on the real `Show busflow` text, so the seven `report::show`
+///    call sites are covered too and not just the measuring function. Claim 3
+///    bites in the parity lane, whose `compat::render_rows` replays Pascal's
+///    `Pad`; the default lane's table kernel gives every cell its own column, so
+///    there a reverted call site would still separate. Both lanes run it.
 #[test]
-fn device_name_column_width_is_the_lane_kernel() {
-    let parity = crate::compat::ORACLE_PARITY;
+fn device_name_column_is_sized_from_its_content() {
     let mut dss = Dss::new();
     dss.command("clear");
     dss.command("new circuit.probe basekv=12.47 pu=1.0 phases=3 bus1=sourcebus");
@@ -41,42 +56,59 @@ fn device_name_column_width_is_the_lane_kernel() {
     let longest = "Capacitor.cap_with_a_long_name";
     assert_eq!(longest.len(), 30, "the fixture's longest full name");
 
-    let ckt = dss.circuit().expect("solved circuit");
-    let measured = crate::report::show::device_name_width(&dss.classes, ckt);
+    let measured = {
+        let ckt = dss.circuit().expect("solved circuit");
+        crate::report::show::device_name_width(&dss.classes, ckt)
+    };
     assert_eq!(
         measured,
         longest.len(),
-        "the honest width is computed in both lanes"
-    );
-    let width = crate::compat::max_device_name_length(measured);
-    assert_eq!(
-        width,
-        if parity { 0 } else { longest.len() },
-        "the device-name column width is the lane's (parity = {parity})"
+        "the honest width is the longest `Class.Name` in the circuit"
     );
 
     // The layout consequence, on the row the width actually formats. Note the
     // column is sized `width + 2` where `width` already counts the *unquoted*
-    // name, so the longest element exactly fills it and still glues in **both**
-    // lanes — the split shows on every shorter name, which is what a column is
-    // for.
+    // name, so the longest element exactly fills it and still glues — the split
+    // shows on every shorter name, which is what a column is for.
     let row = |full: &str| {
         format!(
             "{}{}",
-            crate::report::format::pad(&crate::report::format::enclose_quotes(full), width + 2),
+            crate::report::format::pad(&crate::report::format::enclose_quotes(full), measured + 2),
             1
         )
     };
     let short = row("Line.l1");
-    assert_eq!(
-        short.contains("\"1"),
-        parity,
-        "at width 0 the terminal number is glued to the closing quote; at the \
-         honest width it is a separate column ({short:?})"
+    assert!(
+        !short.contains("\"1"),
+        "a name shorter than the field gets a terminal column of its own; the \
+         glued form is upstream's width-0 layout ({short:?})"
     );
     assert!(
         row(longest).contains("\"1"),
-        "the longest name fills the column exactly in either lane"
+        "the longest name fills the column exactly, so it glues even at the \
+         honest width — the boundary this row's transform is written around"
+    );
+
+    // …and the report formatter really uses that width: `Line.l1`'s seq-power
+    // row carries its terminal as a token of its own.
+    let text = {
+        let Dss {
+            classes, circuit, ..
+        } = &mut dss;
+        let ckt = circuit.as_ref().expect("solved circuit");
+        let bus_idx = ckt.bus_list.find("b2").expect("bus b2");
+        let sys = crate::solution::solution::sys_ctx(ckt);
+        let node_v = ckt.solution.node_v.clone();
+        crate::report::show::show_bus_powers(classes, ckt, &sys, &node_v, bus_idx, 0, 0)
+    };
+    let power_row = text
+        .lines()
+        .find(|l| l.starts_with("\"Line.l1\""))
+        .unwrap_or_else(|| panic!("no `Line.l1` seq-power row in\n{text}"));
+    assert!(
+        !power_row.contains("\"1"),
+        "the `Show busflow` writer padded the name column to a width below the \
+         measured one — upstream's collapsed layout is back ({power_row:?})"
     );
 }
 
@@ -91,9 +123,21 @@ fn device_name_column_width_is_the_lane_kernel() {
 ///    block is `Pad(label, 30) + Format('%10.1f') + ' kW'`, so the unit lands at
 ///    column 40 exactly; the table kernel puts it wherever the column ends up.
 /// 2. **The default lane really is the table crate**, i.e. it sizes the
-///    element-name column from its own content: the two rows' quoted names have
-///    different lengths and their following field starts at the *same* column
-///    only when a table sized them.
+///    element-name column from *its own rendered content* while the parity
+///    kernel pads to the width the engine hands it — `Pad(EncloseQuotes(name),
+///    MaxDeviceNameLength + 2)`, a circuit-wide maximum. The fixture separates
+///    the two by carrying a **Load** whose name is far longer than either Line's:
+///    `Show Losses` lists only power-delivery elements, so that name never
+///    reaches the table, yet it does set the Pascal field width. The parity rows
+///    therefore start their numbers at or past `width + 2` and the table rows
+///    well before it.
+///
+///    (Until `GOLDEN_REBASE_PLAN.md` G2.6 this claim was written as "the two
+///    rows' numbers start at the *same* column only when a table sized them" —
+///    which worked only because the parity lane's width was stuck at 0, i.e.
+///    because of the defect G2.6 removed. With an honest width `Pad` aligns the
+///    rows with each other too, so that comparison stopped discriminating and
+///    the claim is now made against each kernel's own sizing rule.)
 /// 3. **Neither kernel moves a field**: both renderings carry the identical
 ///    token stream — the property `report::table` guarantees structurally and
 ///    this pins at a report the executive actually produced.
@@ -105,9 +149,26 @@ fn show_table_layout_is_the_lane_kernel() {
     dss.command("new circuit.probe basekv=12.47 pu=1.0 phases=3 bus1=sourcebus");
     dss.command("new line.l1 bus1=sourcebus bus2=b2 phases=3 r1=0.1 x1=0.2 length=1");
     dss.command("new line.a_much_longer_line_name bus1=b2 bus2=b3 phases=3 r1=0.1 x1=0.2 length=1");
-    dss.command("new load.ld bus1=b3 phases=3 kv=12.47 kw=1000 pf=0.95");
+    // Not a power-delivery element, so it never appears in `Show Losses` — but
+    // it *is* the circuit's longest full name, which is what sizes Pascal's
+    // field. That gap between "widest name in the circuit" and "widest name in
+    // this table" is what separates the two kernels (claim 2).
+    dss.command(
+        "new load.ld_with_a_name_longer_than_any_line bus1=b3 phases=3 kv=12.47 kw=1000 pf=0.95",
+    );
     dss.command("solve");
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let width = {
+        let ckt = dss.circuit().expect("solved circuit");
+        crate::report::show::device_name_width(&dss.classes, ckt)
+    };
+    assert_eq!(
+        width,
+        "Load.ld_with_a_name_longer_than_any_line".len(),
+        "the fixture's widest full name must be the Load's, or claim 2 stops \
+         separating the kernels"
+    );
 
     let text = {
         let Dss {
@@ -149,18 +210,22 @@ fn show_table_layout_is_the_lane_kernel() {
          kernel sizes the columns instead ({total:?} vs {pascal:?})"
     );
 
-    // 2. the element-name column is content-sized in the default lane only.
-    //    (The kW field's `', '` separator is the table kernel's gutter there, so
-    //    the row is matched by its quoted name, not by a comma.)
+    // 2. the element-name column is content-sized in the default lane only: the
+    //    parity kernel pads it to the engine's circuit-wide `width + 2`, which
+    //    the Load's name inflates past anything this table renders.
     let rows: Vec<&str> = text.lines().filter(|l| l.starts_with('"')).collect();
     assert_eq!(rows.len(), 2, "one row per Line: {rows:?}");
     let kw_col = |l: &str| next_field(l, l.rfind('"').expect("the closing quote") + 1);
-    assert_eq!(
-        kw_col(rows[0]) == kw_col(rows[1]),
-        !parity,
-        "the table kernel pads both names to one column; the parity kernel's \
-         `Pad(name, 0 + 2)` leaves each row its own width ({rows:?})"
-    );
+    for row in &rows {
+        assert_eq!(
+            kw_col(row) >= width + 2,
+            parity,
+            "the parity kernel writes `Pad(EncloseQuotes(name), width + 2)` with \
+             the circuit-wide width ({width} + 2 here); the table kernel sizes \
+             the column from the names it actually prints, which are far shorter \
+             ({row:?})"
+        );
+    }
 
     // 3. …and no field moved between the two.
     let fields = |l: &str| {
