@@ -39,20 +39,34 @@ the behavioral authority, the pinned dss_capi 0.14.5 is a numeric oracle only,
 and upstream bugs are never reproduced in any lane** — the `oracle-parity` lane
 has shrunk to a precision-compat lane and is scheduled for full teardown.
 
-**In flight.** `GOLDEN_REBASE_PLAN.md` on branch **`golden-g2`**. WP-G0 (safety
-rails) is complete and merged to `update`; WP-G2 (tear down the shared-with-r4133
-bug kernels) is running — G2.0 rails + G2.1a…G2.1h + G2.2a + G2.2b + G2.2c +
-G2.2d + G2.3 + G2.4 + G2.5 + G2.6 landed, `SPLIT_ALIAS_POPULATION` **31 → 11** and
-`Escape::WholeCase` **4 → 1**, and the WP acceptance criterion still holds at
-HEAD: `git diff --stat -- tests/golden` over the whole range is **empty** in
-both lanes. With G2.3 **none of the six CLAUDE.md §"Known upstream bugs" is
-reproduced in any lane**; with G2.5 the three corpus-blocked `WholeCase` bugs
-(GICTransformer `%R2`, Capacitor `MakePosSequence` `Cuf`, LoadShape MMF
-accept-set) are fixed in both lanes as well, leaving the Generator Model=6 row
-as that bucket's only survivor; G2.6 closed the WP by tearing down the `Show`
-device-name column width, so the eleven surviving split rows are exactly WP-G2's
-fixed point (five numeric precision rows + six rendering rows, the latter WP-G4's
-scope). Next step: **WP-G1** / **WP-G3**, per `PLAN_SEQUENCE.md`. Queued behind
+**In flight.** `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
+from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
+teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
+`4d3fc2d7`, all pushed): G2.0 rails + G2.1a…G2.1h + G2.2a–d + G2.3 + G2.4 +
+G2.5 + G2.6 landed, `SPLIT_ALIAS_POPULATION` **31 → 11**, `Escape::WholeCase`
+**4 → 1**, zero golden bytes moved over the whole WP, and none of the six
+CLAUDE.md §"Known upstream bugs" is reproduced in any lane (the eleven
+surviving split rows are the WP's fixed point: five numeric precision rows +
+six rendering rows, the latter WP-G4's scope).
+
+WP-G1 (live gate to fastdss parity) opened 2026-08-08. **G1.1 BLOCKED at its
+plan kill criterion** (plan: ">~15 new ledger entries, or any entry that cannot
+be pinned → the r4133 property surface diverges materially; needs its own
+plan"): the unmask was implemented scratch-style and measured by a full-cell
+census of the exact gate comparison — **433 of ~512 live cases diverge on
+r4133 properties**: 209 structural (class,prop) pairs (960 129 cells —
+rendering-convention deltas: case preservation vs lowercase, boolean wording,
+array/empty formats, enum spelling, display-default strings — not
+ledgerable/pinnable at all), 94 numeric pairs (95 317 cells — mostly Delphi
+`%-.5g`/`%-.6g` display precision; a tail of genuine value jumps needing
+root-cause, some possibly port bugs to FIX rather than ledger), 5
+property-table shape gaps (Generator `Rneut`/`Xneut`, Sensor `action`,
+AutoTrans `XfmrCode`, WindGen `UserModel`/`UserData` missing from the port;
+GenDispatcher `weights` the one reverse row). Nothing committed; the capi
+channel is unaffected; full census persisted at
+`investigations/g1_1_r4133_props/` (local-only). **User decision pending:**
+dedicated r4133-property-parity plan now vs G1.1 deferred. G1.2 (ESPVLControl
+deck) and G1.3d (discrete extras) run on — independent of G1.1. Queued behind
 GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, the
 UPGRADE line.
 
