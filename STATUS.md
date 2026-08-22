@@ -46,12 +46,14 @@ knob (`DSS_PROPS_CENSUS=1` on the corpus gate; both channels, masks bypassed,
 collect-don't-panic, `tmp/props_census.json` + the RP0.1 extracts, asserts
 nothing). The knob reproduces the vendored rows row-for-row on the spot-checked
 `modes:windgen` family and, over the full 438-case re-census, on 209 of 210
-structural pairs and all 94 numeric ones. Its three residuals are recorded as
-findings against the frozen evidence (the files are not rewritten): a missing
-`regcontrol.fwdthreshold` echo pair (888 cells — RP2.3 provisioning grows to
-bin 5 = 45 pairs), two whole-element gaps on the cursor-disagreement
-transformers (+22 cells), and an ASLR'd address inside five `oracle_error`
-texts. WP-RP1 (property-table shape closure) is next.
+structural pairs and all 94 numeric ones. Its residuals are recorded as
+findings against the frozen evidence (the data files are not rewritten): a
+missing `regcontrol.fwdthreshold` echo pair (888 cells — RP2.3 provisioning
+grows to bin 5 = 45 pairs, example rows via RP2.1's `examples_supplement.txt`),
+two whole-element gaps on the cursor-disagreement transformers (+22 cells), and
+an ASLR'd address inside five `oracle_error` texts; the closing docs pass
+amended the plan (§1.1/§1.2/RP0.2/RP2.1/RP2.3) and the vendored README to the
+re-measured reality. WP-RP1 (property-table shape closure) is next.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -1300,8 +1302,11 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
        exactly — its `examples_full.txt` carries `regcontrol.fwdthreshold |
        '100' | '' | 864` and `| '800' | '' | 24` (Σ 888) — so RP2.1/RP2.3 must
        either add those two rows to the replay's input or exempt the
-       row with this record as its citation. Decide it there; RP0.2 does not
-       touch the frozen evidence.
+       row with this record as its citation. **Decided in the closing docs
+       pass (2026-08-22): RP2.1 vendors `examples_supplement.txt` with those
+       two rows (provenance = this record) and feeds the replay from both
+       files; the plan's §1.1 bin-5 row, §1.2 replay bullet, RP2.1 and RP2.3
+       are amended accordingly.** The frozen RP0.1 files stay untouched.
     2. **The two cursor-disagreement transformers are absent whole-element**
        (`asymmetric:transformer/transformer_asym.dss` `Transformer.t3w`,
        `solvable_now:Test/YgD-Test.dss` `Transformer.tr1` — exactly the two the
@@ -1322,10 +1327,11 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
        So every case the 2026-08-08 walk touched left a row, and the 79 `large`
        decks left none, i.e. were not walked (they are excluded from property
        forcing on the gate too). The knob measures and prints the same 438.
-       Recorded, not fixed: the README is RP0.1's frozen evidence and RP0.2 does
-       not edit it — it is the outlier against both the plan and the data, and
-       needs the same closing-docs treatment RP0.1's other three README
-       corrections got.
+       Recorded, not fixed by RP0.2: the README is RP0.1's frozen evidence and
+       RP0.2 does not edit it — it is the outlier against both the plan and the
+       data. **Fixed in the closing docs pass (2026-08-22): the README sentence
+       now states the measured 438-of-438 population, with the original wording
+       quoted in place.**
     5. **The vendored extracts spell the same cell two ways, and the README
        promises more re-derivation than the plain census can give** (audit-code).
        (a) The generator escaped backslashes in `structural_pairs.txt` (Python
@@ -1339,7 +1345,12 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
        file RP2.1 actually replays) — but `bins.tsv` needs the §1.1 bin policy
        and the three `*_in_scope` files need the in-scope case filter, neither of
        which the plain census carries; both belong to RP2.1's disposition mode.
-       Recorded for the same closing-docs pass as finding 4.
+       **Fixed in the closing docs pass (2026-08-22): the README's provenance
+       paragraph now states what the knob writes as landed (incl.
+       `examples_full.txt` and `run.json`), that `bins.tsv`/`*_in_scope` wait
+       on RP2.1's `claims` mode, and the uniform-escaping deviation; the
+       `storage.dynadll` two-spellings trap is called out in the data-traps
+       section with RP2.1 named as the consumer at risk.**
   - **Three things the vendored census could not report, now measured.** The
     `channels` block carries `unaligned_cells` — cells no index-ordered compare
     can reach because the two name lists desynchronized earlier in the element
