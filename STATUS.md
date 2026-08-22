@@ -67,7 +67,14 @@ channel is unaffected; full census persisted at
 `investigations/g1_1_r4133_props/` (local-only). **Resolved 2026-08-22 (user
 decision): the dedicated plan is authored — `R4133_PROPS_PLAN.md`** (WP-RP0–RP5;
 adversarially verified against the repo + census, all findings settled
-in-text). G1.1 is handed to it: RP4.1 delivers the unmask with the kill
+in-text; hardened same day by a second round — two independent re-verifiers, a
+commit-integration audit and an executor-followability audit: 2 majors fixed
+in-plan — the replay contract went per-(rust,r4133)-spelling because three
+in-scope pairs mix BoolFold cells with `''`-echo cells, and RP2.1 gained the
+row-by-row r4133 disposition of the channel-blind `SKIP_PROPS`/`LANE_SKIP_PROPS`
+— plus a `bins.tsv` RP0.1 artifact, the harness-local channel type note
+(`EngineChannel` is `pub(crate)` to corpus_gate), NCIM/probe/fixture pointers,
+and ~15 citation/ordering minors). G1.1 is handed to it: RP4.1 delivers the unmask with the kill
 criterion re-armed; GOLDEN_REBASE G3.4/G3.5 wait on RP4.1; PLAN_SEQUENCE rows
 5a/5b added the same day. G1.2 (ESPVLControl deck) and G1.3d (discrete extras)
 run on — independent of G1.1. Queued behind GOLDEN_REBASE: `WASM_USERMODELS`

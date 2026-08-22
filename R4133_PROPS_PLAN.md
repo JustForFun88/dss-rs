@@ -35,7 +35,7 @@ RP0.2 knob (order RP0.2 before RP0.1 in that case, and say so in STATUS).
 > genuine value jumps). The user's decision: author this dedicated plan now.
 > **G1.1 is superseded by this plan**: its deliverable (the unmask) lands as
 > RP4.1; GOLDEN_REBASE WP-G3 sub-steps that presume live props on both channels
-> (G3.4 `GOLDEN_REBASE_PLAN.md:923`, G3.5 `:935`) wait for RP4.1.
+> (G3.4 `GOLDEN_REBASE_PLAN.md:928`, G3.5 `:941`) wait for RP4.1.
 >
 > The construction has three parts, in this order: **1)** make the evidence
 > durable and the property tables complete (WP-RP0 evidence + census rails,
@@ -142,9 +142,13 @@ No batching of audits across sub-steps, no shared fix agent across sub-steps.
 Six work packages, strictly ordered as WPs: RP0 → {RP1, RP2, RP3} → RP4 → RP5.
 Inside the middle group, sub-steps may interleave **with these hard constraints**:
 RP2.1 (the normalization engine and the replay harness) lands before RP2.2, RP2.3
-and RP2.4 (they add rows to its tables); RP3.4 lands after RP2.3 (its ledger twins
-must not duplicate echo rows). RP4.1 starts only after **every** RP1–RP3 sub-step
-is landed; RP5 is last. Execution is on a **single branch only — never in parallel
+and RP2.4 (they add rows to its tables — `PROPS_ECHO_R4133` is created **empty**
+in RP2.1; its rows land in RP2.3); RP2.3 lands after RP2.2 (its row set is "bin 5
++ bin-7 echoes minus what RP2.2 routed here" — undefined before RP2.2); RP3.2
+lands after RP2.3 whenever its outcome is an echo row; RP3.4 lands after RP2.3
+(its ledger twins must not duplicate echo rows). RP4.1 starts only after
+**every** RP1–RP3 sub-step is landed, including any RP3.5+ sub-step RP2.2's
+triage opens; RP5 is last. Execution is on a **single branch only — never in parallel
 worktrees**: `tests/corpus/ledger.json`, `tests/corpus/manifests/population.lock.json`
 and `tests/golden/golden.lock.json` are fail-on-stale and are rewritten by this
 plan **and** by the still-open GOLDEN_REBASE WP-G1 sub-steps (G1.2, G1.3d run
@@ -175,8 +179,8 @@ audits on `opus-xhigh` exec rows are themselves `opus-xhigh`.
 | RP2.1 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | the design centerpiece: channel threading, value-preserving rule engine, replay accounting, non-loosening argument |
 | RP2.2 | `opus-high+` | `opus-high+` | `opus-high+` | per-pair source dossier over an enumerated, closed pair list |
 | RP2.3 | `opus-high+` | `opus-high+` | `opus-high+` | echo-exclusion rows, each mechanically citable to an r4133 echo site, plus pins |
-| RP2.4 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | a new channel-scoped numeric floor — calibration discipline (TOLERANCE_NOTES §8-component contract) |
-| RP3.1–RP3.4 | `opus-high+` | `opus-high+` | `opus-high+` | one root-cause each, bounded surface, live-probe procedure prescribed |
+| RP2.4 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | a new channel-scoped numeric floor — calibration discipline (the eight required components are enumerated in RP2.4 itself) |
+| RP3.1–RP3.4 (+ any RP3.5+ opened by RP2.2) | `opus-high+` | `opus-high+` | `opus-high+` | one root-cause each, bounded surface, live-probe procedure prescribed |
 | RP4.1 | `opus-high+` | `opus-high+` | `opus-high+` | flag flip + residual triage (G1.1's own tier) |
 | RP5.1, RP5.2 | `opus-high+` | `opus-high+` | `opus-high+` | doc surgery validated by `oracle_parity_cfg_gate.rs` doc tests |
 
@@ -202,14 +206,15 @@ Restricted to r4133-gating cases: 390 divergent cases, 198 structural pairs
 (generator 137, autotrans 7, windgen 5 — Sensor's 61 and GenDispatcher's 48
 shape rows sit entirely on capi-only cases; the full-census shape total is 429
 over 5 classes).
-The full-census bins below are re-derived in-scope by RP0.1; the treatment map
-binds every bin to the sub-step that closes it:
+The full-census bins below are re-derived in-scope by RP0.1 (its `bins.tsv`
+assigns every pair to its bin); the treatment map binds every bin to the
+sub-step that closes it:
 
 | # | census bin (pairs / cells, full census) | root cause | treatment | lands in |
 |---|---|---|---|---|
-| 1 | boolean rendering, 75 / 297 593 | FPC `Yes`/`No` vs seven Delphi spellings (`true/True/YES/yes/no/NO/n`); the `''` renders in this bin are echo-defaults, not booleans | `BoolFold` rule; `''` rows go to the echo table | RP2.1 / RP2.3 |
+| 1 | boolean rendering, 75 / 297 593 | FPC `Yes`/`No` vs eleven non-empty Delphi spellings (`true/True/false/False/YES/yes/no/NO/n/y/Y` — `False` alone is 76 492 cells); the `''` renders in this bin are echo-defaults, not booleans | `BoolFold` rule; `''` cells go to the echo table (three pairs mix both — §1.2 replay bullet) | RP2.1 / RP2.3 |
 | 2 | case-only + trailing space, 59 / 72 007 + 2 / 21 206 | THashList lowercasing (port = dss_capi) vs Delphi as-declared case; literal `'wye '`/`'Delta '` (`Transformer.pas:1762-1763`, `AutoTrans.pas:1818-1819`) | `CaseFold` + trim | RP2.1 |
-| 3 | enum spelling + singletons, 8 / 4 400 | per-pair enum spellings (`Positive`/`Pos`) and per-pair semantics (`monitor.mode` decomposition render) | `EnumSynonym` rows + the S6 dossier | RP2.2 |
+| 3 | enum spelling + singletons, 8 / 4 400 | per-pair enum spellings (`Positive`/`Pos`) and per-pair semantics (`monitor.mode` decomposition render) | `EnumSynonym` rows + the S6 dossier (S6 = the triage's per-pair singleton list, enumerated exhaustively in RP2.2) | RP2.2 |
 | 4 | array form, 21 / 122 554 | dss_capi `GetDSSArray` `[ 400]` vs Delphi comma/paren/bare forms | `ArrayForm` tokenizing compare | RP2.1 |
 | 5 | empty-vs-value + display defaults, 44 / 442 369 | `PropertyValue[]` echo: un-overridden `GetPropertyValue` returns the parse store / `InitPropertyValues` default (`DSSObject.pas:112-115`; e.g. `Reactor.pas:1087-1140`, `Transformer.pas:1914-1919`) | `PROPS_ECHO_R4133` exclusion rows + pins | RP2.3 |
 | 6 | numeric display precision, 61 pairs full / 37 in-scope | Delphi `%-.5g`/`%-.6g`/`%-.8g` getters (`Vsource.pas:1327-1343`); measured worst rel 6.43e-5 (`load.pf`) | the r4133 props display floor | RP2.4 |
@@ -237,10 +242,14 @@ Mechanics for every sub-step: **(a) evidence-first** — every row of every tabl
 this plan introduces (normalization rule, echo exclusion, enum synonym, shape
 allowlist) traces to a vendored census extract row (RP0.1) and, where the row
 asserts an upstream mechanism, to an r4133 `Version8/Source` unit:line; no row
-without evidence. **(b) capi-invariance** — no mechanism of this plan may alter
-the capi_v0145 property compare; every new behavior is gated on
-`EngineChannel::R4133` at the comparator seam, and RP2.1 proves invariance with
-an A/B run. **(c) value-preserving normalization only** — a normalization rule
+without evidence. Live r4133 probes throughout this plan follow the epri-worker
+procedure: the bridge and its knobs are documented in `tools/opendss/README.md`
+and TESTING.md §Procedures; the `epri-worker` binary is built by `cargo test`
+itself (`crates/dss-epri`, Windows-only). **(b) capi-invariance** — no
+mechanism of this plan may alter the capi_v0145 property compare; every new
+behavior is gated on the r4133 channel at the comparator seam (the
+`EngineChannel`-visibility trap is §1.2's first bullet), and RP2.1 proves
+invariance with an A/B run. **(c) value-preserving normalization only** — a normalization rule
 may change how a value is spelled, never which value it is (the
 `lane::expected_rerounded` discipline, `lane.rs:546-592`); anything that cannot
 satisfy that is an **exclusion**, and every exclusion whose ours-value has no
@@ -257,7 +266,10 @@ offline arm — plus a count lock per table (the `props_roundtrip.rs:66-68,238`
 pattern). **(e) the ledger stays small** — per-case `ledger.json` entries only
 for genuine one-off divergences no table covers, each with r4133 evidence and
 its pin (`property` scopes are divergence-only and per-case by design,
-`ledger.rs:439-449`, `:974-1105`). **Staging rule:** a `property`-scoped entry
+`ledger.rs:439-449`, `:974-1105`). The entry shape to draft is the existing
+`makeposseq-cuf-applied-capi-props` entry in `tests/corpus/ledger.json` —
+`match: [{field: "property", name_re, rust, oracle}]` rows + `cause_ref` +
+`source`; a new cause needs its own `causes` row. **Staging rule:** a `property`-scoped entry
 on the `r4133` channel is applied only by the r4133 props compare
 (`property_handled_keys`, `ledger.rs:974-1105`, reached from the props path,
 `runner.rs:629`), which stays masked until RP4.1 — landing such an entry
@@ -275,10 +287,17 @@ sub-step's own numeric stop-and-report threshold holds.
 
 ### 1.2 The machinery this plan introduces
 
-- **Channel threading.** `compare_all_properties` grows an `EngineChannel`
-  parameter (it is channel-blind today, `mod.rs:1549`; the channel is already in
-  scope at both gate call sites, `runner.rs:340,629,654`, and the
-  `DSS_LIVE_PROPS` pilot passes capi, `corpus_gate.rs:416`). The normalization
+- **Channel threading.** `compare_all_properties` grows a channel parameter
+  (it is channel-blind today, `mod.rs:1549`; the channel is already in scope at
+  both gate call sites, `runner.rs:340,629,654`, and the `DSS_LIVE_PROPS` pilot
+  passes capi, `corpus_gate.rs:416`). Visibility trap: `EngineChannel` is
+  `pub(crate)` to the `corpus_gate` binary (`corpus_gate/manifest.rs:151`)
+  while `harness/` compiles into ~20 other test binaries that lack that module,
+  so the harness-side parameter is a **harness-local** channel type
+  (`PropsChannel` — the G1.1 scrap's own solution) or the `compare_eventlog`
+  pattern (`oracle_spec: Option<&str>`, `mod.rs:1697`); the corpus_gate call
+  sites map `EngineChannel` into it. Wherever this plan says "`EngineChannel`"
+  at a harness seam, read "the channel". The normalization
   hook sits in `compare_prop_lists` immediately before
   `assert_value_matches_tol` (`mod.rs:1529`) — the function already takes the
   shape allowlist as a parameter for testability (`mod.rs:1470-1477`), and the
@@ -288,7 +307,20 @@ sub-step's own numeric stop-and-report threshold holds.
   **channel-scoped**: skip on the capi channel only; on r4133 both classes
   compare fully (the justification inverts — the tables match r4133).
   Otherwise the census's 22 relay/recloser pairs would be dead on the live path
-  and the RP4.1 closure unreachable.
+  and the RP4.1 closure unreachable. The channel audit does not stop there:
+  `skip_prop` (`mod.rs:1344-1353`, consulted at `:1520`) is channel-blind, so
+  after RP4.1 every `SKIP_PROPS` row (`mod.rs:1261-1332`) would value-mask the
+  r4133 channel too. RP2.1 therefore disposes **every** `SKIP_PROPS` /
+  `LANE_SKIP_PROPS` row for r4133: the changed-default rows — (Fuse,
+  FuseCurve), (Fuse, RatedCurrent), (RegControl, RevThreshold) — must
+  **compare** on r4133 (`tests/TOLERANCE_NOTES.md:951-956` pins the r4133-side
+  values and forbids masking them there); rows justified by channel-independent
+  facts (heap-garbage matrix reads) stay skipped on both channels;
+  `LANE_SKIP_PROPS`'s (Monitor, BaseFreq) stays deliberately channel-blind —
+  r4133 shares the bug (`Monitor.pas` r4133:552). Each disposition lands in the
+  row's comment. These cells are invisible in the census (its walk ran with the
+  skips active), so the rows unmasked for r4133 are validated by the RP4.1 live
+  run, not by the replay.
 - **`PROPS_NORM_R4133`** (new harness module `tests/harness/props_norm.rs`) — the
   channel-scoped value-normalization table, rows keyed `(class, prop)` with a
   typed rule: `BoolFold` (fold `{yes,y,true}` / `{no,n,false}`,
@@ -310,19 +342,29 @@ sub-step's own numeric stop-and-report threshold holds.
   r4133-only) must name their expected-value pin test in the row comment.
 - **The replay-accounting test** (new integration test
   `crates/dss-core/tests/props_r4133_replay.rs`) — reads the vendored census
-  extracts (RP0.1) and pushes every **pair** through the full r4133 policy
-  (shape allowlist → normalization → echo table → display floor), using the
-  untruncated per-pair example values of `examples_full.txt` (the pair files'
-  own example columns are cut at ~34 chars and cannot feed a tokenizing or
-  numeric compare); asserts every in-scope census pair is claimed by **exactly
-  one** mechanism and every table row claims **at least one** census pair
-  (both-ways liveness, offline — no oracle needed; shape-allowlist rows are
-  exercised against the full `shape.txt`, capi-only classes included). The
-  contract is **per-pair offline, per-cell live**: the replay proves pair-level
-  completeness before the unmask; cell-level closure is proven at RP4.1 by the
-  census knob's disposition mode (RP0.2/RP2.1) over the live capture. This is
-  the completeness proof that precedes the unmask, and the anti-rot guard
-  afterwards.
+  extracts (RP0.1) and pushes every **example row** of `examples_full.txt`
+  through the full r4133 policy in the documented chain order (shape allowlist
+  → normalization → echo table → display floor). `examples_full.txt` carries
+  one row per **distinct (rust, r4133) spelling** per pair, untruncated (the
+  pair files' own example columns are cut at ~34 chars and cannot feed a
+  tokenizing or numeric compare; a single example per pair would hide the three
+  in-scope **mixed pairs** — `recloser.eventlog`, `regcontrol.idle`,
+  `relay.distreverse` — whose cells mix foldable boolean spellings with
+  `''`-echo cells). The test asserts every example row is claimed by the
+  **first matching mechanism in the chain**, that each pair's claim set is
+  admissible for its `bins.tsv` bin (bin 1 admits `BoolFold` for foldable
+  spellings **and** an echo row for its `''` cells — a mixed pair legitimately
+  holds both; single-claim is per example row, never per pair), and that every
+  table row claims **at least one** example row (both-ways liveness, offline —
+  no oracle needed; shape-allowlist rows are exercised against the full
+  `shape.txt`, capi-only classes included — for the shared `PROPS_015X` table
+  only the rows **this plan adds** are in the accounting, the pre-existing
+  0.15.x rows answer to `props_roundtrip`/goldens, not to `shape.txt`). The
+  contract is **per-example-row offline, per-cell live**: the replay proves
+  spelling-level completeness before the unmask; cell-level closure is proven
+  at RP4.1 by the census knob's disposition mode (RP0.2/RP2.1) over the live
+  capture. This is the completeness proof that precedes the unmask, and the
+  anti-rot guard afterwards.
 - **The r4133 props display floor** — a named, channel-scoped relative floor
   applied by `compare_prop_lists` to numeric cells on the r4133 channel only
   (provisionally ≈2e-4, inside the measured empty band; RP2.4 derives the final
@@ -365,7 +407,8 @@ sub-step's own numeric stop-and-report threshold holds.
 - **WindGen models 3 and 7.** r4133 dispatches models 1–7
   (`WindGen.pas:2109-2118`); the port admits 1/2/4/5 plus (after RP1.3) 6. No
   corpus deck sets 3 or 7 and no plan owns them — RP1.3 records the deferral as
-  a named row in `ORPHANED_GAPS.md` (verify none exists; create it).
+  a named row in the existing root `ORPHANED_GAPS.md` (verified 2026-08-22: no
+  WindGen row exists yet — add one, do not create a new file).
 - **Report/Dump/Save rendering.** This plan touches only the live
   `all_properties` compare; the `Dump`/`Save` text paths and their goldens stay
   GOLDEN_REBASE territory (WP-G3/G4).
@@ -388,31 +431,43 @@ lands is local-only (`investigations/g1_1_r4133_props/`, five extracts +
 270 MiB full census); nothing in `tests/corpus/props_r4133/` may disagree with
 the numbers already recorded in STATUS.md §1 and this plan §1.1 — a mismatch is
 a stop-and-report, not a silent re-derivation. **Acceptance criterion for the
-whole WP:** the vendored extracts' row counts equal the §1.1 bin counts, the
-in-scope re-derivations carry their filter definition in-file, and the census
-knob reproduces the vendored rows for a spot-checked family on both channels.
+whole WP:** the vendored extracts' data-row counts equal the §1.1 pair/shape
+counts and `bins.tsv`'s per-bin totals equal the §1.1 bin counts, the in-scope
+re-derivations carry their filter definition in-file, and the census knob
+reproduces the vendored rows for a spot-checked family on both channels (in the
+family-filtered sense RP0.2's acceptance defines).
 
 ### RP0.1 — vendor the census extracts
 
-Copy the five small artifacts (24 944 bytes total) into
-`tests/corpus/props_r4133/`: `triage.md` (the 146-line report verbatim),
-`summary.json`, `structural_pairs.txt` (209 rows), `numeric_pairs.txt` (94 rows),
-`shape.txt` (5 rows); derive a sixth, `examples_full.txt` — one row per pair
-(209 + 94), the **untruncated** rust/r4133 example values from the local census
-(the pair files cut examples at ~34 chars; the RP2.1 replay needs whole
-values); add `README.md` with provenance (census of 2026-08-08 at
+Copy the five small artifacts (24 944 bytes total) from the local
+`investigations/g1_1_r4133_props/` (source files carry a `g1_1_` prefix; strip
+it) into `tests/corpus/props_r4133/`: `triage.md` (the 146-line report
+verbatim), `summary.json`, `structural_pairs.txt` (209 data rows + 1 header),
+`numeric_pairs.txt` (94 data rows + 1 header), `shape.txt` (5 rows); derive a
+sixth, `examples_full.txt` — one row per **distinct (rust, r4133) spelling**
+per pair (≥ 209 + 94 rows; pipe-separated like the pair files:
+`class.prop | rust | r4133 | count` — a pair's cells may collapse to several
+spellings, and the three mixed pairs of §1.2 need every spelling represented),
+with the **untruncated** rust/r4133 values from the local census (the pair
+files cut examples at ~34 chars; the RP2.1 replay needs whole values); derive
+a seventh, `bins.tsv` — one row per census pair (209 + 94), assigning it to
+exactly one §1.1 bin 1–7 (bin 8 is the shape file), the assignment rule
+spelled out in `README.md` — this is the file the §1.1 sentence "re-derived
+in-scope by RP0.1" and the RP2.1 replay's admissible-claim assert consume; add
+`README.md` with provenance (census of 2026-08-08 at
 `golden-g1` 67a0910e's parent state, method = the triage §Method, the full
 270 MiB census stays local-only and re-derivable via RP0.2) and the **in-scope
 re-derivations** `structural_pairs_in_scope.txt` / `numeric_pairs_in_scope.txt`
 (filter: cases whose manifest `engines ∈ {both, r4133}`; expected 198 and 53
-rows — derive from the local full census, record the exact filter and counts in
-README). Known data traps to preserve in README: element names may contain `|`
+rows — derive from the local full census, record the exact filter, the census
+case-label → manifest `path` join rule, and the counts in README). Known data traps to preserve in README: element names may contain `|`
 (`Line.b1||b2` in `modes:reduce/reduce_mergeparallel.dss` — naive pipe-splits
 break), and `numeric_pairs.txt` example columns are truncated to ~34 chars
-(full values only in the census). **Acceptance:** counts match §1.1 exactly;
-the files are plain data (no compat aliases — keeps the
-`oracle_parity_cfg_gate` corpus walk quiet). Outcome: the plan's evidence is
-in-repo and reviewable, 209 + 94 + 5 rows plus the untruncated example set.
+(full values only in the census). **Acceptance:** data-row counts and
+`bins.tsv` per-bin totals match §1.1 exactly; the files are plain data (no
+compat aliases — keeps the `oracle_parity_cfg_gate` corpus walk quiet).
+Outcome: the plan's evidence is in-repo and reviewable, 209 + 94 + 5 rows plus
+the untruncated example set and the bin assignment.
 
 ### RP0.2 — the permanent census knob
 
@@ -425,16 +480,27 @@ plain mode is the knob's baseline forever (it is what reproduces RP0.1); RP2.1
 later adds a second, **disposition** mode (`DSS_PROPS_CENSUS=claims`) that runs
 the same walk through the full r4133 policy and annotates every divergent cell
 `normalized-by-<rule> / echo-row / under-floor / ledger-hit / UNCLAIMED` — the
-per-cell accounting RP4.1's acceptance reads. Clone
-the `DSS_LIVE_PROPS` plumbing (`corpus_gate.rs:328-416`) — note that path is
-capi-only today (`corpus_gate.rs:345-360`) and stays untouched; the new knob is
-its two-channel, full-census sibling. Seeding stays blind to r4133 props until
-RP4.1 (`scheduler.rs:714-717`) — this knob is the measurement tool in the
-meantime. TESTING.md §Environment variables gains the row. **Acceptance:** a
-bounded run (`DSS_GATE_ONLY` on one family) reproduces the corresponding vendored
-RP0.1 rows byte-for-byte on an unchanged tree; the knob asserts nothing (a
-divergence never fails it). Outcome: census re-measurement is one env var, not a
-scratch test.
+per-cell accounting RP4.1's acceptance reads. The claims mode calls the **same
+policy seam** the live gate uses (`compare_prop_lists`' normalize → echo →
+floor → ledger chain) in collect mode — never a parallel reimplementation (a
+drifting copy would corrupt RP4.1's zero-UNCLAIMED read silently).
+Implementation seam: `DSS_LIVE_PROPS` (`corpus_gate.rs:328-416`) contributes
+the capture/report shape only — that path is capi-only today
+(`corpus_gate.rs:345-360`) and stays untouched; the two-channel walk itself
+lives in the scheduler (`scheduler.rs:655` iterates both channels per case,
+`ctx.channel(uc, ch)` `:256` builds each; `DSS_GATE_ONLY` filtering lives
+there too, `scheduler.rs:448`), which is where the knob hooks. Seeding stays
+blind to r4133 props until RP4.1 (`scheduler.rs:714-717`) — this knob is the
+measurement tool in the meantime. TESTING.md §Environment variables gains the
+row. **Acceptance:** a bounded run (`DSS_GATE_ONLY` on one family) writes
+per-cell rows that byte-match the local full census's rows for that family;
+the vendored extracts (which aggregate across families) are cross-checked
+where a pair's population lies entirely inside the chosen family — pick a
+family where some do, e.g. `modes:windgen` — and the knob asserts nothing (a
+divergence never fails it). If RP0.2 runs **before** RP0.1 (the reorder
+branch — local evidence lost), its acceptance is instead two-run
+byte-reproducibility of the knob's own output. Outcome: census re-measurement
+is one env var, not a scratch test.
 
 ---
 
@@ -454,7 +520,10 @@ property compare is bit-for-bit unchanged (A/B run on one family).
 Add the three property rows the port lacks, with r4133's exact semantics:
 Generator `Rneut`/`Xneut` at display slots 16/17 (after `Conn` — r4133 registers
 them via `AddProperty('Rneut', 14, 'Removed due to causing confusion …')`,
-`Version8/Source/PCElements/generator.pas:441-442`; the write path stores the
+`Version8/Source/PCElements/generator.pas:441-442`; the display position
+follows registration order — `Conn` is the 15th name, Rneut/Xneut the
+16th/17th; the binding order authority is the census `shape.txt` name list,
+pinned by this sub-step's unit test; the write path stores the
 string and logs soft errors 5611/5612, `generator.pas:625,651-652`; no field, no
 Y effect — the neutral stamping is dead text, `generator.pas:1296-1303`;
 defaults `'0'`, `:2567-2568`); Sensor `action` at slot 13
@@ -464,7 +533,9 @@ setter `:850-854`, silent store `:253`, default `''`, `:807`). Neither
 `obj/props/prop_flags.rs:31`, `class_props/parse.rs:32-37`, `json.rs:45-51`) —
 add a new flag (working name `UPSTREAM_STUB`): the row is listed, the value is
 stored and echoed, parsing never fails; a per-class side-effect hook lets
-Generator log its two soft messages while Sensor stays silent. Ordinal shifts:
+Generator log its two soft messages while Sensor stays silent (no such
+mechanism exists today — design a minimal one, e.g. an optional callback
+carried by the flag row; keep it unit-covered). Ordinal shifts:
 Generator `NUM_PROPS` 48 → 50 (`elements/pc/generator/mod.rs:145,151-237`),
 Sensor 15 → 16 (`elements/meter/sensor/mod.rs:39-54,62-86`); walk every
 `prop::` consumer, `dump.rs`/`save.rs`, and the `debug_assert_eq!(defs.len(),
@@ -489,9 +560,9 @@ connection), `kVLL`/`VBase`/`kVA`/`puTAP`/`Rpu`, `RdcOhms` **with
 `RdcSpecified := TRUE`**, tap limits/counts; then `SetTermRef`, the reactance
 name remap `XHL/XHT/XLT → puXHX/puXHT/puXXT`, `puXSC` copy, thermal/loss/ppm
 fields, `Yorder` recompute, `YPrimInvalid := True`, `RecalcElementData`
-(`:2360-2395`; Edit arm `:520`, Edit tail recalc `:585`). The Transformer analog
-exists (`pd/transformer/windings.rs:357-402`, accessors `:594-610`, prop row
-`transformer/mod.rs:81,159`) but **cannot be reused verbatim** — it copies
+(`:2360-2395`; Edit arm `:520`, Edit tail recalc `:584`). The Transformer analog
+exists (`pd/transformer/windings.rs:357-402`, accessors
+`transformer/accessors.rs:594-609`, prop row `transformer/mod.rs:81,159`) but **cannot be reused verbatim** — it copies
 windings wholesale and copies 0.15.x kVA-ratings (`windings.rs:362,398-399`),
 both wrong for the AutoTrans r4133 form; write the AutoTrans variant
 field-by-field. Ordinal shift: insert at 39, `NUM_PROPS` 52 → 53
@@ -504,13 +575,17 @@ its absence is observable on a gated surface (error/event log), exclude + pin
 per the standing rules. The new row also joins `PROPS_015X` (absent from the
 0.14.5 table, `.inputs/dss_capi/src/PDElements/AutoTrans.pas:76,125`).
 **Measure-first:** no corpus deck sets `xfmrcode=` on an AutoTrans today — add
-one (extend an existing `asymmetric:autotrans/*` deck or a sibling), validate it
-on the r4133 channel live (epri-worker), and prove the port against the oracle's
+one (extend an existing `asymmetric:autotrans/*` deck or a sibling; new-deck
+procedure per TESTING.md §Procedures — manifest entry,
+`corpus_manifest.rs::every_dss_is_accounted_for_exactly_once`,
+`population.lock.json` regen in the same commit), validate it on the r4133
+channel live (epri-worker, §1.1(a)), and prove the port against the oracle's
 solved state on that deck. `lane_diff` run (solved state moves). **Acceptance:**
 the new deck's Y/voltages/currents match r4133 at tier floors; a unit test pins
 the connection override (winding 1 forced SERIES even when the code says
-otherwise); `props/autotrans` golden regenerated under §1.2. Outcome: 42 census
-shape rows close; AutoTrans gains a working `XfmrCode` for the first time.
+otherwise); `props/autotrans` golden regenerated under §1.2. Outcome: 42 full-census /
+7 in-scope shape rows close; AutoTrans gains a working `XfmrCode` for the
+first time.
 
 ### RP1.3 — WindGen `UserModel`/`UserData` (real port over the WASM host)
 
@@ -525,7 +600,10 @@ WASM user-model host: `generator/user_model.rs` (`GenUserModelSlot`, WM.3) over
 `crates/dss-usermodel` exposes exactly the needed call surface; WindGen needs
 its own shuttle (`WindGenVars.pas` is a different record shape from
 `TGeneratorVars`) and a test guest fixture (the WASM_USERMODELS guest-build
-pattern). Deliberately keep `ShaftModel`/`ShaftData` absent — r4133 has the
+pattern — the existing fixtures and drivers live in
+`crates/dss-usermodel/tests/` (`fixture_pin.rs`, `fixture_self_gate.rs`) and
+`crates/dss-epri/tests/gen_wasm_usermodels*.rs`; clone that arrangement for
+the WindGen shuttle). Deliberately keep `ShaftModel`/`ShaftData` absent — r4133 has the
 field but registers no property for it (`WindGen.pas:100`, no `PropertyName`
 row). Widen `windgen_model` to admit 6 (`obj/dss_enum/registry/pc.rs:205-218`
 `&[1,2,4,5]`; dispatch `windgen/solve.rs:306-312`); models 3/7 stay out
@@ -538,7 +616,8 @@ allowlist; the behavior is gated by unit tests + the wasm guest, the shape by
 the r4133 channel after RP4.1. `lane_diff` run (dispatch arm added).
 **Acceptance:** with no user model set, all `modes:windgen/*` decks are
 bit-identical to before (the new arms are dormant — prove with an A/B state
-dump); the guest fixture exercises calc/init/integrate/variables round-trip;
+dump via `crates/dss-core/examples/lane_dump.rs`, the same dump the
+`lane_diff` job drives: diff the two checkpoint streams); the guest fixture exercises calc/init/integrate/variables round-trip;
 no `props/` golden exists for WindGen and none is created (§1.2 — no capi
 channel to capture from). Outcome: 5 census shape rows close; the port's
 WindGen surface matches r4133's table.
@@ -576,18 +655,23 @@ guarded.
 ## WP-RP2 — The channel-aware value comparator
 
 **Acceptance criterion for the whole WP:** the replay-accounting test passes
-with every in-scope census pair claimed exactly once (shape rows are RP1's; the
-16 genuine-jump pairs may be claimed by declared-pending RP3 markers until RP3
-lands), every table row live in the offline accounting, and the capi channel
-proven untouched (A/B run, §1.1(b)).
+with every in-scope example row claimed by exactly one mechanism — the first
+match in the chain (§1.2; a mixed pair may hold a norm row and an echo row;
+shape rows are RP1's; the 16 genuine-jump pairs may be claimed by
+declared-pending RP3 markers until RP3 lands), every table row live in the
+offline accounting, and the capi channel proven untouched (A/B run, §1.1(b)).
 
 ### RP2.1 — channel threading + the normalization engine + replay accounting
 
-Thread `EngineChannel` into `compare_all_properties` and `compare_prop_lists`
-(seams and call sites in §1.2; the capi call sites pass
-`EngineChannel::CapiV0145` and compile-time-trivially keep today's behavior),
-and make the Recloser/Relay whole-element skips channel-scoped per §1.2
-(capi-only; on r4133 both classes compare fully). Introduce
+Thread the channel into `compare_all_properties` and `compare_prop_lists`
+(seams, call sites and the `EngineChannel`-visibility trap in §1.2 — the
+harness-side type is harness-local; the capi call sites pass the capi channel
+and compile-time-trivially keep today's behavior), make the Recloser/Relay
+whole-element skips channel-scoped per §1.2 (capi-only; on r4133 both classes
+compare fully), and land the §1.2 row-by-row r4133 disposition of
+`SKIP_PROPS`/`LANE_SKIP_PROPS` (changed-default rows compare on r4133;
+channel-independent rows stay skipped on both; each row's comment records its
+disposition). Introduce
 `tests/harness/props_norm.rs` with the four rule kinds (§1.2) and the initial
 row set for bins 1/2/4 of §1.1: `BoolFold` (~75 pairs minus the `''` echo rows),
 `CaseFold` (+trim; the 59 case-only pairs + the 2 trailing-space pairs),
@@ -597,10 +681,13 @@ cites its census line; rules are typed, not regexes. Implement the per-row hit
 accounting (dormant until RP4.1 flips the live path on) and the **count locks**
 (both-ways equalities, `props_roundtrip.rs:238` pattern). Land the
 replay-accounting test (`props_r4133_replay.rs`, §1.2): it is the sub-step's
-own proof of completeness for bins 1/2/4 — pairs it cannot claim yet (bins
-3/5/6/7) are asserted to be exactly the pair sets RP2.2/RP2.3/RP2.4/RP3 declare,
-so the accounting is total from day one and later sub-steps only move pairs
-between mechanisms, never invent them. Extend the RP0.2 census knob with the
+own proof of completeness for bins 1/2/4 — example rows it cannot claim yet
+(bins 3/5/6/7) are asserted to match the vendored `bins.tsv` assignment (the
+pair sets RP2.2/RP2.3/RP2.4/RP3 own), so the accounting is total from day one
+and later sub-steps only move pairs between mechanisms, never invent them.
+Claim semantics are per example row, first-match-in-chain (§1.2) — the three
+mixed pairs keep their `''` example rows unclaimed here (declared for RP2.3's
+echo rows) while their foldable rows are claimed by `BoolFold`. Extend the RP0.2 census knob with the
 **disposition mode** (`DSS_PROPS_CENSUS=claims`, spec in RP0.2): the same live
 walk annotated with the policy claim chain — the per-cell accounting tool
 RP4.1's acceptance reads. **Non-vacuity:** a corrupted boolean
@@ -610,8 +697,10 @@ path (scratch probe). **Capi-invariance:** run one family's gate before/after on
 the capi channel — bit-identical outcomes. **Kill criterion:** any census row in
 bins 1/2/4 that the typed rules cannot claim without weakening (c) — stop and
 report; that row belongs to another bin or to a new category this plan must
-name. Outcome: ~491 000 in-scope cells (bins 1/2/4) become a value-preserving
-compare instead of a mask.
+name. **Acceptance:** the non-vacuity and capi-invariance probes above pass,
+the replay-accounting test is green with bins 1/2/4 fully claimed, and the
+count locks hold. Outcome: ~491 000 in-scope cells (bins 1/2/4) become a
+value-preserving compare instead of a mask.
 
 ### RP2.2 — enum synonyms + the S6 dossier
 
@@ -627,8 +716,9 @@ S6 singletons the triage flagged for individual source investigation
 r4133 getter/echo site and classify into exactly one of: `EnumSynonym` row
 (spelling of the same value — cite the r4133 line that prints it),
 `PROPS_ECHO_R4133` row (echo/default — hand to RP2.3's table with the citation),
-or **suspected engine/behavior divergence** (hand to a named RP3-style
-root-cause, added to STATUS — `swtcontrol.action` `close`/`open` and
+or **suspected engine/behavior divergence** (a hand-off opens a numbered
+RP3.5+ sub-step at the RP3.1–RP3.4 tier row, recorded in STATUS; RP4.1 does
+not start until it closes, §0 — `swtcontrol.action` `close`/`open` and
 `line.units` `none`/`kft` are the two candidates). **Kill criterion:** any pair
 that fits none of the three after reading its source — stop and report (a new
 category or a port bug). **Acceptance:** the replay accounting claims bin 3
@@ -644,7 +734,11 @@ bin 7 (§1.1 table; the census grounding proves each against its r4133 site:
 `RegControl.pas:1452` remoteptratio frozen default (`PropertyValue[27]`; the
 live value re-inits at `:484` while the store stays `'60'`), the `%pmin*`/`lpftau`/
 `risefalllimit`/`pctperm` `InitPropertyValues` defaults), minus whatever RP2.2
-already routed here. Every row: category tag + r4133 citation + the witness
+already routed here (RP2.3 runs after RP2.2, §0), plus the `''`-cell echo rows
+of the three mixed bin-1 pairs (`recloser.eventlog`, `regcontrol.idle`,
+`relay.distreverse` — §1.2 replay bullet; the chain order does the per-cell
+discrimination: foldable cells are claimed by `BoolFold` before the echo row
+is consulted, so the echo row masks only the `''` cells). Every row: category tag + r4133 citation + the witness
 statement — either "capi channel pins the live value on N `both` cases" or, for
 r4133-only coverage, the named expected-value pin test this sub-step adds
 (pattern: `newton_powers_match_the_normal_algorithm`-style pins in the exec
@@ -720,7 +814,8 @@ added case arm; describe a silently-ignored property, NOT a queue-delay bug —
 the queue sites are dead code), and the property-surface exclusion (a
 `PROPS_ECHO_R4133` row is WRONG here — the getter is live; use a per-case
 ledger `property` divergence entry with exact pins on the affected r4133-gating
-decks, in-scope cells: 24 across 2 cases — **drafted here, landed at RP4.1**
+decks, in-scope cells: 24 across 2 cases — `swtcontrol_time.dss` +
+`midi_swtcontrol.dss`, 12 cells each — **drafted here, landed at RP4.1**
 per the §1.1(e) staging rule). **Acceptance:** pins green in this sub-step; the
 drafted entries recorded verbatim in STATUS; the report cites
 `:194-217/:310/:588/:484-507`. Outcome: the one live-getter render bug in the
@@ -728,8 +823,10 @@ census tail is reported and pinned, not imitated.
 
 ### RP3.2 — `windgen.kvar` (r4133-only class, no second oracle)
 
-The census shows ours 986.05 vs r4133 `0` on all four `modes:windgen/*` decks
-(engines `r4133` — in scope, and no capi witness exists for this class).
+The census shows ours 986.05 vs r4133 `0` on four of the five `modes:windgen/*`
+decks (`windgen_snap.dss` alone does not carry it — use its non-divergence as a
+root-cause data point; engines `r4133` — in scope, and no capi witness exists
+for this class).
 Root-cause with the full discipline: read the r4133 kvar getter/echo site in
 `WindGen.pas` (is prop kvar echoed or live?), probe the live r4133 engine state
 via a solved-state observable that is *not* the property string (element powers
@@ -746,12 +843,24 @@ in-scope numeric jump (rel 9.86e+2) is explained.
 
 ### RP3.3 — `generator.model` on the NCIM decks
 
-`4` vs `3` on `modes:ncim/*` (2 cells, engines in scope). Root-cause against the
-NCIM conversion path in r4133 (which generator model does the NCIM import
-assign, and does it re-render the property?) and the port's NCIM implementation;
-the answer decides fix vs exclude+pin. **Acceptance:** classification with
-citations; artifact landed. Outcome: the one discrete-state pair in the tail is
-explained.
+`4` vs `3`, 2 cells — the two NCIM decks that hold a generator
+(`modes:ncim/ncim_pv_pq.dss`, `modes:ncim/ncim_midi.dss`; `ncim_pq.dss` is
+all-loads, engines all `r4133`). Both decks drive the NCIM PV→PQ conversion:
+r4133 switches a Q-limited model-3 generator to model 4
+(`Version8/Source/Common/Solution.pas:1935`, `:2120`) and later **takes it
+back to 3** (`Solution.pas:1760` — `// Takes it back to model 3`); the port's
+NCIM path is `solution/solution/ncim.rs` (model-3/4 participation and the
+demote sites, `:275-313`) with pins in `exec/tests/ncim.rs`. Root-cause with
+the RP3.1/RP3.2 decision rule: probe the live r4133 model state (epri-worker,
+a solved-state observable independent of the property string) and read the
+render site — if r4133's live model at render time really is 3 (the `:1760`
+restore) while ours stays 4, that is a port behavior divergence — **fix it in
+both lanes** (r4133 is the authority); if r4133's live model is 4 and only the
+property render echoes the parse store `'3'`, that is an echo —
+`PROPS_ECHO_R4133` row (or a drafted ledger entry per §1.1(e)) + the pin
+asserting the port's live model on the two decks. **Acceptance:**
+classification with citations; artifact landed. Outcome: the one
+discrete-state pair in the tail is explained.
 
 ### RP3.4 — r4133 twins of the already-pinned capi divergences
 
@@ -795,17 +904,28 @@ pins per §1.1(e); regenerate `population.lock.json` in the same commit; the
 live hit accounting for `PROPS_NORM_R4133`/`PROPS_ECHO_R4133` (dormant since
 RP2.1) turns on with the unmask, and it asserts **globally** that the r4133
 props compare visited at least one case per full-gate run (`visits > 0`, not
-the visits-gated silent form) — `population.lock.json` fingerprints only
-manifest flags (`population_lock.rs:86,143`), so this assertion plus the
-staged property entries (which would scream NEVER APPLIED) are what make a
-wholesale re-mask loud. **Kill criterion (G1.1's, re-armed):** more
-than ~15 residual ledger entries, or any residual that cannot be pinned → stop
-and report; that magnitude means WP-RP2/RP3 missed a category and the plan
+the visits-gated silent form; the assert lives beside the tables in
+`props_norm.rs` and is invoked once from the corpus gate's epilogue, the way
+`lane.rs`'s reround accounting is checked) — `population.lock.json`
+fingerprints manifest flags and per-case ledger tags but no scheduler code
+(`population_lock.rs:86,143` the flag; `:130,:151` the ledger tag), so a
+scheduler-side re-mask is invisible to the lock itself; this assertion plus
+the landed property entries (which would scream NEVER APPLIED — and whose
+removal would trip a lock diff via the ledger tag) are what make a wholesale
+re-mask loud. **Kill criterion (G1.1's, re-armed):** more
+than ~15 residual ledger entries — the entries staged by RP1.4/RP3 do **not**
+count (they are pre-triaged, cited and pinned; the criterion counts entries
+born from this sub-step's own residual triage) — or any residual that cannot
+be pinned → stop and report; that magnitude means WP-RP2/RP3 missed a category and the plan
 needs a revision, not a bigger ledger. **Acceptance:** full five-command gate
 green in both lanes; the census knob's **disposition mode** (RP0.2/RP2.1,
 `DSS_PROPS_CENSUS=claims`) at HEAD reports **zero UNCLAIMED cells** (every cell
 passes, normalizes, hits an echo row, sits under the floor, or hits a ledger
-entry — the per-cell accounting closes); the capi channel A/B is bit-identical.
+entry — the per-cell accounting closes; cost: one extra two-channel props walk
+over the 462 gating cases, same order as a normal corpus-gate run — if a
+single run is impractical, run per-family under `DSS_GATE_ONLY` and aggregate
+the disposition files, recording the aggregation in STATUS); the capi channel
+A/B is bit-identical.
 Outcome: the 96 r4133-only cases get a property check for the first time, and
 the 366 `both` cases get their r4133 property table checked — G1.1's outcome,
 delivered.
@@ -818,7 +938,8 @@ delivered.
 
 TESTING.md: a new section beside §PROPS_015X documenting the r4133 property
 policy (the normalization table, the echo table, the display floor, the census
-knob, the replay test — each with its liveness/count-lock guarantee), the
+knob, the replay test, the `SKIP_PROPS` r4133 dispositions of §1.2 — each with
+its liveness/count-lock guarantee), the
 corrected §PROPS_015X wording (RP4.1), the new env var rows (RP0.2), and the
 "triage a property divergence" delta (normalize → echo → floor → ledger, in
 that order). `tests/TOLERANCE_NOTES.md`: cross-check the RP2.4 section against
