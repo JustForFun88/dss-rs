@@ -177,29 +177,39 @@
     {
       "class": "AutoTrans",
       "kind": "port_hidden_property",
+      "prop_key": "XfmrCode",
+      "index": 39,
+      "order": 32,
+      "count": 0,
+      "props": ["XfmrCode"],
+      "cause": "OpenDSS r4133 (R4133_PROPS_PLAN RP1.2) registers AutoTrans XfmrCode as its 39th own property, between bank and XRConst (Version8/Source/PDElements/AutoTrans.pas:329, help :414), and answers it with the auto's own TAutoTransObj.FetchXfmrCode (:520 -> :2339-2396) -- the Transformer's routine plus a forced SERIES/WYE connection on the first two windings, the XHL/XHT/XLT -> puXHX/puXHT/puXXT rename and RdcSpecified on every winding. dss_capi 0.14.5 deleted the row outright (.inputs/dss_capi/src/PDElements/AutoTrans.pas:76,125 '//XfmrCode=39, // removed, unused') and capi015 never restored it, so its table is 52 names long against the port's 53. The port implements the property for real (elements/pd/auto_trans) but flags the row HIDE_R4133: it renders no schema block while occupying $dssPropertyIndex 39 / $dssPropertyOrder 32 (HIDE_R4133 keeps a row in AltPropertyOrder, like the Line 0.15.x rows; on AutoTrans the order rank runs seven below the index because Windings and the six redundant plural array forms are dropped from AltPropertyOrder while Like is hoisted to rank 1 -- Bank is 38/31, XRConst 40/33). Both fields are this property's OWN ordinal ranks, the convention the four Line rows use: the renumbering shifts a following prop by the count of removed ranks STRICTLY BELOW it, so a rank that is off by one is absorbed whenever the slot below is occupied and the byte gate cannot see the error. Measured by regeneration: the prop that stood at index 39 / order 32 (XRConst) moved to 40 / 33."
+    },
+    {
+      "class": "AutoTrans",
+      "kind": "port_hidden_property",
       "prop_key": "BHPoints",
-      "index": 42,
+      "index": 43,
       "count": 0,
       "props": ["BHPoints"],
-      "cause": "OpenDSS r4064 (dss_capi 90962ae8) GICharm BH-curve data: AutoTrans BHpoints/BHcurrent/BHflux, inserted after ppm_Antifloat/pctRs before the inherited PD/CktElement tail (mirrors the Transformer BHPoints entry). The port carries them as SUPPRESS_JSON forward-compat parse targets (auto_trans/mod.rs), so they render no schema block but occupy $dssPropertyIndex 42-44, shifting every following prop's index +3 vs the 0.14.5 oracle (whose AutoTrans TProp ends the general data at pctRs). $dssPropertyOrder is unaffected (SUPPRESS_JSON excludes them from AltPropertyOrder)."
+      "cause": "OpenDSS r4064 (dss_capi 90962ae8) GICharm BH-curve data: AutoTrans BHpoints/BHcurrent/BHflux, inserted after ppm_Antifloat/pctRs before the inherited PD/CktElement tail (mirrors the Transformer BHPoints entry). The port carries them as SUPPRESS_JSON forward-compat parse targets (auto_trans/mod.rs), so they render no schema block but occupy $dssPropertyIndex 43-45, shifting every following prop's index +3 vs the 0.14.5 oracle (whose AutoTrans TProp ends the general data at pctRs). $dssPropertyOrder is unaffected (SUPPRESS_JSON excludes them from AltPropertyOrder)."
     },
     {
       "class": "AutoTrans",
       "kind": "port_hidden_property",
       "prop_key": "BHCurrent",
-      "index": 43,
+      "index": 44,
       "count": 0,
       "props": ["BHCurrent"],
-      "cause": "OpenDSS r4064 (dss_capi 90962ae8) GICharm BH-curve data (see the AutoTrans BHPoints entry): BHcurrent, SUPPRESS_JSON port-only prop at $dssPropertyIndex 43, absent from the 0.14.5 oracle."
+      "cause": "OpenDSS r4064 (dss_capi 90962ae8) GICharm BH-curve data (see the AutoTrans BHPoints entry): BHcurrent, SUPPRESS_JSON port-only prop at $dssPropertyIndex 44, absent from the 0.14.5 oracle."
     },
     {
       "class": "AutoTrans",
       "kind": "port_hidden_property",
       "prop_key": "BHFlux",
-      "index": 44,
+      "index": 45,
       "count": 0,
       "props": ["BHFlux"],
-      "cause": "OpenDSS r4064 (dss_capi 90962ae8) GICharm BH-curve data (see the AutoTrans BHPoints entry): BHflux, SUPPRESS_JSON port-only prop at $dssPropertyIndex 44, absent from the 0.14.5 oracle."
+      "cause": "OpenDSS r4064 (dss_capi 90962ae8) GICharm BH-curve data (see the AutoTrans BHPoints entry): BHflux, SUPPRESS_JSON port-only prop at $dssPropertyIndex 45, absent from the 0.14.5 oracle."
     },
     {
       "class": "RegControl",

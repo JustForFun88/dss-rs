@@ -8,9 +8,11 @@
 //!   optional **Delta** tertiary (code 1). `nconds = 2·nphases` (two conductors
 //!   per winding — the series winding's second end is aliased onto the common
 //!   winding's first node in `SetNodeRef`, "Magic happens here").
-//! - Reactances are `XHX`/`XHT`/`XXT` (not `XHL`/`XHT`/`XLT`); there is no
-//!   `XfmrCode`, and `RNeut`/`XNeut` are absent (the auto has no brought-out
-//!   neutral impedance).
+//! - Reactances are `XHX`/`XHT`/`XXT` (not `XHL`/`XHT`/`XLT`), and `RNeut`/
+//!   `XNeut` are absent (the auto has no brought-out neutral impedance).
+//!   `XfmrCode` *is* present (property 39, R4133_PROPS RP1.2) but is read
+//!   through the auto's own `FetchXfmrCode`, which forces the first two
+//!   windings' connections and remaps `XHL/XHT/XLT` onto `puXHX/puXHT/puXXT`.
 //! - `CalcY_Terminal` applies the auto corrections (`ZCorrected`, the 3-winding
 //!   `puXst`, `kVSeries`) — Dommel (6.45/6.46/6.50).
 //!
@@ -44,9 +46,14 @@ mod save;
 mod windings;
 mod yterminal;
 
-/// 1-based property ordinals (Pascal `TAutoTransProp` + class tails). The
-/// removed `XfmrCode` (Pascal comment `//XfmrCode=39, // removed, unused`) leaves
-/// no gap — `XRConst`/`LeadLag`/`WdgCurrents` follow `Bank` directly.
+/// 1-based property ordinals (EPRI r4133 `TAutoTrans.DefineProperties`,
+/// `Version8/Source/PDElements/AutoTrans.pas:270-336`, + the class tails).
+///
+/// Slot 39 is `XfmrCode` (R4133_PROPS RP1.2). dss_capi 0.14.5 deleted the row
+/// outright — `//XfmrCode=39, // removed, unused`,
+/// `.inputs/dss_capi/src/PDElements/AutoTrans.pas:76,125` — so the port's table
+/// is one name longer than the pinned oracle's and the row is allowlisted
+/// (`PROPS_015X`) + [`PropFlags::HIDE_R4133`].
 pub mod prop {
     pub const PHASES: usize = 1;
     pub const WINDINGS: usize = 2;
@@ -86,24 +93,26 @@ pub mod prop {
     pub const PPM_ANTIFLOAT: usize = 36;
     pub const PCTRS: usize = 37;
     pub const BANK: usize = 38;
-    pub const XRCONST: usize = 39;
-    pub const LEADLAG: usize = 40;
-    pub const WDGCURRENTS: usize = 41;
+    /// EPRI r4133 `PropertyName^[39] := 'XfmrCode'` (`AutoTrans.pas:329`).
+    pub const XFMRCODE: usize = 39;
+    pub const XRCONST: usize = 40;
+    pub const LEADLAG: usize = 41;
+    pub const WDGCURRENTS: usize = 42;
     // GICharm BH-curve data props (dss_capi 0.15.x r4064, commit 90962ae8) —
     // `Unused` (parse+store only; never consumed by the port).
-    pub const BHPOINTS: usize = 42;
-    pub const BHCURRENT: usize = 43;
-    pub const BHFLUX: usize = 44;
+    pub const BHPOINTS: usize = 43;
+    pub const BHCURRENT: usize = 44;
+    pub const BHFLUX: usize = 45;
     // TPDClass tail:
-    pub const NORMAMPS: usize = 45;
-    pub const EMERGAMPS: usize = 46;
-    pub const FAULTRATE: usize = 47;
-    pub const PCTPERM: usize = 48;
-    pub const REPAIR: usize = 49;
+    pub const NORMAMPS: usize = 46;
+    pub const EMERGAMPS: usize = 47;
+    pub const FAULTRATE: usize = 48;
+    pub const PCTPERM: usize = 49;
+    pub const REPAIR: usize = 50;
     // TCktElementClass tail:
-    pub const BASE_FREQ: usize = 50;
-    pub const ENABLED: usize = 51;
-    pub const NUM_PROPS: usize = 52; // incl. Like
+    pub const BASE_FREQ: usize = 51;
+    pub const ENABLED: usize = 52;
+    pub const NUM_PROPS: usize = 53; // incl. Like
 }
 
 /// `TAutoTrans.DefineProperties` (`AutoTrans.pas:364`).
@@ -162,6 +171,19 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("ppm_Antifloat").scale(1.0e-6),
         PropDef::double_array_on_struct("%Rs", WINDINGS).scale(pct),
         PropDef::string("Bank"),
+        // EPRI r4133 property 39 (`AutoTrans.pas:329`, help `:414`), read by the
+        // auto's OWN `TAutoTransObj.FetchXfmrCode` (`:520` → `:2339-2396`), not
+        // by the Transformer's. Absent from BOTH pinned tables (0.14.5 deleted
+        // it, capi015 with it), hence `HIDE_R4133`: the row keeps its `?`/props
+        // surface and its `AltPropertyOrder` slot but is skipped by the
+        // 0.14.5-pinned full-enumeration surfaces (Dump / `Dump commands` /
+        // JSON / schema). It carries no `ORDERING_FIRST`: that flag exists to
+        // make the JSON reader apply a Transformer's `XfmrCode` before the
+        // per-winding props it would otherwise overwrite, and a `HIDE_R4133` row
+        // never appears in an exported or imported AltDSS document at all.
+        PropDef::object_ref_class("XfmrCode", "XfmrCode")
+            .flags(PropFlags::HIDE_R4133)
+            .ref_miss_msg(100180, "Xfmr Code:"),
         PropDef::boolean("XRConst"),
         PropDef::mapped_string_enum("LeadLag", enums.lead_lag),
         // Read-only result string (winding currents mag/angle); the render reads
@@ -260,6 +282,13 @@ pub struct AutoTrans {
     is_substation: bool,
     substation_name: String,
     xfmr_bank: String,
+    /// Pascal `XfmrCode: String` (`AutoTrans.pas:164`) — the resolved library
+    /// entry's name, lowercased (`:2349`), `''` until one resolves (`:905`).
+    /// Only the name is kept: unlike the Transformer's typed `Idx<XfmrCodeObj>`
+    /// (which the CIM `PowerTransformer` writer reads back) nothing in the port
+    /// re-reads an auto's code after the copy, and r4133 keeps only the string
+    /// too.
+    xfmr_code: String,
     core_type: CoreType,
     /// Pascal `puXHX`/`puXHT`/`puXXT` — per-unit reactances between winding pairs.
     puxhx: f64,
@@ -369,6 +398,7 @@ impl AutoTrans {
             is_substation: false,
             substation_name: String::new(),
             xfmr_bank: String::new(),
+            xfmr_code: String::new(), // Pascal `XfmrCode := ''` (`AutoTrans.pas:905`)
             core_type: CoreType::Shell,
             puxhx: 0.10,
             puxht: 0.35,

@@ -118,6 +118,79 @@ them). **`generator.d` lands in bin 7** — the in-scope bin-7 population grows
 the same family as bin 7's twelve echo pairs. RP2.2 owns the disposition; RP2.3
 is the expected landing site.
 
+**RP1.2 (AutoTrans `XfmrCode`), measured 2026-08-22** by two full
+`DSS_PROPS_CENSUS=1` runs — one on the pre-RP1.2 tree (438 cases, 56.5 s) and
+one on the post-RP1.2 tree (439 cases: the 438 plus RP1.2's own deck
+`asymmetric:autotrans/autotrans_xfmrcode.dss`, 56.8 s), both channels — so the
+delta is a measured diff, not a derivation. r4133 shape classes **3 → 2**
+(`windgen`, `gendispatcher` remain), structural pairs **218 → 222**, numeric
+**98 → 103**, and the cells the census could not look at behind a desynchronized
+name list **977 → 347**. So RP1.2 adds exactly **4 structural + 5 numeric = 9**
+pairs and removes none; the `capi_v0145` channel is unchanged (3 structural / 13
+numeric / 0 shape before and after) and no pre-existing pair changed its
+spelling. Two of the 44 cells of each new autotrans pair come from RP1.2's own
+deck; the other 42 are the pre-existing autotrans population, which the shape
+row had been hiding.
+
+| new pair | rust | r4133 | cells (in scope) | bin (this README's chain) |
+|---|---|---|---|---|
+| `autotrans.enabled` | `Yes` | `true` | 44 (9) | 1 |
+| `autotrans.xrconst` | `No` | `NO` | 44 (9) | 1 |
+| `autotrans.bhcurrent` | `''` | `[]` | 44 (9) | 5 |
+| `autotrans.bhflux` | `''` | `[]` | 44 (9) | 5 |
+| `autotrans.emergamps` | `1553.19773504818` | `1553.2` | 44 (9) | 6 (max_rel 2.13e-05) |
+| `autotrans.normamps` | `1139.01167236866` | `1139` | 44 (9) | 6 (max_rel 4.00e-05) |
+| `autotrans.pctperm` | `0` | `100` | 44 (9) | **7** (max_rel 1.00e+00) |
+| `autotrans.repair` | `0` | `36` | 44 (9) | **7** (max_rel 1.00e+00) |
+| `autotrans.wdgcurrents` | `66.95905, (-28.006), 151.5029, (151.99), …` | `66.98576, (-28.025), 156.2997, (151.97), …` | 35 (**0**) | **7** (max_rel 7.54e-02) |
+
+Six of the nine land in bins the plan's machinery already covers:
+
+- bin 1 (`autotrans.enabled`, `autotrans.xrconst`) — `BoolFold`. `xrconst` is a
+  boolean both ways: r4133's own getter prints `'YES'`/`'NO'`
+  (`Version8/Source/PDElements/AutoTrans.pas:1861`).
+- bin 5 (`autotrans.bhcurrent`, `autotrans.bhflux`) — r4133 *does* override both
+  (`:1865-1878`), but its loop over `NumPointsBH = 0` emits the bare brackets
+  `'[]'`, where the port renders `''` for an unallocated array (Pascal
+  `GetDSSArray` on a NIL pointer, `Utilities.pas:1857`). Same shape as RP1.1's
+  `generator.dynout`/`shaftdata`/`userdata` rows.
+- bin 6 (`autotrans.emergamps`, `autotrans.normamps`) — the class's own
+  five-significant-digit override `Format('%-.5g', [normamps])` (`:1885-1888`,
+  the only two PD-tail props it re-renders). Both sit an order of magnitude
+  below the worst display pair, `load.pf` at 6.43e-5, so the RP2.4 floor absorbs
+  them.
+
+The three bin-7 rows split two ways:
+
+- **`autotrans.pctperm` / `autotrans.repair` are echoes**, and of the exact
+  family bin 7 already enumerates (`transformer.pctperm/repair`,
+  `fault.pctperm`, `gictransformer.pctperm`): `TAutoTransObj.InitPropertyValues`
+  freezes `PropertyValue[NumPropsThisClass+4] := '100'` and `[+5] := '36'`
+  (`AutoTrans.pas:1958-1959`) while nothing assigns the fields, and the
+  `GetPropertyValue` override re-renders only PD-tail slots 1 and 2
+  (`:1885-1888`), so slots 4 and 5 fall through to the `PropertyValue[]` store
+  (`General/DSSObject.pas:112-115`) and answer the frozen strings. The sibling
+  `faultrate` is in the same position and does **not** appear as a pair only
+  because its frozen `'0.007'` happens to equal the live field. The in-scope
+  bin-7 population grows 17 → 19. RP2.2 owns the disposition; RP2.3 is the
+  expected landing site.
+- **`autotrans.wdgcurrents` is a genuine jump and is OUT OF SCOPE** — all 35 of
+  its cells sit on `engines: "capi_v0145"` cases (`controls:autotrans/`
+  `autotrans_both` 9, `autotrans_reg` 8, `midi_autotrans` 8,
+  `midi_autotrans_both` 9, plus one cell on `modes:makeposseq/`
+  `makeposseq_xfmr`), which §1.3 keeps uncompared on r4133, so it moves nothing
+  RP4.1 unmasks (in-scope cells: 0). It is nevertheless a real r4133-vs-0.14.5
+  difference rather than a port defect: the same 35 cells match **exactly** on
+  the `capi_v0145` channel — which reports no `autotrans` pair at all, before or
+  after — and the two engines' `GetAllWindingCurrents` bodies are
+  statement-for-statement identical (`AutoTrans.pas:1575-1659` vs
+  `.inputs/dss_capi/src/PDElements/AutoTrans.pas`), so the inputs differ, not
+  the algorithm. Four of the five cases are RegControl-driven autos and the
+  divergence is ~4e-4 on the series winding against ~3-7 % on the common
+  winding — the signature of a different landed tap, which is the reason those
+  decks are capi-only in the first place. Recorded here for RP2.2's closed pair
+  list; no RP3 sub-step is opened by it while it stays out of scope.
+
 ## Files
 
 | file | rows | origin |

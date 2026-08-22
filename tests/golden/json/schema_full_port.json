@@ -13411,16 +13411,16 @@
           "default" : false,
           "description" : "={Yes|No} Default is NO. Signifies whether or not the X/R is assumed constant for harmonic studies.",
           "title" : "XRConst",
-          "$dssPropertyIndex" : 39,
-          "$dssPropertyOrder" : 32
+          "$dssPropertyIndex" : 40,
+          "$dssPropertyOrder" : 33
         },
         "LeadLag" : {
           "$ref" : "#/$defs/PhaseSequence",
           "default" : "Lag",
           "description" : "{Lead | Lag (default) | ANSI (default) | Euro } Designation in mixed Delta-wye connections the relationship between HV to LV winding. Default is ANSI 30 deg lag, e.g., Dy1 of Yd1 vector group. To get typical European Dy11 connection, specify either \"lead\" or \"Euro\"",
           "title" : "LeadLag",
-          "$dssPropertyIndex" : 40,
-          "$dssPropertyOrder" : 33
+          "$dssPropertyIndex" : 41,
+          "$dssPropertyOrder" : 34
         },
         "WdgCurrents" : {
           "type" : "string",
@@ -13428,48 +13428,48 @@
           "description" : "(Read only) Makes winding currents available via return on query (? AutoTrans.TX.WdgCurrents). Order: Phase 1, Wdg 1, Wdg 2, ..., Phase 2 ...\n\nWARNING: If the transformer has open terminal(s), results may be wrong, i.e. avoid using this in those situations. For more information, see https://github.com/dss-extensions/dss-extensions/issues/24",
           "readOnly" : true,
           "title" : "WdgCurrents",
-          "$dssPropertyIndex" : 41,
-          "$dssPropertyOrder" : 34
+          "$dssPropertyIndex" : 42,
+          "$dssPropertyOrder" : 35
         },
         "NormAmps" : {
           "type" : "number",
           "default" : 6.1941411890040801E+000,
           "description" : "Normal rated current.",
           "title" : "NormAmps",
-          "$dssPropertyIndex" : 45,
-          "$dssPropertyOrder" : 35
+          "$dssPropertyIndex" : 46,
+          "$dssPropertyOrder" : 36
         },
         "EmergAmps" : {
           "type" : "number",
           "default" : 8.4465561668237452E+000,
           "description" : "Maximum or emerg current.",
           "title" : "EmergAmps",
-          "$dssPropertyIndex" : 46,
-          "$dssPropertyOrder" : 36
+          "$dssPropertyIndex" : 47,
+          "$dssPropertyOrder" : 37
         },
         "FaultRate" : {
           "type" : "number",
           "default" : 7.0000000000000001E-003,
           "description" : "Failure rate per year.",
           "title" : "FaultRate",
-          "$dssPropertyIndex" : 47,
-          "$dssPropertyOrder" : 37
+          "$dssPropertyIndex" : 48,
+          "$dssPropertyOrder" : 38
         },
         "pctPerm" : {
           "type" : "number",
           "default" : 0.0000000000000000E+000,
           "description" : "Percent of failures that become permanent.",
           "title" : "pctPerm",
-          "$dssPropertyIndex" : 48,
-          "$dssPropertyOrder" : 38
+          "$dssPropertyIndex" : 49,
+          "$dssPropertyOrder" : 39
         },
         "Repair" : {
           "type" : "number",
           "default" : 0.0000000000000000E+000,
           "description" : "Hours to repair.",
           "title" : "Repair",
-          "$dssPropertyIndex" : 49,
-          "$dssPropertyOrder" : 39
+          "$dssPropertyIndex" : 50,
+          "$dssPropertyOrder" : 40
         },
         "BaseFreq" : {
           "type" : "number",
@@ -13477,23 +13477,23 @@
           "description" : "Base Frequency for ratings.",
           "units" : "Hz",
           "title" : "BaseFreq",
-          "$dssPropertyIndex" : 50,
-          "$dssPropertyOrder" : 40
+          "$dssPropertyIndex" : 51,
+          "$dssPropertyOrder" : 41
         },
         "Enabled" : {
           "type" : "boolean",
           "default" : true,
           "description" : "{Yes|No or True|False} Indicates whether this element is enabled.",
           "title" : "Enabled",
-          "$dssPropertyIndex" : 51,
-          "$dssPropertyOrder" : 41
+          "$dssPropertyIndex" : 52,
+          "$dssPropertyOrder" : 42
         },
         "Like" : {
           "type" : "string",
           "description" : "Make like another object, e.g.:\n\nNew Capacitor.C2 like=c1  ...",
           "writeOnly" : true,
           "title" : "Like",
-          "$dssPropertyIndex" : 52,
+          "$dssPropertyIndex" : 53,
           "$dssPropertyOrder" : 1
         }
       },

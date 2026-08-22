@@ -1642,6 +1642,15 @@ const PROPS_015X: &[(&str, &[&str])] = &[
     // (`Version8/Source/Meters/Sensor.pas:183`), commented out in dss_capi 0.14.5
     // (`.inputs/dss_capi/src/Meters/Sensor.pas:39,55`).
     ("Sensor", &["Action"]),
+    // R4133_PROPS_PLAN RP1.2 (a real port, not a stub): AutoTrans props 52 -> 53
+    // — `XfmrCode` at slot 39 (`Version8/Source/PDElements/AutoTrans.pas:329`,
+    // `TAutoTransObj.FetchXfmrCode` `:2339-2396`), which dss_capi 0.14.5 removed
+    // outright (`.inputs/dss_capi/src/PDElements/AutoTrans.pas:76,125` —
+    // `//XfmrCode=39, // removed, unused`) and capi015 never restored. Same
+    // relief as the rows above: `prop_015x` drops a Rust-side prop only when the
+    // oracle's own name list lacks it, so this row is active on the 0.14.5/capi015
+    // captures and inert on r4133, whose list carries `XfmrCode`.
+    ("AutoTrans", &["XfmrCode"]),
     // Further rows land here with their porting WP.
 ];
 

@@ -969,6 +969,21 @@ are the same — a post-0.14.5 surface the 0.14.5 oracle predates):
   props, exactly as r4133's flag-blind `SaveWrite` does (pinned by
   `exec::tests::upstream_stubs::save_writes_the_stub_names_like_r4133`); no
   corpus deck or `save*` golden writes any of the three.
+- **r4133-only props the port really implements** (R4133_PROPS RP1.2 — AutoTrans
+  `XfmrCode`): the same two mechanisms again — a `PROPS_015X` AutoTrans row
+  (shape walk) + `PropFlags::HIDE_R4133` (Dump/`Dump commands`/JSON/schema) —
+  and nothing else. The flag says only "absent from both pinned tables", never
+  "not implemented": `xfmrcode=` on an AutoTrans resolves the code and copies
+  the electrical model exactly as `TAutoTransObj.FetchXfmrCode` does
+  (`Version8/Source/PDElements/AutoTrans.pas:2339-2396`), and no value is masked
+  anywhere. On the r4133 channel the oracle's own name list carries `XfmrCode`,
+  so `filter_015x` keeps it and the row compares in full — which is what retires
+  the census's 7 in-scope autotrans shape rows. The behaviour is gated live on
+  the r4133 channel by `asymmetric:autotrans/autotrans_xfmrcode.dss` (Y,
+  voltages, currents and 32 property probes at the micro floor, no ledger entry
+  and no `expect_warnings`), and its multi-phase form — which r4133 itself
+  cannot witness, see the deck's own header — by
+  `exec::tests::autotrans_xfmrcode`.
 This is a *shape/version-mismatch* declaration only — no numeric floor moves.
 
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)
