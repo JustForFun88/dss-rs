@@ -207,7 +207,10 @@ Tier map at a glance (full tables live in each plan; the audit tier always appli
 **both** spawned auditors, `/audit-code` and `/audit-tests`):
 - **`opus-xhigh`**: DE_PASCALIZE **R1**, **Stage F**, **P15 item 2**; MULTITHREADING
   **M2**; RESONANCE **WP-R2**; DIAKOPTICS_PSTCALC **WP-AD.3** (the no-oracle AD solve
-  engine — audits there are `opus-xhigh` too).
+  engine — audits there are `opus-xhigh` too); GOLDEN_REBASE **G1.3a–c/G1.5/G1.11a–c/
+  G4.1** (G2.5 complete; audits `opus-xhigh` on all of them); R4133_PROPS
+  **RP1.2/RP1.3/RP2.1/RP2.4** (audits `opus-xhigh` too; the rest of both plans is
+  `opus-high+` per their §0 tables).
 - **`opus-high+`**: DE_PASCALIZE R2, P10, P15 (rest); MULTITHREADING M3a/M3b/M3d/M4;
   RESONANCE WP-R1; GAPS **WPG.13** (GFM); DIAKOPTICS_PSTCALC **WP-AD.2** (partitioner +
   torn-file emission) and **WP-AD.6**; WASM_USERMODELS **WP-WM.0** (ABI freeze),

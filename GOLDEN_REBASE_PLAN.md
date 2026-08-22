@@ -928,7 +928,7 @@ Same mechanics.
 ### G3.4 — self-snapshot: `cim/`, `json/`, `json_import/`
 
 Same mechanics. `json/schema_full_oracle.json` + `schema_divergences.json` stay
-frozen (§1.2); `cim/` value semantics are witnessed by G1.1's live props + the
+frozen (§1.2); `cim/` value semantics are witnessed by G1.1's live props (delivered by `R4133_PROPS_PLAN.md` RP4.1 — this sub-step waits for it) + the
 r4133 CIM bug fixes from G2.2c (and G2.1g, only if its measurement showed a
 committed golden observes the flag) land here as predicted diffs. Order inside
 the commit: self-snapshot `cim/` **first**, then retire `expected_cim`
@@ -940,7 +940,7 @@ snapshot reds the gate); the CIM pins stay.
 
 ### G3.5 — self-snapshot: `props/`
 
-`props/` value truth is live (`all_properties` on both channels after G1.1); the
+`props/` value truth is live (`all_properties` on both channels after G1.1 — delivered by `R4133_PROPS_PLAN.md` RP4.1; this sub-step waits for it); the
 snapshot pins the text rendering only. Of its 51 files, the six `capi015`
 scenarios are not snapshotted (the guard refuses them). `pstcalc/`, `plot_callback/`, `ncim/` are
 **not** snapshotted — they have no live value twin and stay `capi_v0145`-frozen
