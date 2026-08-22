@@ -1149,14 +1149,20 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     inventory + the doc-gate filter → wiring.
   - **Nothing refuted, nothing deferred silently.** The one item that cannot be
     fixed inside RP0.1's scope is the **plan text**: `R4133_PROPS_PLAN.md`
-    §1.1's bin-1 table row (:215), §1.2:351-353, §1.4:450, RP2.1:689 and
-    RP2.3:738-740 still say "three mixed pairs", and RP2.1's admissibility
-    sentence (:355-357) still reads as per-pair-bin. WP-RP0's rule is
-    stop-and-report on a mismatch between the vendored evidence and the plan:
-    this **is** that report — the evidence is authoritative, and those five
-    plan sites must be corrected to the nine-pair echo list, the
-    per-example-row admissibility, and the order-invariant RP0.2 acceptance
-    before RP2.1 drafts its tables.
+    §1.1's bin-1 table row, the §1.2 replay bullet, the RP0.1 spec sentence,
+    RP2.1's `BoolFold` sizing + claim-semantics sentence and RP2.3's echo-row
+    list said "three mixed pairs", and RP2.1's admissibility sentence read as
+    per-pair-bin. WP-RP0's rule is stop-and-report on a mismatch between the
+    vendored evidence and the plan: reported, then **resolved in the sub-step's
+    closing docs commit** — all six sites amended: the §1.1 bin-1 row carries
+    the nine-pair correction (four mixed incl. `relay.reset`'s `'0.20'`
+    `EchoParse`, five pure-echo, 70 `BoolFold` pairs), §1.2's replay bullet
+    states per-example-row admissibility over the 17 heterogeneous pairs (the
+    `bins.tsv` label is a representative-cell summary, never the admissibility
+    authority), the RP0.1 spec is annotated as-executed, RP2.1 sizes `BoolFold`
+    at 70 pairs and declares the five pure-echo pairs for RP2.3 wholesale,
+    RP2.3 provisions nine echo rows, and RP0.2's acceptance compares
+    order-invariant cell multisets.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 
