@@ -39,7 +39,10 @@ the behavioral authority, the pinned dss_capi 0.14.5 is a numeric oracle only,
 and upstream bugs are never reproduced in any lane** — the `oracle-parity` lane
 has shrunk to a precision-compat lane and is scheduled for full teardown.
 
-**In flight.** `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
+**In flight.** `R4133_PROPS_PLAN.md` WP-RP0 on branch **`r4133-props`** (forked
+from `update` @ `2ee6bb00`) — **RP0.1 landed**, the G1.1 census is in-repo at
+`tests/corpus/props_r4133/`; RP0.2 (the `DSS_PROPS_CENSUS` knob) is next.
+Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
 `4d3fc2d7`, all pushed): G2.0 rails + G2.1a…G2.1h + G2.2a–d + G2.3 + G2.4 +
@@ -76,7 +79,10 @@ row-by-row r4133 disposition of the channel-blind `SKIP_PROPS`/`LANE_SKIP_PROPS`
 (`EngineChannel` is `pub(crate)` to corpus_gate), NCIM/probe/fixture pointers,
 and ~15 citation/ordering minors). G1.1 is handed to it: RP4.1 delivers the unmask with the kill
 criterion re-armed; GOLDEN_REBASE G3.4/G3.5 wait on RP4.1; PLAN_SEQUENCE rows
-5a/5b added the same day. G1.2 (ESPVLControl deck) and G1.3d (discrete extras)
+5a/5b added the same day. Execution of that plan started 2026-08-22 on
+`r4133-props` (records below); the local-only census is no longer the single
+copy of the evidence — its extracts are vendored by RP0.1. G1.2 (ESPVLControl
+deck) and G1.3d (discrete extras)
 run on — independent of G1.1. Queued behind GOLDEN_REBASE: `WASM_USERMODELS`
 follow-ups, RESONANCE, MULTITHREADING, the UPGRADE line.
 
@@ -1024,6 +1030,44 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   Recorded in the local-only docs: `TODO_COMPAT_REGISTRY.md` §3.32 and a sibling
   section in `investigations/issue-36-*.md` naming it a candidate row for the
   series (no `to_opendss` row: it is capi-only and unobservable).
+
+### R4133_PROPS WP-RP0 — condensed records
+
+> Plan: `R4133_PROPS_PLAN.md`. Branch `r4133-props` off `update` @ `2ee6bb00`.
+> Every sub-step runs the plan's per-sub-step ritual: full five-command gate
+> before the commit, then two fresh auditors and a fix agent.
+
+- **RP0.1** (2026-08-22) — the G1.1 census evidence vendored to
+  `tests/corpus/props_r4133/`. Five byte-identical copies of the local-only
+  `investigations/g1_1_r4133_props/` extracts (24 944 bytes: `triage.md` 146
+  lines, `summary.json`, `structural_pairs.txt` 209 + 1, `numeric_pairs.txt`
+  94 + 1, `shape.txt` 5) plus four derivations of the 270 MiB local census:
+  `examples_full.txt` (3 378 rows — every distinct `(rust, r4133)` spelling per
+  pair, untruncated; counts sum to all 1 055 446 value cells),
+  `bins.tsv` (303 rows, one §1.1 bin each),
+  `structural_pairs_in_scope.txt` (198) and `numeric_pairs_in_scope.txt` (53),
+  and a `README.md` carrying the provenance, the parse rule, the bin rule, the
+  in-scope filter and the data traps. **Every derived count matches plan §1.1
+  and §1 above**: bins 75 / 61 (59 case + 2 trailing space) / 8 / 21 / 44 / 61 /
+  33 = 303 pairs and 297 593 / 93 213 / 4 400 / 122 554 / 442 369 cells; the
+  numeric bins re-derived in-scope give 37 / 16; in-scope 198 / 53 pairs over
+  920 954 / 90 627 cells across 390 of the 433 divergent cases; shape 429 rows
+  full, 149 in scope (generator 137, autotrans 7, windgen 5).
+  Rules recorded in `README.md` and reproducible from the vendored files:
+  the structural bin is decided by the pair's representative cell — its first
+  census row, which is the cell the pair extracts print — through the chain
+  bool → empty → case/trim → bracketed-array → enum/singleton; the numeric bin
+  is `max_rel >= 1e-4`, a cut inside the census's empty band (largest display
+  pair 6.43e-5 `load.pf`, smallest genuine jump 1.00e-3 `invcontrol.lpftau`).
+  The in-scope filter is `engines ∈ {both, r4133}` joined by the census case
+  label `"<manifest>:<path>"` → `manifests/solvable_now.json` or
+  `tests/corpus/<family>/manifest.json`; all 438 census labels resolve and the
+  union is exactly the 521-case `population.lock.json` population.
+  One wiring edit outside the data: `.gitattributes` gains
+  `tests/corpus/props_r4133/** -text` (the repo runs `core.autocrlf=true`, and
+  an evidence directory whose whole claim is byte-faithfulness must not be
+  EOL-rewritten on checkout). No manifest, ledger, lock, golden or Rust source
+  moved. Gate: all five commands green.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 
