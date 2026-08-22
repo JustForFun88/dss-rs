@@ -1,0 +1,5 @@
+autotrans: rust_count=52 oracle_count=53 oracle_only=['xfmrcode'] rust_only=[]
+generator: rust_count=48 oracle_count=50 oracle_only=['rneut', 'xneut'] rust_only=[]
+sensor: rust_count=15 oracle_count=16 oracle_only=['action'] rust_only=[]
+gendispatcher: rust_count=10 oracle_count=9 oracle_only=[] rust_only=['weights']
+windgen: rust_count=46 oracle_count=48 oracle_only=['usermodel', 'userdata'] rust_only=[]
