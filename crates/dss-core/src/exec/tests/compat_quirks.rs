@@ -725,19 +725,25 @@ fn carriers_of(dss: &crate::exec::Dss, flag: crate::obj::props::PropFlags) -> Ve
 /// carrier, or moves one, the recorded blast radius silently stops describing
 /// the tree; this test fails instead.
 ///
-/// It also pins the sibling [`crate::obj::props::PropFlags::HIDE_R4133`] as
-/// **carrier-free** (WP-U2.5 retired its last one), which is what makes
-/// `hidden_from_full_enum` today a synonym for the 0.15.x flag — the premise of
-/// the measurement — and is simultaneously the empirical proof that the §5
-/// criterion as worded is unreachable: a flag with zero carriers still leaves
-/// its definition, its predicate arm and the comments naming it for `rg` to
-/// find.
+/// It also pins the sibling [`crate::obj::props::PropFlags::HIDE_R4133`]'s
+/// carrier set. That flag was **carrier-free** from WP-U2.5 until
+/// R4133_PROPS_PLAN RP1.1, which is how `hidden_from_full_enum` came to be a
+/// synonym for the 0.15.x flag — the premise of the F.3aa measurement. RP1.1
+/// gave it three carriers again (the Generator/Sensor upstream stubs), so the
+/// premise is now the weaker but sufficient one: the two flags' carrier sets are
+/// **class-disjoint** — F.3aa's blast radius was measured over Line and
+/// LineGeometry alone, and no r4133 carrier touches either — which the two lists
+/// below state jointly. The carrier-free era was also the empirical proof that
+/// `UPGRADE_PLAN` §5's criterion as worded is unreachable: a flag with zero
+/// carriers still leaves its definition, its predicate arm and the comments
+/// naming it for `rg` to find.
 #[test]
 fn hide_015x_carrier_set_is_the_measured_escape() {
     let dss = dss_with_circuit();
 
+    let hide_015x = carriers_of(&dss, crate::obj::props::PropFlags::HIDE_015X);
     assert_eq!(
-        carriers_of(&dss, crate::obj::props::PropFlags::HIDE_015X),
+        hide_015x,
         [
             "Line.Conductors",
             "Line.EpsRMedium",
@@ -752,11 +758,85 @@ fn hide_015x_carrier_set_is_the_measured_escape() {
          `obj/props/prop_flags.rs` before touching this list"
     );
 
+    let hide_r4133 = carriers_of(&dss, crate::obj::props::PropFlags::HIDE_R4133);
+    assert_eq!(
+        hide_r4133,
+        ["Generator.Rneut", "Generator.Xneut", "Sensor.Action"],
+        "the r4133 hide flag's carrier set moved. RP1.1 re-armed it with exactly \
+         the three upstream stubs; each one is also a `port_hidden_property` row \
+         of `tests/golden/json/schema_divergences.json`, so a carrier added or \
+         dropped here without that row is a schema byte gate that silently stops \
+         describing the tree"
+    );
+
+    // The disjointness the F.3aa measurement now rests on: no class carries both
+    // flags, so the Line/LineGeometry blast radius is still isolated.
+    let class_of = |s: &String| s.split('.').next().unwrap_or("").to_string();
+    let a: std::collections::BTreeSet<String> = hide_015x.iter().map(class_of).collect();
+    let b: std::collections::BTreeSet<String> = hide_r4133.iter().map(class_of).collect();
     assert!(
-        carriers_of(&dss, crate::obj::props::PropFlags::HIDE_R4133).is_empty(),
-        "the r4133 hide flag lost its carrier-free state (WP-U2.5): \
-         `hidden_from_full_enum` is no longer a synonym for the 0.15.x flag, so \
-         the F.3aa measurement no longer isolates that row"
+        a.is_disjoint(&b),
+        "the two hide flags now share a class ({:?}) — `hidden_from_full_enum` no \
+         longer isolates the F.3aa population and that measurement must be redone",
+        a.intersection(&b).collect::<Vec<_>>()
+    );
+}
+
+/// The [`crate::obj::props::PropFlags::UPSTREAM_STUB`] carrier set, pinned the
+/// same way and for the same reason as the hide flags above (R4133_PROPS_PLAN
+/// RP1.1).
+///
+/// The flag buys three guarantees at once — the row is *listed*, its value is
+/// stored and echoed, and the write is never a parse error — so a row that
+/// acquires it stops being engine state without any other diff saying so. The
+/// list is therefore an equality, and it is paired with the two invariants that
+/// make the mechanism honest: exactly the Generator pair carries a
+/// [`crate::obj::props::StubMessage`] (Sensor's `Action` is silent upstream), and
+/// every carrier is `HIDE_R4133` (an r4133-only name the pinned captures cannot
+/// enumerate).
+#[test]
+fn upstream_stub_rows_are_the_measured_set() {
+    use crate::obj::props::PropFlags;
+    let dss = dss_with_circuit();
+
+    assert_eq!(
+        carriers_of(&dss, PropFlags::UPSTREAM_STUB),
+        ["Generator.Rneut", "Generator.Xneut", "Sensor.Action"],
+        "the upstream-stub population moved. Every row here is a property r4133 \
+         still registers but no longer implements (`generator.pas:441-442,651-652`; \
+         `Sensor.pas:183,850-854`); adding one takes a property out of the engine's \
+         state, so it belongs in the commit that argues for it"
+    );
+
+    // Per-row: which stubs answer with a message, and that all of them are hidden
+    // from the 0.14.5-pinned full-enumeration surfaces.
+    let mut with_msg: Vec<String> = Vec::new();
+    for cls in &dss.classes {
+        let props = &cls.props;
+        for i in 1..=props.num_properties() {
+            let pd = props.prop(i);
+            if !pd.flags.contains(PropFlags::UPSTREAM_STUB) {
+                continue;
+            }
+            assert!(
+                pd.flags.contains(PropFlags::HIDE_R4133),
+                "{}.{} is an upstream stub that the pinned 0.14.5/capi015 tables \
+                 cannot know, so it must also be HIDE_R4133",
+                props.class_name(),
+                pd.name
+            );
+            if let Some(m) = pd.stub_message {
+                with_msg.push(format!("{}.{}={}", props.class_name(), pd.name, m.code));
+            }
+        }
+    }
+    with_msg.sort();
+    assert_eq!(
+        with_msg,
+        ["Generator.Rneut=5611", "Generator.Xneut=5612"],
+        "only the Generator pair logs on write (`generator.pas:651-652`); \
+         Sensor's `Action` stores silently (`Set_Action` is an empty body, \
+         `Sensor.pas:850-854`)"
     );
 }
 

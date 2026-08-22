@@ -53,6 +53,15 @@ impl ClassProps {
         let mut command_list = CommandList::new(names);
         command_list.abbrev_allowed = abbrev;
 
+        // A `stub_message` is only ever emitted by the `UPSTREAM_STUB` arm of
+        // `parse_into`, so a row carrying one without the flag would be a
+        // silently dead message. Checked here, once, for every class.
+        debug_assert!(
+            defs.iter()
+                .all(|d| d.stub_message.is_none() || d.flags.contains(PropFlags::UPSTREAM_STUB)),
+            "{class_name}: a stub_message needs PropFlags::UPSTREAM_STUB to be emitted"
+        );
+
         let mut props = Vec::with_capacity(defs.len() + 1);
         props.push(PropDef::base("", PropType::Integer)); // slot 0, never addressed
         props.extend(defs);

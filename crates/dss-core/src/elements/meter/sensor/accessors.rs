@@ -94,6 +94,11 @@ impl Sensor {
         self.med.metered_terminal = o.med.metered_terminal;
         self.med.metered_snap = o.med.metered_snap.clone();
         self.element_full_name = o.element_full_name.clone();
+        // Pascal copies the donor's whole `PropertyValue` array (`Sensor.pas:428`),
+        // which is where the `Action` upstream stub lives — the one property whose
+        // *live* value that copy moves (every other prop the port renders from a
+        // field the MakeLike deliberately leaves at the ctor default).
+        self.action_text = o.action_text.clone();
         self.med.cd.base_frequency = o.med.cd.base_frequency;
     }
 }
@@ -171,12 +176,20 @@ impl DssObject for Sensor {
     fn get_string(&self, idx: usize) -> String {
         match idx {
             prop::ELEMENT => self.element_full_name.clone(),
+            // The upstream stub echoes its string store (r4133's
+            // `GetPropertyValue` has no arm for it, so `DSSObject.pas:112-115`
+            // returns `PropertyValue[13]` — the parse string or the `''` default).
+            prop::ACTION => self.action_text.clone(),
             _ => unreachable!("Sensor has no string property {idx}"),
         }
     }
     fn set_string(&mut self, idx: usize, value: String) {
         match idx {
             prop::ELEMENT => self.element_full_name = value,
+            // Store and stop: `Set_Action` is an empty body upstream
+            // (`Sensor.pas:850-854`) and the row carries no `stub_msg`, so the
+            // write is silent and changes nothing else.
+            prop::ACTION => self.action_text = value,
             _ => unreachable!("Sensor has no string property {idx}"),
         }
     }

@@ -278,14 +278,22 @@ impl PropFlags {
     /// props-table surfaces still expose it; the props-table comparison excludes
     /// it via the `PROPS_015X` allowlist row (tests/harness).
     ///
-    /// **No live application site as of WP-U2.5.** SwtControl `RatedCurrent`
-    /// (WP-U2.4) was the sole carrier; U2.5 brought all four protection `Dump
-    /// commands` blocks to their full r4133 shape (self-referential goldens), so
-    /// every r4133 prop now renders on the full-enum surface and the flag was
-    /// dropped. It is retained (like [`HIDE_015X`]) as the mechanism a future
-    /// r4133-only prop on another class re-uses until that class's Dump block
-    /// regenerates. The `PROPS_015X` allowlist rows that hide such props from the
-    /// 0.14.5 property-table walk are name-based, independent of this flag.
+    /// **Carrier-free between WP-U2.5 and R4133_PROPS RP1.1.** SwtControl
+    /// `RatedCurrent` (WP-U2.4) was the first carrier; U2.5 brought all four
+    /// protection `Dump commands` blocks to their full r4133 shape
+    /// (self-referential goldens), so that prop now renders on the full-enum
+    /// surface and its flag was dropped. The flag was retained (like
+    /// [`HIDE_015X`]) as the mechanism a future r4133-only prop on another class
+    /// re-uses until that class's Dump block regenerates — and RP1.1 is that
+    /// case: Generator `Rneut`/`Xneut` and Sensor `Action` (all three also
+    /// [`UPSTREAM_STUB`]) are r4133-only, absent from both the pinned 0.14.5 and
+    /// the capi015 tables, so they stay off Dump / `Dump commands` / JSON /
+    /// schema output. They still occupy an ordinal, which is why the schema's
+    /// per-class byte gate carries three `port_hidden_property` rows for them
+    /// (`tests/golden/json/schema_divergences.json`). The carrier set is pinned
+    /// by `exec::tests::compat_quirks::hide_015x_carrier_set_is_the_measured_escape`.
+    /// The `PROPS_015X` allowlist rows that hide such props from the 0.14.5
+    /// property-table walk are name-based, independent of this flag.
     pub const HIDE_R4133: Self = Self(1 << 50);
 
     /// Pascal `TPropertyFlag.Ordering_First` (`DSSClass.pas:216`): this property
@@ -391,6 +399,37 @@ impl PropFlags {
     /// Carried by StorageController `kWNeed` (`StorageController.pas:426`,
     /// `[SilentReadOnly]` with `PropertyOffset = @kWNeeded`).
     pub const READ_ONLY: Self = Self(1 << 84);
+
+    /// **Not a Pascal flag** — the port's marker for an **EPRI r4133 upstream
+    /// stub**: a property r4133 still *registers* (so it occupies a display slot
+    /// and `AllPropertyNames` reports it) whose write path only stores the raw
+    /// parse string and, at most, logs a soft `DoSimpleMsg`. There is no engine
+    /// field behind it, no `RecalcElementData`, no Y effect — reading it back
+    /// echoes whatever was last written (or the `InitPropertyValues` default).
+    ///
+    /// The parse arm lives once, in
+    /// [`ClassProps::parse_into`](super::ClassProps): store through
+    /// [`DssObject::set_string`](crate::obj::base::DssObject::set_string), then
+    /// emit [`PropDef::stub_message`](super::PropDef::stub_message) when the row
+    /// carries one. It is **never** a parse error, which is exactly why
+    /// [`Self::NOT_PORTED`] does not fit (that one hard-errors the write and
+    /// hides the row from JSON) — the value must round-trip.
+    ///
+    /// Carriers (R4133_PROPS_PLAN RP1.1, pinned by
+    /// `exec::tests::compat_quirks::upstream_stub_rows_are_the_measured_set`):
+    /// Generator `Rneut`/`Xneut` — registered with the help text "Removed due to
+    /// causing confusion - Add neutral impedance externally"
+    /// (`Version8/Source/PCElements/generator.pas:441-442`), stored at `:625`,
+    /// answered with messages 5611/5612 at `:651-652`, default `'0'`
+    /// (`:2567-2568`); the neutral stamping they once fed is commented-out dead
+    /// text (`:1294-1303`). Sensor `Action` — help "NOT IMPLEMENTED"
+    /// (`Version8/Source/Meters/Sensor.pas:183,204-206`), stored at `:253`,
+    /// `Set_Action` is an empty body (`:850-854`), default `''` (`:807`).
+    ///
+    /// Orthogonal to [`Self::HIDE_R4133`], which all three rows also carry: this
+    /// flag says *how the write behaves*, that one says *which 0.14.5-pinned
+    /// enumeration surfaces skip the row*.
+    pub const UPSTREAM_STUB: Self = Self(1 << 85);
 
     pub fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0

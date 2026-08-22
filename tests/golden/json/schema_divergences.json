@@ -267,6 +267,36 @@
       "cause": "dss_capi commit 90c572e4 'AltDSS-Schema: More units' adds Units_kvar to Generator.kvar ([NoDefault, RequiredInSpecSet] -> [+ Units_kvar]); the pinned dss_capi 0.14.5 backend predates it. The port follows the vendored source (generator/mod.rs). kvar appears only in the 'kW, kvar' spec set, so the line renders once in the oneOf."
     },
     {
+      "class": "Generator",
+      "kind": "port_hidden_property",
+      "prop_key": "Rneut",
+      "index": 16,
+      "order": 16,
+      "count": 0,
+      "props": ["Rneut"],
+      "cause": "OpenDSS r4133 (R4133_PROPS_PLAN RP1.1) still registers Generator Rneut/Xneut immediately after conn (Version8/Source/PCElements/generator.pas:441-442, help 'Removed due to causing confusion - Add neutral impedance externally'), so its table is 50 names long; dss_capi 0.14.5 deleted them outright. The port carries them as UPSTREAM_STUB + HIDE_R4133 rows (elements/pc/generator/mod.rs): the write stores the string and logs 5611/5612, nothing else. They render no schema block but occupy $dssPropertyIndex/$dssPropertyOrder 16-17 (HIDE_R4133 keeps them in AltPropertyOrder, like the Line 0.15.x rows), shifting Status..Enabled down by two vs the 0.14.5 oracle."
+    },
+    {
+      "class": "Generator",
+      "kind": "port_hidden_property",
+      "prop_key": "Xneut",
+      "index": 17,
+      "order": 17,
+      "count": 0,
+      "props": ["Xneut"],
+      "cause": "OpenDSS r4133 Generator Xneut (see the Rneut entry): UPSTREAM_STUB + HIDE_R4133 port row at $dssPropertyIndex/$dssPropertyOrder 17, absent from the pinned 0.14.5 oracle."
+    },
+    {
+      "class": "Sensor",
+      "kind": "port_hidden_property",
+      "prop_key": "Action",
+      "index": 13,
+      "order": 12,
+      "count": 0,
+      "props": ["Action"],
+      "cause": "OpenDSS r4133 (R4133_PROPS_PLAN RP1.1) still registers Sensor Action as its 13th and last own property (Version8/Source/Meters/Sensor.pas:183, help opening 'NOT IMPLEMENTED.'), so its table is 16 names long; dss_capi 0.14.5 commented it out (.inputs/dss_capi/src/Meters/Sensor.pas:39,55 'action = 13 // unused'). The port carries it as an UPSTREAM_STUB + HIDE_R4133 row (elements/meter/sensor/mod.rs): the write stores the string silently (Set_Action is an empty body, Sensor.pas:850-854). It renders no schema block but occupies $dssPropertyIndex 13 / $dssPropertyOrder 12 (the order rank is one lower because the BooleanAction prop Clear is hoisted to the end of AltPropertyOrder), shifting BaseFreq/Enabled down by one vs the 0.14.5 oracle."
+    },
+    {
       "class": "Fuse",
       "kind": "port_changed_line",
       "from": "      \"default\" : \"none\",\r\n      \"description\" : \"Name of the TCC Curve object that determines the fuse blowing.  Must have been previously defined as a TCC_Curve object or specified as \\\"none\\\" (ignored). If \\\"none\\\", fuse sampling will be skipped and device will not blow for any current level. Default is \\\"none\\\". Multiplying the current values in the curve by the \\\"CurveMultiplier\\\" value gives the actual current.\",",

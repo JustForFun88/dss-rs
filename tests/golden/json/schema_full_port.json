@@ -7798,131 +7798,131 @@
           "default" : "Variable",
           "description" : "={Fixed | Variable*}.  If Fixed, then dispatch multipliers do not apply. The generator is alway at full power when it is ON.  Default is Variable  (follows curves).",
           "title" : "Status",
-          "$dssPropertyIndex" : 16,
-          "$dssPropertyOrder" : 17
+          "$dssPropertyIndex" : 18,
+          "$dssPropertyOrder" : 19
         },
         "Class" : {
           "type" : "integer",
           "default" : 1,
           "description" : "An arbitrary integer number representing the class of Generator so that Generator values may be segregated by class.",
           "title" : "Class",
-          "$dssPropertyIndex" : 17,
-          "$dssPropertyOrder" : 18
+          "$dssPropertyIndex" : 19,
+          "$dssPropertyOrder" : 20
         },
         "Vpu" : {
           "type" : "number",
           "default" : 1.0000000000000000E+000,
           "description" : "Per Unit voltage set point for Model = 3  (typical power flow model).  Default is 1.0. ",
           "title" : "Vpu",
-          "$dssPropertyIndex" : 18,
-          "$dssPropertyOrder" : 19
+          "$dssPropertyIndex" : 20,
+          "$dssPropertyOrder" : 21
         },
         "Maxkvar" : {
           "type" : "number",
           "description" : "Maximum kvar limit for Model = 3.  Defaults to twice the specified load kvar.  Always reset this if you change PF or kvar properties.",
           "title" : "Maxkvar",
-          "$dssPropertyIndex" : 19,
-          "$dssPropertyOrder" : 20
+          "$dssPropertyIndex" : 21,
+          "$dssPropertyOrder" : 22
         },
         "Minkvar" : {
           "type" : "number",
           "description" : "Minimum kvar limit for Model = 3. Enter a negative number if generator can absorb vars. Defaults to negative of Maxkvar.  Always reset this if you change PF or kvar properties.",
           "title" : "Minkvar",
-          "$dssPropertyIndex" : 20,
-          "$dssPropertyOrder" : 21
+          "$dssPropertyIndex" : 22,
+          "$dssPropertyOrder" : 23
         },
         "PVFactor" : {
           "type" : "number",
           "default" : 1.0000000000000001E-001,
           "description" : "Deceleration factor for P-V generator model (Model=3).  Default is 0.1. If the circuit converges easily, you may want to use a higher number such as 1.0. Use a lower number if solution diverges. Use Debugtrace=yes to create a file that will trace the convergence of a generator model.",
           "title" : "PVFactor",
-          "$dssPropertyIndex" : 21,
-          "$dssPropertyOrder" : 22
+          "$dssPropertyIndex" : 23,
+          "$dssPropertyOrder" : 24
         },
         "ForceOn" : {
           "type" : "boolean",
           "default" : false,
           "description" : "{Yes | No}  Forces generator ON despite requirements of other dispatch modes. Stays ON until this property is set to NO, or an internal algorithm cancels the forced ON state.",
           "title" : "ForceOn",
-          "$dssPropertyIndex" : 22,
-          "$dssPropertyOrder" : 23
+          "$dssPropertyIndex" : 24,
+          "$dssPropertyOrder" : 25
         },
         "kVA" : {
           "type" : "number",
           "description" : "kVA rating of electrical machine. Defaults to 1.2* kW if not specified. Applied to machine or inverter definition for Dynamics mode solutions. ",
           "title" : "kVA",
-          "$dssPropertyIndex" : 23,
-          "$dssPropertyOrder" : 24
+          "$dssPropertyIndex" : 25,
+          "$dssPropertyOrder" : 26
         },
         "Xd" : {
           "type" : "number",
           "default" : 1.0000000000000000E+000,
           "description" : "Per unit synchronous reactance of machine. Presently used only for Thevenin impedance for power flow calcs of user models (model=6). Typically use a value 0.4 to 1.0. Default is 1.0",
           "title" : "Xd",
-          "$dssPropertyIndex" : 25,
-          "$dssPropertyOrder" : 25
+          "$dssPropertyIndex" : 27,
+          "$dssPropertyOrder" : 27
         },
         "Xdp" : {
           "type" : "number",
           "default" : 2.8000000000000003E-001,
           "description" : "Per unit transient reactance of the machine.  Used for Dynamics mode and Fault studies.  Default is 0.27.For user models, this value is used for the Thevenin/Norton impedance for Dynamics Mode.",
           "title" : "Xdp",
-          "$dssPropertyIndex" : 26,
-          "$dssPropertyOrder" : 26
+          "$dssPropertyIndex" : 28,
+          "$dssPropertyOrder" : 28
         },
         "Xdpp" : {
           "type" : "number",
           "default" : 2.0000000000000001E-001,
           "description" : "Per unit subtransient reactance of the machine.  Used for Harmonics. Default is 0.20.",
           "title" : "Xdpp",
-          "$dssPropertyIndex" : 27,
-          "$dssPropertyOrder" : 27
+          "$dssPropertyIndex" : 29,
+          "$dssPropertyOrder" : 29
         },
         "H" : {
           "type" : "number",
           "default" : 1.0000000000000000E+000,
           "description" : "Per unit mass constant of the machine.  MW-sec/MVA.  Default is 1.0.",
           "title" : "H",
-          "$dssPropertyIndex" : 28,
-          "$dssPropertyOrder" : 28
+          "$dssPropertyIndex" : 30,
+          "$dssPropertyOrder" : 30
         },
         "D" : {
           "type" : "number",
           "default" : 1.0000000000000000E+000,
           "description" : "Damping constant.  Usual range is 0 to 4. Default is 1.0.  Adjust to get damping",
           "title" : "D",
-          "$dssPropertyIndex" : 29,
-          "$dssPropertyOrder" : 29
+          "$dssPropertyIndex" : 31,
+          "$dssPropertyOrder" : 31
         },
         "UserModel" : {
           "type" : "string",
           "description" : "Name of DLL containing user-written model, which computes the terminal currents for Dynamics studies, overriding the default model.  Set to \"none\" to negate previous setting.",
           "title" : "UserModel",
           "format" : "file-path",
-          "$dssPropertyIndex" : 30,
-          "$dssPropertyOrder" : 30
+          "$dssPropertyIndex" : 32,
+          "$dssPropertyOrder" : 32
         },
         "UserData" : {
           "type" : "string",
           "description" : "String (in quotes or parentheses) that gets passed to user-written model for defining the data required for that model.",
           "title" : "UserData",
-          "$dssPropertyIndex" : 31,
-          "$dssPropertyOrder" : 31
+          "$dssPropertyIndex" : 33,
+          "$dssPropertyOrder" : 33
         },
         "ShaftModel" : {
           "type" : "string",
           "description" : "Name of user-written DLL containing a Shaft model, which models the prime mover and determines the power on the shaft for Dynamics studies. Models additional mass elements other than the single-mass model in the DSS default model. Set to \"none\" to negate previous setting.",
           "title" : "ShaftModel",
           "format" : "file-path",
-          "$dssPropertyIndex" : 32,
-          "$dssPropertyOrder" : 32
+          "$dssPropertyIndex" : 34,
+          "$dssPropertyOrder" : 34
         },
         "ShaftData" : {
           "type" : "string",
           "description" : "String (in quotes or parentheses) that gets passed to user-written shaft dynamic model for defining the data for that model.",
           "title" : "ShaftData",
-          "$dssPropertyIndex" : 33,
-          "$dssPropertyOrder" : 33
+          "$dssPropertyIndex" : 35,
+          "$dssPropertyOrder" : 35
         },
         "DutyStart" : {
           "type" : "number",
@@ -7930,64 +7930,64 @@
           "description" : "Starting time offset [hours] into the duty cycle shape for this generator, defaults to 0",
           "units" : "hour",
           "title" : "DutyStart",
-          "$dssPropertyIndex" : 34,
-          "$dssPropertyOrder" : 34
+          "$dssPropertyIndex" : 36,
+          "$dssPropertyOrder" : 36
         },
         "DebugTrace" : {
           "type" : "boolean",
           "default" : false,
           "description" : "{Yes | No }  Default is no.  Turn this on to capture the progress of the generator model for each iteration.  Creates a separate file for each generator named \"GEN_name.csv\".",
           "title" : "DebugTrace",
-          "$dssPropertyIndex" : 35,
-          "$dssPropertyOrder" : 35
+          "$dssPropertyIndex" : 37,
+          "$dssPropertyOrder" : 37
         },
         "Balanced" : {
           "type" : "boolean",
           "default" : false,
           "description" : "{Yes | No*} Default is No.  For Model=7, force balanced current only for 3-phase generators. Force zero- and negative-sequence to zero.",
           "title" : "Balanced",
-          "$dssPropertyIndex" : 36,
-          "$dssPropertyOrder" : 36
+          "$dssPropertyIndex" : 38,
+          "$dssPropertyOrder" : 38
         },
         "XRdp" : {
           "type" : "number",
           "default" : 2.0000000000000000E+001,
           "description" : "Default is 20. X/R ratio for Xdp property for FaultStudy and Dynamic modes.",
           "title" : "XRdp",
-          "$dssPropertyIndex" : 37,
-          "$dssPropertyOrder" : 37
+          "$dssPropertyIndex" : 39,
+          "$dssPropertyOrder" : 39
         },
         "UseFuel" : {
           "type" : "boolean",
           "default" : false,
           "description" : "{Yes | *No}. Activates the use of fuel for the operation of the generator. When the fuel level reaches the reserve level, the generator stops until it gets refueled. By default, the generator is connected to a continuous fuel supply, Use this mode to mimic dependency on fuel level for different generation technologies.",
           "title" : "UseFuel",
-          "$dssPropertyIndex" : 38,
-          "$dssPropertyOrder" : 38
+          "$dssPropertyIndex" : 40,
+          "$dssPropertyOrder" : 40
         },
         "FuelkWh" : {
           "type" : "number",
           "default" : 0.0000000000000000E+000,
           "description" : "{*0}Is the nominal level of fuel for the generator (kWh). It only applies if UseFuel = Yes/True",
           "title" : "FuelkWh",
-          "$dssPropertyIndex" : 39,
-          "$dssPropertyOrder" : 39
+          "$dssPropertyIndex" : 41,
+          "$dssPropertyOrder" : 41
         },
         "pctFuel" : {
           "type" : "number",
           "default" : 1.0000000000000000E+002,
           "description" : "It is a number between 0 and 100 representing the current amount of fuel available in percentage of FuelkWh. It only applies if UseFuel = Yes/True",
           "title" : "%Fuel",
-          "$dssPropertyIndex" : 40,
-          "$dssPropertyOrder" : 40
+          "$dssPropertyIndex" : 42,
+          "$dssPropertyOrder" : 42
         },
         "pctReserve" : {
           "type" : "number",
           "default" : 2.0000000000000000E+001,
           "description" : "It is a number between 0 and 100 representing the reserve level in percentage of FuelkWh. It only applies if UseFuel = Yes/True",
           "title" : "%Reserve",
-          "$dssPropertyIndex" : 41,
-          "$dssPropertyOrder" : 41
+          "$dssPropertyIndex" : 43,
+          "$dssPropertyOrder" : 43
         },
         "Refuel" : {
           "type" : "boolean",
@@ -7995,8 +7995,8 @@
           "description" : "It is a boolean value (Yes/True, No/False) that can be used to manually refuel the generator when needed. It only applies if UseFuel = Yes/True",
           "writeOnly" : true,
           "title" : "Refuel",
-          "$dssPropertyIndex" : 42,
-          "$dssPropertyOrder" : 47
+          "$dssPropertyIndex" : 44,
+          "$dssPropertyOrder" : 49
         },
         "DynamicEq" : {
           "type" : "string",
@@ -8004,15 +8004,15 @@
           "maxLength" : 255,
           "description" : "The name of the dynamic equation (DynamicExp) that will be used for defining the dynamic behavior of the generator. if not defined, the generator dynamics will follow the built-in dynamic equation.",
           "title" : "DynamicEq",
-          "$dssPropertyIndex" : 43,
-          "$dssPropertyOrder" : 42
+          "$dssPropertyIndex" : 45,
+          "$dssPropertyOrder" : 44
         },
         "DynOut" : {
           "$ref" : "#/$defs/StringArrayOrFilePath",
           "description" : "The name of the variables within the Dynamic equation that will be used to govern the generator dynamics.This generator model requires 2 outputs from the dynamic equation: \n\n1. Shaft speed (velocity) relative to synchronous speed.\n2. Shaft, or power, angle (relative to synchronous reference frame).\n\nThe output variables need to be defined in tha strict order.",
           "title" : "DynOut",
-          "$dssPropertyIndex" : 44,
-          "$dssPropertyOrder" : 43
+          "$dssPropertyIndex" : 46,
+          "$dssPropertyOrder" : 45
         },
         "Spectrum" : {
           "type" : "string",
@@ -8021,8 +8021,8 @@
           "default" : "defaultgen",
           "description" : "Name of harmonic voltage or current spectrum for this generator. Voltage behind Xd\" for machine - default. Current injection for inverter. Default value is \"default\", which is defined when the DSS starts.",
           "title" : "Spectrum",
-          "$dssPropertyIndex" : 45,
-          "$dssPropertyOrder" : 44
+          "$dssPropertyIndex" : 47,
+          "$dssPropertyOrder" : 46
         },
         "BaseFreq" : {
           "type" : "number",
@@ -8030,28 +8030,28 @@
           "description" : "Base Frequency for ratings.",
           "units" : "Hz",
           "title" : "BaseFreq",
-          "$dssPropertyIndex" : 46,
-          "$dssPropertyOrder" : 45
+          "$dssPropertyIndex" : 48,
+          "$dssPropertyOrder" : 47
         },
         "Enabled" : {
           "type" : "boolean",
           "default" : true,
           "description" : "{Yes|No or True|False} Indicates whether this element is enabled.",
           "title" : "Enabled",
-          "$dssPropertyIndex" : 47,
-          "$dssPropertyOrder" : 46
+          "$dssPropertyIndex" : 49,
+          "$dssPropertyOrder" : 48
         },
         "Like" : {
           "type" : "string",
           "description" : "Make like another object, e.g.:\n\nNew Capacitor.C2 like=c1  ...",
           "writeOnly" : true,
           "title" : "Like",
-          "$dssPropertyIndex" : 48,
+          "$dssPropertyIndex" : 50,
           "$dssPropertyOrder" : 1
         },
         "DynInit" : {
           "$ref" : "#/$defs/DynInitType",
-          "$dssPropertyOrder" : 49
+          "$dssPropertyOrder" : 51
         }
       },
       "oneOf" : [
@@ -15660,7 +15660,7 @@
           "writeOnly" : true,
           "title" : "Clear",
           "$dssPropertyIndex" : 4,
-          "$dssPropertyOrder" : 15
+          "$dssPropertyOrder" : 16
         },
         "kVs" : {
           "type" : "array",
@@ -15710,23 +15710,23 @@
           "description" : "Base Frequency for ratings.",
           "units" : "Hz",
           "title" : "BaseFreq",
-          "$dssPropertyIndex" : 13,
-          "$dssPropertyOrder" : 13
+          "$dssPropertyIndex" : 14,
+          "$dssPropertyOrder" : 14
         },
         "Enabled" : {
           "type" : "boolean",
           "default" : true,
           "description" : "{Yes|No or True|False} Indicates whether this element is enabled.",
           "title" : "Enabled",
-          "$dssPropertyIndex" : 14,
-          "$dssPropertyOrder" : 14
+          "$dssPropertyIndex" : 15,
+          "$dssPropertyOrder" : 15
         },
         "Like" : {
           "type" : "string",
           "description" : "Make like another object, e.g.:\n\nNew Capacitor.C2 like=c1  ...",
           "writeOnly" : true,
           "title" : "Like",
-          "$dssPropertyIndex" : 15,
+          "$dssPropertyIndex" : 16,
           "$dssPropertyOrder" : 1
         }
       },

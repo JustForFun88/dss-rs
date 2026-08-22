@@ -53,7 +53,16 @@ grows to bin 5 = 45 pairs, example rows via RP2.1's `examples_supplement.txt`),
 two whole-element gaps on the cursor-disagreement transformers (+22 cells), and
 an ASLR'd address inside five `oracle_error` texts; the closing docs pass
 amended the plan (§1.1/§1.2/RP0.2/RP2.1/RP2.3) and the vendored README to the
-re-measured reality. WP-RP1 (property-table shape closure) is next.
+re-measured reality. **WP-RP1 (property-table shape closure) is open**: RP1.1
+landed the three r4133 upstream-stub rows (Generator `Rneut`/`Xneut` at display
+slots 16/17, Sensor `Action` at 13) behind a new `PropFlags::UPSTREAM_STUB` —
+store the parse string, log the class's soft message if it has one, never a
+parse error, no engine state — so the two shape gaps close (generator 48 → 50
+names, sensor 15 → 16). Measured on a generator-heavy `both` case: r4133 shape
+classes 1 → 0 and 175 previously uncomparable cells now compare, with the capi
+channel bit-unchanged; the `props/` goldens provably do not move (the capture
+enumerates the 0.14.5 oracle's own names) and the only bytes that did are the
+two predicted `json/` schema artifacts. RP1.2 (AutoTrans `XfmrCode`) is next.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -1431,6 +1440,108 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   - Gate: all five commands green. `lane_diff.ps1` not owed — no solved state,
     no compat kernel; the knob is test-harness code and inert unless the env var
     is set.
+
+### R4133_PROPS WP-RP1 — condensed records
+
+> Plan: `R4133_PROPS_PLAN.md` §WP-RP1. Same branch, same per-sub-step ritual.
+
+- **RP1.1** (2026-08-22) — the three r4133 **upstream-stub** property rows.
+  Generator `Rneut`/`Xneut` at display slots 16/17 and Sensor `Action` at slot
+  13 now exist in the port, closing the two shape gaps `shape.txt` records
+  (generator 48 → 50 names, sensor 15 → 16).
+  - **Mechanism — one new flag, one new `PropDef` field.**
+    `PropFlags::UPSTREAM_STUB` (bit 85) marks a property r4133 still *registers*
+    but no longer implements. `ClassProps::parse_into` handles it ahead of the
+    `ptype` match: store the raw parse string through the class's own
+    `set_string`, then emit `PropDef::stub_message` if the row carries one, and
+    return — never a parse error, no side effect, no recalc. That reproduces
+    r4133 exactly: its Edit loop assigns `PropertyValue[]` for every property
+    *before* the arm runs (`generator.pas:625`, `Sensor.pas:253`), and the arm
+    then either logs a soft `DoSimpleMsg` (5611/5612, `generator.pas:651-652`)
+    or does nothing (`TSensorObj.Set_Action` is an empty body,
+    `Sensor.pas:850-854`). `PropFlags::NOT_PORTED` could not be reused — it
+    hard-errors the write and hides the row from JSON. The per-class
+    side-effect hook is the `stub_message` field itself (code + text), so
+    Generator logs and Sensor stays silent with no per-class code at all;
+    `ClassProps::new` `debug_assert`s that a `stub_message` implies the flag.
+  - **Storage.** Plain `String` fields (`Generator::rneut_text`/`xneut_text`,
+    default `"0"` per `generator.pas:2567-2568`; `Sensor::action_text`, default
+    `""` per `Sensor.pas:807`), read/written by the classes' `get_string`/
+    `set_string` arms and copied by `make_like` — r4133's `MakeLike` copies the
+    donor's whole property-string array (`generator.pas:828`, `Sensor.pas:428`),
+    and these are the only properties where that copy is observable in a port
+    that otherwise renders live fields.
+  - **Ordinal shifts.** Generator `NUM_PROPS` 48 → 50 (`STATUS`..`ENABLED`
+    +2), Sensor 15 → 16 (`BASE_FREQ`/`ENABLED` +1). Every `prop::` consumer is
+    symbolic (checked by grep across the workspace: no `generator::prop`/
+    `sensor::prop` reference outside the two modules, and the only raw-slot
+    prose is `make_pos_sequence`'s doc, which cites r4133's *CmdMapIndex*
+    numbers — the space old-OpenDSS keys `PropertyValue`/`PrpSequence` by — and
+    is therefore unaffected; a note was added there so `26` is not misread as a
+    port ordinal).
+  - **Surfaces.** All three rows also carry `PropFlags::HIDE_R4133` — they are
+    absent from BOTH pinned captures (dss_capi 0.14.5 deleted Generator's pair
+    outright and commented Sensor's out, `.inputs/dss_capi/src/Meters/
+    Sensor.pas:39,55`) — so Dump / `Dump commands` / AltDSS JSON / the schema
+    output skip them while `?` and the props table expose them. That re-arms a
+    flag which had been carrier-free since WP-U2.5; the F.3aa blast-radius
+    measurement still isolates its Line/LineGeometry population because the two
+    hide flags' carrier sets are now asserted **class-disjoint**. The three rows
+    join `PROPS_015X` (name-based, so on the r4133 channel — whose oracle name
+    list *does* carry them — `filter_015x` keeps them and they compare in full).
+  - **Goldens: measured, not moved.** `tests/golden/props/{generator,sensor}.json`
+    do **not** change — `gen_props.py` enumerates the *oracle's*
+    `AllPropertyNames` (capi 0.14.5), which can never learn an r4133-only name.
+    Measured, not assumed: those two classes' 8 + 6 scenarios were re-run
+    through the pinned dss-python (0.15.7 / backend 0.14.5) and compared to the
+    committed records — **identical**. (A whole-file `gen_props.py` run is
+    impossible in the pinned environment and was so before this sub-step:
+    `props/regcontrol.json` is `capi015`-anchored and its `idle=` scenario
+    raises #110 on the 0.14.5 backend.) `PROPS_CLASS_FILES`/`PROPS_SCENARIOS`/
+    `PROPS_PROPERTY_CELLS` therefore stay 51/322/8343.
+    Two `json/` schema artifacts *do* move, both predicted by §1.2: three new
+    `port_hidden_property` rows in `schema_divergences.json` (Generator 16/16
+    and 17/17, Sensor index 13 / order 12 — the order rank is one lower because
+    the `BooleanAction` `Clear` is hoisted to the end of `AltPropertyOrder`),
+    after which `ported_class_defs_bytes_match_oracle` and
+    `full_document_reconciles_with_oracle` pass untouched; and
+    `schema_full_port.json` regenerated with `REGEN_SCHEMA_PORT=1`, whose diff
+    is **exactly 35 `$dssPropertyIndex` + 35 `$dssPropertyOrder` renumberings**
+    inside the Generator and Sensor regions and nothing else (no property block
+    added or removed). `golden.lock.json` moved exactly those two digests, in
+    this commit. No other golden byte moved anywhere.
+  - **Measurement (RP0.2 census knob, `DSS_GATE_ONLY="IEEE 30 Bus"` — a
+    5-generator `both`-channel case), before vs after:**
+    r4133 shape classes **1 → 0** and cells uncomparable behind a desynchronized
+    name list **175 → 0** (before: `generator: rust_count=48 oracle_count=50
+    oracle_only=['rneut','xneut']`); the 175 newly comparable cells surface as
+    structural pairs 23 → 29 and numeric 15 → 16, which is the WP-RP2/RP3
+    workload the shape closure exposes, not a regression. The **capi_v0145
+    channel is bit-unchanged**: 0 structural / 0 numeric / 0 shape / 0
+    uncomparable, before and after.
+  - **Tests.** `exec::tests::upstream_stubs` (new module, 6 tests) pins
+    store+echo+message ordering and the `DoSimpleMsg`-not-abort severity, the
+    silent Sensor write, the non-numeric round-trip, the display slots
+    (`…DispValue, Conn, Rneut, Xneut, Status…` / `…Weight, Action, BaseFreq,
+    Enabled` with the two table lengths), the `MakeLike` copy, and the Dump/JSON
+    absence. The "write does not change behavior" acceptance is
+    `generator_neutral_stubs_move_neither_y_nor_the_solution`: two *independent*
+    solves of the same micro deck differing only in whether `rneut=`/`xneut=`
+    were written give **bit-identical** Y triplets, iteration count and node
+    voltages, plus an in-place `Edit` on a solved circuit that leaves Y
+    bit-identical (the A/B pair rather than a re-`Solve` because re-solving from
+    a converged state drifts ~1e-8 for reasons unrelated to these properties).
+    `compat_quirks::upstream_stub_rows_are_the_measured_set` locks the flag's
+    carrier set, that only the Generator pair carries a message (5611/5612), and
+    that every carrier is also `HIDE_R4133`;
+    `hide_015x_carrier_set_is_the_measured_escape` gained the `HIDE_R4133`
+    carrier list and the class-disjointness assert;
+    `props_r4133_evidence_lock::rp1_1_closes_the_generator_and_sensor_shape_gaps`
+    reads the closure back off the vendored `shape.txt` itself (live table
+    length == the census's `oracle_count`, the `oracle_only` names present, the
+    frozen `rust_count` still the pre-fix number).
+  - Gate: all five commands green. `lane_diff.ps1` not owed — no solved state
+    and no compat kernel moved (proved by the bit-identical A/B above).
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 
