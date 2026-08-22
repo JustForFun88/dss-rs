@@ -69,7 +69,8 @@ frozen extracts structurally cannot hold, now a per-sub-step obligation of
 WP-RP1 and the input of RP2.1's `examples_supplement.txt`, one of them a new
 bin-7 pair (`generator.d`, an r4133 `Dpu` echo); and the re-armed `HIDE_R4133`
 escape got its owner (`ORPHANED_GAPS.md` §2 → GOLDEN_REBASE G3.3c/G3.4) with a
-measured blast radius of 4 artifacts and zero corpus cases.
+measured blast radius — 4 artifacts over its three carriers then, re-measured to
+8 when RP1.2 added the fourth — and zero corpus cases throughout.
 **RP1.2** then ported AutoTrans `XfmrCode` for real (r4133 property 39 +
 `TAutoTransObj.FetchXfmrCode`): the auto now resolves a library entry and copies
 its electrical model field by field, with the autotrans-specific overrides
@@ -85,10 +86,14 @@ and 38 472 V). Both got upstream reports. Measure-first put a new corpus deck on
 the r4133 channel — deliberately **single-phase**, the one width at which the
 `NConds` bug is inert (1+1 = 2·1), so the channel really does gate the copy — and
 it passes with no ledger entry; the multi-phase form is pinned in-engine
-(10 tests, incl. a coded-vs-longhand auto whose Y and node voltages are
+(12 tests, incl. a coded-vs-longhand auto whose Y and node voltages are
 bit-identical). The full re-census records the **9** value pairs the closure makes
 live, one of them a genuine bin-7 jump (`autotrans.wdgcurrents`) that sits
-entirely on capi-only cases and is therefore out of RP4.1's scope.
+entirely on capi-only cases and is therefore out of RP4.1's scope. Its audit
+round settled **8** findings (1 major), the major one by re-measurement: the
+fourth `HIDE_R4133` carrier is the first on a class with committed `Dump`
+goldens, so the flag's un-hide blast radius is **8** artifacts and +7
+`dump3_commands` rows, not the RP1.1-era 4 and +6 (corpus still untouched).
 RP1.3 (WindGen `UserModel`/`UserData`) is next.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
@@ -1637,6 +1642,10 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     `schema_divergences` stay frozen); the numbers also live on the flag's doc.
     The un-hide would render real text, not a key-on-miss fallback: all three
     help strings have been in `report/help_catalog.rs` since U2.5.
+    *(These figures are the three-carrier measurement and are superseded by
+    RP1.2's audit item (1): with the fourth carrier the un-hide moves 8
+    artifacts, `dump3_commands` +7 rows, 4 `port_hidden_property` rows — corpus
+    still untouched.)*
     (6) *minor, tests* — `prop_flags.rs`'s `HIDE_015X` doc still claimed the
     sibling has "zero carriers today", the empirical basis of `UPGRADE_PLAN` §5's
     unreachability argument. **Fixed** (restated as the U2.5→RP1.1 era, which is
@@ -1734,7 +1743,7 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     winding-1 override alone reds the `[R4133]` channel on node voltages
     (|Δ| = 8.7 V against an allowed 1.16e-4).
   - **The multi-phase form is pinned in-engine**, since r4133 cannot witness it:
-    `exec::tests::autotrans_xfmrcode` (11 tests) covers the forced
+    `exec::tests::autotrans_xfmrcode` (12 tests) covers the forced
     `Series`/`Wye`/`Delta` on a 3-winding code, every copied scalar, the
     `RdcSpecified` selection (with a control auto that never saw a code), the
     conductor count (`Yorder = 18`, where the reproduced bug gives 12), the miss
@@ -1744,7 +1753,9 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     code name like r4133's flag-blind `SaveWrite`, `Dump` does not — the RP1.1
     disposition), and — the correctness statement no oracle can make — that a
     coded auto and the same auto written out longhand produce a **bit-identical**
-    assembled Y and node-voltage vector.
+    assembled Y and node-voltage vector — plus (audit round) the guard that keeps
+    the copied-cell table honest: no asserted cell may equal what a bare auto of
+    the same shape holds anyway.
   - **Mechanism added:** one `PropDef` field, `ref_miss_message`
     (`RefMissMessage { code, prefix }`). dss_capi routed every object reference
     through the property system's single #401 miss path, which the port follows
@@ -1752,11 +1763,16 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     resolves it through the legacy `FetchXfmrCode`, whose `else` is one
     `DoSimpleMsg` that leaves the stored name and the model exactly as they were
     (`:2394-2395`). The field buys both halves: the r4133 text/number, and a miss
-    that returns before `set_object_ref` so nothing is written.
+    that returns before `set_object_ref` so nothing is written. Its two
+    guarantees are the ones the sibling `stub_message` already has (audit round):
+    a `ClassProps::new` invariant (only a `PropType::ObjectRef` row with a named
+    `object_class` — the one arm that reads it) and a carrier-set pin
+    (`ref_miss_message_rows_are_the_measured_set`).
   - **Surfaces.** The row is `HIDE_R4133` (r4133-only ⇒ absent from BOTH pinned
     tables) and joins `PROPS_015X`; the flag's carrier set assert grows to four
-    and its doc now says what it always meant — "absent from both pinned tables",
-    never "not implemented". Bytes moved: `json/schema_full_port.json`
+    and (audit round) its doc now says what it always meant — "absent from both
+    pinned tables", never "not implemented" — with a re-measured blast radius.
+    Bytes moved: `json/schema_full_port.json`
     (21 ordinal renumberings, no new block) and `json/schema_divergences.json`
     (a fourth `port_hidden_property` row at `$dssPropertyIndex` 39 /
     `$dssPropertyOrder` **32**, plus the AutoTrans BH trio's indices 42/43/44 →
@@ -1793,11 +1809,95 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     signature of a different landed tap, which is why those decks are capi-only.
     Recorded for RP2.2's closed pair list; no RP3 sub-step opens while it stays
     out of scope.
-  - Gate: all five commands green. `lane_diff.ps1` run (the plan owes it for
-    this sub-step): **PASS**, 522 cases / 3 220 247 records, `max |Δ| = 0`
+  - **Audit settlement (2026-08-23, `/audit-code` + `/audit-tests`, 8 findings:
+    1 major, 7 minor — 7 fixed, 1 recorded-not-changed, 0 refuted).** Written up
+    as **7** items below: the missing `ref_miss_message` invariants were raised
+    by both auditors (audit-code's third minor and audit-tests' first) and are
+    settled once, in item (3).
+    (1) *major, code* — the `HIDE_R4133` un-hide measurement (RP1.1: "4 committed
+    artifacts, `dump3_commands` +6 rows, no corpus case") was left describing a
+    three-carrier flag while RP1.2 added a fourth **on a new class** — and the
+    prose claiming otherwise sat in the sub-step's own record. **Fixed by
+    re-measurement** (2026-08-23, the flag's own method: drop its arm from
+    `hidden_from_full_enum`, `cargo test -p dss-core --no-fail-fast`): **8**
+    committed artifacts move — `json/der_usermodel_{assigned,full}.json`,
+    `json/dyneq_full.json`, `json/autotrans_micro.json`,
+    `json/autotrans_solved.json` (the AutoTrans FULL views gain `"XfmrCode"`
+    between `Bank` and `XRConst`), `reports/dump_autotrans.txt` (56 → 57 rows),
+    `reports/dump_autotrans3.txt` (63 → 64) and `reports/dump3_commands.txt`
+    (2328 → 2335, i.e. **+7**: one help line each for the two Generator props and
+    for AutoTrans `XfmrCode`, four for Sensor `Action`'s multi-line help) — plus
+    `schema_full_port.json` and the deletion of the **4** `port_hidden_property`
+    rows, and **still no corpus case** (`corpus_gate_all_cases_match_engines`
+    green with the arm off). AutoTrans is the first carrier class that owns
+    committed `Dump` goldens, which is exactly why the number moved. Both copies
+    of the measurement (the flag's doc and `ORPHANED_GAPS.md` §2, the row
+    GOLDEN_REBASE G3.3c/G3.4 will read as its scope estimate) now carry it, and
+    the carrier-set assert's message points at them.
+    (2) *minor, code* — `set_object_ref`'s doc justified the silent empty-name
+    arm with "r4133's `SetActive('')` misses too", which would in fact log
+    #100180 and make the port's silence a divergence. **Fixed**: the real reason
+    is the one its own pin records — r4133's `Edit` loop is
+    `WHILE Length(Param)>0 Do` (`AutoTrans.pas:472`), so property 39 is never
+    reached; the comment now says that and names the pin.
+    (3) *minor, code+tests* — `ref_miss_message` landed without either guarantee
+    its model `stub_message` has. **Fixed both ways**: a `ClassProps::new`
+    `debug_assert` (the field is read only by the `PropType::ObjectRef` +
+    named-`object_class` arm of `parse_into`; anywhere else it is a silently dead
+    message) and a carrier-set equality pin,
+    `compat_quirks::ref_miss_message_rows_are_the_measured_set`, which also
+    re-asserts the shape invariant over the live tables. Reported independently
+    by both auditors (audit-code minor 3, audit-tests minor 1) and settled once.
+    (4) *minor, tests* — several cells of `every_copied_field_arrives` equalled
+    the AutoTrans defaults and could not fail: winding 1's `kV` (115), winding
+    3's `Tap`/`MaxTap`/`MinTap`/`NumTaps` and — the only cell for its own copy
+    statement — `%LoadLoss`, whose code value was `%r` 0.21 + 0.19 = the default
+    0.4. Not a coverage hole (the corpus deck's r4133 probes gate `%loadloss`
+    live at one phase, and each field had another witness among the other
+    windings), but cells that cannot be trusted as pins. **Fixed at the
+    fixture** (winding 1 kV 115 → 138 with the circuit
+    base, `%r` 0.21 → 0.33 ⇒ `%loadloss` 0.52, winding 3 off the default
+    tap/min/max/numtaps), the table extracted into `PER_WINDING`/`WHOLE_ELEMENT`,
+    and a new guard `no_asserted_cell_can_be_read_off_the_defaults` makes the
+    rule executable. Both halves proven non-vacuous by probe: deleting
+    `self.pct_load_loss = code.pct_load_loss()` now reds
+    `every_copied_field_arrives` (it did not before), and pointing one cell back
+    at a default reds the guard.
+    (5) *minor, code* — an **inherited** divergence the sub-step read past:
+    AutoTrans `bank=`. r4133 keeps the assignment commented out
+    (`AutoTrans.pas:519`) and answers the write with #100130 (`:566`), so its
+    `XfmrBank` is always `''` and every auto is its own CIM bank
+    (`ExportCIMXML.pas:3280`); dss_capi 0.14.5 restored the property
+    (`AutoTrans.pas:482`) and the port follows it, using the name as the CIM
+    bank-grouping key and never logging #100130. **Recorded, not changed** — and
+    deliberately so: unlike the `XfmrCode` arm, r4133's pair here is
+    self-consistent (a documented limitation, not a bug), so nothing is reported
+    upstream, and dropping the property would remove working behavior and move
+    CIM output — a decision outside RP1.2's scope with no owning plan. Latent:
+    every `bank=` in the corpus is a Transformer, the property echo agrees on
+    both channels and the CIM goldens are capi-captured; it becomes observable
+    only on an r4133-gated deck that writes `bank=` on an auto (r4133 would log
+    #100130 there). The evidence now sits at the property row in
+    `auto_trans/mod.rs`.
+    (6) *minor, docs* — two stale citations. **Fixed**: the corpus deck's header
+    cited `AutoTrans.pas:2358-2362` for the connection override (the `Case i of`
+    block is `:2356-2361`, and `:2357` — winding 1 → SERIES — sat outside the
+    quoted range), and the upstream report said the second `CASE` block is
+    "twelve lines later" (it is 46; now phrased without the count) with the
+    `bank=` assignment at `:520` (it is `:519`) — plus, found while fixing those,
+    "a real, 150-line routine" for `FetchXfmrCode` (`:2339-2396` is 58). Both
+    auditors re-checked every other Pascal line number in the sub-step and found
+    them correct. The report edit is **not in this commit**: `investigations/`
+    is gitignored (`.gitignore:5`), so it lands in the working tree only.
+    (7) *minor, docs* — the frontier said "10 tests" where the record said 11.
+    **Fixed**: both now say **12** (the guard of item 4 is the twelfth).
+  - Gate: all five commands green, re-run after the settlement. `lane_diff.ps1`
+    run for the sub-step: **PASS**, 522 cases / 3 220 247 records, `max |Δ| = 0`
     exactly on every gated kind (conv, cur, errs, iter, loss, pow, v, y), zero
     iteration drift — the default lane stays bit-identical to the parity lane,
-    so it keeps precisely the parity lane's oracle standing.
+    so it keeps precisely the parity lane's oracle standing. Not re-run for the
+    settlement: it touched no solved state and no compat kernel (the fixture
+    change lives inside an in-engine test's own deck).
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 
