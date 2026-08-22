@@ -75,6 +75,24 @@ pub struct PropDef {
     /// `Spectrum.defaultgen`; without this the port emitted a bare
     /// `defaultgen`. Never consulted when `object_class` is `Some`.
     pub json_ref_class: Option<&'static str>,
+    /// The soft `DoSimpleMsg` a [`PropFlags::UPSTREAM_STUB`] row logs on **every**
+    /// write (`None` = the stub stores silently). This is the whole per-class
+    /// side-effect surface the stub mechanism needs: Generator `Rneut`/`Xneut`
+    /// answer with 5611/5612 (Pascal `TGenerator.Edit`,
+    /// `Version8/Source/PCElements/generator.pas:651-652`) while Sensor `Action`
+    /// says nothing (Pascal `TSensorObj.Set_Action` is an empty body,
+    /// `Version8/Source/Meters/Sensor.pas:850-854`). Meaningless without the
+    /// flag — [`super::ClassProps::new`] asserts the pairing.
+    pub stub_message: Option<StubMessage>,
+}
+
+/// One `DoSimpleMsg` a [`PropFlags::UPSTREAM_STUB`] property emits on write:
+/// the Pascal message number (the stable identity, see [`crate::diag`]) and its
+/// text, both copied verbatim from the r4133 arm the row cites.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StubMessage {
+    pub code: u32,
+    pub text: &'static str,
 }
 
 /// The 1-based property index of `name` within a class's `defs` vec — the index
@@ -108,7 +126,15 @@ impl PropDef {
             array_alternative: 0,
             json_name: None,
             json_ref_class: None,
+            stub_message: None,
         }
+    }
+
+    /// Builder: the soft `DoSimpleMsg` this [`PropFlags::UPSTREAM_STUB`] row
+    /// logs on write (see [`Self::stub_message`]).
+    pub fn stub_msg(mut self, code: u32, text: &'static str) -> Self {
+        self.stub_message = Some(StubMessage { code, text });
+        self
     }
 
     pub fn double(name: &'static str) -> Self {

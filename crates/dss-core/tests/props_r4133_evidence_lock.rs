@@ -158,6 +158,16 @@ const SHAPE_IN_SCOPE: &[(&str, usize, usize)] = &[
     ("windgen", 5, 5),
 ];
 
+/// The `shape.txt` classes RP1.1 closes, with the census's own `oracle_count`
+/// (the r4133 table's name-list length) and the names the port was missing.
+/// `shape.txt` is frozen evidence, so its `rust_count` stays at the pre-RP1.1
+/// number — what must be true *now* is that the live table has grown to
+/// `oracle_count` and carries the once-missing names.
+const RP1_1_CLOSED: &[(&str, usize, &[&str])] = &[
+    ("generator", 50, &["rneut", "xneut"]),
+    ("sensor", 16, &["action"]),
+];
+
 fn repo_root() -> PathBuf {
     [env!("CARGO_MANIFEST_DIR"), "..", ".."].iter().collect()
 }
@@ -704,4 +714,92 @@ fn shape_in_scope_splits_shape_txt() {
         kept, 149,
         "shape rows on r4133-gating cases (WP-RP1's 149 -> 0)"
     );
+}
+
+/// RP1.1's deliverable, read back against the evidence that motivated it: the
+/// live Generator and Sensor property tables now have exactly the length
+/// `shape.txt` records for the r4133 oracle, and carry the names that file lists
+/// as `oracle_only`.
+///
+/// This is the offline half of "the generator `shape_count` gap is closed" — the
+/// live half is the census knob on the r4133 channel, which cannot run in plain
+/// `cargo test`. It is deliberately driven off the vendored file rather than
+/// literal counts, so a re-measurement that moved `shape.txt` moves this
+/// assertion with it instead of leaving a stale number behind.
+#[test]
+fn rp1_1_closes_the_generator_and_sensor_shape_gaps() {
+    let rows = data_rows("shape.txt", None);
+
+    // Read the tables through the same surface the census does: the live
+    // property list of a real element (`AllPropertyNames` on the oracle side,
+    // `Dss::element_properties` here).
+    let mut dss = dss_core::exec::Dss::new();
+    for cmd in [
+        "New Circuit.shapeprobe",
+        "New Generator.g1 bus1=b1 phases=3 kv=12.47 kw=100",
+        "New Line.l1 bus1=b1 bus2=b2 phases=3 length=1",
+        "New Sensor.s1 element=Line.l1 terminal=1 kvbase=12.47",
+    ] {
+        dss.command(cmd);
+        assert!(dss.errors().is_empty(), "`{cmd}` -> {:?}", dss.errors());
+    }
+    let element_of = |class: &str| match class {
+        "generator" => "Generator.g1",
+        "sensor" => "Sensor.s1",
+        other => panic!("no probe element for {other}"),
+    };
+
+    for (class, want_oracle_count, want_missing) in RP1_1_CLOSED {
+        let line = rows
+            .iter()
+            .find(|l| l.starts_with(&format!("{class}: ")))
+            .unwrap_or_else(|| panic!("shape.txt has no {class} row"));
+
+        // The census's own numbers, re-read rather than restated.
+        let field = |key: &str| -> usize {
+            line.split_whitespace()
+                .find_map(|t| t.strip_prefix(key))
+                .unwrap_or_else(|| panic!("{class}: shape.txt row has no {key}"))
+                .parse()
+                .unwrap_or_else(|e| panic!("{class}: bad {key} in shape.txt: {e}"))
+        };
+        let oracle_count = field("oracle_count=");
+        assert_eq!(
+            oracle_count, *want_oracle_count,
+            "{class}: shape.txt's oracle_count moved — RP1.1 sized the port's \
+             table on it"
+        );
+        assert!(
+            field("rust_count=") < oracle_count,
+            "{class}: shape.txt must still record the PRE-RP1.1 rust_count (it is \
+             frozen evidence, never edited in place)"
+        );
+        for name in *want_missing {
+            assert!(
+                line.contains(&format!("'{name}'")),
+                "{class}: shape.txt no longer names {name:?} as oracle_only"
+            );
+        }
+
+        // What the port answers today.
+        let live: Vec<String> = dss
+            .element_properties(element_of(class))
+            .unwrap_or_else(|| panic!("{class}: probe element missing"))
+            .into_iter()
+            .map(|(n, _)| n.to_lowercase())
+            .collect();
+        assert_eq!(
+            live.len(),
+            oracle_count,
+            "{class}: the port's table is {} names long, r4133's is {oracle_count} \
+             — the shape gap this sub-step closes is back",
+            live.len()
+        );
+        for name in *want_missing {
+            assert!(
+                live.contains(&(*name).to_string()),
+                "{class}: the port's table still lacks {name:?}"
+            );
+        }
+    }
 }

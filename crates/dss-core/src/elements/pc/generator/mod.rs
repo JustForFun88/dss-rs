@@ -109,40 +109,45 @@ pub mod prop {
     pub const DISPMODE: usize = 13;
     pub const DISPVALUE: usize = 14;
     pub const CONN: usize = 15;
-    pub const STATUS: usize = 16;
-    pub const CLS: usize = 17;
-    pub const VPU: usize = 18;
-    pub const MAXKVAR: usize = 19;
-    pub const MINKVAR: usize = 20;
-    pub const PVFACTOR: usize = 21;
-    pub const FORCEON: usize = 22;
-    pub const KVA: usize = 23;
-    pub const MVA: usize = 24;
-    pub const XD: usize = 25;
-    pub const XDP: usize = 26;
-    pub const XDPP: usize = 27;
-    pub const H: usize = 28;
-    pub const D: usize = 29;
-    pub const USERMODEL: usize = 30;
-    pub const USERDATA: usize = 31;
-    pub const SHAFTMODEL: usize = 32;
-    pub const SHAFTDATA: usize = 33;
-    pub const DUTYSTART: usize = 34;
-    pub const DEBUGTRACE: usize = 35;
-    pub const BALANCED: usize = 36;
-    pub const XRDP: usize = 37;
-    pub const USEFUEL: usize = 38;
-    pub const FUELKWH: usize = 39;
-    pub const PCTFUEL: usize = 40;
-    pub const PCTRESERVE: usize = 41;
-    pub const REFUEL: usize = 42;
-    pub const DYNAMICEQ: usize = 43;
-    pub const DYNOUT: usize = 44;
+    /// r4133 upstream stubs, registered right after `conn`
+    /// (`Version8/Source/PCElements/generator.pas:441-442`) — see the two
+    /// `PropDef` rows below.
+    pub const RNEUT: usize = 16;
+    pub const XNEUT: usize = 17;
+    pub const STATUS: usize = 18;
+    pub const CLS: usize = 19;
+    pub const VPU: usize = 20;
+    pub const MAXKVAR: usize = 21;
+    pub const MINKVAR: usize = 22;
+    pub const PVFACTOR: usize = 23;
+    pub const FORCEON: usize = 24;
+    pub const KVA: usize = 25;
+    pub const MVA: usize = 26;
+    pub const XD: usize = 27;
+    pub const XDP: usize = 28;
+    pub const XDPP: usize = 29;
+    pub const H: usize = 30;
+    pub const D: usize = 31;
+    pub const USERMODEL: usize = 32;
+    pub const USERDATA: usize = 33;
+    pub const SHAFTMODEL: usize = 34;
+    pub const SHAFTDATA: usize = 35;
+    pub const DUTYSTART: usize = 36;
+    pub const DEBUGTRACE: usize = 37;
+    pub const BALANCED: usize = 38;
+    pub const XRDP: usize = 39;
+    pub const USEFUEL: usize = 40;
+    pub const FUELKWH: usize = 41;
+    pub const PCTFUEL: usize = 42;
+    pub const PCTRESERVE: usize = 43;
+    pub const REFUEL: usize = 44;
+    pub const DYNAMICEQ: usize = 45;
+    pub const DYNOUT: usize = 46;
     // tails:
-    pub const SPECTRUM: usize = 45;
-    pub const BASE_FREQ: usize = 46;
-    pub const ENABLED: usize = 47;
-    pub const NUM_PROPS: usize = 48; // incl. Like
+    pub const SPECTRUM: usize = 47;
+    pub const BASE_FREQ: usize = 48;
+    pub const ENABLED: usize = 49;
+    pub const NUM_PROPS: usize = 50; // incl. Like
 }
 
 /// `TGenerator.DefineProperties`.
@@ -173,6 +178,32 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::mapped_string_enum("DispMode", enums.gen_disp_mode),
         PropDef::double("DispValue"),
         PropDef::mapped_string_enum("Conn", enums.connection),
+        // r4133 upstream stubs (`PropFlags::UPSTREAM_STUB`), registered
+        // immediately after `conn` with the help text "Removed due to causing
+        // confusion - Add neutral impedance externally"
+        // (`Version8/Source/PCElements/generator.pas:441-442`), which is what puts
+        // them at display slots 16/17 and makes r4133's table 50 names long. The
+        // Edit loop stores the raw string (`:625`) and the arms answer with
+        // messages 5611/5612 (`:651-652`); nothing else happens — the neutral
+        // stamping they once fed is commented-out dead text (`:1294-1303`), so no
+        // field, no `RecalcElementData`, no Y. Default `'0'` (`:2567-2568`).
+        // `HIDE_R4133` keeps them off the 0.14.5-pinned full-enumeration surfaces
+        // (Dump / `Dump commands` / JSON / schema), where neither the pinned
+        // 0.14.5 nor the capi015 table knows them; the `?`/props-table surfaces
+        // do expose them, and `PROPS_015X` excludes them from the 0.14.5
+        // property-table walk.
+        PropDef::string("Rneut")
+            .flags(PropFlags::UPSTREAM_STUB | PropFlags::HIDE_R4133)
+            .stub_msg(
+                5611,
+                "Rneut property has been deleted. Use external impedance.",
+            ),
+        PropDef::string("Xneut")
+            .flags(PropFlags::UPSTREAM_STUB | PropFlags::HIDE_R4133)
+            .stub_msg(
+                5612,
+                "Xneut property has been deleted. Use external impedance.",
+            ),
         PropDef::mapped_string_enum("Status", enums.gen_status),
         PropDef::integer("Class"),
         PropDef::double("Vpu"),
@@ -362,6 +393,15 @@ pub struct Generator {
     pub derivatives: [f64; NUM_GEN_REGISTERS],
     pub first_sample_after_reset: bool,
 
+    /// The r4133 `PropertyValue[14]`/`[15]` string store behind the `Rneut`/
+    /// `Xneut` upstream stubs (`PropFlags::UPSTREAM_STUB`): the last value
+    /// written, or the `'0'` default (Pascal `TGeneratorObj.InitPropertyValues`,
+    /// `Version8/Source/PCElements/generator.pas:2567-2568`). Read back verbatim
+    /// and copied by `MakeLike` (`:828` copies the whole `FPropertyValue` array);
+    /// nothing else in the engine reads them — they are not an impedance.
+    pub rneut_text: String,
+    pub xneut_text: String,
+
     // User-model property strings (stored for the dump / MakeLike).
     pub user_model_name: String,
     pub user_data: String,
@@ -519,6 +559,9 @@ impl Generator {
             registers: [0.0; NUM_GEN_REGISTERS],
             derivatives: [0.0; NUM_GEN_REGISTERS],
             first_sample_after_reset: true,
+            // `InitPropertyValues[14]`/`[15] := '0'` (`generator.pas:2567-2568`).
+            rneut_text: "0".to_string(),
+            xneut_text: "0".to_string(),
             user_model_name: String::new(),
             user_data: String::new(),
             shaft_model_name: String::new(),

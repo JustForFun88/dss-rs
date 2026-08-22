@@ -40,6 +40,13 @@ impl CktElement for Generator {
     /// with `Xdp=` has its untouched rating divided. That regression is not
     /// reproduced. `had_kvars` reads `[19]`/`[20]` (`Maxkvar`/`Minkvar`) — raw
     /// slots that are correct in both trees.
+    ///
+    /// Every number above is an **upstream** slot: old-OpenDSS keys
+    /// `PropertyValue`/`PrpSequence` by `AddProperty`'s `CmdMapIndex`, not by
+    /// display position. The port has one index space (display order) and
+    /// addresses it through `prop::`, so nothing here needs translating — but do
+    /// not read `26` as a port ordinal: R4133_PROPS RP1.1 inserted
+    /// `Rneut`/`Xneut` at display 16/17, which moved the port's `KVA` to 25.
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
         // Make sure voltage is line-neutral.
         let v = if self.cd.nphases > 1 || self.connection != Connection::Wye {
@@ -444,6 +451,11 @@ impl Generator {
         self.user_model = other.user_model.clone();
         self.shaft_model = other.shaft_model.clone();
         self.spectrum = other.spectrum.clone();
+        // Pascal copies the donor's whole `FPropertyValue` array
+        // (`generator.pas:828`), which is where the two upstream stubs live — so
+        // `like=` carries their strings across even though nothing consumes them.
+        self.rneut_text = other.rneut_text.clone();
+        self.xneut_text = other.xneut_text.clone();
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
 }
@@ -596,6 +608,11 @@ impl DssObject for Generator {
             SHAFTDATA => self.shaft_data.clone(),
             DYNAMICEQ => self.dyneq.dynamic_eq.clone(),
             SPECTRUM => self.spectrum.clone(),
+            // The two upstream stubs echo their string store (r4133 has no
+            // `GetPropertyValue` override for them, so `DSSObject.pas:112-115`
+            // returns `PropertyValue[]` — the parse string or the `'0'` default).
+            RNEUT => self.rneut_text.clone(),
+            XNEUT => self.xneut_text.clone(),
             _ => unreachable!("Generator has no string property {idx}"),
         }
     }
@@ -612,6 +629,11 @@ impl DssObject for Generator {
             SHAFTMODEL => self.shaft_model_name = value,
             SHAFTDATA => self.shaft_data = value,
             SPECTRUM => self.spectrum = value,
+            // The upstream stubs store and stop — `parse_into`'s `UPSTREAM_STUB`
+            // arm emits messages 5611/5612 (`generator.pas:651-652`) and no
+            // side effect, recalc or Y invalidation follows.
+            RNEUT => self.rneut_text = value,
+            XNEUT => self.xneut_text = value,
             _ => unreachable!("Generator has no string property {idx}"),
         }
     }

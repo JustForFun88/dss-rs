@@ -953,6 +953,18 @@ are the same — a post-0.14.5 surface the 0.14.5 oracle predates):
   `RevThreshold` (e). The r4133 values are pinned on the r4133 side (the
   `fuse.json` props golden + the `fuse_curvemult_blow`/`fuse_legacy_noblow`
   controls decks), never masked there.
+- **Upstream stubs** (R4133_PROPS RP1.1 — Generator `Rneut`/`Xneut`, Sensor
+  `Action`): properties r4133 still *registers* but no longer implements. Same
+  two mechanisms as an added prop — a `PROPS_015X` row per class (shape walk) +
+  `PropFlags::HIDE_R4133` (Dump/`Dump commands`/JSON/schema) — plus the new
+  `PropFlags::UPSTREAM_STUB`, which is a *behavior* declaration, not a
+  comparison relaxation: the write stores the parse string and logs the class's
+  soft r4133 message, and nothing masks the resulting value anywhere. On the
+  r4133 channel the oracle's own name list carries all three, so `filter_015x`
+  keeps them and they are compared in full — which is what retires the census's
+  in-scope generator shape rows (137): the port's table is now name-for-name
+  r4133's, so no generator element can misalign. Measured on one
+  generator-heavy `both` case (RP0.2 knob): r4133 shape classes 1 → 0.
 This is a *shape/version-mismatch* declaration only — no numeric floor moves.
 
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)

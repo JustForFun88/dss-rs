@@ -1084,7 +1084,7 @@
     },
     {
       "path": "tests/golden/json/schema_divergences.json",
-      "sha256": "47e617f326e0a8f9f3c53622b1f49fec847d6fc924f2c0a39fc11a4f934e8c15",
+      "sha256": "3df4a96ef51c004186274010ccb0f8695875976bcef9c902a782f66b9bc38f38",
       "anchor": "capi_v0145",
       "produced_by": null
     },
@@ -1096,7 +1096,7 @@
     },
     {
       "path": "tests/golden/json/schema_full_port.json",
-      "sha256": "ce255ca943c75106207b78389315071510dc77b35defbe33c064667d8379657f",
+      "sha256": "76c2ba0dcb73b7723878debcbd9ccbd785dad6c585a611096d12b43fffc7b325",
       "anchor": "self",
       "reason": "born-self: the port's own DSS_ExtractSchema document, spelled in the fpjson/CRLF rendering the parity lane produces. Its external half (json/schema_full_oracle.json + json/schema_divergences.json) stays capi_v0145 and frozen. Regen today bypasses the rails via REGEN_SCHEMA_PORT (golden_schema.rs::full_document_matches_port_golden); G3.6 routes it through harness::snapshot_*.",
       "produced_by": "parity"
