@@ -35,6 +35,26 @@ impl ClassProps {
                 pd.name
             )));
         }
+        // EPRI r4133 upstream stub ([`PropFlags::UPSTREAM_STUB`]): the Edit loop
+        // stores the raw parse string for every property before the per-property
+        // arm runs (Pascal `TGenerator.Edit`,
+        // `Version8/Source/PCElements/generator.pas:625`; `TSensor.Edit`,
+        // `Version8/Source/Meters/Sensor.pas:253`), and a stub's own arm either
+        // does nothing (Sensor `Action` — `Sensor.pas:277` assigns the `Action`
+        // property whose `Set_Action` body is empty, `:850-854`) or only logs a
+        // soft `DoSimpleMsg` (Generator `Rneut`/`Xneut`, `generator.pas:651-652`).
+        // No field is written, nothing is recalculated, and the write is never a
+        // parse error — the string round-trips through the class's own
+        // `set_string`/`get_string`. Placed ahead of the `ptype` match so the
+        // stub's declared type only governs how the value is *rendered*.
+        if pd.flags.contains(PropFlags::UPSTREAM_STUB) {
+            obj.set_string(idx, value.to_string());
+            if let Some(m) = pd.stub_message {
+                eng.errors
+                    .push(crate::diag::DssDiagnostic::msg(m.text, Some(m.code)));
+            }
+            return Ok(0);
+        }
         match pd.ptype {
             PropType::Double => {
                 let v = if pd.flags.contains(PropFlags::INTERVAL_UNITS) {

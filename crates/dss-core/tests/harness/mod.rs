@@ -1629,6 +1629,19 @@ const PROPS_015X: &[(&str, &[&str])] = &[
     // excludes it from the count/order/name walk on every default-oracle capture
     // (0.14.5 and capi015); r4133-oracle cases do not property-compare.
     ("SwtControl", &["RatedCurrent"]),
+    // R4133_PROPS_PLAN RP1.1 (EPRI r4133 upstream stubs, `PropFlags::UPSTREAM_STUB`):
+    // Generator props 48 -> 50 — `Rneut`/`Xneut` at display slots 16/17
+    // (`Version8/Source/PCElements/generator.pas:441-442`), which dss_capi deleted
+    // outright (no `TGeneratorProp` member in `.inputs/dss_capi/src/PCElements/
+    // Generator.pas`). Like the SwtControl row above this is an r4133-only
+    // addition, absent from BOTH the 0.14.5 and the capi015 tables; on the r4133
+    // channel the oracle's own name list carries them, so `filter_015x` keeps them
+    // and they compare in full.
+    ("Generator", &["Rneut", "Xneut"]),
+    // R4133_PROPS_PLAN RP1.1: Sensor props 15 -> 16 — `Action`
+    // (`Version8/Source/Meters/Sensor.pas:183`), commented out in dss_capi 0.14.5
+    // (`.inputs/dss_capi/src/Meters/Sensor.pas:39,55`).
+    ("Sensor", &["Action"]),
     // Further rows land here with their porting WP.
 ];
 

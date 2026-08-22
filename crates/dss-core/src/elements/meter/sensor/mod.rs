@@ -48,10 +48,13 @@ pub mod prop {
     pub const DELTA_DIRECTION: usize = 10;
     pub const PCT_ERROR: usize = 11;
     pub const WEIGHT: usize = 12;
+    /// r4133 upstream stub, the last of `TSensor`'s own properties
+    /// (`Version8/Source/Meters/Sensor.pas:183`) — see the `PropDef` row below.
+    pub const ACTION: usize = 13;
     // CktElementClass tail:
-    pub const BASE_FREQ: usize = 13;
-    pub const ENABLED: usize = 14;
-    pub const NUM_PROPS: usize = 15; // incl. Like
+    pub const BASE_FREQ: usize = 14;
+    pub const ENABLED: usize = 15;
+    pub const NUM_PROPS: usize = 16; // incl. Like
 }
 
 /// `TSensor.DefineProperties`.
@@ -76,6 +79,18 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("DeltaDirection"),
         PropDef::double("%Error"),
         PropDef::double("Weight"),
+        // r4133 upstream stub (`PropFlags::UPSTREAM_STUB`): `PropertyName^[13] :=
+        // 'action'` (`Version8/Source/Meters/Sensor.pas:183`) with the help text
+        // opening "NOT IMPLEMENTED." (`:204-206`) — it is r4133's 13th and last
+        // own property, which makes its table 16 names long. The Edit loop stores
+        // the raw string (`:253`), the arm assigns the `Action` property (`:277`)
+        // whose `TSensorObj.Set_Action` body is empty (`:850-854`), and the
+        // default is `''` (`:807`). Silent — no `stub_msg`, unlike Generator's
+        // pair. `HIDE_R4133` keeps it off the 0.14.5-pinned full-enumeration
+        // surfaces: dss_capi 0.14.5 deleted the property outright
+        // (`.inputs/dss_capi/src/Meters/Sensor.pas:39,55` — `// action = 13 //
+        // unused`), so neither pinned capture knows the name.
+        PropDef::string("Action").flags(PropFlags::UPSTREAM_STUB | PropFlags::HIDE_R4133),
         // CktElementClass tail:
         PropDef::double("BaseFreq").flags(
             PropFlags::DYNAMIC_DEFAULT
@@ -116,6 +131,12 @@ pub struct Sensor {
 
     /// FullName of the metered element (`Class.name`) for the dump.
     element_full_name: String,
+    /// The r4133 `PropertyValue[13]` string store behind the `Action` upstream
+    /// stub (`PropFlags::UPSTREAM_STUB`): the last value written, or the `''`
+    /// default (`Sensor.pas:807`). Echoed verbatim and copied by `MakeLike`
+    /// (`:428` copies the whole `PropertyValue` array); nothing consumes it —
+    /// `Set_Action` is an empty body upstream.
+    action_text: String,
     /// Pascal `Flg.NeedsRecalc` (set by element/terminal/kvbase/conn/dir).
     needs_recalc: bool,
 }
@@ -145,6 +166,8 @@ impl Sensor {
             weight: 1.0,
             f_conn: 0,
             element_full_name: String::new(),
+            // `InitPropertyValues[13] := ''` (`Sensor.pas:807`).
+            action_text: String::new(),
             needs_recalc: false,
         };
         s.recalc_vbase();

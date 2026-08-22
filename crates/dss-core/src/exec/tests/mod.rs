@@ -40,5 +40,6 @@ mod solve;
 mod storage;
 mod time_series;
 mod upfc;
+mod upstream_stubs;
 mod vccs;
 mod vs_converter;
