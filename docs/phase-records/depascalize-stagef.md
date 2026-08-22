@@ -1599,7 +1599,11 @@ is reproduced in both):
   blast-radius measurement is only worth the population it was taken over; plus
   `HIDE_R4133` asserted carrier-free, which is both what makes
   `hidden_from_full_enum` a synonym for the 0.15.x flag today (the premise of
-  the measurement) and the empirical proof of the paragraph above.
+  the measurement) and the empirical proof of the paragraph above. *(As-of-F.3
+  record: R4133_PROPS RP1.1, 2026-08-22, re-armed the sibling with three
+  carriers, so the live pin now asserts its carrier list and the two sets'
+  class-disjointness instead of carrier-freedom; the blast radius measured here
+  is unaffected — no r4133 carrier is on Line or LineGeometry.)*
 * `line_json_conductors_key_is_owned_by_the_masquerade` — the collision
   precondition stated executably: Line must declare exactly two props rendering
   the key `Conductors`, `("Wires", visible)` and `("Conductors", hidden)`, and

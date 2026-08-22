@@ -68,6 +68,56 @@ citations in the RP0.2 STATUS record):
    (`transformer.bhcurrent/bhflux/enabled/ratings/sub/xrconst/xscarray`) and 4
    numeric (`emergamps/normamps/pctperm/repair`) pairs. No new pair.
 
+### Pairs the WP-RP1 shape closures make live (post-freeze, RP1.1 audit round)
+
+A **structural limit of this evidence base**, not an error in it: while a class
+carried a `shape_count` row its property walk stopped at the name-list
+disagreement, so the census could never record value pairs for the props behind
+it. Closing a shape gap therefore *creates* pairs no frozen row can contain, and
+the extracts above under-describe exactly the classes WP-RP1 opens. Every RP1
+sub-step must re-measure and record its own new pairs here; RP2.1 provisions
+`examples_supplement.txt` from these records (the same route
+`regcontrol.fwdthreshold` takes), and RP2.2's "closed pair list" is the union of
+`bins.tsv` and this section.
+
+**RP1.1 (Generator `Rneut`/`Xneut`, Sensor `Action`), measured 2026-08-22** by a
+full `DSS_PROPS_CENSUS=1` re-run on the post-RP1.1 tree (438 cases, both
+channels, 56 s): r4133 shape classes **5 → 3** (`autotrans`, `windgen`,
+`gendispatcher` remain), structural pairs **218**, numeric **98** — against the
+frozen 209 / 94 here, or against the knob's own pre-RP1.1 re-census of **210** /
+94 (it already carried `regcontrol.fwdthreshold`, correction 1 above). So RP1.1
+adds exactly **8 structural + 4 numeric = 12** pairs and removes none; the
+`capi_v0145` channel is unchanged.
+
+| new pair | rust | r4133 | cells | bin (this README's chain) |
+|---|---|---|---|---|
+| `generator.debugtrace` | `No` | `no` | 273 | 1 |
+| `generator.enabled` | `Yes` | `true` | 273 | 1 |
+| `sensor.enabled` | `Yes` | `true` | 61 | 1 |
+| `generator.status` | `Variable` | `variable` | 273 | 2 |
+| `generator.dynamiceq` | `mydiffeq` | `myDiffEq` | 2 | 2 |
+| `generator.dynout` | `''` | `[]` | 273 | 5 |
+| `generator.shaftdata` | `''` | `()` | 273 | 5 |
+| `generator.userdata` | `''` | `()` | 273 | 5 |
+| `generator.kva` | `83.3333333333333` | `83.333` | 3 | 6 (max_rel 5.00e-06) |
+| `generator.maxkvar` | `197.210463107318` | `197.21` | 172 | 6 (max_rel 5.76e-06) |
+| `generator.minkvar` | `-197.210463107318` | `-197.21` | 172 | 6 (max_rel 5.76e-06) |
+| `generator.d` | `1` | `0` | 272 | **7** (max_rel 1.00e+00) |
+
+Eleven of the twelve land in bins the plan's machinery already covers (1/2/5 →
+`BoolFold`/`CaseFold`/echo; the three bin-6 ones sit an order of magnitude
+below the worst display pair, `load.pf` at 6.43e-5, so the RP2.4 floor absorbs
+them). **`generator.d` lands in bin 7** — the in-scope bin-7 population grows
+16 → 17 and §1.1's enumerated list of four root-cause pairs is no longer closed
+— but its cause is already read off the Pascal and is an echo, not a jump:
+`TGeneratorObj.Create` initialises
+`GenVars.D := 1.0` and never touches `GenVars.Dpu`
+(`Version8/Source/PCElements/generator.pas:955-971`), while
+`InitPropertyValues` echoes `PropertyValue[32] := Format('%-g', [GenVars.Dpu])`
+(`:2585`) — so r4133 answers `'0'` from a frozen default whose field says 1.0,
+the same family as bin 7's twelve echo pairs. RP2.2 owns the disposition; RP2.3
+is the expected landing site.
+
 ## Files
 
 | file | rows | origin |

@@ -62,7 +62,15 @@ names, sensor 15 → 16). Measured on a generator-heavy `both` case: r4133 shape
 classes 1 → 0 and 175 previously uncomparable cells now compare, with the capi
 channel bit-unchanged; the `props/` goldens provably do not move (the capture
 enumerates the 0.14.5 oracle's own names) and the only bytes that did are the
-two predicted `json/` schema artifacts. RP1.2 (AutoTrans `XfmrCode`) is next.
+two predicted `json/` schema artifacts. Its audit round settled **9** findings
+(3 major), two of them by measurement: a full post-fix re-census (438 cases)
+names the **12 new value pairs** the shape closure makes live — evidence the
+frozen extracts structurally cannot hold, now a per-sub-step obligation of
+WP-RP1 and the input of RP2.1's `examples_supplement.txt`, one of them a new
+bin-7 pair (`generator.d`, an r4133 `Dpu` echo); and the re-armed `HIDE_R4133`
+escape got its owner (`ORPHANED_GAPS.md` §2 → GOLDEN_REBASE G3.3c/G3.4) with a
+measured blast radius of 4 artifacts and zero corpus cases.
+RP1.2 (AutoTrans `XfmrCode`) is next.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -1468,17 +1476,21 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     default `"0"` per `generator.pas:2567-2568`; `Sensor::action_text`, default
     `""` per `Sensor.pas:807`), read/written by the classes' `get_string`/
     `set_string` arms and copied by `make_like` — r4133's `MakeLike` copies the
-    donor's whole property-string array (`generator.pas:828`, `Sensor.pas:428`),
+    donor's whole property-string array (`generator.pas:830-831`, right after the
+    `ClassMakeLike` at `:828`; `Sensor.pas:428`),
     and these are the only properties where that copy is observable in a port
     that otherwise renders live fields.
   - **Ordinal shifts.** Generator `NUM_PROPS` 48 → 50 (`STATUS`..`ENABLED`
     +2), Sensor 15 → 16 (`BASE_FREQ`/`ENABLED` +1). Every `prop::` consumer is
     symbolic (checked by grep across the workspace: no `generator::prop`/
-    `sensor::prop` reference outside the two modules, and the only raw-slot
-    prose is `make_pos_sequence`'s doc, which cites r4133's *CmdMapIndex*
-    numbers — the space old-OpenDSS keys `PropertyValue`/`PrpSequence` by — and
-    is therefore unaffected; a note was added there so `26` is not misread as a
-    port ordinal).
+    `sensor::prop` reference outside the two modules). The raw-slot **prose**
+    that remains — `make_pos_sequence`'s doc and the four `makeposseq_*` pins in
+    `generator/tests.rs` (`slot 19`/`slot 20`, "r4133 slot 27", `PrpSequence^[26]`,
+    "dss_capi's stale had_kVA index") — is all in r4133's *CmdMapIndex* space,
+    the space old-OpenDSS keys `PropertyValue`/`PrpSequence` by, so the shift
+    leaves it correct; both sites now say so explicitly (the audit round added
+    the label to `tests.rs`, where the earlier claim that the doc was the only
+    such prose was wrong).
   - **Surfaces.** All three rows also carry `PropFlags::HIDE_R4133` — they are
     absent from BOTH pinned captures (dss_capi 0.14.5 deleted Generator's pair
     outright and commented Sensor's out, `.inputs/dss_capi/src/Meters/
@@ -1500,9 +1512,13 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     raises #110 on the 0.14.5 backend.) `PROPS_CLASS_FILES`/`PROPS_SCENARIOS`/
     `PROPS_PROPERTY_CELLS` therefore stay 51/322/8343.
     Two `json/` schema artifacts *do* move, both predicted by §1.2: three new
-    `port_hidden_property` rows in `schema_divergences.json` (Generator 16/16
-    and 17/17, Sensor index 13 / order 12 — the order rank is one lower because
-    the `BooleanAction` `Clear` is hoisted to the end of `AltPropertyOrder`),
+    `port_hidden_property` rows in `schema_divergences.json` — Generator
+    `Rneut` index 16 / order **17** and `Xneut` 17 / **18**, Sensor `Action`
+    13 / **13** (both fields are the prop's OWN ranks, the convention the four
+    Line rows use; on Generator `Like`'s hoist to order 1 puts every order one
+    above its index — `Conn` 15/16, `Status` 18/19 — while on Sensor the
+    `BooleanAction` `Clear` hoisted to the end cancels that, so order == index:
+    `Weight` 12/12, `BaseFreq` 14/14) —
     after which `ported_class_defs_bytes_match_oracle` and
     `full_document_reconciles_with_oracle` pass untouched; and
     `schema_full_port.json` regenerated with `REGEN_SCHEMA_PORT=1`, whose diff
@@ -1519,18 +1535,26 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     workload the shape closure exposes, not a regression. The **capi_v0145
     channel is bit-unchanged**: 0 structural / 0 numeric / 0 shape / 0
     uncomparable, before and after.
-  - **Tests.** `exec::tests::upstream_stubs` (new module, 6 tests) pins
+  - **Tests.** `exec::tests::upstream_stubs` (new module, 8 tests) pins
     store+echo+message ordering and the `DoSimpleMsg`-not-abort severity, the
     silent Sensor write, the non-numeric round-trip, the display slots
     (`…DispValue, Conn, Rneut, Xneut, Status…` / `…Weight, Action, BaseFreq,
-    Enabled` with the two table lengths), the `MakeLike` copy, and the Dump/JSON
-    absence. The "write does not change behavior" acceptance is
-    `generator_neutral_stubs_move_neither_y_nor_the_solution`: two *independent*
+    Enabled` with the two table lengths), the `MakeLike` copy, the Dump/JSON
+    absence and the `Save` *presence* (r4133's `SaveWrite` is flag-blind, so a
+    deck that wrote `rneut=` gets it back). The "write does not change behavior"
+    acceptance is per class:
+    `generator_neutral_stubs_move_neither_y_nor_the_solution` — two *independent*
     solves of the same micro deck differing only in whether `rneut=`/`xneut=`
     were written give **bit-identical** Y triplets, iteration count and node
-    voltages, plus an in-place `Edit` on a solved circuit that leaves Y
-    bit-identical (the A/B pair rather than a re-`Solve` because re-solving from
-    a converged state drifts ~1e-8 for reasons unrelated to these properties).
+    voltages (the A/B pair rather than a re-`Solve` because re-solving from a
+    converged state drifts ~1e-8 for reasons unrelated to these properties),
+    plus an in-place `Edit` **followed by `Solve`** — the rebuild is what makes
+    that arm discriminate, since `system_y_csc` reads the assembled matrix and
+    `CalcYPrim` runs from `BuildYMatrix`, not from `RecalcElementData` — with a
+    control write of three live Generator props that must move the rebuilt Y;
+    and `sensor_action_moves_neither_sensor_state_nor_the_solution` — the same
+    A/B shape plus the sensor's whole property table (its estimator input set)
+    bit-identical outside the `Action` cell.
     `compat_quirks::upstream_stub_rows_are_the_measured_set` locks the flag's
     carrier set, that only the Generator pair carries a message (5611/5612), and
     that every carrier is also `HIDE_R4133`;
@@ -1540,8 +1564,82 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     reads the closure back off the vendored `shape.txt` itself (live table
     length == the census's `oracle_count`, the `oracle_only` names present, the
     frozen `rust_count` still the pre-fix number).
-  - Gate: all five commands green. `lane_diff.ps1` not owed — no solved state
-    and no compat kernel moved (proved by the bit-identical A/B above).
+  - **Audit settlement (2026-08-22, `/audit-code` + `/audit-tests`, 9 findings:
+    3 major, 6 minor — 9 fixed, 0 refuted, 0 deliberately unfixed).**
+    (1) *major, code* — the three new `schema_divergences.json` rows carried an
+    off-by-one `$dssPropertyOrder` (16/17/12 where the port's own ranks are
+    17/18/13), invisible to the gate because `renumber_field` shifts by
+    `count(removed < v)` and the slot below each was occupied. **Fixed** in the
+    artifact, its `cause` prose (which now also records the own-rank convention
+    and why an error there is absorbed) and in this record; verified against
+    `schema_full_port.json` (`Conn` 15/16, `Status` 18/19; `Weight` 12/12,
+    `BaseFreq` 14/14) and the Line precedent (`EpsRMedium` 31/27).
+    (2) *major, code* — the shape closure makes value pairs live that the frozen
+    2026-08-08 extracts structurally cannot contain (while a class carried a
+    `shape_count` row its walk stopped at the name disagreement), and nothing
+    opened a supplement item. **Fixed by measurement**: a full `DSS_PROPS_CENSUS=1`
+    re-run on the post-RP1.1 tree (438 cases, both channels, 56 s) gives r4133
+    shape classes **5 → 3**, structural **218**, numeric **98** (frozen extracts:
+    209 / 94; the knob's own pre-RP1.1 re-census: 210 / 94), capi channel
+    unchanged — so RP1.1 adds exactly **12** pairs and removes none:
+    `generator.{debugtrace, enabled, status, dynamiceq, dynout, shaftdata,
+    userdata}` + `sensor.enabled` (bins 1/2/5),
+    `generator.{kva, maxkvar, minkvar}` (bin 6, max_rel ≤ 5.8e-6 — an order of
+    magnitude under the worst display pair) and **`generator.d`** (`'1'` vs
+    `'0'`, rel 1.00e+00) in **bin 7**, which grows the in-scope bin-7 population
+    16 → 17 and un-closes §1.1's enumerated four-root-cause list. Its cause is already Pascal-read and is an
+    **echo**, not a jump: `TGeneratorObj.Create` sets `GenVars.D := 1.0` and
+    never `Dpu` (`generator.pas:955-971`), while `InitPropertyValues` echoes
+    `Format('%-g', [GenVars.Dpu])` (`:2585`) — RP2.2 triage → an RP2.3 echo row.
+    Recorded in the vendored `README.md` §"Pairs the WP-RP1 shape closures make
+    live" (with the per-pair table), and the plan now (a) carries the correction
+    in §1.1, (b) points RP2.1's `examples_supplement.txt` at it, (c) makes the
+    re-measurement a per-sub-step obligation of WP-RP1 (autotrans/windgen next).
+    (3) *major, tests* — arm 2 of the Generator acceptance was **vacuous**:
+    `system_y_csc` reads the already-assembled `solution.y_system` and
+    `CalcYPrim` runs only from `BuildYMatrix` on `Solve`, so "Edit then compare
+    Y" held for every property. **Fixed**: the arm now re-`Solve`s, and a control
+    write of three live Generator props asserts the rebuilt Y *does* move on that
+    deck.
+    (4) *minor, code* — `UPSTREAM_STUB` is only sound for `PropType::String`
+    (`get_value` dispatches on `ptype`), which nothing enforced and the parse
+    comment contradicted. **Fixed**: a second `debug_assert` in `ClassProps::new`,
+    corrected comment, and the invariant stated on the flag.
+    (5) *minor, code* — the re-armed `HIDE_R4133` escape had no owning row and no
+    measured blast radius, unlike its `HIDE_015X` precedent. **Fixed by
+    measurement**: disabling the flag's arm and running `cargo test -p dss-core
+    --no-fail-fast` moves exactly 4 committed artifacts
+    (`json/der_usermodel_{assigned,full}.json`, `json/dyneq_full.json`,
+    `reports/dump3_commands.txt` +6 rows) plus `schema_full_port.json` and the
+    3 `port_hidden_property` rows, and **no corpus case** (live gate green). Row
+    added to `ORPHANED_GAPS.md` §2 naming GOLDEN_REBASE **G3.3c + G3.4** as the
+    unblocking sub-steps (the schema half never unblocks: `schema_full_oracle` +
+    `schema_divergences` stay frozen); the numbers also live on the flag's doc.
+    The un-hide would render real text, not a key-on-miss fallback: all three
+    help strings have been in `report/help_catalog.rs` since U2.5.
+    (6) *minor, tests* — `prop_flags.rs`'s `HIDE_015X` doc still claimed the
+    sibling has "zero carriers today", the empirical basis of `UPGRADE_PLAN` §5's
+    unreachability argument. **Fixed** (restated as the U2.5→RP1.1 era, which is
+    when the measurement was taken).
+    (7) *minor, tests* — `Save` prints the three names and nothing decided or
+    tested that. **Settled as correct and pinned**: r4133's `TDSSObject.SaveWrite`
+    walks `PrpSequence` with no flag filter (`General/DSSObject.pas:131-165`), so
+    a deck that set `rneut=` gets `Rneut=` back from r4133 too — the port matches
+    the authority. New pin `save_writes_the_stub_names_like_r4133`; the cost (such
+    a deck is not re-compilable by the 0.14.5 backend) is recorded on the flag and
+    in `TOLERANCE_NOTES`. Inert: no corpus deck and no `save*` golden writes any
+    of the three.
+    (8) *minor, tests* — no "write changes nothing" pin for Sensor `Action`.
+    **Fixed** (`sensor_action_moves_neither_sensor_state_nor_the_solution`).
+    (9) *minor, code* — the `MakeLike` citation `generator.pas:828` is the
+    `ClassMakeLike` call; the property-array copy is `:830-831` (**fixed** in all
+    four places), and this record's claim that `make_pos_sequence`'s doc was the
+    only raw-slot prose was false — `generator/tests.rs` carries four more
+    (all upstream `CmdMapIndex` space, all still correct; **fixed** by labelling
+    them and correcting the sentence above).
+  - Gate: all five commands green, re-run after the settlement.
+    `lane_diff.ps1` not owed — no solved state and no compat kernel moved
+    (proved by the bit-identical A/B above).
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

@@ -397,7 +397,8 @@ pub struct Generator {
     /// `Xneut` upstream stubs (`PropFlags::UPSTREAM_STUB`): the last value
     /// written, or the `'0'` default (Pascal `TGeneratorObj.InitPropertyValues`,
     /// `Version8/Source/PCElements/generator.pas:2567-2568`). Read back verbatim
-    /// and copied by `MakeLike` (`:828` copies the whole `FPropertyValue` array);
+    /// and copied by `MakeLike` (`:830-831` copies the whole `FPropertyValue`
+    /// array);
     /// nothing else in the engine reads them — they are not an impedance.
     pub rneut_text: String,
     pub xneut_text: String,

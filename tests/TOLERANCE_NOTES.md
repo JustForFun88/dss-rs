@@ -965,6 +965,10 @@ are the same — a post-0.14.5 surface the 0.14.5 oracle predates):
   in-scope generator shape rows (137): the port's table is now name-for-name
   r4133's, so no generator element can misalign. Measured on one
   generator-heavy `both` case (RP0.2 knob): r4133 shape classes 1 → 0.
+  `Save` is deliberately outside the hidden set — it writes only explicitly-set
+  props, exactly as r4133's flag-blind `SaveWrite` does (pinned by
+  `exec::tests::upstream_stubs::save_writes_the_stub_names_like_r4133`); no
+  corpus deck or `save*` golden writes any of the three.
 This is a *shape/version-mismatch* declaration only — no numeric floor moves.
 
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)

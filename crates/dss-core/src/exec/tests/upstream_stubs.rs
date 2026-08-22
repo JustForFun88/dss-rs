@@ -15,8 +15,10 @@
 //! This module pins that contract from the outside, on the script surface: the
 //! stored-and-echoed value, the messages (present for one class, absent for the
 //! other), the display slots the census `shape.txt` gap is closed at, the
-//! `MakeLike` copy, and — the part that makes "stub" a claim rather than a label
-//! — that a write moves neither the assembled Y nor the solution.
+//! `MakeLike` copy, the one serializer that deliberately still prints them
+//! (`Save`, which writes only explicitly-set props — exactly as r4133 does), and
+//! — the part that makes "stub" a claim rather than a label — that a write
+//! moves neither the assembled Y nor the solution, pinned per class.
 
 use crate::exec::Dss;
 
@@ -50,6 +52,32 @@ fn solved_deck(stubs: &str) -> Dss {
             "`{line}` -> {:?}",
             dss.errors()
         );
+    }
+    assert!(dss.circuit().unwrap().is_solved, "the deck must solve");
+    dss
+}
+
+/// The Sensor twin of [`solved_deck`]: one metered line, one sensor, solved.
+/// `stubs` is appended to the sensor's `New` line.
+fn solved_sensor_deck(stubs: &str) -> Dss {
+    let mut dss = Dss::new();
+    let sensor_line = format!(
+        "New Sensor.s1 element=Line.l1 terminal=1 kvbase=12.47 kws=[300 300 300] \
+         kvars=[100 100 100] weight=2 %error=3 {stubs}"
+    );
+    for line in [
+        "Clear",
+        "New Circuit.sensorstub basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210",
+        "New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km",
+        "New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=800 pf=0.95 model=1",
+        &sensor_line,
+        "Set voltagebases=[12.47]",
+        "Calcvoltagebases",
+        "Solve",
+    ] {
+        dss.command(line);
+        // The Sensor stub is silent upstream, so nothing may be logged at all.
+        assert!(dss.errors().is_empty(), "`{line}` -> {:?}", dss.errors());
     }
     assert!(dss.circuit().unwrap().is_solved, "the deck must solve");
     dss
@@ -175,9 +203,14 @@ fn sensor_action_stores_and_echoes_silently() {
 ///    fresh `Dss`, so the comparison is free of the iteration-path drift a
 ///    re-`Solve` from an already-converged state introduces (that drift is ~1e-8
 ///    relative here and has nothing to do with these properties).
-/// 2. **An in-place edit** of the solved circuit: Y must not move even as the
-///    edit runs the class's `EndEdit`/`RecalcElementData` path, which is what a
-///    live impedance property would ride into `CalcYPrim`.
+/// 2. **An in-place edit of the solved circuit, followed by the re-`Solve` that
+///    rebuilds Y.** The re-solve is what makes this arm mean anything:
+///    [`Dss::system_y_csc`] reports the *already assembled* `solution.y_system`,
+///    and `CalcYPrim` runs from `BuildYMatrix` on `Solve`, never from
+///    `RecalcElementData` — so without it the assertion would hold for every
+///    property, live ones included. A control write of three genuinely
+///    Y-moving Generator properties closes that hole from the other side: it
+///    must move the rebuilt Y on this very deck.
 #[test]
 fn generator_neutral_stubs_move_neither_y_nor_the_solution() {
     let mut plain = solved_deck("");
@@ -204,14 +237,88 @@ fn generator_neutral_stubs_move_neither_y_nor_the_solution() {
     assert_eq!(query(&mut stubbed, "Generator.g1.Rneut"), "12.5");
     assert_eq!(query(&mut stubbed, "Generator.g1.Xneut"), "-1");
 
-    // Arm 2: the same write as a live edit of a solved circuit.
+    // Arm 2: the same write as a live edit of a solved circuit, taken through
+    // the rebuild. `Solve` is the only path that re-stamps element YPrims into
+    // the system matrix `y_and_voltages` reads.
     let (y_before, _) = y_and_voltages(&mut plain);
     plain.command("Edit Generator.g1 rneut=999 xneut=999");
+    plain.command("Solve");
     let (y_after, _) = y_and_voltages(&mut plain);
     assert_eq!(
         y_after, y_before,
-        "editing an upstream stub on a solved circuit must not move Y"
+        "editing an upstream stub on a solved circuit must not move Y — not even \
+         after the re-Solve that rebuilds it from the element YPrims"
     );
+
+    // The control that makes arm 2 non-vacuous: on this same deck, writing live
+    // Generator properties through the same Edit + Solve path DOES move Y.
+    plain.command("Edit Generator.g1 kv=1.0 kw=1 kvar=900");
+    plain.command("Solve");
+    let (y_live, _) = y_and_voltages(&mut plain);
+    assert_ne!(
+        y_live, y_after,
+        "the control write must move the rebuilt Y — otherwise this deck cannot \
+         tell a stub from a live property and arm 2 proves nothing"
+    );
+}
+
+/// The Sensor half of the same acceptance (RP1.1 asks for it *per class*):
+/// `action=` moves neither the sensor's own state nor the circuit.
+///
+/// A Sensor has no Y contribution of its own, so the discriminating surface is
+/// its property table — every input the estimator reads (`kvbase`, `weight`,
+/// `%error`, the `kws`/`kvars`/`currents` vectors, `conn`, `deltadirection`,
+/// `element`/`terminal`) is rendered there. The write must leave all of it,
+/// and the solved circuit, bit-identical; only the `Action` cell itself moves.
+#[test]
+fn sensor_action_moves_neither_sensor_state_nor_the_solution() {
+    // Two independent solves of one deck, exactly as in arm 1 above, so no
+    // re-`Solve` drift can enter the comparison.
+    let mut plain = solved_sensor_deck("");
+    let mut stubbed = solved_sensor_deck("action=SQERROR");
+
+    // Everything but the stub's own cell.
+    let state = |dss: &mut Dss| -> Vec<(String, String)> {
+        dss.element_properties("Sensor.s1")
+            .expect("the sensor exists")
+            .into_iter()
+            .filter(|(n, _)| n != "Action")
+            .collect()
+    };
+    let before = state(&mut plain);
+    let (y_plain, v_plain) = y_and_voltages(&mut plain);
+    assert!(
+        before.len() == 15 && y_plain.len() > 10 && v_plain.len() > 3,
+        "the probe must read a full sensor table, a real Y and a solution: {before:?}"
+    );
+
+    assert_eq!(
+        state(&mut stubbed),
+        before,
+        "an `action=` write must leave every other property cell — the \
+         estimator's whole input set — untouched"
+    );
+    let (y_stubbed, v_stubbed) = y_and_voltages(&mut stubbed);
+    assert_eq!(y_stubbed, y_plain, "…the system Y bit-identical");
+    assert_eq!(v_stubbed, v_plain, "…and the solution bit-identical");
+    assert_eq!(
+        stubbed.circuit().unwrap().solution.iteration,
+        plain.circuit().unwrap().solution.iteration,
+        "…reached in the same number of iterations"
+    );
+    assert_eq!(query(&mut stubbed, "Sensor.s1.Action"), "SQERROR");
+
+    // And the same write as a live edit, taken through the rebuild (the Y half
+    // of arm 2 above; a Sensor stamps no YPrim, so the claim is that nothing it
+    // touches reaches the matrix either).
+    plain.command("Edit Sensor.s1 action=SQERROR");
+    plain.command("Solve");
+    let (y_edited, _) = y_and_voltages(&mut plain);
+    assert_eq!(
+        y_edited, y_plain,
+        "an in-place `action=` edit must not move Y"
+    );
+    assert_eq!(state(&mut plain), before, "…nor any other sensor cell");
 }
 
 /// Display slots. r4133 registers the two Generator stubs immediately after
@@ -274,7 +381,7 @@ fn upstream_stub_display_slots_follow_r4133_registration() {
 }
 
 /// `like=` copies the stub strings, because r4133's `MakeLike` copies the donor's
-/// whole property-string array (`generator.pas:828`, `Sensor.pas:428`). For every
+/// whole property-string array (`generator.pas:830-831`, `Sensor.pas:428`). For every
 /// other property the port renders a live field, so this is the one place where
 /// that upstream array copy is observable in the port at all.
 #[test]
@@ -289,6 +396,54 @@ fn make_like_carries_the_stub_strings() {
     dss.command("New Sensor.s1 element=Line.l1 terminal=1 kvbase=12.47 action=sqerror");
     dss.command("New Sensor.s2 like=s1");
     assert_eq!(query(&mut dss, "Sensor.s2.Action"), "sqerror");
+}
+
+/// `Save` is the one serializer the hide flag deliberately does **not** cover,
+/// and this pins that decision rather than leaving it to fall out of the code.
+///
+/// `HIDE_R4133` defers a row from the *full-enumeration* surfaces (Dump, `Dump
+/// commands`, AltDSS JSON, the schema walk) because the pinned 0.14.5 captures
+/// cannot contain an r4133-only name. `Save` is not one of them: it writes only
+/// the properties a deck explicitly set, in the order it set them (Pascal
+/// `TDSSObject.SaveWrite` walks `PrpSequence`, `General/DSSObject.pas:131-165`
+/// in r4133), and that Pascal has no flag filter either — a deck that wrote
+/// `rneut=` gets `Rneut=` back from r4133 too. So the port matching r4133 here
+/// *is* the correct behavior, and the price is stated rather than hidden: such a
+/// saved deck is not re-compilable by the pinned 0.14.5 backend, which does not
+/// know the name. Inert on every committed artifact — no corpus deck and no
+/// `save_roundtrip` scenario writes any of the three props (checked by grep),
+/// so no `save*` golden moves.
+#[test]
+fn save_writes_the_stub_names_like_r4133() {
+    let dir = std::env::temp_dir().join(format!("dss_stub_save_{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+
+    let mut dss = Dss::new();
+    dss.command("New Circuit.stubsave basekv=12.47 phases=3 bus1=sourcebus");
+    dss.command(
+        "New Generator.g1 bus1=sourcebus phases=3 kv=12.47 kw=300 pf=0.9 rneut=12.5 xneut=-1",
+    );
+    dss.command("New Line.l1 bus1=sourcebus bus2=b1 phases=3 length=1");
+    dss.command("New Sensor.s1 element=Line.l1 terminal=1 kvbase=12.47 action=sqerror");
+    dss.command(&format!(
+        "Save circuit dir=\"{}\"",
+        dir.to_string_lossy().replace('\\', "/")
+    ));
+
+    let read = |name: &str| std::fs::read_to_string(dir.join(name)).expect("saved class file");
+    let gen_dss = read("Generator.dss");
+    let sensor = read("Sensor.dss");
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert!(
+        gen_dss.contains("Rneut=12.5") && gen_dss.contains("Xneut=-1"),
+        "the explicitly-set stub strings must round-trip through Save exactly as \
+         r4133 writes them: {gen_dss}"
+    );
+    assert!(
+        sensor.contains("Action=sqerror"),
+        "…the silent Sensor stub too: {sensor}"
+    );
 }
 
 /// The stub rows stay off the 0.14.5-pinned full-enumeration surfaces

@@ -61,6 +61,17 @@ impl ClassProps {
                 .all(|d| d.stub_message.is_none() || d.flags.contains(PropFlags::UPSTREAM_STUB)),
             "{class_name}: a stub_message needs PropFlags::UPSTREAM_STUB to be emitted"
         );
+        // …and the converse invariant the mechanism actually rests on: the stub
+        // arm stores through `set_string`, while `get_value` renders by `ptype`,
+        // so only a `String` row round-trips. A stub declared `Double` would echo
+        // a live field the write never touched (or hit the class's `get_f64`
+        // `unreachable!`), silently breaking the flag's own contract.
+        debug_assert!(
+            defs.iter().all(|d| !d.flags.contains(PropFlags::UPSTREAM_STUB)
+                || d.ptype == PropType::String),
+            "{class_name}: an UPSTREAM_STUB row must be PropType::String — it is stored and \
+             echoed as the raw parse string"
+        );
 
         let mut props = Vec::with_capacity(defs.len() + 1);
         props.push(PropDef::base("", PropType::Integer)); // slot 0, never addressed
