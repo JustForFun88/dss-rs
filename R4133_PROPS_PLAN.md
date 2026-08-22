@@ -206,6 +206,15 @@ Restricted to r4133-gating cases: 390 divergent cases, 198 structural pairs
 (generator 137, autotrans 7, windgen 5 — Sensor's 61 and GenDispatcher's 48
 shape rows sit entirely on capi-only cases; the full-census shape total is 429
 over 5 classes).
+**RP0.2 re-census correction (2026-08-22, STATUS §RP0.2):** the 2026-08-08 walk
+itself was incomplete in two places — `regcontrol.fwdthreshold` (a whole bin-5
+echo pair, 888 cells; r4133 `''` echo like its three `idle*` siblings, port
+renders `'100'`/`'800'`) is missing, and the two cursor-disagreement
+transformers were dropped whole-element (+2 cells on 7 structural + 4 numeric
+`transformer.*` pairs, no new pair). Corrected full-census totals: structural
+**210 pairs / 961 031 cells**; the vendored extracts stay frozen at 209 —
+corrections ride as notes on the affected rows below and in the vendored
+`README.md` §"Corrections measured after freezing".
 The full-census bins below are re-derived in-scope by RP0.1 (its `bins.tsv`
 assigns every pair to its bin); the treatment map binds every bin to the
 sub-step that closes it:
@@ -216,7 +225,7 @@ sub-step that closes it:
 | 2 | case-only + trailing space, 59 / 72 007 + 2 / 21 206 | THashList lowercasing (port = dss_capi) vs Delphi as-declared case; literal `'wye '`/`'Delta '` (`Transformer.pas:1762-1763`, `AutoTrans.pas:1818-1819`) | `CaseFold` + trim | RP2.1 |
 | 3 | enum spelling + singletons, 8 / 4 400 | per-pair enum spellings (`Positive`/`Pos`) and per-pair semantics (`monitor.mode` decomposition render) | `EnumSynonym` rows + the S6 dossier (S6 = the triage's per-pair singleton list, enumerated exhaustively in RP2.2) | RP2.2 |
 | 4 | array form, 21 / 122 554 | dss_capi `GetDSSArray` `[ 400]` vs Delphi comma/paren/bare forms | `ArrayForm` tokenizing compare | RP2.1 |
-| 5 | empty-vs-value + display defaults, 44 / 442 369 | `PropertyValue[]` echo: un-overridden `GetPropertyValue` returns the parse store / `InitPropertyValues` default (`DSSObject.pas:112-115`; e.g. `Reactor.pas:1087-1140`, `Transformer.pas:1914-1919`) | `PROPS_ECHO_R4133` exclusion rows + pins | RP2.3 |
+| 5 | empty-vs-value + display defaults, 44 / 442 369 (**45 / 443 257** after the RP0.2 correction above — the 45th pair is `regcontrol.fwdthreshold`, 888 cells, absent from every vendored extract; RP2.3 provisions its row from the RP0.2 record) | `PropertyValue[]` echo: un-overridden `GetPropertyValue` returns the parse store / `InitPropertyValues` default (`DSSObject.pas:112-115`; e.g. `Reactor.pas:1087-1140`, `Transformer.pas:1914-1919`; `RegControl.pas:1423-1459` initializes only `PropertyValue[1..32]`, so props 33–36 all echo `''`) | `PROPS_ECHO_R4133` exclusion rows + pins | RP2.3 |
 | 6 | numeric display precision, 61 pairs full / 37 in-scope | Delphi `%-.5g`/`%-.6g`/`%-.8g` getters (`Vsource.pas:1327-1343`); measured worst rel 6.43e-5 (`load.pf`) | the r4133 props display floor | RP2.4 |
 | 7 | genuine value jumps, 33 pairs full / 16 in-scope | 12 of the 16 are echo (frozen defaults: `transformer.pctperm/repair`, `fault.pctperm`, `gictransformer.pctperm`, `reactor.kvar`, `pvsystem/storage.%pminnovars/%pminkvarmax`, `invcontrol.lpftau/risefalllimit`, `regcontrol.remoteptratio`); 4 need root-cause (`swtcontrol.delay`, `windgen.kvar`, `generator.model`, `gictransformer.r2`) | echo rows / root-cause | RP2.3 / RP3 |
 | 8 | property-table shape, 5 classes / 429 rows | 2 real port gaps (AutoTrans `XfmrCode`, WindGen `UserModel`/`UserData`), 2 upstream stubs (Generator `Rneut`/`Xneut`, Sensor `action`), 1 r4133 registration bug (GenDispatcher `weights`) | ports / stub rows / allowlist row | RP1 |
@@ -342,7 +351,10 @@ sub-step's own numeric stop-and-report threshold holds.
   r4133-only) must name their expected-value pin test in the row comment.
 - **The replay-accounting test** (new integration test
   `crates/dss-core/tests/props_r4133_replay.rs`) — reads the vendored census
-  extracts (RP0.1) and pushes every **example row** of `examples_full.txt`
+  extracts (RP0.1) and pushes every **example row** of `examples_full.txt` —
+  plus the RP2.1-vendored `examples_supplement.txt` (the two
+  `regcontrol.fwdthreshold` spellings the 2026-08-08 census missed; RP0.2
+  correction) —
   through the full r4133 policy in the documented chain order (shape allowlist
   → normalization → echo table → display floor). `examples_full.txt` carries
   one row per **distinct (rust, r4133) spelling** per pair, untruncated (the
@@ -482,7 +494,11 @@ Make the G1.1 scratch census a permanent opt-in diagnostic: `DSS_PROPS_CENSUS=1`
 on the corpus gate walks every live case (respecting `DSS_GATE_ONLY`), captures
 `all_properties` on **both** channels regardless of the §1.1 masks, compares with
 the plain (un-normalized) comparator in collect-don't-panic mode, and writes
-`tmp/props_census.json` + the four pair/shape extracts in the RP0.1 format. This
+`tmp/props_census.json` + the four pair/shape extracts in the RP0.1 format
+(**as executed:** every live non-`large` case; the census is its own armed
+`#[test]`, the extracts are per-channel and `examples_full.txt` is emitted too,
+plus a `run.json` stamping any `DSS_GATE_ONLY` filter — `bins.tsv`/`*_in_scope`
+stay RP2.1's, needing the bin policy; full record in STATUS §RP0.2). This
 plain mode is the knob's baseline forever (it is what reproduces RP0.1); RP2.1
 later adds a second, **disposition** mode (`DSS_PROPS_CENSUS=claims`) that runs
 the same walk through the full r4133 policy and annotates every divergent cell
@@ -699,6 +715,18 @@ own proof of completeness for bins 1/2/4 — example rows it cannot claim yet
 (bins 3/5/6/7) are asserted to match the vendored `bins.tsv` assignment (the
 pair sets RP2.2/RP2.3/RP2.4/RP3 own), so the accounting is total from day one
 and later sub-steps only move pairs between mechanisms, never invent them.
+**RP0.2 correction — the replay's input is `examples_full.txt` PLUS a
+supplement.** The vendored extracts have no `regcontrol.fwdthreshold` rows
+(the pair is missing from the 2026-08-08 census; RP0.2 STATUS record, finding
+1), so RP2.1 vendors `tests/corpus/props_r4133/examples_supplement.txt` — same
+row format, the two knob-measured spellings `regcontrol.fwdthreshold | '100' |
+'' | 864` and `| '800' | '' | 24` (Σ 888), provenance header citing the RP0.2
+record — extends the evidence lock with its row count, and feeds the replay
+from both files. The pair carries no `bins.tsv` row either: the supplement's
+provenance IS its bin-5 assignment (declared for RP2.3's echo row, like the
+other bin-5 pairs); the both-ways liveness assert counts supplement rows
+exactly like `examples_full.txt` rows, so RP2.3's `fwdthreshold` echo row is
+live offline, not exempted.
 Claim semantics are per example row, first-match-in-chain (§1.2) — the four
 mixed pairs keep their echo example rows unclaimed here (declared for RP2.3's
 echo rows: `''` on three of them, `'0.20'` on `relay.reset`) while their
@@ -744,7 +772,14 @@ S6 list each have a cited, single classification.
 ### RP2.3 — the echo-exclusion table + pins
 
 Land the `PROPS_ECHO_R4133` rows for bin 5 (the 44 empty-vs-value pairs — echo
-defaults and never-parsed stores) and the 12 echo-rooted genuine-jump pairs of
+defaults and never-parsed stores — **plus the 45th, `regcontrol.fwdthreshold`**:
+missing from the vendored census, measured by RP0.2's re-census at 888 cells,
+`EchoDefault` like its three `idle*` siblings — r4133 `RegControl.pas:1423-1459`
+initializes only `PropertyValue[1..32]` and `GetPropertyValue` overrides only
+index 28, so props 33–36 all echo `''`; its example rows come from
+`examples_supplement.txt`, vendored by RP2.1; its in-scope cell split is not
+in the frozen extracts — re-derive it with the knob when writing the pin)
+and the 12 echo-rooted genuine-jump pairs of
 bin 7 (§1.1 table; the census grounding proves each against its r4133 site:
 `Transformer.pas:1914-1919` pctperm/repair, `Reactor.pas:1087-1140` kvar echo,
 `RegControl.pas:1452` remoteptratio frozen default (`PropertyValue[27]`; the
