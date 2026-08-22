@@ -228,19 +228,29 @@ impl WindGen {
             self.q_nominal_per_phase = 1e3 * kvar_calc * lead_lag * factor / nphases;
         }
 
+        // `WindGen.pas:1332-1345` — build the Y primitive eq. Model 6 takes the
+        // machine reactance instead of the P/Q equivalent, and — note — leaves
+        // `Yeq95`/`Yeq105` at whatever they held: the Pascal `CASE`'s model-6 arm
+        // sets only `Yeq` (`:1336`), and the model-6 current path
+        // (`DoUserModel`) never reads the 95/105 pair.
         if !(sys.is_dynamic_model || sys.is_harmonic_model) {
-            self.yeq = Complex64::new(self.p_nominal_per_phase, -self.q_nominal_per_phase)
-                / self.v_base.powi(2); // Vbase L-N for 3-phase
-            self.yeq95 = if self.vminpu != 0.0 {
-                self.yeq / self.vminpu.powi(2)
+            if self.gen_model == 6 {
+                // Gets negated in CalcYPrim.
+                self.yeq = Complex64::new(0.0, -self.xd).inv();
             } else {
-                self.yeq // always a constant-Z model
-            };
-            self.yeq105 = if self.vmaxpu != 0.0 {
-                self.yeq / self.vmaxpu.powi(2)
-            } else {
-                self.yeq
-            };
+                self.yeq = Complex64::new(self.p_nominal_per_phase, -self.q_nominal_per_phase)
+                    / self.v_base.powi(2); // Vbase L-N for 3-phase
+                self.yeq95 = if self.vminpu != 0.0 {
+                    self.yeq / self.vminpu.powi(2)
+                } else {
+                    self.yeq // always a constant-Z model
+                };
+                self.yeq105 = if self.vmaxpu != 0.0 {
+                    self.yeq / self.vmaxpu.powi(2)
+                } else {
+                    self.yeq
+                };
+            }
         }
 
         if self.gen_on != gen_on_saved {
@@ -255,6 +265,17 @@ impl WindGen {
         self.v_base105 = self.vmaxpu * self.v_base;
         self.var_base = 1000.0 * self.kvar_base / nphases;
 
+        // "Populate data structures used for interchange with user-written
+        // models" (`WindGen.pas:1365-1373`). The reactances are re-derived from
+        // the kVA rating *before* the kVA/kW reconciliation below may change it —
+        // the Pascal order, and `Xd` feeds the model-6 Yprim (`:1336`). The
+        // grouping is `:1368`'s (`puX * 1000 * SQR(kV) / kVA`), which differs
+        // from `Create`'s; the record's `Conn`/`NumPhases`/`NumConductors` are
+        // read straight off `cd` when the shuttle image is built.
+        self.xd = self.pu_xd * 1000.0 * self.kv_windgen_base.powi(2) / self.kva_rating;
+        self.xdp = self.pu_xdp * 1000.0 * self.kv_windgen_base.powi(2) / self.kva_rating;
+        self.xdpp = self.pu_xdpp * 1000.0 * self.kv_windgen_base.powi(2) / self.kva_rating;
+
         if !self.kva_not_set {
             self.kw_base = self.kva_rating * self.pf_nominal.abs();
             self.kvar_base = (self.kva_rating.powi(2) - self.kw_base.powi(2)).sqrt();
@@ -268,7 +289,21 @@ impl WindGen {
 
         self.yq_fixed = -self.var_base / self.v_base.powi(2);
 
+        // `WindGen.pas:1406-1408`: `Vtarget := Vpu * 1000 * kVWindGenBase`.
+        // `Vpu` is fixed at its Create value of 1.0 — r4133 registers no
+        // property that writes it (module doc) — and `x * 1.0` is exact, so the
+        // factor is elided rather than approximated.
+        self.v_target = 1000.0 * self.kv_windgen_base;
+        if self.cd.nphases > 1 {
+            self.v_target /= crate::util::sqrt3();
+        }
+
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+
+        // `:1418` — `If Usermodel.Exists Then UserModel.FUpdateModel` (the
+        // `ShaftModel` twin at `:1419` is unreachable, module doc), *before* the
+        // WTG3 recalc at `:1422`.
+        self.update_user_models(sys);
 
         self.wind_model_dyn
             .recalc_element_data(sys.dyna_h, sys.dyna_t);

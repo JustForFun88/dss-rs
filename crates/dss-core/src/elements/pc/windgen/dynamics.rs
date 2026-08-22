@@ -1,10 +1,14 @@
 //! Dynamics-mode machinery: `InitStateVars`, `IntegrateStates`, `DoDynamicMode`
 //! and the 22 state variables. Unlike the classic behind-Xd' generator, the
-//! electrical injection comes from the embedded [`Wtg3Model`](super::wtg3):
-//! `DoDynamicMode` hands it the terminal V/I and reads back a Norton current.
-//! The classic shaft swing (`Theta`/`Speed`) is still integrated (as upstream)
-//! but is not a readable variable — it exists only so the per-step
-//! `WindModelDyn.Integrate()` side effect fires.
+//! electrical injection of models 1/2/4/5 comes from the embedded
+//! [`Wtg3Model`](super::wtg3): `DoDynamicMode` hands it the terminal V/I and
+//! reads back a Norton current. Model 6 replaces that with the bound
+//! [`WindGenUserModelSlot`](super::WindGenUserModelSlot) at all three call sites
+//! (`FInit` / `FCalc` / `Integrate`, `WindGen.pas:2568`, `:1993`, `:2663`).
+//!
+//! Either way the classic shaft swing (`Theta`/`Speed`) is still integrated (as
+//! upstream) but is not a readable variable — it exists only so the per-step
+//! `WindModelDyn.Integrate()` / `UserModel.Integrate()` side effect fires.
 
 use num_complex::Complex64;
 
@@ -24,7 +28,20 @@ impl WindGen {
     pub(super) fn init_state_vars_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.cd.yprim_invalid = true; // force rebuild of YPrims
 
-        self.yeq = self.wind_model_dyn.zthev.inv();
+        // `WindGen.pas:2499-2505`, inside `With WindGenvars Do` — so `Zthev` is
+        // the *record's* field (`WindGenVars.pas:56`) and `Xdp`/`XRdp` are the
+        // record's reactances. Model 7 is out of scope but the arm is a literal
+        // port of `:2500`; `Yeq := Cinv(Zthev)` follows at `:2505` (the WindGen
+        // Yprim never reads it back — `CalcYPrimMatrix`'s dynamic branch builds
+        // its own `Y` from `WindModelDyn.Xthev`, `:1447-1448`, and the power-flow
+        // branch re-derives `Yeq` in `SetNominalGeneration` — but the record
+        // field itself crosses to the user model).
+        self.zthev = if self.gen_model == 7 {
+            Complex64::new(self.xdp, 0.0) // Xd' as an equivalent R for the inverter
+        } else {
+            Complex64::new(self.xdp / self.xrdp, self.xdp)
+        };
+        self.yeq = self.zthev.inv();
 
         if !self.gen_on {
             self.vthev = Complex64::ZERO;
@@ -38,6 +55,16 @@ impl WindGen {
 
         self.compute_iterminal(sys, node_v);
 
+        // `:2514-2540`. `Edp` is formed against the *record* `Zthev` for every
+        // model (the whole body is one `With WindGenvars`). Until `Xdp` existed
+        // on the port this line substituted the WTG3 Thevenin impedance
+        // (`WindModelDyn.Zthev`, the `RThev=`/`XThev=` pair) — a real, if
+        // invisible, divergence: `Edp` feeds only `Theta`/`VThevMag`, and for the
+        // WTG3-driven models 1/2/4/5 neither is a readable variable, a property,
+        // or an injection input (`WindModelDyn.Init` sets the machine state), so
+        // no oracle channel can see which impedance was used. It is corrected
+        // here rather than left conditional on the model.
+        let z_edp = self.zthev;
         match self.cd.nphases {
             3 => {
                 let sc = SymComp::default();
@@ -49,29 +76,51 @@ impl WindGen {
                 }
                 let mut v012 = [Complex64::ZERO; 3];
                 sc.phase_to_sym(&vabc, &mut v012);
-                let edp = v012[1] - i012[1] * self.wind_model_dyn.zthev; // pos sequence
+                let edp = v012[1] - i012[1] * z_edp; // pos sequence
                 self.edp = edp;
                 self.v_thev_mag = edp.norm();
             }
-            _ => {
-                // Pascal `case Fnphases of 1: 3: else DoSimpleMsg(...5672)` accepts
-                // 1-phase (computes Edp) then still calls `WindModelDyn.Init` — but
-                // the embedded WTG3 model is 3-phase-only: `Instrumentation`
-                // (WTG3_Model.pas:494) and every per-step `CalcDynamic` read
-                // `V[1..3]`/`i[1..3]`, so a 1-phase terminal (2 conductors)
-                // over-reads the terminal array = heap UB upstream. Per CLAUDE.md
-                // (UB-class quirks are NOT reproduced — gate around them), abort
-                // for anything but 3 phases rather than reproduce the over-read.
-                // `do_dynamic_mode` calls `calc_dynamic` unconditionally (even on
-                // the DynamicEq path), so there is no valid non-3-phase dynamics
-                // path; this init-time abort sets `solution_abort`, which
-                // `solve_dynamic_body` honors before any step runs.
-                self.cd.obj.push_error_abort(format!(
-                    "Dynamics mode requires a 3-phase WindGen (the WTG3 model is \
-                     3-phase-only). WindGen.{} has {} phases.",
-                    self.cd.obj.name(),
-                    self.cd.nphases
-                ));
+            // `:2516-2522` — the 1-phase arm. Reachable only for model 6: the
+            // embedded WTG3 model is 3-phase-only (`Instrumentation`,
+            // WTG3_Model.pas:494, and every per-step `CalcDynamic` read
+            // `V[1..3]`/`i[1..3]`), so a 1-phase terminal (2 conductors)
+            // over-reads the terminal array = heap UB upstream. Per CLAUDE.md
+            // that UB is NOT reproduced — the port aborts instead (below). A
+            // model-6 WindGen never touches the WTG3, so its 1-phase dynamics
+            // are well defined and ported literally.
+            1 if self.gen_model == 6 => {
+                let edp = node_v[self.cd.node_ref[0]]
+                    - node_v[self.cd.node_ref[1]]
+                    - self.cd.iterminal[0] * z_edp;
+                self.edp = edp;
+                self.v_thev_mag = edp.norm();
+            }
+            n => {
+                if self.gen_model == 6 {
+                    // `:2538-2539` — the upstream abort, verbatim: `DoSimpleMsg(…,
+                    // 5672)` immediately followed by `SolutionAbort := TRUE`. The
+                    // number is the diagnostic's stable identity (`diag.rs`), so
+                    // it travels with the text.
+                    let msg = format!(
+                        "Dynamics mode is implemented only for 1- or 3-phase WindGens. \
+                         WindGen.{} has {n} phases.",
+                        self.cd.obj.name()
+                    );
+                    self.cd
+                        .obj
+                        .push_error_abort(crate::diag::DssDiagnostic::msg(msg, Some(5672)));
+                } else {
+                    // `do_dynamic_mode` calls `calc_dynamic` unconditionally (even
+                    // on the DynamicEq path), so there is no valid non-3-phase
+                    // WTG3 dynamics path; this init-time abort sets
+                    // `solution_abort`, which `solve_dynamic_body` honors before
+                    // any step runs.
+                    self.cd.obj.push_error_abort(format!(
+                        "Dynamics mode requires a 3-phase WindGen (the WTG3 model is \
+                         3-phase-only). WindGen.{} has {n} phases.",
+                        self.cd.obj.name()
+                    ));
+                }
                 return;
             }
         }
@@ -111,8 +160,22 @@ impl WindGen {
         self.speed = 0.0;
         self.dspeed = 0.0;
 
-        // Seed the WTG3 model (uses the present terminal V/I; writes the initial
-        // Norton current back into ITerminal for the first CalcDynamic to read).
+        if self.gen_model == 6 {
+            // `:2566-2570` — `If GenModel=6 then If UserModel.Exists Then
+            // UserModel.FInit(Vterminal, Iterminal)`. Pascal runs only
+            // `ComputeIterminal` before this (`:2512`), never `ComputeVterminal`,
+            // so the model is seeded from the STALE `Vterminal` buffer left by
+            // the power flow's last injection iteration — deliberately NOT
+            // refreshed (the WM.3 D2 finding; the built-in path below is the one
+            // that recomputes). The `ShaftModel.FInit` twin (`:2569`) is
+            // unreachable (module doc).
+            self.user_model_finit(sys, node_v);
+            return;
+        }
+
+        // `:2573` — seed the WTG3 model (uses the present terminal V/I; writes
+        // the initial Norton current back into ITerminal for the first
+        // CalcDynamic to read).
         self.cd.compute_vterminal(node_v);
         let vterm = self.cd.vterminal.clone();
         self.wind_model_dyn.init(&vterm, &mut self.cd.iterminal);
@@ -176,8 +239,14 @@ impl WindGen {
         self.speed = self.speed_history + 0.5 * h * self.dspeed;
         self.theta = self.theta_history + 0.5 * h * self.dtheta;
 
-        // Advance the WTG3 integrator (the upstream per-step side effect).
-        self.wind_model_dyn.integrate();
+        // `:2662-2669` — model 6 advances the user model, every other model the
+        // WTG3 integrator (the upstream per-step side effect). The
+        // `ShaftModel.Integrate` twin (`:2664`) is unreachable (module doc).
+        if self.gen_model == 6 {
+            self.user_model_fintegrate(sys, node_v);
+        } else {
+            self.wind_model_dyn.integrate();
+        }
     }
 
     /// Pascal `TWindGenObj.DoDynamicMode` — hand the WTG3 model the terminal V/I,
@@ -189,6 +258,37 @@ impl WindGen {
         errors: &mut crate::diag::ErrorLog,
     ) {
         self.cd.compute_vterminal(node_v);
+
+        if self.gen_model == 6 {
+            // `:1991-1998` — `If UserModel.Exists Then UserModel.FCalc(Vterminal,
+            // Iterminal)`, else message 5671 + `SolutionAbort := TRUE`. Both are
+            // surfaced: the `inj_currents` caller drains `errors` into the
+            // solution ErrorLog and lifts the `abort` flag onto `SolutionAbort` —
+            // a loud typed error, never a silent fallback.
+            if !self.user_model_fcalc(sys, node_v, errors) && self.user_model_name.is_empty() {
+                // Genuine model-6 dynamics with NO `UserModel=` source. When a
+                // source WAS designated but is not loaded (a native-DLL name the
+                // wasm-only host cannot load) the #570/#569 already surfaced at
+                // load time — same suppression as the power-flow `do_user_model`.
+                errors.push(crate::diag::DssDiagnostic::abort(
+                    format!("Dynamics model missing for WindGen.{} ", self.cd.obj.name()),
+                    Some(5671),
+                ));
+                for c in self.cd.inj_current.iter_mut() {
+                    *c = Complex64::ZERO;
+                }
+                return;
+            }
+            self.cd.iterminal_updated = true;
+            self.cd.mark_iterminal_solved(sys.solution_count);
+            let nconds = self.cd.nconds;
+            for i in 0..nconds {
+                self.cd.inj_current[i] = -self.cd.iterminal[i];
+            }
+            // `:2008-2012` — the `ShaftModel.FCalc` tail is unreachable (module
+            // doc: no property registers that slot).
+            return;
+        }
 
         // The WTG3 model is 3-phase-only: `calc_dynamic` → `instrumentation`
         // reads V[1..3]/i[1..3], so a non-3-phase terminal (e.g. a 1-phase

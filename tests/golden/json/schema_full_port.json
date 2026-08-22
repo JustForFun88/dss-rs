@@ -8383,13 +8383,28 @@
           "$dssPropertyIndex" : 16,
           "$dssPropertyOrder" : 17
         },
+        "UserModel" : {
+          "type" : "string",
+          "description" : "Name of DLL containing user-written model, which computes the terminal currents for Dynamics studies, overriding the default model.  Set to \"none\" to negate previous setting.",
+          "title" : "UserModel",
+          "format" : "file-path",
+          "$dssPropertyIndex" : 18,
+          "$dssPropertyOrder" : 18
+        },
+        "UserData" : {
+          "type" : "string",
+          "description" : "String (in quotes or parentheses) that gets passed to user-written model for defining the data required for that model.",
+          "title" : "UserData",
+          "$dssPropertyIndex" : 19,
+          "$dssPropertyOrder" : 19
+        },
         "DutyStart" : {
           "type" : "number",
           "default" : 0.0000000000000000E+000,
           "description" : "Starting time offset [hours] into the duty cycle shape for this WindGen, defaults to 0",
           "title" : "DutyStart",
-          "$dssPropertyIndex" : 18,
-          "$dssPropertyOrder" : 18
+          "$dssPropertyIndex" : 20,
+          "$dssPropertyOrder" : 20
         },
         "DynamicEq" : {
           "type" : "string",
@@ -8397,31 +8412,31 @@
           "maxLength" : 255,
           "description" : "WindGen.dynamiceq",
           "title" : "DynamicEq",
-          "$dssPropertyIndex" : 19,
-          "$dssPropertyOrder" : 19
+          "$dssPropertyIndex" : 21,
+          "$dssPropertyOrder" : 21
         },
         "DynOut" : {
           "$ref" : "#/$defs/StringArrayOrFilePath",
           "description" : "WindGen.dynout",
           "title" : "DynOut",
-          "$dssPropertyIndex" : 20,
-          "$dssPropertyOrder" : 20
+          "$dssPropertyIndex" : 22,
+          "$dssPropertyOrder" : 22
         },
         "RThev" : {
           "type" : "number",
           "default" : 0.0000000000000000E+000,
           "description" : "WindGen.rthev",
           "title" : "RThev",
-          "$dssPropertyIndex" : 21,
-          "$dssPropertyOrder" : 21
+          "$dssPropertyIndex" : 23,
+          "$dssPropertyOrder" : 23
         },
         "XThev" : {
           "type" : "number",
           "default" : 5.0000000000000003E-002,
           "description" : "WindGen.xthev",
           "title" : "XThev",
-          "$dssPropertyIndex" : 22,
-          "$dssPropertyOrder" : 22
+          "$dssPropertyIndex" : 24,
+          "$dssPropertyOrder" : 24
         },
         "VSS" : {
           "type" : "number",
@@ -8429,24 +8444,24 @@
           "minimum" : 0,
           "description" : "WindGen.vss",
           "title" : "VSS",
-          "$dssPropertyIndex" : 23,
-          "$dssPropertyOrder" : 23
+          "$dssPropertyIndex" : 25,
+          "$dssPropertyOrder" : 25
         },
         "PSS" : {
           "type" : "number",
           "default" : 1.0000000000000000E+000,
           "description" : "WindGen.pss",
           "title" : "PSS",
-          "$dssPropertyIndex" : 24,
-          "$dssPropertyOrder" : 24
+          "$dssPropertyIndex" : 26,
+          "$dssPropertyOrder" : 26
         },
         "QSS" : {
           "type" : "number",
           "default" : 0.0000000000000000E+000,
           "description" : "WindGen.qss",
           "title" : "QSS",
-          "$dssPropertyIndex" : 25,
-          "$dssPropertyOrder" : 25
+          "$dssPropertyIndex" : 27,
+          "$dssPropertyOrder" : 27
         },
         "VWind" : {
           "type" : "number",
@@ -8454,56 +8469,56 @@
           "minimum" : 0,
           "description" : "WindGen.vwind",
           "title" : "VWind",
-          "$dssPropertyIndex" : 26,
-          "$dssPropertyOrder" : 26
+          "$dssPropertyIndex" : 28,
+          "$dssPropertyOrder" : 28
         },
         "QMode" : {
           "$ref" : "#/$defs/WindGen/$defs/WindGenQMode",
           "default" : 0,
           "description" : "WindGen.qmode",
           "title" : "QMode",
-          "$dssPropertyIndex" : 27,
-          "$dssPropertyOrder" : 27
+          "$dssPropertyIndex" : 29,
+          "$dssPropertyOrder" : 29
         },
         "SimMechFlg" : {
           "type" : "integer",
           "default" : 1,
           "description" : "WindGen.simmechflg",
           "title" : "SimMechFlg",
-          "$dssPropertyIndex" : 28,
-          "$dssPropertyOrder" : 28
+          "$dssPropertyIndex" : 30,
+          "$dssPropertyOrder" : 30
         },
         "APCFlg" : {
           "type" : "integer",
           "default" : 0,
           "description" : "WindGen.apcflg",
           "title" : "APCFlg",
-          "$dssPropertyIndex" : 29,
-          "$dssPropertyOrder" : 29
+          "$dssPropertyIndex" : 31,
+          "$dssPropertyOrder" : 31
         },
         "QFlg" : {
           "type" : "integer",
           "default" : 1,
           "description" : "WindGen.qflg",
           "title" : "QFlg",
-          "$dssPropertyIndex" : 30,
-          "$dssPropertyOrder" : 30
+          "$dssPropertyIndex" : 32,
+          "$dssPropertyOrder" : 32
         },
         "delt0" : {
           "type" : "number",
           "default" : 5.0000000000000002E-005,
           "description" : "WindGen.delt0",
           "title" : "delt0",
-          "$dssPropertyIndex" : 31,
-          "$dssPropertyOrder" : 31
+          "$dssPropertyIndex" : 33,
+          "$dssPropertyOrder" : 33
         },
         "N_WTG" : {
           "type" : "integer",
           "default" : 1,
           "description" : "WindGen.n_wtg",
           "title" : "N_WTG",
-          "$dssPropertyIndex" : 32,
-          "$dssPropertyOrder" : 32
+          "$dssPropertyIndex" : 34,
+          "$dssPropertyOrder" : 34
         },
         "VV_Curve" : {
           "type" : "string",
@@ -8511,40 +8526,40 @@
           "maxLength" : 255,
           "description" : "WindGen.vv_curve",
           "title" : "VV_Curve",
-          "$dssPropertyIndex" : 33,
-          "$dssPropertyOrder" : 33
+          "$dssPropertyIndex" : 35,
+          "$dssPropertyOrder" : 35
         },
         "Ag" : {
           "type" : "number",
           "default" : 1.1111111111111112E-002,
           "description" : "WindGen.ag",
           "title" : "Ag",
-          "$dssPropertyIndex" : 34,
-          "$dssPropertyOrder" : 34
+          "$dssPropertyIndex" : 36,
+          "$dssPropertyOrder" : 36
         },
         "Cp" : {
           "type" : "number",
           "default" : 4.0999999999999998E-001,
           "description" : "WindGen.cp",
           "title" : "Cp",
-          "$dssPropertyIndex" : 35,
-          "$dssPropertyOrder" : 35
+          "$dssPropertyIndex" : 37,
+          "$dssPropertyOrder" : 37
         },
         "Lamda" : {
           "type" : "number",
           "default" : 7.9500000000000002E+000,
           "description" : "WindGen.lamda",
           "title" : "Lamda",
-          "$dssPropertyIndex" : 36,
-          "$dssPropertyOrder" : 36
+          "$dssPropertyIndex" : 38,
+          "$dssPropertyOrder" : 38
         },
         "P" : {
           "type" : "number",
           "default" : 2.0000000000000000E+000,
           "description" : "WindGen.p",
           "title" : "P",
-          "$dssPropertyIndex" : 37,
-          "$dssPropertyOrder" : 37
+          "$dssPropertyIndex" : 39,
+          "$dssPropertyOrder" : 39
         },
         "pd" : {
           "type" : "number",
@@ -8552,8 +8567,8 @@
           "exclusiveMinimum" : 0,
           "description" : "WindGen.pd",
           "title" : "pd",
-          "$dssPropertyIndex" : 38,
-          "$dssPropertyOrder" : 38
+          "$dssPropertyIndex" : 40,
+          "$dssPropertyOrder" : 40
         },
         "PLoss" : {
           "type" : "string",
@@ -8561,8 +8576,8 @@
           "maxLength" : 255,
           "description" : "WindGen.ploss",
           "title" : "PLoss",
-          "$dssPropertyIndex" : 39,
-          "$dssPropertyOrder" : 39
+          "$dssPropertyIndex" : 41,
+          "$dssPropertyOrder" : 41
         },
         "Rad" : {
           "type" : "number",
@@ -8570,24 +8585,24 @@
           "exclusiveMinimum" : 0,
           "description" : "WindGen.rad",
           "title" : "Rad",
-          "$dssPropertyIndex" : 40,
-          "$dssPropertyOrder" : 40
+          "$dssPropertyIndex" : 42,
+          "$dssPropertyOrder" : 42
         },
         "VCutIn" : {
           "type" : "number",
           "default" : 5.0000000000000000E+000,
           "description" : "WindGen.vcutin",
           "title" : "VCutIn",
-          "$dssPropertyIndex" : 41,
-          "$dssPropertyOrder" : 41
+          "$dssPropertyIndex" : 43,
+          "$dssPropertyOrder" : 43
         },
         "VCutOut" : {
           "type" : "number",
           "default" : 2.3000000000000000E+001,
           "description" : "WindGen.vcutout",
           "title" : "VCutOut",
-          "$dssPropertyIndex" : 42,
-          "$dssPropertyOrder" : 42
+          "$dssPropertyIndex" : 44,
+          "$dssPropertyOrder" : 44
         },
         "Spectrum" : {
           "type" : "string",
@@ -8596,8 +8611,8 @@
           "default" : "defaultgen",
           "description" : "Name of harmonic voltage or current spectrum for this WindGen. Voltage behind Xd\" for machine - default. Current injection for inverter. Default value is \"default\", which is defined when the DSS starts.",
           "title" : "Spectrum",
-          "$dssPropertyIndex" : 43,
-          "$dssPropertyOrder" : 43
+          "$dssPropertyIndex" : 45,
+          "$dssPropertyOrder" : 45
         },
         "BaseFreq" : {
           "type" : "number",
@@ -8605,28 +8620,28 @@
           "exclusiveMinimum" : 0,
           "description" : "Base Frequency for ratings.",
           "title" : "BaseFreq",
-          "$dssPropertyIndex" : 44,
-          "$dssPropertyOrder" : 44
+          "$dssPropertyIndex" : 46,
+          "$dssPropertyOrder" : 46
         },
         "Enabled" : {
           "type" : "boolean",
           "default" : true,
           "description" : "{Yes|No or True|False} Indicates whether this element is enabled.",
           "title" : "Enabled",
-          "$dssPropertyIndex" : 45,
-          "$dssPropertyOrder" : 45
+          "$dssPropertyIndex" : 47,
+          "$dssPropertyOrder" : 47
         },
         "Like" : {
           "type" : "string",
           "description" : "Make like another object, e.g.:\n\nNew Capacitor.C2 like=c1  ...",
           "writeOnly" : true,
           "title" : "Like",
-          "$dssPropertyIndex" : 46,
+          "$dssPropertyIndex" : 48,
           "$dssPropertyOrder" : 1
         },
         "DynInit" : {
           "$ref" : "#/$defs/DynInitType",
-          "$dssPropertyOrder" : 47
+          "$dssPropertyOrder" : 49
         }
       },
       "required" : [
@@ -8640,7 +8655,8 @@
             "Constant PQ",
             "Constant Z",
             "Constant P, fixed Q",
-            "Constant P, fixed X"
+            "Constant P, fixed X",
+            "User model"
           ],
           "$dssFullEnum" : [
             [
@@ -8662,6 +8678,11 @@
               "Constant P, fixed X",
               "Constant P, fixed X",
               5
+            ],
+            [
+              "User model",
+              "User model",
+              6
             ]
           ]
         },

@@ -87,3 +87,30 @@ sha256(capuserctl.wasm)=10b2c6b60cf052fe840539b2670fc51429c39c3cc4d70d6484d0d81f
 #        tools/golden/wasm_decks/wasm_capcontrol_oracle.dss (built-in VOLTAGE, r4133 golden)
 # golden: tests/golden/wasm_usermodels/wasm_capcontrol.json (built-in VOLTAGE, DSS_GEN_WM5=1)
 # hermetic replay gate: crates/dss-core/tests/wasm_usermodels_wm5.rs
+
+# ==== RP1.3 fixture: wgturbine (WindGen UserModel) ====
+# R4133_PROPS_PLAN.md RP1.3. A small deterministic wind-turbine model for the
+# WindGen `UserModel=` 15-fn interface (Pascal TWindGenUserModel,
+# PCElements/WindGenUserModel.pas) — r4133 ships no example WindGen user model,
+# so the fixture is authored, like wm4model and capuserctl. Constant-admittance
+# current source in power flow, first-order current+speed lag in dynamics
+# (dispatched on TDynamicsRec.SolutionMode), and it fills the TWindGenVars
+# turbine outputs Cp/Lamda/Pm/Ps/Pr/Pg/s plus Pshaft/Speed/dSpeed.
+# It is the end-to-end witness for the NEW boundary record of ABI doc §2.6: the
+# 348-byte TWindGenVars wasm image (native 356 B minus the managed `PLoss:
+# string` reference, hole CLOSED — probe docs/wasm/probes/
+# p10_offsets_windgenvars_r4133.txt). Its reads span the head (w0, kVArating,
+# kVWindGenBase, Pnominal/Qnominalperphase, the three integers) and `ag`, the
+# first turbine-tail field — the one that moves if the dropped hole is ever
+# re-inserted.
+# crate: tools/wasm_usermodel/models/wgturbine/ (workspace-excluded, cdylib
+# ONLY: unlike wm4model/capuserctl there is no native twin — RP1.3's gate is the
+# in-engine round-trip plus crates/dss-usermodel/tests/windgen_shuttle.rs, not a
+# native-twin golden).
+#
+# ---- committed wasm fixture (RP1.3) — regenerate MANUALLY ONLY ----
+# build command (exact, reproducible from a clean target dir):
+#   pwsh tools/wasm_usermodel/build_wgturbine_wasm.ps1
+# built with: cargo +stable 1.96.0 (30a34c682 2026-05-25), wasm32-unknown-unknown
+# tests/fixtures/wasm/wgturbine.wasm  (60281 bytes)
+sha256(wgturbine.wasm)=c441df68831e435eac91f50bc609a61a9a09bf5ae6dcc48714762aae32832a88

@@ -19,8 +19,8 @@ use wasmi::{Store, TrapCode, TypedFunc};
 
 use crate::callbacks::{CallData, Callbacks, Effect, Fault, NoCallbacks};
 use crate::error::UserModelError;
-use crate::host::{InterfaceKind, UserModelHost};
-use crate::records::{DynamicsRec, GeneratorVars};
+use crate::host::{InterfaceKind, UserModelHost, VarsRecord};
+use crate::records::{DynamicsRec, GeneratorVars, WindGenVars};
 
 /// `maxlen` passed to the guest's `get_var_name` (the host-owned scratch is
 /// `maxlen + 1` bytes, Pascal `StrLCopy` convention — ABI doc "Conventions").
@@ -30,6 +30,10 @@ const NAME_MAXLEN: usize = 255;
 /// (ABI doc §2): the boundary records (written before, read back after —
 /// unconditionally, the model may mutate both) and the tier-A context
 /// snapshot serving `dss_env` reads during the call.
+///
+/// This is the **Generator-family** shuttle. WindGen carries a different
+/// boundary record and uses [`WindGenShuttle`]; both are accepted wherever a
+/// call takes `impl `[`IntoShuttle`].
 pub struct Shuttle<'a> {
     /// `TGeneratorVars` mirror — `Some` exactly for
     /// [`InterfaceKind::GenUserModel`] instances.
@@ -48,6 +52,114 @@ impl<'a> Shuttle<'a> {
             dyn_rec,
             ctx,
         }
+    }
+}
+
+/// The [`InterfaceKind::WindGenUserModel`] shuttle: the same three parts as
+/// [`Shuttle`], carrying `TWindGenVars` instead of `TGeneratorVars`
+/// (`PCElements/WindGenUserModel.pas:34` — `FNew(Var GenVars: TWindGenVars; …)`).
+///
+/// The record is not optional here: WindGen is the only kind that uses this
+/// shuttle and it always passes one, exactly as the Pascal loader does
+/// (`TWindGenUserModel.Create(@WindGenVars)`, `WindGen.pas:995`).
+pub struct WindGenShuttle<'a> {
+    /// `TWindGenVars` mirror — the 348-byte wasm image (ABI doc §2.6).
+    pub wind_gen_vars: &'a mut WindGenVars,
+    /// `TDynamicsRec` mirror.
+    pub dyn_rec: &'a mut DynamicsRec,
+    /// The per-call context snapshot (plan §2.3 tier A; consumed by the call).
+    pub ctx: Box<dyn Callbacks>,
+}
+
+/// Which boundary record a shuttle carries into guest memory (ABI doc §2).
+///
+/// The two record images are **not** interchangeable — different sizes and,
+/// past offset 244, different fields — so the instance checks this variant
+/// against its host's [`InterfaceKind`] before writing anything.
+pub enum ShuttleVars<'a> {
+    /// No boundary record: Storage `UserModel=`/`DynaDLL=`, PVSystem
+    /// `UserModel=` (their `new` takes only the dynarec pointer).
+    None,
+    /// `TGeneratorVars` (244-byte wasm image, ABI doc §2.2b).
+    Gen(&'a mut GeneratorVars),
+    /// `TWindGenVars` (348-byte wasm image, ABI doc §2.6).
+    WindGen(&'a mut WindGenVars),
+}
+
+impl ShuttleVars<'_> {
+    /// The record this variant carries, for the kind check.
+    fn record(&self) -> Option<VarsRecord> {
+        match self {
+            Self::None => None,
+            Self::Gen(_) => Some(VarsRecord::Generator),
+            Self::WindGen(_) => Some(VarsRecord::WindGen),
+        }
+    }
+
+    /// The packed image to write into the guest buffer.
+    fn to_image(&self) -> Option<Vec<u8>> {
+        match self {
+            Self::None => None,
+            Self::Gen(g) => Some(g.to_bytes().to_vec()),
+            Self::WindGen(w) => Some(w.to_bytes().to_vec()),
+        }
+    }
+
+    /// Apply a guest-side image back onto the caller's record.
+    fn apply(&mut self, bytes: Vec<u8>) {
+        match self {
+            Self::None => {}
+            Self::Gen(g) => **g = GeneratorVars::from_bytes(&bytes.try_into().expect("sized read")),
+            Self::WindGen(w) => {
+                **w = WindGenVars::from_bytes(&bytes.try_into().expect("sized read"));
+            }
+        }
+    }
+}
+
+/// A shuttle the 15/13-function call surface accepts: [`Shuttle`] (Generator
+/// family) or [`WindGenShuttle`].
+///
+/// Every call takes `impl IntoShuttle<'a>` rather than a concrete type so the
+/// two record shapes share one implementation of the copy-in/copy-out envelope
+/// — the *transport* is identical, only the image differs (ABI doc §2).
+pub trait IntoShuttle<'a> {
+    /// Split into (boundary record, dynamics record, per-call context).
+    fn into_shuttle_parts(self) -> (ShuttleVars<'a>, &'a mut DynamicsRec, Box<dyn Callbacks>);
+}
+
+impl<'a> IntoShuttle<'a> for Shuttle<'a> {
+    fn into_shuttle_parts(self) -> (ShuttleVars<'a>, &'a mut DynamicsRec, Box<dyn Callbacks>) {
+        let vars = match self.gen_vars {
+            Some(g) => ShuttleVars::Gen(g),
+            None => ShuttleVars::None,
+        };
+        (vars, self.dyn_rec, self.ctx)
+    }
+}
+
+impl<'a> IntoShuttle<'a> for WindGenShuttle<'a> {
+    fn into_shuttle_parts(self) -> (ShuttleVars<'a>, &'a mut DynamicsRec, Box<dyn Callbacks>) {
+        (
+            ShuttleVars::WindGen(self.wind_gen_vars),
+            self.dyn_rec,
+            self.ctx,
+        )
+    }
+}
+
+/// The split shuttle the envelope works on (private: the public surface is the
+/// two shuttle structs and [`IntoShuttle`]).
+struct Parts<'a> {
+    vars: ShuttleVars<'a>,
+    dyn_rec: &'a mut DynamicsRec,
+    ctx: Box<dyn Callbacks>,
+}
+
+impl<'a> Parts<'a> {
+    fn split(sh: impl IntoShuttle<'a>) -> Self {
+        let (vars, dyn_rec, ctx) = sh.into_shuttle_parts();
+        Self { vars, dyn_rec, ctx }
     }
 }
 
@@ -283,17 +395,19 @@ fn cplx_from_image(bytes: &[u8], out: &mut [Complex64]) {
 }
 
 /// One bound 15/13-function user model (Pascal `TGenUserModel` /
-/// `TStoreUserModel` / `TPVsystemUserModel` / `TStoreDynaModel`): a `Store` +
-/// instance + the guest buffers allocated once via `dss_alloc` (genvars /
-/// dynarec / V / I / name scratch — ABI doc §2), refreshed in place for every
-/// call.
+/// `TWindGenUserModel` / `TStoreUserModel` / `TPVsystemUserModel` /
+/// `TStoreDynaModel`): a `Store` + instance + the guest buffers allocated once
+/// via `dss_alloc` (boundary record / dynarec / V / I / name scratch — ABI doc
+/// §2), refreshed in place for every call.
 pub struct UserModelInstance {
     sandbox: Sandbox,
     kind: InterfaceKind,
     /// The instance id returned by the guest's `new` (0 = creation failure ⇒
     /// the engine treats the model as absent, Pascal `Get_Exists`).
     id: i32,
-    genvars_ptr: Option<u32>,
+    /// The `TGeneratorVars` / `TWindGenVars` buffer, for the kinds that pass
+    /// one; `None` for Storage/PVSystem.
+    record_ptr: Option<u32>,
     dynarec_ptr: u32,
     v_ptr: u32,
     i_ptr: u32,
@@ -336,17 +450,21 @@ impl UserModelInstance {
     /// `new(genvars?, dynarec)` and read the records back.
     ///
     /// `yorder` fixes the V/I buffer capacity (the Pascal call sites pass
-    /// `Yorder`-sized `pComplexArray`s). `sh.gen_vars` must be `Some` exactly
-    /// for [`InterfaceKind::GenUserModel`] hosts.
+    /// `Yorder`-sized `pComplexArray`s). The shuttle's boundary record must
+    /// match the host's kind: a [`Shuttle`] with `gen_vars` for
+    /// [`InterfaceKind::GenUserModel`], a [`WindGenShuttle`] for
+    /// [`InterfaceKind::WindGenUserModel`], and a record-less
+    /// [`Shuttle::without_gen_vars`] for the rest.
     ///
     /// A `new` returning 0 is **not** an error here: the instance reports
     /// [`Self::exists`]` == false` and the engine treats the model as absent
     /// (ABI doc §1).
-    pub fn new(
+    pub fn new<'a>(
         host: &UserModelHost,
         yorder: usize,
-        mut sh: Shuttle<'_>,
+        sh: impl IntoShuttle<'a>,
     ) -> Result<Self, UserModelError> {
+        let mut sh = Parts::split(sh);
         let mut sandbox = Sandbox::new(host)?;
         let kind = host.kind;
         if kind == InterfaceKind::CapUserControl {
@@ -354,14 +472,11 @@ impl UserModelInstance {
                 "InterfaceKind::CapUserControl requires CapControlInstance, not UserModelInstance",
             ));
         }
-        if kind.takes_gen_vars() != sh.gen_vars.is_some() {
+        if kind.vars_record() != sh.vars.record() {
             return Err(sandbox.usage(format!(
-                "gen_vars must be {} for {kind:?}",
-                if kind.takes_gen_vars() {
-                    "provided"
-                } else {
-                    "absent"
-                }
+                "boundary record mismatch: {kind:?} expects {:?}, the shuttle carries {:?}",
+                kind.vars_record(),
+                sh.vars.record()
             )));
         }
 
@@ -389,12 +504,12 @@ impl UserModelInstance {
         let f_get_variable = typed_func(m, inst, st, "get_variable")?;
         let f_set_variable = typed_func(m, inst, st, "set_variable")?;
         let f_get_var_name = typed_func(m, inst, st, "get_var_name")?;
-        let f_new_gen: Option<TypedFunc<(i32, i32), i32>> = if kind.takes_gen_vars() {
+        let f_new_record: Option<TypedFunc<(i32, i32), i32>> = if kind.vars_record().is_some() {
             Some(typed_func(m, inst, st, "new")?)
         } else {
             None
         };
-        let f_new_dynarec: Option<TypedFunc<i32, i32>> = if kind.takes_gen_vars() {
+        let f_new_dynarec: Option<TypedFunc<i32, i32>> = if kind.vars_record().is_some() {
             None
         } else {
             Some(typed_func(m, inst, st, "new")?)
@@ -402,10 +517,14 @@ impl UserModelInstance {
 
         // Per-instance guest buffers (ABI doc §2: allocated once, refreshed
         // in place for every call).
-        let genvars_ptr = if kind.takes_gen_vars() {
-            Some(sandbox.alloc("GeneratorVars record", GeneratorVars::SIZE)?)
-        } else {
-            None
+        let record_ptr = match kind.vars_record() {
+            Some(VarsRecord::Generator) => {
+                Some(sandbox.alloc("GeneratorVars record", GeneratorVars::SIZE)?)
+            }
+            Some(VarsRecord::WindGen) => {
+                Some(sandbox.alloc("WindGenVars record", WindGenVars::SIZE)?)
+            }
+            None => None,
         };
         let dynarec_ptr = sandbox.alloc("TDynamicsRec record", DynamicsRec::SIZE)?;
         let v_ptr = sandbox.alloc("V terminal buffer", yorder.max(1) * 16)?;
@@ -416,7 +535,7 @@ impl UserModelInstance {
             sandbox,
             kind,
             id: 0,
-            genvars_ptr,
+            record_ptr,
             dynarec_ptr,
             v_ptr,
             i_ptr,
@@ -444,11 +563,11 @@ impl UserModelInstance {
 
         // `new` with fresh record images (ABI doc §3 Load).
         this.begin(&mut sh)?;
-        let r = match (f_new_gen, f_new_dynarec) {
+        let r = match (f_new_record, f_new_dynarec) {
             (Some(f), _) => f.call(
                 &mut this.sandbox.store,
                 (
-                    this.genvars_ptr.expect("gen kind has genvars") as i32,
+                    this.record_ptr.expect("record kind has a record buffer") as i32,
                     this.dynarec_ptr as i32,
                 ),
             ),
@@ -526,19 +645,22 @@ impl UserModelInstance {
     }
 
     /// Write the records + context in, refuel (start of every call).
-    fn begin(&mut self, sh: &mut Shuttle<'_>) -> Result<(), UserModelError> {
+    fn begin(&mut self, sh: &mut Parts<'_>) -> Result<(), UserModelError> {
         let ctx = std::mem::replace(&mut sh.ctx, Box::new(NoCallbacks));
         self.sandbox.set_context(ctx);
-        if let Some(g) = sh.gen_vars.as_deref() {
-            let ptr = self.genvars_ptr.ok_or_else(|| {
-                self.sandbox
-                    .usage("gen_vars supplied to a non-Generator kind")
-            })?;
-            self.sandbox.write("genvars shuttle", ptr, &g.to_bytes())?;
-        } else if self.kind.takes_gen_vars() {
-            return Err(self
-                .sandbox
-                .usage("Shuttle.gen_vars missing for GenUserModel"));
+        if sh.vars.record() != self.kind.vars_record() {
+            return Err(self.sandbox.usage(format!(
+                "boundary record mismatch: {:?} expects {:?}, the shuttle carries {:?}",
+                self.kind,
+                self.kind.vars_record(),
+                sh.vars.record()
+            )));
+        }
+        if let Some(image) = sh.vars.to_image() {
+            let ptr = self
+                .record_ptr
+                .ok_or_else(|| self.sandbox.usage("no boundary-record buffer allocated"))?;
+            self.sandbox.write("record shuttle", ptr, &image)?;
         }
         self.sandbox
             .write("dynarec shuttle", self.dynarec_ptr, &sh.dyn_rec.to_bytes())?;
@@ -547,14 +669,16 @@ impl UserModelInstance {
     }
 
     /// Read the records back (unconditional — ABI doc §2: the model may
-    /// mutate GenVars and DynaVars).
-    fn read_back(&mut self, sh: &mut Shuttle<'_>) -> Result<(), UserModelError> {
-        if let Some(g) = sh.gen_vars.as_deref_mut() {
-            let ptr = self.genvars_ptr.expect("checked in begin");
-            let bytes = self
-                .sandbox
-                .read("genvars shuttle", ptr, GeneratorVars::SIZE)?;
-            *g = GeneratorVars::from_bytes(&bytes.try_into().expect("sized read"));
+    /// mutate the boundary record and DynaVars).
+    fn read_back(&mut self, sh: &mut Parts<'_>) -> Result<(), UserModelError> {
+        if let Some(size) = match sh.vars.record() {
+            Some(VarsRecord::Generator) => Some(GeneratorVars::SIZE),
+            Some(VarsRecord::WindGen) => Some(WindGenVars::SIZE),
+            None => None,
+        } {
+            let ptr = self.record_ptr.expect("checked in begin");
+            let bytes = self.sandbox.read("record shuttle", ptr, size)?;
+            sh.vars.apply(bytes);
         }
         let bytes = self
             .sandbox
@@ -564,12 +688,13 @@ impl UserModelInstance {
     }
 
     /// Run one no-argument-style guest call inside the record envelope.
-    fn call_env<T>(
+    fn call_env<'a, T>(
         &mut self,
         func: &'static str,
-        mut sh: Shuttle<'_>,
+        sh: impl IntoShuttle<'a>,
         run: impl FnOnce(&mut Self) -> Result<T, wasmi::Error>,
     ) -> Result<T, UserModelError> {
+        let mut sh = Parts::split(sh);
         self.begin(&mut sh)?;
         let r = run(self);
         let out = match r {
@@ -585,7 +710,7 @@ impl UserModelInstance {
 
     /// Guest `select(id)` (Pascal `TGenUserModel.Select`,
     /// `GenUserModel.pas:129-132`).
-    pub fn select(&mut self, sh: Shuttle<'_>) -> Result<i32, UserModelError> {
+    pub fn select<'a>(&mut self, sh: impl IntoShuttle<'a>) -> Result<i32, UserModelError> {
         let id = self.id;
         self.call_env("select", sh, |s| s.f_select.call(&mut s.sandbox.store, id))
     }
@@ -593,7 +718,7 @@ impl UserModelInstance {
     /// Guest `edit` with the `UserData=`/`DynaData=` string (Pascal
     /// `TGenUserModel.Edit`, `GenUserModel.pas:134-138`: silently ignored
     /// while `FID = 0`).
-    pub fn edit(&mut self, data: &str, sh: Shuttle<'_>) -> Result<(), UserModelError> {
+    pub fn edit<'a>(&mut self, data: &str, sh: impl IntoShuttle<'a>) -> Result<(), UserModelError> {
         if self.id == 0 {
             return Ok(()); // Pascal: "Else Ignore"
         }
@@ -617,11 +742,11 @@ impl UserModelInstance {
     /// Guest `init(V, I)` — dynamics `InitStateVars`
     /// (`generator.pas:2389-2391`). `v`/`i` must be `yorder` long; both are
     /// written into the guest buffers, `i` is read back after.
-    pub fn init(
+    pub fn init<'a>(
         &mut self,
         v: &[Complex64],
         i: &mut [Complex64],
-        sh: Shuttle<'_>,
+        sh: impl IntoShuttle<'a>,
     ) -> Result<(), UserModelError> {
         self.check_vi(v.len(), i.len())?;
         self.write_vi(v, i)?;
@@ -637,11 +762,11 @@ impl UserModelInstance {
     /// Storage `DoDynaModel` (`Storage.pas:2206-2229`). The sign convention
     /// (negate into `InjCurrent` / `-DESSCurr` into `ITerminal`) stays at the
     /// engine call site (ABI doc §2.3).
-    pub fn calc(
+    pub fn calc<'a>(
         &mut self,
         v: &[Complex64],
         i: &mut [Complex64],
-        sh: Shuttle<'_>,
+        sh: impl IntoShuttle<'a>,
     ) -> Result<(), UserModelError> {
         self.check_vi(v.len(), i.len())?;
         self.write_vi(v, i)?;
@@ -655,7 +780,7 @@ impl UserModelInstance {
     /// Guest `select(id)` + `integrate()` (Pascal `TGenUserModel.Integrate`,
     /// `GenUserModel.pas:123-127`, reproduced verbatim: the wrapper always
     /// selects first).
-    pub fn integrate(&mut self, sh: Shuttle<'_>) -> Result<(), UserModelError> {
+    pub fn integrate<'a>(&mut self, sh: impl IntoShuttle<'a>) -> Result<(), UserModelError> {
         let id = self.id;
         self.call_env("integrate", sh, |s| {
             s.f_select.call(&mut s.sandbox.store, id)?;
@@ -664,7 +789,7 @@ impl UserModelInstance {
     }
 
     /// Guest `save()` (15-fn interfaces only).
-    pub fn save(&mut self, sh: Shuttle<'_>) -> Result<(), UserModelError> {
+    pub fn save<'a>(&mut self, sh: impl IntoShuttle<'a>) -> Result<(), UserModelError> {
         let Some(f) = self.f_save else {
             return Err(self
                 .sandbox
@@ -674,7 +799,7 @@ impl UserModelInstance {
     }
 
     /// Guest `restore()` (15-fn interfaces only).
-    pub fn restore(&mut self, sh: Shuttle<'_>) -> Result<(), UserModelError> {
+    pub fn restore<'a>(&mut self, sh: impl IntoShuttle<'a>) -> Result<(), UserModelError> {
         let Some(f) = self.f_restore else {
             return Err(self
                 .sandbox
@@ -685,7 +810,7 @@ impl UserModelInstance {
 
     /// Guest `update_model()` — after `RecalcElementData`
     /// (`generator.pas:1266`).
-    pub fn update_model(&mut self, sh: Shuttle<'_>) -> Result<(), UserModelError> {
+    pub fn update_model<'a>(&mut self, sh: impl IntoShuttle<'a>) -> Result<(), UserModelError> {
         self.call_env("update_model", sh, |s| {
             s.f_update_model.call(&mut s.sandbox.store, ())
         })
@@ -693,7 +818,7 @@ impl UserModelInstance {
 
     /// Guest `num_vars()` — the state-variable surface
     /// (`generator.pas:2552-2720`).
-    pub fn num_vars(&mut self, sh: Shuttle<'_>) -> Result<i32, UserModelError> {
+    pub fn num_vars<'a>(&mut self, sh: impl IntoShuttle<'a>) -> Result<i32, UserModelError> {
         self.call_env("num_vars", sh, |s| {
             s.f_num_vars.call(&mut s.sandbox.store, ())
         })
@@ -701,7 +826,11 @@ impl UserModelInstance {
 
     /// Guest `get_all_vars(ptr)`: the guest writes `out.len()` f64 values
     /// (1-based semantics: var k at `ptr + (k-1)*8` — ABI doc §1).
-    pub fn get_all_vars(&mut self, out: &mut [f64], sh: Shuttle<'_>) -> Result<(), UserModelError> {
+    pub fn get_all_vars<'a>(
+        &mut self,
+        out: &mut [f64],
+        sh: impl IntoShuttle<'a>,
+    ) -> Result<(), UserModelError> {
         let need = out.len() * 8;
         if need > self.vars_cap {
             self.vars_ptr = self.sandbox.alloc("vars buffer", need.max(64))?;
@@ -720,18 +849,22 @@ impl UserModelInstance {
 
     /// Guest `get_variable(i)` — 1-based user-model variable index (the
     /// engine subtracts the built-in count first, `generator.pas:2560-2580`).
-    pub fn get_variable(&mut self, i: i32, sh: Shuttle<'_>) -> Result<f64, UserModelError> {
+    pub fn get_variable<'a>(
+        &mut self,
+        i: i32,
+        sh: impl IntoShuttle<'a>,
+    ) -> Result<f64, UserModelError> {
         self.call_env("get_variable", sh, |s| {
             s.f_get_variable.call(&mut s.sandbox.store, i)
         })
     }
 
     /// Guest `set_variable(i, value)`.
-    pub fn set_variable(
+    pub fn set_variable<'a>(
         &mut self,
         i: i32,
         value: f64,
-        sh: Shuttle<'_>,
+        sh: impl IntoShuttle<'a>,
     ) -> Result<(), UserModelError> {
         self.call_env("set_variable", sh, |s| {
             s.f_set_variable.call(&mut s.sandbox.store, (i, value))
@@ -740,7 +873,11 @@ impl UserModelInstance {
 
     /// Guest `get_var_name(i, ptr, maxlen)` → the NUL-terminated name from
     /// the host-owned scratch buffer.
-    pub fn get_var_name(&mut self, i: i32, sh: Shuttle<'_>) -> Result<String, UserModelError> {
+    pub fn get_var_name<'a>(
+        &mut self,
+        i: i32,
+        sh: impl IntoShuttle<'a>,
+    ) -> Result<String, UserModelError> {
         let (ptr, maxlen) = (self.name_ptr as i32, NAME_MAXLEN as i32);
         self.call_env("get_var_name", sh, |s| {
             s.f_get_var_name
@@ -755,7 +892,7 @@ impl UserModelInstance {
 
     /// Guest `delete(id)` (Pascal `TGenUserModel.Destroy`,
     /// `GenUserModel.pas:103-111`: only while `FID <> 0`); the id is cleared.
-    pub fn delete(&mut self, sh: Shuttle<'_>) -> Result<(), UserModelError> {
+    pub fn delete<'a>(&mut self, sh: impl IntoShuttle<'a>) -> Result<(), UserModelError> {
         if self.id == 0 {
             return Ok(());
         }

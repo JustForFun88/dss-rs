@@ -13,6 +13,12 @@
 //! **unchanged** — `GeneratorVars` stays the 244-byte compact subset (identical
 //! to the historical 0.14.5/r3723 layout, ABI Appendix A). `DynamicsRec` (52 B)
 //! and the callback vtable (256 B) were byte-identical r3723→r4133 to begin with.
+//!
+//! [`WindGenVars`] (ABI doc §2.6, added by `R4133_PROPS_PLAN.md` RP1.3) follows
+//! the same rule one step further: the native `TWindGenVars` is 356 bytes with a
+//! managed `PLoss: string` reference at 244, and the wasm image drops that
+//! reference and closes the hole — 348 bytes whose leading 244 are, by
+//! construction, the `GeneratorVars` wasm image.
 
 /// Little-endian field writers/readers over a fixed-size image.
 macro_rules! put_f64 {
@@ -263,6 +269,246 @@ impl GeneratorVars {
     }
 }
 
+/// Pascal `TWindGenVars` (`PCElements/WindGenVars.pas:20-73`) — the WindGen's
+/// public data record, the one `TWindGenUserModel.FNew` receives
+/// (`PCElements/WindGenUserModel.pas:34`). The model **mutates** it (the Pascal
+/// dynamics call sites expect at least `Pshaft` back from a shaft model,
+/// `WindGen.pas:2011`); the host reads it back after every call.
+///
+/// **Not an alias of [`GeneratorVars`] — a different record.** Measured by the
+/// P10 probe (`docs/wasm/probes/p10_offsets_windgenvars_r4133.txt`, native
+/// `SizeOf(TWindGenVars) = 356`), it differs from `TGeneratorVars` three ways:
+///
+/// 1. no NCIM `deltaQNom` slot, so the three integers keep the historical
+///    offsets 176/180/184 (`GeneratorVars.pas:41` has it, `WindGenVars.pas` does
+///    not);
+/// 2. `kVGeneratorBase` is spelled `kVWindGenBase` (`WindGenVars.pas:31`);
+/// 3. a turbine tail after `XRdp`: a managed `PLoss: string` reference at native
+///    offset 244 (`WindGenVars.pas:59`) and thirteen doubles `ag`…`s`
+///    (`:60-72`).
+///
+/// This is the **wasm marshaled image**: 348 bytes packed (ABI doc §2.6). Like
+/// `GeneratorVars`' treatment of `deltaQNom` (ABI doc §2.2b), the managed
+/// reference does **not** cross — an AnsiString pointer has no meaning in the
+/// guest's disjoint linear memory — and the hole is *closed*, so `ag` sits at
+/// 244 rather than the native 252. That makes this image a byte-for-byte
+/// **extension** of the 244-byte `GeneratorVars` wasm image: offsets 0…244 are
+/// field-for-field identical (only field 10's *name* differs), and the turbine
+/// tail follows. Assembled field-by-field at explicit offsets, never via
+/// `#[repr(C)]` (the tail is deliberately unaligned — `vthev_mag` at 188).
+///
+/// **`PLoss` does not cross.** It names the XY curve of turbine active-power
+/// losses; a wasm guest cannot follow a host string reference. Successor trap:
+/// a model that must know the loss curve has to receive it through the
+/// `UserData=` edit string, not through this image — do not "add" `PLoss` here
+/// as a pointer-sized hole, that would silently re-shift the whole tail.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct WindGenVars {
+    /// Offset 0.
+    pub theta: f64,
+    /// Offset 8.
+    pub pshaft: f64,
+    /// Offset 16.
+    pub speed: f64,
+    /// Offset 24.
+    pub w0: f64,
+    /// Offset 32.
+    pub hmass: f64,
+    /// Offset 40.
+    pub mmass: f64,
+    /// Offset 48.
+    pub d: f64,
+    /// Offset 56.
+    pub dpu: f64,
+    /// Offset 64.
+    pub kva_rating: f64,
+    /// Offset 72 — `kVWindGenBase` (`WindGenVars.pas:31`), the WindGen spelling
+    /// of `TGeneratorVars.kVGeneratorBase`.
+    pub kv_windgen_base: f64,
+    /// Offset 80.
+    pub xd: f64,
+    /// Offset 88.
+    pub xdp: f64,
+    /// Offset 96.
+    pub xdpp: f64,
+    /// Offset 104.
+    pub pu_xd: f64,
+    /// Offset 112.
+    pub pu_xdp: f64,
+    /// Offset 120.
+    pub pu_xdpp: f64,
+    /// Offset 128.
+    pub dtheta: f64,
+    /// Offset 136.
+    pub dspeed: f64,
+    /// Offset 144.
+    pub theta_history: f64,
+    /// Offset 152.
+    pub speed_history: f64,
+    /// Offset 160.
+    pub pnominalperphase: f64,
+    /// Offset 168.
+    pub qnominalperphase: f64,
+    /// Offset 176.
+    pub num_phases: i32,
+    /// Offset 180.
+    pub num_conductors: i32,
+    /// Offset 184. 0 = wye, 1 = delta.
+    pub conn: i32,
+    /// Offset 188 (unaligned tail begins).
+    pub vthev_mag: f64,
+    /// Offset 196.
+    pub vthev_harm: f64,
+    /// Offset 204.
+    pub theta_harm: f64,
+    /// Offset 212.
+    pub vtarget: f64,
+    /// Offset 220 (re), 228 (im).
+    pub zthev: (f64, f64),
+    /// Offset 236.
+    pub xrdp: f64,
+    /// Offset 244 — gearbox ratio (`WindGenVars.pas:60`). Native 252: the
+    /// `PLoss` reference this image drops sits between `xrdp` and here.
+    pub ag: f64,
+    /// Offset 252 — turbine performance coefficient (`:61`).
+    pub cp: f64,
+    /// Offset 260 — tip-speed ratio (`:62`).
+    pub lamda: f64,
+    /// Offset 268 — number of poles of the induction generator (`:63`).
+    pub poles: f64,
+    /// Offset 276 — air density (`:64`).
+    pub pd: f64,
+    /// Offset 284 — rotor radius (`:65`).
+    pub rad: f64,
+    /// Offset 292 — cut-in wind speed (`:66`).
+    pub v_cutin: f64,
+    /// Offset 300 — cut-out wind speed (`:67`).
+    pub v_cutout: f64,
+    /// Offset 308 — mechanical power, steady state (`:68`).
+    pub pm: f64,
+    /// Offset 316 — stator active power (`:69`).
+    pub ps: f64,
+    /// Offset 324 — rotor active power (`:70`).
+    pub pr: f64,
+    /// Offset 332 — total power output (`:71`).
+    pub pg: f64,
+    /// Offset 340 — generator slip/pitch (`:72`).
+    pub s: f64,
+}
+
+impl WindGenVars {
+    /// Size of the packed **wasm** image. The native record is 356 bytes
+    /// (probe `p10_offsets_windgenvars_r4133.txt`); this image drops the 8-byte
+    /// managed `PLoss` reference and closes the hole — see the type note.
+    pub const SIZE: usize = 348;
+
+    /// Byte offset at which the two wasm images diverge: below it this record
+    /// is field-for-field the [`GeneratorVars`] wasm image, at and above it the
+    /// turbine tail begins. Pinned by `windgen_vars_head_matches_generator_vars`.
+    pub const TURBINE_TAIL_OFFSET: usize = GeneratorVars::SIZE;
+
+    /// Serialize to the packed little-endian image.
+    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
+        let mut b = [0u8; Self::SIZE];
+        put_f64!(b, 0, self.theta);
+        put_f64!(b, 8, self.pshaft);
+        put_f64!(b, 16, self.speed);
+        put_f64!(b, 24, self.w0);
+        put_f64!(b, 32, self.hmass);
+        put_f64!(b, 40, self.mmass);
+        put_f64!(b, 48, self.d);
+        put_f64!(b, 56, self.dpu);
+        put_f64!(b, 64, self.kva_rating);
+        put_f64!(b, 72, self.kv_windgen_base);
+        put_f64!(b, 80, self.xd);
+        put_f64!(b, 88, self.xdp);
+        put_f64!(b, 96, self.xdpp);
+        put_f64!(b, 104, self.pu_xd);
+        put_f64!(b, 112, self.pu_xdp);
+        put_f64!(b, 120, self.pu_xdpp);
+        put_f64!(b, 128, self.dtheta);
+        put_f64!(b, 136, self.dspeed);
+        put_f64!(b, 144, self.theta_history);
+        put_f64!(b, 152, self.speed_history);
+        put_f64!(b, 160, self.pnominalperphase);
+        put_f64!(b, 168, self.qnominalperphase);
+        put_i32!(b, 176, self.num_phases);
+        put_i32!(b, 180, self.num_conductors);
+        put_i32!(b, 184, self.conn);
+        put_f64!(b, 188, self.vthev_mag);
+        put_f64!(b, 196, self.vthev_harm);
+        put_f64!(b, 204, self.theta_harm);
+        put_f64!(b, 212, self.vtarget);
+        put_f64!(b, 220, self.zthev.0);
+        put_f64!(b, 228, self.zthev.1);
+        put_f64!(b, 236, self.xrdp);
+        put_f64!(b, 244, self.ag);
+        put_f64!(b, 252, self.cp);
+        put_f64!(b, 260, self.lamda);
+        put_f64!(b, 268, self.poles);
+        put_f64!(b, 276, self.pd);
+        put_f64!(b, 284, self.rad);
+        put_f64!(b, 292, self.v_cutin);
+        put_f64!(b, 300, self.v_cutout);
+        put_f64!(b, 308, self.pm);
+        put_f64!(b, 316, self.ps);
+        put_f64!(b, 324, self.pr);
+        put_f64!(b, 332, self.pg);
+        put_f64!(b, 340, self.s);
+        b
+    }
+
+    /// Deserialize from the packed little-endian image.
+    pub fn from_bytes(b: &[u8; Self::SIZE]) -> Self {
+        Self {
+            theta: get_f64!(b, 0),
+            pshaft: get_f64!(b, 8),
+            speed: get_f64!(b, 16),
+            w0: get_f64!(b, 24),
+            hmass: get_f64!(b, 32),
+            mmass: get_f64!(b, 40),
+            d: get_f64!(b, 48),
+            dpu: get_f64!(b, 56),
+            kva_rating: get_f64!(b, 64),
+            kv_windgen_base: get_f64!(b, 72),
+            xd: get_f64!(b, 80),
+            xdp: get_f64!(b, 88),
+            xdpp: get_f64!(b, 96),
+            pu_xd: get_f64!(b, 104),
+            pu_xdp: get_f64!(b, 112),
+            pu_xdpp: get_f64!(b, 120),
+            dtheta: get_f64!(b, 128),
+            dspeed: get_f64!(b, 136),
+            theta_history: get_f64!(b, 144),
+            speed_history: get_f64!(b, 152),
+            pnominalperphase: get_f64!(b, 160),
+            qnominalperphase: get_f64!(b, 168),
+            num_phases: get_i32!(b, 176),
+            num_conductors: get_i32!(b, 180),
+            conn: get_i32!(b, 184),
+            vthev_mag: get_f64!(b, 188),
+            vthev_harm: get_f64!(b, 196),
+            theta_harm: get_f64!(b, 204),
+            vtarget: get_f64!(b, 212),
+            zthev: (get_f64!(b, 220), get_f64!(b, 228)),
+            xrdp: get_f64!(b, 236),
+            ag: get_f64!(b, 244),
+            cp: get_f64!(b, 252),
+            lamda: get_f64!(b, 260),
+            poles: get_f64!(b, 268),
+            pd: get_f64!(b, 276),
+            rad: get_f64!(b, 284),
+            v_cutin: get_f64!(b, 292),
+            v_cutout: get_f64!(b, 300),
+            pm: get_f64!(b, 308),
+            ps: get_f64!(b, 316),
+            pr: get_f64!(b, 324),
+            pg: get_f64!(b, 332),
+            s: get_f64!(b, 340),
+        }
+    }
+}
+
 /// Pascal `TCapControlVars` — the CapControl's `PublicDataStruct := @ControlVars`
 /// record (`CapControl.pas:518` r4133 / `:535` dss_capi 0.14.5, "So User-written
 /// models can access"). This is the dss-rs `get_public_data` payload for a
@@ -489,6 +735,157 @@ mod tests {
         assert_eq!(b[113], 0);
         assert_eq!(b[115], 0);
         assert!(b[160..184].iter().all(|&x| x == 0));
+    }
+
+    /// Distinct-bit-pattern `WindGenVars` used by the layout pins below.
+    fn wind_gen_sample() -> WindGenVars {
+        WindGenVars {
+            theta: 1.0,
+            pshaft: 2.0,
+            speed: 3.0,
+            w0: 4.0,
+            hmass: 5.0,
+            mmass: 6.0,
+            d: 7.0,
+            dpu: 8.0,
+            kva_rating: 9.0,
+            kv_windgen_base: 10.0,
+            xd: 11.0,
+            xdp: 12.0,
+            xdpp: 13.0,
+            pu_xd: 14.0,
+            pu_xdp: 15.0,
+            pu_xdpp: 16.0,
+            dtheta: 17.0,
+            dspeed: 18.0,
+            theta_history: 19.0,
+            speed_history: 20.0,
+            pnominalperphase: 21.0,
+            qnominalperphase: 22.0,
+            num_phases: 23,
+            num_conductors: 24,
+            conn: 25,
+            vthev_mag: 26.0,
+            vthev_harm: 27.0,
+            theta_harm: 28.0,
+            vtarget: 29.0,
+            zthev: (30.0, 31.0),
+            xrdp: 32.0,
+            ag: 33.0,
+            cp: 34.0,
+            lamda: 35.0,
+            poles: 36.0,
+            pd: 37.0,
+            rad: 38.0,
+            v_cutin: 39.0,
+            v_cutout: 40.0,
+            pm: 41.0,
+            ps: 42.0,
+            pr: 43.0,
+            pg: 44.0,
+            s: 45.0,
+        }
+    }
+
+    /// `TWindGenVars` **wasm image** offsets against the P10 probe
+    /// (`docs/wasm/probes/p10_offsets_windgenvars_r4133.txt`): the head is the
+    /// probe's native head verbatim (no `deltaQNom`, so the integers sit at
+    /// 176/180/184 and the unaligned Thevenin tail at 188…244), and the turbine
+    /// tail is the probe's 252…356 block shifted down 8 by dropping the managed
+    /// `PLoss` reference — `ag` at 244, `s` at 340, total 348.
+    #[test]
+    fn wind_gen_vars_offsets_match_probe() {
+        let w = wind_gen_sample();
+        let b = w.to_bytes();
+        assert_eq!(b.len(), 348);
+        let f = |o: usize| f64::from_le_bytes(b[o..o + 8].try_into().unwrap());
+        let i = |o: usize| i32::from_le_bytes(b[o..o + 4].try_into().unwrap());
+        // Head: probe offsets 0…244 (identical to the GeneratorVars wasm image).
+        assert_eq!(f(0), 1.0); // Theta
+        assert_eq!(f(64), 9.0); // kVArating
+        assert_eq!(f(72), 10.0); // kVWindGenBase (the renamed field)
+        assert_eq!(f(168), 22.0); // Qnominalperphase — NOT followed by deltaQNom
+        assert_eq!(i(176), 23); // NumPhases
+        assert_eq!(i(180), 24); // NumConductors
+        assert_eq!(i(184), 25); // Conn
+        assert_eq!(f(188), 26.0); // VthevMag (unaligned tail begins)
+        assert_eq!(f(220), 30.0); // Zthev.re
+        assert_eq!(f(228), 31.0); // Zthev.im
+        assert_eq!(f(236), 32.0); // XRdp
+        // Turbine tail: probe 252…356 minus the 8-byte PLoss reference.
+        assert_eq!(f(244), 33.0); // ag      (probe 252)
+        assert_eq!(f(252), 34.0); // Cp      (probe 260)
+        assert_eq!(f(260), 35.0); // Lamda   (probe 268)
+        assert_eq!(f(268), 36.0); // Poles   (probe 276)
+        assert_eq!(f(276), 37.0); // pd      (probe 284)
+        assert_eq!(f(284), 38.0); // Rad     (probe 292)
+        assert_eq!(f(292), 39.0); // VCutin  (probe 300)
+        assert_eq!(f(300), 40.0); // VCutout (probe 308)
+        assert_eq!(f(308), 41.0); // Pm      (probe 316)
+        assert_eq!(f(316), 42.0); // Ps      (probe 324)
+        assert_eq!(f(324), 43.0); // Pr      (probe 332)
+        assert_eq!(f(332), 44.0); // Pg      (probe 340)
+        assert_eq!(f(340), 45.0); // s       (probe 348)
+    }
+
+    /// The load-bearing design property of ABI §2.6: the `TWindGenVars` wasm
+    /// image is a byte-for-byte **extension** of the `TGeneratorVars` wasm image
+    /// — equal head values produce equal leading 244 bytes. A future edit that
+    /// re-inserts the dropped `PLoss` hole (or otherwise shifts the head) fails
+    /// here rather than silently mis-decoding every guest.
+    #[test]
+    fn windgen_vars_head_matches_generator_vars() {
+        let w = wind_gen_sample();
+        let g = GeneratorVars {
+            theta: w.theta,
+            pshaft: w.pshaft,
+            speed: w.speed,
+            w0: w.w0,
+            hmass: w.hmass,
+            mmass: w.mmass,
+            d: w.d,
+            dpu: w.dpu,
+            kva_rating: w.kva_rating,
+            kv_generator_base: w.kv_windgen_base,
+            xd: w.xd,
+            xdp: w.xdp,
+            xdpp: w.xdpp,
+            pu_xd: w.pu_xd,
+            pu_xdp: w.pu_xdp,
+            pu_xdpp: w.pu_xdpp,
+            dtheta: w.dtheta,
+            dspeed: w.dspeed,
+            theta_history: w.theta_history,
+            speed_history: w.speed_history,
+            pnominalperphase: w.pnominalperphase,
+            qnominalperphase: w.qnominalperphase,
+            num_phases: w.num_phases,
+            num_conductors: w.num_conductors,
+            conn: w.conn,
+            vthev_mag: w.vthev_mag,
+            vthev_harm: w.vthev_harm,
+            theta_harm: w.theta_harm,
+            vtarget: w.vtarget,
+            zthev: w.zthev,
+            xrdp: w.xrdp,
+        };
+        assert_eq!(WindGenVars::TURBINE_TAIL_OFFSET, GeneratorVars::SIZE);
+        assert_eq!(
+            &w.to_bytes()[..GeneratorVars::SIZE],
+            &g.to_bytes()[..],
+            "the WindGenVars wasm image must extend the GeneratorVars wasm image"
+        );
+        // …and the two sizes differ by exactly the thirteen turbine doubles.
+        assert_eq!(WindGenVars::SIZE - GeneratorVars::SIZE, 13 * 8);
+    }
+
+    /// Byte-exact `WindGenVars` round trip with every field distinct.
+    #[test]
+    fn wind_gen_vars_round_trip_all_fields() {
+        let w = wind_gen_sample();
+        let b = w.to_bytes();
+        assert_eq!(WindGenVars::from_bytes(&b), w);
+        assert_eq!(WindGenVars::from_bytes(&b).to_bytes(), b);
     }
 
     /// Byte-exact round trip with every field holding a distinct bit pattern.
