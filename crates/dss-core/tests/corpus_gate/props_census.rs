@@ -4,12 +4,17 @@
 //! The 2026-08-08 G1.1 measurement that killed `GOLDEN_REBASE` G1.1 (and whose
 //! extracts are vendored at `tests/corpus/props_r4133/`) was a *scratch* test,
 //! reverted with the rest of that attempt. This module makes it a permanent,
-//! opt-in diagnostic: `DSS_PROPS_CENSUS=1` on the corpus gate walks every live
-//! case (respecting `DSS_GATE_ONLY`), captures `all_properties` on **both**
-//! channels regardless of the §1.1 gate masks, compares with the plain
-//! (un-normalized) comparator in *collect-don't-panic* mode, and writes
-//! `tmp/props_census.json` plus per-channel pair/shape extracts in the RP0.1
-//! format. It **asserts nothing** — a divergence is data, never a failure.
+//! opt-in diagnostic: `DSS_PROPS_CENSUS=1` arms the corpus-gate binary's
+//! `corpus_gate_props_census` test, which walks every live case (respecting
+//! `DSS_GATE_ONLY`), captures `all_properties` on **both** channels regardless
+//! of the §1.1 gate masks, compares with the plain (un-normalized) comparator in
+//! *collect-don't-panic* mode, and writes `tmp/props_census.json` plus the
+//! per-channel extracts in the RP0.1 format. It **asserts nothing** — a
+//! divergence is data, never a failure.
+//!
+//! It is a SEPARATE `#[test]`, never a diversion of
+//! `corpus_gate_all_cases_match_engines`: the var must not be able to turn the
+//! one mandatory live comparison into a green no-op (RP0.2 audit).
 //!
 //! The walk itself lives in [`crate::scheduler::run_props_census`] (it needs the
 //! scheduler's case model, thread pool and channel transports); this module owns
@@ -17,7 +22,14 @@
 //!
 //! Plain mode is the knob's baseline forever — it is what reproduces RP0.1.
 //! RP2.1 adds a second, *disposition* mode (`DSS_PROPS_CENSUS=claims`) over the
-//! same walk; [`Mode`] is the seam it extends.
+//! same walk; [`Mode`] is the seam it extends. Be precise about what RP0.2 did
+//! and did NOT build for it (RP0.2 audit): the per-cell decision
+//! (`harness::value_verdict`) and the per-element walk
+//! (`harness::collect_element_divergences`, pinned against the gate's
+//! `compare_prop_lists` by a biconditional test) ARE shared seams; `Mode` today
+//! reaches only [`write_artifacts`], and threading it — plus a ledger view —
+//! from `scheduler::run_props_census` through `census_one` into the walk is
+//! RP2.1's own work, deliberately not pre-built as untestable plumbing.
 //!
 //! ## Artifacts
 //!
@@ -30,23 +42,54 @@
 //!   fail still has to record what went wrong.
 //!   **One column is new**: `channel`. The vendored census is r4133-only, so its
 //!   rows are this file's `channel == "r4133"` rows with that key dropped.
-//!   The per-channel `channels` block additionally reports `unaligned_cells` —
-//!   cells no index-ordered comparison could reach because a property-table
-//!   shape gap desynchronized the two lists earlier in the element. That number
-//!   is the reason the vendored value population of the five shape-gap classes
-//!   is a LOWER BOUND (e.g. `windgen.dynout` / `windgen.enabled` sit past
-//!   r4133's `usermodel`/`userdata` insertion and are invisible to the census
-//!   until WP-RP1 closes the gap). It is metadata, never a census row.
+//!   The header also stamps `gate_only` — the `DSS_GATE_ONLY` filter the run was
+//!   bounded by, `null` for the full live population — so a family-bounded
+//!   artifact set can never be read as a complete census.
+//!   The per-channel `channels` block reports what the walk could NOT look at
+//!   (metadata, never a census row):
+//!   - `unaligned_cells` — cells no index-ordered comparison could reach because
+//!     the two name lists had desynchronized earlier in the element (a shape gap,
+//!     or a re-ordering). That number is the reason the vendored value population
+//!     of the five shape-gap classes is a LOWER BOUND (e.g. `windgen.dynout` /
+//!     `windgen.enabled` sit past r4133's `usermodel`/`userdata` insertion and
+//!     are invisible to the census until WP-RP1 closes the gap).
+//!   - `skipped_elements` / `skipped_element_cells` — elements dropped WHOLE
+//!     before any cell was looked at (the capi-only Recloser/Relay skip). Their
+//!     cells are in neither the rows nor `unaligned_cells`, so a channel with
+//!     `unaligned_cells: 0` is not thereby complete.
+//!   - `heterogeneous_shape_classes` — classes whose `shape_count` rows are not
+//!     all the same shape, i.e. the ones `shape.txt`'s one-row-per-class format
+//!     cannot represent (0 on the 2026-08-08 census; a nonzero value also prints
+//!     a loud banner).
 //! * `tmp/props_census/<channel>/structural_pairs.txt`, `numeric_pairs.txt`,
-//!   `shape.txt`, `summary.json` — the RP0.1 extract formats
+//!   `examples_full.txt`, `shape.txt`, `summary.json` — the RP0.1 extract formats
 //!   (`tests/corpus/props_r4133/README.md` §"Row formats"), per channel.
+//! * `tmp/props_census/run.json` — mode, `gate_only`, cases walked, rows: the
+//!   same provenance stamp next to the extracts a reader actually diffs.
+//!
+//! Two vendored extracts are deliberately NOT re-derived here, because the plain
+//! census does not carry what they need: `bins.tsv` needs the §1.1 bin policy
+//! (RP2.1's disposition mode owns it) and the three `*_in_scope` files need the
+//! in-scope case filter. The README's blanket "these same extracts" sentence is
+//! wider than that — recorded as an RP0.2 finding in STATUS, not silently
+//! papered over.
 //!
 //! Deliberate format deviations from the vendored copies, all cosmetic and all
 //! outside the acceptance (which compares cell populations, not bytes): the
 //! extracts are written LF (the vendored copies keep their generator's CRLF),
-//! `shape.txt` rows are sorted by class (the vendored file is in
-//! first-appearance order), and `summary.json`'s keys come out in `serde_json`'s
-//! sorted order.
+//! the example-column header is labelled by the channel that produced it (the
+//! vendored files are r4133-only), `shape.txt` rows are sorted by class (the
+//! vendored file is in first-appearance order), and `summary.json`'s keys come
+//! out in `serde_json`'s sorted order.
+//!
+//! One more, and it is a *value* deviation on exactly one row: [`quote`] escapes
+//! backslashes in EVERY extract, while the vendored generator escaped them in
+//! `structural_pairs.txt` (Python `repr`) but NOT in `examples_full.txt` or the
+//! `*_in_scope` files — so the vendored copies spell the same `storage.dynadll`
+//! cell two different ways (`'C:\\Users\\…'` vs `'C:\Users\…'`). One quoting for
+//! all extracts is the fix; a consumer of the vendored files must unescape
+//! `structural_pairs.txt` and must not unescape `examples_full.txt` (recorded as
+//! an RP0.2 finding in STATUS — it is a live trap for RP2.1's replay).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
@@ -54,7 +97,7 @@ use std::path::PathBuf;
 
 use serde_json::{Value, json};
 
-use crate::harness::{PropCensusRow, PropsChannel};
+use crate::harness::{CensusBlindSpots, PropCensusRow, PropsChannel};
 
 /// Census mode. Plain is the permanent baseline; RP2.1 adds `Claims`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,8 +125,16 @@ impl Mode {
     }
 }
 
-/// The `step` value carried by a row that belongs to no solve step (the two
-/// error kinds). `-1` is what the vendored census uses.
+/// The `step` value carried internally by a row that belongs to no solve step
+/// (the two error kinds).
+///
+/// It is never serialized — [`Row::to_json`]'s two error arms emit `case` /
+/// `channel` / `kind` / `detail` and no `step`, which is exactly the key set the
+/// vendored census's five `oracle_error` rows carry (`['case','detail','kind']`,
+/// re-measured 2026-08-22). The constant exists only to keep [`Row::sort_key`]
+/// total, and `-1` sorts every error row ahead of that case's step-0 rows.
+/// (An earlier comment here claimed `-1` was "what the vendored census uses";
+/// it uses no `step` on those rows at all — RP0.2 audit, retracted.)
 const NO_STEP: i64 = -1;
 
 /// What one census row says.
@@ -280,6 +331,11 @@ impl Row {
 // Extract derivation (the RP0.1 formats).
 // ---------------------------------------------------------------------------
 
+/// One `examples_full.txt` row's identity: `(is_numeric, pair, rust, oracle)`.
+/// `is_numeric` leads because the extract prints every structural pair before
+/// the first numeric one.
+type ExampleKey = (bool, String, String, String);
+
 /// A `(class, prop)` pair accumulator — the unit both pair extracts print.
 struct PairAcc {
     example_rust: String,
@@ -288,7 +344,9 @@ struct PairAcc {
     max_rel: f64,
 }
 
-/// One class's property-table shape gap, first occurrence winning.
+/// The shape of ONE element's property-table gap: the identity `shape.txt`
+/// prints one row per CLASS for.
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
 struct ShapeAcc {
     rust_count: usize,
     oracle_count: usize,
@@ -302,17 +360,28 @@ fn trunc(s: &str, n: usize) -> String {
 }
 
 /// Single-quote a value the way the vendored extracts do (Python `repr`).
+///
 /// The 2026-08-08 generation asserted that no census value contains `'`, CR, LF
-/// or TAB — which is what makes the documented quote-anchored parse regex safe —
-/// but a re-measurement is not bound by that past assertion, so escape those
-/// characters rather than emit a row the regex would mis-read.
+/// or TAB — which is what makes the documented quote-anchored parse regex
+/// (`^(\S+) \| '([^']*)' \| '([^']*)' \| (.*)$`,
+/// `tests/corpus/props_r4133/README.md` §"Row formats") safe. A re-measurement
+/// is not bound by that past assertion, so those characters are escaped rather
+/// than emitted raw. On every value the census can contain today this is
+/// byte-identical to `repr`.
+///
+/// The apostrophe is the one arm that deliberately DEVIATES from `repr`, and
+/// the reason is the regex (RP0.2 audit): `repr` would either switch the
+/// delimiters to `"` or emit `\'`, and `[^']*` stops at a literal `'` no matter
+/// what precedes it — both forms silently mis-parse. `\x27` carries the
+/// character losslessly through a single-quoted field without ever writing one,
+/// and `\\` is already escaped, so the sequence is unambiguous.
 fn quote(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('\'');
     for c in s.chars() {
         match c {
             '\\' => out.push_str("\\\\"),
-            '\'' => out.push_str("\\'"),
+            '\'' => out.push_str("\\x27"),
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
@@ -349,7 +418,17 @@ fn pair_of(element: &str, prop: &str) -> String {
 struct ChannelExtracts {
     structural: BTreeMap<String, PairAcc>,
     numeric: BTreeMap<String, PairAcc>,
-    shape: BTreeMap<String, ShapeAcc>,
+    /// Per class, the FIRST shape row's identity (what `shape.txt` prints —
+    /// one row per class, the vendored format) plus every DISTINCT identity
+    /// seen for that class. A class with more than one distinct shape cannot be
+    /// summarized by a single row; the extract stays in the vendored format and
+    /// [`ChannelExtracts::heterogeneous_shape_classes`] reports the count so the
+    /// loss is loud instead of silent (the lossless record is the census JSON,
+    /// which keeps every individual `shape_count` row).
+    shape: BTreeMap<String, (ShapeAcc, BTreeSet<ShapeAcc>)>,
+    /// `(pair, rust, oracle) -> cells`, split structural/numeric — the
+    /// untruncated spelling inventory `examples_full.txt` prints.
+    examples: BTreeMap<ExampleKey, usize>,
     diverging_cases: BTreeSet<String>,
 }
 
@@ -367,11 +446,12 @@ impl ChannelExtracts {
                 max_rel,
             } => {
                 let key = pair_of(element, prop);
+                let numeric = max_rel.is_some();
                 let (map, rel) = match max_rel {
                     Some(r) => (&mut self.numeric, *r),
                     None => (&mut self.structural, 0.0),
                 };
-                let acc = map.entry(key).or_insert_with(|| PairAcc {
+                let acc = map.entry(key.clone()).or_insert_with(|| PairAcc {
                     example_rust: rust.clone(),
                     example_oracle: oracle.clone(),
                     rows: 0,
@@ -381,6 +461,10 @@ impl ChannelExtracts {
                 if rel > acc.max_rel {
                     acc.max_rel = rel;
                 }
+                *self
+                    .examples
+                    .entry((numeric, key, rust.clone(), oracle.clone()))
+                    .or_default() += 1;
             }
             RowKind::Shape {
                 element,
@@ -390,21 +474,33 @@ impl ChannelExtracts {
                 oracle_only,
             } => {
                 let class = element.split('.').next().unwrap_or("").to_lowercase();
-                self.shape.entry(class).or_insert_with(|| ShapeAcc {
+                let seen = ShapeAcc {
                     rust_count: *rust_count,
                     oracle_count: *oracle_count,
                     rust_only: rust_only.clone(),
                     oracle_only: oracle_only.clone(),
-                });
+                };
+                let slot = self
+                    .shape
+                    .entry(class)
+                    .or_insert_with(|| (seen.clone(), BTreeSet::new()));
+                slot.1.insert(seen);
             }
             _ => {}
         }
     }
 
-    /// `class.prop | 'rust' | 'r4133' | rows` (examples cut at 40 chars — the
-    /// vendored `structural_pairs.txt` cut).
-    fn structural_text(&self) -> String {
-        let mut s = String::from("class.prop | rust-example | r4133-example | rows\n");
+    /// Classes whose `shape_count` rows are NOT all the same shape — the ones
+    /// the one-row-per-class extract cannot represent. `0` on the 2026-08-08
+    /// census (all five classes are homogeneous, re-verified 2026-08-22).
+    fn heterogeneous_shape_classes(&self) -> usize {
+        self.shape.values().filter(|(_, all)| all.len() > 1).count()
+    }
+
+    /// `class.prop | 'rust' | '<channel>' | rows` (examples cut at 40 chars —
+    /// the vendored `structural_pairs.txt` cut).
+    fn structural_text(&self, channel: &str) -> String {
+        let mut s = format!("class.prop | rust-example | {channel}-example | rows\n");
         for (pair, acc) in &self.structural {
             s.push_str(&format!(
                 "{pair} | {} | {} | {}\n",
@@ -416,10 +512,10 @@ impl ChannelExtracts {
         s
     }
 
-    /// `class.prop | 'rust' | 'r4133' | max_rel | rows` (examples cut at 34
+    /// `class.prop | 'rust' | '<channel>' | max_rel | rows` (examples cut at 34
     /// chars — the vendored `numeric_pairs.txt` cut).
-    fn numeric_text(&self) -> String {
-        let mut s = String::from("class.prop | rust-example | r4133-example | max_rel | rows\n");
+    fn numeric_text(&self, channel: &str) -> String {
+        let mut s = format!("class.prop | rust-example | {channel}-example | max_rel | rows\n");
         for (pair, acc) in &self.numeric {
             s.push_str(&format!(
                 "{pair} | {} | {} | {} | {}\n",
@@ -427,6 +523,36 @@ impl ChannelExtracts {
                 quote(&trunc(&acc.example_oracle, 34)),
                 sci2(acc.max_rel),
                 acc.rows
+            ));
+        }
+        s
+    }
+
+    /// `class.prop | 'rust' | '<channel>' | count` — one row per DISTINCT
+    /// `(rust, oracle)` spelling per pair, values **untruncated**, structural
+    /// pairs first then numeric, each section sorted by pair, and within a pair
+    /// by descending cell count (ties broken by the `(rust, oracle)` spelling
+    /// ascending — the ordering reverse-engineered from all 2 441 tied rows of
+    /// the vendored file). This is RP2.1's replay input; the vendored
+    /// `bins.tsv` and the three `*_in_scope` extracts are NOT re-derivable here
+    /// (they need the §1.1 bin policy and the in-scope case filter, which the
+    /// plain census does not carry — see the module docs).
+    fn examples_text(&self, channel: &str) -> String {
+        let mut s = format!("class.prop | rust | {channel} | count\n");
+        let mut rows: Vec<(&ExampleKey, &usize)> = self.examples.iter().collect();
+        rows.sort_by(|a, b| {
+            let (an, ap, ar, ao) = a.0;
+            let (bn, bp, br, bo) = b.0;
+            an.cmp(bn)
+                .then(ap.cmp(bp))
+                .then(b.1.cmp(a.1))
+                .then((ar, ao).cmp(&(br, bo)))
+        });
+        for ((_, pair, rust, oracle), count) in rows {
+            s.push_str(&format!(
+                "{pair} | {} | {} | {count}\n",
+                quote(rust),
+                quote(oracle)
             ));
         }
         s
@@ -444,7 +570,7 @@ impl ChannelExtracts {
             )
         };
         let mut s = String::new();
-        for (class, acc) in &self.shape {
+        for (class, (acc, _)) in &self.shape {
             s.push_str(&format!(
                 "{class}: rust_count={} oracle_count={} oracle_only={} rust_only={}\n",
                 acc.rust_count,
@@ -505,15 +631,20 @@ fn stream_census(header: &Value, rows: &[Row], w: &mut impl Write) {
     writeln!(w, "  ]\n}}").expect("write census tail");
 }
 
-/// Sort, write and report every artifact. `unaligned` carries, per channel tag,
-/// the number of cells a property-table shape gap made uncomparable (see
-/// `harness::collect_prop_divergences`) — reported, never silently dropped.
-/// Returns the artifact root for the caller's banner.
+/// Sort, write and report every artifact. `blind` carries, per channel tag,
+/// what that channel's walk could not look at (see
+/// `harness::CensusBlindSpots`) — reported, never silently dropped. `gate_only`
+/// is the `DSS_GATE_ONLY` filter this run was bounded by (`None` = the full
+/// live population); it is stamped into the census header AND into
+/// `tmp/props_census/run.json` so a family-bounded artifact set can never be
+/// mistaken for a full one (RP0.2 audit). Returns the artifact root for the
+/// caller's banner.
 pub(crate) fn write_artifacts(
     mut rows: Vec<Row>,
     mode: Mode,
     cases: usize,
-    unaligned: &BTreeMap<&'static str, usize>,
+    blind: &BTreeMap<&'static str, CensusBlindSpots>,
+    gate_only: Option<&str>,
 ) -> PathBuf {
     rows.sort_by(|a, b| a.sort_key().cmp(&b.sort_key()));
 
@@ -533,8 +664,16 @@ pub(crate) fn write_artifacts(
     for ch in channels {
         let dir = root.join(ch.tag());
         let e = &extracts[ch.tag()];
-        write(&dir.join("structural_pairs.txt"), &e.structural_text());
-        write(&dir.join("numeric_pairs.txt"), &e.numeric_text());
+        // The example column is labelled by the channel that produced it — the
+        // vendored files are r4133-only, so their `r4133-example` header is the
+        // r4133 case of this (RP0.2 audit: the capi extracts used to claim to be
+        // r4133 captures).
+        write(
+            &dir.join("structural_pairs.txt"),
+            &e.structural_text(ch.tag()),
+        );
+        write(&dir.join("numeric_pairs.txt"), &e.numeric_text(ch.tag()));
+        write(&dir.join("examples_full.txt"), &e.examples_text(ch.tag()));
         write(&dir.join("shape.txt"), &e.shape_text());
         write(
             &dir.join("summary.json"),
@@ -546,6 +685,7 @@ pub(crate) fn write_artifacts(
         .iter()
         .map(|ch| {
             let e = &extracts[ch.tag()];
+            let b = blind.get(ch.tag()).copied().unwrap_or_default();
             (
                 ch.tag().to_string(),
                 json!({
@@ -553,8 +693,11 @@ pub(crate) fn write_artifacts(
                     "structure_pairs": e.structural.len(),
                     "numeric_pairs": e.numeric.len(),
                     "shape_classes": e.shape.len(),
+                    "heterogeneous_shape_classes": e.heterogeneous_shape_classes(),
                     "cases_with_any_div": e.diverging_cases.len(),
-                    "unaligned_cells": unaligned.get(ch.tag()).copied().unwrap_or(0),
+                    "unaligned_cells": b.unaligned_cells,
+                    "skipped_elements": b.skipped_elements,
+                    "skipped_element_cells": b.skipped_element_cells,
                     "oracle_errors": rows
                         .iter()
                         .filter(|r| r.channel == *ch
@@ -575,10 +718,27 @@ pub(crate) fn write_artifacts(
     // first, then one compact object per line).
     let header = json!({
         "mode": match mode { Mode::Plain => "plain" },
+        "gate_only": gate_only,
         "cases_walked": cases,
         "rows": rows.len(),
         "channels": Value::Object(per_channel),
     });
+    // The same provenance next to the extracts themselves: a reader comparing
+    // `structural_pairs.txt` against the vendored copy must be able to see, in
+    // that directory, whether this run walked the full population.
+    write(
+        &root.join("run.json"),
+        &format!(
+            "{}\n",
+            serde_json::to_string_pretty(&json!({
+                "mode": match mode { Mode::Plain => "plain" },
+                "gate_only": gate_only,
+                "cases_walked": cases,
+                "rows": rows.len(),
+            }))
+            .expect("serialize run.json")
+        ),
+    );
     let census_path = tmp.join("props_census.json");
     let _ = std::fs::create_dir_all(&tmp);
     let file = std::fs::File::create(&census_path)
@@ -589,27 +749,44 @@ pub(crate) fn write_artifacts(
     drop(w);
 
     eprintln!(
-        "props_census [{}]: {} case(s), {} row(s) -> {} + {}",
+        "props_census [{}]: {} case(s){}, {} row(s) -> {} + {}",
         match mode {
             Mode::Plain => "plain",
         },
         cases,
+        match gate_only {
+            Some(f) => format!(" (DSS_GATE_ONLY={f:?} — NOT the full population)"),
+            None => String::new(),
+        },
         rows.len(),
         census_path.display(),
         root.display()
     );
     for ch in channels {
         let e = &extracts[ch.tag()];
+        let b = blind.get(ch.tag()).copied().unwrap_or_default();
         eprintln!(
             "  {}: {} structural pair(s), {} numeric pair(s), {} shape class(es), \
-             {} case(s) with a divergence, {} cell(s) uncomparable behind a shape gap",
+             {} case(s) with a divergence, {} cell(s) uncomparable behind a desynchronized \
+             name list, {} element(s) skipped whole ({} cell(s))",
             ch.tag(),
             e.structural.len(),
             e.numeric.len(),
             e.shape.len(),
             e.diverging_cases.len(),
-            unaligned.get(ch.tag()).copied().unwrap_or(0)
+            b.unaligned_cells,
+            b.skipped_elements,
+            b.skipped_element_cells,
         );
+        let het = e.heterogeneous_shape_classes();
+        if het > 0 {
+            eprintln!(
+                "  {}: WARNING — {het} class(es) carry MORE THAN ONE distinct property-table \
+                 shape; shape.txt prints one row per class and shows only the first. The \
+                 lossless record is props_census.json's shape_count rows.",
+                ch.tag()
+            );
+        }
     }
     root
 }
@@ -648,13 +825,97 @@ mod tests {
             },
         });
         assert_eq!(
-            e.structural_text().lines().nth(1).unwrap(),
+            e.structural_text("r4133").lines().nth(1).unwrap(),
             "autotrans.conn | 'delta' | 'Delta ' | 1"
         );
         assert_eq!(
-            e.numeric_text().lines().nth(1).unwrap(),
+            e.numeric_text("r4133").lines().nth(1).unwrap(),
             "autotrans.kv | '7.19955785679463' | '7.1996' | 5.85e-06 | 1"
         );
+        // The header names the channel that produced the example column; the
+        // vendored files are r4133 captures, so `r4133` is that case of it.
+        assert_eq!(
+            e.structural_text("r4133").lines().next().unwrap(),
+            "class.prop | rust-example | r4133-example | rows"
+        );
+        assert_eq!(
+            e.numeric_text("capi_v0145").lines().next().unwrap(),
+            "class.prop | rust-example | capi_v0145-example | max_rel | rows"
+        );
+    }
+
+    /// `examples_full.txt`: one row per DISTINCT spelling per pair, values
+    /// UNtruncated, structural pairs first then numeric, within a pair by
+    /// descending cell count with the `(rust, oracle)` spelling breaking ties
+    /// ascending — the ordering reverse-engineered from the vendored file (all
+    /// 2 441 of its tied rows obey it).
+    #[test]
+    fn examples_full_rows_match_the_vendored_format() {
+        let mut e = ChannelExtracts::default();
+        let value = |prop: &str, rust: &str, oracle: &str, max_rel: Option<f64>| Row {
+            case: "asymmetric:autotrans/autotrans_gic.dss".into(),
+            channel: PropsChannel::R4133,
+            step: 0,
+            kind: RowKind::Value {
+                element: "AutoTrans.t1".into(),
+                prop: prop.into(),
+                rust: rust.into(),
+                oracle: oracle.into(),
+                max_rel,
+            },
+        };
+        // `autotrans.conn`: 'wye' twice, 'delta' once — descending count.
+        e.ingest(&value("conn", "wye", "wye ", None));
+        e.ingest(&value("conn", "wye", "wye ", None));
+        e.ingest(&value("conn", "delta", "Delta ", None));
+        // A tie inside `autotrans.bus`, broken by the spelling ascending.
+        e.ingest(&value("bus", "b", "B", None));
+        e.ingest(&value("bus", "a", "A", None));
+        // A numeric pair — sorts after every structural pair, untruncated.
+        let long = "[666.666666666667, 666.666666666667, 666.666666666667, ]";
+        e.ingest(&value("kvas", long, "[666.667, ]", Some(1e-6)));
+        assert_eq!(
+            e.examples_text("r4133"),
+            format!(
+                "class.prop | rust | r4133 | count\n\
+                 autotrans.bus | 'a' | 'A' | 1\n\
+                 autotrans.bus | 'b' | 'B' | 1\n\
+                 autotrans.conn | 'wye' | 'wye ' | 2\n\
+                 autotrans.conn | 'delta' | 'Delta ' | 1\n\
+                 autotrans.kvas | '{long}' | '[666.667, ]' | 1\n"
+            )
+        );
+    }
+
+    /// A class whose elements do NOT all share one property-table shape is
+    /// COUNTED (and banner-reported), because `shape.txt` prints one row per
+    /// class and can only show the first. The lossless record is the census
+    /// JSON. All five classes of the 2026-08-08 census are homogeneous.
+    #[test]
+    fn heterogeneous_shape_classes_are_counted_not_swallowed() {
+        let shape = |element: &str, rust_count: usize| Row {
+            case: "modes:windgen/windgen_snap.dss".into(),
+            channel: PropsChannel::R4133,
+            step: 0,
+            kind: RowKind::Shape {
+                element: element.into(),
+                rust_count,
+                oracle_count: 60,
+                rust_only: vec![],
+                oracle_only: vec!["usermodel".into()],
+            },
+        };
+        let mut e = ChannelExtracts::default();
+        e.ingest(&shape("WindGen.w1", 58));
+        e.ingest(&shape("WindGen.w2", 58));
+        assert_eq!(e.heterogeneous_shape_classes(), 0);
+        assert_eq!(e.shape_text().lines().count(), 1);
+        // A second, DIFFERENT shape in the same class: still one printed row…
+        e.ingest(&shape("WindGen.w3", 59));
+        assert_eq!(e.shape_text().lines().count(), 1);
+        assert!(e.shape_text().contains("rust_count=58"));
+        // …but the loss is now reported instead of silent.
+        assert_eq!(e.heterogeneous_shape_classes(), 1);
     }
 
     /// The shape row prints the vendored `class: …` form, with the two name
@@ -694,6 +955,62 @@ mod tests {
             quote(&trunc(kvas, 34)),
             "'[666.666666666667, 666.66666666666'"
         );
+    }
+
+    /// Every escape `quote` emits survives the README's quote-anchored parse
+    /// regex — the apostrophe included, which is the one the census has never
+    /// produced and which a Python-`repr`-faithful `\'` would silently break
+    /// (`[^']*` stops at the literal quote no matter what precedes it).
+    #[test]
+    fn quoted_values_survive_the_documented_parse_regex() {
+        // The README's rule, hand-implemented: field = `'` … up to the next `'`.
+        let field = |row: &str| -> String {
+            let rest = row.split_once(" | ").expect("a pair row has fields").1;
+            let body = rest.strip_prefix('\'').expect("field opens with a quote");
+            body[..body.find('\'').expect("field closes with a quote")].to_string()
+        };
+        // Left-to-right unescape — the only decoder that is unambiguous when a
+        // value itself contains a backslash followed by `x27`.
+        let unescape = |s: &str| -> String {
+            let mut out = String::new();
+            let mut it = s.chars();
+            while let Some(c) = it.next() {
+                if c != '\\' {
+                    out.push(c);
+                    continue;
+                }
+                match it.next().expect("an escape never ends the field") {
+                    '\\' => out.push('\\'),
+                    'n' => out.push('\n'),
+                    'r' => out.push('\r'),
+                    't' => out.push('\t'),
+                    'x' => {
+                        let hex: String = it.by_ref().take(2).collect();
+                        assert_eq!(hex, "27", "the only \\x escape is the apostrophe");
+                        out.push('\'');
+                    }
+                    other => panic!("unknown escape \\{other}"),
+                }
+            }
+            out
+        };
+        for raw in [
+            "plain",
+            "don't",
+            "'quoted'",
+            r"C:\dir\file",
+            r"\x27 not an escape",
+            "line\nbreak",
+            "tab\there",
+        ] {
+            let row = format!("class.prop | {} | '' | 1", quote(raw));
+            let got = field(&row);
+            assert!(
+                !got.contains('\''),
+                "the payload must never contain a bare quote: {got:?}"
+            );
+            assert_eq!(unescape(&got), raw, "escaped row: {row}");
+        }
     }
 
     /// `%.2e` carries Python's signed two-digit exponent.
@@ -777,9 +1094,9 @@ mod tests {
             }]
         };
 
-        // Identical lists → no rows, no unaligned cells.
+        // Identical lists → no rows, no blind spots at all.
         let mut out = Vec::new();
-        let unaligned = harness::collect_prop_divergences(
+        let blind = harness::collect_prop_divergences(
             &mut dss,
             &cap(props.clone()),
             &tol,
@@ -787,7 +1104,7 @@ mod tests {
             &mut out,
         );
         assert!(out.is_empty(), "a faithful capture must produce no rows");
-        assert_eq!(unaligned, 0);
+        assert_eq!(blind, harness::CensusBlindSpots::default());
 
         // Corrupt ONE value (basekv) → exactly one numeric row naming it.
         let idx = props
@@ -824,7 +1141,7 @@ mod tests {
         let mut short = props.clone();
         short.remove(idx);
         let mut out = Vec::new();
-        let unaligned = harness::collect_prop_divergences(
+        let blind = harness::collect_prop_divergences(
             &mut dss,
             &cap(short),
             &tol,
@@ -839,7 +1156,124 @@ mod tests {
             ),
             "a missing capture prop must produce a shape row: {out:?}"
         );
-        assert!(unaligned > 0, "the desynchronized tail must be counted");
+        assert!(
+            blind.unaligned_cells > 0,
+            "the desynchronized tail must be counted"
+        );
+
+        // A whole-element skip is COUNTED, not silent: the capi channel drops
+        // Recloser/Relay entirely (their tables moved to the r4133 surface), so
+        // a reader must be able to see that the channel's census has a hole even
+        // though `unaligned_cells` stays 0.
+        dss.command("new line.l1 bus1=sourcebus.1 bus2=b.1 r1=0.1 x1=0.1");
+        dss.command("new relay.r1 monitoredobj=line.l1 monitoredterm=1");
+        let relay_props = dss
+            .element_properties("Relay.r1")
+            .expect("the relay exists");
+        let relay_cap = vec![PropsCap {
+            element: "Relay.r1".to_string(),
+            props: relay_props.clone(),
+        }];
+        let mut out = Vec::new();
+        let blind = harness::collect_prop_divergences(
+            &mut dss,
+            &relay_cap,
+            &tol,
+            PropsChannel::CapiV0145,
+            &mut out,
+        );
+        assert!(out.is_empty(), "the capi channel skips Relay whole");
+        assert_eq!(blind.unaligned_cells, 0);
+        assert_eq!(blind.skipped_elements, 1);
+        assert_eq!(blind.skipped_element_cells, relay_props.len());
+        // …and the r4133 channel really does compare it (plan §1.2).
+        let mut out = Vec::new();
+        let blind = harness::collect_prop_divergences(
+            &mut dss,
+            &relay_cap,
+            &tol,
+            PropsChannel::R4133,
+            &mut out,
+        );
+        assert_eq!(blind.skipped_elements, 0);
+        assert!(out.is_empty(), "a faithful capture still produces no rows");
+    }
+
+    /// **Why the knob may read properties straight after `solve`** (RP0.2
+    /// audit). The live gate reaches `compare_all_properties` at the END of a
+    /// step, after every other comparator; `census_one` reads them immediately
+    /// after `solve`. The knob is supposed to PREDICT what the gate will see
+    /// (WP-RP1's "zero `shape_count` rows", RP4.1's residual read), so the two
+    /// orders must produce the same `?`-surface.
+    ///
+    /// Two independent arguments, and this test is the empirical half:
+    ///
+    ///  * By inspection of `runner::compare_capture`, every `dss.command` it
+    ///    issues between `solve` and the property compare is a `? Element.Prop`
+    ///    QUERY — `compare_probe` (`runner.rs:554` → `harness:compare_probe`)
+    ///    and the ledger's probe/element handlers (`ledger.rs:863`); the
+    ///    ledger's property rewrite (`ledger.rs:1017`, `runner.rs:641`) sits
+    ///    inside the property block itself. No `export`, no `set`, no second
+    ///    `solve`: `compare_export` compares two STRINGS and never touches the
+    ///    engine, and every other comparator (elements, Y, monitors, meters,
+    ///    discrete state, eventlog) reads through accessors.
+    ///  * A `?` query is a read. The one piece of property-visible per-object
+    ///    cursor state, the Transformer `ActiveWinding` behind
+    ///    `skip_transformer_cursor`, is written only by property SETTERS
+    ///    (`set_struct_*` in `elements/pd/transformer/accessors.rs`), never by a
+    ///    getter — and `Dss::element_properties` sets the active object itself
+    ///    and refreshes `Vterminal` per property, so neither selection nor a
+    ///    stale terminal voltage can leak in from a preceding comparator.
+    ///
+    /// So the test replays that intervening traffic — probes on a 3-winding
+    /// transformer (`Wdg` included), a probe on another element, and a full
+    /// property read of another element (what the gate's own props walk does to
+    /// every element before reaching this one) — and asserts the `?`-surface is
+    /// byte-identical to the snapshot taken right after `solve`.
+    #[test]
+    fn the_props_surface_is_stable_across_the_gates_intervening_comparators() {
+        use dss_core::exec::Dss;
+
+        let mut dss = Dss::new();
+        for cmd in [
+            "clear",
+            "new circuit.census_cursor basekv=115 pu=1.0 phases=3",
+            "new transformer.t3w windings=3 buses=[sourcebus, b2, b3] \
+             conns=[delta, wye, wye] kvs=[115, 12.47, 4.16] kvas=[1000, 1000, 1000] \
+             xhl=7 xht=5 xlt=6",
+            "new load.l1 bus1=b2 kv=12.47 kw=100",
+            "solve",
+        ] {
+            dss.command(cmd);
+        }
+        let before = dss
+            .element_properties("Transformer.t3w")
+            .expect("the transformer exists");
+        assert!(
+            before.iter().any(|(n, _)| n.eq_ignore_ascii_case("Wdg")),
+            "the deck must exercise the cursor-bearing property"
+        );
+
+        // The gate's intervening traffic, in the order `compare_capture` runs it.
+        for q in [
+            "? Transformer.t3w.Wdg",
+            "? Transformer.t3w.kV",
+            "? Transformer.t3w.tap",
+            "? Transformer.t3w.buses",
+            "? Load.l1.kW",
+        ] {
+            dss.command(q);
+        }
+        let _ = dss.element_properties("Load.l1").expect("the load exists");
+
+        let after = dss
+            .element_properties("Transformer.t3w")
+            .expect("the transformer still exists");
+        assert_eq!(
+            before, after,
+            "a comparator between `solve` and the property compare moved the \
+             `?`-surface — the census would then stop predicting the gate"
+        );
     }
 
     /// An unknown mode fails loudly instead of silently running a plain census.

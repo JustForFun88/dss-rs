@@ -557,19 +557,41 @@ disagreement between the knob and these files is a finding, not a rewrite.
 **Re-measuring (`DSS_PROPS_CENSUS=1`).** The knob reproduces the walk that
 produced these extracts: every live non-`large` case on BOTH channels, the r4133
 property masks bypassed, the plain comparator in collect-don't-panic mode.
-`cargo test --test corpus_gate corpus_gate_all_cases_match_engines -- --nocapture`
-with the var set writes `tmp/props_census.json` (one row per divergent cell, plus
-a `channel` column the vendored r4133-only census does not have) and
-`tmp/props_census/<channel>/` extracts; add `DSS_GATE_ONLY=<substr>` for a
-bounded run. Comparing against the vendored files: filter to `channel ==
-"r4133"`, drop that key, and compare **cell multisets** — the pair extracts'
-`example` cells and `bins.tsv` labels are representative-cell artifacts and are
-case-order dependent on the 17 heterogeneous pairs the directory's `README.md`
-tables. The `channels` block's `unaligned_cells` counts what a property-table
-shape gap hides from any index-ordered compare (an insertion at property *k*
-makes every cell after *k* on that element uncomparable) — the reason the
-vendored value population of the five shape-gap classes is a lower bound until
-WP-RP1 closes them.
+
+```
+DSS_PROPS_CENSUS=1 cargo test -p dss-core --test corpus_gate \
+    corpus_gate_props_census -- --nocapture
+```
+
+The census is its **own** `#[test]` (`corpus_gate_props_census`), not a diversion
+of the mandatory gate: the var arms it and nothing else, so a stray
+`DSS_PROPS_CENSUS=1` left in a shell can never turn
+`corpus_gate_all_cases_match_engines` into a green no-op. Unset, the census test
+is a no-op. Name it in the filter as above — otherwise the same run also executes
+the full live gate.
+
+It writes `tmp/props_census.json` (one row per divergent cell, plus a `channel`
+column the vendored r4133-only census does not have) and
+`tmp/props_census/<channel>/{structural_pairs,numeric_pairs,examples_full,shape,
+summary}` plus `tmp/props_census/run.json`; add `DSS_GATE_ONLY=<substr>` for a
+bounded run — the filter is stamped into the census header's `gate_only` and into
+`run.json`, so a family-bounded artifact set can never be mistaken for a full
+census. `bins.tsv` and the three `*_in_scope` extracts are NOT re-derived: they
+need the §1.1 bin policy (RP2.1's disposition mode) and the in-scope case filter.
+
+Comparing against the vendored files: filter to `channel == "r4133"`, drop that
+key, and compare **cell multisets** — the pair extracts' `example` cells and
+`bins.tsv` labels are representative-cell artifacts and are case-order dependent
+on the 17 heterogeneous pairs the directory's `README.md` tables. The `channels`
+block reports what the walk could NOT look at, so a partial census never reads as
+a complete one: `unaligned_cells` counts what a desynchronized name list hides
+from any index-ordered compare (an insertion at property *k* makes every cell
+after *k* on that element uncomparable — the reason the vendored value population
+of the five shape-gap classes is a lower bound until WP-RP1 closes them);
+`skipped_elements`/`skipped_element_cells` count elements dropped WHOLE (the
+capi-only Recloser/Relay skip, invisible to `unaligned_cells`); and
+`heterogeneous_shape_classes` counts classes whose members do not share one
+property-table shape, which the one-row-per-class `shape.txt` cannot show.
 
 ### 0.15.x property-table allowlist (`PROPS_015X`)
 
@@ -610,7 +632,7 @@ All verified against the consumers named. The `DSS_GATE_*` knobs live in
 | `DSS_GATE_DUMP` | corpus_gate | `<path>` → write a label-sorted `{verdict, result}` artifact (three-way bit-diff proofs) |
 | `DSS_GATE_SEED_LEDGER` | corpus_gate | `1` → seeding **report** mode: measure every case on BOTH channels, write `tmp/ledger_candidates.json`, assert nothing |
 | `DSS_GATE_SEED_ONLY` | corpus_gate | substring filter for the seeding run |
-| `DSS_PROPS_CENSUS` | corpus_gate | `1` → property **census** mode (`R4133_PROPS_PLAN.md` RP0.2): walk every live non-`large` case on BOTH channels with `all_properties` forced on (the §1.1 r4133 masks bypassed), collect every divergent cell instead of asserting, write `tmp/props_census.json` + `tmp/props_census/<channel>/{structural_pairs,numeric_pairs,shape,summary}` in the RP0.1 extract format. Honors `DSS_GATE_ONLY`; **asserts nothing** — a divergence is the measurement. RP2.1 adds the `claims` disposition mode; any other value fails loudly |
+| `DSS_PROPS_CENSUS` | corpus_gate | `1` → arms the property **census** test `corpus_gate_props_census` (`R4133_PROPS_PLAN.md` RP0.2; a separate `#[test]`, so the var can never divert the mandatory gate): walk every live non-`large` case on BOTH channels with `all_properties` forced on (the §1.1 r4133 masks bypassed), collect every divergent cell instead of asserting, write `tmp/props_census.json` + `tmp/props_census/run.json` + `tmp/props_census/<channel>/{structural_pairs,numeric_pairs,examples_full,shape,summary}` in the RP0.1 extract format. Honors `DSS_GATE_ONLY` (stamped into the artifacts); **asserts nothing** — a divergence is the measurement. RP2.1 adds the `claims` disposition mode; any other value fails loudly |
 | `DSS_LEDGER_MEASURE` | corpus_gate | `1` → numeric ledger handlers print the live divergence per scope (envelope sizing; no gating change) |
 | `DSS_UPDATE_POPULATION_LOCK` | population_lock | `1` → rewrite `population.lock.json` from the current manifests (deliberate regen) |
 | `DSS_UPDATE_GOLDENS` | `harness::regen` | `1` → arm the self-golden write rails (`snapshot_text`/`snapshot_bytes`). Refuses any artifact not anchored `self` in `golden.lock.json`, and any family whose `produced_by` is not this build's lane. Inert otherwise; no driver calls the helpers yet (WP-G3) |

@@ -34,7 +34,7 @@ use serde_json::Value;
 use crate::engines::{
     CaseResult, Channel, EpriOneShot, EpriPool, Oracle, WorkerPool, build_run_request,
 };
-use crate::harness::{self, PropsChannel};
+use crate::harness::{self, CensusBlindSpots, PropsChannel};
 use crate::ledger::LedgerRuntime;
 use crate::manifest::{
     EngineChannel, FAMILIES, SolvableCase, corpus_file, family_file, load_family, load_solvable,
@@ -764,8 +764,8 @@ fn seed_one(uc: &UnifiedCase, ch: EngineChannel, ctx: &Ctx) -> SeedRecord {
 ///
 /// The normal gate path is untouched: nothing here runs unless the env var is
 /// set, and the masks at [`run_one_case`] / [`seed_one`] are unchanged.
-pub(crate) fn run_props_census() {
-    let mode = CensusMode::from_env(&std::env::var("DSS_PROPS_CENSUS").unwrap_or_default());
+pub(crate) fn run_props_census(raw_mode: &str) {
+    let mode = CensusMode::from_env(raw_mode);
     let jobs = std::env::var("DSS_GATE_JOBS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
@@ -783,8 +783,11 @@ pub(crate) fn run_props_census() {
         .filter(|c| c.class == CaseClass::Live && !c.case.kind.starts_with("large"))
         .collect();
     // Same filter (and same loud empty-match refusal) as the gate: a census that
-    // silently measured zero cases would look exactly like a clean one.
-    if let Ok(only) = std::env::var("DSS_GATE_ONLY") {
+    // silently measured zero cases would look exactly like a clean one. The
+    // filter travels into the artifacts (`gate_only`), so a bounded run cannot
+    // be mistaken for a full one later.
+    let gate_only = std::env::var("DSS_GATE_ONLY").ok();
+    if let Some(only) = gate_only.clone() {
         let subs: Vec<String> = only
             .split(',')
             .map(|s| s.trim().to_string())
@@ -823,7 +826,7 @@ pub(crate) fn run_props_census() {
     let tasks = build_tasks(cases, None);
     let cursor = AtomicUsize::new(0);
     #[allow(clippy::type_complexity)]
-    let collected: Mutex<(Vec<CensusRow>, BTreeMap<&'static str, usize>)> =
+    let collected: Mutex<(Vec<CensusRow>, BTreeMap<&'static str, CensusBlindSpots>)> =
         Mutex::new((Vec::new(), BTreeMap::new()));
 
     std::thread::scope(|s| {
@@ -835,18 +838,18 @@ pub(crate) fn run_props_census() {
                         break;
                     }
                     let mut rows = Vec::new();
-                    let mut unaligned: BTreeMap<&'static str, usize> = BTreeMap::new();
+                    let mut blind: BTreeMap<&'static str, CensusBlindSpots> = BTreeMap::new();
                     for uc in &tasks[idx].cases {
                         for ch in [EngineChannel::CapiV0145, EngineChannel::R4133] {
-                            let (r, u) = census_one(uc, ch, &ctx);
+                            let (r, b) = census_one(uc, ch, &ctx);
                             rows.extend(r);
-                            *unaligned.entry(channel_tag(ch)).or_default() += u;
+                            blind.entry(channel_tag(ch)).or_default().add(b);
                         }
                     }
                     let mut guard = collected.lock().unwrap();
                     guard.0.extend(rows);
-                    for (k, v) in unaligned {
-                        *guard.1.entry(k).or_default() += v;
+                    for (k, v) in blind {
+                        guard.1.entry(k).or_default().add(v);
                     }
                 }
             });
@@ -856,8 +859,8 @@ pub(crate) fn run_props_census() {
     capi_pool.close();
     epri_pool.close();
 
-    let (rows, unaligned) = collected.into_inner().unwrap();
-    crate::props_census::write_artifacts(rows, mode, total, &unaligned);
+    let (rows, blind) = collected.into_inner().unwrap();
+    crate::props_census::write_artifacts(rows, mode, total, &blind, gate_only.as_deref());
     eprintln!(
         "props_census: {total} case(s) x2 channels in {:.1}s",
         start.elapsed().as_secs_f64()
@@ -875,10 +878,13 @@ fn channel_tag(ch: EngineChannel) -> &'static str {
 /// Measure one (case, channel) for the census: force the property capture,
 /// re-run the Rust engine step by step and collect every divergent cell. Every
 /// failure mode — a dead oracle, a crashing deck, a panicking Rust walk —
-/// becomes a ROW, never a panic. The second return value is the number of cells
-/// a property-table shape gap made uncomparable (see
-/// [`harness::collect_prop_divergences`]).
-fn census_one(uc: &UnifiedCase, ch: EngineChannel, ctx: &Ctx) -> (Vec<CensusRow>, usize) {
+/// becomes a ROW, never a panic. The second return value is what the walk could
+/// not look at (see [`harness::CensusBlindSpots`]).
+fn census_one(
+    uc: &UnifiedCase,
+    ch: EngineChannel,
+    ctx: &Ctx,
+) -> (Vec<CensusRow>, CensusBlindSpots) {
     let pch = match ch {
         EngineChannel::CapiV0145 => PropsChannel::CapiV0145,
         EngineChannel::R4133 => PropsChannel::R4133,
@@ -890,7 +896,7 @@ fn census_one(uc: &UnifiedCase, ch: EngineChannel, ctx: &Ctx) -> (Vec<CensusRow>
                 pch,
                 CensusRowKind::OracleError { detail },
             )],
-            0,
+            CensusBlindSpots::default(),
         )
     };
 
@@ -912,15 +918,22 @@ fn census_one(uc: &UnifiedCase, ch: EngineChannel, ctx: &Ctx) -> (Vec<CensusRow>
         return oracle_error("ok response missing result".to_string());
     };
 
+    // Deserialization happens OUTSIDE the Rust-side `catch_unwind` on purpose: a
+    // channel that answers `ok: true` with a payload the harness cannot parse is
+    // an ORACLE defect, and in a mode whose only diagnostic is the row kind it
+    // must not be filed against the Rust engine (RP0.2 audit).
+    let oc: CaseResult = match serde_json::from_value(val) {
+        Ok(oc) => oc,
+        Err(e) => return oracle_error(format!("malformed CaseResult: {e}")),
+    };
+
     let label = uc.label.clone();
     let abs = uc.abs.clone();
     let walked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-        let oc: CaseResult =
-            serde_json::from_value(val).unwrap_or_else(|e| panic!("malformed CaseResult: {e}"));
         let tol = harness::tol_for(&cc.kind);
         let (mut dss, _baseline) = run_rust_capture(&label, &abs, &cc);
         let mut rows: Vec<CensusRow> = Vec::new();
-        let mut unaligned = 0usize;
+        let mut blind = CensusBlindSpots::default();
         for (i, cp) in oc.checkpoints.iter().enumerate() {
             dss.command("solve");
             // A capture that came back empty means the request was not honored —
@@ -936,20 +949,20 @@ fn census_one(uc: &UnifiedCase, ch: EngineChannel, ctx: &Ctx) -> (Vec<CensusRow>
                 continue;
             }
             let mut found = Vec::new();
-            unaligned += harness::collect_prop_divergences(
+            blind.add(harness::collect_prop_divergences(
                 &mut dss,
                 &cp.all_properties,
                 &tol,
                 pch,
                 &mut found,
-            );
+            ));
             rows.extend(
                 found
                     .into_iter()
                     .map(|f| CensusRow::from_harness(&label, pch, i, f)),
             );
         }
-        (rows, unaligned)
+        (rows, blind)
     }));
     match walked {
         Ok(out) => out,
@@ -961,7 +974,7 @@ fn census_one(uc: &UnifiedCase, ch: EngineChannel, ctx: &Ctx) -> (Vec<CensusRow>
                     detail: panic_msg(e),
                 },
             )],
-            0,
+            CensusBlindSpots::default(),
         ),
     }
 }
