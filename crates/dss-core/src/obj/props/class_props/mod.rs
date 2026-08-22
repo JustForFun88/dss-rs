@@ -72,6 +72,21 @@ impl ClassProps {
             "{class_name}: an UPSTREAM_STUB row must be PropType::String — it is stored and \
              echoed as the raw parse string"
         );
+        // The same invariant for the sibling mechanism: `ref_miss_message` is
+        // read by exactly one arm of `parse_into` — `PropType::ObjectRef` with a
+        // named target class (`object_class = Some(non-empty)`). On any other
+        // row (a different `ptype`, or the `None` / `Some("")` ObjectRef forms,
+        // which resolve through `set_string` / `find_full` + #402) the builder
+        // still compiles and the message is silently dead, so the row would keep
+        // answering a miss with the generic #401 that the field exists to
+        // replace.
+        debug_assert!(
+            defs.iter().all(|d| d.ref_miss_message.is_none()
+                || (d.ptype == PropType::ObjectRef
+                    && d.object_class.is_some_and(|c| !c.is_empty()))),
+            "{class_name}: a ref_miss_message is only emitted for a PropType::ObjectRef row \
+             with a named object_class — anywhere else it is a silently dead message"
+        );
 
         let mut props = Vec::with_capacity(defs.len() + 1);
         props.push(PropDef::base("", PropType::Integer)); // slot 0, never addressed

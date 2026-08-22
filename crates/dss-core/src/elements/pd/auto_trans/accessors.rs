@@ -646,8 +646,15 @@ impl DssObject for AutoTrans {
     /// the stored name and the model left exactly as they were — which is why
     /// the row carries [`PropDef::ref_miss_message`](crate::obj::props::PropDef)
     /// and the parser returns before ever reaching this setter on a miss. The
-    /// `None` arm here is therefore the degenerate `xfmrcode=` (empty name):
-    /// r4133's `SetActive('')` misses too, so the auto keeps its model.
+    /// `None` arm here is therefore only the degenerate `xfmrcode=` (empty
+    /// name), which the port's parser routes here without a message: r4133 never
+    /// reaches property 39 at all in that case — its `Edit` loop is
+    /// `WHILE Length(Param)>0 Do` (`AutoTrans.pas:472`), so an empty value ends
+    /// the parse before the dispatch, and neither the property store nor the
+    /// model moves. (Had it reached `FetchXfmrCode('')`, `SetActive('')` would
+    /// have missed and logged #100180, so silence here is the match only because
+    /// the parser stops first — pinned by
+    /// `exec::tests::autotrans_xfmrcode::an_empty_code_name_is_a_no_op`.)
     ///
     /// The r4133 arm at `:567` — `DoSimpleMsg('XFmrCode Property not used with
     /// AutoTrans object.', 100131)`, fired unconditionally right after the code

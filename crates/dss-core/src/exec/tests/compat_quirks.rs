@@ -729,7 +729,9 @@ fn carriers_of(dss: &crate::exec::Dss, flag: crate::obj::props::PropFlags) -> Ve
 /// carrier set. That flag was **carrier-free** from WP-U2.5 until
 /// R4133_PROPS_PLAN RP1.1, which is how `hidden_from_full_enum` came to be a
 /// synonym for the 0.15.x flag — the premise of the F.3aa measurement. RP1.1
-/// gave it three carriers again (the Generator/Sensor upstream stubs), so the
+/// gave it three carriers again (the Generator/Sensor upstream stubs) and RP1.2
+/// a fourth (AutoTrans `XfmrCode`, a real port — the flag's criterion is
+/// "absent from both pinned tables", not "not implemented"), so the
 /// premise is now the weaker but sufficient one: the two flags' carrier sets are
 /// **class-disjoint** — F.3aa's blast radius was measured over Line and
 /// LineGeometry alone, and no r4133 carrier touches either — which the two lists
@@ -773,7 +775,10 @@ fn hide_015x_carrier_set_is_the_measured_escape() {
          implemented'); each carrier is also a `port_hidden_property` row of \
          `tests/golden/json/schema_divergences.json`, so a carrier added or \
          dropped here without that row is a schema byte gate that silently stops \
-         describing the tree"
+         describing the tree. This list is also the population the flag's \
+         un-hide blast radius was measured over (8 artifacts, no corpus case) — \
+         re-measure it and update the doc on `PropFlags::HIDE_R4133` before \
+         touching this list"
     );
 
     // The disjointness the F.3aa measurement now rests on: no class carries both
@@ -844,6 +849,62 @@ fn upstream_stub_rows_are_the_measured_set() {
         "only the Generator pair logs on write (`generator.pas:651-652`); \
          Sensor's `Action` stores silently (`Set_Action` is an empty body, \
          `Sensor.pas:850-854`)"
+    );
+}
+
+/// The [`crate::obj::props::PropDef::ref_miss_message`] carrier set — the
+/// sibling mechanism of the stub message above, pinned for the same reason
+/// (R4133_PROPS_PLAN RP1.2).
+///
+/// The field is *relaxing by nature*: the row it sits on stops answering an
+/// unresolved name with the unified `DSSObjectHelper` #401 (which also NILs the
+/// reference) and answers with r4133's own legacy `Fetch<X>` message instead,
+/// writing nothing at all. Only a reference r4133 still resolves outside the
+/// property system may have it, so the population is an equality — a future row
+/// that acquires `ref_miss_msg(...)` silently drops #401 from a property that
+/// has a capi counterpart, and no other test would redden.
+///
+/// Its build-time half — the field is only ever read by the one `parse_into` arm
+/// that takes a `PropType::ObjectRef` with a named `object_class`, so anywhere
+/// else it is a dead message — is asserted once per class in `ClassProps::new`,
+/// and re-asserted here over the live tables so a reader of this test sees it.
+#[test]
+fn ref_miss_message_rows_are_the_measured_set() {
+    use crate::obj::props::PropType;
+    let dss = dss_with_circuit();
+
+    let mut carriers: Vec<String> = Vec::new();
+    for cls in &dss.classes {
+        let props = &cls.props;
+        for i in 1..=props.num_properties() {
+            let pd = props.prop(i);
+            let Some(m) = pd.ref_miss_message else {
+                continue;
+            };
+            assert!(
+                pd.ptype == PropType::ObjectRef && pd.object_class.is_some_and(|c| !c.is_empty()),
+                "{}.{} carries a ref_miss_message on a row `parse_into` never reads it on",
+                props.class_name(),
+                pd.name
+            );
+            carriers.push(format!(
+                "{}.{}={} {:?}",
+                props.class_name(),
+                pd.name,
+                m.code,
+                m.prefix
+            ));
+        }
+    }
+    carriers.sort();
+    assert_eq!(
+        carriers,
+        ["AutoTrans.XfmrCode=100180 \"Xfmr Code:\""],
+        "the legacy-Fetch miss population moved. The one row is AutoTrans \
+         `XfmrCode`, whose miss arm is r4133's own `DoSimpleMsg('Xfmr Code:' + \
+         Code + ' not found.', 100180)` (`AutoTrans.pas:2394-2395`) and which \
+         has no dss_capi 0.14.5 counterpart at all (the property was deleted \
+         there). Every other object reference keeps the unified #401 path"
     );
 }
 
