@@ -228,6 +228,22 @@ impl ClassProps {
                         {
                             resolved = eng.foreign.and_then(|f| f.find(class2, value));
                         }
+                        // EPRI r4133 legacy `Fetch<X>` miss (see
+                        // [`PropDef::ref_miss_message`]): its own message number
+                        // and text, and — unlike the #401 path below — the
+                        // reference and the stored name are left untouched
+                        // (`TAutoTransObj.FetchXfmrCode`'s else-arm is that one
+                        // `DoSimpleMsg`, `AutoTrans.pas:2394-2395`).
+                        if resolved.is_none()
+                            && !value.is_empty()
+                            && let Some(m) = pd.ref_miss_message
+                        {
+                            eng.errors.push(crate::diag::DssDiagnostic::msg(
+                                format!("{}{value} not found.", m.prefix),
+                                Some(m.code),
+                            ));
+                            return Ok(0);
+                        }
                         if resolved.is_none() && !value.is_empty() {
                             // Pascal renders `cls.Name` — a `TProxyClass` is named
                             // `(Class1|Class2)` (`TProxyClass.Create`).

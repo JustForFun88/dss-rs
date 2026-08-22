@@ -477,6 +477,9 @@ const ASYMMETRIC_REQUIRED: &[&str] = &[
     "autotrans/autotrans_snap.dss",
     "autotrans/midi_autotrans_asym.dss",
     "autotrans/autotrans_gic.dss",
+    // R4133_PROPS RP1.2: the only deck in the corpus that drives an AutoTrans
+    // from an `XfmrCode` (r4133 property 39).
+    "autotrans/autotrans_xfmrcode.dss",
     "gic/gicline_gic.dss",
     "gic/gictransformer_gic.dss",
     "gic/gicsource_gic.dss",

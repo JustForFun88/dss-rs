@@ -1,0 +1,52 @@
+! R4133_PROPS RP1.2 deck: AutoTrans configured from an XfmrCode library entry —
+! AutoTrans property 39 `XfmrCode` (`Version8/Source/PDElements/AutoTrans.pas:329`,
+! Edit arm `:520`, `TAutoTransObj.FetchXfmrCode` `:2339-2396`). The property is
+! r4133-only: dss_capi 0.14.5 deleted it outright
+! (`.inputs/dss_capi/src/PDElements/AutoTrans.pas:76,125` — `//XfmrCode=39, //
+! removed, unused`), so this deck gates on the `r4133` channel alone.
+!
+! Why the autos are SINGLE-PHASE. r4133's `FetchXfmrCode` sets
+! `NConds := Fnphases + 1` (`AutoTrans.pas:2353`) — the Transformer's rule,
+! copy-pasted; every other AutoTrans path uses `2 * Fnphases` (`:538`, `:798`,
+! `:891`), which is what an autotransformer needs (two conductors per phase, the
+! series winding's second end aliased onto the common winding in `SetNodeRef`).
+! For nphases > 1 that leaves r4133 with a structurally wrong element, so its
+! solved state is not the autotransformer's; the port computes `2 * Fnphases` and
+! never reproduces the bug (`investigations/to_opendss/37-*`). At **one** phase
+! the two rules coincide (1 + 1 = 2 * 1), so a 1-phase deck is exactly where the
+! r4133 channel is a valid oracle for the whole `FetchXfmrCode` copy. The
+! multi-phase behaviour is pinned in-engine instead (`auto_trans::tests`,
+! `exec::tests::autotrans_xfmrcode`).
+!
+! The code declares BOTH windings `delta`; `FetchXfmrCode` overrides winding 1 to
+! SERIES and winding 2 to WYE (`AutoTrans.pas:2358-2362`). At one phase the
+! winding-1 override is strongly observable — `RecalcElementData` derives the
+! series winding's `VBase` from `kVseries = kVLL - Winding[2].kVLL`
+! (`:1122-1130`) instead of `kVLL`, so a missed override moves every Y entry.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.autoxc basekv=115 phases=1 bus1=sourcebus.1 mvasc3=15000 mvasc1=12000
+
+New XfmrCode.ac1 phases=1 windings=2 xhl=8.5 %imag=0.5 %noloadloss=0.1 %loadloss=0.34
+~ wdg=1 conn=delta kV=115 kVA=50000 tap=1.025 maxtap=1.2 mintap=0.8 numtaps=40 rdcohms=0.31
+~ wdg=2 conn=delta kV=69 kVA=40000 tap=0.975 maxtap=1.15 mintap=0.85 numtaps=24 rdcohms=0.12
+
+! t1 takes every electrical parameter from the code and is left on winding 2, so
+! the manifest probes read winding 2's copied values.
+New AutoTrans.t1 xfmrcode=ac1
+~ wdg=1 bus=sourcebus.1
+~ wdg=2 bus=mid1.1
+New Load.la bus1=mid1.1 phases=1 kv=69 kw=12000 pf=0.9 model=1
+
+! t2 shares the same code on a second spur and is left on winding 1, so the same
+! probe set reads winding 1's copied values.
+New Vsource.s2 bus1=src2.1 basekv=115 phases=1 pu=1.02 mvasc3=9000 mvasc1=8000
+New AutoTrans.t2 xfmrcode=ac1
+~ wdg=2 bus=mid2.1
+~ wdg=1 bus=src2.1
+New Load.lb bus1=mid2.1 phases=1 kv=69 kw=8000 pf=0.95 model=1
+
+Set voltagebases=[115 69]
+Calcvoltagebases
+Set tolerance=1e-8
+Solve

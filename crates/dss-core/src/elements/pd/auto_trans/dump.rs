@@ -3,7 +3,9 @@
 //! hand-writes the per-winding block (`Wdg`/`bus`/`conn`/`kv`/`kVA`/`tap`/`%r`/
 //! `Rdcohms` — **no** `rneut`/`xneut`, unlike Transformer), the `XHX`/`XHT`/
 //! `XXT` reactances (no `X12`/`X13`/`X23`) + the flat `Xscmatrix`, the
-//! thermal/loss scalars, then the generic property tail from `NormHkVA` on. The
+//! thermal/loss scalars, then the generic property tail from `NormHkVA` on
+//! (which walks over the r4133-only `XfmrCode` row: it is `HIDE_R4133`, so
+//! `prop_line` skips it and no `Dump` byte moves). The
 //! `Complete` branch appends the `ZB`/`ZB (inverted)`/`Y_OneVolt`/`Y_Terminal`
 //! lower-triangle dumps and the `TermRef` map. The winding scalars render with
 //! `%.7g` (Transformer uses fixed widths).

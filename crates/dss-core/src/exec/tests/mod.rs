@@ -10,6 +10,7 @@ mod common;
 
 mod allocation;
 mod autoadd;
+mod autotrans_xfmrcode;
 mod base_frequency;
 mod compat_quirks;
 mod controls;

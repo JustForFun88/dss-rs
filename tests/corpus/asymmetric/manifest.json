@@ -601,6 +601,63 @@
    "note": "The 330 MVA YNad1 unit from Test/AutoTrans/AutoAuto.dss + a 2-winding 115/69 auto. Oracle wdgcurrents (probe 2026-07-05, t2 spot value): non-zero live recompute - the READS_VTERMINAL family. WPG.15 Stage B: live-green."
   },
   {
+   "path": "autotrans/autotrans_xfmrcode.dss",
+   "engines": "r4133",
+   "ad": "off:too-small",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "AutoTrans.t1",
+     "props": [
+      "wdg",
+      "kv",
+      "kva",
+      "tap",
+      "%r",
+      "rdcohms",
+      "maxtap",
+      "mintap",
+      "numtaps",
+      "xhx",
+      "%loadloss",
+      "%noloadloss",
+      "%imag",
+      "ppm_antifloat",
+      "normhkva",
+      "emerghkva"
+     ]
+    },
+    {
+     "element": "AutoTrans.t2",
+     "props": [
+      "wdg",
+      "kv",
+      "kva",
+      "tap",
+      "%r",
+      "rdcohms",
+      "maxtap",
+      "mintap",
+      "numtaps",
+      "xhx",
+      "%loadloss",
+      "%noloadloss",
+      "%imag",
+      "ppm_antifloat",
+      "normhkva",
+      "emerghkva"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "R4133_PROPS RP1.2",
+   "note": "AutoTrans property 39 XfmrCode (AutoTrans.pas:329, FetchXfmrCode :2339-2396) — r4133-only, so engines=r4133: dss_capi 0.14.5 deleted the row (.inputs/dss_capi/src/PDElements/AutoTrans.pas:76,125) and would reject xfmrcode= as an unknown property. Both autos are SINGLE-PHASE on purpose: r4133's FetchXfmrCode sets NConds := Fnphases+1 (:2353, the Transformer's rule copy-pasted; every other AutoTrans path uses 2*Fnphases), which at nphases>1 leaves the oracle solving a structurally wrong element (measured 2026-08-22 on epri-worker: a 3-phase 115/69 auto reports NumConductors=4 and MID.1=92236 V on a 69 kV winding, vs 6 and 38472 V with a trailing phases=3). At one phase 1+1 == 2*1, so the port's correct rule and r4133's agree and the channel gates the whole copy. The XfmrCode declares both windings delta; the override forces wdg 1 SERIES / wdg 2 WYE (:2356-2361) and at one phase the wdg-1 half is strongly observable (VBase comes from kVseries = kVLL - Winding[2].kVLL). t1 is left on winding 2 and t2 on winding 1, so the same probe set reads both windings' copied values; the probes are limited to props r4133's GetPropertyValue overrides live (:1798-1896) and whose exact decimal fits %.7g — thermal/n/m/flrise/hsrise are PropertyValue echoes and normamps/emergamps are 5-significant-digit renders, so neither is probed. Live-validated on r4133 2026-08-22: converged, 5 iters, SOURCEBUS.1 114908.668456851403, MID1.1 66514.442565085992, SRC2.1 117228.327082133997, MID2.1 68431.041427177013."
+  },
+  {
    "path": "autotrans/autotrans_gic.dss",
    "engines": "both",
    "ad": "off:too-small",
