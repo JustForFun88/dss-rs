@@ -89,7 +89,13 @@ pub struct PropDef {
     /// text. Set only for a reference r4133 still resolves through a
     /// pre-property-system `Fetch<X>` routine that carries its own message and
     /// leaves the object untouched — see [`RefMissMessage`]. `None` (every other
-    /// row) keeps the unified #401 path.
+    /// row) keeps the unified #401 path. Read by exactly one arm of
+    /// `parse_into` — a [`PropType::ObjectRef`] with a named
+    /// [`Self::object_class`] — so anywhere else it is a silently dead message
+    /// that would leave #401 in place: [`super::ClassProps::new`] asserts that
+    /// shape, and `exec::tests::compat_quirks::ref_miss_message_rows_are_the_measured_set`
+    /// pins the carrier set (the mechanism *removes* the unified diagnostic, so
+    /// the population is an equality, not a floor).
     pub ref_miss_message: Option<RefMissMessage>,
 }
 

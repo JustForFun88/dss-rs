@@ -253,12 +253,12 @@ impl PropFlags {
     /// survives — proven by the sibling: between WP-U2.5 and R4133_PROPS RP1.1
     /// [`HIDE_R4133`] had **zero** carriers and still left 7 `rg` matches,
     /// because a flag's definition, its arm in `hidden_from_full_enum` and the
-    /// comments naming it are not uses. (RP1.1 re-armed it with three carriers,
-    /// so that era is history and its residue has grown with the prose; the
-    /// measurement stands as taken.) Retiring this flag's *carriers* leaves the
-    /// same residue, so the successor should restate the criterion as "zero
-    /// carriers" — the form the pin above checks — or delete both flags
-    /// together.
+    /// comments naming it are not uses. (RP1.1 re-armed it with three carriers
+    /// and RP1.2 brought it to four, so that era is history and its residue has
+    /// grown with the prose; the measurement stands as taken.) Retiring this
+    /// flag's *carriers* leaves the same residue, so the successor should
+    /// restate the criterion as "zero carriers" — the form the pin above
+    /// checks — or delete both flags together.
     pub const HIDE_015X: Self = Self(1 << 48);
     /// **EPRI r4133 `GetTccCurve('none')` semantics** (WP-U2.1, delta D1/E3). On a
     /// single `DSSObjectReferenceProperty` (a TCC_Curve ref), a value of literal
@@ -291,10 +291,16 @@ impl PropFlags {
     /// case: Generator `Rneut`/`Xneut` and Sensor `Action` (all three also
     /// [`UPSTREAM_STUB`]) are r4133-only, absent from both the pinned 0.14.5 and
     /// the capi015 tables, so they stay off Dump / `Dump commands` / JSON /
-    /// schema output. They still occupy an ordinal, which is why the schema's
-    /// per-class byte gate carries three `port_hidden_property` rows for them
-    /// (`tests/golden/json/schema_divergences.json`). The carrier set is pinned
-    /// by `exec::tests::compat_quirks::hide_015x_carrier_set_is_the_measured_escape`.
+    /// schema output. R4133_PROPS RP1.2 added a **fourth** carrier of a different
+    /// kind: AutoTrans `XfmrCode` is a fully implemented port of r4133's
+    /// `FetchXfmrCode` — the flag's criterion is "absent from both pinned
+    /// tables", never "not implemented" — and it is the first carrier on a class
+    /// that owns committed `Dump` goldens, which is why the blast radius below
+    /// had to be re-measured. Every carrier still occupies an ordinal, which is
+    /// why the schema's per-class byte gate carries four `port_hidden_property`
+    /// rows for them (`tests/golden/json/schema_divergences.json`). The carrier
+    /// set is pinned by
+    /// `exec::tests::compat_quirks::hide_015x_carrier_set_is_the_measured_escape`.
     /// The `PROPS_015X` allowlist rows that hide such props from the 0.14.5
     /// property-table walk are name-based, independent of this flag.
     ///
@@ -306,14 +312,20 @@ impl PropFlags {
     /// `exec::tests::upstream_stubs::save_writes_the_stub_names_like_r4133`.
     ///
     /// **The escape this creates has an owner** (the [`HIDE_015X`] precedent):
-    /// un-hiding the three rows moves exactly **4** committed artifacts —
+    /// un-hiding the four rows moves exactly **8** committed artifacts —
     /// `json/der_usermodel_assigned.json`, `json/der_usermodel_full.json`,
-    /// `json/dyneq_full.json` (Generator objects), `reports/dump3_commands.txt`
-    /// (+6 rows: the two `[Generator]` props and the one `[Sensor]` prop) — plus
-    /// `json/schema_full_port.json` and the deletion of the three
-    /// `port_hidden_property` rows, and **no corpus case** (measured 2026-08-22
-    /// by disabling this flag's arm below and running `cargo test -p dss-core
-    /// --no-fail-fast`: the live corpus gate stayed green). It unblocks when
+    /// `json/dyneq_full.json` (Generator objects), `json/autotrans_micro.json`,
+    /// `json/autotrans_solved.json` (the AutoTrans FULL views gain `"XfmrCode"`
+    /// between `Bank` and `XRConst`), `reports/dump_autotrans.txt` (+1 row, 56 →
+    /// 57), `reports/dump_autotrans3.txt` (+1 row, 63 → 64) and
+    /// `reports/dump3_commands.txt` (+7 rows, 2328 → 2335: one help line each
+    /// for the two `[Generator]` props and for `[AutoTrans] XfmrCode`, four for
+    /// `[Sensor] Action`'s multi-line help) — plus
+    /// `json/schema_full_port.json` and the deletion of the four
+    /// `port_hidden_property` rows, and **no corpus case** (re-measured
+    /// 2026-08-23 for the fourth carrier by disabling this flag's arm below and
+    /// running `cargo test -p dss-core --no-fail-fast`: exactly those tests fail
+    /// and `corpus_gate_all_cases_match_engines` stayed green). It unblocks when
     /// those surfaces stop being 0.14.5-pinned — GOLDEN_REBASE G3.3c (`dump*` +
     /// `dump3*` self-snapshot) and G3.4 (`json/`), which is where the row is
     /// tracked in `ORPHANED_GAPS.md` §2. The schema half is separate and stays:

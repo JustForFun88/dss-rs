@@ -170,6 +170,25 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("%IMag"),
         PropDef::double("ppm_Antifloat").scale(1.0e-6),
         PropDef::double_array_on_struct("%Rs", WINDINGS).scale(pct),
+        // Property 38. **The port implements it; r4133 does not** — an inherited
+        // divergence, recorded here because RP1.2 read this exact pair of Edit
+        // arms. r4133 keeps the assignment commented out (`38: {XfmrBank :=
+        // Param};`, `AutoTrans.pas:519`) and answers the write with
+        // `DoSimpleMsg('Bank Property not used with AutoTrans object.', 100130)`
+        // (`:566`), so its `XfmrBank` is always `''` and every auto is its own
+        // bank in the CIM export (`ExportCIMXML.pas:3280`). dss_capi 0.14.5
+        // restored the property (`PropertyOffset[ord(TProp.Bank)] :=
+        // ptruint(@obj.XfmrBank)`, `.inputs/dss_capi/src/PDElements/`
+        // `AutoTrans.pas:482`) and the port follows it: the name is stored and
+        // is the CIM bank-grouping key (`cim/power_xfmr.rs`), and #100130 is
+        // never logged. Unlike the `XfmrCode` arm below, this r4133 pair is
+        // self-consistent — a deliberate upstream limitation, not a bug — so it
+        // is neither reported upstream nor "fixed" here; changing it would drop
+        // a working feature and move CIM output. Latent as of 2026-08-23: no
+        // corpus deck writes `bank=` on an AutoTrans (every `bank=` in the
+        // corpus is a Transformer), the property echo agrees on both channels,
+        // and the CIM goldens are capi-captured. Undecided, unowned — see
+        // STATUS §RP1.2.
         PropDef::string("Bank"),
         // EPRI r4133 property 39 (`AutoTrans.pas:329`, help `:414`), read by the
         // auto's OWN `TAutoTransObj.FetchXfmrCode` (`:520` → `:2339-2396`), not

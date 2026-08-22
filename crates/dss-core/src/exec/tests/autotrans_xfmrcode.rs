@@ -33,11 +33,18 @@ use super::common::query;
 /// The 3-winding `XfmrCode` both decks below are built from. Its winding
 /// connections are `wye`/`delta`/`delta` **on purpose**: the auto must end up
 /// `Series`/`Wye`/`Delta`, so a missing override is visible in the first two.
+///
+/// **Every value here is off the AutoTrans default**, and
+/// [`no_asserted_cell_can_be_read_off_the_defaults`] enforces it: a cell that
+/// happens to coincide with what `TAutoWinding.Init`/`Create` produce anyway
+/// (`auto_trans/mod.rs`, e.g. winding 1 at 115 kV, `%r` 0.2, tap 1, min/max
+/// 0.9/1.1, 32 taps, `%loadloss` 0.4) would still read correctly with its copy
+/// statement deleted, so it could not pin anything.
 const CODE: &str = "New XfmrCode.c3 phases=3 windings=3";
 const CODE_TAIL: &[&str] = &[
-    "~ wdg=1 conn=wye kV=115 kVA=50000 tap=1.025 maxtap=1.2 mintap=0.8 numtaps=40 rdcohms=0.31 %r=0.21",
+    "~ wdg=1 conn=wye kV=138 kVA=50000 tap=1.025 maxtap=1.2 mintap=0.8 numtaps=40 rdcohms=0.31 %r=0.33",
     "~ wdg=2 conn=delta kV=69 kVA=50000 tap=0.975 maxtap=1.15 mintap=0.85 numtaps=24 rdcohms=0.12 %r=0.19",
-    "~ wdg=3 conn=delta kV=13.8 kVA=20000 tap=1.0 maxtap=1.1 mintap=0.9 numtaps=32 rdcohms=0.05 %r=0.35",
+    "~ wdg=3 conn=delta kV=13.8 kVA=20000 tap=1.05 maxtap=1.25 mintap=0.75 numtaps=20 rdcohms=0.05 %r=0.35",
     "~ xhl=8.5 xht=24.5 xlt=28.5 %imag=0.35 %noloadloss=0.11 thermal=2.5 n=0.9 m=0.7 \
      flrise=63 hsrise=17 ppm_antifloat=1.5 normhkva=61000 emerghkva=83000",
 ];
@@ -47,11 +54,65 @@ const CODE_TAIL: &[&str] = &[
 /// own `kVA`/`%R` side effects run on both paths, so `normhkva`/`emerghkva`
 /// come last, exactly as the code's own edit left them).
 const EXPLICIT_TAIL: &[&str] = &[
-    "~ wdg=1 bus=sourcebus conn=s kV=115 kVA=50000 tap=1.025 maxtap=1.2 mintap=0.8 numtaps=40 rdcohms=0.31 %r=0.21",
+    "~ wdg=1 bus=sourcebus conn=s kV=138 kVA=50000 tap=1.025 maxtap=1.2 mintap=0.8 numtaps=40 rdcohms=0.31 %r=0.33",
     "~ wdg=2 bus=mid conn=w kV=69 kVA=50000 tap=0.975 maxtap=1.15 mintap=0.85 numtaps=24 rdcohms=0.12 %r=0.19",
-    "~ wdg=3 bus=tert conn=d kV=13.8 kVA=20000 tap=1.0 maxtap=1.1 mintap=0.9 numtaps=32 rdcohms=0.05 %r=0.35",
+    "~ wdg=3 bus=tert conn=d kV=13.8 kVA=20000 tap=1.05 maxtap=1.25 mintap=0.75 numtaps=20 rdcohms=0.05 %r=0.35",
     "~ xhx=8.5 xht=24.5 xxt=28.5 %imag=0.35 %noloadloss=0.11 thermal=2.5 n=0.9 m=0.7 \
      flrise=63 hsrise=17 ppm_antifloat=1.5 normhkva=61000 emerghkva=83000",
+];
+
+/// The per-winding cells `FetchXfmrCode` copies (`:2362-2371`), as
+/// `(winding, property, expected)` — read back off the `?` surface through the
+/// `Wdg=` cursor. Shared by the two tests below so the assertion table and its
+/// discrimination guard cannot drift apart.
+const PER_WINDING: &[(u32, &str, &str)] = &[
+    (1, "kV", "138"),
+    (1, "kVA", "50000"),
+    (1, "Tap", "1.025"),
+    (1, "%R", "0.33"),
+    (1, "RDCOhms", "0.31"),
+    (1, "MaxTap", "1.2"),
+    (1, "MinTap", "0.8"),
+    (1, "NumTaps", "40"),
+    (2, "kV", "69"),
+    (2, "kVA", "50000"),
+    (2, "Tap", "0.975"),
+    (2, "%R", "0.19"),
+    (2, "RDCOhms", "0.12"),
+    (2, "MaxTap", "1.15"),
+    (2, "MinTap", "0.85"),
+    (2, "NumTaps", "24"),
+    (3, "kV", "13.8"),
+    (3, "kVA", "20000"),
+    (3, "Tap", "1.05"),
+    (3, "%R", "0.35"),
+    (3, "RDCOhms", "0.05"),
+    (3, "MaxTap", "1.25"),
+    (3, "MinTap", "0.75"),
+    (3, "NumTaps", "20"),
+];
+
+/// The whole-element cells: the reactance rename and short-circuit array
+/// (`:2374-2377`), the thermal/loss/rating scalars (`:2378-2388`) and the stored
+/// code name (`:2349`). `%LoadLoss` is the code's own 0.33 + 0.19 = 0.52 — the
+/// AutoTrans default is 0.4, so the cell discriminates.
+const WHOLE_ELEMENT: &[(&str, &str)] = &[
+    ("XHX", "8.5"),
+    ("XHT", "24.5"),
+    ("XXT", "28.5"),
+    ("XSCArray", "[ 8.5 24.5 28.5]"),
+    ("Thermal", "2.5"),
+    ("n", "0.9"),
+    ("m", "0.7"),
+    ("FLRise", "63"),
+    ("HSRise", "17"),
+    ("%LoadLoss", "0.52"),
+    ("%NoLoadLoss", "0.11"),
+    ("%IMag", "0.35"),
+    ("NormHkVA", "61000"),
+    ("EmergHkVA", "83000"),
+    ("ppm_Antifloat", "1.5"),
+    ("XfmrCode", "c3"),
 ];
 
 /// Header + loads + solve, shared by the two builders so the ONLY difference
@@ -60,14 +121,14 @@ fn run(auto: &[String]) -> Dss {
     let mut dss = Dss::new();
     let mut script: Vec<String> = vec![
         "Clear".into(),
-        "New Circuit.xcauto basekv=115 phases=3 bus1=sourcebus mvasc3=20000 mvasc1=18000".into(),
+        "New Circuit.xcauto basekv=138 phases=3 bus1=sourcebus mvasc3=20000 mvasc1=18000".into(),
     ];
     script.extend(auto.iter().cloned());
     script.extend(
         [
             "New Load.l1 bus1=mid phases=3 kv=69 kw=20000 pf=0.92 model=1",
             "New Load.l2 bus1=tert phases=3 kv=13.8 kw=5000 pf=0.95 model=1",
-            "Set voltagebases=[115 69 13.8]",
+            "Set voltagebases=[138 69 13.8]",
             "Calcvoltagebases",
             "Set tolerance=1e-10",
             "Solve",
@@ -148,63 +209,78 @@ fn the_first_two_winding_connections_are_forced() {
 /// Every scalar `:2362-2388` copies, read back off the `?` surface (the
 /// per-winding ones through the `Wdg=` cursor). `%R` is the one that proves the
 /// copy is per-winding rather than a `%loadloss` re-split: winding 3's 0.35
-/// survives while `%loadloss` reads the code's own 0.21 + 0.19.
+/// survives while `%loadloss` reads the code's own 0.33 + 0.19.
 #[test]
 fn every_copied_field_arrives() {
     let mut dss = coded();
-    for (w, kv, kva, tap, pctr, rdc, maxt, mint, nt) in [
-        (
-            1, "115", "50000", "1.025", "0.21", "0.31", "1.2", "0.8", "40",
-        ),
-        (
-            2, "69", "50000", "0.975", "0.19", "0.12", "1.15", "0.85", "24",
-        ),
-        (3, "13.8", "20000", "1", "0.35", "0.05", "1.1", "0.9", "32"),
-    ] {
-        dss.command(&format!("Edit AutoTrans.t1 wdg={w}"));
-        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
-        for (prop, want) in [
-            ("kV", kv),
-            ("kVA", kva),
-            ("Tap", tap),
-            ("%R", pctr),
-            ("RDCOhms", rdc),
-            ("MaxTap", maxt),
-            ("MinTap", mint),
-            ("NumTaps", nt),
-        ] {
-            assert_eq!(
-                query(&mut dss, &format!("AutoTrans.t1.{prop}")),
-                want,
-                "winding {w} {prop}"
-            );
+    let mut active = 0;
+    for &(w, prop, want) in PER_WINDING {
+        if w != active {
+            dss.command(&format!("Edit AutoTrans.t1 wdg={w}"));
+            assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+            active = w;
         }
+        assert_eq!(
+            query(&mut dss, &format!("AutoTrans.t1.{prop}")),
+            want,
+            "winding {w} {prop}"
+        );
     }
-    // The reactance rename (`:2374-2376`) and the short-circuit array (`:2377`).
-    for (prop, want) in [
-        ("XHX", "8.5"),
-        ("XHT", "24.5"),
-        ("XXT", "28.5"),
-        ("XSCArray", "[ 8.5 24.5 28.5]"),
-        // `:2378-2388`.
-        ("Thermal", "2.5"),
-        ("n", "0.9"),
-        ("m", "0.7"),
-        ("FLRise", "63"),
-        ("HSRise", "17"),
-        ("%LoadLoss", "0.4"),
-        ("%NoLoadLoss", "0.11"),
-        ("%IMag", "0.35"),
-        ("NormHkVA", "61000"),
-        ("EmergHkVA", "83000"),
-        ("ppm_Antifloat", "1.5"),
-        // `:2349` — the stored name, lowercased.
-        ("XfmrCode", "c3"),
-    ] {
+    for &(prop, want) in WHOLE_ELEMENT {
         assert_eq!(
             query(&mut dss, &format!("AutoTrans.t1.{prop}")),
             want,
             "{prop}"
+        );
+    }
+}
+
+/// The discrimination guard for the table above: **no** asserted cell may be a
+/// value the auto holds without the copy.
+///
+/// `FetchXfmrCode` starts with `SetNumWindings` (`:2352`), which re-`Init`s
+/// every winding to the class defaults, and then assigns field by field — so a
+/// deleted assignment leaves that field at its default. A cell whose expected
+/// value *is* the default therefore reads correctly either way and pins nothing
+/// (measured: with the pre-audit fixture, deleting
+/// `self.pct_load_loss = code.pct_load_loss()` left `every_copied_field_arrives`
+/// green, because the code's own `%loadloss` was 0.21 + 0.19 = the default 0.4).
+/// This test fails instead, on the cell, the moment the fixture drifts back onto
+/// a default.
+#[test]
+fn no_asserted_cell_can_be_read_off_the_defaults() {
+    let mut dss = Dss::new();
+    for line in [
+        "New Circuit.xcdefaults basekv=138 phases=3 bus1=b1",
+        "New AutoTrans.d1 phases=3 windings=3",
+        "~ wdg=1 bus=b1",
+        "~ wdg=2 bus=b2",
+        "~ wdg=3 bus=b3",
+    ] {
+        dss.command(line);
+        assert!(dss.errors().is_empty(), "`{line}` -> {:?}", dss.errors());
+    }
+
+    let mut active = 0;
+    for &(w, prop, want) in PER_WINDING {
+        if w != active {
+            dss.command(&format!("Edit AutoTrans.d1 wdg={w}"));
+            active = w;
+        }
+        assert_ne!(
+            query(&mut dss, &format!("AutoTrans.d1.{prop}")),
+            want,
+            "winding {w} {prop}: the fixture asks for the AutoTrans default, so \
+             that cell would pass with its copy statement deleted — pick a \
+             non-default value in `CODE_TAIL`/`EXPLICIT_TAIL`"
+        );
+    }
+    for &(prop, want) in WHOLE_ELEMENT {
+        assert_ne!(
+            query(&mut dss, &format!("AutoTrans.d1.{prop}")),
+            want,
+            "{prop}: the fixture asks for the AutoTrans default, so that cell \
+             would pass with its copy statement deleted"
         );
     }
 }

@@ -19,7 +19,7 @@
 ! `exec::tests::autotrans_xfmrcode`).
 !
 ! The code declares BOTH windings `delta`; `FetchXfmrCode` overrides winding 1 to
-! SERIES and winding 2 to WYE (`AutoTrans.pas:2358-2362`). At one phase the
+! SERIES and winding 2 to WYE (`AutoTrans.pas:2356-2361`). At one phase the
 ! winding-1 override is strongly observable — `RecalcElementData` derives the
 ! series winding's `VBase` from `kVseries = kVLL - Winding[2].kVLL`
 ! (`:1122-1130`) instead of `kVLL`, so a missed override moves every Y entry.
