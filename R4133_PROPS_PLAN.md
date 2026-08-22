@@ -212,7 +212,7 @@ sub-step that closes it:
 
 | # | census bin (pairs / cells, full census) | root cause | treatment | lands in |
 |---|---|---|---|---|
-| 1 | boolean rendering, 75 / 297 593 | FPC `Yes`/`No` vs eleven non-empty Delphi spellings (`true/True/false/False/YES/yes/no/NO/n/y/Y` — `False` alone is 76 492 cells); the `''` renders in this bin are echo-defaults, not booleans | `BoolFold` rule; `''` cells go to the echo table (three pairs mix both — §1.2 replay bullet) | RP2.1 / RP2.3 |
+| 1 | boolean rendering, 75 / 297 593 | FPC `Yes`/`No` vs eleven non-empty Delphi spellings (`true/True/false/False/YES/yes/no/NO/n/y/Y` — `False` alone is 76 492 cells); the `''` renders in this bin are echo-defaults, not booleans | `BoolFold` rule; echo cells go to the echo table. **RP0.1 census correction (2026-08-22, STATUS §RP0.1):** nine bin-1 pairs answer with an echo, not three — four genuinely mixed (`recloser.eventlog`, `regcontrol.idle`, `relay.distreverse` with `''`; `relay.reset` with the non-empty parse string `'0.20'`) and five pure-echo with no foldable cell at all (`regcontrol.idleforward`, `regcontrol.idlereverse`, `capcontrol.reset`, `recloser.debugtrace`, `upfccontrol.enabled`), so only 70 pairs take a `BoolFold` row — §1.2 replay bullet | RP2.1 / RP2.3 |
 | 2 | case-only + trailing space, 59 / 72 007 + 2 / 21 206 | THashList lowercasing (port = dss_capi) vs Delphi as-declared case; literal `'wye '`/`'Delta '` (`Transformer.pas:1762-1763`, `AutoTrans.pas:1818-1819`) | `CaseFold` + trim | RP2.1 |
 | 3 | enum spelling + singletons, 8 / 4 400 | per-pair enum spellings (`Positive`/`Pos`) and per-pair semantics (`monitor.mode` decomposition render) | `EnumSynonym` rows + the S6 dossier (S6 = the triage's per-pair singleton list, enumerated exhaustively in RP2.2) | RP2.2 |
 | 4 | array form, 21 / 122 554 | dss_capi `GetDSSArray` `[ 400]` vs Delphi comma/paren/bare forms | `ArrayForm` tokenizing compare | RP2.1 |
@@ -347,14 +347,19 @@ sub-step's own numeric stop-and-report threshold holds.
   → normalization → echo table → display floor). `examples_full.txt` carries
   one row per **distinct (rust, r4133) spelling** per pair, untruncated (the
   pair files' own example columns are cut at ~34 chars and cannot feed a
-  tokenizing or numeric compare; a single example per pair would hide the three
-  in-scope **mixed pairs** — `recloser.eventlog`, `regcontrol.idle`,
-  `relay.distreverse` — whose cells mix foldable boolean spellings with
-  `''`-echo cells). The test asserts every example row is claimed by the
-  **first matching mechanism in the chain**, that each pair's claim set is
-  admissible for its `bins.tsv` bin (bin 1 admits `BoolFold` for foldable
-  spellings **and** an echo row for its `''` cells — a mixed pair legitimately
-  holds both; single-claim is per example row, never per pair), and that every
+  tokenizing or numeric compare; a single example per pair would hide the
+  **mixed pairs** — measured by RP0.1: four bin-1 pairs mix foldable boolean
+  spellings with echo cells (`recloser.eventlog`, `regcontrol.idle`,
+  `relay.distreverse` with `''`; `relay.reset` with the parse string `'0.20'`),
+  and 17 structural pairs overall are bin-heterogeneous, 15 in scope — the
+  vendored `README.md` carries the full table). The test asserts every example
+  row is claimed by the **first matching mechanism in the chain**, and that
+  each example row's claim is admissible for the row's OWN class under the
+  chain — never merely for the pair's `bins.tsv` label, which is the
+  representative-first-cell summary and under-describes the 17 heterogeneous
+  pairs (a bin-1 mixed pair legitimately holds a `BoolFold` row and an echo
+  row; the five pure-echo bin-1 pairs hold only an echo row; single-claim is
+  per example row, never per pair), and that every
   table row claims **at least one** example row (both-ways liveness, offline —
   no oracle needed; shape-allowlist rows are exercised against the full
   `shape.txt`, capi-only classes included — for the shared `PROPS_015X` table
@@ -447,7 +452,9 @@ verbatim), `summary.json`, `structural_pairs.txt` (209 data rows + 1 header),
 sixth, `examples_full.txt` — one row per **distinct (rust, r4133) spelling**
 per pair (≥ 209 + 94 rows; pipe-separated like the pair files:
 `class.prop | rust | r4133 | count` — a pair's cells may collapse to several
-spellings, and the three mixed pairs of §1.2 need every spelling represented),
+spellings, and the mixed pairs of §1.2 need every spelling represented — **as
+executed:** 3 378 rows, and the mixed-pair set measured NINE bin-1 echo pairs,
+four of them mixed, not three; see the §1.2 correction),
 with the **untruncated** rust/r4133 values from the local census (the pair
 files cut examples at ~34 chars; the RP2.1 replay needs whole values); derive
 a seventh, `bins.tsv` — one row per census pair (209 + 94), assigning it to
@@ -493,7 +500,12 @@ there too, `scheduler.rs:448`), which is where the knob hooks. Seeding stays
 blind to r4133 props until RP4.1 (`scheduler.rs:714-717`) — this knob is the
 measurement tool in the meantime. TESTING.md §Environment variables gains the
 row. **Acceptance:** a bounded run (`DSS_GATE_ONLY` on one family) writes
-per-cell rows that byte-match the local full census's rows for that family;
+per-cell rows that byte-match the local full census's rows for that family
+(compared **order-invariantly**, as cell multisets: the census's
+representative-cell artifacts — a pair extract's `example`, a `bins.tsv`
+label — are case-order-dependent on the 17 heterogeneous pairs the vendored
+`README.md` tables, so a moved label there under a different walk order is
+expected, not a regression; what must match is the cell population);
 the vendored extracts (which aggregate across families) are cross-checked
 where a pair's population lies entirely inside the chosen family — pick a
 family where some do, e.g. `modes:windgen` — and the knob asserts nothing (a
@@ -673,7 +685,9 @@ compare fully), and land the §1.2 row-by-row r4133 disposition of
 channel-independent rows stay skipped on both; each row's comment records its
 disposition). Introduce
 `tests/harness/props_norm.rs` with the four rule kinds (§1.2) and the initial
-row set for bins 1/2/4 of §1.1: `BoolFold` (~75 pairs minus the `''` echo rows),
+row set for bins 1/2/4 of §1.1: `BoolFold` (the 70 bin-1 pairs with foldable
+cells — the five pure-echo bin-1 pairs take NO `BoolFold` row and go to RP2.3
+wholesale; RP0.1 census correction, §1.1 bin-1 row),
 `CaseFold` (+trim; the 59 case-only pairs + the 2 trailing-space pairs),
 `ArrayForm` (the 21 array-form pairs — note `sensor.kvs` is out of scope,
 capi-only, and its value delta is real; the in-scope extract governs). Every row
@@ -685,9 +699,11 @@ own proof of completeness for bins 1/2/4 — example rows it cannot claim yet
 (bins 3/5/6/7) are asserted to match the vendored `bins.tsv` assignment (the
 pair sets RP2.2/RP2.3/RP2.4/RP3 own), so the accounting is total from day one
 and later sub-steps only move pairs between mechanisms, never invent them.
-Claim semantics are per example row, first-match-in-chain (§1.2) — the three
-mixed pairs keep their `''` example rows unclaimed here (declared for RP2.3's
-echo rows) while their foldable rows are claimed by `BoolFold`. Extend the RP0.2 census knob with the
+Claim semantics are per example row, first-match-in-chain (§1.2) — the four
+mixed pairs keep their echo example rows unclaimed here (declared for RP2.3's
+echo rows: `''` on three of them, `'0.20'` on `relay.reset`) while their
+foldable rows are claimed by `BoolFold`; the five pure-echo bin-1 pairs'
+example rows are declared for RP2.3 wholesale. Extend the RP0.2 census knob with the
 **disposition mode** (`DSS_PROPS_CENSUS=claims`, spec in RP0.2): the same live
 walk annotated with the policy claim chain — the per-cell accounting tool
 RP4.1's acceptance reads. **Non-vacuity:** a corrupted boolean
@@ -734,11 +750,18 @@ bin 7 (§1.1 table; the census grounding proves each against its r4133 site:
 `RegControl.pas:1452` remoteptratio frozen default (`PropertyValue[27]`; the
 live value re-inits at `:484` while the store stays `'60'`), the `%pmin*`/`lpftau`/
 `risefalllimit`/`pctperm` `InitPropertyValues` defaults), minus whatever RP2.2
-already routed here (RP2.3 runs after RP2.2, §0), plus the `''`-cell echo rows
-of the three mixed bin-1 pairs (`recloser.eventlog`, `regcontrol.idle`,
-`relay.distreverse` — §1.2 replay bullet; the chain order does the per-cell
-discrimination: foldable cells are claimed by `BoolFold` before the echo row
-is consulted, so the echo row masks only the `''` cells). Every row: category tag + r4133 citation + the witness
+already routed here (RP2.3 runs after RP2.2, §0), plus the echo rows of the
+**nine** bin-1 echo pairs (RP0.1 census correction, §1.1 bin-1 row / §1.2
+replay bullet): the four mixed pairs — `recloser.eventlog`, `regcontrol.idle`,
+`relay.distreverse` (`''` echoes) and `relay.reset` (the non-empty stale parse
+string `'0.20'` — an `EchoParse` row, not `EchoDefault`) — where the chain
+order does the per-cell discrimination (foldable cells are claimed by
+`BoolFold` before the echo row is consulted, so the echo row masks only the
+echo cells), and the five pure-echo pairs `regcontrol.idleforward`,
+`regcontrol.idlereverse`, `capcontrol.reset`, `recloser.debugtrace`,
+`upfccontrol.enabled` (no foldable cell at all — the six pairs beyond the
+originally-named three carry 2 125 in-scope echo cells that would otherwise
+reach the RP2.1 liveness assert unclaimed). Every row: category tag + r4133 citation + the witness
 statement — either "capi channel pins the live value on N `both` cases" or, for
 r4133-only coverage, the named expected-value pin test this sub-step adds
 (pattern: `newton_powers_match_the_normal_algorithm`-style pins in the exec

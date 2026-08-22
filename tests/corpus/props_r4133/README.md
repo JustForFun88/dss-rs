@@ -221,12 +221,13 @@ Two consequences, both for consumers of `bins.tsv`:
 
 ### Bin 1 carries nine echo pairs, not three
 
-`R4133_PROPS_PLAN.md` §1.1's bin-1 row, §1.2/§1.4 and its RP2.1/RP2.3 texts
-speak of "the three mixed pairs" (`recloser.eventlog`, `regcontrol.idle`,
-`relay.distreverse`).
+`R4133_PROPS_PLAN.md` §1.1's bin-1 row, §1.2 and its RP2.1/RP2.3 texts as
+authored spoke of "the three mixed pairs" (`recloser.eventlog`,
+`regcontrol.idle`, `relay.distreverse`).
 Measured over the census that count is **wrong and too small**, and this
-directory is the evidence that corrects it (WP-RP0: "a mismatch is a
-stop-and-report"). Of bin 1's 75 pairs, 66 render one of the eleven Delphi
+directory is the evidence that corrected it (WP-RP0: "a mismatch is a
+stop-and-report"; the plan was amended to the nine-pair provisioning in the
+RP0.1 closing docs commit, 2026-08-22). Of bin 1's 75 pairs, 66 render one of the eleven Delphi
 boolean spellings in every cell; **nine** answer with an echo in some or all
 cells — 3 834 echo cells, **3 293 of them in scope**:
 
@@ -253,13 +254,14 @@ So the population splits three ways, and each needs different handling:
   them, so bin 1's 75 pairs overstate the BoolFold population by five;
 * **66 pairs** that are pure boolean rendering.
 
-RP2.3 sizes its echo rows as "the `''`-cell echo rows of the three mixed bin-1
-pairs". Read literally that leaves six pairs without a row — **2 125** in-scope
-echo cells beyond the 1 168 the plan's three carry, and one of the six
-(`relay.reset`) in a different echo category — and the RP2.1 replay's both-ways
-liveness assert would fail on them *after* the tables are drafted. The nine rows above are the correct
-provisioning; the plan text is superseded by this measurement (recorded in
-STATUS.md §"R4133_PROPS WP-RP0", RP0.1).
+RP2.3 as authored sized its echo rows as "the `''`-cell echo rows of the three
+mixed bin-1 pairs". Read literally that would have left six pairs without a row
+— **2 125** in-scope echo cells beyond the 1 168 the original three carry, and
+one of the six (`relay.reset`) in a different echo category — and the RP2.1
+replay's both-ways liveness assert would have failed on them *after* the tables
+were drafted. The nine rows above are the correct provisioning; the plan's
+§1.1/§1.2/RP2.1/RP2.3 texts now carry it (amended in the RP0.1 closing docs
+commit; the report trail is STATUS.md §"R4133_PROPS WP-RP0", RP0.1).
 
 ### Per-bin totals (both the full census and the in-scope re-derivation)
 
