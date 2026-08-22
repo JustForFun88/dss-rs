@@ -1084,7 +1084,7 @@
     },
     {
       "path": "tests/golden/json/schema_divergences.json",
-      "sha256": "3df4a96ef51c004186274010ccb0f8695875976bcef9c902a782f66b9bc38f38",
+      "sha256": "b0d99e878fb74a6524eeeeb6dfb15a1ee14fe2baa4df3e7017176ba313da0f59",
       "anchor": "capi_v0145",
       "produced_by": null
     },
