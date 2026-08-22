@@ -5,6 +5,12 @@
 tests/corpus/electricdss-tst/** -text
 tests/corpus/SHA256SUMS -text
 
+# The vendored G1.1 r4133 property census (R4133_PROPS_PLAN.md RP0.1). Five of
+# its files are byte-identical copies of a local-only, gitignored source and the
+# rest are frozen derivations of a 270 MiB census that is not in the repo, so
+# nothing here may be rewritten on checkout either.
+tests/corpus/props_r4133/** -text
+
 # Binary report goldens (WPG.17 SngSave/DblSave) are raw little-endian IEEE-754
 # streams pinned byte-for-byte. Force binary handling so git never applies EOL
 # normalization or diff/merge munging — some streams contain no NUL byte and

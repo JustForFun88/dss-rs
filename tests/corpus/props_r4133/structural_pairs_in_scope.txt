@@ -1,0 +1,199 @@
+class.prop | rust-example | r4133-example | rows
+autotrans.conn | 'delta' | 'Delta ' | 7
+autotrans.conns | '[series, wye, delta, ]' | '[Series, wye, delta, ]' | 7
+autotrans.sub | 'No' | 'n' | 7
+autotrans.xscarray | '[ 7.23 24.45 28.45]' | '[7.23, 24.45, 28.45, ]' | 7
+capacitor.enabled | 'Yes' | 'true' | 913
+capcontrol.capacitor | 'c1' | 'C1' | 129
+capcontrol.element | 'Line.lt' | 'line.lt' | 346
+capcontrol.enabled | 'Yes' | 'true' | 373
+capcontrol.eventlog | 'Yes' | 'yes' | 373
+capcontrol.reset | 'No' | '' | 373
+capcontrol.type | 'Current' | 'current' | 144
+capcontrol.voltoverride | 'No' | 'NO' | 373
+energymeter.action | '' | 'clear' | 434
+energymeter.element | 'Line.sub' | 'line.sub' | 267
+energymeter.enabled | 'Yes' | 'true' | 434
+energymeter.linelosses | 'No' | 'no' | 24
+energymeter.mask | '[ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1]' | '[1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 ]' | 434
+energymeter.option | '[E, R, C]' | '(E, R, C)' | 434
+energymeter.peakcurrent | '[ 400 400 400]' | '((400, 400, 400))' | 434
+energymeter.phasevoltagereport | 'Yes' | 'yes' | 2
+energymeter.vbaselosses | 'No' | 'no' | 24
+energymeter.xfmrlosses | 'No' | 'no' | 24
+expcontrol.derlist | '[PVSystem.pv]' | '[pv]' | 11
+expcontrol.enabled | 'Yes' | 'true' | 11
+expcontrol.eventlog | 'Yes' | 'yes' | 11
+expcontrol.preferq | 'No' | 'no' | 11
+fault.bus1 | 'b3.1' | 'B3.1' | 18
+fault.bus2 | 'b3.0' | 'B3.0' | 10
+fault.enabled | 'Yes' | 'true' | 388
+fault.temporary | 'No' | 'no' | 388
+fuse.enabled | 'Yes' | 'true' | 106
+fuse.monitoredobj | 'Line.latf' | 'line.latf' | 106
+fuse.switchedobj | 'Line.latf' | 'line.latf' | 106
+generator.bus1 | 'lt' | 'LT' | 8
+generator.conn | 'delta' | 'Delta' | 1
+generator.daily | 'dgdispatch' | 'DGdispatch' | 1
+generator.dispmode | 'Price' | 'price' | 8
+generator.duty | 'solarramp' | 'SolarRamp' | 3
+gicline.enabled | 'Yes' | 'true' | 24
+gicsource.enabled | 'Yes' | 'true' | 4
+gicsource.spectrum | '' | 'default' | 4
+gictransformer.enabled | 'Yes' | 'true' | 21
+indmach012.bus1 | 'bg2' | 'Bg2' | 10
+indmach012.debugtrace | 'No' | 'NO' | 16
+indmach012.duty | 'wind2400' | 'Wind2400' | 10
+indmach012.enabled | 'Yes' | 'true' | 16
+indmach012.pf | '' | '0.909545' | 16
+indmach012.slipoption | 'VariableSlip' | 'variableslip' | 16
+invcontrol.enabled | 'Yes' | 'true' | 147
+invcontrol.eventlog | 'No' | 'NO' | 147
+invcontrol.mode | 'Voltvar' | 'VOLTVAR' | 141
+invcontrol.monbus | '[A.1.2, A.2, C.1.2, C.2]' | 'A.1.2 A.2 C.1.2 C.2' | 7
+invcontrol.monbusesvbase | '[ 13800 7967.433415 480 277.128129]' | '13800 7967.433415 480 277.128129' | 7
+invcontrol.monvoltagecalc | 'avg' | '' | 144
+invcontrol.pvsystemlist | '[PVSystem.pv]' | '' | 147
+invcontrol.rateofchangemode | 'Inactive' | 'INACTIVE' | 147
+invcontrol.voltage_curvex_ref | 'Rated' | 'rated' | 147
+invcontrol.voltwattyaxis | 'PAvailablePU' | 'PAVAILABLEPU' | 9
+invcontrol.vsetpoint | '1' | '' | 147
+invcontrol.vvc_curve1 | 'vv_curve' | 'VV_curve' | 6
+isource.bus1 | 'pcc' | 'PCC' | 1
+isource.bus2 | 'b2.0.0.0' | '' | 135
+isource.enabled | 'Yes' | 'true' | 136
+isource.scantype | 'Positive' | 'pos' | 136
+isource.sequence | 'Positive' | 'pos' | 136
+isource.yearly | 'pv8' | '' | 122
+line.cncables | '[]' | '' | 75162
+line.conductors | '[]' | '' | 75162
+line.enabled | 'Yes' | 'true' | 75162
+line.linecode | '' | '98' | 5
+line.ratings | '[ 400]' | '[400,]' | 75162
+line.switch | 'Yes' | 'True' | 75162
+line.tscables | '[]' | '' | 75162
+line.wires | '[]' | '' | 75162
+load.daily | 'load1' | 'Load1' | 93
+load.enabled | 'Yes' | 'true' | 47544
+load.spectrum | '8pct3rd' | '8Pct3rd' | 48
+load.status | 'Variable' | 'variable' | 47544
+load.yearly | 'day' | '' | 30546
+load.zipv | '[ 0 0 0 0 0 0 0]' | '' | 47544
+monitor.element | 'AutoTrans.t1' | 'autotrans.t1' | 1212
+monitor.enabled | 'Yes' | 'true' | 1212
+monitor.mode | '17' | '1 16 +' | 4
+monitor.ppolar | 'Yes' | 'YES' | 1192
+monitor.residual | 'No' | 'NO' | 1212
+monitor.vipolar | 'Yes' | 'YES' | 1212
+pvsystem.amplimit | '-1' | '' | 262
+pvsystem.amplimitgain | '0.8' | '' | 262
+pvsystem.bus1 | 'pvbus' | 'PVbus' | 99
+pvsystem.daily | 'myirrad' | 'MyIrrad' | 44
+pvsystem.debugtrace | 'No' | 'NO' | 262
+pvsystem.duty | 'myirrad' | 'MyIrrad' | 1
+pvsystem.dynout | '' | '[]' | 262
+pvsystem.effcurve | 'myeff' | 'Myeff' | 87
+pvsystem.enabled | 'Yes' | 'true' | 262
+pvsystem.p-tcurve | 'mypvst' | 'MyPvsT' | 87
+pvsystem.pfpriority | 'No' | 'NO' | 262
+pvsystem.spectrum | 'defaultgen' | 'DefaultGen' | 1
+pvsystem.tdaily | 'mytemp' | 'MyTemp' | 43
+pvsystem.tduty | 'mytemp' | 'MyTemp' | 1
+pvsystem.userdata | '' | '()' | 262
+pvsystem.wattpriority | 'No' | 'NO' | 262
+reactor.bus1 | 'loadbus.1.2.3' | 'LoadBus.1.2.3' | 31
+reactor.bus2 | '' | 'l6m.0.0.0' | 43
+reactor.enabled | 'Yes' | 'true' | 574
+reactor.parallel | 'No' | 'NO' | 574
+recloser.debugtrace | 'No' | '' | 229
+recloser.enabled | 'Yes' | 'true' | 229
+recloser.eventlog | 'No' | '' | 229
+recloser.monitoredobj | 'Line.mid' | 'line.mid' | 229
+recloser.recloseintervals | '[ 0.5 1]' | '(0.5, 1, )' | 229
+recloser.reset | 'No' | 'n' | 229
+recloser.singlephlockout | 'Yes' | 'yes' | 16
+recloser.singlephtrip | 'Yes' | 'yes' | 16
+recloser.switchedobj | 'Line.mid' | 'line.mid' | 229
+regcontrol.debugtrace | 'No' | 'no' | 733
+regcontrol.enabled | 'Yes' | 'true' | 733
+regcontrol.eventlog | 'Yes' | 'yes' | 733
+regcontrol.idle | 'No' | '' | 733
+regcontrol.idleforward | 'No' | '' | 733
+regcontrol.idlereverse | 'No' | '' | 733
+regcontrol.inversetime | 'No' | 'no' | 733
+regcontrol.reset | 'No' | 'NO' | 733
+regcontrol.reversible | 'No' | 'no' | 733
+regcontrol.revneutral | 'Yes' | 'yes' | 3
+regcontrol.transformer | 'reg1a' | 'Reg1a' | 308
+relay.action | '' | 'closed' | 269
+relay.debugtrace | 'No' | 'no' | 72
+relay.distreverse | 'No' | '' | 269
+relay.doc_p1blocking | 'Yes' | 'True' | 269
+relay.enabled | 'Yes' | 'true' | 269
+relay.eventlog | 'Yes' | 'yes' | 269
+relay.monitoredobj | 'Line.sub' | 'line.sub' | 269
+relay.recloseintervals | '[NONE]' | 'NONE' | 269
+relay.reset | 'No' | 'n' | 269
+relay.switchedobj | 'Line.sub' | 'line.sub' | 269
+relay.type | 'Current' | 'current' | 209
+storage.amplimit | '-1' | '' | 377
+storage.amplimitgain | '0.8' | '' | 377
+storage.bus1 | 'lvbus.1.2' | 'LVBus.1.2' | 11
+storage.daily | 'dispatchfollow' | 'dispatchFollow' | 4
+storage.debugtrace | 'No' | 'NO' | 383
+storage.dispmode | 'Default' | 'default' | 113
+storage.dynadata | '' | '()' | 383
+storage.dynadll | 'C:\Users\prdu001\OpenDSS\Source\DESS1\Dess1.DLL' | '' | 2
+storage.effcurve | 'eff' | 'Eff' | 64
+storage.enabled | 'Yes' | 'true' | 383
+storage.pfpriority | 'No' | 'NO' | 383
+storage.state | 'Discharging' | 'DISCHARGING' | 383
+storage.userdata | '' | '()' | 383
+storage.wattpriority | 'No' | 'NO' | 383
+storagecontroller.daily | 'sc_loadshape' | 'SC_loadshape' | 1
+storagecontroller.element | 'Line.feed' | 'line.feed' | 156
+storagecontroller.enabled | 'Yes' | 'true' | 189
+storagecontroller.kwactual | '' | '800' | 189
+storagecontroller.kwhactual | '' | '1211.1135' | 189
+storagecontroller.kwhtotal | '' | '3000' | 189
+storagecontroller.kwtotal | '' | '800' | 189
+storagecontroller.modecharge | 'I-PeakshaveLow' | 'I-PeakShaveLow' | 1
+storagecontroller.modedischarge | 'Schedule' | 'UNKNOWN' | 1
+storagecontroller.monphase | 'max' | 'MAX' | 188
+storagecontroller.seasontargets | '[ 8000]' | '' | 189
+storagecontroller.seasontargetslow | '[ 4000]' | '' | 189
+swtcontrol.action | 'open' | 'o' | 16
+swtcontrol.enabled | 'Yes' | 'true' | 40
+swtcontrol.normal | 'closed' | '[closed, closed, closed, ]' | 40
+swtcontrol.reset | 'No' | 'n' | 40
+swtcontrol.state | 'open' | '[open, open, open, ]' | 40
+swtcontrol.switchedobj | 'Line.tie' | 'line.tie' | 40
+transformer.bhcurrent | '' | '[]' | 20714
+transformer.bhflux | '' | '[]' | 20714
+transformer.conn | 'wye' | 'wye ' | 20714
+transformer.enabled | 'Yes' | 'true' | 20714
+transformer.ratings | '[ 1100]' | '[1100,]' | 20714
+transformer.sub | 'No' | 'n' | 20714
+transformer.xfmrcode | 'regleg' | 'RegLeg' | 15314
+transformer.xrconst | 'No' | 'NO' | 20714
+transformer.xscarray | '[ 1]' | '[1, ]' | 20714
+upfc.climit | '265' | '' | 13
+upfc.enabled | 'Yes' | 'true' | 13
+upfc.kvarlimit | '5' | '' | 6
+upfc.losscurve | 'losses' | 'Losses' | 1
+upfc.refkv2 | '0' | '' | 11
+upfc.vhlimit | '300' | '' | 13
+upfc.vllimit | '125' | '' | 13
+upfccontrol.basefreq | '60' | '' | 13
+upfccontrol.enabled | 'Yes' | '' | 13
+vccs.bp1 | '' | 'NONE' | 3
+vccs.bp2 | '' | 'NONE' | 3
+vccs.bus1 | 'bg' | 'Bg' | 6
+vccs.enabled | 'Yes' | 'true' | 15
+vccs.rmsmode | 'No' | 'no' | 15
+vsource.daily | 'vshape' | 'Vshape' | 2
+vsource.enabled | 'Yes' | 'true' | 1697
+vsource.model | 'Ideal' | 'ideal' | 3
+vsource.scantype | 'Positive' | 'Pos' | 1697
+vsource.sequence | 'Positive' | 'Pos' | 1697
+vsource.yearly | 'vshape' | '' | 2
