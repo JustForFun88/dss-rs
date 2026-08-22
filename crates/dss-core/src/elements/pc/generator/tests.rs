@@ -346,13 +346,16 @@ fn makeposseq_generator_mva_guard_reads_its_own_slot() {
     assert_eq!(plan.actions, expect);
 }
 
-/// `maxkvar=`/`minkvar=` set (slots 19/20 — the CORRECT indices): `had_kvars`
-/// fires, emitting minkvar then maxkvar ÷ phases (120→40, -60→-20).
+/// `maxkvar=`/`minkvar=` set (**upstream** slots 19/20 — the CORRECT indices;
+/// every raw slot number in this file is r4133 `CmdMapIndex` space, the space
+/// old-OpenDSS keys `PropertyValue`/`PrpSequence` by, not a port ordinal — the
+/// port's `MAXKVAR`/`MINKVAR` are 21/22 since RP1.1 inserted `Rneut`/`Xneut`):
+/// `had_kvars` fires, emitting minkvar then maxkvar ÷ phases (120→40, -60→-20).
 #[test]
 fn makeposseq_generator_kvars_divided() {
     let mut g = gen_3ph();
-    g.cd.obj.set_as_next_seq(prop::MAXKVAR); // slot 19
-    g.cd.obj.set_as_next_seq(prop::MINKVAR); // slot 20
+    g.cd.obj.set_as_next_seq(prop::MAXKVAR); // upstream slot 19
+    g.cd.obj.set_as_next_seq(prop::MINKVAR); // upstream slot 20
     let plan = g.make_pos_sequence(&PosSeqCtx::default());
     let v = 12.47 / 3.0_f64.sqrt();
     let mut expect = common_head(v);
@@ -368,7 +371,7 @@ fn makeposseq_generator_kvars_divided() {
 #[test]
 fn makeposseq_generator_xdp_does_not_touch_the_kva_rating() {
     let mut g = gen_3ph();
-    g.cd.obj.set_as_next_seq(prop::XDP); // dss_capi's stale had_kVA index
+    g.cd.obj.set_as_next_seq(prop::XDP); // dss_capi's stale had_kVA index (upstream space)
     let plan = g.make_pos_sequence(&PosSeqCtx::default());
     assert!(
         !plan

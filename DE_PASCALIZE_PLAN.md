@@ -1368,8 +1368,10 @@ test.* See §Verification for the full wording and the tests that enforce it.
    or quietly lost: `the_hide_flag_escape_population_is_pinned_by_surface` (the 13 artifacts
    and their surface classification) and
    `exec::tests::compat_quirks::hide_015x_carrier_set_is_the_measured_escape` (the 5
-   carriers, plus the sibling flag's carrier-free state that makes the measurement isolate
-   this row). Disposition text: `docs/upgrade/DIVERGENCES.md` §"Line/LineGeometry Conductors";
+   carriers, plus the sibling flag's carrier set — carrier-free until R4133_PROPS RP1.1,
+   which re-armed it with the three Generator/Sensor upstream stubs, so the isolation the
+   measurement needs is now asserted as **class-disjointness** of the two carrier sets:
+   no r4133 carrier touches Line or LineGeometry). Disposition text: `docs/upgrade/DIVERGENCES.md` §"Line/LineGeometry Conductors";
    tracked in `ORPHANED_GAPS.md` §2 and `PLAN_SEQUENCE.md` (UPGRADE's open tail).
 2. **The 4 `WholeCase` markers** — each one's clean fix moves node voltages, so the default
    lane would have to drop a *whole gated case* from oracle comparison rather than a field.

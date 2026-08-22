@@ -45,8 +45,12 @@ impl ClassProps {
         // soft `DoSimpleMsg` (Generator `Rneut`/`Xneut`, `generator.pas:651-652`).
         // No field is written, nothing is recalculated, and the write is never a
         // parse error — the string round-trips through the class's own
-        // `set_string`/`get_string`. Placed ahead of the `ptype` match so the
-        // stub's declared type only governs how the value is *rendered*.
+        // `set_string`/`get_string`. That round-trip is what constrains the row's
+        // declared type: `get_value` dispatches on `ptype`, so only a
+        // [`PropType::String`] stub reads the stored string back (any other
+        // `ptype` would render a live field that nothing ever wrote, and the
+        // class's `set_string` arm would be missing entirely). `ClassProps::new`
+        // `debug_assert`s that invariant for every carrier.
         if pd.flags.contains(PropFlags::UPSTREAM_STUB) {
             obj.set_string(idx, value.to_string());
             if let Some(m) = pd.stub_message {

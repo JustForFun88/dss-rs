@@ -271,30 +271,30 @@
       "kind": "port_hidden_property",
       "prop_key": "Rneut",
       "index": 16,
-      "order": 16,
+      "order": 17,
       "count": 0,
       "props": ["Rneut"],
-      "cause": "OpenDSS r4133 (R4133_PROPS_PLAN RP1.1) still registers Generator Rneut/Xneut immediately after conn (Version8/Source/PCElements/generator.pas:441-442, help 'Removed due to causing confusion - Add neutral impedance externally'), so its table is 50 names long; dss_capi 0.14.5 deleted them outright. The port carries them as UPSTREAM_STUB + HIDE_R4133 rows (elements/pc/generator/mod.rs): the write stores the string and logs 5611/5612, nothing else. They render no schema block but occupy $dssPropertyIndex/$dssPropertyOrder 16-17 (HIDE_R4133 keeps them in AltPropertyOrder, like the Line 0.15.x rows), shifting Status..Enabled down by two vs the 0.14.5 oracle."
+      "cause": "OpenDSS r4133 (R4133_PROPS_PLAN RP1.1) still registers Generator Rneut/Xneut immediately after conn (Version8/Source/PCElements/generator.pas:441-442, help 'Removed due to causing confusion - Add neutral impedance externally'), so its table is 50 names long; dss_capi 0.14.5 deleted them outright. The port carries them as UPSTREAM_STUB + HIDE_R4133 rows (elements/pc/generator/mod.rs): the write stores the string and logs 5611/5612, nothing else. They render no schema block but occupy $dssPropertyIndex 16-17 and $dssPropertyOrder 17-18 (HIDE_R4133 keeps them in AltPropertyOrder, like the Line 0.15.x rows; on Generator the order rank runs one above the index because Like is hoisted to order 1 - Conn is 15/16, Status 18/19), shifting Status..Enabled down by two vs the 0.14.5 oracle. Both fields are this property's OWN ordinal ranks, the convention the four Line rows use (EpsRMedium 31/27): the renumbering shifts a following prop by the count of removed ranks STRICTLY BELOW it, so a rank that is off by one is absorbed whenever the slot below is occupied and the byte gate cannot see the error."
     },
     {
       "class": "Generator",
       "kind": "port_hidden_property",
       "prop_key": "Xneut",
       "index": 17,
-      "order": 17,
+      "order": 18,
       "count": 0,
       "props": ["Xneut"],
-      "cause": "OpenDSS r4133 Generator Xneut (see the Rneut entry): UPSTREAM_STUB + HIDE_R4133 port row at $dssPropertyIndex/$dssPropertyOrder 17, absent from the pinned 0.14.5 oracle."
+      "cause": "OpenDSS r4133 Generator Xneut (see the Rneut entry): UPSTREAM_STUB + HIDE_R4133 port row at $dssPropertyIndex 17 / $dssPropertyOrder 18, absent from the pinned 0.14.5 oracle."
     },
     {
       "class": "Sensor",
       "kind": "port_hidden_property",
       "prop_key": "Action",
       "index": 13,
-      "order": 12,
+      "order": 13,
       "count": 0,
       "props": ["Action"],
-      "cause": "OpenDSS r4133 (R4133_PROPS_PLAN RP1.1) still registers Sensor Action as its 13th and last own property (Version8/Source/Meters/Sensor.pas:183, help opening 'NOT IMPLEMENTED.'), so its table is 16 names long; dss_capi 0.14.5 commented it out (.inputs/dss_capi/src/Meters/Sensor.pas:39,55 'action = 13 // unused'). The port carries it as an UPSTREAM_STUB + HIDE_R4133 row (elements/meter/sensor/mod.rs): the write stores the string silently (Set_Action is an empty body, Sensor.pas:850-854). It renders no schema block but occupies $dssPropertyIndex 13 / $dssPropertyOrder 12 (the order rank is one lower because the BooleanAction prop Clear is hoisted to the end of AltPropertyOrder), shifting BaseFreq/Enabled down by one vs the 0.14.5 oracle."
+      "cause": "OpenDSS r4133 (R4133_PROPS_PLAN RP1.1) still registers Sensor Action as its 13th and last own property (Version8/Source/Meters/Sensor.pas:183, help opening 'NOT IMPLEMENTED.'), so its table is 16 names long; dss_capi 0.14.5 commented it out (.inputs/dss_capi/src/Meters/Sensor.pas:39,55 'action = 13 // unused'). The port carries it as an UPSTREAM_STUB + HIDE_R4133 row (elements/meter/sensor/mod.rs): the write stores the string silently (Set_Action is an empty body, Sensor.pas:850-854). It renders no schema block but occupies $dssPropertyIndex 13 / $dssPropertyOrder 13 (on Sensor the two hoists cancel - Like to order 1, the BooleanAction Clear to the end - so a prop's order rank equals its index: Weight is 12/12, BaseFreq 14/14), shifting BaseFreq/Enabled down by one vs the 0.14.5 oracle."
     },
     {
       "class": "Fuse",

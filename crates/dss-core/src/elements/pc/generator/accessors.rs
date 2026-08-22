@@ -452,7 +452,8 @@ impl Generator {
         self.shaft_model = other.shaft_model.clone();
         self.spectrum = other.spectrum.clone();
         // Pascal copies the donor's whole `FPropertyValue` array
-        // (`generator.pas:828`), which is where the two upstream stubs live — so
+        // (`generator.pas:830-831`, right after the `ClassMakeLike` at `:828`),
+        // which is where the two upstream stubs live — so
         // `like=` carries their strings across even though nothing consumes them.
         self.rneut_text = other.rneut_text.clone();
         self.xneut_text = other.xneut_text.clone();

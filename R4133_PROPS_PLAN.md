@@ -215,6 +215,24 @@ transformers were dropped whole-element (+2 cells on 7 structural + 4 numeric
 **210 pairs / 961 031 cells**; the vendored extracts stay frozen at 209 —
 corrections ride as notes on the affected rows below and in the vendored
 `README.md` §"Corrections measured after freezing".
+**WP-RP1 shape-closure correction (structural, not an error in the evidence):**
+while a class carried a `shape_count` row its property walk stopped at the
+name-list disagreement, so the 2026-08-08 census could not record value pairs
+for the props behind it. Every RP1 sub-step therefore **creates** pairs no
+frozen row can contain, and must re-measure with the RP0.2 knob and record its
+own new pairs in the vendored `README.md` §"Pairs the WP-RP1 shape closures make
+live" (RP2.1 provisions `examples_supplement.txt` from those records; RP2.2's
+"closed pair list" is `bins.tsv` **plus** that section). As executed for
+**RP1.1** (2026-08-22, full re-run, 438 cases): structural 218, numeric 98
+(against the frozen 209 / 94, or the knob's pre-RP1.1 210 / 94), shape classes
+5 → 3 — **12 new pairs**, eleven of them in bins 1/2/5/6 which the existing
+machinery covers, plus `generator.d` (`'1'` vs `'0'`, rel 1.00e+00) in **bin 7**:
+the in-scope bin-7 population grows 16 → 17 and this section's enumerated
+four-root-cause list is no longer closed. Its cause is already read off the
+Pascal and is an **echo**, not a jump
+(`Create` sets `GenVars.D := 1.0` and never `Dpu`, `generator.pas:955-971`;
+`InitPropertyValues` echoes `Format('%-g', [GenVars.Dpu])`, `:2585`), so it is
+RP2.2 triage → an RP2.3 echo row, not an RP3 root-cause sub-step.
 The full-census bins below are re-derived in-scope by RP0.1 (its `bins.tsv`
 assigns every pair to its bin); the treatment map binds every bin to the
 sub-step that closes it:
@@ -353,8 +371,12 @@ sub-step's own numeric stop-and-report threshold holds.
   `crates/dss-core/tests/props_r4133_replay.rs`) — reads the vendored census
   extracts (RP0.1) and pushes every **example row** of `examples_full.txt` —
   plus the RP2.1-vendored `examples_supplement.txt` (the two
-  `regcontrol.fwdthreshold` spellings the 2026-08-08 census missed; RP0.2
-  correction) —
+  `regcontrol.fwdthreshold` spellings the 2026-08-08 census missed, RP0.2
+  correction, **and every pair the WP-RP1 shape closures made live** — the
+  spellings recorded per sub-step in the vendored `README.md` §"Pairs the WP-RP1
+  shape closures make live", eleven pairs from RP1.1 with autotrans/windgen to
+  follow; without them the replay would report full offline coverage over a
+  population that excludes the very classes RP1 opened) —
   through the full r4133 policy in the documented chain order (shape allowlist
   → normalization → echo table → display floor). `examples_full.txt` carries
   one row per **distinct (rust, r4133) spelling** per pair, untruncated (the
@@ -541,7 +563,12 @@ commit) and regenerates `population.lock.json` when a manifest key moves.
 **zero** `shape_count` rows on r4133-gating cases (in-scope 149 → 0; the full
 census closes 429 → 0 modulo the RP1.4 allowlist row, Sensor's 61 and
 GenDispatcher's 48 rows sitting on capi-only cases), and the capi channel's
-property compare is bit-for-bit unchanged (A/B run on one family).
+property compare is bit-for-bit unchanged (A/B run on one family). **Per
+sub-step, one more obligation** (§1.1 "WP-RP1 shape-closure correction", opened
+by RP1.1's audit round): re-run the knob over the **full** population and record
+the value pairs the closure made live — pair, both spellings, cells, bin — in
+the vendored `README.md` §"Pairs the WP-RP1 shape closures make live", so RP2.1's
+supplement and RP2.2's pair list stay complete.
 
 ### RP1.1 — Generator `Rneut`/`Xneut` + Sensor `action` upstream-stub rows
 

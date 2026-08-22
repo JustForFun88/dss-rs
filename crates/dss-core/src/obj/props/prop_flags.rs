@@ -250,12 +250,15 @@ impl PropFlags {
     /// escape is Stage F's accepted exit for this flag, not a deferral inside it.
     ///
     /// Finally, the criterion as written is unreachable while the mechanism
-    /// survives — proven by the sibling: [`HIDE_R4133`] has **zero** carriers
-    /// today and still leaves 7 `rg` matches, because a flag's definition, its
-    /// arm in `hidden_from_full_enum` and the comments naming it are not uses.
-    /// Retiring this flag's *carriers* leaves the same residue, so the successor
-    /// should restate the criterion as "zero carriers" — the form the pin above
-    /// checks — or delete both flags together.
+    /// survives — proven by the sibling: between WP-U2.5 and R4133_PROPS RP1.1
+    /// [`HIDE_R4133`] had **zero** carriers and still left 7 `rg` matches,
+    /// because a flag's definition, its arm in `hidden_from_full_enum` and the
+    /// comments naming it are not uses. (RP1.1 re-armed it with three carriers,
+    /// so that era is history and its residue has grown with the prose; the
+    /// measurement stands as taken.) Retiring this flag's *carriers* leaves the
+    /// same residue, so the successor should restate the criterion as "zero
+    /// carriers" — the form the pin above checks — or delete both flags
+    /// together.
     pub const HIDE_015X: Self = Self(1 << 48);
     /// **EPRI r4133 `GetTccCurve('none')` semantics** (WP-U2.1, delta D1/E3). On a
     /// single `DSSObjectReferenceProperty` (a TCC_Curve ref), a value of literal
@@ -294,6 +297,28 @@ impl PropFlags {
     /// by `exec::tests::compat_quirks::hide_015x_carrier_set_is_the_measured_escape`.
     /// The `PROPS_015X` allowlist rows that hide such props from the 0.14.5
     /// property-table walk are name-based, independent of this flag.
+    ///
+    /// **`Save` is deliberately not one of the hidden surfaces.** It serializes
+    /// only the properties a deck explicitly set (Pascal `TDSSObject.SaveWrite`
+    /// over `PrpSequence`, `General/DSSObject.pas:131-165`), and that Pascal has
+    /// no flag filter — r4133 writes `Rneut=` back for a deck that set it, so the
+    /// port does too. Pinned by
+    /// `exec::tests::upstream_stubs::save_writes_the_stub_names_like_r4133`.
+    ///
+    /// **The escape this creates has an owner** (the [`HIDE_015X`] precedent):
+    /// un-hiding the three rows moves exactly **4** committed artifacts —
+    /// `json/der_usermodel_assigned.json`, `json/der_usermodel_full.json`,
+    /// `json/dyneq_full.json` (Generator objects), `reports/dump3_commands.txt`
+    /// (+6 rows: the two `[Generator]` props and the one `[Sensor]` prop) — plus
+    /// `json/schema_full_port.json` and the deletion of the three
+    /// `port_hidden_property` rows, and **no corpus case** (measured 2026-08-22
+    /// by disabling this flag's arm below and running `cargo test -p dss-core
+    /// --no-fail-fast`: the live corpus gate stayed green). It unblocks when
+    /// those surfaces stop being 0.14.5-pinned — GOLDEN_REBASE G3.3c (`dump*` +
+    /// `dump3*` self-snapshot) and G3.4 (`json/`), which is where the row is
+    /// tracked in `ORPHANED_GAPS.md` §2. The schema half is separate and stays:
+    /// `json/schema_full_oracle.json` + `schema_divergences.json` are frozen by
+    /// GOLDEN_REBASE §1.2 even after G3.4.
     pub const HIDE_R4133: Self = Self(1 << 50);
 
     /// Pascal `TPropertyFlag.Ordering_First` (`DSSClass.pas:216`): this property
@@ -414,6 +439,12 @@ impl PropFlags {
     /// carries one. It is **never** a parse error, which is exactly why
     /// [`Self::NOT_PORTED`] does not fit (that one hard-errors the write and
     /// hides the row from JSON) — the value must round-trip.
+    ///
+    /// **Every carrier must be a [`PropType::String`](super::PropType) row**, and
+    /// `ClassProps::new` `debug_assert`s it: the write stores a string while
+    /// `get_value` renders by `ptype`, so any other type would echo a live field
+    /// the write never touched (or hit the class's `get_f64` `unreachable!`).
+    /// The flag is reusable on any class, not on any type.
     ///
     /// Carriers (R4133_PROPS_PLAN RP1.1, pinned by
     /// `exec::tests::compat_quirks::upstream_stub_rows_are_the_measured_set`):

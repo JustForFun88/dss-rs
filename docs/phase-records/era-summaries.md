@@ -1348,6 +1348,8 @@ relay help-catalog/dump surface. Oracle = oddie:r4133.
 - `PropFlags::HIDE_R4133` doc now records it has NO live application site after U2.5
   (retained as infrastructure like `HIDE_015X`); the stale harness comment that
   cited the flag for the name-based `PROPS_015X` SwtControl row is corrected.
+  (As of R4133_PROPS RP1.1, 2026-08-22, the flag is armed again — Generator
+  `Rneut`/`Xneut` and Sensor `Action` — so this bullet is an as-of-U2.5 record.)
 - dump3 `[Relay]/[Fuse]/[SwtControl]` self-referential circular-derivation +
   save-roundtrip self-consistency are already documented at their sites (no code
   change) — surfaced as sanctioned by UPGRADE_PLAN §1.3-2 / WP8.5.
