@@ -2809,6 +2809,12 @@ fn operational_docs(root: &Path) -> Vec<PathBuf> {
         "TESTING.md",
         "tests/TOLERANCE_NOTES.md",
         "tests/corpus/ledger.json",
+        // Ours, and inside the subtree whose walk filter (below) exists to keep
+        // upstream's vendored `.md`/`.py` out: the r4133 property-census
+        // evidence README (R4133_PROPS_PLAN.md RP0.1). Named individually
+        // because the filter's reasoning — "not this project's documentation" —
+        // is exactly false for it.
+        "tests/corpus/props_r4133/README.md",
     ];
     let mut out: Vec<PathBuf> = Vec::new();
     for rel in fixed {
@@ -2826,7 +2832,9 @@ fn operational_docs(root: &Path) -> Vec<PathBuf> {
     // checkout, 33 files of upstream's own `.py`/`.md`; those are not this
     // project's documentation, they make no claim about our tree, and gating on
     // them would fail the suite on a routine re-vendor. Only the manifests we
-    // write are in scope there. Under `tools/` the reverse holds: the `.py`
+    // write are in scope there — plus the `props_r4133/README.md` named above,
+    // which the extension filter would otherwise drop although it is ours.
+    // Under `tools/` the reverse holds: the `.py`
     // generators and their `README`s are ours and are exactly where a capture's
     // meaning is explained.
     //

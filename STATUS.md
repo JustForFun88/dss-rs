@@ -72,8 +72,10 @@ decision): the dedicated plan is authored — `R4133_PROPS_PLAN.md`** (WP-RP0–
 adversarially verified against the repo + census, all findings settled
 in-text; hardened same day by a second round — two independent re-verifiers, a
 commit-integration audit and an executor-followability audit: 2 majors fixed
-in-plan — the replay contract went per-(rust,r4133)-spelling because three
-in-scope pairs mix BoolFold cells with `''`-echo cells, and RP2.1 gained the
+in-plan — the replay contract went per-(rust,r4133)-spelling because bin-1
+pairs mix BoolFold cells with echo cells (that round named three; the RP0.1
+evidence measures **nine** echo-carrying bin-1 pairs, four of them mixed — see
+the RP0.1 record below), and RP2.1 gained the
 row-by-row r4133 disposition of the channel-blind `SKIP_PROPS`/`LANE_SKIP_PROPS`
 — plus a `bins.tsv` RP0.1 artifact, the harness-local channel type note
 (`EngineChannel` is `pub(crate)` to corpus_gate), NCIM/probe/fixture pointers,
@@ -1041,11 +1043,12 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   `tests/corpus/props_r4133/`. Five byte-identical copies of the local-only
   `investigations/g1_1_r4133_props/` extracts (24 944 bytes: `triage.md` 146
   lines, `summary.json`, `structural_pairs.txt` 209 + 1, `numeric_pairs.txt`
-  94 + 1, `shape.txt` 5) plus four derivations of the 270 MiB local census:
+  94 + 1, `shape.txt` 5) plus five derivations of the 270 MiB local census:
   `examples_full.txt` (3 378 rows — every distinct `(rust, r4133)` spelling per
   pair, untruncated; counts sum to all 1 055 446 value cells),
   `bins.tsv` (303 rows, one §1.1 bin each),
-  `structural_pairs_in_scope.txt` (198) and `numeric_pairs_in_scope.txt` (53),
+  `structural_pairs_in_scope.txt` (198), `numeric_pairs_in_scope.txt` (53) and
+  `shape_in_scope.txt` (5 classes, `rows` / `rows_in_scope`),
   and a `README.md` carrying the provenance, the parse rule, the bin rule, the
   in-scope filter and the data traps. **Every derived count matches plan §1.1
   and §1 above**: bins 75 / 61 (59 case + 2 trailing space) / 8 / 21 / 44 / 61 /
@@ -1066,8 +1069,94 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   One wiring edit outside the data: `.gitattributes` gains
   `tests/corpus/props_r4133/** -text` (the repo runs `core.autocrlf=true`, and
   an evidence directory whose whole claim is byte-faithfulness must not be
-  EOL-rewritten on checkout). No manifest, ledger, lock, golden or Rust source
+  EOL-rewritten on checkout). No manifest, ledger, golden or engine source
   moved. Gate: all five commands green.
+
+  **Audit settlement (same day, two fresh auditors → fix agent; 9 findings, all
+  settled, none dropped).** Every claim was re-measured against the local census
+  (a streaming pass over all 1 055 880 rows joined to the four manifests), and
+  every count below is now re-derivable from the vendored files alone and locked
+  by a test.
+
+  - **Two majors, both real, both fixed.** (1) *`bins.tsv`'s one bin per pair
+    hides intra-pair mixing.* Classifying every cell instead of the pair's
+    representative one puts 6 719 cells (0.70 % of the structural population,
+    6 591 in scope) in a bin other than their pair's, over **17** structural
+    pairs — **15** in scope, not just the three the plan discusses: e.g.
+    `load.yearly` (bin 5, 5 995 case-only cells), `relay.switchedobj` (bin 2,
+    102 in-scope `''` echoes), `line.wires`/`load.zipv`/`storage.dynadata`/
+    `storagecontroller.seasontargets(low)` (bin 5, array-form cells),
+    `capcontrol.type`/`invcontrol.voltage_curvex_ref`/`reactor.bus2` (enum cells
+    in a case/empty pair). No data is lost — `examples_full.txt`'s per-pair
+    multiset equals the census exactly — so this was a summarisation gap; the
+    README now carries the full table plus the two consequences: RP2.1's
+    admissible-claim assert must be **per example row**, never "the set the
+    pair's bin allows", and the label is **order-dependent**, so RP0.2's
+    acceptance compares order-invariant cell populations (`cells`,
+    `cells_in_scope`, the `examples_full.txt` multiset), not the bin letter, on
+    these 17 pairs. (2) *the "three mixed pairs" count is refuted by the
+    evidence.* Of bin 1's 75 pairs, **nine** answer with an echo instead of a
+    boolean — 3 834 echo cells, **3 293 in scope**: four genuinely mixed
+    (`relay.reset` 226 foldable / 44 `0.20`, `relay.distreverse` 32 / 238 `''`,
+    `recloser.eventlog` 30 / 200 `''`, `regcontrol.idle` 1 / 887 `''`) and five
+    with **no** foldable cell at all (`regcontrol.idleforward` 888,
+    `regcontrol.idlereverse` 888, `capcontrol.reset` 446, `recloser.debugtrace`
+    230, `upfccontrol.enabled` 13). `relay.reset`'s echo is a stale parse string,
+    so it is an `EchoParse` row, not the `EchoDefault` shape the other three
+    take; and bin 1 overstates the BoolFold population by the five pure-echo
+    pairs. RP2.3 must therefore provision **nine** echo rows, not three — the
+    six unnamed pairs carry 2 125 in-scope echo cells (the plan's three carry
+    1 168) that would otherwise reach the RP2.1 liveness assert unclaimed.
+  - **Minors fixed in the evidence.** The README's EOL sentence was false
+    for `triage.md` (LF in the source too — byte-identity itself held, verified
+    by SHA-256 on all five copies); the in-scope filter now records that 4 of
+    its 462 cases (`shape_binfiles`, `IEEE13_LineAndCableSpacing`,
+    `IEEE13_LineSpacing`, `line_spacing_asym`) carry a channel-scoped
+    `kind: "skip"` on r4133 in `ledger.json`, so the r4133 compare never reaches
+    them — zero cells today, recorded as a definition; the in-scope shape split
+    (149 = generator 137 + autotrans 7 + windgen 5), which WP-RP1's acceptance
+    is measured against, is vendored as `shape_in_scope.txt` instead of living
+    only in the gitignored census; and `tests/corpus/README.md` gained the
+    directory in its inventory.
+  - **Minors fixed by wiring.** The evidence had no lock at all:
+    `crates/dss-core/tests/props_r4133_evidence_lock.rs` (8 tests, both lanes,
+    no oracle) now pins SHA-256 + length over the five verbatim copies (24 944
+    bytes total) and the `-text` stanza that keeps them raw, the row counts of
+    every derived file, the cross-file equalities (`bins.tsv` ↔ pair files ↔
+    `examples_full.txt` ↔ in-scope files ↔ `shape_in_scope.txt`, including the
+    per-pair cell sums and the 1 055 446 total), the §1.1 per-bin totals with
+    the in-scope 198 and the re-derived numeric 37/16, and — re-derived from the
+    vendored rows — the two corrected traps above (the 17-pair heterogeneity
+    table and the nine bin-1 echo pairs), so the corrections are machine-checked
+    rather than prose. Non-vacuity probed: deleting one `examples_full.txt` row
+    fails 3 of the 8, flipping one byte of `triage.md` fails the digest.
+    `golden_lock.rs::EXCLUDED_TREES` gains the tree with its reason (it is
+    outside the §1.2 enumeration deliberately: frozen evidence, no anchor
+    describes it, and it is locked by the file above), and
+    `oracle_parity_cfg_gate.rs::operational_docs` now names
+    `tests/corpus/props_r4133/README.md` individually — the `tests/corpus` walk
+    filter drops non-manifest files because upstream's vendored docs are not
+    ours, which is exactly false for this one. `TESTING.md` gains the lock's
+    section next to the golden/population locks, and `golden.lock.json`'s
+    comment was regenerated (`DSS_UPDATE_GOLDEN_LOCK=1`) for the new exclusion —
+    comment line only, **no digest moved**.
+  - **Roll call (each finding → where it landed).** audit-code: intra-pair bin
+    mixing → major (1); `triage.md` EOL → evidence; `relay.reset` as a fourth
+    mixed pair → major (2); ledger `kind: skip` cases inside the filter →
+    evidence. audit-tests: the refuted mixed-pair count → major (2); no lock on
+    the evidence → wiring; representative-cell / order-dependent bin → major
+    (1); in-scope shape not vendored → evidence; `tests/corpus/README.md`
+    inventory + the doc-gate filter → wiring.
+  - **Nothing refuted, nothing deferred silently.** The one item that cannot be
+    fixed inside RP0.1's scope is the **plan text**: `R4133_PROPS_PLAN.md`
+    §1.1's bin-1 table row (:215), §1.2:351-353, §1.4:450, RP2.1:689 and
+    RP2.3:738-740 still say "three mixed pairs", and RP2.1's admissibility
+    sentence (:355-357) still reads as per-pair-bin. WP-RP0's rule is
+    stop-and-report on a mismatch between the vendored evidence and the plan:
+    this **is** that report — the evidence is authoritative, and those five
+    plan sites must be corrected to the nine-pair echo list, the
+    per-example-row admissibility, and the order-invariant RP0.2 acceptance
+    before RP2.1 drafts its tables.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

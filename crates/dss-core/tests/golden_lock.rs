@@ -109,14 +109,27 @@ const ROOTS: &[&str] = &[
 /// exclusion rather than an oversight, which G3.6 re-confirms when it extends
 /// the reason requirement to every row. Fail-on-stale: the path must still
 /// exist and must still be outside [`ROOTS`].
-const EXCLUDED_TREES: &[(&str, &str)] = &[(
-    "crates/dss-metis/tests/golden",
-    "the METIS partitioner fixtures (.graph inputs + .part.N outputs, regenerated manually per \
-     tools/golden/gen_metis_reference.md) are captured from the METIS 5.2.1 C original, not from \
-     any DSS oracle: they witness a vendored third-party algorithm, no WP of this plan \
-     regenerates them, and anchoring them would need a seventh anchor value GOLDEN_REBASE_PLAN.md \
-     \u{a7}1.2 does not define. Revisit in G3.6.",
-)];
+const EXCLUDED_TREES: &[(&str, &str)] = &[
+    (
+        "crates/dss-metis/tests/golden",
+        "the METIS partitioner fixtures (.graph inputs + .part.N outputs, regenerated manually per \
+         tools/golden/gen_metis_reference.md) are captured from the METIS 5.2.1 C original, not \
+         from any DSS oracle: they witness a vendored third-party algorithm, no WP of this plan \
+         regenerates them, and anchoring them would need a seventh anchor value \
+         GOLDEN_REBASE_PLAN.md \u{a7}1.2 does not define. Revisit in G3.6.",
+    ),
+    (
+        "tests/corpus/props_r4133",
+        "the vendored G1.1 r4133 property census (R4133_PROPS_PLAN.md RP0.1): frozen *evidence*, \
+         not artifacts — no row is engine output or an oracle capture the suite compares against, \
+         nothing in tools/golden regenerates them (their only re-measurement path is the RP0.2 \
+         DSS_PROPS_CENSUS knob), and none of this lock's anchors describes \"extract of a \
+         local-only census\". Their bytes are locked instead by \
+         crates/dss-core/tests/props_r4133_evidence_lock.rs (SHA-256 over the five verbatim \
+         copies, row counts and cross-file equalities for the derived files), so the tree is \
+         guarded without minting an anchor \u{a7}1.2 does not define.",
+    ),
+];
 
 /// Where the truth in an artifact's bytes comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -318,7 +331,9 @@ struct GoldenLock {
 const COMMENT: &str = "Provenance lock over the committed golden corpus (GOLDEN_REBASE_PLAN.md \
 \u{a7}1.2, G0.1): tests/golden/** plus the registered out-of-tree witness \
 crates/dss-core/tests/data/adiakoptics/r3723_ref/. That enumeration is the scope; golden-shaped \
-trees left outside it (today: crates/dss-metis/tests/golden, the vendored METIS 5.2.1 fixtures) are \
+trees left outside it (today: crates/dss-metis/tests/golden, the vendored METIS 5.2.1 fixtures, and \
+tests/corpus/props_r4133, the frozen r4133 property-census evidence locked by \
+props_r4133_evidence_lock.rs) are \
 named with their reason in golden_lock.rs::EXCLUDED_TREES and revisited in G3.6. Each row records \
 the artifact's content digest and where the truth in those bytes comes from (anchor), plus - for \
 self-anchored rows - a mandatory reason and the lane allowed to (re)produce them. \
