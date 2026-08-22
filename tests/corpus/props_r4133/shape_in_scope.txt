@@ -1,0 +1,5 @@
+autotrans: rows=42 rows_in_scope=7 oracle_only=['xfmrcode'] rust_only=[]
+generator: rows=273 rows_in_scope=137 oracle_only=['rneut', 'xneut'] rust_only=[]
+sensor: rows=61 rows_in_scope=0 oracle_only=['action'] rust_only=[]
+gendispatcher: rows=48 rows_in_scope=0 oracle_only=[] rust_only=['weights']
+windgen: rows=5 rows_in_scope=5 oracle_only=['usermodel', 'userdata'] rust_only=[]

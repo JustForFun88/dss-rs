@@ -536,6 +536,24 @@ No golden driver calls the helpers yet — wiring them is WP-G3 of
 `GOLDEN_REBASE_PLAN.md`; the rails, their guards and the R1–R4 rules below land
 first, so the capability to rewrite a golden never exists unguarded.
 
+### Vendored r4133 property census (`props_r4133_evidence_lock.rs`)
+
+`tests/corpus/props_r4133/` is frozen **evidence**, not a golden: five
+byte-identical copies of extracts whose source is local-only and gitignored,
+plus five derivations of a 270 MiB census that stays out of the repo
+(`R4133_PROPS_PLAN.md` RP0.1; the directory's own `README.md` is the map).
+It is deliberately outside `golden_lock.rs`'s scope — recorded there in
+`EXCLUDED_TREES` — and locked instead by
+`crates/dss-core/tests/props_r4133_evidence_lock.rs` (unconditional, plain
+`cargo test`, no oracle): SHA-256 + length over the five verbatim copies and the
+`.gitattributes` `-text` stanza that keeps them raw, the derived files' row
+counts, their cross-file equalities, the plan §1.1 per-bin totals, and the two
+counted data traps the README documents. From RP2.1 on `examples_full.txt` is
+the *input* of the replay-accounting test, where a silently dropped row would
+shrink what that test proves instead of failing it — hence the lock. There is no
+regeneration env var: re-measurement is the RP0.2 `DSS_PROPS_CENSUS` knob, and a
+disagreement between the knob and these files is a finding, not a rewrite.
+
 ### 0.15.x property-table allowlist (`PROPS_015X`)
 
 The corpus gate's property-parity check (`harness::compare_all_properties`)
