@@ -1,24 +1,43 @@
 //! Port of `PCElements/WindGen.pas` — `TWindGenObj`, the wind-generator PC
-//! element (the dss_capi-cleaned 0.15.x form: no user-model, no `Xd`/`puXd`).
+//! element. The behavioral authority is the EPRI r4133 trunk
+//! (`Version8/Source/PCElements/WindGen.pas`, `NumPropsThisClass = 44` at
+//! `:255`), not the un-vendored dss_capi 0.15.x "cleaned" rewrite — the class
+//! does not exist in the pinned 0.14.5 oracle at all, so it has **no capi
+//! channel** and its property table answers to r4133 alone
+//! (`R4133_PROPS_PLAN.md` §RP1.3).
 //!
 //! WindGen is a `Generator`-shaped negative-load PC element with two twists:
 //! its steady-state real power comes from an **aerodynamic** `P(v³·Cp)` curve
 //! (the load shape supplies the wind speed in m/s, not a per-unit multiplier),
 //! and its dynamics are driven by an embedded GE WTG type-3 model
 //! ([`Wtg3Model`], the 50 µs sub-cycle) rather than the classic behind-Xd'
-//! swing. Four power-flow models are ported (const-PQ / const-Z / const-P
-//! fixed-Q / const-P fixed-X, enum values 1/2/4/5 — no PV/user/current-limited
-//! model). Harmonics mode is **disabled upstream** (a loud abort), reproduced
-//! 1:1.
+//! swing.
+//!
+//! r4133 dispatches seven power-flow models (`WindGen.pas:2109-2118`); **five**
+//! are ported — const-PQ / const-Z / const-P fixed-Q / const-P fixed-X
+//! (1/2/4/5) plus the **user-written model 6** (`DoUserModel`, `:1875-1898`),
+//! which runs over the sandboxed WASM host ([`user_model`],
+//! `WASM_USERMODELS_PLAN.md` WM.3 shape). Models 3 (`DoPVTypeGen`) and 7
+//! (`DoCurrentLimitedPQ`) stay out — no corpus deck sets them and no plan owns
+//! them (§1.3, `ORPHANED_GAPS.md`). Harmonics mode is **disabled upstream** (a
+//! loud abort), reproduced 1:1.
+//!
+//! `ShaftModel`/`ShaftData` are deliberately **absent**: r4133 carries the
+//! `ShaftModel: TWindGenUserModel` field (`WindGen.pas:100`) and even
+//! `MakeLike`s its name (`:830`), but `DefineProperties` registers no row for
+//! it, so `ShaftModel.Exists` can never become true and every `ShaftModel` arm
+//! (`:2009-2012`, `:2569`, `:2664`, `:2746-2750`, `:2786-2789`, `:2872-2878`)
+//! is dead code upstream.
 //!
 //! Split into submodules (this file holds the metadata, struct and `Create`):
 //! - [`wtg3`]: the embedded `TGE_WTG3_Model` dynamics.
 //! - [`nominal`]: shape multipliers + the aerodynamic `SetNominalGeneration` /
 //!   `RecalcElementData`.
-//! - [`solve`]: `CalcYPrimMatrix`, the four `DoXxxGen` model currents, the
+//! - [`solve`]: `CalcYPrimMatrix`, the five `DoXxxGen` model currents, the
 //!   injection assembly and the disabled harmonics path.
 //! - [`dynamics`]: `InitStateVars` / `IntegrateStates` / `DoDynamicMode` and the
 //!   22 state variables.
+//! - [`user_model`]: the `UserModel=`/`UserData=` WASM slot.
 //! - [`accessors`]: the `CktElement` / `DssObject` trait impls.
 
 #[cfg(test)]
@@ -41,7 +60,10 @@ mod accessors;
 mod dynamics;
 mod nominal;
 mod solve;
+mod user_model;
 pub mod wtg3;
+
+pub use user_model::WindGenUserModelSlot;
 
 /// Pascal `TGeneralConnection`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,36 +92,41 @@ pub mod prop {
     pub const VMAXPU: usize = 15;
     pub const KVA: usize = 16;
     pub const MVA: usize = 17;
-    pub const DUTYSTART: usize = 18;
-    pub const DYNAMICEQ: usize = 19;
-    pub const DYNOUT: usize = 20;
-    pub const RTHEV: usize = 21;
-    pub const XTHEV: usize = 22;
-    pub const VSS: usize = 23;
-    pub const PSS: usize = 24;
-    pub const QSS: usize = 25;
-    pub const VWIND: usize = 26;
-    pub const QMODE: usize = 27;
-    pub const SIMMECHFLG: usize = 28;
-    pub const APCFLG: usize = 29;
-    pub const QFLG: usize = 30;
-    pub const DELT0: usize = 31;
-    pub const N_WTG: usize = 32;
-    pub const VV_CURVE: usize = 33;
-    pub const AG: usize = 34;
-    pub const CP: usize = 35;
-    pub const LAMDA: usize = 36;
-    pub const P: usize = 37;
-    pub const PD: usize = 38;
-    pub const PLOSS: usize = 39;
-    pub const RAD: usize = 40;
-    pub const VCUTIN: usize = 41;
-    pub const VCUTOUT: usize = 42;
+    /// `WindGen.pas:391` (Edit arm `:641`, `GetPropertyValue :2903`).
+    pub const USERMODEL: usize = 18;
+    /// `WindGen.pas:394` (Edit arm `:642`; no `GetPropertyValue` case — the
+    /// inherited `FPropertyValue[19]` echo, `:2929-2930`).
+    pub const USERDATA: usize = 19;
+    pub const DUTYSTART: usize = 20;
+    pub const DYNAMICEQ: usize = 21;
+    pub const DYNOUT: usize = 22;
+    pub const RTHEV: usize = 23;
+    pub const XTHEV: usize = 24;
+    pub const VSS: usize = 25;
+    pub const PSS: usize = 26;
+    pub const QSS: usize = 27;
+    pub const VWIND: usize = 28;
+    pub const QMODE: usize = 29;
+    pub const SIMMECHFLG: usize = 30;
+    pub const APCFLG: usize = 31;
+    pub const QFLG: usize = 32;
+    pub const DELT0: usize = 33;
+    pub const N_WTG: usize = 34;
+    pub const VV_CURVE: usize = 35;
+    pub const AG: usize = 36;
+    pub const CP: usize = 37;
+    pub const LAMDA: usize = 38;
+    pub const P: usize = 39;
+    pub const PD: usize = 40;
+    pub const PLOSS: usize = 41;
+    pub const RAD: usize = 42;
+    pub const VCUTIN: usize = 43;
+    pub const VCUTOUT: usize = 44;
     // tails:
-    pub const SPECTRUM: usize = 43;
-    pub const BASE_FREQ: usize = 44;
-    pub const ENABLED: usize = 45;
-    pub const NUM_PROPS: usize = 46; // incl. Like
+    pub const SPECTRUM: usize = 45;
+    pub const BASE_FREQ: usize = 46;
+    pub const ENABLED: usize = 47;
+    pub const NUM_PROPS: usize = 48; // incl. Like
 }
 
 /// `TWindGen.DefineProperties`.
@@ -130,6 +157,16 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
             .scale(1000.0)
             .flags(PropFlags::REPLACE_ZERO | PropFlags::REDUNDANT)
             .redundant_with(prop::KVA),
+        // User-written model 6 over WASM (`WindGen.pas:391-395`, Edit arms
+        // `:641-642`). Same §2.4 activation rule as Generator's pair: a value
+        // resolving to an existing `.wasm` loads through `dss-usermodel`
+        // (sandboxed wasmi); anything else (a native-DLL name, a missing file)
+        // warns non-fatally (#570/#569) and leaves the slot absent. Never a
+        // parse error — `TWindGenUserModel.Set_Name` (`WindGenUserModel.pas:158`)
+        // only ever `DoSimpleMsg`s. `ShaftModel`/`ShaftData` are NOT registered
+        // upstream (see the module doc), so no rows for them.
+        PropDef::string("UserModel").flags(PropFlags::IS_FILENAME),
+        PropDef::string("UserData"),
         PropDef::double("DutyStart"),
         // Dynamics machinery (DynEqPCE base): the linked DynamicExp + its output
         // variable selection.
@@ -196,6 +233,18 @@ pub struct WindGen {
     pub d_damping: f64, // GenVars.D (actual damping value)
     pub dpu: f64,       // GenVars.Dpu (per-unit; WindGen never sets it → 0)
     pub xrdp: f64,      // GenVars.XRdp
+    /// `WindGenVars.Xd/Xdp/Xdpp` (ohms) — `Create :963-965`, recomputed by
+    /// `RecalcElementData` (`:1368-1370`). `Xd` builds the model-6 Yprim
+    /// (`:1336`) and `Xdp` the dynamics `Zthev` (`:2500-2502`).
+    pub xd: f64,
+    pub xdp: f64,
+    pub xdpp: f64,
+    /// `WindGenVars.puXd/puXdp/puXdpp` — `Create :960-962`; `MakeLike :817-819`.
+    /// No property writes them (r4133 registers no `Xd=`/`puXd=` row), so they
+    /// keep their Create defaults unless copied by `like=`.
+    pub pu_xd: f64,
+    pub pu_xdp: f64,
+    pub pu_xdpp: f64,
     pub p_nominal_per_phase: f64,
     pub q_nominal_per_phase: f64,
     pub theta: f64,
@@ -205,6 +254,19 @@ pub struct WindGen {
     pub w0: f64,
     pub p_shaft: f64,
     pub v_thev_mag: f64,
+    /// `WindGenVars.VThevHarm`/`ThetaHarm` (`WindGenVars.pas:53-54`). r4133 has
+    /// **no writer** for either (WindGen's harmonics path is the disabled
+    /// abort); they exist so a user model's write to the shared record survives
+    /// to the next call, exactly as the native DLL's retained pointer does.
+    pub v_thev_harm: f64,
+    pub theta_harm: f64,
+    /// `WindGenVars.VTarget` — `Create :940`, `RecalcElementData :1406-1408`,
+    /// `MakeLike :809`. Consumed only by the unported model 3 (`DoPVTypeGen`);
+    /// it is marshaled to the user model.
+    pub v_target: f64,
+    /// `WindGenVars.Zthev` — set by `InitStateVars` (`:2500-2502`, inside
+    /// `With WindGenvars`), from which `Yeq := Cinv(Zthev)` follows.
+    pub zthev: Complex64,
     pub theta_history: f64,
     pub speed_history: f64,
     // Aerodynamic (GenVars).
@@ -266,6 +328,18 @@ pub struct WindGen {
     pub loss_curve: String,
     pub loss_curve_obj: Option<XyCurveObj>,
     pub loss_curve_ref: Option<Idx<XyCurveObj>>,
+
+    /// `UserModel=` as written (Pascal `UserModel.Name`, `WindGen.pas:641`).
+    pub user_model_name: String,
+    /// The last `UserData=` string (Pascal has no field — the value lives in
+    /// `PropertyValue[19]` and is forwarded to `UserModel.Edit`, `:642`).
+    pub user_data: String,
+    /// The bound `UserModel=` WASM model (Pascal `UserModel: TWindGenUserModel`,
+    /// `:100`), `None` until a `.wasm` loads.
+    pub user_model: Option<Box<WindGenUserModelSlot>>,
+    /// Deferred `UserModel=`/`UserData=` requests the executive resolves before
+    /// `end_edit` (the property hook cannot reach the filesystem).
+    pub pending_user_model_loads: Vec<crate::obj::base::UserModelLoad>,
 }
 
 /// Pascal `SetNcondsForConnection`.
@@ -288,9 +362,9 @@ impl WindGen {
         cd.set_nterms(1);
         let base_frequency = cd.base_frequency;
 
-        let kw_base = 1000.0;
+        let kw_base = 1000.0_f64;
         let kvar_base = 60.0;
-        let kv_windgen_base = 12.47;
+        let kv_windgen_base = 12.47_f64;
         let kva_rating = kw_base * 1.2;
         let v_base = 7200.0;
         let vminpu = 0.90;
@@ -300,6 +374,20 @@ impl WindGen {
         // Pascal Create overrides the WindModelDyn defaults after Initialize.
         wind_model_dyn.vwind = 12.0;
         wind_model_dyn.q_mode = 0;
+
+        // `Create :960-965` — the machine reactances, from the *Create-time*
+        // kVArating (kWBase*1.2), before `RecalcElementData` re-derives either.
+        // The operand grouping is Create's (`puX * SQR(kV) * 1000 / kVA`), which
+        // is NOT `RecalcElementData`'s (`puX * 1000 * SQR(kV) / kVA`, `:1368`) —
+        // the two can differ in the last ulp, so each site keeps its own order.
+        let pu_xd = 1.0_f64;
+        let pu_xdp = 0.28_f64;
+        let pu_xdpp = 0.20_f64;
+        let x_of = |pu: f64| pu * kv_windgen_base.powi(2) * 1000.0 / kva_rating;
+        // `Create :939-940`: Vpu := 1.0 (no property writes it — the model-3
+        // `Vpu=`/`Maxkvar=` rows r4133 registers for Generator have no WindGen
+        // counterpart), so VTarget is fixed at the line-to-neutral target.
+        let vpu = 1.0;
 
         let mut g = Self {
             cd,
@@ -322,6 +410,12 @@ impl WindGen {
             d_damping: 1.0, // GenVars.D := 1.0 in Create (Dpu stays 0)
             dpu: 0.0,
             xrdp: 20.0,
+            xd: x_of(pu_xd),
+            xdp: x_of(pu_xdp),
+            xdpp: x_of(pu_xdpp),
+            pu_xd,
+            pu_xdp,
+            pu_xdpp,
             p_nominal_per_phase: 0.0,
             q_nominal_per_phase: 0.0,
             theta: 0.0,
@@ -331,6 +425,10 @@ impl WindGen {
             w0: 2.0 * std::f64::consts::PI * base_frequency,
             p_shaft: 0.0,
             v_thev_mag: 0.0,
+            v_thev_harm: 0.0,
+            theta_harm: 0.0,
+            v_target: 1000.0 * vpu * kv_windgen_base / crate::util::sqrt3(),
+            zthev: Complex64::ZERO,
             theta_history: 0.0,
             speed_history: 0.0,
             ag: 1.0 / 90.0,
@@ -381,6 +479,10 @@ impl WindGen {
             loss_curve: String::new(),
             loss_curve_obj: None,
             loss_curve_ref: None,
+            user_model_name: String::new(),
+            user_data: String::new(),
+            user_model: None,
+            pending_user_model_loads: Vec::new(),
         };
         g.cd.inj_current = vec![Complex64::ZERO; g.cd.yorder];
         // Pascal `TWindGenObj.Create` ends with `RecalcElementData` (live

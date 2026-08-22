@@ -19,7 +19,7 @@
     },
     {
       "class": "WindGen",
-      "cause": "WindGen is the port's 50th class (r4133-adopted; DSSClassDefs.pas registers it after Generator), absent from the pinned 0.14.5 oracle (49 classes) entirely. Its schema is port-authored (no 0.14.5 oracle to compare) and pinned to the port's own bytes; the metadata is sourced from the dss_capi 0.15.x line (windgen/mod.rs)."
+      "cause": "WindGen is the port's 50th class (r4133-adopted; DSSClassDefs.pas registers it after Generator), absent from the pinned 0.14.5 oracle (49 classes) entirely. Its schema is port-authored (no 0.14.5 oracle to compare) and pinned to the port's own bytes; the metadata answers to the r4133 trunk (Version8/Source/PCElements/WindGen.pas, NumPropsThisClass=44 at :255 + 4 inherited = 48 rows since R4133_PROPS_PLAN RP1.3 added UserModel/UserData at 18/19), not to the un-vendored dss_capi 0.15.x 'cleaned' rewrite (windgen/mod.rs)."
     }
   ],
   "divergences": [

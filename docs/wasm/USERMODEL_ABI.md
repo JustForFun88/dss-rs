@@ -5,6 +5,21 @@ noted in this header and in `STATUS.md` §WASM-UM.
 
 Recorded decisions:
 
+- **2026-08-23 (f) — R4133_PROPS_PLAN RP1.3: a SECOND boundary record,
+  `TWindGenVars` (§2.6), and a sixth `InterfaceKind` (`WindGenUserModel`).
+  Purely additive; every existing shape, image and callback is unchanged.**
+  WindGen's `UserModel=` is a 15-function interface in the same binding order as
+  `TGenUserModel` (`PCElements/WindGenUserModel.pas:180-194`) with the same
+  `new(vars, dynarec) -> id` wasm signature — but `FNew` takes `TWindGenVars`
+  (`:34`), a **different record**: no NCIM `deltaQNom`, `kVGeneratorBase`
+  respelled `kVWindGenBase`, and a turbine tail (a managed `PLoss: string`
+  reference plus thirteen doubles). Native size **356 B**, measured by the P10
+  probe `docs/wasm/probes/p10_offsets_windgenvars_r4133.txt`. The **wasm image is
+  348 B**: the managed reference is dropped and its hole closed, exactly as
+  §2.2b does for `deltaQNom` — which makes the wasm `TWindGenVars` image a
+  byte-for-byte extension of the wasm `TGeneratorVars` image. `ShaftModel=` is
+  deliberately NOT wired: r4133 has the field but registers no property for it
+  (`WindGen.pas:100`, no `PropertyName` row). See §2.6 + STATUS §RP1.3.
 - **2026-07-20 (e) — WP-WM.6 callback tail: `DoDSSCommand`/`GetResultStr`
   implemented as an opt-in deferred-drain mechanism; the callback table is now
   complete (no wire-ABI change).** The two re-entrant slots (7/32) leave the
@@ -112,6 +127,7 @@ are ANSI bytes + explicit `maxlen`, NUL-terminated on write (Pascal
 ## 1. Interfaces and guest exports
 
 Pascal spec: `GenUserModel.pas` (`TGenUserModel`, 15 exports, bound `:173-187`),
+`WindGenUserModel.pas` (`TWindGenUserModel` 15, same order, `:180-194`),
 `StoreUserModel.pas` (`TStoreUserModel` 15, `:214-228`; `TStoreDynaModel` 13 —
 no `Save`/`Restore`, `:336-348`), `PVSystemUserModel.pas` (15, `:160-174`),
 `CapUserControl.pas` (7, `:176-182`). The wasm module must export, with these
@@ -126,12 +142,12 @@ model absent):
 | `memory` | linear memory | typst-pattern requirement (plugin.rs:279-281) |
 | `dss_alloc` | `(size: i32) -> i32` | guest-owned allocator; host allocates its per-instance buffers (record images, V/I, name scratch) once per instance |
 
-**15-function interface** (Generator `UserModel=`/`ShaftModel=`, Storage
-`UserModel=`, PVSystem `UserModel=`):
+**15-function interface** (Generator `UserModel=`/`ShaftModel=`, WindGen
+`UserModel=`, Storage `UserModel=`, PVSystem `UserModel=`):
 
 | Export | Signature (wasm) | Pascal shape |
 |---|---|---|
-| `new` | Generator: `(genvars: i32, dynarec: i32) -> i32`; Storage/PVSystem: `(dynarec: i32) -> i32` | `New(GenVars: Pointer; var DynaData; var CallBacks): Integer` — the CallBacks pointer has no wasm counterpart; callbacks are host imports (§4) |
+| `new` | Generator/WindGen: `(vars: i32, dynarec: i32) -> i32`; Storage/PVSystem: `(dynarec: i32) -> i32` | `New(GenVars: Pointer; var DynaData; var CallBacks): Integer` — the CallBacks pointer has no wasm counterpart; callbacks are host imports (§4). The `vars` pointer is `TGeneratorVars` (§2.2b) for Generator and `TWindGenVars` (§2.6) for WindGen — **same signature, different image**, so the host checks the record against the interface kind before writing |
 | `delete` | `(id: i32)` | `Delete(var x)` |
 | `select` | `(id: i32) -> i32` | `Select(var x): Integer` |
 | `edit` | `(ptr: i32, len: i32)` | `Edit(s: pAnsiChar; Maxlen)` — UserData/DynaData strings |
@@ -395,6 +411,82 @@ decision through the shared arm/disarm tail without also reconciling the twin.
 This is a WP-WM.5 element-wiring decision recorded in STATUS §WASM-UM WP-WM.5, not
 an ABI change. The 15/13/7 function shapes and the `TDynamicsRec`/callback contracts
 above do not depend on the `get_public_data` image.
+
+### 2.6 `TWindGenVars` — the WindGen boundary record (RP1.3)
+
+Pascal `PCElements/WindGenVars.pas:20-73`, the record
+`TWindGenUserModel.FNew` receives (`PCElements/WindGenUserModel.pas:34`). It is
+**not** `TGeneratorVars`: three differences, all measured by the P10 probe
+`docs/wasm/probes/p10_offsets_windgenvars_r4133.txt` (FPC 3.2.2 `ppcrossx64`
+over the real vendored r4133 unit, same discipline as §2.2a).
+
+#### 2.6a Native (frozen) — r4133, 356 bytes (probe: `SizeOf(TWindGenVars) = 356`)
+
+| Offset | Field | | Offset | Field |
+|---|---|---|---|---|
+| 0 | `Theta` f64 | | 176 | `NumPhases` i32 |
+| 8 | `Pshaft` f64 | | 180 | `NumConductors` i32 |
+| 16 | `Speed` f64 | | 184 | `Conn` i32 (0 wye, 1 delta) |
+| 24 | `w0` f64 | | 188 | `VthevMag` f64 |
+| 32 | `Hmass` f64 | | 196 | `VThevHarm` f64 |
+| 40 | `Mmass` f64 | | 204 | `ThetaHarm` f64 |
+| 48 | `D` f64 | | 212 | `VTarget` f64 |
+| 56 | `Dpu` f64 | | 220 | `Zthev` Complex (re 220, im 228) |
+| 64 | `kVArating` f64 | | 236 | `XRdp` f64 |
+| 72 | **`kVWindGenBase`** f64 | | **244** | **`PLoss` — `string`, 8-byte managed AnsiString reference** |
+| 80 | `Xd` f64 | | 252 | `ag` f64 — gearbox ratio |
+| 88 | `Xdp` f64 | | 260 | `Cp` f64 — performance coefficient |
+| 96 | `Xdpp` f64 | | 268 | `Lamda` f64 — tip-speed ratio |
+| 104 | `puXd` f64 | | 276 | `Poles` f64 |
+| 112 | `puXdp` f64 | | 284 | `pd` f64 — air density |
+| 120 | `puXdpp` f64 | | 292 | `Rad` f64 — rotor radius |
+| 128 | `dTheta` f64 | | 300 | `VCutin` f64 |
+| 136 | `dSpeed` f64 | | 308 | `VCutout` f64 |
+| 144 | `ThetaHistory` f64 | | 316 | `Pm` f64 — mechanical power |
+| 152 | `SpeedHistory` f64 | | 324 | `Ps` f64 — stator active power |
+| 160 | `Pnominalperphase` f64 | | 332 | `Pr` f64 — rotor active power |
+| 168 | `Qnominalperphase` f64 | | 340 | `Pg` f64 — total power output |
+| | | | 348 | `s` f64 — generator slip |
+
+Against `TGeneratorVars`: (1) **no `deltaQNom`** — that NCIM slot is
+Generator-only (`GeneratorVars.pas:41`), so the three integers keep the
+historical 176/180/184 and the whole Thevenin tail keeps the Appendix-A offsets;
+(2) `kVGeneratorBase` is respelled **`kVWindGenBase`** (`WindGenVars.pas:31`);
+(3) the **turbine tail** at 244…356.
+
+#### 2.6b Wasm marshaled image — 348 bytes
+
+`PLoss` is a Delphi-managed AnsiString reference. A pointer into host memory has
+no meaning in the guest's disjoint linear memory, so — exactly as §2.2b treats
+`deltaQNom` — it **does not cross**, and the hole is **closed**: `ag` sits at
+**244**, `s` at **340**, `SIZE = 348`.
+
+Consequence, and the reason to close rather than pad: the wasm `TWindGenVars`
+image is a byte-for-byte **extension** of the wasm `TGeneratorVars` image —
+offsets 0…244 are field-for-field identical (only field 10's *name* differs) and
+the turbine tail follows. Pinned by
+`records::tests::windgen_vars_head_matches_generator_vars`.
+
+> **Successor trap.** A model that needs the loss-curve *name* must receive it
+> through the `UserData=` edit string. Do **not** "add `PLoss`" to this image as
+> a pointer-sized hole: that silently re-shifts every turbine field by +8, and
+> the first casualty is `ag`, whose value the reference fixture turns into
+> `Lamda` (see below).
+
+Host codec: `crates/dss-usermodel::records::WindGenVars`, carried by
+`WindGenShuttle` (`Shuttle` carries `GeneratorVars`); both reach the call surface
+through `IntoShuttle`, and `UserModelInstance` refuses a shuttle whose record
+does not match its `InterfaceKind`. Reference guest: the committed
+`tests/fixtures/wasm/wgturbine.wasm` (crate
+`tools/wasm_usermodel/models/wgturbine/`, pinned in
+`tools/wasm_usermodel/PIN.txt`), whose reads deliberately span the head, the
+integer block and `ag`; gate
+`crates/dss-usermodel/tests/windgen_shuttle.rs`.
+
+**No native twin.** r4133 ships no example WindGen user model — only the loader
+— so unlike §2.2 there is no DLL to probe the math against; the fixture is its
+own numeric spec and the gate pins the *contract* (byte placement, write-back,
+non-interchangeability of the two records) at bit equality.
 
 ## 3. Call ordering (the lifecycle contract WM.3–WM.5 reproduce)
 

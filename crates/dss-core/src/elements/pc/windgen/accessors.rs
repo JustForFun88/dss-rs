@@ -13,7 +13,7 @@ use crate::elements::pc::dyneq_pce::{DynEqPce, DynEqPceData};
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::arena::ResolvedObj;
-use crate::obj::base::{DssObjData, DssObject};
+use crate::obj::base::{DssObjData, DssObject, UserModelLoad};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
 
@@ -109,25 +109,54 @@ impl CktElement for WindGen {
         self.integrate_states_impl(sys, node_v);
     }
 
-    /// Pascal `TWindGenObj.NumVariables`: the linked `DynamicExp` count first,
-    /// else the 22 classic WindGen variables.
+    /// Pascal `TWindGenObj.NumVariables` (`WindGen.pas:2814-2819`): the 22
+    /// classic WindGen variables plus the loaded `UserModel`'s. The linked
+    /// `DynamicExp` count takes precedence (the `GetAllVariables` split at
+    /// `:2798-2802`).
     fn num_variables(&self) -> usize {
         let n = self.dyneq.num_variables();
-        if n != 0 { n } else { self.num_wgen_variables() }
+        if n != 0 {
+            return n;
+        }
+        // `ShaftModel.FNumVars` (`:2818`) is unreachable — no property registers
+        // that slot upstream (module doc).
+        self.num_wgen_variables() + self.user_model_num_vars()
     }
 
-    /// Pascal `TWindGenObj.VariableName`: the `DynamicExp` name first, else the
-    /// classic name table.
+    /// Pascal `TWindGenObj.VariableName` (`WindGen.pas:2821-2882`): the
+    /// `DynamicExp` name first, then the 22 classic names, then the `UserModel`
+    /// names (`i2 = i - NumWGenVariables`).
     fn variable_name(&self, i: usize) -> String {
         if let Some(name) = self.dyneq.variable_name(i) {
             return name;
         }
-        self.wgen_variable_name(i)
+        let base = self.num_wgen_variables();
+        if (1..=base).contains(&i) {
+            return self.wgen_variable_name(i);
+        }
+        let un = self.user_model_num_vars();
+        if i > base
+            && i <= base + un
+            && let Some(um) = self.user_model.as_ref()
+        {
+            return um.var_name(i - base).unwrap_or_default().to_string();
+        }
+        self.wgen_variable_name(i) // out of range → Pascal's 'ERROR' seed
     }
 
-    /// Pascal `TWindGenObj.GetAllVariables`: the `DynamicExp` memory dump first,
-    /// else the classic WindGen variables.
-    fn get_all_variables(&mut self, _sys: &SysCtx, _node_v: &[Complex64], states: &mut [f64]) {
+    /// Pascal `TWindGenObj.GetAllVariables` (`WindGen.pas:2793-2812`): the
+    /// `DynamicExp` memory dump first, else the 22 classic WindGen variables
+    /// followed by the `UserModel` values (`@States[NumWGenVariables+1]`).
+    ///
+    /// **Upstream bug deliberately NOT reproduced.** Pascal fills the classic
+    /// block through `Variable[i]` = `Get_Variable(i)`, whose user-model tail
+    /// (`:2735-2743`) sits OUTSIDE the `if i < 19 … else case i of …` chain
+    /// instead of in its `else` — see [`WindGen::set_user_model_variable`] for
+    /// the full write-up. Once a model exists, every native index `1..=22`
+    /// therefore satisfies `k = i - 22 <= N` and is overwritten by
+    /// `UserModel.FGetVariable(k)` with a non-positive `k`. The port reports the
+    /// native 22 from the native sources and the model's own from index 23 up.
+    fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
         if self.dyneq.has_dynamic_eq() {
             for (i, s) in states
                 .iter_mut()
@@ -139,10 +168,21 @@ impl CktElement for WindGen {
             return;
         }
         self.get_wgen_variables(states);
+        let base = self.num_wgen_variables();
+        let un = self.user_model_num_vars();
+        if un > 0 {
+            let end = (base + un).min(states.len());
+            if base < end {
+                self.get_all_user_model_vars(&mut states[base..end], sys, node_v);
+            }
+        }
     }
 
-    /// Pascal `TWindGenObj.SetVariable`.
-    fn set_variable(&mut self, i: usize, value: f64, _sys: &crate::elements::traits::SysCtx) {
+    /// Pascal `TWindGenObj.Set_Variable` (`WindGen.pas:2754-2791`): the 22
+    /// classic slots, then the `UserModel` (`k = i - NumWGenVariables`). The
+    /// same upstream mis-nesting as `Get_Variable` applies and is not reproduced
+    /// (see [`WindGen::set_user_model_variable`]).
+    fn set_variable(&mut self, i: usize, value: f64, sys: &crate::elements::traits::SysCtx) {
         if i < 1 {
             return;
         }
@@ -153,7 +193,11 @@ impl CktElement for WindGen {
             ));
             return;
         }
-        self.set_wgen_variable(i, value);
+        if i <= self.num_wgen_variables() {
+            self.set_wgen_variable(i, value);
+            return;
+        }
+        self.set_user_model_variable(i, value, sys);
     }
 
     fn harmonic_spectrum(&self) -> Option<&SpectrumObj> {
@@ -174,7 +218,7 @@ impl CktElement for WindGen {
         &mut self,
         sys: &SysCtx,
         node_v: &[Complex64],
-        _ctx: &mut InjComputeCtx,
+        ctx: &mut InjComputeCtx,
     ) -> bool {
         if !self.cd.enabled {
             return false;
@@ -189,6 +233,20 @@ impl CktElement for WindGen {
         let mut errors = crate::diag::ErrorLog::new();
         if !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS) {
             self.calc_inj_current_array(sys, node_v, &mut errors);
+        }
+        // Surface any user-model trap / missing-`Model=6` diagnostic through the
+        // solution ErrorLog — never a silent fallback on a trapping `.wasm`
+        // (WASM_USERMODELS §2.9-5). An `abort`-flagged fault (the missing
+        // dynamics model, `WindGen.pas:1996-1997`) lifts `SolutionAbort` so the
+        // solve stops instead of iterating on a best-effort stale current. The
+        // log was previously built and DROPPED here, which also swallowed the
+        // non-3-phase WTG3 dynamics guard (RP1.3 part B fix; the Generator twin
+        // has always drained it, `generator/accessors.rs:326-331`).
+        for d in errors.into_vec() {
+            if d.abort {
+                *ctx.solution_abort = true;
+            }
+            ctx.errors.push(d);
         }
         false
     }
@@ -223,8 +281,17 @@ impl CktElement for WindGen {
             && !self.gen_switch_open
             && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
         {
+            // `GetTerminalCurrents` has no solve-context error channel, so a
+            // user-model trap / missing-`Model=6` diagnostic recomputed here is
+            // queued on the element's deferred-error log (drained by the
+            // executive) rather than dropped — never a silent fallback on trap
+            // (§2.9-5). The loud path is `inj_currents` during the solve; this
+            // query recompute is the fallback surfacing.
             let mut errors = crate::diag::ErrorLog::new();
             self.calc_gen_model_contribution(sys, node_v, &mut errors);
+            for d in errors.into_vec() {
+                self.cd.obj.push_error(d);
+            }
         }
         if self.cd.iterminal_updated {
             curr.copy_from_slice(&self.cd.iterminal[..curr.len()]);
@@ -243,9 +310,10 @@ impl CktElement for WindGen {
 }
 
 impl WindGen {
-    /// Pascal `TWindGenObj.MakeLike`. Copies the machine/shape record; the
-    /// aerodynamic parameters and the WTG3 dynamics model are **not** copied
-    /// (matching upstream — they keep the new object's Create defaults).
+    /// Pascal `TWindGenObj.MakeLike` (`WindGen.pas:763-840`). Copies the
+    /// machine/shape record; the aerodynamic parameters and the WTG3 dynamics
+    /// model are **not** copied (matching upstream — they keep the new object's
+    /// Create defaults).
     pub(crate) fn make_like(&mut self, other: &Self) {
         self.cd.make_like_base(&other.cd);
         if self.cd.nphases != other.cd.nphases {
@@ -280,6 +348,11 @@ impl WindGen {
         self.forced_on = other.forced_on;
         self.kva_not_set = other.kva_not_set;
         self.kva_rating = other.kva_rating;
+        // `:817-819` — the per-unit reactances (the ohmic Xd/Xdp/Xdpp are NOT
+        // copied; the `end_edit` recalc re-derives them, `:1368-1370`).
+        self.pu_xd = other.pu_xd;
+        self.pu_xdp = other.pu_xdp;
+        self.pu_xdpp = other.pu_xdpp;
         self.h_mass = other.h_mass;
         self.theta = other.theta;
         self.speed = other.speed;
@@ -288,6 +361,32 @@ impl WindGen {
         self.d_damping = other.d_damping;
         self.dpu = other.dpu;
         self.xrdp = other.xrdp;
+        self.v_target = other.v_target; // `:809`
+        // `:829` `UserModel.Name := Other.UserModel.Name` is a **`Set_Name`**
+        // (`WindGenUserModel.pas:158-220`): free whatever the target held, then
+        // `LoadLibrary` + `FNew` a FRESH instance carrying the guest's OWN
+        // defaults — the donor's `UserData` is never replayed into it (`:834-835`
+        // copies the property ARRAY, so `? …userdata` still echoes the donor's
+        // text while the new instance starts at its defaults). So this queues a
+        // real load, exactly as an explicit `UserModel=` does; the executive
+        // resolves the path and instantiates it before `end_edit`, in time for
+        // `RecalcElementData`'s `FUpdateModel` (`:1418`).
+        //
+        // It must NOT clone the donor's slot: `ClassArena::make_like_within`
+        // hands `make_like` an owned `clone()` of the donor, and the slot's
+        // `Clone` deliberately drops the live wasmi instance — so a cloned slot
+        // reports `exists() == false` and every call site (`user_model_fcalc`,
+        // `…_finit`, `…_fintegrate`, `get_all_user_model_vars`) skips it. The
+        // copy therefore produced a WindGen that echoed `UserModel=<path>`,
+        // reported only the 22 native variables and silently injected nothing —
+        // measured, RP1.3 part C. `ShaftModel.Name` (`:830`) has no counterpart
+        // — no property can ever set it (module doc).
+        self.user_model_name = other.user_model_name.clone();
+        self.user_model = None;
+        self.queue_user_model_load(other.user_model_name.clone());
+        // Pascal copies the donor's whole `FPropertyValue` array (`:834-835`),
+        // which is where `UserData` lives (it has no field of its own).
+        self.user_data = other.user_data.clone();
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
 }
@@ -425,6 +524,11 @@ impl DssObject for WindGen {
             YEARLY => self.yearly_shape.clone(),
             DAILY => self.daily_shape.clone(),
             DUTY => self.duty_shape.clone(),
+            // Pascal `GetPropertyValue` 18 = `UserModel.Name` (`WindGen.pas:2903`);
+            // 19 has no case and falls through to the inherited
+            // `FPropertyValue[19]` echo (`:2929-2930`) — the raw `UserData=` text.
+            USERMODEL => self.user_model_name.clone(),
+            USERDATA => self.user_data.clone(),
             DYNAMICEQ => self.dyneq.dynamic_eq.clone(),
             VV_CURVE => self.vv_curve.clone(),
             PLOSS => self.loss_curve.clone(),
@@ -435,6 +539,11 @@ impl DssObject for WindGen {
     fn set_string(&mut self, idx: usize, value: String) {
         use prop::*;
         match idx {
+            // UserModel/UserData store the value here; the load/edit is a
+            // deferred request raised in `side_effects` (WASM_USERMODELS §2.4) —
+            // never a parse error, matching `TWindGenUserModel.Set_Name`.
+            USERMODEL => self.user_model_name = value,
+            USERDATA => self.user_data = value,
             SPECTRUM => self.spectrum = value,
             _ => unreachable!("WindGen has no string property {idx}"),
         }
@@ -534,6 +643,12 @@ impl DssObject for WindGen {
                 self.kva_not_set = false;
             }
             DYNAMICEQ => self.dyneq.on_dynamic_eq_set(),
+            // The `Edit` dispatch order (`WindGen.pas:641-642`): `UserModel.Name`
+            // (load) before `UserData` (edit). The filesystem/current-dir are
+            // unreachable from the property hook, so each records a deferred
+            // request the executive resolves before `end_edit` (§2.4).
+            USERMODEL => self.queue_user_model_load(self.user_model_name.clone()),
+            USERDATA => self.queue_user_model_edit(self.user_data.clone()),
             // Pascal `TProp.VV_Curve` side effect: load the four volt-var points
             // (V1..V4 / Q1..Q4) into the WTG3 model.
             VV_CURVE => {
@@ -573,6 +688,24 @@ impl DssObject for WindGen {
         vars: &dss_parser::ParserVars,
     ) -> bool {
         self.dyneq.parse_dyn_var(variable, value, vars)
+    }
+
+    /// Drain the deferred `UserModel=`/`UserData=` requests queued by the
+    /// side effects (the executive resolves each path against `current_dir`).
+    fn take_user_model_loads(&mut self) -> Vec<UserModelLoad> {
+        std::mem::take(&mut self.pending_user_model_loads)
+    }
+
+    /// Apply a resolved user-model load/edit (`wasm` is `Some` iff a `.wasm`
+    /// file was found + read; `None` → warn-and-fallback, Pascal 570).
+    fn apply_user_model_load(
+        &mut self,
+        load: &UserModelLoad,
+        wasm: Option<&[u8]>,
+        sys: &crate::elements::traits::SysCtx,
+        errors: &mut crate::diag::ErrorLog,
+    ) {
+        self.apply_user_model_load_impl(load, wasm, sys, errors);
     }
 }
 

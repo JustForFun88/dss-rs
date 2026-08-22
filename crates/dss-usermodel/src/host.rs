@@ -39,6 +39,25 @@ pub enum InterfaceKind {
     /// Pascal `TCapUserControl` (`CapUserControl.pas`): CapControl
     /// `UserModel=`; 7 functions, `new() -> id`.
     CapUserControl,
+    /// Pascal `TWindGenUserModel` (`WindGenUserModel.pas:23-79`): WindGen
+    /// `UserModel=`; 15 functions in the same binding order as
+    /// `TGenUserModel` (`:180-194`), `new(windgenvars, dynarec) -> id`.
+    ///
+    /// Same *interface* as [`Self::GenUserModel`], different *record*: `FNew`
+    /// takes `TWindGenVars` (`WindGenUserModel.pas:34`), not `TGeneratorVars`
+    /// — see [`crate::WindGenVars`].
+    WindGenUserModel,
+}
+
+/// Which boundary record `new` receives a pointer to, for the kinds that pass
+/// one (ABI doc §2). The two shapes are **not** interchangeable: a guest
+/// decoding the wrong one reads the turbine tail as garbage (or off the end).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum VarsRecord {
+    /// `TGeneratorVars` wasm image, 244 bytes (ABI doc §2.2b).
+    Generator,
+    /// `TWindGenVars` wasm image, 348 bytes (ABI doc §2.6).
+    WindGen,
 }
 
 /// A required guest export: name + exact wasm signature (ABI doc §1).
@@ -107,8 +126,11 @@ const TAIL_7: &[FuncSpec] = &[
     spec("delete", &[I32], &[]),
 ];
 
-/// The per-kind `new` shapes (ABI doc §1).
-const NEW_GEN: FuncSpec = spec("new", &[I32, I32], &[I32]);
+/// The per-kind `new` shapes (ABI doc §1). `NEW_VARS_REC` is the two-pointer
+/// form used by every kind that passes a boundary record — Generator
+/// (`TGeneratorVars`) and WindGen (`TWindGenVars`); the record differs, the
+/// wasm signature does not.
+const NEW_VARS_REC: FuncSpec = spec("new", &[I32, I32], &[I32]);
 const NEW_DYNAREC: FuncSpec = spec("new", &[I32], &[I32]);
 const NEW_CAP: FuncSpec = spec("new", &[], &[I32]);
 
@@ -119,7 +141,7 @@ impl InterfaceKind {
     /// `new` spec for this kind.
     pub(crate) fn new_spec(self) -> &'static FuncSpec {
         match self {
-            Self::GenUserModel => &NEW_GEN,
+            Self::GenUserModel | Self::WindGenUserModel => &NEW_VARS_REC,
             Self::StoreUserModel | Self::PvSystemUserModel | Self::StoreDynaModel => &NEW_DYNAREC,
             Self::CapUserControl => &NEW_CAP,
         }
@@ -129,22 +151,35 @@ impl InterfaceKind {
     /// which missing export the 569-path names first).
     pub(crate) fn tail_specs(self) -> &'static [FuncSpec] {
         match self {
-            Self::GenUserModel | Self::StoreUserModel | Self::PvSystemUserModel => TAIL_15,
+            Self::GenUserModel
+            | Self::WindGenUserModel
+            | Self::StoreUserModel
+            | Self::PvSystemUserModel => TAIL_15,
             Self::StoreDynaModel => TAIL_13,
             Self::CapUserControl => TAIL_7,
         }
     }
 
-    /// Whether `new` receives the GeneratorVars buffer pointer.
-    pub(crate) fn takes_gen_vars(self) -> bool {
-        matches!(self, Self::GenUserModel)
+    /// Which boundary record `new` receives a pointer to, if any.
+    pub(crate) fn vars_record(self) -> Option<VarsRecord> {
+        match self {
+            Self::GenUserModel => Some(VarsRecord::Generator),
+            Self::WindGenUserModel => Some(VarsRecord::WindGen),
+            Self::StoreUserModel
+            | Self::PvSystemUserModel
+            | Self::StoreDynaModel
+            | Self::CapUserControl => None,
+        }
     }
 
     /// Whether the interface has `save`/`restore` (15-fn only).
     pub(crate) fn has_save_restore(self) -> bool {
         matches!(
             self,
-            Self::GenUserModel | Self::StoreUserModel | Self::PvSystemUserModel
+            Self::GenUserModel
+                | Self::WindGenUserModel
+                | Self::StoreUserModel
+                | Self::PvSystemUserModel
         )
     }
 }

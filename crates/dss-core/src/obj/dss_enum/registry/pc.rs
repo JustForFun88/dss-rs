@@ -201,9 +201,14 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
         &[0, 1, 2, 3, 4, 5],
     ));
 
-    // WindGen.pas TWindGen.Create: `WindGenModelEnum` (JSONUseNumbers; values
-    // 1,2,4,5 — no model 3/6/7). Constant PQ / Constant Z / Constant P,fixed Q /
-    // Constant P,fixed X.
+    // WindGen `Model=` (`WindGen.pas:330-338`; r4133 parses it as a plain
+    // integer, so the enum is the port's own admission gate). Values 1,2,4,5 +
+    // the user-written model 6 (`DoUserModel`, `:1875`; admitted by
+    // `R4133_PROPS_PLAN.md` RP1.3). Models **3** (`DoPVTypeGen`) and **7**
+    // (`DoCurrentLimitedPQ`) stay OUT — r4133 dispatches them (`:2112`, `:2116`)
+    // but neither is ported, no corpus deck sets them, and no plan owns them
+    // (§1.3; the deferral is a named `ORPHANED_GAPS.md` row). The names follow
+    // the Generator enum's wording for the same codes.
     let windgen_model = push(DssEnum::new(
         "WindGen: Model",
         true,
@@ -214,8 +219,9 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
             "Constant Z",
             "Constant P, fixed Q",
             "Constant P, fixed X",
+            "User model",
         ],
-        &[1, 2, 4, 5],
+        &[1, 2, 4, 5, 6],
     ));
 
     // WindGen.pas TWindGen.Create: `WindGenQModeEnum` (JSONUseNumbers; DefaultValue
