@@ -1179,45 +1179,78 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     order-invariant cell multisets.
 
 - **RP0.2** (2026-08-22) — the census is a permanent knob. `DSS_PROPS_CENSUS=1`
-  on the corpus gate walks every live non-`large` case (438 — exactly the
+  arms the corpus-gate binary's own `corpus_gate_props_census` test, which walks
+  every live non-`large` case (438 — exactly the
   population the 2026-08-08 scratch census walked) on **both** channels with
   `all_properties` forced on, bypassing the §1.1 r4133 masks, compares with the
   plain (un-normalized) comparator in collect-don't-panic mode and writes
-  `tmp/props_census.json` + `tmp/props_census/<channel>/{structural_pairs,
-  numeric_pairs,shape,summary}` in the RP0.1 extract format. It **asserts
-  nothing** — a divergence is the measurement, never a failure — and honors
-  `DSS_GATE_ONLY` (an empty match still refuses, as on the gate). Files:
+  `tmp/props_census.json` + `tmp/props_census/run.json` +
+  `tmp/props_census/<channel>/{structural_pairs,numeric_pairs,examples_full,
+  shape,summary}` in the RP0.1 extract format. It **asserts nothing** — a
+  divergence is the measurement, never a failure — and honors `DSS_GATE_ONLY`
+  (an empty match still refuses, as on the gate; the filter is stamped into the
+  artifacts). Files:
   `crates/dss-core/tests/corpus_gate/props_census.rs` (row model + extract
-  writers, 8 unit tests pinning the vendored row formats, the 40/34-char example
-  cuts, Python's `%.2e`, the `Line.b1||b2` pair key, the streamed JSON document,
-  the loud mode parser and — the non-vacuity guard — that the collecting walk is
-  silent on a faithful capture, emits exactly one row for one corrupted cell and
-  a shape row plus an unaligned count for a dropped prop), the walk in
-  `scheduler.rs::run_props_census`/`census_one`, the trigger in
+  writers, 12 unit tests pinning the vendored row formats, the 40/34-char example
+  cuts, Python's `%.2e`, the `Line.b1||b2` pair key, `examples_full`'s ordering,
+  the escape/parse round-trip, the heterogeneous-shape counter, the streamed JSON
+  document, the loud mode parser, the `?`-surface stability argument and — the
+  non-vacuity guard — that the collecting walk is silent on a faithful capture,
+  emits exactly one row for one corrupted cell, a shape row plus an unaligned
+  count for a dropped prop, and a counted skip for a capi-channel Relay), the
+  walk in `scheduler.rs::run_props_census`/`census_one`, the trigger in
   `corpus_gate.rs`, `TESTING.md` (env-var row + a re-measurement procedure next
   to the evidence lock). `DSS_LIVE_PROPS`, the gate's r4133 property mask
   (`scheduler.rs::run_one_case`, `:364`) and the seeding one
   (`::seed_one`, `:720`) are untouched — both still read
   `cc.compare_all_properties = false` on the r4133 channel; knob OFF is today's
   gate exactly, proven by the five-command gate being green.
-  - **One comparator seam, not a copy.** `harness::value_verdict` is the single
-    per-cell decision (`Match`/`Skeleton`/`NumberCount`/`Numeric{max_rel}`);
+  - **The census is its own `#[test]`.** `corpus_gate_props_census` is armed by
+    the env var; `corpus_gate_all_cases_match_engines` always runs the gate. The
+    first cut dispatched the *mandatory* test on `DSS_PROPS_CENSUS`, so a stray
+    `=1` in a shell or CI environment turned the one live corpus comparison into
+    a green no-op (audit-tests, reproduced). Unset, the census test is a no-op.
+  - **One comparator seam — the per-cell decision and the element walk.**
+    `harness::value_verdict` is the single per-cell decision
+    (`Match`/`Skeleton`/`NumberCount`/`Numeric{max_rel}`);
     `assert_value_matches_tol` is now its asserting wrapper (failure text
-    byte-preserved) and `harness::collect_prop_divergences` its collecting one.
-    The collecting walk is the gate's own: the same index alignment, the same
-    `PROPS_015X` relief, the same `skip_prop`/`skip_transformer_cursor` gates,
-    the same `tol.i_rel/i_abs` floor — only the aborts become rows. Two
-    deliberate differences, both reproducing the scratch census: nothing panics,
-    and the Recloser/Relay whole-element skips are channel-scoped (capi only —
+    byte-preserved) and `harness::collect_element_divergences` its collecting
+    one. The pre-walk policy is shared verbatim too — `oracle_name_set`,
+    `filter_015x` (the `PROPS_015X` relief) and `transformer_cursors_disagree`
+    are single functions both walks call, after the audit found each of them
+    written twice. What remains structurally separate is the loop body itself
+    (aborting vs collecting), and it is pinned rather than trusted:
+    `census_walk_tests::the_two_walks_agree_on_every_input` runs both over one
+    input table and asserts the biconditional *`compare_prop_lists` panics **iff**
+    the census reports a row or a blind spot* — the re-ordering case is why the
+    blind-spot term is needed (a permutation leaves counts and name sets equal,
+    so the census reports two uncomparable cells and no row). Both walks take the
+    allowlist as a parameter, so both are testable with an injected table.
+    Still owed by RP2.1, and NOT pre-built here: threading `Mode` and a ledger
+    view from `run_props_census` → `census_one` → the walk, and the
+    normalize → echo → floor → ledger stage the disposition mode adds. Two
+    deliberate differences from the gate, both reproducing the scratch census:
+    nothing panics, and the Recloser/Relay whole-element skips are
+    channel-scoped (capi only —
     plan §1.2), which is where the census's 22 relay/recloser pairs come from.
     `max_rel` is `|a−e|/|e|` (or `|a−e|` when `e == 0`) maximized over the
-    numbers that FAIL the floor — re-derived and verified against all 94 203
-    multi-number `value_numeric` rows of the vendored census, and pinned by a new
-    `harness::comparator_tests` case. The refactor's non-vacuity is the existing
-    `props_015x_tests` (a value mismatch, a missing prop and a misordered prop
-    each still panic) plus the census-side guard above. RP2.1 extends this
-    seam for `DSS_PROPS_CENSUS=claims`; the mode parser rejects `claims` loudly
-    today rather than silently handing back a plain census.
+    numbers that FAIL the floor, pinned by a `harness::comparator_tests` case.
+    Its **verification breadth** was overstated in the first cut and is corrected
+    here (audit-code, major): the formula reproduces all **95 317**
+    `value_numeric` rows of the vendored census at each case's tier floor, but
+    95 180 of those carry a SINGLE number, where the "over the offenders" and
+    "over all numbers" readings cannot differ, and only **137** carry more (2:92,
+    3:26, 4:4, 6:14, 10:1). Of the 137 exactly ONE discriminates them —
+    `Line.l1` `cmatrix` on `modes:upgrade/upgrade_spacing_ratings.dss`, recorded
+    as `5.833551103975013e-8` (offender-only, at the deck's `micro` floor) and
+    not `1.1866505782192496e-7` (over all six numbers). The earlier claim "94 203
+    multi-number rows", repeated in three permanent artifacts, matched no
+    population in the census at all and is retracted at each site. The
+    refactor's non-vacuity is the existing `props_015x_tests` (a value mismatch,
+    a missing prop and a misordered prop each still panic) plus the census-side
+    guard above. RP2.1 extends this seam for `DSS_PROPS_CENSUS=claims`; the mode
+    parser rejects `claims` loudly today rather than silently handing back a
+    plain census.
   - **Acceptance (the plan's family-bounded form).** `DSS_GATE_ONLY=modes:windgen`,
     both channels, 5 cases: the knob's 74 r4133 rows equal the local full
     census's 74 rows for that family as cell multisets — and in fact **row-for-row
@@ -1230,13 +1263,27 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     `WindGen` class) instead of failing — the collect contract working.
     **WP-RP0 is closed**: the knob reproduces the vendored rows for the
     spot-checked family on both channels.
-  - **Full re-census (not owed, run anyway: 438 cases × 2 channels in 55 s).**
-    1 056 790 r4133 rows vs the vendored 1 055 880; 433 divergent cases = 433,
-    94 numeric pairs = 94, 5 shape classes = 5 with all five `shape.txt` rows
-    byte-identical, and 209 of 210 structural pairs identical **including their
-    example cells and counts**. The residual is three findings, none of them a
-    knob defect (per the vendored `README.md`, a disagreement is a finding, not a
-    rewrite — RP0.1's frozen files are NOT touched):
+  - **Full re-census (not owed, run anyway: 438 cases × 2 channels in 58 s;
+    re-run after the audit fixes, r4133 row count unmoved).** 1 056 790 r4133
+    rows vs the vendored 1 055 880; 433 divergent cases = 433, 94 numeric
+    pairs = 94, 5 shape classes = 5 with all five `shape.txt` rows
+    byte-identical. The pair extracts, measured row-by-row (the first cut's
+    "209 of 210 structural pairs identical including their example cells and
+    counts" was too strong and contradicted this bullet's own finding 2 — audit-
+    tests, corrected): **202** of the 209 vendored structural rows are
+    byte-identical, **7** carry the +2 count shift of finding 2
+    (`transformer.bhcurrent/bhflux/enabled/ratings/sub/xrconst/xscarray`) and
+    **1** row is new (`regcontrol.fwdthreshold`, finding 1); of the 94 numeric
+    rows **90** are byte-identical and **4** carry the same +2
+    (`emergamps/normamps/pctperm/repair`). `examples_full.txt` (newly re-derived
+    by the knob) lands **3 349 of 3 378 rows byte-identical and in position**;
+    the 29 that move are all `transformer.*` — the finding-2 count bumps
+    (Σ = exactly the +22 cells that finding predicts) plus the tie re-orderings
+    they cause inside three pairs — with 2 new `regcontrol.fwdthreshold` rows and
+    the one `storage.dynadll` row that differs only in backslash escaping (see
+    finding 5). The residual is five findings, none of them a knob defect (per
+    the vendored `README.md`, a disagreement is a finding, not a rewrite —
+    RP0.1's frozen files are NOT touched):
     1. **`regcontrol.fwdthreshold` (888 cells, a whole new bin-5 pair) is missing
        from the vendored census.** r4133 `Controls/RegControl.pas` initializes
        `PropertyValue[1..32]` and stops (`:1423-1459`) while `GetPropertyValue`
@@ -1249,8 +1296,10 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
        structural 209 → 210 / 960 129 → 961 031 cells). **Consequence for
        RP2.1**: `examples_full.txt` has no `regcontrol.fwdthreshold` row either,
        so that echo row would claim nothing in the offline replay and trip the
-       both-ways liveness assert — RP2.1/RP2.3 must either add the measured
-       spelling (`'100'` / `''`, 888 cells) to the replay's input or exempt the
+       both-ways liveness assert. The knob now measures the missing spellings
+       exactly — its `examples_full.txt` carries `regcontrol.fwdthreshold |
+       '100' | '' | 864` and `| '800' | '' | 24` (Σ 888) — so RP2.1/RP2.3 must
+       either add those two rows to the replay's input or exempt the
        row with this record as its citation. Decide it there; RP0.2 does not
        touch the frozen evidence.
     2. **The two cursor-disagreement transformers are absent whole-element**
@@ -1265,10 +1314,36 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     3. **The 5 `oracle_error` rows differ only in the DLL load address** inside
        the r4133 access-violation text (`…50A3CE5E` vs `…54ADCE5E`, same
        `offset 41CE5E`): ASLR, not a divergence. Same five cases, same #303.
-  - **Two things the vendored census could not report, now measured.** The
+    4. **The vendored `README.md`'s "the walk covered ~512 live cases; 438 of
+       them left a row here" is wrong** (audit-code; the fourth finding against
+       the frozen evidence, and the plan §1.1 already says 438). Measured from
+       the four manifests: 521 cases, 517 live, **438** live non-`large` — and
+       that set is EXACTLY the census's 438 case labels (symmetric difference 0).
+       So every case the 2026-08-08 walk touched left a row, and the 79 `large`
+       decks left none, i.e. were not walked (they are excluded from property
+       forcing on the gate too). The knob measures and prints the same 438.
+       Recorded, not fixed: the README is RP0.1's frozen evidence and RP0.2 does
+       not edit it — it is the outlier against both the plan and the data, and
+       needs the same closing-docs treatment RP0.1's other three README
+       corrections got.
+    5. **The vendored extracts spell the same cell two ways, and the README
+       promises more re-derivation than the plain census can give** (audit-code).
+       (a) The generator escaped backslashes in `structural_pairs.txt` (Python
+       `repr`) but not in `examples_full.txt` / the `*_in_scope` files, so
+       `storage.dynadll` reads `'C:\\Users\\…'` in one and `'C:\Users\…'` in the
+       other — a live trap for RP2.1's replay, which reads `examples_full.txt`.
+       The knob uses ONE quoting for every extract (escaped), which is the single
+       row where its `examples_full.txt` deviates from the vendored copy.
+       (b) The README's provenance sentence says the knob writes "these same
+       extracts", i.e. all of them. RP0.2 now also emits `examples_full.txt` (the
+       file RP2.1 actually replays) — but `bins.tsv` needs the §1.1 bin policy
+       and the three `*_in_scope` files need the in-scope case filter, neither of
+       which the plain census carries; both belong to RP2.1's disposition mode.
+       Recorded for the same closing-docs pass as finding 4.
+  - **Three things the vendored census could not report, now measured.** The
     `channels` block carries `unaligned_cells` — cells no index-ordered compare
-    can reach because a property-table shape gap desynchronized the two lists
-    earlier in the element (r4133: **10 776**; capi: 0). That is why the vendored
+    can reach because the two name lists desynchronized earlier in the element
+    (r4133: **10 776**; capi: 0). That is why the vendored
     value population of the five shape-gap classes is a **lower bound**: e.g.
     `windgen.dynout` and `windgen.enabled` sit past r4133's `usermodel`/`userdata`
     insertion at 18/19 and are invisible until WP-RP1 closes the gap (its
@@ -1279,7 +1354,69 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     construction: the census runs ledger-free (the gate's `property` ledger
     scopes are not applied) and forces properties on cases the gate never sends
     to capi at all (e.g. the `engines: r4133` `controls:swtcontrol/*` decks, whose
-    `SwtControl.Normal` reads `closed` vs 0.14.5's `open`). No gate signal.
+    `SwtControl.Normal` reads `closed` vs 0.14.5's `open`). And the capi
+    channel's `unaligned_cells: 0` used to read as "complete" while whole
+    Recloser/Relay elements were dropped there uncounted (audit-code): the block
+    now also carries `skipped_elements`/`skipped_element_cells` — capi **312**
+    elements / **13 520** cells, r4133 0/0 — plus
+    `heterogeneous_shape_classes` (0 on both; a nonzero value would mean
+    `shape.txt`'s one-row-per-class format is hiding a second shape, and prints a
+    banner). No gate signal.
+  - **Audit settlement (2026-08-22, 14 findings from audit-code + audit-tests;
+    nothing dropped, nothing refuted).** Both majors and ten of the twelve minors
+    are FIXED; one minor is split fixed + recorded (9), one is recorded-only (5),
+    and major 2 keeps a recorded remainder the plan assigns to RP2.1:
+    (1) major, the `max_rel` "94 203 multi-number rows" overclaim — **fixed** at
+    all three sites, re-measured over the local census (95 317 numeric rows, 137
+    multi-number, one discriminating cell) with the emulation cross-validated
+    against the census's own kind partition (0/960 128 structure rows have equal
+    skeletons, 0/95 317 numeric rows have unequal ones).
+    (2) major, "the RP2.1 seam is a second copy of `compare_prop_lists`" —
+    **fixed** as far as RP0.2 owns it: the three duplicated pre-walk policy
+    expressions are now shared functions, the collecting walk takes an injectable
+    allowlist, and the two loop bodies are pinned to each other by a
+    biconditional test; the `Mode` + ledger threading is **recorded** as RP2.1's
+    (the plan assigns the disposition mode there, and a one-variant enum threaded
+    through three frames would be untestable plumbing).
+    (3) `quote()`'s `\'` breaking the documented parse regex — **fixed**
+    (`\x27`, with a round-trip test through the README's own regex rule).
+    (4) the `NO_STEP` doc's "`-1` is what the vendored census uses" — **fixed**
+    (the five `oracle_error` rows carry `['case','detail','kind']` and no `step`;
+    the knob never serializes one either).
+    (5) the README's "~512 live cases" — **recorded** as finding 4 above (frozen
+    evidence; the measured population is 438 and the plan already says so).
+    (6) a malformed oracle payload filed as `rust_error` — **fixed**
+    (deserialization moved out of the Rust-side `catch_unwind`).
+    (7) capi `unaligned_cells: 0` hiding whole-element skips — **fixed** (the two
+    new counters above).
+    (8) "the census walks solve→properties, the gate walks it last" — **fixed by
+    demonstration**: every `dss.command` `compare_capture` issues between `solve`
+    and the property block is a `? Element.Prop` QUERY (`compare_probe`, the
+    ledger's probe handlers; the ledger's property rewrite is inside the block),
+    `compare_export` compares two strings without touching the engine, a `?`
+    query is a read, and the one property-visible cursor (`ActiveWinding`) is
+    written only by property SETTERS while `element_properties` re-selects the
+    object and refreshes `Vterminal` itself; the permanent test
+    `the_props_surface_is_stable_across_the_gates_intervening_comparators`
+    replays that traffic on a 3-winding transformer and asserts the `?`-surface
+    is byte-identical.
+    (9) capi extracts headed `r4133-example` + the un-regenerable derived files —
+    **fixed** (headers name their channel; `examples_full.txt` is now emitted and
+    reproduces 3 349/3 378 vendored rows in position) and **recorded** for
+    `bins.tsv`/`*_in_scope`, which the plain census cannot derive (finding 5).
+    (10) audit-tests' restatement of (2), incl. the gate's count-only assert vs
+    the census's name-set compare — **fixed** by the same biconditional pin,
+    which is what proves the two statements coincide.
+    (11) the overstated full-re-census agreement — **fixed** (202/7/1 and 90/4,
+    re-measured).
+    (12) a stray `DSS_PROPS_CENSUS=1` greening the mandatory gate — **fixed**
+    (own `#[test]`).
+    (13) artifacts overwriting a fixed `tmp/` path with no record of the filter —
+    **fixed** (`gate_only` in the census header and in a new
+    `tmp/props_census/run.json`).
+    (14) `shape.txt` keeping only the first shape per class — **fixed** as
+    reporting: the format stays vendored-faithful (the JSON is the lossless
+    record) and `heterogeneous_shape_classes` + a banner make the loss loud.
   - Gate: all five commands green. `lane_diff.ps1` not owed — no solved state,
     no compat kernel; the knob is test-harness code and inert unless the env var
     is set.

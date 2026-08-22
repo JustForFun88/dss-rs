@@ -77,15 +77,6 @@ fn corpus_gate_all_cases_match_engines() {
         scheduler::seed_ledger();
         return;
     }
-    // Property census mode (`R4133_PROPS_PLAN.md` RP0.2): walk every live case on
-    // BOTH channels with `all_properties` forced on, collect every divergent cell
-    // and write `tmp/props_census.json` + the RP0.1 extracts. Asserts nothing
-    // about the data — a divergence is the measurement, not a failure.
-    if std::env::var("DSS_PROPS_CENSUS").is_ok() {
-        scheduler::run_props_census();
-        return;
-    }
-
     let run = run_gate();
 
     if let Ok(path) = std::env::var("DSS_GATE_DUMP") {
@@ -158,6 +149,34 @@ fn corpus_gate_all_cases_match_engines() {
     // than a loud mismatch. Self-silencing when no unflushed monitor was
     // compared, so `DSS_GATE_ONLY` runs do not trip it.
     harness::lane::assert_monitor_pad_is_live();
+}
+
+/// The property census (`R4133_PROPS_PLAN.md` RP0.2, `DSS_PROPS_CENSUS`): walk
+/// every live case on BOTH channels with `all_properties` forced on, collect
+/// every divergent cell and write `tmp/props_census.json` + the RP0.1 extracts.
+/// Asserts nothing about the data — a divergence is the measurement, not a
+/// failure.
+///
+/// It lives in its OWN `#[test]` rather than diverting the mandatory gate
+/// (RP0.2 audit): dispatching `corpus_gate_all_cases_match_engines` on the env
+/// var meant a stray `DSS_PROPS_CENSUS=1` in a shell or CI environment turned
+/// the one mandatory live comparison into a green no-op. Here the var only ARMS
+/// this test; the gate always runs the gate. Unset, this is a no-op that costs
+/// nothing on `cargo test --workspace`.
+///
+/// Run it alone — the census is a full second pass over the corpus:
+/// `DSS_PROPS_CENSUS=1 cargo test -p dss-core --test corpus_gate
+/// corpus_gate_props_census -- --nocapture` (see `TESTING.md`).
+#[test]
+fn corpus_gate_props_census() {
+    let Ok(raw) = std::env::var("DSS_PROPS_CENSUS") else {
+        eprintln!(
+            "props_census: DSS_PROPS_CENSUS unset — nothing measured. Set it to `1` to run \
+             the plain census (R4133_PROPS_PLAN.md RP0.2)."
+        );
+        return;
+    };
+    scheduler::run_props_census(&raw);
 }
 
 /// Write the contamination-proof artifact: a label-sorted
