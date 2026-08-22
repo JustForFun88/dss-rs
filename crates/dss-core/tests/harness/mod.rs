@@ -217,8 +217,22 @@ pub enum ValueVerdict {
     /// describe the FIRST offender (exactly what the assert reports), while
     /// `max_rel` is the largest relative gap **among the offenders** —
     /// `|a − e| / |e|`, or `|a − e|` when `e == 0`. That is the census's
-    /// `max_rel` column (verified against all 94 203 multi-number
-    /// `value_numeric` rows of the 2026-08-08 census).
+    /// `max_rel` column.
+    ///
+    /// **Verification breadth** (re-measured 2026-08-22, RP0.2 audit — the
+    /// earlier "94 203 multi-number rows" reading of the census was wrong and is
+    /// retracted): the formula reproduces **all 95 317** `value_numeric` rows of
+    /// the 2026-08-08 census, each at its own case's tier floor. But that is a
+    /// far weaker cross-check than the row count suggests — 95 180 of those rows
+    /// carry a SINGLE number, where "max over the offenders" and "max over all
+    /// numbers" cannot differ, and only **137** carry more than one (counts
+    /// 2:92, 3:26, 4:4, 6:14, 10:1). Of those 137 exactly ONE discriminates the
+    /// two readings: `Line.l1` `cmatrix` on
+    /// `modes:upgrade/upgrade_spacing_ratings.dss`, recorded as
+    /// `5.833551103975013e-8` — the offender-only maximum at that deck's `micro`
+    /// floor — and NOT `1.1866505782192496e-7`, the maximum over all six numbers.
+    /// So the semantics are *decided* by one cell and merely *consistent with*
+    /// every other row; the pin below carries that cell's shape.
     Numeric {
         index: usize,
         actual: f64,
@@ -377,8 +391,11 @@ mod comparator_tests {
     /// `DSS_PROPS_CENSUS` walk share, so its classification and its `max_rel`
     /// are pinned directly. Every expectation here is a row of the vendored
     /// 2026-08-08 census (`tests/corpus/props_r4133/`): the `max_rel` formula was
-    /// re-derived from it and checked against all 94 203 multi-number
-    /// `value_numeric` rows.
+    /// re-derived from it and reproduces all 95 317 `value_numeric` rows — of
+    /// which only 137 carry more than one number and exactly one discriminates
+    /// "max over the offenders" from "max over all numbers" (see
+    /// [`ValueVerdict::Numeric`]'s breadth note; the last case below is that
+    /// cell's shape).
     #[test]
     fn value_verdict_classifies_and_sizes_like_the_census() {
         use super::{ValueVerdict, value_verdict};
@@ -1623,6 +1640,55 @@ fn prop_015x(allowlist: &[(&str, &[&str])], class: &str, prop: &str) -> bool {
     })
 }
 
+/// The oracle capture's property names, lowercased — the "does the pinned
+/// oracle know this prop?" set that gates the [`PROPS_015X`] exclusion.
+///
+/// Shared verbatim by the gating walk ([`compare_prop_lists`]) and the census
+/// walk ([`collect_element_divergences`]) so the two cannot drift apart
+/// (`R4133_PROPS_PLAN.md` RP0.2 audit: the pre-walk policy used to be written
+/// twice).
+fn oracle_name_set(oracle: &[(String, String)]) -> BTreeSet<String> {
+    oracle.iter().map(|(n, _)| n.to_lowercase()).collect()
+}
+
+/// Drop the Rust-side props the pinned capture cannot know: a name in
+/// `allowlist` for this `class` that is ALSO absent from `oracle_names`. One
+/// the capture DOES carry stays in and is fully compared. Shared by both walks
+/// (see [`oracle_name_set`]).
+fn filter_015x<'a>(
+    class: &str,
+    actual: &'a [(String, String)],
+    oracle_names: &BTreeSet<String>,
+    allowlist: &[(&str, &[&str])],
+) -> Vec<&'a (String, String)> {
+    actual
+        .iter()
+        .filter(|(n, _)| {
+            !prop_015x(allowlist, class, n) || oracle_names.contains(&n.to_lowercase())
+        })
+        .collect()
+}
+
+/// Whether the two sides' Transformer `ActiveWinding` cursors point at different
+/// windings — the gate on [`skip_transformer_cursor`]. Non-Transformer classes
+/// are always `false`. Shared by both walks (see [`oracle_name_set`]).
+fn transformer_cursors_disagree(
+    class: &str,
+    actual: &[(String, String)],
+    oracle: &[(String, String)],
+) -> bool {
+    if !class.eq_ignore_ascii_case("Transformer") {
+        return false;
+    }
+    let cursor_of = |props: &[(String, String)]| -> Option<String> {
+        props
+            .iter()
+            .find(|(n, _)| n.eq_ignore_ascii_case("Wdg"))
+            .map(|(_, v)| v.trim().to_string())
+    };
+    cursor_of(actual) != cursor_of(oracle)
+}
+
 /// The property-list comparison core of [`compare_all_properties`], factored out
 /// so the [`PROPS_015X`] allowlist can be injected for the self-tests (the
 /// shipped table is empty). `actual` is the Rust `?`-surface list, `oracle` the
@@ -1644,16 +1710,12 @@ fn compare_prop_lists(
     ctx: &str,
 ) {
     // Oracle capture's property names (case-insensitive) — the "does the pinned
-    // oracle know this prop?" set that gates the 0.15.x exclusion.
-    let oracle_names: BTreeSet<String> = oracle.iter().map(|(n, _)| n.to_lowercase()).collect();
-    // Exclude Rust-side 0.15.x-only props the 0.14.5 capture cannot contain. If
-    // the capture DOES contain the prop (capi015), keep it → full compare.
-    let filtered: Vec<&(String, String)> = actual
-        .iter()
-        .filter(|(n, _)| {
-            !prop_015x(allowlist, class, n) || oracle_names.contains(&n.to_lowercase())
-        })
-        .collect();
+    // oracle know this prop?" set that gates the 0.15.x exclusion. Exclude
+    // Rust-side 0.15.x-only props the 0.14.5 capture cannot contain; if the
+    // capture DOES contain the prop (capi015), keep it → full compare. Both
+    // steps are the SHARED helpers the census walk calls too.
+    let oracle_names = oracle_name_set(oracle);
+    let filtered = filter_015x(class, actual, &oracle_names, allowlist);
     assert_eq!(
         filtered.len(),
         oracle.len(),
@@ -1733,15 +1795,8 @@ pub fn compare_all_properties(dss: &mut Dss, exp: &[PropsCap], tol: &Tolerances,
         // Transformer cursor-skip gate (see [`skip_transformer_cursor`]): the
         // singular per-winding forms compare only when both engines' ActiveWinding
         // (the `Wdg` value) point to the same winding. Read Rust's from `actual`
-        // and the oracle's from the capture.
-        let cursor_of = |props: &[(String, String)]| -> Option<String> {
-            props
-                .iter()
-                .find(|(n, _)| n.eq_ignore_ascii_case("Wdg"))
-                .map(|(_, v)| v.trim().to_string())
-        };
-        let cursors_disagree =
-            class.eq_ignore_ascii_case("Transformer") && cursor_of(&actual) != cursor_of(&pc.props);
+        // and the oracle's from the capture. Shared with the census walk.
+        let cursors_disagree = transformer_cursors_disagree(class, &actual, &pc.props);
         compare_prop_lists(
             &pc.element,
             class,
@@ -1819,38 +1874,53 @@ pub enum PropCensusRow {
     MissingElement { element: String },
 }
 
+/// What one census walk could NOT look at, reported alongside the rows it did
+/// produce. Metadata, never a census row — but never silent either: an
+/// uncounted skip would make a partial census read like a complete one.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CensusBlindSpots {
+    /// Cells no index-ordered comparison could reach because the two name lists
+    /// had desynchronized at that position — a property-table shape gap earlier
+    /// in the element, or a pure re-ordering — plus the tail the shorter list
+    /// cannot reach. An insertion at property *k* hides every cell after *k* on
+    /// that element, which is what makes the vendored census's value population
+    /// of the five shape-gap classes a LOWER BOUND rather than a total. WP-RP1
+    /// closes the shape gaps and with them this blind spot.
+    pub unaligned_cells: usize,
+    /// Elements dropped WHOLE before a single cell was looked at — the
+    /// channel-scoped Recloser/Relay skip below. Their cells appear neither in
+    /// the rows nor in `unaligned_cells`, so `unaligned_cells == 0` on a channel
+    /// with skips does NOT mean that channel's census is complete.
+    pub skipped_elements: usize,
+    /// The oracle-side property cells those skipped elements carried — the size
+    /// of the hole `skipped_elements` leaves.
+    pub skipped_element_cells: usize,
+}
+
+impl CensusBlindSpots {
+    /// Fold another walk's blind spots in (the scheduler accumulates per case).
+    pub fn add(&mut self, other: CensusBlindSpots) {
+        self.unaligned_cells += other.unaligned_cells;
+        self.skipped_elements += other.skipped_elements;
+        self.skipped_element_cells += other.skipped_element_cells;
+    }
+}
+
 /// Walk one checkpoint's property capture and COLLECT every divergence instead
 /// of asserting on the first — the measurement half of the `DSS_PROPS_CENSUS`
 /// knob (`R4133_PROPS_PLAN.md` RP0.2).
 ///
-/// The comparison policy is the gate's, not a private one: the SAME index walk
-/// ("property-index order is the contract"), the same [`PROPS_015X`] shape
-/// relief, the same [`skip_prop`] / [`skip_transformer_cursor`] value-skip
-/// gates, the same [`value_verdict`] floor
-/// ([`Tolerances::i_rel`]/`i_abs`, exactly what [`compare_all_properties`]
-/// passes). Two deliberate differences, both of them what turns an *assert* into
-/// a *census*, and both reproducing the 2026-08-08 G1.1 walk vendored at
-/// `tests/corpus/props_r4133/`:
+/// This function owns only the per-ELEMENT framing (the channel-scoped
+/// whole-element skips and the engine lookup); the comparison itself is
+/// [`collect_element_divergences`], the collecting twin of
+/// [`compare_prop_lists`].
 ///
-///  * **Nothing aborts.** The gate's `assert_eq!` on the property count and its
-///    `assert!` on each name stop the element dead; here a count/membership
-///    mismatch becomes a [`PropCensusRow::Shape`] row and the index walk
-///    continues, comparing every position whose two names still agree.
 ///  * **The Recloser/Relay whole-element skips are channel-scoped**: they exist
 ///    because those tables moved to the r4133 surface and cannot match a 0.14.5
 ///    capture (see [`compare_all_properties`]), which is an argument about the
 ///    capi channel only. On [`PropsChannel::R4133`] both classes are compared —
 ///    plan §1.2; without this the census's 22 relay/recloser pairs would not
-///    exist.
-///
-/// Returns the number of cells the walk could NOT compare because the two lists
-/// had desynchronized (a name mismatch at a position, plus the tail the shorter
-/// list cannot reach). This is the blind spot a shape gap imposes on ANY
-/// index-ordered comparison — an insertion at property *k* hides every cell
-/// after *k* on that element — and it is what makes the vendored census's value
-/// population of the five shape-gap classes a lower bound rather than a total.
-/// The knob reports it per channel instead of leaving it silent; WP-RP1 closes
-/// the shape gaps and with them the blind spot.
+///    exist. Every skip is COUNTED into [`CensusBlindSpots`].
 ///
 /// Never panics on a divergence and never asserts.
 pub fn collect_prop_divergences(
@@ -1859,13 +1929,15 @@ pub fn collect_prop_divergences(
     tol: &Tolerances,
     channel: PropsChannel,
     out: &mut Vec<PropCensusRow>,
-) -> usize {
-    let mut unaligned = 0usize;
+) -> CensusBlindSpots {
+    let mut blind = CensusBlindSpots::default();
     for pc in exp {
         let class = pc.element.split('.').next().unwrap_or("");
         if channel == PropsChannel::CapiV0145
             && (class.eq_ignore_ascii_case("Recloser") || class.eq_ignore_ascii_case("Relay"))
         {
+            blind.skipped_elements += 1;
+            blind.skipped_element_cells += pc.props.len();
             continue;
         }
         let Some(actual) = dss.element_properties(&pc.element) else {
@@ -1874,77 +1946,248 @@ pub fn collect_prop_divergences(
             });
             continue;
         };
-        let cursor_of = |props: &[(String, String)]| -> Option<String> {
-            props
-                .iter()
-                .find(|(n, _)| n.eq_ignore_ascii_case("Wdg"))
-                .map(|(_, v)| v.trim().to_string())
-        };
-        let cursors_disagree =
-            class.eq_ignore_ascii_case("Transformer") && cursor_of(&actual) != cursor_of(&pc.props);
+        let cursors_disagree = transformer_cursors_disagree(class, &actual, &pc.props);
+        blind.unaligned_cells += collect_element_divergences(
+            &pc.element,
+            class,
+            &actual,
+            &pc.props,
+            PROPS_015X,
+            cursors_disagree,
+            tol.i_rel,
+            tol.i_abs,
+            out,
+        );
+    }
+    blind
+}
 
-        let oracle_names: BTreeSet<String> =
-            pc.props.iter().map(|(n, _)| n.to_lowercase()).collect();
-        // Same relief as the gate: a Rust-side 0.15.x/r4133-only prop the capture
-        // cannot know is dropped before the shape comparison; one the capture DOES
-        // carry stays in and is fully compared.
-        let filtered: Vec<&(String, String)> = actual
-            .iter()
-            .filter(|(n, _)| {
-                !prop_015x(PROPS_015X, class, n) || oracle_names.contains(&n.to_lowercase())
-            })
-            .collect();
-        let rust_names: BTreeSet<String> = filtered.iter().map(|(n, _)| n.to_lowercase()).collect();
-        if filtered.len() != pc.props.len() || rust_names != oracle_names {
-            // The two name lists are printed in PROPERTY-INDEX order (what the
-            // extracts show and what a reader needs to locate the insertion),
-            // not sorted.
-            out.push(PropCensusRow::Shape {
-                element: pc.element.clone(),
-                rust_count: filtered.len(),
-                oracle_count: pc.props.len(),
-                rust_only: filtered
-                    .iter()
-                    .map(|(n, _)| n.to_lowercase())
-                    .filter(|n| !oracle_names.contains(n))
-                    .collect(),
-                oracle_only: pc
-                    .props
-                    .iter()
-                    .map(|(n, _)| n.to_lowercase())
-                    .filter(|n| !rust_names.contains(n))
-                    .collect(),
-            });
-            unaligned += filtered.len().abs_diff(pc.props.len());
+/// The collecting twin of [`compare_prop_lists`]: the SAME policy chain — the
+/// same [`oracle_name_set`]/[`filter_015x`] shape relief, the same index walk
+/// ("property-index order is the contract"), the same
+/// [`skip_prop`]/[`skip_transformer_cursor`] value-skip gates, the same
+/// [`value_verdict`] floor — with every abort turned into a row.
+///
+/// The `allowlist` parameter exists for the same reason
+/// [`compare_prop_lists`]'s does: so the self-tests can inject a synthetic
+/// table (the shipped [`PROPS_015X`] is what
+/// [`collect_prop_divergences`] passes). The two walks are pinned against each
+/// other by `census_walk_tests::the_two_walks_agree_on_every_input` — the gate
+/// panics on an input **iff** this walk reports a row or a blind spot.
+///
+/// The one deliberate difference is what turns an *assert* into a *census*, and
+/// it reproduces the 2026-08-08 G1.1 walk vendored at
+/// `tests/corpus/props_r4133/`: **nothing aborts.** The gate's `assert_eq!` on
+/// the property count and its `assert!` on each name stop the element dead;
+/// here a count/membership mismatch becomes a [`PropCensusRow::Shape`] row and
+/// the index walk continues, comparing every position whose two names still
+/// agree. A position whose names do NOT agree is uncomparable — the return
+/// value counts those cells (see [`CensusBlindSpots::unaligned_cells`]).
+///
+/// A second, smaller asymmetry follows from that: the gate asserts the property
+/// COUNT and then catches everything else through the per-index name assert,
+/// while this walk needs the name-SET comparison too, because it has to decide
+/// up front whether to emit a shape row for an element whose counts happen to
+/// match. The two statements coincide on every input (pinned by the same test).
+#[allow(clippy::too_many_arguments)]
+fn collect_element_divergences(
+    element: &str,
+    class: &str,
+    actual: &[(String, String)],
+    oracle: &[(String, String)],
+    allowlist: &[(&str, &[&str])],
+    cursors_disagree: bool,
+    rel: f64,
+    abs: f64,
+    out: &mut Vec<PropCensusRow>,
+) -> usize {
+    let mut unaligned = 0usize;
+    let oracle_names = oracle_name_set(oracle);
+    let filtered = filter_015x(class, actual, &oracle_names, allowlist);
+    let rust_names: BTreeSet<String> = filtered.iter().map(|(n, _)| n.to_lowercase()).collect();
+    if filtered.len() != oracle.len() || rust_names != oracle_names {
+        // The two name lists are printed in PROPERTY-INDEX order (what the
+        // extracts show and what a reader needs to locate the insertion),
+        // not sorted.
+        out.push(PropCensusRow::Shape {
+            element: element.to_string(),
+            rust_count: filtered.len(),
+            oracle_count: oracle.len(),
+            rust_only: filtered
+                .iter()
+                .map(|(n, _)| n.to_lowercase())
+                .filter(|n| !oracle_names.contains(n))
+                .collect(),
+            oracle_only: oracle
+                .iter()
+                .map(|(n, _)| n.to_lowercase())
+                .filter(|n| !rust_names.contains(n))
+                .collect(),
+        });
+        unaligned += filtered.len().abs_diff(oracle.len());
+    }
+    for (a, e) in filtered.iter().zip(oracle) {
+        let (aname, aval) = (&a.0, &a.1);
+        let (ename, eval) = (&e.0, &e.1);
+        if !aname.eq_ignore_ascii_case(ename) {
+            // The lists desynchronized (a shape gap earlier in the table, or a
+            // re-ordering). The gate would have failed here; the census records
+            // the cell as uncomparable and keeps walking in case they re-align.
+            unaligned += 1;
+            continue;
         }
-        for (a, e) in filtered.iter().zip(&pc.props) {
-            let (aname, aval) = (&a.0, &a.1);
-            let (ename, eval) = (&e.0, &e.1);
-            if !aname.eq_ignore_ascii_case(ename) {
-                // The lists desynchronized (a shape gap earlier in the table).
-                // The gate would have failed here; the census records the cell as
-                // uncomparable and keeps walking in case the names re-align.
-                unaligned += 1;
-                continue;
-            }
-            if skip_prop(class, ename) || skip_transformer_cursor(class, ename, cursors_disagree) {
-                continue;
-            }
-            let max_rel = match value_verdict(aval, eval, tol.i_rel, tol.i_abs) {
-                ValueVerdict::Match => continue,
-                ValueVerdict::Skeleton | ValueVerdict::NumberCount => None,
-                ValueVerdict::Numeric { max_rel, .. } => Some(max_rel),
-            };
-            out.push(PropCensusRow::Value {
-                element: pc.element.clone(),
-                prop: ename.clone(),
-                rust: aval.clone(),
-                oracle: eval.clone(),
-                max_rel,
-            });
+        if skip_prop(class, ename) || skip_transformer_cursor(class, ename, cursors_disagree) {
+            continue;
         }
+        let max_rel = match value_verdict(aval, eval, rel, abs) {
+            ValueVerdict::Match => continue,
+            ValueVerdict::Skeleton | ValueVerdict::NumberCount => None,
+            ValueVerdict::Numeric { max_rel, .. } => Some(max_rel),
+        };
+        out.push(PropCensusRow::Value {
+            element: element.to_string(),
+            prop: ename.clone(),
+            rust: aval.clone(),
+            oracle: eval.clone(),
+            max_rel,
+        });
     }
     unaligned
+}
+
+#[cfg(test)]
+mod census_walk_tests {
+    use super::{collect_element_divergences, compare_prop_lists};
+
+    /// Synthetic allowlist — the same one `props_015x_tests` injects, so both
+    /// walks see identical shape relief.
+    const TEST_ALLOW: &[(&str, &[&str])] = &[("Foo", &["NewTrail", "NewMid"])];
+
+    fn props(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs
+            .iter()
+            .map(|(n, v)| (n.to_string(), v.to_string()))
+            .collect()
+    }
+
+    /// `(name, rust list, oracle list, the gate is expected to panic)`.
+    type WalkCase = (
+        &'static str,
+        &'static [(&'static str, &'static str)],
+        &'static [(&'static str, &'static str)],
+        bool,
+    );
+
+    /// **The anti-drift pin** (`R4133_PROPS_PLAN.md` RP0.2 audit). The gating
+    /// walk and the census walk state the same policy in two shapes — one
+    /// aborting, one collecting — so nothing but a test can stop them drifting.
+    /// Over a table that exercises every branch of both (equal lists, a value
+    /// mismatch, an allowlisted extra trailing and inserted, a non-allowlisted
+    /// extra, a missing prop, a pure re-ordering, an empty pair of lists), this
+    /// asserts the exact biconditional:
+    ///
+    /// > `compare_prop_lists` panics **iff** `collect_element_divergences`
+    /// > reports at least one row or at least one unaligned cell.
+    ///
+    /// The re-ordering case is why the right-hand side needs the blind-spot
+    /// term: a permutation leaves the counts and the name SETS equal, so the
+    /// census emits no row at all — it reports the two positions as
+    /// uncomparable instead, while the gate panics on the name assert.
+    #[test]
+    fn the_two_walks_agree_on_every_input() {
+        let cases: &[WalkCase] = &[
+            (
+                "identical",
+                &[("A", "1"), ("B", "2")],
+                &[("A", "1"), ("B", "2")],
+                false,
+            ),
+            (
+                "value mismatch",
+                &[("A", "1"), ("B", "9")],
+                &[("A", "1"), ("B", "2")],
+                true,
+            ),
+            (
+                "trailing allowlisted extra",
+                &[("A", "1"), ("NewTrail", "9")],
+                &[("A", "1")],
+                false,
+            ),
+            (
+                "inserted allowlisted extra",
+                &[("A", "1"), ("NewMid", "9"), ("B", "2")],
+                &[("A", "1"), ("B", "2")],
+                false,
+            ),
+            (
+                "allowlisted, present in oracle, value differs",
+                &[("A", "1"), ("NewTrail", "9")],
+                &[("A", "1"), ("NewTrail", "7")],
+                true,
+            ),
+            (
+                "non-allowlisted extra",
+                &[("A", "1"), ("B", "2"), ("Bogus", "9")],
+                &[("A", "1"), ("B", "2")],
+                true,
+            ),
+            (
+                "missing prop",
+                &[("A", "1")],
+                &[("A", "1"), ("B", "2")],
+                true,
+            ),
+            (
+                "pure re-ordering",
+                &[("B", "2"), ("A", "1")],
+                &[("A", "1"), ("B", "2")],
+                true,
+            ),
+            (
+                "case-insensitive names still match",
+                &[("a", "1"), ("b", "2")],
+                &[("A", "1"), ("B", "2")],
+                false,
+            ),
+            ("both empty", &[], &[], false),
+        ];
+        for (name, rust, oracle, gate_panics) in cases {
+            let a = props(rust);
+            let o = props(oracle);
+            let gate = std::panic::catch_unwind(|| {
+                compare_prop_lists(
+                    "Foo.x", "Foo", &a, &o, TEST_ALLOW, false, 1e-9, 1e-9, "self",
+                );
+            });
+            assert_eq!(
+                gate.is_err(),
+                *gate_panics,
+                "{name}: the gate walk's verdict changed — update the table only \
+                 with a deliberate policy change"
+            );
+            let mut rows = Vec::new();
+            let unaligned = collect_element_divergences(
+                "Foo.x",
+                "Foo",
+                &props(rust),
+                &props(oracle),
+                TEST_ALLOW,
+                false,
+                1e-9,
+                1e-9,
+                &mut rows,
+            );
+            let census_flags = !rows.is_empty() || unaligned > 0;
+            assert_eq!(
+                census_flags,
+                gate.is_err(),
+                "{name}: the two walks disagree — gate panicked = {}, census rows = {rows:?}, \
+                 unaligned = {unaligned}",
+                gate.is_err()
+            );
+        }
+    }
 }
 
 /// A PC element's state variables (oracle `AllVariableNames`/`AllVariableValues`
