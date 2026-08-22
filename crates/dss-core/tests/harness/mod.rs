@@ -197,9 +197,38 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
     None
 }
 
-/// Assert two value strings match: identical skeletons, numbers within
-/// `rel`/`abs` tolerance.
-pub fn assert_value_matches_tol(actual: &str, expected: &str, rel: f64, abs: f64, ctx: &str) {
+/// The verdict of ONE value-string comparison at the plain (un-normalized)
+/// `rel`/`abs` floor — the single decision [`assert_value_matches_tol`] panics
+/// on and the `DSS_PROPS_CENSUS` walk ([`collect_prop_divergences`]) records.
+///
+/// Both consumers read the same function so the census can never drift into a
+/// second, slightly different comparator (`R4133_PROPS_PLAN.md` RP0.2: the
+/// census is the measurement of *this* gate's compare, and RP2.1's disposition
+/// mode extends the same seam rather than cloning it).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ValueVerdict {
+    /// Byte-equal, or every number inside `abs + rel * |expected|`.
+    Match,
+    /// The non-numeric skeletons differ (a rendering/structure divergence).
+    Skeleton,
+    /// Skeletons agree but the two sides carry a different number count.
+    NumberCount,
+    /// At least one number is outside the floor. `index`/`actual`/`expected`
+    /// describe the FIRST offender (exactly what the assert reports), while
+    /// `max_rel` is the largest relative gap **among the offenders** —
+    /// `|a − e| / |e|`, or `|a − e|` when `e == 0`. That is the census's
+    /// `max_rel` column (verified against all 94 203 multi-number
+    /// `value_numeric` rows of the 2026-08-08 census).
+    Numeric {
+        index: usize,
+        actual: f64,
+        expected: f64,
+        max_rel: f64,
+    },
+}
+
+/// Classify two value strings at the `rel`/`abs` floor. See [`ValueVerdict`].
+pub fn value_verdict(actual: &str, expected: &str, rel: f64, abs: f64) -> ValueVerdict {
     // Byte-identical strings are always a pass — the WHOLE-string guard, so it
     // fires only when the two sides are literally equal. This is the correct
     // home for the machine-generated EPRI bus name `0x008e1248`, whose numeric
@@ -210,26 +239,87 @@ pub fn assert_value_matches_tol(actual: &str, expected: &str, rel: f64, abs: f64
     // number compare below and correctly FAIL. Not a loosening: exactly-equal is
     // the tightest possible match.
     if actual == expected {
-        return;
+        return ValueVerdict::Match;
     }
     let (askel, anums) = numeric_skeleton(actual);
     let (eskel, enums) = numeric_skeleton(expected);
-    assert_eq!(
-        askel, eskel,
-        "{ctx}: structure differs (actual {actual:?} vs expected {expected:?})"
-    );
-    assert_eq!(
-        anums.len(),
-        enums.len(),
-        "{ctx}: number count differs (actual {actual:?} vs expected {expected:?})"
-    );
+    if askel != eskel {
+        return ValueVerdict::Skeleton;
+    }
+    if anums.len() != enums.len() {
+        return ValueVerdict::NumberCount;
+    }
+    let mut first: Option<(usize, f64, f64)> = None;
+    let mut max_rel = 0.0f64;
     for (i, (a, e)) in anums.iter().zip(&enums).enumerate() {
         let allowed = abs + rel * e.abs();
-        assert!(
-            (a - e).abs() <= allowed,
-            "{ctx}: number {i} differs: actual {a} vs expected {e} \
-             (from {actual:?} vs {expected:?})"
-        );
+        if (a - e).abs() <= allowed {
+            continue;
+        }
+        if first.is_none() {
+            first = Some((i, *a, *e));
+        }
+        let r = if *e == 0.0 {
+            (a - e).abs()
+        } else {
+            (a - e).abs() / e.abs()
+        };
+        if r > max_rel {
+            max_rel = r;
+        }
+    }
+    match first {
+        None => ValueVerdict::Match,
+        Some((index, a, e)) => ValueVerdict::Numeric {
+            index,
+            actual: a,
+            expected: e,
+            max_rel,
+        },
+    }
+}
+
+/// Assert two value strings match: identical skeletons, numbers within
+/// `rel`/`abs` tolerance.
+///
+/// The decision itself lives in [`value_verdict`]; the failure arms re-derive
+/// the operands so the panic text stays byte-for-byte what the `assert_eq!` /
+/// `assert!` forms have always produced (the extra work happens only on the
+/// path that is about to abort the test).
+pub fn assert_value_matches_tol(actual: &str, expected: &str, rel: f64, abs: f64, ctx: &str) {
+    match value_verdict(actual, expected, rel, abs) {
+        ValueVerdict::Match => {}
+        ValueVerdict::Skeleton => {
+            let (askel, _) = numeric_skeleton(actual);
+            let (eskel, _) = numeric_skeleton(expected);
+            assert_eq!(
+                askel, eskel,
+                "{ctx}: structure differs (actual {actual:?} vs expected {expected:?})"
+            );
+        }
+        ValueVerdict::NumberCount => {
+            let (_, anums) = numeric_skeleton(actual);
+            let (_, enums) = numeric_skeleton(expected);
+            assert_eq!(
+                anums.len(),
+                enums.len(),
+                "{ctx}: number count differs (actual {actual:?} vs expected {expected:?})"
+            );
+        }
+        ValueVerdict::Numeric {
+            index: i,
+            actual: a,
+            expected: e,
+            ..
+        } => {
+            // `assert!(cond, "msg")` panics with exactly the formatted message
+            // (no `assert_eq!`-style left/right preamble), so a plain `panic!`
+            // with the same string is byte-identical to the old failure text.
+            panic!(
+                "{ctx}: number {i} differs: actual {a} vs expected {e} \
+                 (from {actual:?} vs {expected:?})"
+            );
+        }
     }
 }
 
@@ -281,6 +371,72 @@ mod comparator_tests {
             assert_value_matches_tol("v=2.0", "v=1.0", 1e-9, 1e-12, "toobig");
         });
         assert!(bad.is_err(), "out-of-tolerance numbers must FAIL");
+    }
+
+    /// [`value_verdict`] is what [`assert_value_matches_tol`] and the
+    /// `DSS_PROPS_CENSUS` walk share, so its classification and its `max_rel`
+    /// are pinned directly. Every expectation here is a row of the vendored
+    /// 2026-08-08 census (`tests/corpus/props_r4133/`): the `max_rel` formula was
+    /// re-derived from it and checked against all 94 203 multi-number
+    /// `value_numeric` rows.
+    #[test]
+    fn value_verdict_classifies_and_sizes_like_the_census() {
+        use super::{ValueVerdict, value_verdict};
+        let feeder = |a: &str, e: &str| value_verdict(a, e, 1e-7, 1e-5);
+
+        // Byte-equal → Match, whatever the tolerance.
+        assert_eq!(feeder("Yes", "Yes"), ValueVerdict::Match);
+        // `value_structure`: the skeletons differ (census `windgen.enabled`).
+        assert_eq!(feeder("Yes", "true"), ValueVerdict::Skeleton);
+        // …and the array forms of `line.ratings`.
+        assert_eq!(feeder("[ 400]", "[400,]"), ValueVerdict::Skeleton);
+        // A differing number COUNT surfaces as `Skeleton`, because every number
+        // becomes exactly one `#`: `[ # #]` vs `[ # # #]`. `NumberCount` is the
+        // defensive backstop the original `assert_eq!(anums.len(), enums.len())`
+        // always was — kept, and kept unreachable, rather than dropped.
+        assert_eq!(feeder("[ 1 2]", "[ 1 2 3]"), ValueVerdict::Skeleton);
+        // Inside the floor → Match even though the strings differ.
+        assert_eq!(feeder("400.0000001", "400"), ValueVerdict::Match);
+
+        // `value_numeric`: max_rel = |a-e|/|e| over the numbers that FAIL.
+        // Census row: Capacitor.cpin8 `cuf`, max_rel 1.356840117583752e-6.
+        let ValueVerdict::Numeric { max_rel, index, .. } =
+            value_verdict("[ 287.82360946885]", "[ 287.824]", 1e-9, 1e-9)
+        else {
+            panic!("expected a numeric verdict");
+        };
+        assert_eq!(index, 0);
+        assert!(
+            (max_rel - 1.356_840_117_583_752e-6).abs() < 1e-18,
+            "{max_rel}"
+        );
+
+        // e == 0 → the ABSOLUTE gap is the census's max_rel (row: Fault.fa
+        // `pctperm` 100 vs 0 → 100.0; WindGen.w1 `kvar` 986.05… vs 0).
+        let ValueVerdict::Numeric { max_rel, .. } = value_verdict("100", "0", 1e-9, 1e-9) else {
+            panic!("expected a numeric verdict");
+        };
+        assert_eq!(max_rel, 100.0);
+
+        // The maximum is over the FAILING numbers only, and the reported index is
+        // the first OFFENDER, not the first cell. Number 0 here is inside the
+        // floor yet has the LARGER relative gap (5e-6, absorbed by `abs`=1e-5);
+        // number 1 is the only offender at rel 2e-7. This is exactly the census's
+        // `line.cmatrix` shape — it reports 5.83e-8 while the largest gap over
+        // ALL of that row's numbers is 1.19e-7.
+        let ValueVerdict::Numeric { max_rel, index, .. } =
+            value_verdict("1.000005 1000000.2", "1 1000000", 1e-7, 1e-5)
+        else {
+            panic!("expected a numeric verdict");
+        };
+        assert_eq!(
+            index, 1,
+            "the first OFFENDER is reported, not the first cell"
+        );
+        assert!(
+            (max_rel - 2e-7).abs() < 1e-14,
+            "max_rel must ignore the in-floor 5e-6 gap of the first number, got {max_rel}"
+        );
     }
 }
 
@@ -1598,6 +1754,197 @@ pub fn compare_all_properties(dss: &mut Dss, exp: &[PropsCap], tol: &Tolerances,
             ctx,
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// The census walk (R4133_PROPS_PLAN.md RP0.2) — the same compare, collecting.
+// ---------------------------------------------------------------------------
+
+/// Which oracle channel a property compare is running against, expressed in a
+/// type the harness itself owns.
+///
+/// `corpus_gate`'s `EngineChannel` is `pub(crate)` to that one test binary while
+/// `harness/` compiles into ~20 others, so the channel cannot travel as that
+/// type (plan §1.2, the channel-threading trap). The corpus_gate call sites map
+/// `EngineChannel` onto this. Today only [`collect_prop_divergences`] reads it;
+/// RP2.1 threads the same type through `compare_all_properties`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PropsChannel {
+    /// The pinned dss-python oracle (dss_capi 0.14.5).
+    CapiV0145,
+    /// The official EPRI OpenDSS r4133 DLL, through `dss-epri`.
+    R4133,
+}
+
+impl PropsChannel {
+    /// Channel tag as the census artifacts spell it.
+    pub fn tag(self) -> &'static str {
+        match self {
+            PropsChannel::CapiV0145 => "capi_v0145",
+            PropsChannel::R4133 => "r4133",
+        }
+    }
+}
+
+/// One divergent cell (or shape gap) found by [`collect_prop_divergences`].
+///
+/// The variants are exactly the census `kind`s of the 2026-08-08 G1.1 measurement
+/// vendored at `tests/corpus/props_r4133/` (`value_structure` / `value_numeric` /
+/// `shape_count`), plus one defensive variant for a capture the Rust engine has
+/// no element for — the census never produced such a row, and the knob must
+/// still record rather than panic.
+#[derive(Debug, Clone)]
+pub enum PropCensusRow {
+    /// The two property-NAME sets differ (count and/or membership).
+    Shape {
+        element: String,
+        rust_count: usize,
+        oracle_count: usize,
+        /// Lowercased names the Rust table has and the capture does not.
+        rust_only: Vec<String>,
+        /// Lowercased names the capture has and the Rust table does not.
+        oracle_only: Vec<String>,
+    },
+    /// A value cell whose two renderings do not match at the case tier floor.
+    Value {
+        element: String,
+        prop: String,
+        rust: String,
+        oracle: String,
+        /// `Some` for a numeric divergence (skeletons agree), `None` for a
+        /// structural one.
+        max_rel: Option<f64>,
+    },
+    /// The capture names an element the Rust engine does not have.
+    MissingElement { element: String },
+}
+
+/// Walk one checkpoint's property capture and COLLECT every divergence instead
+/// of asserting on the first — the measurement half of the `DSS_PROPS_CENSUS`
+/// knob (`R4133_PROPS_PLAN.md` RP0.2).
+///
+/// The comparison policy is the gate's, not a private one: the SAME index walk
+/// ("property-index order is the contract"), the same [`PROPS_015X`] shape
+/// relief, the same [`skip_prop`] / [`skip_transformer_cursor`] value-skip
+/// gates, the same [`value_verdict`] floor
+/// ([`Tolerances::i_rel`]/`i_abs`, exactly what [`compare_all_properties`]
+/// passes). Two deliberate differences, both of them what turns an *assert* into
+/// a *census*, and both reproducing the 2026-08-08 G1.1 walk vendored at
+/// `tests/corpus/props_r4133/`:
+///
+///  * **Nothing aborts.** The gate's `assert_eq!` on the property count and its
+///    `assert!` on each name stop the element dead; here a count/membership
+///    mismatch becomes a [`PropCensusRow::Shape`] row and the index walk
+///    continues, comparing every position whose two names still agree.
+///  * **The Recloser/Relay whole-element skips are channel-scoped**: they exist
+///    because those tables moved to the r4133 surface and cannot match a 0.14.5
+///    capture (see [`compare_all_properties`]), which is an argument about the
+///    capi channel only. On [`PropsChannel::R4133`] both classes are compared —
+///    plan §1.2; without this the census's 22 relay/recloser pairs would not
+///    exist.
+///
+/// Returns the number of cells the walk could NOT compare because the two lists
+/// had desynchronized (a name mismatch at a position, plus the tail the shorter
+/// list cannot reach). This is the blind spot a shape gap imposes on ANY
+/// index-ordered comparison — an insertion at property *k* hides every cell
+/// after *k* on that element — and it is what makes the vendored census's value
+/// population of the five shape-gap classes a lower bound rather than a total.
+/// The knob reports it per channel instead of leaving it silent; WP-RP1 closes
+/// the shape gaps and with them the blind spot.
+///
+/// Never panics on a divergence and never asserts.
+pub fn collect_prop_divergences(
+    dss: &mut Dss,
+    exp: &[PropsCap],
+    tol: &Tolerances,
+    channel: PropsChannel,
+    out: &mut Vec<PropCensusRow>,
+) -> usize {
+    let mut unaligned = 0usize;
+    for pc in exp {
+        let class = pc.element.split('.').next().unwrap_or("");
+        if channel == PropsChannel::CapiV0145
+            && (class.eq_ignore_ascii_case("Recloser") || class.eq_ignore_ascii_case("Relay"))
+        {
+            continue;
+        }
+        let Some(actual) = dss.element_properties(&pc.element) else {
+            out.push(PropCensusRow::MissingElement {
+                element: pc.element.clone(),
+            });
+            continue;
+        };
+        let cursor_of = |props: &[(String, String)]| -> Option<String> {
+            props
+                .iter()
+                .find(|(n, _)| n.eq_ignore_ascii_case("Wdg"))
+                .map(|(_, v)| v.trim().to_string())
+        };
+        let cursors_disagree =
+            class.eq_ignore_ascii_case("Transformer") && cursor_of(&actual) != cursor_of(&pc.props);
+
+        let oracle_names: BTreeSet<String> =
+            pc.props.iter().map(|(n, _)| n.to_lowercase()).collect();
+        // Same relief as the gate: a Rust-side 0.15.x/r4133-only prop the capture
+        // cannot know is dropped before the shape comparison; one the capture DOES
+        // carry stays in and is fully compared.
+        let filtered: Vec<&(String, String)> = actual
+            .iter()
+            .filter(|(n, _)| {
+                !prop_015x(PROPS_015X, class, n) || oracle_names.contains(&n.to_lowercase())
+            })
+            .collect();
+        let rust_names: BTreeSet<String> = filtered.iter().map(|(n, _)| n.to_lowercase()).collect();
+        if filtered.len() != pc.props.len() || rust_names != oracle_names {
+            // The two name lists are printed in PROPERTY-INDEX order (what the
+            // extracts show and what a reader needs to locate the insertion),
+            // not sorted.
+            out.push(PropCensusRow::Shape {
+                element: pc.element.clone(),
+                rust_count: filtered.len(),
+                oracle_count: pc.props.len(),
+                rust_only: filtered
+                    .iter()
+                    .map(|(n, _)| n.to_lowercase())
+                    .filter(|n| !oracle_names.contains(n))
+                    .collect(),
+                oracle_only: pc
+                    .props
+                    .iter()
+                    .map(|(n, _)| n.to_lowercase())
+                    .filter(|n| !rust_names.contains(n))
+                    .collect(),
+            });
+            unaligned += filtered.len().abs_diff(pc.props.len());
+        }
+        for (a, e) in filtered.iter().zip(&pc.props) {
+            let (aname, aval) = (&a.0, &a.1);
+            let (ename, eval) = (&e.0, &e.1);
+            if !aname.eq_ignore_ascii_case(ename) {
+                // The lists desynchronized (a shape gap earlier in the table).
+                // The gate would have failed here; the census records the cell as
+                // uncomparable and keeps walking in case the names re-align.
+                unaligned += 1;
+                continue;
+            }
+            if skip_prop(class, ename) || skip_transformer_cursor(class, ename, cursors_disagree) {
+                continue;
+            }
+            let max_rel = match value_verdict(aval, eval, tol.i_rel, tol.i_abs) {
+                ValueVerdict::Match => continue,
+                ValueVerdict::Skeleton | ValueVerdict::NumberCount => None,
+                ValueVerdict::Numeric { max_rel, .. } => Some(max_rel),
+            };
+            out.push(PropCensusRow::Value {
+                element: pc.element.clone(),
+                prop: ename.clone(),
+                rust: aval.clone(),
+                oracle: eval.clone(),
+                max_rel,
+            });
+        }
+    }
+    unaligned
 }
 
 /// A PC element's state variables (oracle `AllVariableNames`/`AllVariableValues`

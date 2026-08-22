@@ -34,13 +34,15 @@ use serde_json::Value;
 use crate::engines::{
     CaseResult, Channel, EpriOneShot, EpriPool, Oracle, WorkerPool, build_run_request,
 };
+use crate::harness::{self, PropsChannel};
 use crate::ledger::LedgerRuntime;
 use crate::manifest::{
     EngineChannel, FAMILIES, SolvableCase, corpus_file, family_file, load_family, load_solvable,
 };
+use crate::props_census::{Mode as CensusMode, Row as CensusRow, RowKind as CensusRowKind};
 use crate::runner::{
     CorpusGuard, assert_deferred_rust_smoke, assert_pending_errors_loudly, compare_with_result,
-    panic_msg, run_and_compare_abort,
+    panic_msg, run_and_compare_abort, run_rust_capture,
 };
 
 // ---------------------------------------------------------------------------
@@ -695,6 +697,8 @@ pub(crate) fn seed_ledger() {
     );
 }
 
+/// The throwaway empty ledger the two REPORT modes share (seeding and the
+/// property census): both measure the RAW divergence, with no entry applied.
 static EMPTY_LEDGER_FOR_SEEDING: std::sync::OnceLock<LedgerRuntime> = std::sync::OnceLock::new();
 
 /// Measure one (case, channel) with no ledger; catch every panic into a status.
@@ -736,5 +740,228 @@ fn seed_one(uc: &UnifiedCase, ch: EngineChannel, ctx: &Ctx) -> SeedRecord {
     match res {
         Ok(()) => mk("match", String::new()),
         Err(e) => mk("diverge", panic_msg(e)),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Property census mode (`R4133_PROPS_PLAN.md` RP0.2 — DSS_PROPS_CENSUS).
+// ---------------------------------------------------------------------------
+
+/// Walk every live case on BOTH channels with `all_properties` forced on —
+/// bypassing the §1.1 gate masks that keep property parity capi-only — and
+/// COLLECT every divergent cell instead of asserting. Writes
+/// `tmp/props_census.json` plus the per-channel RP0.1 extracts
+/// ([`crate::props_census`]); **asserts nothing about the data**.
+///
+/// This is the permanent successor of the scratch test that produced the
+/// 2026-08-08 census vendored at `tests/corpus/props_r4133/`. It reproduces that
+/// walk's population: live cases only (`pending`/`abort`/`defer_ledger` have
+/// their own contracts and no property capture), `large`-kind decks excluded
+/// (they are excluded from property forcing on the gate too,
+/// [`force_properties`], and the vendored census carries none), the case's own
+/// `engines` key ignored — a capi-only deck is still measured against r4133,
+/// which is where the census's GenDispatcher and Sensor shape rows come from.
+///
+/// The normal gate path is untouched: nothing here runs unless the env var is
+/// set, and the masks at [`run_one_case`] / [`seed_one`] are unchanged.
+pub(crate) fn run_props_census() {
+    let mode = CensusMode::from_env(&std::env::var("DSS_PROPS_CENSUS").unwrap_or_default());
+    let jobs = std::env::var("DSS_GATE_JOBS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&n| n >= 1)
+        .unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4)
+        });
+    let pool_size = (jobs / 2).max(2);
+    let start = Instant::now();
+
+    let mut cases: Vec<UnifiedCase> = build_unified_cases()
+        .into_iter()
+        .filter(|c| c.class == CaseClass::Live && !c.case.kind.starts_with("large"))
+        .collect();
+    // Same filter (and same loud empty-match refusal) as the gate: a census that
+    // silently measured zero cases would look exactly like a clean one.
+    if let Ok(only) = std::env::var("DSS_GATE_ONLY") {
+        let subs: Vec<String> = only
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let before = cases.len();
+        cases.retain(|c| subs.iter().any(|s| c.label.contains(s)));
+        eprintln!(
+            "props_census: DSS_GATE_ONLY filter kept {}/{before} case(s)",
+            cases.len()
+        );
+        assert!(
+            !cases.is_empty(),
+            "DSS_GATE_ONLY={only:?} matched no case labels — refusing to write an empty census"
+        );
+    }
+    let total = cases.len();
+
+    let capi_pool = WorkerPool::new(pool_size);
+    let epri_pool = EpriPool::new(pool_size);
+    let capi_oneshot = Oracle::for_spec(None);
+    let epri_oneshot = EpriOneShot::new();
+    let ctx = Ctx {
+        serial: false,
+        dumping: false,
+        capi_pool: Some(&capi_pool),
+        capi_oneshot: Some(&capi_oneshot),
+        epri_pool: Some(&epri_pool),
+        epri_oneshot: Some(&epri_oneshot),
+        // The census measures the RAW divergence — no ledger entry applies, and
+        // no channel `skip` entry hides a case (the vendored census records the
+        // #303 crash decks as `oracle_error` rows for exactly that reason).
+        ledger: EMPTY_LEDGER_FOR_SEEDING.get_or_init(LedgerRuntime::empty),
+    };
+
+    let tasks = build_tasks(cases, None);
+    let cursor = AtomicUsize::new(0);
+    #[allow(clippy::type_complexity)]
+    let collected: Mutex<(Vec<CensusRow>, BTreeMap<&'static str, usize>)> =
+        Mutex::new((Vec::new(), BTreeMap::new()));
+
+    std::thread::scope(|s| {
+        for _ in 0..jobs {
+            s.spawn(|| {
+                loop {
+                    let idx = cursor.fetch_add(1, Ordering::Relaxed);
+                    if idx >= tasks.len() {
+                        break;
+                    }
+                    let mut rows = Vec::new();
+                    let mut unaligned: BTreeMap<&'static str, usize> = BTreeMap::new();
+                    for uc in &tasks[idx].cases {
+                        for ch in [EngineChannel::CapiV0145, EngineChannel::R4133] {
+                            let (r, u) = census_one(uc, ch, &ctx);
+                            rows.extend(r);
+                            *unaligned.entry(channel_tag(ch)).or_default() += u;
+                        }
+                    }
+                    let mut guard = collected.lock().unwrap();
+                    guard.0.extend(rows);
+                    for (k, v) in unaligned {
+                        *guard.1.entry(k).or_default() += v;
+                    }
+                }
+            });
+        }
+    });
+
+    capi_pool.close();
+    epri_pool.close();
+
+    let (rows, unaligned) = collected.into_inner().unwrap();
+    crate::props_census::write_artifacts(rows, mode, total, &unaligned);
+    eprintln!(
+        "props_census: {total} case(s) x2 channels in {:.1}s",
+        start.elapsed().as_secs_f64()
+    );
+}
+
+/// The census's spelling of a gate channel.
+fn channel_tag(ch: EngineChannel) -> &'static str {
+    match ch {
+        EngineChannel::CapiV0145 => PropsChannel::CapiV0145.tag(),
+        EngineChannel::R4133 => PropsChannel::R4133.tag(),
+    }
+}
+
+/// Measure one (case, channel) for the census: force the property capture,
+/// re-run the Rust engine step by step and collect every divergent cell. Every
+/// failure mode — a dead oracle, a crashing deck, a panicking Rust walk —
+/// becomes a ROW, never a panic. The second return value is the number of cells
+/// a property-table shape gap made uncomparable (see
+/// [`harness::collect_prop_divergences`]).
+fn census_one(uc: &UnifiedCase, ch: EngineChannel, ctx: &Ctx) -> (Vec<CensusRow>, usize) {
+    let pch = match ch {
+        EngineChannel::CapiV0145 => PropsChannel::CapiV0145,
+        EngineChannel::R4133 => PropsChannel::R4133,
+    };
+    let oracle_error = |detail: String| {
+        (
+            vec![CensusRow::error(
+                &uc.label,
+                pch,
+                CensusRowKind::OracleError { detail },
+            )],
+            0,
+        )
+    };
+
+    let _guard = CorpusGuard::new(&uc.abs);
+    let channel = ctx.channel(uc, ch);
+    let mut cc = uc.case.clone();
+    // The knob's whole point: the property capture is requested on BOTH channels,
+    // regardless of the plan §1.1 masks the gate and the seeding path apply.
+    cc.compare_all_properties = true;
+    let req = build_run_request(&uc.abs, &cc);
+    let resp = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| channel.call(&req))) {
+        Ok(r) => r,
+        Err(e) => return oracle_error(format!("fetch panic: {}", panic_msg(e))),
+    };
+    if !resp.ok {
+        return oracle_error(format!("{:?}", resp.error));
+    }
+    let Some(val) = resp.result else {
+        return oracle_error("ok response missing result".to_string());
+    };
+
+    let label = uc.label.clone();
+    let abs = uc.abs.clone();
+    let walked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        let oc: CaseResult =
+            serde_json::from_value(val).unwrap_or_else(|e| panic!("malformed CaseResult: {e}"));
+        let tol = harness::tol_for(&cc.kind);
+        let (mut dss, _baseline) = run_rust_capture(&label, &abs, &cc);
+        let mut rows: Vec<CensusRow> = Vec::new();
+        let mut unaligned = 0usize;
+        for (i, cp) in oc.checkpoints.iter().enumerate() {
+            dss.command("solve");
+            // A capture that came back empty means the request was not honored —
+            // record it instead of reporting a spuriously clean step.
+            if cp.all_properties.is_empty() {
+                rows.push(CensusRow::error(
+                    &label,
+                    pch,
+                    CensusRowKind::OracleError {
+                        detail: format!("step {i}: empty all_properties capture"),
+                    },
+                ));
+                continue;
+            }
+            let mut found = Vec::new();
+            unaligned += harness::collect_prop_divergences(
+                &mut dss,
+                &cp.all_properties,
+                &tol,
+                pch,
+                &mut found,
+            );
+            rows.extend(
+                found
+                    .into_iter()
+                    .map(|f| CensusRow::from_harness(&label, pch, i, f)),
+            );
+        }
+        (rows, unaligned)
+    }));
+    match walked {
+        Ok(out) => out,
+        Err(e) => (
+            vec![CensusRow::error(
+                &uc.label,
+                pch,
+                CensusRowKind::RustError {
+                    detail: panic_msg(e),
+                },
+            )],
+            0,
+        ),
     }
 }

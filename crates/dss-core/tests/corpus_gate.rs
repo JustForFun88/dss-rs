@@ -35,6 +35,8 @@ mod engines;
 mod ledger;
 #[path = "corpus_gate/manifest.rs"]
 mod manifest;
+#[path = "corpus_gate/props_census.rs"]
+mod props_census;
 #[path = "corpus_gate/runner.rs"]
 mod runner;
 #[path = "corpus_gate/scheduler.rs"]
@@ -73,6 +75,14 @@ fn corpus_gate_all_cases_match_engines() {
     // candidate ledger entries — never asserting. Consumed by hand for triage.
     if std::env::var("DSS_GATE_SEED_LEDGER").is_ok() {
         scheduler::seed_ledger();
+        return;
+    }
+    // Property census mode (`R4133_PROPS_PLAN.md` RP0.2): walk every live case on
+    // BOTH channels with `all_properties` forced on, collect every divergent cell
+    // and write `tmp/props_census.json` + the RP0.1 extracts. Asserts nothing
+    // about the data — a divergence is the measurement, not a failure.
+    if std::env::var("DSS_PROPS_CENSUS").is_ok() {
+        scheduler::run_props_census();
         return;
     }
 
