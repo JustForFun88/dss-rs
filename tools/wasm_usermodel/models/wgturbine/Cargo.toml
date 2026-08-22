@@ -1,0 +1,38 @@
+# WASM user-model reference fixture — wgturbine (R4133_PROPS_PLAN RP1.3).
+#
+# The WindGen `UserModel=` guest: a small, deterministic wind-turbine model that
+# exercises the WHOLE `TWindGenVars` boundary record (ABI doc §2.6, the 348-byte
+# wasm image) — it reads the head (kVArating, kVWindGenBase, w0, the three
+# integers, Pnominal/Qnominalperphase) and the first turbine-tail input (`ag`,
+# the field sitting exactly where the dropped `PLoss` reference used to be), and
+# writes the turbine outputs (Cp, Lamda, Pm, Ps, Pr, Pg, s) plus Pshaft/Speed/
+# dSpeed. No upstream example exists for a WindGen user model (r4133 ships none),
+# so the fixture is authored, like wm4model and capuserctl.
+#
+# Workspace-EXCLUDED tooling crate (WASM_USERMODELS_PLAN §2.6): it builds the
+# committed golden-class artifact tests/fixtures/wasm/wgturbine.wasm (wasm32).
+# Unlike wm4model/capuserctl there is NO native twin: a `TWindGenUserModel` DLL
+# would have to be driven by the r4133 engine's WindGen, and RP1.3's gate is the
+# in-engine round-trip plus this crate's tests, not a native-twin golden — so the
+# crate is cdylib only (no rlib, no native_exports).
+[package]
+name = "wgturbine"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+# Opt out of the dss-rs workspace: this crate must never join the product
+# workspace (plan §2.6 — fixture toolchain is pinned separately from the gate).
+[workspace]
+
+# Locked release profile — recorded in tools/wasm_usermodel/PIN.txt; the
+# committed .wasm regenerates MANUALLY ONLY with exactly these settings.
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"

@@ -25,7 +25,8 @@
 //!   missing export name for the Pascal 569/1569 path.
 //! - [`UserModelInstance`] / [`CapControlInstance`] — one per element
 //!   binding: guest `dss_alloc` buffers + the record shuttle over the
-//!   ABI-doc offsets ([`GeneratorVars`], [`DynamicsRec`]).
+//!   ABI-doc offsets ([`GeneratorVars`], [`WindGenVars`], [`DynamicsRec`]),
+//!   carried by [`Shuttle`] or [`WindGenShuttle`] via [`IntoShuttle`].
 //! - [`Callbacks`] + [`Effect`] — the tiered host-services surface
 //!   (`dss_env` imports): tier-A context snapshot, tier-B effect queue,
 //!   tier-C owned AuxParser.
@@ -48,5 +49,7 @@ mod records;
 pub use callbacks::{Callbacks, Effect, NoCallbacks};
 pub use error::UserModelError;
 pub use host::{HostConfig, InterfaceKind, UserModelHost};
-pub use instance::{CapControlInstance, Shuttle, UserModelInstance};
-pub use records::{CapControlVars, DynamicsRec, GeneratorVars};
+pub use instance::{
+    CapControlInstance, IntoShuttle, Shuttle, ShuttleVars, UserModelInstance, WindGenShuttle,
+};
+pub use records::{CapControlVars, DynamicsRec, GeneratorVars, WindGenVars};

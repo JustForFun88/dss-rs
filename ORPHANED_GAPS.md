@@ -225,6 +225,42 @@ Oracle-backed pin without a new capture: the `est8` deck minus its
   with EnergyMeter sensors/`Estimate`); do the CDPSM/label rider alongside. **Priority:
   low** (state estimation is a rarely-used subsystem; no corpus deck exercises it).
 
+### 1.11 WindGen power-flow models **3** (`DoPVTypeGen`) and **7** (`DoCurrentLimitedPQ`)
+- **Deferred by:** `R4133_PROPS_PLAN.md` §1.3 + **RP1.3** (2026-08-23), the sub-step that ported
+  WindGen `UserModel`/`UserData` and admitted model **6**. §1.3 names this file as the row's home
+  and no other plan claims the two models.
+- **What:** r4133 dispatches seven WindGen power-flow models
+  (`Version8/Source/PCElements/WindGen.pas:2109-2118`); the port admits 1/2/4/5 and — since RP1.3 —
+  6. Models 3 and 7 are simply absent. No corpus deck sets either (all five `modes:windgen/*` decks
+  are `model=1`), and the enum refuses to parse them, so nothing degrades silently.
+- **Spec.** Model 3 = `DoPVTypeGen` (`:1721-1768`), "constant P, constant |V|": a secant-style var
+  search — `DQ := PVFactor * DQDV * (Vtarget − V_Avg)` clamped to `DeltaQMax` and then to
+  `varMax`/`varMin`, with `DQDV`/`DQDVSaved` carried across solutions (`:931`, `:1412`, `:2348`),
+  `DeltaQMax := (varMax − varMin) * 0.10` (`:1413`) and `WindGenvars.Vtarget` from `Vpu` (`:1406-1408`);
+  the `Edit` arm additionally forces `Solution.SolutionInitialized := FALSE` when a model-3 WindGen
+  appears (`:682`). Model 7 = `DoCurrentLimitedPQ` (`:1901-1969`), constant PQ with a per-phase
+  current limit below `Vminpu` (wye at `:1936-1937`, the two delta forms at `:1951-1958`), plus the
+  dynamics-side `Model7LastAngle` (`:2548`, `:2589`, read by `CalcVthev_Dyn_Mod7` `:3056-3073`).
+- **Current Rust:** `crates/dss-core/src/obj/dss_enum/registry/pc.rs` — the `WindGen: Model` enum
+  lists `&[1, 2, 4, 5, 6]`, so `model=3`/`model=7` is rejected at parse with the enum's own message
+  and the property keeps its previous value; the dispatch
+  (`elements/pc/windgen/solve.rs::calc_gen_model_contribution`) has no arm for them and its `_` arm
+  — the port of the Pascal `ELSE` at `:2117-2118` — is unreachable for those two codes. There is no
+  `NOT_PORTED` marker to grep: the admission gate is the enum.
+- **Trap for whoever ports model 7: do NOT transcribe `WindGen.pas`.** Its limit fields
+  `PhaseCurrentLimit`/`Model7MaxPhaseCurr` (`:70-71`) are **never assigned** in that unit — the
+  `If GenModel=7 …` initialiser that `generator.pas:1183-1187` runs at the end of
+  `SetNominalGeneration` was dropped when the routine was cloned (`WindGen.pas:1335-1345` is the
+  same `CASE GenModel` block without it) — so upstream's model 7 zero-limits every phase current.
+  Report: `investigations/to_opendss/39-windgen-model7-uninitialized-current-limit.md` (local-only).
+  Upstream bugs are never reproduced: a port computes the limit the way the Generator does.
+- **To do:** port both models loop-for-loop (they are self-contained `DoXxxGen` routines over
+  `Vterminal`/`InjCurrent`, the same shape as the five that exist), widen the enum, add the model-3
+  `SolutionInitialized` side effect, and gate each with its own `modes:windgen/*` deck on the
+  `r4133` channel (model 7 only after the limit fields are given the Generator's initialiser, since
+  the oracle's own answer is the zero-injection bug). **Priority: low** — no deck upstream or here
+  exercises them.
+
 ---
 
 ## 2. Owned deferrals — NOT orphans (a live plan tracks them; do not re-port here)

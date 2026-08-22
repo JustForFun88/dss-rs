@@ -308,8 +308,55 @@ impl WindGen {
             2 => self.do_constant_z_gen(sys, node_v),
             4 => self.do_fixed_q_gen(sys, node_v),
             5 => self.do_fixed_qz_gen(sys, node_v),
-            _ => self.do_constant_pq_gen(sys, node_v), // for now, until other models
+            6 => self.do_user_model(sys, node_v, errors),
+            // Models 3 (`DoPVTypeGen`) and 7 (`DoCurrentLimitedPQ`) are out of
+            // scope (`R4133_PROPS_PLAN.md` §1.3, `ORPHANED_GAPS.md`); they fall
+            // into the Pascal `ELSE` arm (`WindGen.pas:2117-2118`, "for now,
+            // until we implement the other models"), which they cannot reach
+            // upstream — the enum refuses to parse them.
+            _ => self.do_constant_pq_gen(sys, node_v),
         }
+    }
+
+    /// Pascal `TWindGenObj.DoUserModel` (`WindGen.pas:1875-1898`): the
+    /// power-flow terminal current from a `Model=6` WASM user model. Init
+    /// `InjCurrent` from Yprim, run `UserModel.FCalc(Vterminal, Iterminal)`, and
+    /// negate the returned terminal currents into `InjCurrent`. A missing model
+    /// records #567 (`:1895`) and falls back to Yprim only.
+    fn do_user_model(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        errors: &mut crate::diag::ErrorLog,
+    ) {
+        self.calc_yprim_contribution(node_v); // init InjCurrent + Vterminal
+        if self.user_model_fcalc(sys, node_v, errors) {
+            // Pascal `set_ITerminalUpdated(TRUE)` (`:1888`) — the setter also
+            // stamps `IterminalSolutionCount`.
+            self.cd.iterminal_updated = true;
+            self.cd.mark_iterminal_solved(sys.solution_count);
+            let nconds = self.cd.nconds;
+            for i in 0..nconds {
+                self.cd.inj_current[i] -= self.cd.iterminal[i];
+            }
+        } else if self.user_model_name.is_empty() {
+            // A genuine `model=6` with NO `UserModel=` source — Pascal's #567.
+            errors.push(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "WindGen.{} model designated to use user-written model, but user-written \
+                     model is not defined.",
+                    self.cd.obj.name()
+                ),
+                Some(567),
+            ));
+        }
+        // else: a `UserModel=` source WAS designated but is not loaded — for the
+        // port that means a NATIVE-DLL name (or a missing file) the wasm-only
+        // host cannot load, already surfaced ONCE at load time as the loud
+        // #570/#569. Re-emitting #567 every iteration would be redundant AND a
+        // spurious Rust-only divergence; the #570 is the correct single
+        // diagnostic for the native-DLL fallback (same rule as the Generator's
+        // `do_user_model`).
     }
 
     /// Pascal `InjCurrents` inner: switch-open → zero, else the model.

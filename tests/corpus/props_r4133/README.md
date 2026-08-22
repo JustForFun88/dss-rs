@@ -191,6 +191,47 @@ The three bin-7 rows split two ways:
   decks are capi-only in the first place. Recorded here for RP2.2's closed pair
   list; no RP3 sub-step is opened by it while it stays out of scope.
 
+**RP1.3 (WindGen `UserModel`/`UserData`), measured 2026-08-23** by two full
+`DSS_PROPS_CENSUS=1` runs on the same 439-case population — one on the pre-RP1.3
+tree (1 059 272 rows, 55.8 s) and one on the post-RP1.3 tree (1 059 277 rows,
+55.5 s), both channels — so the delta is again a measured diff, not a
+derivation. r4133 shape classes **2 → 1** (only `gendispatcher` remains, the one
+`rust_only` row RP1.4 owns), structural pairs **222 → 224**, numeric **103 →
+103** (unchanged), and the cells the census could not look at behind a
+desynchronized name list **347 → 192**. The 155 that became comparable are
+exactly WindGen's: 31 per element (2 for the count difference 46 vs 48, plus the
+29 positions that the two-row insertion at ordinal 18 pushed out of alignment)
+over the five `modes:windgen/*` decks, which hold one WindGen each. So RP1.3
+adds exactly **2 structural + 0 numeric = 2** pairs and removes none; the
+`capi_v0145` channel is **byte-identical** before and after (all five extracts
+compare equal: 3 structural / 13 numeric / 0 shape / 34 diverging cases / 312
+elements skipped whole), and no pre-existing pair changed its spelling.
+
+| new pair | rust | r4133 | cells (in scope) | bin (this README's chain) |
+|---|---|---|---|---|
+| `windgen.enabled` | `Yes` | `true` | 5 (5) | 1 |
+| `windgen.dynout` | `''` | `[]` | 5 (5) | 5 |
+
+Both land in bins the plan's machinery already covers, and both are the exact
+shape RP1.1 already measured on the Generator (`generator.enabled` bin 1,
+`generator.dynout` bin 5 — the empty-vs-`[]` rendering of an unallocated array,
+which bin 5 claims ahead of bin 4). All ten cells are in scope: the five decks
+are `engines: "r4133"`. **There is no bin-6 or bin-7 row and no genuine jump**,
+so RP1.3 opens nothing for RP2.2 to triage and no RP3 sub-step.
+
+Two further facts of this closure, both measured:
+
+- **The two newly ported props produce no pair at all.** `windgen.usermodel` and
+  `windgen.userdata` are `''` on both sides in every one of the five decks (no
+  corpus deck binds a WindGen user model — the model-6 behavior is pinned
+  in-engine against the committed wasm fixture instead), so the rows the port
+  grew to close the shape gap compare clean.
+- **The pre-existing `windgen.kva`/`kvar`/`mva` numeric pairs did not move.**
+  They sit at ordinals ≤ 17, ahead of the insertion point, so they were inside
+  the aligned prefix all along and compared even while the class carried a
+  `shape_count` row — which is why the numeric count is unchanged across this
+  closure.
+
 ## Files
 
 | file | rows | origin |

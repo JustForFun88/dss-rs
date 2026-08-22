@@ -62,6 +62,18 @@ $b = Join-Path $OutDir 'build_ccvars'; New-Item -ItemType Directory -Force $b | 
 & $Fpc -Mdelphi -O3 -CF64 -dUSER_DLL "-Fu$r4133\Controls" "-Fu$r4133\Shared" "-Fi$r4133\Controls" "-FU$b" "-FE$b" (Join-Path $here 'abi_probe_capcontrolvars.pas')
 & (Join-Path $b 'abi_probe_capcontrolvars.exe') | Tee-Object (Join-Path $OutDir 'p9_offsets_capcontrolvars_r4133.txt')
 
+# 2d. P10 — r4133 TWindGenVars layout probe (R4133_PROPS_PLAN RP1.3): compiles
+# the REAL vendored r4133 unit Version8/Source/PCElements/WindGenVars.pas — the
+# record TWindGenUserModel.FNew receives (WindGenUserModel.pas:34). Result:
+# 356 B; NO deltaQNom (the three integers keep the Appendix-A offsets
+# 176/180/184, so the head through XRdp@236 is byte-identical to the
+# TGeneratorVars WASM image); a MANAGED `PLoss: string` reference at 244 ahead
+# of the 13-double turbine tail.
+# → docs/wasm/probes/p10_offsets_windgenvars_r4133.txt
+$b = Join-Path $OutDir 'build_wgvars'; New-Item -ItemType Directory -Force $b | Out-Null
+& $Fpc -Mdelphi -O3 -CF64 "-Fu$r4133\Shared" "-Fu$r4133\PCElements" "-Fi$r4133\Common" "-FU$b" "-FE$b" (Join-Path $here 'abi_probe_windgenvars.pas')
+& (Join-Path $b 'abi_probe_windgenvars.exe') | Tee-Object (Join-Path $OutDir 'p10_offsets_windgenvars_r4133.txt')
+
 # 4. P2 plan-A check — the VENDORED IndMach012a.dpr, as-is (zero source edits)
 $b = Join-Path $OutDir 'build_indmach'; New-Item -ItemType Directory -Force $b | Out-Null
 & $Fpc -Mdelphi -O2 "-Fu$r3723\IndMach012a" "-Fu$r3723\Shared" "-Fu$r3723\Parser" "-Fu$r3723\PCElements" "-Fi$r3723\Common" "-FU$b" "-FE$b" (Join-Path $r3723 'IndMach012a\IndMach012a.dpr')

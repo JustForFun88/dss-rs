@@ -94,7 +94,33 @@ round settled **8** findings (1 major), the major one by re-measurement: the
 fourth `HIDE_R4133` carrier is the first on a class with committed `Dump`
 goldens, so the flag's un-hide blast radius is **8** artifacts and +7
 `dump3_commands` rows, not the RP1.1-era 4 and +6 (corpus still untouched).
-RP1.3 (WindGen `UserModel`/`UserData`) is next.
+**RP1.3** then ported WindGen `UserModel`/`UserData` (r4133 properties 18/19) and
+the `Model=6` behavior they feed, over the sandboxed WASM host: a WindGen-shaped
+shuttle in `dss-usermodel` (the `TWindGenVars` image, measured on FPC and laid
+out as a byte-for-byte extension of the Generator record), a committed guest
+fixture (`tests/fixtures/wasm/wgturbine.wasm`, reproduced bit-identically from a
+wiped target dir), the `WindGenUserModelSlot`, all five model-6 arms (power flow
+#567, dynamics #5671 + abort, `InitStateVars`, `IntegrateStates`,
+`RecalcElementData`'s `FUpdateModel`) and the model enum widened to 6 — so the
+fourth shape gap closes (46 → 48 names, r4133 shape classes **2 → 1**, leaving
+only RP1.4's reverse `gendispatcher` row). Reaching model 6 also closed two
+substrate gaps the port had carried: the `Xd/Xdp/Xdpp` + `puX*` family (and with
+it the record `Zthev` every model's `InitStateVars` should have used) and
+`SetNominalGeneration`'s model-6 `Yeq` arm. Two **real engine defects** the
+probes found were fixed in the same sub-step — `like=` produced a *dead* user
+model with no diagnostic (the slot's `Clone` drops the wasmi instance and every
+call site guards on `exists()`), and the two-phase dynamics abort carried no
+error number — and an r4133 bug (the `Get_/Set_Variable` user-model tail nested
+outside the `else`, so a loaded model overwrites all 22 native variables) is
+reported, not reproduced. WindGen has no capi channel at all, so the model-6
+numbers are pinned in-engine against the fixture's own documented law (18 tests,
+each expected value re-derived from the engine's solved voltages, six mutations
+proving non-vacuity) plus 7 shuttle tests in `dss-usermodel`. Dormancy is
+**proven, not argued**: with no user model bound the whole corpus is
+byte-identical in BOTH lanes (`lane_diff.ps1` PASS, 522 cases / 3 220 247
+records, `max |Δ| = 0`, dumps byte-equal to the pre-edit baselines). The full
+re-census records the **2** value pairs the closure makes live, both in covered
+bins and no genuine jump. RP1.4 (GenDispatcher `weights`) is next.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -1899,6 +1925,203 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     settlement: it touched no solved state and no compat kernel (the fixture
     change lives inside an in-engine test's own deck).
 
+- **RP1.3** (2026-08-23) — WindGen `UserModel`/`UserData`, a **real behavioral
+  port over the WASM user-model host**. r4133 properties 18/19
+  (`Version8/Source/PCElements/WindGen.pas:391-395`, Edit arms `:641-642`,
+  `MakeLike :829` + `:834-835`, `GetPropertyValue` 18 `:2903`, defaults `''`
+  `:2453-2454`) and the whole `Model=6` behavior they feed now exist, closing the
+  fourth `shape.txt` gap (windgen 46 → 48 names). dss_capi 0.14.5 does not carry
+  the class **at all**, so there is no capi witness for any of it, the rows join
+  no allowlist (`PROPS_015X` untouched), and **no `props/` golden exists or was
+  created** (plan §1.2).
+  - **The shuttle is WindGen's own, and its layout was measured, not read off.**
+    `TWindGenVars` differs from `TGeneratorVars` in three ways
+    (`WindGenVars.pas:20-73`): no NCIM `deltaQNom` (so the integers stay at
+    176/180/184 and the Thevenin tail keeps the Appendix-A offsets),
+    `kVGeneratorBase` → `kVWindGenBase`, and a 13-double aerodynamic tail
+    `ag`…`s` behind a managed `PLoss: string` reference. A new FPC probe
+    (`tools/fpc/usermodel_abi/abi_probe_windgenvars.pas` →
+    `docs/wasm/probes/p10_offsets_windgenvars_r4133.txt`) gives native
+    `SizeOf = 356`. The wasm image is **348 B with `PLoss` dropped and the hole
+    CLOSED** (`ag`@244, `s`@340) — the rule ABI §2.2b already applies to
+    `deltaQNom` — which makes the WindGen image a byte-for-byte **extension** of
+    the 244-byte Generator image, pinned by
+    `records::tests::windgen_vars_head_matches_generator_vars` and recorded as a
+    successor trap in ABI §2.6b + `PIN.txt` (never re-insert the hole).
+    `crates/dss-usermodel` gained `WindGenVars`,
+    `InterfaceKind::WindGenUserModel` and a generic `IntoShuttle`/`ShuttleVars`
+    seam: the call surface became generic instead of growing a field, so
+    dss-core compiled unchanged while the host half landed, and a kind/record
+    mismatch is a loud `Usage` error (a Generator-sized 244 B buffer *traps* the
+    348 B guest — pinned).
+  - **Guest fixture.** `tests/fixtures/wasm/wgturbine.wasm` (60 281 B, sha256
+    `c441df68…32832a88`), source crate `tools/wasm_usermodel/models/wgturbine/`,
+    `build_wgturbine_wasm.ps1`, PIN row + `fixture_pin.rs` row —
+    **reproduced bit-identically twice from a wiped target dir**. It is a
+    constant-admittance source in power flow and a first-order current+speed lag
+    in dynamics, then fills `Pg/Ps/Pr/Pm/s/Cp/Lamda` and the record head; five
+    `UserData=` keys; nine state variables. It **discriminates**: its currents
+    are `Y·V` or the integrated state, never a native model-1/2/4/5 answer, and
+    it is the only thing in the tree that writes the turbine tail (its `ag`@244
+    read is the closed-hole witness).
+  - **Ordinal shift.** `USERMODEL=18`/`USERDATA=19`, `DUTYSTART`…`VCUTOUT` +2,
+    tails `SPECTRUM=45 BASE_FREQ=46 ENABLED=47`, `NUM_PROPS` 46 → **48** —
+    `NumPropsThisClass = 44` (`:255`) + 4 inherited, which is exactly the
+    census's `oracle_count`. Every `prop::` consumer is inside `windgen/`
+    (grep-verified); the JSON-schema ranks are generated, never hand-written.
+  - **Two substrate gaps closed on the way to model 6**, both read off r4133
+    rather than inferred: the `Xd/Xdp/Xdpp` + `puXd/puXdp/puXdpp` family with
+    `VTarget`, `Zthev`, `VThevHarm`/`ThetaHarm` (`Create :960-965,:940`,
+    `RecalcElementData :1368-1370,:1406-1408`, `MakeLike :809,:817-819` — the
+    two computation sites keep their *different* operand orders, last-ulp
+    faithful), and `SetNominalGeneration`'s model-6 arm
+    `Yeq := Cinv(cmplx(0, −Xd))` (`:1332-1345`, which deliberately leaves
+    `Yeq95`/`Yeq105` untouched). A third, invisible divergence was corrected
+    while doing it: `InitStateVars` formed `Edp`/`Yeq` from the WTG3 model's
+    `Zthev` because the port had no `Xdp`, where r4133's body is one
+    `With WindGenvars` and both come from the **record**
+    (`Zthev = Cmplx(Xdp/XRdp, Xdp)`, `:2500-2505`). Now ported for every model
+    and proven inert by the whole-corpus dump below.
+  - **Two REAL engine defects, found by probe and fixed in the same sub-step.**
+    (1) **`like=` produced a *dead* user model, silently.**
+    `ClassArena::make_like_within` hands `make_like` an owned `clone()` and the
+    slot's `Clone` drops the live wasmi instance, while every call site guards
+    on `exists()` — so `New WindGen.w2 like=w1` echoed `UserModel=<path>`,
+    reported **22** variables instead of 31, injected nothing and logged
+    nothing (measured before the fix). r4133's `:829` is a `Set_Name`
+    (`WindGenUserModel.pas:158-220`) = free + `LoadLibrary` + `FNew`, i.e. an
+    **eager fresh instance at the guest's own defaults** (the donor's `UserData`
+    is never replayed — `:834-835` copies only the property array, which is what
+    `?` echoes). `make_like` now queues a real load, drained before `end_edit`
+    so `RecalcElementData`'s `FUpdateModel` (`:1418`) sees it.
+    (2) **The two-phase dynamics abort carried no error number** —
+    `WindGen.pas:2538-2539` is `DoSimpleMsg(…, 5672)` + `SolutionAbort := TRUE`;
+    the port pushed the text with `code: None`. Both are behavior changes inside
+    RP1.3's scope, not test-only work. A third, pre-existing swallow was drained
+    at the same time: `compute_inj_currents`/`get_currents` **built an
+    `ErrorLog` and dropped it**, so every WindGen solve-time diagnostic
+    (including the old non-3-phase guard) was invisible; they now feed
+    `ctx.errors`/`ctx.solution_abort` and the element's deferred log, as the
+    Generator twin always did.
+  - **Two r4133 bugs found; neither reproduced** (reports in the local-only
+    `investigations/to_opendss/`).
+    `38-windgen-get-set-variable-usermodel-tail.md` — `Get_Variable`
+    (`:2735-2743`) and `Set_Variable` (`:2777-2784`) put the user-model tail
+    OUTSIDE the `if i < 19 … else case i of …` chain instead of in its `else`
+    (contrast `generator.pas:2868-2884` and WindGen's own correct `VariableName`
+    `:2856-2870`), so with a model loaded every native index `1..=22` satisfies
+    `k = i−22 ≤ N` and is overwritten by `FGetVariable(k ≤ 0)`;
+    `GetAllVariables` reads through it, so `Show Variables`,
+    `AllVariableValues`, `Get StateVar` and monitor mode 3 all see it. The
+    evidence is **source-structural, not probe-measured**, and honestly so: the
+    bug needs a loaded native WindGen user-model DLL, none exists anywhere
+    upstream (r4133 ships only the loader), so the epri-worker cannot exhibit
+    it. The port routes `1..=22` native and `>22` to the model, pinned by
+    `the_native_variables_stay_native_while_a_model_is_bound`.
+    `39-windgen-model7-uninitialized-current-limit.md` — found while writing the
+    models-3/7 deferral row: `DoCurrentLimitedPQ` reads
+    `PhaseCurrentLimit`/`Model7MaxPhaseCurr` (`:70-71`), which are **never
+    assigned** in the unit (the `If GenModel=7` initialiser at
+    `generator.pas:1183-1187` was dropped when `SetNominalGeneration` was
+    cloned), so upstream's model 7 limits every phase current to zero. Nothing
+    to fix here — model 7 is not ported — but the trap is recorded at the
+    deferral row so a future port does not transcribe it.
+  - **Deferral recorded.** Models **3** (`DoPVTypeGen`) and **7**
+    (`DoCurrentLimitedPQ`) stay out (plan §1.3): new `ORPHANED_GAPS.md` **§1.11**
+    with the spec, the machinery each needs, the enum as the admission gate, and
+    the model-7 trap above. The enum comment and the
+    `models_3_and_7_are_still_refused` pin forward-reference that row.
+  - **Tests — the fixture's law, never a captured number.**
+    `exec::tests::windgen_usermodel` (new module, **18** tests): the guest's
+    admittance law and untouched neutral; the turbine tail's write-back
+    (`Pg` = Σ Re(V·conj(I)), `Cp`, `Lamda` = `ag`·(1+slip)); the 22 ++ 9
+    variable surface with six record-head echoes; the `Get_Variable` pin; the
+    tail-only `Set StateVar` routing; ordinals 18/19 and the 48-row table; empty
+    defaults; re-instantiation on a second assignment; `like=` (defect 1's pin);
+    #567 non-abort and #5671 abort; the first-order lag as a **two-run
+    identity** (|e₂ₙ|/|eₙ| = fⁿ: 0.606610 measured vs 0.606515 wanted, 1.6e-4);
+    WTG3 never stepping under model 6; the 1-phase `:2516-2522` arm; 5672;
+    models 3/7 still refused; dormancy on model 1; and #570 warn-and-fallback
+    (with the two WM.3-wide port conventions stated, not hidden: a FAILED load
+    still echoes its name where r4133 answers `''`, and the port does not repeat
+    #567 per iteration). Non-vacuity proven by **six** mutations applied in-tree
+    and reverted (5/8/8/1/4/1 tests red), tabulated in the module doc. Plus
+    `crates/dss-usermodel/tests/windgen_shuttle.rs` (7) and three `records.rs`
+    unit tests for the codec, whose own non-vacuity probe (shifting `ag` back to
+    252 — the "hole never closed" mistake) reds two of them.
+  - **Dormancy: proven, whole corpus, both lanes.** With no user model bound the
+    new arms must move nothing, and they do not: `lane_diff.ps1` PASS and the
+    two lane dumps are **byte-identical to the pre-edit baselines** — default
+    226 437 002 B `a155aaa4…8672bbfe`, parity 226 437 001 B `dd7c5d59…226e65af`
+    — with the five `modes:windgen/*` slices reproducing their pre-edit sha256s
+    in both lanes. (The five decks stay `engines: "r4133"`; no ledger entry, no
+    manifest or population-lock byte, no tolerance moved.)
+  - **Census re-run (the WP-RP1 per-sub-step obligation).** Two full
+    `DSS_PROPS_CENSUS=1` walks over the same 439-case population — pre-RP1.3
+    (1 059 272 rows, 55.8 s) and post-RP1.3 (1 059 277 rows, 55.5 s), both
+    channels: r4133 shape classes **2 → 1** (only RP1.4's reverse
+    `gendispatcher` row left) — i.e. the **5** windgen element rows the plan's
+    Outcome predicted, all of them in scope — structural pairs **222 → 224**, numeric
+    **103 → 103**, cells hidden behind a desynchronized name list **347 → 192**
+    — the 155 that became comparable are exactly WindGen's 31 per element
+    (2 count + 29 pushed out of alignment by the ordinal-18 insertion) over the
+    five decks. The `capi_v0145` channel's five extracts are **byte-identical**
+    before and after. The **2** new pairs are recorded in
+    `tests/corpus/props_r4133/README.md` §"Pairs the WP-RP1 shape closures make
+    live": `windgen.enabled` (`Yes`/`true`, bin 1) and `windgen.dynout`
+    (`''`/`[]`, bin 5), 5 cells each and all in scope — both the exact shapes
+    RP1.1 already measured on the Generator, **no bin-6/7 row and no genuine
+    jump**, so nothing opens for RP2.2 and no RP3 sub-step. Two facts recorded
+    with them: the two newly ported props produce **no pair at all** (`''` on
+    both sides in all five decks — no corpus deck binds a WindGen user model),
+    and the pre-existing `windgen.kva/kvar/mva` numeric pairs did not move
+    (they sit at ordinals ≤ 17, inside the aligned prefix, so they compared even
+    while the class carried a shape row).
+  - **Goldens: the one artifact §1.2 predicts, plus a prose correction.**
+    `json/schema_full_port.json` carries the port's own bytes — verified
+    programmatically (both files parsed and compared key by key) that
+    `$defs/WindGen` is the **sole** changed key: two property objects added at
+    `$dssPropertyIndex`/`$dssPropertyOrder` **18/19**, the 28 props from
+    `DutyStart` on shifted **+2/+2**, `Like`'s index 46 → 48 with its hoisted
+    order 1 unchanged, the indexless `DynInit` tail's order 47 → 49, and
+    `WindGenModel` gaining `"User model"`/6 — no other property field and no
+    other class moved. Regenerated with
+    `REGEN_SCHEMA_PORT=1` in **both** lanes to bit-identical output, satisfying
+    its `produced_by: parity` row, with the one `golden.lock.json` line in the
+    same commit. **`schema_divergences.json` does not gain a row**, and that is
+    a measurement of what the schema gate does for this class, not an omission:
+    WindGen is port-only versus 0.14.5 as a WHOLE CLASS, so it carries a single
+    `port_authored_classes` entry (no `$dssPropertyIndex`/`Order` fields to get
+    wrong) instead of the per-property `port_hidden_property` rows RP1.1/RP1.2
+    had to add — the new props are not `HIDE_R4133` carriers and that flag's
+    four-carrier set is unchanged. Its `cause` prose, which still said the
+    class's metadata comes from "the dss_capi 0.15.x line", is corrected to name
+    r4133 + RP1.3 (a one-sentence edit, its lock digest in the same commit); no
+    other golden byte moved anywhere. `tests/TOLERANCE_NOTES.md` is owed
+    **nothing** by this sub-step: no tier, floor or allowlist row is involved —
+    WindGen has no capi channel, the r4133 decks already gate at the standing
+    floors, and every new pin is an expected-value or fixture-law assertion.
+    `TESTING.md` likewise: it carries no per-test-file inventory to extend (the
+    wasm fixtures are documented by `tools/wasm_usermodel/PIN.txt`,
+    `fixture_pin.rs` and the WASM phase record) and RP1.3 adds no env knob — so
+    the disposition is recorded here rather than by inventing a section there.
+  - Gate: all five commands green on the final tree — the parity
+    `cargo test` needed **one re-run**, and the reason is recorded rather than
+    swallowed: the first full parity run hit a single occurrence of the
+    documented file-backed-loadshape **oracle** flake on
+    `modes:upgrade/mmf_singlecol` (step 0, `SOURCEBUS.1`: the r4133 side
+    2.1e-3 V below the port against an 8.2e-6 allowance — the ~2e-3 class that
+    case's own `isolate: true` note describes). The port side is provably
+    bit-stable: the lane dump taken minutes earlier carries exactly the failing
+    "actual" (`7196.5232407823805, −4.811934119020634`) and is byte-identical to
+    the pre-RP1.3 baseline, so nothing in this sub-step moved it. The case
+    passes standalone and the re-run of the whole command is green; the standing
+    follow-up below records the recurrence. `lane_diff.ps1` run for the
+    sub-step (owed: a dispatch arm was added): **PASS**, 522 cases /
+    3 220 247 records, `max |Δ| = 0` exactly on every gated kind (conv, cur,
+    errs, iter, loss, pow, v, y), zero iteration drift — the default lane stays
+    bit-identical to the parity lane and keeps precisely its oracle standing.
+
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 
 The register itself is executable: `oracle_parity_cfg_gate.rs::ESCAPE_REGISTER`
@@ -1995,8 +2218,38 @@ open item is not buried in the §1a archive):
   (`indmach012a` + `wm4model` + `capuserctl` twin-pinned `.wasm` fixtures). **Zero
   live `PropFlags::NOT_PORTED`** on any user-model property. `PLAN_SEQUENCE.md`
   stage 9 COMPLETE.
+- **`like=` drops a bound user model on Generator / PVSystem / Storage /
+  CapControl — MEASURED, OPEN, no owner** (found by RP1.3, 2026-08-23, while
+  fixing the identical defect on WindGen). `ClassArena::make_like_within` hands
+  `make_like` an owned `clone()` of the donor and the user-model slot's `Clone`
+  deliberately drops the live wasmi instance; every call site then guards on
+  `exists()`, so the lazy revive never fires. Measured on the `wasm_gen_pflow`
+  deck plus `New Generator.g2 like=g1`: **g1 reports 20 variables, g2 six** — the
+  copy echoes `UserModel=<path>` and silently runs the built-in model, with no
+  diagnostic. Upstream's `MakeLike` assigns `UserModel.Name`, which is a
+  `Set_Name` = free + `LoadLibrary` + `FNew`, i.e. an eager fresh instance at the
+  guest's own defaults. WindGen's copy of the defect was fixed in RP1.3
+  (`make_like` queues a real load, drained before `end_edit`); the four WM.3/WM.4
+  classes were left untouched because they are outside that sub-step's scope and
+  WASM_USERMODELS is declared COMPLETE, so **no plan owns the fix**. Latent, not
+  live: no corpus deck writes `like=` on an element that binds a user model. The
+  same shadow applies to `ClassArena::clone_ckt` (control dispatch with monitored
+  == switched), which is unreachable in the corpus because a Fuse's switched
+  element is a PD element.
 
 **Residual floors / parked (documented, not bugs):**
+- **The file-backed-loadshape ORACLE flake is not extinct — one recurrence
+  2026-08-23** (RP1.3's gate run, parity lane): `corpus_gate` failed on
+  `modes:upgrade/mmf_singlecol` step 0 with the **r4133** side 2.1e-3 V below
+  the port on `SOURCEBUS.1` (allowance 8.2e-6), the exact ~2e-3 class the
+  case's `isolate: true` note documents. The port side is bit-stable (the lane
+  dump of the same tree carries the failing "actual" value and is byte-identical
+  to the pre-sub-step baseline), the case passes standalone, and the re-run of
+  the full command is green. UNIFIED_GATE Phase D's fix — a fresh worker per
+  case plus `isolate` on this deck — lowered the rate but has not eliminated it,
+  and the Phase-D record's "4/4 consecutive green full runs" is therefore an
+  under-sample, not a proof. Next suspect if it recurs: the case-directory
+  guard restoring `mm8.csv` while a one-shot worker still has it mapped.
 - **ckt24 RegControl/LDC `SubXFMR`** ~4.7e-5 rel tap-current — ultra-switch
   conditioning floor (CF-D), watch on re-touch.
 - ~~**UPFC modes 2/3/5**~~ **CLOSED 2026-07-18 (OG-1.7)** — see §OG-1.7 record;
