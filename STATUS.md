@@ -62,7 +62,7 @@ names, sensor 15 → 16). Measured on a generator-heavy `both` case: r4133 shape
 classes 1 → 0 and 175 previously uncomparable cells now compare, with the capi
 channel bit-unchanged; the `props/` goldens provably do not move (the capture
 enumerates the 0.14.5 oracle's own names) and the only bytes that did are the
-two predicted `json/` schema artifacts. Its audit round settled **9** findings
+two predicted `json/` schema artifacts. Its audit round settled **10** findings
 (3 major), two of them by measurement: a full post-fix re-census (438 cases)
 names the **12 new value pairs** the shape closure makes live — evidence the
 frozen extracts structurally cannot hold, now a per-sub-step obligation of
@@ -85,8 +85,9 @@ WP-G1 (live gate to fastdss parity) opened 2026-08-08. **G1.1 fired its plan
 kill criterion** (plan: ">~15 new ledger entries, or any entry that cannot
 be pinned → the r4133 property surface diverges materially; needs its own
 plan"): the unmask was implemented scratch-style and measured by a full-cell
-census of the exact gate comparison — **433 of ~512 live cases diverge on
-r4133 properties**: 209 structural (class,prop) pairs (960 129 cells —
+census of the exact gate comparison — **433 of the 438 walked live cases
+diverge on r4133 properties** (the walk's population, measured by RP0.2; the
+kill-criterion text originally said "~512"): 209 structural (class,prop) pairs (960 129 cells —
 rendering-convention deltas: case preservation vs lowercase, boolean wording,
 array/empty formats, enum spelling, display-default strings — not
 ledgerable/pinnable at all), 94 numeric pairs (95 317 cells — mostly Delphi
@@ -1564,8 +1565,8 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     reads the closure back off the vendored `shape.txt` itself (live table
     length == the census's `oracle_count`, the `oracle_only` names present, the
     frozen `rust_count` still the pre-fix number).
-  - **Audit settlement (2026-08-22, `/audit-code` + `/audit-tests`, 9 findings:
-    3 major, 6 minor — 9 fixed, 0 refuted, 0 deliberately unfixed).**
+  - **Audit settlement (2026-08-22, `/audit-code` + `/audit-tests`, 10 findings:
+    3 major, 7 minor — 10 fixed, 0 refuted, 0 deliberately unfixed).**
     (1) *major, code* — the three new `schema_divergences.json` rows carried an
     off-by-one `$dssPropertyOrder` (16/17/12 where the port's own ranks are
     17/18/13), invisible to the gate because `renumber_field` shifts by
@@ -1637,6 +1638,14 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     only raw-slot prose was false — `generator/tests.rs` carries four more
     (all upstream `CmdMapIndex` space, all still correct; **fixed** by labelling
     them and correcting the sentence above).
+    (10) *minor, code* — two active docs still described the pre-RP1.1
+    carrier-free `HIDE_R4133` assert: `DE_PASCALIZE_PLAN.md`'s tripwire
+    description and `era-summaries.md`'s "no live application site after U2.5".
+    **Fixed** — the plan now describes what the live test actually checks (the
+    sibling's carrier set + the two flags' class-disjointness); the two phase
+    records got as-of-U2.5 notes rather than rewrites, so no two places
+    disagree. (This item was dropped from the first cut of this enumeration,
+    which read "9 findings" — restored by the coordinator's closing review.)
   - Gate: all five commands green, re-run after the settlement.
     `lane_diff.ps1` not owed — no solved state and no compat kernel moved
     (proved by the bit-identical A/B above).
