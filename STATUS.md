@@ -49,8 +49,8 @@ CLAUDE.md §"Known upstream bugs" is reproduced in any lane (the eleven
 surviving split rows are the WP's fixed point: five numeric precision rows +
 six rendering rows, the latter WP-G4's scope).
 
-WP-G1 (live gate to fastdss parity) opened 2026-08-08. **G1.1 BLOCKED at its
-plan kill criterion** (plan: ">~15 new ledger entries, or any entry that cannot
+WP-G1 (live gate to fastdss parity) opened 2026-08-08. **G1.1 fired its plan
+kill criterion** (plan: ">~15 new ledger entries, or any entry that cannot
 be pinned → the r4133 property surface diverges materially; needs its own
 plan"): the unmask was implemented scratch-style and measured by a full-cell
 census of the exact gate comparison — **433 of ~512 live cases diverge on
@@ -64,11 +64,14 @@ property-table shape gaps (Generator `Rneut`/`Xneut`, Sensor `action`,
 AutoTrans `XfmrCode`, WindGen `UserModel`/`UserData` missing from the port;
 GenDispatcher `weights` the one reverse row). Nothing committed; the capi
 channel is unaffected; full census persisted at
-`investigations/g1_1_r4133_props/` (local-only). **User decision pending:**
-dedicated r4133-property-parity plan now vs G1.1 deferred. G1.2 (ESPVLControl
-deck) and G1.3d (discrete extras) run on — independent of G1.1. Queued behind
-GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, the
-UPGRADE line.
+`investigations/g1_1_r4133_props/` (local-only). **Resolved 2026-08-22 (user
+decision): the dedicated plan is authored — `R4133_PROPS_PLAN.md`** (WP-RP0–RP5;
+adversarially verified against the repo + census, all findings settled
+in-text). G1.1 is handed to it: RP4.1 delivers the unmask with the kill
+criterion re-armed; GOLDEN_REBASE G3.4/G3.5 wait on RP4.1; PLAN_SEQUENCE rows
+5a/5b added the same day. G1.2 (ESPVLControl deck) and G1.3d (discrete extras)
+run on — independent of G1.1. Queued behind GOLDEN_REBASE: `WASM_USERMODELS`
+follow-ups, RESONANCE, MULTITHREADING, the UPGRADE line.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
