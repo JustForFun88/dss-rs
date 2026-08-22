@@ -6,10 +6,12 @@
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
+use crate::elements::general::xfmr_code::XfmrCodeObj;
 use crate::elements::pd::transformer::{ControlledTransformer, CoreType};
 use crate::elements::pd::winding::Connection;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
@@ -355,6 +357,9 @@ impl AutoTrans {
         self.xrconst = o.xrconst;
 
         self.xfmr_bank = o.xfmr_bank.clone();
+        // Pascal `XfmrCode := OtherTransf.XfmrCode` (`AutoTrans.pas:848`) — the
+        // name only; the electrical data already rode in with the copies above.
+        self.xfmr_code = o.xfmr_code.clone();
 
         // r4064 (90962ae8): TControlledTransformerObj.MakeLike copies BHpoints
         // and the two BH arrays.
@@ -502,6 +507,14 @@ impl DssObject for AutoTrans {
         match idx {
             SUBNAME => self.substation_name.clone(),
             BANK => self.xfmr_bank.clone(),
+            // Pascal `XfmrCode` (`AutoTrans.pas:164`). r4133 has no
+            // `GetPropertyValue` arm for property 39 (`:1798-1896`), so it echoes
+            // the raw parse string out of `PropertyValue[39]`
+            // (`DSSObject.pas:112-115`) while the port renders the live field —
+            // the two agree whenever the deck wrote the name in the case the
+            // registry holds it in. Echo-vs-live cells are excluded, never
+            // imitated (R4133_PROPS_PLAN §1.1).
+            XFMRCODE => self.xfmr_code.clone(),
             WDGCURRENTS => self.winding_currents_result(),
             _ => unreachable!("AutoTrans has no string property {idx}"),
         }
@@ -624,6 +637,39 @@ impl DssObject for AutoTrans {
         (1..=self.num_windings.max(0) as usize)
             .map(|t| self.cd.get_bus(t).to_string())
             .collect()
+    }
+
+    /// `xfmrcode=` — Pascal `39: FetchXfmrCode(Param)` (`AutoTrans.pas:520`).
+    ///
+    /// Only a resolved code does anything: r4133's else-arm is the single
+    /// `DoSimpleMsg('Xfmr Code:' + Code + ' not found.', 100180)` (`:2395`) with
+    /// the stored name and the model left exactly as they were — which is why
+    /// the row carries [`PropDef::ref_miss_message`](crate::obj::props::PropDef)
+    /// and the parser returns before ever reaching this setter on a miss. The
+    /// `None` arm here is therefore the degenerate `xfmrcode=` (empty name):
+    /// r4133's `SetActive('')` misses too, so the auto keeps its model.
+    ///
+    /// The r4133 arm at `:567` — `DoSimpleMsg('XFmrCode Property not used with
+    /// AutoTrans object.', 100131)`, fired unconditionally right after the code
+    /// has been applied — is **not** reproduced: it is an upstream bug (report
+    /// `investigations/to_opendss/36-autotrans-xfmrcode-not-used-message.md`),
+    /// and upstream bugs are never reproduced in any lane (CLAUDE.md). Measured
+    /// 2026-08-22 on the epri-worker: the message is non-fatal inside a
+    /// `Compile`, so its absence moves no gated surface — the corpus deck
+    /// `asymmetric:autotrans/autotrans_xfmrcode.dss` compiles clean on the
+    /// r4133 channel with no `expect_warnings`.
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
+        match idx {
+            prop::XFMRCODE => {
+                if let Some(code) = resolved.and_then(|o| o.get::<XfmrCodeObj>()) {
+                    // Pascal `XfmrCode := LowerCase(Code)` (`:2349`); registry
+                    // names are already lowercased by the object constructors.
+                    self.xfmr_code = name;
+                    self.fetch_xfmr_code(code);
+                }
+            }
+            _ => unreachable!("AutoTrans has no resolved object-ref property {idx}"),
+        }
     }
 
     /// Pascal `TAutoTransObj.PropertySideEffects` (`AutoTrans.pas:574`).

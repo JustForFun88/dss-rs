@@ -70,7 +70,26 @@ WP-RP1 and the input of RP2.1's `examples_supplement.txt`, one of them a new
 bin-7 pair (`generator.d`, an r4133 `Dpu` echo); and the re-armed `HIDE_R4133`
 escape got its owner (`ORPHANED_GAPS.md` §2 → GOLDEN_REBASE G3.3c/G3.4) with a
 measured blast radius of 4 artifacts and zero corpus cases.
-RP1.2 (AutoTrans `XfmrCode`) is next.
+**RP1.2** then ported AutoTrans `XfmrCode` for real (r4133 property 39 +
+`TAutoTransObj.FetchXfmrCode`): the auto now resolves a library entry and copies
+its electrical model field by field, with the autotrans-specific overrides
+(winding 1 forced SERIES / winding 2 WYE, `XHL/XHT/XLT → puXHX/puXHT/puXXT`,
+`RdcSpecified` on every winding), so the third shape gap closes (52 → 53 names,
+r4133 shape classes 3 → 2). Two r4133 statements in that arm are upstream bugs
+and are not reproduced: the contradictory `'XFmrCode Property not used with
+AutoTrans object.'` (#100131, fired after the code was applied — and measured to
+overwrite the real #100180 on the API errno surface) and `NConds := Fnphases + 1`
+(the Transformer's conductor rule, which leaves r4133 solving a structurally
+wrong 3-phase auto: measured 4 conductors and 92 236 V on a 69 kV winding vs 6
+and 38 472 V). Both got upstream reports. Measure-first put a new corpus deck on
+the r4133 channel — deliberately **single-phase**, the one width at which the
+`NConds` bug is inert (1+1 = 2·1), so the channel really does gate the copy — and
+it passes with no ledger entry; the multi-phase form is pinned in-engine
+(10 tests, incl. a coded-vs-longhand auto whose Y and node voltages are
+bit-identical). The full re-census records the **9** value pairs the closure makes
+live, one of them a genuine bin-7 jump (`autotrans.wdgcurrents`) that sits
+entirely on capi-only cases and is therefore out of RP4.1's scope.
+RP1.3 (WindGen `UserModel`/`UserData`) is next.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -1649,6 +1668,136 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   - Gate: all five commands green, re-run after the settlement.
     `lane_diff.ps1` not owed — no solved state and no compat kernel moved
     (proved by the bit-identical A/B above).
+
+- **RP1.2** (2026-08-22) — AutoTrans `XfmrCode`, a **real behavioral port**.
+  r4133 property 39 (`Version8/Source/PDElements/AutoTrans.pas:329`, help `:414`)
+  and `TAutoTransObj.FetchXfmrCode` (`:520` → `:2339-2396`) now exist in the
+  port, closing the third `shape.txt` gap (autotrans 52 → 53 names). dss_capi
+  0.14.5 deleted the row outright (`.inputs/dss_capi/src/PDElements/`
+  `AutoTrans.pas:76,125`), so there is no capi witness for any of it.
+  - **The copy is written field by field, not reused.** The Transformer's
+    `fetch_xfmr_code` (`pd/transformer/windings.rs:357-402`) assigns the winding
+    vector wholesale and copies the 0.15.x kVA-ratings; neither is r4133's auto
+    form. The AutoTrans variant (`pd/auto_trans/windings.rs`) follows the Pascal
+    statement by statement, with its three deviations from the Transformer
+    routine: the connection override (winding 1 → `SERIES`, winding 2 → `WYE`,
+    tertiary and beyond keep the code's own connection, `:2356-2361`), the
+    reactance rename (`XHL/XHT/XLT` → `puXHX/puXHT/puXXT`, `:2374-2376`) and
+    `RdcSpecified := TRUE` on every winding (`:2367`), which selects
+    `RecalcElementData`'s `Rdcpu := RdcOhms/(VBase²/VABase)` branch instead of
+    the 85 %-of-ac default that would overwrite the copied `RdcOhms`.
+    `MakeLike` carries the code name (`:848`), `Create` starts it `''` (`:905`).
+  - **Two upstream bugs in that one arm, neither reproduced** (CLAUDE.md — never,
+    in any lane); both got an English report in `investigations/to_opendss/`:
+    - `36-autotrans-xfmrcode-not-used-message.md` — `DoSimpleMsg('XFmrCode
+      Property not used with AutoTrans object.', 100131)` (`:567`) fires
+      unconditionally right after `:520` applied the code. Measured on the
+      epri-worker: it is **non-fatal inside a `Compile`** (the errno surface is
+      clean afterwards, which is what lets the new deck gate r4133 with no
+      `expect_warnings`), but on a per-command `Edit` it lands on the errno
+      surface **and overwrites the real #100180** — a mistyped code name is
+      reported as "property not used". The port stays silent on the hit path and
+      answers a miss with r4133's own `Xfmr Code:<name> not found.` / #100180.
+    - `37-autotrans-fetchxfmrcode-nconds.md` — `NConds := Fnphases + 1`
+      (`:2353`), the *Transformer's* conductor rule copy-pasted into a class
+      whose every other path sets `2 * Fnphases` (`:538`, `:798`, `:891`,
+      `SetNumWindings` `:1021`) because the auto carries two conductors per phase
+      and `SetNodeRef` aliases the series winding's second end inside that block
+      (`:986-1002`). Measured on the released 11.0.0.1 DLL, one 3-phase 115/69
+      auto: `NumConductors = 4` and `MID.1 = 92 236 V` on a 69 kV winding, versus
+      6 and 38 472 V for the same deck with a trailing `phases=3` (which re-runs
+      the correct side effect). Both runs converge and report nothing. The port
+      keeps `2 * Fnphases` via `set_nconds`, which is what the Pascal statement
+      does structurally (reallocate terminals, flag `BusNameRedefined`) with the
+      auto's count.
+  - **Measure-first, and the deck is single-phase on purpose.** No corpus deck
+    set `xfmrcode=` on an AutoTrans; the new one
+    (`asymmetric:autotrans/autotrans_xfmrcode.dss`, `engines: "r4133"` — 0.14.5
+    would reject the property outright) is **1-phase** because that is the one
+    width where the `NConds` bug is inert (`1 + 1 == 2 · 1`), so the r4133
+    channel is a valid oracle for the whole copy instead of comparing against a
+    structurally wrong element. Its `XfmrCode` declares BOTH windings `delta`,
+    so the winding-1 override is strongly observable (at one phase
+    `RecalcElementData` derives the series `VBase` from
+    `kVseries = kVLL − Winding[2].kVLL`). Two autos share the code, one left on
+    winding 2 and one on winding 1, so the same 16-property probe set reads both
+    windings' copied values; the probes are limited to props r4133's
+    `GetPropertyValue` re-renders live (`:1798-1896`) and whose exact decimal
+    fits `%.7g` — `thermal`/`n`/`m`/`flrise`/`hsrise` are `PropertyValue` echoes
+    and `normamps`/`emergamps` are 5-significant-digit renders, so neither is
+    probed. Live-validated on r4133 before the port existed (epri-worker
+    2026-08-22: compile clean, converged, 5 iters, `SOURCEBUS.1`
+    114 908.668456851403, `MID1.1` 66 514.442565085992, `SRC2.1`
+    117 228.327082133997, `MID2.1` 68 431.041427177013, both autos
+    `NumConductors = 2`), and the gate then matched it at the micro floor with
+    **no ledger entry**. Non-vacuity proven in a scratch tree: dropping the
+    winding-1 override alone reds the `[R4133]` channel on node voltages
+    (|Δ| = 8.7 V against an allowed 1.16e-4).
+  - **The multi-phase form is pinned in-engine**, since r4133 cannot witness it:
+    `exec::tests::autotrans_xfmrcode` (11 tests) covers the forced
+    `Series`/`Wye`/`Delta` on a 3-winding code, every copied scalar, the
+    `RdcSpecified` selection (with a control auto that never saw a code), the
+    conductor count (`Yorder = 18`, where the reproduced bug gives 12), the miss
+    arm (#100180, model and stored name untouched, rebuilt Y identical), the
+    empty-name no-op (measured: r4133 logs nothing there either), the absence of
+    #100131, the display slot, `MakeLike`, the surface split (`Save` writes the
+    code name like r4133's flag-blind `SaveWrite`, `Dump` does not — the RP1.1
+    disposition), and — the correctness statement no oracle can make — that a
+    coded auto and the same auto written out longhand produce a **bit-identical**
+    assembled Y and node-voltage vector.
+  - **Mechanism added:** one `PropDef` field, `ref_miss_message`
+    (`RefMissMessage { code, prefix }`). dss_capi routed every object reference
+    through the property system's single #401 miss path, which the port follows
+    for every row that has a capi counterpart; this row has none, and r4133 still
+    resolves it through the legacy `FetchXfmrCode`, whose `else` is one
+    `DoSimpleMsg` that leaves the stored name and the model exactly as they were
+    (`:2394-2395`). The field buys both halves: the r4133 text/number, and a miss
+    that returns before `set_object_ref` so nothing is written.
+  - **Surfaces.** The row is `HIDE_R4133` (r4133-only ⇒ absent from BOTH pinned
+    tables) and joins `PROPS_015X`; the flag's carrier set assert grows to four
+    and its doc now says what it always meant — "absent from both pinned tables",
+    never "not implemented". Bytes moved: `json/schema_full_port.json`
+    (21 ordinal renumberings, no new block) and `json/schema_divergences.json`
+    (a fourth `port_hidden_property` row at `$dssPropertyIndex` 39 /
+    `$dssPropertyOrder` **32**, plus the AutoTrans BH trio's indices 42/43/44 →
+    43/44/45), with `golden.lock.json`. The order rank was **measured**, not
+    argued (the RP1.1 audit's lesson that the shift rule absorbs an off-by-one):
+    regenerating moved the prop that stood at 39/32 — `XRConst` — to 40/33.
+    `props/autotrans.json` provably does not move (the capture enumerates the
+    0.14.5 oracle's own names, `props_roundtrip` 251 passed unchanged), and no
+    `Dump`/`Save`/JSON byte moves (`prop_line` skips a hidden row; the dump's
+    generic tail starts at prop 28 and walks over it).
+  - **Census re-run (the WP-RP1 per-sub-step obligation).** Two full
+    `DSS_PROPS_CENSUS=1` walks — pre-RP1.2 (438 cases, 56.5 s) and post-RP1.2
+    (439, 56.8 s), both channels — so the delta is a diff, not a derivation:
+    r4133 shape classes **3 → 2**, structural pairs **218 → 222**, numeric
+    **98 → 103**, cells hidden behind a desynchronized name list **977 → 347**;
+    the `capi_v0145` channel is bit-unchanged (3 / 13 / 0 both times). The **9**
+    new pairs are recorded in `tests/corpus/props_r4133/README.md`
+    §"Pairs the WP-RP1 shape closures make live" with their bins and cell counts.
+    Six are covered machinery (bin 1 `enabled`/`xrconst`, bin 5
+    `bhcurrent`/`bhflux`, bin 6 `normamps`/`emergamps` at 2.1e-5/4.0e-5 — an
+    order of magnitude under the worst display pair). Of the three bin-7 rows,
+    `pctperm`/`repair` are frozen-default echoes of exactly the family bin 7
+    already enumerates (`InitPropertyValues` `:1958-1959`; the class's
+    `GetPropertyValue` re-renders only PD-tail slots 1–2, `:1885-1888`, so 4–5
+    fall through to the string store) — in-scope bin 7 grows 17 → 19, RP2.2
+    disposition, RP2.3 landing site. The third, **`autotrans.wdgcurrents`**
+    (max_rel 7.54e-2), is a **genuine jump and entirely out of scope**: all 35
+    cells sit on `engines: "capi_v0145"` cases (the four `controls:autotrans/*`
+    RegControl decks + one `modes:makeposseq/makeposseq_xfmr` cell), 0 in scope.
+    It is not a port defect — the same 35 cells match exactly on the capi
+    channel, and the two engines' `GetAllWindingCurrents` bodies are
+    statement-for-statement identical, so the inputs differ, not the algorithm;
+    ~4e-4 on the series winding against ~3–7 % on the common winding is the
+    signature of a different landed tap, which is why those decks are capi-only.
+    Recorded for RP2.2's closed pair list; no RP3 sub-step opens while it stays
+    out of scope.
+  - Gate: all five commands green. `lane_diff.ps1` run (the plan owes it for
+    this sub-step): **PASS**, 522 cases / 3 220 247 records, `max |Δ| = 0`
+    exactly on every gated kind (conv, cur, errs, iter, loss, pow, v, y), zero
+    iteration drift — the default lane stays bit-identical to the parity lane,
+    so it keeps precisely the parity lane's oracle standing.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

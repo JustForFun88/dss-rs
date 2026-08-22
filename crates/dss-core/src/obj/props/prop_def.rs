@@ -84,6 +84,13 @@ pub struct PropDef {
     /// `Version8/Source/Meters/Sensor.pas:850-854`). Meaningless without the
     /// flag — [`super::ClassProps::new`] asserts the pairing.
     pub stub_message: Option<StubMessage>,
+    /// The "not found" `DoSimpleMsg` this [`PropType::ObjectRef`] row answers an
+    /// unresolved name with, **replacing** the generic `DSSObjectHelper` #401
+    /// text. Set only for a reference r4133 still resolves through a
+    /// pre-property-system `Fetch<X>` routine that carries its own message and
+    /// leaves the object untouched — see [`RefMissMessage`]. `None` (every other
+    /// row) keeps the unified #401 path.
+    pub ref_miss_message: Option<RefMissMessage>,
 }
 
 /// One `DoSimpleMsg` a [`PropFlags::UPSTREAM_STUB`] property emits on write:
@@ -93,6 +100,30 @@ pub struct PropDef {
 pub struct StubMessage {
     pub code: u32,
     pub text: &'static str,
+}
+
+/// The legacy `Fetch<X>` "not found" answer of an [`PropType::ObjectRef`] row
+/// (see [`PropDef::ref_miss_message`]).
+///
+/// dss_capi routed every object reference through the property system, whose
+/// single miss path logs `<Obj>.<Prop>: <Class> object "<name>" not found.`
+/// (#401) and NILs the reference; the port follows it for every row that has a
+/// capi counterpart. AutoTrans `XfmrCode` has none — it exists only in EPRI
+/// r4133, which still calls `TAutoTransObj.FetchXfmrCode`
+/// (`Version8/Source/PDElements/AutoTrans.pas:520,2339-2396`). Its else-arm is
+/// one statement, `DoSimpleMsg('Xfmr Code:' + Code + ' not found.', 100180)`
+/// (`:2394-2395`): a different text, a different number, and — unlike #401 — the
+/// stored name and the reference are left exactly as they were.
+///
+/// A row carrying this therefore gets both halves: the r4133 text/number, and a
+/// miss that writes nothing at all (the parse returns before `set_object_ref`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RefMissMessage {
+    /// The Pascal `DoSimpleMsg` number.
+    pub code: u32,
+    /// The text before the offending name; the message is
+    /// `format!("{prefix}{name} not found.")`, r4133's own concatenation.
+    pub prefix: &'static str,
 }
 
 /// The 1-based property index of `name` within a class's `defs` vec — the index
@@ -127,6 +158,7 @@ impl PropDef {
             json_name: None,
             json_ref_class: None,
             stub_message: None,
+            ref_miss_message: None,
         }
     }
 
@@ -134,6 +166,14 @@ impl PropDef {
     /// logs on write (see [`Self::stub_message`]).
     pub fn stub_msg(mut self, code: u32, text: &'static str) -> Self {
         self.stub_message = Some(StubMessage { code, text });
+        self
+    }
+
+    /// Builder: this `ObjectRef` row answers an unresolved name with r4133's own
+    /// `Fetch<X>` message instead of the generic #401, and leaves the reference
+    /// untouched (see [`Self::ref_miss_message`]).
+    pub fn ref_miss_msg(mut self, code: u32, prefix: &'static str) -> Self {
+        self.ref_miss_message = Some(RefMissMessage { code, prefix });
         self
     }
 

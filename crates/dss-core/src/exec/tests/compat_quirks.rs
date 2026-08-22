@@ -761,10 +761,17 @@ fn hide_015x_carrier_set_is_the_measured_escape() {
     let hide_r4133 = carriers_of(&dss, crate::obj::props::PropFlags::HIDE_R4133);
     assert_eq!(
         hide_r4133,
-        ["Generator.Rneut", "Generator.Xneut", "Sensor.Action"],
-        "the r4133 hide flag's carrier set moved. RP1.1 re-armed it with exactly \
-         the three upstream stubs; each one is also a `port_hidden_property` row \
-         of `tests/golden/json/schema_divergences.json`, so a carrier added or \
+        [
+            "AutoTrans.XfmrCode",
+            "Generator.Rneut",
+            "Generator.Xneut",
+            "Sensor.Action",
+        ],
+        "the r4133 hide flag's carrier set moved. RP1.1 re-armed it with the \
+         three upstream stubs and RP1.2 added the real AutoTrans `XfmrCode` port \
+         (the flag says only 'absent from both pinned tables', not 'not \
+         implemented'); each carrier is also a `port_hidden_property` row of \
+         `tests/golden/json/schema_divergences.json`, so a carrier added or \
          dropped here without that row is a schema byte gate that silently stops \
          describing the tree"
     );
