@@ -10,8 +10,9 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
 > build-plans `CORPUS_TEST_PLAN.md` / `CONTROL_COVERAGE_PLAN.md` — are archived under
 > **`docs/plans-archive/`** (their names in the ordering are unchanged). Active/foundational
 > plans stay at the repo root: `PORTING_PLAN.md`, `DE_PASCALIZE_PLAN.md`,
-> `DIAKOPTICS_PSTCALC_PLAN.md`, `RESONANCE_PLAN.md`, `MULTITHREADING_PLAN.md`,
-> `WASM_USERMODELS_PLAN.md`. Residual work no plan owns is tracked in `ORPHANED_GAPS.md`.
+> `DIAKOPTICS_PSTCALC_PLAN.md`, `GOLDEN_REBASE_PLAN.md`, `R4133_PROPS_PLAN.md`,
+> `RESONANCE_PLAN.md`, `MULTITHREADING_PLAN.md`, `WASM_USERMODELS_PLAN.md`.
+> Residual work no plan owns is tracked in `ORPHANED_GAPS.md`.
 
 ```
 ── PORTING (pre-acceptance) ────────────────────────────────────────────────────────
@@ -81,6 +82,27 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               whole-case exclusions → an unowned policy call, the 3
                               wasm-guest markers → WASM_USERMODELS. From here "gate
                               green" means BOTH lanes (CLAUDE.md, TESTING.md).
+ 5a. GOLDEN_REBASE_PLAN.md    IN FLIGHT (opened 2026-08-02) — retire the golden/
+                              corpus debt of the r4133-authority policy switch
+                              (not a prerequisite for MULTITHREADING M0–M2):
+                              WP-G0 rails + WP-G2 bug-kernel teardown COMPLETE
+                              (merged to `update` @ 4d3fc2d7); WP-G1 (live gate
+                              to fastdss parity) open — G1.1 fired its kill
+                              criterion 2026-08-08 and is handed to
+                              R4133_PROPS_PLAN.md (its RP4.1 delivers the
+                              unmask; G3.4/G3.5 wait on it); WP-G3–G5 queued.
+                              Added 2026-08-22 per the user's request.
+ 5b. R4133_PROPS_PLAN.md      QUEUED (authored 2026-08-22) — property parity on
+                              the r4133 channel, the dedicated successor G1.1's
+                              kill criterion demanded: census rails (WP-RP0),
+                              property-table shape closure (WP-RP1), the
+                              channel-aware comparator — normalization + echo
+                              exclusions + display floor (WP-RP2), four
+                              root-causes (WP-RP3), then the unmask (RP4.1 =
+                              G1.1's deliverable, kill criterion re-armed).
+                              Runs inside the GOLDEN_REBASE window on branch
+                              `r4133-props` off `update`.
+                              Added 2026-08-22 per the user's request.
  6. RESONANCE_PLAN.md         WP-R1 iterative refinement (default lane on, parity off —
                               needs Stage F), WP-R2 resonance analysis, WP-R3 diagnostics
                               (UPGRADE_PLAN §1.3-1 already grants target-rev cases the

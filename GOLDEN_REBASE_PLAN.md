@@ -396,6 +396,14 @@ cannot be pinned → stop and report; that magnitude means the r4133 property
 surface diverges materially and needs its own plan.
 Outcome: the 96 r4133-only cases get a property check for the first time.
 
+> **2026-08-22 — superseded by `R4133_PROPS_PLAN.md`** (user decision; the kill
+> criterion fired 2026-08-08 — census: 433 of ~512 live cases diverge, 209
+> structural pairs / 94 numeric pairs / 5 property-table shape gaps, STATUS §1).
+> The dedicated plan delivers this sub-step's outcome as its RP4.1, with this
+> kill criterion re-armed there; the `PROPS_R4133` shape-allowlist expectation
+> above is superseded by the TOLERANCE_NOTES reuse doctrine (R4133_PROPS §1.2 —
+> `PROPS_015X` is reused). G3.4/G3.5 wait for RP4.1.
+
 ### G1.2 — corpus deck for the one zero-coverage class
 
 `ESPVLControl` is instantiated by **no** corpus deck (verified;
@@ -1067,8 +1075,10 @@ from the enum.
 
 ### G5.2 — closing record
 
-`PLAN_SEQUENCE.md`: insert this plan post-DE_PASCALIZE, note it is not a
-prerequisite for MULTITHREADING M0–M2. `WASM_USERMODELS_PLAN.md`: add the named
+`PLAN_SEQUENCE.md`: the entry already exists (5a, inserted 2026-08-22 by the
+R4133_PROPS authoring commit, with the not-a-prerequisite-for-M0–M2 framing
+carried by its position) — flip it to COMPLETE, do **not** insert a second
+row. `WASM_USERMODELS_PLAN.md`: add the named
 model-6 `FInit` row (§1.3); `ORPHANED_GAPS.md`: record it until that row exists.
 `STATUS.md` closing record: final `SPLIT_ALIAS_POPULATION` (= 5),
 `Escape::WholeCase` (= 1, model-6 — reported as the last reproduced upstream
