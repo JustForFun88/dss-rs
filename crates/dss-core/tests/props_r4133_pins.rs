@@ -18,11 +18,26 @@
 //! `CapiAndPin(n, name)`. **Twenty-nine of the tests below are those `name`s**
 //! — the twenty RP2.3 landed plus the nine its audit settlement added for the
 //! rows exposed on `engines: "r4133"` cases, together covering 63 of the 81 rows
-//! — and the other two are the deck guard's own self-tests. The literal list is
+//! — and two more are the deck guard's own self-tests. The literal list is
 //! pinned from the table's side by
 //! `harness::props_norm::tests::every_live_semantics_row_names_a_pin`, so a row
 //! cannot start pointing at a test that does not exist without moving both
 //! sides in one commit.
+//!
+//! # The pins that no echo row can name (RP3.1 onwards)
+//!
+//! The last two tests belong to no `EchoRow` at all, and could not: RP3.1's
+//! divergence is one r4133 getter reading a field the `Edit` CASE never wires,
+//! and that getter is **live** — an echo row there would be a false statement
+//! about the mechanism (`R4133_PROPS_PLAN.md` §RP3.1). Its exclusion shape is a
+//! per-case `ledger.json` `property` divergence entry, drafted in the sub-step
+//! and landed at RP4.1 by the §1.1(e) staging rule, so between the two there is
+//! a window in which the port's value has no holder anywhere. These pins are
+//! that holder, and they are cited by
+//! `props_r4133_replay::LEDGER_ENTRY_PINS` — the same guard
+//! (`every_echo_row_pin_is_a_test_that_exists`) that forbids an un-cited
+//! `#[test]` here reads that list too, so a pin cannot be added, renamed or
+//! deleted without moving its citation with it.
 //!
 //! # The shape of a pin
 //!
@@ -1232,4 +1247,83 @@ fn storagecontroller_seasontargets_render_the_live_targets() {
         deck.get("StorageController.sc.SeasonTargets"),
         "[ 1000 2000]"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Pins added by RP3.1 (2026-08-24): the witnesses of a DRAFTED ledger entry
+// ---------------------------------------------------------------------------
+//
+// See the module doc's second section. These two are named by
+// `props_r4133_replay::LEDGER_ENTRY_PINS`, not by an `EchoRow::witness`.
+
+/// `swtcontrol.delay` — **RP3.1's root cause: r4133 never wires the property.**
+///
+/// `SwtControl` declares nine properties and the fifth is `Delay`. r4133's
+/// `Edit` stores every token in the echo array first
+/// (`Version8/Source/Controls/SwtControl.pas:192-193`) and then dispatches on
+/// the property number — and the `CASE` has arms for 1, 2, 3, 4, 6, 7, 8 and 9
+/// but **none for 5** (`:195-218`), so `delay=` falls through to
+/// `ClassEdit(…, ParamPointer - NumPropsthisClass)` as an inherited parameter
+/// and `TimeDelay` keeps the 120.0 `Create` gave it (`:310`). The getter is
+/// **live** (`:588`, `Format('%-.7g',[TimeDelay])`), so r4133 answers `120` to
+/// a deck that asked for 0.25 — which is why the exclusion here cannot be an
+/// echo row. dss_capi 0.14.5 wires the property through its typed table
+/// (`src/Controls/SwtControl.pas:185`) and this port follows
+/// (`elements/control/swt_control/accessors.rs:114`).
+///
+/// The divergence is **render-only on r4133**: nothing there consumes
+/// `TimeDelay`. `Sample`'s queue-pushing body is commented out wholesale
+/// (`:484-507`, "Removing because action … and lock are instantaenous") — and
+/// so is `LockCommand`'s own declaration (`:39`), so the block would not even
+/// compile — `DoPendingAction` likewise (`:396-408`), and `set_States` acts
+/// immediately (`:532-549`). Upstream report:
+/// `investigations/to_opendss/43-swtcontrol-delay-not-wired.md` (local).
+///
+/// Deck: `controls/swtcontrol/swtcontrol_time.dss` (`SwtControl.sw`, `delay=0.25`
+/// at `:17`), the case behind the drafted entry
+/// `r4133-swtcontrol-delay-ignored-time` — 12 in-scope cells, one per step 0..11.
+/// Two discriminating readings, because "our render is 0.25" alone would pass
+/// against a getter that merely echoed the deck's token: an `edit` proves the
+/// setter path drives the same getter, and the unset render below proves the
+/// port's *default* is r4133's 120 — which is why `civanlar.dss`, sixteen
+/// SwtControls that never type `delay=`, contributes no divergent cell to the
+/// census at all.
+#[test]
+fn swtcontrol_delay_wires_the_property() {
+    let mut deck = Deck::compile("controls/swtcontrol/swtcontrol_time.dss");
+    assert_eq!(
+        deck.get("SwtControl.sw.Delay"),
+        "0.25",
+        "the deck's own `~ delay=0.25`, which r4133 renders as 120"
+    );
+    deck.cmd("edit SwtControl.sw delay=7.5");
+    assert_eq!(deck.get("SwtControl.sw.Delay"), "7.5");
+
+    let mut unset =
+        Deck::compile("electricdss-tst/Version8/Distrib/Examples/civinlar model/civanlar.dss");
+    assert_eq!(
+        unset.get("SwtControl.13_14.Delay"),
+        "120",
+        "an untyped Delay keeps the creation default — the same 120 r4133 prints, \
+         which is why this deck has no cell in the census"
+    );
+}
+
+/// `swtcontrol.delay` on the second r4133-gating deck — the witness of the
+/// drafted entry `r4133-swtcontrol-delay-ignored-midi`.
+///
+/// Same mechanism as [`swtcontrol_delay_wires_the_property`]; the entries are
+/// per case, so each owes its own reading. Deck:
+/// `controls/swtcontrol/midi_swtcontrol.dss` (`SwtControl.sw` on the loop tie,
+/// `delay=0.25` at `:124`), 12 in-scope cells over steps 0..11.
+///
+/// The third corpus deck that types `delay=`,
+/// `controls/swtcontrol/swtcontrol_lock.dss`, is `engines: "capi_v0145"`: there
+/// the port and the pinned 0.14.5 oracle agree, so it needs no entry and no pin.
+#[test]
+fn swtcontrol_delay_wires_the_property_on_the_midi_tie() {
+    let mut deck = Deck::compile("controls/swtcontrol/midi_swtcontrol.dss");
+    assert_eq!(deck.get("SwtControl.sw.Delay"), "0.25");
+    deck.cmd("edit SwtControl.sw delay=3.5");
+    assert_eq!(deck.get("SwtControl.sw.Delay"), "3.5");
 }

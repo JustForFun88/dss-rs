@@ -1124,6 +1124,27 @@ drafted entries recorded verbatim in STATUS; the report cites
 `:194-217/:310/:588/:484-507`. Outcome: the one live-getter render bug in the
 census tail is reported and pinned, not imitated.
 
+> **As executed (2026-08-24, COMPLETE — zero product-crate bytes, zero ledger
+> byte).** Every factual claim above verified against the vendored r4133 source;
+> the kill criterion did **not** fire. One citation drifted: the `Edit` `CASE` is
+> at **`:195-218`**, not `:194-217` (arms 0, 1, 2, 4, 6, `3,7`, 8, 9 — no 5); the
+> other five (`:310`, `:588`, `:484-507`, `:396-408`, `:532-549`) are exact, and
+> the report cites the corrected range.
+> Sharper than the plan knew: `LockCommand` is commented out of the **class
+> declaration** too (`:39`), and `ActionCommand`/`PresentState`/`Armed` exist in
+> neither `TSwtControlObj` nor `TControlElem` — the dead queue code would not
+> compile, so "render-only" is provable rather than inferred. The census
+> decomposes exactly as stated: 24 in-scope cells = 12 + 12 over
+> `swtcontrol_time.dss` + `midi_swtcontrol.dss`, both `engines: r4133`, ours
+> `0.25` vs r4133 `120`; the remaining 42 − 36 = 6 cells are three `capi_v0145`
+> copies of the vendored `IEEE_519.DSS` (`Delay=0.0`), which need no entry.
+> Landed: the report (`investigations/to_opendss/43-*`, local), the two drafted
+> entries (STATUS §WP-RP3, verbatim, landing at RP4.1), the two pins
+> `swtcontrol_delay_wires_the_property{,_on_the_midi_tie}`, and the per-pair work
+> list `props_r4133_replay::RP3_ROUTING` — `DECLARED_RP3` stays `(7, 4, 7)`
+> deliberately, since nothing in the tree claims those rows until the entries
+> land.
+
 ### RP3.2 — `windgen.kvar` (r4133-only class, no second oracle)
 
 The census shows ours 986.05 vs r4133 `0` on four of the five `modes:windgen/*`
