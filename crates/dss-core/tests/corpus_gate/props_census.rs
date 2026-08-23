@@ -1662,6 +1662,19 @@ mod tests {
                 "0.7484477",
                 "UNCLAIMED",
             ),
+            // …and RP3.9's shape, which the RP2.4 audit settlement moved OUT of
+            // `under-floor`: a real census spelling 1.2e-6 apart — inside the
+            // floor by the metric, and still `UNCLAIMED`, because r4133's
+            // `load.kva` is no `%.Ng` render of ours (the two engines hold
+            // different doubles). Without this row the census's vocabulary
+            // could not tell the settlement's two populations apart.
+            (
+                "Load.l3",
+                "kva",
+                "105.263157894737",
+                "105.26302971129",
+                "UNCLAIMED",
+            ),
         ];
         for (element, prop, rust, oracle, want) in cases {
             let mut row = value_row(element, prop, rust, oracle, true);
@@ -1759,9 +1772,10 @@ mod tests {
             // makes the capi channel the witness those rows cite.
             ("Recloser.r1", "eventlog", "No", "", "echo-row", "UNCLAIMED"),
             // RP2.4's link. It is the one where a capi leak would cost most —
-            // the capi property compare is exact today, so a floor reaching
-            // that channel would relax every numeric property of every `both`
-            // case at once, silently and everywhere.
+            // the capi property compare runs at the case's tier floors (1e-9 to
+            // 1e-6 rel, `harness::tol_for`), so a floor reaching that channel
+            // would relax every numeric property of every `both` case to 2e-4
+            // at once, silently and everywhere.
             (
                 "Load.l1",
                 "pf",

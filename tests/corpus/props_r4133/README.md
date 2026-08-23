@@ -750,6 +750,49 @@ live census confirms it from the other side: **all 12 pairs that carry both an
 `under-floor` and an `UNCLAIMED` cell report `cells_in_scope = 0` on every
 unclaimed spelling.**
 
+### What the RP2.4 audit settlement moved (disposition census, 2026-08-23)
+
+Same knob, same population, same run shape (`DSS_PROPS_CENSUS=claims`, 439 × 2,
+**1 060 165 rows, 56.9 s**, error baselines exact — 5 r4133 / 22 `capi_v0145`).
+This section supplements the table above; it rewrites no recorded number.
+
+The audit round disproved the *universal* form of RP2.4's mechanism claim. The
+floor was the metric alone (`display_rel ≤ 2e-4`), and the attribution to the
+Delphi `Format('%[-].Ng')` family was made by naming the sites, not by checking
+each claimed render against them. Re-scored per cell — is r4133's number our
+number rounded to SOME significant-digit count? — **55 of the 2 006 claimed
+spellings (70 cells, 27 pairs) are not**: the two engines hold doubles further
+apart than one `%.Ng` print can produce, because a round trip happened upstream
+of a derived quantity (`load.kva` from an already round-tripped `pf`,
+`vsource.puz*` from a round-tripped Z, `line.b0`/`b1` from a round-tripped C) or
+because r4133's getter prints full precision and the values simply differ
+(`capacitor.normamps`, `reactor.normamps`, `load.kvar`).
+
+The predicate now carries the clause (`props_norm::display_is_render`), so the
+claim is enforced instead of surveyed, and the 55 are declared to a new **RP3.9**
+(`props_r4133_replay::RP39_ROUTING`, 27 pairs with their r4133 sites). Deltas
+against the table above:
+
+| disposition | cells | in scope | spellings | pairs | Δ |
+|---|---|---|---|---|---|
+| `under-floor` | **49 381** | **46 538** | **1 957** | **69** | −70 cells, **0** in scope, −55 spellings, −10 pairs |
+| `UNCLAIMED` | **1 724** | **889** | **480** | **59** | +70 cells, **0** in scope, +55 spellings, +22 pairs |
+| **claimed** | 1 058 315 | 1 013 328 | 2 981 | 299 | −70 cells, 0 in scope, −10 pairs |
+
+Everything else is unmoved **to the cell** (`BoolFold` 294 519/280 915,
+`CaseFold` 99 023/95 270, `ArrayForm` 122 756/118 744, `EnumSynonym` 4 619/3 817,
+`echo-row` 488 017/468 044), and `capi_v0145` still reports **0** on every r4133
+disposition with its 11 `ledger-hit` / 88 `UNCLAIMED` / 99 value cells intact.
+
+**The in-scope columns do not move at all**, and that is the settlement's own
+measurement: every one of the 55 spellings carries `count_in_scope = 0`, so the
+RP4.1 unmask compares none of them today. What changed is where they are
+*recorded* — `claims_unclaimed_pairs.txt` (the WP-RP3 work list) instead of a
+disposition whose meaning was "not a defect, nothing to fix". The 27 pairs, with
+their per-pair row counts and in-scope splits, are in `RP39_ROUTING`; the
+in-scope residual table above (889 cells, bins 4/5/7) is unchanged, since all 70
+new cells are out of scope.
+
 ## Files
 
 | file | rows | origin |

@@ -264,9 +264,28 @@ measure-first over all 3 454 vendored spellings: worst display cell
 nearest row above the band 1.374769e-03 (**6.874×** over the floor), nearest
 genuine jump 4.404256e-03 (22.02×), smallest in-scope genuine jump 5.524501e-02
 (276.2×) — the band `(6.431124e-05, 1.374769e-03)` is **empty and 21.38× wide**,
-so the number is placed, not tuned. No kill: every in-scope display cell fits
-the Delphi `Format('%[-].Ng')` family, N ∈ {4,5,6,7,8}, every site cited. The
-plan's provisional "smallest genuine jump 1.00e-3 (`invcontrol.lpftau`)" was
+so the number is placed, not tuned. No kill. **The audit settlement (same day,
+same commit line) turned the mechanism from a survey into a clause of the
+predicate**: as landed, the section asserted that every claimed cell is a Delphi
+`Format('%[-].Ng')` render and that "both engines hold the same double", and both
+auditors independently disproved it — **55 of the 2 006 claimed spellings (70
+cells, 27 pairs)** are gaps no `%.Ng` rounding of our value can produce
+(`load.kva`, `vsource.puz*`, `line.b0`/`b1`, `transformer.normamps`, …: a round
+trip upstream of a derived quantity, or a plain state difference). The floor now
+tests it per cell (`props_norm::display_is_render`: r4133's number must be ours
+rounded to the digits r4133 printed), claims **1 951** vendored spellings, and
+the 55 are declared to a new **RP3.9** (`RP39_ROUTING`, 27 cited pairs) — back in
+`claims_unclaimed_pairs.txt` where WP-RP3 reads, and an RP4.1 precondition. The
+floor VALUE did not move; not one of the 55 has an in-scope cell, so the live
+in-scope claim is unchanged at 46 538. The same round also corrected the
+`Vsource.pas` line ranges and the `basekv` attribution in the mechanism table
+(all three copies), replaced "the capi property compare is exact / at zero
+tolerance" with the tier floors it actually runs at (`micro` 1e-9/1e-6, `feeder`
+1e-7/1e-5, `midi` 1e-6/1e-4, `micro_wtg3_dynamics` 2e-5/1e-4, now pinned), and
+added the guards the auditors named missing (the seam counters tied to the
+comparator, the `ArrayForm` wiring, the skeleton clause, the live-only spellings
+anchored to their pairs' frozen `max_rel`, a single-number guard on the ceiling
+rule). The plan's provisional "smallest genuine jump 1.00e-3 (`invcontrol.lpftau`)" was
 **recalibrated**: it is a census-metric number (absolute when the expected side
 is 0); under the floor's symmetric metric that cell is rel 1.0 and no
 0-vs-nonzero pair can ever be claimed. The floor is a **cell** predicate on the
@@ -275,14 +294,16 @@ covers scalars, bracketed vectors and `|`-separated matrices through one
 `numeric_skeleton` path, and its `%-.4g` class-ceiling residual is stated rather
 than absorbed (`tests/TOLERANCE_NOTES.md` §"r4133 props display floor", the
 plan's ONE sanctioned edit to that file). The full claims census re-measured the
-worst cell **live** at exactly 6.431124e-05 and puts `under-floor` at **49 451
-cells / 46 538 in scope** over 2 012 spellings and 79 pairs, `UNCLAIMED` down
-51 105 → **1 654** (47 427 → **889**, 104 → 37 pairs) with **every one of the
+worst cell **live** at exactly 6.431124e-05 and puts `under-floor` at **49 381
+cells / 46 538 in scope** over 1 957 spellings and 69 pairs, `UNCLAIMED` down
+51 105 → **1 724** (47 427 → **889**, 104 → 59 pairs) with **every one of the
 889 attributed to an open RP3.x sub-step**, capi still **0** on every r4133
-disposition. `DECLARED_RP24` `(2101, 71, 2021)` → **`(0, 0, 0)`** — the
-sub-step's own acceptance — and RP2.3's `reactor.kvar` carve-out hand-off is
-discharged by the floor claiming it. **Next: the WP boundary merge, then WP-RP3**
-— RP3.1–RP3.4 plus the three RP3.5+ sub-steps and RP3.8 are what RP4.1 waits on.
+disposition (the post-settlement run; before it, 49 451 / 2 012 / 79 and
+UNCLAIMED 1 654 / 425 / 37 — the delta is exactly RP3.9's 70 cells).
+`DECLARED_RP24` `(2101, 71, 2021)` → **`(0, 0, 0)`** — the sub-step's own
+acceptance — and RP2.3's `reactor.kvar` carve-out hand-off is discharged by the
+floor claiming it. **Next: the WP boundary merge, then WP-RP3** — RP3.1–RP3.4
+plus the three RP3.5+ sub-steps, RP3.8 and the new RP3.9 are what RP4.1 waits on.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -3567,16 +3588,21 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     (`'0.001'` vs `'0.0'`) is rel **1.0** — a 0-vs-nonzero pair can never be
     claimed at any magnitude. Do not repeat 1.00e-3 as the floor's upper
     neighbour.
-  - **Mechanism, cited site by site** (`Version8/Source/`): every claimed cell
-    is a Delphi `Format('%[-].Ng', …)` in a `GetPropertyValue`, N ∈ {4,5,6,7,8}
-    — `%-.4g` `Load.pas:2345` (`pf`, the worst cell's, and a formatter the plan
-    does not name); `%-.5g` `Vsource.pas:1326-1341`, `Transformer.pas:1842-1843`,
+  - **Mechanism, cited site by site** (`Version8/Source/`) — the fixed-precision
+    getters, N ∈ {4,5,6,7,8}: `%-.4g` `Load.pas:2345` (`pf`, the worst cell's,
+    and a formatter the plan does not name) + `:2353`; `%-.5g`
+    `Vsource.pas:1327-1335` and `:1343`, `Transformer.pas:1842-1843`,
     `AutoTrans.pas:1886-1887` + the `MakePosSequence` round-trips
     (`Transformer.pas:1982-1991`, `AutoTrans.pas:2021-2030`,
     `Reactor.pas:1145-1201`); `%.6g` `Storage.pas:1531-1562` and
     `Utilities.pas:2600-2607` `GetDSSArray_Real`; `%-.7g` `Line.pas:1358-1365`,
-    `:1406-1407`; `%-.8g` `Vsource.pas:1342-1348`, `Reactor.pas:1091-1098`. The
-    plan's "`%-.5g`/`%-.8g`" naming is **incomplete, not wrong**.
+    `:1406-1407`; `%-.8g` `Vsource.pas:1337-1342` + `:1344`,
+    `Reactor.pas:1091-1098`. The plan's "`%-.5g`/`%-.8g`" naming is
+    **incomplete, not wrong**. *(As landed, the `Vsource` ranges overlapped the
+    wrong formatter and the `%-.5g` row listed `basekv`, which has no getter arm
+    at all — corrected by the audit settlement in all three copies; and the
+    universal claim "every claimed cell is such a render" was replaced by the
+    per-cell clause, see the settlement bullet below.)*
   - **The `%-.4g` residual is stated, not absorbed** (the anti-fudge decision of
     the sub-step). `load.pf`'s theoretical class ceiling is 5e-4, which does not
     fit the band (2.75× under its upper neighbour). The floor comes from the
@@ -3599,8 +3625,10 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     scalar-parse copy, which would have left every bracketed/matrix display cell
     unclaimed — and `props_census`'s `under-floor` disposition (built dormant by
     RP2.1) went live.
-  - **Locks moved:** `CLAIMED_DISPLAY_FLOOR` 0 → **2 006**; `CLAIMED_TOTAL`
-    1 023 → **3 029** (now the sum of all four links); `DECLARED_RP24`
+  - **Locks moved** (the values below are the as-landed ones; the settlement
+    bullet carries the four it then moved): `CLAIMED_DISPLAY_FLOOR` 0 →
+    **2 006**; `CLAIMED_TOTAL` 1 023 → **3 029** (now the sum of all four links);
+    `DECLARED_RP24`
     (2 101, 71, 2 021) → **(0, 0, 0)** — the sub-step's acceptance;
     `DECLARED_OUT_OF_SCOPE` (134, 18, 0) → **(229, 22, 0)**. New locks
     `RP24_OUT_OF_SCOPE_ROWS` 105, `RP24_OUT_OF_SCOPE_MIN_RATIO` 277.0,
@@ -3677,14 +3705,16 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   - **`tests/TOLERANCE_NOTES.md` §"r4133 props display floor"** carries all eight
     required components (scope; measured worst + ratio; the `%[-].Ng` mechanism
     with its Pascal table; the decomposition/empty-band argument; why no coverage
-    is lost; scope justification; fix owner *none* — Delphi display formatting is
-    not a defect, so no `TODO(compat)`, no upstream report, no ledger entry; and
-    the relaxes/never-relaxes pair, including the `%-.4g` residual and the honest
-    limit that a floor cannot separate a display artifact from a genuine
-    sub-2e-4 difference — bounded by the exact capi compare on every `both` case
-    and by the 1e-6-class model gate on the `r4133`-only ones). The stale RP2.1
-    paragraph that said the slot was `None` is corrected in the same file. This
-    is the plan's ONE sanctioned edit to that file (§1.1).
+    is lost; scope justification; fix owner; and the relaxes/never-relaxes pair,
+    including the `%-.4g` residual and the honest limit that a floor cannot
+    separate a display artifact from a genuine sub-2e-4 difference — bounded by
+    the capi compare at the case tier floors on every `both` case and by the
+    1e-6-class model gate on the `r4133`-only ones). The stale RP2.1 paragraph
+    that said the slot was `None` is corrected in the same file. This is the
+    plan's ONE sanctioned edit to that file (§1.1). *(Components 3, 5, 7 and 8
+    were rewritten by the audit settlement: the mechanism is now a clause, the
+    capi bound is the tier floors and not "zero tolerance", and the fix owner is
+    "none for what it claims, RP3.9 for what it refuses".)*
   - **Mutation-tested, three ways** (tree restored byte-identical each time):
     the floor made channel-blind → caught by 2 tests; widened 10× to `2e-3` →
     9 tests across 3 binaries, including the master accounting; made scalar-only
@@ -3711,6 +3741,93 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     **4 161** per lane, **+112**): 5 harness-side guards × 22 harness-bearing
     binaries, plus 2 in the replay binary (the residual scope proof and the
     live-only reconciliation).
+
+- **RP2.4 audit settlement** (2026-08-23, one commit, still **zero engine
+  change**) — eleven findings from the two auditors, all settled; the two majors
+  were the same defect measured two ways.
+  - **The majors: the mechanism was a survey, and 55 spellings contradicted it.**
+    Part A attributed the claimed population to the Delphi `%[-].Ng` family by
+    naming the formatter sites and asserting the conclusion universally in four
+    places (`R4133_DISPLAY_FLOOR`, TOLERANCE_NOTES components 3 and 7, STATUS).
+    `audit-code` re-scored all 3 454 spellings against "is r4133's number a
+    rounding of ours to SOME digit count (both tie rules)" and found **55 rows /
+    70 cells / 27 pairs** where it is not; `audit-tests` reached the same
+    population from the other side (the pair's own formatter ceiling, 88 rows /
+    109 cells / 34 pairs, a superset by a laxer estimator) and additionally ran
+    the live census to prove all of them carry `count_in_scope = 0`. Both are
+    reproduced here. **Fixed by narrowing, not by re-explaining**: the floor grew
+    a second clause, `props_norm::display_is_render` — every number of the r4133
+    side must be our number rounded to the digits r4133 *printed*, read off its
+    own spelling (`0.5·10^(e−N+1)` + a tie margin + one half-unit of the 15-digit
+    grid FPC's conversion may round through). The mechanism claim is now a
+    property of the predicate. The 55 are declared to a new **RP3.9**
+    (`RP39_ROUTING`: 27 pairs, each with its r4133 site and its round-trip chain
+    — `load.kva` recomputed from an already round-tripped `pf`, `vsource.puz*`
+    from a round-tripped Z, `line.b0`/`b1` from a round-tripped C, and the
+    full-precision `%-g`/`%g` getters where the two engines simply differ), which
+    puts them back in `claims_unclaimed_pairs.txt` — the WP-RP3 work list — and
+    makes RP4.1 wait on them (plan §0). No cell of the 55 is in scope, so nothing
+    the gate compares moved.
+  - **Locks moved by the settlement:** `CLAIMED_DISPLAY_FLOOR` 2 006 → **1 951**;
+    `CLAIMED_TOTAL` 3 029 → **2 974**; `CLAIMED_SPELLINGS_LIVE` 3 036 →
+    **2 981**; new `DECLARED_RP39` **(55, 27, 19)** and `RP39_ROUTING` (27 rows,
+    per-pair row + in-scope split + citation). `DECLARED_OUT_OF_SCOPE`
+    (229, 22, 0), `RP24_OUT_OF_SCOPE_ROWS` 105 and the 277× margin are
+    **unmoved** — `declare` runs the mechanism arm first, so the two rows that
+    would otherwise have drifted into the ceiling rule (and dropped its measured
+    margin to 2.08×) stay RP3.9's.
+  - **Live re-census** (439 × 2, 1 060 165 rows, 56.9 s, error baselines exact
+    5/22): `under-floor` **49 381 / 46 538 in scope / 1 957 spellings / 69
+    pairs**; `UNCLAIMED` **1 724 / 889 / 480 / 59**. **In-scope counts on both
+    sides unchanged**, every other disposition unmoved to the cell, capi still 0
+    on every r4133 disposition — the settlement moves exactly the 70 cells it
+    claims to move.
+  - **The other major — "the capi compare is exact / at zero tolerance" is
+    false.** `compare_all_properties` hands `compare_prop_lists` the case tier's
+    `i_rel`/`i_abs` and `value_verdict` passes at `abs + rel·|e|`. Corrected in
+    all five places (TOLERANCE_NOTES components 5 and "scope justification",
+    `PropsPolicy::under_display_floor`, `R4133_DISPLAY_FLOOR`, the census
+    comment) and replaced by the honest tier statement, now pinned with the two
+    kinds that are the hole: `midi` (no `tol_for` arm → 1e-6/1e-4) and
+    `micro_wtg3_dynamics` (2e-5/1e-4) do not bound a value below 0.5, `feeder`
+    none below 0.05 — `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`.
+  - **Six minors, each with the guard the auditor named missing.** (1) The
+    `Vsource.pas` ranges + the `basekv` attribution, fixed in all three copies.
+    (2) The "never relaxes a discrete value" bullet, which the metric alone did
+    not provide: reworded to what the predicate does, and the general case is now
+    covered by the mechanism clause (`'5001'` vs `'5000'`, 2.0e-4, refused —
+    pinned). Its two one-sided constants are pinned as measurements now as well:
+    `RP24_OUT_OF_SCOPE_MIN_RATIO` is bracketed above (`< 278.0` against the
+    measured 277.17×) and `CEILING_ROUND_MARGIN` literally (`== 1.01`), so the
+    auditor's 277 → 2 and 1.01 → 200 mutations red. (3) The `ArrayForm` wiring, provably inert (the auditor's mutation
+    `numbers_match → ==` ran green): the RP2.1 discrimination row the widening
+    had taken back (`'[600,700.007,]'`, 1e-5) is **restored** — the render clause
+    refuses it — and a positive display fold (`'[ 600 700.00003]'` vs
+    `'[600,700,]'`) now pins the wiring from the other side. (4) The seam
+    counters, which no test tied to the seam: the comparator test and the counter
+    test both drive `PropsPolicy::under_display_floor` and assert
+    `FLOOR_VISITS`/`FLOOR_HITS` move, so the offline-twin swap reds. (5)
+    `LIVE_ONLY_DISPLAY_SPELLINGS`, which carried only its length: each of the six
+    is now anchored to one of five cited `vsource` pairs and to that pair's own
+    frozen `max_rel` (the auditor's `'1.4257'` mutation is 9.09e-5 against
+    3.72e-5 — and is no longer a render either). (6) The vacuous
+    "differing skeleton" block in the metric test: two rows with the SAME number
+    count and a different skeleton (`'[ 400]'` vs `'400'`, `'1 kV'` vs `'1 kW'`)
+    now exercise the clause the block claimed to pin. (7) `row_out_of_scope_by_ceiling`
+    compared a symmetric metric with the census's offender-only `max_rel`: it now
+    **refuses multi-number rows** outright, with the implication written out — on
+    a one-number row the census metric dominates `display_rel`, on a multi-number
+    row it need not.
+  - **Every mutation the auditors landed green now reds**, verified: the
+    `tokens_match` widening removal (1 test), the `PropsPolicy → props_norm`
+    seam swap (2), the fabricated live-only spelling (1), the skeleton-clause
+    deletion (2), plus two of the settlement's own — dropping the mechanism
+    clause from the floor (7 tests across the accounting, the two channel tests
+    and the metric) and dropping the single-number guard from the ceiling rule
+    (1). Test count
+    **8 322 → 8 368** (4 161 → **4 184** per lane, **+23**): 1 new harness guard
+    (the capi tier floors) × 22 harness-bearing binaries, plus 1 new replay test
+    (RP3.9's both-ways proof) — and no test deleted, `#[ignore]`d or loosened.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

@@ -1067,19 +1067,35 @@ deliberately leaves it UNCLAIMED rather than hide it behind a mask.
 
 **The named exception, and its exact scope.** On the **`r4133`** channel only,
 and inside `compare_all_properties` only, a divergent **property value cell**
-whose two sides are the *same numbers printed to different precision* compares
-within a relative floor of **`2e-4`** instead of exactly. Nothing else in the
-repo is touched: no `Tolerances` field, no `tol_for` tier, no golden, no model
-quantity (Y / V / I / P / losses), no report text, and not one cell on the
-`capi_v0145` channel, whose property compare stays byte-exact. It is the only
-tolerance `R4133_PROPS_PLAN.md` introduces (plan §1.2 last bullet, §1.3 "No
-tolerance tier moves"), and it is a **cell** predicate — it reads the two
-rendered strings and nothing else, so no `(class, prop)` pair is masked by name
-and there is no row to go stale. Code: `harness/props_norm.rs`
-(`R4133_DISPLAY_FLOOR`, `display_rel`, `under_display_floor{,_r4133}`), seamed
-into `harness/mod.rs::compare_prop_lists` through
-`PropsPolicy::under_display_floor` (gated on `is_r4133()`) and into
-`NormRule::ArrayForm`'s per-element compare through `numbers_match`.
+compares within a relative floor of **`2e-4`** instead of exactly — but only when
+its r4133 side is *our value rounded to the significant digits r4133 printed*.
+Two clauses, both necessary: the **metric** (`display_rel ≤ 2e-4`, the size of
+the divergence) and the **mechanism** (`display_is_render`, a `%.Ng` render of
+our number). Nothing else in the repo is touched: no `Tolerances` field, no
+`tol_for` tier, no golden, no model quantity (Y / V / I / P / losses), no report
+text, and not one cell on the `capi_v0145` channel, whose property compare stays
+at the case's own tier floors. It is the only tolerance `R4133_PROPS_PLAN.md`
+introduces (plan §1.2 last bullet, §1.3 "No tolerance tier moves"), and it is a
+**cell** predicate — it reads the two rendered strings and nothing else, so no
+`(class, prop)` pair is masked by name and there is no row to go stale. Code:
+`harness/props_norm.rs` (`R4133_DISPLAY_FLOOR`, `display_rel`,
+`display_is_render`, `under_display_floor{,_r4133}`), seamed into
+`harness/mod.rs::compare_prop_lists` through `PropsPolicy::under_display_floor`
+(gated on `is_r4133()`) and into `NormRule::ArrayForm`'s per-element compare
+through `numbers_match`.
+
+> **The mechanism clause is the RP2.4 audit settlement (2026-08-23).** As landed,
+> the floor was the metric alone, and this section asserted — universally — that
+> "every claimed cell is r4133 printing a live double in its own
+> `GetPropertyValue`" and that "both engines hold the *same* double". Both
+> auditors disproved that independently: **55** of the 2 006 claimed vendored
+> spellings (70 cells, 27 pairs) are gaps *no* `%.Ng` rounding of our value can
+> produce. They are now refused by the predicate and owned by **RP3.9**
+> (`props_r4133_replay::RP39_ROUTING`), so the sentence above is a property of
+> the code rather than of a survey. The floor value did not move; what moved is
+> what it is allowed to claim (2 006 → **1 951** vendored spellings, live
+> 49 451 → **49 381** cells over 79 → **69** pairs, with the in-scope count
+> unchanged at 46 538 because not one of the 55 has an in-scope cell).
 
 **Measured worst, and the ratio.** Derived measure-first over the vendored
 evidence at `tests/corpus/props_r4133/` — `examples_full.txt` +
@@ -1115,23 +1131,50 @@ and the constant's own doc).
 > neighbours above the band are the three rows in the table; do not repeat
 > "1.00e-3" as the floor's upper neighbour.
 
-**Mechanism — Delphi `Format('%[-].Ng', …)` in a `GetPropertyValue`.** Every
-claimed cell is r4133 printing a live `double` to a fixed number of significant
-digits where the port renders the full value. `%.Ng` rounds a normalized
-mantissa `m ∈ [1,10)` to N digits, so its class ceiling is
-`0.5·10^(1-N)/m ≤ 0.5·10^(1-N)`. Sites, all `Version8/Source/`:
+**Mechanism — checked per cell, not named in prose.** `display_is_render` asks
+of every number of the cell: is r4133's number our number rounded to the
+significant digits r4133 *printed* (read off its own spelling, `0.5·10^(e-N+1)`
+plus a tie margin and one half-unit of the 15-digit grid FPC's own conversion may
+round through)? Exactly two upstream mechanisms answer yes:
+
+1. r4133 **printing** the double both engines hold, through a
+   fixed-significant-digit `Format` in its `GetPropertyValue` — the engines hold
+   the same double and only the renders differ;
+2. r4133 **holding** a double that is itself the re-parse of one such `%.Ng`
+   command string an upstream kernel wrote (`MakePosSequence`, the
+   `Save`/`PropertyValue[]` round trips) while the port sets the value directly
+   — the engines hold different doubles, one rounding step apart, and ours is the
+   exact one.
+
+Anything else is refused: a chained or derived round trip (r4133's `load.kva`
+recomputed from an already round-tripped `pf`; `vsource.puz*` from a
+round-tripped Z; `line.b0`/`b1` from a round-tripped C), or a plain state
+difference that happens to be small. Those 27 pairs are RP3.9's.
+
+The getters that print at a fixed precision, for the reader tracing a cell — the
+floor reads the precision off the r4133 spelling itself, never off this table.
+`%.Ng` rounds a normalized mantissa `m ∈ [1,10)` to N digits, so its class
+ceiling is `0.5·10^(1-N)/m ≤ 0.5·10^(1-N)`. Sites, all `Version8/Source/`:
 
 | formatter | class ceiling | r4133 sites |
 |---|---|---|
-| `%-.4g` | 5.0e-4 | `PCElements/Load.pas:2345` (`pf`) — the only property getter in the whole surface, and the worst cell's |
-| `%-.5g` | 5.0e-5 | `PCElements/Vsource.pas:1326-1341` (`angle`/`mvasc*`/`isc*`/`r*`/`x*`/`basekv`); `PDElements/Transformer.pas:1842-1843` and `PDElements/AutoTrans.pas:1886-1887` (`normamps`/`emergamps`); the `MakePosSequence` command-string round-trips `Transformer.pas:1982-1991`, `AutoTrans.pas:2021-2030`, `Reactor.pas:1145-1201` |
+| `%-.4g` | 5.0e-4 | `PCElements/Load.pas:2345` (`pf`), `:2353` (`CFactor`, no census row) — the only 4-digit property getters in the surface, and the worst cell's |
+| `%-.5g` | 5.0e-5 | `PCElements/Vsource.pas:1327-1335` (`angle`/`mvasc3`/`mvasc1`/`isc3`/`isc1`/`r1`/`x1`/`r0`/`x0`) and `:1343` (`basemva`); `PDElements/Transformer.pas:1842-1843` and `PDElements/AutoTrans.pas:1886-1887` (`normamps`/`emergamps`); the `MakePosSequence` command-string round-trips `Transformer.pas:1982-1991`, `AutoTrans.pas:2021-2030`, `Reactor.pas:1145-1201` |
 | `%.6g` | 5.0e-6 | `PCElements/Storage.pas:1531-1562` + the PVSystem analogues; `Common/Utilities.pas:2600-2607` `GetDSSArray_Real` (`'[' + ' %-.6g'×n + ']'`) |
-| `%-.7g` | 5.0e-7 | `PDElements/Line.pas:1358-1365`, `:1406-1407` (`length`/`r*`/`x*`/`c*`/`b*`) |
-| `%-.8g` | 5.0e-8 | `Vsource.pas:1342-1348` (`Z*`/`puZ*`); `PDElements/Reactor.pas:1091-1098` (`r`/`x`/`lmh`) |
+| `%-.7g` | 5.0e-7 | `PDElements/Line.pas:1358-1365` (`length`/`r*`/`x*`/`c*`), `:1406-1407` (`b1`/`b0`) |
+| `%-.8g` | 5.0e-8 | `Vsource.pas:1337-1342` (`Z*`/`puZ*`) and `:1344` (`puzideal`); `PDElements/Reactor.pas:1091-1098` (`r`/`x`/`z*`/`lmh`) |
 
-Every in-scope display cell in the census fits that family — the plan's naming
-of it as "`%-.5g` with a `%-.8g` `puZ*`/`Z*` sub-family" is *incomplete*, not
-wrong: the worst cell is `%-.4g`, a formatter the plan does not mention.
+`vsource.basekv` is claimed but is deliberately **not** in that table: it is
+Vsource property 2 (`Vsource.pas:171`), absent from the getter's `Case`, so it
+falls through to `Inherited` and returns the stored `PropertyValue[]` string —
+an echoed command-string token whose precision is whatever wrote it. The render
+clause reads that precision off the spelling and holds all the same. (Both the
+line ranges and the `basekv` attribution were wrong in the as-landed table; the
+audit round corrected them here, on `R4133_DISPLAY_FLOOR` and in STATUS.)
+
+The plan's naming of the family as "`%-.5g` with a `%-.8g` `puZ*`/`Z*`
+sub-family" is *incomplete*, not wrong: the worst cell is `%-.4g`, a formatter
+the plan does not mention.
 
 **The decomposition argument** (this is what makes the number a classification
 and not a fudge). The census is itself the decomposition: the divergent numeric
@@ -1155,9 +1198,19 @@ That is the same argument `bins.tsv`'s own 1e-4 bin cut rests on (vendored
 > a cell passes is exactly what the CLAUDE.md tolerance discipline forbids.
 
 **Why no real coverage is lost.** (a) Every `engines: "both"` case is *also*
-value-compared on the `capi_v0145` channel, where the property compare is exact
-and this floor is structurally unreachable — so on those cases a genuine numeric
-change in a property still fails, on the other channel, at zero tolerance.
+value-compared on the `capi_v0145` channel, where this floor is structurally
+unreachable and the compare runs at the case's own tier floors — `micro`
+1e-9 rel / 1e-6 abs, `feeder` 1e-7 / 1e-5, i.e. two to five orders under this
+floor, so on those cases a genuine numeric change still fails on the other
+channel. **Not** "at zero tolerance": `compare_all_properties` hands
+`compare_prop_lists` the tier's `i_rel`/`i_abs` and `value_verdict` passes a
+number when `|a−e| ≤ abs + rel·|e|` (the as-landed text claimed exactness in five
+places; corrected by the audit round). The bound is therefore magnitude-aware,
+and the two loosest kinds in the corpus name its hole: `midi` (10 cases; no
+`tol_for` arm, so the 1e-6 / 1e-4 fallback) and `micro_wtg3_dynamics` (2 cases,
+2e-5 / 1e-4) do not bound a value below **0.5**, and `feeder` does not bound one
+below **0.05**. Pinned, with those magnitudes, by
+`props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`.
 (b) On `engines: "r4133"`-only cases the model gate (Y, node voltages, element
 currents/powers/losses, iteration counts, discrete state) runs at the calibrated
 `tol_for` tier floors, which are 1e-6-class — orders of magnitude under this
@@ -1165,53 +1218,80 @@ floor — so a property that is genuinely wrong by 2e-4 has to be wrong *only* i
 its own render to escape. (c) Every genuine jump the census knows exceeds the
 floor by ≥5×: the nearest is 22.02× and the nearest in scope 276.2×; the four
 root-cause pairs (`swtcontrol.delay`, `windgen.kvar`, `generator.model`,
-`gictransformer.r2`) and RP3.5–RP3.8's residual all stay UNCLAIMED and are still
-compared raw. (d) The floor's refusals are pinned as tests, not assumed: a 1e-3
-error on a floor-*claimed* property still fails, a non-numeric cell on it still
-fails raw, a neighbour property 2.1e-4 out still fails, and capi fails on all of
-it (`props_policy_tests::the_display_floor_drops_only_the_cell_it_claims_only_on_r4133`).
+`gictransformer.r2`) and RP3.5–RP3.9's residual all stay UNCLAIMED and are still
+compared raw. (d) The floor's refusals are pinned as tests, not assumed: a
+4.7e-4 error on a floor-*claimed* property still fails, a 1.1e-5 error on it that
+is not a `%.Ng` render fails too, a non-numeric cell on it still fails raw, a
+neighbour property 2.1e-4 out still fails, and capi fails on all of it
+(`props_policy_tests::the_display_floor_drops_only_the_cell_it_claims_only_on_r4133`).
 
 **Scope justification — r4133 only, by construction.** Both callers sit behind
 `PropsPolicy::is_r4133()`, the offline/measurement twin (`claim_value`) refuses
 every channel but `PropsChannel::R4133`, and the plain census policy reaches the
 floor on neither channel. This is the arm where a leak would cost the most: the
-capi property compare is byte-exact today, so a channel-blind floor would
-silently relax every numeric property of every `both` case at once. Pinned by
+capi property compare runs at the case's tier floors (1e-9 to 1e-6 rel), so a
+channel-blind floor would relax every numeric property of every `both` case to
+2e-4 at once. Pinned by
 `props_policy_tests::the_capi_channel_never_applies_the_display_floor` and
 measured by the claims census, which reports **0** capi cells on `under-floor`
 (and on every other r4133 disposition). A mutation that drops the `is_r4133()`
 gate is caught by two tests; one that widens the floor 10× by nine, across three
 binaries.
 
-**Fix owner: none — this is not a defect.** The gap is Delphi display
-formatting in r4133's own getters; both engines hold the *same* double and the
-port's render is the more informative one. There is nothing to fix upstream, no
+**Fix owner — none for what the floor claims; RP3.9 for what it refuses.**
+
+*What it claims* is not a defect. Either the two engines hold the same double and
+r4133 prints fewer digits, or r4133's double is one `%.Ng` command-string round
+trip away from ours and ours is the exact one. Either way the port's value is
+right and its render the more informative; there is nothing to fix upstream, no
 `investigations/to_opendss/` report, no ledger entry, and no `TODO(compat)` (the
 port does **not** reproduce the truncated render — it prints the full value and
 the floor classifies the difference). If r4133 ever widened those `Format`
 strings, the floor would simply stop claiming; nothing would break.
 
+*What it refuses for the mechanism* is a **work list**: 55 spellings over 27
+pairs (`RP39_ROUTING`) where the two engines genuinely hold different doubles.
+No cell of any of them is in scope today — the claims census measures
+`count_in_scope = 0` on all 55, which is why the finding blocks nothing now — but
+they are back in `claims_unclaimed_pairs.txt` where WP-RP3 reads, and RP4.1 is
+gated on RP3.9 like on RP3.5–RP3.8 (plan §0). Each pair needs its round-trip
+chain read off the Pascal and then an expected-value pin or a ledger entry.
+
 **What it relaxes / what it never relaxes.**
 
 *Relaxes:* on the r4133 channel, the exactness of a property **value** compare
 for one cell whose two renders carry the same count of numbers in the same
-non-numeric skeleton, every pair of which agrees to within 2e-4 relative — for
-scalars, bracketed vectors and `|`-separated matrices alike.
+non-numeric skeleton, every pair of which agrees to within 2e-4 relative **and**
+reads as our number rounded to the digits r4133 printed — for scalars, bracketed
+vectors and `|`-separated matrices alike.
 
 *Never relaxes:* the capi channel (anything, ever); the property **name** and
 index-order walk; the property **count**/shape checks; any cell above 2e-4 at
-any magnitude; a 0-vs-nonzero pair (rel is 1 by construction, so bin 7's
+any magnitude; **any gap, however small, that no `%.Ng` render of our value
+explains** (the mechanism clause — `load.kva` at 1.2e-6 and `vsource.puz1` at
+1.6e-5 are refused); a 0-vs-nonzero pair (rel is 1 by construction, so bin 7's
 frozen-default echoes such as `invcontrol.lpftau` `'0.001'` vs `'0.0'` can never
 be mistaken for a render); a cell whose two sides differ in their non-numeric
 skeleton or in how many numbers they carry (`'Yes'` vs `'true'`, `'Positive'`
 vs `'Pos'`, `''` vs `'[]'`, `'[ 400]'` vs a three-element array, `'17'` vs the
 RPN source `'1 16 +'`); a non-finite value on either side unless both are
-literally equal; a discrete value that merely happens to be spelled as a number
-(`'4'` vs `'3'`); and any `Tolerances` tier, golden byte or model quantity.
+literally equal; and any `Tolerances` tier, golden byte or model quantity.
+
+*On integers and other discrete values spelled as numbers:* the predicate has no
+notion of discreteness — `'4'` vs `'3'` is refused because the gap is 2.5e-1 and
+because `'3'` is not `4` rounded to one digit, not because the value is an
+ordinal. The mechanism clause is what makes the general case hold: a one-unit
+difference at a magnitude the metric alone would fold (`'5001'` vs `'5000'`,
+2.0e-4) is refused, since a `%.4g` render of 5001 is `5001`. The as-landed text
+listed discreteness as a categorical guarantee, which the metric alone did not
+provide (audit round); both refusals are pinned in
+`props_policy_tests::the_r4133_channel_claims_the_measured_display_cells`.
 
 *The honest limit:* a floor cannot distinguish a display artifact from a
-**genuine** numeric difference smaller than 2e-4 — no floor can. What bounds
-that is (a) and (b) above, not the floor itself.
+**genuine** numeric difference that is both under 2e-4 *and* shaped exactly like
+a rounding of our value to the digits r4133 printed — no floor can, and the
+mechanism clause narrows that residue without closing it. What bounds it is (a)
+and (b) above, with (a)'s own magnitude hole stated there.
 
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)
 

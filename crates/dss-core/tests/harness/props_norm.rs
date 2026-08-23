@@ -28,10 +28,13 @@
 //! Since **RP2.4** it owns the chain's fourth and last link as well:
 //! [`R4133_DISPLAY_FLOOR`], the *display floor*. Where a rule re-spells and an
 //! echo row excludes, the floor **claims a numeric cell whose two sides agree
-//! to within `2e-4` relative** — one live double, two Delphi
-//! `Format('%[-].Ng', …)` renders. It is consulted last, on the r4133 channel
-//! only, and its derivation (measured worst 6.431124e-05, the empty band up to
-//! 1.374769e-03, the `%[-].Ng` site table) lives on the constant.
+//! to within `2e-4` relative AND whose r4133 side is our value rounded to the
+//! digits r4133 printed** ([`display_is_render`]) — a Delphi
+//! `Format('%[-].Ng', …)` render of the shared double, or of the one command
+//! string an upstream round trip wrote. It is consulted last, on the r4133
+//! channel only, and its derivation (measured worst 6.431124e-05, the empty band
+//! up to 1.374769e-03, the `%[-].Ng` site table, and the 55 spellings the
+//! mechanism clause refuses) lives on the constant.
 //!
 //! That statement has to hold at **three** seams, because the tables have two
 //! callers each and the floor a third, and each carries its own channel gate:
@@ -291,8 +294,9 @@ pub enum NormRule {
     /// Tokenizes both sides — `[`, `]`, `(`, `)`, `,` and whitespace are all
     /// separators — and compares token for token: numeric tokens by **value**
     /// (`f64`, through [`numbers_match`], which is where RP2.4's display floor
-    /// hangs — since RP2.4 that compare is *within* [`R4133_DISPLAY_FLOOR`],
-    /// not exact), other tokens ASCII-case-insensitively. The token **count**
+    /// hangs — since RP2.4 that compare is *within* [`R4133_DISPLAY_FLOOR`] and
+    /// a render of our token at the oracle's printed precision, not exact),
+    /// other tokens ASCII-case-insensitively. The token **count**
     /// must match, so a one-element array never folds into a three-element one.
     ///
     /// Because *every* delimiter is a separator, a **bare** render folds against
@@ -783,21 +787,47 @@ const NORM_ENUM_SYNONYM_ROWS: usize = 5;
 ///   **1.0**, not 1e-3 — a 0-vs-nonzero pair can never be claimed. The
 ///   re-derived neighbours above the band are the three rows in the table.
 ///
-/// # Mechanism: the Delphi `%[-].Ng` property getters (plan §1.1 bin 6)
+/// # Mechanism, checked per cell — not a family named in prose
 ///
-/// Every cell this floor claims is r4133 printing a live `double` through a
-/// fixed-significant-digit `Format` in its own `GetPropertyValue`, where the
-/// port renders the full value. `%.Ng` rounds a normalized mantissa
-/// `m in [1,10)` to N significant digits, so its **class ceiling** is
-/// `0.5*10^(1-N)/m <= 0.5*10^(1-N)`:
+/// **The mechanism is a CLAUSE of this predicate**, [`display_is_render`]: every
+/// number of the r4133 side must be the port's number rounded to the significant
+/// digits r4133 itself printed. Two upstream mechanisms satisfy that and nothing
+/// else does — r4133 *printing* the double both engines hold through a
+/// fixed-significant-digit `Format`, and r4133 *holding* a double that is itself
+/// the re-parse of one such `%.Ng` command-string write (`MakePosSequence`, the
+/// `Save`/`PropertyValue[]` round-trips) while the port sets the value directly.
+/// In the first the two engines hold the SAME double and only the renders
+/// differ; in the second they hold different doubles, one rounding step apart,
+/// and the port's is the exact one.
+///
+/// This replaces the survey RP2.4 part A landed ("every claimed cell is r4133
+/// printing a live double in its own `GetPropertyValue`"), which the audit round
+/// disproved: 55 vendored spellings over 27 pairs — `load.kva`, `vsource.puz*`,
+/// `line.b0`/`b1`, `reactor.lmh`, `transformer.normamps`… — are gaps NO single
+/// `%.Ng` render can produce, because a round trip happened upstream of a
+/// derived quantity (r4133's kVA recomputed from an already round-tripped `pf`,
+/// its `puZ*` from a round-tripped Z) or because the two engines simply differ.
+/// They are refused, and owned by RP3.9 (`props_r4133_replay::RP39_ROUTING`).
+///
+/// The getters that print at a fixed precision, for the reader tracing a cell
+/// (the floor reads the precision off the r4133 spelling itself, never off this
+/// table). `%.Ng` rounds a normalized mantissa `m in [1,10)` to N significant
+/// digits, so its class ceiling is `0.5*10^(1-N)/m <= 0.5*10^(1-N)`:
 ///
 /// | formatter | ceiling | r4133 sites (`Version8/Source/`) |
 /// |---|---|---|
-/// | `%-.4g` | 5.0e-4 | `PCElements/Load.pas:2345` (`pf`) — the only property getter in the whole surface |
-/// | `%-.5g` | 5.0e-5 | `PCElements/Vsource.pas:1326-1341` (`angle`/`mvasc*`/`isc*`/`r*`/`x*`/`basekv`), `PDElements/Transformer.pas:1842-1843` + `PDElements/AutoTrans.pas:1886-1887` (`normamps`/`emergamps`), and the `MakePosSequence` command-string round-trips `Transformer.pas:1982-1991`, `AutoTrans.pas:2021-2030`, `Reactor.pas:1145-1201` |
+/// | `%-.4g` | 5.0e-4 | `PCElements/Load.pas:2345` (`pf`), `:2353` (`CFactor`, no census row) — the only 4-digit property getters in the surface |
+/// | `%-.5g` | 5.0e-5 | `PCElements/Vsource.pas:1327-1335` (`angle`/`mvasc3`/`mvasc1`/`isc3`/`isc1`/`r1`/`x1`/`r0`/`x0`) and `:1343` (`basemva`), `PDElements/Transformer.pas:1842-1843` + `PDElements/AutoTrans.pas:1886-1887` (`normamps`/`emergamps`), and the `MakePosSequence` command-string round-trips `Transformer.pas:1982-1991`, `AutoTrans.pas:2021-2030`, `Reactor.pas:1145-1201` |
 /// | `%.6g` | 5.0e-6 | `PCElements/Storage.pas:1531-1562` + the PVSystem analogues, and `Common/Utilities.pas:2600-2607` `GetDSSArray_Real` (`'[' + ' %-.6g'xn + ']'`) |
-/// | `%-.7g` | 5.0e-7 | `PDElements/Line.pas:1358-1365`, `:1406-1407` (`length`/`r*`/`x*`/`c*`/`b*`) |
-/// | `%-.8g` | 5.0e-8 | `Vsource.pas:1342-1348` (`Z*`/`puZ*`), `PDElements/Reactor.pas:1091-1098` (`r`/`x`/`lmh`) |
+/// | `%-.7g` | 5.0e-7 | `PDElements/Line.pas:1358-1365` (`length`/`r*`/`x*`/`c*`), `:1406-1407` (`b1`/`b0`) |
+/// | `%-.8g` | 5.0e-8 | `Vsource.pas:1337-1342` (`Z*`/`puZ*`) and `:1344` (`puzideal`), `PDElements/Reactor.pas:1091-1098` (`r`/`x`/`z*`/`lmh`) |
+///
+/// `vsource.basekv` is deliberately NOT in that table although the floor claims
+/// its cells: it is Vsource property **2** (`Vsource.pas:171`), the `Case` above
+/// has no arm for it, and it therefore falls through to `Inherited` and returns
+/// the stored `PropertyValue[]` string — an echoed command-string token whose
+/// precision is whatever wrote it. The render clause reads that precision off
+/// the spelling and holds all the same.
 ///
 /// **The floor is derived from the MEASUREMENT, not from that ceiling column**,
 /// and the difference is load-bearing. `load.pf`'s theoretical `%-.4g` ceiling
@@ -820,17 +850,26 @@ const NORM_ENUM_SYNONYM_ROWS: usize = 5;
 ///   length, `''` against a value. Those keep failing raw ([`display_rel`]);
 /// * a 0-vs-nonzero pair, at any magnitude (rel is 1 by construction);
 /// * a non-finite number on either side unless both sides are literally equal;
+/// * **a gap no single `%.Ng` render of the port's value explains**, however
+///   small ([`display_is_render`]) — the mechanism clause above;
 /// * **anything at all on the `capi_v0145` channel.** Both callers are
 ///   r4133-only: [`NormRule::ArrayForm`]'s per-token compare is reached only
 ///   from `PropsPolicy::normalize`'s r4133 arm, [`under_display_floor_r4133`]
 ///   only from `PropsPolicy::under_display_floor`'s, and [`claim_value`]
 ///   refuses every channel but [`PropsChannel::R4133`].
 ///
-/// It also cannot tell a display artifact from a *genuine* numeric difference
-/// below 2e-4 — a floor never can. What bounds that is the rest of the gate:
-/// the `capi_v0145` channel value-compares the same properties at the case tier
-/// floors on every `engines: "both"` case, and the model gate (Y/V/I/P) runs at
-/// tier floors on the `r4133`-only ones.
+/// What it still cannot tell apart is a display artifact from a *genuine*
+/// difference that is BOTH under 2e-4 and shaped exactly like a rounding of our
+/// value to the digits r4133 printed — a floor never can, and the mechanism
+/// clause narrows that residue without closing it. What bounds it is the rest of
+/// the gate: on every `engines: "both"` case the same properties are value-
+/// compared on the `capi_v0145` channel, where this floor is unreachable and the
+/// compare runs at the case's tier floors (`tol_for`: 1e-9/1e-6 `micro`,
+/// 1e-7/1e-5 `feeder` — orders under this floor; the loosest kinds in the corpus
+/// are `midi` at 1e-6/1e-4 and `micro_wtg3_dynamics` at 2e-5/1e-4, where a small
+/// enough value can pass at both), and the model gate (Y/V/I/P) runs at tier
+/// floors on the `r4133`-only ones. That is a bound, not the "zero tolerance"
+/// RP2.4 part B first claimed (audit round, 2026-08-23).
 const R4133_DISPLAY_FLOOR: Option<f64> = Some(2e-4);
 
 /// **The floor slot, read back** — the RP2.1 part-C replay's chain needs a
@@ -921,17 +960,129 @@ fn number_rel(a: f64, b: f64) -> Option<f64> {
     Some(d / a.abs().max(b.abs()))
 }
 
+/// **The precision an r4133 number was PRINTED at** — `(significant digits,
+/// decimal exponent of the leading digit)` of a numeric literal, or `None` when
+/// the token carries no significant digit (a zero, or no digit at all).
+///
+/// Read off the **text**, never off the parsed `f64`: `'19000'` is five printed
+/// digits although `1.9e4` reproduces the same double in two, and the decimal
+/// grid the printer rounded onto is exactly what [`is_display_render`] needs.
+/// Leading zeros are not significant (`'0.7477'` is four digits at exponent −1);
+/// a surviving trailing zero is (Delphi's `%g` strips fractional trailing zeros,
+/// so one that reaches us was printed on purpose).
+///
+/// Every token this sees came from [`numeric_skeleton_texts`], i.e. it parses as
+/// an `f64` by construction.
+///
+/// [`numeric_skeleton_texts`]: super::numeric_skeleton_texts
+fn decimal_shape(text: &str) -> Option<(u32, i32)> {
+    let t = text.trim();
+    let t = t.strip_prefix(['+', '-']).unwrap_or(t);
+    let (mantissa, exponent) = match t.find(['e', 'E']) {
+        Some(i) => (&t[..i], t[i + 1..].parse::<i32>().ok()?),
+        None => (t, 0),
+    };
+    let (int_part, frac_part) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    let digits: String = format!("{int_part}{frac_part}");
+    if !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let leading_zeros = digits.bytes().take_while(|b| *b == b'0').count();
+    let significant = digits.len() - leading_zeros;
+    if significant == 0 {
+        return None;
+    }
+    let lead_exponent = int_part.len() as i32 - 1 - leading_zeros as i32 + exponent;
+    Some((significant as u32, lead_exponent))
+}
+
+/// Slack on the half-step, for the last ulp of the decimal→binary conversion and
+/// for a tie the printer may break either way (`%g` rounds half away from zero,
+/// the shortest-round-trip renderer half to even). Nine orders of magnitude
+/// under the smallest gap it could hide.
+const RENDER_TIE_MARGIN: f64 = 1.0 + 1e-9;
+
+/// **The floor's MECHANISM clause, per number**: is `oracle` the port's number
+/// rounded to the significant digits r4133 printed?
+///
+/// This is what makes "a display divergence" a checkable property of the cell
+/// rather than a family named in prose (RP2.4 audit settlement, 2026-08-23 —
+/// both majors). Two upstream mechanisms satisfy it and nothing else does:
+///
+/// * r4133 **printing** the double both engines hold through a
+///   fixed-significant-digit `Format` in its `GetPropertyValue` — then `oracle`
+///   is that double rounded to N digits, by definition of the printer;
+/// * r4133 **holding** a double that is itself the re-parse of one such `%.Ng`
+///   command string an upstream kernel wrote (`MakePosSequence`, the `Save` /
+///   `PropertyValue[]` round-trips) while the port sets the value directly —
+///   then `oracle` prints its own full value, which is still the port's value
+///   rounded to the digits of that one write.
+///
+/// What it REFUSES is a gap no single N-digit rounding explains: a chained or
+/// derived round-trip (`load.kva`, whose kVA is recomputed from an already
+/// round-tripped `pf`; `vsource.puz*`, recomputed from a round-tripped Z), and
+/// a plain value difference that happens to be small. Those are real state
+/// divergences — the two engines hold different doubles further apart than one
+/// print can account for — and RP2.4 hands them to RP3.9 rather than claiming
+/// them (`props_r4133_replay::RP39_ROUTING`).
+///
+/// The bound is the class ceiling of the printed precision, `0.5·10^(e-N+1)`,
+/// plus two documented slacks: [`RENDER_TIE_MARGIN`], and half a unit of the
+/// **15-digit** grid, which is the intermediate FPC's own `Str`/`FloatToDecimal`
+/// conversion may round through before rounding to N (a double rounding is still
+/// a render, and at N ≤ 14 that second term is at least ten times under the
+/// first).
+fn is_display_render(rust: f64, oracle: f64, oracle_text: &str) -> bool {
+    if rust == oracle {
+        return true;
+    }
+    if !(rust.is_finite() && oracle.is_finite()) {
+        return false;
+    }
+    let Some((digits, exponent)) = decimal_shape(oracle_text) else {
+        return false;
+    };
+    let step = 10f64.powi(exponent - digits as i32 + 1);
+    let intermediate = 10f64.powi(exponent - 14);
+    if !(step.is_finite() && intermediate.is_finite()) {
+        return false;
+    }
+    (rust - oracle).abs() <= 0.5 * step * RENDER_TIE_MARGIN + 0.5 * intermediate
+}
+
+/// **The floor's mechanism clause, per cell** — every number of the r4133 side
+/// is the port number rounded to the digits r4133 printed
+/// ([`is_display_render`]).
+///
+/// Same decomposition as [`display_rel`] and the same refusals for a cell that
+/// is not a numeric divergence at all, so the two clauses of
+/// [`under_display_floor`] see one population.
+pub fn display_is_render(rust: &str, oracle: &str) -> bool {
+    let (skel_a, nums_a) = super::numeric_skeleton_texts(rust);
+    let (skel_b, nums_b) = super::numeric_skeleton_texts(oracle);
+    if skel_a != skel_b || nums_a.len() != nums_b.len() || nums_a.is_empty() {
+        return false;
+    }
+    nums_a
+        .iter()
+        .zip(&nums_b)
+        .all(|((a, _), (b, text))| is_display_render(*a, *b, text))
+}
+
 /// **The one function the display floor widens** — do two numeric tokens denote
 /// the same number?
 ///
 /// Exact when [`R4133_DISPLAY_FLOOR`] is `None`; at a derived floor, within it
-/// in the [`number_rel`] metric. Its callers are [`tokens_match`]
-/// ([`NormRule::ArrayForm`]'s per-element compare) and [`display_rel`] (the
-/// whole-cell predicate) — both r4133-only, see the floor's doc.
-fn numbers_match(a: f64, b: f64) -> bool {
+/// in the [`number_rel`] metric **and** a render of `a` at the precision `b` was
+/// printed with ([`is_display_render`], which is why the oracle token's text is
+/// a parameter and not just its value). Its one caller is [`tokens_match`]
+/// ([`NormRule::ArrayForm`]'s per-element compare, r4133-only — see the floor's
+/// doc); the whole-cell predicate [`under_display_floor`] applies the same two
+/// clauses over [`display_rel`] and [`display_is_render`].
+fn numbers_match(a: f64, b: f64, b_text: &str) -> bool {
     match R4133_DISPLAY_FLOOR {
         None => a == b,
-        Some(rel) => number_rel(a, b).is_some_and(|r| r <= rel),
+        Some(rel) => number_rel(a, b).is_some_and(|r| r <= rel) && is_display_render(a, b, b_text),
     }
 }
 
@@ -971,11 +1122,19 @@ pub fn display_rel(rust: &str, oracle: &str) -> Option<f64> {
 /// **The floor, as a cell verdict** — the offline twin of
 /// [`under_display_floor_r4133`], counters aside.
 ///
+/// Two clauses, both necessary: the gap is inside [`R4133_DISPLAY_FLOOR`] in the
+/// [`display_rel`] metric (the *size* of the divergence), and every number of
+/// the r4133 side is the port number rounded to the digits r4133 printed
+/// ([`display_is_render`] — its *mechanism*). The second is what keeps the floor
+/// a classification: a cell 1e-6 apart whose two engines simply hold different
+/// doubles is refused at any floor value (RP2.4 audit settlement).
+///
 /// `false` whenever the floor is `None`, whenever the cell is not a numeric
-/// divergence ([`display_rel`]), and whenever the gap exceeds the floor.
+/// divergence ([`display_rel`]), whenever the gap exceeds the floor, and
+/// whenever no single `%.Ng` render explains it.
 pub fn under_display_floor(rust: &str, oracle: &str) -> bool {
     match (R4133_DISPLAY_FLOOR, display_rel(rust, oracle)) {
-        (Some(floor), Some(rel)) => rel <= floor,
+        (Some(floor), Some(rel)) => rel <= floor && display_is_render(rust, oracle),
         _ => false,
     }
 }
@@ -1016,9 +1175,15 @@ pub fn display_floor_counters() -> (usize, usize) {
 
 /// One array token: by value when both sides parse as `f64`
 /// (`0` == `0.0`, `1E-005` == `0.00001`), otherwise ASCII-case-insensitively.
+///
+/// `a` is always the port's render and `b` the oracle's
+/// ([`array_forms_match`]'s argument order, which every caller preserves), and
+/// [`numbers_match`] reads `b`'s text as the precision r4133 printed at — so the
+/// direction matters and is asserted
+/// (`tests::arrayform_folds_delimiters_not_contents`).
 fn tokens_match(a: &str, b: &str) -> bool {
     match (a.parse::<f64>(), b.parse::<f64>()) {
-        (Ok(x), Ok(y)) => numbers_match(x, y),
+        (Ok(x), Ok(y)) => numbers_match(x, y, b),
         _ => a.eq_ignore_ascii_case(b),
     }
 }
@@ -2068,7 +2233,8 @@ pub enum ValueClaim {
     /// [`PROPS_ECHO_R4133`] excludes the pair's value compare (RP2.3), because
     /// the two renderings are not two spellings of one value.
     Echo,
-    /// The two sides are numbers within [`R4133_DISPLAY_FLOOR`] (RP2.4).
+    /// The two sides are numbers within [`R4133_DISPLAY_FLOOR`] whose r4133
+    /// render is our value at the digits it printed (RP2.4).
     DisplayFloor,
 }
 
@@ -2737,12 +2903,22 @@ mod tests {
         assert!(!claimed("energymeter", "option", "[E, R, C]", "(E, X, C)"));
         assert!(!claimed("swtcontrol", "state", "closed", "[open, ]"));
         // DISCRIMINATION 2 — a wrong number, at any magnitude. "Wrong" means
-        // OUTSIDE `R4133_DISPLAY_FLOOR` since RP2.4: `ArrayForm` compares its
-        // numeric elements through [`numbers_match`], which the floor widens,
-        // so an element within 2e-4 is by construction one number printed two
-        // ways. The three gaps below are 2.5e-3, 2.5e-3 and 9.9e-3.
+        // outside `R4133_DISPLAY_FLOOR` **or** not a render of our value at the
+        // precision the oracle printed: `ArrayForm` compares its numeric
+        // elements through [`numbers_match`], which the floor widens under both
+        // clauses. The first two gaps are 2.5e-3 and 2.5e-3; the third is
+        // 1.0e-5, INSIDE the floor, and is refused by the mechanism clause
+        // alone — `700.007` is not `700` rounded to anything (RP2.4 audit
+        // settlement; this row was RP2.1's discrimination and the widening
+        // briefly took it).
         assert!(!claimed("line", "ratings", "[ 400]", "[401,]"));
         assert!(!claimed("line", "ratings", "[ 600 700]", "[600,701.75,]"));
+        assert!(!claimed("line", "ratings", "[ 600 700]", "[600,700.007,]"));
+        // …while the display shape it must still fold is the other direction:
+        // OUR full value against the oracle's shorter render of it, 4.3e-8
+        // apart. This is the one that dies if the floor is dropped from
+        // `tokens_match` (the ArrayForm half of RP2.4's wiring).
+        assert!(claimed("line", "ratings", "[ 600 700.00003]", "[600,700,]"));
         assert!(!claimed(
             "recloser",
             "recloseintervals",
@@ -2784,18 +2960,31 @@ mod tests {
              (load.pf, 6.431124e-05) and 6.874x under the nearest row above the \
              empty band (storagecontroller.kwneed, 1.374769e-03)"
         );
-        assert!(numbers_match(1000.0, 1000.19), "1.8996e-4 — inside");
-        assert!(!numbers_match(1000.0, 1000.21), "2.0996e-4 — outside");
-        assert!(numbers_match(1e-5, 0.00001));
-        // …and the shapes no floor may swallow, at the same function.
-        assert!(!numbers_match(0.001, 0.0), "0 vs non-zero is rel 1");
-        assert!(!numbers_match(4.0, 3.0));
+        // The boundary, both ways, in the shape the mechanism produces: OUR
+        // long value against the oracle's shorter render of it (1000.19 printed
+        // to 4 digits IS '1000'), so only the floor decides.
+        assert!(numbers_match(1000.19, 1000.0, "1000"), "1.8996e-4 — inside");
         assert!(
-            !numbers_match(f64::INFINITY, f64::MAX),
+            !numbers_match(1000.21, 1000.0, "1000"),
+            "2.0996e-4 — outside"
+        );
+        assert!(numbers_match(1e-5, 0.00001, "0.00001"));
+        // …and the shapes no floor may swallow, at the same function.
+        assert!(!numbers_match(0.001, 0.0, "0.0"), "0 vs non-zero is rel 1");
+        assert!(!numbers_match(4.0, 3.0, "3"));
+        // Inside the floor (1.9e-5) and still refused: '0.100019' is not
+        // '0.1' rounded to anything — six printed digits put the whole gap
+        // 38x outside what that render could produce.
+        assert!(!numbers_match(0.1, 0.100019, "0.100019"));
+        // …and a count that differs by one is not a render either, at any
+        // magnitude a floor would otherwise swallow (5001 vs 5000 is 2.0e-4).
+        assert!(!numbers_match(5001.0, 5000.0, "5000"));
+        assert!(
+            !numbers_match(f64::INFINITY, f64::MAX, "1.7976931348623157E308"),
             "a non-finite side only ever matches an equal one"
         );
-        assert!(numbers_match(f64::INFINITY, f64::INFINITY));
-        assert!(!numbers_match(f64::NAN, f64::NAN));
+        assert!(numbers_match(f64::INFINITY, f64::INFINITY, "inf"));
+        assert!(!numbers_match(f64::NAN, f64::NAN, "nan"));
     }
 
     /// **The separator set is CLOSED** — the `ArrayForm` half of the
@@ -3251,23 +3440,37 @@ mod tests {
                 PropsChannel::R4133,
                 "GICTransformer",
                 "R2",
-                "0.1",
-                "0.100019"
+                "0.100019",
+                "0.1"
             )
             .map(ValueClaim::tag),
             Some("under-floor".to_string()),
-            "1.9e-4 — inside the floor"
+            "1.9e-4 — inside the floor, and '0.1' IS our value at one digit"
         );
         assert_eq!(
             claim_value(
                 PropsChannel::R4133,
                 "GICTransformer",
                 "R2",
-                "0.1",
-                "0.100021"
+                "0.100021",
+                "0.1"
             ),
             None,
             "2.1e-4 — outside the floor"
+        );
+        // …and the mechanism clause at the chain's last link: 1.9e-5, well
+        // inside the floor, refused because six printed digits cannot be a
+        // render of `0.1` (RP2.4 audit settlement).
+        assert_eq!(
+            claim_value(
+                PropsChannel::R4133,
+                "GICTransformer",
+                "R2",
+                "0.1",
+                "0.100019"
+            ),
+            None,
+            "inside the floor, but no `%.Ng` render of our value"
         );
         assert_eq!(counter_totals(), before, "the chain query moved a counter");
         assert_eq!(
@@ -3336,10 +3539,33 @@ mod tests {
             );
             assert!(!under_display_floor(rust, oracle));
         }
+        // The **skeleton** clause, on its own: same count of numbers, same
+        // values even, and a different non-numeric skeleton. Without these two
+        // rows the block above proves only the count and emptiness clauses —
+        // every one of its seven pairs is rejected by one of those (RP2.4 audit
+        // round, `display_rel`'s skeleton clause was untested).
+        for (rust, oracle) in [("[ 400]", "400"), ("1 kV", "1 kW")] {
+            assert_eq!(
+                display_rel(rust, oracle),
+                None,
+                "{rust:?} vs {oracle:?}: the non-numeric skeletons differ"
+            );
+            assert!(!under_display_floor(rust, oracle));
+        }
         // …and the numeric refusals: above the floor, and 0-vs-non-zero.
         assert_eq!(display_rel("0.001", "0.0"), Some(1.0));
         assert!(display_rel("0.747651914485831", "0.7484477").expect("numeric") > 2e-4);
         assert!(!under_display_floor("0.747651914485831", "0.7484477"));
+        // The mechanism clause, at the metric: a REAL census spelling 1.2e-6
+        // apart — deep inside the floor, and refused, because r4133 prints
+        // `load.kva` with `Format('%-g')` — 15 digits, `PCElements/Load.pas:2352`
+        // — while its own kVA is recomputed from an already round-tripped `pf`.
+        // The gap is a state difference, not a render (RP2.4 audit settlement;
+        // this spelling is one of RP3.9's 55).
+        let rel = display_rel("105.263157894737", "105.26302971129").expect("numeric");
+        assert!(rel < 2e-4 && rel > 1e-6, "{rel:e}");
+        assert!(!display_is_render("105.263157894737", "105.26302971129"));
+        assert!(!under_display_floor("105.263157894737", "105.26302971129"));
     }
 
     /// **The floor's live seam counts what the gate saw** — the floor's half of
@@ -3368,6 +3594,18 @@ mod tests {
         let (v1, h1) = display_floor_counters();
         assert!(v1 >= v0 + 2, "the seam must count every cell it sees");
         assert!(h1 > h0, "…and every cell it claims");
+        // …and the POLICY reaches the counting seam, not the offline twin —
+        // the arm that makes these two numbers "what the gate saw". Swapping
+        // `PropsPolicy::under_display_floor` for `props_norm::under_display_floor`
+        // leaves every other assertion in the file green (RP2.4 audit round,
+        // mutation m4); this is where it dies.
+        let policy = crate::harness::PropsPolicy::for_channel(PropsChannel::R4133);
+        assert!(policy.under_display_floor("0.747651914485831", "0.7477"));
+        let (v2, h2) = display_floor_counters();
+        assert!(
+            v2 > v1 && h2 > h1,
+            "the shipped policy must go through the COUNTING seam"
+        );
     }
 
     /// **Capi-invariance of the measurement layer** (plan mechanic (b)).
@@ -3395,11 +3633,13 @@ mod tests {
             // that channel would delete the very evidence it cites.
             ("RegControl", "Idle", "No", ""),
             ("Load", "Yearly", "day", ""),
-            // RP2.4's link: two numbers 1.14e-6 apart, which the r4133 arm
-            // claims `under-floor`. This row was written by RP2.1 as a slot
-            // guard ("`None` here must not depend on the floor being `None`")
-            // and RP2.4 is what turned it into a live channel statement.
-            ("Load", "pf", "0.88", "0.880001"),
+            // RP2.4's link: two numbers 1.14e-6 apart in the shape the
+            // mechanism produces (our full value, r4133's shorter render of
+            // it), which the r4133 arm claims `under-floor`. This row was
+            // written by RP2.1 as a slot guard ("`None` here must not depend on
+            // the floor being `None`") and RP2.4 is what turned it into a live
+            // channel statement.
+            ("Load", "pf", "0.880001", "0.88"),
         ] {
             assert_eq!(
                 claim_value(PropsChannel::CapiV0145, class, prop, rust, oracle),
@@ -3415,7 +3655,7 @@ mod tests {
             ("Line", "Ratings", "[ 400]", "[400,]"),
             ("RegControl", "Idle", "No", ""),
             ("Load", "Yearly", "day", ""),
-            ("Load", "pf", "0.88", "0.880001"),
+            ("Load", "pf", "0.880001", "0.88"),
         ] {
             assert!(
                 claim_value(PropsChannel::R4133, class, prop, rust, oracle).is_some(),
