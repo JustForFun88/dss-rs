@@ -1577,14 +1577,21 @@ mod tests {
     }
 
     /// The chain runs in the documented order and lands every cell in exactly
-    /// one bucket: a folded spelling on the rule that folded it, a cell only the
-    /// ledger names on `ledger-hit`, and everything else on `UNCLAIMED`.
+    /// one bucket: a folded spelling on the rule that folded it, an
+    /// echo-excluded pair on `echo-row`, a cell only the ledger names on
+    /// `ledger-hit`, and everything else on `UNCLAIMED`.
+    ///
+    /// The order is asserted where it is observable: `regcontrol.fwdthreshold`
+    /// is both an echo row and (here) ledger-named, and answers `echo-row`
+    /// because the harness links resolve before the ledger one.
     #[test]
     fn the_claim_chain_dispositions_every_value_cell() {
-        let named: BTreeSet<(String, String)> =
-            [("regcontrol.r1".to_string(), "fwdthreshold".to_string())]
-                .into_iter()
-                .collect();
+        let named: BTreeSet<(String, String)> = [
+            ("regcontrol.r1".to_string(), "fwdthreshold".to_string()),
+            ("gictransformer.g1".to_string(), "r2".to_string()),
+        ]
+        .into_iter()
+        .collect();
         let cases = [
             // Folded by RP2.1's own table — the three live rule kinds.
             (
@@ -1608,12 +1615,24 @@ mod tests {
                 "[400,]",
                 "normalized-by-ArrayForm",
             ),
-            // Named by a `property` ledger scope, and by nothing earlier.
-            ("RegControl.r1", "fwdthreshold", "100", "", "ledger-hit"),
-            // The bucket RP2.2/RP2.3/RP2.4 still owe rows for. The second is
-            // the discrimination case: a real value difference inside a pair
-            // this table DOES hold must not be claimed.
-            ("RegControl.r2", "fwdthreshold", "100", "", "UNCLAIMED"),
+            // Excluded by RP2.3's echo table — on BOTH elements, because the
+            // exclusion is per `(class, prop)` and not per case, and ahead of
+            // the ledger link on the one the entry names.
+            ("RegControl.r1", "fwdthreshold", "100", "", "echo-row"),
+            ("RegControl.r2", "fwdthreshold", "100", "", "echo-row"),
+            // Named by a `property` ledger scope, and by nothing earlier — an
+            // RP3 root-cause pair, which no r4133 link claims.
+            (
+                "GICTransformer.g1",
+                "r2",
+                "0.09522",
+                "0.12696",
+                "ledger-hit",
+            ),
+            // The bucket RP2.4/RP3 still owe rows for. The second is the
+            // discrimination case: a real value difference inside a pair the
+            // normalization table DOES hold must not be claimed.
+            ("GICTransformer.g2", "r2", "0.09522", "0.12696", "UNCLAIMED"),
             ("Line.l1", "ratings", "[ 400]", "[401,]", "UNCLAIMED"),
         ];
         for (element, prop, rust, oracle, want) in cases {
@@ -1655,12 +1674,21 @@ mod tests {
     /// This is the RP2.1 audit round's fix: `annotate` used to ignore the row's
     /// channel, so the measured "capi normalizes nothing" was a statement about
     /// today's capi population rather than about the contract.
+    ///
+    /// **RP2.3 added the echo link to the same statement**, and with it the
+    /// sharpest case in the table: `regcontrol.fwdthreshold` is BOTH an echo
+    /// row and (here) a ledger-named cell, so the one cell resolves `echo-row`
+    /// on r4133 and `ledger-hit` on capi — the chain order and the channel gate
+    /// in a single row. The ledger-hit-on-BOTH case moved to
+    /// `gictransformer.r2`, an RP3 root-cause pair no r4133 link claims.
     #[test]
     fn the_capi_channel_reaches_no_r4133_link() {
-        let named: BTreeSet<(String, String)> =
-            [("regcontrol.r1".to_string(), "fwdthreshold".to_string())]
-                .into_iter()
-                .collect();
+        let named: BTreeSet<(String, String)> = [
+            ("regcontrol.r1".to_string(), "fwdthreshold".to_string()),
+            ("gictransformer.g1".to_string(), "r2".to_string()),
+        ]
+        .into_iter()
+        .collect();
         for (element, prop, rust, oracle, r4133_want, capi_want) in [
             (
                 "Capacitor.c1",
@@ -1686,12 +1714,28 @@ mod tests {
                 "normalized-by-ArrayForm",
                 "UNCLAIMED",
             ),
-            // The one link both channels share.
+            // RP2.3's link, and the chain order with it: the echo table
+            // answers BEFORE the ledger on r4133, while capi reaches neither
+            // the echo row nor any other r4133 link and falls through to the
+            // ledger entry that names this very cell.
             (
                 "RegControl.r1",
                 "fwdthreshold",
                 "100",
                 "",
+                "echo-row",
+                "ledger-hit",
+            ),
+            // …and an echo-excluded cell with NO ledger entry is `UNCLAIMED` on
+            // capi, i.e. still owed a compare there — which is exactly what
+            // makes the capi channel the witness those rows cite.
+            ("Recloser.r1", "eventlog", "No", "", "echo-row", "UNCLAIMED"),
+            // The one link both channels share, on a pair no r4133 link claims.
+            (
+                "GICTransformer.g1",
+                "r2",
+                "0.09522",
+                "0.12696",
                 "ledger-hit",
                 "ledger-hit",
             ),
@@ -1789,12 +1833,16 @@ mod tests {
         ingest("Capacitor.c1", "enabled", "Yes", "true", true);
         ingest("Capacitor.c2", "enabled", "Yes", "true", false);
         ingest("Line.l1", "ratings", "[ 400]", "[401,]", true);
+        // RP2.3: an excluded-by-echo cell is annotated like any other, so the
+        // full claims run can MEASURE what the echo table masks.
+        ingest("RegControl.r1", "idle", "No", "", true);
 
         assert_eq!(
             e.claims_text("r4133"),
             "class.prop | rust | r4133 | count | count_in_scope | disposition\n\
              capacitor.enabled | 'Yes' | 'true' | 2 | 1 | normalized-by-BoolFold\n\
-             line.ratings | '[ 400]' | '[401,]' | 1 | 1 | UNCLAIMED\n"
+             line.ratings | '[ 400]' | '[401,]' | 1 | 1 | UNCLAIMED\n\
+             regcontrol.idle | 'No' | '' | 1 | 1 | echo-row\n"
         );
         // Same rows, same order as the plain extract — a reader diffs them.
         assert_eq!(
@@ -1803,30 +1851,30 @@ mod tests {
                 "class.prop | rust | r4133 | count",
                 "capacitor.enabled | 'Yes' | 'true' | 2",
                 "line.ratings | '[ 400]' | '[401,]' | 1",
+                "regcontrol.idle | 'No' | '' | 1",
             ]
         );
         assert_eq!(
             e.unclaimed_text(),
-            "class.prop | cells | cells_in_scope | spellings\nline.ratings | 1 | 1 | 1\n"
+            "class.prop | cells | cells_in_scope | spellings\nline.ratings | 1 | 1 | 1\n",
+            "an echo-excluded cell is CLAIMED, so it leaves the work list RP4.1 reads"
         );
         let s = e.claims_summary();
-        assert_eq!(s["value_cells"], 3);
-        assert_eq!(s["value_cells_in_scope"], 2);
+        assert_eq!(s["value_cells"], 4);
+        assert_eq!(s["value_cells_in_scope"], 3);
         assert_eq!(s["per_disposition"]["normalized-by-BoolFold"]["cells"], 2);
         assert_eq!(
             s["per_disposition"]["normalized-by-BoolFold"]["cells_in_scope"],
             1
         );
+        assert_eq!(s["per_disposition"]["echo-row"]["cells"], 1);
+        assert_eq!(s["per_disposition"]["echo-row"]["cells_in_scope"], 1);
+        assert_eq!(s["per_disposition"]["echo-row"]["pairs"], 1);
         assert_eq!(s["per_disposition"]["UNCLAIMED"]["cells"], 1);
         assert_eq!(s["per_disposition"]["UNCLAIMED"]["pairs"], 1);
         // A mechanism that claimed nothing is present at zero, never absent:
-        // the RP2.3/RP2.4 slots must be readable as "leaned on for nothing".
-        for tag in [
-            "normalized-by-EnumSynonym",
-            "echo-row",
-            "under-floor",
-            "ledger-hit",
-        ] {
+        // RP2.4's slot must stay readable as "leaned on for nothing".
+        for tag in ["normalized-by-EnumSynonym", "under-floor", "ledger-hit"] {
             assert_eq!(s["per_disposition"][tag]["cells"], 0, "{tag}");
         }
     }

@@ -15,7 +15,7 @@
 //! ```text
 //! shape allowlist  ->  normalization  ->  echo table  ->  display floor
 //!  PROPS_015X          PROPS_NORM_R4133   PROPS_ECHO_R4133   RP2.4's floor
-//!  (RP1)               (RP2.1 + RP2.2)    (empty, RP2.3)     (absent, RP2.4)
+//!  (RP1)               (RP2.1 + RP2.2)    (RP2.3)            (absent, RP2.4)
 //! ```
 //!
 //! Every row ends up in exactly one of two states, and **the accounting is
@@ -86,6 +86,11 @@ const DIR: &str = "tests/corpus/props_r4133";
 /// The one file in [`DIR`] that carries `#` comment lines — see [`data_rows`].
 const SUPPLEMENT: &str = "examples_supplement.txt";
 
+/// Where RP2.3's expected-value pins live, repo-root-relative — the file
+/// [`every_echo_row_pin_is_a_test_that_exists`] reads back against
+/// `PROPS_ECHO_R4133`'s witness column.
+const PINS: &str = "crates/dss-core/tests/props_r4133_pins.rs";
+
 // ---------------------------------------------------------------------------
 // Count locks (`props_roundtrip.rs:62-68,238` pattern — equalities, both ways).
 // Every number below is a measurement over the vendored files; moving one
@@ -103,26 +108,41 @@ const SUPPLEMENT_CELLS: usize = 4541;
 
 /// Example rows the normalization claims, per rule kind.
 const CLAIMED_BOOL_FOLD: usize = 114;
-/// …**440**, two fewer than RP2.1's 442: `invcontrol.voltage_curvex_ref`'s two
-/// case-only spellings moved with the pair when RP2.2 re-typed its row as an
-/// `EnumSynonym` (`harness/props_norm.rs::VOLTAGE_CURVEX_REF_SYNONYMS`). No cell
-/// stopped being compared — the new map claims those two spellings and one more.
-const CLAIMED_CASE_FOLD: usize = 440;
-const CLAIMED_ARRAY_FORM: usize = 192;
+/// …**528** since RP2.3: RP2.1's 442, **−2** when RP2.2 re-typed
+/// `invcontrol.voltage_curvex_ref` as an `EnumSynonym`
+/// (`harness/props_norm.rs::VOLTAGE_CURVEX_REF_SYNONYMS`), **+88** for RP2.3's
+/// three off-bin `CaseFold` rows — `load.yearly` 72, `reactor.bus2` 14,
+/// `invcontrol.monvoltagecalc` 2. Those 88 spellings were RP2.3's own bucket
+/// before: an echo row would have masked them, and a typed rule compares them
+/// instead (props_norm module doc §"RP2.3's nine off-bin rows").
+const CLAIMED_CASE_FOLD: usize = 528;
+/// …**203**: RP2.1's 192 **+11** for RP2.3's six off-bin `ArrayForm` rows —
+/// `line.wires` 2, `load.zipv` 2, `generator.userdata` 2, `storage.dynadata` 1,
+/// `storagecontroller.seasontargets`/`seasontargetslow` 2 each.
+const CLAIMED_ARRAY_FORM: usize = 203;
 /// RP2.2's five `EnumSynonym` rows: `vsource.scantype`/`sequence` one spelling
 /// each, `isource.scantype`/`sequence` two each, and
 /// `invcontrol.voltage_curvex_ref` three (`examples_full.txt`).
 const CLAIMED_ENUM_SYNONYM: usize = 9;
-/// …and in total (the four above). RP2.1 measured 748; RP2.2 adds the 6 source
-/// sequence-selector spellings and `voltage_curvex_ref`'s third.
-const CLAIMED_TOTAL: usize = 755;
+/// The four rule kinds together — the NORMALIZATION link's own total, which is
+/// what [`CLAIMED_TOTAL_LIVE`] reconciles against. RP2.1 measured 748, RP2.2
+/// 755, RP2.3 854 (+99, the nine off-bin rows).
+const CLAIMED_NORMALIZATION: usize = 854;
+/// **RP2.3's echo table** — example rows the exclusion claims, i.e. the ones
+/// `PROPS_ECHO_R4133` covers that no earlier link took. 450 (the RP2.3 bucket)
+/// − 99 (claimed by the nine new normalization rows instead) − 181 (the five
+/// `SilentReadOnly` pairs re-routed to [`Owner::Rp38`]) = **170**.
+const CLAIMED_ECHO: usize = 170;
+/// …and in total, over all four links.
+const CLAIMED_TOTAL: usize = CLAIMED_NORMALIZATION + CLAIMED_ECHO;
 
 /// **What the LIVE population claims, against what this evidence base can see.**
 ///
 /// The two accountings are not the same number and must not be pretended to be:
 /// the RP2.1 full-population claims census measured **749** claimed spellings on
 /// the r4133 channel (vendored `README.md` §"What the r4133 policy claims
-/// today") against the 748 above. The difference is [`LIVE_ONLY_SPELLINGS`] —
+/// today") against the 748 of the day. The difference is
+/// [`LIVE_ONLY_SPELLINGS`] —
 /// spellings that exist live but that **no vendored file may carry**, because
 /// they sit on a pair that already has a `bins.tsv` row (the supplement's own
 /// lock forbids a pair in both files, `props_r4133_evidence_lock.rs`
@@ -132,7 +152,13 @@ const CLAIMED_TOTAL: usize = 755;
 /// replay's count locks are locks on the vendored files, so without this the two
 /// populations could diverge silently while the module doc kept claiming
 /// "spelling-level completeness before the unmask" (RP2.1 audit round).
-const CLAIMED_TOTAL_LIVE: usize = 756;
+///
+/// **855 since RP2.3** (756 + 99): the nine off-bin normalization rows claim
+/// exactly the same 99 spellings live as offline — RP2.3 part A re-measured
+/// each pair's live spelling inventory against the frozen one and they match
+/// pair for pair (6 446 live cells, 6 370 in scope). The term itself is
+/// unchanged, still the one `autotrans.conn` spelling.
+const CLAIMED_TOTAL_LIVE: usize = 855;
 
 /// The spellings the live claims census sees and the vendored evidence cannot,
 /// each with the pair it belongs to, the two sides, and why no file carries it.
@@ -155,18 +181,34 @@ const LIVE_ONLY_SPELLINGS: &[(&str, &str, &str, &str)] = &[(
     "RP1.2's XfmrCode deck; the pair's frozen bins.tsv row predates it",
 )];
 
-/// Example rows claimed by the chain's other three links. All zero in RP2.1 and
-/// each for a *different* reason — see [`Link`].
+/// Example rows claimed by the chain's remaining two links, both still zero and
+/// each for a *different* reason — see [`Link`]. (`CLAIMED_ECHO` moved up to
+/// the normalization block, where its derivation lives.)
 const CLAIMED_SHAPE_ALLOWLIST: usize = 0;
-const CLAIMED_ECHO: usize = 0;
 const CLAIMED_DISPLAY_FLOOR: usize = 0;
 
-/// Rows for which **more than one** link matches. Zero while the echo table is
-/// empty and the floor absent; RP2.3 makes it positive (a mixed bin-1 pair will
-/// hold a `BoolFold` row *and* an echo row, and normalization wins by order).
-/// It is a lock, not a structural assert, precisely so RP2.3 has to re-read the
-/// first-match argument rather than silently start relying on it.
-const MULTI_LINK_ROWS: usize = 0;
+/// Rows for which **more than one** link matches — **135 since RP2.3**, over 20
+/// pairs that hold a `PROPS_NORM_R4133` row AND a `PROPS_ECHO_R4133` row.
+///
+/// It was zero while the echo table was empty, and RP2.1 made it a lock rather
+/// than a structural assert precisely so RP2.3 would have to re-read the
+/// first-match argument instead of silently starting to rely on it. Re-read,
+/// and it holds: normalization precedes the exclusion
+/// ([`first_match_returns_the_earliest_link`]), so on each of those 20 pairs
+/// the typed rule claims its foldable spellings and the echo row masks only the
+/// rest. The split is measured per pair by
+/// [`the_echo_table_masks_only_what_the_typed_rules_leave`].
+///
+/// The 20: the four mixed bin-1 pairs (`recloser.eventlog` 1,
+/// `regcontrol.idle` 1, `relay.distreverse` 2, `relay.reset` 1), the six
+/// bin-2-labelled ones (`capcontrol.type` 3, `fault.bus2` 1,
+/// `invcontrol.mode` 7, `fuse.switchedobj` 4, `recloser.switchedobj` 6,
+/// `relay.switchedobj` 8), `energymeter.peakcurrent` 2, and the nine RP2.3
+/// off-bin rows (`load.yearly` 72, `reactor.bus2` 14,
+/// `invcontrol.monvoltagecalc` 2, `line.wires` 2, `load.zipv` 2,
+/// `generator.userdata` 2, `storage.dynadata` 1,
+/// `storagecontroller.seasontargets`/`seasontargetslow` 2 each).
+const MULTI_LINK_ROWS: usize = 135;
 
 /// Declared-pending rows per owner: `(rows, pairs, rows on in-scope pairs)`.
 /// This is what RP2.3, RP2.4, RP3 and the RP3.5+ sub-steps each inherit.
@@ -177,11 +219,24 @@ const MULTI_LINK_ROWS: usize = 0;
 /// verdict in [`RP22_ROUTING`], so nothing is left pending on RP2.2. The variant
 /// stays so a regression that re-creates the bucket fails here by name.
 const DECLARED_RP22: (usize, usize, usize) = (0, 0, 0);
-/// RP2.3 inherits RP2.1's 295 rows **plus the 155 RP2.2 routed to it** (14 new
-/// pairs: the 12 echo-rooted S6/bin-3 pairs, `capcontrol.type` and `fault.bus2`;
-/// `generator.dynout` was already an RP2.3 pair through its `''`-vs-`'[]'`
-/// spelling and only changed owner on its second one).
-const DECLARED_RP23: (usize, usize, usize) = (450, 86, 449);
+/// **`DECLARED_RP23` is `(0, 0, 0)` since RP2.3 closed**, and that zero is the
+/// sub-step's own acceptance. It inherited `(450, 86, 449)` — RP2.1's 295 rows
+/// plus the 155 RP2.2 routed to it — and every one of those 450 rows is now
+/// resolved, in exactly three ways, each of which the locks above count:
+///
+/// * **99** claimed by the nine off-bin `PROPS_NORM_R4133` rows RP2.3 landed
+///   first, so a pair-scoped exclusion could not swallow a cell a typed rule
+///   compares ([`CLAIMED_CASE_FOLD`], [`CLAIMED_ARRAY_FORM`]);
+/// * **170** claimed by `PROPS_ECHO_R4133`'s 81 cited rows ([`CLAIMED_ECHO`]);
+/// * **181** re-routed to [`Owner::Rp38`] by the kill ruling ([`RP38_ROUTING`]).
+///
+/// The variant stays so a regression that re-creates the bucket fails here by
+/// name.
+const DECLARED_RP23: (usize, usize, usize) = (0, 0, 0);
+/// **RP3.8 — the five `SilentReadOnly` pairs the RP2.3 kill criterion fired
+/// on**: 181 example rows over 5 pairs, all of them on pairs the RP4.1 unmask
+/// will compare (1 064 live cells, 772 in scope). See [`RP38_ROUTING`].
+const DECLARED_RP38: (usize, usize, usize) = (181, 5, 181);
 const DECLARED_RP24: (usize, usize, usize) = (2100, 70, 2020);
 const DECLARED_RP3: (usize, usize, usize) = (7, 4, 7);
 /// The three sub-steps RP2.2 opened: **8 rows over 6 pairs, 5 of them in
@@ -244,12 +299,25 @@ const BIN7_ROOT_CAUSE: &[&str] = &[
     "windgen.kvar",
 ];
 
-/// Bin-7 pairs the **supplement** carries, each already read off the Pascal as
-/// an echo rather than a jump, so each is RP2.3's row and not an RP3 sub-step:
+/// Bin-7 pairs the **supplement** carries, each read off the Pascal as RP2.3's
+/// row rather than an RP3 root-cause sub-step:
 ///
-/// * `generator.d` — `Create` sets `GenVars.D := 1.0` and never `Dpu`
-///   (`Version8/Source/PCElements/generator.pas:955-971`) while
-///   `InitPropertyValues` froze `Format('%-g', [GenVars.Dpu])` (`:2585`);
+/// * `generator.d` — **not an echo**, which is what RP2.3's kill criterion
+///   caught (part A finding F1; the ruling's R2, user-approved 2026-08-23).
+///   Reading the whole class settles it: `Create` sets `GenVars.D := 1.0`
+///   (`Version8/Source/PCElements/generator.pas:969`) but the property's field
+///   is `GenVars.Dpu` — what `Edit` writes (`:669`) and what
+///   `InitPropertyValues` snapshots (`Format('%-g', [GenVars.Dpu])`, `:2585`) —
+///   and `Create` **never** touches `Dpu`. So the frozen `'0'` IS r4133's own
+///   live value, not a stale store, and `InitStateVars` then runs dynamics at
+///   `D := Dpu*kVA*1000/w0 = 0` (`:2710`) against the property's documented
+///   default ("Default is 1.0", `:467`) — an upstream initialisation bug.
+///   dss_capi 0.14.5 fixed it (`Dpu := 1.0`,
+///   `src/PCElements/Generator.pas:1006`) and the port follows, so the pair
+///   lands as `EchoCategory::LiveSemanticsDiffer` plus the expected-value pin
+///   `generator_d_renders_the_documented_damping_default`
+///   (`crates/dss-core/tests/props_r4133_pins.rs`), never as a silent
+///   `EchoDefault`;
 /// * `autotrans.pctperm` / `autotrans.repair` — `InitPropertyValues` freezes
 ///   `'100'` / `'36'` (`Version8/Source/PDElements/AutoTrans.pas:1958-1959`)
 ///   and the `GetPropertyValue` override re-renders only PD-tail slots 1 and 2
@@ -443,9 +511,13 @@ const RP22_ROUTING: &[(&str, Owner, &str)] = &[
     // user-typed name (case preserved, `''` when never typed, `:807`); the port
     // prints the resolved shape object's lowercased name, and the `''` half is
     // the same daily→yearly object aliasing as `isource.yearly` (`:657`).
-    // ONE row for the whole pair: a `CaseFold` row would claim only the
-    // case-only half and leave the 18 832 + 7 145 empty-vs-value cells
-    // unclaimed, so RP2.3 owes a value-only exclusion covering both.
+    // A `CaseFold` row alone is not SUFFICIENT for the pair: it claims only the
+    // case-only half and leaves the 18 832 + 7 145 empty-vs-value cells
+    // unclaimed, so RP2.3 owes a value-only exclusion covering those.
+    // **RP2.3 landed both** — the `CaseFold` row for the 5 995 cells a typed
+    // rule can compare value-preservingly, and a `LiveSemanticsDiffer` echo row
+    // (plus its pin) for the rest. The chain order keeps them apart, cell by
+    // cell (`props_norm` module doc §"RP2.3's nine off-bin rows").
     ("load.yearly", Owner::Rp23, "Load.pas:2346 / :657 / :807"),
     // `TReactorObj.GetPropertyValue` has arms for 10, 11, 13..16, 19 and the PD
     // tail — not 2 (`PDElements/Reactor.pas:1087-1105`) → echo. Two writers: the
@@ -608,6 +680,15 @@ const RP22_BEYOND_THE_CLOSED_LIST: &[&str] = &[
 /// classification (bin 2 or 4) differs from the mechanism that will claim them,
 /// on a pair the plan's lists do not already own. One entry per pair, each with
 /// the evidence that decides it.
+///
+/// **Three of the seven are consumed since RP2.3** — `energymeter.peakcurrent`,
+/// `generator.dynout` and `generator.userdata` are now claimed by the chain
+/// (an echo row, and for the last one a `PROPS_NORM_R4133` `ArrayForm` row
+/// beside it), so [`declare`] never reaches their entries. They are kept as the
+/// record of the disposition that put them there, exactly as [`RP22_S6`] is
+/// kept as the record of RP2.2's input; the four `sensor.*` entries are still
+/// live. Every entry's pair is checked against the evidence by
+/// [`the_plan_pair_lists_still_describe_the_vendored_evidence`].
 const CELL_DISPOSITION: &[(&str, Owner, &str)] = &[
     // `'[ 400]'` vs `'((400, 400, 400))'`: a one-element array against r4133's
     // frozen three-element default. r4133 answers `'(' + PropertyValue[7] + ')'`
@@ -660,6 +741,49 @@ const CELL_DISPOSITION: &[(&str, Owner, &str)] = &[
     ("sensor.kvars", Owner::OutOfScope, "plan §1.3 / §RP2.1"),
     ("sensor.kvs", Owner::OutOfScope, "plan §1.3 / §RP2.1"),
     ("sensor.kws", Owner::OutOfScope, "plan §1.3 / §RP2.1"),
+];
+
+/// **RP2.3's kill-criterion re-route — the five pairs that get NO echo row.**
+///
+/// The RP2.3 criterion ("any candidate row that cannot be cited to a concrete
+/// r4133 echo site — stop and report") fired on these five, and the report was
+/// ruled and user-approved on 2026-08-23: they are not echoes and not a
+/// spelling difference. r4133's getter arm is LIVE and prints a computed
+/// read-only quantity; the port prints `''` only because dss_capi 0.14.5 flags
+/// the property `[SilentReadOnly, ReadByFunction]` and the port reproduces that
+/// suppression deliberately (`elements/pc/ind_mach012/accessors.rs:203-212`,
+/// `elements/control/storage_controller/accessors.rs:162-167`).
+///
+/// Under the standing 2026-08-02 policy the 0.14.5 convention yields: the
+/// engine renders the live value and the resulting **capi-side** divergence is
+/// excluded field-by-field and pinned. That is an engine change, so it becomes
+/// plan §RP3.8 and these 181 example rows are declared to [`Owner::Rp38`] —
+/// loudly, with a count lock ([`DECLARED_RP38`]), never as a silent leftover
+/// inside RP2.3's bucket. Giving them an `EchoCategory` instead would have been
+/// exactly the mislabel the kill criterion exists to prevent.
+///
+/// Each row cites the r4133 live getter arm it renders from.
+const RP38_ROUTING: &[(&str, &str)] = &[
+    (
+        "indmach012.pf",
+        "IndMach012.pas:1789 (arm 5: Format('%.6g',[PowerFactor(Power[1,ActorID])]))",
+    ),
+    (
+        "storagecontroller.kwhtotal",
+        "StorageController.pas:991 (GetkWhTotal)",
+    ),
+    (
+        "storagecontroller.kwtotal",
+        "StorageController.pas:992 (GetkWTotal)",
+    ),
+    (
+        "storagecontroller.kwhactual",
+        "StorageController.pas:993 (GetkWhActual)",
+    ),
+    (
+        "storagecontroller.kwactual",
+        "StorageController.pas:994 (GetkWActual)",
+    ),
 ];
 
 /// The `shape.txt` gap names closed by a real port rather than by a
@@ -715,9 +839,10 @@ enum Link {
     /// **RP2.1's normalization** (`PROPS_NORM_R4133`) — the value-preserving
     /// re-spelling this sub-step ships.
     Normalization,
-    /// **RP2.3's echo table** (`PROPS_ECHO_R4133`) — created empty by RP2.1, so
-    /// it claims nothing yet. Its emptiness is load-bearing: RP2.1 must prove
-    /// the normalization half claims bins 1/2/4 with no exclusion helping it.
+    /// **RP2.3's echo table** (`PROPS_ECHO_R4133`) — the exclusion. 81 cited
+    /// rows, consulted only after the normalization link has had its chance, so
+    /// on a mixed pair a typed rule claims the foldable spellings first and this
+    /// covers what is left ([`MULTI_LINK_ROWS`]).
     Echo,
     /// **RP2.4's display floor** — a named slot that carries no value in RP2.1
     /// (`props_norm::display_floor()` is `None`, i.e. numeric tokens compare
@@ -753,7 +878,8 @@ enum Owner {
     /// singletons + any cell that needs a per-pair source reading).
     Rp22,
     /// RP2.3 — the echo-exclusion table (bin 5, the bin-1 echo halves, the
-    /// echo-rooted bin-7 pairs).
+    /// echo-rooted bin-7 pairs). **Empty since RP2.3 closed**
+    /// ([`DECLARED_RP23`]).
     Rp23,
     /// RP2.4 — the r4133 props display floor (bin 6).
     Rp24,
@@ -767,6 +893,17 @@ enum Owner {
     /// [`RP22_ROUTING`]'s citation column; this owner is the accounting bucket
     /// they share.
     Rp35,
+    /// **RP3.8 — the sub-step RP2.3's kill criterion opened** (the ruling of
+    /// 2026-08-23, user-approved). Five `SilentReadOnly` pairs whose divergence
+    /// is neither an echo nor a spelling: r4133 renders a live computed
+    /// read-only quantity and the port renders `''` only because dss_capi
+    /// 0.14.5 flags the property `[SilentReadOnly, ReadByFunction]`. Under the
+    /// standing 2026-08-02 policy (r4133 is the behavioral authority; 0.14.5 is
+    /// a numeric oracle only) the engine must render the live value and the
+    /// resulting capi-side divergence is excluded + pinned THERE — an engine
+    /// change, forbidden inside RP2.3's zero-product-bytes scope. See
+    /// [`RP38_ROUTING`]; RP4.1 does not start until it closes (plan §0).
+    Rp38,
     /// Nothing will claim it: every cell of the pair sits on an
     /// `engines: "capi_v0145"` case, which plan §1.3 keeps uncompared on r4133.
     OutOfScope,
@@ -780,6 +917,7 @@ impl Owner {
             Owner::Rp24 => "RP2.4",
             Owner::Rp3 => "RP3",
             Owner::Rp35 => "RP3.5+ (opened by RP2.2)",
+            Owner::Rp38 => "RP3.8 (opened by RP2.3's kill criterion)",
             Owner::OutOfScope => "out of scope (§1.3)",
         }
     }
@@ -1325,6 +1463,9 @@ fn classify_cell(rust: &str, r4133: &str) -> u8 {
 /// **The declaration rule.** Which sub-step's mechanism will claim a row RP2.1
 /// cannot — decided from the vendored evidence, in this order:
 ///
+/// 0. a pair RP2.3's kill criterion re-routed answers [`RP38_ROUTING`] — this
+///    comes first because those five pairs' cells *look* like bin 5 (one side
+///    empty) and every later rule would file them as echoes;
 /// 0. a pair RP2.2's dossier routed answers [`RP22_ROUTING`] — RP2.3's echo
 ///    table or one of the RP3.5+ sub-steps; a pair on **RP2.2's closed list**
 ///    (the eight bin-3 pairs plus the S6 singletons) that the routing does
@@ -1352,6 +1493,13 @@ fn declare(row: &Example, ev: &PairEvidence) -> Result<Owner, String> {
         .find(|(p, _, _)| *p == row.pair)
         .map(|(_, o, _)| *o);
 
+    // RP2.3's kill-criterion re-route comes FIRST: these five pairs are neither
+    // an echo nor a spelling, and every rule below would have mis-filed them
+    // (their cells classify as bin 5 — one side empty — which is the echo
+    // table's shape). See [`RP38_ROUTING`].
+    if RP38_ROUTING.iter().any(|(p, _)| *p == row.pair) {
+        return Ok(Owner::Rp38);
+    }
     if let Some((_, owner, _)) = RP22_ROUTING.iter().find(|(p, _, _)| *p == row.pair) {
         return Ok(*owner);
     }
@@ -1543,12 +1691,18 @@ fn every_example_row_is_claimed_or_declared_exactly_once() {
     assert_eq!(
         claimed(Link::Echo.tag()),
         CLAIMED_ECHO,
-        "PROPS_ECHO_R4133 is created empty by RP2.1; RP2.3 fills it"
+        "PROPS_ECHO_R4133's 81 cited rows claim what the nine off-bin normalization rows leave, \
+         minus the five pairs the kill criterion re-routed to RP3.8"
     );
     assert_eq!(
         claimed(Link::DisplayFloor.tag()),
         CLAIMED_DISPLAY_FLOOR,
         "the display floor is RP2.4's; RP2.1 introduces no tolerance"
+    );
+    assert_eq!(
+        claimed("BoolFold") + claimed("CaseFold") + claimed("ArrayForm") + claimed("EnumSynonym"),
+        CLAIMED_NORMALIZATION,
+        "the four rule kinds must partition the normalization link"
     );
     assert_eq!(
         led.claimed_total(),
@@ -1565,6 +1719,7 @@ fn every_example_row_is_claimed_or_declared_exactly_once() {
         (Owner::Rp24, DECLARED_RP24),
         (Owner::Rp3, DECLARED_RP3),
         (Owner::Rp35, DECLARED_RP35),
+        (Owner::Rp38, DECLARED_RP38),
         (Owner::OutOfScope, DECLARED_OUT_OF_SCOPE),
     ] {
         assert_eq!(
@@ -1589,8 +1744,239 @@ fn every_example_row_is_claimed_or_declared_exactly_once() {
     );
     assert_eq!(
         led.multi_link, MULTI_LINK_ROWS,
-        "rows matched by more than one link — RP2.3's echo rows will make this positive, and the \
+        "rows matched by more than one link — RP2.3's echo rows made this positive, and the \
          first-match order (pinned by first_match_returns_the_earliest_link) is what decides them"
+    );
+}
+
+/// **The echo table masks only what the typed rules leave** — the per-pair
+/// half of [`MULTI_LINK_ROWS`], and the guard against the one way a
+/// pair-scoped exclusion can go wrong: swallowing cells a value-preserving rule
+/// still compares.
+///
+/// For every pair that holds BOTH kinds of row it asserts the measured split,
+/// pair by pair. Widening an echo row cannot show up here (the row is
+/// pair-scoped by design), but the two things that would silently shrink the
+/// compare do: deleting or narrowing one of the nine off-bin normalization rows
+/// RP2.3 landed, and re-ordering the chain so the exclusion runs first — either
+/// moves a pair's normalization count to zero.
+#[test]
+fn the_echo_table_masks_only_what_the_typed_rules_leave() {
+    let corpus = Corpus::load();
+    let mut split: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+    for row in &corpus.rows {
+        if !props_norm::echo_excluded(&row.class, &row.prop) {
+            continue;
+        }
+        let e = split.entry(row.pair.as_str()).or_default();
+        match first_match(chain_verdicts(&corpus, row)) {
+            Some(Link::Normalization) => e.0 += 1,
+            Some(Link::Echo) => e.1 += 1,
+            other => panic!("{}: an echo pair's row answered {other:?}", row.pair),
+        }
+    }
+    let mixed: Vec<(&str, usize, usize)> = split
+        .iter()
+        .filter(|(_, (norm, _))| *norm > 0)
+        .map(|(p, (n, e))| (*p, *n, *e))
+        .collect();
+    assert_eq!(
+        mixed,
+        [
+            ("capcontrol.type", 3, 2),
+            ("energymeter.peakcurrent", 2, 1),
+            ("fault.bus2", 1, 1),
+            ("fuse.switchedobj", 4, 4),
+            ("generator.userdata", 2, 1),
+            ("invcontrol.mode", 7, 1),
+            ("invcontrol.monvoltagecalc", 2, 1),
+            ("line.wires", 2, 2),
+            ("load.yearly", 72, 23),
+            ("load.zipv", 2, 1),
+            ("reactor.bus2", 14, 7),
+            ("recloser.eventlog", 1, 1),
+            ("recloser.switchedobj", 6, 5),
+            ("regcontrol.idle", 1, 1),
+            ("relay.distreverse", 2, 1),
+            ("relay.reset", 1, 1),
+            ("relay.switchedobj", 8, 10),
+            ("storage.dynadata", 1, 1),
+            ("storagecontroller.seasontargets", 2, 1),
+            ("storagecontroller.seasontargetslow", 2, 1),
+        ],
+        "(pair, rows claimed by its normalization row, rows masked by its echo row)"
+    );
+    assert_eq!(
+        mixed.iter().map(|(_, n, _)| n).sum::<usize>(),
+        MULTI_LINK_ROWS,
+        "the per-pair normalization counts must sum to the multi-link lock"
+    );
+    assert_eq!(
+        split.values().map(|(_, e)| e).sum::<usize>(),
+        CLAIMED_ECHO,
+        "…and the echo counts to the echo link's total"
+    );
+    assert_eq!(
+        split.len(),
+        props_norm::PROPS_ECHO_R4133.len(),
+        "every echo row is exercised by at least one example row (offline liveness)"
+    );
+}
+
+/// **Liveness both ways for the echo table, offline** — the exclusion's half of
+/// plan mechanic (d), and the mirror of
+/// [`every_normalization_row_claims_at_least_one_example_row`].
+///
+/// A row that claims no example row is masking a divergence the vendored census
+/// never recorded: it either names the wrong pair or is obsolete. (The LIVE
+/// half is `props_norm::assert_echo_rows_are_live`, dormant until RP4.1.)
+#[test]
+fn every_echo_row_claims_at_least_one_example_row() {
+    let corpus = Corpus::load();
+    let claimed: BTreeSet<String> = corpus
+        .rows
+        .iter()
+        .filter(|r| first_match(chain_verdicts(&corpus, r)) == Some(Link::Echo))
+        .map(|r| r.pair.clone())
+        .collect();
+    let dead: Vec<String> = props_norm::PROPS_ECHO_R4133
+        .iter()
+        .filter(|r| !claimed.contains(&format!("{}.{}", r.class, r.prop)))
+        .map(|r| format!("{}.{} ({})", r.class, r.prop, r.category.tag()))
+        .collect();
+    assert!(
+        dead.is_empty(),
+        "{} PROPS_ECHO_R4133 row(s) exclude no example row: {}",
+        dead.len(),
+        dead.join(", ")
+    );
+    assert_eq!(claimed.len(), props_norm::PROPS_ECHO_R4133.len());
+}
+
+/// **Evidence integrity of the echo table** (plan mechanic (a)): every row's
+/// `cells` column is read back against the file it cites — `bins.tsv` for the
+/// frozen census, the vendored `README.md` §"Pairs the WP-RP1 shape closures
+/// make live" (or the supplement's provenance header) for the pairs WP-RP1 and
+/// RP0.2 created. A mis-transcribed row fails here instead of silently
+/// describing a pair that is not there.
+#[test]
+fn every_echo_row_matches_its_cited_evidence() {
+    let corpus = Corpus::load();
+    let bins = bins_evidence();
+    for r in props_norm::PROPS_ECHO_R4133 {
+        let pair = format!("{}.{}", r.class, r.prop);
+        let ev = corpus
+            .supplement
+            .get(&pair)
+            .or_else(|| bins.get(&pair).and_then(|all| all.first()))
+            .unwrap_or_else(|| panic!("{pair}: an echo row with no census evidence row"));
+        assert_eq!(
+            ev.cells, r.cells as usize,
+            "{pair}: the row cites {} cells, {} says {}",
+            r.cells, ev.origin, ev.cells
+        );
+        assert!(
+            bins.get(&pair).map(|all| all.len()).unwrap_or(1) == 1,
+            "{pair}: two evidence rows — the citation would be ambiguous"
+        );
+    }
+}
+
+/// **Every pin an echo row names is a test that exists**, and every pin in the
+/// pin file is named by a row — the other half of the witness obligation.
+///
+/// `props_norm::tests::every_live_semantics_row_names_a_pin` pins the twenty
+/// names *as strings*; nothing there can tell whether the tests behind them were
+/// ever written, so a row could ship citing a witness that does not exist. This
+/// reads the pin file and matches the names against its definitions, both ways —
+/// a renamed, deleted or newly-orphaned pin fails here.
+///
+/// It insists on the **`#[test]` attribute**, not merely on the `fn`: a pin that
+/// lost its attribute would still satisfy a name search while never running
+/// again, which is precisely the silent-witness failure this guard exists to
+/// prevent.
+#[test]
+fn every_echo_row_pin_is_a_test_that_exists() {
+    let path = repo_root().join(PINS);
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    // Line endings are the checkout's, not this test's business.
+    let text = text.replace("\r\n", "\n");
+
+    let named: BTreeSet<&str> = props_norm::PROPS_ECHO_R4133
+        .iter()
+        .filter_map(|r| r.witness.pin())
+        .collect();
+    for name in &named {
+        assert!(
+            text.contains(&format!("#[test]\nfn {name}() {{")),
+            "{name} is named as an echo row's witness but {PINS} defines no such #[test]"
+        );
+    }
+
+    // …and the file carries no pin nobody cites. The two exceptions are the
+    // deck guard's own self-tests, not witnesses — and they are named here
+    // rather than pattern-matched away so that a third un-cited test cannot
+    // slip in behind a naming convention.
+    const NOT_A_PIN: &[&str] = &[
+        "the_deck_guard_really_sweeps",
+        "overlapping_deck_guards_still_sweep",
+    ];
+    let defined: BTreeSet<&str> = text
+        .split("#[test]\nfn ")
+        .skip(1)
+        .filter_map(|rest| rest.split_once("() {").map(|(name, _)| name))
+        .filter(|n| !NOT_A_PIN.contains(n))
+        .collect();
+    assert_eq!(
+        defined, named,
+        "{PINS} must define exactly the pins the echo rows name"
+    );
+}
+
+/// **The kill-criterion re-route is exactly the five named pairs**, in both
+/// directions: they take no echo row, they land in [`Owner::Rp38`]'s bucket and
+/// nothing else does, and each carries the r4133 live-getter citation that
+/// makes the re-route a verdict rather than a shrug.
+#[test]
+fn the_kill_criterion_reroute_is_the_five_silent_readonly_pairs() {
+    assert_eq!(
+        RP38_ROUTING.iter().map(|(p, _)| *p).collect::<Vec<_>>(),
+        [
+            "indmach012.pf",
+            "storagecontroller.kwhtotal",
+            "storagecontroller.kwtotal",
+            "storagecontroller.kwhactual",
+            "storagecontroller.kwactual",
+        ],
+        "the five pairs the RP2.3 kill ruling re-routed"
+    );
+    for (pair, cite) in RP38_ROUTING {
+        let (class, prop) = pair.split_once('.').expect("class.prop");
+        assert!(
+            !props_norm::echo_excluded(class, prop),
+            "{pair} must NOT have an echo row — the ruling forbids it"
+        );
+        assert!(
+            cite.contains(".pas:"),
+            "{pair}: the re-route must cite the r4133 live getter, got {cite:?}"
+        );
+    }
+    // …and the bucket holds their rows and only theirs.
+    let corpus = Corpus::load();
+    let led = account(&corpus, PROPS_NORM_R4133);
+    assert_eq!(led.owner(Owner::Rp38), DECLARED_RP38);
+    let bucket = led.declared.get(&Owner::Rp38).expect("the RP3.8 bucket");
+    assert_eq!(
+        bucket.pairs.iter().map(String::as_str).collect::<Vec<_>>(),
+        [
+            "indmach012.pf",
+            "storagecontroller.kwactual",
+            "storagecontroller.kwhactual",
+            "storagecontroller.kwhtotal",
+            "storagecontroller.kwtotal",
+        ],
+        "the RP3.8 bucket holds exactly the re-routed pairs"
     );
 }
 
@@ -1608,7 +1994,7 @@ fn every_example_row_is_claimed_or_declared_exactly_once() {
 fn the_live_only_spellings_are_claimed_and_reconcile_the_two_accountings() {
     let corpus = Corpus::load();
     assert_eq!(
-        CLAIMED_TOTAL + LIVE_ONLY_SPELLINGS.len(),
+        CLAIMED_NORMALIZATION + LIVE_ONLY_SPELLINGS.len(),
         CLAIMED_TOTAL_LIVE,
         "the vendored claim count plus the live-only spellings must equal what the \
          full-population claims census measured (README §\"What the r4133 policy claims today\")"
@@ -1659,12 +2045,12 @@ fn every_normalization_row_claims_at_least_one_example_row() {
     assert_eq!(PROPS_NORM_R4133.len(), NORM_ROWS, "table count lock");
     assert_eq!(
         led.norm_hits.iter().sum::<usize>(),
-        CLAIMED_TOTAL,
-        "per-row hits must sum to the claimed total"
+        CLAIMED_NORMALIZATION,
+        "per-row hits must sum to the normalization link's total"
     );
 }
 
-/// The nine rows the **supplement** makes live, named: they are exactly the
+/// The ten rows the **supplement** makes live, named: they are exactly the
 /// `Evidence::Rp1*` rows of `PROPS_NORM_R4133`, and they claim ONLY supplement
 /// rows. Without `examples_supplement.txt` the replay would report full offline
 /// coverage over a population that excludes the very classes WP-RP1 opened
@@ -1696,7 +2082,12 @@ fn the_supplement_is_what_makes_the_wp_rp1_rows_live() {
         "on examples_full.txt alone, exactly the WP-RP1 rows are dead — that is what the \
          supplement exists for"
     );
-    assert_eq!(want.len(), 9, "7 BoolFold + 2 CaseFold WP-RP1 rows");
+    assert_eq!(
+        want.len(),
+        10,
+        "7 BoolFold + 2 CaseFold WP-RP1 rows, plus RP2.3's off-bin `generator.userdata` \
+         ArrayForm row — its pair, like the other nine, exists ONLY in the supplement"
+    );
 }
 
 /// **The shape half of the chain** (plan §1.2: "shape-allowlist rows are
@@ -1885,25 +2276,67 @@ fn the_supplement_covers_every_recorded_wp_rp1_pair() {
     }
 }
 
-/// The two chain links RP2.1 ships **inert**, pinned so the sub-steps that fill
-/// them have to come back here: the echo table is empty, and the display-floor
-/// slot carries no value.
+/// **The echo table claims only its own 81 pairs, and the display floor still
+/// claims nothing** — the deliberate successor of RP2.1's
+/// `the_echo_table_and_the_display_floor_claim_nothing_yet`, which asserted
+/// that BOTH links were inert.
+///
+/// That test going red is the design working: RP2.3 filled one of the two
+/// slots. What replaces it asserts strictly more than the half that is still
+/// true — the floor is untouched (`None`, claiming nothing, on the same
+/// full-corpus walk) — plus the two statements the newly-live link owes:
+///
+/// * the echo link claims a row **only** on a pair `PROPS_ECHO_R4133` names, so
+///   the exclusion cannot have leaked onto a pair no row cites;
+/// * a pair the table does NOT name is still compared raw, even when its
+///   spelling looks exactly like an echo (`''` on one side) — the mask is the
+///   cited row set, never a shape heuristic.
 #[test]
-fn the_echo_table_and_the_display_floor_claim_nothing_yet() {
-    assert!(
-        PROPS_ECHO_R4133.is_empty(),
-        "RP2.3 fills the echo table (and then MULTI_LINK_ROWS and the RP2.3 declared count move)"
+fn the_echo_table_claims_only_its_cited_pairs_and_the_floor_claims_nothing() {
+    assert_eq!(
+        PROPS_ECHO_R4133.len(),
+        81,
+        "RP2.3's echo table: the RP2.3 bucket's 86 pairs minus the 5 the kill criterion re-routed"
     );
     assert!(
         props_norm::display_floor().is_none(),
-        "RP2.4 derives the r4133 props display floor; RP2.1 introduces no tolerance anywhere"
+        "RP2.4 derives the r4133 props display floor; RP2.3 introduces no tolerance anywhere"
     );
-    // …and neither claims anything, asked through the same seam the chain uses.
+    let cited: BTreeSet<String> = PROPS_ECHO_R4133
+        .iter()
+        .map(|r| format!("{}.{}", r.class, r.prop))
+        .collect();
     let corpus = Corpus::load();
+    let mut echoed = 0;
     for row in &corpus.rows {
         let [_, _, echo, floor] = chain_verdicts(&corpus, row);
-        assert!(!echo && !floor, "{}: an inert link claimed a row", row.pair);
+        assert!(
+            !floor,
+            "{}: the display floor claimed a row while it is None",
+            row.pair
+        );
+        if echo {
+            assert!(
+                cited.contains(&row.pair),
+                "{}: the echo link claimed a row on a pair no EchoRow cites",
+                row.pair
+            );
+            echoed += 1;
+        }
     }
+    assert!(echoed > 0, "the echo link must claim something now");
+    // The five re-routed pairs still carry `''`-on-one-side spellings — the
+    // shape bin 5 is built on — and are compared all the same.
+    for (pair, _) in RP38_ROUTING {
+        let (class, prop) = pair.split_once('.').expect("class.prop");
+        assert!(
+            !props_norm::echo_excluded(class, prop),
+            "{pair}: an echo-LOOKING spelling is not an echo row"
+        );
+    }
+    // …and neither is a pair whose only divergence is a genuine value jump.
+    assert!(!props_norm::echo_excluded("gictransformer", "r2"));
+    assert!(!props_norm::echo_excluded("generator", "model"));
 }
 
 /// The chain order is the documented one, and [`first_match`] really returns the
@@ -2163,22 +2596,60 @@ fn rp22_settled_every_pair_it_was_handed() {
         }
     }
 
-    // Liveness: every routing row really declares at least one example row.
+    // Liveness: every routing row really routed something, and RP2.3 CONSUMED
+    // the half addressed to it.
+    //
+    // Before RP2.3 this asked one question — does the pair still declare at
+    // least one example row? — because every routed pair was pending. Now the
+    // two outcomes part ways, and asking the old question of both would report
+    // all fourteen RP2.3 routings as "stale" the moment RP2.3 did its job. So
+    // each is checked against what its own verdict promised:
+    //
+    //  * `Owner::Rp23` — the promise was "RP2.3 lands the cited exclusion row",
+    //    so the pair must now HAVE one. This is strictly stronger than the old
+    //    check: it is not enough for the row to have left the bucket, the table
+    //    has to name the pair.
+    //  * `Owner::Rp35` — still pending, so it must still declare a row (RP4.1
+    //    does not start until those sub-steps close, plan §0).
     let mut dead: Vec<&str> = Vec::new();
-    for (pair, _, _) in RP22_ROUTING {
-        let declared = corpus
-            .rows
-            .iter()
-            .filter(|r| &r.pair == pair)
-            .any(|r| first_match(chain_verdicts(&corpus, r)).is_none());
-        if !declared {
-            dead.push(pair);
+    let mut unconsumed: Vec<&str> = Vec::new();
+    for (pair, owner, _) in RP22_ROUTING {
+        let (class, prop) = pair.split_once('.').expect("class.prop");
+        match owner {
+            Owner::Rp23 => {
+                if !props_norm::echo_excluded(class, prop) {
+                    unconsumed.push(pair);
+                }
+            }
+            _ => {
+                let declared = corpus
+                    .rows
+                    .iter()
+                    .filter(|r| &r.pair == pair)
+                    .any(|r| first_match(chain_verdicts(&corpus, r)).is_none());
+                if !declared {
+                    dead.push(pair);
+                }
+            }
         }
     }
+    assert!(
+        unconsumed.is_empty(),
+        "RP2.2 routed {unconsumed:?} to RP2.3's echo table and no row cites them — either the \
+         routing is wrong or RP2.3 dropped the pair"
+    );
     assert!(
         dead.is_empty(),
         "RP22_ROUTING row(s) that route nothing — the chain already claims every cell of \
          {dead:?}, so the routing is stale"
+    );
+    assert_eq!(
+        RP22_ROUTING
+            .iter()
+            .filter(|(_, o, _)| matches!(o, Owner::Rp23))
+            .count(),
+        14,
+        "the fourteen pairs RP2.2 handed to RP2.3, all of them now cited echo rows"
     );
 }
 
