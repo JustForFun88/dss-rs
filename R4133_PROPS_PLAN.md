@@ -148,8 +148,11 @@ in RP2.1; its rows land in RP2.3); RP2.3 lands after RP2.2 (its row set is "bin 
 lands after RP2.3 whenever its outcome is an echo row; RP3.4 lands after RP2.3
 (its ledger twins must not duplicate echo rows). RP4.1 starts only after
 **every** RP1–RP3 sub-step is landed, including any RP3.5+ sub-step RP2.2's
-triage opens **and §RP3.8, which RP2.3's kill criterion opened** (its 1 064 cells
-are re-routed, not claimed — see `RP38_ROUTING` in the replay), and after its own
+triage opens, **§RP3.8, which RP2.3's kill criterion opened** (its 1 064 cells
+are re-routed, not claimed — see `RP38_ROUTING` in the replay) **and §RP3.9,
+which RP2.4's audit settlement opened** (55 spellings / 27 pairs whose r4133
+value is no `%.Ng` render of ours — `RP39_ROUTING`; none of them in scope today,
+which is why the block is a discipline and not a gate failure), and after its own
 in-sub-step precondition, the **per-cell narrowing of the 20 mixed echo rows**
 (RP2.3's audit settlement, §RP4.1's first paragraph); RP5 is last.
 Execution is on a **single branch only — never in parallel
@@ -1057,6 +1060,22 @@ minus the tail) compare within a derived, documented floor.
 >   r4133 disposition). `DECLARED_RP24` `(2101, 71, 2021)` → `(0, 0, 0)`, its
 >   105-row residual re-declared `OutOfScope` by the cited ceiling proof
 >   `RP24_OUT_OF_SCOPE`. STATUS §WP-RP2 carries the full record.
+>
+> **AUDIT SETTLEMENT (same day, same branch).** Both auditors landed the same
+> major: the *mechanism* above was attributed by naming the formatter family, not
+> by checking each claimed render against it, and **55 of the 2 006 claimed
+> spellings (70 cells, 27 pairs) are gaps no `%.Ng` rounding of our value can
+> produce**. The floor's value did not move; its predicate grew the missing
+> clause, `props_norm::display_is_render`, so "every claimed cell is a `%.Ng`
+> render of ours" is now enforced rather than surveyed. The 55 are declared to
+> the new **§RP3.9**, which is an RP4.1 precondition (§0). Consequently the
+> numbers in this note read, post-settlement: **1 951** claimed vendored
+> spellings, live **69 pairs / 1 957 spellings / 49 381 cells (46 538 in scope —
+> unchanged, since not one of the 55 has an in-scope cell)**. The same round
+> corrected the `Vsource.pas` line ranges and the `basekv` attribution in the
+> mechanism table, replaced "the capi property compare is exact" with the tier
+> floors it really runs at, and added six missing guards. STATUS §WP-RP2 carries
+> the itemised record.
 
 ---
 
@@ -1349,6 +1368,59 @@ JSON surfaces proven unmoved (or their goldens regenerated with the argument);
 claimed accounting (or into a cited exclusion), and the replay's count locks
 moved with their deltas stated. Tier: `opus-high+`.
 Outcome: the last population RP4.1 has no owner for is owned.
+
+### RP3.9 — the r4133 round-trip residue (opened by the RP2.4 audit settlement)
+
+**Why it exists.** RP2.4's display floor claims a numeric cell only when its
+r4133 side is the port's value rounded to the significant digits r4133 printed
+(`props_norm::display_is_render`, the mechanism clause the audit round added).
+**55 vendored spellings over 27 pairs — 70 cells** — sit inside the floor and are
+NOT such a render: the two engines hold doubles further apart than one `%.Ng`
+print can account for. Two shapes, both measured:
+
+* a round trip **upstream of a derived quantity** — r4133's `load.kva`
+  recomputed from an already round-tripped `pf` (`Load.pas:2352` prints `%-g`,
+  i.e. full precision, so both sides carry 15 digits and differ at the 6th),
+  `vsource.puz*`/`mvasc*`/`isc3` from a round-tripped Z, `line.b0`/`b1` from a
+  round-tripped C, `transformer.normamps`/`emergamps` from a round-tripped kVA;
+* a **full-precision getter** where the two engines' state simply differs —
+  `capacitor.normamps`/`emergamps` (`Capacitor.pas:1108-1109`, `%g`),
+  `reactor.normamps`/`emergamps` (`Reactor.pas:1099-1100`).
+
+The pairs, their row counts, their in-scope split and their r4133 sites are
+`props_r4133_replay::RP39_ROUTING`, with the count lock
+`DECLARED_RP39 = (55, 27, 19)` and the both-ways proof
+`the_display_floors_round_trip_residue_is_owned_by_rp39`. **No cell of the 55 is
+in scope today** — the full claims census measures `count_in_scope = 0` on every
+one of them — so nothing the gate compares is blocked; what the sub-step
+guarantees is that they are on the WP-RP3 work list
+(`claims_unclaimed_pairs.txt`) instead of tagged "not a defect, no fix owner",
+which is how RP2.4 first filed them.
+
+**Scope.** Per pair (27, but they collapse into ~6 chains — `load.*`,
+`vsource.*`, `line.b*`, `reactor.*`, the two amps families, the four
+`generator.*`): read the r4133 round-trip chain off the Pascal, decide the one
+outcome the WP-RP3 discipline allows, and record it. Expect most to end as
+"upstream precision round trip, port is exact" → an expected-value pin naming
+both numbers (the `props_r4133_pins.rs` shape) plus, where a cell ever becomes
+in-scope, a `property` ledger entry staged per §1.1(e). A pair whose gap turns
+out to be a **port** bug is fixed in both lanes like any other.
+
+**Do first:** re-run `DSS_PROPS_CENSUS=claims` and confirm the 55 are still
+exactly the residue (the routing asserts it offline; the census says whether any
+has become in-scope). Any that has → it is now gate material and leads.
+
+**Kill criterion:** a pair whose r4133 value cannot be reproduced from the port's
+own state by any round-trip chain (i.e. the divergence is not display-rooted at
+all) — stop and report; it is a numeric divergence of its own class, not RP2.4's
+residue, and it needs its own root-cause sub-step.
+
+**Acceptance:** every one of the 27 pairs carries a recorded verdict; the ones
+that stay divergent have a landed pin (and a staged ledger entry where a cell is
+in scope); `RP39_ROUTING`/`DECLARED_RP39` shrink with their deltas stated in
+STATUS. **Blocks RP4.1** (§0). Tier: `opus-high+`.
+Outcome: the population RP2.4's mechanism clause refuses has an owner and a
+verdict, not a floor.
 
 ---
 

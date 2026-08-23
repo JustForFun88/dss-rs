@@ -147,6 +147,20 @@ impl Golden {
 /// by `#`) and the list of numbers it contains — the property-dump comparator
 /// (PORTING_PLAN.md §4: numbers with tolerance, structure exactly).
 pub fn numeric_skeleton(s: &str) -> (String, Vec<f64>) {
+    let (skeleton, nums) = numeric_skeleton_texts(s);
+    (skeleton, nums.into_iter().map(|(v, _)| v).collect())
+}
+
+/// [`numeric_skeleton`], keeping each number's **source text** next to its
+/// value.
+///
+/// The two are the same scan — this is the primitive and `numeric_skeleton` is
+/// its value-only projection, so there is exactly one number scanner in the
+/// harness. RP2.4's display floor needs the text because the digits r4133
+/// actually printed are what say at which precision it printed
+/// (`props_norm::display_is_render`), and a parsed `f64` cannot tell `'19000'`
+/// (five printed digits) from `1.9e4`.
+pub fn numeric_skeleton_texts(s: &str) -> (String, Vec<(f64, &str)>) {
     // Strip a *leading* UTF-8 BOM only. The official r4133 Oddie DLL prefixes
     // some captured strings with one (spurious export cruft, never real value
     // data), and a 3-byte `﻿` at index 0 would make the `&s[i..]` slices below cut
@@ -162,7 +176,7 @@ pub fn numeric_skeleton(s: &str) -> (String, Vec<f64>) {
     let mut i = 0;
     while i < s.len() {
         if let Some((value, len)) = scan_number(&s[i..]) {
-            nums.push(value);
+            nums.push((value, &s[i..i + len]));
             skeleton.push('#');
             i += len;
         } else {
@@ -2105,7 +2119,7 @@ mod skip_props_disposition_tests {
 /// The capi-invariance contract of the RP2.1 seam ([`PropsPolicy`]).
 #[cfg(test)]
 mod props_policy_tests {
-    use super::{PropsChannel, PropsPolicy};
+    use super::{PropsChannel, PropsPolicy, ValueVerdict, props_norm, value_verdict};
 
     /// Spellings the r4133 rules DO fold — `BoolFold` (bin 1), `CaseFold`
     /// (bin 2, case-only), `CaseFold`'s trim half (bin 2, the two upstream
@@ -2285,9 +2299,12 @@ mod props_policy_tests {
 
     /// **The capi channel never applies the display floor** — plan mechanic (b)
     /// applied to RP2.4's link, and the arm where a leak would cost the most:
-    /// the capi property compare is exact today, so a floor reaching it would
-    /// silently relax every numeric property of every `engines: "both"` case at
-    /// once. Every cell below is one the r4133 arm claims.
+    /// the capi property compare runs at the case's tier floors, orders under
+    /// this floor on every kind but two
+    /// ([`the_capi_property_compare_runs_at_the_case_tier_floors`]), so a floor
+    /// reaching it would relax every numeric property of every
+    /// `engines: "both"` case to 2e-4 at once. Every cell below is one the r4133
+    /// arm claims.
     #[test]
     fn the_capi_channel_never_applies_the_display_floor() {
         let capi = PropsPolicy::for_channel(PropsChannel::CapiV0145);
@@ -2311,15 +2328,82 @@ mod props_policy_tests {
         }
     }
 
+    /// **What the capi channel's property compare actually costs** — the bound
+    /// the display floor's justification rests on, measured instead of asserted
+    /// in prose (RP2.4 audit round, which caught "the capi property compare is
+    /// exact / at zero tolerance" in five places; it is not — `compare_prop_lists`
+    /// gets `tol.i_rel`/`tol.i_abs` from [`compare_all_properties`], and
+    /// `value_verdict` passes a number when `|a−e| <= abs + rel*|e|`).
+    ///
+    /// So the honest statement is a *tier* statement, and this test is what
+    /// keeps it true: on the kinds that carry the corpus the capi floors are
+    /// orders under the 2e-4 display floor, and the two loosest kinds are named
+    /// with the magnitude below which they stop bounding it.
+    ///
+    /// [`compare_all_properties`]: super::compare_all_properties
+    #[test]
+    fn the_capi_property_compare_runs_at_the_case_tier_floors() {
+        let floor = props_norm::display_floor().expect("RP2.4 derived the floor");
+        // The tiers the property compare runs at, and how they stand against
+        // the r4133-only display floor.
+        for (kind, i_rel, i_abs) in [
+            ("micro", 1e-9, 1e-6),
+            ("feeder", 1e-7, 1e-5),
+            ("micro_wtg3_dynamics", 2e-5, 1e-4),
+            // `midi` has no arm of its own and takes the fallback — 10 corpus
+            // cases (asymmetric/controls/modes manifests) run here.
+            ("midi", 1e-6, 1e-4),
+        ] {
+            let tol = super::tol_for(kind);
+            assert_eq!((tol.i_rel, tol.i_abs), (i_rel, i_abs), "{kind}");
+            assert!(
+                tol.i_rel < floor,
+                "{kind}: a capi tier at or above the display floor would stop bounding it"
+            );
+        }
+        // …and the part the bound does NOT cover, stated as a number rather
+        // than left implicit: with `i_abs` at 1e-4 a value under
+        // `i_abs / floor` can move by the whole display floor and still pass on
+        // capi, so on those two kinds the `both`-case cross-check is not the
+        // backstop. 0.5 for `midi`/`micro_wtg3_dynamics`, 0.05 for `feeder`.
+        for (kind, magnitude) in [
+            ("midi", 0.5),
+            ("micro_wtg3_dynamics", 0.5),
+            ("feeder", 0.05),
+        ] {
+            let tol = super::tol_for(kind);
+            assert!(
+                (tol.i_abs / floor - magnitude).abs() < 1e-12,
+                "{kind}: i_abs {} / floor {floor} is not {magnitude}",
+                tol.i_abs
+            );
+            assert_eq!(
+                value_verdict(
+                    &format!("{}", magnitude * (1.0 + floor)),
+                    &format!("{magnitude}"),
+                    tol.i_rel,
+                    tol.i_abs
+                ),
+                ValueVerdict::Match,
+                "{kind}: a value this small moving by the whole display floor is inside the \
+                 capi tier — the documented hole in bound (a)"
+            );
+        }
+    }
+
     /// The other half, which makes the capi test mean something: on **r4133**
     /// the armed policy really claims every cell of [`UNDER_FLOOR`] — and
     /// refuses, at the same seam, everything the floor must never swallow.
     ///
     /// The refusals are the load-bearing half. A floor is a tolerance, so what
-    /// keeps it a *classification* is the list of shapes it declines:
-    /// a gap above it at any magnitude, a 0-vs-nonzero pair, a differing
-    /// non-numeric skeleton (an enum, a boolean, an empty render), and a
-    /// discrete value that merely happens to be spelled as a number.
+    /// keeps it a *classification* is the list of shapes it declines: a gap
+    /// above it at any magnitude, a 0-vs-nonzero pair, a differing non-numeric
+    /// skeleton (an enum, a boolean, an empty render), and — since the RP2.4
+    /// audit settlement — **any gap, however small, that is not our value
+    /// rounded to the digits r4133 printed**. That last clause is what covers
+    /// an integer-spelled value differing by one (`'4'` vs `'3'`, but also
+    /// `'5001'` vs `'5000'` at 2.0e-4, which the metric alone would fold) and
+    /// the 55 round-trip-residue spellings RP3.9 owns.
     #[test]
     fn the_r4133_channel_claims_the_measured_display_cells() {
         let r4133 = PropsPolicy::for_channel(PropsChannel::R4133);
@@ -2329,9 +2413,11 @@ mod props_policy_tests {
                 "{class}.{prop}: the floor must claim {rust:?} vs {oracle:?}"
             );
         }
-        // The boundary, from both sides: 1.8996e-4 in, 2.0996e-4 out.
-        assert!(r4133.under_display_floor("1000", "1000.19"));
-        assert!(!r4133.under_display_floor("1000", "1000.21"));
+        // The boundary, from both sides, in the shape the mechanism produces —
+        // OUR long value against r4133's shorter render of it, so only the
+        // floor value decides: 1.8996e-4 in, 2.0996e-4 out.
+        assert!(r4133.under_display_floor("1000.19", "1000"));
+        assert!(!r4133.under_display_floor("1000.21", "1000"));
         // A gap above the floor, at three magnitudes.
         assert!(!r4133.under_display_floor("0.747651914485831", "0.7484477"));
         assert!(!r4133.under_display_floor("3346958.0822587", "3.35E006"));
@@ -2347,8 +2433,20 @@ mod props_policy_tests {
         assert!(!r4133.under_display_floor("", "[]"));
         assert!(!r4133.under_display_floor("[ 400]", "[400, 400, 400]"));
         assert!(!r4133.under_display_floor("17", "1 16 +"));
-        // A discrete value spelled as a number is still a value difference.
+        // A discrete value spelled as a number is still a value difference —
+        // and so is a one-unit difference at a magnitude where the metric alone
+        // would have folded it (`5001` vs `5000` is 2.0e-4, inside).
         assert!(!r4133.under_display_floor("4", "3"));
+        assert!(!r4133.under_display_floor("5001", "5000"));
+        // The mechanism clause on real census spellings the metric would take:
+        // `load.kva` 1.2e-6 apart and `vsource.puz1` 1.6e-5 apart, both refused
+        // because no `%.Ng` render of our value produces r4133's number (RP3.9,
+        // `props_r4133_replay::RP39_ROUTING`).
+        assert!(!r4133.under_display_floor("105.263157894737", "105.26302971129"));
+        assert!(!r4133.under_display_floor(
+            "[5.78774785226323, 17.3632435567897]",
+            "[5.787655, 17.362965]"
+        ));
     }
 
     /// **Non-vacuity through the REAL comparator** (plan RP2.4 acceptance).
@@ -2359,13 +2457,20 @@ mod props_policy_tests {
     /// audit settlement's lesson, applied at design time:
     ///
     /// * r4133 + the display cell → **passes** (that is the floor);
-    /// * r4133 + the SAME property, 1e-3 apart → **fails** (nothing is masked
-    ///   by name; a bigger divergence on a floor-claimed pair still aborts);
+    /// * r4133 + the SAME property, 4.7e-4 apart → **fails** (nothing is masked
+    ///   by name; a bigger divergence on a floor-claimed pair still aborts).
+    ///   The oracle spelling is deliberately still a render of ours, so this
+    ///   corner is the METRIC clause alone;
+    /// * r4133 + the same property 1.1e-5 apart but no `%.Ng` render of our
+    ///   value → **fails** — the MECHANISM clause alone, the corner the RP2.4
+    ///   audit settlement added;
     /// * r4133 + the same property rendered non-numerically → **fails raw**;
     /// * r4133 + a neighbour property above the floor → **fails** (the floor is
     ///   not element-scoped either);
     /// * capi + the display cell → **fails** (channel-scoped);
-    /// * and the property NAME walk is untouched on r4133.
+    /// * the property NAME walk is untouched on r4133;
+    /// * and the seam's live counters move for the r4133 run, which is what
+    ///   makes `props_norm::display_floor_counters` "what the gate saw".
     ///
     /// `Load.pf` and `Load.kW` deliberately have **no** `PROPS_NORM_R4133` and
     /// no `PROPS_ECHO_R4133` row (`bins.tsv`: both are numeric bin-6 pairs), so
@@ -2379,24 +2484,40 @@ mod props_policy_tests {
         let run = |channel, actual: &[(&str, &str)], oracle: &[(&str, &str)]| {
             run_props(channel, "Load.floor1", "Load", actual, oracle)
         };
-        let rust = [("pf", "0.747651914485831"), ("kW", "1000")];
+        let rust = [("pf", "0.747651914485831"), ("kW", "1000.21")];
         // 6.431124e-05 apart — the worst cell the floor claims.
-        let display = [("pf", "0.7477"), ("kW", "1000")];
-        // 9.99e-04 apart on the very same property: 5x the floor.
-        let too_far = [("pf", "0.7484477"), ("kW", "1000")];
+        let display = [("pf", "0.7477"), ("kW", "1000.21")];
+        // 4.65e-04 apart on the very same property, and still a `%-.3g` render
+        // of ours: 2.3x the floor, refused by the metric alone.
+        let too_far = [("pf", "0.748"), ("kW", "1000.21")];
+        // 1.08e-05 apart — deep INSIDE the floor, and refused all the same
+        // because `0.74766` is not our value rounded to five digits (that would
+        // be `0.74765`). The mechanism clause, at the real comparator.
+        let not_a_render = [("pf", "0.74766"), ("kW", "1000.21")];
         // The same property, not a number on the oracle side.
-        let non_numeric = [("pf", ""), ("kW", "1000")];
+        let non_numeric = [("pf", ""), ("kW", "1000.21")];
         // A neighbour property, 2.1e-4 apart: just over the floor.
-        let neighbour = [("pf", "0.7477"), ("kW", "1000.21")];
-        let renamed = [("pf", "0.7477"), ("kilowatts", "1000")];
+        let neighbour = [("pf", "0.7477"), ("kW", "1000")];
+        let renamed = [("pf", "0.7477"), ("kilowatts", "1000.21")];
+        let (visits, hits) = props_norm::display_floor_counters();
         assert!(
             run(PropsChannel::R4133, &rust, &display),
             "the floor must drop the value compare of a display cell on r4133"
         );
+        let (visits_after, hits_after) = props_norm::display_floor_counters();
+        assert!(
+            visits_after > visits && hits_after > hits,
+            "the comparator must reach the COUNTING seam (props_norm::under_display_floor_r4133), \
+             not the offline twin"
+        );
         assert!(
             !run(PropsChannel::R4133, &rust, &too_far),
-            "a 1e-3 error on a floor-CLAIMED property must still fail on r4133 — the floor is a \
-             cell predicate, not a mask on `load.pf`"
+            "a 4.7e-4 error on a floor-CLAIMED property must still fail on r4133 — the floor is \
+             a cell predicate, not a mask on `load.pf`"
+        );
+        assert!(
+            !run(PropsChannel::R4133, &rust, &not_a_render),
+            "a gap inside the floor that no `%.Ng` render of our value explains must still fail"
         );
         assert!(
             !run(PropsChannel::R4133, &rust, &non_numeric),
@@ -3271,8 +3392,13 @@ impl PropsPolicy {
     /// capi-invariance contract, pinned by
     /// [`props_policy_tests::the_capi_channel_never_applies_the_display_floor`].
     /// This is the one arm where that matters most numerically: the capi
-    /// channel's property compare is byte-exact today, and a floor leaking onto
-    /// it would silently relax every numeric property of every `both` case.
+    /// channel's property compare runs at the case's own tier floors
+    /// (`compare_all_properties` passes `tol.i_rel`/`tol.i_abs`, 1e-9/1e-6 on
+    /// `micro` and 1e-7/1e-5 on `feeder` — orders under this floor), and a floor
+    /// leaking onto it would relax every numeric property of every `both` case
+    /// to 2e-4 at once. "Byte-exact" is what this comment used to say and it was
+    /// wrong (RP2.4 audit round); the tier floors are pinned by
+    /// [`props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`].
     ///
     /// [`assert_value_matches_tol`]: super::assert_value_matches_tol
     fn under_display_floor(self, rust: &str, oracle: &str) -> bool {
