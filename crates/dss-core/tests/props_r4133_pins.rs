@@ -1339,9 +1339,16 @@ fn swtcontrol_delay_wires_the_property_on_the_midi_tie() {
 // named by `props_r4133_replay::LEDGER_ENTRY_PINS`, not by an `EchoRow`.
 //
 // Each pin runs the gate's own sequence for its case — compile, then the one
-// `solve` the case's `steps=1` rigor prescribes (the four decks end at
-// `Set mode=…`, so the solve is the pin's, exactly as in the gate's `run_case`)
-// — and then reads the same `? Class.Name.Prop` getter the property walk reads.
+// `solve` the case's `steps=1` rigor prescribes — and then reads the same
+// `? Class.Name.Prop` getter the property walk reads. That solve is the pin's
+// own, exactly as it is the gate's: `corpus_gate/runner.rs:348-349` issues
+// `dss.command("solve")` once per checkpoint whatever the deck ends on, and none
+// of these four decks ends on the solve of its own mode (`windgen_daily.dss:23`
+// and the two dynamics decks end at `Set mode=…`, `windgen_snap_delta.dss:9` at
+// `Calcvoltagebases`; `windgen_dyn.dss:13` and `windgen_dyn_fault.dss:15` do
+// carry a *snapshot* `solve` before their `Set mode=dynamic`, which is not the
+// dynamics run the reading is taken after).
+//
 // The discriminating second reading is an `edit kvar=`, because "our render is
 // 986.05" alone would pass against a getter hardwired to the derived base: the
 // edit proves the setter path drives the same getter, and on the two kVA-set
@@ -1465,7 +1472,7 @@ fn windgen_kvar_renders_the_base_on_the_delta_snapshot() {
 /// Probed on r4133, the same two steps produce the *same* `PF` (`0.897802`) and
 /// the same `kvarBase`, and it renders `777` anyway: in dynamics `:1254` skips
 /// the Q block, so `Get_Presentkvar` (`:2297-2300`) is still reporting
-/// `Set_Presentkvar`'s "init to something reasonable" `1000*777/3` (`:2998`)
+/// `Set_Presentkvar`'s "init to something reasonable" `1000*777/3` (`:3002`)
 /// while the machine's measured terminal Q is `-37087.76 kvar`. Three different
 /// numbers for one property; the render tracks none of them.
 #[test]
