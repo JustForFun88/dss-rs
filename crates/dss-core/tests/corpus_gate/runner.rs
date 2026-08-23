@@ -626,7 +626,7 @@ pub(crate) fn compare_capture(
                 .map(|v| v.property_handled_keys(dss, &cp.all_properties, tol, &ctx))
                 .unwrap_or_default();
             if prop_keys.is_empty() {
-                compare_all_properties(dss, &cp.all_properties, tol, &ctx);
+                compare_all_properties(dss, &cp.all_properties, tol, channel.props_channel(), &ctx);
             } else {
                 let rewritten: Vec<harness::PropsCap> = cp
                     .all_properties
@@ -651,7 +651,7 @@ pub(crate) fn compare_capture(
                         }
                     })
                     .collect();
-                compare_all_properties(dss, &rewritten, tol, &ctx);
+                compare_all_properties(dss, &rewritten, tol, channel.props_channel(), &ctx);
             }
         }
     }

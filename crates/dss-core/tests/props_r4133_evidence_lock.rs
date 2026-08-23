@@ -29,6 +29,12 @@
 //!    mixed, five pure echo). Both are re-derived here from
 //!    `examples_full.txt` + `bins.tsv`, so the corrected numbers are machine-
 //!    checked rather than prose.
+//! 5. **The RP2.1 supplement** — `examples_supplement.txt`, the measured
+//!    spelling inventory of the 26 pairs no frozen row can carry (24 created by
+//!    the WP-RP1 shape closures, plus the pair the 2026-08-08 walk missed and
+//!    the pair a `SKIP_PROPS` row hid). Row/pair/cell counts, a unique
+//!    `(pair, rust, r4133)` triple, disjointness from `bins.tsv`, and the
+//!    presence of the provenance header that IS those pairs' bin assignment.
 //!
 //! Nothing here needs an oracle, a solve or a feature flag: it is a data lock,
 //! green in both lanes.
@@ -82,10 +88,20 @@ const ROW_COUNTS: &[(&str, usize)] = &[
     ("structural_pairs_in_scope.txt", 198),
     ("numeric_pairs_in_scope.txt", 53),
     ("examples_full.txt", 3378),
+    ("examples_supplement.txt", 76),
     ("bins.tsv", 303),
     ("shape.txt", 5),
     ("shape_in_scope.txt", 5),
 ];
+
+/// `examples_supplement.txt` (RP2.1 part C): the pairs no frozen row can carry —
+/// 24 the WP-RP1 shape closures made live, plus the one the 2026-08-08 walk
+/// missed (`regcontrol.fwdthreshold`, RP0.2 correction 1) and the one a
+/// `SKIP_PROPS` row hid on both channels until RP2.1 part A disposed of it
+/// (`regcontrol.revthreshold`).
+const SUPPLEMENT_PAIRS: usize = 26;
+/// Cells behind those 76 rows (the file's own `count` column).
+const SUPPLEMENT_CELLS: usize = 4541;
 
 /// `R4133_PROPS_PLAN.md` §1.1: bin → (pairs, cells) over the full census.
 const BIN_TOTALS: &[(u8, usize, usize)] = &[
@@ -177,14 +193,18 @@ fn read(name: &str) -> String {
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
-/// Non-empty lines with the CR of the CRLF files stripped, header dropped when
-/// `header` is `Some` (and asserted to be exactly that string).
+/// Non-empty, non-comment lines with the CR of the CRLF files stripped, header
+/// dropped when `header` is `Some` (and asserted to be exactly that string).
+///
+/// Only one file here carries comments — `examples_supplement.txt`, whose
+/// `#`-prefixed provenance header IS the bin assignment of the pairs it holds
+/// (they have no `bins.tsv` row); the frozen extracts have none.
 fn data_rows(name: &str, header: Option<&str>) -> Vec<String> {
     let text = read(name);
     let mut rows: Vec<String> = text
         .lines()
         .map(|l| l.trim_end_matches('\r').to_string())
-        .filter(|l| !l.is_empty())
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
         .collect();
     if let Some(want) = header {
         let got = rows.first().cloned().unwrap_or_default();
@@ -333,7 +353,9 @@ fn derived_extracts_keep_their_row_counts() {
             "bins.tsv" => {
                 Some("pair\tkind\tbin\tsubbin\tcells\tcells_in_scope\tmax_rel\tmax_rel_in_scope")
             }
-            "examples_full.txt" => Some("class.prop | rust | r4133 | count"),
+            "examples_full.txt" | "examples_supplement.txt" => {
+                Some("class.prop | rust | r4133 | count")
+            }
             "numeric_pairs.txt" | "numeric_pairs_in_scope.txt" => {
                 Some("class.prop | rust-example | r4133-example | max_rel | rows")
             }
@@ -450,6 +472,62 @@ fn examples_full_carries_every_pair_and_every_cell() {
         got, want,
         "examples_full.txt's per-pair cell sums must equal bins.tsv's cells column"
     );
+}
+
+/// **The RP2.1 supplement.** `examples_supplement.txt` is not a copy of anything
+/// — it is a measurement (a full `DSS_PROPS_CENSUS=1` run on the post-RP1.4 tree,
+/// 2026-08-23) of the pairs the frozen extracts *structurally cannot* contain,
+/// and the RP2.1 replay reads it as one population with `examples_full.txt`.
+/// What must hold for that join to be sound: the same row shape, a unique
+/// `(pair, rust, r4133)` triple, and **no pair in both files** — a pair on both
+/// sides would make the triple join ambiguous and would mean one of the two
+/// files is describing a population it should not.
+#[test]
+fn the_supplement_carries_only_pairs_no_frozen_row_can() {
+    let frozen: BTreeSet<String> = bins().into_iter().map(|b| b.pair).collect();
+    let mut pairs: BTreeMap<String, usize> = BTreeMap::new();
+    let mut triples = BTreeSet::new();
+    let mut cells = 0usize;
+    for line in data_rows(
+        "examples_supplement.txt",
+        Some("class.prop | rust | r4133 | count"),
+    ) {
+        let (pair, rust, r4133, tail) = parse_row("examples_supplement.txt", &line);
+        let count = rows_field("examples_supplement.txt", &tail);
+        assert!(count > 0, "examples_supplement.txt: {pair} zero-count row");
+        assert!(
+            !rust.contains('\t') && !r4133.contains('\t'),
+            "examples_supplement.txt: {pair} value contains a TAB"
+        );
+        assert!(
+            !frozen.contains(&pair),
+            "examples_supplement.txt: {pair} also has a bins.tsv row — the supplement is only \
+             for pairs the frozen census could not record"
+        );
+        assert!(
+            triples.insert((pair.clone(), rust, r4133)),
+            "examples_supplement.txt: duplicate (pair, rust, r4133) triple in {line:?}"
+        );
+        *pairs.entry(pair).or_default() += count;
+        cells += count;
+    }
+    assert_eq!(pairs.len(), SUPPLEMENT_PAIRS, "supplement pairs");
+    assert_eq!(cells, SUPPLEMENT_CELLS, "supplement cells");
+
+    // The provenance header is the file's bin assignment (these pairs have no
+    // `bins.tsv` row), so it is part of the evidence, not decoration.
+    let text = read("examples_supplement.txt");
+    for marker in [
+        "DSS_PROPS_CENSUS=1",
+        "regcontrol.fwdthreshold",
+        "regcontrol.revthreshold",
+        "Pairs the WP-RP1 shape closures make live",
+    ] {
+        assert!(
+            text.contains(marker),
+            "examples_supplement.txt lost its provenance header ({marker:?})"
+        );
+    }
 }
 
 #[test]

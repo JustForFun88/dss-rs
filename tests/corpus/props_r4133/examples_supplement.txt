@@ -1,0 +1,146 @@
+# examples_supplement.txt — the RP2.1 supplement to `examples_full.txt`
+#
+# Same row format, same purpose: one row per DISTINCT (rust, r4133) spelling per
+# pair, values untruncated, so `crates/dss-core/tests/props_r4133_replay.rs` can
+# push each spelling through the r4133 claim chain. The replay reads this file
+# and `examples_full.txt` as ONE population; the both-ways liveness assert counts
+# a supplement row exactly like a frozen one.
+#
+# WHY IT EXISTS. The frozen extracts describe the 2026-08-08 census and cannot
+# contain these 26 pairs — not because a row was lost, but for two structural
+# reasons recorded in README.md:
+#   * 24 pairs became visible only when WP-RP1 closed a property-table shape gap
+#     (README §"Pairs the WP-RP1 shape closures make live"): while a class carried
+#     a `shape_count` row the walk stopped at the name-list disagreement, so no
+#     value pair behind it could ever be recorded;
+#   * `regcontrol.fwdthreshold` was missed by the 2026-08-08 walk itself
+#     (README §"Corrections measured after freezing", correction 1 — RP0.2 STATUS
+#     record, finding 1), and `regcontrol.revthreshold` was hidden by its
+#     `SKIP_PROPS` row until RP2.1 gave that row an r4133 disposition.
+# The frozen files stay frozen (WP-RP0's rule); corrections ride here and in
+# README.md, never in them.
+#
+# PROVENANCE OF THE SPELLINGS. **Every row below is a re-measure**, not a
+# transcription: the README records ONE representative spelling per pair, which
+# is enough to name a bin but not to feed a tokenizing or numeric compare (8 of
+# the 24 pairs turn out to carry 2-13 distinct spellings, and README's
+# `autotrans.wdgcurrents` example is elided with an ellipsis). Source: a full
+# `DSS_PROPS_CENSUS=1` run on the post-RP1.4 + RP2.1-part-A tree, 2026-08-23,
+# 439 cases x 2 channels, 1 060 165 rows, 56.7 s — the `r4133` channel's own
+# `examples_full.txt` extract, verbatim (the knob writes the RP0.1 format).
+# Cross-check: every pair's cell total below equals the count the README /
+# RP0.2 record states for it (273, 61, 2, 44, 5, 48, 35, 888, ...), and the
+# `capi_v0145` channel is unaffected by all of it (RP2.1 part A's A/B run).
+#
+# BINS. `bins.tsv` has no row for any pair here, so this file's provenance IS
+# their bin assignment, exactly as plan §RP2.1 prescribes for
+# `regcontrol.fwdthreshold`:
+#   * the 24 WP-RP1 pairs — the bin recorded per pair in README.md
+#     §"Pairs the WP-RP1 shape closures make live" (the replay parses those four
+#     tables and cross-checks `PROPS_NORM_R4133`'s `Evidence::Rp1*` rows against
+#     them); their in-scope status is the README's own `(in scope)` column where
+#     it has one, else the class's `shape_in_scope.txt` row;
+#   * `regcontrol.fwdthreshold` — **bin 5** (`EchoDefault`: r4133
+#     `RegControl.pas:1423-1459` initialises only `PropertyValue[1..32]` and
+#     `GetPropertyValue` overrides only index 28, so props 33-36 echo an empty
+#     string like the three `idle*` siblings). Declared for RP2.3's echo row.
+#   * `regcontrol.revthreshold` — **bin 7** (`EchoDefault`, the sibling of
+#     `remoteptratio`: r4133 `RegControl.pas:820-827` overrides only TapNum and
+#     `:1437` freezes `PropertyValue[23] := '100'` while the port renders the
+#     live signed threshold). Measured by RP2.1 part A's disposition probe;
+#     absent from the census only because `SKIP_PROPS` hid it on both channels.
+#     Declared for RP2.3's echo row + pin.
+# Both regcontrol pairs are in scope (their sibling `regcontrol.idle` carries 732
+# in-scope cells of 887); the exact in-scope split is not in any frozen extract
+# and RP2.3 re-derives it with the knob when it writes the pins.
+#
+# FORMAT. `class.prop | 'rust' | 'r4133' | count`, parsed with the quote-anchored
+# regex README.md prescribes — values may contain `|`, never `'`. Rows are
+# grouped by provenance, pairs within a group in the README's own table order,
+# spellings within a pair by descending cell count. **No row here needed
+# escaping** (no value contains a backslash or an apostrophe), so these are the
+# literal strings both engines printed. Lines starting with `#` are comments;
+# 76 data rows follow the column header.
+class.prop | rust | r4133 | count
+# --- RP1.1 (Generator `Rneut`/`Xneut`, Sensor `Action`) — 12 pair(s), 40 row(s) ---
+generator.debugtrace | 'No' | 'no' | 273
+generator.enabled | 'Yes' | 'true' | 273
+sensor.enabled | 'Yes' | 'true' | 61
+generator.status | 'Variable' | 'variable' | 273
+generator.dynamiceq | 'mydiffeq' | 'myDiffEq' | 2
+generator.dynout | '' | '[]' | 271
+generator.dynout | '[speed, theta]' | '[speed,dpshaft,]' | 2
+generator.shaftdata | '' | '()' | 273
+generator.userdata | '' | '()' | 270
+generator.userdata | 'rs=0.03359375 xs=0.07999132 rr=.03940972  xr=.07999132  xm=2.1  slip=0.035 option=fixed' | '(rs=0.03359375 xs=0.07999132 rr=.03940972  xr=.07999132  xm=2.1  slip=0.035 option=fixed)' | 2
+generator.userdata | 'Rs=0.0053 Xs=0.106 Rr=0.007 Xr=0.12 Xm=4 MaxSlip=0.1' | '(Rs=0.0053 Xs=0.106 Rr=0.007 Xr=0.12 Xm=4 MaxSlip=0.1)' | 1
+generator.kva | '80' | '80.0004' | 2
+generator.kva | '83.3333333333333' | '83.333' | 1
+generator.maxkvar | '328.684105178863' | '328.684' | 50
+generator.maxkvar | '262.947284143091' | '262.947' | 48
+generator.maxkvar | '968.644209675705' | '968.644' | 36
+generator.maxkvar | '657.368210357726' | '657.368' | 24
+generator.maxkvar | '484.322104837853' | '484.322' | 3
+generator.maxkvar | '116.237305161085' | '116.237' | 2
+generator.maxkvar | '43.8245473571818' | '43.8248' | 2
+generator.maxkvar | '98.605231553659' | '98.6052' | 2
+generator.maxkvar | '131.473642071545' | '131.474' | 1
+generator.maxkvar | '197.210463107318' | '197.21' | 1
+generator.maxkvar | '339.025473386497' | '339.025' | 1
+generator.maxkvar | '774.915367740564' | '774.915' | 1
+generator.maxkvar | '8635.8851542094' | '8635.89' | 1
+generator.minkvar | '-328.684105178863' | '-328.684' | 50
+generator.minkvar | '-262.947284143091' | '-262.947' | 48
+generator.minkvar | '-968.644209675705' | '-968.644' | 36
+generator.minkvar | '-657.368210357726' | '-657.368' | 24
+generator.minkvar | '-484.322104837853' | '-484.322' | 3
+generator.minkvar | '-116.237305161085' | '-116.237' | 2
+generator.minkvar | '-43.8245473571818' | '-43.8248' | 2
+generator.minkvar | '-98.605231553659' | '-98.6052' | 2
+generator.minkvar | '-131.473642071545' | '-131.474' | 1
+generator.minkvar | '-197.210463107318' | '-197.21' | 1
+generator.minkvar | '-339.025473386497' | '-339.025' | 1
+generator.minkvar | '-774.915367740564' | '-774.915' | 1
+generator.minkvar | '-8635.8851542094' | '-8635.89' | 1
+generator.d | '1' | '0' | 272
+# --- RP1.2 (AutoTrans `XfmrCode`) — 9 pair(s), 29 row(s) ---
+autotrans.enabled | 'Yes' | 'true' | 44
+autotrans.xrconst | 'No' | 'NO' | 44
+autotrans.bhcurrent | '' | '[]' | 44
+autotrans.bhflux | '' | '[]' | 44
+autotrans.emergamps | '753.065568508207' | '753.07' | 18
+autotrans.emergamps | '430.32318200469' | '430.32' | 17
+autotrans.emergamps | '1553.19773504818' | '1553.2' | 3
+autotrans.emergamps | '1630.4347826087' | '1630.4' | 2
+autotrans.emergamps | '470.66598031763' | '470.67' | 2
+autotrans.emergamps | '-208.429700068457' | '-208.43' | 1
+autotrans.emergamps | '941.331960635259' | '941.33' | 1
+autotrans.normamps | '552.248083572685' | '552.25' | 18
+autotrans.normamps | '315.570333470106' | '315.57' | 17
+autotrans.normamps | '1139.01167236866' | '1139' | 3
+autotrans.normamps | '1195.65217391304' | '1195.7' | 2
+autotrans.normamps | '345.155052232928' | '345.16' | 2
+autotrans.normamps | '-152.848446716868' | '-152.85' | 1
+autotrans.normamps | '690.310104465857' | '690.31' | 1
+autotrans.pctperm | '0' | '100' | 44
+autotrans.repair | '0' | '36' | 44
+autotrans.wdgcurrents | '66.95905, (-28.006), 151.5029, (151.99), 66.95905, (-148.01), 151.5029, (31.995), 66.95905, (91.994), 151.5029, (-88.005), ' | '66.98576, (-28.025), 156.2997, (151.97), 66.98576, (-148.03), 156.2997, (31.975), 66.98576, (91.975), 156.2997, (-88.025), ' | 9
+autotrans.wdgcurrents | '66.95905, (-28.006), 151.5029, (151.99), 66.95905, (-148.01), 151.5029, (31.995), 66.95905, (91.994), 151.5029, (-88.005), ' | '66.99186, (-28.029), 156.314, (151.97), 66.99186, (-148.03), 156.314, (31.971), 66.99186, (91.971), 156.314, (-88.029), ' | 8
+autotrans.wdgcurrents | '109.657, (-28.554), 67.611, (151.45), 109.6555, (-148.56), 67.61007, (31.442), 109.6643, (91.443), 67.6155, (-88.557), ' | '109.6841, (-28.567), 73.12247, (151.43), 109.6826, (-148.57), 73.12147, (31.429), 109.6914, (91.43), 73.12734, (-88.57), ' | 3
+autotrans.wdgcurrents | '109.657, (-28.554), 67.611, (151.45), 109.6555, (-148.56), 67.61007, (31.442), 109.6643, (91.443), 67.6155, (-88.557), ' | '109.6848, (-28.568), 73.12295, (151.43), 109.6834, (-148.57), 73.12196, (31.428), 109.6922, (91.429), 73.12783, (-88.571), ' | 3
+autotrans.wdgcurrents | '117.2108, (-28.743), 73.11371, (151.26), 117.2091, (-148.75), 73.11263, (31.253), 117.2191, (91.253), 73.11886, (-88.746), ' | '117.2356, (-28.755), 78.1568, (151.25), 117.2339, (-148.76), 78.15566, (31.241), 117.2439, (91.241), 78.16232, (-88.758), ' | 3
+autotrans.wdgcurrents | '57.68879, (-27.271), 36.41081, (152.73), 57.68851, (-147.27), 36.41063, (32.727), 57.69111, (92.727), 36.41227, (-87.272), ' | '57.69671, (-27.274), 38.4642, (152.73), 57.69634, (-147.28), 38.46396, (32.724), 57.69899, (92.724), 38.46572, (-87.275), ' | 3
+autotrans.wdgcurrents | '57.68879, (-27.271), 36.41081, (152.73), 57.68851, (-147.27), 36.41063, (32.727), 57.69111, (92.727), 36.41227, (-87.272), ' | '57.70247, (-27.276), 38.46804, (152.72), 57.70218, (-147.28), 38.46785, (32.722), 57.70479, (92.722), 38.46959, (-87.277), ' | 3
+autotrans.wdgcurrents | '117.2108, (-28.743), 73.11371, (151.26), 117.2091, (-148.75), 73.11263, (31.253), 117.2191, (91.253), 73.11886, (-88.746), ' | '117.2323, (-28.754), 78.15456, (151.25), 117.2305, (-148.76), 78.15342, (31.241), 117.2405, (91.242), 78.16007, (-88.757), ' | 2
+autotrans.wdgcurrents | '44.00102, (161.26), 29.32224, (161.26), ' | '44.00054, (161.26), 29.32187, (161.26), ' | 1
+# --- RP1.3 (WindGen `UserModel`/`UserData`) — 2 pair(s), 2 row(s) ---
+windgen.enabled | 'Yes' | 'true' | 5
+windgen.dynout | '' | '[]' | 5
+# --- RP1.4 (GenDispatcher `weights` — a `PROPS_015X` row, not a port) — 1 pair(s), 1 row(s) ---
+gendispatcher.enabled | 'Yes' | 'true' | 48
+# --- RP0.2 re-census correction 1 — the pair the 2026-08-08 walk missed — 1 pair(s), 2 row(s) ---
+regcontrol.fwdthreshold | '100' | '' | 864
+regcontrol.fwdthreshold | '800' | '' | 24
+# --- RP2.1 part A — the `SKIP_PROPS` row that hid a pair on both channels — 1 pair(s), 2 row(s) ---
+regcontrol.revthreshold | '-100' | '100' | 864
+regcontrol.revthreshold | '-800' | '800' | 24

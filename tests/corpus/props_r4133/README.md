@@ -70,6 +70,13 @@ citations in the RP0.2 STATUS record):
 
 ### Pairs the WP-RP1 shape closures make live (post-freeze, RP1.1 audit round)
 
+> Each record below prints **one representative spelling** per pair — enough to
+> name a bin, not enough to feed a tokenizing or numeric compare. The untruncated
+> per-spelling inventory of these pairs is `examples_supplement.txt`, measured by
+> RP2.1 with the RP0.2 knob (8 of the 24 carry 2-13 distinct spellings); the
+> replay cross-checks every record here against it and against
+> `PROPS_NORM_R4133`'s `Evidence::Rp1*` rows.
+
 A **structural limit of this evidence base**, not an error in it: while a class
 carried a `shape_count` row its property walk stopped at the name-list
 disagreement, so the census could never record value pairs for the props behind
@@ -296,6 +303,70 @@ equal kWh). Such a deck could gate `both` and would make this row **live** —
 deliberately not taken inside RP1.4, see the STATUS audit settlement. Details and the Pascal in the RP1.4 STATUS
 record and `investigations/to_opendss/40-gendispatcher-weights-registration-off-by-one.md`.
 
+### What the r4133 policy claims today (RP2.1 disposition census, 2026-08-23)
+
+Measured, not vendored: `DSS_PROPS_CENSUS=claims` on the post-RP2.1 tree — the
+full live population (439 cases × 2 channels, 1 060 165 rows, 56.8 s), each
+divergent **value** cell annotated with the r4133 chain's verdict (TESTING.md
+§"The disposition mode"). The run is complete, not short: 5 `oracle_error` rows
+on r4133 and 22 on `capi_v0145`, i.e. exactly the recorded baselines. The
+artifacts are local (`tmp/props_census/r4133/claims*`), the numbers are here.
+
+r4133 channel, **1 060 039** value cells (**1 014 217** in scope), **0** shape
+rows on either channel (WP-RP1's acceptance, re-measured):
+
+| disposition | cells | in scope | spellings | pairs |
+|---|---|---|---|---|
+| `normalized-by-BoolFold` | 294 519 | 280 915 | 114 | 77 |
+| `normalized-by-CaseFold` | 93 230 | 89 375 | 443 | 63 |
+| `normalized-by-ArrayForm` | 122 357 | 118 413 | 192 | 17 |
+| `normalized-by-EnumSynonym` | 0 | 0 | 0 | 0 |
+| `echo-row` (RP2.3) | 0 | 0 | 0 | 0 |
+| `under-floor` (RP2.4) | 0 | 0 | 0 | 0 |
+| `ledger-hit` | 0 | 0 | 0 | 0 |
+| **claimed by RP2.1** | **510 106** | **488 703** | 749 | 157 |
+| `UNCLAIMED` | 549 933 | 525 514 | 2 712 | 189 |
+
+The three zero rows are load-bearing, not placeholders: RP2.1 claims bins 1/2/4
+with **no** exclusion, **no** floor and **no** ledger entry helping it.
+
+**Reconciliation with §1.1's bin arithmetic** (the plan's headline is "~491 000
+in-scope cells become value-preserving"; the frozen bins 1/2/4 hold 513 360 cells
+/ 491 854 in scope). Every term below is measured:
+
+| term | cells | in scope |
+|---|---|---|
+| frozen cells of the 148 table pairs that have a `bins.tsv` row | 510 822 | 489 762 |
+| − unclaimed cells **inside** those pairs (the heterogeneous halves) | −1 763 | −1 519 |
+| + population drift on those pairs since 2026-08-08 | +24 | +24 |
+| + claimed cells of the 9 WP-RP1 pairs (no frozen row) | +1 023 | +436 |
+| **= measured claimed** | **510 106** | **488 703** |
+
+and the first line is the frozen bins-1/2/4 total minus the **9 pairs that take
+no rule row** (2 539 cells / 2 092 in scope — the five pure-echo bin-1 pairs and
+the four bin-4 pairs the plan itself routes to RP2.2/§1.3), plus
+`isource.bus1`'s second (bin-7) row, which is 1 cell and 0 in scope. The drift is
+the RP0.2 cursor correction (+2 cells on seven transformer/load/vsource pairs)
+plus WP-RP1's autotrans pairs (+2 each); it is a **re-measurement of a moved
+population**, not a disagreement with the frozen extracts, which stay frozen.
+
+**The 549 933 unclaimed cells are the later sub-steps' work**, and they land
+where §1.1 says they should (grouped by the pair's frozen bin):
+
+| pair's frozen bin | pairs | cells | in scope | owner |
+|---|---|---|---|---|
+| 5 | 44 | 442 375 | 425 419 | RP2.3 (echo table) |
+| 6 | 61 | 47 899 | 45 552 | RP2.4 (display floor) |
+| 7 | 32 | 47 435 | 45 093 | RP2.3 / RP3 |
+| 3 | 8 | 4 404 | 3 691 | RP2.2 (enum synonyms) |
+| 1 | 9 | 3 834 | 3 293 | RP2.3 (the nine echo pairs) |
+| 2 | 7 | 264 | 223 | RP2.2 / RP2.3 |
+| 4 | 10 | 203 | 95 | RP2.2 / RP2.3 |
+| 2+7 | 1 | 1 | 0 | `isource.bus1`'s numeric twin (§1.3) |
+| no frozen row | 17 | 3 518 | 2 148 | the WP-RP1 / supplement pairs |
+
+RP4.1's acceptance is that the in-scope column of this table reaches **zero**.
+
 ## Files
 
 | file | rows | origin |
@@ -310,6 +381,7 @@ record and `investigations/to_opendss/40-gendispatcher-weights-registration-off-
 | `structural_pairs_in_scope.txt` | 198 data + 1 header | derived (RP0.1) — r4133-gating cases only |
 | `numeric_pairs_in_scope.txt` | 53 data + 1 header | derived (RP0.1) — r4133-gating cases only |
 | `shape_in_scope.txt` | 5 data | derived (RP0.1) — `shape.txt`'s rows split full / in-scope |
+| `examples_supplement.txt` | 76 data + 1 header + a `#` provenance header | **measured (RP2.1)** — the same row format for the 26 pairs no frozen row can carry: the 24 of §"Pairs the WP-RP1 shape closures make live", `regcontrol.fwdthreshold` (correction 1 above) and `regcontrol.revthreshold` (hidden by its `SKIP_PROPS` row until RP2.1 disposed of it). Source: a full `DSS_PROPS_CENSUS=1` run on the post-RP1.4 tree, 2026-08-23 |
 
 The five copies are byte-identical to their local sources (24 944 bytes total),
 which `props_r4133_evidence_lock.rs` pins by SHA-256. **They keep whatever
