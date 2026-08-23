@@ -12,12 +12,23 @@
 //! two identical strings. On the `capi_v0145` channel the table is never
 //! consulted at all (plan mechanic (b), capi-invariance).
 //!
-//! That statement has to hold at **two** seams, because the table has two
+//! Since **RP2.3** the module owns the chain's third link too:
+//! [`PROPS_ECHO_R4133`], the *echo-exclusion* table. Where a rule re-spells,
+//! an echo row **drops the value compare** of its `(class, prop)` — the name
+//! and index order still assert — because the two sides do not spell one value
+//! and no value-preserving rule could claim them. It is consulted after the
+//! normalization seam, on the r4133 channel only, and every row carries the
+//! r4133 site that proves its category plus the witness that still holds the
+//! port's value (capi coverage or a named expected-value pin).
+//!
+//! That statement has to hold at **two** seams, because the tables have two
 //! callers, and each carries its own channel gate:
 //!
-//! * the live comparator — [`normalize_r4133`], reached only from
-//!   `PropsPolicy::normalize`'s r4133 arm (`PropsPolicy::is_r4133`, pinned by
-//!   `props_policy_tests::the_capi_channel_never_normalizes`);
+//! * the live comparator — [`normalize_r4133`] and [`echo_excluded_r4133`],
+//!   reached only from `PropsPolicy::normalize`/`PropsPolicy::echo_excluded`'s
+//!   r4133 arms (`PropsPolicy::is_r4133`, pinned by
+//!   `props_policy_tests::the_capi_channel_never_normalizes` and
+//!   `::the_capi_channel_never_excludes`);
 //! * the offline/measurement query — [`claim_value`], which the claims census
 //!   asks about the rows of **both** channels and which therefore takes the
 //!   channel itself and answers `None` on capi (pinned by
@@ -29,8 +40,8 @@
 //! A rule may change how a value is **spelled**; it may never change **which**
 //! value it is — the `lane::expected_rerounded` discipline
 //! (`harness/lane.rs:546-592`) transplanted to property cells. Everything that
-//! cannot satisfy that is an **exclusion** — [`PROPS_ECHO_R4133`], whose rows
-//! land in RP2.3 — never a rule here.
+//! cannot satisfy that is an **exclusion** — [`PROPS_ECHO_R4133`] — never a
+//! rule here.
 //!
 //! Structurally the contract reduces to the per-kind predicate
 //! [`NormRule::claims`]: the engine re-spells **only** when the predicate says
@@ -59,14 +70,51 @@
 //! cross-checks the triple, so a mis-transcribed row fails a test rather than
 //! silently widening the table.
 //!
-//! # Population (RP2.1, bins 1/2/4 of plan §1.1)
+//! # Population (RP2.1, bins 1/2/4 of plan §1.1; RP2.2 bin 3; RP2.3 off-bin)
 //!
 //! | kind | rows | derivation |
 //! |---|---|---|
 //! | [`BoolFold`](NormRule::BoolFold) | 77 | bin 1's 75 pairs **minus the five pure-echo pairs** (`capcontrol.reset`, `recloser.debugtrace`, `regcontrol.idleforward`, `regcontrol.idlereverse`, `upfccontrol.enabled` — no foldable cell at all, vendored `README.md` §"Bin 1 carries nine echo pairs, not three"), plus 7 WP-RP1 pairs |
-//! | [`CaseFold`](NormRule::CaseFold) | 62 | bin 2 whole (59 case-only + 2 trailing-space), plus 2 WP-RP1 pairs, **minus** `invcontrol.voltage_curvex_ref` (re-typed by RP2.2, next row) |
-//! | [`ArrayForm`](NormRule::ArrayForm) | 17 | bin 4's 21 pairs minus 4 no typed rule may claim (below) |
+//! | [`CaseFold`](NormRule::CaseFold) | 65 | bin 2 whole (59 case-only + 2 trailing-space), plus 2 WP-RP1 pairs, **minus** `invcontrol.voltage_curvex_ref` (re-typed by RP2.2, next row), **plus 3 RP2.3 off-bin rows** |
+//! | [`ArrayForm`](NormRule::ArrayForm) | 23 | bin 4's 21 pairs minus 4 no typed rule may claim (below), **plus 6 RP2.3 off-bin rows** |
 //! | [`EnumSynonym`](NormRule::EnumSynonym) | 5 | RP2.2: the four source sequence-selector pairs of bin 3 ([`SCAN_TYPE_SYNONYMS`] / [`SEQUENCE_TYPE_SYNONYMS`]) plus [`VOLTAGE_CURVEX_REF_SYNONYMS`]; the other four bin-3 pairs are NOT synonyms — see below |
+//!
+//! # RP2.3's nine off-bin rows (bin 5 pairs carrying comparable cells)
+//!
+//! RP2.3 fills [`PROPS_ECHO_R4133`], and an exclusion is pair-scoped: it would
+//! have masked every divergent cell of the pair, **including cells a typed rule
+//! can still compare value-preservingly**. The census measured 6 446 such cells
+//! (6 370 in scope) on ten of the 86 bucket pairs, so nine of them take a row
+//! here FIRST — the chain order (`normalization → echo`) is what keeps those
+//! cells compared, and `props_r4133_replay::MULTI_LINK_ROWS` counts the overlap
+//! (135 example rows over 20 pairs):
+//!
+//! * `load.yearly` `CaseFold` (5 995 cells) — arm 7 answers the LIVE
+//!   `Yearlyshape` string (`PCElements/Load.pas:2346`), so a case-only
+//!   difference names the same shape (`THashList` lowercases both sides); the
+//!   `''`-vs-value half stays the echo row's, which is why RP2.2's routing note
+//!   says one `CaseFold` row is not *sufficient* for the pair;
+//! * `reactor.bus2` `CaseFold` (37) — the stale `GetBus(2)` snapshot happens to
+//!   agree with our live terminal on every cell but the four the echo row keeps
+//!   (`'b2.0'` vs `'b2.0.0.0'`, the shape a later `phases=` creates);
+//! * `invcontrol.monvoltagecalc` `CaseFold` (15) — the deck's own `'MAX'`/
+//!   `'AVG'` token against our registry spelling;
+//! * `line.wires` (2), `load.zipv` (342), `generator.userdata` (3),
+//!   `storage.dynadata` (2), `storagecontroller.seasontargets` (25) and
+//!   `seasontargetslow` (25) `ArrayForm` — same tokens, different delimiters
+//!   (r4133's paren wrapper, its bare space-separated list, its trailing-comma
+//!   bracket form).
+//!
+//! The tenth, `swtcontrol.action`, takes **no** row: its only foldable spelling
+//! is `'close'`/`'Close'`, 6 cells and **0 in scope**, so the row would buy no
+//! live compare at all while contradicting RP2.2's recorded routing of the pair
+//! (`the_pairs_routed_elsewhere_have_no_row`). RP2.3 recorded the measurement
+//! instead of landing a dead row.
+//!
+//! All nine sit on pairs whose `bins.tsv` LABEL is 5 — the vendored
+//! `README.md` §"A pair's bin is a label, not a per-cell classification" is the
+//! doctrine, and [`tests::every_row_cites_a_bin_its_rule_owns`] keeps every
+//! such row in one enumerated, counted exception list.
 //!
 //! # RP2.2's routing of bin 3 (why only four of the eight pairs take a row)
 //!
@@ -164,6 +212,8 @@ use std::cmp::Ordering;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrd};
 
 use super::PropsChannel;
+use EchoCategory::{EchoDefault, EchoParse, EmptyCollectionRender, LiveSemanticsDiffer};
+use EchoWitness::{Capi, CapiAndPin, Pin};
 use NormRule::{ArrayForm, BoolFold, CaseFold, EnumSynonym};
 
 /// One typed normalization rule. **Typed, not a regex** — each variant names a
@@ -460,7 +510,8 @@ const fn row(
 // The 161 rows are DATA — one census pair per line, columns aligned so the
 // table diffs against `tests/corpus/props_r4133/bins.tsv` by eye. rustfmt's
 // 60-char call width would explode 50 of them into eight lines each, which is
-// why this one item opts out (the only `rustfmt::skip` in the tree).
+// why this item opts out. It and [`PROPS_ECHO_R4133`] are the only two
+// `rustfmt::skip`s in the tree, for that one reason.
 #[rustfmt::skip]
 pub const PROPS_NORM_R4133: &[NormRow] = &[
     row("autotrans",         "conn",               CaseFold,  2, 42, Evidence::BinsTsv),
@@ -507,6 +558,7 @@ pub const PROPS_NORM_R4133: &[NormRow] = &[
     row("generator",         "dynamiceq",          CaseFold,  2, 2, Evidence::Rp11),
     row("generator",         "enabled",            BoolFold,  1, 273, Evidence::Rp11),
     row("generator",         "status",             CaseFold,  2, 273, Evidence::Rp11),
+    row("generator",         "userdata",           ArrayForm, 5, 273, Evidence::Rp11),
     row("gicline",           "enabled",            BoolFold,  1, 24, Evidence::BinsTsv),
     row("gicsource",         "enabled",            BoolFold,  1, 4, Evidence::BinsTsv),
     row("gictransformer",    "enabled",            BoolFold,  1, 22, Evidence::BinsTsv),
@@ -520,6 +572,7 @@ pub const PROPS_NORM_R4133: &[NormRow] = &[
     row("invcontrol",        "mode",               CaseFold,  2, 211, Evidence::BinsTsv),
     row("invcontrol",        "monbus",             ArrayForm, 4, 15, Evidence::BinsTsv),
     row("invcontrol",        "monbusesvbase",      ArrayForm, 4, 15, Evidence::BinsTsv),
+    row("invcontrol",        "monvoltagecalc",     CaseFold,  5, 254, Evidence::BinsTsv),
     row("invcontrol",        "rateofchangemode",   CaseFold,  2, 257, Evidence::BinsTsv),
     row("invcontrol",        "voltage_curvex_ref", EnumSynonym(VOLTAGE_CURVEX_REF_SYNONYMS), 2, 257, Evidence::BinsTsv),
     row("invcontrol",        "voltwattyaxis",      CaseFold,  2, 9, Evidence::BinsTsv),
@@ -531,10 +584,13 @@ pub const PROPS_NORM_R4133: &[NormRow] = &[
     row("line",              "enabled",            BoolFold,  1, 77659, Evidence::BinsTsv),
     row("line",              "ratings",            ArrayForm, 4, 77659, Evidence::BinsTsv),
     row("line",              "switch",             BoolFold,  1, 77659, Evidence::BinsTsv),
+    row("line",              "wires",              ArrayForm, 5, 77659, Evidence::BinsTsv),
     row("load",              "daily",              CaseFold,  2, 93, Evidence::BinsTsv),
     row("load",              "enabled",            BoolFold,  1, 49629, Evidence::BinsTsv),
     row("load",              "spectrum",           CaseFold,  2, 48, Evidence::BinsTsv),
     row("load",              "status",             CaseFold,  2, 49629, Evidence::BinsTsv),
+    row("load",              "yearly",             CaseFold,  5, 32548, Evidence::BinsTsv),
+    row("load",              "zipv",               ArrayForm, 5, 49629, Evidence::BinsTsv),
     row("monitor",           "element",            CaseFold,  2, 1539, Evidence::BinsTsv),
     row("monitor",           "enabled",            BoolFold,  1, 1539, Evidence::BinsTsv),
     row("monitor",           "ppolar",             BoolFold,  1, 1519, Evidence::BinsTsv),
@@ -553,6 +609,7 @@ pub const PROPS_NORM_R4133: &[NormRow] = &[
     row("pvsystem",          "tduty",              CaseFold,  2, 1, Evidence::BinsTsv),
     row("pvsystem",          "wattpriority",       BoolFold,  1, 463, Evidence::BinsTsv),
     row("reactor",           "bus1",               CaseFold,  2, 31, Evidence::BinsTsv),
+    row("reactor",           "bus2",               CaseFold,  5, 47, Evidence::BinsTsv),
     row("reactor",           "enabled",            BoolFold,  1, 670, Evidence::BinsTsv),
     row("reactor",           "parallel",           BoolFold,  1, 670, Evidence::BinsTsv),
     row("recloser",          "enabled",            BoolFold,  1, 230, Evidence::BinsTsv),
@@ -591,6 +648,7 @@ pub const PROPS_NORM_R4133: &[NormRow] = &[
     row("storage",           "daily",              CaseFold,  2, 4, Evidence::BinsTsv),
     row("storage",           "debugtrace",         BoolFold,  1, 463, Evidence::BinsTsv),
     row("storage",           "dispmode",           CaseFold,  2, 120, Evidence::BinsTsv),
+    row("storage",           "dynadata",           ArrayForm, 5, 463, Evidence::BinsTsv),
     row("storage",           "effcurve",           CaseFold,  2, 64, Evidence::BinsTsv),
     row("storage",           "enabled",            BoolFold,  1, 463, Evidence::BinsTsv),
     row("storage",           "pfpriority",         BoolFold,  1, 463, Evidence::BinsTsv),
@@ -601,6 +659,8 @@ pub const PROPS_NORM_R4133: &[NormRow] = &[
     row("storagecontroller", "enabled",            BoolFold,  1, 262, Evidence::BinsTsv),
     row("storagecontroller", "modecharge",         CaseFold,  2, 1, Evidence::BinsTsv),
     row("storagecontroller", "monphase",           CaseFold,  2, 261, Evidence::BinsTsv),
+    row("storagecontroller", "seasontargets",      ArrayForm, 5, 262, Evidence::BinsTsv),
+    row("storagecontroller", "seasontargetslow",   ArrayForm, 5, 262, Evidence::BinsTsv),
     row("swtcontrol",        "enabled",            BoolFold,  1, 59, Evidence::BinsTsv),
     row("swtcontrol",        "normal",             ArrayForm, 4, 59, Evidence::BinsTsv),
     row("swtcontrol",        "reset",              BoolFold,  1, 59, Evidence::BinsTsv),
@@ -631,16 +691,19 @@ pub const PROPS_NORM_R4133: &[NormRow] = &[
 /// both directions: a dropped row shrinks the compare silently, an added row
 /// widens what the engine is allowed to spell differently. Moving it belongs in
 /// the commit that argues for the new population.
-pub const NORM_ROWS: usize = 161;
+pub const NORM_ROWS: usize = 170;
 /// Count lock, [`NormRule::BoolFold`]: bin 1's 75 pairs − 5 pure-echo + 7
 /// WP-RP1.
 const NORM_BOOL_FOLD_ROWS: usize = 77;
 /// Count lock, [`NormRule::CaseFold`]: bin 2's 61 pairs (59 case + 2 trail) + 2
 /// WP-RP1, **− 1** for `invcontrol.voltage_curvex_ref`, which RP2.2 re-typed as
-/// an `EnumSynonym` row ([`VOLTAGE_CURVEX_REF_SYNONYMS`]).
-const NORM_CASE_FOLD_ROWS: usize = 62;
-/// Count lock, [`NormRule::ArrayForm`]: bin 4's 21 pairs − 4 (module doc).
-const NORM_ARRAY_FORM_ROWS: usize = 17;
+/// an `EnumSynonym` row ([`VOLTAGE_CURVEX_REF_SYNONYMS`]), **+ 3** RP2.3
+/// off-bin rows (`load.yearly`, `reactor.bus2`, `invcontrol.monvoltagecalc`).
+const NORM_CASE_FOLD_ROWS: usize = 65;
+/// Count lock, [`NormRule::ArrayForm`]: bin 4's 21 pairs − 4 (module doc),
+/// **+ 6** RP2.3 off-bin rows (`line.wires`, `load.zipv`, `generator.userdata`,
+/// `storage.dynadata`, `storagecontroller.seasontargets`/`seasontargetslow`).
+const NORM_ARRAY_FORM_ROWS: usize = 23;
 /// Count lock, [`NormRule::EnumSynonym`]: **5** since RP2.2 — bin 3's 8 pairs
 /// minus the 4 the dossier routed elsewhere (module doc §"RP2.2's routing of
 /// bin 3"; the routing itself is `props_r4133_replay::RP22_ROUTING`), plus the
@@ -926,19 +989,119 @@ fn check_rows_are_live(table: &[NormRow], visits: &[usize], hits: &[usize]) {
 
 /// Why a `(class, prop)` is excluded from the r4133 VALUE compare rather than
 /// normalized — the category tag every [`EchoRow`] carries.
+///
+/// RP2.3 read all 86 pairs of its bucket and found **five** mechanisms, not
+/// three (`rp23_dossier.md` §2). Four of them take a row here; the fifth — the
+/// dss_capi 0.14.5 `SilentReadOnly` text surface, where r4133 renders a live
+/// computed read-only quantity and the port renders `''` — is **not** an
+/// exclusion at all under the 2026-08-02 r4133-authority policy and was routed
+/// to a new engine sub-step instead (the kill ruling, `props_r4133_replay::
+/// RP38_ROUTING`). Naming it here would have been the lie the kill criterion
+/// exists to prevent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EchoCategory {
     /// r4133's `GetPropertyValue` has no arm for the index, so it answers the
     /// `InitPropertyValues` **default** string that no code ever refreshed
     /// (`Version8/Source/General/DSSObject.pas:112-115`).
     EchoDefault,
-    /// Same fallthrough, but the store holds the **last parse string** the deck
-    /// wrote, which the live value has since moved away from (e.g.
-    /// `relay.reset`'s `'0.20'`).
+    /// Same fallthrough, but the store holds a string the deck's own parse (or
+    /// a derived snapshot taken during `Edit`) wrote, which the live value has
+    /// since moved away from — `relay.reset`'s `'0.20'` (the deck's literal
+    /// token, `Controls/Relay.pas:504`) and `reactor.bus2`'s
+    /// `PropertyValue[2] := GetBus(2)` snapshot (`PDElements/Reactor.pas:
+    /// 419-420`), which a later `phases=` never refreshes.
     EchoParse,
+    /// **New in RP2.3.** Not an echo: r4133's getter arm IS live, and for an
+    /// unset or degenerate collection it renders the *other* empty convention —
+    /// `'[]'` from a `for i := 1 to NumPointsBH` loop over zero points
+    /// (`PDElements/Transformer.pas:1820-1827`), `'()'` from a paren wrapper
+    /// around an empty store (`PCElements/Storage.pas:1574`), or a bare `''`
+    /// from a getter that exits early (`Controls/StorageController.pas:
+    /// 2445-2449`, `PCElements/Load.pas:2354-2357`) — where the port renders
+    /// `''`, `[]` or the materialised default vector.
+    ///
+    /// The two sides mean the SAME thing, so [`LiveSemanticsDiffer`] would be
+    /// false; and neither side is a `PropertyValue[]` echo, so
+    /// [`EchoDefault`]/[`EchoParse`] would be false too. It stays an exclusion
+    /// rather than a normalization rule because an empty render carries no
+    /// value to preserve — `''` is not an array, which is exactly what
+    /// [`NormRule::ArrayForm`] refuses (`array_forms_match`).
+    ///
+    /// [`LiveSemanticsDiffer`]: EchoCategory::LiveSemanticsDiffer
+    /// [`EchoDefault`]: EchoCategory::EchoDefault
+    /// [`EchoParse`]: EchoCategory::EchoParse
+    EmptyCollectionRender,
     /// Not an echo: the two engines genuinely mean different things by the
-    /// property, and the port's meaning is the correct one.
+    /// property, and the port's meaning is the correct one. **Every row of this
+    /// category owes an expected-value pin** — the claim "ours is the right
+    /// value" is not something a citation alone can carry
+    /// ([`tests::every_live_semantics_row_names_a_pin`]).
     LiveSemanticsDiffer,
+}
+
+impl EchoCategory {
+    /// Stable tag for messages and for the replay accounting.
+    pub fn tag(self) -> &'static str {
+        match self {
+            EchoCategory::EchoDefault => "EchoDefault",
+            EchoCategory::EchoParse => "EchoParse",
+            EchoCategory::EmptyCollectionRender => "EmptyCollectionRender",
+            EchoCategory::LiveSemanticsDiffer => "LiveSemanticsDiffer",
+        }
+    }
+}
+
+/// What holds the port's value where an [`EchoRow`] stops the r4133 compare —
+/// the *witness* half of CLAUDE.md's exclusion discipline ("each divergence is
+/// excluded field-by-field and pinned by its own expected-value test").
+///
+/// A row without one is a mask with nothing behind it, so the type makes the
+/// two possible witnesses explicit and countable instead of leaving them in
+/// prose ([`tests::every_echo_row_carries_a_witness`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EchoWitness {
+    /// The **capi_v0145 channel value-compares this pair** on `n` gating cases
+    /// and the port matches on every one — so the value the r4133 row stops
+    /// comparing is still asserted, against the other oracle, on `n` cases.
+    ///
+    /// `n` is the 2026-08-23 claims census's own count (RP2.3 part A). Unlike
+    /// [`NormRow::cells`] it is **not** re-derivable from the vendored evidence
+    /// — that census's per-channel case counts are not in
+    /// `tests/corpus/props_r4133/` — so it is a dated measurement, and only its
+    /// load-bearing half is asserted here (`n > 0`: the capi channel really is
+    /// a witness). A re-census that moved it would not red anything; what the
+    /// number is for is letting a reader see at a glance whether a row leans on
+    /// one case or on ninety-nine.
+    Capi(u32),
+    /// **No capi coverage of the excluded cells** — the capture has no such
+    /// property (`PROPS_015X`), a `SKIP_PROPS` row masks it, the capi walk
+    /// skips the element whole (`skip_whole_element`), or every covered cell
+    /// sits on a capi-only case. The named test is the expected-value pin that
+    /// asserts the port's live value on the deck the census flagged.
+    Pin(&'static str),
+    /// Both: the capi channel covers `n` cases AND a pin holds the value. Used
+    /// where the pin is mandatory whatever capi says — every
+    /// [`EchoCategory::LiveSemanticsDiffer`] row, plus the rows the plan names
+    /// (`energymeter.peakcurrent`).
+    CapiAndPin(u32, &'static str),
+}
+
+impl EchoWitness {
+    /// The pin test's name, if this witness names one.
+    pub fn pin(self) -> Option<&'static str> {
+        match self {
+            EchoWitness::Capi(_) => None,
+            EchoWitness::Pin(name) | EchoWitness::CapiAndPin(_, name) => Some(name),
+        }
+    }
+
+    /// The number of capi-comparing cases, if the capi channel is a witness.
+    fn capi_cases(self) -> Option<u32> {
+        match self {
+            EchoWitness::Capi(n) | EchoWitness::CapiAndPin(n, _) => Some(n),
+            EchoWitness::Pin(_) => None,
+        }
+    }
 }
 
 /// One r4133 **value-only** exclusion: the property's name and order are still
@@ -952,39 +1115,472 @@ pub struct EchoRow {
     pub prop: &'static str,
     /// Which mechanism puts the cell here.
     pub category: EchoCategory,
-    /// The r4133 `Version8/Source` unit:line that proves the category (the
-    /// missing `GetPropertyValue` arm and/or the `InitPropertyValues` line),
-    /// plus — for a row whose ours-value has no capi witness — the name of the
-    /// expected-value pin test that holds it (plan §1.2).
+    /// The pair's census cell count, full census — the same citation column
+    /// [`NormRow::cells`] carries, read back against `bins.tsv` / the vendored
+    /// `README.md` by `props_r4133_replay::every_echo_row_matches_its_cited_evidence`.
+    /// It counts the pair's DIVERGENT cells, not the cells this row masks: on a
+    /// mixed pair a `PROPS_NORM_R4133` row claims some of them first (the chain
+    /// order), and the per-cell split is the census's, measured live.
+    pub cells: u32,
+    /// The r4133 `Version8/Source` unit:line that proves the category — the
+    /// missing `GetPropertyValue` arm (i.e. the `DSSObject.pas:112-115`
+    /// fallthrough) and/or the `InitPropertyValues` line, or the live getter
+    /// arm for the two non-echo categories.
     pub cite: &'static str,
+    /// What holds the port's value instead (plan §1.2's witness obligation).
+    pub witness: EchoWitness,
+}
+
+/// Table constructor, so the 81 rows below read as data.
+const fn echo(
+    class: &'static str,
+    prop: &'static str,
+    category: EchoCategory,
+    cells: u32,
+    cite: &'static str,
+    witness: EchoWitness,
+) -> EchoRow {
+    EchoRow {
+        class,
+        prop,
+        category,
+        cells,
+        cite,
+        witness,
+    }
 }
 
 /// **The echo-exclusion table — created EMPTY by RP2.1, filled by RP2.3.**
 ///
-/// The plan orders it that way (§0: "`PROPS_ECHO_R4133` is created **empty** in
-/// RP2.1; its rows land in RP2.3"), and the emptiness is load-bearing rather
-/// than a placeholder: RP2.1's job is to prove the *normalization* half claims
-/// bins 1/2/4 **without** any exclusion helping it. Every cell this table will
-/// eventually mask is, today, an unclaimed example row that part C's replay
-/// declares for RP2.3 by name.
+/// RP2.1 shipped it empty on purpose (plan §0: "`PROPS_ECHO_R4133` is created
+/// **empty** in RP2.1; its rows land in RP2.3"), because that emptiness is what
+/// proves the *normalization* half claims bins 1/2/4 with no exclusion helping
+/// it. RP2.3 fills it from the closed population part C's replay had declared
+/// by name: `Owner::Rp23`, **450 example rows over 86 pairs**.
 ///
-/// Expected magnitude at RP2.3: ~50-70 rows (bin 5's 45 pairs, bin 7's 12 echo
-/// pairs, the nine bin-1 echo pairs, minus whatever RP2.2 routes elsewhere).
-/// RP2.3 also wires the consult into `compare_prop_lists` right after the
-/// normalization seam — RP2.1 deliberately does not, so no cell can be masked
-/// before a cited row exists to mask it.
-pub const PROPS_ECHO_R4133: &[EchoRow] = &[];
+/// # What a row does, and what it does not do
+///
+/// A row drops the VALUE compare of its `(class, prop)` on the **r4133 channel
+/// only** — the property's name and index order are still asserted, exactly
+/// `SKIP_PROPS`' shape. It is consulted *after* [`PROPS_NORM_R4133`] (the chain
+/// order `shape allowlist → normalization → echo → floor`), so on a **mixed**
+/// pair the typed rule claims its foldable cells FIRST and the row masks only
+/// the remainder. That order is the whole per-cell discrimination: 20 of the 81
+/// pairs below also hold a normalization row, and 135 of their example rows are
+/// claimed by it (`props_r4133_replay::MULTI_LINK_ROWS`).
+///
+/// **Nine of those 20 rows are new in RP2.3** (`load.yearly`, `reactor.bus2`,
+/// `invcontrol.monvoltagecalc` `CaseFold`; `line.wires`, `load.zipv`,
+/// `generator.userdata`, `storage.dynadata`,
+/// `storagecontroller.seasontargets`/`seasontargetslow` `ArrayForm`). They were
+/// landed *before* the echo rows, deliberately: a mask must never cover a cell
+/// a typed rule can still compare, and those nine keep 6 446 live cells
+/// (6 370 in scope) inside the value compare that a pair-scoped exclusion would
+/// otherwise have swallowed (RP2.3 part A finding F4).
+///
+/// # The 81 rows
+///
+/// | category | rows | mechanism |
+/// |---|---|---|
+/// | [`EchoDefault`](EchoCategory::EchoDefault) | 50 | a missing getter arm over an `InitPropertyValues` default |
+/// | [`EchoParse`](EchoCategory::EchoParse) | 7 | …over the deck's own token or a derived snapshot |
+/// | [`EmptyCollectionRender`](EchoCategory::EmptyCollectionRender) | 14 | a LIVE arm rendering the other empty-collection convention |
+/// | [`LiveSemanticsDiffer`](EchoCategory::LiveSemanticsDiffer) | 10 | a real divergence whose port answer is the correct one |
+///
+/// 86 − 81 = the **five** `SilentReadOnly` pairs the kill criterion fired on
+/// (`indmach012.pf`, `storagecontroller.kwhtotal`/`kwtotal`/`kwhactual`/
+/// `kwactual`): r4133 renders a live computed read-only quantity there and the
+/// port renders `''` only because dss_capi 0.14.5 suppresses the text surface.
+/// Under the 2026-08-02 policy that is an engine fix, not an exclusion, so they
+/// take NO row here and are re-routed to their own declared bucket
+/// (`props_r4133_replay::RP38_ROUTING`).
+///
+/// Sorted by `(class, prop)` — [`find_echo_row`] binary-searches it.
+// The 81 rows are DATA, in the same aligned-columns style as PROPS_NORM_R4133
+// (whose `rustfmt::skip` note applies here for the same reason: rustfmt's
+// 60-char call width would explode every row).
+#[rustfmt::skip]
+pub const PROPS_ECHO_R4133: &[EchoRow] = &[
+    echo("autotrans", "bhcurrent", EmptyCollectionRender, 44,
+         "AutoTrans.pas:1865-1871 (arm 44 loops NumPointsBH=0 -> '[]')",
+         Pin("autotrans_bh_arrays_render_empty_when_unset")),
+    echo("autotrans", "bhflux", EmptyCollectionRender, 44,
+         "AutoTrans.pas:1872-1878 (arm 45, same)",
+         Pin("autotrans_bh_arrays_render_empty_when_unset")),
+    echo("autotrans", "pctperm", EchoDefault, 44,
+         "AutoTrans.pas:1958 ('100') + :1883-1888 (PD tail re-renders slots 1..2 only) -> DSSObject.pas:112-115",
+         Capi(9)),
+    echo("autotrans", "repair", EchoDefault, 44,
+         "AutoTrans.pas:1959 ('36'), same fallthrough",
+         Capi(9)),
+    echo("capcontrol", "reset", EchoDefault, 446,
+         "CapControl.pas:196 (prop 22) + :1254-1282 (init writes 20,21,23, never 22) -> DSSObject.pas:112-115",
+         Capi(31)),
+    echo("capcontrol", "type", EchoParse, 169,
+         "CapControl.pas:178 (prop 4) + :296-297 (store written before the CASE) vs :304-311",
+         Capi(3)),
+    echo("energymeter", "action", EchoDefault, 524,
+         "EnergyMeter.pas:482 (prop 3) + :2205 ('clear') + :2645-2658 (no arm 3); one cell is the deck's own 'C' via :618",
+         Capi(67)),
+    echo("energymeter", "peakcurrent", EchoDefault, 524,
+         "EnergyMeter.pas:2209 ('(400, 400, 400)') + :2640-2643/:2660-2663 (index 7 paren-wrapped, no arm)",
+         CapiAndPin(6, "energymeter_peakcurrent_renders_the_live_one_element_array")),
+    echo("expcontrol", "derlist", LiveSemanticsDiffer, 11,
+         "ExpControl.pas:696 + :702-715 (index 14 answers FPVSystemNameList) vs :227-234 / :247-252",
+         CapiAndPin(2, "expcontrol_derlist_renders_the_der_list")),
+    echo("fault", "bus2", EchoParse, 11,
+         "Fault.pas:699-717 (arm 6 only) + :672 / :297 (re-snapshot at every bus1=)",
+         Pin("fault_bus2_renders_the_live_terminal")),
+    echo("fault", "pctperm", EchoDefault, 389,
+         "Fault.pas:687 ('0') -> DSSObject.pas:112-115",
+         Capi(13)),
+    echo("fuse", "switchedobj", EchoDefault, 106,
+         "Fuse.pas:183 (prop 3) + :801ff ('') + :680-720 (no arm 3); live ElementName defaults to the monitored element (:292)",
+         Capi(1)),
+    echo("generator", "d", LiveSemanticsDiffer, 272,
+         "generator.pas:969 (Create sets GenVars.D, never Dpu) + :2585 (the store snapshots Dpu = 0) + :467 help 'Default is 1.0' + :2710",
+         CapiAndPin(25, "generator_d_renders_the_documented_damping_default")),
+    echo("generator", "dynout", LiveSemanticsDiffer, 273,
+         "generator.pas:3034 (GetDynOutputStr) + DynamicExp.pas:411-437 vs :441-465 (the variable index decoded as a flat (variable, slot) index)",
+         CapiAndPin(26, "generator_dynout_renders_the_named_variables")),
+    echo("generator", "shaftdata", EmptyCollectionRender, 273,
+         "generator.pas:3023-3025 (arms 34/36 paren-wrap the store -> '()' when unset)",
+         Capi(26)),
+    echo("generator", "userdata", EmptyCollectionRender, 273,
+         "generator.pas:3023-3025 (same arm)",
+         Capi(26)),
+    echo("gicsource", "spectrum", EchoDefault, 4,
+         "GICsource.pas:567-578 (arms 1..3) + :327 InitPropertyValues BEFORE :332 Spectrum:='' -> PCElement.pas:119 'default' frozen",
+         Capi(2)),
+    echo("gictransformer", "pctperm", EchoDefault, 22,
+         "GICTransformer.pas:708 ('0') -> DSSObject.pas:112-115",
+         Capi(4)),
+    echo("invcontrol", "lpftau", EchoDefault, 257,
+         "InvControl.pas:2828 ('0.0') vs Create :1166 FLPFTau:=0.001; no arm 19 (:3232-3285)",
+         Capi(87)),
+    echo("invcontrol", "mode", EchoDefault, 211,
+         "InvControl.pas:479 (prop 2) + :2809 ('VOLTVAR') vs Create :1135 ControlMode:=NONE_MODE; arm 2 is commented out (:3234-3239)",
+         Capi(23)),
+    echo("invcontrol", "monvoltagecalc", EchoDefault, 254,
+         "InvControl.pas:505 (prop 25): no arm (:3232-3285), no init entry (:2806-2839) -> ''",
+         Capi(87)),
+    echo("invcontrol", "pvsystemlist", EchoDefault, 257,
+         "InvControl.pas:512 (prop 32): no arm, no init entry -> ''",
+         Capi(87)),
+    echo("invcontrol", "risefalllimit", EchoDefault, 257,
+         "InvControl.pas:2829 ('-1.0') vs Create :1167 FRiseFallLimit:=0.001",
+         Capi(87)),
+    echo("invcontrol", "vsetpoint", EchoDefault, 249,
+         "InvControl.pas:513 (prop 33): no arm, no init entry -> '' vs Create :1214 Fv_setpoint:=1.0",
+         Capi(86)),
+    echo("isource", "bus2", EchoDefault, 136,
+         "Isource.pas:631 ('') + no GetPropertyValue override (report 14-isource-bus2-not-stored)",
+         Capi(12)),
+    echo("isource", "yearly", EchoDefault, 122,
+         "Isource.pas:628 ('') + :286 (daily= aliases the OBJECT, never the string) + :672-681",
+         Capi(5)),
+    echo("line", "cncables", EchoDefault, 77659,
+         "Line.pas:1514 (prop 24, '') + :1338-1438 (no arm 24)",
+         Capi(233)),
+    echo("line", "conductors", EchoDefault, 77659,
+         "Line.pas:1524 (prop 34, '') + :1338-1438 (no arm 34)",
+         Pin("line_conductors_renders_the_live_conductor_list")),
+    echo("line", "spacing", EchoParse, 1,
+         "Line.pas:1511 (prop 21, '') + :1338-1438 (no arm 21); the deck's 'sp' outlives SpacingSpecified (:2266-2276)",
+         Pin("line_spacing_renders_empty_once_the_spacing_is_killed")),
+    echo("line", "tscables", EchoDefault, 77659,
+         "Line.pas:1515 (prop 25, '') + :1338-1438 (no arm 25)",
+         Capi(233)),
+    echo("line", "wires", EchoDefault, 77659,
+         "Line.pas:1512 (prop 22, '') + :1338-1438 (no arm 22)",
+         Capi(233)),
+    echo("load", "yearly", LiveSemanticsDiffer, 32548,
+         "Load.pas:2346 (arm 7 answers the LIVE raw Yearlyshape string) + :807 ('' when never typed) + :657 (daily->yearly object aliasing)",
+         CapiAndPin(84, "load_yearly_renders_the_resolved_loadshape_name")),
+    echo("load", "zipv", EmptyCollectionRender, 49629,
+         "Load.pas:2354-2357 (arm 33 loops nZIPV -> '' when 0)",
+         Capi(221)),
+    echo("monitor", "mode", EchoParse, 4,
+         "Monitor.pas: no GetPropertyValue override + :359 (the raw Param stored) + :1843 ('0')",
+         Capi(2)),
+    echo("pvsystem", "%pminkvarmax", LiveSemanticsDiffer, 463,
+         "PVsystem.pas:1153 (live arm) + :1038 (-1.0) vs the port's 0.0; both deactivate at :1397-1398",
+         CapiAndPin(99, "pvsystem_and_storage_pmin_sentinels_deactivate_the_var_limits")),
+    echo("pvsystem", "%pminnovars", LiveSemanticsDiffer, 463,
+         "PVsystem.pas:1152 (live arm) + :1037 (-1.0) vs the port's 0.0; both deactivate at :1395-1396",
+         CapiAndPin(99, "pvsystem_and_storage_pmin_sentinels_deactivate_the_var_limits")),
+    echo("pvsystem", "amplimit", EchoDefault, 463,
+         "PVsystem.pas:392 (prop 49): no getter arm (the CASE's ELSE is :1174), no init entry (:1074-1124) -> ''",
+         Capi(99)),
+    echo("pvsystem", "amplimitgain", EchoDefault, 463,
+         "PVsystem.pas:393 (prop 50), same",
+         Capi(99)),
+    echo("pvsystem", "dynout", EmptyCollectionRender, 463,
+         "PVsystem.pas:1171 (propDynOut -> GetDynOutputStr, '[]' when unset)",
+         Capi(99)),
+    echo("pvsystem", "userdata", EmptyCollectionRender, 463,
+         "PVsystem.pas:1158 (propUSERDATA paren-wraps the store -> '()' when unset)",
+         Capi(99)),
+    echo("reactor", "bus2", EchoParse, 47,
+         "Reactor.pas:1090-1103 (no arm 2) + :419-420 (PropertyValue[2] := GetBus(2) snapshot taken at bus1=) + :386",
+         Capi(23)),
+    echo("reactor", "kvar", EchoDefault, 607,
+         "Reactor.pas:1113 ('1200') vs Create :585 kvarrating:=100.0; no arm 4 (:1090-1103)",
+         Capi(65)),
+    echo("recloser", "debugtrace", EchoDefault, 230,
+         "Recloser.pas:252 (prop 30) + :1553-1554 (init jumps 28 -> 31) -> ''",
+         Pin("recloser_eventlog_and_debugtrace_default_to_no")),
+    echo("recloser", "eventlog", EchoDefault, 230,
+         "Recloser.pas:251 (prop 29) + :1553-1554 (init jumps 28 -> 31) -> ''",
+         Pin("recloser_eventlog_and_debugtrace_default_to_no")),
+    echo("recloser", "switchedobj", EchoDefault, 230,
+         "Recloser.pas:225 (prop 3) + :1528 (''); live ElementName defaults to the monitored element (:448)",
+         Pin("recloser_switchedobj_defaults_to_the_monitored_element")),
+    echo("regcontrol", "fwdthreshold", EchoDefault, 888,
+         "RegControl.pas:294 (prop 36) + :1444-1459 (init writes 1..32 only) + :820-827 (arm 28 only); the live kWFwdPowerThreshold IS 100 (:629)",
+         Pin("regcontrol_idle_flags_and_thresholds_render_the_live_values")),
+    echo("regcontrol", "idle", EchoDefault, 888,
+         "RegControl.pas:291 (prop 33), never initialised (:1444-1459)",
+         Pin("regcontrol_idle_flags_and_thresholds_render_the_live_values")),
+    echo("regcontrol", "idleforward", EchoDefault, 888,
+         "RegControl.pas:293 (prop 35), never initialised",
+         Pin("regcontrol_idle_flags_and_thresholds_render_the_live_values")),
+    echo("regcontrol", "idlereverse", EchoDefault, 888,
+         "RegControl.pas:292 (prop 34), never initialised",
+         Pin("regcontrol_idle_flags_and_thresholds_render_the_live_values")),
+    echo("regcontrol", "remoteptratio", EchoDefault, 255,
+         "RegControl.pas:1452 ('60') vs the live value, re-initialised from PTRatio on every ptratio= (:484)",
+         Capi(31)),
+    echo("regcontrol", "revthreshold", EchoDefault, 888,
+         "RegControl.pas:1448 ('100') vs Create :627 kWRevPowerThreshold:=-100.0; a deck's revThreshold=800 keeps '800' while :503-505 makes the live value -800",
+         Pin("regcontrol_idle_flags_and_thresholds_render_the_live_values")),
+    echo("relay", "action", EchoDefault, 270,
+         "Relay.pas:388 (prop 19, DEPRECATED) + :1577 ('closed'); no arm (:1366-1440)",
+         Pin("relay_action_distreverse_and_reset_render_the_live_values")),
+    echo("relay", "distreverse", EchoDefault, 270,
+         "Relay.pas:397 (prop 38) + :1595-1596 (init jumps 37 -> 39) -> ''",
+         Pin("relay_action_distreverse_and_reset_render_the_live_values")),
+    echo("relay", "reset", EchoParse, 270,
+         "Relay.pas:425 (prop 54) + :504 (the raw token stored) + :566-570 (arm 54 rewrites to 'n' only on yes); these decks type reset=0.20",
+         Pin("relay_action_distreverse_and_reset_render_the_live_values")),
+    echo("relay", "switchedobj", EchoDefault, 270,
+         "Relay.pas:320 (prop 3) + :1561 (''); live ElementName defaults to the monitored element (:582)",
+         Pin("relay_switchedobj_defaults_to_the_monitored_element")),
+    echo("storage", "%pminkvarmax", LiveSemanticsDiffer, 460,
+         "Storage.pas:1554 (live arm) + :1369 (-1.0, 'Deactivated by default') vs the port's 0.0",
+         CapiAndPin(44, "pvsystem_and_storage_pmin_sentinels_deactivate_the_var_limits")),
+    echo("storage", "%pminnovars", LiveSemanticsDiffer, 460,
+         "Storage.pas:1553 (live arm) + :1368 (-1.0, 'Deactivated by default') vs the port's 0.0",
+         CapiAndPin(44, "pvsystem_and_storage_pmin_sentinels_deactivate_the_var_limits")),
+    echo("storage", "amplimit", EchoDefault, 457,
+         "Storage.pas prop 60: no getter arm, no init entry (:1446-1521) -> ''",
+         Capi(47)),
+    echo("storage", "amplimitgain", EchoDefault, 457,
+         "Storage.pas prop 61, same",
+         Capi(47)),
+    echo("storage", "dynadata", EmptyCollectionRender, 463,
+         "Storage.pas:1577 (propdynaDATA paren-wraps the store -> '()' when unset)",
+         Capi(47)),
+    echo("storage", "dynadll", LiveSemanticsDiffer, 2,
+         "Storage.pas:1576 (DynaModel.Name) + StoreUserModel.pas:195-240 (FName is assigned only after a successful LoadLibrary)",
+         CapiAndPin(2, "storage_dynadll_renders_the_typed_path")),
+    echo("storage", "userdata", EmptyCollectionRender, 463,
+         "Storage.pas:1574 (propUSERDATA paren-wraps the store -> '()' when unset)",
+         Capi(47)),
+    echo("storagecontroller", "modedischarge", LiveSemanticsDiffer, 1,
+         "StorageController.pas:1200-1214 (GetModeString has no MODESCHEDULE arm -> ELSE 'UNKNOWN') vs :2322-2333",
+         CapiAndPin(1, "storagecontroller_modedischarge_renders_schedule")),
+    echo("storagecontroller", "seasontargets", EmptyCollectionRender, 262,
+         "StorageController.pas:1010 -> ReturnSeasonTarget(1), which exits with '' when Seasons=1 (:2445-2449)",
+         Capi(20)),
+    echo("storagecontroller", "seasontargetslow", EmptyCollectionRender, 262,
+         "StorageController.pas:1011 -> ReturnSeasonTarget(0), same",
+         Capi(20)),
+    echo("swtcontrol", "action", EchoParse, 34,
+         "SwtControl.pas:573-620 (no arm 3) + :192-193 (the raw token stored before the CASE) + :417 (Locked makes InterpretSwitchState exit)",
+         Pin("swtcontrol_action_renders_the_live_switch_state")),
+    echo("transformer", "bhcurrent", EmptyCollectionRender, 21164,
+         "Transformer.pas:1820-1827 (arm 51 loops NumPointsBH=0 -> '[]')",
+         Pin("transformer_bh_arrays_render_empty_when_unset")),
+    echo("transformer", "bhflux", EmptyCollectionRender, 21164,
+         "Transformer.pas:1828-1834 (arm 52, same)",
+         Pin("transformer_bh_arrays_render_empty_when_unset")),
+    echo("transformer", "pctperm", EchoDefault, 21161,
+         "Transformer.pas:1918 ('100') + :1840-1844 (PD tail re-renders slots 1..2 only) -> DSSObject.pas:112-115",
+         Capi(133)),
+    echo("transformer", "repair", EchoDefault, 21161,
+         "Transformer.pas:1919 ('36'), same fallthrough",
+         Capi(133)),
+    echo("upfc", "climit", EchoDefault, 13,
+         "UPFC.pas:187 (prop 14): no arm (:1136-1153), no init entry (:1115-1131 writes 1..11) -> ''",
+         Capi(9)),
+    echo("upfc", "kvarlimit", EchoDefault, 6,
+         "UPFC.pas:189 (prop 16), same",
+         Capi(5)),
+    echo("upfc", "refkv2", EchoDefault, 11,
+         "UPFC.pas:188 (prop 15), same",
+         Capi(7)),
+    echo("upfc", "vhlimit", EchoDefault, 13,
+         "UPFC.pas:185 (prop 12), same",
+         Capi(9)),
+    echo("upfc", "vllimit", EchoDefault, 13,
+         "UPFC.pas:186 (prop 13), same",
+         Capi(9)),
+    echo("upfccontrol", "basefreq", EchoDefault, 13,
+         "UPFCControl.pas:230-246 (Create never calls InitPropertyValues) -> the whole store stays ''",
+         Capi(9)),
+    echo("upfccontrol", "enabled", EchoDefault, 13,
+         "UPFCControl.pas:230-246 (no InitPropertyValues) leaves FEnabledProperty 0, so CktElement.pas:1316-1320's enabled special case never fires",
+         Capi(9)),
+    echo("vccs", "bp1", EchoDefault, 3,
+         "VCCS.pas:506 ('NONE') for prop 6 (:166); no GetPropertyValue override",
+         Capi(3)),
+    echo("vccs", "bp2", EchoDefault, 3,
+         "VCCS.pas:507 ('NONE') for prop 7 (:167), same",
+         Capi(3)),
+    echo("vsource", "yearly", EchoDefault, 2,
+         "Vsource.pas:1310 (prop 27, '') + :1323-1349 (no arm 27)",
+         Capi(2)),
+    echo("windgen", "dynout", EmptyCollectionRender, 5,
+         "WindGen.pas:2906 (arm 22 -> GetDynOutputStr, '[]' when unset, :1119)",
+         Pin("windgen_dynout_renders_empty_when_unset")),
+];
 
-/// Count lock for [`PROPS_ECHO_R4133`] — zero, and asserted, so the "created
-/// empty" half of RP2.1's scope is a test rather than a comment.
-const ECHO_ROWS: usize = 0;
+/// Count lock, total — the same fail-on-stale equality [`NORM_ROWS`] carries.
+/// **81 = the RP2.3 bucket's 86 pairs − the 5 the kill criterion re-routed.**
+const ECHO_ROWS: usize = 81;
+/// Count lock, [`EchoCategory::EchoDefault`].
+const ECHO_DEFAULT_ROWS: usize = 50;
+/// Count lock, [`EchoCategory::EchoParse`].
+const ECHO_PARSE_ROWS: usize = 7;
+/// Count lock, [`EchoCategory::EmptyCollectionRender`] — RP2.3's new category.
+const ECHO_EMPTY_COLLECTION_ROWS: usize = 14;
+/// Count lock, [`EchoCategory::LiveSemanticsDiffer`]; every one owes a pin.
+const ECHO_LIVE_SEMANTICS_ROWS: usize = 10;
 
-/// Is `(class, prop)` value-excluded on the r4133 channel? Always `false` while
-/// [`PROPS_ECHO_R4133`] is empty; RP2.3 lands the rows and the call site.
+/// **Echo rows whose cited cells can never be reached live**, and why — the
+/// closed exemption list [`check_echo_rows_are_live`] needs so that its
+/// fail-on-stale half does not fire on a row that is doing its job.
+///
+/// Both pairs' echo cells sit on `engines: "capi_v0145"` cases, which plan §1.3
+/// keeps uncompared on r4133 — **0 in-scope echo cells** each, measured by the
+/// 2026-08-23 claims census (RP2.3 part A, finding F5). The distinction that
+/// makes the exemption necessary rather than merely tidy is `fault.bus2`: the
+/// PAIR does compare on r4133 (its ten `'b3.0'`/`'B3.0'` cells are claimed by a
+/// `CaseFold` row), so its echo row will be *visited* and can never *hit*,
+/// which is exactly the shape the guard reports as stale. `line.spacing`'s pair
+/// has no in-scope cell at all, so its row simply stays dormant. Both rows are
+/// needed for the offline replay, which walks the frozen census, not the gate.
+const ECHO_ROWS_WITH_NO_IN_SCOPE_CELL: &[(&str, &str)] = &[("fault", "bus2"), ("line", "spacing")];
+
+/// Index of [`PROPS_ECHO_R4133`]'s row for `(class, prop)`, case-insensitively.
+fn find_echo_row(table: &[EchoRow], class: &str, prop: &str) -> Option<usize> {
+    table
+        .binary_search_by(|r| ci_cmp(r.class, class).then_with(|| ci_cmp(r.prop, prop)))
+        .ok()
+}
+
+/// Is `(class, prop)` value-excluded on the r4133 channel?
+///
+/// **Pair-scoped by design**, exactly like [`skip_prop`]'s `SKIP_PROPS` half:
+/// the guard against over-breadth is not a per-cell predicate here (there is no
+/// "same value" to check — that is what makes this an exclusion and not a
+/// normalization rule) but the pair of things every row carries, the r4133
+/// citation and the witness, plus the chain order that lets a typed rule claim
+/// what it can before this is consulted.
+///
+/// [`skip_prop`]: super::skip_prop
 pub fn echo_excluded(class: &str, prop: &str) -> bool {
-    PROPS_ECHO_R4133
-        .iter()
-        .any(|r| r.class.eq_ignore_ascii_case(class) && r.prop.eq_ignore_ascii_case(prop))
+    find_echo_row(PROPS_ECHO_R4133, class, prop).is_some()
+}
+
+/// **The shipped exclusion seam**, called from `PropsPolicy::echo_excluded`'s
+/// r4133 arm (and only from there — same channel gate as [`normalize_r4133`]).
+///
+/// It answers the same question [`echo_excluded`] does and additionally records
+/// what the gate saw: a **visit** is a cell of the pair that reached the seam,
+/// a **hit** is a visit whose two sides really differed, i.e. a compare this
+/// row actually stopped. The values decide nothing else — the exclusion itself
+/// is pair-scoped.
+pub fn echo_excluded_r4133(class: &str, prop: &str, rust: &str, oracle: &str) -> bool {
+    match find_echo_row(PROPS_ECHO_R4133, class, prop) {
+        Some(i) => {
+            // HIT first, then VISIT. The pair is not written atomically and
+            // [`assert_echo_rows_are_live`] reads it from another test thread
+            // in the same binary, so the order decides which transient state a
+            // concurrent read can observe: this way it can only ever see a hit
+            // the visit has not caught up with (which the guard accepts), never
+            // a visit whose hit has not landed yet (which it would report as
+            // stale).
+            if rust != oracle {
+                ECHO_HITS[i].fetch_add(1, AtomicOrd::Relaxed);
+            }
+            ECHO_VISITS[i].fetch_add(1, AtomicOrd::Relaxed);
+            true
+        }
+        None => false,
+    }
+}
+
+/// Per-row visit counter, indexed exactly like [`PROPS_ECHO_R4133`].
+static ECHO_VISITS: [AtomicUsize; PROPS_ECHO_R4133.len()] =
+    [const { AtomicUsize::new(0) }; PROPS_ECHO_R4133.len()];
+/// Per-row hit counter: visits whose two sides differed, i.e. value compares
+/// this row actually excluded.
+static ECHO_HITS: [AtomicUsize; PROPS_ECHO_R4133.len()] =
+    [const { AtomicUsize::new(0) }; PROPS_ECHO_R4133.len()];
+
+/// **Fail-on-stale for [`PROPS_ECHO_R4133`]** — the echo table's half of plan
+/// mechanic (d), modeled on [`assert_norm_rows_are_live`].
+///
+/// A row that was VISITED on r4133 and never excluded a differing cell is
+/// masking a divergence that is no longer there: drop it, or re-measure it. It
+/// is **silent when the row was never visited** and silent for the two rows the
+/// census measured as having no in-scope cell at all
+/// ([`ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`]).
+///
+/// Today no real case reaches it: `corpus_gate/scheduler.rs` masks
+/// `compare_all_properties` off on the r4133 channel until the RP4.1 unmask, so
+/// the only counter movement in a gate run comes from unit tests in the same
+/// binary that drive the comparator themselves (see
+/// `props_policy_tests::an_echo_row_drops_only_its_own_value_only_on_r4133`,
+/// which is written to leave `hits > 0` on every row it touches). The guard is
+/// wired now so the flip arms it instead of having to remember it.
+pub fn assert_echo_rows_are_live() {
+    let read = |c: &[AtomicUsize]| -> Vec<usize> {
+        c.iter().map(|c| c.load(AtomicOrd::Relaxed)).collect()
+    };
+    check_echo_rows_are_live(PROPS_ECHO_R4133, &read(&ECHO_VISITS), &read(&ECHO_HITS));
+}
+
+/// The staleness rule itself, over **injected** counters — the split exists for
+/// the same reason [`check_rows_are_live`]'s does: the shipped statics cannot
+/// be made stale from a test, so both directions are proven offline
+/// ([`tests::the_echo_liveness_guard_is_silent_when_dormant_or_live`],
+/// [`tests::the_echo_liveness_guard_fires_on_a_stale_row`]).
+fn check_echo_rows_are_live(table: &[EchoRow], visits: &[usize], hits: &[usize]) {
+    assert_eq!(
+        (table.len(), table.len()),
+        (visits.len(), hits.len()),
+        "the counters are indexed exactly like the table"
+    );
+    for (i, r) in table.iter().enumerate() {
+        let (visits, hits) = (visits[i], hits[i]);
+        let dormant_by_design = ECHO_ROWS_WITH_NO_IN_SCOPE_CELL
+            .iter()
+            .any(|(c, p)| c.eq_ignore_ascii_case(r.class) && p.eq_ignore_ascii_case(r.prop));
+        assert!(
+            visits == 0 || hits > 0 || dormant_by_design,
+            "stale r4133 property echo row: {}.{} ({}) excluded nothing across {visits} \
+             compared cell(s). Each row stops the r4133 VALUE compare of a pair, so it must \
+             name a divergence that is really there — drop it, or re-measure it \
+             (DSS_PROPS_CENSUS). Cited: {}",
+            r.class,
+            r.prop,
+            r.category.tag(),
+            r.cite
+        );
+    }
 }
 
 /// Which link of the r4133 **value** chain claims one divergent cell.
@@ -1006,7 +1602,8 @@ pub fn echo_excluded(class: &str, prop: &str) -> bool {
 pub enum ValueClaim {
     /// [`PROPS_NORM_R4133`] recognises the two spellings as one value.
     Normalization(NormRule),
-    /// [`PROPS_ECHO_R4133`] excludes the pair's value compare (RP2.3).
+    /// [`PROPS_ECHO_R4133`] excludes the pair's value compare (RP2.3), because
+    /// the two renderings are not two spellings of one value.
     Echo,
     /// The two sides are numbers within [`R4133_DISPLAY_FLOOR`] (RP2.4).
     DisplayFloor,
@@ -1115,6 +1712,15 @@ mod tests {
         )
     }
 
+    /// The echo table's live accounting, summed — same discipline as
+    /// [`counter_totals`]: asserted UNCHANGED across a body, never zero.
+    fn echo_counter_totals() -> (usize, usize) {
+        (
+            ECHO_VISITS.iter().map(|c| c.load(AtomicOrd::Relaxed)).sum(),
+            ECHO_HITS.iter().map(|c| c.load(AtomicOrd::Relaxed)).sum(),
+        )
+    }
+
     /// Did the shipped table CLAIM this cell (fold it to one spelling)?
     fn claimed(class: &str, prop: &str, rust: &str, oracle: &str) -> bool {
         let (a, e) = norm(class, prop, rust, oracle);
@@ -1178,10 +1784,28 @@ mod tests {
             NORM_ROWS,
             "the per-kind locks must partition the total"
         );
+        let echo = |want: EchoCategory| {
+            PROPS_ECHO_R4133
+                .iter()
+                .filter(|r| r.category == want)
+                .count()
+        };
         assert_eq!(
             PROPS_ECHO_R4133.len(),
             ECHO_ROWS,
-            "RP2.3 fills the echo table, not RP2.1"
+            "the echo table's row count moved"
+        );
+        assert_eq!(echo(EchoDefault), ECHO_DEFAULT_ROWS);
+        assert_eq!(echo(EchoParse), ECHO_PARSE_ROWS);
+        assert_eq!(echo(EmptyCollectionRender), ECHO_EMPTY_COLLECTION_ROWS);
+        assert_eq!(echo(LiveSemanticsDiffer), ECHO_LIVE_SEMANTICS_ROWS);
+        assert_eq!(
+            ECHO_DEFAULT_ROWS
+                + ECHO_PARSE_ROWS
+                + ECHO_EMPTY_COLLECTION_ROWS
+                + ECHO_LIVE_SEMANTICS_ROWS,
+            ECHO_ROWS,
+            "the per-category locks must partition the echo table"
         );
     }
 
@@ -1192,20 +1816,39 @@ mod tests {
     /// is the in-module half.)
     #[test]
     fn every_row_cites_a_bin_its_rule_owns() {
-        // The ONE documented exception, kept as a list so it stays countable:
-        // a pair whose `bins.tsv` LABEL is 2 but whose off-bin cells are a real
-        // enum spelling the live r4133 getter prints
-        // (`VOLTAGE_CURVEX_REF_SYNONYMS`; vendored README §"A pair's bin is a
-        // label, not a per-cell classification"). Anything else must match.
-        const ENUM_ON_A_NON_BIN3_PAIR: &[(&str, &str, u8)] =
-            &[("invcontrol", "voltage_curvex_ref", 2)];
+        // The documented exceptions, kept as a list so they stay countable: a
+        // pair whose `bins.tsv` LABEL is one bin while the cells this row
+        // claims are another's (vendored README §"A pair's bin is a label, not
+        // a per-cell classification"). One from RP2.2 — the live enum getter
+        // behind a bin-2 label (`VOLTAGE_CURVEX_REF_SYNONYMS`) — and the nine
+        // RP2.3 landed on bin-5 pairs so that the echo table cannot mask a cell
+        // a typed rule still compares (module doc §"RP2.3's nine off-bin
+        // rows"). Anything else must match its bin.
+        const RULE_ON_AN_OFF_BIN_PAIR: &[(&str, &str, u8, &str)] = &[
+            ("generator", "userdata", 5, "ArrayForm"),
+            ("invcontrol", "monvoltagecalc", 5, "CaseFold"),
+            ("invcontrol", "voltage_curvex_ref", 2, "EnumSynonym"),
+            ("line", "wires", 5, "ArrayForm"),
+            ("load", "yearly", 5, "CaseFold"),
+            ("load", "zipv", 5, "ArrayForm"),
+            ("reactor", "bus2", 5, "CaseFold"),
+            ("storage", "dynadata", 5, "ArrayForm"),
+            ("storagecontroller", "seasontargets", 5, "ArrayForm"),
+            ("storagecontroller", "seasontargetslow", 5, "ArrayForm"),
+        ];
         let mut exceptions = 0;
         for r in PROPS_NORM_R4133 {
-            if let Some((_, _, bin)) = ENUM_ON_A_NON_BIN3_PAIR
+            if let Some((_, _, bin, rule)) = RULE_ON_AN_OFF_BIN_PAIR
                 .iter()
-                .find(|(c, p, _)| *c == r.class && *p == r.prop)
+                .find(|(c, p, _, _)| *c == r.class && *p == r.prop)
             {
-                assert_eq!((r.rule.tag(), r.bin), ("EnumSynonym", *bin));
+                assert_eq!(
+                    (r.rule.tag(), r.bin),
+                    (*rule, *bin),
+                    "{}.{}: the off-bin exception list says {rule} on bin {bin}",
+                    r.class,
+                    r.prop
+                );
                 exceptions += 1;
                 continue;
             }
@@ -1244,7 +1887,7 @@ mod tests {
         }
         assert_eq!(
             exceptions,
-            ENUM_ON_A_NON_BIN3_PAIR.len(),
+            RULE_ON_AN_OFF_BIN_PAIR.len(),
             "an exception row that is not in the table any more — drop it from the list \
              instead of leaving the bin/rule pin loosened for a pair that is gone"
         );
@@ -1997,26 +2640,66 @@ mod tests {
     #[test]
     fn the_value_chain_resolves_in_order_and_agrees_with_the_seam() {
         let before = counter_totals();
+        let before_echo = echo_counter_totals();
         for (class, prop, rust, oracle, want) in [
-            ("Capacitor", "Enabled", "Yes", "true", Some("BoolFold")),
-            ("Transformer", "Conn", "wye", "wye ", Some("CaseFold")),
-            ("Line", "Ratings", "[ 400]", "[400,]", Some("ArrayForm")),
-            // Unclaimed: no row / an echo cell inside a row we hold / a real
-            // difference / an empty render.
+            (
+                "Capacitor",
+                "Enabled",
+                "Yes",
+                "true",
+                Some("normalized-by-BoolFold"),
+            ),
+            (
+                "Transformer",
+                "Conn",
+                "wye",
+                "wye ",
+                Some("normalized-by-CaseFold"),
+            ),
+            (
+                "Line",
+                "Ratings",
+                "[ 400]",
+                "[400,]",
+                Some("normalized-by-ArrayForm"),
+            ),
+            // **The chain ORDER, on the pairs that hold two rows.** A foldable
+            // cell of a mixed pair is a COMPARE (normalization wins), and the
+            // pair's echo cell is the exclusion — same `(class, prop)`, two
+            // different verdicts, decided by the cell.
+            (
+                "Recloser",
+                "EventLog",
+                "Yes",
+                "yes",
+                Some("normalized-by-BoolFold"),
+            ),
+            ("Recloser", "EventLog", "No", "", Some("echo-row")),
+            (
+                "Load",
+                "Yearly",
+                "other",
+                "Other",
+                Some("normalized-by-CaseFold"),
+            ),
+            ("Load", "Yearly", "day", "", Some("echo-row")),
+            ("RegControl", "FwdThreshold", "100", "", Some("echo-row")),
+            // …and the echo row is pair-scoped, so it also covers a spelling
+            // the census has not seen (that is what makes it an exclusion and
+            // not a rule).
+            ("RegControl", "FwdThreshold", "100", "800", Some("echo-row")),
+            // Unclaimed: no row at all / a real difference inside a pair whose
+            // row refuses it / an r4133 root-cause pair no link owns.
             ("Foo", "Bar", "Yes", "true", None),
-            ("Recloser", "EventLog", "No", "", None),
             ("Line", "Ratings", "[ 400]", "[401,]", None),
-            ("RegControl", "FwdThreshold", "100", "", None),
+            ("GICTransformer", "R2", "0.09522", "0.12696", None),
         ] {
             let got = claim_value(PropsChannel::R4133, class, prop, rust, oracle);
-            match (got, want) {
-                (Some(ValueClaim::Normalization(rule)), Some(tag)) => {
-                    assert_eq!(rule.tag(), tag, "{class}.{prop}");
-                    assert_eq!(got.unwrap().tag(), format!("normalized-by-{tag}"));
-                }
-                (None, None) => {}
-                _ => panic!("{class}.{prop}: chain answered {got:?}, expected {want:?}"),
-            }
+            assert_eq!(
+                got.map(ValueClaim::tag),
+                want.map(str::to_string),
+                "{class}.{prop} '{rust}' vs '{oracle}': chain answered {got:?}"
+            );
             // The seam and the query say the same thing about this cell.
             let (a, e) = normalize_with(PROPS_NORM_R4133, class, prop, rust, oracle);
             assert_eq!(
@@ -2025,21 +2708,27 @@ mod tests {
                 "{class}.{prop}: the seam and the offline chain disagree"
             );
         }
-        // The two later links are inert in RP2.1, and for a reason each: the
-        // echo table is empty, the floor is `None` (so a numeric pair that is
-        // genuinely different is NOT swallowed).
+        // The LAST link is still inert, and for its own reason: the floor is
+        // `None`, so a numeric pair that is genuinely different is NOT
+        // swallowed (asked on a pair with no echo row, or the echo link would
+        // answer first).
+        assert!(display_floor().is_none());
         assert_eq!(
             claim_value(
                 PropsChannel::R4133,
-                "RegControl",
-                "FwdThreshold",
-                "100",
-                "800"
+                "GICTransformer",
+                "R2",
+                "0.1",
+                "0.100001"
             ),
             None
         );
-        assert!(display_floor().is_none());
         assert_eq!(counter_totals(), before, "the chain query moved a counter");
+        assert_eq!(
+            echo_counter_totals(),
+            before_echo,
+            "the offline chain query must not move the LIVE echo counters"
+        );
     }
 
     /// **Capi-invariance of the measurement layer** (plan mechanic (b)).
@@ -2061,6 +2750,12 @@ mod tests {
             ("Transformer", "Conn", "wye", "wye "),
             ("Line", "Ratings", "[ 400]", "[400,]"),
             ("SwtControl", "Normal", "closed", "[closed, ]"),
+            // RP2.3's link: an echo-excluded cell must stay a full compare on
+            // capi. This one matters more than the folds above — capi is where
+            // most of these rows' witness lives, so an echo row leaking onto
+            // that channel would delete the very evidence it cites.
+            ("RegControl", "Idle", "No", ""),
+            ("Load", "Yearly", "day", ""),
             // The floor's slot: two numbers that a future R4133_DISPLAY_FLOOR
             // could fold. `None` here must not depend on the floor being `None`.
             ("Load", "pf", "0.88", "0.880001"),
@@ -2071,12 +2766,14 @@ mod tests {
                 "{class}.{prop}: the capi channel must reach no link of the r4133 chain"
             );
         }
-        // …and the three r4133-claimed ones really are claimed, so the assertion
+        // …and the r4133-claimed ones really are claimed, so the assertion
         // above is a channel statement and not a "nothing is ever claimed" one.
         for (class, prop, rust, oracle) in [
             ("Capacitor", "Enabled", "Yes", "true"),
             ("Transformer", "Conn", "wye", "wye "),
             ("Line", "Ratings", "[ 400]", "[400,]"),
+            ("RegControl", "Idle", "No", ""),
+            ("Load", "Yearly", "day", ""),
         ] {
             assert!(
                 claim_value(PropsChannel::R4133, class, prop, rust, oracle).is_some(),
@@ -2130,18 +2827,327 @@ mod tests {
         check_rows_are_live(PROPS_NORM_R4133, &visits, &hits);
     }
 
-    /// The echo table ships empty and its consult answers `false` for
-    /// everything — including the pairs RP2.3 is expected to fill it with.
+    // ------------------------------------------------------- the echo table
+
+    /// [`find_echo_row`] binary-searches, so the order is a correctness
+    /// invariant, and a duplicate `(class, prop)` would make which row wins
+    /// depend on the search's landing point.
     #[test]
-    fn the_echo_table_is_empty_until_rp2_3() {
-        assert!(PROPS_ECHO_R4133.is_empty());
-        for (class, prop) in [
-            ("regcontrol", "idleforward"),
-            ("regcontrol", "fwdthreshold"),
-            ("relay", "reset"),
-            ("energymeter", "peakcurrent"),
-        ] {
-            assert!(!echo_excluded(class, prop));
+    fn the_echo_table_is_sorted_and_unique() {
+        for w in PROPS_ECHO_R4133.windows(2) {
+            let (a, b) = (&w[0], &w[1]);
+            assert_eq!(
+                ci_cmp(a.class, b.class).then_with(|| ci_cmp(a.prop, b.prop)),
+                Ordering::Less,
+                "PROPS_ECHO_R4133 must be sorted by (class, prop) with no duplicate: \
+                 {}.{} vs {}.{}",
+                a.class,
+                a.prop,
+                b.class,
+                b.prop
+            );
         }
+        // Lookup is case-insensitive because the capture spells a class however
+        // the engine does, and it finds the row for a pair spelled either way.
+        assert!(echo_excluded("RegControl", "IdleForward"));
+        assert!(echo_excluded("regcontrol", "idleforward"));
+        assert!(!echo_excluded("regcontrol", "band"));
+        assert!(!echo_excluded("Foo", "Bar"));
+    }
+
+    /// **The table's contents, pinned literally** — the
+    /// [`enumsynonym_maps_are_injective`] discipline at table scale.
+    ///
+    /// Every row of this table STOPS a value compare forever, so the row set is
+    /// not something a later edit may widen quietly: a new pair, a re-tagged
+    /// category or a deleted row all red here and have to be argued in the diff.
+    /// It is the offline half of "no wildcard, no over-broad row"; the live half
+    /// is [`check_echo_rows_are_live`] plus the census's `echo-row` tally.
+    #[test]
+    fn the_echo_table_is_the_measured_row_set() {
+        let got: Vec<String> = PROPS_ECHO_R4133
+            .iter()
+            .map(|r| format!("{}.{} {}", r.class, r.prop, r.category.tag()))
+            .collect();
+        let want = [
+            "autotrans.bhcurrent EmptyCollectionRender",
+            "autotrans.bhflux EmptyCollectionRender",
+            "autotrans.pctperm EchoDefault",
+            "autotrans.repair EchoDefault",
+            "capcontrol.reset EchoDefault",
+            "capcontrol.type EchoParse",
+            "energymeter.action EchoDefault",
+            "energymeter.peakcurrent EchoDefault",
+            "expcontrol.derlist LiveSemanticsDiffer",
+            "fault.bus2 EchoParse",
+            "fault.pctperm EchoDefault",
+            "fuse.switchedobj EchoDefault",
+            "generator.d LiveSemanticsDiffer",
+            "generator.dynout LiveSemanticsDiffer",
+            "generator.shaftdata EmptyCollectionRender",
+            "generator.userdata EmptyCollectionRender",
+            "gicsource.spectrum EchoDefault",
+            "gictransformer.pctperm EchoDefault",
+            "invcontrol.lpftau EchoDefault",
+            "invcontrol.mode EchoDefault",
+            "invcontrol.monvoltagecalc EchoDefault",
+            "invcontrol.pvsystemlist EchoDefault",
+            "invcontrol.risefalllimit EchoDefault",
+            "invcontrol.vsetpoint EchoDefault",
+            "isource.bus2 EchoDefault",
+            "isource.yearly EchoDefault",
+            "line.cncables EchoDefault",
+            "line.conductors EchoDefault",
+            "line.spacing EchoParse",
+            "line.tscables EchoDefault",
+            "line.wires EchoDefault",
+            "load.yearly LiveSemanticsDiffer",
+            "load.zipv EmptyCollectionRender",
+            "monitor.mode EchoParse",
+            "pvsystem.%pminkvarmax LiveSemanticsDiffer",
+            "pvsystem.%pminnovars LiveSemanticsDiffer",
+            "pvsystem.amplimit EchoDefault",
+            "pvsystem.amplimitgain EchoDefault",
+            "pvsystem.dynout EmptyCollectionRender",
+            "pvsystem.userdata EmptyCollectionRender",
+            "reactor.bus2 EchoParse",
+            "reactor.kvar EchoDefault",
+            "recloser.debugtrace EchoDefault",
+            "recloser.eventlog EchoDefault",
+            "recloser.switchedobj EchoDefault",
+            "regcontrol.fwdthreshold EchoDefault",
+            "regcontrol.idle EchoDefault",
+            "regcontrol.idleforward EchoDefault",
+            "regcontrol.idlereverse EchoDefault",
+            "regcontrol.remoteptratio EchoDefault",
+            "regcontrol.revthreshold EchoDefault",
+            "relay.action EchoDefault",
+            "relay.distreverse EchoDefault",
+            "relay.reset EchoParse",
+            "relay.switchedobj EchoDefault",
+            "storage.%pminkvarmax LiveSemanticsDiffer",
+            "storage.%pminnovars LiveSemanticsDiffer",
+            "storage.amplimit EchoDefault",
+            "storage.amplimitgain EchoDefault",
+            "storage.dynadata EmptyCollectionRender",
+            "storage.dynadll LiveSemanticsDiffer",
+            "storage.userdata EmptyCollectionRender",
+            "storagecontroller.modedischarge LiveSemanticsDiffer",
+            "storagecontroller.seasontargets EmptyCollectionRender",
+            "storagecontroller.seasontargetslow EmptyCollectionRender",
+            "swtcontrol.action EchoParse",
+            "transformer.bhcurrent EmptyCollectionRender",
+            "transformer.bhflux EmptyCollectionRender",
+            "transformer.pctperm EchoDefault",
+            "transformer.repair EchoDefault",
+            "upfc.climit EchoDefault",
+            "upfc.kvarlimit EchoDefault",
+            "upfc.refkv2 EchoDefault",
+            "upfc.vhlimit EchoDefault",
+            "upfc.vllimit EchoDefault",
+            "upfccontrol.basefreq EchoDefault",
+            "upfccontrol.enabled EchoDefault",
+            "vccs.bp1 EchoDefault",
+            "vccs.bp2 EchoDefault",
+            "vsource.yearly EchoDefault",
+            "windgen.dynout EmptyCollectionRender",
+        ];
+        assert_eq!(got, want, "PROPS_ECHO_R4133's row set moved");
+    }
+
+    /// **The five pairs the RP2.3 kill criterion fired on take NO row here.**
+    ///
+    /// r4133 renders a live computed read-only quantity for each
+    /// (`IndMach012.pas:1789`, `StorageController.pas:991-994`) and the port
+    /// renders `''` only because dss_capi 0.14.5 flags them
+    /// `[SilentReadOnly, ReadByFunction]`. Under the 2026-08-02 policy the
+    /// 0.14.5 convention yields: the fix is an ENGINE change (render the live
+    /// value, exclude the capi side there), which is why these five are routed
+    /// to their own sub-step instead of being given a category that would
+    /// misdescribe them. If a later pass adds one of them here, the kill
+    /// ruling has to be re-opened first.
+    #[test]
+    fn the_silent_readonly_pairs_have_no_echo_row() {
+        for (class, prop) in [
+            ("indmach012", "pf"),
+            ("storagecontroller", "kwhtotal"),
+            ("storagecontroller", "kwtotal"),
+            ("storagecontroller", "kwhactual"),
+            ("storagecontroller", "kwactual"),
+        ] {
+            assert!(
+                !echo_excluded(class, prop),
+                "{class}.{prop} is a SilentReadOnly surface, not an echo — RP3.8's, not this \
+                 table's (props_r4133_replay::RP38_ROUTING)"
+            );
+        }
+    }
+
+    /// **Every row carries a witness** — CLAUDE.md's exclusion discipline as a
+    /// test: an exclusion is only admissible paired with the thing that still
+    /// holds the value. A `Capi` witness must name a positive case count (a
+    /// zero would be the absence of a witness spelled as one), and a pin's name
+    /// must be a real test identifier.
+    #[test]
+    fn every_echo_row_carries_a_witness() {
+        for r in PROPS_ECHO_R4133 {
+            if let Some(n) = r.witness.capi_cases() {
+                assert!(
+                    n > 0,
+                    "{}.{}: a Capi witness with zero cases is no witness",
+                    r.class,
+                    r.prop
+                );
+            }
+            if let Some(name) = r.witness.pin() {
+                assert!(
+                    !name.is_empty()
+                        && name
+                            .chars()
+                            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'),
+                    "{}.{}: {name:?} is not a test identifier",
+                    r.class,
+                    r.prop
+                );
+            }
+            assert!(
+                r.cite.contains(".pas"),
+                "{}.{}: the row must cite an r4133 source unit, got {:?}",
+                r.class,
+                r.prop,
+                r.cite
+            );
+            assert!(
+                r.cells > 0,
+                "{}.{}: a cited pair has cells",
+                r.class,
+                r.prop
+            );
+            assert!(
+                r.class.chars().all(|c| !c.is_ascii_uppercase())
+                    && r.prop.chars().all(|c| !c.is_ascii_uppercase()),
+                "{}.{}: rows are spelled as the census spells a pair (lowercase)",
+                r.class,
+                r.prop
+            );
+        }
+    }
+
+    /// **A `LiveSemanticsDiffer` row always names a pin.** The category claims
+    /// the two engines mean different things and *ours is right* — capi
+    /// agreement cannot carry that claim (capi is a numeric oracle, not the
+    /// behavioral authority), so the expected-value pin is mandatory. The names
+    /// are the tests RP2.3 part B2 lands.
+    #[test]
+    fn every_live_semantics_row_names_a_pin() {
+        let named: Vec<(&str, &str, &str)> = PROPS_ECHO_R4133
+            .iter()
+            .filter(|r| r.category == LiveSemanticsDiffer)
+            .map(|r| {
+                (
+                    r.class,
+                    r.prop,
+                    r.witness.pin().unwrap_or_else(|| {
+                        panic!(
+                            "{}.{} is LiveSemanticsDiffer and names no pin — the claim \
+                             'the port's meaning is the correct one' needs one",
+                            r.class, r.prop
+                        )
+                    }),
+                )
+            })
+            .collect();
+        assert_eq!(named.len(), ECHO_LIVE_SEMANTICS_ROWS);
+        // …and the pin set as a whole, pinned literally so a row cannot quietly
+        // start pointing at a test that does not exist.
+        let mut pins: Vec<&str> = PROPS_ECHO_R4133
+            .iter()
+            .filter_map(|r| r.witness.pin())
+            .collect();
+        pins.sort_unstable();
+        pins.dedup();
+        assert_eq!(
+            pins,
+            [
+                "autotrans_bh_arrays_render_empty_when_unset",
+                "energymeter_peakcurrent_renders_the_live_one_element_array",
+                "expcontrol_derlist_renders_the_der_list",
+                "fault_bus2_renders_the_live_terminal",
+                "generator_d_renders_the_documented_damping_default",
+                "generator_dynout_renders_the_named_variables",
+                "line_conductors_renders_the_live_conductor_list",
+                "line_spacing_renders_empty_once_the_spacing_is_killed",
+                "load_yearly_renders_the_resolved_loadshape_name",
+                "pvsystem_and_storage_pmin_sentinels_deactivate_the_var_limits",
+                "recloser_eventlog_and_debugtrace_default_to_no",
+                "recloser_switchedobj_defaults_to_the_monitored_element",
+                "regcontrol_idle_flags_and_thresholds_render_the_live_values",
+                "relay_action_distreverse_and_reset_render_the_live_values",
+                "relay_switchedobj_defaults_to_the_monitored_element",
+                "storage_dynadll_renders_the_typed_path",
+                "storagecontroller_modedischarge_renders_schedule",
+                "swtcontrol_action_renders_the_live_switch_state",
+                "transformer_bh_arrays_render_empty_when_unset",
+                "windgen_dynout_renders_empty_when_unset",
+            ],
+            "the expected-value pins RP2.3's rows depend on"
+        );
+        assert_eq!(
+            PROPS_ECHO_R4133
+                .iter()
+                .filter(|r| r.witness.pin().is_some())
+                .count(),
+            32,
+            "rows whose witness is (also) a pin"
+        );
+    }
+
+    /// **The live seam counts what the gate saw, and answers the pair-scoped
+    /// question.** A visit is any compared cell of the pair; a hit is a visit
+    /// whose sides differed, i.e. a compare the row really stopped.
+    #[test]
+    fn the_echo_seam_counts_visits_and_hits() {
+        let before = echo_counter_totals();
+        // A pair with no row is never touched, and moves no counter.
+        assert!(!echo_excluded_r4133("Foo", "Bar", "a", "b"));
+        assert_eq!(echo_counter_totals(), before);
+        // Equal sides: visited, not a hit — nothing was excluded.
+        assert!(echo_excluded_r4133("RegControl", "Idle", "No", "No"));
+        assert_eq!(echo_counter_totals(), (before.0 + 1, before.1));
+        // Differing sides: the exclusion did work.
+        assert!(echo_excluded_r4133("RegControl", "Idle", "No", ""));
+        assert_eq!(echo_counter_totals(), (before.0 + 2, before.1 + 1));
+    }
+
+    /// The echo liveness guard, silent where it must be: dormant (today's gate,
+    /// every counter 0), fully live, and on the two rows the census measured as
+    /// having no in-scope cell at all.
+    #[test]
+    fn the_echo_liveness_guard_is_silent_when_dormant_or_live() {
+        let n = PROPS_ECHO_R4133.len();
+        check_echo_rows_are_live(PROPS_ECHO_R4133, &vec![0; n], &vec![0; n]);
+        check_echo_rows_are_live(PROPS_ECHO_R4133, &vec![9; n], &vec![4; n]);
+        // Visited but excluding nothing — legitimate ONLY for the exempt rows.
+        let mut visits = vec![0; n];
+        let hits = vec![0; n];
+        for (class, prop) in ECHO_ROWS_WITH_NO_IN_SCOPE_CELL {
+            let i = find_echo_row(PROPS_ECHO_R4133, class, prop).expect("a shipped row");
+            visits[i] = 11;
+        }
+        check_echo_rows_are_live(PROPS_ECHO_R4133, &visits, &hits);
+    }
+
+    /// …and the other direction: a row that was COMPARED and excluded nothing
+    /// is masking a divergence that is no longer there, and the guard says so,
+    /// naming the row. (Driven on a pair that is NOT on the exemption list.)
+    #[test]
+    #[should_panic(expected = "stale r4133 property echo row: regcontrol.idle")]
+    fn the_echo_liveness_guard_fires_on_a_stale_row() {
+        let n = PROPS_ECHO_R4133.len();
+        let i = find_echo_row(PROPS_ECHO_R4133, "regcontrol", "idle").expect("a shipped row");
+        let mut visits = vec![0; n];
+        let hits = vec![0; n];
+        visits[i] = 15;
+        check_echo_rows_are_live(PROPS_ECHO_R4133, &visits, &hits);
     }
 }

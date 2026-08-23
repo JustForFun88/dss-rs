@@ -487,6 +487,105 @@ pending marker.
    routed to RP2.3 beside their untouched `CaseFold` rows, and
    `invcontrol.voltage_curvex_ref` (3) changed rule.
 
+### What RP2.3 moved (disposition census, 2026-08-23)
+
+Re-measured on the post-RP2.3 tree with the same knob and the same population
+(`DSS_PROPS_CENSUS=claims`, 439 cases × 2 channels, **1 060 165 rows, 65.2 s**,
+error counts again at the recorded baselines — 5 `oracle_error` on r4133, 22 on
+`capi_v0145`, so the run is complete, not short). This section **supplements**
+the RP2.1 and RP2.2 numbers above; it does not rewrite them.
+
+RP2.3 filled `PROPS_ECHO_R4133` (81 rows) and, before it, added nine typed
+`PROPS_NORM_R4133` rows so that no pair-scoped exclusion could cover a cell a
+typed rule can still compare.
+
+| disposition | cells | in scope | spellings | pairs | Δ vs RP2.2 |
+|---|---|---|---|---|---|
+| `normalized-by-BoolFold` | 294 519 | 280 915 | 114 | 77 | — |
+| `normalized-by-CaseFold` | **99 023** | **95 270** | **529** | **65** | +6 047 / +6 039 cells, +88 spellings, +3 pairs |
+| `normalized-by-ArrayForm` | **122 756** | **118 744** | **203** | **23** | +399 / +331 cells, +11 spellings, +6 pairs |
+| `normalized-by-EnumSynonym` | 4 619 | 3 817 | 9 | 5 | — |
+| `echo-row` (RP2.3) | **488 018** | **468 044** | **170** | **81** | **new** |
+| `under-floor` (RP2.4) | 0 | 0 | 0 | 0 | — |
+| `ledger-hit` | 0 | 0 | 0 | 0 | — |
+| **claimed** | **1 008 935** | **966 790** | **1 025** | **231** | +494 464 / +474 414 cells |
+| `UNCLAIMED` | **51 104** | **47 427** | **2 436** | **103** | −494 464 / −474 414 cells, −81 pairs |
+
+**Read the `pairs` column with care from this sub-step on.** Until RP2.2 no pair
+carried two dispositions, so the `claimed` row could be a column sum. It cannot
+any more: **20 pairs now hold a normalization row *and* an echo row** (the chain
+claims their foldable cells first and the exclusion covers only the remainder),
+so the naive sum 77+65+23+5+81 = 251 double-counts and the true distinct claimed
+population is **231**. Six pairs appear in both the claimed and the unclaimed
+column for the same reason.
+
+The two normalization lines of that table that moved did so because of RP2.3's
+nine new typed rows, landed deliberately *ahead* of the exclusions so that no
+pair-scoped mask could cover a cell a rule can still compare: `load.yearly`,
+`reactor.bus2` and
+`invcontrol.monvoltagecalc` (`CaseFold`), `line.wires`, `load.zipv`,
+`generator.userdata`, `storage.dynadata`,
+`storagecontroller.seasontargets`/`seasontargetslow` (`ArrayForm`). Together they
+keep **6 446 cells (6 370 in scope)** inside the value compare that a pair-scoped
+exclusion would otherwise have swallowed. A tenth measured candidate,
+`swtcontrol.action`, took no row: its one foldable spelling is 6 cells and **0 in
+scope**.
+
+Claimed *spellings* run one ahead of the offline replay's `CLAIMED_TOTAL` (1 025
+live vs 1 024) — the same +1 population drift the RP2.1 reconciliation records
+and RP2.2 measured (756 vs 755), not a new disagreement.
+
+The `capi_v0145` half of the run reports **0** cells on all six r4133
+dispositions, echo included, unchanged and by contract (`claim_value` takes the
+channel), with its 11 `ledger-hit`s intact.
+
+**The unclaimed table, re-grouped** (same rule: by the pair's frozen bin):
+
+| pair's frozen bin | pairs | cells | in scope | owner |
+|---|---|---|---|---|
+| 6 | 61 | 47 899 | 45 552 | RP2.4 (display floor) |
+| 7 | 20 | 1 476 | 924 | RP2.4 / RP3 |
+| 5 | 6 | 1 069 | 777 | **RP3.8** (5 pairs, 1 064 / 772) + `line.linecode` (RP3.6, 5 / 5) |
+| no frozen row | 6 | 470 | 94 | RP2.4 (`generator.maxkvar`/`minkvar`/`kva`, `autotrans.normamps`/`emergamps`) / §1.3 (`autotrans.wdgcurrents`, 0 in scope) |
+| 4 | 8 | 186 | 80 | RP3.7 (`swtcontrol.normal`/`state`, `relay.normal`/`state`) / §1.3 (the four `sensor.*`, 0 in scope) |
+| 3 | 1 | 3 | 0 | RP3.5 (`line.units`) |
+| 2+7 | 1 | 1 | 0 | `isource.bus1`'s numeric twin (§1.3) |
+
+Bin 5 fell from 44 pairs / 442 375 cells to **6 / 1 069**, and bin 1's nine echo
+pairs, bin 2's six off-bin pairs, bin 3's three RP2.3 pairs and bin 4's two
+disappear from the table entirely — they are claimed. What is left is RP2.4's
+display class (61 + most of bin 7), the three open RP3.5/3.6/3.7 sub-steps and
+the new RP3.8.
+
+**RP3.8, the population this sub-step could not claim.** RP2.3's kill criterion
+fired on five pairs and they are re-routed rather than masked — `indmach012.pf`
+(16 / 16) and `storagecontroller.kwhtotal`/`kwtotal`/`kwhactual`/`kwactual`
+(262 / 189 each), **1 064 cells / 772 in scope**. r4133 renders all five *live*
+(`Version8/Source/PCElements/IndMach012.pas:1790`;
+`Controls/StorageController.pas:991-994` → `GetkWhTotal`/`GetkWTotal`/
+`GetkWhActual`/`GetkWActual`, declared `:136-139`) while the port answers `''`
+only because dss_capi 0.14.5 flags them `[SilentReadOnly, ReadByFunction]`. That
+is an engine fix under the 2026-08-02 policy, not an exclusion, so no echo row
+was written for them (`props_r4133_replay::RP38_ROUTING`, `DECLARED_RP38`).
+
+**A dated correction to §"Pairs the WP-RP1 shape closures make live", RP1.1
+(2026-08-23).** The recorded numbers there stand; the *mechanism* sentence about
+`generator.d` does not. It reads "r4133 answers `'0'` from a frozen default whose
+field says 1.0, the same family as bin 7's twelve echo pairs". The field whose
+value is 1.0 is `GenVars.D`; the **property's** field is `GenVars.Dpu` — what
+`Edit` writes (`Version8/Source/PCElements/generator.pas:669`) and what
+`InitPropertyValues` snapshots (`:2585`) — and `Create` sets `D := 1.0` (`:969`)
+while never touching `Dpu`. So the store is not stale: `'0'` IS r4133's live
+`Dpu`, and `InitStateVars` then computes `D := Dpu*kVArating*1000/w0 = 0`
+(`:2710`), discarding `Create`'s 1.0 and running generator dynamics undamped
+against the property's documented default ("Default is 1.0", `:467`). It is an
+upstream initialisation bug, not an echo; dss_capi 0.14.5 fixed it (`Dpu := 1.0`,
+`src/PCElements/Generator.pas:1006`) and the port follows. RP2.3 therefore landed
+the pair as an `EchoCategory::LiveSemanticsDiffer` row with an expected-value pin
+(`generator_d_renders_the_documented_damping_default`), never as a silent
+`EchoDefault`. The same correction is recorded in the plan's §1.1 RP1.1 note and
+at `props_r4133_replay::BIN7_ECHO_SUPPLEMENT`.
+
 ## Files
 
 | file | rows | origin |

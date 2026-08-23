@@ -626,8 +626,9 @@ Where the vendored evidence is knowingly behind the live population it says so
 with an assertion rather than a comment: `LIVE_ONLY_SPELLINGS` names the one
 spelling the claims census sees and no file may carry (`autotrans.conn
 'series'/'Series'`, on a pair whose `bins.tsv` row predates RP1.2's deck),
-reconciles the replay's 755 claimed spellings with the census's 756, and pins
-that the shipped rule still claims it.
+reconciles the replay's normalization-link spelling count with the census's
+(748/749 at RP2.1, **854/855 since RP2.3**), and pins that the shipped rule still
+claims it.
 
 Since **RP2.2** the file also carries that sub-step's dossier as data:
 `RP22_ROUTING` is one row per pair RP2.2 read and routed, each citing the r4133
@@ -672,6 +673,26 @@ cannot compile or solve at all, i.e. post-0.14.5 spellings (`xfmrcode`,
 `modes:upgrade/*` family) plus two capi-side aborts. A count above the baseline
 means this run measured less than the recorded census, and its totals must not
 be compared against the recorded numbers.
+
+### The r4133 echo-exclusion pins (`props_r4133_pins.rs`)
+
+`crates/dss-core/tests/props_r4133_pins.rs` (RP2.3, unconditional plain
+`cargo test`, no oracle) holds the expected-value tests every
+`PROPS_ECHO_R4133` row names in its `EchoWitness`. Each one compiles the vendored
+corpus deck the claims census flagged for that pair, reads the port's live render
+with `? Class.Name.Prop` — the same getter the gate's property walk reads — and
+asserts it literally, plus a discriminating second reading so the assertion is
+about the value and not about a constant. They live in their own binary on
+purpose: a pin in `tests/harness/` would recompile and re-solve every deck in
+each of the 22 binaries that include the harness.
+`props_r4133_replay::every_echo_row_pin_is_a_test_that_exists` reads the names
+back both ways, so a renamed or orphaned pin fails rather than leaving a row
+citing a witness that is not there. Two of the flagged decks write into the
+vendored tree while they run (`Test/TD21RelayTest.DSS` ends in `show eventlog`,
+`StorageControllerTechNote/Schedule/ScheduleRun.dss` in nine `Export`s); the
+file's own `DeckDirGuard` sweeps what a run created and fails if a run changed a
+vendored file, the same contract the corpus gate's `CorpusGuard` carries for the
+live walk.
 
 ### 0.15.x property-table allowlist (`PROPS_015X`)
 

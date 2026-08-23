@@ -158,6 +158,14 @@ fn corpus_gate_all_cases_match_engines() {
     // remember it. Self-silencing under `DSS_GATE_ONLY` for the same reason the
     // two above are.
     harness::props_norm::assert_norm_rows_are_live();
+    // And for the RP2.3 r4133 property-ECHO rows, for the same reason with a
+    // sharper edge: each row stops the r4133 value compare of a whole pair, so
+    // one that excludes nothing is a mask over a divergence that is no longer
+    // there. Dormant on the same schedule (zero visits until RP4.1) and
+    // silent-when-dormant for the same `DSS_GATE_ONLY` reason, plus for the two
+    // rows whose cited cells sit on capi-only cases
+    // (`props_norm::ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`).
+    harness::props_norm::assert_echo_rows_are_live();
 }
 
 /// The property census (`R4133_PROPS_PLAN.md` RP0.2, `DSS_PROPS_CENSUS`): walk
