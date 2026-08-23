@@ -149,7 +149,9 @@ lands after RP2.3 whenever its outcome is an echo row; RP3.4 lands after RP2.3
 (its ledger twins must not duplicate echo rows). RP4.1 starts only after
 **every** RP1–RP3 sub-step is landed, including any RP3.5+ sub-step RP2.2's
 triage opens **and §RP3.8, which RP2.3's kill criterion opened** (its 1 064 cells
-are re-routed, not claimed — see `RP38_ROUTING` in the replay); RP5 is last.
+are re-routed, not claimed — see `RP38_ROUTING` in the replay), and after its own
+in-sub-step precondition, the **per-cell narrowing of the 20 mixed echo rows**
+(RP2.3's audit settlement, §RP4.1's first paragraph); RP5 is last.
 Execution is on a **single branch only — never in parallel
 worktrees**: `tests/corpus/ledger.json`, `tests/corpus/manifests/population.lock.json`
 and `tests/golden/golden.lock.json` are fail-on-stale and are rewritten by this
@@ -387,6 +389,12 @@ sub-step's own numeric stop-and-report threshold holds.
   `GetPropertyValue` arm and/or the `InitPropertyValues` line). Rows whose
   ours-value has **no** capi witness (the class or every affected case is
   r4133-only) must name their expected-value pin test in the row comment.
+  Since RP2.3's audit settlement two riders make the pair-scoped shape honest:
+  `ECHO_CARVE_OUTS` takes a measured cell back out of a row whose citation does
+  not explain it (never a shape heuristic — the `(rust, r4133)` spelling is
+  matched exactly, and the cell is re-declared to whoever owns it), and the
+  "r4133-only **cases**" half of the pin rule is enforced from the measured
+  `ECHO_ROWS_ON_R4133_ONLY_CASES` rather than applied by hand.
 - **The replay-accounting test** (new integration test
   `crates/dss-core/tests/props_r4133_replay.rs`) — reads the vendored census
   extracts (RP0.1) and pushes every **example row** of `examples_full.txt` —
@@ -869,9 +877,11 @@ already routed here (RP2.3 runs after RP2.2, §0), plus the echo rows of the
 replay bullet): the four mixed pairs — `recloser.eventlog`, `regcontrol.idle`,
 `relay.distreverse` (`''` echoes) and `relay.reset` (the non-empty stale parse
 string `'0.20'` — an `EchoParse` row, not `EchoDefault`) — where the chain
-order does the per-cell discrimination (foldable cells are claimed by
-`BoolFold` before the echo row is consulted, so the echo row masks only the
-echo cells), and the five pure-echo pairs `regcontrol.idleforward`,
+order does the per-cell **attribution** (foldable cells are claimed by
+`BoolFold` before the echo row is consulted, so only the echo cells are credited
+to the echo row; the shipped exclusion is still pair-scoped — see the
+as-executed correction below and §RP4.1's precondition), and the five pure-echo
+pairs `regcontrol.idleforward`,
 `regcontrol.idlereverse`, `capcontrol.reset`, `recloser.debugtrace`,
 `upfccontrol.enabled` (no foldable cell at all — the six pairs beyond the
 originally-named three carry 2 125 in-scope echo cells that would otherwise
@@ -915,13 +925,25 @@ getter arm is LIVE and merely renders the other empty-collection convention
 been false.
 
 **Nine new `PROPS_NORM_R4133` rows landed FIRST** (part A finding F4, the
-ruling's R3), so that no pair-scoped mask covers a cell a typed rule can still
-compare: `load.yearly`/`reactor.bus2`/`invcontrol.monvoltagecalc` `CaseFold` and
-`line.wires`/`load.zipv`/`generator.userdata`/`storage.dynadata`/
-`storagecontroller.seasontargets`+`seasontargetslow` `ArrayForm`, keeping **6 446
-cells (6 370 in scope)** inside the value compare. The tenth measured pair,
-`swtcontrol.action`, deliberately took none (6 foldable cells, **0 in scope**,
-and the row would have loosened a live RP2.2 pin for zero live coverage).
+ruling's R3): `load.yearly`/`reactor.bus2`/`invcontrol.monvoltagecalc`
+`CaseFold` and `line.wires`/`load.zipv`/`generator.userdata`/`storage.dynadata`/
+`storagecontroller.seasontargets`+`seasontargetslow` `ArrayForm`, **6 446 cells
+(6 370 in scope)**. The tenth measured pair, `swtcontrol.action`, deliberately
+took none (6 foldable cells, **0 in scope**, and the row would have loosened a
+live RP2.2 pin for zero live coverage).
+**CORRECTION (audit settlement, 2026-08-23):** this paragraph originally said
+those nine rows keep their 6 446 cells "inside the value compare that a
+pair-scoped exclusion would otherwise have swallowed". They do not, and the
+audit proved it through the real comparator: the chain order decides which link
+*claims* a cell — the census disposition, and the hit that keeps each of the
+nine rows provably live — but the seam's exclusion is asked per PAIR, so on the
+20 mixed pairs it drops the value assert for the cells the rule refused as well.
+A genuine regression there (a wrong resolved loadshape name, a wrong ZIPV
+vector) is caught on the capi channel only. Narrowing those rows per cell is
+now an explicit RP4.1 precondition (§RP4.1); the mechanism exists —
+`props_norm::ECHO_CARVE_OUTS`, added by the same settlement — and the shipped
+behaviour is pinned by
+`harness::props_policy_tests::a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses`.
 
 **Witnesses**: 20 expected-value pins in the new
 `crates/dss-core/tests/props_r4133_pins.rs`, covering the 32 rows whose value the
@@ -937,10 +959,37 @@ asserts the port's live render literally, with a discriminating second reading;
 back both ways.
 
 **Measured (full claims census at HEAD, 439 cases × 2 channels, error baselines
-5 r4133 / 22 capi):** `echo-row` claims **488 018 cells (468 044 in scope)** over
-170 spellings and all 81 pairs; `UNCLAIMED` falls 545 568 → **51 104**
+5 r4133 / 22 capi):** `echo-row` claims **488 017 cells (468 044 in scope)** over
+169 spellings and all 81 pairs; `UNCLAIMED` falls 545 568 → **51 105**
 (521 841 → **47 427** in scope), leaving the RP2.4 display class and RP3's
 residue. The capi channel still claims **zero** cells — the exclusion is r4133-only.
+(The pre-settlement run measured 488 018 / 170 spellings / 51 104 unclaimed; the
+one cell that moved is the `reactor.kvar` carve-out below, which is out of
+r4133 scope, so no in-scope number changes.)
+
+**As settled (audit round, 2026-08-23).** Seven findings from the two auditors
+(one raised by both), five fixed, one recorded, one refuted — STATUS §WP-RP2
+carries the arithmetic. Three things changed beyond wording:
+
+* **`props_norm::ECHO_CARVE_OUTS`**, a per-cell narrowing valve, with one entry:
+  `reactor.kvar`'s 607th census cell is not that row's `'1200'` echo but r4133's
+  own live `kvarRating` after `MakePosSequence` round-trips it through
+  `Format(' kvar=%-.5g')` and the parser (`Reactor.pas:1145-1201`) — a 5.0e-06
+  divergence of two live values, i.e. **RP2.4's** display class, where the same
+  round-trip's `reactor.kv` already sits (`bins.tsv` bin 6, 5.85e-06). Declared
+  to RP2.4 (`ECHO_CARVE_OUT_ROUTING`), so `DECLARED_RP24` is `(2101, 71, 2021)`
+  and `CLAIMED_ECHO` 169.
+* **Nine more expected-value pins (20 → 29, covering 63 rows)** for mechanic
+  (c)'s "r4133-only **cases**" half, which part B2 had applied to
+  `swtcontrol.action` alone. Measured: 57 of the 81 rows mask cells on
+  `engines: "r4133"` cases (34 969 cells), where the capi channel never runs;
+  31 of them had only a `Capi(n)` witness. `props_norm::
+  ECHO_ROWS_ON_R4133_ONLY_CASES` records the population and a test enforces the
+  rule.
+* **The order of the two seams is now asserted at the shipped comparator**
+  (`the_normalization_seam_runs_before_the_exclusion_on_a_mixed_pair`), not only
+  in the two offline copies of the chain; the two exemption lists
+  (`ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`, `NOT_A_PIN`) are pinned literally.
 
 ### RP2.4 — the r4133 props display floor
 
@@ -1264,6 +1313,23 @@ Outcome: the last population RP4.1 has no owner for is owned.
 ## WP-RP4 — The unmask
 
 ### RP4.1 — `all_properties` on the r4133 channel (G1.1's deliverable)
+
+**Precondition added by RP2.3's audit settlement (2026-08-23) — narrow the 20
+mixed echo rows per cell before the unmask.** `PROPS_ECHO_R4133` is pair-scoped
+(the shape §1.2 prescribes), and on the 20 pairs that also hold a
+`PROPS_NORM_R4133` row that is wider than each row's citation: the typed rule's
+refusal of a cell — a wrong resolved loadshape name, a wrong ZIPV vector, a
+wrong `Bus2` terminal spelling — is a genuine divergence, and the moment this
+sub-step unmasks the path it will pass silently on r4133 (the capi channel is
+the only live witness meanwhile, and eight of the nine pairs the settlement
+looked at carry a `Capi(n)` witness that says nothing about `engines: "r4133"`
+cases). Two admissible fixes, both cited-and-measured: extend
+`props_norm::ECHO_CARVE_OUTS` with the cells a row must not cover, or give each
+mixed row its measured echo spellings and match on them. Landing either moves
+`CLAIMED_ECHO`/`MULTI_LINK_ROWS` and flips the first assertion of
+`harness::props_policy_tests::a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses`,
+which is written to be replaced rather than deleted. Do it **before** the flip:
+afterwards the same gap is a green gate that proves less than it says.
 
 Stop masking properties on r4133: remove the per-channel clear in the gate path
 (`corpus_gate/scheduler.rs:357-363`) and the seeding path (`scheduler.rs:710-717`),

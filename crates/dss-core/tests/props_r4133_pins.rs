@@ -1,6 +1,6 @@
 //! **The expected-value pins `PROPS_ECHO_R4133` owes** (`R4133_PROPS_PLAN.md`
 //! §RP2.3, mechanic (c): "every exclusion whose ours-value has no capi witness
-//! carries its own expected-value pin").
+//! (r4133-only classes/**cases**) carries its own expected-value pin").
 //!
 //! # Why this file exists
 //!
@@ -15,8 +15,10 @@
 //! cases), `Pin(name)` (no capi coverage at all — the capture has no such
 //! property under `PROPS_015X`, a `SKIP_PROPS` row masks it, the capi walk skips
 //! the element whole, or every covered cell sits on a capi-only case), or
-//! `CapiAndPin(n, name)`. **Twenty of the tests below are those `name`s** (the
-//! other two are the deck guard's own self-tests), and the literal list is
+//! `CapiAndPin(n, name)`. **Twenty-nine of the tests below are those `name`s**
+//! — the twenty RP2.3 landed plus the nine its audit settlement added for the
+//! rows exposed on `engines: "r4133"` cases, together covering 63 of the 81 rows
+//! — and the other two are the deck guard's own self-tests. The literal list is
 //! pinned from the table's side by
 //! `harness::props_norm::tests::every_live_semantics_row_names_a_pin`, so a row
 //! cannot start pointing at a test that does not exist without moving both
@@ -471,28 +473,42 @@ fn generator_dynout_renders_the_named_variables() {
 
 /// `line.conductors` — `EchoDefault`, **pin-only** (`PROPS_015X`'s multi-line
 /// `Line` row drops `Conductors` from the 0.14.5 capture, so capi never compares
-/// it on any of its 75 162 in-scope cells).
+/// it on any of its 75 162 in-scope cells) — **and, since the RP2.3 audit
+/// settlement, its three siblings `line.wires` / `line.cncables` /
+/// `line.tscables` too**.
 ///
-/// r4133 has no getter arm for index 34 (`Version8/Source/PDElements/Line.pas:
-/// 1338-1438`), so the property answers the store, which `InitPropertyValues`
-/// left `''` (`:1524`) and only an explicit `conductors=` would overwrite — the
-/// corpus never types one. The port renders the live conductor list.
+/// r4133 has no getter arm for indices 22, 24, 25 or 34
+/// (`Version8/Source/PDElements/Line.pas:1338-1438`), so each answers the store,
+/// which `InitPropertyValues` left `''` (`:1512`, `:1514`, `:1515`, `:1524`) and
+/// only an explicit `wires=`/`cncables=`/`tscables=`/`conductors=` would
+/// overwrite. The port renders the live conductor list from all four.
+///
+/// The three siblings carry a capi witness (233 cases) as well, but that witness
+/// is silent about the 6 231 (`wires`) / 6 232 (`cncables`, `tscables`) cells
+/// each row masks on `engines: "r4133"` cases, where the capi channel does not
+/// run at all — the largest exposure in
+/// `props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES` — so they name this pin too.
 ///
 /// Decks: `modes/upgrade/upgrade_spacing_ratings.dss` (`Line.l1`, defined with
-/// `wires=[big small big neut]`) for the populated render, and
+/// `wires=[big small big neut]`) for the populated render — itself one of the
+/// r4133-only cases the census flagged — and
 /// `asymmetric/autotrans/autotrans_gic.dss` for the `'[]'` an impedance-defined
 /// line gives. The pair of readings is what makes this a pin on the *list* and
 /// not on a constant.
 #[test]
 fn line_conductors_renders_the_live_conductor_list() {
     let mut geom = Deck::compile("modes/upgrade/upgrade_spacing_ratings.dss");
-    assert_eq!(
-        geom.get("Line.l1.Conductors"),
-        "[big, small, big, neut]",
-        "the live conductor list of a spacing/wires line"
-    );
+    for prop in ["Conductors", "wires", "cncables", "tscables"] {
+        assert_eq!(
+            geom.get(&format!("Line.l1.{prop}")),
+            "[big, small, big, neut]",
+            "the live conductor list of a spacing/wires line, read through {prop}"
+        );
+    }
     let mut plain = Deck::compile("asymmetric/autotrans/autotrans_gic.dss");
-    assert_eq!(plain.get("Line.line1.Conductors"), "[]");
+    for prop in ["Conductors", "wires", "cncables", "tscables"] {
+        assert_eq!(plain.get(&format!("Line.line1.{prop}")), "[]");
+    }
 }
 
 /// `line.spacing` — `EchoParse`, **pin-only** for the same reason as
@@ -856,4 +872,364 @@ fn windgen_dynout_renders_empty_when_unset() {
     let mut deck = Deck::compile("modes/windgen/windgen_snap.dss");
     assert_eq!(deck.get("WindGen.w1.DynamicEq"), "");
     assert_eq!(deck.get("WindGen.w1.DynOut"), "");
+}
+
+// ---------------------------------------------------------------------------
+// Pins added by the RP2.3 audit settlement (2026-08-23): the rows whose masked
+// cells sit on `engines: "r4133"` cases
+// ---------------------------------------------------------------------------
+//
+// Plan §1.2 mechanic (c) asks for a pin wherever an exclusion's ours-value has
+// "no capi witness (r4133-only classes/**cases**)". Part B2 read that as
+// classes and applied the *cases* half to one row by hand
+// (`swtcontrol.action`). The settlement measured the whole population with the
+// claims census crossed against each case's `engines` flag —
+// `props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES`, 57 rows / 34 969 cells — and the
+// 31 rows that had only a `Capi(n)` witness get one here.
+//
+// Each pin below reads the port's live render on a deck the census named for
+// that pair (an r4133-only one wherever the pair has such a case), and adds the
+// discriminating second reading wherever the property can be written back — the
+// same shape as the twenty pins above. Two of them cannot: `action=` on an
+// EnergyMeter and `reset=` on a CapControl are one-shot COMMANDS whose re-read
+// is empty by construction, which is itself the thing being pinned.
+
+/// `pvsystem.amplimit` / `pvsystem.amplimitgain` / `storage.amplimit` /
+/// `storage.amplimitgain` — four `EchoDefault` rows, capi-witnessed (99 / 47
+/// cases) and pinned for the 61 + 43 cells each masks on r4133-only cases.
+///
+/// r4133 has no getter arm and no `InitPropertyValues` entry for either property
+/// on either class (`Version8/Source/PCElements/PVsystem.pas:392-393`, the
+/// CASE's ELSE at `:1174`, the init block `:1074-1124`; `Storage.pas` props
+/// 60/61 and `:1446-1521`), so the store answers `''` for all four. The port
+/// renders the live pair: the current limit's "off" sentinel `-1` and the
+/// controller gain `0.8` both classes start from.
+///
+/// Decks: `controls/invcontrol/invcontrol_vv_delta.dss` (`PVSystem.pv1`) and
+/// `controls/gfm/gfm_micro.dss` (`Storage.batt`), both `engines: "r4133"`. The
+/// edits are the discriminator — a typed limit renders back verbatim, so the
+/// sentinel above is the default state and not a getter stuck on a constant.
+#[test]
+fn der_amp_limits_render_the_live_sentinel_and_gain() {
+    let mut pv = Deck::compile("controls/invcontrol/invcontrol_vv_delta.dss");
+    assert_eq!(
+        pv.get("PVSystem.pv1.AmpLimit"),
+        "-1",
+        "deactivated by default"
+    );
+    assert_eq!(pv.get("PVSystem.pv1.AmpLimitGain"), "0.8");
+    pv.cmd("edit PVSystem.pv1 amplimit=2.5");
+    assert_eq!(pv.get("PVSystem.pv1.AmpLimit"), "2.5");
+
+    let mut st = Deck::compile("controls/gfm/gfm_micro.dss");
+    assert_eq!(st.get("Storage.batt.AmpLimit"), "-1");
+    assert_eq!(st.get("Storage.batt.AmpLimitGain"), "0.8");
+    st.cmd("edit Storage.batt amplimit=3.5 amplimitgain=0.25");
+    assert_eq!(st.get("Storage.batt.AmpLimit"), "3.5");
+    assert_eq!(st.get("Storage.batt.AmpLimitGain"), "0.25");
+}
+
+/// `generator.shaftdata` / `generator.userdata` / `pvsystem.dynout` /
+/// `pvsystem.userdata` / `storage.dynadata` / `storage.userdata` — six
+/// `EmptyCollectionRender` rows, capi-witnessed (26 / 99 / 47 cases) and pinned
+/// for the 43 + 61 + 49 cells each masks on r4133-only cases.
+///
+/// r4133's arms are live and paren-wrap (or bracket) whatever the user-model
+/// data string holds — `generator.pas:3023-3025`, `PVsystem.pas:1158` / `:1171`,
+/// `Storage.pas:1574` / `:1577` — so an element with no user model renders
+/// `'()'` (or `'[]'` for `DynOut`) where this port renders `''`. Same state,
+/// different empty convention.
+///
+/// Decks: `controls/relay/relay_doc.dss` (`Generator.g1`),
+/// `controls/invcontrol/invcontrol_vv_delta.dss` (`PVSystem.pv1`) and
+/// `controls/gfm/gfm_micro.dss` (`Storage.batt`), all `engines: "r4133"`. The
+/// edits are the discriminator: a typed data string renders back verbatim on
+/// every one of these getters, so the `''` above is the empty state and not a
+/// dead arm.
+#[test]
+fn der_user_model_arrays_render_empty_when_unset() {
+    let mut machine = Deck::compile("controls/relay/relay_doc.dss");
+    assert_eq!(machine.get("Generator.g1.ShaftData"), "");
+    assert_eq!(machine.get("Generator.g1.UserData"), "");
+    machine.cmd("edit Generator.g1 UserData=(k=1)");
+    machine.cmd("edit Generator.g1 ShaftData=(m=2)");
+    assert_eq!(machine.get("Generator.g1.UserData"), "k=1");
+    assert_eq!(machine.get("Generator.g1.ShaftData"), "m=2");
+
+    let mut pv = Deck::compile("controls/invcontrol/invcontrol_vv_delta.dss");
+    assert_eq!(pv.get("PVSystem.pv1.DynOut"), "");
+    assert_eq!(pv.get("PVSystem.pv1.UserData"), "");
+    pv.cmd("edit PVSystem.pv1 UserData=(x=9)");
+    assert_eq!(pv.get("PVSystem.pv1.UserData"), "x=9");
+
+    let mut st = Deck::compile("controls/gfm/gfm_micro.dss");
+    assert_eq!(st.get("Storage.batt.DynaData"), "");
+    assert_eq!(st.get("Storage.batt.UserData"), "");
+    st.cmd("edit Storage.batt UserData=(a=1,b=2) DynaData=(c=3)");
+    assert_eq!(st.get("Storage.batt.UserData"), "a=1,b=2");
+    assert_eq!(st.get("Storage.batt.DynaData"), "c=3");
+}
+
+/// `energymeter.action` / `capcontrol.reset` — two `EchoDefault` rows,
+/// capi-witnessed (67 / 31 cases) and pinned for the 45 / 3 cells they mask on
+/// r4133-only cases.
+///
+/// Both properties are one-shot COMMANDS, and r4133 answers neither of them from
+/// a getter: `EnergyMeter` has no arm for index 3 (`Meters/EnergyMeter.pas:482`,
+/// `:2645-2658`) so it echoes the `'clear'` its `InitPropertyValues` froze at
+/// `:2205`, and `CapControl`'s init writes slots 20, 21 and 23 but never 22
+/// (`Controls/CapControl.pas:196`, `:1254-1282`), leaving `''` there. The port
+/// renders the state after the command ran: nothing pending on the meter, and
+/// the CapControl's own `Reset` flag back to `No`.
+///
+/// Decks: `controls/combo/combo_protection.dss` (`EnergyMeter.em`) and
+/// `.../EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss`
+/// (`CapControl.cap1_ctrl` — the only r4133-only case that holds a CapControl),
+/// both `engines: "r4133"`.
+///
+/// **No discriminating edit exists here, and that is the point**: re-issuing the
+/// command (`action=clear`, `reset=yes`) leaves the render exactly where it was,
+/// because these getters report a state and not the last word typed — which is
+/// precisely how they differ from r4133's frozen store. Both readings below are
+/// asserted before AND after the command for that reason.
+#[test]
+fn energymeter_action_and_capcontrol_reset_render_no_pending_command() {
+    let mut meter = Deck::compile("controls/combo/combo_protection.dss");
+    assert_eq!(meter.get("EnergyMeter.em.action"), "");
+    meter.cmd("edit EnergyMeter.em action=clear");
+    assert_eq!(
+        meter.get("EnergyMeter.em.action"),
+        "",
+        "a one-shot command leaves no pending action to report"
+    );
+
+    let mut caps = Deck::compile(
+        "electricdss-tst/Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss",
+    );
+    assert_eq!(caps.get("CapControl.cap1_ctrl.Reset"), "No");
+    caps.cmd("edit CapControl.cap1_ctrl reset=yes");
+    assert_eq!(
+        caps.get("CapControl.cap1_ctrl.Reset"),
+        "No",
+        "the reset flag is consumed by the command, not latched"
+    );
+}
+
+/// `fuse.switchedobj` — `EchoDefault`, capi-witnessed on 1 case and pinned for
+/// the 20 cells it masks on the two `controls/fuse/indmach_r4133/*` cases, which
+/// are `engines: "r4133"`.
+///
+/// The same shape as the Recloser and Relay pins above: r4133 has no arm for
+/// index 3 (`Version8/Source/Controls/Fuse.pas:183`, `:680-720`) and its
+/// `InitPropertyValues` leaves the slot `''` (`:801ff`), while the live
+/// `ElementName` defaults to the MONITORED element when the deck does not type a
+/// `switchedobj=` (`:292`). The port renders that live default.
+///
+/// Deck: `controls/fuse/indmach_r4133/indmach_snap.dss` (`Fuse.f1` on a Line,
+/// `Fuse.f2` on a Transformer — two different monitored classes, so the
+/// assertion is about the defaulting and not about one string). The edit is the
+/// discriminator.
+#[test]
+fn fuse_switchedobj_defaults_to_the_monitored_element() {
+    let mut deck = Deck::compile("controls/fuse/indmach_r4133/indmach_snap.dss");
+    for (fuse, monitored) in [("f1", "Line.l6"), ("f2", "Transformer.tg")] {
+        assert_eq!(deck.get(&format!("Fuse.{fuse}.MonitoredObj")), monitored);
+        assert_eq!(
+            deck.get(&format!("Fuse.{fuse}.SwitchedObj")),
+            monitored,
+            "an untyped SwitchedObj defaults to the monitored element"
+        );
+    }
+    deck.cmd("edit Fuse.f1 switchedobj=Line.l1");
+    assert_eq!(deck.get("Fuse.f1.SwitchedObj"), "Line.l1");
+}
+
+/// `invcontrol.lpftau` / `risefalllimit` / `vsetpoint` / `pvsystemlist` /
+/// `monvoltagecalc` / `mode` — six `EchoDefault` rows, capi-witnessed (86-87 /
+/// 23 cases) and pinned for the 18 / 8 / 1 cells they mask on r4133-only cases.
+///
+/// Two mechanisms, both `PropertyValue[]` echoes. `lpftau` and `risefalllimit`
+/// have `InitPropertyValues` entries that contradict `Create`
+/// (`Version8/Source/Controls/InvControl.pas:2828-2829` freeze `'0.0'` and
+/// `'-1.0'` while `:1166-1167` set both live fields to `0.001`) and no getter
+/// arm (`:3232-3285`); `vsetpoint`, `pvsystemlist` and `monvoltagecalc` have
+/// neither an arm nor an init entry (`:505`, `:512`, `:513`), so they answer
+/// `''`; `mode`'s arm is commented out (`:3234-3239`) over an init that froze
+/// `'VOLTVAR'` (`:2809`) while `Create` starts at `NONE_MODE` (`:1135`).
+///
+/// Decks, all `engines: "r4133"`:
+/// `controls/gfm/gfm_invcontrol.dss` (`InvControl.ic`, controlling a Storage)
+/// for the five defaults, and `.../MonitoredVoltage/
+/// Mon_voltage_MAX_Mix_avg_VVDRC-2.dss` (`InvControl.vv_drc`) for `mode`, which
+/// is where the census found the pair's one r4133-only cell: that deck drives
+/// the control through `CombiMode`, so the live `Mode` really is unset. The
+/// edits are the discriminators.
+#[test]
+fn invcontrol_defaults_render_the_live_values() {
+    let mut deck = Deck::compile("controls/gfm/gfm_invcontrol.dss");
+    assert_eq!(deck.get("InvControl.ic.LPFTau"), "0.001");
+    assert_eq!(deck.get("InvControl.ic.RiseFallLimit"), "0.001");
+    assert_eq!(deck.get("InvControl.ic.Vsetpoint"), "1");
+    assert_eq!(deck.get("InvControl.ic.PVSystemList"), "[Storage.batt]");
+    assert_eq!(deck.get("InvControl.ic.monVoltageCalc"), "avg");
+    deck.cmd("edit InvControl.ic LPFTau=0.5 RiseFallLimit=0.75 Vsetpoint=1.02 monVoltageCalc=max");
+    assert_eq!(deck.get("InvControl.ic.LPFTau"), "0.5");
+    assert_eq!(deck.get("InvControl.ic.RiseFallLimit"), "0.75");
+    assert_eq!(deck.get("InvControl.ic.Vsetpoint"), "1.02");
+    assert_eq!(deck.get("InvControl.ic.monVoltageCalc"), "max");
+
+    let mut combi = Deck::compile(
+        "electricdss-tst/Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/\
+         MonitoredVoltage/Mon_voltage_MAX_Mix_avg_VVDRC-2.dss",
+    );
+    assert_eq!(combi.get("InvControl.vv_drc.CombiMode"), "VV_DRC");
+    assert_eq!(
+        combi.get("InvControl.vv_drc.Mode"),
+        "",
+        "a CombiMode control has no single Mode"
+    );
+    combi.cmd("edit InvControl.vv_drc mode=voltvar");
+    assert_eq!(combi.get("InvControl.vv_drc.Mode"), "Voltvar");
+}
+
+/// `load.zipv` — `EmptyCollectionRender`, capi-witnessed on 221 cases and pinned
+/// for the 4 070 cells it masks on 58 r4133-only cases.
+///
+/// r4133's arm 33 is live but loops `nZIPV` (`Version8/Source/PCElements/
+/// Load.pas:2354-2357`), so a load that never typed `zipv=` renders `''` where
+/// the port renders the materialised seven-element vector the ZIP model is
+/// evaluated from.
+///
+/// Deck: `controls/gfm/gfm_micro.dss` (`Load.isl`), `engines: "r4133"`. The edit
+/// is the discriminator — and it is the one that matters most for this pair,
+/// because a getter stuck on seven zeros would satisfy the first reading.
+#[test]
+fn load_zipv_renders_the_live_seven_element_vector() {
+    let mut deck = Deck::compile("controls/gfm/gfm_micro.dss");
+    assert_eq!(deck.get("Load.isl.ZIPV"), "[ 0 0 0 0 0 0 0]");
+    deck.cmd("edit Load.isl ZIPV=(1,2,3,4,5,6,0.5)");
+    assert_eq!(deck.get("Load.isl.ZIPV"), "[ 1 2 3 4 5 6 0.5]");
+}
+
+/// `transformer.pctperm` / `transformer.repair` / `autotrans.pctperm` /
+/// `autotrans.repair` / `fault.pctperm` — five `EchoDefault` rows, capi-witnessed
+/// (133 / 9 / 13 cases) and pinned for the 799 / 2 / 347 cells they mask on
+/// r4133-only cases.
+///
+/// All five are the same `DSSObject.pas:112-115` fallthrough over an
+/// `InitPropertyValues` line the engine never refreshes: `'100'`/`'36'` for the
+/// two PD classes (`Version8/Source/PDElements/Transformer.pas:1918-1919`,
+/// `AutoTrans.pas:1958-1959`, whose PD tails re-render slots 1..2 only —
+/// `:1840-1844`, `:1883-1888`) and `'0'` for `Fault` (`Fault.pas:687`). The port
+/// renders the live reliability data, which for these decks is the class default
+/// the elements were created with.
+///
+/// Note the two classes disagree in opposite directions, which is what makes the
+/// readings worth having: a Transformer created without reliability data has
+/// `%perm = 0` where r4133 advertises 100, and a Fault has `%perm = 100` where
+/// r4133 advertises 0.
+///
+/// Decks, all `engines: "r4133"`: `controls/gfm/gfm_micro.dss`
+/// (`Transformer.tsto`), `asymmetric/autotrans/autotrans_xfmrcode.dss`
+/// (`AutoTrans.t1`) and `controls/fuse/fuse_blow_3ph.dss` (`Fault.f`). The edits
+/// are the discriminators.
+#[test]
+fn pd_element_perm_and_repair_render_the_live_ratings() {
+    let mut xf = Deck::compile("controls/gfm/gfm_micro.dss");
+    assert_eq!(xf.get("Transformer.tsto.pctperm"), "0");
+    assert_eq!(xf.get("Transformer.tsto.repair"), "0");
+    xf.cmd("edit Transformer.tsto pctperm=42 repair=7");
+    assert_eq!(xf.get("Transformer.tsto.pctperm"), "42");
+    assert_eq!(xf.get("Transformer.tsto.repair"), "7");
+
+    let mut at = Deck::compile("asymmetric/autotrans/autotrans_xfmrcode.dss");
+    assert_eq!(at.get("AutoTrans.t1.pctperm"), "0");
+    assert_eq!(at.get("AutoTrans.t1.repair"), "0");
+    at.cmd("edit AutoTrans.t1 pctperm=11");
+    assert_eq!(at.get("AutoTrans.t1.pctperm"), "11");
+
+    let mut flt = Deck::compile("controls/fuse/fuse_blow_3ph.dss");
+    assert_eq!(
+        flt.get("Fault.f.pctperm"),
+        "100",
+        "a Fault starts fully permanent, where r4133's store says 0"
+    );
+    flt.cmd("edit Fault.f pctperm=13");
+    assert_eq!(flt.get("Fault.f.pctperm"), "13");
+}
+
+/// `reactor.kvar` — `EchoDefault`, capi-witnessed on 65 cases and pinned for the
+/// 94 cells it masks on six r4133-only cases.
+///
+/// r4133 has no getter arm for index 4 (`Version8/Source/PDElements/
+/// Reactor.pas:1090-1103`), so the property answers the `'1200'` its
+/// `InitPropertyValues` froze at `:1113` while `Create` starts `kvarRating` at
+/// 100.0 (`:585`). The port renders the live rating.
+///
+/// Decks: `controls/fuse/midi_fuse.dss` (`Reactor.rser`, `engines: "r4133"`) for
+/// the default and the edit, plus — and this is the second half of the audit
+/// settlement — `modes/makeposseq/makeposseq_shunt.dss`, whose `Reactor.rx_kvar`
+/// is the pair's one cell that is **not** this row's echo: there r4133 renders
+/// its own live `kvarRating`, rounded to five significant digits by the command
+/// round-trip inside `MakePosSequence` (`:1145-1201`,
+/// `Format(' kvar=%-.5g')` -> `Parser/Edit`). That cell is carved out of the row
+/// (`props_norm::ECHO_CARVE_OUTS`) and belongs to RP2.4's display class; this
+/// reading pins the port's exact 200/3 next to it, so the carve-out has a
+/// witness of its own.
+#[test]
+fn reactor_kvar_renders_the_live_rating() {
+    let mut deck = Deck::compile("controls/fuse/midi_fuse.dss");
+    assert_eq!(deck.get("Reactor.rser.kvar"), "100");
+    deck.cmd("edit Reactor.rser kvar=250");
+    assert_eq!(deck.get("Reactor.rser.kvar"), "250");
+
+    let mut pos = Deck::compile("modes/makeposseq/makeposseq_shunt.dss");
+    assert_eq!(
+        pos.get("Reactor.rx_kvar.kvar"),
+        "66.6666666666667",
+        "MakePosSequence divides the three-phase rating exactly; r4133 re-parses its own \
+         '%-.5g' render and lands on 66.667 (the carved-out cell, RP2.4's display class)"
+    );
+}
+
+/// `storagecontroller.seasontargets` / `seasontargetslow` — two
+/// `EmptyCollectionRender` rows, capi-witnessed on 20 cases and pinned for the 12
+/// cells each masks on `controls/relay/relay_generic.dss`, an `engines: "r4133"`
+/// case.
+///
+/// These are the two rows of that category whose sides do NOT both render
+/// nothing (see `props_norm::EchoCategory::EmptyCollectionRender`): with
+/// `Seasons = 1` r4133's `ReturnSeasonTarget` exits before it emits a single
+/// character (`Version8/Source/Controls/StorageController.pas:2445-2449`, reached
+/// from `:1010-1011`), while the port renders the live one-season target. The
+/// value behind it is the same on both engines — `SeasonTargets[0] := FkWTarget`
+/// at `:883-884`, read back as the dispatch target at `:1470` — which is why the
+/// readings below assert the rendered array against `kWTarget`/`kWTargetLow`
+/// themselves rather than against a literal alone.
+///
+/// The edit is the discriminator, and it is the mechanism too: with `Seasons = 2`
+/// r4133 starts rendering the array as well.
+#[test]
+fn storagecontroller_seasontargets_render_the_live_targets() {
+    let mut deck = Deck::compile("controls/relay/relay_generic.dss");
+    assert_eq!(deck.get("StorageController.sc.Seasons"), "1");
+    let (high, low) = (
+        deck.get("StorageController.sc.kWTarget"),
+        deck.get("StorageController.sc.kWTargetLow"),
+    );
+    assert_eq!((high.as_str(), low.as_str()), ("8000", "4000"));
+    assert_eq!(
+        deck.get("StorageController.sc.SeasonTargets"),
+        format!("[ {high}]"),
+        "the single-season target array IS the live kW target"
+    );
+    assert_eq!(
+        deck.get("StorageController.sc.SeasonTargetsLow"),
+        format!("[ {low}]")
+    );
+    deck.cmd("edit StorageController.sc seasons=2 seasontargets=[1000 2000]");
+    assert_eq!(
+        deck.get("StorageController.sc.SeasonTargets"),
+        "[ 1000 2000]"
+    );
 }

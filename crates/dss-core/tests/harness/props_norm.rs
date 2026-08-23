@@ -19,7 +19,11 @@
 //! and no value-preserving rule could claim them. It is consulted after the
 //! normalization seam, on the r4133 channel only, and every row carries the
 //! r4133 site that proves its category plus the witness that still holds the
-//! port's value (capi coverage or a named expected-value pin).
+//! port's value (capi coverage or a named expected-value pin — and a capi
+//! witness alone is not enough for a row whose cells reach `engines: "r4133"`
+//! cases, [`ECHO_ROWS_ON_R4133_ONLY_CASES`]). A row is pair-scoped minus its
+//! [`ECHO_CARVE_OUTS`]: the one measured cell whose divergence its citation does
+//! not explain stays comparable.
 //!
 //! That statement has to hold at **two** seams, because the tables have two
 //! callers, and each carries its own channel gate:
@@ -81,13 +85,25 @@
 //!
 //! # RP2.3's nine off-bin rows (bin 5 pairs carrying comparable cells)
 //!
-//! RP2.3 fills [`PROPS_ECHO_R4133`], and an exclusion is pair-scoped: it would
-//! have masked every divergent cell of the pair, **including cells a typed rule
-//! can still compare value-preservingly**. The census measured 6 446 such cells
-//! (6 370 in scope) on ten of the 86 bucket pairs, so nine of them take a row
-//! here FIRST — the chain order (`normalization → echo`) is what keeps those
-//! cells compared, and `props_r4133_replay::MULTI_LINK_ROWS` counts the overlap
-//! (135 example rows over 20 pairs):
+//! RP2.3 fills [`PROPS_ECHO_R4133`], and an exclusion is pair-scoped. The census
+//! measured 6 446 cells (6 370 in scope) on ten of the 86 bucket pairs that a
+//! typed rule can fold value-preservingly, so nine of them take a row here
+//! FIRST, and `props_r4133_replay::MULTI_LINK_ROWS` counts the overlap (135
+//! example rows over 20 pairs).
+//!
+//! **What that buys, precisely** (RP2.3 audit settlement, 2026-08-23 — the
+//! earlier wording here claimed more): the chain order decides which link
+//! *claims* the cell, so those 6 446 cells are dispositioned
+//! `normalized-by-<rule>` rather than `echo-row`, and each of the nine rows can
+//! prove itself live through its own hit counter once RP4.1 unmasks the path.
+//! It does **not** keep them inside the live value compare: at the seam
+//! ([`echo_excluded_r4133`]) the pair-scoped exclusion still drops the value
+//! assert for every cell of the pair, the folded ones (harmless — the two sides
+//! are equal by then) and the ones the rule refused alike. Narrowing the twenty
+//! mixed pairs per cell — the [`ECHO_CARVE_OUTS`] mechanism, or a per-row
+//! spelling allowlist — is an explicit RP4.1 precondition (plan §RP4.1), and
+//! until it lands a genuine regression on one of those pairs (a wrong resolved
+//! loadshape name, a wrong ZIPV vector) is caught on the capi channel only.
 //!
 //! * `load.yearly` `CaseFold` (5 995 cells) — arm 7 answers the LIVE
 //!   `Yearlyshape` string (`PCElements/Load.pas:2346`), so a case-only
@@ -1020,12 +1036,28 @@ pub enum EchoCategory {
     /// 2445-2449`, `PCElements/Load.pas:2354-2357`) — where the port renders
     /// `''`, `[]` or the materialised default vector.
     ///
-    /// The two sides mean the SAME thing, so [`LiveSemanticsDiffer`] would be
-    /// false; and neither side is a `PropertyValue[]` echo, so
-    /// [`EchoDefault`]/[`EchoParse`] would be false too. It stays an exclusion
-    /// rather than a normalization rule because an empty render carries no
-    /// value to preserve — `''` is not an array, which is exactly what
-    /// [`NormRule::ArrayForm`] refuses (`array_forms_match`).
+    /// What all 14 rows share, and all this tag asserts: **neither side is a
+    /// `PropertyValue[]` echo** (so [`EchoDefault`]/[`EchoParse`] would be
+    /// false), the underlying state is the same on both engines, and the two
+    /// renders differ only in the empty-collection convention each getter emits.
+    /// It stays an exclusion rather than a normalization rule because an empty
+    /// render carries no value to preserve — `''` is not an array, which is
+    /// exactly what [`NormRule::ArrayForm`] refuses (`array_forms_match`).
+    ///
+    /// **Twelve of the 14 also render the same thing on both sides**
+    /// (`''`/`[]`/`()` against an empty port render). The other two,
+    /// `storagecontroller.seasontargets` and `seasontargetslow`, do not, and the
+    /// blanket "the two sides mean the same thing" this doc used to carry was
+    /// wider than the evidence (RP2.3 audit settlement, 2026-08-23): with
+    /// `Seasons = 1` r4133's `ReturnSeasonTarget` exits before it emits anything
+    /// (`Controls/StorageController.pas:2445-2449`) while the port prints the
+    /// live single-season target — `'[ 8000]'` / `'[ 4000]'` on 237 cells each.
+    /// The *value* behind those renders is identical on both engines
+    /// (`SeasonTargets[0] := FkWTarget`, `:883-884`, and `:1470` reads it back
+    /// as the dispatch target), which is why the tag still fits and
+    /// [`LiveSemanticsDiffer`] would not; what the port adds is a render where
+    /// r4133 has none. Both rows carry the capi witness AND
+    /// `storagecontroller_seasontargets_render_the_live_targets`.
     ///
     /// [`LiveSemanticsDiffer`]: EchoCategory::LiveSemanticsDiffer
     /// [`EchoDefault`]: EchoCategory::EchoDefault
@@ -1072,6 +1104,20 @@ pub enum EchoWitness {
     /// a witness). A re-census that moved it would not red anything; what the
     /// number is for is letting a reader see at a glance whether a row leans on
     /// one case or on ninety-nine.
+    ///
+    /// **What a capi witness cannot say** (RP2.3 audit settlement, 2026-08-23).
+    /// Two limits, both now enforced rather than left to the reader:
+    ///
+    /// * it presupposes the capi channel really compares the pair — a row whose
+    ///   pair is masked off capi by `SKIP_PROPS`, `PROPS_015X` or the whole-
+    ///   element skip would be claiming a witness that cannot exist
+    ///   ([`tests::a_capi_witness_is_a_pair_the_capi_channel_can_compare`]);
+    /// * it says **nothing about cells on `engines: "r4133"` cases**, where the
+    ///   capi channel never runs at all. 57 of the 81 pairs mask such cells
+    ///   ([`ECHO_ROWS_ON_R4133_ONLY_CASES`]), and each of them must therefore
+    ///   also name a pin — the rule `swtcontrol.action` applied by hand in part
+    ///   B2, now a test
+    ///   ([`tests::every_row_exposed_on_r4133_only_cases_names_a_pin`]).
     Capi(u32),
     /// **No capi coverage of the excluded cells** — the capture has no such
     /// property (`PROPS_015X`), a `SKIP_PROPS` row masks it, the capi walk
@@ -1162,21 +1208,40 @@ const fn echo(
 ///
 /// A row drops the VALUE compare of its `(class, prop)` on the **r4133 channel
 /// only** — the property's name and index order are still asserted, exactly
-/// `SKIP_PROPS`' shape. It is consulted *after* [`PROPS_NORM_R4133`] (the chain
-/// order `shape allowlist → normalization → echo → floor`), so on a **mixed**
-/// pair the typed rule claims its foldable cells FIRST and the row masks only
-/// the remainder. That order is the whole per-cell discrimination: 20 of the 81
-/// pairs below also hold a normalization row, and 135 of their example rows are
-/// claimed by it (`props_r4133_replay::MULTI_LINK_ROWS`).
+/// `SKIP_PROPS`' shape (plan §1.2 prescribes that shape). It is consulted
+/// *after* [`PROPS_NORM_R4133`] (the chain order
+/// `shape allowlist → normalization → echo → floor`), so on a **mixed** pair
+/// the typed rule sees the cell first: 20 of the 81 pairs below also hold a
+/// normalization row, and 135 of their example rows are claimed by it
+/// (`props_r4133_replay::MULTI_LINK_ROWS`).
 ///
 /// **Nine of those 20 rows are new in RP2.3** (`load.yearly`, `reactor.bus2`,
 /// `invcontrol.monvoltagecalc` `CaseFold`; `line.wires`, `load.zipv`,
 /// `generator.userdata`, `storage.dynadata`,
-/// `storagecontroller.seasontargets`/`seasontargetslow` `ArrayForm`). They were
-/// landed *before* the echo rows, deliberately: a mask must never cover a cell
-/// a typed rule can still compare, and those nine keep 6 446 live cells
-/// (6 370 in scope) inside the value compare that a pair-scoped exclusion would
-/// otherwise have swallowed (RP2.3 part A finding F4).
+/// `storagecontroller.seasontargets`/`seasontargetslow` `ArrayForm`), landed
+/// *before* the echo rows, and they hold 6 446 cells (6 370 in scope).
+///
+/// # What the order buys, and what it does not (audit settlement, 2026-08-23)
+///
+/// The chain order decides **which link claims a cell**, and that is a real
+/// property: those 6 446 cells are dispositioned `normalized-by-<rule>` in the
+/// claims census rather than `echo-row`, each of the nine rows records its own
+/// hit and can therefore be proved live, and `assert_norm_rows_are_live` has
+/// something to fire on after RP4.1.
+///
+/// It does **not** keep those cells inside the live value compare, and the
+/// earlier wording here ("keep 6 446 live cells inside the value compare that a
+/// pair-scoped exclusion would otherwise have swallowed") was false at the seam:
+/// [`echo_excluded_r4133`] answers on row presence, so once a pair is named here
+/// EVERY divergent cell of it skips the value assert on r4133 — the folded ones
+/// harmlessly (the two sides are equal by then) and the ones the rule refused
+/// too. On the 20 mixed pairs a genuine regression a typed rule would have
+/// compared (a wrong resolved loadshape name, a wrong ZIPV vector, a wrong
+/// `Bus2` terminal spelling) is therefore caught on the **capi channel only**
+/// until the rows are narrowed per cell. That narrowing — with
+/// [`ECHO_CARVE_OUTS`], or by giving each mixed row its measured echo spellings
+/// — is an explicit RP4.1 precondition (plan §RP4.1); it is not RP2.3's, whose
+/// row shape §1.2 fixes.
 ///
 /// # The 81 rows
 ///
@@ -1209,19 +1274,19 @@ pub const PROPS_ECHO_R4133: &[EchoRow] = &[
          Pin("autotrans_bh_arrays_render_empty_when_unset")),
     echo("autotrans", "pctperm", EchoDefault, 44,
          "AutoTrans.pas:1958 ('100') + :1883-1888 (PD tail re-renders slots 1..2 only) -> DSSObject.pas:112-115",
-         Capi(9)),
+         CapiAndPin(9, "pd_element_perm_and_repair_render_the_live_ratings")),
     echo("autotrans", "repair", EchoDefault, 44,
          "AutoTrans.pas:1959 ('36'), same fallthrough",
-         Capi(9)),
+         CapiAndPin(9, "pd_element_perm_and_repair_render_the_live_ratings")),
     echo("capcontrol", "reset", EchoDefault, 446,
          "CapControl.pas:196 (prop 22) + :1254-1282 (init writes 20,21,23, never 22) -> DSSObject.pas:112-115",
-         Capi(31)),
+         CapiAndPin(31, "energymeter_action_and_capcontrol_reset_render_no_pending_command")),
     echo("capcontrol", "type", EchoParse, 169,
          "CapControl.pas:178 (prop 4) + :296-297 (store written before the CASE) vs :304-311",
          Capi(3)),
     echo("energymeter", "action", EchoDefault, 524,
          "EnergyMeter.pas:482 (prop 3) + :2205 ('clear') + :2645-2658 (no arm 3); one cell is the deck's own 'C' via :618",
-         Capi(67)),
+         CapiAndPin(67, "energymeter_action_and_capcontrol_reset_render_no_pending_command")),
     echo("energymeter", "peakcurrent", EchoDefault, 524,
          "EnergyMeter.pas:2209 ('(400, 400, 400)') + :2640-2643/:2660-2663 (index 7 paren-wrapped, no arm)",
          CapiAndPin(6, "energymeter_peakcurrent_renders_the_live_one_element_array")),
@@ -1233,10 +1298,10 @@ pub const PROPS_ECHO_R4133: &[EchoRow] = &[
          Pin("fault_bus2_renders_the_live_terminal")),
     echo("fault", "pctperm", EchoDefault, 389,
          "Fault.pas:687 ('0') -> DSSObject.pas:112-115",
-         Capi(13)),
+         CapiAndPin(13, "pd_element_perm_and_repair_render_the_live_ratings")),
     echo("fuse", "switchedobj", EchoDefault, 106,
          "Fuse.pas:183 (prop 3) + :801ff ('') + :680-720 (no arm 3); live ElementName defaults to the monitored element (:292)",
-         Capi(1)),
+         CapiAndPin(1, "fuse_switchedobj_defaults_to_the_monitored_element")),
     echo("generator", "d", LiveSemanticsDiffer, 272,
          "generator.pas:969 (Create sets GenVars.D, never Dpu) + :2585 (the store snapshots Dpu = 0) + :467 help 'Default is 1.0' + :2710",
          CapiAndPin(25, "generator_d_renders_the_documented_damping_default")),
@@ -1245,10 +1310,10 @@ pub const PROPS_ECHO_R4133: &[EchoRow] = &[
          CapiAndPin(26, "generator_dynout_renders_the_named_variables")),
     echo("generator", "shaftdata", EmptyCollectionRender, 273,
          "generator.pas:3023-3025 (arms 34/36 paren-wrap the store -> '()' when unset)",
-         Capi(26)),
+         CapiAndPin(26, "der_user_model_arrays_render_empty_when_unset")),
     echo("generator", "userdata", EmptyCollectionRender, 273,
          "generator.pas:3023-3025 (same arm)",
-         Capi(26)),
+         CapiAndPin(26, "der_user_model_arrays_render_empty_when_unset")),
     echo("gicsource", "spectrum", EchoDefault, 4,
          "GICsource.pas:567-578 (arms 1..3) + :327 InitPropertyValues BEFORE :332 Spectrum:='' -> PCElement.pas:119 'default' frozen",
          Capi(2)),
@@ -1257,22 +1322,22 @@ pub const PROPS_ECHO_R4133: &[EchoRow] = &[
          Capi(4)),
     echo("invcontrol", "lpftau", EchoDefault, 257,
          "InvControl.pas:2828 ('0.0') vs Create :1166 FLPFTau:=0.001; no arm 19 (:3232-3285)",
-         Capi(87)),
+         CapiAndPin(87, "invcontrol_defaults_render_the_live_values")),
     echo("invcontrol", "mode", EchoDefault, 211,
          "InvControl.pas:479 (prop 2) + :2809 ('VOLTVAR') vs Create :1135 ControlMode:=NONE_MODE; arm 2 is commented out (:3234-3239)",
-         Capi(23)),
+         CapiAndPin(23, "invcontrol_defaults_render_the_live_values")),
     echo("invcontrol", "monvoltagecalc", EchoDefault, 254,
          "InvControl.pas:505 (prop 25): no arm (:3232-3285), no init entry (:2806-2839) -> ''",
-         Capi(87)),
+         CapiAndPin(87, "invcontrol_defaults_render_the_live_values")),
     echo("invcontrol", "pvsystemlist", EchoDefault, 257,
          "InvControl.pas:512 (prop 32): no arm, no init entry -> ''",
-         Capi(87)),
+         CapiAndPin(87, "invcontrol_defaults_render_the_live_values")),
     echo("invcontrol", "risefalllimit", EchoDefault, 257,
          "InvControl.pas:2829 ('-1.0') vs Create :1167 FRiseFallLimit:=0.001",
-         Capi(87)),
+         CapiAndPin(87, "invcontrol_defaults_render_the_live_values")),
     echo("invcontrol", "vsetpoint", EchoDefault, 249,
          "InvControl.pas:513 (prop 33): no arm, no init entry -> '' vs Create :1214 Fv_setpoint:=1.0",
-         Capi(86)),
+         CapiAndPin(86, "invcontrol_defaults_render_the_live_values")),
     echo("isource", "bus2", EchoDefault, 136,
          "Isource.pas:631 ('') + no GetPropertyValue override (report 14-isource-bus2-not-stored)",
          Capi(12)),
@@ -1281,7 +1346,7 @@ pub const PROPS_ECHO_R4133: &[EchoRow] = &[
          Capi(5)),
     echo("line", "cncables", EchoDefault, 77659,
          "Line.pas:1514 (prop 24, '') + :1338-1438 (no arm 24)",
-         Capi(233)),
+         CapiAndPin(233, "line_conductors_renders_the_live_conductor_list")),
     echo("line", "conductors", EchoDefault, 77659,
          "Line.pas:1524 (prop 34, '') + :1338-1438 (no arm 34)",
          Pin("line_conductors_renders_the_live_conductor_list")),
@@ -1290,16 +1355,16 @@ pub const PROPS_ECHO_R4133: &[EchoRow] = &[
          Pin("line_spacing_renders_empty_once_the_spacing_is_killed")),
     echo("line", "tscables", EchoDefault, 77659,
          "Line.pas:1515 (prop 25, '') + :1338-1438 (no arm 25)",
-         Capi(233)),
+         CapiAndPin(233, "line_conductors_renders_the_live_conductor_list")),
     echo("line", "wires", EchoDefault, 77659,
          "Line.pas:1512 (prop 22, '') + :1338-1438 (no arm 22)",
-         Capi(233)),
+         CapiAndPin(233, "line_conductors_renders_the_live_conductor_list")),
     echo("load", "yearly", LiveSemanticsDiffer, 32548,
          "Load.pas:2346 (arm 7 answers the LIVE raw Yearlyshape string) + :807 ('' when never typed) + :657 (daily->yearly object aliasing)",
          CapiAndPin(84, "load_yearly_renders_the_resolved_loadshape_name")),
     echo("load", "zipv", EmptyCollectionRender, 49629,
          "Load.pas:2354-2357 (arm 33 loops nZIPV -> '' when 0)",
-         Capi(221)),
+         CapiAndPin(221, "load_zipv_renders_the_live_seven_element_vector")),
     echo("monitor", "mode", EchoParse, 4,
          "Monitor.pas: no GetPropertyValue override + :359 (the raw Param stored) + :1843 ('0')",
          Capi(2)),
@@ -1311,22 +1376,22 @@ pub const PROPS_ECHO_R4133: &[EchoRow] = &[
          CapiAndPin(99, "pvsystem_and_storage_pmin_sentinels_deactivate_the_var_limits")),
     echo("pvsystem", "amplimit", EchoDefault, 463,
          "PVsystem.pas:392 (prop 49): no getter arm (the CASE's ELSE is :1174), no init entry (:1074-1124) -> ''",
-         Capi(99)),
+         CapiAndPin(99, "der_amp_limits_render_the_live_sentinel_and_gain")),
     echo("pvsystem", "amplimitgain", EchoDefault, 463,
          "PVsystem.pas:393 (prop 50), same",
-         Capi(99)),
+         CapiAndPin(99, "der_amp_limits_render_the_live_sentinel_and_gain")),
     echo("pvsystem", "dynout", EmptyCollectionRender, 463,
          "PVsystem.pas:1171 (propDynOut -> GetDynOutputStr, '[]' when unset)",
-         Capi(99)),
+         CapiAndPin(99, "der_user_model_arrays_render_empty_when_unset")),
     echo("pvsystem", "userdata", EmptyCollectionRender, 463,
          "PVsystem.pas:1158 (propUSERDATA paren-wraps the store -> '()' when unset)",
-         Capi(99)),
+         CapiAndPin(99, "der_user_model_arrays_render_empty_when_unset")),
     echo("reactor", "bus2", EchoParse, 47,
          "Reactor.pas:1090-1103 (no arm 2) + :419-420 (PropertyValue[2] := GetBus(2) snapshot taken at bus1=) + :386",
          Capi(23)),
     echo("reactor", "kvar", EchoDefault, 607,
          "Reactor.pas:1113 ('1200') vs Create :585 kvarrating:=100.0; no arm 4 (:1090-1103)",
-         Capi(65)),
+         CapiAndPin(65, "reactor_kvar_renders_the_live_rating")),
     echo("recloser", "debugtrace", EchoDefault, 230,
          "Recloser.pas:252 (prop 30) + :1553-1554 (init jumps 28 -> 31) -> ''",
          Pin("recloser_eventlog_and_debugtrace_default_to_no")),
@@ -1374,28 +1439,28 @@ pub const PROPS_ECHO_R4133: &[EchoRow] = &[
          CapiAndPin(44, "pvsystem_and_storage_pmin_sentinels_deactivate_the_var_limits")),
     echo("storage", "amplimit", EchoDefault, 457,
          "Storage.pas prop 60: no getter arm, no init entry (:1446-1521) -> ''",
-         Capi(47)),
+         CapiAndPin(47, "der_amp_limits_render_the_live_sentinel_and_gain")),
     echo("storage", "amplimitgain", EchoDefault, 457,
          "Storage.pas prop 61, same",
-         Capi(47)),
+         CapiAndPin(47, "der_amp_limits_render_the_live_sentinel_and_gain")),
     echo("storage", "dynadata", EmptyCollectionRender, 463,
          "Storage.pas:1577 (propdynaDATA paren-wraps the store -> '()' when unset)",
-         Capi(47)),
+         CapiAndPin(47, "der_user_model_arrays_render_empty_when_unset")),
     echo("storage", "dynadll", LiveSemanticsDiffer, 2,
          "Storage.pas:1576 (DynaModel.Name) + StoreUserModel.pas:195-240 (FName is assigned only after a successful LoadLibrary)",
          CapiAndPin(2, "storage_dynadll_renders_the_typed_path")),
     echo("storage", "userdata", EmptyCollectionRender, 463,
          "Storage.pas:1574 (propUSERDATA paren-wraps the store -> '()' when unset)",
-         Capi(47)),
+         CapiAndPin(47, "der_user_model_arrays_render_empty_when_unset")),
     echo("storagecontroller", "modedischarge", LiveSemanticsDiffer, 1,
          "StorageController.pas:1200-1214 (GetModeString has no MODESCHEDULE arm -> ELSE 'UNKNOWN') vs :2322-2333",
          CapiAndPin(1, "storagecontroller_modedischarge_renders_schedule")),
     echo("storagecontroller", "seasontargets", EmptyCollectionRender, 262,
          "StorageController.pas:1010 -> ReturnSeasonTarget(1), which exits with '' when Seasons=1 (:2445-2449)",
-         Capi(20)),
+         CapiAndPin(20, "storagecontroller_seasontargets_render_the_live_targets")),
     echo("storagecontroller", "seasontargetslow", EmptyCollectionRender, 262,
          "StorageController.pas:1011 -> ReturnSeasonTarget(0), same",
-         Capi(20)),
+         CapiAndPin(20, "storagecontroller_seasontargets_render_the_live_targets")),
     echo("swtcontrol", "action", EchoParse, 34,
          "SwtControl.pas:573-620 (no arm 3) + :192-193 (the raw token stored before the CASE) + :417 (Locked makes InterpretSwitchState exit)",
          Pin("swtcontrol_action_renders_the_live_switch_state")),
@@ -1407,10 +1472,10 @@ pub const PROPS_ECHO_R4133: &[EchoRow] = &[
          Pin("transformer_bh_arrays_render_empty_when_unset")),
     echo("transformer", "pctperm", EchoDefault, 21161,
          "Transformer.pas:1918 ('100') + :1840-1844 (PD tail re-renders slots 1..2 only) -> DSSObject.pas:112-115",
-         Capi(133)),
+         CapiAndPin(133, "pd_element_perm_and_repair_render_the_live_ratings")),
     echo("transformer", "repair", EchoDefault, 21161,
          "Transformer.pas:1919 ('36'), same fallthrough",
-         Capi(133)),
+         CapiAndPin(133, "pd_element_perm_and_repair_render_the_live_ratings")),
     echo("upfc", "climit", EchoDefault, 13,
          "UPFC.pas:187 (prop 14): no arm (:1136-1153), no init entry (:1115-1131 writes 1..11) -> ''",
          Capi(9)),
@@ -1473,6 +1538,161 @@ const ECHO_LIVE_SEMANTICS_ROWS: usize = 10;
 /// needed for the offline replay, which walks the frozen census, not the gate.
 const ECHO_ROWS_WITH_NO_IN_SCOPE_CELL: &[(&str, &str)] = &[("fault", "bus2"), ("line", "spacing")];
 
+/// **The echo rows that mask cells on `engines: "r4133"` cases** — where the
+/// capi channel does not run at all — as `(class, prop, cells, cases)`.
+///
+/// Plan mechanic (c) requires a pin for "every exclusion whose ours-value has no
+/// capi witness (r4133-only classes/**cases**)". Part B2 applied the *cases*
+/// half by hand, to `swtcontrol.action` only; the RP2.3 audit settlement
+/// (2026-08-23) measured the whole population and made it a rule
+/// ([`tests::every_row_exposed_on_r4133_only_cases_names_a_pin`]).
+///
+/// **Measured**, not asserted: the full claims census at HEAD
+/// (`DSS_PROPS_CENSUS=claims`, 439 cases × 2 channels) crossed with each case's
+/// `engines` flag in `tests/corpus/manifests/` (97 of the 439 walked cases are
+/// r4133-only). 57 of the 81 rows carry such cells — 34 969 in total — and each
+/// one therefore names a pin. The numbers are a dated measurement like
+/// [`EchoWitness::Capi`]'s `n`; what the tests enforce is the pin obligation and
+/// the count locks, so a *new* echo row on one of these pairs cannot ship with a
+/// capi-only witness. A pair that is NOT listed here (`line.linecode`,
+/// `upfc.*`, `vccs.*`, …) has all its masked cells on `both`/`capi_v0145` cases,
+/// where the capi witness is the whole point.
+#[rustfmt::skip]
+const ECHO_ROWS_ON_R4133_ONLY_CASES: &[(&str, &str, u32, u32)] = &[
+    ("autotrans", "bhcurrent", 2, 1),
+    ("autotrans", "bhflux", 2, 1),
+    ("autotrans", "pctperm", 2, 1),
+    ("autotrans", "repair", 2, 1),
+    ("capcontrol", "reset", 3, 1),
+    ("energymeter", "action", 45, 3),
+    ("fault", "pctperm", 347, 31),
+    ("fuse", "switchedobj", 20, 2),
+    ("generator", "d", 43, 6),
+    ("generator", "dynout", 43, 6),
+    ("generator", "shaftdata", 43, 6),
+    ("generator", "userdata", 43, 6),
+    ("invcontrol", "lpftau", 18, 13),
+    ("invcontrol", "mode", 1, 1),
+    ("invcontrol", "monvoltagecalc", 8, 3),
+    ("invcontrol", "pvsystemlist", 18, 13),
+    ("invcontrol", "risefalllimit", 18, 13),
+    ("invcontrol", "vsetpoint", 18, 13),
+    ("line", "cncables", 6232, 82),
+    ("line", "conductors", 6232, 82),
+    ("line", "tscables", 6232, 82),
+    ("line", "wires", 6231, 81),
+    ("load", "yearly", 32, 4),
+    ("load", "zipv", 4070, 58),
+    ("pvsystem", "%pminkvarmax", 61, 14),
+    ("pvsystem", "%pminnovars", 61, 14),
+    ("pvsystem", "amplimit", 61, 14),
+    ("pvsystem", "amplimitgain", 61, 14),
+    ("pvsystem", "dynout", 61, 14),
+    ("pvsystem", "userdata", 61, 14),
+    ("reactor", "kvar", 94, 6),
+    ("recloser", "debugtrace", 206, 11),
+    ("recloser", "eventlog", 176, 9),
+    ("recloser", "switchedobj", 40, 2),
+    ("regcontrol", "fwdthreshold", 42, 4),
+    ("regcontrol", "idle", 41, 3),
+    ("regcontrol", "idleforward", 42, 4),
+    ("regcontrol", "idlereverse", 42, 4),
+    ("regcontrol", "revthreshold", 42, 4),
+    ("relay", "action", 268, 21),
+    ("relay", "distreverse", 236, 19),
+    ("relay", "reset", 44, 8),
+    ("relay", "switchedobj", 102, 10),
+    ("storage", "%pminkvarmax", 49, 5),
+    ("storage", "%pminnovars", 49, 5),
+    ("storage", "amplimit", 43, 4),
+    ("storage", "amplimitgain", 43, 4),
+    ("storage", "dynadata", 49, 5),
+    ("storage", "userdata", 49, 5),
+    ("storagecontroller", "seasontargets", 12, 1),
+    ("storagecontroller", "seasontargetslow", 12, 1),
+    ("swtcontrol", "action", 16, 1),
+    ("transformer", "bhcurrent", 799, 24),
+    ("transformer", "bhflux", 799, 24),
+    ("transformer", "pctperm", 799, 24),
+    ("transformer", "repair", 799, 24),
+    ("windgen", "dynout", 5, 5),
+];
+
+/// Count lock for [`ECHO_ROWS_ON_R4133_ONLY_CASES`]: rows, and the cells behind
+/// them.
+const R4133_ONLY_ROWS: usize = 57;
+/// Count lock, cells — the sum of the table's third column.
+const R4133_ONLY_CELLS: u32 = 34969;
+
+/// **One cell an echo row deliberately does NOT claim** — the narrowing valve
+/// for a pair whose mask would otherwise be wider than its citation.
+///
+/// An [`EchoRow`] is pair-scoped (plan §1.2 fixes that shape), so a pair whose
+/// cells are echoes *except one* would mask that one too. A carve-out names the
+/// exact `(rust, r4133)` spelling the row does not cover; the cell then leaves
+/// the exclusion and is claimed — or declared — by whoever really owns it
+/// (`props_r4133_replay::ECHO_CARVE_OUT_ROUTING` records that owner, and a test
+/// there matches the two tables both ways, so a carve-out cannot exist without
+/// a named owner).
+///
+/// Matching is EXACT on both sides, deliberately: a carve-out is a measured
+/// counterexample, never a shape heuristic, and a spelling the census has not
+/// seen must stay inside the cited exclusion rather than silently fall out of
+/// it.
+#[derive(Debug)]
+pub struct EchoCarveOut {
+    /// Class, as the census spells it (matched case-insensitively).
+    pub class: &'static str,
+    /// Property, as the census spells it (matched case-insensitively).
+    pub prop: &'static str,
+    /// The port's render, exactly as the census recorded it.
+    pub rust: &'static str,
+    /// r4133's render, exactly as the census recorded it.
+    pub oracle: &'static str,
+    /// Why this cell is not the row's echo — the mechanism, cited.
+    pub why: &'static str,
+}
+
+/// **The carve-outs — one, since the RP2.3 audit settlement (2026-08-23).**
+///
+/// `reactor.kvar`'s row cites the frozen `PropertyValue[4]` default `'1200'`
+/// (`Reactor.pas:1113`), and that explains 606 of the pair's 607 census cells.
+/// The 607th is not an echo at all: on `modes/makeposseq/makeposseq_shunt.dss`
+/// r4133 renders its own LIVE `kvarRating`, because `TReactorObj.
+/// MakePosSequence` (`Version8/Source/PDElements/Reactor.pas:1145-1201`) builds
+/// the command string `Format(' kV=%-.5g kvar=%-.5g', [PhasekV, kvarPerPhase])`
+/// and runs it back through `Parser[ActorID].CmdString := S; Edit(ActorID)`
+/// (`:1200-1201`) — so 200/3 becomes `66.667` in the engine itself, five
+/// significant digits and all. The
+/// port sets the double directly (`elements/pd/reactor/solve.rs`), as does
+/// dss_capi 0.14.5, whose `MakePosSequence` uses `SetDouble` and never a string
+/// (`.inputs/dss_capi/src/PDElements/Reactor.pas`) — which is why the capi
+/// channel compares that cell and the port matches it exactly.
+///
+/// So the 607th cell is a genuine ~5.0e-06 divergence of two live values, i.e.
+/// RP2.4's display class — where its sibling `reactor.kv`, the other output of
+/// the very same round-trip, already sits (`bins.tsv`: `reactor.kv` numeric bin
+/// 6, `max_rel` 5.85e-06). Masking it under an `EchoDefault` citation would be a
+/// mask wider than its evidence, so the row does not cover it. It has **no live
+/// effect today**: the only deck that produces it is `engines: "capi_v0145"`
+/// (`population.lock.json`), so the cell is out of r4133 scope — the point is
+/// that a future r4133-gated deck with a `kvar=`-specified reactor and a
+/// `MakePosSeq` will now be compared instead of silently masked.
+pub const ECHO_CARVE_OUTS: &[EchoCarveOut] = &[EchoCarveOut {
+    class: "reactor",
+    prop: "kvar",
+    rust: "66.6666666666667",
+    oracle: "66.667",
+    why: "Reactor.pas:1145-1201 MakePosSequence round-trips kvarPerPhase through \
+          Format(' kvar=%-.5g') + Parser/Edit, so r4133's LIVE kvarRating really is 66.667 \
+          (5 significant digits) — a display divergence of two live values (RP2.4's class, \
+          like the same round-trip's reactor.kv), not the row's frozen '1200' echo",
+}];
+
+/// Count lock for [`ECHO_CARVE_OUTS`] — the same fail-on-stale equality every
+/// other table here carries, so a second carve-out cannot appear un-reviewed.
+const ECHO_CARVE_OUT_CELLS: usize = 1;
+
 /// Index of [`PROPS_ECHO_R4133`]'s row for `(class, prop)`, case-insensitively.
 fn find_echo_row(table: &[EchoRow], class: &str, prop: &str) -> Option<usize> {
     table
@@ -1480,18 +1700,39 @@ fn find_echo_row(table: &[EchoRow], class: &str, prop: &str) -> Option<usize> {
         .ok()
 }
 
-/// Is `(class, prop)` value-excluded on the r4133 channel?
+/// Does [`PROPS_ECHO_R4133`] hold a row for `(class, prop)` at all?
 ///
-/// **Pair-scoped by design**, exactly like [`skip_prop`]'s `SKIP_PROPS` half:
-/// the guard against over-breadth is not a per-cell predicate here (there is no
-/// "same value" to check — that is what makes this an exclusion and not a
-/// normalization rule) but the pair of things every row carries, the r4133
-/// citation and the witness, plus the chain order that lets a typed rule claim
-/// what it can before this is consulted.
+/// The **pair-scoped** question, which is not the same as [`echo_excluded`]'s
+/// since the carve-outs landed: this one is for the tests and the accounting
+/// that ask "does the table name this pair", never for deciding a cell.
+pub fn has_echo_row(class: &str, prop: &str) -> bool {
+    find_echo_row(PROPS_ECHO_R4133, class, prop).is_some()
+}
+
+/// Is `(class, prop)`'s cell `(rust, oracle)` value-excluded on the r4133
+/// channel? — the offline twin of [`echo_excluded_r4133`], counters aside.
+///
+/// **Pair-scoped, minus its carve-outs.** Pair-scoped is the shape plan §1.2
+/// prescribes (`SKIP_PROPS`'), and the guard against over-breadth is what every
+/// row carries — the r4133 citation and the witness — plus [`ECHO_CARVE_OUTS`],
+/// which takes back the one measured cell a row's citation does not explain.
+/// The two values are read *only* by that lookup: for every other cell of a
+/// cited pair the answer is `true` whatever they say, which is exactly what
+/// makes this an exclusion and not a normalization rule.
 ///
 /// [`skip_prop`]: super::skip_prop
-pub fn echo_excluded(class: &str, prop: &str) -> bool {
-    find_echo_row(PROPS_ECHO_R4133, class, prop).is_some()
+pub fn echo_excluded(class: &str, prop: &str, rust: &str, oracle: &str) -> bool {
+    find_echo_row(PROPS_ECHO_R4133, class, prop).is_some() && !carved_out(class, prop, rust, oracle)
+}
+
+/// Does a [`ECHO_CARVE_OUTS`] entry take this exact cell back out of its row?
+fn carved_out(class: &str, prop: &str, rust: &str, oracle: &str) -> bool {
+    ECHO_CARVE_OUTS.iter().any(|c| {
+        c.class.eq_ignore_ascii_case(class)
+            && c.prop.eq_ignore_ascii_case(prop)
+            && c.rust == rust
+            && c.oracle == oracle
+    })
 }
 
 /// **The shipped exclusion seam**, called from `PropsPolicy::echo_excluded`'s
@@ -1500,9 +1741,12 @@ pub fn echo_excluded(class: &str, prop: &str) -> bool {
 /// It answers the same question [`echo_excluded`] does and additionally records
 /// what the gate saw: a **visit** is a cell of the pair that reached the seam,
 /// a **hit** is a visit whose two sides really differed, i.e. a compare this
-/// row actually stopped. The values decide nothing else — the exclusion itself
-/// is pair-scoped.
+/// row actually stopped. A carved-out cell is neither — it is not excluded, so
+/// it never reaches the counters.
 pub fn echo_excluded_r4133(class: &str, prop: &str, rust: &str, oracle: &str) -> bool {
+    if carved_out(class, prop, rust, oracle) {
+        return false;
+    }
     match find_echo_row(PROPS_ECHO_R4133, class, prop) {
         Some(i) => {
             // HIT first, then VISIT. The pair is not written atomically and
@@ -1529,6 +1773,34 @@ static ECHO_VISITS: [AtomicUsize; PROPS_ECHO_R4133.len()] =
 /// this row actually excluded.
 static ECHO_HITS: [AtomicUsize; PROPS_ECHO_R4133.len()] =
     [const { AtomicUsize::new(0) }; PROPS_ECHO_R4133.len()];
+
+/// One row's live `(visits, hits)` from [`NORM_VISITS`]/[`NORM_HITS`], or `None`
+/// when the table has no row for the pair.
+///
+/// The counters are private statics with no other reader outside this module;
+/// this accessor exists so that the ORDER of the two seams in
+/// `compare_prop_lists` can be asserted from a test that drives the real
+/// comparator (`props_policy_tests::
+/// the_normalization_seam_runs_before_the_exclusion_on_a_mixed_pair`, RP2.3
+/// audit settlement). Before it, the order was documented as "the mechanism, not
+/// a detail" and pinned in the two OFFLINE copies of the chain only — swapping
+/// the shipped lines left the whole suite green.
+pub fn norm_counters(class: &str, prop: &str) -> Option<(usize, usize)> {
+    let i = find_row(PROPS_NORM_R4133, class, prop)?;
+    Some((
+        NORM_VISITS[i].load(AtomicOrd::Relaxed),
+        NORM_HITS[i].load(AtomicOrd::Relaxed),
+    ))
+}
+
+/// The same, for [`ECHO_VISITS`]/[`ECHO_HITS`] and [`PROPS_ECHO_R4133`].
+pub fn echo_counters(class: &str, prop: &str) -> Option<(usize, usize)> {
+    let i = find_echo_row(PROPS_ECHO_R4133, class, prop)?;
+    Some((
+        ECHO_VISITS[i].load(AtomicOrd::Relaxed),
+        ECHO_HITS[i].load(AtomicOrd::Relaxed),
+    ))
+}
 
 /// **Fail-on-stale for [`PROPS_ECHO_R4133`]** — the echo table's half of plan
 /// mechanic (d), modeled on [`assert_norm_rows_are_live`].
@@ -1663,7 +1935,7 @@ pub fn claim_value(
     if let Some(row) = claiming_row(class, prop, rust, oracle) {
         return Some(ValueClaim::Normalization(row.rule));
     }
-    if echo_excluded(class, prop) {
+    if echo_excluded(class, prop, rust, oracle) {
         return Some(ValueClaim::Echo);
     }
     match (display_floor(), rust.parse::<f64>(), oracle.parse::<f64>()) {
@@ -2664,9 +2936,11 @@ mod tests {
                 Some("normalized-by-ArrayForm"),
             ),
             // **The chain ORDER, on the pairs that hold two rows.** A foldable
-            // cell of a mixed pair is a COMPARE (normalization wins), and the
-            // pair's echo cell is the exclusion — same `(class, prop)`, two
-            // different verdicts, decided by the cell.
+            // cell of a mixed pair is CLAIMED BY NORMALIZATION and the pair's
+            // echo cell by the exclusion — same `(class, prop)`, two different
+            // verdicts, decided by the cell. (What that buys is the census
+            // disposition and the norm row's liveness, not a live compare: the
+            // seam's exclusion is pair-scoped, `PROPS_ECHO_R4133`'s doc.)
             (
                 "Recloser",
                 "EventLog",
@@ -2688,6 +2962,20 @@ mod tests {
             // the census has not seen (that is what makes it an exclusion and
             // not a rule).
             ("RegControl", "FwdThreshold", "100", "800", Some("echo-row")),
+            // …with exactly one exception, and it is a cited one: the carve-out
+            // takes its own measured cell back out of the row, so that cell is
+            // UNCLAIMED here and declared to RP2.4 in the replay
+            // (`ECHO_CARVE_OUTS` / `ECHO_CARVE_OUT_ROUTING`).
+            ("Reactor", "kvar", "66.6666666666667", "66.667", None),
+            // The rest of the same pair is still the row's.
+            ("Reactor", "kvar", "100", "1200", Some("echo-row")),
+            (
+                "Reactor",
+                "kvar",
+                "66.6666666666667",
+                "66.66",
+                Some("echo-row"),
+            ),
             // Unclaimed: no row at all / a real difference inside a pair whose
             // row refuses it / an r4133 root-cause pair no link owns.
             ("Foo", "Bar", "Yes", "true", None),
@@ -2849,10 +3137,14 @@ mod tests {
         }
         // Lookup is case-insensitive because the capture spells a class however
         // the engine does, and it finds the row for a pair spelled either way.
-        assert!(echo_excluded("RegControl", "IdleForward"));
-        assert!(echo_excluded("regcontrol", "idleforward"));
-        assert!(!echo_excluded("regcontrol", "band"));
-        assert!(!echo_excluded("Foo", "Bar"));
+        assert!(has_echo_row("RegControl", "IdleForward"));
+        assert!(has_echo_row("regcontrol", "idleforward"));
+        assert!(!has_echo_row("regcontrol", "band"));
+        assert!(!has_echo_row("Foo", "Bar"));
+        assert!(echo_excluded("RegControl", "IdleForward", "No", ""));
+        assert!(echo_excluded("regcontrol", "idleforward", "No", ""));
+        assert!(!echo_excluded("regcontrol", "band", "2", "3"));
+        assert!(!echo_excluded("Foo", "Bar", "a", "b"));
     }
 
     /// **The table's contents, pinned literally** — the
@@ -2958,7 +3250,7 @@ mod tests {
     /// **The five pairs the RP2.3 kill criterion fired on take NO row here.**
     ///
     /// r4133 renders a live computed read-only quantity for each
-    /// (`IndMach012.pas:1789`, `StorageController.pas:991-994`) and the port
+    /// (`IndMach012.pas:1790`, `StorageController.pas:991-994`) and the port
     /// renders `''` only because dss_capi 0.14.5 flags them
     /// `[SilentReadOnly, ReadByFunction]`. Under the 2026-08-02 policy the
     /// 0.14.5 convention yields: the fix is an ENGINE change (render the live
@@ -2976,7 +3268,7 @@ mod tests {
             ("storagecontroller", "kwactual"),
         ] {
             assert!(
-                !echo_excluded(class, prop),
+                !has_echo_row(class, prop),
                 "{class}.{prop} is a SilentReadOnly surface, not an echo — RP3.8's, not this \
                  table's (props_r4133_replay::RP38_ROUTING)"
             );
@@ -3070,15 +3362,23 @@ mod tests {
             pins,
             [
                 "autotrans_bh_arrays_render_empty_when_unset",
+                "der_amp_limits_render_the_live_sentinel_and_gain",
+                "der_user_model_arrays_render_empty_when_unset",
+                "energymeter_action_and_capcontrol_reset_render_no_pending_command",
                 "energymeter_peakcurrent_renders_the_live_one_element_array",
                 "expcontrol_derlist_renders_the_der_list",
                 "fault_bus2_renders_the_live_terminal",
+                "fuse_switchedobj_defaults_to_the_monitored_element",
                 "generator_d_renders_the_documented_damping_default",
                 "generator_dynout_renders_the_named_variables",
+                "invcontrol_defaults_render_the_live_values",
                 "line_conductors_renders_the_live_conductor_list",
                 "line_spacing_renders_empty_once_the_spacing_is_killed",
                 "load_yearly_renders_the_resolved_loadshape_name",
+                "load_zipv_renders_the_live_seven_element_vector",
+                "pd_element_perm_and_repair_render_the_live_ratings",
                 "pvsystem_and_storage_pmin_sentinels_deactivate_the_var_limits",
+                "reactor_kvar_renders_the_live_rating",
                 "recloser_eventlog_and_debugtrace_default_to_no",
                 "recloser_switchedobj_defaults_to_the_monitored_element",
                 "regcontrol_idle_flags_and_thresholds_render_the_live_values",
@@ -3086,20 +3386,132 @@ mod tests {
                 "relay_switchedobj_defaults_to_the_monitored_element",
                 "storage_dynadll_renders_the_typed_path",
                 "storagecontroller_modedischarge_renders_schedule",
+                "storagecontroller_seasontargets_render_the_live_targets",
                 "swtcontrol_action_renders_the_live_switch_state",
                 "transformer_bh_arrays_render_empty_when_unset",
                 "windgen_dynout_renders_empty_when_unset",
             ],
-            "the expected-value pins RP2.3's rows depend on"
+            "the expected-value pins RP2.3's rows depend on — 20 from part B2, nine added by \
+             the audit settlement for the rows exposed on r4133-only cases"
         );
         assert_eq!(
             PROPS_ECHO_R4133
                 .iter()
                 .filter(|r| r.witness.pin().is_some())
                 .count(),
-            32,
+            63,
             "rows whose witness is (also) a pin"
         );
+    }
+
+    /// **A `Capi` witness must name a pair the capi channel really compares.**
+    ///
+    /// [`EchoWitness::Capi`]'s `n` is a dated census number nothing can re-derive
+    /// offline, so the type asserts only `n > 0`. That leaves one failure mode a
+    /// test CAN close: a row claiming capi coverage for a pair the capi walk
+    /// never reaches, because a `SKIP_PROPS` row masks its value, `PROPS_015X`
+    /// drops it from the 0.14.5 capture, or the whole element is skipped there.
+    /// The RP2.3 rows behind those masks all carry `Pin` today — checked by hand
+    /// in part A's witness split, checked by the suite from here on (RP2.3 audit
+    /// settlement).
+    #[test]
+    fn a_capi_witness_is_a_pair_the_capi_channel_can_compare() {
+        for r in PROPS_ECHO_R4133 {
+            if r.witness.capi_cases().is_none() {
+                continue;
+            }
+            assert!(
+                !super::super::skip_prop(r.class, r.prop, PropsChannel::CapiV0145),
+                "{}.{}: a capi witness on a pair SKIP_PROPS masks off the capi channel",
+                r.class,
+                r.prop
+            );
+            assert!(
+                !super::super::skip_whole_element(r.class, PropsChannel::CapiV0145),
+                "{}.{}: a capi witness on a class the capi walk skips whole",
+                r.class,
+                r.prop
+            );
+            assert!(
+                !super::super::PROPS_015X.iter().any(|(c, props)| {
+                    c.eq_ignore_ascii_case(r.class)
+                        && props.iter().any(|p| p.eq_ignore_ascii_case(r.prop))
+                }),
+                "{}.{}: a capi witness on a prop the 0.14.5 capture cannot carry (PROPS_015X)",
+                r.class,
+                r.prop
+            );
+        }
+    }
+
+    /// **Every row that masks cells on an `engines: "r4133"` case names a pin** —
+    /// plan mechanic (c)'s "r4133-only classes/**cases**" half, which part B2
+    /// applied to one row by hand (`swtcontrol.action`) and the audit settlement
+    /// turned into a rule over the measured population.
+    ///
+    /// The capi channel does not run on those cases at all, so a `Capi(n)`
+    /// witness — however large `n` is — says nothing about the cells the row
+    /// masks there.
+    #[test]
+    fn every_row_exposed_on_r4133_only_cases_names_a_pin() {
+        assert_eq!(
+            ECHO_ROWS_ON_R4133_ONLY_CASES.len(),
+            R4133_ONLY_ROWS,
+            "the measured exposure list moved"
+        );
+        assert_eq!(
+            ECHO_ROWS_ON_R4133_ONLY_CASES
+                .iter()
+                .map(|(_, _, cells, _)| cells)
+                .sum::<u32>(),
+            R4133_ONLY_CELLS,
+            "…and so did the cells behind it"
+        );
+        for (class, prop, cells, cases) in ECHO_ROWS_ON_R4133_ONLY_CASES {
+            assert!(
+                cells > &0 && cases > &0,
+                "{class}.{prop}: an empty exposure"
+            );
+            let i = find_echo_row(PROPS_ECHO_R4133, class, prop)
+                .unwrap_or_else(|| panic!("{class}.{prop} is listed but has no echo row"));
+            assert!(
+                PROPS_ECHO_R4133[i].witness.pin().is_some(),
+                "{class}.{prop}: the row masks {cells} cell(s) on {cases} r4133-only case(s), \
+                 where the capi channel never runs — a capi witness cannot hold that value, so \
+                 the row owes an expected-value pin (plan §1.2 mechanic (c))"
+            );
+        }
+        // Sorted and unique, so a duplicate cannot hide a missing pin.
+        for w in ECHO_ROWS_ON_R4133_ONLY_CASES.windows(2) {
+            assert!(
+                (w[0].0, w[0].1) < (w[1].0, w[1].1),
+                "the exposure list must be sorted by (class, prop) with no duplicate"
+            );
+        }
+    }
+
+    /// **The dormant-row exemption list is pinned literally**, like every other
+    /// closed set RP2.1/RP2.2 shipped.
+    ///
+    /// [`ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`] switches off the only live anti-rot
+    /// guard the 81 exclusions will have after RP4.1, one pair at a time. Before
+    /// the RP2.3 audit settlement it carried neither a literal nor a count lock,
+    /// so a third entry would have silently disarmed the guard for another row.
+    #[test]
+    fn the_dormant_row_exemption_list_is_pinned() {
+        assert_eq!(
+            ECHO_ROWS_WITH_NO_IN_SCOPE_CELL,
+            [("fault", "bus2"), ("line", "spacing")],
+            "the two pairs whose echo cells all sit on capi-only cases (claims census, \
+             2026-08-23) — adding one exempts another row from fail-on-stale, which is a \
+             decision, not a tidy-up"
+        );
+        for (class, prop) in ECHO_ROWS_WITH_NO_IN_SCOPE_CELL {
+            assert!(
+                has_echo_row(class, prop),
+                "{class}.{prop} is exempted but has no echo row to exempt"
+            );
+        }
     }
 
     /// **The live seam counts what the gate saw, and answers the pair-scoped
@@ -3117,6 +3529,62 @@ mod tests {
         // Differing sides: the exclusion did work.
         assert!(echo_excluded_r4133("RegControl", "Idle", "No", ""));
         assert_eq!(echo_counter_totals(), (before.0 + 2, before.1 + 1));
+        // A carved-out cell is not excluded, so it is not a visit either — the
+        // liveness accounting must not credit the row for a cell it let through.
+        assert!(!echo_excluded_r4133(
+            "Reactor",
+            "kvar",
+            "66.6666666666667",
+            "66.667"
+        ));
+        assert_eq!(echo_counter_totals(), (before.0 + 2, before.1 + 1));
+    }
+
+    /// **The carve-out takes exactly its cited cell out of the row** — the
+    /// narrowing valve the RP2.3 audit settlement added, in both directions.
+    ///
+    /// `reactor.kvar`'s row cites the frozen `'1200'` default; the pair's 607th
+    /// census cell is r4133's own live `MakePosSequence` round-trip
+    /// (`Reactor.pas:1145-1201`, `kvar=%-.5g` through the parser) and is not an
+    /// echo at all. A pair-scoped row would have masked it — that is exactly the
+    /// "mask wider than its citation" this valve exists to prevent — so the cell
+    /// leaves the exclusion and RP2.4's display floor inherits it.
+    #[test]
+    fn the_carve_out_takes_exactly_its_cited_cell_out_of_the_row() {
+        assert_eq!(ECHO_CARVE_OUTS.len(), ECHO_CARVE_OUT_CELLS);
+        for c in ECHO_CARVE_OUTS {
+            // A carve-out is only meaningful inside a row it narrows…
+            assert!(
+                has_echo_row(c.class, c.prop),
+                "{}.{}: a carve-out on a pair with no echo row",
+                c.class,
+                c.prop
+            );
+            // …it must cite a mechanism…
+            assert!(
+                c.why.contains(".pas:"),
+                "{}.{}: the carve-out must cite the r4133 site that makes the cell live",
+                c.class,
+                c.prop
+            );
+            // …and the two sides really differ (a cell that already compares
+            // equal needs no carve-out).
+            assert_ne!(c.rust, c.oracle);
+            // The cell itself is out.
+            assert!(!echo_excluded(c.class, c.prop, c.rust, c.oracle));
+            assert!(!carved_out(c.class, c.prop, c.rust, "something else"));
+            assert!(!carved_out(c.class, c.prop, "something else", c.oracle));
+            // Matching is case-insensitive on the PAIR, exact on the values.
+            assert!(!echo_excluded(
+                &c.class.to_uppercase(),
+                &c.prop.to_uppercase(),
+                c.rust,
+                c.oracle
+            ));
+            // …and the rest of the pair is still excluded.
+            assert!(echo_excluded(c.class, c.prop, c.rust, "1200"));
+            assert!(has_echo_row(c.class, c.prop));
+        }
     }
 
     /// The echo liveness guard, silent where it must be: dormant (today's gate,

@@ -131,8 +131,9 @@ const CLAIMED_NORMALIZATION: usize = 854;
 /// **RP2.3's echo table** — example rows the exclusion claims, i.e. the ones
 /// `PROPS_ECHO_R4133` covers that no earlier link took. 450 (the RP2.3 bucket)
 /// − 99 (claimed by the nine new normalization rows instead) − 181 (the five
-/// `SilentReadOnly` pairs re-routed to [`Owner::Rp38`]) = **170**.
-const CLAIMED_ECHO: usize = 170;
+/// `SilentReadOnly` pairs re-routed to [`Owner::Rp38`]) − 1 (the audit
+/// settlement's carve-out, [`ECHO_CARVE_OUT_ROUTING`]) = **169**.
+const CLAIMED_ECHO: usize = 169;
 /// …and in total, over all four links.
 const CLAIMED_TOTAL: usize = CLAIMED_NORMALIZATION + CLAIMED_ECHO;
 
@@ -195,9 +196,11 @@ const CLAIMED_DISPLAY_FLOOR: usize = 0;
 /// first-match argument instead of silently starting to rely on it. Re-read,
 /// and it holds: normalization precedes the exclusion
 /// ([`first_match_returns_the_earliest_link`]), so on each of those 20 pairs
-/// the typed rule claims its foldable spellings and the echo row masks only the
-/// rest. The split is measured per pair by
-/// [`the_echo_table_masks_only_what_the_typed_rules_leave`].
+/// the typed rule claims its foldable spellings and only the rest is credited
+/// to the echo row. The split is measured per pair by
+/// [`the_typed_rules_and_the_echo_rows_split_their_shared_pairs_offline`], whose
+/// doc is also where the difference between this attribution and the live
+/// (pair-scoped) mask is spelled out.
 ///
 /// The 20: the four mixed bin-1 pairs (`recloser.eventlog` 1,
 /// `regcontrol.idle` 1, `relay.distreverse` 2, `relay.reset` 1), the six
@@ -225,10 +228,12 @@ const DECLARED_RP22: (usize, usize, usize) = (0, 0, 0);
 /// resolved, in exactly three ways, each of which the locks above count:
 ///
 /// * **99** claimed by the nine off-bin `PROPS_NORM_R4133` rows RP2.3 landed
-///   first, so a pair-scoped exclusion could not swallow a cell a typed rule
-///   compares ([`CLAIMED_CASE_FOLD`], [`CLAIMED_ARRAY_FORM`]);
-/// * **170** claimed by `PROPS_ECHO_R4133`'s 81 cited rows ([`CLAIMED_ECHO`]);
-/// * **181** re-routed to [`Owner::Rp38`] by the kill ruling ([`RP38_ROUTING`]).
+///   first, so that the census attributes them to their rule and each row can
+///   prove itself live ([`CLAIMED_CASE_FOLD`], [`CLAIMED_ARRAY_FORM`]);
+/// * **169** claimed by `PROPS_ECHO_R4133`'s 81 cited rows ([`CLAIMED_ECHO`]);
+/// * **181** re-routed to [`Owner::Rp38`] by the kill ruling ([`RP38_ROUTING`]);
+/// * **1** carved back out of its row and declared to RP2.4 by the audit
+///   settlement ([`ECHO_CARVE_OUT_ROUTING`]).
 ///
 /// The variant stays so a regression that re-creates the bucket fails here by
 /// name.
@@ -237,7 +242,15 @@ const DECLARED_RP23: (usize, usize, usize) = (0, 0, 0);
 /// on**: 181 example rows over 5 pairs, all of them on pairs the RP4.1 unmask
 /// will compare (1 064 live cells, 772 in scope). See [`RP38_ROUTING`].
 const DECLARED_RP38: (usize, usize, usize) = (181, 5, 181);
-const DECLARED_RP24: (usize, usize, usize) = (2100, 70, 2020);
+/// **RP2.4 — the display floor's bucket.** `(2101, 71, 2021)` since the RP2.3
+/// audit settlement: 2 100 rows over 70 pairs from RP2.1's own bin-6 walk, plus
+/// the one cell [`ECHO_CARVE_OUT_ROUTING`] takes out of `reactor.kvar`'s echo
+/// row — two live values 5.0e-06 apart, i.e. this bucket's own class (its
+/// sibling `reactor.kv`, the other output of the same r4133 `MakePosSequence`
+/// round-trip, is already here at 5.85e-06). The third number counts rows on
+/// pairs the RP4.1 unmask compares at all, and `reactor.kvar` is such a pair
+/// even though this particular cell sits on a capi-only case.
+const DECLARED_RP24: (usize, usize, usize) = (2101, 71, 2021);
 const DECLARED_RP3: (usize, usize, usize) = (7, 4, 7);
 /// The three sub-steps RP2.2 opened: **8 rows over 6 pairs, 5 of them in
 /// scope** — RP3.5 `line.units` (1 row, 0 in scope), RP3.6 `line.linecode`
@@ -639,7 +652,8 @@ const RP22_ROUTING: &[(&str, Owner, &str)] = &[
     // `'volt'` against our registry name `'PowerFactor'`/`'Voltage'`
     // (`obj/dss_enum/registry/control.rs:69`). The pair's three case-only
     // spellings stay claimed by its RP2.1 `CaseFold` row — normalization
-    // precedes the echo table, so RP2.3's row masks only these 30 cells.
+    // precedes the echo table, so only these 30 cells are credited to RP2.3's
+    // row (credited: the shipped exclusion is pair-scoped).
     (
         "capcontrol.type",
         Owner::Rp23,
@@ -766,7 +780,7 @@ const CELL_DISPOSITION: &[(&str, Owner, &str)] = &[
 const RP38_ROUTING: &[(&str, &str)] = &[
     (
         "indmach012.pf",
-        "IndMach012.pas:1789 (arm 5: Format('%.6g',[PowerFactor(Power[1,ActorID])]))",
+        "IndMach012.pas:1790 (arm 5: Format('%.6g',[PowerFactor(Power[1,ActiveActor])]))",
     ),
     (
         "storagecontroller.kwhtotal",
@@ -785,6 +799,33 @@ const RP38_ROUTING: &[(&str, &str)] = &[
         "StorageController.pas:994 (GetkWActual)",
     ),
 ];
+
+/// **Who owns the cells an echo row carves out** (`props_norm::
+/// ECHO_CARVE_OUTS`) — the RP2.3 audit settlement's narrowing valve, accounted.
+///
+/// A carve-out means "this cell of a cited pair is NOT that row's echo", so the
+/// example row it matches leaves the echo link and needs an owner like any other
+/// unclaimed row. It cannot get one from the pair's own evidence: `declare`
+/// reads `bins.tsv`'s PAIR bin, and `reactor.kvar`'s bin-7 label comes from the
+/// 0.917-rel echo cells, which would route the carved cell straight back to
+/// RP2.3. So the routing is explicit, cited, and matched against the shipped
+/// carve-outs both ways
+/// ([`the_carve_outs_are_routed_and_only_they_are`]).
+///
+/// `reactor.kvar` `'66.6666666666667'` vs `'66.667'`: r4133's own
+/// `MakePosSequence` round-trips the value through `Format(' kvar=%-.5g')` and
+/// the parser (`Version8/Source/PDElements/Reactor.pas:1145-1201`), so both
+/// sides are LIVE and differ by 5.0e-06 — the display class RP2.4 derives its
+/// floor for, exactly where the same round-trip's `reactor.kv` already sits
+/// (`bins.tsv`: numeric bin 6, `max_rel` 5.85e-06).
+const ECHO_CARVE_OUT_ROUTING: &[(&str, &str, &str, Owner, &str)] = &[(
+    "reactor.kvar",
+    "66.6666666666667",
+    "66.667",
+    Owner::Rp24,
+    "Reactor.pas:1145-1201 (MakePosSequence -> Format(' kvar=%-.5g') -> Parser/Edit): both sides \
+     live, 5.0e-06 apart — RP2.4's display class, like reactor.kv (bins.tsv bin 6, 5.85e-06)",
+)];
 
 /// The `shape.txt` gap names closed by a real port rather than by a
 /// `PROPS_015X` row — RP1.3's WindGen `UserModel`/`UserData` surface. The port's
@@ -841,8 +882,15 @@ enum Link {
     Normalization,
     /// **RP2.3's echo table** (`PROPS_ECHO_R4133`) — the exclusion. 81 cited
     /// rows, consulted only after the normalization link has had its chance, so
-    /// on a mixed pair a typed rule claims the foldable spellings first and this
-    /// covers what is left ([`MULTI_LINK_ROWS`]).
+    /// on a mixed pair a typed rule *claims* the foldable spellings first and
+    /// this link is credited with what is left ([`MULTI_LINK_ROWS`]).
+    ///
+    /// **This accounting is per spelling; the shipped exclusion is per pair.**
+    /// The two are the same statement only for the cells the census recorded: at
+    /// the live seam a cell of a cited pair that no rule folds is masked all the
+    /// same (`harness::props_norm::PROPS_ECHO_R4133`'s doc, RP2.3 audit
+    /// settlement). One measured cell is genuinely out of its row —
+    /// [`ECHO_CARVE_OUT_ROUTING`] — and this link answers `false` for it.
     Echo,
     /// **RP2.4's display floor** — a named slot that carries no value in RP2.1
     /// (`props_norm::display_floor()` is `None`, i.e. numeric tokens compare
@@ -1432,7 +1480,7 @@ fn chain_verdicts(corpus: &Corpus, row: &Example) -> [bool; 4] {
         .iter()
         .any(|(c, p)| c.eq_ignore_ascii_case(&row.class) && p.eq_ignore_ascii_case(&row.prop));
     let norm = props_norm::claiming_row(&row.class, &row.prop, &row.rust, &row.r4133).is_some();
-    let echo = props_norm::echo_excluded(&row.class, &row.prop);
+    let echo = props_norm::echo_excluded(&row.class, &row.prop, &row.rust, &row.r4133);
     let floor = match (
         props_norm::display_floor(),
         row.rust.parse::<f64>(),
@@ -1493,7 +1541,17 @@ fn declare(row: &Example, ev: &PairEvidence) -> Result<Owner, String> {
         .find(|(p, _, _)| *p == row.pair)
         .map(|(_, o, _)| *o);
 
-    // RP2.3's kill-criterion re-route comes FIRST: these five pairs are neither
+    // A carved-out CELL comes first of all — it is the most specific rule here,
+    // and every rule below reads the pair's own bin, which for a carve-out is
+    // the label of the very echo cells the carve-out is not. See
+    // [`ECHO_CARVE_OUT_ROUTING`].
+    if let Some((_, _, _, owner, _)) = ECHO_CARVE_OUT_ROUTING
+        .iter()
+        .find(|(p, rust, r4133, _, _)| *p == row.pair && *rust == row.rust && *r4133 == row.r4133)
+    {
+        return Ok(*owner);
+    }
+    // RP2.3's kill-criterion re-route comes next: these five pairs are neither
     // an echo nor a spelling, and every rule below would have mis-filed them
     // (their cells classify as bin 5 — one side empty — which is the echo
     // table's shape). See [`RP38_ROUTING`].
@@ -1749,32 +1807,53 @@ fn every_example_row_is_claimed_or_declared_exactly_once() {
     );
 }
 
-/// **The echo table masks only what the typed rules leave** — the per-pair
-/// half of [`MULTI_LINK_ROWS`], and the guard against the one way a
-/// pair-scoped exclusion can go wrong: swallowing cells a value-preserving rule
-/// still compares.
+/// **The per-pair split of the OFFLINE attribution** on the pairs that hold
+/// both kinds of row — the per-pair half of [`MULTI_LINK_ROWS`].
 ///
-/// For every pair that holds BOTH kinds of row it asserts the measured split,
-/// pair by pair. Widening an echo row cannot show up here (the row is
-/// pair-scoped by design), but the two things that would silently shrink the
-/// compare do: deleting or narrowing one of the nine off-bin normalization rows
-/// RP2.3 landed, and re-ordering the chain so the exclusion runs first — either
-/// moves a pair's normalization count to zero.
+/// Read what this measures, and what it does not (RP2.3 audit settlement,
+/// 2026-08-23 — it used to be called `the_echo_table_masks_only_what_the_typed_
+/// rules_leave`, which claimed the second thing): for every example row of a
+/// cited pair it asks the chain which link is credited with it, and pins the
+/// resulting split pair by pair. That is a statement about the **census
+/// attribution** — the claims-census disposition and the norm rows' liveness —
+/// not about the live comparator, whose exclusion is pair-scoped and covers a
+/// mixed pair's refused cells too
+/// (`harness::props_policy_tests::a_mixed_pairs_echo_row_masks_the_cells_its_
+/// rule_refuses` pins that behaviour where it actually lives).
+///
+/// What it still catches, and why it is worth keeping: deleting or narrowing one
+/// of the nine off-bin normalization rows RP2.3 landed, and re-ordering the
+/// offline chain so the exclusion is asked first — either moves a pair's
+/// normalization count to zero.
 #[test]
-fn the_echo_table_masks_only_what_the_typed_rules_leave() {
+fn the_typed_rules_and_the_echo_rows_split_their_shared_pairs_offline() {
     let corpus = Corpus::load();
     let mut split: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+    let mut carved = 0;
     for row in &corpus.rows {
-        if !props_norm::echo_excluded(&row.class, &row.prop) {
+        if !props_norm::has_echo_row(&row.class, &row.prop) {
             continue;
         }
         let e = split.entry(row.pair.as_str()).or_default();
         match first_match(chain_verdicts(&corpus, row)) {
             Some(Link::Normalization) => e.0 += 1,
             Some(Link::Echo) => e.1 += 1,
+            // A carved-out cell of a cited pair: no link claims it, and
+            // `ECHO_CARVE_OUT_ROUTING` says who owns it instead.
+            None if ECHO_CARVE_OUT_ROUTING
+                .iter()
+                .any(|(p, r, o, _, _)| *p == row.pair && *r == row.rust && *o == row.r4133) =>
+            {
+                carved += 1
+            }
             other => panic!("{}: an echo pair's row answered {other:?}", row.pair),
         }
     }
+    assert_eq!(
+        carved,
+        ECHO_CARVE_OUT_ROUTING.len(),
+        "every carve-out must match exactly one example row of its pair"
+    );
     let mixed: Vec<(&str, usize, usize)> = split
         .iter()
         .filter(|(_, (norm, _))| *norm > 0)
@@ -1804,7 +1883,7 @@ fn the_echo_table_masks_only_what_the_typed_rules_leave() {
             ("storagecontroller.seasontargets", 2, 1),
             ("storagecontroller.seasontargetslow", 2, 1),
         ],
-        "(pair, rows claimed by its normalization row, rows masked by its echo row)"
+        "(pair, rows claimed by its normalization row, rows credited to its echo row)"
     );
     assert_eq!(
         mixed.iter().map(|(_, n, _)| n).sum::<usize>(),
@@ -1915,13 +1994,9 @@ fn every_echo_row_pin_is_a_test_that_exists() {
     }
 
     // …and the file carries no pin nobody cites. The two exceptions are the
-    // deck guard's own self-tests, not witnesses — and they are named here
-    // rather than pattern-matched away so that a third un-cited test cannot
-    // slip in behind a naming convention.
-    const NOT_A_PIN: &[&str] = &[
-        "the_deck_guard_really_sweeps",
-        "overlapping_deck_guards_still_sweep",
-    ];
+    // deck guard's own self-tests, not witnesses — see [`NOT_A_PIN`], which is
+    // pinned literally by [`the_non_pin_exemption_list_is_pinned`] so that a
+    // third entry cannot quietly let an un-cited `#[test]` past this guard.
     let defined: BTreeSet<&str> = text
         .split("#[test]\nfn ")
         .skip(1)
@@ -1931,6 +2006,33 @@ fn every_echo_row_pin_is_a_test_that_exists() {
     assert_eq!(
         defined, named,
         "{PINS} must define exactly the pins the echo rows name"
+    );
+}
+
+/// The `#[test]`s in the pin file that are **not** witnesses: the deck guard's
+/// own two self-tests. Named, never pattern-matched — a naming convention would
+/// let a third un-cited test slip past
+/// [`every_echo_row_pin_is_a_test_that_exists`].
+const NOT_A_PIN: &[&str] = &[
+    "the_deck_guard_really_sweeps",
+    "overlapping_deck_guards_still_sweep",
+];
+
+/// **The non-pin exemption list is pinned literally** (RP2.3 audit settlement,
+/// 2026-08-23): [`NOT_A_PIN`] switches off the only guard that ties a witness
+/// name to a real, running test, so growing it is a decision. Before this,
+/// `every_echo_row_pin_is_a_test_that_exists` iterated whatever the const
+/// happened to hold, and a bogus third name would have let an un-cited `#[test]`
+/// through — the very failure the const's own comment says it prevents.
+#[test]
+fn the_non_pin_exemption_list_is_pinned() {
+    assert_eq!(
+        NOT_A_PIN,
+        [
+            "the_deck_guard_really_sweeps",
+            "overlapping_deck_guards_still_sweep",
+        ],
+        "the pin file's two deck-guard self-tests, and nothing else"
     );
 }
 
@@ -1954,7 +2056,7 @@ fn the_kill_criterion_reroute_is_the_five_silent_readonly_pairs() {
     for (pair, cite) in RP38_ROUTING {
         let (class, prop) = pair.split_once('.').expect("class.prop");
         assert!(
-            !props_norm::echo_excluded(class, prop),
+            !props_norm::has_echo_row(class, prop),
             "{pair} must NOT have an echo row — the ruling forbids it"
         );
         assert!(
@@ -2330,13 +2432,63 @@ fn the_echo_table_claims_only_its_cited_pairs_and_the_floor_claims_nothing() {
     for (pair, _) in RP38_ROUTING {
         let (class, prop) = pair.split_once('.').expect("class.prop");
         assert!(
-            !props_norm::echo_excluded(class, prop),
+            !props_norm::has_echo_row(class, prop),
             "{pair}: an echo-LOOKING spelling is not an echo row"
         );
     }
     // …and neither is a pair whose only divergence is a genuine value jump.
-    assert!(!props_norm::echo_excluded("gictransformer", "r2"));
-    assert!(!props_norm::echo_excluded("generator", "model"));
+    assert!(!props_norm::has_echo_row("gictransformer", "r2"));
+    assert!(!props_norm::has_echo_row("generator", "model"));
+}
+
+/// **The carve-outs and their routing describe the same cells** — the
+/// third-map guard for the narrowing valve the RP2.3 audit settlement added.
+///
+/// `props_norm::ECHO_CARVE_OUTS` decides what the comparator lets through;
+/// [`ECHO_CARVE_OUT_ROUTING`] decides who then owns the cell. A carve-out with
+/// no routing would land in the ledger's `unaccounted` bucket (RP2.1's kill
+/// criterion, which is the loud outcome) but a routing with no carve-out would
+/// simply never fire, so both directions are asserted here, plus the two things
+/// that make a routing a verdict: an owner that is not RP2.3's own bucket, and a
+/// citation.
+#[test]
+fn the_carve_outs_are_routed_and_only_they_are() {
+    let shipped: BTreeSet<(String, &str, &str)> = props_norm::ECHO_CARVE_OUTS
+        .iter()
+        .map(|c| (format!("{}.{}", c.class, c.prop), c.rust, c.oracle))
+        .collect();
+    let routed: BTreeSet<(String, &str, &str)> = ECHO_CARVE_OUT_ROUTING
+        .iter()
+        .map(|(pair, rust, r4133, _, _)| (pair.to_string(), *rust, *r4133))
+        .collect();
+    assert_eq!(
+        shipped, routed,
+        "every carve-out needs a recorded owner, and every routing a carve-out to own"
+    );
+    for (pair, rust, r4133, owner, cite) in ECHO_CARVE_OUT_ROUTING {
+        assert_ne!(
+            *owner,
+            Owner::Rp23,
+            "{pair}: routing a carved-out cell back to RP2.3 would re-close the mask this valve \
+             opened"
+        );
+        assert!(
+            cite.contains(".pas:"),
+            "{pair}: a carve-out routing must cite the r4133 site, got {cite:?}"
+        );
+        // …and the cell really is out of the shipped exclusion.
+        let (class, prop) = pair.split_once('.').expect("class.prop");
+        assert!(props_norm::has_echo_row(class, prop));
+        assert!(!props_norm::echo_excluded(class, prop, rust, r4133));
+    }
+    // Liveness: the routed owner really inherits the row.
+    let corpus = Corpus::load();
+    let led = account(&corpus, PROPS_NORM_R4133);
+    assert_eq!(
+        led.owner(Owner::Rp24),
+        DECLARED_RP24,
+        "RP2.4's bucket carries the carved-out display cell"
+    );
 }
 
 /// The chain order is the documented one, and [`first_match`] really returns the
@@ -2359,8 +2511,8 @@ fn first_match_returns_the_earliest_link() {
     assert_eq!(
         first_match([false, true, true, false]),
         Some(Link::Normalization),
-        "normalization precedes the echo table: a foldable cell of a mixed pair is a COMPARE, \
-         not an exclusion"
+        "normalization precedes the echo table: a foldable cell of a mixed pair is CLAIMED BY \
+         ITS RULE, and only what the rule leaves is credited to the exclusion"
     );
     assert_eq!(
         first_match([true, true, true, true]),
@@ -2617,7 +2769,7 @@ fn rp22_settled_every_pair_it_was_handed() {
         let (class, prop) = pair.split_once('.').expect("class.prop");
         match owner {
             Owner::Rp23 => {
-                if !props_norm::echo_excluded(class, prop) {
+                if !props_norm::has_echo_row(class, prop) {
                     unconsumed.push(pair);
                 }
             }
