@@ -153,7 +153,7 @@ impl WindGenUserModelSlot {
         Ok(slot)
     }
 
-    /// Pascal `Get_Exists` (`FID <> 0`, `WindGenUserModel.pas:131-139`). A slot
+    /// Pascal `Get_Exists` (`FID <> 0`, `WindGenUserModel.pas:130-138`). A slot
     /// with `live == None` and a spec (post-clone) reports `false` until the next
     /// `&mut` call re-creates the instance — matching Pascal, where a
     /// not-yet-`New`ed model does not exist.
@@ -182,7 +182,17 @@ impl WindGenUserModelSlot {
     /// `UserData=` state the snapshot was taken from. A slot built by
     /// [`Self::load`] — every slot a `UserModel=` or a `like=` produces — is
     /// already live and returns immediately.
-    fn ensure_live(&mut self, g: &mut WindGen, sys: &SysCtx, node_v: &[Complex64]) -> LiveResult {
+    ///
+    /// Reached through [`WindGen::take_live_user_model`], which every engine-side
+    /// call site goes through: without that the `exists()` guards would shadow
+    /// this revive completely and a cloned element would fall back to its
+    /// built-in model in silence (RP1.3 audit settlement).
+    pub(super) fn ensure_live(
+        &mut self,
+        g: &mut WindGen,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+    ) -> LiveResult {
         if self.live.is_some() {
             return Ok(());
         }
@@ -332,7 +342,7 @@ impl WindGenUserModelSlot {
     }
 
     /// Pascal `UserModel.Integrate` (`select(id)` + `integrate()`,
-    /// `WindGenUserModel.pas:141-145`) — the `IntegrateStates` GenModel=6 tail
+    /// `WindGenUserModel.pas:140-144`) — the `IntegrateStates` GenModel=6 tail
     /// (`WindGen.pas:2663`).
     pub fn integrate(&mut self, g: &mut WindGen, sys: &SysCtx, node_v: &[Complex64]) -> LiveResult {
         self.ensure_live(g, sys, node_v)?;
@@ -544,18 +554,67 @@ impl WindGen {
         }
     }
 
-    /// Whether the `UserModel=` slot holds a loaded model (Pascal
-    /// `UserModel.Exists`).
-    pub(super) fn user_model_exists(&self) -> bool {
-        self.user_model.as_ref().is_some_and(|s| s.exists())
+    /// Push a local diagnostic batch onto the element's deferred-error log (the
+    /// executive drains it) — the surfacing channel for the user-model paths
+    /// that have no solution `ErrorLog` in hand. Never a silent drop.
+    fn drain_element_errors(&mut self, errs: ErrorLog) {
+        for d in errs.into_vec() {
+            self.cd.obj.push_error(d);
+        }
     }
 
-    /// The loaded model's variable count, 0 when absent (Pascal
-    /// `UserModel.FNumVars` guarded by `Exists`).
-    pub(super) fn user_model_num_vars(&self) -> usize {
-        if !self.user_model_exists() {
-            return 0;
+    /// Take the bound slot **live**, re-creating the wasmi instance first when
+    /// this element came from a [`WindGen::clone`] — the owned snapshot the
+    /// control dispatch takes of a monitored element
+    /// (`ClassArena::clone_ckt`, `solution/controls/dispatch.rs`), where the
+    /// slot's `Clone` deliberately drops the instance.
+    ///
+    /// Returns `None` (with the slot put back) only when no model is bound at
+    /// all or the re-creation itself failed — the latter loudly, as #569. Every
+    /// engine-side user-model call site goes through this rather than testing
+    /// `exists()` directly: a bare `exists()` guard turns a snapshot into a
+    /// silent fallback to the built-in model, which is exactly the class of
+    /// defect RP1.3 found on the `like=` path.
+    fn take_live_user_model(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        errs: &mut ErrorLog,
+    ) -> Option<Box<WindGenUserModelSlot>> {
+        let mut s = self.user_model.take()?;
+        if !s.exists() {
+            let model = s.model().to_string();
+            if let Err(e) = s.ensure_live(self, sys, node_v) {
+                let name = self.cd.obj.name().to_string();
+                errs.push(DssDiagnostic::msg(
+                    format!(
+                        "WindGen.{name}: user model {model} could not be re-created for this \
+                         element snapshot: {e}"
+                    ),
+                    Some(569),
+                ));
+            }
+            if !s.exists() {
+                self.user_model = Some(s);
+                return None;
+            }
         }
+        Some(s)
+    }
+
+    /// The bound model's variable count, 0 when no model is bound (Pascal
+    /// `UserModel.FNumVars` guarded by `Exists` — there is no separate
+    /// `user_model_exists()` helper any more: nothing else needs the raw
+    /// `FID <> 0` answer, since running the model goes through
+    /// [`Self::take_live_user_model`] and the surface through this count).
+    ///
+    /// Read off the slot's cached count rather than through `exists()`: the slot
+    /// only comes into being when a model actually loaded, and the count belongs
+    /// to the spec, so an element snapshot whose wasmi instance was dropped by
+    /// `Clone` still reports the same surface it will answer with once
+    /// [`Self::take_live_user_model`] revives it. Gating this on `exists()`
+    /// instead made a snapshot's surface silently collapse to the native 22.
+    pub(super) fn user_model_num_vars(&self) -> usize {
         self.user_model.as_ref().map_or(0, |s| s.num_vars())
     }
 
@@ -574,13 +633,9 @@ impl WindGen {
         node_v: &[Complex64],
         errors: &mut ErrorLog,
     ) -> bool {
-        let Some(mut um) = self.user_model.take() else {
+        let Some(mut um) = self.take_live_user_model(sys, node_v, errors) else {
             return false;
         };
-        if !um.exists() {
-            self.user_model = Some(um);
-            return false;
-        }
         let name = self.cd.obj.name().to_string();
         let v = self.cd.vterminal.clone();
         let mut it = self.cd.iterminal.clone();
@@ -615,9 +670,7 @@ impl WindGen {
         }
         s.drain_effects(&name, &mut errs);
         self.user_model = Some(s);
-        for d in errs.into_vec() {
-            self.cd.obj.push_error(d);
-        }
+        self.drain_element_errors(errs);
     }
 
     /// Pascal `InitStateVars` GenModel=6 arm (`WindGen.pas:2566-2570`):
@@ -632,15 +685,12 @@ impl WindGen {
     /// iteration*. This mirrors the Generator slot's `user_model_finit`
     /// (the WM.3 D2 finding), which is the same Pascal shape.
     pub(super) fn user_model_finit(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
-        let Some(mut s) = self.user_model.take() else {
+        let mut errs = ErrorLog::new();
+        let Some(mut s) = self.take_live_user_model(sys, node_v, &mut errs) else {
+            self.drain_element_errors(errs);
             return;
         };
-        if !s.exists() {
-            self.user_model = Some(s);
-            return;
-        }
         let name = self.cd.obj.name().to_string();
-        let mut errs = ErrorLog::new();
         let v = self.cd.vterminal.clone();
         let mut it = self.cd.iterminal.clone();
         match s.init(&v, &mut it, self, sys, node_v) {
@@ -652,23 +702,18 @@ impl WindGen {
         }
         s.drain_effects(&name, &mut errs);
         self.user_model = Some(s);
-        for d in errs.into_vec() {
-            self.cd.obj.push_error(d);
-        }
+        self.drain_element_errors(errs);
     }
 
     /// Pascal `IntegrateStates` GenModel=6 arm (`WindGen.pas:2662-2665`):
     /// `UserModel.Integrate()` (= `select(id)` + `integrate()`).
     pub(super) fn user_model_fintegrate(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
-        let Some(mut s) = self.user_model.take() else {
+        let mut errs = ErrorLog::new();
+        let Some(mut s) = self.take_live_user_model(sys, node_v, &mut errs) else {
+            self.drain_element_errors(errs);
             return;
         };
-        if !s.exists() {
-            self.user_model = Some(s);
-            return;
-        }
         let name = self.cd.obj.name().to_string();
-        let mut errs = ErrorLog::new();
         if let Err(e) = s.integrate(self, sys, node_v) {
             errs.push(DssDiagnostic::msg(
                 format!("WindGen.{name}: user model `integrate` failed: {e}"),
@@ -677,9 +722,7 @@ impl WindGen {
         }
         s.drain_effects(&name, &mut errs);
         self.user_model = Some(s);
-        for d in errs.into_vec() {
-            self.cd.obj.push_error(d);
-        }
+        self.drain_element_errors(errs);
     }
 
     /// Fill `out` with the user model's variable values (Pascal
@@ -691,15 +734,12 @@ impl WindGen {
         sys: &SysCtx,
         node_v: &[Complex64],
     ) {
-        let Some(mut s) = self.user_model.take() else {
+        let mut errs = ErrorLog::new();
+        let Some(mut s) = self.take_live_user_model(sys, node_v, &mut errs) else {
+            self.drain_element_errors(errs);
             return;
         };
-        if !s.exists() {
-            self.user_model = Some(s);
-            return;
-        }
         let name = self.cd.obj.name().to_string();
-        let mut errs = ErrorLog::new();
         if let Err(e) = s.get_all_vars(out, self, sys, node_v) {
             errs.push(DssDiagnostic::msg(
                 format!("WindGen.{name}: user model `get_all_vars` failed: {e}"),
@@ -708,9 +748,7 @@ impl WindGen {
         }
         s.drain_effects(&name, &mut errs);
         self.user_model = Some(s);
-        for d in errs.into_vec() {
-            self.cd.obj.push_error(d);
-        }
+        self.drain_element_errors(errs);
     }
 
     /// Pascal `Set_Variable` user-model tail (`WindGen.pas:2777-2784`): route a
@@ -727,7 +765,11 @@ impl WindGen {
     /// `1..=22` to the native slots and only `> 22` to the model
     /// (`investigations/to_opendss/`).
     pub(super) fn set_user_model_variable(&mut self, i: usize, value: f64, sys: &SysCtx) {
-        let base = self.num_wgen_variables();
+        // `variable_base()`, not the bare 22, so the write index means the same
+        // thing as the one `variable_name`/`get_all_variables` report (they
+        // coincide unless a `DynamicEq=` is bound, and then `set_variable`
+        // refuses the write before reaching here).
+        let base = self.variable_base();
         let un = self.user_model_num_vars();
         if !(i > base && i <= base + un) {
             return;
@@ -746,9 +788,7 @@ impl WindGen {
         }
         s.drain_effects(&name, &mut errs);
         self.user_model = Some(s);
-        for d in errs.into_vec() {
-            self.cd.obj.push_error(d);
-        }
+        self.drain_element_errors(errs);
     }
 }
 

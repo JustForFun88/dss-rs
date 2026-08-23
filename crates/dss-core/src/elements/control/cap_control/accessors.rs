@@ -128,13 +128,23 @@ impl CapControl {
         self.voverride_bus_name = other.voverride_bus_name.clone();
         self.fpct_minkvar = other.fpct_minkvar;
         self.ccd.show_event_log = other.ccd.show_event_log;
-        // WM.5 — Pascal `MakeLike` (`CapControl.pas:481-484`): `UserModel.Name :=
-        // Other.UserModel.Name` re-`New`s a fresh instance (the clone drops the
-        // live wasmi instance and re-creates it lazily on the next control call).
+        // WM.5 — Pascal `MakeLike` (`CapControl.pas:452-453`): `UserModel.Name :=
+        // Other.UserModel.Name` is a `Set_Name`, i.e. an EAGER free + `FNew` of a
+        // fresh instance, so the copy gets a live model of its own. It must NOT
+        // clone the donor's slot: `ClassArena::make_like_within` hands `make_like`
+        // an owned `clone()` and the slot's `Clone` drops the live wasmi
+        // instance, so the copy would report `exists() == false` and every call
+        // site would silently skip it (RP1.3 audit settlement — measured on the
+        // WindGen and Generator twins of this defect). Queue a real load instead;
+        // the executive resolves it before `end_edit`. `IsUserModel` is copied
+        // from the donor as Pascal does (`:453`) and then re-derived from the
+        // actual load result by the drain, which is where a failed load must not
+        // leave a USERCONTROL with no model behind.
         self.user_model_name = other.user_model_name.clone();
         self.user_model_edit = other.user_model_edit.clone();
         self.is_user_model = other.is_user_model;
-        self.user_model = other.user_model.clone();
+        self.user_model = None;
+        self.queue_user_model_load(other.user_model_name.clone());
     }
 }
 

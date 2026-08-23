@@ -58,12 +58,20 @@ impl WindGen {
         // `:2514-2540`. `Edp` is formed against the *record* `Zthev` for every
         // model (the whole body is one `With WindGenvars`). Until `Xdp` existed
         // on the port this line substituted the WTG3 Thevenin impedance
-        // (`WindModelDyn.Zthev`, the `RThev=`/`XThev=` pair) — a real, if
-        // invisible, divergence: `Edp` feeds only `Theta`/`VThevMag`, and for the
-        // WTG3-driven models 1/2/4/5 neither is a readable variable, a property,
-        // or an injection input (`WindModelDyn.Init` sets the machine state), so
-        // no oracle channel can see which impedance was used. It is corrected
-        // here rather than left conditional on the model.
+        // (`WindModelDyn.Zthev`, the `RThev=`/`XThev=` pair) — a real divergence,
+        // corrected here for every model rather than left conditional on one.
+        //
+        // Where it is observable: `Edp` feeds `Theta` and `VThevMag`, neither of
+        // which is a readable variable, a property or an injection input, so on
+        // the five `modes:windgen/*` decks the correction is inert (proven by an
+        // A/B whole-corpus state dump, RP1.3 part B). It is NOT unobservable in
+        // general: with a `DynamicEq=` bound, an init-val pairing on the `edp`
+        // domain code (9, `dynamic_exp.rs`) seeds a user state variable with
+        // `Cang(Edp)` at `:2588` (below), and `DynamicExp` variables ARE readable
+        // through `GetAllVariables`/`Variable[i]`. That path is pinned by
+        // `exec::tests::windgen_usermodel::a_dynamic_eq_windgen_still_reports_the_models_variables`,
+        // which re-derives the angle from the record's `Zthev = Xdp/XRdp + jXdp`
+        // and shows the WTG3 impedance would answer differently.
         let z_edp = self.zthev;
         match self.cd.nphases {
             3 => {
@@ -364,8 +372,21 @@ impl WindGen {
         22
     }
 
+    /// How many variables sit ahead of the `UserModel` tail: the linked
+    /// `DynamicExp`'s memory dump when one is bound (`WindGen.pas:2798-2802`),
+    /// else the 22 native WindGen variables. The single source of truth for
+    /// `num_variables` / `variable_name` / `get_all_variables` /
+    /// `set_user_model_variable`, so the four can never disagree about where the
+    /// tail begins (upstream they do — see `accessors::get_all_variables`).
+    pub(super) fn variable_base(&self) -> usize {
+        let n = self.dyneq.num_variables();
+        if n != 0 { n } else { self.num_wgen_variables() }
+    }
+
     /// Pascal `TWindGenObj.VariableName(i)` (1-based, the 22 classic names, from
-    /// `GetEnumName(VarInfo, i)`).
+    /// `GetEnumName(VarInfo, i)`). Out of range answers `''`, the seed r4133
+    /// really carries (`WindGen.pas:2830-2832`; the `'ERROR'` string of the
+    /// sibling classes exists only in dss_capi, which has no WindGen).
     pub(super) fn wgen_variable_name(&self, i: usize) -> String {
         match i {
             1 => "userTrip",
@@ -390,7 +411,7 @@ impl WindGen {
             20 => "Ps",
             21 => "Pr",
             22 => "s",
-            _ => "ERROR",
+            _ => "",
         }
         .to_string()
     }

@@ -37,17 +37,28 @@
 //!
 //! # Non-vacuity (§1.1(f)) — measured, 2026-08-23
 //!
-//! Six mutations were applied in-tree, run, and reverted; each one turns the
-//! tests that own it red (`cargo test -p dss-core --lib windgen_usermodel`):
+//! Thirteen mutations were applied in-tree, run, and reverted; each one turns the
+//! tests that own it red (`cargo test -p dss-core --lib windgen_usermodel`). The
+//! `Get_`/`Set_Variable` row was **split** by the audit settlement: the write
+//! half used to be unpinned (reproducing it left all tests green, because the
+//! fixture silently ignored the stray index), and the last four rows are the
+//! settlement's new pins.
 //!
 //! | mutation | red |
 //! |---|---|
 //! | drop the turbine-tail write-back in `apply_wind_gen_vars` | 5 (tail, surface, StateVar, second-assign, `like=`) |
-//! | reproduce the upstream `Get_Variable` mis-nesting (native block ← `FGetVariable(k ≤ 0)`) | 8, incl. the dedicated mis-nesting pin |
+//! | reproduce the upstream **`Get_Variable`** mis-nesting (native block ← `FGetVariable(k ≤ 0)`) | 8, incl. the dedicated mis-nesting pin |
+//! | reproduce the upstream **`Set_Variable`** mis-nesting (native write → `FSetVariable(i − 22)`) | 1 — `set_statevar_routes_only_the_tail_to_the_model` |
 //! | dispatch `Model=6` into `do_constant_pq_gen` | 8, incl. the admittance law and #567 |
 //! | never call `user_model_fintegrate` (WTG3 integrator instead) | 1 — the first-order-lag pin, alone |
 //! | make `do_dynamic_mode` fall through to `CalcDynamic` for model 6 | 4 (both dynamics pins, the 1-phase arm, #5671) |
 //! | restore the pre-fix clone-the-slot `make_like` | 1 — the `like=` pin, on the surface length |
+//! | drop `conn` from `wind_gen_vars_from` (`conn: 0`) | 1 — `a_delta_windgen_echoes_its_own_connection` |
+//! | delete the `update_user_models` call in `nominal.rs` | 1 — `recalc_element_data_updates_the_bound_model` |
+//! | take `xdp` from the wrong element field (`xdp: g.xd`) | 1 — `the_record_fields_come_from_the_elements_own_sources` |
+//! | route `GetAllVariables`' DynamicEq arm past the user-model tail | 1 — `a_dynamic_eq_windgen_still_reports_the_models_variables` |
+//! | form `Edp` from the WTG3 `Zthev` instead of the record's | 1 — the same test, on the seeded `theta` |
+//! | drop the `ensure_live` revive from `take_live_user_model` | 1 — `an_element_snapshot_revives_its_user_model` |
 
 use num_complex::Complex64;
 
@@ -132,10 +143,10 @@ const NATIVE_VARS: [&str; 22] = [
     "s",
 ];
 
-/// The guest's own nine variables, in order (`wgturbine`'s `var_name`). None of
-/// them can collide with a native name, so a mis-ordered concatenation is visible
-/// by name alone.
-const MODEL_VARS: [&str; 9] = [
+/// The guest's own fifteen variables, in order (`wgturbine`'s `var_name`). None
+/// of them can collide with a native name, so a mis-ordered concatenation is
+/// visible by name alone.
+const MODEL_VARS: [&str; 15] = [
     "WgIout1",
     "WgPg",
     "WgSlip",
@@ -145,7 +156,16 @@ const MODEL_VARS: [&str; 9] = [
     "WgNphEcho",
     "WgNcondEcho",
     "WgConnEcho",
+    "WgUpdCount",
+    "WgBadSet",
+    "WgXdpEcho",
+    "WgVTargetEcho",
+    "WgPolesEcho",
+    "WgVCutInEcho",
 ];
+
+/// Length of the bound surface: the 22 native variables ++ the guest's 15.
+const BOUND_VARS: usize = NATIVE_VARS.len() + MODEL_VARS.len();
 
 /// The value Pascal returns for an out-of-range state variable
 /// (`WindGen.pas:2730`) and the fixture mirrors — the sentinel that would flood
@@ -356,7 +376,7 @@ fn the_variable_surface_is_the_native_22_then_the_models_own() {
     assert_eq!(
         names.len(),
         NATIVE_VARS.len() + MODEL_VARS.len(),
-        "22 native ++ 9 model variables, got {names:?}"
+        "22 native ++ 15 model variables, got {names:?}"
     );
     for (k, want) in NATIVE_VARS.iter().chain(MODEL_VARS.iter()).enumerate() {
         assert_eq!(&names[k], want, "variable {} name", k + 1);
@@ -403,7 +423,7 @@ fn the_variable_surface_is_the_native_22_then_the_models_own() {
 fn the_native_variables_stay_native_while_a_model_is_bound() {
     let mut dss = bound_snapshot();
     let (names, values) = w1_variables(&mut dss);
-    assert_eq!(values.len(), 31, "the model must really be bound");
+    assert_eq!(values.len(), BOUND_VARS, "the model must really be bound");
     for k in 0..22 {
         assert_ne!(
             values[k],
@@ -432,6 +452,14 @@ fn the_native_variables_stay_native_while_a_model_is_bound() {
 /// through the NATIVE `s`/`Pr` cells after a re-solve; writing the native `vwind`
 /// (index 10) must NOT touch the guest — under the upstream nesting it would land
 /// on `FSetVariable(10 − 22)`.
+///
+/// The second direction needs an observable of its own, because the fixture's
+/// `set_variable` changes nothing for an index it does not own: it therefore
+/// **counts** every out-of-range write in `WgBadSet` (variable 33), and the
+/// assertion is that the counter stays 0. Without it the write-side half of the
+/// not-reproduced mis-nesting had no pin at all — reproducing the upstream
+/// nesting left the whole module green (RP1.3 audit finding, settled 2026-08-23;
+/// re-measured after this test: the same mutation now reds it).
 #[test]
 fn set_statevar_routes_only_the_tail_to_the_model() {
     let mut lines = deck("6", &bound_tail());
@@ -453,11 +481,122 @@ fn set_statevar_routes_only_the_tail_to_the_model() {
     let mut lines = deck("6", &bound_tail());
     lines.push("set StateVar=x WindGen.w1 vwind 9".to_string());
     let mut dss = feed(&lines, false);
-    let (_, values) = w1_variables(&mut dss);
+    let (names, values) = w1_variables(&mut dss);
     assert_eq!(values[9], 9.0, "the native slot took the write");
     assert_eq!(
         values[24], SLIP,
         "a native-index write must not reach the user model"
+    );
+    assert_eq!(names[32], "WgBadSet");
+    assert_eq!(
+        values[32],
+        0.0,
+        "a native-index write reached the guest as FSetVariable({}) — the upstream \
+         Set_Variable mis-nesting is being reproduced",
+        10i32 - 22
+    );
+}
+
+/// The engine→record wiring (`user_model.rs::wind_gen_vars_from`) must take each
+/// `TWindGenVars` field from the WindGen field that actually owns it. The codec
+/// offsets are pinned in `dss-usermodel` (`records::tests`), but the *sources*
+/// are only visible from here, and the guest can only see what it reads back.
+///
+/// Four echoes, one per region of the 348-byte image, each pinned against the
+/// element's own declared or derived value:
+///
+/// * `Xdp` @88 (head doubles) — `puXdp·1000·kV²/kVArating`, the interchange
+///   grouping of `WindGen.pas:1368-1370`, at the `Create` default `puXdp = 0.28`
+///   (`:963`). Substituting the neighbouring `Xd` or `Xdpp` moves it by 4×/1.4×.
+/// * `VTarget` @212 — the **unaligned** stretch above the integer block; the
+///   element derives it as `1000·kV/√3` for a polyphase machine (`:1406-1408`).
+/// * `Poles` @268 and `VCutin` @292 — turbine-tail properties, set by this deck
+///   **off their `Create` defaults** (2 and 5, `:977`/`:982`) so neither cell can
+///   pass on a default.
+#[test]
+fn the_record_fields_come_from_the_elements_own_sources() {
+    let lines = deck("6", &format!("{} P=4 VCutIn=4", bound_tail()));
+    let mut dss = feed(&lines, false);
+    let (names, values) = w1_variables(&mut dss);
+
+    assert_eq!(names[33], "WgXdpEcho");
+    assert_eq!(
+        values[33],
+        0.28 * 1000.0 * 0.69_f64.powi(2) / 1800.0,
+        "Xdp = puXdp·1000·kV²/kVArating"
+    );
+    assert_eq!(names[34], "WgVTargetEcho");
+    assert_eq!(
+        values[34],
+        1000.0 * 0.69 / crate::util::sqrt3(),
+        "VTarget = 1000·kV/√3"
+    );
+    assert_eq!(names[35], "WgPolesEcho");
+    assert_eq!(values[35], 4.0, "Poles = the deck's P=");
+    assert_eq!(names[36], "WgVCutInEcho");
+    assert_eq!(values[36], 4.0, "VCutIn = the deck's VCutIn=");
+}
+
+/// `Conn` @184 crosses as the element's own connection, not as a zero.
+///
+/// The wye decks everywhere else in this module cannot say so: `Connection::Wye`
+/// is ordinal 0, exactly what an unwritten integer carries, so dropping `conn`
+/// from `wind_gen_vars_from` passed every test (RP1.3 audit finding, settled
+/// 2026-08-23). A delta WindGen answers 1 — and its `NumConductors` drops to 3
+/// with it, which is the second cell of the integer block.
+#[test]
+fn a_delta_windgen_echoes_its_own_connection() {
+    let mut wye = bound_snapshot();
+    let (_, wye_vars) = w1_variables(&mut wye);
+    assert_eq!(wye_vars[30], 0.0, "wye is Conn = 0");
+    assert_eq!(wye_vars[29], 4.0, "…with a neutral conductor");
+
+    let mut lines = deck("6", &bound_tail());
+    lines[3] = lines[3].replace("conn=wye", "conn=delta");
+    let mut dss = feed(&lines, false);
+    let (names, values) = w1_variables(&mut dss);
+    assert_eq!(names[30], "WgConnEcho");
+    assert_eq!(values[30], 1.0, "delta is Conn = 1");
+    assert_eq!(
+        values[29], 3.0,
+        "…and a delta 3-phase terminal has 3 conductors"
+    );
+}
+
+/// Pascal `RecalcElementData`'s tail (`WindGen.pas:1418`): `If UserModel.Exists
+/// Then UserModel.FUpdateModel`, ported at `nominal.rs`'s
+/// `update_user_models`. It is one of the five model-6 arms RP1.3 owes, and the
+/// only one that leaves no numeric trace of its own — the fixture therefore
+/// counts the calls in `WgUpdCount` (variable 32) and re-reads the boundary
+/// record inside `update_model`, the way the `indmach012a` example does.
+///
+/// An `Edit` that re-derives the machine must therefore do two things: bump the
+/// counter by exactly one, and let the guest see the NEW `kVArating` without any
+/// re-solve (nothing else refreshes its copy — `calc` is not called by a
+/// property edit).
+#[test]
+fn recalc_element_data_updates_the_bound_model() {
+    let mut dss = bound_snapshot();
+    let (names, before) = w1_variables(&mut dss);
+    assert_eq!(names[31], "WgUpdCount");
+    assert!(
+        before[31] >= 1.0,
+        "building the element must have run FUpdateModel at least once, got {}",
+        before[31]
+    );
+    assert_eq!(before[25], 1800.0, "WgKvaEcho = the deck's kva=");
+
+    dss.command("Edit WindGen.w1 kva=1900");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let (_, after) = w1_variables(&mut dss);
+    assert_eq!(
+        after[31],
+        before[31] + 1.0,
+        "exactly one FUpdateModel per RecalcElementData"
+    );
+    assert_eq!(
+        after[25], 1900.0,
+        "the model re-read the record inside update_model"
     );
 }
 
@@ -567,7 +706,7 @@ fn like_reinstantiates_the_model_with_the_guests_own_defaults() {
     let (w2_names, w2) = variables_of(&mut dss, "WindGen.w2");
     assert_eq!(
         w2_names.len(),
-        31,
+        BOUND_VARS,
         "the copy must hold a LIVE model, not a spec-only slot"
     );
     let (_, w1) = w1_variables(&mut dss);
@@ -793,7 +932,7 @@ fn single_phase_dynamics_runs_the_user_model() {
         false,
     );
     let (_, values) = w1_variables(&mut dss);
-    assert_eq!(values.len(), 31, "the model is bound and running");
+    assert_eq!(values.len(), BOUND_VARS, "the model is bound and running");
     assert_eq!(values[28], 1.0, "WgNphEcho = 1");
     assert_eq!(values[29], 2.0, "WgNcondEcho = 2 (1-phase wye)");
     // The record's `Pg` is the guest's own `Re(V·conj(I))` over its ONE phase —
@@ -868,6 +1007,99 @@ fn models_3_and_7_are_still_refused() {
     assert_eq!(query(&mut dss, "WindGen.w1.Model"), "6");
 }
 
+/// `GetAllVariables` (`WindGen.pas:2793-2812`) appends the `UserModel` block in
+/// BOTH arms — the `If UserModel.Exists` block sits at the same nesting level as
+/// the `if DynamiceqObj = nil … else …`, not inside its `else`. The port used to
+/// return early out of the `DynamicExp` arm, so a WindGen carrying both a
+/// `DynamicEq=` and a `UserModel=` reported no model variables at all (RP1.3
+/// audit finding, settled 2026-08-23).
+///
+/// The same deck settles the second half of that finding: the RP1.3 correction
+/// that formed `Edp` from the **record** `Zthev = Xdp/XRdp + jXdp`
+/// (`WindGen.pas:2500-2505`) instead of the WTG3 Thevenin impedance was
+/// documented as unobservable. It is not: `theta = Edp` pairs the `edp` domain
+/// code (9) to a user state variable, `InitStateVars` seeds it with `Cang(Edp)`
+/// (`:2588`) and `DynamicExp` variables are readable. The equation here holds
+/// both states still (`d/dt = Speed`, and `Speed` starts at 0), so the value read
+/// after a dynamics step IS the initial seed, and it is re-derived below from the
+/// engine's own solved terminal V/I. The WTG3 impedance — the `RThev=`/`XThev=`
+/// pair, which this deck moves far off the record's — would answer a visibly
+/// different angle.
+#[test]
+fn a_dynamic_eq_windgen_still_reports_the_models_variables() {
+    let eq = "New DynamicExp.wgde nvariables=2 varnames=[Speed theta]               expression=[Speed dt = Speed; theta dt = Speed]"
+        .to_string();
+    let wgen = format!(
+        "New WindGen.w1 bus1=wbus phases=3 kv=0.69 kW=1500 kva=1800 conn=wye model=6 \
+         vwind=12 RThev=0.8 XThev=1.9 DynamicEq=wgde UserModel={} UserData=({})",
+        fixture(),
+        user_data()
+    );
+    let mut lines = vec![
+        "Clear".to_string(),
+        "New Circuit.wgdyneq basekv=0.69 phases=3 bus1=srcbus".to_string(),
+        "New Line.l1 bus1=srcbus bus2=wbus phases=3 r1=0.005 x1=0.02 length=1".to_string(),
+        eq,
+        wgen,
+        "~ theta = Edp DynOut=[Speed theta]".to_string(),
+        "Set voltagebases=[0.69]".to_string(),
+        "Calcvoltagebases".to_string(),
+        "Set tolerance=1e-12".to_string(),
+        "Set maxiterations=100".to_string(),
+        "Solve".to_string(),
+    ];
+
+    // The power-flow operating point the dynamics initialisation starts from.
+    let mut snap = feed(&lines, false);
+    let v = wbus_voltages(&mut snap);
+    let i = w1_currents(&mut snap);
+
+    lines.push("Set mode=dynamic stepsize=0.001 number=1".to_string());
+    lines.push("Solve".to_string());
+    let mut dss = feed(&lines, false);
+
+    // The surface: the equation's 2 variables x 2 memory slots, then the model's.
+    let (names, values) = w1_variables(&mut dss);
+    assert_eq!(
+        names.len(),
+        4 + MODEL_VARS.len(),
+        "the DynamicExp dump must be FOLLOWED by the user model's variables, got {names:?}"
+    );
+    assert_eq!(names[..4], ["speed", "dspeed", "theta", "dtheta"]);
+    for (k, want) in MODEL_VARS.iter().enumerate() {
+        assert_eq!(&names[4 + k], want, "model variable {}", k + 1);
+    }
+    assert_eq!(
+        values[4 + 3],
+        1800.0,
+        "WgKvaEcho — the model really answered"
+    );
+    assert_eq!(values[4 + 2], SLIP, "WgSlip — through the DynamicExp arm");
+
+    // `theta` = Cang(Edp) at the record impedance, re-derived here.
+    let sym = crate::support::mathutil::SymComp::default();
+    let mut v012 = [Complex64::ZERO; 3];
+    sym.phase_to_sym(&v, &mut v012);
+    let mut i012 = [Complex64::ZERO; 3];
+    sym.phase_to_sym(&i[..3], &mut i012);
+    let xdp = 0.28 * 1000.0 * 0.69_f64.powi(2) / 1800.0;
+    let want =
+        crate::support::complexutil::cang(v012[1] - i012[1] * Complex64::new(xdp / 20.0, xdp));
+    // …and what the WTG3 Thevenin impedance would have answered instead.
+    let wtg3 = crate::support::complexutil::cang(v012[1] - i012[1] * Complex64::new(0.8, 1.9));
+    close(
+        "theta = Cang(Edp) at Zthev = Xdp/XRdp + jXdp",
+        values[2],
+        want,
+        1e-9,
+    );
+    assert!(
+        (values[2] - wtg3).abs() > 1e-3,
+        "the record and WTG3 impedances must be distinguishable here: {} vs {wtg3}",
+        values[2]
+    );
+}
+
 /// **Dormancy** (`R4133_PROPS_PLAN.md` RP1.3 acceptance): the model-6 arms are
 /// unreachable for the built-in models. A `Model=1` WindGen with the fixture
 /// bound must solve **bit-identically** to the same deck with no `UserModel=` at
@@ -879,7 +1111,7 @@ fn models_3_and_7_are_still_refused() {
 /// The variable surface is the one thing that legitimately grows: Pascal's
 /// `NumVariables` adds `UserModel.FNumVars` regardless of `GenModel`
 /// (`WindGen.pas:2814-2819`), so a bound-but-unused model still contributes its
-/// nine names.
+/// fifteen names.
 #[test]
 fn a_bound_model_is_dormant_on_the_built_in_models() {
     let mut plain = feed(&deck("1", ""), false);
@@ -897,7 +1129,68 @@ fn a_bound_model_is_dormant_on_the_built_in_models() {
     let (np, _) = w1_variables(&mut plain);
     let (nb, _) = w1_variables(&mut bound);
     assert_eq!(np.len(), 22);
-    assert_eq!(nb.len(), 31, "NumVariables is model-independent upstream");
+    assert_eq!(
+        nb.len(),
+        BOUND_VARS,
+        "NumVariables is model-independent upstream"
+    );
+}
+
+/// An owned **element snapshot** keeps its user model alive.
+///
+/// `WindGen` derives `Clone` and the control dispatch takes an owned copy of a
+/// monitored element when it is also the switched one
+/// (`ClassArena::clone_ckt`, `solution/controls/dispatch.rs:623/693/784` —
+/// Fuse/Recloser/Relay). The slot's `Clone` deliberately drops the live wasmi
+/// instance (it is a `Store`, never shared), so the copy has to re-create it
+/// from the spec on first use — `WindGenUserModelSlot::ensure_live`, replaying
+/// the last `UserData=` so the revived instance carries the same parameters.
+///
+/// Until the audit settlement every call site guarded on `exists()` *before*
+/// that revive could run, which made it unreachable code and any such snapshot a
+/// silent fallback to the built-in model. This test drives the same
+/// `clone_ckt` API the dispatch does: `WgSlip` must come back as the deck's
+/// `UserData=` slip, not the 0.0 an unanswered model leaves behind.
+#[test]
+fn an_element_snapshot_revives_its_user_model() {
+    let mut dss = bound_snapshot();
+    let (_, live) = w1_variables(&mut dss);
+    assert_eq!(
+        live[24], SLIP,
+        "the live element reports the UserData= slip"
+    );
+
+    let (sys, node_v) = {
+        let ckt = dss.circuit().expect("solved circuit");
+        (
+            crate::solution::solution::sys_ctx(ckt),
+            ckt.solution.node_v.clone(),
+        )
+    };
+    let mut snapshot = {
+        let class = dss
+            .classes
+            .iter()
+            .find(|c| c.props.class_name().eq_ignore_ascii_case("WindGen"))
+            .expect("the WindGen class is registered");
+        class
+            .arena
+            .clone_ckt(0)
+            .expect("a WindGen is a circuit element")
+    };
+
+    let elem = snapshot.as_mut();
+    assert_eq!(
+        elem.num_variables(),
+        BOUND_VARS,
+        "the snapshot keeps the bound surface"
+    );
+    let mut states = vec![0.0; elem.num_variables()];
+    elem.get_all_variables(&sys, &node_v, &mut states);
+    assert_eq!(
+        states[24], SLIP,
+        "the snapshot must re-create its own instance and replay `UserData=`,          not silently answer nothing"
+    );
 }
 
 /// A `UserModel=` that names something the sandboxed host cannot load — a missing
@@ -911,7 +1204,9 @@ fn a_bound_model_is_dormant_on_the_built_in_models() {
 ///   `FName` only on success (`WindGenUserModel.pas:190`) and would answer `''`.
 ///   This is the established WM.3 convention (`generator/accessors.rs` does the
 ///   same) and the #567 suppression below depends on it. No corpus deck sets
-///   `UserModel=` on a WindGen, so neither channel is exposed.
+///   `UserModel=` on a WindGen, so neither channel is exposed. Both conventions
+///   are now recorded outside this file as well —
+///   `docs/upgrade/DIVERGENCES.md` §L6 (RP1.3 audit settlement).
 /// * No #567 follows. r4133 *would* emit one per iteration (its load failed too,
 ///   so `UserModel.Exists` is false), but for the port a designated-yet-unloadable
 ///   name is the native-DLL case, already reported loudly once as #570;

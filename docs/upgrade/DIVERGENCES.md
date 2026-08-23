@@ -2061,3 +2061,58 @@ state-variable surface + convergence (not the damping-dependent trajectory —
 `wasm_usermodels.rs` `gate_deck(.., numeric=false)`; STATUS §WASM-UM WM.3). A
 future UPGRADE-to-r4133-dynamics rung must revisit this default (and the residual
 ~5e-4 flux-transient gap D2 that survives even with D matched — see STATUS).
+
+---
+
+## L6 — a designated-but-unloadable `UserModel=` suppresses #567/#5671 — SETTLED (WASM-UM convention; recorded by the R4133_PROPS RP1.3 audit settlement, 2026-08-23)
+
+**Observable.** A PC element whose model selector names the user-written model
+(`Generator`/`WindGen` `Model=6`, `PVSystem`/`Storage` `Model=3`) AND whose
+`UserModel=` names something the wasm host cannot load — in practice a native
+`.dll` (permanently out of reach under `#![forbid(unsafe_code)]`) or a missing
+file. Two diagnostics and, in dynamics, the abort that follows them.
+
+**EPRI r4133.** `Set_Name`'s `LoadLibrary` fails ⇒ `DoSimpleMsg('… Not Loaded …',
+570)` once (`WindGenUserModel.pas:187`, `GenUserModel.pas` twin) and
+`UserModel.Exists` stays FALSE. Every later call site then takes its
+missing-model arm: `DoUserModel` emits **#567 per power-flow iteration**
+(`WindGen.pas:1895`, `generator.pas:1834`) and `DoDynamicMode` emits **#5671 +
+`SolutionAbort := TRUE`** (`WindGen.pas:1996-1997`, `generator.pas:1940-1943`),
+i.e. the dynamics solve stops.
+
+**dss-rs.** The #570 (or #569 for a bad export set) is emitted once at load time,
+exactly as upstream. After that the port **suppresses** the repeat #567 and the
+#5671 abort whenever the name is non-empty — `windgen/solve.rs::do_user_model`,
+`windgen/dynamics.rs::do_dynamic_mode` and the WM.3/WM.4 twins all gate their
+missing-model arm on `user_model_name.is_empty()`. A `Model=6` element naming a
+native DLL therefore runs on its Yprim contribution in power flow and does not
+abort in dynamics. Where NO model is named at all, both diagnostics fire exactly
+as upstream (pinned:
+`exec::tests::windgen_usermodel::model_6_without_a_user_model_logs_567_and_keeps_solving`
+and `…_dynamics_without_a_user_model_logs_5671_and_aborts`).
+
+**Evidence.** r4133 source lines above; the port side is pinned by
+`exec::tests::windgen_usermodel::a_missing_wasm_warns_570_and_leaves_the_slot_absent`
+(exactly one #570, non-abort, no #567, slot absent). There is no probe to run
+against the oracle: no native WindGen user model exists anywhere upstream (r4133
+ships only the loader), so the r4133 bridge cannot exhibit the WindGen half at
+all.
+
+**Decision — keep the suppression; record it here.** The native-DLL case is
+structural for this engine, not a modelling choice: the name can never load, so
+#570 is the one true, actionable diagnostic and repeating #567 every iteration
+would be a port-specific artifact in the error stream. The dynamics half matters
+more: the vendored corpus contains decks that name native DLLs, and following
+r4133 there would abort them wholesale (a solve the oracle completes with its
+DLL), destroying the rest of the deck's comparison for a model we cannot run
+either way. The related convention rides with it: `? …UserModel` echoes the name
+that was **attempted**, whereas r4133 assigns `FName` only on success
+(`WindGenUserModel.pas:190`) and would answer `''`; the suppression is keyed on
+exactly that stored name.
+
+**Gate consequence.** None today: no corpus deck sets `UserModel=` on a WindGen,
+and neither oracle channel is exposed on any of the five `modes:windgen/*` decks
+(all `engines: "r4133"`, all `model=1`). No ledger entry, no allowlist row. If a
+deck that names a native DLL is ever gated on a channel where the oracle DOES
+load it, the divergence is a whole-element one (their model runs, ours cannot)
+and must be excluded case-by-case rather than papered over here.

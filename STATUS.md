@@ -1954,13 +1954,15 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     dss-core compiled unchanged while the host half landed, and a kind/record
     mismatch is a loud `Usage` error (a Generator-sized 244 B buffer *traps* the
     348 B guest — pinned).
-  - **Guest fixture.** `tests/fixtures/wasm/wgturbine.wasm` (60 281 B, sha256
-    `c441df68…32832a88`), source crate `tools/wasm_usermodel/models/wgturbine/`,
+  - **Guest fixture.** `tests/fixtures/wasm/wgturbine.wasm` (61 425 B, sha256
+    `6d5a9a66…f5471cc2`), source crate `tools/wasm_usermodel/models/wgturbine/`,
     `build_wgturbine_wasm.ps1`, PIN row + `fixture_pin.rs` row —
-    **reproduced bit-identically twice from a wiped target dir**. It is a
+    **reproduced bit-identically from a wiped target dir**. It is a
     constant-admittance source in power flow and a first-order current+speed lag
     in dynamics, then fills `Pg/Ps/Pr/Pm/s/Cp/Lamda` and the record head; five
-    `UserData=` keys; nine state variables. It **discriminates**: its currents
+    `UserData=` keys; **fifteen** state variables (nine as first built, plus the
+    six the audit settlement below added: four more record echoes and the two
+    call counters `WgUpdCount`/`WgBadSet`). It **discriminates**: its currents
     are `Y·V` or the integrated state, never a native model-1/2/4/5 answer, and
     it is the only thing in the tree that writes the turbine tail (its `ag`@244
     read is the closed-hole witness).
@@ -2121,6 +2123,110 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     3 220 247 records, `max |Δ| = 0` exactly on every gated kind (conv, cur,
     errs, iter, loss, pow, v, y), zero iteration drift — the default lane stays
     bit-identical to the parity lane and keeps precisely its oracle standing.
+  - **Audit settlement (2026-08-23) — 11 findings (2 major, 9 minor) from two
+    independent auditors (audit-code 7, audit-tests 4; the two sets are
+    disjoint, so nothing was deduped). Nine fixed, two recorded; none dropped.**
+    Every fix carries its own measured mutation, and the module's non-vacuity
+    table grew from 6 rows to **13**.
+    1. *(major, code)* **The `like=` dead-user-model defect was still live on
+       Generator (both slots), PVSystem, Storage and CapControl** — RP1.3 had
+       fixed only WindGen and parked the rest as an unowned item, against the
+       "port gaps immediately" rule, leaving a silent wrong answer in four
+       shipped classes. **FIXED** in all five slots (see the standing-follow-ups
+       entry below for the Pascal citations), each with its own pin, each pin
+       measured non-vacuous by reverting the fix.
+    2. *(minor, code)* The `InitStateVars` record-`Zthev` correction was
+       documented as invisible to every oracle channel — **wrong**, and the
+       changed path had no test. **FIXED**: the claim is corrected in place, and
+       the new `a_dynamic_eq_windgen_still_reports_the_models_variables` binds a
+       `DynamicEq=` with a `theta = Edp` init pairing (domain code 9,
+       `WindGen.pas:2588`) and re-derives `Cang(Edp)` from the engine's own
+       solved terminal V/I at `Zthev = Xdp/XRdp + jXdp`; forming `Edp` from the
+       WTG3 impedance instead reds it.
+    3. *(minor, code)* Out-of-range `VariableName` answered `"ERROR"`, a
+       dss_capi-only seed (`Generator.pas:2736`) that r4133's WindGen does not
+       have — and the commit's new comment presented it as Pascal-faithful.
+       **FIXED**: WindGen answers `''` (r4133 `:2830-2832`, `:2856-2879` — no
+       `'ERROR'` literal in the unit) and the comment says why. The three
+       sibling classes that DO gate on capi goldens (Generator, IndMach012,
+       Storage) keep the capi seed — recorded here, deliberately out of RP1.3's
+       scope, since r4133 drops it there too and that is an UPGRADE-lane call
+       with golden bytes attached.
+    4. *(minor, code)* `GetAllVariables` dropped the user-model tail on the
+       `DynamicExp` path — an unported r4133 arm (`:2804-2807` sits outside the
+       if/else) that the new doc comment did not declare. **FIXED**: the tail is
+       appended after **either** arm, from a single `variable_base()` that
+       `num_variables`/`variable_name`/`get_all_variables`/`set_user_model_variable`
+       all share. Upstream's own inconsistency here (a `NumVariables` with no
+       `DynamicExp` branch, so the reported count and the filled block disagree)
+       is corrected, not reproduced, and both are documented.
+    5. *(minor, code)* Two wrong Pascal citations. **FIXED, and re-measured
+       against the vendored unit rather than patched by hand**: `FNew`
+       `WindGenUserModel.pas:34` → **:33** (6 sites), the 15-function binding
+       block `:180-194` → **:194-208** (4 sites), `Set_Edit` `:150-154` →
+       **:152-156** (3 sites). The same sweep caught two more the auditors had
+       not: `Get_Exists` `:131-139` → **:130-138** and `Integrate` `:141-145` →
+       **:140-144**.
+    6. *(minor, code)* `ensure_live`'s revive branch had no reachable caller —
+       dead code that read as a working fallback. **FIXED**: every engine-side
+       call site now goes through a new `take_live_user_model`, which revives a
+       cloned slot from its spec (replaying `UserData=`) and reports #569 if the
+       re-creation itself fails; `user_model_num_vars` stopped gating on
+       `exists()` (an element snapshot's surface used to collapse to the native
+       22); the helper `user_model_exists`, unused afterwards, is deleted. Pinned
+       by `an_element_snapshot_revives_its_user_model`, which drives the very
+       `ClassArena::clone_ckt` API the control dispatch uses.
+    7. *(minor, code)* The #567/#5671 suppression for a designated-but-unloadable
+       `UserModel=` (and the matching `? …UserModel` echo of an attempted name)
+       lived only in a test doc comment. **RECORDED, behavior kept**: new
+       `docs/upgrade/DIVERGENCES.md` **§L6** with both behaviors, the r4133
+       lines, the evidence, the decision and the gate consequence — the
+       native-DLL name can never load in a `forbid(unsafe_code)` engine, so #570
+       is the one actionable diagnostic, and following r4133's dynamics abort
+       would kill vendored decks wholesale for a model we cannot run either way.
+       The pin now cites §L6.
+    8. *(major, tests)* The write half of the deliberately-not-reproduced
+       `Set_Variable` mis-nesting had **no pin** — reproducing it upstream-style
+       left all 18 tests green, because the committed guest silently ignored the
+       stray index. **FIXED at the fixture**: `wgturbine` now counts
+       out-of-range `SetVariable` calls in a new `WgBadSet` variable, and the pin
+       asserts it stays 0 after a native `vwind` write; the same mutation now
+       reds exactly that test.
+    9. *(minor, tests)* `WgConnEcho` was a default-equal cell (`Conn` of a wye
+       WindGen is 0, the same value an unmarshaled field carries), so dropping
+       `conn` from the engine→record shuttle passed everything. **FIXED**: new
+       `a_delta_windgen_echoes_its_own_connection` (a `conn=delta` deck: `Conn`
+       1, `NumConductors` 3) plus a non-default `conn` in the crate-side codec
+       fixture; `conn: 0` now reds.
+    10. *(minor, tests)* `RecalcElementData`'s `FUpdateModel` — a listed RP1.3
+        deliverable — had no test, because the guest's `update_model` was an
+        empty body. **FIXED**: the guest now re-reads the boundary record and
+        counts the call (`WgUpdCount`), following the `indmach012a` precedent;
+        `recalc_element_data_updates_the_bound_model` pins one call per
+        `RecalcElementData` **and** the refreshed `kVArating` echo after an
+        `Edit … kva=`; deleting the call site reds it.
+    11. *(minor, tests)* The 43-field engine→record mapping was exercised for
+        ~7 fields, so a wrong source field elsewhere passed. **FIXED** by
+        echoing four more, one per region of the image — `Xdp`@88 (head
+        doubles, derived `puXdp·1000·kV²/kVA`), `VTarget`@212 (the unaligned
+        stretch), `Poles`@268 and `VCutin`@292 (turbine tail, both set off
+        their `Create` defaults by the deck) — pinned by
+        `the_record_fields_come_from_the_elements_own_sources`; `xdp: g.xd`
+        now reds.
+    The fixture was therefore **deliberately regenerated** (findings 8/10/11 —
+    to make engine behavior observable, never to make a failing test pass, plan
+    §2.9-4): `wgturbine.wasm` 60 281 B → **61 425 B**, sha256 `c441df68…` →
+    **`6d5a9a66…f5471cc2`**, reproduced bit-identically from a wiped target dir
+    with the same pinned toolchain, `PIN.txt` updated with both the new digest
+    and the superseded one. No golden, no ledger row, no manifest byte, no
+    tolerance and no `tests/corpus` byte moved for any of the eleven.
+    **Dormancy re-proven on the settled tree**: the default-lane whole-corpus
+    state dump (`examples/lane_dump`, 522 cases) is byte-identical to part A's
+    PRE-RP1.3 baseline — 226 437 002 B, sha256
+    `a155aaa403dc933b36ba535a8f7bd5c43828eb7c82035be1f04419cd8672bbfe` — so none
+    of the eleven settlements moves a solved state anywhere in the corpus.
+    `lane_diff.ps1` is not owed again (no compat kernel, lane alias or solver
+    touched; the default/parity split is untouched by every change above).
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 
@@ -2218,24 +2324,32 @@ open item is not buried in the §1a archive):
   (`indmach012a` + `wm4model` + `capuserctl` twin-pinned `.wasm` fixtures). **Zero
   live `PropFlags::NOT_PORTED`** on any user-model property. `PLAN_SEQUENCE.md`
   stage 9 COMPLETE.
-- **`like=` drops a bound user model on Generator / PVSystem / Storage /
-  CapControl — MEASURED, OPEN, no owner** (found by RP1.3, 2026-08-23, while
-  fixing the identical defect on WindGen). `ClassArena::make_like_within` hands
-  `make_like` an owned `clone()` of the donor and the user-model slot's `Clone`
-  deliberately drops the live wasmi instance; every call site then guards on
-  `exists()`, so the lazy revive never fires. Measured on the `wasm_gen_pflow`
-  deck plus `New Generator.g2 like=g1`: **g1 reports 20 variables, g2 six** — the
-  copy echoes `UserModel=<path>` and silently runs the built-in model, with no
-  diagnostic. Upstream's `MakeLike` assigns `UserModel.Name`, which is a
+- **`like=` dropped a bound user model on Generator / PVSystem / Storage /
+  CapControl — FIXED and pinned by the RP1.3 audit settlement (2026-08-23)**,
+  after being found (and measured) while fixing the identical defect on WindGen.
+  `ClassArena::make_like_within` hands `make_like` an owned `clone()` of the
+  donor and the user-model slot's `Clone` deliberately drops the live wasmi
+  instance; every call site then guarded on `exists()`, so the copy echoed
+  `UserModel=<path>` and silently ran the built-in model with no diagnostic
+  (measured: `wasm_gen_pflow` + `New Generator.g2 like=g1` → **g1 20 variables,
+  g2 six**). Upstream's `MakeLike` assigns `UserModel.Name`, which is a
   `Set_Name` = free + `LoadLibrary` + `FNew`, i.e. an eager fresh instance at the
-  guest's own defaults. WindGen's copy of the defect was fixed in RP1.3
-  (`make_like` queues a real load, drained before `end_edit`); the four WM.3/WM.4
-  classes were left untouched because they are outside that sub-step's scope and
-  WASM_USERMODELS is declared COMPLETE, so **no plan owns the fix**. Latent, not
-  live: no corpus deck writes `like=` on an element that binds a user model. The
-  same shadow applies to `ClassArena::clone_ckt` (control dispatch with monitored
-  == switched), which is unreachable in the corpus because a Fuse's switched
-  element is a PD element.
+  guest's own defaults (`generator.pas:825-826`, `PVsystem.pas:909`,
+  `Storage.pas:1210-1211`, `CapControl.pas:452`). All five slots on the four
+  classes now queue a real load exactly as WindGen does — Generator
+  `UserModel`+`ShaftModel`, PVSystem `UserModel`, Storage `UserModel`+`DynaDLL`,
+  CapControl `UserModel` — each with its own regression pin
+  (`wasm_usermodels.rs::like_carries_a_live_user_model_on_both_generator_slots`,
+  `wasm_usermodels_wm4.rs::like_carries_a_live_user_model_on_the_wm4_classes`,
+  `wasm_usermodels_wm5.rs::like_carries_a_live_user_control`), all three measured
+  non-vacuous by reverting the fix. The related `ClassArena::clone_ckt` shadow
+  (control dispatch with monitored == switched) is closed on WindGen too: every
+  engine-side call site now goes through `take_live_user_model`, which revives a
+  snapshot's instance from its spec instead of falling back in silence
+  (`an_element_snapshot_revives_its_user_model`). The WM.3/WM.4 slots keep the
+  older lazy shape there — their `clone_ckt` path is still unreachable in the
+  corpus (a Fuse's switched element is a PD element) and is the one part of this
+  item left open.
 
 **Residual floors / parked (documented, not bugs):**
 - **The file-backed-loadshape ORACLE flake is not extinct — one recurrence

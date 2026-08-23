@@ -359,12 +359,19 @@ impl PVSystem {
         self.base.wv_mode = other.base.wv_mode;
         self.base.drc_mode = other.base.drc_mode;
         self.base.avr_mode = other.base.avr_mode;
-        // User model: Pascal re-`New`s a fresh instance from the same module
-        // (`PVsystem.pas:820`); the slot's `Clone` drops the live wasmi instance
-        // and re-creates it lazily (WM.4, the WM.3 generator precedent).
+        // User model: Pascal `UserModel.Name := Other…UserModel.Name`
+        // (`PVsystem.pas:909`) is a `Set_Name` — an EAGER free + `LoadLibrary` +
+        // `FNew`, so the copy runs a live instance of its own at the guest's
+        // defaults. Cloning the donor's slot left it DEAD instead (the slot's
+        // `Clone` drops the live wasmi instance and every call site guards on
+        // `exists()`), i.e. a silent fallback to the built-in model with no
+        // diagnostic — the same defect RP1.3 found and fixed on WindGen (audit
+        // settlement, 2026-08-23). Queue a real load; the executive drains it
+        // before `end_edit`.
         self.base.user_model_name = other.base.user_model_name.clone();
         self.base.user_model_edit = other.base.user_model_edit.clone();
-        self.user_model = other.user_model.clone();
+        self.user_model = None;
+        self.queue_user_model_load(other.base.user_model_name.clone());
         self.spectrum = other.spectrum.clone();
         self.base.force_balanced = other.base.force_balanced;
         self.base.current_limited = other.base.current_limited;

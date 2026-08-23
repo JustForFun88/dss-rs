@@ -346,6 +346,43 @@ solve";
     );
 }
 
+/// `like=` must carry a **live** user model on the WM.4 classes too (RP1.3 audit
+/// settlement, 2026-08-23) — the same defect, the same fix as the Generator's
+/// (`wasm_usermodels.rs::like_carries_a_live_user_model_on_both_generator_slots`)
+/// and the WindGen's: Pascal `UserModel.Name := Other…` / `DynaModel.Name := …`
+/// (`PVsystem.pas:909`, `Storage.pas:1210-1211`) are eager `Set_Name`s, while a
+/// cloned slot comes back dead (`Clone` drops the live wasmi instance, every call
+/// site guards on `exists()`) and falls back to the built-in model in silence.
+///
+/// The state-variable surface is the discriminator: it is the class's built-in
+/// block plus the loaded model's own variables, so a dead slot shortens it.
+#[test]
+fn like_carries_a_live_user_model_on_the_wm4_classes() {
+    for (deck, class, donor) in [
+        ("wasm_pv_pflow", "PVSystem", "pv1"),
+        ("wasm_storage_dyn", "Storage", "s1"),
+    ] {
+        let mut dss = run_deck(deck);
+        let d = dss
+            .element_variable_names(&format!("{class}.{donor}"))
+            .unwrap_or_else(|| panic!("{class}.{donor} has a variable surface"));
+        let copy = format!("{donor}copy");
+        dss.command(&format!("New {class}.{copy} like={donor} bus1=b3"));
+        assert!(
+            dss.errors().is_empty(),
+            "`like=` must not error on {class}: {:?}",
+            dss.error_texts()
+        );
+        let c = dss
+            .element_variable_names(&format!("{class}.{copy}"))
+            .unwrap_or_else(|| panic!("{class}.{copy} has a variable surface"));
+        assert_eq!(
+            c, d,
+            "a `like=` copy of {class}.{donor} must hold a LIVE model of its own"
+        );
+    }
+}
+
 /// Every committed WM.4 golden parses, has index-aligned name/value arrays, and
 /// its deck template exists.
 #[test]

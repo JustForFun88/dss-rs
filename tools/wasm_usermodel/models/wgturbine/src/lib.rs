@@ -46,9 +46,19 @@
 //! turbine-tail field, which sits at 244 **only because** the managed `PLoss`
 //! reference does not cross and its hole is closed. A host that got that
 //! decision wrong feeds this model garbage in `Lamda`, and the round-trip test
-//! fails. The head reads are echoed verbatim through the state-variable surface
-//! (`num_vars`/`get_variable`/`get_var_name`), so a single `get_all_vars` call
-//! checks the whole head decode.
+//! fails. `Xdp` (88, a head double), `VTarget` (212, the unaligned stretch that
+//! follows the integer block) and `Poles`/`VCutin` (268/292, the turbine tail)
+//! extend the same witness to every region of the image and to the
+//! element-field→record-field wiring behind it. All of them are echoed verbatim
+//! through the state-variable surface (`num_vars`/`get_variable`/`get_var_name`),
+//! so a single `get_all_vars` call checks the whole decode.
+//!
+//! Two of the fifteen variables are not readings at all but **call counters** —
+//! `WgUpdCount` (`update_model`) and `WgBadSet` (a `set_variable` outside
+//! `1..=NUM_VARS`). They exist so that two engine-side behaviours which
+//! otherwise leave no trace — the `RecalcElementData` `FUpdateModel` tail
+//! (`WindGen.pas:1418`) and the *absence* of the upstream `Set_Variable`
+//! mis-nesting (`:2777-2784`) — can be pinned by a test.
 //!
 //! # Determinism
 //!
@@ -197,6 +207,17 @@ pub struct Model {
     pub seen: records::WindGenIn,
     /// Last outputs written back into the record (report vars).
     pub out: Outputs,
+    /// How many times the host called `update_model()` (Pascal `FUpdateModel`,
+    /// `WindGen.pas:1418`). Reported as `WgUpdCount` so the engine's
+    /// `RecalcElementData` tail has an observable consequence — an empty
+    /// `update_model` body would make that call site untestable.
+    pub upd_count: f64,
+    /// How many `SetVariable` calls arrived with an index outside `1..=NUM_VARS`.
+    /// Reported as `WgBadSet`: the upstream `Set_Variable` mis-nesting
+    /// (`WindGen.pas:2777-2784`) routes NATIVE indices to `FSetVariable(i − 22)`,
+    /// i.e. a non-positive index, so a port that reproduced it would bump this
+    /// counter where the correct routing leaves it at 0.
+    pub bad_set: f64,
 }
 
 impl Default for Model {
@@ -225,8 +246,14 @@ impl Default for Model {
                 num_conds: 0,
                 conn: 0,
                 ag: 0.0,
+                xdp: 0.0,
+                vtarget: 0.0,
+                poles: 0.0,
+                v_cutin: 0.0,
             },
             out: Outputs::default(),
+            upd_count: 0.0,
+            bad_set: 0.0,
         }
     }
 }
@@ -244,7 +271,7 @@ impl Model {
         (self.seen.num_phases.max(1) as usize).min(MAX_PHASES)
     }
 
-    /// Pascal `Edit` (`WindGenUserModel.pas:150-154`): a minimal `key=value`
+    /// Pascal `Edit` (`WindGenUserModel.pas:152-156`): a minimal `key=value`
     /// scanner for `g=`, `b=`, `slip=`, `eta=`, `tau=` (whitespace/`(...)`
     /// tolerant; unknown keys ignored) — what a small Delphi/C user model's own
     /// parser would accept, with no dss-parser dependency (plan §2.6).
@@ -287,6 +314,16 @@ impl Model {
         self.speed = rec.w0 * self.slip;
         self.dspeed = 0.0;
         self.speed_hist = self.speed;
+    }
+
+    /// Pascal `FUpdateModel` (`WindGen.pas:1418`, the `RecalcElementData` tail):
+    /// re-read the boundary record — the element's ratings/reactances have just
+    /// been re-derived — and count the call. The IndMach012a example does the
+    /// same thing (`indmach012a`'s `update_model` recomputes from the record),
+    /// and it is what makes the engine's call site observable.
+    pub fn update_model(&mut self, rec: &records::WindGenIn) {
+        self.seen = *rec;
+        self.upd_count += 1.0;
     }
 
     /// Pascal `Calc(V, I)` — write the terminal currents, then derive the
@@ -357,9 +394,12 @@ impl Model {
         self.speed = self.speed_hist + 0.5 * h * self.dspeed;
     }
 
-    /// Pascal `NumVars`. Vars 1-3 are model outputs, 4-9 echo the record head
-    /// the last `calc`/`init` decoded (the offset witness — see the module doc).
-    pub const NUM_VARS: i32 = 9;
+    /// Pascal `NumVars`. Vars 1-3 are model outputs, 4-9 and 12-15 echo the
+    /// record fields the last `calc`/`init`/`update_model` decoded (the offset
+    /// witness — see the module doc), 10-11 are the call counters that make the
+    /// engine's `FUpdateModel` call site and its `SetVariable` routing
+    /// observable.
+    pub const NUM_VARS: i32 = 15;
 
     /// Pascal `GetVarName` (1-based). The names are deliberately unlike the 22
     /// built-in WindGen variable names (`WindGen.pas:2828-2856`), so a name
@@ -375,6 +415,12 @@ impl Model {
             7 => Some("WgNphEcho"),
             8 => Some("WgNcondEcho"),
             9 => Some("WgConnEcho"),
+            10 => Some("WgUpdCount"),
+            11 => Some("WgBadSet"),
+            12 => Some("WgXdpEcho"),
+            13 => Some("WgVTargetEcho"),
+            14 => Some("WgPolesEcho"),
+            15 => Some("WgVCutInEcho"),
             _ => None,
         }
     }
@@ -392,16 +438,29 @@ impl Model {
             7 => f64::from(self.seen.num_phases),
             8 => f64::from(self.seen.num_conds),
             9 => f64::from(self.seen.conn),
+            10 => self.upd_count,
+            11 => self.bad_set,
+            12 => self.seen.xdp,
+            13 => self.seen.vtarget,
+            14 => self.seen.poles,
+            15 => self.seen.v_cutin,
             _ => VAR_OUT_OF_RANGE,
         }
     }
 
     /// Pascal `SetVariable` (1-based). Only `WgSlip` (slot 3) is a settable
-    /// parameter; the outputs (`WgIout1`, `WgPg`) and the six record-head echoes
-    /// are derived readings and stay read-only, like a real model's.
+    /// parameter; the outputs (`WgIout1`, `WgPg`), the record echoes and the two
+    /// counters are derived readings and stay read-only, like a real model's.
+    ///
+    /// An index outside `1..=NUM_VARS` is counted rather than ignored: that is
+    /// the only observable a host can use to prove it never routed a NATIVE
+    /// state-variable write into the model (the upstream `Set_Variable`
+    /// mis-nesting, `WindGen.pas:2777-2784`, sends `FSetVariable(i − 22)`).
     pub fn set_variable(&mut self, i: i32, value: f64) {
         if i == 3 {
             self.slip = value;
+        } else if !(1..=Self::NUM_VARS).contains(&i) {
+            self.bad_set += 1.0;
         }
     }
 
