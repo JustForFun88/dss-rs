@@ -765,10 +765,23 @@ pub(crate) fn write_artifacts(
     for ch in channels {
         let e = &extracts[ch.tag()];
         let b = blind.get(ch.tag()).copied().unwrap_or_default();
+        // The error counts ride the PRINTED line, not just `props_census.json`
+        // (RP1.4 audit): a case whose channel hiccups yields ONE `oracle_error`
+        // row instead of that case's divergence rows, so a run that quietly lost
+        // a case used to read exactly like a complete one on stdout. Baselines
+        // measured 2026-08-23 and recorded in `TESTING.md`: 5 on r4133 (the
+        // #303 crash decks the vendored census carries too) and 22 on
+        // `capi_v0145` (decks the 0.14.5 oracle cannot compile or solve —
+        // post-0.14.5 spellings, the WindGen class, `modes:upgrade/*`). Above
+        // the baseline, this run measured LESS than the recorded census and its
+        // totals are not comparable with it.
+        let count_kind =
+            |f: fn(&Row) -> bool| rows.iter().filter(|r| r.channel == ch && f(r)).count();
         eprintln!(
             "  {}: {} structural pair(s), {} numeric pair(s), {} shape class(es), \
              {} case(s) with a divergence, {} cell(s) uncomparable behind a desynchronized \
-             name list, {} element(s) skipped whole ({} cell(s))",
+             name list, {} element(s) skipped whole ({} cell(s)), {} oracle error(s), \
+             {} rust error(s)",
             ch.tag(),
             e.structural.len(),
             e.numeric.len(),
@@ -777,6 +790,8 @@ pub(crate) fn write_artifacts(
             b.unaligned_cells,
             b.skipped_elements,
             b.skipped_element_cells,
+            count_kind(|r| matches!(r.kind, RowKind::OracleError { .. })),
+            count_kind(|r| matches!(r.kind, RowKind::RustError { .. })),
         );
         let het = e.heterogeneous_shape_classes();
         if het > 0 {

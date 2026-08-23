@@ -606,8 +606,23 @@ mod props_015x_tests {
     /// **missing from r4133's**, which loses the name to a registration
     /// off-by-one (`Controls/GenDispatcher.pas:92,133`). Pinned here because the
     /// row's whole defence is that it is INERT wherever the oracle knows the
-    /// name — a regression that made it unconditional would silently stop
-    /// comparing a live capi property instead of failing.
+    /// name.
+    ///
+    /// What this test discriminates (RP1.4 audit round — the original comment
+    /// claimed a failure mode it could not tell apart, and both auditors
+    /// mutation-proved it):
+    ///  * a regression that turned the row into a **value mask** (a
+    ///    [`SKIP_PROPS`]-shaped skip) — nothing else goes red for that, because a
+    ///    value skip panics nowhere;
+    ///  * a regression that made [`filter_015x`] **unconditional** (drop the
+    ///    allowlisted prop even when the capture knows it) — the panic-message
+    ///    assert below is what separates it from the value panic this test wants,
+    ///    since a bare `is_err()` is satisfied by either. That regression is also
+    ///    caught loudly, and first, by
+    ///    [`allowlisted_present_in_oracle_value_mismatch_panics`] on the
+    ///    synthetic table: it fails on the count assert, never silently;
+    ///  * deletion of the row itself (the `prop_015x` assert below) — today the
+    ///    only exerciser of the row, the RP2.1 replay being unlanded.
     #[test]
     fn shipped_gendispatcher_weights_row_is_inert_when_the_oracle_knows_it() {
         use super::{PROPS_015X, prop_015x};
@@ -656,9 +671,23 @@ mod props_015x_tests {
                 "self",
             );
         });
+        // The panic must be the VALUE compare's, not the count assert's: an
+        // unconditional `filter_015x` would drop `Weights` here too and panic on
+        // the count instead, which a bare `is_err()` cannot tell apart.
+        let msg = r.expect_err(
+            "the row must not relieve a VALUE compare on a capture that knows the name",
+        );
+        let msg = msg
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| msg.downcast_ref::<&str>().copied())
+            .unwrap_or("")
+            .to_string();
         assert!(
-            r.is_err(),
-            "the row must not relieve a VALUE compare on a capture that knows the name"
+            msg.contains("property Weights"),
+            "expected the VALUE compare on `Weights` to panic; got {msg:?} — a \
+             \"property count differs\" panic here means `filter_015x` dropped the \
+             allowlisted prop even though the capture carries it"
         );
     }
 }
@@ -1738,10 +1767,21 @@ const PROPS_015X: &[(&str, &[&str])] = &[
     // `controls:gendispatcher/*` decks are `engines: "capi_v0145"` and stay so —
     // measured 2026-08-23 (RP1.4 STATUS record), r4133 cannot receive their
     // `weights=[3, 1]` at all, so it dispatches the equal split and the whole
-    // solved state moves (up to 48 % on each generator's kW, every step), which
-    // is not a `property`-scoped divergence any pin could cover. `PROPS_015X`
-    // rows carry no live counters (§1.1(d)), so nothing goes stale; the row is
-    // exercised offline by the RP2.1 replay against the full `shape.txt`.
+    // solved state moves (12-step `gendispatcher.dss`, kW: 48 % apart at the
+    // worst of steps 1-11 and 54.5x at step 0, where r4133 holds both machines
+    // at the `Max(1.0, …)` floor while the port dispatches 55.52 kW — the
+    // census's `generator.kw` `max_rel` 5.45e+01; kvar reaches 1.59e+00), which
+    // is not a `property`-scoped divergence any pin could cover. A NEW deck
+    // without `weights=` would behave identically on both engines and could gate
+    // `both` — measured, and deliberately not taken inside RP1.4 (STATUS RP1.4
+    // audit settlement, item 8); a future one must also keep `basefreq=` off
+    // its dispatcher, since r4133's slot 7 IS the weights arm and would compare
+    // the port's base frequency against r4133's stored weights string.
+    // `PROPS_015X` rows carry no live counters (§1.1(d)), so nothing goes stale;
+    // the row's only exerciser today is
+    // `props_015x_tests::shipped_gendispatcher_weights_row_is_inert_when_the_oracle_knows_it`
+    // (RP2.1's replay over the full `shape.txt` will cover it offline once it
+    // lands — `crates/dss-core/tests/props_r4133_replay.rs` does not exist yet).
     ("GenDispatcher", &["weights"]),
     // Further rows land here with their porting WP.
 ];
