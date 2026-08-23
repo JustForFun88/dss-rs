@@ -244,8 +244,14 @@ WP-RP1's whole-WP acceptance criterion is met — structural pairs **224 → 225
 numeric **103 → 103** (unchanged), and the cells the census could not look at
 behind a desynchronized name list **192 → 0**. Those 192 are exactly the 48 GenDispatcher
 (element, step) rows — one dispatcher in each of the three decks, over
-12 + 12 + 24 steps — × the four tail positions the misplaced `weights`
-desynchronized (`weights`, `basefreq`, `enabled`, `like`); the row count is
+12 + 12 + 24 steps — × **4 each**, and the 4 is what the census's own arithmetic
+counts, not four desynchronized names: `|filtered| - |oracle|` = 1 for the count
+delta (10 vs 9), plus one cell per index whose two names disagree — `weights`
+against `basefreq`, `basefreq` against `enabled`, `enabled` against `like` = 3.
+The Rust list's tenth entry (`like`) is never reached at all, because the walk
+zips against the oracle's nine (`collect_element_divergences`,
+`crates/dss-core/tests/harness/mod.rs`). (Corrected in the RP1.4 audit round;
+the total was right, the stated cause was not.) The row count is
 unchanged overall because the 48 `shape_count` rows were replaced one-for-one by
 the 48 new value rows below. The `capi_v0145` channel is **byte-identical**
 before and after (all five extracts compare equal: 3 structural / 13 numeric / 0
@@ -257,7 +263,7 @@ pair changed its spelling.
 | `gendispatcher.enabled` | `Yes` | `true` | 48 (**0**) | 1 |
 
 One pair, in bin 1 (`BoolFold`) — the same shape RP1.1/RP1.2/RP1.3 measured on
-generator/autotrans/windgen. Of the other three newly aligned positions,
+generator/autotrans/windgen. Of the other three positions the closure aligns,
 `weights` is the one the row drops, and `basefreq` and `like` agree cell for cell
 (`'60'` on both sides — r4133's `PropertyValue[7]` echo happens to be
 `Format('%-g',[BaseFrequency])`, `Common/CktElement.pas:1307` — and `''`
@@ -267,13 +273,27 @@ RP1.4 opens nothing for RP2.2 to triage and no RP3 sub-step.
 All 48 cells are **out of scope**: the three `controls:gendispatcher/*` decks are
 `engines: "capi_v0145"` and RP1.4 measured that they must stay so. On r4133,
 `weights=` is error #364 (`Unknown parameter "weights"`), so the deck's
-`weights=[3, 1]` never lands and the dispatcher splits equally — up to 48 % apart
-from the port on each generator's kW at every step. Feeding r4133 the same vector
-through the misregistered name (`basefreq=[3, 1]`) reproduces the port's split to
-the last displayed digit (step 1: g1 532.407 / g2 232.659 both sides), which is
-what proves the divergence is the registration bug and not a dispatch difference.
-That is a whole-solution divergence, not a `property`-scoped one, so no pin could
-cover a flip to `engines: "both"`. Details and the Pascal in the RP1.4 STATUS
+`weights=[3, 1]` never lands and the dispatcher splits equally. Measured over the
+12 steps of `gendispatcher.dss`, the two sides' generator kW are 48 % apart at
+the worst of steps 1-11 (step 6: 1880.18 against 2778.88 / 981.48) and **54.5x
+apart at step 0**, where r4133 holds both machines at the `Max(1.0, …)` floor
+(`GenDispatcher.pas:450`) while the port dispatches g2 to 55.52 kW — that step-0
+cell is the census's `generator.kw` pair, `max_rel` **5.45e+01**, and the kvar
+pair reaches 1.59e+00. (The bare "up to 48 %" written here at first understated
+it by omitting step 0; corrected in the RP1.4 audit round.) Feeding r4133 the
+same vector through the misregistered name (`basefreq=[3, 1]`) reproduces the
+port's split to the last displayed digit (step 1: g1 532.407 / g2 232.659 both
+sides), which is what proves the divergence is the registration bug and not a
+dispatch difference. That is a whole-solution divergence, not a
+`property`-scoped one, so no pin could cover a flip to `engines: "both"`. A NEW
+deck that never spells `weights=` would dispatch identically on both engines —
+both levelize the weights to 1.0 from the `GenList` arm (`:215-220` and
+`gen_dispatcher/compute.rs:28-31`), and measured on this deck with the
+`weights=` line deleted, r4133 splits equally (g1 = g2 = 382.892 kW at step 1,
+757.77 at step 2, i.e. exactly what it does with the line present) while the
+port's `Export Generators` answers the same for both machines (Max kW 758,
+equal kWh). Such a deck could gate `both` and would make this row **live** —
+deliberately not taken inside RP1.4, see the STATUS audit settlement. Details and the Pascal in the RP1.4 STATUS
 record and `investigations/to_opendss/40-gendispatcher-weights-registration-off-by-one.md`.
 
 ## Files
