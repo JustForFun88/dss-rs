@@ -600,6 +600,67 @@ mod props_015x_tests {
     fn misordered_prop_panics() {
         expect_panic(&[("B", "2"), ("A", "1")], &[("A", "1"), ("B", "2")]);
     }
+
+    /// The one SHIPPED row that runs backwards (R4133_PROPS RP1.4): the port's
+    /// `GenDispatcher.Weights` is present in the 0.14.5/capi015 tables and
+    /// **missing from r4133's**, which loses the name to a registration
+    /// off-by-one (`Controls/GenDispatcher.pas:92,133`). Pinned here because the
+    /// row's whole defence is that it is INERT wherever the oracle knows the
+    /// name — a regression that made it unconditional would silently stop
+    /// comparing a live capi property instead of failing.
+    #[test]
+    fn shipped_gendispatcher_weights_row_is_inert_when_the_oracle_knows_it() {
+        use super::{PROPS_015X, prop_015x};
+        assert!(
+            prop_015x(PROPS_015X, "gendispatcher", "Weights"),
+            "the RP1.4 row must be in the shipped table (case-insensitively)"
+        );
+        // Same drivers as above, but against the SHIPPED table and the real class.
+        let shipped = |actual: &[(&str, &str)], oracle: &[(&str, &str)]| {
+            compare_prop_lists(
+                "GenDispatcher.gd1",
+                "GenDispatcher",
+                &props(actual),
+                &props(oracle),
+                PROPS_015X,
+                false,
+                1e-9,
+                1e-9,
+                "self",
+            );
+        };
+        // r4133-shaped name list (slot 7 is `basefreq`, no `weights`): the Rust
+        // extra is dropped and the shape walk lines up.
+        shipped(
+            &[
+                ("GenList", "g1, g2"),
+                ("Weights", "[3, 1]"),
+                ("basefreq", "60"),
+            ],
+            &[("GenList", "g1, g2"), ("basefreq", "60")],
+        );
+        // capi-shaped name list (it HAS `weights`): nothing is dropped, so a
+        // wrong value still panics — the row buys no value relief there.
+        let a = props(&[("GenList", "g1, g2"), ("Weights", "[3, 1]")]);
+        let o = props(&[("GenList", "g1, g2"), ("Weights", "[1, 1]")]);
+        let r = std::panic::catch_unwind(|| {
+            compare_prop_lists(
+                "GenDispatcher.gd1",
+                "GenDispatcher",
+                &a,
+                &o,
+                PROPS_015X,
+                false,
+                1e-9,
+                1e-9,
+                "self",
+            );
+        });
+        assert!(
+            r.is_err(),
+            "the row must not relieve a VALUE compare on a capture that knows the name"
+        );
+    }
 }
 
 /// Decode a COM-style interleaved re/im `f64` array (the shape dss-python /
@@ -1591,6 +1652,12 @@ fn skip_transformer_cursor(class: &str, prop: &str, cursors_disagree: bool) -> b
 ///    does without this table.
 ///  * Every row must cite its upstream commit / UPGRADE_PLAN row in a comment
 ///    (same documentation style as [`SKIP_PROPS`]).
+///  * The mechanism is channel-agnostic — it asks only whether THIS capture's
+///    name list carries the prop — so a row may also relieve a prop the **r4133**
+///    oracle cannot report while the 0.14.5 one can. Exactly one such row exists
+///    (`GenDispatcher.weights`, R4133_PROPS_PLAN RP1.4: an r4133 registration
+///    bug, not a version delta); it is inert on the capi channel for the same
+///    reason the 0.15.x rows are inert on a capi015 capture.
 ///
 /// Ships EMPTY: rows land with the WP that ports each 0.15.x property. Keep it
 /// one class per line so parallel WP branches each add a line without conflict
@@ -1651,6 +1718,31 @@ const PROPS_015X: &[(&str, &[&str])] = &[
     // oracle's own name list lacks it, so this row is active on the 0.14.5/capi015
     // captures and inert on r4133, whose list carries `XfmrCode`.
     ("AutoTrans", &["XfmrCode"]),
+    // R4133_PROPS_PLAN RP1.4 — the one row that runs the OTHER way: an r4133
+    // *registration bug* hides a property the 0.14.5 oracle reports fine.
+    // `TGenDispatcher.DefineProperties` names seven properties but declares
+    // `NumPropsThisClass = 6` (`Version8/Source/Controls/GenDispatcher.pas:92`),
+    // so `PropertyName^[7] := 'Weights'` (`:133`) is overwritten by
+    // `TCktElementClass.DefineProperties`' `PropertyName^[ActiveProperty + 1] :=
+    // 'basefreq'` (`Common/CktElementClass.pas:98`) — measured on the r4133 DLL:
+    // `AllPropertyNames` returns 9 names without `weights`, `? gd.weights` is
+    // "Property Unknown", `weights=` is error #364, and `basefreq=` parses as the
+    // weights vector (the `Edit` CASE arm 7 was never renumbered, `:200-206`).
+    // Upstream report: `investigations/to_opendss/
+    // 40-gendispatcher-weights-registration-off-by-one.md`; the fix there is
+    // `NumPropsThisClass = 7`. The port is correct and matches dss_capi, which
+    // counts the enum (`.inputs/dss_capi/src/Controls/GenDispatcher.pas:106`), so
+    // the row is INERT on the capi channel (its name list has `weights` →
+    // `filter_015x` keeps it, full name+value compare) and active on r4133 only.
+    // **Dormant until a gendispatcher deck gates r4133**: all three
+    // `controls:gendispatcher/*` decks are `engines: "capi_v0145"` and stay so —
+    // measured 2026-08-23 (RP1.4 STATUS record), r4133 cannot receive their
+    // `weights=[3, 1]` at all, so it dispatches the equal split and the whole
+    // solved state moves (up to 48 % on each generator's kW, every step), which
+    // is not a `property`-scoped divergence any pin could cover. `PROPS_015X`
+    // rows carry no live counters (§1.1(d)), so nothing goes stale; the row is
+    // exercised offline by the RP2.1 replay against the full `shape.txt`.
+    ("GenDispatcher", &["weights"]),
     // Further rows land here with their porting WP.
 ];
 

@@ -53,7 +53,7 @@ grows to bin 5 = 45 pairs, example rows via RP2.1's `examples_supplement.txt`),
 two whole-element gaps on the cursor-disagreement transformers (+22 cells), and
 an ASLR'd address inside five `oracle_error` texts; the closing docs pass
 amended the plan (§1.1/§1.2/RP0.2/RP2.1/RP2.3) and the vendored README to the
-re-measured reality. **WP-RP1 (property-table shape closure) is open**: RP1.1
+re-measured reality. **WP-RP1 (property-table shape closure) is COMPLETE**: RP1.1
 landed the three r4133 upstream-stub rows (Generator `Rneut`/`Xneut` at display
 slots 16/17, Sensor `Action` at 13) behind a new `PropFlags::UPSTREAM_STUB` —
 store the parse string, log the class's soft message if it has one, never a
@@ -121,7 +121,30 @@ tests in `dss-usermodel`. Dormancy is
 byte-identical in BOTH lanes (`lane_diff.ps1` PASS, 522 cases / 3 220 247
 records, `max |Δ| = 0`, dumps byte-equal to the pre-edit baselines). The full
 re-census records the **2** value pairs the closure makes live, both in covered
-bins and no genuine jump. RP1.4 (GenDispatcher `weights`) is next.
+bins and no genuine jump.
+**RP1.4** then closed the fifth and last shape row — the only one that runs
+backwards — with **zero engine change**: `weights` exists in the port and in
+dss_capi, and r4133 loses the NAME to a registration off-by-one
+(`NumPropsThisClass = 6` against `PropertyName^[7] := 'Weights'`, so
+`TCktElementClass.DefineProperties` overwrites slot 7 with `basefreq`). Measured
+on the DLL: `AllPropertyNames` returns 9 names without `weights`, `weights=` is
+error #364, `basefreq=[3, 1]` parses **as the weights vector**, and a plain
+`basefreq=60` silently sets `FWeights := [60, 0]` (one generator absorbs the
+whole redispatch) — reported upstream, fix `NumPropsThisClass = 7`. The
+`("GenDispatcher", &["weights"])` row joins `PROPS_015X`, inert on the capi
+channel (whose list has the name) and active on r4133 only. **The liveness
+question was settled by measurement, not left open**: the census's
+`generator.kw/kvar` deltas root-cause entirely to the bug — r4133 rejects the
+decks' `weights=[3, 1]` and splits equally (up to 48 % from the port at every
+step), and feeding it the same vector as `basefreq=[3, 1]` reproduces the port's
+split to the last displayed digit — so the divergence is a whole-solution one
+that no `property` pin could cover, the three decks stay `engines: "capi_v0145"`
+and the row is documented *dormant until a gendispatcher deck gates r4133*. The
+re-census makes r4133 shape classes **1 → 0** (full census **429 → 0**) with one
+new pair (`gendispatcher.enabled`, bin 1, all cells out of scope), the capi
+channel byte-identical and no golden, lock or manifest byte moved — so **WP-RP1
+is COMPLETE** and its whole-WP acceptance criterion is met. **RP2.1** (channel
+threading + the normalization engine + replay accounting, `opus-xhigh`) is next.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -2228,6 +2251,104 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     of the eleven settlements moves a solved state anywhere in the corpus.
     `lane_diff.ps1` is not owed again (no compat kernel, lane alias or solver
     touched; the default/parity split is untouched by every change above).
+
+- **RP1.4** (2026-08-23) — GenDispatcher `weights`: the allowlist row + the
+  upstream report. **Zero engine change** — the port is right and matches
+  dss_capi (`gen_dispatcher/mod.rs:63-67,90`, dispatch `compute.rs:28-79`); the
+  fifth and last `shape.txt` row is the only one that runs **backwards**, a
+  property the port has and r4133's own table loses.
+  - **The r4133 bug, verified line by line.**
+    `TGenDispatcher.DefineProperties` names seven properties
+    (`Version8/Source/Controls/GenDispatcher.pas:127-133`, `PropertyName^[7] :=
+    'Weights'`) but declares six (`NumPropsThisClass = 6`, `:92`) and hands the
+    cursor to the base class at the declared count (`ActiveProperty :=
+    NumPropsThisClass`, `:148-149`). `TCktElementClass.DefineProperties` writes
+    at `ActiveProperty + 1` (`Common/CktElementClass.pas:98-99`), so slot 7
+    becomes `basefreq`, slot 8 `enabled`, and `TDSSClass.DefineProperties`
+    appends `like` at 9 (`Common/DSSClass.pas:307-308`). `CountProperties` sized
+    the array for 6+2+1 = 9, so nothing overruns and nothing complains. The
+    class constructor then builds `CommandList` from the **overwritten** names
+    (`:103-105`) while the `Edit` dispatch `CASE ParamPointer OF … 7:` is still
+    the weights arm (`:200-206`) with no `ELSE` route left to
+    `ClassEdit`'s `BaseFrequency :=` (`CktElementClass.pas:53`).
+    `InitPropertyValues` collides the same way (`:495` then `:499` →
+    `Common/CktElement.pas:1307`).
+  - **Measured on the git-tracked r4133 DLL** (epri-worker, three probes):
+    `AllPropertyNames` returns **9** names with no `weights`;
+    `? GenDispatcher.gd1.weights` → `Property Unknown`; `weights=[3, 1]` →
+    **DSS error #364** `Unknown parameter "weights"`; `basefreq=[3, 1]` is
+    accepted and `? …basefreq` echoes `3, 1`. The 7th **positional** parameter
+    still reaches the weights arm (positional parsing skips the command list,
+    `:186`). And a plain, legitimate `basefreq=60` silently sets
+    `FWeights := [60, 0]` (`InterpretDblArray` pre-sets `Result := MaxValues`
+    and zero-fills, `Common/Utilities.pas:683,789-791`): measured on a
+    two-generator dispatcher, g1 2019.63 kW / g2 1000 kW (never dispatched)
+    against the correct 1509.81 / 1509.81, with `? …basefreq` still answering
+    `60`. Report:
+    `investigations/to_opendss/40-gendispatcher-weights-registration-off-by-one.md`
+    (fix = `NumPropsThisClass = 7`; no other ordinal moves).
+  - **Liveness decided BY MEASUREMENT — the decks stay `capi_v0145`.** The
+    census's `generator.kw/kvar` deltas on the three `controls:gendispatcher/*`
+    cases root-cause **entirely** to the registration bug: on r4133 the decks'
+    `weights=[3, 1]` is rejected, so `FWeights` keeps the `[1, 1]` the `GenList`
+    arm installs (`:215-220`) and both machines split equally (step 1: g1 =
+    g2 = 382.892 kW) while the port splits 3:1 (532.407 / 232.659) — up to 48 %
+    apart at every step, ×54 at step 0 where r4133's `Max(1.0, …)` floor
+    (`:450`) clamps both. Feeding r4133 the same vector through the misregistered
+    name (`basefreq=[3, 1]`) reproduces the **port's** split to the last
+    displayed digit (532.407 / 232.659; kvar 172.809 / 261.237), which proves the
+    dispatch algorithms agree and only the parse does not. That is a
+    whole-solution divergence, not a `property`-scoped one, so **no pin could
+    cover a flip to `engines: "both"`** (§1.1(e) `property` scopes are per-case
+    and divergence-only) — the decks stay capi-only, no manifest or
+    `population.lock.json` byte moves, and the row's comment says *dormant until
+    a gendispatcher deck gates r4133*. Recorded here and in the row itself; no
+    silent third state.
+  - **The row.** `("GenDispatcher", &["weights"])` joins `PROPS_015X`
+    (`tests/harness/mod.rs`) with the r4133-bug provenance in its comment, and
+    the table's own doc comment gains the one sentence that admits the second
+    direction (the mechanism is channel-agnostic: `prop_015x` drops a Rust prop
+    only when **this** capture's name list lacks it, `filter_015x`
+    `mod.rs:1680-1692`). So the row is **inert on the capi channel** — 0.14.5
+    counts the enum (`.inputs/dss_capi/src/Controls/GenDispatcher.pas:106`) and
+    reports `weights`, so it is kept and fully value-compared, exactly as before
+    this sub-step — and relieves the shape walk on r4133 only.
+    `tests/TOLERANCE_NOTES.md` §"0.15.x property-table allowlist" gains the
+    matching r4133-extension bullet. Non-vacuity is pinned against the
+    **shipped** table, not a synthetic one, by
+    `props_015x_tests::shipped_gendispatcher_weights_row_is_inert_when_the_oracle_knows_it`:
+    the r4133-shaped name list lines up, and a wrong `Weights` value against a
+    capi-shaped list still panics (making the row unconditional would silently
+    stop comparing a live capi property).
+  - **Census re-run (the WP-RP1 per-sub-step obligation).** Two full
+    `DSS_PROPS_CENSUS=1` walks over the same 439-case population — pre-RP1.4
+    (1 059 277 rows, 56.3 s) and post-RP1.4 (1 059 277 rows, 56.5 s), both
+    channels: r4133 shape classes **1 → 0**, so with this the full census closes
+    **429 → 0** and **WP-RP1's whole-WP acceptance criterion is met**.
+    Structural pairs **224 → 225**, numeric **103 → 103**, cells hidden behind a
+    desynchronized name list **192 → 0** — those 192 are exactly the 48
+    GenDispatcher (element, step) rows — one dispatcher in each of the three
+    decks, over 12 + 12 + 24 steps — × the four tail positions the misplaced
+    `weights` desynchronized, and the row count is unchanged overall because the 48
+    `shape_count` rows were replaced one-for-one by 48 new value rows. The
+    `capi_v0145` channel's five extracts are **byte-identical** before and after
+    (3 structural / 13 numeric / 0 shape / 34 diverging cases / 312 elements
+    skipped whole). Exactly **one** new pair, recorded in
+    `tests/corpus/props_r4133/README.md` §"Pairs the WP-RP1 shape closures make
+    live": `gendispatcher.enabled` (`Yes`/`true`, bin 1, 48 cells, **0 in
+    scope** — the decks are capi-only). Of the other three newly aligned
+    positions `weights` is the one the row drops, and `basefreq` and `like`
+    agree cell for cell (`'60'` / `''`, probe-confirmed on both sides). **No
+    bin-5/6/7 row and no genuine jump**, so nothing opens for RP2.2 and no RP3
+    sub-step.
+  - **Goldens: measured, none moved.** The whole diff is tests + docs + the
+    gitignored report; `PROPS_015X` lives in the test harness and no capture,
+    schema or `props/` artifact reads it. Measured by the full five-command gate
+    on the final tree (every golden comparison green) and by `git status` (no
+    `tests/golden/` byte, no `golden.lock.json`, no `population.lock.json`, no
+    ledger row). **No `lane_diff` is owed** — zero engine change: no compat
+    kernel, lane alias or solver was touched, and no product crate byte moved at
+    all.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

@@ -232,6 +232,50 @@ Two further facts of this closure, both measured:
   `shape_count` row — which is why the numeric count is unchanged across this
   closure.
 
+**RP1.4 (GenDispatcher `weights`), measured 2026-08-23** by two full
+`DSS_PROPS_CENSUS=1` runs on the same 439-case population — one on the pre-RP1.4
+tree (1 059 277 rows, 56.3 s) and one on the post-RP1.4 tree (1 059 277 rows,
+56.5 s), both channels. This closure is not a port: the row
+`("GenDispatcher", &["weights"])` in `PROPS_015X` relieves the shape walk of a
+property **r4133 loses to a registration off-by-one**, so the census's one
+`rust_only` shape row disappears without a line of engine code moving. r4133
+shape classes **1 → 0** — with this the full census closes **429 → 0** and
+WP-RP1's whole-WP acceptance criterion is met — structural pairs **224 → 225**,
+numeric **103 → 103** (unchanged), and the cells the census could not look at
+behind a desynchronized name list **192 → 0**. Those 192 are exactly the 48 GenDispatcher
+(element, step) rows — one dispatcher in each of the three decks, over
+12 + 12 + 24 steps — × the four tail positions the misplaced `weights`
+desynchronized (`weights`, `basefreq`, `enabled`, `like`); the row count is
+unchanged overall because the 48 `shape_count` rows were replaced one-for-one by
+the 48 new value rows below. The `capi_v0145` channel is **byte-identical**
+before and after (all five extracts compare equal: 3 structural / 13 numeric / 0
+shape / 34 diverging cases / 312 elements skipped whole), and no pre-existing
+pair changed its spelling.
+
+| new pair | rust | r4133 | cells (in scope) | bin (this README's chain) |
+|---|---|---|---|---|
+| `gendispatcher.enabled` | `Yes` | `true` | 48 (**0**) | 1 |
+
+One pair, in bin 1 (`BoolFold`) — the same shape RP1.1/RP1.2/RP1.3 measured on
+generator/autotrans/windgen. Of the other three newly aligned positions,
+`weights` is the one the row drops, and `basefreq` and `like` agree cell for cell
+(`'60'` on both sides — r4133's `PropertyValue[7]` echo happens to be
+`Format('%-g',[BaseFrequency])`, `Common/CktElement.pas:1307` — and `''`
+respectively). **There is no bin-5, bin-6 or bin-7 row and no genuine jump**, so
+RP1.4 opens nothing for RP2.2 to triage and no RP3 sub-step.
+
+All 48 cells are **out of scope**: the three `controls:gendispatcher/*` decks are
+`engines: "capi_v0145"` and RP1.4 measured that they must stay so. On r4133,
+`weights=` is error #364 (`Unknown parameter "weights"`), so the deck's
+`weights=[3, 1]` never lands and the dispatcher splits equally — up to 48 % apart
+from the port on each generator's kW at every step. Feeding r4133 the same vector
+through the misregistered name (`basefreq=[3, 1]`) reproduces the port's split to
+the last displayed digit (step 1: g1 532.407 / g2 232.659 both sides), which is
+what proves the divergence is the registration bug and not a dispatch difference.
+That is a whole-solution divergence, not a `property`-scoped one, so no pin could
+cover a flip to `engines: "both"`. Details and the Pascal in the RP1.4 STATUS
+record and `investigations/to_opendss/40-gendispatcher-weights-registration-off-by-one.md`.
+
 ## Files
 
 | file | rows | origin |

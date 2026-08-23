@@ -803,3 +803,80 @@ fn rp1_1_closes_the_generator_and_sensor_shape_gaps() {
         }
     }
 }
+
+/// RP1.4's deliverable, read back the same way — but this shape row runs
+/// **backwards**, so what must hold is the opposite of the test above: the port
+/// KEEPS the property, and the r4133 side is the one that lost it.
+///
+/// `shape.txt` records `gendispatcher: rust_count=10 oracle_count=9
+/// oracle_only=[] rust_only=['weights']` — r4133's `TGenDispatcher` names seven
+/// properties but declares six (`Version8/Source/Controls/GenDispatcher.pas:92,133`),
+/// so `TCktElementClass.DefineProperties` overwrites slot 7 with `basefreq`
+/// (`Common/CktElementClass.pas:98`). RP1.4 closes the gap with a `PROPS_015X`
+/// row, NOT by touching the engine, and the failure mode that row would hide is
+/// exactly a port that "fixed" the shape by dropping or renaming `Weights`.
+/// This pins that it did not: 10 names, `weights` still at slot 7, still after
+/// `genlist` and ahead of the inherited tail — the ordering r4133 intended and
+/// dss_capi has. The row's own inertness on a capture that knows the name is
+/// pinned in the harness
+/// (`props_015x_tests::shipped_gendispatcher_weights_row_is_inert_when_the_oracle_knows_it`).
+#[test]
+fn rp1_4_keeps_the_gendispatcher_weights_the_r4133_table_loses() {
+    let rows = data_rows("shape.txt", None);
+    let line = rows
+        .iter()
+        .find(|l| l.starts_with("gendispatcher: "))
+        .expect("shape.txt has no gendispatcher row");
+    assert!(
+        line.contains("oracle_only=[]") && line.contains("rust_only=['weights']"),
+        "shape.txt's gendispatcher gap changed direction: {line:?}"
+    );
+    let field = |key: &str| -> usize {
+        line.split_whitespace()
+            .find_map(|t| t.strip_prefix(key))
+            .unwrap_or_else(|| panic!("gendispatcher: shape.txt row has no {key}"))
+            .parse()
+            .unwrap_or_else(|e| panic!("gendispatcher: bad {key} in shape.txt: {e}"))
+    };
+    let (rust_count, oracle_count) = (field("rust_count="), field("oracle_count="));
+    assert_eq!(
+        rust_count,
+        oracle_count + 1,
+        "the census recorded exactly one Rust-side extra"
+    );
+
+    let mut dss = dss_core::exec::Dss::new();
+    for cmd in [
+        "New Circuit.gdshapeprobe",
+        "New Line.l1 bus1=b1 bus2=b2 phases=3 length=1",
+        "New Generator.g1 bus1=b2 phases=3 kv=12.47 kw=100",
+        "New GenDispatcher.gd1 element=Line.l1 terminal=1 kwlimit=50 genlist=[g1]",
+    ] {
+        dss.command(cmd);
+        assert!(dss.errors().is_empty(), "`{cmd}` -> {:?}", dss.errors());
+    }
+    let live: Vec<String> = dss
+        .element_properties("GenDispatcher.gd1")
+        .expect("probe element missing")
+        .into_iter()
+        .map(|(n, _)| n.to_lowercase())
+        .collect();
+    assert_eq!(
+        live.len(),
+        rust_count,
+        "the port's GenDispatcher table is {} names long, the census recorded \
+         {rust_count} — RP1.4 changes no engine code, so this must not move",
+        live.len()
+    );
+    assert_eq!(
+        live.iter().position(|n| n == "weights"),
+        Some(6),
+        "`weights` must stay at property 7 (0-based 6), right after `genlist` \
+         and ahead of the inherited basefreq/enabled/like tail: {live:?}"
+    );
+    assert_eq!(
+        &live[5..],
+        &["genlist", "weights", "basefreq", "enabled", "like"],
+        "the GenDispatcher tail changed shape"
+    );
+}
