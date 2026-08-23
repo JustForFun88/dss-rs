@@ -1683,9 +1683,9 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     `'100'`. r4133's `TRegControlObj.GetPropertyValue` overrides index 28
     //     (`TapNum`) and nothing else (`RegControl.pas:820-827`), so
     //     `revThreshold` (index 23) answers the `PropertyValue[]` store frozen at
-    //     `'100'` by `InitPropertyValues` (`:1437`) while the live field carries
+    //     `'100'` by `InitPropertyValues` (`:1448`) while the live field carries
     //     the signed default — the identical shape as its sibling
-    //     `remoteptratio` (`PropertyValue[27] := '60'`, `:1441`), which plan
+    //     `remoteptratio` (`PropertyValue[27] := '60'`, `:1452`), which plan
     //     §1.1 already lists as a bin-7 echo. So this row's cells are an
     //     `EchoDefault` row for RP2.3 (with `examples_supplement.txt` rows from
     //     part C, the `regcontrol.fwdthreshold` route — the pair is absent from

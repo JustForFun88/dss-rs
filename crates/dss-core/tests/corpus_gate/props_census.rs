@@ -39,6 +39,14 @@
 //! never a copy of them (RP0.2: a drifting copy would corrupt RP4.1's read
 //! silently). The mode still asserts nothing about the data.
 //!
+//! Both channels' rows are annotated, and the verdict is **channel-scoped**:
+//! three of the four links are r4133 mechanisms and answer nothing on capi
+//! (`claim_value` takes the channel), while the ledger link is a real capi
+//! mechanism and is applied on both. So a capi row is `ledger-hit` or
+//! `UNCLAIMED` and never `normalized-by-*`/`echo-row`/`under-floor` — the
+//! measured capi zero is the contract, not a property of today's data
+//! ([`Disposition::for_value`], RP2.1 audit round).
+//!
 //! It also carries the in-scope flag the plain mode does not need
 //! (`engines ∈ {"both", "r4133"}` — the vendored README's §"The in-scope
 //! filter"), so its tallies are directly comparable with `bins.tsv`'s
@@ -84,7 +92,8 @@
 //!   `claims_unclaimed_pairs.txt` — one row per pair still carrying an
 //!   `UNCLAIMED` cell, the work list RP2.2/RP2.3/RP2.4 read;
 //!   `claims_summary.json` — the per-disposition cell tallies (every
-//!   disposition, zeros included).
+//!   disposition, zeros included) plus `mixed_disposition_spellings`, the
+//!   spellings whose cells disagreed and were folded to the weakest verdict.
 //!
 //! Two vendored extracts are deliberately NOT re-derived here, because the plain
 //! census does not carry what they need: `bins.tsv` needs the §1.1 bin policy
@@ -189,16 +198,22 @@ impl Mode {
 /// `props_norm::tests::the_value_chain_resolves_in_order_and_agrees_with_the_seam`).
 /// Annotating rather than re-walking is what lets ONE run report both the raw
 /// census (RP0.1's baseline, unchanged) and the disposition of every cell in it.
+///
+/// **The variant order is load-bearing**, not cosmetic: it runs from the
+/// strongest claim to no claim at all, so `Ord`'s `max` is "the weakest link" —
+/// which is how [`ChannelExtracts::ingest`] folds two cells of one spelling that
+/// the per-(case, channel) ledger link dispositioned differently. Reordering
+/// these variants changes that aggregation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Disposition {
     /// [`props_norm::PROPS_NORM_R4133`] folds the two spellings
-    /// (RP2.1). The payload is the rule's tag.
+    /// (RP2.1). The payload is the rule's tag. **r4133 rows only.**
     Normalized(&'static str),
     /// [`props_norm::PROPS_ECHO_R4133`] excludes the pair (RP2.3 —
-    /// empty today).
+    /// empty today). **r4133 rows only.**
     Echo,
     /// The two sides are numbers inside the r4133 display floor (RP2.4 — the
-    /// floor is `None` today).
+    /// floor is `None` today). **r4133 rows only.**
     UnderFloor,
     /// A `property`-scoped ledger entry NAMES the cell (plan §1.1(e); the
     /// staging rule keeps r4133 property entries out of the tree until RP4.1,
@@ -238,12 +253,25 @@ impl Disposition {
         v
     }
 
-    /// **The chain, resolved for one value cell.** The harness half is the
-    /// shipped [`props_norm::claim_value`] (normalization → echo →
+    /// **The chain, resolved for one value cell of one CHANNEL.** The harness
+    /// half is the shipped [`props_norm::claim_value`] (normalization → echo →
     /// floor, the same predicates the live seam uses); the ledger link is
     /// appended here, last and only for a cell the harness left unclaimed,
     /// because the ledger lives in this binary and is per (case, channel).
+    ///
+    /// **The channel is a parameter, and it is not decoration.** This census
+    /// walks both channels and annotates the rows of both, while three of the
+    /// four links are r4133 mechanisms: `claim_value` therefore refuses every
+    /// channel but `R4133` (plan mechanic (b) at the measurement layer, pinned
+    /// in `props_norm`), and what remains on capi is the **ledger** link, which
+    /// is a real capi mechanism — the gate's own capi property compare applies
+    /// `property`-scoped entries (`makeposseq-cuf-applied-capi-props`), and the
+    /// full-population claims run measures 11 such hits. Before the RP2.1 audit
+    /// round this function was channel-blind, so a capi divergence whose
+    /// spelling an r4133 rule folds would have been reported
+    /// `normalized-by-<rule>` while the live capi comparator still failed on it.
     fn for_value(
+        channel: PropsChannel,
         element: &str,
         prop: &str,
         rust: &str,
@@ -251,7 +279,7 @@ impl Disposition {
         ledger_named: &BTreeSet<(String, String)>,
     ) -> Disposition {
         let class = element.split('.').next().unwrap_or("");
-        if let Some(claim) = props_norm::claim_value(class, prop, rust, oracle) {
+        if let Some(claim) = props_norm::claim_value(channel, class, prop, rust, oracle) {
             return match claim {
                 ValueClaim::Normalization(rule) => Disposition::Normalized(rule.tag()),
                 ValueClaim::Echo => Disposition::Echo,
@@ -421,9 +449,14 @@ impl Row {
         }
     }
 
-    /// Annotate this row with the r4133 policy chain's verdict — the claims
-    /// mode's whole added content. Value rows only: see [`Disposition`] for why
-    /// a `shape_count` row has no link to reach, and an error row no cell.
+    /// Annotate this row with the policy chain's verdict for **this row's
+    /// channel** — the claims mode's whole added content. Value rows only: see
+    /// [`Disposition`] for why a `shape_count` row has no link to reach, and an
+    /// error row no cell.
+    ///
+    /// The channel comes off the row itself ([`Row::channel`]), which is what
+    /// makes the capi arm of a claims run the identity plus the ledger — see
+    /// [`Disposition::for_value`].
     pub(crate) fn annotate(&mut self, ledger_named: &BTreeSet<(String, String)>) {
         if let RowKind::Value {
             element,
@@ -434,6 +467,7 @@ impl Row {
         } = &self.kind
         {
             self.disposition = Some(Disposition::for_value(
+                self.channel,
                 element,
                 prop,
                 rust,
@@ -530,11 +564,15 @@ type ExampleKey = (bool, String, String, String);
 struct ExampleAcc {
     cells: usize,
     cells_in_scope: usize,
-    /// The chain's verdict for this spelling. Constant per key — the chain is a
-    /// pure function of `(class, prop, rust, oracle)` — which is exactly why the
-    /// per-spelling extract can carry it, and why a disagreement between two
-    /// cells of one key would be a bug (asserted in [`ChannelExtracts::ingest`]).
+    /// The chain's verdict for this spelling — the **weakest** verdict any cell
+    /// of the key got (see [`ChannelExtracts::ingest`] for why that is an
+    /// aggregation and not a constant).
     disposition: Option<Disposition>,
+    /// Did two cells of this key get DIFFERENT verdicts? Only the ledger link
+    /// can do that (it is per (case, channel) by design), and the count of such
+    /// spellings rides the claims summary and the banner so the aggregation is
+    /// visible rather than silent.
+    mixed_disposition: bool,
 }
 
 /// A `(class, prop)` pair accumulator — the unit both pair extracts print.
@@ -675,14 +713,31 @@ impl ChannelExtracts {
                 if row.in_scope {
                     ex.cells_in_scope += 1;
                 }
-                match (ex.disposition, row.disposition) {
-                    (None, d) => ex.disposition = d,
-                    (Some(a), Some(b)) => assert_eq!(
-                        a, b,
-                        "the claim chain is a pure function of (class, prop, rust, oracle), \
-                         but {element}.{prop} answered {a:?} and {b:?} for one spelling"
-                    ),
-                    (Some(_), None) => {}
+                // **Aggregate, never assert.** The first three links of the
+                // chain ARE a pure function of `(class, prop, rust, oracle)`,
+                // but the fourth is not: a `property`-scoped ledger entry is per
+                // **(case, channel)** by design (`ledger.rs`, and
+                // `scheduler.rs` resolves a `LedgerView` per case), so one
+                // spelling that an entry names in case A and no entry names in
+                // case B legitimately answers `LedgerHit` and `Unclaimed` for
+                // the same key. The population is one deck away from it already
+                // — `gictransformer.r2 | '0.09522' | '0.12696'` occurs in two
+                // cases, each with its own entry. An assert here would abort a
+                // 56 s / 1e6-row walk on legitimate data, in a mode whose whole
+                // contract is that it asserts NOTHING (RP2.1 audit round).
+                //
+                // The aggregate is the WEAKEST verdict — `Disposition`'s
+                // declaration order runs claimed → `Unclaimed`, so `max` can
+                // only ever move a spelling toward the work list, never out of
+                // it. The conflict itself is counted and reported.
+                if let Some(d) = row.disposition {
+                    ex.disposition = Some(match ex.disposition {
+                        Some(prev) => {
+                            ex.mixed_disposition |= prev != d;
+                            prev.max(d)
+                        }
+                        None => d,
+                    });
                 }
             }
             RowKind::Shape {
@@ -718,6 +773,19 @@ impl ChannelExtracts {
     /// census (all five classes are homogeneous, re-verified 2026-08-22).
     fn heterogeneous_shape_classes(&self) -> usize {
         self.shape.values().filter(|(_, all)| all.len() > 1).count()
+    }
+
+    /// Spellings whose cells did **not** all get the same disposition — the
+    /// per-spelling extract prints one verdict per row, so those rows print the
+    /// aggregate (the weakest link) and this counts how many did. Only the
+    /// per-(case, channel) ledger link can produce one; `0` on every run
+    /// measured so far. Reported next to `heterogeneous_shape_classes`, and for
+    /// the same reason: a summary that cannot represent something must say so.
+    fn mixed_disposition_spellings(&self) -> usize {
+        self.examples
+            .values()
+            .filter(|a| a.mixed_disposition)
+            .count()
     }
 
     /// `class.prop | 'rust' | '<channel>' | rows` (examples cut at 40 chars —
@@ -885,6 +953,9 @@ impl ChannelExtracts {
             // cannot read as "claimed" (see `Disposition`).
             "shape_rows": self.shape_rows,
             "shape_rows_in_scope": self.shape_rows_in_scope,
+            // Spellings whose cells disagreed and were folded to the weakest
+            // verdict (`ChannelExtracts::ingest`) — 0 on every measured run.
+            "mixed_disposition_spellings": self.mixed_disposition_spellings(),
         })
     }
 
@@ -1170,6 +1241,16 @@ pub(crate) fn write_artifacts(
                 e.shape_rows,
                 e.shape_rows_in_scope,
             );
+            let mixed = e.mixed_disposition_spellings();
+            if mixed > 0 {
+                eprintln!(
+                    "  {}: NOTE — {mixed} spelling(s) got MORE THAN ONE disposition across \
+                     their cells (only the per-(case, channel) ledger link can do that); \
+                     claims.txt prints the weakest of them per row. The lossless record is \
+                     props_census.json's per-row `disposition`.",
+                    ch.tag()
+                );
+            }
         }
         let het = e.heterogeneous_shape_classes();
         if het > 0 {
@@ -1561,6 +1642,135 @@ mod tests {
         };
         shape.annotate(&named);
         assert!(shape.disposition.is_none());
+    }
+
+    /// **The capi arm of a claims run is the identity plus the ledger.**
+    ///
+    /// Three of the chain's four links are r4133 mechanisms; the ledger link is
+    /// a real capi one (the gate applies `property`-scoped entries on that
+    /// channel — `makeposseq-cuf-applied-capi-props`, 11 hits on the measured
+    /// full population). So the SAME cell that folds on r4133 must come back
+    /// `UNCLAIMED` on capi, while a ledger-named cell is `ledger-hit` on both.
+    ///
+    /// This is the RP2.1 audit round's fix: `annotate` used to ignore the row's
+    /// channel, so the measured "capi normalizes nothing" was a statement about
+    /// today's capi population rather than about the contract.
+    #[test]
+    fn the_capi_channel_reaches_no_r4133_link() {
+        let named: BTreeSet<(String, String)> =
+            [("regcontrol.r1".to_string(), "fwdthreshold".to_string())]
+                .into_iter()
+                .collect();
+        for (element, prop, rust, oracle, r4133_want, capi_want) in [
+            (
+                "Capacitor.c1",
+                "enabled",
+                "Yes",
+                "true",
+                "normalized-by-BoolFold",
+                "UNCLAIMED",
+            ),
+            (
+                "Transformer.t1",
+                "conn",
+                "wye",
+                "wye ",
+                "normalized-by-CaseFold",
+                "UNCLAIMED",
+            ),
+            (
+                "Line.l1",
+                "ratings",
+                "[ 400]",
+                "[400,]",
+                "normalized-by-ArrayForm",
+                "UNCLAIMED",
+            ),
+            // The one link both channels share.
+            (
+                "RegControl.r1",
+                "fwdthreshold",
+                "100",
+                "",
+                "ledger-hit",
+                "ledger-hit",
+            ),
+        ] {
+            for (channel, want) in [
+                (PropsChannel::R4133, r4133_want),
+                (PropsChannel::CapiV0145, capi_want),
+            ] {
+                let mut row = value_row(element, prop, rust, oracle, true);
+                row.channel = channel;
+                row.annotate(&named);
+                assert_eq!(
+                    row.disposition.expect("a value row is dispositioned").tag(),
+                    want,
+                    "{element}.{prop} on {}",
+                    channel.tag()
+                );
+            }
+        }
+    }
+
+    /// **Two cells of one spelling may legitimately disagree, and the census
+    /// records that instead of dying on it.**
+    ///
+    /// The first three links are a pure function of `(class, prop, rust,
+    /// oracle)`; the fourth is not — a `property` ledger scope is per (case,
+    /// channel), so one spelling named by an entry in case A and by none in
+    /// case B answers `ledger-hit` there and `UNCLAIMED` here. RP2.1 first
+    /// shipped an `assert_eq!` on that pair, which would have aborted a 56 s /
+    /// 1e6-row walk in a mode whose contract is that it asserts nothing (audit
+    /// round). The aggregate is the WEAKEST verdict, and the conflict is
+    /// counted.
+    #[test]
+    fn a_spelling_dispositioned_two_ways_aggregates_to_the_weakest() {
+        let mut e = ChannelExtracts::default();
+        let mut ingest = |case: &str, disposition: Disposition| {
+            let mut row = value_row("GICTransformer.g1", "r2", "0.09522", "0.12696", true);
+            row.case = case.to_string();
+            row.disposition = Some(disposition);
+            e.ingest(&row);
+        };
+        // Case A carries the entry, case B does not — the shape the two
+        // `gic-pct-r2-honoured-*-capi-props` entries are one deck away from.
+        ingest(
+            "asymmetric:gic/gictransformer_gic.dss",
+            Disposition::LedgerHit,
+        );
+        ingest("asymmetric:gic/a_third_deck.dss", Disposition::Unclaimed);
+        assert_eq!(e.mixed_disposition_spellings(), 1);
+        assert_eq!(
+            e.claims_text("r4133"),
+            "class.prop | rust | r4133 | count | count_in_scope | disposition\n\
+             gictransformer.r2 | '0.09522' | '0.12696' | 2 | 2 | UNCLAIMED\n"
+        );
+        assert_eq!(e.claims_summary()["mixed_disposition_spellings"], 1);
+        // Order of arrival must not change the aggregate.
+        let mut back = ChannelExtracts::default();
+        for d in [Disposition::Unclaimed, Disposition::LedgerHit] {
+            let mut row = value_row("GICTransformer.g1", "r2", "0.09522", "0.12696", true);
+            row.disposition = Some(d);
+            back.ingest(&row);
+        }
+        assert_eq!(
+            back.examples.values().next().unwrap().disposition,
+            Some(Disposition::Unclaimed)
+        );
+        assert_eq!(back.mixed_disposition_spellings(), 1);
+        // An UNcontested spelling is not counted, and keeps its own verdict.
+        let mut clean = ChannelExtracts::default();
+        for _ in 0..3 {
+            let mut row = value_row("Capacitor.c1", "enabled", "Yes", "true", true);
+            row.annotate(&BTreeSet::new());
+            clean.ingest(&row);
+        }
+        assert_eq!(clean.mixed_disposition_spellings(), 0);
+        assert_eq!(
+            clean.claims_summary()["per_disposition"]["normalized-by-BoolFold"]["cells"],
+            3
+        );
     }
 
     /// The claims artifacts: `claims.txt` is `examples_full.txt`'s rows in the

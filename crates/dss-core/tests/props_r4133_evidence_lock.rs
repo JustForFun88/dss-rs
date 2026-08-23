@@ -51,6 +51,9 @@ use sha2::{Digest, Sha256};
 /// The vendored evidence directory, repo-root-relative.
 const DIR: &str = "tests/corpus/props_r4133";
 
+/// The one file in [`DIR`] that carries `#` comment lines — see [`data_rows`].
+const SUPPLEMENT: &str = "examples_supplement.txt";
+
 /// The five verbatim copies: name, SHA-256 over the raw bytes, byte length.
 /// Their total is the 24 944 bytes the plan's RP0.1 text and the README quote.
 const VERBATIM: &[(&str, &str, usize)] = &[
@@ -193,18 +196,24 @@ fn read(name: &str) -> String {
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
-/// Non-empty, non-comment lines with the CR of the CRLF files stripped, header
-/// dropped when `header` is `Some` (and asserted to be exactly that string).
+/// Non-empty lines with the CR of the CRLF files stripped, header dropped when
+/// `header` is `Some` (and asserted to be exactly that string).
 ///
-/// Only one file here carries comments — `examples_supplement.txt`, whose
-/// `#`-prefixed provenance header IS the bin assignment of the pairs it holds
-/// (they have no `bins.tsv` row); the frozen extracts have none.
+/// `#`-prefixed lines are dropped **for `examples_supplement.txt` only**, whose
+/// provenance header IS the bin assignment of the pairs it holds (they have no
+/// `bins.tsv` row). The frozen extracts carry no comment line and are not
+/// allowed to grow one: for them a `#` line stays a data row, so it fails the
+/// row-count lock loudly. (RP2.1 first widened the filter to every file, which
+/// quietly made a `#` line inserted into a frozen extract invisible to
+/// [`derived_extracts_keep_their_row_counts`] — the only assertion that would
+/// have seen it. Audit round.)
 fn data_rows(name: &str, header: Option<&str>) -> Vec<String> {
+    let comments_allowed = name == SUPPLEMENT;
     let text = read(name);
     let mut rows: Vec<String> = text
         .lines()
         .map(|l| l.trim_end_matches('\r').to_string())
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .filter(|l| !l.is_empty() && !(comments_allowed && l.starts_with('#')))
         .collect();
     if let Some(want) = header {
         let got = rows.first().cloned().unwrap_or_default();
@@ -368,6 +377,17 @@ fn derived_extracts_keep_their_row_counts() {
             "{name}: {} data rows, expected {want}",
             rows.len()
         );
+        // The comment convention is the supplement's alone (see `data_rows`):
+        // a `#` line anywhere else is either a hand edit of frozen evidence or
+        // a generator change, and either way the lock must see it.
+        if *name != SUPPLEMENT {
+            assert!(
+                !read(name).lines().any(|l| l.starts_with('#')),
+                "{name}: a `#`-prefixed line appeared in a frozen extract — only \
+                 {SUPPLEMENT} carries comments, and this file's row count is what \
+                 guards its bytes"
+            );
+        }
     }
 }
 

@@ -80,6 +80,9 @@ use harness::{PROPS_015X, prop_015x};
 /// The vendored evidence directory, repo-root-relative.
 const DIR: &str = "tests/corpus/props_r4133";
 
+/// The one file in [`DIR`] that carries `#` comment lines — see [`data_rows`].
+const SUPPLEMENT: &str = "examples_supplement.txt";
+
 // ---------------------------------------------------------------------------
 // Count locks (`props_roundtrip.rs:62-68,238` pattern — equalities, both ways).
 // Every number below is a measurement over the vendored files; moving one
@@ -101,6 +104,44 @@ const CLAIMED_CASE_FOLD: usize = 442;
 const CLAIMED_ARRAY_FORM: usize = 192;
 /// …and in total (the three above; `EnumSynonym` ships with zero rows).
 const CLAIMED_TOTAL: usize = 748;
+
+/// **What the LIVE population claims, against what this evidence base can see.**
+///
+/// The two accountings are not the same number and must not be pretended to be:
+/// the RP2.1 full-population claims census measured **749** claimed spellings on
+/// the r4133 channel (vendored `README.md` §"What the r4133 policy claims
+/// today") against the 748 above. The difference is [`LIVE_ONLY_SPELLINGS`] —
+/// spellings that exist live but that **no vendored file may carry**, because
+/// they sit on a pair that already has a `bins.tsv` row (the supplement's own
+/// lock forbids a pair in both files, `props_r4133_evidence_lock.rs`
+/// `the_supplement_carries_only_pairs_no_frozen_row_can`).
+///
+/// Recorded as a term with its own assertions rather than left as drift: the
+/// replay's count locks are locks on the vendored files, so without this the two
+/// populations could diverge silently while the module doc kept claiming
+/// "spelling-level completeness before the unmask" (RP2.1 audit round).
+const CLAIMED_TOTAL_LIVE: usize = 749;
+
+/// The spellings the live claims census sees and the vendored evidence cannot,
+/// each with the pair it belongs to, the two sides, and why no file carries it.
+///
+/// One entry today: RP1.2's `XfmrCode` port added a deck that reads the
+/// AutoTrans **series** winding, whose `Conn` getter is the third arm of the
+/// same `CASE` the `CaseFold` trailing-blank rows cite —
+/// `2: Result := 'Series';`
+/// (`Version8/Source/PDElements/AutoTrans.pas:1820`, next to `'wye '` at `:1818`
+/// and `'Delta '` at `:1819`; winding 1 is always `SERIES`, `:620`). So the
+/// pre-existing bin-2 pair `autotrans.conn` grew a third spelling. Its
+/// `bins.tsv` row is frozen at the two the 2026-08-08 walk saw
+/// (`'wye'`/`'wye '`, `'delta'`/`'Delta '`),
+/// and §"Pairs the WP-RP1 shape closures make live" records only pairs a closure
+/// **created** — a new spelling on an existing pair has no home in either.
+const LIVE_ONLY_SPELLINGS: &[(&str, &str, &str, &str)] = &[(
+    "autotrans.conn",
+    "series",
+    "Series",
+    "RP1.2's XfmrCode deck; the pair's frozen bins.tsv row predates it",
+)];
 
 /// Example rows claimed by the chain's other three links. All zero in RP2.1 and
 /// each for a *different* reason — see [`Link`].
@@ -185,8 +226,8 @@ const BIN7_ROOT_CAUSE: &[&str] = &[
 ///   (`:1885-1888`), so slots 4 and 5 fall through to the `PropertyValue[]`
 ///   store (`General/DSSObject.pas:112-115`);
 /// * `regcontrol.revthreshold` — `RegControl.pas:820-827` overrides only TapNum
-///   and `:1437` freezes `PropertyValue[23] := '100'`, the sibling of
-///   `remoteptratio` (`:1441`), measured at 888 cells by RP2.1 part A.
+///   and `:1448` freezes `PropertyValue[23] := '100'`, the sibling of
+///   `remoteptratio` (`:1452`), measured at 888 cells by RP2.1 part A.
 const BIN7_ECHO_SUPPLEMENT: &[&str] = &[
     "autotrans.pctperm",
     "autotrans.repair",
@@ -202,6 +243,16 @@ const BIN7_ECHO_SUPPLEMENT: &[&str] = &[
 /// getter and routes it (an `EnumSynonym` row, an RP2.3 echo row, or a new
 /// RP3.5+ sub-step), which is exactly the "later sub-steps move rows between
 /// mechanisms" the accounting is built for.
+///
+/// **Four of these pairs already carry an RP2.1 `ArrayForm` row**, and RP2.2
+/// must read their getters anyway (disclosure, audit round —
+/// `harness/props_norm.rs` §"Four rows this table DOES hold sit on RP2.2's S6
+/// list"): `invcontrol.monbus` / `monbusesvbase`, where every census spelling
+/// folds (bracketed vs bare, equal token counts), and `swtcontrol.normal` /
+/// `state`, where only the one-token spelling folds — 1 cell of 59 each, while
+/// the 58/31/27-cell per-phase renders are refused by the token-count rule and
+/// land here. A row on this list is therefore not proof that RP2.1 left the pair
+/// alone; it is proof that the pair's *unclaimed* cells are RP2.2's.
 const RP22_S6: &[&str] = &[
     "expcontrol.derlist",
     "invcontrol.monbus",
@@ -484,14 +535,21 @@ fn read(name: &str) -> String {
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
-/// Non-empty, non-comment lines with the CR of a CRLF file stripped; the header
-/// line is asserted and dropped when `header` is `Some`.
+/// Non-empty lines with the CR of a CRLF file stripped; the header line is
+/// asserted and dropped when `header` is `Some`.
+///
+/// `#` lines are dropped for [`SUPPLEMENT`] only — its provenance header is the
+/// bin assignment of the pairs it holds. The frozen extracts carry no comment,
+/// and keeping the filter off them means a `#` line inserted into one is a data
+/// row here too, i.e. loud (`props_r4133_evidence_lock.rs` makes the same split
+/// for the same reason — RP2.1 audit round).
 fn data_rows(name: &str, header: Option<&str>) -> Vec<String> {
+    let comments_allowed = name == SUPPLEMENT;
     let text = read(name);
     let mut rows: Vec<String> = text
         .lines()
         .map(|l| l.trim_end_matches('\r').to_string())
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .filter(|l| !l.is_empty() && !(comments_allowed && l.starts_with('#')))
         .collect();
     if let Some(want) = header {
         let got = rows.first().cloned().unwrap_or_default();
@@ -1165,6 +1223,54 @@ fn every_example_row_is_claimed_or_declared_exactly_once() {
         "rows matched by more than one link — RP2.3's echo rows will make this positive, and the \
          first-match order (pinned by first_match_returns_the_earliest_link) is what decides them"
     );
+}
+
+/// **The offline evidence base is one spelling behind the live population, and
+/// that term is asserted rather than assumed** (RP2.1 audit round).
+///
+/// The replay proves per-spelling completeness over the vendored files; the
+/// claims census measures it over the live corpus. The two differ by
+/// [`LIVE_ONLY_SPELLINGS`] — 749 live against 748 here — and every part of that
+/// statement is checked here: the count reconciles, each live-only spelling is
+/// really claimed by the shipped table (so a future narrowing of the rule that
+/// claims it reds this test, not just RP4.1), each sits on a pair the table
+/// holds, and each sits on a pair the supplement **cannot** carry.
+#[test]
+fn the_live_only_spellings_are_claimed_and_reconcile_the_two_accountings() {
+    let corpus = Corpus::load();
+    assert_eq!(
+        CLAIMED_TOTAL + LIVE_ONLY_SPELLINGS.len(),
+        CLAIMED_TOTAL_LIVE,
+        "the vendored claim count plus the live-only spellings must equal what the \
+         full-population claims census measured (README §\"What the r4133 policy claims today\")"
+    );
+    for (pair, rust, r4133, why) in LIVE_ONLY_SPELLINGS {
+        let (class, prop) = pair.split_once('.').expect("class.prop");
+        // Claimed by the shipped table, through the shipped predicate.
+        let row = props_norm::claiming_row(class, prop, rust, r4133).unwrap_or_else(|| {
+            panic!(
+                "{pair} '{rust}' vs '{r4133}' ({why}) is claimed live but NOT by \
+                 PROPS_NORM_R4133 — the live population and this evidence base have drifted"
+            )
+        });
+        assert_eq!((row.class, row.prop), (class, prop));
+        // And it is invisible to both vendored files, for the recorded reason:
+        // the pair has a frozen `bins.tsv` row, which is exactly what bars it
+        // from the supplement.
+        assert!(
+            corpus.bins.contains_key(*pair),
+            "{pair} has no bins.tsv row — then the supplement could carry this spelling, and it \
+             should, instead of living in this list"
+        );
+        assert!(
+            !corpus
+                .rows
+                .iter()
+                .any(|r| &r.pair == pair && r.rust == *rust && r.r4133 == *r4133),
+            "{pair} '{rust}' vs '{r4133}' IS in the vendored evidence after all — drop it from \
+             LIVE_ONLY_SPELLINGS and move the count with it"
+        );
+    }
 }
 
 /// **Liveness both ways, offline** (plan mechanic (d)): every row of
