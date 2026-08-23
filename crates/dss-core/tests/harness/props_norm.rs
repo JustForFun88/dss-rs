@@ -10,9 +10,19 @@
 //! cell it is about to assert on; a rule that recognises the two spellings as
 //! the SAME value re-spells the oracle side as ours, and the assert then sees
 //! two identical strings. On the `capi_v0145` channel the table is never
-//! consulted at all (plan mechanic (b), capi-invariance — the switch is
-//! `PropsPolicy::is_r4133`, pinned by
-//! `props_policy_tests::the_capi_channel_never_normalizes`).
+//! consulted at all (plan mechanic (b), capi-invariance).
+//!
+//! That statement has to hold at **two** seams, because the table has two
+//! callers, and each carries its own channel gate:
+//!
+//! * the live comparator — [`normalize_r4133`], reached only from
+//!   `PropsPolicy::normalize`'s r4133 arm (`PropsPolicy::is_r4133`, pinned by
+//!   `props_policy_tests::the_capi_channel_never_normalizes`);
+//! * the offline/measurement query — [`claim_value`], which the claims census
+//!   asks about the rows of **both** channels and which therefore takes the
+//!   channel itself and answers `None` on capi (pinned by
+//!   [`tests::the_capi_channel_claims_nothing`]). It was channel-blind as first
+//!   landed; the RP2.1 audit round fixed it.
 //!
 //! # The contract: value-preserving normalization ONLY (plan mechanic (c))
 //!
@@ -78,11 +88,33 @@
 //! first match in the chain, so a row here and an RP2.3 echo row can coexist on
 //! one pair — the rule fires on the foldable cells and the echo row masks the
 //! rest.
+//!
+//! # Four rows this table DOES hold sit on RP2.2's S6 list (disclosure)
+//!
+//! The exclusion list above says which S6 pairs take no row; the converse is
+//! worth stating too, because plan §RP2.2 hands RP2.2 a *dossier* obligation
+//! (read the r4133 getter) that a claimed cell does not discharge:
+//!
+//! * `invcontrol.monbus`, `invcontrol.monbusesvbase` — **every** census
+//!   spelling folds (bracketed vs bare, token for token, equal counts), so
+//!   RP2.2 will find nothing left to route on them;
+//! * `swtcontrol.normal`, `swtcontrol.state` — only the single **one-token**
+//!   spelling folds (`'closed'` vs `'[closed, ]'`, 1 cell of 59 on each pair).
+//!   Their main spellings — `'closed'`/`'open'` against r4133's three-element
+//!   per-phase render, 58 + 31 + 27 cells — are refused by the token-count rule
+//!   and are declared to RP2.2, exactly like their twins `relay.normal`/`state`
+//!   (whose ONLY spelling is that shape, which is why those two take no row at
+//!   all). So RP2.2 still owns the per-phase question for all four; what RP2.1
+//!   claims here is two cells whose two sides carry the same single token.
+//!
+//! Pinned by `arrayform_folds_delimiters_not_contents` (both directions on both
+//! `swtcontrol` pairs) and by `props_r4133_replay`'s `RP22_S6` accounting.
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrd};
 
+use super::PropsChannel;
 use NormRule::{ArrayForm, BoolFold, CaseFold, EnumSynonym};
 
 /// One typed normalization rule. **Typed, not a regex** — each variant names a
@@ -137,6 +169,16 @@ pub enum NormRule {
     /// will hang; today the floor is `None` and the compare is exact), other
     /// tokens ASCII-case-insensitively. The token **count** must match, so a
     /// one-element array never folds into a three-element one.
+    ///
+    /// Because *every* delimiter is a separator, a **bare** render folds against
+    /// a delimited one at any length — that is the census's own bin-4 shape, not
+    /// an accident: `invcontrol.monbus` `'[A.1, A.2, A.3]'` vs `'A.1 A.2 A.3'`
+    /// (three tokens) and `'[r.1.2.3]'` vs `'r.1.2.3'` (one), and the mirror
+    /// case `swtcontrol.normal` `'closed'` vs `'[closed, ]'`, where the **bare**
+    /// side is ours. A single-token side is therefore a one-element array
+    /// whichever way round the brackets sit; what it still never folds into is a
+    /// three-element one (`'closed'` vs `'[closed, closed, closed, ]'`, 58 cells
+    /// of that same pair, stays unclaimed — see the module doc's S6 note).
     ///
     /// A side that yields no token is refused (`''`, `'[]'`, `'()'`): an empty
     /// render carries no value to preserve and is bin 5's echo territory —
@@ -416,10 +458,16 @@ const NORM_ENUM_SYNONYM_ROWS: usize = 0;
 /// is named now so RP2.4 lands a derived number plus its
 /// `tests/TOLERANCE_NOTES.md` section, not a mechanism.
 ///
-/// It is consulted **only** from [`numbers_match`], i.e. only inside
-/// [`NormRule::ArrayForm`] on the r4133 channel — never on the capi channel,
-/// never by `tol_for`, and it touches no `Tolerances` field (plan §1.2 last
-/// bullet, §1.3 "No tolerance tier moves").
+/// It is consulted **only** from [`numbers_match`], which has exactly two
+/// callers — [`NormRule::ArrayForm`]'s per-token compare (through
+/// [`tokens_match`]) and [`claim_value`]'s fourth link, which applies it to a
+/// whole scalar cell. **Both are r4133-only**: the first because only the
+/// r4133 arm of `PropsPolicy::normalize` reaches the table, the second because
+/// `claim_value` refuses every channel but [`PropsChannel::R4133`] (the RP2.1
+/// audit fix — before it the census annotated capi rows through this chain, so
+/// a floor landing in RP2.4 would have been consulted on the capi channel too).
+/// It is never read by `tol_for` and touches no `Tolerances` field (plan §1.2
+/// last bullet, §1.3 "No tolerance tier moves").
 const R4133_DISPLAY_FLOOR: Option<f64> = None;
 
 /// **The floor slot, read back** — the RP2.1 part-C replay's chain needs a
@@ -638,9 +686,32 @@ static NORM_HITS: [AtomicUsize; PROPS_NORM_R4133.len()] =
 /// vendored census example row — is RP2.1 part C's replay test, which does not
 /// need the live gate at all.
 pub fn assert_norm_rows_are_live() {
-    for (i, r) in PROPS_NORM_R4133.iter().enumerate() {
-        let visits = NORM_VISITS[i].load(AtomicOrd::Relaxed);
-        let hits = NORM_HITS[i].load(AtomicOrd::Relaxed);
+    let read = |c: &[AtomicUsize]| -> Vec<usize> {
+        c.iter().map(|c| c.load(AtomicOrd::Relaxed)).collect()
+    };
+    check_rows_are_live(PROPS_NORM_R4133, &read(&NORM_VISITS), &read(&NORM_HITS));
+}
+
+/// The staleness rule itself, over **injected** counters.
+///
+/// [`assert_norm_rows_are_live`] is a two-line adapter over this, and the split
+/// is the whole point: `NORM_VISITS`/`NORM_HITS` are private process-global
+/// statics with no way to make them stale from a test, so before the RP2.1 audit
+/// round nothing in the tree proved this guard can fire — it is structurally
+/// silent until RP4.1 unmasks the r4133 props path, and at that moment it
+/// becomes the sole live anti-rot guard for all 157 rows. With the counters as
+/// parameters the two directions are pinned offline
+/// ([`tests::the_liveness_guard_is_silent_when_dormant_or_live`] and
+/// [`tests::the_liveness_guard_fires_on_a_stale_row`]), so the guard is proven
+/// before it is relied on.
+fn check_rows_are_live(table: &[NormRow], visits: &[usize], hits: &[usize]) {
+    assert_eq!(
+        (table.len(), table.len()),
+        (visits.len(), hits.len()),
+        "the counters are indexed exactly like the table"
+    );
+    for (i, r) in table.iter().enumerate() {
+        let (visits, hits) = (visits[i], hits[i]);
         assert!(
             visits == 0 || hits > 0,
             "stale r4133 property normalization row: {}.{} ({}) folded nothing \
@@ -770,7 +841,29 @@ impl ValueClaim {
 /// It does **not** touch [`NORM_VISITS`]/[`NORM_HITS`]: those stay the exclusive
 /// record of what the live gate saw, so a census run can never make a stale row
 /// look live (`assert_norm_rows_are_live`).
-pub fn claim_value(class: &str, prop: &str, rust: &str, oracle: &str) -> Option<ValueClaim> {
+///
+/// **It takes the channel, and answers `None` for every channel but
+/// [`PropsChannel::R4133`]** — plan mechanic (b) applied to the *measurement*
+/// layer, not only to the comparator. The live seam is channel-gated by
+/// `PropsPolicy::is_r4133`, but this query has a second caller that is not: the
+/// claims census annotates the rows of **both** channels
+/// (`corpus_gate/props_census.rs`, `Row::annotate`). Before the RP2.1 audit fix
+/// it was channel-blind, so a capi divergence whose spelling an r4133 rule folds
+/// would have been reported `normalized-by-<rule>` while the live capi
+/// comparator still failed on it — and the measured "capi normalizes nothing"
+/// would have been a property of today's data instead of the contract. With the
+/// parameter it is the contract, pinned by
+/// [`tests::the_capi_channel_claims_nothing`].
+pub fn claim_value(
+    channel: PropsChannel,
+    class: &str,
+    prop: &str,
+    rust: &str,
+    oracle: &str,
+) -> Option<ValueClaim> {
+    if channel != PropsChannel::R4133 {
+        return None;
+    }
     if let Some(row) = claiming_row(class, prop, rust, oracle) {
         return Some(ValueClaim::Normalization(row.rule));
     }
@@ -1019,6 +1112,104 @@ mod tests {
         assert_eq!(fold_bool("   "), None, "blank is not a boolean");
     }
 
+    /// **The accepted set is CLOSED** — the guard the per-kind fold tests above
+    /// do not give, and the RP2.1 audit round's one major finding.
+    ///
+    /// Those tests are sample-based: real census spellings on the accept side, a
+    /// handful of hand-picked negatives on the refuse side. Nothing in them says
+    /// the accepted set has a *boundary*, so a widening that no sample happens to
+    /// touch is invisible — measured, not supposed: adding `"on"`/`"off"` to
+    /// [`fold_bool`]'s two lists left the whole suite green.
+    ///
+    /// That matters because `fold_bool` is where "spelling, never value" is
+    /// decided for 77 rows and ~294 500 cells. `on`/`off` is the sharp case: it
+    /// is not one of the eleven Delphi boolean spellings r4133's getters print
+    /// (vendored `README.md` §"Bin 1 carries nine echo pairs, not three", and
+    /// `props_r4133_replay::BOOL_SPELLINGS`), so admitting it would let the table
+    /// fold a rendering neither engine produces for a boolean — and, in a mixed
+    /// bin-1 pair, could swallow a `PropertyValue[]` echo that RP2.3 must
+    /// exclude with a citation instead.
+    ///
+    /// So the universe below is walked EXHAUSTIVELY: every string in it is
+    /// asserted against its intended verdict, accept and refuse alike.
+    #[test]
+    fn boolfold_accepts_a_closed_set_of_spellings() {
+        // The accepted vocabulary, as the doc on `NormRule::BoolFold` states it:
+        // {yes, y, true} / {no, n, false}, case-insensitive, outer trim.
+        const TRUE_TOKENS: &[&str] = &["yes", "y", "true"];
+        const FALSE_TOKENS: &[&str] = &["no", "n", "false"];
+        // Everything else a getter, a parse store or a well-meaning widening
+        // might offer. NONE of these is a boolean spelling.
+        const NOT_BOOLEAN: &[&str] = &[
+            "", "   ", "on", "ON", "On", "off", "OFF", "Off", "1", "0", "-1", "2", "t", "f", "T",
+            "F", "tru", "truee", "yess", "ye", "nope", "none", "null", "nil", "enabled",
+            "disabled", "y n", "yes no", "y.", "-y", "*", "0.20", "100",
+        ];
+
+        let variants = |t: &str| {
+            [
+                t.to_string(),
+                t.to_uppercase(),
+                // Title case, and the outer whitespace the rule trims.
+                format!("{}{}", t[..1].to_uppercase(), &t[1..]),
+                format!("  {t}"),
+                format!("{t}\t"),
+                format!(" {} ", t.to_uppercase()),
+            ]
+        };
+        for t in TRUE_TOKENS {
+            for v in variants(t) {
+                assert_eq!(fold_bool(&v), Some(true), "{v:?} spells TRUE");
+            }
+        }
+        for t in FALSE_TOKENS {
+            for v in variants(t) {
+                assert_eq!(fold_bool(&v), Some(false), "{v:?} spells FALSE");
+            }
+        }
+        for s in NOT_BOOLEAN {
+            assert_eq!(
+                fold_bool(s),
+                None,
+                "{s:?} is NOT a boolean spelling — admitting it would let BoolFold \
+                 equate two different values, which is the one thing a rule may never do"
+            );
+        }
+
+        // The eleven spellings the census actually measured on the r4133 side of
+        // a bin-1 pair must all be inside the accepted set (the population this
+        // kind exists for), and each must fold against OUR `Yes`/`No`.
+        for (spelling, want) in [
+            ("true", true),
+            ("True", true),
+            ("YES", true),
+            ("yes", true),
+            ("y", true),
+            ("Y", true),
+            ("false", false),
+            ("False", false),
+            ("no", false),
+            ("NO", false),
+            ("n", false),
+        ] {
+            assert_eq!(
+                fold_bool(spelling),
+                Some(want),
+                "census spelling {spelling:?}"
+            );
+            let ours = if want { "Yes" } else { "No" };
+            assert!(
+                BoolFold.claims(ours, spelling),
+                "{ours} vs {spelling:?} is a census cell this kind must fold"
+            );
+            let opposite = if want { "No" } else { "Yes" };
+            assert!(
+                !BoolFold.claims(opposite, spelling),
+                "{opposite} vs {spelling:?} is the OPPOSITE value"
+            );
+        }
+    }
+
     // ------------------------------------------------------------- CaseFold
 
     /// Case-only differences fold (both engines resolve identifiers through a
@@ -1060,6 +1251,73 @@ mod tests {
         assert!(!claimed("transformer", "xfmrcode", "ct 25", "ct25"));
     }
 
+    /// **`CaseFold` may drop CASE and OUTER BLANKS — never a character.**
+    ///
+    /// The companion of [`boolfold_accepts_a_closed_set_of_spellings`], and the
+    /// second half of the RP2.1 audit round's major finding: a
+    /// character-dropping widening of this predicate passes every other test in
+    /// the tree. Measured — `rust.trim().trim_start_matches('-')` on both sides
+    /// left the whole suite green.
+    ///
+    /// The live cost of that particular widening is exact and large:
+    /// `regcontrol.revthreshold` is literally `'-100'` (ours) against `'100'`
+    /// (r4133) over **888 cells** — an `EchoDefault` frozen at
+    /// `Version8/Source/Controls/RegControl.pas:1448`, vendored in
+    /// `examples_supplement.txt` and owed a cited exclusion row plus a pin by
+    /// RP2.3. A sign-blind `CaseFold` would fold exactly that class of real
+    /// divergence into silence.
+    ///
+    /// The pin is written on the **predicate**, not on a table row, so it holds
+    /// for every present and future `CaseFold` pair.
+    #[test]
+    fn casefold_never_drops_a_character() {
+        // Accept: differences that are case and/or OUTER whitespace only.
+        for (a, b) in [
+            ("ct25", "CT25"),
+            ("wye", "wye "),
+            ("delta", "Delta "),
+            (" idling", "IDLING "),
+            ("-100", "-100 "),
+            ("mydiffeq", "myDiffEq"),
+        ] {
+            assert!(
+                CaseFold.claims(a, b),
+                "{a:?} vs {b:?} differs only in case/trim"
+            );
+        }
+        // Refuse: every transform that changes WHICH value the string denotes.
+        for (a, b, what) in [
+            (
+                "-100",
+                "100",
+                "a dropped sign — regcontrol.revthreshold, 888 cells",
+            ),
+            ("100", "-100", "a dropped sign, the other way"),
+            ("-800", "800", "the pair's second spelling"),
+            ("+5", "5", "a dropped plus"),
+            ("007", "7", "dropped leading zeros"),
+            ("100", "1000", "a dropped digit"),
+            ("ct 25", "ct25", "dropped INNER whitespace"),
+            ("b2.1", "b21", "a dropped separator"),
+            ("b2.0", "b2.0.0.0", "dropped node references"),
+            ("line.thev", "thev", "a dropped class prefix"),
+            ("", "0", "an empty render against a value"),
+            ("0", "", "…and the mirror"),
+            (
+                "0.20",
+                "0.2",
+                "a numeric re-render — CaseFold is not a number rule",
+            ),
+        ] {
+            assert!(
+                !CaseFold.claims(a, b),
+                "CaseFold claimed {a:?} vs {b:?} ({what}) — it may fold CASE and OUTER \
+                 blanks and nothing else; a rule may change how a value is SPELLED, \
+                 never WHICH value it is"
+            );
+        }
+    }
+
     // ------------------------------------------------------------ ArrayForm
 
     /// Bracket/paren/comma forms fold token for token; the token COUNT and
@@ -1099,6 +1357,32 @@ mod tests {
         assert!(claimed("sensor", "kvars", "[ 0 0 0]", "[0.0, 0.0, 0.0]"));
         // Non-numeric tokens fold case-insensitively.
         assert!(claimed("swtcontrol", "normal", "closed", "[CLOSED, ]"));
+        // The two S6 pairs this table holds, BOTH directions, exactly as the
+        // census measured them (module doc §"Four rows this table DOES hold sit
+        // on RP2.2's S6 list"): the ONE-token spelling folds — one cell of 59 on
+        // each pair — and the three-element per-phase render does not, so RP2.2
+        // still owns the per-phase question on all four S6 array pairs.
+        assert!(claimed("swtcontrol", "state", "closed", "[closed, ]"));
+        assert!(!claimed(
+            "swtcontrol",
+            "normal",
+            "closed",
+            "[closed, closed, closed, ]"
+        ));
+        assert!(!claimed(
+            "swtcontrol",
+            "state",
+            "open",
+            "[open, open, open, ]"
+        ));
+        // Its twins `relay.normal`/`relay.state` carry no row at all, so the
+        // same shape reaches the assert raw there.
+        assert!(!claimed(
+            "relay",
+            "normal",
+            "[closed, closed, closed, ]",
+            "[closed, ]"
+        ));
         // DISCRIMINATION 1 — a corrupted token.
         assert!(!claimed("energymeter", "option", "[E, R, C]", "(E, X, C)"));
         assert!(!claimed("swtcontrol", "state", "closed", "[open, ]"));
@@ -1141,6 +1425,48 @@ mod tests {
         );
         assert!(!numbers_match(400.0, 400.000_000_1));
         assert!(numbers_match(1e-5, 0.00001));
+    }
+
+    /// **The separator set is CLOSED** — the `ArrayForm` half of the
+    /// closed-set discipline (see [`boolfold_accepts_a_closed_set_of_spellings`]
+    /// for why sample-based accept tests are not enough).
+    ///
+    /// `[`, `]`, `(`, `)`, `,` and whitespace are the separators the two engines
+    /// really print — dss_capi `GetDSSArray`'s `'[' + ' %g'×n + ']'`
+    /// (`.inputs/dss_capi/src/Common/Utilities.pas:1529-1552`) against r4133's
+    /// comma, paren and bare forms. Anything else is part of a token, so a
+    /// render that separates with something else has a DIFFERENT token count and
+    /// must not fold.
+    #[test]
+    fn arrayform_separators_are_a_closed_set() {
+        for sep in [';', ':', '|', '/', '{', '}', '-'] {
+            let theirs = format!("[400{sep}400]");
+            assert!(
+                !array_forms_match("[ 400 400]", &theirs),
+                "{sep:?} is not one of the separators either engine prints; treating it as \
+                 one would silently re-tokenize a value"
+            );
+        }
+        // …and the separators that ARE in the set all collapse to the same
+        // token stream, in every combination the census shows.
+        for form in [
+            "[400, 400]",
+            "(400, 400)",
+            "400 400",
+            "[ 400 400]",
+            "((400, 400))",
+            "[400,400,]",
+        ] {
+            assert!(
+                array_forms_match("[ 400 400]", form),
+                "{form:?} is a two-token render of the same value"
+            );
+        }
+        assert_eq!(
+            array_tokens("[ 400 400]").collect::<Vec<_>>(),
+            ["400", "400"]
+        );
+        assert_eq!(array_tokens("a;b").collect::<Vec<_>>(), ["a;b"]);
     }
 
     // ---------------------------------------------------------- EnumSynonym
@@ -1258,7 +1584,7 @@ mod tests {
             ("Line", "Ratings", "[ 400]", "[401,]", None),
             ("RegControl", "FwdThreshold", "100", "", None),
         ] {
-            let got = claim_value(class, prop, rust, oracle);
+            let got = claim_value(PropsChannel::R4133, class, prop, rust, oracle);
             match (got, want) {
                 (Some(ValueClaim::Normalization(rule)), Some(tag)) => {
                     assert_eq!(rule.tag(), tag, "{class}.{prop}");
@@ -1279,11 +1605,105 @@ mod tests {
         // echo table is empty, the floor is `None` (so a numeric pair that is
         // genuinely different is NOT swallowed).
         assert_eq!(
-            claim_value("RegControl", "FwdThreshold", "100", "800"),
+            claim_value(
+                PropsChannel::R4133,
+                "RegControl",
+                "FwdThreshold",
+                "100",
+                "800"
+            ),
             None
         );
         assert!(display_floor().is_none());
         assert_eq!(counter_totals(), before, "the chain query moved a counter");
+    }
+
+    /// **Capi-invariance of the measurement layer** (plan mechanic (b)).
+    ///
+    /// [`claim_value`] is asked about the rows of BOTH channels — the claims
+    /// census annotates every census row it produced, on capi as well as r4133
+    /// (`corpus_gate/props_census.rs`, `Row::annotate`). So the "capi is the
+    /// identity" contract has to be a property of this function, not of the
+    /// data: every cell the r4133 arm claims must come back `None` on capi, for
+    /// each live rule kind and for the RP2.4 floor's slot.
+    ///
+    /// Before the RP2.1 audit round it was channel-blind, and the census's
+    /// measured "0 cells normalized on capi" was therefore a statement about
+    /// today's capi population, not about the contract.
+    #[test]
+    fn the_capi_channel_claims_nothing() {
+        for (class, prop, rust, oracle) in [
+            ("Capacitor", "Enabled", "Yes", "true"),
+            ("Transformer", "Conn", "wye", "wye "),
+            ("Line", "Ratings", "[ 400]", "[400,]"),
+            ("SwtControl", "Normal", "closed", "[closed, ]"),
+            // The floor's slot: two numbers that a future R4133_DISPLAY_FLOOR
+            // could fold. `None` here must not depend on the floor being `None`.
+            ("Load", "pf", "0.88", "0.880001"),
+        ] {
+            assert_eq!(
+                claim_value(PropsChannel::CapiV0145, class, prop, rust, oracle),
+                None,
+                "{class}.{prop}: the capi channel must reach no link of the r4133 chain"
+            );
+        }
+        // …and the three r4133-claimed ones really are claimed, so the assertion
+        // above is a channel statement and not a "nothing is ever claimed" one.
+        for (class, prop, rust, oracle) in [
+            ("Capacitor", "Enabled", "Yes", "true"),
+            ("Transformer", "Conn", "wye", "wye "),
+            ("Line", "Ratings", "[ 400]", "[400,]"),
+        ] {
+            assert!(
+                claim_value(PropsChannel::R4133, class, prop, rust, oracle).is_some(),
+                "{class}.{prop} must be claimed on r4133"
+            );
+        }
+    }
+
+    /// **The fail-on-stale guard, proven silent where it must be.**
+    ///
+    /// [`check_rows_are_live`] is the rule behind [`assert_norm_rows_are_live`],
+    /// and both halves of it need a canary: today the helper is structurally a
+    /// no-op (the r4133 props path is masked until RP4.1, so every row has
+    /// `visits == 0`) and at RP4.1 it becomes the only live anti-rot guard the
+    /// 157 rows have. This test pins the two silent cases; the next one pins
+    /// that it can actually fire.
+    #[test]
+    fn the_liveness_guard_is_silent_when_dormant_or_live() {
+        let n = PROPS_NORM_R4133.len();
+        // Dormant: nothing visited (today's gate, and any DSS_GATE_ONLY run
+        // that filters a row's cases away).
+        check_rows_are_live(PROPS_NORM_R4133, &vec![0; n], &vec![0; n]);
+        // Live: every row visited and folding.
+        check_rows_are_live(PROPS_NORM_R4133, &vec![7; n], &vec![3; n]);
+        // Mixed, and legitimately so: an unvisited row next to a working one.
+        let mut visits = vec![0; n];
+        let mut hits = vec![0; n];
+        visits[0] = 4;
+        hits[0] = 1;
+        check_rows_are_live(PROPS_NORM_R4133, &visits, &hits);
+        // Deliberately NOT calling `assert_norm_rows_are_live()` here. It reads
+        // the process-global counters, which a gate test in the same binary
+        // legitimately moves once RP4.1 unmasks the r4133 props path — that is
+        // the exact test-ordering trap RP2.1 part D found and removed from three
+        // tests in this module. The rule is proven above over injected counters;
+        // the shipped adapter's wiring is exercised where the live assertion
+        // belongs, once, at the end of the gate (`corpus_gate.rs`).
+    }
+
+    /// …and the other direction: a row that was COMPARED and folded nothing is
+    /// exempting a spelling difference that is no longer there, and the guard
+    /// says so, naming the row.
+    #[test]
+    #[should_panic(expected = "stale r4133 property normalization row: capacitor.enabled")]
+    fn the_liveness_guard_fires_on_a_stale_row() {
+        let n = PROPS_NORM_R4133.len();
+        let i = find_row(PROPS_NORM_R4133, "capacitor", "enabled").expect("a shipped row");
+        let mut visits = vec![0; n];
+        let hits = vec![0; n];
+        visits[i] = 12;
+        check_rows_are_live(PROPS_NORM_R4133, &visits, &hits);
     }
 
     /// The echo table ships empty and its consult answers `false` for

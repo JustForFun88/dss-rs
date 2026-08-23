@@ -588,7 +588,13 @@ floor) / `ledger-hit` (a `property`-scoped `ledger.json` entry names it) /
 uses (`harness::props_norm::claim_value`, `LedgerView::property_scope_keys`),
 never a copy of it, and the mode also carries the in-scope flag
 (`engines ∈ {both, r4133}`) so its tallies line up with `bins.tsv`'s
-`cells_in_scope` column. It adds three per-channel files — `claims.txt`
+`cells_in_scope` column. The verdict is **channel-scoped**: both channels' rows
+are annotated, but the first three links are r4133 mechanisms and answer nothing
+on capi, so a capi row is only ever `ledger-hit` or `UNCLAIMED` — the capi zero
+is the contract, not a measurement. A spelling whose cells disagree (only the
+per-(case, channel) ledger link can do that) is reported as the **weakest** of
+them and counted in `claims_summary.json`'s `mixed_disposition_spellings`; the
+per-row `disposition` in `props_census.json` stays lossless. It adds three per-channel files — `claims.txt`
 (`examples_full.txt`'s rows plus `count_in_scope` and the disposition),
 `claims_unclaimed_pairs.txt` (the pairs that still owe a rule/exclusion row) and
 `claims_summary.json` (per-disposition cell tallies, zeros included) — and two
@@ -616,11 +622,23 @@ supplement (`tests/corpus/props_r4133/examples_supplement.txt`) is measured, not
 frozen: the 26 pairs no 2026-08-08 row can carry (the WP-RP1 shape closures plus
 the two `regcontrol` threshold pairs), and the replay parses the README's WP-RP1
 tables directly — **reformatting that README section reds a test on purpose**.
+Where the vendored evidence is knowingly behind the live population it says so
+with an assertion rather than a comment: `LIVE_ONLY_SPELLINGS` names the one
+spelling the claims census sees and no file may carry (`autotrans.conn
+'series'/'Series'`, on a pair whose `bins.tsv` row predates RP1.2's deck),
+reconciles the replay's 748 claimed spellings with the census's 749, and pins
+that the shipped rule still claims it.
 
 Comparing against the vendored files: filter to `channel == "r4133"`, drop that
 key, and compare **cell multisets** — the pair extracts' `example` cells and
 `bins.tsv` labels are representative-cell artifacts and are case-order dependent
-on the 17 heterogeneous pairs the directory's `README.md` tables. The `channels`
+on the 17 heterogeneous pairs the directory's `README.md` tables. **Expect three
+known differences on the r4133 side, all documented in that README**: the two
+RP0.2 incompleteness corrections (§"Corrections measured after freezing") and one
+*policy* change — RP2.1 unmasked `RegControl.RevThreshold` on r4133, so a
+re-census reports the numeric pair `regcontrol.revthreshold` (888 cells, an
+`EchoDefault`) that no frozen extract carries (§"The RP2.1 policy change a
+re-census now reports"). The `capi_v0145` channel is unaffected by all three. The `channels`
 block reports what the walk could NOT look at, so a partial census never reads as
 a complete one: `unaligned_cells` counts what a desynchronized name list hides
 from any index-ordered compare (an insertion at property *k* makes every cell

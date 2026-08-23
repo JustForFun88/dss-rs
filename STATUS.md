@@ -158,8 +158,14 @@ disposition mode (`DSS_PROPS_CENSUS=claims`: **488 703 in-scope cells claimed**,
 549 933 unclaimed and every one of them declared to RP2.2/RP2.3/RP2.4/RP3), and
 non-vacuously by scratch probes where a corrupted boolean, a corrupted array
 token and a 1e-2 number all still fail through the normalized path. Capi
-invariance is measured, not asserted: the bounded A/B gate and census come back
-byte-identical. **RP2.2** (enum synonyms + the S6 dossier) is next.
+invariance is now **structural on both seams** — the live comparator and the
+census's disposition query each take the channel — and measured: the bounded A/B
+gate is identical and the capi census extracts byte-identical (the r4133 ones
+gain exactly the pair RP2.1's own `RevThreshold` unmask makes visible). Its two
+audits raised 9 findings (1 major, 8 minor), **all 9 fixed** in a follow-up
+commit — the major was "the rules' accepted sets are not pinned", closed by
+closed-set pins whose power was re-verified against the auditor's own surviving
+mutations. **RP2.2** (enum synonyms + the S6 dossier) is next.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -2492,7 +2498,7 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     with the rows unmasked on r4133, probe lists reverted): 5 rows compare on
     r4133 (`Fuse.FuseCurve`, `Fuse.RatedCurrent`, `Capacitor.pctperm`,
     `Reactor.pctperm` — 0 divergent cells each; `RegControl.RevThreshold` — 888
-    cells, `'-100'` vs `'100'`, an `EchoDefault` at `RegControl.pas:1437`), 7
+    cells, `'-100'` vs `'100'`, an `EchoDefault` at `RegControl.pas:1448`), 7
     stay skipped on both channels with their unmasking cost recorded
     (`Capacitor.CMatrix` 1 059, `Reactor.RMatrix`/`XMatrix` 670 each,
     `Capacitor`/`Reactor.FaultRate` 1 059/670, `Fault.GMatrix` 386,
@@ -2554,10 +2560,12 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     → RP2.2 3 691, the nine bin-1 echo pairs 3 293, bins 2/4 residue 318, the
     WP-RP1/supplement pairs 2 148). RP4.1's acceptance is that in-scope column
     reaching zero. The same run reads the capi channel too, and both halves of
-    the design show up there: **0** cells normalized (the capi arm is the
-    identity, by contract) and **11 `ledger-hit`s** over 8 pairs (the
-    `makeposseq-cuf-applied-capi-props` entry) — so the ledger link is exercised,
-    not dead code, even while the r4133 side must stay at zero until RP4.1.
+    the design show up there: **0** cells normalized and **11 `ledger-hit`s**
+    over 8 pairs (the `makeposseq-cuf-applied-capi-props` entry) — so the ledger
+    link is exercised, not dead code, even while the r4133 side must stay at zero
+    until RP4.1. That capi zero was *measured* as first landed and is
+    **structural** since the audit round: `claim_value`/`for_value` take the
+    channel and reach no r4133 link on capi (finding 1 below).
   - **The plan's ~491 000 headline, reconciled by measurement.** Frozen bins
     1/2/4 hold 491 854 in-scope cells; measured claimed is 488 703. Every term of
     the difference is measured and vendored in the README's new dated section:
@@ -2567,7 +2575,11 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     since 2026-08-08 (RP0.2's cursor correction, RP1.2's autotrans), +436 for the
     9 WP-RP1 pairs. Independent cross-check of the two accountings: the census
     measures **749** claimed spellings against the replay's 748 — the extra one is
-    `autotrans.conn | 'series' | 'Series'`, a cell RP1.2's closure created.
+    `autotrans.conn | 'series' | 'Series'`, a cell RP1.2's closure created. Since
+    the audit round that gap is a **locked term**, not a note:
+    `props_r4133_replay::LIVE_ONLY_SPELLINGS` names it, asserts `748 + 1 = 749`,
+    asserts the shipped `CaseFold` row still claims it, and asserts it really is
+    absent from both vendored files (finding 5 below).
   - **Non-vacuity (scratch probe, deleted after the run).** Driving the real
     `compare_all_properties` on the r4133 channel: the legitimate r4133 spellings
     pass (`Capacitor.c1.enabled` vs `'true'`, `Line.l1.ratings` vs `'(400)'`,
@@ -2584,14 +2596,25 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     moment the gate visits rows in the same binary. They now assert a counter
     **delta** of zero instead; the live assertion stays where it belongs, once,
     at the end of the gate.
-  - **Capi-invariance, measured twice.** Part A's A/B (`DSS_GATE_ONLY='controls:'`
-    105 cases, and `controls:regcontrol/` 8) was re-run on the final tree: gate
-    stdout identical line for line (only the `filtered out` unit-test count and a
-    `Compiling` line differ), and the bounded **plain** census is
-    byte-identical — all 10 per-channel extracts, `run.json` and the 33 MB
-    `props_census.json`. The claims mode adds columns and files only in `claims`
-    mode, and a plain run now deletes a previous claims run's three files by name
-    rather than leave them to be misread.
+  - **Capi-invariance, measured twice — and what did NOT stay identical.** Part
+    A's A/B (`DSS_GATE_ONLY='controls:'` 105 cases, and `controls:regcontrol/` 8)
+    was re-run on the final tree: gate stdout identical line for line (only the
+    `filtered out` unit-test count and a `Compiling` line differ), and the
+    bounded **plain** census is byte-identical between part A's tree and the
+    final one — all 10 per-channel extracts, `run.json` and the 33 MB
+    `props_census.json`. Against the **pre-RP2.1** tree the statement is
+    narrower and is the one that matters: the five `capi_v0145` extracts are
+    byte-identical, while the five `r4133` extracts legitimately gain one pair —
+    `regcontrol.revthreshold` (`'-100'`/`'100'`, `2.00e+00`, 269 cells on that
+    bounded run; 888 on the full population) — because unmasking that
+    `SKIP_PROPS` row on r4133 is this sub-step's own deliberate policy change,
+    not a normalization leak. Re-measured in the audit round; the correction is
+    vendored in the README (§"The RP2.1 policy change a re-census now reports")
+    and in TESTING.md's comparison procedure. **The commit body's third bullet
+    ("plain census byte-identical") carries the same imprecision and is
+    superseded by this paragraph.** The claims mode adds columns and files only
+    in `claims` mode, and a plain run now deletes a previous claims run's three
+    files by name rather than leave them to be misread.
   - **Goldens: measured, none moved.** `git status` after the full five-command
     gate shows only the sub-step's own harness/test/doc paths; no artifact under
     `tests/golden/` and no lock file appears. No lane_diff owed (zero engine
@@ -2630,6 +2653,159 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
        diff (nothing here executes outside `DSS_PROPS_CENSUS=claims`), and the
        suspicion is exactly the artifact-in-the-vendored-tree hygiene above.
        Recorded so a second sighting is a pattern, not a surprise.
+    6. **RP2.2 must read the `swtcontrol` getter for the WHOLE pair.**
+       `swtcontrol.normal`/`state` are on RP2.2's S6 list *and* carry an RP2.1
+       `ArrayForm` row that claims one cell of 59 each (the single one-token
+       spelling); the per-phase renders are still RP2.2's. Same shape, fully
+       claimed, on `invcontrol.monbus`/`monbusesvbase`. Added by the audit
+       settlement below (finding 8) — a row on `RP22_S6` is not proof RP2.1 left
+       the pair alone.
+  - **Audit settlement (2026-08-23, one commit on top of `e96d9248`).** Two
+    audits (code, tests) raised **9** findings. **Raw count 9** = 5 (audit-code,
+    all minor) + 4 (audit-tests: 1 major + 3 minor), i.e. 1 major + 8 minor.
+    **Deduped count 9** — the two auditors overlap on exactly one substance, the
+    `swtcontrol` `ArrayForm` rows on RP2.2's S6 list, which audit-code raised
+    under "needs manual review" (not as a finding) and audit-tests as its finding
+    8; settled **once**, as item 8 below. **Settled 9 = 9 fixed + 0
+    recorded-without-fix + 0 refuted** — nothing was dropped and nothing needed
+    refuting; every one of the nine was real.
+    Every fix is test-only, harness-only or documentation; **zero engine byte,
+    zero golden/lock/ledger/manifest byte, no tolerance or floor moved**
+    (`R4133_DISPLAY_FLOOR` stays `None`). **No `NormRule` predicate changed at
+    all** — the answer to the major finding is pins, not edits, so no example row
+    moved owner and every replay count lock holds unmoved. The only behavior
+    changes anywhere are three, and each *narrows* or *records*: the channel gate
+    on `claim_value`/`for_value` (narrows what the measurement layer claims), the
+    census's ingest aggregation (records a conflict instead of aborting) and the
+    `#`-comment filter (narrows to one file).
+    1. *(minor, code)* **The claims census applied the r4133 value policy to
+       capi rows.** `Row::annotate` ignored the row's own channel and
+       `claim_value`/`for_value` took none, so the "capi normalizes nothing"
+       zero was a property of today's data, not the contract — and RP2.4's floor
+       would have been consulted on capi scalars once the slot fills. **Fixed:**
+       the channel is a parameter of both, `claim_value` refuses every channel
+       but `R4133`, and the **ledger** link stays live on capi because it is a
+       real capi mechanism. Pinned by `props_norm::the_capi_channel_claims_nothing`
+       and `props_census::the_capi_channel_reaches_no_r4133_link`; re-measured
+       live (`DSS_PROPS_CENSUS=claims`, `modes:makeposseq/`): capi = 0 normalized
+       / **7 `ledger-hit`s**, so the gate is a channel gate and not a mute.
+       `R4133_DISPLAY_FLOOR`'s doc, which claimed it was reachable only from
+       `ArrayForm`, now names both callers of `numbers_match` and why both are
+       r4133-only.
+    2. *(minor, code)* **`ChannelExtracts::ingest` could abort a claims run on
+       legitimate data.** Its `assert_eq!` declared the chain a pure function of
+       `(class, prop, rust, oracle)`; the ledger link is per **(case, channel)**
+       by design, so one spelling named by an entry in case A and by none in
+       case B legitimately answers two ways — and the population is one deck away
+       from it (`gictransformer.r2 | '0.09522' | '0.12696'` already occurs in two
+       cases with an entry each). A mode whose contract is that it **asserts
+       nothing** would have died after a 56 s / 1e6-row walk. **Fixed:** the two
+       verdicts aggregate to the **weakest** (`Disposition`'s variant order runs
+       claimed → `UNCLAIMED`, so `max` can only move a spelling toward the work
+       list), the conflict is counted in `claims_summary.json`'s
+       `mixed_disposition_spellings` and printed as a banner NOTE — the
+       `heterogeneous_shape_classes` precedent. Pinned by
+       `a_spelling_dispositioned_two_ways_aggregates_to_the_weakest` (both
+       arrival orders).
+    3. *(minor, code)* **The vendored README did not record RP2.1's own
+       population change.** Unmasking `RegControl.RevThreshold` on r4133 is a
+       policy change, so a plain re-census on this tree reports a numeric pair
+       the frozen extracts cannot have. **Fixed:** the README gains
+       §"The RP2.1 policy change a re-census now reports" (the pair, its 888
+       cells, the `RegControl.pas:1448` citation, the RP2.3 obligation), the
+       RP0.2 corrections section points at it so a reader does not stop at
+       "two", and TESTING.md's "Comparing against the vendored files" procedure
+       now names all **three** expected r4133-side differences. Re-measured
+       (`DSS_PROPS_CENSUS=1`, `controls:regcontrol/`): r4133 gains
+       `regcontrol.revthreshold | '-100' | '100' | 2.00e+00 | 269`, capi reports
+       no `regcontrol` divergence at all.
+    4. *(minor, code)* **STATUS overstated the plain-census A/B.** "Byte-identical
+       — all 10 per-channel extracts" is true final-tree-vs-part-A-tree and false
+       against the pre-RP2.1 tree, where the five r4133 extracts move by exactly
+       finding 3's pair. **Fixed:** the bullet now states both baselines
+       separately and says which five files move and why; it also records that
+       the commit body of `e96d9248` carries the same imprecision and is
+       superseded (history is not rewritten — the audited range stays intact).
+    5. *(minor, code)* **The replay's evidence base is one spelling behind the
+       live population, with no guard.** `autotrans.conn | 'series' | 'Series'`
+       is claimed live and vendored nowhere: its pair has a frozen `bins.tsv`
+       row, which is exactly what bars it from the supplement. **Fixed:** it is
+       now a term — `LIVE_ONLY_SPELLINGS` + `CLAIMED_TOTAL_LIVE = 749`, with
+       `the_live_only_spellings_are_claimed_and_reconcile_the_two_accountings`
+       asserting the arithmetic, that the shipped `CaseFold` row still claims the
+       spelling, that its pair really is in `bins.tsv`, and that no vendored row
+       carries it. Recorded in the README's claims section too (443 = 442 + 1).
+    6. **(MAJOR, tests) The typed rules' accepted sets were not pinned.** The
+       per-kind tests were sample-based, so a widening no sample touches was
+       invisible: the auditor's probes showed `fold_bool` widened to `{on, off}`
+       and a sign-stripping `CaseFold` both passing the entire suite — and a
+       sign-blind `CaseFold` would fold `regcontrol.revthreshold`'s `'-100'` vs
+       `'100'`, **888 real divergent cells**, into silence. **Fixed by pinning
+       the boundaries, never by narrowing a rule** (no example row moved owner):
+       `boolfold_accepts_a_closed_set_of_spellings` walks an exhaustive universe
+       — the six accepted tokens under case/trim, plus 33 near-misses
+       (`on/off/1/0/t/f/enabled/disabled/…`) asserted `None` — and re-checks all
+       eleven census spellings; `casefold_never_drops_a_character` pins the
+       predicate itself (accepts case + outer blanks; refuses a dropped sign,
+       digit, leading zero, inner blank, separator, node reference, class
+       prefix); `arrayform_separators_are_a_closed_set` pins that only
+       `[](),`+whitespace separate. **Verified by re-running the auditor's own
+       three surviving mutations in-tree** (`{on}` added to `fold_bool`,
+       `trim_start_matches('-')` on `CaseFold`, the liveness assert neutered):
+       each reddened exactly its new pin and nothing else — 3 failed / 78 passed
+       — and the file was reverted to a byte-identical SHA-256 afterwards.
+    7. *(minor, tests)* **`assert_norm_rows_are_live` had no canary.** Its
+       counters are private process-global statics, so nothing could make the
+       guard fire — and at RP4.1 it becomes the sole live anti-rot guard for all
+       157 rows. **Fixed:** the rule moved into `check_rows_are_live(table,
+       visits, hits)` and the public helper is a two-line adapter over it, so
+       both directions are pinned offline —
+       `the_liveness_guard_is_silent_when_dormant_or_live` (dormant, fully live,
+       mixed) and `the_liveness_guard_fires_on_a_stale_row` (`should_panic`,
+       matching the message that names the row). *Recorded, not fixed:* the
+       precedent it cites, `lane::assert_reround_cells_are_live`, has the same
+       weakness; it is GOLDEN_REBASE territory and is left alone here.
+    8. *(minor, tests; the one both auditors raised)* **Two `ArrayForm` rows sit
+       on pairs RP2.2 must still triage.** `swtcontrol.normal`/`state` fold their
+       single one-token spelling (`'closed'` vs `'[closed, ]'`, 1 cell of 59
+       each) while their 58/31/27-cell per-phase renders stay unclaimed, and both
+       pairs are on RP2.2's S6 list. **Kept — narrowing would be wrong**: the
+       fold is token-for-token value-preserving and the plan itself assigns the
+       21 bin-4 pairs to RP2.1, while bare-vs-delimited is a *named* bin-4
+       mechanism (`invcontrol.monbus` `'[A.1, A.2, A.3]'` vs `'A.1 A.2 A.3'`).
+       **Fixed as disclosure + pins:** the `ArrayForm` doc now states the
+       scalar↔one-element case with its census spellings, the module doc gains
+       §"Four rows this table DOES hold sit on RP2.2's S6 list" (naming
+       `invcontrol.monbus`/`monbusesvbase` as fully claimed and the two
+       `swtcontrol` pairs as claimed-in-part, with the `relay.normal`/`state`
+       contrast), `RP22_S6`'s doc says a row on that list is not proof RP2.1 left
+       the pair alone, and `arrayform_folds_delimiters_not_contents` pins both
+       directions on both `swtcontrol` pairs plus the `relay` twin. *Handed to
+       RP2.2:* it must read the `swtcontrol` getter for the **whole** pair, the
+       two folded cells included.
+    9. *(minor, tests)* **The evidence lock's `#`-line filter had been widened to
+       the frozen extracts.** Admitting the supplement's provenance header made a
+       `#` line inserted into any frozen file invisible to the row-count lock —
+       the only assertion that would have seen it. **Fixed:** both readers
+       (`props_r4133_evidence_lock.rs`, `props_r4133_replay.rs`) skip comments
+       for `examples_supplement.txt` **only**, and
+       `derived_extracts_keep_their_row_counts` additionally asserts no frozen
+       row-shaped file contains one.
+
+    **Found while settling, not by either audit — one wrong Pascal citation, in
+    six places.** RP2.1 cited `RegControl.pas:1437` for
+    `PropertyValue[23] := '100'` (RevThreshold's frozen default) and `:1441` for
+    `remoteptratio`'s `PropertyValue[27] := '60'`. Both are off by 11: the real
+    lines are **`:1448`** and **`:1452`** (re-read in
+    `.inputs/electricdss-code-r4133-trunk`; `:1437` is `PropertyValue[12] :=
+    '120'`). The plan's own `InitPropertyValues` span `:1423-1459` and its
+    `remoteptratio` `:1452` were right — RP2.1's derived copies were not.
+    Corrected in `harness/mod.rs`, `props_r4133_replay.rs`,
+    `tests/TOLERANCE_NOTES.md`, the vendored `README.md` and
+    `examples_supplement.txt`'s provenance header (a comment line — no data row,
+    no count, and the header markers the evidence lock checks are untouched), and
+    in this record above. `RegControl.pas:820-827` (the `GetPropertyValue`
+    override of index 28) was re-verified and is correct.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

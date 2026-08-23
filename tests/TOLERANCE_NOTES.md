@@ -1057,8 +1057,8 @@ stays channel-blind: r4133 shares that bug (`Monitor.pas` r4133:552).
 
 Unmasking `RegControl.RevThreshold` on r4133 makes 888 previously invisible cells
 appear in the census (`'-100'` ours vs `'100'` r4133, 864 + 24 cells) — an
-`EchoDefault` (`RegControl.pas:1437` freezes `PropertyValue[23] := '100'`, the
-sibling of `remoteptratio` `:1441`), not a value delta. It is measured, vendored
+`EchoDefault` (`RegControl.pas:1448` freezes `PropertyValue[23] := '100'`, the
+sibling of `remoteptratio` `:1452`), not a value delta. It is measured, vendored
 in `examples_supplement.txt` and owed an RP2.3 echo row plus its pin; RP2.1
 deliberately leaves it UNCLAIMED rather than hide it behind a mask.
 
