@@ -34,6 +34,9 @@ pub const OFF_PSHAFT: usize = 8;
 pub const OFF_SPEED: usize = 16;
 /// `w0` (`:25`) — read.
 pub const OFF_W0: usize = 24;
+/// `Xdp` (`:33`) — read. The engine derives it from `puXdp·kV²·1000/kVArating`
+/// (`WindGen.pas:1368-1370`), so echoing it witnesses that wiring end to end.
+pub const OFF_XDP: usize = 88;
 /// `dSpeed` (`:35`) — written.
 pub const OFF_DSPEED: usize = 136;
 /// `kVArating` (`:30`) — read.
@@ -50,6 +53,9 @@ pub const OFF_NUMPHASES: usize = 176;
 pub const OFF_NUMCONDS: usize = 180;
 /// `Conn` i32 (`:45`, 0 = wye / 1 = delta) — read.
 pub const OFF_CONN: usize = 184;
+/// `VTarget` (`:52`) — read. It lives in the **unaligned** stretch that follows
+/// the integer block (188…244), so echoing it is the witness for that region.
+pub const OFF_VTARGET: usize = 212;
 // Turbine tail — the block the dropped `PLoss` reference used to precede.
 /// `ag`, gearbox ratio (`:60`) — read. **First tail field**: at 244 in the wasm
 /// image because the managed `PLoss` reference does not cross; a host that kept
@@ -59,6 +65,10 @@ pub const OFF_AG: usize = 244;
 pub const OFF_CP: usize = 252;
 /// `Lamda`, tip-speed ratio (`:62`) — written.
 pub const OFF_LAMDA: usize = 260;
+/// `Poles` (`:63`) — read (the `P=` property).
+pub const OFF_POLES: usize = 268;
+/// `VCutin` (`:66`) — read (the `VCutin=` property).
+pub const OFF_VCUTIN: usize = 292;
 /// `Pm`, mechanical power (`:68`) — written.
 pub const OFF_PM: usize = 308;
 /// `Ps`, stator active power (`:69`) — written.
@@ -102,6 +112,14 @@ pub struct WindGenIn {
     pub conn: i32,
     /// `ag`, gearbox ratio (first turbine-tail field).
     pub ag: f64,
+    /// `Xdp`, transient reactance (head double, offset 88).
+    pub xdp: f64,
+    /// `VTarget`, the unaligned-stretch witness (offset 212).
+    pub vtarget: f64,
+    /// `Poles` (turbine tail, offset 268).
+    pub poles: f64,
+    /// `VCutin` (turbine tail, offset 292).
+    pub v_cutin: f64,
 }
 
 pub fn get_f64(b: &[u8], off: usize) -> f64 {
@@ -137,6 +155,10 @@ pub fn decode_windgen_vars(b: &[u8]) -> WindGenIn {
         num_conds: get_i32(b, OFF_NUMCONDS),
         conn: get_i32(b, OFF_CONN),
         ag: get_f64(b, OFF_AG),
+        xdp: get_f64(b, OFF_XDP),
+        vtarget: get_f64(b, OFF_VTARGET),
+        poles: get_f64(b, OFF_POLES),
+        v_cutin: get_f64(b, OFF_VCUTIN),
     }
 }
 

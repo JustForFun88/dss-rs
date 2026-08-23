@@ -409,16 +409,23 @@ impl Storage {
         self.base.wp_mode = other.base.wp_mode;
         self.base.wv_mode = other.base.wv_mode;
         self.base.avr_mode = other.base.avr_mode;
-        // User models: Pascal `UserModel.Name := Other.UserModel.Name` re-`New`s
-        // a fresh instance from the same module (`Storage.pas:995-996`); the
-        // slot's `Clone` drops the live wasmi instance and re-creates it lazily
-        // (WM.4, the WM.3 generator precedent).
+        // User models: Pascal `UserModel.Name := Other.UserModel.Name` /
+        // `DynaModel.Name := …` (`Storage.pas:1210-1211`) are `Set_Name`s — an
+        // EAGER free + `LoadLibrary` + `FNew`, so the copy runs live instances of
+        // its own at the guests' defaults. Cloning the donor's slots left them
+        // DEAD instead (the slot's `Clone` drops the live wasmi instance and
+        // every call site guards on `exists()`), i.e. a silent fallback to the
+        // built-in model with no diagnostic — the same defect RP1.3 found and
+        // fixed on WindGen (audit settlement, 2026-08-23). Queue real loads; the
+        // executive drains them before `end_edit`.
         self.base.user_model_name = other.base.user_model_name.clone();
         self.base.user_model_edit = other.base.user_model_edit.clone();
         self.dyna_model_name = other.dyna_model_name.clone();
         self.dyna_model_edit = other.dyna_model_edit.clone();
-        self.user_model = other.user_model.clone();
-        self.dyna_model = other.dyna_model.clone();
+        self.user_model = None;
+        self.dyna_model = None;
+        self.queue_user_model_load(UserModelSlot::User, other.base.user_model_name.clone());
+        self.queue_user_model_load(UserModelSlot::Dyna, other.dyna_model_name.clone());
         self.base.dyn_vars.rated_vdc = other.base.dyn_vars.rated_vdc;
         self.base.dyn_vars.sm_threshold = other.base.dyn_vars.sm_threshold;
         self.base.dyn_vars.safe_mode = other.base.dyn_vars.safe_mode;

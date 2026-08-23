@@ -109,29 +109,42 @@ impl CktElement for WindGen {
         self.integrate_states_impl(sys, node_v);
     }
 
-    /// Pascal `TWindGenObj.NumVariables` (`WindGen.pas:2814-2819`): the 22
-    /// classic WindGen variables plus the loaded `UserModel`'s. The linked
-    /// `DynamicExp` count takes precedence (the `GetAllVariables` split at
-    /// `:2798-2802`).
+    /// Pascal `TWindGenObj.NumVariables` (`WindGen.pas:2814-2819`): the classic
+    /// block plus the loaded `UserModel`'s variables.
+    ///
+    /// The classic block is the linked `DynamicExp`'s memory dump when one is
+    /// bound (the `GetAllVariables` split at `:2798-2802`), else the 22 native
+    /// WindGen variables. **This is one deliberate correction**: upstream's
+    /// `NumVariables` has no `DynamicExp` branch at all, so with an equation
+    /// bound it reports `22 + N` while `GetAllVariables` fills
+    /// `1 .. NVariables·2` from the memory space — the two disagree, and for a
+    /// long equation the fill runs past the buffer the count sized. The port
+    /// reports what it actually fills. The user-model tail is appended in BOTH
+    /// cases, which is what upstream does too (`:2804-2807` sits outside the
+    /// if/else).
     fn num_variables(&self) -> usize {
-        let n = self.dyneq.num_variables();
-        if n != 0 {
-            return n;
-        }
         // `ShaftModel.FNumVars` (`:2818`) is unreachable — no property registers
         // that slot upstream (module doc).
-        self.num_wgen_variables() + self.user_model_num_vars()
+        self.variable_base() + self.user_model_num_vars()
     }
 
     /// Pascal `TWindGenObj.VariableName` (`WindGen.pas:2821-2882`): the
     /// `DynamicExp` name first, then the 22 classic names, then the `UserModel`
     /// names (`i2 = i - NumWGenVariables`).
+    ///
+    /// Out of range r4133 answers the **empty string**: `VariableName`'s only
+    /// seed is the implicit `Result := ''` of a `String` function, `If i<1 Then
+    /// Exit` returns it, and the `Else` block falls through to it when neither
+    /// model exists (`:2830-2832`, `:2856-2879` — the unit has no `'ERROR'`
+    /// literal anywhere). The `'ERROR'` seed the sibling classes carry is a
+    /// dss_capi-only string (`dss_capi/src/PCElements/Generator.pas:2736`), and
+    /// dss_capi has no WindGen class at all, so it has no standing here.
     fn variable_name(&self, i: usize) -> String {
         if let Some(name) = self.dyneq.variable_name(i) {
             return name;
         }
-        let base = self.num_wgen_variables();
-        if (1..=base).contains(&i) {
+        let base = self.variable_base();
+        if !self.dyneq.has_dynamic_eq() && (1..=base).contains(&i) {
             return self.wgen_variable_name(i);
         }
         let un = self.user_model_num_vars();
@@ -141,12 +154,22 @@ impl CktElement for WindGen {
         {
             return um.var_name(i - base).unwrap_or_default().to_string();
         }
-        self.wgen_variable_name(i) // out of range → Pascal's 'ERROR' seed
+        String::new()
     }
 
     /// Pascal `TWindGenObj.GetAllVariables` (`WindGen.pas:2793-2812`): the
-    /// `DynamicExp` memory dump first, else the 22 classic WindGen variables
-    /// followed by the `UserModel` values (`@States[NumWGenVariables+1]`).
+    /// `DynamicExp` memory dump when an equation is bound, else the 22 classic
+    /// WindGen variables — and, in **either** case, the `UserModel` values
+    /// appended after it (`:2804-2807` sits at the same nesting level as the
+    /// if/else, not inside its `else`).
+    ///
+    /// The one difference from upstream is where the tail starts: Pascal always
+    /// writes it at `@States[NumWGenVariables+1]`, i.e. at 23 even when the
+    /// memory dump it just wrote is shorter or longer than 22 — which leaves a
+    /// hole, overwrites live cells, or runs past the buffer `NumVariables` sized
+    /// (that routine has no `DynamicExp` branch at all). The port appends at the
+    /// end of the block it actually filled, so the surface stays exactly the
+    /// `num_variables()` cells the names describe.
     ///
     /// **Upstream bug deliberately NOT reproduced.** Pascal fills the classic
     /// block through `Variable[i]` = `Get_Variable(i)`, whose user-model tail
@@ -157,18 +180,14 @@ impl CktElement for WindGen {
     /// `UserModel.FGetVariable(k)` with a non-positive `k`. The port reports the
     /// native 22 from the native sources and the model's own from index 23 up.
     fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
+        let base = self.variable_base();
         if self.dyneq.has_dynamic_eq() {
-            for (i, s) in states
-                .iter_mut()
-                .enumerate()
-                .take(self.dyneq.num_variables())
-            {
+            for (i, s) in states.iter_mut().enumerate().take(base) {
                 *s = self.dyneq.get_dynamic_eq_val(i);
             }
-            return;
+        } else {
+            self.get_wgen_variables(states);
         }
-        self.get_wgen_variables(states);
-        let base = self.num_wgen_variables();
         let un = self.user_model_num_vars();
         if un > 0 {
             let end = (base + un).min(states.len());

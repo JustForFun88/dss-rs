@@ -438,18 +438,31 @@ impl Generator {
         self.fuel_kwh = other.fuel_kwh;
         self.pct_fuel = other.pct_fuel;
         self.pct_reserve = other.pct_reserve;
-        // User models: Pascal `UserModel.Name := Other.UserModel.Name` re-`New`s
-        // a fresh instance from the same module (`generator.pas:893-894`). The
-        // slot's `Clone` drops the live wasmi instance and re-creates it lazily
-        // on first use (with the same spec + last `UserData`), which is a benign
-        // superset of the Pascal fresh-`New` (no deck exercises `like=` on a
-        // user-model generator).
+        // User models: Pascal `UserModel.Name := Other.UserModel.Name` /
+        // `ShaftModel.Name := …` (`generator.pas:825-826`) are `Set_Name`s, i.e.
+        // an EAGER free + `LoadLibrary` + `FNew` — the copy gets a live instance
+        // of its own, at the guest's own defaults (the donor's `UserData` is
+        // never replayed into it; `:830-831` copies only the property array,
+        // which is the `?` echo).
+        //
+        // Cloning the donor's slot instead produced a DEAD model: the arena hands
+        // `make_like` an owned `clone()` and the slot's `Clone` drops the live
+        // wasmi instance, while every call site (`user_model_fcalc`,
+        // `…_finit`, `…_fintegrate`, `get_all_user_model_vars`) guards on
+        // `exists()` — so the copy echoed `UserModel=<path>`, reported only the
+        // built-in variables and injected nothing, with no diagnostic at all
+        // (measured: 20 variables on the donor, 6 on the copy). RP1.3 fixed the
+        // WindGen twin; this is the same fix for both Generator slots (audit
+        // settlement, 2026-08-23). The queued load is drained by the executive
+        // before `end_edit`, in time for `RecalcElementData`'s `FUpdateModel`.
         self.user_model_name = other.user_model_name.clone();
         self.user_data = other.user_data.clone();
         self.shaft_model_name = other.shaft_model_name.clone();
         self.shaft_data = other.shaft_data.clone();
-        self.user_model = other.user_model.clone();
-        self.shaft_model = other.shaft_model.clone();
+        self.user_model = None;
+        self.shaft_model = None;
+        self.queue_user_model_load(UserModelSlot::User, other.user_model_name.clone());
+        self.queue_user_model_load(UserModelSlot::Shaft, other.shaft_model_name.clone());
         self.spectrum = other.spectrum.clone();
         // Pascal copies the donor's whole `FPropertyValue` array
         // (`generator.pas:830-831`, right after the `ClassMakeLike` at `:828`),
