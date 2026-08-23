@@ -1367,8 +1367,27 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
   — and it *cannot* flip to capi015 anyway, since the strict PermissiveProperties
   read-only #2024106 rejects the locked `Action=` post-command there (the
   not-adopted L2/C2 dss-ext surface; the port silently ignores it, matching
-  0.14.5/r4133, unit-pinned `locked_ignores_action_write` /
-  `locked_ignores_normal_and_state_writes`). Feature-sensitivity: unit
+  0.14.5/r4133 **for `Action=` and `State=`**, unit-pinned
+  `locked_ignores_action_write` / `locked_ignores_normal_and_state_writes`).
+  **Correction (2026-08-23, R4133_PROPS RP2.2 audit settlement): the `Normal`
+  half of that "matching 0.14.5/r4133" claim is FALSE.** r4133's
+  `InterpretSwitchState` exits early only when the *property name* starts with
+  `'a'` or `'s'` — `if Locked and ((LowerCase(property_name[1]) = 'a') or
+  (LowerCase(property_name[1]) = 's')) Then Exit`, under the comment "Only
+  allowed to change normal state if locked"
+  (`Version8/Source/Controls/SwtControl.pas:416-417`) — and property 6 is
+  `'Normal'` (`:128`), so arm 6 (`:201-204`) reaches `set_NormalStates`
+  (`:556-561`), which has no lock guard. Probed on the vendored r4133 DLL: with
+  `lock=yes`, `normal=open` moves `Normal` to `[open, open, open, ]` while
+  `state=`/`action=` move nothing. The port refuses all three
+  (`swt_control/accessors.rs:151-155`), following 0.14.5's `ConditionalReadOnly`
+  flag on `Normal` (`SwtControl.pas:159-160`) — and its own **Relay** already
+  implements the r4133 rule and documents it (`relay/accessors.rs:416-420`). By
+  the 2026-08-02 policy r4133 is the authority, so this is a port bug: the fix
+  is owned by `R4133_PROPS_PLAN.md` §RP3.7 (a2) (both lanes, with a pin), and
+  `locked_ignores_normal_and_state_writes` is re-pointed there. No corpus deck
+  writes `normal=` under lock, so nothing gates on it today.
+  Feature-sensitivity: unit
   `d12_normal_and_state_readbacks_are_independent` (0.14.5 conflated both onto
   `CurrentAction`). **Gating note (0.15.x-adoption sweep):** the "flipped to
   capi015" phrasing above is historical — all three moved decks (`swtcontrol_time`,

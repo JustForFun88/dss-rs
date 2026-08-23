@@ -1607,20 +1607,35 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     RP3.5+ sub-step opens for it.** Reading the getter settles the
     //     question: `Fault.pas:695-718` emits `'('`, fills the lower triangle
     //     only `If Assigned(Gmatrix)` (`:703`) and closes with `')'`, and an
-    //     `r=`-specified fault never allocates `Gmatrix` at all
-    //     (`Fault.pas:76-77`, "single G per phase … if Gmatrix not specified").
-    //     So both renders denote the SAME state, "no G matrix specified" —
-    //     r4133 by printing nothing between the parens, this port by
-    //     materialising the zero matrix. That is a rendering convention on an
-    //     UNSET array, the family of `generator.dynout` and
-    //     `autotrans.bhcurrent`, not a live-value or modelling divergence: there
-    //     is no port behavior to change, hence no sub-step. It is equally not an
-    //     `EnumSynonym` (the two sides are not two spellings of a value the
-    //     table can name) and RP2.2 must not unmask it (plan §1.1(e) staging).
-    //     The 386 cells therefore stay value-skipped on both channels under this
-    //     very row, RP4.1 owes nothing for them, and the liveness of the
-    //     decision is asserted by `both_channel_rows_stay_skipped_everywhere`
-    //     below.
+    //     `r=`-specified fault never allocates `Gmatrix` at all. The proof of
+    //     that last step is the pointer's life cycle, not the field comment
+    //     (`:76-77`) the first draft of this paragraph cited: `Create` sets
+    //     `Gmatrix := nil` (`:411`) and the ONLY two writers are `DoGmatrix`
+    //     (`:196-209`, reached from Edit arm 6 at `:286`) and `MakeLike`
+    //     (`:364-367`, which itself re-nils when the source has none). So both
+    //     renders denote the SAME state, "no G matrix specified" — r4133 by
+    //     printing nothing between the parens, this port by materialising the
+    //     zero matrix. That is a rendering convention on an UNSET array, the
+    //     family of `generator.dynout` and `autotrans.bhcurrent`, not a
+    //     live-value or modelling divergence: there is no port behavior to
+    //     change, hence no sub-step. It is equally not an `EnumSynonym` (the two
+    //     sides are not two spellings of a value the table can name) and RP2.2
+    //     must not unmask it (plan §1.1(e) staging). The 386 cells therefore
+    //     stay value-skipped on both channels under this very row and RP4.1 owes
+    //     no ledger entry for them.
+    //
+    //     **What that skip still owes, and now has (RP2.2 audit settlement,
+    //     2026-08-23).** `both_channel_rows_stay_skipped_everywhere` only
+    //     asserts the skip is still configured; it says nothing about what the
+    //     two sides render, so the triage's factual claim was unpinned — while
+    //     its sibling in the same family, `generator.dynout`, is routed to RP2.3
+    //     as a *tagged* exclusion PLUS an expected-value pin. CLAUDE.md's rule
+    //     is that a deliberate divergence is excluded field-by-field AND pinned
+    //     by its own expected-value test, so the port's half is pinned by
+    //     `fault_gmatrix_renders_a_materialised_zero_matrix_when_unset` below —
+    //     the render this row masks, at 1 and at 3 phases, against the
+    //     `DoGmatrix`-specified render that `compat_quirks::
+    //     sym_matrix_text_getter_renders_the_stored_matrix` already pins.
     ("Fault", "GMatrix"),
     // (b) Near-zero winding-current angle: WdgCurrents renders `mag, (angle)`
     //     pairs; a ~1e-12 A (numerically-zero) winding current's angle is
@@ -1788,8 +1803,10 @@ const SKIP_PROPS_CAPI_ONLY: &[(&str, &str)] = &[
 /// ones are candidates for `PROPS_ECHO_R4133`, and `Fault.GMatrix` — the one
 /// row RP2.1 handed to RP2.2's triage — was **settled there** (2026-08-23):
 /// both renders denote "no G matrix specified", so the row stays on both
-/// channels, no RP3.5+ sub-step opens and RP4.1 owes it nothing. The evidence
-/// and the argument are at the row itself.
+/// channels, no RP3.5+ sub-step opens and RP4.1 owes it no ledger entry. The
+/// evidence and the argument are at the row itself, and the port's half of the
+/// claim is pinned by
+/// [`skip_props_disposition_tests::fault_gmatrix_renders_a_materialised_zero_matrix_when_unset`].
 const SKIP_PROPS_BOTH_CHANNELS: &[(&str, &str)] = &[
     ("Capacitor", "CMatrix"),
     ("Reactor", "RMatrix"),
@@ -1870,8 +1887,8 @@ fn skip_prop_ub_on(class: &str, prop: &str, channel: PropsChannel) -> bool {
 #[cfg(test)]
 mod skip_props_disposition_tests {
     use super::{
-        LANE_SKIP_PROPS, PropsChannel, SKIP_PROPS, SKIP_PROPS_BOTH_CHANNELS, SKIP_PROPS_CAPI_ONLY,
-        skip_prop, skip_prop_ub, skip_whole_element,
+        Dss, LANE_SKIP_PROPS, PropsChannel, SKIP_PROPS, SKIP_PROPS_BOTH_CHANNELS,
+        SKIP_PROPS_CAPI_ONLY, skip_prop, skip_prop_ub, skip_whole_element,
     };
 
     /// Every [`SKIP_PROPS`] row is dispositioned for r4133 **exactly once**: the
@@ -1956,6 +1973,62 @@ mod skip_props_disposition_tests {
         assert!(skip_prop("Capacitor", "FaultRate", PropsChannel::R4133));
         assert!(skip_prop("Fault", "GMatrix", PropsChannel::R4133));
         assert!(skip_prop("Transformer", "WdgCurrents", PropsChannel::R4133));
+    }
+
+    /// **The expected-value pin the `Fault.GMatrix` both-channel skip owes**
+    /// (RP2.2 audit settlement, 2026-08-23; the row's comment carries the
+    /// argument).
+    ///
+    /// The skip drops 386 cells from the value compare on BOTH channels on the
+    /// strength of one factual claim: that an `r=`-specified fault renders a
+    /// **materialised zero** lower triangle here, where r4133 prints the bare
+    /// parentheses of its `If Assigned(Gmatrix)` guard
+    /// (`Version8/Source/PDElements/Fault.pas:703`; the pointer is `nil` from
+    /// `Create`, `:411`, until `DoGmatrix`, `:196-209`). Nothing else asserts
+    /// that render — `both_channel_rows_stay_skipped_everywhere` above only
+    /// asserts the skip is configured — so a regression in the port's readback
+    /// would be invisible on the very channels this row silences. CLAUDE.md's
+    /// rule for a deliberate divergence is exclusion **plus** an expected-value
+    /// test; this is that test.
+    ///
+    /// It pins both halves of the shape, because the divergence is exactly
+    /// about the unset one: order comes from `phases`, so the zero triangle
+    /// grows with it, and a `gmatrix=`-specified fault still renders the stored
+    /// numbers (the specified case is pinned in full by `dss_core::exec::tests::
+    /// compat_quirks::sym_matrix_text_getter_renders_the_stored_matrix`).
+    #[test]
+    fn fault_gmatrix_renders_a_materialised_zero_matrix_when_unset() {
+        let query = |cmds: &[&str]| -> String {
+            let mut dss = Dss::new();
+            dss.command("clear");
+            dss.command("new circuit.gmatrixprobe");
+            for c in cmds {
+                dss.command(c);
+            }
+            assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+            dss.command("? Fault.f1.GMatrix");
+            dss.result().to_string()
+        };
+
+        // 1 phase, `r=` specified: `Gmatrix` never allocated upstream.
+        assert_eq!(
+            query(&["new Fault.f1 bus1=sourcebus.1 phases=1 r=1.0"]),
+            "(0 )",
+            "the unset GMatrix renders a materialised zero triangle — the render \
+             the both-channel skip masks against r4133's bare '()'"
+        );
+        // …and it grows with `phases`, so the divergence is the whole triangle,
+        // not one stray token.
+        assert_eq!(
+            query(&["new Fault.f1 bus1=sourcebus phases=3 r=1.0"]),
+            "(0 |0 0 |0 0 0 )"
+        );
+        // The specified case is NOT zeros — so the pin above really discriminates
+        // "unset" from "the getter is broken".
+        assert_eq!(
+            query(&["new Fault.f1 bus1=sourcebus phases=2 gmatrix=(1.5 | -0.5 2.5)"]),
+            "(1.5 |-0.5 2.5 )"
+        );
     }
 
     /// [`LANE_SKIP_PROPS`] is channel-BLIND by decision, not by omission: r4133

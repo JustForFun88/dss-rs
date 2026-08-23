@@ -242,19 +242,29 @@ pub enum NormRule {
     /// contains a wildcard and never derives a synonym, so it can only claim
     /// the exact pairs a human read off the Pascal.
     ///
-    /// Shipped with **zero** rows by RP2.1; **RP2.2 landed four**, all on the
+    /// Shipped with **zero** rows by RP2.1; **RP2.2 landed five** — the four
     /// source sequence-selector properties ([`SCAN_TYPE_SYNONYMS`],
-    /// [`SEQUENCE_TYPE_SYNONYMS`]). The kind's behavior is pinned both against
-    /// the shipped maps and against a synthetic one, the way `EVENTLOG_MASKS`'
-    /// r4133 row set is pinned against an injected table (`harness/mod.rs`,
-    /// `eventlog_mask_tests`).
+    /// [`SEQUENCE_TYPE_SYNONYMS`]) plus the one pair whose bin-2 *label* hides
+    /// genuine enum-spelling cells, `invcontrol.voltage_curvex_ref`
+    /// ([`VOLTAGE_CURVEX_REF_SYNONYMS`], re-typed from `CaseFold`). The kind's
+    /// behavior is pinned both against the shipped maps and against a synthetic
+    /// one, the way `EVENTLOG_MASKS`' r4133 row set is pinned against an
+    /// injected table (`harness/mod.rs`, `eventlog_mask_tests`).
     ///
     /// The map is **directional and per-pair**: `(ours, theirs)`, matched after
     /// `trim()` and ASCII-case-insensitively, with no reverse implication. A map
-    /// must also be **injective on its r4133 side** — one r4133 token may not
-    /// name two of our values, or the rule would equate two different values.
-    /// [`tests::enumsynonym_maps_are_injective`] enforces that on every shipped
-    /// map.
+    /// must also be **injective in BOTH directions**, because either collision
+    /// equates two different values:
+    ///
+    /// * one r4133 token naming two of our spellings — our two values would
+    ///   both fold onto one upstream render;
+    /// * one of our spellings naming two r4133 tokens — our single value would
+    ///   fold against two upstream renders, so if those denote different
+    ///   upstream values one of the folds masks a real disagreement.
+    ///
+    /// [`tests::enumsynonym_maps_are_injective`] enforces both directions on
+    /// every shipped map, and pins each map's contents literally so a widening
+    /// entry cannot ride in on a row that folds nothing in today's population.
     EnumSynonym(&'static [(&'static str, &'static str)]),
 }
 
@@ -397,9 +407,28 @@ const SEQUENCE_TYPE_SYNONYMS: &[(&str, &str)] = &[("Positive", "Pos"), ("Negativ
 /// identical). The upstream asymmetry is r4133's own: it *parses* `'ravg'`
 /// (`:837`) and *prints* `'avgrated'`.
 ///
-/// The map is **stricter** than the `CaseFold` row it replaces — three named
-/// token pairs instead of "any case-only difference" — so no cell that used to
-/// be compared is now folded away.
+/// **How the map compares with the `CaseFold` row it replaces: neither side is
+/// nested in the other** (RP2.2 audit settlement, 2026-08-23 — the first
+/// wording here claimed it was "stricter … so no cell that used to be compared
+/// is now folded away", which its own paragraph above contradicts).
+///
+/// * **Narrower** on everything outside the three named ordinals: a case-only
+///   difference the `CaseFold` row would have folded — say a future `'Vref'` vs
+///   `'vref'` — now reaches the assert raw (that exact refusal is pinned in
+///   [`tests::enumsynonym_folds_the_shipped_scan_and_sequence_spellings`],
+///   beside two cross-ordinal ones).
+/// * **Wider** by exactly the 3 `'RAvg'`/`'avgrated'` cells (all 3 in scope),
+///   which the `CaseFold` row refused and which this map deliberately claims.
+///   RP2.1 pinned that refusal inside
+///   `casefold_folds_case_and_the_two_trailing_blanks`; RP2.2 removed the
+///   assertion in the same commit that landed the fold, so the diff is the
+///   record.
+///
+/// The 3 newly-folded cells are the whole point of the re-typing, and they are
+/// value-preserving by the argument above (one live field, one ordinal, two
+/// spellings) — not a coverage loss. What would be a loss is folding them
+/// *silently*, which is why the count is named here and in the vendored
+/// `README.md` §"What RP2.2 moved".
 const VOLTAGE_CURVEX_REF_SYNONYMS: &[(&str, &str)] =
     &[("Rated", "rated"), ("Avg", "avg"), ("RAvg", "avgrated")];
 
@@ -1715,7 +1744,7 @@ mod tests {
         assert!(!claim("Pos", "Positive"), "the map is directional");
     }
 
-    /// **The four shipped rows fold exactly their cited census spellings, and
+    /// **The five shipped rows fold exactly their cited census spellings, and
     /// nothing else** (RP2.2). The census population, pair by pair
     /// (`examples_full.txt`): `vsource.scantype`/`sequence` `'Positive'` vs
     /// `'Pos'` (2 042 cells each), `isource.scantype` `'Positive'`/`'pos'` 136
@@ -1752,8 +1781,10 @@ mod tests {
             "RAvg",
             "avgrated"
         ));
-        // …and it is STRICTER than the CaseFold row it replaced: a case-only
-        // difference outside the three mapped ordinals no longer folds.
+        // …and it is NARROWER than the CaseFold row it replaced on everything
+        // outside the three mapped ordinals: a case-only difference there no
+        // longer folds. (It is WIDER by the `'RAvg'`/`'avgrated'` pair just
+        // above — the two predicates are incomparable, see the map's doc.)
         assert!(!claimed("invcontrol", "voltage_curvex_ref", "Ravg", "avg"));
         assert!(!claimed("invcontrol", "voltage_curvex_ref", "Rated", "avg"));
         assert!(!claimed("invcontrol", "voltage_curvex_ref", "Vref", "vref"));
@@ -1792,13 +1823,29 @@ mod tests {
         assert!(!claimed("gicline", "scantype", "Positive", "Pos"));
     }
 
-    /// **Every shipped `EnumSynonym` map is injective on its r4133 side**, and
-    /// its rows really carry the map the module doc names.
+    /// **Every shipped `EnumSynonym` map is injective in BOTH directions, and
+    /// every shipped map's contents are pinned literally.**
     ///
-    /// One r4133 token mapping to two of our spellings would let the rule equate
-    /// two different values — the one thing a rule may never do — and no
-    /// sample-based accept/refuse test can see it. Checked structurally instead,
-    /// so a future row cannot introduce it.
+    /// Two structural holes, either of which lets the rule equate two different
+    /// values — the one thing a rule may never do — and neither of which a
+    /// sample-based accept/refuse test can see:
+    ///
+    /// * one r4133 token mapping to two of our spellings (`("A","x")` +
+    ///   `("B","x")`): two of our values fold onto one upstream render;
+    /// * one of **our** spellings mapping to two r4133 tokens (`("A","x")` +
+    ///   `("A","y")`): our single value folds against two upstream renders, so
+    ///   if `x` and `y` denote different upstream values one of the two folds
+    ///   masks a real disagreement. Added by the RP2.2 audit settlement
+    ///   (2026-08-23) — the first form checked only the first direction while
+    ///   the doc promised "a future row cannot introduce it".
+    ///
+    /// The literal `assert_eq!`s below are the second half of the guarantee.
+    /// Injectivity plus the accept/refuse test only constrain entries that fold
+    /// *something in today's frozen population*; an entry that folds nothing
+    /// today — the RP2.1 audit's major finding, one level down — changes no
+    /// other test and would ship green. Pinning each map's exact contents is
+    /// what makes a widening entry a reviewed diff. All three maps are pinned,
+    /// and [`NORM_ENUM_SYNONYM_ROWS`] closes the set of rows that may carry one.
     #[test]
     fn enumsynonym_maps_are_injective() {
         let mut rows = 0;
@@ -1827,12 +1874,31 @@ mod tests {
                         r.class,
                         r.prop
                     );
+                    // The mirror, equally value-destroying: our one spelling
+                    // folding against two different r4133 renders.
+                    assert!(
+                        !(ours.eq_ignore_ascii_case(mine2)
+                            && !theirs.eq_ignore_ascii_case(theirs2)),
+                        "{}.{}: our {ours:?} maps to BOTH r4133's {theirs:?} and {theirs2:?} — \
+                         a non-injective map equates two different values",
+                        r.class,
+                        r.prop
+                    );
                 }
             }
         }
         assert_eq!(rows, NORM_ENUM_SYNONYM_ROWS);
-        // The two maps are distinct objects with distinct contents — the trap
-        // DISCRIMINATION 3 above pins behaviorally, pinned structurally here.
+        // CLOSED SETS. The first two maps are distinct objects with distinct
+        // contents — the trap DISCRIMINATION 3 above pins that behaviorally,
+        // this pins it structurally. The third map is pinned for the reason the
+        // doc gives: nothing else constrains an entry that folds nothing in
+        // today's frozen population. Both shapes were re-measured against these
+        // asserts (RP2.2 audit settlement): `("Rated", "ravg")` — r4133 *parses*
+        // `'ravg'` to ordinal 2 (`InvControl.pas:837`) while our `'Rated'` is
+        // ordinal 0 — reds on the mirror-injectivity assert above, and the
+        // injective-but-still-widening `("Vref", "vref")` reds here (the
+        // accept/refuse test catches that second one either way; the FIRST one
+        // is the audit's measured survivor and shipped the whole suite green).
         assert_eq!(
             SCAN_TYPE_SYNONYMS,
             &[("Positive", "Pos"), ("Zero", "Zero")][..]
@@ -1840,6 +1906,10 @@ mod tests {
         assert_eq!(
             SEQUENCE_TYPE_SYNONYMS,
             &[("Positive", "Pos"), ("Negative", "Neg")][..]
+        );
+        assert_eq!(
+            VOLTAGE_CURVEX_REF_SYNONYMS,
+            &[("Rated", "rated"), ("Avg", "avg"), ("RAvg", "avgrated")][..]
         );
         for (class, prop, want) in [
             ("vsource", "scantype", SCAN_TYPE_SYNONYMS),
