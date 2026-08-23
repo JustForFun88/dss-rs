@@ -536,6 +536,49 @@ solve";
     );
 }
 
+/// `like=` must carry a **live** user model, not a dead slot (RP1.3 audit
+/// settlement, 2026-08-23).
+///
+/// Pascal `MakeLike` does `UserModel.Name := OtherGenerator.UserModel.Name` and
+/// `ShaftModel.Name := …` (`generator.pas:825-826`), and `Set_Name` is an eager
+/// free + `LoadLibrary` + `FNew` (`GenUserModel.pas`) — the copy runs its own
+/// fresh instance. The port used to `clone()` the donor's slots instead, and the
+/// slot's `Clone` deliberately drops the live wasmi instance while every call
+/// site guards on `exists()`: the copy echoed `UserModel=<path>`, reported only
+/// the six built-in variables, injected nothing and said NOTHING about it.
+/// Measured before the fix on this very deck: 20 variables on `g1`, 6 on `g2`.
+///
+/// The surface is the discriminator because it is exactly `6 built-in ++
+/// UserModel.FNumVars ++ ShaftModel.FNumVars` (`generator.pas:2954-2959`), so a
+/// dead slot cannot hide: both slots are bound here, so a copy that lost either
+/// one is short by 14 names.
+#[test]
+fn like_carries_a_live_user_model_on_both_generator_slots() {
+    let mut dss = run_deck("wasm_gen_dyn");
+    let g1 = dss
+        .element_variable_names("Generator.g1")
+        .expect("g1 has a variable surface");
+    assert_eq!(
+        g1.len(),
+        34,
+        "the donor must hold BOTH models (6 built-in ++ 14 UserModel ++ 14 ShaftModel)"
+    );
+
+    dss.command("New Generator.g2 like=g1 bus1=b3");
+    assert!(
+        dss.errors().is_empty(),
+        "`like=` must not error: {:?}",
+        dss.error_texts()
+    );
+    let g2 = dss
+        .element_variable_names("Generator.g2")
+        .expect("g2 has a variable surface");
+    assert_eq!(
+        g2, g1,
+        "a `like=` copy must hold LIVE models of its own, not spec-only clones"
+    );
+}
+
 /// WM.3 hunt item (state-var off-by-one / 1-based Pascal arrays): the classic
 /// GenVars setters `Set_Variable` i=1..6 (`generator.pas:2650-2663`) are ported —
 /// `Set StateVar` on a built-in GenVars field mutates the element. Previously

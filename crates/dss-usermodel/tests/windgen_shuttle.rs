@@ -90,6 +90,14 @@ fn fixture_bytes(name: &str) -> Vec<u8> {
 
 /// The element-side `TWindGenVars` the engine would hand the model: every
 /// field distinct so a mis-decode cannot alias onto a neighbour.
+///
+/// `conn` is deliberately the NON-default `1` even though the terminal shape
+/// around it is the 3-phase wye of [`YORDER`]: this is a codec fixture, and a
+/// cell whose expected value equals the zero an unwritten field carries could
+/// not tell "the integer crossed" from "the integer was never written"
+/// (RP1.3 audit settlement). The engine-side wiring behind it is pinned
+/// separately, on a `conn=delta` deck, by
+/// `exec::tests::windgen_usermodel::a_delta_windgen_echoes_its_own_connection`.
 fn record() -> WindGenVars {
     WindGenVars {
         theta: 0.125,
@@ -116,7 +124,7 @@ fn record() -> WindGenVars {
         qnominalperphase: QNOMINAL,
         num_phases: 3,
         num_conductors: 4,
-        conn: 0,
+        conn: 1,
         vthev_mag: 277.0,
         vthev_harm: 276.0,
         theta_harm: 0.07,
@@ -209,7 +217,7 @@ fn total_p(v: &[Complex64; 3], i: &[Complex64; 3]) -> f64 {
 
 /// The fixture validates as the 15-function `WindGenUserModel` interface —
 /// `new(windgenvars, dynarec) -> id` plus the `TAIL_15` set in the Pascal
-/// binding order (`WindGenUserModel.pas:180-194`).
+/// binding order (`WindGenUserModel.pas:194-208`).
 #[test]
 fn fixture_validates_as_the_windgen_interface() {
     let h = host(InterfaceKind::WindGenUserModel);
@@ -300,8 +308,14 @@ fn power_flow_round_trips_the_whole_windgen_record() {
 
 /// The state-variable surface (`WindGen.pas:2735-2876`): count, 1-based names,
 /// per-index reads, `get_all_vars`, `set_variable`, and the Pascal
-/// out-of-range answer. Slots 4-9 echo the record head the guest decoded, so
-/// this single call also witnesses the head offsets 24/64/72/176/180/184.
+/// out-of-range answer. Slots 4-9 and 12-15 echo the record fields the guest
+/// decoded, so this single call also witnesses the offsets 24/64/72/88/176/180/
+/// 184/212/268/292 — one from every region of the image (head doubles, the
+/// integer block, the unaligned stretch above it, the turbine tail).
+///
+/// Slots 10-11 are the guest's call counters: `WgUpdCount` must still be 0 here
+/// (no `update_model` has been issued) and `WgBadSet` 0 (no out-of-range write),
+/// which is what makes the two dedicated assertions at the end mean something.
 #[test]
 fn variable_surface_echoes_the_decoded_record_head() {
     let h = host(InterfaceKind::WindGenUserModel);
@@ -330,7 +344,7 @@ fn variable_surface_echoes_the_decoded_record_head() {
             ctx: Box::new(NoCallbacks),
         })
         .expect("num_vars");
-    assert_eq!(n, 9);
+    assert_eq!(n, 15);
 
     let names = [
         "WgIout1",
@@ -342,6 +356,12 @@ fn variable_surface_echoes_the_decoded_record_head() {
         "WgNphEcho",
         "WgNcondEcho",
         "WgConnEcho",
+        "WgUpdCount",
+        "WgBadSet",
+        "WgXdpEcho",
+        "WgVTargetEcho",
+        "WgPolesEcho",
+        "WgVCutInEcho",
     ];
     for (k, want) in names.iter().enumerate() {
         let mut dr = dyn_rec(SNAPSHOT);
@@ -362,6 +382,7 @@ fn variable_surface_echoes_the_decoded_record_head() {
 
     let want_i: [Complex64; 3] = [y_mul(V_PF[0]), y_mul(V_PF[1]), y_mul(V_PF[2])];
     let pg = total_p(&V_PF, &want_i);
+    let orig = record();
     let want_vars = [
         (want_i[0].re * want_i[0].re + want_i[0].im * want_i[0].im).sqrt(),
         pg,
@@ -371,9 +392,15 @@ fn variable_surface_echoes_the_decoded_record_head() {
         W0,
         3.0,
         4.0,
+        1.0,
         0.0,
+        0.0,
+        orig.xdp,
+        orig.vtarget,
+        orig.poles,
+        orig.v_cutin,
     ];
-    let mut all = vec![0.0f64; 9];
+    let mut all = vec![0.0f64; 15];
     let mut dr = dyn_rec(SNAPSHOT);
     inst.get_all_vars(
         &mut all,
@@ -405,7 +432,7 @@ fn variable_surface_echoes_the_decoded_record_head() {
     let mut dr = dyn_rec(SNAPSHOT);
     assert_eq!(
         inst.get_variable(
-            10,
+            16,
             WindGenShuttle {
                 wind_gen_vars: &mut wg,
                 dyn_rec: &mut dr,
@@ -414,6 +441,65 @@ fn variable_surface_echoes_the_decoded_record_head() {
         )
         .expect("get_variable"),
         -9999.99
+    );
+
+    // `update_model` (Pascal `FUpdateModel`, `WindGen.pas:1418`) re-reads the
+    // record and bumps `WgUpdCount`: move a record field first and the guest's
+    // echo must follow it without any `calc`.
+    wg.poles = 6.0;
+    let mut dr = dyn_rec(SNAPSHOT);
+    inst.update_model(WindGenShuttle {
+        wind_gen_vars: &mut wg,
+        dyn_rec: &mut dr,
+        ctx: Box::new(NoCallbacks),
+    })
+    .expect("update_model");
+    let mut dr = dyn_rec(SNAPSHOT);
+    let after: Vec<f64> = [10i32, 14]
+        .iter()
+        .map(|k| {
+            inst.get_variable(
+                *k,
+                WindGenShuttle {
+                    wind_gen_vars: &mut wg,
+                    dyn_rec: &mut dr,
+                    ctx: Box::new(NoCallbacks),
+                },
+            )
+            .expect("get_variable")
+        })
+        .collect();
+    assert_eq!(after[0], 1.0, "WgUpdCount counts the update_model call");
+    assert_eq!(after[1], 6.0, "…and the model re-read the record with it");
+    wg.poles = orig.poles;
+
+    // An out-of-range `set_variable` is counted, never silently ignored — the
+    // observable the engine-side mis-nesting pin needs
+    // (`exec::tests::windgen_usermodel::set_statevar_routes_only_the_tail_to_the_model`).
+    let mut dr = dyn_rec(SNAPSHOT);
+    inst.set_variable(
+        -12,
+        1.0,
+        WindGenShuttle {
+            wind_gen_vars: &mut wg,
+            dyn_rec: &mut dr,
+            ctx: Box::new(NoCallbacks),
+        },
+    )
+    .expect("set_variable");
+    let mut dr = dyn_rec(SNAPSHOT);
+    assert_eq!(
+        inst.get_variable(
+            11,
+            WindGenShuttle {
+                wind_gen_vars: &mut wg,
+                dyn_rec: &mut dr,
+                ctx: Box::new(NoCallbacks),
+            },
+        )
+        .expect("get_variable"),
+        1.0,
+        "WgBadSet counts a write outside 1..=NumVars"
     );
 
     // `set_variable` reaches the model: change the slip, re-`calc`, and the
@@ -582,7 +668,7 @@ fn dynamics_init_calc_integrate_round_trip() {
 }
 
 /// `UserData=` reaches the guest parser (Pascal `TWindGenUserModel.Set_Edit`,
-/// `WindGenUserModel.pas:150-154`): with no edit the model runs its built-in
+/// `WindGenUserModel.pas:152-156`): with no edit the model runs its built-in
 /// defaults, and the edited admittance is observably different.
 #[test]
 fn user_data_edit_changes_the_model() {

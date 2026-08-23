@@ -1,7 +1,7 @@
 //! The wasm boundary — the 15 exports of the frozen ABI
 //! (`docs/wasm/USERMODEL_ABI.md` §1) plus `dss_alloc`, over the record shuttle
 //! of ABI §2. `new(windgenvars, dynarec) -> id` (the two-pointer form, Pascal
-//! `TWindGenUserModel.FNew`, `WindGenUserModel.pas:34`).
+//! `TWindGenUserModel.FNew`, `WindGenUserModel.pas:33`).
 //!
 //! Pointers arriving from the host are addresses inside guest linear memory the
 //! host obtained from `dss_alloc`, so every access resolves through the
@@ -191,7 +191,7 @@ pub extern "C" fn select(id: i32) -> i32 {
 }
 
 /// ABI `edit(ptr, len)` — the `UserData=` string (Pascal
-/// `TWindGenUserModel.Set_Edit`, `WindGenUserModel.pas:150-154`).
+/// `TWindGenUserModel.Set_Edit`, `WindGenUserModel.pas:152-156`).
 #[no_mangle]
 pub extern "C" fn edit(ptr: i32, len: i32) {
     with_guest(|g| {
@@ -258,10 +258,19 @@ pub extern "C" fn save() {}
 #[no_mangle]
 pub extern "C" fn restore() {}
 
-/// ABI `update_model()` — nothing to recompute (Pascal `FUpdateModel`,
-/// `WindGen.pas:1418`).
+/// ABI `update_model()` — Pascal `FUpdateModel` (`WindGen.pas:1418`, the
+/// `RecalcElementData` tail): re-read the boundary record (the element has just
+/// re-derived its ratings and reactances) and count the call, so the engine's
+/// call site has an observable consequence.
 #[no_mangle]
-pub extern "C" fn update_model() {}
+pub extern "C" fn update_model() {
+    with_guest(|g| {
+        let rec = windgen_in(g);
+        if let Some(m) = g.reg.active_mut() {
+            m.update_model(&rec);
+        }
+    });
+}
 
 /// ABI `num_vars() -> i32`.
 #[no_mangle]

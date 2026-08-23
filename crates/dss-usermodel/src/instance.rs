@@ -57,7 +57,7 @@ impl<'a> Shuttle<'a> {
 
 /// The [`InterfaceKind::WindGenUserModel`] shuttle: the same three parts as
 /// [`Shuttle`], carrying `TWindGenVars` instead of `TGeneratorVars`
-/// (`PCElements/WindGenUserModel.pas:34` — `FNew(Var GenVars: TWindGenVars; …)`).
+/// (`PCElements/WindGenUserModel.pas:33` — `FNew(Var GenVars: TWindGenVars; …)`).
 ///
 /// The record is not optional here: WindGen is the only kind that uses this
 /// shuttle and it always passes one, exactly as the Pascal loader does

@@ -9,9 +9,9 @@ Recorded decisions:
   `TWindGenVars` (§2.6), and a sixth `InterfaceKind` (`WindGenUserModel`).
   Purely additive; every existing shape, image and callback is unchanged.**
   WindGen's `UserModel=` is a 15-function interface in the same binding order as
-  `TGenUserModel` (`PCElements/WindGenUserModel.pas:180-194`) with the same
+  `TGenUserModel` (bound at `PCElements/WindGenUserModel.pas:194-208`) with the same
   `new(vars, dynarec) -> id` wasm signature — but `FNew` takes `TWindGenVars`
-  (`:34`), a **different record**: no NCIM `deltaQNom`, `kVGeneratorBase`
+  (`:33`), a **different record**: no NCIM `deltaQNom`, `kVGeneratorBase`
   respelled `kVWindGenBase`, and a turbine tail (a managed `PLoss: string`
   reference plus thirteen doubles). Native size **356 B**, measured by the P10
   probe `docs/wasm/probes/p10_offsets_windgenvars_r4133.txt`. The **wasm image is
@@ -127,7 +127,7 @@ are ANSI bytes + explicit `maxlen`, NUL-terminated on write (Pascal
 ## 1. Interfaces and guest exports
 
 Pascal spec: `GenUserModel.pas` (`TGenUserModel`, 15 exports, bound `:173-187`),
-`WindGenUserModel.pas` (`TWindGenUserModel` 15, same order, `:180-194`),
+`WindGenUserModel.pas` (`TWindGenUserModel` 15, same order, `:194-208`),
 `StoreUserModel.pas` (`TStoreUserModel` 15, `:214-228`; `TStoreDynaModel` 13 —
 no `Save`/`Restore`, `:336-348`), `PVSystemUserModel.pas` (15, `:160-174`),
 `CapUserControl.pas` (7, `:176-182`). The wasm module must export, with these
@@ -415,7 +415,7 @@ above do not depend on the `get_public_data` image.
 ### 2.6 `TWindGenVars` — the WindGen boundary record (RP1.3)
 
 Pascal `PCElements/WindGenVars.pas:20-73`, the record
-`TWindGenUserModel.FNew` receives (`PCElements/WindGenUserModel.pas:34`). It is
+`TWindGenUserModel.FNew` receives (`PCElements/WindGenUserModel.pas:33`). It is
 **not** `TGeneratorVars`: three differences, all measured by the P10 probe
 `docs/wasm/probes/p10_offsets_windgenvars_r4133.txt` (FPC 3.2.2 `ppcrossx64`
 over the real vendored r4133 unit, same discipline as §2.2a).

@@ -271,7 +271,7 @@ impl GeneratorVars {
 
 /// Pascal `TWindGenVars` (`PCElements/WindGenVars.pas:20-73`) — the WindGen's
 /// public data record, the one `TWindGenUserModel.FNew` receives
-/// (`PCElements/WindGenUserModel.pas:34`). The model **mutates** it (the Pascal
+/// (`PCElements/WindGenUserModel.pas:33`). The model **mutates** it (the Pascal
 /// dynamics call sites expect at least `Pshaft` back from a shaft model,
 /// `WindGen.pas:2011`); the host reads it back after every call.
 ///

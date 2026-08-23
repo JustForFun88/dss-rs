@@ -41,10 +41,10 @@ pub enum InterfaceKind {
     CapUserControl,
     /// Pascal `TWindGenUserModel` (`WindGenUserModel.pas:23-79`): WindGen
     /// `UserModel=`; 15 functions in the same binding order as
-    /// `TGenUserModel` (`:180-194`), `new(windgenvars, dynarec) -> id`.
+    /// `TGenUserModel` (bound at `:194-208`), `new(windgenvars, dynarec) -> id`.
     ///
     /// Same *interface* as [`Self::GenUserModel`], different *record*: `FNew`
-    /// takes `TWindGenVars` (`WindGenUserModel.pas:34`), not `TGeneratorVars`
+    /// takes `TWindGenVars` (`WindGenUserModel.pas:33`), not `TGeneratorVars`
     /// — see [`crate::WindGenVars`].
     WindGenUserModel,
 }

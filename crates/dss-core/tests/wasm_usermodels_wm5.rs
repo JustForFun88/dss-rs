@@ -237,6 +237,59 @@ fn wasm_capcontrol_matches_r4133_oracle() {
     );
 }
 
+/// `like=` must carry a **live** user control (RP1.3 audit settlement,
+/// 2026-08-23). Pascal `MakeLike` does `UserModel.Name :=
+/// OtherCapControl.UserModel.Name` (`CapControl.pas:452`), a `Set_Name` = eager
+/// free + `LoadLibrary` + `FNew`; the port used to `clone()` the donor's slot,
+/// whose `Clone` drops the live wasmi instance, so the copy kept
+/// `IsUserModel = TRUE` (copied at `:453`) with nothing behind it — a
+/// USERCONTROL that samples, decides nothing and switches nothing, silently.
+///
+/// The observable is the second bank: `cc2` watches the same node as `cc` with
+/// the same deadband, so on the light-load step (V above `vhigh`) a live model
+/// must OPEN `c2`, exactly as `cc` opens `c`. A dead slot leaves `c2` closed and
+/// contributes no event-log action.
+///
+/// The deadband has to be re-sent: `Set_Name` gives the copy a **fresh** instance
+/// at the guest's own defaults and Pascal never replays the donor's `UserData`
+/// into it (`:459` copies the property array, which is only the `?` echo) — the
+/// same law the WindGen `like=` pin documents. That `Edit` is itself part of the
+/// discrimination: `Set_Edit` is `If FID <> 0 Then FEdit(…)`, so a dead slot
+/// swallows it silently.
+#[test]
+fn like_carries_a_live_user_control() {
+    let mut dss = run_deck();
+    dss.command("new capacitor.c2 bus1=cbus phases=3 kv=12.47 kvar=1500");
+    dss.command("new capcontrol.cc2 like=cc capacitor=c2");
+    dss.command("edit capcontrol.cc2 UserData=\"node=4 vlow=7000 vhigh=7250\"");
+    assert!(
+        dss.errors().is_empty(),
+        "`like=` must not error: {:?}",
+        dss.error_texts()
+    );
+    // Light load again: the monitored node rises clear of `vhigh`, so every live
+    // control opens its bank.
+    dss.command("edit load.ld kw=500");
+    dss.command("solve");
+
+    dss.command("? capacitor.c.states");
+    let c = parse_states(dss.result());
+    dss.command("? capacitor.c2.states");
+    let c2 = parse_states(dss.result());
+    assert_eq!(c, vec![0], "the donor's control opened its own bank");
+    assert_eq!(
+        c2, c,
+        "the `like=` copy must run a LIVE user control, not a dead slot"
+    );
+    assert!(
+        switch_actions(dss.event_log())
+            .iter()
+            .any(|(elem, _)| elem.eq_ignore_ascii_case("Capacitor.c2")),
+        "the copy must appear in the event log: {:?}",
+        switch_actions(dss.event_log())
+    );
+}
+
 /// The committed WM.5 golden parses and has the expected shape (guards against a
 /// truncated / regenerated-from-Rust golden).
 #[test]
