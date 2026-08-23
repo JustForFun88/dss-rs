@@ -302,8 +302,26 @@ disposition (the post-settlement run; before it, 49 451 / 2 012 / 79 and
 UNCLAIMED 1 654 / 425 / 37 — the delta is exactly RP3.9's 70 cells).
 `DECLARED_RP24` `(2101, 71, 2021)` → **`(0, 0, 0)`** — the sub-step's own
 acceptance — and RP2.3's `reactor.kvar` carve-out hand-off is discharged by the
-floor claiming it. **Next: the WP boundary merge, then WP-RP3** — RP3.1–RP3.4
-plus the three RP3.5+ sub-steps, RP3.8 and the new RP3.9 are what RP4.1 waits on.
+floor claiming it.
+**WP-RP3 is OPEN and RP3.1 (`swtcontrol.delay`) is COMPLETE** (2026-08-24, one
+commit, **zero product-crate bytes and zero `ledger.json` bytes** — tests and
+docs only). r4133 never wires `SwtControl` property 5: its `Edit` `CASE`
+(`Version8/Source/Controls/SwtControl.pas:195-218`, the plan's `:194-217` off by
+one) has arms 1, 2, 3, 4, 6, 7, 8, 9 and **no 5**, so `delay=` reaches only the
+echo store while `TimeDelay` keeps `Create`'s 120.0 (`:310`) and the **live**
+getter renders it (`:588`) — a wired property silently ignored, not a queue
+delay: `Sample`'s pushes (`:484-507`), `LockCommand`'s own declaration (`:39`)
+and `DoPendingAction` (`:396-408`) are all commented out, so the dead code would
+not even compile, and `set_States` acts immediately (`:532-549`). capi 0.14.5
+wires it (`src/Controls/SwtControl.pas:185`) and the port follows, so **no engine
+change was owed**. Reported upstream (`investigations/to_opendss/43-*`, local),
+excluded by **two drafted per-case ledger `property` entries** — never a
+`PROPS_ECHO_R4133` row, which would misname a live getter — that land at RP4.1
+per §1.1(e), and held meanwhile by two new pins. `DECLARED_RP3` stays
+**`(7, 4, 7)`**: the rows may not leave the work list while the tree holds no
+exclusion for them, and the new per-pair work list `RP3_ROUTING` records each of
+the four sub-steps' state instead. **Next: RP3.2 (`windgen.kvar`)** — RP3.2–RP3.4
+plus the three RP3.5+ sub-steps, RP3.8 and RP3.9 are what RP4.1 waits on.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -3828,6 +3846,162 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     **8 322 → 8 368** (4 161 → **4 184** per lane, **+23**): 1 new harness guard
     (the capi tier floors) × 22 harness-bearing binaries, plus 1 new replay test
     (RP3.9's both-ways proof) — and no test deleted, `#[ignore]`d or loosened.
+
+### R4133_PROPS WP-RP3 — condensed records
+
+> Plan: `R4133_PROPS_PLAN.md` §WP-RP3. Same branch (`r4133-props`), same
+> per-sub-step ritual. Four bin-7 root-cause pairs (RP3.1–RP3.4) plus the five
+> sub-steps the WP-RP2 triage opened (RP3.5–RP3.7 from RP2.2, RP3.8 from RP2.3's
+> kill ruling, RP3.9 from the RP2.4 audit settlement). RP4.1 waits on all of them.
+
+- **RP3.1** (2026-08-24) — `swtcontrol.delay`: **a wired property that r4133
+  silently ignores.** **Zero product-crate bytes** (the port already behaves
+  correctly), **zero `ledger.json` bytes**, zero golden / manifest /
+  `population.lock` / frozen-extract bytes, and no r4133 mask moved — the whole
+  sub-step is two test files plus docs.
+  - **Root cause, verified against the vendored r4133 source, not the plan's
+    transcription.** `SwtControl` declares nine properties, the fifth being
+    `Delay`. `Edit` stores every token in `PropertyValue[]` first
+    (`Version8/Source/Controls/SwtControl.pas:192-193`) and then dispatches on
+    the property number — and the `CASE` has arms for 1, 2, 3, 4, 6, 7, 8 and 9
+    but **none for 5** (`:195-218`; the plan said `:194-217`, off by one, the
+    only drift found). `delay=` therefore falls through to `ClassEdit` as an
+    inherited parameter, `TimeDelay` keeps the 120.0 `Create` gave it (`:310`),
+    and the getter — which is **LIVE**, `Format('%-.7g',[TimeDelay])` at `:588` —
+    answers `120` to a deck that asked for 0.25. dss_capi 0.14.5 wires the
+    property through its typed table (`src/Controls/SwtControl.pas:185`) and this
+    port follows it (`elements/control/swt_control/accessors.rs:114`, ordinal at
+    `mod.rs:51`, `PropDef::double("Delay")` at `mod.rs:78`), so **nothing in the
+    engine was owed a change**.
+  - **Render-only, and provably so.** The report had to state it is not a
+    queue-delay bug, and the evidence is stronger than the plan assumed:
+    `Sample`'s two `ControlQueue.Push` calls are commented out wholesale
+    (`:484-507`, "Removing because action … and lock are instantaenous"),
+    `DoPendingAction` likewise (`:396-408`), `set_States` writes
+    `ControlledElement.Closed[]` immediately (`:532-549`) — **and** `LockCommand`
+    is commented out of the class declaration too (`:39`), while
+    `ActionCommand`/`PresentState`/`Armed` exist in neither `TSwtControlObj` nor
+    `TControlElem`. The dead block would not compile if uncommented, so nothing
+    upstream can consume `TimeDelay`. Two further facts worth the record: r4133's
+    own `InitPropertyValues` (`:654-655`) writes `'120.0'` into slot 5 and then
+    immediately `''`, so `Dump` prints the deck's token while `?` prints 120 —
+    the engine contradicts itself; and the **sibling copy in the same trunk**
+    (`Version8/Source/CMD_Lazz/Controls/SwtControl.pas:179`) still has
+    `5: TimeDelay := Parser.DblValue;`, so the arm was lost in a rework rather
+    than never written.
+  - **Census, confirmed twice** (frozen extracts + a bounded live re-run,
+    `DSS_PROPS_CENSUS=claims DSS_GATE_ONLY=swtcontrol`, artifacts deleted):
+    42 cells / **24 in scope**, and the in-scope half decomposes exactly as the
+    plan claims — **12 + 12** over `controls:swtcontrol/swtcontrol_time.dss` and
+    `controls:swtcontrol/midi_swtcontrol.dss` (both `engines: r4133`, one cell
+    per step 0..11, ours `0.25` vs r4133 `120`, `max_rel` 0.9979166666666667).
+    The remaining 6 are three `capi_v0145` copies of the vendored `IEEE_519.DSS`
+    (`Delay=0.0`, two SwtControls each) and are owed nothing. `civanlar.dss` —
+    16 SwtControls, `engines: r4133`, in scope — types no `delay=` and produces
+    **no** cell, i.e. our unset render already equals r4133's 120, measured by
+    its absence.
+  - **The exclusion shape is a ledger entry, never an echo row** (the plan is
+    explicit and the reason is the mechanism: `:588` is live, so calling this an
+    echo would be a false statement). Per §1.1(e) the two entries are **drafted
+    here and land in RP4.1's unmask commit** — earlier they would fail
+    `assert_all_hit` as NEVER APPLIED, the r4133 property compare being masked
+    until then. Verbatim, to be copied into `tests/corpus/ledger.json` at RP4.1:
+
+    ```json
+    "swtcontrol-delay-not-wired": "EPRI r4133 never wires SwtControl property 5 `Delay`: the Edit CASE (Version8/Source/Controls/SwtControl.pas:195-218) has arms 1,2,3,4,6,7,8,9 and NO arm 5, so `delay=` lands only in the echo store (:192-193) while `TimeDelay` keeps its Create value 120.0 (:310) and the LIVE getter renders it (:588, Format('%-.7g',[TimeDelay])). dss_capi 0.14.5 wires the property through its typed table (src/Controls/SwtControl.pas:185, PropertyOffset[ord(TProp.Delay)] := ptruint(@obj.TimeDelay)) and the port follows it, so a deck that sets `delay=` reads back its own value here and 120 there. The divergence is RENDER-ONLY on r4133: nothing consumes TimeDelay there — Sample's queue-pushing body is commented out wholesale (:484-507, pushes at :492/:498, and LockCommand is commented out of the class declaration at :39 so the block no longer even compiles), DoPendingAction likewise (:396-408), and set_States acts immediately (:532-549); the two decks' event log and control queue are empty under r4133 and are live-compared. Per the 2026-08-02 policy the port keeps the correct behavior (the property is wired) and the upstream defect is reported (investigations/to_opendss/43-swtcontrol-delay-not-wired.md, local) + excluded here + pinned by the expected-value pins named in `source`. Exact-pair (a discrete value jump, not display precision)."
+    ```
+
+    ```json
+    {
+      "id": "r4133-swtcontrol-delay-ignored-time",
+      "case": "controls:swtcontrol/swtcontrol_time.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.sw\\.delay$",
+          "rust": "0.25",
+          "oracle": "120"
+        }
+      ],
+      "cause_ref": "swtcontrol-delay-not-wired",
+      "source": "R4133_PROPS_PLAN RP3.1 (2026-08-24), drafted in the sub-step and landed at RP4.1 per §1.1(e) — earlier it would fail assert_all_hit as NEVER APPLIED, the r4133 property compare being masked until the unmask. Measured by the bounded claims census (DSS_PROPS_CENSUS=claims DSS_GATE_ONLY=swtcontrol): 12 in-scope cells, one per step 0..11, element SwtControl.sw, ours 0.25 (the deck's `~ delay=0.25`) vs r4133's frozen 120, max_rel 0.9979166666666667. Replacement pin: props_r4133_pins.rs::swtcontrol_delay_wires_the_property.",
+      "measured": {
+        "date": "2026-08-24"
+      }
+    }
+    ```
+
+    ```json
+    {
+      "id": "r4133-swtcontrol-delay-ignored-midi",
+      "case": "controls:swtcontrol/midi_swtcontrol.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.sw\\.delay$",
+          "rust": "0.25",
+          "oracle": "120"
+        }
+      ],
+      "cause_ref": "swtcontrol-delay-not-wired",
+      "source": "R4133_PROPS_PLAN RP3.1 (2026-08-24), drafted in the sub-step and landed at RP4.1 per §1.1(e). Same pair on the second r4133-gating SwtControl deck (the IEEE123-class midi loop tie): 12 in-scope cells, steps 0..11, element SwtControl.sw, ours 0.25 vs r4133 120. The third corpus deck that sets delay= (controls:swtcontrol/swtcontrol_lock.dss) is engines: capi_v0145, where the port and the pinned 0.14.5 oracle agree, so it needs no entry. Replacement pin: props_r4133_pins.rs::swtcontrol_delay_wires_the_property_on_the_midi_tie.",
+      "measured": {
+        "date": "2026-08-24"
+      }
+    }
+    ```
+
+    The shape was checked against the loader
+    (`corpus_gate/ledger.rs`): key `format!("{element_lower}.{prop_lower}")` →
+    `swtcontrol.sw.delay`, the numeric exact-pair arm requires the `rust` pin
+    (`:1093-1107`), `cause_ref` must resolve to a `causes` key (`:1453-1460`),
+    and the case's `engines` must contain the channel (`:1426-1435`) — both cases
+    are `engines: "r4133"`.
+  - **The pins** (`crates/dss-core/tests/props_r4133_pins.rs`, both lanes, no
+    oracle): `swtcontrol_delay_wires_the_property` — `SwtControl.sw.Delay` is
+    `'0.25'` on `swtcontrol_time.dss`, `'7.5'` after an `edit`, and `'120'` on
+    `civanlar.dss` where no deck types `delay=` (three readings, so neither a
+    hardwired getter nor a parse-time echo would pass) — and
+    `swtcontrol_delay_wires_the_property_on_the_midi_tie` (`'0.25'` → `'3.5'` on
+    the loop tie). Because these witness a **drafted ledger entry** and not an
+    `EchoRow`, the file's "no un-cited `#[test]`" guard needed a second citation
+    list: `props_r4133_replay::LEDGER_ENTRY_PINS`, pinned literally like
+    `NOT_A_PIN` and cross-checked against the routing row, with
+    `every_echo_row_pin_is_a_test_that_exists` now matching the **union** of the
+    two lists both ways.
+  - **The accounting move: nothing is claimed, and that is the honest answer.**
+    A settled sub-step whose artifact is staged into RP4.1 leaves its rows on the
+    work list — so `DECLARED_RP3` stays **`(7, 4, 7)`** and the new
+    `RP3_ROUTING` (`props_r4133_replay.rs`, the `RP38_ROUTING`/`RP39_ROUTING`
+    shape) carries the per-pair split and each sub-step's verdict:
+    `generator.model` 1/1 (RP3.3, open), `gictransformer.r2` 1/1 (RP3.4, open),
+    `swtcontrol.delay` **2/2 (RP3.1, settled — cited, drafted, pinned)**,
+    `windgen.kvar` 3/3 (RP3.2, open). Its guard re-measures the three columns
+    from the walk rather than transcribing them (a sum-preserving swap of two
+    pairs' row counts reds it), requires a settled verdict to cite `.pas:`, to
+    name both `RP4.1` and `§1.1(e)`, and to name every `LEDGER_ENTRY_PINS`
+    witness of its sub-step, forbids an open sub-step from owning a pin, and
+    asserts the pair carries **no** echo row.
+  - **Test count 8 368 → 8 376** (4 184 → **4 188** per lane, **+4** — measured
+    on the parity lane's full run, and the same +4 in the default lane's two
+    binaries: `props_r4133_pins` 31 → 33, `props_r4133_replay` 117 → 119):
+    2 pins + 2 replay guards, single-binary each, no test deleted, `#[ignore]`d
+    or loosened. Both new guards were mutation-probed and red as intended (a
+    sum-preserving swap of two routing rows' counts; a pin renamed out from
+    under its citation).
+    Report: `investigations/to_opendss/43-swtcontrol-delay-not-wired.md`
+    (gitignored, local-only — verified absent from the commit).
+    **Open follow-up, out of RP3.1's render-only scope:** the port's `Sample`
+    still queues at `time_delay` where r4133's body is dead
+    (`swt_control/mod.rs:189-229`, which already carries the NOTE) — a behavioral
+    lock-path question owned by whoever retires that body, not by this sub-step.
+    Second: `swtcontrol_lock.dss` carries the same 12 divergent cells but is
+    `engines: capi_v0145`, so if a later WP gates it on r4133 a third entry is
+    due (recorded in entry 2's `source` so the fact cannot be lost).
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

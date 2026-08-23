@@ -518,6 +518,17 @@ const DECLARED_RP38: (usize, usize, usize) = (181, 5, 181);
 /// The variant stays so a regression that re-creates the bucket fails here by
 /// name.
 const DECLARED_RP24: (usize, usize, usize) = (0, 0, 0);
+/// **WP-RP3's four root-cause pairs** — 7 example rows over 4 pairs, all of them
+/// on pairs the RP4.1 unmask will compare. The per-pair split, each sub-step's
+/// verdict and what it landed are [`RP3_ROUTING`].
+///
+/// **Unchanged by RP3.1 (2026-08-24), deliberately.** That sub-step root-caused
+/// `swtcontrol.delay`, reported it upstream and landed its two expected-value
+/// pins — but its exclusion is a `ledger.json` `property` entry, and §1.1(e)
+/// stages every such entry into RP4.1's unmask commit. Until that commit the
+/// tree holds no exclusion for these rows, so they stay *declared*: this bucket
+/// is what a sub-step **inherits**, not a progress bar, and it may only shrink
+/// when something in the tree actually claims the rows.
 const DECLARED_RP3: (usize, usize, usize) = (7, 4, 7);
 /// **RP3.9 — the round-trip residue the RP2.4 audit settlement opened**: the 55
 /// example rows over 27 pairs whose gap is inside the floor and whose r4133 side
@@ -642,6 +653,78 @@ const BIN7_ROOT_CAUSE: &[&str] = &[
     "gictransformer.r2",
     "swtcontrol.delay",
     "windgen.kvar",
+];
+
+/// **The work list under [`Owner::Rp3`]'s single bucket** —
+/// `(pair, sub-step, example rows, rows on in-scope pairs, verdict)`.
+///
+/// [`BIN7_ROOT_CAUSE`] names the four pairs [`declare`] routes to RP3; this is
+/// the per-pair accounting underneath that one number, in the shape
+/// [`RP38_ROUTING`] and [`RP39_ROUTING`] use for the sub-steps they opened. Each
+/// row's three counted columns are re-measured from the walk, so a pair that
+/// silently changes size (or vanishes) reds here instead of being absorbed by
+/// the bucket total.
+///
+/// **A settled sub-step does NOT empty its rows, and that is the point.** RP3.1
+/// is root-caused, reported and pinned, yet its two spellings stay declared to
+/// RP3: the artifact that will finally claim them is a `ledger.json` `property`
+/// entry, and by the §1.1(e) staging rule that entry lands in RP4.1's unmask
+/// commit, not here. Writing "claimed" while the tree holds no exclusion would
+/// be exactly the silent-progress claim this accounting exists to prevent — so
+/// [`DECLARED_RP3`] is unchanged at `(7, 4, 7)` and the verdict column carries
+/// what was decided, for whom, and where it lands.
+///
+/// A verdict that begins `OPEN —` is a sub-step that has not run; anything else
+/// is a settled one and must cite its r4133 site, name its landing artifact and
+/// name every [`LEDGER_ENTRY_PINS`] pin of that sub-step
+/// ([`the_bin7_root_cause_pairs_are_routed_to_their_sub_steps`]).
+const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
+    (
+        "generator.model",
+        "RP3.3",
+        1,
+        1,
+        "OPEN — plan §RP3.3: `'4'` vs `'3'` on the two NCIM decks that hold a generator; probe \
+         r4133's LIVE model at render time (Solution.pas:1935/:2120 promote, :1760 demote) before \
+         calling it an echo",
+    ),
+    (
+        "gictransformer.r2",
+        "RP3.4",
+        1,
+        1,
+        "OPEN — plan §RP3.4: the r4133-channel twin of the capi `gic-pct-r2-honoured-*` entries \
+         (the census shows r4133 renders the same un-honoured `%R2` echo as capi 0.14.5)",
+    ),
+    (
+        "swtcontrol.delay",
+        "RP3.1",
+        2,
+        2,
+        "RP3.1 (2026-08-24) — r4133's Edit CASE has NO arm 5 \
+         (Version8/Source/Controls/SwtControl.pas:195-218): `delay=` reaches only the echo store \
+         (:192-193) while `TimeDelay` keeps Create's 120.0 (:310) and the LIVE getter renders it \
+         (:588). capi 0.14.5 wires the property (src/Controls/SwtControl.pas:185) and the port \
+         follows, so no engine change. Render-only upstream — Sample's queue pushes are commented \
+         out (:484-507, and LockCommand's declaration with them at :39), DoPendingAction likewise \
+         (:396-408), set_States is immediate (:532-549) — hence NO echo row: the exclusion is two \
+         per-case ledger `property` entries (r4133-swtcontrol-delay-ignored-time / -midi), DRAFTED \
+         here and landing at RP4.1 per §1.1(e), witnessed meanwhile by \
+         swtcontrol_delay_wires_the_property and \
+         swtcontrol_delay_wires_the_property_on_the_midi_tie. The `'0.25'` spelling is the 24 \
+         in-scope cells of those two decks; the `'0'` spelling's 6 cells are all on capi_v0145 \
+         IEEE_519 copies and are therefore owed no entry. Report: \
+         investigations/to_opendss/43-swtcontrol-delay-not-wired.md (local)",
+    ),
+    (
+        "windgen.kvar",
+        "RP3.2",
+        3,
+        3,
+        "OPEN — plan §RP3.2: ours ~986 vs r4133 `0` on four of the five `modes:windgen/*` decks, \
+         an r4133-only class with no capi witness; probe a solved-state observable to separate \
+         echo from live Q before choosing the artifact",
+    ),
 ];
 
 /// Bin-7 pairs the **supplement** carries, each read off the Pascal as RP2.3's
@@ -2445,6 +2528,13 @@ fn every_echo_row_matches_its_cited_evidence() {
 /// lost its attribute would still satisfy a name search while never running
 /// again, which is precisely the silent-witness failure this guard exists to
 /// prevent.
+///
+/// Since RP3.1 the pin file also holds witnesses no echo row *can* name (see
+/// [`LEDGER_ENTRY_PINS`]): they hold the port's value for a **drafted** ledger
+/// entry, in the window the §1.1(e) staging rule opens between the sub-step and
+/// RP4.1. They are cited from that table instead, and the both-ways check covers
+/// them the same way — the union of the two citations must be exactly what the
+/// file defines, so neither list can be the place an un-cited `#[test]` hides.
 #[test]
 fn every_echo_row_pin_is_a_test_that_exists() {
     let path = repo_root().join(PINS);
@@ -2453,14 +2543,27 @@ fn every_echo_row_pin_is_a_test_that_exists() {
     // Line endings are the checkout's, not this test's business.
     let text = text.replace("\r\n", "\n");
 
-    let named: BTreeSet<&str> = props_norm::PROPS_ECHO_R4133
+    let echo_named: BTreeSet<&str> = props_norm::PROPS_ECHO_R4133
         .iter()
         .filter_map(|r| r.witness.pin())
         .collect();
-    for name in &named {
+    let ledger_named: BTreeSet<&str> = LEDGER_ENTRY_PINS.iter().map(|(n, _, _)| *n).collect();
+    assert!(
+        echo_named.is_disjoint(&ledger_named),
+        "a pin witnesses an echo row or a drafted ledger entry, never both"
+    );
+    for (name, what) in echo_named
+        .iter()
+        .map(|n| (*n, "an echo row's witness"))
+        .chain(
+            ledger_named
+                .iter()
+                .map(|n| (*n, "a ledger entry's witness")),
+        )
+    {
         assert!(
             text.contains(&format!("#[test]\nfn {name}() {{")),
-            "{name} is named as an echo row's witness but {PINS} defines no such #[test]"
+            "{name} is named as {what} but {PINS} defines no such #[test]"
         );
     }
 
@@ -2474,10 +2577,81 @@ fn every_echo_row_pin_is_a_test_that_exists() {
         .filter_map(|rest| rest.split_once("() {").map(|(name, _)| name))
         .filter(|n| !NOT_A_PIN.contains(n))
         .collect();
+    let cited: BTreeSet<&str> = echo_named.union(&ledger_named).copied().collect();
     assert_eq!(
-        defined, named,
-        "{PINS} must define exactly the pins the echo rows name"
+        defined, cited,
+        "{PINS} must define exactly the pins the echo rows and the drafted ledger entries name"
     );
+}
+
+/// **The pins that witness a DRAFTED ledger entry rather than an echo row** —
+/// `(pin, sub-step, the entry it holds the port's value for)`.
+///
+/// RP3.1 is the first sub-step whose exclusion shape is a per-case `ledger.json`
+/// `property` divergence entry instead of a `PROPS_ECHO_R4133` row, and the plan
+/// forbids the row explicitly: r4133's `Delay` getter is LIVE
+/// (`SwtControl.pas:588`), so calling the divergence an echo would be a false
+/// statement about the mechanism. Under the §1.1(e) staging rule the entries are
+/// drafted in the sub-step and land in RP4.1's unmask commit — earlier they
+/// would fail `assert_all_hit` as NEVER APPLIED, the r4133 property compare
+/// being masked until then — so between the two there is a window in which the
+/// port's value has no holder in the tree at all. These pins are that holder.
+///
+/// Listed here, and not left to a naming convention, for the same reason
+/// [`NOT_A_PIN`] is: this table is the *only* thing that lets a `#[test]` live
+/// in the pin file without an echo row naming it, so growing it is a decision.
+/// It is pinned literally by [`the_ledger_entry_pin_list_is_pinned`] and tied to
+/// the sub-step's routing row by
+/// [`the_bin7_root_cause_pairs_are_routed_to_their_sub_steps`].
+const LEDGER_ENTRY_PINS: &[(&str, &str, &str)] = &[
+    (
+        "swtcontrol_delay_wires_the_property",
+        "RP3.1",
+        "r4133-swtcontrol-delay-ignored-time (controls:swtcontrol/swtcontrol_time.dss)",
+    ),
+    (
+        "swtcontrol_delay_wires_the_property_on_the_midi_tie",
+        "RP3.1",
+        "r4133-swtcontrol-delay-ignored-midi (controls:swtcontrol/midi_swtcontrol.dss)",
+    ),
+];
+
+/// **The ledger-entry pin list is pinned literally**, like [`NOT_A_PIN`]: it is
+/// the second exemption from "every pin in the file is named by an echo row",
+/// and an exemption that grows by iteration would let an un-cited `#[test]`
+/// through by simply being added to it.
+///
+/// Each row must name a real drafted entry id and the case it is drafted for, so
+/// the citation stays checkable against STATUS's verbatim record until RP4.1
+/// lands the entries in `tests/corpus/ledger.json`.
+#[test]
+fn the_ledger_entry_pin_list_is_pinned() {
+    assert_eq!(
+        LEDGER_ENTRY_PINS,
+        [
+            (
+                "swtcontrol_delay_wires_the_property",
+                "RP3.1",
+                "r4133-swtcontrol-delay-ignored-time (controls:swtcontrol/swtcontrol_time.dss)",
+            ),
+            (
+                "swtcontrol_delay_wires_the_property_on_the_midi_tie",
+                "RP3.1",
+                "r4133-swtcontrol-delay-ignored-midi (controls:swtcontrol/midi_swtcontrol.dss)",
+            ),
+        ],
+        "RP3.1's two drafted entries, and nothing else"
+    );
+    for (pin, step, entry) in LEDGER_ENTRY_PINS {
+        assert!(
+            RP3_ROUTING.iter().any(|(_, s, _, _, _)| s == step),
+            "{pin}: {step} owns no RP3 routing row"
+        );
+        assert!(
+            entry.contains('(') && entry.contains(':'),
+            "{pin}: the citation must name the drafted entry id and its case, got {entry:?}"
+        );
+    }
 }
 
 /// The `#[test]`s in the pin file that are **not** witnesses: the deck guard's
@@ -2550,6 +2724,130 @@ fn the_kill_criterion_reroute_is_the_five_silent_readonly_pairs() {
             "storagecontroller.kwtotal",
         ],
         "the RP3.8 bucket holds exactly the re-routed pairs"
+    );
+}
+
+/// **WP-RP3's bucket has a per-pair work list, and a settled sub-step stays in
+/// it until its artifact lands** — the both-ways guard for [`RP3_ROUTING`],
+/// added by RP3.1 (2026-08-24).
+///
+/// [`DECLARED_RP3`] is one number for four independent sub-steps, which is
+/// exactly enough to hide two opposite mistakes: a pair quietly leaving the work
+/// list because its sub-step was declared done (while the tree still holds no
+/// exclusion for it — the §1.1(e) window), and a pair quietly growing or
+/// shrinking inside the total. So the routing is re-measured here rather than
+/// trusted:
+///
+/// * it covers the plan's four root-cause pairs, once each, and its three
+///   counted columns sum to the bucket lock;
+/// * the per-pair `(rows, in-scope rows)` split is what the walk actually
+///   declares to [`Owner::Rp3`] — not a transcription;
+/// * the settled set is pinned literally (RP3.1 alone today), each settled
+///   verdict cites its r4133 site, names where the exclusion lands and names
+///   every [`LEDGER_ENTRY_PINS`] witness of that sub-step, and — the plan's
+///   explicit prohibition — its pair carries **no** echo row;
+/// * an open verdict points at its plan section and owns no pin, so a pin cannot
+///   be landed for a sub-step that has not run.
+#[test]
+fn the_bin7_root_cause_pairs_are_routed_to_their_sub_steps() {
+    assert_eq!(
+        RP3_ROUTING.iter().map(|(p, ..)| *p).collect::<Vec<_>>(),
+        BIN7_ROOT_CAUSE,
+        "the routing covers exactly the plan's four root-cause pairs, once each"
+    );
+    assert_eq!(
+        (
+            RP3_ROUTING.iter().map(|(_, _, n, _, _)| n).sum::<usize>(),
+            RP3_ROUTING.len(),
+            RP3_ROUTING.iter().map(|(_, _, _, n, _)| n).sum::<usize>(),
+        ),
+        DECLARED_RP3,
+        "the routing's three columns must sum to the bucket lock"
+    );
+    assert_eq!(
+        RP3_ROUTING
+            .iter()
+            .filter(|(_, _, _, _, v)| !v.starts_with("OPEN — "))
+            .map(|(p, s, _, _, _)| (*p, *s))
+            .collect::<Vec<_>>(),
+        [("swtcontrol.delay", "RP3.1")],
+        "the sub-steps that have run"
+    );
+
+    for (pair, step, _, _, verdict) in RP3_ROUTING {
+        let pins: Vec<&str> = LEDGER_ENTRY_PINS
+            .iter()
+            .filter(|(_, s, _)| s == step)
+            .map(|(n, _, _)| *n)
+            .collect();
+        if let Some(rest) = verdict.strip_prefix("OPEN — ") {
+            assert!(
+                rest.starts_with(&format!("plan §{step}:")),
+                "{pair}: an open sub-step must point at its own plan section, got {verdict:?}"
+            );
+            assert!(
+                pins.is_empty(),
+                "{pair}: {step} has not run, so it can own no ledger-entry pin — got {pins:?}"
+            );
+            continue;
+        }
+        assert!(
+            verdict.contains(".pas:"),
+            "{pair}: a settled verdict must cite the r4133 site, got {verdict:?}"
+        );
+        assert!(
+            verdict.contains("RP4.1") && verdict.contains("§1.1(e)"),
+            "{pair}: a drafted exclusion must say where it lands, got {verdict:?}"
+        );
+        assert!(
+            !pins.is_empty(),
+            "{pair}: a settled sub-step whose exclusion is staged owes at least one pin"
+        );
+        for pin in pins {
+            assert!(
+                verdict.contains(pin),
+                "{pair}: the verdict must name its witness {pin}"
+            );
+        }
+        let (class, prop) = pair.split_once('.').expect("class.prop");
+        assert!(
+            !props_norm::has_echo_row(class, prop),
+            "{pair}: RP3.1's ruling forbids an echo row here — r4133's getter is LIVE, so the \
+             exclusion is a ledger entry and the echo table would misname the mechanism"
+        );
+    }
+
+    // …and the per-pair split is the walk's, measured the same way the bucket is.
+    let corpus = Corpus::load();
+    let mut seen: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+    for row in &corpus.rows {
+        if first_match(chain_verdicts(&corpus, row)).is_some() {
+            continue;
+        }
+        let Some(ev) = corpus.evidence(row) else {
+            continue;
+        };
+        if declare(row, ev) != Ok(Owner::Rp3) {
+            continue;
+        }
+        let e = seen.entry(row.pair.as_str()).or_insert((0, 0));
+        e.0 += 1;
+        e.1 += usize::from(row_in_scope(row, ev));
+    }
+    assert_eq!(
+        seen.into_iter().collect::<Vec<_>>(),
+        RP3_ROUTING
+            .iter()
+            .map(|(p, _, n, s, _)| (*p, (*n, *s)))
+            .collect::<Vec<_>>(),
+        "the routed pairs, row counts and in-scope splits must be exactly what the walk declares"
+    );
+    let led = account(&corpus, PROPS_NORM_R4133);
+    assert_eq!(
+        led.owner(Owner::Rp3),
+        DECLARED_RP3,
+        "RP3 inherits (rows, pairs, rows on in-scope pairs) — unchanged while RP3.1's entries \
+         are staged into RP4.1"
     );
 }
 
