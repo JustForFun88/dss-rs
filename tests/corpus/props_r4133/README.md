@@ -68,6 +68,35 @@ citations in the RP0.2 STATUS record):
    (`transformer.bhcurrent/bhflux/enabled/ratings/sub/xrconst/xscarray`) and 4
    numeric (`emergamps/normamps/pctperm/repair`) pairs. No new pair.
 
+Those two are *incompleteness* corrections — the 2026-08-08 walk could have seen
+those cells and did not. A **third** difference between this evidence base and
+what the knob reports today is not of that kind; it has its own section, next.
+
+### The RP2.1 policy change a re-census now reports (2026-08-23)
+
+RP2.1 disposed of every `SKIP_PROPS` row for the r4133 channel (plan §1.2), and
+one of them — `(RegControl, RevThreshold)`, a **changed-default** row that
+`tests/TOLERANCE_NOTES.md` forbids masking on r4133 — went from masked-on-both to
+**compared on r4133**. So a plain `DSS_PROPS_CENSUS=1` run on this tree or later
+reports a numeric pair the frozen extracts do not carry:
+
+| pair | rust | r4133 | cells | bin |
+|---|---|---|---|---|
+| `regcontrol.revthreshold` | `-100` / `-800` | `100` / `800` | 888 (864 + 24) | **7** (`EchoDefault`, `Version8/Source/Controls/RegControl.pas:1448`) |
+
+This is a deliberate widening of what the r4133 channel compares, **not** a lost
+row and not a disagreement with the frozen files, which stay frozen. Its
+untruncated spellings are vendored in `examples_supplement.txt` (which is why
+that file holds 26 pairs, not 25), and RP2.3 owes it an `EchoDefault` exclusion
+row plus its expected-value pin — without them RP4.1 breaks on 888 cells.
+
+**Reading a re-census against this directory:** on the `r4133` channel expect
+exactly this one extra numeric pair (measured on a bounded
+`DSS_GATE_ONLY='controls:regcontrol/'` run: 269 of its cells, `2.00e+00`
+max_rel), plus the two corrections above. The `capi_v0145` channel is unaffected
+— the row still masks there, and that channel reports no `regcontrol` divergence
+at all.
+
 ### Pairs the WP-RP1 shape closures make live (post-freeze, RP1.1 audit round)
 
 > Each record below prints **one representative spelling** per pair — enough to
@@ -328,7 +357,25 @@ rows on either channel (WP-RP1's acceptance, re-measured):
 | `UNCLAIMED` | 549 933 | 525 514 | 2 712 | 189 |
 
 The three zero rows are load-bearing, not placeholders: RP2.1 claims bins 1/2/4
-with **no** exclusion, **no** floor and **no** ledger entry helping it.
+with **no** exclusion, **no** floor and **no** ledger entry helping it. The
+`capi_v0145` half of the same run reports **0** cells on all six r4133
+dispositions and 11 `ledger-hit`s: since the RP2.1 audit round that zero is the
+**contract** and not a property of the data — the disposition query takes the
+channel and answers nothing but the ledger link on capi
+(`harness/props_norm.rs::claim_value`, `corpus_gate/props_census.rs::for_value`).
+
+**The 749 claimed spellings against the replay's 748.** The offline replay
+(`crates/dss-core/tests/props_r4133_replay.rs`) can only see what this directory
+carries, and one live spelling has no home here: `autotrans.conn | 'series' |
+'Series'`, created by RP1.2's `XfmrCode` deck on a pair whose `bins.tsv` row is
+frozen at `'wye'`/`'wye '` and `'delta'`/`'Delta '`. §"Pairs the WP-RP1 shape
+closures make live" records only pairs a closure **created**, and the supplement
+may not carry a pair that already has a `bins.tsv` row (the evidence lock
+enforces that), so the delta is recorded as a term instead: the replay's
+`LIVE_ONLY_SPELLINGS` names it, asserts `748 + 1 = 749`, and asserts that the
+shipped `CaseFold` row really claims it — so a later narrowing of that rule reds
+a test here rather than surfacing only at RP4.1. `CaseFold`'s 443 spellings above
+are the replay's 442 plus this one.
 
 **Reconciliation with §1.1's bin arithmetic** (the plan's headline is "~491 000
 in-scope cells become value-preserving"; the frozen bins 1/2/4 hold 513 360 cells

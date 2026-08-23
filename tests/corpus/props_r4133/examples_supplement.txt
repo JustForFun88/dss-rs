@@ -46,7 +46,7 @@
 #     string like the three `idle*` siblings). Declared for RP2.3's echo row.
 #   * `regcontrol.revthreshold` — **bin 7** (`EchoDefault`, the sibling of
 #     `remoteptratio`: r4133 `RegControl.pas:820-827` overrides only TapNum and
-#     `:1437` freezes `PropertyValue[23] := '100'` while the port renders the
+#     `:1448` freezes `PropertyValue[23] := '100'` while the port renders the
 #     live signed threshold). Measured by RP2.1 part A's disposition probe;
 #     absent from the census only because `SKIP_PROPS` hid it on both channels.
 #     Declared for RP2.3's echo row + pin.
