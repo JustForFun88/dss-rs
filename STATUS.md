@@ -298,16 +298,18 @@ worst cell **live** at exactly 6.431124e-05 and puts `under-floor` at **49 381
 cells / 46 538 in scope** over 1 957 spellings and 69 pairs, `UNCLAIMED` down
 51 105 → **1 724** (47 427 → **889**, 104 → 59 pairs) with **every one of the
 889 attributed to an RP3.x sub-step** (all of them open when RP2.4 measured it;
-RP3.1 has since settled 24 of the 889, and they stay UNCLAIMED until its two
-drafted entries land at RP4.1 — §1.1(e)), capi still **0** on every r4133
+RP3.1 and RP3.2 have since settled 24 + 4 = **28** of the 889, and they stay
+UNCLAIMED until their six drafted entries land at RP4.1 — §1.1(e)), capi still
+**0** on every r4133
 disposition (the post-settlement run; before it, 49 451 / 2 012 / 79 and
 UNCLAIMED 1 654 / 425 / 37 — the delta is exactly RP3.9's 70 cells).
 `DECLARED_RP24` `(2101, 71, 2021)` → **`(0, 0, 0)`** — the sub-step's own
 acceptance — and RP2.3's `reactor.kvar` carve-out hand-off is discharged by the
 floor claiming it.
-**WP-RP3 is OPEN and RP3.1 (`swtcontrol.delay`) is COMPLETE** (2026-08-24, one
-commit, **zero product-crate bytes and zero `ledger.json` bytes** — tests and
-docs only). r4133 never wires `SwtControl` property 5: its `Edit` `CASE`
+**WP-RP3 is OPEN; RP3.1 (`swtcontrol.delay`) and RP3.2 (`windgen.kvar`) are
+COMPLETE** (both 2026-08-24, one commit each, **zero product-crate bytes and zero
+`ledger.json` bytes** — tests and docs only). r4133 never wires `SwtControl`
+property 5: its `Edit` `CASE`
 (`Version8/Source/Controls/SwtControl.pas:195-218`, the plan's `:194-217` off by
 one) has arms 1, 2, 3, 4, 6, 7, 8, 9 and **no 5**, so `delay=` reaches only the
 echo store while `TimeDelay` keeps `Create`'s 120.0 (`:310`) and the **live**
@@ -329,7 +331,19 @@ the four sub-steps' state instead — and, since the same-day audit settlement,
 land and says what to do). The settlement also typed the settled-verdict
 contract to plan §WP-RP3's three outcomes, made the r4133 citation and the
 witness naming un-shadowable, and turned the 24 = 12 + 12 census decomposition
-into a derivation over the corpus. **Next: RP3.2 (`windgen.kvar`)** — RP3.2–RP3.4
+into a derivation over the corpus.
+**RP3.2 landed the same shape from the opposite direction**: r4133's `WindGen`
+`kvar` getter *is* wired and live, and reads the **wrong** live field —
+`GetPropertyValue` arm 11 (`Version8/Source/PCElements/WindGen.pas:2896`) renders
+`presentkvar`, i.e. the *dispatched* `Qnominalperphase·Fnphases/1000`
+(`:2297-2300`), where the property documents "the base kvar" (`:365`) and `Edit`
+arm 11 (`:629`) stores it in `kvarBase`. Probed live on the r4133 DLL: a deck
+typing `kvar=500` renders `0`, and `Edit kvar=777` still renders `0` while `PF`
+moves to `0.968058` — parsed, then ignored by the render; `Save Circuit` writes
+`kvar=0` back. Our physics already match (probed terminal powers agree on all
+five windgen decks), so again **no engine change was owed**: report 44 (local) +
+**four** drafted per-case entries + four pins, `DECLARED_RP3` unmoved.
+**Next: RP3.3 (`generator.model`)** — RP3.3/RP3.4
 plus the three RP3.5+ sub-steps, RP3.8 and RP3.9 are what RP4.1 waits on.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
@@ -4079,6 +4093,266 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     Third, for **RP4.1**: landing the staged entries is also an accounting
     commit — retire the settled `RP3_ROUTING` rows, shrink `DECLARED_RP3` by
     exactly those rows and re-state the tripwire (plan §RP4.1 precondition 2).
+
+- **RP3.2** (2026-08-24) — `windgen.kvar`: **a wired property whose r4133 getter
+  reads the wrong live field.** **Zero product-crate bytes** (the port already
+  behaves correctly), **zero `ledger.json` bytes**, zero golden / manifest /
+  `population.lock` / frozen-extract bytes, and no r4133 mask moved — two test
+  files plus docs. The plan's three outcomes resolved to **LEDGER**; the kill
+  criterion did **not** fire (the probe separated echo from live cleanly).
+  - **Root cause, verified against the vendored r4133 source.** `WindGen`
+    declares `kvar` as property 11 and documents it as "Specify the **base
+    kvar**" (`Version8/Source/PCElements/WindGen.pas:364-365`, verbatim the
+    `Generator` help at `Generator.pas:396`). The write path works — `Edit` arm
+    11 exists (`:629`, `11: Presentkvar := Parser.DblValue`) and
+    `Set_Presentkvar` stores the value in `kvarBase` (`:2996-3009`). The **read**
+    path does not: `GetPropertyValue` arm 11 is `Format('%.6g',[presentkvar])`
+    (`:2896`) and `Get_Presentkvar` returns
+    `WindGenvars.Qnominalperphase*0.001*Fnphases` (`:2297-2300`) — the
+    *dispatched* Q. So this is **not** RP3.1's shape (an unwired property) and
+    not an echo either: the echo store's own default for the slot is `'60'`
+    (`:2446`) and is unreachable, `TDSSObject.Get_PropertyValue` being virtual
+    (`DSSObject.pas:117-120`). The axis is **live-field-A vs live-field-B**.
+    r4133 contradicts itself inside its own trunk: `Generator` has the
+    **identical** getter (`Generator.pas:2402-2405`) and the identical help, yet
+    renders the base (`Generator.pas:3018`, `Format('%.6g',[kvarBase])`) — which
+    is what the port does (`elements/pc/windgen/accessors.rs:431`, the twin of
+    `pc/generator/accessors.rs:495`).
+  - **The live probe (summarized; driver = `epri-worker` over the git-tracked
+    `tools/opendss/bin/r4133/OpenDSSDirect.dll`, banner `Version 11.0.0.1
+    (64-bit build) - Charlottesville`; the temporary port-side example was
+    deleted, nothing under `tests/corpus` was written).**
+    - **Decisive — not an echo.** A scratch deck typing `kW=3000 kvar=500`:
+      r4133 `? WindGen.w1.kvar` → **`0`**, port → `500`. An echo store would have
+      printed `500`.
+    - **The value IS parsed; only the render ignores it.** `Edit WindGen.w1
+      kvar=777` → r4133 kvar `0` **but PF `0.968058`** (= 3000/√(3000²+777²)),
+      port `777` / `0.968057839822749` — `Set_Presentkvar`'s side effect fired
+      identically on both engines.
+    - **Not a port bug — the physics already agree.** Solved terminal powers on
+      `WindGen.w1`, the observable independent of the property string, over all
+      five corpus decks: Q **−2.13e-05 / −4.22e-05 kvar** in power flow on both
+      engines; in dynamics **−37 087.81 (port) vs −37 087.76 (r4133)** and
+      **−29 216.72 vs −29 216.67**. The port ports `SetNominalGeneration`
+      loop-for-loop, `Else kvarCalc := 0` (`:1320-1321`) included
+      (`windgen/nominal.rs:223-225`), so **no engine change was owed** — and
+      adopting `presentkvar` as our render would be *reproducing* an upstream
+      defect, which the 2026-08-02 policy bars.
+    - **Wrong even when the dispatch works.** With `QMode=1` (the PF arm,
+      `:1277`) the same deck renders **`363.54`** — the operating-point Q — for a
+      typed `kvar=500`; terminal Q −363.540715 (r4133) vs −363.540715423 (port).
+    - **In dynamics the render is a stale intermediate.** `:1254` skips the Q
+      block, so after `Edit kvar=777` on `windgen_dyn.dss` r4133 renders **777**
+      while its own `kvarBase` is **792.718441186736** (the port's value, reached
+      through the identical `PFNominal 0.897802`) and the measured terminal Q is
+      **−37 087.76 kvar** — three numbers, the render tracking none.
+    - **Round-trip model corruption, produced not predicted.** `Save Circuit` on
+      r4133 wrote `New "WindGen.w1" … kW=3000 kvar=0 …` for the machine built
+      with `kvar=500` (the port wrote `kvar=500`), via `TDSSObject.SaveWrite`
+      reading `PropertyValue[]` (`DSSObject.pas:156`) through the virtual getter;
+      reloading then also resets `PFNominal`→1.0 and `kvarMax`/`kvarMin`→0
+      (`:3001-3008`).
+  - **Census, derived and closed over every cell.** 4 cells / **4 in scope**,
+    `1 + 1 + 1 + 1` over the four diverging decks (`bins.tsv:303`
+    `windgen.kvar numeric 7 - 4 4 9.86e+02 9.86e+02`; `examples_full.txt:3375-3377`
+    `'854.95263026673'|'0'|2`, `'726.483157256779'|'0'|1`,
+    `'986.05231553659'|'0'|1`). All five `modes:windgen/*` decks are
+    `steps=1 … engines=r4133` in `population.lock.json`, one `WindGen.w1` each.
+    **No deck types `kvar=` at all** — every value is a side effect: `kVA` unset
+    ⇒ `kW·√(1/pf²−1)` (3000/0.95 → 986.05231553659; 1500/0.9 →
+    726.483157256779), `kVA` set ⇒ `√(kVA²−(kVA·|pf|)²)` at `Create`'s pf 0.88
+    (`:917`) ⇒ kWBase 1584, 854.95263026673 on both dyn decks. The fifth deck,
+    `modes:windgen/windgen_snap.dss`, types `pf=1.0`, so **our** base is 0 and
+    both engines print `0` — a value coincidence, **not** a mode story: typing
+    `kvar=777` there diverges 777 vs 0 (probed, and pinned). Beyond the
+    population, exactly **two** further corpus decks declare a WindGen
+    (`…/WindGenerator/WindGen_GFL_Dynamics/` and `…/WindGen_QSTS/`
+    `Run_IEEE123Bus_GFLDaily.DSS`); both sit in
+    `tests/corpus/manifests/skipped_oracle_issue.json` under
+    `capi015_multistep_limitation`, own no cell and owe no entry — and each would
+    derive ~569.97 against r4133's `0` if ever promoted. Since this sub-step the
+    whole decomposition is **derived, not transcribed**:
+    `props_r4133_replay::the_rp32_census_decomposition_is_read_off_the_corpus`
+    sweeps every corpus `.dss` for `WindGen` declarations, reads each one's
+    `kW=`/`pf=`/`kVA=`/`kvar=` tokens in the machine's own element scope,
+    re-derives the base through the two `WindGen.pas` branches, splits on the
+    lock's `steps=`/`engines=`, reconciles per spelling and in total against the
+    frozen extracts (each of whose r4133 columns must be `0`), and requires the
+    in-scope cases to be exactly the cases the drafted entries cite. One measured
+    correction to the hand-written table it replaced: the QSTS deck writes
+    `PF=0.88` explicitly on a `~` continuation rather than inheriting it.
+  - **The exclusion shape is a ledger entry, never an echo row** — the getter is
+    live, so an echo row would misname the mechanism, and `props_norm.rs` carries
+    none for this pair (only `windgen.dynout`). Per §1.1(e) the **four** entries
+    (one per diverging case; the fifth deck owes none) are **drafted here and
+    land in RP4.1's unmask commit**. Verbatim, to be copied into
+    `tests/corpus/ledger.json` at RP4.1:
+
+    ```json
+    "windgen-kvar-renders-dispatched-q": "EPRI r4133 renders WindGen property 11 `kvar` from the DISPATCHED reactive power instead of the base kvar the property documents: GetPropertyValue arm 11 (Version8/Source/PCElements/WindGen.pas:2896) is Format('%.6g',[presentkvar]) and Get_Presentkvar (:2297-2300) returns WindGenvars.Qnominalperphase*0.001*Fnphases. The Edit arm EXISTS (:629 `11: Presentkvar := Parser.DblValue`) and Set_Presentkvar (:2996-3009) stores the value in kvarBase, so this is NOT an echo: probed live on r4133 via epri-worker, a deck typing `kvar=500` renders `0`, and after `Edit kvar=777` the render is still `0` while `? PF` renders 0.968058 (= 3000/sqrt(3000^2+777^2)) — the value IS parsed and the getter reports a different live field. The rendered zero on these decks comes from a second, independent upstream defect: the steady-state `case WindModelDyn.QMode` (:1276-1322) implements arms 1 (PF) and 2 (Volt-Var) but has NO arm 0, while QMode defaults to 0 (:1020) and both the property help (:429-430 'Q control mode (0:Q, 1:PF, 2:VV).') and WTG3_Model.pas:252 document 0 as constant-Q — so `Else kvarCalc := 0` (:1320-1321) zeroes the dispatch and the getter reports that zero. The render is wrong independently of it: with QMode=1 the same deck renders 363.54 for a typed kvar=500 (the operating-point Q), and in dynamics — where :1254 skips the Q block — it renders Set_Presentkvar's intermediate 777 while kvarBase is 792.718441186736 and the measured terminal Q is -37087.76 kvar. The sibling class settles it inside the same trunk: Generator has the identical Get_Presentkvar (Generator.pas:2402-2405) and the identical property help (:396) yet renders the base (Generator.pas:3018, Format('%.6g',[kvarBase])). Consequence beyond the API: TDSSObject.SaveWrite reads PropertyValue[] (DSSObject.pas:156), which is virtual-dispatched to this getter (DSSObject.pas:117-120), so `Save Circuit` writes `kvar=0` for a machine built with kvar=500 (produced on r4133) and the reload resets PFNominal to 1.0 and kvarMax/kvarMin to 0 (:3001-3008) — silent model corruption. dss_capi 0.14.5 has no WindGen class at all, so there is no second oracle witness; the port renders kvar_base (crates/dss-core/src/elements/pc/windgen/accessors.rs:431), exactly as its Generator does and as r4133's own Generator does. Per the 2026-08-02 policy the port keeps the correct behavior and the upstream defect is reported (investigations/to_opendss/44-windgen-kvar-renders-dispatched-q.md, local) + excluded here + pinned by the expected-value pins named in `source`. The two engines' SOLVED state is unaffected and stays fully compared: probed terminal powers agree on every windgen deck (power-flow Q -2.1e-05/-4.2e-05 kvar on both; dynamics -37087.81 vs -37087.76 and -29216.72 vs -29216.67 kvar). Exact-pair (a discrete value jump, not display precision)."
+    ```
+
+    ```json
+    {
+      "id": "r4133-windgen-kvar-dispatched-daily",
+      "case": "modes:windgen/windgen_daily.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^windgen\\.w1\\.kvar$",
+          "rust": "986.05231553659",
+          "oracle": "0"
+        }
+      ],
+      "cause_ref": "windgen-kvar-renders-dispatched-q",
+      "source": "R4133_PROPS_PLAN RP3.2 (2026-08-24), drafted in the sub-step and landed at RP4.1 per §1.1(e) — earlier it would fail assert_all_hit as NEVER APPLIED, the r4133 property compare being masked until the unmask. 1 in-scope cell (steps=1, one WindGen.w1): ours 986.05231553659 = kW*sqrt(1/pf^2-1) for the deck's kW=3000 pf=0.95 (SyncUpPowerQuantities, kVA not set) vs r4133's dispatched 0, max_rel 9.86e+02 — the pair's worst cell, bins.tsv:303. Replacement pin: props_r4133_pins.rs::windgen_kvar_renders_the_base_on_the_daily_deck.",
+      "measured": {
+        "date": "2026-08-24"
+      }
+    }
+    ```
+
+    ```json
+    {
+      "id": "r4133-windgen-kvar-dispatched-delta",
+      "case": "modes:windgen/windgen_snap_delta.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^windgen\\.w1\\.kvar$",
+          "rust": "726.483157256779",
+          "oracle": "0"
+        }
+      ],
+      "cause_ref": "windgen-kvar-renders-dispatched-q",
+      "source": "R4133_PROPS_PLAN RP3.2 (2026-08-24), drafted in the sub-step and landed at RP4.1 per §1.1(e). Same getter on the delta snapshot deck: 1 in-scope cell, ours 726.483157256779 = 1500*sqrt(1/0.9^2-1) vs r4133's 0. The fifth windgen deck, modes:windgen/windgen_snap.dss, needs NO entry: it types pf=1.0, so our kvar_base is 0 and both engines render `0` — a value coincidence, not agreement (typing `kvar=777` there diverges 777 vs 0, probed). Replacement pin: props_r4133_pins.rs::windgen_kvar_renders_the_base_on_the_delta_snapshot.",
+      "measured": {
+        "date": "2026-08-24"
+      }
+    }
+    ```
+
+    ```json
+    {
+      "id": "r4133-windgen-kvar-dispatched-dyn",
+      "case": "modes:windgen/windgen_dyn.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^windgen\\.w1\\.kvar$",
+          "rust": "854.95263026673",
+          "oracle": "0"
+        }
+      ],
+      "cause_ref": "windgen-kvar-renders-dispatched-q",
+      "source": "R4133_PROPS_PLAN RP3.2 (2026-08-24), drafted in the sub-step and landed at RP4.1 per §1.1(e). The kVA-set derivation: the deck types kW=1500 kva=1800 and no pf, so Create's PFNominal 0.88 (WindGen.pas:917) drives RecalcElementData's kVANotSet=false branch (:1377-1378) to kWBase 1584 and kvarBase sqrt(1800^2-1584^2) = 854.95263026673, vs r4133's 0. This deck is also where the upstream render is provably stale rather than merely wrong: :1254 skips the Q block in dynamics, so after `Edit kvar=777` r4133 renders Set_Presentkvar's intermediate 777 while its own kvarBase is 792.718441186736 (the port's value, reached through the identical PFNominal 0.897802) and the measured terminal Q is -37087.76 kvar. Replacement pin: props_r4133_pins.rs::windgen_kvar_renders_the_base_on_the_dynamics_deck.",
+      "measured": {
+        "date": "2026-08-24"
+      }
+    }
+    ```
+
+    ```json
+    {
+      "id": "r4133-windgen-kvar-dispatched-dynfault",
+      "case": "modes:windgen/windgen_dyn_fault.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^windgen\\.w1\\.kvar$",
+          "rust": "854.95263026673",
+          "oracle": "0"
+        }
+      ],
+      "cause_ref": "windgen-kvar-renders-dispatched-q",
+      "source": "R4133_PROPS_PLAN RP3.2 (2026-08-24), drafted in the sub-step and landed at RP4.1 per §1.1(e). The fault-ride-through twin of r4133-windgen-kvar-dispatched-dyn — same kW=1500 kva=1800 pf-default derivation, same 854.95263026673 vs 0, on the deck whose sustained 3ph fault drives the LVPL/LVQL path (terminal Q -29216.72 kvar on the port vs -29216.67 on r4133, i.e. the solved state agrees and only the render diverges). Entries are per case, so this one is its own. Replacement pin: props_r4133_pins.rs::windgen_kvar_renders_the_base_on_the_fault_ride_through_deck.",
+      "measured": {
+        "date": "2026-08-24"
+      }
+    }
+    ```
+
+    Shape checked against the loader (`corpus_gate/ledger.rs`): key
+    `format!("{element_lower}.{prop_lower}")` → `windgen.w1.kvar` (`:1051`); no
+    `num_rel`, so the **exact-pair-numeric** arm, which requires `rust`
+    (`:1088-1107`); `oracle` is asserted against the live upstream render
+    (`:1057-1064`), so `"0"` must stay exact; `cause_ref` must resolve to a
+    `causes` key (`:1453-1460`); and each case's `engines` must contain the
+    channel (`:1426-1435`) — all four are `engines: "r4133"`.
+  - **The pins** (`crates/dss-core/tests/props_r4133_pins.rs`, both lanes, no
+    oracle), four, one per drafted entry, each running the gate's own sequence
+    (compile + the one `solve` the case's `steps=1` rigor prescribes — these
+    decks end at `Set mode=…` and carry no solve of their own) and then the same
+    `?` getter the property walk reads:
+    `windgen_kvar_renders_the_base_on_the_daily_deck` (`986.05231553659`, then
+    `edit kvar=777` → `777` **and** `PF` → `0.968057839822749`, the reading that
+    makes the assertion about the value rather than about a constant),
+    `windgen_kvar_renders_the_base_on_the_delta_snapshot` (`726.483157256779` →
+    `777`, plus the load-bearing third reading on `windgen_snap.dss`: `0` unset,
+    `777` once typed — the `civanlar.dss` analogue),
+    `windgen_kvar_renders_the_base_on_the_dynamics_deck` (`854.95263026673`, then
+    `edit kvar=777` → **`792.718441186736`** at `PF 0.897802095552545`, the
+    `kVANotSet=false` re-derivation r4133 also performs and then fails to render)
+    and `windgen_kvar_renders_the_base_on_the_fault_ride_through_deck`. All four
+    are cited from `props_r4133_replay::LEDGER_ENTRY_PINS` (2 → **6** rows, the
+    literal pin extended), so the union guard
+    `every_echo_row_pin_is_a_test_that_exists` still matches both ways.
+  - **The accounting move: nothing is claimed.** A LEDGER outcome does not empty
+    its rows — the exclusion lands at RP4.1 — so `DECLARED_RP3` stays
+    **`(7, 4, 7)`** and the `RP3_ROUTING` row keeps its `3, 3` columns, its
+    verdict flipped `OPEN` → **`LEDGER — RP3.2 (…)`**. The settled set pinned in
+    `the_bin7_root_cause_pairs_are_routed_to_their_sub_steps` is now
+    `[("swtcontrol.delay", "RP3.1"), ("windgen.kvar", "RP3.2")]`; the table's
+    state is `generator.model` 1/1 (RP3.3, open), `gictransformer.r2` 1/1 (RP3.4,
+    open), `swtcontrol.delay` 2/2 (RP3.1, settled — LEDGER),
+    `windgen.kvar` **3/3 (RP3.2, settled — LEDGER)**. RP3.2 is the first
+    sub-step to exercise `RP3_SETTLED_SHAPES` as a *taxonomy* rather than as
+    RP3.1's shape: the guard's `LEDGER` branch checked the r4133 citation, the
+    `RP4.1`/`§1.1(e)` staging clause, the four witnesses as whole identifiers and
+    the absence of an echo row.
+  - **Test count 8 384 → 8 394** (4 192 → **4 197** per lane, **+5**):
+    `props_r4133_pins` 33 → **37** (the four pins), `props_r4133_replay`
+    123 → **124** (the census derivation), single-binary each, no test deleted,
+    `#[ignore]`d or loosened. Every new assertion was mutation-probed and red as
+    intended: the daily pin's expected value flipped one digit; the verdict's
+    derived `4 cells, all 4 in scope` mutated to `5`; a witness name dropped from
+    the verdict (`names_identifier` red). The completeness sweep proved itself
+    *unprompted* — it rejected the inherited claim that neither vendored deck
+    types `pf=`, which is how the QSTS `PF=0.88` correction above was found.
+    Report: `investigations/to_opendss/44-windgen-kvar-renders-dispatched-q.md`
+    (gitignored, local-only — verified absent from the commit).
+  - **Flagged, deliberately NOT acted on (coordinator/user call).** **D2 — the
+    missing steady-state `QMode=0` (constant-Q) arm, reproduced by the port.**
+    `WindGen.pas:1276-1322` implements arms 1 and 2 only; `QMode` defaults to 0
+    (`:1020`); the help (`:429-430`) and `WTG3_Model.pas:252` both document
+    `0 -> Constant Q`, and the dynamics model implements it (`:1059-1061`,
+    `Qord := Qref`); `Else kvarCalc := 0` (`:1320-1321`) therefore zeroes the
+    dispatch for every default-configured WindGen, and the port ports it verbatim
+    (`windgen/nominal.rs:223-225`) — which is why the corpus gate's power channel
+    is green. New probe evidence that it is an omission, not a design choice:
+    r4133 dispatches correctly the moment an arm exists (`QMode=1` → −363.54 kvar
+    below the aero cap, −985.69 kvar on the daily deck). Under the 2026-08-02
+    policy a reproduced upstream bug may not stand, but fixing it **moves solved
+    powers on four r4133-gated decks** and is far outside RP3.2's property-render
+    scope. It does not interact with this landing: the port renders `kvar_base`,
+    which the dispatch never touches, so the four drafted `rust` values survive a
+    future D2 fix unchanged. Two smaller flags, corpus/manifest bytes being
+    off-limits this sub-step: `modes/windgen/windgen_snap_delta.dss:3` and its
+    manifest note claim "the QMode=0 (constant-Q via PF) reactive dispatch … PF
+    at unity here because the aero cap makes kvarCalc saturate" — **both clauses
+    are wrong** (there is no arm 0; the `Else` yields 0 outright, now measured);
+    and `WindGen.pas:2954`'s `MakePosSequence` gates on `PrpSequence^[19]/[20]`
+    and emits ` maxkvar=`/` minkvar=`, but WindGen's properties 19/20 are
+    `UserData`/`DutyStart` (`:394`, `:397`) — Generator's indices, a copy/paste
+    leftover (`windgen/mod.rs:388` already notes the port registers no such rows).
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

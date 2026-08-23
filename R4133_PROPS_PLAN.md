@@ -1184,6 +1184,51 @@ stop and report with the evidence gathered. **Acceptance:** one of the three
 outcomes, with the probe transcript summarized in STATUS. Outcome: the largest
 in-scope numeric jump (rel 9.86e+2) is explained.
 
+> **As executed (2026-08-24, COMPLETE — zero product-crate bytes, zero ledger
+> byte).** Outcome **LEDGER**; the kill criterion did **not** fire — the probe
+> separated echo from live cleanly, and the census re-read holds (exactly 4 of
+> the 5 decks, `windgen_snap.dss` clean).
+> **The plan's own framing was the one thing that drifted.** "Echoed or live?" is
+> the wrong axis here: r4133's `Edit` arm 11 **exists**
+> (`Version8/Source/PCElements/WindGen.pas:629`) and its getter is **live**
+> (`:2896`) — it simply reads the *dispatched* Q (`Get_Presentkvar`,
+> `:2297-2300`, `Qnominalperphase*0.001*Fnphases`) where the property documents
+> "the base kvar" (`:365`). Both engines read live fields; they read **different**
+> ones (ours is `kvar_base`, `elements/pc/windgen/accessors.rs:431`). The echo
+> store would have printed `'60'` (`:2446`) and is unreachable
+> (`DSSObject.pas:117-120`), so ECHO was refuted by the engine as well as by the
+> source: probed, a typed `kvar=500` renders `0`, and `Edit kvar=777` still
+> renders `0` while `? PF` moves to `0.968058`.
+> **FIX was refuted by measurement**, which is why the plan's "if r4133's live Q
+> really is 0 while ours is 986" branch does not apply: *our* live Q is 0 too.
+> The port ports `SetNominalGeneration` loop-for-loop including `Else kvarCalc
+> := 0` (`:1320-1321` → `windgen/nominal.rs:223-225`), and the probed terminal
+> powers agree on all five decks (power-flow Q −2.1e-05/−4.2e-05 kvar on both;
+> dynamics −37 087.81 vs −37 087.76 and −29 216.72 vs −29 216.67). Adopting
+> `presentkvar` as our render would *reproduce* an upstream defect — barred.
+> **"r4133 is provably wrong" carries five legs**, four of them empirical: the
+> help says "base kvar"; the sibling `Generator` has the identical getter
+> (`Generator.pas:2402-2405`) and identical help (`:396`) yet renders the base
+> (`:3018`); with `QMode=1` the render is `363.54` for a typed `kvar=500`; in
+> dynamics it is a stale `777` against a base of `792.718441186736` and a
+> terminal Q of −37 087.76 kvar; and `Save Circuit` writes `kvar=0` (file
+> produced), corrupting the model on reload (`:3001-3008`).
+> Landed: report `investigations/to_opendss/44-*` (local), **four** drafted
+> per-case entries (STATUS §WP-RP3, verbatim, landing at RP4.1 per §1.1(e)), four
+> pins `windgen_kvar_renders_the_base_on_the_{daily_deck,delta_snapshot,dynamics_deck,fault_ride_through_deck}`,
+> and `the_rp32_census_decomposition_is_read_off_the_corpus` (RP3.1's precedent),
+> which derives the 4 = 1+1+1+1 split from the decks' own tokens and closes the
+> corpus over **seven** WindGen decks — the five cases plus two held out by
+> `skipped_oracle_issue.json`. `DECLARED_RP3` stays `(7, 4, 7)`; no echo row.
+> **Flagged, out of scope, coordinator/user call: D2** — the steady-state
+> `case WindModelDyn.QMode` (`:1276-1322`) has arms 1 and 2 and **no arm 0**
+> though `QMode` defaults to 0 (`:1020`) and both the help (`:429-430`) and
+> `WTG3_Model.pas:252` document `0 -> Constant Q`. The port reproduces it, so a
+> default WindGen dispatches zero vars in power flow on both engines. Fixing it
+> moves solved powers on four r4133-gated decks — a separate decision; it does
+> not disturb this landing (the render reads `kvar_base`, which the dispatch
+> never touches).
+
 ### RP3.3 — `generator.model` on the NCIM decks
 
 `4` vs `3`, 2 cells — the two NCIM decks that hold a generator
@@ -1497,7 +1542,10 @@ not merely declared), shrink `DECLARED_RP3` by exactly those rows, and re-state
 `the_staged_r4133_property_entries_have_not_landed_yet` against whatever is
 still staged — that tripwire goes red the moment the first `property`-scoped
 `r4133` entry appears, which is how this precondition announces itself. The same
-applies to RP1.4's and RP3.2–RP3.4's staged entries.
+applies to RP1.4's and RP3.3/RP3.4's staged entries — and to **RP3.2's four**
+(`r4133-windgen-kvar-dispatched-daily` / `-delta` / `-dyn` / `-dynfault`), which
+are already drafted in STATUS §WP-RP3 and whose census derivation
+(`the_rp32_census_decomposition_is_read_off_the_corpus`) fixes the count at four.
 
 Stop masking properties on r4133: remove the per-channel clear in the gate path
 (`corpus_gate/scheduler.rs:357-363`) and the seeding path (`scheduler.rs:710-717`),

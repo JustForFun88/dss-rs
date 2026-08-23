@@ -26,10 +26,12 @@
 //!
 //! # The pins that no echo row can name (RP3.1 onwards)
 //!
-//! The last two tests belong to no `EchoRow` at all, and could not: RP3.1's
+//! The last six tests belong to no `EchoRow` at all, and could not. RP3.1's
 //! divergence is one r4133 getter reading a field the `Edit` CASE never wires,
-//! and that getter is **live** — an echo row there would be a false statement
-//! about the mechanism (`R4133_PROPS_PLAN.md` §RP3.1). Its exclusion shape is a
+//! and RP3.2's is one r4133 getter reading the *wrong* live field — the
+//! dispatched Q where the property documents the base kvar. Both getters are
+//! **live**, so an echo row there would be a false statement about the
+//! mechanism (`R4133_PROPS_PLAN.md` §RP3.1, §RP3.2). Their exclusion shape is a
 //! per-case `ledger.json` `property` divergence entry, drafted in the sub-step
 //! and landed at RP4.1 by the §1.1(e) staging rule, so between the two there is
 //! a window in which the port's value has no holder anywhere. These pins are
@@ -1326,4 +1328,189 @@ fn swtcontrol_delay_wires_the_property_on_the_midi_tie() {
     assert_eq!(deck.get("SwtControl.sw.Delay"), "0.25");
     deck.cmd("edit SwtControl.sw delay=3.5");
     assert_eq!(deck.get("SwtControl.sw.Delay"), "3.5");
+}
+
+// ---------------------------------------------------------------------------
+// Pins added by RP3.2 (2026-08-24): the witnesses of four DRAFTED ledger entries
+// ---------------------------------------------------------------------------
+//
+// Same §1.1(e) window as RP3.1's two, a different mechanism: r4133's `kvar`
+// getter is wired and live, and it reads the *wrong* live field. These four are
+// named by `props_r4133_replay::LEDGER_ENTRY_PINS`, not by an `EchoRow`.
+//
+// Each pin runs the gate's own sequence for its case — compile, then the one
+// `solve` the case's `steps=1` rigor prescribes (the four decks end at
+// `Set mode=…`, so the solve is the pin's, exactly as in the gate's `run_case`)
+// — and then reads the same `? Class.Name.Prop` getter the property walk reads.
+// The discriminating second reading is an `edit kvar=`, because "our render is
+// 986.05" alone would pass against a getter hardwired to the derived base: the
+// edit proves the setter path drives the same getter, and on the two kVA-set
+// decks it proves more than that (see below).
+
+/// `windgen.kvar` on the daily deck — **RP3.2's root cause: r4133 renders the
+/// dispatched Q, not the base kvar the property documents.**
+///
+/// `WindGen` declares `kvar` as property 11 and documents it as "Specify the
+/// **base kvar**" (`Version8/Source/PCElements/WindGen.pas:364-365`, verbatim
+/// the `Generator` text at `Generator.pas:396`). The `Edit` CASE has the arm
+/// (`:629`, `11: Presentkvar := Parser.DblValue`) and `Set_Presentkvar` stores
+/// the value in `kvarBase` (`:2996-3009`) — so, unlike RP3.1, the write path
+/// works. The **read** path does not: `GetPropertyValue` arm 11 is
+/// `Format('%.6g', [presentkvar])` (`:2896`) and `Get_Presentkvar` returns
+/// `WindGenvars.Qnominalperphase * 0.001 * Fnphases` (`:2297-2300`), the
+/// dispatched reactive power. The echo store for the slot (`'60'`, `:2446`) is
+/// unreachable — `TDSSObject.Get_PropertyValue` dispatches to the virtual
+/// `GetPropertyValue` (`DSSObject.pas:117-120`) — so r4133's `0` is a *live*
+/// read of the wrong field, which is why the exclusion here cannot be an echo
+/// row either.
+///
+/// r4133 contradicts itself inside its own trunk: `Generator` has the identical
+/// getter (`Generator.pas:2402-2405`) and the identical help, yet renders the
+/// base (`Generator.pas:3018`, `Format('%.6g', [kvarBase])`). The port does the
+/// same (`elements/pc/windgen/accessors.rs:431`, `KVAR => self.kvar_base`, the
+/// twin of `pc/generator/accessors.rs:495`). The two engines' *physics* agree:
+/// the port ports `SetNominalGeneration` loop-for-loop, `Else kvarCalc := 0`
+/// (`WindGen.pas:1320-1321`) included (`windgen/nominal.rs:223-225`), and the
+/// probed terminal powers match on all five decks. Upstream report:
+/// `investigations/to_opendss/44-windgen-kvar-renders-dispatched-q.md` (local).
+///
+/// Deck: `modes/windgen/windgen_daily.dss` (`WindGen.w1`, `kW=3000 pf=0.95`,
+/// no `kVA=`), the case behind the drafted entry
+/// `r4133-windgen-kvar-dispatched-daily` — one in-scope cell, and the pair's
+/// worst (`rel 9.86e+02`, `tests/corpus/props_r4133/bins.tsv:303`). No deck
+/// types `kvar=` at all: the value is the `SyncUpPowerQuantities` side effect
+/// `kW*sqrt(1/pf^2 - 1)` of the deck's own `pf=`.
+#[test]
+fn windgen_kvar_renders_the_base_on_the_daily_deck() {
+    let mut deck = Deck::compile("modes/windgen/windgen_daily.dss");
+    deck.cmd("solve");
+    assert_eq!(
+        deck.get("WindGen.w1.kvar"),
+        "986.05231553659",
+        "kW=3000 pf=0.95 with kVA unset: kvar_base = kW*sqrt(1/pf^2-1), which r4133 renders as 0"
+    );
+    deck.cmd("edit WindGen.w1 kvar=777");
+    assert_eq!(
+        deck.get("WindGen.w1.kvar"),
+        "777",
+        "the typed base reads back — r4133 still answers 0 here"
+    );
+    assert_eq!(
+        deck.get("WindGen.w1.PF"),
+        "0.968057839822749",
+        "Set_Presentkvar's side effect, 3000/sqrt(3000^2+777^2): r4133 renders this same PF from \
+         the same stored kvarBase, which is what proves its `0` is a render bug and not a lost \
+         parse"
+    );
+}
+
+/// `windgen.kvar` on the delta snapshot deck — the witness of the drafted entry
+/// `r4133-windgen-kvar-dispatched-delta`, plus the measurement that the pair's
+/// one clean deck is clean by *value*, not by mode.
+///
+/// Same mechanism as [`windgen_kvar_renders_the_base_on_the_daily_deck`]
+/// (`Version8/Source/PCElements/WindGen.pas:2896` reading `Get_Presentkvar`,
+/// `:2297-2300`); the entries are per case, so each owes its own reading.
+/// Deck: `modes/windgen/windgen_snap_delta.dss` (`kW=1500 pf=0.9`), one in-scope
+/// cell.
+///
+/// The third reading is the load-bearing one (the `civanlar.dss` analog of
+/// RP3.1): `modes/windgen/windgen_snap.dss` is the fifth windgen deck and the
+/// only one the census records **no** cell for — and the reason is that it types
+/// `pf=1.0`, so our base is `0` and both engines print `0`. That is a value
+/// coincidence, not agreement about the mechanism: type a `kvar=` there and the
+/// two diverge like everywhere else (`777` here, `0` on r4133). Nothing about
+/// snapshot mode makes the deck clean, so no mode story may be built on it.
+#[test]
+fn windgen_kvar_renders_the_base_on_the_delta_snapshot() {
+    let mut deck = Deck::compile("modes/windgen/windgen_snap_delta.dss");
+    deck.cmd("solve");
+    assert_eq!(
+        deck.get("WindGen.w1.kvar"),
+        "726.483157256779",
+        "kW=1500 pf=0.9 with kVA unset, which r4133 renders as 0"
+    );
+    deck.cmd("edit WindGen.w1 kvar=777");
+    assert_eq!(deck.get("WindGen.w1.kvar"), "777");
+
+    let mut clean = Deck::compile("modes/windgen/windgen_snap.dss");
+    clean.cmd("solve");
+    assert_eq!(
+        clean.get("WindGen.w1.kvar"),
+        "0",
+        "pf=1.0 makes the base zero, which is the whole reason this deck carries no census cell"
+    );
+    clean.cmd("edit WindGen.w1 kvar=777");
+    assert_eq!(
+        clean.get("WindGen.w1.kvar"),
+        "777",
+        "…and it diverges the moment a base is typed — the deck is clean by value, not by mode"
+    );
+}
+
+/// `windgen.kvar` on the WTG3 dynamics deck — the witness of the drafted entry
+/// `r4133-windgen-kvar-dispatched-dyn`, and the reading that proves r4133's
+/// render is a *stale intermediate* rather than merely the wrong field.
+///
+/// Deck: `modes/windgen/windgen_dyn.dss` (`kW=1500 kva=1800`, no `pf=`), one
+/// in-scope cell. With `kVA` set, `RecalcElementData` takes the other branch
+/// (`Version8/Source/PCElements/WindGen.pas:1375-1384`): `kWBase = kVA*|PF|` at
+/// `Create`'s `PFNominal = 0.88` (`:917`) gives 1584, and
+/// `kvar_base = sqrt(kVA^2 - kWBase^2) = 854.95263026673`.
+///
+/// The `edit` then re-derives rather than echoing, which is what makes the
+/// second reading discriminating here: `Set_Presentkvar` stores 777 and moves
+/// `PFNominal` to `1584/sqrt(1584^2+777^2)`, and `RecalcElementData` re-derives
+/// the base from `kVA` at that PF — `sqrt(1800^2 - (1800*0.897802095552545)^2)`.
+/// Probed on r4133, the same two steps produce the *same* `PF` (`0.897802`) and
+/// the same `kvarBase`, and it renders `777` anyway: in dynamics `:1254` skips
+/// the Q block, so `Get_Presentkvar` (`:2297-2300`) is still reporting
+/// `Set_Presentkvar`'s "init to something reasonable" `1000*777/3` (`:2998`)
+/// while the machine's measured terminal Q is `-37087.76 kvar`. Three different
+/// numbers for one property; the render tracks none of them.
+#[test]
+fn windgen_kvar_renders_the_base_on_the_dynamics_deck() {
+    let mut deck = Deck::compile("modes/windgen/windgen_dyn.dss");
+    deck.cmd("solve");
+    assert_eq!(
+        deck.get("WindGen.w1.kvar"),
+        "854.95263026673",
+        "kW=1500 kva=1800 at Create's pf=0.88: sqrt(kVA^2-(kVA*pf)^2), which r4133 renders as 0"
+    );
+    deck.cmd("edit WindGen.w1 kvar=777");
+    assert_eq!(
+        deck.get("WindGen.w1.PF"),
+        "0.897802095552545",
+        "1584/sqrt(1584^2+777^2) — r4133 reaches this same PF"
+    );
+    assert_eq!(
+        deck.get("WindGen.w1.kvar"),
+        "792.718441186736",
+        "the kVA-set re-derivation at the new PF; r4133 holds the same kvarBase and renders 777"
+    );
+}
+
+/// `windgen.kvar` on the fault-ride-through twin — the witness of the drafted
+/// entry `r4133-windgen-kvar-dispatched-dynfault`.
+///
+/// `modes/windgen/windgen_dyn_fault.dss` is `windgen_dyn.dss` plus a sustained
+/// three-phase `Fault.f1` on the machine terminal, so the LVPL/LVQL path runs
+/// through the whole dynamics solve; the base-kvar derivation is identical
+/// (`kW=1500 kva=1800`, `Create`'s `pf=0.88`) and so is the render bug
+/// (`Version8/Source/PCElements/WindGen.pas:2896` → `:2297-2300`). The entries
+/// are per case, so this deck owes its own reading. The solved state is *not*
+/// divergent — probed terminal Q is `-29216.72 kvar` on the port against
+/// `-29216.67` on r4133 — which is exactly why the exclusion is scoped to the
+/// property field and nothing else.
+#[test]
+fn windgen_kvar_renders_the_base_on_the_fault_ride_through_deck() {
+    let mut deck = Deck::compile("modes/windgen/windgen_dyn_fault.dss");
+    deck.cmd("solve");
+    assert_eq!(
+        deck.get("WindGen.w1.kvar"),
+        "854.95263026673",
+        "the same kVA-set derivation as the healthy dynamics deck, which r4133 renders as 0"
+    );
+    deck.cmd("edit WindGen.w1 kvar=777");
+    assert_eq!(deck.get("WindGen.w1.kvar"), "792.718441186736");
 }
