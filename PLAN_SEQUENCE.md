@@ -97,11 +97,14 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               successor G1.1's kill criterion demanded: census
                               rails (WP-RP0) and
                               property-table shape closure (WP-RP1) COMPLETE
-                              (RP1.4, 2026-08-23: r4133 shape classes 5 -> 0);
-                              next the
-                              channel-aware comparator — normalization + echo
-                              exclusions + display floor (WP-RP2), four
-                              root-causes (WP-RP3), then the unmask (RP4.1 =
+                              (RP1.4, 2026-08-23: r4133 shape classes 5 -> 0),
+                              and the channel-aware value comparator (WP-RP2:
+                              normalization + echo exclusions + the derived 2e-4
+                              display floor) COMPLETE (RP2.4, 2026-08-23:
+                              in-scope UNCLAIMED cells 521 841 -> 889, all of
+                              them attributed to an open RP3.x sub-step);
+                              next the four root-causes plus RP3.5-RP3.8
+                              (WP-RP3), then the unmask (RP4.1 =
                               G1.1's deliverable, kill criterion re-armed).
                               RP5.2 flips this row to COMPLETE.
                               Runs inside the GOLDEN_REBASE window on branch

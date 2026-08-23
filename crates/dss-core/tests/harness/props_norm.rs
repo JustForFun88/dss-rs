@@ -25,14 +25,24 @@
 //! [`ECHO_CARVE_OUTS`]: the one measured cell whose divergence its citation does
 //! not explain stays comparable.
 //!
-//! That statement has to hold at **two** seams, because the tables have two
-//! callers, and each carries its own channel gate:
+//! Since **RP2.4** it owns the chain's fourth and last link as well:
+//! [`R4133_DISPLAY_FLOOR`], the *display floor*. Where a rule re-spells and an
+//! echo row excludes, the floor **claims a numeric cell whose two sides agree
+//! to within `2e-4` relative** — one live double, two Delphi
+//! `Format('%[-].Ng', …)` renders. It is consulted last, on the r4133 channel
+//! only, and its derivation (measured worst 6.431124e-05, the empty band up to
+//! 1.374769e-03, the `%[-].Ng` site table) lives on the constant.
 //!
-//! * the live comparator — [`normalize_r4133`] and [`echo_excluded_r4133`],
-//!   reached only from `PropsPolicy::normalize`/`PropsPolicy::echo_excluded`'s
+//! That statement has to hold at **three** seams, because the tables have two
+//! callers each and the floor a third, and each carries its own channel gate:
+//!
+//! * the live comparator — [`normalize_r4133`], [`echo_excluded_r4133`] and
+//!   [`under_display_floor_r4133`], reached only from
+//!   `PropsPolicy::normalize`/`::echo_excluded`/`::under_display_floor`'s
 //!   r4133 arms (`PropsPolicy::is_r4133`, pinned by
-//!   `props_policy_tests::the_capi_channel_never_normalizes` and
-//!   `::the_capi_channel_never_excludes`);
+//!   `props_policy_tests::the_capi_channel_never_normalizes`,
+//!   `::the_capi_channel_never_excludes` and
+//!   `::the_capi_channel_never_applies_the_display_floor`);
 //! * the offline/measurement query — [`claim_value`], which the claims census
 //!   asks about the rows of **both** channels and which therefore takes the
 //!   channel itself and answers `None` on capi (pinned by
@@ -281,9 +291,9 @@ pub enum NormRule {
     /// Tokenizes both sides — `[`, `]`, `(`, `)`, `,` and whitespace are all
     /// separators — and compares token for token: numeric tokens by **value**
     /// (`f64`, through [`numbers_match`], which is where RP2.4's display floor
-    /// will hang; today the floor is `None` and the compare is exact), other
-    /// tokens ASCII-case-insensitively. The token **count** must match, so a
-    /// one-element array never folds into a three-element one.
+    /// hangs — since RP2.4 that compare is *within* [`R4133_DISPLAY_FLOOR`],
+    /// not exact), other tokens ASCII-case-insensitively. The token **count**
+    /// must match, so a one-element array never folds into a three-element one.
     ///
     /// Because *every* delimiter is a separator, a **bare** render folds against
     /// a delimited one at any length — that is the census's own bin-4 shape, not
@@ -727,34 +737,106 @@ const NORM_ARRAY_FORM_ROWS: usize = 23;
 /// ([`VOLTAGE_CURVEX_REF_SYNONYMS`]).
 const NORM_ENUM_SYNONYM_ROWS: usize = 5;
 
-/// **The r4133 props display floor — RP2.4's slot, deliberately empty here.**
+/// **The r4133 props display floor — RP2.4's derived value: `2e-4` relative.**
 ///
-/// `None` means numeric tokens compare **exactly** (`rel = abs = 0`), which is
-/// what RP2.1 ships: the plan orders the floor's derivation into RP2.4 (from
-/// the vendored in-scope numeric extract, inside the measured empty band
-/// `(6.43e-5, 1e-3)`), and RP2.1 introduces **no** tolerance anywhere. The hook
-/// is named now so RP2.4 lands a derived number plus its
-/// `tests/TOLERANCE_NOTES.md` section, not a mechanism.
+/// The chain's fourth and last link. A numeric property cell whose two sides
+/// agree to within this relative gap is claimed as ONE value differently
+/// *printed*; anything above it still fails, raw, with both spellings in the
+/// message. It is the **only** tolerance `R4133_PROPS_PLAN.md` introduces, it
+/// is r4133-only by construction (below), and it is never read by `tol_for`
+/// and touches no [`Tolerances`] field (plan §1.2 last bullet, §1.3 "No
+/// tolerance tier moves").
 ///
-/// It is consulted **only** from [`numbers_match`], which has exactly two
-/// callers — [`NormRule::ArrayForm`]'s per-token compare (through
-/// [`tokens_match`]) and [`claim_value`]'s fourth link, which applies it to a
-/// whole scalar cell. **Both are r4133-only**: the first because only the
-/// r4133 arm of `PropsPolicy::normalize` reaches the table, the second because
-/// `claim_value` refuses every channel but [`PropsChannel::R4133`] (the RP2.1
-/// audit fix — before it the census annotated capi rows through this chain, so
-/// a floor landing in RP2.4 would have been consulted on the capi channel too).
-/// It is never read by `tol_for` and touches no `Tolerances` field (plan §1.2
-/// last bullet, §1.3 "No tolerance tier moves").
-const R4133_DISPLAY_FLOOR: Option<f64> = None;
+/// [`Tolerances`]: super::Tolerances
+///
+/// # Derivation (RP2.4 part A, 2026-08-23 — measured, not assumed)
+///
+/// Measured over the vendored evidence at `tests/corpus/props_r4133/` —
+/// `examples_full.txt` + `examples_supplement.txt`, i.e. **every distinct
+/// `(rust, r4133)` spelling of every census pair**, so the worst *spelling* is
+/// the worst *cell*. Each row's gap is [`display_rel`], the same metric the
+/// floor applies.
+///
+/// | quantity | value | what it is |
+/// |---|---|---|
+/// | worst cell the floor claims | **6.431124e-05** | `load.pf` `'0.747651914485831'` vs `'0.7477'`, 33 cells, in scope |
+/// | floor | **2e-4** | 3.110x above that worst |
+/// | nearest row ABOVE the band | **1.374769e-03** | `storagecontroller.kwneed` `'-4387.3616098756'` vs `'-4381.33'` — 6.874x above the floor |
+/// | nearest genuine value jump | **4.404256e-03** | `generator.kvar`, the GenDispatcher `weights` registration decks — 22.02x above the floor |
+/// | smallest **in-scope** genuine jump | **5.524501e-02** | `regcontrol.remoteptratio` — 276.2x above the floor |
+///
+/// So the band `(6.431124e-05, 1.374769e-03)` is **empty**: 21.38x wide, and
+/// every cut inside it partitions the population the same way. That emptiness
+/// — not a chosen number — is what makes the floor a classification rather
+/// than a fudge, and it is the same argument `bins.tsv`'s own 1e-4 bin cut
+/// rests on (vendored `README.md` §"Numeric pairs (bins 6-7)").
+///
+/// **Two recalibrations against the plan's provisional numbers**, both recorded
+/// because the plan asked for a re-derivation and got a different second half:
+///
+/// * the worst display cell is confirmed exactly — the plan's `6.43e-5` on
+///   `load.pf` is this table's `6.431124e-05`;
+/// * the plan's "smallest genuine jump `1.00e-3`, `invcontrol.lpftau`" is a
+///   number in the **census's** metric, which for a zero expected value reports
+///   the ABSOLUTE difference (`harness::value_verdict`'s `max_rel`). Under this
+///   floor's symmetric metric that same cell (`'0.001'` vs `'0.0'`) is rel
+///   **1.0**, not 1e-3 — a 0-vs-nonzero pair can never be claimed. The
+///   re-derived neighbours above the band are the three rows in the table.
+///
+/// # Mechanism: the Delphi `%[-].Ng` property getters (plan §1.1 bin 6)
+///
+/// Every cell this floor claims is r4133 printing a live `double` through a
+/// fixed-significant-digit `Format` in its own `GetPropertyValue`, where the
+/// port renders the full value. `%.Ng` rounds a normalized mantissa
+/// `m in [1,10)` to N significant digits, so its **class ceiling** is
+/// `0.5*10^(1-N)/m <= 0.5*10^(1-N)`:
+///
+/// | formatter | ceiling | r4133 sites (`Version8/Source/`) |
+/// |---|---|---|
+/// | `%-.4g` | 5.0e-4 | `PCElements/Load.pas:2345` (`pf`) — the only property getter in the whole surface |
+/// | `%-.5g` | 5.0e-5 | `PCElements/Vsource.pas:1326-1341` (`angle`/`mvasc*`/`isc*`/`r*`/`x*`/`basekv`), `PDElements/Transformer.pas:1842-1843` + `PDElements/AutoTrans.pas:1886-1887` (`normamps`/`emergamps`), and the `MakePosSequence` command-string round-trips `Transformer.pas:1982-1991`, `AutoTrans.pas:2021-2030`, `Reactor.pas:1145-1201` |
+/// | `%.6g` | 5.0e-6 | `PCElements/Storage.pas:1531-1562` + the PVSystem analogues, and `Common/Utilities.pas:2600-2607` `GetDSSArray_Real` (`'[' + ' %-.6g'xn + ']'`) |
+/// | `%-.7g` | 5.0e-7 | `PDElements/Line.pas:1358-1365`, `:1406-1407` (`length`/`r*`/`x*`/`c*`/`b*`) |
+/// | `%-.8g` | 5.0e-8 | `Vsource.pas:1342-1348` (`Z*`/`puZ*`), `PDElements/Reactor.pas:1091-1098` (`r`/`x`/`lmh`) |
+///
+/// **The floor is derived from the MEASUREMENT, not from that ceiling column**,
+/// and the difference is load-bearing. `load.pf`'s theoretical `%-.4g` ceiling
+/// is 5e-4, which is 2.75x under the band's upper neighbour — it would not fit
+/// the band at all. What the census actually contains is 293 `load.pf`
+/// spellings with a smallest mantissa of **5.653** (`pf = 0.5653`), i.e. a
+/// population ceiling of **8.845e-05**, and the floor sits 2.26x above THAT.
+/// The residual is stated rather than absorbed: a future in-scope load with
+/// `pf` in `[0.1, 0.25)` could print a cell up to 5e-4 and the floor would
+/// **refuse** it, reddening the gate. That is the safe direction — a loud
+/// failure with the row in the message and this derivation to re-run — and it
+/// is why the number is not widened to the class ceiling today. Widening it to
+/// make such a cell pass is exactly what the tolerance discipline forbids
+/// (CLAUDE.md, `tests/TOLERANCE_NOTES.md`).
+///
+/// # What it does NOT claim
+///
+/// * anything whose two sides do not share a numeric skeleton, or carry
+///   different counts of numbers — an enum, a boolean, an array of another
+///   length, `''` against a value. Those keep failing raw ([`display_rel`]);
+/// * a 0-vs-nonzero pair, at any magnitude (rel is 1 by construction);
+/// * a non-finite number on either side unless both sides are literally equal;
+/// * **anything at all on the `capi_v0145` channel.** Both callers are
+///   r4133-only: [`NormRule::ArrayForm`]'s per-token compare is reached only
+///   from `PropsPolicy::normalize`'s r4133 arm, [`under_display_floor_r4133`]
+///   only from `PropsPolicy::under_display_floor`'s, and [`claim_value`]
+///   refuses every channel but [`PropsChannel::R4133`].
+///
+/// It also cannot tell a display artifact from a *genuine* numeric difference
+/// below 2e-4 — a floor never can. What bounds that is the rest of the gate:
+/// the `capi_v0145` channel value-compares the same properties at the case tier
+/// floors on every `engines: "both"` case, and the model gate (Y/V/I/P) runs at
+/// tier floors on the `r4133`-only ones.
+const R4133_DISPLAY_FLOOR: Option<f64> = Some(2e-4);
 
 /// **The floor slot, read back** — the RP2.1 part-C replay's chain needs a
 /// *named* fourth link (`shape allowlist → normalization → echo table → display
-/// floor`) and must read the real slot rather than restate `None`: when RP2.4
-/// lands a derived number, the replay's floor link starts claiming through the
-/// same constant the comparator uses, instead of describing a floor that is no
-/// longer there. `props_r4133_replay` pins that it is `None` today, so RP2.4
-/// cannot move it without re-reading that accounting.
+/// floor`) and reads the real slot rather than restating a literal, so the
+/// replay's floor link claims through the same constant the comparator uses.
 pub fn display_floor() -> Option<f64> {
     R4133_DISPLAY_FLOOR
 }
@@ -814,13 +896,122 @@ fn array_tokens(s: &str) -> impl Iterator<Item = &str> {
         .filter(|t| !t.is_empty())
 }
 
-/// Do two numeric tokens denote the same number? Exact today
-/// ([`R4133_DISPLAY_FLOOR`] is `None`); RP2.4 widens this one function.
+/// **The metric the floor is expressed in**: `|a-b| / max(|a|,|b|)`, symmetric
+/// so neither side is privileged as "expected" (both are renders of one live
+/// double, and which one is longer is an accident of the getter).
+///
+/// `None` means *not comparable as numbers*, and the floor may never claim such
+/// a pair: a non-finite value on either side, unless the two are literally
+/// equal. (The `0x008e1248` EPRI bus name whose token overflows to `inf` is the
+/// motivating case — two IDENTICAL such tokens must still match, two different
+/// ones must not; the same guard `harness::value_verdict` carries.)
+///
+/// The denominator is only ever taken when `a != b`, so it is strictly
+/// positive: a 0-vs-nonzero pair answers `Some(1.0)` and is refused by any
+/// floor below 1, which is exactly what bin 7's frozen-default echoes need
+/// (`invcontrol.lpftau` `'0.001'` vs `'0.0'`).
+fn number_rel(a: f64, b: f64) -> Option<f64> {
+    if !(a.is_finite() && b.is_finite()) {
+        return if a == b { Some(0.0) } else { None };
+    }
+    let d = (a - b).abs();
+    if d == 0.0 {
+        return Some(0.0);
+    }
+    Some(d / a.abs().max(b.abs()))
+}
+
+/// **The one function the display floor widens** — do two numeric tokens denote
+/// the same number?
+///
+/// Exact when [`R4133_DISPLAY_FLOOR`] is `None`; at a derived floor, within it
+/// in the [`number_rel`] metric. Its callers are [`tokens_match`]
+/// ([`NormRule::ArrayForm`]'s per-element compare) and [`display_rel`] (the
+/// whole-cell predicate) — both r4133-only, see the floor's doc.
 fn numbers_match(a: f64, b: f64) -> bool {
     match R4133_DISPLAY_FLOOR {
         None => a == b,
-        Some(rel) => (a - b).abs() <= rel * a.abs().max(b.abs()),
+        Some(rel) => number_rel(a, b).is_some_and(|r| r <= rel),
     }
+}
+
+/// **The floor's whole-cell metric**: the largest [`number_rel`] over the two
+/// sides' numbers, or `None` when the cell is not a numeric divergence at all.
+///
+/// It decomposes both renders with the comparator's own
+/// [`numeric_skeleton`](super::numeric_skeleton) — the same scanner
+/// `value_verdict` uses, so "numeric" means here exactly what it means to the
+/// assert this floor sits in front of — and answers `None` unless
+///
+/// * the two **non-numeric skeletons are identical** (so `'Yes'` vs `'true'`,
+///   `''` vs `'[]'`, `'17'` vs `'1 16 +'` are never numbers-within-a-floor),
+/// * the two carry the **same count** of numbers (a one-element array never
+///   folds into a three-element one), and
+/// * that count is **non-zero** (a cell with no number on either side has no
+///   value for a numeric floor to claim), and
+/// * every number pair is comparable ([`number_rel`]).
+///
+/// Scalars, bracketed vectors and `|`-separated matrices all go through this
+/// one path: `capacitor.cuf`'s `'[ 287.82360946885]'` vs `'[ 287.824]'` and
+/// `line.cmatrix`'s three-row render are as much display cells as `load.pf`'s
+/// bare double, and a scalar-only floor would leave them unclaimed.
+pub fn display_rel(rust: &str, oracle: &str) -> Option<f64> {
+    let (skel_a, nums_a) = super::numeric_skeleton(rust);
+    let (skel_b, nums_b) = super::numeric_skeleton(oracle);
+    if skel_a != skel_b || nums_a.len() != nums_b.len() || nums_a.is_empty() {
+        return None;
+    }
+    let mut worst = 0.0f64;
+    for (a, b) in nums_a.iter().zip(&nums_b) {
+        worst = worst.max(number_rel(*a, *b)?);
+    }
+    Some(worst)
+}
+
+/// **The floor, as a cell verdict** — the offline twin of
+/// [`under_display_floor_r4133`], counters aside.
+///
+/// `false` whenever the floor is `None`, whenever the cell is not a numeric
+/// divergence ([`display_rel`]), and whenever the gap exceeds the floor.
+pub fn under_display_floor(rust: &str, oracle: &str) -> bool {
+    match (R4133_DISPLAY_FLOOR, display_rel(rust, oracle)) {
+        (Some(floor), Some(rel)) => rel <= floor,
+        _ => false,
+    }
+}
+
+/// **The shipped floor seam**, called from `PropsPolicy::under_display_floor`'s
+/// r4133 arm (and only from there — same channel gate as [`normalize_r4133`]
+/// and [`echo_excluded_r4133`]).
+///
+/// It answers what [`under_display_floor`] answers and additionally records
+/// what the gate saw: a **visit** is a cell that reached the seam at all, a
+/// **hit** is a cell the floor actually claimed. Unlike the two tables above
+/// the floor has no rows, so there is no per-row staleness to guard; the
+/// counters exist so RP4.1 can measure the link's live population against the
+/// replay's `CLAIMED_DISPLAY_FLOOR`, and so [`display_floor_counters`] can
+/// prove to the offline tests that a query moved nothing.
+pub fn under_display_floor_r4133(rust: &str, oracle: &str) -> bool {
+    FLOOR_VISITS.fetch_add(1, AtomicOrd::Relaxed);
+    let claimed = under_display_floor(rust, oracle);
+    if claimed {
+        FLOOR_HITS.fetch_add(1, AtomicOrd::Relaxed);
+    }
+    claimed
+}
+
+/// Cells that reached the floor seam on the r4133 channel.
+static FLOOR_VISITS: AtomicUsize = AtomicUsize::new(0);
+/// …and how many of them it claimed.
+static FLOOR_HITS: AtomicUsize = AtomicUsize::new(0);
+
+/// The live floor accounting, `(visits, hits)` — read by the gate's reporting
+/// and by the offline tests that assert a query moved no counter.
+pub fn display_floor_counters() -> (usize, usize) {
+    (
+        FLOOR_VISITS.load(AtomicOrd::Relaxed),
+        FLOOR_HITS.load(AtomicOrd::Relaxed),
+    )
 }
 
 /// One array token: by value when both sides parse as `f64`
@@ -1938,10 +2129,10 @@ pub fn claim_value(
     if echo_excluded(class, prop, rust, oracle) {
         return Some(ValueClaim::Echo);
     }
-    match (display_floor(), rust.parse::<f64>(), oracle.parse::<f64>()) {
-        (Some(_), Ok(a), Ok(b)) if numbers_match(a, b) => Some(ValueClaim::DisplayFloor),
-        _ => None,
+    if under_display_floor(rust, oracle) {
+        return Some(ValueClaim::DisplayFloor);
     }
+    None
 }
 
 /// The engine's own proof obligations: every rule kind **value-preserving**
@@ -2545,9 +2736,13 @@ mod tests {
         // DISCRIMINATION 1 — a corrupted token.
         assert!(!claimed("energymeter", "option", "[E, R, C]", "(E, X, C)"));
         assert!(!claimed("swtcontrol", "state", "closed", "[open, ]"));
-        // DISCRIMINATION 2 — a wrong number, at any magnitude.
+        // DISCRIMINATION 2 — a wrong number, at any magnitude. "Wrong" means
+        // OUTSIDE `R4133_DISPLAY_FLOOR` since RP2.4: `ArrayForm` compares its
+        // numeric elements through [`numbers_match`], which the floor widens,
+        // so an element within 2e-4 is by construction one number printed two
+        // ways. The three gaps below are 2.5e-3, 2.5e-3 and 9.9e-3.
         assert!(!claimed("line", "ratings", "[ 400]", "[401,]"));
-        assert!(!claimed("line", "ratings", "[ 600 700]", "[600,700.007,]"));
+        assert!(!claimed("line", "ratings", "[ 600 700]", "[600,701.75,]"));
         assert!(!claimed(
             "recloser",
             "recloseintervals",
@@ -2577,13 +2772,30 @@ mod tests {
         assert!(!claimed("line", "ratings", "[ 400]", ""));
         assert!(!array_forms_match("[]", "()"));
         assert!(!array_forms_match("", ""));
-        // No display floor in RP2.1: numeric tokens compare EXACTLY.
-        assert!(
-            R4133_DISPLAY_FLOOR.is_none(),
-            "RP2.4 derives the floor, not RP2.1"
+        // The display floor, at the ONE function it widens — the deliberate
+        // successor of RP2.1's `R4133_DISPLAY_FLOOR.is_none()` guard, which
+        // said only that the slot was empty. This says what is IN it, both
+        // ways: the literal derived value, and the predicate's two sides of
+        // the boundary. `R4133_DISPLAY_FLOOR`'s doc carries the derivation.
+        assert_eq!(
+            R4133_DISPLAY_FLOOR,
+            Some(2e-4),
+            "RP2.4's derived floor: 3.110x above the worst display cell \
+             (load.pf, 6.431124e-05) and 6.874x under the nearest row above the \
+             empty band (storagecontroller.kwneed, 1.374769e-03)"
         );
-        assert!(!numbers_match(400.0, 400.000_000_1));
+        assert!(numbers_match(1000.0, 1000.19), "1.8996e-4 — inside");
+        assert!(!numbers_match(1000.0, 1000.21), "2.0996e-4 — outside");
         assert!(numbers_match(1e-5, 0.00001));
+        // …and the shapes no floor may swallow, at the same function.
+        assert!(!numbers_match(0.001, 0.0), "0 vs non-zero is rel 1");
+        assert!(!numbers_match(4.0, 3.0));
+        assert!(
+            !numbers_match(f64::INFINITY, f64::MAX),
+            "a non-finite side only ever matches an equal one"
+        );
+        assert!(numbers_match(f64::INFINITY, f64::INFINITY));
+        assert!(!numbers_match(f64::NAN, f64::NAN));
     }
 
     /// **The separator set is CLOSED** — the `ArrayForm` half of the
@@ -2963,10 +3175,20 @@ mod tests {
             // not a rule).
             ("RegControl", "FwdThreshold", "100", "800", Some("echo-row")),
             // …with exactly one exception, and it is a cited one: the carve-out
-            // takes its own measured cell back out of the row, so that cell is
-            // UNCLAIMED here and declared to RP2.4 in the replay
-            // (`ECHO_CARVE_OUTS` / `ECHO_CARVE_OUT_ROUTING`).
-            ("Reactor", "kvar", "66.6666666666667", "66.667", None),
+            // takes its own measured cell back out of the row
+            // (`ECHO_CARVE_OUTS`), so the chain walks on to the next link —
+            // and since RP2.4 that link CLAIMS it. RP2.3 declared this cell to
+            // RP2.4 (`ECHO_CARVE_OUT_ROUTING`) because r4133's own
+            // `MakePosSequence` round-trips the live kvar through
+            // `Format(' kvar=%-.5g')`, 5.0e-06 apart; the floor is the
+            // mechanism that discharge names. It was `None` until RP2.4.
+            (
+                "Reactor",
+                "kvar",
+                "66.6666666666667",
+                "66.667",
+                Some("under-floor"),
+            ),
             // The rest of the same pair is still the row's.
             ("Reactor", "kvar", "100", "1200", Some("echo-row")),
             (
@@ -2976,11 +3198,35 @@ mod tests {
                 "66.66",
                 Some("echo-row"),
             ),
+            // **The chain's fourth link** (RP2.4): a pair with no row of either
+            // table, claimed by the floor alone. The worst cell it takes
+            // (`load.pf`, 6.431124e-05) and a matrix render, so the census
+            // disposition is exercised on both shapes.
+            (
+                "Load",
+                "pf",
+                "0.747651914485831",
+                "0.7477",
+                Some("under-floor"),
+            ),
+            (
+                "Line",
+                "CMatrix",
+                "[72.7194481250695 |0 72.7194481250695 ]",
+                "[72.71945 |0 72.71945 ]",
+                Some("under-floor"),
+            ),
             // Unclaimed: no row at all / a real difference inside a pair whose
-            // row refuses it / an r4133 root-cause pair no link owns.
+            // row refuses it / an r4133 root-cause pair no link owns — each of
+            // them also OUTSIDE the floor, which is what keeps this column a
+            // statement about the whole chain and not about its first three
+            // links (`gictransformer.r2` is 2.5e-1, `line.ratings` 2.5e-3).
             ("Foo", "Bar", "Yes", "true", None),
             ("Line", "Ratings", "[ 400]", "[401,]", None),
             ("GICTransformer", "R2", "0.09522", "0.12696", None),
+            // …and a numeric cell on a pair the floor DOES claim elsewhere,
+            // 9.99e-4 apart: the floor is per cell, never per pair.
+            ("Load", "pf", "0.747651914485831", "0.7484477", None),
         ] {
             let got = claim_value(PropsChannel::R4133, class, prop, rust, oracle);
             assert_eq!(
@@ -2996,20 +3242,32 @@ mod tests {
                 "{class}.{prop}: the seam and the offline chain disagree"
             );
         }
-        // The LAST link is still inert, and for its own reason: the floor is
-        // `None`, so a numeric pair that is genuinely different is NOT
-        // swallowed (asked on a pair with no echo row, or the echo link would
-        // answer first).
-        assert!(display_floor().is_none());
+        // The LAST link carries RP2.4's derived value, read back from the
+        // shipped slot rather than restated — and it is asked on a pair with no
+        // echo row, or the echo link would answer first.
+        assert_eq!(display_floor(), Some(2e-4));
         assert_eq!(
             claim_value(
                 PropsChannel::R4133,
                 "GICTransformer",
                 "R2",
                 "0.1",
-                "0.100001"
+                "0.100019"
+            )
+            .map(ValueClaim::tag),
+            Some("under-floor".to_string()),
+            "1.9e-4 — inside the floor"
+        );
+        assert_eq!(
+            claim_value(
+                PropsChannel::R4133,
+                "GICTransformer",
+                "R2",
+                "0.1",
+                "0.100021"
             ),
-            None
+            None,
+            "2.1e-4 — outside the floor"
         );
         assert_eq!(counter_totals(), before, "the chain query moved a counter");
         assert_eq!(
@@ -3017,6 +3275,99 @@ mod tests {
             before_echo,
             "the offline chain query must not move the LIVE echo counters"
         );
+    }
+
+    /// **The display floor's metric, decomposed** (RP2.4) — the successor of
+    /// RP2.1's floor-slot placeholder, which only asserted that the slot was
+    /// empty.
+    ///
+    /// [`display_rel`] is what decides whether a cell is a *numeric* divergence
+    /// at all, and the floor can never be wider than that decision. Each block
+    /// below pins one clause of it against a real census spelling, so the four
+    /// render shapes the census contains (scalar, exponent, bracketed vector,
+    /// `|`-separated matrix) and the four refusals are proven at the metric
+    /// rather than only at the seam.
+    #[test]
+    fn the_display_floor_metric_reads_the_numeric_skeleton() {
+        // The WORST cell the floor claims, to the digit — a `%-.4g` render
+        // (`PCElements/Load.pas:2345`). This number is the whole derivation's
+        // left-hand side; if it moves, `R4133_DISPLAY_FLOOR`'s doc is stale.
+        let worst = display_rel("0.747651914485831", "0.7477").expect("a numeric cell");
+        assert!(
+            (worst - 6.431_124e-5).abs() < 1e-10,
+            "the worst floor-claimed cell measured 6.431124e-05, got {worst:e}"
+        );
+        assert!(worst < 2e-4, "…which is 3.110x inside the floor");
+        // Every render shape, all through the one skeleton path.
+        for (rust, oracle) in [
+            ("3346958.0822587", "3.347E006"),
+            ("[ 287.82360946885]", "[ 287.824]"),
+            (
+                "[72.7194481250695 |0 72.7194481250695 |0 0 72.7194481250695 ]",
+                "[72.71945 |0 72.71945 |0 0 72.71945 ]",
+            ),
+        ] {
+            let rel = display_rel(rust, oracle)
+                .unwrap_or_else(|| panic!("{rust:?} vs {oracle:?} must be numeric"));
+            assert!(rel <= 2e-4, "{rust:?} vs {oracle:?}: {rel:e}");
+            assert!(under_display_floor(rust, oracle));
+        }
+        // The metric is symmetric — neither render is privileged as "expected".
+        assert_eq!(
+            display_rel("0.7477", "0.747651914485831"),
+            display_rel("0.747651914485831", "0.7477")
+        );
+        // `None` — NOT a numeric divergence, so no floor value could ever claim
+        // it: a differing non-numeric skeleton (boolean, enum, empty render,
+        // another element count, RPN source text), and a cell with no number.
+        for (rust, oracle) in [
+            ("Yes", "true"),
+            ("Positive", "Pos"),
+            ("", "[]"),
+            ("", "0.7477"),
+            ("[ 400]", "[400, 400, 400]"),
+            ("17", "1 16 +"),
+            ("wye", "wye "),
+        ] {
+            assert_eq!(
+                display_rel(rust, oracle),
+                None,
+                "{rust:?} vs {oracle:?} carries no comparable number pair"
+            );
+            assert!(!under_display_floor(rust, oracle));
+        }
+        // …and the numeric refusals: above the floor, and 0-vs-non-zero.
+        assert_eq!(display_rel("0.001", "0.0"), Some(1.0));
+        assert!(display_rel("0.747651914485831", "0.7484477").expect("numeric") > 2e-4);
+        assert!(!under_display_floor("0.747651914485831", "0.7484477"));
+    }
+
+    /// **The floor's live seam counts what the gate saw** — the floor's half of
+    /// the counter discipline the two tables already carry
+    /// ([`tests::hit_accounting_is_armed_and_dormant`],
+    /// [`tests::the_echo_seam_counts_visits_and_hits`]), and the reason
+    /// [`under_display_floor_r4133`] exists next to [`under_display_floor`] at
+    /// all: the claims census asks the offline twin about cells the *gate*
+    /// never compared, so only the seam may count. After RP4.1 these two
+    /// numbers are what the live floor population is read from.
+    ///
+    /// The deltas are `>=`, not `==`: `cargo test` runs one binary's tests
+    /// concurrently and several of them drive the real comparator, so the
+    /// statics move under this test's feet. `>=` is exactly the part that is
+    /// this test's to claim, and it is the part that fails if the seam stops
+    /// counting.
+    #[test]
+    fn the_display_floor_seam_counts_visits_and_hits() {
+        let (v0, h0) = display_floor_counters();
+        // Two visits, one hit: a claimed cell and a refused one — and the seam
+        // answers exactly what the offline twin answers on both.
+        assert!(under_display_floor_r4133("0.747651914485831", "0.7477"));
+        assert!(under_display_floor("0.747651914485831", "0.7477"));
+        assert!(!under_display_floor_r4133("0.747651914485831", "0.7484477"));
+        assert!(!under_display_floor("0.747651914485831", "0.7484477"));
+        let (v1, h1) = display_floor_counters();
+        assert!(v1 >= v0 + 2, "the seam must count every cell it sees");
+        assert!(h1 > h0, "…and every cell it claims");
     }
 
     /// **Capi-invariance of the measurement layer** (plan mechanic (b)).
@@ -3044,8 +3395,10 @@ mod tests {
             // that channel would delete the very evidence it cites.
             ("RegControl", "Idle", "No", ""),
             ("Load", "Yearly", "day", ""),
-            // The floor's slot: two numbers that a future R4133_DISPLAY_FLOOR
-            // could fold. `None` here must not depend on the floor being `None`.
+            // RP2.4's link: two numbers 1.14e-6 apart, which the r4133 arm
+            // claims `under-floor`. This row was written by RP2.1 as a slot
+            // guard ("`None` here must not depend on the floor being `None`")
+            // and RP2.4 is what turned it into a live channel statement.
             ("Load", "pf", "0.88", "0.880001"),
         ] {
             assert_eq!(
@@ -3062,6 +3415,7 @@ mod tests {
             ("Line", "Ratings", "[ 400]", "[400,]"),
             ("RegControl", "Idle", "No", ""),
             ("Load", "Yearly", "day", ""),
+            ("Load", "pf", "0.88", "0.880001"),
         ] {
             assert!(
                 claim_value(PropsChannel::R4133, class, prop, rust, oracle).is_some(),
