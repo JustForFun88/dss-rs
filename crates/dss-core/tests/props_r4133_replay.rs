@@ -343,10 +343,20 @@ const RP22_ROUTING: &[(&str, Owner, &str)] = &[
     // none for 3 (`Controls/SwtControl.pas:573-620`), so `Action` echoes
     // `PropertyValue[3]` — written with the raw token UNCONDITIONALLY, before
     // the CASE (`:192-193`), and then not acted on because `Locked` makes
-    // `InterpretSwitchState` exit (`:417`). Both engines refuse the write
-    // (`elements/control/swt_control/accessors.rs:146-150`) and agree on the
-    // live state, which the pair's own live twin `swtcontrol.state` witnesses
-    // token for token on all 59 cells. NOT the plan's suspected RP3.5 candidate.
+    // `InterpretSwitchState` exit (`:417` — the guard fires because the
+    // property name starts with `'a'`). Both engines refuse the write
+    // (`elements/control/swt_control/accessors.rs:146-150`), verified live on
+    // the r4133 DLL (RP2.2 audit settlement, 2026-08-23: `action=open` under
+    // `lock=yes` moves neither `state` nor `normal`).
+    //
+    // The live-state agreement was originally argued from the pair's twin
+    // `swtcontrol.state` matching token for token on all 59 cells. That twin is
+    // a **weaker** witness than it reads: r4133's `get_States` re-reads the
+    // controlled element (`:514-530`) while the port's STATE accessor returns
+    // its tracked field and says so (`accessors.rs:129-132`). What actually
+    // settles it is the probe above plus the green corpus gate on the switch
+    // decks; the census agreement is corroboration, not proof.
+    // NOT the plan's suspected RP3.5 candidate.
     (
         "swtcontrol.action",
         Owner::Rp23,
@@ -497,6 +507,27 @@ const RP22_ROUTING: &[(&str, Owner, &str)] = &[
     // (`elements/control/swt_control/accessors.rs:126-163`, `:270-276`). Every
     // observed r4133 render is homogeneous, so no VALUE differs today — a deck
     // writing `state=(open, closed, closed)` would diverge in Y.
+    //
+    // **Second defect on the same pair, found by the RP2.2 audit (2026-08-23)
+    // and confirmed by a live r4133 probe — RP3.7(a) owns it too.** The port
+    // refuses a `normal=` write while `Locked` (`accessors.rs:151-155`, its
+    // side effect `:244-249`, pinned by `swt_control/tests.rs::
+    // locked_ignores_normal_and_state_writes`), following 0.14.5's
+    // `ConditionalReadOnly` flag (`.inputs/dss_capi/src/Controls/
+    // SwtControl.pas:159-160`). r4133 applies it: `InterpretSwitchState`'s
+    // guard is property-name-conditional — `if Locked and ((LowerCase(
+    // property_name[1]) = 'a') or (… = 's')) Then Exit` under the comment
+    // "Only allowed to change normal state if locked" (`:416-417`) — and
+    // property 6 is `'Normal'` (`:128`), so arm 6 (`:201-204`) reaches
+    // `set_NormalStates` (`:556-561`), which has no lock guard. Probed on the
+    // vendored r4133 DLL: with `lock=yes`, `normal=open` moves `Normal` to
+    // `[open, open, open, ]` while `state=`/`action=` leave both fields
+    // untouched. The port's own Relay gets this rule right and documents it
+    // (`elements/control/relay/accessors.rs:416-420`), so it is a port bug, not
+    // a decision — but it is an ENGINE fix, out of RP2.2's zero-product-bytes
+    // scope, and no census cell exposes it (no corpus deck writes `normal=`
+    // under lock). Recorded here, in plan §RP3.7 and in STATUS rather than left
+    // to RP4.1's residual triage.
     (
         "swtcontrol.normal",
         Owner::Rp35,
@@ -1500,7 +1531,8 @@ fn every_example_row_is_claimed_or_declared_exactly_once() {
     assert_eq!(
         claimed("EnumSynonym"),
         CLAIMED_ENUM_SYNONYM,
-        "RP2.2's four bin-3 synonym rows"
+        "RP2.2's five EnumSynonym rows — the four bin-3 source sequence selectors plus the \
+         off-bin `invcontrol.voltage_curvex_ref`"
     );
     assert_eq!(
         claimed(Link::ShapeAllowlist.tag()),
@@ -2001,10 +2033,15 @@ fn an_example_row_no_mechanism_and_no_marker_claims_is_caught() {
 /// be read off the master accounting:
 ///
 /// * **claimed** by a shipped `PROPS_NORM_R4133` row (every one of its example
-///   rows), i.e. `RP22_ROUTING` says nothing about it — the four `EnumSynonym`
-///   pairs and the two fully-folding `ArrayForm` pairs;
+///   rows), i.e. `RP22_ROUTING` says nothing about it — **7 pairs**: the five
+///   `EnumSynonym` ones (`invcontrol.voltage_curvex_ref` included, which the
+///   `RP22_BEYOND_THE_CLOSED_LIST` growth added) and the two fully-folding
+///   `ArrayForm` ones;
 /// * **routed** by `RP22_ROUTING`, with a citation, to RP2.3 or an RP3.5+
-///   sub-step.
+///   sub-step — **20 rows**. 7 + 20 = the 24 closed-list pairs plus the 3
+///   beyond it. (The commit subject of `ab2bf041` says "18 cited routings",
+///   counting only the closed list's own 18; the audit-settlement commit
+///   records the corrected split.)
 ///
 /// The test also runs the two liveness directions the plan's mechanic (d) asks
 /// of any table: no routing row is dead (each declares at least one example
