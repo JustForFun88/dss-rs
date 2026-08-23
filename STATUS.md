@@ -173,8 +173,9 @@ the r4133 source and classified with a citation each; the kill criterion did not
 fire. Bin 3 split **4/4** — `vsource`/`isource` × `scantype`/`sequence` are true
 synonyms and took the table's first `EnumSynonym` rows, while `swtcontrol.action`
 (the plan's first suspected divergence, **disproven**: an `EchoParse` stored
-before the CASE and left stale by the `Locked` refusal, with the pair's own live
-`state` getter witnessing that both engines agree), `monitor.mode` (not a
+before the CASE and left stale by the `Locked` refusal, which a live r4133 probe
+in the audit settlement confirmed refuses `action=`/`state=` on both engines),
+`monitor.mode` (not a
 "decomposition render" but the deck's RPN **source text** `mode=(1 16 +)` echoed
 back) and `storagecontroller.modedischarge` (`'UNKNOWN'` is `GetModeString`'s
 non-injective catch-all) went to RP2.3. **Three RP3.5+ sub-steps opened and they
@@ -194,9 +195,14 @@ the full claims census measures **514 471 cells / 492 376 in scope** claimed
 8 pairs to 4. Two dossier findings corrected part A's own reading — r4133's
 `MakeLike` *does* copy `ScanType`/`SequenceType` on both classes, and the two
 registries are **not** the same list (`ScanType`'s −1 is `None`, `Sequence`'s is
-`Negative`), which is why the rows carry two maps and not one. **RP2.3** (the
-echo-exclusion table + pins) is next, but the three RP3.5+ sub-steps are what
-RP4.1 waits on.
+`Negative`), which is why the rows carry two maps and not one. Its two audits
+raised 8 findings (6 after dedup, 2 major), **5 fixed and 1 recorded** in a
+follow-up commit — the recorded one is a *live* r4133 divergence the dossier
+missed on a pair it routed (the port refuses `normal=` on a locked SwtControl,
+r4133 applies it; probe-confirmed, engine fix, folded into **RP3.7 (a2)**), and
+the two majors were the third `EnumSynonym` map shipping without a closed-set pin
+and that same missed divergence. **RP2.3** (the echo-exclusion table + pins) is
+next, but the three RP3.5+ sub-steps are what RP4.1 waits on.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -2939,7 +2945,22 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
       (`elements/control/swt_control/accessors.rs:126-163`, `:270-276`,
       `mod.rs:2`). Every r4133 render the census saw is homogeneous, so **no
       value differs today** — a deck writing `state=(open, closed, closed)` would
-      diverge in Y. (b) The mirror on Relay: r4133 renders over the live
+      diverge in Y. **(a2), added by the audit settlement and probe-confirmed:**
+      a `normal=` write on a **locked** SwtControl is refused by the port
+      (`accessors.rs:151-155`, following 0.14.5's `ConditionalReadOnly`) and
+      **applied** by r4133 — `InterpretSwitchState` exits early only for property
+      names starting `'a'`/`'s'` (`SwtControl.pas:416-417`, comment "Only allowed
+      to change normal state if locked") and property 6 is `'Normal'` (`:128`),
+      so arm 6 (`:201-204`) reaches `set_NormalStates` (`:556-561`), which has no
+      lock guard. Live r4133 DLL probe: under `lock=yes`, `normal=open` →
+      `[open, open, open, ]` while `state=`/`action=` move nothing. The port's own
+      Relay implements the r4133 rule and documents it
+      (`relay/accessors.rs:416-420`), so this is a port bug, not a decision; the
+      §D12 record in `docs/upgrade/DIVERGENCES.md` claimed the opposite and is
+      corrected. Zero corpus exposure (no deck writes `normal=` under lock), so
+      it is a *fix*, not an exclusion — RP3.7 lands it in both lanes with a pin
+      and it may not be deferred to `ORPHANED_GAPS.md`. (b) The mirror on Relay:
+      r4133 renders over the live
       `ControlledElement.NPhases` (`Relay.pas:1407-1428`) while the port renders
       its own per-phase array, unresynced after `MakePosSequence`. Evidence:
       `swtcontrol.normal`/`state` 59/40 each, `relay.normal`/`state` 1/0 each.
@@ -2968,14 +2989,24 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   - **`Fault.GMatrix` — RP2.1's other hand-off, settled with no sub-step.**
     `TFaultObj.GetPropertyValue` index 6 emits `'('`, fills the lower triangle
     only `If Assigned(Gmatrix)` (`Fault.pas:703`) and closes with `')'`; an
-    `r=`-specified fault never allocates `Gmatrix` (`:76-77`, "single G per phase
-    … if Gmatrix not specified"). So `'()'` and the port's `'(0 )'` denote the
-    **same** state, "no G matrix specified" — the unset-array render family of
+    `r=`-specified fault never allocates `Gmatrix` — `Create` nils it (`:411`)
+    and the only writers are `DoGmatrix` (`:196-209`, Edit arm 6 at `:286`) and
+    `MakeLike` (`:364-367`). (The audit settlement replaced the first draft's
+    citation of the field comment `:76-77`, which is documentation, not
+    evidence.) So `'()'` and the port's `'(0 )'` denote the **same** state, "no G
+    matrix specified" — the unset-array render family of
     `generator.dynout`/`autotrans.bhcurrent`, with no port behavior to change.
     The 386 cells therefore stay value-skipped on both channels under the
     existing `SKIP_PROPS`/`SKIP_PROPS_BOTH_CHANNELS` row, whose comment now
-    carries the verdict; no unmask (§1.1(e)), no new table row, and RP4.1 owes
-    nothing for it.
+    carries the verdict; no unmask (§1.1(e)), no new table row, and RP4.1 owes no
+    ledger entry for it. What it *did* owe — and now has — is the expected-value
+    pin CLAUDE.md requires beside any deliberate exclusion, since
+    `both_channel_rows_stay_skipped_everywhere` only asserts the skip is
+    configured and its sibling `generator.dynout` gets a tagged exclusion **plus**
+    a pin: `harness/mod.rs::skip_props_disposition_tests::
+    fault_gmatrix_renders_a_materialised_zero_matrix_when_unset` pins `'(0 )'` at
+    1 phase, `'(0 |0 0 |0 0 0 )'` at 3, and the non-zero specified render as the
+    discriminator.
   - **Closing bin 3 meant closing its CELLS.** The replay's own declaration rule
     put four example rows in RP2.2's bucket that the plan's pair list does not
     name: three bin-2-labelled pairs carrying bin-3 cells, which the vendored
@@ -2988,10 +3019,17 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     for), while `invcontrol.voltage_curvex_ref` is a **live** getter
     (`InvControl.pas:3244-3249`, `0→'rated'`, `1→'avg'`, `2→'avgrated'`) against
     our registry's `['Rated','Avg','RAvg']`, so an exclusion would have been a
-    lie and the whole pair was re-typed to an `EnumSynonym` row. That map is
-    *stricter* than the `CaseFold` row it replaced (three named token pairs
-    instead of "any case-only difference"), so no cell stopped being compared.
-    The scope growth is recorded as data
+    lie and the whole pair was re-typed to an `EnumSynonym` row. The two
+    predicates are **incomparable, not nested** — a claim this record and the
+    map's own doc first got wrong and the audit settlement corrected: the map is
+    *narrower* on case-only differences outside the three named ordinals, and
+    *wider* by exactly the 3 `'RAvg'`/`'avgrated'` cells (all 3 in scope) that
+    the `CaseFold` row refused and whose refusal this sub-step deleted from
+    `casefold_folds_case_and_the_two_trailing_blanks`. Those 3 folds are the
+    point of the re-typing and are value-preserving by the live-getter argument;
+    what would not be acceptable is folding them silently, which is why the count
+    is now named at the map, here, and in the vendored README (which had it right
+    all along). The scope growth is recorded as data
     (`props_r4133_replay::RP22_BEYOND_THE_CLOSED_LIST`), not folded away.
   - **The table.** 157 → **161 rows** = `BoolFold` 77 + `CaseFold` **62** +
     `ArrayForm` 17 + `EnumSynonym` **5**. The `CaseFold` lock moved −1 for the
@@ -3015,9 +3053,15 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     **errors** (rather than declaring to RP2.2) for any pair on the closed list
     or any bin-3 cell that neither the chain claims nor `RP22_ROUTING` names, and
     `rp22_settled_every_pair_it_was_handed` proves the input list is partitioned
-    into "claimed by the table" (6 pairs, checked per example row through the
-    shipped predicate) and "routed with a citation" (18), with every routing row
-    live, citing a `.pas:` line, and owning one of the two admissible outcomes.
+    into "claimed by the table" (checked per example row through the shipped
+    predicate) and "routed with a citation", with every routing row live, citing
+    a `.pas:` line, and owning one of the two admissible outcomes. **The split,
+    stated over the whole 27-pair input** (the audit settlement's correction —
+    this bullet and the commit subject `ab2bf041` quoted only the closed list's
+    own 6/18 without saying so): `RP22_ROUTING` holds **20** rows (14 → RP2.3,
+    6 → RP3.5+) and **7** pairs are claimed outright, i.e. 24 closed-list pairs
+    = 18 routed + 6 claimed, plus the 3 `RP22_BEYOND_THE_CLOSED_LIST` pairs
+    = 2 routed + 1 claimed.
   - **The claims census** (`DSS_PROPS_CENSUS=claims`, full population,
     2026-08-23): 439 cases × 2 channels, **1 060 165 rows, 57.3 s**, error counts
     at the recorded baselines (**5** r4133 / **22** capi — complete, not short).
@@ -3067,6 +3111,62 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     into the **vendored** tree (this sub-step's runs left ~55 across nine
     directories, all untracked, all removed by name), and nothing fails when
     they appear.
+  - **Audit settlement (2026-08-23, one follow-up commit — still zero engine
+    change).** The two audits raised **8** raw findings (audit-code 1 major + 4
+    minor, audit-tests 1 major + 2 minor). Two pairs are the same finding seen
+    twice — the "the re-typed `voltage_curvex_ref` map is stricter" wording and
+    the stale `EnumSynonym` row counts were each raised by both auditors — so
+    the deduped set is **6** (2 major, 4 minor): **5 fixed, 1 recorded, 0
+    refuted** (5 + 1 + 0 = 6 ✔).
+    - **RECORDED, not fixed — `swtcontrol.normal` under `Lock`** (major,
+      audit-code). The dossier routed `swtcontrol.normal`/`state` to RP3.7 on
+      the per-phase question alone and missed a second, *live* divergence in the
+      same Edit arm the brief required reading: the port refuses a `normal=`
+      write while `Locked`, r4133 applies it. Verified against the source
+      (`SwtControl.pas:416-417` guards only `'a'`/`'s'` property names; property
+      6 is `'Normal'`, `:128`; `set_NormalStates`, `:556-561`, has no lock
+      guard) **and** by a live probe on the vendored r4133 DLL (under
+      `lock=yes`: `normal=open` → `[open, open, open, ]`; `state=`/`action=`
+      move nothing). The fix is an engine change, which RP2.2's scope forbids,
+      so it is recorded — `R4133_PROPS_PLAN.md` §RP3.7 **(a2)** with its
+      acceptance, the `RP22_ROUTING` row comment, this record, and a correction
+      to `docs/upgrade/DIVERGENCES.md` §D12, whose "matching 0.14.5/r4133"
+      claim this refutes. Zero corpus exposure today.
+    - **FIXED — the third `EnumSynonym` map shipped with no closed-set pin**
+      (major, audit-tests; the RP2.1 major finding's shape, one level down).
+      `SCAN_TYPE_SYNONYMS`/`SEQUENCE_TYPE_SYNONYMS` were pinned literally but
+      `VOLTAGE_CURVEX_REF_SYNONYMS` only by identity, so an entry folding
+      nothing in today's population (the auditor's mutation `("Rated","ravg")` —
+      r4133 *parses* `'ravg'` to ordinal 2, `InvControl.pas:837`, against our
+      ordinal-0 `'Rated'`) left the whole suite green. `enumsynonym_maps_are_
+      injective` now pins all three maps literally.
+    - **FIXED — injectivity was checked in one direction only** (minor,
+      audit-code). The mirror collision (one of *our* spellings mapping to two
+      r4133 tokens) is equally value-destroying and is now asserted in the same
+      loop, with the kind's doc restated to promise both directions.
+    - **FIXED — the "stricter" claim on the re-typed row** (minor, both
+      auditors). The new map is *incomparable* with the `CaseFold` row, not
+      narrower: it drops the open-ended case claim but adds the 3 `'RAvg'`/
+      `'avgrated'` cells whose refusal this sub-step deleted from
+      `casefold_folds_case_and_the_two_trailing_blanks`. Corrected at the map,
+      in the test's own comment and in the bullet above; the vendored README had
+      it right and is unchanged.
+    - **FIXED — the `Fault.GMatrix` triage retired its obligation without a
+      pin** (minor, audit-code), plus its `:76-77` citation (a field comment,
+      not evidence). Both corrected above and at the `SKIP_PROPS` row; the new
+      pin is `fault_gmatrix_renders_a_materialised_zero_matrix_when_unset`.
+    - **FIXED — stale counts around the late-added fifth row** (minor, both
+      auditors): `props_norm.rs`'s `EnumSynonym` doc ("landed four"), the new
+      test's heading ("the four shipped rows"), the replay's
+      `CLAIMED_ENUM_SYNONYM` failure message ("four bin-3 synonym rows"),
+      `rp22_settled_every_pair_it_was_handed`'s doc ("four … and two", against
+      its own seven-pair assertion) and this record's 6/18 routing split (true
+      only of the closed list; the whole input is 7 claimed / 20 routed).
+    - Gate re-run in full on the settled tree; no golden, lock, ledger, manifest
+      or product-crate byte moved, and no test was deleted, `#[ignore]`d or
+      loosened. Test count **7 274 → 7 318** (3 637 → **3 659** per lane, ×2
+      lanes): the one new pin lands in each of the 22 test binaries that include
+      the harness.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

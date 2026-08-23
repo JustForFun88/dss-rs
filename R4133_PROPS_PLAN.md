@@ -823,6 +823,14 @@ closed here: `generator.dynout` is RP2.3's (`LiveSemanticsDiffer` + pin, upstrea
 report written) and `Fault.GMatrix` stays value-skipped on both channels with no
 sub-step.
 
+**Audit settlement (2026-08-23, one follow-up commit).** Its two audits raised 8
+findings, 6 after dedup (2 major, 4 minor); 5 fixed, 1 recorded. The one
+substantive addition: reading the whole `swtcontrol.normal`/`state` Edit arm — as
+this sub-step's brief required — surfaced a **live** r4133 divergence the dossier
+had not recorded, the port refusing a `normal=` write while `Locked` where r4133
+applies it (§RP3.7 (a2), probe-confirmed). It is an engine fix, so RP2.2 recorded
+it into RP3.7's scope instead of landing it; nothing else in the routing moved.
+
 ### RP2.3 — the echo-exclusion table + pins
 
 Land the `PROPS_ECHO_R4133` rows for bin 5 (the 44 empty-vs-value pairs — echo
@@ -1066,6 +1074,34 @@ accessors.rs:126-163`) applied to the whole terminal (`RefAction::
 SetSwitchClosed`, `:270-276`). Every r4133 render the census saw is homogeneous,
 so no *value* differs today (`swtcontrol.normal`/`state`, 59 cells each, 40 in
 scope); a deck writing `state=(open, closed, closed)` would diverge in Y.
+
+**(a2) A second, independent SwtControl defect on the same pair — added by the
+RP2.2 audit settlement (2026-08-23) and confirmed by a live r4133 probe.** The
+port refuses a `normal=` write while `Locked`
+(`elements/control/swt_control/accessors.rs:151-155`, side effect `:244-249`,
+pinned by `swt_control/tests.rs::locked_ignores_normal_and_state_writes`),
+following the 0.14.5 `ConditionalReadOnly` flag
+(`.inputs/dss_capi/src/Controls/SwtControl.pas:159-160`). **r4133 applies it.**
+`InterpretSwitchState`'s guard is property-name-conditional — `if Locked and
+((LowerCase(property_name[1]) = 'a') or (LowerCase(property_name[1]) = 's'))
+Then Exit`, under the comment *"Only allowed to change normal state if locked"*
+(`Version8/Source/Controls/SwtControl.pas:416-417`) — and property 6 is
+`'Normal'` (`:128`), so Edit arm 6 (`:201-204`) reaches the ganged/quoted writer
+and `set_NormalStates` (`:556-561`), which has no lock guard. Probe (vendored
+r4133 DLL, `epri-worker`, 3-phase switched line): with `lock=yes`,
+`normal=open` moves `Normal` to `[open, open, open, ]` while `state=open` and
+`action=open` leave both fields untouched — the guard discriminates exactly as
+the source reads. The port's own **Relay** already implements the r4133 rule and
+documents it (`elements/control/relay/accessors.rs:416-420`: "`State` writes are
+blocked while `Locked`; `Normal` writes are NOT"), which makes the SwtControl
+side a port bug rather than a decision. No census cell exposes it (no corpus deck
+writes `normal=` under lock), and `docs/upgrade/DIVERGENCES.md` §D12 asserted the
+opposite until this settlement corrected it. RP3.7 fixes it in **both** lanes
+with the rest of the per-phase work: drop the `Locked` gate on `Normal` in
+`set_i32`/`side_effects`, re-point
+`locked_ignores_normal_and_state_writes` at the r4133 rule (Normal applies,
+State/Action do not), and keep the D12 record honest.
+
 **(b) Relay.** The mirror image: `TRelayObj.GetPropertyValue` 39/40 loops the
 **live** `ControlledElement.NPhases` (`Controls/Relay.pas:1407-1428`), while the
 port renders its own per-phase array — which it has — without resyncing it to
@@ -1077,7 +1113,10 @@ carry the render as a cited exclusion + pin. **Acceptance:** the probe recorded
 (does r4133 really hold three independent conductor states on a `state=(…)`
 deck?); a decision with its artifact; the 80 in-scope `swtcontrol` cells either
 compare or are excluded with an expected-value pin on the port's live switch
-state. Tier: `opus-high+`.
+state; **and (a2) landed in both lanes with its own pin** (a locked `normal=`
+applies, a locked `state=`/`action=` does not), with the corrected §D12 record —
+(a2) is a fix, not a decision, so it may not be deferred to `ORPHANED_GAPS.md`
+even if (a) is. Tier: `opus-high+`.
 
 ---
 
