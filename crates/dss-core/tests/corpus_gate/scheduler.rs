@@ -24,7 +24,7 @@
 //!   artifact for a three-way bit-diff.
 //! * `DSS_GATE_JOBS=<n>` — override the scheduler thread count.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -34,7 +34,7 @@ use serde_json::Value;
 use crate::engines::{
     CaseResult, Channel, EpriOneShot, EpriPool, Oracle, WorkerPool, build_run_request,
 };
-use crate::harness::{self, CensusBlindSpots, PropsChannel};
+use crate::harness::{self, CensusBlindSpots};
 use crate::ledger::LedgerRuntime;
 use crate::manifest::{
     EngineChannel, FAMILIES, SolvableCase, corpus_file, family_file, load_family, load_solvable,
@@ -810,6 +810,15 @@ pub(crate) fn run_props_census(raw_mode: &str) {
     let epri_pool = EpriPool::new(pool_size);
     let capi_oneshot = Oracle::for_spec(None);
     let epri_oneshot = EpriOneShot::new();
+    // The claims mode's LAST chain link (plan §1.1(e)): a `property`-scoped
+    // ledger entry NAMES a cell. It is loaded SEPARATELY from `Ctx.ledger`,
+    // which stays empty on purpose — the walk must keep measuring the raw
+    // divergence (RP0.2's baseline, and a `skip` entry must not hide a case),
+    // while the disposition query answers "would an entry claim this cell at
+    // RP4.1?". Only the non-asserting `property_scope_keys` is consulted, so a
+    // census can never fail on a pin, and this runtime's hit counters are its
+    // own (the gate's `assert_all_hit` reads a different instance).
+    let claims_ledger = mode.annotates().then(LedgerRuntime::load);
     let ctx = Ctx {
         serial: false,
         dumping: false,
@@ -841,7 +850,7 @@ pub(crate) fn run_props_census(raw_mode: &str) {
                     let mut blind: BTreeMap<&'static str, CensusBlindSpots> = BTreeMap::new();
                     for uc in &tasks[idx].cases {
                         for ch in [EngineChannel::CapiV0145, EngineChannel::R4133] {
-                            let (r, b) = census_one(uc, ch, &ctx);
+                            let (r, b) = census_one(uc, ch, &ctx, mode, claims_ledger.as_ref());
                             rows.extend(r);
                             blind.entry(channel_tag(ch)).or_default().add(b);
                         }
@@ -869,10 +878,7 @@ pub(crate) fn run_props_census(raw_mode: &str) {
 
 /// The census's spelling of a gate channel.
 fn channel_tag(ch: EngineChannel) -> &'static str {
-    match ch {
-        EngineChannel::CapiV0145 => PropsChannel::CapiV0145.tag(),
-        EngineChannel::R4133 => PropsChannel::R4133.tag(),
-    }
+    ch.props_channel().tag()
 }
 
 /// Measure one (case, channel) for the census: force the property capture,
@@ -880,20 +886,31 @@ fn channel_tag(ch: EngineChannel) -> &'static str {
 /// failure mode — a dead oracle, a crashing deck, a panicking Rust walk —
 /// becomes a ROW, never a panic. The second return value is what the walk could
 /// not look at (see [`harness::CensusBlindSpots`]).
+///
+/// `mode` and `claims_ledger` are the disposition mode's two extras (RP2.1): in
+/// [`CensusMode::Claims`] every value row is annotated with the r4133 policy
+/// chain's verdict for that cell, the ledger link reading this case's
+/// `property` scopes. The WALK is identical in both modes — see
+/// [`crate::props_census::Disposition`] for why annotating the raw population is
+/// the same statement as re-walking with the armed policy.
 fn census_one(
     uc: &UnifiedCase,
     ch: EngineChannel,
     ctx: &Ctx,
+    mode: CensusMode,
+    claims_ledger: Option<&LedgerRuntime>,
 ) -> (Vec<CensusRow>, CensusBlindSpots) {
-    let pch = match ch {
-        EngineChannel::CapiV0145 => PropsChannel::CapiV0145,
-        EngineChannel::R4133 => PropsChannel::R4133,
-    };
+    let pch = ch.props_channel();
+    // The vendored README's §"The in-scope filter": a case the RP4.1 unmask will
+    // actually compare on r4133 is one whose manifest entry gates that channel.
+    // Read off the case's own `engines` key, exactly as the filter defines it.
+    let in_scope = uc.case.engines != "capi_v0145";
     let oracle_error = |detail: String| {
         (
             vec![CensusRow::error(
                 &uc.label,
                 pch,
+                in_scope,
                 CensusRowKind::OracleError { detail },
             )],
             CensusBlindSpots::default(),
@@ -929,6 +946,9 @@ fn census_one(
 
     let label = uc.label.clone();
     let abs = uc.abs.clone();
+    // The ledger link, resolved once per (case, channel): the `property` scopes
+    // that NAME a cell here. Empty in plain mode and whenever no entry applies.
+    let ledger_view = claims_ledger.map(|rt| rt.view(&uc.label, ch));
     let walked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         let tol = harness::tol_for(&cc.kind);
         let (mut dss, _baseline) = run_rust_capture(&label, &abs, &cc);
@@ -942,6 +962,7 @@ fn census_one(
                 rows.push(CensusRow::error(
                     &label,
                     pch,
+                    in_scope,
                     CensusRowKind::OracleError {
                         detail: format!("step {i}: empty all_properties capture"),
                     },
@@ -956,11 +977,17 @@ fn census_one(
                 pch,
                 &mut found,
             ));
-            rows.extend(
-                found
-                    .into_iter()
-                    .map(|f| CensusRow::from_harness(&label, pch, i, f)),
-            );
+            let ledger_named = match &ledger_view {
+                Some(v) => v.property_scope_keys(&cp.all_properties),
+                None => BTreeSet::new(),
+            };
+            rows.extend(found.into_iter().map(|f| {
+                let mut row = CensusRow::from_harness(&label, pch, in_scope, i, f);
+                if mode.annotates() {
+                    row.annotate(&ledger_named);
+                }
+                row
+            }));
         }
         (rows, blind)
     }));
@@ -970,6 +997,7 @@ fn census_one(
             vec![CensusRow::error(
                 &uc.label,
                 pch,
+                in_scope,
                 CensusRowKind::RustError {
                     detail: panic_msg(e),
                 },

@@ -144,8 +144,22 @@ and the row is documented *dormant until a gendispatcher deck gates r4133*. The
 re-census makes r4133 shape classes **1 → 0** (full census **429 → 0**) with one
 new pair (`gendispatcher.enabled`, bin 1, all cells out of scope), the capi
 channel byte-identical and no golden, lock or manifest byte moved — so **WP-RP1
-is COMPLETE** and its whole-WP acceptance criterion is met. **RP2.1** (channel
-threading + the normalization engine + replay accounting, `opus-xhigh`) is next.
+is COMPLETE** and its whole-WP acceptance criterion is met.
+**WP-RP2 is open and RP2.1 (channel threading + the normalization engine +
+replay accounting) is COMPLETE** (2026-08-23, one commit, **zero engine change**
+— harness/tests/docs only): the property comparator now knows which oracle it is
+talking to (`PropsPolicy`, threaded through both walks), all 12 `SKIP_PROPS`
+rows carry a measured r4133 disposition, and a typed 157-row table
+(`tests/harness/props_norm.rs`, `BoolFold`/`CaseFold`/`ArrayForm`/`EnumSynonym`)
+re-spells — never re-values — the r4133 side of bins 1/2/4. Proven three ways:
+offline by the new replay (`props_r4133_replay.rs`, 3 454 example rows, 0
+unaccounted, every table row live), per cell by the census knob's new
+disposition mode (`DSS_PROPS_CENSUS=claims`: **488 703 in-scope cells claimed**,
+549 933 unclaimed and every one of them declared to RP2.2/RP2.3/RP2.4/RP3), and
+non-vacuously by scratch probes where a corrupted boolean, a corrupted array
+token and a 1e-2 number all still fail through the normalized path. Capi
+invariance is measured, not asserted: the bounded A/B gate and census come back
+byte-identical. **RP2.2** (enum synonyms + the S6 dossier) is next.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -2453,6 +2467,169 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
        deck must not set `basefreq=` either, or the compare puts the port's base
        frequency against r4133's stored weights string (measured: `? gd1.basefreq`
        → `3, 1`). Both notes are in the row comment as well.
+
+### R4133_PROPS WP-RP2 — condensed records
+
+> Plan: `R4133_PROPS_PLAN.md` §WP-RP2. Same branch, same per-sub-step ritual.
+
+- **RP2.1** (2026-08-23) — channel threading, the normalization engine, the
+  replay accounting and the census's disposition mode. **Zero engine change**:
+  the whole sub-step is `tests/harness/*`, `crates/dss-core/tests/*`, the
+  vendored evidence and docs. No golden byte, no `golden.lock.json`, no
+  `population.lock.json`, no `ledger.json` entry (the §1.1(e) staging rule:
+  r4133 `property` entries land at RP4.1), and the r4133 props live masks are
+  untouched — every proof here is offline or annotation.
+  - **The seam.** `harness::PropsPolicy { channel, value_policy }` travels
+    through both property walks exactly as the shape allowlist does, and carries
+    the one hook `normalize(class, prop, rust, oracle)` sitting immediately
+    before `assert_value_matches_tol` (and before `value_verdict` in the census
+    walk, which still records the RAW strings). Capi-invariance is
+    **structural**: every RP2.1 behavior hangs off `is_r4133()`, so a capi policy
+    walks the pre-RP2.1 code path. `PropsPolicy::plain` disarms the value half —
+    that is the census's permanent RP0.2 baseline, so a rule can never shrink
+    what a re-census reports.
+  - **`SKIP_PROPS` dispositions — all 12 rows, all MEASURED** (a full census run
+    with the rows unmasked on r4133, probe lists reverted): 5 rows compare on
+    r4133 (`Fuse.FuseCurve`, `Fuse.RatedCurrent`, `Capacitor.pctperm`,
+    `Reactor.pctperm` — 0 divergent cells each; `RegControl.RevThreshold` — 888
+    cells, `'-100'` vs `'100'`, an `EchoDefault` at `RegControl.pas:1437`), 7
+    stay skipped on both channels with their unmasking cost recorded
+    (`Capacitor.CMatrix` 1 059, `Reactor.RMatrix`/`XMatrix` 670 each,
+    `Capacitor`/`Reactor.FaultRate` 1 059/670, `Fault.GMatrix` 386,
+    `Transformer.WdgCurrents` 571). `LANE_SKIP_PROPS`' Monitor `BaseFreq` and
+    `skip_transformer_cursor` stay channel-blind, each with its reason.
+    The two consts `SKIP_PROPS_CAPI_ONLY`/`SKIP_PROPS_BOTH_CHANNELS` **partition**
+    the table, enforced by a test. Unmasking `RevThreshold` is a deliberate
+    **policy** change to the r4133 census population (+1 numeric pair, 888
+    cells), not a disagreement with the frozen extracts — those stay frozen; the
+    pair is vendored in the supplement instead (864 `'-100'`/`'100'` + 24
+    `'-800'`/`'800'`) and **RP2.3 owes it an `EchoDefault` row and its pin, or
+    RP4.1 breaks on 888 cells**.
+  - **The table.** `tests/harness/props_norm.rs`, **157 rows** = `BoolFold` 77 +
+    `CaseFold` 63 + `ArrayForm` 17 + `EnumSynonym` 0 (RP2.2 fills the last), each
+    row citing its census pair by `(pair, bin, cells)`. Count locks per kind, a
+    sortedness/uniqueness pin, and per-row live counters that are armed but
+    dormant. The plan's "21 array-form pairs" derives to **17**: the four
+    dropped (`expcontrol.derlist`, `relay.normal`, `relay.state`, `sensor.kvs`)
+    have zero claimable example rows and are each named by the plan itself for
+    RP2.2 / §1.3, so the kill criterion did **not** fire. `PROPS_ECHO_R4133`
+    ships empty and deliberately **unwired** — RP2.3 lands its rows and the
+    consult together, so no cell can be masked before a cited row exists to mask
+    it. `props_norm.rs` carries the tree's only `#[rustfmt::skip]` (the 157-row
+    data table; rustfmt's call width would explode 50 rows into eight lines each).
+  - **The evidence.** `tests/corpus/props_r4133/examples_supplement.txt` —
+    **76 rows / 26 pairs / 4 541 cells**, measured with the RP0.2 knob on this
+    tree: the 24 pairs the WP-RP1 shape closures made live (8 of them carry 2-13
+    distinct spellings the README's one-representative records cannot),
+    `regcontrol.fwdthreshold` and `regcontrol.revthreshold`. Locked by row count
+    and cross-file disjointness in `props_r4133_evidence_lock.rs`.
+  - **The replay** (`crates/dss-core/tests/props_r4133_replay.rs`, no oracle, no
+    solve): **3 454 example rows = 3 378 frozen + 76 supplement, 0 unaccounted**.
+    Claimed **748** (BoolFold 114 / CaseFold 442 / ArrayForm 192); shape
+    allowlist, echo and floor claim 0 **by construction**, and each zero is
+    asserted rather than assumed. Everything else is *declared* to a named
+    owner — RP2.2 170 rows/26 pairs · RP2.3 295/72 · RP2.4 2 100/70 · RP3 7/4 ·
+    out-of-scope 134/18 (asserted to carry zero in-scope cells) — so the
+    accounting is total from day one and later sub-steps only move rows between
+    mechanisms. Liveness **157/157**; on `examples_full.txt` alone exactly the 9
+    WP-RP1 rows are dead, which is what the supplement exists to fix. The replay
+    **parses the README's WP-RP1 tables**: reformatting that section reds a test
+    on purpose.
+  - **The disposition mode** (`DSS_PROPS_CENSUS=claims`, the RP0.2 seam RP2.1
+    was to extend). Same walk, same rows, each **value** row annotated with the
+    chain's verdict through the *shipped* predicates
+    (`props_norm::claim_value`, and a new non-asserting
+    `LedgerView::property_scope_keys` that shares the gate's own scope selection
+    and `name_re` decision with `property_handled_keys` so the two cannot drift —
+    pinned by `property_scope_keys_names_the_cells_the_gate_would_handle`, which
+    also holds it to naming nothing for an unnamed/foreign-field/non-divergence
+    scope and to moving no hit counter). Full population, 2026-08-23,
+    439 cases × 2 channels, 1 060 165 rows, 56.8 s, error counts at the recorded
+    baselines (5 r4133 / 22 capi — the run is complete, not short). r4133:
+    **1 060 039 value cells (1 014 217 in scope), 0 shape rows**; claimed
+    **510 106 / 488 703 in scope** = BoolFold 294 519, CaseFold 93 230,
+    ArrayForm 122 357; echo 0, floor 0, ledger 0; **UNCLAIMED 549 933 / 525 514**
+    over 189 pairs, every one of them landing on the owner §1.1 predicts (bin 5 →
+    RP2.3 425 419 in scope, bin 6 → RP2.4 45 552, bin 7 → RP2.3/RP3 45 093, bin 3
+    → RP2.2 3 691, the nine bin-1 echo pairs 3 293, bins 2/4 residue 318, the
+    WP-RP1/supplement pairs 2 148). RP4.1's acceptance is that in-scope column
+    reaching zero. The same run reads the capi channel too, and both halves of
+    the design show up there: **0** cells normalized (the capi arm is the
+    identity, by contract) and **11 `ledger-hit`s** over 8 pairs (the
+    `makeposseq-cuf-applied-capi-props` entry) — so the ledger link is exercised,
+    not dead code, even while the r4133 side must stay at zero until RP4.1.
+  - **The plan's ~491 000 headline, reconciled by measurement.** Frozen bins
+    1/2/4 hold 491 854 in-scope cells; measured claimed is 488 703. Every term of
+    the difference is measured and vendored in the README's new dated section:
+    −2 092 for the 9 bins-1/2/4 pairs that take no rule row (the five pure-echo
+    bin-1 pairs + the four the plan routes elsewhere), −1 519 for the
+    heterogeneous halves *inside* pairs the table does hold, +24 population drift
+    since 2026-08-08 (RP0.2's cursor correction, RP1.2's autotrans), +436 for the
+    9 WP-RP1 pairs. Independent cross-check of the two accountings: the census
+    measures **749** claimed spellings against the replay's 748 — the extra one is
+    `autotrans.conn | 'series' | 'Series'`, a cell RP1.2's closure created.
+  - **Non-vacuity (scratch probe, deleted after the run).** Driving the real
+    `compare_all_properties` on the r4133 channel: the legitimate r4133 spellings
+    pass (`Capacitor.c1.enabled` vs `'true'`, `Line.l1.ratings` vs `'(400)'`,
+    `EnergyMeter.em1.peakcurrent` vs `'(400, 400, 400)'`) and all four
+    corruptions still fail —
+    `Capacitor.c1 property Enabled: structure differs (actual "Yes" vs expected "false")`,
+    `EnergyMeter.em1 property PeakCurrent: structure differs (actual "[ 400 400 400]" vs expected "(400, 4X0, 400)")`,
+    `Line.l1 property Ratings: number 0 differs: actual 400 vs expected 404 (from "[ 400]" vs "[ 404]")`
+    (the 1e-2 case with the skeletons deliberately equal, so the red comes from
+    the NUMBER), and the same 404 inside r4133's paren form. The probe also
+    caught a **latent trap for RP4.1**: `NORM_VISITS`/`NORM_HITS` are per-process
+    statics, so three `props_norm` unit tests that called
+    `assert_norm_rows_are_live()` would start failing on test *ordering* the
+    moment the gate visits rows in the same binary. They now assert a counter
+    **delta** of zero instead; the live assertion stays where it belongs, once,
+    at the end of the gate.
+  - **Capi-invariance, measured twice.** Part A's A/B (`DSS_GATE_ONLY='controls:'`
+    105 cases, and `controls:regcontrol/` 8) was re-run on the final tree: gate
+    stdout identical line for line (only the `filtered out` unit-test count and a
+    `Compiling` line differ), and the bounded **plain** census is
+    byte-identical — all 10 per-channel extracts, `run.json` and the 33 MB
+    `props_census.json`. The claims mode adds columns and files only in `claims`
+    mode, and a plain run now deletes a previous claims run's three files by name
+    rather than leave them to be misread.
+  - **Goldens: measured, none moved.** `git status` after the full five-command
+    gate shows only the sub-step's own harness/test/doc paths; no artifact under
+    `tests/golden/` and no lock file appears. No lane_diff owed (zero engine
+    change).
+  - **Findings handed forward** (each in no plan list before this sub-step):
+    1. **`generator.dynout` is an r4133 RENDERING bug, not an echo** —
+       `SetDynOutput` stores `Get_Out_Idx`'s `FVarNames` index
+       (`General/DynamicExp.pas:411-437`) while `GetDynOutputStr` decodes it as a
+       flat (var, slot) index over `DynSlot = array[0..1]`, so var 5 `theta`
+       prints `dpshaft`. Dynamics are unaffected and the port is right; declared
+       to **RP2.2** so an RP2.3 echo row cannot mask it, and a candidate
+       `investigations/to_opendss/` report.
+    2. **`energymeter.peakcurrent` needs BOTH kinds of row** — two of its
+       spellings are `ArrayForm`-claimed, the third (`'[ 400]'` vs
+       `'((400, 400, 400))'`, 6 cells) is an `EchoDefault`
+       (`Meters/EnergyMeter.pas:2637-2664` re-wraps the never-refreshed
+       `:2209` default). RP2.3.
+    3. **`Fault.GMatrix` (386 cells, `'(0 )'` vs `'()'`)** — surfaced by the
+       disposition sweep while the row stays masked on both channels: upstream's
+       `If Assigned(Gmatrix)` guard against the port's materialised zero matrix.
+       Not in any table and not in the census today; handed to RP2.2's triage.
+    4. **RP2.3/RP2.4 must return here**: `MULTI_LINK_ROWS` and the two zero
+       `CLAIMED_` locks in the replay force a visit when the echo table or the
+       floor starts claiming, and `the_echo_table_and_the_display_floor_claim_nothing_yet`
+       is the test that will red.
+    5. **Hygiene, unowned — and it bit once.** Corpus/gate runs leave `Export`
+       artifacts inside the **vendored** corpus tree (this sub-step's runs left
+       seven across `tests/corpus/electricdss-tst/Test/AutoTrans/`, untracked and
+       not gitignored; all deleted by name). No corpus-hygiene test catches a
+       deck writing into the vendored tree. In the same directory the first full
+       `cargo test --workspace` of this sub-step hit a **transient** gate failure
+       — `solvable_now:Test/AutoTrans/Auto3bus.dss`, r4133 channel, `export
+       losses file=Auto3bus_HL_losses.txt` → `Error 303 … I/O error 103` — which
+       did not reproduce: the AutoTrans slice re-ran 9/9 and the full suite came
+       back 3 456 passed / 0 failed in both lanes. It cannot come from this
+       diff (nothing here executes outside `DSS_PROPS_CENSUS=claims`), and the
+       suspicion is exactly the artifact-in-the-vendored-tree hygiene above.
+       Recorded so a second sighting is a pattern, not a surprise.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

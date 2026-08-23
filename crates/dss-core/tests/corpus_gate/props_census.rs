@@ -20,16 +20,29 @@
 //! scheduler's case model, thread pool and channel transports); this module owns
 //! the row model and the artifact writers.
 //!
-//! Plain mode is the knob's baseline forever — it is what reproduces RP0.1.
-//! RP2.1 adds a second, *disposition* mode (`DSS_PROPS_CENSUS=claims`) over the
-//! same walk; [`Mode`] is the seam it extends. Be precise about what RP0.2 did
-//! and did NOT build for it (RP0.2 audit): the per-cell decision
-//! (`harness::value_verdict`) and the per-element walk
-//! (`harness::collect_element_divergences`, pinned against the gate's
-//! `compare_prop_lists` by a biconditional test) ARE shared seams; `Mode` today
-//! reaches only [`write_artifacts`], and threading it — plus a ledger view —
-//! from `scheduler::run_props_census` through `census_one` into the walk is
-//! RP2.1's own work, deliberately not pre-built as untestable plumbing.
+//! Plain mode is the knob's baseline forever — it is what reproduces RP0.1, and
+//! nothing RP2.1 added moves a byte of it (the claims-only columns and files are
+//! gated on [`Mode::annotates`]).
+//!
+//! ## The disposition mode (`DSS_PROPS_CENSUS=claims`, RP2.1)
+//!
+//! Same walk, same rows, each **value** row annotated with what the r4133 value
+//! policy does with that cell — [`Disposition`]: `normalized-by-<rule>` /
+//! `echo-row` / `under-floor` / `ledger-hit` / `UNCLAIMED`. It is the per-cell
+//! accounting `R4133_PROPS_PLAN.md` RP4.1's acceptance reads ("zero UNCLAIMED
+//! cells"), and the offline replay's per-**spelling** completeness proof
+//! (`crates/dss-core/tests/props_r4133_replay.rs`) is its counterpart: replay
+//! before the unmask, claims census after.
+//!
+//! Every verdict comes from a **shipped** predicate — `props_norm::claim_value`
+//! for the harness links, `LedgerView::property_scope_keys` for the ledger one —
+//! never a copy of them (RP0.2: a drifting copy would corrupt RP4.1's read
+//! silently). The mode still asserts nothing about the data.
+//!
+//! It also carries the in-scope flag the plain mode does not need
+//! (`engines ∈ {"both", "r4133"}` — the vendored README's §"The in-scope
+//! filter"), so its tallies are directly comparable with `bins.tsv`'s
+//! `cells_in_scope` column.
 //!
 //! ## Artifacts
 //!
@@ -66,6 +79,12 @@
 //!   (`tests/corpus/props_r4133/README.md` §"Row formats"), per channel.
 //! * `tmp/props_census/run.json` — mode, `gate_only`, cases walked, rows: the
 //!   same provenance stamp next to the extracts a reader actually diffs.
+//! * **claims mode only**, per channel: `claims.txt` — `examples_full.txt`'s
+//!   rows in the same order plus `count_in_scope` and the disposition;
+//!   `claims_unclaimed_pairs.txt` — one row per pair still carrying an
+//!   `UNCLAIMED` cell, the work list RP2.2/RP2.3/RP2.4 read;
+//!   `claims_summary.json` — the per-disposition cell tallies (every
+//!   disposition, zeros included).
 //!
 //! Two vendored extracts are deliberately NOT re-derived here, because the plain
 //! census does not carry what they need: `bins.tsv` needs the §1.1 bin policy
@@ -97,31 +116,152 @@ use std::path::PathBuf;
 
 use serde_json::{Value, json};
 
+use crate::harness::props_norm::{self, ValueClaim};
 use crate::harness::{CensusBlindSpots, PropCensusRow, PropsChannel};
 
-/// Census mode. Plain is the permanent baseline; RP2.1 adds `Claims`.
+/// Census mode. Plain is the permanent baseline; `Claims` is RP2.1's
+/// disposition mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Mode {
     /// `DSS_PROPS_CENSUS=1` — the un-normalized comparator, RP0.1's measurement.
     Plain,
+    /// `DSS_PROPS_CENSUS=claims` — the SAME walk and the same rows, each
+    /// annotated with the r4133 policy chain's verdict for that cell
+    /// ([`Disposition`]). See [`Disposition`] for why annotating the plain
+    /// population is the same statement as re-walking with the armed policy.
+    Claims,
 }
 
 impl Mode {
     /// Parse the env value. An unknown value is a LOUD failure, never a silent
-    /// fallback to plain: `DSS_PROPS_CENSUS=claims` must fail until RP2.1 builds
-    /// it, rather than quietly hand back a plain census labelled as claims.
+    /// fallback to plain.
     pub(crate) fn from_env(raw: &str) -> Mode {
         match raw {
             "1" => Mode::Plain,
-            "claims" => panic!(
-                "DSS_PROPS_CENSUS=claims (the disposition mode) is R4133_PROPS_PLAN.md RP2.1's \
-                 deliverable and does not exist yet — use DSS_PROPS_CENSUS=1 for the plain census"
-            ),
+            "claims" => Mode::Claims,
             other => panic!(
-                "DSS_PROPS_CENSUS={other:?} is not a census mode; the only accepted value is \
-                 `1` (the plain, un-normalized census)"
+                "DSS_PROPS_CENSUS={other:?} is not a census mode; the accepted values are \
+                 `1` (the plain, un-normalized census) and `claims` (the disposition mode, \
+                 R4133_PROPS_PLAN.md RP2.1)"
             ),
         }
+    }
+
+    /// The mode tag the artifacts stamp.
+    pub(crate) fn tag(self) -> &'static str {
+        match self {
+            Mode::Plain => "plain",
+            Mode::Claims => "claims",
+        }
+    }
+
+    /// Does this mode annotate rows with a [`Disposition`]?
+    pub(crate) fn annotates(self) -> bool {
+        matches!(self, Mode::Claims)
+    }
+}
+
+/// **What the r4133 value policy does with one divergent cell** — the per-cell
+/// accounting RP4.1's acceptance reads ("zero UNCLAIMED cells", plan §RP4.1).
+///
+/// The vocabulary is RP0.2's, exactly: `normalized-by-<rule>` / `echo-row` /
+/// `under-floor` / `ledger-hit` / `UNCLAIMED`. It annotates **value cells** —
+/// the population `bins.tsv` counts and the one RP4.1 reads.
+///
+/// The chain's first link, RP1's **shape allowlist**, has no tag here because it
+/// acts strictly upstream of everything the census records: `filter_015x` drops
+/// an allowlisted Rust-side prop before the walk compares a value OR builds a
+/// name set, so neither a value row nor a surviving `shape_count` row can be
+/// claimed by it — a `shape_count` row in this census is by construction a gap
+/// the allowlist did **not** close (WP-RP1's residual). Shape rows are therefore
+/// counted on their own in the claims summary, not dispositioned; the offline
+/// exerciser of the allowlist rows is the RP2.1 replay over the frozen
+/// `shape.txt`.
+///
+/// **Why annotating the PLAIN population is the same statement as re-walking
+/// with the armed policy.** The claims mode runs the identical walk (the plain
+/// policy, i.e. the raw comparator) and asks
+/// [`props_norm::claim_value`] about every row it produced. A cell the
+/// armed seam would have equalised is exactly a cell that (a) differs raw — or
+/// the census would not have a row for it — and (b) a table row claims; those
+/// are the two conjuncts of `lookup_claim`, so the annotated population and the
+/// armed walk's "what disappeared" are the same set, cell for cell (pinned by
+/// `props_norm::tests::the_value_chain_resolves_in_order_and_agrees_with_the_seam`).
+/// Annotating rather than re-walking is what lets ONE run report both the raw
+/// census (RP0.1's baseline, unchanged) and the disposition of every cell in it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Disposition {
+    /// [`props_norm::PROPS_NORM_R4133`] folds the two spellings
+    /// (RP2.1). The payload is the rule's tag.
+    Normalized(&'static str),
+    /// [`props_norm::PROPS_ECHO_R4133`] excludes the pair (RP2.3 —
+    /// empty today).
+    Echo,
+    /// The two sides are numbers inside the r4133 display floor (RP2.4 — the
+    /// floor is `None` today).
+    UnderFloor,
+    /// A `property`-scoped ledger entry NAMES the cell (plan §1.1(e); the
+    /// staging rule keeps r4133 property entries out of the tree until RP4.1,
+    /// so this is structurally zero on that channel today).
+    LedgerHit,
+    /// Nothing in the chain claims it. This is the bucket RP2.2/RP2.3/RP2.4/RP3
+    /// still owe rows for, and the one RP4.1's acceptance requires to be empty.
+    Unclaimed,
+}
+
+impl Disposition {
+    pub(crate) fn tag(self) -> String {
+        match self {
+            Disposition::Normalized(rule) => format!("normalized-by-{rule}"),
+            Disposition::Echo => "echo-row".to_string(),
+            Disposition::UnderFloor => "under-floor".to_string(),
+            Disposition::LedgerHit => "ledger-hit".to_string(),
+            Disposition::Unclaimed => "UNCLAIMED".to_string(),
+        }
+    }
+
+    /// Every disposition the summary reports, in chain order — so a tally
+    /// prints its zeros too (a mechanism that claimed nothing must be visible,
+    /// not absent: `echo-row` and `under-floor` are the RP2.3/RP2.4 slots, and
+    /// their zeros are RP2.1's own claim about what it did NOT lean on).
+    pub(crate) fn all() -> Vec<Disposition> {
+        let mut v: Vec<Disposition> = ["BoolFold", "CaseFold", "ArrayForm", "EnumSynonym"]
+            .into_iter()
+            .map(Disposition::Normalized)
+            .collect();
+        v.extend([
+            Disposition::Echo,
+            Disposition::UnderFloor,
+            Disposition::LedgerHit,
+            Disposition::Unclaimed,
+        ]);
+        v
+    }
+
+    /// **The chain, resolved for one value cell.** The harness half is the
+    /// shipped [`props_norm::claim_value`] (normalization → echo →
+    /// floor, the same predicates the live seam uses); the ledger link is
+    /// appended here, last and only for a cell the harness left unclaimed,
+    /// because the ledger lives in this binary and is per (case, channel).
+    fn for_value(
+        element: &str,
+        prop: &str,
+        rust: &str,
+        oracle: &str,
+        ledger_named: &BTreeSet<(String, String)>,
+    ) -> Disposition {
+        let class = element.split('.').next().unwrap_or("");
+        if let Some(claim) = props_norm::claim_value(class, prop, rust, oracle) {
+            return match claim {
+                ValueClaim::Normalization(rule) => Disposition::Normalized(rule.tag()),
+                ValueClaim::Echo => Disposition::Echo,
+                ValueClaim::DisplayFloor => Disposition::UnderFloor,
+            };
+        }
+        if ledger_named.contains(&(element.to_lowercase(), prop.to_lowercase())) {
+            return Disposition::LedgerHit;
+        }
+        Disposition::Unclaimed
     }
 }
 
@@ -210,16 +350,27 @@ pub(crate) struct Row {
     pub(crate) channel: PropsChannel,
     pub(crate) step: i64,
     pub(crate) kind: RowKind,
+    /// Is this row's case one the RP4.1 unmask will actually compare on the
+    /// r4133 channel — `engines ∈ {"both", "r4133"}` (the vendored README's
+    /// §"The in-scope filter")? Carried on every row in every mode; only the
+    /// claims artifacts report the split, which is what makes a claims run
+    /// comparable with `bins.tsv`'s `cells_in_scope` column.
+    pub(crate) in_scope: bool,
+    /// The claims mode's per-cell verdict (`None` in plain mode, and on rows
+    /// that are not value cells).
+    pub(crate) disposition: Option<Disposition>,
 }
 
 impl Row {
     /// A row for a whole-case error (no step, no element).
-    pub(crate) fn error(case: &str, channel: PropsChannel, kind: RowKind) -> Row {
+    pub(crate) fn error(case: &str, channel: PropsChannel, in_scope: bool, kind: RowKind) -> Row {
         Row {
             case: case.to_string(),
             channel,
             step: NO_STEP,
             kind,
+            in_scope,
+            disposition: None,
         }
     }
 
@@ -227,6 +378,7 @@ impl Row {
     pub(crate) fn from_harness(
         case: &str,
         channel: PropsChannel,
+        in_scope: bool,
         step: usize,
         row: PropCensusRow,
     ) -> Row {
@@ -264,6 +416,30 @@ impl Row {
             channel,
             step: step as i64,
             kind,
+            in_scope,
+            disposition: None,
+        }
+    }
+
+    /// Annotate this row with the r4133 policy chain's verdict — the claims
+    /// mode's whole added content. Value rows only: see [`Disposition`] for why
+    /// a `shape_count` row has no link to reach, and an error row no cell.
+    pub(crate) fn annotate(&mut self, ledger_named: &BTreeSet<(String, String)>) {
+        if let RowKind::Value {
+            element,
+            prop,
+            rust,
+            oracle,
+            ..
+        } = &self.kind
+        {
+            self.disposition = Some(Disposition::for_value(
+                element,
+                prop,
+                rust,
+                oracle,
+                ledger_named,
+            ));
         }
     }
 
@@ -279,11 +455,21 @@ impl Row {
         )
     }
 
-    fn to_json(&self) -> Value {
+    /// `mode` gates the two claims-only columns: the plain census's rows keep
+    /// exactly the key set RP0.2 froze (a plain artifact must stay diffable
+    /// against the vendored 2026-08-08 census forever), and the disposition
+    /// mode adds `disposition` + `in_scope` to them.
+    fn to_json(&self, mode: Mode) -> Value {
         let mut m = serde_json::Map::new();
         m.insert("case".into(), json!(self.case));
         m.insert("channel".into(), json!(self.channel.tag()));
         m.insert("kind".into(), json!(self.kind.tag()));
+        if mode.annotates() {
+            m.insert("in_scope".into(), json!(self.in_scope));
+            if let Some(d) = self.disposition {
+                m.insert("disposition".into(), json!(d.tag()));
+            }
+        }
         match &self.kind {
             RowKind::Value {
                 element,
@@ -335,6 +521,21 @@ impl Row {
 /// `is_numeric` leads because the extract prints every structural pair before
 /// the first numeric one.
 type ExampleKey = (bool, String, String, String);
+
+/// What one distinct spelling accumulates. `cells` is what
+/// `examples_full.txt` prints in every mode; the other two are the claims
+/// mode's added columns (and stay `0`/`None` in plain mode, where nothing
+/// annotates a row).
+#[derive(Default)]
+struct ExampleAcc {
+    cells: usize,
+    cells_in_scope: usize,
+    /// The chain's verdict for this spelling. Constant per key — the chain is a
+    /// pure function of `(class, prop, rust, oracle)` — which is exactly why the
+    /// per-spelling extract can carry it, and why a disagreement between two
+    /// cells of one key would be a bug (asserted in [`ChannelExtracts::ingest`]).
+    disposition: Option<Disposition>,
+}
 
 /// A `(class, prop)` pair accumulator — the unit both pair extracts print.
 struct PairAcc {
@@ -426,10 +627,15 @@ struct ChannelExtracts {
     /// loss is loud instead of silent (the lossless record is the census JSON,
     /// which keeps every individual `shape_count` row).
     shape: BTreeMap<String, (ShapeAcc, BTreeSet<ShapeAcc>)>,
-    /// `(pair, rust, oracle) -> cells`, split structural/numeric — the
-    /// untruncated spelling inventory `examples_full.txt` prints.
-    examples: BTreeMap<ExampleKey, usize>,
+    /// `(pair, rust, oracle) -> counts`, split structural/numeric — the
+    /// untruncated spelling inventory `examples_full.txt` prints, plus the
+    /// claims mode's per-spelling verdict.
+    examples: BTreeMap<ExampleKey, ExampleAcc>,
     diverging_cases: BTreeSet<String>,
+    /// Claims mode: `shape_count` rows seen (WP-RP1's residual) and the
+    /// in-scope half of them. Not dispositioned — see [`Disposition`].
+    shape_rows: usize,
+    shape_rows_in_scope: usize,
 }
 
 impl ChannelExtracts {
@@ -461,10 +667,23 @@ impl ChannelExtracts {
                 if rel > acc.max_rel {
                     acc.max_rel = rel;
                 }
-                *self
+                let ex = self
                     .examples
                     .entry((numeric, key, rust.clone(), oracle.clone()))
-                    .or_default() += 1;
+                    .or_default();
+                ex.cells += 1;
+                if row.in_scope {
+                    ex.cells_in_scope += 1;
+                }
+                match (ex.disposition, row.disposition) {
+                    (None, d) => ex.disposition = d,
+                    (Some(a), Some(b)) => assert_eq!(
+                        a, b,
+                        "the claim chain is a pure function of (class, prop, rust, oracle), \
+                         but {element}.{prop} answered {a:?} and {b:?} for one spelling"
+                    ),
+                    (Some(_), None) => {}
+                }
             }
             RowKind::Shape {
                 element,
@@ -473,6 +692,10 @@ impl ChannelExtracts {
                 rust_only,
                 oracle_only,
             } => {
+                self.shape_rows += 1;
+                if row.in_scope {
+                    self.shape_rows_in_scope += 1;
+                }
                 let class = element.split('.').next().unwrap_or("").to_lowercase();
                 let seen = ShapeAcc {
                     rust_count: *rust_count,
@@ -539,23 +762,130 @@ impl ChannelExtracts {
     /// plain census does not carry — see the module docs).
     fn examples_text(&self, channel: &str) -> String {
         let mut s = format!("class.prop | rust | {channel} | count\n");
-        let mut rows: Vec<(&ExampleKey, &usize)> = self.examples.iter().collect();
+        for (key, acc) in self.examples_in_extract_order() {
+            let (_, pair, rust, oracle) = key;
+            s.push_str(&format!(
+                "{pair} | {} | {} | {}\n",
+                quote(rust),
+                quote(oracle),
+                acc.cells
+            ));
+        }
+        s
+    }
+
+    /// The `examples_full.txt` row order: structural pairs first then numeric,
+    /// each section by pair, within a pair by descending cell count with the
+    /// `(rust, oracle)` spelling breaking ties ascending. Shared by
+    /// [`Self::examples_text`] and the claims extract so the two files line up
+    /// row for row.
+    fn examples_in_extract_order(&self) -> Vec<(&ExampleKey, &ExampleAcc)> {
+        let mut rows: Vec<(&ExampleKey, &ExampleAcc)> = self.examples.iter().collect();
         rows.sort_by(|a, b| {
             let (an, ap, ar, ao) = a.0;
             let (bn, bp, br, bo) = b.0;
             an.cmp(bn)
                 .then(ap.cmp(bp))
-                .then(b.1.cmp(a.1))
+                .then(b.1.cells.cmp(&a.1.cells))
                 .then((ar, ao).cmp(&(br, bo)))
         });
-        for ((_, pair, rust, oracle), count) in rows {
+        rows
+    }
+
+    /// **The claims extract** (`DSS_PROPS_CENSUS=claims` only):
+    /// `examples_full.txt`'s rows, in the same order, plus the in-scope cell
+    /// count and the chain's verdict for that spelling.
+    fn claims_text(&self, channel: &str) -> String {
+        let mut s =
+            format!("class.prop | rust | {channel} | count | count_in_scope | disposition\n");
+        for (key, acc) in self.examples_in_extract_order() {
+            let (_, pair, rust, oracle) = key;
             s.push_str(&format!(
-                "{pair} | {} | {} | {count}\n",
+                "{pair} | {} | {} | {} | {} | {}\n",
                 quote(rust),
-                quote(oracle)
+                quote(oracle),
+                acc.cells,
+                acc.cells_in_scope,
+                acc.disposition
+                    .map(|d| d.tag())
+                    .unwrap_or_else(|| "-".to_string()),
             ));
         }
         s
+    }
+
+    /// **The unclaimed inventory** — one row per pair that still carries an
+    /// `UNCLAIMED` cell: `class.prop | cells | cells_in_scope | spellings`,
+    /// descending by in-scope cells. This is the work list RP2.2/RP2.3/RP2.4
+    /// read, and the file whose emptiness is RP4.1's acceptance.
+    fn unclaimed_text(&self) -> String {
+        let mut per_pair: BTreeMap<&str, (usize, usize, usize)> = BTreeMap::new();
+        for ((_, pair, _, _), acc) in &self.examples {
+            if acc.disposition != Some(Disposition::Unclaimed) {
+                continue;
+            }
+            let e = per_pair.entry(pair.as_str()).or_default();
+            e.0 += acc.cells;
+            e.1 += acc.cells_in_scope;
+            e.2 += 1;
+        }
+        let mut rows: Vec<_> = per_pair.into_iter().collect();
+        rows.sort_by(|a, b| b.1.1.cmp(&a.1.1).then(b.1.0.cmp(&a.1.0)).then(a.0.cmp(b.0)));
+        let mut s = String::from("class.prop | cells | cells_in_scope | spellings\n");
+        for (pair, (cells, in_scope, spellings)) in rows {
+            s.push_str(&format!("{pair} | {cells} | {in_scope} | {spellings}\n"));
+        }
+        s
+    }
+
+    /// Per-disposition cell tallies: `(cells, cells_in_scope, spellings,
+    /// pairs)`, every disposition present even at zero.
+    fn claim_tallies(&self) -> Vec<(Disposition, usize, usize, usize, usize)> {
+        Disposition::all()
+            .into_iter()
+            .map(|d| {
+                let mut pairs: BTreeSet<&str> = BTreeSet::new();
+                let (mut cells, mut in_scope, mut spellings) = (0usize, 0usize, 0usize);
+                for ((_, pair, _, _), acc) in &self.examples {
+                    if acc.disposition != Some(d) {
+                        continue;
+                    }
+                    cells += acc.cells;
+                    in_scope += acc.cells_in_scope;
+                    spellings += 1;
+                    pairs.insert(pair.as_str());
+                }
+                (d, cells, in_scope, spellings, pairs.len())
+            })
+            .collect()
+    }
+
+    /// The claims summary as JSON — the machine-readable half of the banner.
+    fn claims_summary(&self) -> Value {
+        let mut per_disposition = serde_json::Map::new();
+        let (mut total, mut total_in_scope) = (0usize, 0usize);
+        for (d, cells, in_scope, spellings, pairs) in self.claim_tallies() {
+            total += cells;
+            total_in_scope += in_scope;
+            per_disposition.insert(
+                d.tag(),
+                json!({
+                    "cells": cells,
+                    "cells_in_scope": in_scope,
+                    "spellings": spellings,
+                    "pairs": pairs,
+                }),
+            );
+        }
+        json!({
+            "value_cells": total,
+            "value_cells_in_scope": total_in_scope,
+            "per_disposition": Value::Object(per_disposition),
+            // Not dispositioned, and reported so their absence from the tallies
+            // cannot read as "claimed" (see `Disposition`).
+            "shape_rows": self.shape_rows,
+            "shape_rows_in_scope": self.shape_rows_in_scope,
+        })
     }
 
     /// `class: rust_count=N oracle_count=M oracle_only=[…] rust_only=[…]`.
@@ -608,7 +938,7 @@ fn write(path: &PathBuf, text: &str) {
 /// Write `{<header fields>, "census": [ …rows… ]}`, streaming the array one
 /// compact object per line: the full census is ~1e6 rows, and building a single
 /// `Value` tree plus a pretty string for it would cost gigabytes.
-fn stream_census(header: &Value, rows: &[Row], w: &mut impl Write) {
+fn stream_census(header: &Value, rows: &[Row], mode: Mode, w: &mut impl Write) {
     let head = serde_json::to_string_pretty(header).expect("serialize census header");
     // Splice the array into the header object: drop exactly ONE closing brace
     // (`strip_suffix`, never `trim_end_matches`, which would eat the braces of a
@@ -624,7 +954,7 @@ fn stream_census(header: &Value, rows: &[Row], w: &mut impl Write) {
         writeln!(
             w,
             "    {}{comma}",
-            serde_json::to_string(&r.to_json()).expect("serialize census row")
+            serde_json::to_string(&r.to_json(mode)).expect("serialize census row")
         )
         .expect("write census row");
     }
@@ -679,6 +1009,32 @@ pub(crate) fn write_artifacts(
             &dir.join("summary.json"),
             &format!("{}\n", serde_json::to_string_pretty(&e.summary()).unwrap()),
         );
+        // The disposition mode's own three artifacts. Written ONLY in claims
+        // mode: a plain run must leave a directory a reader can diff against
+        // the vendored 2026-08-08 census without subtracting files — and a
+        // plain run AFTER a claims run must not leave that run's claims files
+        // sitting next to its own extracts, where they would read as this run's
+        // accounting. Removed BY NAME, one file at a time (never a recursive
+        // delete of a directory this tool did not create).
+        for (name, text) in [
+            ("claims.txt", e.claims_text(ch.tag())),
+            ("claims_unclaimed_pairs.txt", e.unclaimed_text()),
+            (
+                "claims_summary.json",
+                format!(
+                    "{}\n",
+                    serde_json::to_string_pretty(&e.claims_summary()).unwrap()
+                ),
+            ),
+        ] {
+            let path = dir.join(name);
+            if mode.annotates() {
+                write(&path, &text);
+            } else if path.exists() {
+                std::fs::remove_file(&path)
+                    .unwrap_or_else(|err| panic!("remove stale {}: {err}", path.display()));
+            }
+        }
     }
 
     let per_channel: serde_json::Map<String, Value> = channels
@@ -717,7 +1073,7 @@ pub(crate) fn write_artifacts(
     // string for it would cost gigabytes, so the array is STREAMED (header
     // first, then one compact object per line).
     let header = json!({
-        "mode": match mode { Mode::Plain => "plain" },
+        "mode": mode.tag(),
         "gate_only": gate_only,
         "cases_walked": cases,
         "rows": rows.len(),
@@ -731,7 +1087,7 @@ pub(crate) fn write_artifacts(
         &format!(
             "{}\n",
             serde_json::to_string_pretty(&json!({
-                "mode": match mode { Mode::Plain => "plain" },
+                "mode": mode.tag(),
                 "gate_only": gate_only,
                 "cases_walked": cases,
                 "rows": rows.len(),
@@ -744,15 +1100,13 @@ pub(crate) fn write_artifacts(
     let file = std::fs::File::create(&census_path)
         .unwrap_or_else(|e| panic!("create {}: {e}", census_path.display()));
     let mut w = std::io::BufWriter::new(file);
-    stream_census(&header, &rows, &mut w);
+    stream_census(&header, &rows, mode, &mut w);
     w.flush().expect("flush census");
     drop(w);
 
     eprintln!(
         "props_census [{}]: {} case(s){}, {} row(s) -> {} + {}",
-        match mode {
-            Mode::Plain => "plain",
-        },
+        mode.tag(),
         cases,
         match gate_only {
             Some(f) => format!(" (DSS_GATE_ONLY={f:?} — NOT the full population)"),
@@ -793,6 +1147,30 @@ pub(crate) fn write_artifacts(
             count_kind(|r| matches!(r.kind, RowKind::OracleError { .. })),
             count_kind(|r| matches!(r.kind, RowKind::RustError { .. })),
         );
+        // The disposition tallies ride the printed line too — the claims mode's
+        // whole output is this accounting, and a run whose numbers only reach
+        // `claims_summary.json` is a run nobody reads.
+        if mode.annotates() {
+            let (mut cells, mut in_scope) = (0usize, 0usize);
+            let mut parts: Vec<String> = Vec::new();
+            for (d, c, s, spellings, pairs) in e.claim_tallies() {
+                cells += c;
+                in_scope += s;
+                parts.push(format!(
+                    "{}={c} ({s} in scope, {spellings} spelling(s), {pairs} pair(s))",
+                    d.tag()
+                ));
+            }
+            eprintln!(
+                "  {}: claims — {cells} value cell(s) ({in_scope} in scope): {}; \
+                 {} shape row(s) ({} in scope) carry no disposition (the shape allowlist \
+                 acts upstream of the census)",
+                ch.tag(),
+                parts.join(", "),
+                e.shape_rows,
+                e.shape_rows_in_scope,
+            );
+        }
         let het = e.heterogeneous_shape_classes();
         if het > 0 {
             eprintln!(
@@ -819,6 +1197,8 @@ mod tests {
             case: "asymmetric:autotrans/autotrans_gic.dss".into(),
             channel: PropsChannel::R4133,
             step: 0,
+            in_scope: true,
+            disposition: None,
             kind: RowKind::Value {
                 element: "AutoTrans.t1".into(),
                 prop: "conn".into(),
@@ -831,6 +1211,8 @@ mod tests {
             case: "asymmetric:autotrans/autotrans_gic.dss".into(),
             channel: PropsChannel::R4133,
             step: 0,
+            in_scope: true,
+            disposition: None,
             kind: RowKind::Value {
                 element: "AutoTrans.t1".into(),
                 prop: "kv".into(),
@@ -871,6 +1253,8 @@ mod tests {
             case: "asymmetric:autotrans/autotrans_gic.dss".into(),
             channel: PropsChannel::R4133,
             step: 0,
+            in_scope: true,
+            disposition: None,
             kind: RowKind::Value {
                 element: "AutoTrans.t1".into(),
                 prop: prop.into(),
@@ -912,6 +1296,8 @@ mod tests {
             case: "modes:windgen/windgen_snap.dss".into(),
             channel: PropsChannel::R4133,
             step: 0,
+            in_scope: true,
+            disposition: None,
             kind: RowKind::Shape {
                 element: element.into(),
                 rust_count,
@@ -942,6 +1328,8 @@ mod tests {
             case: "asymmetric:autotrans/autotrans_gic.dss".into(),
             channel: PropsChannel::R4133,
             step: 0,
+            in_scope: true,
+            disposition: None,
             kind: RowKind::Shape {
                 element: "AutoTrans.t1".into(),
                 rust_count: 52,
@@ -1054,6 +1442,8 @@ mod tests {
             case: "modes:windgen/windgen_snap.dss".into(),
             channel: PropsChannel::R4133,
             step: 0,
+            in_scope: true,
+            disposition: None,
             kind: RowKind::Value {
                 element: "WindGen.w1".into(),
                 prop: "enabled".into(),
@@ -1071,7 +1461,7 @@ mod tests {
         ] {
             let rows: Vec<Row> = std::iter::repeat_n(row.clone(), n).collect();
             let mut buf: Vec<u8> = Vec::new();
-            stream_census(&header, &rows, &mut buf);
+            stream_census(&header, &rows, Mode::Plain, &mut buf);
             let doc: Value = serde_json::from_slice(&buf).expect("streamed census parses");
             assert_eq!(doc["mode"], "plain");
             assert_eq!(doc["channels"], header["channels"]);
@@ -1083,6 +1473,169 @@ mod tests {
                 assert_eq!(c["prop"], "enabled");
             }
         }
+    }
+
+    // ------------------------------------------------- the disposition mode
+
+    /// One value row, ready to annotate.
+    fn value_row(element: &str, prop: &str, rust: &str, oracle: &str, in_scope: bool) -> Row {
+        Row {
+            case: "modes:windgen/windgen_snap.dss".into(),
+            channel: PropsChannel::R4133,
+            step: 0,
+            in_scope,
+            disposition: None,
+            kind: RowKind::Value {
+                element: element.into(),
+                prop: prop.into(),
+                rust: rust.into(),
+                oracle: oracle.into(),
+                max_rel: None,
+            },
+        }
+    }
+
+    /// The chain runs in the documented order and lands every cell in exactly
+    /// one bucket: a folded spelling on the rule that folded it, a cell only the
+    /// ledger names on `ledger-hit`, and everything else on `UNCLAIMED`.
+    #[test]
+    fn the_claim_chain_dispositions_every_value_cell() {
+        let named: BTreeSet<(String, String)> =
+            [("regcontrol.r1".to_string(), "fwdthreshold".to_string())]
+                .into_iter()
+                .collect();
+        let cases = [
+            // Folded by RP2.1's own table — the three live rule kinds.
+            (
+                "Capacitor.c1",
+                "enabled",
+                "Yes",
+                "true",
+                "normalized-by-BoolFold",
+            ),
+            (
+                "Transformer.t1",
+                "conn",
+                "wye",
+                "wye ",
+                "normalized-by-CaseFold",
+            ),
+            (
+                "Line.l1",
+                "ratings",
+                "[ 400]",
+                "[400,]",
+                "normalized-by-ArrayForm",
+            ),
+            // Named by a `property` ledger scope, and by nothing earlier.
+            ("RegControl.r1", "fwdthreshold", "100", "", "ledger-hit"),
+            // The bucket RP2.2/RP2.3/RP2.4 still owe rows for. The second is
+            // the discrimination case: a real value difference inside a pair
+            // this table DOES hold must not be claimed.
+            ("RegControl.r2", "fwdthreshold", "100", "", "UNCLAIMED"),
+            ("Line.l1", "ratings", "[ 400]", "[401,]", "UNCLAIMED"),
+        ];
+        for (element, prop, rust, oracle, want) in cases {
+            let mut row = value_row(element, prop, rust, oracle, true);
+            row.annotate(&named);
+            assert_eq!(
+                row.disposition.expect("a value row is dispositioned").tag(),
+                want,
+                "{element}.{prop}"
+            );
+        }
+        // A shape row and an error row carry no disposition — neither is a cell.
+        let mut shape = Row {
+            case: "modes:windgen/windgen_snap.dss".into(),
+            channel: PropsChannel::R4133,
+            step: 0,
+            in_scope: true,
+            disposition: None,
+            kind: RowKind::Shape {
+                element: "WindGen.w1".into(),
+                rust_count: 58,
+                oracle_count: 60,
+                rust_only: vec![],
+                oracle_only: vec!["usermodel".into()],
+            },
+        };
+        shape.annotate(&named);
+        assert!(shape.disposition.is_none());
+    }
+
+    /// The claims artifacts: `claims.txt` is `examples_full.txt`'s rows in the
+    /// same order plus the in-scope count and the verdict, the summary tallies
+    /// every disposition (zeros included) and splits in-scope, and the unclaimed
+    /// inventory names the pairs that still owe a row.
+    #[test]
+    fn claims_artifacts_carry_the_per_cell_accounting() {
+        let named = BTreeSet::new();
+        let mut e = ChannelExtracts::default();
+        let mut ingest = |element: &str, prop: &str, rust: &str, oracle: &str, in_scope: bool| {
+            let mut row = value_row(element, prop, rust, oracle, in_scope);
+            row.annotate(&named);
+            e.ingest(&row);
+        };
+        ingest("Capacitor.c1", "enabled", "Yes", "true", true);
+        ingest("Capacitor.c2", "enabled", "Yes", "true", false);
+        ingest("Line.l1", "ratings", "[ 400]", "[401,]", true);
+
+        assert_eq!(
+            e.claims_text("r4133"),
+            "class.prop | rust | r4133 | count | count_in_scope | disposition\n\
+             capacitor.enabled | 'Yes' | 'true' | 2 | 1 | normalized-by-BoolFold\n\
+             line.ratings | '[ 400]' | '[401,]' | 1 | 1 | UNCLAIMED\n"
+        );
+        // Same rows, same order as the plain extract — a reader diffs them.
+        assert_eq!(
+            e.examples_text("r4133").lines().collect::<Vec<_>>(),
+            [
+                "class.prop | rust | r4133 | count",
+                "capacitor.enabled | 'Yes' | 'true' | 2",
+                "line.ratings | '[ 400]' | '[401,]' | 1",
+            ]
+        );
+        assert_eq!(
+            e.unclaimed_text(),
+            "class.prop | cells | cells_in_scope | spellings\nline.ratings | 1 | 1 | 1\n"
+        );
+        let s = e.claims_summary();
+        assert_eq!(s["value_cells"], 3);
+        assert_eq!(s["value_cells_in_scope"], 2);
+        assert_eq!(s["per_disposition"]["normalized-by-BoolFold"]["cells"], 2);
+        assert_eq!(
+            s["per_disposition"]["normalized-by-BoolFold"]["cells_in_scope"],
+            1
+        );
+        assert_eq!(s["per_disposition"]["UNCLAIMED"]["cells"], 1);
+        assert_eq!(s["per_disposition"]["UNCLAIMED"]["pairs"], 1);
+        // A mechanism that claimed nothing is present at zero, never absent:
+        // the RP2.3/RP2.4 slots must be readable as "leaned on for nothing".
+        for tag in [
+            "normalized-by-EnumSynonym",
+            "echo-row",
+            "under-floor",
+            "ledger-hit",
+        ] {
+            assert_eq!(s["per_disposition"][tag]["cells"], 0, "{tag}");
+        }
+    }
+
+    /// The plain census keeps the frozen row shape: no claims columns, no claims
+    /// files. RP0.2 fixed plain as the knob's baseline forever, so a claims
+    /// feature that leaked into it would break every diff against the vendored
+    /// 2026-08-08 census.
+    #[test]
+    fn plain_mode_rows_carry_no_claims_columns() {
+        let mut row = value_row("Capacitor.c1", "enabled", "Yes", "true", true);
+        row.annotate(&BTreeSet::new());
+        let plain = row.to_json(Mode::Plain);
+        assert!(plain.get("disposition").is_none());
+        assert!(plain.get("in_scope").is_none());
+        let claims = row.to_json(Mode::Claims);
+        assert_eq!(claims["disposition"], "normalized-by-BoolFold");
+        assert_eq!(claims["in_scope"], true);
+        assert!(!Mode::Plain.annotates() && Mode::Claims.annotates());
     }
 
     /// Non-vacuity of the collecting walk itself: fed the engine's OWN property
@@ -1295,7 +1848,9 @@ mod tests {
     #[test]
     fn unknown_mode_panics() {
         assert_eq!(Mode::from_env("1"), Mode::Plain);
-        assert!(std::panic::catch_unwind(|| Mode::from_env("claims")).is_err());
+        assert_eq!(Mode::from_env("claims"), Mode::Claims);
+        assert_eq!((Mode::Plain.tag(), Mode::Claims.tag()), ("plain", "claims"));
         assert!(std::panic::catch_unwind(|| Mode::from_env("yes")).is_err());
+        assert!(std::panic::catch_unwind(|| Mode::from_env("2")).is_err());
     }
 }

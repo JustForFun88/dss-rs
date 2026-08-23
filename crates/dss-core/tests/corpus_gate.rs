@@ -149,6 +149,15 @@ fn corpus_gate_all_cases_match_engines() {
     // than a loud mismatch. Self-silencing when no unflushed monitor was
     // compared, so `DSS_GATE_ONLY` runs do not trip it.
     harness::lane::assert_monitor_pad_is_live();
+    // And for the RP2.1 r4133 property-normalization rows, for the first
+    // reason: each row lets the engine spell a property value differently from
+    // r4133, so one that stops folding anything must fail rather than sit in
+    // the table. **Dormant until RP4.1** — the r4133 props path is masked
+    // (`corpus_gate/scheduler.rs`), so every row has zero visits today and this
+    // is a no-op; it is wired now so the flip arms it instead of having to
+    // remember it. Self-silencing under `DSS_GATE_ONLY` for the same reason the
+    // two above are.
+    harness::props_norm::assert_norm_rows_are_live();
 }
 
 /// The property census (`R4133_PROPS_PLAN.md` RP0.2, `DSS_PROPS_CENSUS`): walk
@@ -442,7 +451,15 @@ fn corpus_live_properties() {
                     .iter()
                     .map(|p| p.props.len())
                     .sum::<usize>();
-                harness::compare_all_properties(&mut dss, &cp.all_properties, &tol, label);
+                // The pilot sweeps the PINNED oracle only (see the universe
+                // filter above), so the property policy is the capi one.
+                harness::compare_all_properties(
+                    &mut dss,
+                    &cp.all_properties,
+                    &tol,
+                    harness::PropsChannel::CapiV0145,
+                    label,
+                );
             }
             (elems, cmps)
         }));

@@ -25,6 +25,12 @@ pub mod scenario;
 /// Stage F two-lane test policy (parity vs default build).
 pub mod lane;
 
+/// `R4133_PROPS_PLAN.md` RP2.1: the channel-scoped, value-preserving property
+/// normalization table (`PROPS_NORM_R4133`) and the echo-exclusion table
+/// RP2.3 fills (`PROPS_ECHO_R4133`). Consulted only through
+/// [`PropsPolicy::normalize`], and only on [`PropsChannel::R4133`].
+pub mod props_norm;
+
 /// Self-golden regeneration rails: the `DSS_UPDATE_GOLDENS` knob plus the
 /// anchor and producing-lane write guards of `GOLDEN_REBASE_PLAN.md` §1.2.
 /// No driver calls them yet — that is WP-G3.
@@ -41,6 +47,7 @@ pub mod regen;
 #[allow(unused_imports)]
 pub use regen::{regen, snapshot_bytes, snapshot_text};
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
@@ -521,6 +528,12 @@ mod props_015x_tests {
     /// Synthetic allowlist for the self-tests — never a real shipped row.
     const TEST_ALLOW: &[(&str, &[&str])] = &[("Foo", &["NewTrail", "NewMid"])];
 
+    /// The shape walk is channel-independent, so these drivers pin it on the
+    /// capi channel (the shipped gate policy for every 0.14.5 capture).
+    fn capi() -> super::PropsPolicy {
+        super::PropsPolicy::for_channel(super::PropsChannel::CapiV0145)
+    }
+
     fn run(actual: &[(&str, &str)], oracle: &[(&str, &str)]) {
         compare_prop_lists(
             "Foo.x",
@@ -528,6 +541,7 @@ mod props_015x_tests {
             &props(actual),
             &props(oracle),
             TEST_ALLOW,
+            capi(),
             false,
             1e-9,
             1e-9,
@@ -540,7 +554,16 @@ mod props_015x_tests {
         let o = props(oracle);
         let r = std::panic::catch_unwind(|| {
             compare_prop_lists(
-                "Foo.x", "Foo", &a, &o, TEST_ALLOW, false, 1e-9, 1e-9, "self",
+                "Foo.x",
+                "Foo",
+                &a,
+                &o,
+                TEST_ALLOW,
+                capi(),
+                false,
+                1e-9,
+                1e-9,
+                "self",
             );
         });
         assert!(r.is_err(), "expected a panic but the compare passed");
@@ -638,6 +661,7 @@ mod props_015x_tests {
                 &props(actual),
                 &props(oracle),
                 PROPS_015X,
+                capi(),
                 false,
                 1e-9,
                 1e-9,
@@ -665,6 +689,7 @@ mod props_015x_tests {
                 &a,
                 &o,
                 PROPS_015X,
+                capi(),
                 false,
                 1e-9,
                 1e-9,
@@ -1532,14 +1557,70 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     — pinned by compat_quirks::sym_matrix_text_getter_renders_the_stored_matrix).
     //     The oracle returns nondeterministic garbage (denormals ~1e-310 OR huge
     //     ~1e123, process-dependent) — oracle UB, never compared (CLAUDE.md).
+    //
+    //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_BOTH_CHANNELS`]) for the three
+    //     Capacitor/Reactor rows: **skipped on both**, for a different upstream
+    //     fact. r4133 has no typed property table and no arm for these indices —
+    //     `TCapacitorObj.GetPropertyValue` (`Version8/Source/PDElements/
+    //     Capacitor.pas:1084-1113`) skips `cmatrix` (index 7) and
+    //     `TReactorObj.GetPropertyValue` (`Reactor.pas:1087-1103`) skips
+    //     `rmatrix`/`xmatrix` (7/8) — so all three fall through to
+    //     `TDSSObject.GetPropertyValue`, i.e. the `PropertyValue[]` STORE
+    //     (`General/DSSObject.pas:112-115`), initialised `''`
+    //     (`Capacitor.pas:760`, `Reactor.pas:1113-1114`). r4133 therefore answers
+    //     the deck's parse string, or `''` where the deck never wrote one — an
+    //     ECHO of the input text, never the live matrix the port renders. Not a
+    //     value compare on either channel, so the row stays. It is an echo-class
+    //     exclusion in `PROPS_ECHO_R4133`'s sense (plan §1.2) and RP2.3 may
+    //     re-file it there; the cells are invisible to the vendored census (its
+    //     walk ran with this skip active), so the row is validated by the RP4.1
+    //     live run, not by the RP2.1 replay. Measured (the RP2.1 probe census,
+    //     [`SKIP_PROPS_CAPI_ONLY`]): unmasked on r4133 the three would diverge on
+    //     1 059 + 670 + 670 cells, every one of them Rust
+    //     `'(0 |0 0 |0 0 0 )'` against r4133 `''` — the echo, exactly as read
+    //     off the Pascal.
     ("Capacitor", "CMatrix"),
     ("Reactor", "RMatrix"),
     ("Reactor", "XMatrix"),
+    //     r4133 DISPOSITION for the Fault row: **skipped on both**, but for a
+    //     third distinct reason, and this one was found by measurement rather
+    //     than by reading. r4133 does NOT share the uninitialized read — its
+    //     `TFaultObj.GetPropertyValue` renders the stored lower triangle by hand
+    //     (`Version8/Source/PDElements/Fault.pas:695-717`), the very code this
+    //     port implements down to the trailing space and the `|` row separator
+    //     (`compat_quirks::sym_matrix_text_getter_renders_the_stored_matrix`
+    //     pins the exact `(2.8 |-0.6 2.8 |-0.6 -0.6 2.8 )`). So this row looked
+    //     like a capi-only one — and the RP2.1 probe census says otherwise:
+    //     unmasked on r4133 it diverges on **386 cells**, all of the same shape,
+    //     Rust `'(0 )'` against r4133 `'()'`. The cause is upstream's
+    //     `If Assigned(Gmatrix)` guard: an `r=`-specified fault leaves the
+    //     pointer nil and r4133 prints the bare parentheses, where this port
+    //     renders a materialised zero matrix. That is a real rendering question
+    //     about an UNSET array — the family of `generator.dynout` / `autotrans.
+    //     bhcurrent` (`''` vs `[]`) — not a UB mask and not something RP2.1's
+    //     value-preserving rules may fold, so the row keeps both channels and
+    //     the pair is handed to RP2.2's triage (plan §0 lets it open an RP3.5+
+    //     sub-step). Unmasking it here would put 386 unowned cells into RP4.1's
+    //     residual.
     ("Fault", "GMatrix"),
     // (b) Near-zero winding-current angle: WdgCurrents renders `mag, (angle)`
     //     pairs; a ~1e-12 A (numerically-zero) winding current's angle is
     //     faer-vs-KLU noise (a cancellation floor). The magnitudes and the
     //     non-degenerate angles match; only the zero-magnitude angle diverges.
+    //
+    //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_BOTH_CHANNELS`]): **skipped on
+    //     both**. The fact is about the
+    //     PORT's own numbers — a cancellation floor between this engine's faer
+    //     solve and any KLU-solved oracle — so it is channel-independent by
+    //     construction; r4133 is a second KLU-solved engine, not a reason for the
+    //     angle of a 1e-12 A current to become comparable. Measured (the RP2.1
+    //     probe census): unmasked on r4133 it diverges on 571 cells at max_rel
+    //     1.80e+02 — the near-zero angles, plus the landed-tap differences of the
+    //     RegControl-driven decks that the `autotrans.wdgcurrents` note below
+    //     describes. (The census's
+    //     `autotrans.wdgcurrents` bin-7 pair is a different, out-of-scope matter:
+    //     a landed-tap difference on capi-only decks, `tests/corpus/props_r4133/
+    //     README.md` §"RP1.2".)
     ("Transformer", "WdgCurrents"),
     // (c) The transformer ActiveWinding cursor group is NOT unconditionally
     //     skipped — see [`TRANSFORMER_CURSOR_PROPS`], which skips it only on
@@ -1550,6 +1631,32 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     proven UB). Rust keeps the correct defaults (FaultRate 0.0005,
     //     pctperm 100). The same properties on Line/Transformer are clean and
     //     stay compared, so the Double-property render path is still covered.
+    //
+    //     r4133 DISPOSITION (RP2.1): the four rows SPLIT, and the split is
+    //     measured (the probe census of [`SKIP_PROPS_CAPI_ONLY`]). Common
+    //     mechanism: neither class overrides the PD tail past
+    //     `normamps`/`emergamps` (`Version8/Source/PDElements/
+    //     Capacitor.pas:1084-1113`, `Reactor.pas:1087-1103`), so both props fall
+    //     through to the `PropertyValue[]` store, which `InitPropertyValues`
+    //     freezes at Create as `Str_Real(FaultRate, 0)` / `Str_Real(PctPerm, 0)`
+    //     (`Capacitor.pas:777-778`, `Reactor.pas:1135-1136`) — an echo, not the
+    //     live field. What differs is what the echo SAYS:
+    //      * `pctperm` — the frozen string is `'100'`, which is exactly what the
+    //        port renders, so both rows measured **zero divergent cells** over
+    //        the full live population: [`SKIP_PROPS_CAPI_ONLY`], they compare on
+    //        r4133. The exclusion was always a statement about the capi oracle's
+    //        garbage read and nothing else.
+    //      * `faultrate` — `Str_Real(x, 0)` renders the 0.0005 default with ZERO
+    //        decimals, so r4133 answers `'0'` against the port's `'0.0005'`:
+    //        1 059 cells on Capacitor and 670 on Reactor (rel 5.00e-04, above
+    //        any display floor this plan may derive). That is an `EchoDefault`
+    //        of the same family as bin 7's `transformer.pctperm/repair` and
+    //        `fault.pctperm` (plan §1.1) and it belongs in `PROPS_ECHO_R4133`
+    //        with a citation and a pin — which RP2.3 cannot source from the
+    //        vendored extracts, since this very skip kept the cells out of the
+    //        census. So those two rows keep BOTH channels
+    //        ([`SKIP_PROPS_BOTH_CHANNELS`]) and hand the echo case to RP2.3,
+    //        rather than putting 1 729 unowned cells into RP4.1's residual.
     ("Capacitor", "FaultRate"),
     ("Capacitor", "pctperm"),
     ("Reactor", "FaultRate"),
@@ -1564,6 +1671,26 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     values) and the capi015 `regcontrol_idle.dss` live probe. New siblings
     //     `FwdThreshold`/`Idle*` are absent from the 0.14.5 capture → handled by
     //     the [`PROPS_015X`] allowlist, not here.
+    //
+    //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): it **compares** on
+    //     r4133. The exclusion is a statement about the 0.14.5 capture and
+    //     nothing else — r4133 IS the rev the port took the signed default from
+    //     (`Version8/Source/Controls/RegControl.pas`), and
+    //     `tests/TOLERANCE_NOTES.md:951-956` pins the r4133-side values and
+    //     forbids masking them there.
+    //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
+    //     census measured it: **888 cells** of Rust `'-100'` against r4133
+    //     `'100'`. r4133's `TRegControlObj.GetPropertyValue` overrides index 28
+    //     (`TapNum`) and nothing else (`RegControl.pas:820-827`), so
+    //     `revThreshold` (index 23) answers the `PropertyValue[]` store frozen at
+    //     `'100'` by `InitPropertyValues` (`:1437`) while the live field carries
+    //     the signed default — the identical shape as its sibling
+    //     `remoteptratio` (`PropertyValue[27] := '60'`, `:1441`), which plan
+    //     §1.1 already lists as a bin-7 echo. So this row's cells are an
+    //     `EchoDefault` row for RP2.3 (with `examples_supplement.txt` rows from
+    //     part C, the `regcontrol.fwdthreshold` route — the pair is absent from
+    //     the vendored census for exactly this reason), never a reason to mask
+    //     the only channel that can witness the r4133 default live.
     ("RegControl", "RevThreshold"),
     // (f) r4133-CHANGED DEFAULTS (WP-U2.1, delta D1): the Fuse overhaul repurposed
     //     `RatedCurrent` (default 1.0 → 0.0, informational) and moved the default
@@ -1575,8 +1702,80 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     controls decks (`fuse_curvemult_blow`, `fuse_legacy_noblow`). The new
     //     `CurveMultiplier`/`InterruptingRating` props (absent from the 0.14.5
     //     capture) are handled by the [`PROPS_015X`] allowlist, not here.
+    //
+    //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
+    //     **compare** on r4133 — same argument as (e), and
+    //     `tests/TOLERANCE_NOTES.md:951-956` says it outright ("The r4133 values
+    //     are pinned on the r4133 side …, never masked there"). r4133 is where
+    //     the new defaults come from, so masking them on that channel would mask
+    //     the only channel that can witness them live. Measured (the RP2.1 probe
+    //     census): neither row produces a single divergent cell on r4133 —
+    //     unlike (e), these two cost the unmask nothing.
     ("Fuse", "FuseCurve"),
     ("Fuse", "RatedCurrent"),
+];
+
+/// The [`SKIP_PROPS`] rows whose justification is a **capi-channel fact** and
+/// therefore does NOT survive onto the r4133 channel: they are excluded from the
+/// value compare against the pinned 0.14.5 capture and **compared in full**
+/// against r4133 (`R4133_PROPS_PLAN.md` §1.2, RP2.1).
+///
+/// Two causes, both spelled out at the rows themselves:
+///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:951-956` forbids
+///    masking the r4133 side;
+///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
+///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
+///    port, measured over the whole live population.
+///
+/// **Every row here was measured, not assumed** (RP2.1 probe: a full
+/// `DSS_PROPS_CENSUS=1` walk, 2026-08-23, 439 cases × 2 channels, run with all
+/// twelve [`SKIP_PROPS`] rows unmasked on r4133 so the census could see what
+/// each one does there). Result on the r4133 channel: `Fuse.FuseCurve`,
+/// `Fuse.RatedCurrent`, `Capacitor.pctperm` and `Reactor.pctperm` produce **no
+/// divergent cell at all**; `RegControl.RevThreshold` produces 888 cells of
+/// `'-100'` vs `'100'` — an `EchoDefault` (see its row), which is an RP2.3
+/// echo-table row and its pin, never a reason to mask the channel.
+///
+/// Rows are matched case-insensitively and must also appear in [`SKIP_PROPS`];
+/// [`skip_props_disposition_tests`] pins that this list and
+/// [`SKIP_PROPS_BOTH_CHANNELS`] PARTITION `SKIP_PROPS`, so a new skip row cannot
+/// land without an r4133 disposition.
+const SKIP_PROPS_CAPI_ONLY: &[(&str, &str)] = &[
+    ("Capacitor", "pctperm"),
+    ("Reactor", "pctperm"),
+    ("RegControl", "RevThreshold"),
+    ("Fuse", "FuseCurve"),
+    ("Fuse", "RatedCurrent"),
+];
+
+/// The [`SKIP_PROPS`] rows that stay skipped on **both** channels — the value
+/// compare is not meaningful against either oracle (`R4133_PROPS_PLAN.md` §1.2,
+/// RP2.1). The per-row comments in [`SKIP_PROPS`] carry the r4133-side evidence;
+/// the causes are the port's own cancellation floor (b) and, for the rest, an
+/// r4133 `PropertyValue[]` echo or nil-pointer render where dss_capi has a
+/// garbage read — different upstream facts, same conclusion that the cell is not
+/// a live-value compare on either channel.
+///
+/// **Measured, not assumed** — the same RP2.1 probe census
+/// ([`SKIP_PROPS_CAPI_ONLY`]) shows what each of these would cost on r4133 if
+/// unmasked: `Capacitor.CMatrix` 1 059 cells, `Reactor.RMatrix`/`XMatrix` 670
+/// each (all three `'(0 |0 0 |0 0 0 )'` vs `''`), `Capacitor.FaultRate` 1 059
+/// and `Reactor.FaultRate` 670 (`'0.0005'` vs `'0'`), `Fault.GMatrix` 386
+/// (`'(0 )'` vs `'()'`), `Transformer.WdgCurrents` 571 (max_rel 1.80e+02).
+///
+/// These cells are invisible in the vendored census (its walk ran with the skips
+/// active), so nothing here is validated by the RP2.1 replay; the echo-shaped
+/// ones are candidates for `PROPS_ECHO_R4133` and `Fault.GMatrix` is a genuine
+/// rendering question handed to RP2.2's triage (see its row).
+const SKIP_PROPS_BOTH_CHANNELS: &[(&str, &str)] = &[
+    ("Capacitor", "CMatrix"),
+    ("Reactor", "RMatrix"),
+    ("Reactor", "XMatrix"),
+    ("Fault", "GMatrix"),
+    ("Transformer", "WdgCurrents"),
+    ("Capacitor", "FaultRate"),
+    ("Reactor", "FaultRate"),
 ];
 
 /// The one property whose **value** this gate excludes as a deliberate
@@ -1602,9 +1801,24 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 /// every mode-4 flicker deck in the corpus is 60 Hz, so no Pst output moves;
 /// and what the exclusion gives up on the 60 Hz decks — that the engine still
 /// reports 60 — is exactly what the pin above asserts directly.
+///
+/// **r4133 DISPOSITION (RP2.1): deliberately channel-BLIND.** Unlike every
+/// [`SKIP_PROPS`] row, this one needs no per-channel decision: r4133 carries the
+/// identical hard pin (`Monitor.pas` r4133:552 == the 0.14.5 `:472`), so both
+/// gating oracles report 60.0 against the engine's inherited fundamental and the
+/// exclusion is as necessary on r4133 as it is on capi. The row is therefore
+/// consulted before the channel is ever looked at, in [`skip_prop`].
 const LANE_SKIP_PROPS: &[(&str, &str)] = &[("Monitor", "BaseFreq")];
 
-pub fn skip_prop(class: &str, prop: &str) -> bool {
+/// Whether the VALUE compare of `class.prop` is skipped on `channel` (the name
+/// is still order-checked either way).
+///
+/// Two halves, and only the second is channel-scoped:
+///  * [`LANE_SKIP_PROPS`] — an upstream bug BOTH gating oracles share, so the
+///    exclusion is channel-blind (see that table's r4133 disposition);
+///  * [`SKIP_PROPS`] — a comparability exclusion against ONE capture, so RP2.1
+///    splits it by [`SKIP_PROPS_CAPI_ONLY`] / [`SKIP_PROPS_BOTH_CHANNELS`].
+pub fn skip_prop(class: &str, prop: &str, channel: PropsChannel) -> bool {
     // LANE-EXCLUSION(monitor_base_frequency): both lanes inherit the circuit
     // fundamental now, so both drop the value compare on `Monitor.BaseFreq`.
     // Under the split this list was consulted in the default lane only, behind
@@ -1612,11 +1826,251 @@ pub fn skip_prop(class: &str, prop: &str) -> bool {
     let lane_skipped = LANE_SKIP_PROPS
         .iter()
         .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p));
-    lane_skipped || skip_prop_ub(class, prop)
+    lane_skipped || skip_prop_ub_on(class, prop, channel)
+}
+
+/// [`skip_prop_ub`] scoped to one channel (`R4133_PROPS_PLAN.md` §1.2, RP2.1):
+/// a [`SKIP_PROPS_CAPI_ONLY`] row is dropped from the skip set on
+/// [`PropsChannel::R4133`], where it compares in full. Every other row keeps the
+/// channel-blind behavior.
+fn skip_prop_ub_on(class: &str, prop: &str, channel: PropsChannel) -> bool {
+    if !skip_prop_ub(class, prop) {
+        return false;
+    }
+    !(channel == PropsChannel::R4133
+        && SKIP_PROPS_CAPI_ONLY
+            .iter()
+            .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p)))
+}
+
+/// The r4133 disposition of every value-skip row (`R4133_PROPS_PLAN.md` §1.2,
+/// RP2.1). "No row left undecided" is enforced here, not by convention.
+#[cfg(test)]
+mod skip_props_disposition_tests {
+    use super::{
+        LANE_SKIP_PROPS, PropsChannel, SKIP_PROPS, SKIP_PROPS_BOTH_CHANNELS, SKIP_PROPS_CAPI_ONLY,
+        skip_prop, skip_prop_ub, skip_whole_element,
+    };
+
+    /// Every [`SKIP_PROPS`] row is dispositioned for r4133 **exactly once**: the
+    /// two lists partition the table. A row added without a disposition — or
+    /// listed in both, or listed but deleted from `SKIP_PROPS` — fails here, so
+    /// a future skip cannot silently inherit "masked on r4133 too" (which after
+    /// RP4.1 would value-mask the r4133 channel by accident, plan §1.2).
+    #[test]
+    fn every_skip_props_row_has_an_r4133_disposition() {
+        let key = |(c, p): &(&str, &str)| (c.to_lowercase(), p.to_lowercase());
+        let mut union: Vec<(String, String)> = SKIP_PROPS_CAPI_ONLY
+            .iter()
+            .chain(SKIP_PROPS_BOTH_CHANNELS)
+            .map(key)
+            .collect();
+        let n_union = union.len();
+        union.sort();
+        union.dedup();
+        assert_eq!(
+            union.len(),
+            n_union,
+            "a row is dispositioned twice: {SKIP_PROPS_CAPI_ONLY:?} vs {SKIP_PROPS_BOTH_CHANNELS:?}"
+        );
+        let mut table: Vec<(String, String)> = SKIP_PROPS.iter().map(key).collect();
+        table.sort();
+        assert_eq!(
+            union,
+            table,
+            "the two disposition lists must PARTITION SKIP_PROPS ({} rows today: \
+             {} capi-only + {} both-channels) — a new row needs its r4133 \
+             disposition and the comment that justifies it",
+            SKIP_PROPS.len(),
+            SKIP_PROPS_CAPI_ONLY.len(),
+            SKIP_PROPS_BOTH_CHANNELS.len()
+        );
+    }
+
+    /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
+    /// r4133 values `tests/TOLERANCE_NOTES.md:951-956` forbids masking there,
+    /// plus the two `pctperm` rows the RP2.1 probe census measured clean.
+    #[test]
+    fn capi_only_rows_compare_on_r4133() {
+        for (class, prop) in SKIP_PROPS_CAPI_ONLY {
+            assert!(
+                skip_prop(class, prop, PropsChannel::CapiV0145),
+                "{class}.{prop} must still be excluded from the 0.14.5 compare"
+            );
+            assert!(
+                !skip_prop(class, prop, PropsChannel::R4133),
+                "{class}.{prop} must COMPARE on r4133 (RP2.1 disposition)"
+            );
+        }
+        // Spelled-out spot checks, case-insensitively, so a silent table edit
+        // cannot pass by emptying the list.
+        assert!(!skip_prop("fuse", "fusecurve", PropsChannel::R4133));
+        assert!(!skip_prop("Fuse", "RatedCurrent", PropsChannel::R4133));
+        assert!(!skip_prop(
+            "RegControl",
+            "RevThreshold",
+            PropsChannel::R4133
+        ));
+        assert!(!skip_prop("Capacitor", "PCTPERM", PropsChannel::R4133));
+        assert!(skip_prop("Capacitor", "pctperm", PropsChannel::CapiV0145));
+    }
+
+    /// The both-channel rows stay skipped on r4133 as well — the port's own
+    /// cancellation floor, the r4133 `PropertyValue[]` echoes where dss_capi has
+    /// a garbage read, and `Fault.GMatrix`'s unset-array render (citations and
+    /// the measured cell counts at the rows).
+    #[test]
+    fn both_channel_rows_stay_skipped_everywhere() {
+        for (class, prop) in SKIP_PROPS_BOTH_CHANNELS {
+            for ch in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+                assert!(
+                    skip_prop(class, prop, ch),
+                    "{class}.{prop} must stay value-skipped on {}",
+                    ch.tag()
+                );
+            }
+        }
+        assert!(skip_prop("Capacitor", "CMatrix", PropsChannel::R4133));
+        assert!(skip_prop("Capacitor", "FaultRate", PropsChannel::R4133));
+        assert!(skip_prop("Fault", "GMatrix", PropsChannel::R4133));
+        assert!(skip_prop("Transformer", "WdgCurrents", PropsChannel::R4133));
+    }
+
+    /// [`LANE_SKIP_PROPS`] is channel-BLIND by decision, not by omission: r4133
+    /// hard-pins `Monitor.BaseFreq` to 60.0 exactly as 0.14.5 does
+    /// (`Monitor.pas` r4133:552), so both channels drop the value.
+    #[test]
+    fn the_monitor_basefreq_exclusion_is_channel_blind() {
+        assert_eq!(LANE_SKIP_PROPS, &[("Monitor", "BaseFreq")]);
+        for ch in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            assert!(skip_prop("Monitor", "BaseFreq", ch));
+        }
+        // …and it is NOT in the UB half, whose consumer is the dump artifact.
+        assert!(!skip_prop_ub("Monitor", "BaseFreq"));
+    }
+
+    /// The dump artifact's predicate keeps the WHOLE table, channel-blind — its
+    /// stated rationale is that the stripped set is order-dependent by
+    /// construction, which a channel scope would quietly change.
+    #[test]
+    fn skip_prop_ub_stays_channel_blind() {
+        for (class, prop) in SKIP_PROPS {
+            assert!(
+                skip_prop_ub(class, prop),
+                "{class}.{prop} must stay in the channel-blind UB set"
+            );
+        }
+    }
+
+    /// Recloser/Relay are dropped WHOLE on capi (their tables are r4133's and
+    /// cannot match a 0.14.5 capture's shape) and compare in full on r4133.
+    #[test]
+    fn recloser_and_relay_are_whole_element_skipped_on_capi_only() {
+        for class in ["Recloser", "Relay", "relay", "RECLOSER"] {
+            assert!(
+                skip_whole_element(class, PropsChannel::CapiV0145),
+                "{class} must stay whole-element skipped against the 0.14.5 capture"
+            );
+            assert!(
+                !skip_whole_element(class, PropsChannel::R4133),
+                "{class} must compare in FULL on r4133 (plan §1.2) — otherwise the \
+                 census's 22 relay/recloser pairs are dead on the live path"
+            );
+        }
+        for class in ["Fuse", "Capacitor", ""] {
+            for ch in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+                assert!(!skip_whole_element(class, ch));
+            }
+        }
+    }
+}
+
+/// The capi-invariance contract of the RP2.1 seam ([`PropsPolicy`]).
+#[cfg(test)]
+mod props_policy_tests {
+    use super::{PropsChannel, PropsPolicy};
+
+    /// Spellings the RP2.1 part-B rules DO fold on r4133 — `BoolFold` (bin 1),
+    /// `CaseFold` (bin 2, case-only), `CaseFold`'s trim half (bin 2, the two
+    /// upstream trailing blanks) and `ArrayForm` (bin 4), one per bin of plan
+    /// §1.1 the normalization engine owns. Each is a real census spelling from
+    /// `tests/corpus/props_r4133/examples_full.txt`.
+    ///
+    /// Part A drafted a `("Load", "ZIPV", …)` row here for the array bin; part
+    /// B corrected it to `EnergyMeter.Option` — `load.zipv` is a **bin-5** pair
+    /// (`bins.tsv`), so it takes no `ArrayForm` row and would have made the
+    /// positive test below assert a fold that must not happen.
+    const FOLDABLE: &[(&str, &str, &str, &str)] = &[
+        ("Recloser", "EventLog", "Yes", "true"),
+        ("Generator", "Status", "Variable", "variable"),
+        ("Transformer", "Conn", "wye", "wye "),
+        ("EnergyMeter", "Option", "[E, R, C]", "(E, R, C)"),
+    ];
+
+    /// **The capi channel never normalizes** — plan mechanic (b),
+    /// capi-invariance, as a test rather than a promise. Every pair below is a
+    /// spelling part B folds on r4133; on the capi channel the seam must hand
+    /// [`assert_value_matches_tol`] the two raw strings, so the 0.14.5 property
+    /// compare stays byte/skeleton-exact.
+    ///
+    /// [`assert_value_matches_tol`]: super::assert_value_matches_tol
+    #[test]
+    fn the_capi_channel_never_normalizes() {
+        let capi = PropsPolicy::for_channel(PropsChannel::CapiV0145);
+        for (class, prop, rust, oracle) in FOLDABLE {
+            let (a, e) = capi.normalize(class, prop, rust, oracle);
+            assert_eq!(
+                (a.as_ref(), e.as_ref()),
+                (*rust, *oracle),
+                "{class}.{prop}: the capi channel must compare the RAW strings"
+            );
+        }
+    }
+
+    /// The other half of the same contract, which makes the one above mean
+    /// something: on the **r4133** channel the armed policy DOES fold every
+    /// spelling in [`FOLDABLE`], to our side's spelling. Without this the capi
+    /// test would pass just as well against a seam that never normalizes
+    /// anything at all.
+    #[test]
+    fn the_r4133_channel_folds_the_documented_spellings() {
+        let r4133 = PropsPolicy::for_channel(PropsChannel::R4133);
+        for (class, prop, rust, oracle) in FOLDABLE {
+            let (a, e) = r4133.normalize(class, prop, rust, oracle);
+            assert_eq!(
+                (a.as_ref(), e.as_ref()),
+                (*rust, *rust),
+                "{class}.{prop}: r4133 must fold {oracle:?} onto our spelling"
+            );
+        }
+    }
+
+    /// The census knob's PLAIN mode is the un-normalized baseline forever
+    /// (RP0.2), on **either** channel: a rule landing in part B must not shrink
+    /// what a plain re-census reports.
+    #[test]
+    fn the_plain_policy_never_normalizes_on_either_channel() {
+        for ch in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            let plain = PropsPolicy::plain(ch);
+            assert_eq!(plain.channel(), ch, "the plain policy keeps its channel");
+            for (class, prop, rust, oracle) in FOLDABLE {
+                let (a, e) = plain.normalize(class, prop, rust, oracle);
+                assert_eq!(
+                    (a.as_ref(), e.as_ref()),
+                    (*rust, *oracle),
+                    "{class}.{prop}: plain census mode must compare the RAW strings on {}",
+                    ch.tag()
+                );
+            }
+        }
+    }
 }
 
 /// The [`SKIP_PROPS`] half of [`skip_prop`] **only** — the properties whose
-/// upstream getter renders uninitialized heap memory.
+/// upstream getter renders uninitialized heap memory. Channel-BLIND on purpose:
+/// its consumer is the contamination artifact below, which wants the whole
+/// table; the channel-scoped form the two property walks use is
+/// [`skip_prop_ub_on`].
 ///
 /// Kept separate because [`skip_prop`] has a second consumer that wants a
 /// different question answered: `corpus_gate::write_gate_dump` nulls these
@@ -1691,7 +2145,7 @@ fn skip_transformer_cursor(class: &str, prop: &str, cursors_disagree: bool) -> b
 /// Ships EMPTY: rows land with the WP that ports each 0.15.x property. Keep it
 /// one class per line so parallel WP branches each add a line without conflict
 /// (duplicate class rows are fine — the predicate ORs every matching row).
-const PROPS_015X: &[(&str, &[&str])] = &[
+pub const PROPS_015X: &[(&str, &[&str])] = &[
     // dss_capi 0.15.x Line.pas:59-62 (SVN r3913-era) — WP-U1.4.
     // `Conductors` (Line.pas:62, prop 34) — the merged mixed wire/CN/TS
     // object-reference-array (wt-u14cond).
@@ -1778,17 +2232,19 @@ const PROPS_015X: &[(&str, &[&str])] = &[
     // its dispatcher, since r4133's slot 7 IS the weights arm and would compare
     // the port's base frequency against r4133's stored weights string.
     // `PROPS_015X` rows carry no live counters (§1.1(d)), so nothing goes stale;
-    // the row's only exerciser today is
+    // the row's exercisers are
     // `props_015x_tests::shipped_gendispatcher_weights_row_is_inert_when_the_oracle_knows_it`
-    // (RP2.1's replay over the full `shape.txt` will cover it offline once it
-    // lands — `crates/dss-core/tests/props_r4133_replay.rs` does not exist yet).
+    // (the capi-side inertness) and, since RP2.1 part C, the offline replay over
+    // the full `shape.txt` — `crates/dss-core/tests/props_r4133_replay.rs`,
+    // `the_shape_allowlist_rows_are_exercised_by_shape_txt`, which is where this
+    // row is the ONE that fires on the r4133 side.
     ("GenDispatcher", &["weights"]),
     // Further rows land here with their porting WP.
 ];
 
 /// Whether property `prop` of `class` is a 0.15.x-only property in `allowlist`
 /// (matched case-insensitively across every row, so duplicate class rows OR).
-fn prop_015x(allowlist: &[(&str, &[&str])], class: &str, prop: &str) -> bool {
+pub fn prop_015x(allowlist: &[(&str, &[&str])], class: &str, prop: &str) -> bool {
     allowlist.iter().any(|(c, props)| {
         class.eq_ignore_ascii_case(c) && props.iter().any(|p| prop.eq_ignore_ascii_case(p))
     })
@@ -1823,9 +2279,38 @@ fn filter_015x<'a>(
         .collect()
 }
 
+/// Whether the whole ELEMENT is dropped before a single cell is looked at.
+///
+/// Recloser and Relay: their property TABLES moved to the r4133 surface
+/// (WP-U2.2/U2.3 — 24→46 and 50→71 props, renames plus the `Normal`/`State`
+/// per-phase arrays), so they cannot match the pinned **0.14.5** capture's shape
+/// at all; skipping the element beats masking 46 individual rows. That argument
+/// is about the capi channel and only it, so RP2.1 made the skip
+/// **channel-scoped** (`R4133_PROPS_PLAN.md` §1.2): on
+/// [`PropsChannel::R4133`] both classes compare in FULL — the justification
+/// inverts, because the Rust tables are the r4133 tables. Without this the
+/// census's 22 relay/recloser pairs would be dead on the live path and RP4.1's
+/// closure unreachable.
+///
+/// Shared by the gating walk ([`compare_all_properties`]) and the census walk
+/// ([`collect_prop_divergences`], which counts every skip into
+/// [`CensusBlindSpots`]) so the two cannot drift (see [`oracle_name_set`]).
+fn skip_whole_element(class: &str, channel: PropsChannel) -> bool {
+    channel == PropsChannel::CapiV0145
+        && (class.eq_ignore_ascii_case("Recloser") || class.eq_ignore_ascii_case("Relay"))
+}
+
 /// Whether the two sides' Transformer `ActiveWinding` cursors point at different
 /// windings — the gate on [`skip_transformer_cursor`]. Non-Transformer classes
 /// are always `false`. Shared by both walks (see [`oracle_name_set`]).
+///
+/// Channel-BLIND, and that is a disposition too (RP2.1): the cursor
+/// contamination is a property of the CAPTURE procedure — the oracle's
+/// `Transformers.Wdg=i` discrete sweep leaves the cursor at NumWindings while
+/// Rust keeps the deck's trailing `wdg=k` — and the r4133 bridge captures the
+/// same way (`tests/corpus/props_r4133/README.md` §"Corrections measured after
+/// freezing", correction 2: the knob drops the same 13 cursor props on both
+/// channels). Nothing about it is 0.14.5-specific.
 fn transformer_cursors_disagree(
     class: &str,
     actual: &[(String, String)],
@@ -1851,6 +2336,11 @@ fn transformer_cursors_disagree(
 /// dropped before the count/order/name walk; every surviving prop is compared
 /// exactly as before (name in order, value via [`assert_value_matches_tol`],
 /// with the [`SKIP_PROPS`]/[`skip_transformer_cursor`] value-skip gates).
+///
+/// `policy` says which oracle is on the other side and carries the RP2.1
+/// normalization seam ([`PropsPolicy`]); it travels as a parameter for the same
+/// testability reason `allowlist` does. On [`PropsChannel::CapiV0145`] every
+/// step below is the pre-RP2.1 one.
 #[allow(clippy::too_many_arguments)]
 fn compare_prop_lists(
     element: &str,
@@ -1858,6 +2348,7 @@ fn compare_prop_lists(
     actual: &[(String, String)],
     oracle: &[(String, String)],
     allowlist: &[(&str, &[&str])],
+    policy: PropsPolicy,
     cursors_disagree: bool,
     rel: f64,
     abs: f64,
@@ -1889,9 +2380,16 @@ fn compare_prop_lists(
             "{ctx}: {element} property {i} name differs: rust {aname:?} vs oracle {ename:?} \
              (property-index order is the contract)"
         );
-        if skip_prop(class, ename) || skip_transformer_cursor(class, ename, cursors_disagree) {
+        if skip_prop(class, ename, policy.channel())
+            || skip_transformer_cursor(class, ename, cursors_disagree)
+        {
             continue;
         }
+        // THE NORMALIZATION SEAM (plan §1.2): the channel-scoped, strictly
+        // value-preserving re-spelling of both sides. Identity on the capi
+        // channel — always, by contract — so the assert below sees exactly the
+        // strings it saw before RP2.1.
+        let (aval, eval) = policy.normalize(class, ename, aval, eval);
         // Case-EXACT compare (no lowercasing): every DSS enum getter renders the
         // Pascal-faithful case — `ordinal_to_string` returns the exact registry
         // strings (`wye`/`delta` lowercase, `Variable`/`Fixed` capitalized,
@@ -1899,8 +2397,8 @@ fn compare_prop_lists(
         // divergence is a real rendering regression this gate must catch, not a
         // formatting artifact to smooth over.
         assert_value_matches_tol(
-            aval,
-            eval,
+            &aval,
+            &eval,
             rel,
             abs,
             &format!("{ctx}: {element} property {ename}"),
@@ -1918,29 +2416,26 @@ fn compare_prop_lists(
 /// — a property-table *shape* relaxation, never a value-tolerance change. This
 /// catches latent property-rendering/port bugs the live-model gate (Y/V/I/P)
 /// cannot see.
-pub fn compare_all_properties(dss: &mut Dss, exp: &[PropsCap], tol: &Tolerances, ctx: &str) {
+///
+/// `channel` (RP2.1) says which oracle produced `exp`. It selects the
+/// whole-element skips ([`skip_whole_element`]), the value-skip set
+/// ([`skip_prop`]) and the normalization seam ([`PropsPolicy`]); on
+/// [`PropsChannel::CapiV0145`] all three are what they were before RP2.1.
+pub fn compare_all_properties(
+    dss: &mut Dss,
+    exp: &[PropsCap],
+    tol: &Tolerances,
+    channel: PropsChannel,
+    ctx: &str,
+) {
+    let policy = PropsPolicy::for_channel(channel);
     for pc in exp {
         let class = pc.element.split('.').next().unwrap_or("");
-        // WP-U2.2: the Recloser property TABLE moved to the r4133 46-prop surface
-        // (renames + new props); it cannot match the pinned **0.14.5** oracle's
-        // 24-prop table shape (`compare_all_properties` runs only vs 0.14.5 —
-        // corpus_live gates it on `oracle.is_none()`). The recloser's r4133 shape
-        // is code-verified (the `class_props` `debug_assert` on the 46 defs) and
-        // its property VALUES are gated by the `recloser.json` props golden (by
-        // name) + the `oracle: "r4133"` family probes; its shape simply isn't
-        // 0.14.5-oracle-gateable. Skip the whole element here rather than mask 46
-        // individual rows. Sibling protection classes (Relay/Fuse) join this list
-        // when WP-U2.1/U2.3 move their tables.
-        if class.eq_ignore_ascii_case("Recloser") {
-            continue;
-        }
-        // WP-U2.3: the Relay property TABLE likewise moved to the r4133 71-prop
-        // surface (50->71 renames + new props + `Normal`/`State` per-phase arrays);
-        // it cannot match the pinned 0.14.5 oracle's 50-prop table shape. Its shape
-        // is code-verified (`class_props` `debug_assert` on 73 defs) and its values
-        // are gated by the `relay.json` props golden (by name) + the `oracle:
-        // "r4133"` family probes. Skip the whole element here (as Recloser).
-        if class.eq_ignore_ascii_case("Relay") {
+        // The channel-scoped Recloser/Relay whole-element skip: their tables are
+        // the r4133 ones and cannot match a 0.14.5 capture's shape, so the skip
+        // holds on the capi channel and INVERTS on r4133, where both classes
+        // compare in full. Rationale and citations: [`skip_whole_element`].
+        if skip_whole_element(class, channel) {
             continue;
         }
         let actual = dss
@@ -1957,6 +2452,7 @@ pub fn compare_all_properties(dss: &mut Dss, exp: &[PropsCap], tol: &Tolerances,
             &actual,
             &pc.props,
             PROPS_015X,
+            policy,
             cursors_disagree,
             tol.i_rel,
             tol.i_abs,
@@ -1975,8 +2471,9 @@ pub fn compare_all_properties(dss: &mut Dss, exp: &[PropsCap], tol: &Tolerances,
 /// `corpus_gate`'s `EngineChannel` is `pub(crate)` to that one test binary while
 /// `harness/` compiles into ~20 others, so the channel cannot travel as that
 /// type (plan §1.2, the channel-threading trap). The corpus_gate call sites map
-/// `EngineChannel` onto this. Today only [`collect_prop_divergences`] reads it;
-/// RP2.1 threads the same type through `compare_all_properties`.
+/// `EngineChannel` onto this (`EngineChannel::props_channel`). **Both** property
+/// walks read it since RP2.1: the gating [`compare_all_properties`] (through
+/// [`PropsPolicy`]) and the census [`collect_prop_divergences`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PropsChannel {
     /// The pinned dss-python oracle (dss_capi 0.14.5).
@@ -1992,6 +2489,106 @@ impl PropsChannel {
             PropsChannel::CapiV0145 => "capi_v0145",
             PropsChannel::R4133 => "r4133",
         }
+    }
+}
+
+/// The channel-scoped VALUE policy both property walks consult: which oracle is
+/// on the other side of the compare, and — from RP2.1 part B on — the
+/// normalization table that may re-SPELL a cell before the value assert
+/// (`R4133_PROPS_PLAN.md` §1.2).
+///
+/// It travels as a **parameter** of [`compare_prop_lists`] for the same reason
+/// the shape allowlist does — testability: the shipped policy is derived from
+/// the channel ([`PropsPolicy::for_channel`], which is what
+/// [`compare_all_properties`] builds), while a self-test can hand either walk
+/// any policy it likes.
+///
+/// **Capi-invariance (plan §1.1(b)) is structural, not a promise:** every
+/// behavior this plan adds hangs off [`PropsPolicy::is_r4133`], so a
+/// `CapiV0145` policy walks the pre-RP2.1 code path — same shape relief, same
+/// skip set, same value assert on the raw strings. The A/B run recorded in the
+/// RP2.1 STATUS record measures that; [`props_policy_tests`] pins it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PropsPolicy {
+    channel: PropsChannel,
+    /// Whether the channel's VALUE policy — [`PropsPolicy::normalize`], and
+    /// after RP2.3/RP2.4 the echo table and the display floor — is ARMED.
+    ///
+    /// The gate always arms it. The census knob's **plain** mode
+    /// (`DSS_PROPS_CENSUS=1`) deliberately does not: plain is "the
+    /// un-normalized comparator, RP0.1's measurement", and RP0.2 fixed it as the
+    /// knob's baseline forever, so a rule landing in part B must not quietly
+    /// shrink what a re-census reports. Its `claims` mode arms the policy again
+    /// (that is the whole point of the mode) and calls this same seam.
+    ///
+    /// The SKIP set is NOT on this axis: [`skip_whole_element`] and
+    /// [`skip_prop`] read the raw channel, because the census has always
+    /// honored them and its extracts are measured with them active.
+    value_policy: bool,
+}
+
+impl PropsPolicy {
+    /// The shipped, fully-ARMED policy for `channel` — what the gate builds
+    /// (and, from RP2.1's disposition mode on, the `claims` census).
+    pub fn for_channel(channel: PropsChannel) -> Self {
+        Self {
+            channel,
+            value_policy: true,
+        }
+    }
+
+    /// The channel's policy with the VALUE half disarmed: the skip/shape rules
+    /// of `channel`, but the raw un-normalized value compare. The plain census
+    /// mode's policy (see [`PropsPolicy::value_policy`]).
+    pub fn plain(channel: PropsChannel) -> Self {
+        Self {
+            channel,
+            value_policy: false,
+        }
+    }
+
+    /// The channel this policy speaks for.
+    pub fn channel(self) -> PropsChannel {
+        self.channel
+    }
+
+    /// Whether the r4133 value arms are live. The single gate on every VALUE
+    /// behavior `R4133_PROPS_PLAN.md` adds to the comparator.
+    fn is_r4133(self) -> bool {
+        self.value_policy && self.channel == PropsChannel::R4133
+    }
+
+    /// **The normalization seam** (plan §1.2, RP2.1): the last chance to
+    /// re-spell the two sides of one cell before
+    /// [`assert_value_matches_tol`] sees them.
+    ///
+    /// The contract is plan mechanic (c), **value-preserving normalization
+    /// only** — a rule may change how a value is SPELLED, never WHICH value it
+    /// is (the `lane::expected_rerounded` discipline, `lane.rs:546-592`).
+    /// Anything that cannot satisfy that is an exclusion (RP2.3's echo table),
+    /// never a rule here.
+    ///
+    /// On r4133 the seam consults the typed
+    /// [`PROPS_NORM_R4133`](props_norm::PROPS_NORM_R4133) rules
+    /// (`BoolFold`/`CaseFold`/`ArrayForm`/`EnumSynonym`, RP2.1 part B): a rule
+    /// that recognises the two sides as the same value answers with OUR
+    /// spelling on both, and anything it does not claim comes back raw, so a
+    /// real divergence still fails with both original spellings in the message.
+    ///
+    /// On capi the seam is the identity. That arm is not "not written yet" —
+    /// it is the permanent capi-invariance contract, pinned by
+    /// [`props_policy_tests::the_capi_channel_never_normalizes`].
+    fn normalize<'v>(
+        self,
+        class: &str,
+        prop: &str,
+        rust: &'v str,
+        oracle: &'v str,
+    ) -> (Cow<'v, str>, Cow<'v, str>) {
+        if self.is_r4133() {
+            return props_norm::normalize_r4133(class, prop, rust, oracle);
+        }
+        (Cow::Borrowed(rust), Cow::Borrowed(oracle))
     }
 }
 
@@ -2074,7 +2671,9 @@ impl CensusBlindSpots {
 ///    capture (see [`compare_all_properties`]), which is an argument about the
 ///    capi channel only. On [`PropsChannel::R4133`] both classes are compared —
 ///    plan §1.2; without this the census's 22 relay/recloser pairs would not
-///    exist. Every skip is COUNTED into [`CensusBlindSpots`].
+///    exist. Every skip is COUNTED into [`CensusBlindSpots`]. Since RP2.1 the
+///    predicate itself is the shared [`skip_whole_element`], so the gate and the
+///    census cannot drift apart on it.
 ///
 /// Never panics on a divergence and never asserts.
 pub fn collect_prop_divergences(
@@ -2084,12 +2683,14 @@ pub fn collect_prop_divergences(
     channel: PropsChannel,
     out: &mut Vec<PropCensusRow>,
 ) -> CensusBlindSpots {
+    // PLAIN policy: the census's baseline mode compares raw values (RP0.2), and
+    // the skip/shape rules of the channel still apply — see
+    // [`PropsPolicy::value_policy`]. The `claims` mode passes an armed policy.
+    let policy = PropsPolicy::plain(channel);
     let mut blind = CensusBlindSpots::default();
     for pc in exp {
         let class = pc.element.split('.').next().unwrap_or("");
-        if channel == PropsChannel::CapiV0145
-            && (class.eq_ignore_ascii_case("Recloser") || class.eq_ignore_ascii_case("Relay"))
-        {
+        if skip_whole_element(class, channel) {
             blind.skipped_elements += 1;
             blind.skipped_element_cells += pc.props.len();
             continue;
@@ -2107,6 +2708,7 @@ pub fn collect_prop_divergences(
             &actual,
             &pc.props,
             PROPS_015X,
+            policy,
             cursors_disagree,
             tol.i_rel,
             tol.i_abs,
@@ -2122,12 +2724,14 @@ pub fn collect_prop_divergences(
 /// [`skip_prop`]/[`skip_transformer_cursor`] value-skip gates, the same
 /// [`value_verdict`] floor — with every abort turned into a row.
 ///
-/// The `allowlist` parameter exists for the same reason
-/// [`compare_prop_lists`]'s does: so the self-tests can inject a synthetic
-/// table (the shipped [`PROPS_015X`] is what
-/// [`collect_prop_divergences`] passes). The two walks are pinned against each
-/// other by `census_walk_tests::the_two_walks_agree_on_every_input` — the gate
-/// panics on an input **iff** this walk reports a row or a blind spot.
+/// The `allowlist` and `policy` parameters exist for the same reason
+/// [`compare_prop_lists`]'s do: so the self-tests can inject a synthetic
+/// table / any channel (the shipped [`PROPS_015X`] and the plain policy of the
+/// walked channel are what [`collect_prop_divergences`] passes). The two walks
+/// are pinned against each other by
+/// `census_walk_tests::the_two_walks_agree_on_every_input` — **per channel**,
+/// under matched policies: the gate panics on an input **iff** this walk reports
+/// a row or a blind spot.
 ///
 /// The one deliberate difference is what turns an *assert* into a *census*, and
 /// it reproduces the 2026-08-08 G1.1 walk vendored at
@@ -2150,6 +2754,7 @@ fn collect_element_divergences(
     actual: &[(String, String)],
     oracle: &[(String, String)],
     allowlist: &[(&str, &[&str])],
+    policy: PropsPolicy,
     cursors_disagree: bool,
     rel: f64,
     abs: f64,
@@ -2190,10 +2795,18 @@ fn collect_element_divergences(
             unaligned += 1;
             continue;
         }
-        if skip_prop(class, ename) || skip_transformer_cursor(class, ename, cursors_disagree) {
+        if skip_prop(class, ename, policy.channel())
+            || skip_transformer_cursor(class, ename, cursors_disagree)
+        {
             continue;
         }
-        let max_rel = match value_verdict(aval, eval, rel, abs) {
+        // The same normalization seam the gate applies, so the two walks stay
+        // the biconditional pair below under ANY policy. Identity under the
+        // plain census policy this walk is normally handed. Only the VERDICT
+        // reads it: a census row always records what the two engines actually
+        // rendered, never a re-spelled surrogate.
+        let (na, ne) = policy.normalize(class, ename, aval, eval);
+        let max_rel = match value_verdict(&na, &ne, rel, abs) {
             ValueVerdict::Match => continue,
             ValueVerdict::Skeleton | ValueVerdict::NumberCount => None,
             ValueVerdict::Numeric { max_rel, .. } => Some(max_rel),
@@ -2211,7 +2824,7 @@ fn collect_element_divergences(
 
 #[cfg(test)]
 mod census_walk_tests {
-    use super::{collect_element_divergences, compare_prop_lists};
+    use super::{PropsChannel, PropsPolicy, collect_element_divergences, compare_prop_lists};
 
     /// Synthetic allowlist — the same one `props_015x_tests` injects, so both
     /// walks see identical shape relief.
@@ -2247,6 +2860,11 @@ mod census_walk_tests {
     /// term: a permutation leaves the counts and the name SETS equal, so the
     /// census emits no row at all — it reports the two positions as
     /// uncomparable instead, while the gate panics on the name assert.
+    ///
+    /// RP2.1 runs the whole table on **both channels** under matched policies:
+    /// the two walks now share a channel-scoped skip set and a normalization
+    /// seam, and either one reaching the wrong arm is exactly the drift this
+    /// pin exists to catch.
     #[test]
     fn the_two_walks_agree_on_every_input() {
         let cases: &[WalkCase] = &[
@@ -2306,40 +2924,49 @@ mod census_walk_tests {
             ),
             ("both empty", &[], &[], false),
         ];
-        for (name, rust, oracle, gate_panics) in cases {
-            let a = props(rust);
-            let o = props(oracle);
-            let gate = std::panic::catch_unwind(|| {
-                compare_prop_lists(
-                    "Foo.x", "Foo", &a, &o, TEST_ALLOW, false, 1e-9, 1e-9, "self",
+        for channel in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            // Matched policies: whatever the gate applies to a cell, the census
+            // twin applies too. (The census's own PLAIN mode disarms the value
+            // half — that asymmetry is the knob's, deliberately outside this
+            // biconditional, and `Foo` has no skip or normalization row anyway.)
+            let policy = PropsPolicy::for_channel(channel);
+            for (name, rust, oracle, gate_panics) in cases {
+                let name = format!("{name} [{}]", channel.tag());
+                let a = props(rust);
+                let o = props(oracle);
+                let gate = std::panic::catch_unwind(|| {
+                    compare_prop_lists(
+                        "Foo.x", "Foo", &a, &o, TEST_ALLOW, policy, false, 1e-9, 1e-9, "self",
+                    );
+                });
+                assert_eq!(
+                    gate.is_err(),
+                    *gate_panics,
+                    "{name}: the gate walk's verdict changed — update the table only \
+                     with a deliberate policy change"
                 );
-            });
-            assert_eq!(
-                gate.is_err(),
-                *gate_panics,
-                "{name}: the gate walk's verdict changed — update the table only \
-                 with a deliberate policy change"
-            );
-            let mut rows = Vec::new();
-            let unaligned = collect_element_divergences(
-                "Foo.x",
-                "Foo",
-                &props(rust),
-                &props(oracle),
-                TEST_ALLOW,
-                false,
-                1e-9,
-                1e-9,
-                &mut rows,
-            );
-            let census_flags = !rows.is_empty() || unaligned > 0;
-            assert_eq!(
-                census_flags,
-                gate.is_err(),
-                "{name}: the two walks disagree — gate panicked = {}, census rows = {rows:?}, \
-                 unaligned = {unaligned}",
-                gate.is_err()
-            );
+                let mut rows = Vec::new();
+                let unaligned = collect_element_divergences(
+                    "Foo.x",
+                    "Foo",
+                    &props(rust),
+                    &props(oracle),
+                    TEST_ALLOW,
+                    policy,
+                    false,
+                    1e-9,
+                    1e-9,
+                    &mut rows,
+                );
+                let census_flags = !rows.is_empty() || unaligned > 0;
+                assert_eq!(
+                    census_flags,
+                    gate.is_err(),
+                    "{name}: the two walks disagree — gate panicked = {}, census rows = {rows:?}, \
+                     unaligned = {unaligned}",
+                    gate.is_err()
+                );
+            }
         }
     }
 }
