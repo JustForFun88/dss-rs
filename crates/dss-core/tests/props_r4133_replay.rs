@@ -527,8 +527,21 @@ const DECLARED_RP24: (usize, usize, usize) = (0, 0, 0);
 /// pins — but its exclusion is a `ledger.json` `property` entry, and §1.1(e)
 /// stages every such entry into RP4.1's unmask commit. Until that commit the
 /// tree holds no exclusion for these rows, so they stay *declared*: this bucket
-/// is what a sub-step **inherits**, not a progress bar, and it may only shrink
-/// when something in the tree actually claims the rows.
+/// is what a sub-step **inherits**, not a progress bar.
+///
+/// **The shrink is a hand edit at RP4.1, not a consequence of landing the
+/// entries** (RP3.1 audit settlement, 2026-08-24 — the earlier wording, "may
+/// only shrink when something in the tree actually claims the rows", implied a
+/// self-correction this file cannot perform). Nothing in the chain reads
+/// `tests/corpus/ledger.json`: it is [`Link::ORDER`]'s four links,
+/// [`chain_verdicts`] evaluates exactly those four, and [`declare`] routes every
+/// bin-7 row on [`BIN7_ROOT_CAUSE`] to [`Owner::Rp3`] unconditionally. So when
+/// RP4.1 lands the two staged entries this constant will **not** move on its
+/// own and nothing here would notice; that commit must retire the rows — here
+/// and in [`RP3_ROUTING`] — by hand. What makes the obligation unmissable is
+/// [`the_staged_r4133_property_entries_have_not_landed_yet`], which reds the
+/// moment a `property`-scoped `r4133` entry appears in the ledger and carries
+/// the instruction in its message.
 const DECLARED_RP3: (usize, usize, usize) = (7, 4, 7);
 /// **RP3.9 — the round-trip residue the RP2.4 audit settlement opened**: the 55
 /// example rows over 27 pairs whose gap is inside the floor and whose r4133 side
@@ -667,17 +680,28 @@ const BIN7_ROOT_CAUSE: &[&str] = &[
 ///
 /// **A settled sub-step does NOT empty its rows, and that is the point.** RP3.1
 /// is root-caused, reported and pinned, yet its two spellings stay declared to
-/// RP3: the artifact that will finally claim them is a `ledger.json` `property`
-/// entry, and by the §1.1(e) staging rule that entry lands in RP4.1's unmask
-/// commit, not here. Writing "claimed" while the tree holds no exclusion would
-/// be exactly the silent-progress claim this accounting exists to prevent — so
-/// [`DECLARED_RP3`] is unchanged at `(7, 4, 7)` and the verdict column carries
-/// what was decided, for whom, and where it lands.
+/// RP3: the artifact that will finally exclude them is a `ledger.json`
+/// `property` entry, and by the §1.1(e) staging rule that entry lands in RP4.1's
+/// unmask commit, not here. Writing "claimed" while the tree holds no exclusion
+/// would be exactly the silent-progress claim this accounting exists to prevent
+/// — so [`DECLARED_RP3`] is unchanged at `(7, 4, 7)` and the verdict column
+/// carries what was decided, for whom, and where it lands. **The row will not
+/// leave this table on its own when the entry lands**: no link of the chain
+/// reads the ledger ([`DECLARED_RP3`]'s note), so RP4.1 retires it here by hand
+/// and [`the_staged_r4133_property_entries_have_not_landed_yet`] is the tripwire
+/// that says so.
 ///
-/// A verdict that begins `OPEN —` is a sub-step that has not run; anything else
-/// is a settled one and must cite its r4133 site, name its landing artifact and
-/// name every [`LEDGER_ENTRY_PINS`] pin of that sub-step
-/// ([`the_bin7_root_cause_pairs_are_routed_to_their_sub_steps`]).
+/// **A verdict is typed by its outcome tag.** `OPEN — ` is a sub-step that has
+/// not run; every other verdict opens with one of [`RP3_SETTLED_SHAPES`]' tags,
+/// which are plan §WP-RP3's three sanctioned outcomes — a drafted ledger entry
+/// (`LEDGER`), an RP2.3 echo row (`ECHO`), a port fix in both lanes (`FIX`).
+/// RP3.1 exercised only the first, so [`the_bin7_root_cause_pairs_are_routed_to_their_sub_steps`]
+/// checks each tag's own obligations rather than assuming RP3.1's shape is every
+/// settled shape (RP3.1 audit settlement, 2026-08-24): all three must cite the
+/// **r4133** unit (a `Version8/Source/` `.pas:` line — a capi citation alone is
+/// not the sub-step's evidence base) and name their own sub-step, and then
+/// `LEDGER` owes its staging clause and its pins, `ECHO` owes the row on its
+/// pair, `FIX` owes the Rust site.
 const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
     (
         "generator.model",
@@ -701,20 +725,22 @@ const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
         "RP3.1",
         2,
         2,
-        "RP3.1 (2026-08-24) — r4133's Edit CASE has NO arm 5 \
-         (Version8/Source/Controls/SwtControl.pas:195-218): `delay=` reaches only the echo store \
-         (:192-193) while `TimeDelay` keeps Create's 120.0 (:310) and the LIVE getter renders it \
-         (:588). capi 0.14.5 wires the property (src/Controls/SwtControl.pas:185) and the port \
-         follows, so no engine change. Render-only upstream — Sample's queue pushes are commented \
-         out (:484-507, and LockCommand's declaration with them at :39), DoPendingAction likewise \
-         (:396-408), set_States is immediate (:532-549) — hence NO echo row: the exclusion is two \
-         per-case ledger `property` entries (r4133-swtcontrol-delay-ignored-time / -midi), DRAFTED \
-         here and landing at RP4.1 per §1.1(e), witnessed meanwhile by \
-         swtcontrol_delay_wires_the_property and \
-         swtcontrol_delay_wires_the_property_on_the_midi_tie. The `'0.25'` spelling is the 24 \
-         in-scope cells of those two decks; the `'0'` spelling's 6 cells are all on capi_v0145 \
-         IEEE_519 copies and are therefore owed no entry. Report: \
-         investigations/to_opendss/43-swtcontrol-delay-not-wired.md (local)",
+        "LEDGER — RP3.1 (2026-08-24): r4133's Edit CASE has NO arm 5 \
+         (Version8/Source/Controls/SwtControl.pas:195-218), so `delay=` reaches only the echo \
+         store (:192-193) while `TimeDelay` keeps Create's 120.0 (:310) and the LIVE getter \
+         renders it (:588). capi 0.14.5 wires the property (src/Controls/SwtControl.pas:185) and \
+         the port follows, so no engine change. Render-only upstream — Sample's queue pushes are \
+         commented out (:484-507, and LockCommand's declaration with them at :39), DoPendingAction \
+         likewise (:396-408), set_States is immediate (:532-549) — hence NO echo row: the \
+         exclusion is two per-case ledger `property` entries \
+         (r4133-swtcontrol-delay-ignored-time / -midi), DRAFTED here and landing at RP4.1 per \
+         §1.1(e), witnessed meanwhile by swtcontrol_delay_wires_the_property and \
+         swtcontrol_delay_wires_the_property_on_the_midi_tie. Census, derived per case by \
+         `the_rp31_census_decomposition_is_read_off_the_corpus`: the `'0.25'` spelling's 36 cells \
+         are 24 in scope, 12 + 12 over the two r4133 decks, plus 12 on capi_v0145's \
+         swtcontrol_lock.dss; the `'0'` spelling's 6 cells are three capi_v0145 IEEE_519 copies. \
+         24 in-scope cells over exactly 2 cases, hence exactly two drafted entries and no more. \
+         Report: investigations/to_opendss/43-swtcontrol-delay-not-wired.md (local)",
     ),
     (
         "windgen.kvar",
@@ -724,6 +750,99 @@ const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
         "OPEN — plan §RP3.2: ours ~986 vs r4133 `0` on four of the five `modes:windgen/*` decks, \
          an r4133-only class with no capi witness; probe a solved-state observable to separate \
          echo from live Q before choosing the artifact",
+    ),
+];
+
+/// **The outcome tags a settled [`RP3_ROUTING`] verdict may open with** —
+/// `(tag, the obligation the tag carries)`, one row per outcome plan §WP-RP3
+/// sanctions (`R4133_PROPS_PLAN.md:1084-1090`).
+///
+/// Landed by the RP3.1 audit settlement (2026-08-24). Before it, the guard read
+/// RP3.1's own shape — cite a `.pas:`, name `RP4.1` and `§1.1(e)`, own a
+/// [`LEDGER_ENTRY_PINS`] pin — into *every* settled verdict, so a sub-step that
+/// closes as a port fix or as an RP2.3 echo row (both sanctioned, neither
+/// staging an entry) would have failed the guard, and the cheap way out of that
+/// failure is to loosen the guard rather than to extend it. The taxonomy is that
+/// extension, made in advance: an unknown tag is a hard error naming this table.
+///
+/// The obligations are enforced in
+/// [`the_bin7_root_cause_pairs_are_routed_to_their_sub_steps`]; the shared ones
+/// (an r4133 unit citation, the sub-step's own name) are checked for every tag
+/// before the per-tag branch.
+const RP3_SETTLED_SHAPES: &[(&str, &str)] = &[
+    (
+        "LEDGER",
+        "an upstream divergence excluded by a per-case `ledger.json` `property` entry: the \
+         verdict names RP4.1 and §1.1(e) (the staging rule), owns at least one LEDGER_ENTRY_PINS \
+         witness and names each one, and its pair carries NO echo row",
+    ),
+    (
+        "ECHO",
+        "an upstream echo excluded by a PROPS_ECHO_R4133 row per RP2.3: the row exists on the \
+         pair and cites its own pin, so the sub-step owns no LEDGER_ENTRY_PINS witness",
+    ),
+    (
+        "FIX",
+        "a port bug fixed in both lanes: the verdict names the Rust site (`.rs:`) and says `both \
+         lanes`; nothing is excluded, so the pair carries no echo row and no staged entry",
+    ),
+];
+
+/// **RP3.1's census decomposition, as data instead of prose** — every corpus
+/// case that declares a `SwtControl` **and** types a `delay=`, with the two
+/// facts its deck carries: how many controls it declares, and the token it
+/// types.
+///
+/// Landed by the RP3.1 audit settlement (2026-08-24). The sub-step's whole
+/// artifact count rests on this decomposition — 42 cells, 24 of them in scope,
+/// 12 + 12 over exactly two r4133-gating decks, *hence exactly two drafted
+/// ledger entries* — and until the settlement those numbers lived only in the
+/// verdict's prose and in STATUS, where mutating `24` to `25` left the suite
+/// green. [`the_rp31_census_decomposition_is_read_off_the_corpus`] now derives
+/// every one of them: the deck files give the control counts and the typed
+/// values, `population.lock.json` gives each case's `steps=`/`engines=`, and the
+/// products are reconciled against the frozen census both in total and per
+/// spelling.
+///
+/// The table is a *claim of completeness*, not a filter: the test walks all
+/// `.dss` files under `tests/corpus` and fails if any deck outside these two
+/// tables declares a `SwtControl`, so a corpus that grows one reds here — where
+/// the "exactly two entries" conclusion is drawn — instead of silently at RP4.1.
+const RP31_DELAY_CASES: &[(&str, usize, &str)] = &[
+    ("controls:swtcontrol/midi_swtcontrol.dss", 1, "0.25"),
+    ("controls:swtcontrol/swtcontrol_lock.dss", 1, "0.25"),
+    ("controls:swtcontrol/swtcontrol_time.dss", 1, "0.25"),
+    (
+        "solvable_now:Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS",
+        2,
+        "0.0",
+    ),
+    (
+        "solvable_now:Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS",
+        2,
+        "0.0",
+    ),
+    (
+        "solvable_now:Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/IEEE_519.DSS",
+        2,
+        "0.0",
+    ),
+];
+
+/// The other side of [`RP31_DELAY_CASES`]' completeness claim: corpus cases that
+/// declare a `SwtControl` and type **no** `delay=`, so the port renders the same
+/// `120` r4133 does and the census records **no cell at all**.
+///
+/// `civanlar.dss` is the load-bearing one: 16 controls on an `engines: r4133`
+/// case, i.e. 16 in-scope cells that would exist if our unset render differed —
+/// its absence from the census is the measurement that the divergence is the
+/// *typed* value and nothing else. (It is also the third reading of the pin
+/// `swtcontrol_delay_wires_the_property`.)
+const RP31_NO_DELAY_CASES: &[(&str, usize)] = &[
+    ("modes:makeposseq/makeposseq_ctrl.dss", 1),
+    (
+        "solvable_now:Version8/Distrib/Examples/civinlar model/civanlar.dss",
+        16,
     ),
 ];
 
@@ -1500,6 +1619,139 @@ fn repo_root() -> PathBuf {
 fn read(name: &str) -> String {
     let path = repo_root().join(DIR).join(name);
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+}
+
+/// `haystack` names `token` as a whole identifier.
+///
+/// `str::contains` would not: [`LEDGER_ENTRY_PINS`] holds
+/// `swtcontrol_delay_wires_the_property` and
+/// `swtcontrol_delay_wires_the_property_on_the_midi_tie`, and the first is a
+/// strict **prefix** of the second, so a verdict naming only the longer pin
+/// would satisfy a substring test for both — "names every witness" would then be
+/// enforced for one of the two (RP3.1 audit settlement, 2026-08-24).
+fn names_identifier(haystack: &str, token: &str) -> bool {
+    fn ident(c: char) -> bool {
+        c.is_ascii_alphanumeric() || c == '_'
+    }
+    haystack.match_indices(token).any(|(at, _)| {
+        !haystack[..at].chars().next_back().is_some_and(ident)
+            && !haystack[at + token.len()..]
+                .chars()
+                .next()
+                .is_some_and(ident)
+    })
+}
+
+/// The gated corpus root and its frozen population fingerprint,
+/// repo-root-relative — read (never written) by
+/// [`the_rp31_census_decomposition_is_read_off_the_corpus`].
+const CORPUS: &str = "tests/corpus";
+/// The anti-shrink lock, whose per-case rigor strings carry `steps=`/`engines=`.
+const POPULATION_LOCK: &str = "tests/corpus/manifests/population.lock.json";
+/// The gating divergence ledger — read by
+/// [`the_staged_r4133_property_entries_have_not_landed_yet`], and by nothing
+/// else in this file (see [`DECLARED_RP3`]).
+const LEDGER: &str = "tests/corpus/ledger.json";
+
+/// The deck path of a corpus case id, relative to [`CORPUS`]: `family:rel` for
+/// the three synthetic families, `solvable_now:rel` for the vendored decks
+/// (which live under `electricdss-tst/`).
+fn case_deck(case: &str) -> String {
+    let (family, rel) = case
+        .split_once(':')
+        .unwrap_or_else(|| panic!("{case}: not a `family:path` case id"));
+    match family {
+        "solvable_now" => format!("electricdss-tst/{rel}"),
+        _ => format!("{family}/{rel}"),
+    }
+}
+
+/// One case's rigor string out of `population.lock.json` — the frozen record of
+/// what the gate runs for it (`kind=… steps=… engines=…`).
+fn case_rigor(lock: &serde_json::Value, case: &str) -> String {
+    let (family, rel) = case.split_once(':').expect("a `family:path` case id");
+    let section = match family {
+        "solvable_now" => &lock["solvable_now"],
+        _ => &lock["family_rigor"][family],
+    };
+    section[rel]
+        .as_str()
+        .unwrap_or_else(|| panic!("{case}: no rigor row in {POPULATION_LOCK}"))
+        .to_string()
+}
+
+/// One `key=value` of a rigor string.
+fn rigor_field<'a>(rigor: &'a str, key: &str) -> &'a str {
+    let want = format!("{key}=");
+    rigor
+        .split_whitespace()
+        .find_map(|f| f.strip_prefix(want.as_str()))
+        .unwrap_or_else(|| panic!("no {key}= in rigor {rigor:?}"))
+}
+
+/// Every `.dss` file under `dir`, as forward-slashed paths relative to `base`
+/// (`corpus_manifest.rs::collect_dss`'s shape).
+fn collect_dss(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec<String>) {
+    for entry in std::fs::read_dir(dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display())) {
+        let p = entry.expect("dir entry").path();
+        if p.is_dir() {
+            collect_dss(&p, base, out);
+        } else if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("dss")) {
+            out.push(
+                p.strip_prefix(base)
+                    .expect("under base")
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
+        }
+    }
+}
+
+/// What one deck says about `SwtControl`: how many it declares, and the `delay=`
+/// token it types on them (`None` when it types none — then the port renders
+/// `Create`'s 120.0, exactly as r4133 does, and the census sees no cell).
+///
+/// The token is read **inside the SwtControl's own element scope** — its `new`
+/// line and the `~` continuations that follow — so a `delay=` on a Relay or a
+/// RegControl elsewhere in the deck is not mistaken for this property. Comment
+/// lines are skipped, so `midi_swtcontrol.dss`'s `// Delayed open of the LOOP
+/// TIE` header is not read as one either.
+fn swtcontrol_facts(deck: &str) -> (usize, Option<String>) {
+    let path = repo_root().join(CORPUS).join(deck);
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("read deck {}: {e}", path.display()));
+    let mut declared = 0usize;
+    let mut delay: Option<String> = None;
+    let mut in_swtcontrol = false;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('!') || line.starts_with("//") {
+            continue;
+        }
+        let lower = line.to_ascii_lowercase();
+        if lower.starts_with("new swtcontrol.") {
+            declared += 1;
+            in_swtcontrol = true;
+        } else if !lower.starts_with('~') {
+            in_swtcontrol = false;
+        }
+        if !in_swtcontrol {
+            continue;
+        }
+        if let Some(at) = lower.find("delay=") {
+            let token: String = lower[at + "delay=".len()..]
+                .chars()
+                .take_while(|c| !c.is_whitespace())
+                .collect();
+            let seen = delay.get_or_insert_with(|| token.clone());
+            assert_eq!(
+                *seen, token,
+                "{deck}: two different `delay=` tokens on its SwtControls — the decomposition \
+                 assumes one spelling per deck"
+            );
+        }
+    }
+    (declared, delay)
 }
 
 /// Non-empty lines with the CR of a CRLF file stripped; the header line is
@@ -2742,10 +2994,14 @@ fn the_kill_criterion_reroute_is_the_five_silent_readonly_pairs() {
 ///   counted columns sum to the bucket lock;
 /// * the per-pair `(rows, in-scope rows)` split is what the walk actually
 ///   declares to [`Owner::Rp3`] — not a transcription;
-/// * the settled set is pinned literally (RP3.1 alone today), each settled
-///   verdict cites its r4133 site, names where the exclusion lands and names
-///   every [`LEDGER_ENTRY_PINS`] witness of that sub-step, and — the plan's
-///   explicit prohibition — its pair carries **no** echo row;
+/// * the settled set is pinned literally (RP3.1 alone today), and each settled
+///   verdict is checked **against the obligations of its own outcome tag**
+///   ([`RP3_SETTLED_SHAPES`]) — all three shapes must cite the r4133 unit and
+///   name their sub-step; `LEDGER` additionally owes the §1.1(e) staging clause
+///   and must name every [`LEDGER_ENTRY_PINS`] witness of that sub-step *as a
+///   whole identifier* ([`names_identifier`]) while its pair carries **no** echo
+///   row; `ECHO` owes the row itself; `FIX` owes the Rust site and "both lanes".
+///   An unknown tag is a hard failure that names the table to extend;
 /// * an open verdict points at its plan section and owns no pin, so a pin cannot
 ///   be landed for a sub-step that has not run.
 #[test]
@@ -2775,12 +3031,19 @@ fn the_bin7_root_cause_pairs_are_routed_to_their_sub_steps() {
     );
 
     for (pair, step, _, _, verdict) in RP3_ROUTING {
+        let (class, prop) = pair.split_once('.').expect("class.prop");
         let pins: Vec<&str> = LEDGER_ENTRY_PINS
             .iter()
             .filter(|(_, s, _)| s == step)
             .map(|(n, _, _)| *n)
             .collect();
-        if let Some(rest) = verdict.strip_prefix("OPEN — ") {
+        let (tag, rest) = verdict.split_once(" — ").unwrap_or_else(|| {
+            panic!(
+                "{pair}: a verdict opens with `OPEN — ` or with one of RP3_SETTLED_SHAPES' tags \
+                 followed by ` — `, got {verdict:?}"
+            )
+        });
+        if tag == "OPEN" {
             assert!(
                 rest.starts_with(&format!("plan §{step}:")),
                 "{pair}: an open sub-step must point at its own plan section, got {verdict:?}"
@@ -2792,29 +3055,79 @@ fn the_bin7_root_cause_pairs_are_routed_to_their_sub_steps() {
             continue;
         }
         assert!(
-            verdict.contains(".pas:"),
-            "{pair}: a settled verdict must cite the r4133 site, got {verdict:?}"
+            RP3_SETTLED_SHAPES.iter().any(|(t, _)| *t == tag),
+            "{pair}: unknown outcome tag {tag:?}. Plan §WP-RP3 sanctions {:?} — a fourth outcome \
+             is a plan decision: extend RP3_SETTLED_SHAPES with the obligations it owes, never \
+             widen this guard to let an untyped verdict through",
+            RP3_SETTLED_SHAPES
+                .iter()
+                .map(|(t, _)| *t)
+                .collect::<Vec<_>>()
+        );
+        // Shared by all three settled shapes. The r4133 unit is the sub-step's
+        // evidence base and a capi citation is no substitute — a settled verdict
+        // routinely cites both, so `.pas:` alone would be satisfied by the capi
+        // half (RP3.1 audit settlement).
+        assert!(
+            verdict.contains("Version8/Source/") && verdict.contains(".pas:"),
+            "{pair}: a settled verdict must cite the r4133 unit itself \
+             (Version8/Source/<unit>.pas:LINE), got {verdict:?}"
         );
         assert!(
-            verdict.contains("RP4.1") && verdict.contains("§1.1(e)"),
-            "{pair}: a drafted exclusion must say where it lands, got {verdict:?}"
+            names_identifier(verdict, step),
+            "{pair}: a settled verdict must name its own sub-step {step}, got {verdict:?}"
         );
-        assert!(
-            !pins.is_empty(),
-            "{pair}: a settled sub-step whose exclusion is staged owes at least one pin"
-        );
-        for pin in pins {
-            assert!(
-                verdict.contains(pin),
-                "{pair}: the verdict must name its witness {pin}"
-            );
+        match tag {
+            "LEDGER" => {
+                assert!(
+                    verdict.contains("RP4.1") && verdict.contains("§1.1(e)"),
+                    "{pair}: a drafted exclusion must say where it lands, got {verdict:?}"
+                );
+                assert!(
+                    !pins.is_empty(),
+                    "{pair}: a settled sub-step whose exclusion is staged owes at least one pin"
+                );
+                for pin in &pins {
+                    assert!(
+                        names_identifier(verdict, pin),
+                        "{pair}: the verdict must name its witness {pin} as a whole identifier — \
+                         a longer pin that merely has it as a prefix does not name it"
+                    );
+                }
+                assert!(
+                    !props_norm::has_echo_row(class, prop),
+                    "{pair}: a LEDGER outcome forbids an echo row — the getter is LIVE, so the \
+                     exclusion is a ledger entry and the echo table would misname the mechanism"
+                );
+            }
+            "ECHO" => {
+                assert!(
+                    props_norm::has_echo_row(class, prop),
+                    "{pair}: an ECHO outcome must have landed its PROPS_ECHO_R4133 row"
+                );
+                assert!(
+                    pins.is_empty(),
+                    "{pair}: an echo row cites its own witness column, so {step} owns no \
+                     LEDGER_ENTRY_PINS row — got {pins:?}"
+                );
+            }
+            "FIX" => {
+                assert!(
+                    verdict.contains(".rs:") && verdict.contains("both lanes"),
+                    "{pair}: a port fix must name its Rust site and say `both lanes`, got \
+                     {verdict:?}"
+                );
+                assert!(
+                    !props_norm::has_echo_row(class, prop),
+                    "{pair}: a fixed port divergence is not excluded — no echo row belongs here"
+                );
+                assert!(
+                    pins.is_empty(),
+                    "{pair}: a fixed port divergence stages no ledger entry — got {pins:?}"
+                );
+            }
+            _ => unreachable!("the tag was just checked against RP3_SETTLED_SHAPES"),
         }
-        let (class, prop) = pair.split_once('.').expect("class.prop");
-        assert!(
-            !props_norm::has_echo_row(class, prop),
-            "{pair}: RP3.1's ruling forbids an echo row here — r4133's getter is LIVE, so the \
-             exclusion is a ledger entry and the echo table would misname the mechanism"
-        );
     }
 
     // …and the per-pair split is the walk's, measured the same way the bucket is.
@@ -2848,6 +3161,314 @@ fn the_bin7_root_cause_pairs_are_routed_to_their_sub_steps() {
         DECLARED_RP3,
         "RP3 inherits (rows, pairs, rows on in-scope pairs) — unchanged while RP3.1's entries \
          are staged into RP4.1"
+    );
+}
+
+/// **The settled-outcome taxonomy is the plan's three, pinned literally** — like
+/// [`NOT_A_PIN`] and [`LEDGER_ENTRY_PINS`], because it is the table the routing
+/// guard dispatches on: a tag quietly added here would carry whatever
+/// obligations its author felt like writing.
+///
+/// Plan §WP-RP3 (`R4133_PROPS_PLAN.md:1084-1090`): "exactly one outcome — a port
+/// bug **fixed in both lanes**, or an upstream/echo divergence **excluded +
+/// pinned** (ledger entry per §1.1(e) or echo row per RP2.3), or an upstream bug
+/// **reported** with its exclusion + pin" — the reported case lands as one of the
+/// two exclusions, which is why the tags are three and not four.
+#[test]
+fn the_settled_outcome_taxonomy_is_the_plans_three() {
+    assert_eq!(
+        RP3_SETTLED_SHAPES
+            .iter()
+            .map(|(t, _)| *t)
+            .collect::<Vec<_>>(),
+        ["LEDGER", "ECHO", "FIX"],
+        "the three settled shapes plan §WP-RP3 sanctions, and nothing else"
+    );
+    for (tag, owes) in RP3_SETTLED_SHAPES {
+        assert!(
+            !owes.is_empty(),
+            "{tag}: a tag with no stated obligation is a hole in the guard"
+        );
+    }
+}
+
+/// **Naming a witness is a whole-identifier match, not a substring one** — the
+/// self-test for [`names_identifier`], whose reason for existing is the exact
+/// pair of pins RP3.1 landed.
+#[test]
+fn naming_a_witness_is_a_whole_identifier_match() {
+    let short = "swtcontrol_delay_wires_the_property";
+    let long = "swtcontrol_delay_wires_the_property_on_the_midi_tie";
+    assert!(
+        LEDGER_ENTRY_PINS.iter().any(|(n, _, _)| *n == short)
+            && LEDGER_ENTRY_PINS.iter().any(|(n, _, _)| *n == long),
+        "both pins must still be the live example of the prefix hazard"
+    );
+    assert!(
+        !names_identifier(long, short),
+        "the longer pin must NOT count as naming the shorter one — that is the shadowing this \
+         helper exists to stop"
+    );
+    assert!(names_identifier(
+        &format!("witnessed by {short} and {long}."),
+        short
+    ));
+    assert!(names_identifier(
+        &format!("witnessed by {short} and {long}."),
+        long
+    ));
+    assert!(!names_identifier(
+        "a_swtcontrol_delay_wires_the_property",
+        short
+    ));
+}
+
+/// **The staged r4133 `property` entries have NOT landed — and this is the
+/// tripwire that turns RP4.1's landing into a red test** (RP3.1 audit
+/// settlement, 2026-08-24).
+///
+/// [`DECLARED_RP3`] and [`RP3_ROUTING`] promise that a settled sub-step's rows
+/// leave the work list once its artifact lands. Nothing in this file can deliver
+/// that on its own: the chain is [`Link::ORDER`]'s four links, none of which
+/// reads `tests/corpus/ledger.json`, and [`declare`] routes bin-7 root-cause
+/// rows to [`Owner::Rp3`] unconditionally. So the accounting move is a hand edit
+/// in RP4.1's commit, and the only way to make a hand edit unmissable is to fail
+/// loudly the moment it becomes due.
+///
+/// The condition is deliberately the whole class, not RP3.1's two ids: **any**
+/// `property`-scoped entry on the `r4133` channel means the unmask commit is
+/// landing staged entries (RP1.4's and RP3.2–RP3.4's included), which is exactly
+/// when every staged sub-step's rows must be re-declared.
+#[test]
+fn the_staged_r4133_property_entries_have_not_landed_yet() {
+    let path = repo_root().join(LEDGER);
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let doc: serde_json::Value = serde_json::from_str(&text).expect("ledger.json is JSON");
+    let landed: Vec<&str> = doc["entries"]
+        .as_array()
+        .expect("ledger.json has an `entries` array")
+        .iter()
+        .filter(|e| e["channel"] == "r4133")
+        .filter(|e| {
+            e["match"]
+                .as_array()
+                .is_some_and(|ms| ms.iter().any(|m| m["field"] == "property"))
+        })
+        .map(|e| e["id"].as_str().unwrap_or("<no id>"))
+        .collect();
+    assert!(
+        landed.is_empty(),
+        "r4133 `property` ledger entries have landed ({landed:?}), so the RP4.1 unmask is here \
+         — now move the RP3 accounting BY HAND, in that same commit: retire each settled \
+         RP3_ROUTING row whose entry landed (its rows are excluded now, not merely declared), \
+         shrink DECLARED_RP3 by exactly those rows, and re-state this test against whatever is \
+         still staged. Nothing does it for you: no link of the chain reads this file."
+    );
+}
+
+/// **RP3.1's census decomposition is read off the corpus, not off its own
+/// prose** (RP3.1 audit settlement, 2026-08-24).
+///
+/// The sub-step's conclusion — *exactly two* drafted ledger entries — is a
+/// statement about cases: 42 cells of `swtcontrol.delay`, 24 of them in scope,
+/// 12 + 12 over exactly the two `engines: r4133` decks that type `delay=`. Until
+/// this test those numbers lived in the routing verdict's prose and in STATUS,
+/// where changing `24` to `25` left the whole suite green.
+///
+/// Here every one of them is derived, from three independent places, and each
+/// derivation is reconciled against the next:
+///
+/// * the **decks** give the control count and the typed value (a corpus-wide
+///   sweep, so a new SwtControl deck cannot appear unnoticed —
+///   [`RP31_DELAY_CASES`] and [`RP31_NO_DELAY_CASES`] must together be every
+///   deck that declares one);
+/// * `population.lock.json` gives each case's `steps=` and `engines=`, so
+///   `cells = controls × steps` and "in scope" is the lock's own answer, not a
+///   transcription;
+/// * the **frozen census** (`bins.tsv`'s 42/24 and `examples_full.txt`'s two
+///   rows, 36 and 6 cells) is what the products must add up to, per spelling and
+///   in total.
+///
+/// Then the two consumers are tied to the result: the in-scope cases are exactly
+/// the cases [`LEDGER_ENTRY_PINS`] cites (one drafted entry each, no more), and
+/// the routing verdict must carry the derived figures verbatim.
+#[test]
+fn the_rp31_census_decomposition_is_read_off_the_corpus() {
+    const PAIR: &str = "swtcontrol.delay";
+    const STEP: &str = "RP3.1";
+
+    // (1) Completeness: the two tables ARE every corpus deck that declares a
+    //     SwtControl, with the control count and typed token each one carries.
+    let root = repo_root().join(CORPUS);
+    let mut decks = Vec::new();
+    collect_dss(&root, &root, &mut decks);
+    assert!(
+        decks.len() > 1000,
+        "only {} .dss files under {CORPUS} — the vendored corpus is missing",
+        decks.len()
+    );
+    let measured: BTreeMap<String, (usize, Option<String>)> = decks
+        .iter()
+        .map(|d| (d.clone(), swtcontrol_facts(d)))
+        .filter(|(_, (declared, _))| *declared > 0)
+        .collect();
+    let cited: BTreeMap<String, (usize, Option<String>)> = RP31_DELAY_CASES
+        .iter()
+        .map(|(case, n, token)| (case_deck(case), (*n, Some((*token).to_string()))))
+        .chain(
+            RP31_NO_DELAY_CASES
+                .iter()
+                .map(|(case, n)| (case_deck(case), (*n, None))),
+        )
+        .collect();
+    assert_eq!(
+        measured, cited,
+        "every corpus deck declaring a SwtControl must sit in RP3.1's decomposition with its \
+         measured control count and `delay=` token — a new one changes how many ledger entries \
+         the pair owes"
+    );
+
+    // (2) Per case: cells = controls × steps, in scope iff the case gates r4133.
+    let lock_path = repo_root().join(POPULATION_LOCK);
+    let lock: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&lock_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", lock_path.display())),
+    )
+    .expect("population.lock.json is JSON");
+    let corpus = Corpus::load();
+    let rows: Vec<&Example> = corpus.rows.iter().filter(|r| r.pair == PAIR).collect();
+    assert_eq!(
+        rows.len(),
+        2,
+        "the frozen census spells the pair two ways ('0.25' and '0'), got {rows:?}"
+    );
+    // spelling -> (cells, in-scope cells)
+    let mut per_spelling: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+    let mut in_scope_cases: Vec<(&str, usize)> = Vec::new();
+    for (case, declared, token) in RP31_DELAY_CASES {
+        let rigor = case_rigor(&lock, case);
+        let steps: usize = rigor_field(&rigor, "steps")
+            .parse()
+            .unwrap_or_else(|e| panic!("{case}: steps= is not a number: {e}"));
+        let cells = declared * steps;
+        let in_scope = rigor_field(&rigor, "engines") != "capi_v0145";
+        let typed: f64 = token
+            .parse()
+            .unwrap_or_else(|e| panic!("{case}: delay={token} is not a number: {e}"));
+        let row = rows
+            .iter()
+            .find(|r| r.rust.parse::<f64>().is_ok_and(|v| v == typed))
+            .unwrap_or_else(|| {
+                panic!("{case}: no frozen census row renders the deck's `delay={token}`")
+            });
+        assert_eq!(
+            row.r4133, "120",
+            "{case}: r4133 must render Create's default — that IS the divergence"
+        );
+        let e = per_spelling.entry(row.rust.as_str()).or_insert((0, 0));
+        e.0 += cells;
+        if in_scope {
+            e.1 += cells;
+            in_scope_cases.push((case, cells));
+        }
+    }
+    in_scope_cases.sort_unstable();
+
+    // (3) …and the products are the frozen census's own numbers, per spelling
+    //     and in total.
+    let ev = corpus
+        .evidence(rows[0])
+        .unwrap_or_else(|| panic!("{PAIR}: no frozen evidence record"));
+    assert_eq!(
+        per_spelling.values().map(|(c, _)| *c).sum::<usize>(),
+        ev.cells,
+        "derived cells must be bins.tsv's cell count for {PAIR}"
+    );
+    assert_eq!(
+        Some(per_spelling.values().map(|(_, c)| *c).sum::<usize>()),
+        ev.cells_in_scope,
+        "derived in-scope cells must be bins.tsv's cells_in_scope for {PAIR}"
+    );
+    for row in &rows {
+        assert_eq!(
+            per_spelling.get(row.rust.as_str()).map(|(c, _)| *c),
+            Some(row.cells),
+            "'{}': the frozen example row's count must be the sum over the cases that type it",
+            row.rust
+        );
+    }
+
+    // (4) One drafted entry per in-scope case, and no other.
+    let mut entry_cases: Vec<&str> = LEDGER_ENTRY_PINS
+        .iter()
+        .filter(|(_, s, _)| *s == STEP)
+        .map(|(_, _, cite)| {
+            cite.split_once(" (")
+                .and_then(|(_, rest)| rest.strip_suffix(')'))
+                .unwrap_or_else(|| panic!("{cite:?}: the citation must name its case in parens"))
+        })
+        .collect();
+    entry_cases.sort_unstable();
+    assert_eq!(
+        in_scope_cases.iter().map(|(c, _)| *c).collect::<Vec<_>>(),
+        entry_cases,
+        "exactly the in-scope cases owe a drafted ledger entry — one each, and the out-of-scope \
+         cells owe none (the RP4.1 unmask never compares them)"
+    );
+
+    // (5) The verdict carries the derived figures, so its prose cannot drift
+    //     away from the corpus it describes.
+    let verdict = RP3_ROUTING
+        .iter()
+        .find(|(p, ..)| *p == PAIR)
+        .map(|(_, _, _, _, v)| *v)
+        .unwrap_or_else(|| panic!("{PAIR} has no routing row"));
+    let (typed_spelling, (typed_cells, typed_in_scope)) = per_spelling
+        .iter()
+        .find(|(_, (_, in_scope))| *in_scope > 0)
+        .map(|(s, c)| (*s, *c))
+        .expect("one spelling carries the in-scope cells");
+    assert_eq!(
+        per_spelling
+            .values()
+            .filter(|(_, in_scope)| *in_scope > 0)
+            .count(),
+        1,
+        "only the typed spelling may have in-scope cells"
+    );
+    let untyped_cells = per_spelling
+        .iter()
+        .find(|(s, _)| **s != typed_spelling)
+        .map(|(_, (c, _))| *c)
+        .expect("the second spelling");
+    let split = in_scope_cases
+        .iter()
+        .map(|(_, c)| c.to_string())
+        .collect::<Vec<_>>()
+        .join(" + ");
+    for phrase in [
+        format!("spelling's {typed_cells} cells are {typed_in_scope} in scope"),
+        format!("{split} over the two r4133 decks"),
+        format!("plus {} on capi_v0145", typed_cells - typed_in_scope),
+        format!("spelling's {untyped_cells} cells are three capi_v0145 IEEE_519 copies"),
+        format!(
+            "{typed_in_scope} in-scope cells over exactly {} cases",
+            in_scope_cases.len()
+        ),
+    ] {
+        assert!(
+            verdict.contains(&phrase),
+            "the RP3.1 verdict must carry the derived census — {phrase:?} is missing from \
+             {verdict:?}"
+        );
+    }
+    assert!(
+        names_identifier(
+            verdict,
+            "the_rp31_census_decomposition_is_read_off_the_corpus"
+        ),
+        "the verdict must name the test that derives its numbers, so a rename cannot orphan it"
     );
 }
 

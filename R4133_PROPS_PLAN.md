@@ -1136,14 +1136,33 @@ census tail is reported and pinned, not imitated.
 > compile, so "render-only" is provable rather than inferred. The census
 > decomposes exactly as stated: 24 in-scope cells = 12 + 12 over
 > `swtcontrol_time.dss` + `midi_swtcontrol.dss`, both `engines: r4133`, ours
-> `0.25` vs r4133 `120`; the remaining 42 − 36 = 6 cells are three `capi_v0145`
-> copies of the vendored `IEEE_519.DSS` (`Delay=0.0`), which need no entry.
+> `0.25` vs r4133 `120`; of the 18 out-of-scope cells, 12 are
+> `swtcontrol_lock.dss` (`capi_v0145`, the third deck of the same `'0.25'`
+> spelling — whose frozen row is therefore 36 cells) and 6 are three
+> `capi_v0145` copies of the vendored `IEEE_519.DSS` (`Delay=0.0`), and neither
+> group needs an entry.
 > Landed: the report (`investigations/to_opendss/43-*`, local), the two drafted
 > entries (STATUS §WP-RP3, verbatim, landing at RP4.1), the two pins
 > `swtcontrol_delay_wires_the_property{,_on_the_midi_tie}`, and the per-pair work
 > list `props_r4133_replay::RP3_ROUTING` — `DECLARED_RP3` stays `(7, 4, 7)`
 > deliberately, since nothing in the tree claims those rows until the entries
 > land.
+>
+> **Audit-settled the same day** (ten minor findings, one commit, still zero
+> product and zero ledger bytes). Records: the "remaining 6" arithmetic above
+> (it is 18) and STATUS's RP2.4 frontier sentence corrected; the local report's
+> COM/DDLL paragraph fixed — the DDLL `Delay` **write** goes through
+> `Set_Parameter` → `DSSExecutive.Command` (`DDLL/DSwtControls.pas:135-136`,
+> `:20-28`) and is therefore dropped by the same missing arm, so only the COM
+> setter (`DLL/ImplSwtControls.pas:183`) can set what the script cannot. Guards:
+> the settled-verdict contract is now typed by the three outcomes §WP-RP3
+> sanctions (`RP3_SETTLED_SHAPES`) instead of hard-coding RP3.1's; a settled
+> verdict must cite the **r4133** unit (`Version8/Source/…`) and name each pin as
+> a whole identifier; the 24 = 12 + 12 decomposition is derived from the corpus
+> and the population lock (`the_rp31_census_decomposition_is_read_off_the_corpus`)
+> and tied one-for-one to the drafted entries; and the hand-move RP4.1 owes is
+> armed by `the_staged_r4133_property_entries_have_not_landed_yet` (§RP4.1
+> precondition 2).
 
 ### RP3.2 — `windgen.kvar` (r4133-only class, no second oracle)
 
@@ -1449,7 +1468,7 @@ verdict, not a floor.
 
 ### RP4.1 — `all_properties` on the r4133 channel (G1.1's deliverable)
 
-**Precondition added by RP2.3's audit settlement (2026-08-23) — narrow the 20
+**Precondition 1, added by RP2.3's audit settlement (2026-08-23) — narrow the 20
 mixed echo rows per cell before the unmask.** `PROPS_ECHO_R4133` is pair-scoped
 (the shape §1.2 prescribes), and on the 20 pairs that also hold a
 `PROPS_NORM_R4133` row that is wider than each row's citation: the typed rule's
@@ -1465,6 +1484,20 @@ mixed row its measured echo spellings and match on them. Landing either moves
 `harness::props_policy_tests::a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses`,
 which is written to be replaced rather than deleted. Do it **before** the flip:
 afterwards the same gap is a green gate that proves less than it says.
+
+**Precondition 2, added by RP3.1's audit settlement (2026-08-24) — landing the
+staged entries is also an accounting commit, and nothing does it for you.** The
+replay accounting (`props_r4133_replay.rs`) has no link that reads
+`tests/corpus/ledger.json`: the chain is `Link::ORDER`'s four links and
+`declare` routes every bin-7 row on `BIN7_ROOT_CAUSE` to `Owner::Rp3`
+unconditionally, so `DECLARED_RP3` does **not** shrink when the entries land and
+no test would notice the omission. In the same commit that lands them: retire
+each settled `RP3_ROUTING` row whose entry landed (its rows are excluded now,
+not merely declared), shrink `DECLARED_RP3` by exactly those rows, and re-state
+`the_staged_r4133_property_entries_have_not_landed_yet` against whatever is
+still staged — that tripwire goes red the moment the first `property`-scoped
+`r4133` entry appears, which is how this precondition announces itself. The same
+applies to RP1.4's and RP3.2–RP3.4's staged entries.
 
 Stop masking properties on r4133: remove the per-channel clear in the gate path
 (`corpus_gate/scheduler.rs:357-363`) and the seeding path (`scheduler.rs:710-717`),
