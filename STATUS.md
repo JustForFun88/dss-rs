@@ -201,8 +201,42 @@ follow-up commit — the recorded one is a *live* r4133 divergence the dossier
 missed on a pair it routed (the port refuses `normal=` on a locked SwtControl,
 r4133 applies it; probe-confirmed, engine fix, folded into **RP3.7 (a2)**), and
 the two majors were the third `EnumSynonym` map shipping without a closed-set pin
-and that same missed divergence. **RP2.3** (the echo-exclusion table + pins) is
-next, but the three RP3.5+ sub-steps are what RP4.1 waits on.
+and that same missed divergence.
+**RP2.3 (the echo-exclusion table + pins) is COMPLETE** (2026-08-23, one commit,
+**zero engine change** — harness/tests/docs only). `PROPS_ECHO_R4133` went from
+empty to **81 rows** (50 `EchoDefault` / 7 `EchoParse` / 14
+`EmptyCollectionRender` — one new, honestly-named category for the 14 pairs where
+r4133's arm is LIVE and merely renders the other empty-collection convention / 10
+`LiveSemanticsDiffer`), each with an r4133 `unit:line` citation and a typed
+witness (`Capi(n)` / `Pin(name)` / `CapiAndPin`), wired into `compare_prop_lists`
+**after** the normalization seam on the r4133 branch only. **Its kill criterion
+FIRED**, on six of the 86 declared pairs, and the user ruled both halves: the five
+dss_capi-0.14.5 `SilentReadOnly` surfaces (`indmach012.pf`,
+`storagecontroller.kwhtotal`/`kwtotal`/`kwhactual`/`kwactual`, **1 064 cells /
+772 in scope**) get **no echo row** — r4133 renders a live computed value there
+and the port answers `''` only by a capi convention, so under the 2026-08-02
+policy the fix is an engine change and they are re-routed loudly into the new
+**§RP3.8**, which now **blocks RP4.1** alongside RP3.5/3.6/3.7; and `generator.d`
+is **not an echo** either — `Create` initialises `GenVars.D` and never `Dpu`
+(`generator.pas:969` vs `:669`/`:2585`), so r4133's `'0'` is its own live value
+and `InitStateVars` then runs generator dynamics **undamped** against the
+property's documented 1.0 (`:2710`, `:467`). It landed as `LiveSemanticsDiffer` +
+pin + upstream report `investigations/to_opendss/42-generator-dpu-never-
+initialized.md`, and the three documents that had the mechanism wrong (plan §1.1
+RP1.1 note, vendored README §RP1.1, `BIN7_ECHO_SUPPLEMENT`'s comment) are
+corrected. Before the exclusions, **nine typed `PROPS_NORM_R4133` rows** were
+added so no mask covers a cell a rule can still compare (**6 446 cells / 6 370 in
+scope** stay compared); a tenth candidate, `swtcontrol.action`, took none (6
+foldable cells, 0 in scope). **20 expected-value pins** landed in the new
+`crates/dss-core/tests/props_r4133_pins.rs` — one per witness name, each
+compiling the deck the census flagged, asserting the port's live render literally
+plus a discriminating second reading, and swept clean of the `Export`/`Show`
+artifacts two of those decks write. The full claims census at HEAD (439 cases ×
+2 channels, baselines 5 r4133 / 22 capi) measures `echo-row` **488 018 cells /
+468 044 in scope** over 170 spellings and all 81 pairs, `UNCLAIMED` down
+545 568 → **51 104** (521 841 → **47 427**), capi still **0** on every r4133
+disposition. The three RP3.5+ sub-steps plus RP3.8 are what RP4.1 waits on;
+**RP2.4** (the display floor) is next.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -3167,6 +3201,168 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
       loosened. Test count **7 274 → 7 318** (3 637 → **3 659** per lane, ×2
       lanes): the one new pin lands in each of the 22 test binaries that include
       the harness.
+
+- **RP2.3** (2026-08-23) — the echo-exclusion table and its pins. **Zero engine
+  change**: `tests/harness/*`, `crates/dss-core/tests/*`, the vendored
+  `props_r4133/README.md` and docs. No golden byte, no `golden.lock.json`, no
+  `population.lock.json`, no `ledger.json` entry (§1.1(e) staging), the r4133
+  props live masks untouched, and `R4133_DISPLAY_FLOOR` still `None` (RP2.4's
+  slot). Run as parts A (dossier) / B1 (tables) / B2 (pins, census, docs, the
+  one commit).
+  - **THE KILL CRITERION FIRED — six rows, and the user ruled both halves.**
+    Part A read all 86 pairs of the declared `Owner::Rp23` bucket against the
+    r4133 source and found six that cannot be cited to an echo site. Reported
+    per the plan's stop-and-consult gate; the user chose (AskUserQuestion,
+    2026-08-23):
+    - **R1, the five `SilentReadOnly` surfaces** — `indmach012.pf` and
+      `storagecontroller.kwhtotal`/`kwtotal`/`kwhactual`/`kwactual`, **1 064
+      cells / 772 in scope**. r4133 renders each one LIVE
+      (`Version8/Source/PCElements/IndMach012.pas:1790`;
+      `Controls/StorageController.pas:991-994` → `GetkWhTotal`/`GetkWTotal`/
+      `GetkWhActual`/`GetkWActual`, declared `:136-139`); the port answers `''`
+      only because dss_capi 0.14.5 flags them `[SilentReadOnly, ReadByFunction]`
+      and the port reproduces that at one class-agnostic gate
+      (`obj/props/class_props/value.rs:21-27`). Under the standing 2026-08-02
+      policy the 0.14.5 convention yields, so the fix is an ENGINE change — and
+      RP2.3 may not touch a product crate. They therefore take **no echo row**
+      and are re-routed loudly: `props_r4133_replay::RP38_ROUTING` +
+      `DECLARED_RP38 = (181, 5, 181)`, with a new plan **§RP3.8** that **blocks
+      RP4.1** (§0's list now reads RP3.5/3.6/3.7 **+ 3.8**).
+    - **R2, `generator.d`** — the plan, the vendored README §RP1.1 and
+      `BIN7_ECHO_SUPPLEMENT`'s comment all called it an echo "from a frozen
+      default whose field says 1.0". Wrong mechanism: the field that is 1.0 is
+      `GenVars.D`; the property's field is `GenVars.Dpu`, which `Edit` writes
+      (`generator.pas:669`) and `InitPropertyValues` snapshots (`:2585`), and
+      which `Create` **never** touches (it sets `D := 1.0`, `:969`). So r4133's
+      `'0'` is its own live value, and `InitStateVars` then computes
+      `D := Dpu*kVArating*1000/w0 = 0` (`:2710`) — every generator that does not
+      set `D=` runs dynamics **undamped**, against the property's documented
+      default (`:467`). An upstream initialisation bug; 0.14.5 fixed it
+      (`Dpu := 1.0`, `src/PCElements/Generator.pas:1006`) and the port follows.
+      Landed as `LiveSemanticsDiffer` + pin + upstream report
+      `investigations/to_opendss/42-generator-dpu-never-initialized.md`
+      (gitignored, not in the commit); the three wrong texts are corrected.
+  - **The table: 81 rows** (86 − the 5 re-routes), each with an r4133
+    `unit:line` citation, a measured `cells` column read back against
+    `bins.tsv`/the README, and a typed witness. Split **50** `EchoDefault` /
+    **7** `EchoParse` / **14** `EmptyCollectionRender` / **10**
+    `LiveSemanticsDiffer`.
+    `EmptyCollectionRender` is the **one** new category the ruling sanctioned:
+    14 pairs where r4133's getter arm is LIVE and merely renders the other
+    empty-collection convention (`'[]'` from a loop over zero points, `'()'`
+    from a paren wrapper, `''` from an early exit) — all three original tags
+    would have been a lie there, and the kill criterion exists to stop exactly
+    that. The count is above the plan's ~50–70 estimate because the bucket the
+    RP2.1 replay had already declared by name holds 86 pairs (bin 5's 43 + bin
+    7's 12 + bin 1's 9 + six bin-2-labelled pairs whose `''`-echo cells the chain
+    routes here + bin 3's 3 + bin 4's 2 + the supplement's 11) — measured scope,
+    not creep.
+  - **The seam.** `PropsPolicy::echo_excluded` sits in `compare_prop_lists`
+    **after** the normalization seam and immediately before
+    `assert_value_matches_tol`; `continue` drops the VALUE assert only — name
+    and index order are still walked, exactly `SKIP_PROPS`' shape. r4133 only:
+    the capi arm is `false` for everything and is pinned
+    (`the_capi_channel_never_excludes`, plus the real-comparator four-corner
+    test `an_echo_row_drops_only_its_own_value_only_on_r4133`). The order is the
+    per-cell discrimination: **20 pairs hold both** a normalization row and an
+    echo row, and 135 of their example rows are claimed by the typed rule first
+    (`MULTI_LINK_ROWS`).
+  - **Nine typed rows landed FIRST** (part A finding F4, ruling R3), so that no
+    pair-scoped mask can cover a cell a rule can still compare: `load.yearly`,
+    `reactor.bus2`, `invcontrol.monvoltagecalc` (`CaseFold`) and `line.wires`,
+    `load.zipv`, `generator.userdata`, `storage.dynadata`,
+    `storagecontroller.seasontargets`/`seasontargetslow` (`ArrayForm`) — **6 446
+    cells / 6 370 in scope** stay compared. The tenth measured candidate,
+    `swtcontrol.action`, deliberately took **no** row: one foldable spelling, 6
+    cells, **0 in scope**, and the row would have loosened a live RP2.2 pin
+    (`the_pairs_routed_elsewhere_have_no_row`) for zero live coverage.
+  - **Witnesses — 20 expected-value pins**, new file
+    `crates/dss-core/tests/props_r4133_pins.rs`, covering the **32** rows whose
+    value capi does not (or must not only) hold. **21 are pin-only**: the seven
+    Recloser/Relay pairs (capi skips those elements whole), ten
+    RegControl/Line/Transformer/AutoTrans pairs dropped by
+    `PROPS_015X`/`SKIP_PROPS` (five RegControl props, `line.conductors`, both
+    `transformer.bh*`, both `autotrans.bh*` — probe-confirmed: the pinned oracle
+    reports 35 RegControl property names, the port 39), `windgen.dynout` (no
+    capi-gating case holds a WindGen), and the three whose echo cells all sit on
+    capi-only cases (`fault.bus2`, `line.spacing`, `swtcontrol.action`). The
+    other **11 have a capi witness *and* a pin**: every `LiveSemanticsDiffer` row
+    (capi is a numeric oracle, so it cannot carry "ours is the right value") plus
+    `energymeter.peakcurrent`, which the plan names. Each compiles the deck
+    the census flagged, asserts the port's live `?` render literally and adds a
+    discriminating second reading (a deck or an edit where the same getter
+    answers otherwise). Own binary on purpose — in `harness/` each pin would
+    re-solve its deck in all 22 harness binaries.
+    `every_echo_row_pin_is_a_test_that_exists` reads the names back both ways;
+    a `DeckDirGuard` sweeps the `Export`/`show eventlog` artifacts two of the
+    decks write into the vendored tree (measured: `git status` clean after).
+  - **Liveness, both ways.** Offline, in the replay:
+    `every_echo_row_claims_at_least_one_example_row` (all 81 exclude ≥1 example
+    row) and `every_echo_row_matches_its_cited_evidence` (each `cells` column
+    read back against the file it cites). Live: `ECHO_VISITS`/`ECHO_HITS` per row +
+    `assert_echo_rows_are_live()` in the gate epilogue, **silent-when-dormant**
+    (part A finding F5) with a closed two-row exemption list,
+    `ECHO_ROWS_WITH_NO_IN_SCOPE_CELL` = `fault.bus2`, `line.spacing` — both
+    measured at 0 in-scope cells, and `fault.bus2` is the one that makes the
+    exemption necessary rather than tidy (its pair *is* compared on r4133, so
+    its row will be visited and can never hit).
+  - **Locks moved, each delta measured** (offline replay + an independent
+    Python replication that first reproduced the pre-change baseline exactly):
+    `NORM_ROWS` 161→**170**, `CLAIMED_CASE_FOLD` 440→**528**,
+    `CLAIMED_ARRAY_FORM` 192→**203**, new `CLAIMED_NORMALIZATION` **854**,
+    `CLAIMED_ECHO` 0→**170**, `CLAIMED_TOTAL` **1 024**, `MULTI_LINK_ROWS`
+    0→**135** (20 pairs, split per pair), `CLAIMED_TOTAL_LIVE` 756→**855**,
+    `ECHO_ROWS` 0→**81** + four per-category locks, `DECLARED_RP23`
+    (450, 86, 449)→**(0, 0, 0)** and new `DECLARED_RP38` **(181, 5, 181)**.
+    450 = 99 norm + 170 echo + 181 RP3.8, exactly; the RP2.4/RP3/RP3.5/
+    OutOfScope triples did not move.
+    `the_echo_table_and_the_display_floor_claim_nothing_yet` was **replaced by a
+    successor that asserts strictly more** —
+    `the_echo_table_claims_only_its_cited_pairs_and_the_floor_claims_nothing`
+    (the floor is still inert over the same walk; the echo link claims ONLY
+    cited pairs; the five re-routed pairs stay compared).
+  - **Full claims census at HEAD** (`DSS_PROPS_CENSUS=claims`, 439 cases × 2
+    channels, 1 060 165 rows, 65.2 s; error counts at the recorded baselines —
+    **5** r4133 / **22** capi, so the run is complete, not short):
+    `echo-row` **488 018 cells / 468 044 in scope**, 170 spellings, all **81**
+    pairs; `CaseFold` 99 023/95 270 (+6 047/+6 039), `ArrayForm`
+    122 756/118 744 (+399/+331), `BoolFold` and `EnumSynonym` unmoved;
+    claimed **1 008 935 / 966 790** over **231 distinct** pairs (the `pairs`
+    column stops being summable this sub-step — 20 pairs carry two
+    dispositions); `UNCLAIMED` 545 568 → **51 104** (521 841 → **47 427**), 103
+    pairs. capi claims **0** on every r4133 disposition, its 11 `ledger-hit`s
+    intact. Term-by-term reconciliation: census claimed spellings 1 025 = the
+    replay's `CLAIMED_TOTAL` 1 024 + the one `LIVE_ONLY_SPELLINGS` row (the same
+    +1 drift RP2.1/RP2.2 recorded); norm-link 855 = `CLAIMED_TOTAL_LIVE`;
+    echo 170 = `CLAIMED_ECHO`; residual bin 5 = 1 069 cells = RP3.8's 1 064 +
+    `line.linecode`'s 5 (RP3.6).
+  - **Hand-offs consumed:** the `energymeter.peakcurrent` third spelling (the
+    pair carries BOTH kinds of row and the chain discriminates per cell — 518
+    `ArrayForm`, 6 echo), the two zero `CLAIMED_` locks and `MULTI_LINK_ROWS`
+    (all three moved deliberately, above), and `generator.dynout` (RP2.2's fixed
+    `LiveSemanticsDiffer` verdict, now with its pin).
+  - **New hand-offs:** **§RP3.8** (engine sub-step, blocks RP4.1; scope, probe
+    procedure, capi-side exclusion and golden-exposure measurement authored in
+    the plan); **RP4.1 must check the zero-damping ledger** — any r4133-gated
+    deck running generator dynamics without `D=` may already carry the R2 bug in
+    its triage; and **F7's deferral** — `Capacitor`/`Reactor` `FaultRate`
+    (1 729 cells) and the three `CMatrix`/`RMatrix`/`XMatrix` rows stay in
+    `SKIP_PROPS_BOTH_CHANNELS` with no echo row, because a row would be dead
+    offline (no example row) and dead live (the skip keeps the compare away);
+    their unmask + row + pin is an RP4.1-or-later decision that must land in one
+    commit. Both `SKIP_PROPS` comments record it.
+  - **Goldens measured, not assumed:** `git status` after the full gate shows
+    only the sub-step's own files; no golden, lock, ledger, manifest or frozen
+    census extract moved, and the stray `Export`/eventlog artifacts the pinned
+    decks drop into `tests/corpus/electricdss-tst/` are swept by the pin file's
+    own guard (verified by `git status` and `git clean -f -- tests/corpus`).
+  - Full five-command gate green on the final tree, both lanes; no test was
+    deleted, `#[ignore]`d or loosened — the one test that was *replaced*
+    (`the_echo_table_and_the_display_floor_claim_nothing_yet`) is replaced by a
+    strictly stronger successor. Test count **7 318 → 7 812** (3 659 →
+    **3 906** per lane, ×2 lanes): 22 in the new pin binary (20 pins + the deck
+    guard's two self-tests), 1 in the replay, and the rest are the harness-side
+    guards, which land in each of the 22 test binaries that include the harness.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

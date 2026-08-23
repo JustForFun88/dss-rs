@@ -25,10 +25,11 @@ pub mod scenario;
 /// Stage F two-lane test policy (parity vs default build).
 pub mod lane;
 
-/// `R4133_PROPS_PLAN.md` RP2.1: the channel-scoped, value-preserving property
-/// normalization table (`PROPS_NORM_R4133`) and the echo-exclusion table
-/// RP2.3 fills (`PROPS_ECHO_R4133`). Consulted only through
-/// [`PropsPolicy::normalize`], and only on [`PropsChannel::R4133`].
+/// `R4133_PROPS_PLAN.md` RP2.1/RP2.3: the channel-scoped, value-preserving
+/// property normalization table (`PROPS_NORM_R4133`) and the echo-exclusion
+/// table (`PROPS_ECHO_R4133`, filled by RP2.3). Consulted only through
+/// [`PropsPolicy::normalize`] and [`PropsPolicy::echo_excluded`], and only on
+/// [`PropsChannel::R4133`].
 pub mod props_norm;
 
 /// Self-golden regeneration rails: the `DSS_UPDATE_GOLDENS` knob plus the
@@ -1579,6 +1580,11 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     1 059 + 670 + 670 cells, every one of them Rust
     //     `'(0 |0 0 |0 0 0 )'` against r4133 `''` — the echo, exactly as read
     //     off the Pascal.
+    //
+    //     RP2.3 DID NOT re-file them (2026-08-23, part A finding F7): while the
+    //     skip stands, an echo row here would exempt nothing on either side —
+    //     see the identical disposition at the `FaultRate` rows of note (d)
+    //     below for the full argument and the RP4.1-or-later schedule.
     ("Capacitor", "CMatrix"),
     ("Reactor", "RMatrix"),
     ("Reactor", "XMatrix"),
@@ -1691,6 +1697,22 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //        census. So those two rows keep BOTH channels
     //        ([`SKIP_PROPS_BOTH_CHANNELS`]) and hand the echo case to RP2.3,
     //        rather than putting 1 729 unowned cells into RP4.1's residual.
+    //
+    //     RP2.3 AS EXECUTED (2026-08-23, part A finding F7): **no row landed**,
+    //     and the deferral moves to RP4.1-or-later. Landing one now would be
+    //     dead at both ends — the two rows stay in
+    //     [`SKIP_PROPS_BOTH_CHANNELS`], so the r4133 compare never reaches the
+    //     pair (no live hit, and `props_norm::assert_echo_rows_are_live` would
+    //     have to exempt it) and the frozen extracts hold no example row for it,
+    //     which `props_r4133_replay::every_echo_row_claims_at_least_one_example
+    //     _row` reports as a table row exempting nothing. The measurement above
+    //     stands and is what a later sub-step re-uses: unmasking these two rows
+    //     for r4133 is an RP4.1-or-later decision that lands the unmask, the
+    //     `EchoDefault` row and its pin **in one commit**, so neither half is
+    //     ever dead. §1.1(e) staging is why RP2.3 did not move the mask itself.
+    //     The three `Capacitor.CMatrix`/`Reactor.RMatrix`/`Reactor.XMatrix` rows
+    //     above, whose (a) comment offers RP2.3 the same re-file, are deferred
+    //     on the same reasoning and the same schedule.
     ("Capacitor", "FaultRate"),
     ("Capacitor", "pctperm"),
     ("Reactor", "FaultRate"),
@@ -2162,7 +2184,146 @@ mod props_policy_tests {
                     ch.tag()
                 );
             }
+            // …and it reaches RP2.3's exclusion seam no more than it reaches
+            // the normalization one: a plain re-census must report exactly the
+            // population RP0.1 measured, echo rows or not.
+            for (class, prop, rust, oracle) in EXCLUDED {
+                assert!(
+                    !plain.echo_excluded(class, prop, rust, oracle),
+                    "{class}.{prop}: plain census mode must not exclude on {}",
+                    ch.tag()
+                );
+            }
         }
+    }
+
+    /// Cells a shipped [`PROPS_ECHO_R4133`] row excludes on r4133 — one per
+    /// category, each a real census spelling
+    /// (`tests/corpus/props_r4133/examples_full.txt` /
+    /// `examples_supplement.txt`), so the two channel tests below cover the
+    /// whole mechanism rather than one row of it.
+    ///
+    /// [`PROPS_ECHO_R4133`]: super::props_norm::PROPS_ECHO_R4133
+    const EXCLUDED: &[(&str, &str, &str, &str)] = &[
+        ("RegControl", "Idle", "No", ""),       // EchoDefault
+        ("Relay", "Reset", "No", "0.20"),       // EchoParse
+        ("Transformer", "BHCurrent", "", "[]"), // EmptyCollectionRender
+        ("Generator", "D", "1", "0"),           // LiveSemanticsDiffer
+    ];
+
+    /// **The capi channel never excludes** — plan mechanic (b) applied to
+    /// RP2.3's link. Every cell below is one the r4133 arm masks; on capi the
+    /// comparator must still assert it, because the capi compare IS the witness
+    /// most of those rows cite.
+    #[test]
+    fn the_capi_channel_never_excludes() {
+        let capi = PropsPolicy::for_channel(PropsChannel::CapiV0145);
+        for (class, prop, rust, oracle) in EXCLUDED {
+            assert!(
+                !capi.echo_excluded(class, prop, rust, oracle),
+                "{class}.{prop}: the capi channel must compare the value"
+            );
+        }
+    }
+
+    /// The other half: on **r4133** the armed policy really does exclude every
+    /// cell in [`EXCLUDED`] — without this the capi test would pass just as
+    /// well against a seam that excludes nothing at all — and it leaves a pair
+    /// with no row alone.
+    #[test]
+    fn the_r4133_channel_excludes_the_cited_echo_pairs() {
+        let r4133 = PropsPolicy::for_channel(PropsChannel::R4133);
+        for (class, prop, rust, oracle) in EXCLUDED {
+            assert!(
+                r4133.echo_excluded(class, prop, rust, oracle),
+                "{class}.{prop}: a cited echo row must drop the value compare"
+            );
+        }
+        assert!(
+            !r4133.echo_excluded("RegControl", "Band", "2", "3"),
+            "a pair with no echo row must still compare"
+        );
+        assert!(
+            !r4133.echo_excluded("IndMach012", "PF", "", "0.908391"),
+            "the SilentReadOnly family takes no row (RP2.3's kill ruling)"
+        );
+    }
+
+    /// **Non-vacuity through the REAL comparator.** The two tests above drive
+    /// the seam; this one drives [`compare_prop_lists`] itself, on an element
+    /// whose property list holds an echo-excluded prop next to an ordinary one,
+    /// and pins all four corners:
+    ///
+    /// * r4133 + the excluded prop divergent → **passes** (that is the row);
+    /// * r4133 + a NON-excluded prop of the same element divergent → **fails**
+    ///   (the row is field-scoped, not element-scoped — the mask cannot hide a
+    ///   neighbour);
+    /// * capi + either → **fails** (the exclusion is channel-scoped);
+    /// * and the property NAME is still walked on r4133, so a renamed or
+    ///   reordered property fails there too, exactly as `SKIP_PROPS` behaves.
+    ///
+    /// **Both props are deliberately pairs `PROPS_NORM_R4133` has no row for**
+    /// (`regcontrol.idleforward` is one of the five pure-echo bin-1 pairs;
+    /// `regcontrol.band` takes no row at all). This test drives the REAL
+    /// comparator, so a prop with a normalization row would move that row's
+    /// process-global visit counter without ever folding anything, and
+    /// `assert_norm_rows_are_live()` — which runs once at the end of the gate,
+    /// in this same binary — would then report the row as stale. That is the
+    /// test-ordering trap RP2.1 part D removed from three tests in
+    /// `props_norm::tests`; measured here on the first full-workspace run.
+    /// The ECHO counters this test does move all end with `hits > 0`, which is
+    /// what their own guard asks.
+    ///
+    /// [`compare_prop_lists`]: super::compare_prop_lists
+    #[test]
+    fn an_echo_row_drops_only_its_own_value_only_on_r4133() {
+        use super::{PROPS_015X, compare_prop_lists};
+        let props = |pairs: &[(&str, &str)]| -> Vec<(String, String)> {
+            pairs
+                .iter()
+                .map(|(n, v)| (n.to_string(), v.to_string()))
+                .collect()
+        };
+        let run = |channel, actual: &[(&str, &str)], oracle: &[(&str, &str)]| {
+            let (a, o) = (props(actual), props(oracle));
+            std::panic::catch_unwind(move || {
+                compare_prop_lists(
+                    "RegControl.r1",
+                    "RegControl",
+                    &a,
+                    &o,
+                    PROPS_015X,
+                    PropsPolicy::for_channel(channel),
+                    false,
+                    1e-9,
+                    1e-9,
+                    "self",
+                )
+            })
+            .is_ok()
+        };
+        // r4133-shaped lists (its own table carries `IdleForward`, so
+        // `PROPS_015X` keeps it and the walk compares it).
+        let echo_cell = [("IdleForward", "No"), ("Band", "2")];
+        let echo_oracle = [("IdleForward", ""), ("Band", "2")];
+        let both_bad = [("IdleForward", ""), ("Band", "3")];
+        let renamed = [("IdleForward", ""), ("BandWidth", "2")];
+        assert!(
+            run(PropsChannel::R4133, &echo_cell, &echo_oracle),
+            "the echo row must drop `IdleForward`'s value compare on r4133"
+        );
+        assert!(
+            !run(PropsChannel::R4133, &echo_cell, &both_bad),
+            "a NON-echo property of the same element must still fail on r4133"
+        );
+        assert!(
+            !run(PropsChannel::R4133, &echo_cell, &renamed),
+            "the property NAME walk is untouched by an echo row"
+        );
+        assert!(
+            !run(PropsChannel::CapiV0145, &echo_cell, &echo_oracle),
+            "the capi channel must still fail on the very cell r4133 excludes"
+        );
     }
 }
 
@@ -2490,6 +2651,15 @@ fn compare_prop_lists(
         // channel — always, by contract — so the assert below sees exactly the
         // strings it saw before RP2.1.
         let (aval, eval) = policy.normalize(class, ename, aval, eval);
+        // THE EXCLUSION SEAM (plan §1.2, RP2.3), the chain's third link: a
+        // cited `PROPS_ECHO_R4133` pair whose two renderings are not two
+        // spellings of one value drops the VALUE assert here — name and order
+        // are already checked above. r4133 only, and AFTER the normalization
+        // seam, so a mixed pair's foldable cells are compared (and counted)
+        // first. Identity on the capi channel, always.
+        if policy.echo_excluded(class, ename, &aval, &eval) {
+            continue;
+        }
         // Case-EXACT compare (no lowercasing): every DSS enum getter renders the
         // Pascal-faithful case — `ordinal_to_string` returns the exact registry
         // strings (`wye`/`delta` lowercase, `Variable`/`Fixed` capitalized,
@@ -2689,6 +2859,33 @@ impl PropsPolicy {
             return props_norm::normalize_r4133(class, prop, rust, oracle);
         }
         (Cow::Borrowed(rust), Cow::Borrowed(oracle))
+    }
+
+    /// **The exclusion seam** (plan §1.2, RP2.3): the chain's third link, asked
+    /// *after* [`PropsPolicy::normalize`] has had its chance and immediately
+    /// before [`assert_value_matches_tol`] would run.
+    ///
+    /// `true` drops the VALUE compare of this cell — the property's name and
+    /// index order have already been asserted, exactly [`SKIP_PROPS`]' shape.
+    /// Which pairs, and the r4133 citation plus witness each one carries, is
+    /// [`props_norm::PROPS_ECHO_R4133`].
+    ///
+    /// **The order is the mechanism, not a detail.** Normalization runs first,
+    /// so on a mixed pair (20 of the 81 rows) a typed rule claims its foldable
+    /// cells — and records its own hit, which is what keeps that row provably
+    /// live — while this exclusion covers only what is left. Asking this first
+    /// would mask cells the engine can and does compare, and would make every
+    /// mixed pair's normalization row look dead.
+    ///
+    /// On capi the seam is `false` for everything. That arm is the permanent
+    /// capi-invariance contract, not an unfinished one: capi is where most of
+    /// these rows' witness lives, so an echo row leaking onto that channel
+    /// would delete the evidence the row cites. Pinned by
+    /// [`props_policy_tests::the_capi_channel_never_excludes`].
+    ///
+    /// [`assert_value_matches_tol`]: super::assert_value_matches_tol
+    fn echo_excluded(self, class: &str, prop: &str, rust: &str, oracle: &str) -> bool {
+        self.is_r4133() && props_norm::echo_excluded_r4133(class, prop, rust, oracle)
     }
 }
 

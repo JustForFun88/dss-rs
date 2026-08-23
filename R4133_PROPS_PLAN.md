@@ -148,7 +148,9 @@ in RP2.1; its rows land in RP2.3); RP2.3 lands after RP2.2 (its row set is "bin 
 lands after RP2.3 whenever its outcome is an echo row; RP3.4 lands after RP2.3
 (its ledger twins must not duplicate echo rows). RP4.1 starts only after
 **every** RP1–RP3 sub-step is landed, including any RP3.5+ sub-step RP2.2's
-triage opens; RP5 is last. Execution is on a **single branch only — never in parallel
+triage opens **and §RP3.8, which RP2.3's kill criterion opened** (its 1 064 cells
+are re-routed, not claimed — see `RP38_ROUTING` in the replay); RP5 is last.
+Execution is on a **single branch only — never in parallel
 worktrees**: `tests/corpus/ledger.json`, `tests/corpus/manifests/population.lock.json`
 and `tests/golden/golden.lock.json` are fail-on-stale and are rewritten by this
 plan **and** by the still-open GOLDEN_REBASE WP-G1 sub-steps (G1.2, G1.3d run
@@ -180,7 +182,7 @@ audits on `opus-xhigh` exec rows are themselves `opus-xhigh`.
 | RP2.2 | `opus-high+` | `opus-high+` | `opus-high+` | per-pair source dossier over an enumerated, closed pair list |
 | RP2.3 | `opus-high+` | `opus-high+` | `opus-high+` | echo-exclusion rows, each mechanically citable to an r4133 echo site, plus pins |
 | RP2.4 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | a new channel-scoped numeric floor — calibration discipline (the eight required components are enumerated in RP2.4 itself) |
-| RP3.1–RP3.4 (+ any RP3.5+ opened by RP2.2) | `opus-high+` | `opus-high+` | `opus-high+` | one root-cause each, bounded surface, live-probe procedure prescribed |
+| RP3.1–RP3.4 (+ any RP3.5+ opened by RP2.2 or RP2.3) | `opus-high+` | `opus-high+` | `opus-high+` | one root-cause each, bounded surface, live-probe procedure prescribed |
 | RP4.1 | `opus-high+` | `opus-high+` | `opus-high+` | flag flip + residual triage (G1.1's own tier) |
 | RP5.1, RP5.2 | `opus-high+` | `opus-high+` | `opus-high+` | doc surgery validated by `oracle_parity_cfg_gate.rs` doc tests |
 
@@ -232,7 +234,22 @@ four-root-cause list is no longer closed. Its cause is already read off the
 Pascal and is an **echo**, not a jump
 (`Create` sets `GenVars.D := 1.0` and never `Dpu`, `generator.pas:955-971`;
 `InitPropertyValues` echoes `Format('%-g', [GenVars.Dpu])`, `:2585`), so it is
-RP2.2 triage → an RP2.3 echo row, not an RP3 root-cause sub-step. **Closed out
+RP2.2 triage → an RP2.3 echo row, not an RP3 root-cause sub-step.
+**CORRECTION (2026-08-23, RP2.3 part A finding F1; the kill ruling's R2,
+user-approved).** The two sentences above are right about the routing and wrong
+about the mechanism, and the difference matters. The property's field is
+`GenVars.Dpu` — what `Edit` writes (`generator.pas:669`) and what
+`InitPropertyValues` snapshots (`:2585`) — while `Create` initializes
+`GenVars.D` (`:969`) and **never** `Dpu`. So the frozen `'0'` is not a stale
+store at all: it is r4133's own live value, and `InitStateVars` then recomputes
+`D := Dpu*kVArating*1000/w0 = 0` (`:2710`), discarding `Create`'s 1.0 and running
+generator dynamics **undamped** against the property's documented default
+("Default is 1.0", `:467`). That is an upstream initialisation bug, not an echo;
+dss_capi 0.14.5 fixed it (`Dpu := 1.0`, `src/PCElements/Generator.pas:1006`) and
+the port follows. The pair still lands in RP2.3, but as an
+`EchoCategory::LiveSemanticsDiffer` row with an expected-value pin
+(`generator_d_renders_the_documented_damping_default`) and an upstream report
+(`investigations/to_opendss/42-generator-dpu-never-initialized.md`). **Closed out
 2026-08-23** across all four sub-steps: 12 (RP1.1) + 9 (RP1.2) + 2 (RP1.3) +
 1 (RP1.4) = **24 new pairs**, structural 210 → 225 and numeric 94 → 103, shape
 classes 5 → 0.
@@ -872,6 +889,59 @@ row cited; every no-capi-witness row has its pin; replay accounting green.
 Outcome: ~443 000 in-scope cells become documented, pinned exclusions instead
 of silence.
 
+**As executed (2026-08-23, STATUS §WP-RP2).** **The kill criterion FIRED**, on
+six of the 86 bucket pairs, and the user ruled both halves
+(AskUserQuestion, 2026-08-23): the five dss_capi-0.14.5 `SilentReadOnly`
+surfaces (`indmach012.pf`, `storagecontroller.kwhtotal`/`kwtotal`/`kwhactual`/
+`kwactual`, **1 064 cells / 772 in scope**) take **no echo row** — r4133 renders
+a live computed read-only value there and the port renders `''` only by a
+capi-lineage convention, so under the 2026-08-02 policy the fix is an engine
+change and they are re-routed to the new **§RP3.8** below (`RP38_ROUTING` /
+`DECLARED_RP38 = (181, 5, 181)` in the replay, blocking RP4.1 per §0); and
+`generator.d` lands as `LiveSemanticsDiffer` + pin + upstream report rather than
+the echo this section's §1.1 note called it (the mechanism correction is at that
+note).
+
+**81 rows landed** (86 − 5), split 50 `EchoDefault` / 7 `EchoParse` / 14
+`EmptyCollectionRender` / 10 `LiveSemanticsDiffer`. The count is above the
+~50–70 estimate for a measured reason, not scope creep: the bucket the RP2.1
+replay had already *declared by name* holds 86 pairs — bin 5's 43 (of 44;
+`line.linecode` went to RP3.6) + bin 7's 12 + bin 1's 9 + six bin-2-labelled
+pairs whose `''`-echo cells the chain routes here + bin 3's 3 + bin 4's 2 + the
+supplement's 11 — and RP2.3's job was to close exactly that set. **One new
+category** was needed and added, `EmptyCollectionRender`: 14 pairs where r4133's
+getter arm is LIVE and merely renders the other empty-collection convention
+(`'[]'`/`'()'`/`''` for an unset array), so all three original tags would have
+been false.
+
+**Nine new `PROPS_NORM_R4133` rows landed FIRST** (part A finding F4, the
+ruling's R3), so that no pair-scoped mask covers a cell a typed rule can still
+compare: `load.yearly`/`reactor.bus2`/`invcontrol.monvoltagecalc` `CaseFold` and
+`line.wires`/`load.zipv`/`generator.userdata`/`storage.dynadata`/
+`storagecontroller.seasontargets`+`seasontargetslow` `ArrayForm`, keeping **6 446
+cells (6 370 in scope)** inside the value compare. The tenth measured pair,
+`swtcontrol.action`, deliberately took none (6 foldable cells, **0 in scope**,
+and the row would have loosened a live RP2.2 pin for zero live coverage).
+
+**Witnesses**: 20 expected-value pins in the new
+`crates/dss-core/tests/props_r4133_pins.rs`, covering the 32 rows whose value the
+capi channel does not (or must not only) hold. 21 are pin-only — the seven
+Recloser/Relay pairs (capi skips those elements whole), the ten
+`PROPS_015X`/`SKIP_PROPS` RegControl/Line/Transformer/AutoTrans pairs,
+`windgen.dynout` (no capi case holds a WindGen) and the three whose echo cells
+are all on capi-only cases; the other 11 carry both witnesses — every
+`LiveSemanticsDiffer` row plus `energymeter.peakcurrent`, which this section
+names. Each compiles the deck the claims census flagged and
+asserts the port's live render literally, with a discriminating second reading;
+`props_r4133_replay::every_echo_row_pin_is_a_test_that_exists` reads the names
+back both ways.
+
+**Measured (full claims census at HEAD, 439 cases × 2 channels, error baselines
+5 r4133 / 22 capi):** `echo-row` claims **488 018 cells (468 044 in scope)** over
+170 spellings and all 81 pairs; `UNCLAIMED` falls 545 568 → **51 104**
+(521 841 → **47 427** in scope), leaving the RP2.4 display class and RP3's
+residue. The capi channel still claims **zero** cells — the exclusion is r4133-only.
+
 ### RP2.4 — the r4133 props display floor
 
 Derive the channel-scoped numeric floor for r4133 property values from the
@@ -1117,6 +1187,77 @@ state; **and (a2) landed in both lanes with its own pin** (a locked `normal=`
 applies, a locked `state=`/`action=` does not), with the corrected §D12 record —
 (a2) is a fix, not a decision, so it may not be deferred to `ORPHANED_GAPS.md`
 even if (a) is. Tier: `opus-high+`.
+
+### RP3.8 — the five read-only text surfaces r4133 renders live (opened by RP2.3)
+
+**Why it exists.** RP2.3's kill criterion fired on five pairs — `indmach012.pf`
+and `storagecontroller.kwhtotal`/`kwtotal`/`kwhactual`/`kwactual`, **1 064 cells
+/ 772 in scope** — because none of them can be cited to an r4133 echo site.
+r4133 renders each one **live**: `IndMach012.pas:1790`
+(`Format('%.6g', [PowerFactor(Power[1, ActiveActor])])`) and
+`StorageController.pas:991-994`, which call `GetkWhTotal`/`GetkWTotal`/
+`GetkWhActual`/`GetkWActual` (declared `:136-139`). The port answers `''`, and
+only because dss_capi 0.14.5 flags the properties `[SilentReadOnly,
+ReadByFunction]` and leaves their `PropertyOffset` at `-1`, so its
+`GetObjPropertyValue` short-circuits before the read function runs — a
+convention the port reproduces deliberately at one class-agnostic gate,
+`crates/dss-core/src/obj/props/class_props/value.rs:21-27`, over
+`PropFlags::SILENT_READ_ONLY` (`obj/props/prop_flags.rs:55-64`; the PropDefs are
+`elements/pc/ind_mach012/mod.rs:88` and
+`elements/control/storage_controller/mod.rs:231-234`). Under the standing
+2026-08-02 policy r4133 is the behavioral authority and a 0.14.5 convention is
+not, so the correct endpoint is the engine rendering the value — which RP2.3
+could not do (zero product-crate bytes) and therefore re-routed here, loudly:
+`props_r4133_replay::RP38_ROUTING` + the `DECLARED_RP38 = (181, 5, 181)` count
+lock. **Blocks RP4.1** (§0): those 772 in-scope cells would otherwise land in the
+unmask's residual with no owner. User-approved 2026-08-23 (the RP2.3 kill
+ruling, R1).
+
+**Scope.** Render the live computed value for the five surfaces, matching r4133's
+formatting (`%.6g` for `indmach012.pf`, `IndMach012.pas:1790`; `%-.8g` for the
+four StorageController ones, `StorageController.pas:1160-1197` — read all four
+bodies rather than assuming one format). **One of them has a side effect worth
+naming**: `GetkWhTotal`/`GetkWTotal` take a `Var Sum` and the getter passes the
+object's own `TotalkWhCapacity`/`TotalkWCapacity` (`:991-992`), so in r4133
+*reading the property writes state* — the port must render the same number
+without inheriting that (it is the `VSConverter.GetCurrents` family of hazard,
+CLAUDE.md §"Known upstream bugs"). **Decide explicitly
+whether the fix is the text surface or the flag**: `SILENT_READ_ONLY` is read in
+three places — the `?`/`DumpProperties` render (`class_props/value.rs:25`), the
+JSON *export* omission (`class_props/json.rs:44-48`) and the JSON *set* refusal
+(`class_props/json_set.rs:76`) — and only the first is what r4133 disagrees with.
+The default expectation is therefore a narrowed marker (or a second flag) that
+keeps the JSON behavior exactly as it is, so no JSON golden moves; anything wider
+must be argued from measurement, not convenience. `SILENT_READ_ONLY`'s other
+holders are out of scope and must be shown unmoved.
+
+**Do first:** an epri-worker probe reading all five properties on a solved
+`controls:storagecontroller/*` deck and on `controls:fuse/indmach_r4133/
+indmach_snap.dss`, so the expected strings come from the r4133 DLL and not from
+reading the Pascal alone (the census only measured the port's `''` against
+r4133's text; the *numbers* have never been compared).
+
+**Capi side.** 0.14.5 will keep answering `''`, so the change creates a
+capi-channel divergence on every `both` case that holds one of these elements:
+exclude it field-by-field (a `SKIP_PROPS_CAPI_ONLY` row per pair, with the 0.14.5
+`SilentReadOnly` citation) and pin the port's live value with its own
+expected-value test — the same shape RP2.3's pins use
+(`crates/dss-core/tests/props_r4133_pins.rs`). **Measure golden exposure in this
+sub-step**: `?`/`Dump`/`Show`/JSON-export bytes for the two classes, plus
+`props_roundtrip`, and regenerate whatever legitimately moves in the same commit
+(`golden.lock.json` with it).
+
+**Kill criterion:** if the probe shows r4133's five renders are *not* reproducible
+from the port's own state (e.g. a quantity the port does not track, or one that
+depends on r4133's fleet-iteration order), stop and report — the outcome is then
+a cited exclusion + pin on the r4133 channel too, not a guessed formula.
+**Acceptance:** the probe recorded; the five surfaces render the live value in
+**both lanes**; the capi-side divergence excluded field-by-field and pinned; the
+JSON surfaces proven unmoved (or their goldens regenerated with the argument);
+`RP38_ROUTING`'s five pairs re-routed out of `DECLARED_RP38` into the ordinary
+claimed accounting (or into a cited exclusion), and the replay's count locks
+moved with their deltas stated. Tier: `opus-high+`.
+Outcome: the last population RP4.1 has no owner for is owned.
 
 ---
 
