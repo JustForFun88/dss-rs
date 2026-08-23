@@ -198,15 +198,18 @@ const LIVE_ONLY_SPELLINGS: &[(&str, &str, &str, &str)] = &[(
 /// They are the same population drift RP2.1/RP2.2 recorded as "+2 cells on each
 /// `vsource` pair", seen at spelling granularity: the decks WP-RP1 added read
 /// `Vsource`'s `Isc*`/`R1`/`X0`/`X1` getters at source impedances the 2026-08-08
-/// walk never saw. Every one is inside its own pair's frozen `max_rel`, and the
+/// walk never saw. Every one is inside its own pair's frozen `max_rel` (both
+/// facts asserted, [`LIVE_ONLY_DISPLAY_PAIRS`] and `frozen_max_rel`), and the
 /// widest is 2.51e-05 — a quarter of the floor and well under the derivation's
-/// 6.431124e-05 worst, so the live population moves no part of it.
+/// 6.431124e-05 worst, so the live population moves no part of it. All six pass
+/// the mechanism clause; they are renders, not RP3.9's residue.
 ///
 /// Recorded as an asserted term rather than left as drift (the rule
 /// [`LIVE_ONLY_SPELLINGS`] was created under, RP2.1 audit round): without it the
-/// census's 3 036 claimed spellings and the replay's [`CLAIMED_TOTAL`] would
+/// census's 2 981 claimed spellings and the replay's [`CLAIMED_TOTAL`] would
 /// disagree by six with nothing to say why.
 const LIVE_ONLY_DISPLAY_SPELLINGS: &[(&str, &str, &str)] = &[
+    // (the five pairs below are [`LIVE_ONLY_DISPLAY_PAIRS`])
     ("vsource.isc1", "104347.826086957", "1.0435E005"),
     ("vsource.isc1", "69565.2173913044", "69565"),
     ("vsource.isc3", "45183.9341104925", "45184"),
@@ -215,10 +218,205 @@ const LIVE_ONLY_DISPLAY_SPELLINGS: &[(&str, &str, &str)] = &[
     ("vsource.x1", "1.425570507158", "1.4256"),
 ];
 
+/// The pairs [`LIVE_ONLY_DISPLAY_SPELLINGS`] may name — the five `Vsource`
+/// getters the recorded "+2 cells per vsource pair" drift touches, and nothing
+/// else. Asserted, so the list cannot quietly grow a pair whose live population
+/// was never measured.
+const LIVE_ONLY_DISPLAY_PAIRS: &[&str] = &[
+    "vsource.isc1",
+    "vsource.isc3",
+    "vsource.r1",
+    "vsource.x0",
+    "vsource.x1",
+];
+
 /// Claimed **spellings** the full claims census measures on the r4133 channel
 /// (439 cases × 2 channels, 2026-08-23, post-RP2.4) — the live counterpart of
 /// [`CLAIMED_TOTAL`], reconciled by the two live-only lists above.
-const CLAIMED_SPELLINGS_LIVE: usize = 3036;
+///
+/// **2 981 since the RP2.4 audit settlement**, from 3 036: the floor's mechanism
+/// clause un-claims the 55 [`RP39_ROUTING`] spellings, live exactly as offline
+/// (vendored `README.md` §"What the RP2.4 audit settlement moved").
+const CLAIMED_SPELLINGS_LIVE: usize = 2981;
+
+/// **RP3.9 — the round-trip residue RP2.4's mechanism clause refuses**:
+/// `(pair, example rows, r4133 site)`.
+///
+/// The display floor claims a cell only when the r4133 side is our value rounded
+/// to the digits r4133 printed (`props_norm::display_is_render`). These 27 pairs
+/// carry 55 spellings that are inside the floor and are NOT such a render: the
+/// two engines hold doubles further apart than one `%.Ng` print can account for,
+/// because the round trip happened upstream of a derived quantity (r4133's
+/// `load.kva` is recomputed from an already round-tripped `pf`; `vsource.puz*`
+/// from a round-tripped Z; `line.b0`/`b1` from a round-tripped C) or because
+/// r4133's own getter prints at full precision and the two values simply differ
+/// (`Format('%-g')` / `Format('%g')` — `load.*`, `capacitor.normamps`,
+/// `reactor.normamps`).
+///
+/// **They are a work list, not a disposition.** RP2.4's part-A survey claimed
+/// them as display cells and the audit round disproved it (both majors,
+/// 2026-08-23): each pair needs the round-trip chain read off the Pascal and
+/// then either an expected-value pin or a ledger entry, exactly like the RP3.1-8
+/// sub-steps. **No cell of any of them is in scope today** — the full claims
+/// census measures `count_in_scope = 0` on all 55 spellings (70 cells), which is
+/// why the unmask is not blocked on the finding — but RP4.1 stays gated on
+/// RP3.9 all the same (plan §0), because scope is a property of today's manifest
+/// and the divergence is a property of the engines.
+/// Columns: `(pair, example rows, rows on in-scope pairs, r4133 site)`.
+const RP39_ROUTING: &[(&str, usize, usize, &str)] = &[
+    (
+        "autotrans.wdgcurrents",
+        1,
+        0,
+        "AutoTrans.pas:1863 -> :1662 GeTAutoWindingCurrentsResult (solved state)",
+    ),
+    (
+        "capacitor.cuf",
+        1,
+        0,
+        "Capacitor.pas:1098-1103 -> Utilities.pas:2600-2607 `%-.6g`",
+    ),
+    (
+        "capacitor.emergamps",
+        1,
+        0,
+        "Capacitor.pas:1109 `%g` (full precision)",
+    ),
+    (
+        "capacitor.normamps",
+        1,
+        0,
+        "Capacitor.pas:1108 `%g` (full precision)",
+    ),
+    (
+        "generator.kva",
+        1,
+        1,
+        "generator.pas:3021 `%.6g` / MakePosSequence :3060 `%-.5g`",
+    ),
+    (
+        "generator.kvar",
+        1,
+        0,
+        "generator.pas:3018 `%.6g` / MakePosSequence :3058 `%-.5g`",
+    ),
+    (
+        "generator.maxkvar",
+        1,
+        1,
+        "generator.pas:3019 `%.6g` / MakePosSequence :3059 `%-.5g`",
+    ),
+    (
+        "generator.minkvar",
+        1,
+        1,
+        "generator.pas:3020 `%.6g` / MakePosSequence :3059 `%-.5g`",
+    ),
+    (
+        "line.b0",
+        2,
+        2,
+        "Line.pas:1407 `%.7g` of twopi*f*C0*1e6/units",
+    ),
+    (
+        "line.b1",
+        2,
+        2,
+        "Line.pas:1406 `%.7g` of twopi*f*C1*1e6/units",
+    ),
+    (
+        "load.kva",
+        13,
+        0,
+        "Load.pas:2352 `%-g` (full precision), kVA from a round-tripped pf",
+    ),
+    ("load.kvar", 1, 0, "Load.pas:2350 `%-g` (full precision)"),
+    (
+        "load.kw",
+        2,
+        0,
+        "Load.pas:2344 `%-g` / MakePosSequence :2326 `%-.5g` of kW/3",
+    ),
+    (
+        "load.xfkva",
+        1,
+        0,
+        "Load.pas:325 prop 21, no getter arm -> PropertyValue[]; MakePosSequence :2328",
+    ),
+    (
+        "reactor.emergamps",
+        1,
+        0,
+        "Reactor.pas:1100 `%g` (full precision)",
+    ),
+    ("reactor.lmh", 1, 1, "Reactor.pas:1098 `%-.8g` of L*1000"),
+    (
+        "reactor.normamps",
+        1,
+        0,
+        "Reactor.pas:1099 `%g` (full precision)",
+    ),
+    (
+        "reactor.x",
+        1,
+        1,
+        "Reactor.pas:1092 `%-.8g` / MakePosSequence :1145-1201 `%-.5g`",
+    ),
+    (
+        "reactor.z",
+        1,
+        1,
+        "Reactor.pas:1097 `[%-.8g, %-.8g]` of (R, X) — the same X",
+    ),
+    (
+        "transformer.emergamps",
+        1,
+        1,
+        "Transformer.pas:1843 `%-.5g`, amps from a round-tripped kVA",
+    ),
+    (
+        "transformer.normamps",
+        1,
+        1,
+        "Transformer.pas:1842 `%-.5g`, amps from a round-tripped kVA",
+    ),
+    (
+        "vsource.isc3",
+        3,
+        3,
+        "Vsource.pas:1330 `%-.5g`, Isc3 from a round-tripped Z",
+    ),
+    (
+        "vsource.mvasc1",
+        2,
+        2,
+        "Vsource.pas:1329 `%-.5g`, MVAsc from a round-tripped Z",
+    ),
+    (
+        "vsource.mvasc3",
+        2,
+        2,
+        "Vsource.pas:1328 `%-.5g`, MVAsc from a round-tripped Z",
+    ),
+    (
+        "vsource.puz0",
+        4,
+        0,
+        "Vsource.pas:1341 `[%-.8g, %-.8g]`, puZ0 from a round-tripped Z",
+    ),
+    (
+        "vsource.puz1",
+        4,
+        0,
+        "Vsource.pas:1340 `[%-.8g, %-.8g]`, puZ1 from a round-tripped Z",
+    ),
+    (
+        "vsource.puz2",
+        4,
+        0,
+        "Vsource.pas:1342 `[%-.8g, %-.8g]`, puZ2 from a round-tripped Z",
+    ),
+];
 
 /// Example rows the shape-allowlist link claims — **zero, and structurally so**:
 /// the census recorded the one r4133-active allowlist gap
@@ -242,7 +440,14 @@ const CLAIMED_SHAPE_ALLOWLIST: usize = 0;
 /// No row claimed by an earlier link is also inside the floor
 /// ([`MULTI_LINK_ROWS`] is unchanged at 135), which is why this number is a
 /// clean addition to [`CLAIMED_TOTAL`] rather than a re-partition.
-const CLAIMED_DISPLAY_FLOOR: usize = 2006;
+///
+/// **1 951 since the RP2.4 audit settlement** (2026-08-23), from 2 006: the
+/// floor's mechanism clause (`props_norm::display_is_render`) refuses the **55**
+/// spellings whose r4133 side is no `%.Ng` render of our value, and they are
+/// declared to [`Owner::Rp39`] instead ([`RP39_ROUTING`]). Both auditors
+/// measured that population independently and reached the same 55/70 cells; the
+/// clause makes the refusal a property of the predicate rather than of a survey.
+const CLAIMED_DISPLAY_FLOOR: usize = 1951;
 
 /// Rows for which **more than one** link matches — **135 since RP2.3**, over 20
 /// pairs that hold a `PROPS_NORM_R4133` row AND a `PROPS_ECHO_R4133` row.
@@ -314,6 +519,14 @@ const DECLARED_RP38: (usize, usize, usize) = (181, 5, 181);
 /// name.
 const DECLARED_RP24: (usize, usize, usize) = (0, 0, 0);
 const DECLARED_RP3: (usize, usize, usize) = (7, 4, 7);
+/// **RP3.9 — the round-trip residue the RP2.4 audit settlement opened**: the 55
+/// example rows over 27 pairs whose gap is inside the floor and whose r4133 side
+/// is no `%.Ng` render of our value ([`RP39_ROUTING`], which carries the per-pair
+/// split and the sites). The third term is the rows on pairs the RP4.1 unmask
+/// compares and that the frozen ceilings do not prove out of scope; the LIVE
+/// census measures 0 in-scope cells on all 55 (README §"What the RP2.4 audit
+/// settlement moved").
+const DECLARED_RP39: (usize, usize, usize) = (55, 27, 19);
 /// The three sub-steps RP2.2 opened: **8 rows over 6 pairs, 5 of them in
 /// scope** — RP3.5 `line.units` (1 row, 0 in scope), RP3.6 `line.linecode`
 /// (2 rows, both in scope — the only RP3.5+ pair the RP4.1 unmask will actually
@@ -1081,6 +1294,13 @@ enum Owner {
     /// change, forbidden inside RP2.3's zero-product-bytes scope. See
     /// [`RP38_ROUTING`]; RP4.1 does not start until it closes (plan §0).
     Rp38,
+    /// **RP3.9 — the sub-step the RP2.4 audit settlement opened**: 55 spellings
+    /// over 27 pairs that sit inside the display floor and are no `%.Ng` render
+    /// of our value, so the two engines hold genuinely different doubles (an
+    /// upstream command-string round trip amplified through a derived quantity,
+    /// or a plain state difference). See [`RP39_ROUTING`]; RP4.1 does not start
+    /// until it closes (plan §0).
+    Rp39,
     /// Nothing will claim it: every cell of the pair sits on an
     /// `engines: "capi_v0145"` case, which plan §1.3 keeps uncompared on r4133.
     OutOfScope,
@@ -1095,6 +1315,7 @@ impl Owner {
             Owner::Rp3 => "RP3",
             Owner::Rp35 => "RP3.5+ (opened by RP2.2)",
             Owner::Rp38 => "RP3.8 (opened by RP2.3's kill criterion)",
+            Owner::Rp39 => "RP3.9 (opened by the RP2.4 audit settlement)",
             Owner::OutOfScope => "out of scope (§1.3)",
         }
     }
@@ -1290,6 +1511,24 @@ fn bins_evidence() -> BTreeMap<String, Vec<PairEvidence>> {
         });
     }
     out
+}
+
+/// A numeric pair's frozen FULL-census `max_rel` (`bins.tsv` column 7), which
+/// [`PairEvidence`] does not carry — the accounting only ever needs the in-scope
+/// one. Read straight off the file so the anchor in
+/// [`the_display_floors_live_only_spellings_reconcile_the_claims_census`] is the
+/// vendored number and not a transcription.
+fn frozen_max_rel(pair: &str) -> Option<f64> {
+    data_rows(
+        "bins.tsv",
+        Some("pair\tkind\tbin\tsubbin\tcells\tcells_in_scope\tmax_rel\tmax_rel_in_scope"),
+    )
+    .into_iter()
+    .filter_map(|line| {
+        let f: Vec<&str> = line.split('\t').collect();
+        (f[0] == pair && f[1] == "numeric").then(|| f[6].parse::<f64>().ok())?
+    })
+    .next()
 }
 
 /// One row of the vendored `README.md` §"Pairs the WP-RP1 shape closures make
@@ -1695,6 +1934,22 @@ fn declare(row: &Example, ev: &PairEvidence) -> Result<Owner, String> {
             row.pair, row.rust, row.r4133
         ));
     }
+    // RP2.4's MECHANISM residual, ahead of every bin rule: a numeric cell whose
+    // gap is inside the display floor and whose r4133 side is no `%.Ng` render
+    // of our value. The floor refuses it by construction, and the reason has
+    // nothing to do with the pair's bin or with §1.3 scope — the two engines
+    // hold different doubles. See [`RP39_ROUTING`].
+    if ev.numeric && display_class_but_not_a_render(row) {
+        return match RP39_ROUTING.iter().find(|(p, _, _, _)| *p == row.pair) {
+            Some(_) => Ok(Owner::Rp39),
+            None => Err(format!(
+                "{} '{}' vs '{}': inside RP2.4's display floor but no `%.Ng` render of our \
+                 value, on a pair RP39_ROUTING does not cite — read the r4133 round-trip \
+                 chain off the Pascal and cite it, or fix the port",
+                row.pair, row.rust, row.r4133
+            )),
+        };
+    }
     if ev.numeric {
         return match ev.effective_bin() {
             // A display-class row the FLOOR did not claim (it runs before this
@@ -1765,6 +2020,22 @@ fn declare(row: &Example, ev: &PairEvidence) -> Result<Owner, String> {
     }
 }
 
+/// **RP2.4's mechanism residual, as a row predicate**: the gap is inside the
+/// derived display floor, and the r4133 spelling is still no `%.Ng` render of
+/// our value.
+///
+/// Both halves read the SHIPPED predicates (`props_norm::display_rel` and
+/// `props_norm::display_is_render`, the two clauses of
+/// `props_norm::under_display_floor`), so "the floor refused it for the
+/// mechanism" is asked of the comparator itself and not re-derived here.
+fn display_class_but_not_a_render(row: &Example) -> bool {
+    let Some(floor) = props_norm::display_floor() else {
+        return false;
+    };
+    props_norm::display_rel(&row.rust, &row.r4133).is_some_and(|rel| rel <= floor)
+        && !props_norm::display_is_render(&row.rust, &row.r4133)
+}
+
 /// **The row-level scope proof RP2.4 needs** — does the pair's own frozen
 /// `max_rel_in_scope` show that this spelling has no cell the RP4.1 unmask
 /// compares? `Some(ratio)` when it does, where `ratio` is the measured
@@ -1779,13 +2050,34 @@ fn declare(row: &Example, ev: &PairEvidence) -> Result<Owner, String> {
 /// The gap is [`props_norm::display_rel`], the shipped metric the floor itself
 /// is expressed in, so "above the ceiling" and "outside the floor" are read off
 /// one function.
+///
+/// **Single-number rows only** (RP2.4 audit settlement, 2026-08-23). The two
+/// metrics are not the same function: `display_rel` is symmetric and maximizes
+/// over ALL numbers of the cell, while the census's `max_rel` is `|a−e|/|e|`
+/// over the numbers that FAIL the case's tier floor (`harness::value_verdict`).
+/// On a one-number row the implication still holds — the row's only number IS
+/// the offender of any divergent cell it sits on, and `|e| <= max(|a|,|b|)`
+/// makes the census metric the larger of the two, so `gap > ceiling` really does
+/// exclude an in-scope cell. On a MULTI-number row the maximum could be attained
+/// at a number the tier's `abs` term absorbs, which contributes nothing to
+/// `max_rel_in_scope`, and the proof would not close. All 105 rows the rule
+/// re-declares today are single-number; the guard keeps it that way instead of
+/// leaving the limit as a comment.
 fn row_out_of_scope_by_ceiling(row: &Example, ev: &PairEvidence) -> Option<f64> {
     if !ev.numeric {
         return None;
     }
     let (_, ceiling, _) = RP24_OUT_OF_SCOPE.iter().find(|(p, _, _)| *p == row.pair)?;
+    if numbers_in(&row.r4133) != 1 || numbers_in(&row.rust) != 1 {
+        return None;
+    }
     let gap = props_norm::display_rel(&row.rust, &row.r4133)?;
     (gap > ceiling * CEILING_ROUND_MARGIN).then(|| gap / ceiling)
+}
+
+/// How many numbers a render carries, through the comparator's own scanner.
+fn numbers_in(s: &str) -> usize {
+    harness::numeric_skeleton(s).1.len()
 }
 
 /// Does this example row have at least one cell the RP4.1 unmask will compare?
@@ -1952,6 +2244,7 @@ fn every_example_row_is_claimed_or_declared_exactly_once() {
         (Owner::Rp3, DECLARED_RP3),
         (Owner::Rp35, DECLARED_RP35),
         (Owner::Rp38, DECLARED_RP38),
+        (Owner::Rp39, DECLARED_RP39),
         (Owner::OutOfScope, DECLARED_OUT_OF_SCOPE),
     ] {
         assert_eq!(
@@ -2323,7 +2616,12 @@ fn the_live_only_spellings_are_claimed_and_reconcile_the_two_accountings() {
 ///   its first match and the census's `under-floor` tag is right;
 /// * on a pair the frozen `bins.tsv` holds, which is exactly what bars the
 ///   spelling from the supplement — and absent from the vendored rows, so it
-///   genuinely has no home here.
+///   genuinely has no home here;
+/// * on one of the **five** `vsource` pairs the recorded drift names, and
+///   inside that pair's own frozen `max_rel` (RP2.4 audit round: without these
+///   two the list carried only its own length, and any nearby invented number
+///   passed — the mutation the auditor landed was `vsource.x1` `'1.4257'`,
+///   which is 9.09e-05 against that pair's frozen 3.72e-05 ceiling).
 #[test]
 fn the_display_floors_live_only_spellings_reconcile_the_claims_census() {
     assert_eq!(
@@ -2349,6 +2647,21 @@ fn the_display_floors_live_only_spellings_reconcile_the_claims_census() {
         // no part of the calibration.
         let rel = props_norm::display_rel(rust, r4133).expect("a numeric cell");
         assert!(rel <= floor / 2.0, "{pair}: {rel:e}");
+        // Anchored to the pair's OWN frozen evidence, not just to the floor:
+        // one of the five `vsource` pairs the drift is recorded on, and inside
+        // that pair's frozen `max_rel` (`%.2e`-rounded, hence the margin).
+        assert!(
+            LIVE_ONLY_DISPLAY_PAIRS.contains(pair),
+            "{pair} is not one of the five vsource pairs the recorded drift names"
+        );
+        let ceiling = frozen_max_rel(pair)
+            .unwrap_or_else(|| panic!("{pair} has a numeric bins.tsv row with a max_rel"));
+        assert!(
+            rel <= ceiling * CEILING_ROUND_MARGIN,
+            "{pair} '{rust}' vs '{r4133}': {rel:e} is above the pair's own frozen max_rel \
+             {ceiling:e} — a live-only spelling this far out is a new population, not the \
+             recorded +2-cells-per-vsource-pair drift"
+        );
         // Invisible to both vendored files, for the recorded reason.
         assert!(
             corpus.bins.contains_key(*pair),
@@ -2661,6 +2974,18 @@ fn the_echo_table_claims_only_its_cited_pairs_and_the_floor_only_its_derivation(
                 )
             });
             assert!(rel <= floor, "{}: {rel:e} is outside the floor", row.pair);
+            // …and the MECHANISM, per claimed row: r4133's spelling is our
+            // value rounded to the digits r4133 printed. This is the audit
+            // settlement's core assertion — before it, "every claimed cell is a
+            // `%[-].Ng` render" was a survey in a doc comment, and 55 rows
+            // contradicted it (`RP39_ROUTING`).
+            assert!(
+                props_norm::display_is_render(&row.rust, &row.r4133),
+                "{} '{}' vs '{}': claimed by the floor but no `%.Ng` render of our value",
+                row.pair,
+                row.rust,
+                row.r4133
+            );
             if rel > worst.0 {
                 worst = (
                     rel,
@@ -2811,6 +3136,16 @@ fn the_display_floors_residual_rows_are_proved_out_of_scope() {
         let Some(ev) = corpus.evidence(row) else {
             continue;
         };
+        // …and the rows RP3.9 owns are not this rule's business either: the
+        // mechanism arm of `declare` runs first, so a spelling inside the floor
+        // that is no render never reaches the ceiling. Two of them (on
+        // `capacitor.cuf` and `generator.kvar`) WOULD clear their ceiling, and
+        // counting them here would both inflate the cited row counts and drop
+        // the measured margin from 277x to 2.08x — the walk must measure what
+        // the accounting actually re-declares.
+        if declare(row, ev) != Ok(Owner::OutOfScope) {
+            continue;
+        }
         let Some(ratio) = row_out_of_scope_by_ceiling(row, ev) else {
             continue;
         };
@@ -2842,6 +3177,21 @@ fn the_display_floors_residual_rows_are_proved_out_of_scope() {
          locked {RP24_OUT_OF_SCOPE_MIN_RATIO:.1}x — the scope proof is no longer orders of \
          magnitude clear of the `%.2e` rounding and must be re-measured"
     );
+    // …and the lock is a MEASUREMENT, not a floor to hide behind: bracket it
+    // above too, and pin the rounding margin literally. Both constants were
+    // one-sided as landed (the audit round mutated 277.0 → 2.0 and
+    // CEILING_ROUND_MARGIN 1.01 → 200.0 without a test noticing).
+    assert!(
+        min_ratio < 278.0,
+        "the measured minimum is 277.17x (storagecontroller.kwneed, 1.374769e-03 against its \
+         4.96e-06 ceiling); a different number means the population moved — re-record it, do \
+         not widen the `>=`"
+    );
+    assert_eq!(
+        CEILING_ROUND_MARGIN, 1.01,
+        "the `%.2e` rounding of max_rel_in_scope needs at most 1.005x; 1.01 is twice that and \
+         nothing in this rule may need more"
+    );
     // The ceilings are the vendored ones, not transcriptions free to drift.
     for (pair, ceiling, _) in RP24_OUT_OF_SCOPE {
         let ev = corpus
@@ -2859,6 +3209,128 @@ fn the_display_floors_residual_rows_are_proved_out_of_scope() {
     // counted in scope (plan §1.3's own claim).
     let led = account(&corpus, PROPS_NORM_R4133);
     assert_eq!(led.owner(Owner::OutOfScope), DECLARED_OUT_OF_SCOPE);
+
+    // **The single-number guard, driven** (RP2.4 audit settlement). The proof
+    // needs the row's gap to dominate the census's offender-only `max_rel`,
+    // which holds for one number and need not for several — so a multi-number
+    // row on a cited pair is refused outright, however far above the ceiling it
+    // sits. All 105 real rows are single-number, so only a synthetic row can
+    // reach this arm; without it the rule would silently widen the day a
+    // vector-valued spelling appears on one of the four pairs.
+    let (pair, ceiling, _) = RP24_OUT_OF_SCOPE[0];
+    let ev = corpus
+        .bins
+        .get(pair)
+        .and_then(|all| all.iter().find(|e| e.numeric))
+        .expect("a cited pair has numeric evidence");
+    let two_numbers = Example {
+        pair: pair.to_string(),
+        class: pair.split('.').next().unwrap().to_string(),
+        prop: pair.split('.').nth(1).unwrap().to_string(),
+        rust: "[1, 2]".to_string(),
+        r4133: "[1, 4]".to_string(),
+        cells: 1,
+        src: Source::Frozen,
+    };
+    assert!(
+        props_norm::display_rel(&two_numbers.rust, &two_numbers.r4133)
+            .is_some_and(|gap| gap > ceiling * CEILING_ROUND_MARGIN),
+        "the synthetic row must be far above the ceiling, or it proves nothing"
+    );
+    assert_eq!(
+        row_out_of_scope_by_ceiling(&two_numbers, ev),
+        None,
+        "{pair}: the ceiling proof must refuse a multi-number row"
+    );
+    // …and the same row with ONE number is accepted, so the guard is the
+    // number count and not the shape of the render.
+    let one_number = Example {
+        rust: "1".to_string(),
+        r4133: "4".to_string(),
+        ..two_numbers
+    };
+    assert!(row_out_of_scope_by_ceiling(&one_number, ev).is_some());
+}
+
+/// **The floor's mechanism residual has an OWNER, and it is exactly the
+/// measured one** — the RP2.4 audit settlement's both-ways guard for
+/// [`RP39_ROUTING`].
+///
+/// The settlement's finding was that 55 vendored spellings the floor claimed are
+/// no `%.Ng` render of our value, so they are neither a display artifact nor
+/// (as the census then tagged them) "not a defect, no fix owner". Everything the
+/// re-declaration rests on is asserted here rather than trusted:
+///
+/// * every row the walk refuses for the mechanism sits on a cited pair, and
+///   every cited pair really carries the number of refused rows it claims — so
+///   a pair whose round trip gets fixed (or whose spelling changes) reds here
+///   instead of silently emptying the work list;
+/// * each refused row is **inside** the floor (it is the mechanism clause that
+///   refuses it, not the metric — otherwise this would be ordinary bin-7
+///   material), and no earlier link claims it;
+/// * each citation names an r4133 site, the same discipline
+///   [`ECHO_CARVE_OUT_ROUTING`] and [`RP38_ROUTING`] carry;
+/// * and the bucket the accounting builds is [`DECLARED_RP39`].
+#[test]
+fn the_display_floors_round_trip_residue_is_owned_by_rp39() {
+    assert_eq!(
+        (
+            RP39_ROUTING.iter().map(|(_, n, _, _)| n).sum::<usize>(),
+            RP39_ROUTING.len(),
+            RP39_ROUTING.iter().map(|(_, _, n, _)| n).sum::<usize>(),
+        ),
+        DECLARED_RP39,
+        "the routing's three columns must sum to the bucket lock"
+    );
+    let corpus = Corpus::load();
+    let floor = props_norm::display_floor().expect("RP2.4 derived the floor");
+    let mut seen: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+    for row in &corpus.rows {
+        if !display_class_but_not_a_render(row) {
+            continue;
+        }
+        let (pair, _, _, cite) = RP39_ROUTING
+            .iter()
+            .find(|(p, _, _, _)| *p == row.pair)
+            .unwrap_or_else(|| {
+                panic!(
+                    "{} '{}' vs '{}': inside the floor, no `%.Ng` render, and no RP39_ROUTING \
+                     row — the residue grew and needs its round-trip chain read off the Pascal",
+                    row.pair, row.rust, row.r4133
+                )
+            });
+        assert!(
+            cite.contains(".pas:"),
+            "{pair}: an RP3.9 routing must cite the r4133 site, got {cite:?}"
+        );
+        // The METRIC would have claimed it; only the mechanism clause does not.
+        let rel = props_norm::display_rel(&row.rust, &row.r4133).expect("a numeric cell");
+        assert!(rel <= floor, "{pair}: {rel:e} is outside the floor");
+        assert!(!props_norm::under_display_floor(&row.rust, &row.r4133));
+        assert_eq!(
+            first_match(chain_verdicts(&corpus, row)),
+            None,
+            "{pair}: an RP3.9 row must be unclaimed by every link"
+        );
+        let ev = corpus.evidence(row).expect("a declared row has evidence");
+        let e = seen.entry(pair).or_default();
+        e.0 += 1;
+        e.1 += usize::from(row_in_scope(row, ev));
+    }
+    assert_eq!(
+        seen.iter().map(|(p, n)| (*p, *n)).collect::<Vec<_>>(),
+        RP39_ROUTING
+            .iter()
+            .map(|(p, n, s, _)| (*p, (*n, *s)))
+            .collect::<Vec<_>>(),
+        "the cited pairs, row counts and in-scope splits must be exactly what the walk refuses"
+    );
+    let led = account(&corpus, PROPS_NORM_R4133);
+    assert_eq!(
+        led.owner(Owner::Rp39),
+        DECLARED_RP39,
+        "RP3.9 inherits (rows, pairs, rows on in-scope pairs)"
+    );
 }
 
 /// The chain order is the documented one, and [`first_match`] really returns the
