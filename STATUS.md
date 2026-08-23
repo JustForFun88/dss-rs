@@ -165,7 +165,38 @@ gain exactly the pair RP2.1's own `RevThreshold` unmask makes visible). Its two
 audits raised 9 findings (1 major, 8 minor), **all 9 fixed** in a follow-up
 commit — the major was "the rules' accepted sets are not pinned", closed by
 closed-set pins whose power was re-verified against the auditor's own surviving
-mutations. **RP2.2** (enum synonyms + the S6 dossier) is next.
+mutations.
+**RP2.2 (enum synonyms + the S6 dossier) is COMPLETE** (2026-08-23, one commit,
+**zero engine change** — harness/tests/docs only): all 24 pairs of its closed
+list, plus 3 the accounting surfaced and 2 hand-offs RP2.1 left, were read off
+the r4133 source and classified with a citation each; the kill criterion did not
+fire. Bin 3 split **4/4** — `vsource`/`isource` × `scantype`/`sequence` are true
+synonyms and took the table's first `EnumSynonym` rows, while `swtcontrol.action`
+(the plan's first suspected divergence, **disproven**: an `EchoParse` stored
+before the CASE and left stale by the `Locked` refusal, with the pair's own live
+`state` getter witnessing that both engines agree), `monitor.mode` (not a
+"decomposition render" but the deck's RPN **source text** `mode=(1 16 +)` echoed
+back) and `storagecontroller.modedischarge` (`'UNKNOWN'` is `GetModeString`'s
+non-injective catch-all) went to RP2.3. **Three RP3.5+ sub-steps opened and they
+block RP4.1** (§0): RP3.5 `line.units` (the plan's second candidate,
+**confirmed** — the port's matrix-branch merge writes the saved units and *then*
+re-runs the side effects that reset them, where r4133 orders the two the other
+way), RP3.6 `line.linecode` (r4133's `switch=yes` arm leaves `FLineCodeSpecified`
+TRUE; 5 cells, **all in scope**, so RP4.1 breaks without it) and RP3.7 the
+per-phase switch/relay state (r4133 keeps a `pStateArray` per phase; the port one
+scalar). Closing bin 3 meant closing its **cells**, not only its pairs: three
+bin-2-labelled pairs carry enum-spelling cells, so `capcontrol.type` and
+`fault.bus2` joined RP2.3 and `invcontrol.voltage_curvex_ref` — a *live* r4133
+enum getter — was re-typed from `CaseFold` to a fifth `EnumSynonym` row. The
+replay now claims **755** example rows (0 unaccounted, RP2.2's bucket empty) and
+the full claims census measures **514 471 cells / 492 376 in scope** claimed
+(`EnumSynonym` 4 619 / 3 817), unclaimed down to 545 568 / 521 841 and bin 3 from
+8 pairs to 4. Two dossier findings corrected part A's own reading — r4133's
+`MakeLike` *does* copy `ScanType`/`SequenceType` on both classes, and the two
+registries are **not** the same list (`ScanType`'s −1 is `None`, `Sequence`'s is
+`Negative`), which is why the rows carry two maps and not one. **RP2.3** (the
+echo-exclusion table + pins) is next, but the three RP3.5+ sub-steps are what
+RP4.1 waits on.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -2806,6 +2837,236 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     no count, and the header markers the evidence lock checks are untouched), and
     in this record above. `RegControl.pas:820-827` (the `GetPropertyValue`
     override of index 28) was re-verified and is correct.
+
+- **RP2.2** (2026-08-23) — enum synonyms and the S6 dossier. **Zero engine
+  change**: `tests/harness/props_norm.rs`, `tests/harness/mod.rs`,
+  `crates/dss-core/tests/props_r4133_replay.rs`, the vendored README, the plan
+  and this file. No golden byte, no `golden.lock.json`, no
+  `population.lock.json`, no `ledger.json` entry, no manifest byte, and the
+  r4133 props live masks untouched (§1.1(e) staging). `R4133_DISPLAY_FLOOR`
+  stays `None`; no tolerance moved; no test was deleted, `#[ignore]`d or
+  loosened. **Kill criterion: not fired** — every pair fits exactly one of the
+  three outcomes.
+  - **The dossier, condensed** — pair → verdict → r4133 site → cells (full /
+    in scope). The routing table itself lives in code with the same citations
+    (`props_r4133_replay.rs::RP22_ROUTING`), so a stale verdict fails a test.
+
+    | pair | verdict | r4133 site | cells |
+    |---|---|---|---|
+    | `vsource.scantype` | **EnumSynonym** | `Vsource.pas:1323-1349` (no arm 17/18) + `:1300-1301` + `:615-616` + `:355`/`:378-384` | 2 042 / 1 697 |
+    | `vsource.sequence` | **EnumSynonym** | same, `:385-391` | 2 042 / 1 697 |
+    | `isource.scantype` | **EnumSynonym** | no getter override at all + `:626` + `:396` + `:239`/`:257-263` | 137 / 136 |
+    | `isource.sequence` | **EnumSynonym** | same, `:627`/`:397`/`:264-270` | 137 / 136 |
+    | `invcontrol.voltage_curvex_ref` | **EnumSynonym** (re-typed from `CaseFold`) | `InvControl.pas:3244-3249` live getter + `:837` | 257 / 147 (3 off-bin) |
+    | `swtcontrol.action` | echo → RP2.3 `EchoParse` | `SwtControl.pas:573-620` (no arm 3) + `:192-193` + `:652` + `:417` | 34 / 16 |
+    | `monitor.mode` | echo → RP2.3 `EchoParse` | `Monitor.pas` no override + `:359` + `:1843` | 4 / 4 |
+    | `storagecontroller.modedischarge` | echo → RP2.3 `LiveSemanticsDiffer` + pin | `StorageController.pas:1200-1214` vs `:2322-2333` | 1 / 1 |
+    | `line.spacing` | echo → RP2.3 `EchoParse` | `Line.pas:1347-1429` (no arm 21) + `:1511` | 1 / 0 |
+    | `isource.bus2` | echo → RP2.3 `EchoDefault` | `Isource.pas:631` (+ report 14) | 136 / 135 |
+    | `isource.yearly` | echo → RP2.3 `EchoDefault` | `Isource.pas:628` + `:286` (object aliased, string not) | 122 / 122 |
+    | `load.yearly` | echo → RP2.3 `LiveSemanticsDiffer`, ONE row for the pair | `Load.pas:2346` (live raw string) + `:657` + `:807` | 32 548 / 30 546 |
+    | `reactor.bus2` | echo → RP2.3 `EchoParse` (derived snapshot) | `Reactor.pas:1087-1105` (no arm 2) + `:386` + `:419-420` + `:341-358` | 47 / 43 |
+    | `invcontrol.monvoltagecalc` | echo → RP2.3 | `InvControl.pas:505`, no arm 25, not in `:2806-2839` | 254 / 144 |
+    | `invcontrol.pvsystemlist` | echo → RP2.3 `EchoDefault` | `:512`, no arm 32 | 257 / 147 |
+    | `invcontrol.vsetpoint` | echo → RP2.3 `EchoDefault` | `:513`, no arm 33 | 249 / 147 |
+    | `expcontrol.derlist` | echo → RP2.3 `LiveSemanticsDiffer` + pin | `ExpControl.pas:696` + `:702-715` vs `:227-234`/`:247-252` | 11 / 11 |
+    | `capcontrol.type` | echo → RP2.3 `EchoParse` | no `GetPropertyValue` in the unit + `:178` + `:304-311` | 30 off-bin / 6 |
+    | `fault.bus2` | echo → RP2.3 `EchoParse` | `Fault.pas:695-718` (no arm 2) + `:297` + `:672` | 1 off-bin / 0 |
+    | `generator.dynout` | echo → RP2.3 `LiveSemanticsDiffer` + pin (**not** RP3.5) | `PCElement.pas:197-209`/`:228-236`, `DynamicExp.pas:411-437`/`:441-465`, `Arraydef.pas:39` | 273 / 2 misrendered |
+    | `line.units` | **RP3.5** | `Line.pas:1404` live + `:1627`/`:1721-1726`/`:1791-1796`/`:2326-2331` | 3 / 0 |
+    | `line.linecode` | **RP3.6** | `Line.pas:1357` live + `:694-700` + `:626-627` | 5 / **5** |
+    | `swtcontrol.normal` / `.state` | **RP3.7 (a)** | `SwtControl.pas:589-599`/`:600-610` + `:37-38`/`:299-305`/`:433-480`/`:532-549` | 59 / 40 each |
+    | `relay.normal` / `.state` | **RP3.7 (b)** | `Relay.pas:1407-1428` (loops `ControlledElement.NPhases`) | 1 / 0 each |
+    | `invcontrol.monbus` / `.monbusesvbase` | already claimed, RP2.1 `ArrayForm` | `InvControl.pas:3226-3285` (no arm 26/27) + `:2806-2839` | 15 / 7 each |
+    | `Fault.GMatrix` | triage only — stays value-skipped on BOTH channels | `Fault.pas:695-718` `If Assigned(Gmatrix)` + `:76-77` | 386 (masked) |
+  - **The `EnumSynonym` rows: two maps, not one — and that is a correction.**
+    The dossier's first draft equated `'Neg'` with our `'Negative'` on *both*
+    properties. It is wrong on `scantype`: the two DSS registries are different
+    lists — `'Scan Type'` is `['None', 'Zero', 'Positive']` and `'Sequence
+    Type'` is `['Negative', 'Zero', 'Positive']`, both over `[-1, 0, 1]`
+    (`obj/dss_enum/registry/solution.rs:22-38`) — so ordinal −1 renders `None`
+    on one and `Negative` on the other. A shared map would have folded nothing
+    on `scantype` and gone stale silently. Hence `SCAN_TYPE_SYNONYMS`
+    (`Positive↔Pos`, `Zero↔Zero`) and `SEQUENCE_TYPE_SYNONYMS`
+    (`Positive↔Pos`, `Negative↔Neg`), each closed at the spellings the census
+    actually measured plus the frozen `InitPropertyValues` default, matched
+    exact-token + case-insensitively, **fail-closed** on anything else.
+  - **A second dossier correction, found by re-reading the source.** The draft
+    recorded that `TVsource.MakeLike`/`TIsource.MakeLike` do not copy
+    `ScanType`/`SequenceType`, which would have been the one desync path between
+    r4133's echo store and its live enum. They **do** copy both —
+    `Vsource.pas:527-528` and `Isource.pas:324-325`, right beside the
+    `FPropertyValue[]` loop at `:566`/`:339`. So no desync path exists and the
+    rows rest on a stronger argument than the draft claimed; the "r4133 omission"
+    finding is **withdrawn**, and no upstream report was written for it.
+  - **The three RP3.5+ sub-steps** (full specs in `R4133_PROPS_PLAN.md`
+    §WP-RP3; tier `opus-high+`, the RP3.1–RP3.4 row). **All three block RP4.1**
+    (plan §0: "RP4.1 starts only after every RP1–RP3 sub-step is landed,
+    including any RP3.5+ sub-step RP2.2's triage opens").
+    - **RP3.5 — line length units lost by the matrix-branch merge.**
+      `exec/reduce.rs:396-409` sets `l.length_units = len_units_saved` and then
+      runs the `RMATRIX/XMATRIX/CMATRIX` side effects, which call
+      `reset_length_units` (`elements/pd/line/accessors.rs:478-486` →
+      `code.rs:24-28`); r4133 does the two in the opposite order (`Line.pas:1627`
+      saves, `:1721-1726`/`:1791-1796` re-edit *after* the impedance edit) and
+      `MakePosSequence` re-appends `Units=` for the same reason (`:1596`). Second
+      divergence in the same routine: the port's `reset_length_units` clears
+      `user_length_units`, which r4133 deliberately preserves (`:2330`, "but do
+      not erase FUserLengthUnits, in case of CIM export") — no census cell, so it
+      needs its own decision. Evidence: `line.units` 3 cells, **0 in scope**
+      (`modes:reduce` is capi-only). Must decide: fix the order in both lanes
+      with a pin, or overturn the reading with a probe. A live probe on
+      `reduce_mergeparallel`/`midi_reduce` is owed **inside** RP3.5 — RP2.2 read
+      both sources and did not build.
+    - **RP3.6 — `switch=yes` must not clear the linecode flag.** r4133's arm
+      (`Line.pas:694-700`) writes r1/x1/r0/x0/c1/c0/len as fields, kills geometry
+      and spacing and resets the units, but leaves `FLineCodeSpecified` TRUE; the
+      port calls `kill_line_code_specified()`
+      (`elements/pd/line/accessors.rs:488-511`, following 0.14.5's
+      `KillLineCodeSpecified`). Consequence beyond the render: the flag picks a
+      different `FUnitsConvert` formula on a later `units=` (`:626-627`), and the
+      decks (`Examples/StoCtrl_Current_PeakShave/Line.DSS`) put `units=m` after
+      `Switch=True`. Evidence: `line.linecode` **5 cells, all 5 in scope** — the
+      only RP3.5+ pair the unmask will actually compare, so **RP4.1 breaks on it
+      if RP3.6 does not land first**. r4133 is the authority; "capi does it" is
+      not evidence (CLAUDE.md).
+    - **RP3.7 — per-phase switch and relay state.** (a) r4133 keeps
+      `FPresentState`/`FNormalState : pStateArray` per phase
+      (`SwtControl.pas:37-38`, `:299-305`), settable phase-by-phase from a quoted
+      list (`:453-480`), each phase driving its own conductor (`:532-549`), and
+      renders one token per controlled-element phase (`:589-610`); the port holds
+      one scalar applied to the whole terminal
+      (`elements/control/swt_control/accessors.rs:126-163`, `:270-276`,
+      `mod.rs:2`). Every r4133 render the census saw is homogeneous, so **no
+      value differs today** — a deck writing `state=(open, closed, closed)` would
+      diverge in Y. (b) The mirror on Relay: r4133 renders over the live
+      `ControlledElement.NPhases` (`Relay.pas:1407-1428`) while the port renders
+      its own per-phase array, unresynced after `MakePosSequence`. Evidence:
+      `swtcontrol.normal`/`state` 59/40 each, `relay.normal`/`state` 1/0 each.
+      Interim treatment if the port change is deferred: exclusion + pin, and the
+      gap recorded in `ORPHANED_GAPS.md`.
+  - **`generator.dynout` — RP2.1's hand-off, closed here as RP2.3's, not as a
+    sub-step.** The root cause was re-verified against the source rather than
+    taken on trust: `TPCElement.SetDynOutput` stores `Get_Out_Idx`'s **variable**
+    index (`PCElement.pas:231`; `DynamicExp.pas:411-437`) while
+    `GetDynOutputStr` (`:205`) hands it to `Get_VarName` (`DynamicExp.pas:441-465`),
+    which decodes it as a flat *(variable, DynSlot column)* index — `mylen =
+    length(myProt)` with `DynSlot = array[0..1] of double`
+    (`Shared/Arraydef.pas:39`). On the shipped deck (`varnames=[Speed Mass
+    PShaft Pterm Damp theta]`, `DynOut=[Speed theta]` → `[0, 5]`),
+    `Get_VarName(5)` → row 2, col 1 → `'d' + 'pshaft'`. The dynamics are
+    unaffected (`generator.pas:2823-2849` indexes `DynamicEqVals` with the same
+    variable index the port uses), so the port is right and the remaining work is
+    **one cited `LiveSemanticsDiffer` row plus its expected-value pin**, not an
+    investigation — which is exactly what plan §RP2.2's third outcome is *not*
+    for. The `CELL_DISPOSITION` comment that declared it to RP2.2 now carries the
+    verdict, and the row must be a **tagged** `LiveSemanticsDiffer`, never a
+    silent `EchoDefault`, or the 2 misrendered cells are masked without a pin.
+    Upstream report written:
+    `investigations/to_opendss/41-dynout-readback-renders-wrong-variable.md`
+    (gitignored, local-only; next free number — 01..40 with gaps).
+  - **`Fault.GMatrix` — RP2.1's other hand-off, settled with no sub-step.**
+    `TFaultObj.GetPropertyValue` index 6 emits `'('`, fills the lower triangle
+    only `If Assigned(Gmatrix)` (`Fault.pas:703`) and closes with `')'`; an
+    `r=`-specified fault never allocates `Gmatrix` (`:76-77`, "single G per phase
+    … if Gmatrix not specified"). So `'()'` and the port's `'(0 )'` denote the
+    **same** state, "no G matrix specified" — the unset-array render family of
+    `generator.dynout`/`autotrans.bhcurrent`, with no port behavior to change.
+    The 386 cells therefore stay value-skipped on both channels under the
+    existing `SKIP_PROPS`/`SKIP_PROPS_BOTH_CHANNELS` row, whose comment now
+    carries the verdict; no unmask (§1.1(e)), no new table row, and RP4.1 owes
+    nothing for it.
+  - **Closing bin 3 meant closing its CELLS.** The replay's own declaration rule
+    put four example rows in RP2.2's bucket that the plan's pair list does not
+    name: three bin-2-labelled pairs carrying bin-3 cells, which the vendored
+    `README.md` §"A pair's bin is a label" already enumerates. RP2.2 read all
+    three getters — `capcontrol.type` (`'pf'`/`'volt'`, 30 cells; the class has
+    **no** `GetPropertyValue` override, so `type` echoes the deck token) and
+    `fault.bus2` (`'b2.0'` vs `'b2.0.0.0'`, 1 cell; the same derived-bus2
+    snapshot as `reactor.bus2`, `Fault.pas:297`) went to RP2.3 beside their
+    untouched `CaseFold` rows (the mixed-pair pattern the chain order exists
+    for), while `invcontrol.voltage_curvex_ref` is a **live** getter
+    (`InvControl.pas:3244-3249`, `0→'rated'`, `1→'avg'`, `2→'avgrated'`) against
+    our registry's `['Rated','Avg','RAvg']`, so an exclusion would have been a
+    lie and the whole pair was re-typed to an `EnumSynonym` row. That map is
+    *stricter* than the `CaseFold` row it replaced (three named token pairs
+    instead of "any case-only difference"), so no cell stopped being compared.
+    The scope growth is recorded as data
+    (`props_r4133_replay::RP22_BEYOND_THE_CLOSED_LIST`), not folded away.
+  - **The table.** 157 → **161 rows** = `BoolFold` 77 + `CaseFold` **62** +
+    `ArrayForm` 17 + `EnumSynonym` **5**. The `CaseFold` lock moved −1 for the
+    re-typed pair. New pins, all in `props_norm.rs`:
+    `enumsynonym_folds_the_shipped_scan_and_sequence_spellings` (every census
+    spelling of all five rows accepted; the opposite ordinal, the reverse
+    direction, the cross-registry `'Negative'`-on-`scantype` trap and seven near
+    misses all refused) and `enumsynonym_maps_are_injective` (structural: one
+    r4133 token may not name two of our values, no empty map, no `''` entry, and
+    each row really carries the map the doc names). The bin↔rule pin gained one
+    **counted** exception (`invcontrol.voltage_curvex_ref`, bin 2), and
+    `the_pairs_routed_elsewhere_have_no_row` gained the four bin-3 pairs RP2.2
+    routed away, so adding a synonym row for any of them reds a test.
+    `harness/mod.rs`'s `FOLDABLE` fixture grew to one spelling per rule kind, so
+    both channel tests now cover the whole table.
+  - **The replay.** 3 454 example rows, **0 unaccounted**, claimed **755**
+    (`BoolFold` 114 / `CaseFold` **440** / `ArrayForm` 192 / `EnumSynonym`
+    **9**). Declared: RP2.2 **(0, 0, 0)** — the acceptance — RP2.3 450 rows/86
+    pairs (was 295/72), RP2.4 2 100/70, RP3 7/4, **RP3.5+ 8 rows / 6 pairs / 5
+    in scope**, out-of-scope 134/18. Two new structural guards: `declare` now
+    **errors** (rather than declaring to RP2.2) for any pair on the closed list
+    or any bin-3 cell that neither the chain claims nor `RP22_ROUTING` names, and
+    `rp22_settled_every_pair_it_was_handed` proves the input list is partitioned
+    into "claimed by the table" (6 pairs, checked per example row through the
+    shipped predicate) and "routed with a citation" (18), with every routing row
+    live, citing a `.pas:` line, and owning one of the two admissible outcomes.
+  - **The claims census** (`DSS_PROPS_CENSUS=claims`, full population,
+    2026-08-23): 439 cases × 2 channels, **1 060 165 rows, 57.3 s**, error counts
+    at the recorded baselines (**5** r4133 / **22** capi — complete, not short).
+    r4133 claimed **514 471 / 492 376 in scope** (was 510 106 / 488 703):
+    `BoolFold` 294 519 / 280 915, `CaseFold` **92 976 / 89 231**, `ArrayForm`
+    122 357 / 118 413, **`EnumSynonym` 4 619 / 3 817** (9 spellings, 5 pairs);
+    echo 0, floor 0, ledger 0 — all three still load-bearing zeros. **UNCLAIMED
+    545 568 / 521 841** over 184 pairs (was 549 933 / 525 514 / 189), with the
+    frozen-bin-3 row down from 8 pairs / 4 404 / 3 691 to **4 / 42 / 21**. The
+    +4 cells over the frozen `bins.tsv` totals on the four source pairs are the
+    same population drift RP2.1 reconciled (+2 per `vsource` pair). Live
+    spellings **756** = the replay's 755 + the one `LIVE_ONLY_SPELLINGS` term,
+    so `CLAIMED_TOTAL_LIVE` is a measurement, not a guess. Capi: **0** on all
+    six r4133 dispositions, 11 `ledger-hit`s — unchanged and by contract.
+    Numbers vendored in `tests/corpus/props_r4133/README.md` §"What RP2.2 moved".
+  - **Doc corrections this sub-step measured** (frozen extracts untouched):
+    `monitor.mode`'s r4133 spelling is a stored **RPN source string**
+    (`mode=(1 16 +)` in `Test/Dynamic_Kundur.dss:55-56` and
+    `Examples/Dynamic_Expressions/Dynamic_KundurDynExp.dss:66-67`), not a
+    "decomposition render" — corrected in the plan's §1.1 bin-3 row and in the
+    vendored README's new section; `triage.md`'s §S6 wording is superseded by
+    the same README section and stays as the historical triage.
+  - **Two upstream-report candidates recorded, not written** (neither is needed
+    by this sub-step's exclusions): `GetModeString` has no `MODESCHEDULE` arm
+    (`StorageController.pas:1200-1214` vs `:2322-2333`), and
+    `TExpControlObj.GetPropertyValue` answers the bare PVSystem list for
+    `DERList` (`ExpControl.pas:696` + `:702-715` against the two deliberately
+    distinct lists built at `:227-234`/`:247-252`).
+  - **Gate: all five green on the frozen tree** — `fmt --check`, both clippy
+    lanes, both `cargo test --workspace` lanes, **7 274 tests passed / 0
+    failed**, corpus gate included.
+  - **Goldens: measured, none moved.** `git status` after the five-command gate
+    shows only this sub-step's harness/test/doc paths — no artifact under
+    `tests/golden/`, no lock file, no manifest, no ledger. No lane_diff owed
+    (zero engine change).
+  - **Operational note, so it is not miscounted as a second sighting of RP2.1's
+    finding 5.** An earlier gate attempt reported 9 corpus-gate failures, all
+    `Error Attempting to open file` / `#303` on `ckt7`,
+    `StoCtrl_Current_PeakShave` and `ckt24`. The cause was **local and known**:
+    a first gate run's script survived its cancellation and its
+    `cargo test --workspace` overlapped a second one on the same working tree,
+    so two runs raced on the same deck output files. Killed both, `git clean -fd
+    -- tests/corpus`, re-ran once — green. That is a *different* cause from
+    RP2.1's unexplained transient, so RP2.1's "a second sighting is a pattern"
+    counter does **not** advance. What it does confirm is the underlying
+    hygiene gap RP2.1 recorded: corpus runs write `Export`/monitor artifacts
+    into the **vendored** tree (this sub-step's runs left ~55 across nine
+    directories, all untracked, all removed by name), and nothing fails when
+    they appear.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

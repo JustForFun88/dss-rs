@@ -414,6 +414,79 @@ where §1.1 says they should (grouped by the pair's frozen bin):
 
 RP4.1's acceptance is that the in-scope column of this table reaches **zero**.
 
+### What RP2.2 moved (disposition census, 2026-08-23)
+
+Re-measured on the post-RP2.2 tree with the same knob and the same population
+(`DSS_PROPS_CENSUS=claims`, 439 cases × 2 channels, **1 060 165 rows, 57.3 s**,
+error counts again at the recorded baselines — 5 `oracle_error` on r4133, 22 on
+`capi_v0145`, so the run is complete, not short). This section **supplements**
+the RP2.1 numbers above; it does not rewrite them.
+
+RP2.2 landed the `EnumSynonym` link — five rows, all read off a live r4133
+getter or a `PropertyValue[]` store proven to track one — and routed the rest of
+bin 3 to RP2.3 and to three new RP3.5+ sub-steps. Only two of the eight columns
+above move:
+
+| disposition | cells | in scope | spellings | pairs | Δ vs RP2.1 |
+|---|---|---|---|---|---|
+| `normalized-by-BoolFold` | 294 519 | 280 915 | 114 | 77 | — |
+| `normalized-by-CaseFold` | 92 976 | 89 231 | 441 | 62 | −254 / −144 cells, −2 spellings, −1 pair |
+| `normalized-by-ArrayForm` | 122 357 | 118 413 | 192 | 17 | — |
+| `normalized-by-EnumSynonym` | **4 619** | **3 817** | **9** | **5** | **new** |
+| `echo-row` (RP2.3) | 0 | 0 | 0 | 0 | — |
+| `under-floor` (RP2.4) | 0 | 0 | 0 | 0 | — |
+| `ledger-hit` | 0 | 0 | 0 | 0 | — |
+| **claimed** | **514 471** | **492 376** | **756** | **161** | +4 365 / +3 673 cells |
+| `UNCLAIMED` | 545 568 | 521 841 | 2 705 | 184 | −4 365 / −3 673 cells, −5 pairs |
+
+The `CaseFold` row shrank because `invcontrol.voltage_curvex_ref` changed rule,
+not because a cell stopped being compared: its two case-only spellings moved
+into the new map together with the third one (`'RAvg'`/`'avgrated'`) that no
+case rule could ever claim — see the harness table's
+`VOLTAGE_CURVEX_REF_SYNONYMS`. The four remaining `EnumSynonym` rows are
+`vsource`/`isource` × `scantype`/`sequence`; their 4 619 − 4 615 = **+4** cells
+over the frozen `bins.tsv` totals are the same population drift the RP2.1
+reconciliation records (+2 on each `vsource` pair).
+
+The `capi_v0145` half of the run reports **0** cells on all six r4133
+dispositions, unchanged and by contract (`claim_value` takes the channel), with
+its 11 `ledger-hit`s intact.
+
+**The unclaimed table, re-grouped** (same rule: by the pair's frozen bin):
+
+| pair's frozen bin | pairs | cells | in scope | owner |
+|---|---|---|---|---|
+| 5 | 44 | 442 375 | 425 419 | RP2.3 (echo table) |
+| 6 | 61 | 47 899 | 45 552 | RP2.4 (display floor) |
+| 7 | 32 | 47 435 | 45 093 | RP2.3 / RP3 |
+| 1 | 9 | 3 834 | 3 293 | RP2.3 (the nine echo pairs) |
+| 3 | **4** | **42** | **21** | RP2.3 (`swtcontrol.action`, `monitor.mode`, `storagecontroller.modedischarge`) / **RP3.5** (`line.units`) |
+| 2 | 6 | 261 | 220 | RP2.3 |
+| 4 | 10 | 203 | 95 | RP2.3 / RP3.7 / §1.3 |
+| 2+7 | 1 | 1 | 0 | `isource.bus1`'s numeric twin (§1.3) |
+| no frozen row | 17 | 3 518 | 2 148 | the WP-RP1 / supplement pairs |
+
+Bin 3 fell from 8 pairs / 4 404 cells / 3 691 in scope to 4 / 42 / 21, and every
+one of the four now carries a cited verdict
+(`crates/dss-core/tests/props_r4133_replay.rs::RP22_ROUTING`) rather than a
+pending marker.
+
+**Two corrections this sub-step measured against the text above.**
+
+1. §"bin 3 — enum spelling + singletons" (in §"`bins.tsv` — the assignment
+   rule") and §S6 of `triage.md` call `monitor.mode`'s `'1 16 +'` a
+   *decomposition render*. It is not: it is the deck's own RPN **source text**,
+   `mode=(1 16 +)`, echoed back with the parser's parens stripped —
+   `Version8/Source/Meters/Monitor.pas` has no `GetPropertyValue` override at
+   all, `:359` stores the raw `Param` and `:1843` defaults `PropertyValue[3]`.
+   The decks are `Test/Dynamic_Kundur.dss:55-56` and
+   `Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp.dss:66-67`.
+2. §"A pair's bin is a label" consequence 1 is confirmed by execution and is
+   load-bearing for RP2.2, not only for RP2.1: closing bin 3 meant closing its
+   *cells*, so `capcontrol.type` (30 cells) and `fault.bus2` (1) were read and
+   routed to RP2.3 beside their untouched `CaseFold` rows, and
+   `invcontrol.voltage_curvex_ref` (3) changed rule.
+
 ## Files
 
 | file | rows | origin |
@@ -515,7 +588,10 @@ wins:
 5. **bin 3 — enum spelling + singletons.** Everything else: the per-pair enum
    spellings (`Positive`/`Pos`, `Positive`/`pos`, `Schedule`/`UNKNOWN`,
    `none`/`kft`, `close`/`open`) and the per-pair semantics
-   (`monitor.mode`'s `17` vs its `1 16 +` decomposition render).
+   (`monitor.mode`'s `17` vs its `1 16 +` decomposition render — **corrected by
+   RP2.2**: that string is the deck's RPN *source text*, not a decomposition;
+   see §"What RP2.2 moved"). Only 4 of the 8 pairs turned out to be synonyms;
+   the other 4 are echoes or a live-state divergence, per that same section.
 
 Order is load-bearing: bin 1 before bin 5 keeps the mixed boolean pairs out of
 the echo bin; bin 5 before bin 4 keeps `line.wires`-style `[]`-vs-`''` pairs out

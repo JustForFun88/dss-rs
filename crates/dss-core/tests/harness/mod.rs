@@ -1602,6 +1602,25 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     the pair is handed to RP2.2's triage (plan §0 lets it open an RP3.5+
     //     sub-step). Unmasking it here would put 386 unowned cells into RP4.1's
     //     residual.
+    //
+    //     **RP2.2 TRIAGE (2026-08-23): the row stays exactly as it is, and no
+    //     RP3.5+ sub-step opens for it.** Reading the getter settles the
+    //     question: `Fault.pas:695-718` emits `'('`, fills the lower triangle
+    //     only `If Assigned(Gmatrix)` (`:703`) and closes with `')'`, and an
+    //     `r=`-specified fault never allocates `Gmatrix` at all
+    //     (`Fault.pas:76-77`, "single G per phase … if Gmatrix not specified").
+    //     So both renders denote the SAME state, "no G matrix specified" —
+    //     r4133 by printing nothing between the parens, this port by
+    //     materialising the zero matrix. That is a rendering convention on an
+    //     UNSET array, the family of `generator.dynout` and
+    //     `autotrans.bhcurrent`, not a live-value or modelling divergence: there
+    //     is no port behavior to change, hence no sub-step. It is equally not an
+    //     `EnumSynonym` (the two sides are not two spellings of a value the
+    //     table can name) and RP2.2 must not unmask it (plan §1.1(e) staging).
+    //     The 386 cells therefore stay value-skipped on both channels under this
+    //     very row, RP4.1 owes nothing for them, and the liveness of the
+    //     decision is asserted by `both_channel_rows_stay_skipped_everywhere`
+    //     below.
     ("Fault", "GMatrix"),
     // (b) Near-zero winding-current angle: WdgCurrents renders `mag, (angle)`
     //     pairs; a ~1e-12 A (numerically-zero) winding current's angle is
@@ -1766,8 +1785,11 @@ const SKIP_PROPS_CAPI_ONLY: &[(&str, &str)] = &[
 ///
 /// These cells are invisible in the vendored census (its walk ran with the skips
 /// active), so nothing here is validated by the RP2.1 replay; the echo-shaped
-/// ones are candidates for `PROPS_ECHO_R4133` and `Fault.GMatrix` is a genuine
-/// rendering question handed to RP2.2's triage (see its row).
+/// ones are candidates for `PROPS_ECHO_R4133`, and `Fault.GMatrix` — the one
+/// row RP2.1 handed to RP2.2's triage — was **settled there** (2026-08-23):
+/// both renders denote "no G matrix specified", so the row stays on both
+/// channels, no RP3.5+ sub-step opens and RP4.1 owes it nothing. The evidence
+/// and the argument are at the row itself.
 const SKIP_PROPS_BOTH_CHANNELS: &[(&str, &str)] = &[
     ("Capacitor", "CMatrix"),
     ("Reactor", "RMatrix"),
@@ -1990,11 +2012,14 @@ mod skip_props_disposition_tests {
 mod props_policy_tests {
     use super::{PropsChannel, PropsPolicy};
 
-    /// Spellings the RP2.1 part-B rules DO fold on r4133 — `BoolFold` (bin 1),
-    /// `CaseFold` (bin 2, case-only), `CaseFold`'s trim half (bin 2, the two
-    /// upstream trailing blanks) and `ArrayForm` (bin 4), one per bin of plan
-    /// §1.1 the normalization engine owns. Each is a real census spelling from
-    /// `tests/corpus/props_r4133/examples_full.txt`.
+    /// Spellings the r4133 rules DO fold — `BoolFold` (bin 1), `CaseFold`
+    /// (bin 2, case-only), `CaseFold`'s trim half (bin 2, the two upstream
+    /// trailing blanks), `ArrayForm` (bin 4) and, since **RP2.2**,
+    /// `EnumSynonym` (bin 3's source sequence selectors, and the live
+    /// `voltage_curvex_ref` getter whose pair is bin-2-labelled). Every rule
+    /// kind the table ships is represented, so the two channel tests below
+    /// cover the whole mechanism rather than part of it. Each entry is a real
+    /// census spelling from `tests/corpus/props_r4133/examples_full.txt`.
     ///
     /// Part A drafted a `("Load", "ZIPV", …)` row here for the array bin; part
     /// B corrected it to `EnergyMeter.Option` — `load.zipv` is a **bin-5** pair
@@ -2005,6 +2030,8 @@ mod props_policy_tests {
         ("Generator", "Status", "Variable", "variable"),
         ("Transformer", "Conn", "wye", "wye "),
         ("EnergyMeter", "Option", "[E, R, C]", "(E, R, C)"),
+        ("Vsource", "ScanType", "Positive", "Pos"),
+        ("InvControl", "voltage_curvex_ref", "RAvg", "avgrated"),
     ];
 
     /// **The capi channel never normalizes** — plan mechanic (b),
