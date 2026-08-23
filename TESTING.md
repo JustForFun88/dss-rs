@@ -587,7 +587,10 @@ block reports what the walk could NOT look at, so a partial census never reads a
 a complete one: `unaligned_cells` counts what a desynchronized name list hides
 from any index-ordered compare (an insertion at property *k* makes every cell
 after *k* on that element uncomparable — the reason the vendored value population
-of the five shape-gap classes is a lower bound until WP-RP1 closes them);
+of the five shape-gap classes is a lower bound; WP-RP1 closed all five, and each
+sub-step recorded the pairs its closure made live in the vendored `README.md`
+§"Pairs the WP-RP1 shape closures make live" — the knob now reports
+`unaligned_cells` 0 and 0 shape classes on both channels);
 `skipped_elements`/`skipped_element_cells` count elements dropped WHOLE (the
 capi-only Recloser/Relay skip, invisible to `unaligned_cells`); and
 `heterogeneous_shape_classes` counts classes whose members do not share one
@@ -607,9 +610,14 @@ force it on for their capi-gating live cases. The pinned oracle is dss_capi
 capture is excluded from the shape walk (handles inserted props, not just
 trailing). Present-in-capture props are NOT excluded — full name+value compare
 still applies. It relaxes shape only, never a value tolerance, and a
-non-allowlisted extra/missing/misordered prop still fails. Rules +
-row-documentation requirements: `tests/TOLERANCE_NOTES.md` §"0.15.x
-property-table allowlist (shape relaxation)".
+non-allowlisted extra/missing/misordered prop still fails. The test is
+channel-agnostic — it asks only whether **this** capture's name list carries the
+prop — so one row runs the other way round: `GenDispatcher.weights`
+(R4133_PROPS RP1.4) is a prop the 0.14.5 capture reports fine and **r4133's own
+table loses to a registration off-by-one**, so it is inert here and relieves the
+r4133 shape walk only. Rules + row-documentation requirements:
+`tests/TOLERANCE_NOTES.md` §"0.15.x property-table allowlist (shape
+relaxation)".
 
 ## Environment variables
 

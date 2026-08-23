@@ -984,6 +984,25 @@ are the same — a post-0.14.5 surface the 0.14.5 oracle predates):
   and no `expect_warnings`), and its multi-phase form — which r4133 itself
   cannot witness, see the deck's own header — by
   `exec::tests::autotrans_xfmrcode`.
+- **A prop r4133's own table LOSES to a registration bug** (R4133_PROPS RP1.4 —
+  GenDispatcher `weights`): the same `PROPS_015X` mechanism, run the other way
+  round. `TGenDispatcher.DefineProperties` names seven properties but declares
+  `NumPropsThisClass = 6` (`Version8/Source/Controls/GenDispatcher.pas:92,133`),
+  so `TCktElementClass.DefineProperties` overwrites slot 7 with `basefreq`
+  (`Common/CktElementClass.pas:98`) and r4133's `AllPropertyNames` returns 9
+  names without `weights` (measured on the DLL; upstream report
+  `investigations/to_opendss/40-gendispatcher-weights-registration-off-by-one.md`).
+  The port is correct and matches dss_capi, which counts the enum — so the
+  `("GenDispatcher", &["weights"])` row is **inert on the capi channel** (that
+  name list has `weights`, so `filter_015x` keeps it and the value is fully
+  compared, as it has been all along) and relieves the shape walk on r4133 only.
+  There is no `HIDE_R4133` flag and no value mask: the prop is real, ported and
+  gated everywhere else. The row is **dormant on the live gate** — all three
+  `controls:gendispatcher/*` decks are `engines: "capi_v0145"` and stay so,
+  because r4133 cannot receive their `weights=` at all and dispatches the equal
+  split instead (measured: up to 48 % apart on each generator's kW at every
+  step — a whole-solution divergence, not a `property`-scoped one). It is
+  exercised offline by the RP2.1 replay against the full `shape.txt`.
 This is a *shape/version-mismatch* declaration only — no numeric floor moves.
 
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)
