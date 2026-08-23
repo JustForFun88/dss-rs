@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::harness;
+
 // ---------------------------------------------------------------------------
 // Manifest structs (schema unchanged; `isolate`/`note` additive).
 // ---------------------------------------------------------------------------
@@ -169,6 +171,18 @@ impl EngineChannel {
     /// never more (`rust_le_oracle`, the former target-rev precedent, §4 Phase C).
     pub(crate) fn iterations_exact(self) -> bool {
         matches!(self, EngineChannel::CapiV0145)
+    }
+    /// This channel as the **harness's** own channel type.
+    ///
+    /// `EngineChannel` is `pub(crate)` to this one test binary while `harness/`
+    /// compiles into ~20 others, so the property comparator cannot take it
+    /// (`R4133_PROPS_PLAN.md` §1.2, the channel-threading trap). Every corpus_gate
+    /// call site maps through here — one mapping, not one per call site.
+    pub(crate) fn props_channel(self) -> harness::PropsChannel {
+        match self {
+            EngineChannel::CapiV0145 => harness::PropsChannel::CapiV0145,
+            EngineChannel::R4133 => harness::PropsChannel::R4133,
+        }
     }
 }
 

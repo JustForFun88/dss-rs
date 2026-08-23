@@ -971,6 +971,68 @@ impl LedgerView<'_> {
     /// pins (drift-safety — fix-round F1/F2 + Phase F re-review RR-1). Returns
     /// the set of `(element_lower, prop_lower)` keys to skip in the standard
     /// `compare_all_properties`.
+    /// The `property`-scoped divergence scopes applicable to this (case,
+    /// channel). Shared by the asserting gate path
+    /// ([`Self::property_handled_keys`]) and the census's non-asserting
+    /// [`Self::property_scope_keys`], so the two cannot disagree about WHICH
+    /// entries are in play.
+    fn property_scopes(&self) -> Vec<(&Entry, &Scope)> {
+        self.entries()
+            .filter(|e| e.kind == Kind::Divergence)
+            .flat_map(|e| {
+                e.scopes
+                    .iter()
+                    .filter(|s| s.field == "property")
+                    .map(move |s| (e, s))
+            })
+            .collect()
+    }
+
+    /// Does `sc` name the property cell `key` (`element.prop`, both lowercased)?
+    /// The single matching decision behind both property paths.
+    fn scope_names_prop(sc: &Scope, key: &str) -> bool {
+        sc.name_re
+            .as_ref()
+            .map(|r| r.is_match(key))
+            .unwrap_or(false)
+    }
+
+    /// The `(element_lower, prop_lower)` keys a `property` scope NAMES — the
+    /// pure matching half of [`Self::property_handled_keys`], with **no** pin
+    /// assertion, no `?`-query and no hit accounting.
+    ///
+    /// It exists for the census knob's disposition mode
+    /// (`DSS_PROPS_CENSUS=claims`, `R4133_PROPS_PLAN.md` RP0.2/RP2.1), whose job
+    /// is to answer "would a ledger entry claim this divergent cell at RP4.1?"
+    /// over a walk that must never fail. Sharing [`Self::property_scopes`] and
+    /// [`Self::scope_names_prop`] with the gate path is what keeps the answer the
+    /// gate's own: RP0.2 forbids the claims mode from re-implementing the policy
+    /// chain, because a drifting copy would corrupt RP4.1's zero-UNCLAIMED read
+    /// silently. What it deliberately does NOT reproduce is the gate's
+    /// assertions — a census must record, never panic — so a cell it reports as
+    /// `ledger-hit` is one an entry NAMES, not one whose pins were re-verified.
+    pub(crate) fn property_scope_keys(&self, props: &[PropsCap]) -> BTreeSet<(String, String)> {
+        let mut named = BTreeSet::new();
+        let scopes = self.property_scopes();
+        if scopes.is_empty() {
+            return named;
+        }
+        for pc in props {
+            let el = pc.element.to_lowercase();
+            for (name, _) in &pc.props {
+                let prop = name.to_lowercase();
+                let key = format!("{el}.{prop}");
+                if scopes
+                    .iter()
+                    .any(|(_, sc)| Self::scope_names_prop(sc, &key))
+                {
+                    named.insert((el.clone(), prop));
+                }
+            }
+        }
+        named
+    }
+
     pub(crate) fn property_handled_keys(
         &self,
         dss: &mut dss_core::exec::Dss,
@@ -979,16 +1041,7 @@ impl LedgerView<'_> {
         ctx: &str,
     ) -> BTreeSet<(String, String)> {
         let mut handled = BTreeSet::new();
-        let scopes: Vec<(&Entry, &Scope)> = self
-            .entries()
-            .filter(|e| e.kind == Kind::Divergence)
-            .flat_map(|e| {
-                e.scopes
-                    .iter()
-                    .filter(|s| s.field == "property")
-                    .map(move |s| (e, s))
-            })
-            .collect();
+        let scopes = self.property_scopes();
         if scopes.is_empty() {
             return handled;
         }
@@ -997,12 +1050,7 @@ impl LedgerView<'_> {
             for (name, val) in &pc.props {
                 let key = format!("{el}.{}", name.to_lowercase());
                 for (e, sc) in &scopes {
-                    let m = sc
-                        .name_re
-                        .as_ref()
-                        .map(|r| r.is_match(&key))
-                        .unwrap_or(false);
-                    if !m {
+                    if !Self::scope_names_prop(sc, &key) {
                         continue;
                     }
                     if let Some(o) = &sc.oracle {
@@ -1683,6 +1731,113 @@ fn every_exclusion_field_is_honoured_by_the_runtime() {
         assert!(
             EXCLUSION_FIELDS.contains(&f),
             "{f:?} is excused from the `excluded()` drive but is not an exclusion field"
+        );
+    }
+}
+
+/// [`LedgerView::property_scope_keys`] — the census's ledger link
+/// (`R4133_PROPS_PLAN.md` RP2.1 disposition mode).
+///
+/// It must name exactly the cells the gate's own `property_handled_keys` would
+/// handle, because a claims census reports those as `ledger-hit` and RP4.1 reads
+/// the result as "already accounted for". The two share
+/// [`LedgerView::property_scopes`] and [`LedgerView::scope_names_prop`], and this
+/// test drives the shared decision: the `name_re` selects on the lowercased
+/// `element.prop` key, a scope with no `name_re` names **nothing** (the props
+/// path has no unnamed artifact), only a `divergence` entry counts, and the
+/// query records no hit — a census must never make a stale ledger entry look
+/// applied.
+#[test]
+fn property_scope_keys_names_the_cells_the_gate_would_handle() {
+    fn scope(field: &str, name_re: Option<&str>) -> Scope {
+        Scope {
+            field: field.to_string(),
+            policy: None,
+            steps: None,
+            node_re: None,
+            name_re: name_re.map(|r| Regex::new(r).expect("test regex")),
+            channel_idx: None,
+            channels: Vec::new(),
+            max_rel: 0.0,
+            max_abs: 0.0,
+            rust: None,
+            oracle: None,
+            num_rel: None,
+            line_re: None,
+        }
+    }
+    fn entry(kind: Kind, scopes: Vec<Scope>) -> Entry {
+        Entry {
+            id: "x".to_string(),
+            case: "synthetic:case.dss".to_string(),
+            channel: EngineChannel::CapiV0145,
+            kind,
+            scopes,
+            applied: AtomicBool::new(false),
+            exceeded_floor: AtomicBool::new(false),
+            hits: AtomicUsize::new(0),
+        }
+    }
+    fn runtime(entries: Vec<Entry>) -> LedgerRuntime {
+        LedgerRuntime {
+            causes: std::collections::BTreeMap::new(),
+            entries,
+        }
+    }
+    let props = vec![
+        PropsCap {
+            element: "Generator.g1".to_string(),
+            props: vec![
+                ("kVA".to_string(), "100".to_string()),
+                ("kW".to_string(), "50".to_string()),
+            ],
+        },
+        PropsCap {
+            element: "Load.l1".to_string(),
+            props: vec![("kVA".to_string(), "10".to_string())],
+        },
+    ];
+    let key = |el: &str, p: &str| (el.to_string(), p.to_string());
+    let (case, ch) = ("synthetic:case.dss", EngineChannel::CapiV0145);
+
+    // The regex selects on the lowercased `element.prop` key — and on nothing else.
+    let rt = runtime(vec![entry(
+        Kind::Divergence,
+        vec![scope("property", Some(r"^generator\.g1\.kva$"))],
+    )]);
+    assert_eq!(
+        rt.view(case, ch).property_scope_keys(&props),
+        [key("generator.g1", "kva")].into_iter().collect()
+    );
+    // …and the query is a READ: nothing about the entry moved.
+    assert!(!rt.entries[0].applied.load(Ordering::Relaxed));
+    assert_eq!(rt.entries[0].hits.load(Ordering::Relaxed), 0);
+
+    // A pattern across elements takes every matching cell.
+    let rt = runtime(vec![entry(
+        Kind::Divergence,
+        vec![scope("property", Some(r"\.kva$"))],
+    )]);
+    assert_eq!(
+        rt.view(case, ch).property_scope_keys(&props),
+        [key("generator.g1", "kva"), key("load.l1", "kva")]
+            .into_iter()
+            .collect()
+    );
+
+    // A scope with no `name_re` names nothing (the props path has no unnamed
+    // artifact — `property_handled_keys` skips it for the same reason), another
+    // field never leaks in, and only a `divergence` entry is consulted.
+    for (kind, scopes) in [
+        (Kind::Divergence, vec![scope("property", None)]),
+        (Kind::Divergence, vec![scope("probe", Some(r"\.kva$"))]),
+        (Kind::Exclusion, vec![scope("property", Some(r"\.kva$"))]),
+        (Kind::Skip, vec![scope("property", Some(r"\.kva$"))]),
+    ] {
+        let rt = runtime(vec![entry(kind, scopes)]);
+        assert!(
+            rt.view(case, ch).property_scope_keys(&props).is_empty(),
+            "{kind:?} scope must name no property cell"
         );
     }
 }

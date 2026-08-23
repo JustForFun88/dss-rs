@@ -577,7 +577,45 @@ summary}` plus `tmp/props_census/run.json`; add `DSS_GATE_ONLY=<substr>` for a
 bounded run — the filter is stamped into the census header's `gate_only` and into
 `run.json`, so a family-bounded artifact set can never be mistaken for a full
 census. `bins.tsv` and the three `*_in_scope` extracts are NOT re-derived: they
-need the §1.1 bin policy (RP2.1's disposition mode) and the in-scope case filter.
+need the §1.1 bin policy and the in-scope case filter.
+
+**The disposition mode (`DSS_PROPS_CENSUS=claims`, RP2.1).** Same walk, same
+rows, same silence — each **value** row additionally annotated with what the
+r4133 value policy does with that cell: `normalized-by-<rule>` (the
+`PROPS_NORM_R4133` table) / `echo-row` (RP2.3's table) / `under-floor` (RP2.4's
+floor) / `ledger-hit` (a `property`-scoped `ledger.json` entry names it) /
+`UNCLAIMED`. Every verdict comes from the shipped predicate the live comparator
+uses (`harness::props_norm::claim_value`, `LedgerView::property_scope_keys`),
+never a copy of it, and the mode also carries the in-scope flag
+(`engines ∈ {both, r4133}`) so its tallies line up with `bins.tsv`'s
+`cells_in_scope` column. It adds three per-channel files — `claims.txt`
+(`examples_full.txt`'s rows plus `count_in_scope` and the disposition),
+`claims_unclaimed_pairs.txt` (the pairs that still owe a rule/exclusion row) and
+`claims_summary.json` (per-disposition cell tallies, zeros included) — and two
+columns to `props_census.json`'s rows. **Plain mode is untouched by all of it**
+(byte-identical artifacts, verified A/B), and a plain run removes a previous
+claims run's three files rather than leaving them to be misread.
+
+This is the per-cell counterpart of the offline replay below: the replay proves
+spelling-level completeness before RP4.1's unmask, the claims census reads
+cell-level closure after it (`R4133_PROPS_PLAN.md` RP4.1's acceptance is **zero
+UNCLAIMED cells** in scope).
+
+### The r4133 props replay accounting (`props_r4133_replay.rs`)
+
+`crates/dss-core/tests/props_r4133_replay.rs` (RP2.1, unconditional plain
+`cargo test`, no oracle and no solve) pushes every example row of the vendored
+`examples_full.txt` **plus** `examples_supplement.txt` through the r4133 claim
+chain in its documented order (shape allowlist → normalization → echo table →
+display floor), asserting that each row is claimed by the first matching link or
+is **declared** for the sub-step that will claim it, that every
+`PROPS_NORM_R4133` row claims at least one row (offline liveness — the live half
+is the per-row hit accounting, dormant until RP4.1), and that each table row's
+`(pair, bin, cells)` citation matches the vendored evidence it names. The
+supplement (`tests/corpus/props_r4133/examples_supplement.txt`) is measured, not
+frozen: the 26 pairs no 2026-08-08 row can carry (the WP-RP1 shape closures plus
+the two `regcontrol` threshold pairs), and the replay parses the README's WP-RP1
+tables directly — **reformatting that README section reds a test on purpose**.
 
 Comparing against the vendored files: filter to `channel == "r4133"`, drop that
 key, and compare **cell multisets** — the pair extracts' `example` cells and
@@ -652,7 +690,7 @@ All verified against the consumers named. The `DSS_GATE_*` knobs live in
 | `DSS_GATE_DUMP` | corpus_gate | `<path>` → write a label-sorted `{verdict, result}` artifact (three-way bit-diff proofs) |
 | `DSS_GATE_SEED_LEDGER` | corpus_gate | `1` → seeding **report** mode: measure every case on BOTH channels, write `tmp/ledger_candidates.json`, assert nothing |
 | `DSS_GATE_SEED_ONLY` | corpus_gate | substring filter for the seeding run |
-| `DSS_PROPS_CENSUS` | corpus_gate | `1` → arms the property **census** test `corpus_gate_props_census` (`R4133_PROPS_PLAN.md` RP0.2; a separate `#[test]`, so the var can never divert the mandatory gate): walk every live non-`large` case on BOTH channels with `all_properties` forced on (the §1.1 r4133 masks bypassed), collect every divergent cell instead of asserting, write `tmp/props_census.json` + `tmp/props_census/run.json` + `tmp/props_census/<channel>/{structural_pairs,numeric_pairs,examples_full,shape,summary}` in the RP0.1 extract format. Honors `DSS_GATE_ONLY` (stamped into the artifacts); **asserts nothing** — a divergence is the measurement. RP2.1 adds the `claims` disposition mode; any other value fails loudly |
+| `DSS_PROPS_CENSUS` | corpus_gate | `1` → arms the property **census** test `corpus_gate_props_census` (`R4133_PROPS_PLAN.md` RP0.2; a separate `#[test]`, so the var can never divert the mandatory gate): walk every live non-`large` case on BOTH channels with `all_properties` forced on (the §1.1 r4133 masks bypassed), collect every divergent cell instead of asserting, write `tmp/props_census.json` + `tmp/props_census/run.json` + `tmp/props_census/<channel>/{structural_pairs,numeric_pairs,examples_full,shape,summary}` in the RP0.1 extract format. Honors `DSS_GATE_ONLY` (stamped into the artifacts); **asserts nothing** — a divergence is the measurement. `claims` → the same walk in RP2.1's **disposition** mode: every value row annotated `normalized-by-<rule>`/`echo-row`/`under-floor`/`ledger-hit`/`UNCLAIMED` through the shipped policy predicates, plus `claims{,_unclaimed_pairs,_summary}` per channel and the in-scope split; plain-mode artifacts are byte-identical either way. Any other value fails loudly |
 | `DSS_LEDGER_MEASURE` | corpus_gate | `1` → numeric ledger handlers print the live divergence per scope (envelope sizing; no gating change) |
 | `DSS_UPDATE_POPULATION_LOCK` | population_lock | `1` → rewrite `population.lock.json` from the current manifests (deliberate regen) |
 | `DSS_UPDATE_GOLDENS` | `harness::regen` | `1` → arm the self-golden write rails (`snapshot_text`/`snapshot_bytes`). Refuses any artifact not anchored `self` in `golden.lock.json`, and any family whose `produced_by` is not this build's lane. Inert otherwise; no driver calls the helpers yet (WP-G3) |

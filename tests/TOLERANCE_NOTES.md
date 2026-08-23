@@ -1006,10 +1006,61 @@ are the same — a post-0.14.5 surface the 0.14.5 oracle predates):
   the census's `generator.kw` `max_rel` 5.45e+01; kvar reaches 1.59e+00 — a
   whole-solution divergence, not a `property`-scoped one). Its only exerciser
   today is
-  `harness::props_015x_tests::shipped_gendispatcher_weights_row_is_inert_when_the_oracle_knows_it`;
-  RP2.1's replay over the full `shape.txt` will cover it offline once that test
-  binary exists (`crates/dss-core/tests/props_r4133_replay.rs` is unlanded).
+  `harness::props_015x_tests::shipped_gendispatcher_weights_row_is_inert_when_the_oracle_knows_it`
+  and — since RP2.1 landed `crates/dss-core/tests/props_r4133_replay.rs` — the
+  replay's offline sweep of the full vendored `shape.txt`, where this is the one
+  allowlist row that fires on the r4133 side.
 This is a *shape/version-mismatch* declaration only — no numeric floor moves.
+
+### r4133 value-spelling normalization (`PROPS_NORM_R4133`) — not a tolerance
+
+`R4133_PROPS_PLAN.md` RP2.1 adds a second, **channel-scoped** relaxation to
+`compare_all_properties`, and it is worth being exact about what it does to the
+"values compare case-exact (no lowercasing)" rule above: that rule is the
+**capi_v0145** contract and stays verbatim there (structurally — every RP2.1
+behavior hangs off `PropsPolicy::is_r4133`, pinned by
+`props_policy_tests::the_capi_channel_never_normalizes`, and measured by an A/B
+run whose capi artifacts are byte-identical). On the **r4133** channel the two
+engines legitimately *spell* the same value differently — FPC `Yes`/`No` vs
+eleven Delphi boolean spellings, `THashList`-lowercased names vs the as-declared
+case, `GetDSSArray`'s `[ 400]` vs r4133's per-class comma/paren forms — so a
+table of typed rows (`tests/harness/props_norm.rs`) re-spells the two sides
+before the assert, per `(class, prop)`, by one of `BoolFold` / `CaseFold`
+(+trim) / `ArrayForm` / `EnumSynonym`.
+
+**It is a spelling rule, never a numeric band.** A rule may change how a value is
+written, never which value it is (plan mechanic (c), the
+`lane::expected_rerounded` discipline); anything that cannot satisfy that is an
+*exclusion* with its own pin, not a rule. RP2.1 therefore introduces **no floor
+anywhere**: `ArrayForm`'s numeric tokens compare EXACTLY, because
+`props_norm::R4133_DISPLAY_FLOOR` is `None` — the slot RP2.4 will fill from the
+vendored in-scope numeric extract, inside the measured empty band
+`(6.43e-5, 1e-3)`, with its own section here. Until then, a wrong number inside
+an array still fails (proven by RP2.1's non-vacuity probes: `[ 400]` vs `[ 404]`
+reds at 1e-2, and a corrupted token or boolean reds too), and no `Tolerances`
+field or tier is touched.
+
+The rows are evidence-bound and both-ways live: each cites its census pair by
+`(pair, bin, cells)` in `tests/corpus/props_r4133/`, the offline replay proves
+every row claims at least one real census spelling, and per-row hit counters
+(dormant until RP4.1 unmasks the r4133 props path) fail on a row that stops
+folding anything.
+
+The **channel dispositions of `SKIP_PROPS`** land in the same sub-step and are
+the other half of this: a row justified by a *channel-independent* fact (the
+uninitialized-memory matrix reads, `Transformer.WdgCurrents`' undefined
+zero-current angle) stays skipped on both channels, while the *changed-default*
+rows — Fuse `FuseCurve`/`RatedCurrent`, RegControl `RevThreshold` — compare on
+r4133, exactly as the paragraphs above require ("the r4133 values are pinned on
+the r4133 side, never masked there"). `LANE_SKIP_PROPS`' Monitor `BaseFreq`
+stays channel-blind: r4133 shares that bug (`Monitor.pas` r4133:552).
+
+Unmasking `RegControl.RevThreshold` on r4133 makes 888 previously invisible cells
+appear in the census (`'-100'` ours vs `'100'` r4133, 864 + 24 cells) — an
+`EchoDefault` (`RegControl.pas:1437` freezes `PropertyValue[23] := '100'`, the
+sibling of `remoteptratio` `:1441`), not a value delta. It is measured, vendored
+in `examples_supplement.txt` and owed an RP2.3 echo row plus its pin; RP2.1
+deliberately leaves it UNCLAIMED rather than hide it behind a mask.
 
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)
 
