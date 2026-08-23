@@ -209,8 +209,9 @@ pub(crate) enum Disposition {
     /// [`props_norm::PROPS_NORM_R4133`] folds the two spellings
     /// (RP2.1). The payload is the rule's tag. **r4133 rows only.**
     Normalized(&'static str),
-    /// [`props_norm::PROPS_ECHO_R4133`] excludes the pair (RP2.3 —
-    /// empty today). **r4133 rows only.**
+    /// [`props_norm::PROPS_ECHO_R4133`] excludes the pair (RP2.3; 81 rows since
+    /// that sub-step landed, minus what `props_norm::ECHO_CARVE_OUTS` takes back
+    /// out of them cell by cell). **r4133 rows only.**
     Echo,
     /// The two sides are numbers inside the r4133 display floor (RP2.4 — the
     /// floor is `None` today). **r4133 rows only.**
