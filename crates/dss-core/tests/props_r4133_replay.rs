@@ -522,12 +522,13 @@ const DECLARED_RP24: (usize, usize, usize) = (0, 0, 0);
 /// on pairs the RP4.1 unmask will compare. The per-pair split, each sub-step's
 /// verdict and what it landed are [`RP3_ROUTING`].
 ///
-/// **Unchanged by RP3.1 (2026-08-24), deliberately.** That sub-step root-caused
-/// `swtcontrol.delay`, reported it upstream and landed its two expected-value
-/// pins — but its exclusion is a `ledger.json` `property` entry, and §1.1(e)
-/// stages every such entry into RP4.1's unmask commit. Until that commit the
-/// tree holds no exclusion for these rows, so they stay *declared*: this bucket
-/// is what a sub-step **inherits**, not a progress bar.
+/// **Unchanged by RP3.1 and RP3.2 (both 2026-08-24), deliberately.** Those
+/// sub-steps root-caused `swtcontrol.delay` and `windgen.kvar`, reported both
+/// upstream and landed their two and four expected-value pins — but each
+/// exclusion is a `ledger.json` `property` entry, and §1.1(e) stages every such
+/// entry into RP4.1's unmask commit. Until that commit the tree holds no
+/// exclusion for these rows, so they stay *declared*: this bucket is what a
+/// sub-step **inherits**, not a progress bar.
 ///
 /// **The shrink is a hand edit at RP4.1, not a consequence of landing the
 /// entries** (RP3.1 audit settlement, 2026-08-24 — the earlier wording, "may
@@ -679,10 +680,10 @@ const BIN7_ROOT_CAUSE: &[&str] = &[
 /// the bucket total.
 ///
 /// **A settled sub-step does NOT empty its rows, and that is the point.** RP3.1
-/// is root-caused, reported and pinned, yet its two spellings stay declared to
-/// RP3: the artifact that will finally exclude them is a `ledger.json`
-/// `property` entry, and by the §1.1(e) staging rule that entry lands in RP4.1's
-/// unmask commit, not here. Writing "claimed" while the tree holds no exclusion
+/// and RP3.2 are root-caused, reported and pinned, yet their spellings stay
+/// declared to RP3: the artifact that will finally exclude them is a
+/// `ledger.json` `property` entry, and by the §1.1(e) staging rule that entry
+/// lands in RP4.1's unmask commit, not here. Writing "claimed" while the tree holds no exclusion
 /// would be exactly the silent-progress claim this accounting exists to prevent
 /// — so [`DECLARED_RP3`] is unchanged at `(7, 4, 7)` and the verdict column
 /// carries what was decided, for whom, and where it lands. **The row will not
@@ -695,7 +696,8 @@ const BIN7_ROOT_CAUSE: &[&str] = &[
 /// not run; every other verdict opens with one of [`RP3_SETTLED_SHAPES`]' tags,
 /// which are plan §WP-RP3's three sanctioned outcomes — a drafted ledger entry
 /// (`LEDGER`), an RP2.3 echo row (`ECHO`), a port fix in both lanes (`FIX`).
-/// RP3.1 exercised only the first, so [`the_bin7_root_cause_pairs_are_routed_to_their_sub_steps`]
+/// RP3.1 and RP3.2 both exercised the first, so
+/// [`the_bin7_root_cause_pairs_are_routed_to_their_sub_steps`]
 /// checks each tag's own obligations rather than assuming RP3.1's shape is every
 /// settled shape (RP3.1 audit settlement, 2026-08-24): all three must cite the
 /// **r4133** unit (a `Version8/Source/` `.pas:` line — a capi citation alone is
@@ -747,9 +749,42 @@ const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
         "RP3.2",
         3,
         3,
-        "OPEN — plan §RP3.2: ours ~986 vs r4133 `0` on four of the five `modes:windgen/*` decks, \
-         an r4133-only class with no capi witness; probe a solved-state observable to separate \
-         echo from live Q before choosing the artifact",
+        "LEDGER — RP3.2 (2026-08-24): r4133's kvar getter is wired and LIVE but reads the WRONG \
+         live field — GetPropertyValue arm 11 (Version8/Source/PCElements/WindGen.pas:2896) \
+         renders Format('%.6g',[presentkvar]) = Qnominalperphase*0.001*Fnphases (:2297-2300), \
+         the DISPATCHED Q, while the property documents 'the base kvar' (:365) and Edit arm 11 \
+         (:629) stores the token in kvarBase via Set_Presentkvar (:2996-3009). NOT an echo \
+         (probed live on the r4133 DLL: a deck typing kvar=500 renders 0, and after `Edit \
+         kvar=777` it still renders 0 while PF moves to 0.968058 — the value IS parsed; the echo \
+         store's own default for the slot is '60', :2446) and NOT a port bug (probed: solved \
+         terminal powers agree on all five decks — Q -2.1e-05/-4.2e-05 kvar in power flow, \
+         -37087.81 vs -37087.76 kvar in dynamics), hence NO echo row and no engine change: the \
+         port renders kvar_base (elements/pc/windgen/accessors.rs:431), exactly as its Generator \
+         does and as r4133's own Generator does (Generator.pas:3018 against the identical getter \
+         :2402-2405 and the identical help :396). Upstream is wrong three ways: with QMode=1 it \
+         renders the operating-point 363.54 for a typed kvar=500; in dynamics — where :1254 \
+         skips the Q block — it renders Set_Presentkvar's intermediate 777 while its own \
+         kvarBase is 792.718441186736 and the measured terminal Q is -37087.76 kvar; and \
+         SaveWrite (DSSObject.pas:156 through the virtual :117-120) makes `Save Circuit` emit \
+         kvar=0, which on reload also flattens PFNominal to 1.0 and kvarMax/kvarMin to 0 \
+         (:3001-3008). The rendered zero itself comes from a second defect, reported but out of \
+         scope here: the steady-state QMode case (:1276-1322) has no arm 0 though QMode defaults \
+         to 0 (:1020) and the help documents 0:Q (:429-430), so Else kvarCalc := 0 \
+         (:1320-1321). The exclusion is four per-case ledger `property` entries \
+         (r4133-windgen-kvar-dispatched-daily / -delta / -dyn / -dynfault), DRAFTED here and \
+         landing at RP4.1 per §1.1(e), witnessed meanwhile by \
+         windgen_kvar_renders_the_base_on_the_daily_deck, \
+         windgen_kvar_renders_the_base_on_the_delta_snapshot, \
+         windgen_kvar_renders_the_base_on_the_dynamics_deck and \
+         windgen_kvar_renders_the_base_on_the_fault_ride_through_deck. Census, derived per case \
+         by `the_rp32_census_decomposition_is_read_off_the_corpus`: 4 cells, all 4 in scope, \
+         1 + 1 + 1 + 1 over the 4 diverging decks ('726.483157256779' x1, '854.95263026673' x2, \
+         '986.05231553659' x1); no deck types kvar= at all, so every value is a pf=/kVA= side \
+         effect and modes:windgen/windgen_snap.dss derives kvar_base 0 from pf=1.0 and produces \
+         no cell, while 2 further corpus decks declare a WindGen and are held in \
+         skipped_oracle_issue.json. 4 in-scope cells over exactly 4 cases, hence exactly four \
+         drafted entries and no more. Report: \
+         investigations/to_opendss/44-windgen-kvar-renders-dispatched-q.md (local)",
     ),
 ];
 
@@ -845,6 +880,77 @@ const RP31_NO_DELAY_CASES: &[(&str, usize)] = &[
         16,
     ),
 ];
+
+/// **RP3.2's census decomposition, as data instead of prose** — every corpus
+/// **case** that declares a `WindGen`, with the declaration tokens its base kvar
+/// is derived from: `(case, WindGens declared, kW=, pf=, kVA=)`, `""` for a
+/// token the deck never types.
+///
+/// Landed by RP3.2 (2026-08-24), on [`RP31_DELAY_CASES`]' precedent and for the
+/// same reason: the sub-step concludes *exactly four* drafted ledger entries,
+/// and that is a statement about cases — 4 cells, all 4 in scope, one per
+/// diverging deck. [`the_rp32_census_decomposition_is_read_off_the_corpus`]
+/// derives every one of those numbers instead of transcribing them.
+///
+/// **No deck types `kvar=`.** Every value in the census is a *side effect* of
+/// the deck's `pf=` or `kVA=` — which is why the fifth deck, `windgen_snap.dss`,
+/// carries no cell at all: `pf=1.0` makes the base zero and both engines print
+/// `0`. That is a value coincidence and not agreement, and the pin
+/// `windgen_kvar_renders_the_base_on_the_delta_snapshot` measures the difference
+/// (type a `kvar=` there and the two diverge like everywhere else).
+///
+/// The table is a *claim of completeness*: the test walks every `.dss` under
+/// `tests/corpus` and fails if a deck outside this table and
+/// [`RP32_WINDGEN_SKIPPED_DECKS`] declares a `WindGen`.
+const RP32_WINDGEN_CASES: &[(&str, usize, &str, &str, &str)] = &[
+    ("modes:windgen/windgen_daily.dss", 1, "3000", "0.95", ""),
+    ("modes:windgen/windgen_dyn.dss", 1, "1500", "", "1800"),
+    ("modes:windgen/windgen_dyn_fault.dss", 1, "1500", "", "1800"),
+    ("modes:windgen/windgen_snap.dss", 1, "1500", "1.0", ""),
+    ("modes:windgen/windgen_snap_delta.dss", 1, "1500", "0.9", ""),
+];
+
+/// The other half of [`RP32_WINDGEN_CASES`]' completeness claim: the corpus
+/// **decks** that declare a `WindGen` and are **not** in the population at all —
+/// held out by `skipped_oracle_issue.json`, so they are no case, own no cell and
+/// owe no ledger entry.
+///
+/// Both are the vendored `WindGenerator` examples, and both are held for the
+/// same measured reason ([`RP32_SKIPPED_TAG`]): they are multi-step runs the
+/// pinned 0.14.5-era oracle infrastructure cannot gate. They are load-bearing
+/// here the way `civanlar.dss` is in RP3.1, but from the opposite side — each
+/// types `kVA=1200.0` at PF 0.88 (the QSTS deck writes `PF=0.88` on a `~`
+/// continuation, the GFL one leaves `Create`'s default), so both derive a base
+/// of ~569.97 against r4133's `0`: promoting either one **would** add a cell and
+/// a fifth (sixth) entry, which is exactly why the exclusion has to be asserted
+/// rather than assumed.
+///
+/// Deck paths, not case ids: these have no row in `population.lock.json`.
+const RP32_WINDGEN_SKIPPED_DECKS: &[(&str, usize, &str, &str, &str)] = &[
+    (
+        "electricdss-tst/Version8/Distrib/Examples/WindGenerator/WindGen_GFL_Dynamics/\
+         Run_IEEE123Bus_GFLDaily.DSS",
+        1,
+        "",
+        "",
+        "1200.0",
+    ),
+    (
+        "electricdss-tst/Version8/Distrib/Examples/WindGenerator/WindGen_QSTS/\
+         Run_IEEE123Bus_GFLDaily.DSS",
+        1,
+        "",
+        "0.88",
+        "1200.0",
+    ),
+];
+
+/// The manifest that holds [`RP32_WINDGEN_SKIPPED_DECKS`] out of the population,
+/// repo-root-relative.
+const SKIPPED_ORACLE_ISSUE: &str = "tests/corpus/manifests/skipped_oracle_issue.json";
+/// The tag both skipped WindGen decks carry there — a limitation of the pinned
+/// oracle's multi-step capture, not anything about `kvar`.
+const RP32_SKIPPED_TAG: &str = "capi015_multistep_limitation";
 
 /// Bin-7 pairs the **supplement** carries, each read off the Pascal as RP2.3's
 /// row rather than an RP3 root-cause sub-step:
@@ -1752,6 +1858,136 @@ fn swtcontrol_facts(deck: &str) -> (usize, Option<String>) {
         }
     }
     (declared, delay)
+}
+
+/// The value of `key` (`"kw="`, `"pf="`, …) typed as a whole parameter on
+/// `line`, which must already be lower-cased.
+///
+/// The match must begin the line or follow a separator, so `pf=` is not found
+/// inside a longer parameter name and `kva=` is not found inside a value. The
+/// trailing `=` in `key` is what keeps `kv=` out of `kva=` and `kva=` out of
+/// `kvar=` — the four tokens this file reads are prefixes of one another.
+fn named_token(line: &str, key: &str) -> Option<String> {
+    line.match_indices(key)
+        .find(|(at, _)| {
+            line[..*at]
+                .chars()
+                .next_back()
+                .is_none_or(|c| c.is_whitespace() || c == '~' || c == ',')
+        })
+        .map(|(at, _)| {
+            line[at + key.len()..]
+                .chars()
+                .take_while(|c| !c.is_whitespace())
+                .collect()
+        })
+}
+
+/// What one deck says about `WindGen`: how many it declares, and the `kW=`,
+/// `pf=`, `kVA=` and `kvar=` tokens typed **inside the machine's own element
+/// scope** — its `new` line and the `~` continuations that follow — lower-cased,
+/// with `""` for a token the deck never types.
+///
+/// The scope rule is `swtcontrol_facts`': a `pf=` on a Load elsewhere in the
+/// deck is not this machine's. The fourth token is read for a claim rather than
+/// a derivation — **no** corpus deck types `kvar=` at all, so every value in the
+/// census is a side effect of `pf=`/`kVA=`, and
+/// [`the_rp32_census_decomposition_is_read_off_the_corpus`] asserts that instead
+/// of assuming it.
+fn windgen_facts(deck: &str) -> (usize, String, String, String, String) {
+    let path = repo_root().join(CORPUS).join(deck);
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("read deck {}: {e}", path.display()));
+    let mut declared = 0usize;
+    let mut tok = [const { String::new() }; 4];
+    let mut inside = false;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('!') || line.starts_with("//") {
+            continue;
+        }
+        let lower = line.to_ascii_lowercase();
+        if lower.starts_with("new windgen.") {
+            declared += 1;
+            inside = true;
+        } else if !lower.starts_with('~') {
+            inside = false;
+        }
+        if !inside {
+            continue;
+        }
+        for (slot, key) in ["kw=", "pf=", "kva=", "kvar="].iter().enumerate() {
+            let Some(value) = named_token(&lower, key) else {
+                continue;
+            };
+            if tok[slot].is_empty() {
+                tok[slot] = value;
+            } else {
+                assert_eq!(
+                    tok[slot], value,
+                    "{deck}: two different `{key}` tokens on its WindGens — the decomposition \
+                     assumes one declaration per deck"
+                );
+            }
+        }
+    }
+    let [kw, pf, kva, kvar] = tok;
+    (declared, kw, pf, kva, kvar)
+}
+
+/// The base kvar a `WindGen` declaration derives from its own tokens — the two
+/// branches of `Version8/Source/PCElements/WindGen.pas`, which the port ports
+/// verbatim.
+///
+/// * **no `kVA=`** (`kVANotSet`): `SyncUpPowerQuantities` sets
+///   `kvarBase := kWBase * sqrt(1/PF^2 - 1)`
+///   (`crates/dss-core/src/elements/pc/windgen/nominal.rs:51`);
+/// * **`kVA=` typed**: `RecalcElementData` (`:1375-1378`) re-derives
+///   `kWBase := kVArating*|PF|` and `kvarBase := sqrt(kVA^2 - kWBase^2)`
+///   (`nominal.rs:280-281`), so a deck that types `kW=` and `kVA=` but no `pf=`
+///   lands on `Create`'s `PFNominal = 0.88` (`WindGen.pas:917`) and its typed
+///   `kW=` never reaches the result.
+///
+/// The expressions are written in the engine's own order and grouping so the
+/// derived `f64` is the port's bit-for-bit, not merely close to it.
+fn windgen_kvar_base(kw: &str, pf: &str, kva: &str) -> f64 {
+    // `Create`'s defaults (`WindGen.pas:911-917`) for whatever the deck omits.
+    let kw: f64 = if kw.is_empty() {
+        1000.0
+    } else {
+        kw.parse().unwrap_or_else(|e| panic!("kW={kw}: {e}"))
+    };
+    let pf: f64 = if pf.is_empty() {
+        0.88
+    } else {
+        pf.parse().unwrap_or_else(|e| panic!("pf={pf}: {e}"))
+    };
+    if kva.is_empty() {
+        kw * (1.0 / pf.powi(2) - 1.0).sqrt()
+    } else {
+        let kva: f64 = kva.parse().unwrap_or_else(|e| panic!("kVA={kva}: {e}"));
+        let kw_base = kva * pf.abs();
+        (kva.powi(2) - kw_base.powi(2)).sqrt()
+    }
+}
+
+/// A value in normalized exponential form at **15 significant digits** — FPC
+/// `FloatToStr`'s precision, which is what the port's property render
+/// (`util::float_to_str`) and therefore the frozen census's decimal spelling
+/// carry.
+///
+/// Reconciling a derived `f64` against a frozen spelling needs this and not an
+/// `==`: `986.05231553659` is the 15-digit rendering of `986.0523155365896`, so
+/// parsing it back gives a different `f64`. It is not a tolerance — both sides
+/// are rendered by the same rule and compared as strings, so a real change in
+/// the derivation still reds.
+fn sig15(v: f64) -> String {
+    let s = format!("{v:.14e}");
+    let (mant, exp) = s
+        .split_once('e')
+        .expect("Rust renders `{:e}` with an exponent");
+    let mant = mant.trim_end_matches('0').trim_end_matches('.');
+    format!("{mant}e{exp}")
 }
 
 /// Non-empty lines with the CR of a CRLF file stripped; the header line is
@@ -2843,7 +3079,11 @@ fn every_echo_row_pin_is_a_test_that_exists() {
 /// `property` divergence entry instead of a `PROPS_ECHO_R4133` row, and the plan
 /// forbids the row explicitly: r4133's `Delay` getter is LIVE
 /// (`SwtControl.pas:588`), so calling the divergence an echo would be a false
-/// statement about the mechanism. Under the §1.1(e) staging rule the entries are
+/// statement about the mechanism. RP3.2 is the second and lands four more, on
+/// the same grounds from the other direction — its getter is not merely live but
+/// *wired*, and reads the wrong live field (`WindGen.pas:2896` renders the
+/// dispatched Q where the property documents the base kvar). Under the §1.1(e)
+/// staging rule the entries are
 /// drafted in the sub-step and land in RP4.1's unmask commit — earlier they
 /// would fail `assert_all_hit` as NEVER APPLIED, the r4133 property compare
 /// being masked until then — so between the two there is a window in which the
@@ -2865,6 +3105,26 @@ const LEDGER_ENTRY_PINS: &[(&str, &str, &str)] = &[
         "swtcontrol_delay_wires_the_property_on_the_midi_tie",
         "RP3.1",
         "r4133-swtcontrol-delay-ignored-midi (controls:swtcontrol/midi_swtcontrol.dss)",
+    ),
+    (
+        "windgen_kvar_renders_the_base_on_the_daily_deck",
+        "RP3.2",
+        "r4133-windgen-kvar-dispatched-daily (modes:windgen/windgen_daily.dss)",
+    ),
+    (
+        "windgen_kvar_renders_the_base_on_the_delta_snapshot",
+        "RP3.2",
+        "r4133-windgen-kvar-dispatched-delta (modes:windgen/windgen_snap_delta.dss)",
+    ),
+    (
+        "windgen_kvar_renders_the_base_on_the_dynamics_deck",
+        "RP3.2",
+        "r4133-windgen-kvar-dispatched-dyn (modes:windgen/windgen_dyn.dss)",
+    ),
+    (
+        "windgen_kvar_renders_the_base_on_the_fault_ride_through_deck",
+        "RP3.2",
+        "r4133-windgen-kvar-dispatched-dynfault (modes:windgen/windgen_dyn_fault.dss)",
     ),
 ];
 
@@ -2891,8 +3151,28 @@ fn the_ledger_entry_pin_list_is_pinned() {
                 "RP3.1",
                 "r4133-swtcontrol-delay-ignored-midi (controls:swtcontrol/midi_swtcontrol.dss)",
             ),
+            (
+                "windgen_kvar_renders_the_base_on_the_daily_deck",
+                "RP3.2",
+                "r4133-windgen-kvar-dispatched-daily (modes:windgen/windgen_daily.dss)",
+            ),
+            (
+                "windgen_kvar_renders_the_base_on_the_delta_snapshot",
+                "RP3.2",
+                "r4133-windgen-kvar-dispatched-delta (modes:windgen/windgen_snap_delta.dss)",
+            ),
+            (
+                "windgen_kvar_renders_the_base_on_the_dynamics_deck",
+                "RP3.2",
+                "r4133-windgen-kvar-dispatched-dyn (modes:windgen/windgen_dyn.dss)",
+            ),
+            (
+                "windgen_kvar_renders_the_base_on_the_fault_ride_through_deck",
+                "RP3.2",
+                "r4133-windgen-kvar-dispatched-dynfault (modes:windgen/windgen_dyn_fault.dss)",
+            ),
         ],
-        "RP3.1's two drafted entries, and nothing else"
+        "RP3.1's two drafted entries and RP3.2's four, and nothing else"
     );
     for (pin, step, entry) in LEDGER_ENTRY_PINS {
         assert!(
@@ -2994,7 +3274,7 @@ fn the_kill_criterion_reroute_is_the_five_silent_readonly_pairs() {
 ///   counted columns sum to the bucket lock;
 /// * the per-pair `(rows, in-scope rows)` split is what the walk actually
 ///   declares to [`Owner::Rp3`] — not a transcription;
-/// * the settled set is pinned literally (RP3.1 alone today), and each settled
+/// * the settled set is pinned literally (RP3.1 and RP3.2 today), and each settled
 ///   verdict is checked **against the obligations of its own outcome tag**
 ///   ([`RP3_SETTLED_SHAPES`]) — all three shapes must cite the r4133 unit and
 ///   name their sub-step; `LEDGER` additionally owes the §1.1(e) staging clause
@@ -3026,8 +3306,8 @@ fn the_bin7_root_cause_pairs_are_routed_to_their_sub_steps() {
             .filter(|(_, _, _, _, v)| !v.starts_with("OPEN — "))
             .map(|(p, s, _, _, _)| (*p, *s))
             .collect::<Vec<_>>(),
-        [("swtcontrol.delay", "RP3.1")],
-        "the sub-steps that have run"
+        [("swtcontrol.delay", "RP3.1"), ("windgen.kvar", "RP3.2")],
+        "the sub-steps that have run, in RP3_ROUTING order"
     );
 
     for (pair, step, _, _, verdict) in RP3_ROUTING {
@@ -3467,6 +3747,262 @@ fn the_rp31_census_decomposition_is_read_off_the_corpus() {
         names_identifier(
             verdict,
             "the_rp31_census_decomposition_is_read_off_the_corpus"
+        ),
+        "the verdict must name the test that derives its numbers, so a rename cannot orphan it"
+    );
+}
+
+/// **RP3.2's census decomposition is read off the corpus, not off its own
+/// prose** — [`the_rp31_census_decomposition_is_read_off_the_corpus`]'s shape,
+/// applied to `windgen.kvar`.
+///
+/// The sub-step's conclusion — *exactly four* drafted ledger entries — rests on
+/// a decomposition that must close over **every** cell of the pair and every
+/// corpus deck that could add one:
+///
+/// * the **decks** give the WindGen count and the `kW=`/`pf=`/`kVA=` tokens
+///   ([`windgen_facts`]), swept corpus-wide so a new WindGen deck cannot appear
+///   unnoticed — [`RP32_WINDGEN_CASES`] and [`RP32_WINDGEN_SKIPPED_DECKS`] must
+///   together be every deck that declares one, and the skipped pair is checked
+///   against `skipped_oracle_issue.json` itself, with the base it *would*
+///   contribute if promoted;
+/// * the **arithmetic** derives our render from those tokens
+///   ([`windgen_kvar_base`], the two `WindGen.pas` branches) rather than
+///   transcribing it — no deck types `kvar=`, so the whole census is a side
+///   effect of `pf=`/`kVA=`, and a cell exists exactly where the derived base is
+///   nonzero;
+/// * `population.lock.json` gives each case's `steps=`/`engines=`, so
+///   `cells = WindGens × steps` and "in scope" is the lock's answer;
+/// * the **frozen census** (`bins.tsv`'s 4/4 and `examples_full.txt`'s three
+///   rows, 2 + 1 + 1 cells) is what the products must add up to, per spelling
+///   and in total — and every one of those rows must have `0` on the r4133 side,
+///   which IS the divergence.
+///
+/// Then the consumers are tied to the result: the in-scope cases are exactly the
+/// cases [`LEDGER_ENTRY_PINS`] cites (one drafted entry each, no more), and the
+/// routing verdict must carry the derived figures verbatim.
+#[test]
+fn the_rp32_census_decomposition_is_read_off_the_corpus() {
+    const PAIR: &str = "windgen.kvar";
+    const STEP: &str = "RP3.2";
+
+    // (1) Completeness: the two tables ARE every corpus deck that declares a
+    //     WindGen, with the tokens each declaration types.
+    let root = repo_root().join(CORPUS);
+    let mut decks = Vec::new();
+    collect_dss(&root, &root, &mut decks);
+    assert!(
+        decks.len() > 1000,
+        "only {} .dss files under {CORPUS} — the vendored corpus is missing",
+        decks.len()
+    );
+    type Facts = (usize, String, String, String, String);
+    let measured: BTreeMap<String, Facts> = decks
+        .iter()
+        .map(|d| (d.clone(), windgen_facts(d)))
+        .filter(|(_, f)| f.0 > 0)
+        .collect();
+    let tokens = |n: &usize, kw: &str, pf: &str, kva: &str| -> Facts {
+        (
+            *n,
+            kw.to_string(),
+            pf.to_string(),
+            kva.to_string(),
+            String::new(),
+        )
+    };
+    let cited: BTreeMap<String, Facts> = RP32_WINDGEN_CASES
+        .iter()
+        .map(|(case, n, kw, pf, kva)| (case_deck(case), tokens(n, kw, pf, kva)))
+        .chain(
+            RP32_WINDGEN_SKIPPED_DECKS
+                .iter()
+                .map(|(deck, n, kw, pf, kva)| ((*deck).to_string(), tokens(n, kw, pf, kva))),
+        )
+        .collect();
+    assert_eq!(
+        measured, cited,
+        "every corpus deck declaring a WindGen must sit in RP3.2's decomposition with its \
+         measured count and kW=/pf=/kVA= tokens (and no `kvar=`, the fifth field) — a new one \
+         changes how many ledger entries the pair owes"
+    );
+
+    // …and the held-out pair really is held out, by name and by tag, with the
+    // base it would contribute if it were ever promoted.
+    let skipped_path = repo_root().join(SKIPPED_ORACLE_ISSUE);
+    let skipped: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&skipped_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", skipped_path.display())),
+    )
+    .expect("skipped_oracle_issue.json is JSON");
+    let held = skipped["cases"]
+        .as_array()
+        .expect("skipped_oracle_issue.json has a `cases` array");
+    for (deck, _, kw, pf, kva) in RP32_WINDGEN_SKIPPED_DECKS {
+        let rel = deck
+            .strip_prefix("electricdss-tst/")
+            .unwrap_or_else(|| panic!("{deck}: a skipped deck is a vendored one"));
+        let case = held
+            .iter()
+            .find(|c| c["path"] == rel)
+            .unwrap_or_else(|| panic!("{rel} is not held out by {SKIPPED_ORACLE_ISSUE}"));
+        assert_eq!(
+            case["tag"], RP32_SKIPPED_TAG,
+            "{rel}: the hold-out reason must still be the oracle's multi-step limitation — any \
+             other tag is a different decision about the population"
+        );
+        assert!(
+            windgen_kvar_base(kw, pf, kva) > 0.0,
+            "{rel}: a skipped deck whose derived base is zero would prove nothing about the \
+             count of ledger entries"
+        );
+    }
+
+    // (2) Per case: cells = WindGens × steps, in scope iff the case gates r4133
+    //     — and a cell exists only where the derived base is nonzero.
+    let lock_path = repo_root().join(POPULATION_LOCK);
+    let lock: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&lock_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", lock_path.display())),
+    )
+    .expect("population.lock.json is JSON");
+    let corpus = Corpus::load();
+    let rows: Vec<&Example> = corpus.rows.iter().filter(|r| r.pair == PAIR).collect();
+    assert_eq!(
+        rows.len(),
+        3,
+        "the frozen census spells the pair three ways, got {rows:?}"
+    );
+    // spelling -> (cells, in-scope cells)
+    let mut per_spelling: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+    let mut in_scope_cases: Vec<(&str, usize)> = Vec::new();
+    let mut no_cell: Vec<(&str, &str)> = Vec::new();
+    for (case, declared, kw, pf, kva) in RP32_WINDGEN_CASES {
+        let rigor = case_rigor(&lock, case);
+        let steps: usize = rigor_field(&rigor, "steps")
+            .parse()
+            .unwrap_or_else(|e| panic!("{case}: steps= is not a number: {e}"));
+        let cells = declared * steps;
+        let in_scope = rigor_field(&rigor, "engines") != "capi_v0145";
+        let base = windgen_kvar_base(kw, pf, kva);
+        if base == 0.0 {
+            no_cell.push((case, pf));
+            continue;
+        }
+        let row = rows
+            .iter()
+            .find(|r| r.rust.parse::<f64>().is_ok_and(|v| sig15(v) == sig15(base)))
+            .unwrap_or_else(|| {
+                panic!("{case}: no frozen census row spells the derived base {base}")
+            });
+        assert_eq!(
+            row.r4133, "0",
+            "{case}: r4133 must render the dispatched zero — that IS the divergence"
+        );
+        let e = per_spelling.entry(row.rust.as_str()).or_insert((0, 0));
+        e.0 += cells;
+        if in_scope {
+            e.1 += cells;
+            in_scope_cases.push((case, cells));
+        }
+    }
+    in_scope_cases.sort_unstable();
+    assert_eq!(
+        no_cell.len(),
+        1,
+        "exactly one windgen deck derives a zero base, and it is the pair's only census-clean \
+         one — got {no_cell:?}"
+    );
+
+    // (3) …and the products are the frozen census's own numbers, per spelling
+    //     and in total.
+    let ev = corpus
+        .evidence(rows[0])
+        .unwrap_or_else(|| panic!("{PAIR}: no frozen evidence record"));
+    let cells: usize = per_spelling.values().map(|(c, _)| *c).sum();
+    let in_scope_cells: usize = per_spelling.values().map(|(_, c)| *c).sum();
+    assert_eq!(
+        cells, ev.cells,
+        "derived cells must be bins.tsv's cell count for {PAIR}"
+    );
+    assert_eq!(
+        Some(in_scope_cells),
+        ev.cells_in_scope,
+        "derived in-scope cells must be bins.tsv's cells_in_scope for {PAIR}"
+    );
+    for row in &rows {
+        assert_eq!(
+            per_spelling.get(row.rust.as_str()).map(|(c, _)| *c),
+            Some(row.cells),
+            "'{}': the frozen example row's count must be the sum over the cases that derive it",
+            row.rust
+        );
+    }
+
+    // (4) One drafted entry per in-scope case, and no other.
+    let mut entry_cases: Vec<&str> = LEDGER_ENTRY_PINS
+        .iter()
+        .filter(|(_, s, _)| *s == STEP)
+        .map(|(_, _, cite)| {
+            cite.split_once(" (")
+                .and_then(|(_, rest)| rest.strip_suffix(')'))
+                .unwrap_or_else(|| panic!("{cite:?}: the citation must name its case in parens"))
+        })
+        .collect();
+    entry_cases.sort_unstable();
+    assert_eq!(
+        in_scope_cases.iter().map(|(c, _)| *c).collect::<Vec<_>>(),
+        entry_cases,
+        "exactly the in-scope diverging cases owe a drafted ledger entry — one each, and the \
+         deck that derives no cell owes none"
+    );
+
+    // (5) The verdict carries the derived figures, so its prose cannot drift
+    //     away from the corpus it describes.
+    let verdict = RP3_ROUTING
+        .iter()
+        .find(|(p, ..)| *p == PAIR)
+        .map(|(_, _, _, _, v)| *v)
+        .unwrap_or_else(|| panic!("{PAIR} has no routing row"));
+    let split = in_scope_cases
+        .iter()
+        .map(|(_, c)| c.to_string())
+        .collect::<Vec<_>>()
+        .join(" + ");
+    let spellings = per_spelling
+        .iter()
+        .map(|(s, (c, _))| format!("'{s}' x{c}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let (clean_case, clean_pf) = no_cell[0];
+    for phrase in [
+        format!("{cells} cells, all {in_scope_cells} in scope"),
+        format!("{split} over the {} diverging decks", in_scope_cases.len()),
+        spellings,
+        format!("{clean_case} derives kvar_base 0 from pf={clean_pf} and produces no cell"),
+        format!(
+            "{} further corpus decks declare a WindGen and are held in {}",
+            RP32_WINDGEN_SKIPPED_DECKS.len(),
+            SKIPPED_ORACLE_ISSUE
+                .rsplit('/')
+                .next()
+                .expect("a file name")
+        ),
+        format!(
+            "{in_scope_cells} in-scope cells over exactly {} cases",
+            in_scope_cases.len()
+        ),
+    ] {
+        assert!(
+            verdict.contains(&phrase),
+            "the RP3.2 verdict must carry the derived census — {phrase:?} is missing from \
+             {verdict:?}"
+        );
+    }
+    assert!(
+        names_identifier(
+            verdict,
+            "the_rp32_census_decomposition_is_read_off_the_corpus"
         ),
         "the verdict must name the test that derives its numbers, so a rename cannot orphan it"
     );
