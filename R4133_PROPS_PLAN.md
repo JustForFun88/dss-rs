@@ -232,7 +232,10 @@ four-root-cause list is no longer closed. Its cause is already read off the
 Pascal and is an **echo**, not a jump
 (`Create` sets `GenVars.D := 1.0` and never `Dpu`, `generator.pas:955-971`;
 `InitPropertyValues` echoes `Format('%-g', [GenVars.Dpu])`, `:2585`), so it is
-RP2.2 triage → an RP2.3 echo row, not an RP3 root-cause sub-step.
+RP2.2 triage → an RP2.3 echo row, not an RP3 root-cause sub-step. **Closed out
+2026-08-23** across all four sub-steps: 12 (RP1.1) + 9 (RP1.2) + 2 (RP1.3) +
+1 (RP1.4) = **24 new pairs**, structural 210 → 225 and numeric 94 → 103, shape
+classes 5 → 0.
 The full-census bins below are re-derived in-scope by RP0.1 (its `bins.tsv`
 assigns every pair to its bin); the treatment map binds every bin to the
 sub-step that closes it:
@@ -374,9 +377,14 @@ sub-step's own numeric stop-and-report threshold holds.
   `regcontrol.fwdthreshold` spellings the 2026-08-08 census missed, RP0.2
   correction, **and every pair the WP-RP1 shape closures made live** — the
   spellings recorded per sub-step in the vendored `README.md` §"Pairs the WP-RP1
-  shape closures make live", eleven pairs from RP1.1 with autotrans/windgen to
-  follow; without them the replay would report full offline coverage over a
-  population that excludes the very classes RP1 opened) —
+  shape closures make live", which WP-RP1 closed out at **24 pairs**: 12 from
+  RP1.1 (generator/sensor), 9 from RP1.2 (autotrans), 2 from RP1.3 (windgen),
+  1 from RP1.4 (gendispatcher) — matching the census deltas, structural
+  210 → 225 and numeric 94 → 103. RP1.4's is `gendispatcher.enabled`, whose
+  class is reached through a `PROPS_015X` row rather than a port, so a replay
+  that accounts only for `oracle_only` closures would miss it. Without these the
+  replay would report full offline coverage over a population that excludes the
+  very classes RP1 opened) —
   through the full r4133 policy in the documented chain order (shape allowlist
   → normalization → echo table → display floor). `examples_full.txt` carries
   one row per **distinct (rust, r4133) spelling** per pair, untruncated (the

@@ -1000,9 +1000,15 @@ are the same — a post-0.14.5 surface the 0.14.5 oracle predates):
   gated everywhere else. The row is **dormant on the live gate** — all three
   `controls:gendispatcher/*` decks are `engines: "capi_v0145"` and stay so,
   because r4133 cannot receive their `weights=` at all and dispatches the equal
-  split instead (measured: up to 48 % apart on each generator's kW at every
-  step — a whole-solution divergence, not a `property`-scoped one). It is
-  exercised offline by the RP2.1 replay against the full `shape.txt`.
+  split instead (measured over the 12 steps of `gendispatcher.dss`: on kW, 48 %
+  apart at the worst of steps 1-11 and **54.5x at step 0**, where r4133 holds
+  both machines at the `Max(1.0, …)` floor while the port dispatches 55.52 kW —
+  the census's `generator.kw` `max_rel` 5.45e+01; kvar reaches 1.59e+00 — a
+  whole-solution divergence, not a `property`-scoped one). Its only exerciser
+  today is
+  `harness::props_015x_tests::shipped_gendispatcher_weights_row_is_inert_when_the_oracle_knows_it`;
+  RP2.1's replay over the full `shape.txt` will cover it offline once that test
+  binary exists (`crates/dss-core/tests/props_r4133_replay.rs` is unlanded).
 This is a *shape/version-mismatch* declaration only — no numeric floor moves.
 
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)

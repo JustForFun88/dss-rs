@@ -135,8 +135,9 @@ whole redispatch) — reported upstream, fix `NumPropsThisClass = 7`. The
 channel (whose list has the name) and active on r4133 only. **The liveness
 question was settled by measurement, not left open**: the census's
 `generator.kw/kvar` deltas root-cause entirely to the bug — r4133 rejects the
-decks' `weights=[3, 1]` and splits equally (up to 48 % from the port at every
-step), and feeding it the same vector as `basefreq=[3, 1]` reproduces the port's
+decks' `weights=[3, 1]` and splits equally (kW 48 % from the port at the worst
+of steps 1-11 and 54.5x at step 0, the census's `generator.kw` `max_rel`
+5.45e+01), and feeding it the same vector as `basefreq=[3, 1]` reproduces the port's
 split to the last displayed digit — so the divergence is a whole-solution one
 that no `property` pin could cover, the three decks stay `engines: "capi_v0145"`
 and the row is documented *dormant until a gendispatcher deck gates r4133*. The
@@ -2292,9 +2293,15 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     cases root-cause **entirely** to the registration bug: on r4133 the decks'
     `weights=[3, 1]` is rejected, so `FWeights` keeps the `[1, 1]` the `GenList`
     arm installs (`:215-220`) and both machines split equally (step 1: g1 =
-    g2 = 382.892 kW) while the port splits 3:1 (532.407 / 232.659) — up to 48 %
-    apart at every step, ×54 at step 0 where r4133's `Max(1.0, …)` floor
-    (`:450`) clamps both. Feeding r4133 the same vector through the misregistered
+    g2 = 382.892 kW) while the port splits 3:1 (532.407 / 232.659). Measured over
+    all 12 steps of `gendispatcher.dss`: the kW gap is **48 %** at the worst of
+    steps 1-11 (step 6, 1880.18 against 2778.88 / 981.48) and **54.5x at step
+    0**, where r4133's `Max(1.0, …)` floor (`:450`) holds BOTH its machines at
+    1 kW while the port dispatches g2 to 55.52 — that step-0 cell is the census's
+    `generator.kw` pair (`max_rel` 5.45e+01); kvar reaches 1.59e+00. (The record
+    first wrote a bare "up to 48 % at every step", which omitted step 0 — the
+    larger, and the census's own maximum; corrected in the audit settlement
+    below.) Feeding r4133 the same vector through the misregistered
     name (`basefreq=[3, 1]`) reproduces the **port's** split to the last
     displayed digit (532.407 / 232.659; kvar 172.809 / 261.237), which proves the
     dispatch algorithms agree and only the parse does not. That is a
@@ -2317,9 +2324,12 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     matching r4133-extension bullet. Non-vacuity is pinned against the
     **shipped** table, not a synthetic one, by
     `props_015x_tests::shipped_gendispatcher_weights_row_is_inert_when_the_oracle_knows_it`:
-    the r4133-shaped name list lines up, and a wrong `Weights` value against a
-    capi-shaped list still panics (making the row unconditional would silently
-    stop comparing a live capi property).
+    the row must be in the shipped table, the r4133-shaped name list lines up,
+    and a wrong `Weights` value against a capi-shaped list still panics — with
+    the panic MESSAGE asserted, so an unconditional `filter_015x` (which would
+    panic on the count instead) cannot satisfy it. That message assert is the
+    audit settlement below; as first written the test caught only a value-mask
+    regression, and the comment claimed a guarantee it could not discriminate.
   - **Census re-run (the WP-RP1 per-sub-step obligation).** Two full
     `DSS_PROPS_CENSUS=1` walks over the same 439-case population — pre-RP1.4
     (1 059 277 rows, 56.3 s) and post-RP1.4 (1 059 277 rows, 56.5 s), both
@@ -2328,16 +2338,23 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     Structural pairs **224 → 225**, numeric **103 → 103**, cells hidden behind a
     desynchronized name list **192 → 0** — those 192 are exactly the 48
     GenDispatcher (element, step) rows — one dispatcher in each of the three
-    decks, over 12 + 12 + 24 steps — × the four tail positions the misplaced
-    `weights` desynchronized, and the row count is unchanged overall because the 48
+    decks, over 12 + 12 + 24 steps — × **4 each**, where the 4 is what
+    `collect_element_divergences` actually counts: 1 for the count delta
+    (`|filtered| - |oracle|`, 10 vs 9) plus 3 name disagreements along the zip
+    (`weights` vs `basefreq`, `basefreq` vs `enabled`, `enabled` vs `like`); the
+    Rust list's tenth entry `like` is never reached, the zip stopping at the
+    oracle's nine. (The record first said "the four tail positions the misplaced
+    `weights` desynchronized (`weights`/`basefreq`/`enabled`/`like`)" — the
+    total was right, the mechanism was not; corrected in the audit settlement
+    below.) The row count is unchanged overall because the 48
     `shape_count` rows were replaced one-for-one by 48 new value rows. The
     `capi_v0145` channel's five extracts are **byte-identical** before and after
     (3 structural / 13 numeric / 0 shape / 34 diverging cases / 312 elements
     skipped whole). Exactly **one** new pair, recorded in
     `tests/corpus/props_r4133/README.md` §"Pairs the WP-RP1 shape closures make
     live": `gendispatcher.enabled` (`Yes`/`true`, bin 1, 48 cells, **0 in
-    scope** — the decks are capi-only). Of the other three newly aligned
-    positions `weights` is the one the row drops, and `basefreq` and `like`
+    scope** — the decks are capi-only). Of the other three positions the closure
+    aligns, `weights` is the one the row drops, and `basefreq` and `like`
     agree cell for cell (`'60'` / `''`, probe-confirmed on both sides). **No
     bin-5/6/7 row and no genuine jump**, so nothing opens for RP2.2 and no RP3
     sub-step.
@@ -2349,6 +2366,93 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     ledger row). **No `lane_diff` is owed** — zero engine change: no compat
     kernel, lane alias or solver was touched, and no product crate byte moved at
     all.
+  - **Audit settlement (2026-08-23).** Two auditors raised **9** findings, all
+    severity **minor**, **4** from `audit-code` and **5** from `audit-tests`.
+    One issue was raised by BOTH (the new harness test's doc comment naming a
+    failure mode the test could not discriminate), so the findings cover **8**
+    distinct issues: **7 fixed**, **1 recorded here and deliberately not
+    fixed**, **0 refuted**. Still zero engine change — every edit is a test, a
+    test-only diagnostic print, or a doc.
+    1. *(raised by both auditors)* **The test's stated guarantee was not the one
+       it could catch.** Both mutation-proved it: an unconditional `filter_015x`
+       trips the count assert *inside* the `catch_unwind`, which a bare
+       `is_err()` accepts. Fixed two ways — the test now asserts the panic
+       MESSAGE names the `Weights` value compare (a count panic no longer
+       satisfies it, so it does discriminate the unconditional-filter
+       regression), and the doc comment now enumerates what it pins: the value-
+       mask regression (nothing else catches it — proven by `audit-tests`'
+       mutation B2), the unconditional filter (also caught loudly and first by
+       `allowlisted_present_in_oracle_value_mismatch_panics`, so "silently" was
+       wrong), and deletion of the row itself.
+    2. **"up to 48 %" was written as an unqualified maximum.** Re-measured here
+       over all 12 steps of `gendispatcher.dss` on the r4133 DLL: kW 48 % at the
+       worst of steps 1-11 (step 6), **54.5x at step 0** — which is the census's
+       own `generator.kw` `max_rel` 5.45e+01 — and kvar 1.59e+00. Corrected in
+       all six places (this record, the frontier paragraph, the `PROPS_015X` row
+       comment, `tests/TOLERANCE_NOTES.md`, the vendored `README.md`, and the
+       upstream report, whose table gains steps 0 and 6). The direction of the
+       error was harmless — the true gap is larger — but it contradicted the
+       project's own measurement.
+    3. **The 192-cell decomposition named the wrong mechanism** (the total was
+       right). `collect_element_divergences` counts the count delta plus one
+       cell per disagreeing zip index; `like` is never walked. Corrected here
+       and in the vendored `README.md`, which is the file RP2.1/RP2.2 read.
+    4. **The row and `TOLERANCE_NOTES.md` claimed present-tense offline liveness
+       through `crates/dss-core/tests/props_r4133_replay.rs`, which does not
+       exist yet** (RP2.1's deliverable). Both now name today's only exerciser —
+       the harness test above — and put the replay in the future tense. Plan
+       §1.1(d) is untouched: it states a requirement, not a fact about the tree.
+    5. **Plan §1.2's enumeration of the RP2.1 supplement's sources was stale**
+       — it named RP1.1 only ("eleven pairs ... with autotrans/windgen to
+       follow"), which also miscounted RP1.1 (12 pairs; eleven was the number in
+       already-covered bins). Now closed out at 12 + 9 + 2 + 1 = **24 pairs**,
+       matching structural 210 → 225 and numeric 94 → 103, with RP1.4's
+       `gendispatcher.enabled` called out as the one reached through a
+       `PROPS_015X` row rather than a port.
+    6. **`PLAN_SEQUENCE.md` row 5b still read QUEUED.** Flipped to IN FLIGHT
+       with WP-RP0/WP-RP1 COMPLETE, in row 5a's own house style; RP5.2 still
+       owns the flip to COMPLETE and says so in the row.
+    7. **A census run can come back short and read as complete.** `audit-tests`
+       saw one run at HEAD report 1 059 237 rows / 224 structural against the
+       recorded 1 059 277 / 225, with `cases_walked` still 439 and nothing red;
+       two further runs reproduced the recorded numbers exactly, and a fourth,
+       run here after the fixes, reproduced them again (439 cases, 1 059 277
+       rows; r4133 225 / 103 / 0 shape / 434 diverging / 0 unaligned; capi
+       3 / 13 / 0 / 34 / 312 skipped whole). The mechanism is `census_one`: a
+       channel hiccup on one case turns
+       that case's whole divergence population into ONE `oracle_error` row, and
+       those counts lived only in `props_census.json`. Fixed by printing
+       `oracle error(s)` / `rust error(s)` on the per-channel summary line and
+       recording the measured baseline in `TESTING.md` — **5** on r4133 (the
+       #303 crash decks) and **22** on `capi_v0145` (decks the 0.14.5 oracle
+       cannot compile or solve: post-0.14.5 spellings, WindGen,
+       `modes:upgrade/*`) — so a short run is visible without opening the JSON. The knob still asserts
+       nothing about the data by design (RP0.2) — RP4.1's single-census
+       acceptance must read that count.
+    8. **RECORDED, deliberately not fixed — the dormancy closes the row's live
+       coverage, and a weights-free r4133-gating deck was never measured.**
+       `audit-tests` is right that no other corpus deck holds a GenDispatcher,
+       so after RP4.1 the class gets no live r4133 property compare at all.
+       Measured here: with the `weights=` line deleted, r4133 dispatches exactly
+       as it does with it present (g1 = g2 = 382.892 kW at step 1, 757.77 at
+       step 2 — both engines levelize the weights to 1.0 in the `GenList` arm,
+       `GenDispatcher.pas:215-220` and `gen_dispatcher/compute.rs:28-31`) and
+       the port answers the same for both machines (`Export Generators`, Max kW
+       758, equal kWh) — so such a deck could gate `both` and would make the row
+       live. **Not taken inside RP1.4**: the plan's RP1.4 offers exactly two
+       outcomes, flip one of the three existing decks or mark the row dormant
+       (§RP1.4, "if they are unpinnable, keep the decks capi-only and mark ...
+       dormant"). RP1.2 did add a deck, but for a property it had just ported
+       and with no `engines` question attached; here the deck exists only to
+       give an r4133 channel to a class §1.3 deliberately leaves capi-only
+       ("a broader `engines` re-audit is not [in scope]"), and it moves the
+       census population, `population.lock.json` and the §1.1 case counts every
+       later sub-step quotes. Recorded so the option is
+       on the record for RP4.1/RP5, together with the latent trap it must avoid:
+       r4133's slot 7 IS the weights arm, so a future r4133-gating GenDispatcher
+       deck must not set `basefreq=` either, or the compare puts the port's base
+       frequency against r4133's stored weights string (measured: `? gd1.basefreq`
+       → `3, 1`). Both notes are in the row comment as well.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

@@ -595,6 +595,18 @@ sub-step recorded the pairs its closure made live in the vendored `README.md`
 capi-only Recloser/Relay skip, invisible to `unaligned_cells`); and
 `heterogeneous_shape_classes` counts classes whose members do not share one
 property-table shape, which the one-row-per-class `shape.txt` cannot show.
+`oracle_errors`/`rust_errors` close the same gap for a case that fell over rather
+than diverged: a channel hiccup turns that case's whole divergence population
+into ONE `oracle_error` row, so a run can come back short without walking fewer
+cases. They ride the **printed** per-channel summary line as well as the JSON
+(RP1.4 audit — a short run used to be invisible on stdout). Measured on the
+post-RP1.4 tree (2026-08-23): **5** on r4133 (the #303 crash decks the vendored
+census also carries) and **22** on `capi_v0145` — the decks the 0.14.5 oracle
+cannot compile or solve at all, i.e. post-0.14.5 spellings (`xfmrcode`,
+`curvemultiplier`, `singlephtrip`, `phfastcurve`, `idle`, the WindGen class, the
+`modes:upgrade/*` family) plus two capi-side aborts. A count above the baseline
+means this run measured less than the recorded census, and its totals must not
+be compared against the recorded numbers.
 
 ### 0.15.x property-table allowlist (`PROPS_015X`)
 

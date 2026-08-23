@@ -92,14 +92,18 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               R4133_PROPS_PLAN.md (its RP4.1 delivers the
                               unmask; G3.4/G3.5 wait on it); WP-G3–G5 queued.
                               Added 2026-08-22 per the user's request.
- 5b. R4133_PROPS_PLAN.md      QUEUED (authored 2026-08-22) — property parity on
-                              the r4133 channel, the dedicated successor G1.1's
-                              kill criterion demanded: census rails (WP-RP0),
-                              property-table shape closure (WP-RP1), the
+ 5b. R4133_PROPS_PLAN.md      IN FLIGHT (authored + opened 2026-08-22) — property
+                              parity on the r4133 channel, the dedicated
+                              successor G1.1's kill criterion demanded: census
+                              rails (WP-RP0) and
+                              property-table shape closure (WP-RP1) COMPLETE
+                              (RP1.4, 2026-08-23: r4133 shape classes 5 -> 0);
+                              next the
                               channel-aware comparator — normalization + echo
                               exclusions + display floor (WP-RP2), four
                               root-causes (WP-RP3), then the unmask (RP4.1 =
                               G1.1's deliverable, kill criterion re-armed).
+                              RP5.2 flips this row to COMPLETE.
                               Runs inside the GOLDEN_REBASE window on branch
                               `r4133-props` off `update`.
                               Added 2026-08-22 per the user's request.
