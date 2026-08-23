@@ -606,6 +606,150 @@ the pair as an `EchoCategory::LiveSemanticsDiffer` row with an expected-value pi
 `EchoDefault`. The same correction is recorded in the plan's §1.1 RP1.1 note and
 at `props_r4133_replay::BIN7_ECHO_SUPPLEMENT`.
 
+### What RP2.4 moved (disposition census, 2026-08-23)
+
+Re-measured on the post-RP2.4 tree with the same knob and the same population
+(`DSS_PROPS_CENSUS=claims`, 439 cases × 2 channels, **1 060 165 rows, 58.1 s**,
+error counts again at the recorded baselines — 5 `oracle_error` on r4133, 22 on
+`capi_v0145`, so the run is complete, not short). This section **supplements**
+the RP2.1 / RP2.2 / RP2.3 numbers above; it does not rewrite them.
+
+RP2.4 filled the chain's last slot: `props_norm::R4133_DISPLAY_FLOOR` went from
+`None` to **`2e-4` relative**, derived measure-first over all 3 454 spellings of
+`examples_full.txt` + `examples_supplement.txt` (worst display cell
+**6.431124e-05**, `load.pf` `'0.747651914485831'` vs `'0.7477'`; nearest row
+above it 1.374769e-03, so the band is empty and 21.38× wide). The full
+derivation, the `Format('%[-].Ng')` site table and the honest limits are in
+`tests/TOLERANCE_NOTES.md` §"r4133 props display floor".
+
+| disposition | cells | in scope | spellings | pairs | Δ vs RP2.3 |
+|---|---|---|---|---|---|
+| `normalized-by-BoolFold` | 294 519 | 280 915 | 114 | 77 | — |
+| `normalized-by-CaseFold` | 99 023 | 95 270 | 529 | 65 | — |
+| `normalized-by-ArrayForm` | 122 756 | 118 744 | 203 | 23 | — |
+| `normalized-by-EnumSynonym` | 4 619 | 3 817 | 9 | 5 | — |
+| `echo-row` | 488 017 | 468 044 | 169 | 81 | — |
+| `under-floor` (RP2.4) | **49 451** | **46 538** | **2 012** | **79** | **new** |
+| `ledger-hit` | 0 | 0 | 0 | 0 | — |
+| **claimed** | **1 058 385** | **1 013 328** | **3 036** | **309** | +49 451 / +46 538 cells |
+| `UNCLAIMED` | **1 654** | **889** | **425** | **37** | −49 451 / −46 538 cells, −67 pairs |
+
+Every pre-existing row is unmoved **to the cell** — the floor is consulted last,
+so it takes only what the first three links declined. The `pairs` column is
+still not summable (21 pairs now carry more than one claimed disposition; 18
+appear in both the claimed and the unclaimed column), and
+`mixed_disposition_spellings` is **0**.
+
+**Per pair, where the floor's claim actually lands.** 79 pairs, but the in-scope
+cells sit on **41** of them (the other 38 contribute 133 cells / 93 spellings and
+**0** in scope — `load.kw`/`kvar`/`kva`/`kv`, `vsource.puz0`/`puz1`/`puz2`,
+`transformer.kv`/`kvs`/`kva`/`kvas`/`normhkva`, the six `autotrans.kv*`, and so
+on, all on `capi_v0145`-only cases). Note `reactor.kvar` and `generator.kva`
+among them: the floor claims each only on a spelling that sits on a capi-only
+case, so the 43 in-scope display *pairs* the offline evidence marks become **41**
+pairs carrying an in-scope *cell*.
+
+| pair | cells | in scope | spellings |
+|---|---|---|---|
+| `transformer.normamps` | 20 935 | 20 503 | 134 |
+| `transformer.emergamps` | 13 891 | 13 441 | 124 |
+| `load.pf` | 5 213 | 5 213 | 293 |
+| `vsource.isc1` | 2 032 | 1 687 | 93 |
+| `vsource.isc3` | 2 032 | 1 687 | 89 |
+| `vsource.r1` | 839 | 710 | 13 |
+| `capacitor.cuf` | 785 | 665 | 34 |
+| `vsource.x1` | 583 | 486 | 19 |
+| `reactor.lmh` | 374 | 298 | 9 |
+| `vsource.r0` | 341 | 309 | 15 |
+| `vsource.x0` | 278 | 207 | 20 |
+| `pvsystem.kvar` | 262 | 160 | 227 |
+| `storagecontroller.kwneed` | 182 | 136 | 159 |
+| `storage.kwhstored` | 179 | 146 | 144 |
+| `generator.maxkvar` | 172 | 38 | 13 |
+| `generator.minkvar` | 172 | 38 | 13 |
+| `vsource.mvasc3` | 171 | 159 | 50 |
+| `vsource.mvasc1` | 169 | 157 | 50 |
+| `storage.%stored` | 168 | 138 | 133 |
+| `storage.%discharge` | 107 | 92 | 40 |
+| `line.length` | 72 | 72 | 72 |
+| `generator.kvar` | 71 | 40 | 13 |
+| `storage.kw` | 61 | 51 | 45 |
+| `autotrans.emergamps` | 44 | 9 | 7 |
+| `autotrans.normamps` | 44 | 9 | 7 |
+| `storage.kvar` | 30 | 1 | 29 |
+| `storage.%charge` | 28 | 28 | 8 |
+| `vsource.angle` | 25 | 25 | 22 |
+| `line.cmatrix` | 16 | 14 | 14 |
+| `storagecontroller.kwtarget` | 12 | 1 | 2 |
+| `line.b1` | 6 | 4 | 6 |
+| `line.c1` | 4 | 2 | 3 |
+| `line.b0` | 3 | 1 | 3 |
+| `line.c0` | 3 | 1 | 3 |
+| `reactor.z` | 3 | 1 | 3 |
+| `gicline.volts` | 2 | 2 | 1 |
+| `line.x0` | 2 | 1 | 2 |
+| `reactor.x` | 2 | 1 | 2 |
+| `windgen.kva` | 2 | 2 | 2 |
+| `windgen.mva` | 2 | 2 | 2 |
+| `gicsource.volts` | 1 | 1 | 1 |
+| **total (41 pairs)** | **49 318** | **46 538** | **1 919** |
+
+**The live worst is the derivation's worst.** Over the whole 439-case population
+the widest gap the floor claims is that same `load.pf` spelling at
+**6.431124e-05** — the frozen extract did not under-sample the tail. All 293
+live `load.pf` spellings are `under-floor`.
+
+**Reconciliation, term by term** (the two accountings differ and are not
+pretended to be equal):
+
+* live floor spellings **2 012** = the replay's `CLAIMED_DISPLAY_FLOOR` **2 006**
+  + **6** live-only ones — `vsource.isc1` ×2, `vsource.isc3`, `vsource.r1`,
+  `vsource.x0`, `vsource.x1`. All five pairs hold a frozen `bins.tsv` row (all
+  bin 6), so no vendored file may carry the new spellings; they are the same
+  "+2 cells per `vsource` pair" population drift RP2.1/RP2.2 recorded, seen at
+  spelling granularity, and the widest of them is 2.51e-05 — a quarter of the
+  floor, so the live population moves no part of the calibration. Recorded as an
+  asserted term at `props_r4133_replay::LIVE_ONLY_DISPLAY_SPELLINGS`;
+* live floor cells **49 451** = **49 437** (the frozen `count` sum over the
+  shared 2 006 rows) + **8** (eight of those rows are one cell wider live) + the
+  **6** above;
+* claimed spellings **3 036** = `CLAIMED_TOTAL` **3 029** + 1
+  `LIVE_ONLY_SPELLINGS` + the 6 (`CLAIMED_SPELLINGS_LIVE`).
+
+The `capi_v0145` half of the run reports **0** cells on all six r4133
+dispositions, `under-floor` included, unchanged and by contract, with its 11
+`ledger-hit`s (4 in scope, 8 pairs) and its 88/88 `UNCLAIMED` intact — 99 value
+cells, 92 in scope, the same numbers since RP2.1.
+
+**The unclaimed table, re-grouped** (same rule: by the pair's frozen bin). Bin 6
+is **gone from it entirely** — that is RP2.4's acceptance, measured:
+
+| pair's frozen bin | pairs | cells | in scope | owner |
+|---|---|---|---|---|
+| 5 | 6 | 1 069 | 777 | **RP3.8** (5 pairs, 1 064 / 772) + `line.linecode` (RP3.6, 5 / 5) |
+| 7 | 20 | 361 | **32** | RP3.1 `swtcontrol.delay` (42 / 24), RP3.2 `windgen.kvar` (4 / 4), RP3.3 `generator.model` (2 / 2), RP3.4 `gictransformer.r2` (2 / 2); the other 16 pairs are 311 cells / **0** in scope |
+| 4 | 8 | 186 | 80 | RP3.7 (`swtcontrol.normal`/`state`, `relay.normal`/`state`) / §1.3 (the four `sensor.*`, 0 in scope) |
+| no frozen row | 1 | 34 | 0 | §1.3 (`autotrans.wdgcurrents`) |
+| 3 | 1 | 3 | 0 | RP3.5 (`line.units`) |
+| 2+7 | 1 | 1 | 0 | `isource.bus1`'s numeric twin (§1.3) |
+
+So **every one of the 889 in-scope cells still unclaimed is attributed to an
+open RP3.x sub-step**, and RP4.1's acceptance (that column at zero) is now a
+WP-RP3 question only.
+
+**The last data trap, resolved by measurement.** §"Known data traps" notes that
+four bin-7 pairs re-derive into the display class in scope (`capacitor.cuf`,
+`generator.kvar`, `storage.kw`, `storagecontroller.kwneed`). Their example
+inventory is the FULL census's, so it also carries the spellings that made them
+bin 7 — up to rel 1.0 — which no display floor may claim. RP2.4 re-declares
+exactly those 105 rows out of scope from the pairs' own frozen
+`max_rel_in_scope` (a spelling that exceeds the maximum taken over the in-scope
+cells cannot be one of them; `props_r4133_replay::RP24_OUT_OF_SCOPE`, tightest
+row 277× clear of its ceiling against a `%.2e` rounding needing 1.005×). The
+live census confirms it from the other side: **all 12 pairs that carry both an
+`under-floor` and an `UNCLAIMED` cell report `cells_in_scope = 0` on every
+unclaimed spelling.**
+
 ## Files
 
 | file | rows | origin |

@@ -1031,14 +1031,15 @@ before the assert, per `(class, prop)`, by one of `BoolFold` / `CaseFold`
 **It is a spelling rule, never a numeric band.** A rule may change how a value is
 written, never which value it is (plan mechanic (c), the
 `lane::expected_rerounded` discipline); anything that cannot satisfy that is an
-*exclusion* with its own pin, not a rule. RP2.1 therefore introduces **no floor
-anywhere**: `ArrayForm`'s numeric tokens compare EXACTLY, because
-`props_norm::R4133_DISPLAY_FLOOR` is `None` — the slot RP2.4 will fill from the
-vendored in-scope numeric extract, inside the measured empty band
-`(6.43e-5, 1e-3)`, with its own section here. Until then, a wrong number inside
-an array still fails (proven by RP2.1's non-vacuity probes: `[ 400]` vs `[ 404]`
-reds at 1e-2, and a corrupted token or boolean reds too), and no `Tolerances`
-field or tier is touched.
+*exclusion* with its own pin, not a rule. RP2.1 therefore introduced **no floor
+anywhere**: `ArrayForm`'s numeric tokens compared EXACTLY, because
+`props_norm::R4133_DISPLAY_FLOOR` was `None` — the slot RP2.4 has since filled
+from the vendored in-scope numeric extract, and its derivation is the **next
+section**, which is the only tolerance this plan adds. A wrong number inside an
+array still fails (proven by RP2.1's non-vacuity probes: `[ 400]` vs `[ 404]`
+reds at 1e-2, and a corrupted token or boolean reds too — since RP2.4 "wrong"
+means *outside the floor*, and those probes were re-measured to stay so), and no
+`Tolerances` field or tier is touched by either sub-step.
 
 The rows are evidence-bound and both-ways live: each cites its census pair by
 `(pair, bin, cells)` in `tests/corpus/props_r4133/`, the offline replay proves
@@ -1061,6 +1062,156 @@ appear in the census (`'-100'` ours vs `'100'` r4133, 864 + 24 cells) — an
 sibling of `remoteptratio` `:1452`), not a value delta. It is measured, vendored
 in `examples_supplement.txt` and owed an RP2.3 echo row plus its pin; RP2.1
 deliberately leaves it UNCLAIMED rather than hide it behind a mask.
+
+### r4133 props display floor (`R4133_DISPLAY_FLOOR` = `2e-4` rel, RP2.4)
+
+**The named exception, and its exact scope.** On the **`r4133`** channel only,
+and inside `compare_all_properties` only, a divergent **property value cell**
+whose two sides are the *same numbers printed to different precision* compares
+within a relative floor of **`2e-4`** instead of exactly. Nothing else in the
+repo is touched: no `Tolerances` field, no `tol_for` tier, no golden, no model
+quantity (Y / V / I / P / losses), no report text, and not one cell on the
+`capi_v0145` channel, whose property compare stays byte-exact. It is the only
+tolerance `R4133_PROPS_PLAN.md` introduces (plan §1.2 last bullet, §1.3 "No
+tolerance tier moves"), and it is a **cell** predicate — it reads the two
+rendered strings and nothing else, so no `(class, prop)` pair is masked by name
+and there is no row to go stale. Code: `harness/props_norm.rs`
+(`R4133_DISPLAY_FLOOR`, `display_rel`, `under_display_floor{,_r4133}`), seamed
+into `harness/mod.rs::compare_prop_lists` through
+`PropsPolicy::under_display_floor` (gated on `is_r4133()`) and into
+`NormRule::ArrayForm`'s per-element compare through `numbers_match`.
+
+**Measured worst, and the ratio.** Derived measure-first over the vendored
+evidence at `tests/corpus/props_r4133/` — `examples_full.txt` +
+`examples_supplement.txt`, i.e. **every distinct `(rust, r4133)` spelling of
+every census pair**, so the worst *spelling* is the worst *cell* — scored with
+the shipped metric (`display_rel`: the largest `|a-b| / max(|a|,|b|)` over the
+two renders' numbers).
+
+| quantity | value | what it is |
+|---|---|---|
+| worst cell the floor claims | **6.431124e-05** | `load.pf` `'0.747651914485831'` vs `'0.7477'` (33 cells, in scope) |
+| **the floor** | **2e-4** | **3.110×** above that worst |
+| nearest row *above* the band | 1.374769e-03 | `storagecontroller.kwneed` `'-4387.3616098756'` vs `'-4381.33'` — 6.874× above the floor |
+| nearest genuine value jump | 4.404256e-03 | `generator.kvar`, the GenDispatcher `weights` decks — 22.02× above the floor |
+| smallest **in-scope** genuine jump | 5.524501e-02 | `regcontrol.remoteptratio` — 276.2× above the floor |
+
+The full claims census then re-measured the same number **live** over 439 cases
+× 2 channels: the worst cell the floor claims on the whole corpus is that same
+`load.pf` spelling at 6.431124e-05, and the derivation's left-hand side is
+pinned in three places
+(`props_norm::tests::the_display_floor_metric_reads_the_numeric_skeleton`,
+`props_r4133_replay::the_echo_table_claims_only_its_cited_pairs_and_the_floor_only_its_derivation`,
+and the constant's own doc).
+
+> **Two recalibrations against the plan's provisional numbers**, recorded
+> because the plan ordered a re-derivation and got a different second half.
+> (1) The plan's worst — `6.43e-5` on `load.pf` — is **confirmed exactly**.
+> (2) The plan's "smallest genuine jump `1.00e-3`, `invcontrol.lpftau`" is a
+> number in the *census's* metric, which reports the ABSOLUTE difference when
+> the expected side is 0 (`harness::value_verdict`). Under this floor's
+> symmetric metric that cell (`'0.001'` vs `'0.0'`) is rel **1.0**, not 1e-3 — a
+> 0-vs-nonzero pair can never be claimed at any magnitude. The re-derived
+> neighbours above the band are the three rows in the table; do not repeat
+> "1.00e-3" as the floor's upper neighbour.
+
+**Mechanism — Delphi `Format('%[-].Ng', …)` in a `GetPropertyValue`.** Every
+claimed cell is r4133 printing a live `double` to a fixed number of significant
+digits where the port renders the full value. `%.Ng` rounds a normalized
+mantissa `m ∈ [1,10)` to N digits, so its class ceiling is
+`0.5·10^(1-N)/m ≤ 0.5·10^(1-N)`. Sites, all `Version8/Source/`:
+
+| formatter | class ceiling | r4133 sites |
+|---|---|---|
+| `%-.4g` | 5.0e-4 | `PCElements/Load.pas:2345` (`pf`) — the only property getter in the whole surface, and the worst cell's |
+| `%-.5g` | 5.0e-5 | `PCElements/Vsource.pas:1326-1341` (`angle`/`mvasc*`/`isc*`/`r*`/`x*`/`basekv`); `PDElements/Transformer.pas:1842-1843` and `PDElements/AutoTrans.pas:1886-1887` (`normamps`/`emergamps`); the `MakePosSequence` command-string round-trips `Transformer.pas:1982-1991`, `AutoTrans.pas:2021-2030`, `Reactor.pas:1145-1201` |
+| `%.6g` | 5.0e-6 | `PCElements/Storage.pas:1531-1562` + the PVSystem analogues; `Common/Utilities.pas:2600-2607` `GetDSSArray_Real` (`'[' + ' %-.6g'×n + ']'`) |
+| `%-.7g` | 5.0e-7 | `PDElements/Line.pas:1358-1365`, `:1406-1407` (`length`/`r*`/`x*`/`c*`/`b*`) |
+| `%-.8g` | 5.0e-8 | `Vsource.pas:1342-1348` (`Z*`/`puZ*`); `PDElements/Reactor.pas:1091-1098` (`r`/`x`/`lmh`) |
+
+Every in-scope display cell in the census fits that family — the plan's naming
+of it as "`%-.5g` with a `%-.8g` `puZ*`/`Z*` sub-family" is *incomplete*, not
+wrong: the worst cell is `%-.4g`, a formatter the plan does not mention.
+
+**The decomposition argument** (this is what makes the number a classification
+and not a fudge). The census is itself the decomposition: the divergent numeric
+cells of the r4133 property surface split into two populations that do not
+touch. Everything explained by the table above lies at or below 6.431124e-05;
+the next thing of *any* kind is 1.374769e-03. The band
+`(6.431124e-05, 1.374769e-03)` is **empty and 21.38× wide**, so every cut inside
+it partitions the population identically — the floor is not tuned, it is placed.
+That is the same argument `bins.tsv`'s own 1e-4 bin cut rests on (vendored
+`README.md` §"Numeric pairs (bins 6-7)"), re-measured at spelling granularity.
+
+> **The `%-.4g` residual is stated, not absorbed.** `load.pf`'s *theoretical*
+> class ceiling is 5e-4, which does not fit the band at all (only 2.75× under
+> its upper neighbour). The floor is therefore derived from the MEASUREMENT:
+> the census's 293 `load.pf` spellings have a smallest mantissa of **5.653**
+> (`pf = 0.5653`), i.e. a population ceiling of **8.845e-05**, and 2e-4 sits
+> 2.26× above that. The residual risk is deliberately left loud: a future
+> in-scope load with `pf ∈ [0.1, 0.25)` could print a cell up to 5e-4, the floor
+> would **refuse** it and the gate would red, with both spellings in the message
+> and this derivation to re-run. Widening the floor to the class ceiling so such
+> a cell passes is exactly what the CLAUDE.md tolerance discipline forbids.
+
+**Why no real coverage is lost.** (a) Every `engines: "both"` case is *also*
+value-compared on the `capi_v0145` channel, where the property compare is exact
+and this floor is structurally unreachable — so on those cases a genuine numeric
+change in a property still fails, on the other channel, at zero tolerance.
+(b) On `engines: "r4133"`-only cases the model gate (Y, node voltages, element
+currents/powers/losses, iteration counts, discrete state) runs at the calibrated
+`tol_for` tier floors, which are 1e-6-class — orders of magnitude under this
+floor — so a property that is genuinely wrong by 2e-4 has to be wrong *only* in
+its own render to escape. (c) Every genuine jump the census knows exceeds the
+floor by ≥5×: the nearest is 22.02× and the nearest in scope 276.2×; the four
+root-cause pairs (`swtcontrol.delay`, `windgen.kvar`, `generator.model`,
+`gictransformer.r2`) and RP3.5–RP3.8's residual all stay UNCLAIMED and are still
+compared raw. (d) The floor's refusals are pinned as tests, not assumed: a 1e-3
+error on a floor-*claimed* property still fails, a non-numeric cell on it still
+fails raw, a neighbour property 2.1e-4 out still fails, and capi fails on all of
+it (`props_policy_tests::the_display_floor_drops_only_the_cell_it_claims_only_on_r4133`).
+
+**Scope justification — r4133 only, by construction.** Both callers sit behind
+`PropsPolicy::is_r4133()`, the offline/measurement twin (`claim_value`) refuses
+every channel but `PropsChannel::R4133`, and the plain census policy reaches the
+floor on neither channel. This is the arm where a leak would cost the most: the
+capi property compare is byte-exact today, so a channel-blind floor would
+silently relax every numeric property of every `both` case at once. Pinned by
+`props_policy_tests::the_capi_channel_never_applies_the_display_floor` and
+measured by the claims census, which reports **0** capi cells on `under-floor`
+(and on every other r4133 disposition). A mutation that drops the `is_r4133()`
+gate is caught by two tests; one that widens the floor 10× by nine, across three
+binaries.
+
+**Fix owner: none — this is not a defect.** The gap is Delphi display
+formatting in r4133's own getters; both engines hold the *same* double and the
+port's render is the more informative one. There is nothing to fix upstream, no
+`investigations/to_opendss/` report, no ledger entry, and no `TODO(compat)` (the
+port does **not** reproduce the truncated render — it prints the full value and
+the floor classifies the difference). If r4133 ever widened those `Format`
+strings, the floor would simply stop claiming; nothing would break.
+
+**What it relaxes / what it never relaxes.**
+
+*Relaxes:* on the r4133 channel, the exactness of a property **value** compare
+for one cell whose two renders carry the same count of numbers in the same
+non-numeric skeleton, every pair of which agrees to within 2e-4 relative — for
+scalars, bracketed vectors and `|`-separated matrices alike.
+
+*Never relaxes:* the capi channel (anything, ever); the property **name** and
+index-order walk; the property **count**/shape checks; any cell above 2e-4 at
+any magnitude; a 0-vs-nonzero pair (rel is 1 by construction, so bin 7's
+frozen-default echoes such as `invcontrol.lpftau` `'0.001'` vs `'0.0'` can never
+be mistaken for a render); a cell whose two sides differ in their non-numeric
+skeleton or in how many numbers they carry (`'Yes'` vs `'true'`, `'Positive'`
+vs `'Pos'`, `''` vs `'[]'`, `'[ 400]'` vs a three-element array, `'17'` vs the
+RPN source `'1 16 +'`); a non-finite value on either side unless both are
+literally equal; a discrete value that merely happens to be spelled as a number
+(`'4'` vs `'3'`); and any `Tolerances` tier, golden byte or model quantity.
+
+*The honest limit:* a floor cannot distinguish a display artifact from a
+**genuine** numeric difference smaller than 2e-4 — no floor can. What bounds
+that is (a) and (b) above, not the floor itself.
 
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)
 
