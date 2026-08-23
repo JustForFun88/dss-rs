@@ -496,8 +496,9 @@ error counts again at the recorded baselines — 5 `oracle_error` on r4133, 22 o
 the RP2.1 and RP2.2 numbers above; it does not rewrite them.
 
 RP2.3 filled `PROPS_ECHO_R4133` (81 rows) and, before it, added nine typed
-`PROPS_NORM_R4133` rows so that no pair-scoped exclusion could cover a cell a
-typed rule can still compare.
+`PROPS_NORM_R4133` rows, so that the cells those rules fold are attributed to
+them rather than to the exclusion (the correction below says exactly how far
+that goes).
 
 | disposition | cells | in scope | spellings | pairs | Δ vs RP2.2 |
 |---|---|---|---|---|---|
@@ -505,34 +506,53 @@ typed rule can still compare.
 | `normalized-by-CaseFold` | **99 023** | **95 270** | **529** | **65** | +6 047 / +6 039 cells, +88 spellings, +3 pairs |
 | `normalized-by-ArrayForm` | **122 756** | **118 744** | **203** | **23** | +399 / +331 cells, +11 spellings, +6 pairs |
 | `normalized-by-EnumSynonym` | 4 619 | 3 817 | 9 | 5 | — |
-| `echo-row` (RP2.3) | **488 018** | **468 044** | **170** | **81** | **new** |
+| `echo-row` (RP2.3) | **488 017** | **468 044** | **169** | **81** | **new** |
 | `under-floor` (RP2.4) | 0 | 0 | 0 | 0 | — |
 | `ledger-hit` | 0 | 0 | 0 | 0 | — |
-| **claimed** | **1 008 935** | **966 790** | **1 025** | **231** | +494 464 / +474 414 cells |
-| `UNCLAIMED` | **51 104** | **47 427** | **2 436** | **103** | −494 464 / −474 414 cells, −81 pairs |
+| **claimed** | **1 008 934** | **966 790** | **1 024** | **231** | +494 463 / +474 414 cells |
+| `UNCLAIMED` | **51 105** | **47 427** | **2 437** | **104** | −494 463 / −474 414 cells, −80 pairs |
+
+> The `echo-row` / `claimed` / `UNCLAIMED` rows above are the **re-measured**
+> numbers of the RP2.3 audit settlement (2026-08-23, same knob, same 439 cases,
+> same error baselines). They differ from the sub-step's own run by exactly one
+> cell / one spelling: `reactor.kvar`'s `'66.6666666666667'` vs `'66.667'`, which
+> the settlement carved out of that pair's echo row because it is r4133's own
+> live `MakePosSequence` round-trip and not the row's frozen `'1200'` echo
+> (`props_norm::ECHO_CARVE_OUTS`; the cell is declared to RP2.4). It sits on a
+> `capi_v0145` case, so **no in-scope number moves**, and `reactor.kvar` is now
+> the seventh pair to appear in both the claimed and the unclaimed column.
 
 **Read the `pairs` column with care from this sub-step on.** Until RP2.2 no pair
 carried two dispositions, so the `claimed` row could be a column sum. It cannot
 any more: **20 pairs now hold a normalization row *and* an echo row** (the chain
 claims their foldable cells first and the exclusion covers only the remainder),
 so the naive sum 77+65+23+5+81 = 251 double-counts and the true distinct claimed
-population is **231**. Six pairs appear in both the claimed and the unclaimed
-column for the same reason.
+population is **231**. Seven pairs appear in both the claimed and the unclaimed
+column for the same reason (six, before the carve-out below).
 
 The two normalization lines of that table that moved did so because of RP2.3's
-nine new typed rows, landed deliberately *ahead* of the exclusions so that no
-pair-scoped mask could cover a cell a rule can still compare: `load.yearly`,
+nine new typed rows, landed deliberately *ahead* of the exclusions: `load.yearly`,
 `reactor.bus2` and
 `invcontrol.monvoltagecalc` (`CaseFold`), `line.wires`, `load.zipv`,
 `generator.userdata`, `storage.dynadata`,
-`storagecontroller.seasontargets`/`seasontargetslow` (`ArrayForm`). Together they
-keep **6 446 cells (6 370 in scope)** inside the value compare that a pair-scoped
-exclusion would otherwise have swallowed. A tenth measured candidate,
+`storagecontroller.seasontargets`/`seasontargetslow` (`ArrayForm`), **6 446 cells
+(6 370 in scope)**. A tenth measured candidate,
 `swtcontrol.action`, took no row: its one foldable spelling is 6 cells and **0 in
 scope**.
 
-Claimed *spellings* run one ahead of the offline replay's `CLAIMED_TOTAL` (1 025
-live vs 1 024) — the same +1 population drift the RP2.1 reconciliation records
+> **CORRECTION (RP2.3 audit settlement, 2026-08-23).** This paragraph used to end
+> "…so that no pair-scoped mask could cover a cell a rule can still compare …
+> keep 6 446 cells inside the value compare that a pair-scoped exclusion would
+> otherwise have swallowed". That is true of the **attribution** measured here —
+> those cells are `normalized-by-<rule>` and not `echo-row`, which is what makes
+> each of the nine rows provably live — and false of the live comparator, whose
+> exclusion is asked per pair and therefore also drops the value assert for the
+> cells the rule *refused*. Narrowing the 20 mixed rows per cell is an RP4.1
+> precondition (plan §RP4.1); the shipped behaviour is pinned meanwhile by
+> `harness::props_policy_tests::a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses`.
+
+Claimed *spellings* run one ahead of the offline replay's `CLAIMED_TOTAL` (1 024
+live vs 1 023) — the same +1 population drift the RP2.1 reconciliation records
 and RP2.2 measured (756 vs 755), not a new disagreement.
 
 The `capi_v0145` half of the run reports **0** cells on all six r4133
@@ -544,7 +564,7 @@ channel), with its 11 `ledger-hit`s intact.
 | pair's frozen bin | pairs | cells | in scope | owner |
 |---|---|---|---|---|
 | 6 | 61 | 47 899 | 45 552 | RP2.4 (display floor) |
-| 7 | 20 | 1 476 | 924 | RP2.4 / RP3 |
+| 7 | 21 | 1 477 | 924 | RP2.4 / RP3 (the 21st pair and its one out-of-scope cell are the `reactor.kvar` carve-out) |
 | 5 | 6 | 1 069 | 777 | **RP3.8** (5 pairs, 1 064 / 772) + `line.linecode` (RP3.6, 5 / 5) |
 | no frozen row | 6 | 470 | 94 | RP2.4 (`generator.maxkvar`/`minkvar`/`kva`, `autotrans.normamps`/`emergamps`) / §1.3 (`autotrans.wdgcurrents`, 0 in scope) |
 | 4 | 8 | 186 | 80 | RP3.7 (`swtcontrol.normal`/`state`, `relay.normal`/`state`) / §1.3 (the four `sensor.*`, 0 in scope) |

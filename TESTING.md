@@ -614,7 +614,9 @@ UNCLAIMED cells** in scope).
 `examples_full.txt` **plus** `examples_supplement.txt` through the r4133 claim
 chain in its documented order (shape allowlist → normalization → echo table →
 display floor), asserting that each row is claimed by the first matching link or
-is **declared** for the sub-step that will claim it, that every
+is **declared** for the sub-step that will claim it (including the cells an echo
+row deliberately does not cover — `props_norm::ECHO_CARVE_OUTS` and their
+`ECHO_CARVE_OUT_ROUTING` owner, matched both ways), that every
 `PROPS_NORM_R4133` row claims at least one row (offline liveness — the live half
 is the per-row hit accounting, dormant until RP4.1), and that each table row's
 `(pair, bin, cells)` citation matches the vendored evidence it names. The
@@ -687,7 +689,22 @@ purpose: a pin in `tests/harness/` would recompile and re-solve every deck in
 each of the 22 binaries that include the harness.
 `props_r4133_replay::every_echo_row_pin_is_a_test_that_exists` reads the names
 back both ways, so a renamed or orphaned pin fails rather than leaving a row
-citing a witness that is not there. Two of the flagged decks write into the
+citing a witness that is not there (its `NOT_A_PIN` exemption list is pinned
+literally beside it).
+
+**Which rows owe a pin** — plan §1.2 mechanic (c), both halves. A row whose pair
+the capi channel cannot compare at all (`PROPS_015X`, `SKIP_PROPS`, the
+whole-element skip) obviously does; so does a row that masks cells on
+`engines: "r4133"` **cases**, where the capi channel never runs — measured by
+crossing the claims census with each case's manifest flag and recorded as
+`props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES` (57 of the 81 rows, 34 969 cells),
+with `every_row_exposed_on_r4133_only_cases_names_a_pin` enforcing it. That rule
+is why the file holds **29** pins covering **63** of the 81 rows rather than the
+20 RP2.3 first landed (RP2.3 audit settlement, 2026-08-23). The complementary
+guard `a_capi_witness_is_a_pair_the_capi_channel_can_compare` keeps a `Capi(n)`
+witness from naming a pair that channel never sees.
+
+Two of the flagged decks write into the
 vendored tree while they run (`Test/TD21RelayTest.DSS` ends in `show eventlog`,
 `StorageControllerTechNote/Schedule/ScheduleRun.dss` in nine `Export`s); the
 file's own `DeckDirGuard` sweeps what a run created and fails if a run changed a

@@ -2325,6 +2325,170 @@ mod props_policy_tests {
             "the capi channel must still fail on the very cell r4133 excludes"
         );
     }
+
+    /// Drive [`compare_prop_lists`] on a hand-built property list of any class,
+    /// the way [`an_echo_row_drops_only_its_own_value_only_on_r4133`] drives a
+    /// `RegControl` one.
+    ///
+    /// `load.yearly` and `reactor.bus2` are two of the 20 MIXED pairs — each
+    /// holds a `CaseFold` normalization row AND an echo row — which is what the
+    /// two tests below need. The neighbour prop each list carries (`kW`, `kV`)
+    /// deliberately has NO row of either kind, so driving it moves no
+    /// process-global counter: the trap RP2.1 part D measured, re-measured here
+    /// (the first draft used `Daily`, which DOES have a `CaseFold` row, and it
+    /// reddened `assert_norm_rows_are_live` in the corpus-gate binary).
+    ///
+    /// The two tests use **different** pairs on purpose, and each leaves every
+    /// row it touches with `hits > 0`: `cargo test` runs them concurrently with
+    /// each other and with the gate's own `assert_*_rows_are_live()` epilogue, so
+    /// a shared pair would make both the exact-delta assertions and the liveness
+    /// guard order-dependent.
+    ///
+    /// [`compare_prop_lists`]: super::compare_prop_lists
+    fn run_props(
+        channel: PropsChannel,
+        element: &str,
+        class: &str,
+        actual: &[(&str, &str)],
+        oracle: &[(&str, &str)],
+    ) -> bool {
+        use super::{PROPS_015X, compare_prop_lists};
+        let props = |pairs: &[(&str, &str)]| -> Vec<(String, String)> {
+            pairs
+                .iter()
+                .map(|(n, v)| (n.to_string(), v.to_string()))
+                .collect()
+        };
+        let (a, o) = (props(actual), props(oracle));
+        let (element, class) = (element.to_string(), class.to_string());
+        std::panic::catch_unwind(move || {
+            compare_prop_lists(
+                &element,
+                &class,
+                &a,
+                &o,
+                PROPS_015X,
+                PropsPolicy::for_channel(channel),
+                false,
+                1e-9,
+                1e-9,
+                "self",
+            )
+        })
+        .is_ok()
+    }
+
+    /// Shorthand for the `load.yearly` list.
+    fn run_load(channel: PropsChannel, actual: &[(&str, &str)], oracle: &[(&str, &str)]) -> bool {
+        run_props(channel, "Load.l1", "Load", actual, oracle)
+    }
+
+    /// **The normalization seam really runs before the exclusion** — the order
+    /// `PropsPolicy::echo_excluded`'s doc calls the mechanism, asserted at the
+    /// SHIPPED seam instead of only in the two offline copies of the chain
+    /// (`props_norm::claim_value`, `props_r4133_replay::Link::ORDER`).
+    ///
+    /// The observable is the mixed pair's own accounting: swapping the two lines
+    /// in `compare_prop_lists` leaves `reactor.bus2`'s normalization counters
+    /// still, which after RP4.1 silently disarms `assert_norm_rows_are_live` for
+    /// all 20 mixed rows (it is silent when `visits == 0`). Before the RP2.3
+    /// audit settlement that swap left the entire suite green — the order was
+    /// pinned in the two offline copies of the chain and nowhere at the seam.
+    ///
+    /// Counter hygiene: this test owns `reactor.bus2` (no other test drives it)
+    /// and leaves both of its rows with `hits > 0` — the foldable cell for the
+    /// norm row, the echo cell for the echo row.
+    #[test]
+    fn the_normalization_seam_runs_before_the_exclusion_on_a_mixed_pair() {
+        let run = |actual: &[(&str, &str)], oracle: &[(&str, &str)]| {
+            run_props(PropsChannel::R4133, "Reactor.r1", "Reactor", actual, oracle)
+        };
+        let norm_before =
+            super::props_norm::norm_counters("reactor", "bus2").expect("a CaseFold row");
+        let echo_before = super::props_norm::echo_counters("reactor", "bus2").expect("an echo row");
+        // A foldable cell: the same terminal spelling in a different case. The
+        // typed rule must SEE it (visit) and CLAIM it (hit) before the
+        // pair-scoped exclusion drops the compare.
+        assert!(run(
+            &[("Bus2", "b2.0"), ("kV", "12.47")],
+            &[("Bus2", "B2.0"), ("kV", "12.47")],
+        ));
+        assert_eq!(
+            super::props_norm::norm_counters("reactor", "bus2"),
+            Some((norm_before.0 + 1, norm_before.1 + 1)),
+            "the normalization seam must see and fold the mixed pair's foldable cell BEFORE the \
+             echo row is consulted — that hit is what keeps the row provably live after RP4.1"
+        );
+        // The echo row saw the same cell, with the two sides already equal, so
+        // it counts a visit and not a hit.
+        assert_eq!(
+            super::props_norm::echo_counters("reactor", "bus2"),
+            Some((echo_before.0 + 1, echo_before.1))
+        );
+        // …and the pair's real echo cell — r4133's stale `GetBus(2)` snapshot —
+        // is a hit, which is what the liveness guard needs from this binary.
+        assert!(run(
+            &[("Bus2", "b2.0.0.0"), ("kV", "12.47")],
+            &[("Bus2", "b2.0"), ("kV", "12.47")],
+        ));
+        assert_eq!(
+            super::props_norm::echo_counters("reactor", "bus2"),
+            Some((echo_before.0 + 2, echo_before.1 + 1))
+        );
+        assert_eq!(
+            super::props_norm::norm_counters("reactor", "bus2"),
+            Some((norm_before.0 + 2, norm_before.1 + 1)),
+            "the echo cell reaches the normalization seam too — it is a visit there, and only \
+             the fold above makes the row non-stale"
+        );
+    }
+
+    /// **The honest statement of what a mixed pair's exclusion covers** (RP2.3
+    /// audit settlement, 2026-08-23).
+    ///
+    /// `load.yearly`'s `CaseFold` row cannot fold `'day'` against `'night'` —
+    /// that is a genuine divergence, the kind the row exists to keep comparable
+    /// — but the pair-scoped echo row masks it on r4133 all the same, because
+    /// the exclusion is asked about the PAIR. The capi channel is what still
+    /// fails on it, and that is the whole of the port's live protection on those
+    /// 20 pairs until RP4.1 narrows the rows per cell.
+    ///
+    /// This test pins the behaviour that actually ships rather than the one the
+    /// docs used to describe; it must be *replaced* by the narrowing, not
+    /// deleted — the day the mask is per-cell, the first assertion flips to
+    /// `!run_load(...)`.
+    #[test]
+    fn a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses() {
+        // Counter hygiene first, and it is per TEST, not per binary: this one
+        // drives `load.yearly`'s normalization row on cells it cannot fold, and
+        // the gate's `assert_norm_rows_are_live()` may run before or after it in
+        // the same process. One foldable cell up front leaves that row with
+        // `hits > 0` whatever the ordering.
+        assert!(run_load(
+            PropsChannel::R4133,
+            &[("Yearly", "day"), ("kW", "10")],
+            &[("Yearly", "DAY"), ("kW", "10")],
+        ));
+        let divergent = (
+            [("Yearly", "day"), ("kW", "10")],
+            [("Yearly", "night"), ("kW", "10")],
+        );
+        assert!(
+            run_load(PropsChannel::R4133, &divergent.0, &divergent.1),
+            "today the pair-scoped echo row swallows it — when RP4.1 narrows the 20 mixed rows \
+             per cell this assertion becomes its negation"
+        );
+        assert!(
+            !run_load(PropsChannel::CapiV0145, &divergent.0, &divergent.1),
+            "…and the capi channel is the only live witness of that value meanwhile"
+        );
+        // The neighbour is untouched either way: the mask is field-scoped.
+        assert!(!run_load(
+            PropsChannel::R4133,
+            &divergent.0,
+            &[("Yearly", "night"), ("kW", "11")],
+        ));
+    }
 }
 
 /// The [`SKIP_PROPS`] half of [`skip_prop`] **only** — the properties whose
@@ -2655,8 +2819,12 @@ fn compare_prop_lists(
         // cited `PROPS_ECHO_R4133` pair whose two renderings are not two
         // spellings of one value drops the VALUE assert here — name and order
         // are already checked above. r4133 only, and AFTER the normalization
-        // seam, so a mixed pair's foldable cells are compared (and counted)
-        // first. Identity on the capi channel, always.
+        // seam, so a mixed pair's foldable cells are seen (and COUNTED) by their
+        // typed rule first; the exclusion itself is pair-scoped, so it then
+        // covers the whole pair, folded cells included (harmless — they are
+        // equal by now) and refused ones too (not harmless — see
+        // `props_norm::PROPS_ECHO_R4133`'s doc and the RP4.1 precondition).
+        // Identity on the capi channel, always.
         if policy.echo_excluded(class, ename, &aval, &eval) {
             continue;
         }
@@ -2868,14 +3036,23 @@ impl PropsPolicy {
     /// `true` drops the VALUE compare of this cell — the property's name and
     /// index order have already been asserted, exactly [`SKIP_PROPS`]' shape.
     /// Which pairs, and the r4133 citation plus witness each one carries, is
-    /// [`props_norm::PROPS_ECHO_R4133`].
+    /// [`props_norm::PROPS_ECHO_R4133`]; the one cell a row deliberately does
+    /// not cover is `props_norm::ECHO_CARVE_OUTS`.
     ///
-    /// **The order is the mechanism, not a detail.** Normalization runs first,
-    /// so on a mixed pair (20 of the 81 rows) a typed rule claims its foldable
-    /// cells — and records its own hit, which is what keeps that row provably
-    /// live — while this exclusion covers only what is left. Asking this first
-    /// would mask cells the engine can and does compare, and would make every
-    /// mixed pair's normalization row look dead.
+    /// **The order matters, and here is exactly what it does.** Normalization
+    /// runs first, so on a mixed pair (20 of the 81 rows) a typed rule sees the
+    /// cell and — when it folds it — records its own hit, which is what keeps
+    /// that row provably live and what makes the claims census disposition
+    /// `normalized-by-<rule>` instead of `echo-row`. Asking this seam first
+    /// would make every mixed pair's normalization row look dead.
+    ///
+    /// What the order does **not** do is keep those cells in the compare: this
+    /// answer is pair-scoped, so once it says `true` the value assert is dropped
+    /// for the folded cells (harmless — normalization has already made the two
+    /// sides equal) and for the ones the rule refused (a real divergence, caught
+    /// on the capi channel only). Narrowing the mixed rows per cell is an RP4.1
+    /// precondition; see [`props_norm::PROPS_ECHO_R4133`] and
+    /// [`props_policy_tests::a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses`].
     ///
     /// On capi the seam is `false` for everything. That arm is the permanent
     /// capi-invariance contract, not an unfinished one: capi is where most of
