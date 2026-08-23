@@ -15,17 +15,20 @@
 //! ```text
 //! shape allowlist  ->  normalization  ->  echo table  ->  display floor
 //!  PROPS_015X          PROPS_NORM_R4133   PROPS_ECHO_R4133   RP2.4's floor
-//!  (RP1)               (RP2.1)            (empty, RP2.3)     (absent, RP2.4)
+//!  (RP1)               (RP2.1 + RP2.2)    (empty, RP2.3)     (absent, RP2.4)
 //! ```
 //!
 //! Every row ends up in exactly one of two states, and **the accounting is
 //! total from day one**:
 //!
 //! * **claimed** — the first matching link of the chain recognises the two
-//!   spellings as one value (RP2.1's own deliverable: bins 1, 2 and 4);
+//!   spellings as one value (RP2.1's own deliverable, bins 1/2/4, plus RP2.2's
+//!   `EnumSynonym` rows for bin 3);
 //! * **declared pending** — no link claims it *yet*, and the row carries a
-//!   marker naming the sub-step whose mechanism will claim it (RP2.2, RP2.3,
-//!   RP2.4, RP3) or the reason nothing will (`OutOfScope`, plan §1.3).
+//!   marker naming the sub-step whose mechanism will claim it (RP2.3, RP2.4,
+//!   RP3, or one of the RP3.5+ sub-steps RP2.2's dossier opened) or the reason
+//!   nothing will (`OutOfScope`, plan §1.3). RP2.2's own bucket is empty since
+//!   that sub-step closed — see [`RP22_ROUTING`] and [`DECLARED_RP22`].
 //!
 //! Later sub-steps therefore *move* rows between mechanisms; they can never
 //! invent a row, and a pair that silently vanishes or appears breaks a count
@@ -98,12 +101,21 @@ const SUPPLEMENT_PAIRS: usize = 26;
 /// Cells behind those rows (the supplement's own `count` column).
 const SUPPLEMENT_CELLS: usize = 4541;
 
-/// Example rows RP2.1's normalization claims, per rule kind.
+/// Example rows the normalization claims, per rule kind.
 const CLAIMED_BOOL_FOLD: usize = 114;
-const CLAIMED_CASE_FOLD: usize = 442;
+/// …**440**, two fewer than RP2.1's 442: `invcontrol.voltage_curvex_ref`'s two
+/// case-only spellings moved with the pair when RP2.2 re-typed its row as an
+/// `EnumSynonym` (`harness/props_norm.rs::VOLTAGE_CURVEX_REF_SYNONYMS`). No cell
+/// stopped being compared — the new map claims those two spellings and one more.
+const CLAIMED_CASE_FOLD: usize = 440;
 const CLAIMED_ARRAY_FORM: usize = 192;
-/// …and in total (the three above; `EnumSynonym` ships with zero rows).
-const CLAIMED_TOTAL: usize = 748;
+/// RP2.2's five `EnumSynonym` rows: `vsource.scantype`/`sequence` one spelling
+/// each, `isource.scantype`/`sequence` two each, and
+/// `invcontrol.voltage_curvex_ref` three (`examples_full.txt`).
+const CLAIMED_ENUM_SYNONYM: usize = 9;
+/// …and in total (the four above). RP2.1 measured 748; RP2.2 adds the 6 source
+/// sequence-selector spellings and `voltage_curvex_ref`'s third.
+const CLAIMED_TOTAL: usize = 755;
 
 /// **What the LIVE population claims, against what this evidence base can see.**
 ///
@@ -120,7 +132,7 @@ const CLAIMED_TOTAL: usize = 748;
 /// replay's count locks are locks on the vendored files, so without this the two
 /// populations could diverge silently while the module doc kept claiming
 /// "spelling-level completeness before the unmask" (RP2.1 audit round).
-const CLAIMED_TOTAL_LIVE: usize = 749;
+const CLAIMED_TOTAL_LIVE: usize = 756;
 
 /// The spellings the live claims census sees and the vendored evidence cannot,
 /// each with the pair it belongs to, the two sides, and why no file carries it.
@@ -157,11 +169,29 @@ const CLAIMED_DISPLAY_FLOOR: usize = 0;
 const MULTI_LINK_ROWS: usize = 0;
 
 /// Declared-pending rows per owner: `(rows, pairs, rows on in-scope pairs)`.
-/// This is what RP2.2, RP2.3, RP2.4 and RP3 each inherit.
-const DECLARED_RP22: (usize, usize, usize) = (170, 26, 166);
-const DECLARED_RP23: (usize, usize, usize) = (295, 72, 295);
+/// This is what RP2.3, RP2.4, RP3 and the RP3.5+ sub-steps each inherit.
+///
+/// **`DECLARED_RP22` is `(0, 0, 0)` since RP2.2 closed**, and that zero is the
+/// sub-step's own acceptance ("the replay accounting claims bin 3 fully"): every
+/// pair it was handed is either claimed by the shipped table or carries a
+/// verdict in [`RP22_ROUTING`], so nothing is left pending on RP2.2. The variant
+/// stays so a regression that re-creates the bucket fails here by name.
+const DECLARED_RP22: (usize, usize, usize) = (0, 0, 0);
+/// RP2.3 inherits RP2.1's 295 rows **plus the 155 RP2.2 routed to it** (14 new
+/// pairs: the 12 echo-rooted S6/bin-3 pairs, `capcontrol.type` and `fault.bus2`;
+/// `generator.dynout` was already an RP2.3 pair through its `''`-vs-`'[]'`
+/// spelling and only changed owner on its second one).
+const DECLARED_RP23: (usize, usize, usize) = (450, 86, 449);
 const DECLARED_RP24: (usize, usize, usize) = (2100, 70, 2020);
 const DECLARED_RP3: (usize, usize, usize) = (7, 4, 7);
+/// The three sub-steps RP2.2 opened: **8 rows over 6 pairs, 5 of them in
+/// scope** — RP3.5 `line.units` (1 row, 0 in scope), RP3.6 `line.linecode`
+/// (2 rows, both in scope — the only RP3.5+ pair the RP4.1 unmask will actually
+/// compare), RP3.7 `swtcontrol.normal`/`state` (1 + 2 rows, all in scope; their
+/// one-token spellings are claimed by `ArrayForm` and are not here) and
+/// `relay.normal`/`state` (1 row each, both out of scope). RP4.1 does not start
+/// until all three close (plan §0).
+const DECLARED_RP35: (usize, usize, usize) = (8, 6, 5);
 /// `OutOfScope` rows must have **zero** in-scope cells — that is the whole
 /// claim the marker makes (plan §1.3).
 const DECLARED_OUT_OF_SCOPE: (usize, usize, usize) = (134, 18, 0);
@@ -235,24 +265,31 @@ const BIN7_ECHO_SUPPLEMENT: &[&str] = &[
     "regcontrol.revthreshold",
 ];
 
-/// **RP2.2's closed pair list** (plan §RP2.2): the eight bin-3 pairs — derived
-/// from `bins.tsv` and cross-checked against the plan's enumeration in
-/// [`the_plan_pair_lists_still_describe_the_vendored_evidence`] — plus the S6
-/// singletons the triage flagged for individual source investigation. A pair on
-/// this list is RP2.2's **whatever bin its cells fall in**: RP2.2 reads its
-/// getter and routes it (an `EnumSynonym` row, an RP2.3 echo row, or a new
-/// RP3.5+ sub-step), which is exactly the "later sub-steps move rows between
+/// **RP2.2's closed pair list, as it was handed to RP2.2** (plan §RP2.2): the
+/// S6 singletons the triage flagged for individual source investigation, next to
+/// the eight bin-3 pairs (derived from `bins.tsv` and cross-checked in
+/// [`the_plan_pair_lists_still_describe_the_vendored_evidence`]). A pair on this
+/// list was RP2.2's **whatever bin its cells fall in**: RP2.2 read its getter
+/// and routed it (an `EnumSynonym` row, an RP2.3 echo row, or a new RP3.5+
+/// sub-step), which is exactly the "later sub-steps move rows between
 /// mechanisms" the accounting is built for.
 ///
-/// **Four of these pairs already carry an RP2.1 `ArrayForm` row**, and RP2.2
-/// must read their getters anyway (disclosure, audit round —
-/// `harness/props_norm.rs` §"Four rows this table DOES hold sit on RP2.2's S6
-/// list"): `invcontrol.monbus` / `monbusesvbase`, where every census spelling
-/// folds (bracketed vs bare, equal token counts), and `swtcontrol.normal` /
-/// `state`, where only the one-token spelling folds — 1 cell of 59 each, while
-/// the 58/31/27-cell per-phase renders are refused by the token-count rule and
-/// land here. A row on this list is therefore not proof that RP2.1 left the pair
-/// alone; it is proof that the pair's *unclaimed* cells are RP2.2's.
+/// **RP2.2 is done, and this list is now the record of its input**, not a
+/// pending marker: every pair below is either claimed by the shipped table or
+/// carries a verdict in [`RP22_ROUTING`], and
+/// [`rp22_settled_every_pair_it_was_handed`] proves that with no third state —
+/// so `Owner::Rp22`'s bucket is empty ([`DECLARED_RP22`]).
+///
+/// **Four of these pairs carry an RP2.1 `ArrayForm` row**, and RP2.2 read their
+/// getters anyway (disclosure, RP2.1 audit round — `harness/props_norm.rs`
+/// §"Four `ArrayForm` rows sit on RP2.2's S6 list"): `invcontrol.monbus` /
+/// `monbusesvbase`, where every census spelling folds (bracketed vs bare, equal
+/// token counts) and RP2.2 therefore found nothing left to route, and
+/// `swtcontrol.normal` / `state`, where only the one-token spelling folds — 1
+/// cell of 59 each, while the 58/31/27-cell per-phase renders are refused by the
+/// token-count rule and are routed to RP3.7 below. A row on this list was
+/// therefore never proof that RP2.1 left the pair alone; it was proof that the
+/// pair's *unclaimed* cells were RP2.2's.
 const RP22_S6: &[&str] = &[
     "expcontrol.derlist",
     "invcontrol.monbus",
@@ -273,6 +310,269 @@ const RP22_S6: &[&str] = &[
     "swtcontrol.state",
 ];
 
+/// **RP2.2's verdicts — one row per pair it had to route, with the r4133 site
+/// that decides it** (plan §RP2.2: "read the r4133 getter/echo site and classify
+/// into exactly one of three"). This table is the dossier, condensed to the form
+/// the accounting can execute: it is consulted *first* in [`declare`], so a pair
+/// here lands in its verdict's bucket instead of the blanket "RP2.2 owes it".
+///
+/// The three outcomes of plan §RP2.2 map onto this table as follows.
+///
+/// * **`EnumSynonym` row** — not here at all: those five pairs
+///   (`vsource`/`isource` × `scantype`/`sequence`, plus
+///   `invcontrol.voltage_curvex_ref`) are *claimed* by `PROPS_NORM_R4133` and
+///   never reach [`declare`]. Same for `invcontrol.monbus`/`monbusesvbase`,
+///   fully claimed by RP2.1's `ArrayForm` rows.
+///   [`rp22_settled_every_pair_it_was_handed`] is what makes those two silences
+///   legible instead of a gap.
+/// * **echo → [`Owner::Rp23`]** — r4133's string is a `PropertyValue[]` echo
+///   (no `GetPropertyValue` arm for the index, `Version8/Source/General/
+///   DSSObject.pas:112-115`), or both sides render live but the r4133 render is
+///   an upstream quirk whose root cause is fully established and whose port
+///   answer is proven right. RP2.3 lands the cited exclusion row (plus the
+///   expected-value pin where no capi witness exists).
+/// * **suspected divergence → [`Owner::Rp35`]** — the two engines' live state or
+///   modelling differs, so a numbered sub-step must decide it before RP4.1.
+///
+/// Every row's `cite` names the r4133 `Version8/Source` site the verdict was
+/// read from; the full dossier prose is STATUS §WP-RP2's RP2.2 record.
+const RP22_ROUTING: &[(&str, Owner, &str)] = &[
+    // --- bin 3, the four pairs that are NOT enum synonyms --------------------
+    // `'close'` vs `'open'` (12 cells of 34) is a stale STORE, not a state
+    // disagreement: `TSwtControlObj.GetPropertyValue` has arms for 1,2,4..9 and
+    // none for 3 (`Controls/SwtControl.pas:573-620`), so `Action` echoes
+    // `PropertyValue[3]` — written with the raw token UNCONDITIONALLY, before
+    // the CASE (`:192-193`), and then not acted on because `Locked` makes
+    // `InterpretSwitchState` exit (`:417`). Both engines refuse the write
+    // (`elements/control/swt_control/accessors.rs:146-150`) and agree on the
+    // live state, which the pair's own live twin `swtcontrol.state` witnesses
+    // token for token on all 59 cells. NOT the plan's suspected RP3.5 candidate.
+    (
+        "swtcontrol.action",
+        Owner::Rp23,
+        "SwtControl.pas:573-620 (no arm 3) / :192-193 / :652 / :417",
+    ),
+    // `'17'` vs `'1 16 +'`: not a "decomposition render" (the plan's and the
+    // vendored triage's guess) — it is the deck's own RPN SOURCE TEXT,
+    // `mode=(1 16 +)`, echoed back with the parser's parens stripped.
+    // `Meters/Monitor.pas` has no `GetPropertyValue` override at all; `:359`
+    // stores the raw `Param` and `:1843` defaults `PropertyValue[3] := '0'`.
+    // Decks: `Test/Dynamic_Kundur.dss:55-56`,
+    // `Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp.dss:66-67`.
+    (
+        "monitor.mode",
+        Owner::Rp23,
+        "Monitor.pas: no GetPropertyValue override / :359 / :1843",
+    ),
+    // Both engines hold `MODESCHEDULE`: `InterpretMode` maps `'s'` + `'c'` to it
+    // (`Controls/StorageController.pas:2322-2333`) but `GetModeString`'s
+    // `propMODEDISCHARGE` arm lists only FOLLOW/LOADSHAPE/SUPPORT/TIME/
+    // PEAKSHAVE/I-PEAKSHAVE and falls to `ELSE Result := 'UNKNOWN'`
+    // (`:1200-1214`). Explicitly NOT an `EnumSynonym`: `'UNKNOWN'` is the
+    // catch-all for every unnamed mode, so the mapping would not be injective —
+    // an exclusion plus a pin (`LiveSemanticsDiffer`), never a rule row.
+    (
+        "storagecontroller.modedischarge",
+        Owner::Rp23,
+        "StorageController.pas:1200-1214 vs :2322-2333",
+    ),
+    // **RP3.5.** r4133 renders index 20 LIVE — `LineUnitsStr(LengthUnits)`
+    // (`PDElements/Line.pas:1404`) — so `'none'` vs `'kft'` means the two
+    // engines hold different `LengthUnits`. r4133 re-applies the saved units
+    // AFTER the impedance edit (`MergeWith` saves at `:1627`, re-edits at
+    // `:1721-1726` and `:1791-1796`; `MakePosSequence` re-appends `Units=` at
+    // `:1596` "to compensate for unexpected reset"); the port's matrix-series
+    // branch does the two in the opposite order (`exec/reduce.rs:396-409` writes
+    // `length_units` and then runs the RMATRIX/XMATRIX/CMATRIX side effects,
+    // which call `reset_length_units`). Second divergence in the same routine:
+    // the port's `reset_length_units` clears `user_length_units`
+    // (`elements/pd/line/code.rs:24-28`), which r4133 deliberately preserves
+    // (`Line.pas:2330`, "but do not erase FUserLengthUnits").
+    (
+        "line.units",
+        Owner::Rp35,
+        "RP3.5 — Line.pas:1404 / :1627 / :1721-1726 / :1791-1796 / :2326-2331",
+    ),
+    // --- the S6 singletons ---------------------------------------------------
+    // **RP3.6.** r4133 renders index 3 live (`If FLineCodeSpecified Then Result
+    // := CondCode`, `Line.pas:1357`) and its `switch=yes` arm (`:694-700`)
+    // assigns r1/x1/r0/x0/c1/c0/len as fields, kills geometry and spacing and
+    // resets the length units — but leaves `FLineCodeSpecified` TRUE. The port
+    // calls `kill_line_code_specified()` there
+    // (`elements/pd/line/accessors.rs:488-511`). Not cosmetic: the flag selects
+    // the `FUnitsConvert` formula on a later `units=` (`Line.pas:626-627`), and
+    // these decks put `units=m` AFTER `Switch=True`. 5 cells, all in scope.
+    (
+        "line.linecode",
+        Owner::Rp35,
+        "RP3.6 — Line.pas:1357 / :413 / :685 / :691 / :694-700 / :626-627",
+    ),
+    // Index 21 has no getter arm (`Line.pas:1347-1429` covers 1..20, 23, 26..33
+    // and the PD tail) → `DSSObject.pas:112-115` echoes `PropertyValue[21]`,
+    // default `''` (`:1511`), overwritten with the deck's `'sp'`.
+    // `SpacingSpecified` is killed later but the echoed string never moves.
+    (
+        "line.spacing",
+        Owner::Rp23,
+        "Line.pas:1347-1429 (no arm 21) / :1511 / :2266-2276",
+    ),
+    // No `GetPropertyValue` in `Isource.pas` at all; `InitPropertyValues` sets
+    // `PropertyValue[11] := ''` (`:631`) and only an explicit `bus2=` would
+    // overwrite it. None of these decks sets one, so r4133 echoes `''` while the
+    // port renders the derived grounded-wye terminal 2. Already an accepted
+    // upstream report: `investigations/to_opendss/14-isource-bus2-not-stored.md`.
+    ("isource.bus2", Owner::Rp23, "Isource.pas:631 (+ report 14)"),
+    // Same echo (`PropertyValue[8] := ''`, `Isource.pas:628`), and the port's
+    // live value IS r4133's live value: the `daily=` arm aliases the OBJECT
+    // without touching the string — `IF YearlyShapeObj=Nil THEN YearlyShapeObj
+    // := DailyShapeObj` (`:286`) — and `CalcYearlyMult` (`:672-681`) consumes
+    // the object. The port reports the aliased object's name.
+    ("isource.yearly", Owner::Rp23, "Isource.pas:628 / :286"),
+    // NOT an echo — `TLoadObj.GetPropertyValue` index 7 answers the live string
+    // field `Yearlyshape` (`PCElements/Load.pas:2346`). r4133 prints the RAW
+    // user-typed name (case preserved, `''` when never typed, `:807`); the port
+    // prints the resolved shape object's lowercased name, and the `''` half is
+    // the same daily→yearly object aliasing as `isource.yearly` (`:657`).
+    // ONE row for the whole pair: a `CaseFold` row would claim only the
+    // case-only half and leave the 18 832 + 7 145 empty-vs-value cells
+    // unclaimed, so RP2.3 owes a value-only exclusion covering both.
+    ("load.yearly", Owner::Rp23, "Load.pas:2346 / :657 / :807"),
+    // `TReactorObj.GetPropertyValue` has arms for 10, 11, 13..16, 19 and the PD
+    // tail — not 2 (`PDElements/Reactor.pas:1087-1105`) → echo. Two writers: the
+    // raw `bus2=` token (`:386`) and, for the shunt case, a SNAPSHOT of the
+    // derived bus2 taken while `bus1=` is parsed (`:419-420`,
+    // `PropertyValue[2] := GetBus(2)` after `ReactorSetbus1`, `:341-358`). A
+    // later `phases=` resizes the terminal but never refreshes the snapshot —
+    // exactly the `'b2.0'` vs `'b2.0.0.0'` shape. The live terminals agree.
+    (
+        "reactor.bus2",
+        Owner::Rp23,
+        "Reactor.pas:1087-1105 (no arm 2) / :386 / :419-420 / :341-358",
+    ),
+    // Indices 25/32/33 have no getter arm
+    // (`Controls/InvControl.pas:3226-3285` covers 1, 4..18, 21, 23, 24, 28, 34)
+    // and no `InitPropertyValues` entry (`:2806-2839` initialises 1..24 and 28),
+    // so each holds `''` until a deck writes it. `monvoltagecalc` is the mixed
+    // one — `''` on 239 cells and the raw token `'MAX'`/`'AVG'` on 15 — and one
+    // row covers both halves.
+    (
+        "invcontrol.monvoltagecalc",
+        Owner::Rp23,
+        "InvControl.pas:505 (no arm 25, not in :2806-2839)",
+    ),
+    // …and the decks drive the DER list through property 1, whose getter IS live
+    // (`:3233` → `ReturnElementsList`), which is why that pair does not diverge.
+    (
+        "invcontrol.pvsystemlist",
+        Owner::Rp23,
+        "InvControl.pas:512 (no arm 32, not in :2806-2839)",
+    ),
+    (
+        "invcontrol.vsetpoint",
+        Owner::Rp23,
+        "InvControl.pas:513 (no arm 33, not in :2806-2839)",
+    ),
+    // Both sides render live and r4133 renders the WRONG list:
+    // `TExpControlObj.GetPropertyValue` answers `ReturnElementsList` for BOTH
+    // index 1 (`PVSystemList`) and index 14 (`DERList`)
+    // (`Controls/ExpControl.pas:684` and `:696`), and `ReturnElementsList`
+    // (`:702-715`) is hard-wired to `FPVSystemNameList` — the class-prefix-
+    // stripped list. The Edit arms keep the two lists distinct on purpose
+    // (`:227-234` fills one and derives the other, `:247-252` the mirror), and
+    // `expcontrol.pvsystemlist` is NOT a divergent pair, which confirms the two
+    // engines agree wherever the bare list is the right answer. Port is right;
+    // `LiveSemanticsDiffer` + pin, and an upstream-report candidate.
+    (
+        "expcontrol.derlist",
+        Owner::Rp23,
+        "ExpControl.pas:696 + :702-715 vs :227-234 / :247-252",
+    ),
+    // **RP3.7 (a).** r4133 keeps per-phase switch state: `FPresentState` /
+    // `FNormalState : pStateArray` (`Controls/SwtControl.pas:37-38`), allocated
+    // per phase (`:299-305`), settable phase-by-phase from a quoted list
+    // (`:453-480`) or ganged from a bare token (`:433-451`), each phase driving
+    // its own conductor (`:532-549`), and the getter renders one token per
+    // CONTROLLED-ELEMENT phase (`:589-599` Normal, `:600-610` State). The port
+    // holds a single scalar per field, applied to the whole terminal
+    // (`elements/control/swt_control/accessors.rs:126-163`, `:270-276`). Every
+    // observed r4133 render is homogeneous, so no VALUE differs today — a deck
+    // writing `state=(open, closed, closed)` would diverge in Y.
+    (
+        "swtcontrol.normal",
+        Owner::Rp35,
+        "RP3.7(a) — SwtControl.pas:589-599 / :37-38 / :299-305 / :433-480 / :532-549",
+    ),
+    (
+        "swtcontrol.state",
+        Owner::Rp35,
+        "RP3.7(a) — SwtControl.pas:600-610 (same set)",
+    ),
+    // **RP3.7 (b), the mirror image**: here the PORT renders three tokens and
+    // r4133 one. `TRelayObj.GetPropertyValue` 39/40 loops the LIVE
+    // `ControlledElement.NPhases` (`Controls/Relay.pas:1407-1428`); the port has
+    // a per-phase array (hence `[closed, open, open, ]`) but does not resync it
+    // to the controlled element after `MakePosSequence`. The single cell is
+    // `modes/makeposseq/makeposseq_ctrl.dss:44`, `engines: "capi_v0145"`.
+    (
+        "relay.normal",
+        Owner::Rp35,
+        "RP3.7(b) — Relay.pas:1407-1417 (loops ControlledElement.NPhases)",
+    ),
+    ("relay.state", Owner::Rp35, "RP3.7(b) — Relay.pas:1418-1428"),
+    // --- the three pairs beyond the closed list ------------------------------
+    // Closing bin 3 means closing its CELLS, not only its eight pairs: the
+    // vendored `README.md` §"A pair's bin is a label, not a per-cell
+    // classification" names three bin-2-labelled pairs that carry enum-spelling
+    // cells, and the accounting routes those cells here. RP2.2 read all three
+    // getters; the third, `invcontrol.voltage_curvex_ref`, is a LIVE enum
+    // rendering (`Controls/InvControl.pas:3244-3249`) and is therefore CLAIMED
+    // by `PROPS_NORM_R4133`'s fifth `EnumSynonym` row, not routed. See
+    // [`RP22_BEYOND_THE_CLOSED_LIST`].
+    //
+    // `TCapControlObj` has NO `GetPropertyValue` override at all, so `type`
+    // (`PropertyName^[4]`, `Controls/CapControl.pas:178`) echoes
+    // `PropertyValue[4]` — the deck's raw token, written before the CASE that
+    // dispatches on `lowercase(param)[1]` (`:304-311`). Hence `'pf'` and
+    // `'volt'` against our registry name `'PowerFactor'`/`'Voltage'`
+    // (`obj/dss_enum/registry/control.rs:69`). The pair's three case-only
+    // spellings stay claimed by its RP2.1 `CaseFold` row — normalization
+    // precedes the echo table, so RP2.3's row masks only these 30 cells.
+    (
+        "capcontrol.type",
+        Owner::Rp23,
+        "CapControl.pas: no GetPropertyValue override / :178 / :304-311",
+    ),
+    // The same derived-bus2 snapshot as `reactor.bus2`: `TFaultObj`'s getter has
+    // only arm 6 (`PDElements/Fault.pas:695-718`), so index 2 echoes
+    // `PropertyValue[2]` — seeded at `:672` and re-snapshotted from `GetBus(2)`
+    // whenever `bus1=` is parsed (`:297`), never refreshed by a later
+    // `phases=`. Its one cell is out of scope, and the pair's `'b3.0'`/`'B3.0'`
+    // spelling stays with the `CaseFold` row.
+    (
+        "fault.bus2",
+        Owner::Rp23,
+        "Fault.pas:695-718 (no arm 2) / :297 / :672",
+    ),
+];
+
+/// The three pairs RP2.2 had to route that its plan-given closed list does not
+/// name: a **bin-2 label** with genuine bin-3 cells inside it (vendored
+/// `README.md` §"A pair's bin is a label, not a per-cell classification", whose
+/// consequence 1 says in as many words that "`capcontrol.type` /
+/// `invcontrol.voltage_curvex_ref` / `reactor.bus2` are case-or-empty pairs
+/// carrying enum-spelling cells"). `reactor.bus2` was already on the S6 list;
+/// these are the rest, plus `fault.bus2` from the same README table.
+///
+/// Recorded as a named list rather than silently folded into [`RP22_ROUTING`]
+/// because it is the one place RP2.2's scope grew beyond the plan's enumeration,
+/// and the growth is a *measurement* (the accounting put four example rows in
+/// RP2.2's bucket that the pair list did not predict), not a decision.
+const RP22_BEYOND_THE_CLOSED_LIST: &[&str] = &[
+    "capcontrol.type",
+    "fault.bus2",
+    "invcontrol.voltage_curvex_ref",
+];
+
 /// The residue the bin map cannot decide: example rows whose **own** cell
 /// classification (bin 2 or 4) differs from the mechanism that will claim them,
 /// on a pair the plan's lists do not already own. One entry per pair, each with
@@ -290,24 +590,32 @@ const CELL_DISPOSITION: &[(&str, Owner, &str)] = &[
         "EnergyMeter.pas:2637-2664 / :2209",
     ),
     // `'[speed, theta]'` vs `'[speed,dpshaft,]'`, 2 cells, both on the
-    // `Dynamic_KundurDynExp` decks. **Not an echo and not a spelling**: r4133's
+    // `Dynamic_KundurDynExp` decks (plus the 271-cell `''`-vs-`'[]'` unset-array
+    // spelling of the same pair). **Not an echo and not a spelling**: r4133's
     // `SetDynOutput` stores the *variable* index `Get_Out_Idx` returns
     // (`General/DynamicExp.pas:411-437`, an index into `FVarNames`), while
     // `GetDynOutputStr` renders it through `Get_VarName`
     // (`:441-465`), which decodes its argument as a flat *(variable, derivative
-    // slot)* index — the encoding `Get_DynamicEqVal` uses. For this deck's
+    // slot)* index — the encoding `Get_DynamicEqVal` uses, `DynSlot =
+    // array[0..1] of double` (`Shared/Arraydef.pas:39`). For this deck's
     // `varnames=[Speed Mass PShaft Pterm Damp theta]`, `theta` (index 5)
     // therefore prints as `d` + `FVarNames[2]` = `dpshaft`. The dynamics are
     // unaffected (`generator.pas:2823-2849` indexes `DynamicEqVals` with the
     // same variable index the port uses), so this is an r4133 **rendering** bug
-    // and the port's answer is the correct one. Declared for RP2.2's triage
-    // (plan §RP2.2's third outcome), because an RP2.3 echo row on
-    // `generator.dynout` would otherwise mask it silently; recorded in STATUS by
-    // RP2.1 part D.
+    // and the port's answer is the correct one.
+    //
+    // **RP2.2's verdict** (it was declared here for exactly this triage, so that
+    // an RP2.3 echo row could not mask it silently): the root cause is fully
+    // established and the port's answer proven right, so this is not an RP3.5+
+    // sub-step — it is RP2.3's, as a **tagged `LiveSemanticsDiffer` row with
+    // this citation plus an expected-value pin**, never a silent `EchoDefault`.
+    // Upstream report written:
+    // `investigations/to_opendss/41-dynout-readback-renders-wrong-variable.md`
+    // (gitignored, local-only).
     (
         "generator.dynout",
-        Owner::Rp22,
-        "PCElement.pas:197-243 / DynamicExp.pas:411-465",
+        Owner::Rp23,
+        "PCElement.pas:197-243 / DynamicExp.pas:411-465 (RP2.2: LiveSemanticsDiffer + pin)",
     ),
     // `'rs=… option=fixed'` vs `'(rs=… option=fixed)'`: r4133 wraps the stored
     // user-model data string in parens. Same string, same `PropertyValue[]`
@@ -420,6 +728,14 @@ enum Owner {
     Rp24,
     /// RP3 — the four genuine value jumps that are not echo.
     Rp3,
+    /// **RP3.5+ — the sub-steps RP2.2's dossier opened** (plan §RP2.2's third
+    /// outcome, §0: RP4.1 does not start until they close). Three of them, all
+    /// live-state or modelling divergences rather than spellings:
+    /// RP3.5 `line.units`, RP3.6 `line.linecode`, RP3.7 the per-phase
+    /// switch/relay state. Which pair belongs to which sub-step is recorded in
+    /// [`RP22_ROUTING`]'s citation column; this owner is the accounting bucket
+    /// they share.
+    Rp35,
     /// Nothing will claim it: every cell of the pair sits on an
     /// `engines: "capi_v0145"` case, which plan §1.3 keeps uncompared on r4133.
     OutOfScope,
@@ -432,6 +748,7 @@ impl Owner {
             Owner::Rp23 => "RP2.3",
             Owner::Rp24 => "RP2.4",
             Owner::Rp3 => "RP3",
+            Owner::Rp35 => "RP3.5+ (opened by RP2.2)",
             Owner::OutOfScope => "out of scope (§1.3)",
         }
     }
@@ -977,16 +1294,20 @@ fn classify_cell(rust: &str, r4133: &str) -> u8 {
 /// **The declaration rule.** Which sub-step's mechanism will claim a row RP2.1
 /// cannot — decided from the vendored evidence, in this order:
 ///
-/// 0. a pair on **RP2.2's closed list** (the eight bin-3 pairs plus the S6
-///    singletons) is RP2.2's whatever bin its cells fall in — RP2.2 reads its
-///    getter and routes it;
+/// 0. a pair RP2.2's dossier routed answers [`RP22_ROUTING`] — RP2.3's echo
+///    table or one of the RP3.5+ sub-steps; a pair on **RP2.2's closed list**
+///    (the eight bin-3 pairs plus the S6 singletons) that the routing does
+///    *not* name and no link claimed is an **error**, because RP2.2 is closed
+///    and owed exactly those verdicts;
 /// 1. a **numeric** row answers its in-scope-effective bin: 6 -> RP2.4's floor,
 ///    7 -> RP2.3 if the plan (or the vendored README) already read it off the
 ///    Pascal as an echo, RP3 if it is one of the four root-cause pairs;
 /// 2. an unclaimed cell of a **bin-1** pair whose r4133 side is not one of the
 ///    eleven Delphi boolean spellings is the pair's echo half -> RP2.3;
 /// 3. a cell whose own classification is **bin 5** (either side empty) -> RP2.3;
-/// 4. …**bin 3** (an enum spelling) -> RP2.2's `EnumSynonym` rows;
+/// 4. …**bin 3** (an enum spelling) -> RP2.2's `EnumSynonym` rows — which, RP2.2
+///    being closed, is only reachable for a pair the routing does not name and
+///    is therefore the same error as (0);
 /// 5. …**bin 2 or 4** inside a pair no rule of this table claims: the explicit
 ///    [`CELL_DISPOSITION`] entry, else the pair's own bin-5 echo row, else — if
 ///    every cell of the pair is out of scope — plan §1.3.
@@ -1000,8 +1321,16 @@ fn declare(row: &Example, ev: &PairEvidence) -> Result<Owner, String> {
         .find(|(p, _, _)| *p == row.pair)
         .map(|(_, o, _)| *o);
 
+    if let Some((_, owner, _)) = RP22_ROUTING.iter().find(|(p, _, _)| *p == row.pair) {
+        return Ok(*owner);
+    }
     if RP22_S6.contains(&row.pair.as_str()) || (!ev.numeric && ev.bin == 3) {
-        return Ok(Owner::Rp22);
+        return Err(format!(
+            "{} '{}' vs '{}': on RP2.2's closed pair list, unclaimed by the chain, and \
+             RP22_ROUTING has no verdict for it — RP2.2 is closed, so every such pair owes \
+             exactly one recorded routing",
+            row.pair, row.rust, row.r4133
+        ));
     }
     if ev.numeric {
         return match ev.effective_bin() {
@@ -1026,7 +1355,14 @@ fn declare(row: &Example, ev: &PairEvidence) -> Result<Owner, String> {
     }
     match cell_bin {
         5 => Ok(Owner::Rp23),
-        3 => Ok(Owner::Rp22),
+        // A bin-3 CELL inside a pair the routing does not name. RP2.2 is closed,
+        // so this is the same error as (0): closing bin 3 means closing its
+        // cells, and every one of them owes a read getter and a verdict.
+        3 => Err(format!(
+            "{} '{}' vs '{}': a bin-3 (enum-spelling) cell on a bin-{} pair that RP22_ROUTING \
+             does not name — RP2.2's acceptance is that bin 3 is claimed FULLY, per cell",
+            row.pair, row.rust, row.r4133, ev.bin
+        )),
         2 | 4 => match (disposition, ev.bin, ev.in_scope()) {
             // `OutOfScope` is a claim about the evidence, not a shrug: it may
             // only be written for a pair the RP4.1 unmask never compares.
@@ -1163,8 +1499,8 @@ fn every_example_row_is_claimed_or_declared_exactly_once() {
     assert_eq!(claimed("ArrayForm"), CLAIMED_ARRAY_FORM);
     assert_eq!(
         claimed("EnumSynonym"),
-        0,
-        "RP2.2 lands the EnumSynonym rows"
+        CLAIMED_ENUM_SYNONYM,
+        "RP2.2's four bin-3 synonym rows"
     );
     assert_eq!(
         claimed(Link::ShapeAllowlist.tag()),
@@ -1196,6 +1532,7 @@ fn every_example_row_is_claimed_or_declared_exactly_once() {
         (Owner::Rp23, DECLARED_RP23),
         (Owner::Rp24, DECLARED_RP24),
         (Owner::Rp3, DECLARED_RP3),
+        (Owner::Rp35, DECLARED_RP35),
         (Owner::OutOfScope, DECLARED_OUT_OF_SCOPE),
     ] {
         assert_eq!(
@@ -1655,6 +1992,159 @@ fn an_example_row_no_mechanism_and_no_marker_claims_is_caught() {
     );
 }
 
+/// **RP2.2 settled every pair it was handed, with no third state** (plan §RP2.2
+/// acceptance: "the replay accounting claims bin 3 fully; every row cites its
+/// source line").
+///
+/// The closed input list is `RP22_S6` ∪ the eight bin-3 pairs. Each of them ends
+/// in exactly one of two places, and both are asserted here rather than left to
+/// be read off the master accounting:
+///
+/// * **claimed** by a shipped `PROPS_NORM_R4133` row (every one of its example
+///   rows), i.e. `RP22_ROUTING` says nothing about it — the four `EnumSynonym`
+///   pairs and the two fully-folding `ArrayForm` pairs;
+/// * **routed** by `RP22_ROUTING`, with a citation, to RP2.3 or an RP3.5+
+///   sub-step.
+///
+/// The test also runs the two liveness directions the plan's mechanic (d) asks
+/// of any table: no routing row is dead (each declares at least one example
+/// row), and no routing row names a pair outside RP2.2's remit.
+#[test]
+fn rp22_settled_every_pair_it_was_handed() {
+    let corpus = Corpus::load();
+    let bins = bins_evidence();
+
+    // RP2.2's remit: the S6 list plus every structural bin-3 pair.
+    let mut handed: BTreeSet<String> = RP22_S6.iter().map(|p| (*p).to_string()).collect();
+    for (pair, all) in &bins {
+        if all.iter().any(|e| !e.numeric && e.bin == 3) {
+            handed.insert(pair.clone());
+        }
+    }
+    assert_eq!(
+        handed.len(),
+        24,
+        "17 S6 pairs + 8 bin-3, `line.units` on both lists"
+    );
+    let closed_list = handed.len();
+
+    // …plus the three the accounting surfaced: a bin-2 LABEL over genuine bin-3
+    // cells. Each must really be that shape, or the list is a shrug.
+    for pair in RP22_BEYOND_THE_CLOSED_LIST {
+        assert!(
+            !handed.contains(*pair),
+            "{pair} IS on RP2.2's closed list — it does not belong in the 'beyond' list"
+        );
+        let ev = bins
+            .get(*pair)
+            .unwrap_or_else(|| panic!("{pair}: no bins.tsv row"));
+        assert!(
+            ev.iter().all(|e| !e.numeric && e.bin != 3),
+            "{pair}: the 'beyond' list is for pairs whose LABEL is not 3"
+        );
+        assert!(
+            corpus
+                .rows
+                .iter()
+                .any(|r| &r.pair == pair && classify_cell(&r.rust, &r.r4133) == 3),
+            "{pair}: no bin-3 cell, so RP2.2 had no reason to touch it"
+        );
+        handed.insert((*pair).to_string());
+    }
+    assert_eq!(
+        handed.len(),
+        closed_list + RP22_BEYOND_THE_CLOSED_LIST.len(),
+        "the two lists must be disjoint"
+    );
+
+    let routed: BTreeSet<String> = RP22_ROUTING
+        .iter()
+        .map(|(p, _, _)| (*p).to_string())
+        .collect();
+    assert_eq!(
+        routed.len(),
+        RP22_ROUTING.len(),
+        "RP22_ROUTING must hold one row per pair"
+    );
+
+    // Every routed row carries a real r4133 citation, and every pair it names is
+    // one RP2.2 was actually handed (`generator.dynout` is routed through
+    // `CELL_DISPOSITION` instead — it came from RP2.1's hand-off, not from S6).
+    for (pair, owner, cite) in RP22_ROUTING {
+        assert!(
+            handed.contains(*pair),
+            "{pair} is routed by RP2.2 but was never on its closed list"
+        );
+        assert!(
+            cite.contains(".pas:"),
+            "{pair}: the routing row must cite an r4133 source line, got {cite:?}"
+        );
+        assert!(
+            matches!(owner, Owner::Rp23 | Owner::Rp35),
+            "{pair}: RP2.2's outcomes are an EnumSynonym row (then it is CLAIMED, not routed), \
+             an RP2.3 echo row, or an RP3.5+ sub-step — not {}",
+            owner.tag()
+        );
+        if matches!(owner, Owner::Rp35) {
+            assert!(
+                cite.starts_with("RP3."),
+                "{pair}: an RP3.5+ routing must name its sub-step first, got {cite:?}"
+            );
+        }
+    }
+
+    // The pairs RP2.2 did NOT route are exactly the ones the shipped table
+    // claims outright — asserted through the shipped predicate, per example row.
+    let claimed_outright: BTreeSet<String> = handed.difference(&routed).cloned().collect();
+    assert_eq!(
+        claimed_outright
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        [
+            "invcontrol.monbus",
+            "invcontrol.monbusesvbase",
+            "invcontrol.voltage_curvex_ref",
+            "isource.scantype",
+            "isource.sequence",
+            "vsource.scantype",
+            "vsource.sequence",
+        ],
+        "the S6/bin-3/off-bin pairs RP2.2 leaves to the normalization table"
+    );
+    for pair in &claimed_outright {
+        let rows: Vec<&Example> = corpus.rows.iter().filter(|r| &r.pair == pair).collect();
+        assert!(!rows.is_empty(), "{pair}: no example row at all");
+        for r in rows {
+            assert!(
+                props_norm::claiming_row(&r.class, &r.prop, &r.rust, &r.r4133).is_some(),
+                "{pair} '{}' vs '{}' is neither claimed nor routed — RP2.2 would owe it a \
+                 verdict",
+                r.rust,
+                r.r4133
+            );
+        }
+    }
+
+    // Liveness: every routing row really declares at least one example row.
+    let mut dead: Vec<&str> = Vec::new();
+    for (pair, _, _) in RP22_ROUTING {
+        let declared = corpus
+            .rows
+            .iter()
+            .filter(|r| &r.pair == pair)
+            .any(|r| first_match(chain_verdicts(&corpus, r)).is_none());
+        if !declared {
+            dead.push(pair);
+        }
+    }
+    assert!(
+        dead.is_empty(),
+        "RP22_ROUTING row(s) that route nothing — the chain already claims every cell of \
+         {dead:?}, so the routing is stale"
+    );
+}
+
 /// The plan's own enumerated pair lists still describe the vendored evidence:
 /// the eight bin-3 pairs, the sixteen in-scope bin-7 pairs split 12 echo / 4
 /// root-cause, and RP2.2's S6 singletons. A stale list here would silently move
@@ -1721,6 +2211,12 @@ fn the_plan_pair_lists_still_describe_the_vendored_evidence() {
         assert!(
             known(pair),
             "{pair} has a cell disposition but no evidence row"
+        );
+    }
+    for (pair, _, _) in RP22_ROUTING {
+        assert!(
+            known(pair),
+            "{pair} carries an RP2.2 routing verdict but has no evidence row"
         );
     }
 }

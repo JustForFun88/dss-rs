@@ -244,7 +244,7 @@ sub-step that closes it:
 |---|---|---|---|---|
 | 1 | boolean rendering, 75 / 297 593 | FPC `Yes`/`No` vs eleven non-empty Delphi spellings (`true/True/false/False/YES/yes/no/NO/n/y/Y` — `False` alone is 76 492 cells); the `''` renders in this bin are echo-defaults, not booleans | `BoolFold` rule; echo cells go to the echo table. **RP0.1 census correction (2026-08-22, STATUS §RP0.1):** nine bin-1 pairs answer with an echo, not three — four genuinely mixed (`recloser.eventlog`, `regcontrol.idle`, `relay.distreverse` with `''`; `relay.reset` with the non-empty parse string `'0.20'`) and five pure-echo with no foldable cell at all (`regcontrol.idleforward`, `regcontrol.idlereverse`, `capcontrol.reset`, `recloser.debugtrace`, `upfccontrol.enabled`), so only 70 pairs take a `BoolFold` row — §1.2 replay bullet | RP2.1 / RP2.3 |
 | 2 | case-only + trailing space, 59 / 72 007 + 2 / 21 206 | THashList lowercasing (port = dss_capi) vs Delphi as-declared case; literal `'wye '`/`'Delta '` (`Transformer.pas:1762-1763`, `AutoTrans.pas:1818-1819`) | `CaseFold` + trim | RP2.1 |
-| 3 | enum spelling + singletons, 8 / 4 400 | per-pair enum spellings (`Positive`/`Pos`) and per-pair semantics (`monitor.mode` decomposition render) | `EnumSynonym` rows + the S6 dossier (S6 = the triage's per-pair singleton list, enumerated exhaustively in RP2.2) | RP2.2 |
+| 3 | enum spelling + singletons, 8 / 4 400 | per-pair enum spellings (`Positive`/`Pos`) and per-pair semantics. **RP2.2 correction (2026-08-23):** `monitor.mode`'s `'1 16 +'` is NOT a "decomposition render" — it is the deck's own RPN **source text** (`mode=(1 16 +)`) echoed back with the parser's parens stripped (`Meters/Monitor.pas:359`, no `GetPropertyValue` override), i.e. an `EchoParse`. And the bin's 8 pairs split 4/4: only the source sequence selectors are synonyms | `EnumSynonym` rows + the S6 dossier (S6 = the triage's per-pair singleton list, enumerated exhaustively in RP2.2) | RP2.2 |
 | 4 | array form, 21 / 122 554 | dss_capi `GetDSSArray` `[ 400]` vs Delphi comma/paren/bare forms | `ArrayForm` tokenizing compare | RP2.1 |
 | 5 | empty-vs-value + display defaults, 44 / 442 369 (**45 / 443 257** after the RP0.2 correction above — the 45th pair is `regcontrol.fwdthreshold`, 888 cells, absent from every vendored extract; RP2.3 provisions its row from the RP0.2 record) | `PropertyValue[]` echo: un-overridden `GetPropertyValue` returns the parse store / `InitPropertyValues` default (`DSSObject.pas:112-115`; e.g. `Reactor.pas:1087-1140`, `Transformer.pas:1914-1919`; `RegControl.pas:1423-1459` initializes only `PropertyValue[1..32]`, so props 33–36 all echo `''`) | `PROPS_ECHO_R4133` exclusion rows + pins | RP2.3 |
 | 6 | numeric display precision, 61 pairs full / 37 in-scope | Delphi `%-.5g`/`%-.6g`/`%-.8g` getters (`Vsource.pas:1327-1343`); measured worst rel 6.43e-5 (`load.pf`) | the r4133 props display floor | RP2.4 |
@@ -804,6 +804,25 @@ category or a port bug). **Acceptance:** the replay accounting claims bin 3
 fully; every row cites its source line. Outcome: the eight bin-3 pairs and the
 S6 list each have a cited, single classification.
 
+**As executed (2026-08-23, STATUS §WP-RP2).** The kill criterion did not fire.
+Bin 3 split 4/4: `vsource`/`isource` × `scantype`/`sequence` took `EnumSynonym`
+rows, while `swtcontrol.action` (an `EchoParse` stored before the CASE and left
+stale by the `Locked` refusal — the plan's first RP3.5 candidate, **disproven**),
+`monitor.mode` (the RPN source-text echo — see the §1.1 bin-3 correction) and
+`storagecontroller.modedischarge` (`'UNKNOWN'` is the non-injective catch-all of
+`GetModeString`) went to RP2.3, and `line.units` (the plan's second candidate,
+**confirmed**) opened RP3.5. Of the S6 list, 10 pairs went to RP2.3, 4 to RP3.7,
+1 (`line.linecode`) opened RP3.6, and 2 (`invcontrol.monbus`/`monbusesvbase`)
+were already fully claimed by RP2.1's `ArrayForm` rows. **Closing bin 3 also
+meant closing its cells:** three bin-2-labelled pairs carry enum-spelling cells
+(vendored `README.md` §"A pair's bin is a label"), which the pair list does not
+name — `capcontrol.type` and `fault.bus2` are echoes (RP2.3) and
+`invcontrol.voltage_curvex_ref` is a live enum getter, so its whole pair was
+re-typed from `CaseFold` to a fifth `EnumSynonym` row. Two RP2.1 hand-offs also
+closed here: `generator.dynout` is RP2.3's (`LiveSemanticsDiffer` + pin, upstream
+report written) and `Fault.GMatrix` stays value-skipped on both channels with no
+sub-step.
+
 ### RP2.3 — the echo-exclusion table + pins
 
 Land the `PROPS_ECHO_R4133` rows for bin 5 (the 44 empty-vs-value pairs — echo
@@ -885,7 +904,10 @@ RP4.1's unmask commit — earlier they would fail `assert_all_hit` as NEVER
 APPLIED, the r4133 props compare being still masked. **Acceptance criterion for
 the whole WP:** none of the four pairs remains unclassified; every outcome has
 its artifact (fix commit / drafted ledger entry + landed pin / report + row)
-named in STATUS.
+named in STATUS. **RP3.5–RP3.7 were opened by RP2.2's dossier** (§0's "any
+RP3.5+ sub-step RP2.2's triage opens"; they are structural/live-state
+divergences rather than numeric jumps, so the "four pairs" above stays the
+bin-7 statement) and are subject to the same criterion.
 
 ### RP3.1 — `swtcontrol.delay` (proven r4133 Edit bug)
 
@@ -971,6 +993,91 @@ and record); the twins themselves land at RP4.1 per the §1.1(e) staging rule.
 duplicate coverage with RP2.3 rows (the replay accounting enforces
 single-claim); hit + non-stale is asserted at RP4.1. Outcome: the shared-bug
 pins hold on both channels where both channels look.
+
+### RP3.5 — Line length units lost by the matrix-branch merge (opened by RP2.2)
+
+`line.units` `'none'` vs `'kft'` (3 cells, **0 in scope** — the affected
+`modes:reduce` cases are `engines: "capi_v0145"`). r4133 renders index 20 from
+the live field (`LineUnitsStr(LengthUnits)`,
+`Version8/Source/PDElements/Line.pas:1404`), so the two engines hold **different
+`LengthUnits`** after a matrix-form `MergeWith` — a live-state divergence, not a
+render. r4133 saves the units (`:1627`) and re-applies them in a **separate**
+`Length=/Units=` edit *after* the impedance edit, in both merge branches
+(`:1721-1726` symmetrical-components, `:1791-1796` matrix), and `MakePosSequence`
+re-appends `Units=` for the same reason (`:1596`, "Repeat the Length Units to
+compensate for unexpected reset"). The port does that in the sym-components
+branch (`exec/reduce.rs:245,348-353`) but **inverts the order in the
+matrix-series branch** (`:396-409`: it writes `l.length_units = len_units_saved`
+and only then runs the `RMATRIX/XMATRIX/CMATRIX` side effects, which call
+`reset_length_units`, `elements/pd/line/accessors.rs:478-486` →
+`code.rs:24-28`). Second, independent divergence in the same routine: the port's
+`reset_length_units` also clears `user_length_units`, where r4133 deliberately
+keeps `FUserLengthUnits` (`Line.pas:2330`, "but do not erase FUserLengthUnits,
+in case of CIM export") — a CIM-export-visible difference with no census cell.
+**Do first:** a live probe on `modes:reduce/reduce_mergeparallel` +
+`reduce/midi_reduce.dss` (epri-worker) — RP2.2 read this off the two sources and
+did not build. Then one outcome per the WP rule: a port fix in **both lanes**
+with an expected-value pin on the merged line's `length_units` /
+`user_length_units`, or a cited exclusion if the probe overturns the reading.
+**Acceptance:** the probe recorded; `line.units` either compares or is excluded
+with a pin; the `user_length_units` half decided explicitly (it is not
+observable in the census, so it needs its own statement). Tier: `opus-high+`.
+
+### RP3.6 — `switch=yes` must not clear the linecode flag (opened by RP2.2)
+
+`line.linecode` `''` vs `'99'`/`'98'` — **5 cells, all 5 in scope**, so this is
+the one RP3.5+ pair the RP4.1 unmask will actually compare, and RP4.1 breaks on
+it if this sub-step does not land. r4133 renders index 3 live
+(`3: If FLineCodeSpecified Then Result := CondCode else Result := ''`,
+`Line.pas:1357`); the flag is set by `FetchLineCode` (`:413`) and cleared by the
+impedance side effects `6..11, 26..27` (`:685`) and `12..14` (`:691`) — but
+**not** by `switch=yes`, whose arm assigns r1/x1/r0/x0/c1/c0/len as fields,
+kills geometry and spacing and resets the length units while leaving
+`FLineCodeSpecified` TRUE (`:694-700`). The port clears it there
+(`elements/pd/line/accessors.rs:488-511`, `SWITCH => { … kill_line_code_
+specified(); … }`, following dss_capi 0.14.5's `KillLineCodeSpecified`). Not
+cosmetic: the flag selects the `FUnitsConvert` formula on a later `units=`
+(`Line.pas:626-627`), and the affected decks
+(`Version8/Distrib/Examples/StoCtrl_Current_PeakShave/Line.DSS`) put `units=m`
+**after** `Switch=True`, so the two engines take different branches there.
+r4133 is the behavioral authority (CLAUDE.md 2026-08-02), so the default
+expectation is a port fix in both lanes plus a pin on the resulting
+`FUnitsConvert`/impedance; the alternative (keep the kill, pin the r4133-side
+delta) must be argued from a probe, not from "capi does it". **Do first:** an
+epri-worker probe of `linecode=… Switch=True units=m` reading back `linecode`,
+`units` and `r1` on both engines. **Acceptance:** the 5 in-scope cells are
+either compared or excluded-with-a-pin; the `FUnitsConvert` consequence measured
+either way; the capi channel proven unmoved (0.14.5 keeps its own behavior —
+if the port changes, the capi-side delta needs its own ledger/pin decision).
+Tier: `opus-high+`.
+
+### RP3.7 — Per-phase switch and relay state (opened by RP2.2)
+
+Two classes, one modelling question. **(a) SwtControl.** r4133 keeps per-phase
+state — `FPresentState`/`FNormalState : pStateArray`
+(`Version8/Source/Controls/SwtControl.pas:37-38`), allocated per phase
+(`:299-305`), settable phase-by-phase from a quoted list (`InterpretSwitchState`,
+`:453-480`) or ganged from a bare token (`:433-451`), each phase driving its own
+conductor (`set_States`, `:532-549` → `ControlledElement.Closed[Idx]`), applied
+per phase by `RecalcElementData` (`:347-355`) — and its getters render one token
+per **controlled-element** phase (`:589-599` Normal, `:600-610` State). The port
+holds a **single scalar** per field (`elements/control/swt_control/
+accessors.rs:126-163`) applied to the whole terminal (`RefAction::
+SetSwitchClosed`, `:270-276`). Every r4133 render the census saw is homogeneous,
+so no *value* differs today (`swtcontrol.normal`/`state`, 59 cells each, 40 in
+scope); a deck writing `state=(open, closed, closed)` would diverge in Y.
+**(b) Relay.** The mirror image: `TRelayObj.GetPropertyValue` 39/40 loops the
+**live** `ControlledElement.NPhases` (`Controls/Relay.pas:1407-1428`), while the
+port renders its own per-phase array — which it has — without resyncing it to
+the controlled element after `MakePosSequence` (1 cell each, 0 in scope,
+`modes/makeposseq/makeposseq_ctrl.dss:44`). Decide, with a probe on a
+quoted-list `state=` deck: port the per-phase switch state (which also fixes the
+render, and fixes Relay's resync), or record the gap in `ORPHANED_GAPS.md` and
+carry the render as a cited exclusion + pin. **Acceptance:** the probe recorded
+(does r4133 really hold three independent conductor states on a `state=(…)`
+deck?); a decision with its artifact; the 80 in-scope `swtcontrol` cells either
+compare or are excluded with an expected-value pin on the port's live switch
+state. Tier: `opus-high+`.
 
 ---
 

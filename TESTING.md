@@ -626,8 +626,17 @@ Where the vendored evidence is knowingly behind the live population it says so
 with an assertion rather than a comment: `LIVE_ONLY_SPELLINGS` names the one
 spelling the claims census sees and no file may carry (`autotrans.conn
 'series'/'Series'`, on a pair whose `bins.tsv` row predates RP1.2's deck),
-reconciles the replay's 748 claimed spellings with the census's 749, and pins
+reconciles the replay's 755 claimed spellings with the census's 756, and pins
 that the shipped rule still claims it.
+
+Since **RP2.2** the file also carries that sub-step's dossier as data:
+`RP22_ROUTING` is one row per pair RP2.2 read and routed, each citing the r4133
+`.pas:` line that decides it, and `rp22_settled_every_pair_it_was_handed` proves
+its closed input list is partitioned into "claimed by `PROPS_NORM_R4133`" and
+"routed with a citation" with no third state. A pair on that list which neither
+the chain claims nor the routing names is an **error**, not a declaration — the
+same for any bin-3 cell anywhere — because RP2.2's acceptance is that bin 3 is
+claimed per cell, not per pair.
 
 Comparing against the vendored files: filter to `channel == "r4133"`, drop that
 key, and compare **cell multisets** — the pair extracts' `example` cells and

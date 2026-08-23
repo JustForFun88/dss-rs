@@ -64,9 +64,44 @@
 //! | kind | rows | derivation |
 //! |---|---|---|
 //! | [`BoolFold`](NormRule::BoolFold) | 77 | bin 1's 75 pairs **minus the five pure-echo pairs** (`capcontrol.reset`, `recloser.debugtrace`, `regcontrol.idleforward`, `regcontrol.idlereverse`, `upfccontrol.enabled` — no foldable cell at all, vendored `README.md` §"Bin 1 carries nine echo pairs, not three"), plus 7 WP-RP1 pairs |
-//! | [`CaseFold`](NormRule::CaseFold) | 63 | bin 2 whole (59 case-only + 2 trailing-space), plus 2 WP-RP1 pairs |
+//! | [`CaseFold`](NormRule::CaseFold) | 62 | bin 2 whole (59 case-only + 2 trailing-space), plus 2 WP-RP1 pairs, **minus** `invcontrol.voltage_curvex_ref` (re-typed by RP2.2, next row) |
 //! | [`ArrayForm`](NormRule::ArrayForm) | 17 | bin 4's 21 pairs minus 4 no typed rule may claim (below) |
-//! | [`EnumSynonym`](NormRule::EnumSynonym) | 0 | RP2.2 fills it; the kind ships with its shape and its self-tests |
+//! | [`EnumSynonym`](NormRule::EnumSynonym) | 5 | RP2.2: the four source sequence-selector pairs of bin 3 ([`SCAN_TYPE_SYNONYMS`] / [`SEQUENCE_TYPE_SYNONYMS`]) plus [`VOLTAGE_CURVEX_REF_SYNONYMS`]; the other four bin-3 pairs are NOT synonyms — see below |
+//!
+//! # RP2.2's routing of bin 3 (why only four of the eight pairs take a row)
+//!
+//! RP2.2 read all eight bin-3 getters. Exactly four print a **spelling of the
+//! same live value** and take an [`EnumSynonym`](NormRule::EnumSynonym) row here
+//! — `vsource.scantype` / `vsource.sequence` / `isource.scantype` /
+//! `isource.sequence`. The other four are not synonyms and were routed instead
+//! (the citations live in `props_r4133_replay::RP22_ROUTING`, which is the
+//! record of the whole dossier):
+//!
+//! * `swtcontrol.action` — an `EchoParse` of the deck token, stored
+//!   *unconditionally* before the CASE (`Version8/Source/Controls/
+//!   SwtControl.pas:192-193`) and left stale when `Locked` refuses the write
+//!   (`:417`), so `'close'` vs `'open'` is a stale STRING, not a state
+//!   disagreement → RP2.3;
+//! * `monitor.mode` — the deck's RPN source text `mode=(1 16 +)` echoed back
+//!   with the parser's parens stripped (`Meters/Monitor.pas:359`, no
+//!   `GetPropertyValue` override) → RP2.3;
+//! * `storagecontroller.modedischarge` — both engines hold `MODESCHEDULE`;
+//!   r4133's `GetModeString` has no arm for it and falls to
+//!   `'UNKNOWN'` (`Controls/StorageController.pas:1200-1214`). `'UNKNOWN'` is
+//!   the catch-all for *every* unnamed mode, so mapping it to `'Schedule'`
+//!   would not be injective — an exclusion plus a pin, never a row here → RP2.3;
+//! * `line.units` — a **live-state** divergence (r4133 renders
+//!   `LineUnitsStr(LengthUnits)`, `PDElements/Line.pas:1404`), root-caused to
+//!   the port's matrix-branch merge order → RP3.5.
+//!
+//! Closing bin 3 also means closing its **cells**, not only its pairs: three
+//! bin-2-labelled pairs carry enum-spelling cells (vendored `README.md` §"A
+//! pair's bin is a label, not a per-cell classification"). RP2.2 read those
+//! getters too — `capcontrol.type` (`'pf'`/`'volt'`, 30 cells) and `fault.bus2`
+//! (`'b2.0'` vs `'b2.0.0.0'`, 1 cell) are `PropertyValue[]` echoes and go to
+//! RP2.3 beside their untouched `CaseFold` rows (the mixed-pair pattern the
+//! chain order exists for), while `invcontrol.voltage_curvex_ref` is a live
+//! getter and became this table's fifth `EnumSynonym` row.
 //!
 //! The four bin-4 pairs that take **no** row, each with the sub-step that owns
 //! it — all four are named by the plan itself, so the RP2.1 kill criterion
@@ -74,8 +109,11 @@
 //!
 //! * `expcontrol.derlist` (`[PVSystem.pv]` vs `[pv]` — element vs bare name),
 //!   `relay.normal`, `relay.state` (`[closed, closed, closed, ]` vs
-//!   `[closed, ]` — the per-phase array render): all three are on RP2.2's
-//!   enumerated S6 singleton list (plan §RP2.2);
+//!   `[closed, ]` — the per-phase array render): all three were on RP2.2's
+//!   enumerated S6 singleton list, and RP2.2 routed them — `derlist` to RP2.3
+//!   (r4133 answers the bare PVSystem list for BOTH properties,
+//!   `Version8/Source/Controls/ExpControl.pas:696` + `:702-715`), the two Relay
+//!   rows to **RP3.7** (a live per-phase-state divergence, not a spelling);
 //! * `sensor.kvs` (`[ 0 0 0]` vs `[7.2, 7.2, 7.2]`): a **real** value delta,
 //!   and out of scope — all 61 cells sit on `engines: "capi_v0145"` cases
 //!   (plan §RP2.1's own note and §1.3).
@@ -89,26 +127,37 @@
 //! one pair — the rule fires on the foldable cells and the echo row masks the
 //! rest.
 //!
-//! # Four rows this table DOES hold sit on RP2.2's S6 list (disclosure)
+//! # Four `ArrayForm` rows sit on RP2.2's S6 list (disclosure, settled)
 //!
 //! The exclusion list above says which S6 pairs take no row; the converse is
 //! worth stating too, because plan §RP2.2 hands RP2.2 a *dossier* obligation
-//! (read the r4133 getter) that a claimed cell does not discharge:
+//! (read the r4133 getter) that a claimed cell does not discharge. RP2.2 read
+//! all four getters and the outcome is recorded here:
 //!
 //! * `invcontrol.monbus`, `invcontrol.monbusesvbase` — **every** census
 //!   spelling folds (bracketed vs bare, token for token, equal counts), so
-//!   RP2.2 will find nothing left to route on them;
+//!   RP2.2 found nothing left to route. The mechanism is an echo either way:
+//!   `TInvControlObj.GetPropertyValue` has no arm for 26/27
+//!   (`Version8/Source/Controls/InvControl.pas:3226-3285`) and
+//!   `InitPropertyValues` never writes 25..27 (`:2806-2839`), so r4133 answers
+//!   the deck's own bus list while the port renders the live one — same list,
+//!   two delimiter styles;
 //! * `swtcontrol.normal`, `swtcontrol.state` — only the single **one-token**
 //!   spelling folds (`'closed'` vs `'[closed, ]'`, 1 cell of 59 on each pair).
 //!   Their main spellings — `'closed'`/`'open'` against r4133's three-element
-//!   per-phase render, 58 + 31 + 27 cells — are refused by the token-count rule
-//!   and are declared to RP2.2, exactly like their twins `relay.normal`/`state`
-//!   (whose ONLY spelling is that shape, which is why those two take no row at
-//!   all). So RP2.2 still owns the per-phase question for all four; what RP2.1
-//!   claims here is two cells whose two sides carry the same single token.
+//!   per-phase render, 58 + 31 + 27 cells — are refused by the token-count rule,
+//!   and RP2.2 routed them to **RP3.7**: r4133 keeps a per-phase `pStateArray`
+//!   and renders one token per controlled-element phase (`Controls/
+//!   SwtControl.pas:37-38`, `:299-305`, `:589-610`) where the port keeps one
+//!   scalar applied to the whole terminal. Same conclusion as their twins
+//!   `relay.normal`/`state` (whose ONLY spelling is that shape, which is why
+//!   those two take no row at all). What this table claims is two cells whose
+//!   two sides carry the same single token — that stays correct whatever RP3.7
+//!   decides.
 //!
 //! Pinned by `arrayform_folds_delimiters_not_contents` (both directions on both
-//! `swtcontrol` pairs) and by `props_r4133_replay`'s `RP22_S6` accounting.
+//! `swtcontrol` pairs) and by `props_r4133_replay`'s `RP22_S6`/`RP22_ROUTING`
+//! accounting.
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
@@ -193,12 +242,19 @@ pub enum NormRule {
     /// contains a wildcard and never derives a synonym, so it can only claim
     /// the exact pairs a human read off the Pascal.
     ///
-    /// **Ships with ZERO rows** — RP2.2 is the sub-step that reads the eight
-    /// bin-3 pairs' getters and lands them (plan §0 ordering). The kind exists
-    /// here so RP2.2 adds data, not machinery; its behavior is pinned by
-    /// [`tests`] against a synthetic map, the way `EVENTLOG_MASKS`' empty
-    /// r4133 row set is pinned against an injected table
-    /// (`harness/mod.rs`, `eventlog_mask_tests`).
+    /// Shipped with **zero** rows by RP2.1; **RP2.2 landed four**, all on the
+    /// source sequence-selector properties ([`SCAN_TYPE_SYNONYMS`],
+    /// [`SEQUENCE_TYPE_SYNONYMS`]). The kind's behavior is pinned both against
+    /// the shipped maps and against a synthetic one, the way `EVENTLOG_MASKS`'
+    /// r4133 row set is pinned against an injected table (`harness/mod.rs`,
+    /// `eventlog_mask_tests`).
+    ///
+    /// The map is **directional and per-pair**: `(ours, theirs)`, matched after
+    /// `trim()` and ASCII-case-insensitively, with no reverse implication. A map
+    /// must also be **injective on its r4133 side** — one r4133 token may not
+    /// name two of our values, or the rule would equate two different values.
+    /// [`tests::enumsynonym_maps_are_injective`] enforces that on every shipped
+    /// map.
     EnumSynonym(&'static [(&'static str, &'static str)]),
 }
 
@@ -242,7 +298,112 @@ pub struct NormRow {
     pub src: Evidence,
 }
 
-/// Table constructor, so the 157 rows below read as data.
+// ---------------------------------------------------------------------------
+// RP2.2's `EnumSynonym` maps. Two of them, NOT one: the two properties are
+// spelled by two DIFFERENT registries.
+// ---------------------------------------------------------------------------
+
+/// **`ScanType=` — the closed synonym set** for `vsource.scantype` and
+/// `isource.scantype` (plan §1.1 bin 3; `bins.tsv` 2 042 and 137 cells).
+///
+/// **Why the two sides spell one value.** r4133 has no `GetPropertyValue` arm
+/// for either index — `TVsourceObj.GetPropertyValue` covers 1, 4, 7, 8, 11..16,
+/// 19..26, 31 (`Version8/Source/PCElements/Vsource.pas:1323-1349`) and
+/// `Isource.pas` has no override at all — so both echo `PropertyValue[]`
+/// (`General/DSSObject.pas:112-115`). That store is written from exactly two
+/// places, and each keeps it in step with the live enum:
+///
+/// * `InitPropertyValues` freezes `'Pos'` (`Vsource.pas:1300`) / `'pos'`
+///   (`Isource.pas:626`) next to a `Create` that sets `ScanType := 1`
+///   (`Vsource.pas:615`, `Isource.pas:396` — "// Pos Sequence");
+/// * the parser writes `PropertyValue[ParamPointer] := Param`
+///   (`Vsource.pas:355`, `Isource.pas:239`) in the **same** loop iteration that
+///   feeds that same `Param` to the enum arm — `Case Uppercase(Param)[1] of
+///   'P': ScanType := 1; 'Z': 0; 'N': -1` (`Vsource.pas:378-384`,
+///   `Isource.pas:257-263`).
+///
+/// `MakeLike` cannot desync them either: both classes copy `Scantype` and
+/// `Sequencetype` explicitly (`Vsource.pas:527-528`, `Isource.pas:324-325`)
+/// alongside the whole `FPropertyValue[]` array (`Vsource.pas:566`,
+/// `Isource.pas:339`).
+///
+/// Our side renders the `'Scan Type'` registry name for the ordinal —
+/// `['None', 'Zero', 'Positive']` / `[-1, 0, 1]`
+/// (`crates/dss-core/src/obj/dss_enum/registry/solution.rs:22-29`,
+/// `elements/pc/source_seq.rs::ScanType`).
+///
+/// **The set is closed at the spellings the census actually measured**, i.e.
+/// the frozen `'Pos'`/`'pos'` default and `isource.scantype`'s one `'zero'`
+/// cell (`examples_full.txt`). Every other token fails and reaches the assert
+/// raw — fail-closed on purpose: a spelling this table has never seen is a
+/// re-measure, not a silent fold.
+///
+/// **The trap this asymmetry protects against.** `ScanType`'s `-1` is named
+/// `'None'`, while `Sequence`'s `-1` is `'Negative'` — the two registries are
+/// *not* the same list. A shared map would have paired our `'Negative'` with an
+/// r4133 `'neg'` on `scantype`, where our own render for that ordinal is
+/// `'None'`; the row would then have folded nothing and gone stale silently.
+/// Hence one map per property, and no `-1` entry on this one (no census cell).
+const SCAN_TYPE_SYNONYMS: &[(&str, &str)] = &[("Positive", "Pos"), ("Zero", "Zero")];
+
+/// **`Sequence=` — the closed synonym set** for `vsource.sequence` and
+/// `isource.sequence` (bin 3; 2 042 and 137 cells).
+///
+/// Same mechanism, same two writers, one index over: `PropertyValue[18]`/`[7]`
+/// frozen `'Pos'`/`'pos'` (`Vsource.pas:1301`, `Isource.pas:627`) against
+/// `Sequencetype := 1` in `Create` (`Vsource.pas:616`, `Isource.pas:397`), and
+/// the parser's shared `Param` feeding `Case Uppercase(Param)[1] of 'P'/'Z'/'N'`
+/// (`Vsource.pas:385-391`, `Isource.pas:264-270`).
+///
+/// Our side renders the `'Sequence Type'` registry name —
+/// `['Negative', 'Zero', 'Positive']` / `[-1, 0, 1]`
+/// (`registry/solution.rs:31-38`, `source_seq.rs::SequenceType`) — so `-1` is
+/// `'Negative'` here and `'None'` on [`SCAN_TYPE_SYNONYMS`]. The measured
+/// spellings are the frozen `'Pos'`/`'pos'` and `isource.sequence`'s 19 `'neg'`
+/// cells; `'Zero'` has no cell on either sequence pair and takes no entry.
+const SEQUENCE_TYPE_SYNONYMS: &[(&str, &str)] = &[("Positive", "Pos"), ("Negative", "Neg")];
+
+/// **`invcontrol.voltage_curvex_ref` — the one `EnumSynonym` row on a pair whose
+/// `bins.tsv` LABEL is not 3** (the exception [`tests::
+/// every_row_cites_a_bin_its_rule_owns`] names and counts).
+///
+/// The pair is bin **2** because its first census row is case-only, but 3 of its
+/// 257 cells (all 3 in scope) are a genuine enum-spelling difference — the
+/// vendored `README.md` §"A pair's bin is a label, not a per-cell
+/// classification" lists it among the "case-or-empty pairs carrying
+/// enum-spelling cells", and its own §1 spells out that admissibility is per
+/// cell.
+///
+/// RP2.1 gave the pair a [`CaseFold`](NormRule::CaseFold) row, which claims
+/// `'Rated'`/`'rated'` (241 cells) and `'Avg'`/`'avg'` (13) and refuses
+/// `'RAvg'`/`'avgrated'` (3). RP2.2 replaced it with this map rather than hand
+/// those 3 cells to RP2.3, because **there is nothing to exclude**: r4133
+/// renders index 6 from the LIVE field, not from a `PropertyValue[]` store —
+///
+/// ```text
+///  6 : begin
+///        if(FVoltage_CurveX_ref = 0) then Result := 'rated'
+///        else if (FVoltage_CurveX_ref = 1) then Result := 'avg'
+///        else if (FVoltage_CurveX_ref = 2) then Result := 'avgrated'
+///      end;
+/// ```
+///
+/// (`Version8/Source/Controls/InvControl.pas:3244-3249`) — against our own
+/// registry names for the same three ordinals, `['Rated', 'Avg', 'RAvg']` /
+/// `[0, 1, 2]` (`crates/dss-core/src/obj/dss_enum/registry/control.rs:234`).
+/// The two engines therefore hold the same `FVoltage_CurveX_ref` and spell it
+/// differently on ordinal 2 only; an `EchoDefault`/`EchoParse` row would be
+/// false, and `LiveSemanticsDiffer` would be false too (the semantics are
+/// identical). The upstream asymmetry is r4133's own: it *parses* `'ravg'`
+/// (`:837`) and *prints* `'avgrated'`.
+///
+/// The map is **stricter** than the `CaseFold` row it replaces — three named
+/// token pairs instead of "any case-only difference" — so no cell that used to
+/// be compared is now folded away.
+const VOLTAGE_CURVEX_REF_SYNONYMS: &[(&str, &str)] =
+    &[("Rated", "rated"), ("Avg", "avg"), ("RAvg", "avgrated")];
+
+/// Table constructor, so the 161 rows below read as data.
 const fn row(
     class: &'static str,
     prop: &'static str,
@@ -267,7 +428,7 @@ const fn row(
 ///
 /// Read the module doc for the derivation; each row's `(class.prop, bin, cells,
 /// src)` is its citation into `tests/corpus/props_r4133/`.
-// The 157 rows are DATA — one census pair per line, columns aligned so the
+// The 161 rows are DATA — one census pair per line, columns aligned so the
 // table diffs against `tests/corpus/props_r4133/bins.tsv` by eye. rustfmt's
 // 60-char call width would explode 50 of them into eight lines each, which is
 // why this one item opts out (the only `rustfmt::skip` in the tree).
@@ -331,11 +492,13 @@ pub const PROPS_NORM_R4133: &[NormRow] = &[
     row("invcontrol",        "monbus",             ArrayForm, 4, 15, Evidence::BinsTsv),
     row("invcontrol",        "monbusesvbase",      ArrayForm, 4, 15, Evidence::BinsTsv),
     row("invcontrol",        "rateofchangemode",   CaseFold,  2, 257, Evidence::BinsTsv),
-    row("invcontrol",        "voltage_curvex_ref", CaseFold,  2, 257, Evidence::BinsTsv),
+    row("invcontrol",        "voltage_curvex_ref", EnumSynonym(VOLTAGE_CURVEX_REF_SYNONYMS), 2, 257, Evidence::BinsTsv),
     row("invcontrol",        "voltwattyaxis",      CaseFold,  2, 9, Evidence::BinsTsv),
     row("invcontrol",        "vvc_curve1",         CaseFold,  2, 6, Evidence::BinsTsv),
     row("isource",           "bus1",               CaseFold,  2, 1, Evidence::BinsTsv),
     row("isource",           "enabled",            BoolFold,  1, 137, Evidence::BinsTsv),
+    row("isource",           "scantype",           EnumSynonym(SCAN_TYPE_SYNONYMS),     3, 137, Evidence::BinsTsv),
+    row("isource",           "sequence",           EnumSynonym(SEQUENCE_TYPE_SYNONYMS), 3, 137, Evidence::BinsTsv),
     row("line",              "enabled",            BoolFold,  1, 77659, Evidence::BinsTsv),
     row("line",              "ratings",            ArrayForm, 4, 77659, Evidence::BinsTsv),
     row("line",              "switch",             BoolFold,  1, 77659, Evidence::BinsTsv),
@@ -429,6 +592,8 @@ pub const PROPS_NORM_R4133: &[NormRow] = &[
     row("vsource",           "daily",              CaseFold,  2, 2, Evidence::BinsTsv),
     row("vsource",           "enabled",            BoolFold,  1, 2042, Evidence::BinsTsv),
     row("vsource",           "model",              CaseFold,  2, 3, Evidence::BinsTsv),
+    row("vsource",           "scantype",           EnumSynonym(SCAN_TYPE_SYNONYMS),     3, 2042, Evidence::BinsTsv),
+    row("vsource",           "sequence",           EnumSynonym(SEQUENCE_TYPE_SYNONYMS), 3, 2042, Evidence::BinsTsv),
     row("windgen",           "enabled",            BoolFold,  1, 5, Evidence::Rp13),
 ];
 
@@ -437,17 +602,22 @@ pub const PROPS_NORM_R4133: &[NormRow] = &[
 /// both directions: a dropped row shrinks the compare silently, an added row
 /// widens what the engine is allowed to spell differently. Moving it belongs in
 /// the commit that argues for the new population.
-pub const NORM_ROWS: usize = 157;
+pub const NORM_ROWS: usize = 161;
 /// Count lock, [`NormRule::BoolFold`]: bin 1's 75 pairs − 5 pure-echo + 7
 /// WP-RP1.
 const NORM_BOOL_FOLD_ROWS: usize = 77;
 /// Count lock, [`NormRule::CaseFold`]: bin 2's 61 pairs (59 case + 2 trail) + 2
-/// WP-RP1.
-const NORM_CASE_FOLD_ROWS: usize = 63;
+/// WP-RP1, **− 1** for `invcontrol.voltage_curvex_ref`, which RP2.2 re-typed as
+/// an `EnumSynonym` row ([`VOLTAGE_CURVEX_REF_SYNONYMS`]).
+const NORM_CASE_FOLD_ROWS: usize = 62;
 /// Count lock, [`NormRule::ArrayForm`]: bin 4's 21 pairs − 4 (module doc).
 const NORM_ARRAY_FORM_ROWS: usize = 17;
-/// Count lock, [`NormRule::EnumSynonym`]: **zero** until RP2.2.
-const NORM_ENUM_SYNONYM_ROWS: usize = 0;
+/// Count lock, [`NormRule::EnumSynonym`]: **5** since RP2.2 — bin 3's 8 pairs
+/// minus the 4 the dossier routed elsewhere (module doc §"RP2.2's routing of
+/// bin 3"; the routing itself is `props_r4133_replay::RP22_ROUTING`), plus the
+/// one bin-2-labelled pair whose off-bin cells are a real enum spelling
+/// ([`VOLTAGE_CURVEX_REF_SYNONYMS`]).
+const NORM_ENUM_SYNONYM_ROWS: usize = 5;
 
 /// **The r4133 props display floor — RP2.4's slot, deliberately empty here.**
 ///
@@ -986,18 +1156,40 @@ mod tests {
         );
     }
 
-    /// Every row's citation triple is well-formed and matches its rule: RP2.1
-    /// owns bins 1, 2 and 4 and nothing else, and each bin has exactly one
-    /// rule kind. (Part C's replay cross-checks `(bin, cells)` against the
-    /// vendored files themselves — this is the in-module half.)
+    /// Every row's citation triple is well-formed and matches its rule: the
+    /// table owns bins 1, 2, 3 and 4 and nothing else (RP2.1 landed 1/2/4, RP2.2
+    /// added 3), and each bin has exactly one rule kind. (The replay
+    /// cross-checks `(bin, cells)` against the vendored files themselves — this
+    /// is the in-module half.)
     #[test]
     fn every_row_cites_a_bin_its_rule_owns() {
+        // The ONE documented exception, kept as a list so it stays countable:
+        // a pair whose `bins.tsv` LABEL is 2 but whose off-bin cells are a real
+        // enum spelling the live r4133 getter prints
+        // (`VOLTAGE_CURVEX_REF_SYNONYMS`; vendored README §"A pair's bin is a
+        // label, not a per-cell classification"). Anything else must match.
+        const ENUM_ON_A_NON_BIN3_PAIR: &[(&str, &str, u8)] =
+            &[("invcontrol", "voltage_curvex_ref", 2)];
+        let mut exceptions = 0;
         for r in PROPS_NORM_R4133 {
+            if let Some((_, _, bin)) = ENUM_ON_A_NON_BIN3_PAIR
+                .iter()
+                .find(|(c, p, _)| *c == r.class && *p == r.prop)
+            {
+                assert_eq!((r.rule.tag(), r.bin), ("EnumSynonym", *bin));
+                exceptions += 1;
+                continue;
+            }
             let want = match r.bin {
                 1 => "BoolFold",
                 2 => "CaseFold",
+                3 => "EnumSynonym",
                 4 => "ArrayForm",
-                other => panic!("{}.{}: bin {other} is not RP2.1's", r.class, r.prop),
+                other => panic!(
+                    "{}.{}: bin {other} is not this table's — bins 5/6/7 are \
+                     RP2.3's/RP2.4's/RP3's",
+                    r.class, r.prop
+                ),
             };
             assert_eq!(
                 r.rule.tag(),
@@ -1021,6 +1213,12 @@ mod tests {
                 r.prop
             );
         }
+        assert_eq!(
+            exceptions,
+            ENUM_ON_A_NON_BIN3_PAIR.len(),
+            "an exception row that is not in the table any more — drop it from the list \
+             instead of leaving the bin/rule pin loosened for a pair that is gone"
+        );
     }
 
     /// The rows RP2.1 deliberately does **not** hold, and the sub-step that
@@ -1042,8 +1240,8 @@ mod tests {
                 "{class}.{prop} is a pure-echo bin-1 pair: RP2.3's row, not a BoolFold row"
             );
         }
-        // Bin 4, unclaimable by any typed rule → RP2.2 (S6 singletons) or out
-        // of scope (plan §1.3).
+        // Bin 4, unclaimable by any typed rule → RP2.3 / RP3.7 (RP2.2's routing)
+        // or out of scope (plan §1.3).
         for (class, prop) in [
             ("expcontrol", "derlist"),
             ("relay", "normal"),
@@ -1052,7 +1250,23 @@ mod tests {
         ] {
             assert!(
                 find_row(PROPS_NORM_R4133, class, prop).is_none(),
-                "{class}.{prop} takes no ArrayForm row (module doc: RP2.2 / out of scope)"
+                "{class}.{prop} takes no ArrayForm row (module doc: RP2.3 / RP3.7 / out of scope)"
+            );
+        }
+        // Bin 3, read by RP2.2 and routed AWAY from this table: an echo of the
+        // deck's own text, a non-injective `'UNKNOWN'`, or a live-state
+        // divergence — none of them a spelling of the same value (module doc
+        // §"RP2.2's routing of bin 3"). Adding an `EnumSynonym` row for any of
+        // these would be the value-preservation violation (c) forbids.
+        for (class, prop) in [
+            ("swtcontrol", "action"),
+            ("monitor", "mode"),
+            ("storagecontroller", "modedischarge"),
+            ("line", "units"),
+        ] {
+            assert!(
+                find_row(PROPS_NORM_R4133, class, prop).is_none(),
+                "{class}.{prop} is a bin-3 pair RP2.2 routed elsewhere, not a synonym"
             );
         }
     }
@@ -1219,6 +1433,7 @@ mod tests {
     fn casefold_folds_case_and_the_two_trailing_blanks() {
         assert!(claimed("transformer", "xfmrcode", "ct25", "CT25"));
         assert!(claimed("storage", "state", "Idling", "IDLING"));
+        assert!(claimed("capcontrol", "type", "Voltage", "voltage"));
         assert!(claimed(
             "invcontrol",
             "voltwattyaxis",
@@ -1233,16 +1448,16 @@ mod tests {
         assert!(claimed("transformer", "conn", "delta", "Delta "));
         assert!(claimed("autotrans", "conn", "wye", "wye "));
         // DISCRIMINATION: a genuinely different spelling is NOT a case fold —
-        // these two are bin-3 cells inside a bin-2 pair (vendored README
-        // §"A pair's bin is a label"), RP2.2's `EnumSynonym` business.
+        // these are bin-3 cells inside a bin-2 pair (vendored README §"A pair's
+        // bin is a label"). RP2.2 read all three getters: `capcontrol.type` and
+        // `fault.bus2` are `PropertyValue[]` echoes and go to RP2.3
+        // (`props_r4133_replay::RP22_ROUTING`), so they must still reach the
+        // assert raw HERE; `invcontrol.voltage_curvex_ref` is a live enum
+        // rendering and its whole pair moved to an `EnumSynonym` row, which is
+        // why it is asserted in `enumsynonym_folds_the_shipped_scan_and_...`
+        // rather than refused here.
         assert!(!claimed("capcontrol", "type", "PowerFactor", "pf"));
         assert!(!claimed("capcontrol", "type", "Voltage", "volt"));
-        assert!(!claimed(
-            "invcontrol",
-            "voltage_curvex_ref",
-            "RAvg",
-            "avgrated"
-        ));
         // ...and neither is an echo, nor a different bus/node spec.
         assert!(!claimed("relay", "switchedobj", "Line.thev", ""));
         assert!(!claimed("fault", "bus2", "b2.0", "b2.0.0.0"));
@@ -1471,10 +1686,10 @@ mod tests {
 
     // ---------------------------------------------------------- EnumSynonym
 
-    /// The kind ships with **zero** rows, so its behavior is pinned against an
-    /// injected map (the `EVENTLOG_MASKS` self-test pattern): an explicit,
-    /// closed, directional `(ours, theirs)` list — no wildcard, no derived
-    /// synonym, and the reverse direction is not implied.
+    /// The kind's mechanics, pinned against an **injected** map (the
+    /// `EVENTLOG_MASKS` self-test pattern): an explicit, closed, directional
+    /// `(ours, theirs)` list — no wildcard, no derived synonym, and the reverse
+    /// direction is not implied.
     #[test]
     fn enumsynonym_claims_exactly_its_mapped_pairs() {
         const MAP: &[(&str, &str)] = &[("Positive", "Pos"), ("Zero", "zero-seq")];
@@ -1498,13 +1713,152 @@ mod tests {
         assert!(!claim("Negative", "Pos"));
         assert!(!claim("Zero", "Pos"));
         assert!(!claim("Pos", "Positive"), "the map is directional");
-        // And the shipped table really is empty of them.
-        assert!(
-            !PROPS_NORM_R4133
-                .iter()
-                .any(|r| matches!(r.rule, EnumSynonym(_))),
-            "RP2.2 lands the EnumSynonym rows"
+    }
+
+    /// **The four shipped rows fold exactly their cited census spellings, and
+    /// nothing else** (RP2.2). The census population, pair by pair
+    /// (`examples_full.txt`): `vsource.scantype`/`sequence` `'Positive'` vs
+    /// `'Pos'` (2 042 cells each), `isource.scantype` `'Positive'`/`'pos'` 136
+    /// and `'Zero'`/`'zero'` 1, `isource.sequence` `'Positive'`/`'pos'` 118 and
+    /// `'Negative'`/`'neg'` 19.
+    #[test]
+    fn enumsynonym_folds_the_shipped_scan_and_sequence_spellings() {
+        // Accept — every census cell of all four pairs.
+        assert!(claimed("vsource", "scantype", "Positive", "Pos"));
+        assert!(claimed("vsource", "sequence", "Positive", "Pos"));
+        assert!(claimed("isource", "scantype", "Positive", "pos"));
+        assert!(claimed("isource", "scantype", "Zero", "zero"));
+        assert!(claimed("isource", "sequence", "Positive", "pos"));
+        assert!(claimed("isource", "sequence", "Negative", "neg"));
+        // …and the frozen `InitPropertyValues` default in either casing, on
+        // either class (`Vsource.pas:1300-1301` `'Pos'`, `Isource.pas:626-627`
+        // `'pos'`).
+        assert!(claimed("Vsource", "ScanType", "Positive", "POS"));
+        assert!(claimed("ISOURCE", "SEQUENCE", "Positive", "Pos"));
+
+        // The fifth row — the live `voltage_curvex_ref` getter
+        // (`InvControl.pas:3244-3249`): all three census spellings, the two
+        // case-only ones RP2.1's `CaseFold` row used to claim included.
+        assert!(claimed(
+            "invcontrol",
+            "voltage_curvex_ref",
+            "Rated",
+            "rated"
+        ));
+        assert!(claimed("invcontrol", "voltage_curvex_ref", "Avg", "avg"));
+        assert!(claimed(
+            "invcontrol",
+            "voltage_curvex_ref",
+            "RAvg",
+            "avgrated"
+        ));
+        // …and it is STRICTER than the CaseFold row it replaced: a case-only
+        // difference outside the three mapped ordinals no longer folds.
+        assert!(!claimed("invcontrol", "voltage_curvex_ref", "Ravg", "avg"));
+        assert!(!claimed("invcontrol", "voltage_curvex_ref", "Rated", "avg"));
+        assert!(!claimed("invcontrol", "voltage_curvex_ref", "Vref", "vref"));
+
+        // DISCRIMINATION 1 — a DIFFERENT ordinal never folds, in either
+        // direction. These are the value errors the rule exists to still catch.
+        assert!(!claimed("vsource", "scantype", "Zero", "Pos"));
+        assert!(!claimed("vsource", "scantype", "Positive", "Zero"));
+        assert!(!claimed("isource", "sequence", "Negative", "Pos"));
+        assert!(!claimed("isource", "sequence", "Positive", "Neg"));
+        assert!(!claimed("isource", "scantype", "Zero", "pos"));
+
+        // DISCRIMINATION 2 — the map is directional: r4133's token on our side
+        // is not a claim.
+        assert!(!claimed("vsource", "scantype", "Pos", "Positive"));
+
+        // DISCRIMINATION 3 — the two properties do NOT share a registry, and the
+        // maps must not be interchangeable. `ScanType`'s `-1` is `'None'`
+        // (`registry/solution.rs:22-29`), `Sequence`'s is `'Negative'`
+        // (`:31-38`), so `'Negative'` is not even a `scantype` rendering.
+        assert!(!claimed("vsource", "scantype", "Negative", "Neg"));
+        assert!(!claimed("isource", "scantype", "Negative", "neg"));
+        assert!(!claimed("vsource", "sequence", "None", "Neg"));
+
+        // DISCRIMINATION 4 — near misses and non-tokens. Fail-closed is the
+        // documented behavior: an unmeasured spelling reaches the assert raw.
+        for oracle in ["", "P", "Positiv", "Positively", "1", "posx", "Po s"] {
+            assert!(
+                !claimed("vsource", "scantype", "Positive", oracle),
+                "{oracle:?} is outside the closed set and must reach the assert raw"
+            );
+        }
+
+        // …and the rule may not leak onto a pair with no row: `gicline` speaks
+        // the same two enums in the engine but has no property for them.
+        assert!(!claimed("gicline", "scantype", "Positive", "Pos"));
+    }
+
+    /// **Every shipped `EnumSynonym` map is injective on its r4133 side**, and
+    /// its rows really carry the map the module doc names.
+    ///
+    /// One r4133 token mapping to two of our spellings would let the rule equate
+    /// two different values — the one thing a rule may never do — and no
+    /// sample-based accept/refuse test can see it. Checked structurally instead,
+    /// so a future row cannot introduce it.
+    #[test]
+    fn enumsynonym_maps_are_injective() {
+        let mut rows = 0;
+        for r in PROPS_NORM_R4133 {
+            let EnumSynonym(map) = r.rule else { continue };
+            rows += 1;
+            assert!(
+                !map.is_empty(),
+                "{}.{}: an EnumSynonym row with an empty map folds nothing",
+                r.class,
+                r.prop
+            );
+            for (i, (ours, theirs)) in map.iter().enumerate() {
+                assert!(
+                    !ours.trim().is_empty() && !theirs.trim().is_empty(),
+                    "{}.{}: '' is a bin-5 echo, never an enum spelling",
+                    r.class,
+                    r.prop
+                );
+                for (mine2, theirs2) in &map[i + 1..] {
+                    assert!(
+                        !(theirs.eq_ignore_ascii_case(theirs2)
+                            && !ours.eq_ignore_ascii_case(mine2)),
+                        "{}.{}: r4133's {theirs:?} maps to BOTH {ours:?} and {mine2:?} — a \
+                         non-injective map equates two different values",
+                        r.class,
+                        r.prop
+                    );
+                }
+            }
+        }
+        assert_eq!(rows, NORM_ENUM_SYNONYM_ROWS);
+        // The two maps are distinct objects with distinct contents — the trap
+        // DISCRIMINATION 3 above pins behaviorally, pinned structurally here.
+        assert_eq!(
+            SCAN_TYPE_SYNONYMS,
+            &[("Positive", "Pos"), ("Zero", "Zero")][..]
         );
+        assert_eq!(
+            SEQUENCE_TYPE_SYNONYMS,
+            &[("Positive", "Pos"), ("Negative", "Neg")][..]
+        );
+        for (class, prop, want) in [
+            ("vsource", "scantype", SCAN_TYPE_SYNONYMS),
+            ("isource", "scantype", SCAN_TYPE_SYNONYMS),
+            ("vsource", "sequence", SEQUENCE_TYPE_SYNONYMS),
+            ("isource", "sequence", SEQUENCE_TYPE_SYNONYMS),
+            (
+                "invcontrol",
+                "voltage_curvex_ref",
+                VOLTAGE_CURVEX_REF_SYNONYMS,
+            ),
+        ] {
+            let i = find_row(PROPS_NORM_R4133, class, prop).expect("an RP2.2 row");
+            assert_eq!(
+                PROPS_NORM_R4133[i].rule,
+                EnumSynonym(want),
+                "{class}.{prop} carries the wrong map"
+            );
+        }
     }
 
     // --------------------------------------------------- accounting + echo
