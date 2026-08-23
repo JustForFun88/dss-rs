@@ -155,6 +155,11 @@ value is no `%.Ng` render of ours — `RP39_ROUTING`; none of them in scope toda
 which is why the block is a discipline and not a gate failure), and after its own
 in-sub-step precondition, the **per-cell narrowing of the 20 mixed echo rows**
 (RP2.3's audit settlement, §RP4.1's first paragraph); RP5 is last.
+**One RP3 sub-step is deliberately outside that rule: §RP3.10** (the reproduced
+`QMode=0` dispatch, opened by RP3.2's audit settlement) is a solve-side fix with
+no property cell of its own — our `kvar` render reads `kvar_base`, which the
+dispatch never writes — so it blocks **§RP5.2**, the closing record, and not the
+unmask; it also runs only on the user's go-ahead (§RP3.10).
 Execution is on a **single branch only — never in parallel
 worktrees**: `tests/corpus/ledger.json`, `tests/corpus/manifests/population.lock.json`
 and `tests/golden/golden.lock.json` are fail-on-stale and are rewritten by this
@@ -188,6 +193,7 @@ audits on `opus-xhigh` exec rows are themselves `opus-xhigh`.
 | RP2.3 | `opus-high+` | `opus-high+` | `opus-high+` | echo-exclusion rows, each mechanically citable to an r4133 echo site, plus pins |
 | RP2.4 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | a new channel-scoped numeric floor — calibration discipline (the eight required components are enumerated in RP2.4 itself) |
 | RP3.1–RP3.4 (+ any RP3.5+ opened by RP2.2 or RP2.3) | `opus-high+` | `opus-high+` | `opus-high+` | one root-cause each, bounded surface, live-probe procedure prescribed |
+| RP3.10 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | a behavioral port change in both lanes (the reproduced `QMode=0` dispatch) that moves solved powers on four r4133-gating decks — live probe + per-case power-channel ledger work |
 | RP4.1 | `opus-high+` | `opus-high+` | `opus-high+` | flag flip + residual triage (G1.1's own tier) |
 | RP5.1, RP5.2 | `opus-high+` | `opus-high+` | `opus-high+` | doc surgery validated by `oracle_parity_cfg_gate.rs` doc tests |
 
@@ -1225,9 +1231,35 @@ in-scope numeric jump (rel 9.86e+2) is explained.
 > though `QMode` defaults to 0 (`:1020`) and both the help (`:429-430`) and
 > `WTG3_Model.pas:252` document `0 -> Constant Q`. The port reproduces it, so a
 > default WindGen dispatches zero vars in power flow on both engines. Fixing it
-> moves solved powers on four r4133-gated decks — a separate decision; it does
-> not disturb this landing (the render reads `kvar_base`, which the dispatch
-> never touches).
+> moves solved powers on the r4133-gated windgen decks (directly on the two
+> power-flow ones) — a separate decision; it does not disturb this landing (the
+> render reads `kvar_base`, which the dispatch never touches). **Since the audit
+> settlement it is owned, not merely flagged: §RP3.10.**
+>
+> **Audit-settled the same day** (ten minor findings, one commit, still zero
+> product-crate and zero ledger bytes; nothing touched the sub-step's premise).
+> Corrections: the local report 44 attributed the `QMode=1` flip of the *daily*
+> deck (−985.69 kvar) to its own reproduction deck (−363.54 kvar) and cited
+> `Set_Presentkvar`'s "init to something reasonable" as `WindGen.pas:2998`
+> (a `Var` declaration — the line is `:3002`) and the volt-var arm as `:1300`
+> (it is `:1289`); the pins' and STATUS's claim that the four decks "end at
+> `Set mode=…` and carry no solve of their own" was false for three of them
+> (`windgen_snap_delta.dss` ends at `Calcvoltagebases`; both dynamics decks carry
+> a snapshot `solve`) — the pins' solve is nonetheless the gate's own
+> (`corpus_gate/runner.rs:348-349`); the held-out pair's "~569.97 **against
+> r4133's `0`**" was never measured and does not even share the mechanism (both
+> type `QMode=2` with a real `VV_Curve=`, i.e. the volt-var arm), and a promotion
+> would add `WindGens × steps` cells, not "a cell"; and the commit message
+> `c46bca42` welded two probe steps (`kvar=500` renders PF `0.986394`; PF
+> `0.968058` is the later `Edit kvar=777`) — the tree's own records were already
+> right, so the correction is recorded in STATUS. Guards: `element_scope` now
+> accepts the quoted declaration form and treats `Edit`/`BatchEdit` as the same
+> element scope, so "no deck types `kvar=`" is swept over the lines that can type
+> it (the audit's mutation — `Edit WindGen.w1 kvar=500` into `windgen_daily.dss`,
+> previously green — is red), and the census derivation now reads each deck's
+> `QMode=`/`VV_Curve=` too: the five census decks must select **no** arm (that is
+> where r4133's `0` comes from) and the two held-out decks must be the volt-var
+> pair the doc argues from.
 
 ### RP3.3 — `generator.model` on the NCIM decks
 
@@ -1507,6 +1539,69 @@ STATUS. **Blocks RP4.1** (§0). Tier: `opus-high+`.
 Outcome: the population RP2.4's mechanism clause refuses has an owner and a
 verdict, not a floor.
 
+### RP3.10 — the reproduced `QMode=0` dispatch (opened by the RP3.2 audit settlement)
+
+**Why it exists.** RP3.2 found, and its audit round refused to leave merely
+flagged, a **reproduced upstream bug** — the one thing the 2026-08-02 policy
+(CLAUDE.md) says may not stand in any lane. `SetNominalGeneration`'s steady-state
+`case WindModelDyn.QMode` (`Version8/Source/PCElements/WindGen.pas:1276-1322`)
+implements arm 1 (PF) and arm 2 (Volt-Var) and **no arm 0**, so `Else kvarCalc :=
+0` (`:1320-1321`) zeroes the reactive dispatch — while `QMode` *defaults* to 0
+(`:1020`) and both the property help (`:429-430`, `'Q control mode (0:Q, 1:PF,
+2:VV).'`) and the dynamics model (`WTG3_Model.pas:252`, `QMode := 0; // 0 ->
+Constant Q`, implemented at `:1059-1061`, `Qord := Qref`) document 0 as
+constant-Q. A default-configured WindGen therefore injects **zero vars** in power
+flow no matter what `kvar=`/`pf=` says. The port ports the arm verbatim
+(`crates/dss-core/src/elements/pc/windgen/nominal.rs:223-225`, `_ => kvar_calc =
+0.0`), which is why the gate's power channel is green on the four windgen decks.
+RP3.2 could not fix it: its outcome was LEDGER, i.e. **zero product-crate bytes**
+by the plan's own rule, so the item carries no note at its site and lives only
+here and in STATUS §WP-RP3 — this section is what keeps it from being lost.
+
+**Scope.** Decide the correct steady-state behavior for `QMode=0` from
+`WindGen.pas` + `WTG3_Model.pas` + physics (the obvious candidate is `kvarCalc :=
+kvarBase`, the constant-Q reading of both documents, but it is **not** proven —
+`kvarBase`'s own saturation/LeadLag handling and the `kVArating` clamp of arm 1
+have to be read before adopting it), probe the live r4133 engine for what it
+actually dispatches under each `QMode` (epri-worker; RP3.2's probe transcript in
+STATUS is the pattern), then fix it in **both lanes**. Everything the fix moves
+is measured and excluded per the standing discipline: on the two power-flow decks
+(`modes:windgen/windgen_daily.dss`, `windgen_snap_delta.dss`) the port's solved Q
+would move from ≈ −2e-05 kvar to the deck's base (≈ 986 / 726 kvar) while r4133
+stays at 0, so the exclusion is a **power**-channel ledger entry per case
+(`kind: divergence`, the powers field), plus the pins the policy requires. The
+two dynamics decks are the ones to *measure* rather than predict: `:1254` skips
+the Q block in dynamics, so their divergence, if any, arrives through the
+snapshot solve their own `solve` line performs before `Set mode=dynamic`. Whether the deck comments that misdescribe the mechanism
+(`modes/windgen/windgen_snap_delta.dss:3` and its manifest note claim a "QMode=0
+(constant-Q via PF) reactive dispatch" that does not exist) are corrected in the
+same commit is that sub-step's call — corpus bytes were off-limits in RP3.2.
+
+**Precondition (explicit, and it is the reason this is not scheduled here).**
+It is a **product-crate behavior change** that moves solved powers on four
+r4133-gating decks, i.e. exactly the kind of change the plan's own §1.1(e)
+staging rule and the corpus gate make expensive mid-plan — so it runs **only on
+the user's go-ahead**, as its own sub-step with its own audit pair, never folded
+into another sub-step's commit.
+
+**Blocks §RP5.2** (the plan's closing record), **not RP4.1** — measured: the
+unmask compares *properties*, our `kvar` render reads `kvar_base`
+(`elements/pc/windgen/accessors.rs:431`), which the dispatch never writes, so the
+four RP3.2 entries' `rust` values survive this fix unchanged and no other
+property cell depends on `Qnominalperphase`. Tier: `opus-xhigh` (a behavioral
+port change in both lanes, with a live probe and per-case ledger work).
+
+**Kill criterion:** the probe shows r4133's dispatch under `QMode=0` is a
+deliberate design (e.g. some other site fills `Qnominalperphase` for mode 0 that
+the port already reproduces) — then there is no reproduced bug, and the finding
+is closed as refuted with the evidence, in STATUS, rather than "fixed".
+
+**Acceptance:** either the arm is implemented in both lanes with its divergences
+excluded per case and pinned, or it is refuted with a cited probe; either way
+STATUS §WP-RP3 carries the verdict and this section is marked as executed.
+Outcome: the last reproduced upstream bug this plan uncovered stops living in
+prose.
+
 ---
 
 ## WP-RP4 — The unmask
@@ -1622,6 +1717,12 @@ recorded `lane_diff` runs (RP1.2, RP1.3), the condensed per-sub-step record
 (the GOLDEN_REBASE WP-G2 condensed-record shape), and the frontier hand-back to
 GOLDEN_REBASE WP-G1 (G3.4/G3.5 unblocked). Verify the §1.3 deferrals landed
 their rows (`ORPHANED_GAPS.md` WindGen 3/7). Move this plan to
-`docs/plans-archive/` (the 2026-07 convention). **Acceptance:** no doc
+`docs/plans-archive/` (the 2026-07 convention).
+**Precondition, added by RP3.2's audit settlement (2026-08-24): §RP3.10 is
+closed** — executed or refuted with evidence. It is the one reproduced upstream
+bug this plan uncovered, and the 2026-08-02 policy does not let it be archived as
+a note; if the user has not sanctioned the fix by then, it moves to
+`ORPHANED_GAPS.md` with its evidence instead of vanishing with the plan.
+**Acceptance:** no doc
 disagrees with any other on counts or state; clean tree. Outcome: the plan
 closes and GOLDEN_REBASE resumes with G1.1 satisfied.

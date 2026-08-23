@@ -342,7 +342,12 @@ typing `kvar=500` renders `0`, and `Edit kvar=777` still renders `0` while `PF`
 moves to `0.968058` — parsed, then ignored by the render; `Save Circuit` writes
 `kvar=0` back. Our physics already match (probed terminal powers agree on all
 five windgen decks), so again **no engine change was owed**: report 44 (local) +
-**four** drafted per-case entries + four pins, `DECLARED_RP3` unmoved.
+**four** drafted per-case entries + four pins, `DECLARED_RP3` unmoved. Its
+same-day settlement hardened both census readers (quoted declarations and
+`Edit`/`BatchEdit` lines are in scope now), derived the `QMode=` mechanism from
+the decks instead of asserting it, and gave the one reproduced upstream bug the
+sub-step uncovered an owner — **§RP3.10**, which needs the user's go-ahead and
+blocks §RP5.2, not RP4.1.
 **Next: RP3.3 (`generator.model`)** — RP3.3/RP3.4
 plus the three RP3.5+ sub-steps, RP3.8 and RP3.9 are what RP4.1 waits on.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
@@ -4170,12 +4175,19 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     `Run_IEEE123Bus_GFLDaily.DSS`); both sit in
     `tests/corpus/manifests/skipped_oracle_issue.json` under
     `capi015_multistep_limitation`, own no cell and owe no entry — and each would
-    derive ~569.97 against r4133's `0` if ever promoted. Since this sub-step the
+    derive a **nonzero** base (~569.97) if ever promoted, i.e. `WindGens × steps`
+    new in-scope cells and a re-derived entry count. What r4133 renders on those
+    two is **not** claimed: no channel has ever run them, and both type
+    `QMode=2` with a real `VV_Curve=`, so they take the volt-var arm
+    (`WindGen.pas:1289-1319`) rather than the `Else kvarCalc := 0`
+    (`:1320-1321`) the five census decks take. Since this sub-step the
     whole decomposition is **derived, not transcribed**:
     `props_r4133_replay::the_rp32_census_decomposition_is_read_off_the_corpus`
-    sweeps every corpus `.dss` for `WindGen` declarations, reads each one's
-    `kW=`/`pf=`/`kVA=`/`kvar=` tokens in the machine's own element scope,
-    re-derives the base through the two `WindGen.pas` branches, splits on the
+    sweeps every corpus `.dss` for `WindGen` declarations — quoted spelling
+    included, and `Edit`/`BatchEdit` lines count as the same element scope since
+    the audit settlement — reads each one's `kW=`/`pf=`/`kVA=`/`kvar=` and
+    `QMode=`/`VV_Curve=` tokens there, re-derives the base through the two
+    `WindGen.pas` branches, splits on the
     lock's `steps=`/`engines=`, reconciles per spelling and in total against the
     frozen extracts (each of whose r4133 columns must be `0`), and requires the
     in-scope cases to be exactly the cases the drafted entries cite. One measured
@@ -4289,9 +4301,13 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     channel (`:1426-1435`) — all four are `engines: "r4133"`.
   - **The pins** (`crates/dss-core/tests/props_r4133_pins.rs`, both lanes, no
     oracle), four, one per drafted entry, each running the gate's own sequence
-    (compile + the one `solve` the case's `steps=1` rigor prescribes — these
-    decks end at `Set mode=…` and carry no solve of their own) and then the same
-    `?` getter the property walk reads:
+    (compile + the one `solve` the case's `steps=1` rigor prescribes — the gate
+    issues that solve itself for every case, `corpus_gate/runner.rs:348-349`, and
+    none of the four decks ends on the solve of its own mode: the daily and the
+    two dynamics decks end at `Set mode=…` and `windgen_snap_delta.dss` at
+    `Calcvoltagebases`, while the two dynamics decks do carry a *snapshot*
+    `solve` before their `Set mode=dynamic`) and then the same `?` getter the
+    property walk reads:
     `windgen_kvar_renders_the_base_on_the_daily_deck` (`986.05231553659`, then
     `edit kvar=777` → `777` **and** `PF` → `0.968057839822749`, the reading that
     makes the assertion about the value rather than about a constant),
@@ -4329,8 +4345,9 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     types `pf=`, which is how the QSTS `PF=0.88` correction above was found.
     Report: `investigations/to_opendss/44-windgen-kvar-renders-dispatched-q.md`
     (gitignored, local-only — verified absent from the commit).
-  - **Flagged, deliberately NOT acted on (coordinator/user call).** **D2 — the
-    missing steady-state `QMode=0` (constant-Q) arm, reproduced by the port.**
+  - **Flagged, deliberately NOT acted on — and, since the audit settlement,
+    OWNED by plan §RP3.10.** **D2 — the missing steady-state `QMode=0`
+    (constant-Q) arm, reproduced by the port.**
     `WindGen.pas:1276-1322` implements arms 1 and 2 only; `QMode` defaults to 0
     (`:1020`); the help (`:429-430`) and `WTG3_Model.pas:252` both document
     `0 -> Constant Q`, and the dynamics model implements it (`:1059-1061`,
@@ -4341,10 +4358,24 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     r4133 dispatches correctly the moment an arm exists (`QMode=1` → −363.54 kvar
     below the aero cap, −985.69 kvar on the daily deck). Under the 2026-08-02
     policy a reproduced upstream bug may not stand, but fixing it **moves solved
-    powers on four r4133-gated decks** and is far outside RP3.2's property-render
-    scope. It does not interact with this landing: the port renders `kvar_base`,
+    powers on the r4133-gated windgen decks** — directly on the two power-flow
+    ones, and on the two dynamics decks only through the snapshot solve they run
+    before `Set mode=dynamic` (`:1254` skips the Q block in dynamics), which
+    §RP3.10 measures rather than predicts — and is far outside RP3.2's
+    property-render scope. It does not interact with this landing: the port
+    renders `kvar_base`,
     which the dispatch never touches, so the four drafted `rust` values survive a
-    future D2 fix unchanged. Two smaller flags, corpus/manifest bytes being
+    future D2 fix unchanged. **The audit round refused to leave it at "flagged"**
+    — a LEDGER outcome bars product-crate bytes, so the site
+    (`windgen/nominal.rs:223-225`) carries no note and the item would have lived
+    only in prose. It is now plan **§RP3.10** ("the reproduced `QMode=0`
+    dispatch"), `opus-xhigh`, with its own precondition (**the user's go-ahead**,
+    since it is a both-lane behavior change owing per-case *power*-channel ledger
+    entries) and its own place in the ordering: it blocks **§RP5.2**, the closing
+    record, and **not RP4.1** — measured, because the unmask compares properties
+    and our `kvar` render reads `kvar_base`
+    (`elements/pc/windgen/accessors.rs:431`), which the dispatch never writes.
+    Two smaller flags, corpus/manifest bytes being
     off-limits this sub-step: `modes/windgen/windgen_snap_delta.dss:3` and its
     manifest note claim "the QMode=0 (constant-Q via PF) reactive dispatch … PF
     at unity here because the aero cap makes kvarCalc saturate" — **both clauses
@@ -4353,6 +4384,73 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     and emits ` maxkvar=`/` minkvar=`, but WindGen's properties 19/20 are
     `UserData`/`DutyStart` (`:394`, `:397`) — Generator's indices, a copy/paste
     leftover (`windgen/mod.rs:388` already notes the port registers no such rows).
+  - **Audit settlement (2026-08-24, same day).** Ten minor findings from the
+    `audit-code`/`audit-tests` pair — eight distinct issues once the two
+    duplicated pairs are merged — settled in one commit as **2 hardened readers +
+    3 new assertions + one newly owned follow-up**, plus the record corrections
+    they imply. None touched the sub-step's premise (LEDGER stands: the probe,
+    the census and the four entries are unchanged), and the settlement is again
+    **zero product-crate bytes, zero `ledger.json` bytes**, no golden / manifest
+    / `population.lock` / frozen-extract byte, no mask move. Test count is
+    unchanged at **4 197 per lane** — every new assertion lives inside the
+    existing census derivation.
+    - **The completeness sweep read only unquoted declarations.**
+      `windgen_facts` recognized an element by `lower.starts_with("new
+      windgen.")`, so the quoted form `New "WindGen.w1"` — which the vendored
+      corpus does use for other classes (`Test/IndMachTest.DSS:108`, `New
+      "IndMach012.windgen1"`) — would have walked past "exactly four entries"
+      unnoticed. Both census readers now share `element_scope`, which accepts the
+      quoted spelling; `swtcontrol_facts` (RP3.1's) inherits the fix.
+    - **"No deck types `kvar=`" was swept over declarations only.** An `Edit
+      WindGen.w1 kvar=500` was invisible to the reader, and the audit proved it:
+      that mutation on `windgen_daily.dss` left the whole replay binary green
+      (124 passed) while the port's render moved. `element_scope` now treats
+      `Edit`/`BatchEdit` as the same element scope, so the claim is swept over
+      the lines that can make it false — the mutation is red (`measured ==
+      cited`), on top of the pin that already caught it.
+    - **The held-out pair's argument leaned on an unmeasured r4133 value.**
+      `RP32_WINDGEN_SKIPPED_DECKS`' doc (and STATUS) said each vendored deck
+      "would derive ~569.97 **against r4133's `0`**", but nothing has ever run
+      them, and their mechanism is not the census's: both type `QMode=2` with a
+      real `VV_Curve=`, i.e. the volt-var arm (`WindGen.pas:1289-1319`), not the
+      `Else kvarCalc := 0` (`:1320-1321`) the five census decks take. The claim
+      is now the nonzero base alone (`WindGens × steps` cells and a re-derived
+      entry count on promotion, not "a cell"), and the `QMode=` token is read off
+      every deck by the new `windgen_dispatch`: the five must select **no** arm
+      (that IS where r4133's `0` comes from — the mechanism is derived now, not
+      asserted) and the two held-out ones must be the volt-var pair the doc
+      argues from.
+    - **The pins' own justification was false for three of the four decks.**
+      "The four decks end at `Set mode=…` and carry no solve of their own" holds
+      only for `windgen_daily.dss`: `windgen_snap_delta.dss` ends at
+      `Calcvoltagebases`, and both dynamics decks carry a *snapshot* `solve`
+      before their `Set mode=dynamic`. The pins are unaffected — the gate issues
+      the mode solve itself for every case (`corpus_gate/runner.rs:348-349`), and
+      the pins do exactly that — but both copies of the wording (the pins' block
+      comment and STATUS) now say what the decks contain.
+    - **Citation drift, corrected in every copy.** `Set_Presentkvar`'s "init to
+      something reasonable" line is `WindGen.pas:3002`, not `:2998` (a `Var`
+      declaration) — wrong in the dynamics pin's doc comment and in the local
+      report 44, fixed in both. Re-checking the report's Pascal block turned up a
+      second one, report-only: its volt-var arm is `:1289`, not `:1300`. The
+      report also attributed the daily deck's `QMode=1`
+      flip (terminal Q −985.69 kvar) to its own reproduction deck, which measures
+      −363.54 — the two probes are now separated there, as they already were
+      here and in the routing verdict.
+    - **The commit message of `c46bca42` welded two probe steps.** It reads "a
+      typed `kvar=500` renders 0 while PF moves to 0.968058"; at `kvar=500` r4133
+      renders PF `0.986394` (= 3000/√(3000²+500²)), and `0.968058` is the result
+      of the *later* `Edit kvar=777`. The tree's own records (this section, the
+      `RP3_ROUTING` verdict, the drafted cause) already split them correctly, so
+      the message stands as written and the correction is recorded here rather
+      than by rewriting the sub-step's commit.
+    - **D2 stopped being a flag and became a sub-step.** The port reproduces
+      r4133's missing steady-state `QMode=0` arm, which the 2026-08-02 policy
+      forbids in any lane; RP3.2 could not fix it (a LEDGER outcome bars
+      product-crate bytes, so not even a note at the site), which left a real
+      policy item living in prose. It is now plan **§RP3.10**, with an explicit
+      precondition (the user's go-ahead) and an explicit place in the ordering
+      (blocks §RP5.2, not RP4.1). See the flagged bullet above.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

@@ -892,16 +892,24 @@ const RP31_NO_DELAY_CASES: &[(&str, usize)] = &[
 /// diverging deck. [`the_rp32_census_decomposition_is_read_off_the_corpus`]
 /// derives every one of those numbers instead of transcribing them.
 ///
-/// **No deck types `kvar=`.** Every value in the census is a *side effect* of
-/// the deck's `pf=` or `kVA=` — which is why the fifth deck, `windgen_snap.dss`,
-/// carries no cell at all: `pf=1.0` makes the base zero and both engines print
-/// `0`. That is a value coincidence and not agreement, and the pin
-/// `windgen_kvar_renders_the_base_on_the_delta_snapshot` measures the difference
-/// (type a `kvar=` there and the two diverge like everywhere else).
+/// **No deck types `kvar=`** — not on a `New` line and not on a later `Edit`,
+/// which [`element_tokens`] reads too. Every value in the census is a *side
+/// effect* of the deck's `pf=` or `kVA=` — which is why the fifth deck,
+/// `windgen_snap.dss`, carries no cell at all: `pf=1.0` makes the base zero and
+/// both engines print `0`. That is a value coincidence and not agreement, and
+/// the pin `windgen_kvar_renders_the_base_on_the_delta_snapshot` measures the
+/// difference (type a `kvar=` there and the two diverge like everywhere else).
+///
+/// **None of the five types `QMode=` either** ([`windgen_dispatch`], asserted):
+/// `WindModelDyn.QMode` stays `Create`'s 0 (`WindGen.pas:1020`), the
+/// steady-state `case` (`:1276-1322`) falls to `Else kvarCalc := 0`, and *that*
+/// is why the value r4133 renders through `Get_Presentkvar` is `0` on all of
+/// them.
 ///
 /// The table is a *claim of completeness*: the test walks every `.dss` under
 /// `tests/corpus` and fails if a deck outside this table and
-/// [`RP32_WINDGEN_SKIPPED_DECKS`] declares a `WindGen`.
+/// [`RP32_WINDGEN_SKIPPED_DECKS`] declares a `WindGen` — in any spelling
+/// [`element_scope`] accepts, quoted included.
 const RP32_WINDGEN_CASES: &[(&str, usize, &str, &str, &str)] = &[
     ("modes:windgen/windgen_daily.dss", 1, "3000", "0.95", ""),
     ("modes:windgen/windgen_dyn.dss", 1, "1500", "", "1800"),
@@ -920,10 +928,22 @@ const RP32_WINDGEN_CASES: &[(&str, usize, &str, &str, &str)] = &[
 /// pinned 0.14.5-era oracle infrastructure cannot gate. They are load-bearing
 /// here the way `civanlar.dss` is in RP3.1, but from the opposite side — each
 /// types `kVA=1200.0` at PF 0.88 (the QSTS deck writes `PF=0.88` on a `~`
-/// continuation, the GFL one leaves `Create`'s default), so both derive a base
-/// of ~569.97 against r4133's `0`: promoting either one **would** add a cell and
-/// a fifth (sixth) entry, which is exactly why the exclusion has to be asserted
-/// rather than assumed.
+/// continuation, the GFL one leaves `Create`'s default), so each derives a
+/// **nonzero** base of ~569.97 where the population's own clean deck derives 0.
+/// Promoting either one would therefore add in-scope cells — `WindGens × steps`
+/// of them, both being multi-step — and the pair's entry count would have to be
+/// re-derived, which is exactly why the exclusion has to be asserted rather than
+/// assumed.
+///
+/// **What is deliberately NOT claimed: what r4133 renders on these two.** They
+/// are out of the population, so no channel has ever run them, and their
+/// mechanism is not the population's: both type `QMode=2` with a real
+/// `VV_Curve=` ([`windgen_dispatch`], asserted below), i.e. the volt-var arm
+/// `kvarCalc := kvarBase * VV_Curve(Vmag)` (`WindGen.pas:1289-1319`) rather than
+/// the `Else kvarCalc := 0` (`:1320-1321`) the five census decks take. Whether
+/// their render would diverge at all is unmeasured — the RP3.2 audit round
+/// removed the "against r4133's `0`" half of this argument, which was never
+/// probed.
 ///
 /// Deck paths, not case ids: these have no row in `population.lock.json`.
 const RP32_WINDGEN_SKIPPED_DECKS: &[(&str, usize, &str, &str, &str)] = &[
@@ -1813,51 +1833,121 @@ fn collect_dss(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec<Stri
     }
 }
 
-/// What one deck says about `SwtControl`: how many it declares, and the `delay=`
-/// token it types on them (`None` when it types none — then the port renders
-/// `Create`'s 120.0, exactly as r4133 does, and the census sees no cell).
+/// How a deck line relates to one class's **element scope** — the rule both
+/// census decompositions read their decks with.
 ///
-/// The token is read **inside the SwtControl's own element scope** — its `new`
-/// line and the `~` continuations that follow — so a `delay=` on a Relay or a
-/// RegControl elsewhere in the deck is not mistaken for this property. Comment
-/// lines are skipped, so `midi_swtcontrol.dss`'s `// Delayed open of the LOOP
-/// TIE` header is not read as one either.
-fn swtcontrol_facts(deck: &str) -> (usize, Option<String>) {
+/// `New` opens a fresh declaration; `Edit` and `BatchEdit` re-open an existing
+/// element's scope, so a token typed there is typed on the same element and
+/// counts for the same claims. Anything else closes whatever scope was open,
+/// unless it is a `~` continuation of it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Scope {
+    /// `New <class>.<name>` — the deck declares one here.
+    Declares,
+    /// `Edit`/`BatchEdit <class>.<name>` — the same element, typed on later.
+    Edits,
+    /// A line of some other class (or no element at all).
+    Other,
+}
+
+/// The [`Scope`] `lower` (already trimmed and lower-cased) opens for
+/// `class_dot` — `"swtcontrol."`, `"windgen."`.
+///
+/// Two spellings this must not miss, both added by the RP3.2 audit round:
+///
+/// * the identifier may be **quoted** — `New "WindGen.w1" …` is the form the
+///   vendored corpus itself writes for other classes
+///   (`electricdss-tst/Test/IndMachTest.DSS:108`, `New "IndMach012.windgen1"`),
+///   so a reader that accepted only the bare spelling would let a quoted
+///   declaration slip past a completeness claim;
+/// * an **`Edit`/`BatchEdit`** types on the element just as its `New` does, so a
+///   claim like "no deck types `kvar=`" is only true if those lines are read
+///   too (a declaration-only sweep left `Edit WindGen.w1 kvar=500` invisible).
+fn element_scope(lower: &str, class_dot: &str) -> Scope {
+    for (verb, scope) in [
+        ("new ", Scope::Declares),
+        ("edit ", Scope::Edits),
+        ("batchedit ", Scope::Edits),
+    ] {
+        let Some(rest) = lower.strip_prefix(verb) else {
+            continue;
+        };
+        if rest
+            .trim_start()
+            .trim_start_matches(['"', '\''])
+            .starts_with(class_dot)
+        {
+            return scope;
+        }
+    }
+    Scope::Other
+}
+
+/// The `keys` a deck types inside `class_dot`'s element scope, plus how many
+/// elements of the class it **declares** (an `Edit` declares none).
+///
+/// Values are lower-cased, `""` for a key the deck never types. The scope rule
+/// is [`element_scope`]'s, so a `pf=` on a Load elsewhere in the deck is not
+/// this machine's and a `delay=` on a Relay is not this control's; comment lines
+/// are skipped, which is how `midi_swtcontrol.dss`'s `// Delayed open of the
+/// LOOP TIE` header stays out. A key typed twice with two different values is a
+/// hard error: every claim built on this reader assumes one spelling per deck.
+fn element_tokens<const N: usize>(
+    deck: &str,
+    class_dot: &str,
+    keys: [&str; N],
+) -> (usize, [String; N]) {
     let path = repo_root().join(CORPUS).join(deck);
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("read deck {}: {e}", path.display()));
     let mut declared = 0usize;
-    let mut delay: Option<String> = None;
-    let mut in_swtcontrol = false;
+    let mut tok = [const { String::new() }; N];
+    let mut inside = false;
     for line in text.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('!') || line.starts_with("//") {
             continue;
         }
         let lower = line.to_ascii_lowercase();
-        if lower.starts_with("new swtcontrol.") {
-            declared += 1;
-            in_swtcontrol = true;
-        } else if !lower.starts_with('~') {
-            in_swtcontrol = false;
+        match element_scope(&lower, class_dot) {
+            Scope::Declares => {
+                declared += 1;
+                inside = true;
+            }
+            Scope::Edits => inside = true,
+            Scope::Other => {
+                if !lower.starts_with('~') {
+                    inside = false;
+                }
+            }
         }
-        if !in_swtcontrol {
+        if !inside {
             continue;
         }
-        if let Some(at) = lower.find("delay=") {
-            let token: String = lower[at + "delay=".len()..]
-                .chars()
-                .take_while(|c| !c.is_whitespace())
-                .collect();
-            let seen = delay.get_or_insert_with(|| token.clone());
-            assert_eq!(
-                *seen, token,
-                "{deck}: two different `delay=` tokens on its SwtControls — the decomposition \
-                 assumes one spelling per deck"
-            );
+        for (slot, key) in keys.iter().enumerate() {
+            let Some(value) = named_token(&lower, key) else {
+                continue;
+            };
+            if tok[slot].is_empty() {
+                tok[slot] = value;
+            } else {
+                assert_eq!(
+                    tok[slot], value,
+                    "{deck}: two different `{key}` tokens inside a `{class_dot}` scope — the \
+                     decomposition assumes one spelling per deck"
+                );
+            }
         }
     }
-    (declared, delay)
+    (declared, tok)
+}
+
+/// What one deck says about `SwtControl`: how many it declares, and the `delay=`
+/// token it types on them (`None` when it types none — then the port renders
+/// `Create`'s 120.0, exactly as r4133 does, and the census sees no cell).
+fn swtcontrol_facts(deck: &str) -> (usize, Option<String>) {
+    let (declared, [delay]) = element_tokens(deck, "swtcontrol.", ["delay="]);
+    (declared, (!delay.is_empty()).then_some(delay))
 }
 
 /// The value of `key` (`"kw="`, `"pf="`, …) typed as a whole parameter on
@@ -1885,54 +1975,36 @@ fn named_token(line: &str, key: &str) -> Option<String> {
 
 /// What one deck says about `WindGen`: how many it declares, and the `kW=`,
 /// `pf=`, `kVA=` and `kvar=` tokens typed **inside the machine's own element
-/// scope** — its `new` line and the `~` continuations that follow — lower-cased,
-/// with `""` for a token the deck never types.
+/// scope** ([`element_tokens`]), lower-cased, with `""` for a token the deck
+/// never types.
 ///
-/// The scope rule is `swtcontrol_facts`': a `pf=` on a Load elsewhere in the
-/// deck is not this machine's. The fourth token is read for a claim rather than
-/// a derivation — **no** corpus deck types `kvar=` at all, so every value in the
-/// census is a side effect of `pf=`/`kVA=`, and
+/// The fourth token is read for a claim rather than a derivation — **no** corpus
+/// deck types `kvar=` at all, on a `New` line or on a later `Edit`, so every
+/// value in the census is a side effect of `pf=`/`kVA=`, and
 /// [`the_rp32_census_decomposition_is_read_off_the_corpus`] asserts that instead
 /// of assuming it.
 fn windgen_facts(deck: &str) -> (usize, String, String, String, String) {
-    let path = repo_root().join(CORPUS).join(deck);
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("read deck {}: {e}", path.display()));
-    let mut declared = 0usize;
-    let mut tok = [const { String::new() }; 4];
-    let mut inside = false;
-    for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('!') || line.starts_with("//") {
-            continue;
-        }
-        let lower = line.to_ascii_lowercase();
-        if lower.starts_with("new windgen.") {
-            declared += 1;
-            inside = true;
-        } else if !lower.starts_with('~') {
-            inside = false;
-        }
-        if !inside {
-            continue;
-        }
-        for (slot, key) in ["kw=", "pf=", "kva=", "kvar="].iter().enumerate() {
-            let Some(value) = named_token(&lower, key) else {
-                continue;
-            };
-            if tok[slot].is_empty() {
-                tok[slot] = value;
-            } else {
-                assert_eq!(
-                    tok[slot], value,
-                    "{deck}: two different `{key}` tokens on its WindGens — the decomposition \
-                     assumes one declaration per deck"
-                );
-            }
-        }
-    }
-    let [kw, pf, kva, kvar] = tok;
+    let (declared, [kw, pf, kva, kvar]) =
+        element_tokens(deck, "windgen.", ["kw=", "pf=", "kva=", "kvar="]);
     (declared, kw, pf, kva, kvar)
+}
+
+/// Which arm of the steady-state Q dispatch a deck's `WindGen` selects: its
+/// `QMode=` and `VV_Curve=` tokens, `""` when it types none.
+///
+/// `SetNominalGeneration`'s `case WindModelDyn.QMode`
+/// (`Version8/Source/PCElements/WindGen.pas:1276-1322`) has an arm 1 (PF), an
+/// arm 2 (Volt-Var, `kvarCalc := kvarBase * VV_Curve(Vmag)`, `:1313`) and no arm
+/// 0 — `Else kvarCalc := 0` (`:1320-1321`) — while `QMode` defaults to 0
+/// (`:1020`). Reading the token is what separates the two populations RP3.2
+/// reasons about: the five census decks type **no** `QMode=`, so they take the
+/// `Else` arm and r4133's render is the dispatched zero, whereas the two decks
+/// held out of the population type `QMode=2` with a real curve and take the
+/// volt-var arm — a *different* mechanism, which is why nothing here may claim a
+/// measured r4133 value for them ([`RP32_WINDGEN_SKIPPED_DECKS`]).
+fn windgen_dispatch(deck: &str) -> (String, String) {
+    let (_, [qmode, vv_curve]) = element_tokens(deck, "windgen.", ["qmode=", "vv_curve="]);
+    (qmode, vv_curve)
 }
 
 /// The base kvar a `WindGen` declaration derives from its own tokens — the two
@@ -3764,8 +3836,14 @@ fn the_rp31_census_decomposition_is_read_off_the_corpus() {
 ///   ([`windgen_facts`]), swept corpus-wide so a new WindGen deck cannot appear
 ///   unnoticed — [`RP32_WINDGEN_CASES`] and [`RP32_WINDGEN_SKIPPED_DECKS`] must
 ///   together be every deck that declares one, and the skipped pair is checked
-///   against `skipped_oracle_issue.json` itself, with the base it *would*
-///   contribute if promoted;
+///   against `skipped_oracle_issue.json` itself, with the nonzero base it
+///   *would* contribute if promoted;
+/// * the **`QMode=` token** ([`windgen_dispatch`]) says which arm of
+///   `WindGen.pas:1276-1322` each deck selects, so "r4133 renders the dispatched
+///   zero" is read off the decks (none of the five types one ⇒ the `Else` arm)
+///   instead of being asserted about them — and the held-out pair, which takes
+///   the volt-var arm instead, cannot be described as if it shared the
+///   mechanism;
 /// * the **arithmetic** derives our render from those tokens
 ///   ([`windgen_kvar_base`], the two `WindGen.pas` branches) rather than
 ///   transcribing it — no deck types `kvar=`, so the whole census is a side
@@ -3823,12 +3901,28 @@ fn the_rp32_census_decomposition_is_read_off_the_corpus() {
     assert_eq!(
         measured, cited,
         "every corpus deck declaring a WindGen must sit in RP3.2's decomposition with its \
-         measured count and kW=/pf=/kVA= tokens (and no `kvar=`, the fifth field) — a new one \
-         changes how many ledger entries the pair owes"
+         measured count and kW=/pf=/kVA= tokens (and no `kvar=`, the fifth field — neither typed \
+         on the `New` line nor edited in later) — a new one changes how many ledger entries the \
+         pair owes"
     );
 
+    // The mechanism behind r4133's `0`, read off the decks: none of the five
+    // selects a Q-dispatch arm, so `WindModelDyn.QMode` stays Create's 0
+    // (`WindGen.pas:1020`) and the steady-state case falls to `Else kvarCalc :=
+    // 0` (`:1320-1321`).
+    for (case, ..) in RP32_WINDGEN_CASES {
+        let (qmode, vv_curve) = windgen_dispatch(&case_deck(case));
+        assert_eq!(
+            (qmode.as_str(), vv_curve.as_str()),
+            ("", ""),
+            "{case}: a census deck that selected a Q-dispatch arm would no longer take the `Else \
+             kvarCalc := 0` path this pair's r4133 zero comes from"
+        );
+    }
+
     // …and the held-out pair really is held out, by name and by tag, with the
-    // base it would contribute if it were ever promoted.
+    // base it would contribute if it were ever promoted — and on a mechanism of
+    // its own, which is why nothing claims an r4133 value for these two.
     let skipped_path = repo_root().join(SKIPPED_ORACLE_ISSUE);
     let skipped: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(&skipped_path)
@@ -3855,6 +3949,17 @@ fn the_rp32_census_decomposition_is_read_off_the_corpus() {
             windgen_kvar_base(kw, pf, kva) > 0.0,
             "{rel}: a skipped deck whose derived base is zero would prove nothing about the \
              count of ledger entries"
+        );
+        let (qmode, vv_curve) = windgen_dispatch(deck);
+        assert_eq!(
+            qmode, "2",
+            "{rel}: the doc argues from this deck taking the volt-var arm, not the `Else \
+             kvarCalc := 0` arm the five census decks take"
+        );
+        assert!(
+            !vv_curve.is_empty(),
+            "{rel}: QMode=2 without a VV_Curve dispatches 0 through a different branch \
+             (WindGen.pas:1306-1310) — then the doc's reading of this deck is wrong"
         );
     }
 
