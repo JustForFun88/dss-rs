@@ -113,9 +113,10 @@ call site guards on `exists()`), and the two-phase dynamics abort carried no
 error number — and an r4133 bug (the `Get_/Set_Variable` user-model tail nested
 outside the `else`, so a loaded model overwrites all 22 native variables) is
 reported, not reproduced. WindGen has no capi channel at all, so the model-6
-numbers are pinned in-engine against the fixture's own documented law (18 tests,
-each expected value re-derived from the engine's solved voltages, six mutations
-proving non-vacuity) plus 7 shuttle tests in `dss-usermodel`. Dormancy is
+numbers are pinned in-engine against the fixture's own documented law (23 tests
+after the audit round, each expected value re-derived from the engine's solved
+voltages, a 13-row measured-mutation table proving non-vacuity) plus 7 shuttle
+tests in `dss-usermodel`. Dormancy is
 **proven, not argued**: with no user model bound the whole corpus is
 byte-identical in BOTH lanes (`lane_diff.ps1` PASS, 522 cases / 3 220 247
 records, `max |Δ| = 0`, dumps byte-equal to the pre-edit baselines). The full
@@ -2125,7 +2126,7 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     bit-identical to the parity lane and keeps precisely its oracle standing.
   - **Audit settlement (2026-08-23) — 11 findings (2 major, 9 minor) from two
     independent auditors (audit-code 7, audit-tests 4; the two sets are
-    disjoint, so nothing was deduped). Nine fixed, two recorded; none dropped.**
+    disjoint, so nothing was deduped). Ten fixed, one recorded; none dropped.**
     Every fix carries its own measured mutation, and the module's non-vacuity
     table grew from 6 rows to **13**.
     1. *(major, code)* **The `like=` dead-user-model defect was still live on
