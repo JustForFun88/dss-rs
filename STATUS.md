@@ -297,7 +297,9 @@ plan's ONE sanctioned edit to that file). The full claims census re-measured the
 worst cell **live** at exactly 6.431124e-05 and puts `under-floor` at **49 381
 cells / 46 538 in scope** over 1 957 spellings and 69 pairs, `UNCLAIMED` down
 51 105 → **1 724** (47 427 → **889**, 104 → 59 pairs) with **every one of the
-889 attributed to an open RP3.x sub-step**, capi still **0** on every r4133
+889 attributed to an RP3.x sub-step** (all of them open when RP2.4 measured it;
+RP3.1 has since settled 24 of the 889, and they stay UNCLAIMED until its two
+drafted entries land at RP4.1 — §1.1(e)), capi still **0** on every r4133
 disposition (the post-settlement run; before it, 49 451 / 2 012 / 79 and
 UNCLAIMED 1 654 / 425 / 37 — the delta is exactly RP3.9's 70 cells).
 `DECLARED_RP24` `(2101, 71, 2021)` → **`(0, 0, 0)`** — the sub-step's own
@@ -320,7 +322,14 @@ excluded by **two drafted per-case ledger `property` entries** — never a
 per §1.1(e), and held meanwhile by two new pins. `DECLARED_RP3` stays
 **`(7, 4, 7)`**: the rows may not leave the work list while the tree holds no
 exclusion for them, and the new per-pair work list `RP3_ROUTING` records each of
-the four sub-steps' state instead. **Next: RP3.2 (`windgen.kvar`)** — RP3.2–RP3.4
+the four sub-steps' state instead — and, since the same-day audit settlement,
+**that move is a hand edit RP4.1 owes** (no link of the chain reads
+`ledger.json`, so the tripwire
+`the_staged_r4133_property_entries_have_not_landed_yet` reds when the entries
+land and says what to do). The settlement also typed the settled-verdict
+contract to plan §WP-RP3's three outcomes, made the r4133 citation and the
+witness naming un-shadowable, and turned the 24 = 12 + 12 census decomposition
+into a derivation over the corpus. **Next: RP3.2 (`windgen.kvar`)** — RP3.2–RP3.4
 plus the three RP3.5+ sub-steps, RP3.8 and RP3.9 are what RP4.1 waits on.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
@@ -3895,11 +3904,22 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     plan claims — **12 + 12** over `controls:swtcontrol/swtcontrol_time.dss` and
     `controls:swtcontrol/midi_swtcontrol.dss` (both `engines: r4133`, one cell
     per step 0..11, ours `0.25` vs r4133 `120`, `max_rel` 0.9979166666666667).
-    The remaining 6 are three `capi_v0145` copies of the vendored `IEEE_519.DSS`
-    (`Delay=0.0`, two SwtControls each) and are owed nothing. `civanlar.dss` —
-    16 SwtControls, `engines: r4133`, in scope — types no `delay=` and produces
-    **no** cell, i.e. our unset render already equals r4133's 120, measured by
-    its absence.
+    The other **18** are all `capi_v0145`, hence owed nothing: **12** on
+    `controls:swtcontrol/swtcontrol_lock.dss` (the same `~ delay=0.25`, 12 steps
+    — it is the third deck of the `'0.25'` spelling, whose frozen row is
+    therefore 36 cells, not 24) and **6** on three copies of the vendored
+    `IEEE_519.DSS` (`Delay=0.0`, two SwtControls each, 1 step — the `'0'`
+    spelling). `civanlar.dss` — 16 SwtControls, `engines: r4133`, in scope —
+    types no `delay=` and produces **no** cell, i.e. our unset render already
+    equals r4133's 120, measured by its absence. Since the audit settlement the
+    whole decomposition is **derived, not transcribed**:
+    `props_r4133_replay::the_rp31_census_decomposition_is_read_off_the_corpus`
+    sweeps every corpus `.dss` for SwtControl declarations, multiplies each
+    case's controls by its `population.lock.json` `steps=`, splits on the lock's
+    `engines=`, reconciles the products against `bins.tsv`'s 42/24 and both
+    frozen example rows (36 / 6), and requires the in-scope cases to be exactly
+    the cases the drafted entries cite — "exactly two entries" is now a measured
+    conclusion.
   - **The exclusion shape is a ledger entry, never an echo row** (the plan is
     explicit and the reason is the mechanism: `:588` is live, so calling this an
     echo would be a false statement). Per §1.1(e) the two entries are **drafted
@@ -3982,19 +4002,73 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     `swtcontrol.delay` **2/2 (RP3.1, settled — cited, drafted, pinned)**,
     `windgen.kvar` 3/3 (RP3.2, open). Its guard re-measures the three columns
     from the walk rather than transcribing them (a sum-preserving swap of two
-    pairs' row counts reds it), requires a settled verdict to cite `.pas:`, to
-    name both `RP4.1` and `§1.1(e)`, and to name every `LEDGER_ENTRY_PINS`
-    witness of its sub-step, forbids an open sub-step from owning a pin, and
-    asserts the pair carries **no** echo row.
-  - **Test count 8 368 → 8 376** (4 184 → **4 188** per lane, **+4** — measured
-    on the parity lane's full run, and the same +4 in the default lane's two
-    binaries: `props_r4133_pins` 31 → 33, `props_r4133_replay` 117 → 119):
-    2 pins + 2 replay guards, single-binary each, no test deleted, `#[ignore]`d
-    or loosened. Both new guards were mutation-probed and red as intended (a
-    sum-preserving swap of two routing rows' counts; a pin renamed out from
-    under its citation).
+    pairs' row counts reds it), forbids an open sub-step from owning a pin, and
+    (audit settlement, below) checks each settled verdict against the
+    obligations of its own **outcome tag**.
+  - **Audit settlement (2026-08-24, same day).** Ten minor findings from the
+    `audit-code`/`audit-tests` pair — seven distinct issues once the two
+    duplicated pairs are merged — all settled in one commit as **4 new guards +
+    3 strengthened checks inside the routing guard**, plus the record
+    corrections they imply. Every one is *fixed*; none was waved off or
+    deferred, and no finding touched the sub-step's premise. Still no
+    `ledger.json` byte and no product-crate byte:
+    - **The shrink is a hand edit at RP4.1, and the docs said otherwise.** No
+      link of the chain reads `tests/corpus/ledger.json` (`Link::ORDER` is four
+      links; `declare` routes bin-7 root-cause rows to `Owner::Rp3`
+      unconditionally), so `DECLARED_RP3` will **not** move when the entries
+      land. `DECLARED_RP3`/`RP3_ROUTING` now say so, plan §RP4.1 carries the
+      obligation as a numbered precondition, and the new tripwire
+      `the_staged_r4133_property_entries_have_not_landed_yet` reds the moment any
+      `property`-scoped `r4133` entry appears in the ledger, with the
+      instruction in its message (proved live: flipping its channel filter to
+      `capi_v0145` lists the five existing capi property entries).
+    - **The settled-verdict contract assumed RP3.1's shape was every shape.**
+      Plan §WP-RP3 sanctions three outcomes; the guard demanded a staged ledger
+      entry from all of them, so a future RP3.x closing as a port fix or an echo
+      row would have had to *loosen* it. Replaced by the typed taxonomy
+      `RP3_SETTLED_SHAPES` (`LEDGER` / `ECHO` / `FIX`, pinned literally by
+      `the_settled_outcome_taxonomy_is_the_plans_three`): shared obligations
+      first, then each tag's own; an unknown tag is a hard failure naming the
+      table to extend.
+    - **`.pas:` was satisfiable by the capi citation.** A settled verdict must
+      now cite the r4133 unit itself (`Version8/Source/` **and** `.pas:`) — the
+      audit's own mutation (r4133 cite → prose, capi cite left in place) is red.
+    - **"names every witness" was prefix-shadowable.** `verdict.contains(pin)`
+      let `…_wires_the_property_on_the_midi_tie` stand in for
+      `…_wires_the_property`; the new `names_identifier` requires a whole-token
+      match and has its own self-test.
+    - **The 24 = 12 + 12 decomposition lived only in prose** (mutating `24` to
+      `25` stayed green). `the_rp31_census_decomposition_is_read_off_the_corpus`
+      derives it — corpus-wide SwtControl sweep × `population.lock.json`
+      `steps=`/`engines=`, reconciled with `bins.tsv` 42/24 and both frozen
+      example rows — ties the in-scope cases to the drafted entries one-for-one,
+      and requires the verdict to carry the derived figures (the `24 → 25`
+      mutation is now red).
+    - **Records: the census arithmetic did not close over 42.** "The remaining 6"
+      was 18 (the 12 `capi_v0145` cells of `swtcontrol_lock.dss` had been elided
+      and the `'0.25'` spelling is 36 cells, not 24) — corrected in the bullet
+      above and in the routing verdict; and §1's RP2.4 frontier sentence, which
+      still said every one of the 889 in-scope UNCLAIMED cells belongs to an
+      *open* RP3.x sub-step, now records RP3.1's 24 as settled-but-staged.
+    - **The upstream report understated the bug** (local file, uncommitted): the
+      DDLL `Delay` **write** is dropped too — `DSwtControls.pas:135-136` routes
+      it through `Set_Parameter` → `DSSExecutive.Command` (`:20-28`), i.e. back
+      into the armless `Edit` `CASE`, so only the COM setter
+      (`ImplSwtControls.pas:183`, a direct field write) can set what the script
+      cannot. Report corrected; the drafted ledger entries never made the claim.
+  - **Test count 8 368 → 8 384** (4 184 → **4 192** per lane, **+8** — summed on
+    the parity lane's full run, 4 192 passed / 0 failed; the default lane's full
+    run is green and its two binaries carry the same +4: `props_r4133_pins`
+    31 → 33, `props_r4133_replay` 117 → 123): 2 pins + 2 replay guards from the
+    sub-step, 4 more replay guards from its audit settlement, single-binary
+    each, no test deleted, `#[ignore]`d or loosened.
+    Every new guard was mutation-probed and red as intended (a sum-preserving
+    swap of two routing rows' counts; a pin renamed out from under its citation;
+    `24 → 25` in the verdict's census; the r4133 citation replaced by prose; the
+    short pin dropped in favour of its longer prefix-mate; a control count moved
+    against the deck; an unknown outcome tag; the ledger tripwire's channel).
     Report: `investigations/to_opendss/43-swtcontrol-delay-not-wired.md`
-    (gitignored, local-only — verified absent from the commit).
+    (gitignored, local-only — verified absent from both commits).
     **Open follow-up, out of RP3.1's render-only scope:** the port's `Sample`
     still queues at `time_delay` where r4133's body is dead
     (`swt_control/mod.rs:189-229`, which already carries the NOTE) — a behavioral
@@ -4002,6 +4076,9 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     Second: `swtcontrol_lock.dss` carries the same 12 divergent cells but is
     `engines: capi_v0145`, so if a later WP gates it on r4133 a third entry is
     due (recorded in entry 2's `source` so the fact cannot be lost).
+    Third, for **RP4.1**: landing the staged entries is also an accounting
+    commit — retire the settled `RP3_ROUTING` rows, shrink `DECLARED_RP3` by
+    exactly those rows and re-state the tripwire (plan §RP4.1 precondition 2).
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 
