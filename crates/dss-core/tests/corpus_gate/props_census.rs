@@ -90,7 +90,8 @@
 //! * **claims mode only**, per channel: `claims.txt` — `examples_full.txt`'s
 //!   rows in the same order plus `count_in_scope` and the disposition;
 //!   `claims_unclaimed_pairs.txt` — one row per pair still carrying an
-//!   `UNCLAIMED` cell, the work list RP2.2/RP2.3/RP2.4 read;
+//!   `UNCLAIMED` cell, the work list RP2.2/RP2.3/RP2.4 read (and, from RP2.4
+//!   on, what RP3's remaining sub-steps read);
 //!   `claims_summary.json` — the per-disposition cell tallies (every
 //!   disposition, zeros included) plus `mixed_disposition_spellings`, the
 //!   spellings whose cells disagreed and were folded to the weakest verdict.
@@ -213,8 +214,10 @@ pub(crate) enum Disposition {
     /// that sub-step landed, minus what `props_norm::ECHO_CARVE_OUTS` takes back
     /// out of them cell by cell). **r4133 rows only.**
     Echo,
-    /// The two sides are numbers inside the r4133 display floor (RP2.4 — the
-    /// floor is `None` today). **r4133 rows only.**
+    /// The two sides are numbers inside the r4133 display floor — RP2.4's
+    /// derived `2e-4` relative (`props_norm::R4133_DISPLAY_FLOOR`), i.e. one
+    /// live double printed by two `Format('%[-].Ng', …)` getters.
+    /// **r4133 rows only.**
     UnderFloor,
     /// A `property`-scoped ledger entry NAMES the cell (plan §1.1(e); the
     /// staging rule keeps r4133 property entries out of the tree until RP4.1,
@@ -237,9 +240,11 @@ impl Disposition {
     }
 
     /// Every disposition the summary reports, in chain order — so a tally
-    /// prints its zeros too (a mechanism that claimed nothing must be visible,
-    /// not absent: `echo-row` and `under-floor` are the RP2.3/RP2.4 slots, and
-    /// their zeros are RP2.1's own claim about what it did NOT lean on).
+    /// prints its zeros too: a mechanism that claimed nothing must be visible
+    /// rather than absent, or a reader cannot tell "leaned on for nothing" from
+    /// "not reported at all". (All four chain links carry a value since RP2.4;
+    /// the tag that is structurally zero on the r4133 channel is `ledger-hit`,
+    /// which the staging rule keeps out of the tree until RP4.1.)
     pub(crate) fn all() -> Vec<Disposition> {
         let mut v: Vec<Disposition> = ["BoolFold", "CaseFold", "ArrayForm", "EnumSynonym"]
             .into_iter()
@@ -1630,11 +1635,33 @@ mod tests {
                 "0.12696",
                 "ledger-hit",
             ),
-            // The bucket RP2.4/RP3 still owe rows for. The second is the
+            // Claimed by RP2.4's display floor: two renders of one double,
+            // 6.431124e-05 apart (`load.pf`, the worst cell the floor takes).
+            // Its pair holds no normalization and no echo row, so this is the
+            // fourth link answering on its own.
+            (
+                "Load.l1",
+                "pf",
+                "0.747651914485831",
+                "0.7477",
+                "under-floor",
+            ),
+            // The bucket RP3 still owes rows for. The second is the
             // discrimination case: a real value difference inside a pair the
-            // normalization table DOES hold must not be claimed.
+            // normalization table DOES hold must not be claimed. Both are also
+            // far outside the display floor (2.5e-1 and 2.5e-3), which is what
+            // keeps them UNCLAIMED now that the fourth link is live — and the
+            // third is the same property as the `under-floor` row above, 9.99e-4
+            // apart: the floor is a CELL predicate, never a pair mask.
             ("GICTransformer.g2", "r2", "0.09522", "0.12696", "UNCLAIMED"),
             ("Line.l1", "ratings", "[ 400]", "[401,]", "UNCLAIMED"),
+            (
+                "Load.l2",
+                "pf",
+                "0.747651914485831",
+                "0.7484477",
+                "UNCLAIMED",
+            ),
         ];
         for (element, prop, rust, oracle, want) in cases {
             let mut row = value_row(element, prop, rust, oracle, true);
@@ -1731,6 +1758,18 @@ mod tests {
             // capi, i.e. still owed a compare there — which is exactly what
             // makes the capi channel the witness those rows cite.
             ("Recloser.r1", "eventlog", "No", "", "echo-row", "UNCLAIMED"),
+            // RP2.4's link. It is the one where a capi leak would cost most —
+            // the capi property compare is exact today, so a floor reaching
+            // that channel would relax every numeric property of every `both`
+            // case at once, silently and everywhere.
+            (
+                "Load.l1",
+                "pf",
+                "0.747651914485831",
+                "0.7477",
+                "under-floor",
+                "UNCLAIMED",
+            ),
             // The one link both channels share, on a pair no r4133 link claims.
             (
                 "GICTransformer.g1",
@@ -1837,12 +1876,16 @@ mod tests {
         // RP2.3: an excluded-by-echo cell is annotated like any other, so the
         // full claims run can MEASURE what the echo table masks.
         ingest("RegControl.r1", "idle", "No", "", true);
+        // RP2.4: so is a cell the display floor claims — RP4.1's acceptance
+        // reads this vocabulary, so `under-floor` has to reach the artifacts.
+        ingest("Load.l1", "pf", "0.747651914485831", "0.7477", true);
 
         assert_eq!(
             e.claims_text("r4133"),
             "class.prop | rust | r4133 | count | count_in_scope | disposition\n\
              capacitor.enabled | 'Yes' | 'true' | 2 | 1 | normalized-by-BoolFold\n\
              line.ratings | '[ 400]' | '[401,]' | 1 | 1 | UNCLAIMED\n\
+             load.pf | '0.747651914485831' | '0.7477' | 1 | 1 | under-floor\n\
              regcontrol.idle | 'No' | '' | 1 | 1 | echo-row\n"
         );
         // Same rows, same order as the plain extract — a reader diffs them.
@@ -1852,6 +1895,7 @@ mod tests {
                 "class.prop | rust | r4133 | count",
                 "capacitor.enabled | 'Yes' | 'true' | 2",
                 "line.ratings | '[ 400]' | '[401,]' | 1",
+                "load.pf | '0.747651914485831' | '0.7477' | 1",
                 "regcontrol.idle | 'No' | '' | 1",
             ]
         );
@@ -1861,8 +1905,8 @@ mod tests {
             "an echo-excluded cell is CLAIMED, so it leaves the work list RP4.1 reads"
         );
         let s = e.claims_summary();
-        assert_eq!(s["value_cells"], 4);
-        assert_eq!(s["value_cells_in_scope"], 3);
+        assert_eq!(s["value_cells"], 5);
+        assert_eq!(s["value_cells_in_scope"], 4);
         assert_eq!(s["per_disposition"]["normalized-by-BoolFold"]["cells"], 2);
         assert_eq!(
             s["per_disposition"]["normalized-by-BoolFold"]["cells_in_scope"],
@@ -1871,11 +1915,16 @@ mod tests {
         assert_eq!(s["per_disposition"]["echo-row"]["cells"], 1);
         assert_eq!(s["per_disposition"]["echo-row"]["cells_in_scope"], 1);
         assert_eq!(s["per_disposition"]["echo-row"]["pairs"], 1);
+        assert_eq!(s["per_disposition"]["under-floor"]["cells"], 1);
+        assert_eq!(s["per_disposition"]["under-floor"]["cells_in_scope"], 1);
+        assert_eq!(s["per_disposition"]["under-floor"]["pairs"], 1);
         assert_eq!(s["per_disposition"]["UNCLAIMED"]["cells"], 1);
         assert_eq!(s["per_disposition"]["UNCLAIMED"]["pairs"], 1);
-        // A mechanism that claimed nothing is present at zero, never absent:
-        // RP2.4's slot must stay readable as "leaned on for nothing".
-        for tag in ["normalized-by-EnumSynonym", "under-floor", "ledger-hit"] {
+        // A mechanism that claimed nothing is present at zero, never absent —
+        // the reader has to be able to tell "claimed nothing" from "not
+        // reported". Since RP2.4 filled the last slot the only tags in that
+        // state here are the synonym map and the ledger link.
+        for tag in ["normalized-by-EnumSynonym", "ledger-hit"] {
             assert_eq!(s["per_disposition"][tag]["cells"], 0, "{tag}");
         }
     }

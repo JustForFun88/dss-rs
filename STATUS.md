@@ -255,8 +255,34 @@ comparator (it was pinned only in the two offline copies — the swap left the
 suite green), both exemption lists pinned literally, and **nine more pins (20 →
 29, 63 rows)** for the measured 57 rows whose masked cells sit on
 `engines: "r4133"` cases, where a `Capi(n)` witness says nothing.
-The three RP3.5+ sub-steps plus RP3.8 are what RP4.1 waits on;
-**RP2.4** (the display floor) is next.
+**RP2.4 (the r4133 props display floor) is COMPLETE — and with it WP-RP2**
+(2026-08-23, one commit, **zero engine change** — harness/tests/docs only).
+`props_norm::R4133_DISPLAY_FLOOR` went from `None` to **`Some(2e-4)`**, derived
+measure-first over all 3 454 vendored spellings: worst display cell
+**6.431124e-05** (`load.pf` `'0.747651914485831'` vs `'0.7477'`, `%-.4g`,
+`Load.pas:2345` — a formatter the plan did not name), floor **3.110×** above it,
+nearest row above the band 1.374769e-03 (**6.874×** over the floor), nearest
+genuine jump 4.404256e-03 (22.02×), smallest in-scope genuine jump 5.524501e-02
+(276.2×) — the band `(6.431124e-05, 1.374769e-03)` is **empty and 21.38× wide**,
+so the number is placed, not tuned. No kill: every in-scope display cell fits
+the Delphi `Format('%[-].Ng')` family, N ∈ {4,5,6,7,8}, every site cited. The
+plan's provisional "smallest genuine jump 1.00e-3 (`invcontrol.lpftau`)" was
+**recalibrated**: it is a census-metric number (absolute when the expected side
+is 0); under the floor's symmetric metric that cell is rel 1.0 and no
+0-vs-nonzero pair can ever be claimed. The floor is a **cell** predicate on the
+r4133 branch only (`PropsPolicy::under_display_floor`, after the echo seam), it
+covers scalars, bracketed vectors and `|`-separated matrices through one
+`numeric_skeleton` path, and its `%-.4g` class-ceiling residual is stated rather
+than absorbed (`tests/TOLERANCE_NOTES.md` §"r4133 props display floor", the
+plan's ONE sanctioned edit to that file). The full claims census re-measured the
+worst cell **live** at exactly 6.431124e-05 and puts `under-floor` at **49 451
+cells / 46 538 in scope** over 2 012 spellings and 79 pairs, `UNCLAIMED` down
+51 105 → **1 654** (47 427 → **889**, 104 → 37 pairs) with **every one of the
+889 attributed to an open RP3.x sub-step**, capi still **0** on every r4133
+disposition. `DECLARED_RP24` `(2101, 71, 2021)` → **`(0, 0, 0)`** — the
+sub-step's own acceptance — and RP2.3's `reactor.kvar` carve-out hand-off is
+discharged by the floor claiming it. **Next: the WP boundary merge, then WP-RP3**
+— RP3.1–RP3.4 plus the three RP3.5+ sub-steps and RP3.8 are what RP4.1 waits on.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -3514,6 +3540,177 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
       in each of the 22 binaries including the harness. No test deleted,
       `#[ignore]`d or loosened; the one renamed test asserts the same thing under
       a name that describes it.
+
+- **RP2.4** (2026-08-23) — **the r4133 props display floor; WP-RP2 closes with
+  it.** **Zero engine change**: four test files + docs, zero product-crate
+  bytes, no golden / lock / ledger / manifest / frozen-extract byte, no r4133
+  mask moved, no `Tolerances` field or tier touched.
+  - **The derivation is a measurement, not the plan's paragraph.** Scored every
+    example row of `examples_full.txt` + `examples_supplement.txt` (**3 454
+    rows** = every distinct `(rust, r4133)` spelling of every census pair, so
+    the worst *spelling* IS the worst *cell*) with the shipped metric
+    `props_norm::display_rel`. Worst cell the floor claims **6.431124e-05**
+    (`load.pf` `'0.747651914485831'` vs `'0.7477'`, 33 cells, in scope);
+    **floor = `2e-4`**, 3.110× above it; nearest row above the band
+    **1.374769e-03** (`storagecontroller.kwneed`, 6.874× over the floor);
+    nearest genuine value jump **4.404256e-03** (`generator.kvar`, 22.02×);
+    smallest in-scope genuine jump **5.524501e-02** (`regcontrol.remoteptratio`,
+    276.2×). The band `(6.431124e-05, 1.374769e-03)` is **empty, 21.38× wide** —
+    the kill criterion needs >5×, so no kill, and the number is *placed* rather
+    than tuned.
+  - **Two recalibrations against the plan**, both recorded in
+    `tests/TOLERANCE_NOTES.md`: (1) the plan's worst `6.43e-5` on `load.pf` is
+    confirmed exactly; (2) the plan's "smallest genuine jump 1.00e-3,
+    `invcontrol.lpftau`" is a number in the **census's** metric, which reports
+    the ABSOLUTE difference when the expected side is 0
+    (`harness::value_verdict`). Under the floor's symmetric metric that cell
+    (`'0.001'` vs `'0.0'`) is rel **1.0** — a 0-vs-nonzero pair can never be
+    claimed at any magnitude. Do not repeat 1.00e-3 as the floor's upper
+    neighbour.
+  - **Mechanism, cited site by site** (`Version8/Source/`): every claimed cell
+    is a Delphi `Format('%[-].Ng', …)` in a `GetPropertyValue`, N ∈ {4,5,6,7,8}
+    — `%-.4g` `Load.pas:2345` (`pf`, the worst cell's, and a formatter the plan
+    does not name); `%-.5g` `Vsource.pas:1326-1341`, `Transformer.pas:1842-1843`,
+    `AutoTrans.pas:1886-1887` + the `MakePosSequence` round-trips
+    (`Transformer.pas:1982-1991`, `AutoTrans.pas:2021-2030`,
+    `Reactor.pas:1145-1201`); `%.6g` `Storage.pas:1531-1562` and
+    `Utilities.pas:2600-2607` `GetDSSArray_Real`; `%-.7g` `Line.pas:1358-1365`,
+    `:1406-1407`; `%-.8g` `Vsource.pas:1342-1348`, `Reactor.pas:1091-1098`. The
+    plan's "`%-.5g`/`%-.8g`" naming is **incomplete, not wrong**.
+  - **The `%-.4g` residual is stated, not absorbed** (the anti-fudge decision of
+    the sub-step). `load.pf`'s theoretical class ceiling is 5e-4, which does not
+    fit the band (2.75× under its upper neighbour). The floor comes from the
+    population instead: the 293 `load.pf` spellings have min mantissa **5.653**
+    (`pf = 0.5653`) → population ceiling **8.845e-05**, and 2e-4 sits 2.26×
+    above THAT. Residual risk left loud: a future in-scope load with
+    `pf ∈ [0.1, 0.25)` could print up to 5e-4, the floor would **refuse** it and
+    the gate would red — the safe, re-derivable direction. Widening to the class
+    ceiling would be the fudge the discipline forbids.
+  - **Landed as a cell predicate, r4133 only.** `R4133_DISPLAY_FLOOR`
+    `None` → `Some(2e-4)`; new `number_rel` (the symmetric metric),
+    `display_rel` (whole-cell, over `numeric_skeleton`, so scalars, bracketed
+    vectors and `|`-separated matrices go through one path — a scalar-only floor
+    would have left every array cell unclaimed), `under_display_floor` (offline)
+    and `under_display_floor_r4133` (the seam, with `FLOOR_VISITS`/`FLOOR_HITS`
+    for RP4.1); `numbers_match` is the ONE widening point and grew a non-finite
+    guard. Seamed into `compare_prop_lists` as the fourth link **after** the
+    echo seam via `PropsPolicy::under_display_floor` (gated on `is_r4133()`).
+    The replay's floor link now calls the **shipped** predicate — it was a
+    scalar-parse copy, which would have left every bracketed/matrix display cell
+    unclaimed — and `props_census`'s `under-floor` disposition (built dormant by
+    RP2.1) went live.
+  - **Locks moved:** `CLAIMED_DISPLAY_FLOOR` 0 → **2 006**; `CLAIMED_TOTAL`
+    1 023 → **3 029** (now the sum of all four links); `DECLARED_RP24`
+    (2 101, 71, 2 021) → **(0, 0, 0)** — the sub-step's acceptance;
+    `DECLARED_OUT_OF_SCOPE` (134, 18, 0) → **(229, 22, 0)**. New locks
+    `RP24_OUT_OF_SCOPE_ROWS` 105, `RP24_OUT_OF_SCOPE_MIN_RATIO` 277.0,
+    `CEILING_ROUND_MARGIN` 1.01, `LIVE_ONLY_DISPLAY_SPELLINGS` (6) and
+    `CLAIMED_SPELLINGS_LIVE` 3 036. **Unmoved and verified:** `MULTI_LINK_ROWS`
+    135 (measured 0 overlaps — the floor's 2 006 is a clean addition, not a
+    re-partition), `CLAIMED_NORMALIZATION` 854, `CLAIMED_ECHO` 169,
+    `CLAIMED_SHAPE_ALLOWLIST` 0, `CLAIMED_TOTAL_LIVE` 855, `NORM_ROWS` 170,
+    `PROPS_ECHO_R4133` 81, `ECHO_CARVE_OUT_CELLS` 1, every `SKIP_PROPS*` /
+    `PROPS_015X` / scheduler mask.
+  - **`DECLARED_RP24`'s 105-row residual is PROVED out, not waved off.** The
+    floor claims 1 996 of the bucket's 2 101 rows; the other 105 sit on exactly
+    four pairs (`generator.kvar` 102, `capacitor.cuf` 1, `storage.kw` 1,
+    `storagecontroller.kwneed` 1) — the four whose FULL-census bin is 7 while
+    their in-scope re-derivation is bin 6, so `effective_bin()` routes the pair
+    to the floor while its example inventory still carries the spellings that
+    made it bin 7. `RP24_OUT_OF_SCOPE` + `row_out_of_scope_by_ceiling` re-declare
+    them `Owner::OutOfScope` by a citable argument: `max_rel_in_scope` is the
+    maximum over exactly the in-scope cells, so a spelling that exceeds it cannot
+    be one of them. Narrow by construction (four cited pairs, numeric rows only,
+    ceilings read back from `bins.tsv`), and the tightest row clears its ceiling
+    by **277×** against a `%.2e` rounding needing 1.005×. `row_in_scope` uses it,
+    so `DECLARED_OUT_OF_SCOPE.2` stays **0** — now a per-ROW zero, stronger than
+    the per-pair one it replaces. **The live census confirms it independently:**
+    all 12 pairs that carry both an `under-floor` and an `UNCLAIMED` cell report
+    `cells_in_scope = 0` on every unclaimed spelling.
+  - **Full claims census at HEAD** (`DSS_PROPS_CENSUS=claims`, 439 cases × 2
+    channels, 1 060 165 rows, 58.1 s; error baselines exact — **5** r4133 /
+    **22** capi, so the run is complete, not short): `under-floor` **49 451
+    cells / 46 538 in scope**, **2 012** spellings, **79** pairs; every other
+    r4133 disposition **unmoved to the cell** (`BoolFold` 294 519/280 915,
+    `CaseFold` 99 023/95 270, `ArrayForm` 122 756/118 744, `EnumSynonym`
+    4 619/3 817, `echo-row` 488 017/468 044); claimed **1 058 385 / 1 013 328**
+    over **309** distinct pairs; `UNCLAIMED` 51 105 → **1 654** (47 427 →
+    **889**), 104 → **37** pairs. **capi: 0 on every r4133 disposition**, its 11
+    `ledger-hit`s (4 in scope, 8 pairs) and 88/88 `UNCLAIMED` intact — 99 value
+    cells / 92 in scope, unchanged since RP2.1.
+    - **The live worst floor-claimed cell is the derivation's own**:
+      6.431124e-05 on that same `load.pf` spelling, over the whole 439-case
+      population — the frozen extract did not under-sample the tail. All 293
+      live `load.pf` spellings are `under-floor`.
+    - **Term-by-term reconciliation.** Live floor spellings **2 012** = the
+      replay's `CLAIMED_DISPLAY_FLOOR` **2 006** + **6** live-only
+      (`vsource.isc1` ×2, `isc3`, `r1`, `x0`, `x1` — the same "+2 cells per
+      `vsource` pair" population drift RP2.1/RP2.2 recorded, at spelling
+      granularity; all five pairs hold a frozen `bins.tsv` row, so no vendored
+      file may carry them). Live floor cells **49 451** = the frozen 49 437 over
+      the shared 2 006 rows + **8** (eight rows are +1 live) + **6**. Claimed
+      spellings **3 036** = `CLAIMED_TOTAL` 3 029 + 1 `LIVE_ONLY_SPELLINGS` + 6.
+      All of it is now an *asserted* term
+      (`LIVE_ONLY_DISPLAY_SPELLINGS`, `CLAIMED_SPELLINGS_LIVE` and
+      `the_display_floors_live_only_spellings_reconcile_the_claims_census`),
+      not narration. `UNCLAIMED`'s shrink is exactly the floor's claim
+      (−49 451 / −46 538).
+    - **The 889 in-scope residual is fully attributed** (re-grouped by the pair's
+      frozen bin): bin 5 → 6 pairs / 1 069 / 777 = **RP3.8** (5 pairs,
+      1 064/772) + `line.linecode` (**RP3.6**, 5/5); bin 7 → 20 pairs / 361 /
+      **32** = `swtcontrol.delay` (**RP3.1**, 42/24), `windgen.kvar` (**RP3.2**,
+      4/4), `generator.model` (**RP3.3**, 2/2), `gictransformer.r2` (**RP3.4**,
+      2/2), the other 16 pairs 311/**0**; bin 4 → 8 pairs / 186 / 80 = **RP3.7**
+      (`swtcontrol`/`relay` `normal`/`state`) + the four `sensor.*` at 0 in
+      scope; `autotrans.wdgcurrents` 34/0, `line.units` 3/0 (**RP3.5**),
+      `isource.bus1` 1/0 (§1.3). **Bin 6 is gone from the unclaimed table
+      entirely** — RP2.4's acceptance, measured.
+  - **Hand-off consumed:** RP2.3's `ECHO_CARVE_OUT_ROUTING` cell
+    (`reactor.kvar` `'66.6666666666667'` vs `'66.667'`, 5.0e-06, r4133's own
+    `MakePosSequence` `%-.5g` round-trip) is now **claimed by
+    `Link::DisplayFloor`**, and `the_carve_outs_are_routed_and_only_they_are`
+    chases it to that link instead of asserting a non-empty RP2.4 bucket (which
+    at `(0,0,0)` would be vacuous). Its sibling `reactor.kv` (bin 6, 5.85e-06)
+    goes the same way. **No new hand-off.** Buckets still open: `Rp3` (7, 4, 7),
+    `Rp35` (8, 6, 5), `Rp38` (181, 5, 181), `OutOfScope` (229, 22, 0);
+    `Rp22`/`Rp23`/`Rp24` are all `(0, 0, 0)`.
+  - **`tests/TOLERANCE_NOTES.md` §"r4133 props display floor"** carries all eight
+    required components (scope; measured worst + ratio; the `%[-].Ng` mechanism
+    with its Pascal table; the decomposition/empty-band argument; why no coverage
+    is lost; scope justification; fix owner *none* — Delphi display formatting is
+    not a defect, so no `TODO(compat)`, no upstream report, no ledger entry; and
+    the relaxes/never-relaxes pair, including the `%-.4g` residual and the honest
+    limit that a floor cannot separate a display artifact from a genuine
+    sub-2e-4 difference — bounded by the exact capi compare on every `both` case
+    and by the 1e-6-class model gate on the `r4133`-only ones). The stale RP2.1
+    paragraph that said the slot was `None` is corrected in the same file. This
+    is the plan's ONE sanctioned edit to that file (§1.1).
+  - **Mutation-tested, three ways** (tree restored byte-identical each time):
+    the floor made channel-blind → caught by 2 tests; widened 10× to `2e-3` →
+    9 tests across 3 binaries, including the master accounting; made scalar-only
+    → 5 tests.
+  - **Tests: none deleted, three replaced by strictly stronger successors** —
+    the dormant `R4133_DISPLAY_FLOOR.is_none()` guard → the literal value plus
+    both sides of the boundary (1.8996e-4 in, 2.0996e-4 out) plus the
+    0-vs-nonzero and non-finite refusals; the floor-slot placeholder row in
+    `the_capi_channel_claims_nothing` → promoted into that test's r4133-claimed
+    list (a live channel statement, not a slot guard);
+    `..._and_the_floor_claims_nothing` → `..._and_the_floor_only_its_derivation`
+    (every floor-claimed row is numeric, inside the floor, and the worst is
+    6.431124e-05). Six new: the metric decomposition, the seam's visit/hit
+    counters, the two channel tests, the plan's acceptance probe landed
+    permanently
+    (`the_display_floor_drops_only_the_cell_it_claims_only_on_r4133`), the
+    residual scope proof, and the live-only reconciliation.
+  - **Goldens measured, not assumed:** `git status` after the full gate showed
+    only the sub-step's own files; the stray `Export` artifacts the AutoTrans
+    decks drop into `tests/corpus/electricdss-tst/` were swept
+    (`git clean -f -- tests/corpus`), census artifacts (`tmp/props_census.json`,
+    `tmp/props_census/`, `tmp/`) deleted by name. Full five-command gate green
+    on the final tree, both lanes; test count **8 098 → 8 322** (4 049 →
+    **4 161** per lane, **+112**): 5 harness-side guards × 22 harness-bearing
+    binaries, plus 2 in the replay binary (the residual scope proof and the
+    live-only reconciliation).
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

@@ -14,9 +14,14 @@
 //!
 //! ```text
 //! shape allowlist  ->  normalization  ->  echo table  ->  display floor
-//!  PROPS_015X          PROPS_NORM_R4133   PROPS_ECHO_R4133   RP2.4's floor
-//!  (RP1)               (RP2.1 + RP2.2)    (RP2.3)            (absent, RP2.4)
+//!  PROPS_015X          PROPS_NORM_R4133   PROPS_ECHO_R4133   2e-4 relative
+//!  (RP1)               (RP2.1 + RP2.2)    (RP2.3)            (RP2.4)
 //! ```
+//!
+//! Since **RP2.4** all four links carry a value, so the accounting is no longer
+//! "two live links and two named slots": every example row is claimed by one of
+//! them or declared to a sub-step that is itself still open (RP3, RP3.5+,
+//! RP3.8) or to `OutOfScope`. `DECLARED_RP22`/`RP23`/`RP24` are all `(0, 0, 0)`.
 //!
 //! Every row ends up in exactly one of two states, and **the accounting is
 //! total from day one**:
@@ -135,7 +140,8 @@ const CLAIMED_NORMALIZATION: usize = 854;
 /// settlement's carve-out, [`ECHO_CARVE_OUT_ROUTING`]) = **169**.
 const CLAIMED_ECHO: usize = 169;
 /// …and in total, over all four links.
-const CLAIMED_TOTAL: usize = CLAIMED_NORMALIZATION + CLAIMED_ECHO;
+const CLAIMED_TOTAL: usize =
+    CLAIMED_SHAPE_ALLOWLIST + CLAIMED_NORMALIZATION + CLAIMED_ECHO + CLAIMED_DISPLAY_FLOOR;
 
 /// **What the LIVE population claims, against what this evidence base can see.**
 ///
@@ -182,11 +188,61 @@ const LIVE_ONLY_SPELLINGS: &[(&str, &str, &str, &str)] = &[(
     "RP1.2's XfmrCode deck; the pair's frozen bins.tsv row predates it",
 )];
 
-/// Example rows claimed by the chain's remaining two links, both still zero and
-/// each for a *different* reason — see [`Link`]. (`CLAIMED_ECHO` moved up to
-/// the normalization block, where its derivation lives.)
+/// **The display floor's own live-only spellings** — [`LIVE_ONLY_SPELLINGS`]'
+/// class, measured for RP2.4's link by its full claims census (`README.md`
+/// §"What RP2.4 moved"): six `%[-].Ng` renders that exist live and that no
+/// vendored file may carry, because all five pairs already hold a frozen
+/// `bins.tsv` row (all bin 6) and the supplement's own lock bars a pair from
+/// both files.
+///
+/// They are the same population drift RP2.1/RP2.2 recorded as "+2 cells on each
+/// `vsource` pair", seen at spelling granularity: the decks WP-RP1 added read
+/// `Vsource`'s `Isc*`/`R1`/`X0`/`X1` getters at source impedances the 2026-08-08
+/// walk never saw. Every one is inside its own pair's frozen `max_rel`, and the
+/// widest is 2.51e-05 — a quarter of the floor and well under the derivation's
+/// 6.431124e-05 worst, so the live population moves no part of it.
+///
+/// Recorded as an asserted term rather than left as drift (the rule
+/// [`LIVE_ONLY_SPELLINGS`] was created under, RP2.1 audit round): without it the
+/// census's 3 036 claimed spellings and the replay's [`CLAIMED_TOTAL`] would
+/// disagree by six with nothing to say why.
+const LIVE_ONLY_DISPLAY_SPELLINGS: &[(&str, &str, &str)] = &[
+    ("vsource.isc1", "104347.826086957", "1.0435E005"),
+    ("vsource.isc1", "69565.2173913044", "69565"),
+    ("vsource.isc3", "45183.9341104925", "45184"),
+    ("vsource.r1", "0.3563926267895", "0.35639"),
+    ("vsource.x0", "1.92015184059109", "1.9202"),
+    ("vsource.x1", "1.425570507158", "1.4256"),
+];
+
+/// Claimed **spellings** the full claims census measures on the r4133 channel
+/// (439 cases × 2 channels, 2026-08-23, post-RP2.4) — the live counterpart of
+/// [`CLAIMED_TOTAL`], reconciled by the two live-only lists above.
+const CLAIMED_SPELLINGS_LIVE: usize = 3036;
+
+/// Example rows the shape-allowlist link claims — **zero, and structurally so**:
+/// the census recorded the one r4133-active allowlist gap
+/// (`GenDispatcher.weights`) as SHAPE rows, never as value cells, so this link
+/// is exercised against `shape.txt` instead. See [`Link::ShapeAllowlist`].
 const CLAIMED_SHAPE_ALLOWLIST: usize = 0;
-const CLAIMED_DISPLAY_FLOOR: usize = 0;
+/// **RP2.4's display floor** — example rows the floor claims that no earlier
+/// link took. **2 006** since RP2.4 (it was 0 while the slot was `None`):
+///
+/// * **1 996** of the 2 100 rows RP2.1's bin-6 walk declared to
+///   [`Owner::Rp24`], plus the 1 [`ECHO_CARVE_OUT_ROUTING`] declared to it —
+///   that bucket's whole population minus the 105 [`RP24_OUT_OF_SCOPE`] rules
+///   on (see [`DECLARED_RP24`], now `(0, 0, 0)`);
+/// * **10** rows the accounting had filed `OutOfScope` on four display-class
+///   pairs whose in-scope population is empty (`generator.kw`,
+///   `capacitor.normamps`/`emergamps`, `line.r1`/`x1`/`rmatrix`/`xmatrix`,
+///   `autotrans.wdgcurrents`). A *claim* is strictly better than a scope
+///   excuse: the floor says what those two spellings are, where §1.3 only said
+///   the unmask never looks at them. [`DECLARED_OUT_OF_SCOPE`] moves with it.
+///
+/// No row claimed by an earlier link is also inside the floor
+/// ([`MULTI_LINK_ROWS`] is unchanged at 135), which is why this number is a
+/// clean addition to [`CLAIMED_TOTAL`] rather than a re-partition.
+const CLAIMED_DISPLAY_FLOOR: usize = 2006;
 
 /// Rows for which **more than one** link matches — **135 since RP2.3**, over 20
 /// pairs that hold a `PROPS_NORM_R4133` row AND a `PROPS_ECHO_R4133` row.
@@ -242,15 +298,21 @@ const DECLARED_RP23: (usize, usize, usize) = (0, 0, 0);
 /// on**: 181 example rows over 5 pairs, all of them on pairs the RP4.1 unmask
 /// will compare (1 064 live cells, 772 in scope). See [`RP38_ROUTING`].
 const DECLARED_RP38: (usize, usize, usize) = (181, 5, 181);
-/// **RP2.4 — the display floor's bucket.** `(2101, 71, 2021)` since the RP2.3
-/// audit settlement: 2 100 rows over 70 pairs from RP2.1's own bin-6 walk, plus
-/// the one cell [`ECHO_CARVE_OUT_ROUTING`] takes out of `reactor.kvar`'s echo
-/// row — two live values 5.0e-06 apart, i.e. this bucket's own class (its
-/// sibling `reactor.kv`, the other output of the same r4133 `MakePosSequence`
-/// round-trip, is already here at 5.85e-06). The third number counts rows on
-/// pairs the RP4.1 unmask compares at all, and `reactor.kvar` is such a pair
-/// even though this particular cell sits on a capi-only case.
-const DECLARED_RP24: (usize, usize, usize) = (2101, 71, 2021);
+/// **`DECLARED_RP24` is `(0, 0, 0)` since RP2.4 closed**, and that zero is the
+/// sub-step's own acceptance. It inherited `(2101, 71, 2021)` — 2 100 rows over
+/// 70 pairs from RP2.1's bin-6 walk plus the cell [`ECHO_CARVE_OUT_ROUTING`]
+/// carved out of `reactor.kvar`'s echo row — and every one of those 2 101 rows
+/// is now resolved, in exactly two ways:
+///
+/// * **1 996** claimed by the derived floor itself
+///   ([`CLAIMED_DISPLAY_FLOOR`]), the carve-out among them;
+/// * **105** re-declared to [`Owner::OutOfScope`] by [`RP24_OUT_OF_SCOPE`],
+///   which proves per row — from the pair's own frozen `max_rel_in_scope` —
+///   that the spelling has no cell the RP4.1 unmask will ever compare.
+///
+/// The variant stays so a regression that re-creates the bucket fails here by
+/// name.
+const DECLARED_RP24: (usize, usize, usize) = (0, 0, 0);
 const DECLARED_RP3: (usize, usize, usize) = (7, 4, 7);
 /// The three sub-steps RP2.2 opened: **8 rows over 6 pairs, 5 of them in
 /// scope** — RP3.5 `line.units` (1 row, 0 in scope), RP3.6 `line.linecode`
@@ -262,7 +324,64 @@ const DECLARED_RP3: (usize, usize, usize) = (7, 4, 7);
 const DECLARED_RP35: (usize, usize, usize) = (8, 6, 5);
 /// `OutOfScope` rows must have **zero** in-scope cells — that is the whole
 /// claim the marker makes (plan §1.3).
-const DECLARED_OUT_OF_SCOPE: (usize, usize, usize) = (134, 18, 0);
+///
+/// **`(229, 22, 0)` since RP2.4**, from RP2.3's `(134, 18, 0)`: **−10** rows the
+/// floor now *claims* outright instead (see [`CLAIMED_DISPLAY_FLOOR`]) and
+/// **+105** rows over 4 pairs re-declared here by [`RP24_OUT_OF_SCOPE`]. The
+/// third number is still zero, and after RP2.4 it is a *stronger* zero: it is
+/// no longer read off the pair's `cells_in_scope` alone but per row, which is
+/// what admits the four display-class pairs whose PAIR is in scope while these
+/// particular spellings are not.
+const DECLARED_OUT_OF_SCOPE: (usize, usize, usize) = (229, 22, 0);
+
+/// **The four pairs whose example rows RP2.4 re-declares out of scope, with the
+/// frozen ceiling that proves it** — `(pair, max_rel_in_scope, rows)`.
+///
+/// These are exactly the four the vendored `README.md`'s last data trap names:
+/// pairs whose FULL-census bin is 7 but whose in-scope re-derivation
+/// (`max_rel_in_scope < 1e-4`) is bin 6, so [`PairEvidence::effective_bin`]
+/// routes the whole pair to the display floor. Their example-row inventory,
+/// however, is the full census's, and it therefore also carries the spellings
+/// that made the pair bin 7 in the first place — up to rel 1.0 on
+/// `generator.kvar`, which no display floor may claim.
+///
+/// **The rule that resolves them, and why it is a proof and not a shrug.**
+/// `max_rel_in_scope` is the maximum relative gap over *exactly* the cells the
+/// RP4.1 unmask compares (vendored `README.md` §"The in-scope filter": cells on
+/// `engines in {both, r4133}` cases). So a spelling whose own gap **exceeds**
+/// that maximum cannot sit on a single in-scope cell — it would have raised the
+/// maximum. The rule is [`row_out_of_scope_by_ceiling`], and it is applied only
+/// on these four cited pairs, only to numeric rows, and with a margin: the
+/// extracts round `max_rel_in_scope` to two decimals (`%.2e`), so the
+/// comparison carries [`CEILING_ROUND_MARGIN`], and the *measured* minimum
+/// ratio across all 105 rows is asserted separately
+/// ([`RP24_OUT_OF_SCOPE_MIN_RATIO`], 277x) so a future population that comes
+/// anywhere near the ceiling reds this file instead of silently widening §1.3.
+///
+/// | pair | ceiling | rows | what the above-ceiling spellings are |
+/// |---|---|---|---|
+/// | `generator.kvar` | 1.55e-06 | 102 | the GenDispatcher `weights` registration bug's dispatch split, on the three capi-only `controls:gendispatcher/*` decks (vendored `README.md` §RP1.4) |
+/// | `capacitor.cuf` | 4.00e-06 | 1 | `'[ 4]'` vs `'[ 4E-006]'` — the G2.5 `makeposseq_shunt` Cuf **unit** divergence (`triage.md` §N2) |
+/// | `storage.kw` | 4.90e-06 | 1 | `'-0.333333333333333'` vs `'-1'` |
+/// | `storagecontroller.kwneed` | 4.96e-06 | 1 | 1.374769e-03 — display-class in mechanism (the `README.md` says so) but out of scope, and the nearest row above RP2.4's empty band |
+const RP24_OUT_OF_SCOPE: &[(&str, f64, usize)] = &[
+    ("capacitor.cuf", 4.00e-06, 1),
+    ("generator.kvar", 1.55e-06, 102),
+    ("storage.kw", 4.90e-06, 1),
+    ("storagecontroller.kwneed", 4.96e-06, 1),
+];
+
+/// Rows [`RP24_OUT_OF_SCOPE`] accounts for — the sum of its third column.
+const RP24_OUT_OF_SCOPE_ROWS: usize = 105;
+/// Headroom for the `%.2e` rounding the vendored extracts apply to
+/// `max_rel_in_scope`: at worst half a unit in the third significant digit,
+/// i.e. 0.5 %. 1 % is twice that and still 277x under the measured margin.
+const CEILING_ROUND_MARGIN: f64 = 1.01;
+/// The **measured** minimum of `row gap / pair ceiling` over all
+/// [`RP24_OUT_OF_SCOPE_ROWS`] rows (`storagecontroller.kwneed`, 1.374769e-03
+/// against 4.96e-06). Locked as a `>=` so the rule stays a proof with orders of
+/// magnitude to spare, not a boundary call.
+const RP24_OUT_OF_SCOPE_MIN_RATIO: f64 = 277.0;
 
 /// `shape.txt` gap names a `PROPS_015X` row this plan added covers:
 /// `generator.rneut`, `generator.xneut` and `sensor.action` (RP1.1),
@@ -892,9 +1011,17 @@ enum Link {
     /// settlement). One measured cell is genuinely out of its row —
     /// [`ECHO_CARVE_OUT_ROUTING`] — and this link answers `false` for it.
     Echo,
-    /// **RP2.4's display floor** — a named slot that carries no value in RP2.1
-    /// (`props_norm::display_floor()` is `None`, i.e. numeric tokens compare
-    /// exactly). RP2.1 introduces no tolerance anywhere.
+    /// **RP2.4's display floor** (`props_norm::R4133_DISPLAY_FLOOR`, `2e-4`
+    /// relative) — the last link, consulted only after the three above have
+    /// declined. It claims a cell whose two sides are one number printed to
+    /// different precision by a Delphi `Format('%[-].Ng', …)` getter.
+    ///
+    /// Unlike the two tables it is a **per-cell predicate with no rows**: it
+    /// reads the two values and nothing else, so there is nothing here to go
+    /// stale and nothing that could mask a neighbouring cell of the same pair.
+    /// The derivation (worst 6.431124e-05, the empty band up to 1.374769e-03,
+    /// the `%[-].Ng` site table) lives on the constant; this link's own
+    /// population is [`CLAIMED_DISPLAY_FLOOR`].
     DisplayFloor,
 }
 
@@ -929,7 +1056,9 @@ enum Owner {
     /// echo-rooted bin-7 pairs). **Empty since RP2.3 closed**
     /// ([`DECLARED_RP23`]).
     Rp23,
-    /// RP2.4 — the r4133 props display floor (bin 6).
+    /// RP2.4 — the r4133 props display floor (bin 6). **Empty since RP2.4
+    /// closed** ([`DECLARED_RP24`]): its population is claimed by
+    /// [`Link::DisplayFloor`] or re-declared by [`RP24_OUT_OF_SCOPE`].
     Rp24,
     /// RP3 — the four genuine value jumps that are not echo.
     Rp3,
@@ -1481,14 +1610,11 @@ fn chain_verdicts(corpus: &Corpus, row: &Example) -> [bool; 4] {
         .any(|(c, p)| c.eq_ignore_ascii_case(&row.class) && p.eq_ignore_ascii_case(&row.prop));
     let norm = props_norm::claiming_row(&row.class, &row.prop, &row.rust, &row.r4133).is_some();
     let echo = props_norm::echo_excluded(&row.class, &row.prop, &row.rust, &row.r4133);
-    let floor = match (
-        props_norm::display_floor(),
-        row.rust.parse::<f64>(),
-        row.r4133.parse::<f64>(),
-    ) {
-        (Some(rel), Ok(a), Ok(b)) => (a - b).abs() <= rel * a.abs().max(b.abs()),
-        _ => false,
-    };
+    // The SHIPPED predicate, never a copy of it — same rule as the two links
+    // above (a drifting copy would make this completeness proof describe a
+    // comparator that does not exist). It reads `props_norm::display_floor()`
+    // internally, so the accounting below moves with the constant.
+    let floor = props_norm::under_display_floor(&row.rust, &row.r4133);
     [shape, norm, echo, floor]
 }
 
@@ -1571,7 +1697,22 @@ fn declare(row: &Example, ev: &PairEvidence) -> Result<Owner, String> {
     }
     if ev.numeric {
         return match ev.effective_bin() {
-            6 => Ok(Owner::Rp24),
+            // A display-class row the FLOOR did not claim (it runs before this
+            // function, so everything inside 2e-4 is already gone). The only
+            // admissible reason is that the row has no in-scope cell at all,
+            // and the pair's own frozen ceiling is what proves it —
+            // [`RP24_OUT_OF_SCOPE`]. Anything else is RP2.4's kill criterion:
+            // either the floor is mis-derived or a new category appeared.
+            6 => match row_out_of_scope_by_ceiling(row, ev) {
+                Some(_) => Ok(Owner::OutOfScope),
+                None => Err(format!(
+                    "{} '{}' vs '{}': a display-class (in-scope bin 6) row that RP2.4's floor \
+                     does not claim, and whose pair ceiling (max_rel_in_scope {:?}) does not \
+                     prove it out of scope — re-derive props_norm::R4133_DISPLAY_FLOOR, or add \
+                     a cited RP24_OUT_OF_SCOPE row",
+                    row.pair, row.rust, row.r4133, ev.max_rel_in_scope
+                )),
+            },
             7 if BIN7_ECHO.contains(&row.pair.as_str())
                 || BIN7_ECHO_SUPPLEMENT.contains(&row.pair.as_str()) =>
             {
@@ -1622,6 +1763,39 @@ fn declare(row: &Example, ev: &PairEvidence) -> Result<Owner, String> {
             row.pair, row.rust, row.r4133
         )),
     }
+}
+
+/// **The row-level scope proof RP2.4 needs** — does the pair's own frozen
+/// `max_rel_in_scope` show that this spelling has no cell the RP4.1 unmask
+/// compares? `Some(ratio)` when it does, where `ratio` is the measured
+/// `gap / ceiling` (locked at [`RP24_OUT_OF_SCOPE_MIN_RATIO`]).
+///
+/// `max_rel_in_scope` is the maximum over exactly the in-scope cells, so a
+/// spelling that diverges by MORE than it cannot be one of them. Deliberately
+/// narrow: it fires only on the four cited [`RP24_OUT_OF_SCOPE`] pairs, only on
+/// numeric rows, and only past [`CEILING_ROUND_MARGIN`] — a general rule would
+/// be a scope loophole any future pair could fall into unreviewed.
+///
+/// The gap is [`props_norm::display_rel`], the shipped metric the floor itself
+/// is expressed in, so "above the ceiling" and "outside the floor" are read off
+/// one function.
+fn row_out_of_scope_by_ceiling(row: &Example, ev: &PairEvidence) -> Option<f64> {
+    if !ev.numeric {
+        return None;
+    }
+    let (_, ceiling, _) = RP24_OUT_OF_SCOPE.iter().find(|(p, _, _)| *p == row.pair)?;
+    let gap = props_norm::display_rel(&row.rust, &row.r4133)?;
+    (gap > ceiling * CEILING_ROUND_MARGIN).then(|| gap / ceiling)
+}
+
+/// Does this example row have at least one cell the RP4.1 unmask will compare?
+///
+/// The pair's `cells_in_scope` is the coarse answer and was the only one until
+/// RP2.4; [`row_out_of_scope_by_ceiling`] refines it per row where the frozen
+/// evidence supports it, which is what lets an in-scope PAIR carry a spelling
+/// that is provably not.
+fn row_in_scope(row: &Example, ev: &PairEvidence) -> bool {
+    ev.in_scope() && row_out_of_scope_by_ceiling(row, ev).is_none()
 }
 
 /// Walk every example row through the chain and the declaration rule.
@@ -1675,7 +1849,7 @@ fn account(corpus: &Corpus, table: &[NormRow]) -> Ledger {
                         let b = led.declared.entry(owner).or_default();
                         b.rows += 1;
                         b.pairs.insert(row.pair.clone());
-                        if ev.in_scope() {
+                        if row_in_scope(row, ev) {
                             b.in_scope_rows += 1;
                         }
                     }
@@ -1838,11 +2012,15 @@ fn the_typed_rules_and_the_echo_rows_split_their_shared_pairs_offline() {
         match first_match(chain_verdicts(&corpus, row)) {
             Some(Link::Normalization) => e.0 += 1,
             Some(Link::Echo) => e.1 += 1,
-            // A carved-out cell of a cited pair: no link claims it, and
-            // `ECHO_CARVE_OUT_ROUTING` says who owns it instead.
-            None if ECHO_CARVE_OUT_ROUTING
-                .iter()
-                .any(|(p, r, o, _, _)| *p == row.pair && *r == row.rust && *o == row.r4133) =>
+            // A carved-out cell of a cited pair: the exclusion does NOT cover
+            // it, so the chain walks past it to the next link. Until RP2.4 that
+            // meant "no link claims it" and `ECHO_CARVE_OUT_ROUTING` named the
+            // sub-step that would; RP2.4 is that sub-step, and its floor now
+            // takes the cell — which is exactly what the routing declared.
+            Some(Link::DisplayFloor)
+                if ECHO_CARVE_OUT_ROUTING
+                    .iter()
+                    .any(|(p, r, o, _, _)| *p == row.pair && *r == row.rust && *o == row.r4133) =>
             {
                 carved += 1
             }
@@ -2130,6 +2308,63 @@ fn the_live_only_spellings_are_claimed_and_reconcile_the_two_accountings() {
     }
 }
 
+/// **The whole chain's two accountings reconcile, RP2.4** — the successor
+/// statement of the test above, now that all four links carry a value.
+///
+/// The claims census measured **3 036** claimed spellings on the r4133 channel
+/// against this file's [`CLAIMED_TOTAL`] of 3 029, and the seven-spelling gap is
+/// asserted, not narrated: one [`LIVE_ONLY_SPELLINGS`] entry (the normalization
+/// link's) plus six [`LIVE_ONLY_DISPLAY_SPELLINGS`] (the floor's). Each of the
+/// six is checked to be
+///
+/// * claimed by the **shipped** floor predicate — so a narrowed floor reds here
+///   rather than at the next census;
+/// * claimed by the floor and by **no earlier link**, i.e. the floor is really
+///   its first match and the census's `under-floor` tag is right;
+/// * on a pair the frozen `bins.tsv` holds, which is exactly what bars the
+///   spelling from the supplement — and absent from the vendored rows, so it
+///   genuinely has no home here.
+#[test]
+fn the_display_floors_live_only_spellings_reconcile_the_claims_census() {
+    assert_eq!(
+        CLAIMED_TOTAL + LIVE_ONLY_SPELLINGS.len() + LIVE_ONLY_DISPLAY_SPELLINGS.len(),
+        CLAIMED_SPELLINGS_LIVE,
+        "the vendored claim count plus both live-only lists must equal what the full-population \
+         claims census measured (README §\"What RP2.4 moved\")"
+    );
+    let corpus = Corpus::load();
+    let floor = props_norm::display_floor().expect("RP2.4 derived the floor");
+    for (pair, rust, r4133) in LIVE_ONLY_DISPLAY_SPELLINGS {
+        let (class, prop) = pair.split_once('.').expect("class.prop");
+        assert!(
+            props_norm::under_display_floor(rust, r4133),
+            "{pair} '{rust}' vs '{r4133}' is claimed `under-floor` live but not by the shipped \
+             predicate — the live population and this evidence base have drifted"
+        );
+        // The floor is its FIRST match, which is what the census tag claims.
+        assert!(props_norm::claiming_row(class, prop, rust, r4133).is_none());
+        assert!(!props_norm::echo_excluded(class, prop, rust, r4133));
+        // …and comfortably inside the floor: the widest of the six is 2.51e-05,
+        // under half the derivation's worst, so the live-only population moves
+        // no part of the calibration.
+        let rel = props_norm::display_rel(rust, r4133).expect("a numeric cell");
+        assert!(rel <= floor / 2.0, "{pair}: {rel:e}");
+        // Invisible to both vendored files, for the recorded reason.
+        assert!(
+            corpus.bins.contains_key(*pair),
+            "{pair} has no bins.tsv row — then the supplement could carry this spelling"
+        );
+        assert!(
+            !corpus
+                .rows
+                .iter()
+                .any(|r| &r.pair == pair && r.rust == *rust && r.r4133 == *r4133),
+            "{pair} '{rust}' vs '{r4133}' IS in the vendored evidence after all — drop it from \
+             LIVE_ONLY_DISPLAY_SPELLINGS and move the count with it"
+        );
+    }
+}
+
 /// **Liveness both ways, offline** (plan mechanic (d)): every row of
 /// `PROPS_NORM_R4133` claims at least one example row. A row that folds nothing
 /// exempts a spelling difference that is not there — drop it, or re-measure it.
@@ -2378,45 +2613,62 @@ fn the_supplement_covers_every_recorded_wp_rp1_pair() {
     }
 }
 
-/// **The echo table claims only its own 81 pairs, and the display floor still
-/// claims nothing** — the deliberate successor of RP2.1's
-/// `the_echo_table_and_the_display_floor_claim_nothing_yet`, which asserted
-/// that BOTH links were inert.
+/// **The echo table claims only its own 81 pairs, and the display floor claims
+/// only what its derivation covers** — successor (RP2.4) of the RP2.3 test that
+/// asserted the floor was still `None`.
 ///
-/// That test going red is the design working: RP2.3 filled one of the two
-/// slots. What replaces it asserts strictly more than the half that is still
-/// true — the floor is untouched (`None`, claiming nothing, on the same
-/// full-corpus walk) — plus the two statements the newly-live link owes:
+/// That assertion going red is the design working: RP2.4 filled the last slot.
+/// What replaces it is strictly stronger, because a floor is the one link that
+/// could over-claim silently — it has no row set to audit — so both of its
+/// bounds are checked over the same full-corpus walk:
 ///
 /// * the echo link claims a row **only** on a pair `PROPS_ECHO_R4133` names, so
 ///   the exclusion cannot have leaked onto a pair no row cites;
 /// * a pair the table does NOT name is still compared raw, even when its
 ///   spelling looks exactly like an echo (`''` on one side) — the mask is the
-///   cited row set, never a shape heuristic.
+///   cited row set, never a shape heuristic;
+/// * every row the floor claims is inside `props_norm::display_floor()` **in
+///   the shipped metric**, and the WORST of them is the derivation's own
+///   `6.431124e-05` — so a floor edited without re-deriving reds here;
+/// * no row the floor claims is a structural one: each carries at least one
+///   number on both sides, with identical non-numeric skeletons.
 #[test]
-fn the_echo_table_claims_only_its_cited_pairs_and_the_floor_claims_nothing() {
+fn the_echo_table_claims_only_its_cited_pairs_and_the_floor_only_its_derivation() {
     assert_eq!(
         PROPS_ECHO_R4133.len(),
         81,
         "RP2.3's echo table: the RP2.3 bucket's 86 pairs minus the 5 the kill criterion re-routed"
     );
-    assert!(
-        props_norm::display_floor().is_none(),
-        "RP2.4 derives the r4133 props display floor; RP2.3 introduces no tolerance anywhere"
+    let floor = props_norm::display_floor().expect("RP2.4 derived the r4133 props display floor");
+    assert_eq!(
+        floor, 2e-4,
+        "the derived floor (props_norm::R4133_DISPLAY_FLOOR)"
     );
     let cited: BTreeSet<String> = PROPS_ECHO_R4133
         .iter()
         .map(|r| format!("{}.{}", r.class, r.prop))
         .collect();
     let corpus = Corpus::load();
-    let mut echoed = 0;
+    let (mut echoed, mut floored) = (0, 0);
+    let mut worst = (0.0f64, String::new());
     for row in &corpus.rows {
-        let [_, _, echo, floor] = chain_verdicts(&corpus, row);
-        assert!(
-            !floor,
-            "{}: the display floor claimed a row while it is None",
-            row.pair
-        );
+        let [_, _, echo, hit] = chain_verdicts(&corpus, row);
+        if hit {
+            let rel = props_norm::display_rel(&row.rust, &row.r4133).unwrap_or_else(|| {
+                panic!(
+                    "{} '{}' vs '{}': the floor claimed a cell that is not a numeric divergence",
+                    row.pair, row.rust, row.r4133
+                )
+            });
+            assert!(rel <= floor, "{}: {rel:e} is outside the floor", row.pair);
+            if rel > worst.0 {
+                worst = (
+                    rel,
+                    format!("{} '{}' vs '{}'", row.pair, row.rust, row.r4133),
+                );
+            }
+            floored += 1;
+        }
         if echo {
             assert!(
                 cited.contains(&row.pair),
@@ -2427,6 +2679,14 @@ fn the_echo_table_claims_only_its_cited_pairs_and_the_floor_claims_nothing() {
         }
     }
     assert!(echoed > 0, "the echo link must claim something now");
+    assert!(floored > 0, "the floor link must claim something now");
+    assert!(
+        (worst.0 - 6.431_124e-5).abs() < 1e-10,
+        "the worst cell the floor claims is the derivation's left-hand side, 6.431124e-05 \
+         (load.pf, `%-.4g`, PCElements/Load.pas:2345) — measured {:e} on {}",
+        worst.0,
+        worst.1
+    );
     // The five re-routed pairs still carry `''`-on-one-side spellings — the
     // shape bin 5 is built on — and are compared all the same.
     for (pair, _) in RP38_ROUTING {
@@ -2481,14 +2741,124 @@ fn the_carve_outs_are_routed_and_only_they_are() {
         assert!(props_norm::has_echo_row(class, prop));
         assert!(!props_norm::echo_excluded(class, prop, rust, r4133));
     }
-    // Liveness: the routed owner really inherits the row.
+    // Liveness, RP2.4: the routed owner has DISCHARGED the row rather than
+    // still holding it. RP2.3 asserted `led.owner(Owner::Rp24) ==
+    // DECLARED_RP24` while that was `(2101, 71, 2021)`; the same equality now
+    // reads `(0, 0, 0)`, which alone would be vacuous — so the cell is chased
+    // to the link that actually took it.
     let corpus = Corpus::load();
     let led = account(&corpus, PROPS_NORM_R4133);
     assert_eq!(
         led.owner(Owner::Rp24),
         DECLARED_RP24,
-        "RP2.4's bucket carries the carved-out display cell"
+        "RP2.4 closed: the carved-out cell is claimed, not pending"
     );
+    for (pair, rust, r4133, owner, _) in ECHO_CARVE_OUT_ROUTING {
+        assert_eq!(*owner, Owner::Rp24);
+        let row = corpus
+            .rows
+            .iter()
+            .find(|r| &r.pair == pair && r.rust == *rust && r.r4133 == *r4133)
+            .unwrap_or_else(|| panic!("{pair} '{rust}' vs '{r4133}' is a vendored example row"));
+        assert_eq!(
+            first_match(chain_verdicts(&corpus, row)),
+            Some(Link::DisplayFloor),
+            "{pair}: the carve-out's declared owner is RP2.4, and RP2.4's mechanism is the \
+             display floor — 5.0e-06 apart, r4133's own MakePosSequence round-trip"
+        );
+    }
+}
+
+/// **RP2.4's residual is proved out of scope, not waved away** — the
+/// both-ways guard for [`RP24_OUT_OF_SCOPE`], the only place this plan lets a
+/// row leave a bucket without a mechanism claiming it.
+///
+/// The rule is a *proof* (a spelling cannot exceed the maximum taken over the
+/// in-scope cells and still be one of them), so everything it rests on is
+/// asserted here rather than trusted:
+///
+/// * each cited ceiling is **the pair's own frozen `max_rel_in_scope`**, read
+///   back from `bins.tsv` — a hand-typed ceiling that drifted from the evidence
+///   would silently widen §1.3;
+/// * each cited row count is what the walk really re-declares, and the four
+///   pairs are exactly the pairs it re-declares (no fifth pair slipping in);
+/// * every re-declared row clears its ceiling by at least
+///   [`RP24_OUT_OF_SCOPE_MIN_RATIO`], so the rule never turns on a rounding;
+/// * the pairs are display-class by the in-scope re-derivation
+///   (`effective_bin() == 6`) while their frozen label is bin 7 — which is the
+///   whole reason their example inventory carries these spellings;
+/// * and the rule is **narrow**: it fires on no other pair in the corpus.
+#[test]
+fn the_display_floors_residual_rows_are_proved_out_of_scope() {
+    assert_eq!(
+        RP24_OUT_OF_SCOPE.iter().map(|(_, _, n)| n).sum::<usize>(),
+        RP24_OUT_OF_SCOPE_ROWS,
+        "the table's row counts must sum to its lock"
+    );
+    let corpus = Corpus::load();
+    let mut seen: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut min_ratio = f64::INFINITY;
+    for row in &corpus.rows {
+        // The rule is a RESIDUAL, consulted (by `declare`) only for a row no
+        // link claimed — walking the claimed ones too would measure a
+        // population the accounting never asks about. On these four pairs the
+        // ceiling is far tighter than the floor, so most of their rows are
+        // above the ceiling AND inside the floor: claimed, and none of this
+        // rule's business.
+        if first_match(chain_verdicts(&corpus, row)).is_some() {
+            continue;
+        }
+        let Some(ev) = corpus.evidence(row) else {
+            continue;
+        };
+        let Some(ratio) = row_out_of_scope_by_ceiling(row, ev) else {
+            continue;
+        };
+        assert_eq!(
+            ev.effective_bin(),
+            6,
+            "{}: the rule applies to display-class pairs only",
+            row.pair
+        );
+        assert_eq!(ev.bin, 7, "{}: whose frozen label is bin 7", row.pair);
+        min_ratio = min_ratio.min(ratio);
+        let (pair, _, _) = RP24_OUT_OF_SCOPE
+            .iter()
+            .find(|(p, _, _)| *p == row.pair)
+            .expect("the rule only fires on a cited pair");
+        *seen.entry(pair).or_default() += 1;
+    }
+    assert_eq!(
+        seen.iter().map(|(p, n)| (*p, *n)).collect::<Vec<_>>(),
+        RP24_OUT_OF_SCOPE
+            .iter()
+            .map(|(p, _, n)| (*p, *n))
+            .collect::<Vec<_>>(),
+        "the cited pairs and row counts must be exactly what the walk re-declares"
+    );
+    assert!(
+        min_ratio >= RP24_OUT_OF_SCOPE_MIN_RATIO,
+        "the tightest re-declared row clears its pair ceiling by {min_ratio:.1}x, under the \
+         locked {RP24_OUT_OF_SCOPE_MIN_RATIO:.1}x — the scope proof is no longer orders of \
+         magnitude clear of the `%.2e` rounding and must be re-measured"
+    );
+    // The ceilings are the vendored ones, not transcriptions free to drift.
+    for (pair, ceiling, _) in RP24_OUT_OF_SCOPE {
+        let ev = corpus
+            .bins
+            .get(*pair)
+            .and_then(|all| all.iter().find(|e| e.numeric))
+            .unwrap_or_else(|| panic!("{pair} has a numeric bins.tsv row"));
+        assert_eq!(
+            ev.max_rel_in_scope,
+            Some(*ceiling),
+            "{pair}: the cited ceiling must BE the frozen max_rel_in_scope"
+        );
+    }
+    // …and the rows really land in the OutOfScope bucket, with none of them
+    // counted in scope (plan §1.3's own claim).
+    let led = account(&corpus, PROPS_NORM_R4133);
+    assert_eq!(led.owner(Owner::OutOfScope), DECLARED_OUT_OF_SCOPE);
 }
 
 /// The chain order is the documented one, and [`first_match`] really returns the

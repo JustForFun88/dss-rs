@@ -266,7 +266,7 @@ sub-step that closes it:
 | 3 | enum spelling + singletons, 8 / 4 400 | per-pair enum spellings (`Positive`/`Pos`) and per-pair semantics. **RP2.2 correction (2026-08-23):** `monitor.mode`'s `'1 16 +'` is NOT a "decomposition render" — it is the deck's own RPN **source text** (`mode=(1 16 +)`) echoed back with the parser's parens stripped (`Meters/Monitor.pas:359`, no `GetPropertyValue` override), i.e. an `EchoParse`. And the bin's 8 pairs split 4/4: only the source sequence selectors are synonyms | `EnumSynonym` rows + the S6 dossier (S6 = the triage's per-pair singleton list, enumerated exhaustively in RP2.2) | RP2.2 |
 | 4 | array form, 21 / 122 554 | dss_capi `GetDSSArray` `[ 400]` vs Delphi comma/paren/bare forms | `ArrayForm` tokenizing compare | RP2.1 |
 | 5 | empty-vs-value + display defaults, 44 / 442 369 (**45 / 443 257** after the RP0.2 correction above — the 45th pair is `regcontrol.fwdthreshold`, 888 cells, absent from every vendored extract; RP2.3 provisions its row from the RP0.2 record) | `PropertyValue[]` echo: un-overridden `GetPropertyValue` returns the parse store / `InitPropertyValues` default (`DSSObject.pas:112-115`; e.g. `Reactor.pas:1087-1140`, `Transformer.pas:1914-1919`; `RegControl.pas:1423-1459` initializes only `PropertyValue[1..32]`, so props 33–36 all echo `''`) | `PROPS_ECHO_R4133` exclusion rows + pins | RP2.3 |
-| 6 | numeric display precision, 61 pairs full / 37 in-scope | Delphi `%-.5g`/`%-.6g`/`%-.8g` getters (`Vsource.pas:1327-1343`); measured worst rel 6.43e-5 (`load.pf`) | the r4133 props display floor | RP2.4 |
+| 6 | numeric display precision, 61 pairs full / 37 in-scope | Delphi `%-.5g`/`%-.6g`/`%-.8g` getters (`Vsource.pas:1327-1343`); measured worst rel 6.43e-5 (`load.pf`) — RP2.4 re-derived the family as `Format('%[-].Ng')`, N ∈ {4,5,6,7,8}, the worst cell being a `%-.4g` (`Load.pas:2345`), and the in-scope pair count as 43; see its as-executed note and `tests/TOLERANCE_NOTES.md` | the r4133 props display floor | RP2.4 |
 | 7 | genuine value jumps, 33 pairs full / 16 in-scope | 12 of the 16 are echo (frozen defaults: `transformer.pctperm/repair`, `fault.pctperm`, `gictransformer.pctperm`, `reactor.kvar`, `pvsystem/storage.%pminnovars/%pminkvarmax`, `invcontrol.lpftau/risefalllimit`, `regcontrol.remoteptratio`); 4 need root-cause (`swtcontrol.delay`, `windgen.kvar`, `generator.model`, `gictransformer.r2`) | echo rows / root-cause | RP2.3 / RP3 |
 | 8 | property-table shape, 5 classes / 429 rows | 2 real port gaps (AutoTrans `XfmrCode`, WindGen `UserModel`/`UserData`), 2 upstream stubs (Generator `Rneut`/`Xneut`, Sensor `action`), 1 r4133 registration bug (GenDispatcher `weights`) | ports / stub rows / allowlist row | RP1 |
 
@@ -439,8 +439,10 @@ sub-step's own numeric stop-and-report threshold holds.
   anti-rot guard afterwards.
 - **The r4133 props display floor** — a named, channel-scoped relative floor
   applied by `compare_prop_lists` to numeric cells on the r4133 channel only
-  (provisionally ≈2e-4, inside the measured empty band; RP2.4 derives the final
-  value). It is **not** a `tol_for` tier change and touches no `Tolerances`
+  (**`2e-4`, derived and landed by RP2.4** inside the measured empty band
+  `(6.431124e-05, 1.374769e-03)`; `props_norm::R4133_DISPLAY_FLOOR`, derivation
+  in `tests/TOLERANCE_NOTES.md`). It is **not** a `tol_for` tier change and
+  touches no `Tolerances`
   field — the capi channel keeps `tol.i_rel/i_abs` (`mod.rs:1596-1597`)
   untouched.
 - **Shape allowlisting reuses `PROPS_015X`** (`mod.rs:1400-1468`). The G1.1 text
@@ -1015,6 +1017,46 @@ recalibrate and record. **Acceptance:** TOLERANCE_NOTES section complete; a
 scratch probe proves a 1e-3 numeric error still fails on the r4133 channel;
 capi unchanged. Outcome: the 37 in-scope display pairs (~ the numeric mass
 minus the tail) compare within a derived, documented floor.
+
+> **AS EXECUTED (2026-08-23, one commit — WP-RP2 closes with it).** Floor
+> **`2e-4`**, the provisional target confirmed by measurement, but two of this
+> paragraph's inputs were **recalibrated** and one was incomplete:
+>
+> * *worst display rel* — **confirmed exactly**: 6.431124e-05, `load.pf`
+>   `'0.747651914485831'` vs `'0.7477'`, 33 cells, in scope. Re-measured live
+>   over the full 439-case census: same cell, same number.
+> * *smallest genuine jump* — the "1.00e-3, `invcontrol.lpftau`" above is a
+>   number in the **census's** metric, which reports the ABSOLUTE difference when
+>   the expected side is 0. Under the floor's symmetric metric that cell
+>   (`'0.001'` vs `'0.0'`) is rel **1.0**; a 0-vs-nonzero pair can never be
+>   claimed. The real neighbours are 1.374769e-03 (`storagecontroller.kwneed`,
+>   6.874× over the floor), 4.404256e-03 (`generator.kvar`, the nearest genuine
+>   value jump, 22.02×) and 5.524501e-02 (`regcontrol.remoteptratio`, the
+>   smallest **in-scope** jump, 276.2×). The safety band is therefore
+>   `(6.431124e-05, 1.374769e-03)` — **empty, 21.38× wide**, not `(6.43e-5, 1e-3)`.
+> * *mechanism* — "`%-.5g` per `Vsource.pas:1327-1343` with a `%-.8g` sub-family"
+>   is **incomplete, not wrong**: the family is `Format('%[-].Ng')` with
+>   N ∈ {4,5,6,7,8}, and the worst cell is a **`%-.4g`** (`Load.pas:2345`), which
+>   this paragraph does not name. All five formatters and their sites are tabled
+>   in `tests/TOLERANCE_NOTES.md` §"r4133 props display floor". Its `%-.4g`
+>   class ceiling (5e-4) does **not** fit the band, so the floor is derived from
+>   the measured population (293 `load.pf` spellings, min mantissa 5.653 →
+>   8.845e-05) with the residual stated, not absorbed.
+> * *outcome* — **43** in-scope display pairs offline, not 37: the 37 in-scope
+>   bin-6 pairs of `bins.tsv` **plus** 5 WP-RP1 supplement bin-6 pairs
+>   (`generator.kva`/`maxkvar`/`minkvar`, `autotrans.normamps`/`emergamps`) and
+>   the `reactor.kvar` carve-out RP2.3 handed over — i.e. this number plus the
+>   two post-freeze sources. Live the floor claims **79 pairs / 2 012 spellings
+>   / 49 451 cells (46 538 in scope)**, with the in-scope cells landing on **41**
+>   of those pairs: `reactor.kvar` and `generator.kva` are claimed only on
+>   spellings that sit on `capi_v0145` cases, so they contribute nothing in
+>   scope. Per-pair split in the vendored `README.md` §"What RP2.4 moved".
+> * *acceptance* — met, and the "scratch probe" was **landed permanently**
+>   instead: `props_policy_tests::the_display_floor_drops_only_the_cell_it_claims_only_on_r4133`
+>   drives the real `compare_prop_lists`. capi unchanged (census: 0 on every
+>   r4133 disposition). `DECLARED_RP24` `(2101, 71, 2021)` → `(0, 0, 0)`, its
+>   105-row residual re-declared `OutOfScope` by the cited ceiling proof
+>   `RP24_OUT_OF_SCOPE`. STATUS §WP-RP2 carries the full record.
 
 ---
 

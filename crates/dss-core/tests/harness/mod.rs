@@ -2249,6 +2249,173 @@ mod props_policy_tests {
         );
     }
 
+    /// **Cells the RP2.4 display floor claims on r4133** — every one a real
+    /// census spelling (`tests/corpus/props_r4133/examples_full.txt`), chosen to
+    /// cover each `%[-].Ng` formatter and each *render shape* the floor has to
+    /// handle, so the channel tests below cover the mechanism and not one cell
+    /// of it. The measured gap is stated per row; the derivation and the Pascal
+    /// site table live on `props_norm::R4133_DISPLAY_FLOOR`.
+    const UNDER_FLOOR: &[(&str, &str, &str, &str)] = &[
+        // THE WORST cell the floor claims, 6.431124e-05 — `%-.4g`,
+        // `PCElements/Load.pas:2345`. If the floor ever stops claiming this
+        // one, the derivation is wrong, not the row.
+        ("Load", "pf", "0.747651914485831", "0.7477"),
+        // The `%-.5g` family: `PCElements/Vsource.pas:1326-1341` (a plain
+        // double and an exponent render), `PDElements/Transformer.pas:1842`.
+        ("Vsource", "R1", "0.2138355760737", "0.21384"),
+        ("Vsource", "Isc3", "3346958.0822587", "3.347E006"),
+        ("Transformer", "NormAmps", "381.944444444444", "381.94"),
+        // `%-.6g` inside a bracketed vector — `Common/Utilities.pas:2600-2607`
+        // `GetDSSArray_Real`. A scalar-only floor would leave this unclaimed.
+        ("Capacitor", "cuf", "[ 287.82360946885]", "[ 287.824]"),
+        // …and inside a `|`-separated MATRIX render (three rows, six numbers).
+        (
+            "Line",
+            "CMatrix",
+            "[72.7194481250695 |0 72.7194481250695 |0 0 72.7194481250695 ]",
+            "[72.71945 |0 72.71945 |0 0 72.71945 ]",
+        ),
+        // RP2.3's hand-off: the one cell `props_norm::ECHO_CARVE_OUTS` takes
+        // back out of `reactor.kvar`'s echo row, because r4133's own
+        // `MakePosSequence` round-trips the live value through
+        // `Format(' kvar=%-.5g')` (`PDElements/Reactor.pas:1145-1201`). It is
+        // this link's, and this is where that is asserted at the seam.
+        ("Reactor", "kvar", "66.6666666666667", "66.667"),
+    ];
+
+    /// **The capi channel never applies the display floor** — plan mechanic (b)
+    /// applied to RP2.4's link, and the arm where a leak would cost the most:
+    /// the capi property compare is exact today, so a floor reaching it would
+    /// silently relax every numeric property of every `engines: "both"` case at
+    /// once. Every cell below is one the r4133 arm claims.
+    #[test]
+    fn the_capi_channel_never_applies_the_display_floor() {
+        let capi = PropsPolicy::for_channel(PropsChannel::CapiV0145);
+        for (class, prop, rust, oracle) in UNDER_FLOOR {
+            assert!(
+                !capi.under_display_floor(rust, oracle),
+                "{class}.{prop}: the capi channel must compare {rust:?} against {oracle:?} exactly"
+            );
+        }
+        // …and the plain census policy reaches it on NEITHER channel, so a
+        // plain re-census still reports the RP0.1 population (RP0.2's baseline).
+        for ch in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            let plain = PropsPolicy::plain(ch);
+            for (class, prop, rust, oracle) in UNDER_FLOOR {
+                assert!(
+                    !plain.under_display_floor(rust, oracle),
+                    "{class}.{prop}: plain census mode must not apply the floor on {}",
+                    ch.tag()
+                );
+            }
+        }
+    }
+
+    /// The other half, which makes the capi test mean something: on **r4133**
+    /// the armed policy really claims every cell of [`UNDER_FLOOR`] — and
+    /// refuses, at the same seam, everything the floor must never swallow.
+    ///
+    /// The refusals are the load-bearing half. A floor is a tolerance, so what
+    /// keeps it a *classification* is the list of shapes it declines:
+    /// a gap above it at any magnitude, a 0-vs-nonzero pair, a differing
+    /// non-numeric skeleton (an enum, a boolean, an empty render), and a
+    /// discrete value that merely happens to be spelled as a number.
+    #[test]
+    fn the_r4133_channel_claims_the_measured_display_cells() {
+        let r4133 = PropsPolicy::for_channel(PropsChannel::R4133);
+        for (class, prop, rust, oracle) in UNDER_FLOOR {
+            assert!(
+                r4133.under_display_floor(rust, oracle),
+                "{class}.{prop}: the floor must claim {rust:?} vs {oracle:?}"
+            );
+        }
+        // The boundary, from both sides: 1.8996e-4 in, 2.0996e-4 out.
+        assert!(r4133.under_display_floor("1000", "1000.19"));
+        assert!(!r4133.under_display_floor("1000", "1000.21"));
+        // A gap above the floor, at three magnitudes.
+        assert!(!r4133.under_display_floor("0.747651914485831", "0.7484477"));
+        assert!(!r4133.under_display_floor("3346958.0822587", "3.35E006"));
+        assert!(!r4133.under_display_floor("[ 287.82360946885]", "[ 287.9]"));
+        // 0 vs non-zero is rel 1 at any magnitude — bin 7's frozen-default
+        // echoes (`invcontrol.lpftau`) can never be mistaken for a render.
+        assert!(!r4133.under_display_floor("0.001", "0.0"));
+        assert!(!r4133.under_display_floor("0", "-1"));
+        // Not one numeric shape: a boolean, an enum, an empty render, a
+        // different token count, an RPN source text.
+        assert!(!r4133.under_display_floor("Yes", "true"));
+        assert!(!r4133.under_display_floor("Positive", "Pos"));
+        assert!(!r4133.under_display_floor("", "[]"));
+        assert!(!r4133.under_display_floor("[ 400]", "[400, 400, 400]"));
+        assert!(!r4133.under_display_floor("17", "1 16 +"));
+        // A discrete value spelled as a number is still a value difference.
+        assert!(!r4133.under_display_floor("4", "3"));
+    }
+
+    /// **Non-vacuity through the REAL comparator** (plan RP2.4 acceptance).
+    /// The two tests above drive the seam; this one drives
+    /// [`compare_prop_lists`] itself on a property list carrying a
+    /// floor-claimed cell next to an ordinary one, and pins the corners that
+    /// make the floor a **per-cell predicate and not a pair mask** — the RP2.3
+    /// audit settlement's lesson, applied at design time:
+    ///
+    /// * r4133 + the display cell → **passes** (that is the floor);
+    /// * r4133 + the SAME property, 1e-3 apart → **fails** (nothing is masked
+    ///   by name; a bigger divergence on a floor-claimed pair still aborts);
+    /// * r4133 + the same property rendered non-numerically → **fails raw**;
+    /// * r4133 + a neighbour property above the floor → **fails** (the floor is
+    ///   not element-scoped either);
+    /// * capi + the display cell → **fails** (channel-scoped);
+    /// * and the property NAME walk is untouched on r4133.
+    ///
+    /// `Load.pf` and `Load.kW` deliberately have **no** `PROPS_NORM_R4133` and
+    /// no `PROPS_ECHO_R4133` row (`bins.tsv`: both are numeric bin-6 pairs), so
+    /// driving the real comparator here moves no row counter and cannot make
+    /// `assert_norm_rows_are_live` order-dependent — the trap RP2.1 part D
+    /// measured. The floor's own counters have no per-row staleness to rot.
+    ///
+    /// [`compare_prop_lists`]: super::compare_prop_lists
+    #[test]
+    fn the_display_floor_drops_only_the_cell_it_claims_only_on_r4133() {
+        let run = |channel, actual: &[(&str, &str)], oracle: &[(&str, &str)]| {
+            run_props(channel, "Load.floor1", "Load", actual, oracle)
+        };
+        let rust = [("pf", "0.747651914485831"), ("kW", "1000")];
+        // 6.431124e-05 apart — the worst cell the floor claims.
+        let display = [("pf", "0.7477"), ("kW", "1000")];
+        // 9.99e-04 apart on the very same property: 5x the floor.
+        let too_far = [("pf", "0.7484477"), ("kW", "1000")];
+        // The same property, not a number on the oracle side.
+        let non_numeric = [("pf", ""), ("kW", "1000")];
+        // A neighbour property, 2.1e-4 apart: just over the floor.
+        let neighbour = [("pf", "0.7477"), ("kW", "1000.21")];
+        let renamed = [("pf", "0.7477"), ("kilowatts", "1000")];
+        assert!(
+            run(PropsChannel::R4133, &rust, &display),
+            "the floor must drop the value compare of a display cell on r4133"
+        );
+        assert!(
+            !run(PropsChannel::R4133, &rust, &too_far),
+            "a 1e-3 error on a floor-CLAIMED property must still fail on r4133 — the floor is a \
+             cell predicate, not a mask on `load.pf`"
+        );
+        assert!(
+            !run(PropsChannel::R4133, &rust, &non_numeric),
+            "a non-numeric cell on a floor-claimed property must still fail raw"
+        );
+        assert!(
+            !run(PropsChannel::R4133, &rust, &neighbour),
+            "a neighbour property just over the floor must still fail on r4133"
+        );
+        assert!(
+            !run(PropsChannel::R4133, &rust, &renamed),
+            "the property NAME walk is untouched by the floor"
+        );
+        assert!(
+            !run(PropsChannel::CapiV0145, &rust, &display),
+            "the capi channel must still fail on the very cell the r4133 floor claims"
+        );
+    }
+
     /// **Non-vacuity through the REAL comparator.** The two tests above drive
     /// the seam; this one drives [`compare_prop_lists`] itself, on an element
     /// whose property list holds an echo-excluded prop next to an ordinary one,
@@ -2828,6 +2995,16 @@ fn compare_prop_lists(
         if policy.echo_excluded(class, ename, &aval, &eval) {
             continue;
         }
+        // THE DISPLAY-FLOOR SEAM (plan §1.2, RP2.4), the chain's fourth and
+        // last link: two renders of ONE number that differ only in how many
+        // significant digits r4133's `Format('%[-].Ng', …)` getter printed.
+        // Per CELL, never per pair — a larger divergence on the same property
+        // still fails below, and a non-numeric cell never reaches the floor at
+        // all. r4133 only, and AFTER the exclusion, so a cell an earlier link
+        // owns is credited to that link. Identity on the capi channel, always.
+        if policy.under_display_floor(&aval, &eval) {
+            continue;
+        }
         // Case-EXACT compare (no lowercasing): every DSS enum getter renders the
         // Pascal-faithful case — `ordinal_to_string` returns the exact registry
         // strings (`wye`/`delta` lowercase, `Variable`/`Fixed` capitalized,
@@ -3063,6 +3240,43 @@ impl PropsPolicy {
     /// [`assert_value_matches_tol`]: super::assert_value_matches_tol
     fn echo_excluded(self, class: &str, prop: &str, rust: &str, oracle: &str) -> bool {
         self.is_r4133() && props_norm::echo_excluded_r4133(class, prop, rust, oracle)
+    }
+
+    /// **The display-floor seam** (plan §1.2, RP2.4): the chain's fourth and
+    /// last link, asked after [`PropsPolicy::echo_excluded`] has had its chance
+    /// and immediately before [`assert_value_matches_tol`] would run.
+    ///
+    /// `true` drops the VALUE compare of this cell because the two sides are
+    /// **one number, printed to different precision** — r4133's
+    /// `Format('%[-].Ng', …)` getter against the port's full render, within
+    /// `props_norm::R4133_DISPLAY_FLOOR` (`2e-4` relative; the derivation, the
+    /// measured band and the `%[-].Ng` site table are on that constant).
+    /// The property's name and index order have already been asserted.
+    ///
+    /// **It is a cell predicate, not a pair mask**, and that is the whole
+    /// difference from the seam above it — the RP2.3 audit settlement's lesson
+    /// applied at design time. It reads only the two values, so:
+    ///
+    /// * a *bigger* divergence on the very same `(class, prop)` still fails;
+    /// * a cell whose two sides are not one numeric shape (an enum, a boolean,
+    ///   `''` against a value, an array of another length) still fails raw;
+    /// * nothing is excluded by name, so there is no row to go stale.
+    ///
+    /// It runs last for the same reason the exclusion runs after normalization:
+    /// a cell an earlier link claims must be credited to that link, or its
+    /// liveness accounting would rot behind a tolerance
+    /// (`props_r4133_replay::first_match_returns_the_earliest_link`).
+    ///
+    /// On capi the seam is `false` for everything — the permanent
+    /// capi-invariance contract, pinned by
+    /// [`props_policy_tests::the_capi_channel_never_applies_the_display_floor`].
+    /// This is the one arm where that matters most numerically: the capi
+    /// channel's property compare is byte-exact today, and a floor leaking onto
+    /// it would silently relax every numeric property of every `both` case.
+    ///
+    /// [`assert_value_matches_tol`]: super::assert_value_matches_tol
+    fn under_display_floor(self, rust: &str, oracle: &str) -> bool {
+        self.is_r4133() && props_norm::under_display_floor_r4133(rust, oracle)
     }
 }
 
@@ -3339,6 +3553,18 @@ mod census_walk_tests {
     /// the two walks now share a channel-scoped skip set and a normalization
     /// seam, and either one reaching the wrong arm is exactly the drift this
     /// pin exists to catch.
+    ///
+    /// **The scope of the biconditional, stated since RP2.4.** Two of the
+    /// gate's four chain links have no census twin *by design* — the exclusion
+    /// ([`PropsPolicy::echo_excluded`]) and the display floor
+    /// ([`PropsPolicy::under_display_floor`]) drop a value assert the census
+    /// still records as a row, because a census row must say what the two
+    /// engines really rendered and the *disposition* (`echo-row` /
+    /// `under-floor`, `props_norm::claim_value`) is what says who claims it.
+    /// So this table's inputs stay outside both: `Foo` has no echo row, and
+    /// every numeric case below is deliberately far outside the `2e-4` floor —
+    /// including one placed just above it, which is what keeps the floor's
+    /// refusal in this pin instead of only in `props_policy_tests`.
     #[test]
     fn the_two_walks_agree_on_every_input() {
         let cases: &[WalkCase] = &[
@@ -3395,6 +3621,16 @@ mod census_walk_tests {
                 &[("a", "1"), ("b", "2")],
                 &[("A", "1"), ("B", "2")],
                 false,
+            ),
+            // 4.998e-4 relative — 2.5x OVER the RP2.4 display floor, so both
+            // walks must still see a divergence on BOTH channels. Placed here
+            // deliberately close to the floor: a floor that crept upward, or
+            // one that leaked onto capi, reds this row.
+            (
+                "numeric gap just above the display floor",
+                &[("A", "1.0005")],
+                &[("A", "1")],
+                true,
             ),
             ("both empty", &[], &[], false),
         ];
