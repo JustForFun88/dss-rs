@@ -769,9 +769,16 @@ const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
          structurally identical (solution/solution/ncim.rs, which likewise does not restore the \
          model), so the two engines' live state agrees digit for digit — present kvar \
          431.79425771046976 / 323.84569328285227 before the conversion, 0 after, 4 iterations, both \
-         decks. Hence NO engine change and NO ledger entry: the exclusion is the PROPS_ECHO_R4133 \
-         row generator.model (EchoParse, 2 cells), witnessed by \
-         generator_model_renders_the_live_pv2pq_conversion. Census, derived per case by \
+         decks. Hence NO engine change and NO ledger entry on any COMPARED channel: the exclusion \
+         is the PROPS_ECHO_R4133 row generator.model (EchoParse, 2 cells), witnessed by \
+         generator_model_renders_the_live_pv2pq_conversion. One surface no channel compares is \
+         left OPEN by this classification and owned by plan §RP3.11 (RP3.3 audit settlement, \
+         2026-08-24): r4133's Save/Dump print the same store, so its own round trip re-creates the \
+         model-3 generator, while the port's Save renders the LIVE field \
+         (report/save/save.rs:34-53 goes through ClassProps::get_value where Pascal SaveWrite \
+         reads PropertyValue[iProp], General/DSSObject.pas:145-165) and writes Model=4 — a \
+         re-compiled deck is then a PQ generator instead of a Q-limited PV one. Census, derived \
+         per case by \
          `the_rp33_census_decomposition_is_read_off_the_corpus`: 2 cells, all 2 in scope, 1 + 1 \
          over the 2 converting decks (modes:ncim/ncim_midi.dss, modes:ncim/ncim_pv_pq.dss), each \
          declaring one model=3 generator over 1 step on engines=r4133; modes:ncim/ncim_pq.dss runs \
@@ -1941,6 +1948,25 @@ fn rigor_field<'a>(rigor: &'a str, key: &str) -> &'a str {
         .unwrap_or_else(|| panic!("no {key}= in rigor {rigor:?}"))
 }
 
+/// Every file under `dir`, as forward-slashed paths relative to `base` — the
+/// universe [`collect_dss`] filters down to one extension, and what
+/// [`redirected_non_dss_scripts`] needs in order to find a redirected `.txt`.
+fn collect_files(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec<String>) {
+    for entry in std::fs::read_dir(dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display())) {
+        let p = entry.expect("dir entry").path();
+        if p.is_dir() {
+            collect_files(&p, base, out);
+        } else {
+            out.push(
+                p.strip_prefix(base)
+                    .expect("under base")
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
+        }
+    }
+}
+
 /// Every `.dss` file under `dir`, as forward-slashed paths relative to `base`
 /// (`corpus_manifest.rs::collect_dss`'s shape).
 fn collect_dss(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec<String>) {
@@ -2116,38 +2142,173 @@ fn windgen_facts(deck: &str) -> (usize, String, String, String, String) {
 }
 
 /// Whether a deck selects the **NCIM** solver — `set algorithm=NCIM` on a live
-/// (non-comment) line, in any case.
+/// (non-comment) line, in any case and in any spelling the engine accepts.
 ///
 /// This is RP3.3's mechanism filter: the only thing in the whole engine that
 /// moves a `Generator`'s live `GenModel` away from the token its deck typed is
 /// the NCIM PV→PQ conversion (`Version8/Source/Common/Solution.pas:1935`,
 /// `:2120`), and r4133's `model` getter renders that token forever
-/// (`PCElements/generator.pas:3007-3038` has no arm 6). Comment lines are skipped
-/// — both `ncim_midi.dss` and `ncim_pq.dss` describe the setting in their headers
-/// — and a line that mentions `algorithm` in a spelling [`named_token`] cannot
-/// parse is a hard error rather than a silent miss, because a completeness sweep
-/// that quietly skips a deck proves nothing.
+/// (`PCElements/generator.pas:3007-3038` has no arm 6).
 fn sets_ncim(deck: &str) -> bool {
-    let path = repo_root().join(CORPUS).join(deck);
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("read deck {}: {e}", path.display()));
-    let mut ncim = false;
+    script_sets_ncim(deck, &read_script(&repo_root().join(CORPUS).join(deck)))
+}
+
+/// [`sets_ncim`] over a script's text — the form the non-`.dss` sweep needs,
+/// since those files are reached by `Redirect` rather than by extension.
+fn script_sets_ncim(name: &str, text: &str) -> bool {
+    algorithm_values(name, text).iter().any(|v| selects_ncim(v))
+}
+
+/// Every value a script's live lines assign to the solver `algorithm` option,
+/// **abbreviated spellings included**.
+///
+/// Comment lines are skipped — both `ncim_midi.dss` and `ncim_pq.dss` describe
+/// the setting in their headers — and a live line that mentions `algorithm` in a
+/// spelling [`named_token`] cannot parse is a hard error rather than a silent
+/// miss, because a completeness sweep that quietly skips a deck proves nothing.
+///
+/// **Abbreviations are read, not assumed away** (RP3.3 audit settlement,
+/// 2026-08-24 — before it, only the full spelling was read and the hard error
+/// keyed on the literal substring `algorithm`, so `set algo=ncim` would have
+/// been a silent miss). `Set` resolves an option name through
+/// `TCommandList.GetCommand` (`Version8/Source/Executive/ExecOptions.pas:566`),
+/// which falls back to `THashList.FindAbbrev` — a linear **prefix** match
+/// (`Shared/HashList.pas:335-357`) — because both `TCommandList` constructors arm
+/// `AbbrevAllowed := True` (`Shared/Command.pas:53`, `:65`). Every non-empty
+/// prefix of `algorithm` is therefore read as the option, longest first. The
+/// reader is deliberately WIDER than the engine (a short prefix may resolve to
+/// some other option that sits earlier in `ExecOption`): a false hit here is a
+/// loud failure a human reads, a miss is exactly the silent skip this sweep
+/// exists to prevent. Measured at HEAD: the corpus types no abbreviation at all
+/// — all seven live mentions are the full spelling — so the widening is dormant.
+fn algorithm_values(name: &str, text: &str) -> Vec<String> {
+    const OPTION: &str = "algorithm";
+    let mut out = Vec::new();
     for line in text.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('!') || line.starts_with("//") {
             continue;
         }
         let lower = line.to_ascii_lowercase();
-        match named_token(&lower, "algorithm=") {
-            Some(value) => ncim |= value == "ncim",
+        let parsed = (1..=OPTION.len())
+            .rev()
+            .find_map(|n| named_token(&lower, &format!("{}=", &OPTION[..n])));
+        match parsed {
+            Some(value) => out.push(value),
             None => assert!(
-                !lower.contains("algorithm"),
-                "{deck}: `{line}` names the solver algorithm in a spelling this reader cannot \
+                !lower.contains(OPTION),
+                "{name}: `{line}` names the solver algorithm in a spelling this reader cannot \
                  parse — RP3.3's NCIM sweep would silently miss the deck"
             ),
         }
     }
-    ncim
+    out
+}
+
+/// Whether an `algorithm=` value selects NCIM, by r4133's own reading of it.
+///
+/// `InterpretSolveAlg` (`Version8/Source/Common/Utilities.pas:575-591`) compares
+/// only the **first two characters** — `SLC := copy(lowercase(s), 1, 2)`, then
+/// `ne` → Newton, `nc` → NCIM, anything else → the normal fixed point — so
+/// `Set algorithm=nc` selects NCIM just as `NCIM` does, and an equality test
+/// against `"ncim"` (what this reader did before the RP3.3 audit settlement)
+/// would have missed it without even reaching the hard error above.
+fn selects_ncim(value: &str) -> bool {
+    value.to_ascii_lowercase().starts_with("nc")
+}
+
+/// Read one corpus script, lossily — a `Redirect`ed `.txt` is not guaranteed to
+/// be UTF-8, and a decoding error must not silently drop it from a completeness
+/// sweep (the missing byte cannot be `Set algorithm=…`).
+fn read_script(path: &std::path::Path) -> String {
+    let bytes =
+        std::fs::read(path).unwrap_or_else(|e| panic!("read script {}: {e}", path.display()));
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// The `Redirect`/`Compile` targets a script names, as lower-cased **basenames**.
+///
+/// Basenames, not resolved paths: the corpus writes the argument quoted
+/// (`Redirect "Master.dss"`), bracketed (`[Master_ckt5.dss]`), parenthesised
+/// (`(Master.dss)`), relative with `..` segments, absolute (`C:\…`) and with a
+/// trailing `!` comment — and a resolver that got one of those spellings wrong
+/// would narrow a completeness sweep silently. A basename set is a SUPERSET of
+/// the real targets, which is the safe direction for a sweep.
+fn redirect_targets(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('!') || line.starts_with("//") {
+            continue;
+        }
+        let lower = line.to_ascii_lowercase();
+        let Some(rest) = ["redirect ", "compile "]
+            .iter()
+            .find_map(|verb| lower.strip_prefix(verb))
+        else {
+            continue;
+        };
+        let arg = rest
+            .split('!')
+            .next()
+            .unwrap_or(rest)
+            .split("//")
+            .next()
+            .unwrap_or(rest)
+            .trim()
+            .trim_matches(|c: char| {
+                c == '"' || c == '\'' || c == '(' || c == ')' || c == '[' || c == ']'
+            })
+            .trim();
+        let base = arg.rsplit(['/', '\\']).next().unwrap_or(arg).trim();
+        if !base.is_empty() {
+            out.push(base.to_string());
+        }
+    }
+    out
+}
+
+/// **The scripts a corpus deck executes that [`collect_dss`] cannot see** — the
+/// transitive `Redirect`/`Compile` closure of `decks`, restricted to files whose
+/// extension is not `dss`, as corpus-relative paths.
+///
+/// `collect_dss` filters on the extension, so a sweep built on it walks `.dss`
+/// files only — while the vendored corpus really does redirect other ones
+/// (`Examples/Scripts/WireData.txt`, `ckt24/AllocationFactors_Base.Txt`, the
+/// LVTestCase's seven `.txt` parts). A `Set algorithm=NCIM` inside one of those
+/// would run and be invisible to the sweep, which is a hole in a *completeness*
+/// claim, not a detail (RP3.3 audit settlement, 2026-08-24). Matching is by
+/// basename ([`redirect_targets`]) over every corpus file, and the closure is
+/// transitive because a redirected script may redirect further.
+fn redirected_non_dss_scripts(decks: &[String]) -> Vec<String> {
+    let root = repo_root().join(CORPUS);
+    let mut all = Vec::new();
+    collect_files(&root, &root, &mut all);
+    let mut by_name: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for f in &all {
+        by_name
+            .entry(f.rsplit('/').next().unwrap_or(f).to_ascii_lowercase())
+            .or_default()
+            .push(f.clone());
+    }
+    let mut queue: Vec<String> = decks.to_vec();
+    let mut seen: BTreeSet<String> = decks.iter().cloned().collect();
+    let mut out = Vec::new();
+    while let Some(f) = queue.pop() {
+        for target in redirect_targets(&read_script(&root.join(&f))) {
+            if target.ends_with(".dss") {
+                continue; // already in `collect_dss`'s universe
+            }
+            for path in by_name.get(&target).into_iter().flatten() {
+                if seen.insert(path.clone()) {
+                    out.push(path.clone());
+                    queue.push(path.clone());
+                }
+            }
+        }
+    }
+    out.sort();
+    out
 }
 
 /// What one deck says about `Generator`: how many it declares, and the `model=`
@@ -3818,8 +3979,13 @@ fn naming_a_witness_is_a_whole_identifier_match() {
 ///
 /// The condition is deliberately the whole class, not RP3.1's two ids: **any**
 /// `property`-scoped entry on the `r4133` channel means the unmask commit is
-/// landing staged entries (RP1.4's and RP3.2–RP3.4's included), which is exactly
-/// when every staged sub-step's rows must be re-declared.
+/// landing staged entries (RP1.4's, RP3.2's four and whatever RP3.4+ stages),
+/// which is exactly when every staged sub-step's rows must be re-declared.
+/// **RP3.3 is not among them and never will be**: it closed `ECHO`
+/// (2026-08-24), its exclusion is the `PROPS_ECHO_R4133` row that shipped in its
+/// own commit, and its [`RP3_ROUTING`] row was retired to `0, 0` there — so
+/// RP4.1 owes it no accounting move at all (RP3.3 audit settlement corrected
+/// this list, which still named it).
 #[test]
 fn the_staged_r4133_property_entries_have_not_landed_yet() {
     let path = repo_root().join(LEDGER);
@@ -4342,6 +4508,90 @@ fn the_rp32_census_decomposition_is_read_off_the_corpus() {
     );
 }
 
+/// **The NCIM sweep's readers see every spelling the engine accepts** — the
+/// self-test for [`algorithm_values`], [`selects_ncim`] and
+/// [`redirect_targets`], added by RP3.3's audit settlement (2026-08-24).
+///
+/// The corpus types the option exactly one way today — seven live mentions, all
+/// `algorithm=` in full, none in a redirected non-`.dss` script — so the widened
+/// readers are dormant on it, and a dormant reader proves nothing about the
+/// completeness claim that rests on it
+/// ([`the_rp33_census_decomposition_is_read_off_the_corpus`]'s first assertion).
+/// Driving them here on the spellings r4133 itself accepts is what makes that
+/// claim enforced rather than described: before the settlement `set algo=ncim`
+/// and `Set algorithm=nc` were both silent misses, and a `Set algorithm=NCIM`
+/// inside a `Redirect`ed `.txt` was invisible to the sweep's whole universe.
+#[test]
+fn the_ncim_sweep_reads_every_spelling_the_engine_accepts() {
+    // The full spelling, and the two the old reader missed: an abbreviated
+    // OPTION name (`TCommandList.GetCommand` -> `THashList.FindAbbrev`, a prefix
+    // match) and an abbreviated VALUE (`InterpretSolveAlg` reads two chars).
+    for line in [
+        "Set algorithm=NCIM",
+        "set algorithm=ncim",
+        "Set algo=NCIM",
+        "set a=ncim",
+        "Set ALGORITHM=nc",
+        "set algorithm=NCIMish",
+        "Calcvoltagebases  set algorithm=ncim",
+    ] {
+        assert!(
+            script_sets_ncim("<self-test>", line),
+            "{line:?} selects NCIM in the engine and must select it here"
+        );
+    }
+    // …and what must NOT be read as NCIM: another solver, a one-character value
+    // (`copy(s, 1, 2)` cannot match `nc`), a comment line in either spelling,
+    // and the option named inside a longer parameter.
+    for line in [
+        "Set algorithm=Newton",
+        "set algorithm=n",
+        "! set algorithm=ncim",
+        "// Set algorithm=NCIM",
+    ] {
+        assert!(
+            !script_sets_ncim("<self-test>", line),
+            "{line:?} must not be read as an NCIM selection"
+        );
+    }
+    assert!(selects_ncim("ncim") && selects_ncim("nc"));
+    assert!(!selects_ncim("n") && !selects_ncim("") && !selects_ncim("newton"));
+    // A live line that names the option in a spelling the reader cannot
+    // attribute is a hard error — the branch that keeps a widened reader
+    // honest, and deliberately over-loud: `myalgorithm=` is not the option
+    // ([`named_token`] refuses it, which is why the value is not collected),
+    // yet the mention still stops the sweep for a human to look at. Loud on a
+    // spelling that turns out to be innocent is the cheap failure; silent on
+    // one that is not is the one this guard exists to prevent.
+    for line in ["Set algorithm ncim", "New Load.l1 myalgorithm=ncim"] {
+        assert!(
+            std::panic::catch_unwind(|| algorithm_values("<self-test>", line)).is_err(),
+            "{line:?}: an unattributable live mention must be a hard error, not a silent skip"
+        );
+    }
+    // The redirect reader, on the spellings the vendored corpus really writes.
+    assert_eq!(
+        redirect_targets(
+            "Redirect \"../Version8/Distrib/Examples/Scripts/WireData.txt\"\n\
+             Compile (Master.dss)\n\
+             Redirect [Master_ckt5.dss]\n\
+             redirect AllocationFactors_Base.Txt  !!! R=7 Vset=123\n\
+             Redirect \"C:\\Program Files\\OpenDSS\\ckt5\\Master_ckt5.dss\"\n\
+             ! Redirect commented_out.txt\n\
+             New Line.l1 bus1=a"
+        ),
+        [
+            "wiredata.txt",
+            "master.dss",
+            "master_ckt5.dss",
+            "allocationfactors_base.txt",
+            "master_ckt5.dss",
+        ],
+        "quoted, parenthesised, bracketed, comment-trailed and absolute targets all reduce to \
+         their basename — the superset a completeness sweep needs"
+    );
+}
+
 /// **RP3.3's census decomposition, derived instead of transcribed** — the same
 /// shape as [`the_rp31_census_decomposition_is_read_off_the_corpus`] and
 /// [`the_rp32_census_decomposition_is_read_off_the_corpus`], applied to
@@ -4355,7 +4605,13 @@ fn the_rp32_census_decomposition_is_read_off_the_corpus() {
 /// * the **mechanism** is deck-level — only a deck that runs `Set algorithm=NCIM`
 ///   can move a generator's live `GenModel` off its typed token — so
 ///   [`sets_ncim`] is swept corpus-wide and [`RP33_NCIM_CASES`] +
-///   [`RP33_NCIM_HELD_OUT`] must together be *every* such deck;
+///   [`RP33_NCIM_HELD_OUT`] must together be *every* such deck. The sweep's own
+///   two escape hatches are closed rather than assumed shut (RP3.3 audit
+///   settlement): abbreviated option spellings are read as the option
+///   ([`algorithm_values`]) and the value is matched the way r4133 matches it
+///   ([`selects_ncim`], two characters), and the `.dss`-only universe is
+///   completed by [`redirected_non_dss_scripts`], which sweeps every script a
+///   deck `Redirect`s whatever its extension;
 /// * the **element facts** come from the decks ([`generator_model_facts`]): how
 ///   many `Generator`s each declares and the `model=` they type, so
 ///   "one convertible generator each" is read rather than asserted, and
@@ -4378,9 +4634,10 @@ fn the_rp32_census_decomposition_is_read_off_the_corpus() {
 /// * the **frozen census** (`bins.tsv`'s 2/2 and `examples_full.txt`'s single
 ///   `'4'` vs `'3'` row) is what the products must add up to.
 ///
-/// Then the consumers are tied to the result: the shipped echo row's `cells`
-/// column, and the routing verdict, which must carry the derived figures
-/// verbatim.
+/// Then **all three** consumers are tied to the result: the shipped echo row's
+/// `cells` column, its `ECHO_ROWS_ON_R4133_ONLY_CASES` exposure — both columns,
+/// through `props_norm::r4133_only_exposure` — and the routing verdict, which
+/// must carry the derived figures verbatim.
 #[test]
 fn the_rp33_census_decomposition_is_read_off_the_corpus() {
     const PAIR: &str = "generator.model";
@@ -4395,7 +4652,7 @@ fn the_rp33_census_decomposition_is_read_off_the_corpus() {
         "only {} .dss files under {CORPUS} — the vendored corpus is missing",
         decks.len()
     );
-    let measured: BTreeSet<String> = decks.into_iter().filter(|d| sets_ncim(d)).collect();
+    let measured: BTreeSet<String> = decks.iter().filter(|d| sets_ncim(d)).cloned().collect();
     let cited: BTreeSet<String> = RP33_NCIM_CASES
         .iter()
         .map(|(case, ..)| case_deck(case))
@@ -4407,6 +4664,25 @@ fn the_rp33_census_decomposition_is_read_off_the_corpus() {
          new one is a deck whose generators can convert, i.e. a cell this pair does not account \
          for"
     );
+    // …and the hatch underneath that sweep, closed rather than argued away
+    // (RP3.3 audit settlement): the walk above sees `.dss` files, while a deck
+    // can `Redirect` a script of any extension and the corpus really does.
+    let executed = redirected_non_dss_scripts(&decks);
+    assert!(
+        executed.len() >= 5,
+        "the corpus redirects non-.dss scripts (WireData.txt, AllocationFactors_Base.Txt, the \
+         LVTestCase parts, …) and this closure found only {} — an empty one would make the \
+         assertion below vacuous and hand the extension hatch back",
+        executed.len()
+    );
+    for f in &executed {
+        assert!(
+            !script_sets_ncim(f, &read_script(&root.join(f))),
+            "{f}: a redirected non-.dss corpus script selects NCIM, so the deck sweep above — \
+             which walks `.dss` files only — no longer sees every converting case, and the \
+             `exactly 2 cells` closure below rests on nothing"
+        );
+    }
 
     // …and the element facts each census deck carries, read off the deck.
     let facts: Vec<(&str, usize, String)> = RP33_NCIM_CASES
@@ -4546,6 +4822,16 @@ fn the_rp33_census_decomposition_is_read_off_the_corpus() {
         echo.witness.pin(),
         Some("generator_model_renders_the_live_pv2pq_conversion"),
         "every cell is on an r4133-only case, so the row's witness can only be a pin"
+    );
+    // …and the row's exposure entry, the second consumer. Its `(cells, cases)`
+    // is claimed to be derived per case; before the RP3.3 audit settlement no
+    // test read the entry at all and its `cases` column had no value lock
+    // anywhere, so `(2, 5)` shipped green. Both columns are this derivation's.
+    assert_eq!(
+        props_norm::r4133_only_exposure(class, prop),
+        Some((cells as u32, in_scope_cases.len() as u32)),
+        "props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES must carry the derived (cells, cases) for \
+         {PAIR} — every one of them is on an r4133-only case"
     );
 
     // (5) The verdict carries the derived figures, so its prose cannot drift
