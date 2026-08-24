@@ -15,10 +15,11 @@
 //! cases), `Pin(name)` (no capi coverage at all — the capture has no such
 //! property under `PROPS_015X`, a `SKIP_PROPS` row masks it, the capi walk skips
 //! the element whole, or every covered cell sits on a capi-only case), or
-//! `CapiAndPin(n, name)`. **Twenty-nine of the tests below are those `name`s**
-//! — the twenty RP2.3 landed plus the nine its audit settlement added for the
-//! rows exposed on `engines: "r4133"` cases, together covering 63 of the 81 rows
-//! — and two more are the deck guard's own self-tests. The literal list is
+//! `CapiAndPin(n, name)`. **Thirty of the tests below are those `name`s**
+//! — the twenty RP2.3 landed, the nine its audit settlement added for the rows
+//! exposed on `engines: "r4133"` cases, and RP3.3's `generator.model` — together
+//! covering 64 of the 82 rows — and two more are the deck guard's own
+//! self-tests. The literal list is
 //! pinned from the table's side by
 //! `harness::props_norm::tests::every_live_semantics_row_names_a_pin`, so a row
 //! cannot start pointing at a test that does not exist without moving both
@@ -488,6 +489,67 @@ fn generator_dynout_renders_the_named_variables() {
     assert_eq!(plain.get("Generator.g1.DynOut"), "");
 }
 
+/// `generator.model` — `EchoParse`, **pin-only**, and pin-only in the strongest
+/// sense: both of the pair's census cells sit on `engines: "r4133"` cases
+/// (`modes:ncim/ncim_pv_pq.dss`, `modes:ncim/ncim_midi.dss`), where the capi
+/// channel never runs, so no `Capi(n)` witness could have held the port's value
+/// (`props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES`). RP3.3's row.
+///
+/// r4133's `TGeneratorObj.GetPropertyValue` has **no arm 6**
+/// (`Version8/Source/PCElements/generator.pas:3007-3038` — arms 3,4,5,7,8,9,13,
+/// 19,20,26,27,34,36,37,38,40..46, then `ELSE Result := Inherited`), so `model`
+/// falls through to `General/DSSObject.pas:112-115`
+/// `Result := FPropertyValue[Index]` — the deck's own typed token, stored
+/// unconditionally by the Edit loop at `generator.pas:625` *before* the CASE
+/// assigns the live field at `:643`. Meanwhile NCIM moves the LIVE `GenModel`
+/// 3 → 4 (`Common/Solution.pas:2120`, the Q-band promote; `:1935` is the
+/// zero-Q-limits demote) and never moves it back: `ReversePQ2PV`
+/// (`:1743-1768`), whose body carries the `// Takes it back to model 3` comment,
+/// **has no caller** anywhere in the trunk. So r4133 renders `'3'` for a
+/// generator whose live model is `4`; the port renders the live field
+/// (`obj/props/class_props/value.rs` → `elements/pc/generator/accessors.rs`) and
+/// says `4`. Probed on the live r4133 DLL (RP3.3 part A2): `GeneratorsI(9)` — the
+/// field itself, `DDLL/DGenerators.pas:125-134` — reads 4 on both decks after the
+/// solve while `? Generator.g1.model` renders `'3'`.
+///
+/// Decks: both of the pair's own cases, since `ncim_midi.dss` has no other unit
+/// pin at all. Each ends with its own `Solve`, so the compiled deck is already
+/// converted. The `maxkvar` reading names *which* conversion this is (the
+/// `:2120` Q-band promote, not the `:1935` zero-limits one), and the
+/// edit-then-re-solve round trip is the discriminator: the getter follows the
+/// deck's token back to `3` and the **engine** — not the parser — puts it back
+/// to `4`.
+#[test]
+fn generator_model_renders_the_live_pv2pq_conversion() {
+    for (deck, maxkvar) in [
+        ("modes/ncim/ncim_pv_pq.dss", "1500"),
+        ("modes/ncim/ncim_midi.dss", "400"),
+    ] {
+        let mut d = Deck::compile(deck);
+        assert_eq!(
+            d.get("Generator.g1.maxkvar"),
+            maxkvar,
+            "{deck}: a nonzero Q limit is what makes this the Solution.pas:2120 promote"
+        );
+        assert_eq!(
+            d.get("Generator.g1.model"),
+            "4",
+            "{deck}: the PV->PQ conversion left the live GenModel at 4"
+        );
+        // Not a constant: the deck's own token renders back…
+        d.cmd("edit Generator.g1 model=3");
+        assert_eq!(d.get("Generator.g1.model"), "3");
+        // …and re-solving converts it again, so the pin is on the engine's field
+        // and not on the parser's echo of the last thing typed.
+        d.cmd("solve");
+        assert_eq!(
+            d.get("Generator.g1.model"),
+            "4",
+            "{deck}: NCIM re-converts the restored model-3 generator"
+        );
+    }
+}
+
 /// `line.conductors` — `EchoDefault`, **pin-only** (`PROPS_015X`'s multi-line
 /// `Line` row drops `Conductors` from the 0.14.5 capture, so capi never compares
 /// it on any of its 75 162 in-scope cells) — **and, since the RP2.3 audit
@@ -901,8 +963,10 @@ fn windgen_dynout_renders_empty_when_unset() {
 // classes and applied the *cases* half to one row by hand
 // (`swtcontrol.action`). The settlement measured the whole population with the
 // claims census crossed against each case's `engines` flag —
-// `props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES`, 57 rows / 34 969 cells — and the
-// 31 rows that had only a `Capi(n)` witness get one here.
+// `props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES`, 57 rows / 34 969 cells at the
+// time — and the 31 rows that had only a `Capi(n)` witness get one here. (RP3.3
+// added the 58th row and its two cells; its pin sits above with the pairs it
+// belongs to.)
 //
 // Each pin below reads the port's live render on a deck the census named for
 // that pair (an r4133-only one wherever the pair has such a case), and adds the

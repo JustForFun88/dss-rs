@@ -133,12 +133,19 @@ const CLAIMED_ENUM_SYNONYM: usize = 9;
 /// what [`CLAIMED_TOTAL_LIVE`] reconciles against. RP2.1 measured 748, RP2.2
 /// 755, RP2.3 854 (+99, the nine off-bin rows).
 const CLAIMED_NORMALIZATION: usize = 854;
-/// **RP2.3's echo table** — example rows the exclusion claims, i.e. the ones
+/// **The echo table** — example rows the exclusion claims, i.e. the ones
 /// `PROPS_ECHO_R4133` covers that no earlier link took. 450 (the RP2.3 bucket)
 /// − 99 (claimed by the nine new normalization rows instead) − 181 (the five
 /// `SilentReadOnly` pairs re-routed to [`Owner::Rp38`]) − 1 (the audit
-/// settlement's carve-out, [`ECHO_CARVE_OUT_ROUTING`]) = **169**.
-const CLAIMED_ECHO: usize = 169;
+/// settlement's carve-out, [`ECHO_CARVE_OUT_ROUTING`]) = 169 for RP2.3's 81
+/// rows, **+1 for RP3.3's 82nd** (`generator.model`, whose single example row
+/// `'4'` vs `'3'` leaves [`Owner::Rp3`] for this link) = **170**.
+///
+/// RP3.3's `+1` is the first time this number moved for a reason other than a
+/// re-partition inside RP2.3's own bucket: a WP-RP3 sub-step root-caused a bin-7
+/// pair to the echo mechanism and landed the row, so the chain now claims a row
+/// that no link claimed before (see [`DECLARED_RP3`], which loses it).
+const CLAIMED_ECHO: usize = 170;
 /// …and in total, over all four links.
 const CLAIMED_TOTAL: usize =
     CLAIMED_SHAPE_ALLOWLIST + CLAIMED_NORMALIZATION + CLAIMED_ECHO + CLAIMED_DISPLAY_FLOOR;
@@ -234,10 +241,14 @@ const LIVE_ONLY_DISPLAY_PAIRS: &[&str] = &[
 /// (439 cases × 2 channels, 2026-08-23, post-RP2.4) — the live counterpart of
 /// [`CLAIMED_TOTAL`], reconciled by the two live-only lists above.
 ///
-/// **2 981 since the RP2.4 audit settlement**, from 3 036: the floor's mechanism
-/// clause un-claims the 55 [`RP39_ROUTING`] spellings, live exactly as offline
-/// (vendored `README.md` §"What the RP2.4 audit settlement moved").
-const CLAIMED_SPELLINGS_LIVE: usize = 2981;
+/// **2 982 since RP3.3** (2026-08-24), from the RP2.4 audit settlement's 2 981:
+/// that settlement took 3 036 down to 2 981 because the floor's mechanism clause
+/// un-claims the 55 [`RP39_ROUTING`] spellings, live exactly as offline
+/// (vendored `README.md` §"What the RP2.4 audit settlement moved"), and RP3.3's
+/// `generator.model` echo row adds the one spelling back — **re-measured**, not
+/// bumped: the census walk of 2026-08-24 (`DSS_PROPS_CENSUS=claims`) reports the
+/// pair's two live cells as `echo-row` and its claimed-spelling total as 2 982.
+const CLAIMED_SPELLINGS_LIVE: usize = 2982;
 
 /// **RP3.9 — the round-trip residue RP2.4's mechanism clause refuses**:
 /// `(pair, example rows, r4133 site)`.
@@ -491,7 +502,9 @@ const DECLARED_RP22: (usize, usize, usize) = (0, 0, 0);
 /// * **99** claimed by the nine off-bin `PROPS_NORM_R4133` rows RP2.3 landed
 ///   first, so that the census attributes them to their rule and each row can
 ///   prove itself live ([`CLAIMED_CASE_FOLD`], [`CLAIMED_ARRAY_FORM`]);
-/// * **169** claimed by `PROPS_ECHO_R4133`'s 81 cited rows ([`CLAIMED_ECHO`]);
+/// * **169** claimed by the 81 rows RP2.3 landed in `PROPS_ECHO_R4133` — 169 of
+///   [`CLAIMED_ECHO`]'s 170, the odd one being RP3.3's own row, which came out of
+///   [`Owner::Rp3`]'s bucket and not out of this one;
 /// * **181** re-routed to [`Owner::Rp38`] by the kill ruling ([`RP38_ROUTING`]);
 /// * **1** carved back out of its row and declared to RP2.4 by the audit
 ///   settlement ([`ECHO_CARVE_OUT_ROUTING`]).
@@ -518,9 +531,22 @@ const DECLARED_RP38: (usize, usize, usize) = (181, 5, 181);
 /// The variant stays so a regression that re-creates the bucket fails here by
 /// name.
 const DECLARED_RP24: (usize, usize, usize) = (0, 0, 0);
-/// **WP-RP3's four root-cause pairs** — 7 example rows over 4 pairs, all of them
-/// on pairs the RP4.1 unmask will compare. The per-pair split, each sub-step's
-/// verdict and what it landed are [`RP3_ROUTING`].
+/// **WP-RP3's root-cause residue** — **`(6, 3, 6)` since RP3.3
+/// (2026-08-24)**, from the `(7, 4, 7)` the work package inherited: 7 example
+/// rows over 4 pairs, all of them on pairs the RP4.1 unmask will compare. The
+/// per-pair split, each sub-step's verdict and what it landed are
+/// [`RP3_ROUTING`].
+///
+/// **RP3.3 is the one sub-step so far that shrinks it, and the reason is the
+/// outcome tag, not the progress.** Its exclusion is a `PROPS_ECHO_R4133` row
+/// (`generator.model`, `EchoParse`), which the tree holds *now* — so
+/// [`Link::Echo`] claims the pair's one example row and [`declare`] never sees
+/// it. The bucket loses `(1, 1, 1)` because something really claims those rows,
+/// which is exactly the condition the note below reserves the shrink for. The
+/// three columns are `(rows, pairs, rows on in-scope pairs)`, and `pairs` is the
+/// count of pairs with a row *left* — 3 — while [`RP3_ROUTING`] keeps all four
+/// entries so the table still covers every [`BIN7_ROOT_CAUSE`] pair; the routing
+/// guard compares against the entries that still declare rows.
 ///
 /// **Unchanged by RP3.1 and RP3.2 (both 2026-08-24), deliberately.** Those
 /// sub-steps root-caused `swtcontrol.delay` and `windgen.kvar`, reported both
@@ -543,7 +569,7 @@ const DECLARED_RP24: (usize, usize, usize) = (0, 0, 0);
 /// [`the_staged_r4133_property_entries_have_not_landed_yet`], which reds the
 /// moment a `property`-scoped `r4133` entry appears in the ledger and carries
 /// the instruction in its message.
-const DECLARED_RP3: (usize, usize, usize) = (7, 4, 7);
+const DECLARED_RP3: (usize, usize, usize) = (6, 3, 6);
 /// **RP3.9 — the round-trip residue the RP2.4 audit settlement opened**: the 55
 /// example rows over 27 pairs whose gap is inside the floor and whose r4133 side
 /// is no `%.Ng` render of our value ([`RP39_ROUTING`], which carries the per-pair
@@ -679,18 +705,31 @@ const BIN7_ROOT_CAUSE: &[&str] = &[
 /// silently changes size (or vanishes) reds here instead of being absorbed by
 /// the bucket total.
 ///
-/// **A settled sub-step does NOT empty its rows, and that is the point.** RP3.1
-/// and RP3.2 are root-caused, reported and pinned, yet their spellings stay
-/// declared to RP3: the artifact that will finally exclude them is a
-/// `ledger.json` `property` entry, and by the §1.1(e) staging rule that entry
-/// lands in RP4.1's unmask commit, not here. Writing "claimed" while the tree holds no exclusion
-/// would be exactly the silent-progress claim this accounting exists to prevent
-/// — so [`DECLARED_RP3`] is unchanged at `(7, 4, 7)` and the verdict column
-/// carries what was decided, for whom, and where it lands. **The row will not
-/// leave this table on its own when the entry lands**: no link of the chain
-/// reads the ledger ([`DECLARED_RP3`]'s note), so RP4.1 retires it here by hand
-/// and [`the_staged_r4133_property_entries_have_not_landed_yet`] is the tripwire
+/// **A settled sub-step does not empty its rows unless the tree really holds the
+/// exclusion — which depends on the outcome tag, not on the sub-step being
+/// done.** RP3.1 and RP3.2 are root-caused, reported and pinned, yet their
+/// spellings stay declared to RP3: the artifact that will finally exclude them
+/// is a `ledger.json` `property` entry, and by the §1.1(e) staging rule that
+/// entry lands in RP4.1's unmask commit, not here. Writing "claimed" while the
+/// tree holds no exclusion would be exactly the silent-progress claim this
+/// accounting exists to prevent — so their rows keep their counts and the
+/// verdict column carries what was decided, for whom, and where it lands.
+/// **Their rows will not leave this table on their own when the entries land**:
+/// no link of the chain reads the ledger ([`DECLARED_RP3`]'s note), so RP4.1
+/// retires them here by hand and
+/// [`the_staged_r4133_property_entries_have_not_landed_yet`] is the tripwire
 /// that says so.
+///
+/// **RP3.3 is the other case.** Its outcome is `ECHO`, i.e. a
+/// `PROPS_ECHO_R4133` row that ships in this commit, so [`Link::Echo`] claims
+/// `generator.model`'s one example row the moment the row exists and [`declare`]
+/// never routes it to [`Owner::Rp3`] again. Its counted columns are therefore
+/// **`0, 0`** — a measurement, not a courtesy — while the entry itself stays,
+/// because assertion #1 below requires this table to cover all four
+/// [`BIN7_ROOT_CAUSE`] pairs. A zero-row entry is held to a *stronger* standard
+/// than a declared one: the guard re-measures its pair from the corpus and
+/// insists both that the rows still exist and that the chain claims every one of
+/// them, so "0, 0" can never mean "the pair quietly vanished".
 ///
 /// **A verdict is typed by its outcome tag.** `OPEN — ` is a sub-step that has
 /// not run; every other verdict opens with one of [`RP3_SETTLED_SHAPES`]' tags,
@@ -708,11 +747,37 @@ const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
     (
         "generator.model",
         "RP3.3",
-        1,
-        1,
-        "OPEN — plan §RP3.3: `'4'` vs `'3'` on the two NCIM decks that hold a generator; probe \
-         r4133's LIVE model at render time (Solution.pas:1935/:2120 promote, :1760 demote) before \
-         calling it an echo",
+        0,
+        0,
+        "ECHO — RP3.3 (2026-08-24): r4133's `model` getter is NOT live — TGeneratorObj.\
+         GetPropertyValue (Version8/Source/PCElements/generator.pas:3007-3038) has no arm 6, so \
+         index 6 falls through to General/DSSObject.pas:112-115 `Result := FPropertyValue[Index]`, \
+         i.e. the deck's own typed token, stored unconditionally by the Edit loop at \
+         generator.pas:625 before the CASE assigns the live field at :643 (InitPropertyValues' \
+         default would be '1', :2559). Meanwhile NCIM moves the LIVE GenModel 3 -> 4 \
+         (Common/Solution.pas:1935 the zero-Q-limits demote, :2120 the Q-band promote) and never \
+         moves it back: the plan's :1760 restore, ReversePQ2PV (:1743-1768, declared :372), HAS NO \
+         CALLER anywhere in the trunk — VersionC/Common/Solution.cpp:827 is the call and it is \
+         commented out ('not needed for now (04/01/2024)') — so DoNCIMSolution (:1095-1161) ends at \
+         its Until with the generator still model 4, and the only live reversion is the in-loop \
+         :2229, which needs `not myPQOK` and does not fire on these decks. PROBED live on the r4133 \
+         DLL: after the solve GeneratorsI(9) — the field itself, DDLL/DGenerators.pas:125-134 — \
+         reads 4 on both decks while `? Generator.g1.model` renders '3'; GeneratorsI(10,4) moves \
+         the field alone and the render stays '3'; `Edit model=4` moves the store and the render \
+         follows; `Dump`/`Save Circuit` write model=3. The port renders the live field \
+         (obj/props/class_props/value.rs -> elements/pc/generator/accessors.rs) and its NCIM is \
+         structurally identical (solution/solution/ncim.rs, which likewise does not restore the \
+         model), so the two engines' live state agrees digit for digit — present kvar \
+         431.79425771046976 / 323.84569328285227 before the conversion, 0 after, 4 iterations, both \
+         decks. Hence NO engine change and NO ledger entry: the exclusion is the PROPS_ECHO_R4133 \
+         row generator.model (EchoParse, 2 cells), witnessed by \
+         generator_model_renders_the_live_pv2pq_conversion. Census, derived per case by \
+         `the_rp33_census_decomposition_is_read_off_the_corpus`: 2 cells, all 2 in scope, 1 + 1 \
+         over the 2 converting decks (modes:ncim/ncim_midi.dss, modes:ncim/ncim_pv_pq.dss), each \
+         declaring one model=3 generator over 1 step on engines=r4133; modes:ncim/ncim_pq.dss runs \
+         NCIM and declares no generator, so it produces no cell, and the corpus's 2 other NCIM \
+         decks are kind=large and outside the census population. No upstream report: the render is \
+         an echo of the deck's own token, not a wrong live value.",
     ),
     (
         "gictransformer.r2",
@@ -962,6 +1027,66 @@ const RP32_WINDGEN_SKIPPED_DECKS: &[(&str, usize, &str, &str, &str)] = &[
         "",
         "0.88",
         "1200.0",
+    ),
+];
+
+/// **RP3.3's census decomposition, as data instead of prose** — every corpus
+/// **case** in the census population that runs `Set algorithm=NCIM`, with the two
+/// facts its deck carries: `(case, Generators declared, the `model=` token typed
+/// on them)`.
+///
+/// Landed by RP3.3 (2026-08-24) on [`RP31_DELAY_CASES`]' and
+/// [`RP32_WINDGEN_CASES`]' precedent, and for the same reason: the sub-step
+/// concludes *exactly two* diverging cells, i.e. one echo row of `cells: 2` and
+/// an `ECHO_ROWS_ON_R4133_ONLY_CASES` exposure of `(2, 2)`, and that is a
+/// statement about cases. [`the_rp33_census_decomposition_is_read_off_the_corpus`]
+/// derives every one of those numbers.
+///
+/// **The mechanism token is deck-level, not element-level.** What makes a
+/// generator's live `GenModel` leave the deck's typed token is the NCIM PV→PQ
+/// conversion (`Version8/Source/Common/Solution.pas:2120`), so the sweep's filter
+/// is `Set algorithm=NCIM` ([`sets_ncim`]) and the element read runs only on the
+/// survivors. Two things follow that the test asserts rather than assumes: a
+/// deck that declares no generator produces no cell (`ncim_pq.dss`, the control),
+/// and a generator that does not type `model=3` is not convertible at all —
+/// `Create`'s default is model 1 (`generator.pas:924`, port
+/// `elements/pc/generator/mod.rs`), which never enters the PV path.
+const RP33_NCIM_CASES: &[(&str, usize, &str)] = &[
+    ("modes:ncim/ncim_midi.dss", 1, "3"),
+    ("modes:ncim/ncim_pq.dss", 0, ""),
+    ("modes:ncim/ncim_pv_pq.dss", 1, "3"),
+];
+
+/// The other half of [`RP33_NCIM_CASES`]' completeness claim: the corpus cases
+/// that run NCIM over `model=3` generators and are **outside the census
+/// population**, as `(case, the redirected deck that declares them, Generators
+/// declared there, the `model=` token)`.
+///
+/// Both are `kind: "large"`, and the census population is "every live case,
+/// **non-large**, non-pending/abort/defer" (`tests/corpus/props_r4133/triage.md`
+/// §Method). So the frozen `2` is exact **over the census population**, and these
+/// two add nothing to it *by construction of that population* — not because
+/// their generators stay model 3, which is unmeasured either way. Naming them is
+/// the honest form of the decomposition (the RP3.2 held-out precedent); the test
+/// asserts the `kind` from `population.lock.json` rather than taking it on trust.
+///
+/// Their generators live in **redirected** files, which is why the second column
+/// exists: a single-file [`element_tokens`] read on the master returns 0, so
+/// routing these two through the token reader alone would have made them look
+/// like generator-free decks. The test reads both — 0 on the master, the real
+/// count on the sibling.
+const RP33_NCIM_HELD_OUT: &[(&str, &str, usize, &str)] = &[
+    (
+        "solvable_now:Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss",
+        "electricdss-tst/Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Generators.DSS",
+        3,
+        "3",
+    ),
+    (
+        "solvable_now:Version8/Distrib/IEEETestCases/IEEE118Bus/master_file.dss",
+        "electricdss-tst/Version8/Distrib/IEEETestCases/IEEE118Bus/generators.dss",
+        53,
+        "3",
     ),
 ];
 
@@ -1540,7 +1665,8 @@ enum Link {
     /// **RP2.1's normalization** (`PROPS_NORM_R4133`) — the value-preserving
     /// re-spelling this sub-step ships.
     Normalization,
-    /// **RP2.3's echo table** (`PROPS_ECHO_R4133`) — the exclusion. 81 cited
+    /// **The echo table** (`PROPS_ECHO_R4133`, RP2.3's, +1 from RP3.3) — the
+    /// exclusion. 82 cited
     /// rows, consulted only after the normalization link has had its chance, so
     /// on a mixed pair a typed rule *claims* the foldable spellings first and
     /// this link is credited with what is left ([`MULTI_LINK_ROWS`]).
@@ -1987,6 +2113,50 @@ fn windgen_facts(deck: &str) -> (usize, String, String, String, String) {
     let (declared, [kw, pf, kva, kvar]) =
         element_tokens(deck, "windgen.", ["kw=", "pf=", "kva=", "kvar="]);
     (declared, kw, pf, kva, kvar)
+}
+
+/// Whether a deck selects the **NCIM** solver — `set algorithm=NCIM` on a live
+/// (non-comment) line, in any case.
+///
+/// This is RP3.3's mechanism filter: the only thing in the whole engine that
+/// moves a `Generator`'s live `GenModel` away from the token its deck typed is
+/// the NCIM PV→PQ conversion (`Version8/Source/Common/Solution.pas:1935`,
+/// `:2120`), and r4133's `model` getter renders that token forever
+/// (`PCElements/generator.pas:3007-3038` has no arm 6). Comment lines are skipped
+/// — both `ncim_midi.dss` and `ncim_pq.dss` describe the setting in their headers
+/// — and a line that mentions `algorithm` in a spelling [`named_token`] cannot
+/// parse is a hard error rather than a silent miss, because a completeness sweep
+/// that quietly skips a deck proves nothing.
+fn sets_ncim(deck: &str) -> bool {
+    let path = repo_root().join(CORPUS).join(deck);
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("read deck {}: {e}", path.display()));
+    let mut ncim = false;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('!') || line.starts_with("//") {
+            continue;
+        }
+        let lower = line.to_ascii_lowercase();
+        match named_token(&lower, "algorithm=") {
+            Some(value) => ncim |= value == "ncim",
+            None => assert!(
+                !lower.contains("algorithm"),
+                "{deck}: `{line}` names the solver algorithm in a spelling this reader cannot \
+                 parse — RP3.3's NCIM sweep would silently miss the deck"
+            ),
+        }
+    }
+    ncim
+}
+
+/// What one deck says about `Generator`: how many it declares, and the `model=`
+/// token typed inside their element scope ([`element_tokens`]), `""` for a deck
+/// that types none — then both engines answer `Create`'s default 1
+/// (`generator.pas:924`), which is not a PV bus and never converts.
+fn generator_model_facts(deck: &str) -> (usize, String) {
+    let (declared, [model]) = element_tokens(deck, "generator.", ["model="]);
+    (declared, model)
 }
 
 /// Which arm of the steady-state Q dispatch a deck's `WindGen` selects: its
@@ -2858,8 +3028,8 @@ fn every_example_row_is_claimed_or_declared_exactly_once() {
     assert_eq!(
         claimed(Link::Echo.tag()),
         CLAIMED_ECHO,
-        "PROPS_ECHO_R4133's 81 cited rows claim what the nine off-bin normalization rows leave, \
-         minus the five pairs the kill criterion re-routed to RP3.8"
+        "PROPS_ECHO_R4133's 82 cited rows claim what the nine off-bin normalization rows leave, \
+         minus the five pairs the kill criterion re-routed to RP3.8, plus RP3.3's generator.model"
     );
     assert_eq!(
         claimed(Link::DisplayFloor.tag()),
@@ -3363,10 +3533,16 @@ fn the_bin7_root_cause_pairs_are_routed_to_their_sub_steps() {
         BIN7_ROOT_CAUSE,
         "the routing covers exactly the plan's four root-cause pairs, once each"
     );
+    // The middle term is the pairs that still DECLARE rows, not the table's
+    // length: since RP3.3 an entry can carry `0, 0` because the tree really
+    // holds its exclusion (an `ECHO` outcome ships its row in the same commit),
+    // and `Ledger::owner`'s pair count — which this must equal — counts only
+    // pairs with a surviving row. The entry itself stays for assertion #1.
+    let declaring = || RP3_ROUTING.iter().filter(|(_, _, n, _, _)| *n > 0);
     assert_eq!(
         (
             RP3_ROUTING.iter().map(|(_, _, n, _, _)| n).sum::<usize>(),
-            RP3_ROUTING.len(),
+            declaring().count(),
             RP3_ROUTING.iter().map(|(_, _, _, n, _)| n).sum::<usize>(),
         ),
         DECLARED_RP3,
@@ -3378,9 +3554,26 @@ fn the_bin7_root_cause_pairs_are_routed_to_their_sub_steps() {
             .filter(|(_, _, _, _, v)| !v.starts_with("OPEN — "))
             .map(|(p, s, _, _, _)| (*p, *s))
             .collect::<Vec<_>>(),
-        [("swtcontrol.delay", "RP3.1"), ("windgen.kvar", "RP3.2")],
+        [
+            ("generator.model", "RP3.3"),
+            ("swtcontrol.delay", "RP3.1"),
+            ("windgen.kvar", "RP3.2")
+        ],
         "the sub-steps that have run, in RP3_ROUTING order"
     );
+    // …and a zero-row entry may only be one that is settled: an OPEN sub-step
+    // with no rows would be a pair that vanished, not a pair that was excluded.
+    for (pair, step, rows, in_scope, verdict) in RP3_ROUTING {
+        assert_eq!(
+            *rows == 0,
+            *in_scope == 0,
+            "{pair}: a pair cannot declare rows without declaring in-scope ones here, or vice versa"
+        );
+        assert!(
+            *rows > 0 || !verdict.starts_with("OPEN — "),
+            "{pair}: {step} has not run, so its rows must still be declared"
+        );
+    }
 
     for (pair, step, _, _, verdict) in RP3_ROUTING {
         let (class, prop) = pair.split_once('.').expect("class.prop");
@@ -3501,12 +3694,48 @@ fn the_bin7_root_cause_pairs_are_routed_to_their_sub_steps() {
     }
     assert_eq!(
         seen.into_iter().collect::<Vec<_>>(),
-        RP3_ROUTING
-            .iter()
+        declaring()
             .map(|(p, _, n, s, _)| (*p, (*n, *s)))
             .collect::<Vec<_>>(),
         "the routed pairs, row counts and in-scope splits must be exactly what the walk declares"
     );
+    // The positive half of a `0, 0` entry, without which the zero would be an
+    // untestable claim: the pair's rows must still BE in the corpus, and every
+    // one of them must be claimed by the chain — so a pair that lost its rows
+    // for any other reason (a dropped census row, a renamed pair) reds here
+    // instead of passing as "excluded".
+    for (pair, step, rows, _, verdict) in RP3_ROUTING {
+        if *rows > 0 {
+            continue;
+        }
+        assert!(
+            verdict.starts_with("ECHO — "),
+            "{pair}: only an ECHO outcome ships its exclusion in the sub-step's own commit, so \
+             only an ECHO verdict may declare zero rows — {step} says {verdict:?}"
+        );
+        let mut claimed = 0usize;
+        for row in corpus.rows.iter().filter(|r| r.pair == *pair) {
+            let link = first_match(chain_verdicts(&corpus, row)).unwrap_or_else(|| {
+                panic!(
+                    "{pair} '{}' vs '{}': {step} declares no rows, so the chain must claim every \
+                     example row of the pair — this one is claimed by nothing",
+                    row.rust, row.r4133
+                )
+            });
+            assert_eq!(
+                link,
+                Link::Echo,
+                "{pair}: {step}'s outcome is the echo table, so its rows must be claimed by that \
+                 link and not by an earlier one"
+            );
+            claimed += 1;
+        }
+        assert!(
+            claimed > 0,
+            "{pair}: {step} declares no rows AND the corpus holds none — the pair vanished from \
+             the evidence base instead of being excluded"
+        );
+    }
     let led = account(&corpus, PROPS_NORM_R4133);
     assert_eq!(
         led.owner(Owner::Rp3),
@@ -4113,6 +4342,253 @@ fn the_rp32_census_decomposition_is_read_off_the_corpus() {
     );
 }
 
+/// **RP3.3's census decomposition, derived instead of transcribed** — the same
+/// shape as [`the_rp31_census_decomposition_is_read_off_the_corpus`] and
+/// [`the_rp32_census_decomposition_is_read_off_the_corpus`], applied to
+/// `generator.model`.
+///
+/// The sub-step's whole artifact count rests on the number **2**: an echo row of
+/// `cells: 2` and an `ECHO_ROWS_ON_R4133_ONLY_CASES` exposure of `(2, 2)`. So the
+/// decomposition must close over every cell of the pair and every corpus deck
+/// that could add one:
+///
+/// * the **mechanism** is deck-level — only a deck that runs `Set algorithm=NCIM`
+///   can move a generator's live `GenModel` off its typed token — so
+///   [`sets_ncim`] is swept corpus-wide and [`RP33_NCIM_CASES`] +
+///   [`RP33_NCIM_HELD_OUT`] must together be *every* such deck;
+/// * the **element facts** come from the decks ([`generator_model_facts`]): how
+///   many `Generator`s each declares and the `model=` they type, so
+///   "one convertible generator each" is read rather than asserted, and
+///   `ncim_pq.dss` — NCIM with no generator at all — is the control that shows
+///   the mechanism alone produces no cell;
+/// * the **echo claim itself is derived per case**: r4133's side of the frozen
+///   census row must be the deck's own typed token, which IS what
+///   `EchoParse` means for this pair (`generator.pas:625` writes the store,
+///   `:3007-3038` has no arm 6 to overwrite it), while our side is the converted
+///   live model `4`;
+/// * `population.lock.json` gives each case's `steps=`/`engines=`, so
+///   `cells = convertible generators × steps` and "in scope" is the lock's
+///   answer — and here every in-scope case is `engines=r4133` exactly, which is
+///   why the pair's witness must be a pin and can never be a capi channel;
+/// * the **held-out decks are named, not swept away**: both other NCIM decks run
+///   `model=3` generators and are absent from the frozen census because they are
+///   `kind: "large"`, i.e. outside the census population — asserted from the
+///   lock, with their generators counted in the redirected file that declares
+///   them;
+/// * the **frozen census** (`bins.tsv`'s 2/2 and `examples_full.txt`'s single
+///   `'4'` vs `'3'` row) is what the products must add up to.
+///
+/// Then the consumers are tied to the result: the shipped echo row's `cells`
+/// column, and the routing verdict, which must carry the derived figures
+/// verbatim.
+#[test]
+fn the_rp33_census_decomposition_is_read_off_the_corpus() {
+    const PAIR: &str = "generator.model";
+    const STEP: &str = "RP3.3";
+
+    // (1) Completeness: the two tables ARE every corpus deck that runs NCIM.
+    let root = repo_root().join(CORPUS);
+    let mut decks = Vec::new();
+    collect_dss(&root, &root, &mut decks);
+    assert!(
+        decks.len() > 1000,
+        "only {} .dss files under {CORPUS} — the vendored corpus is missing",
+        decks.len()
+    );
+    let measured: BTreeSet<String> = decks.into_iter().filter(|d| sets_ncim(d)).collect();
+    let cited: BTreeSet<String> = RP33_NCIM_CASES
+        .iter()
+        .map(|(case, ..)| case_deck(case))
+        .chain(RP33_NCIM_HELD_OUT.iter().map(|(case, ..)| case_deck(case)))
+        .collect();
+    assert_eq!(
+        measured, cited,
+        "every corpus deck that runs `Set algorithm=NCIM` must sit in RP3.3's decomposition — a \
+         new one is a deck whose generators can convert, i.e. a cell this pair does not account \
+         for"
+    );
+
+    // …and the element facts each census deck carries, read off the deck.
+    let facts: Vec<(&str, usize, String)> = RP33_NCIM_CASES
+        .iter()
+        .map(|(case, declared, model)| {
+            let (got_declared, got_model) = generator_model_facts(&case_deck(case));
+            assert_eq!(
+                (got_declared, got_model.as_str()),
+                (*declared, *model),
+                "{case}: the Generator count and `model=` token must be the deck's"
+            );
+            (*case, got_declared, got_model)
+        })
+        .collect();
+    let no_generator: Vec<&str> = facts
+        .iter()
+        .filter(|(_, declared, _)| *declared == 0)
+        .map(|(case, ..)| *case)
+        .collect();
+    assert_eq!(
+        no_generator,
+        ["modes:ncim/ncim_pq.dss"],
+        "the control: an NCIM deck with no generator declared, hence no cell — the mechanism \
+         alone does not make one"
+    );
+
+    // …and the held-out decks really are held out, by name and by kind, with the
+    // convertible generators they would contribute if they were ever promoted.
+    let lock_path = repo_root().join(POPULATION_LOCK);
+    let lock: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&lock_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", lock_path.display())),
+    )
+    .expect("population.lock.json is JSON");
+    for (case, sibling, declared, model) in RP33_NCIM_HELD_OUT {
+        let rigor = case_rigor(&lock, case);
+        assert_eq!(
+            rigor_field(&rigor, "kind"),
+            "large",
+            "{case}: the census population is every live NON-LARGE case (triage.md §Method), so \
+             a change of kind here puts its generators inside the frozen 2 and re-opens this \
+             decomposition"
+        );
+        assert_eq!(
+            generator_model_facts(&case_deck(case)).0,
+            0,
+            "{case}: its generators are declared in a redirected file, which is why the sibling \
+             column exists — a master that declares them directly would make this reading wrong"
+        );
+        assert_eq!(
+            generator_model_facts(sibling),
+            (*declared, (*model).to_string()),
+            "{sibling}: the redirected declarations behind {case}"
+        );
+        assert_eq!(
+            *model, "3",
+            "{case}: the hold-out only matters because these generators ARE convertible"
+        );
+    }
+
+    // (2) Per case: cells = convertible generators × steps, in scope iff the case
+    //     gates r4133 — and a cell exists only where the deck types `model=3`.
+    let corpus = Corpus::load();
+    let rows: Vec<&Example> = corpus.rows.iter().filter(|r| r.pair == PAIR).collect();
+    let [row] = rows[..] else {
+        panic!("the frozen census spells the pair exactly one way, got {rows:?}")
+    };
+    assert_eq!(
+        (row.rust.as_str(), row.r4133.as_str()),
+        ("4", "3"),
+        "the divergence IS the converted live model against the deck's typed token"
+    );
+    let (mut cells, mut in_scope_cells) = (0usize, 0usize);
+    let mut in_scope_cases: Vec<(&str, usize)> = Vec::new();
+    for (case, declared, model) in &facts {
+        if model.is_empty() {
+            continue;
+        }
+        assert_eq!(
+            model,
+            row.r4133.as_str(),
+            "{case}: r4133 renders the store, i.e. this deck's own `model=` token — that identity \
+             is the EchoParse claim, so a deck typing anything else is a different mechanism"
+        );
+        assert_eq!(
+            model, "3",
+            "{case}: only a model-3 (PV) generator enters the PV->PQ conversion"
+        );
+        let rigor = case_rigor(&lock, case);
+        let steps: usize = rigor_field(&rigor, "steps")
+            .parse()
+            .unwrap_or_else(|e| panic!("{case}: steps= is not a number: {e}"));
+        let n = declared * steps;
+        cells += n;
+        assert_eq!(
+            rigor_field(&rigor, "engines"),
+            "r4133",
+            "{case}: an r4133-ONLY case is what makes the pair's witness a pin — the capi channel \
+             never value-compares these cells (props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES)"
+        );
+        in_scope_cells += n;
+        in_scope_cases.push((case, n));
+    }
+    in_scope_cases.sort_unstable();
+
+    // (3) …and the products are the frozen census's own numbers.
+    let ev = corpus
+        .evidence(row)
+        .unwrap_or_else(|| panic!("{PAIR}: no frozen evidence record"));
+    assert_eq!(
+        cells, ev.cells,
+        "derived cells must be bins.tsv's cell count for {PAIR}"
+    );
+    assert_eq!(
+        Some(in_scope_cells),
+        ev.cells_in_scope,
+        "derived in-scope cells must be bins.tsv's cells_in_scope for {PAIR}"
+    );
+    assert_eq!(
+        cells, row.cells,
+        "…and the frozen example row's count must be the sum over the cases that derive it"
+    );
+
+    // (4) The consumers: the shipped echo row and its exposure, not a copy of
+    //     them — this pair's exclusion is that row, so the derived 2 has to be
+    //     the number the row cites.
+    let (class, prop) = PAIR.split_once('.').expect("class.prop");
+    let echo = props_norm::PROPS_ECHO_R4133
+        .iter()
+        .find(|r| r.class == class && r.prop == prop)
+        .unwrap_or_else(|| panic!("{PAIR}: {STEP}'s ECHO outcome must have landed its row"));
+    assert_eq!(
+        echo.cells as usize, cells,
+        "the echo row cites the derived cell count"
+    );
+    assert_eq!(
+        echo.witness.pin(),
+        Some("generator_model_renders_the_live_pv2pq_conversion"),
+        "every cell is on an r4133-only case, so the row's witness can only be a pin"
+    );
+
+    // (5) The verdict carries the derived figures, so its prose cannot drift
+    //     away from the corpus it describes.
+    let verdict = RP3_ROUTING
+        .iter()
+        .find(|(p, ..)| *p == PAIR)
+        .map(|(_, _, _, _, v)| *v)
+        .unwrap_or_else(|| panic!("{PAIR} has no routing row"));
+    let split = in_scope_cases
+        .iter()
+        .map(|(_, c)| c.to_string())
+        .collect::<Vec<_>>()
+        .join(" + ");
+    for phrase in [
+        format!("{cells} cells, all {in_scope_cells} in scope"),
+        format!("{split} over the {} converting decks", in_scope_cases.len()),
+        in_scope_cases
+            .iter()
+            .map(|(c, _)| (*c).to_string())
+            .collect::<Vec<_>>()
+            .join(", "),
+        format!("{} runs NCIM and declares no generator", no_generator[0]),
+        format!(
+            "the corpus's {} other NCIM decks are kind=large",
+            RP33_NCIM_HELD_OUT.len()
+        ),
+    ] {
+        assert!(
+            verdict.contains(&phrase),
+            "the RP3.3 verdict must carry the derived census — {phrase:?} is missing from \
+             {verdict:?}"
+        );
+    }
+    assert!(
+        names_identifier(
+            verdict,
+            "the_rp33_census_decomposition_is_read_off_the_corpus"
+        ),
+        "the verdict must name the test that derives its numbers, so a rename cannot orphan it"
+    );
+}
+
 /// **The offline evidence base is one spelling behind the live population, and
 /// that term is asserted rather than assumed** (RP2.1 audit round).
 ///
@@ -4164,8 +4640,10 @@ fn the_live_only_spellings_are_claimed_and_reconcile_the_two_accountings() {
 /// **The whole chain's two accountings reconcile, RP2.4** — the successor
 /// statement of the test above, now that all four links carry a value.
 ///
-/// The claims census measured **3 036** claimed spellings on the r4133 channel
-/// against this file's [`CLAIMED_TOTAL`] of 3 029, and the seven-spelling gap is
+/// The claims census measured **2 982** claimed spellings on the r4133 channel
+/// against this file's [`CLAIMED_TOTAL`] of 2 975 (RP3.3's re-run, 2026-08-24;
+/// the RP2.4 audit settlement's figures were 2 981 / 2 974 and RP2.4's own
+/// 3 036 / 3 029), and the seven-spelling gap is
 /// asserted, not narrated: one [`LIVE_ONLY_SPELLINGS`] entry (the normalization
 /// link's) plus six [`LIVE_ONLY_DISPLAY_SPELLINGS`] (the floor's). Each of the
 /// six is checked to be
@@ -4486,7 +4964,7 @@ fn the_supplement_covers_every_recorded_wp_rp1_pair() {
     }
 }
 
-/// **The echo table claims only its own 81 pairs, and the display floor claims
+/// **The echo table claims only its own 82 pairs, and the display floor claims
 /// only what its derivation covers** — successor (RP2.4) of the RP2.3 test that
 /// asserted the floor was still `None`.
 ///
@@ -4509,8 +4987,9 @@ fn the_supplement_covers_every_recorded_wp_rp1_pair() {
 fn the_echo_table_claims_only_its_cited_pairs_and_the_floor_only_its_derivation() {
     assert_eq!(
         PROPS_ECHO_R4133.len(),
-        81,
-        "RP2.3's echo table: the RP2.3 bucket's 86 pairs minus the 5 the kill criterion re-routed"
+        82,
+        "the echo table: RP2.3's 81 (its bucket's 86 pairs minus the 5 the kill criterion \
+         re-routed) plus RP3.3's generator.model, the first row a WP-RP3 sub-step contributed"
     );
     let floor = props_norm::display_floor().expect("RP2.4 derived the r4133 props display floor");
     assert_eq!(
@@ -4581,9 +5060,13 @@ fn the_echo_table_claims_only_its_cited_pairs_and_the_floor_only_its_derivation(
             "{pair}: an echo-LOOKING spelling is not an echo row"
         );
     }
-    // …and neither is a pair whose only divergence is a genuine value jump.
+    // …and neither is `gictransformer.r2`, the one bin-7 root-cause pair still
+    // open. `generator.model` sat next to it here until RP3.3 root-caused it TO
+    // this table — r4133's `model` getter has no arm 6 and answers the deck's
+    // own token — so the assertion flips with the finding instead of being
+    // quietly deleted.
     assert!(!props_norm::has_echo_row("gictransformer", "r2"));
-    assert!(!props_norm::has_echo_row("generator", "model"));
+    assert!(props_norm::has_echo_row("generator", "model"));
 }
 
 /// **The carve-outs and their routing describe the same cells** — the

@@ -299,15 +299,20 @@ cells / 46 538 in scope** over 1 957 spellings and 69 pairs, `UNCLAIMED` down
 51 105 → **1 724** (47 427 → **889**, 104 → 59 pairs) with **every one of the
 889 attributed to an RP3.x sub-step** (all of them open when RP2.4 measured it;
 RP3.1 and RP3.2 have since settled 24 + 4 = **28** of the 889, and they stay
-UNCLAIMED until their six drafted entries land at RP4.1 — §1.1(e)), capi still
+UNCLAIMED until their six drafted entries land at RP4.1 — §1.1(e), whereas
+**RP3.3's 2 left the bucket at once**, its exclusion being an echo row the tree
+holds now: the 2026-08-24 re-run measures `UNCLAIMED` **1 722 / 887 in scope /
+58 pairs** against `echo-row` **488 019 / 468 046 in scope, 170 spellings, 82
+pairs**), capi still
 **0** on every r4133
 disposition (the post-settlement run; before it, 49 451 / 2 012 / 79 and
 UNCLAIMED 1 654 / 425 / 37 — the delta is exactly RP3.9's 70 cells).
 `DECLARED_RP24` `(2101, 71, 2021)` → **`(0, 0, 0)`** — the sub-step's own
 acceptance — and RP2.3's `reactor.kvar` carve-out hand-off is discharged by the
 floor claiming it.
-**WP-RP3 is OPEN; RP3.1 (`swtcontrol.delay`) and RP3.2 (`windgen.kvar`) are
-COMPLETE** (both 2026-08-24, one commit each, **zero product-crate bytes and zero
+**WP-RP3 is OPEN; RP3.1 (`swtcontrol.delay`), RP3.2 (`windgen.kvar`) and RP3.3
+(`generator.model`) are
+COMPLETE** (all 2026-08-24, one commit each, **zero product-crate bytes and zero
 `ledger.json` bytes** — tests and docs only). r4133 never wires `SwtControl`
 property 5: its `Edit` `CASE`
 (`Version8/Source/Controls/SwtControl.pas:195-218`, the plan's `:194-217` off by
@@ -348,7 +353,26 @@ same-day settlement hardened both census readers (quoted declarations and
 the decks instead of asserting it, and gave the one reproduced upstream bug the
 sub-step uncovered an owner — **§RP3.10**, which needs the user's go-ahead and
 blocks §RP5.2, not RP4.1.
-**Next: RP3.3 (`generator.model`)** — RP3.3/RP3.4
+**RP3.3 is the first WP-RP3 sub-step to close as an ECHO**, and the first to
+disprove its own plan text: the plan's "later takes it back to 3"
+(`Version8/Source/Common/Solution.pas:1760`) is **dead code** —
+`ReversePQ2PV` has no caller anywhere in the trunk (the one call,
+`VersionC/Common/Solution.cpp:827`, is commented out), so r4133 leaves a
+Q-clamped generator at live model **4** exactly as the port does. What diverges
+is only the render: `TGeneratorObj.GetPropertyValue`
+(`PCElements/generator.pas:3007-3038`) has **no arm 6**, so `model` falls to
+`DSSObject.pas:112-115` and answers the deck's own typed `'3'` forever. Probed
+live on the r4133 DLL both ways: `GeneratorsI(10, 4)` moves the field alone and
+the render stays `'3'`; `Edit model=4` moves the store and the render follows.
+So no engine change and no ledger entry — the exclusion is the **82nd
+`PROPS_ECHO_R4133` row** (`EchoParse`, 2 cells, witness `Pin` because both cells
+are on `engines: "r4133"` cases), held by
+`generator_model_renders_the_live_pv2pq_conversion` on **both** NCIM decks. It
+is also the first sub-step to move `DECLARED_RP3` — **`(7, 4, 7)` → `(6, 3, 6)`**
+— because an ECHO outcome ships its exclusion in the sub-step's own commit,
+which is exactly the condition the no-silent-progress rule reserves the shrink
+for.
+**Next: RP3.4 (`gictransformer.r2`)** — RP3.4
 plus the three RP3.5+ sub-steps, RP3.8 and RP3.9 are what RP4.1 waits on.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
@@ -4325,8 +4349,9 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     its rows — the exclusion lands at RP4.1 — so `DECLARED_RP3` stays
     **`(7, 4, 7)`** and the `RP3_ROUTING` row keeps its `3, 3` columns, its
     verdict flipped `OPEN` → **`LEDGER — RP3.2 (…)`**. The settled set pinned in
-    `the_bin7_root_cause_pairs_are_routed_to_their_sub_steps` is now
-    `[("swtcontrol.delay", "RP3.1"), ("windgen.kvar", "RP3.2")]`; the table's
+    `the_bin7_root_cause_pairs_are_routed_to_their_sub_steps` was then
+    `[("swtcontrol.delay", "RP3.1"), ("windgen.kvar", "RP3.2")]` (RP3.3 put
+    `("generator.model", "RP3.3")` at its head the same day); the table's
     state is `generator.model` 1/1 (RP3.3, open), `gictransformer.r2` 1/1 (RP3.4,
     open), `swtcontrol.delay` 2/2 (RP3.1, settled — LEDGER),
     `windgen.kvar` **3/3 (RP3.2, settled — LEDGER)**. RP3.2 is the first
@@ -4451,6 +4476,158 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
       policy item living in prose. It is now plan **§RP3.10**, with an explicit
       precondition (the user's go-ahead) and an explicit place in the ordering
       (blocks §RP5.2, not RP4.1). See the flagged bullet above.
+
+- **RP3.3** (2026-08-24) — `generator.model`: **a getter with no arm, echoing the
+  deck's own token past a live conversion.** **Zero product-crate bytes** (both
+  engines' live state is identical), **zero `ledger.json` bytes**, zero golden /
+  manifest / `population.lock` / frozen-extract bytes, and no r4133 mask moved —
+  four test files (one of them a single doc-comment count) plus docs. The plan's
+  three outcomes resolved to **ECHO** —
+  the first sub-step to take that tag, RP3.1 and RP3.2 having both been
+  `LEDGER`; the kill criterion did **not** fire
+  (a live-field DLL getter separates the model state from the rendered string,
+  and the census's factual basis re-verified exactly: 2 cells, exactly
+  `modes:ncim/ncim_pv_pq.dss` + `modes:ncim/ncim_midi.dss`).
+  - **The plan's premise was wrong, and disproving it was the sub-step.** Plan
+    §RP3.3 (and the `RP3_ROUTING` `OPEN` verdict, and the sub-step's own state
+    file) said r4133 "later **takes it back to 3**"
+    (`Version8/Source/Common/Solution.pas:1760`). The *line* exists —
+    `ReversePQ2PV` (`:1743-1768`, declared `:372`) carries the comment
+    `// Takes it back to model 3` — but the procedure **has no caller anywhere in
+    the trunk**. Exhaustive grep over the vendored r4133 tree returns the
+    declaration, the definition, and `VersionC/Common/Solution.cpp:1360` plus
+    `VersionC/Common/Solution.cpp:827`, which is the call **commented out**
+    (`// ReversePQ2PV(ActorID); - not needed for now (04/01/2024)`).
+    `DoNCIMSolution` (`:1095-1161`) ends at its `Until` with nothing after it;
+    the sibling `DistGenClusters` (`:1687-1723`) is dead the same way. So a
+    Q-clamped generator's live `GenModel` stays **4** after a converged NCIM
+    solve, and the only live reversion is the in-loop `:2229`, which needs
+    `not myPQOK` (`VNode > myVMax`) and cannot fire on decks clamped *upward*.
+  - **The render, and why it is `EchoParse`.** `TGeneratorObj.GetPropertyValue`
+    (`Version8/Source/PCElements/generator.pas:3007-3038`) has arms
+    3,4,5,7,8,9,13,19,20,26,27,34,36,37,38,40..46 and **no arm 6**, so index 6
+    falls to `ELSE Result := Inherited` (`:3035-3036`) →
+    `General/DSSObject.pas:112-115` `Result := FPropertyValue[Index]`. The only
+    writers of that slot are `InitPropertyValues`' `'1'` (`:2559`) and the `Edit`
+    loop's unconditional store write (`:625`) — which runs *before* the CASE
+    assigns the live field at `:643`. Both decks type `model=3` explicitly, so
+    the store holds the deck's own token, not the class default: `EchoParse`, the
+    `relay.reset` shape, not `EchoDefault`. The census read path is exactly that
+    getter (`crates/dss-epri/src/capture.rs` `? <element>.<prop>` →
+    `Executive/ExecHelper.pas:1755` `ActiveDSSObject.GetPropertyValue`).
+  - **The probe — live r4133 DLL through `epri-worker`** (banner
+    `Version 11.0.0.1`, `oracle.rev = r4133`), reading a channel independent of
+    the property string: `GeneratorsI(9, 0)` is
+    `Result := TGeneratorObj(Active).GenModel` (`DDLL/DGenerators.pas:125-134`),
+    the field itself. `errno = 0` on every call.
+    - decks as shipped: live `GenModel` **4**, render **`'3'`**, `kvar` 0.0,
+      converged in 4 iterations, on both;
+    - the same decks minus the trailing `Solve`: live 3 → **4** across the solve
+      while the render is frozen at `'3'` the whole time (pre-solve present kvar
+      `431.79425771046976` / `323.84569328285227`);
+    - a **second** `Solve`: still 4 — the behavioural confirmation that
+      `ReversePQ2PV` is dead;
+    - **the decisive pair, neither of which runs the solver.**
+      `GeneratorsI(10, 4)` writes the live field and nothing else
+      (`DGenerators.pas:135-147` never touches `PropertyValue`): live → 4, render
+      **stays `'3'`** ⇒ the getter does not read `GenModel`. `Edit Generator.g1
+      model=4` writes the store (`generator.pas:625`): render **becomes `'4'`**
+      ⇒ the getter reads `FPropertyValue[6]`. `Dump` writes `~ model=3` and
+      `Save Circuit` writes `model=3` after the converged solve — the same store,
+      so r4133's own round trip re-creates a model-3 generator.
+    - control: `ncim_pq.dss` has 0 generators live, as its deck says.
+  - **FIX and LEDGER were refuted by measurement, not by argument.** The port
+    leg (temporary integration test, public API only, removed afterwards)
+    reproduces r4133 digit for digit: render 3 → 4 across the solve, present kvar
+    `431.79425771046976` / `323.84569328285227` before and `0` after, 4
+    iterations, on both decks. So there is no behavioural divergence to fix; and
+    the `GeneratorsI(10, 4)` probe rules out "live but wrong", which is the only
+    shape a ledger entry would have fitted. The port renders the live field
+    (`obj/props/class_props/value.rs` → `elements/pc/generator/accessors.rs`) and
+    its NCIM (`solution/solution/ncim.rs`) ports r4133's *executed* code
+    loop-for-loop, including not restoring the model — which is now known to be
+    correct rather than a gap.
+  - **Landed: one echo row, one pin, one derivation.** The row is
+    `echo("generator", "model", EchoParse, 2, …, Pin(…))`, the **82nd** in
+    `PROPS_ECHO_R4133` and the first contributed by a WP-RP3 sub-step rather than
+    by RP2.3's declared bucket. Its witness can only be a pin: both cells sit on
+    `engines: "r4133"` cases, so the capi channel never value-compares them (a
+    `Capi(n)` witness would be the witness-that-cannot-exist the RP2.3 settlement
+    made a test) — and `ECHO_ROWS_ON_R4133_ONLY_CASES` gains
+    `("generator", "model", 2, 2)`, its most extreme entry, where *every* cell of
+    the pair is capi-blind. The pin
+    `generator_model_renders_the_live_pv2pq_conversion` covers **both** decks
+    (`ncim_midi.dss` had no unit pin at all): it reads `maxkvar` first, which
+    names *which* conversion this is (the `:2120` Q-band promote, not the
+    `:1935` zero-limits one), asserts the render `4`, types the deck's own token
+    back (`edit … model=3` → `3`) and then **re-solves** — `4` again, so the pin
+    is on the engine's field and not on the parser's echo.
+  - **The census derivation.** `the_rp33_census_decomposition_is_read_off_the_corpus`
+    (RP3.1/RP3.2's precedent) derives the `2` instead of transcribing it: the new
+    reader `sets_ncim` sweeps all 1 000+ corpus decks for a live `set
+    algorithm=NCIM` line — a line mentioning `algorithm` in an unparsable
+    spelling is a hard error, not a silent miss — and finds exactly **five**;
+    `generator_model_facts` then reads each survivor's `Generator` count and
+    `model=` token. Products: `cells = generators × steps` = 1 + 1 = **2**, both
+    `engines=r4133` ⇒ 2 in scope, reconciled against `bins.tsv`'s 2/2 and the
+    single frozen example row `'4'` vs `'3'`. Two things are *derived* rather
+    than asserted: `ncim_pq.dss` runs NCIM and declares no generator, hence no
+    cell (the control — the mechanism alone makes nothing); and per case,
+    r4133's frozen side must equal the deck's own typed token, which **is** the
+    `EchoParse` claim. **Held out, named:** the corpus's two other NCIM decks —
+    `IEEETestCases/IEEE118Bus/master_file.dss` (53 `model=3` generators) and
+    `Examples/NCIM/Xmission_System_Kundur2Area/Master.dss` (3) — are
+    `kind: "large"` and therefore outside the census population ("every live
+    case, **non-large**, non-pending/abort/defer",
+    `tests/corpus/props_r4133/triage.md` §Method), asserted from
+    `population.lock.json`. Their generators live in *redirected* files, so the
+    test reads 0 on each master and the real count on the sibling — the reason
+    the table carries a sibling column at all.
+  - **The accounting move: RP3.3 is the first sub-step that shrinks the
+    bucket, and the tag is why.** An ECHO outcome ships its exclusion in the
+    sub-step's own commit, so `Link::Echo` claims `generator.model`'s example row
+    immediately and `declare` never routes it to `Owner::Rp3` again:
+    `DECLARED_RP3` **`(7, 4, 7)` → `(6, 3, 6)`** and the `RP3_ROUTING` row's
+    counted columns go **`1, 1` → `0, 0`** while the entry itself stays (the
+    table must cover all four `BIN7_ROOT_CAUSE` pairs). Everything else moves
+    with it: `PROPS_ECHO_R4133` 81 → **82**, `ECHO_PARSE_ROWS` 7 → **8**,
+    `R4133_ONLY_ROWS`/`R4133_ONLY_CELLS` 57 / 34 969 → **58 / 34 971**,
+    `CLAIMED_ECHO` 169 → **170** (`CLAIMED_TOTAL` 2 974 → **2 975**, derived) and
+    `CLAIMED_SPELLINGS_LIVE` 2 981 → **2 982** — **re-measured**, not bumped: the
+    full claims census (`DSS_PROPS_CENSUS=claims`, 439 cases × 2 channels, 65 s)
+    reports `echo-row` at **488 019 cells / 468 046 in scope, 170 spellings, 82
+    pairs** and `UNCLAIMED` down to **1 722 / 887 / 58 pairs**, and the r4133
+    channel's claimed spellings sum to exactly 2 982. `LEDGER_ENTRY_PINS` stays
+    at **6 rows** — an ECHO sub-step owns none, which is what the guard's
+    per-tag branch enforces.
+  - **The guard needed two deliberate extensions, both hardening.** A `0, 0`
+    entry breaks two assumptions the routing test made when every settled outcome
+    was a LEDGER. (1) Its middle term compared `RP3_ROUTING.len()` against
+    `Ledger::owner`'s *pair* count; the table keeps four entries while the ledger
+    now knows three, so the term is the entries that still declare rows. (2) The
+    live re-measurement (`seen`) no longer contains the pair at all — which on
+    its own would make "0, 0" untestable — so a zero-row entry now carries a
+    **positive** obligation: its rows must still exist in the corpus, and
+    **every** one must be claimed by `Link::Echo` specifically, so a pair that
+    vanished for any other reason reds here. A zero-row entry must also be tagged
+    `ECHO`; an `OPEN` sub-step may never declare zero rows.
+  - **Test count 8 394 → 8 398** (4 197 → **4 199** per lane, **+2**):
+    `props_r4133_pins` 37 → **38** (the pin), `props_r4133_replay` 124 → **125**
+    (the census derivation), no test deleted, `#[ignore]`d or loosened. Every new
+    assertion was mutation-probed and red as intended: the pin's expected `4`
+    flipped to `3`; the deck-fact table's generator count perturbed 1 → 2 and the
+    held-out sibling's 53 → 52; the verdict's derived `2 cells, all 2 in scope`
+    mutated to `3`; the echo row renamed away (the row-set lock, the witness and
+    pin guards, the claim accounting and the routing guard's ECHO obligation all
+    red at once); and the `RP3_ROUTING` counts restored to `1, 1` (the bucket
+    lock red, `(7, 4, 7)` against `(6, 3, 6)`). No upstream report was filed and none was owed:
+    the divergence is r4133 rendering its own parse store, i.e. the same class as
+    the 81 rows RP2.3 landed without reports.
+  - **Corrections this sub-step owes elsewhere.** The plan's §RP3.3 text, the
+    `RP3_ROUTING` `OPEN` verdict and this record's own inherited framing all said
+    `Solution.pas:1760` "takes it back to 3". It is dead code; the live reversion
+    is `:2229`. The plan now carries the as-executed note that says so, and the
+    settled verdict states it in the tree.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 
