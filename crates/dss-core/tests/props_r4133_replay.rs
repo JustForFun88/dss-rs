@@ -711,7 +711,7 @@ const BIN7_ROOT_CAUSE: &[&str] = &[
 ///
 /// **A settled sub-step does not empty its rows unless the tree really holds the
 /// exclusion — which depends on the outcome tag, not on the sub-step being
-/// done.** RP3.1 and RP3.2 are root-caused, reported and pinned, yet their
+/// done.** RP3.1, RP3.2 and RP3.4 are root-caused, reported and pinned, yet their
 /// spellings stay declared to RP3: the artifact that will finally exclude them
 /// is a `ledger.json` `property` entry, and by the §1.1(e) staging rule that
 /// entry lands in RP4.1's unmask commit, not here. Writing "claimed" while the
@@ -739,7 +739,7 @@ const BIN7_ROOT_CAUSE: &[&str] = &[
 /// not run; every other verdict opens with one of [`RP3_SETTLED_SHAPES`]' tags,
 /// which are plan §WP-RP3's three sanctioned outcomes — a drafted ledger entry
 /// (`LEDGER`), an RP2.3 echo row (`ECHO`), a port fix in both lanes (`FIX`).
-/// RP3.1 and RP3.2 both exercised the first, so
+/// RP3.1, RP3.2 and RP3.4 exercised the first, RP3.3 the second, so
 /// [`the_bin7_root_cause_pairs_are_routed_to_their_sub_steps`]
 /// checks each tag's own obligations rather than assuming RP3.1's shape is every
 /// settled shape (RP3.1 audit settlement, 2026-08-24): all three must cite the
@@ -2110,8 +2110,11 @@ const CORPUS: &str = "tests/corpus";
 /// The anti-shrink lock, whose per-case rigor strings carry `steps=`/`engines=`.
 const POPULATION_LOCK: &str = "tests/corpus/manifests/population.lock.json";
 /// The gating divergence ledger — read by
-/// [`the_staged_r4133_property_entries_have_not_landed_yet`], and by nothing
-/// else in this file (see [`DECLARED_RP3`]).
+/// [`the_staged_r4133_property_entries_have_not_landed_yet`] and by
+/// [`r4133_skipped_cases`], and by nothing else in this file. **No `Link` of the
+/// declaration chain reads it** (see [`DECLARED_RP3`]): the two readers above are
+/// assertions *about* the file, not sources of a declaration, so the accounting
+/// still does not shrink by itself when RP4.1 lands the staged entries.
 const LEDGER: &str = "tests/corpus/ledger.json";
 
 /// The deck path of a corpus case id, relative to [`CORPUS`]: `family:rel` for
@@ -2148,6 +2151,44 @@ fn rigor_field<'a>(rigor: &'a str, key: &str) -> &'a str {
         .split_whitespace()
         .find_map(|f| f.strip_prefix(want.as_str()))
         .unwrap_or_else(|| panic!("no {key}= in rigor {rigor:?}"))
+}
+
+/// The cases whose **`r4133` channel is never dispatched** because a ledger
+/// `skip` entry drops it — the second half of "does r4133 gate this case?", read
+/// off [`LEDGER`] with `corpus_gate/ledger.rs::channel_is_skipped`'s own
+/// condition (`case` matches, `channel == "r4133"`, `kind == "skip"`).
+///
+/// **`engines: "both"` alone does not mean r4133 gates a case** — the shorthand
+/// the RP3.4 audit settlement (2026-08-24) caught this file using in four census
+/// derivations. `asymmetric:line/line_spacing_asym.dss` is `engines: "both"` and
+/// yet no r4133 comparison ever runs on it: the ledger holds
+/// `r4133-linespacing-asym-303` with `kind: "skip"` (an EPRI #303 access
+/// violation while compiling the deck's `tscables=`/`wires=` spacing), so
+/// `corpus_gate/scheduler.rs:355-356` `continue`s past the channel. A census
+/// derivation that called such a case "in scope" would keep asserting a cell
+/// count the gate can no longer produce — so RP3.4's derivation asks both
+/// questions and this reader answers the second.
+///
+/// Read-only, like every other use of [`LEDGER`] here: the staged entries land at
+/// RP4.1, never from this file.
+fn r4133_skipped_cases() -> BTreeSet<String> {
+    let path = repo_root().join(LEDGER);
+    let doc: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display())),
+    )
+    .expect("ledger.json is JSON");
+    doc["entries"]
+        .as_array()
+        .expect("ledger.json has an `entries` array")
+        .iter()
+        .filter(|e| e["channel"] == "r4133" && e["kind"] == "skip")
+        .map(|e| {
+            e["case"]
+                .as_str()
+                .unwrap_or_else(|| panic!("a ledger `skip` entry names its case: {e}"))
+                .to_string()
+        })
+        .collect()
 }
 
 /// Every file under `dir`, as forward-slashed paths relative to `base` — the
@@ -4028,7 +4069,8 @@ fn the_kill_criterion_reroute_is_the_five_silent_readonly_pairs() {
 ///   counted columns sum to the bucket lock;
 /// * the per-pair `(rows, in-scope rows)` split is what the walk actually
 ///   declares to [`Owner::Rp3`] — not a transcription;
-/// * the settled set is pinned literally (RP3.1 and RP3.2 today), and each settled
+/// * the settled set is pinned literally (since RP3.4 that is **all four** pairs
+///   — a legal end state, not a reason to relax anything here), and each settled
 ///   verdict is checked **against the obligations of its own outcome tag**
 ///   ([`RP3_SETTLED_SHAPES`]) — all three shapes must cite the r4133 unit and
 ///   name their sub-step; `LEDGER` additionally owes the §1.1(e) staging clause
@@ -4332,13 +4374,20 @@ fn naming_a_witness_is_a_whole_identifier_match() {
 /// in RP4.1's commit, and the only way to make a hand edit unmissable is to fail
 /// loudly the moment it becomes due.
 ///
-/// The condition is deliberately the whole class, not RP3.1's two ids: **any**
-/// `property`-scoped entry on the `r4133` channel means the unmask commit is
-/// landing staged entries (RP1.4's, RP3.2's four, RP3.4's two —
-/// `gic-pct-r2-honoured-gictransformer-r4133-props` and
-/// `gic-pct-r2-honoured-midi-r4133-props`, staged 2026-08-24 — and whatever
-/// RP3.5+ stages),
-/// which is exactly when every staged sub-step's rows must be re-declared.
+/// The condition is deliberately the whole class, not one sub-step's ids:
+/// **any** `property`-scoped entry on the `r4133` channel means the unmask commit
+/// is landing staged entries, which is exactly when every staged sub-step's rows
+/// must be re-declared. Staged by WP-RP3 today, **eight**, every one owed a
+/// re-declaration at RP4.1 (plan §RP4.1 precondition 2 lists the same set):
+///
+/// * RP3.1's two — `r4133-swtcontrol-delay-ignored-time` and
+///   `r4133-swtcontrol-delay-ignored-midi`;
+/// * RP3.2's four — `r4133-windgen-kvar-dispatched-daily` / `-delta` / `-dyn` /
+///   `-dynfault`;
+/// * RP3.4's two — `gic-pct-r2-honoured-gictransformer-r4133-props` and
+///   `gic-pct-r2-honoured-midi-r4133-props` (staged 2026-08-24);
+///
+/// — plus RP1.4's, staged outside WP-RP3, and whatever RP3.5+ stages.
 /// **RP3.3 is not among them and never will be**: it closed `ECHO`
 /// (2026-08-24), its exclusion is the `PROPS_ECHO_R4133` row that shipped in its
 /// own commit, and its [`RP3_ROUTING`] row was retired to `0, 0` there — so
@@ -4435,6 +4484,7 @@ fn the_rp31_census_decomposition_is_read_off_the_corpus() {
     );
 
     // (2) Per case: cells = controls × steps, in scope iff the case gates r4133.
+    let skipped = r4133_skipped_cases();
     let lock_path = repo_root().join(POPULATION_LOCK);
     let lock: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(&lock_path)
@@ -4457,7 +4507,11 @@ fn the_rp31_census_decomposition_is_read_off_the_corpus() {
             .parse()
             .unwrap_or_else(|e| panic!("{case}: steps= is not a number: {e}"));
         let cells = declared * steps;
-        let in_scope = rigor_field(&rigor, "engines") != "capi_v0145";
+        // Both halves of "does r4133 gate this case?" — see `r4133_skipped_cases`
+        // (RP3.4's audit settlement found the `engines=`-only shorthand has a
+        // live counterexample; no RP3.1 case is skipped today, so no number here
+        // moves, and one becoming skipped now reds instead of passing).
+        let in_scope = rigor_field(&rigor, "engines") != "capi_v0145" && !skipped.contains(*case);
         let typed: f64 = token
             .parse()
             .unwrap_or_else(|e| panic!("{case}: delay={token} is not a number: {e}"));
@@ -4603,7 +4657,10 @@ fn the_rp31_census_decomposition_is_read_off_the_corpus() {
 ///   effect of `pf=`/`kVA=`, and a cell exists exactly where the derived base is
 ///   nonzero;
 /// * `population.lock.json` gives each case's `steps=`/`engines=`, so
-///   `cells = WindGens × steps` and "in scope" is the lock's answer;
+///   `cells = WindGens × steps` and "in scope" is the lock's answer — *plus*
+///   the ledger's, since the RP3.4 audit settlement: an `engines: "both"` case
+///   whose r4133 channel a `skip` entry drops is not gated there
+///   ([`r4133_skipped_cases`]; no WindGen case is skipped today);
 /// * the **frozen census** (`bins.tsv`'s 4/4 and `examples_full.txt`'s three
 ///   rows, 2 + 1 + 1 cells) is what the products must add up to, per spelling
 ///   and in total — and every one of those rows must have `0` on the r4133 side,
@@ -4718,6 +4775,7 @@ fn the_rp32_census_decomposition_is_read_off_the_corpus() {
 
     // (2) Per case: cells = WindGens × steps, in scope iff the case gates r4133
     //     — and a cell exists only where the derived base is nonzero.
+    let skipped = r4133_skipped_cases();
     let lock_path = repo_root().join(POPULATION_LOCK);
     let lock: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(&lock_path)
@@ -4741,7 +4799,9 @@ fn the_rp32_census_decomposition_is_read_off_the_corpus() {
             .parse()
             .unwrap_or_else(|e| panic!("{case}: steps= is not a number: {e}"));
         let cells = declared * steps;
-        let in_scope = rigor_field(&rigor, "engines") != "capi_v0145";
+        // Both halves of the scope question, as in RP3.1/RP3.4 — see
+        // `r4133_skipped_cases`.
+        let in_scope = rigor_field(&rigor, "engines") != "capi_v0145" && !skipped.contains(*case);
         let base = windgen_kvar_base(kw, pf, kva);
         if base == 0.0 {
             no_cell.push((case, pf));
@@ -5103,6 +5163,7 @@ fn the_rp33_census_decomposition_is_read_off_the_corpus() {
 
     // (2) Per case: cells = convertible generators × steps, in scope iff the case
     //     gates r4133 — and a cell exists only where the deck types `model=3`.
+    let skipped = r4133_skipped_cases();
     let corpus = Corpus::load();
     let rows: Vec<&Example> = corpus.rows.iter().filter(|r| r.pair == PAIR).collect();
     let [row] = rows[..] else {
@@ -5140,6 +5201,15 @@ fn the_rp33_census_decomposition_is_read_off_the_corpus() {
             "r4133",
             "{case}: an r4133-ONLY case is what makes the pair's witness a pin — the capi channel \
              never value-compares these cells (props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES)"
+        );
+        // The other half of the scope question — see `r4133_skipped_cases`: an
+        // r4133-only case whose channel a ledger `skip` drops is compared by
+        // NOBODY, and its cells could not be in scope at all (RP3.4's audit
+        // settlement; no RP3.3 case is skipped today).
+        assert!(
+            !skipped.contains(*case),
+            "{case}: a ledger `skip` entry drops its only gating channel, so its cells are \
+             compared by no engine — the exposure this derivation reports would be fiction"
         );
         in_scope_cells += n;
         in_scope_cases.push((case, n));
@@ -5258,9 +5328,21 @@ fn the_rp33_census_decomposition_is_read_off_the_corpus() {
 ///   `Format('%.8g',[1.0/G2])`, `:723`), so the frozen spelling is *reconciled*
 ///   and not transcribed;
 /// * `population.lock.json` gives each case's `steps=`/`engines=`, so
-///   `cells = diverging elements × steps` and "in scope" is the lock's answer;
+///   `cells = diverging elements × steps`, and "in scope" is **both** halves of
+///   the question: the lock's `engines=` must name r4133 *and* no ledger `skip`
+///   entry may drop the channel ([`r4133_skipped_cases`] — the RP3.4 audit
+///   settlement's correction, since `engines: "both"` alone is not decisive);
 /// * the **frozen census** (`bins.tsv`'s 2/2 and the single `examples_full.txt`
 ///   row) is what the products must add up to.
+///
+/// Every declaration lands in exactly **one** of three classes, each with its own
+/// counter and its own assertion, so no element can fall through a `continue`
+/// into a mismatch that gets reported as something else: `ohms` (the reverse
+/// branch, no cell on any engine), `coincident` (`%R`-specified with
+/// `%R1 == %R2`, where the slip is invisible — empty on today's corpus, and
+/// asserted so rather than left to red elsewhere) and `diverging` (a cell), of
+/// which every one must sit on an r4133-gating case or the "one drafted entry per
+/// diverging element" conclusion no longer follows.
 ///
 /// Two independent cross-checks then bound the same population read from
 /// outside RP3.4's own arithmetic: [`RP34_CLASS_WIDE_PAIRS`] (`Σ declared ×
@@ -5327,6 +5409,21 @@ fn the_rp34_census_decomposition_is_read_off_the_corpus() {
             .unwrap_or_else(|e| panic!("{case} {name}: {what}={token} is not a number: {e}"))
     };
 
+    // "In scope" is `engines=` AND the channel not being skipped — see
+    // `r4133_skipped_cases`. The witness assertion keeps the second half honest:
+    // if the reader ever stopped seeing the ledger's skip entries it would go
+    // silently back to the `engines=`-only shorthand.
+    let skipped = r4133_skipped_cases();
+    const SKIP_WITNESS: &str = "asymmetric:line/line_spacing_asym.dss";
+    assert!(
+        skipped.contains(SKIP_WITNESS),
+        "the ledger's r4133 `skip` set must still hold {SKIP_WITNESS} — the case that is \
+         `engines: \"both\"` and yet never compared on r4133 (r4133-linespacing-asym-303, EPRI \
+         #303), i.e. the counterexample this derivation's scope predicate exists for. If the \
+         skip really went away, re-read RP3.4's capi-only record in STATUS with it; got \
+         {skipped:?}"
+    );
+
     let mut cells = 0usize;
     let mut in_scope_cells = 0usize;
     let mut in_scope_cases: Vec<(String, String)> = Vec::new();
@@ -5334,6 +5431,8 @@ fn the_rp34_census_decomposition_is_read_off_the_corpus() {
     let mut declared_steps_in_scope = 0usize;
     let mut ohms = 0usize;
     let mut ohms_in_scope = 0usize;
+    let mut coincident: Vec<(&str, &str)> = Vec::new();
+    let mut diverging: Vec<(&str, &str)> = Vec::new();
     for decl in RP34_GIC_ELEMENTS {
         let (case, name) = (decl.case, decl.name);
         let ((pct_r1, pct_r2), (r1, r2), (kvll2, mva)) = (decl.pct, decl.ohms, decl.base);
@@ -5341,7 +5440,7 @@ fn the_rp34_census_decomposition_is_read_off_the_corpus() {
         let steps: usize = rigor_field(&rigor, "steps")
             .parse()
             .unwrap_or_else(|e| panic!("{case}: steps= is not a number: {e}"));
-        let in_scope = rigor_field(&rigor, "engines") != "capi_v0145";
+        let in_scope = rigor_field(&rigor, "engines") != "capi_v0145" && !skipped.contains(case);
         declared_steps += steps;
         declared_steps_in_scope += usize::from(in_scope) * steps;
 
@@ -5379,7 +5478,12 @@ fn the_rp34_census_decomposition_is_read_off_the_corpus() {
         let theirs = z_base2 * num("%R1", case, name, pct_r1) / 100.0;
         if sig8(ours) == sig8(theirs) {
             // `%R1 == %R2` makes the slip invisible — the same value by
-            // coincidence, exactly as `windgen_snap.dss`'s `pf=1.0` is in RP3.2.
+            // coincidence, exactly as `windgen_snap.dss`'s `pf=1.0` is in RP3.2,
+            // whose `no_cell` bucket this mirrors. It is a THIRD class, not a
+            // silent skip: counted here and adjudicated at (4b), so an element
+            // that lands in it cannot surface as "something fell between the
+            // ohms and the diverging elements" (RP3.4 audit settlement).
+            coincident.push((case, name));
             continue;
         }
         assert_eq!(
@@ -5400,6 +5504,7 @@ fn the_rp34_census_decomposition_is_read_off_the_corpus() {
              own 8 significant digits — ours ZBase2*%R2/100, the oracles' ZBase2*%R1/100 off \
              GICTransformer.pas:495"
         );
+        diverging.push((case, name));
         cells += steps;
         if in_scope {
             in_scope_cells += steps;
@@ -5449,12 +5554,31 @@ fn the_rp34_census_decomposition_is_read_off_the_corpus() {
     }
 
     // (4b) The positive measurement — this sub-step's `civanlar.dss`: the ohms
-    //      spec is the majority of the population and it diverges nowhere.
+    //      spec is the majority of the population and it diverges nowhere. The
+    //      three classes are adjudicated one by one, each naming its own cause,
+    //      so a corpus that grows an element reds where the reason is (RP3.4
+    //      audit settlement: the coincidence branch used to have no counter, and
+    //      an element taking it surfaced as "fell between the two classes").
+    assert!(
+        coincident.is_empty(),
+        "a %R-specified GICTransformer whose two percentages coincide renders the same number \
+         on both engines, so it carries no cell and owes no ledger entry — today's corpus has \
+         none, and one appearing means RP3.4's ohms/coincident/diverging split (and the two-cell \
+         conclusion resting on it) must be re-derived, not merely re-counted: {coincident:?}"
+    );
     assert_eq!(
-        ohms + in_scope_cases.len(),
+        ohms + coincident.len() + diverging.len(),
         RP34_GIC_ELEMENTS.len(),
-        "every GICTransformer is either ohms-specified (no cell) or one of the diverging \
-         %R-specified ones — nothing may fall between the two"
+        "every GICTransformer must land in exactly one class of the decomposition — \
+         ohms-specified, %R with coinciding percentages, or %R-diverging"
+    );
+    assert_eq!(
+        diverging.len(),
+        in_scope_cases.len(),
+        "every diverging %R declaration must sit on a case r4133 really gates: one on a \
+         capi-only (or `skip`ped) case would carry a census cell that no r4133 comparison can \
+         reach, and RP3.4's \"one drafted entry per diverging element\" conclusion would no \
+         longer follow — {diverging:?} against the in-scope {in_scope_cases:?}"
     );
     assert!(
         ohms_in_scope > 0,
