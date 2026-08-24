@@ -412,6 +412,13 @@ with every sub-step run. One correction to the plan's text: the
 `engines` field — it stays capi-only because the r4133 channel is
 `kind: "skip"`ped there (`r4133-linespacing-asym-303`, EPRI #303) and because
 r4133's own `LineGeometry.pas:1235-1239` agrees with the port anyway.
+Its same-day audit settlement completed the ring pin's discriminator (the
+`%R1=0.4` edit's `R1` reading was missing, so a no-op edit passed it), gave the
+census's `%R1 == %R2` branch its own counter and cause message, made "in scope"
+mean `engines=` **and** no ledger `skip` — in all four RP3 census derivations,
+via the new `r4133_skipped_cases`, which is exactly the shorthand this sub-step
+had disproved — and corrected three citations; no classification, count or
+drafted entry moved.
 **Next: RP3.5 (`line.units`)** — it
 plus RP3.6/RP3.7, RP3.8 and RP3.9 are what RP4.1 waits on.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
@@ -4800,8 +4807,12 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     `gictransformer.r2 numeric 7 - 2 2 2.50e-01 2.50e-01`; the single frozen row
     is `examples_full.txt:1439` `gictransformer.r2 | '0.09522' | '0.12696' | 2`.
     The whole corpus declares **22** GICTransformers in **4** files (and no
-    non-`.dss` script declares one — the class is merely *mentioned* by two
-    syntax-highlight files, the manifests and the census extracts):
+    non-`.dss` script declares one — the class is merely *mentioned* by **three**
+    syntax-highlight files under `Version8/Distrib/Examples/SyntaxFiles/`
+    (`opendss.stx:144`, `OpenDSS_syntax_NotepadPlusPlus.xml:35`,
+    `…_V2.xml:28`), by the manifests and by the census extracts; the count was
+    "two" as first written and is corrected here, the four-file conclusion being
+    unaffected — the derivation sweeps the whole file universe, not this list):
 
     | case | rigor | declared | `%R`-spec'd | cells | in scope |
     |---|---|---|---|---|---|
@@ -4833,7 +4844,7 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     |---|---|---|---|---|
     | `makeposseq-cuf-applied-capi-props` | 3 (`capacitor.cap_cmat.{cuf,normamps,emergamps}`) | `modes:makeposseq/makeposseq_shunt.dss` | **`capi_v0145`** | the channel is not gated at all |
     | `capi-generator-makeposseq-rating` | 4 (`generator.g_kva.{kva,mva}`, `generator.g_mva.{kva,mva}`) | `modes:makeposseq/makeposseq_pc.dss` | **`capi_v0145`** | same |
-    | `capi-linespacing-normamps` | 2 (`line.lsp.{normamps,emergamps}`, + 2 `probe` scopes) | `asymmetric:line/line_spacing_asym.dss` | **`both`** (!) | the ledger holds `r4133-linespacing-asym-303`, `kind: "skip"` (EPRI #303 AV while compiling the `tscables=`/`wires=` spacing), so `ledger.rs::channel_is_skipped` makes `scheduler.rs:355` `continue` past the channel — **and** r4133's own `General/LineGeometry.pas:1235-1239` implements the min-over-phase rule the port follows, so there would be nothing to twin |
+    | `capi-linespacing-normamps` | 2 (`line.lsp.{normamps,emergamps}`, + 2 `probe` scopes) | `asymmetric:line/line_spacing_asym.dss` | **`both`** (!) | the ledger holds `r4133-linespacing-asym-303`, `kind: "skip"` (EPRI #303 AV while compiling the `tscables=`/`wires=` spacing), so `ledger.rs::channel_is_skipped` makes `scheduler.rs:355-356` `continue` past the channel — **and** r4133's own `General/LineGeometry.pas:1235-1239` implements the min-over-phase rule the port follows, so there would be nothing to twin |
 
     2 (gic) + 3 + 4 + 2 = the plan's **11 property scopes over 5 entries**. The
     census confirms it from the other side: `line.normamps`/`line.emergamps` and
@@ -4958,6 +4969,71 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     at 11. Both gate lanes green at 4 204 with 0 failed / 0 ignored / 0 filtered.
     No test deleted, `#[ignore]`d or loosened; no tolerance
     exists here to move (the pins compare rendered strings).
+  - **Audit settlement (2026-08-24, one commit over `cab2e667`).** Seven minor
+    findings from the two audit agents, all settled — none waved off. The
+    classification is untouched: both auditors re-derived the mechanism and
+    `LEDGER` stands, the census still decomposes to 2 cells / 2 in scope, and the
+    two drafted twins are unchanged. Still **zero product-crate bytes**, zero
+    `ledger.json` / golden / manifest / `population.lock` / frozen-extract bytes,
+    no mask moved, and the test count stays 4 204 per lane (the settlement adds
+    assertions, not tests).
+    - **The ring pin's discriminator was half a pin, and is now whole.**
+      `gictransformer_r2_honours_the_x_winding_percentage_on_the_ring` ended at
+      "`%R1=0.4` leaves `R2` unmoved" — a reading a correct engine and a *no-op
+      edit* satisfy alike, since the test never read `R1` back. The audit
+      measured it: rewriting the edit to `%R9=0.4`, a property that does not
+      exist, left the whole binary green (40 passed), while the same mutation on
+      the micro-deck twin — which always carried the control — went red. The
+      missing `tg5.R1 == "1.587"` reading is added, and the `%R9` mutation now
+      reds by name. (The STATUS bullet above always described *both* readings for
+      *both* pins; as of this settlement that description is true.)
+    - **The census's `%R1 == %R2` branch had no counter, so it could only red as
+      something else.** An element whose two percentages coincide renders the same
+      number on both engines and carries no cell; the derivation `continue`d past
+      it without counting it, so it landed in neither `ohms` nor the diverging
+      set and the *next* cross-check failed with "nothing may fall between the
+      two" — the wrong cause, and an invitation to relax that check instead of
+      extending the classification. Measured both ways with one coordinated
+      mutation (deck token `%R2=0.15`→`0.2` on `gic_midi.dss` `tg5`, its
+      `RP34_GIC_ELEMENTS` row, and the frozen `bins.tsv`/`examples_full.txt`
+      counts 2→1, all reverted): at `cab2e667` it reds `21 != 22`, "nothing may
+      fall between the two"; now it reds naming the coincidence and listing the
+      element. The three classes (`ohms` / `coincident` / `diverging`) are each
+      counted and each adjudicated — `coincident` empty, the classification
+      exhaustive, and **every diverging element on an r4133-gating case** (the
+      second hole the audit named: a `%R` element diverging on a capi-only case
+      would also have "fallen between").
+    - **"In scope" no longer means `engines=` alone — the shorthand this very
+      sub-step disproved.** RP3.4 found that `asymmetric:line/line_spacing_asym.dss`
+      is `engines: "both"` and yet never compared on r4133, and then encoded the
+      shorthand in its own guard. New reader `r4133_skipped_cases` applies
+      `corpus_gate/ledger.rs::channel_is_skipped`'s own condition (`channel ==
+      "r4133"`, `kind == "skip"`) to `tests/corpus/ledger.json` (read-only), and
+      all **four** RP3 census derivations now ask both halves of the question
+      (RP3.3's r4133-only cases assert the negative directly). No number moved —
+      none of the RP3.1/RP3.2/RP3.3/RP3.4 cases is in today's four-entry skip set
+      — and the second half is kept non-vacuous by a witness assertion on
+      `r4133-linespacing-asym-303`: mutating the reader's channel filter to
+      `capi_v0145` reds it.
+    - **Three stale citations, corrected in every copy.** The class is mentioned
+      by **three** syntax-highlight files, not two (the four-file declaration
+      count is unaffected and was re-derived independently); the `continue` past
+      a skipped channel is `scheduler.rs:355-356`, not `:355` (both the STATUS
+      table and the plan's as-executed note); the routing guard's own doc still
+      said "the settled set is pinned literally (RP3.1 and RP3.2 today)" while its
+      literal carries all four pairs, and the staged-entries tripwire enumerated
+      RP1.4's, RP3.2's four and RP3.4's two while omitting RP3.1's two — it now
+      lists all **eight** staged ids by name, matching plan §RP4.1 precondition 2.
+    - **Flagged for the user, not ruled in-lane (the one process finding).** The
+      sub-step's kill criterion included "a `makeposseq`/`linespacing` deck DOES
+      gate r4133", and `line_spacing_asym.dss` *is* `engines: "both"`; part A
+      classified that as not-the-kill-criterion itself rather than escalating.
+      The substance was re-verified twice (the `kind: "skip"` entry, r4133's own
+      agreeing `LineGeometry.pas:1235-1239`, and the census carrying no
+      `line.normamps`/`line.emergamps` row at all) and by the new skip-aware
+      predicate, so nothing rests on the ruling; it is recorded here and reported
+      to the user as a deviation, since a kill-criterion reading is the user's to
+      make.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 
