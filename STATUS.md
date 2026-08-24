@@ -310,9 +310,10 @@ UNCLAIMED 1 654 / 425 / 37 — the delta is exactly RP3.9's 70 cells).
 `DECLARED_RP24` `(2101, 71, 2021)` → **`(0, 0, 0)`** — the sub-step's own
 acceptance — and RP2.3's `reactor.kvar` carve-out hand-off is discharged by the
 floor claiming it.
-**WP-RP3 is OPEN; RP3.1 (`swtcontrol.delay`), RP3.2 (`windgen.kvar`) and RP3.3
-(`generator.model`) are
-COMPLETE** (all 2026-08-24, one commit each, **zero product-crate bytes and zero
+**WP-RP3 is OPEN; its four bin-7 root-cause sub-steps are ALL COMPLETE — RP3.1
+(`swtcontrol.delay`), RP3.2 (`windgen.kvar`), RP3.3 (`generator.model`) and
+RP3.4 (`gictransformer.r2`)** (all 2026-08-24, one commit each, **zero
+product-crate bytes and zero
 `ledger.json` bytes** — tests and docs only). r4133 never wires `SwtControl`
 property 5: its `Edit` `CASE`
 (`Version8/Source/Controls/SwtControl.pas:195-218`, the plan's `:194-217` off by
@@ -382,8 +383,37 @@ completeness sweep (abbreviated option names, r4133's two-character
 opened **§RP3.11** for the one surface no channel compares — `Save`/`Dump`
 re-serialization, where the port writes the live `Model=4` against r4133's stored
 `model=3`; it runs after RP4.1 and blocks §RP5.2, not the unmask.
-**Next: RP3.4 (`gictransformer.r2`)** — RP3.4
-plus the three RP3.5+ sub-steps, RP3.8 and RP3.9 are what RP4.1 waits on.
+**RP3.4 closes the quartet, and it is the one sub-step that root-causes nothing
+new**: `gictransformer.r2` is the r4133-channel twin of a divergence
+`GOLDEN_REBASE_PLAN.md` G2.5 already fixed and already pinned against capi.
+EPRI r4133 carries the same slip byte for byte —
+`RecalcElementData`'s `%R` branch builds winding 2's conductance from the **H**
+winding's percentage (`Version8/Source/PDElements/GICTransformer.pas:495`
+`G2 := 100.0 / (FZBase2 * FPctR1);`, the twin of pinned dss_capi 0.14.5
+`src/PDElements/GICTransformer.pas:441`) — and, unlike the plan's own wording
+("the same un-honoured `%R2` **echo**"), the render is **not** an echo: property
+8 (`R2`, `:130`) is `Format('%.8g',[1.0/G2])` out of `GetPropertyValue` arm 8
+(`:723`), a *live computation off a mis-derived field*, while property 14
+(`%R2`, `:136`) does echo `FpctR2` (`:729`) and agrees with the port. So the
+shape stayed `LEDGER` and **no `PROPS_ECHO_R4133` row was added**: the exclusion
+is **two drafted per-case entries** —
+`gic-pct-r2-honoured-gictransformer-r4133-props` and
+`gic-pct-r2-honoured-midi-r4133-props`, reusing the existing
+`gic-pct-r2-ignored` cause verbatim — landing at RP4.1 per §1.1(e) and held
+meanwhile by two new pins. No new upstream report: report **07** (local) is
+already written against r4133 and reproduces exactly this surface, so the next
+free number stays **45**. The census derives to **2 cells, both in scope**, one
+per `%R`-specified GICTransformer (`gictransformer_gic.dss` `tg3`,
+`gic_midi.dss` `tg5`); the corpus's **other 20**, 19 of them on r4133-gating
+cases, are ohms-specified and diverge nowhere. `DECLARED_RP3` stays `(6, 3, 6)`
+— a LEDGER outcome stages, so three of the four rows are still declared even
+with every sub-step run. One correction to the plan's text: the
+`linespacing` surface's deck **is** `engines: "both"`, not capi-only by its
+`engines` field — it stays capi-only because the r4133 channel is
+`kind: "skip"`ped there (`r4133-linespacing-asym-303`, EPRI #303) and because
+r4133's own `LineGeometry.pas:1235-1239` agrees with the port anyway.
+**Next: RP3.5 (`line.units`)** — it
+plus RP3.6/RP3.7, RP3.8 and RP3.9 are what RP4.1 waits on.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -4730,6 +4760,204 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
       `counter_totals` is a helper, not a `#[test]`), none `#[ignore]`d, none
       loosened; the two `==`→`>=` moves on the global counters are paired with
       strictly exact per-thread assertions.
+
+- **RP3.4** (2026-08-24) — `gictransformer.r2`: **the r4133 twin of an
+  already-fixed, already-pinned divergence.** **Zero product-crate bytes**
+  (`GOLDEN_REBASE_PLAN.md` G2.5 fixed the engine in both lanes on 2026-08-06),
+  **zero `ledger.json` bytes**, zero golden / manifest / `population.lock` /
+  frozen-extract bytes, no r4133 mask moved — two test files plus docs. Outcome
+  **LEDGER**, and with it **all four bin-7 root-cause pairs are settled**.
+  - **The r4133 source shares the capi slip line for line.** `RecalcElementData`
+    fills the two conductances from the percentages when `FpctRSpecified`, and
+    the winding-2 line reads the **H** winding's percentage:
+    `Version8/Source/PDElements/GICTransformer.pas:495`
+    `G2 := 100.0 / (FZBase2 * FPctR1);`, the byte-twin of pinned dss_capi 0.14.5
+    `src/PDElements/GICTransformer.pas:441`. The reverse branch is right
+    (`:497-498` / capi `:445-446`), which is what makes it a slip rather than a
+    convention — the two maps are inverses only when the forward one reads
+    `FPctR2` — and the creation defaults are independent (`%R1 = %R2 = 0.2`,
+    `:458-459`). Which branch runs is set by the `Edit` `CASE`'s "specials":
+    arms 13/14 (`%R1`/`%R2`, `:308-309`) set `FpctRSpecified := TRUE` (`:349`),
+    arms 7/8 (`R1`/`R2`) set it FALSE (`:343`). On `type=Auto` the `busX` side
+    effect promotes the X winding onto terminal 2 (`:323`, and `:340`), which is
+    why these decks' whole solved model moves too — already excluded by the G2.5
+    entries.
+  - **The render is NOT an echo, and that is what fixed the outcome shape.** The
+    plan's own text called it "the same un-honoured `%R2` **echo**", which would
+    have licensed a `PROPS_ECHO_R4133` row. It is not one: property 8 is `R2`
+    (`PropertyName^[8]`, `:130`) and `TGICTransformerObj.GetPropertyValue` arm 8
+    is `Format('%.8g', [1.0/G2])` (`:723`; `DumpProperties` prints the same at
+    `:663`) — a **live computation** off the mis-derived conductance. Property
+    14 is `%R2` (`:136`) and renders the stored `FpctR2` (`:729`), which agrees
+    with the port digit for digit — which is exactly why the census carries a
+    cell on `r2` and none on `%r2`. capi 0.14.5 reaches the same number by a
+    different road (`PropertyOffset[ord(TProp.R2)] := ptruint(@obj.G2)` +
+    `TPropertyFlag.InverseValue`, `:233-234`), as does the port
+    (`elements/pd/gic_transformer/accessors.rs:60` `R2 => self.g2` behind
+    `PropFlags::INVERSE_VALUE`). **So no echo row was added; the exclusion is
+    two drafted ledger entries.**
+  - **Census, derived per element and closing over every cell.** `bins.tsv:230`
+    `gictransformer.r2 numeric 7 - 2 2 2.50e-01 2.50e-01`; the single frozen row
+    is `examples_full.txt:1439` `gictransformer.r2 | '0.09522' | '0.12696' | 2`.
+    The whole corpus declares **22** GICTransformers in **4** files (and no
+    non-`.dss` script declares one — the class is merely *mentioned* by two
+    syntax-highlight files, the manifests and the census extracts):
+
+    | case | rigor | declared | `%R`-spec'd | cells | in scope |
+    |---|---|---|---|---|---|
+    | `asymmetric:gic/gictransformer_gic.dss` | `micro steps=1 engines=both` | 3 (`tg1` GSU `R1=0.12`; `tg2` YY `R1=0.2 R2=0.1`; **`tg3` Auto `%R1=0.2 %R2=0.15`**) | 1 | **1** | **1** |
+    | `asymmetric:gic/gic_midi.dss` | `midi steps=1 engines=both` | 3 (`tg1` GSU `R1=0.12`; `tg3` YY `R1=0.2 R2=0.1`; **`tg5` Auto `%R1=0.2 %R2=0.15`**) | 1 | **1** | **1** |
+    | `solvable_now:…/GICExample/GIC_Example.dss` | `feeder steps=1 engines=both` | 15 (`T1…T15`, all ohms `R1=`/`R2=`) | 0 | 0 | 0 |
+    | `modes:makeposseq/makeposseq_shunt.dss` | `micro steps=1 engines=capi_v0145` | 1 (`gt` GSU `R1=0.1`) | 0 | 0 | 0 |
+    | **total** | | **22** | **2** | **2** | **2** |
+
+    `ZBase2 = 138²/300 = 63.48 Ω`, so ours is `63.48*0.15/100 = 0.09522` against
+    both oracles' `63.48*0.20/100 = 0.12696`, `rel = 0.25` — the frozen
+    `2.50e-01`. `R1 = 396.75*0.2/100 = 0.7935` on **both** engines, which is why
+    the census has no `gictransformer.r1` row at all. Two independent
+    cross-checks of the same population read, both landed as assertions: the
+    class-wide pairs `gictransformer.enabled` (`bins.tsv:45`) and
+    `gictransformer.pctperm` (`:229`) each record **22 cells / 21 in scope** =
+    `Σ declared × steps` and its r4133-gating subtotal, which owes nothing to the
+    `%R` arithmetic; and the **positive measurement** (this sub-step's
+    `civanlar.dss`) — the **20** ohms-specified GICTransformers, **19** of them
+    on r4133-gating cases and four of them `type=Auto` like `tg3`/`tg5`, produce
+    **zero** cells, because the ohms spec sets `FpctRSpecified := FALSE` and
+    leaves the untouched reverse branch to answer. A cell needs `%R1 ≠ %R2`, and
+    no corpus deck has the `%R1=`-alone blast-radius shape the cause blob warns
+    about (asserted, not assumed).
+  - **The other four G2.5 property surfaces stay capi-only — with one correction
+    to the plan's stated reason.**
+
+    | ledger entry | `property` scopes | case | `engines=` | why r4133 never sees it |
+    |---|---|---|---|---|
+    | `makeposseq-cuf-applied-capi-props` | 3 (`capacitor.cap_cmat.{cuf,normamps,emergamps}`) | `modes:makeposseq/makeposseq_shunt.dss` | **`capi_v0145`** | the channel is not gated at all |
+    | `capi-generator-makeposseq-rating` | 4 (`generator.g_kva.{kva,mva}`, `generator.g_mva.{kva,mva}`) | `modes:makeposseq/makeposseq_pc.dss` | **`capi_v0145`** | same |
+    | `capi-linespacing-normamps` | 2 (`line.lsp.{normamps,emergamps}`, + 2 `probe` scopes) | `asymmetric:line/line_spacing_asym.dss` | **`both`** (!) | the ledger holds `r4133-linespacing-asym-303`, `kind: "skip"` (EPRI #303 AV while compiling the `tscables=`/`wires=` spacing), so `ledger.rs::channel_is_skipped` makes `scheduler.rs:355` `continue` past the channel — **and** r4133's own `General/LineGeometry.pas:1235-1239` implements the min-over-phase rule the port follows, so there would be nothing to twin |
+
+    2 (gic) + 3 + 4 + 2 = the plan's **11 property scopes over 5 entries**. The
+    census confirms it from the other side: `line.normamps`/`line.emergamps` and
+    `generator.kva`/`generator.mva` are **absent from `bins.tsv` entirely**, and
+    `capacitor.normamps`/`.emergamps` record 4 cells / **0 in scope**. The
+    plan's shorthand ("their decks do not gate r4133") is true of the two
+    `makeposseq` cases and **false as stated** for `line_spacing_asym.dss`; the
+    mechanism above is what the record carries.
+  - **The two drafted entries, VERBATIM — they land at RP4.1 per §1.1(e), NOT
+    here.** Both reuse the existing `gic-pct-r2-ignored` cause unchanged (it
+    already names the r4133 lines), and the ids mirror the capi originals'
+    `-props` suffix because plain `…-r4133` is taken by the G2.5 solved-model
+    exclusions. Schema checked against `corpus_gate/ledger.rs:1420-1560`.
+
+    ```json
+    {
+      "id": "gic-pct-r2-honoured-gictransformer-r4133-props",
+      "case": "asymmetric:gic/gictransformer_gic.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^gictransformer\\.tg3\\.r2$",
+          "rust": "0.09522",
+          "oracle": "0.12696"
+        }
+      ],
+      "cause_ref": "gic-pct-r2-ignored",
+      "source": "R4133_PROPS_PLAN RP3.4 (2026-08-24), drafted in the sub-step and landed at RP4.1 per 1.1(e) - earlier it would fail assert_all_hit as NEVER APPLIED, the r4133 property compare being masked until the unmask. The r4133-channel twin of gic-pct-r2-honoured-gictransformer-capi-props: EPRI r4133 carries the identical forward arm, Version8/Source/PDElements/GICTransformer.pas:495 `G2 := 100.0 / (FZBase2 * FPctR1);`, the byte-twin of pinned dss_capi 0.14.5 src/PDElements/GICTransformer.pas:441, and renders property 8 (`R2`, :130) as Format('%.8g',[1.0/G2]) from GetPropertyValue arm 8 (:723; DumpProperties prints the same at :663) - a LIVE read of the mis-derived conductance, not a parse-store echo, which is why the exclusion here is a ledger entry and not a PROPS_ECHO_R4133 row. Property 14 (`%R2`, :136) renders FpctR2 (:729) and agrees with the port, so only the derived ohms diverge. 1 in-scope cell (steps=1, the deck's one %R-specified GICTransformer, tg3): ours 0.09522 = ZBase2*%R2/100 = 63.48*0.15/100 for the `%R1=0.2 %R2=0.15 kvll1=345 kvll2=138 mva=300` of gictransformer_gic.dss:18-19, vs r4133's 0.12696 = ZBase2*%R1/100, max_rel 2.50e-01 (tests/corpus/props_r4133/bins.tsv:230). The deck's other two GICTransformers use the ohms R1=/R2= spec and the untouched else arm (:497-498), so they produce no cell. Replacement pin: props_r4133_pins.rs::gictransformer_r2_honours_the_x_winding_percentage.",
+      "measured": {
+        "date": "2026-08-24"
+      }
+    }
+    ```
+
+    ```json
+    {
+      "id": "gic-pct-r2-honoured-midi-r4133-props",
+      "case": "asymmetric:gic/gic_midi.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^gictransformer\\.tg5\\.r2$",
+          "rust": "0.09522",
+          "oracle": "0.12696"
+        }
+      ],
+      "cause_ref": "gic-pct-r2-ignored",
+      "source": "R4133_PROPS_PLAN RP3.4 (2026-08-24), drafted in the sub-step and landed at RP4.1 per 1.1(e). The r4133-channel twin of gic-pct-r2-honoured-midi-capi-props - same getter (Version8/Source/PDElements/GICTransformer.pas:723 over the :495 slip), same bases, on tg5 of the 6-substation 345 kV ring: gic_midi.dss:27-28 declares `%R1=0.2 %R2=0.15 kvll1=345 kvll2=138 mva=300 type=Auto`, so ZBase2 = 138^2/300 = 63.48 ohm gives ours 0.09522 against r4133's 0.12696. Entries are per case, so this one is its own; 1 in-scope cell (steps=1). The ring's other two GICTransformers (tg1 GSU R1=0.12, tg3 YY R1=0.2 R2=0.1) are ohms-specified and produce no cell - 20 of the corpus's 22 GICTransformers are, 19 of them on r4133-gating cases, and not one of them diverges, which is the measurement that the %R path is the whole divergence class. Replacement pin: props_r4133_pins.rs::gictransformer_r2_honours_the_x_winding_percentage_on_the_ring.",
+      "measured": {
+        "date": "2026-08-24"
+      }
+    }
+    ```
+
+  - **No new upstream report, and that is a finding, not a skip.**
+    `investigations/to_opendss/07-gictransformer-g2-uses-pctr1.md` (local,
+    gitignored) is already written **against r4133** — its "The line at fault"
+    section reads "As of SVN trunk r4133, `Version8/Source/PDElements/
+    GICTransformer.pas`, lines 486-501" and its reproduction is exactly this
+    surface (`? GICTransformer.t1.R2` → `0.12696`), with the `else`-arm inverse
+    argument and the `type=Auto` `busX` blast radius. The Russian deep-dive is
+    `investigations/issue-07-gictransformer-g2-pct-r1.md`. **The next free report
+    number stays 45.**
+  - **Pins (2, both lanes, no oracle):**
+    `gictransformer_r2_honours_the_x_winding_percentage` (`tg3`) and
+    `gictransformer_r2_honours_the_x_winding_percentage_on_the_ring` (`tg5`),
+    one per drafted entry. Each asserts the actual `0.09522`, not "not
+    0.12696", and carries the **discriminating** half the module doc demands:
+    an `edit %R2=0.3` moves `R2` to `0.19044` (the setter drives this getter),
+    and an `edit %R1=0.4` then moves `R1` to `1.587` while leaving `R2`
+    **unmoved** — upstream, whose `G2` is a function of `FPctR1`, would answer
+    `0.25392` there. That reading separates the two engines' *mechanisms*, not
+    two numbers. Each pin also reads the deck's ohms sibling (`0.1`, the reverse
+    branch), the GSU's `Create`-derived `0.38088`, and `%R2` itself (`0.15`, the
+    reading that agrees with r4133 and proves the divergence is confined to the
+    derived ohms).
+  - **Accounting.** `RP3_ROUTING`'s `gictransformer.r2` row flips
+    `OPEN` → **`LEDGER`** with the full verdict (r4133 unit citation, `RP3.4`,
+    `RP4.1` + `§1.1(e)`, both pins as whole identifiers, the derived census, the
+    positive measurement, the class-wide cross-check, the report pointer); its
+    counted columns stay **`1, 1`** and `DECLARED_RP3` stays **`(6, 3, 6)`** —
+    a LEDGER outcome stages, so the row remains on RP4.1's hand-edit list.
+    `LEDGER_ENTRY_PINS` **6 → 8** rows (literal lock moved with it);
+    the settled set in
+    `the_bin7_root_cause_pairs_are_routed_to_their_sub_steps` becomes all four
+    pairs in `RP3_ROUTING` order — the guard needed no relaxation for the
+    all-settled state, and its message now says so. New derivation
+    `the_rp34_census_decomposition_is_read_off_the_corpus` reads the two cells
+    off the corpus (whole **file** universe, not just `.dss`), the
+    `population.lock` rigor and the frozen extracts, plus the new per-element
+    reader `gictransformer_elements` (`element_tokens` cannot serve: it collapses
+    a class to one scope per deck and both gic decks type two different `R1=`)
+    and its self-test
+    `the_gictransformer_reader_separates_the_percentage_and_ohms_specs` — the
+    `%R1=`/`R1=` separator rule is what selects the branch, so a reader that got
+    it wrong would answer "zero cells, no entry", green and wrong. Single-claim
+    holds: `props_norm` carries rows on `gictransformer.enabled` and
+    `.pctperm` but **none** on `.r2`, and the standing
+    `!has_echo_row("gictransformer", "r2")` assertion is kept with its comment
+    re-worded to the finding. The staged-entries tripwire
+    `the_staged_r4133_property_entries_have_not_landed_yet` now names RP3.4's two
+    ids in its doc; `tests/corpus/ledger.json` is byte-untouched.
+  - **Non-vacuity, proven by mutation (15, all reverted).** Pins: each asserted
+    value flipped one digit (`0.09522`→`0.09523` on both decks, the GSU control
+    `0.38088`, the `%R2` agreement reading `0.15`) and the discriminator
+    rewritten `%R1=0.4`→`%R2=0.4` — five reds. Accounting: the verdict's derived
+    split (`2`→`3` `%R` decks), the verdict orphaning its derivation test, the
+    census token (`%R2` `0.15`→`0.2`), an ohms sibling's token
+    (`R1=0.12`→`0.13`), a `%R` element re-classified as ohms-specified, a dropped
+    element row (`GIC_Example` `T15`),
+    the class-wide lock (`21`→`20`), the derivation reading `%R1` where it must
+    read `%R2`, the outcome tag (`LEDGER`→`ECHO`) and a deleted
+    `LEDGER_ENTRY_PINS` citation — ten more reds, three of them in two or three
+    tests at once.
+  - **Test count 4 200 → 4 204 per lane (8 400 → 8 408)**: `props_r4133_pins`
+    38 → **40** (the two witnesses), `props_r4133_replay` 126 → **128** (the
+    derivation plus the reader self-test); `props_r4133_evidence_lock` unchanged
+    at 11. Both gate lanes green at 4 204 with 0 failed / 0 ignored / 0 filtered.
+    No test deleted, `#[ignore]`d or loosened; no tolerance
+    exists here to move (the pins compare rendered strings).
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 
