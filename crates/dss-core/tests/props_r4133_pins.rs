@@ -1733,6 +1733,12 @@ fn gictransformer_r2_honours_the_x_winding_percentage() {
 ///
 /// The ring's other two GICTransformers are the ohms-spec control again — `tg3`
 /// types `R1=0.2 R2=0.1` and `tg1` is a GSU with `R1=0.12` and no `R2=`.
+///
+/// It carries the **whole** discriminating pair of readings, not just the first
+/// half: after `%R1=0.4` both `R2` (unmoved) *and* `R1` (`1.587`) are read, since
+/// "unmoved" on its own is also what a no-op edit produces — the RP3.4 audit
+/// settlement (2026-08-24) found this test green under `%R9=0.4`, a property that
+/// does not exist, and added the second reading.
 #[test]
 fn gictransformer_r2_honours_the_x_winding_percentage_on_the_ring() {
     let mut deck = Deck::compile("asymmetric/gic/gic_midi.dss");
@@ -1761,5 +1767,15 @@ fn gictransformer_r2_honours_the_x_winding_percentage_on_the_ring() {
         deck.get("GICTransformer.tg5.R2"),
         "0.19044",
         "unmoved by %R1, where upstream would render 0.25392"
+    );
+    assert_eq!(
+        deck.get("GICTransformer.tg5.R1"),
+        "1.587",
+        "…while the H winding does follow it: 396.75*0.4/100. This reading is what makes the \
+         one above discriminating: without it, `R2` staying at 0.19044 is equally the answer of \
+         a correct engine and of an `%R1=` edit that did nothing at all — the RP3.4 audit \
+         settlement measured exactly that, rewriting the edit to the non-existent property \
+         `%R9=0.4` left this test green while its micro-deck twin, which always carried this \
+         control, went red"
     );
 }

@@ -1411,11 +1411,30 @@ pins hold on both channels where both channels look.
 > here instead: the ledger holds `r4133-linespacing-asym-303` with
 > `kind: "skip"` (EPRI #303 access violation while compiling the deck's
 > `tscables=`/`wires=` spacing), so `ledger.rs::channel_is_skipped` makes
-> `scheduler.rs:355` `continue` past the channel; and r4133's own
+> `scheduler.rs:355-356` `continue` past the channel; and r4133's own
 > `General/LineGeometry.pas:1235-1239` implements the min-over-phase rating rule
 > the port follows, so there would be nothing to twin even if it ran — the census
 > carries no `line.normamps`/`line.emergamps` row at all. Successors must quote
-> the mechanism, not the shorthand.
+> the mechanism, not the shorthand — and since the audit settlement the *guards*
+> quote it too: `props_r4133_replay.rs::r4133_skipped_cases` reads the ledger's
+> `kind: "skip"` entries, and all four RP3 census derivations now take "in scope"
+> to mean `engines=` **and** an undropped channel. Note also that this deck's
+> `engines: "both"` touches the sub-step's stated kill criterion ("a
+> `makeposseq`/`linespacing` deck DOES gate r4133"); the sub-step ruled it
+> not-the-kill-criterion in-lane and the settlement escalates that reading to the
+> user, the substance being independently confirmed twice.
+>
+> **Audit settlement (2026-08-24, one commit over `cab2e667`).** Seven minor
+> findings, all settled, no classification or count moved (STATUS §WP-RP3 carries
+> the per-finding record): the ring pin gained the `R1 = 1.587` control it was
+> missing (the audit proved a no-op `%R9=0.4` edit left it green); the census's
+> `%R1 == %R2` branch became a counted third class with its own assertion, beside
+> the new "every diverging element sits on an r4133-gating case" one; the scope
+> predicate became skip-aware in all four derivations; and three citations were
+> corrected (`scheduler.rs:355-356`, three syntax-highlight files, the routing
+> guard's and tripwire's stale staged-set docs — the tripwire now names all eight
+> staged ids). Zero product-crate, `ledger.json`, golden, manifest,
+> `population.lock` and frozen-extract bytes; 4 204 tests per lane, unchanged.
 >
 > With this sub-step **all four bin-7 root-cause pairs are settled**; RP4.1 now
 > waits on RP3.5–RP3.7, RP3.8 and RP3.9 only. `DECLARED_RP3` stays `(6, 3, 6)` —
@@ -1843,9 +1862,13 @@ block on 2026-08-24), whose census derivation
 (`the_rp34_census_decomposition_is_read_off_the_corpus`) fixes the count at two —
 one per `%R`-specified GICTransformer, the corpus's other twenty being
 ohms-specified and cell-free. With RP3.4 the staged set is complete at
-**RP3.1's two + RP3.2's four + RP3.4's two = eight**, plus RP1.4's, and all
+**RP3.1's two** (`r4133-swtcontrol-delay-ignored-time` /
+`r4133-swtcontrol-delay-ignored-midi`, named here since the RP3.4 audit
+settlement — they were carried only by the arithmetic) **+ RP3.2's four +
+RP3.4's two = eight**, plus RP1.4's, and all
 three sub-steps keep their `RP3_ROUTING` rows and their share of
-`DECLARED_RP3` `(6, 3, 6)` until this commit retires them.
+`DECLARED_RP3` `(6, 3, 6)` until this commit retires them. The tripwire
+`the_staged_r4133_property_entries_have_not_landed_yet` lists the same eight.
 
 Stop masking properties on r4133: remove the per-channel clear in the gate path
 (`corpus_gate/scheduler.rs:357-363`) and the seeding path (`scheduler.rs:710-717`),
