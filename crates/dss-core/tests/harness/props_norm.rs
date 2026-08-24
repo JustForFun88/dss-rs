@@ -237,6 +237,7 @@
 //! accounting.
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::cmp::Ordering;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrd};
 
@@ -1156,6 +1157,7 @@ pub fn under_display_floor_r4133(rust: &str, oracle: &str) -> bool {
     if claimed {
         FLOOR_HITS.fetch_add(1, AtomicOrd::Relaxed);
     }
+    record_touch(|t| &mut t.floor, claimed);
     claimed
 }
 
@@ -1163,6 +1165,63 @@ pub fn under_display_floor_r4133(rust: &str, oracle: &str) -> bool {
 static FLOOR_VISITS: AtomicUsize = AtomicUsize::new(0);
 /// …and how many of them it claimed.
 static FLOOR_HITS: AtomicUsize = AtomicUsize::new(0);
+
+/// **What the three shipped seams did ON THIS THREAD** — `(visits, hits)` per
+/// seam, the deterministic twin of the process-global counters.
+///
+/// The statics above (and [`NORM_VISITS`]/[`NORM_HITS`],
+/// [`ECHO_VISITS`]/[`ECHO_HITS`]) are what the *gate* reads: they answer "what
+/// did this process compare", which is a per-process question. Several offline
+/// tests ask a different one — "did MY query reach a counting seam at all?" —
+/// and used to answer it by snapshotting the global totals around their own
+/// body. That is only sound while nothing else runs, and `cargo test` runs the
+/// binary's tests concurrently: sibling tests deliberately drive the real
+/// comparator ([`tests::the_echo_seam_counts_visits_and_hits`],
+/// `harness::props_policy_tests::the_r4133_channel_folds_the_documented_spellings`,
+/// …), so the totals move under the assertion's feet. Measured by RP3.3's audit
+/// round: `tests::the_value_chain_resolves_in_order_and_agrees_with_the_seam`
+/// failed on ~1–3 % of runs with "the chain query moved a counter", a pure
+/// ordering artefact.
+///
+/// libtest gives every `#[test]` its own thread, so a per-thread counter
+/// answers the offline question exactly: the query runs on this thread, and if
+/// it reaches a seam the touch lands here and nowhere else. It is strictly
+/// stronger than the global delta it replaces — no sibling can mask a real
+/// touch by moving the total the other way — and it cannot flake.
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub struct SeamTouches {
+    /// [`normalize_r4133`]'s `(visits, hits)`.
+    pub norm: (usize, usize),
+    /// [`echo_excluded_r4133`]'s.
+    pub echo: (usize, usize),
+    /// [`under_display_floor_r4133`]'s.
+    pub floor: (usize, usize),
+}
+
+thread_local! {
+    static SEAM_TOUCHES: Cell<SeamTouches> = const { Cell::new(SeamTouches {
+        norm: (0, 0),
+        echo: (0, 0),
+        floor: (0, 0),
+    }) };
+}
+
+/// Record one seam touch on the calling thread; `hit` is the seam's own
+/// hit predicate, so the pair mirrors the process-global counters exactly.
+fn record_touch(pick: fn(&mut SeamTouches) -> &mut (usize, usize), hit: bool) {
+    SEAM_TOUCHES.with(|c| {
+        let mut t = c.get();
+        let slot = pick(&mut t);
+        slot.0 += 1;
+        slot.1 += usize::from(hit);
+        c.set(t);
+    });
+}
+
+/// The calling thread's [`SeamTouches`] so far.
+pub fn seam_touches_here() -> SeamTouches {
+    SEAM_TOUCHES.with(Cell::get)
+}
 
 /// The live floor accounting, `(visits, hits)` — read by the gate's reporting
 /// and by the offline tests that assert a query moved no counter.
@@ -1284,6 +1343,7 @@ pub fn normalize_r4133<'v>(
 ) -> (Cow<'v, str>, Cow<'v, str>) {
     if let Some((i, claimed)) = lookup_claim(PROPS_NORM_R4133, class, prop, rust, oracle) {
         NORM_VISITS[i].fetch_add(1, AtomicOrd::Relaxed);
+        record_touch(|t| &mut t.norm, claimed);
         if claimed {
             NORM_HITS[i].fetch_add(1, AtomicOrd::Relaxed);
             return (Cow::Borrowed(rust), Cow::Borrowed(rust));
@@ -1935,7 +1995,12 @@ const ECHO_ROWS_WITH_NO_IN_SCOPE_CELL: &[(&str, &str)] = &[("fault", "bus2"), ("
 /// cases in the census population that run `Set algorithm=NCIM` with a
 /// generator), so a `Capi` witness could not have covered a single one. Its
 /// `(2, 2)` is derived per case from the frozen extracts crossed with the
-/// manifests by `props_r4133_replay::the_rp33_census_decomposition_is_read_off_the_corpus`.
+/// manifests by `props_r4133_replay::the_rp33_census_decomposition_is_read_off_the_corpus`,
+/// which reads **this entry** back through [`r4133_only_exposure`] and asserts
+/// both columns against its own derivation (RP3.3 audit settlement: the doc said
+/// "derived" while no test read the entry, and column 4 had no value lock
+/// anywhere — see [`tests::every_row_exposed_on_r4133_only_cases_names_a_pin`]
+/// for what the table as a whole is held to).
 #[rustfmt::skip]
 const ECHO_ROWS_ON_R4133_ONLY_CASES: &[(&str, &str, u32, u32)] = &[
     ("autotrans", "bhcurrent", 2, 1),
@@ -2003,6 +2068,32 @@ const ECHO_ROWS_ON_R4133_ONLY_CASES: &[(&str, &str, u32, u32)] = &[
 const R4133_ONLY_ROWS: usize = 58;
 /// Count lock, cells — the sum of the table's third column.
 const R4133_ONLY_CELLS: u32 = 34971;
+/// Count lock, cases — the sum of the table's **fourth** column, which carried
+/// no value lock at all until the RP3.3 audit settlement (2026-08-24): the
+/// per-row split of a measured exposure was free to drift as long as the row
+/// count and the cell sum held, so a mutation of one row's `cases` shipped
+/// green. A sum is still not a per-row proof — the rows whose split IS derived
+/// tie themselves to it through [`r4133_only_exposure`] — but it makes any
+/// single-row edit visible, exactly as [`R4133_ONLY_CELLS`] does for column 3.
+const R4133_ONLY_CASES: u32 = 833;
+
+/// One pair's measured exposure on `engines: "r4133"` cases —
+/// `(cells, cases)` from [`ECHO_ROWS_ON_R4133_ONLY_CASES`], or `None` for a
+/// pair the table does not list (all of whose masked cells are on
+/// `both`/`capi_v0145` cases).
+///
+/// The table is data, not a claim, for most of its rows: the numbers are a dated
+/// claims-census measurement. This accessor exists so that a row whose split IS
+/// derived from the corpus can tie its own entry to the derivation instead of
+/// asserting the tie in prose — `props_r4133_replay::
+/// the_rp33_census_decomposition_is_read_off_the_corpus` does exactly that for
+/// `generator.model` (RP3.3 audit settlement).
+pub fn r4133_only_exposure(class: &str, prop: &str) -> Option<(u32, u32)> {
+    ECHO_ROWS_ON_R4133_ONLY_CASES
+        .iter()
+        .find(|(c, p, _, _)| c.eq_ignore_ascii_case(class) && p.eq_ignore_ascii_case(prop))
+        .map(|(_, _, cells, cases)| (*cells, *cases))
+}
 
 /// **One cell an echo row deliberately does NOT claim** — the narrowing valve
 /// for a pair whose mask would otherwise be wider than its citation.
@@ -2140,6 +2231,7 @@ pub fn echo_excluded_r4133(class: &str, prop: &str, rust: &str, oracle: &str) ->
                 ECHO_HITS[i].fetch_add(1, AtomicOrd::Relaxed);
             }
             ECHO_VISITS[i].fetch_add(1, AtomicOrd::Relaxed);
+            record_touch(|t| &mut t.echo, rust != oracle);
             true
         }
         None => false,
@@ -2345,28 +2437,27 @@ mod tests {
         (a.into_owned(), e.into_owned())
     }
 
-    /// The process-global live accounting, summed: `(visits, hits)`.
+    /// The echo table's process-global live accounting, summed:
+    /// `(visits, hits)`.
     ///
-    /// The offline tests below assert this pair is **unchanged** across their
-    /// body rather than that it is zero. The distinction is not pedantry: the
-    /// counters are per-process statics shared with whatever else the binary
-    /// runs, so once RP4.1 unmasks the r4133 property path a gate test in the
-    /// same process will legitimately move them, and an absolute-zero (or
-    /// [`assert_norm_rows_are_live`]) assertion inside a unit test would start
-    /// failing on test-ordering rather than on anything real. The LIVE half of
-    /// the accounting is asserted where it belongs — once, at the end of the
-    /// gate (`corpus_gate.rs`). Measured here first: RP2.1 part D's scratch
-    /// probe drove `compare_all_properties` on the r4133 channel in a harness
-    /// test binary and reddened exactly these three tests.
-    fn counter_totals() -> (usize, usize) {
-        (
-            NORM_VISITS.iter().map(|c| c.load(AtomicOrd::Relaxed)).sum(),
-            NORM_HITS.iter().map(|c| c.load(AtomicOrd::Relaxed)).sum(),
-        )
-    }
-
-    /// The echo table's live accounting, summed — same discipline as
-    /// [`counter_totals`]: asserted UNCHANGED across a body, never zero.
+    /// Read for a **`>=`** claim about the shipped statics, never for an
+    /// equality across a test body. The counters are per-process statics shared
+    /// with whatever else the binary runs, so an absolute-zero (or
+    /// [`assert_norm_rows_are_live`]) assertion inside a unit test fails on
+    /// test-ordering rather than on anything real — RP2.1 part D's scratch probe
+    /// drove `compare_all_properties` on the r4133 channel in a harness test
+    /// binary and reddened three tests here — and an equal-across-the-body
+    /// assertion fails the same way as soon as a SIBLING test drives a seam
+    /// concurrently (RP3.3's audit round measured that flake at ~1–3 % of runs
+    /// on `the_value_chain_resolves_in_order_and_agrees_with_the_seam`). The
+    /// LIVE half of the accounting is asserted where it belongs — once, at the
+    /// end of the gate (`corpus_gate.rs`); "did MY query reach a seam" is asked
+    /// of [`seam_touches_here`], which is per thread and therefore exact. The
+    /// norm table's twin of this helper had no reader left once those three
+    /// tests moved to the thread-local counter, and was removed rather than kept
+    /// warm: its rows' liveness is read per row through [`norm_counters`]
+    /// (`harness::props_policy_tests::
+    /// the_normalization_seam_runs_before_the_exclusion_on_a_mixed_pair`).
     fn echo_counter_totals() -> (usize, usize) {
         (
             ECHO_VISITS.iter().map(|c| c.load(AtomicOrd::Relaxed)).sum(),
@@ -3279,7 +3370,7 @@ mod tests {
     /// genuinely divergent.
     #[test]
     fn hit_accounting_is_armed_and_dormant() {
-        let before = counter_totals();
+        let before = seam_touches_here();
         // An already-equal cell is not a divergence: no claim, no hit.
         let (a, e) = normalize_with(PROPS_NORM_R4133, "capacitor", "enabled", "Yes", "Yes");
         assert_eq!((a.as_ref(), e.as_ref()), ("Yes", "Yes"));
@@ -3292,9 +3383,10 @@ mod tests {
         );
         // Dormant: the shipped counters are untouched by `normalize_with` (the
         // injected-table seam), so nothing this test did can make a row look
-        // live — see [`counter_totals`] for why this is a delta, not a zero.
+        // live. Asked per thread — see [`seam_touches_here`] for why a global
+        // delta cannot answer this question honestly.
         assert_eq!(
-            counter_totals(),
+            seam_touches_here(),
             before,
             "the injected seam moved a counter"
         );
@@ -3306,7 +3398,7 @@ mod tests {
     /// coverage).
     #[test]
     fn the_offline_claim_query_names_the_row_and_moves_no_counter() {
-        let before = counter_totals();
+        let before = seam_touches_here();
         let r = claiming_row("Capacitor", "Enabled", "Yes", "true").expect("bin-1 fold");
         assert_eq!(
             (r.class, r.prop, r.rule.tag(), r.bin),
@@ -3321,7 +3413,7 @@ mod tests {
         assert!(claiming_row("Recloser", "EventLog", "No", "").is_none());
         assert!(claiming_row("Line", "Ratings", "[ 400]", "[401,]").is_none());
         assert_eq!(
-            counter_totals(),
+            seam_touches_here(),
             before,
             "the offline query moved a counter"
         );
@@ -3336,8 +3428,7 @@ mod tests {
     /// armed seam equalises the cell" are the same statement.
     #[test]
     fn the_value_chain_resolves_in_order_and_agrees_with_the_seam() {
-        let before = counter_totals();
-        let before_echo = echo_counter_totals();
+        let before = seam_touches_here();
         for (class, prop, rust, oracle, want) in [
             (
                 "Capacitor",
@@ -3496,11 +3587,15 @@ mod tests {
             None,
             "inside the floor, but no `%.Ng` render of our value"
         );
-        assert_eq!(counter_totals(), before, "the chain query moved a counter");
+        // Per thread, so a sibling test driving the real comparator cannot make
+        // this pass or fail: the offline chain must reach NONE of the three
+        // counting seams — not the normalization one, not the echo one and not
+        // the floor one, the last of which the chain's own last link asks
+        // through the offline twin [`under_display_floor`] on purpose.
         assert_eq!(
-            echo_counter_totals(),
-            before_echo,
-            "the offline chain query must not move the LIVE echo counters"
+            seam_touches_here(),
+            before,
+            "the chain query moved a counter"
         );
     }
 
@@ -3601,14 +3696,17 @@ mod tests {
     /// never compared, so only the seam may count. After RP4.1 these two
     /// numbers are what the live floor population is read from.
     ///
-    /// The deltas are `>=`, not `==`: `cargo test` runs one binary's tests
-    /// concurrently and several of them drive the real comparator, so the
-    /// statics move under this test's feet. `>=` is exactly the part that is
-    /// this test's to claim, and it is the part that fails if the seam stops
-    /// counting.
+    /// The deltas on the process-global statics are `>=`, not `==`: `cargo test`
+    /// runs one binary's tests concurrently and several of them drive the real
+    /// comparator, so the statics move under this test's feet. `>=` is exactly
+    /// the part that is this test's to claim, and it is the part that fails if
+    /// the seam stops counting. The EXACT deltas — including the ones the
+    /// offline twin must not produce — are read per thread
+    /// ([`seam_touches_here`]), where no sibling can reach.
     #[test]
     fn the_display_floor_seam_counts_visits_and_hits() {
         let (v0, h0) = display_floor_counters();
+        let t0 = seam_touches_here().floor;
         // Two visits, one hit: a claimed cell and a refused one — and the seam
         // answers exactly what the offline twin answers on both.
         assert!(under_display_floor_r4133("0.747651914485831", "0.7477"));
@@ -3618,6 +3716,9 @@ mod tests {
         let (v1, h1) = display_floor_counters();
         assert!(v1 >= v0 + 2, "the seam must count every cell it sees");
         assert!(h1 > h0, "…and every cell it claims");
+        // …and exactly two visits / one hit, i.e. the two offline-twin calls
+        // interleaved above counted nothing at all.
+        assert_eq!(seam_touches_here().floor, (t0.0 + 2, t0.1 + 1));
         // …and the POLICY reaches the counting seam, not the offline twin —
         // the arm that makes these two numbers "what the gate saw". Swapping
         // `PropsPolicy::under_display_floor` for `props_norm::under_display_floor`
@@ -3630,6 +3731,7 @@ mod tests {
             v2 > v1 && h2 > h1,
             "the shipped policy must go through the COUNTING seam"
         );
+        assert_eq!(seam_touches_here().floor, (t0.0 + 3, t0.1 + 2));
     }
 
     /// **Capi-invariance of the measurement layer** (plan mechanic (b)).
@@ -4073,6 +4175,17 @@ mod tests {
     /// The capi channel does not run on those cases at all, so a `Capi(n)`
     /// witness — however large `n` is — says nothing about the cells the row
     /// masks there.
+    ///
+    /// **What this guard does and does not prove about the numbers** (RP3.3
+    /// audit settlement, 2026-08-24). The pin obligation is the point, and it is
+    /// per row. The counted columns are a dated measurement, held by three
+    /// locks — the row count, the cell sum ([`R4133_ONLY_CELLS`]) and, since the
+    /// settlement, the case sum ([`R4133_ONLY_CASES`]), which had none — plus
+    /// the structural invariant `cases <= cells` (an exposed case contributes at
+    /// least one cell, or it is not exposed). A row whose split is *derived*
+    /// rather than measured ties itself to its derivation through
+    /// [`r4133_only_exposure`]; nothing here can do that for a number no test
+    /// can recompute.
     #[test]
     fn every_row_exposed_on_r4133_only_cases_names_a_pin() {
         assert_eq!(
@@ -4088,10 +4201,23 @@ mod tests {
             R4133_ONLY_CELLS,
             "…and so did the cells behind it"
         );
+        assert_eq!(
+            ECHO_ROWS_ON_R4133_ONLY_CASES
+                .iter()
+                .map(|(_, _, _, cases)| cases)
+                .sum::<u32>(),
+            R4133_ONLY_CASES,
+            "…and the cases they sit on"
+        );
         for (class, prop, cells, cases) in ECHO_ROWS_ON_R4133_ONLY_CASES {
             assert!(
                 cells > &0 && cases > &0,
                 "{class}.{prop}: an empty exposure"
+            );
+            assert!(
+                cases <= cells,
+                "{class}.{prop}: {cases} case(s) behind {cells} cell(s) — every exposed case \
+                 contributes at least one cell, so this split cannot be a measurement"
             );
             let i = find_echo_row(PROPS_ECHO_R4133, class, prop)
                 .unwrap_or_else(|| panic!("{class}.{prop} is listed but has no echo row"));
@@ -4138,18 +4264,27 @@ mod tests {
     /// **The live seam counts what the gate saw, and answers the pair-scoped
     /// question.** A visit is any compared cell of the pair; a hit is a visit
     /// whose sides differed, i.e. a compare the row really stopped.
+    ///
+    /// The exact deltas are read per thread ([`seam_touches_here`]) — sibling
+    /// tests in the same binary drive the very same seam, so the process-global
+    /// totals can move between two statements here (RP3.3's audit round measured
+    /// that flake on the sister test). What the globals are still asked, at the
+    /// end and as `>=`, is the direction the thread-local cannot prove: that the
+    /// SHIPPED statics — the ones `assert_echo_rows_are_live` and RP4.1's live
+    /// accounting read — are the pair this seam moved.
     #[test]
     fn the_echo_seam_counts_visits_and_hits() {
-        let before = echo_counter_totals();
+        let before = seam_touches_here().echo;
+        let before_global = echo_counter_totals();
         // A pair with no row is never touched, and moves no counter.
         assert!(!echo_excluded_r4133("Foo", "Bar", "a", "b"));
-        assert_eq!(echo_counter_totals(), before);
+        assert_eq!(seam_touches_here().echo, before);
         // Equal sides: visited, not a hit — nothing was excluded.
         assert!(echo_excluded_r4133("RegControl", "Idle", "No", "No"));
-        assert_eq!(echo_counter_totals(), (before.0 + 1, before.1));
+        assert_eq!(seam_touches_here().echo, (before.0 + 1, before.1));
         // Differing sides: the exclusion did work.
         assert!(echo_excluded_r4133("RegControl", "Idle", "No", ""));
-        assert_eq!(echo_counter_totals(), (before.0 + 2, before.1 + 1));
+        assert_eq!(seam_touches_here().echo, (before.0 + 2, before.1 + 1));
         // A carved-out cell is not excluded, so it is not a visit either — the
         // liveness accounting must not credit the row for a cell it let through.
         assert!(!echo_excluded_r4133(
@@ -4158,7 +4293,13 @@ mod tests {
             "66.6666666666667",
             "66.667"
         ));
-        assert_eq!(echo_counter_totals(), (before.0 + 2, before.1 + 1));
+        assert_eq!(seam_touches_here().echo, (before.0 + 2, before.1 + 1));
+        let after_global = echo_counter_totals();
+        assert!(
+            after_global.0 >= before_global.0 + 2 && after_global.1 > before_global.1,
+            "the shipped ECHO_VISITS/ECHO_HITS statics must carry what this seam counted \
+             ({before_global:?} -> {after_global:?})"
+        );
     }
 
     /// **The carve-out takes exactly its cited cell out of the row** — the

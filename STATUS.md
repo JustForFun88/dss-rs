@@ -372,6 +372,16 @@ is also the first sub-step to move `DECLARED_RP3` — **`(7, 4, 7)` → `(6, 3, 
 — because an ECHO outcome ships its exclusion in the sub-step's own commit,
 which is exactly the condition the no-silent-progress rule reserves the shrink
 for.
+Its same-day audit settlement corrected two texts that still charged RP4.1 with
+retiring "RP3.3's staged entries" (an ECHO stages none), tied the
+`ECHO_ROWS_ON_R4133_ONLY_CASES` entry to the derivation that claims to produce it
+(plus the table's first `cases` lock), closed three escape hatches in the NCIM
+completeness sweep (abbreviated option names, r4133's two-character
+`InterpretSolveAlg` value rule, and the `.dss`-only file universe under
+`Redirect`), removed a pre-existing counter-race flake from a gated binary, and
+opened **§RP3.11** for the one surface no channel compares — `Save`/`Dump`
+re-serialization, where the port writes the live `Model=4` against r4133's stored
+`model=3`; it runs after RP4.1 and blocks §RP5.2, not the unmask.
 **Next: RP3.4 (`gictransformer.r2`)** — RP3.4
 plus the three RP3.5+ sub-steps, RP3.8 and RP3.9 are what RP4.1 waits on.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
@@ -4540,7 +4550,10 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     leg (temporary integration test, public API only, removed afterwards)
     reproduces r4133 digit for digit: render 3 → 4 across the solve, present kvar
     `431.79425771046976` / `323.84569328285227` before and `0` after, 4
-    iterations, on both decks. So there is no behavioural divergence to fix; and
+    iterations, on both decks. So there is no behavioural divergence to fix **on
+    any compared channel** — the one surface no channel compares, `Save`/`Dump`
+    re-serialization, is bounded and owned by §RP3.11 (the settlement bullet
+    below); and
     the `GeneratorsI(10, 4)` probe rules out "live but wrong", which is the only
     shape a ledger entry would have fitted. The port renders the live field
     (`obj/props/class_props/value.rs` → `elements/pc/generator/accessors.rs`) and
@@ -4628,6 +4641,95 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     `Solution.pas:1760` "takes it back to 3". It is dead code; the live reversion
     is `:2229`. The plan now carries the as-executed note that says so, and the
     settled verdict states it in the tree.
+  - **Audit settlement (2026-08-24, one commit over `fb0e9e7f`).** Seven minor
+    findings from the two audit agents, all settled — none waved off, and none
+    touched the classification: both auditors re-derived the probe and ECHO
+    stands. Still **zero product-crate bytes**, zero `ledger.json` / golden /
+    manifest / `population.lock` / frozen-extract bytes, no mask moved.
+    - **Two stale hand-offs to RP4.1, corrected in both copies.** The plan's
+      §RP4.1 precondition 2 and the tripwire
+      `the_staged_r4133_property_entries_have_not_landed_yet` both still listed
+      RP3.3 among the sub-steps whose staged ledger entries RP4.1 must land and
+      retire. An ECHO outcome stages nothing and retires itself in its own
+      commit, so RP4.1's real inheritance is RP1.4's, RP3.2's four and whatever
+      RP3.4+ stages — exactly the discipline RP3.3 applied to the `:1760`
+      citation and had not applied to its own outcome.
+    - **`ECHO_ROWS_ON_R4133_ONLY_CASES`' `(2, 2)` is now derived, not merely
+      described.** Its doc said the entry was derived by the census test; that
+      test never read the entry, the table's `cases` column had **no** value lock
+      anywhere, and the audit's mutation `(2, 2)` → `(2, 5)` shipped green.
+      Landed: the accessor `props_norm::r4133_only_exposure`, read by
+      `the_rp33_census_decomposition_is_read_off_the_corpus` against **both**
+      derived columns; the table-wide sum lock `R4133_ONLY_CASES = 833` (column 3
+      had `R4133_ONLY_CELLS`, column 4 had nothing); and the structural invariant
+      `cases <= cells` per row — an exposed case contributes at least one cell.
+      The audit's mutation now reds in two places at once.
+    - **The NCIM completeness sweep's three escape hatches, closed rather than
+      argued shut.** (1) *Abbreviated option names*: `Set` resolves through
+      `TCommandList.GetCommand` → `THashList.FindAbbrev`, a linear prefix match
+      (`Shared/Command.pas:53`/`:65` arm `AbbrevAllowed`,
+      `Shared/HashList.pas:335-357`), so `set algo=ncim` selects NCIM in the
+      engine and was invisible to a reader that knew only the full spelling —
+      and invisible to its hard error too, which keyed on the literal substring.
+      The reader now reads every non-empty prefix of `algorithm`, longest first,
+      deliberately wider than the engine. (2) *Abbreviated values*: the reader
+      tested `value == "ncim"` while `InterpretSolveAlg`
+      (`Common/Utilities.pas:575-591`) compares `copy(lowercase(s), 1, 2)`, so
+      `Set algorithm=nc` parsed and was then dropped — the new `selects_ncim`
+      ports r4133's own two-character rule. (3) *The `.dss`-only universe*:
+      `collect_dss` filters on the extension while the corpus really does
+      `Redirect` `.txt` scripts, so a `Set algorithm=NCIM` inside one would run
+      unswept; `redirected_non_dss_scripts` now walks the transitive
+      `Redirect`/`Compile` closure by basename (11 files at HEAD — `WireData.txt`,
+      the two `AllocationFactors*.Txt`, the LVTestCase's seven parts,
+      `HW_Inverters.txt` — none of which names the option). All three are dormant
+      on today's corpus, which is why the settlement also lands the self-test
+      `the_ncim_sweep_reads_every_spelling_the_engine_accepts`: a dormant reader
+      proves nothing about the completeness claim resting on it. Non-vacuity:
+      reverting `selects_ncim` to the equality reds it, and the closure's live
+      count is asserted `>= 5`.
+    - **The one surface the sub-step could not close now has an owner: §RP3.11.**
+      "No behavioural divergence" was true of every compared channel and the
+      audit bounded it: r4133's `Save`/`Dump` print the same parse store, so its
+      round trip re-creates the model-3 generator, while the port's serializer
+      renders the LIVE field (`report/save/save.rs:34-53` goes through
+      `ClassProps::get_value` where Pascal `SaveWrite` reads
+      `PropertyValue[iProp]`, `General/DSSObject.pas:145-165`). Measured here on
+      `ncim_pv_pq.dss` after the converged solve: the port writes
+      `New "Generator.g1" PF=0.88 Bus1=genbus Phases=3 kV=12.47 kW=800 Model=4
+      Maxkvar=1500 Minkvar=-1500 Vpu=1.01` against r4133's `… kW=800 model=3 …`
+      — a re-compiled deck is a PQ generator instead of a Q-limited PV one, and
+      the port's line also carries a `PF=0.88` the deck never typed (a
+      `PrpSequence` difference, a second class of divergence). No oracle channel
+      compares `Save` on these r4133-gating decks, so this is neither a
+      regression of RP3.3's commit nor part of the echo classification: the new
+      plan §RP3.11 owns both questions, runs **after RP4.1** (the echo table is
+      the list of pairs where the two serializers can disagree) and blocks
+      §RP5.2, not the unmask. The `RP3_ROUTING` verdict, the plan's as-executed
+      note and this record all carry the bound now.
+    - **A pre-existing flake in a gated binary, removed.** The audit measured
+      `harness::props_norm::tests::the_value_chain_resolves_in_order_and_agrees_with_the_seam`
+      failing ~1–3 % of runs with "the chain query moved a counter": it
+      snapshotted the **process-global** seam counters around its body while
+      sibling tests in the same binary deliberately drive those very seams, so
+      "the five-command gate was green" could be luck. The counters keep their
+      process-global role (the gate's live accounting reads them); the offline
+      question — *did MY query reach a counting seam* — is now asked of a new
+      per-thread counter `props_norm::seam_touches_here`, which libtest's
+      one-thread-per-test model makes exact. Four assertions moved to it (the two
+      offline-query tests, the value chain, and the echo seam's exact deltas);
+      the "the SHIPPED statics moved" half stays on the globals as `>=`, the
+      shape the floor seam test already used. Strictly stronger than what it
+      replaces — no sibling can mask a real touch — and the floor test gained
+      exact deltas it could not state before. `counter_totals` lost its last
+      reader and was deleted rather than kept warm. Non-vacuity: making
+      `record_touch` a no-op reds both seam-counting tests; 40 consecutive runs
+      of the binary afterwards, 0 failures.
+    - **Test count 4 199 → 4 200 per lane (8 398 → 8 400)**: the sweep
+      self-test, `props_r4133_replay` 125 → **126**. No test deleted (the removed
+      `counter_totals` is a helper, not a `#[test]`), none `#[ignore]`d, none
+      loosened; the two `==`→`>=` moves on the global counters are paired with
+      strictly exact per-thread assertions.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 
