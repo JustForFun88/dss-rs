@@ -1469,7 +1469,7 @@ pub enum EchoWitness {
     ///   element skip would be claiming a witness that cannot exist
     ///   ([`tests::a_capi_witness_is_a_pair_the_capi_channel_can_compare`]);
     /// * it says **nothing about cells on `engines: "r4133"` cases**, where the
-    ///   capi channel never runs at all. 57 of the 81 pairs mask such cells
+    ///   capi channel never runs at all. 58 of the 82 pairs mask such cells
     ///   ([`ECHO_ROWS_ON_R4133_ONLY_CASES`]), and each of them must therefore
     ///   also name a pin — the rule `swtcontrol.action` applied by hand in part
     ///   B2, now a test
@@ -1533,7 +1533,7 @@ pub struct EchoRow {
     pub witness: EchoWitness,
 }
 
-/// Table constructor, so the 81 rows below read as data.
+/// Table constructor, so the 82 rows below read as data.
 const fn echo(
     class: &'static str,
     prop: &'static str,
@@ -1567,7 +1567,7 @@ const fn echo(
 /// `SKIP_PROPS`' shape (plan §1.2 prescribes that shape). It is consulted
 /// *after* [`PROPS_NORM_R4133`] (the chain order
 /// `shape allowlist → normalization → echo → floor`), so on a **mixed** pair
-/// the typed rule sees the cell first: 20 of the 81 pairs below also hold a
+/// the typed rule sees the cell first: 20 of the 82 pairs below also hold a
 /// normalization row, and 135 of their example rows are claimed by it
 /// (`props_r4133_replay::MULTI_LINK_ROWS`).
 ///
@@ -1599,25 +1599,36 @@ const fn echo(
 /// — is an explicit RP4.1 precondition (plan §RP4.1); it is not RP2.3's, whose
 /// row shape §1.2 fixes.
 ///
-/// # The 81 rows
+/// # The 82 rows — RP2.3's 81, plus RP3.3's one
 ///
 /// | category | rows | mechanism |
 /// |---|---|---|
 /// | [`EchoDefault`](EchoCategory::EchoDefault) | 50 | a missing getter arm over an `InitPropertyValues` default |
-/// | [`EchoParse`](EchoCategory::EchoParse) | 7 | …over the deck's own token or a derived snapshot |
+/// | [`EchoParse`](EchoCategory::EchoParse) | 8 | …over the deck's own token or a derived snapshot |
 /// | [`EmptyCollectionRender`](EchoCategory::EmptyCollectionRender) | 14 | a LIVE arm rendering the other empty-collection convention |
 /// | [`LiveSemanticsDiffer`](EchoCategory::LiveSemanticsDiffer) | 10 | a real divergence whose port answer is the correct one |
 ///
-/// 86 − 81 = the **five** `SilentReadOnly` pairs the kill criterion fired on
-/// (`indmach012.pf`, `storagecontroller.kwhtotal`/`kwtotal`/`kwhactual`/
-/// `kwactual`): r4133 renders a live computed read-only quantity there and the
-/// port renders `''` only because dss_capi 0.14.5 suppresses the text surface.
-/// Under the 2026-08-02 policy that is an engine fix, not an exclusion, so they
-/// take NO row here and are re-routed to their own declared bucket
+/// **RP2.3 landed 81 of them**, and 86 − 81 = the **five** `SilentReadOnly`
+/// pairs its kill criterion fired on (`indmach012.pf`,
+/// `storagecontroller.kwhtotal`/`kwtotal`/`kwhactual`/`kwactual`): r4133 renders
+/// a live computed read-only quantity there and the port renders `''` only
+/// because dss_capi 0.14.5 suppresses the text surface. Under the 2026-08-02
+/// policy that is an engine fix, not an exclusion, so they take NO row here and
+/// are re-routed to their own declared bucket
 /// (`props_r4133_replay::RP38_ROUTING`).
 ///
+/// **The 82nd is `generator.model`, landed by RP3.3 (2026-08-24)** — the first
+/// row a WP-RP3 root-cause sub-step contributed, and the first that did not come
+/// out of RP2.3's declared bucket. Its pair is a bin-7 value jump
+/// (`'4'` vs `'3'`, rel 3.33e-01) whose mechanism turned out to be this table's
+/// after all: r4133's `TGeneratorObj.GetPropertyValue` has no arm 6, so `model`
+/// answers the deck's own typed token while the NCIM PV→PQ conversion moves the
+/// live `GenModel` 3 → 4 and never moves it back. Unlike RP2.3's rows it is
+/// therefore counted here as a *new* claim rather than a re-disposition, and it
+/// moves `props_r4133_replay::CLAIMED_ECHO` and `DECLARED_RP3` together.
+///
 /// Sorted by `(class, prop)` — [`find_echo_row`] binary-searches it.
-// The 81 rows are DATA, in the same aligned-columns style as PROPS_NORM_R4133
+// The 82 rows are DATA, in the same aligned-columns style as PROPS_NORM_R4133
 // (whose `rustfmt::skip` note applies here for the same reason: rustfmt's
 // 60-char call width would explode every row).
 #[rustfmt::skip]
@@ -1664,6 +1675,9 @@ pub const PROPS_ECHO_R4133: &[EchoRow] = &[
     echo("generator", "dynout", LiveSemanticsDiffer, 273,
          "generator.pas:3034 (GetDynOutputStr) + DynamicExp.pas:411-437 vs :441-465 (the variable index decoded as a flat (variable, slot) index)",
          CapiAndPin(26, "generator_dynout_renders_the_named_variables")),
+    echo("generator", "model", EchoParse, 2,
+         "generator.pas:3007-3038 (no arm 6) -> DSSObject.pas:112-115; the store is the deck's own token (:625, written before the CASE sets the live field at :643; InitPropertyValues would leave '1', :2559) while NCIM moves the LIVE GenModel 3->4 (Solution.pas:1935/:2120) and never back — ReversePQ2PV (:1743-1768) has no caller",
+         Pin("generator_model_renders_the_live_pv2pq_conversion")),
     echo("generator", "shaftdata", EmptyCollectionRender, 273,
          "generator.pas:3023-3025 (arms 34/36 paren-wrap the store -> '()' when unset)",
          CapiAndPin(26, "der_user_model_arrays_render_empty_when_unset")),
@@ -1868,12 +1882,13 @@ pub const PROPS_ECHO_R4133: &[EchoRow] = &[
 ];
 
 /// Count lock, total — the same fail-on-stale equality [`NORM_ROWS`] carries.
-/// **81 = the RP2.3 bucket's 86 pairs − the 5 the kill criterion re-routed.**
-const ECHO_ROWS: usize = 81;
+/// **82 = the RP2.3 bucket's 86 pairs − the 5 the kill criterion re-routed, +1
+/// for RP3.3's `generator.model`** (the first row a WP-RP3 sub-step landed here).
+const ECHO_ROWS: usize = 82;
 /// Count lock, [`EchoCategory::EchoDefault`].
 const ECHO_DEFAULT_ROWS: usize = 50;
-/// Count lock, [`EchoCategory::EchoParse`].
-const ECHO_PARSE_ROWS: usize = 7;
+/// Count lock, [`EchoCategory::EchoParse`]; **8 since RP3.3**.
+const ECHO_PARSE_ROWS: usize = 8;
 /// Count lock, [`EchoCategory::EmptyCollectionRender`] — RP2.3's new category.
 const ECHO_EMPTY_COLLECTION_ROWS: usize = 14;
 /// Count lock, [`EchoCategory::LiveSemanticsDiffer`]; every one owes a pin.
@@ -1906,13 +1921,21 @@ const ECHO_ROWS_WITH_NO_IN_SCOPE_CELL: &[(&str, &str)] = &[("fault", "bus2"), ("
 /// **Measured**, not asserted: the full claims census at HEAD
 /// (`DSS_PROPS_CENSUS=claims`, 439 cases × 2 channels) crossed with each case's
 /// `engines` flag in `tests/corpus/manifests/` (97 of the 439 walked cases are
-/// r4133-only). 57 of the 81 rows carry such cells — 34 969 in total — and each
+/// r4133-only). 58 of the 82 rows carry such cells — 34 971 in total — and each
 /// one therefore names a pin. The numbers are a dated measurement like
 /// [`EchoWitness::Capi`]'s `n`; what the tests enforce is the pin obligation and
 /// the count locks, so a *new* echo row on one of these pairs cannot ship with a
 /// capi-only witness. A pair that is NOT listed here (`line.linecode`,
 /// `upfc.*`, `vccs.*`, …) has all its masked cells on `both`/`capi_v0145` cases,
 /// where the capi witness is the whole point.
+///
+/// **`generator.model` is RP3.3's row (2026-08-24), and it is the extreme case
+/// of the rule**: *both* of its cells sit on r4133-only cases
+/// (`modes:ncim/ncim_pv_pq.dss`, `modes:ncim/ncim_midi.dss` — the only corpus
+/// cases in the census population that run `Set algorithm=NCIM` with a
+/// generator), so a `Capi` witness could not have covered a single one. Its
+/// `(2, 2)` is derived per case from the frozen extracts crossed with the
+/// manifests by `props_r4133_replay::the_rp33_census_decomposition_is_read_off_the_corpus`.
 #[rustfmt::skip]
 const ECHO_ROWS_ON_R4133_ONLY_CASES: &[(&str, &str, u32, u32)] = &[
     ("autotrans", "bhcurrent", 2, 1),
@@ -1925,6 +1948,7 @@ const ECHO_ROWS_ON_R4133_ONLY_CASES: &[(&str, &str, u32, u32)] = &[
     ("fuse", "switchedobj", 20, 2),
     ("generator", "d", 43, 6),
     ("generator", "dynout", 43, 6),
+    ("generator", "model", 2, 2),
     ("generator", "shaftdata", 43, 6),
     ("generator", "userdata", 43, 6),
     ("invcontrol", "lpftau", 18, 13),
@@ -1976,9 +2000,9 @@ const ECHO_ROWS_ON_R4133_ONLY_CASES: &[(&str, &str, u32, u32)] = &[
 
 /// Count lock for [`ECHO_ROWS_ON_R4133_ONLY_CASES`]: rows, and the cells behind
 /// them.
-const R4133_ONLY_ROWS: usize = 57;
+const R4133_ONLY_ROWS: usize = 58;
 /// Count lock, cells — the sum of the table's third column.
-const R4133_ONLY_CELLS: u32 = 34969;
+const R4133_ONLY_CELLS: u32 = 34971;
 
 /// **One cell an echo row deliberately does NOT claim** — the narrowing valve
 /// for a pair whose mask would otherwise be wider than its citation.
@@ -3770,6 +3794,7 @@ mod tests {
             "fuse.switchedobj EchoDefault",
             "generator.d LiveSemanticsDiffer",
             "generator.dynout LiveSemanticsDiffer",
+            "generator.model EchoParse",
             "generator.shaftdata EmptyCollectionRender",
             "generator.userdata EmptyCollectionRender",
             "gicsource.spectrum EchoDefault",
@@ -3965,6 +3990,7 @@ mod tests {
                 "fuse_switchedobj_defaults_to_the_monitored_element",
                 "generator_d_renders_the_documented_damping_default",
                 "generator_dynout_renders_the_named_variables",
+                "generator_model_renders_the_live_pv2pq_conversion",
                 "invcontrol_defaults_render_the_live_values",
                 "line_conductors_renders_the_live_conductor_list",
                 "line_spacing_renders_empty_once_the_spacing_is_killed",
@@ -3985,15 +4011,16 @@ mod tests {
                 "transformer_bh_arrays_render_empty_when_unset",
                 "windgen_dynout_renders_empty_when_unset",
             ],
-            "the expected-value pins RP2.3's rows depend on — 20 from part B2, nine added by \
-             the audit settlement for the rows exposed on r4133-only cases"
+            "the expected-value pins the rows depend on — 20 from RP2.3 part B2, nine added by \
+             its audit settlement for the rows exposed on r4133-only cases, and RP3.3's \
+             generator.model (whose two cells are BOTH on r4133-only cases)"
         );
         assert_eq!(
             PROPS_ECHO_R4133
                 .iter()
                 .filter(|r| r.witness.pin().is_some())
                 .count(),
-            63,
+            64,
             "rows whose witness is (also) a pin"
         );
     }
@@ -4088,7 +4115,7 @@ mod tests {
     /// closed set RP2.1/RP2.2 shipped.
     ///
     /// [`ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`] switches off the only live anti-rot
-    /// guard the 81 exclusions will have after RP4.1, one pair at a time. Before
+    /// guard the 82 exclusions will have after RP4.1, one pair at a time. Before
     /// the RP2.3 audit settlement it carried neither a literal nor a count lock,
     /// so a third entry would have silently disarmed the guard for another row.
     #[test]

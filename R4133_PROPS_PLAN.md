@@ -1282,6 +1282,62 @@ asserting the port's live model on the two decks. **Acceptance:**
 classification with citations; artifact landed. Outcome: the one
 discrete-state pair in the tail is explained.
 
+> **As executed, 2026-08-24 — ECHO (`EchoParse`), zero product-crate bytes, zero
+> ledger bytes.** Line numbers below are re-measured in
+> `.inputs/electricdss-code-r4133-trunk/Version8/Source/`.
+> **The plan's own premise was wrong, and disproving it was the sub-step.** The
+> `:1760` restore is real as a *line* — `ReversePQ2PV` (`Common/Solution.pas:
+> 1743-1768`, declared `:372`) does carry `// Takes it back to model 3` — but the
+> procedure **has no caller anywhere in the trunk**. The only call is
+> `VersionC/Common/Solution.cpp:827`, commented out (`ReversePQ2PV(ActorID); -
+> not needed for now (04/01/2024)`), and `DoNCIMSolution` (`:1095-1161`) ends at
+> its `Until` with nothing after it. So r4133 leaves a converted generator at
+> model **4**, exactly as the port does; the only live reversion is the in-loop
+> `:2229`, which needs `not myPQOK` and does not fire on these decks (both clamp
+> *upward*, so |V| lands below the target).
+> **The divergence is the render, and it is a parse-store echo — proven in both
+> directions on the live r4133 DLL, without the solver.**
+> `TGeneratorObj.GetPropertyValue` (`PCElements/generator.pas:3007-3038`) has no
+> arm 6, so index 6 falls to `General/DSSObject.pas:112-115`
+> `Result := FPropertyValue[Index]` — the deck's own token, written at
+> `generator.pas:625` before the CASE assigns the live field at `:643`. Probed:
+> `GeneratorsI(9)` (the field itself, `DDLL/DGenerators.pas:125-134`) reads **4**
+> after the solve on both decks while `? Generator.g1.model` renders `'3'`;
+> `GeneratorsI(10, 4)` moves the field alone and the render **stays** `'3'`;
+> `Edit model=4` moves the store and the render **follows**; `Dump` and
+> `Save Circuit` both write `model=3`. A second `Solve` leaves it at 4 — the
+> behavioural confirmation that the restore is dead.
+> **FIX was refuted by measurement**: the two engines' live state agrees digit
+> for digit — present kvar `431.79425771046976` / `323.84569328285227` before the
+> conversion, `0` after, 4 iterations, on both decks (the port leg read through
+> the public API). LEDGER was refuted by the `GeneratorsI(10, 4)` probe: the
+> getter demonstrably does not read `GenModel`, so "live but wrong" is false.
+> `EchoParse`, not `EchoDefault`: the store holds the deck's `'3'`, where
+> `InitPropertyValues` would have left `'1'` (`:2559`).
+> Landed: the echo row `generator.model` (`EchoParse`, 2 cells, witness
+> `Pin`, since **both** cells are on `engines: "r4133"` cases and no capi witness
+> could exist), the pin
+> `generator_model_renders_the_live_pv2pq_conversion` (both decks —
+> `ncim_midi.dss` had no unit pin at all — with the `maxkvar` reading that names
+> the `:2120` promote and an edit-then-re-solve round trip), and
+> `the_rp33_census_decomposition_is_read_off_the_corpus`, which sweeps the corpus
+> for `Set algorithm=NCIM`, reads each survivor's `Generator` count and `model=`
+> token, and derives 2 = 1 + 1 while naming the control (`ncim_pq.dss`, NCIM with
+> no generator) and the two held-out `kind: large` NCIM decks
+> (`IEEE118Bus/master_file.dss` 53 generators, `NCIM/Xmission_System_Kundur2Area`
+> 3, both `model=3`, both outside the census population per `triage.md` §Method).
+> Accounting: `PROPS_ECHO_R4133` 81 → **82**, `ECHO_PARSE_ROWS` 7 → **8**,
+> `ECHO_ROWS_ON_R4133_ONLY_CASES` 57/34 969 → **58/34 971**, `CLAIMED_ECHO`
+> 169 → **170** (`CLAIMED_TOTAL` 2 974 → 2 975 derived), `CLAIMED_SPELLINGS_LIVE`
+> 2 981 → **2 982** (re-measured: `DSS_PROPS_CENSUS=claims`, 439 cases × 2
+> channels, `echo-row` = 170 spellings over 82 pairs), and — the first time a
+> WP-RP3 sub-step moves it — `DECLARED_RP3` `(7, 4, 7)` → **`(6, 3, 6)`**, because
+> an ECHO outcome ships its exclusion in the sub-step's own commit and the chain
+> really claims the row. The routing guard was extended for that: its middle term
+> is now the entries that still declare rows, and a `0, 0` entry must prove the
+> positive half — the pair's rows still exist in the corpus and **every** one is
+> claimed by `Link::Echo`.
+
 ### RP3.4 — r4133 twins of the already-pinned capi divergences
 
 The G2.5 fixes are already pinned against the capi channel (5 ledger entries

@@ -3338,7 +3338,7 @@ impl PropsPolicy {
     /// not cover is `props_norm::ECHO_CARVE_OUTS`.
     ///
     /// **The order matters, and here is exactly what it does.** Normalization
-    /// runs first, so on a mixed pair (20 of the 81 rows) a typed rule sees the
+    /// runs first, so on a mixed pair (20 of the 82 rows) a typed rule sees the
     /// cell and — when it folds it — records its own hit, which is what keeps
     /// that row provably live and what makes the claims census disposition
     /// `normalized-by-<rule>` instead of `echo-row`. Asking this seam first
