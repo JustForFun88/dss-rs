@@ -548,13 +548,17 @@ const DECLARED_RP24: (usize, usize, usize) = (0, 0, 0);
 /// entries so the table still covers every [`BIN7_ROOT_CAUSE`] pair; the routing
 /// guard compares against the entries that still declare rows.
 ///
-/// **Unchanged by RP3.1 and RP3.2 (both 2026-08-24), deliberately.** Those
-/// sub-steps root-caused `swtcontrol.delay` and `windgen.kvar`, reported both
-/// upstream and landed their two and four expected-value pins — but each
+/// **Unchanged by RP3.1, RP3.2 and RP3.4 (all 2026-08-24), deliberately.** Those
+/// sub-steps root-caused `swtcontrol.delay`, `windgen.kvar` and
+/// `gictransformer.r2`, reported the first two upstream (the third was already
+/// reported against r4133) and landed their two, four and two expected-value
+/// pins — but each
 /// exclusion is a `ledger.json` `property` entry, and §1.1(e) stages every such
 /// entry into RP4.1's unmask commit. Until that commit the tree holds no
 /// exclusion for these rows, so they stay *declared*: this bucket is what a
-/// sub-step **inherits**, not a progress bar.
+/// sub-step **inherits**, not a progress bar. With RP3.4 all four sub-steps have
+/// run and the bucket still holds `(6, 3, 6)` — the clearest statement there is
+/// that this number tracks the tree, not the work.
 ///
 /// **The shrink is a hand edit at RP4.1, not a consequence of landing the
 /// entries** (RP3.1 audit settlement, 2026-08-24 — the earlier wording, "may
@@ -791,8 +795,41 @@ const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
         "RP3.4",
         1,
         1,
-        "OPEN — plan §RP3.4: the r4133-channel twin of the capi `gic-pct-r2-honoured-*` entries \
-         (the census shows r4133 renders the same un-honoured `%R2` echo as capi 0.14.5)",
+        "LEDGER — RP3.4 (2026-08-24): both gating oracles carry the SAME slip and render it \
+         through a LIVE getter. r4133's RecalcElementData builds winding 2's conductance from the \
+         H-winding percentage — Version8/Source/PDElements/GICTransformer.pas:495 \
+         `G2 := 100.0 / (FZBase2 * FPctR1);`, the byte-twin of pinned dss_capi 0.14.5 \
+         src/PDElements/GICTransformer.pas:441 — while property 8 (`R2`, :130) renders \
+         Format('%.8g',[1.0/G2]) from GetPropertyValue arm 8 (:723, and DumpProperties :663). So \
+         the value is COMPUTED live off a mis-derived field, not echoed from the parse store \
+         (property 14, `%R2`, :136, does echo FpctR2 at :729 and agrees with the port) — hence NO \
+         PROPS_ECHO_R4133 row, the same reading in the other direction as RP3.1's and RP3.2's. \
+         That it is a slip and not a convention is settled inside the same procedure: the else arm \
+         restores FPctR2 from G2 (:497-498) and the two arms are inverses only when the forward \
+         one reads FPctR2; the creation defaults are independent (%R1 = %R2 = 0.2, :458-459). No \
+         engine change — GOLDEN_REBASE G2.5 already fixed both lanes \
+         (crates/dss-core/src/elements/pd/gic_transformer/solve.rs:66) and the capi channel is \
+         pinned by gic-pct-r2-honoured-gictransformer-capi-props and \
+         gic-pct-r2-honoured-midi-capi-props; this sub-step only adds the r4133-channel twins \
+         gic-pct-r2-honoured-gictransformer-r4133-props and gic-pct-r2-honoured-midi-r4133-props, \
+         DRAFTED here and landing at RP4.1 per §1.1(e), witnessed meanwhile by \
+         gictransformer_r2_honours_the_x_winding_percentage and \
+         gictransformer_r2_honours_the_x_winding_percentage_on_the_ring. Census, derived per \
+         element by `the_rp34_census_decomposition_is_read_off_the_corpus`: 2 cells, all 2 in \
+         scope, 1 + 1 over the 2 %R decks (asymmetric:gic/gic_midi.dss tg5, \
+         asymmetric:gic/gictransformer_gic.dss tg3), each `%R1=0.2 %R2=0.15 kvll1=345 kvll2=138 \
+         mva=300 type=Auto` over 1 step on engines=both, so ours is ZBase2*%R2/100 = \
+         63.48*0.15/100 = '0.09522' against ZBase2*%R1/100 = '0.12696' (rel 2.50e-01, \
+         tests/corpus/props_r4133/bins.tsv:230). 2 in-scope cells over exactly 2 cases, hence \
+         exactly two drafted entries and no more. The corpus's other 20 GICTransformers — 15 in \
+         GIC_Example.dss, tg1/tg2 here, tg1/tg3 on the ring, gt on makeposseq_shunt — are all \
+         ohms-specified and take the untouched else arm, 19 of them on r4133-gating cases, and \
+         produce ZERO cells: the measurement that the %R path is the whole divergence class. \
+         Independently of that arithmetic, the class-wide pairs gictransformer.enabled and \
+         gictransformer.pctperm record 22 cells / 21 in scope, i.e. sum(declared) x steps over \
+         the same population and its r4133-gating subtotal. Report: \
+         investigations/to_opendss/07-gictransformer-g2-uses-pctr1.md (local), already written \
+         against r4133 — a twin of a reported bug owes no new report.",
     ),
     (
         "swtcontrol.delay",
@@ -1095,6 +1132,171 @@ const RP33_NCIM_HELD_OUT: &[(&str, &str, usize, &str)] = &[
         53,
         "3",
     ),
+];
+
+/// **RP3.4's census decomposition, as data instead of prose** — **every**
+/// `GICTransformer` the corpus declares, one row each, with the resistance spec
+/// its own element scope types: `(case, element, %R1=, %R2=, R1=, R2=, kvll2=,
+/// mva=)`, `""` for a token the deck never types.
+///
+/// Landed by RP3.4 (2026-08-24) on [`RP31_DELAY_CASES`]', [`RP32_WINDGEN_CASES`]'
+/// and [`RP33_NCIM_CASES`]' precedent. This one is per **element** rather than
+/// per case because the divergence is per element: the two `%R`-specified
+/// GICTransformers each carry a cell while their eight and twelve ohms-specified
+/// siblings — on the very same decks — carry none, so a per-case count would
+/// have to assert the split it is supposed to derive.
+///
+/// **What the rows are for.** `RecalcElementData`'s `%R` branch derives winding
+/// 2's conductance from the **H**-winding percentage
+/// (`Version8/Source/PDElements/GICTransformer.pas:495`, the byte-twin of pinned
+/// dss_capi 0.14.5 `src/PDElements/GICTransformer.pas:441`), so a cell exists
+/// exactly where an element is `%R`-specified **and** its two percentages
+/// differ; the port's honest `ZBase2*%R2/100` is then rendered against both
+/// oracles' `ZBase2*%R1/100` by the same
+/// `Format('%.8g',[1.0/G2])` getter (`:723`).
+/// [`the_rp34_census_decomposition_is_read_off_the_corpus`] derives both sides
+/// from the tokens below instead of transcribing the frozen spelling.
+///
+/// **The ohms rows are load-bearing, not decoration** — they are this sub-step's
+/// `civanlar.dss`. Twenty of the twenty-two GICTransformers take the `R1=`/`R2=`
+/// path, which sets `FpctRSpecified := FALSE` (`:343`) and leaves
+/// `RecalcElementData`'s **reverse** branch (`:497-498`) — the one neither
+/// revision ever got wrong — to answer the getter. Nineteen of those twenty sit
+/// on r4133-gating cases and not one of them produces a divergent cell, which is
+/// the measurement that the `%R` path is the whole divergence class rather than
+/// an assertion about it. `T5`/`T12`/`T14`/`T15` are `type=Auto` like `tg3`/`tg5`
+/// and still clean, so the connection type is not the discriminator either.
+///
+/// A GSU never types `R2=` at all (`tg1`, `T1`, …): winding 2 keeps the
+/// conductance `Create` derived while `%R1 = %R2 = 0.2` (`:458-459`), so both
+/// engines land on the same `ZBase2*0.2/100` and the census sees nothing there
+/// either.
+const RP34_GIC_ELEMENTS: &[GicDecl] = &[
+    GicDecl::ohms(GIC_MIDI, "tg1", "0.12", ""),
+    GicDecl::ohms(GIC_MIDI, "tg3", "0.2", "0.1"),
+    GicDecl::pct(GIC_MIDI, "tg5", "0.2", "0.15", "138", "300"),
+    GicDecl::ohms(GIC_MICRO, "tg1", "0.12", ""),
+    GicDecl::ohms(GIC_MICRO, "tg2", "0.2", "0.1"),
+    GicDecl::pct(GIC_MICRO, "tg3", "0.2", "0.15", "138", "300"),
+    GicDecl::ohms("modes:makeposseq/makeposseq_shunt.dss", "gt", "0.1", ""),
+    GicDecl::ohms(GIC_EXAMPLE, "t1", "0.1", ""),
+    GicDecl::ohms(GIC_EXAMPLE, "t2", "0.2", "0.1"),
+    GicDecl::ohms(GIC_EXAMPLE, "t3", "0.1", ""),
+    GicDecl::ohms(GIC_EXAMPLE, "t4", "0.1", ""),
+    GicDecl::ohms(GIC_EXAMPLE, "t5", "0.04", "0.06"),
+    GicDecl::ohms(GIC_EXAMPLE, "t6", "0.15", ""),
+    GicDecl::ohms(GIC_EXAMPLE, "t7", "0.15", ""),
+    GicDecl::ohms(GIC_EXAMPLE, "t8", "0.04", "0.06"),
+    GicDecl::ohms(GIC_EXAMPLE, "t9", "0.04", "0.06"),
+    GicDecl::ohms(GIC_EXAMPLE, "t10", "0.10", ""),
+    GicDecl::ohms(GIC_EXAMPLE, "t11", "0.10", ""),
+    GicDecl::ohms(GIC_EXAMPLE, "t12", "0.04", "0.06"),
+    GicDecl::ohms(GIC_EXAMPLE, "t13", "0.2", "0.1"),
+    GicDecl::ohms(GIC_EXAMPLE, "t14", "0.04", "0.06"),
+    GicDecl::ohms(GIC_EXAMPLE, "t15", "0.04", "0.06"),
+];
+
+/// One `GICTransformer` declaration as [`RP34_GIC_ELEMENTS`] records it: the
+/// case whose deck writes it, its name, and the six [`GIC_KEYS`] tokens split
+/// into the three groups that mean something.
+///
+/// A struct rather than an eight-tuple because the columns are not
+/// interchangeable — swapping `%R2` for `R2` in a tuple literal would be a
+/// silent re-classification of the element's *branch*, and the two constructors
+/// below make that swap unspellable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct GicDecl {
+    /// The corpus case whose deck declares it.
+    case: &'static str,
+    /// The element name, lower-cased as [`gictransformer_elements`] reads it.
+    name: &'static str,
+    /// `%R1=` and `%R2=` — both `""` on an ohms-specified declaration.
+    pct: (&'static str, &'static str),
+    /// `R1=` and `R2=` — both `""` on a `%R`-specified one, and the second is
+    /// `""` on a GSU, which never types a winding-2 resistance at all.
+    ohms: (&'static str, &'static str),
+    /// `kvll2=` and `mva=`, the winding-2 base — typed only where the
+    /// percentages are (an ohms declaration never reaches `FZBase2`).
+    base: (&'static str, &'static str),
+}
+
+impl GicDecl {
+    /// An ohms-specified declaration: `FpctRSpecified := FALSE`
+    /// (`Version8/Source/PDElements/GICTransformer.pas:343`), so
+    /// `RecalcElementData` runs its **reverse** branch (`:497-498`) and the
+    /// getter inverts back exactly what the deck typed — no cell, on any engine.
+    const fn ohms(
+        case: &'static str,
+        name: &'static str,
+        r1: &'static str,
+        r2: &'static str,
+    ) -> Self {
+        Self {
+            case,
+            name,
+            pct: ("", ""),
+            ohms: (r1, r2),
+            base: ("", ""),
+        }
+    }
+
+    /// A `%R`-specified declaration: `FpctRSpecified := TRUE` (`:349`), so the
+    /// **forward** branch runs and its winding-2 line reads `FPctR1` (`:495`) —
+    /// a cell wherever the two percentages differ.
+    const fn pct(
+        case: &'static str,
+        name: &'static str,
+        pct_r1: &'static str,
+        pct_r2: &'static str,
+        kvll2: &'static str,
+        mva: &'static str,
+    ) -> Self {
+        Self {
+            case,
+            name,
+            pct: (pct_r1, pct_r2),
+            ohms: ("", ""),
+            base: (kvll2, mva),
+        }
+    }
+
+    /// The six tokens in [`GIC_KEYS`] order — the shape
+    /// [`gictransformer_elements`] measures off the deck.
+    fn tokens(&self) -> [String; 6] {
+        [
+            self.pct.0,
+            self.pct.1,
+            self.ohms.0,
+            self.ohms.1,
+            self.base.0,
+            self.base.1,
+        ]
+        .map(str::to_string)
+    }
+}
+
+/// The three multi-element GIC decks, spelled once each — fifteen of
+/// [`RP34_GIC_ELEMENTS`]' twenty-two rows sit on the vendored feeder alone.
+const GIC_EXAMPLE: &str = "solvable_now:Version8/Distrib/Examples/GICExample/GIC_Example.dss";
+/// The 6-substation ring (`tg5` carries one of the pair's two cells).
+const GIC_MIDI: &str = "asymmetric:gic/gic_midi.dss";
+/// The three-type micro deck (`tg3` carries the other).
+const GIC_MICRO: &str = "asymmetric:gic/gictransformer_gic.dss";
+
+/// The two class-wide `GICTransformer` pairs RP3.4 reconciles its population
+/// against, with `(cells, cells in scope)` from `bins.tsv` — a cross-check of the
+/// declaration count and of the `steps=` read that owes nothing to the `%R`
+/// arithmetic.
+///
+/// Both pairs are answered by **every** GICTransformer on every step, whatever
+/// its resistance spec, so their cell counts must be `Σ declared × steps` over
+/// the corpus and their in-scope counts the same sum restricted to the
+/// r4133-gating cases. If the population moved — a deck gained an element, a
+/// case changed `steps=` or `engines=` — these two numbers move with it, and
+/// they move *before* RP3.4's own two-cell conclusion could quietly absorb it.
+const RP34_CLASS_WIDE_PAIRS: &[(&str, usize, usize)] = &[
+    ("gictransformer.enabled", 22, 21),
+    ("gictransformer.pctperm", 22, 21),
 ];
 
 /// The manifest that holds [`RP32_WINDGEN_SKIPPED_DECKS`] out of the population,
@@ -2320,6 +2522,128 @@ fn generator_model_facts(deck: &str) -> (usize, String) {
     (declared, model)
 }
 
+/// The class prefix [`gictransformer_elements`] reads its scopes with.
+const GIC_CLASS: &str = "gictransformer.";
+/// The tokens RP3.4's derivation needs, in [`RP34_GIC_ELEMENTS`]' column order:
+/// the two percentages, the two ohms values, and the winding-2 base.
+///
+/// The trailing `=` and [`named_token`]'s separator rule are what keep these
+/// apart: in `%R1=0.2` the character before `r1=` is `%`, which is neither the
+/// line start nor a separator, so the ohms key does **not** match a percentage
+/// token (and vice versa — `%r1=` needs the `%`). That distinction is the whole
+/// spec/branch discriminator (`Version8/Source/PDElements/GICTransformer.pas:343`
+/// vs `:349`), so it is exercised on the real decks by
+/// [`the_gictransformer_reader_separates_the_percentage_and_ohms_specs`].
+const GIC_KEYS: [&str; 6] = ["%r1=", "%r2=", "r1=", "r2=", "kvll2=", "mva="];
+
+/// **Every `GICTransformer` one corpus file declares, per element**, with the
+/// [`GIC_KEYS`] tokens typed inside that element's own scope (`""` for one it
+/// never types).
+///
+/// [`element_tokens`] cannot serve here: it collapses a whole class to one scope
+/// per deck and hard-errors when a key appears twice with different values —
+/// and both `gic/*` decks type `R1=0.12` on their GSU and `R1=0.2` on their YY.
+/// The scope rule is still [`element_scope`]'s (a `New` opens a declaration, an
+/// `Edit`/`BatchEdit` re-opens the named element's, a `~` continues whatever is
+/// open, anything else closes it), so an `R1=` on a Reactor two lines down is
+/// not this transformer's.
+///
+/// Two things are hard errors rather than silent readings, because RP3.4's
+/// conclusion is a *count* of ledger entries:
+///
+/// * an `Edit`/`BatchEdit` naming an element the file never declared — the
+///   corpus has none, and a wildcard `BatchEdit` would otherwise be attributed
+///   to no element at all;
+/// * the same key typed twice with two different values inside one element's
+///   scope — the derivation assumes one spelling per element, exactly as
+///   [`element_tokens`] does per deck.
+fn gictransformer_elements(rel: &str) -> Vec<(String, [String; 6])> {
+    let text = read_script(&repo_root().join(CORPUS).join(rel));
+    let mut out: Vec<(String, [String; 6])> = Vec::new();
+    let mut cur: Option<usize> = None;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('!') || line.starts_with("//") {
+            continue;
+        }
+        let lower = line.to_ascii_lowercase();
+        match element_scope(&lower, GIC_CLASS) {
+            Scope::Declares => {
+                out.push((gictransformer_name(&lower), [const { String::new() }; 6]));
+                cur = Some(out.len() - 1);
+            }
+            Scope::Edits => {
+                let name = gictransformer_name(&lower);
+                cur = Some(out.iter().position(|(n, _)| *n == name).unwrap_or_else(|| {
+                    panic!(
+                        "{rel}: `{line}` re-opens a GICTransformer scope this file never \
+                                 declared ({name:?}) — RP3.4's per-element decomposition cannot \
+                                 attribute its tokens"
+                    )
+                }));
+            }
+            Scope::Other => {
+                if !lower.starts_with('~') {
+                    cur = None;
+                }
+            }
+        }
+        let Some(i) = cur else {
+            continue;
+        };
+        for (slot, key) in GIC_KEYS.iter().enumerate() {
+            let Some(value) = named_token(&lower, key) else {
+                continue;
+            };
+            if out[i].1[slot].is_empty() {
+                out[i].1[slot] = value;
+            } else {
+                assert_eq!(
+                    out[i].1[slot], value,
+                    "{rel}: two different `{key}` tokens inside the `{}` scope — RP3.4's \
+                     decomposition assumes one spelling per element",
+                    out[i].0
+                );
+            }
+        }
+    }
+    out
+}
+
+/// The element name a `New`/`Edit` line opens a [`GIC_CLASS`] scope for, from an
+/// already-lower-cased line: everything after the class prefix up to the first
+/// whitespace or closing quote.
+fn gictransformer_name(lower: &str) -> String {
+    lower
+        .split_once(GIC_CLASS)
+        .map(|(_, rest)| rest)
+        .unwrap_or_default()
+        .chars()
+        .take_while(|c| !c.is_whitespace() && *c != '"' && *c != '\'')
+        .collect()
+}
+
+/// A value at **8 significant digits** in normalized exponential form — the
+/// precision `GICTransformer`'s `R1`/`R2` getter emits
+/// (`Format('%.8g', [1.0/G2])`,
+/// `Version8/Source/PDElements/GICTransformer.pas:723`, and the port's
+/// `%.8g`-equivalent behind the same `INVERSE_VALUE` flag).
+///
+/// [`sig15`]'s reason applies one order down: `63.48*0.15/100` is
+/// `0.09521999999999999` in `f64` and the frozen census spells the getter's
+/// answer `'0.09522'`, so reconciling a derived value against the frozen
+/// spelling needs the getter's own precision. It is not a tolerance — both sides
+/// are reduced by the same rule and compared as strings, and the gap this pair
+/// records is 25 %, eight orders above anything eight digits could hide.
+fn sig8(v: f64) -> String {
+    let s = format!("{v:.7e}");
+    let (mant, exp) = s
+        .split_once('e')
+        .expect("Rust renders `{:e}` with an exponent");
+    let mant = mant.trim_end_matches('0').trim_end_matches('.');
+    format!("{mant}e{exp}")
+}
+
 /// Which arm of the steady-state Q dispatch a deck's `WindGen` selects: its
 /// `QMode=` and `VV_Curve=` tokens, `""` when it types none.
 ///
@@ -3485,7 +3809,12 @@ fn every_echo_row_pin_is_a_test_that_exists() {
 /// statement about the mechanism. RP3.2 is the second and lands four more, on
 /// the same grounds from the other direction — its getter is not merely live but
 /// *wired*, and reads the wrong live field (`WindGen.pas:2896` renders the
-/// dispatched Q where the property documents the base kvar). Under the §1.1(e)
+/// dispatched Q where the property documents the base kvar). RP3.4 is the third
+/// and lands two, on the same grounds from a third direction — its getter is
+/// wired, live and reading the documented field, but the field itself was
+/// mis-derived one procedure earlier, so `Format('%.8g',[1.0/G2])`
+/// (`GICTransformer.pas:723`) is a correct read of a wrong number. Under the
+/// §1.1(e)
 /// staging rule the entries are
 /// drafted in the sub-step and land in RP4.1's unmask commit — earlier they
 /// would fail `assert_all_hit` as NEVER APPLIED, the r4133 property compare
@@ -3528,6 +3857,17 @@ const LEDGER_ENTRY_PINS: &[(&str, &str, &str)] = &[
         "windgen_kvar_renders_the_base_on_the_fault_ride_through_deck",
         "RP3.2",
         "r4133-windgen-kvar-dispatched-dynfault (modes:windgen/windgen_dyn_fault.dss)",
+    ),
+    (
+        "gictransformer_r2_honours_the_x_winding_percentage",
+        "RP3.4",
+        "gic-pct-r2-honoured-gictransformer-r4133-props \
+         (asymmetric:gic/gictransformer_gic.dss)",
+    ),
+    (
+        "gictransformer_r2_honours_the_x_winding_percentage_on_the_ring",
+        "RP3.4",
+        "gic-pct-r2-honoured-midi-r4133-props (asymmetric:gic/gic_midi.dss)",
     ),
 ];
 
@@ -3574,8 +3914,19 @@ fn the_ledger_entry_pin_list_is_pinned() {
                 "RP3.2",
                 "r4133-windgen-kvar-dispatched-dynfault (modes:windgen/windgen_dyn_fault.dss)",
             ),
+            (
+                "gictransformer_r2_honours_the_x_winding_percentage",
+                "RP3.4",
+                "gic-pct-r2-honoured-gictransformer-r4133-props \
+                 (asymmetric:gic/gictransformer_gic.dss)",
+            ),
+            (
+                "gictransformer_r2_honours_the_x_winding_percentage_on_the_ring",
+                "RP3.4",
+                "gic-pct-r2-honoured-midi-r4133-props (asymmetric:gic/gic_midi.dss)",
+            ),
         ],
-        "RP3.1's two drafted entries and RP3.2's four, and nothing else"
+        "RP3.1's two drafted entries, RP3.2's four and RP3.4's two, and nothing else"
     );
     for (pin, step, entry) in LEDGER_ENTRY_PINS {
         assert!(
@@ -3717,10 +4068,14 @@ fn the_bin7_root_cause_pairs_are_routed_to_their_sub_steps() {
             .collect::<Vec<_>>(),
         [
             ("generator.model", "RP3.3"),
+            ("gictransformer.r2", "RP3.4"),
             ("swtcontrol.delay", "RP3.1"),
             ("windgen.kvar", "RP3.2")
         ],
-        "the sub-steps that have run, in RP3_ROUTING order"
+        "the sub-steps that have run, in RP3_ROUTING order — since RP3.4 that is ALL FOUR \
+         bin-7 root-cause pairs, which is a legal end state and not a reason to relax anything \
+         below: three of them still declare their rows, because a LEDGER outcome stages its \
+         exclusion into RP4.1"
     );
     // …and a zero-row entry may only be one that is settled: an OPEN sub-step
     // with no rows would be a pair that vanished, not a pair that was excluded.
@@ -3979,7 +4334,10 @@ fn naming_a_witness_is_a_whole_identifier_match() {
 ///
 /// The condition is deliberately the whole class, not RP3.1's two ids: **any**
 /// `property`-scoped entry on the `r4133` channel means the unmask commit is
-/// landing staged entries (RP1.4's, RP3.2's four and whatever RP3.4+ stages),
+/// landing staged entries (RP1.4's, RP3.2's four, RP3.4's two —
+/// `gic-pct-r2-honoured-gictransformer-r4133-props` and
+/// `gic-pct-r2-honoured-midi-r4133-props`, staged 2026-08-24 — and whatever
+/// RP3.5+ stages),
 /// which is exactly when every staged sub-step's rows must be re-declared.
 /// **RP3.3 is not among them and never will be**: it closed `ECHO`
 /// (2026-08-24), its exclusion is the `PROPS_ECHO_R4133` row that shipped in its
@@ -4875,6 +5233,362 @@ fn the_rp33_census_decomposition_is_read_off_the_corpus() {
     );
 }
 
+/// **RP3.4's census decomposition is read off the corpus, not off its own
+/// prose** — [`the_rp31_census_decomposition_is_read_off_the_corpus`]'s shape,
+/// applied to `gictransformer.r2` one element at a time.
+///
+/// The sub-step's conclusion — *exactly two* drafted ledger entries — rests on a
+/// decomposition that must close over **every** cell of the pair and every
+/// corpus file that could add one:
+///
+/// * the **files** give the declarations and their resistance specs
+///   ([`gictransformer_elements`]), swept over the whole corpus **file
+///   universe** and not only its `.dss` files, so a class declared from a
+///   `Redirect`ed script cannot hide from a completeness claim (RP3.3's
+///   settlement made that hole explicit; here it is closed by construction —
+///   [`collect_files`] sees every file, redirected or not);
+/// * the **branch** each element selects is read off its own tokens rather than
+///   assumed: `%R1=`/`%R2=` set `FpctRSpecified := TRUE`
+///   (`Version8/Source/PDElements/GICTransformer.pas:349`) and `R1=`/`R2=` set
+///   it FALSE (`:343`), and an element that typed both would have to be
+///   adjudicated by parse order, so the reader refuses one instead of guessing;
+/// * the **arithmetic** derives *both* sides from those tokens — ours
+///   `ZBase2*%R2/100`, the oracles' `ZBase2*%R1/100` off the `:495` slip — and
+///   renders them at the getter's own eight significant digits ([`sig8`],
+///   `Format('%.8g',[1.0/G2])`, `:723`), so the frozen spelling is *reconciled*
+///   and not transcribed;
+/// * `population.lock.json` gives each case's `steps=`/`engines=`, so
+///   `cells = diverging elements × steps` and "in scope" is the lock's answer;
+/// * the **frozen census** (`bins.tsv`'s 2/2 and the single `examples_full.txt`
+///   row) is what the products must add up to.
+///
+/// Two independent cross-checks then bound the same population read from
+/// outside RP3.4's own arithmetic: [`RP34_CLASS_WIDE_PAIRS`] (`Σ declared ×
+/// steps`, which no `%R` reasoning enters) and the **positive measurement** —
+/// the twenty ohms-specified GICTransformers, nineteen of them on r4133-gating
+/// cases, that produce zero cells. Finally the consumers are tied to the result:
+/// the in-scope diverging cases are exactly the cases [`LEDGER_ENTRY_PINS`]
+/// cites (one drafted entry each, no more), and the routing verdict must carry
+/// the derived figures verbatim.
+#[test]
+fn the_rp34_census_decomposition_is_read_off_the_corpus() {
+    const PAIR: &str = "gictransformer.r2";
+    const STEP: &str = "RP3.4";
+
+    // (1) Completeness: RP34_GIC_ELEMENTS IS every GICTransformer the corpus
+    //     declares, in every file, with the spec each declaration types.
+    let root = repo_root().join(CORPUS);
+    let mut files = Vec::new();
+    collect_files(&root, &root, &mut files);
+    assert!(
+        files.len() > 1000,
+        "only {} files under {CORPUS} — the vendored corpus is missing",
+        files.len()
+    );
+    let measured: BTreeMap<String, Vec<(String, [String; 6])>> = files
+        .iter()
+        .map(|f| (f.clone(), gictransformer_elements(f)))
+        .filter(|(_, elems)| !elems.is_empty())
+        .collect();
+    let mut cited: BTreeMap<String, Vec<(String, [String; 6])>> = BTreeMap::new();
+    for decl in RP34_GIC_ELEMENTS {
+        cited
+            .entry(case_deck(decl.case))
+            .or_default()
+            .push((decl.name.to_string(), decl.tokens()));
+    }
+    assert_eq!(
+        measured, cited,
+        "every GICTransformer the corpus declares must sit in RP3.4's decomposition with its \
+         measured %R1=/%R2=/R1=/R2=/kvll2=/mva= tokens — a new one changes how many ledger \
+         entries the pair owes"
+    );
+
+    // (2) Per element: which branch of RecalcElementData it selects, and what
+    //     the two engines then render. Per case: cells = diverging elements ×
+    //     steps, in scope iff the case gates r4133.
+    let lock_path = repo_root().join(POPULATION_LOCK);
+    let lock: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&lock_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", lock_path.display())),
+    )
+    .expect("population.lock.json is JSON");
+    let corpus = Corpus::load();
+    let rows: Vec<&Example> = corpus.rows.iter().filter(|r| r.pair == PAIR).collect();
+    assert_eq!(
+        rows.len(),
+        1,
+        "the frozen census spells the pair exactly one way, got {rows:?}"
+    );
+    let row = rows[0];
+    let num = |what: &str, case: &str, name: &str, token: &str| -> f64 {
+        token
+            .parse::<f64>()
+            .unwrap_or_else(|e| panic!("{case} {name}: {what}={token} is not a number: {e}"))
+    };
+
+    let mut cells = 0usize;
+    let mut in_scope_cells = 0usize;
+    let mut in_scope_cases: Vec<(String, String)> = Vec::new();
+    let mut declared_steps = 0usize;
+    let mut declared_steps_in_scope = 0usize;
+    let mut ohms = 0usize;
+    let mut ohms_in_scope = 0usize;
+    for decl in RP34_GIC_ELEMENTS {
+        let (case, name) = (decl.case, decl.name);
+        let ((pct_r1, pct_r2), (r1, r2), (kvll2, mva)) = (decl.pct, decl.ohms, decl.base);
+        let rigor = case_rigor(&lock, case);
+        let steps: usize = rigor_field(&rigor, "steps")
+            .parse()
+            .unwrap_or_else(|e| panic!("{case}: steps= is not a number: {e}"));
+        let in_scope = rigor_field(&rigor, "engines") != "capi_v0145";
+        declared_steps += steps;
+        declared_steps_in_scope += usize::from(in_scope) * steps;
+
+        let pct_spec = !pct_r1.is_empty() || !pct_r2.is_empty();
+        let ohms_spec = !r1.is_empty() || !r2.is_empty();
+        assert_ne!(
+            pct_spec, ohms_spec,
+            "{case} {name}: a GICTransformer that types both specs (or neither) does not select \
+             one branch of RecalcElementData by its tokens — GICTransformer.pas:343 vs :349 \
+             resolve it by parse order, and this derivation refuses to guess"
+        );
+        if ohms_spec {
+            // The reverse branch (`:497-498`), which neither revision ever got
+            // wrong: the getter inverts back exactly what the deck typed, so
+            // there is no cell here on any engine. This is the positive
+            // measurement, not a skip.
+            ohms += 1;
+            ohms_in_scope += usize::from(in_scope);
+            continue;
+        }
+        assert!(
+            !pct_r1.is_empty() && !pct_r2.is_empty(),
+            "{case} {name}: a deck typing only one percentage is the cause blob's blast-radius \
+             shape — winding 2 would take the Create default 0.2 (GICTransformer.pas:458-459) \
+             instead of repeating %R1, and this pair's two-cell conclusion would have to be \
+             re-derived"
+        );
+        assert!(
+            !kvll2.is_empty() && !mva.is_empty(),
+            "{case} {name}: a %R-specified element that leaves kvll2=/mva= to the creation \
+             defaults renders off a base this derivation does not read"
+        );
+        let z_base2 = num("kvll2", case, name, kvll2).powi(2) / num("mva", case, name, mva);
+        let ours = z_base2 * num("%R2", case, name, pct_r2) / 100.0;
+        let theirs = z_base2 * num("%R1", case, name, pct_r1) / 100.0;
+        if sig8(ours) == sig8(theirs) {
+            // `%R1 == %R2` makes the slip invisible — the same value by
+            // coincidence, exactly as `windgen_snap.dss`'s `pf=1.0` is in RP3.2.
+            continue;
+        }
+        assert_eq!(
+            (sig8(ours), sig8(theirs)),
+            (
+                sig8(
+                    row.rust
+                        .parse()
+                        .expect("the frozen rust spelling is a number")
+                ),
+                sig8(
+                    row.r4133
+                        .parse()
+                        .expect("the frozen r4133 spelling is a number")
+                ),
+            ),
+            "{case} {name}: the derived pair must be the frozen census spelling at the getter's \
+             own 8 significant digits — ours ZBase2*%R2/100, the oracles' ZBase2*%R1/100 off \
+             GICTransformer.pas:495"
+        );
+        cells += steps;
+        if in_scope {
+            in_scope_cells += steps;
+            in_scope_cases.push((case.to_string(), name.to_string()));
+        }
+    }
+    in_scope_cases.sort();
+
+    // (3) …and the products are the frozen census's own numbers.
+    let ev = corpus
+        .evidence(row)
+        .unwrap_or_else(|| panic!("{PAIR}: no frozen evidence record"));
+    assert_eq!(
+        cells, ev.cells,
+        "derived cells must be bins.tsv's cell count for {PAIR}"
+    );
+    assert_eq!(
+        Some(in_scope_cells),
+        ev.cells_in_scope,
+        "derived in-scope cells must be bins.tsv's cells_in_scope for {PAIR}"
+    );
+    assert_eq!(
+        cells, row.cells,
+        "the single frozen example row's count must be the sum over the elements that derive it"
+    );
+
+    // (4a) The first cross-check, which owes nothing to the `%R` arithmetic: the
+    //      class-wide pairs are answered by EVERY declaration on every step.
+    for (pair, want_cells, want_in_scope) in RP34_CLASS_WIDE_PAIRS {
+        let evidence = corpus
+            .bins
+            .get(*pair)
+            .and_then(|all| all.first())
+            .unwrap_or_else(|| panic!("{pair}: no bins.tsv record"));
+        assert_eq!(
+            (evidence.cells, evidence.cells_in_scope),
+            (*want_cells, Some(*want_in_scope)),
+            "{pair}: the pinned class-wide split moved"
+        );
+        assert_eq!(
+            (declared_steps, declared_steps_in_scope),
+            (*want_cells, *want_in_scope),
+            "{pair} is answered by every GICTransformer on every step, so its census split must \
+             be the derived sum(declared x steps) over the whole corpus and over the r4133-gating \
+             cases — a mismatch means the population moved under RP3.4's two-cell conclusion"
+        );
+    }
+
+    // (4b) The positive measurement — this sub-step's `civanlar.dss`: the ohms
+    //      spec is the majority of the population and it diverges nowhere.
+    assert_eq!(
+        ohms + in_scope_cases.len(),
+        RP34_GIC_ELEMENTS.len(),
+        "every GICTransformer is either ohms-specified (no cell) or one of the diverging \
+         %R-specified ones — nothing may fall between the two"
+    );
+    assert!(
+        ohms_in_scope > 0,
+        "the ohms path must be exercised on r4133-gating cases, or its zero cells prove nothing \
+         about the r4133 channel"
+    );
+
+    // (5) One drafted entry per in-scope diverging case, and no other.
+    let mut entry_cases: Vec<&str> = LEDGER_ENTRY_PINS
+        .iter()
+        .filter(|(_, s, _)| *s == STEP)
+        .map(|(_, _, cite)| {
+            cite.split_once(" (")
+                .and_then(|(_, rest)| rest.strip_suffix(')'))
+                .unwrap_or_else(|| panic!("{cite:?}: the citation must name its case in parens"))
+        })
+        .collect();
+    entry_cases.sort_unstable();
+    assert_eq!(
+        in_scope_cases
+            .iter()
+            .map(|(c, _)| c.as_str())
+            .collect::<Vec<_>>(),
+        entry_cases,
+        "exactly the in-scope diverging cases owe a drafted ledger entry — one each, and the \
+         ohms-specified elements owe none"
+    );
+
+    // (6) The verdict carries the derived figures, so its prose cannot drift
+    //     away from the corpus it describes.
+    let verdict = RP3_ROUTING
+        .iter()
+        .find(|(p, ..)| *p == PAIR)
+        .map(|(_, _, _, _, v)| *v)
+        .unwrap_or_else(|| panic!("{PAIR} has no routing row"));
+    let split = in_scope_cases
+        .iter()
+        .map(|_| "1".to_string())
+        .collect::<Vec<_>>()
+        .join(" + ");
+    let (cw_cells, cw_in_scope) = (declared_steps, declared_steps_in_scope);
+    for phrase in [
+        format!("{cells} cells, all {in_scope_cells} in scope"),
+        format!("{split} over the {} %R decks", in_scope_cases.len()),
+        in_scope_cases
+            .iter()
+            .map(|(c, n)| format!("{c} {n}"))
+            .collect::<Vec<_>>()
+            .join(", "),
+        format!("'{}'", row.rust),
+        format!("'{}'", row.r4133),
+        format!(
+            "{in_scope_cells} in-scope cells over exactly {} cases",
+            in_scope_cases.len()
+        ),
+        format!("other {ohms} GICTransformers"),
+        format!("{ohms_in_scope} of them on r4133-gating cases"),
+        format!("{cw_cells} cells / {cw_in_scope} in scope"),
+        RP34_CLASS_WIDE_PAIRS[0].0.to_string(),
+        RP34_CLASS_WIDE_PAIRS[1].0.to_string(),
+    ] {
+        assert!(
+            verdict.contains(&phrase),
+            "the RP3.4 verdict must carry the derived census — {phrase:?} is missing from \
+             {verdict:?}"
+        );
+    }
+    assert!(
+        names_identifier(
+            verdict,
+            "the_rp34_census_decomposition_is_read_off_the_corpus"
+        ),
+        "the verdict must name the test that derives its numbers, so a rename cannot orphan it"
+    );
+}
+
+/// **The GICTransformer reader really separates the two resistance specs** — the
+/// self-test for [`gictransformer_elements`] and [`GIC_KEYS`], added with RP3.4.
+///
+/// The whole decomposition turns on one distinction: `%R1=0.2` must read as a
+/// *percentage* token and `R1=0.2` as an *ohms* one, because that is what
+/// selects the branch of `RecalcElementData` an element takes
+/// (`Version8/Source/PDElements/GICTransformer.pas:349` vs `:343`) and therefore
+/// whether it carries a census cell. The two keys are prefixes of one another,
+/// so a reader that got the separator rule wrong would silently classify every
+/// `%R` element as ohms-specified — and the sub-step's answer would become "zero
+/// cells, no ledger entry", green and wrong.
+///
+/// It is asserted on the real decks rather than on a fixture: both `gic/*` decks
+/// carry both spellings, an element that types `R1=` and no `R2=` (the GSU), and
+/// a `~` continuation that types the `%R` element's bases on the *next* line.
+#[test]
+fn the_gictransformer_reader_separates_the_percentage_and_ohms_specs() {
+    let elems = gictransformer_elements("asymmetric/gic/gictransformer_gic.dss");
+    assert_eq!(
+        elems.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+        ["tg1", "tg2", "tg3"],
+        "the reader must see every declaration, in deck order"
+    );
+    let [pct_r1, pct_r2, r1, r2, kvll2, mva] = &elems[2].1;
+    assert_eq!(
+        (
+            pct_r1.as_str(),
+            pct_r2.as_str(),
+            r1.as_str(),
+            r2.as_str(),
+            kvll2.as_str(),
+            mva.as_str()
+        ),
+        ("0.2", "0.15", "", "", "138", "300"),
+        "tg3 types percentages only, and its bases arrive on the `~` continuation line — an ohms \
+         key must NOT match inside `%R1=`"
+    );
+    let [pct_r1, pct_r2, r1, r2, ..] = &elems[1].1;
+    assert_eq!(
+        (pct_r1.as_str(), pct_r2.as_str(), r1.as_str(), r2.as_str()),
+        ("", "", "0.2", "0.1"),
+        "tg2 types ohms only — a percentage key must NOT match a bare `R1=`"
+    );
+    assert_eq!(
+        elems[0].1[3], "",
+        "a GSU types no R2= at all, and the reader must not borrow tg2's"
+    );
+    // …and the scope really closes: the Reactors below the transformers type
+    // `r=`/`x=` of their own, and no `~` continues a GICTransformer past them.
+    assert_eq!(
+        gictransformer_elements("asymmetric/gic/gic_midi.dss")
+            .iter()
+            .map(|(n, _)| n.as_str())
+            .collect::<Vec<_>>(),
+        ["tg1", "tg3", "tg5"]
+    );
+}
+
 /// **The offline evidence base is one spelling behind the live population, and
 /// that term is asserted rather than assumed** (RP2.1 audit round).
 ///
@@ -5346,10 +6060,14 @@ fn the_echo_table_claims_only_its_cited_pairs_and_the_floor_only_its_derivation(
             "{pair}: an echo-LOOKING spelling is not an echo row"
         );
     }
-    // …and neither is `gictransformer.r2`, the one bin-7 root-cause pair still
-    // open. `generator.model` sat next to it here until RP3.3 root-caused it TO
-    // this table — r4133's `model` getter has no arm 6 and answers the deck's
-    // own token — so the assertion flips with the finding instead of being
+    // …and neither is `gictransformer.r2`, which RP3.4 settled as `LEDGER`
+    // (2026-08-24): its r4133 getter COMPUTES `Format('%.8g',[1.0/G2])` live
+    // (`Version8/Source/PDElements/GICTransformer.pas:723`) off a conductance
+    // `RecalcElementData` mis-derived at `:495`, so calling it an echo would
+    // misname the mechanism — the exclusion is two staged ledger entries
+    // instead. `generator.model` sat next to it here until RP3.3 root-caused it
+    // TO this table — r4133's `model` getter has no arm 6 and answers the deck's
+    // own token — so both assertions flip with their findings instead of being
     // quietly deleted.
     assert!(!props_norm::has_echo_row("gictransformer", "r2"));
     assert!(props_norm::has_echo_row("generator", "model"));

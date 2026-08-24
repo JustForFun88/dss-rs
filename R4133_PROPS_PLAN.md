@@ -1378,6 +1378,50 @@ duplicate coverage with RP2.3 rows (the replay accounting enforces
 single-claim); hit + non-stale is asserted at RP4.1. Outcome: the shared-bug
 pins hold on both channels where both channels look.
 
+> **As executed, 2026-08-24 — COMPLETE, outcome LEDGER, and the section above is
+> wrong on one word.** The premise held: r4133 carries the slip byte for byte
+> (`Version8/Source/PDElements/GICTransformer.pas:495`
+> `G2 := 100.0 / (FZBase2 * FPctR1);`, the twin of pinned dss_capi 0.14.5
+> `src/PDElements/GICTransformer.pas:441`), and the census decomposes exactly as
+> stated — **2 cells, both in scope**, one per `%R`-specified GICTransformer on
+> `asymmetric:gic/gictransformer_gic.dss` (`tg3`) and `asymmetric:gic/gic_midi.dss`
+> (`tg5`), with the corpus's other **20** declarations (19 of them on
+> r4133-gating cases) ohms-specified and cell-free. The word that is wrong is
+> "**echo**": property 8 (`R2`, `:130`) is rendered by `GetPropertyValue` arm 8
+> as `Format('%.8g', [1.0/G2])` (`:723`, and `DumpProperties` `:663`) — a **live
+> computation** off the mis-derived conductance, not a parse-store echo, while
+> property 14 (`%R2`, `:136`) *does* echo `FpctR2` (`:729`) and agrees with the
+> port. A `PROPS_ECHO_R4133` row would therefore have misnamed the mechanism,
+> so the outcome stayed the section's own named shape, `LEDGER`: two drafted
+> per-case entries (`gic-pct-r2-honoured-gictransformer-r4133-props`,
+> `gic-pct-r2-honoured-midi-r4133-props`) reusing the existing
+> `gic-pct-r2-ignored` cause unchanged, recorded verbatim in STATUS §WP-RP3 and
+> landing at RP4.1 per §1.1(e), witnessed meanwhile by
+> `gictransformer_r2_honours_the_x_winding_percentage` and
+> `…_on_the_ring`. Zero product-crate bytes (G2.5 fixed the engine on
+> 2026-08-06), zero `ledger.json` bytes, no report — number **45** stays free
+> because `investigations/to_opendss/07-gictransformer-g2-uses-pctr1.md` is
+> already written against r4133 and reproduces this very surface.
+>
+> **The one record this section states imprecisely.** "The `makeposseq`/
+> `linespacing` surfaces stay capi-only — their decks do not gate r4133" is true
+> of `modes:makeposseq/makeposseq_shunt.dss` and `makeposseq_pc.dss`
+> (`engines: "capi_v0145"`), but **`asymmetric:line/line_spacing_asym.dss` is
+> `engines: "both"`**. It stays capi-only for two independent reasons measured
+> here instead: the ledger holds `r4133-linespacing-asym-303` with
+> `kind: "skip"` (EPRI #303 access violation while compiling the deck's
+> `tscables=`/`wires=` spacing), so `ledger.rs::channel_is_skipped` makes
+> `scheduler.rs:355` `continue` past the channel; and r4133's own
+> `General/LineGeometry.pas:1235-1239` implements the min-over-phase rating rule
+> the port follows, so there would be nothing to twin even if it ran — the census
+> carries no `line.normamps`/`line.emergamps` row at all. Successors must quote
+> the mechanism, not the shorthand.
+>
+> With this sub-step **all four bin-7 root-cause pairs are settled**; RP4.1 now
+> waits on RP3.5–RP3.7, RP3.8 and RP3.9 only. `DECLARED_RP3` stays `(6, 3, 6)` —
+> a LEDGER outcome stages its exclusion, so three of the four rows are still
+> declared even with every sub-step run.
+
 ### RP3.5 — Line length units lost by the matrix-branch merge (opened by RP2.2)
 
 `line.units` `'none'` vs `'kft'` (3 cells, **0 in scope** — the affected
@@ -1785,14 +1829,23 @@ not merely declared), shrink `DECLARED_RP3` by exactly those rows, and re-state
 `the_staged_r4133_property_entries_have_not_landed_yet` against whatever is
 still staged — that tripwire goes red the moment the first `property`-scoped
 `r4133` entry appears, which is how this precondition announces itself. The same
-applies to RP1.4's and RP3.4's staged entries — but **not to RP3.3**, which
+applies to RP1.4's staged entries — but **not to RP3.3**, which
 closed `ECHO` (2026-08-24): its exclusion is a `PROPS_ECHO_R4133` row that
 shipped in its own commit, it staged no ledger entry, and its `RP3_ROUTING` row
 is already retired to `0, 0` with `DECLARED_RP3` down to `(6, 3, 6)`, so RP4.1
 has nothing to retire for it — and to **RP3.2's four**
 (`r4133-windgen-kvar-dispatched-daily` / `-delta` / `-dyn` / `-dynfault`), which
 are already drafted in STATUS §WP-RP3 and whose census derivation
-(`the_rp32_census_decomposition_is_read_off_the_corpus`) fixes the count at four.
+(`the_rp32_census_decomposition_is_read_off_the_corpus`) fixes the count at four,
+and to **RP3.4's two** (`gic-pct-r2-honoured-gictransformer-r4133-props` /
+`gic-pct-r2-honoured-midi-r4133-props`, drafted verbatim in the same STATUS
+block on 2026-08-24), whose census derivation
+(`the_rp34_census_decomposition_is_read_off_the_corpus`) fixes the count at two —
+one per `%R`-specified GICTransformer, the corpus's other twenty being
+ohms-specified and cell-free. With RP3.4 the staged set is complete at
+**RP3.1's two + RP3.2's four + RP3.4's two = eight**, plus RP1.4's, and all
+three sub-steps keep their `RP3_ROUTING` rows and their share of
+`DECLARED_RP3` `(6, 3, 6)` until this commit retires them.
 
 Stop masking properties on r4133: remove the per-channel clear in the gate path
 (`corpus_gate/scheduler.rs:357-363`) and the seeding path (`scheduler.rs:710-717`),
