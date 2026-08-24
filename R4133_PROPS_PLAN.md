@@ -155,11 +155,16 @@ value is no `%.Ng` render of ours — `RP39_ROUTING`; none of them in scope toda
 which is why the block is a discipline and not a gate failure), and after its own
 in-sub-step precondition, the **per-cell narrowing of the 20 mixed echo rows**
 (RP2.3's audit settlement, §RP4.1's first paragraph); RP5 is last.
-**One RP3 sub-step is deliberately outside that rule: §RP3.10** (the reproduced
-`QMode=0` dispatch, opened by RP3.2's audit settlement) is a solve-side fix with
-no property cell of its own — our `kvar` render reads `kvar_base`, which the
-dispatch never writes — so it blocks **§RP5.2**, the closing record, and not the
-unmask; it also runs only on the user's go-ahead (§RP3.10).
+**Two RP3 sub-steps are deliberately outside that rule.** **§RP3.10** (the
+reproduced `QMode=0` dispatch, opened by RP3.2's audit settlement) is a
+solve-side fix with no property cell of its own — our `kvar` render reads
+`kvar_base`, which the dispatch never writes — so it blocks **§RP5.2**, the
+closing record, and not the unmask; it also runs only on the user's go-ahead
+(§RP3.10). **§RP3.11** (the `Save`/`Dump` re-serialization surface, opened by
+RP3.3's audit settlement) is the mirror image: no *compared* channel reads it at
+all, so it cannot block a gate flip — it blocks **§RP5.2** too, and it runs after
+RP4.1 has fixed which pairs are echoes, because that list is exactly the list of
+properties where the two serializers disagree.
 Execution is on a **single branch only — never in parallel
 worktrees**: `tests/corpus/ledger.json`, `tests/corpus/manifests/population.lock.json`
 and `tests/golden/golden.lock.json` are fail-on-stale and are rewritten by this
@@ -194,6 +199,7 @@ audits on `opus-xhigh` exec rows are themselves `opus-xhigh`.
 | RP2.4 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | a new channel-scoped numeric floor — calibration discipline (the eight required components are enumerated in RP2.4 itself) |
 | RP3.1–RP3.4 (+ any RP3.5+ opened by RP2.2 or RP2.3) | `opus-high+` | `opus-high+` | `opus-high+` | one root-cause each, bounded surface, live-probe procedure prescribed |
 | RP3.10 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | a behavioral port change in both lanes (the reproduced `QMode=0` dispatch) that moves solved powers on four r4133-gating decks — live probe + per-case power-channel ledger work |
+| RP3.11 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | a serialization-semantics decision (store vs live) over every class at once, with `Save`/`Dump`/`props_roundtrip` golden exposure in both lanes |
 | RP4.1 | `opus-high+` | `opus-high+` | `opus-high+` | flag flip + residual triage (G1.1's own tier) |
 | RP5.1, RP5.2 | `opus-high+` | `opus-high+` | `opus-high+` | doc surgery validated by `oracle_parity_cfg_gate.rs` doc tests |
 
@@ -1337,6 +1343,23 @@ discrete-state pair in the tail is explained.
 > is now the entries that still declare rows, and a `0, 0` entry must prove the
 > positive half — the pair's rows still exist in the corpus and **every** one is
 > claimed by `Link::Echo`.
+>
+> **Audit settlement, 2026-08-24 — one thing this sub-step could NOT close.**
+> "No behavioural divergence to fix" is true of every channel any lane compares,
+> and the audit round bounded that claim: r4133's `Save`/`Dump` print the same
+> store, so its round trip re-creates the model-3 generator, while the port's
+> `Save Circuit` writes the live `Model=4` (measured: `report/save/save.rs:34-53`
+> renders through `ClassProps::get_value`, where Pascal `SaveWrite` reads
+> `PropertyValue[iProp]`, `General/DSSObject.pas:145-165`) — a re-compiled deck
+> is then a PQ generator instead of a Q-limited PV one, and the same line also
+> carries a `PF=0.88` the deck never typed. No oracle channel compares that
+> surface, on these decks or any other, so it is neither this commit's regression
+> nor part of the echo classification: it is **§RP3.11**, which the settlement
+> opened for it. The settlement also closed two holes in the census
+> decomposition's own sweep (abbreviated `Set` option spellings and the
+> `.dss`-only file universe), tied the
+> `ECHO_ROWS_ON_R4133_ONLY_CASES` entry to the derivation that claims to produce
+> it, and removed a pre-existing flake in the seam-counter tests.
 
 ### RP3.4 — r4133 twins of the already-pinned capi divergences
 
@@ -1658,6 +1681,75 @@ STATUS §WP-RP3 carries the verdict and this section is marked as executed.
 Outcome: the last reproduced upstream bug this plan uncovered stops living in
 prose.
 
+### RP3.11 — the `Save`/`Dump` re-serialization surface (opened by the RP3.3 audit settlement)
+
+**Why it exists.** Every echo row in this plan says the same thing about a
+*compare*: r4133's getter answers the parse store, ours answers the live field,
+and the cell is excluded. RP3.3 measured, for the first time, what that same
+difference does on a surface **no oracle channel compares** — the re-serializers.
+Pascal `TDSSObject.SaveWrite` (`Version8/Source/General/DSSObject.pas:145-165`)
+writes `PropertyValue[iProp]`, the store; the port's `save_write`
+(`crates/dss-core/src/report/save/save.rs:34-53`) renders each property through
+`ClassProps::get_value`, the live field — its own doc comment quotes the Pascal
+line it does not do. On `modes:ncim/ncim_pv_pq.dss`, after the converged NCIM
+solve that moves the generator PV→PQ, the two `Save Circuit` outputs are
+(both measured 2026-08-24):
+
+* r4133 (RP3.3 part A2, live DLL): `New "Generator.g1" bus1=genbus phases=3
+  kv=12.47 kW=800 model=3 maxkvar=1500 minkvar=-1500 Vpu=1.01`
+* the port (`cargo run -p dss-cli`): `New "Generator.g1" PF=0.88 Bus1=genbus
+  Phases=3 kV=12.47 kW=800 Model=4 Maxkvar=1500 Minkvar=-1500 Vpu=1.01`
+
+Re-compiling the port's line yields a **PQ generator with no Q limits in play**
+instead of the authored Q-limited PV one — a different problem, not a different
+spelling. The second difference in the same line is of another kind again: the
+port emits `PF=0.88`, a property the deck never typed and r4133 does not print,
+i.e. a **property-sequence** divergence (`PrpSequence` / `next_property_set`),
+not a render one.
+
+**Scope.** Two questions, both decided once for every class rather than per pair.
+(1) *What is `Save` for?* — re-creating the **authored** circuit (the store, what
+r4133 does) or dumping the **current state** (the live field, what we do). r4133
+is the behavioral authority, but "match r4133" here is not automatic: the store
+it prints is stale by construction, and the no-bug-reproduction policy
+(CLAUDE.md, 2026-08-02) forbids reproducing a *bug* in the product — so the
+sub-step must decide whether the echo is a bug at all on this surface or the
+documented meaning of `Save`. (2) The same question for `Dump`
+(`report/save/dump.rs`), whose Pascal twin goes through `GetPropertyValue` and
+therefore echoes exactly where the census says it echoes. The `PF=0.88`-class
+sequence difference is settled in the same sub-step, from `PrpSequence`'s own
+Pascal semantics.
+
+**Do first:** measure the exposure before deciding anything — which `save*` /
+`dump*` / `props_roundtrip` goldens would move under each answer, and an
+epri-worker probe of r4133's `Save Circuit` on one deck per echo *category*
+(`EchoParse`, `EchoDefault`, `EmptyCollectionRender`, `LiveSemanticsDiffer`), so
+the decision is taken against measured r4133 bytes and not against the Pascal
+read alone.
+
+**Precondition.** It runs **after RP4.1**: the echo table is the list of pairs
+where the two serializers can disagree at all, and it is not final until the
+unmask has settled the residual triage. It is a product-crate behavior change
+with golden exposure in both lanes, so it is its own sub-step with its own audit
+pair, never folded into another commit.
+
+**Kill criterion:** if matching r4133 on this surface requires the product to
+print a value the engine knows to be stale — i.e. reproducing the echo as
+*behavior* rather than tolerating it as a compare exclusion — stop and report:
+the 2026-08-02 policy forbids it, and the outcome is then a recorded, pinned
+divergence from r4133's serializer instead of a port change.
+
+**Blocks §RP5.2** (the closing record), **not RP4.1** — the unmask compares
+properties through `compare_all_properties`, which never reads a `Save` or
+`Dump` byte on the r4133 channel. Tier: `opus-xhigh`.
+**Acceptance:** both surfaces carry a recorded verdict; whatever stays divergent
+from r4133 is pinned by an expected-value test naming both serializations; the
+`PF=0.88`-class sequence difference is explained or fixed; goldens that
+legitimately move are regenerated with the argument in the same commit; STATUS
+§WP-RP3 carries the record.
+Outcome: the last surface where this plan's echo mechanism has a behavioral
+consequence stops being unowned.
+
 ---
 
 ## WP-RP4 — The unmask
@@ -1693,7 +1785,11 @@ not merely declared), shrink `DECLARED_RP3` by exactly those rows, and re-state
 `the_staged_r4133_property_entries_have_not_landed_yet` against whatever is
 still staged — that tripwire goes red the moment the first `property`-scoped
 `r4133` entry appears, which is how this precondition announces itself. The same
-applies to RP1.4's and RP3.3/RP3.4's staged entries — and to **RP3.2's four**
+applies to RP1.4's and RP3.4's staged entries — but **not to RP3.3**, which
+closed `ECHO` (2026-08-24): its exclusion is a `PROPS_ECHO_R4133` row that
+shipped in its own commit, it staged no ledger entry, and its `RP3_ROUTING` row
+is already retired to `0, 0` with `DECLARED_RP3` down to `(6, 3, 6)`, so RP4.1
+has nothing to retire for it — and to **RP3.2's four**
 (`r4133-windgen-kvar-dispatched-daily` / `-delta` / `-dyn` / `-dynfault`), which
 are already drafted in STATUS §WP-RP3 and whose census derivation
 (`the_rp32_census_decomposition_is_read_off_the_corpus`) fixes the count at four.
