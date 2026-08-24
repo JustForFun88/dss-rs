@@ -27,12 +27,16 @@
 //!
 //! # The pins that no echo row can name (RP3.1 onwards)
 //!
-//! The last six tests belong to no `EchoRow` at all, and could not. RP3.1's
-//! divergence is one r4133 getter reading a field the `Edit` CASE never wires,
-//! and RP3.2's is one r4133 getter reading the *wrong* live field — the
-//! dispatched Q where the property documents the base kvar. Both getters are
-//! **live**, so an echo row there would be a false statement about the
-//! mechanism (`R4133_PROPS_PLAN.md` §RP3.1, §RP3.2). Their exclusion shape is a
+//! The last eight tests belong to no `EchoRow` at all, and could not. RP3.1's
+//! divergence is one r4133 getter reading a field the `Edit` CASE never wires;
+//! RP3.2's is one r4133 getter reading the *wrong* live field — the
+//! dispatched Q where the property documents the base kvar; and RP3.4's is one
+//! r4133 getter **computing** a live value (`Format('%.8g',[1.0/G2])`) off a
+//! field its own `RecalcElementData` mis-derived, so the render is neither a
+//! parse echo nor a wrong *field*, but a correct read of a wrong number. All
+//! three getters are **live**, so an echo row there would be a false statement
+//! about the
+//! mechanism (`R4133_PROPS_PLAN.md` §RP3.1, §RP3.2, §RP3.4). Their exclusion shape is a
 //! per-case `ledger.json` `property` divergence entry, drafted in the sub-step
 //! and landed at RP4.1 by the §1.1(e) staging rule, so between the two there is
 //! a window in which the port's value has no holder anywhere. These pins are
@@ -1584,4 +1588,178 @@ fn windgen_kvar_renders_the_base_on_the_fault_ride_through_deck() {
     );
     deck.cmd("edit WindGen.w1 kvar=777");
     assert_eq!(deck.get("WindGen.w1.kvar"), "792.718441186736");
+}
+
+// ---------------------------------------------------------------------------
+// Pins added by RP3.4 (2026-08-24): the witnesses of two DRAFTED ledger entries
+// ---------------------------------------------------------------------------
+//
+// The same §1.1(e) window as RP3.1's two and RP3.2's four, and a third
+// mechanism. Here the r4133 getter is wired, live AND reading the field the
+// property documents — it renders `Format('%.8g',[1.0/G2])` for `R2`
+// (`Version8/Source/PDElements/GICTransformer.pas:723`) — but the field itself
+// was mis-derived one procedure earlier: `RecalcElementData`'s `%R` branch
+// builds winding 2's conductance from the H-winding percentage,
+// `:495 G2 := 100.0 / (FZBase2 * FPctR1);`, the byte-twin of pinned dss_capi
+// 0.14.5 `src/PDElements/GICTransformer.pas:441`. So the render is a *live
+// computation off a wrong number*, not a parse-store echo (property 14, `%R2`,
+// `:136`, does echo `FpctR2` at `:729` and agrees with the port digit for
+// digit) — which is why the exclusion is a ledger entry and no
+// `PROPS_ECHO_R4133` row. These two are named by
+// `props_r4133_replay::LEDGER_ENTRY_PINS`.
+//
+// The engine side is not this sub-step's: `GOLDEN_REBASE_PLAN.md` G2.5 already
+// fixed both lanes (`elements/pd/gic_transformer/solve.rs:66` reads
+// `self.pct_r2`) and pinned the capi channel
+// (`gic-pct-r2-honoured-{gictransformer,midi}-capi-props`). RP3.4 only stages
+// the r4133-channel twins, and these pins hold the port's value until they land.
+//
+// Neither deck needs a `solve`: `R2` is `RecalcElementData`'s output, stamped at
+// `Edit` time, and both decks' cells are `steps=1`. The reading is the same
+// `? Class.Name.Prop` the gate's property walk takes.
+
+/// `gictransformer.r2` on the micro deck — **RP3.4's root cause: both gating
+/// oracles derive winding 2's conductance from `%R1`.**
+///
+/// `GICTransformer` declares `R2` as property 8 (`PropertyName^[8] := 'R2'`,
+/// `Version8/Source/PDElements/GICTransformer.pas:130`) and stores no ohms field
+/// for it: `Edit` arm 8 inverts the typed ohms straight into the conductance
+/// (`:300-303`) and `GetPropertyValue` arm 8 inverts it back,
+/// `Format('%.8g', [1.0/G2])` (`:723`; `DumpProperties` prints the same at
+/// `:663`). When the deck specifies percentages instead — `Edit` arms 13/14 at
+/// `:308-309`, which set `FpctRSpecified := TRUE` at `:349`, where arms 7/8 set
+/// it FALSE at `:343` — `RecalcElementData` fills the conductances, and its
+/// forward branch reads the **H-winding** percentage for both:
+///
+/// ```text
+/// :494    G1 := 100.0 / (FZBase1 * FPctR1);
+/// :495    G2 := 100.0 / (FZBase2 * FPctR1);   // <- FPctR2 never reaches the admittance
+/// ```
+///
+/// It is a slip and not a convention: the same procedure's reverse branch
+/// restores `FPctR2` from `G2` (`:497-498`), and the two maps are inverses only
+/// when the forward one reads `FPctR2`; the creation defaults are independent
+/// (`%R1 = %R2 = 0.2`, `:458-459`). The pinned dss_capi 0.14.5 carries the line
+/// byte-for-byte (`src/PDElements/GICTransformer.pas:441`), so **both** gating
+/// oracles render the un-honoured percentage — which is why RP3.4 stages an
+/// r4133 twin of an already-pinned capi divergence rather than a new finding.
+/// The port honours `%R2` (`elements/pd/gic_transformer/solve.rs:66`, the
+/// `GOLDEN_REBASE_PLAN.md` G2.5 fix) and reads back through the same
+/// `INVERSE_VALUE` inversion (`accessors.rs:60`, `R2 => self.g2`). Upstream
+/// report: `investigations/to_opendss/07-gictransformer-g2-uses-pctr1.md`
+/// (local), already written against r4133 — a twin owes no new report.
+///
+/// Deck: `asymmetric/gic/gictransformer_gic.dss` (`GICTransformer.tg3`,
+/// `%R1=0.2 %R2=0.15 kvll1=345 kvll2=138 mva=300 type=Auto` at `:18-19`), the
+/// case behind the drafted entry
+/// `gic-pct-r2-honoured-gictransformer-r4133-props` — one in-scope cell.
+/// `ZBase2 = 138²/300 = 63.48 Ω`, so ours is `63.48*0.15/100 = 0.09522` against
+/// both oracles' `63.48*0.20/100 = 0.12696` (rel 2.50e-01).
+///
+/// **The discriminating readings**, because "our render is 0.09522" alone would
+/// pass against a getter hardwired to the `%R2` product:
+///
+/// * `%R2=0.3` moves `R2` to `0.19044` — the setter path drives this getter;
+/// * `%R1=0.4` then moves `R1` and leaves `R2` **unmoved**, which separates the
+///   two engines' *mechanisms*: upstream, whose `G2` is a function of `FPctR1`,
+///   would answer `63.48*0.4/100 = 0.25392` here;
+/// * `tg2`, the ohms-spec sibling on the same deck, reads back its typed `R2=0.1`
+///   through the reverse branch neither revision ever got wrong, and `tg1` — a
+///   GSU that types no `R2=` at all — keeps the `Create`-derived `0.38088` both
+///   engines agree on. That is why 20 of the corpus's 22 GICTransformers
+///   contribute no census cell (this sub-step's `civanlar.dss`).
+#[test]
+fn gictransformer_r2_honours_the_x_winding_percentage() {
+    let mut deck = Deck::compile("asymmetric/gic/gictransformer_gic.dss");
+    assert_eq!(
+        deck.get("GICTransformer.tg3.R2"),
+        "0.09522",
+        "ZBase2*%R2/100 = 63.48*0.15/100, which both oracles render as 0.12696 (= ZBase2*%R1/100)"
+    );
+    assert_eq!(
+        deck.get("GICTransformer.tg3.R1"),
+        "0.7935",
+        "the H winding is right on every engine — 396.75*0.2/100 — which is why the census has no \
+         `gictransformer.r1` row at all"
+    );
+    assert_eq!(
+        deck.get("GICTransformer.tg3.%R2"),
+        "0.15",
+        "property 14 renders the stored FpctR2 (GICTransformer.pas:729) and agrees with r4133: \
+         only the DERIVED ohms diverge, which is what makes this a computed render and not an echo"
+    );
+    assert_eq!(
+        deck.get("GICTransformer.tg2.R2"),
+        "0.1",
+        "the ohms-spec sibling takes the reverse branch (:497-498) neither revision got wrong"
+    );
+    assert_eq!(
+        deck.get("GICTransformer.tg1.R2"),
+        "0.38088",
+        "a GSU that never types R2= keeps Create's %R2 = %R1 = 0.2 on the 138 kV / 100 MVA \
+         defaults, so both engines land on the same number"
+    );
+
+    deck.cmd("edit GICTransformer.tg3 %R2=0.3");
+    assert_eq!(
+        deck.get("GICTransformer.tg3.R2"),
+        "0.19044",
+        "the setter path drives the same getter: 63.48*0.3/100"
+    );
+    deck.cmd("edit GICTransformer.tg3 %R1=0.4");
+    assert_eq!(
+        deck.get("GICTransformer.tg3.R2"),
+        "0.19044",
+        "the X winding does NOT follow %R1 — upstream would answer 63.48*0.4/100 = 0.25392 here, \
+         which is the reading that separates the two mechanisms rather than two numbers"
+    );
+    assert_eq!(
+        deck.get("GICTransformer.tg3.R1"),
+        "1.587",
+        "…while the H winding does follow it: 396.75*0.4/100"
+    );
+}
+
+/// `gictransformer.r2` on the 6-substation ring — the witness of the drafted
+/// entry `gic-pct-r2-honoured-midi-r4133-props`.
+///
+/// Same mechanism as [`gictransformer_r2_honours_the_x_winding_percentage`]
+/// (`Version8/Source/PDElements/GICTransformer.pas:495` feeding the `:723`
+/// getter); the entries are per case, so each owes its own reading. Deck:
+/// `asymmetric/gic/gic_midi.dss` (`GICTransformer.tg5`, the same
+/// `%R1=0.2 %R2=0.15 kvll1=345 kvll2=138 mva=300 type=Auto` at `:27-28`), one
+/// in-scope cell, the same `ZBase2 = 63.48 Ω` and therefore the same pair of
+/// numbers.
+///
+/// The ring's other two GICTransformers are the ohms-spec control again — `tg3`
+/// types `R1=0.2 R2=0.1` and `tg1` is a GSU with `R1=0.12` and no `R2=`.
+#[test]
+fn gictransformer_r2_honours_the_x_winding_percentage_on_the_ring() {
+    let mut deck = Deck::compile("asymmetric/gic/gic_midi.dss");
+    assert_eq!(
+        deck.get("GICTransformer.tg5.R2"),
+        "0.09522",
+        "63.48*0.15/100 on tg5, which both oracles render as 0.12696"
+    );
+    assert_eq!(deck.get("GICTransformer.tg5.R1"), "0.7935");
+    assert_eq!(
+        deck.get("GICTransformer.tg5.%R2"),
+        "0.15",
+        "the stored percentage agrees with r4133 — only the derived ohms diverge"
+    );
+    assert_eq!(
+        deck.get("GICTransformer.tg3.R2"),
+        "0.1",
+        "the ring's ohms-spec YY reads back its own token"
+    );
+    assert_eq!(deck.get("GICTransformer.tg1.R2"), "0.38088");
+
+    deck.cmd("edit GICTransformer.tg5 %R2=0.3");
+    assert_eq!(deck.get("GICTransformer.tg5.R2"), "0.19044");
+    deck.cmd("edit GICTransformer.tg5 %R1=0.4");
+    assert_eq!(
+        deck.get("GICTransformer.tg5.R2"),
+        "0.19044",
+        "unmoved by %R1, where upstream would render 0.25392"
+    );
 }
