@@ -350,3 +350,187 @@ fn short_line_merge_scans_every_parent_shunt() {
          second in the list must still block the merge"
     );
 }
+
+/// Build a `set reduceoption=default` feeder whose reducible pair is a
+/// **matrix-model** (`rmatrix`/`xmatrix`/`cmatrix` linecode) series pair, with
+/// the two lines' `units=` chosen by the caller. `s2` is the survivor — the
+/// merge is named `Other.Name~Name`, i.e. `s1~s2` — so the merged line's units
+/// are `s2`'s.
+fn matrix_series_reduce(circuit: &str, s1_units: &str, s2_units: &str) -> Dss {
+    let mut dss = Dss::new();
+    for cmd in [
+        format!("new circuit.{circuit} basekv=12.47 pu=1.0 phases=3 bus1=src"),
+        "new linecode.mtx nphases=1 units=kft rmatrix=[0.095] xmatrix=[0.21] cmatrix=[3.0]"
+            .to_string(),
+        "new line.f bus1=src.1 bus2=a.1 phases=1 linecode=mtx length=2 units=kft".to_string(),
+        format!("new line.s1 bus1=a.1 bus2=b.1 phases=1 linecode=mtx length=2 units={s1_units}"),
+        format!("new line.s2 bus1=b.1 bus2=c.1 phases=1 linecode=mtx length=3 units={s2_units}"),
+        "new load.ld bus1=c.1 phases=1 conn=wye model=1 kv=7.2 kw=100 pf=0.95".to_string(),
+        "new energymeter.em element=line.f terminal=1".to_string(),
+        "set voltagebases=[12.47]".to_string(),
+        "calcvoltagebases".to_string(),
+        "solve".to_string(),
+        "set reduceoption=default".to_string(),
+        "reduce".to_string(),
+        "solve".to_string(),
+    ] {
+        dss.command(&cmd);
+    }
+    assert!(dss.errors().is_empty(), "{circuit}: {:?}", dss.errors());
+    dss
+}
+
+/// The port's live render of `Class.Name.Prop` — the same getter the gate's
+/// property walk reads.
+fn prop_of(dss: &mut Dss, target: &str) -> String {
+    dss.command(&format!("? {target}"));
+    let v = dss.result().to_string();
+    assert_ne!(v, "Property Unknown", "{target}: no such property");
+    v
+}
+
+/// `TLineObj.MergeWith`'s matrix branch re-applies `Length=`/`Units=` **after**
+/// the matrix edits, so the merged line keeps its units.
+///
+/// r4133 saves the units at `Version8/Source/PDElements/Line.pas:1627`
+/// (`LenUnitsSaved := LengthUnits`) and restores them with a **separate** Edit
+/// at `:1794-1796` that runs *after* the `Rmatrix=…Xmatrix=…` (`:1778-1779`) and
+/// `Cmatrix=…` (`:1791-1792`) Edits — precisely because the `12..14` side effect
+/// calls `ResetLengthUnits` (`:691-693`). dss_capi 0.14.5 inverted the two
+/// (`src/PDElements/Line.pas:1806-1817`: the field write, then
+/// `PropertySideEffects(rmatrix/xmatrix/cmatrix)`), and the port had copied that
+/// order, so every matrix-model series merge came out `UNITS_NONE`. r4133 is the
+/// behavioral authority and its bugs are never reproduced (CLAUDE.md
+/// 2026-08-02), so both lanes now restore.
+///
+/// Probed live on the r4133 DLL (RP3.5, 2026-08-28): `mi` on this deck, `cm` on
+/// its mirror, `kft` on `tests/corpus/modes/reduce/midi_reduce.dss`'s three
+/// merged lines and `none` on a switch — four different answers, which is why
+/// this pin reads two decks that disagree instead of one that could pass against
+/// a hardwired getter. `length`, `rmatrix` and `xmatrix` already agreed digit
+/// for digit before the fix, so `units` is the only cell that moves — and it
+/// moves the pinned dss_capi 0.14.5 channel, hence the `capi_v0145` ledger entry
+/// `reduce-merge-units-restored-midi-capi-props`.
+#[test]
+fn merged_matrix_line_keeps_the_surviving_lines_length_units() {
+    // The survivor `s2` types `units=mi` while its partner and the linecode type
+    // `kft`: the merged line must answer `mi`, not `kft` and not `none`.
+    let mut dss = matrix_series_reduce("rp35a", "kft", "mi");
+    assert_eq!(prop_of(&mut dss, "Line.s1~s2.units"), "mi");
+    assert_eq!(prop_of(&mut dss, "Line.s1~s2.length"), "3.37878787878788");
+    // The un-merged control still renders its own units, so the assertion above
+    // is about the merge and not about the class default.
+    assert_eq!(prop_of(&mut dss, "Line.f.units"), "kft");
+    // …and the getter is live, not hardwired: an impedance override after the
+    // merge resets the units again (r4133 `:691-693`), and a fresh `units=`
+    // moves them.
+    dss.command("edit Line.s1~s2 rmatrix=[0.1]");
+    assert_eq!(prop_of(&mut dss, "Line.s1~s2.units"), "none");
+    dss.command("edit Line.s1~s2 units=km");
+    assert_eq!(prop_of(&mut dss, "Line.s1~s2.units"), "km");
+
+    // The mirror deck: swap the two spellings and the answer follows the
+    // survivor, which is what makes this a reading of `LenUnitsSaved` and not of
+    // a constant.
+    let mut mirror = matrix_series_reduce("rp35b", "mi", "cm");
+    assert_eq!(prop_of(&mut mirror, "Line.s1~s2.units"), "cm");
+    assert_eq!(prop_of(&mut mirror, "Line.s1~s2.length"), "321871.8");
+}
+
+/// Build a `set reduceoption=mergeparallel` feeder whose parallel pair is a
+/// 3-phase symmetrical-components pair with `switch=yes` on the lines the caller
+/// names. `p2` is the survivor (`self` in `MergeWith`), `p1` the partner.
+fn parallel_switch_reduce(circuit: &str, p1_switch: bool, p2_switch: bool) -> Dss {
+    let sw = |on: bool| if on { " switch=yes" } else { "" };
+    let mut dss = Dss::new();
+    for cmd in [
+        format!(
+            "new circuit.{circuit} basekv=12.47 pu=1.0 phases=3 bus1=src \
+             r1=0.4 x1=1.6 r0=1.2 x0=4.2"
+        ),
+        "new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6 units=km"
+            .to_string(),
+        "new line.lfeed bus1=src bus2=b1 linecode=lc length=0.5 units=km".to_string(),
+        format!(
+            "new line.p1 bus1=b1 bus2=b2 linecode=lc length=0.8 units=km{}",
+            sw(p1_switch)
+        ),
+        format!(
+            "new line.p2 bus1=b1 bus2=b2 linecode=lc length=1.1 units=km{}",
+            sw(p2_switch)
+        ),
+        "new line.l3 bus1=b2 bus2=b3 linecode=lc length=0.6 units=km".to_string(),
+        "new load.ld3 bus1=b3 phases=3 conn=wye model=1 kv=12.47 kw=500 pf=0.92".to_string(),
+        "new energymeter.em element=line.lfeed terminal=1".to_string(),
+        "set voltagebases=[12.47]".to_string(),
+        "calcvoltagebases".to_string(),
+        "set maxiterations=100".to_string(),
+        "solve".to_string(),
+        "set reduceoption=mergeparallel".to_string(),
+        "reduce".to_string(),
+        "solve".to_string(),
+    ] {
+        dss.command(&cmd);
+    }
+    assert!(dss.errors().is_empty(), "{circuit}: {:?}", dss.errors());
+    dss
+}
+
+/// The two switch arms of the parallel symmetrical-components merge.
+///
+/// r4133 builds one edit string `S` (`Version8/Source/PDElements/Line.pas:
+/// 1699-1719`) and edits it at `:1721-1722`; the `Length=%-g  Units=%s` re-apply
+/// at `:1724-1726` and `RecalcElementData` at `:1730` then run **outside every
+/// arm**. dss_capi 0.14.5 does the same — its `SetDouble(Length)` /
+/// `SetInteger(Units)` sit outside `if UseRXC` (`src/PDElements/
+/// Line.pas:1764-1768`). The port had nested the re-apply inside its `rxc`
+/// branch, so the two switch arms — the only arms that produce no impedance
+/// values — never restored the length at all.
+///
+/// Two independent defects, both fixed in both lanes (RP3.5, 2026-08-28), both
+/// probed live against the r4133 DLL and the pinned dss_capi 0.14.5:
+///
+/// * **self is the switch** (`:1708`, `S := ''`): the merged line kept the
+///   `len = 0.001` the `switch=yes` side effect flattened it to, where both
+///   oracles write `TotalLen = 1`.
+/// * **the partner is the switch** (`:1709`, `S := ' switch=yes'`): the port
+///   emitted the TEXT `Switch=1`, a transliteration of capi's *typed*
+///   `SetInteger(ord(TProp.Switch), 1, [])` (`:1736`). `InterpretYesNo` rejects
+///   `1` on both engines — probed: `edit line.a Switch=1` leaves
+///   `switch='False'`, `r1='0.301'` on the r4133 DLL — so the arm was a silent
+///   no-op and the merged branch kept the partner's real impedance where both
+///   oracles give it dummy z (`r1 = 1`). That is live state, not a render: it
+///   moves Y.
+///
+/// No vendored corpus deck reaches either arm (0 census cells), which is why the
+/// gap was silent and why this pin is the only thing holding it.
+#[test]
+fn parallel_merge_with_a_switch_restores_length_and_dummy_z() {
+    // The partner is the switch: the merged line becomes a switch with dummy z,
+    // `Length = TotalLen = 1` and the survivor's saved `km`.
+    let mut other_sw = parallel_switch_reduce("rp35c", true, false);
+    assert_eq!(prop_of(&mut other_sw, "Line.b1||b2.switch"), "Yes");
+    assert_eq!(prop_of(&mut other_sw, "Line.b1||b2.length"), "1");
+    assert_eq!(prop_of(&mut other_sw, "Line.b1||b2.units"), "km");
+    assert_eq!(prop_of(&mut other_sw, "Line.b1||b2.r1"), "1");
+    assert_eq!(prop_of(&mut other_sw, "Line.b1||b2.x1"), "1");
+
+    // Self is the switch: `S` is empty, so nothing touches the impedance — but
+    // `Length=`/`Units=` still run. The survivor's own `switch=yes` reset its
+    // units at declaration time, so `LenUnitsSaved` is `none` here: the pin
+    // reads two different saved spellings across the two arms.
+    let mut self_sw = parallel_switch_reduce("rp35d", false, true);
+    assert_eq!(prop_of(&mut self_sw, "Line.b1||b2.switch"), "Yes");
+    assert_eq!(prop_of(&mut self_sw, "Line.b1||b2.length"), "1");
+    assert_eq!(prop_of(&mut self_sw, "Line.b1||b2.units"), "none");
+    assert_eq!(prop_of(&mut self_sw, "Line.b1||b2.r1"), "1");
+
+    // The control: neither line is a switch, so the impedance arm runs, the
+    // merged line is NOT a switch, and `ParallelZ` produces the real value
+    // (0.301 * 0.8 * 1.1 / 1.9). Same `Length`/`Units` either way.
+    let mut plain = parallel_switch_reduce("rp35e", false, false);
+    assert_eq!(prop_of(&mut plain, "Line.b1||b2.switch"), "No");
+    assert_eq!(prop_of(&mut plain, "Line.b1||b2.length"), "1");
+    assert_eq!(prop_of(&mut plain, "Line.b1||b2.units"), "km");
+    assert_eq!(prop_of(&mut plain, "Line.b1||b2.r1"), "0.139410526315789");
+}

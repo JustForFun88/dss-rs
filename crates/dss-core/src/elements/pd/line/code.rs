@@ -20,11 +20,30 @@ impl Line {
         self.cd.obj.clear_seq(prop::LINECODE);
     }
 
-    /// Pascal `ResetLengthUnits`.
+    /// Pascal `TLineObj.ResetLengthUnits` — r4133
+    /// `Version8/Source/PDElements/Line.pas:2326-2331`: "If specify the
+    /// impedances always assume the length units match".
+    ///
+    /// `user_length_units` (`FUserLengthUnits`) is deliberately **not** cleared:
+    /// both gating oracles carry the identical comment on the identical two
+    /// statements — r4133 `:2330` and dss_capi 0.14.5 `src/PDElements/
+    /// Line.pas:2084`, both "but do not erase FUserLengthUnits, in case of CIM
+    /// export". The field is written only by the `units=` arm (r4133 `:629`,
+    /// mirrored at `accessors.rs`' `UNITS` side effect) and the constructor
+    /// (`:849`), and read only by the CIM writer (`ExportCIMXML.pas:3707`,
+    /// `:3735`, `:3877`), which is exactly why upstream keeps it across an
+    /// impedance override. Clearing it here was port-authored and diverged from
+    /// **both** oracles: probed live on `units=kft length=2 rmatrix=…` (units
+    /// typed BEFORE the matrices), `Export CIM100` writes
+    /// `<cim:Conductor.length>609.6</…>` = `2 x To_Meters(kft)` on the r4133 DLL
+    /// and on the pinned 0.14.5 oracle, against `2` here (RP3.5, 2026-08-28).
+    /// Pinned in direct state by
+    /// `elements::pd::line::tests::reset_length_units_keeps_the_users_units`
+    /// (all three `reset_length_units` callers) and observably by
+    /// `golden_cim::cim_conductor_length_uses_the_users_length_units`.
     pub(super) fn reset_length_units(&mut self) {
         self.units_convert = 1.0;
         self.length_units = LineUnits::None;
-        self.user_length_units = LineUnits::None;
     }
 
     /// Pascal `TLineObj.FetchLineCode`: copy the resolved LineCode's impedance

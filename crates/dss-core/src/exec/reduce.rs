@@ -174,7 +174,7 @@ impl Dss {
     }
 
     // ------------------------------------------------------------------
-    // TLineObj.MergeWith (Line.pas:1631)
+    // TLineObj.MergeWith (r4133 `Version8/Source/PDElements/Line.pas:1604`)
     // ------------------------------------------------------------------
 
     fn red_line_snap(&self, r: ElemId) -> LineSnap {
@@ -207,10 +207,17 @@ impl Dss {
         }
     }
 
-    /// Pascal `TLineObj.MergeWith(Other, Series)` (Line.pas:1631): merge `self`
-    /// with `other` and disable `other`. Returns false if the merge is
-    /// impossible (nil is caught by the caller here; phase mismatch; no common
-    /// bus on a series merge).
+    /// Pascal `TLineObj.MergeWith(Other, Series)` — r4133
+    /// `Version8/Source/PDElements/Line.pas:1604`: merge `self` with `other` and
+    /// disable `other`. Returns false if the merge is impossible (nil is caught
+    /// by the caller here; phase mismatch; no common bus on a series merge).
+    ///
+    /// **Citation note (RP3.5).** The Pascal line numbers in the impedance
+    /// section below name **r4133**, the behavioral authority (CLAUDE.md
+    /// 2026-08-02); dss_capi 0.14.5 is named in full wherever it is cited. A bare
+    /// `Line.pas:NNNN` elsewhere in this function still carries the older capi
+    /// numbering (~30-60 lines off r4133's) and is re-pointed as each site is
+    /// touched.
     fn red_merge(&mut self, self_ref: ElemId, other_ref: ElemId, series: bool) -> bool {
         use line::prop::*;
 
@@ -307,8 +314,18 @@ impl Dss {
         let len_other = other.len / other.units_convert;
 
         if this.sym_components_model && other.sym_components_model && this.nphases == 3 {
-            // Symmetrical-component model (Line.pas:1728).
+            // Symmetrical-component model (r4133 Line.pas:1695-1730).
+            //
+            // r4133 assembles ONE edit string `S` (`:1699-1719`) and edits it
+            // once (`:1721-1722`). Only two of the four arms carry impedances:
+            // the parallel self-is-switch arm leaves `S` EMPTY (`:1708`, "leave
+            // as is if switch; just dummy z anyway") and the parallel
+            // other-is-switch arm makes it `' switch=yes'` (`:1709`, "this will
+            // take care of setting Z's"). The `Length=`/`Units=` re-apply
+            // (`:1724-1726`) and `RecalcElementData` (`:1730`) then run
+            // UNCONDITIONALLY, outside every arm.
             let mut rxc: Option<[f64; 6]> = None;
+            let mut make_switch = false;
             if series {
                 rxc = Some([
                     (this.r1 * len_self0 + other.r1 * len_other) / total_len,
@@ -321,7 +338,16 @@ impl Dss {
             } else if this.is_switch {
                 // Leave as is if switch; just dummy z anyway.
             } else if other.is_switch {
-                self.red_edit_elem(self_ref, "Switch=1");
+                // r4133 `:1709` emits the TEXT `' switch=yes'`. `Switch=1` — a
+                // transliteration of dss_capi 0.14.5's typed
+                // `SetInteger(ord(TProp.Switch), 1, [])` (`src/PDElements/
+                // Line.pas:1736`) — is REJECTED by `InterpretYesNo` on
+                // both engines (probed: `edit line.a Switch=1` leaves
+                // `switch='False'` and `r1='0.301'` on the r4133 DLL and
+                // `switch="No"` here), so routing it through the text parser
+                // made this arm a silent no-op: the merged line kept the
+                // partner's real impedance where both oracles give it dummy z.
+                make_switch = true;
             } else {
                 let z1 = crate::support::mathutil::parallel_z(
                     Complex64::new(this.r1 * this.len, this.x1 * this.len),
@@ -340,22 +366,36 @@ impl Dss {
                     (this.c0 * this.len + other.c0 * other.len) / total_len * 1.0e9,
                 ]);
             }
+            // The `S` edit (r4133 `:1721-1722`), in the Pascal property order.
+            // An empty `S` is a no-op edit upstream, so the self-is-switch arm
+            // emits nothing here.
             if let Some(v) = rxc {
-                // SetDouble via the edit path (scale + PropertySideEffects), in
-                // the Pascal property order; then Length (SetDouble) and Units
-                // (SetInteger, typed — the reset-length-units side effect leaves
-                // FUnitsConvert=1, LengthUnits=saved).
                 let cmd = format!(
-                    "R1={} X1={} R0={} X0={} C1={} C0={} Length={}",
-                    v[0], v[1], v[2], v[3], v[4], v[5], total_len
+                    "R1={} X1={} R0={} X0={} C1={} C0={}",
+                    v[0], v[1], v[2], v[3], v[4], v[5]
                 );
                 self.red_edit_elem(self_ref, &cmd);
-                self.red_set_units(self_ref, len_units_saved);
+            } else if make_switch {
+                self.red_edit_elem(self_ref, "switch=yes");
             }
-            // RecalcElementData is deferred to CalcYPrim (SymComponentsChanged).
+            // The `Length=`/`Units=` re-apply (r4133 `:1724-1726`) is a SEPARATE
+            // edit and runs unconditionally — it is what restores the length the
+            // `switch=yes` side effect flattened to 0.001 and the units every
+            // impedance side effect reset. Nesting it inside the impedance arm
+            // left the two switch arms with a pre-merge `Len` (0.001 or the
+            // partner's length) where both oracles write `TotalLen` — dss_capi
+            // 0.14.5 runs the same two setters outside `if UseRXC`
+            // (`src/PDElements/Line.pas:1764-1768`). No vendored corpus deck
+            // reaches either switch arm, so nothing on a gated case moves; both
+            // halves are pinned by `exec::tests::reduce::
+            // parallel_merge_with_a_switch_restores_length_and_dummy_z`.
+            self.red_edit_elem(self_ref, &format!("Length={total_len}"));
+            self.red_set_units(self_ref, len_units_saved);
+            // RecalcElementData (`:1730`) is deferred to CalcYPrim
+            // (SymComponentsChanged).
         } else if !series {
             // Matrix model, parallel: upstream "assume equal" TODO.
-            // `TLineObj.MergeWith` (Line.pas:1776) sets `TotalLen := Len/2` here
+            // `TLineObj.MergeWith` (r4133 Line.pas:1734) sets `TotalLen := Len/2` here
             // — an admitted upstream approximation ("We'll assume lines are
             // equal for now"). It writes only the *local* `TotalLen`, which this
             // branch never reads back (no property is updated), so the merge is
@@ -365,7 +405,8 @@ impl Dss {
             // below exists to keep the ported control flow visible.
             let _total_len_matrix_parallel = this.len / 2.0;
         } else {
-            // Matrix model, series (Line.pas:1778, the `else` of the branch above).
+            // Matrix model, series (r4133 Line.pas:1735, the `Else` of the branch
+            // above).
             let (Some(mut zvals), Some(mut ycvals)) = (this.z.clone(), this.yc.clone()) else {
                 return false;
             };
@@ -397,20 +438,50 @@ impl Dss {
                 l.z = Some(zvals);
                 l.yc = Some(ycvals);
                 l.len = total_len;
-                l.length_units = len_units_saved;
-                // Mark the properties as updated (Line.pas:1825).
-                for p in [RMATRIX, XMATRIX, CMATRIX, LENGTH, UNITS] {
+                // Mark the properties the two matrix Edits set (r4133
+                // `:1778-1779` `Rmatrix=[…] Xmatrix=[…]`, `:1791-1792`
+                // `Cmatrix=[…]`) plus the `Length` of the re-apply below.
+                for p in [RMATRIX, XMATRIX, CMATRIX, LENGTH] {
                     l.cd.obj.set_as_next_seq(p);
                 }
-                // PropertySideEffects for the matrix props (resets length units,
-                // clears sym model — Line.pas:1830).
+                // PropertySideEffects for the matrix props: `12..14` clears the
+                // linecode flag and the sym model and calls `ResetLengthUnits`
+                // (r4133 `:691-693`).
                 l.side_effects(RMATRIX, 0);
                 l.side_effects(XMATRIX, 0);
                 l.side_effects(CMATRIX, 0);
             }
+            // r4133 `:1794-1796`: `Length=%-g  Units=%s` is a SEPARATE Edit that
+            // runs AFTER the matrix Edits, precisely so the `12..14`
+            // `ResetLengthUnits` cannot wipe it — the same construction
+            // `MakePosSequence` uses at `:1595-1596` ("Repeat the Length Units to
+            // compensate for unexpected reset"). Writing the field first and
+            // running the side effects afterwards — dss_capi 0.14.5's order
+            // (`src/PDElements/Line.pas:1806-1817`: `LengthUnits :=
+            // LenUnitsSaved` then `PropertySideEffects(rmatrix/xmatrix/cmatrix)`)
+            // — leaves the merged line at `UNITS_NONE`. Upstream bugs are never
+            // reproduced (CLAUDE.md 2026-08-02), so the re-apply happens here.
+            //
+            // `red_set_units` (a typed `SetInteger` + `PropertySideEffects`) is
+            // the whole of r4133's two-parameter Edit that is still outstanding:
+            // `Len` already holds `TotalLen`, and the `UNITS` side effect
+            // recomputes `units_convert` and `miles_this_line` off it, so the
+            // one call lands the same four effects (`FUnitsConvert`,
+            // `LengthUnits`, `FUserLengthUnits`, `MilesThisLine`) the Edit does.
+            //
+            // The three merged lines of `modes:reduce/midi_reduce.dss` therefore
+            // render `kft` where the pinned 0.14.5 oracle renders `none`; that is
+            // ledgered on the capi channel
+            // (`tests/corpus/ledger.json` `reduce-merge-units-restored-midi-capi-props`)
+            // and the correct value pinned by `exec::tests::reduce::
+            // merged_matrix_line_keeps_the_surviving_lines_length_units`. Nothing
+            // else moves: `convert_line_units` returns 1.0 whenever either side
+            // is `None`, so `units_convert` — and with it YPrim, Y, V, I, S and
+            // the losses — is identical either way.
+            self.red_set_units(self_ref, len_units_saved);
         }
 
-        // Disable the Other line (Line.pas:1835).
+        // Disable the Other line (r4133 Line.pas:1800).
         self.red_disable(other_ref);
         true
     }
