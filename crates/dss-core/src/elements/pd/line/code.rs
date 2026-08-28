@@ -11,12 +11,31 @@ use crate::support::line_units::{LineUnits, convert_line_units};
 use super::{ConductorChoice, Line, prop};
 
 impl Line {
-    /// Pascal `TLineObj.KillLineCodeSpecified`: drop the LineCode reference and
-    /// clear its set-order mark, so a later sym/matrix override stops the dump
-    /// from reporting the (now superseded) code.
+    /// Pascal `FLineCodeSpecified := FALSE` — r4133 clears the flag at eight
+    /// sites (`Version8/Source/PDElements/Line.pas:685` the `6..11, 26..27`
+    /// impedance arm, `:691` the `12..14` matrix arm, `:1832`
+    /// `FetchLineSpacing`, `:1853` `FetchConductorList`, `:1952`
+    /// `FetchWireList`, `:2016` `FetchCNCableList`, `:2075` `FetchTSCableList`,
+    /// `:2131` `FetchGeometryCode`) and at *no other statement*: the `switch=`
+    /// arm (`:694-700`) deliberately leaves it standing (RP3.6(a)).
+    ///
+    /// It does **not** clear `CondCode` — [`Line::line_code_name`] — which
+    /// `FetchLineCode` writes (`:387`) and only the constructor clears (`:825`),
+    /// so the name outlives every kill and stays readable by the two surfaces
+    /// that take it raw: `DumpProperties` (`:1273`) and the CIM LineCode units
+    /// back-fill (`Common/ExportCIMXML.pas:3876`). What does go with the flag is
+    /// the port's own typed handle ([`Line::line_code_ref`], which r4133 has no
+    /// counterpart for — a superseded code must not be resolvable) and the
+    /// set-order mark, so `Save`/JSON stop emitting the superseded code.
+    ///
+    /// dss_capi 0.14.5 models one field where r4133 models two — its
+    /// `KillLineCodeSpecified` NILs `LineCodeObj` (`src/PDElements/
+    /// Line.pas:1994-1999`) and it has no `CondCode` at all — which is what
+    /// the port had copied; r4133 is the behavioral authority (CLAUDE.md
+    /// 2026-08-02), so the two pieces of state are now separate (RP3.6(b)).
     pub(super) fn kill_line_code_specified(&mut self) {
+        self.line_code_specified = false;
         self.line_code_ref = None;
-        self.line_code_name = String::new();
         self.cd.obj.clear_seq(prop::LINECODE);
     }
 
@@ -84,6 +103,10 @@ impl Line {
         self.kxg = self.xg / (658.5 * (self.rho / self.cd.base_frequency).sqrt()).ln();
 
         self.line_code_units = LineUnits::from_code(code.units());
+        // `FLineCodeSpecified := TRUE` (`Line.pas:413`), immediately after
+        // `FLineCodeUnits` and before `FUnitsConvert` — the flag is raised only
+        // here, inside the branch that found the code.
+        self.line_code_specified = true;
         self.units_convert = convert_line_units(self.line_code_units, self.length_units);
 
         self.norm_amps = code.norm_amps();

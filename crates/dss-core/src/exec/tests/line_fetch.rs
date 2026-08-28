@@ -947,3 +947,93 @@ fn switch_yes_keeps_the_linecode_and_its_units_conversion() {
     assert_eq!(query(&mut dss, "line.261249.units"), "m");
     assert_eq!(query(&mut dss, "line.261249.length"), "0.001");
 }
+
+/// r4133 keeps **two** independent pieces of linecode state, and only one of
+/// them dies when a later property supersedes the code
+/// (`Version8/Source/PDElements/Line.pas`):
+///
+/// * `FLineCodeSpecified` (`:57`) — raised by `FetchLineCode` (`:413`), cleared
+///   by the impedance arm (`:685`), the matrix arm (`:691`) and every
+///   geometry/spacing/wire/cable fetch (`:1832`, `:1853`, `:1952`, `:2016`,
+///   `:2075`, `:2131`). It gates the property render — `3: If
+///   FLineCodeSpecified Then Result := CondCode else Result := ''` (`:1357`).
+/// * `CondCode` (`:103`) — the code's name, written by `FetchLineCode`
+///   (`CondCode := LowerCase(Code)`, `:387`) and cleared by **nothing but the
+///   constructor** (`:825`). `DumpProperties` prints it unconditionally
+///   (`Writeln(F,'~ ',PropertyName^[3],'=',CondCode)`, `:1273`) and the CIM
+///   LineCode units back-fill matches on it
+///   (`Common/ExportCIMXML.pas:3876`).
+///
+/// So on r4133 one line answers `''` to `? line.q.linecode` **and** prints
+/// `~ linecode=lcnone` in its `Dump` — measured on the r4133 DLL, RP3.6 probe
+/// deck C, 2026-08-29. dss_capi 0.14.5 cannot: it has no `CondCode` field at
+/// all (`KillLineCodeSpecified` NILs `LineCodeObj`, `src/PDElements/
+/// Line.pas:1994-1999`) and prints an empty `linecode=` in both places, which is
+/// the model the port had copied. r4133 is the behavioral authority (CLAUDE.md
+/// 2026-08-02), so the port now models both fields (RP3.6(b)).
+///
+/// Discriminators against the pre-split engine (each fails with the name-clear
+/// restored in `kill_line_code_specified`): the `Dump` line of `q` and of `g`.
+/// Invariance controls that must NOT move: the two `? …linecode` renders (`''`
+/// — this is the golden `props/line.json::line_code_then_r1` tripwire), `q`'s
+/// `units`/`r1` (the arm-6 side effects still run) and the un-superseded
+/// control line, which reads the name through both surfaces on every engine.
+///
+/// Both lanes, no oracle, no feature gate.
+#[test]
+fn linecode_name_survives_the_flag_that_gates_its_render() {
+    let mut dss = Dss::new();
+    dss.command("New circuit.dumpcondcode");
+    dss.command("New WireData.w1 diam=0.5 gmrac=0.2 rac=0.1 runits=mi radunits=in gmrunits=ft");
+    dss.command("New LineGeometry.geo1 nconds=3 nphases=3 reduce=no");
+    dss.command("~ cond=1 wire=w1 x=-4 h=28 units=ft");
+    dss.command("~ cond=2 wire=w1 x=-1.5 h=28.5 units=ft");
+    dss.command("~ cond=3 wire=w1 x=3 h=28 units=ft");
+    dss.command("New LineCode.lcnone nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6");
+    // `q`: the code, then an `r1=` override — side-effect arm 6 (`:685`).
+    dss.command("New Line.q bus1=src bus2=a phases=3 linecode=lcnone units=kft length=2 r1=0.301");
+    // `g`: the code, then a `geometry=` — `FetchGeometryCode` (`:2131`).
+    dss.command(
+        "New Line.g bus1=a bus2=b phases=3 linecode=lcnone length=2 units=kft geometry=geo1",
+    );
+    // The control: nothing supersedes the code.
+    dss.command("New Line.live bus1=b bus2=c phases=3 linecode=lcnone length=2 units=kft");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // The render is the flag's: both superseded lines answer `''`…
+    assert_eq!(query(&mut dss, "line.q.linecode"), "");
+    assert_eq!(query(&mut dss, "line.g.linecode"), "");
+    assert_eq!(query(&mut dss, "line.live.linecode"), "lcnone");
+    // …and the arm-6 side effects that came with the kill still run: r4133
+    // renders `units = 'none'` (ResetLengthUnits) and `r1 = '0.301'` here.
+    assert_eq!(query(&mut dss, "line.q.units"), "none");
+    assert_eq!(query(&mut dss, "line.q.r1"), "0.301");
+
+    // The name is `CondCode`'s: `Dump` prints it for all three.
+    for (line, dumped) in [("q", "lcnone"), ("g", "lcnone"), ("live", "lcnone")] {
+        dss.command(&format!("Dump Line.{line}"));
+        let path = dss.last_result_file().to_string();
+        let text = std::fs::read_to_string(&path).expect("dump file");
+        // Delete by the exact reported path (never a recursive wipe), before the
+        // assertion, so a failure leaves nothing behind.
+        let _ = std::fs::remove_file(&path);
+        assert!(
+            text.contains(&format!("~ LineCode={dumped}\n")),
+            "Dump Line.{line} must print the raw CondCode `{dumped}` \
+             (r4133 Line.pas:1273): {text}"
+        );
+    }
+
+    // Internal consistency of the port's `MakeLike`, which copies the whole
+    // impedance-*source* state (name, handle and flag together). NOTE: both
+    // oracles copy **none** of it — r4133 `TLine.MakeLike` (`Line.pas:735-787`)
+    // and dss_capi 0.14.5 (`src/PDElements/Line.pas:889-930`) copy the
+    // impedances, `Len`, `SymComponentsModel` and `FCapSpecified` only, so both
+    // render `''` here. That wider copy set is pre-existing, has no census cell
+    // (no corpus deck writes `like=` on a coded line) and is recorded in STATUS
+    // §RP3.6(b); this assertion only holds the flag to the name it was copied
+    // with, so the pair can never drift apart.
+    dss.command("New Line.cp like=live bus1=c bus2=d");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "line.cp.linecode"), "lcnone");
+}

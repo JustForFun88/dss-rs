@@ -1653,11 +1653,33 @@ the live capi channel by `line-switch-keeps-linecode-zone{2,3}-capi-props`
 (landed, not staged) and pinned by
 `exec::tests::line_fetch::switch_yes_keeps_the_linecode_and_its_units_conversion`;
 no golden byte moved and `lane_diff` was re-run as a measurement: PASS,
-`max |Δ| = 0` on every kind. **Part (b) — splitting
-`FLineCodeSpecified` from `CondCode` so the name survives a flag kill, and
-repointing `cim/export.rs::find_line_units_for_linecode` onto the `CondCode`
-string match r4133 uses (`Common/ExportCIMXML.pas:3877`) — is still open.**
-Full record in STATUS §RP3.6.
+`max |Δ| = 0` on every kind.
+
+**Part (b) — the `FLineCodeSpecified`/`CondCode` split — SETTLED 2026-08-29
+(`FIX`, both lanes).** The port now carries the flag (`line_code_specified`)
+beside the name (`line_code_name` = `CondCode`), which `FetchLineCode` writes
+(`Line.pas:387`) and only the constructor clears (`:825`), so it outlives every
+`KillLineCodeSpecified`; the typed handle `line_code_ref` (r4133 keeps none —
+its `LineCodeObj` is a local, `:376`) travels with the flag. The property render
+and the `units=` branch stay flag-gated (`:1357`, `:626-627`), `Dump` prints the
+raw `CondCode` unconditionally (`:1273`, taken here rather than deferred to
+RP3.11: a one-line render difference from 0.14.5 with no golden behind it), and
+`cim/export.rs::find_line_units_for_linecode` matches the **name**
+(`Common/ExportCIMXML.pas:3872-3884`), so an overridden or switched line donates
+its `FUserLengthUnits` to a `Units = UNITS_NONE` LineCode exactly as r4133 does:
+`PerLengthSequenceImpedance.r = 0.301/304.8 = 0.00098753281` against 0.14.5's
+`0.301`. Pinned by
+`exec::tests::line_fetch::linecode_name_survives_the_flag_that_gates_its_render`
+and `golden_cim::cim_linecode_units_backfill_matches_the_condcode_string`, both
+oracle-free and non-vacuity-proven. **No golden byte moved** (measured deck by
+deck across the CIM decks, the `Dump` report goldens, `props/*.json` and the
+`Save` goldens, then re-measured by running them) and **no ledger or lock line
+moved**: the gate compares properties through the flag-gated getter and reads
+neither `Dump` text nor CIM XML, and the full 521-case gate is green in both
+lanes; `lane_diff` was re-run as a measurement even though the solved state is
+out of reach: PASS, `max |Δ| = 0` on every kind. Four adjacent divergences are recorded with owners rather than chased
+(the object-ref miss path, `MakeLike`'s copy set, the switch-unreachable
+`Conductor.length` branch, name casing). Full record in STATUS §RP3.6.
 
 ### RP3.7 — Per-phase switch and relay state (opened by RP2.2)
 

@@ -1599,8 +1599,11 @@ pub(crate) fn class_index(classes: &[DssClass], name: &str) -> Option<usize> {
 /// Pascal LineCode catalog sweep (`ExportCIMXML.pas:4493-4547`): a
 /// `PerLengthSequenceImpedance` (symmetric-components 3-phase) or a
 /// `PerLengthPhaseImpedance` + lower-triangular `PhaseImpedanceData` per
-/// LineCode. The `Units=UNITS_NONE` fix-up loop (`4495-4509`) adopts the units
-/// of the first enabled `Line` referencing this code (mutating `pLnCd.Units`).
+/// LineCode. The `Units=UNITS_NONE` fix-up loop (r4133 `3869-3884`, dss_capi
+/// 0.14.5 `4493-4509`) adopts the units of the first enabled `Line` whose
+/// `CondCode` names this code (mutating `pLnCd.Units`) — see
+/// [`find_line_units_for_linecode`] for the name-vs-object match the two
+/// engines disagree on.
 fn write_line_code_catalog(
     buf: &mut writer::Writer,
     classes: &mut [DssClass],
@@ -1779,13 +1782,42 @@ fn write_line_code_catalog(
     }
 }
 
-/// The `UserLengthUnits` code of the first enabled `Line` referencing `lc_name`
-/// (the LineCode units fix-up source, Pascal `4497-4508`).
+/// The `UserLengthUnits` code of the first enabled `Line` whose `CondCode`
+/// names `lc_name` — the LineCode units fix-up source, r4133
+/// `Common/ExportCIMXML.pas:3872-3884`:
+///
+/// ```pascal
+/// if pLnCd.Units = UNITS_NONE then begin // we need the real units for CIM
+///   pLine := ActiveCircuit[ActiveActor].Lines.First;
+///   while pLine <> nil do begin
+///     If pLine.Enabled Then Begin
+///       if pLine.CondCode = pLnCd.LocalName then begin
+///         pLnCd.Units := pLine.UserLengthUnits;
+///         break;
+/// ```
+///
+/// The match is on the **name**, and `CondCode` survives every
+/// `FLineCodeSpecified := FALSE` (it is written by `FetchLineCode`,
+/// `PDElements/Line.pas:387`, and cleared only by the constructor, `:825`), so
+/// a line whose code was superseded by an impedance/matrix/geometry/spacing/
+/// cable override — or a `switch=` (RP3.6(a)) — still donates its units here.
+/// dss_capi 0.14.5 differs: it has no `CondCode` and matches the live object
+/// instead (`if (pLine.LineCodeObj <> NIL) and (pLine.LineCodeObj.Name =
+/// pLnCd.LocalName)`, `src/Common/ExportCIMXML.pas:4501`), so it skips exactly
+/// those lines. r4133 is the behavioral authority (CLAUDE.md 2026-08-02);
+/// measured live, an overridden `linecode=lcnone units=kft length=2 r1=0.301`
+/// makes r4133 write `PerLengthSequenceImpedance.r = 0.301/304.8 =
+/// 0.00098753281` where 0.14.5 writes `0.301` (RP3.5/RP3.6 probes).
+///
+/// Case-insensitive because both engines compare two already-lowercased strings
+/// (`CondCode := LowerCase(Code)`; a `TDSSObject`'s `Name` is lowercased at
+/// creation) — the port stores the *resolved object's* name on both sides of
+/// this compare, so the two agree today, and the fold keeps a future
+/// original-case store from silently turning this into a stricter test.
 fn find_line_units_for_linecode(classes: &[DssClass], ckt: &Circuit, lc_name: &str) -> Option<i32> {
     for &r in &ckt.lines {
         if let Some(line) = classes[r.class_ord()].arena.get::<Line>(r.index())
             && line.cd.enabled
-            && line.line_code_ref.is_some()
             && line.line_code_name.eq_ignore_ascii_case(lc_name)
         {
             return Some(line.user_length_units.code());
@@ -3905,7 +3937,12 @@ pub(crate) fn export_cdpsm(
             }
             let bus_refs: Vec<usize> = line.cd.terminals.iter().map(|t| t.bus_idx()).collect();
             let bus_kvbases: Vec<f64> = bus_refs.iter().map(|&b| ckt.buses[b].kv_base).collect();
-            let has_line_code = line.line_code_ref.is_some();
+            // r4133 `Common/ExportCIMXML.pas:3734`: `if LineCodeSpecified then`
+            // — the flag, which an override clears even though `CondCode`
+            // (`line_code_name`) survives for the units back-fill above. The
+            // name passed on to `LineCodeRefNode` is `pLine.CondCode` (`:3738`),
+            // read here through the same field.
+            let has_line_code = line.line_code_specified;
             let has_geometry = line.geometry_obj.is_some();
             let spacing_specified =
                 line.line_spacing_obj.is_some() && !line.line_wire_data.is_empty();

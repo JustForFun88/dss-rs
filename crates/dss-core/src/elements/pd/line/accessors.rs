@@ -35,8 +35,18 @@ impl Line {
         self.user_length_units = other.user_length_units;
         self.line_code_units = other.line_code_units;
         self.units_convert = other.units_convert;
+        // NOTE(upstream-divergence, pre-existing): neither oracle copies any of
+        // the linecode state here — r4133 `TLine.MakeLike` (`Line.pas:735-787`)
+        // and dss_capi 0.14.5 (`src/PDElements/Line.pas:889-930`) copy the
+        // impedances, `Len`, `SymComponentsModel` and `FCapSpecified` only, so a
+        // `like=` line renders `linecode = ''` upstream. The port copies the
+        // whole impedance-*source* state; the new flag travels with the name and
+        // handle it belongs to, so the copy stays internally consistent. No
+        // corpus deck writes `like=` on a coded line (the `line.linecode` census
+        // is 5 cells, all switch-shaped), so the wider copy set has no cell.
         self.line_code_ref = other.line_code_ref;
         self.line_code_name = other.line_code_name.clone();
+        self.line_code_specified = other.line_code_specified;
         self.is_switch = other.is_switch;
         self.sym_components_model = other.sym_components_model;
         self.sym_components_changed = other.sym_components_changed;
@@ -190,8 +200,19 @@ impl DssObject for Line {
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         match idx {
             super::prop::LINECODE => {
+                // r4133 writes `CondCode`, `FLineCodeUnits` and
+                // `FLineCodeSpecified` only inside `FetchLineCode`'s
+                // `IF LineCodeClass.SetActive(Code)` success branch
+                // (`Line.pas:382-413`); [`Line::fetch_line_code`] raises the flag
+                // there. On a miss the port's generic ObjectRef parse has already
+                // emptied the stored name (dss_capi's #401 path), so the flag
+                // falls with it — r4133 instead leaves name and flag untouched
+                // and logs its own #180, a separate pair recorded in STATUS
+                // §RP3.6(b) (it needs `RefMissMessage` to carry r4133's
+                // " for Line object Line.<name>" suffix).
                 self.line_code_name = name;
                 self.line_code_ref = resolved.and_then(|o| o.idx::<LineCodeObj>());
+                self.line_code_specified = false;
                 if let Some(o) = resolved
                     && let Some(code) = o.get::<LineCodeObj>()
                 {
@@ -259,7 +280,20 @@ impl DssObject for Line {
     fn get_string(&self, idx: usize) -> String {
         use super::prop::*;
         match idx {
-            LINECODE => self.line_code_name.clone(),
+            // Pascal `TLineObj.GetPropertyValue` (r4133 `Line.pas:1357`):
+            // `3: If FLineCodeSpecified Then Result := CondCode else Result :=
+            // ''`. The name (`CondCode`) outlives the flag, so this render is
+            // the flag's, not the name's — an impedance/matrix/geometry/
+            // spacing/cable override answers `''` while `Dump` still prints the
+            // code (`:1273`) and the CIM units back-fill still matches it
+            // (`Common/ExportCIMXML.pas:3876`).
+            LINECODE => {
+                if self.line_code_specified {
+                    self.line_code_name.clone()
+                } else {
+                    String::new()
+                }
+            }
             GEOMETRY => self.geometry_name.clone(),
             // The `spacing=` scalar ref dumps the spacing object's name ("" = NIL).
             // (wires/cncables/tscables are array refs — dumped via
@@ -397,7 +431,10 @@ impl DssObject for Line {
                 // Update the units conversion factor. With a LineCode in play
                 // the factor is recomputed relative to the code's units;
                 // otherwise it is adjusted relative to the previous units.
-                if self.line_code_ref.is_some() {
+                // r4133 `:626-627` branches on `FLineCodeSpecified`, not on a
+                // stored code object — the name survives a kill, the flag does
+                // not, and this is one of the two live readers of the flag.
+                if self.line_code_specified {
                     self.units_convert =
                         convert_line_units(self.line_code_units, self.length_units);
                 } else {
@@ -460,8 +497,9 @@ impl DssObject for Line {
                 // (`… LineCode=lc1 Ratings=[…] NormAmps=… EmergAmps=…`). Pascal
                 // `TLineObj.FetchLineCode` (`Line.pas:544-547`); the sibling
                 // `fetch_line_spacing` already does this inline. Only fires when
-                // the linecode actually resolved.
-                if self.line_code_ref.is_some() {
+                // the linecode actually resolved — i.e. exactly when
+                // `FetchLineCode` ran and raised `FLineCodeSpecified` (`:413`).
+                if self.line_code_specified {
                     for p in [SEASONS, RATINGS, NORMAMPS, EMERGAMPS] {
                         self.cd.obj.set_as_next_seq(p);
                     }
