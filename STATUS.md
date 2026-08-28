@@ -5263,18 +5263,21 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     measurement (`props_r4133_evidence_lock.rs` re-measures nothing), so they are
     **not** edited; the ledger entry's `source` says so, and later sub-steps that
     fix rather than exclude inherit the same rule.
-  - **Audit settlement (2026-08-29, one commit over `9daff660`).** Nine findings
-    from the two audit agents. Both re-derived the mechanism independently on
-    live oracles and confirmed the classification: outcome stays `FIX` in both
-    lanes, the census still decomposes to 3 cells / 0 in scope, the ledger entry
-    and its cause are unchanged, no upstream bug is reproduced and no
-    `TODO(compat)` was added. Seven findings were real and are fixed here, one is
-    **refuted** by live re-measurement, one is out of RP3.5's routine and is
-    recorded below with its owner. Chasing the refutation surfaced **two further
-    defects in `MergeWith` itself**, both fixed in the same commit under "port
-    gaps immediately". No test was deleted, `#[ignore]`d or loosened, no
-    tolerance exists here to move (every pin compares rendered strings), and no
-    golden, frozen extract, `ledger.json` or `population.lock.json` byte moves.
+  - **Audit settlement (2026-08-29, one commit over `9daff660`).** Nine claims
+    across the two audit agents — eight headline findings, one of them raised by
+    both, plus the two halves of the tests audit's Major. Both auditors
+    re-derived the mechanism independently on live oracles and confirmed the
+    classification: outcome stays `FIX` in both lanes, the census still
+    decomposes to 3 cells / 0 in scope, the ledger entry and its cause are
+    unchanged, no upstream bug is reproduced and no `TODO(compat)` was added.
+    Seven claims are real and settled here, one is **refuted** by live
+    re-measurement, and one is real but outside `MergeWith`, recorded below with
+    its owner. Settling the refuted one surfaced **a further defect in
+    `MergeWith` itself** — the deferred `RecalcElementData` — fixed in the same
+    commit under "port gaps immediately". No test was deleted, `#[ignore]`d or
+    loosened, no tolerance exists here to move (every pin compares rendered
+    strings), and no golden, frozen extract, `ledger.json` or
+    `population.lock.json` byte moves.
     - **`MergeWith` re-pointed only the partner's controls, and named them with
       the pre-rename string — REAL, fixed.** r4133 calls
       `UpdateControlElements` **twice** (`Version8/Source/PDElements/Line.pas:
@@ -5298,7 +5301,12 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
       class whose property 1 is not spelled `element` (Relay/Recloser/Fuse:
       `MonitoredObj`) takes an unknown-parameter diagnostic and keeps its old
       name on **both** engines — probed on the same deck with a `Relay`, so that
-      half is faithful and stays.
+      half is faithful and stays. This also closes a Phase-8 deferral that was
+      still open by the "verify the successor of a forward-handoff" rule:
+      `docs/phase-records/phase-8.md` recorded "`UpdateControlElements` has no
+      runtime deck coverage (synthesized control-on-merged-line deck = a WP8.8
+      sweep candidate)" and no later WP built it. It exists now, and it found the
+      routine wrong.
     - **`RecalcElementData` was deferred out of the sym branch, and the deferral
       is not equivalent — REAL, fixed.** `MergeWith` ends its
       symmetrical-components branch with `RecalcElementData` (r4133 `:1730`,
@@ -5420,6 +5428,16 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
       change silent. The solved-state claim is unchanged and re-verified:
       `units_convert` is 1.0 either way, so Y, V, I, S, losses, node count and
       iteration count do not move.
+    - **Test count 4 208 → 4 213 per lane (8 416 → 8 426), +5.** Four
+      `exec::tests::reduce` pins
+      (`merge_repoints_the_controls_of_the_surviving_line`,
+      `parallel_merge_with_a_switch_recalcs_before_the_cap_fixup`,
+      `the_corpus_reduce_decks_merged_lines_render_kft`,
+      `merged_matrix_line_converts_its_length_with_the_restored_units`) and one
+      replay derivation
+      (`the_rp35_census_decomposition_is_read_off_the_corpus`). RP3.5 itself had
+      taken 4 204 → 4 208 with its four pins and recorded no count; the ledger is
+      picked back up here.
     - **Gate.** All five commands green in both lanes, **4 213 tests per lane**
       (0 failed, 0 filtered; the four `ignored` are the pre-existing doctest
       markers), corpus gate 131/131 with the entry still at 3 hits. `lane_diff`
