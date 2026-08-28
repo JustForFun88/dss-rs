@@ -1461,22 +1461,36 @@ const RP22_ROUTING: &[(&str, Owner, &str)] = &[
         Owner::Rp23,
         "StorageController.pas:1200-1214 vs :2322-2333",
     ),
-    // **RP3.5.** r4133 renders index 20 LIVE — `LineUnitsStr(LengthUnits)`
-    // (`PDElements/Line.pas:1404`) — so `'none'` vs `'kft'` means the two
-    // engines hold different `LengthUnits`. r4133 re-applies the saved units
-    // AFTER the impedance edit (`MergeWith` saves at `:1627`, re-edits at
-    // `:1721-1726` and `:1791-1796`; `MakePosSequence` re-appends `Units=` at
-    // `:1596` "to compensate for unexpected reset"); the port's matrix-series
-    // branch does the two in the opposite order (`exec/reduce.rs:396-409` writes
-    // `length_units` and then runs the RMATRIX/XMATRIX/CMATRIX side effects,
-    // which call `reset_length_units`). Second divergence in the same routine:
-    // the port's `reset_length_units` clears `user_length_units`
-    // (`elements/pd/line/code.rs:24-28`), which r4133 deliberately preserves
-    // (`Line.pas:2330`, "but do not erase FUserLengthUnits").
+    // **RP3.5 — SETTLED 2026-08-28, outcome FIX (both lanes).** r4133 renders
+    // index 20 LIVE — `LineUnitsStr(LengthUnits)` (`PDElements/Line.pas:1404`) —
+    // so `'none'` vs `'kft'` meant the two engines held different `LengthUnits`.
+    // r4133 re-applies the saved units AFTER the impedance edit (`MergeWith`
+    // saves at `:1627`, re-edits at `:1721-1726` and `:1791-1796`;
+    // `MakePosSequence` re-appends `Units=` at `:1596` "to compensate for
+    // unexpected reset"), while the port's matrix-series branch had copied
+    // dss_capi 0.14.5's inverted order (`src/PDElements/Line.pas:1806-1817`):
+    // the field write, then the RMATRIX/XMATRIX/CMATRIX side effects whose
+    // `ResetLengthUnits` wiped it. `exec/reduce.rs`'s matrix-series branch now
+    // calls `red_set_units` AFTER those side effects, and `red_merge`'s sym
+    // branch re-applies `Length=`/`Units=` unconditionally as both oracles do.
+    // Second divergence in the same routine, from BOTH oracles: the port's
+    // `reset_length_units` cleared `user_length_units`
+    // (`elements/pd/line/code.rs`), which r4133 (`Line.pas:2330`) and capi
+    // 0.14.5 (`:2084`) both keep "in case of CIM export"; that line is gone.
+    // Fixed in both lanes; the port now renders the r4133 value, so the frozen
+    // `rust='none'` column of this row is HISTORICAL (the extracts are a data
+    // lock, never edited). The three cells are on `modes:reduce/midi_reduce.dss`,
+    // a capi-only case, so what the fix moved is the LIVE capi channel:
+    // `tests/corpus/ledger.json` `reduce-merge-units-restored-midi-capi-props`
+    // (3 hits) is the exclusion and
+    // `exec::tests::reduce::merged_matrix_line_keeps_the_surviving_lines_length_units`
+    // plus `the_corpus_reduce_decks_merged_lines_render_kft` are the pins. The
+    // census decomposition behind "3 cells, 0 in scope" is derived by
+    // `the_rp35_census_decomposition_is_read_off_the_corpus`.
     (
         "line.units",
         Owner::Rp35,
-        "RP3.5 — Line.pas:1404 / :1627 / :1721-1726 / :1791-1796 / :2326-2331",
+        "RP3.5 FIXED (2026-08-28) — Line.pas:1404 / :1627 / :1721-1726 /          :1791-1796 / :2326-2331",
     ),
     // --- the S6 singletons ---------------------------------------------------
     // **RP3.6.** r4133 renders index 3 live (`If FLineCodeSpecified Then Result
@@ -1945,6 +1959,12 @@ enum Owner {
     /// switch/relay state. Which pair belongs to which sub-step is recorded in
     /// [`RP22_ROUTING`]'s citation column; this owner is the accounting bucket
     /// they share.
+    ///
+    /// **A settled sub-step does not leave the bucket** — the same rule
+    /// [`RP3_ROUTING`] states. RP3.5 landed on 2026-08-28 as a port fix in both
+    /// lanes, yet `line.units` still declares here: its exclusion is a
+    /// `capi_v0145` ledger entry and no [`Link`] of the chain reads the ledger,
+    /// so the row is retired by hand at RP4.1, never on its own.
     Rp35,
     /// **RP3.8 — the sub-step RP2.3's kill criterion opened** (the ruling of
     /// 2026-08-23, user-approved). Five `SilentReadOnly` pairs whose divergence
@@ -5710,6 +5730,366 @@ fn the_gictransformer_reader_separates_the_percentage_and_ohms_specs() {
             .map(|(n, _)| n.as_str())
             .collect::<Vec<_>>(),
         ["tg1", "tg3", "tg5"]
+    );
+}
+
+/// The nine corpus decks that actually run `Reduce`, i.e. the whole population
+/// in which `TLineObj.MergeWith` — RP3.5's routine — can ever execute.
+///
+/// Cited rather than derived-and-forgotten so that a tenth reduce deck reds
+/// [`the_rp35_census_decomposition_is_read_off_the_corpus`] instead of quietly
+/// widening the pair's population. The other two columns are the two halves of
+/// "can this deck carry a `line.units` cell", each read off the deck itself and
+/// each re-derived by the test:
+///
+/// * the `Set ReduceOption=` it selects ([`reduce_strategy`]), which decides
+///   whether `MergeWith` runs at all ([`RP35_MERGING_STRATEGIES`]);
+/// * whether it declares a line that is **not** a 3-phase symmetrical-components
+///   line ([`declares_a_non_sym3_line`]) — the exact negation of r4133's
+///   sym-branch test `SymComponentsModel and OtherLine.SymComponentsModel and
+///   (nphases = 3)` (`Version8/Source/PDElements/Line.pas:1695`), and therefore
+///   the necessary condition for a matrix-branch merge, the only branch that
+///   carried the divergence.
+///
+/// Both halves are necessary and neither is sufficient alone, which is exactly
+/// what the corpus shows: `reduce_laterals` declares 1-phase laterals but runs
+/// `DoRemoveBranches`, and `reduce_mergeparallel` merges but only 3-phase sym
+/// lines.
+const RP35_REDUCE_DECKS: &[(&str, &str, bool)] = &[
+    ("modes:reduce/midi_reduce.dss", "default", true),
+    ("modes:reduce/reduce_breakloop.dss", "breakloop", false),
+    ("modes:reduce/reduce_dangling.dss", "ends", false),
+    ("modes:reduce/reduce_default.dss", "default", false),
+    ("modes:reduce/reduce_keeplist.dss", "default", false),
+    ("modes:reduce/reduce_laterals.dss", "laterals", true),
+    (
+        "modes:reduce/reduce_mergeparallel.dss",
+        "mergeparallel",
+        false,
+    ),
+    ("modes:reduce/reduce_shortlines.dss", "shortlines", false),
+    ("modes:reduce/reduce_switches.dss", "switches", false),
+];
+
+/// The reduction strategies whose procedure calls `TLineObj.MergeWith` at all —
+/// `DoMergeParallelLines` (`Meters/ReduceAlgs.pas:54`), `DoReduceShortLines`
+/// (`:214`, `:258`), `DoReduceSwitches` (`:319`) and `DoReduceDefault` (`:361`).
+/// The rest of the strategies only disable branches — `DoBreakLoops` (`:61`),
+/// `DoReduceDangling` (`:101`), `DoReduceTapEnds` (`:87`) and the lateral
+/// removal `DoRemoveBranches`/`DoRemoveAll_1ph_Laterals` (`:372`, `:453`) — so
+/// they can no more move `line.units` than they can rename a line.
+const RP35_MERGING_STRATEGIES: &[&str] = &["default", "mergeparallel", "shortlines", "switches"];
+
+/// The `Set ReduceOption=` a deck selects, lowercased — the strategy `Reduce`
+/// then dispatches on.
+fn reduce_strategy(rel: &str) -> String {
+    let path = repo_root().join(CORPUS).join(rel);
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut found = String::new();
+    for line in text.lines() {
+        let low = line.to_ascii_lowercase();
+        for tok in low.split_whitespace() {
+            if let Some(v) = tok.strip_prefix("reduceoption=") {
+                found = v.to_string();
+            }
+        }
+    }
+    found
+}
+
+/// The one corpus file that spells every DSS command and is not a script:
+/// OpenDSS's editor syntax-highlight keyword list, one command name per line —
+/// including a bare `Reduce`. Carved out by name (not by extension class) so the
+/// exemption cannot widen silently; [`the_rp35_census_decomposition_is_read_off_the_corpus`]
+/// asserts it is still the only `.stx` under the corpus.
+const RP35_NON_SCRIPT: &str = "electricdss-tst/Version8/Distrib/Examples/SyntaxFiles/opendss.stx";
+
+/// Does this corpus file issue a bare `Reduce` command? `Set ReduceOption=…`
+/// alone reduces nothing, so the first whitespace token of a non-comment line is
+/// the only thing that counts.
+fn runs_reduce(rel: &str) -> bool {
+    if rel == RP35_NON_SCRIPT {
+        return false;
+    }
+    let path = repo_root().join(CORPUS).join(rel);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return false; // a binary or non-UTF-8 fixture cannot carry a command
+    };
+    text.lines().any(|line| {
+        let l = line.trim();
+        !l.starts_with('!')
+            && !l.starts_with("//")
+            && l.split_whitespace()
+                .next()
+                .is_some_and(|t| t.eq_ignore_ascii_case("reduce"))
+    })
+}
+
+/// Can any merge in this deck take r4133's **matrix** branch? Read off the
+/// deck's own declarations: a merge takes the symmetrical-components branch only
+/// when both lines are `SymComponentsModel` **and** the survivor has 3 phases
+/// (`Line.pas:1695`), so a deck all of whose lines are 3-phase sym lines can
+/// only ever take that branch. A line is NOT a 3-phase sym line when it (or the
+/// LineCode it names) types an `rmatrix`/`xmatrix`/`cmatrix` (`FetchLineCode`
+/// leaves `SymComponentsModel := False` for a matrix code, `Line.pas:395-404`;
+/// the `12..14` side effect does the same, `:691`) or when its phase count is
+/// not 3.
+fn declares_a_non_sym3_line(rel: &str) -> bool {
+    let path = repo_root().join(CORPUS).join(rel);
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let decl = |l: &str, kind: &str| -> Option<String> {
+        let l = l.trim().to_ascii_lowercase();
+        let rest = l.strip_prefix("new ")?;
+        let rest = rest.trim_start().strip_prefix(kind)?.strip_prefix('.')?;
+        Some(
+            rest.split_whitespace()
+                .next()
+                .unwrap_or_default()
+                .to_string(),
+        )
+    };
+    let token = |l: &str, key: &str| -> Option<String> {
+        let l = l.to_ascii_lowercase();
+        let want = format!("{key}=");
+        l.split_whitespace()
+            .find_map(|t| t.strip_prefix(want.as_str()).map(str::to_string))
+    };
+    let has_matrix = |l: &str| {
+        let low = l.to_ascii_lowercase();
+        ["rmatrix=", "xmatrix=", "cmatrix="]
+            .iter()
+            .any(|k| low.contains(k))
+    };
+    // LineCodes first: a line inherits its code's model and phase count.
+    let mut matrix_codes: BTreeSet<String> = BTreeSet::new();
+    let mut narrow_codes: BTreeSet<String> = BTreeSet::new();
+    for line in text.lines() {
+        let Some(name) = decl(line, "linecode") else {
+            continue;
+        };
+        if has_matrix(line) {
+            matrix_codes.insert(name.clone());
+        }
+        if token(line, "nphases").is_some_and(|v| v != "3") {
+            narrow_codes.insert(name);
+        }
+    }
+    text.lines().any(|line| {
+        decl(line, "line").is_some()
+            && (has_matrix(line)
+                || token(line, "phases").is_some_and(|v| v != "3")
+                || token(line, "linecode")
+                    .is_some_and(|c| matrix_codes.contains(&c) || narrow_codes.contains(&c)))
+    })
+}
+
+/// **RP3.5's census decomposition is read off the corpus, not off its own
+/// prose** — [`the_rp34_census_decomposition_is_read_off_the_corpus`]'s shape,
+/// applied to `line.units`.
+///
+/// The sub-step's two load-bearing numbers are *3 cells, 0 of them in scope*,
+/// and both were prose until this test. The plan text itself had the population
+/// wrong — it named `reduce_mergeparallel`, which carries **zero** `line.units`
+/// cells because its merge is a 3-phase symmetrical-components merge and all
+/// three engines render `km` — so the derivation below asserts that counter-claim
+/// explicitly and not merely the total.
+///
+/// It closes over the whole corpus in four steps:
+///
+/// * the **population**: every file — not only every `.dss` file — that issues a
+///   bare `Reduce` ([`runs_reduce`]), which is the only way `MergeWith` runs at
+///   all. That set must be exactly [`RP35_REDUCE_DECKS`], so a tenth reduce deck
+///   reds here;
+/// * the **branch**: whether a deck can reach the matrix branch is read off its
+///   own declarations ([`declares_a_non_sym3_line`], the negation of
+///   `Line.pas:1695`), not assumed. Exactly one deck can — `midi_reduce`, whose
+///   three merges are the three census cells — and `reduce_mergeparallel` is
+///   asserted to be on the other side of that line;
+/// * the **scope**: each case's `steps=`/`engines=` come from
+///   `population.lock.json`, and the r4133 channel must not be `skip`ped
+///   ([`r4133_skipped_cases`] — the RP3.4 audit settlement's correction). Three
+///   reduce decks do gate r4133 (`reduce_breakloop`, `reduce_dangling`,
+///   `reduce_laterals`), so the zero is not a statement about the channel; none
+///   of them can carry a cell, which is *why* the pair has 0 in-scope cells and
+///   why RP3.5 owed a **capi** ledger entry landed live instead of an r4133 one
+///   staged to RP4.1 (plan §1.1(e));
+/// * the **reconciliation**: the derived totals must be `bins.tsv`'s and
+///   `examples_full.txt`'s own numbers for the pair.
+///
+/// **The frozen `rust` column is historical from RP3.5 onwards.** The extracts
+/// under `tests/corpus/props_r4133/` are a *data* lock recording the 2026-08-08
+/// measurement (`props_r4133_evidence_lock.rs`), and RP3.5 is the first RP3
+/// sub-step whose fix moved the port's own render: the port now answers `kft`,
+/// the r4133 spelling, where the frozen row records `'none'`. The row is read
+/// here as evidence of what was measured, never as a claim about today's engine
+/// — that claim is
+/// `exec::tests::reduce::the_corpus_reduce_decks_merged_lines_render_kft`.
+#[test]
+fn the_rp35_census_decomposition_is_read_off_the_corpus() {
+    const PAIR: &str = "line.units";
+
+    // (1) Population: every corpus file that runs `Reduce`.
+    let root = repo_root().join(CORPUS);
+    let mut files = Vec::new();
+    collect_files(&root, &root, &mut files);
+    assert!(
+        files.len() > 1000,
+        "only {} files under {CORPUS} — the vendored corpus is missing",
+        files.len()
+    );
+    assert_eq!(
+        files
+            .iter()
+            .filter(|f| f.ends_with(".stx"))
+            .collect::<Vec<_>>(),
+        [RP35_NON_SCRIPT],
+        "the non-script carve-out must stay a single named file"
+    );
+    let mut measured: Vec<String> = files
+        .iter()
+        .filter(|f| runs_reduce(f))
+        .map(|f| {
+            let (family, rel) = f.split_once('/').expect("a corpus path has a family dir");
+            if family == "electricdss-tst" {
+                format!("solvable_now:{rel}")
+            } else {
+                format!("{family}:{rel}")
+            }
+        })
+        .collect();
+    measured.sort();
+    let mut cited: Vec<String> = RP35_REDUCE_DECKS
+        .iter()
+        .map(|(c, ..)| (*c).to_string())
+        .collect();
+    cited.sort();
+    assert_eq!(
+        measured, cited,
+        "every corpus file that issues `Reduce` must sit in RP3.5's decomposition — a new one \
+         changes the population in which MergeWith runs, and with it how many `line.units` cells \
+         the pair can carry"
+    );
+
+    // (2) The two halves of "can carry a cell", each read off the deck.
+    for (case, strategy, non_sym3) in RP35_REDUCE_DECKS {
+        let deck = case_deck(case);
+        assert_eq!(
+            reduce_strategy(&deck),
+            *strategy,
+            "{case}: the strategy decides whether MergeWith runs at all"
+        );
+        assert_eq!(
+            declares_a_non_sym3_line(&deck),
+            *non_sym3,
+            "{case}: whether a merge here could take the MATRIX branch (the negation of              Line.pas:1695) is the other half of whether it can carry a `line.units` cell"
+        );
+    }
+    let can_carry = |(_, strategy, non_sym3): &(&str, &str, bool)| {
+        *non_sym3 && RP35_MERGING_STRATEGIES.contains(strategy)
+    };
+    let matrix_decks: Vec<&str> = RP35_REDUCE_DECKS
+        .iter()
+        .filter(|d| can_carry(d))
+        .map(|(c, ..)| *c)
+        .collect();
+    assert_eq!(
+        matrix_decks,
+        ["modes:reduce/midi_reduce.dss"],
+        "all three `line.units` cells are on the one deck that both merges and can take the          matrix branch — `reduce_laterals` declares 1-phase laterals but its strategy only          removes branches (ReduceAlgs.pas:372, :453), and `reduce_mergeparallel` merges but only          3-phase symmetrical-components lines"
+    );
+    let mergeparallel = RP35_REDUCE_DECKS
+        .iter()
+        .find(|(c, ..)| *c == "modes:reduce/reduce_mergeparallel.dss")
+        .expect("the deck the plan text named is in the table");
+    assert!(
+        !can_carry(mergeparallel),
+        "RP3.5's counter-claim: `reduce_mergeparallel` merges two 3-phase          symmetrical-components lines, takes the SYM branch, renders `km` on all three engines          and contributes ZERO `line.units` cells — the plan text named it and was wrong          (RP3.5, 2026-08-28)"
+    );
+
+    // (3) Scope: `engines=` AND the r4133 channel not being `skip`ped.
+    let lock_path = repo_root().join(POPULATION_LOCK);
+    let lock: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&lock_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", lock_path.display())),
+    )
+    .expect("population.lock.json is JSON");
+    let skipped = r4133_skipped_cases();
+    const SKIP_WITNESS: &str = "asymmetric:line/line_spacing_asym.dss";
+    assert!(
+        skipped.contains(SKIP_WITNESS),
+        "the ledger's r4133 `skip` set must still hold {SKIP_WITNESS} — the counterexample the \
+         scope predicate exists for (`engines: \"both\"` and yet never compared on r4133); got \
+         {skipped:?}"
+    );
+    let mut cells = 0usize;
+    let mut in_scope_cells = 0usize;
+    let mut r4133_gated = 0usize;
+    for deck in RP35_REDUCE_DECKS {
+        let case = &deck.0;
+        let rigor = case_rigor(&lock, case);
+        let steps: usize = rigor_field(&rigor, "steps")
+            .parse()
+            .unwrap_or_else(|e| panic!("{case}: steps= is not a number: {e}"));
+        let in_scope = rigor_field(&rigor, "engines") != "capi_v0145" && !skipped.contains(*case);
+        r4133_gated += usize::from(in_scope);
+        assert!(
+            !(in_scope && can_carry(deck)),
+            "{case}: a reduce deck that BOTH gates r4133 and can take the matrix branch would              carry an in-scope `line.units` cell — RP3.5's pair would stop being 0-in-scope, and              with it the decision to land a live `capi_v0145` ledger entry instead of an r4133              entry staged to RP4.1 (plan §1.1(e))"
+        );
+        if !can_carry(deck) {
+            continue;
+        }
+        // `midi_reduce` merges three matrix pairs — `l2a~l2b`, `l3a~l3b` and
+        // `bb14_15~l9a` — one cell each per step. The three merges themselves
+        // are pinned on the engine side by
+        // `exec::tests::reduce::the_corpus_reduce_decks_merged_lines_render_kft`.
+        cells += 3 * steps;
+        in_scope_cells += usize::from(in_scope) * 3 * steps;
+    }
+    assert!(
+        r4133_gated > 0,
+        "the r4133 channel must really gate some reduce deck, or `0 in-scope cells` would be a          statement about the channel rather than about this pair"
+    );
+
+    // (4) …and the products are the frozen census's own numbers.
+    let corpus = Corpus::load();
+    let rows: Vec<&Example> = corpus.rows.iter().filter(|r| r.pair == PAIR).collect();
+    assert_eq!(
+        rows.len(),
+        1,
+        "the frozen census spells the pair exactly one way, got {rows:?}"
+    );
+    let row = rows[0];
+    assert_eq!(
+        (row.rust.as_str(), row.r4133.as_str()),
+        ("none", "kft"),
+        "the frozen 2026-08-08 measurement — historical on the `rust` side since RP3.5 fixed the \
+         port, and never edited (RP0.1 evidence lock)"
+    );
+    assert_eq!(
+        cells, row.cells,
+        "derived cells must be the frozen example row's count for {PAIR}"
+    );
+    let ev = corpus
+        .evidence(row)
+        .unwrap_or_else(|| panic!("{PAIR}: no frozen evidence record"));
+    assert_eq!(
+        (cells, Some(in_scope_cells)),
+        (ev.cells, ev.cells_in_scope),
+        "derived cells / in-scope cells must be bins.tsv's for {PAIR}"
+    );
+    assert_eq!(in_scope_cells, 0, "RP3.5's second load-bearing number");
+
+    // (5) The counter-claim from the other side: `reduce_mergeparallel` types
+    //     `units=km` throughout, so a cell there would have to spell `km` — and
+    //     the frozen census holds no such row.
+    assert!(
+        !corpus
+            .rows
+            .iter()
+            .any(|r| r.pair == PAIR && (r.rust == "km" || r.r4133 == "km")),
+        "a `line.units` row spelling `km` would mean the SYM branch diverges too — which is what \
+         the plan text assumed and the live probe disproved"
     );
 }
 
