@@ -928,7 +928,11 @@ const RP3_SETTLED_SHAPES: &[(&str, &str)] = &[
     (
         "FIX",
         "a port bug fixed in both lanes: the verdict names the Rust site (`.rs:`) and says `both \
-         lanes`; nothing is excluded, so the pair carries no echo row and no staged entry",
+         lanes`; nothing is excluded on the r4133 channel, so the pair carries no echo row and \
+         no staged entry. A fix that also moves the port off the pinned 0.14.5 *oracle* still \
+         lands its own live `capi_v0145` ledger entries in the same commit — the §1.1(e) \
+         staging rule defers r4133 property entries only, because only that channel is masked \
+         until RP4.1 (RP3.5 `line.units`, RP3.6 `line.linecode`)",
     ),
 ];
 
@@ -1493,18 +1497,41 @@ const RP22_ROUTING: &[(&str, Owner, &str)] = &[
         "RP3.5 FIXED (2026-08-28) — Line.pas:1404 / :1627 / :1721-1726 /          :1791-1796 / :2326-2331",
     ),
     // --- the S6 singletons ---------------------------------------------------
-    // **RP3.6.** r4133 renders index 3 live (`If FLineCodeSpecified Then Result
-    // := CondCode`, `Line.pas:1357`) and its `switch=yes` arm (`:694-700`)
-    // assigns r1/x1/r0/x0/c1/c0/len as fields, kills geometry and spacing and
-    // resets the length units — but leaves `FLineCodeSpecified` TRUE. The port
-    // calls `kill_line_code_specified()` there
-    // (`elements/pd/line/accessors.rs:488-511`). Not cosmetic: the flag selects
-    // the `FUnitsConvert` formula on a later `units=` (`Line.pas:626-627`), and
-    // these decks put `units=m` AFTER `Switch=True`. 5 cells, all in scope.
+    // **RP3.6 — SETTLED 2026-08-29, outcome FIX (both lanes).** r4133 renders
+    // index 3 LIVE — `3: If FLineCodeSpecified Then Result := CondCode else
+    // Result := ''` (`Line.pas:1357`) — off a flag `FetchLineCode` arms
+    // (`:413`) and the impedance side effects clear (`6..11, 26..27` at `:685`,
+    // `12..14` at `:691`). The `switch=` arm does NOT: `:694-700` assigns
+    // r1/x1/r0/x0/c1/c0/len as fields, kills geometry and spacing and resets the
+    // length units, one arm below and one arm above the two that clear the flag,
+    // and carries no `FLineCodeSpecified` statement at all. The port had copied
+    // dss_capi 0.14.5, which ADDED the kill there and flagged it in its own
+    // source (`src/PDElements/Line.pas:677`, `//TODO: check if this missing is
+    // relevant bug`). Not cosmetic: the flag also picks the `FUnitsConvert`
+    // formula on a later `units=` (`Line.pas:626-627`), and these decks type
+    // `units=m` AFTER `Switch=True`. Fixed in both lanes by deleting that one
+    // call from the `SWITCH` arm of `elements/pd/line/accessors.rs`; the six
+    // other `kill_line_code_specified` call sites each match an r4133
+    // counterpart and are untouched. The port now renders the r4133 value, so
+    // the frozen `rust=''` column of this row is HISTORICAL (the extracts are a
+    // data lock, never edited). All 5 cells are in scope, on two `engines: both`
+    // cases whose capi property compare is live TODAY, so what the fix moved is
+    // the LIVE capi channel: `tests/corpus/ledger.json`'s
+    // `line-switch-keeps-linecode-zone2-capi-props` (3 hits) and
+    // `line-switch-keeps-linecode-zone3-capi-props` (2 hits) are the exclusions
+    // and `exec::tests::line_fetch::
+    // switch_yes_keeps_the_linecode_and_its_units_conversion` is the pin. No
+    // r4133 entry, staged or landed: after the RP4.1 unmask these 5 cells
+    // compare and MATCH, which is the point of the sub-step. The decomposition
+    // behind "5 cells, all 5 in scope" is derived by
+    // [`the_rp36_census_decomposition_is_read_off_the_corpus`].
     (
         "line.linecode",
         Owner::Rp35,
-        "RP3.6 — Line.pas:1357 / :413 / :685 / :691 / :694-700 / :626-627",
+        "RP3.6 FIXED (2026-08-29) — Line.pas:1357 / :413 / :685 / :691 / \
+         :694-700 / :626-627 — elements/pd/line/accessors.rs SWITCH arm, both \
+         lanes; pin exec::tests::line_fetch::\
+         switch_yes_keeps_the_linecode_and_its_units_conversion",
     ),
     // Index 21 has no getter arm (`Line.pas:1347-1429` covers 1..20, 23, 26..33
     // and the PD tail) → `DSSObject.pas:112-115` echoes `PropertyValue[21]`,
@@ -2489,15 +2516,13 @@ fn read_script(path: &std::path::Path) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
-/// The `Redirect`/`Compile` targets a script names, as lower-cased **basenames**.
-///
-/// Basenames, not resolved paths: the corpus writes the argument quoted
-/// (`Redirect "Master.dss"`), bracketed (`[Master_ckt5.dss]`), parenthesised
-/// (`(Master.dss)`), relative with `..` segments, absolute (`C:\…`) and with a
-/// trailing `!` comment — and a resolver that got one of those spellings wrong
-/// would narrow a completeness sweep silently. A basename set is a SUPERSET of
-/// the real targets, which is the safe direction for a sweep.
-fn redirect_targets(text: &str) -> Vec<String> {
+/// The raw `Redirect`/`Compile` argument of every such line in a script,
+/// cleaned of the corpus's quoting spellings — quoted (`Redirect "Master.dss"`),
+/// bracketed (`[Master_ckt5.dss]`), parenthesised (`(Master.dss)`), with a
+/// trailing `!` or `//` comment — and back-slashes forward-slashed. Case is
+/// preserved: [`redirect_targets`] lower-cases the basename it takes, while
+/// [`redirect_paths`] needs the argument as written in order to resolve it.
+fn redirect_args(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     for line in text.lines() {
         let line = line.trim();
@@ -2505,12 +2530,13 @@ fn redirect_targets(text: &str) -> Vec<String> {
             continue;
         }
         let lower = line.to_ascii_lowercase();
-        let Some(rest) = ["redirect ", "compile "]
+        let Some(verb) = ["redirect ", "compile "]
             .iter()
-            .find_map(|verb| lower.strip_prefix(verb))
+            .find(|v| lower.starts_with(**v))
         else {
             continue;
         };
+        let rest = &line[verb.len()..];
         let arg = rest
             .split('!')
             .next()
@@ -2523,12 +2549,29 @@ fn redirect_targets(text: &str) -> Vec<String> {
                 c == '"' || c == '\'' || c == '(' || c == ')' || c == '[' || c == ']'
             })
             .trim();
-        let base = arg.rsplit(['/', '\\']).next().unwrap_or(arg).trim();
-        if !base.is_empty() {
-            out.push(base.to_string());
+        if !arg.is_empty() {
+            out.push(arg.replace('\\', "/"));
         }
     }
     out
+}
+
+/// The `Redirect`/`Compile` targets a script names, as lower-cased **basenames**.
+///
+/// Basenames, not resolved paths: the corpus writes the argument quoted
+/// (`Redirect "Master.dss"`), bracketed (`[Master_ckt5.dss]`), parenthesised
+/// (`(Master.dss)`), relative with `..` segments, absolute (`C:\…`) and with a
+/// trailing `!` comment — and a resolver that got one of those spellings wrong
+/// would narrow a completeness sweep silently. A basename set is a SUPERSET of
+/// the real targets, which is the safe direction for a sweep.
+fn redirect_targets(text: &str) -> Vec<String> {
+    redirect_args(text)
+        .iter()
+        .filter_map(|arg| {
+            let base = arg.rsplit('/').next().unwrap_or(arg).trim();
+            (!base.is_empty()).then(|| base.to_ascii_lowercase())
+        })
+        .collect()
 }
 
 /// **The scripts a corpus deck executes that [`collect_dss`] cannot see** — the
@@ -6090,6 +6133,461 @@ fn the_rp35_census_decomposition_is_read_off_the_corpus() {
             .any(|r| r.pair == PAIR && (r.rust == "km" || r.r4133 == "km")),
         "a `line.units` row spelling `km` would mean the SYM branch diverges too — which is what \
          the plan text assumed and the live probe disproved"
+    );
+}
+
+/// Every corpus file that declares a `Line` carrying **both** a `linecode=` and
+/// a `switch=` — the whole population in which RP3.6's arm can ever fire — with
+/// the two counts the sub-step's arithmetic rests on: how many of those
+/// declarations type `switch=` **after** the code, and how many before.
+///
+/// The order is the mechanism, not a detail. The parser runs each property's
+/// side effect in the order its token is typed, so `linecode=… switch=…` runs
+/// `FetchLineCode` (r4133 `Version8/Source/PDElements/Line.pas:385-413`, which
+/// sets `CondCode` and arms `FLineCodeSpecified`) and *then* arm 15 — the arm
+/// the port used to kill the flag in. `switch=… linecode=…` runs the two the
+/// other way round, so `FetchLineCode` re-arms the flag last and all three
+/// engines agree. That is why `LVTestCaseNorthAmerican`'s 160
+/// `switch=yes linecode=switch` declarations can carry no cell, and it is
+/// pinned on the engine side by the `swb` leg of `exec::tests::line_fetch::
+/// switch_yes_keeps_the_linecode_and_its_units_conversion`.
+///
+/// Cited rather than derived-and-forgotten, so a new deck of this shape reds
+/// [`the_rp36_census_decomposition_is_read_off_the_corpus`] instead of quietly
+/// widening the pair's population. Columns: the corpus-relative file, the
+/// declarations with `switch=` after the code, and those with it before.
+const RP36_SWITCH_LINECODE_DECKS: &[(&str, usize, usize)] = &[
+    (
+        "electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt7/Lines_ckt7.dss",
+        11,
+        0,
+    ),
+    (
+        "electricdss-tst/Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Lines_ckt7.dss",
+        11,
+        0,
+    ),
+    (
+        "electricdss-tst/Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Line.DSS",
+        4,
+        0,
+    ),
+    (
+        "electricdss-tst/Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/Branches.dss",
+        3,
+        0,
+    ),
+    (
+        "electricdss-tst/Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/Branches.dss",
+        2,
+        0,
+    ),
+    (
+        "electricdss-tst/Version8/Distrib/Examples/StoCtrl_Current_PeakShave/Line.DSS",
+        9,
+        0,
+    ),
+    (
+        "electricdss-tst/Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Master.dss",
+        0,
+        80,
+    ),
+    (
+        "electricdss-tst/Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/SecPar.dss",
+        0,
+        80,
+    ),
+];
+
+/// The two cases that carry all five `line.linecode` cells, with their counts —
+/// `zone_2/Branches.dss:93,:95,:479` and `zone_3/Branches.dss:161,:165`. The
+/// plan text named a third deck that carries none; see [`RP36_STOCTRL_CASE`].
+const RP36_CELL_CASES: &[(&str, usize)] = &[
+    (
+        "solvable_now:Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/master.dss",
+        3,
+    ),
+    (
+        "solvable_now:Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/master.dss",
+        2,
+    ),
+];
+
+/// The deck the plan text wrongly called "the affected decks" — right shape,
+/// zero cells, because its case is `kind=large` and `force_properties` never
+/// turns a large case's property compare on.
+const RP36_STOCTRL_CASE: &str =
+    "solvable_now:Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss";
+
+/// The declaring file behind [`RP36_STOCTRL_CASE`], read by the counter-claim so
+/// that its zero is proven to come from the case's rigor and not from the deck
+/// lacking the shape.
+const RP36_STOCTRL_DECK: &str =
+    "electricdss-tst/Version8/Distrib/Examples/StoCtrl_Current_PeakShave/Line.DSS";
+
+/// The `Line` declarations of one script that carry both a `linecode=` and a
+/// `switch=`, split by which token comes first: `(switch after the code, switch
+/// before it)`. `New` and `Edit` alike — an `Edit Line.x switch=yes` runs the
+/// same side-effect arm — and the quoted object names the torn-circuit decks use
+/// (`New "Line.261249" …`) are read.
+fn switch_linecode_line_decls(text: &str) -> (usize, usize) {
+    let (mut after, mut before) = (0usize, 0usize);
+    for line in text.lines() {
+        let low = line.trim().to_ascii_lowercase();
+        let Some(rest) = ["new ", "edit "].iter().find_map(|v| low.strip_prefix(*v)) else {
+            continue;
+        };
+        if !rest
+            .trim_start()
+            .trim_start_matches(['"', '\''])
+            .starts_with("line.")
+        {
+            continue;
+        }
+        match (low.find("linecode="), low.find("switch=")) {
+            (Some(code), Some(sw)) if sw > code => after += 1,
+            (Some(_), Some(_)) => before += 1,
+            _ => {}
+        }
+    }
+    (after, before)
+}
+
+/// Continuation lines (`~ …`) carrying a `linecode=` or a `switch=`. The
+/// declaration sweep reads one physical line at a time, so a corpus that grew a
+/// continued `Line` declaration would slip past it; the decomposition asserts
+/// this is zero everywhere rather than assuming it.
+fn continued_line_tokens(text: &str) -> usize {
+    text.lines()
+        .filter(|l| {
+            let l = l.trim();
+            let low = l.to_ascii_lowercase();
+            l.starts_with('~') && (low.contains("linecode=") || low.contains("switch="))
+        })
+        .count()
+}
+
+/// One script's `Redirect`/`Compile` targets as corpus-relative paths, resolved
+/// against the directory of the file that names them — the executive's own rule.
+/// Returns `(resolved, unresolved)`.
+///
+/// [`redirect_targets`]' basename form is a deliberate superset: safe for a
+/// completeness sweep, useless here. `Line.DSS` and `Master.dss` are each the
+/// basename of several corpus decks, so a basename match would attribute one
+/// deck's declarations to another deck's case and inflate the cell count.
+/// Everything the exact resolution cannot place is handed back rather than
+/// dropped, so [`the_rp36_census_decomposition_is_read_off_the_corpus`] asserts
+/// what is left over instead of trusting it.
+fn redirect_paths(text: &str, rel: &str, root: &std::path::Path) -> (Vec<String>, Vec<String>) {
+    let parent = rel.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
+    let (mut resolved, mut unresolved) = (Vec::new(), Vec::new());
+    for arg in redirect_args(text) {
+        let mut parts: Vec<&str> = Vec::new();
+        for seg in parent.split('/').chain(arg.split('/')) {
+            match seg {
+                "" | "." => {}
+                ".." => {
+                    parts.pop();
+                }
+                s => parts.push(s),
+            }
+        }
+        let path = parts.join("/");
+        if !path.is_empty() && root.join(&path).is_file() {
+            resolved.push(path);
+        } else {
+            unresolved.push(arg);
+        }
+    }
+    (resolved, unresolved)
+}
+
+/// The one `Redirect` argument in the whole corpus that resolves to no file: a
+/// template placeholder the memory-mapped-loadshape example substitutes before
+/// it runs. Named so that a *second* unresolvable target — which could hide a
+/// declaring deck from an ownership walk — reds instead of passing silently.
+const RP36_TEMPLATE_REDIRECT: (&str, &str) = (
+    "electricdss-tst/Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss",
+    "@loadshape_script_dss",
+);
+
+/// **RP3.6's census decomposition is read off the corpus, not off its own
+/// prose** — [`the_rp35_census_decomposition_is_read_off_the_corpus`]' shape,
+/// applied to `line.linecode`.
+///
+/// The sub-step's two load-bearing numbers are *5 cells, all 5 in scope*, and
+/// the second is why RP4.1 breaks without it: `line.linecode` is the only RP3.5+
+/// pair the unmask will actually compare. Both were prose. The plan text also
+/// had the population wrong — it named
+/// `Examples/StoCtrl_Current_PeakShave/Line.DSS`, a deck of exactly the right
+/// shape (nine `linecode=… Switch=True units=m` declarations) that contributes
+/// **zero** cells because its case is `kind=large` and `force_properties`
+/// (`crates/dss-core/tests/corpus_gate/scheduler.rs`) never turns a large case's
+/// property compare on — so the derivation asserts that counter-claim
+/// explicitly and not merely the total.
+///
+/// Five steps, closing over the whole corpus:
+///
+/// * the **population**: one pass over every corpus file — not only every `.dss`
+///   file — collecting the qualifying `Line` declarations
+///   ([`switch_linecode_line_decls`]), the continuation lines that would defeat a
+///   one-physical-line sweep ([`continued_line_tokens`]) and the
+///   `Redirect`/`Compile` edges the ownership walk needs. The declaring files
+///   must be exactly [`RP36_SWITCH_LINECODE_DECKS`];
+/// * the **ownership**: which case pulls a declaring file in is walked, not
+///   guessed from the directory tree, from every master in
+///   `population.lock.json` over those edges ([`redirect_paths`]) —
+///   `zone_2/Branches.dss` is reached by its own zone master *and* by
+///   `Master_Interconnected.dss`, and only the first is property-compared;
+/// * the **scope**: a cell exists where `force_properties` turns the capi
+///   property compare on (`gates_capi() && !kind.starts_with("large")` for
+///   `solvable_now`), and it is *in scope* where the r4133 channel also gates the
+///   case and no ledger `skip` drops it ([`r4133_skipped_cases`] — the RP3.4
+///   audit settlement's correction);
+/// * the **counter-claims**: the deck the plan named, and the token order that
+///   silences `LVTestCaseNorthAmerican`'s 160 declarations;
+/// * the **reconciliation**: the derived totals must be `examples_full.txt`'s
+///   per-spelling counts and `bins.tsv`'s cells / in-scope cells for the pair.
+///
+/// **The frozen `rust` column is historical from RP3.6 onwards.** The extracts
+/// under `tests/corpus/props_r4133/` are a *data* lock recording the 2026-08-08
+/// measurement (`props_r4133_evidence_lock.rs`); the port now answers `99`/`98`,
+/// the r4133 spelling, where the frozen rows record `''`. They are read here as
+/// evidence of what was measured, never as a claim about today's engine — that
+/// claim is
+/// `exec::tests::line_fetch::switch_yes_keeps_the_linecode_and_its_units_conversion`.
+#[test]
+fn the_rp36_census_decomposition_is_read_off_the_corpus() {
+    const PAIR: &str = "line.linecode";
+
+    // (1) Population: one pass over every corpus file.
+    let root = repo_root().join(CORPUS);
+    let mut files = Vec::new();
+    collect_files(&root, &root, &mut files);
+    assert!(
+        files.len() > 1000,
+        "only {} files under {CORPUS} — the vendored corpus is missing",
+        files.len()
+    );
+    let mut decls: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+    let mut edges: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut continued: Vec<String> = Vec::new();
+    let mut unresolved: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+    for rel in &files {
+        let Ok(text) = std::fs::read_to_string(root.join(rel)) else {
+            continue; // a binary or non-UTF-8 fixture declares nothing
+        };
+        let counts = switch_linecode_line_decls(&text);
+        if counts != (0, 0) {
+            decls.insert(rel.clone(), counts);
+        }
+        if continued_line_tokens(&text) > 0 {
+            continued.push(rel.clone());
+        }
+        let (resolved, missing) = redirect_paths(&text, rel, &root);
+        if !resolved.is_empty() {
+            edges.insert(rel.to_ascii_lowercase(), resolved);
+        }
+        if !missing.is_empty() {
+            unresolved.insert(
+                rel.to_ascii_lowercase(),
+                missing.into_iter().map(|a| (rel.clone(), a)).collect(),
+            );
+        }
+    }
+    let measured: Vec<(&str, usize, usize)> = decls
+        .iter()
+        .map(|(f, (a, b))| (f.as_str(), *a, *b))
+        .collect();
+    let mut cited: Vec<(&str, usize, usize)> = RP36_SWITCH_LINECODE_DECKS.to_vec();
+    cited.sort();
+    assert_eq!(
+        measured, cited,
+        "every corpus `Line` declaration carrying both a `linecode=` and a `switch=` must sit in \
+         RP3.6's decomposition — a new one changes the population the pair's 5 cells are counted \
+         from"
+    );
+    assert!(
+        continued.is_empty(),
+        "a `~` continuation carrying `linecode=`/`switch=` would be invisible to a \
+         one-physical-line sweep, so the population above would stop being complete: {continued:?}"
+    );
+
+    // (2) Ownership: walked from every case master, not guessed from the tree.
+    let lock_path = repo_root().join(POPULATION_LOCK);
+    let lock: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&lock_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", lock_path.display())),
+    )
+    .expect("population.lock.json is JSON");
+    let mut cases: Vec<String> = lock["solvable_now"]
+        .as_object()
+        .expect("the lock has a `solvable_now` section")
+        .keys()
+        .map(|rel| format!("solvable_now:{rel}"))
+        .collect();
+    for (family, rows) in lock["family_rigor"]
+        .as_object()
+        .expect("the lock has a `family_rigor` section")
+    {
+        cases.extend(
+            rows.as_object()
+                .unwrap_or_else(|| panic!("{family}: a rigor map"))
+                .keys()
+                .map(|rel| format!("{family}:{rel}")),
+        );
+    }
+    assert!(
+        cases.len() > 500,
+        "only {} cases in the lock — the manifests are missing",
+        cases.len()
+    );
+    // (3) Scope, per case, with the two predicates kept apart.
+    let skipped = r4133_skipped_cases();
+    let mut cells = 0usize;
+    let mut in_scope_cells = 0usize;
+    let mut order_excluded = 0usize;
+    let mut carriers: Vec<(String, usize)> = Vec::new();
+    let mut owners_of_stoctrl: Vec<String> = Vec::new();
+    let mut dangling: BTreeSet<(String, String)> = BTreeSet::new();
+    for case in &cases {
+        let rigor = case_rigor(&lock, case);
+        let kind = rigor_field(&rigor, "kind");
+        let engines = rigor_field(&rigor, "engines");
+        let steps: usize = rigor_field(&rigor, "steps")
+            .parse()
+            .unwrap_or_else(|e| panic!("{case}: steps= is not a number: {e}"));
+        // `force_properties` (`corpus_gate/scheduler.rs`), verbatim: the capi
+        // property compare is on for a `solvable_now` case that gates capi and is
+        // not `large`, and for a family case that gates capi (all three families
+        // set the family-level flag).
+        let gates_capi = engines != "r4133";
+        let property_compared =
+            gates_capi && (!case.starts_with("solvable_now:") || !kind.starts_with("large"));
+        if !property_compared {
+            continue;
+        }
+        // The r4133 half — `engines` alone is not enough (RP3.4's correction).
+        let in_scope = engines != "capi_v0145" && !skipped.contains(case);
+        let mut closure: BTreeSet<String> = BTreeSet::new();
+        let mut stack = vec![case_deck(case).to_ascii_lowercase()];
+        while let Some(f) = stack.pop() {
+            if !closure.insert(f.clone()) {
+                continue;
+            }
+            dangling.extend(unresolved.get(&f).into_iter().flatten().cloned());
+            for next in edges.get(&f).into_iter().flatten() {
+                stack.push(next.to_ascii_lowercase());
+            }
+        }
+        let mut here = 0usize;
+        for (file, (after, before)) in &decls {
+            if !closure.contains(&file.to_ascii_lowercase()) {
+                continue;
+            }
+            if file == RP36_STOCTRL_DECK {
+                owners_of_stoctrl.push(case.clone());
+            }
+            here += after * steps;
+            order_excluded += before * steps;
+            in_scope_cells += usize::from(in_scope) * after * steps;
+        }
+        cells += here;
+        if here > 0 {
+            carriers.push((case.clone(), here));
+        }
+    }
+    // A `Redirect` a property-compared case's walk cannot resolve would truncate
+    // that case's closure, and a declaring deck hidden behind it would be missed
+    // — so the leftovers are asserted, not trusted. Exactly one exists in the
+    // whole reachable corpus, and it is a template placeholder.
+    let dangling: Vec<&(String, String)> = dangling
+        .iter()
+        .filter(|(f, a)| (f.as_str(), a.as_str()) != RP36_TEMPLATE_REDIRECT)
+        .collect();
+    assert!(
+        dangling.is_empty(),
+        "a `Redirect` argument this walk cannot resolve could hide a declaring deck from a \
+         property-compared case's closure, so the ownership above would under-count: {dangling:?}"
+    );
+    carriers.sort();
+    let cited_carriers: Vec<(String, usize)> = RP36_CELL_CASES
+        .iter()
+        .map(|(c, n)| ((*c).to_string(), *n))
+        .collect();
+    assert_eq!(
+        carriers, cited_carriers,
+        "the five cells are carried by the two EPRI_Ckt7-G torn-circuit zone cases and by nothing \
+         else"
+    );
+
+    // (4) The plan's counter-claim, both halves: the deck it named really does
+    //     have the shape, and really does contribute nothing.
+    assert_eq!(
+        decls.get(RP36_STOCTRL_DECK),
+        Some(&(9usize, 0usize)),
+        "the zero below must come from the case's rigor, not from the deck lacking the shape"
+    );
+    assert_eq!(
+        rigor_field(&case_rigor(&lock, RP36_STOCTRL_CASE), "kind"),
+        "large",
+        "{RP36_STOCTRL_CASE}: `force_properties` excludes a large case's property compare, which \
+         is the whole reason its nine switched linecode lines carry no cell"
+    );
+    assert!(
+        owners_of_stoctrl.is_empty(),
+        "R4133_PROPS_PLAN RP3.6 called StoCtrl_Current_PeakShave/Line.DSS `the affected decks`; it \
+         contributes ZERO of the 5 cells and no property-compared case even reaches it: \
+         {owners_of_stoctrl:?}"
+    );
+    // …and the order rule is derived, not assumed. It is currently redundant —
+    // the 160 `switch=yes linecode=switch` declarations sit on
+    // `LVTestCaseNorthAmerican`, whose cases are `large_floating_zeroseq` and so
+    // are already outside the property compare — but it is the mechanism, so a
+    // corpus that grew a *feeder* deck of that shape must still count zero.
+    let before_total: usize = decls.values().map(|(_, b)| b).sum();
+    assert_eq!(
+        before_total, 160,
+        "the `switch=` before `linecode=` population is LVTestCaseNorthAmerican's Master/SecPar"
+    );
+    assert_eq!(
+        order_excluded, 0,
+        "no property-compared case declares a `switch=… linecode=…` line today, so the two \
+         exclusions agree; if one ever does, its cells must still be zero — `FetchLineCode` \
+         re-arms the flag last (Line.pas:413) and every engine renders the code"
+    );
+
+    // (5) …and the products are the frozen census's own numbers.
+    let corpus = Corpus::load();
+    let rows: Vec<&Example> = corpus.rows.iter().filter(|r| r.pair == PAIR).collect();
+    let mut frozen: Vec<(&str, &str, usize)> = rows
+        .iter()
+        .map(|r| (r.rust.as_str(), r.r4133.as_str(), r.cells))
+        .collect();
+    frozen.sort();
+    assert_eq!(
+        frozen,
+        [("", "98", 1), ("", "99", 4)],
+        "the frozen 2026-08-08 measurement — two spellings, historical on the `rust` side since \
+         RP3.6 fixed the port, and never edited (RP0.1 evidence lock)"
+    );
+    assert_eq!(
+        cells,
+        rows.iter().map(|r| r.cells).sum::<usize>(),
+        "derived cells must be the frozen example rows' total for {PAIR}"
+    );
+    let ev = corpus
+        .evidence(rows[0])
+        .unwrap_or_else(|| panic!("{PAIR}: no frozen evidence record"));
+    assert_eq!(
+        (cells, Some(in_scope_cells)),
+        (ev.cells, ev.cells_in_scope),
+        "derived cells / in-scope cells must be bins.tsv's for {PAIR}"
+    );
+    assert_eq!(
+        in_scope_cells, 5,
+        "RP3.6's second load-bearing number: every cell of the pair is in scope, which is why the \
+         RP4.1 unmask compares them and breaks without this sub-step"
     );
 }
 
