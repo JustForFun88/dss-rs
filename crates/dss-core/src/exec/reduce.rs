@@ -302,8 +302,14 @@ impl Dss {
                 strip_extension(&this.bus_names[1])
             )
         };
-        self.red_update_control_elements(self_ref, other_ref);
+        // r4133 repoints BOTH old names — `UpdateControlElements('line.'+NewName,
+        // 'line.'+Name)` for self and `(…, 'line.'+OtherLine.Name)` for the
+        // partner (`:1682-1683`) — and only then assigns `Name := NewName`
+        // (`:1684`). The port renames FIRST: it matches controls by the stable
+        // `ElemId`, so the Pascal's name-comparison order is irrelevant, and the
+        // rename is what makes the `element=<merged name>` re-edit resolve.
         self.red_rename_line(self_ref, &new_name);
+        self.red_update_control_elements(self_ref, other_ref);
         if series && let Some(l) = self.red_as_line_mut(self_ref) {
             l.is_switch = false; // not allowed on series merge
         }
@@ -391,8 +397,18 @@ impl Dss {
             // parallel_merge_with_a_switch_restores_length_and_dummy_z`.
             self.red_edit_elem(self_ref, &format!("Length={total_len}"));
             self.red_set_units(self_ref, len_units_saved);
-            // RecalcElementData (`:1730`) is deferred to CalcYPrim
-            // (SymComponentsChanged).
+            // `RecalcElementData` (r4133 `:1730`, capi 0.14.5 `:1771`) runs HERE
+            // on both oracles, and deferring it to `CalcYPrim` is NOT equivalent:
+            // the call clears `SymComponentsChanged`, and that flag is what
+            // `CalcYPrim` tests before running its "the user forgot C1/C0" fix-up
+            // (`:1031-1038` / `elements/pd/line/solve.rs`: `C1 /=
+            // ConvertLineUnits(UNITS_KFT, LengthUnits)`). Every arm whose edit
+            // writes `C1=`/`C0=` sets `FCapSpecified` and so is immune, but the
+            // two switch arms write neither — so on a partner-is-switch merge
+            // into `Units=km` the deferral rescaled the dummy 1.1 nF / 1.0 nF by
+            // `1/0.3048`. Probed live (RP3.5 audit settlement, 2026-08-28):
+            // r4133 and capi 0.14.5 both render `c1 = 1.1`, `c0 = 1` there.
+            self.red_recalc_line(self_ref);
         } else if !series {
             // Matrix model, parallel: upstream "assume equal" TODO.
             // `TLineObj.MergeWith` (r4133 Line.pas:1734) sets `TotalLen := Len/2` here
@@ -529,26 +545,51 @@ impl Dss {
         cls.name_to_idx.insert(lower, r.index());
     }
 
-    /// Pascal `TLineObj.UpdateControlElements(NewLine, OldLine)` (Line.pas:1842):
-    /// re-point every control monitoring `old_ref` onto `new_ref`. The
-    /// `monitored_element` is a stable [`ElemId`] here, so the repoint is
-    /// order-independent of the rename (unlike the Pascal name-based re-edit).
+    /// Pascal `TLineObj.UpdateControlElements(NewName, OldName)` — r4133
+    /// `Version8/Source/PDElements/Line.pas:1808-1824`: re-point every control
+    /// naming `old_name` onto `new_name`.
+    ///
+    /// `MergeWith` calls it **twice** (`:1682-1683`), once for the surviving
+    /// line's own old name and once for the partner's, both with `NewName`. The
+    /// port had only the partner half, which is the vacuous one in
+    /// `DoReduceDefault`/`DoReduceShortLines`: those refuse to merge a line out
+    /// when it `HasControl` or `IsMonitored` (`Meters/ReduceAlgs.pas:179-180`,
+    /// `:347-348`), so in the reduce strategies a control can only sit on the
+    /// **survivor** — the half that was missing. Probed live (RP3.5 audit
+    /// settlement, 2026-08-28): after a `shortlines` merge of `s1` into `s2` the
+    /// r4133 DLL renders `? CapControl.cc.element` as `line.s1~s2` where the
+    /// port still rendered `Line.s2`. (The class-name capitalization is the
+    /// port's own render convention for a stored element name, unrelated here.)
+    ///
+    /// Pascal replays a full `element=<NewName>` property edit
+    /// (`Line.pas:1819-1820`) — not a bare pointer swap — so the control's
+    /// stored ElementName string (what `Save`/`Dump`/`?` render) updates along
+    /// with the monitored-element reference and any property side effects fire
+    /// exactly like a user edit. A control class whose property 1 is not spelled
+    /// `element` (Relay/Recloser/Fuse: `MonitoredObj`) therefore takes an
+    /// unknown-parameter diagnostic and keeps its old name on **both** engines —
+    /// probed on the same deck with a `Relay`.
     fn red_update_control_elements(&mut self, new_ref: ElemId, old_ref: ElemId) {
         let Some(ckt) = self.circuit.as_ref() else {
             return;
         };
-        // Pascal replays a full `element=<NewLine.FullName>` property edit
-        // (`ParsePropertyValue`, Line.pas:1849) — not a bare pointer swap — so
-        // the control's stored ElementName string (what Save/Dump/`?` render)
-        // updates along with the monitored-element reference and any property
-        // side effects fire exactly like a user edit.
         let new_full = self.red_full_name(new_ref);
         for cr in ckt.controls.clone() {
             let monitored = control_data_mut(&mut self.classes[cr.class_ord()].arena, cr.index())
                 .and_then(|ccd| ccd.monitored_element);
-            if monitored == Some(old_ref) {
+            if monitored == Some(old_ref) || monitored == Some(new_ref) {
                 self.red_edit_elem(cr, &format!("element={new_full}"));
             }
+        }
+    }
+
+    /// Pascal `RecalcElementData` on a symmetrical-components line — r4133
+    /// `Version8/Source/PDElements/Line.pas:941-998`, called by `MergeWith` at
+    /// `:1730`. Rebuilds `Z`/`Yc` from `R1..C0` and clears
+    /// `SymComponentsChanged`, which is the half `CalcYPrim` cannot supply.
+    fn red_recalc_line(&mut self, r: ElemId) {
+        if let Some(l) = self.red_as_line_mut(r) {
+            l.recalc_pos_seq();
         }
     }
 
