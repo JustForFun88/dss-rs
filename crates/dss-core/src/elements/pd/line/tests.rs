@@ -1142,3 +1142,65 @@ fn get_ratings_applies_seasonal_index() {
     assert_eq!(line.get_ratings(0), (100.0, 120.0));
     assert_eq!(line.get_ratings(1), (100.0, 120.0));
 }
+
+/// `ResetLengthUnits` clears `LengthUnits`, never `FUserLengthUnits` — r4133
+/// `Version8/Source/PDElements/Line.pas:2326-2331` and dss_capi 0.14.5
+/// `src/PDElements/Line.pas:2080-2085`, which carry the identical statement pair
+/// and the identical comment "but do not erase FUserLengthUnits, in case of CIM
+/// export".
+///
+/// The port cleared it too (RP3.5, 2026-08-28) — a port-authored divergence from
+/// **both** oracles, so there was no authority question to weigh. It is not
+/// theoretical: `FUserLengthUnits` is the units the CIM writer converts
+/// `Conductor.length` with (r4133 `Common/ExportCIMXML.pas:3707`, `:3735`,
+/// `:3877`), and a deck that types `units=` before its impedances exported a
+/// length short by the whole unit factor —
+/// [`crate::cim`]'s observable half of this pin lives in
+/// `golden_cim::cim_conductor_length_uses_the_users_length_units`.
+///
+/// All three callers are exercised (`accessors.rs`' `R1..B0`,
+/// `RMATRIX..CMATRIX` and `SWITCH` side-effect arms), because the field is
+/// cleared — or not — in one shared helper and a per-arm regression would
+/// otherwise hide behind whichever arm the pin happened to pick. The
+/// discriminator is the pair: after each override `length_units` must be `None`
+/// (the reset really ran) while `user_length_units` still reads `Kft` (the half
+/// that must not move).
+#[test]
+fn reset_length_units_keeps_the_users_units() {
+    for (prop_name, value) in [
+        ("r1", "0.3"),        // side-effect arm R1|X1|R0|X0|C1|C0|B1|B0
+        ("rmatrix", "[0.3]"), // side-effect arm RMATRIX|XMATRIX|CMATRIX
+        ("switch", "yes"),    // side-effect arm SWITCH
+    ] {
+        let enums = EnumRegistry::new();
+        let lcls = class_props(&enums);
+        let mut line = Line::new("l_ulu");
+        scalar(&lcls, &mut line, "phases", "1");
+        scalar(&lcls, &mut line, "length", "2");
+        scalar(&lcls, &mut line, "units", "kft");
+        assert_eq!(line.length_units, LineUnits::Kft, "{prop_name}: setup");
+        assert_eq!(
+            line.user_length_units,
+            LineUnits::Kft,
+            "{prop_name}: the `units=` arm records the user's units \
+             (r4133 Line.pas:629)"
+        );
+
+        scalar(&lcls, &mut line, prop_name, value);
+        assert_eq!(
+            line.length_units,
+            LineUnits::None,
+            "{prop_name}: ResetLengthUnits must still clear LengthUnits"
+        );
+        assert_eq!(
+            line.units_convert, 1.0,
+            "{prop_name}: ResetLengthUnits must still reset FUnitsConvert"
+        );
+        assert_eq!(
+            line.user_length_units,
+            LineUnits::Kft,
+            "{prop_name}: FUserLengthUnits survives an impedance override on \
+             both oracles (r4133 Line.pas:2330, dss_capi 0.14.5 Line.pas:2084)"
+        );
+    }
+}

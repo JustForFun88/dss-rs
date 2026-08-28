@@ -179,10 +179,10 @@ in the audit settlement confirmed refuses `action=`/`state=` on both engines),
 "decomposition render" but the deck's RPN **source text** `mode=(1 16 +)` echoed
 back) and `storagecontroller.modedischarge` (`'UNKNOWN'` is `GetModeString`'s
 non-injective catch-all) went to RP2.3. **Three RP3.5+ sub-steps opened and they
-block RP4.1** (§0): RP3.5 `line.units` (the plan's second candidate,
-**confirmed** — the port's matrix-branch merge writes the saved units and *then*
-re-runs the side effects that reset them, where r4133 orders the two the other
-way), RP3.6 `line.linecode` (r4133's `switch=yes` arm leaves `FLineCodeSpecified`
+blocked RP4.1** (§0): RP3.5 `line.units` (the plan's second candidate,
+**confirmed** — the port's matrix-branch merge wrote the saved units and *then*
+re-ran the side effects that reset them, where r4133 orders the two the other
+way; **fixed and landed 2026-08-28**), RP3.6 `line.linecode` (r4133's `switch=yes` arm leaves `FLineCodeSpecified`
 TRUE; 5 cells, **all in scope**, so RP4.1 breaks without it) and RP3.7 the
 per-phase switch/relay state (r4133 keeps a `pStateArray` per phase; the port one
 scalar). Closing bin 3 meant closing its **cells**, not only its pairs: three
@@ -216,7 +216,8 @@ dss_capi-0.14.5 `SilentReadOnly` surfaces (`indmach012.pf`,
 772 in scope**) get **no echo row** — r4133 renders a live computed value there
 and the port answers `''` only by a capi convention, so under the 2026-08-02
 policy the fix is an engine change and they are re-routed loudly into the new
-**§RP3.8**, which now **blocks RP4.1** alongside RP3.5/3.6/3.7; and `generator.d`
+**§RP3.8**, which now **blocks RP4.1** alongside RP3.6/3.7 (RP3.5 landed
+2026-08-28); and `generator.d`
 is **not an echo** either — `Create` initialises `GenVars.D` and never `Dpu`
 (`generator.pas:969` vs `:669`/`:2585`), so r4133's `'0'` is its own live value
 and `InitStateVars` then runs generator dynamics **undamped** against the
@@ -402,7 +403,7 @@ is **two drafted per-case entries** —
 `gic-pct-r2-ignored` cause verbatim — landing at RP4.1 per §1.1(e) and held
 meanwhile by two new pins. No new upstream report: report **07** (local) is
 already written against r4133 and reproduces exactly this surface, so the next
-free number stays **45**. The census derives to **2 cells, both in scope**, one
+free number stays **45** (RP3.5 has since taken it). The census derives to **2 cells, both in scope**, one
 per `%R`-specified GICTransformer (`gictransformer_gic.dss` `tg3`,
 `gic_midi.dss` `tg5`); the corpus's **other 20**, 19 of them on r4133-gating
 cases, are ohms-specified and diverge nowhere. `DECLARED_RP3` stays `(6, 3, 6)`
@@ -419,8 +420,46 @@ mean `engines=` **and** no ledger `skip` — in all four RP3 census derivations,
 via the new `r4133_skipped_cases`, which is exactly the shorthand this sub-step
 had disproved — and corrected three citations; no classification, count or
 drafted entry moved.
-**Next: RP3.5 (`line.units`)** — it
-plus RP3.6/RP3.7, RP3.8 and RP3.9 are what RP4.1 waits on.
+**RP3.5 (`line.units`) landed 2026-08-28 — the first WP-RP3 sub-step whose
+outcome is a `FIX`, and so the first to move product-crate bytes and the first
+to land (not stage) a ledger entry.** One routine, `TLineObj.MergeWith`, carried
+three port defects, each settled by a live probe run on three engines (the
+r4133 DLL, the pinned capi oracle, the port): **(A)** the matrix-series branch
+wrote `Len`/`LengthUnits` *before* the `Rmatrix/Xmatrix/Cmatrix` side effects
+whose `ResetLengthUnits` wipes them, where r4133 re-applies them in a separate
+`Length=/Units=` Edit *after*
+(`Version8/Source/PDElements/Line.pas:1794-1796`, the construction its
+`MakePosSequence` reuses at `:1595-1596`) — the port had copied dss_capi
+0.14.5's inverted order (`src/PDElements/Line.pas:1806-1817`); **(B)**
+`reset_length_units` also cleared `user_length_units`, which **neither** oracle
+does (r4133 `:2330` / capi `:2084`, the identical "but do not erase
+FUserLengthUnits, in case of CIM export" comment) — a port-authored divergence
+from both, measured through its one consumer, `Export CIM100`
+(`Conductor.length` 609.6 on both oracles against the port's 2); **(C)** the
+sym branch's `Length=`/`Units=` re-apply sat inside the impedance arm, which
+both oracles run unconditionally (r4133 `:1724-1726`, capi `:1764-1768`), and
+its partner-is-switch half emitted the parser-rejected text `Switch=1` where
+r4133 emits `' switch=yes'` (`:1709`), so that arm was a silent no-op. All
+three fixed in both lanes and held by **four** oracle-free pins.
+`ConvertLineUnits` returns 1.0 whenever a side is `UNITS_NONE`, so
+`FUnitsConvert` is 1.0 either way and **no solved-state quantity and no golden
+byte moves** — what does move is the property render, and that is the cost the
+plan text did not anticipate: `MODES.compare_all_properties` is live on the
+capi channel, so the fix reds 3 cells on `modes:reduce/midi_reduce.dss` and the
+exclusion ships **now** rather than staging to RP4.1 (§1.1(e) is an r4133 rule,
+that channel's props compare being masked) — entry
+`reduce-merge-units-restored-midi-capi-props`, 3 measured hits, new cause
+`line-merge-length-units-reset`, `population.lock.json` one line. Two plan-text
+corrections: `reduce_mergeparallel` contributes **zero** `line.units` cells (all
+3 are on `midi_reduce.dss`, whose merges take the matrix branch), and the sym
+branch the plan called already-correct was not. A fourth defect is r4133's
+alone — `Line.pas:1715` reads `S := ' R0=' + …` where its neighbours append, so
+the parallel symmetrical-components merge loses its `R1=`/`X1=` half — reported
+as **45** (local; 0 in-scope cells, never reproduced), so the next free number
+is **46**. `DECLARED_RP3` stays `(6, 3, 6)`, the frozen census extracts stay
+frozen (their `rust='none'` column is historical from here on), and
+`DECLARED_RP35 = (8, 6, 5)` is unmoved.
+**Next: RP3.6/RP3.7, RP3.8 and RP3.9** — they are what RP4.1 waits on.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -3124,24 +3163,30 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     rows rest on a stronger argument than the draft claimed; the "r4133 omission"
     finding is **withdrawn**, and no upstream report was written for it.
   - **The three RP3.5+ sub-steps** (full specs in `R4133_PROPS_PLAN.md`
-    §WP-RP3; tier `opus-high+`, the RP3.1–RP3.4 row). **All three block RP4.1**
-    (plan §0: "RP4.1 starts only after every RP1–RP3 sub-step is landed,
-    including any RP3.5+ sub-step RP2.2's triage opens").
-    - **RP3.5 — line length units lost by the matrix-branch merge.**
-      `exec/reduce.rs:396-409` sets `l.length_units = len_units_saved` and then
-      runs the `RMATRIX/XMATRIX/CMATRIX` side effects, which call
-      `reset_length_units` (`elements/pd/line/accessors.rs:478-486` →
-      `code.rs:24-28`); r4133 does the two in the opposite order (`Line.pas:1627`
-      saves, `:1721-1726`/`:1791-1796` re-edit *after* the impedance edit) and
-      `MakePosSequence` re-appends `Units=` for the same reason (`:1596`). Second
-      divergence in the same routine: the port's `reset_length_units` clears
-      `user_length_units`, which r4133 deliberately preserves (`:2330`, "but do
-      not erase FUserLengthUnits, in case of CIM export") — no census cell, so it
-      needs its own decision. Evidence: `line.units` 3 cells, **0 in scope**
-      (`modes:reduce` is capi-only). Must decide: fix the order in both lanes
-      with a pin, or overturn the reading with a probe. A live probe on
-      `reduce_mergeparallel`/`midi_reduce` is owed **inside** RP3.5 — RP2.2 read
-      both sources and did not build.
+    §WP-RP3; tier `opus-high+`, the RP3.1–RP3.4 row). **All three blocked
+    RP4.1** (plan §0: "RP4.1 starts only after every RP1–RP3 sub-step is landed,
+    including any RP3.5+ sub-step RP2.2's triage opens"); **RP3.5 landed
+    2026-08-28**, so RP3.6 and RP3.7 are the two still outstanding here.
+    - **RP3.5 — line length units lost by the matrix-branch merge. SETTLED
+      2026-08-28 (`FIX`, both lanes) — see the §RP3.5 record below.**
+      `exec/reduce.rs` wrote `l.length_units = len_units_saved` and then ran the
+      `RMATRIX/XMATRIX/CMATRIX` side effects, which call `reset_length_units`
+      (`elements/pd/line/accessors.rs:478-486` → `code.rs:24-28`); r4133 does the
+      two in the opposite order (`Line.pas:1627` saves, `:1721-1726`/`:1791-1796`
+      re-edit *after* the impedance edit) and `MakePosSequence` re-appends
+      `Units=` for the same reason (`:1596`). Two further divergences in the same
+      routine, both from **both** oracles: `reset_length_units` also cleared
+      `user_length_units`, which r4133 (`:2330`) and dss_capi 0.14.5 (`:2084`)
+      both keep under the identical "in case of CIM export" comment; and the
+      sym-branch `Length=`/`Units=` re-apply was nested inside the impedance arm
+      (upstream runs it unconditionally), whose partner-is-switch half also
+      emitted the parser-rejected token `Switch=1`. Evidence: `line.units` 3
+      cells, **0 in scope**, and — corrected by the sub-step's probe — all 3 on
+      `modes:reduce/midi_reduce.dss`, **none** on `reduce_mergeparallel`, whose
+      merged line renders `km` on all three engines. Cost the plan text did not
+      anticipate: the fix reds the **live** `capi_v0145` `all_properties` compare
+      on `midi_reduce.dss`, so a capi ledger entry + cause +
+      `population.lock.json` rewrite landed with it.
     - **RP3.6 — `switch=yes` must not clear the linecode flag.** r4133's arm
       (`Line.pas:694-700`) writes r1/x1/r0/x0/c1/c0/len as fields, kills geometry
       and spacing and resets the units, but leaves `FLineCodeSpecified` TRUE; the
@@ -3411,7 +3456,8 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
       RP2.3 may not touch a product crate. They therefore take **no echo row**
       and are re-routed loudly: `props_r4133_replay::RP38_ROUTING` +
       `DECLARED_RP38 = (181, 5, 181)`, with a new plan **§RP3.8** that **blocks
-      RP4.1** (§0's list now reads RP3.5/3.6/3.7 **+ 3.8**).
+      RP4.1** (§0's list read RP3.5/3.6/3.7 **+ 3.8**; RP3.5 landed 2026-08-28,
+      leaving 3.6/3.7 + 3.8).
     - **R2, `generator.d`** — the plan, the vendored README §RP1.1 and
       `BIN7_ECHO_SUPPLEMENT`'s comment all called it an echo "from a frozen
       default whose field says 1.0". Wrong mechanism: the field that is 1.0 is
@@ -4911,7 +4957,7 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     surface (`? GICTransformer.t1.R2` → `0.12696`), with the `else`-arm inverse
     argument and the `type=Auto` `busX` blast radius. The Russian deep-dive is
     `investigations/issue-07-gictransformer-g2-pct-r1.md`. **The next free report
-    number stays 45.**
+    number stays 45** (taken by RP3.5 on 2026-08-28; 46 is next).
   - **Pins (2, both lanes, no oracle):**
     `gictransformer_r2_honours_the_x_winding_percentage` (`tg3`) and
     `gictransformer_r2_honours_the_x_winding_percentage_on_the_ring` (`tg5`),
@@ -5034,6 +5080,156 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
       predicate, so nothing rests on the ruling; it is recorded here and reported
       to the user as a deviation, since a kill-criterion reading is the user's to
       make.
+
+- **RP3.5** (2026-08-28) — `line.units`: **a port fix in both lanes, and the
+  first RP3 sub-step whose fix moves the port's own render.** Outcome `FIX` for
+  three independent defects in one routine (`TLineObj.MergeWith`), plus one
+  upstream report for a fourth that is r4133's alone. It is also the first RP3
+  sub-step to land a **live** ledger entry: the fix reds the `capi_v0145`
+  `all_properties` compare on `modes:reduce/midi_reduce.dss`, whose channel is
+  not masked, so the entry, its cause and the `population.lock.json` rewrite ship
+  in this commit rather than staging to RP4.1.
+  - **The probe ran first, on three engines** (r4133 `OpenDSSDirect.dll`
+    `Version 11.0.0.1 (64-bit build) - Charlottesville`; pinned dss-python 0.15.7
+    / dss_capi 0.14.5; the port, built out-of-tree against `dss-core` by path):
+    the two vendored `modes:reduce` decks under `CorpusGuard`, plus six
+    purpose-built micro-decks for the arms and the CIM surface no corpus deck
+    reaches. No repo byte was written by the probe. None of the plan's four
+    decision-table kill criteria fired.
+  - **(A) The matrix-series branch lost the length units.** r4133 saves them
+    (`Version8/Source/PDElements/Line.pas:1627`) and re-applies them with a
+    **separate** `Length=%-g  Units=%s` Edit at `:1794-1796` that runs *after*
+    the `Rmatrix/Xmatrix` (`:1778-1779`) and `Cmatrix` (`:1791-1792`) Edits,
+    because the `12..14` side effect calls `ResetLengthUnits` (`:691-693`); its
+    own `MakePosSequence` uses the same construction at `:1595-1596` under the
+    comment "Repeat the Length Units to compensate for unexpected reset". dss_capi
+    0.14.5 inverted the two — `src/PDElements/Line.pas:1806-1807` writes the
+    fields, `:1815-1817` then runs `PropertySideEffects(rmatrix/xmatrix/cmatrix)`
+    — and the port had copied that. Measured: r4133 renders `kft` on all three
+    merged lines of `midi_reduce.dss` where the port and capi render `none`, and
+    the getter is deck-dependent (`mi`/`cm` on two micro-decks whose surviving
+    line carries those units, `none` on a switch), i.e. live state and not an
+    echo. Fixed in both lanes (`exec/reduce.rs`: `red_set_units` after the side
+    effects). **Nothing else moves** — `ConvertLineUnits` returns 1.0 whenever
+    either side is `UNITS_NONE` (`Shared/LineUnits.pas:110-115`), so
+    `FUnitsConvert` stays 1.0 and YPrim, Y, node voltages, currents, powers,
+    losses, the node count (88) and the iteration count (5) are identical to
+    r4133 before and after.
+  - **(B) `reset_length_units` also cleared `user_length_units`, which neither
+    oracle does.** r4133 `:2330` and dss_capi 0.14.5 `:2084` carry the identical
+    statement pair under the identical comment, "but do not erase
+    FUserLengthUnits, in case of CIM export" — so this was a port-authored
+    divergence from **both** oracles and there was no authority question to
+    weigh. The plan called it "not observable in the census", which is true and
+    not the same as unobservable: an exhaustive grep of both trees finds one
+    consumer, `ExportCIMXML` (r4133 `:3707`, `:3735`, `:3877`), and it
+    discriminates — on a deck typing `units=kft` before its matrices,
+    `Export CIM100` writes `<cim:Conductor.length>609.6</…>` (= `2 × 304.8`) on
+    r4133 **and** on capi 0.14.5 against `2` on the port. The line is deleted in
+    both lanes. **No CIM golden byte moves**: in every golden CIM deck
+    (`cim_lines`, `cim_load`, `cim_shunt`, `cim_xfmr`, `cim_der`,
+    `IEEE13Nodeckt`, `IEEE123Master`) `units=` is the last impedance-relevant
+    token of every `Line` declaration or absent altogether, so
+    `reset_length_units` never runs after a `units=` write — swept, not assumed.
+  - **(C) The sym-components branch's two switch arms, a gap the plan called
+    already-correct.** The port's `Length=`/`Units=` re-apply sat inside
+    `if let Some(v) = rxc`, while both oracles run it unconditionally (r4133
+    `:1724-1726`; capi `:1764-1768`, outside `if UseRXC`). The two arms that
+    produce no impedance values therefore kept a pre-merge `Len`: measured
+    `0.001` (self-is-switch) and `1.1` (partner-is-switch) against `1` on both
+    oracles. The partner arm carried a **second**, unrelated defect: the port
+    emitted the text `Switch=1`, a transliteration of capi's *typed*
+    `SetInteger(ord(TProp.Switch), 1, [])` (`:1736`), where r4133 emits the text
+    `' switch=yes'` (`:1709`). `InterpretYesNo` rejects `1` on both engines
+    (probed: `edit line.a Switch=1` leaves `switch='False'`, `r1='0.301'` on the
+    r4133 DLL), so the arm was a silent no-op and the merged branch kept the
+    partner's real impedance where both oracles give it dummy z (`r1 = 1`) —
+    live state, not a render. Both halves fixed in both lanes. No vendored corpus
+    deck reaches either arm (0 census cells), so no gated case moves; found and
+    fixed inside the sub-step per CLAUDE.md's "port gaps immediately".
+  - **(D) A new r4133 defect in the same routine — reported, never reproduced.**
+    `Line.pas:1715` reads `S := ' R0=' + …` where every neighbouring statement
+    appends (`S := S + …`), so the parallel symmetrical-components edit string
+    loses its `R1=`/`X1=` half. On `modes:reduce/reduce_mergeparallel.dss` r4133
+    renders the *un-merged* `r1 = 0.301` / `x1 = 0.667` while `r0`, `x0`, `c1`,
+    `c0`, `length` and `units` match the port and capi exactly — the precise
+    asymmetry an assignment-instead-of-append predicts — and the four measured
+    relative gaps (0.5368421052631595, 0.5368421052631575, 1.5030841450107981,
+    1.2866220615751998) reproduce the frozen census cells to the last digit, so
+    the census row is not stale. capi 0.14.5 does not carry it (`:1740-1761`
+    fills `RXC[1..6]` and sets all six) and neither does the port; the only
+    exposing deck is `engines: "capi_v0145"`, so 0 in-scope cells and no
+    exclusion is owed. Report:
+    `investigations/to_opendss/45-line-mergewith-parallel-drops-r1-x1.md`
+    (local). Next free report number is now **46**.
+  - **The plan text was wrong about the population and silent about the cost;
+    both corrected in place (§RP3.5).** `reduce_mergeparallel` contributes
+    **zero** `line.units` cells — all 3 are on `midi_reduce.dss`
+    (`Line.l2a~l2b`, `Line.l3a~l3b`, `Line.bb14_15~l9a`), and `Line.b1||b2.units`
+    renders `km` on all three engines because that deck's lines are 3-phase
+    symmetrical-components and take the sym branch. And the plan's two stated
+    outcomes ("a port fix with a pin" / "a cited exclusion") did not anticipate
+    the capi channel: `MODES.compare_all_properties` is `true` and
+    `force_properties` ORs it in for every `gates_capi()` family case, and
+    `(Line, Units)` is in no `SKIP_PROPS` / `PROPS_015X` / `LANE_SKIP_PROPS` row,
+    so the fix reds 3 live cells.
+  - **Ledger + lock (this commit, not staged).** New `capi_v0145` `divergence`
+    entry `reduce-merge-units-restored-midi-capi-props` on
+    `modes:reduce/midi_reduce.dss` — three exact-pair `property` scopes
+    (`line.l2a~l2b.units`, `line.l3a~l3b.units`, `line.bb14_15~l9a.units`, each
+    `rust: "kft"` / `oracle: "none"`) — plus the new cause
+    `line-merge-length-units-reset`. Measured 3 hits on the case's one step.
+    §1.1(e)'s staging rule is written for **r4133** `property` entries, which are
+    staged only because that channel's props compare is masked until RP4.1; the
+    capi compare is live, so staging this one would leave the gate red.
+    `population.lock.json` moves exactly one line — `modes` `reduce/midi_reduce.dss`
+    gains `ledger=capi_v0145:reduce-merge-units-restored-midi-capi-props@01a907f79c55bac9`.
+  - **Pins (4 new `#[test]`s, all oracle-free and green in both lanes).**
+    `exec::tests::reduce::merged_matrix_line_keeps_the_surviving_lines_length_units`
+    (two micro-decks whose surviving lines carry *different* saved units, so the
+    assertion cannot pass against a hardwired getter, plus an un-merged control
+    and a post-merge `rmatrix=` reset);
+    `exec::tests::reduce::parallel_merge_with_a_switch_restores_length_and_dummy_z`
+    (three decks: partner-is-switch, self-is-switch, non-switch control);
+    `elements::pd::line::tests::reset_length_units_keeps_the_users_units` (all
+    three `reset_length_units` callers, asserting the pair — `length_units`
+    cleared **and** `user_length_units` kept);
+    `golden_cim::cim_conductor_length_uses_the_users_length_units` (the
+    observable half of (B): `units=` first → 609.6, `units=` last → 914.4, no
+    `units=` at all → 5, so the pin is a reading and not a constant factor).
+    They are **not** in `props_r4133_pins.rs`: that file's guard
+    (`props_r4133_replay::every_echo_row_pin_is_a_test_that_exists`) admits only
+    `#[test]`s cited by a `PROPS_ECHO_R4133` row or by `LEDGER_ENTRY_PINS`, and
+    RP3.5 owns neither (its outcome is `FIX`, and its ledger entry is a *live*
+    capi one, not a drafted r4133 one whose window that table exists to cover).
+    The house precedent for a landed capi property entry is an in-engine pin
+    cited from the fix site — `capacitor::tests::make_pos_sequence_cmatrix_
+    applies_the_positive_sequence_cuf` for `makeposseq-cuf-applied-capi`,
+    `exec::tests::compat_quirks::gic_transformer_pct_r2_drives_winding_two` for
+    `gic-pct-r2-honoured-*` — and that is the shape used here.
+  - **Not moved, deliberately.** No `PROPS_ECHO_R4133` row (r4133's index-20
+    getter is live at `:1404`; an echo row would be a false statement about the
+    mechanism, the same reading RP3.1/RP3.2/RP3.4 made). No r4133 ledger entry
+    (0 in-scope cells, and the r4133 props compare is masked until RP4.1, so
+    `assert_all_hit` would fail it as NEVER APPLIED). No `props_roundtrip`
+    scenario for a merged line — that gate replays dss_capi 0.14.5 values and
+    would pin the capi bug as the expectation. `DECLARED_RP35 = (8, 6, 5)` and
+    `DECLARED_RP3 = (6, 3, 6)` unchanged: they are read off the **frozen**
+    extracts through the shipped chain predicates, which never run the engine, and
+    `line.units` still declares a row, so `RP22_ROUTING`'s liveness guard stays
+    green. `lane_diff.ps1` was **not owed** — the change carries no
+    `#[cfg(feature = …)]` and moves no solved-state quantity on any gated case —
+    but was run anyway rather than argued: **VERDICT PASS, `max |Δ| = 0` exactly
+    on all eight gated kinds** (conv/cur/errs/iter/loss/pow/v/y, 3 220 247
+    records over 522 cases, 0 iteration counts drifted), so the two lanes stay
+    bit-identical and the default lane keeps the parity lane's oracle standing.
+  - **A convention this sub-step establishes.** RP3.5 is the first RP3 sub-step
+    whose fix changes the port's own render, so the frozen
+    `tests/corpus/props_r4133/` extracts now record a `rust` value (`'none'`) the
+    engine no longer produces. They are a **data** lock recording the 2026-08-08
+    measurement (`props_r4133_evidence_lock.rs` re-measures nothing), so they are
+    **not** edited; the ledger entry's `source` says so, and later sub-steps that
+    fix rather than exclude inherit the same rule.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 

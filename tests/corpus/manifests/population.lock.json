@@ -208,7 +208,7 @@
       "newton/newton.dss": "kind=micro steps=1 sel=1 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
       "newton/newton_feeder.dss": "kind=micro steps=1 sel=1 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
       "pstcalc/pstcalc_cmd.dss": "kind=micro steps=1 sel=1 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
-      "reduce/midi_reduce.dss": "kind=midi steps=1 sel=1 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=",
+      "reduce/midi_reduce.dss": "kind=midi steps=1 sel=1 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=capi_v0145:reduce-merge-units-restored-midi-capi-props@01a907f79c55bac9",
       "reduce/reduce_breakloop.dss": "kind=micro steps=1 sel=1 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
       "reduce/reduce_dangling.dss": "kind=micro steps=1 sel=1 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
       "reduce/reduce_default.dss": "kind=micro steps=1 sel=1 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=",
