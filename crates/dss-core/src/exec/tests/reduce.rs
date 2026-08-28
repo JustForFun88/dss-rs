@@ -407,10 +407,24 @@ fn prop_of(dss: &mut Dss, target: &str) -> String {
 /// its mirror, `kft` on `tests/corpus/modes/reduce/midi_reduce.dss`'s three
 /// merged lines and `none` on a switch — four different answers, which is why
 /// this pin reads two decks that disagree instead of one that could pass against
-/// a hardwired getter. `length`, `rmatrix` and `xmatrix` already agreed digit
-/// for digit before the fix, so `units` is the only cell that moves — and it
-/// moves the pinned dss_capi 0.14.5 channel, hence the `capi_v0145` ledger entry
-/// `reduce-merge-units-restored-midi-capi-props`.
+/// a hardwired getter.
+///
+/// On the corpus deck the fix moves **only** `units`: `length` (`4`), `rmatrix`,
+/// `xmatrix`, node count (88) and iteration count (5) agree with r4133 digit for
+/// digit before and after. That is a statement about `midi_reduce`, not about
+/// the matrix branch in general — r4133 sets the merged length by rendering
+/// `TotalLen` through `Format(' Length=%-g  Units=%s')` (`:1795`) and parsing it
+/// back, so its `Len` is truncated to 7 significant digits whenever the sum is
+/// not exactly representable there. The micro-decks below are exactly that case
+/// (`3.378788` on r4133 against the port's and capi 0.14.5's
+/// `3.37878787878788`); the port keeps the full `f64` sum, as capi 0.14.5 does
+/// by assigning the field (`src/PDElements/Line.pas:1806`). Every vendored
+/// `reduce` deck sums to an exactly representable length, so no gated case sees
+/// it (RP3.5 audit settlement, 2026-08-28 — recorded in STATUS §RP3.5 for
+/// RP4.1).
+///
+/// The moving cell moves the pinned dss_capi 0.14.5 channel, hence the
+/// `capi_v0145` ledger entry `reduce-merge-units-restored-midi-capi-props`.
 #[test]
 fn merged_matrix_line_keeps_the_surviving_lines_length_units() {
     // The survivor `s2` types `units=mi` while its partner and the linecode type
@@ -435,6 +449,88 @@ fn merged_matrix_line_keeps_the_surviving_lines_length_units() {
     let mut mirror = matrix_series_reduce("rp35b", "mi", "cm");
     assert_eq!(prop_of(&mut mirror, "Line.s1~s2.units"), "cm");
     assert_eq!(prop_of(&mut mirror, "Line.s1~s2.length"), "321871.8");
+}
+
+/// The two length-derived quantities the restored units also move, neither of
+/// which any property renders and neither of which any gated case compares.
+///
+/// `MilesThisLine` is recomputed by the `4,20:` side effect (r4133
+/// `Version8/Source/PDElements/Line.pas:667-670`) and feeds the reliability
+/// registers (`solution/meters/reliability.rs`); `line_length_km` feeds the
+/// EnergyMeter zone's line length (`solution/meters/zones/build.rs`). With the
+/// units lost, both read the merged length as if it were dimensionless — miles
+/// stayed at the *pre-merge* value the matrix branch never recomputed, and the
+/// zone length counted `3.3788` km for what is 3.3788 **miles**. Both are
+/// corrections, so they are asserted here rather than left silent (RP3.5 audit
+/// settlement, 2026-08-28).
+#[test]
+fn merged_matrix_line_converts_its_length_with_the_restored_units() {
+    use crate::elements::pd::line::Line;
+    use crate::elements::traits::CktElement;
+
+    let dss = matrix_series_reduce("rp35f", "kft", "mi");
+    let ci = dss.class_by_name["line"];
+    let oi = dss.classes[ci].name_to_idx["s1~s2"];
+    let line = dss.classes[ci].arena.get::<Line>(oi).expect("merged line");
+
+    // The survivor `s2` types `units=mi`, so the restored `LengthUnits` is
+    // `Miles` and `TotalLen` is a length in miles.
+    assert_eq!(
+        line.length_units,
+        crate::support::line_units::LineUnits::Miles
+    );
+    assert!(
+        (line.miles_this_line - line.len).abs() < 1e-12,
+        "a line whose units ARE miles converts 1:1, got {} for len {}",
+        line.miles_this_line,
+        line.len
+    );
+    let km = line.line_length_km().expect("a Line reports a length");
+    assert!(
+        (km - line.len * 1.609344).abs() < 1e-9,
+        "zone length must be miles→km, got {km} for len {}",
+        line.len
+    );
+}
+
+/// The pin on the corpus deck the claims census actually flagged.
+///
+/// The three `line.units` cells RP3.5 owns are all on
+/// `tests/corpus/modes/reduce/midi_reduce.dss` (`Line.l2a~l2b`, `Line.l3a~l3b`,
+/// `Line.bb14_15~l9a`), and the value they must render — `kft` — is measured on
+/// the r4133 DLL, not derived from the port. The corpus gate pins the same three
+/// cells from the other side (the `capi_v0145` ledger entry's `rust` field), but
+/// that half needs the pinned dss-python installed; this one needs nothing but
+/// the vendored deck, so the corpus claim survives even when the oracle does
+/// not (RP3.5 audit settlement, 2026-08-28).
+///
+/// The discriminators are in the same deck: `Line.bb1_2` is an **un-merged**
+/// line that also reads `kft`, and `Line.tie` is a `switch=yes` line that reads
+/// `none` — both measured on r4133 in the same run — so a getter hardwired to
+/// `kft` fails here.
+#[test]
+fn the_corpus_reduce_decks_merged_lines_render_kft() {
+    let deck = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/corpus/modes/reduce/midi_reduce.dss");
+    assert!(deck.is_file(), "vendored corpus deck missing: {deck:?}");
+    let mut dss = Dss::new();
+    dss.command(&format!("compile \"{}\"", deck.display()));
+    assert!(dss.errors().is_empty(), "midi_reduce: {:?}", dss.errors());
+
+    for merged in ["Line.l2a~l2b", "Line.l3a~l3b", "Line.bb14_15~l9a"] {
+        assert_eq!(
+            prop_of(&mut dss, &format!("{merged}.units")),
+            "kft",
+            "{merged}"
+        );
+        assert_eq!(
+            prop_of(&mut dss, &format!("{merged}.length")),
+            "4",
+            "{merged}"
+        );
+    }
+    assert_eq!(prop_of(&mut dss, "Line.bb1_2.units"), "kft");
+    assert_eq!(prop_of(&mut dss, "Line.tie.units"), "none");
 }
 
 /// Build a `set reduceoption=mergeparallel` feeder whose parallel pair is a
@@ -533,4 +629,93 @@ fn parallel_merge_with_a_switch_restores_length_and_dummy_z() {
     assert_eq!(prop_of(&mut plain, "Line.b1||b2.length"), "1");
     assert_eq!(prop_of(&mut plain, "Line.b1||b2.units"), "km");
     assert_eq!(prop_of(&mut plain, "Line.b1||b2.r1"), "0.139410526315789");
+}
+
+/// `MergeWith` ends its symmetrical-components branch with `RecalcElementData`
+/// (r4133 `Version8/Source/PDElements/Line.pas:1730`, dss_capi 0.14.5
+/// `src/PDElements/Line.pas:1771`), and that call is not a deferrable
+/// convenience: it clears `SymComponentsChanged`, the flag `CalcYPrim` tests
+/// before running its "the user never specified C1/C0" fix-up
+/// (`Line.pas:1031-1038`: `C1 := C1 / ConvertLineUnits(UNITS_KFT,
+/// LengthUnits)`).
+///
+/// The port deferred the recalc to `CalcYPrim`, which left the flag set. Every
+/// arm whose edit string carries `C1=`/`C0=` sets `FCapSpecified` and is
+/// therefore immune — which is why the gap stayed invisible — but the two switch
+/// arms carry no impedance at all. On a partner-is-switch merge restored to
+/// `Units=km` the `switch=yes` side effect's dummy `1.1 nF`/`1.0 nF` were then
+/// rescaled by `1/ConvertLineUnits(kft, km) = 1/0.3048`, and the merged line
+/// entered the solve with the wrong shunt.
+///
+/// Probed live (RP3.5 audit settlement, 2026-08-28) on the deck this pin builds:
+/// the r4133 DLL and the pinned dss_capi 0.14.5 both render `c1 = 1.1`,
+/// `c0 = 1`; the port rendered `3.60892388451444` / `3.28083989501312`. The
+/// self-is-switch arm restores `Units=none`, where the conversion factor is 1.0
+/// (`Shared/LineUnits.pas:110-115`), so it was already right — it is the
+/// discriminator that says this is about the units, not about the recalc alone.
+#[test]
+fn parallel_merge_with_a_switch_recalcs_before_the_cap_fixup() {
+    let mut other_sw = parallel_switch_reduce("rp35g", true, false);
+    assert_eq!(prop_of(&mut other_sw, "Line.b1||b2.units"), "km");
+    assert_eq!(prop_of(&mut other_sw, "Line.b1||b2.c1"), "1.1");
+    assert_eq!(prop_of(&mut other_sw, "Line.b1||b2.c0"), "1");
+
+    let mut self_sw = parallel_switch_reduce("rp35h", false, true);
+    assert_eq!(prop_of(&mut self_sw, "Line.b1||b2.units"), "none");
+    assert_eq!(prop_of(&mut self_sw, "Line.b1||b2.c1"), "1.1");
+    assert_eq!(prop_of(&mut self_sw, "Line.b1||b2.c0"), "1");
+}
+
+/// `MergeWith` re-points the controls of **both** merged lines onto the merged
+/// name — r4133 calls `UpdateControlElements('line.'+NewName, 'line.'+Name)` for
+/// itself and `(…, 'line.'+OtherLine.Name)` for the partner
+/// (`Version8/Source/PDElements/Line.pas:1682-1683`), both *with* `NewName`, and
+/// only then assigns `Name := NewName` (`:1684`).
+///
+/// The port had the partner half only — and in every reduce strategy that half
+/// is the vacuous one: `DoReduceDefault`/`DoReduceShortLines` refuse to merge a
+/// line out when it `HasControl` or `IsMonitored` (`Meters/ReduceAlgs.pas:179`,
+/// `:347`), so a control can only ever sit on the **survivor**. Its stored
+/// element name therefore went stale on every merge that had one, which
+/// `Save`/`Dump`/`?` render and which the control re-resolves.
+///
+/// Probed live (RP3.5 audit settlement, 2026-08-28): on this deck the r4133 DLL
+/// renders `? CapControl.cc.element` as `line.s1~s2` where the port rendered
+/// `Line.s2`. The port's spelling keeps the class's canonical capitalization —
+/// that is its render convention for a stored element name everywhere, not
+/// something this merge introduces.
+#[test]
+fn merge_repoints_the_controls_of_the_surviving_line() {
+    let mut dss = Dss::new();
+    for cmd in [
+        "new circuit.rp35i basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6 units=km",
+        "new line.lfeed bus1=src bus2=b1 linecode=lc length=0.5 units=km",
+        "new line.s1 bus1=b1 bus2=b2 linecode=lc length=0.02 units=km",
+        "new line.s2 bus1=b2 bus2=b3 linecode=lc length=0.02 units=km",
+        "new load.ld3 bus1=b3 phases=3 conn=wye model=1 kv=12.47 kw=500 pf=0.92",
+        "new capacitor.cp bus1=b3 phases=3 kvar=300 kv=12.47",
+        "new capcontrol.cc element=line.s2 terminal=1 capacitor=cp type=current          onsetting=10 offsetting=5",
+        "new capcontrol.cf element=line.lfeed terminal=1 capacitor=cp type=current          onsetting=10 offsetting=5",
+        "new energymeter.em element=line.lfeed terminal=1",
+        "set voltagebases=[12.47]",
+        "calcvoltagebases",
+        "solve",
+        "set reduceoption=shortlines",
+        "reduce",
+        "solve",
+    ] {
+        dss.command(cmd);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // `s1` merged into `s2`; the control that named the SURVIVOR now names the
+    // merged line — neither its old name nor the partner's.
+    assert_eq!(prop_of(&mut dss, "CapControl.cc.element"), "Line.s1~s2");
+    assert_eq!(prop_of(&mut dss, "CapControl.cc.terminal"), "1");
+    // The control on an untouched line is not swept along.
+    assert_eq!(prop_of(&mut dss, "CapControl.cf.element"), "Line.lfeed");
+    // …and the repoint is a real re-resolution, not a string edit: the circuit
+    // still solves, which it did not while the stale name was in place.
+    assert!(dss.circuit().expect("circuit").is_solved);
 }

@@ -1572,6 +1572,24 @@ purpose-built micro-decks; no decision-table kill criterion fired.
   change carries no `#[cfg(feature = …)]`, but it was run rather than argued:
   **VERDICT PASS, `max |Δ| = 0` exactly on conv/cur/errs/iter/loss/pow/v/y over
   3 220 247 records / 522 cases, 0 drifted iteration counts.**
+* **Audit settlement (2026-08-29).** Both audits confirmed the classification
+  and the mechanism on live oracles; nine findings, seven fixed, one refuted, one
+  handed to §RP3.6. Two further `MergeWith` defects were found while settling
+  them and fixed here: the routine re-pointed only the **partner's** controls
+  (r4133 does both, `:1682-1683`, with `NewName` before `:1684`'s rename — the
+  survivor half is the one the reduce strategies actually use), and the sym
+  branch's `RecalcElementData` (`:1730`) had been deferred to `CalcYPrim`, which
+  is not equivalent because the call clears `SymComponentsChanged` and that flag
+  gates `CalcYPrim`'s `C1 /= ConvertLineUnits(UNITS_KFT, LengthUnits)` fix-up
+  (`:1031-1038`) — the partial-C arms this sub-step had just made reachable came
+  out at `c1 = 3.6089` where both oracles render `1.1`. Also added:
+  `the_rp35_census_decomposition_is_read_off_the_corpus` (the "3 cells, 0 in
+  scope" split derived from the corpus, with `reduce_mergeparallel`'s zero
+  contribution asserted), a pin on the real `midi_reduce` deck, and pins on the
+  two length-derived quantities the restored units correct. **Refuted:** the
+  claim that r4133 renders `linecode = ''` on a partner-is-switch merge — it
+  renders `lc`, so §RP3.6's premise is now measured rather than read. Full record
+  in STATUS §RP3.5.
 
 ### RP3.6 — `switch=yes` must not clear the linecode flag (opened by RP2.2)
 
@@ -1590,6 +1608,22 @@ cosmetic: the flag selects the `FUnitsConvert` formula on a later `units=`
 (`Line.pas:626-627`), and the affected decks
 (`Version8/Distrib/Examples/StoCtrl_Current_PeakShave/Line.DSS`) put `units=m`
 **after** `Switch=True`, so the two engines take different branches there.
+**Two measurements RP3.5's audit settlement hands to this sub-step
+(2026-08-29), both live on the r4133 DLL.** (1) The premise is **confirmed**:
+after a parallel merge whose partner is a switch, r4133 renders the survivor's
+`linecode` as `lc` while the port renders `''` — the arm RP3.5's item (C) made
+reachable, so the divergence is live on a path no corpus deck walks (0 cells)
+until this sub-step lands. (2) The `FLineCodeSpecified`/`CondCode` split this
+sub-step must build also owns a **CIM** divergence RP3.5 measured and could not
+fix in `MergeWith`: r4133 back-fills a LineCode's units from `FUserLengthUnits`
+by matching the `CondCode` **string**, which survives the flag being cleared
+(`Common/ExportCIMXML.pas:3877`), and writes
+`PerLengthSequenceImpedance.r = 0.301/304.8 = 0.00098753281` where capi 0.14.5
+and the port — which match by the live object, `cim/export.rs::
+find_line_units_for_linecode` — write `0.301`. The port's
+`kill_line_code_specified` clears `line_code_name` along with the reference, so
+it has no `CondCode` to match on; resolve both with the same split.
+
 r4133 is the behavioral authority (CLAUDE.md 2026-08-02), so the default
 expectation is a port fix in both lanes plus a pin on the resulting
 `FUnitsConvert`/impedance; the alternative (keep the kill, pin the r4133-side
