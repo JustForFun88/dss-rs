@@ -20,13 +20,21 @@ impl Line {
 
         out.push_str(&format!("~ {}={}\n", name(prop::BUS1), self.cd.get_bus(1)));
         out.push_str(&format!("~ {}={}\n", name(prop::BUS2), self.cd.get_bus(2)));
-        // Pascal: `if LineCodeObj <> NIL then LineCodeObj.Name else ''`.
-        let lc = if self.line_code_ref.is_some() {
-            self.line_code_name.as_str()
-        } else {
-            ""
-        };
-        out.push_str(&format!("~ {}={lc}\n", name(prop::LINECODE)));
+        // Pascal `Writeln(F,'~ ',PropertyName^[3],'=',CondCode)` — r4133
+        // `Line.pas:1273`. Unconditional: `DumpProperties` prints the raw
+        // `CondCode`, which survives every `FLineCodeSpecified := FALSE`, so a
+        // line whose impedance was overridden still dumps the code it was built
+        // from while `? line.x.linecode` answers `''` (`:1357`). dss_capi 0.14.5
+        // has no `CondCode` at all and renders the live object instead (`if
+        // LineCodeObj <> NIL then LineCodeObj.Name else ''`), so it prints
+        // nothing there; r4133 is the behavioral authority (CLAUDE.md
+        // 2026-08-02). Both readings measured on the two DLLs, RP3.6 probe
+        // deck C.
+        out.push_str(&format!(
+            "~ {}={}\n",
+            name(prop::LINECODE),
+            self.line_code_name
+        ));
         out.push_str(&format!("~ {}={}\n", name(prop::LENGTH), g(self.len, 15)));
         out.push_str(&format!("~ {}={}\n", name(prop::PHASES), self.cd.nphases));
 

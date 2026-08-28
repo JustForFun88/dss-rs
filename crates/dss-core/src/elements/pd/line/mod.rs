@@ -294,11 +294,35 @@ pub struct Line {
     pub line_code_units: LineUnits,
     /// `FUnitsConvert`.
     pub units_convert: f64,
-    /// `LineCodeObj` reference (the resolved code's stable [`Idx`] — `linecode=`
-    /// is an `object_ref_class("LineCode", …)` property, so the class is static)
-    /// and its name for dumps; `None`/empty before any `linecode=`.
+    /// The stable [`Idx`] of the code **in force** — `linecode=` is an
+    /// `object_ref_class("LineCode", …)` property, so the class is static.
+    /// r4133 keeps no such handle of its own (its `LineCodeObj` is a local of
+    /// `FetchLineCode`, `:376`), so this one carries the flag's lifetime: it is
+    /// taken by `FetchLineCode` and dropped by
+    /// [`Line::kill_line_code_specified`] together with
+    /// [`Line::line_code_specified`], which keeps a reader from resolving a
+    /// superseded code.
     pub line_code_ref: Option<Idx<LineCodeObj>>,
+    /// Pascal `CondCode` (r4133 `Version8/Source/PDElements/Line.pas:103`) —
+    /// the code's **name**, and the half of the linecode state that outlives the
+    /// flag. Written by `FetchLineCode` (`CondCode := LowerCase(Code)`, `:387`)
+    /// and cleared *only* by the constructor (`:825`), so it survives every
+    /// `KillLineCodeSpecified`: `DumpProperties` prints it unconditionally
+    /// (`:1273`) and the CIM LineCode units back-fill matches on it
+    /// (`Common/ExportCIMXML.pas:3876`) whether or not
+    /// [`Line::line_code_specified`] still stands. Empty before any `linecode=`.
     pub line_code_name: String,
+    /// Pascal `FLineCodeSpecified` (r4133 `Line.pas:57`) — the *live* half of
+    /// the linecode state, independent of `line_code_name`. Set by
+    /// `FetchLineCode` (`:413`), cleared by every impedance/matrix/geometry/
+    /// spacing/cable override (`:685`, `:691`, `:1832`, `:1853`, `:1952`,
+    /// `:2016`, `:2075`, `:2131`) — but **not** by `switch=` (`:694-700`,
+    /// RP3.6(a)) — and by the constructor (`:853`). It gates the property-3
+    /// render (`3: If FLineCodeSpecified Then Result := CondCode else Result :=
+    /// ''`, `:1357`), the `units=` conversion branch (`:626-627`) and the CIM
+    /// `Conductor.length` / `LineCodeRefNode` branch
+    /// (`Common/ExportCIMXML.pas:3734-3738`).
+    pub line_code_specified: bool,
     pub is_switch: bool,
     pub sym_components_model: bool,
     pub sym_components_changed: bool,
@@ -415,6 +439,7 @@ impl Line {
             units_convert: 1.0,
             line_code_ref: None,
             line_code_name: String::new(),
+            line_code_specified: false,
             is_switch: false,
             sym_components_model: true,
             sym_components_changed: false,
