@@ -1573,9 +1573,10 @@ purpose-built micro-decks; no decision-table kill criterion fired.
   **VERDICT PASS, `max |Δ| = 0` exactly on conv/cur/errs/iter/loss/pow/v/y over
   3 220 247 records / 522 cases, 0 drifted iteration counts.**
 * **Audit settlement (2026-08-29).** Both audits confirmed the classification
-  and the mechanism on live oracles; nine findings, seven fixed, one refuted, one
-  handed to §RP3.6. Two further `MergeWith` defects were found while settling
-  them and fixed here: the routine re-pointed only the **partner's** controls
+  and the mechanism on live oracles; nine claims, seven settled, one refuted, one
+  handed to §RP3.6. Two more `MergeWith` defects were fixed here — one raised by
+  the code audit, one found while settling the refuted claim: the routine
+  re-pointed only the **partner's** controls
   (r4133 does both, `:1682-1683`, with `NewName` before `:1684`'s rename — the
   survivor half is the one the reduce strategies actually use), and the sym
   branch's `RecalcElementData` (`:1730`) had been deferred to `CalcYPrim`, which
