@@ -841,3 +841,109 @@ fn line_illegal_phase_change_reverts_and_logs() {
     // The illegal change was rejected: the phase count stays at 1.
     assert_eq!(query(&mut dss, "Line.l1.phases"), "1");
 }
+/// r4133 `Version8/Source/PDElements/Line.pas`: `switch=yes` (side-effect arm
+/// 15, `:694-700`) does **not** clear `FLineCodeSpecified`, while the
+/// neighbouring impedance arms `6..11, 26..27` (`:685`) and `12..14` (`:691`)
+/// each open with `FLineCodeSpecified := FALSE`. The flag drives two live
+/// surfaces: the property render (`3: If FLineCodeSpecified Then Result :=
+/// CondCode else Result := ''`, `:1357`) and the `units=` conversion branch
+/// (`20: If FLineCodeSpecified Then FUnitsConvert := ConvertLineUnits(
+/// FLineCodeUnits, NewLengthUnits) Else …`, `:626-627`). dss_capi 0.14.5 added
+/// a `KillLineCodeSpecified()` to arm 15 and flagged it in its own source
+/// (`src/PDElements/Line.pas:677`, `//TODO: check if this missing is relevant
+/// bug`); the port had copied it. r4133 is the behavioral authority
+/// (CLAUDE.md 2026-08-02), so the kill is gone from that arm only.
+///
+/// Every value below was measured live on the r4133 DLL (RP3.6 probe,
+/// 2026-08-29) and the assertions come in two kinds, both load-bearing:
+///
+/// * **discriminators** — they fail against the pre-fix engine, proven by
+///   re-running it with the kill restored: `swk.linecode` (`""`), `swk.r1`
+///   (`"1"`, not `1/304.8`), `swk.r1` after `units=kft` (`"304.8"`, not `"1"`),
+///   `swk.linecode` after it, and `261249.linecode` (`""`). `linecode` alone
+///   would also pass against a port that merely stopped erasing the name, so
+///   `r1` — a channel independent of the string under test — carries the claim
+///   that the flag really selects the `FUnitsConvert` branch;
+/// * **invariance controls** — they hold on BOTH engines and would fail an
+///   over-broad fix: `swn` (a switch with no code renders empty and takes the
+///   shared FALSE branch), `ovr` (arm 6 still clears, so one arm changed and not
+///   the mechanism), `swb` (`FetchLineCode` re-arms the flag when the code is
+///   typed last) and the corpus shape's `r1`/`units`/`length`, which must not
+///   move because `ConvertLineUnits(m, m) = ConvertLineUnits(none, m) = 1.0`.
+///
+/// Both lanes, no oracle, no feature gate.
+#[test]
+fn switch_yes_keeps_the_linecode_and_its_units_conversion() {
+    // (1) The discriminating shape the corpus never has: a code in kft, the
+    // lines in m, so the two `FUnitsConvert` branches differ by 304.8.
+    let mut dss = Dss::new();
+    dss.command("New circuit.p");
+    dss.command("New LineCode.lckft nphases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 c1=3 c0=1 units=kft");
+    // `swk`: code, then the switch, then the units — the corpus order.
+    dss.command("New Line.swk bus1=a bus2=b phases=3 linecode=lckft Switch=True units=m");
+    // `swn`: a switch with no code at all — the FALSE branch, shared with capi.
+    dss.command("New Line.swn bus1=a bus2=c phases=3 Switch=True units=m");
+    // `ovr`: a code then an arm-6 override — that arm still kills the flag.
+    dss.command("New Line.ovr bus1=a bus2=d phases=3 linecode=lckft r1=0.5 units=m");
+    // `swb`: the switch typed *before* the code — `FetchLineCode` re-arms the
+    // flag (r4133 `:413`), so this one never differed between the engines.
+    dss.command("New Line.swb bus1=a bus2=e phases=3 Switch=True linecode=lckft units=m");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // The render survives the switch (r4133 `? Line.swk.linecode` = `lckft`).
+    assert_eq!(query(&mut dss, "line.swk.linecode"), "lckft");
+    // …and so does the code-relative conversion: `FUnitsConvert =
+    // ConvertLineUnits(kft, m) = 304.8`, so the `r1` getter renders
+    // `R1/FUnitsConvert = 1/304.8`. r4133 prints its `%-.7g` truncation
+    // `0.00328084`; the port prints the same f64 in full (the pre-existing
+    // render-width class), so the value is checked as a number and the string
+    // is pinned literally next to it.
+    let r1 = query(&mut dss, "line.swk.r1");
+    assert_eq!(r1, "0.00328083989501312");
+    assert!(
+        (r1.parse::<f64>().unwrap() - 1.0 / 304.8).abs() < 1e-15,
+        "swk.r1 = {r1}, expected 1/304.8 (r4133 renders 0.00328084)"
+    );
+    // Without the flag the port would take the FALSE branch — `FUnitsConvert *=
+    // ConvertLineUnits(none, m) = 1` — and answer a bare `1`, which is exactly
+    // what a switch with no code answers here:
+    assert_eq!(query(&mut dss, "line.swn.linecode"), "");
+    assert_eq!(query(&mut dss, "line.swn.r1"), "1");
+
+    // (2) The branch is re-evaluated from the code's units on every `units=`,
+    // not latched at the switch: `ConvertLineUnits(kft, kft) = 1`.
+    dss.command("Edit Line.swk units=kft");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "line.swk.r1"), "1");
+    assert_eq!(query(&mut dss, "line.swk.linecode"), "lckft");
+    // The no-code line takes the shared FALSE branch on the same edit —
+    // `FUnitsConvert *= ConvertLineUnits(m, kft) = 1/304.8` ⇒ `1/(1/304.8)`.
+    dss.command("Edit Line.swn units=kft");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "line.swn.r1"), "304.8");
+
+    // (3) Only arm 15 changed, not the mechanism: arm 6 still clears the flag.
+    assert_eq!(query(&mut dss, "line.ovr.linecode"), "");
+    assert_eq!(query(&mut dss, "line.ovr.r1"), "0.5");
+    // …and a switch typed before the code keeps it on every engine.
+    assert_eq!(query(&mut dss, "line.swb.linecode"), "lckft");
+
+    // (4) The corpus shape (`…/EPRI_Ckt7-G/Torn_Circuit/zone_2/Branches.dss:93`,
+    // `LineCode.99` from `zone_2/LineCode.DSS:153`): the name comes back and the
+    // impedance does **not** move, because both branches evaluate to 1.0 there —
+    // `ConvertLineUnits(m, m) = ConvertLineUnits(none, m) = 1.0`. This is the
+    // shape of all five census cells the two `capi_v0145` ledger entries pin.
+    let mut dss = Dss::new();
+    dss.command("New circuit.p");
+    dss.command(
+        "New LineCode.99 nphases=3 r1=0.00018641 x1=0.00039768 r0=0.00045981              x0=0.0011868 c1=1.8694E-006 c0=1.8694E-006 units=m",
+    );
+    dss.command(
+        "New Line.261249 bus1=a bus2=b phases=3 length=0.001 linecode=99 Switch=True units=m",
+    );
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "line.261249.linecode"), "99");
+    assert_eq!(query(&mut dss, "line.261249.r1"), "1");
+    assert_eq!(query(&mut dss, "line.261249.units"), "m");
+    assert_eq!(query(&mut dss, "line.261249.length"), "0.001");
+}

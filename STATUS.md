@@ -482,7 +482,127 @@ stands and is now measured), and one is handed to **RP3.6** with its owner named
 r4133's CIM LineCode-units back-fill matches by the `CondCode` string that
 survives the flag being cleared, which the port's `kill_line_code_specified`
 throws away. `lane_diff` re-run: PASS, `max |Δ| = 0`.
-**Next: RP3.6/RP3.7, RP3.8 and RP3.9** — they are what RP4.1 waits on.
+**RP3.6 part (a) (`line.linecode`, the switch arm) landed 2026-08-29 — the
+second `FIX`, and the one RP4.1 actually waits on.** r4133's `switch=` side
+effect (`Version8/Source/PDElements/Line.pas:694-700`) assigns
+`r1/x1/r0/x0/c1/c0/len` as fields, kills geometry and spacing and resets the
+length units, and carries **no** `FLineCodeSpecified` statement — while the two
+neighbouring impedance arms each open with one (`6..11, 26..27` at `:685`,
+`12..14` at `:691`), so the omission is written arm by arm rather than forgotten
+at the end of a block. The flag is read live by the property getter (`3: If
+FLineCodeSpecified Then Result := CondCode else Result := ''`, `:1357`) and by
+the `units=` arm, which picks `ConvertLineUnits(FLineCodeUnits, NewLengthUnits)`
+when it is TRUE and `FUnitsConvert * ConvertLineUnits(LengthUnits,
+NewLengthUnits)` when it is FALSE (`:626-627`). dss_capi 0.14.5 **added** the
+kill there and flagged it in its own source (`src/PDElements/Line.pas:677`,
+`KillLineCodeSpecified(); //TODO: check if this missing is relevant bug`); the
+port had copied 0.14.5. r4133 is the behavioral authority (CLAUDE.md
+2026-08-02), so the single call is gone from the `SWITCH` arm of
+`elements/pd/line/accessors.rs` in **both lanes**; the six other
+`kill_line_code_specified` call sites each match an r4133 counterpart and are
+untouched, as is RP3.5's `user_length_units` line in `reset_length_units`.
+
+Probed live on all three engines (r4133 DLL 11.0.0.1, the pinned 0.14.5 oracle,
+the port) before any edit, per the plan's "Do first". **The premise held and the
+kill criterion did not fire.** On the corpus shape (`LineCode.99` in metres, the
+line `linecode=99 … Switch=True units=m`) exactly one property cell differs —
+`linecode`, `'99'` on r4133 against `''` on capi and the port — while `units`,
+`length`, `r1`, `x1`, `r0`, `x0`, `c1`, `c0` and the three matrices agree
+numerically on all three engines. On the discriminating shape the corpus never
+has (a code in **kft**, the line in **m**) the flag proves it is not cosmetic:
+r4133 renders `r1 = 0.00328084 = 1/304.8` where capi and the pre-fix port render
+`1`, and a later `Edit … units=kft` flips r4133 back to `1` and the other two to
+`304.8` — the branch is re-evaluated from the code's units on every `units=`,
+never latched. Controls: a switch with no code, and a `switch=` typed *before*
+`linecode=` (which `FetchLineCode` re-arms at `:413` — why the corpus's 160
+`LVTestCaseNorthAmerican` declarations carry zero cells), agree on all three
+engines. **No solved state moves**: read at f64 from the live `YNodeVarray` and
+every element's terminal currents, `r4133 vs port` is `max rel |dV| = 3.6e-10`
+and `max rel |dI| = 9.7e-08` — *smaller* than `capi vs port` (`4.8e-10` /
+`1.9e-07`) on the same deck, whose flag is identical, so the residue is the
+documented faer-vs-KLU near-cancellation floor on an ideal switch and not a flag
+effect. Both branches of `ConvertLineUnits` evaluate to exactly 1.0 on every one
+of the five cells (`m`→`m` and `none`→`m`), so **no impedance and no golden byte
+moves** — measured deck by deck across the seven CIM goldens, all 322
+`props/*.json` scenarios, `json/*`, `reports/dump3_*`, `reports/save_*` and
+`save_roundtrip.rs`, and `golden.lock.json` is unmoved.
+
+What does move is the **live capi comparison**, on exactly five cells over two
+`engines: both`, `kind: feeder` cases whose property compare `force_properties`
+turns on today — so the exclusion ships **now** rather than staging to RP4.1
+(§1.1(e) is an r4133 rule, that channel's props compare being masked):
+`line-switch-keeps-linecode-zone2-capi-props` (`line.261249` `99`,
+`line.183046` `98`, `line.255376` `99`) and
+`line-switch-keeps-linecode-zone3-capi-props` (`line.175078`, `line.249319`,
+both `99`), oracle `""` on all five, one new cause `line-switch-kills-linecode`,
+`population.lock.json` two lines. No r4133 entry is drafted or staged: after the
+RP4.1 unmask these five cells compare and **match**, which is the point of the
+sub-step — `line.linecode` is, by `DECLARED_RP35`'s own comment, the only RP3.5+
+pair the unmask will actually compare. No `PROPS_ECHO_R4133` row (the getter is
+live, not an echo), no `PROPS_NORM_R4133` row, and no `SKIP_PROPS` /
+`SKIP_PROPS_CAPI_ONLY` / `LANE_SKIP_PROPS` row — those are `(class, prop)`-keyed
+and would blind `line.linecode` on ~77 659 capi cells to cover five.
+`DECLARED_RP35 = (8, 6, 5)` is unmoved (a `FIX` does not claim the frozen census
+rows, which record the *old* port value), and the frozen extracts under
+`tests/corpus/props_r4133/` stay frozen — their `rust=''` column is historical
+from here on.
+
+Held by one oracle-free pin in both lanes,
+`exec::tests::line_fetch::switch_yes_keeps_the_linecode_and_its_units_conversion`,
+which reads the `FUnitsConvert` branch through `r1` as well as the string under
+test, so a port that merely stopped erasing the name would still red it.
+**Non-vacuity proven by re-running the pre-fix engine** (the kill restored in a
+scratch edit, reverted after): the pin fails at `left: "" / right: "lckft"`, and
+the two ledger entries fail with
+``ledger `line-switch-keeps-linecode-zone2-capi-props` property
+line.261249.linecode: rust value "" != pinned rust "99"`` and the same for
+`line.175078` on zone_3. Five of the pin's assertions discriminate that way; the
+rest are invariance controls that hold on both engines and would catch an
+over-broad fix. The "5 cells, all 5 in scope" split is derived from the corpus
+by `the_rp36_census_decomposition_is_read_off_the_corpus`, which sweeps every
+corpus file for `Line` declarations carrying both a `linecode=` and a `switch=`,
+walks each case's `Redirect`/`Compile` closure to find the owners, applies
+`force_properties`' rule and the skip-aware r4133 predicate, and reconciles the
+products against `examples_full.txt` and `bins.tsv`.
+
+Two plan-text corrections, both factual: the plan and this file named
+`Examples/StoCtrl_Current_PeakShave/Line.DSS` as "the affected decks" — it has
+the right shape on nine lines but its case is `kind: large`, which
+`force_properties` never property-compares, so it contributes **zero** of the
+five; the decks are
+`ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/Branches.dss:93,:95,:479` and
+`zone_3/Branches.dss:161,:165` (the census test asserts the counter-claim, not
+just the total). And "the capi channel proven unmoved" was wrong as written: the
+capi *oracle* is unmoved, the capi *comparison* is not.
+
+`lane_diff.ps1` was **run rather than argued** — the deduction says it is not
+owed (no `compat` kernel, no lane alias, and both `ConvertLineUnits` branches
+evaluate to exactly 1.0 on every affected line), but these are near-ideal-switch
+decks where one ULP on a 1e-6 switch admittance is 1.45 kW
+(`crates/dss-core/src/compat.rs:95-115`), so the claim is a measurement:
+**PASS, `max |Δ| = 0.000e0` exactly on all eight kinds** (conv 2150, cur
+1 169 500, errs 518, iter 2150, loss 366 320, pow 1 169 500, v 375 744,
+y 1 738 048 records over 522 cases), 0 iteration counts drifted.
+Recorded and handed on, not chased: with `clear_seq(prop::LINECODE)` no longer
+running in that arm, `Dump` and `Save Circuit` now print `LineCode=` on a
+switched line — toward r4133, which prints `CondCode` unconditionally
+(`Line.pas:1273`) and flag-gates its `Save`; but the port's `Save` still emits
+`R1..C0` there where r4133 emits none (its `set_as_next_seq(R1..C0)` block is
+0.14.5's `PrpSequence` bookkeeping), so a save→reload loses the name to arm 6
+while the numbers round-trip identically. No golden or gate reads either surface
+on a switched, linecode-bearing line; the general store-vs-live serialization
+question, and whether `Dump` should print the raw `CondCode`, belong to
+**§RP3.11**. Part **(b)** of RP3.6 — splitting `FLineCodeSpecified` from
+`CondCode` so the port keeps the name across a flag kill, and repointing the CIM
+LineCode-units back-fill onto the `CondCode` string match r4133 uses
+(`ExportCIMXML.pas:3877`, where r4133 writes
+`PerLengthSequenceImpedance.r = 0.301/304.8 = 0.00098753281` and capi and the
+port write `0.301`) — is a separate change and has **not** landed here. One
+incidental, unrelated finding: both oracles emit `<cim:ACLineSegment.b0ch>`
+twice on an `ACLineSegment` where the second should be `g0ch`; the port already
+writes `g0ch` correctly.
+**Next: RP3.6 part (b) (the `FLineCodeSpecified`/`CondCode` split and the CIM
+back-fill), RP3.7, RP3.8 and RP3.9** — they are what RP4.1 waits on.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -3211,15 +3331,22 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
       anticipate: the fix reds the **live** `capi_v0145` `all_properties` compare
       on `midi_reduce.dss`, so a capi ledger entry + cause +
       `population.lock.json` rewrite landed with it.
-    - **RP3.6 — `switch=yes` must not clear the linecode flag.** r4133's arm
+    - **RP3.6 — `switch=yes` must not clear the linecode flag. Part (a),
+      the switch arm, SETTLED 2026-08-29 (`FIX`, both lanes) — see the
+      §RP3.6 record above; part (b), the `FLineCodeSpecified`/`CondCode` split
+      and the CIM units back-fill, is still open.** r4133's arm
       (`Line.pas:694-700`) writes r1/x1/r0/x0/c1/c0/len as fields, kills geometry
       and spacing and resets the units, but leaves `FLineCodeSpecified` TRUE; the
       port calls `kill_line_code_specified()`
       (`elements/pd/line/accessors.rs:488-511`, following 0.14.5's
       `KillLineCodeSpecified`). Consequence beyond the render: the flag picks a
       different `FUnitsConvert` formula on a later `units=` (`:626-627`), and the
-      decks (`Examples/StoCtrl_Current_PeakShave/Line.DSS`) put `units=m` after
-      `Switch=True`. Evidence: `line.linecode` **5 cells, all 5 in scope** — the
+      decks that carry the cells
+      (`ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/Branches.dss:93,:95,:479` and
+      `zone_3/Branches.dss:161,:165`) put `units=m` after `Switch=True`.
+      `StoCtrl_Current_PeakShave/Line.DSS` has the same shape but is `kind:
+      large`, so it is never property-compared and carries none of them.
+      Evidence: `line.linecode` **5 cells, all 5 in scope** — the
       only RP3.5+ pair the unmask will actually compare, so **RP4.1 breaks on it
       if RP3.6 does not land first**. r4133 is the authority; "capi does it" is
       not evidence (CLAUDE.md).

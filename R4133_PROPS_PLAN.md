@@ -1606,9 +1606,12 @@ kills geometry and spacing and resets the length units while leaving
 (`elements/pd/line/accessors.rs:488-511`, `SWITCH => { … kill_line_code_
 specified(); … }`, following dss_capi 0.14.5's `KillLineCodeSpecified`). Not
 cosmetic: the flag selects the `FUnitsConvert` formula on a later `units=`
-(`Line.pas:626-627`), and the affected decks
-(`Version8/Distrib/Examples/StoCtrl_Current_PeakShave/Line.DSS`) put `units=m`
-**after** `Switch=True`, so the two engines take different branches there.
+(`Line.pas:626-627`), and the decks that carry the five cells
+(`Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/Branches.dss:93,:95,:479`
+and `zone_3/Branches.dss:161,:165`) put `units=m` **after** `Switch=True`, so
+the two engines take different branches there. (`StoCtrl_Current_PeakShave/
+Line.DSS` has the same shape on nine lines and contributes **zero** cells: its
+case is `kind: large`, which `force_properties` never property-compares.)
 **Two measurements RP3.5's audit settlement hands to this sub-step
 (2026-08-29), both live on the r4133 DLL.** (1) The premise is **confirmed**:
 after a parallel merge whose partner is a switch, r4133 renders the survivor's
@@ -1632,9 +1635,29 @@ delta) must be argued from a probe, not from "capi does it". **Do first:** an
 epri-worker probe of `linecode=… Switch=True units=m` reading back `linecode`,
 `units` and `r1` on both engines. **Acceptance:** the 5 in-scope cells are
 either compared or excluded-with-a-pin; the `FUnitsConvert` consequence measured
-either way; the capi channel proven unmoved (0.14.5 keeps its own behavior —
-if the port changes, the capi-side delta needs its own ledger/pin decision).
+either way; and the capi *oracle* proven unmoved while the capi *comparison*
+is re-settled (0.14.5 keeps its own behavior, so a port fix owes the capi-side
+delta its own ledger/pin decision on the cases that compare properties today).
 Tier: `opus-high+`.
+
+**Part (a) — the switch arm — SETTLED 2026-08-29 (`FIX`, both lanes).** The
+probe ran on all three engines and the kill criterion did not fire: r4133
+renders `'99'`/`'98'` on every switched, linecode-bearing corpus line, the flag
+really selects the `FUnitsConvert` branch (a code in kft with the line in m
+gives `r1 = 1/304.8` on r4133 against `1` on capi and the pre-fix port, and a
+later `units=kft` flips it back), and deck A moves nothing else — every
+impedance, length, units and matrix cell agrees on all three engines and the
+solved state is inside the faer-vs-KLU floor. The one call was deleted from the
+`SWITCH` arm of `elements/pd/line/accessors.rs`; the five cells are excluded on
+the live capi channel by `line-switch-keeps-linecode-zone{2,3}-capi-props`
+(landed, not staged) and pinned by
+`exec::tests::line_fetch::switch_yes_keeps_the_linecode_and_its_units_conversion`;
+no golden byte moved and `lane_diff` was re-run as a measurement: PASS,
+`max |Δ| = 0` on every kind. **Part (b) — splitting
+`FLineCodeSpecified` from `CondCode` so the name survives a flag kill, and
+repointing `cim/export.rs::find_line_units_for_linecode` onto the `CondCode`
+string match r4133 uses (`Common/ExportCIMXML.pas:3877`) — is still open.**
+Full record in STATUS §RP3.6.
 
 ### RP3.7 — Per-phase switch and relay state (opened by RP2.2)
 
