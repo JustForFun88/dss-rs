@@ -1444,7 +1444,7 @@ pins hold on both channels where both channels look.
 ### RP3.5 — Line length units lost by the matrix-branch merge (opened by RP2.2)
 
 `line.units` `'none'` vs `'kft'` (3 cells, **0 in scope** — the affected
-`modes:reduce` cases are `engines: "capi_v0145"`). r4133 renders index 20 from
+`modes:reduce` case is `engines: "capi_v0145"`). r4133 renders index 20 from
 the live field (`LineUnitsStr(LengthUnits)`,
 `Version8/Source/PDElements/Line.pas:1404`), so the two engines hold **different
 `LengthUnits`** after a matrix-form `MergeWith` — a live-state divergence, not a
@@ -1469,6 +1469,109 @@ with an expected-value pin on the merged line's `length_units` /
 **Acceptance:** the probe recorded; `line.units` either compares or is excluded
 with a pin; the `user_length_units` half decided explicitly (it is not
 observable in the census, so it needs its own statement). Tier: `opus-high+`.
+
+**Three corrections to the paragraph above, measured 2026-08-28 and recorded
+here because the sub-step's population and its cost both depend on them.**
+
+1. **`reduce_mergeparallel` contributes ZERO `line.units` cells** — the deck
+   list above is wrong. All 3 cells are on `modes:reduce/midi_reduce.dss`
+   (`Line.l2a~l2b`, `Line.l3a~l3b`, `Line.bb14_15~l9a`), read out of
+   `investigations/g1_1_r4133_props/r4133_props_census.json` and confirmed live:
+   `Line.b1||b2.units` renders `km` on the r4133 DLL, on the pinned dss_capi
+   0.14.5 and on the port. Mechanically `reduce_mergeparallel`'s lines are
+   3-phase symmetrical-components, so its merge takes the **sym** branch. (The
+   `'kft'` spelling in the census is itself the giveaway: that deck types
+   `units=km` throughout.) What `reduce_mergeparallel` *does* expose is a
+   different r4133 defect in the same routine — see (3).
+2. **The sym-components branch is NOT already correct**, only correct on the
+   path the corpus walks. The port's `Length=`/`Units=` re-apply sits **inside**
+   `if let Some(v) = rxc` (`exec/reduce.rs:343`), whereas both oracles run it
+   unconditionally (r4133 `:1724-1726`, capi 0.14.5
+   `src/PDElements/Line.pas:1764-1768`, outside `if UseRXC`). The two arms that
+   produce no impedance values — the parallel `IsSwitch` (`:1708`) and
+   `OtherLine.IsSwitch` (`:1709`) arms — therefore kept a pre-merge `Len`. And
+   the second of them was a silent no-op besides: the port emitted the **text**
+   `Switch=1`, a transliteration of capi's *typed*
+   `SetInteger(ord(TProp.Switch), 1, [])` (`:1736`), which `InterpretYesNo`
+   rejects on both engines, so the merged branch kept the partner's real
+   impedance where both oracles give it dummy z. Both halves are inside this
+   sub-step ("port gaps immediately"), and both are fixed here.
+3. **The plan's only stated costs — "a port fix in both lanes with a pin" or "a
+   cited exclusion" — miss the capi channel.** `modes:reduce/midi_reduce.dss` is
+   `engines: "capi_v0145"`, `MODES.compare_all_properties` is `true`
+   (`corpus_gate/manifest.rs`) and `force_properties` ORs it in for every
+   `gates_capi()` family case (`corpus_gate/scheduler.rs`), so the capi channel
+   **does** compare `all_properties` on this deck today and the fix reds 3 cells
+   on it. The §1.1(e) staging rule is written for **r4133** `property` entries
+   (staged because the r4133 props compare is masked until RP4.1); the capi
+   compare is live, so a staged capi entry would leave the gate red. The
+   `capi_v0145` entry therefore lands **in this sub-step's commit**, with its
+   cause and the `population.lock.json` rewrite the rigor fingerprint forces.
+
+**As executed (2026-08-28) — outcome `FIX` (both lanes) + one live `capi_v0145`
+ledger entry.** The probe ran first, on all three engines
+(r4133 `OpenDSSDirect.dll` `Version 11.0.0.1`, pinned dss-python 0.15.7 /
+dss_capi 0.14.5, and the port), over the two vendored decks plus six
+purpose-built micro-decks; no decision-table kill criterion fired.
+
+* **A — the matrix-series branch.** r4133 renders `kft` on all three merged
+  lines where the port and capi 0.14.5 render `none`, and the value is
+  deck-dependent (`mi` and `cm` on two micro-decks whose surviving line carries
+  those units, `none` on a switch), so the getter is live state. Fixed in both
+  lanes: `exec/reduce.rs` re-applies the units through `red_set_units` **after**
+  the `RMATRIX/XMATRIX/CMATRIX` side effects. `length`, `rmatrix`, `xmatrix`,
+  node count (88) and iteration count (5) already agreed with r4133 digit for
+  digit, and `ConvertLineUnits` returns 1.0 whenever either side is
+  `UNITS_NONE`, so `FUnitsConvert` — and with it YPrim, Y, V, I, S and losses —
+  is unmoved: `units` is the only cell that moves. Ledgered on the capi channel
+  as `reduce-merge-units-restored-midi-capi-props` (cause
+  `line-merge-length-units-reset`, 3 hits), pinned by
+  `exec::tests::reduce::merged_matrix_line_keeps_the_surviving_lines_length_units`.
+* **B — `reset_length_units` clearing `user_length_units`.** Neither oracle does
+  (r4133 `:2330`, capi 0.14.5 `:2084`, identical comment), so this was a
+  port-authored line with no authority question. It **is** observable, through
+  the one consumer either tree has: on a deck typing `units=kft` before its
+  matrices, `Export CIM100` writes `<cim:Conductor.length>609.6</…>` on r4133
+  **and** on capi 0.14.5 against `2` on the port. The line is deleted; pinned in
+  direct state by
+  `elements::pd::line::tests::reset_length_units_keeps_the_users_units` (all
+  three callers) and observably by
+  `golden_cim::cim_conductor_length_uses_the_users_length_units`. No CIM golden
+  byte moves — in every golden CIM deck (`cim_lines`, `cim_load`, `cim_shunt`,
+  `cim_xfmr`, `cim_der`, `IEEE13Nodeckt`, `IEEE123Master`) `units=` is the last
+  impedance-relevant token or absent, so `reset_length_units` never runs after a
+  `units=` write; verified by a sweep of every `Line` declaration in those decks.
+* **C — the sym branch's two switch arms.** Fixed as described in correction (2):
+  the `Length=`/`Units=` re-apply is hoisted out of the `rxc` arm and the
+  `Switch=1` token becomes r4133's own `switch=yes`. No vendored corpus deck
+  reaches either arm (0 census cells), so nothing was red and nothing on a gated
+  case moves; pinned by
+  `exec::tests::reduce::parallel_merge_with_a_switch_restores_length_and_dummy_z`
+  over three decks (partner-is-switch, self-is-switch, and a non-switch control).
+* **D — a new r4133 defect in the same routine, reported not reproduced.**
+  `Line.pas:1715` is `S := ' R0=' + …` where every neighbouring statement appends
+  (`S := S + …`), so the parallel symmetrical-components edit string loses its
+  `R1=`/`X1=` half: on `reduce_mergeparallel` r4133 renders the *un-merged*
+  `r1 = 0.301` / `x1 = 0.667` while `r0`, `x0`, `c1`, `c0`, `length` and `units`
+  all match the port and capi exactly — the precise asymmetry an
+  assignment-instead-of-append predicts, and the four measured relative gaps
+  reproduce the frozen census cells to the last digit. capi 0.14.5 does not carry
+  it (`:1740-1761` fills `RXC[1..6]` and sets all six) and neither does the port.
+  The only exposing deck is `engines: "capi_v0145"` ⇒ 0 in-scope cells ⇒ report
+  only, no exclusion: `investigations/to_opendss/45-line-mergewith-parallel-drops-r1-x1.md`.
+* **Not moved, deliberately.** No `PROPS_ECHO_R4133` row (the r4133 getter at
+  `:1404` is live — an echo row would be a false statement about the mechanism);
+  no r4133 ledger entry (0 in-scope cells, and the r4133 props compare is masked
+  until RP4.1, so `assert_all_hit` would fail it as NEVER APPLIED); no
+  `props_roundtrip` scenario (that gate replays 0.14.5 values and would pin the
+  capi bug as expected); `DECLARED_RP35`/`DECLARED_RP3` and the frozen
+  `tests/corpus/props_r4133/` extracts unchanged — the extracts are a **data**
+  lock recording the 2026-08-08 measurement, so their `rust='none'` column is
+  historical after this sub-step and is not edited (RP0.1 evidence lock).
+  `lane_diff.ps1` is not owed by the ritual's list (RP1.2/RP1.3 only) and the
+  change carries no `#[cfg(feature = …)]`, but it was run rather than argued:
+  **VERDICT PASS, `max |Δ| = 0` exactly on conv/cur/errs/iter/loss/pow/v/y over
+  3 220 247 records / 522 cases, 0 drifted iteration counts.**
 
 ### RP3.6 — `switch=yes` must not clear the linecode flag (opened by RP2.2)
 

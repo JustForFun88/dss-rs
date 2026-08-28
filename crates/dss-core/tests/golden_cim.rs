@@ -631,3 +631,110 @@ fn cim_ieee123() {
         &["solve"],
     );
 }
+
+/// Every `<cim:Conductor.length>` in `xml`, keyed by the `IdentifiedObject.name`
+/// of the instance it sits in (the writer emits the name first, at
+/// `start_instance`). Asserts each name appears at most once, so a deck that
+/// grows a second segment of the same name fails loudly.
+fn conductor_lengths(xml: &str) -> std::collections::BTreeMap<String, String> {
+    let mut out = std::collections::BTreeMap::new();
+    let mut current = String::new();
+    for line in xml.lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("<cim:IdentifiedObject.name>")
+            && let Some(name) = rest.strip_suffix("</cim:IdentifiedObject.name>")
+        {
+            current = name.to_string();
+        }
+        if let Some(rest) = t.strip_prefix("<cim:Conductor.length>")
+            && let Some(v) = rest.strip_suffix("</cim:Conductor.length>")
+        {
+            assert!(
+                out.insert(current.clone(), v.to_string()).is_none(),
+                "two Conductor.length nodes under the name {current:?}"
+            );
+        }
+    }
+    out
+}
+
+/// `Conductor.length` converts with `FUserLengthUnits`, which an impedance
+/// override does **not** erase.
+///
+/// `TLineObj.ResetLengthUnits` clears `LengthUnits` and `FUnitsConvert` and
+/// deliberately keeps `FUserLengthUnits` — r4133
+/// `Version8/Source/PDElements/Line.pas:2326-2331` and dss_capi 0.14.5
+/// `src/PDElements/Line.pas:2080-2085` carry the identical statement pair under
+/// the identical comment, "but do not erase FUserLengthUnits, in case of CIM
+/// export". That comment names this export: the writer reads the field at
+/// r4133 `Common/ExportCIMXML.pas:3707` (`v1 := To_Meters(pLine.
+/// UserLengthUnits)`), `:3735` and `:3877`, and it is the **only** consumer in
+/// either tree — no property renders it and no later `units=` conversion reads
+/// it, which is exactly why the divergence had no census cell.
+///
+/// The port cleared it as well (RP3.5, 2026-08-28) — a port-authored divergence
+/// from *both* oracles. Probed live: on this deck `mtx1` exports
+/// `Conductor.length = 609.6` on the r4133 DLL and on the pinned dss_capi 0.14.5
+/// oracle, against `2` here.
+///
+/// Three segments make the pin a reading rather than a constant:
+///
+/// * `mtx1` types `units=kft` **before** its matrices, so the `12..14` side
+///   effect resets `LengthUnits` afterwards — `? line.mtx1.units` is `none` on
+///   all three engines — and `FUserLengthUnits` is the only field that still
+///   remembers `kft`. 2 kft = **609.6 m**;
+/// * `mtx2` types `units=kft` **last**, so nothing resets it: the control that
+///   proves the conversion itself is not what moved. 3 kft = **914.4 m**;
+/// * `mtx3` types no `units=` at all, so `To_Meters(UNITS_NONE)` is 1.0 and the
+///   length passes through as **5** — the discriminator against "always multiply
+///   by 304.8".
+#[test]
+fn cim_conductor_length_uses_the_users_length_units() {
+    let deck = [
+        "clear",
+        "new circuit.rp35ulu basekv=12.47 pu=1.0 phases=3 bus1=src",
+        // units= BEFORE the matrices: `ResetLengthUnits` runs after the user's
+        // units were recorded.
+        "new line.mtx1 bus1=src.1 bus2=a.1 phases=1 units=kft length=2 \
+         rmatrix=[0.095] xmatrix=[0.21] cmatrix=[3.0]",
+        // Control: units= last, so nothing resets it.
+        "new line.mtx2 bus1=a.1 bus2=b.1 phases=1 rmatrix=[0.095] xmatrix=[0.21] \
+         cmatrix=[3.0] length=3 units=kft",
+        // Control: no units= at all.
+        "new line.mtx3 bus1=b.1 bus2=c.1 phases=1 rmatrix=[0.095] xmatrix=[0.21] \
+         cmatrix=[3.0] length=5",
+        "new load.ld bus1=c.1 phases=1 conn=wye model=1 kv=7.2 kw=100 pf=0.95",
+        "set voltagebases=[12.47]",
+        "calcvoltagebases",
+        "solve",
+    ];
+    // The live `units` render still resets — only the CIM-facing memory survives.
+    {
+        let mut dss = Dss::new();
+        for cmd in deck {
+            dss.command(cmd);
+        }
+        for (name, units) in [("mtx1", "none"), ("mtx2", "kft"), ("mtx3", "none")] {
+            dss.command(&format!("? line.{name}.units"));
+            assert_eq!(dss.result(), units, "line.{name}.units");
+        }
+    }
+
+    let xml = export_cim100_of("rp35ulu", &deck);
+    let lengths = conductor_lengths(&xml);
+    assert_eq!(
+        lengths.get("mtx1").map(String::as_str),
+        Some("609.6"),
+        "mtx1: 2 kft must export as 2 x To_Meters(kft); got {lengths:?}"
+    );
+    assert_eq!(
+        lengths.get("mtx2").map(String::as_str),
+        Some("914.4"),
+        "mtx2 (units= last): {lengths:?}"
+    );
+    assert_eq!(
+        lengths.get("mtx3").map(String::as_str),
+        Some("5"),
+        "mtx3 (no units=): To_Meters(none) is 1.0; got {lengths:?}"
+    );
+}
