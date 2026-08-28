@@ -486,10 +486,26 @@ impl DssObject for Line {
                 self.kill_spacing_specified();
             }
             SWITCH => {
+                // Pascal `TLineObj.PropertySideEffects` arm 15 — r4133
+                // `Version8/Source/PDElements/Line.pas:694-700`. It kills
+                // geometry and spacing, re-stamps the sym scalars and resets
+                // the length units, but it deliberately leaves
+                // `FLineCodeSpecified` alone: both neighbouring impedance arms
+                // *open* with `FLineCodeSpecified := FALSE` (`6..11, 26..27` at
+                // `:685`, `12..14` at `:691`), so the omission at `:694-700` is
+                // written arm by arm, not forgotten at the end of a block. That
+                // flag is what the getter renders (`3: If FLineCodeSpecified
+                // Then Result := CondCode else Result := ''`, `:1357`) and what
+                // picks the `units=` conversion branch (`:626-627`), so a
+                // switched line keeps its code name *and* the code-relative
+                // conversion. dss_capi 0.14.5 added a `KillLineCodeSpecified()`
+                // here and flagged it in its own source
+                // (`src/PDElements/Line.pas:677`, `//TODO: check if this
+                // missing is relevant bug`); r4133 is the behavioral authority,
+                // so the port does not follow it.
                 if self.is_switch {
                     self.sym_components_changed = true;
                     self.cd.yprim_invalid = true;
-                    self.kill_line_code_specified();
                     self.kill_geometry_specified();
                     self.kill_spacing_specified();
                     self.r1 = 1.0;
