@@ -1525,13 +1525,30 @@ const RP22_ROUTING: &[(&str, Owner, &str)] = &[
     // compare and MATCH, which is the point of the sub-step. The decomposition
     // behind "5 cells, all 5 in scope" is derived by
     // [`the_rp36_census_decomposition_is_read_off_the_corpus`].
+    //
+    // Part (b) (same day) split the two pieces of state the cells hang off:
+    // `FLineCodeSpecified` (`:57`, raised at `:413`, cleared at the eight kill
+    // sites) is now `line_code_specified`, while `CondCode` (`:103`, written at
+    // `:387`, cleared only by the constructor at `:825`) is `line_code_name` and
+    // survives every kill. That moved no cell on this pair — the render stays
+    // flag-gated (`:1357`), so a superseded code still answers `''` — but it
+    // fixed the two surfaces that read the name raw: `Dump` now prints
+    // `~ LineCode=<code>` past a kill (`:1273`) and the CIM units back-fill
+    // matches the `CondCode` string (`Common/ExportCIMXML.pas:3876`) instead of
+    // the live object, which is 0.14.5's rule (`:4501`). No ledger entry and no
+    // lock line moved with it: neither surface is compared by any channel.
     (
         "line.linecode",
         Owner::Rp35,
         "RP3.6 FIXED (2026-08-29) — Line.pas:1357 / :413 / :685 / :691 / \
          :694-700 / :626-627 — elements/pd/line/accessors.rs SWITCH arm, both \
          lanes; pin exec::tests::line_fetch::\
-         switch_yes_keeps_the_linecode_and_its_units_conversion",
+         switch_yes_keeps_the_linecode_and_its_units_conversion. Part (b): \
+         Line.pas:387 / :825 / :1273 + ExportCIMXML.pas:3876 — \
+         elements/pd/line/code.rs, dump.rs and cim/export.rs, both lanes; pins \
+         exec::tests::line_fetch::\
+         linecode_name_survives_the_flag_that_gates_its_render and \
+         golden_cim::cim_linecode_units_backfill_matches_the_condcode_string",
     ),
     // Index 21 has no getter arm (`Line.pas:1347-1429` covers 1..20, 23, 26..33
     // and the PD tail) → `DSSObject.pas:112-115` echoes `PropertyValue[21]`,

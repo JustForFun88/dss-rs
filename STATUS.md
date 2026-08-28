@@ -183,7 +183,8 @@ blocked RP4.1** (§0): RP3.5 `line.units` (the plan's second candidate,
 **confirmed** — the port's matrix-branch merge wrote the saved units and *then*
 re-ran the side effects that reset them, where r4133 orders the two the other
 way; **fixed and landed 2026-08-28**), RP3.6 `line.linecode` (r4133's `switch=yes` arm leaves `FLineCodeSpecified`
-TRUE; 5 cells, **all in scope**, so RP4.1 breaks without it) and RP3.7 the
+TRUE; 5 cells, **all in scope**, so RP4.1 breaks without it; **both parts fixed
+and landed 2026-08-29**) and RP3.7 the
 per-phase switch/relay state (r4133 keeps a `pStateArray` per phase; the port one
 scalar). Closing bin 3 meant closing its **cells**, not only its pairs: three
 bin-2-labelled pairs carry enum-spelling cells, so `capcontrol.type` and
@@ -601,8 +602,199 @@ port write `0.301`) — is a separate change and has **not** landed here. One
 incidental, unrelated finding: both oracles emit `<cim:ACLineSegment.b0ch>`
 twice on an `ACLineSegment` where the second should be `g0ch`; the port already
 writes `g0ch` correctly.
-**Next: RP3.6 part (b) (the `FLineCodeSpecified`/`CondCode` split and the CIM
-back-fill), RP3.7, RP3.8 and RP3.9** — they are what RP4.1 waits on.
+
+**RP3.6 part (b) (the `FLineCodeSpecified`/`CondCode` split and the CIM units
+back-fill) landed 2026-08-29.** r4133 keeps **two** independent pieces of
+linecode state where the port kept one. `FLineCodeSpecified`
+(`Version8/Source/PDElements/Line.pas:57`) is raised by `FetchLineCode` (`:413`)
+and cleared at eight sites — the impedance arm (`:685`), the matrix arm
+(`:691`), `FetchLineSpacing` (`:1832`), `FetchConductorList` (`:1853`),
+`FetchWireList` (`:1952`), `FetchCNCableList` (`:2016`), `FetchTSCableList`
+(`:2075`), `FetchGeometryCode` (`:2131`) — and by the constructor (`:853`).
+`CondCode` (`:103`) is written by that same `FetchLineCode` (`CondCode :=
+LowerCase(Code)`, `:387`, inside its `IF LineCodeClass.SetActive(Code)` success
+branch) and cleared by **nothing but the constructor** (`:825` — the routine
+around that line is `TLineObj.Create` itself, whose port counterpart is
+`Line::default`, which already starts the name empty). Two surfaces read the raw
+name past a kill — `DumpProperties`
+(`Writeln(F,'~ ',PropertyName^[3],'=',CondCode)`, `:1273`) and the CIM
+LineCode-units back-fill (`if pLine.CondCode = pLnCd.LocalName`,
+`Common/ExportCIMXML.pas:3876`) — while the property render (`3: If
+FLineCodeSpecified Then Result := CondCode else Result := ''`, `:1357`), the
+`units=` conversion branch (`:626-627`) and the CIM
+`Conductor.length`/`LineCodeRefNode` branch (`ExportCIMXML.pas:3734-3738`) read
+the flag. dss_capi 0.14.5 has **no `CondCode` field at all**: its
+`KillLineCodeSpecified` NILs `LineCodeObj` (`src/PDElements/Line.pas:1994-1999`)
+and every render goes through the object, so it cannot tell the two apart — and
+that is the data model the port had copied.
+
+The port now models both. `line_code_specified` is the flag; `line_code_name` is
+`CondCode` and survives every kill; `line_code_ref` — a port convenience with no
+r4133 counterpart (r4133's `LineCodeObj` is a *local* of `FetchLineCode`,
+`:376`) — carries the flag's lifetime, so a superseded code cannot be resolved
+through it. Five product sites, both lanes: `kill_line_code_specified`
+(`elements/pd/line/code.rs`) drops the flag, the handle and the set-order mark
+and no longer erases the name; `fetch_line_code` raises the flag where r4133
+does (`:413`, right after `FLineCodeUnits`); the property-3 render and the
+`units=` branch (`elements/pd/line/accessors.rs`) read the flag; `Dump` prints
+the raw name unconditionally (`elements/pd/line/dump.rs`, r4133 `:1273`); and
+`cim/export.rs::find_line_units_for_linecode` matches the **name**
+(`ExportCIMXML.pas:3872-3884`) instead of the live handle, keeping the `enabled`
+test, the `Units = UNITS_NONE` precondition, the first-match break and the
+case-insensitive compare. `has_line_code` at the ACLineSegment branch is the
+flag, matching `:3734`. All eight `kill_line_code_specified` call sites were
+re-read against r4133 under the new semantics: seven match a flag-clearing
+counterpart one-for-one and stand; the eighth (the `switch=` arm) was already
+deleted by part (a).
+
+**Two measured behaviour changes, both toward r4133, both new here.**
+(1) `Dump line.<x>` on a line whose code was superseded now prints
+`~ LineCode=<code>` where the port (and 0.14.5) printed nothing — RP3.6's probe
+deck C measured r4133 answering `''` to `? Line.q.linecode` *and* `lcnone` to
+`Dump Line.q` on the same object, which is the split's decisive observation.
+Part (a) had handed the `Dump` question to §RP3.11 on the dossier's routing;
+under the 2026-08-02 policy it is a plain r4133-vs-0.14.5 render difference with
+a one-line fix and no golden byte behind it, so it is settled here instead, and
+§RP3.11 keeps only the `Save`-side `set_as_next_seq(R1..C0)` residue.
+(2) The CIM units back-fill now adopts the units of a line whose flag was
+cleared: on `linecode=lcnone units=kft length=2 r1=0.301` (the LineCode declared
+without `units=`), r4133 writes `PerLengthSequenceImpedance.r = 0.301/304.8 =
+0.00098753281` where 0.14.5 and the pre-split port wrote `0.301` — RP3.5's
+number, reproduced by the RP3.6 probe on decks D and E and now produced by the
+port. The class this widens is every line that names a code and then overrides
+it (impedance, matrix, geometry, spacing, wires, cables), not only the switched
+ones part (a) restored.
+
+**Golden blast radius: no committed byte moves — measured, not reasoned.** The
+render is the only property surface, and flag-gating it reproduces exactly the
+pre-split answer (the old `line_code_ref` fell wherever the flag now falls), so
+`props/*.json` — including `line.json::line_code_then_r1`, which pins
+`"LineCode": ""` after an arm-6 override — and `json/**` are unmoved; the `Save`
+writer is set-order-gated *and* render-gated, so `feeders_controlsoff/*` and
+`save_roundtrip` are unmoved. For `Dump`, all six line-bearing report goldens
+were read deck by deck: `reports/dump_line_switch` (a switch with no code),
+`dump_line_lc`/`dump_line_sym`/`dump_line_geo`, and `reports/dump3_bare`/
+`dump3_debug` (`~ LineCode=lc` on a line with **no** override) — none contains a
+line that names a code and then supersedes it, so none reaches the changed
+branch. For CIM, the six synthetic decks in `tools/golden/cim_decks/` declare
+`units=` on every `LineCode` (`lc_sym` kft, `mtx606`/`mtx607` mi, `lc1` kft), so
+the `Units = UNITS_NONE` loop never runs there at all; `IEEE13Nodeckt` and
+`IEEE123Master` do have codes without units, but neither deck contains a single
+line combining a `linecode=` with an override (their switches carry `r1=1e-3`
+and no code, and neither issues an `Edit Line.`), so the match set is unchanged.
+The two corpus decks that export CIM (`Examples/CIM/IEEE13_{Assets,CDPSM}.dss`)
+have the same shape and put `export cim100` last, after the final `Solve`, so
+the writer's `pLnCd.Units` mutation — which r4133 performs identically, on a
+wider match set than 0.14.5 — cannot reach a solve. Empirically: `golden_cim`
+(13), `golden_reports` (305), `golden_json` (305), `props_roundtrip`,
+`save_roundtrip` (9) and `golden_lock` (4) are green in both lanes and
+`tests/golden/golden.lock.json` did not move. No `tests/corpus/ledger.json`
+entry and no `population.lock.json` line moves either: the corpus gate compares
+properties through `? name.prop` (the flag-gated getter — `dss-epri`'s
+`capture_all_properties` and the capi channel alike) and compares neither `Dump`
+text nor CIM XML, so part (b) is invisible to it. Measured rather than deduced:
+the **full 521-case gate** was run in both lanes and
+`corpus_gate_all_cases_match_engines` is green with no new pin.
+
+Held by two pins, both oracle-free and in both lanes.
+`exec::tests::line_fetch::linecode_name_survives_the_flag_that_gates_its_render`
+builds probe deck C's shape plus a `geometry=` sibling and reads both surfaces on
+the same objects: `? …linecode` is `''` for the two superseded lines and the name
+for the control, while `Dump` prints `~ LineCode=lcnone` for all three; it also
+pins the arm-6 side effects that came with the kill (`units = none`, `r1 =
+0.301`). `golden_cim::cim_linecode_units_backfill_matches_the_condcode_string`
+exports CIM100 over five codes — one superseded by `r1=`, one by `geometry=`,
+one reached only through a switched line, one declaring its own `units=kft`, one
+referenced by nobody — and pins r4133's `0.00098753281` on the first three
+against `0.301` for the unreferenced control. **Non-vacuity measured for each,
+by reverting the product change and reading the failure text**: restoring the
+name-clear in `kill_line_code_specified` fails the engine pin with `Dump Line.q
+must print the raw CondCode 'lcnone'` (an empty dump line) and the CIM pin with
+`lckill: … left: Some("0.301") right: Some("0.00098753281")` — in that same run
+`lcsw` still reads `0.00098753281`, which isolates part (a)'s switch arm from
+part (b)'s name survival; restoring `line.line_code_ref.is_some()` in
+`find_line_units_for_linecode` fails the CIM pin the same way on `lckill` and
+`lcgeo` only; and un-gating the render fails the engine pin at `left: "lcnone" /
+right: ""` **and** reds a committed golden (`props_roundtrip: scenario
+line_code_then_r1 property LineCode: structure differs (actual "mtx601" vs
+expected "")`) — the tripwire part (a) predicted.
+
+`lane_diff.ps1` is not *owed* — part (b) touches two render surfaces and the CIM
+writer only, with no impedance, no `Y`, no `compat` kernel and no lane alias, and
+the one state mutation in reach (`pLnCd.Units` during CIM export) happens after
+the last solve in every deck that reaches it — but it was **run anyway and
+reported as a measurement**, the RP3.5 and part-(a) precedent: 522 cases,
+3 220 247 records, `max |Δ| = 0.000e0` and `max rel = 0.000e0` on all eight kinds
+(`conv`, `cur`, `errs`, `iter`, `loss`, `pow`, `v`, `y`), 0 iteration counts
+drifted, **VERDICT: PASS**. The default lane stays bit-identical to the parity
+lane, so it keeps the parity lane's oracle standing.
+
+The full five-command gate is green on the committed tree in both lanes (`fmt`,
+both `clippy` runs, both `cargo test --workspace` runs — exit 0 read
+individually; nothing `#[ignore]`d, no tolerance touched, no golden
+regenerated). One hygiene note for whoever runs the workspace suite next: the
+`Test/AutoTrans` decks export to *relative* paths and leave a family of ten
+untracked `Auto*_{HL,HT,LT}_{current,losses,power}.txt` files inside the tracked
+corpus mirror — a corpus-deck defect, not ours; they were deleted and not
+committed (`lane_diff.ps1`'s own artifact sweep cleans the same class).
+
+Recorded, not chased — each with an owner, none silently dropped. **(i) The
+object-ref miss path.** r4133's `FetchLineCode` else-arm is a single
+`DoSimpleMsg('Line Code:' + Code + ' not found for Line object Line.' + Name,
+180)` (`:466`) that leaves `CondCode`, the flag and the impedances untouched; the
+port routes `linecode=` through the generic `ObjectRef` parse, which logs
+0.14.5's #401 text and stores an **empty** name, so a failed `Edit` after a good
+`linecode=` erases `CondCode` where r4133 keeps it. The codebase already has the
+mechanism for the r4133 shape (`PropDef::ref_miss_message`, used by AutoTrans
+`XfmrCode`), but its `{prefix}{name} not found.` format cannot express r4133's
+` for Line object Line.<name>` suffix, so adopting it is a message-parity change
+rather than a one-liner — it belongs with the r4133 diagnostics work, not here.
+Unreachable in the gated corpus and in every golden deck: a sweep of all
+`linecode=` tokens against every `New LineCode.<name>` in `tests/corpus`,
+`tools/golden`, `tests/golden` and `crates/dss-core/tests` finds exactly one
+miss, `reconductor … linecode=oh_750_aac` in
+`Examples/Scripts/ReconductorExample.dss`, which is `not_an_entry_point`.
+**(ii) `MakeLike`.** Both oracles copy **none** of the linecode state — r4133
+`TLine.MakeLike` (`Line.pas:735-787`) and 0.14.5
+(`src/PDElements/Line.pas:889-930`) copy the impedances, `Len`,
+`SymComponentsModel` and `FCapSpecified` only, so a `like=` line renders
+`linecode = ''` on both — while the port copies name, handle, flag,
+`line_code_units`, `units_convert`, `length_units` and `user_length_units`. The
+new flag joins that copy set so the port's state stays internally consistent
+(the pin asserts the pair cannot drift); narrowing the whole set is a separate
+change with numeric reach (`length_units`/`units_convert` feed `FUnitsConvert`),
+it has no census cell — no corpus deck writes `like=` on a coded line, which is
+why `line.linecode` is 5 switch-shaped cells and nothing else — and it belongs
+with a class-wide `MakeLike` sweep. **(iii) The
+`Conductor.length`/`LineCodeRefNode` branch is unreachable for a switched line
+on all three engines** — it sits in the `else` of `if IsSwitch then`
+(`ExportCIMXML.pas:3709`), measured on the probe's deck C, where the switch
+exports as a bare `LoadBreakSwitch` identically everywhere — so repointing
+`has_line_code` onto the flag has no observable consequence today and is a
+faithfulness change only. **(iv) Name casing.** r4133 stores `LowerCase(Code)`
+and the port stores the *resolved object's* name (lowercased at creation), so
+the two agree; the CIM comparison stays `eq_ignore_ascii_case` because both
+engines compare two already-lowercased strings, and no corpus deck names a code
+in mixed case. **(v) `FetchConductorList`'s flag clear has no port counterpart —
+and cannot acquire an observable one.** r4133's `Conductors=` (property 34,
+dispatched at `:654`) enters `FetchConductorList`, which opens
+`FLineCodeSpecified := False; KillGeometrySpecified;` unconditionally
+(`:1853-1854`) — a third rule, distinct from `SetWires`' `FPhaseChoice =
+Unknown` guard (`:1952`) and from the `switch=` arm's silence — where the port's
+`set_conductors` only fills the array. The counterpart was written, pinned and
+then **reverted as vacuous**: `Conductors=` requires a `LineSpacing`, and
+`FetchLineSpacing` has already cleared the flag on the way in (`:1832`, mirrored
+by `code.rs::fetch_line_spacing`), while the one order that re-arms it in
+between — `spacing=` … `linecode=` … `Conductors=` — has `FetchLineCode` kill
+the spacing at its tail (`:590-591`), so r4133 reaches the statement with a nil
+`FLineSpacingObj` and dereferences it (`FWireDataSize := FLineSpacingObj.NWires`)
+while the port stops first with its clean #402 — the asymmetry
+`tests/upgrade_conductors.rs` already pins for `Conductors=` before a spacing.
+The clear is unreachable as a state change on both engines, so the port adds no
+untestable statement for it; the finding is recorded here instead.
+
+**Next: RP3.7, RP3.8 and RP3.9** — they are what RP4.1 waits on (RP3.5 and
+RP3.6, both parts, have landed).
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
 from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
@@ -3331,10 +3523,10 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
       anticipate: the fix reds the **live** `capi_v0145` `all_properties` compare
       on `midi_reduce.dss`, so a capi ledger entry + cause +
       `population.lock.json` rewrite landed with it.
-    - **RP3.6 — `switch=yes` must not clear the linecode flag. Part (a),
-      the switch arm, SETTLED 2026-08-29 (`FIX`, both lanes) — see the
-      §RP3.6 record above; part (b), the `FLineCodeSpecified`/`CondCode` split
-      and the CIM units back-fill, is still open.** r4133's arm
+    - **RP3.6 — `switch=yes` must not clear the linecode flag. SETTLED
+      2026-08-29 (`FIX`, both lanes) in two parts — (a) the switch arm and
+      (b) the `FLineCodeSpecified`/`CondCode` split plus the CIM units
+      back-fill; see the two §RP3.6 records above.** r4133's arm
       (`Line.pas:694-700`) writes r1/x1/r0/x0/c1/c0/len as fields, kills geometry
       and spacing and resets the units, but leaves `FLineCodeSpecified` TRUE; the
       port calls `kill_line_code_specified()`

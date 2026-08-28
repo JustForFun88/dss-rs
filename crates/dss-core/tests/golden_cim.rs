@@ -738,3 +738,140 @@ fn cim_conductor_length_uses_the_users_length_units() {
         "mtx3 (no units=): To_Meters(none) is 1.0; got {lengths:?}"
     );
 }
+
+/// Every `<cim:PerLengthSequenceImpedance.r>` in `xml`, keyed by the
+/// `IdentifiedObject.name` of the instance it sits in (the writer emits the name
+/// first, at `start_instance`). Asserts each name appears at most once, so a deck
+/// that grows a second code of the same name fails loudly.
+fn per_length_seq_r(xml: &str) -> std::collections::BTreeMap<String, String> {
+    let mut out = std::collections::BTreeMap::new();
+    let mut current = String::new();
+    for line in xml.lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("<cim:IdentifiedObject.name>")
+            && let Some(name) = rest.strip_suffix("</cim:IdentifiedObject.name>")
+        {
+            current = name.to_string();
+        }
+        if let Some(rest) = t.strip_prefix("<cim:PerLengthSequenceImpedance.r>")
+            && let Some(v) = rest.strip_suffix("</cim:PerLengthSequenceImpedance.r>")
+        {
+            assert!(
+                out.insert(current.clone(), v.to_string()).is_none(),
+                "two PerLengthSequenceImpedance.r nodes under the name {current:?}"
+            );
+        }
+    }
+    out
+}
+
+/// The `Units=UNITS_NONE` LineCode back-fill matches the line's **`CondCode`
+/// string**, which outlives `FLineCodeSpecified`.
+///
+/// r4133 `Common/ExportCIMXML.pas:3872-3884` walks every enabled `Line` and
+/// takes the first whose `CondCode` equals the code's name — no flag test and no
+/// object test:
+///
+/// ```pascal
+/// if pLine.CondCode = pLnCd.LocalName then begin
+///   pLnCd.Units := pLine.UserLengthUnits;
+///   break;
+/// ```
+///
+/// `CondCode` is written by `FetchLineCode` (`PDElements/Line.pas:387`) and
+/// cleared only by the constructor (`:825`), so it survives every
+/// `FLineCodeSpecified := FALSE`. dss_capi 0.14.5 has no `CondCode`: it matches
+/// the live object (`(pLine.LineCodeObj <> NIL) and (pLine.LineCodeObj.Name =
+/// pLnCd.LocalName)`, `src/Common/ExportCIMXML.pas:4501`) and therefore skips a
+/// line whose code was superseded. r4133 is the behavioral authority
+/// (CLAUDE.md 2026-08-02), so the port follows r4133 (RP3.6(b)) and this pin
+/// carries the r4133 numbers, not the 0.14.5 ones.
+///
+/// Every value below was measured on the two DLLs (RP3.6 probe decks D and E,
+/// 2026-08-29) — `0.301 / 304.8 = 0.00098753281` against `0.301`:
+///
+/// * `lckill` — referenced by one line that then overrides `r1=` (side-effect
+///   arm 6, `Line.pas:685`, kills the flag). **Discriminator**: r4133 and the
+///   port back-fill `kft`; 0.14.5 leaves `UNITS_NONE` and writes `0.301`.
+/// * `lcsw` — referenced only by a *switched* line, whose flag r4133 never
+///   clears (`:694-700`, RP3.6(a)). Same discriminator through the other arm.
+/// * `lcgeo` — referenced by a line that then takes a `geometry=`
+///   (`FetchGeometryCode`, `:2131`, also a flag kill). Same again.
+/// * `lckft` — declares `units=kft` itself, so the back-fill loop never runs
+///   (`if pLnCd.Units = UNITS_NONE`, `:3872`). **Invariance control**: it must
+///   read the same on all three engines and must not move with the rule.
+/// * `lcnoline` — declared with no units and referenced by nobody, so nothing is
+///   found and `To_per_Meter(UNITS_NONE) = 1.0` passes `0.301` through.
+///   **Invariance control** against "always divide by 304.8".
+#[test]
+fn cim_linecode_units_backfill_matches_the_condcode_string() {
+    let deck = [
+        "clear",
+        "new circuit.rp36bcc basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "new wiredata.w1 diam=0.5 gmrac=0.2 rac=0.1 runits=mi radunits=in gmrunits=ft normamps=600",
+        "new linegeometry.geo1 nconds=3 nphases=3 reduce=no",
+        "~ cond=1 wire=w1 x=-4 h=28 units=ft",
+        "~ cond=2 wire=w1 x=-1.5 h=28.5 units=ft",
+        "~ cond=3 wire=w1 x=3 h=28 units=ft",
+        // No `units=` on these three: UNITS_NONE, so the back-fill loop runs.
+        "new linecode.lckill nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6",
+        "new linecode.lcsw nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6",
+        "new linecode.lcgeo nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6",
+        "new linecode.lcnoline nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6",
+        // Declares its own units: the loop is skipped for it entirely.
+        "new linecode.lckft nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6 units=kft",
+        // The code is superseded by `r1=` (arm 6) — the flag falls, `CondCode` stays.
+        "new line.qkill bus1=src bus2=a phases=3 linecode=lckill units=kft length=2 r1=0.301",
+        // `switch=` leaves the flag standing (RP3.6(a)) — the other arm of the rule.
+        "new line.qsw bus1=a bus2=b phases=3 linecode=lcsw units=kft Switch=True",
+        // `geometry=` supersedes the code through `FetchGeometryCode` (`:2131`).
+        "new line.qgeo bus1=b bus2=c phases=3 linecode=lcgeo units=kft length=2 geometry=geo1",
+        // The control code, never superseded.
+        "new line.qkft bus1=c bus2=d phases=3 linecode=lckft units=kft length=2",
+        "new load.ld bus1=d phases=3 conn=wye model=1 kv=12.47 kw=100 pf=0.95",
+        "set voltagebases=[12.47]",
+        "calcvoltagebases",
+        "solve",
+    ];
+
+    // The property render is the flag's, so it still answers `''` on the three
+    // superseded lines — the split is what makes the back-fill and the render
+    // disagree, and this is the half that must NOT move.
+    {
+        let mut dss = Dss::new();
+        for cmd in deck {
+            dss.command(cmd);
+        }
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        for (line, rendered) in [
+            ("qkill", ""),
+            ("qgeo", ""),
+            ("qsw", "lcsw"),
+            ("qkft", "lckft"),
+        ] {
+            dss.command(&format!("? line.{line}.linecode"));
+            assert_eq!(dss.result(), rendered, "line.{line}.linecode");
+        }
+    }
+
+    let xml = export_cim100_of("rp36bcc", &deck);
+    let r = per_length_seq_r(&xml);
+    for code in ["lckill", "lcsw", "lcgeo"] {
+        assert_eq!(
+            r.get(code).map(String::as_str),
+            Some("0.00098753281"),
+            "{code}: the back-fill must adopt the referencing line's kft \
+             (0.301/304.8), as r4133 does by matching CondCode; got {r:?}"
+        );
+    }
+    assert_eq!(
+        r.get("lckft").map(String::as_str),
+        Some("0.00098753281"),
+        "lckft declares its own units — the loop never runs for it; got {r:?}"
+    );
+    assert_eq!(
+        r.get("lcnoline").map(String::as_str),
+        Some("0.301"),
+        "lcnoline is referenced by nobody: To_per_Meter(UNITS_NONE) = 1.0; got {r:?}"
+    );
+}
