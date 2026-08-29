@@ -1,0 +1,68 @@
+// ESPVLControl scenario: an Energy-Storage/PV "system controller" supervising a
+// fleet of "local controllers" over a daily ramp whose feeder-head power crosses
+// the hardcoded FkWLimit = 8000 kW (ESPVLControl.pas:321 -- there is NO kWLimit
+// property), so |PDiff| > HalfkWBand on both sides and the redispatch loop fires
+// in both directions during the run.
+//
+// Three of the four ESPVLControl instantiation shapes are exercised:
+//   sys  -- Type=SystemController with a named LocalControlList + weights
+//           (MakeLocalControlList resolves each name against the ESPVLControl
+//           class, keeping the parsed weights);
+//   scan -- Type=SystemController with NO list: MakeLocalControlList scans the
+//           whole class for ENABLED controls and allocates uniform weights, so
+//           its LocalControlWeights readback is a live product of Sample;
+//   loc1 -- Type=LocalController naming a PVSystem + a Storage; upstream never
+//           resolves those pointer lists (Sample only reads the local-control
+//           list), so they round-trip only -- that dead-list behavior is part of
+//           what this deck gates;
+//   off  -- an explicitly disabled control, so the `scan` branch's
+//           "enabled only" filter is observable (off is NOT in its fleet).
+//
+// ESPVLControl is a proven no-op on all observable circuit state (its Sample
+// type-confuses each list entry as a TGeneratorObj and writes onto another
+// ESPVLControl's memory; it never pushes a control-queue action). The two real
+// generators g1/g2 are here precisely so the gate WOULD catch a port that
+// actually dispatched them: their kW/kvar must stay at their input bases through
+// every step. Compared per step: full model + ESPVLControl property probes.
+//
+// Deliberately no `MakePosSequence`: the ESPVLControl override dereferences the
+// always-NIL ControlledElement and aborts the oracle (docs/wpg21_makeposseq_probes.md,
+// makeposseq_ctrl.dss:9-13).
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.espvl basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6
+
+New loadshape.day npts=12 interval=1
+~ mult=(0.40 0.55 0.72 0.88 1.00 1.12 1.20 1.08 0.92 0.78 0.62 0.46)
+
+New load.ld1 bus1=b1 phases=3 kv=12.47 kw=9000 pf=0.95 daily=day
+
+New generator.g1 bus1=b1 phases=3 kv=12.47 kw=600 pf=1.0 model=1
+New generator.g2 bus1=b1 phases=3 kv=12.47 kw=400 pf=0.90 model=1
+
+New pvsystem.pv1 bus1=b1 phases=3 kv=12.47 pmpp=500 kva=600 irradiance=1.0
+New storage.st1 bus1=b1 phases=3 kv=12.47 kwrated=250 kwhrated=1000 state=IDLING
+
+// Local controllers: dead PVSystem/Storage lists (round-trip only upstream).
+New espvlcontrol.loc1 element=line.l1 terminal=1 type=LocalController
+~ PVSystemList=[pv1] PVSystemWeights=[1] StorageList=[st1] StorageWeights=[1]
+New espvlcontrol.loc2 element=line.l1 terminal=1 type=LocalController
+~ PVSystemList=[pv1] StorageList=[st1]
+
+// A disabled control: the `scan` system controller's class sweep keeps enabled
+// controls only, so `off` never joins its fleet.
+New espvlcontrol.off element=line.l1 terminal=1 type=LocalController enabled=no
+
+// System controller over the NAMED fleet, unequal weights.
+New espvlcontrol.sys element=line.l1 terminal=1 type=SystemController kWBand=200
+~ kvarLimit=1500 LocalControlList=[loc1, loc2] LocalControlWeights=[3, 1]
+
+// System controller with NO list: scans the whole class for enabled controls.
+New espvlcontrol.scan element=line.l1 terminal=1 type=SystemController kWBand=200
+
+Set voltagebases=[12.47]
+calcv
+Set mode=daily stepsize=1h number=1
