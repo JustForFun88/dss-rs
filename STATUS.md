@@ -968,9 +968,10 @@ criterion re-armed; GOLDEN_REBASE G3.4/G3.5 wait on RP4.1; PLAN_SEQUENCE rows
 5a/5b added the same day. Execution of that plan started 2026-08-22 on
 `r4133-props` (records below); the local-only census is no longer the single
 copy of the evidence — its extracts are vendored by RP0.1 and the whole census
-is re-derivable in ~1 min by RP0.2's `DSS_PROPS_CENSUS=1`. G1.2 (ESPVLControl
-deck) and G1.3d (discrete extras)
-run on — independent of G1.1. Queued behind GOLDEN_REBASE: `WASM_USERMODELS`
+is re-derivable in ~1 min by RP0.2's `DSS_PROPS_CENSUS=1`. **G1.2 (ESPVLControl
+deck) is DONE** (2026-08-29, on `r4133-props` — the branch that holds the
+fail-on-stale lock/ledger; record below); G1.3d (discrete extras)
+runs on — independent of G1.1. Queued behind GOLDEN_REBASE: `WASM_USERMODELS`
 follow-ups, RESONANCE, MULTITHREADING, the UPGRADE line.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
@@ -1917,6 +1918,74 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   Recorded in the local-only docs: `TODO_COMPAT_REGISTRY.md` §3.32 and a sibling
   section in `investigations/issue-36-*.md` naming it a candidate row for the
   series (no `to_opendss` row: it is capi-only and unobservable).
+
+### GOLDEN_REBASE WP-G1 — records
+
+> Plan: `GOLDEN_REBASE_PLAN.md` §WP-G1. G1.1 is handed to `R4133_PROPS_PLAN.md`
+> RP4.1 (kill criterion fired, see §1). The sub-steps that do not depend on it
+> land on `r4133-props`, the branch that currently holds the fail-on-stale
+> `population.lock.json` / `ledger.json` (single-branch lock discipline).
+
+- **G1.2** (2026-08-29) — **class `ESPVLControl` now has live corpus coverage**
+  (it had none: no vendored deck and no family deck instantiated it, and
+  `makeposseq_ctrl.dss:10` documents its absence there as deliberate).
+  New deck `tests/corpus/controls/espvlcontrol/espvlcontrol.dss` (+ its manifest
+  row in `tests/corpus/controls/manifest.json`): five ESPVLControls on one
+  monitored line over a 12-step daily ramp, `kind=micro`, `n_steps=12`,
+  `selected_elements=["*"]`, 7 probe specs, `compare_eventlog=true`,
+  `ad=off:unclassified-new-deck`. Classification: **`engines: "both"` with the
+  r4133 channel ledger-`skip`ped** — gated live on `capi_v0145` only, for a
+  measured reason (below). Not `expect_solve_abort`: the pinned oracle compiles
+  and solves it cleanly.
+  - *What the deck exercises.* The head power crosses the hardcoded
+    `FkWLimit = 8000 kW` (`ESPVLControl.pas:321`; there is **no** `kWLimit`
+    property, so `kvarLimit`'s default reads `4000`), giving `|PDiff| >
+    HalfkWBand` on both signs — measured on the oracle, `PDiff` per step =
+    −5887 / −4520 / −2960 / −1482 / −367 / **+754 / +1505 / +380** / −1111 /
+    −2407 / −3879 / −5341. All three `Sample` paths are covered: `sys` =
+    SystemController over a **named** `LocalControlList` with weights `[3, 1]`;
+    `scan` = SystemController with **no** list, so `MakeLocalControlList` sweeps
+    the class for *enabled* controls and allocates uniform weights; `loc1`/`loc2`
+    = LocalControllers whose PVSystem/Storage pointer lists are dead upstream
+    (round-trip only); `off` = disabled, so it never joins `scan`'s fleet.
+  - *The deck is not a property round-trip.* `? ESPVLControl.scan.LocalControlWeights`
+    moves `''` (pre-solve) → `'[ 1 1 1 1]'` (post-solve) **only because `Sample`
+    ran** — it is the live product of the class sweep, and the port reproduces it
+    (the probe is compared per step and passes). Feature sensitivity, all
+    probe-visible and two-process bit-identical on the pinned oracle: enabling
+    `off` makes it `'[ 1 1 1 1 1]'`; `sys` weights `[5, 2]` render `'[ 5 2]'`;
+    `scan type=LocalController` blanks its weights entirely (the `Ftype` gate on
+    `MakeLocalControlList`).
+  - *The no-op half is gated too.* ESPVLControl is a proven no-op on circuit
+    state (its `Sample` type-confuses each list entry as a `TGeneratorObj` and
+    writes non-electrical memory; it never pushes a control action), so the deck
+    carries two real generators whose `kw`/`kvar` probes must hold their input
+    bases, and an event log that must stay **empty** — a port that actually
+    dispatched the generators fails here. `ControlIterations` stays 1.
+  - *No `MakePosSequence`.* The ESPVLControl override dereferences the always-NIL
+    `ControlledElement` and aborts the oracle
+    (`docs/wpg21_makeposseq_probes.md`); `makeposseq_ctrl.dss` is untouched.
+  - **Measured upstream finding — r4133 cannot instantiate ESPVLControl at all.**
+    The official EPRI r4133 DLL (Version 11.0.0.1) raises `#303 Access violation
+    … Read of address 0x0` inside `ProcessCommand` on **every** `New
+    espvlcontrol.<name>`, before any property is parsed. Isolated with
+    `epri-worker`: `New espvlcontrol.a element=line.l1 terminal=1` on the deck's
+    feeder → AV at offset `15440`, read of `0x0`; the bare `New espvlcontrol.a`
+    on `clear; New circuit.min basekv=12.47 phases=3 bus1=src` → AV at offset
+    `8F3F2D`, read of `0x70`. Not deck-specific, not a port issue: the port and
+    the pinned 0.14.5 oracle both build and sample the class. Ledgered as
+    `r4133-espvlcontrol-uninstantiable` (`kind=skip`, channel `r4133`) under the
+    new cause `epri-espvlcontrol-uninstantiable`; the entry is HIT by the gate.
+  - *Lock delta.* `population.lock.json` regenerated in the same commit:
+    `family_counts.controls` **105 → 106**, one new row
+    (`ledger=r4133:r4133-espvlcontrol-uninstantiable@2fdaa40e11e20c8b`). Ledger
+    now 40 entries / 26 causes (was 39 / 25).
+  - *`linemedium` mapping (the sub-step's parenthetical).* `linemedium` is a
+    **props-golden scenario name, not a class** — no deck is owed for it. Its
+    subject matter (`Line.l1` with `EpsRMedium` / `HeightOffset` / `HeightUnit`)
+    is already live-gated by `tests/corpus/modes/upgrade/upgrade_linecs_epsrmedium.dss`
+    and `tests/corpus/modes/upgrade/upgrade_linecs_heightoffset.dss`. G3.1 carries
+    this mapping into `TWINS.md`.
 
 ### R4133_PROPS WP-RP0 — condensed records
 
@@ -5933,6 +6002,26 @@ the site comment carries each row's measured cost.
 > general forwarding rule.
 
 ### Standing open follow-ups (actionable)
+
+- **r4133 `New espvlcontrol.*` access violation — upstream-report candidate, OPEN
+  (GOLDEN_REBASE G1.2, 2026-08-29).** The official EPRI r4133 DLL cannot
+  instantiate class `ESPVLControl` at all (`#303`, read of `0x0`; offsets `15440`
+  / `8F3F2D` — see the G1.2 record). Measured, isolated to the constructor path,
+  and ledgered as `r4133-espvlcontrol-uninstantiable` so the corpus deck gates on
+  `capi_v0145`. No port action: the port and the pinned 0.14.5 oracle both build
+  and sample the class. What is owed is an English write-up in
+  `investigations/to_opendss/` (local-only folder) — out of G1.2's scope.
+- **`CorpusGuard` can leak deck-written artifacts under concurrency —
+  OPEN, out-of-scope observation (seen during GOLDEN_REBASE G1.2, 2026-08-29).**
+  One `cargo test --workspace` run left five untracked files in
+  `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*.txt`, written by
+  the vendored `Auto3bus.dss:57 export currents file=…`), contradicting
+  TESTING.md's "keep `tests/corpus` pristine afterwards". **Intermittent**: a
+  filtered two-case run (`DSS_GATE_ONLY=Auto3bus`), the AD test alone, and a
+  second full unfiltered `corpus_gate_all_cases_match_engines` run all left the
+  tree clean. Consistent with an overlapping-guard snapshot race (cf. the unit
+  test `corpus_guard_overlapping_guards_still_sweep`); not attributed further —
+  it belongs to the gate infrastructure, not to a G1 sub-step. No gate went red.
 
 **Carried-forward handoffs — work a *declared-complete* plan deferred to a
 successor plan that has NOT finished it** (audited 2026-07-17; surfaced here so the
