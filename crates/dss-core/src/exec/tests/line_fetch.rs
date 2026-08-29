@@ -899,11 +899,16 @@ fn switch_yes_keeps_the_linecode_and_its_units_conversion() {
     // render-width class), so the value is checked as a number and the string
     // is pinned literally next to it.
     let r1 = query(&mut dss, "line.swk.r1");
-    assert_eq!(r1, "0.00328083989501312");
+    // The oracle claim is the NUMBER — r4133 answers `1/304.8` here and `1`
+    // without the flag. Assert it first, so a failure reads as physics.
     assert!(
         (r1.parse::<f64>().unwrap() - 1.0 / 304.8).abs() < 1e-15,
-        "swk.r1 = {r1}, expected 1/304.8 (r4133 renders 0.00328084)"
+        "swk.r1 = {r1}, expected 1/304.8 (r4133 renders its `%-.7g` 0.00328084)"
     );
+    // …and the literal second, as what it is: the PORT's own full-f64 rendering
+    // of that number, held so a render-width change is a deliberate edit. It is
+    // NOT an oracle value — r4133 prints `0.00328084` for the same f64.
+    assert_eq!(r1, "0.00328083989501312");
     // Without the flag the port would take the FALSE branch — `FUnitsConvert *=
     // ConvertLineUnits(none, m) = 1` — and answer a bare `1`, which is exactly
     // what a switch with no code answers here:
@@ -946,6 +951,230 @@ fn switch_yes_keeps_the_linecode_and_its_units_conversion() {
     assert_eq!(query(&mut dss, "line.261249.r1"), "1");
     assert_eq!(query(&mut dss, "line.261249.units"), "m");
     assert_eq!(query(&mut dss, "line.261249.length"), "0.001");
+
+    // (5) The `FUnitsConvert` branch reaches the SOLVED state, not just the
+    // render: `RecalcElementData` builds the series Z with `LengthMultiplier :=
+    // Len / FUnitsConvert` (r4133 `Line.pas:1068`), so the flagged switch is
+    // 304.8x less impedant than the identical switch without a code. Two equal
+    // 1 MW loads hang off the two switches, and the node voltages are pinned
+    // against the **r4133 DLL**, read at f64 from the live `YNodeVarray` on this
+    // exact deck (RP3.6 audit settlement, 2026-08-29) — the leg the sub-step's
+    // first pass measured only through the `r1` string.
+    let mut dss = Dss::new();
+    dss.command("New Circuit.phys basekv=12.47 pu=1.0");
+    dss.command("New LineCode.lckft nphases=3 r1=1 x1=1 r0=1 x0=1 c1=0 c0=0 units=kft");
+    dss.command("New Line.swk bus1=sourcebus bus2=a phases=3 linecode=lckft Switch=True units=m");
+    dss.command("New Line.swn bus1=sourcebus bus2=b phases=3 Switch=True units=m");
+    dss.command("New Load.la bus1=a phases=3 kv=12.47 kw=1000 pf=1 model=1");
+    dss.command("New Load.lb bus1=b phases=3 kv=12.47 kw=1000 pf=1 model=1");
+    dss.command("Set tolerance=1e-10");
+    dss.command("Solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let ckt = dss.circuit().expect("solved circuit");
+    assert!(ckt.is_solved);
+    // `YNodeOrder` on both engines is SOURCEBUS.1..3, A.1..3, B.1..3.
+    let (v_src, v_a, v_b) = (
+        ckt.solution.node_v[1],
+        ckt.solution.node_v[4],
+        ckt.solution.node_v[7],
+    );
+    // r4133 on this deck also answers `? Line.swk.r1` = '0.00328084' and
+    // `? Line.swn.r1` = '1', i.e. the two branches the voltages below separate.
+    for (name, got, want) in [
+        (
+            "SOURCEBUS.1",
+            v_src,
+            Complex64::new(7197.804476267097, -6.984611536571413),
+        ),
+        (
+            "A.1",
+            v_a,
+            Complex64::new(7197.80432418273, -6.984763326058522),
+        ),
+        (
+            "B.1",
+            v_b,
+            Complex64::new(7197.7581203581785, -7.030876971594976),
+        ),
+    ] {
+        // Measured rel gap on this deck: 2.3e-12 (faer vs KLU). The band is
+        // ~430x that, and ~1/6400 of what the pre-fix engine misses by
+        // (6.4e-6 on `A.1`, where the coded switch behaves like the bare one).
+        let rel = (got - want).norm() / want.norm();
+        assert!(rel < 1e-9, "{name}: {got} vs r4133 {want} (rel {rel:e})");
+    }
+    // ...and the structural claim those numbers carry: the coded switch drops
+    // 1/304.8 of what the bare switch drops. Without the flag `swk` would take
+    // `FUnitsConvert = 1` and the two drops would be equal.
+    let ratio = (v_src - v_a).norm() / (v_src - v_b).norm();
+    assert!(
+        (ratio * 304.8 - 1.0).abs() < 1e-4,
+        "|dV(swk)| / |dV(swn)| = {ratio:e}, expected 1/304.8"
+    );
+
+    // (6) The serialization the fix newly reaches. With `clear_seq(LINECODE)`
+    // gone from the `switch=` arm, `Save Circuit` emits the code again — r4133
+    // does too (`New "Line.sw" ... linecode=<code> ... Switch=True units=m`,
+    // measured on the DLL), and its `Save` is flag-gated the same way, so a line
+    // whose flag arm 6 cleared writes no `linecode=` on either engine. The
+    // emitted scalars are the getter's, hence `1/304.8` here and not `1`; r4133
+    // emits **no** `R1..C0` on a switch at all, the `set_as_next_seq(R1..C0)`
+    // residue §RP3.11 owns (0.14.5's `PrpSequence` bookkeeping,
+    // `src/PDElements/Line.pas:691-700`).
+    let out = std::env::temp_dir().join(format!("dss_rp36_save_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&out);
+    let mut dss = Dss::new();
+    dss.command("New Circuit.sv basekv=12.47");
+    dss.command("New LineCode.lckft nphases=3 r1=1 x1=1 r0=1 x0=1 c1=0 c0=0 units=kft");
+    dss.command("New Line.swk bus1=sourcebus bus2=a phases=3 linecode=lckft Switch=True units=m");
+    dss.command("New Line.ovr bus1=sourcebus bus2=c phases=3 linecode=lckft r1=0.5 units=m");
+    dss.command("New Load.la bus1=a phases=3 kv=12.47 kw=100 pf=1");
+    dss.command("Solve");
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        out.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let emitted = std::fs::read_to_string(out.join("Line.dss")).expect("emitted Line.dss");
+    let _ = std::fs::remove_dir_all(&out);
+    let swk = emitted
+        .lines()
+        .find(|l| l.contains("Line.swk"))
+        .unwrap_or_else(|| panic!("no Line.swk in the emitted script:\n{emitted}"));
+    assert!(swk.contains("LineCode=lckft"), "{swk}");
+    assert!(swk.contains("Switch=Yes"), "{swk}");
+    assert!(swk.contains("R1=0.00328083989501312"), "{swk}");
+    // …and the control: the arm that DOES clear the flag emits no code, on this
+    // engine and on r4133 alike.
+    let ovr = emitted
+        .lines()
+        .find(|l| l.contains("Line.ovr"))
+        .unwrap_or_else(|| panic!("no Line.ovr in the emitted script:\n{emitted}"));
+    assert!(!ovr.contains("LineCode="), "{ovr}");
+}
+
+/// The two statements the `switch=` arm's neighbours *do* carry, read as
+/// carefully as RP3.6(a) read its silence — r4133
+/// `Version8/Source/PDElements/Line.pas`:
+///
+/// * **`FetchConductorList` clears the flag** (`:1853-1854`, `FLineCodeSpecified
+///   := False; KillGeometrySpecified;`), the eighth and last of r4133's clear
+///   sites and the one the port was missing;
+/// * **`SpacingSpecified` is a Boolean field (`:107`), not a predicate over the
+///   objects.** Two arms drop it by plain assignment and leave `FLineSpacingObj`,
+///   `FLineWireData` and `FPhaseChoice` standing — the `linecode=` side effect
+///   (`:663`) and the `switch=` arm (`:696`) — while the impedance and matrix
+///   arms call `KillSpacingSpecified` (`:2266-2276`), which takes the objects
+///   too. dss_capi 0.14.5 cannot tell the two apart: its `SpacingSpecified` is
+///   `Assigned(LineSpacingObj) and Assigned(LineWireData)`
+///   (`src/PDElements/Line.pas:2112-2115`) and its `FetchLineCode` tail kills
+///   both outright (`:581-582`), which is the model the port had copied.
+///
+/// Measured on the r4133 DLL, 2026-08-29 (RP3.6 audit settlement):
+///
+/// | deck | r4133 | port before |
+/// |---|---|---|
+/// | `spacing linecode conductors=[..]` | `linecode ''`, `r1 '----'`, no error | `'lc1'`, `'0.1'`, spurious #402 |
+/// | the same without `conductors=` | `'lc1'`, `'0.1'` | same |
+/// | `spacing wires` + `switch=yes` + `conductors=[..]` | runs | #402 |
+/// | `spacing wires` + `r1=0.7` + `conductors=[..]` | **access violation** | #402 |
+/// | `spacing=` alone | `r1 '0.058'` (the class default) | `'----'` |
+/// | `spacing=` + `r1=0.55` + `wires=[..]` | runs, `r1 '----'` | #18102 |
+///
+/// The third and fourth rows are one A/B pair on identical decks: only the
+/// editing property differs, and only the `KillSpacingSpecified` one destroys
+/// the spacing. r4133's own reaction to the destroyed spacing is a nil
+/// dereference (`FWireDataSize := FLineSpacingObj.NWires` after a `DoSimpleMsg`
+/// that does not `Exit`, `:1850-1856`) — an upstream crash the port does **not**
+/// reproduce: it stops at the generic array parse's clean #402
+/// (`obj/props/class_props/parse.rs`), which is what this pin asserts there.
+///
+/// Both lanes, no oracle, no feature gate.
+#[test]
+fn conductors_clears_the_linecode_flag_and_the_switch_arm_spares_the_spacing() {
+    let mut dss = Dss::new();
+    dss.command("New circuit.condspacing");
+    dss.command(
+        "New WireData.w1 diam=0.5 gmrac=0.2 rac=0.1 normamps=600 \
+         runits=kft radunits=in gmrunits=in",
+    );
+    dss.command("New LineSpacing.sp1 nconds=3 nphases=3 x=[-1 0 1] h=[28 28 28] units=ft");
+    dss.command("New LineCode.lc1 nphases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 c1=3 c0=1 units=kft");
+
+    // (1) `Conductors=` clears the flag — and reaching it at all proves the
+    // `linecode=` before it left the spacing OBJECT alive (r4133 `:663` is a
+    // plain `SpacingSpecified := False`; 0.14.5 kills the object, and the port
+    // then failed the array parse's `< 1` count guard with #402).
+    dss.command(
+        "New Line.p bus1=sourcebus bus2=b1 phases=3 spacing=sp1 linecode=lc1 \
+         conductors=[wiredata.w1 wiredata.w1 wiredata.w1] length=1 units=kft",
+    );
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "line.p.linecode"), "");
+    assert_eq!(query(&mut dss, "line.p.r1"), "----");
+    // (2) The control that isolates the arm: the same line without the
+    // `conductors=` keeps the code on every engine.
+    dss.command(
+        "New Line.q bus1=sourcebus bus2=b2 phases=3 spacing=sp1 linecode=lc1 \
+         length=1 units=kft",
+    );
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "line.q.linecode"), "lc1");
+    assert_eq!(query(&mut dss, "line.q.r1"), "0.1");
+
+    // (3) `switch=yes` drops the spacing FLAG only, so a following
+    // `conductors=` still finds the spacing...
+    dss.command(
+        "New Line.s bus1=sourcebus bus2=b3 phases=3 spacing=sp1 \
+         wires=[w1 w1 w1] length=1 units=kft",
+    );
+    dss.command("Edit Line.s switch=yes");
+    dss.command("Edit Line.s conductors=[wiredata.w1 wiredata.w1 wiredata.w1]");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "line.s.r1"), "----");
+    assert_eq!(query(&mut dss, "line.s.switch"), "Yes");
+
+    // (4) ...while arm 6, whose `KillSpacingSpecified` is real, destroys it: the
+    // A/B partner of (3), identical but for the editing property.
+    dss.command(
+        "New Line.t bus1=sourcebus bus2=b4 phases=3 spacing=sp1 \
+         wires=[w1 w1 w1] length=1 units=kft",
+    );
+    dss.command("Edit Line.t r1=0.7");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "line.t.r1"), "0.7");
+    dss.command("Edit Line.t conductors=[wiredata.w1 wiredata.w1 wiredata.w1]");
+    let errs = dss.errors();
+    assert!(
+        errs.iter()
+            .any(|e| e.message.contains("No objects are expected")),
+        "arm 6 must leave no spacing for Conductors= (r4133 faults here): {errs:?}"
+    );
+    assert_eq!(query(&mut dss, "line.t.r1"), "0.7");
+
+    // (5) The flag rises where r4133 raises it — in the `21..22, 24..25, 34`
+    // block, and only once a conductor list exists (`:704-713`). A line with a
+    // spacing and no conductors is still a sym-component line.
+    let mut dss = Dss::new();
+    dss.command("New circuit.condspacing2");
+    dss.command(
+        "New WireData.w1 diam=0.5 gmrac=0.2 rac=0.1 normamps=600 \
+         runits=kft radunits=in gmrunits=in",
+    );
+    dss.command("New LineSpacing.sp1 nconds=3 nphases=3 x=[-1 0 1] h=[28 28 28] units=ft");
+    dss.command("New Line.g bus1=sourcebus bus2=b1 phases=3 spacing=sp1 length=1 units=kft");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "line.g.r1"), "0.058");
+    assert_eq!(query(&mut dss, "line.g.x1"), "0.1206");
+    // (6) ...so `KillSpacingSpecified`'s `If SpacingSpecified Then` guard
+    // (`:2268`) makes arm 6 a no-op here, and the `wires=` that follows still
+    // resolves — 0.14.5 answers #18102 "You must assign the LineSpacing before
+    // the Wires Property" on the same three commands.
+    dss.command("Edit Line.g r1=0.55");
+    assert_eq!(query(&mut dss, "line.g.r1"), "0.55");
+    dss.command("Edit Line.g wires=[w1 w1 w1]");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "line.g.r1"), "----");
 }
 
 /// r4133 keeps **two** independent pieces of linecode state, and only one of
@@ -1025,14 +1254,22 @@ fn linecode_name_survives_the_flag_that_gates_its_render() {
     }
 
     // Internal consistency of the port's `MakeLike`, which copies the whole
-    // impedance-*source* state (name, handle and flag together). NOTE: both
-    // oracles copy **none** of it — r4133 `TLine.MakeLike` (`Line.pas:735-787`)
-    // and dss_capi 0.14.5 (`src/PDElements/Line.pas:889-930`) copy the
-    // impedances, `Len`, `SymComponentsModel` and `FCapSpecified` only, so both
-    // render `''` here. That wider copy set is pre-existing, has no census cell
-    // (no corpus deck writes `like=` on a coded line) and is recorded in STATUS
-    // §RP3.6(b); this assertion only holds the flag to the name it was copied
-    // with, so the pair can never drift apart.
+    // impedance-*source* state (name, handle and flag together).
+    //
+    // **This is a DIVERGENCE LOCK, not a specification.** Both oracles copy
+    // **none** of that state — r4133 `TLine.MakeLike` (`Line.pas:735-787`) and
+    // dss_capi 0.14.5 (`src/PDElements/Line.pas:889-930`) copy the impedances,
+    // `Len`, `SymComponentsModel` and `FCapSpecified` only — so the correct
+    // upstream answer here is `''`, MEASURED on the r4133 DLL 2026-08-29 for both
+    // a plain coded line and a switched one (`? Line.cp.linecode` = `''` while
+    // `? Line.cp.r1` = `'0.1'`, i.e. the impedances did travel). The port's wider
+    // copy set is pre-existing and has no census cell — no corpus deck writes
+    // `like=` on a coded line, which is why `line.linecode` is 5 switch-shaped
+    // cells — and narrowing it is a class-wide `MakeLike` question with numeric
+    // reach (`length_units`/`units_convert` feed `FUnitsConvert`), owned by
+    // `ORPHANED_GAPS.md` §1.12. Until then this line holds the flag to the name
+    // it was copied with, so the pair cannot drift apart silently, and whoever
+    // narrows the copy set will delete this assertion deliberately.
     dss.command("New Line.cp like=live bus1=c bus2=d");
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
     assert_eq!(query(&mut dss, "line.cp.linecode"), "lcnone");

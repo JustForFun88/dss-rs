@@ -58,7 +58,7 @@ impl Line {
 
         let np = self.cd.nphases;
         // Pascal: geometry/spacing embed length in Z, so scale it back out.
-        let length_mult = if self.geometry_obj.is_some() || self.spacing_specified() {
+        let length_mult = if self.geometry_obj.is_some() || self.spacing_specified {
             self.len
         } else {
             1.0

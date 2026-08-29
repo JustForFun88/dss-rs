@@ -1681,6 +1681,31 @@ out of reach: PASS, `max |Δ| = 0` on every kind. Four adjacent divergences are 
 (the object-ref miss path, `MakeLike`'s copy set, the switch-unreachable
 `Conductor.length` branch, name casing). Full record in STATUS §RP3.6.
 
+**Audit settlement — 2026-08-29 (one commit over `4b146ab9`).** Both auditors
+re-derived the mechanism on the live oracles and confirmed the outcome: `FIX` in
+both lanes, 5 cells / 5 in scope, both ledger entries and their cause unchanged,
+no bug reproduced, no golden regenerated. Three real defects were fixed here, all
+in the same statement family the sub-step had opened, all under "port gaps
+immediately". **(i)** r4133's eighth flag-clear site, `FetchConductorList`
+(`:1853-1854`), had no port counterpart, and part (b)'s written justification for
+skipping it — "r4133 reaches the statement with a nil `FLineSpacingObj`" — cited
+**dss_capi**'s `FetchLineCode` tail (`src/PDElements/Line.pas:581-582`) as if it
+were r4133's; r4133's arm-3 side effect is a **plain** `SpacingSpecified := False`
+(`:663`), so the spacing object survives and `? Line.<x>.linecode` really does
+answer `''` behind a `conductors=[..]` (measured). **(ii)** That plain assignment
+is the general rule the port could not express: `SpacingSpecified` is a Boolean
+field (`:107`) and the `switch=` arm drops it the same way (`:696`), where the
+port called the full `KillSpacingSpecified`. Measured as an A/B on identical
+decks: after `switch=yes` r4133 still runs a following `conductors=`, after `r1=`
+it faults on the nil pointer. The port now carries `Line::spacing_specified`
+beside the objects, raised where r4133 raises it (`:704-713`) and guarded where
+r4133 guards it (`:2268`). **(iii)** The `FUnitsConvert` consequence was pinned
+only through the rendered `r1`; the pin now **solves** the discriminating deck
+and compares its node voltages against the r4133 DLL's own `YNodeVarray`, plus
+the `Save Circuit` emission the fix newly reaches. `MakeLike`'s copy set — listed
+above without an owner — is now `ORPHANED_GAPS.md` §1.12. Gate green in both
+lanes (4 219 tests), `lane_diff` re-run: PASS, `max |Δ| = 0` on all eight kinds.
+
 ### RP3.7 — Per-phase switch and relay state (opened by RP2.2)
 
 Two classes, one modelling question. **(a) SwtControl.** r4133 keeps per-phase
