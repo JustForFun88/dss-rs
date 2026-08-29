@@ -499,9 +499,12 @@ kill there and flagged it in its own source (`src/PDElements/Line.pas:677`,
 `KillLineCodeSpecified(); //TODO: check if this missing is relevant bug`); the
 port had copied 0.14.5. r4133 is the behavioral authority (CLAUDE.md
 2026-08-02), so the single call is gone from the `SWITCH` arm of
-`elements/pd/line/accessors.rs` in **both lanes**; the six other
-`kill_line_code_specified` call sites each match an r4133 counterpart and are
-untouched, as is RP3.5's `user_length_units` line in `reset_length_units`.
+`elements/pd/line/accessors.rs` in **both lanes**; RP3.5's `user_length_units`
+line in `reset_length_units` is untouched. (The call-site accounting in this
+paragraph as first written — "the six other … each match an r4133 counterpart" —
+was wrong twice over and is corrected by the audit settlement below: seven
+remained after the deletion, r4133 has eight, and the missing eighth
+(`FetchConductorList`, `:1853`) was ported on 2026-08-29.)
 
 Probed live on all three engines (r4133 DLL 11.0.0.1, the pinned 0.14.5 oracle,
 the port) before any edit, per the plan's "Do first". **The premise held and the
@@ -590,7 +593,11 @@ switched line — toward r4133, which prints `CondCode` unconditionally
 (`Line.pas:1273`) and flag-gates its `Save`; but the port's `Save` still emits
 `R1..C0` there where r4133 emits none (its `set_as_next_seq(R1..C0)` block is
 0.14.5's `PrpSequence` bookkeeping), so a save→reload loses the name to arm 6
-while the numbers round-trip identically. No golden or gate reads either surface
+while the numbers round-trip identically. (On the *discriminating* shape — a code
+in kft, the line in m — the emitted scalars are `R1=1/304.8 …`, not the `R1=1`
+this paragraph first said: `Save` writes the getter's value, which is
+`R1/FUnitsConvert`. Corrected by the audit settlement below; measured on the
+port's own `Save Circuit` output.) No golden or gate reads either surface
 on a switched, linecode-bearing line; the general store-vs-live serialization
 question, and whether `Dump` should print the raw `CondCode`, belong to
 **§RP3.11**. Part **(b)** of RP3.6 — splitting `FLineCodeSpecified` from
@@ -775,23 +782,143 @@ faithfulness change only. **(iv) Name casing.** r4133 stores `LowerCase(Code)`
 and the port stores the *resolved object's* name (lowercased at creation), so
 the two agree; the CIM comparison stays `eq_ignore_ascii_case` because both
 engines compare two already-lowercased strings, and no corpus deck names a code
-in mixed case. **(v) `FetchConductorList`'s flag clear has no port counterpart —
-and cannot acquire an observable one.** r4133's `Conductors=` (property 34,
-dispatched at `:654`) enters `FetchConductorList`, which opens
-`FLineCodeSpecified := False; KillGeometrySpecified;` unconditionally
-(`:1853-1854`) — a third rule, distinct from `SetWires`' `FPhaseChoice =
-Unknown` guard (`:1952`) and from the `switch=` arm's silence — where the port's
-`set_conductors` only fills the array. The counterpart was written, pinned and
-then **reverted as vacuous**: `Conductors=` requires a `LineSpacing`, and
-`FetchLineSpacing` has already cleared the flag on the way in (`:1832`, mirrored
-by `code.rs::fetch_line_spacing`), while the one order that re-arms it in
-between — `spacing=` … `linecode=` … `Conductors=` — has `FetchLineCode` kill
-the spacing at its tail (`:590-591`), so r4133 reaches the statement with a nil
-`FLineSpacingObj` and dereferences it (`FWireDataSize := FLineSpacingObj.NWires`)
-while the port stops first with its clean #402 — the asymmetry
-`tests/upgrade_conductors.rs` already pins for `Conductors=` before a spacing.
-The clear is unreachable as a state change on both engines, so the port adds no
-untestable statement for it; the finding is recorded here instead.
+in mixed case. **(v) `FetchConductorList`'s flag clear has no port counterpart.**
+r4133's `Conductors=` (property 34, dispatched at `:654`) enters
+`FetchConductorList`, which opens `FLineCodeSpecified := False;
+KillGeometrySpecified;` unconditionally (`:1853-1854`) — a third rule, distinct
+from `SetWires`' `FPhaseChoice = Unknown` guard (`:1952`) and from the `switch=`
+arm's silence — where the port's `set_conductors` only fills the array. **This
+paragraph originally continued "and cannot acquire an observable one", argued
+that `FetchLineCode` kills the spacing at its tail so r4133 reaches the statement
+with a nil `FLineSpacingObj`, and recorded the counterpart as written, pinned and
+then reverted as vacuous. That argument was wrong and is retracted: `:590-591` is
+*dss_capi 0.14.5*'s `FetchLineCode` tail (`src/PDElements/Line.pas:581-582`),
+not r4133's — r4133's arm-3 side effect is a *plain* `SpacingSpecified := False`
+(`:663`), so the spacing object survives the code and the statement is reached
+normally.** Ported, with the measurement, by the audit settlement below.
+
+**RP3.6 audit settlement (2026-08-29, one commit over `4b146ab9`).** Fourteen
+findings across the two audit agents. Both re-derived the mechanism on the live
+oracles and confirmed the sub-step's own classification — outcome stays `FIX` in
+both lanes, the census still decomposes to 5 cells / 5 in scope, both
+`capi_v0145` entries, their cause and the two lock lines are unchanged, no
+upstream bug is reproduced anywhere, no `TODO(compat)` was added, no test was
+deleted, `#[ignore]`d or loosened, and no golden byte, frozen extract or ledger
+scope moved. What the settlement adds is **three real product defects fixed**
+(five statements, all in the family the sub-step opened), **one new pin and two
+extended ones**, **one new machine guard**, and seven corrections to the record.
+
+| # | finding | verdict | evidence | action |
+|---|---|---|---|---|
+| 1 | `FetchConductorList` (`:1853`) has no port counterpart, and (v)'s justification is false | **REAL** | r4133 DLL: `spacing=sp1 linecode=lc1 conductors=[…]` → `? linecode` = `''`, `r1` = `'----'`, **no error**; the port answered `'lc1'`/`'0.1'` plus a spurious #402 | ported (`code.rs::set_conductors`), (v) retracted above |
+| 2 | root cause: `fetch_line_code` kills the spacing where r4133 clears a flag | **REAL** | the same probe: reaching `conductors=` at all proves `FLineSpacingObj` survived; `:663` is a plain assignment, `:581-582` is capi's | `spacing_specified` field; the tail is now the flag only |
+| 3 | arm 15 calls `Kill*Specified` where r4133 assigns two Booleans (`:696`) | **REAL** (spacing) / **REAL but unobservable** (geometry) | A/B on identical decks: after `switch=yes` r4133 runs a following `conductors=`; after `r1=` it **access-violates**. For geometry every r4133 reader of `FLineGeometryObj` is itself flag-gated, and `? …geometry` reads `''` on both engines | spacing → plain flag drop; geometry left as-is, argued and cited in the arm |
+| 4 | the `FUnitsConvert` consequence is pinned only through the rendered `r1` | **REAL** | with the RP3.6(a) kill restored the port solves `A.1 = B.1 = 7197.75809229906`, 6.4e-6 off r4133's `A.1` — 6 400× the pin's tolerance | solve leg added, pinned against the r4133 DLL's `YNodeVarray` |
+| 5 | a landed `capi_v0145` property entry has no machine-checked witness pin | **REAL** | deleting `switch_yes_keeps_…` left the suite green (the entry pins both sides, nothing pinned that the port's side is *right*) | `LANDED_PROPERTY_ENTRY_PINS` + `every_landed_property_entry_has_a_witness_pin_that_exists`, both halves proven red |
+| 6 | the new `Save Circuit` emission is unpinned; STATUS said `R1=1` | **REAL** | the port emits `… LineCode=lckft … Switch=Yes R1=0.00328083989501312 …` — the getter's value, i.e. `1/304.8` | Save leg added to the pin (+ an arm-6 control); the STATUS sentence corrected in place |
+| 7 | the third deliberate CIM-writer divergence is not listed with the other two | **REAL** | zero-footprint today (every `New LineCode` in `tools/golden/cim_decks/*.dss` declares `units=`), so a fourth rewrite would red `cim_writer_divergences_are_pinned` | recorded in `expected_cim`'s doc with the reason it is not a rewrite |
+| 8 | "the six other `kill_line_code_specified` call sites" | **REAL** (arithmetic) | seven remained after part (a); r4133 has eight; the port now has all eight | corrected in `ledger.json`'s cause, `STATUS` §RP3.6(a), the routing comment |
+| 9 | `line_code_ref` is dead product state with a doc promising a reader | **REAL** | `grep line_code_ref crates/` → writes only, plus one test reader; every product site reads the flag | doc rewritten to say exactly that; the field stays as this class's member of the typed-handle family |
+| 10 | four Pascal citations point at capi while reading as r4133 | **REAL** | `:544-547` is capi's `NoPropertyTracking` block; `:590-591`, `:2141`, `:2042` likewise | all four re-cited (capi labelled as capi, r4133 line numbers fixed) |
+| 11 | the pin asserts `line.cp.linecode == "lcnone"`, which both oracles contradict | **REAL, OUT-OF-SCOPE** | r4133 DLL: `like=` copies the impedances (`? r1` = `'0.1'`) but not the source (`? linecode` = `''`), on a plain and on a switched coded line | assertion relabelled a **divergence lock**; owner created — `ORPHANED_GAPS.md` §1.12 |
+| 12 | the `FIX`-shape guard does not reach `RP22_ROUTING`/RP3.5+ | **REAL, recorded** | `the_bin7_root_cause_pairs_are_routed_to_their_sub_steps` walks `RP3_ROUTING` only; `line.linecode` lives in `RP22_ROUTING` under `Owner::Rp35` | left as-is deliberately — finding 5's guard is the obligation that actually bites, and widening the shape guard is a WP-RP3 accounting change, not an RP3.6 one |
+| 13 | `assert_eq!(swk.r1, "0.00328083989501312")` is a self-comparison, not an oracle value | **REAL** | r4133 renders the same f64 as `0.00328084` (`%-.7g`) — the literal is the port's own width | the numeric `1/304.8` assertion now comes **first**; the literal follows, labelled as a render-width lock |
+| 14 | `has_line_code`'s repoint onto the flag is unverifiable | **REAL, recorded** | flag and handle rise and fall together at every site, and the `Conductor.length` branch is unreachable for a switch (`ExportCIMXML.pas:3709`) — measured on all three engines by the sub-step's probe | left as a faithfulness change, as part (b) already said; finding 9's doc rewrite is what keeps the handle honest |
+
+**What changed in the product (both lanes, five statements).** The port now
+models `SpacingSpecified` the way it models `FLineCodeSpecified` since part (b):
+a Boolean field (`Line::spacing_specified`) beside the objects, not a predicate
+over them. r4133 raises it only in the `21..22, 24..25, 34` block and only once
+both the spacing and a conductor list exist (`:704-713`); `KillSpacingSpecified`
+is guarded by it (`:2268`) and takes the objects with it (`:2266-2276`); the
+`linecode=` side effect (`:663`) and the `switch=` arm (`:696`) drop the flag
+alone. dss_capi 0.14.5 cannot express the difference — its `SpacingSpecified` is
+`Assigned(LineSpacingObj) and Assigned(LineWireData)` (`src/PDElements/
+Line.pas:2112-2115`) — and the port had copied it. `set_conductors` gained
+r4133's `FLineCodeSpecified := False; KillGeometrySpecified;` (`:1853-1854`), so
+all **eight** of r4133's clear sites now have a counterpart and the `switch=` arm
+still has none. Four measured divergences close with it, all four new here:
+
+* `spacing=sp1 linecode=lc1 conductors=[…]` → `linecode ''`, `r1 '----'`, no
+  diagnostic (was `'lc1'`, `'0.1'`, spurious #402);
+* `spacing=… wires=[…]` + `switch=yes` + `conductors=[…]` runs (was #402);
+* `spacing=` alone keeps `SymComponentsModel`, so `? r1` = `'0.058'`, the class
+  default (was `'----'` — 0.14.5's timing);
+* `spacing=` + `r1=0.55` + `wires=[…]` runs (was 0.14.5's #18102), because the
+  kill is a no-op while the flag is down.
+
+r4133's own answer to the destroyed-spacing cases is an **access violation**
+(`FWireDataSize := FLineSpacingObj.NWires` after a `DoSimpleMsg` that does not
+`Exit`, `:1850-1856` and `:1948-1955`, and the same shape in `FetchCNCableList`
+`:2014-2022` and `FetchTSCableList` `:2073-2081`) — reproduced nowhere: the port
+keeps its clean #402 / #18102, and the pin asserts that. Written up as
+`investigations/to_opendss/
+46-line-fetchconductorlist-nil-spacing-access-violation.md` (gitignored,
+local-only; RP3.5 took **45**, so the next free number is **47**), with the
+`switch=yes`-vs-`r1=` A/B as its reproduction.
+
+**Blast radius: none, and swept rather than assumed.** Grouping each `New`/`Edit`
+with its `~` continuations into one logical command, `tests/corpus`,
+`tools/golden`, `tests/golden` and `crates/dss-core/tests` hold **2 651** `Line`
+edits that name a `spacing=`, across nine files (`line_spacing_asym`,
+`IEEE13_Assets` ×2, `IEEE13_LineAndCableSpacing`, `IEEE13_LineSpacing`,
+`ieee9500_base`, `makeposseq_line`, `upgrade_spacing_ratings`, `cim_lines.dss`).
+**Zero** of them lack a `wires=`/`cncables=`/`tscables=`/`conductors=` in the
+same edit, and **zero** combine `spacing=` with `linecode=` — so the flag rises
+and falls at exactly the instants the old predicate did. The one interleaving
+that could have disturbed it is real and was checked: 2 622 of those edits are
+`ieee9500_base`'s `spacing=… units=ft` / `~ normamps=… emergamps=…` /
+`~ wires=[…]`, i.e. the ratings land BETWEEN the spacing and the conductors.
+Block 2 used to fire twice (at `spacing=` and again at `wires=`) and now fires
+once, at `wires=` — after the ratings either way — so its
+`clear_seq(SEASONS…C0)` and `got_ratings_after_spacing_conds = false` land on
+the same state, which the 521-case gate then confirms.
+
+`cargo test --workspace` is green in both lanes (4 219 tests, 74 `test result:
+ok` blocks each) with **no** golden, `golden.lock.json`, `ledger.json` scope or
+`population.lock.json` line moved;
+`lane_diff.ps1` was re-run as a measurement rather than argued — the solved state
+of the gated corpus is out of reach by the sweep above, but this settlement moves
+`spacing_specified`, which `CalcYPrim` branches on (`line/solve.rs`): 522 cases,
+3 220 247 records, **`max |Δ| = 0.000e0` and `max rel = 0.000e0` on all eight
+kinds** (conv 2 150, cur 1 169 500, errs 518, iter 2 150, loss 366 320,
+pow 1 169 500, v 375 744, y 1 738 048), 0 iteration counts drifted,
+**VERDICT: PASS**.
+
+**Pins.** `exec::tests::line_fetch::
+conductors_clears_the_linecode_flag_and_the_switch_arm_spares_the_spacing` is
+new: six legs, each an r4133 measurement, including the `switch=yes`-vs-`r1=` A/B
+on identical decks. `switch_yes_keeps_the_linecode_and_its_units_conversion`
+gained the solve leg (three r4133 node voltages at rel ≤ 1e-9 — measured gap
+2.3e-12 — plus the `1 : 304.8` drop ratio) and the `Save Circuit` leg.
+`props_r4133_replay::every_landed_property_entry_has_a_witness_pin_that_exists`
+is the new guard. **Non-vacuity measured for every one**, by reverting each
+product statement and reading the failure text: the `set_conductors` kills →
+`left: "lc1" / right: ""`; the `fetch_line_code` tail → `Line.p.Conductors: No
+objects are expected!` (#402); the `switch=` arm → the same on `Line.s`; block
+2's `idx != SPACING` → `left: "----" / right: "0.058"`; the `KillSpacingSpecified`
+guard → `You must assign the LineSpacing before the Wires Property ("Line.g")`;
+re-adding `clear_seq(LINECODE)` to the `switch=` arm → the emitted `New
+"Line.swk" …` line without `LineCode=`; restoring part (a)'s kill → the solve leg
+reads `A.1 = B.1`; renaming the witness pin → `line-switch-keeps-linecode-zone2-
+capi-props (RP3.6) names the witness … but … defines no such #[test]`; emptying
+`LANDED_PROPERTY_ENTRY_PINS` → `left: {} right: {…three ids…}`.
+
+**Recorded, not chased.** (a) The geometry half of arm 15: r4133 leaves
+`FLineGeometryObj` alive with `GeometrySpecified` down, the port nils it. Every
+r4133 reader of that object is flag-gated (`:721`, `:1051`, `:1211`, `:1284`,
+`:1371-1393`, `:1403`, `ExportCIMXML.pas:3741`), and `FZFrequency` is re-armed by
+the next `FetchGeometryCode`, so the difference is unobservable — probed, `''` on
+both engines — and the port has no separate geometry flag to spend on it. Argued
+in the arm itself. (b) `MakeLike`'s copy set → `ORPHANED_GAPS.md` §1.12, with the
+r4133 measurement. (c) The port's arity check on `wires=` (`Line.<x>: Unexpected
+number (n) of wires; expected m objects.`) is 0.14.5's addition
+(`src/PDElements/Line.pas:841`); r4133 validates nothing and silently runs an
+empty loop. Pre-existing, unrelated to the flag, and the pin avoids the shape.
+(d) The `? …spacing` render moved *toward* r4133 as a side effect (it now answers
+the surviving object's name where the port used to answer `''`); r4133 echoes
+`PropertyValue[21]` there — no getter arm at `:1347-1429` — so this narrows the
+`line.spacing` census pair (`Owner::Rp23`) and widens nothing.
 
 **Next: RP3.7, RP3.8 and RP3.9** — they are what RP4.1 waits on (RP3.5 and
 RP3.6, both parts, have landed).
@@ -3524,9 +3651,11 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
       on `midi_reduce.dss`, so a capi ledger entry + cause +
       `population.lock.json` rewrite landed with it.
     - **RP3.6 — `switch=yes` must not clear the linecode flag. SETTLED
-      2026-08-29 (`FIX`, both lanes) in two parts — (a) the switch arm and
+      2026-08-29 (`FIX`, both lanes; audit settled the same day) in two parts —
+      (a) the switch arm and
       (b) the `FLineCodeSpecified`/`CondCode` split plus the CIM units
-      back-fill; see the two §RP3.6 records above.** r4133's arm
+      back-fill, plus the settlement's `SpacingSpecified` split and r4133's
+      eighth flag-clear site; see the three §RP3.6 records above.** r4133's arm
       (`Line.pas:694-700`) writes r1/x1/r0/x0/c1/c0/len as fields, kills geometry
       and spacing and resets the units, but leaves `FLineCodeSpecified` TRUE; the
       port calls `kill_line_code_specified()`

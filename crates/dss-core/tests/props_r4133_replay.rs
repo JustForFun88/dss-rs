@@ -1510,9 +1510,14 @@ const RP22_ROUTING: &[(&str, Owner, &str)] = &[
     // relevant bug`). Not cosmetic: the flag also picks the `FUnitsConvert`
     // formula on a later `units=` (`Line.pas:626-627`), and these decks type
     // `units=m` AFTER `Switch=True`. Fixed in both lanes by deleting that one
-    // call from the `SWITCH` arm of `elements/pd/line/accessors.rs`; the six
-    // other `kill_line_code_specified` call sites each match an r4133
-    // counterpart and are untouched. The port now renders the r4133 value, so
+    // call from the `SWITCH` arm of `elements/pd/line/accessors.rs`. r4133 clears
+    // the flag at eight OTHER statements (`:685`, `:691`, `:1832`, `:1853`,
+    // `:1952`, `:2016`, `:2075`, `:2131`), and the port now carries a
+    // counterpart for every one of them: seven already stood, and the eighth —
+    // `FetchConductorList`'s (`:1853-1854`) — was added by the RP3.6 audit
+    // settlement (2026-08-29), which measured r4133 answering `''` behind a
+    // `conductors=[..]` where the port still answered the code name. The port
+    // now renders the r4133 value, so
     // the frozen `rust=''` column of this row is HISTORICAL (the extracts are a
     // data lock, never edited). All 5 cells are in scope, on two `engines: both`
     // cases whose capi property compare is live TODAY, so what the fix moved is
@@ -1548,12 +1553,24 @@ const RP22_ROUTING: &[(&str, Owner, &str)] = &[
          elements/pd/line/code.rs, dump.rs and cim/export.rs, both lanes; pins \
          exec::tests::line_fetch::\
          linecode_name_survives_the_flag_that_gates_its_render and \
-         golden_cim::cim_linecode_units_backfill_matches_the_condcode_string",
+         golden_cim::cim_linecode_units_backfill_matches_the_condcode_string. \
+         Audit settlement (same day): Line.pas:1853-1854 / :663 / :696 / \
+         :704-713 / :2268 — r4133's eighth flag-clear site plus the \
+         SpacingSpecified field its two plain assignments need — \
+         elements/pd/line/{mod,code,accessors}.rs, both lanes; pin \
+         exec::tests::line_fetch::\
+         conductors_clears_the_linecode_flag_and_the_switch_arm_spares_the_spacing",
     ),
     // Index 21 has no getter arm (`Line.pas:1347-1429` covers 1..20, 23, 26..33
     // and the PD tail) → `DSSObject.pas:112-115` echoes `PropertyValue[21]`,
     // default `''` (`:1511`), overwritten with the deck's `'sp'`.
     // `SpacingSpecified` is killed later but the echoed string never moves.
+    // (RP3.6's audit settlement narrowed the port's side without touching this
+    // pair: since the port models `SpacingSpecified` as r4133's Boolean field,
+    // a `linecode=`/`switch=` that only drops the flag leaves the object — and
+    // the port's live render — standing, so it now agrees with the echo in
+    // strictly more places. The one census cell is `MakePosSequence`, which
+    // really does kill the object on both engines.)
     (
         "line.spacing",
         Owner::Rp23,
@@ -3918,6 +3935,104 @@ fn every_echo_row_pin_is_a_test_that_exists() {
         defined, cited,
         "{PINS} must define exactly the pins the echo rows and the drafted ledger entries name"
     );
+}
+
+/// **The landed `capi_v0145` property entries and the engine pins that witness
+/// them** — `(entry id, sub-step, pin `#[test]`, the file that defines it)`.
+///
+/// [`LEDGER_ENTRY_PINS`] covers the other half of the RP3 exclusion shapes: the
+/// **staged r4133** entries, whose pins must live in [`PINS`] because the entry
+/// itself cannot land before RP4.1. A `FIX` sub-step whose fix reds the LIVE capi
+/// property compare has the opposite shape — the entry lands with the fix, in the
+/// same commit — and its witness belongs beside the behaviour, in the engine's
+/// own test modules. Nothing tied the two together until the RP3.6 audit
+/// (2026-08-29) observed that deleting such a pin left the suite green: the gate
+/// holds the *entry*, and the entry pins both sides of the divergence, but no
+/// test asserted that the port's value is *right* rather than merely stable.
+///
+/// This table is that tie, and it is checked **both ways** by
+/// [`every_landed_property_entry_has_a_witness_pin_that_exists`]: every row must
+/// name a real landed entry and a real `#[test]`, and every landed entry an RP3
+/// sub-step wrote must appear here. A future sub-step therefore cannot land a
+/// capi property exclusion without a witness — the completeness half fails first.
+const LANDED_PROPERTY_ENTRY_PINS: &[(&str, &str, &str, &str)] = &[
+    (
+        "reduce-merge-units-restored-midi-capi-props",
+        "RP3.5",
+        "merged_matrix_line_keeps_the_surviving_lines_length_units",
+        "crates/dss-core/src/exec/tests/reduce.rs",
+    ),
+    (
+        "line-switch-keeps-linecode-zone2-capi-props",
+        "RP3.6",
+        "switch_yes_keeps_the_linecode_and_its_units_conversion",
+        "crates/dss-core/src/exec/tests/line_fetch.rs",
+    ),
+    (
+        "line-switch-keeps-linecode-zone3-capi-props",
+        "RP3.6",
+        "switch_yes_keeps_the_linecode_and_its_units_conversion",
+        "crates/dss-core/src/exec/tests/line_fetch.rs",
+    ),
+];
+
+/// The witness obligation for a **landed** capi property exclusion, the mirror of
+/// [`every_echo_row_pin_is_a_test_that_exists`] for the entries that ship with
+/// their fix instead of staging to RP4.1.
+///
+/// The completeness half is what makes it a guard rather than a list: it rebuilds
+/// the landed set straight out of [`LEDGER`] — `channel = "capi_v0145"`,
+/// `kind = "divergence"`, at least one `"field": "property"` match, and a `source`
+/// naming an `R4133_PROPS_PLAN RP3.` measurement — and requires it to equal the
+/// table exactly. Read-only on the ledger, like every other use of it here.
+#[test]
+fn every_landed_property_entry_has_a_witness_pin_that_exists() {
+    let path = repo_root().join(LEDGER);
+    let doc: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display())),
+    )
+    .expect("ledger.json is JSON");
+    let landed: BTreeSet<String> = doc["entries"]
+        .as_array()
+        .expect("ledger.json has an `entries` array")
+        .iter()
+        .filter(|e| {
+            e["channel"] == "capi_v0145"
+                && e["kind"] == "divergence"
+                && e["source"]
+                    .as_str()
+                    .is_some_and(|s| s.starts_with("R4133_PROPS_PLAN RP3."))
+                && e["match"]
+                    .as_array()
+                    .is_some_and(|m| m.iter().any(|x| x["field"] == "property"))
+        })
+        .map(|e| {
+            e["id"]
+                .as_str()
+                .unwrap_or_else(|| panic!("a ledger entry names its id: {e}"))
+                .to_string()
+        })
+        .collect();
+    let tabled: BTreeSet<String> = LANDED_PROPERTY_ENTRY_PINS
+        .iter()
+        .map(|(id, ..)| (*id).to_string())
+        .collect();
+    assert_eq!(
+        landed, tabled,
+        "every landed capi_v0145 property exclusion written by an RP3 sub-step owes a witness pin \
+         in LANDED_PROPERTY_ENTRY_PINS (and every row must name a real entry)"
+    );
+
+    for (id, step, pin, file) in LANDED_PROPERTY_ENTRY_PINS {
+        let p = repo_root().join(file);
+        let text = std::fs::read_to_string(&p)
+            .unwrap_or_else(|e| panic!("{id} ({step}): read {}: {e}", p.display()))
+            .replace("\r\n", "\n");
+        assert!(
+            text.contains(&format!("#[test]\nfn {pin}(")),
+            "{id} ({step}) names the witness {pin}, but {file} defines no such #[test]"
+        );
+    }
 }
 
 /// **The pins that witness a DRAFTED ledger entry rather than an echo row** —

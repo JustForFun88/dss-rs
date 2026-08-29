@@ -65,6 +65,23 @@ const B0CH_ZERO: &str = "<cim:ACLineSegment.b0ch>0</cim:ACLineSegment.b0ch>";
 ///   `:3756`); the second one is the `g0ch` its `PerLengthSequenceImpedance`
 ///   sibling spells (`issue-25`).
 ///
+/// **A third deliberate divergence from the goldens' source exists and is
+/// deliberately NOT rewritten here, because it has no footprint on these decks.**
+/// Since RP3.6(b) the LineCode units back-fill matches the line's `CondCode`
+/// STRING like r4133 (`ExportCIMXML.pas:3872-3884`) instead of 0.14.5's live
+/// object (`:4501`), so a line that names a code and then overrides it donates
+/// its `FUserLengthUnits` to a `Units = UNITS_NONE` LineCode where 0.14.5 — which
+/// generated these goldens (`tools/golden/gen_cim.py`) — does not. It moves no
+/// byte here: every `New LineCode` in `tools/golden/cim_decks/*.dss` declares its
+/// own `units=` (`lc_sym` kft, `mtx606`/`mtx607` mi, `lc1` kft), so the back-fill
+/// loop never runs, and `cim_lines.dss`'s one switch (`Line.l_sw`) names no code.
+/// Adding a rewrite for it would red [`cim_writer_divergences_are_pinned`] as
+/// vacuous; the behaviour is pinned instead, deck by deck, by
+/// [`cim_linecode_units_backfill_matches_the_condcode_string`]. A future CIM deck
+/// of that shape (a `units=`-less LineCode named by an overridden line) will
+/// therefore fail the byte compare **legitimately** — the fix is a golden
+/// regenerated off r4133, not a fourth rewrite.
+///
 /// Returns the expected text plus the per-rewrite counts, which
 /// [`cim_writer_divergences_are_pinned`] uses to keep the list non-vacuous.
 fn expected_cim(oracle: &str) -> (String, [usize; 2]) {
