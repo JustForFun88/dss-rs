@@ -137,7 +137,7 @@ pwsh -File tools/lanes/lane_diff.ps1 -SkipDump  # re-diff existing dumps
 
 It builds `crates/dss-core/examples/lane_dump.rs` once per lane (each into its
 own target dir under `target/lanes/`, so re-runs do not thrash the other lane's
-cache), walks **all 521 manifest cases** on each engine — solving the 517 that
+cache), walks **all 523 manifest cases** on each engine — solving the 519 that
 are not abort-by-design — and writes one record per compared quantity: engine
 error *count* (not the message text; the corpus gate reconciles that), per-step
 convergence flag and iteration count, every node voltage, every element's
@@ -279,11 +279,11 @@ replay engine, `tests/harness/scenario.rs::check_family`.
 
 One scheduler-driven `#[test]` — `corpus_gate_all_cases_match_engines` — runs
 the union of all four case manifests live: the vendored family
-`tests/corpus/manifests/solvable_now.json` (293 decks from the
+`tests/corpus/manifests/solvable_now.json` (294 decks from the
 `tests/corpus/electricdss-tst` mirror) plus the synthetic families
-`asymmetric` (47) / `controls` (105) / `modes` (69) — 514 cases. Each case's
-**`engines`** field names its gating channel(s): `"capi_v0145"`, `"r4133"`, or
-`"both"` (the default; 360 cases gate on both channels). Case key = the gate
+`asymmetric` (53) / `controls` (106) / `modes` (70) — 523 cases. Each case's
+**`engines`** field names its gating channel(s): `"capi_v0145"` (59), `"r4133"`
+(97), or `"both"` (the default; 367 cases gate on both channels). Case key = the gate
 label `solvable_now:<path>` / `<family>:<path>`. The test fails iff any case
 failed **or any ledger entry is stale**, printing the complete failure list
 (manifest order), and reports per-entry ledger hit counts.
@@ -420,17 +420,22 @@ apply. Every entry is fingerprinted
 into the population lock as `id@FNV-1a64(entry JSON)` per channel — adding,
 widening, or re-scoping an entry is always a reviewable lock diff.
 
-Current contents: 36 entries over 23 documented causes — 4 r4133 `skip`
-(#303 crash decks), 21 r4133 `divergence` (Delphi 6-sig-fig display-precision
+Current contents: 40 entries over 26 documented causes — 5 r4133 `skip`
+(the four #303 crash decks plus `r4133-espvlcontrol-uninstantiable`, where the
+r4133 DLL cannot construct an `ESPVLControl` at all), 21 r4133 `divergence`
+(Delphi 6-sig-fig display-precision
 probes on Storage/PVSystem, FPC-vs-Delphi injection/element ulp floors on the
 IndMach asymmetric decks, one monitor sequence-magnitude drift, the GFM
 `%stored` rounding class, and the RegControl `idle`
-revThreshold/fwdThreshold getter-convention exact-pair), 5 capi_v0145
+revThreshold/fwdThreshold getter-convention exact-pair), 8 capi_v0145
 `divergence` (the `line_spacing_asym` and the Generator `MakePosSequence`
-exact-pair-numeric upgrade pins, plus three G2.5 property-jump entries —
+exact-pair-numeric upgrade pins, three G2.5 property-jump entries —
 `GICTransformer.tg3/tg5.R2` and `Capacitor.cap_cmat.Cuf`/`NormAmps`/`EmergAmps`,
-pinned as exact pairs rather than skipped), and 6 `exclusion` — 4 capi_v0145 + 2
-r4133 — from
+pinned as exact pairs rather than skipped — and the three `property` entries the
+R4133_PROPS line-merge/switch fixes landed on the live capi compare:
+`reduce-merge-units-restored-midi-capi-props` (RP3.5) and
+`line-switch-keeps-linecode-zone2/zone3-capi-props` (RP3.6a)), and 6
+`exclusion` — 4 capi_v0145 + 2 r4133 — from
 `GOLDEN_REBASE_PLAN.md` G2.5, where the engine stopped reproducing three
 upstream bugs (GICTransformer `%R2`, Capacitor `MakePosSequence` `Cuf`,
 LoadShape MMF accept-set) and the four decks that observe them therefore

@@ -424,6 +424,24 @@ presumes a new comparator):** the deck solves on both channels (or is classified
 instantiated and covered by probes, `population.lock.json` regenerated in the
 same commit.
 
+> **2026-08-29 — DONE, by a third route the acceptance did not enumerate**
+> (branch `r4133-props`; record + audit settlement in STATUS §"GOLDEN_REBASE
+> WP-G1 — records"). The deck is
+> `tests/corpus/controls/espvlcontrol/espvlcontrol.dss` — six ESPVLControls in
+> all four instantiation shapes over a 12-step daily ramp, 8 probes, no
+> `MakePosSequence`, `isolate: true`. It solves cleanly on the **pinned oracle**
+> and is fully gated there, so `expect_solve_abort` would have been a false
+> statement; what it cannot do is gate r4133, because that DLL raises #303
+> (access violation, read of `0x0`) on **every** `New espvlcontrol.<name>`
+> before a property is parsed — measured on a minimal deck, so it is the class
+> constructor and not this deck. Landed as `engines: "both"` with the r4133
+> channel `kind: "skip"`ped (`r4133-espvlcontrol-uninstantiable`), the shape the
+> four `r4133-*-303` skips already use. Population 522 → 523 cases;
+> `population.lock.json` regenerated in the same commit. Two standing follow-ups
+> came out of it (the upstream write-up, and `ESPVLControl.Forecast` — r4133
+> property 12, absent from the port and invisible to the R4133_PROPS census
+> because the class cannot be built there).
+
 ### G1.3a — per-element polar channels
 
 `CurrentsMagAng`, `VoltagesMagAng`, `Residuals`. Polar-rendering floors derived

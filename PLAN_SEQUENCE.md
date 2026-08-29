@@ -90,7 +90,10 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               to fastdss parity) open — G1.1 fired its kill
                               criterion 2026-08-08 and is handed to
                               R4133_PROPS_PLAN.md (its RP4.1 delivers the
-                              unmask; G3.4/G3.5 wait on it); WP-G3–G5 queued.
+                              unmask; G3.4/G3.5 wait on it), G1.2 (the
+                              ESPVLControl corpus deck, the last zero-coverage
+                              class) landed 2026-08-29 on `r4133-props`, and
+                              G1.3a-d + G1.4-G1.11c remain; WP-G3–G5 queued.
                               Added 2026-08-22 per the user's request.
  5b. R4133_PROPS_PLAN.md      IN FLIGHT (authored + opened 2026-08-22) — property
                               parity on the r4133 channel, the dedicated

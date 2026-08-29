@@ -922,8 +922,12 @@ the surviving object's name where the port used to answer `''`); r4133 echoes
 
 **Next: RP3.7, RP3.8 and RP3.9** — they are what RP4.1 waits on (RP3.5 and
 RP3.6, both parts, have landed).
-Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1 on branch **`golden-g1`** (forked
-from `update` @ `4d3fc2d7`). WP-G0 (safety rails) and WP-G2 (bug-kernel
+Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1, **opened** on branch `golden-g1`
+(forked from `update` @ `4d3fc2d7`) — that branch carries G1.1's scratch census
+only and **nothing was committed there**; the WP-G1 sub-steps that actually land
+ride **`r4133-props`**, the branch holding the fail-on-stale
+`population.lock.json` / `ledger.json` (single-branch lock discipline), which is
+where G1.2 landed on 2026-08-29. WP-G0 (safety rails) and WP-G2 (bug-kernel
 teardown) are COMPLETE and merged to `update` (`6e7ee691` / `77e1799a` /
 `4d3fc2d7`, all pushed): G2.0 rails + G2.1a…G2.1h + G2.2a–d + G2.3 + G2.4 +
 G2.5 + G2.6 landed, `SPLIT_ALIAS_POPULATION` **31 → 11**, `Escape::WholeCase`
@@ -1937,7 +1941,12 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   (the last three added by the audit settlement below). Classification:
   **`engines: "both"` with the r4133 channel ledger-`skip`ped** — gated live on
   `capi_v0145` only, for a measured reason (below). Not `expect_solve_abort`:
-  the pinned oracle compiles and solves it cleanly.
+  the pinned oracle compiles and solves it cleanly. That is a **third** outcome
+  where the plan's acceptance enumerated two ("solves on both channels" /
+  `expect_solve_abort` with a reason), so `GOLDEN_REBASE_PLAN.md` §G1.2 now
+  carries the as-executed note that says which one landed and why — the G1.1
+  precedent for annotating a sub-step rather than leaving its text reading as
+  open instructions.
   - *What is LIVE-GATED, and what is only unit-pinned* (the distinction is
     **measured**, not asserted — see the settlement paragraph). Oracle-gated per
     step on `capi_v0145`: (1) `? ESPVLControl.scan.LocalControlWeights` moves
@@ -1994,6 +2003,31 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     isolate=1 defer=0
     ledger=r4133:r4133-espvlcontrol-uninstantiable@69c59d7407db83f4`. Ledger now
     40 entries / 26 causes (was 39 / 25).
+  - *Corpus population, and a stale count G1.2 inherited.* The gate's walked
+    population is **522 → 523 cases** (519 solvable; the 4 abort-by-design are
+    unchanged) — growth, not a shrink, and **measured** rather than derived:
+    `DSS_GATE_ONLY=espvlcontrol` reports `kept 1/523`, the scheduler's own
+    `before` count over the union of the four manifests
+    (`scheduler.rs::build_unified_cases`; 294 `solvable_now` + 53 `asymmetric` +
+    106 `controls` + 70 `modes`). `CLAUDE.md` and `TESTING.md` both said
+    **521 / 517** and were therefore *two* behind, not one: the other case is
+    RP1.2's single-phase `asymmetric:autotrans/autotrans_xfmrcode.dss`
+    (`8a221016`, asymmetric 52 → 53), which regenerated the lock without
+    updating the two prose counts. Both files are corrected to **523 / 519**
+    here — the G2.5 precedent, which updated the same two sentences when the
+    population went 520 → 521. `TESTING.md`'s two other current-state count
+    paragraphs were stale the same way and are re-measured in the same pass, so
+    the file does not contradict itself: the corpus-gate section's per-family
+    split (`293/47/105/69 = 514` → **294/53/106/70 = 523**, with the `engines`
+    split now stated in full — 367 `both` / 59 `capi_v0145` / 97 `r4133`), and
+    the ledger's "current contents" (36 entries / 23 causes → **40 / 26**:
+    `skip` 4 → 5 by this sub-step, `capi_v0145 divergence` 5 → 8 by RP3.5's one
+    and RP3.6(a)'s two). Every one of those numbers is counted off the shipped
+    manifests and `ledger.json`, not carried forward. Not touched: the dated
+    measurements that quote
+    521 (the RP0.1/RP0.2 census population, the vendored
+    `props_r4133/README.md`, the escape register's `n/520` blast radii) — those
+    record what a walk measured on a given day and are frozen by convention.
   - *`linemedium` mapping (the sub-step's parenthetical).* `linemedium` is a
     **props-golden scenario name, not a class** — no deck is owed for it. Its
     subject matter (`Line.l1` with `EpsRMedium` / `HeightOffset` / `HeightUnit`)
@@ -6161,6 +6195,16 @@ the site comment carries each row's measured cost.
   tree clean. Consistent with an overlapping-guard snapshot race (cf. the unit
   test `corpus_guard_overlapping_guards_still_sweep`); not attributed further —
   it belongs to the gate infrastructure, not to a G1 sub-step. No gate went red.
+  **Second sighting, same day, at the G1.2 settlement's own gate run:** seven
+  files in the same directory (`auto3bus_{hl,ht}_{current,losses}.txt`,
+  `auto3bus_lt_current.txt`, `autohlt_hl_current.txt`,
+  `autohlt_noload_power.txt`), a *different* set from the first five and spelled
+  **lowercase** where the first sighting's were `Auto3bus_*` — the
+  case-insensitive collision `corpus_gate/runner.rs:42-55` and the G2.2d record
+  already describe, now observed on the leak itself. Deleted by name (never a
+  recursive delete); both gate lanes were green with them present, so the leak
+  still costs nothing but hygiene. Two sightings make it a pattern, not a fluke:
+  whoever picks it up should start with `DSS_GATE_JOBS=1` per the G2.2d note.
 
 **Carried-forward handoffs — work a *declared-complete* plan deferred to a
 successor plan that has NOT finished it** (audited 2026-07-17; surfaced here so the
