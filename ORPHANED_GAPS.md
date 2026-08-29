@@ -261,6 +261,38 @@ Oracle-backed pin without a new capture: the `est8` deck minus its
   the oracle's own answer is the zero-injection bug). **Priority: low** — no deck upstream or here
   exercises them.
 
+### 1.12 `TLine.MakeLike` copies the impedance-*source* state upstream does not
+- **Deferred by:** `R4133_PROPS_PLAN.md` §RP3.6 (2026-08-29) and its audit settlement. RP3.6 listed
+  "`MakeLike`'s copy set" among the divergences "recorded with owners"; the audit observed that no
+  plan or section was ever named, so the row lands here. It is `line.spacing`/`line.geometry` /
+  class-wide `MakeLike` territory, not `line.linecode` — RP3.6 owns only the flag.
+- **What (measured, r4133 DLL 11.0.0.1, 2026-08-29):** `New Line.cp like=live` on a line that names
+  a LineCode answers `? Line.cp.linecode` = `''` on r4133 **and** on the pinned 0.14.5 oracle, while
+  `? Line.cp.r1` = `'0.1'` — the impedances travel, the source does not. The port answers the code
+  name. Same on a switched coded line (`like=sw` → `''` upstream, the name here).
+- **Spec.** `TLine.MakeLike` (r4133 `Version8/Source/PDElements/Line.pas:735-787`) copies `Z`, `Yc`,
+  `R1..C0`, `Len`, `SymComponentsModel`, `FCapSpecified`, then `ClassMakeLike` and the whole
+  `FPropertyValue[]` array — and **nothing else**: not `CondCode`, not `FLineCodeSpecified`, not
+  `FLineGeometryObj`/`GeometryCode`, not `FLineSpacingObj`/`SpacingCode`/`FLineWireData`/
+  `FPhaseChoice`, not `LengthUnits`/`FUnitsConvert`/`FLineCodeUnits`. dss_capi 0.14.5
+  (`src/PDElements/Line.pas:889-930`) copies the same short list.
+- **Current Rust:** `crates/dss-core/src/elements/pd/line/accessors.rs::make_like` copies the full
+  impedance-source state — `line_code_ref`/`line_code_name`/`line_code_specified`,
+  `geometry_obj`/`geometry_name`, `line_spacing_obj`/`spacing_specified`/`line_wire_data`/
+  `fphase_choice`, plus `length_units`/`user_length_units`/`line_code_units`/`units_convert`. Held
+  (as a divergence lock, labelled as such) by the last assertion of
+  `exec::tests::line_fetch::linecode_name_survives_the_flag_that_gates_its_render`.
+- **Why it is not a one-liner:** narrowing it has **numeric** reach. `units_convert`/`length_units`
+  feed `FUnitsConvert`, i.e. the `r1..c0` getters and `LengthMultiplier` in `CalcYPrim`; dropping
+  `geometry_obj`/`line_spacing_obj` moves the copy off the Carson path onto the copied `Z`/`Yc`
+  matrices, which is upstream's behaviour but a different code path here. It wants one sweep over
+  every class's `make_like` against its Pascal counterpart, not a Line-only patch.
+- **Blast radius today: zero cells.** Swept `tests/corpus`, `tools/golden`, `tests/golden` and
+  `crates/dss-core/tests` for `New`/`Edit Line.` commands carrying a `like=` (continuations folded
+  in): **0 hits** — no deck exercises `TLine.MakeLike` at all, which is why `line.linecode`'s whole
+  census is 5 switch-shaped cells.
+  **Priority: low**, but it is a real upstream divergence, not a stylistic one.
+
 ---
 
 ## 2. Owned deferrals — NOT orphans (a live plan tracks them; do not re-port here)

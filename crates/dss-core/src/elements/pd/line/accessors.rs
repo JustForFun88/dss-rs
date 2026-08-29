@@ -61,6 +61,7 @@ impl Line {
         self.geometry_name = other.geometry_name.clone();
         self.fz_frequency = other.fz_frequency;
         self.line_spacing_obj = other.line_spacing_obj.clone();
+        self.spacing_specified = other.spacing_specified;
         self.line_wire_data.clone_from(&other.line_wire_data);
         self.fphase_choice = other.fphase_choice;
         self.got_ratings_after_spacing_conds = other.got_ratings_after_spacing_conds;
@@ -375,7 +376,7 @@ impl DssObject for Line {
                     // *total* `Z` (length folded in), so the per-unit-length getter
                     // divides by `Len`; the sym/matrix line stores per-unit-length
                     // and divides by `units_convert`.
-                    if self.geometry_obj.is_some() || self.spacing_specified() {
+                    if self.geometry_obj.is_some() || self.spacing_specified {
                         self.len
                     } else {
                         self.units_convert
@@ -390,7 +391,7 @@ impl DssObject for Line {
                     // Pascal `GetYCScale`: total `Yc` on a geometry/spacing line,
                     // so the getter divides the base scale by `Len`; else
                     // `units_convert`.
-                    let unit = if self.geometry_obj.is_some() || self.spacing_specified() {
+                    let unit = if self.geometry_obj.is_some() || self.spacing_specified {
                         self.len
                     } else {
                         self.units_convert
@@ -494,9 +495,14 @@ impl DssObject for Line {
                 // Mark the ratings the code supplied as set, *after* the
                 // linecode's own set-order mark (this runs post-`SetAsNextSeq`),
                 // so `Save`/JSON-default emit them in the oracle's order
-                // (`… LineCode=lc1 Ratings=[…] NormAmps=… EmergAmps=…`). Pascal
-                // `TLineObj.FetchLineCode` (`Line.pas:544-547`); the sibling
-                // `fetch_line_spacing` already does this inline. Only fires when
+                // (`… LineCode=lc1 Ratings=[…] NormAmps=… EmergAmps=…`). This is
+                // 0.14.5's `PrpSequence` bookkeeping — `SetAsNextSeq(Ratings /
+                // NormAmps / EmergAmps)` at the tail of its `FetchLineCode`
+                // (`.inputs/dss_capi/src/PDElements/Line.pas:541-543`, with the
+                // zeroing block at `:544-556`); r4133 has no property tracking at
+                // all, so it has no counterpart. `SEASONS` is the port's own
+                // addition, `num_amp_ratings` being copied by `fetch_line_code`
+                // alongside the ratings it sizes. Only fires when
                 // the linecode actually resolved — i.e. exactly when
                 // `FetchLineCode` ran and raised `FLineCodeSpecified` (`:413`).
                 if self.line_code_specified {
@@ -525,9 +531,13 @@ impl DssObject for Line {
             }
             SWITCH => {
                 // Pascal `TLineObj.PropertySideEffects` arm 15 — r4133
-                // `Version8/Source/PDElements/Line.pas:694-700`. It kills
-                // geometry and spacing, re-stamps the sym scalars and resets
-                // the length units, but it deliberately leaves
+                // `Version8/Source/PDElements/Line.pas:694-700`. It drops the
+                // geometry and spacing FLAGS by plain assignment
+                // (`GeometrySpecified := FALSE; SpacingSpecified := False`,
+                // `:696` — NOT the `Kill*Specified` routines the two
+                // neighbouring impedance arms call at `:686-687` and `:692`),
+                // re-stamps the sym scalars and resets the length units, but it
+                // deliberately leaves
                 // `FLineCodeSpecified` alone: both neighbouring impedance arms
                 // *open* with `FLineCodeSpecified := FALSE` (`6..11, 26..27` at
                 // `:685`, `12..14` at `:691`), so the omission at `:694-700` is
@@ -544,8 +554,25 @@ impl DssObject for Line {
                 if self.is_switch {
                     self.sym_components_changed = true;
                     self.cd.yprim_invalid = true;
+                    // `GeometrySpecified := FALSE` (`:696`). The port has no
+                    // separate geometry flag — `geometry_obj.is_some()` IS the
+                    // flag — and every r4133 reader of `FLineGeometryObj` is
+                    // itself gated on `GeometrySpecified` (`:721`, `:1051`,
+                    // `:1211`, `:1284`, `:1371-1393`, `:1403`,
+                    // `ExportCIMXML.pas:3741`), so the object outliving the flag
+                    // is unobservable; probed on the r4133 DLL and here, a
+                    // switched geometry line answers `? geometry` = `''` on both
+                    // (RP3.6 audit settlement, recorded in STATUS §RP3.6).
                     self.kill_geometry_specified();
-                    self.kill_spacing_specified();
+                    // `SpacingSpecified := False` (`:696`) — the flag only. The
+                    // spacing object, the wire array and `FPhaseChoice` survive,
+                    // which IS observable: after `spacing=… wires=[…]` +
+                    // `switch=yes`, r4133 still runs a following
+                    // `conductors=[…]`, while the same deck edited with `r1=`
+                    // (arm 6, a real `KillSpacingSpecified`) faults on the nil
+                    // `FLineSpacingObj`. Measured as an A/B pair on the r4133
+                    // DLL, 2026-08-29.
+                    self.spacing_specified = false;
                     self.r1 = 1.0;
                     self.x1 = 1.0;
                     self.r0 = 1.0;
@@ -624,15 +651,29 @@ impl DssObject for Line {
             _ => {}
         }
 
-        // Pascal block 2 (Line.pas:716-746 / 785-865): the spacing/wires/cncables/
-        // tscables/conductors group. `spacing=` fetches first; once both the
-        // spacing and the conductor array exist, switch to the spacing impedance
-        // model and clear the marks it supersedes.
+        // Pascal block 2 — r4133's `21..22, 24..25, 34` side effect
+        // (`Line.pas:704-713`): `spacing=` fetches first; once both the spacing
+        // and the conductor array exist, raise `SpacingSpecified`, switch to the
+        // spacing impedance model and clear the marks it supersedes.
+        //
+        // r4133 tests `Assigned (FLineSpacingObj) and Assigned (FLineWireData)`,
+        // and only `FetchWireList`/`FetchCNCableList`/`FetchTSCableList`/
+        // `FetchConductorList` — properties 22, 24, 25 and 34 — ever allocate
+        // `FLineWireData`; its `FetchLineSpacing` (`:1826-1838`) does not. The
+        // port allocates the array one property earlier, in
+        // [`Line::fetch_line_spacing`] (0.14.5's shape, `src/PDElements/
+        // Line.pas:1850-1852`), so `idx != SPACING` restates r4133's test in the
+        // port's representation. Measured on the r4133 DLL, 2026-08-29: a line
+        // with `spacing=` and no conductors keeps `SymComponentsModel` and
+        // renders its default `r1 = '0.058'`, where 0.14.5 and the pre-fix port
+        // rendered `'----'`.
         if matches!(idx, SPACING | WIRES | CNCABLES | TSCABLES | CONDUCTORS) {
             if idx == SPACING {
                 self.fetch_line_spacing();
             }
-            if self.spacing_specified() {
+            if idx != SPACING && self.line_spacing_obj.is_some() && !self.line_wire_data.is_empty()
+            {
+                self.spacing_specified = true;
                 self.sym_components_model = false;
                 self.sym_components_changed = false;
                 self.kill_geometry_specified();

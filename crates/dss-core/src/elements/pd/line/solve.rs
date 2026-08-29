@@ -319,7 +319,7 @@ impl CktElement for Line {
         // units folded in by the geometry's `Zmatrix[f, len, units]`); the
         // sym/linecode path produces per-unit-length data scaled below.
         let geometry_path = self.geometry_obj.is_some();
-        let spacing_path = self.spacing_specified();
+        let spacing_path = self.spacing_specified;
         let total_z_path = geometry_path || spacing_path;
         // Pascal: long-line correction only enters for the SymComponentsModel
         // (per-unit-length) path (Line.pas:1199/1369). It is mutually exclusive
@@ -591,7 +591,7 @@ impl CktElement for Line {
         }
 
         // If GeometrySpecified or SpacingSpecified, length is embedded in Z/Yc.
-        let length_mult = if self.geometry_obj.is_some() || self.spacing_specified() {
+        let length_mult = if self.geometry_obj.is_some() || self.spacing_specified {
             self.len
         } else {
             1.0

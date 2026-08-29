@@ -295,13 +295,19 @@ pub struct Line {
     /// `FUnitsConvert`.
     pub units_convert: f64,
     /// The stable [`Idx`] of the code **in force** — `linecode=` is an
-    /// `object_ref_class("LineCode", …)` property, so the class is static.
-    /// r4133 keeps no such handle of its own (its `LineCodeObj` is a local of
-    /// `FetchLineCode`, `:376`), so this one carries the flag's lifetime: it is
-    /// taken by `FetchLineCode` and dropped by
-    /// [`Line::kill_line_code_specified`] together with
-    /// [`Line::line_code_specified`], which keeps a reader from resolving a
-    /// superseded code.
+    /// `object_ref_class("LineCode", …)` property, so the class is static and the
+    /// handle is this class's member of the typed-object-ref family gated by
+    /// `exec::tests::line_fetch::typed_object_ref_handles_dereference_to_the_named_object`
+    /// (with `Load::daily_shape_ref`, `Transformer::xfmr_code_ref`, …).
+    ///
+    /// r4133 keeps no such handle of its own — its `LineCodeObj` is a *local* of
+    /// `FetchLineCode` (`:376`) — and since RP3.6(b) split the flag from the name
+    /// it has **no product reader left** either: every site that used to ask
+    /// `line_code_ref.is_some()` now reads [`Line::line_code_specified`], which is
+    /// the field r4133 branches on. It is kept, and taken/dropped in lockstep with
+    /// that flag (`FetchLineCode` / [`Line::kill_line_code_specified`]), so the
+    /// class-wide handle invariant still has a Line to check and a future reader
+    /// cannot resolve a superseded code through it.
     pub line_code_ref: Option<Idx<LineCodeObj>>,
     /// Pascal `CondCode` (r4133 `Version8/Source/PDElements/Line.pas:103`) —
     /// the code's **name**, and the half of the linecode state that outlives the
@@ -377,6 +383,28 @@ pub struct Line {
     /// objects (`WireData`/`CNData`/`TSData`) the `wires=`/`cncables=`/`tscables=`
     /// forms fill. Empty = unallocated (Pascal NIL); allocated by `FetchLineSpacing`.
     pub line_wire_data: Vec<Option<ConductorObj>>,
+    /// Pascal `SpacingSpecified` (r4133 `Line.pas:107`) — a plain Boolean field,
+    /// **not** a predicate over [`Line::line_spacing_obj`]. r4133 raises it in the
+    /// `21..22, 24..25, 34` side-effect block, and only once both the spacing and
+    /// the conductor array exist (`if Assigned (FLineSpacingObj) and Assigned
+    /// (FLineWireData)`, `:704-713`); it is dropped two different ways, and the
+    /// difference is observable:
+    ///
+    /// * `KillSpacingSpecified` (`:2266-2276`) takes the flag **and** the objects
+    ///   — the impedance arm (`:686-687`) and the matrix arm (`:692`);
+    /// * a plain `SpacingSpecified := False` takes the flag and leaves
+    ///   `FLineSpacingObj`, `FLineWireData` and `FPhaseChoice` standing — the
+    ///   `linecode=` side effect (`:663`) and the `switch=` arm (`:696`).
+    ///
+    /// Measured on the r4133 DLL (RP3.6 audit settlement, 2026-08-29): after
+    /// `spacing=sp1 wires=[…]` a `switch=yes` still lets a following
+    /// `conductors=[…]` run, while the same deck edited with `r1=0.7` instead
+    /// crashes r4133 inside `FetchConductorList` on the nil `FLineSpacingObj`
+    /// — the A/B that proves the two paths are not the same statement. dss_capi
+    /// 0.14.5 has no such field: `function SpacingSpecified: Boolean` derives it
+    /// from the objects (`src/PDElements/Line.pas:2112-2115`), which is what the
+    /// port had copied and could not express the plain assignment in.
+    pub spacing_specified: bool,
     /// Pascal `FPhaseChoice`: the conductor model in force for the spacing path.
     pub fphase_choice: ConductorChoice,
     /// Pascal `gotRatingsAfterSpacingConds`: set once ratings/amps are specified
@@ -464,6 +492,7 @@ impl Line {
             geometry_name: String::new(),
             fz_frequency: -1.0,
             line_spacing_obj: None,
+            spacing_specified: false,
             line_wire_data: Vec::new(),
             fphase_choice: ConductorChoice::Unknown,
             got_ratings_after_spacing_conds: false,

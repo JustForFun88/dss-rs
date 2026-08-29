@@ -403,7 +403,7 @@ fn spacing_wires_match_geometry_and_oracle() {
         "wires",
         &[arena_of(&w), arena_of(&w), arena_of(&w)],
     );
-    assert!(line.spacing_specified());
+    assert!(line.spacing_specified);
     assert!(!line.sym_components_model);
 
     line.calc_yprim(&test_sys());
@@ -462,7 +462,7 @@ fn spacing_cncables_match_geometry() {
 
     // The cable form selected the ConcentricNeutral model.
     assert_eq!(line.fphase_choice, ConductorChoice::ConcentricNeutral);
-    assert!(line.spacing_specified());
+    assert!(line.spacing_specified);
 
     line.calc_yprim(&test_sys());
     assert_zyc_match(
@@ -647,10 +647,10 @@ fn sym_scalar_detaches_spacing() {
         "wires",
         &[arena_of(&w), arena_of(&w), arena_of(&w)],
     );
-    assert!(line.spacing_specified());
+    assert!(line.spacing_specified);
 
     scalar(&lcls, &mut line, "r1", "0.1");
-    assert!(!line.spacing_specified());
+    assert!(!line.spacing_specified);
     assert!(line.line_spacing_obj.is_none());
     assert!(line.line_wire_data.is_empty());
     assert_eq!(line.fphase_choice, ConductorChoice::Unknown);
@@ -779,7 +779,7 @@ fn conductors_array_matches_buried_neutral_and_oracle() {
     // The list inferred ConcentricNeutral (last valid phase conductor) and filled
     // every slot including the slot-4 neutral.
     assert_eq!(line.fphase_choice, ConductorChoice::ConcentricNeutral);
-    assert!(line.spacing_specified());
+    assert!(line.spacing_specified);
     assert_eq!(line.cd.nphases, 3);
     assert!(line.line_wire_data[3].is_some(), "neutral landed in slot 4");
     // The redundant `wires=`/`cncables=`/`tscables=` set-marks are cleared.

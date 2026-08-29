@@ -17,7 +17,12 @@ impl Line {
     /// `FetchLineSpacing`, `:1853` `FetchConductorList`, `:1952`
     /// `FetchWireList`, `:2016` `FetchCNCableList`, `:2075` `FetchTSCableList`,
     /// `:2131` `FetchGeometryCode`) and at *no other statement*: the `switch=`
-    /// arm (`:694-700`) deliberately leaves it standing (RP3.6(a)).
+    /// arm (`:694-700`) deliberately leaves it standing (RP3.6(a)). All eight
+    /// have a caller here — `accessors.rs`' `R1..B0`, `RMATRIX..CMATRIX`,
+    /// `CNCABLES` and `TSCABLES` arms and `code.rs`' [`Line::fetch_geometry_code`],
+    /// [`Line::fetch_line_spacing`], [`Line::set_wires`] and
+    /// [`Line::set_conductors`] — the last of them added by the RP3.6 audit
+    /// settlement (2026-08-29).
     ///
     /// It does **not** clear `CondCode` — [`Line::line_code_name`] — which
     /// `FetchLineCode` writes (`:387`) and only the constructor clears (`:825`),
@@ -152,9 +157,19 @@ impl Line {
 
         self.line_type = code.fline_type();
 
-        // Pascal `FetchLineCode` tail (Line.pas:590-591): a `linecode=` supersedes
-        // any spacing/geometry source.
-        self.kill_spacing_specified();
+        // Pascal side effect of arm 3 (r4133 `Line.pas:663-665`): a `linecode=`
+        // supersedes any spacing/geometry source — but the two are dropped
+        // *differently*. `SpacingSpecified := False` is a PLAIN assignment, so
+        // `FLineSpacingObj`, `FLineWireData` and `FPhaseChoice` survive the code
+        // (measured: `spacing=sp1 linecode=lc1 conductors=[…]` runs clean on the
+        // r4133 DLL and answers `linecode = ''`, where a killed spacing would
+        // fault in `FetchConductorList`); geometry goes through the full
+        // `KillGeometrySpecified` (`if GeometrySpecified = True then
+        // KillGeometrySpecified; GeometrySpecified := False`, which is that
+        // routine's own guard restated). dss_capi 0.14.5 kills BOTH at the
+        // `FetchLineCode` tail (`src/PDElements/Line.pas:581-582`) — the port had
+        // copied it; r4133 is the behavioral authority (CLAUDE.md 2026-08-02).
+        self.spacing_specified = false;
         self.kill_geometry_specified();
     }
 
@@ -223,20 +238,24 @@ impl Line {
         self.cd.yprim_invalid = true;
     }
 
-    /// Pascal `TLineObj.SpacingSpecified` (Line.pas:2141): a spacing source is in
-    /// force once both the spacing object and the (allocated) wire array exist.
-    pub(super) fn spacing_specified(&self) -> bool {
-        self.line_spacing_obj.is_some() && !self.line_wire_data.is_empty()
-    }
-
-    /// Pascal `TLineObj.KillSpacingSpecified` (Line.pas:2042): drop the spacing
-    /// reference, free the wire array, reset `FPhaseChoice`/`FZFrequency`, and
-    /// clear the spacing/wires/cncables/tscables set-order marks. No-op when no
-    /// spacing is attached.
+    /// Pascal `TLineObj.KillSpacingSpecified` (r4133 `Line.pas:2266-2276`): drop
+    /// the spacing reference, free the wire array, reset
+    /// `FPhaseChoice`/`FZFrequency` and clear the spacing/wires/cncables/tscables
+    /// set-order marks (0.14.5's `PrpSequence` bookkeeping, `src/PDElements/
+    /// Line.pas:2013-2030`; r4133 has no property tracking).
+    ///
+    /// The `If SpacingSpecified Then` guard is r4133's own (`:2268`) and is
+    /// **not** a shortcut: on a line that named a spacing but no conductors yet
+    /// the flag is still down, so the routine is a no-op and the spacing object
+    /// survives. Measured on the r4133 DLL (2026-08-29): `spacing=sp1` then
+    /// `r1=0.55` then `wires=[…]` completes and renders `r1 = '----'`, where
+    /// 0.14.5 — whose guard is the derived predicate — answers #18102 "You must
+    /// assign the LineSpacing before the Wires Property".
     pub(super) fn kill_spacing_specified(&mut self) {
-        if !self.spacing_specified() {
+        if !self.spacing_specified {
             return;
         }
+        self.spacing_specified = false;
         self.line_spacing_obj = None;
         self.line_wire_data = Vec::new();
         self.fphase_choice = ConductorChoice::Unknown;
@@ -246,10 +265,15 @@ impl Line {
         }
     }
 
-    /// Pascal `TLineObj.FetchLineSpacing` (Line.pas:1853): adopt the (already
-    /// stored) `LineSpacing` — drop LineCode/geometry, size the Line to the
-    /// spacing's phase count, and allocate the empty `LineWireData` array of
-    /// `NWires` slots that a following `wires=`/`cncables=`/`tscables=` fills.
+    /// Pascal `TLineObj.FetchLineSpacing` (r4133 `Line.pas:1826-1838`): adopt
+    /// the (already stored) `LineSpacing` — drop LineCode/geometry, size the Line
+    /// to the spacing's phase count, and allocate the empty `LineWireData` array
+    /// of `NWires` slots that a following `wires=`/`cncables=`/`tscables=` fills.
+    /// The sizing and the allocation are 0.14.5's (`src/PDElements/
+    /// Line.pas:1838-1853`): r4133's routine only takes the object, clears the
+    /// LineCode flag, kills the geometry and stores `SpacingCode`, and allocates
+    /// in the wire/cable/conductor fetchers instead — which is why
+    /// `SpacingSpecified` is raised there and not here (see `side_effects`).
     pub(super) fn fetch_line_spacing(&mut self) {
         let Some(spc) = self.line_spacing_obj.as_ref() else {
             return;
@@ -352,7 +376,20 @@ impl Line {
     /// solve time by `LoadSpacingAndWires`); the real-conductor fill is also gated
     /// by the whitebox equivalence test
     /// `tests::conductors_array_matches_buried_neutral_and_oracle`.
+    ///
+    /// `FetchConductorList` opens with `FLineCodeSpecified := False;
+    /// KillGeometrySpecified;` (r4133 `:1853-1854`) — a third rule, distinct from
+    /// `FetchWireList`'s `FPhaseChoice = Unknown` guard (`:1952`) and from the
+    /// `switch=` arm's silence. Measured on the r4133 DLL (2026-08-29):
+    /// `spacing=sp1 linecode=lc1 conductors=[…]` answers `? linecode` = `''`
+    /// against `'lc1'` on a line without the `conductors=`. r4133 runs the two
+    /// clears even with no spacing attached and then faults on the nil
+    /// `FLineSpacingObj`; the port keeps its clean #402 in the generic array parse
+    /// (which returns before this is called), so the clears run on the path that
+    /// r4133 completes and nothing reproduces the fault.
     pub(super) fn set_conductors(&mut self, refs: &[ObjectRefArrayItem<'_>]) {
+        self.kill_line_code_specified();
+        self.kill_geometry_specified();
         for (i, r) in refs.iter().enumerate() {
             if i < self.line_wire_data.len() {
                 self.line_wire_data[i] = r
