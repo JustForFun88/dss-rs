@@ -1,4 +1,5 @@
-//! ESPVLControl synthetic gate (no corpus deck exists for this class).
+//! ESPVLControl synthetic gate — the regression net for everything the class's
+//! `Sample` does that **no oracle channel can see**.
 //!
 //! ESPVLControl is an Energy-Storage/PV local controller whose `Sample` — proven
 //! against the pinned dss-python 0.15.7 oracle — is a **faithful no-op on all
@@ -9,6 +10,22 @@
 //! action. So the dispatched generators are never touched, `ControlIterations`
 //! stays 1, and the solution with the control present is byte-identical to the
 //! solution without it. See `elements::control::espvl_control` for the full note.
+//!
+//! **Split of duties with the corpus deck** (GOLDEN_REBASE G1.2, 2026-08-29;
+//! there IS one now — `tests/corpus/controls/espvlcontrol/espvlcontrol.dss`,
+//! live-gated on `capi_v0145`). The deck owns the class's *observable* surface:
+//! the full 14-property table of six controls, the `''` rendering of an unset
+//! `Type`, and `scan.LocalControlWeights` `''` → `'[ 1 1 1 1 1]'` — the ONE
+//! Sample-derived observable, produced by `MakeLocalControlList`'s type-blind
+//! sweep of every *enabled* control — plus the no-op contract (generator bases
+//! held, event log and control queue empty). Everything else `Sample` computes is
+//! measurably invisible there: a 12-step oracle mutation run that disables the
+//! redispatch (`kWBand=1e9`) moves nothing but the mutated cells among 405
+//! compared cells per step. So `PDiff`/`HalfkWBand`, the weights, `TotalWeight`,
+//! the `Max(1.0, …)` floor, the named-list branch and the control-iteration count
+//! are pinned **here** and in `elements::control::espvl_control::tests` — this
+//! module is their only regression net, and must not be thinned on the grounds
+//! that a corpus deck now exists.
 //!
 //! These decks are transcribed oracle gates: the same circuit run on the Rust
 //! engine, pinned against values captured from dss-python 0.15.7 (the generator
