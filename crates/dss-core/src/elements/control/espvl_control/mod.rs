@@ -29,6 +29,20 @@
 //! `tools/golden/gen_props.py` ESPVLControl case + `exec/tests/espvl_control.rs`
 //! pin this against dss-python 0.15.7.
 //!
+//! **"No-op" is scoped to the compiled deck — upstream it is not process-safe.**
+//! Measured 2026-08-29 (GOLDEN_REBASE G1.2 audit settlement): in the pinned
+//! oracle, a *System Controller*'s `Sample` corrupts the engine's **global**
+//! state. After even one solve, a later `Compile` of any deck leaves
+//! `NumCircuits = 0` with `Error.Number = 0` and every later API call raises
+//! `(#8888) There is no active circuit!`. Discriminated: no solve → clean; all
+//! controls disabled → clean; only Local Controllers enabled → clean; a single
+//! System Controller with `kWBand = 1e9` (so the redispatch never fires) → still
+//! broken. So the culprit is the System Controller `Sample` /
+//! `MakeLocalControlList` path itself, not the type-confused `kWBase` write. This
+//! port has no such failure mode (safe Rust, no aliasing), but the corpus deck's
+//! manifest row carries `isolate: true` so the oracle worker that runs it is
+//! never reused.
+//!
 //! **`FkWLimit` is unsettable.** There is **no `kWLimit` property** (confirmed by
 //! enumerating `AllPropertyNames` in the oracle): the field is hardcoded to
 //! `8000.0` in the constructor and never moves, so `PDiff` is always `P_kW-8000`.

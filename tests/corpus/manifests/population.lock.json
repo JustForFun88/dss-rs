@@ -92,7 +92,7 @@
       "energymeter/energymeter_options.dss": "kind=micro steps=24 sel=1 mm=1 probes=1 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
       "energymeter/energymeter_sym.dss": "kind=micro steps=24 sel=1 mm=1 probes=1 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
       "energymeter/midi_energymeter.dss": "kind=micro steps=24 sel=1 mm=1 probes=2 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
-      "espvlcontrol/espvlcontrol.dss": "kind=micro steps=12 sel=1 mm=0 probes=7 vars=0 evlog=1 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=r4133:r4133-espvlcontrol-uninstantiable@2fdaa40e11e20c8b",
+      "espvlcontrol/espvlcontrol.dss": "kind=micro steps=12 sel=1 mm=0 probes=8 vars=0 evlog=1 ctrlq=1 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=1 defer=0 ledger=r4133:r4133-espvlcontrol-uninstantiable@69c59d7407db83f4",
       "expcontrol/expcontrol_basic.dss": "kind=micro steps=10 sel=1 mm=0 probes=1 vars=1 evlog=1 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=r4133:r4133-expcontrol-pv-display@4bea3680415600fa",
       "fuse/fuse_blow_3ph.dss": "kind=micro steps=8 sel=1 mm=0 probes=1 vars=0 evlog=1 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=r4133 isolate=0 defer=0 ledger=",
       "fuse/fuse_blow_asym.dss": "kind=micro steps=8 sel=1 mm=0 probes=1 vars=0 evlog=1 ctrlq=1 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=r4133 isolate=0 defer=0 ledger=",

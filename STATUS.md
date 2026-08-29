@@ -1930,38 +1930,50 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   (it had none: no vendored deck and no family deck instantiated it, and
   `makeposseq_ctrl.dss:10` documents its absence there as deliberate).
   New deck `tests/corpus/controls/espvlcontrol/espvlcontrol.dss` (+ its manifest
-  row in `tests/corpus/controls/manifest.json`): five ESPVLControls on one
+  row in `tests/corpus/controls/manifest.json`): **six** ESPVLControls on one
   monitored line over a 12-step daily ramp, `kind=micro`, `n_steps=12`,
-  `selected_elements=["*"]`, 7 probe specs, `compare_eventlog=true`,
-  `ad=off:unclassified-new-deck`. Classification: **`engines: "both"` with the
-  r4133 channel ledger-`skip`ped** — gated live on `capi_v0145` only, for a
-  measured reason (below). Not `expect_solve_abort`: the pinned oracle compiles
-  and solves it cleanly.
-  - *What the deck exercises.* The head power crosses the hardcoded
-    `FkWLimit = 8000 kW` (`ESPVLControl.pas:321`; there is **no** `kWLimit`
-    property, so `kvarLimit`'s default reads `4000`), giving `|PDiff| >
-    HalfkWBand` on both signs — measured on the oracle, `PDiff` per step =
-    −5887 / −4520 / −2960 / −1482 / −367 / **+754 / +1505 / +380** / −1111 /
-    −2407 / −3879 / −5341. All three `Sample` paths are covered: `sys` =
-    SystemController over a **named** `LocalControlList` with weights `[3, 1]`;
-    `scan` = SystemController with **no** list, so `MakeLocalControlList` sweeps
-    the class for *enabled* controls and allocates uniform weights; `loc1`/`loc2`
-    = LocalControllers whose PVSystem/Storage pointer lists are dead upstream
-    (round-trip only); `off` = disabled, so it never joins `scan`'s fleet.
-  - *The deck is not a property round-trip.* `? ESPVLControl.scan.LocalControlWeights`
-    moves `''` (pre-solve) → `'[ 1 1 1 1]'` (post-solve) **only because `Sample`
-    ran** — it is the live product of the class sweep, and the port reproduces it
-    (the probe is compared per step and passes). Feature sensitivity, all
-    probe-visible and two-process bit-identical on the pinned oracle: enabling
-    `off` makes it `'[ 1 1 1 1 1]'`; `sys` weights `[5, 2]` render `'[ 5 2]'`;
-    `scan type=LocalController` blanks its weights entirely (the `Ftype` gate on
-    `MakeLocalControlList`).
-  - *The no-op half is gated too.* ESPVLControl is a proven no-op on circuit
-    state (its `Sample` type-confuses each list entry as a `TGeneratorObj` and
-    writes non-electrical memory; it never pushes a control action), so the deck
-    carries two real generators whose `kw`/`kvar` probes must hold their input
-    bases, and an event log that must stay **empty** — a port that actually
-    dispatched the generators fails here. `ControlIterations` stays 1.
+  `selected_elements=["*"]`, **8** probe specs, `compare_eventlog=true`,
+  `compare_ctrlqueue=true`, `isolate=true`, `ad=off:unclassified-new-deck`
+  (the last three added by the audit settlement below). Classification:
+  **`engines: "both"` with the r4133 channel ledger-`skip`ped** — gated live on
+  `capi_v0145` only, for a measured reason (below). Not `expect_solve_abort`:
+  the pinned oracle compiles and solves it cleanly.
+  - *What is LIVE-GATED, and what is only unit-pinned* (the distinction is
+    **measured**, not asserted — see the settlement paragraph). Oracle-gated per
+    step on `capi_v0145`: (1) `? ESPVLControl.scan.LocalControlWeights` moves
+    `''` (pre-solve) → `'[ 1 1 1 1 1]'` (post-solve) **only because `Sample`
+    ran** — the one Sample-derived observable the class has, produced by
+    `MakeLocalControlList`'s no-list branch sweeping the whole class for
+    *enabled* controls (`ESPVLControl.pas:609-611`, type-blind: local, system and
+    untyped alike), so both the value and its **length** are two-sided; (2) the
+    full 14-property table of all six controls (`compare_all_properties` is
+    force-enabled for the `controls` family on the capi channel), including the
+    `''` rendering of `plain`'s unset `Type`; (3) the no-op contract — `g1`/`g2`
+    hold their input bases (`600`/`0`, `400`/`193.72884193514102`), the event log
+    stays **empty** and the control queue stays **empty**. *Not* oracle-gated,
+    on any channel: the redispatch arithmetic and `sys`'s whole named-list branch
+    (below); their net is `elements/control/espvl_control/tests.rs` +
+    `exec/tests/espvl_control.rs`, whose module doc now says so.
+  - *All four instantiation shapes are present.* `sys` = SystemController over a
+    **named** `LocalControlList` with weights `[3, 1]`; `scan` = SystemController
+    with **no** list; `loc1`/`loc2` = LocalControllers whose PVSystem/Storage
+    pointer lists are dead upstream (round-trip only); **`plain`** = no `type=`
+    at all (`Ftype = 0`: `Type` dumps `''`, `MakeLocalControlList` returns false
+    at its `Ftype` gate `ESPVLControl.pas:595`, `Sample` no-ops — yet the control
+    still counts as *enabled* in `scan`'s type-blind sweep); `off` = disabled, so
+    it never joins `scan`'s fleet of five. Feature sensitivity, all probe-visible
+    and two-process byte-identical on the pinned oracle: enabling `off` →
+    `'[ 1 1 1 1 1 1]'`; dropping `plain` → `'[ 1 1 1 1]'`; `plain
+    type=SystemController` → `plain` itself renders `'[ 1 1 1 1 1]'`; `sys`
+    weights `[5, 2]` → `'[ 5 2]'`; `scan type=LocalController` blanks its weights
+    entirely (the `Ftype` gate).
+  - *The `FkWLimit` crossing is real but buys no coverage.* The head power does
+    cross the hardcoded `FkWLimit = 8000 kW` (`ESPVLControl.pas:321`; there is
+    **no** `kWLimit` property, so `kvarLimit`'s default reads `4000`) on both
+    signs — `PDiff` per step = −5887 / −4520 / −2960 / −1482 / −367 / **+754 /
+    +1505 / +380** / −1111 / −2407 / −3879 / −5341 — but the redispatch it
+    triggers is **unobservable** (settlement finding 2/7), so the crossing is
+    documented, not claimed as gating power.
   - *No `MakePosSequence`.* The ESPVLControl override dereferences the always-NIL
     `ControlledElement` and aborts the oracle
     (`docs/wpg21_makeposseq_probes.md`); `makeposseq_ctrl.dss` is untouched.
@@ -1976,16 +1988,114 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     the pinned 0.14.5 oracle both build and sample the class. Ledgered as
     `r4133-espvlcontrol-uninstantiable` (`kind=skip`, channel `r4133`) under the
     new cause `epri-espvlcontrol-uninstantiable`; the entry is HIT by the gate.
-  - *Lock delta.* `population.lock.json` regenerated in the same commit:
-    `family_counts.controls` **105 → 106**, one new row
-    (`ledger=r4133:r4133-espvlcontrol-uninstantiable@2fdaa40e11e20c8b`). Ledger
-    now 40 entries / 26 causes (was 39 / 25).
+  - *Lock delta.* `population.lock.json` regenerated: `family_counts.controls`
+    **105 → 106**, one new row — after the settlement
+    `kind=micro steps=12 sel=1 mm=0 probes=8 vars=0 evlog=1 ctrlq=1 props=0 …
+    isolate=1 defer=0
+    ledger=r4133:r4133-espvlcontrol-uninstantiable@69c59d7407db83f4`. Ledger now
+    40 entries / 26 causes (was 39 / 25).
   - *`linemedium` mapping (the sub-step's parenthetical).* `linemedium` is a
     **props-golden scenario name, not a class** — no deck is owed for it. Its
     subject matter (`Line.l1` with `EpsRMedium` / `HeightOffset` / `HeightUnit`)
     is already live-gated by `tests/corpus/modes/upgrade/upgrade_linecs_epsrmedium.dss`
     and `tests/corpus/modes/upgrade/upgrade_linecs_heightoffset.dss`. G3.1 carries
     this mapping into `TWINS.md`.
+  - **Audit settlement (2026-08-29).** Two auditors, **11 findings** (two of them
+    the same defect reported twice, so **10 distinct**): **10 fixed / 0 recorded
+    unfixed / 0 refuted** — every finding held up under measurement, and the
+    duplicate was fixed once. All eleven are minor; none moved a number the port
+    computes. Settled, each against its own evidence:
+    1. **Solving the deck corrupts the pinned-oracle process** — CONFIRMED and
+       reproduced in a scratch dss-python 0.15.7 process: `compile` the deck,
+       solve **once**, then `compile` any deck ⇒ `NumCircuits = 0`,
+       `Error.Number = 0`, every later call `(#8888) There is no active circuit!`.
+       Discriminated in seven runs: no solve → clean; `expcontrol_basic` in the
+       same slot → clean; all controls disabled → clean; **only** the Local
+       Controllers enabled → clean; `sys` alone with `kWBand = 1e9` (redispatch
+       provably never fires) → **still broken**. So it is the *System Controller*
+       `Sample`/`MakeLocalControlList` path, not the type-confused `kWBase`
+       write. Today's gate is safe only by two defaults that are not this case's
+       contract (`oracle_server.py::run_case` issues a top-level `clear` before
+       `Compile` — measured to heal it — and `engines.rs::recycle_after()`
+       defaults to one fresh worker per case, overridable via
+       `DSS_GATE_RECYCLE_AFTER`). Fixed: the manifest row now carries
+       **`isolate: true`** (the flag exists for exactly a proven
+       worker-state-contamination case) with the mechanism in its `note`, and the
+       "proven no-op" wording is narrowed everywhere it appeared — manifest note,
+       deck header, this record, and `elements/control/espvl_control/mod.rs` —
+       to *no effect on any observable state of the compiled deck, while the
+       upstream class's `Sample` corrupts the host process's global state*.
+    2. **The `FkWLimit` band crossing has zero gating power** — CONFIRMED by
+       mutation: two 12-step oracle runs of the deck, one as-is and one with
+       `kWBand = 1e9` on `sys`+`scan`, snapshotting **405 cells per step** (every
+       property of every element + all bus voltages + `Iterations` +
+       `ControlIterations` + event log + control queue) differ in **24 cells, all
+       of them the mutated `kWBand` cell itself**; two independent base runs were
+       byte-identical. So `PDiff`/`HalfkWBand`, the weights, `TotalWeight`, the
+       `Max(1.0, …)` floor **and** `sys`'s entire named-list branch (its `'[ 3 1]'`
+       is the parse round-trip, identical pre- and post-solve) are invisible on
+       every channel. No coverage is actually missing — they are pinned by
+       `espvl_control/tests.rs::system_controller_named_list_respects_weights` /
+       `_floors_at_one` / `_in_band_does_nothing` — so the fix is honesty, not new
+       tests: the manifest note, the deck header and this record now separate
+       oracle-gated coverage from unit-pinned coverage explicitly. (Same defect as
+       finding 7, reported by both auditors; fixed once.)
+    3. **r4133's 12th `ESPVLControl` property `Forecast` was recorded nowhere** —
+       CONFIRMED against the source:
+       `.inputs/electricdss-code-r4133-trunk/Version8/Source/Controls/ESPVLControl.pas:133`
+       (`NumPropsThisClass = 12`) and `:178` (`PropertyName^[12] := 'Forecast'`),
+       against 11 in the pinned 0.14.5 and `NUM_PROPS = 14` in the port's
+       `class_props`. Fixed: a standing open follow-up now names it, including why
+       the R4133_PROPS census can never surface it (finding 1's sibling — r4133
+       cannot build the class at all).
+    4. **`ControlIterations` was presented as gated** — CONFIRMED: nothing in
+       `tests/harness/`, `tests/corpus_gate/`, `dss-epri/src/capture.rs` or
+       `tools/golden/*.py` compares it; the only compared iteration count is the
+       power-flow `sol.Iterations` (`oracle_server.py:430`). Fixed twice over —
+       the claim is corrected here, **and** the observable proxy is now genuinely
+       compared (finding 6).
+    5. **`ledger.json` lost its trailing newline** — CONFIRMED at the byte level
+       (`git cat-file -p 727d2355:tests/corpus/ledger.json` ends `…]\n}`, where
+       `bb467974`'s ended `…]\n}\n`, and every sibling manifest ends with one).
+       Fixed: newline restored, so the next hand-edit of this fail-on-stale file
+       no longer carries a spurious closing-brace hunk. (Reported by both
+       auditors — finding 10 is the same defect.)
+    6. **The control queue was not compared** — CONFIRMED: `runner.rs:589` only
+       fetches the queue when `compare_ctrlqueue` is set, and the request sent
+       `"ctrlqueue": false`. Fixed: the row now sets `compare_ctrlqueue: true`.
+       Measured first, so it is a real assertion and not a rubber stamp — the
+       oracle's queue is `['No events']` (⇒ the normalized empty list) at all 12
+       steps, with `ControlIterations = 1` throughout, and the filtered gate is
+       green with the comparison on. A port that queued a no-op action now fails
+       the corpus gate, not merely the in-crate exec test.
+    7. Same defect as finding 2 (the other auditor's wording) — fixed there.
+    8. **`exec/tests/espvl_control.rs:1` still claimed "no corpus deck exists for
+       this class"** — CONFIRMED by reading it, and it was the last such claim in
+       `crates/dss-core/src`. Fixed: the module doc now names the deck and states
+       the split of duties, with an explicit instruction not to thin these tests
+       on the grounds that a corpus deck exists — they are the *only* net for
+       everything finding 2 proved invisible.
+    9. **The fourth instantiation shape was missing while the header advertised
+       "three of the four"** — CONFIRMED. Fixed: `New espvlcontrol.plain
+       element=line.l1 terminal=1` (no `type=`) joins the deck with a `Type` /
+       `enabled` / `LocalControlList` / `LocalControlWeights` probe. Measured on
+       the oracle: `plain` renders `Type = ''` and `LocalControlWeights = ''`
+       before *and* after the solve (the `Ftype` no-op, now live-gated instead of
+       mock-only), and `scan`'s fleet becomes `'[ 1 1 1 1 1]'` — the audit's point
+       that this makes the fleet count a two-sided assertion. Both new
+       sensitivities re-measured (see the shapes bullet).
+    10. Duplicate of finding 5 — fixed there.
+    11. **`kind=skip` ledger entries self-hit, so the r4133 blackout can never be
+       reported stale** — CONFIRMED in `corpus_gate/ledger.rs:272-283`
+       (`channel_is_skipped` bumps `hits` unconditionally whenever the case
+       dispatches), and correctly identified as pre-existing infrastructure shared
+       with the four `r4133-*-303` skips, not something G1.2 introduced. Fixed as
+       far as this sub-step's scope allows: the entry's `source` now carries an
+       explicit **re-measure obligation** (re-probe with
+       `DSS_GATE_SEED_LEDGER=1 DSS_GATE_SEED_ONLY=espvlcontrol` whenever the
+       r4133 DLL is re-vendored, and delete the entry if the constructor is
+       fixed), and the general limitation is a standing open follow-up covering
+       all five skip entries.
 
 ### R4133_PROPS WP-RP0 — condensed records
 
@@ -6011,6 +6121,35 @@ the site comment carries each row's measured cost.
   `capi_v0145`. No port action: the port and the pinned 0.14.5 oracle both build
   and sample the class. What is owed is an English write-up in
   `investigations/to_opendss/` (local-only folder) — out of G1.2's scope.
+- **`ESPVLControl.Forecast` — r4133 property 12 absent from the port, OPEN
+  (GOLDEN_REBASE G1.2 audit settlement, 2026-08-29).** r4133 declares **12**
+  class properties where the pinned dss_capi 0.14.5 declares 11:
+  `.inputs/electricdss-code-r4133-trunk/Version8/Source/Controls/ESPVLControl.pas:133`
+  (`NumPropsThisClass = 12`) and `:178` (`PropertyName^[12] := 'Forecast'` —
+  "Loadshape object containing daily forecast"). The port mirrors capi
+  (`elements/control/espvl_control/mod.rs`, `NUM_PROPS = 14` incl. the
+  `TCktElementClass` tail + `Like`), so the property is **not implemented**. It is
+  also **invisible to the R4133_PROPS census machinery**: the r4133 DLL cannot
+  instantiate ESPVLControl at all (the follow-up above), so no census case will
+  ever surface it. Whoever picks up the r4133 property line must add it by hand
+  from the source; the corpus deck deliberately does not use it (it would not
+  parse on 0.14.5).
+- **`kind=skip` ledger entries self-hit, so an r4133 blackout can never go stale
+  on its own — OPEN infrastructure limitation (surfaced by the GOLDEN_REBASE G1.2
+  audit, 2026-08-29; pre-existing).** `corpus_gate/ledger.rs:272-283`
+  (`channel_is_skipped`) sets `applied`/`exceeded_floor` and bumps `hits`
+  unconditionally whenever the case dispatches, so the fail-on-stale discipline is
+  satisfied trivially for `kind=skip` — an entry keeps reporting "1 hit" whether
+  or not the upstream defect still exists. This affects all five skip entries
+  today (`r4133-espvlcontrol-uninstantiable` + the four `r4133-*-303`). No
+  automatic fix is possible without actually running the crashing case, so the
+  procedure is manual; it is spelled out in `r4133-espvlcontrol-uninstantiable`'s
+  `source` (the four older entries still lack it — adding it there is a separate,
+  digest-moving edit): whenever the r4133 binary is re-vendored
+  (TESTING.md §"Re-vendor the r4133 binary"),
+  re-probe the skip-bearing cases with `DSS_GATE_SEED_LEDGER=1
+  DSS_GATE_SEED_ONLY=<case>` and delete any entry whose cause upstream has fixed,
+  so the r4133 channel re-lights instead of staying dark forever.
 - **`CorpusGuard` can leak deck-written artifacts under concurrency —
   OPEN, out-of-scope observation (seen during GOLDEN_REBASE G1.2, 2026-08-29).**
   One `cargo test --workspace` run left five untracked files in
