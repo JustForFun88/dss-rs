@@ -221,8 +221,8 @@ run it whenever a `compat` kernel, a lane alias or the solver changes.
 The unified live corpus gate
 (`crates/dss-core/tests/corpus_gate.rs`, successor of `corpus_live.rs`) is part
 of `cargo test` and runs **unconditionally**: one scheduler-driven test
-(`corpus_gate_all_cases_match_engines`) walks all 521 manifest cases — solving
-the 517 that are not abort-by-design
+(`corpus_gate_all_cases_match_engines`) walks all 523 manifest cases — solving
+the 519 that are not abort-by-design
 (vendored `tests/corpus/electricdss-tst` decks + the three synthetic families)
 on the Rust engine and live-compares the full model against each case's gating
 channel(s) — the pinned dss-python oracle (`capi_v0145`) and/or the EPRI r4133
