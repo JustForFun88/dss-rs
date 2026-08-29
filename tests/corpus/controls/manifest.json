@@ -2982,6 +2982,86 @@
    ],
    "wp": "OG-1.7",
    "note": "UPFC mode 3 (Dual) DAILY multi-step: gates the Sr0/Sr1 shift-register cross-step persistence (UPFC.pas ll.81-82, never zeroed between solves; Rust upfc/mod.rs recalc mirrors via Vec::resize) that the snapshot upfc_dual deck cannot reach. A 4-point daily loadshape (0.7/1.0/1.25/0.9) ramps the load each hour so the UPFC re-regulates from the Sr0/Sr1 carried over from the prior step. All 4 steps converge (22/16/26/24 iters); QIdeal walks per step (5340/7727/9465/6885 var). All 14 UPFC state variables + full model compared PER STEP. Feature-sensitive (two-process bit-identical): at step1 the dual series deadband does not re-fire so Sr0 STAYS at (79.40,-261.23) while mode=1 on the same feeder moves Sr0 to (111.26,-328.50) - the persisted Sr0 is exactly the cross-step divergence; mode=1 also zeros QIdeal every step; mode=0 zeros Sr0/Sr1/QIdeal every step."
+  },
+  {
+   "path": "espvlcontrol/espvlcontrol.dss",
+   "engines": "both",
+   "ad": "off:unclassified-new-deck",
+   "kind": "micro",
+   "n_steps": 12,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "ESPVLControl.sys",
+     "props": [
+      "Element",
+      "Terminal",
+      "Type",
+      "kWBand",
+      "kvarlimit",
+      "LocalControlList",
+      "LocalControlWeights"
+     ]
+    },
+    {
+     "element": "ESPVLControl.scan",
+     "props": [
+      "Type",
+      "kWBand",
+      "kvarlimit",
+      "LocalControlList",
+      "LocalControlWeights"
+     ]
+    },
+    {
+     "element": "ESPVLControl.loc1",
+     "props": [
+      "Type",
+      "LocalControlList",
+      "LocalControlWeights",
+      "PVSystemList",
+      "PVSystemWeights",
+      "StorageList",
+      "StorageWeights"
+     ]
+    },
+    {
+     "element": "ESPVLControl.loc2",
+     "props": [
+      "Type",
+      "PVSystemList",
+      "PVSystemWeights",
+      "StorageList",
+      "StorageWeights"
+     ]
+    },
+    {
+     "element": "ESPVLControl.off",
+     "props": [
+      "Type",
+      "enabled",
+      "LocalControlWeights"
+     ]
+    },
+    {
+     "element": "Generator.g1",
+     "props": [
+      "kw",
+      "kvar"
+     ]
+    },
+    {
+     "element": "Generator.g2",
+     "props": [
+      "kw",
+      "kvar"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "note": "GOLDEN_REBASE G1.2: the ONLY live coverage of class ESPVLControl (no vendored or synthetic deck instantiated it before). Five ESPVLControls on one monitored line over a 12-step daily ramp whose head power crosses the hardcoded FkWLimit=8000 kW (ESPVLControl.pas:321 -- there is no kWLimit property), so |PDiff|>HalfkWBand fires on BOTH signs (measured on the pinned oracle: PDiff -5887/-4520/-2960/-1482/-367/+754/+1505/+380/-1111/-2407/-3879/-5341). Covers all three Sample paths: sys = SystemController over a NAMED LocalControlList with weights [3,1]; scan = SystemController with NO list, so MakeLocalControlList sweeps the class for ENABLED controls and allocates uniform weights -- its LocalControlWeights probe moves '' -> '[ 1 1 1 1]' only because Sample ran; loc1/loc2 = LocalControllers whose PVSystem/Storage pointer lists are dead upstream (round-trip only); off = disabled, so it never joins scan's fleet. ESPVLControl is a proven no-op on circuit state (Sample type-confuses each list entry as a TGeneratorObj and writes non-electrical memory; it never pushes a control action), so g1/g2 must hold their input bases and the event log must stay EMPTY -- both are compared, and a port that actually dispatched the generators fails here. Feature-sensitive through the probes (two-process bit-identical on the pinned oracle): enabling `off` makes scan's weights '[ 1 1 1 1 1]'; sys weights [5,2] renders '[ 5 2]'; scan type=LocalController blanks its weights entirely (the Ftype gate on MakeLocalControlList). No MakePosSequence verb: the ESPVLControl override dereferences the always-NIL ControlledElement and aborts the oracle (docs/wpg21_makeposseq_probes.md; makeposseq_ctrl.dss:9-13)."
   }
  ]
 }
