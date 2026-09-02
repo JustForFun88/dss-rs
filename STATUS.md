@@ -89,7 +89,8 @@ it passes with no ledger entry; the multi-phase form is pinned in-engine
 (12 tests, incl. a coded-vs-longhand auto whose Y and node voltages are
 bit-identical). The full re-census records the **9** value pairs the closure makes
 live, one of them a genuine bin-7 jump (`autotrans.wdgcurrents`) that sits
-entirely on capi-only cases and is therefore out of RP4.1's scope. Its audit
+entirely on capi-only cases and is therefore out of RP4.1's scope (root-caused
+2026-09-03 by §RP3.12: an r4133 `UPSTREAM_BUG`, never reproduced). Its audit
 round settled **8** findings (1 major), the major one by re-measurement: the
 fourth `HIDE_R4133` carrier is the first on a class with committed `Dump`
 goldens, so the flag's un-hide blast radius is **8** artifacts and +7
@@ -320,6 +321,9 @@ acceptance — and RP2.3's `reactor.kvar` carve-out hand-off is discharged by th
 floor claiming it.
 **WP-RP3 is OPEN — but nothing in it blocks the unmask any more: every sub-step
 RP4.1 waits on (RP3.1–RP3.4 below, RP3.5–RP3.9 in the records above) has landed,
+as has §RP3.12 (2026-09-03, RP3.9's P0 open item — the 34
+`controls:autotrans/*` `wdgcurrents` cells, an r4133 `UPSTREAM_BUG` no lane
+reproduces; it never blocked the flip, all four of its decks being capi-only),
 and what is left is §RP3.10 and §RP3.11, both deliberately sequenced *after*
 RP4.1 (they block §RP5.2, plan §0). Its four bin-7 root-cause sub-steps are ALL
 COMPLETE — RP3.1
@@ -2201,7 +2205,9 @@ still name `§1.3 (autotrans.wdgcurrents)` as the owner — left as history, the
 in-scope column is 0 either way, and the dated correction at :213ff points here.
 (c) The two test lanes again dropped seven untracked
 `tests/corpus/electricdss-tst/Test/AutoTrans/*.txt` files — the known
-overlapping-guard snapshot race recorded at :7398-7413, third sighting, removed
+overlapping-guard snapshot race recorded in §"Standing open follow-ups" as
+"`CorpusGuard` can leak deck-written artifacts under concurrency" (cited by
+string, not by line, so no later insert can stale it), third sighting, removed
 by exact name; no tracked corpus or golden file moved.
 
 **Audit settlement (2026-09-03, `/audit-code` + `/audit-tests`, 12 findings:
@@ -6116,7 +6122,8 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
 > Plan: `R4133_PROPS_PLAN.md` §WP-RP3. Same branch (`r4133-props`), same
 > per-sub-step ritual. Four bin-7 root-cause pairs (RP3.1–RP3.4) plus the five
 > sub-steps the WP-RP2 triage opened (RP3.5–RP3.7 from RP2.2, RP3.8 from RP2.3's
-> kill ruling, RP3.9 from the RP2.4 audit settlement). RP4.1 waits on all of
+> kill ruling, RP3.9 from the RP2.4 audit settlement) plus §RP3.12, which RP3.9's
+> own P0 open item opened. RP4.1 waits on the first nine of
 > them; **RP3.5 landed 2026-08-28 (audit settled 2026-08-29), RP3.6 both parts
 > 2026-08-29 (audit settled the same day) and RP3.7 2026-09-02 (audit settled the
 > same day: 11 findings, 9 fixed, 2 fixed with a sub-claim refuted, none
@@ -6126,10 +6133,14 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
 > 2026-09-02** as well (27 pairs, all `PRECISION_ROUNDTRIP`, no product-crate
 > line; audit settled 2026-09-03 — 15 raw findings, 11 distinct: 9 fixed,
 > 2 recorded, none touching a verdict), so every WP-RP3 sub-step **RP4.1 waits
-> on** has landed and the unmask is no longer blocked here. The WP's two
+> on** has landed and the unmask is no longer blocked here. **§RP3.12 landed
+> 2026-09-03** as well (audit settled the same day: 12 findings, 11 distinct —
+> 9 fixed, 2 recorded, 0 refuted) — RP3.9's P0 open item, settled
+> `UPSTREAM_BUG`/never-reproduced with zero product-crate lines, and no
+> precondition to the flip either, its four decks being capi-only. The WP's two
 > remaining sub-steps, §RP3.10 and §RP3.11, run after RP4.1 and block §RP5.2
-> instead (plan §0). The RP3.6, RP3.7, RP3.8 and RP3.9 records live in §1 above,
-> beside RP3.5's narrative one.
+> instead (plan §0). The RP3.6, RP3.7, RP3.8, RP3.9 and RP3.12 records live in
+> §1 above, beside RP3.5's narrative one.
 
 - **RP3.1** (2026-08-24) — `swtcontrol.delay`: **a wired property that r4133
   silently ignores.** **Zero product-crate bytes** (the port already behaves
@@ -7648,7 +7659,12 @@ the site comment carries each row's measured cost.
   case-insensitive collision `corpus_gate/runner.rs:42-55` and the G2.2d record
   already describe, now observed on the leak itself. Deleted by name (never a
   recursive delete); both gate lanes were green with them present, so the leak
-  still costs nothing but hygiene. Two sightings make it a pattern, not a fluke:
+  still costs nothing but hygiene. **Third and fourth sightings, 2026-09-03, at
+  R4133_PROPS §RP3.12's own gate and settlement runs:** seven and then six
+  untracked files in the same directory (`AutoHLT_*` / `auto3bus_*`, the
+  spelling and the exact set varying again), both lanes green with them present,
+  both removed by exact name; no tracked corpus or golden file moved. Four
+  sightings make it a pattern, not a fluke:
   whoever picks it up should start with `DSS_GATE_JOBS=1` per the G2.2d note.
 
 **Carried-forward handoffs — work a *declared-complete* plan deferred to a
