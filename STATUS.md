@@ -1406,7 +1406,8 @@ provenance text.
 bytes moved.** The five pairs RP2.3's kill ruling re-routed here
 (`indmach012.pf`, `storagecontroller.kwhtotal`/`kwtotal`/`kwhactual`/
 `kwactual`, 1 064 frozen cells / 772 in scope) now render the live computed
-value on `?`, `Dump` and `element_properties`, in both lanes, with no `cfg`.
+value on `?`, `Dump`, `element_properties` and — since the audit settlement
+below — `Save`, in both lanes, with no `cfg`.
 Every number below was measured — the r4133 bytes come from the vendored EPRI
 DLL (`Version 11.0.0.1 (64-bit build)`) through `epri-worker`, the capi bytes
 from the pinned dss-python 0.15.7 / dss_capi 0.14.5, and every count is read
@@ -1625,17 +1626,21 @@ way: `oracle_parity_cfg_gate::teardown_markers_and_the_register_agree` walks the
 **whole repository** and reserves the WP-G2 teardown marker spellings for rows
 of that register (decrements of the `SPLIT_ALIAS_POPULATION` /
 `Escape::WholeCase` censuses), which RP3.8 does not produce, so its nine markers
-were re-spelled `RP3.8 EXPECTED-VALUE PIN [row]` / `RP3.8 LANE EXCLUSION [row]`;
-the same walk's `SKIP_DIRS` gained `tmp` (the gitignored scratch root — a
-throwaway `.rs` there could red the mandatory gate, and one did), verified
-against the fact that no tracked path has a `tmp` segment at any depth and
-non-vacuous both ways.
+were re-spelled `RP3.8 EXPECTED-VALUE PIN [row]` / `RP3.8 LANE EXCLUSION [row]`
+(the settlement below gave that loose vocabulary its own enforcement, so it can
+no longer shadow the register); the same walk's `SKIP_DIRS` gained `tmp` (the
+gitignored scratch root — a throwaway `.rs` there could red the mandatory gate,
+and one did), non-vacuous both ways and, since the settlement, **anchored at the
+repository root** exactly like `.gitignore`'s `/tmp`, so a future
+`crates/…/src/tmp/` cannot leave the walk.
 
 **Recorded, not chased.** (a) `batchedit '… where <prop> > x'`
 (`exec/batchedit.rs:259-270`) is a `&self` `get_value` reader, so it sees the
 render cache instead of the live value; unexercised by any golden and by all 523
 cases (re-confirmed by the census), and widening the refresh needs `&mut self`
-plumbing outside this sub-step → `ORPHANED_GAPS.md` §1.17. (b)
+plumbing outside this sub-step → `ORPHANED_GAPS.md` §1.17. (The inventory this
+item stood on was **wrong by one** — `Save` is a fifth reader, and the audit
+settlement below fixes it; §1.17 now records five readers, four refreshed.) (b)
 `Dss::element_variables` still perturbs: state variable #21 runs
 `terminal_power` on `self`, so reading an IndMach012's variables on an unstamped
 cache advances the slip-Newton — pre-existing, mirroring r4133's `Get_Variable`
@@ -1664,6 +1669,105 @@ false — both engines' machine state goes NaN there (r4133 `? slip` = `'NAN'`,
 the port's terminal powers NaN) and the port renders `----`, `float_to_str_ex`'s
 NaN spelling. That is a render convention over identical state, not a divergence
 and not a pinned value; the doc now says so.
+
+**RP3.8 audit settlement (2026-09-02) — 9 raw findings → **8** after dedup (the
+escaped-`\n` artifact was raised by both lenses); **one major**, seven fixed, one
+recorded, none dropped; `FIX` in both lanes.** Every claim was re-derived here
+before it was acted on: both probe legs replayed on the vendored EPRI DLL
+(11.0.0.1) through `epri-worker`, four mutations run and restored, and the
+r4133 bytes measured rather than transcribed.
+
+*The major one — `Save` is a **fifth** `ClassProps::get_value` reader, and it
+rendered a cache nobody refreshed.* The sub-step's own inventory said four
+(`?`, `Dump`, `element_properties` refreshing at the choke point;
+`batchedit … where` not). `Save` (`report/save/save.rs:38`, reached from
+`exec/save_circuit.rs` and `exec/report.rs::write_class_file`) is the fifth, and
+it emits every property a deck explicitly **set** — and a write to one of these
+read-only properties is silently ignored *yet still marks the property set*, so
+the serializer really did reach the render caches. Measured, same decks, port vs
+r4133: a deck writing `pf=0.5` saved `PF=1` here and `pf=0.886059` upstream —
+and `PF=0.886059022116548` here if a `?` happened to precede the save, i.e. an
+output that depended on the session's **read history**, which is the exact
+contamination shape the corpus gate's three-run artifact exists to forbid; a
+deck writing `kWhTotal=42` saved `kWhTotal=0` here and `kWhTotal=6000` upstream.
+The same latency was then found on the older `READS_VTERMINAL` marker, where it
+**pre-dates RP3.8**: a deck writing `wdgcurrents=` saved an all-zero buffer here
+while r4133 saves the solved currents. Fixed once, uniformly:
+`Dss::refresh_render_caches_for_save` runs the existing per-object choke point
+over the store before the serializer renders (`Save circuit`) or over one class
+(`Save <class>`), so all four of its jobs happen and nothing but a marked
+property's cache moves. Pinned by
+`exec::tests::report::save_renders_the_live_result_properties` — five legs
+carrying r4133's own bytes, including the cold/warm equality that is the
+read-history regression's tripwire — proven non-vacuous by reverting each call
+site. **No committed byte moved:** no corpus deck and no golden writes any of the
+six properties (`wdgcurrents *=` has zero hits in the whole corpus), and
+`save_roundtrip` / `golden_reports` / `golden_json` are green. `ORPHANED_GAPS.md`
+§1.17 now records five readers, four refreshed, with the `batchedit` filter as
+the one that stays.
+
+*The other six fixes.* **(2) The flag's holder set is now tied to the dispatch.**
+`refresh_live_result_cache` is a hardcoded two-arm `if`, so a third class given
+`RENDERS_LIVE_RESULT` would have rendered a stale cache silently;
+`exec::tests::report::renders_live_result_holders_have_a_refresh_arm` walks the
+registry the executive actually builds and pins the holder set, and the function
+now ends in a `debug_assert!` that fires on a holder reaching no arm — mutation:
+giving `Transformer.WdgCurrents` the flag reds both. **(3) The two "ignored by a
+JSON load" tests now test the flag they cite.** Both passed with
+`SILENT_READ_ONLY` dropped, because these five have no `set_f64` arm and
+"nothing was stored" holds either way; each now also asserts the property is not
+**stamped** into `PrpSequence` (which is what `edit_property` would do without
+the flag — and a stamped property is one `Save` emits, the same finding as the
+major one seen from the load side). Mutation: dropping the flag now reds both.
+**(4) The sub-step marker vocabulary is enforced.**
+`oracle_parity_cfg_gate::substep_markers_are_tagged_and_do_not_shadow_the_register`
+requires every loose marker to carry its owning `RP<n>.<n>` tag, forbids it from
+naming a row that IS in `TORN_DOWN_ROWS` (the copy-paste hazard: such a row must
+wear the reserved spelling the register cross-checks), and requires a pin marker
+to sit above a real `#[test]` — non-vacuous on today's nine, and mutation-checked
+both ways. **(5) The walk's `tmp` skip is anchored at the repository root**, like
+`.gitignore`'s `/tmp`, instead of matching any directory named `tmp` at any
+depth: the old form rested on a hand-verified premise and would have let a future
+`crates/…/src/tmp/` leave the whole-repository walk. **(6) `write_gate_dump`'s
+justification is corrected.** Its claim that the strip "costs the artifact
+nothing" is false on the r4133 channel, where the gate DOES value-compare the
+(e)/(f)/(g) rows the channel-blind `skip_prop_ub` nulls; the doc now states the
+loss precisely — a real contamination still fails the artifact through the
+`verdict` string, what is lost is the narrower within-tolerance drift signal for
+those eight oracle-side renders — and names the channel-aware strip as the
+alternative. **(7) Two record defects:** the plan's "Six points" listed seven,
+and the pin doc understated its own literal — re-measured, r4133 read **without**
+its perturbing pre-read answers `'0.908916'` on that deck, exactly
+`fmt_g(0.908915557341299, 6)`, so the step-0 cell is r4133-**corroborated**; only
+r4133's own mutation separates the two schedules. (The escaped `\n` in
+`props_norm.rs`'s assert message — the finding both lenses raised — is gone.)
+
+*Recorded, not fixed.* **`SKIP_PROPS` has no liveness guard** (pre-existing, all
+17 rows): the disposition tests prove every row is decided and that the two
+channel lists partition it, but a row that has stopped masking anything is
+accepted silently — and for group (g) the failure mode is the engine reverting to
+`''`, after which the capi compare AGREES. What covers it today is out of
+harness: the expected-value pins and the r4133 channel, each of which reds on
+exactly that revert (re-verified by mutation). A per-row mask counter threaded
+through the corpus gate would close it in-harness; that is harness work no
+sub-step owns, and it is recorded at the `SKIP_PROPS` declaration itself.
+
+*Gate.* All five commands green in both lanes, each exit code read individually:
+**4 274 passed / 0 failed / 5 ignored per lane**, the two totals identical and
+the five `ignored` the same pre-existing ones (+3 on the sub-step's 4 271 — the
+two new engine-side tests and the marker check; no `#[ignore]`, no name filter).
+`corpus_gate` **131** over the full 523-case population in both lanes
+(138.9 s / 148.4 s) with every ledger entry hit and none stale;
+`oracle_parity_cfg_gate` **11** (+1), `dss-core --lib` **1 482** (+2), and
+`golden_lock` 4 / `golden_schema` 104 / `golden_json` 117 / `golden_reports` 305
+/ `props_roundtrip` 1 / `props_r4133_pins` 43 / `props_r4133_replay` 132 /
+`props_r4133_evidence_lock` 11 all unchanged — no golden re-baselined, no
+tolerance touched, no count lock moved. `lane_diff` was re-run because the fix
+adds a refresh pass on a new surface: **PASS**, 523 cases / 3 220 861 records,
+**`max |Δ| = 0.000e0` and `max rel = 0.000e0` on all eight gated kinds** (conv
+2 162, cur 1 170 100, errs 519, iter 2 162, loss 366 476, pow 1 170 100, v
+375 816, y 1 738 084, every one "(identical)"), 0 iteration counts drifted — the
+bit-identical baseline is exactly where RP3.8 left it.
 
 **Next: RP3.9** — it is what RP4.1 waits on (RP3.5, RP3.6 both parts, RP3.7
 all three parts and RP3.8 have landed; RP3.8 on 2026-09-02).
@@ -5439,7 +5543,9 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
 > them; **RP3.5 landed 2026-08-28 (audit settled 2026-08-29), RP3.6 both parts
 > 2026-08-29 (audit settled the same day) and RP3.7 2026-09-02 (audit settled the
 > same day: 11 findings, 9 fixed, 2 fixed with a sub-claim refuted, none
-> dropped)**, and **RP3.8 landed 2026-09-02** as well, so what is left is
+> dropped)**, and **RP3.8 landed 2026-09-02** as well (audit settled the same
+> day: 8 findings after dedup, one major — `Save` was a fifth, un-refreshed
+> `get_value` reader — 7 fixed, 1 recorded, none dropped), so what is left is
 > RP3.9. The RP3.6, RP3.7 and RP3.8 records live in §1 above, beside RP3.5's
 > narrative one.
 

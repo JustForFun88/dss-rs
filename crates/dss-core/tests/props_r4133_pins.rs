@@ -1834,16 +1834,24 @@ fn gictransformer_r2_honours_the_x_winding_percentage_on_the_ring() {
 /// taken **after `compile`, before the gate's own `solve`**, which is exactly
 /// where the probe read r4133 (`tmp/rp38/out_r4133.txt` §C).
 ///
-/// The post-solve reading is the last assertion and it is *port-sourced*, on
-/// purpose: it is the corpus gate's own step-0 cell — the one the capi skip row
-/// masks — and r4133's step-0 byte is **not** its expectation. r4133's `?` read
-/// recomputes the machine model when the `Iterminal` cache is unstamped and
-/// keeps the resulting slip advance, so its own pre-solve read moved its
-/// trajectory (`'0.908755'` at step 0); this port recomputes on a throwaway
-/// clone and leaves the machine alone (`elements/pc/ind_mach012/accessors.rs::
-/// refresh_live_pf`), which the unit pin `pf_is_a_pure_read` holds. Asserting
-/// r4133's step-0 byte here would pin the upstream read-that-mutates, which the
-/// 2026-08-02 policy forbids reproducing.
+/// The post-solve reading is the last assertion and it is *port-sourced* in the
+/// sense that matters here — it is read at the end of **this** schedule, which
+/// opens with a pre-solve `?`. r4133's byte on that same schedule is **not** its
+/// expectation: r4133's `?` read recomputes the machine model when the
+/// `Iterminal` cache is unstamped and keeps the resulting slip advance, so its
+/// own pre-solve read moved its trajectory (`'0.908755'` at step 0); this port
+/// recomputes on a throwaway clone and leaves the machine alone
+/// (`elements/pc/ind_mach012/accessors.rs::refresh_live_pf`), which the unit pin
+/// `pf_is_a_pure_read` holds. Asserting r4133's *perturbed* step-0 byte here
+/// would pin the upstream read-that-mutates, which the 2026-08-02 policy forbids
+/// reproducing.
+///
+/// The literal is nevertheless **r4133-corroborated**, which is the stronger
+/// statement: read without the perturbing pre-read (`compile` → `solve` → `?`),
+/// r4133 answers `'0.908916'` on this deck — exactly `fmt_g(0.908915557341299,
+/// 6)` (epri-worker, re-measured at the RP3.8 audit settlement, 2026-09-02). A
+/// pure read leaves the two engines on the same trajectory; only r4133's own
+/// mutation separates them.
 ///
 /// What a revert breaks: every assertion — a suppressed render answers `''`,
 /// which parses as no number at all.

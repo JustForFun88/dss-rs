@@ -394,9 +394,11 @@ pub struct StorageController {
 /// | `kw_actual` | `GetkWActual` | `:1162-1165`, `FleetkW` = `Σ PresentkW` (`Get_FleetkW`, `:1019-1029`) |
 ///
 /// The Rust `&self` property getter cannot reach another class's arena, so the
-/// three render surfaces refresh this cache at their one choke point
-/// (`Dss::refresh_vterminal_if_marked`, gated on
-/// [`PropFlags::RENDERS_LIVE_RESULT`]) and the getter returns the just-computed
+/// render surfaces refresh this cache first — `Dss::refresh_vterminal_if_marked`
+/// per read (`?`, `Dump`, `element_properties`),
+/// `Dss::refresh_render_caches_for_save` once up front for `Save`'s whole-class
+/// walk, both gated on [`PropFlags::RENDERS_LIVE_RESULT`] — and the getter
+/// returns the just-computed
 /// number — the same construction [`PropFlags::READS_VTERMINAL`] uses for
 /// Transformer `WdgCurrents`.
 ///

@@ -414,20 +414,32 @@ Oracle-backed pin without a new capture: the `est8` deck minus its
   today, but it is a live divergence from the behavioral authority that no gate can fail on.
 
 ### 1.17 `batchedit … where <prop> > x` reads the render cache, not the live value
-- **Deferred by:** `R4133_PROPS_PLAN.md` §RP3.8 (2026-09-02). RP3.8 owns the five live-render
-  surfaces themselves, not the fourth reader of `ClassProps::get_value`; no plan sub-step owns
-  that reader (checked against §RP3.9, §RP3.10, §RP3.11 and §RP4.1).
+- **Deferred by:** `R4133_PROPS_PLAN.md` §RP3.8 (2026-09-02) and its audit settlement. RP3.8 owns
+  the five live-render surfaces themselves, not the **fifth** reader of `ClassProps::get_value`;
+  no plan sub-step owns that reader (checked against §RP3.9, §RP3.10, §RP3.11 and §RP4.1).
 - **What.** RP3.8 made five read-only properties render a **live** result
   (`PropFlags::RENDERS_LIVE_RESULT`: `indmach012.pf` and the four StorageController fleet
-  aggregates). Three of the four `get_value` readers — `?` (`exec/command.rs`), `Dump`
-  (`exec/report.rs` → `report/save/dump.rs`) and `Dss::element_properties` (`exec/view.rs`) —
-  refresh the property's cache at the choke point `Dss::refresh_vterminal_if_marked` first. The
-  fourth, the `where <prop> <op> <x>` filter of `batchedit`
-  (`crates/dss-core/src/exec/batchedit.rs:259-270`), is `&self` and cannot: it reads whatever the
-  cache last held (the construction value until some other surface has rendered). r4133 evaluates
-  the live getter there, so a `batchedit storagecontroller..* where kWhActual > 1000 …` can select
-  a different set on the two engines. The same `&self` shape predates RP3.8 for
-  `READS_VTERMINAL`'s properties (Transformer `WdgCurrents`, RegControl `TapNum`).
+  aggregates). There are **five** `get_value` readers in `src/`, and four of them refresh the
+  cache first: `?` (`exec/command.rs`), `Dump` (`exec/report.rs` → `report/save/dump.rs`) and
+  `Dss::element_properties` (`exec/view.rs`) one object at a time at the choke point
+  `Dss::refresh_vterminal_if_marked`, and `Save` (`report/save/save.rs`, reached from
+  `exec/save_circuit.rs` and `exec/report.rs::write_class_file`) in one up-front pass over the
+  store, `Dss::refresh_render_caches_for_save`. The fifth, the `where <prop> <op> <x>` filter of
+  `batchedit` (`crates/dss-core/src/exec/batchedit.rs:259-270`), is `&self` and cannot: it reads
+  whatever the cache last held (the construction value until some other surface has rendered).
+  r4133 evaluates the live getter there, so a `batchedit storagecontroller..* where kWhActual >
+  1000 …` can select a different set on the two engines.
+- **The `Save` half of this row was a real defect and is fixed, not deferred** (audit settlement,
+  2026-09-02): `Save` emits every property a deck explicitly set, and a write to a read-only
+  property is silently ignored *yet still marks the property set*, so the serializer really did
+  reach these caches — writing `PF=1` / `kWhTotal=0` by default and the live number only when an
+  earlier `?` had refreshed it (r4133, measured: `pf=0.886059`, `kWhTotal=6000`). The same latency
+  pre-dated RP3.8 on `READS_VTERMINAL` (`Transformer.WdgCurrents` saved as an all-zero buffer
+  where r4133 saves the solved currents) and is fixed by the same pass. Pinned by
+  `exec::tests::report::save_renders_the_live_result_properties`; no corpus deck or golden writes
+  any of the six properties, so no committed byte moved (swept 2026-09-02). RegControl `TapNum` is
+  the one marked reader that was already correct on `Save` (its `tap_snap` is resynced by the
+  control action itself — probed: saved `TapNum=6`, the live tap).
 - **Blast radius today: zero cells.** No committed golden and none of the 523 corpus cases
   filters on any of the marked properties (swept for RP3.8 over the whole population; the
   `claims` census produces no cell through that path).
