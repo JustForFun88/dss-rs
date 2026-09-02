@@ -318,7 +318,11 @@ UNCLAIMED 1 654 / 425 / 37 — the delta is exactly RP3.9's 70 cells).
 `DECLARED_RP24` `(2101, 71, 2021)` → **`(0, 0, 0)`** — the sub-step's own
 acceptance — and RP2.3's `reactor.kvar` carve-out hand-off is discharged by the
 floor claiming it.
-**WP-RP3 is OPEN; its four bin-7 root-cause sub-steps are ALL COMPLETE — RP3.1
+**WP-RP3 is OPEN — but nothing in it blocks the unmask any more: every sub-step
+RP4.1 waits on (RP3.1–RP3.4 below, RP3.5–RP3.9 in the records above) has landed,
+and what is left is §RP3.10 and §RP3.11, both deliberately sequenced *after*
+RP4.1 (they block §RP5.2, plan §0). Its four bin-7 root-cause sub-steps are ALL
+COMPLETE — RP3.1
 (`swtcontrol.delay`), RP3.2 (`windgen.kvar`), RP3.3 (`generator.model`) and
 RP3.4 (`gictransformer.r2`)** (all 2026-08-24, one commit each, **zero
 product-crate bytes and zero
@@ -2067,18 +2071,25 @@ source and re-derivation, never against plausibility:
   restoring deck state (every restore is read back, and the tree is clean after
   the run).
 
-*Settlement gate.* All five commands green in both lanes,
-`props_r4133_pins` **53**, `props_r4133_replay` **133**,
-`props_r4133_evidence_lock` **11**, `oracle_parity_cfg_gate` **11**, no
-`#[ignore]` and no name filter. `lane_diff` was again not required: the
-settlement touched the same three test/evidence files plus this record, and no
-product crate.
+*Settlement gate.* All five commands green in both lanes, each exit code read
+individually, at the **same totals as the sub-step's own gate — 4 285 passed /
+0 failed / 5 ignored per lane over 74 test binaries** (the settlement adds
+assertions to existing pins, not tests): `props_r4133_pins` **53**,
+`props_r4133_replay` **133**, `props_r4133_evidence_lock` **11**,
+`oracle_parity_cfg_gate` **11**, `corpus_gate` green on both channels with every
+ledger entry hit and none stale, no `#[ignore]` and no name filter. `lane_diff`
+was again not required: the settlement touched the same three test/evidence
+files plus this record, and no product crate.
 
-**RP3.9 landed 2026-09-02** — the display floor's round-trip residue is settled
-as 27 pinned `PRECISION_ROUNDTRIP` pairs (the §RP3.9 record above), so **every
-RP1–RP3 sub-step of this plan has landed** (RP3.5 2026-08-28, RP3.6 both parts
-2026-08-29, RP3.7 all three parts 2026-09-02, RP3.8 2026-09-02, RP3.9
-2026-09-02) and nothing in WP-RP1/2/3 blocks the unmask any more.
+**RP3.9 landed 2026-09-02** (audit settled 2026-09-03) — the display floor's
+round-trip residue is settled as 27 pinned `PRECISION_ROUNDTRIP` pairs (the
+§RP3.9 record above), so **every RP1–RP3 sub-step the unmask waits on has
+landed** (RP3.5 2026-08-28, RP3.6 both parts 2026-08-29, RP3.7 all three parts
+2026-09-02, RP3.8 2026-09-02, RP3.9 2026-09-02) and nothing in WP-RP1/2/3 blocks
+it any more. The two RP3 sub-steps still open — §RP3.10 (the reproduced
+`QMode=0` dispatch, user go-ahead required) and §RP3.11 (the `Save`/`Dump`
+re-serialization surface) — are outside that rule by construction: they run
+after RP4.1 and block §RP5.2, not the flip (plan §0).
 
 **Next: RP4.1** — `all_properties` on the r4133 channel (G1.1's deliverable).
 It carries two preconditions of its own, both to be discharged **in** the
@@ -5874,9 +5885,12 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
 > day: 8 findings after dedup, one major — `Save` was a fifth, un-refreshed
 > `get_value` reader — 7 fixed, 1 recorded, none dropped), and **RP3.9 landed
 > 2026-09-02** as well (27 pairs, all `PRECISION_ROUNDTRIP`, no product-crate
-> line), so every WP-RP3 sub-step has landed and RP4.1 no longer waits on this
-> WP. The RP3.6, RP3.7, RP3.8 and RP3.9 records live in §1 above, beside
-> RP3.5's narrative one.
+> line; audit settled 2026-09-03 — 15 raw findings, 11 distinct: 9 fixed,
+> 2 recorded, none touching a verdict), so every WP-RP3 sub-step **RP4.1 waits
+> on** has landed and the unmask is no longer blocked here. The WP's two
+> remaining sub-steps, §RP3.10 and §RP3.11, run after RP4.1 and block §RP5.2
+> instead (plan §0). The RP3.6, RP3.7, RP3.8 and RP3.9 records live in §1 above,
+> beside RP3.5's narrative one.
 
 - **RP3.1** (2026-08-24) — `swtcontrol.delay`: **a wired property that r4133
   silently ignores.** **Zero product-crate bytes** (the port already behaves

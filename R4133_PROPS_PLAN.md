@@ -151,9 +151,11 @@ lands after RP2.3 whenever its outcome is an echo row; RP3.4 lands after RP2.3
 triage opens, **§RP3.8, which RP2.3's kill criterion opened** (landed 2026-09-02: the
 engine renders all five live and its 1 064 frozen cells are accounted
 `RP38_SUPERSEDED` / `SUPERSEDED_RP38` in the replay) **and §RP3.9,
-which RP2.4's audit settlement opened** (55 spellings / 27 pairs whose r4133
-value is no `%.Ng` render of ours — `RP39_ROUTING`; none of them in scope today,
-which is why the block is a discipline and not a gate failure), and after its own
+which RP2.4's audit settlement opened** (landed 2026-09-02: all 27 pairs settled
+`PRECISION_ROUNDTRIP` and pinned, `OPEN_RP39 = (0, 0, 0)`) (55 spellings / 27
+pairs whose r4133 value is no `%.Ng` render of ours — `RP39_ROUTING`; none of
+them in scope today, which is why the block was a discipline and not a gate
+failure), and after its own
 in-sub-step precondition, the **per-cell narrowing of the 20 mixed echo rows**
 (RP2.3's audit settlement, §RP4.1's first paragraph); RP5 is last.
 **Two RP3 sub-steps are deliberately outside that rule.** **§RP3.10** (the
@@ -1999,6 +2001,13 @@ in scope); `RP39_ROUTING`/`DECLARED_RP39` shrink with their deltas stated in
 STATUS. **Blocks RP4.1** (§0). Tier: `opus-high+`.
 Outcome: the population RP2.4's mechanism clause refuses has an owner and a
 verdict, not a floor.
+
+**As executed (2026-09-02, audit settled 2026-09-03) — all 27 pairs
+`PRECISION_ROUNDTRIP`, held by ten expected-value pins, no `PORT_BUG` /
+`UPSTREAM_BUG` / `KILL`, zero product-crate lines and zero ledger entries
+(`count_in_scope = 0` on all 70 cells); `OPEN_RP39 = (0, 0, 0)` while
+`DECLARED_RP39` stays `(55, 27, 19)` as a measurement. Full record: STATUS
+§RP3.9.**
 
 ### RP3.10 — the reproduced `QMode=0` dispatch (opened by the RP3.2 audit settlement)
 

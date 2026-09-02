@@ -1184,9 +1184,11 @@ round through)? Exactly two upstream mechanisms answer yes:
    exact one.
 
 Anything else is refused: a chained or derived round trip (r4133's `load.kva`
-recomputed from an already round-tripped `pf`; `vsource.puz*` from a
-round-tripped Z; `line.b0`/`b1` from a round-tripped C), or a plain state
-difference that happens to be small. Those 27 pairs are RP3.9's.
+recomputed from an already round-tripped `kW`/`kvar` token pair; `vsource.puz*`
+from a round-tripped `BasekV`; `line.b0`/`b1` from a round-tripped C), or a plain
+state difference that happens to be small. Those 27 pairs are RP3.9's, and it
+read every chain off the Pascal — the three heads named here are its measured
+ones, not the `pf`/`Z` the RP2.4 settlement first guessed.
 
 The getters that print at a fixed precision, for the reader tracing a cell — the
 floor reads the precision off the r4133 spelling itself, never off this table.
@@ -1286,13 +1288,22 @@ port does **not** reproduce the truncated render — it prints the full value an
 the floor classifies the difference). If r4133 ever widened those `Format`
 strings, the floor would simply stop claiming; nothing would break.
 
-*What it refuses for the mechanism* is a **work list**: 55 spellings over 27
+*What it refuses for the mechanism* was a **work list**: 55 spellings over 27
 pairs (`RP39_ROUTING`) where the two engines genuinely hold different doubles.
 No cell of any of them is in scope today — the claims census measures
-`count_in_scope = 0` on all 55, which is why the finding blocks nothing now — but
-they are back in `claims_unclaimed_pairs.txt` where WP-RP3 reads, and RP4.1 is
-gated on RP3.9 like on RP3.5–RP3.8 (plan §0). Each pair needs its round-trip
-chain read off the Pascal and then an expected-value pin or a ledger entry.
+`count_in_scope = 0` on all 55, which is why the finding blocked nothing — and
+they sit in `claims_unclaimed_pairs.txt` where WP-RP3 reads.
+**Settled by RP3.9 (2026-09-02, audit settled 2026-09-03):** every one of the 27
+pairs has its round-trip chain read off the Pascal and a recorded verdict — all
+27 `PRECISION_ROUNDTRIP` (the port's double is the exact one; r4133's comes from
+the `Format('%-.5g'/'%-.8g', …)` command string its own `MakePosSequence` builds
+and re-parses *upstream* of the getter, which then derives at full precision) —
+held by ten expected-value pins in `crates/dss-core/tests/props_r4133_pins.rs`
+that recompute r4133's literal from the port's own number. No ledger entry is
+owed while `count_in_scope` stays 0; the drafts, should a deck's `engines` key
+change, are staged in `tests/corpus/props_r4133/README.md`. The floor still
+refuses these cells, which is why they stay UNCLAIMED — that is the accounting,
+not an open defect. STATUS §RP3.9.
 
 **What it relaxes / what it never relaxes.**
 
