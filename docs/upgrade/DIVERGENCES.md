@@ -1371,7 +1371,9 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
   read-only #2024106 rejects the locked `Action=` post-command there (the
   not-adopted L2/C2 dss-ext surface; the port silently ignores it, matching
   0.14.5/r4133 **for `Action=` and `State=`**, unit-pinned
-  `locked_ignores_action_write` / `locked_ignores_normal_and_state_writes`).
+  `locked_ignores_action_write` / `locked_ignores_normal_and_state_writes` — the
+  latter renamed `locked_normal_applies_locked_state_and_action_do_not` by the
+  RP3.7 settlement below).
   **Correction (2026-08-23, R4133_PROPS RP2.2 audit settlement): the `Normal`
   half of that "matching 0.14.5/r4133" claim is FALSE.** r4133's
   `InterpretSwitchState` exits early only when the *property name* starts with
@@ -1388,7 +1390,9 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
   implements the r4133 rule and documents it (`relay/accessors.rs:416-420`). By
   the 2026-08-02 policy r4133 is the authority, so this is a port bug: the fix
   is owned by `R4133_PROPS_PLAN.md` §RP3.7 (a2) (both lanes, with a pin), and
-  `locked_ignores_normal_and_state_writes` is re-pointed there. No corpus deck
+  `locked_ignores_normal_and_state_writes` is re-pointed there (RP3.7 re-pointed
+  it by renaming, to
+  `locked_normal_applies_locked_state_and_action_do_not`). No corpus deck
   writes `normal=` under lock, so nothing gates on it today.
   **Settlement (2026-09-02, R4133_PROPS RP3.7 — landed in BOTH lanes).** The
   scalar model went with the fix. `Normal` and `State` are now r4133's per-phase

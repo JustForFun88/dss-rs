@@ -1084,7 +1084,7 @@
     },
     {
       "path": "tests/golden/json/schema_divergences.json",
-      "sha256": "f0edae44e28b57699abbbd021e6c1cbe30ff31028c480f4fd83e5836edd814b6",
+      "sha256": "7d83b18876f520422cce3fc849c2a63502503811178f1caddad9beff22288234",
       "anchor": "capi_v0145",
       "produced_by": null
     },
@@ -1096,7 +1096,7 @@
     },
     {
       "path": "tests/golden/json/schema_full_port.json",
-      "sha256": "c82e094883324d875781058874d8a4e2616a5b32c3910cc3fc59b5da99909e2a",
+      "sha256": "06a2d5b2849f57f5f9c0879e6c0b9229fd47b6107ebb1d97002709cf257288c6",
       "anchor": "self",
       "reason": "born-self: the port's own DSS_ExtractSchema document, spelled in the fpjson/CRLF rendering the parity lane produces. Its external half (json/schema_full_oracle.json + json/schema_divergences.json) stays capi_v0145 and frozen. Regen today bypasses the rails via REGEN_SCHEMA_PORT (golden_schema.rs::full_document_matches_port_golden); G3.6 routes it through harness::snapshot_*.",
       "produced_by": "parity"
@@ -1659,9 +1659,9 @@
     },
     {
       "path": "tests/golden/props/swtcontrol.json",
-      "sha256": "061062afdfc9493aa77488de9c62790f3c39e009bf3adb3f591b8f0cd841bccd",
+      "sha256": "21a4456161945154a9c19b5fd8ebeceb16762692caa56026b2f6c5d82d16f4de",
       "anchor": "capi015",
-      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them. Since R4133_PROPS RP3.7 (2026-09-02) the bytes are PARTLY DERIVED: the ten Normal/State cells were overlaid with the official EPRI r4133 DLL's own bytes (the per-phase state arrays of SwtControl.pas:589-599/:600-610, a surface no capi-line engine renders), measured by replaying this artifact's five scenarios through the epri-worker bridge with the props gate's own `clear` + `new circuit.propsprobe` preamble; the artifact's own `oracle.engine` block carries the per-cell citations. The anchor stays capi015 because r4133 is NOT this artifact's value authority - its Action, Reset, Enabled, SwitchedObj and Delay cells still hold capi-side values r4133 diverges from. A regen must repeat the r4133 overlay.",
       "produced_by": null
     },
     {

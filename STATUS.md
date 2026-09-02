@@ -1021,9 +1021,15 @@ well as 40), and the generic tokenizer honored six tokens where `:1286` honors
 five. Relay took the same raw write seam (`interpret_relay_state`,
 `Relay.pas:1237-1308`), and its old `values.len() == 1 → ganged` heuristic — the
 bug behind the quoted-single-token rows — is deleted. r4133's own 6-phase
-initialization OOB (a fresh relay on a 6-phase line renders
-`[closed, closed, closed, open, open, open, ]`, slots 4..6 being a heap read) is
-**not** reproduced, per the 2026-08-02 policy.
+initialization OOB is **not** reproduced, per the 2026-08-02 policy: `Create`
+allocates three entries and the getter loops the controlled element's six phases,
+so slots 4..6 are an out-of-bounds heap read with **no defined value**. The audit
+settlement measured it both ways on the same DLL — on `decks/b1_relay6.dss`, which
+ends in a `solve`, a fresh relay reads
+`[closed, closed, closed, open, open, open, ]` (reproducible 2/2), and on the same
+construction stopped before the `solve` it reads all-closed; the flip happens at
+the `solve`, i.e. it tracks heap content, not the model. The pins therefore gang to
+a known baseline first and assert nothing about a fresh 6-phase render.
 
 **The cell arithmetic — and the measurement that decided it.** `bins.tsv` gives
 `swtcontrol.normal` and `swtcontrol.state` **59 cells / 40 in scope** each (the
@@ -1081,10 +1087,16 @@ the port matches r4133 byte-for-byte on all ten and the committed golden on all
 prose. `Action` moves in none of the five scenarios. In
 `tests/golden/json/schema_full_port.json` (regenerated in its producing parity
 lane) `SwtControl.properties.{Normal,State}` become `type: array` + `items: $ref`
-with **no** `default` key — the emitter derives an array default from the sample
-object, and a bare sample SwtControl has no controlled element — which is the
-shape `Relay` already had; `schema_full_oracle.json` is untouched and
-`schema_divergences.json` gains one amended `cause` line. `golden.lock.json` moved
+with **no** `default` key — the same **array** shape `Relay` already had, though
+the audit settlement corrected the stated reason for the missing default: the
+emitter elides one for any property flagged `NO_DEFAULT` (`State`) or
+`DYNAMIC_DEFAULT` (`Normal`), decided **before** the sample object is read
+(`schema/classes.rs::no_default`), and the empty sample array would elide it
+independently. That is why the "shape Relay already had" held for `Normal` but not
+for `State`, which carried a 3-element default until the settlement ported r4133's
+NIL-element getter guard to Relay (below) and emptied its sample array too.
+`schema_full_oracle.json` is untouched and `schema_divergences.json` gains one
+amended `cause` line. `golden.lock.json` moved
 three digests and no anchor. **The anchor decision A2b left open is: keep
 `capi015`.** Precedent and evidence point the same way — WP-U2.4 already overlaid
 r4133-only behavior on this same artifact, and the G0.1 provenance lock, six weeks
@@ -1099,8 +1111,11 @@ artifact's own `oracle.engine` block with their r4133 line citations, the
 construction `props/fuse.json`'s lock reason already describes. `golden_lock` (4)
 and `props_roundtrip` (1) are green in both lanes with the anchor unmoved.
 
-**Pins.** Unit level, both lanes: `swt_control` 30 → **51**, `relay` 64 → **69**,
-`dss-core --lib` **1464** (1462 before B2's two engine-level pins). The load-bearing ones are
+**Pins.** Unit level, both lanes: `swt_control` 26 → **51**, `relay` 63 → **68**,
+`dss-core --lib` **1464** (1462 before B2's two engine-level pins) — the
+before-counts re-measured by the audit settlement, which corrected the 30/64 this
+paragraph first carried and added two more relay pins (`relay` **70**, lib
+**1466**; see the settlement paragraph). The load-bearing ones are
 `render_is_one_token_per_controlled_element_phase`,
 `nil_controlled_element_renders_the_empty_array`,
 `a_quoted_single_token_is_per_phase_a_bare_one_is_ganged`,
@@ -1153,15 +1168,28 @@ after `edit swtcontrol.sw normal=open` on an unlocked control the port opens the
 switch at step 3 of the duty run (`State = [open, open, open, ]`, event log
 `Hour=0, Sec=0.5, ControlIter=1, Element=SwtControl.sw, Action=OPENED`) where the
 r4133 DLL leaves it closed for all eight steps and logs nothing — r4133 comments
-both bodies out. Retiring that machinery has **two** blocking channels, not one:
-the capi lane's `compare_ctrlqueue` pins its spurious `CTRL_LOCK` push, so
-`controls/swtcontrol/swtcontrol_lock.dss` must first be re-gated off
-`capi_v0145` — a manifest + ledger change RP3.7 could not make. Corpus exposure is
+both bodies out. A **locked** `normal=` arms it too, which is new with (a2): the
+scalar era refused that write outright, r4133's guard lets `n`ormal through, and
+the port now applies it — the switch stays shut (`do_pending_action` is
+`!locked`-guarded) but the queue push and the `armed` latch happen (audit
+settlement; both arms are in the tripwire). Retiring the machinery has **one**
+blocking channel, not two: `controls/swtcontrol/swtcontrol_lock.dss` is gated
+`capi_v0145` with `compare_ctrlqueue`, so the capi lane pins the spurious
+`CTRL_LOCK` push, and retiring the body means re-gating that deck onto `r4133` —
+giving up the only capi deck that both probes and property-compares a SwtControl,
+and retiring one of the five entries RP3.7 just landed. That is a channel
+decision RP3.7 **chose not to take**, not one it could not make (it edited both
+`population.lock.json` and `ledger.json` for other reasons); and the capi015
+props golden's `Action` readback is **not** a second blocker — it reads
+`current_action` through `get_i32(ACTION)`, which the property side effects
+maintain and neither `Sample` nor `DoPendingAction` writes. Corpus exposure is
 zero (every corpus `normal=` is a ganged `normal=closed` over an all-closed state,
 and `swtcontrol_lock.dss` types `normal=closed` *before* `lock=yes` on the same
-`New`), and the divergence is held on purpose by the tripwire
+`New`), the divergence is held by the tripwire
 `swt_control::tests::sample_arms_on_a_normal_write_the_retained_capi_channel`,
-whose doc says it must be **deleted, not re-baselined**, when the body goes.
+whose doc says it must be **deleted, not re-baselined**, when the body goes, and
+it is now registered as `ORPHANED_GAPS.md` §1.16 — the only RP3.7 item that moves
+a solved result, so a test doc was too weak a home for it.
 (ii) The render bound's residual staleness is observable on both engines: after
 `edit line.swk phases=1` the r4133 DLL's `? swtcontrol.sw1.state` follows
 immediately to `[closed, ]` (its getter loops the live element) while the port
@@ -1187,8 +1215,13 @@ ganged` heuristic and a whole-object lock that refuses `Normal` too, where
 `Recloser.pas`'s guard is the same name-based rule), Fuse's missing ganged path,
 Relay's absent `ControlledElement = NIL → []` render and its `set_States`
 `ArmedForReset` — are `ORPHANED_GAPS.md` §1.14; none has corpus or census
-exposure, and Relay's NIL render was deliberately not landed on a hunch because
-`state_size()` has 14 call sites there. (c) `Dump`'s store-vs-live echo for
+exposure. The NIL **render** was deliberately not landed here on a hunch
+(`state_size()` has 14 call sites) and the audit settlement landed it after
+measuring it: r4133's guard lives in the getters alone (`Relay.pas:1407`/`:1418`),
+so the port carries it in a render-only `render_size()` and leaves the twelve
+sensing/reset loops on `state_size()`; §1.14(c) keeps the behavioral half (r4133's
+`Reset` restores nothing with a nil element, `:1447`) and gains the same unported
+guard on Recloser and Fuse. (c) `Dump`'s store-vs-live echo for
 properties 6/7 goes to **§RP3.11**: r4133's `DumpProperties` (`:563-571`) echoes
 the stored parse text (`~ Normal=` when never written) while the port's generic
 dump renders the live value, consistent with `?`, `all_properties` and `Save`; no
@@ -1260,6 +1293,112 @@ iter 2 162, loss 366 476, pow 1 170 100, v 375 816, y 1 738 084, all reported
 "(identical)", 0 iteration counts drifted — so the 2026-07-31 baseline holds
 exactly and the default lane keeps precisely the parity lane's oracle standing.
 No solved-state byte moved in either lane.
+
+**RP3.7 audit settlement (2026-09-02) — 11 findings, all minor, all settled;
+`FIX` in both lanes.** Two independent audits (audit-code, audit-tests) raised 12
+raw findings; deduped to **11** (no overlap — three of them are different asks on
+one subject, the retained 0.14.5 `Sample` glue). **Nine fixed, two fixed with a
+sub-claim refuted, none dropped.** Every claim was re-derived here: the r4133
+source read line-by-line, four probes replayed on the vendored EPRI DLL
+(11.0.0.1), three mutations run and restored, and the pre-commit test counts
+re-measured off `82022dab^`.
+
+*Code fixes.* **(1) Relay's `ControlledElement = NIL → '[]'` render is ported.**
+r4133 puts that guard in the getters and nowhere else (`Relay.pas:1407`/`:1418`);
+re-measured on the DLL, a relay with `switchedobj=line.nosuch` answers `'[]'` for
+both properties where the port printed `[closed, closed, closed, ]`. The port
+carries it in a render-only `Relay::render_size()` used by `array_size` +
+`get_enum_array`, leaving the twelve sensing/reset/`MakeLike` call sites on
+`state_size()` — which is what `ORPHANED_GAPS.md` §1.14(c) was really deferring,
+and what it keeps (r4133's `Reset` restores nothing with a nil element, `:1447`;
+`Sample` faults outright, `:1071`, so there is no observable to port). Pinned by
+`relay::tests::nil_controlled_element_renders_the_empty_array`, proven
+non-vacuous by mutation. One golden byte follows: the schema emitter reads the
+sample object, so `Relay.State` loses its `default: ["closed","closed","closed"]`
+in `schema_full_port.json` — five lines, regenerated in the producing parity lane,
+predicted before it was run. §1.14 gains (d): the same guard is unported on
+Recloser (`Recloser.pas:1377`/`:1388`) and Fuse (`Fuse.pas:690`/`:701`), which
+belong with those classes' interpreter ports. **(2) The dead ordinal setters are
+now held to their interpreters.** `SwtControl::set_enum_array` (and Relay's twin,
+which the audit's framing had as deleted — it is not) is a production-dead second
+implementation of the lock guard, the five-slot cap and the `Keep` rule, whose doc
+claimed the two "can never drift" while its test asserted literals only: the
+auditor's mutation of the interpreter's lock guard left it green with the two
+paths disagreeing. Both tests are now **differential** — each row drives two
+identical controls, one through the ordinal setter and one through the
+interpreter, and asserts the r4133 bytes *and* that the two agree. Re-running that
+mutation now reds the SwtControl test on `Normal locked=true`, and the Relay
+twin — which had **no test at all** — reds on the same shape. The two docs say
+what actually holds them together. **(3) The tripwire covers the locked write.**
+`side_effects(NORMAL)` is `sample()`'s arming condition, and (a2) made a locked
+`normal=` reach it for the first time (the scalar era refused the write). Measured
+in-port: `lock=yes` then `normal=open` arms and queues **2** (the `CTRL_LOCK` push
+plus an action push r4133 never makes) while the switch itself stays closed. Both
+arms are now in `sample_arms_on_a_normal_write_the_retained_capi_channel`.
+
+*Record fixes.* **(4)** The retained-glue blockers were overstated: there is
+**one** channel (`swtcontrol_lock.dss`'s `compare_ctrlqueue` on `capi_v0145`), not
+two — the capi015 props golden's `Action` readback rides on `current_action`,
+which the side effects maintain and neither `Sample` nor `DoPendingAction`
+writes — and "a manifest + ledger change RP3.7 could not make" was contradicted by
+the commit's own edits to `population.lock.json` and `ledger.json`: RP3.7 **chose
+not to** re-gate. **(5)** That divergence now has the register row it lacked
+(`ORPHANED_GAPS.md` §1.16) — it is the only RP3.7 item that moves a solved result,
+and a test doc comment is too weak a home for a gap no gate can fail on. **(6)**
+The civanlar pin's stated mechanism was wrong: `Normal` is not untyped there —
+every one of the sixteen `New` lines declares `Action=c`, so the Edit supplemental
+(`SwtControl.pas:219-228`) copies the closed Present into Normal and latches
+`NormalStateSet`, which is exactly why the three later `action=o` edits cannot
+move it. **(7)** The unit-pin deltas did not reproduce: the before-counts are 26
+and 63 (not 30 and 64), re-measured off `82022dab^` and against `--list`.
+**(8)** Three artifacts the commit itself edited still named the deleted pin
+`locked_ignores_normal_and_state_writes`; all three now name the rename
+(`props/swtcontrol.json`'s provenance block, `DIVERGENCES.md` ×2,
+`props_r4133_replay.rs`). `R4133_PROPS_PLAN.md` §RP3.7(a2) and
+`docs/phase-records/phase-7-wp2.md` keep the old name deliberately: the first is
+the pre-landing instruction that *asked* for the re-point, the second is a frozen
+phase record of when the test existed. **(9)** `golden.lock.json`'s
+`props/swtcontrol.json` row said only "captured on … 0.15.0b4" although ten of its
+cells are now the r4133 DLL's bytes. Since the reason is register-derived (all
+eleven capi015 artifacts share `CAPI015_REASON`), the fix is a new register,
+`CAPI015_OVERLAYS`, appended per artifact, with its own stale sweep and
+well-formedness invariants — the shape `R4133_FAMILIES` uses for
+`props/fuse.json`'s derivation. The anchor stays `capi015` (r4133 is not this
+artifact's value authority: its `Action`/`Reset`/`Enabled`/`SwitchedObj`/`Delay`
+cells still hold capi-side values), and the row now says a regen must repeat the
+overlay.
+
+*Two findings whose sub-claim is refuted, with the evidence.* **(10)** "The
+missing `default` is the nil-element asymmetry" is **wrong**: the emitter's
+`no_default` short-circuits on the property flags — `NO_DEFAULT` on
+`SwtControl.State` (pre-existing, untouched by RP3.7) and `DYNAMIC_DEFAULT` on
+both `Normal`s — before the sample object is read. The proof is `Relay.Normal`
+itself: its sample array is non-empty and it still has no default. What the
+finding got right is that "the shape Relay already had" was only half true, since
+`Relay.State` carries no flag and did have a default; both statements are
+corrected in this record and in `schema_divergences.json`. **(11)** "Re-measurement
+contradicts the recorded r4133 6-phase render" is **half right**: replaying the
+very deck the record cites reproduces
+`[closed, closed, closed, open, open, open, ]` 2/2, and the counter-reading came
+from a deck without the trailing `solve` — the same session reads all-closed
+before `solve` and the OOB bytes after. So the record was not a mis-measurement
+but an over-claim: those three tokens are an uninitialized read with no defined
+value, deck- and heap-dependent, and both the STATUS text and the two pin docs now
+say so. No assertion moved — the pins gang to a known baseline first.
+
+*Gate after the settlement.* All five commands green in both lanes, each exit code
+read individually; unit level `swt_control` **51**, `relay` **70** (+2), `dss-core
+--lib` **1466** (+2), workspace **4 254** per lane (0 failed, the same five
+pre-existing `ignored`), the corpus gate green in both lanes (`corpus_gate` 131,
+144.7 s) over an **untouched** `ledger.json` — 27 causes / 45 entries, every entry
+hit, none stale — and `population.lock.json`, `golden_lock` 4 (three digests
+moved: `props/swtcontrol.json`, `schema_full_port.json`,
+`schema_divergences.json` — all predicted), `golden_schema` 104,
+`props_r4133_replay` 132, `props_r4133_pins` 40, `props_roundtrip` 1,
+`oracle_parity_cfg_gate` 10. `lane_diff` was **not** re-run: the settlement moves
+no solved state — the render guard fires only on an object with no controlled
+element, which no corpus deck builds, and everything else is tests, docs and
+provenance text.
 
 **Next: RP3.8 and RP3.9** — they are what RP4.1 waits on (RP3.5, RP3.6 both
 parts, and RP3.7 all three parts have landed; RP3.7 on 2026-09-02).
@@ -4227,8 +4366,10 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
       if RP3.6 does not land first**. r4133 is the authority; "capi does it" is
       not evidence (CLAUDE.md).
     - **RP3.7 — per-phase switch and relay state. SETTLED 2026-09-02 (`FIX`,
-      both lanes, all three parts — (a), (a2) and (b)) — see the §RP3.7 record
-      above.** (a) r4133 keeps
+      both lanes, all three parts — (a), (a2) and (b); audit settled the same
+      day, which also landed Relay's NIL-element render and opened
+      `ORPHANED_GAPS.md` §1.16) — see the §RP3.7 record and its audit-settlement
+      paragraph above.** (a) r4133 keeps
       `FPresentState`/`FNormalState : pStateArray` per phase
       (`SwtControl.pas:37-38`, `:299-305`), settable phase-by-phase from a quoted
       list (`:453-480`), each phase driving its own conductor (`:532-549`), and
@@ -5028,8 +5169,9 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
 > sub-steps the WP-RP2 triage opened (RP3.5–RP3.7 from RP2.2, RP3.8 from RP2.3's
 > kill ruling, RP3.9 from the RP2.4 audit settlement). RP4.1 waits on all of
 > them; **RP3.5 landed 2026-08-28 (audit settled 2026-08-29), RP3.6 both parts
-> 2026-08-29 (audit settled the same day) and RP3.7 2026-09-02**, so what is left
-> is RP3.8 and RP3.9. The RP3.6 and RP3.7 records live in §1 above, beside RP3.5's
+> 2026-08-29 (audit settled the same day) and RP3.7 2026-09-02 (audit settled the
+> same day: 11 findings, 9 fixed, 2 fixed with a sub-claim refuted, none
+> dropped)**, so what is left is RP3.8 and RP3.9. The RP3.6 and RP3.7 records live in §1 above, beside RP3.5's
 > narrative one.
 
 - **RP3.1** (2026-08-24) — `swtcontrol.delay`: **a wired property that r4133
