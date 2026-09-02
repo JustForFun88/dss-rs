@@ -2085,8 +2085,9 @@ ledger entry hit and none stale, no `#[ignore]` and no name filter. `lane_diff`
 was again not required: the settlement touched the same three test/evidence
 files plus this record, and no product crate.
 
-**RP3.12 (the `controls:autotrans/*` `wdgcurrents` gap) landed 2026-09-03 —
-`UPSTREAM_BUG` in r4133, never reproduced, with zero product-crate lines.** The
+**RP3.12 (the `controls:autotrans/*` `wdgcurrents` gap) landed 2026-09-03,
+audit settled the same day — `UPSTREAM_BUG` in r4133, never reproduced, with
+zero product-crate lines.** The
 sub-step exists because of RP3.9's P0 open item (note (b) and the "RECORDED, not
 fixed" bullet above): the **34** `autotrans.wdgcurrents` cells on the four
 `controls:autotrans/*` regulator decks (`autotrans_both`, `autotrans_reg`,
@@ -2135,10 +2136,12 @@ the day a deck gains the channel.
 `RegControl.rat.TapNum = 5`; the same deck with `edit RegControl.rat enabled=no`
 and the tap put back reproduces r4133's census literal `66.99186, (-28.029),
 156.314, (151.97), ...` byte for byte with `taps = [1, 1, ]`. On
-`midi_autotrans.dss` it is `73.11371` vs `78.15456` A on the series winding
-(`[1, 1.06875, ]` / `TapNum = 11` vs `[1, 1, ]`). Both edits are read back
-before the re-solve, so "nothing moved" cannot pass on an edit that never
-landed. A second, discriminating reading holds each leg to the ampere-turn
+`midi_autotrans.dss` it is `73.11371` vs `78.15456` A on the **common**
+(wye, winding 2) winding, while the **series** winding agrees to 0.018 %
+(`117.2108` vs `117.2323`) — that asymmetry IS the signature of a different
+landed tap (`[1, 1.06875, ]` / `TapNum = 11` vs `[1, 1, ]`). Both edits are
+read back before the re-solve, so "nothing moved" cannot pass on an edit that
+never landed. A second, discriminating reading holds each leg to the ampere-turn
 identity `|I_c|/|I_s|` vs `VBase_s*tap_s/(VBase_c*tap_c)` (rel < 1e-5), so the
 pin also reds if the winding-current derivation drifts without the tap moving —
 proven by a mutation probe that feeds the regulated leg tap 1.0 and reds
@@ -2155,9 +2158,11 @@ the pair total. `DECLARED_OUT_OF_SCOPE` (229, 22, 0) → **(221, 21, 0)**:
 entirely — and the third column stays 0, because a verdict does not create
 scope. RP3.9's `DECLARED_RP39` (55, 27, 19), `OPEN_RP39`, `RP39_ROUTING`,
 `RP39_PINS` and `RP39_SETTLED_VERDICTS` are byte-unchanged, and the RP2.4-dated
-(229, 22, 0) lines below (:5675, :5745, :5817-5818) stay as *that* sub-step's
-record. Both new locks are live-enforced: a mutated `(9, 1, 0)` /
-`(222, 21, 0)` copy reds three walks.
+(229, 22, 0) lines further down — the §RP2.4 record's `DECLARED_OUT_OF_SCOPE`
+(134, 18, 0) → (229, 22, 0) paragraph, its `OutOfScope` bucket row and its
+`RP24_OUT_OF_SCOPE_ROWS` note; searched by string, not by line, because every
+later record shifts them — stay as *that* sub-step's record. Both new locks are
+live-enforced: a mutated `(9, 1, 0)` / `(222, 21, 0)` copy reds three walks.
 
 **The false ledger cause is corrected, not left standing as history.**
 `tests/corpus/ledger.json:25` carried `autotrans-regcontrol-tap` — "a last-ulp
@@ -2185,17 +2190,120 @@ commit is two test files, `ledger.json` and four docs — not one line under any
 crate's `src/` — so no engine path, `compat` kernel, lane alias or solver moved
 and the 2026-07-31 `max |Δ| = 0` bit-identical baseline stands.
 
-**Open, recorded not chased.** (a) The four staged `skip` entries have **no
+**Open, recorded not chased.** (a) The four staged `skip` entries had **no
 tripwire** that would red if a deck gained the `r4133` channel without them (the
 existing `the_staged_r4133_property_entries_have_not_landed_yet` is
-`property`-scoped); a `skip`-scoped analogue is a candidate plan line at RP4.1.
-(b) Two RP2.4-dated tables in `tests/corpus/props_r4133/README.md` (:569, :807)
+`property`-scoped) — **closed the next commit** by the audit settlement below,
+which landed the `skip`-scoped analogue instead of deferring it to RP4.1.
+(b) Two RP2.4-dated tables in `tests/corpus/props_r4133/README.md` (:585, :823
+— the RP3.12 correction at :213ff moved them from :569/:807)
 still name `§1.3 (autotrans.wdgcurrents)` as the owner — left as history, their
 in-scope column is 0 either way, and the dated correction at :213ff points here.
 (c) The two test lanes again dropped seven untracked
 `tests/corpus/electricdss-tst/Test/AutoTrans/*.txt` files — the known
 overlapping-guard snapshot race recorded at :7398-7413, third sighting, removed
 by exact name; no tracked corpus or golden file moved.
+
+**Audit settlement (2026-09-03, `/audit-code` + `/audit-tests`, 12 findings:
+1 major, 6 minor, 5 notes — 11 distinct issues, since both auditors raised the
+missing `skip` tripwire — 9 fixed, 2 recorded-not-changed, 0 refuted).** No
+product crate is touched by the settlement either, so `lane_diff` stays unowed.
+
+* **[major, tests] The pin's "discriminating second reading" read the pinned
+  literal, not the engine.** `common_over_series` was handed `leg`'s `&str`
+  parameter on both legs, so on the unregulated leg both operands were
+  compile-time constants and the ampere-turn assertion could not fail on any
+  tree — which made the doc's claim that it "fails if the winding-current
+  derivation drifts, not only if the tap does" (and with it the elimination of
+  `GetAllWindingCurrents` / `auto_trans/yterminal.rs` as the site) unbacked.
+  **Fixed:** both legs now measure `deck.get("AutoTrans.at.WdgCurrents")` and
+  predict from `deck.get("AutoTrans.at.Tap")`, so both sides are live reads.
+  Non-vacuity probed: perturbing the live string (`151.5029` → `160.0`) reds
+  with `2.389520 vs 2.262626`; the test stays green in both lanes otherwise.
+* **[minor, code] "2.0–2.6 V outside the band" was wrong in four landed
+  artifacts.** Re-measured from the two decks' own `vreg`/`band`/`ptratio` and
+  both engines' node voltages: r4133 leaves `LOW.1`/166 = **118.038 V** against
+  the band [119, 121] — **0.96 V** under the edge, 1.96 V under the setpoint —
+  and `AT69.1`/332 = **119.251 V** against [122.25, 123.75] — **3.00 V** under
+  the edge, 3.75 V under the setpoint; 2.12 % / 2.57 % are the *voltage gaps*
+  against the port, not volts. The landed text was the first deck's setpoint
+  deviation and the second deck's percentage, both presented as band excursions.
+  **Fixed** in all four: the pin doc, the `ledger.json` cause, and the
+  `DIVERGENCES.md` / `capi015_vs_r4088.md` correction blocks. It stays prose,
+  and now says why: `Deck::get` reads `? Class.Name.Prop`, and neither the port
+  nor r4133 gives `AutoTrans` a property that renders a bus voltage (no
+  `WdgVoltages`), so asserting it would need harness machinery this sub-step has
+  no call to build.
+* **[minor, code] STATUS called the COMMON winding "the series winding".**
+  `73.11371` vs `78.15456` A are winding 2 (`conn=w`); the series winding
+  (`conn=s`) is `117.2108` vs `117.2323` and agrees to 0.018 %. That asymmetry
+  IS the tap signature, and the sentence inverted it while contradicting
+  STATUS's own RP2.2 record. **Fixed**, with the series figure stated beside it.
+* **[minor, code] Three stale self-citations.** The record cited pre-commit
+  STATUS line numbers (`:5675`, `:5745`, `:5817-5818`) that its own +121 lines
+  had already shifted, and README `:569`/`:807` that its own +16-line correction
+  had moved to `:585`/`:823`; and `STATUS.md:4155` still carried "no RP3
+  sub-step opens while it stays out of scope", the exact sentence whose README
+  twin RP3.12 had corrected. **Fixed:** the STATUS-internal citation is now by
+  string (the §RP2.4 record's `DECLARED_OUT_OF_SCOPE` paragraph), which no later
+  insert can stale; the README pair is corrected; and the RP2.2 line carries the
+  same dated correction its README twin got.
+* **[minor, code] The staged draft mis-stated the midi iteration counts.**
+  `tmp/rp312/staged_ledger.md` read "iterations 9 vs 4" for `midi_autotrans`;
+  the port solves `midi_autotrans` in **10** against r4133's 3 and
+  `midi_autotrans_both` in **9** against 4 (the report's `6 / 6 / 10 / 9` row
+  was read under the neighbouring table's order). **Fixed in the draft** — which
+  is gitignored and never staged — together with the event-log counts, now given
+  per deck: 10 / 12 / 10 / 13 on the port, 0 on r4133 everywhere.
+* **[minor, tests] The new min-gap lock was one-sided and a round number.**
+  `min_rel > 100.0 * floor` left the measurement in prose, against the rule this
+  same file wrote down after a mutation walked past `RP24_OUT_OF_SCOPE_MIN_RATIO`
+  in its one-sided form. **Fixed:** `RP312_MIN_GAP_RATIO = 153.0` with an upper
+  bracket at 154.0 and the measurement named (`3.068975820171114e-2` against the
+  2e-4 floor = **153.4x**, `examples_supplement.txt:127`; the largest is 376.9x).
+  Both directions probed red.
+* **[minor, tests] The existence guard's doc still named three citing tables
+  while the assertion unions five.** The drift started at RP3.9. **Fixed:** the
+  doc now names `RP39_PINS` and `RP312_UPSTREAM_BUG` too, with what each
+  witnesses.
+* **[note ×2, both auditors] No tripwire for the four staged `skip` entries.**
+  Recorded at landing as an RP4.1 candidate; **fixed here instead** — the new
+  `the_autotrans_typecast_cases_pair_their_r4133_channel_with_a_skip_entry`
+  asserts the *pairing* both ways: each of the four cases gates r4133 **iff** it
+  carries an `r4133` `kind: "skip"` entry citing `regcontrol-autotrans-typecast`
+  (whose presence in `causes` is asserted too, so the rename cannot be undone
+  silently). `RP312_STAGED_SKIPS` carries the four `(case, entry id)` pairs.
+  Probed: pointing one row at an `engines=both` case reds with the entry to
+  write.
+* **[note, tests] The "r4133's census cell, byte for byte" claim was
+  unenforced.** House pattern (the RP3.8/RP3.9 pins paste literals too), and
+  true — but nothing tied the literal to the vendored extract. **Fixed** rather
+  than recorded: `the_rp312_pin_quotes_the_vendored_census_cells` flattens the
+  pin file's string continuations and counts the declared rows whose **both**
+  columns appear verbatim; `RP312_WITNESSED_ROWS = 2` locks it
+  (`examples_supplement.txt:128` and `:134`). Probed at 1 → red.
+* **[note, code] RECORDED, not changed: the ownership predicate selects by pair
+  name, not by deck.** `regcontrol_autotrans_typecast_row` cannot do better —
+  the vendored `Example` row carries no case column (`pair`, `class`, `prop`,
+  `rust`, `r4133`, `cells`, `src`), so no per-deck assertion is derivable from
+  it. The deck mapping is anchored instead by the census artifacts, the
+  `(8, 1, 0)` count lock, the `min_rel` bracket and the pin's two decks; a row
+  of this pair arriving from an unrelated deck surfaces as a count mismatch.
+* **[note, tests] RECORDED, not changed: the verdict declares 8 spellings, the
+  pin witnesses 2** (10 of 34 cells). In spec — the brief asked for one pin with
+  two legs — and the six unwitnessed spellings cannot use this pin's
+  construction: their decks (the two `*_both` included) open with a snapshot
+  `Solve`, so reproducing r4133's unregulated state needs the RegControl
+  disabled in the deck SOURCE, i.e. a deck copy the pins harness does not have.
+  It is now a *measured* residual (`RP312_WITNESSED_ROWS`) instead of prose.
+
+*Gate (settlement).* All five commands green in both lanes — **4 290 passed /
+0 failed / 5 ignored / 0 filtered out** per lane over 74 binaries, `corpus_gate`
+unfiltered over the full 523-case population — with the two new guards
+(`props_r4133_replay` 135 → **137**; `props_r4133_pins` stays at 54, its pin
+strengthened in place). The known overlapping-guard snapshot race dropped six
+untracked `Test/AutoTrans/*.txt` again (fourth sighting), removed by exact name;
+no tracked corpus or golden file moved.
 
 **RP3.9 landed 2026-09-02** (audit settled 2026-09-03) — the display floor's
 round-trip residue is settled as 27 pinned `PRECISION_ROUNDTRIP` pairs (the
@@ -4153,7 +4261,17 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     ~4e-4 on the series winding against ~3–7 % on the common winding is the
     signature of a different landed tap, which is why those decks are capi-only.
     Recorded for RP2.2's closed pair list; no RP3 sub-step opens while it stays
-    out of scope.
+    out of scope. — **Correction (2026-09-03, RP3.12):** the scope reading
+    stands (still 0 in-scope cells) and the last clause does not: RP3.9's P0 open
+    item opened §RP3.12, which decomposed the "different landed tap" — r4133's
+    `RegControl` reaches its controlled element through an unchecked
+    `TTransfObj(ControlledElement)` cast (`RegControl.pas:926`, `:1026`, `:1296`,
+    `:1370`, `:1479`) over `TAutoTransObj = class(TPDElement)`
+    (`AutoTrans.pas:88`), so `TapIncrement` reads the winding's `MaxTap` and
+    r4133 never taps an AutoTrans at all (0 event-log lines on all four decks).
+    `UPSTREAM_BUG`, never reproduced; the 8 `controls:autotrans/*` spellings are
+    `Owner::Rp312`'s and the ninth (`modes:makeposseq`) stays RP3.9's. The same
+    correction is dated into `tests/corpus/props_r4133/README.md` §RP1.2.
   - **Audit settlement (2026-08-23, `/audit-code` + `/audit-tests`, 8 findings:
     1 major, 7 minor — 7 fixed, 1 recorded-not-changed, 0 refuted).** Written up
     as **7** items below: the missing `ref_miss_message` invariants were raised
