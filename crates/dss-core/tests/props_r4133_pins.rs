@@ -47,13 +47,17 @@
 //! `#[test]` here reads that list too, so a pin cannot be added, renamed or
 //! deleted without moving its citation with it.
 //!
-//! Two later sub-steps hold pins of the same "no echo row could say this" kind,
+//! Three later sub-steps hold pins of the same "no echo row could say this" kind,
 //! each with its own citation list read by that same guard: RP3.8's three
 //! (`props_r4133_replay::RP38_SUPERSEDED` and `RP38_CAPTURE_PIN` — five pairs
-//! whose r4133 getters render live where the 0.14.5 capture is `''`), and
-//! RP3.9's, which hold the port's value on the pairs RP2.4's display floor
+//! whose r4133 getters render live where the 0.14.5 capture is `''`), RP3.9's,
+//! which hold the port's value on the pairs RP2.4's display floor
 //! refuses because the `%.Ng` round trip happened upstream
-//! (`props_r4133_replay::RP39_PINS`; see the block at the end of this file).
+//! (`props_r4133_replay::RP39_PINS`; see the block at the end of this file), and
+//! RP3.12's one (`props_r4133_replay::RP312_UPSTREAM_BUG`), which holds the
+//! port's **regulated** `autotrans.wdgcurrents` where r4133's `RegControl` can
+//! never tap an `AutoTrans` at all — an upstream bug, so no exclusion row of any
+//! kind could state the port's value.
 //!
 //! # The shape of a pin
 //!
@@ -2936,6 +2940,158 @@ fn autotrans_wdgcurrents_after_makeposseq_solve_the_exactly_converted_circuit() 
         "44.00086, (161.26), 29.32208, (161.26), ",
         "the AutoTrans-only round trip lands on neither engine's number — the divergence is \
          the deck-wide %-.5g scripting"
+    );
+}
+
+/// `autotrans.wdgcurrents` on `controls:autotrans/*` — **r4133's numbers are the
+/// UNREGULATED circuit's, because its `RegControl` can never tap an `AutoTrans`**
+/// (§RP3.12, `UPSTREAM_BUG`, never reproduced; 34 census cells over 8 spellings
+/// on the four `controls:autotrans/*` decks, none in scope today).
+///
+/// r4133 *intends* the combination — the property help says "Name of Transformer
+/// or AutoTrans element" (`Version8/Source/Controls/RegControl.pas:296-297`), the
+/// `RecalcElementData` lookup retries `'autotrans.' + TransName` (`:684`) and the
+/// class check accepts it (`:711`) — but every use of the controlled element goes
+/// through an **unchecked `TTransfObj` typecast**: `:926`, `:1026`, `:1296`,
+/// `:1370`, `:1479`. `TAutoTransObj = class(TPDElement)`
+/// (`Version8/Source/PDElements/AutoTrans.pas:88`) is not a `TTransfObj`
+/// (`PDElements/Transformer.pas:92`), and `TAutoWinding` (`AutoTrans.pas:59`)
+/// stops agreeing with `TWinding` (`Transformer.pas:62`) after `Rdcohms`, so the
+/// regulator reads the winding's `MaxTap` (1.1 pu) where it means `TapIncrement`.
+/// `PendingTapChange := Round(BoostNeeded / Increment) * Increment`
+/// (`:1249-1250`) then rounds every realistic boost to zero and the control never
+/// arms — 0 event-log lines on all four decks, the regulated bus left 2.0 V
+/// (2.6 V on the midi deck) outside the band the deck asked for, 5 (11) taps of
+/// headroom unused and no diagnostic. `TAutoTransObj`'s own correct
+/// `Get_TapIncrement` (`:1568`), `Get_MinTap` (`:1547`), `Get_MaxTap` (`:1554`)
+/// and `Get_PresentTap` (`:1478`) are never reached: the cast is unchecked and
+/// the accessors are not virtual. Present identically in r3723, r4088 and r4133;
+/// DSS-Extensions fixed it by giving both classes a shared
+/// `TControlledTransformerObj` base, which is the shape the port has
+/// (`elements/pd/transformer/mod.rs` `trait ControlledTransformer`, held as
+/// `&mut dyn ControlledTransformer` by
+/// `elements/control/reg_control/control_loop.rs`).
+///
+/// Under the 2026-08-02 policy the port keeps the **regulated** answer in both
+/// lanes and nothing is reproduced. This pin names both numbers and derives
+/// r4133's from the port's own state through the one input that differs — the
+/// tap: disabling the regulator and putting winding 2 back on tap 1 makes the
+/// port print r4133's census literal byte for byte, on both decks.
+///
+/// The discriminating second reading is the ampere-turn identity, which holds on
+/// *both* legs: `|I_common| / |I_series| = VBase_series / (VBase_common * tap_c)`,
+/// and the two bases are `(kVLL_1 - kVLL_2)/SQRT3` and `kVLL_2/SQRT3`
+/// (`AutoTrans.pas:1113-1132`, `:1125` and `:1118`), so the √3 cancels and the
+/// prediction is `(kV1 - kV2) / (kV2 * tap_c)` — 2.333333 / 2.262626 here,
+/// 0.666667 / 0.623782 on the midi deck. It fails if the winding-current
+/// derivation drifts, not only if the tap does, which is what rules
+/// `GetAllWindingCurrents` (`:1575`) / `GeTAutoWindingCurrentsResult`
+/// (`:1662-1690`, `Format('%.7g, (%.5g), ')` at `:1682`) and our
+/// `elements/pd/auto_trans/yterminal.rs` out as the site. Upstream report:
+/// `investigations/to_opendss/50-regcontrol-autotrans-ttransfobj-typecast.md`.
+///
+/// What a revert breaks: a regression in the regulator's AutoTrans path shows up
+/// in the first literal and in `TapNum`; a broken winding-current computation
+/// shows up in both literals and in the ampere-turn readings.
+#[test]
+fn autotrans_wdgcurrents_stay_regulated_where_r4133_never_taps_the_autotrans() {
+    /// `|I_common| / |I_series|` off a `WdgCurrents` render: the first and third
+    /// tokens are winding 1's and winding 2's magnitudes on phase 1
+    /// (`AutoTrans.pas:1682` prints `mag, (ang), ` per winding, near end only).
+    fn common_over_series(render: &str) -> f64 {
+        let t: Vec<&str> = render.split(',').map(str::trim).collect();
+        let series: f64 = t[0].parse().expect("winding 1 magnitude");
+        let common: f64 = t[2].parse().expect("winding 2 magnitude");
+        common / series
+    }
+
+    /// The ampere-turn prediction for that ratio at `tap_c` on the common
+    /// winding — the √3-cancelled form derived in the doc above.
+    fn ampere_turns(kv1: f64, kv2: f64, tap_c: f64) -> f64 {
+        (kv1 - kv2) / (kv2 * tap_c)
+    }
+
+    fn leg(
+        rel: &str,
+        (kv1, kv2): (f64, f64),
+        (regulated, taps, tapnum): (&str, &str, &str),
+        unregulated: &str,
+    ) {
+        let mut deck = Deck::compile(rel);
+
+        // (a) the port's regulated state — which is also the pinned capi_v0145
+        // oracle's: the regulator moves the common winding and holds the bus.
+        assert_eq!(deck.get("AutoTrans.at.WdgCurrents"), regulated, "{rel}");
+        assert_eq!(deck.get("AutoTrans.at.Taps"), taps, "{rel}");
+        assert_eq!(deck.get("RegControl.rat.TapNum"), tapnum, "{rel}");
+        let tap_c: f64 = deck.get("AutoTrans.at.Tap").parse().expect("a tap");
+        let (m, p) = (common_over_series(regulated), ampere_turns(kv1, kv2, tap_c));
+        assert!(
+            (m - p).abs() / p < 1.0e-5,
+            "{rel}: regulated ampere-turn balance {m} vs {p} — measured 2.7e-06 here and \
+             3.3e-06 on the midi deck, against the render's %.7g magnitudes"
+        );
+
+        // (b) the one input that differs, and the proof each edit landed.
+        deck.cmd("edit RegControl.rat enabled=no");
+        assert_eq!(
+            deck.get("RegControl.rat.enabled"),
+            "No",
+            "{rel}: the regulator really is out of the loop"
+        );
+        deck.cmd("edit AutoTrans.at wdg=2 tap=1");
+        assert_eq!(
+            deck.get("AutoTrans.at.Taps"),
+            "[1, 1, ]",
+            "{rel}: the tap the regulator had already pushed is back where the deck started"
+        );
+        // The deck's own last two lines, re-run: `Set mode=daily` puts the clock
+        // back to hour 0, so this is the same 8-step sequence over the same load
+        // shape with the regulator silent.
+        deck.cmd("set mode=daily stepsize=1h number=8");
+        deck.cmd("solve");
+        assert_eq!(
+            deck.get("AutoTrans.at.Taps"),
+            "[1, 1, ]",
+            "{rel}: nothing tapped it — exactly what r4133 does with the regulator ENABLED"
+        );
+        assert_eq!(
+            deck.get("AutoTrans.at.WdgCurrents"),
+            unregulated,
+            "{rel}: r4133's census cell, byte for byte, from OUR state with the tap it never moves"
+        );
+        let (m, p) = (common_over_series(unregulated), ampere_turns(kv1, kv2, 1.0));
+        assert!(
+            (m - p).abs() / p < 1.0e-5,
+            "{rel}: unregulated ampere-turn balance {m} vs {p} — measured 2.2e-06 here and \
+             3.9e-06 on the midi deck; r4133 derives its winding currents correctly, it just \
+             derives them for a tap it never moved"
+        );
+    }
+
+    leg(
+        "controls/autotrans/autotrans_reg.dss",
+        (115.0, 34.5),
+        (
+            "66.95905, (-28.006), 151.5029, (151.99), 66.95905, (-148.01), 151.5029, (31.995), \
+             66.95905, (91.994), 151.5029, (-88.005), ",
+            "[1, 1.03125, ]",
+            "5",
+        ),
+        "66.99186, (-28.029), 156.314, (151.97), 66.99186, (-148.03), 156.314, (31.971), \
+         66.99186, (91.971), 156.314, (-88.029), ",
+    );
+    leg(
+        "controls/autotrans/midi_autotrans.dss",
+        (115.0, 69.0),
+        (
+            "117.2108, (-28.743), 73.11371, (151.26), 117.2091, (-148.75), 73.11263, (31.253), \
+             117.2191, (91.253), 73.11886, (-88.746), ",
+            "[1, 1.06875, ]",
+            "11",
+        ),
+        "117.2323, (-28.754), 78.15456, (151.25), 117.2305, (-148.76), 78.15342, (31.241), \
+         117.2405, (91.242), 78.16007, (-88.757), ",
     );
 }
 

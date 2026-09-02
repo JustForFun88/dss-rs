@@ -67,7 +67,7 @@ against both EPRI revs.
 
 | entry | r4088 hits | class |
 |---|---|---|
-| `autotrans-regcontrol-tap` | 2 | AutoTrans+RegControl discrete reg-tap lands one step apart (V ~2.4e-2, rel ~3.6e-7); capi015↔r4088 shows `[rat]` differs |
+| `regcontrol-autotrans-typecast` (was `autotrans-regcontrol-tap`) | 2 | ~~AutoTrans+RegControl discrete reg-tap lands one step apart (V ~2.4e-2, rel ~3.6e-7); capi015↔r4088 shows `[rat]` differs~~ — **corrected 2026-09-03 (RP3.12): not a floor.** EPRI's `RegControl` never taps an `AutoTrans` (unchecked `TTransfObj` cast, `RegControl.pas:926/1026/1296/1370/1479` over `AutoTrans.pas:88`; zeroed increment at `:1249-1250`) — 0 event-log lines vs 10–13, the bus left outside its band. `UPSTREAM_BUG`, never reproduced; see the correction block in `DIVERGENCES.md` |
 | `makeposseq-fpc-delphi` | 6 | MakePosSequence reduction last-digit drift (rel ~6e-6..4e-5) |
 | `reduce-fpc-delphi` | 6 | circuit-reduction collapses branches differently (structural reduced-YPrim diff); port matches 0.14.5 reduced net exactly |
 | `ckt24-regcontrol-conditioning` | 11 | ckt24 SubXFMR ultra-switch conditioning floor (rel ~1.2e-7, ~1.2× the pinned tol); STATUS CF-D |
@@ -147,7 +147,7 @@ stays green in the mandatory gate vs 0.14.5):
 |---|---|---|
 | `iteration-count-delta` | +r4133 | 4 (autotrans_both/reg, gendispatcher{,_kvarlimit}) |
 | `injection-fpc-delphi-ulp` | +r4133 | 4 (combo/indmach asymmetric) |
-| `autotrans-regcontrol-tap` | +r4133 | 2 (midi_autotrans{,_both}) |
+| `regcontrol-autotrans-typecast` (was `autotrans-regcontrol-tap`) | +r4133 | 2 (midi_autotrans{,_both}) — **class corrected 2026-09-03 (RP3.12) from "FPC-vs-Delphi floor" to `UPSTREAM_BUG`, never reproduced; see the correction block in `DIVERGENCES.md`** |
 | `pvsystem-kvar-display-precision` | +r4133 | 2 (expcontrol_basic, invcontrol_expmodel) |
 | `storage-kwhstored-drift` | +r4133 | 6 (storagectrl kwhstored probes) |
 | `storage-kw-display-precision` | +r4133 | 2 (storagectrl_chargelow/support) |
