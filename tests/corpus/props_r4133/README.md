@@ -897,9 +897,9 @@ not a display artifact.
 | A | `load.kw`, `load.kvar`, `load.xfkva` | `Load.pas:2326`/`:2328` -> `:2200-2202` | `load_kw_kvar_and_xfkva_after_makeposseq_are_the_exact_typed_conversion` |
 | B | `vsource.isc3`, `vsource.puz0`, `vsource.puz1`, `vsource.puz2` | `Vsource.pas:1397` -> `:473` -> `:1330`/`:1340-1342` | `vsource_isc3_and_puz_after_makeposseq_use_the_full_precision_basekv` |
 | B | `vsource.mvasc1`, `vsource.mvasc3` | `Vsource.pas:1397` -> `:1328-1329` | `vsource_mvasc1_and_mvasc3_after_makeposseq_use_the_full_precision_basekv` |
-| C | `line.b0`, `line.b1` | `Line.pas:1585-1593` -> `:1406-1407` | `line_b1_and_b0_after_makeposseq_use_the_full_precision_c1` |
+| C | `line.b0`, `line.b1` | `Line.pas:1585-1591` -> `:611` -> `:1406-1407` | `line_b1_and_b0_after_makeposseq_use_the_full_precision_c1` |
 | C | `autotrans.wdgcurrents` | deck-wide `%-.5g` scripting -> `AutoTrans.pas:1863` | `autotrans_wdgcurrents_after_makeposseq_solve_the_exactly_converted_circuit` |
-| D | `reactor.x`, `reactor.z`, `reactor.lmh`, `reactor.normamps`, `reactor.emergamps` | `Reactor.pas:1162` -> `:663-668` -> `:1092`/`:1097`-`:1100` | `reactor_amps_after_makeposseq_are_the_exact_typed_conversion` |
+| D | `reactor.x`, `reactor.z`, `reactor.lmh`, `reactor.normamps`, `reactor.emergamps` | `Reactor.pas:1162` -> `:670-675` -> `:1092`/`:1097`-`:1100` | `reactor_amps_after_makeposseq_are_the_exact_typed_conversion` |
 | D | `capacitor.cuf`, `capacitor.normamps`, `capacitor.emergamps` | `Capacitor.pas:801`/`:806` -> `:611`/`:645-646` -> `:1098-1109` | `capacitor_cuf_and_amps_after_makeposseq_are_the_exact_typed_conversion` |
 | E | `generator.kva`, `generator.kvar`, `generator.maxkvar`, `generator.minkvar` | `generator.pas:3059` -> `:3130-3137` -> `:3018-3021` | `generator_ratings_after_makeposseq_are_the_exact_typed_conversion` |
 | E | `transformer.normamps`, `transformer.emergamps` | `Transformer.pas:1982`/`:1991` -> `:1119-1130` -> `:1842-1843` | `transformer_amps_after_makeposseq_are_the_exact_typed_conversion` |
@@ -922,15 +922,37 @@ width at all — `%-.6g` of the port's double is `10.235`, where r4133 prints
 | `OPEN_RP39` (rows, pairs, in-scope rows) | — (implicitly `(55, 27, 19)`) | **`(0, 0, 0)`** | all 27 pairs disposed of as `PIN` |
 | `DECLARED_RP39` | `(55, 27, 19)` | **`(55, 27, 19)`** | measured, not declared: `account()` buckets whatever `display_class_but_not_a_render` refuses, and a pin does not make a link claim a row. RP4.1 retires these rows by hand with the unmask — the same reading `DECLARED_RP3` and `DECLARED_RP35` carry |
 | `RP39_ROUTING` | 27 rows, 4 columns | 27 rows, **5 columns** | a `disposition` column (`RP39_DISPOSITIONS`: `PIN` / `FIX` / `LEDGER` / `OPEN`); the three counted columns keep their measured values |
-| `RP39_PINS` | 13 rows (chains A-C) | **27 rows** | one row per pair, each with its `PRECISION_ROUNDTRIP` verdict; `the_rp39_pin_list_is_pinned` now checks completeness both ways |
+| `RP39_PINS` | — (new constant) | **27 rows** | one row per pair, each with its `PRECISION_ROUNDTRIP` verdict; `the_rp39_pin_list_is_pinned` checks completeness both ways |
 | `CLAIMED_*`, `DECLARED_*` (all others), `SUPERSEDED_RP38` | — | unchanged | no link's population moved |
 
 **No `property` ledger entry is staged.** The claims census still measures
 `count_in_scope = 0` on all 55 spellings, and every deck involved
 (`modes:makeposseq/*`) is an `engines: "capi_v0145"` case, so the r4133 channel
-compares none of these cells and an entry would have nothing to exclude. The
-drafts, should any of those decks ever move to `r4133`/`both`, are recorded in
-the sub-step's dossiers, not in `ledger.json` (plan §1.1(e)).
+compares none of these cells and an entry would have nothing to exclude.
+
+Should any of those decks ever move to `engines: "r4133"`/`"both"`, the §1.1(e)
+entries are one `property` row per (case, class, name, prop) on the **`r4133`**
+channel, in this shape (drafted here, deliberately **not** written to
+`ledger.json`):
+
+```json
+{ "id": "<class>-makeposseq-<prop>-roundtrip-r4133",
+  "channel": "r4133",
+  "case": "modes:makeposseq/makeposseq_<deck>.dss",
+  "kind": "property", "class": "Load", "name": "ld_wye", "prop": "kva",
+  "reason": "r4133's MakePosSequence scripts the conversion as %-.5g tokens and
+             re-parses them (Load.pas:2326 -> :2331-2332), so :1145 derives kVA
+             from the rounded pair; the port applies typed setters
+             (exec/make_pos_seq.rs:200) and keeps the exact value. Precision
+             class, upstream-rooted. Pinned by
+             load_kva_after_makeposseq_is_the_exact_typed_conversion." }
+```
+
+with the per-chain head of the round trip swapped in for the `reason`'s first
+clause — `Vsource.pas:1397` (`BasekV`), `Line.pas:1591` (`C1`),
+`Reactor.pas:1162` (`kV`/`kvar`), `Capacitor.pas:801`/`:806` (`kV`/`kvar`),
+`generator.pas:3059` (`kW`), `Transformer.pas:1982`/`AutoTrans.pas:2021`
+(winding `kV`) — and the pin name from the chain table above.
 
 ## Files
 

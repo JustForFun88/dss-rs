@@ -1785,9 +1785,11 @@ other. Every one of the 27 pairs is now settled by a cited Pascal round-trip
 chain and held by an expected-value pin; **none** is a `PORT_BUG`, an
 `UPSTREAM_BUG`, a `STATE_DIFFERS` or a `KILL`, so no engine line, no
 `TODO(compat)`, no `ledger.json` row and no upstream report is owed by the
-sub-step. The whole diff is three test/evidence files
+sub-step. The sub-step's own commit is three test/evidence files
 (`props_r4133_pins.rs` +1189/−1, `props_r4133_replay.rs` +517/−23,
-`tests/corpus/props_r4133/README.md` +64), nothing under any crate's `src/`.
+`tests/corpus/props_r4133/README.md` +64), nothing under any crate's `src/`;
+the audit settlement below touched the same three and this record, again with
+no product-crate line.
 
 **One mechanism explains all 70 cells, and it was measured before it was
 written.** Every cell sits on one of the six `modes:makeposseq/makeposseq_*.dss`
@@ -1796,19 +1798,21 @@ by building a command string (`Format('%-.5g'/'%-.8g', …)`) and re-parsing it
 through its own `Edit`, while the port applies typed setters
 (`class_props/typed.rs`, WPG.21). The five-digit round trip therefore happens
 *upstream* of the getter, and the getter then derives at full precision —
-`Load.pas:2326 → :2352` (`kW/3` re-parsed, then `kVA` from the round-tripped
-`pf`); `Vsource.pas:1397 → :360 → :473`, where the rounded input is **`BasekV`**,
-not Z (`R1`/`X1` re-parse exactly on all six decks), then `:752`/`:766-768`/
-`:837-842` for `puz*`/`mvasc*`/`isc3`; `Line.pas:1585-1593 → :610 →
-:1406/:1407` (`b0`/`b1` from a round-tripped `C`); `Reactor.pas:1158-1162 →
-:651/:663-664 → :1092-1100`; `Capacitor.pas:798-832 → :606/:645-646 →
+`Load.pas:2326 → :2331-2332 → :1145 → :2352` (`kW/3` and `kvar/3` re-parsed,
+then `kVA` recomputed from the rounded **pair**); `Vsource.pas:1397 → :360 →
+:473`, where the rounded input is **`BasekV`**, not Z (`R1`/`X1` re-parse
+exactly on all six decks), then `:752`/`:766-768`/`:837-842` for
+`puz*`/`mvasc*`/`isc3`; `Line.pas:1585-1591 → :1597-1598 → :611 → :1406/:1407`
+(`b0`/`b1` from a round-tripped `C`); `Reactor.pas:1158-1162 → :1200-1201 →
+:657`/`:666`/`:670-675` → `:1092-1100`; `Capacitor.pas:798-832 → :606/:645-646 →
 :1098-1109` (with `Common/Utilities.pas:2600-2607`);
 `generator.pas:3054-3066 → :641/:699/:734 → :3018-3021/:3130-3137`;
 `Transformer.pas:1982-1994 → :512 → :1119-1130 → :1842-1843`;
 `AutoTrans.pas:2021/:2027/:2030 → :1863 → :1662-1690`. The rawest reading is
-`load.kw`: the port answers `400/9`, r4133 `44.443` = `%-.5g(400/3) = 133.33 →
-/3`, because `makeposseq_pc.dss` runs `makeposseq` **twice** — which is why no
-single `%.Ng` render explains the gap, and why the floor was right to refuse it.
+`load.kw`: the port answers `(400/3)/3` where r4133 answers `44.443` =
+`%-.5g(%-.5g(400/3)/3)` — `133.33` re-parsed, divided again and re-rounded —
+because `makeposseq_pc.dss` runs `makeposseq` **twice**, which is why no single
+`%.Ng` render explains the gap and why the floor was right to refuse it.
 
 **The per-pair verdicts** (`props_r4133_replay.rs`: `RP39_ROUTING` :294 rows,
 `RP39_PINS` :4610 verdicts; the table is machine-extracted from those two
@@ -1847,7 +1851,7 @@ consts, not transcribed). Chains: **A** `load.*`, **B** `vsource.*`, **C**
 | `transformer.normamps` | 1 | 1 | `transformer_amps_after_makeposseq_are_the_exact_typed_conversion` (E) |
 | `transformer.emergamps` | 1 | 1 | `transformer_amps_…` (E) |
 
-**Ten pins (`props_r4133_pins.rs:2188-3254`) cover all 27 pairs, and each
+**Ten pins (`props_r4133_pins.rs:2193-3402`) cover all 27 pairs, and each
 asserts the chain rather than narrating it:** (a) the port's literal render off
 `? Class.Name.Prop`; (b) r4133's census literal **recomputed from the port's own
 number by the chain's arithmetic inside the test**; (c) a discriminating second
@@ -1911,8 +1915,9 @@ cell/spelling counts equal line for line. A zero delta is the correct outcome �
 a pin does not make a `Link` claim a row — and a non-zero one would have meant a
 pin moved a render. **No `property` ledger entry is staged**, because with
 `count_in_scope = 0` on all 70 cells an r4133 entry would have nothing to
-exclude; the drafts, should a deck's `engines` key ever change, live in the
-sub-step's dossiers. One structural note: the census has **no disposition
+exclude; the drafts, should a deck's `engines` key ever change, are staged in
+`tests/corpus/props_r4133/README.md` (the audit settlement moved them there
+out of the gitignored dossiers, where the forward reference would have dangled). One structural note: the census has **no disposition
 meaning "settled by an RP3.9 pin"** — the 70 cells still file as `UNCLAIMED`.
 That costs nothing today and is RP4.1's to decide, not this sub-step's to
 invent.
@@ -1951,17 +1956,123 @@ error #560 on `makeposseq_pc.dss` — already reported as
 mechanism from RP3.9's single tiny `makeposseq_xfmr` cell — out of scope
 (capi-only cases), filed `OutOfScope` by the RP2.4 re-filing, and still owed
 their own root cause; **nobody owns them yet** and a multi-percent gap in a
-solved current is not display-class. (c) The post-`makeposseq` `Save`/`Dump`
+solved current is not display-class. The audit round added a lead: those 34
+cells are exactly the row count of `numeric_pairs.txt`'s
+`autotrans.tap | '1.03125' | '1' | 34` and
+`autotrans.taps | '[1, 1.03125, ]' | '[1, 1, ]' | 34`, i.e. the same four
+regulator decks, and the divergence is confined to the series/common winding
+while winding 1 agrees to 0.04 % — so a **RegControl tap** divergence is the
+first thing its owner should read. It is a lead and not a settled cause: the
+per-row current ratios are 1.032 / 1.056 / 1.069 / 1.082, not one uniform
+1.03125. (c) The post-`makeposseq` `Save`/`Dump`
 surface belongs to **§RP3.11**: r4133 saves the five-digit tokens it holds in
 `PropertyValue[]` while the port saves the exact doubles, so a saved-and-
-reloaded converted circuit differs at ~5e-6 on exactly these elements. (d)
-Three citation nits in `RP39_ROUTING`'s `cite` column were left byte-identical
-on purpose, so the settlement diff is only the new column: chain B's cite says
-"from a round-tripped Z" where the rounded input is `BasekV`; chain A could add
-`Load.pas:570`/`:2364`; chain C could add `Line.pas:1593`. (e)
+reloaded converted circuit differs at ~5e-6 on exactly these elements. (d) The
+`RP39_ROUTING` `cite` column was left byte-identical here and **corrected in
+the audit settlement below** — its vsource rows named a round-tripped `Z`, its
+transformer rows a round-tripped `kVA` and its `load.kva` row a round-tripped
+`pf`, none of which is the rounded input this sub-step proved. (e)
 `elements/pc/vsource/solve.rs:173` and `mod.rs:44-45` cite dss_capi 0.14.5 line
 numbers rather than r4133's `Vsource.pas:1390` — product-doc cosmetics,
 unacted.
+
+**RP3.9 audit settlement (2026-09-03).** Two fresh auditors (`/audit-code`,
+`/audit-tests`, both read-only, over `16edbc2f..648ce284`) confirmed all 27
+verdicts independently on both live oracles — every r4133 literal is what the
+r4133 DLL prints, every port literal what the pinned 0.14.5 backend prints, and
+every chain reproduces arithmetically — and found **no port bug, no weakened
+test and nothing lost against the plan**. Their fifteen findings (nine + six,
+four of them the same item seen from both sides) were settled against the r4133
+source and re-derivation, never against plausibility:
+
+* **FIXED — 11 wrong r4133 line citations** (the one `[Major]`). The formulas
+  named in the chain-C and chain-D pin docs are genuinely in r4133; the line
+  numbers were not. Verified by dumping the r4133 tree: the `R1=… C1=%-.5g`
+  `Format` is `Line.pas:1591` (`:1593` is a comment), `Parser.CmdString := S;
+  Edit` `:1597-1598`, `c1 := Parser.Dblvalue*1.0e-9` `:611`, the symcomponents
+  `C1_new := C1*1.0e9` branch `:1560-1563`; `Reactor.pas` `kvarPerPhase` `:657`,
+  1-phase `PhasekV := kVRating` `:666`, `X` `:670`, `L` `:671`, `NormAmps`
+  `:674`, `EmergAmps` `:675`, `CmdString`/`Edit` `:1200-1201`. Corrected in the
+  pin docs and inline comments, in this record's mechanism paragraph and in the
+  vendored README's chain table.
+* **FIXED — three stale or false prose numbers.** The pin block header said
+  "all thirteen pairs" (the chains-A-C draft state) where 27 landed; the
+  vendored README's count-delta table gave `RP39_PINS` a "before" of "13 rows"
+  for a constant that does not exist at `16edbc2f` (`git show
+  16edbc2f:…/props_r4133_replay.rs | grep -c RP39_PINS` → 0), now "— (new
+  constant)"; and this record's mechanism paragraph said the port answers
+  `400/9` and spelled r4133's `44.443` as one `%-.5g`, contradicting its own
+  lane-trap paragraph and the pin. The port's double is `(400/3)/3 =
+  44.444444444444446` (≠ `400/9`), and r4133's number needs **both** `%-.5g`
+  prints, which is what `props_r4133_pins.rs` asserts.
+* **FIXED — `RP39_ROUTING`'s `cite` column stated causes this sub-step
+  disproved.** Seven vsource rows blamed a round-tripped `Z` (the rounded input
+  is `BasekV`; `R1`/`X1` re-parse exactly on all six decks, asserted in the
+  pin), the two transformer rows a round-tripped `kVA` (it is the winding kV,
+  `Transformer.pas:1982`), the `load.kva` row a round-tripped `pf` (it is the
+  `kW`/`kvar` token pair, `:2326 → :1145`), and the four generator rows cited
+  `MakePosSequence :3058`/`:3059`/`:3060` where the tokens are at
+  `:3059`/`:3060`/`:3061` — and all four of those cells derive from the **kW**
+  token, not from their own. All twelve rewritten; the guard only requires
+  `.pas:`, so no count moved.
+* **FIXED — the 16 vendored spellings that carried a verdict but no
+  assertion.** 10 of the 13 `load.kva` spellings and 2 of the 4 spellings of
+  each `vsource.puz0/1/2` were covered only at pair level. Both pins now assert
+  every vendored spelling: `load_kva_…` gained a (deck, load) loop over the
+  remaining ten rows on `makeposseq_line`/`_report`/`_shunt`/`_xfmr`/`_pc`,
+  each recomputing r4133's literal from the port's own live `kW`/`kvar` through
+  the same round trip (doubled on `_pc`, which converts twice), and
+  `vsource_isc3_and_puz_…` gained `pc`/`source` and `shunt`/`source`. All 55
+  spellings are now asserted; both lanes stay green, so no lane-dependent `%g`
+  spelling hides among them.
+* **FIXED — the generator pin's hardcoded `pf`.** It built the kvar chain from
+  `g_plain`'s kW (whose own pf is 1.0) plus a literal `0.95`, the pf of the
+  elements the cells belong to. It now reads both factors live off
+  `Generator.g_kva` and asserts they agree with the kW it already had.
+* **FIXED — the one port-vs-port assertion** (`props_r4133_pins.rs`, chain C):
+  `fmt_g(2π·f·c1, 13) == fmt_g(b, 13)` compared two live port reads. Both sides
+  are now compared against a recorded 13-digit literal per line
+  (`4.086610309067` / `4.087172109558`), which is also the honest width — the
+  recomputation from the 15-digit-truncated `c1` render lands 2 ulp away.
+* **FIXED — the staged ledger drafts pointed at gitignored scratch.** Plan
+  §1.1(e) drafts lived only in `tmp/rp39/dossier_*.md`, which the handoff itself
+  lists as safe to delete. The draft entry shape (channel `r4133`, one
+  `property` row per case/class/name/prop, with the per-chain head of the round
+  trip) is now staged in `tests/corpus/props_r4133/README.md`, still **not** in
+  `ledger.json`.
+* **RECORDED, not fixed — nine port-side expectations written as
+  `render(<expr>)`** (`Load.ld_wye.kW`, the reactor/capacitor/generator/
+  transformer nameplates and two discriminating reads). The `?` surface renders
+  15 significant digits, so the exact double cannot be recovered by parsing it
+  back, and a hardcoded byte would red in one lane; every *residue* cell is a
+  recorded literal, and `load.kw` — the only residue cell among the nine —
+  additionally carries the two-lane `matches!` whose value assertion is
+  bit-discriminating in the parity lane. The auditor reached the same reading
+  ("mostly unavoidable"); strengthening it belongs to a renderer-level pin, not
+  here.
+* **RECORDED, not fixed — the 34 `controls:autotrans` `wdgcurrents` cells.**
+  New evidence (note (b) above): they are exactly co-populated with the
+  `autotrans.tap`/`taps` divergence on the same four capi-only regulator decks,
+  which makes a RegControl tap divergence the lead. Still nobody's, still not
+  RP3.9's — a multi-percent gap in a solved current is not display-class.
+* **Confirmed as correct, no action:** `DECLARED_RP39` staying `(55, 27, 19)`
+  while `OPEN_RP39` went to `(0, 0, 0)` (it is a measurement of what
+  `display_class_but_not_a_render` refuses, and no port render moved — both
+  auditors re-derived the same reading from `account()`); the two amps families
+  recorded as `PRECISION_ROUNDTRIP` rather than the plan's shape-2
+  `STATE_DIFFERS` (their state differs *because* of the same upstream round
+  trip, and r4133's value is reproducible from the port's, which is outcome 1's
+  own test); `RP39_DISPOSITIONS` living beside `RP3_SETTLED_SHAPES` (different
+  routing tables, both pinned literally); and the chains-D/E pins mutating and
+  restoring deck state (every restore is read back, and the tree is clean after
+  the run).
+
+*Settlement gate.* All five commands green in both lanes,
+`props_r4133_pins` **53**, `props_r4133_replay` **133**,
+`props_r4133_evidence_lock` **11**, `oracle_parity_cfg_gate` **11**, no
+`#[ignore]` and no name filter. `lane_diff` was again not required: the
+settlement touched the same three test/evidence files plus this record, and no
+product crate.
 
 **RP3.9 landed 2026-09-02** — the display floor's round-trip residue is settled
 as 27 pinned `PRECISION_ROUNDTRIP` pairs (the §RP3.9 record above), so **every
