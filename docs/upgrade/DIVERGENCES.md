@@ -2059,7 +2059,9 @@ is purely the FPC↔Delphi layer, never a Rung-2 regression):
   progress-form plumbing + a commented-out debug `WriteLn`, and `PDElements/AutoTrans.pas`
   only in two read-only PropertyHelp strings — numerically inert) → the entry's `revs` extended to include
   `r4133` (14 entries): `iteration-count-delta`, `injection-fpc-delphi-ulp`,
-  `autotrans-regcontrol-tap`, `pvsystem-kvar-display-precision`,
+  `regcontrol-autotrans-typecast` (renamed 2026-09-03 from
+  `autotrans-regcontrol-tap`; see the correction below),
+  `pvsystem-kvar-display-precision`,
   `storage-kwhstored-drift`, `storage-kw-display-precision`,
   `makeposseq-fpc-delphi`, `reduce-fpc-delphi`, `ckt24-regcontrol-conditioning`,
   `vsource-nearzero-power`, `epri-binaryshape-crash`, `epri-linespacing-r4088-crash`,
@@ -2080,6 +2082,41 @@ is purely the FPC↔Delphi layer, never a Rung-2 regression):
   `compare_monitor` now normalizes the Delphi leading-space header directly —
   WP-U2.1 audit fix — so it never surfaces on the EPRI channel) and
   `meter-zonepce-count` (its six witness decks now MATCH both EPRI revs).
+
+### Correction (2026-09-03, RP3.12) — `autotrans-regcontrol-tap` was not a floor
+
+The AutoTrans+RegControl entry in the 48 above was filed as an FPC↔Delphi
+last-ulp floor ("the reg-tap resolves on a different discrete step"). The
+*measurement* stands, the *class* does not, and "conditioning" was never proven by
+decomposition — which CLAUDE.md requires before that label is accepted. RP3.12
+decomposed it on the live r4133 DLL: **EPRI's `RegControl` never taps an
+`AutoTrans` at all.** It reads the controlled element through an unchecked
+`TTransfObj(ControlledElement)` typecast (`Version8/Source/Controls/RegControl.pas:926`,
+`:1026`, `:1296`, `:1370`, `:1479`) while `TAutoTransObj = class(TPDElement)`
+(`Version8/Source/PDElements/AutoTrans.pas:88`) is not one and `TAutoWinding`
+(`AutoTrans.pas:59`) stops matching `TWinding` (`Transformer.pas:62`) after
+`Rdcohms`, so `TapIncrement` reads the winding's `MaxTap` (1.1 pu) and
+`PendingTapChange := Round(BoostNeeded/Increment)*Increment` (`:1249-1250`) zeroes
+every realistic boost. Evidence: 0 event-log lines on all four
+`controls:autotrans/*` decks vs 10–13 on the port and the 0.14.5 oracle; the
+regulated bus 2.0–2.6 V outside its band with 5–11 taps unused; `? RegControl.rat.tapnum`
+tracks `Round(puTap/maxtap)` exactly when `maxtap` is edited; `tapnum=0` renders
+`taps=[1, 1.58101E-322]`, the winding's `NumTaps = 32` reinterpreted as a Double.
+The same four decks with the RegControl disabled make the port print EPRI's
+census literals **byte for byte**.
+
+Consequences: the entry's cause key is renamed **`regcontrol-autotrans-typecast`**
+and rewritten (`tests/corpus/ledger.json`); the class is `UPSTREAM_BUG`, present
+identically in r3723/r4088/r4133 and absent from dss_capi 0.14.5 (shared
+`TControlledTransformerObj` base); per CLAUDE.md (2026-08-02) it is **not
+reproduced in any lane** — the port keeps the regulated answer, pinned by
+`props_r4133_pins::autotrans_wdgcurrents_stay_regulated_where_r4133_never_taps_the_autotrans`.
+The four decks are `engines: "capi_v0145"`, so nothing is gated on the r4133
+channel today and the case-level `skip` entries are drafted, not landed. Upstream
+report: `investigations/to_opendss/50-regcontrol-autotrans-ttransfobj-typecast.md`.
+The AutoTrans share of `iteration-count-delta` (6-vs-3 on `autotrans_both`/`_reg`)
+is the same defect seen from the solver: r4133 iterates three times because no
+control ever arms.
 
 ### IEEE_519 harmonics — source-confirmed "nothing to port"
 
