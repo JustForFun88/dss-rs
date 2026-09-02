@@ -237,9 +237,10 @@ pub struct IndMach012 {
     /// `Format('%.6g', [PowerFactor(Power[1, ActiveActor])])`
     /// (`IndMach012.pas:1790`). r4133 computes it inside the getter, from
     /// `TDSSCktElement.Get_Power(1)` over the live solution; the Rust `&self`
-    /// getter reaches no solution, so the read surfaces refresh this field at
-    /// their one choke point (`Dss::refresh_vterminal_if_marked`, gated on
-    /// [`PropFlags::RENDERS_LIVE_RESULT`]) immediately before every render — the
+    /// getter reaches no solution, so the read surfaces refresh this field
+    /// first (`Dss::refresh_vterminal_if_marked` per read;
+    /// `Dss::refresh_render_caches_for_save` once before a `Save`, which renders
+    /// whole classes), gated on [`PropFlags::RENDERS_LIVE_RESULT`] — the
     /// same construction [`PropFlags::READS_VTERMINAL`] uses for Transformer
     /// `WdgCurrents`. See [`IndMach012::refresh_live_pf`].
     ///

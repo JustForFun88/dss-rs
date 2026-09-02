@@ -263,8 +263,9 @@ impl DssObject for IndMach012 {
             // (`IndMach012.pas:1790`), the same quantity state variable #21
             // reports (`:1988`, `get_all_variables_impl`). A `&self` getter
             // cannot reach the solution, so the read surfaces refresh the cache
-            // at their choke point (`Dss::refresh_vterminal_if_marked`, gated on
-            // `RENDERS_LIVE_RESULT`) immediately before this read — see
+            // first (`Dss::refresh_vterminal_if_marked` per read;
+            // `Dss::refresh_render_caches_for_save` before a `Save`), gated on
+            // `RENDERS_LIVE_RESULT` — see
             // [`IndMach012::refresh_live_pf`]. Before any refresh the field holds
             // `PowerFactor(0) = 1`, r4133's own no-power answer.
             PF => self.live_pf,

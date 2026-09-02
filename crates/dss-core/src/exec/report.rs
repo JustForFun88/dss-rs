@@ -2557,6 +2557,8 @@ impl Dss {
                 return;
             }
         };
+        // Live render caches first (see `Save circuit`'s call site).
+        self.refresh_render_caches_for_save(Some(ci));
         let Dss { classes, enums, .. } = self;
         let (text, nrecords) =
             crate::report::save::save::class_file_text(&mut classes[ci], enums, false);

@@ -4028,7 +4028,8 @@ mod tests {
             assert!(
                 !has_echo_row(class, prop),
                 "{class}.{prop} is a SilentReadOnly surface, not an echo — RP3.8's, not this \
-                 table's (the capi `''` is harness::SKIP_PROPS group (g); the census rows \n                 are props_r4133_replay::RP38_SUPERSEDED)"
+                 table's (the capi `''` is harness::SKIP_PROPS group (g); the census rows \
+                 are props_r4133_replay::RP38_SUPERSEDED)"
             );
         }
     }

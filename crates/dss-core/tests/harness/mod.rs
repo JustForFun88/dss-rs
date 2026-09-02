@@ -1561,6 +1561,22 @@ pub struct PropsCap {
 /// loosening. The property NAME is still order-checked (only the VALUE compare
 /// is skipped). Populated only after the Phase-A pilot triage proves a prop
 /// non-comparable (path echo / RNG / oracle UB); empty until then.
+///
+/// **Known structural gap — no liveness guard** (recorded by the RP3.8 audit
+/// settlement, 2026-09-02; pre-dates it). `skip_props_disposition_tests`
+/// enforces that every row is *decided* and that the two channel lists partition
+/// it, but nothing checks that a row still masks a real cell. A row that has become dead
+/// is accepted silently — and for the (g) rows that matters in a specific way:
+/// their failure mode is the engine reverting to `''`, after which the capi
+/// compare AGREES and the gate stays green over five dead masks. What covers
+/// that today is out-of-harness: the expected-value pins
+/// (`props_r4133_pins::indmach012_pf_renders_the_live_power_factor` /
+/// `…storagecontroller_fleet_aggregates_render_the_live_fleet`, the unit pins,
+/// and `props_r4133_replay::the_rp38_pairs_are_superseded_by_the_live_render`),
+/// each of which reds on exactly that revert — plus the r4133 channel, which
+/// value-compares all five. A per-row mask counter threaded through the corpus
+/// gate would close it in-harness for all 17 rows; that is harness work no
+/// sub-step owns (checked against §RP3.9-§RP4.1), not RP3.8's.
 const SKIP_PROPS: &[(&str, &str)] = &[
     // (class, prop) — each row is a proven comparability exclusion cited in
     // tests/TOLERANCE_NOTES.md §"WP8.5b property parity"; NEVER a tolerance
@@ -1746,7 +1762,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:984-990` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:987-993` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -1775,7 +1791,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:984-990` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:987-993` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -1839,7 +1855,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     **compare** on r4133. The exclusion is a statement about the 0.14.5
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
-    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:984-990`
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:987-993`
     //     makes for (e)/(f). Measured with the §1.1(e) property mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
@@ -1885,7 +1901,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///
 /// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:984-990` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:987-993` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
@@ -2078,7 +2094,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values `tests/TOLERANCE_NOTES.md:984-990` forbids masking there,
+    /// r4133 values `tests/TOLERANCE_NOTES.md:987-993` forbids masking there,
     /// plus the two `pctperm` rows the RP2.1 probe census measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {

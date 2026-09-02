@@ -137,10 +137,17 @@ impl PropFlags {
     /// Transformer `WdgCurrents`: the r4133 getter is self-sufficient because it
     /// holds live pointers (`GetkWhTotal` re-sums `FleetPointerList` on every
     /// call), while the Rust `&self` getter reaches neither the solution nor
-    /// another class's arena. So the three render surfaces refresh the object's
-    /// live-result cache at one choke point, `Dss::refresh_vterminal_if_marked`,
-    /// exactly when this flag is present, and the `&self` getter then returns
-    /// the just-refreshed number.
+    /// another class's arena. So the render surfaces refresh the object's
+    /// live-result cache before reading it, exactly when this flag is present,
+    /// and the `&self` getter then returns the just-refreshed number: `?`,
+    /// `Dump` and `element_properties` one object at a time at
+    /// `Dss::refresh_vterminal_if_marked`; `Save` — which walks whole classes
+    /// and has no single property to gate on — in one up-front pass,
+    /// `Dss::refresh_render_caches_for_save`. The **fifth** reader of
+    /// `ClassProps::get_value`, `batchedit`'s `where <prop> <op> <x>` filter, is
+    /// `&self` and refreshes nothing; it is recorded with its measured
+    /// zero-cell blast radius in `ORPHANED_GAPS.md` §1.17 (RP3.8 audit
+    /// settlement).
     ///
     /// **A read stays a pure read of the model**, on both holders -- upstream
     /// mutates on both, and neither mutation is reproduced (they are the

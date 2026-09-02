@@ -157,6 +157,12 @@ impl Dss {
         // does not re-write (and thereby delete) an already-written class file.
         let mut class_saved = vec![false; self.classes.len()];
 
+        // Live render caches first: the serializer is `&self` and emits
+        // whatever they hold, so they are refreshed once here — the `Save` form
+        // of the per-read choke point
+        // (`Dss::refresh_render_caches_for_save`).
+        self.refresh_render_caches_for_save(None);
+
         // `Exclude(Flg.HasBeenSaved)` on every object (Pascal clears both the
         // `DSSObjs` and `CktElements` lists — every object here).
         for cls in &mut self.classes {
