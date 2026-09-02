@@ -589,6 +589,23 @@ const DECLARED_RP39: (usize, usize, usize) = (55, 27, 19);
 /// one-token spellings are claimed by `ArrayForm` and are not here) and
 /// `relay.normal`/`state` (1 row each, both out of scope). RP4.1 does not start
 /// until all three close (plan §0).
+///
+/// **All three have now closed — RP3.5 (2026-08-28), RP3.6 (2026-08-29) and
+/// RP3.7 (2026-09-02) — and the constant has NOT moved.** That is the same
+/// reading [`DECLARED_RP3`]'s note spells out: this number tracks the tree, not
+/// the work. All three settled `FIX`, so the port now renders r4133's own value
+/// on every one of these pairs and there is nothing left to exclude on the
+/// r4133 channel — but the vendored extracts are a **data lock** recording the
+/// 2026-08-08 measurement, so their `rust` columns still hold the PRE-FIX
+/// spellings (`'none'`, `''`, `'closed'`, `'open'`, `'[closed, open, open, ]'`)
+/// and no link of the chain claims them. The rows retire by hand at RP4.1,
+/// where the live compare finally sees the fixed renders; until then the
+/// verdicts in [`RP22_ROUTING`] carry what was decided, for whom, and what
+/// holds each port value meanwhile (`exec::tests::line_fetch::…`,
+/// `exec::tests::reduce::…`, `exec::tests::controls::…`, `relay::tests::…`).
+/// What each fix DID move is the live `capi_v0145` channel — 1 + 2 + 5 landed
+/// property entries, all outside this accounting
+/// ([`LANDED_PROPERTY_ENTRY_PINS`]).
 const DECLARED_RP35: (usize, usize, usize) = (8, 6, 5);
 /// `OutOfScope` rows must have **zero** in-scope cells — that is the whole
 /// claim the marker makes (plan §1.3).
@@ -1682,15 +1699,68 @@ const RP22_ROUTING: &[(&str, Owner, &str)] = &[
     // scope, and no census cell exposes it (no corpus deck writes `normal=`
     // under lock). Recorded here, in plan §RP3.7 and in STATUS rather than left
     // to RP4.1's residual triage.
+    //
+    // **SETTLED 2026-09-02, outcome FIX (both lanes).** The port now carries
+    // r4133's per-phase model: `[ControlAction; 6]` arrays plus the
+    // `NormalStateSet` latch, `InterpretSwitchState`'s name-keyed lock guard,
+    // ganged-when-bare / per-phase-when-quoted writes through a fresh parser
+    // with the five-token cap, per-conductor drive at `RecalcElementData`, and
+    // `MappedStringEnumArray` getters that render one token per controlled
+    // phase (`[]` for a nil element). (a2) landed with it, exactly as the
+    // paragraph above reads it: a locked `normal=` APPLIES while a locked
+    // `state=`/`action=` does not, and the Edit supplemental
+    // (`SwtControl.pas:220-228`) sits OUTSIDE the interpreter, so
+    // `NormalStateSet` latches even on a refused write. `docs/upgrade/
+    // DIVERGENCES.md` §D12 carries the corrected record.
+    //
+    // The frozen `rust='closed'` column of these rows is therefore HISTORICAL
+    // (the extracts are a data lock, never edited), which is why they still
+    // declare to this bucket — see [`DECLARED_RP35`]. What the fix moved is the
+    // two channels, in opposite directions:
+    //
+    // * **r4133 — nothing to exclude.** All 80 in-scope cells (40 per pair, on
+    //   `midi_swtcontrol` 12, `swtcontrol_time` 12 and `civanlar` 16) now render
+    //   BYTE-IDENTICALLY to r4133; re-measured 2026-09-02 with the RP0.2 census
+    //   knob, which reports ZERO `Normal`/`State` rows on that channel for those
+    //   three decks and leaves only the pairs owned elsewhere (`Delay` RP3.1,
+    //   `Action` RP2.3, `Reset`/`enabled` bin 1, `SwitchedObj` bin 2). No
+    //   `property` entry is staged and none is needed. Held meanwhile by
+    //   `exec::tests::controls::
+    //   swtcontrol_state_renders_per_phase_on_the_r4133_only_decks` — plan
+    //   §1.1(c): those three decks are `engines: r4133`, and the 0.14.5 oracle
+    //   cannot render the array at all, so no oracle channel witnesses them
+    //   until RP4.1.
+    // * **capi_v0145 — five LIVE entries, landed with the fix.** The 19
+    //   out-of-scope cells sit on five capi-gated cases whose property compare
+    //   runs today: `swtcontrol_lock` (12 steps x 2 cells, and twice over —
+    //   probes AND properties), `makeposseq_ctrl` (2) and three `IEEE_519`
+    //   copies (4 each). `tests/corpus/ledger.json`'s
+    //   `swtcontrol-per-phase-state-{lock,makeposseq,ieee519-tmode,
+    //   ieee519-varload,ieee519-matlab}-capi-props` (cause
+    //   `swtcontrol-per-phase-state-render`) are the exclusions and
+    //   `exec::tests::controls::
+    //   swtcontrol_state_renders_one_token_per_controlled_phase` is their
+    //   witness ([`LANDED_PROPERTY_ENTRY_PINS`]). The §1.1(e) staging rule
+    //   defers r4133 entries only.
+    //
+    // The decomposition behind "59 cells, 40 in scope, 19 on exactly five capi
+    // cases — hence exactly five entries and no more" is derived from the corpus
+    // by [`the_rp37_census_decomposition_is_read_off_the_corpus`].
     (
         "swtcontrol.normal",
         Owner::Rp35,
-        "RP3.7(a) — SwtControl.pas:589-599 / :37-38 / :299-305 / :433-480 / :532-549",
+        "RP3.7(a) FIXED (2026-09-02) — SwtControl.pas:589-599 / :37-38 / \
+         :299-307 / :416-417 / :433-480 / :532-549 / :220-228 — \
+         elements/control/swt_control/{mod,accessors}.rs, both lanes; pins \
+         exec::tests::controls::\
+         swtcontrol_state_renders_one_token_per_controlled_phase and \
+         swtcontrol_state_renders_per_phase_on_the_r4133_only_decks, plus \
+         swt_control::tests::locked_normal_applies_locked_state_and_action_do_not",
     ),
     (
         "swtcontrol.state",
         Owner::Rp35,
-        "RP3.7(a) — SwtControl.pas:600-610 (same set)",
+        "RP3.7(a) FIXED (2026-09-02) — SwtControl.pas:600-610 (same set)",
     ),
     // **RP3.7 (b), the mirror image**: here the PORT renders three tokens and
     // r4133 one. `TRelayObj.GetPropertyValue` 39/40 loops the LIVE
@@ -1698,12 +1768,38 @@ const RP22_ROUTING: &[(&str, Owner, &str)] = &[
     // a per-phase array (hence `[closed, open, open, ]`) but does not resync it
     // to the controlled element after `MakePosSequence`. The single cell is
     // `modes/makeposseq/makeposseq_ctrl.dss:44`, `engines: "capi_v0145"`.
+    //
+    // **SETTLED 2026-09-02, outcome FIX (both lanes).** ONE frozen snapshot
+    // caused two symptoms, not one: `make_pos_sequence` now refreshes
+    // `ctrl_snap.{nphases, nterms, buses}` from the live controlled element, so
+    // the render prints one token AND `Sample` stops resyncing conductors 2..3
+    // off the end of a 1-conductor element — which is why the frozen
+    // `relay.state` cell reads `[closed, open, open, ]` rather than three closed
+    // tokens. Both cells now render r4133's `[closed, ]` byte for byte (probed
+    // on the r4133 DLL over the `makeposseq_ctrl` shape), so nothing is excluded
+    // on either channel: the frozen `rust` columns are HISTORICAL and the rows
+    // stay declared for that reason alone. Four further r4133 mismatches on the
+    // same write seam were fixed with it under "port gaps immediately" (a quoted
+    // single token is per-phase where a bare one is ganged, the `Action`
+    // supplemental runs after a refused or unmatched write, and the five-token
+    // `RELAYCONTROLMAXDIM` cap), none with corpus exposure. No capi entry is due
+    // either: `Relay` and `Recloser` are whole-element-skipped on that channel
+    // (`tests/harness/mod.rs::skip_whole_element`), measured again on
+    // `makeposseq_ctrl` (2 elements / 80 cells skipped).
     (
         "relay.normal",
         Owner::Rp35,
-        "RP3.7(b) — Relay.pas:1407-1417 (loops ControlledElement.NPhases)",
+        "RP3.7(b) FIXED (2026-09-02) — Relay.pas:1407-1417 (loops \
+         ControlledElement.NPhases) / :1237-1308 / :616-619 — \
+         elements/control/relay/{mod,accessors}.rs, both lanes; pins \
+         relay::tests::the_render_bound_follows_makeposseq and \
+         a_quoted_single_token_is_per_phase_a_bare_one_is_ganged",
     ),
-    ("relay.state", Owner::Rp35, "RP3.7(b) — Relay.pas:1418-1428"),
+    (
+        "relay.state",
+        Owner::Rp35,
+        "RP3.7(b) FIXED (2026-09-02) — Relay.pas:1418-1428 (same set)",
+    ),
     // --- the three pairs beyond the closed list ------------------------------
     // Closing bin 3 means closing its CELLS, not only its eight pairs: the
     // vendored `README.md` §"A pair's bin is a label, not a per-cell
@@ -3973,6 +4069,36 @@ const LANDED_PROPERTY_ENTRY_PINS: &[(&str, &str, &str, &str)] = &[
         "RP3.6",
         "switch_yes_keeps_the_linecode_and_its_units_conversion",
         "crates/dss-core/src/exec/tests/line_fetch.rs",
+    ),
+    (
+        "swtcontrol-per-phase-state-lock-capi-props",
+        "RP3.7",
+        "swtcontrol_state_renders_one_token_per_controlled_phase",
+        "crates/dss-core/src/exec/tests/controls.rs",
+    ),
+    (
+        "swtcontrol-per-phase-state-makeposseq-capi-props",
+        "RP3.7",
+        "swtcontrol_state_renders_one_token_per_controlled_phase",
+        "crates/dss-core/src/exec/tests/controls.rs",
+    ),
+    (
+        "swtcontrol-per-phase-state-ieee519-tmode-capi-props",
+        "RP3.7",
+        "swtcontrol_state_renders_one_token_per_controlled_phase",
+        "crates/dss-core/src/exec/tests/controls.rs",
+    ),
+    (
+        "swtcontrol-per-phase-state-ieee519-varload-capi-props",
+        "RP3.7",
+        "swtcontrol_state_renders_one_token_per_controlled_phase",
+        "crates/dss-core/src/exec/tests/controls.rs",
+    ),
+    (
+        "swtcontrol-per-phase-state-ieee519-matlab-capi-props",
+        "RP3.7",
+        "swtcontrol_state_renders_one_token_per_controlled_phase",
+        "crates/dss-core/src/exec/tests/controls.rs",
     ),
 ];
 
@@ -6720,6 +6846,329 @@ fn the_rp36_census_decomposition_is_read_off_the_corpus() {
         in_scope_cells, 5,
         "RP3.6's second load-bearing number: every cell of the pair is in scope, which is why the \
          RP4.1 unmask compares them and breaks without this sub-step"
+    );
+}
+
+/// **RP3.7's census decomposition, as data instead of prose** — every corpus
+/// case that declares a `SwtControl`, with the two facts the pair's cells hang
+/// off: `(case, tokens the render carries, controls whose `State` renders OPEN)`.
+///
+/// The control COUNT is deliberately not repeated here: it is
+/// [`RP31_DELAY_CASES`]/[`RP31_NO_DELAY_CASES`]' column, re-measured from the
+/// decks by [`the_rp31_census_decomposition_is_read_off_the_corpus`] and by this
+/// test's own sweep, so the two decompositions cannot disagree about the
+/// population. What is new here is the *shape* of each case's render, which is
+/// what makes `swtcontrol.normal`/`state` a pair at all:
+///
+/// * **tokens** — the getter renders one token per CONTROLLED-ELEMENT phase
+///   (`Version8/Source/Controls/SwtControl.pas:589-599` / `:600-610`), so every
+///   case is 3 except `makeposseq_ctrl`, whose `line.sw` drops to one phase at
+///   `MakePosSequence`. That single case is the whole of the `'[closed, ]'`
+///   spelling both frozen example rows record;
+/// * **open** — how many of the case's controls answer `open` after its own
+///   `post` commands have run. `midi_swtcontrol` and `swtcontrol_time` arm a
+///   delayed `action=open` (1 control each) and `civanlar.dss` declares three of
+///   its sixteen ties `Action=o` (`5_11`, `7_16`, `10_14`); every other control
+///   in the corpus is closed, and `Normal` is closed on all of them — untyped
+///   ties inherit `Create`'s all-CLOSED array (`:299-307`) and the two
+///   `swtcontrol` micro-decks type `normal=closed` explicitly.
+///
+/// Those two columns are what turn 59 cells into the frozen census's exact
+/// per-spelling split, and the split is the sub-step's load-bearing conclusion:
+/// 40 in-scope cells on three `engines: r4133` decks (which COMPARE after the
+/// fix, hence no r4133 entry) against 19 on exactly five `capi_v0145` cases —
+/// *hence exactly five landed ledger entries and no more*.
+const RP37_SWTCONTROL_CASES: &[(&str, usize, usize)] = &[
+    ("controls:swtcontrol/midi_swtcontrol.dss", 3, 1),
+    ("controls:swtcontrol/swtcontrol_lock.dss", 3, 0),
+    ("controls:swtcontrol/swtcontrol_time.dss", 3, 1),
+    ("modes:makeposseq/makeposseq_ctrl.dss", 1, 0),
+    (
+        "solvable_now:Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS",
+        3,
+        0,
+    ),
+    (
+        "solvable_now:Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS",
+        3,
+        0,
+    ),
+    (
+        "solvable_now:Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/IEEE_519.DSS",
+        3,
+        0,
+    ),
+    (
+        "solvable_now:Version8/Distrib/Examples/civinlar model/civanlar.dss",
+        3,
+        3,
+    ),
+];
+
+/// The exact `[closed, …]` / `[open, …]` spelling an `n`-token render carries —
+/// r4133's `'['` + `n` × `'<state>, '` + `']'` (`SwtControl.pas:589-599`).
+fn swt_render(n: usize, state: &str) -> String {
+    let mut s = String::from("[");
+    for _ in 0..n {
+        s.push_str(state);
+        s.push_str(", ");
+    }
+    s.push(']');
+    s
+}
+
+/// **RP3.7's census decomposition is read off the corpus, not off its own
+/// prose** — [`the_rp31_census_decomposition_is_read_off_the_corpus`]' shape,
+/// for the sub-step that settled `swtcontrol.normal`/`swtcontrol.state`.
+///
+/// The conclusion this derives is "**59 cells per pair, 40 in scope, 19 on
+/// exactly five `capi_v0145` cases — hence exactly five landed ledger entries
+/// and no more**", plus the fact that makes the r4133 side need none: the 40
+/// in-scope cells sit on three `engines: r4133` decks and COMPARE after the fix
+/// (re-measured live 2026-09-02 with the RP0.2 census knob, which reports zero
+/// `Normal`/`State` rows on that channel; the pins hold the values meanwhile).
+///
+/// Four independent places are reconciled against each other:
+///
+/// * the **decks** give the control count and the completeness claim — the sweep
+///   fails if any deck outside [`RP31_DELAY_CASES`]/[`RP31_NO_DELAY_CASES`]
+///   declares a `SwtControl`, so a corpus that grows one reds here, where the
+///   "exactly five entries" conclusion is drawn;
+/// * `population.lock.json` gives each case's `steps=` and `engines=`, so
+///   `cells = controls × steps` and "in scope" is the lock's own answer;
+/// * the **frozen census** (`bins.tsv`'s 59/40 twice and `examples_full.txt`'s
+///   two + three rows) is what the products must add up to, **per spelling**:
+///   `normal` 58 + 1 and `state` 31 + 27 + 1, which only comes out right if the
+///   `tokens`/`open` columns above are right;
+/// * `tests/corpus/ledger.json` gives the landed `capi_v0145` entries, which
+///   must be exactly one per out-of-scope case, each carrying one `property`
+///   match row per (control, property).
+///
+/// The frozen `rust` column stays `'closed'`/`'open'` — the 2026-08-08
+/// measurement, historical since RP3.7 and never edited (RP0.1 evidence lock) —
+/// so these rows are still *declared* to [`DECLARED_RP35`]; that constant tracks
+/// the tree, not the work.
+#[test]
+fn the_rp37_census_decomposition_is_read_off_the_corpus() {
+    const PAIRS: [&str; 2] = ["swtcontrol.normal", "swtcontrol.state"];
+
+    // (1) Completeness: `RP37_SWTCONTROL_CASES` names every corpus case that
+    //     declares a SwtControl, and the control counts come from the decks.
+    let root = repo_root().join(CORPUS);
+    let mut decks = Vec::new();
+    collect_dss(&root, &root, &mut decks);
+    assert!(
+        decks.len() > 1000,
+        "only {} .dss files under {CORPUS} — the vendored corpus is missing",
+        decks.len()
+    );
+    let declared: BTreeMap<String, usize> = decks
+        .iter()
+        .map(|d| (d.clone(), swtcontrol_facts(d).0))
+        .filter(|(_, n)| *n > 0)
+        .collect();
+    let cited: BTreeSet<String> = RP37_SWTCONTROL_CASES
+        .iter()
+        .map(|(case, _, _)| case_deck(case))
+        .collect();
+    assert_eq!(
+        declared.keys().cloned().collect::<BTreeSet<_>>(),
+        cited,
+        "every corpus deck declaring a SwtControl must sit in RP3.7's decomposition — a new one \
+         changes how many ledger entries the pair owes"
+    );
+
+    // (2) Per case: cells = controls × steps, in scope iff the case gates r4133,
+    //     and the render's spelling is `tokens` wide.
+    let skipped = r4133_skipped_cases();
+    let lock_path = repo_root().join(POPULATION_LOCK);
+    let lock: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&lock_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", lock_path.display())),
+    )
+    .expect("population.lock.json is JSON");
+
+    // spelling -> cells, per pair; plus the in-scope / out-of-scope case splits.
+    let mut normal: BTreeMap<String, usize> = BTreeMap::new();
+    let mut state: BTreeMap<String, usize> = BTreeMap::new();
+    let mut in_scope_cases: Vec<(&str, usize)> = Vec::new();
+    let mut capi_cases: Vec<(&str, usize, usize)> = Vec::new();
+    let (mut cells, mut in_scope_cells) = (0usize, 0usize);
+    for (case, tokens, open) in RP37_SWTCONTROL_CASES {
+        let controls = declared[&case_deck(case)];
+        assert!(
+            *open <= controls,
+            "{case}: {open} open controls of {controls} declared"
+        );
+        assert!(
+            *open == 0 || *tokens == 3,
+            "{case}: every open control in the corpus is on a 3-phase switched line"
+        );
+        let rigor = case_rigor(&lock, case);
+        let steps: usize = rigor_field(&rigor, "steps")
+            .parse()
+            .unwrap_or_else(|e| panic!("{case}: steps= is not a number: {e}"));
+        let here = controls * steps;
+        // Both halves of "does r4133 gate this case?" (RP3.4's correction).
+        let in_scope = rigor_field(&rigor, "engines") != "capi_v0145" && !skipped.contains(*case);
+        cells += here;
+        if in_scope {
+            in_scope_cells += here;
+            in_scope_cases.push((case, here));
+        } else {
+            capi_cases.push((case, controls, here));
+        }
+        // `Normal` is closed on every control of every case; `State` splits.
+        *normal.entry(swt_render(*tokens, "closed")).or_default() += here;
+        *state.entry(swt_render(*tokens, "open")).or_default() += open * steps;
+        *state.entry(swt_render(*tokens, "closed")).or_default() += (controls - open) * steps;
+    }
+    normal.retain(|_, c| *c > 0);
+    state.retain(|_, c| *c > 0);
+    in_scope_cases.sort_unstable();
+    capi_cases.sort_unstable();
+
+    // (3) …and the products are the frozen census's own numbers, per spelling
+    //     and in total, for BOTH pairs.
+    let corpus = Corpus::load();
+    for pair in PAIRS {
+        let rows: Vec<&Example> = corpus.rows.iter().filter(|r| r.pair == pair).collect();
+        let derived = if pair.ends_with("normal") {
+            &normal
+        } else {
+            &state
+        };
+        let mut frozen: BTreeMap<String, usize> = BTreeMap::new();
+        for r in &rows {
+            assert_eq!(
+                r.rust,
+                r.r4133.trim_start_matches('[').split(',').next().unwrap(),
+                "{pair}: the frozen `rust` column is the scalar the port rendered in 2026-08-08 — \
+                 exactly r4133's own token, un-repeated"
+            );
+            *frozen.entry(r.r4133.clone()).or_default() += r.cells;
+        }
+        assert_eq!(
+            derived, &frozen,
+            "{pair}: the derived per-spelling split must be the frozen example rows'"
+        );
+        let ev = corpus
+            .evidence(rows[0])
+            .unwrap_or_else(|| panic!("{pair}: no frozen evidence record"));
+        assert_eq!(
+            (cells, Some(in_scope_cells)),
+            (ev.cells, ev.cells_in_scope),
+            "derived cells / in-scope cells must be bins.tsv's for {pair}"
+        );
+    }
+    assert_eq!(
+        (cells, in_scope_cells),
+        (59, 40),
+        "RP3.7's two load-bearing numbers: 59 cells per pair, 40 of them in scope — 80 in-scope \
+         cells over the two pairs, which is the plan's acceptance criterion"
+    );
+    assert_eq!(
+        in_scope_cases,
+        [
+            ("controls:swtcontrol/midi_swtcontrol.dss", 12),
+            ("controls:swtcontrol/swtcontrol_time.dss", 12),
+            (
+                "solvable_now:Version8/Distrib/Examples/civinlar model/civanlar.dss",
+                16
+            ),
+        ],
+        "the 40 in-scope cells are 12 + 12 + 16 over the three r4133-gating decks; all three now \
+         render r4133's bytes, so NO r4133 property entry is staged or owed"
+    );
+
+    // (4) One landed `capi_v0145` entry per out-of-scope case and no other, each
+    //     with one `property` match row per (control, property).
+    let ledger_path = repo_root().join(LEDGER);
+    let doc: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&ledger_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", ledger_path.display())),
+    )
+    .expect("ledger.json is JSON");
+    let entries = doc["entries"]
+        .as_array()
+        .expect("ledger.json has an `entries` array");
+    let mine: Vec<&serde_json::Value> = entries
+        .iter()
+        .filter(|e| e["cause_ref"] == "swtcontrol-per-phase-state-render")
+        .collect();
+    let mut entry_cases: Vec<&str> = mine
+        .iter()
+        .map(|e| e["case"].as_str().expect("an entry names its case"))
+        .collect();
+    entry_cases.sort_unstable();
+    assert_eq!(
+        entry_cases,
+        capi_cases.iter().map(|(c, ..)| *c).collect::<Vec<_>>(),
+        "exactly the out-of-scope cases owe a LANDED capi_v0145 entry — one each; the in-scope \
+         cells compare on r4133 and owe none"
+    );
+    assert_eq!(
+        capi_cases.iter().map(|(_, _, n)| n).sum::<usize>(),
+        cells - in_scope_cells,
+        "the capi split must be the complement of the in-scope one"
+    );
+    for e in &mine {
+        let case = e["case"].as_str().unwrap();
+        let controls = capi_cases
+            .iter()
+            .find(|(c, ..)| *c == case)
+            .map(|(_, n, _)| *n)
+            .unwrap();
+        assert_eq!(e["channel"], "capi_v0145");
+        assert_eq!(e["kind"], "divergence");
+        let ms = e["match"].as_array().expect("match rows");
+        let props = ms.iter().filter(|m| m["field"] == "property").count();
+        assert_eq!(
+            props,
+            controls * 2,
+            "{case}: one `property` scope per (control, property) — {controls} control(s) x \
+             {{Normal, State}}"
+        );
+        // Probes are a SECOND exposure on the one deck whose manifest declares
+        // them, never a substitute for the property rows.
+        let probes = ms.iter().filter(|m| m["field"] == "probe").count();
+        let want = usize::from(case == "controls:swtcontrol/swtcontrol_lock.dss") * 2;
+        assert_eq!(
+            probes, want,
+            "{case}: only swtcontrol_lock.dss probes SwtControl.sw.state/.normal (its manifest \
+             declares probes [state, normal, lock]; `lock` does not diverge)"
+        );
+        for m in ms {
+            assert_eq!(
+                m["oracle"], "closed",
+                "{case}: the 0.14.5 oracle renders one bare word on every one of these cells"
+            );
+            let tokens = RP37_SWTCONTROL_CASES
+                .iter()
+                .find(|(c, ..)| *c == case)
+                .map(|(_, t, _)| *t)
+                .unwrap();
+            assert_eq!(
+                m["rust"].as_str(),
+                Some(swt_render(tokens, "closed").as_str()),
+                "{case}: the pinned rust value must be the {tokens}-token render"
+            );
+        }
+    }
+    // …and every one of them is witnessed, which is the other half of the
+    // "exactly five" claim.
+    let witnessed: BTreeSet<&str> = LANDED_PROPERTY_ENTRY_PINS
+        .iter()
+        .filter(|(_, step, _, _)| *step == "RP3.7")
+        .map(|(id, ..)| *id)
+        .collect();
+    let landed: BTreeSet<&str> = mine
+        .iter()
+        .map(|e| e["id"].as_str().expect("an entry names its id"))
+        .collect();
+    assert_eq!(
+        witnessed, landed,
+        "each landed RP3.7 entry owes a LANDED_PROPERTY_ENTRY_PINS witness and vice versa"
     );
 }
 

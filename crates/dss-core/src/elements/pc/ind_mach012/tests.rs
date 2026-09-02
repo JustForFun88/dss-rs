@@ -85,6 +85,8 @@ fn dynamics_loadshapeclass_selects_matching_curve() {
                 enums: &enums,
                 errors: &mut errors,
                 foreign: None,
+
+                was_quoted: false,
             };
             cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
         }

@@ -21,6 +21,8 @@ fn edit_and_dump(edits: &[(&str, &str)]) -> Vec<(String, String)> {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
@@ -112,6 +114,8 @@ fn build_curve(npts: &str, c: &str, t: &str) -> TccCurveObj {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut obj, idx, v, &mut eng).unwrap();
     }
@@ -197,6 +201,8 @@ fn log_points_track_c_array() {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut obj, idx, v, &mut eng).unwrap();
     }

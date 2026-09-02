@@ -19,6 +19,8 @@ fn edited(edits: &[(&str, &str)]) -> (ClassProps, XyCurveObj, crate::diag::Error
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
@@ -99,6 +101,8 @@ fn x_setter_syncs_y_with_shift_and_scale() {
         enums: &enums,
         errors: &mut errors,
         foreign: None,
+
+        was_quoted: false,
     };
     cls.edit_property(&mut obj, idx, "2", &mut eng).unwrap();
     assert_eq!(get(&cls, &obj, "x"), "2");

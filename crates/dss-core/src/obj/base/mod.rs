@@ -758,6 +758,24 @@ pub trait DssObject: Send {
         let _ = values;
         unreachable!("set_enum_array not implemented for property {idx}")
     }
+    /// Class-owned RAW-value write for a `MappedStringEnumArrayProperty` — the
+    /// r4133 `InterpretSwitchState`-shaped mechanics, whose ganged-vs-per-phase
+    /// split keys on the outer parser's `WasQuoted` flag
+    /// (`Version8/Source/Controls/SwtControl.pas:410-482`) and whose tokens
+    /// match on their first character only (`:438-441/:464-467`): two things
+    /// the generic ordinal tokenizer cannot carry. Consulted BEFORE the generic
+    /// [`DssObject::set_enum_array`] arm of `parse_into`; `true` means the
+    /// class consumed the value (parse + write + its own no-match semantics),
+    /// `false` falls through to the tokenizer. `was_quoted` is
+    /// [`PropEngine::was_quoted`](crate::obj::props::PropEngine::was_quoted);
+    /// seams without an outer parser leave it `false` and the implementor
+    /// reconstructs the quoted case from the value itself (RP3.7 A2 — the
+    /// SwtControl `Normal`/`State` writer; the Relay twin keeps the generic
+    /// arm until B1).
+    fn set_enum_array_raw(&mut self, idx: usize, value: &str, was_quoted: bool) -> bool {
+        let _ = (idx, value, was_quoted);
+        false
+    }
 
     /// `BusProperty` write: `terminal` is 1-based (`PropertyOffset`); the
     /// element lowercases and flags `BusNameRedefined` (Pascal `SetBus`).

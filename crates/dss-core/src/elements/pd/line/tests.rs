@@ -42,6 +42,8 @@ fn scalar(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, value: &str) {
         enums: &enums,
         errors: &mut errors,
         foreign: None,
+
+        was_quoted: false,
     };
     cls.edit_property(obj, idx, value, &mut eng).unwrap();
     errors.extend(obj.data_mut().take_errors());

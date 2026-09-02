@@ -1765,6 +1765,40 @@ applies, a locked `state=`/`action=` does not), with the corrected §D12 record 
 (a2) is a fix, not a decision, so it may not be deferred to `ORPHANED_GAPS.md`
 even if (a) is. Tier: `opus-high+`.
 
+**As executed (2026-09-02) — outcome `FIX` (both lanes) for all three parts,
+plus five live `capi_v0145` ledger entries. Full record: STATUS §RP3.7.** The
+probe ran on all three engines and no kill criterion fired. Four points where the
+code corrected this section's premises or numbers:
+
+* **The acceptance criterion resolves as "compare", with zero r4133 entries.**
+  The 80 in-scope cells sit on `midi_swtcontrol` (12), `swtcontrol_time` (12) and
+  `civanlar` (16) — all `engines=r4133`, i.e. **not** the decks the fix reds — and
+  after the port they are **byte-identical to the r4133 DLL**, measured directly
+  and confirmed by a census that finds **no** `Normal`/`State` row left on that
+  channel. So **80 / 80 COMPARE**, no exclusion, and no r4133 `property` entry is
+  staged, landed or drafted. What the fix does red is the **capi** channel's 19
+  out-of-scope cells on five cases, ledgered under one new cause.
+* **The corpus carries eight SwtControl decks, not five.** A `--include=*.dss`
+  sweep misses the uppercase `IEEE_519.DSS` copies, which declare two SwtControls
+  each (`:45-46`) and carry 6 of those 19 cells.
+* **Two source facts this section did not call out, both load-bearing.** (i) The
+  per-phase branch honors at most **five** tokens (`i < SWTCONTROLMAXDIM`,
+  `SwtControl.pas:461`; `Relay.pas:1286`) while the getters render up to
+  `min(6, NPhases)` — parse cap and render bound are different numbers. (ii) A
+  **quoted single token** is per-phase where a bare one is ganged (`state=(open)`
+  → `[open, closed, closed, ]` vs `state=open` → `[open, open, open, ]`,
+  measured), which is why `Parser.WasQuoted` had to be plumbed to the property
+  seam and reconstructed on the seams that have no outer parser.
+* **(b) is not render-only.** One frozen `ctrl_snap` produces **two** symptoms —
+  the three-token render *and* a `Sample` resyncing past the end of a 1-conductor
+  element, which is what makes the frozen census cell `[closed, open, open, ]` —
+  and one refresh in `make_pos_sequence` settles both. The same seam carried four
+  further r4133 mismatches on Relay (the quoted single token ×2, the `Action`
+  supplemental ×2, the five-token cap), all fixed here under "port gaps
+  immediately". The fallback this section offered (record the gap in
+  `ORPHANED_GAPS.md` and carry an exclusion + pin) was **not** taken: the probe
+  confirmed the authority reading, so the default applied and no exclusion exists.
+
 ### RP3.8 — the five read-only text surfaces r4133 renders live (opened by RP2.3)
 
 **Why it exists.** RP2.3's kill criterion fired on five pairs — `indmach012.pf`

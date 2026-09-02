@@ -20,6 +20,19 @@ pub struct PropEngine<'a> {
     /// (Pascal resolves `cls.Find` mid-`Edit`; see [`ForeignClassesView`]).
     /// `None` outside the executive's edit loop (unit tests, etc.).
     pub foreign: Option<&'a dyn ForeignClassesView<'a>>,
+    /// Pascal `Parser.IsQuotedString` for the value token just read by the
+    /// OUTER `Edit` parser: `true` when the value arrived wrapped in a quote
+    /// pair (`("'{[{` all qualify, `Parser/ParserDel.pas:258,393-397`). The
+    /// outer parser strips the quotes before the property arm runs, so the
+    /// bare value string cannot carry the distinction — yet r4133 writers key
+    /// on it (SwtControl/Relay `InterpretSwitchState`: a quoted value goes
+    /// phase-by-phase, an unquoted bare token ganged,
+    /// `Controls/SwtControl.pas:433-480`). The executive sets it per token;
+    /// seams without an outer parser (JSON import, unit tests) leave it
+    /// `false` — a class hook that cares reconstructs the quoted case from
+    /// the value's own leading quote character / token count (RP3.7 A2;
+    /// [`crate::obj::base::DssObject::set_enum_array_raw`]).
+    pub was_quoted: bool,
 }
 
 /// A read view of the other registered classes, the abstraction `parse_into`

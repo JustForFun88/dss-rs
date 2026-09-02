@@ -20,6 +20,8 @@ fn apply(
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(obj, idx, value, &mut eng).unwrap();
     }
