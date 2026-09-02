@@ -155,7 +155,11 @@ which RP2.4's audit settlement opened** (landed 2026-09-02: all 27 pairs settled
 `PRECISION_ROUNDTRIP` and pinned, `OPEN_RP39 = (0, 0, 0)`) (55 spellings / 27
 pairs whose r4133 value is no `%.Ng` render of ours — `RP39_ROUTING`; none of
 them in scope today, which is why the block was a discipline and not a gate
-failure), and after its own
+failure) **and §RP3.12, which RP3.9's own P0 open item opened** (landed
+2026-09-03: the 34 `controls:autotrans/*` `wdgcurrents` cells settled
+`UPSTREAM_BUG` — r4133 never taps an AutoTrans — never reproduced, zero
+product-crate lines; it added no precondition to the flip either, all four of
+its decks being capi-only), and after its own
 in-sub-step precondition, the **per-cell narrowing of the 20 mixed echo rows**
 (RP2.3's audit settlement, §RP4.1's first paragraph); RP5 is last.
 **Two RP3 sub-steps are deliberately outside that rule.** **§RP3.10** (the
@@ -201,6 +205,7 @@ audits on `opus-xhigh` exec rows are themselves `opus-xhigh`.
 | RP2.3 | `opus-high+` | `opus-high+` | `opus-high+` | echo-exclusion rows, each mechanically citable to an r4133 echo site, plus pins |
 | RP2.4 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | a new channel-scoped numeric floor — calibration discipline (the eight required components are enumerated in RP2.4 itself) |
 | RP3.1–RP3.4 (+ any RP3.5+ opened by RP2.2 or RP2.3) | `opus-high+` | `opus-high+` | `opus-high+` | one root-cause each, bounded surface, live-probe procedure prescribed |
+| RP3.12 | `opus-high+` | `opus-high+` | `opus-high+` | as executed: a verdict-only sub-step over one already-decomposed root cause — no product line, no numerics of its own, the judgement calls being the count-lock re-derivation and the ledger-cause rewrite |
 | RP3.10 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | a behavioral port change in both lanes (the reproduced `QMode=0` dispatch) that moves solved powers on four r4133-gating decks — live probe + per-case power-channel ledger work |
 | RP3.11 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | a serialization-semantics decision (store vs live) over every class at once, with `Save`/`Dump`/`props_roundtrip` golden exposure in both lanes |
 | RP4.1 | `opus-high+` | `opus-high+` | `opus-high+` | flag flip + residual triage (G1.1's own tier) |
@@ -2140,6 +2145,56 @@ legitimately move are regenerated with the argument in the same commit; STATUS
 §WP-RP3 carries the record.
 Outcome: the last surface where this plan's echo mechanism has a behavioral
 consequence stops being unowned.
+
+### RP3.12 — `autotrans.wdgcurrents` on the regulator decks (opened by RP3.9's P0 open item)
+
+**Why it exists.** RP3.9 closed with one item it refused to absorb: the **34**
+`autotrans.wdgcurrents` cells on `controls:autotrans/{autotrans_both,
+autotrans_reg,midi_autotrans,midi_autotrans_both}` — 3–7.5 % apart, port ==
+`capi_v0145`, r4133 alone differing — had no owner and no root cause, only
+RP2.4's display-class `OutOfScope` filing, which a multi-percent gap in a solved
+current cannot be. A read-only investigation decomposed it before the sub-step
+was written.
+
+**Verdict: `UPSTREAM_BUG` in r4133, never reproduced; the port is correct; no
+product-crate line changes.** r4133's `RegControl` reaches its controlled
+element through five unchecked `TTransfObj(ControlledElement)` casts
+(`RegControl.pas:926`, `:1026`, `:1296`, `:1370`, `:1479`) although
+`TAutoTransObj = class(TPDElement)` (`AutoTrans.pas:88`) is not one and
+`TAutoWinding` lays its fields after `Rdcohms` at other offsets than `TWinding`,
+so `Increment := TapIncrement[TapWinding]` (`:1249`) reads the winding's
+`MaxTap` = 1.1 pu and `PendingTapChange := Round(BoostNeeded / Increment) *
+Increment` (`:1250`) zeroes every realistic boost. r4133 therefore never taps an
+AutoTrans (0 event-log lines on all four decks) and its numbers are the
+*unregulated* circuit; the same defect is in r3723 and r4088, and the
+DSS-Extensions fork fixed it while refactoring. Upstream report (gitignored):
+`investigations/to_opendss/50-regcontrol-autotrans-ttransfobj-typecast.md`.
+
+**Obligations, as landed.** The 34 cells are re-filed out of RP2.4's
+display-class bucket into their own `UPSTREAM_BUG` disposition
+(`props_r4133_replay::RP312_UPSTREAM_BUG` / `Owner::Rp312`, `DECLARED_RP312 =
+(8, 1, 0)`, `DECLARED_OUT_OF_SCOPE (229, 22, 0) → (221, 21, 0)`, every count
+re-derived from the census artifacts); one two-leg expected-value pin names both
+engines' numbers and reproduces r4133's census literal byte for byte from the
+port's own state with the RegControl disabled
+(`props_r4133_pins::autotrans_wdgcurrents_stay_regulated_where_r4133_never_taps_the_autotrans`);
+the four case-level `r4133` `kind: "skip"` entries are **drafted only** — all
+four decks are `engines: "capi_v0145"`, so an entry would be stale on arrival —
+and a both-ways tripwire reds the day a deck gains the channel without one; and
+the false ledger cause `autotrans-regcontrol-tap` ("a last-ulp voltage nudges the
+tap … FPC-vs-Delphi"), exactly the conditioning excuse CLAUDE.md forbids, is
+renamed to `regcontrol-autotrans-typecast` and rewritten, with dated corrections
+in `docs/upgrade/DIVERGENCES.md`, `docs/upgrade/sweeps/capi015_vs_r4088.md`,
+`docs/upgrade/known_diffs_burndown.md` and the vendored census README.
+
+**Blocks nothing** — all four decks are capi-only, so the r4133 channel gates
+none of them and RP4.1 gains no precondition. Tier as executed: `opus-high+`
+(exec and both audits).
+
+**Landed 2026-09-03** — `09e70233` (sub-step), `c2a8b68c` (audit settlement:
+12 findings, 11 distinct — 9 fixed, 2 recorded, 0 refuted) and this docs
+commit. Gate green in both lanes, 4 290 tests per lane; `lane_diff` not owed (no
+`src/` line moved). Full record: STATUS §RP3.12.
 
 ---
 
