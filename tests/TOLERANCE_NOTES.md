@@ -889,6 +889,40 @@ is genuinely non-comparable, not merely loose:
   Line/Transformer are clean and stay compared (31 lines + 6 transformers in
   `midi_controls`), so the `Double`-property render path is still gated.
 
+- **`IndMach012.PF` / `StorageController.kWhTotal` / `kWTotal` / `kWhActual` /
+  `kWActual`** (row group (g), `R4133_PROPS_PLAN.md` §RP3.8, 2026-09-02) — the
+  five read-only *results* r4133 renders live. dss_capi 0.14.5 flags each of
+  them `[SilentReadOnly, ReadByFunction]`
+  (`src/PCElements/IndMach012.pas:288-289`, read function
+  `PowerFactorProperty` `:264-267`; `src/Controls/StorageController.pas:416-423`,
+  read functions `:309-338`) and never assigns their `PropertyOffset`, so it
+  stays `-1` and `TDSSClassHelper.GetObjPropertyValue`
+  (`src/General/DSSObjectHelper.pas:2189`) exits at its
+  `(PropertyOffset[Index] <> -1)` guard (`:2203-2204`) leaving the string empty
+  — on a solved circuit as much as on an unsolved one, on `? name.prop` and on
+  `Properties(p).Val` alike (both are that one path; measured at every step of
+  six decks). The authority renders the live number instead:
+  `Version8/Source/PCElements/IndMach012.pas:1790`
+  (`Format('%.6g',[PowerFactor(Power[1,ActiveActor])])`, `PowerFactor` =
+  `Common/Utilities.pas:1821`) and `Version8/Source/Controls/
+  StorageController.pas:991-994` → `GetkWhTotal`/`GetkWTotal`/`GetkWhActual`/
+  `GetkWActual` (`:1162-1197`, all `Format('%-.8g',…)`), so under the 2026-08-02
+  policy the engine renders it too, in **both** lanes
+  (`PropFlags::RENDERS_LIVE_RESULT`). The capi cell is then `number` vs `''` — a
+  structure difference, non-comparable by construction, **never** a tolerance
+  question: no floor is involved and none is moved. 24 gating cases / 84
+  (case, element, property) cells / 1 006 (cell × step) comparisons, identical
+  in both lanes. The exclusion is **capi-only** (`SKIP_PROPS_CAPI_ONLY`): r4133
+  shares the render, so that channel keeps comparing all five, where they are the
+  ordinary display class (the port prints `float_to_str_ex`, r4133 its
+  `%.6g`/`%-.8g` of the same double) that `R4133_DISPLAY_FLOOR` already claims.
+  r4133's own read-writes-state — `GetkWhTotal(Var Sum)` is handed the object's
+  `TotalkWhCapacity` (`:991-992`) — is not reproduced: nothing upstream ever
+  reads those fields. Pinned by
+  `props_r4133_pins::{indmach012_pf_renders_the_live_power_factor,
+  storagecontroller_fleet_aggregates_render_the_live_fleet,
+  the_silent_readonly_capture_cells_are_empty}` plus the two classes' unit pins.
+
 A real port bug this gate caught and fixed (not a skip): **`RegControl.TapNum`**
 rendered the cached `tap_snap` while Pascal `Get_TapNum` (`RegControl.pas`) reads
 the controlled transformer's **live** `PresentTap[TapWinding]`; the `&self` getter

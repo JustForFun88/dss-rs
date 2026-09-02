@@ -218,9 +218,10 @@ dss_capi-0.14.5 `SilentReadOnly` surfaces (`indmach012.pf`,
 772 in scope**) get **no echo row** — r4133 renders a live computed value there
 and the port answers `''` only by a capi convention, so under the 2026-08-02
 policy the fix is an engine change and they are re-routed loudly into the new
-**§RP3.8**, which now **blocks RP4.1** alongside RP3.6/3.7 (RP3.5 landed
-2026-08-28, RP3.6 2026-08-29 and RP3.7 2026-09-02, so RP3.8 and RP3.9 are what
-is left); and `generator.d`
+**§RP3.8**, which then **blocked RP4.1** alongside RP3.6/3.7 (RP3.5 landed
+2026-08-28, RP3.6 2026-08-29, RP3.7 2026-09-02 and **RP3.8 itself landed
+2026-09-02** — see the §RP3.8 record below — so RP3.9 is what is left); and
+`generator.d`
 is **not an echo** either — `Create` initialises `GenVars.D` and never `Dpu`
 (`generator.pas:969` vs `:669`/`:2585`), so r4133's `'0'` is its own live value
 and `InitStateVars` then runs generator dynamics **undamped** against the
@@ -1400,8 +1401,272 @@ no solved state — the render guard fires only on an object with no controlled
 element, which no corpus deck builds, and everything else is tests, docs and
 provenance text.
 
-**Next: RP3.8 and RP3.9** — they are what RP4.1 waits on (RP3.5, RP3.6 both
-parts, and RP3.7 all three parts have landed; RP3.7 on 2026-09-02).
+**RP3.8 (the five read-only text surfaces r4133 renders live) landed
+2026-09-02 — `FIX` in both lanes, one engine flag, 25 files, and zero golden
+bytes moved.** The five pairs RP2.3's kill ruling re-routed here
+(`indmach012.pf`, `storagecontroller.kwhtotal`/`kwtotal`/`kwhactual`/
+`kwactual`, 1 064 frozen cells / 772 in scope) now render the live computed
+value on `?`, `Dump` and `element_properties`, in both lanes, with no `cfg`.
+Every number below was measured — the r4133 bytes come from the vendored EPRI
+DLL (`Version 11.0.0.1 (64-bit build)`) through `epri-worker`, the capi bytes
+from the pinned dss-python 0.15.7 / dss_capi 0.14.5, and every count is read
+back from a test rather than transcribed.
+
+**The probe ran first and the kill criterion did NOT fire.** All five r4133
+renders are reproducible from the port's own state, measured cell-for-cell over
+9 decks / 100 solved steps + 9 golden scenarios + 2 pin decks, with zero
+exceptions, no dependency on r4133's fleet-iteration order and no stale cache on
+the port side. The authority arms, read line by line:
+`Controls/StorageController.pas:991-994` → `GetkWhTotal`/`GetkWTotal`/
+`GetkWhActual`/`GetkWActual` (declared `:136-139`, bodies `:1162-1197`, **all
+four** `Format('%-.8g',…)`), whose live inputs are the *properties*
+`FleetkW`/`FleetkWh` (`:188-189` over `Get_FleetkW` `:1019-1029` = `Σ
+PresentkW` and `Get_FleetkWh` `:1032-1042` = `Σ kWhStored`); and
+`PCElements/IndMach012.pas:1790` `Format('%.6g',[PowerFactor(Power[1])])`,
+which is state variable **#21** (`:1988`) by construction. **Two source
+corrections the probe forced:** `PowerFactor` lives in
+`Common/Utilities.pas:1821`, **not** `Shared/mathutil.pas` (the plan text's
+pointer was off by a unit — there is no `PowerFactor` there at all); and
+r4133's `Var Sum` write-back (`GetkWhTotal`/`GetkWTotal` are handed the object's
+own `TotalkWhCapacity`/`TotalkWCapacity`, `:81-82`/`:991-992`) is a **dead
+store** — a whole-tree grep returns exactly six lines (two declarations, the two
+property arms, two dead `RecalcElementData` calls `:1107-1108`) and **nothing
+reads those fields**, dss_capi 0.14.5 having commented them out outright. It is
+the `VSConverter.GetCurrents` hazard in miniature and is **not reproduced**: the
+getters re-sum the fleet from scratch on every call, so the store feeds no
+render either (measured — a bare `edit storage.sa kwhrated=9999 kwrated=2222`
+moves the render to `'15999'`/`'3722'`/`'14799'` with no fleet rebuild). The
+capi `''` was re-confirmed on both of its surfaces (`? name.prop` and
+`Properties(p).Val` are the same `GetObjPropertyValue` path): 0.14.5 flags the
+five `[SilentReadOnly, ReadByFunction]`
+(`src/PCElements/IndMach012.pas:288-289` read fn `:264-267`;
+`src/Controls/StorageController.pas:416-423` read fns `:309-338`) and never
+assigns their `PropertyOffset`, so `DSSObjectHelper.pas:2189` exits at its
+`PropertyOffset[Index] <> -1` guard (`:2203-2204`) with the string still empty —
+on a solved circuit as much as an unsolved one. **The exposure list needed three
+corrections**, all measured by walking every manifest case's full
+`Redirect`/`Compile` closure: `Test/indmachtest/Master.DSS` and
+`4wire-Delta/Kersting4wire_{Lagging,Leading}.dss` hold **no** IndMach012 (their
+only hit is `UserModel=IndMach012a` on a **Generator** — a DLL name matched as a
+substring); `StoCtrl_SeasonTarget/IEEE13NodecktMOD.dss` holds no
+StorageController (the controller comes from include fragments of
+`Run_example.dss`); and three cases the brief missed do hold one
+(`controls/combo/midi_controls.dss`, `modes/makeposseq/makeposseq_ctrl.dss`,
+`controls/relay/relay_generic.dss`). Final exposure: **22 StorageController +
+6 IndMach012 cases**.
+
+**The engine change is one new flag consulted at one site.**
+`PropFlags::RENDERS_LIVE_RESULT` (bit 19) is carried **alongside**
+`SILENT_READ_ONLY` on exactly those five PropDefs, and
+`obj/props/class_props/value.rs` is the only reader of the pair
+(`SILENT_READ_ONLY && !RENDERS_LIVE_RESULT → ""`). The three other
+`SILENT_READ_ONLY` readers — the JSON export omission (`class_props/json.rs`),
+the JSON set refusal (`json_set.rs`) and the schema `readOnly`
+(`report/export/json/schema/classes.rs`) — are **byte-unmoved**, which is why no
+JSON or schema golden can move by accident, and `golden_json` 117 /
+`golden_schema` 104 / `golden_lock` 4 green in both lanes are the proof rather
+than the argument. The `&self` getter cannot reach the solution or the Storage
+arena, so the same flag does the second job: it marks the property for a refresh
+at the existing choke point `Dss::refresh_vterminal_if_marked` (the
+`READS_VTERMINAL` precedent, which `prop_flags.rs` had already anticipated for
+exactly this sub-step), reached by all three render surfaces. **StorageController**
+caches a `FleetAggregates` refreshed by a loop-for-loop port of the four
+getters, reading four plain numbers per fleet member and writing nothing —
+`fleet_aggregates_are_a_pure_read` pins that a read leaves every rendered
+property of the controller and of both members identical. **IndMach012** caches
+`live_pf`, refreshed on the **fresh** `refresh_iterminal` path (GOLDEN_REBASE
+G2.3's choice, deliberately made rather than defaulted; for this class the two
+paths coincide, because `GetTerminalCurrents` carries its own `SolutionCount`
+guard). **The one real finding of the sub-step lives there:** the naive
+in-place recompute on an *unstamped* `Iterminal` cache runs `CalcPFlow` and
+**advances the slip-Newton** — a JSON export moved the model, and it broke a
+committed golden (`json/spectrum_refs.json`, `Slip` `0.007` →
+`0.006947528894572309`). r4133 has the same stateful recompute inside
+`ComputeIterminal` and **keeps** the advance: reading `pf` there moves the
+machine, the `VSConverter.GetCurrents` family again, so under the 2026-08-02
+policy it is not reproduced. Skipping the recompute is not the fix either (it is
+how both engines get the number); it now runs on a throwaway `self.clone()` and
+only the resulting f64 is kept — bit-identical output, discarded state. Proven
+non-vacuous: with the clone removed, `pf_is_a_pure_read` fails
+(`0.02` → `0.0162762199608059`) and `golden_json` fails on `Slip`.
+**Precision is full precision, not r4133's `%.6g`/`%-.8g`** — the plan's
+shorthand, overridden by measurement: every other double in the port renders
+through `float_to_str_ex`, emitting a Delphi width from these five alone would
+put a lossy string on `Dump`/`Save`/export where every sibling is exact, and the
+r4133 channel absorbs the digit difference through RP2.4's measured
+`R4133_DISPLAY_FLOOR = 2e-4` + `display_is_render` (each r4133 byte **is** the
+port's number rounded). The gaps are ≈5e-10 rel on the aggregates and 4.3e-7 on
+`pf`; the live census below measured the worst gated cell at **4.029e-08**, four
+orders under the floor. The pins carry r4133's own bytes through `fmt_g(v,6)` /
+`fmt_g(v,8)`, so a precision regression is still caught.
+
+**The capi side, measured before it was excluded: 24 cases / 84 distinct
+(case, element, property) cells / 1 006 (cell × step) comparisons**, every one a
+`value_structure` divergence (a number vs `''`), identical in both lanes — 20
+StorageController cases × 4 properties + 4 IndMach012 cases × `PF`; per-property
+rows 250/250/250/250 + 6. Two silent holes are recorded rather than fixed:
+`StoCtrl_Current_PeakShave/master.dss` holds a controller but is `kind: large`,
+so the scheduler never property-compares it at all (which is why the exposure
+list has 22 SC cases and only 20 red), and the three `r4133`-only cases have no
+property compare until RP4.1. The disposition is a `SKIP_PROPS` row group **(g)**
+— `("IndMach012","PF")` + the four `("StorageController", …)` — mirrored in
+`SKIP_PROPS_CAPI_ONLY` so the two lists still **partition** `SKIP_PROPS`
+(12 → 17 and 5 → 10 rows; `SKIP_PROPS_BOTH_CHANNELS` unchanged at 7), per
+`(class, property)` rather than per case, cited to the 0.14.5 mechanism and to
+the r4133 authority arms, with the whole argument written out in
+`tests/TOLERANCE_NOTES.md` §"WP8.5b property parity" (+34 lines): the cell is a
+**structure** difference, non-comparable by construction and **never** a
+tolerance question — no floor is involved and none moved. No `ledger.json` entry
+was needed or written (the divergence is mechanical and case-independent; 24
+entries would say one thing), and `ledger.json`, `population.lock.json` and the
+frozen `tests/corpus/props_r4133/**` extracts are byte-untouched.
+
+**Zero golden bytes moved, and that was proven by regenerating.** The 21 props
+cells that would move if the artifact were a capture of *this* engine
+(`props/storagecontroller.json` 16 × `''`→`'0'`, `props/indmach012.json` 5 ×
+`''`→`'1'`, both r4133's own bytes) are cells of a **0.14.5 capture**, which
+answers `''` forever — so a regen moves nothing, measured by importing
+`tools/golden/gen_props.py` itself and re-running its `check_pin()` +
+`run_scenario()` per class into a scratch directory: both class files came back
+**byte-identical** to the committed artifacts. (A *full* `gen_props.py` run was
+deliberately not used: it rewrites all 51 class files including
+`props/{recloser,relay}.json`, whose committed values are the port's renders.)
+The disposition is therefore the exclusion register `props_roundtrip.rs` already
+uses for this exact shape — `LANE_SKIP_SCENARIO_PROPS` **2 → 23 rows**, with
+`PROPS_CLASS_FILES` 51 / `PROPS_SCENARIOS` 322 / `PROPS_PROPERTY_CELLS` 8 343
+unchanged (`compared` 8 341 → 8 320 is an asserted equality, so the green run is
+the proof). **The alternative was considered and is reversible**: overlaying
+r4133's `'0'`/`'1'` into the two captures (RP3.7's `CAPI015_OVERLAYS`
+precedent) would keep the 21 cells compared, but `golden_lock` asserts an
+overlay entry *is* a capi015 artifact and these two are ordinary `capi_v0145`
+rows, so it needs a new register — a provenance-model change no plan text
+authorizes — for constants (`0` on an empty fleet, `1` on an unpowered machine)
+three unit pins already assert against r4133's transcripts. Nothing else moves:
+no committed `Dump`/`Show`/`Save` byte holds either class (`~ PF=` appears only
+in `dump3_{bare,debug}.txt` and `dump_upfc.txt`, none of which builds one), and
+`Save` walks only explicitly-set properties.
+
+**Pins 40 → 43, and the replay gains a third accounting state.**
+`props_r4133_pins.rs` adds `indmach012_pf_renders_the_live_power_factor`
+(r4133's `'0.909167'`/`'0.904914'` after compile, the full-precision render, and
+the gate's own step-0 cell), `storagecontroller_fleet_aggregates_render_the_live_fleet`
+(`12000/3000/9600/0` after compile *and* after the solve; r4133's live-edit
+bytes `15999/3722/14799` — re-summed, never latched; the 7-member
+`7350/1550` fleet with `fmt_g(v,8)` `'2627.3806'`→`'2627.3929'` and
+`'-18.81068'`) and `the_silent_readonly_capture_cells_are_empty`, which walks
+all 21 capture cells asserting `''` with a writable sibling per class so it
+cannot pass vacuously — the witness that the 0.14.5 oracle really is what the
+skip rows exclude, since no oracle runs inside a pin binary. Two pin numbers
+came out different from the pre-implementation predictions and both are
+**schedule** facts, not disagreements: the `14799` live-edit reading reproduces
+only when the edit follows exactly **one** solve (r4133's own schedule; with two
+the fleet has charged and the port answers `15068.9999996377`), and P0's
+per-step `pf` bytes are read-sequence-dependent because the *variables* read
+perturbs — so each pin takes its expected value from the schedule it pins. In
+the replay, the five pairs are **superseded**, not claimed and not declared: the
+frozen example rows record `rust = ''` by capture and cannot be re-frozen, so
+feeding a counterfactual spelling to the policy chain would prove nothing and
+writing the port's new spelling into that column would be a fabricated
+measurement. `DECLARED_RP38 (181, 5, 181) → (0, 0, 0)`, its old value **moved**
+into the new `SUPERSEDED_RP38 = (181, 5, 181)`, `RP38_ROUTING` became
+`RP38_SUPERSEDED` (now carrying the r4133 arm, the measured live disposition and
+the pin per pair) plus `RP38_CAPTURE_PIN`, and the totality assert is now
+`claimed + declared + superseded == rows`, with the interception **after** the
+chain so a link that ever claimed one of these rows would still be credited.
+Three tripwires stand against the failure mode that matters (revert the engine
+to `''` and the capi compare agrees again while the skip rows mask nothing):
+`the_rp38_pairs_are_superseded_by_the_live_render` asks the **shipped** harness
+for each pair (`skip_prop` true on capi, false on r4133), the pins assert
+literal r4133 bytes, and `every_echo_row_pin_is_a_test_that_exists` reads the
+pin columns both ways.
+
+**The r4133 side stays compared, and that too was measured, not assumed** —
+with §1.1(e)'s mask bypassed (`DSS_PROPS_CENSUS=claims`, 27 cases: every case in
+the population holding either class): **105 divergent cells, 89 in scope, 103
+claimed by RP2.4's display floor** (worst rel **4.029e-08**) **and 2 out of
+scope**. `indmach012.pf` produces **zero** divergent cells and structurally
+cannot: a power factor is bounded by 1, so r4133's `%.6g` is at most 5e-07
+absolute from ours while the property compare's floor is `tol.i_abs = 1e-6` at
+every tier — the cell matches before any display floor is consulted (verified
+non-vacuous: `Capacitor.cuf` on the same case, gap 3.4e-3, *is* reported).
+`kwhtotal` is zero too. **The 2 unclaimed cells are RP4.1's inheritance, already
+root-caused:** on `modes:makeposseq/makeposseq_ctrl.dss` the port answers
+`kWTotal` `33.3333333333333` and `kWActual` `-0.333333333333333` where r4133
+says `100` / `-1` — exactly a factor of `Fnphases` — because r4133's
+`TStorageObj.MakePosSequence` emits `' kWrating=%-.5g'`
+(`PCElements/Storage.pas:3979-3985`) where the class's property is `kWrated`
+(`:647`), so that half of its own edit is an unknown parameter and the rating is
+never scaled; dss_capi 0.14.5 fixed the same path by ordinal (`:3340`/`:3349`)
+and the port follows it. The case is `capi_v0145`-only, so the r4133 channel
+does not gate it today — it is an upstream bug newly *observable* only because
+the aggregates now render, and if its `engines` key ever changes it needs a
+cited exclusion + pin.
+
+*Gate.* All five commands green in both lanes, each exit code read individually:
+**4 271 passed / 0 failed / 5 ignored per lane**, the two totals identical and
+the five `ignored` the pre-existing ones (no `#[ignore]` and no name filter was
+added). `corpus_gate` **131** over the full 523-case population in both lanes
+(146.7 s / 134.9 s) with every ledger entry hit and none stale — the 24 predicted
+capi cases all green under the new rows, **zero** r4133-channel reds —
+`golden_lock` 4, `golden_schema` 104, `golden_json` 117 (so `spectrum_refs.json`
+still holds `Slip = 0.007`), `golden_json_import` 107, `golden_reports` 305,
+`props_roundtrip` 1, `props_r4133_evidence_lock` 11, `props_r4133_replay` 132,
+`props_r4133_pins` 43, `oracle_parity_cfg_gate` 10, `dss-core --lib` 1 480
+(+14). No fmt fix, no clippy fix, no test edit, no count lock moved, no
+tolerance touched, no golden re-baselined — the tree that arrived is the tree
+that passed. `lane_diff` was re-run because the render path now refreshes caches
+and clones an element: **PASS**, 523 cases / 3 220 861 records / ~4.83 M compared
+values, **`max |Δ| = 0.000e0` and `max rel = 0.000e0` on all eight gated kinds**
+(conv 2 162, cur 1 170 100, errs 519, iter 2 162, loss 366 476, pow 1 170 100,
+v 375 816, y 1 738 084, every one "(identical)"), 0 iteration counts drifted — so
+the 2026-07-31 bit-identical baseline holds exactly and the default lane keeps
+the parity lane's oracle standing. One hidden red was found and fixed on the
+way: `oracle_parity_cfg_gate::teardown_markers_and_the_register_agree` walks the
+**whole repository** and reserves the WP-G2 teardown marker spellings for rows
+of that register (decrements of the `SPLIT_ALIAS_POPULATION` /
+`Escape::WholeCase` censuses), which RP3.8 does not produce, so its nine markers
+were re-spelled `RP3.8 EXPECTED-VALUE PIN [row]` / `RP3.8 LANE EXCLUSION [row]`;
+the same walk's `SKIP_DIRS` gained `tmp` (the gitignored scratch root — a
+throwaway `.rs` there could red the mandatory gate, and one did), verified
+against the fact that no tracked path has a `tmp` segment at any depth and
+non-vacuous both ways.
+
+**Recorded, not chased.** (a) `batchedit '… where <prop> > x'`
+(`exec/batchedit.rs:259-270`) is a `&self` `get_value` reader, so it sees the
+render cache instead of the live value; unexercised by any golden and by all 523
+cases (re-confirmed by the census), and widening the refresh needs `&mut self`
+plumbing outside this sub-step → `ORPHANED_GAPS.md` §1.17. (b)
+`Dss::element_variables` still perturbs: state variable #21 runs
+`terminal_power` on `self`, so reading an IndMach012's variables on an unstamped
+cache advances the slip-Newton — pre-existing, mirroring r4133's `Get_Variable`
+→ `Get_Power`, and it is what produced the P0 probe's own `0.908755` trajectory
+→ `ORPHANED_GAPS.md` §1.18. (c) r4133's `? pf` keeps that advance where the port
+does not; under the corpus gate's schedule this is invisible (every property
+read follows a solve, both caches stamped, neither engine recomputes — proven by
+probe), and it becomes visible only for a schedule that reads a property
+**before** a solve and then solves. If RP4.1 introduces a pre-solve property
+compare on an IndMach012 case, that is a cited exclusion + pin, never a "fix"
+that reproduces the mutation. (d) `refresh_vterminal_if_marked` now does four
+jobs; its doc enumerates all four and it was deliberately not renamed (three
+call sites, cosmetic). (e) The golden disposition above is reversible, and the
+new capture pin must move with it if a later WP overlays the two artifacts.
+**Two upstream reports were written** (English, in the gitignored
+`investigations/to_opendss/`, both re-measured first-hand on the DLL):
+**48** — `? IndMach012.<n>.PF` before `NodeRef` is assigned **access-violates**
+inside `GetCurrents` (`Get_Power` guards only on `FEnabled`,
+`CktElement.pas:679`; DSS error #641, "Read of address 0000000000000000",
+reproducible in a fresh process on all five golden scenarios, with three
+siblings reaching `ComputeIterminal` the same way); the port renders `1` there,
+safely. **49** — the `MakePosSequence` `kWrating=`/`kWrated` bug above
+(`DSS error #560: Unknown parameter "kWrating"`). A landed pin doc had claimed
+the port answers `1` after a solve on an *unenergized* bus; re-measured, that is
+false — both engines' machine state goes NaN there (r4133 `? slip` = `'NAN'`,
+the port's terminal powers NaN) and the port renders `----`, `float_to_str_ex`'s
+NaN spelling. That is a render convention over identical state, not a divergence
+and not a pinned value; the doc now says so.
+
+**Next: RP3.9** — it is what RP4.1 waits on (RP3.5, RP3.6 both parts, RP3.7
+all three parts and RP3.8 have landed; RP3.8 on 2026-09-02).
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1, **opened** on branch `golden-g1`
 (forked from `update` @ `4d3fc2d7`) — that branch carries G1.1's scratch census
 only and **nothing was committed there**; the WP-G1 sub-steps that actually land
@@ -4322,7 +4587,8 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     RP4.1** (plan §0: "RP4.1 starts only after every RP1–RP3 sub-step is landed,
     including any RP3.5+ sub-step RP2.2's triage opens"); **all three have since
     landed — RP3.5 on 2026-08-28, RP3.6 on 2026-08-29, RP3.7 on 2026-09-02** —
-    so what still blocks RP4.1 from this WP is RP3.8 and RP3.9.
+    and the fourth sub-step this WP opened, RP3.8, landed 2026-09-02 too, so
+    what still blocks RP4.1 from this WP is RP3.9 alone.
     - **RP3.5 — line length units lost by the matrix-branch merge. SETTLED
       2026-08-28 (`FIX`, both lanes; audit settled 2026-08-29) — see the §RP3.5
       record below.**
@@ -4627,7 +4893,9 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
       and are re-routed loudly: `props_r4133_replay::RP38_ROUTING` +
       `DECLARED_RP38 = (181, 5, 181)`, with a new plan **§RP3.8** that **blocks
       RP4.1** (§0's list read RP3.5/3.6/3.7 **+ 3.8**; RP3.5 landed 2026-08-28,
-      leaving 3.6/3.7 + 3.8).
+      leaving 3.6/3.7 + 3.8). **Landed 2026-09-02** — the engine renders all
+      five live, `RP38_ROUTING` is now `RP38_SUPERSEDED` and `DECLARED_RP38` is
+      `(0, 0, 0)`; see the §RP3.8 record in §1.
     - **R2, `generator.d`** — the plan, the vendored README §RP1.1 and
       `BIN7_ECHO_SUPPLEMENT`'s comment all called it an echo "from a frozen
       default whose field says 1.0". Wrong mechanism: the field that is 1.0 is
@@ -5171,7 +5439,8 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
 > them; **RP3.5 landed 2026-08-28 (audit settled 2026-08-29), RP3.6 both parts
 > 2026-08-29 (audit settled the same day) and RP3.7 2026-09-02 (audit settled the
 > same day: 11 findings, 9 fixed, 2 fixed with a sub-claim refuted, none
-> dropped)**, so what is left is RP3.8 and RP3.9. The RP3.6 and RP3.7 records live in §1 above, beside RP3.5's
+> dropped)**, and **RP3.8 landed 2026-09-02** as well, so what is left is
+> RP3.9. The RP3.6, RP3.7 and RP3.8 records live in §1 above, beside RP3.5's
 > narrative one.
 
 - **RP3.1** (2026-08-24) — `swtcontrol.delay`: **a wired property that r4133

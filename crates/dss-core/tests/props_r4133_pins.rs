@@ -1791,3 +1791,268 @@ fn gictransformer_r2_honours_the_x_winding_percentage_on_the_ring() {
          control, went red"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Pins added by RP3.8 (2026-09-02): the five read-only results r4133 renders
+// LIVE, and the capi capture that renders nothing
+// ---------------------------------------------------------------------------
+//
+// These three belong to no `EchoRow` and to no drafted `ledger.json` entry: the
+// exclusion RP3.8 lands is a `SKIP_PROPS` + `SKIP_PROPS_CAPI_ONLY` row pair
+// (`harness/mod.rs`, row group (g)), which masks the **capi** value compare of
+// `IndMach012.PF` and `StorageController.kWhTotal`/`kWTotal`/`kWhActual`/
+// `kWActual` on 24 gating cases / 84 cells while the r4133 channel keeps
+// comparing all five. CLAUDE.md's rule for a deliberate divergence is exclusion
+// **plus** an expected-value test, and the two engine-side pins below are that
+// test: without them the 84 masked cells would have no holder at all, because a
+// regression back to `''` makes the capi compare AGREE again and the gate would
+// go green on the wrong value. They are cited from
+// `props_r4133_replay::RP38_SUPERSEDED`.
+//
+// Every expected byte is r4133's own, measured through `epri-worker` on the very
+// deck each pin compiles (RP3.8 P0 probe, `tmp/rp38/out_r4133.txt`), and read at
+// the same point of the gate's own schedule (`clear` -> `compile` -> N x
+// `solve`). The port renders full precision (`float_to_str_ex`, like every other
+// double property), so r4133's own `%.6g` / `%-.8g` digits are checked through
+// `dss_core::util::fmt_g` — the two-clause display class RP2.4's floor claims on
+// the r4133 channel.
+
+/// `indmach012.pf` — **r4133 renders the live power factor; 0.14.5 renders
+/// `''`** (`R4133_PROPS_PLAN.md` §RP3.8).
+///
+/// r4133 arm 5 of `TIndMach012Obj.GetPropertyValue` is
+/// `Format('%.6g', [PowerFactor(Power[1, ActiveActor])])`
+/// (`Version8/Source/PCElements/IndMach012.pas:1790`, `PowerFactor` =
+/// `Common/Utilities.pas:1821`), i.e. the machine's own state variable #21.
+/// dss_capi 0.14.5 registers the property `[SilentReadOnly, ReadByFunction]`
+/// (`src/PCElements/IndMach012.pas:288-289`) but never assigns its
+/// `PropertyOffset`, so `GetObjPropertyValue`'s outer guard
+/// (`src/General/DSSObjectHelper.pas:2203-2204`) exits before the read function
+/// runs and the capture is `''` — solved or not.
+///
+/// Decks: the two `both` corpus cases the RP3.8 sweep flagged. Both readings are
+/// taken **after `compile`, before the gate's own `solve`**, which is exactly
+/// where the probe read r4133 (`tmp/rp38/out_r4133.txt` §C).
+///
+/// The post-solve reading is the last assertion and it is *port-sourced*, on
+/// purpose: it is the corpus gate's own step-0 cell — the one the capi skip row
+/// masks — and r4133's step-0 byte is **not** its expectation. r4133's `?` read
+/// recomputes the machine model when the `Iterminal` cache is unstamped and
+/// keeps the resulting slip advance, so its own pre-solve read moved its
+/// trajectory (`'0.908755'` at step 0); this port recomputes on a throwaway
+/// clone and leaves the machine alone (`elements/pc/ind_mach012/accessors.rs::
+/// refresh_live_pf`), which the unit pin `pf_is_a_pure_read` holds. Asserting
+/// r4133's step-0 byte here would pin the upstream read-that-mutates, which the
+/// 2026-08-02 policy forbids reproducing.
+///
+/// What a revert breaks: every assertion — a suppressed render answers `''`,
+/// which parses as no number at all.
+#[test]
+fn indmach012_pf_renders_the_live_power_factor() {
+    let mut asym = Deck::compile("asymmetric/indmach/indmach_asym.dss");
+    let pre = asym.get("IndMach012.m1.PF");
+    let v: f64 = pre
+        .parse()
+        .unwrap_or_else(|e| panic!("pf renders a number, got {pre:?}: {e}"));
+    assert_eq!(
+        dss_core::util::fmt_g(v, 6),
+        "0.909167",
+        "r4133's own byte on this deck after compile (probe §3.3); 0.14.5 renders ''"
+    );
+    assert_eq!(
+        pre, "0.909167177168387",
+        "…and the port prints the full double, not r4133's six digits"
+    );
+
+    // A second deck, a different machine: the getter is not a constant.
+    let mut midi = Deck::compile("asymmetric/indmach/midi_indmach_asym.dss");
+    let other = midi.get("IndMach012.m1.PF");
+    let w: f64 = other
+        .parse()
+        .unwrap_or_else(|e| panic!("pf renders a number, got {other:?}: {e}"));
+    assert_eq!(
+        dss_core::util::fmt_g(w, 6),
+        "0.904914",
+        "r4133's own byte on the midi deck (probe §3.3)"
+    );
+
+    // …and it is live: the gate's first solve moves it. PORT-SOURCED literal —
+    // see the doc: this is the gate's step-0 cell, and r4133's own step-0 byte
+    // belongs to a trajectory its perturbing read moved.
+    asym.cmd("solve");
+    let step0 = asym.get("IndMach012.m1.PF");
+    assert_ne!(step0, pre, "a solve must move a live power factor");
+    assert_eq!(
+        step0, "0.908915557341299",
+        "the corpus gate's own step-0 cell on this case, which the capi skip row masks"
+    );
+}
+
+/// `storagecontroller.kwhtotal` / `kwtotal` / `kwhactual` / `kwactual` — **the
+/// four fleet aggregates r4133 renders live** (`R4133_PROPS_PLAN.md` §RP3.8).
+///
+/// r4133's `GetPropertyValue` arms `:991-994` call `GetkWhTotal`/`GetkWTotal`/
+/// `GetkWhActual`/`GetkWActual` (`Version8/Source/Controls/
+/// StorageController.pas:1162-1197`, all `Format('%-.8g', …)`): the two totals
+/// re-sum `StorageVars.kWhRating`/`kWRating` over `FleetPointerList` on every
+/// call, the two actuals read `FleetkWh`/`FleetkW` (`:188-189` -> `:1019-1042`,
+/// the live `kWhStored`/`PresentkW` sums). dss_capi 0.14.5 registers all four
+/// `[SilentReadOnly, ReadByFunction]` (`src/Controls/StorageController.pas:
+/// 416-423`) with no `PropertyOffset`, so its capture is `''`.
+///
+/// Two decks, because a single fleet cannot discriminate much:
+///
+/// * `controls/storagecontroller/storagectrl_peakshave.dss` — a 2-member fleet
+///   with round nameplates. Its **`edit`** is the discriminator, and it is
+///   r4133's own measurement on this very deck (probe §3.2): re-typing one
+///   member's `kwhrated`/`kwrated` moves the two totals immediately, with no
+///   fleet rebuild, because the getters re-sum from scratch. A latched total
+///   (r4133 writes one into `TotalkWhCapacity`, `:991-992` — a dead store this
+///   port does not reproduce) would keep the old numbers.
+/// * `…/StorageControllerTechNote/PeakShave/PeakShaveRun.dss` — a 7-member fleet
+///   whose actuals are decimal, so it carries the `%-.8g` half: r4133's
+///   `'2627.3806'` after compile and `'2627.3929'` after the gate's solve are
+///   the port's own double at r4133's precision, three orders inside
+///   `props_norm::R4133_DISPLAY_FLOOR`.
+///
+/// What a revert breaks: every assertion (a suppressed render answers `''`), and
+/// specifically the two `Actual` readings, which are the ones that move.
+#[test]
+fn storagecontroller_fleet_aggregates_render_the_live_fleet() {
+    let mut deck = Deck::compile("controls/storagecontroller/storagectrl_peakshave.dss");
+    // The gate's own schedule on this case, and the probe's: after `compile`,
+    // then after the first `solve` (r4133 §A pre-solve and step 0 both read
+    // 12000 / 3000 / 9600 / 0 — the nameplates cannot move, and this deck's
+    // first step neither charges nor discharges).
+    let four = |deck: &mut Deck| {
+        [
+            deck.get("StorageController.sc.kWhTotal"),
+            deck.get("StorageController.sc.kWTotal"),
+            deck.get("StorageController.sc.kWhActual"),
+            deck.get("StorageController.sc.kWActual"),
+        ]
+    };
+    assert_eq!(four(&mut deck), ["12000", "3000", "9600", "0"]);
+    deck.cmd("solve");
+    assert_eq!(four(&mut deck), ["12000", "3000", "9600", "0"]);
+
+    // r4133's own live-edit measurement on this deck (probe §3.2): 9999 + 6000
+    // and 2222 + 1500, re-summed on the read.
+    deck.cmd("edit storage.sa kwhrated=9999 kwrated=2222");
+    assert_eq!(
+        four(&mut deck),
+        ["15999", "3722", "14799", "0"],
+        "the totals are re-summed at every read, never latched — and the stored \
+         energy follows the new nameplate (r4133's own four bytes after this very \
+         edit, probe §3.2)",
+    );
+
+    let mut tech = Deck::compile(
+        "electricdss-tst/Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/\
+         PeakShaveRun.dss",
+    );
+    assert_eq!(
+        tech.get("StorageController.SC.kWhTotal"),
+        "7350",
+        "a different fleet's nameplate total — the getter is not a constant"
+    );
+    assert_eq!(tech.get("StorageController.SC.kWTotal"), "1550");
+    let eight = |deck: &mut Deck, prop: &str| -> String {
+        let text = deck.get(&format!("StorageController.SC.{prop}"));
+        let v: f64 = text
+            .parse()
+            .unwrap_or_else(|e| panic!("{prop} renders a number, got {text:?}: {e}"));
+        dss_core::util::fmt_g(v, 8)
+    };
+    assert_eq!(
+        eight(&mut tech, "kWhActual"),
+        "2627.3806",
+        "r4133's `%-.8g` after compile (probe §3.1)"
+    );
+    assert_eq!(eight(&mut tech, "kWActual"), "-18.81068");
+    tech.cmd("solve");
+    assert_eq!(
+        eight(&mut tech, "kWhActual"),
+        "2627.3929",
+        "…and after the gate's own solve, r4133's step-0 byte"
+    );
+    assert_eq!(eight(&mut tech, "kWActual"), "-18.81068");
+    assert_eq!(tech.get("StorageController.SC.kWhTotal"), "7350");
+}
+
+/// **The capi side of RP3.8's skip rows, witnessed from the committed 0.14.5
+/// capture** — the five properties render `''` there, on every scenario, and
+/// that is the whole reason the `SKIP_PROPS` group (g) rows exist.
+///
+/// The two engine pins above hold the port's value; nothing held the *oracle's*,
+/// and the skip row's justification is a statement about the oracle. The pinned
+/// dss-python 0.14.5 cannot be run from a test (no oracle in this binary), but
+/// its answer is committed: `tests/golden/props/{indmach012,storagecontroller}.
+/// json` are captures of that very oracle (`oracle.engine` names the 0.14.5
+/// build), and RP3.8 re-ran `tools/golden/gen_props.py` per class to prove they
+/// still regenerate byte-identically. So these 21 cells ARE the capi channel's
+/// answer, frozen.
+///
+/// Non-vacuous in both directions: a writable sibling of each class is asserted
+/// non-empty in the same walk, so an all-empty (or missing) capture cannot pass,
+/// and the cell count is an equality.
+///
+/// What a revert breaks: nothing in the engine — this pin fails only if the
+/// capture stops saying `''`, i.e. if someone regenerates these files against a
+/// newer oracle, which would also retire the skip rows.
+#[test]
+fn the_silent_readonly_capture_cells_are_empty() {
+    let root: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "golden",
+        "props",
+    ]
+    .iter()
+    .collect();
+    let mut cells = 0usize;
+    for (file, props, witness) in [
+        ("indmach012.json", &["PF"][..], "kVA"),
+        (
+            "storagecontroller.json",
+            &["kWhTotal", "kWTotal", "kWhActual", "kWActual"][..],
+            "kWTarget",
+        ),
+    ] {
+        let path = root.join(file);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let doc: serde_json::Value = serde_json::from_str(&text).expect("a props golden is JSON");
+        let engine = doc["oracle"]["engine"].as_str().unwrap_or_default();
+        assert!(
+            engine.contains("version 0.14.5"),
+            "{file}: this pin speaks for the 0.14.5 capture, got {engine:?}"
+        );
+        let scenarios = doc["scenarios"].as_array().expect("scenarios");
+        assert!(!scenarios.is_empty(), "{file}: no scenario");
+        for sc in scenarios {
+            let name = sc["name"].as_str().unwrap_or_default();
+            let bag = &sc["properties"];
+            assert!(
+                bag[witness].as_str().is_some_and(|v| !v.is_empty()),
+                "{file}/{name}: the witness property {witness} is empty too — this capture \
+                 proves nothing"
+            );
+            for prop in props {
+                assert_eq!(
+                    bag[*prop].as_str(),
+                    Some(""),
+                    "{file}/{name}: the 0.14.5 capture must render {prop} as '' — that is what \
+                     the SKIP_PROPS group (g) row excludes"
+                );
+                cells += 1;
+            }
+        }
+    }
+    assert_eq!(
+        cells, 21,
+        "5 IndMach012 scenarios x PF + 4 StorageController scenarios x 4 aggregates"
+    );
+}

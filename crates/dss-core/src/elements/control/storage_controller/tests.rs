@@ -1239,3 +1239,402 @@ fn fully_charged_branch_idles_the_fleet() {
     assert_eq!(env.fleet[0].kw_writes, vec![0.0]);
     assert!(env.pushes.contains(&StorageState::Idling));
 }
+
+// ===========================================================================
+// RP3.8 P1a — the four LIVE read-only fleet aggregates
+// (`kWhTotal`/`kWTotal`/`kWhActual`/`kWActual`)
+//
+// r4133 renders these from live getters (`StorageController.pas:991-994` ->
+// `GetkWhTotal`/`GetkWTotal`/`GetkWhActual`/`GetkWActual`, bodies `:1162-1198`);
+// the port answered the empty string only because dss_capi 0.14.5 flags them
+// `[SilentReadOnly, ReadByFunction]` with no `PropertyOffset`
+// (`DSSObjectHelper.pas:2203-2204`). Every expected byte below was measured on
+// the vendored EPRI r4133 DLL through `epri-worker` (RP3.8 P0 probe); the capi
+// oracle answers the empty string on every one of them and is excluded
+// per-pair in the harness, which is why these pins exist.
+// ===========================================================================
+
+/// The P0 pin deck: an **unequal** two-member fleet, so each of the four
+/// aggregates is a distinct number that no single member and no other aggregate
+/// could produce (6000/2000 kWh, 1500/500 kW, 80%/50% stored).
+///
+/// r4133 on this deck (measured): `kWhTotal='8000'`, `kWTotal='2000'`,
+/// `kWhActual='5800'`, `kWActual='823.3654'`, with the fleet reading
+/// `sa: kWhrated=6000 kWrated=1500 kWhstored=4800`,
+/// `sb: kWhrated=2000 kWrated=500 kWhstored=1000`.
+fn pin_deck() -> crate::exec::Dss {
+    let mut dss = crate::exec::Dss::new();
+    for c in [
+        "new circuit.scpin basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new load.ld bus1=b phases=3 kv=12.47 kw=6000 pf=1.0 model=1",
+        "new storage.sa bus1=b phases=3 kv=12.47 kwrated=1500 kva=1500 kwhrated=6000 \
+         %stored=80 %idlingkw=0 pf=1.0",
+        "new storage.sb bus1=b phases=3 kv=12.47 kwrated=500 kva=500 kwhrated=2000 \
+         %stored=50 %idlingkw=0 pf=1.0",
+        "new storagecontroller.sc element=line.l1 terminal=1 modedis=peakshave \
+         monphase=avg kwtarget=5200 %reserve=20 eventlog=yes",
+        "set voltagebases=[12.47]",
+        "calcvoltagebases",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.error_texts());
+    dss
+}
+
+/// `? <element>.<prop>` through the executive's own query path — the same
+/// `refresh_vterminal_if_marked` + `get_value` pair `Dump` and
+/// `element_properties` use.
+fn query(dss: &mut crate::exec::Dss, what: &str) -> String {
+    dss.command(&format!("? {what}"));
+    dss.result().to_string()
+}
+
+// RP3.8 EXPECTED-VALUE PIN [STORAGECONTROLLER_FLEET_AGGREGATES_RENDER_LIVE]: the four
+// read-only aggregates render the live fleet, in both lanes. A revert to the
+// dss_capi 0.14.5 empty-string suppression (dropping `RENDERS_LIVE_RESULT`, or
+// re-widening the `SILENT_READ_ONLY` gate in `class_props/value.rs`) makes every
+// assertion below fail on an empty string.
+/// The four aggregates render r4133's numbers on a built fleet.
+///
+/// Sources: `kWhTotal` = the fleet sum of `StorageVars.kWhRating` (`:1172-1184`)
+/// = 6000+2000; `kWTotal` = the sum of `StorageVars.kWRating` (`:1186-1198`) =
+/// 1500+500; `kWhActual` = `FleetkWh` = the sum of `kWhStored` (`:1032-1042`) =
+/// 4800+1000; `kWActual` = `FleetkW` = the sum of `PresentkW` (`:1019-1029`) —
+/// the one solved quantity, which r4133 prints as `'823.3654'` under its
+/// `Format('%-.8g')`.
+///
+/// The port renders **full precision** here, like every other double property
+/// (`float_to_str_ex`, the capi 15-digit convention the whole property surface
+/// uses), not r4133's 8 significant digits: the r4133 property channel absorbs
+/// that difference through the measured display floor (`R4133_DISPLAY_FLOOR`,
+/// `harness/props_norm.rs`), and emitting `%.8g` from the engine would put a
+/// lossy string on `Dump`/`Save`/export where every sibling is exact. So the
+/// solved cell is pinned two ways: r4133's own bytes via `fmt_g(v, 8)`, and the
+/// full-precision spelling via the `float_to_str_ex` round-trip.
+#[test]
+fn fleet_aggregates_render_the_live_fleet() {
+    use crate::util::{float_to_str_ex, fmt_g};
+    let mut dss = pin_deck();
+
+    // The fleet r4133 resolved, and its own nameplates (its transcript is in the
+    // doc above) — the inputs of the three integer-valued sums.
+    assert_eq!(
+        query(&mut dss, "storagecontroller.sc.ElementList"),
+        "[sa, sb]"
+    );
+    for (elem, prop, want) in [
+        ("storage.sa", "kWhrated", "6000"),
+        ("storage.sa", "kWrated", "1500"),
+        ("storage.sa", "kWhstored", "4800"),
+        ("storage.sb", "kWhrated", "2000"),
+        ("storage.sb", "kWrated", "500"),
+        ("storage.sb", "kWhstored", "1000"),
+    ] {
+        assert_eq!(
+            query(&mut dss, &format!("{elem}.{prop}")),
+            want,
+            "{elem}.{prop}"
+        );
+    }
+
+    // r4133: '8000' / '2000' / '5800' — exact integers, so the port's
+    // full-precision render is byte-identical to r4133's own.
+    assert_eq!(query(&mut dss, "storagecontroller.sc.kWhTotal"), "8000");
+    assert_eq!(query(&mut dss, "storagecontroller.sc.kWTotal"), "2000");
+    assert_eq!(query(&mut dss, "storagecontroller.sc.kWhActual"), "5800");
+
+    // r4133: '823.3654'.
+    let rendered = query(&mut dss, "storagecontroller.sc.kWActual");
+    let v: f64 = rendered.parse().expect("kWActual renders a number");
+    assert_eq!(fmt_g(v, 8), "823.3654", "kWActual at r4133's own precision");
+    assert_eq!(
+        rendered,
+        float_to_str_ex(v),
+        "kWActual renders at full precision"
+    );
+}
+
+// RP3.8 EXPECTED-VALUE PIN [STORAGECONTROLLER_FLEET_AGGREGATES_ARE_A_PURE_READ]: reading
+// the aggregates changes nothing, in both lanes — the deliberate
+// non-reproduction of r4133's `Var Sum` write-back.
+/// **Reading the four properties is a pure read.**
+///
+/// r4133's `GetkWhTotal(Var Sum)`/`GetkWTotal(Var Sum)` are handed the object's
+/// own `TotalkWhCapacity`/`TotalkWCapacity` (`StorageController.pas:991-992`),
+/// so a property *read* *writes* the object there — the
+/// `VSConverter.GetCurrents` hazard (CLAUDE.md "Known upstream bugs") in
+/// miniature. Nothing upstream ever reads those two fields, so the write is a
+/// dead store with no observable, and the port renders the same number without
+/// it (`PropFlags::RENDERS_LIVE_RESULT`).
+///
+/// The pin: after one warm-up read, a second read of all four leaves **every**
+/// rendered property of the controller and of both fleet members identical, and
+/// two consecutive reads of the same property return the same bytes.
+#[test]
+fn fleet_aggregates_are_a_pure_read() {
+    let mut dss = pin_deck();
+    const AGGREGATES: [&str; 4] = ["kWhTotal", "kWTotal", "kWhActual", "kWActual"];
+
+    // Warm-up: the first read fills the render cache, which is the only state a
+    // read is allowed to touch at all.
+    let first: Vec<String> = AGGREGATES
+        .iter()
+        .map(|p| query(&mut dss, &format!("storagecontroller.sc.{p}")))
+        .collect();
+
+    let before = (
+        dss.element_properties("StorageController.sc").unwrap(),
+        dss.element_properties("Storage.sa").unwrap(),
+        dss.element_properties("Storage.sb").unwrap(),
+    );
+    let second: Vec<String> = AGGREGATES
+        .iter()
+        .map(|p| query(&mut dss, &format!("storagecontroller.sc.{p}")))
+        .collect();
+    let after = (
+        dss.element_properties("StorageController.sc").unwrap(),
+        dss.element_properties("Storage.sa").unwrap(),
+        dss.element_properties("Storage.sb").unwrap(),
+    );
+
+    assert_eq!(first, second, "two consecutive reads must agree");
+    assert_eq!(before.0, after.0, "the controller moved on a read");
+    assert_eq!(before.1, after.1, "Storage.sa moved on a read");
+    assert_eq!(before.2, after.2, "Storage.sb moved on a read");
+    // ...and the reads were not vacuous.
+    assert_eq!(&first[..3], ["8000", "2000", "5800"]);
+}
+
+// RP3.8 EXPECTED-VALUE PIN [STORAGECONTROLLER_FLEET_AGGREGATES_FOLLOW_A_NAMEPLATE_EDIT]:
+// the totals are re-summed at every read, in both lanes; nothing is latched.
+/// A fleet member's nameplate edit is visible on the very next read, **without**
+/// a fleet rebuild — r4133's getters re-sum `FleetPointerList` from scratch on
+/// every call (`Sum := 0.0; for i := 1 to ListSize do ...`, `:1172-1198`).
+///
+/// Measured on r4133 (RP3.8 P0 probe, the corpus `storagectrl_peakshave` deck
+/// with a 6000+6000 kWh / 1500+1500 kW fleet): `edit storage.sa kwhrated=9999
+/// kwrated=2222` moved `kWhTotal` `'12000'` to `'15999'` and `kWTotal` `'3000'`
+/// to `'3722'` immediately, i.e. `9999 + 6000` and `2222 + 1500`. This deck's
+/// fleet is 6000+2000 / 1500+500, so the same rule gives `9999 + 2000` and
+/// `2222 + 500`. (The two `*Actual` aggregates are left to the corpus gate here:
+/// they additionally depend on the Storage `%stored` re-application, whose bytes
+/// were not measured on r4133 for *this* deck.)
+#[test]
+fn fleet_aggregates_follow_a_live_nameplate_edit() {
+    let mut dss = pin_deck();
+    assert_eq!(query(&mut dss, "storagecontroller.sc.kWhTotal"), "8000");
+    assert_eq!(query(&mut dss, "storagecontroller.sc.kWTotal"), "2000");
+
+    dss.command("edit storage.sa kwhrated=9999 kwrated=2222");
+    assert!(dss.errors().is_empty(), "{:?}", dss.error_texts());
+
+    assert_eq!(query(&mut dss, "storagecontroller.sc.kWhTotal"), "11999");
+    assert_eq!(query(&mut dss, "storagecontroller.sc.kWTotal"), "2722");
+}
+
+// RP3.8 EXPECTED-VALUE PIN [STORAGECONTROLLER_FLEET_AGGREGATES_EMPTY_FLEET_IS_ZERO]: an
+// empty fleet renders '0', not the empty string — in both lanes.
+/// With no Storage in the circuit the four sums are empty sums, and r4133
+/// renders `'0'` for each (measured on all three
+/// `tests/golden/props/storagecontroller.json` scenario preambles: bare, calcv,
+/// solve). This is the shape of the 16 golden props cells RP3.8 moves from `""`
+/// to `"0"`.
+#[test]
+fn fleet_aggregates_of_an_empty_fleet_render_zero() {
+    let mut dss = crate::exec::Dss::new();
+    for c in [
+        "new circuit.propsprobe",
+        "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+        "New StorageController.sc1 element=Line.l1",
+    ] {
+        dss.command(c);
+    }
+    for p in ["kWhTotal", "kWTotal", "kWhActual", "kWActual"] {
+        assert_eq!(
+            query(&mut dss, &format!("storagecontroller.sc1.{p}")),
+            "0",
+            "{p} on an empty fleet"
+        );
+    }
+}
+
+/// The render path and the dispatch path compute the same two live sums.
+///
+/// `refresh_live_aggregates` (the render cache) and
+/// `get_fleet_kw`/`get_fleet_kwh` (what `Sample` dispatches on) are separate
+/// loops over the same fleet — Pascal has the same duplication (`GetkWActual`
+/// renders `FleetkW`, which the dispatch also reads). This pins that they agree,
+/// so the property can never report a fleet the controller is not dispatching.
+#[test]
+fn fleet_aggregates_match_the_dispatch_sums() {
+    let mut sc = peakshave_controller(10_000.0);
+    let env = &mut MockEnv::new(
+        9_000.0,
+        vec![
+            MockStorage::new("a", 2000.0, 500.0, 0.7),
+            MockStorage::new("b", 1000.0, 250.0, 0.4),
+        ],
+    );
+    sc.sample(env); // builds the fleet and dispatches, so PresentkW is non-trivial
+
+    let members: Vec<FleetMemberLive> = sc
+        .fleet_refs()
+        .iter()
+        .map(|&r| {
+            let snap = env.snap(r);
+            FleetMemberLive {
+                present_kw: env.present_kw(r),
+                kwh_stored: snap.kwh_stored,
+                kwh_rating: snap.kwh_rating,
+                kw_rating: snap.kw_rating,
+            }
+        })
+        .collect();
+    assert_eq!(members.len(), 2);
+    sc.refresh_live_aggregates(&members);
+
+    assert_eq!(sc.live_aggregates.kw_actual, sc.get_fleet_kw(env));
+    assert_eq!(sc.live_aggregates.kwh_actual, sc.get_fleet_kwh(env));
+    // The two nameplate sums, from the mock fleet's own ratings.
+    assert_eq!(sc.live_aggregates.kwh_total, 750.0);
+    assert_eq!(sc.live_aggregates.kw_total, 3000.0);
+}
+
+/// The three JSON/schema surfaces the 0.14.5 `SilentReadOnly` convention still
+/// governs are **unchanged** by RP3.8 — the text render is the only one r4133
+/// disagrees with. Nothing here may move a JSON golden.
+#[test]
+fn fleet_aggregates_stay_out_of_the_json_surfaces() {
+    use crate::report::export::json::JsonOpts;
+    let mut dss = pin_deck();
+
+    // 1. The JSON export omits all four even in the FULL sweep
+    // (`class_props/json.rs`), while a read-only *offset* sibling (`kWNeed`) is
+    // present — so the omission is the flag's doing, not an empty dump.
+    // `tests/golden/json/spectrum_refs.json` pins the same shape.
+    let json = dss
+        .obj_to_json_mut("StorageController.sc", JsonOpts::FULL)
+        .expect("the controller exports");
+    for p in ["kWhTotal", "kWTotal", "kWhActual", "kWActual"] {
+        assert!(
+            !json.contains(p),
+            "{p} must stay out of the JSON export: {json}"
+        );
+    }
+    assert!(
+        json.contains("kWNeed"),
+        "the FULL sweep is not empty: {json}"
+    );
+
+    // 2. The schema still marks them read-only
+    // (`report/export/json/schema/classes.rs`, keyed on SILENT_READ_ONLY).
+    let schema = format!(
+        "{:?}",
+        dss.schema_class_def("StorageController")
+            .expect("class def")
+    );
+    for p in ["kWhTotal", "kWTotal", "kWhActual", "kWActual"] {
+        let at = schema
+            .find(p)
+            .unwrap_or_else(|| panic!("{p} in the schema"));
+        let window = &schema[at..(at + 400).min(schema.len())];
+        assert!(
+            window.contains("readOnly"),
+            "{p} must stay readOnly in the schema: {window}"
+        );
+    }
+}
+
+/// A JSON load still **ignores** the four (`class_props/json_set.rs`, keyed on
+/// `SILENT_READ_ONLY`): a bogus value in the object body is dropped, while a
+/// writable sibling in the same body applies — so the test cannot pass by the
+/// walk aborting early.
+#[test]
+fn fleet_aggregates_are_ignored_by_a_json_load() {
+    use crate::obj::props::PropEngine;
+    use crate::report::export::json::Json;
+    use dss_parser::{Parser, ParserVars};
+
+    let enums = EnumRegistry::new();
+    let cls = class_props(&enums);
+    let mut sc = StorageController::new("sc1");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = crate::diag::ErrorLog::new();
+    let mut eng = PropEngine {
+        parser: &mut parser,
+        vars: &vars,
+        enums: &enums,
+        errors: &mut errors,
+        foreign: None,
+        was_quoted: false,
+    };
+    let members: Vec<(String, Json)> = vec![
+        ("Element".into(), Json::Str("Line.l1".into())),
+        ("kWTarget".into(), Json::Float(1234.0)),
+        ("kWhTotal".into(), Json::Float(99_999.0)),
+        ("kWTotal".into(), Json::Float(99_999.0)),
+        ("kWhActual".into(), Json::Float(99_999.0)),
+        ("kWActual".into(), Json::Float(99_999.0)),
+    ];
+    cls.fill_from_json(&mut sc, &members, &mut eng);
+
+    // The writable sibling landed: the walk really reached the read-only keys.
+    assert_eq!(sc.f_kw_target, 1234.0);
+    // ...and none of the four was stored.
+    assert_eq!(sc.live_aggregates, FleetAggregates::default());
+    for p in [
+        prop::KWH_TOTAL,
+        prop::KW_TOTAL,
+        prop::KWH_ACTUAL,
+        prop::KW_ACTUAL,
+    ] {
+        assert_eq!(
+            sc.get_f64(p),
+            0.0,
+            "property {p} was written by a JSON load"
+        );
+    }
+}
+
+/// The flag pair is carried by exactly the four aggregates, and the property
+/// table's shape (names, order, count) is untouched — RP3.8 changes what a
+/// render *says*, never the property list the oracle compares against.
+#[test]
+fn only_the_four_aggregates_render_live() {
+    use crate::obj::props::PropFlags;
+    let enums = EnumRegistry::new();
+    let cp = class_props(&enums);
+    assert_eq!(cp.num_properties(), prop::NUM_PROPS);
+
+    let live: Vec<&str> = (1..=cp.num_properties())
+        .filter(|&i| cp.prop(i).flags.contains(PropFlags::RENDERS_LIVE_RESULT))
+        .map(|i| cp.property_name(i))
+        .collect();
+    assert_eq!(live, ["kWhTotal", "kWTotal", "kWhActual", "kWActual"]);
+    // Both flags, together: the render is live, the JSON/schema convention holds.
+    for i in [
+        prop::KWH_TOTAL,
+        prop::KW_TOTAL,
+        prop::KWH_ACTUAL,
+        prop::KW_ACTUAL,
+    ] {
+        assert!(cp.prop(i).flags.contains(PropFlags::SILENT_READ_ONLY));
+        assert!(cp.prop(i).flags.contains(PropFlags::RENDERS_LIVE_RESULT));
+    }
+    // kWNeed is a plain read-only double with a real offset — not one of the
+    // five RP3.8 pairs, and it must not drift into the set.
+    assert!(
+        !cp.prop(prop::KW_NEED)
+            .flags
+            .contains(PropFlags::RENDERS_LIVE_RESULT)
+    );
+    assert!(
+        !cp.prop(prop::KW_NEED)
+            .flags
+            .contains(PropFlags::SILENT_READ_ONLY)
+    );
+}

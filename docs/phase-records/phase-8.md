@@ -1378,7 +1378,12 @@ one choke point `Dss::refresh_vterminal_if_marked` used by both surfaces (a futu
 AutoTrans port inherits correctness by setting the flag; an iterminal-needing
 property must add a separate marker with iterminal-then-vterminal order — VSource
 EMF side effect). New golden `query_indmach012_pf_empty_after_solve` freezes the
-post-solve `''` probe (golden_phase8 **142→143**). **Two byte-fidelity gaps + TWO real bugs found + fixed:**
+post-solve `''` probe (golden_phase8 **142→143**). **Follow-up (R4133_PROPS
+§RP3.8, 2026-09-02, gate-green): the `''` reading above is 0.14.5's, not the
+authority's** — r4133 renders `pf` live (`IndMach012.pas:1790`), so the port does
+too in both lanes (`PropFlags::RENDERS_LIVE_RESULT`), the capi cell is excluded
+per `(class, property)` and pinned, and this golden was inverted into
+`query_indmach012_pf_renders_the_live_power_factor`. See STATUS §RP3.8. **Two byte-fidelity gaps + TWO real bugs found + fixed:**
 property names now carry the oracle **display case** (`Bus1`/`kV`/`NormAmps`,
 Reactor done; matching stays case-insensitive) and `float_to_str` now emits FPC
 `FloatToStr`'s **15-sig-fig** form (was 17-digit round-trip; both masked by

@@ -52,15 +52,46 @@ impl PropFlags {
     /// unit logs the upstream error and leaves the field unchanged. Used by
     /// InvControl `AvgWindowLen` / `DynReacAvgWindowLen`.
     pub const INTERVAL_UNITS: Self = Self(1 << 14);
-    /// Pascal `SilentReadOnly` on a `ReadByFunction` double (IndMach012 `pf` →
-    /// `PowerFactor(Power[1])`): a set is silently ignored, and the **text render
-    /// is `""` always** — Pascal never assigns `PropertyOffset` for such a
-    /// function-only property (it stays `-1`), so `GetObjPropertyValue`'s outer
-    /// guard `PropertyOffset[Index] <> -1` (`DSSObjectHelper.pas` l.2221) short-
-    /// circuits before the read function is ever called. Empirically probed
-    /// against the pinned oracle: `? indmach012.m1.pf` returns `''` on a **solved**
-    /// circuit too, not just pre-solve. (The live pf is still available as a
-    /// dynamics state variable, computed where the solution exists.)
+    /// dss_capi 0.14.5 `[SilentReadOnly, ReadByFunction]` on a double whose
+    /// value comes from a read function rather than a field -- IndMach012 `PF`
+    /// (`PowerFactor(Power[1])`) and StorageController
+    /// `kWhTotal`/`kWTotal`/`kWhActual`/`kWActual` (the fleet aggregates), the
+    /// only two classes that carry it. A set is silently ignored, the JSON
+    /// export omits the key, a JSON load skips it, and the schema marks it
+    /// `readOnly`.
+    ///
+    /// # What this flag stopped meaning: the `''` text render (RP3.8, 2026-09-02)
+    ///
+    /// 0.14.5 never assigns a `PropertyOffset` for a function-only property (it
+    /// stays `-1`), so `GetObjPropertyValue`'s outer guard
+    /// `(PropertyOffset[Index] <> -1)`
+    /// (`.inputs/dss_capi/src/General/DSSObjectHelper.pas:2203-2204`)
+    /// short-circuits **before** the read function runs and the `?` /
+    /// `DumpProperties` surfaces answer `''`. The port reproduced exactly that.
+    ///
+    /// **EPRI r4133 -- the behavioral authority (CLAUDE.md, 2026-08-02) --
+    /// renders the live value on those same five properties**:
+    /// `TIndMach012Obj.GetPropertyValue` arm 5
+    /// (`.inputs/electricdss-code-r4133-trunk/Version8/Source/PCElements/IndMach012.pas:1790`,
+    /// `Format('%.6g',[PowerFactor(Power[1,ActiveActor])])`) and
+    /// `TStorageControllerObj.GetPropertyValue` arms `propKWHTOTAL`..`propKWACTUAL`
+    /// (`Version8/Source/Controls/StorageController.pas:991-994` ->
+    /// `GetkWhTotal`/`GetkWTotal`/`GetkWhActual`/`GetkWActual`, bodies `:1162-1198`).
+    /// The suppression is therefore a *surface convention of a superseded
+    /// oracle*, not upstream behavior: RP3.8 retires it for the text render (both
+    /// lanes, no `cfg`) and keeps it for the three JSON/schema surfaces it still
+    /// describes. A property whose r4133 getter has a live arm carries
+    /// [`Self::RENDERS_LIVE_RESULT`] **alongside** this flag; one whose getter
+    /// has none keeps the `''` render by simply not carrying it.
+    ///
+    /// The four readers, and what each does with this flag:
+    ///
+    /// | reader | behavior |
+    /// |---|---|
+    /// | `ClassProps::get_value` -- `?` / `Dump` / `all_properties` | `''`, **unless** [`Self::RENDERS_LIVE_RESULT`] is also present |
+    /// | `ClassProps::get_json_value` (`class_props/json.rs`) | omits the key |
+    /// | `ClassProps::set_json` (`class_props/json_set.rs`) | ignores the key on load |
+    /// | the JSON schema walk (`report/export/json/schema/classes.rs`) | `readOnly: true` |
     pub const SILENT_READ_ONLY: Self = Self(1 << 15);
     /// Not a Pascal flag: marks a read-only result property whose string render
     /// reads the live `cd.vterminal` cache (Transformer `WdgCurrents`; AutoTrans
@@ -96,6 +127,44 @@ impl PropFlags {
     /// Distinct from [`Self::ALLOW_NONE`] (single ref / DoubleVArray). The mixed
     /// conductor-list *numerics* that consume a NIL conductor are WP-U1.4.
     pub const ALLOW_NONE_ITEM: Self = Self(1 << 18);
+    /// **Not a Pascal flag.** Marks a [`Self::SILENT_READ_ONLY`] property whose
+    /// **text render is a live computed result** in EPRI r4133, so the
+    /// `?` / `Dump` / `all_properties` gate must reach the value instead of
+    /// returning `''` (RP3.8; the r4133 getters are cited on
+    /// [`Self::SILENT_READ_ONLY`], which keeps its other three readers).
+    ///
+    /// It carries a second duty, the one [`Self::READS_VTERMINAL`] carries for
+    /// Transformer `WdgCurrents`: the r4133 getter is self-sufficient because it
+    /// holds live pointers (`GetkWhTotal` re-sums `FleetPointerList` on every
+    /// call), while the Rust `&self` getter reaches neither the solution nor
+    /// another class's arena. So the three render surfaces refresh the object's
+    /// live-result cache at one choke point, `Dss::refresh_vterminal_if_marked`,
+    /// exactly when this flag is present, and the `&self` getter then returns
+    /// the just-refreshed number.
+    ///
+    /// **A read stays a pure read of the model**, on both holders -- upstream
+    /// mutates on both, and neither mutation is reproduced (they are the
+    /// `VSConverter.GetCurrents` hazard, CLAUDE.md "Known upstream bugs", in
+    /// miniature):
+    ///
+    /// * r4133's `GetkWhTotal(Var Sum)` / `GetkWTotal(Var Sum)` write their sum
+    ///   back into the object -- `StorageController.pas:991-992` pass the
+    ///   object's own `TotalkWhCapacity`/`TotalkWCapacity`. A whole-tree grep of
+    ///   `Version8/Source` finds those two fields only in their declarations
+    ///   (`:81-82`), the two property arms and two dead `RecalcElementData`
+    ///   calls (`:1107-1108`) -- nothing ever reads them, and the getters re-sum
+    ///   the fleet from scratch anyway, so the write has no observable and the
+    ///   port renders the same number without it.
+    /// * `IndMach012.pf` reads `Power[1]`, whose `ComputeIterminal` recomputes
+    ///   the machine model while the `Iterminal` cache is unstamped -- and that
+    ///   recompute advances the slip-Newton by one step, moving the machine's
+    ///   own rendered `Slip`. The port runs the recompute on a throwaway clone
+    ///   and keeps only the number
+    ///   (`IndMach012::refresh_live_pf`).
+    ///
+    /// Holders: StorageController `kWhTotal`/`kWTotal`/`kWhActual`/`kWActual`
+    /// (RP3.8 P1a) and IndMach012 `PF` (RP3.8 P1b) -- nothing else.
+    pub const RENDERS_LIVE_RESULT: Self = Self(1 << 19);
     // Metadata-only in Phase 2 (inert, kept for fidelity / future phases):
     pub const SUPPRESS_JSON: Self = Self(1 << 32);
     pub const REDUNDANT: Self = Self(1 << 33);

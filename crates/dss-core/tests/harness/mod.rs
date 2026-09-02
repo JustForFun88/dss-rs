@@ -1746,7 +1746,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:951-956` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:984-990` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -1775,7 +1775,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:951-956` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:984-990` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -1783,6 +1783,99 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     unlike (e), these two cost the unmask nothing.
     ("Fuse", "FuseCurve"),
     ("Fuse", "RatedCurrent"),
+    // (g) THE FIVE `SilentReadOnly` READ-ONLY RESULTS r4133 RENDERS **LIVE**
+    //     (`R4133_PROPS_PLAN.md` §RP3.8, landed 2026-09-02). Neither UB nor a
+    //     changed default: the pinned 0.14.5 oracle renders `''` where BOTH
+    //     r4133 and this engine render a live computed number, so every cell is
+    //     a `value_structure` difference (a number vs `''`) that no value
+    //     compare and no spelling rule can bridge.
+    //
+    //     THE CAPI MECHANISM, read off the vendored source. dss_capi flags all
+    //     five `[TPropertyFlag.SilentReadOnly, TPropertyFlag.ReadByFunction]`
+    //     (`.inputs/dss_capi/src/PCElements/IndMach012.pas:288-289`, read
+    //     function `PowerFactorProperty` `:264-267`;
+    //     `src/Controls/StorageController.pas:416-423`, read functions
+    //     `:309-338`) and never assigns their `PropertyOffset`, which therefore
+    //     stays `-1` — so `TDSSClassHelper.GetObjPropertyValue`
+    //     (`src/General/DSSObjectHelper.pas:2189`) short-circuits at its outer
+    //     guard `(PropertyOffset[Index] <> -1)` (`:2203-2204`) and leaves the
+    //     `out PropStr` at `''`. Both text surfaces a capture can be read
+    //     through — `? name.prop` and `Properties(p).Val` — are that one path,
+    //     so the oracle answers `''` on a SOLVED circuit too, at every step
+    //     (measured on six decks, RP3.8 P0 probe §4). There is no capi reading
+    //     of these five that could ever match a number.
+    //
+    //     WHAT THE ENGINE NOW RENDERS, and why. r4133 — the authority — renders
+    //     the live quantity: `Version8/Source/PCElements/IndMach012.pas:1790`
+    //     (`Format('%.6g',[PowerFactor(Power[1,ActiveActor])])`, `PowerFactor` =
+    //     `Common/Utilities.pas:1821`) and `Version8/Source/Controls/
+    //     StorageController.pas:991-994` -> `GetkWhTotal`/`GetkWTotal`/
+    //     `GetkWhActual`/`GetkWActual` (`:1162-1197`, all `Format('%-.8g',…)`).
+    //     Under the 2026-08-02 policy the port follows r4133 in BOTH lanes:
+    //     `PropFlags::RENDERS_LIVE_RESULT` (`obj/props/prop_flags.rs`) rides
+    //     alongside `SILENT_READ_ONLY` on exactly these five `PropDef`s and the
+    //     render gate (`obj/props/class_props/value.rs`) stops suppressing them.
+    //     The three OTHER `SILENT_READ_ONLY` surfaces are untouched by design
+    //     (JSON export omission, JSON set refusal, schema `readOnly`), so no
+    //     JSON or schema golden moves. r4133's own read-writes-state is NOT
+    //     reproduced: `GetkWhTotal(Var Sum)`/`GetkWTotal(Var Sum)` are handed
+    //     the object's `TotalkWhCapacity`/`TotalkWCapacity` (`:991-992`), and a
+    //     whole-tree grep finds nothing that ever reads those two fields, so the
+    //     write-back is a dead store and the port renders the same number from a
+    //     pure read (probe §1.1/§3.2; dss_capi commented the fields out at
+    //     `src/Controls/StorageController.pas:158-159`).
+    //
+    //     FOOTPRINT, measured over the whole population in BOTH lanes (RP3.8
+    //     P2a sweep, `tmp/rp38/sweep_list.md`; the two lanes' failure lists
+    //     diff empty): **24 gating cases / 84 distinct (case, element, property)
+    //     cells / 1 006 (cell x step) comparisons**, all on the capi channel —
+    //     20 StorageController cases x 4 properties + 4 IndMach012 cases x `PF`.
+    //     `StoCtrl_Current_PeakShave/master.dss` holds a StorageController on
+    //     the `both` channel and is NOT in that set: it is `kind: "large"`, so
+    //     `corpus_gate/scheduler.rs` never property-compares it. These rows are
+    //     per `(class, property)`, so they cover it too if that ever changes.
+    //
+    //     r4133 DISPOSITION (RP3.8, [`SKIP_PROPS_CAPI_ONLY`]): all five
+    //     **compare** on r4133. The exclusion is a statement about the 0.14.5
+    //     capture and nothing else, and r4133 is the engine the render was
+    //     ported from, so masking it there would mask the only channel that can
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:984-990`
+    //     makes for (e)/(f). Measured with the §1.1(e) property mask bypassed
+    //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
+    //     that holds either class): the five pairs together leave **105**
+    //     divergent cells on the r4133 channel (89 in scope), of which **103**
+    //     are claimed by RP2.4's display floor — the port renders
+    //     `float_to_str_ex`, r4133 its `%.6g`/`%-.8g` of the same double, worst
+    //     **4.03e-08** rel, four orders under
+    //     `props_norm::R4133_DISPLAY_FLOOR = 2e-4`. Two of the five pairs
+    //     produce **no divergent cell at all**: `kWhTotal` (integer nameplates
+    //     everywhere in the population) and `IndMach012.PF`, whose value is
+    //     bounded by 1 by construction, so r4133's `%.6g` is at most 5e-07
+    //     ABSOLUTE from ours — inside the `i_abs` = 1e-6 the property compare
+    //     uses at every tier, before any display floor is consulted. The
+    //     remaining **2** cells sit on
+    //     `modes:makeposseq/makeposseq_ctrl.dss`, a `capi_v0145`-only case the
+    //     r4133 channel never gates (§1.3) — r4133's `TStorageObj.
+    //     MakePosSequence` emits `kWrating=` for a property named `kWrated`
+    //     (`Version8/Source/PCElements/Storage.pas:3979-3985` vs `:647`) and so
+    //     never scales the kW rating; the port follows dss_capi's ordinal fix
+    //     (`.inputs/dss_capi/src/PCElements/Storage.pas:3340,3349`). An upstream
+    //     r4133 bug the port does not reproduce, newly observable only because
+    //     these aggregates now render; RP4.1's to exclude and pin if that case
+    //     is ever gated on r4133.
+    //
+    //     Each pair carries its own expected-value pin against the r4133 DLL's
+    //     own bytes in `crates/dss-core/tests/props_r4133_pins.rs`
+    //     (`indmach012_pf_renders_the_live_power_factor`,
+    //     `storagecontroller_fleet_aggregates_render_the_live_fleet`) plus the
+    //     capi-side witness `the_silent_readonly_capture_cells_are_empty`, and
+    //     `props_r4133_replay::RP38_SUPERSEDED` accounts the 181 frozen census
+    //     example rows the fix supersedes.
+    ("IndMach012", "PF"),
+    ("StorageController", "kWhTotal"),
+    ("StorageController", "kWTotal"),
+    ("StorageController", "kWhActual"),
+    ("StorageController", "kWActual"),
 ];
 
 /// The [`SKIP_PROPS`] rows whose justification is a **capi-channel fact** and
@@ -1790,13 +1883,18 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 /// value compare against the pinned 0.14.5 capture and **compared in full**
 /// against r4133 (`R4133_PROPS_PLAN.md` §1.2, RP2.1).
 ///
-/// Two causes, both spelled out at the rows themselves:
+/// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:951-956` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:984-990` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
-///    port, measured over the whole live population.
+///    port, measured over the whole live population;
+///  * the five **live read-only result** rows of (g), RP3.8 — 0.14.5 renders
+///    `''` because it never assigns their `PropertyOffset`
+///    (`DSSObjectHelper.pas:2203-2204`), while r4133 and this engine both
+///    render the live computed number. Masking them on r4133 would mask the
+///    only channel that can witness the render the sub-step ported.
 ///
 /// **Every row here was measured, not assumed** (RP2.1 probe: a full
 /// `DSS_PROPS_CENSUS=1` walk, 2026-08-23, 439 cases × 2 channels, run with all
@@ -1806,6 +1904,14 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 /// divergent cell at all**; `RegControl.RevThreshold` produces 888 cells of
 /// `'-100'` vs `'100'` — an `EchoDefault` (see its row), which is an RP2.3
 /// echo-table row and its pin, never a reason to mask the channel.
+///
+/// **RP3.8's five (g) rows were measured the same way** and separately
+/// (`DSS_PROPS_CENSUS=claims` over the affected families, 2026-09-02, with the
+/// §1.1(e) property mask bypassed): on r4133 they leave only the display-class
+/// cells RP2.4's floor claims, plus the two `modes:makeposseq/
+/// makeposseq_ctrl.dss` cells of an upstream r4133 `MakePosSequence` bug on a
+/// `capi_v0145`-only case the r4133 channel never gates. The exact counts are
+/// at the (g) row group.
 ///
 /// Rows are matched case-insensitively and must also appear in [`SKIP_PROPS`];
 /// [`skip_props_disposition_tests`] pins that this list and
@@ -1817,6 +1923,15 @@ const SKIP_PROPS_CAPI_ONLY: &[(&str, &str)] = &[
     ("RegControl", "RevThreshold"),
     ("Fuse", "FuseCurve"),
     ("Fuse", "RatedCurrent"),
+    // RP3.8's five (row group (g)): the 0.14.5 `''` is an artifact of
+    // `PropertyOffset = -1` and exists on no other channel, so the r4133 side
+    // stays fully compared — measured with the mask bypassed, the five pairs'
+    // r4133 cells are the display class RP2.4's floor already claims.
+    ("IndMach012", "PF"),
+    ("StorageController", "kWhTotal"),
+    ("StorageController", "kWTotal"),
+    ("StorageController", "kWhActual"),
+    ("StorageController", "kWActual"),
 ];
 
 /// The [`SKIP_PROPS`] rows that stay skipped on **both** channels — the value
@@ -1963,7 +2078,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values `tests/TOLERANCE_NOTES.md:951-956` forbids masking there,
+    /// r4133 values `tests/TOLERANCE_NOTES.md:984-990` forbids masking there,
     /// plus the two `pctperm` rows the RP2.1 probe census measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {
@@ -1988,6 +2103,25 @@ mod skip_props_disposition_tests {
         ));
         assert!(!skip_prop("Capacitor", "PCTPERM", PropsChannel::R4133));
         assert!(skip_prop("Capacitor", "pctperm", PropsChannel::CapiV0145));
+        // RP3.8's five live-render rows, spelled out for the same reason: the
+        // 0.14.5 `''` is the ONLY thing they mask, so the r4133 channel — the
+        // one that shares the render — must keep comparing every one of them.
+        for (class, prop) in [
+            ("indmach012", "pf"),
+            ("StorageController", "KWHTOTAL"),
+            ("storagecontroller", "kwtotal"),
+            ("StorageController", "kWhActual"),
+            ("storagecontroller", "kWACTUAL"),
+        ] {
+            assert!(
+                skip_prop(class, prop, PropsChannel::CapiV0145),
+                "{class}.{prop} must be excluded from the 0.14.5 compare (it renders '')"
+            );
+            assert!(
+                !skip_prop(class, prop, PropsChannel::R4133),
+                "{class}.{prop} must COMPARE on r4133 (RP3.8 disposition)"
+            );
+        }
     }
 
     /// The both-channel rows stay skipped on r4133 as well — the port's own
@@ -2779,8 +2913,13 @@ mod props_policy_tests {
     }
 }
 
-/// The [`SKIP_PROPS`] half of [`skip_prop`] **only** — the properties whose
-/// upstream getter renders uninitialized heap memory. Channel-BLIND on purpose:
+/// The [`SKIP_PROPS`] half of [`skip_prop`] **only** — historically the
+/// properties whose upstream getter renders uninitialized heap memory, and since
+/// the changed-default rows (e)/(f) and RP3.8's live-render rows (g) a superset
+/// of them: those eight are deterministic on both sides, and the dump artifact
+/// below nulls their values too (a deliberate, recorded loss — the artifact's
+/// argument is about the UB rows it MUST strip, not about the ones it may).
+/// Channel-BLIND on purpose:
 /// its consumer is the contamination artifact below, which wants the whole
 /// table; the channel-scoped form the two property walks use is
 /// [`skip_prop_ub_on`].

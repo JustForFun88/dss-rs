@@ -6805,15 +6805,30 @@ fn export_uuids_matches_oracle() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-/// `? indmach012.m1.pf` is `""` even AFTER a solve — pins the empirical oracle
-/// probe (2026-07-05). Pascal registers `pf` as `[SilentReadOnly, ReadByFunction]`
-/// but never assigns its `PropertyOffset` (stays `-1`), so `GetObjPropertyValue`'s
-/// outer guard (`DSSObjectHelper.pas` l.2221, `PropertyOffset[Index] <> -1`)
-/// short-circuits to `''` before `PowerFactorProperty` ever runs — solved or not.
-/// The Rust render must stay `""` on a live solution (SILENT_READ_ONLY), and the
-/// query must not refresh anything for this unmarked property.
+// RP3.8 EXPECTED-VALUE PIN [INDMACH012_PF_RENDERS_LIVE]: `? indmach012.m1.pf` on a
+// solved circuit renders r4133's live power factor, in both lanes.
+/// `? indmach012.m1.pf` AFTER a solve renders the live power factor — r4133
+/// `'0.908343'` on this very deck (RP3.8 P0 probe through `epri-worker`).
+///
+/// This test used to assert `""`, the dss_capi 0.14.5 answer: 0.14.5 registers
+/// `pf` as `[SilentReadOnly, ReadByFunction]` but never assigns its
+/// `PropertyOffset` (stays `-1`), so `GetObjPropertyValue`'s outer guard
+/// (`DSSObjectHelper.pas:2203-2204`) short-circuits before
+/// `PowerFactorProperty` ever runs — solved or not. EPRI r4133, the behavioral
+/// authority (CLAUDE.md, 2026-08-02), instead renders
+/// `Format('%.6g', [PowerFactor(Power[1, ActiveActor])])`
+/// (`Version8/Source/PCElements/IndMach012.pas:1790`), so RP3.8 retired the
+/// suppression for the text render (`PropFlags::RENDERS_LIVE_RESULT`) and the
+/// query now refreshes the machine's render cache at the executive's choke
+/// point. The capi channel keeps answering `''` and is excluded per-case.
+///
+/// The port renders full precision (`float_to_str_ex`) like every other double
+/// property; r4133's own six digits are checked through `fmt_g(v, 6)`. The unit
+/// pins for the same deck live in
+/// `elements::pc::ind_mach012::tests` (`pf_renders_the_live_power_factor`,
+/// `pf_is_a_pure_read`).
 #[test]
-fn query_indmach012_pf_empty_after_solve() {
+fn query_indmach012_pf_renders_the_live_power_factor() {
     let deck = [
         "Set DefaultBaseFrequency=60",
         "New Circuit.indtest basekv=12.47 pu=1.0 phases=3 bus1=src \
@@ -6834,7 +6849,20 @@ fn query_indmach012_pf_empty_after_solve() {
     }
     assert!(dss.errors().is_empty());
     dss.command("? indmach012.m1.pf");
-    assert_eq!(dss.result(), "");
+    let rendered = dss.result().to_string();
+    let v: f64 = rendered
+        .parse()
+        .unwrap_or_else(|e| panic!("pf renders a number, got {rendered:?}: {e}"));
+    assert_eq!(
+        dss_core::util::fmt_g(v, 6),
+        "0.908343",
+        "pf at r4133's own precision"
+    );
+    assert_eq!(
+        rendered,
+        dss_core::util::float_to_str_ex(v),
+        "pf renders at full precision"
+    );
 }
 
 // EXPECTED-VALUE-PIN(SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING): an undefined

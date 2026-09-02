@@ -191,9 +191,65 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
 ///   `R1`, the bases and the `type=Auto` bus promotion — still compares against
 ///   the capture. Pinned by
 ///   `exec::tests::compat_quirks::gic_transformer_pct_r2_drives_winding_two`.
+/// * the **21 RP3.8 live-render cells** — `indmach012_*` / `PF` (5) and
+///   `storagecontroller_*` / `kWhTotal`, `kWTotal`, `kWhActual`, `kWActual`
+///   (16). The capture's `""` is not a rendered value at all: the pinned 0.14.5
+///   oracle flags those five properties `[TPropertyFlag.SilentReadOnly,
+///   TPropertyFlag.ReadByFunction]` and leaves their `PropertyOffset` at `-1`
+///   (`.inputs/dss_capi/src/PCElements/IndMach012.pas:288-289`,
+///   `src/Controls/StorageController.pas:416-423`), so `GetObjPropertyValue`'s
+///   `PropertyOffset[Index] <> -1` guard
+///   (`src/General/DSSObjectHelper.pas:2203-2204`) short-circuits before the
+///   read function runs. r4133 — the behavioral authority — renders each one
+///   **live**: `Version8/Source/PCElements/IndMach012.pas:1790`
+///   (`Format('%.6g', [PowerFactor(Power[1, ActiveActor])])`) and
+///   `Version8/Source/Controls/StorageController.pas:991-994`, calling
+///   `GetkWhTotal`/`GetkWTotal`/`GetkWhActual`/`GetkWActual` (bodies
+///   `:1162-1197`). Measured on these very nine scenarios through the
+///   epri-worker bridge (RP3.8 P0), the r4133 DLL prints `'0'` for all four
+///   aggregates on the empty fleet these scripts build, and `'1'` for `PF`
+///   once a `calcv` has run — on this gate's own preamble, which has none, it
+///   access-violates instead (`Get_Power` guards only on `FEnabled`,
+///   `CktElement.pas:679`), a crash this engine deliberately does not inherit.
+///   `0` and `1` are exactly what this engine now renders.
+///   The capture **cannot be regenerated into agreement**: re-running
+///   `tools/golden/gen_props.py`'s own `run_scenario` for these two classes on
+///   the pinned oracle reproduces both artifacts byte-for-byte, the `""` cells
+///   included (measured, RP3.8 P2a), so no golden byte and no
+///   `golden.lock.json` digest moves and the exclusion is the whole
+///   disposition. Every other cell of the nine scenarios still compares.
+///   Pinned by
+///   `elements::pc::ind_mach012::tests::pf_of_a_machine_without_power_is_unity`
+///   and `elements::control::storage_controller::tests::fleet_aggregates_of_an_empty_fleet_render_zero`
+///   — both assert this gate's own scenario shape — with the non-trivial live
+///   values pinned by `pf_renders_the_live_power_factor` and
+///   `fleet_aggregates_render_the_live_fleet`.
 const LANE_SKIP_SCENARIO_PROPS: &[(&str, &str)] = &[
     ("isource_bus2_clobbered_by_bus1", "Bus2"),
     ("gictransformer_auto", "R2"),
+    // RP3.8: the five properties r4133 renders live and the pinned 0.14.5
+    // oracle short-circuits to `""` (see the register doc above).
+    ("indmach012_default", "PF"),
+    ("indmach012_full", "PF"),
+    ("indmach012_wye_fixedslip", "PF"),
+    ("indmach012_slip_clamp", "PF"),
+    ("indmach012_makelike", "PF"),
+    ("storagecontroller_default", "kWhTotal"),
+    ("storagecontroller_default", "kWTotal"),
+    ("storagecontroller_default", "kWhActual"),
+    ("storagecontroller_default", "kWActual"),
+    ("storagecontroller_full", "kWhTotal"),
+    ("storagecontroller_full", "kWTotal"),
+    ("storagecontroller_full", "kWhActual"),
+    ("storagecontroller_full", "kWActual"),
+    ("storagecontroller_elementlist", "kWhTotal"),
+    ("storagecontroller_elementlist", "kWTotal"),
+    ("storagecontroller_elementlist", "kWhActual"),
+    ("storagecontroller_elementlist", "kWActual"),
+    ("storagecontroller_makelike", "kWhTotal"),
+    ("storagecontroller_makelike", "kWTotal"),
+    ("storagecontroller_makelike", "kWhActual"),
+    ("storagecontroller_makelike", "kWActual"),
 ];
 
 /// An **oracle-bug** exclusion, as `(class, property)` pairs, applied in **both
@@ -340,7 +396,12 @@ fn props_roundtrip_matches_oracle() {
             // LANE-EXCLUSION(GIC_TRANSFORMER_G2_SCALES_OFF_PCT_R1): and both
             // lanes scale `G2` off `%R2`, so both drop the value compare on
             // `gictransformer_auto`'s `R2` (the capture carries the upstream
-            // `%R1` reading). See the register above for both rows.
+            // `%R1` reading).
+            // RP3.8 LANE EXCLUSION [RP38_LIVE_READ_ONLY_RENDERS]: and both lanes render
+            // the five properties r4133 computes live (IndMach012 `PF`, the four
+            // StorageController fleet aggregates), which the pinned 0.14.5 oracle
+            // short-circuits to `""`, so both drop the compare on those 21 cells.
+            // See the register above for every row.
             if LANE_SKIP_SCENARIO_PROPS
                 .iter()
                 .any(|(s, p)| *s == sc.name && p.eq_ignore_ascii_case(prop))

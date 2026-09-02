@@ -159,12 +159,18 @@ impl DssObject for StorageController {
             PCT_RATE_CHARGE => self.pct_charge_rate,
             PCT_RESERVE => self.pct_fleet_reserve,
             KW_NEED => self.kw_needed,
-            // Pascal `[SilentReadOnly, ReadByFunction]` fleet aggregates: the
-            // text/props render is intercepted by SILENT_READ_ONLY (→ '' always,
-            // function-only offset -1), so this arm is unreachable in practice.
-            // Return 0 as a placeholder (the real fleet aggregate isn't computed
-            // on the `&self` accessor).
-            KWH_TOTAL | KW_TOTAL | KWH_ACTUAL | KW_ACTUAL => 0.0,
+            // The four live fleet aggregates r4133 renders
+            // (`StorageController.pas:991-994`). A `&self` getter cannot reach
+            // the Storage arena, so the read surfaces refresh the cache at their
+            // choke point (`Dss::refresh_vterminal_if_marked`, gated on
+            // `RENDERS_LIVE_RESULT`) immediately before this read — see
+            // [`FleetAggregates`]. Reading writes nothing (r4133's `Var Sum`
+            // write-back into `TotalkWhCapacity`/`TotalkWCapacity` is a dead
+            // store there and is not reproduced).
+            KWH_TOTAL => self.live_aggregates.kwh_total,
+            KW_TOTAL => self.live_aggregates.kw_total,
+            KWH_ACTUAL => self.live_aggregates.kwh_actual,
+            KW_ACTUAL => self.live_aggregates.kw_actual,
             T_UP => self.up_ramp_time,
             T_FLAT => self.flat_time,
             T_DN => self.dn_ramp_time,

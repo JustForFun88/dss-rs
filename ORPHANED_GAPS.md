@@ -413,6 +413,49 @@ Oracle-backed pin without a new capture: the `est8` deck minus its
   `normal=closed` **before** `lock=yes` on the same `New`. **Priority: medium** — zero exposure
   today, but it is a live divergence from the behavioral authority that no gate can fail on.
 
+### 1.17 `batchedit … where <prop> > x` reads the render cache, not the live value
+- **Deferred by:** `R4133_PROPS_PLAN.md` §RP3.8 (2026-09-02). RP3.8 owns the five live-render
+  surfaces themselves, not the fourth reader of `ClassProps::get_value`; no plan sub-step owns
+  that reader (checked against §RP3.9, §RP3.10, §RP3.11 and §RP4.1).
+- **What.** RP3.8 made five read-only properties render a **live** result
+  (`PropFlags::RENDERS_LIVE_RESULT`: `indmach012.pf` and the four StorageController fleet
+  aggregates). Three of the four `get_value` readers — `?` (`exec/command.rs`), `Dump`
+  (`exec/report.rs` → `report/save/dump.rs`) and `Dss::element_properties` (`exec/view.rs`) —
+  refresh the property's cache at the choke point `Dss::refresh_vterminal_if_marked` first. The
+  fourth, the `where <prop> <op> <x>` filter of `batchedit`
+  (`crates/dss-core/src/exec/batchedit.rs:259-270`), is `&self` and cannot: it reads whatever the
+  cache last held (the construction value until some other surface has rendered). r4133 evaluates
+  the live getter there, so a `batchedit storagecontroller..* where kWhActual > 1000 …` can select
+  a different set on the two engines. The same `&self` shape predates RP3.8 for
+  `READS_VTERMINAL`'s properties (Transformer `WdgCurrents`, RegControl `TapNum`).
+- **Blast radius today: zero cells.** No committed golden and none of the 523 corpus cases
+  filters on any of the marked properties (swept for RP3.8 over the whole population; the
+  `claims` census produces no cell through that path).
+- **Why it is not a one-liner:** the filter would have to run the same choke point, which needs
+  `&mut self` plumbing through `batchedit`'s selection loop — an executive-level signature change,
+  not a property-class patch. **Priority: low.**
+
+### 1.18 `Dss::element_variables` on an IndMach012 advances the slip-Newton (a read that mutates)
+- **Deferred by:** `R4133_PROPS_PLAN.md` §RP3.8 (2026-09-02), which fixed the same hazard on the
+  property render and recorded this sibling surface. Pre-existing, **not** an RP3.8 regression.
+- **What (measured on both engines, 2026-09-02).** IndMach012 state variable #21 ("Power Factor")
+  computes `power_factor(terminal_power(…))` **on `self`**, so reading the variables while the
+  `Iterminal` cache is unstamped runs `CalcPFlow` and advances the machine's fixed-slope
+  slip-Newton by one step — the following solve then starts from a different slip (measured on
+  `asymmetric/indmach/indmach_asym.dss`: step-0 `pf` `0.908916` with no pre-solve read,
+  `0.908755` after one variables read). It mirrors r4133's own
+  `Get_Variable` → `Get_Power` → `ComputeIterminal` (`PCElements/IndMach012.pas:1988`,
+  `Common/CktElement.pas:666-703`), i.e. the port reproduces an upstream read-that-mutates of the
+  `VSConverter.GetCurrents` family here, which the 2026-08-02 policy says it should not.
+- **How RP3.8 solved it one surface over:** `IndMach012::refresh_live_pf` runs the recompute on a
+  throwaway `self.clone()` and keeps only the resulting `f64`
+  (`elements/pc/ind_mach012/accessors.rs`), pinned by
+  `ind_mach012::tests::pf_is_a_pure_read`. The same shape would fix the variables path.
+- **Blast radius today: zero cells.** No golden and no corpus case reads an IndMach012's variables
+  before its first solve (the gate's own schedule reads every observable after a solve, where the
+  cache is stamped and neither engine recomputes). **Priority: low** — but it is a live
+  read-that-mutates in the port, so it belongs to whoever owns the variables surface.
+
 ---
 
 ## 2. Owned deferrals — NOT orphans (a live plan tracks them; do not re-port here)

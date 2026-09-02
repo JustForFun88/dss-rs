@@ -1427,9 +1427,12 @@ fn check_rows_are_live(table: &[NormRow], visits: &[usize], hits: &[usize]) {
 /// dss_capi 0.14.5 `SilentReadOnly` text surface, where r4133 renders a live
 /// computed read-only quantity and the port renders `''` — is **not** an
 /// exclusion at all under the 2026-08-02 r4133-authority policy and was routed
-/// to a new engine sub-step instead (the kill ruling, `props_r4133_replay::
-/// RP38_ROUTING`). Naming it here would have been the lie the kill criterion
-/// exists to prevent.
+/// to a new engine sub-step instead (the kill ruling). Naming it here would
+/// have been the lie the kill criterion exists to prevent. **RP3.8 landed that
+/// sub-step on 2026-09-02**: the engine now renders the live value in both
+/// lanes (`PropFlags::RENDERS_LIVE_RESULT`), the 0.14.5 capture's `''` is
+/// `harness::SKIP_PROPS` row group (g) with its three pins, and the five census
+/// rows are accounted `props_r4133_replay::RP38_SUPERSEDED`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EchoCategory {
     /// r4133's `GetPropertyValue` has no arm for the index, so it answers the
@@ -1671,11 +1674,32 @@ const fn echo(
 /// **RP2.3 landed 81 of them**, and 86 − 81 = the **five** `SilentReadOnly`
 /// pairs its kill criterion fired on (`indmach012.pf`,
 /// `storagecontroller.kwhtotal`/`kwtotal`/`kwhactual`/`kwactual`): r4133 renders
-/// a live computed read-only quantity there and the port renders `''` only
-/// because dss_capi 0.14.5 suppresses the text surface. Under the 2026-08-02
-/// policy that is an engine fix, not an exclusion, so they take NO row here and
-/// are re-routed to their own declared bucket
-/// (`props_r4133_replay::RP38_ROUTING`).
+/// a live computed read-only quantity there
+/// (`Version8/Source/PCElements/IndMach012.pas:1790`,
+/// `Version8/Source/Controls/StorageController.pas:991-994`) and the port
+/// rendered `''` only because dss_capi 0.14.5 leaves their `PropertyOffset` at
+/// `-1` and `GetObjPropertyValue` short-circuits
+/// (`DSSObjectHelper.pas:2203-2204`). Under the 2026-08-02 policy that is an
+/// engine fix, not an exclusion, so they took NO row here and were re-routed to
+/// their own sub-step.
+///
+/// **RP3.8 landed that fix on 2026-09-02** and the five still take no row.
+/// `PropFlags::RENDERS_LIVE_RESULT` now rides alongside `SILENT_READ_ONLY` on
+/// exactly those five `PropDef`s, and the ONE render site that consults it
+/// (`obj/props/class_props/value.rs`) stops suppressing them, so the engine
+/// renders the live number in BOTH lanes; the other three `SILENT_READ_ONLY`
+/// readers (JSON export, JSON set, schema `readOnly`) are unmoved. The 0.14.5
+/// capture's `''` is excluded field-by-field as `harness::SKIP_PROPS` row group
+/// (g) — mirrored in `SKIP_PROPS_CAPI_ONLY`, so the r4133 channel keeps
+/// comparing all five — and pinned by
+/// `props_r4133_pins::{indmach012_pf_renders_the_live_power_factor,
+/// storagecontroller_fleet_aggregates_render_the_live_fleet,
+/// the_silent_readonly_capture_cells_are_empty}`. Live census
+/// (`DSS_PROPS_CENSUS=claims`, 27 cases): on r4133 the five leave 105 divergent
+/// cells (89 in scope), 103 of them claimed by RP2.4's display floor (worst
+/// 4.03e-08 rel) and 2 out of scope on a `capi_v0145`-only case. Their 181
+/// frozen census example rows are accounted **superseded**
+/// (`props_r4133_replay::{RP38_SUPERSEDED, SUPERSEDED_RP38}`), not declared.
 ///
 /// **The 82nd is `generator.model`, landed by RP3.3 (2026-08-24)** — the first
 /// row a WP-RP3 root-cause sub-step contributed, and the first that did not come
@@ -3968,17 +3992,30 @@ mod tests {
         assert_eq!(got, want, "PROPS_ECHO_R4133's row set moved");
     }
 
-    /// **The five pairs the RP2.3 kill criterion fired on take NO row here.**
+    /// **The five pairs the RP2.3 kill criterion fired on take NO row here** —
+    /// before RP3.8 landed and after it.
     ///
     /// r4133 renders a live computed read-only quantity for each
     /// (`IndMach012.pas:1790`, `StorageController.pas:991-994`) and the port
-    /// renders `''` only because dss_capi 0.14.5 flags them
-    /// `[SilentReadOnly, ReadByFunction]`. Under the 2026-08-02 policy the
-    /// 0.14.5 convention yields: the fix is an ENGINE change (render the live
-    /// value, exclude the capi side there), which is why these five are routed
-    /// to their own sub-step instead of being given a category that would
-    /// misdescribe them. If a later pass adds one of them here, the kill
-    /// ruling has to be re-opened first.
+    /// rendered `''` only because dss_capi 0.14.5 flags them
+    /// `[SilentReadOnly, ReadByFunction]` and never assigns their
+    /// `PropertyOffset` (`DSSObjectHelper.pas:2189`, guard `:2203-2204`). Under
+    /// the 2026-08-02 policy the 0.14.5 convention yielded: the fix was an
+    /// ENGINE change (render the live value, exclude the capi side there),
+    /// which is why these five were routed to their own sub-step instead of
+    /// being given a category that would misdescribe them.
+    ///
+    /// **RP3.8 made that change on 2026-09-02** — `PropFlags::
+    /// RENDERS_LIVE_RESULT` alongside `SILENT_READ_ONLY` on the five
+    /// `PropDef`s, consulted at the single render site
+    /// `obj/props/class_props/value.rs`; the capi capture's `''` is excluded as
+    /// `harness::SKIP_PROPS` row group (g) (and `SKIP_PROPS_CAPI_ONLY`, so
+    /// r4133 still compares them) and pinned in `props_r4133_pins.rs`. So the
+    /// reason the five take no row is now *stronger*, not weaker: the
+    /// divergence this table exists to describe — an echo/render convention the
+    /// port matches on purpose — no longer exists on the r4133 channel at all.
+    /// If a later pass adds one of them here, the kill ruling AND RP3.8's
+    /// engine fix both have to be re-opened first.
     #[test]
     fn the_silent_readonly_pairs_have_no_echo_row() {
         for (class, prop) in [
@@ -3991,7 +4028,7 @@ mod tests {
             assert!(
                 !has_echo_row(class, prop),
                 "{class}.{prop} is a SilentReadOnly surface, not an echo — RP3.8's, not this \
-                 table's (props_r4133_replay::RP38_ROUTING)"
+                 table's (the capi `''` is harness::SKIP_PROPS group (g); the census rows \n                 are props_r4133_replay::RP38_SUPERSEDED)"
             );
         }
     }
