@@ -161,9 +161,10 @@ impl DssObject for StorageController {
             KW_NEED => self.kw_needed,
             // The four live fleet aggregates r4133 renders
             // (`StorageController.pas:991-994`). A `&self` getter cannot reach
-            // the Storage arena, so the read surfaces refresh the cache at their
-            // choke point (`Dss::refresh_vterminal_if_marked`, gated on
-            // `RENDERS_LIVE_RESULT`) immediately before this read — see
+            // the Storage arena, so the read surfaces refresh the cache first
+            // (`Dss::refresh_vterminal_if_marked` per read;
+            // `Dss::refresh_render_caches_for_save` before a `Save`), gated on
+            // `RENDERS_LIVE_RESULT` — see
             // [`FleetAggregates`]. Reading writes nothing (r4133's `Var Sum`
             // write-back into `TotalkWhCapacity`/`TotalkWCapacity` is a dead
             // store there and is not reproduced).

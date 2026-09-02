@@ -1598,6 +1598,34 @@ fn fleet_aggregates_are_ignored_by_a_json_load() {
             "property {p} was written by a JSON load"
         );
     }
+
+    // …and the walk never even MARKED them set. This is the leg that actually
+    // discriminates the flag: these four have no `set_f64` arm, so "nothing was
+    // stored" holds with or without `SILENT_READ_ONLY`, and the assertions above
+    // pass either way (RP3.8 audit-tests finding 1). Without the flag the key
+    // reaches `set_json_value` → `edit_property`, whose applier VM stamps
+    // `PrpSequence` (Pascal `SetAsNextSeq`) — and a marked property is one
+    // `Save` emits, so the load would leak into the saved deck. The writable
+    // sibling proves the stamp does happen on this very walk.
+    let stamped: Vec<usize> = std::iter::successors(sc.data().next_property_set(None), |&i| {
+        sc.data().next_property_set(Some(i))
+    })
+    .collect();
+    assert!(
+        stamped.contains(&prop::KW_TARGET),
+        "the writable sibling must be stamped, or this leg is vacuous: {stamped:?}"
+    );
+    for p in [
+        prop::KWH_TOTAL,
+        prop::KW_TOTAL,
+        prop::KWH_ACTUAL,
+        prop::KW_ACTUAL,
+    ] {
+        assert!(
+            !stamped.contains(&p),
+            "property {p} was stamped set by a JSON load — `Save` would emit it: {stamped:?}"
+        );
+    }
 }
 
 /// The flag pair is carried by exactly the four aggregates, and the property

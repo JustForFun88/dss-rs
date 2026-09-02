@@ -572,6 +572,275 @@ fn save_circuit_writes_master() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// Every holder of [`crate::obj::props::PropFlags::RENDERS_LIVE_RESULT`] in the
+/// **whole registry** is a class `Dss::refresh_live_result_cache` dispatches on
+/// (RP3.8 audit settlement).
+///
+/// The dispatch is a hardcoded two-arm `if` over StorageController / IndMach012.
+/// A third class given the flag would get no refresh at all and would render
+/// whatever its cache last held — silently, since a missing arm is not a
+/// compile error. The two per-class tests
+/// (`ind_mach012::tests::only_pf_renders_live`,
+/// `storage_controller::tests::only_the_four_aggregates_render_live`) each check
+/// only their own property table, so nothing tied the flag's *holder set* to the
+/// dispatch. This walks the registry the executive actually builds and pins that
+/// set; the debug-build twin is the `debug_assert!` at the end of
+/// `refresh_live_result_cache`, which fires on a holder that reaches no arm.
+#[test]
+fn renders_live_result_holders_have_a_refresh_arm() {
+    use crate::obj::props::PropFlags;
+
+    let dss = Dss::new();
+    let mut holders: Vec<String> = Vec::new();
+    for cls in &dss.classes {
+        for i in 1..=cls.props.num_properties() {
+            if cls
+                .props
+                .prop(i)
+                .flags
+                .contains(PropFlags::RENDERS_LIVE_RESULT)
+            {
+                holders.push(format!(
+                    "{}.{}",
+                    cls.props.class_name(),
+                    cls.props.property_name(i)
+                ));
+            }
+        }
+    }
+    holders.sort();
+    assert_eq!(
+        holders,
+        [
+            "IndMach012.PF",
+            "StorageController.kWActual",
+            "StorageController.kWTotal",
+            "StorageController.kWhActual",
+            "StorageController.kWhTotal",
+        ],
+        "the flag's holder set moved. Every holder must have an arm in \
+         `Dss::refresh_live_result_cache` (and a `Save`-side pass through \
+         `refresh_render_caches_for_save`); a new one needs both, plus its own \
+         r4133-sourced pin — not just the flag"
+    );
+}
+
+// RP3.8 EXPECTED-VALUE PIN [SAVE_RENDERS_LIVE_RESULTS]: `Save` renders every
+// marked live property from the live model, and renders it the same whether or
+// not the session read it first. Dropping either
+// `Dss::refresh_render_caches_for_save` call site makes the assertions below
+// fail on the construction default (`PF=1`, `kWhTotal=0`, an all-zero
+// `WdgCurrents`) — or, worse, pass only after some earlier `?`.
+/// `Save` is the **fifth** `ClassProps::get_value` reader, and it renders the
+/// live result like the other four (RP3.8 audit settlement, 2026-09-02).
+///
+/// `Save` emits only the properties a deck explicitly **set**, in the order it
+/// set them (Pascal `GetNextPropertySet` → `TDSSObject.SaveWrite`) — and a write
+/// to one of these read-only properties is silently ignored *yet still marks the
+/// property set*, so `New IndMach012.m1 … pf=0.5` really does get a `PF=` back.
+/// r4133 fills that slot from the same live getter it uses for `?`; measured
+/// through `epri-worker` on these very decks (2026-09-02) it writes
+/// `New "IndMach012.m1" … pf=0.886059`,
+/// `New "StorageController.sc" … kWhTotal=6000` and the solved
+/// `Transformer.t1 … WdgCurrents=`.
+///
+/// Before the settlement the port wrote the render caches unrefreshed: `PF=1` /
+/// `kWhTotal=0` / an all-zero `WdgCurrents` by default, and the live number only
+/// when some earlier `?` had happened to refresh it — a *read-history-dependent*
+/// saved deck, which is the contamination shape the corpus gate's own three-run
+/// artifact exists to forbid. Leg (2) is that regression's tripwire.
+///
+/// Legs (1)-(4) are RP3.8's own [`crate::obj::props::PropFlags::
+/// RENDERS_LIVE_RESULT`] properties; leg (5) is the same latency on the older
+/// [`crate::obj::props::PropFlags::READS_VTERMINAL`] marker (Transformer
+/// `WdgCurrents`), which pre-dates RP3.8 and is fixed with it — the `Save` pass
+/// runs the same per-object choke point, so all four of its jobs happen.
+///
+/// The port renders full precision like every other double property; r4133's own
+/// `%.6g` / `%-.8g` digits are checked through [`crate::util::fmt_g`], the same
+/// two-clause display class the other RP3.8 pins use. (`WdgCurrents` is an
+/// r4133-formatted string on both engines, so it is compared byte-for-byte.)
+#[test]
+fn save_renders_the_live_result_properties() {
+    use crate::util::fmt_g;
+
+    /// The ` <Name>=<value>` token `Save` wrote for `prop` on `line`.
+    fn token(line: &str, prop: &str) -> String {
+        line.split_whitespace()
+            .find_map(|t| {
+                let (k, v) = t.split_once('=')?;
+                k.eq_ignore_ascii_case(prop).then(|| v.to_string())
+            })
+            .unwrap_or_else(|| panic!("no {prop}= in the saved line {line:?}"))
+    }
+    fn saved_line(dir: &std::path::Path, file: &str, needle: &str) -> String {
+        let text = std::fs::read_to_string(dir.join(file)).unwrap_or_else(|e| {
+            let listing: Vec<String> = std::fs::read_dir(dir)
+                .map(|rd| {
+                    rd.flatten()
+                        .map(|x| x.file_name().to_string_lossy().into_owned())
+                        .collect()
+                })
+                .unwrap_or_default();
+            panic!(
+                "read saved {file} from {}: {e} (dir holds {listing:?})",
+                dir.display()
+            )
+        });
+        text.lines()
+            .find(|l| l.contains(needle))
+            .unwrap_or_else(|| panic!("no {needle} line in {file}: {text:?}"))
+            .to_string()
+    }
+
+    // The machine's deck writes `pf=0.5`, which the engine ignores (read-only)
+    // while still marking the property set.
+    let machine = |dss: &mut Dss| {
+        for c in [
+            "clear",
+            "new circuit.rp38save basekv=12.47 pu=1.0 phases=3 bus1=src",
+            "new indmach012.m1 bus1=src kV=12.47 kW=100 kVA=150 pf=0.5",
+            "set voltagebases=[12.47]",
+            "calcv",
+            "solve",
+        ] {
+            dss.command(c);
+        }
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    };
+    let scratch = |tag: &str| {
+        let dir = std::env::temp_dir().join(format!("dss_rp38_save_{tag}_{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        dir
+    };
+    let save_circuit = |dss: &mut Dss, dir: &std::path::Path| {
+        dss.command(&format!(
+            "save circuit dir=\"{}\"",
+            dir.to_string_lossy().replace('\\', "/")
+        ));
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    };
+
+    // (1) `Save circuit`, no prior read of `pf`.
+    let mut dss = Dss::new();
+    machine(&mut dss);
+    let cold = scratch("cold");
+    save_circuit(&mut dss, &cold);
+    let cold_line = saved_line(&cold, "IndMach012.dss", "IndMach012.m1");
+    std::fs::remove_dir_all(&cold).ok();
+
+    let pf = token(&cold_line, "PF");
+    let v: f64 = pf
+        .parse()
+        .unwrap_or_else(|e| panic!("Save writes a number for PF, got {pf:?}: {e}"));
+    assert_eq!(
+        fmt_g(v, 6),
+        "0.886059",
+        "r4133's own byte for this deck's saved `pf=` (epri-worker, 2026-09-02); \
+         the pre-settlement port wrote the construction default `1`: {cold_line}"
+    );
+    assert_eq!(
+        pf, "0.886059022116548",
+        "…and the port writes the full double, not r4133's six digits"
+    );
+
+    // (2) The same deck, `?`-read first: `Save` must not depend on read history.
+    let mut dss = Dss::new();
+    machine(&mut dss);
+    dss.command("? indmach012.m1.pf");
+    let warm = scratch("warm");
+    save_circuit(&mut dss, &warm);
+    let warm_line = saved_line(&warm, "IndMach012.dss", "IndMach012.m1");
+    std::fs::remove_dir_all(&warm).ok();
+    assert_eq!(
+        warm_line, cold_line,
+        "a `?` before the save must not change what `Save` writes"
+    );
+
+    // (3) `Save <class>` is the other serializer entry point.
+    let mut dss = Dss::new();
+    machine(&mut dss);
+    let one = scratch("class");
+    dss.command(&format!(
+        "save class=indmach012 file=IndMach012.dss dir=\"{}\"",
+        one.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let class_line = saved_line(&one, "IndMach012.dss", "IndMach012.m1");
+    std::fs::remove_dir_all(&one).ok();
+    assert_eq!(
+        token(&class_line, "PF"),
+        pf,
+        "`Save <class>` renders the same live value as `Save circuit`"
+    );
+
+    // (4) The StorageController half: a deck writing `kWhTotal=42` gets the live
+    // fleet sum back — r4133's `kWhTotal=6000` on this deck.
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.rp38savesc basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new load.ld bus1=b phases=3 kv=12.47 kw=6000 pf=1.0 model=1",
+        "new storage.sa bus1=b phases=3 kv=12.47 kwrated=1500 kva=1500 kwhrated=6000 \
+         %stored=80 %idlingkw=0 pf=1.0",
+        "new storagecontroller.sc element=line.l1 terminal=1 modedis=peakshave \
+         kwtarget=5200 kWhTotal=42",
+        "set voltagebases=[12.47]",
+        "calcv",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let sc_dir = scratch("sc");
+    save_circuit(&mut dss, &sc_dir);
+    let sc_line = saved_line(&sc_dir, "StorageController.dss", "StorageController.sc");
+    std::fs::remove_dir_all(&sc_dir).ok();
+    let total = token(&sc_line, "kWhTotal");
+    assert_eq!(
+        total, "6000",
+        "the live fleet `kWhRating` sum — r4133's own saved byte on this deck \
+         (epri-worker, 2026-09-02); the deck's ignored `kWhTotal=42` and the \
+         pre-settlement `0` are both wrong: {sc_line}"
+    );
+
+    // (5) The same latency on the older `READS_VTERMINAL` marker, which
+    // pre-dates RP3.8 and is fixed with it: a deck writing `wdgcurrents=` gets
+    // the SOLVED winding currents back from r4133, and an all-zero buffer from
+    // the pre-settlement port (the `&self` getter read a `Vterminal` nothing had
+    // reloaded).
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.rp38savewdg basekv=115 phases=3 bus1=src",
+        "new transformer.t1 windings=2 buses=[src, b] conns=[wye, wye] \
+         kvs=[115, 12.47] kvas=[10000, 10000] xhl=7 wdgcurrents=1",
+        "new load.ld bus1=b phases=3 kv=12.47 kw=8000 pf=0.95 model=1",
+        "set voltagebases=[115, 12.47]",
+        "calcv",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let wdg_dir = scratch("wdg");
+    save_circuit(&mut dss, &wdg_dir);
+    let wdg_line = saved_line(&wdg_dir, "Transformer.dss", "Transformer.t1");
+    std::fs::remove_dir_all(&wdg_dir).ok();
+    let want = concat!(
+        "WdgCurrents=\"43.41225, (-21.639), 400.3534, (158.36), ",
+        "43.41225, (-141.64), 400.3534, (38.361), ",
+        "43.41225, (98.361), 400.3534, (-81.639), \""
+    );
+    assert!(
+        wdg_line.contains(want),
+        "r4133's own saved `WdgCurrents=` on this deck (epri-worker, 2026-09-02); \
+         the pre-settlement port saved an all-zero buffer: {wdg_line}"
+    );
+}
+
 /// The **generic-base ordering** for the two `Dump` element kinds that have no
 /// byte golden yet (their property names are not yet in the oracle display case —
 /// tracked for the systematic name pass), pinned structurally by line position so

@@ -226,9 +226,20 @@ fn corpus_gate_props_census() {
 /// (e)/(f) and RP3.8's live-render rows (g): those eight are deterministic on
 /// both sides, so nulling them here is a deliberate, recorded loss rather than
 /// the argument above (the twin note at `harness::skip_prop_ub` says the same).
-/// It costs the artifact nothing that its claims depend on: the stripped set is
-/// still exactly what the gate excludes from its VALUE compare, so no
-/// gate-asserted property is dropped.
+/// **What that loss is, precisely** (RP3.8 audit settlement): `skip_prop_ub` is
+/// channel-BLIND while those eight rows are `SKIP_PROPS_CAPI_ONLY` — the gate
+/// *does* value-compare them on the `r4133` channel — so for r4133 cases the
+/// "stripped set == the set the gate excludes" equivalence does NOT hold, and
+/// five of the nulled properties (the StorageController aggregates) are exactly
+/// the ones that sum ANOTHER class's arena, where a cross-case pointer or
+/// ordering leak would show first. What still covers them: each of the three
+/// runs value-compares them live on the r4133 channel and any divergence lands
+/// in that run's `verdict` string, which IS in the bit-diff — so a real
+/// contamination still fails the artifact. What is genuinely lost is the
+/// narrower signal the strip was widened to keep: a *within-tolerance* drift of
+/// those eight oracle-side renders across reused workers. Making the strip
+/// channel-aware would restore it; that is the alternative, not a claim that
+/// nothing was given up.
 fn write_gate_dump(path: &str, run: &GateRun) {
     fn strip_ub_properties(v: &mut Value) {
         if let Some(cps) = v.get_mut("checkpoints").and_then(|c| c.as_array_mut()) {

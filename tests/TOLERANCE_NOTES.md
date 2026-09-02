@@ -927,7 +927,10 @@ A real port bug this gate caught and fixed (not a skip): **`RegControl.TapNum`**
 rendered the cached `tap_snap` while Pascal `Get_TapNum` (`RegControl.pas`) reads
 the controlled transformer's **live** `PresentTap[TapWinding]`; the `&self` getter
 now resyncs the snapshot from the live transformer at the read choke point
-(`Dss::refresh_vterminal_if_marked`).
+(`Dss::refresh_vterminal_if_marked`) — and, since the RP3.8 audit settlement,
+once up front over the store before the `Save` serializer renders
+(`Dss::refresh_render_caches_for_save`), which fixed the same latency for
+`Transformer.WdgCurrents` and for RP3.8's five live-result rows.
 
 ### 0.15.x property-table allowlist (shape relaxation)
 

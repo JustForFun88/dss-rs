@@ -1320,6 +1320,52 @@ impl Dss {
         }
     }
 
+    /// The whole-store form of [`Self::refresh_vterminal_if_marked`], for the
+    /// **`Save` serializer** (`Save circuit` and `Save <class>`).
+    ///
+    /// `?`, `Dump` and `element_properties` refresh one object at that choke
+    /// point, gated on the property they are about to render. `Save` has no such
+    /// gate: it walks whole classes and emits every property a deck explicitly
+    /// **set**, in the order it set them (Pascal `GetNextPropertySet` ->
+    /// `TDSSObject.SaveWrite`, `General/DSSObject.pas:145-165`) — and a write to
+    /// a read-only property is silently ignored yet still marks the property
+    /// set, so a deck line `New IndMach012.m1 ... pf=0.5` really does get a
+    /// `PF=` back out of `Save`. r4133 fills those slots from the same live
+    /// getters it uses for `?`, so the caches are refreshed once, up front, for
+    /// every object; the per-object callee does the flag gating, so nothing but
+    /// a marked property's cache moves (a pure read of the model).
+    ///
+    /// Measured through `epri-worker` on the r4133 DLL (2026-09-02), all three
+    /// marked kinds — the port wrote the first column, r4133 the second:
+    ///
+    /// | saved property | before | r4133 |
+    /// |---|---|---|
+    /// | `IndMach012.PF` (deck wrote `pf=0.5`) | `1`, or the live value if a `?` came first | `0.886059` |
+    /// | `StorageController.kWhTotal` (deck wrote `kWhTotal=42`) | `0` | `6000` |
+    /// | `Transformer.WdgCurrents` (deck wrote `wdgcurrents=1`) | all-zero | the solved currents |
+    ///
+    /// The first row is why this exists: the pre-settlement answer depended on
+    /// the session's **read history**, which is the contamination shape the
+    /// corpus gate's own three-run artifact exists to forbid. The `WdgCurrents`
+    /// row is the same latency on the older [`PropFlags::READS_VTERMINAL`]
+    /// marker, pre-dating RP3.8 and fixed with it (RP3.8 audit settlement;
+    /// no deck in the corpus or the goldens writes any of these properties, so
+    /// no committed byte moves — swept 2026-09-02).
+    ///
+    /// `only = Some(ci)` restricts the pass to one class (`Save <class>`);
+    /// `None` covers the store (`Save circuit`).
+    pub(super) fn refresh_render_caches_for_save(&mut self, only: Option<usize>) {
+        let classes: Vec<usize> = match only {
+            Some(ci) => vec![ci],
+            None => (0..self.classes.len()).collect(),
+        };
+        for ci in classes {
+            for oi in 0..self.classes[ci].arena.len() {
+                self.refresh_vterminal_if_marked(ci, oi, None);
+            }
+        }
+    }
+
     /// The items-3-4 half of [`Self::refresh_vterminal_if_marked`]: recompute the
     /// object's live-result cache from the live store.
     ///
@@ -1369,15 +1415,28 @@ impl Dss {
             return;
         }
 
-        if self.classes[ci].arena.get::<IndMach012>(oi).is_some()
-            && let Some(ckt) = self.circuit.as_ref()
-        {
-            let sys = crate::solution::solution::sys_ctx(ckt);
-            let node_v = ckt.solution.node_v.clone();
-            if let Some(im) = self.classes[ci].arena.get_mut::<IndMach012>(oi) {
-                im.refresh_live_pf(&sys, &node_v);
+        if self.classes[ci].arena.get::<IndMach012>(oi).is_some() {
+            if let Some(ckt) = self.circuit.as_ref() {
+                let sys = crate::solution::solution::sys_ctx(ckt);
+                let node_v = ckt.solution.node_v.clone();
+                if let Some(im) = self.classes[ci].arena.get_mut::<IndMach012>(oi) {
+                    im.refresh_live_pf(&sys, &node_v);
+                }
             }
+            return;
         }
+
+        // Reached only for a class that carries `RENDERS_LIVE_RESULT` (the
+        // caller gates on it) and has no arm above — which would render a stale
+        // cache silently, the very failure the flag exists to prevent. Debug
+        // builds (every test run) say so; the release-build twin is the registry
+        // walk `exec::tests::report::renders_live_result_holders_have_a_refresh_arm`.
+        debug_assert!(
+            false,
+            "{} carries RENDERS_LIVE_RESULT but `refresh_live_result_cache` has \
+             no arm for it — its render would serve whatever the cache last held",
+            self.classes[ci].props.class_name()
+        );
     }
 
     /// The body of Pascal `TDSSClass.Edit`: iterate `name=value` parameters on

@@ -27,8 +27,10 @@ impl ClassProps {
         // instead wherever its own `GetPropertyValue` has an arm for the
         // property (`IndMach012.pas:1790`, `StorageController.pas:991-994`);
         // those carry `RENDERS_LIVE_RESULT` and fall through to the normal
-        // render below, reading the cache the read surfaces refresh at
-        // `Dss::refresh_vterminal_if_marked`. The 0.14.5 suppression stays for
+        // render below, reading the cache the read surfaces refresh first
+        // (`Dss::refresh_vterminal_if_marked` per read;
+        // `Dss::refresh_render_caches_for_save` before a `Save`). The 0.14.5
+        // suppression stays for
         // the JSON export/load and the schema (`PropFlags::SILENT_READ_ONLY`,
         // which documents all four readers). RP3.8.
         if pd.flags.contains(PropFlags::SILENT_READ_ONLY)

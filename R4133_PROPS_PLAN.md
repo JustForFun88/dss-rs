@@ -378,7 +378,7 @@ sub-step's own numeric stop-and-report threshold holds.
   r4133 channel too. RP2.1 therefore disposes **every** `SKIP_PROPS` /
   `LANE_SKIP_PROPS` row for r4133: the changed-default rows — (Fuse,
   FuseCurve), (Fuse, RatedCurrent), (RegControl, RevThreshold) — must
-  **compare** on r4133 (`tests/TOLERANCE_NOTES.md:984-990` pins the r4133-side
+  **compare** on r4133 (`tests/TOLERANCE_NOTES.md:987-993` pins the r4133-side
   values and forbids masking them there); rows justified by channel-independent
   facts (heap-garbage matrix reads) stay skipped on both channels;
   `LANE_SKIP_PROPS`'s (Monitor, BaseFreq) stays deliberately channel-blind —
@@ -466,7 +466,7 @@ sub-step's own numeric stop-and-report threshold holds.
   (`GOLDEN_REBASE_PLAN.md:390-392`); that expectation is **superseded** here in
   favor of the standing TOLERANCE_NOTES doctrine ("Rather than mint parallel
   `PROPS_R4133` / `HIDE_R4133` mechanisms, the *identical* Rung-1 machinery is
-  reused", `tests/TOLERANCE_NOTES.md:977-990`). Mechanically safe: `prop_015x`
+  reused", `tests/TOLERANCE_NOTES.md:980-993`). Mechanically safe: `prop_015x`
   drops a Rust-side prop only when the oracle's own name list lacks it
   (`mod.rs:1495-1500`), so a `("GenDispatcher", &["weights"])` row is inert on
   the capi channel (whose list contains `weights`) and active on r4133 (whose
@@ -1875,7 +1875,7 @@ Outcome: the last population RP4.1 has no owner for is owned.
 ledger entries. Full record: STATUS §RP3.8.** The probe ran first and the kill
 criterion did **not** fire: all five renders are reproducible from the port's own
 state, measured cell-for-cell on 9 decks / 100 solved steps + 9 golden scenarios
-+ 2 pin decks. Six points where the code corrected this section's premises or
++ 2 pin decks. Seven points where the code corrected this section's premises or
 numbers:
 
 * **`PowerFactor` is `Version8/Source/Common/Utilities.pas:1821`, not
@@ -1927,6 +1927,24 @@ numbers:
   r4133, and `TStorageObj.MakePosSequence` writes `kWrating=` for the property
   `kWrated` (`PCElements/Storage.pas:3979-3985` vs `:647`), which is the one
   measured r4133-side divergence these renders expose — see §RP4.1.
+
+**Audit settlement (2026-09-02).** The two lenses raised nine findings (eight
+after dedup); one was major. `Save` is a **fifth** `ClassProps::get_value`
+reader, and it never ran the refresh choke point: a deck that writes one of these
+read-only properties still marks it *set*, so `Save` emitted the render cache —
+the construction default (`PF=1`, `kWhTotal=0`), or the live value if a `?`
+happened to come first, i.e. an output that depended on the session's read
+history. Both engines were measured on the same decks (r4133 writes
+`pf=0.886059`, `kWhTotal=6000`), and the same latency was found — pre-dating
+RP3.8 — on `READS_VTERMINAL` (`Transformer.WdgCurrents` saved all-zero where
+r4133 saves the solved currents). Fixed with one up-front pass over the store,
+`Dss::refresh_render_caches_for_save`, in both `Save` entry points; pinned by
+`exec::tests::report::save_renders_the_live_result_properties` with r4133's own
+bytes. No corpus deck or golden writes any of the six properties, so no committed
+byte moved. The rest of the settlement (a registry-wide holder guard for the
+flag, a discriminating leg for the two JSON-load tests, the marker-vocabulary
+check, the root-anchored `tmp` skip, and the two records that stay records) is in
+STATUS §RP3.8.
 
 
 ### RP3.9 — the r4133 round-trip residue (opened by the RP2.4 audit settlement)

@@ -43,17 +43,8 @@ fn repo_root() -> PathBuf {
 /// descending there would report every marker in the tree two or three times
 /// and fail this gate on an otherwise clean checkout.
 ///
-/// `tmp` is the gitignored scratch root (`.gitignore`'s `/tmp`) where sub-steps
-/// park probe crates, renamed fixtures and half-applied patches. Rust left
-/// there is not product code and makes no claim about this tree, but the walk
-/// below is the WHOLE repository by design, so before RP3.8 added this entry a
-/// scratch `.rs` under `tmp/` was scanned for teardown markers, compat tags and
-/// lane `cfg`s — i.e. a throwaway file could red the mandatory gate,
-/// and one did (RP3.8 P2b, worked around by renaming the file to `.rs.txt`).
-/// Skipping it cannot hide product code: the repository has **no tracked path
-/// with a `tmp` segment** at any depth (verified 2026-09-02), and the two
-/// non-vacuity assertions in [`rust_sources`] still force the walk to reach
-/// both `crates/` and the workspace-excluded `tools/` fixture crate.
+/// These six are skipped at **any** depth; the scratch root is
+/// [`SKIP_DIRS_AT_ROOT`] instead.
 const SKIP_DIRS: &[&str] = &[
     ".git",
     ".claude",
@@ -61,8 +52,25 @@ const SKIP_DIRS: &[&str] = &[
     ".venv",
     "target",
     "node_modules",
-    "tmp",
 ];
+
+/// Directory names the walk skips **only directly under the repository root**.
+///
+/// `tmp` is the gitignored scratch root (`.gitignore`'s `/tmp`) where sub-steps
+/// park probe crates, renamed fixtures and half-applied patches. Rust left
+/// there is not product code and makes no claim about this tree, but the walk
+/// below is the WHOLE repository by design, so before RP3.8 added this entry a
+/// scratch `.rs` under `tmp/` was scanned for teardown markers, compat tags and
+/// lane `cfg`s — i.e. a throwaway file could red the mandatory gate, and one did
+/// (RP3.8 P2b, worked around by renaming the file to `.rs.txt`).
+///
+/// Anchored at the root on purpose (RP3.8 audit settlement): the name-matched
+/// form skipped any directory called `tmp` at any depth, so a future
+/// `crates/dss-core/src/tmp/` would have left the whole-repository walk
+/// silently. `.gitignore` anchors the same way (`/tmp`), so the skip now covers
+/// exactly the path that is ignored — no premise about the rest of the tree, and
+/// nothing for a later reader to re-verify by hand.
+const SKIP_DIRS_AT_ROOT: &[&str] = &["tmp"];
 
 /// Every `.rs` file in the repository.
 ///
@@ -86,7 +94,10 @@ fn rust_sources(root: &Path) -> Vec<PathBuf> {
             let path = entry.path();
             if path.is_dir() {
                 let name = entry.file_name().to_string_lossy().to_lowercase();
-                if !SKIP_DIRS.contains(&name.as_str()) {
+                let at_root = dir == root;
+                let skipped = SKIP_DIRS.contains(&name.as_str())
+                    || (at_root && SKIP_DIRS_AT_ROOT.contains(&name.as_str()));
+                if !skipped {
                     dirs.push(path);
                 }
             } else if path.extension().is_some_and(|e| e == "rs") {
@@ -965,7 +976,7 @@ fn names_token(text: &str, token: &str) -> bool {
 /// `lane::PARITY` (`golden_reports.rs` ×4 — it was ×15 until G2.2a tore down
 /// two rows pinned there, ×9 until G2.2c tore down the Fault dump row and ×6
 /// until G2.6 tore down the device-name column width, whose two arms it also
-/// held — plus `harness/mod.rs:2374`, the kV-value compare and
+/// held — plus `harness/mod.rs:4738`, the kV-value compare and
 /// that file's only remaining read; `skip_prop`'s, which was the *first* of its
 /// two, went unconditional in G2.2b);
 /// `harness/lane.rs`, which uses the bare name because it declares it, names
@@ -2784,6 +2795,157 @@ fn teardown_markers_and_the_register_agree() {
          them — the register says the harness exclusion at that file became \
          unconditional for this row, so the site has to say so too:\n{}",
         unmarked.join("\n")
+    );
+}
+
+/// The **sub-step** marker spellings: the same two words as [`pin_marker`] /
+/// [`exclusion_marker`] but in the *loose* form — a space where the reserved one
+/// has a hyphen, and `[row]` where it has `(row):`. Assembled at runtime like
+/// the reserved pair, and for the same reason (this file must not carry a
+/// literal occurrence of a needle it greps the tree for).
+///
+/// A sub-step that pins an expected value or drops a compare is not a WP-G2
+/// teardown row, and registering it in [`TORN_DOWN_ROWS`] would be a false claim
+/// about a lane row that never existed. RP3.8 therefore re-spelled its markers
+/// one character away from the reserved ones — correct, but it created a second
+/// vocabulary that nothing checked in either direction (RP3.8 audit-code finding
+/// 2). [`substep_markers_are_tagged_and_do_not_shadow_the_register`] is that
+/// check.
+fn substep_marker_spellings() -> [String; 2] {
+    [
+        format!("EXPECTED-VALUE PI{} [", "N"),
+        format!("LANE EXCLUSIO{} [", "N"),
+    ]
+}
+
+/// Every sub-step marker in the tree: `(marker, row, file, line, line text)`.
+fn substep_markers(root: &Path) -> Vec<(String, String, String, usize, String)> {
+    let markers = substep_marker_spellings();
+    let mut out = Vec::new();
+    for path in rust_sources(root) {
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        if !markers.iter().any(|m| text.contains(m)) {
+            continue;
+        }
+        let rel = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        for (i, line) in text.lines().enumerate() {
+            for marker in &markers {
+                for (col, _) in line.match_indices(marker.as_str()) {
+                    let after = &line[col + marker.len()..];
+                    let row = after.chars().take_while(|c| *c != ']').collect::<String>();
+                    out.push((
+                        marker.trim_end_matches(" [").to_string(),
+                        row.trim().to_string(),
+                        rel.clone(),
+                        i + 1,
+                        line.trim().to_string(),
+                    ));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The sub-step marker vocabulary is disciplined, and cannot shadow the
+/// teardown register (RP3.8 audit settlement).
+///
+/// Three obligations, none of which existed when the spelling was introduced:
+///
+/// * **self-identifying** — the marker line must carry the sub-step tag
+///   (`RP<n>.<n>`) that owns it, so the loose spelling always reads as sub-step
+///   paperwork and never as a teardown claim;
+/// * **not a teardown row** — a row name registered in [`TORN_DOWN_ROWS`] must
+///   use the *reserved* spelling, which
+///   [`teardown_markers_and_the_register_agree`] cross-checks against the
+///   register. A registered row wearing the loose spelling would escape that
+///   check silently — the copy-paste hazard this test closes;
+/// * **the pin exists** — a loose *pin* marker must sit above a real `#[test]`,
+///   so the marker names something a reader can run.
+///
+/// Non-vacuous by construction: the tree carries markers today, and the count is
+/// asserted positive.
+#[test]
+fn substep_markers_are_tagged_and_do_not_shadow_the_register() {
+    let root = repo_root();
+    let markers = substep_markers(&root);
+    assert!(
+        !markers.is_empty(),
+        "no sub-step markers found — either the walk broke or the spelling moved, \
+         and every check below just went vacuous"
+    );
+
+    let tagged = |line: &str| {
+        // `RP3.8`, `RP4.1`, … immediately identifying the owner.
+        line.split_whitespace().any(|w| {
+            let w = w.trim_start_matches("//").trim();
+            w.len() >= 4
+                && w.starts_with("RP")
+                && w[2..].split('.').count() == 2
+                && w[2..].chars().all(|c| c.is_ascii_digit() || c == '.')
+        })
+    };
+    let untagged: Vec<String> = markers
+        .iter()
+        .filter(|(_, _, _, _, line)| !tagged(line))
+        .map(|(m, row, file, at, line)| format!("    {file}:{at}: {m} [{row}] — {line}"))
+        .collect();
+    assert!(
+        untagged.is_empty(),
+        "sub-step marker(s) with no owning sub-step tag (`RP<n>.<n>`) on the line. \
+         The reserved teardown spellings are one character away and are checked \
+         against `TORN_DOWN_ROWS`; an untagged loose marker is indistinguishable \
+         from a mis-typed teardown claim:\n{}",
+        untagged.join("\n")
+    );
+
+    let shadowing: Vec<String> = markers
+        .iter()
+        .filter(|(_, row, _, _, _)| {
+            TORN_DOWN_ROWS
+                .iter()
+                .any(|(name, _, _, _)| name.eq_ignore_ascii_case(row))
+        })
+        .map(|(m, row, file, at, _)| format!("    {file}:{at}: {m} [{row}]"))
+        .collect();
+    assert!(
+        shadowing.is_empty(),
+        "sub-step marker(s) naming a row that IS in `TORN_DOWN_ROWS`. A teardown \
+         row must wear the reserved spelling, which the register cross-checks; \
+         the loose one escapes that check:\n{}",
+        shadowing.join("\n")
+    );
+
+    // marker -> test: an expected-value pin names a test that exists right below.
+    let pin = substep_marker_spellings()[0]
+        .trim_end_matches(" [")
+        .to_string();
+    let mut orphaned: Vec<String> = Vec::new();
+    for (marker, row, file, at, _) in &markers {
+        if *marker != pin {
+            continue;
+        }
+        let text = fs::read_to_string(root.join(file)).expect("marker file is readable");
+        let has_test = text
+            .lines()
+            .skip(*at) // the marker's own line is 1-based `at`
+            .take(40)
+            .any(|l| l.trim_start().starts_with("#[test]"));
+        if !has_test {
+            orphaned.push(format!("    {file}:{at}: {marker} [{row}]"));
+        }
+    }
+    assert!(
+        orphaned.is_empty(),
+        "expected-value pin marker(s) with no `#[test]` within the 40 lines below \
+         them — the marker promises a pin a reader can run:\n{}",
+        orphaned.join("\n")
     );
 }
 

@@ -545,6 +545,27 @@ fn pf_is_ignored_by_a_json_load() {
     // reports `PowerFactor(0)` = 1.
     assert_eq!(m.live_pf, 1.0);
     assert_eq!(m.get_f64(prop::PF), 1.0);
+
+    // …and the walk never even MARKED it set. This is the leg that actually
+    // discriminates the flag: `PF` has no `set_f64` arm, so "nothing was stored"
+    // holds with or without `SILENT_READ_ONLY` and the two assertions above pass
+    // either way (RP3.8 audit-tests finding 1). Without the flag the key reaches
+    // `set_json_value` → `edit_property`, whose applier VM stamps `PrpSequence`
+    // (Pascal `SetAsNextSeq`) — and a marked property is one `Save` emits, so
+    // the load would leak into the saved deck. The writable sibling proves the
+    // stamp does happen on this very walk.
+    let stamped: Vec<usize> = std::iter::successors(m.data().next_property_set(None), |&i| {
+        m.data().next_property_set(Some(i))
+    })
+    .collect();
+    assert!(
+        stamped.contains(&prop::KVA),
+        "the writable sibling must be stamped, or this leg is vacuous: {stamped:?}"
+    );
+    assert!(
+        !stamped.contains(&prop::PF),
+        "PF was stamped set by a JSON load — `Save` would emit it: {stamped:?}"
+    );
 }
 
 /// The flag pair is carried by exactly `PF`, and the property table's shape
