@@ -39,9 +39,17 @@
 //!   errors (14403) at first `Sample`.
 //!
 //! The four fleet-aggregate readbacks (`kWhTotal`/`kWTotal`/`kWhActual`/
-//! `kWActual`) are Pascal `SilentReadOnly + ReadByFunction` doubles whose
-//! `?`/`GetObjPropertyValue` getter renders `''` regardless of fleet contents
-//! (verified against the oracle); they stay read-only `''` strings.
+//! `kWActual`) render the **live** fleet aggregate, exactly as r4133 does
+//! (`StorageController.pas:991-994` -> `GetkWhTotal`/`GetkWTotal`/
+//! `GetkWhActual`/`GetkWActual`, bodies `:1162-1198`): the two `*Total` are
+//! nameplate sums over the fleet (`StorageVars.kWhRating`/`kWRating`), the two
+//! `*Actual` are the live `FleetkWh`/`FleetkW` (sums of `kWhStored` /
+//! `PresentkW`). They read no stored total and write nothing -- see
+//! [`FleetAggregates`] for the cache the read surfaces refresh and for the
+//! r4133 `Var Sum` write-back the port deliberately does not reproduce. Until
+//! RP3.8 they rendered `''`, which was the dss_capi 0.14.5
+//! `SilentReadOnly + ReadByFunction` surface convention, not upstream behavior
+//! ([`PropFlags::SILENT_READ_ONLY`]).
 //!
 //! Split into submodules (no behavioral change): the property table, the struct
 //! and its constructor live here; `MakeFleetList` / the dispatch modes /
@@ -223,19 +231,29 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("%RatekW"),
         PropDef::double("%RateCharge"),
         PropDef::double("%Reserve"),
-        // Pascal `[SilentReadOnly, ReadByFunction]` fleet-aggregate doubles
-        // (`StorageController.pas:416-423`, read fns GetkWhTotal/…). Function-only
-        // (no PropertyOffset), so the `?`/props render is '' and the JSON export
-        // omits them (`SILENT_READ_ONLY`); the schema renders `type:number,
-        // readOnly:true` with no default.
-        PropDef::double("kWhTotal").flags(PropFlags::SILENT_READ_ONLY),
-        PropDef::double("kWTotal").flags(PropFlags::SILENT_READ_ONLY),
-        PropDef::double("kWhActual").flags(PropFlags::SILENT_READ_ONLY),
-        PropDef::double("kWActual").flags(PropFlags::SILENT_READ_ONLY),
-        // Pascal `[SilentReadOnly]` with `PropertyOffset = @kWNeeded`
-        // (`StorageController.pas:426-427`): a read-only double that still dumps
-        // its value ('?' → the stored kWNeeded). Schema-only `READ_ONLY` marks it
-        // `readOnly` + elides the default without the function-only '' behaviour.
+        // The four fleet aggregates. dss_capi 0.14.5 flags them
+        // `[SilentReadOnly, ReadByFunction]` (`StorageController.pas:416-423`,
+        // read fns GetkWhTotal/...) and, being function-only (no
+        // PropertyOffset), suppresses their text render; r4133 renders them live
+        // (`:991-994`), so they carry `RENDERS_LIVE_RESULT` too and the `?`/props
+        // surfaces answer the number (RP3.8). `SILENT_READ_ONLY` still governs
+        // the other three surfaces unchanged: the JSON export omits them, a JSON
+        // load ignores them, and the schema renders `type:number, readOnly:true`
+        // with no default.
+        PropDef::double("kWhTotal")
+            .flags(PropFlags::SILENT_READ_ONLY | PropFlags::RENDERS_LIVE_RESULT),
+        PropDef::double("kWTotal")
+            .flags(PropFlags::SILENT_READ_ONLY | PropFlags::RENDERS_LIVE_RESULT),
+        PropDef::double("kWhActual")
+            .flags(PropFlags::SILENT_READ_ONLY | PropFlags::RENDERS_LIVE_RESULT),
+        PropDef::double("kWActual")
+            .flags(PropFlags::SILENT_READ_ONLY | PropFlags::RENDERS_LIVE_RESULT),
+        // dss_capi 0.14.5 `[SilentReadOnly]` with `PropertyOffset = @kWNeeded`
+        // (`StorageController.pas:426-427`): a read-only double whose value has a
+        // real backing field, so 0.14.5 dumps it like any other ('?' -> the stored
+        // kWNeeded) and exports it to JSON. Schema-only `READ_ONLY` marks it
+        // `readOnly` + elides the default, without the function-only JSON
+        // omission `SILENT_READ_ONLY` carries. NOT one of RP3.8's five pairs.
         PropDef::double("kWNeed").flags(PropFlags::READ_ONLY),
         PropDef::object_ref_class("LoadShape", "Yearly"),
         PropDef::object_ref_class("LoadShape", "Daily"),
@@ -352,6 +370,72 @@ pub struct StorageController {
     out_of_oomph: bool,
     /// `Wait4Step` — defer charging one step after a discharge→charge transition.
     wait4step: bool,
+
+    /// The render cache behind the four live read-only aggregates
+    /// (`kWhTotal`/`kWTotal`/`kWhActual`/`kWActual`) — see [`FleetAggregates`].
+    /// Refreshed from the live fleet by the read surfaces' choke point
+    /// (`Dss::refresh_vterminal_if_marked`) immediately before every render, so
+    /// it is never read stale; NOT dispatch state (nothing in `Sample` reads
+    /// it), and not `MakeLike`-copied for the same reason.
+    live_aggregates: FleetAggregates,
+}
+
+/// The four fleet aggregates r4133 renders for the read-only
+/// `kWhTotal`/`kWTotal`/`kWhActual`/`kWActual` properties
+/// (`Controls/StorageController.pas:991-994`, all `Format('%-.8g', …)`).
+///
+/// In r4133 each is computed inside the getter, from live pointers:
+///
+/// | field | r4133 getter | body |
+/// |---|---|---|
+/// | `kwh_total` | `GetkWhTotal(TotalkWhCapacity)` | `:1172-1184`, `Σ StorageVars.kWhRating` over `FleetPointerList` |
+/// | `kw_total` | `GetkWTotal(TotalkWCapacity)` | `:1186-1198`, `Σ StorageVars.kWRating` |
+/// | `kwh_actual` | `GetkWhActual` | `:1167-1170`, `FleetkWh` = `Σ StorageVars.kWhStored` (`Get_FleetkWh`, `:1032-1042`) |
+/// | `kw_actual` | `GetkWActual` | `:1162-1165`, `FleetkW` = `Σ PresentkW` (`Get_FleetkW`, `:1019-1029`) |
+///
+/// The Rust `&self` property getter cannot reach another class's arena, so the
+/// three render surfaces refresh this cache at their one choke point
+/// (`Dss::refresh_vterminal_if_marked`, gated on
+/// [`PropFlags::RENDERS_LIVE_RESULT`]) and the getter returns the just-computed
+/// number — the same construction [`PropFlags::READS_VTERMINAL`] uses for
+/// Transformer `WdgCurrents`.
+///
+/// **The r4133 write-back is deliberately not reproduced.** `GetkWhTotal` and
+/// `GetkWTotal` take `Var Sum`, and the two property arms pass the object's own
+/// `TotalkWhCapacity`/`TotalkWCapacity` fields (`:81-82`), so *reading* those
+/// two properties *writes* the object in r4133 — a read-that-mutates of the
+/// `VSConverter.GetCurrents` family (CLAUDE.md §"Known upstream bugs"). Nothing
+/// in `Version8/Source` ever reads the two fields (the whole-tree grep finds
+/// only the declarations, the two arms, and the two dead `RecalcElementData`
+/// calls at `:1107-1108`; dss_capi 0.14.5 went further and commented them out),
+/// and the getters re-sum the fleet from scratch on every call, so the store has
+/// no observable and the port renders the identical number with a pure read.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct FleetAggregates {
+    /// `kWhTotal` — `Σ` the fleet's `kWhRating`.
+    pub kwh_total: f64,
+    /// `kWTotal` — `Σ` the fleet's `kWRating`.
+    pub kw_total: f64,
+    /// `kWhActual` — `Σ` the fleet's `kWhStored` (`FleetkWh`).
+    pub kwh_actual: f64,
+    /// `kWActual` — `Σ` the fleet's `PresentkW` (`FleetkW`).
+    pub kw_actual: f64,
+}
+
+/// One fleet member's live state, the only inputs the four aggregate getters
+/// read (`StorageController.pas:1162-1198`). The executive fills one per
+/// [`StorageController::fleet_refs`] entry from the Storage arena, and
+/// [`StorageController::refresh_live_aggregates`] sums them.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct FleetMemberLive {
+    /// `PresentkW`.
+    pub present_kw: f64,
+    /// `StorageVars.kWhStored`.
+    pub kwh_stored: f64,
+    /// `StorageVars.kWhRating`.
+    pub kwh_rating: f64,
+    /// `StorageVars.kWRating`.
+    pub kw_rating: f64,
 }
 
 impl StorageController {
@@ -425,6 +509,7 @@ impl StorageController {
             discharge_inhibited: false,
             out_of_oomph: false,
             wait4step: false,
+            live_aggregates: FleetAggregates::default(),
         }
     }
 }

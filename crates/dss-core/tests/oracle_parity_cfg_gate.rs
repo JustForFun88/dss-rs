@@ -42,6 +42,18 @@ fn repo_root() -> PathBuf {
 /// parallel-agent worktrees, which are *complete copies of this repository*:
 /// descending there would report every marker in the tree two or three times
 /// and fail this gate on an otherwise clean checkout.
+///
+/// `tmp` is the gitignored scratch root (`.gitignore`'s `/tmp`) where sub-steps
+/// park probe crates, renamed fixtures and half-applied patches. Rust left
+/// there is not product code and makes no claim about this tree, but the walk
+/// below is the WHOLE repository by design, so before RP3.8 added this entry a
+/// scratch `.rs` under `tmp/` was scanned for teardown markers, compat tags and
+/// lane `cfg`s — i.e. a throwaway file could red the mandatory gate,
+/// and one did (RP3.8 P2b, worked around by renaming the file to `.rs.txt`).
+/// Skipping it cannot hide product code: the repository has **no tracked path
+/// with a `tmp` segment** at any depth (verified 2026-09-02), and the two
+/// non-vacuity assertions in [`rust_sources`] still force the walk to reach
+/// both `crates/` and the workspace-excluded `tools/` fixture crate.
 const SKIP_DIRS: &[&str] = &[
     ".git",
     ".claude",
@@ -49,6 +61,7 @@ const SKIP_DIRS: &[&str] = &[
     ".venv",
     "target",
     "node_modules",
+    "tmp",
 ];
 
 /// Every `.rs` file in the repository.

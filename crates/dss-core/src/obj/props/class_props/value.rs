@@ -18,11 +18,22 @@ impl ClassProps {
         if pd.flags.contains(PropFlags::CONDITIONAL_VALUE) && !obj.prop_conditional(idx) {
             return "----".to_string();
         }
-        // A function-only `ReadByFunction` value renders `""` always — Pascal
+        // A function-only `ReadByFunction` value renders `""`: dss_capi 0.14.5
         // leaves its `PropertyOffset` at `-1`, so `GetObjPropertyValue`'s outer
-        // guard short-circuits before the read function runs (probe-proven on a
-        // solved circuit too); see [`PropFlags::SILENT_READ_ONLY`].
-        if pd.flags.contains(PropFlags::SILENT_READ_ONLY) {
+        // guard short-circuits before the read function runs
+        // (`DSSObjectHelper.pas:2203-2204`).
+        //
+        // EPRI r4133 -- the behavioral authority -- renders the live value
+        // instead wherever its own `GetPropertyValue` has an arm for the
+        // property (`IndMach012.pas:1790`, `StorageController.pas:991-994`);
+        // those carry `RENDERS_LIVE_RESULT` and fall through to the normal
+        // render below, reading the cache the read surfaces refresh at
+        // `Dss::refresh_vterminal_if_marked`. The 0.14.5 suppression stays for
+        // the JSON export/load and the schema (`PropFlags::SILENT_READ_ONLY`,
+        // which documents all four readers). RP3.8.
+        if pd.flags.contains(PropFlags::SILENT_READ_ONLY)
+            && !pd.flags.contains(PropFlags::RENDERS_LIVE_RESULT)
+        {
             return String::new();
         }
         match pd.ptype {

@@ -1242,6 +1242,18 @@ impl Dss {
     ///    reads `Transformer().PresentTap[TapWinding]` live; the Rust getter
     ///    reads a cached snapshot that a control action / direct `Taps=` edit
     ///    leaves stale (WP8.5b).
+    /// 3. A StorageController's four fleet aggregates
+    ///    (`kWhTotal`/`kWTotal`/`kWhActual`/`kWActual`, marked
+    ///    [`PropFlags::RENDERS_LIVE_RESULT`]) from the live fleet. r4133's
+    ///    getters re-sum `FleetPointerList` on every call
+    ///    (`StorageController.pas:1162-1198`); the `&self` getter cannot reach
+    ///    the Storage arena, so the sums land in the controller's render cache
+    ///    here, immediately before the render (RP3.8).
+    /// 4. An IndMach012's `pf` (same marker) from the present solution. r4133
+    ///    renders `PowerFactor(Power[1, ActiveActor])` inside the getter
+    ///    (`IndMach012.pas:1790`); the `&self` getter reaches no solution, so
+    ///    the power factor lands in the machine's render cache here
+    ///    ([`IndMach012::refresh_live_pf`], RP3.8).
     pub(super) fn refresh_vterminal_if_marked(
         &mut self,
         ci: usize,
@@ -1250,11 +1262,12 @@ impl Dss {
     ) {
         use crate::obj::props::PropFlags;
         let props = &self.classes[ci].props;
-        let marked = match prop_idx {
-            Some(i) => props.prop(i).flags.contains(PropFlags::READS_VTERMINAL),
-            None => (1..=props.num_properties())
-                .any(|i| props.prop(i).flags.contains(PropFlags::READS_VTERMINAL)),
+        let has_flag = |f: PropFlags| match prop_idx {
+            Some(i) => props.prop(i).flags.contains(f),
+            None => (1..=props.num_properties()).any(|i| props.prop(i).flags.contains(f)),
         };
+        let marked = has_flag(PropFlags::READS_VTERMINAL);
+        let renders_live_result = has_flag(PropFlags::RENDERS_LIVE_RESULT);
         if marked
             && let Some(node_v) = self.circuit.as_ref().map(|c| c.solution.node_v.clone())
             && let Some(elem) = self.classes[ci].arena.try_ckt_elem_mut(oi)
@@ -1294,6 +1307,75 @@ impl Dss {
                 store.typed_transformer_pair_mut::<reg_control::RegControl>(rc_ref, tref);
             if let Some(tr) = tr_obj {
                 rc.sync_tap_snap_from_live(tr);
+            }
+        }
+
+        // Live-result properties (items 3-4): recompute the marked object's cached
+        // live values from the store, so the `&self` getter renders the number
+        // r4133's getter computes inside itself. Gated on the property actually
+        // being marked (or a whole-object dump) — a class without such a
+        // property does no registry walk.
+        if renders_live_result {
+            self.refresh_live_result_cache(ci, oi);
+        }
+    }
+
+    /// The items-3-4 half of [`Self::refresh_vterminal_if_marked`]: recompute the
+    /// object's live-result cache from the live store.
+    ///
+    /// StorageController — the four fleet aggregates
+    /// (`StorageController.pas:991-994` -> `GetkWhTotal`/`GetkWTotal`/
+    /// `GetkWhActual`/`GetkWActual`): collect each fleet member's live
+    /// nameplate/state out of the Storage arena and hand them to
+    /// [`StorageController::refresh_live_aggregates`], which sums them
+    /// loop-for-loop. Nothing is written to the fleet, and the two
+    /// `TotalkWhCapacity`/`TotalkWCapacity` fields r4133's `Var Sum` getters
+    /// store into do not exist here (they are a dead store upstream — see
+    /// `PropFlags::RENDERS_LIVE_RESULT`).
+    ///
+    /// IndMach012 — `pf` (`IndMach012.pas:1790`,
+    /// `Format('%.6g', [PowerFactor(Power[1, ActiveActor])])`): hand the machine
+    /// the live `SysCtx` + `NodeV` its `Get_Power` equivalent needs
+    /// ([`IndMach012::refresh_live_pf`], which documents the fresh-`Iterminal`
+    /// choice). Without a circuit there is no solution to read and the cache
+    /// keeps its `PowerFactor(0) = 1` construction value, r4133's own no-power
+    /// answer.
+    fn refresh_live_result_cache(&mut self, ci: usize, oi: usize) {
+        use crate::elements::control::storage_controller::{FleetMemberLive, StorageController};
+        use crate::elements::pc::ind_mach012::IndMach012;
+
+        if let Some(sc) = self.classes[ci].arena.get::<StorageController>(oi) {
+            let fleet: Vec<ElemId> = sc.fleet_refs().to_vec();
+            let store = ClassStore {
+                classes: &mut self.classes,
+            };
+            let members: Vec<FleetMemberLive> = fleet
+                .iter()
+                .map(|&r| {
+                    store
+                        .typed::<storage::Storage>(r)
+                        .expect("StorageController fleet entry is a Storage")
+                })
+                .map(|st| FleetMemberLive {
+                    present_kw: st.present_kw(),
+                    kwh_stored: st.kwh_stored,
+                    kwh_rating: st.kwh_rating,
+                    kw_rating: st.kw_rating,
+                })
+                .collect();
+            if let Some(sc) = self.classes[ci].arena.get_mut::<StorageController>(oi) {
+                sc.refresh_live_aggregates(&members);
+            }
+            return;
+        }
+
+        if self.classes[ci].arena.get::<IndMach012>(oi).is_some()
+            && let Some(ckt) = self.circuit.as_ref()
+        {
+            let sys = crate::solution::solution::sys_ctx(ckt);
+            let node_v = ckt.solution.node_v.clone();
+            if let Some(im) = self.classes[ci].arena.get_mut::<IndMach012>(oi) {
+                im.refresh_live_pf(&sys, &node_v);
             }
         }
     }

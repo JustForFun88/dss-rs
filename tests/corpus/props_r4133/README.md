@@ -606,6 +606,81 @@ the pair as an `EchoCategory::LiveSemanticsDiffer` row with an expected-value pi
 `EchoDefault`. The same correction is recorded in the plan's §1.1 RP1.1 note and
 at `props_r4133_replay::BIN7_ECHO_SUPPLEMENT`.
 
+### RP3.8 closed the bin-5 remainder (dated note, 2026-09-02)
+
+A closing note under this file's §"Corrections measured after freezing"
+convention: the frozen extracts above are **not** rewritten, and neither is
+§"What RP2.3 moved". What changed is the engine they describe.
+
+**RP3.8 landed 2026-09-02.** The five pairs it inherited — `indmach012.pf`
+(16 / 16) and `storagecontroller.kwhtotal`/`kwtotal`/`kwhactual`/`kwactual`
+(262 / 189 each), **1 064 cells / 772 in scope** — are no longer open, and the
+paragraph above ("the population this sub-step could not claim") is history —
+including the two symbols it names: `props_r4133_replay::RP38_ROUTING` was
+renamed `RP38_SUPERSEDED` and `DECLARED_RP38` is now `(0, 0, 0)`.
+The engine now renders the live computed value for all five, in **both** lanes,
+following r4133 (`Version8/Source/PCElements/IndMach012.pas:1790`;
+`Controls/StorageController.pas:991-994` → `:1162-1198`): a new
+`PropFlags::RENDERS_LIVE_RESULT` rides alongside `SILENT_READ_ONLY` on exactly
+those five `PropDef`s and the one render site that consults it
+(`obj/props/class_props/value.rs`) stops suppressing them. The three other
+`SILENT_READ_ONLY` readers — JSON export omission, JSON set refusal, schema
+`readOnly` — are unmoved, so no JSON or schema artifact changes.
+
+**The frozen rows are counted `superseded`, not claimed and not declared.**
+Their `rust` column is `''` by capture, and that records an engine that no
+longer exists; re-freezing the extracts is out (this section's convention) and
+writing the port's new spelling into a captured column would be a fabricated
+measurement. So `props_r4133_replay::DECLARED_RP38` went `(181, 5, 181)` →
+`(0, 0, 0)` and the old triple moved to `SUPERSEDED_RP38 = (181, 5, 181)`
+(rows / pairs / in-scope rows) — a third Ledger state, so that
+`claimed + declared + superseded == rows` still holds and the sub-step cannot
+quietly shrink what it was accountable for. The per-pair evidence rows are
+`props_r4133_replay::RP38_SUPERSEDED`.
+
+**What the live census measures** (`DSS_PROPS_CENSUS=claims`, 2026-09-02, over
+the 27 cases holding either class, with the §1.1(e) property mask bypassed):
+
+| channel | disposition | cells |
+|---|---|---|
+| `r4133` | **compared in full** — the render was ported from it | 105 divergent (89 in scope): **103** claimed by RP2.4's display floor (`float_to_str_ex` vs r4133's `%.6g`/`%-.8g` of the same double, worst **4.03e-08** rel), **2** out of scope |
+| `capi_v0145` | **excluded** — 0.14.5 leaves `PropertyOffset = -1`, so `GetObjPropertyValue` short-circuits at `DSSObjectHelper.pas:2203-2204` and no value compare can bridge a number vs `''` | 84 cells over 24 gating cases |
+
+Two of the five produce **no divergent cell at all** on r4133: `kwhtotal`
+(every fleet kWh nameplate in the population is integer-valued) and
+`indmach012.pf` (a power factor is bounded by 1, so r4133's `%.6g` is at most
+5e-07 *absolute* from ours — inside the `i_abs = 1e-6` the property compare
+uses at every tier, before the display floor is consulted). The **2**
+out-of-scope cells are `modes:makeposseq/makeposseq_ctrl.dss`'s `kWTotal`
+(ours `33.3333333333333` vs r4133 `100`) and `kWActual` (ours
+`-0.333333333333333` vs `-1`): r4133's own `TStorageObj.MakePosSequence` emits
+`kWrating=` for a property named `kWrated`
+(`Version8/Source/PCElements/Storage.pas:3979-3985` vs `:647`) and so never
+scales the kW rating. That is an upstream r4133 bug the port does not
+reproduce, newly observable only because these aggregates now render; the case
+is `capi_v0145`-only so the r4133 channel never gates it, and RP4.1 owes it a
+cited exclusion + pin if that ever changes.
+
+**Where the disposition lives** (nothing here is a data-file edit):
+
+* `harness::SKIP_PROPS` row group (g) — the five capi-side rows, mirrored in
+  `SKIP_PROPS_CAPI_ONLY` so the r4133 channel keeps comparing them (the two
+  lists partition `SKIP_PROPS`);
+* `props_roundtrip::LANE_SKIP_SCENARIO_PROPS` — 21 `(scenario, property)` rows
+  (2 → 23) for the two `props/` captures' cells; **no golden byte and no
+  `golden.lock.json` anchor moved**, and `PROPS_CLASS_FILES` / `PROPS_SCENARIOS`
+  / `PROPS_PROPERTY_CELLS` stay 51 / 322 / 8 343;
+* three expected-value pins in `crates/dss-core/tests/props_r4133_pins.rs` —
+  `indmach012_pf_renders_the_live_power_factor` and
+  `storagecontroller_fleet_aggregates_render_the_live_fleet` against the r4133
+  DLL's own bytes, plus the capi-side witness
+  `the_silent_readonly_capture_cells_are_empty`.
+
+Reading a re-census against this directory: on the `r4133` channel the five
+pairs now report only the display-class cells above (plus the two
+`makeposseq_ctrl` ones); on `capi_v0145` they report nothing, because the rows
+mask there. Neither is a disagreement with the frozen files.
+
 ### What RP2.4 moved (disposition census, 2026-08-23)
 
 Re-measured on the post-RP2.4 tree with the same knob and the same population
