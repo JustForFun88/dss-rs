@@ -1683,7 +1683,9 @@ const RP22_ROUTING: &[(&str, Owner, &str)] = &[
     // and confirmed by a live r4133 probe — RP3.7(a) owns it too.** The port
     // refuses a `normal=` write while `Locked` (`accessors.rs:151-155`, its
     // side effect `:244-249`, pinned by `swt_control/tests.rs::
-    // locked_ignores_normal_and_state_writes`), following 0.14.5's
+    // locked_ignores_normal_and_state_writes` — renamed
+    // `locked_normal_applies_locked_state_and_action_do_not` when RP3.7 landed
+    // the r4133 rule), following 0.14.5's
     // `ConditionalReadOnly` flag (`.inputs/dss_capi/src/Controls/
     // SwtControl.pas:159-160`). r4133 applies it: `InterpretSwitchState`'s
     // guard is property-name-conditional — `if Locked and ((LowerCase(

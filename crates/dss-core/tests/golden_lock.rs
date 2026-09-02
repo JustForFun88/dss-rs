@@ -244,6 +244,30 @@ const CAPI015_REASON: &str = "captured on the retired dss_capi 0.15.0b4 / DSS-Py
      0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer \
      exists, so the bytes are unreproducible and snapshot_* hard-refuses them.";
 
+/// A capi015 artifact whose committed bytes are no longer purely that capture:
+/// a later WP measured some cells on another engine and overlaid them. The
+/// overlay does **not** move the anchor — the value authority for every unmoved
+/// cell is still the 0.15.0b4 capture, and the overlaying engine is explicitly
+/// *not* the authority for the rest — but it has to be stated HERE, because the
+/// lock is the provenance register a regenerator reads first and a row saying
+/// only "captured on … 0.15.0b4" tells them every byte is that capture's.
+/// [`R4133_FAMILIES`] states `props/fuse.json`'s derivation in exactly this way;
+/// this register does the same for an artifact that stays `capi015`. The text is
+/// appended to [`CAPI015_REASON`]. Added by the RP3.7 audit settlement
+/// (2026-09-02).
+const CAPI015_OVERLAYS: &[(&str, &str)] = &[(
+    "tests/golden/props/swtcontrol.json",
+    "Since R4133_PROPS RP3.7 (2026-09-02) the bytes are PARTLY DERIVED: the ten Normal/State \
+     cells were overlaid with the official EPRI r4133 DLL's own bytes (the per-phase state \
+     arrays of SwtControl.pas:589-599/:600-610, a surface no capi-line engine renders), \
+     measured by replaying this artifact's five scenarios through the epri-worker bridge with \
+     the props gate's own `clear` + `new circuit.propsprobe` preamble; the artifact's own \
+     `oracle.engine` block carries the per-cell citations. The anchor stays capi015 because \
+     r4133 is NOT this artifact's value authority - its Action, Reset, Enabled, SwitchedObj \
+     and Delay cells still hold capi-side values r4133 diverges from. A regen must repeat the \
+     r4133 overlay.",
+)];
+
 /// Artifacts whose value authority is the official EPRI r4133 engine rather than
 /// the pinned capi oracle. An entry is a directory prefix (`.../`) or an exact
 /// path, same convention as [`DEANCHORED`]. They stay externally anchored through
@@ -394,7 +418,12 @@ fn seed_metadata(path: &str) -> (Anchor, String, Option<ProducedBy>) {
         );
     }
     if CAPI015_ARTIFACTS.contains(&path) {
-        return (Anchor::Capi015, CAPI015_REASON.to_string(), None);
+        let mut reason = CAPI015_REASON.to_string();
+        if let Some((_, overlay)) = CAPI015_OVERLAYS.iter().find(|(p, _)| *p == path) {
+            reason.push(' ');
+            reason.push_str(overlay);
+        }
+        return (Anchor::Capi015, reason, None);
     }
     if let Some((_, reason)) = R4133_FAMILIES
         .iter()
@@ -781,6 +810,7 @@ fn golden_lock_matches_the_committed_artifacts() {
     // (4) every anchor is a registered decision, both directions.
     let mut register_hits = vec![0usize; DEANCHORED.len()];
     let mut capi015_hits = vec![0usize; CAPI015_ARTIFACTS.len()];
+    let mut capi015_overlay_hits = vec![0usize; CAPI015_OVERLAYS.len()];
     let mut r4133_hits = vec![0usize; R4133_FAMILIES.len()];
     let mut fpc_hits = 0usize;
     let mut r3723_hits = 0usize;
@@ -812,6 +842,9 @@ fn golden_lock_matches_the_committed_artifacts() {
                 .position(|p| *p == row.path)
                 .expect("checked by contains");
             capi015_hits[i] += 1;
+        }
+        if let Some(i) = CAPI015_OVERLAYS.iter().position(|(p, _)| *p == row.path) {
+            capi015_overlay_hits[i] += 1;
         }
         for (i, (pattern, _)) in R4133_FAMILIES.iter().enumerate() {
             if pattern_covers(pattern, &row.path) {
@@ -886,6 +919,13 @@ fn golden_lock_matches_the_committed_artifacts() {
         if capi015_hits[i] == 0 {
             diff.push_str(&format!(
                 "  STALE CAPI015_ARTIFACTS ENTRY: {p:?} matches no locked artifact\n"
+            ));
+        }
+    }
+    for (i, (p, _)) in CAPI015_OVERLAYS.iter().enumerate() {
+        if capi015_overlay_hits[i] == 0 {
+            diff.push_str(&format!(
+                "  STALE CAPI015_OVERLAYS ENTRY: {p:?} matches no locked artifact\n"
             ));
         }
     }
@@ -994,6 +1034,22 @@ fn provenance_registers_are_well_formed() {
         CAPI015_ARTIFACTS.len(),
         "CAPI015_ARTIFACTS has duplicate entries"
     );
+    // Every overlay names a member of the capi015 set (an overlay on anything
+    // else would be a provenance claim no anchor backs), once.
+    for (i, (path, reason)) in CAPI015_OVERLAYS.iter().enumerate() {
+        assert!(
+            CAPI015_ARTIFACTS.contains(path),
+            "CAPI015_OVERLAYS entry {path:?} is not a capi015 artifact"
+        );
+        assert!(
+            !reason.trim().is_empty(),
+            "CAPI015_OVERLAYS entry {path:?} has no reason"
+        );
+        for (other, _) in CAPI015_OVERLAYS.iter().skip(i + 1) {
+            assert_ne!(path, other, "CAPI015_OVERLAYS has duplicate entries");
+        }
+    }
+
     assert_eq!(
         CAPI015_ARTIFACTS.len(),
         11,

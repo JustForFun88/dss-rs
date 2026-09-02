@@ -501,7 +501,9 @@ the 727 files under `tests/golden/**` plus the registered out-of-tree witness
 asserts, fail-on-stale in both directions: every artifact on disk has a row,
 every row has an artifact on disk, every digest matches, and every row's
 `anchor`+`reason` equal what the in-test provenance registers (`DEANCHORED`,
-`CAPI015_ARTIFACTS`, `R4133_FAMILIES`, `FPC_ARTIFACT`, `R3723_TREE`, with
+`CAPI015_ARTIFACTS` — plus `CAPI015_OVERLAYS`, which appends the derivation note
+for a capi015 artifact whose bytes a later WP partly overlaid from another engine
+without moving its anchor — `R4133_FAMILIES`, `FPC_ARTIFACT`, `R3723_TREE`, with
 `capi_v0145` as the residue) derive for its path — every register entry must
 cover at least one row, and `anchor == self` holds **iff** `produced_by` is set.
 Re-anchoring an artifact is therefore a reviewed Rust edit to a register, never

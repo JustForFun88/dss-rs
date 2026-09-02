@@ -456,10 +456,22 @@ fn swtcontrol_state_renders_one_token_per_controlled_phase() {
 /// the manifest's `action=open` fires, because `normal=closed` was typed
 /// explicitly, so r4133's `NormalStateSet` latch (`SwtControl.pas:42`, `:220-228`)
 /// is already TRUE and the Edit supplemental does not re-seed `Normal` from the
-/// now-open `State`. `civanlar.dss` is the load-bearing one: sixteen tie switches
-/// declared `Action=c`/`Action=o`, i.e. thirteen closed and three open, all with
-/// an untyped `Normal` that `Create`'s all-CLOSED initialisation (`:299-307`)
-/// answers — the one deck where the array's CONTENTS, not just its width, vary.
+/// now-open `State`.
+///
+/// `civanlar.dss` is the load-bearing one — the one deck where the array's
+/// CONTENTS, not just its width, vary: sixteen tie switches, thirteen closed
+/// and three open.
+///
+/// Its `Normal` is all-CLOSED on every one of the sixteen, and the mechanism is
+/// the Edit supplemental, not an untyped property (RP3.7 audit settlement,
+/// 2026-09-02 — the earlier wording here said `Create`'s initialisation, which
+/// is not what answers). Every `New` line declares `Action=c` (`civanlar.dss`
+/// `:51-66`); arm 3 runs `InterpretSwitchState` and then the
+/// `{Supplemental Actions}` block (`SwtControl.pas:219-228`) copies the
+/// now-CLOSED Present into Normal and latches `NormalStateSet` — which is
+/// exactly why the three later `edit swtcontrol.<tie> action=o` lines
+/// (`:68-70`) move `State` and cannot move `Normal`. Had a `New` line said
+/// `Action=o`, that same `Normal` would render `[open, open, open, ]`.
 #[test]
 fn swtcontrol_state_renders_per_phase_on_the_r4133_only_decks() {
     const CLOSED3: &str = "[closed, closed, closed, ]";
