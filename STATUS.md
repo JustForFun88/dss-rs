@@ -1470,7 +1470,10 @@ than the argument. The `&self` getter cannot reach the solution or the Storage
 arena, so the same flag does the second job: it marks the property for a refresh
 at the existing choke point `Dss::refresh_vterminal_if_marked` (the
 `READS_VTERMINAL` precedent, which `prop_flags.rs` had already anticipated for
-exactly this sub-step), reached by all three render surfaces. **StorageController**
+exactly this sub-step), reached by all three per-read render surfaces — and,
+since the settlement below, by `Save` too, which renders whole classes and so
+refreshes the store once up front instead
+(`Dss::refresh_render_caches_for_save`). **StorageController**
 caches a `FleetAggregates` refreshed by a loop-for-loop port of the four
 getters, reading four plain numbers per fleet member and writing nothing —
 `fleet_aggregates_are_a_pure_read` pins that a read leaves every rendered
@@ -1670,8 +1673,8 @@ the port's terminal powers NaN) and the port renders `----`, `float_to_str_ex`'s
 NaN spelling. That is a render convention over identical state, not a divergence
 and not a pinned value; the doc now says so.
 
-**RP3.8 audit settlement (2026-09-02) — 9 raw findings → **8** after dedup (the
-escaped-`\n` artifact was raised by both lenses); **one major**, seven fixed, one
+**RP3.8 audit settlement (2026-09-02) — 9 raw findings → 8 after dedup (the
+escaped-`\n` artifact was raised by both lenses); one major, seven fixed, one
 recorded, none dropped; `FIX` in both lanes.** Every claim was re-derived here
 before it was acted on: both probe legs replayed on the vendored EPRI DLL
 (11.0.0.1) through `epri-worker`, four mutations run and restored, and the
