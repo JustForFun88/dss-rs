@@ -377,14 +377,28 @@ mod tests {
         }
     }
 
-    /// The Relay `Action`/`State` `DssEnum`s carry the `Keep` sentinel as their
-    /// `default_value` (an unmatched token parses to it instead of raising), so
-    /// the registry and the enum must agree on the exact number — a silent
-    /// mismatch would turn "leave the phase as is" into a stored state.
+    /// The Relay AND SwtControl `Action`/`State` `DssEnum`s carry the `Keep`
+    /// sentinel as their `default_value` (an unmatched token parses to it
+    /// instead of raising), so the registry and the enum must agree on the
+    /// exact number — a silent mismatch would turn "leave the phase as is"
+    /// into a stored state.
+    ///
+    /// Relay: the `InterpretRelayState` spelling quirk. SwtControl (RP3.7 A1):
+    /// r4133's `InterpretSwitchState` is structurally identical —
+    /// `case LowerCase(param)[1] of 'o': CTRL_OPEN; 'c': CTRL_CLOSE` with NO
+    /// else arm (`Version8/Source/Controls/SwtControl.pas:423-426`,
+    /// `:464-467`; probe `tmp/rp37/probe.md` §9: `state=bogus` leaves the
+    /// state untouched, silently). The pre-RP3.7 "Relay-only" claim dated from
+    /// the scalar model, which raised on mismatch instead.
     #[test]
-    fn relay_state_enums_default_to_the_keep_sentinel() {
+    fn state_enums_default_to_the_keep_sentinel() {
         let reg = EnumRegistry::new();
-        for id in [reg.relay_action, reg.relay_state] {
+        for id in [
+            reg.relay_action,
+            reg.relay_state,
+            reg.swt_control_action,
+            reg.swt_control_state,
+        ] {
             let e = reg.get(id);
             assert_eq!(
                 ControlAction::from_ordinal(e.default_value),
@@ -393,11 +407,17 @@ mod tests {
                 e.name
             );
         }
-        // Every other CTRL-backed registry entry keeps the Pascal default 0 —
-        // `Keep` is a Relay-only spelling quirk (`InterpretRelayState`).
+        // The remaining CTRL-backed registry entries carry `NO_DEFAULT`
+        // (`dss_enum::enum_def` = -9999999, "raise instead"), NOT the Keep
+        // sentinel — and NOT "the Pascal default 0", as this comment claimed
+        // before RP3.7 FIX-A1 (verify-A1 finding F12). Note the neighbouring
+        // inconsistency the negative arm therefore pins: r4133's
+        // `InterpretFuseState` (`Fuse.pas:563-566`) and its Recloser twin use
+        // the SAME first-character `case` with no else arm as SwtControl/Relay,
+        // so raising on an unmatched Fuse/Recloser token is a pre-existing
+        // divergence from the rule adopted here. Recorded for whichever plan
+        // owns those pairs — explicitly not RP3.7's to change.
         for id in [
-            reg.swt_control_action,
-            reg.swt_control_state,
             reg.fuse_action,
             reg.fuse_state,
             reg.recloser_action,

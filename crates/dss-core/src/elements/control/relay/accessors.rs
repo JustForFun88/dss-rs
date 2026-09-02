@@ -14,7 +14,7 @@ use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
-use super::Relay;
+use super::{RCMAX, Relay};
 
 impl Relay {
     /// Executive hook: the five TCC curve names to resolve against the TCC_Curve
@@ -71,6 +71,29 @@ impl CktElement for Relay {
                 .cloned()
                 .unwrap_or_default();
             self.ccd.cd.set_bus(1, &bus);
+        }
+        // r4133 does NOT touch the state arrays here (`Relay.pas:1008-1027`);
+        // the `[closed, closed, closed, ]` -> `[closed, ]` resync the probe
+        // measured after `makeposseq` (`tmp/rp37/probe.md` §6, re-measured
+        // `out_b1.txt` B1(4)) is purely `GetPropertyValue` 39/40 looping the
+        // LIVE `ControlledElement.NPhases` (`:1407-1428`) — and `Sample`
+        // (`:1318`), `Reset` (`:1454`) and `RecalcElementData` (`:965`) loop the
+        // live `Min(RELAYCONTROLMAXDIM, ControlledElement.Nphases)` with it. The
+        // port's stand-in for that live read is the controlled-element
+        // snapshot, so refresh its shape from the now-pos-seq element:
+        // otherwise [`Relay::state_size`] keeps answering the FROZEN parse-time
+        // count (3), the render prints three tokens off a 1-conductor element
+        // and `Sample` reads phases 2..3 past its end as *open* (the port's
+        // pre-RP3.7 `[closed, open, open, ]`, `tmp/rp37/out_b1_port.txt`
+        // B1(4) — the `modes/makeposseq/makeposseq_ctrl.dss` census cell).
+        // `PosSeqElemInfo` has no `nterms`, so `nterms = bus_names.len()`
+        // (`BusNames[1..NTerms]`).
+        if let Some(c) = &ctx.controlled
+            && let Some(snap) = self.ctrl_snap.as_mut()
+        {
+            snap.nphases = c.nphases;
+            snap.nterms = c.bus_names.len();
+            snap.buses = c.bus_names.clone();
         }
         // Vbase / PickupVolts47 recompute sits OUTSIDE the NIL guard.
         self.vbase = if self.ccd.cd.nphases == 1 {
@@ -397,68 +420,84 @@ impl DssObject for Relay {
         }
     }
 
-    /// `Normal`/`State` per-phase enum arrays (1-based Pascal, exposed 0-based).
+    /// `Normal`/`State` render ordinals (1-based Pascal slots, exposed 0-based),
+    /// one per LIVE controlled-element phase ([`Relay::state_size`]).
+    ///
+    /// r4133's getters are a two-armed `case`: `CTRL_OPEN` prints `open`, the
+    /// `else` prints `closed` for **every** other ordinal
+    /// (`Relay.pas:1409-1413` Normal, `:1420-1424` State) — so a slot holding
+    /// anything but `CTRL_OPEN` (a `Keep`/`None` sentinel included) renders
+    /// `closed`, and the fold happens here rather than in the enum table.
     fn get_enum_array(&self, idx: usize) -> Vec<i32> {
         use super::prop::*;
         let n = self.state_size();
-        match idx {
-            NORMAL => self.normal_state[1..=n]
-                .iter()
-                .map(|s| s.ordinal())
-                .collect(),
-            STATE => self.present_state[1..=n]
-                .iter()
-                .map(|s| s.ordinal())
-                .collect(),
+        let arr = match idx {
+            NORMAL => &self.normal_state,
+            STATE => &self.present_state,
             _ => unreachable!("Relay has no enum-array property {idx}"),
-        }
+        };
+        arr[1..=n]
+            .iter()
+            .map(|s| {
+                if *s == ControlAction::Open {
+                    ControlAction::Open.ordinal()
+                } else {
+                    ControlAction::Close.ordinal()
+                }
+            })
+            .collect()
     }
-    /// Pascal `InterpretRelayState`: a bare unquoted scalar fills **all** phases
-    /// (ganged); a quoted list fills phase-by-phase. `State` writes are blocked
-    /// while `Locked`; `Normal` writes are NOT (Pascal `property_name[1] in
-    /// {'a','s'}` guard — Normal starts with 'n'). A [`ControlAction::Keep`] ordinal
-    /// (a token whose first char is neither `o` nor `c`) leaves that phase's slot
-    /// unchanged — for a ganged scalar that means *every* phase is left as-is
-    /// (Pascal's `case` with no matching arm).
+
+    /// The RAW `Normal`/`State` write — r4133 `InterpretRelayState`
+    /// (`Relay.pas:1237-1308`) in full: the name-based lock guard, the
+    /// ganged-vs-per-phase split on `Parser.WasQuoted`, the first-character
+    /// token match and the five-token per-phase cap. Always consumes the value
+    /// (returns `true`), so the generic ordinal tokenizer in `parse_into` never
+    /// runs for these two properties — which is what makes the cap and the
+    /// quoted-single-token rule observable at the property seam.
+    ///
+    /// `was_quoted` is the outer parser's flag; seams that have no outer parser
+    /// pass `false` and the quoted case is reconstructed from the value itself
+    /// ([`Relay::value_implies_quoted`]).
+    fn set_enum_array_raw(&mut self, idx: usize, value: &str, was_quoted: bool) -> bool {
+        use super::prop::*;
+        let prop = match idx {
+            NORMAL => super::RelayStateProp::Normal,
+            STATE => super::RelayStateProp::State,
+            _ => return false,
+        };
+        let quoted = was_quoted || Relay::value_implies_quoted(value);
+        self.interpret_relay_state(prop, value, quoted);
+        true
+    }
+    /// The generic ordinal-array twin of [`Self::set_enum_array_raw`], for a
+    /// caller that has already tokenized to enum ordinals. Production never
+    /// reaches it — `parse_into` consults the raw hook first and the JSON
+    /// importer re-renders its array as a value string through the same
+    /// `edit_property` path — but the semantics are the interpreter's so the two
+    /// can never drift: a list writes phase by phase honoring the five-slot cap
+    /// (`Relay.pas:1286` `i < RELAYCONTROLMAXDIM`), a [`ControlAction::Keep`]
+    /// ordinal (r4133's no-else arm) leaves its slot unchanged, and the lock
+    /// guard refuses `State` while letting `Normal` through (`:1244`).
+    ///
+    /// The pre-RP3.7 body read `values.len() == 1` as *ganged*; that heuristic is
+    /// gone — r4133 keys the split on `WasQuoted`, and a quoted single token
+    /// writes phase 1 only (measured, `tmp/rp37/out_b1.txt` B1(1)).
     fn set_enum_array(&mut self, idx: usize, values: &[i32]) {
         use super::prop::*;
-        let n = self.state_size();
-        let ganged = values.len() == 1;
-        match idx {
-            NORMAL => {
-                if ganged {
-                    let state = ControlAction::from_ordinal(values[0]);
-                    if state != ControlAction::Keep {
-                        self.set_all_normal(state);
-                    }
-                } else {
-                    for (k, &v) in values.iter().take(n).enumerate() {
-                        let state = ControlAction::from_ordinal(v);
-                        if state != ControlAction::Keep {
-                            self.normal_state[k + 1] = state;
-                        }
-                    }
-                }
-            }
-            STATE => {
-                if self.f_locked {
-                    return; // Pascal: state writes blocked while Locked.
-                }
-                if ganged {
-                    let state = ControlAction::from_ordinal(values[0]);
-                    if state != ControlAction::Keep {
-                        self.set_all_present(state);
-                    }
-                } else {
-                    for (k, &v) in values.iter().take(n).enumerate() {
-                        let state = ControlAction::from_ordinal(v);
-                        if state != ControlAction::Keep {
-                            self.present_state[k + 1] = state;
-                        }
-                    }
-                }
-            }
+        if idx == STATE && self.f_locked {
+            return; // `:1244` — 's'tate is refused while locked
+        }
+        let arr = match idx {
+            NORMAL => &mut self.normal_state,
+            STATE => &mut self.present_state,
             _ => unreachable!("Relay has no enum-array property {idx}"),
+        };
+        for (k, &v) in values.iter().take(RCMAX - 1).enumerate() {
+            let state = ControlAction::from_ordinal(v);
+            if state != ControlAction::Keep {
+                arr[k + 1] = state;
+            }
         }
     }
 
@@ -531,8 +570,17 @@ impl DssObject for Relay {
                 self.monitor_variable = self.monitor_variable.to_ascii_lowercase()
             }
             TYP => self.type_side_effect(),
+            // Edit arm 39 tail (`Relay.pas:550`): a Normal write latches the
+            // flag without copying anything.
             NORMAL => self.normal_state_set = true,
-            STATE => self.state_side_effect(),
+            // The Edit supplemental (`Relay.pas:616-619`) — `CASE
+            // PropertyIdxMap OF 19, 40:` covers BOTH the deprecated `Action`
+            // (internal 19) and `State` (internal 40), and sits OUTSIDE
+            // `InterpretRelayState`, so it runs even when the interpreter
+            // refused the write (locked) or matched no token. Measured on the
+            // r4133 DLL: `tmp/rp37/out_b1.txt` B1(2a)/(2b), `out_b1b.txt`
+            // B1(2e)/(2f).
+            ACTION | STATE => self.state_side_effect(),
             _ => {}
         }
     }

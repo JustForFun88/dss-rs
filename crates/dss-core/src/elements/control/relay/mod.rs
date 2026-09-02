@@ -47,6 +47,25 @@
 //!   traces keep; both lanes write the line under that guard —
 //!   `GOLDEN_REBASE_PLAN.md` G2.2d).
 //!
+//! **The `Normal`/`State` write seam (RP3.7(b), 2026-09-02).** Both properties
+//! take the RAW value through `DssObject::set_enum_array_raw` ->
+//! `Relay::interpret_relay_state` — the only hook that can carry the outer
+//! `Parser.WasQuoted` flag *and* the first-character token match, the two things
+//! the generic ordinal tokenizer cannot: r4133 splits ganged-vs-per-phase on
+//! `WasQuoted` (`Relay.pas:1256-1306`), so `state=open` fills every slot while
+//! `state=(open)` writes phase 1 only, and it honors at most FIVE per-phase
+//! tokens (`:1286`) while rendering one per controlled-element phase. `Action`
+//! keeps its `StringEnumActionProperty` seam (`Relay::do_action`) with the
+//! same guard + ganged fill, and the `NormalState := PresentState` supplemental
+//! (`:616-619`, outside `InterpretRelayState`) runs from the property side
+//! effects for `Action` and `State` alike — refused-while-locked writes
+//! included. The render/drive bound is the **live** controlled-element phase
+//! count (`Relay::state_size`), which `make_pos_sequence` now refreshes from
+//! the live `PosSeqCtx`, so after `makeposseq` the relay renders `[closed, ]`
+//! exactly as r4133's live `ControlledElement.NPhases` loop does. Every byte in
+//! this paragraph was measured on the vendored r4133 DLL
+//! (`tmp/rp37/out_b1.txt`, `out_b1b.txt`).
+//!
 //! Concern split mirrors the Recloser: this file holds the property metadata, the
 //! [`Relay`] struct, construction/`recalc`, and `Sample`/`DoPendingAction`/`Reset`;
 //! [`logic`] holds the per-sub-type sensing functions; [`accessors`] holds the
@@ -68,6 +87,7 @@ use crate::elements::traits::CktElement;
 use crate::obj::base::RefAction;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
+use dss_parser::{Parser, ParserVars};
 
 /// `RecloseIntervals` fixed allocation (Pascal `Reallocmem(…, SizeOf(Double) *
 /// 4)`).
@@ -82,6 +102,33 @@ const RCMAX: usize = 6;
 /// frozen at the `Create`-time `NPhases=3`), which is `< ARR`. Sizing to `RCMAX +
 /// 2` covers per-phase indices `1..=RCMAX` plus that ganged slot.
 const ARR: usize = RCMAX + 2;
+
+/// Which state property an [`Relay::interpret_relay_state`] write targets — the
+/// r4133 guard and the ganged/per-phase split key on the property NAME's first
+/// char (`Relay.pas:1244-1246`: `a`ction / `s`tate / `n`ormal). `Action` is not
+/// a variant: it never reaches the interpreter in the port (it is a
+/// `StringEnumActionProperty`, whose decoded ordinal [`Relay::do_action`]
+/// applies with the same guard + ganged fill).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RelayStateProp {
+    State,
+    Normal,
+}
+
+/// r4133 `case LowerCase(DataStr2)[1] of 'o': CTRL_OPEN; 'c': CTRL_CLOSE`
+/// (`Relay.pas:1249-1251`/`:1263-1265`/`:1271-1273` ganged, `:1289-1300`
+/// per-phase) — tokens match on the FIRST CHARACTER ONLY, case-insensitively,
+/// and any other first char leaves the slot unchanged (the Pascal `case` has no
+/// else arm). The SwtControl twin (`swt_control::match_state_token`) is the same
+/// three lines off its own unit; upstream duplicates the `case` per class and so
+/// does the port, each citing its own source.
+fn match_state_token(token: &str) -> Option<ControlAction> {
+    match token.as_bytes().first()?.to_ascii_lowercase() {
+        b'o' => Some(ControlAction::Open),
+        b'c' => Some(ControlAction::Close),
+        _ => None,
+    }
+}
 
 /// Pascal `MIN_DISTANCE_REACTANCE = -1.0e-8` — allows near-bolted faults to be
 /// detected by the Distance characteristic.
@@ -604,18 +651,138 @@ impl Relay {
         }
     }
 
-    /// Pascal `Action`'s ganged `DoAction` (deprecated): set every phase's present
-    /// state + the `State` side effect. Blocked while `Locked`.
+    /// Pascal `Action`'s ganged write (deprecated; Edit arm `19`,
+    /// `Relay.pas:552` -> `InterpretRelayState` with `property_name = 'action'`):
+    /// the name-based lock guard (`:1244`), then the ganged fill of every slot
+    /// `1..RELAYCONTROLMAXDIM` (`:1248-1253`) with the first-character token
+    /// match. A [`ControlAction::Keep`] ordinal is the enum's rendering of "the
+    /// first char is neither `o` nor `c`", which the Pascal `case` leaves
+    /// unwritten (no else arm).
+    ///
+    /// The **supplemental** (`Relay.pas:616-619`, the `NormalState :=
+    /// PresentState` latch) is deliberately NOT here: it sits outside
+    /// `InterpretRelayState`, in Edit's `CASE PropertyIdxMap` block, so it runs
+    /// after EVERY `Action`/`State` write — the refused-while-locked and
+    /// non-matching-token ones included. The port runs it from the property side
+    /// effects ([`Relay::state_side_effect`], `accessors::side_effects`), which
+    /// the property engine calls unconditionally. Measured on the r4133 DLL
+    /// (`tmp/rp37/out_b1.txt` B1(2b), `out_b1b.txt` B1(2e)): after a locked
+    /// `action=open` or an unlocked `action=xyz`, a LATER unlocked `state=open`
+    /// leaves `Normal` at `[closed, closed, closed, ]` — the latch already
+    /// happened. Pinned by
+    /// `a_refused_or_unmatched_action_still_runs_the_normal_defaults_supplemental`.
     fn do_action(&mut self, ordinal: i32) {
         if self.f_locked {
-            return; // Pascal `InterpretRelayState`: blocked while Locked.
+            return; // `:1244` — an 'a'ction write is refused while Locked.
         }
         let state = ControlAction::from_ordinal(ordinal);
         if state == ControlAction::Keep {
             return; // First char not 'o'/'c' — Pascal leaves every phase unchanged.
         }
         self.set_all_present(state);
-        self.state_side_effect();
+    }
+
+    /// Pascal `TRelayObj.InterpretRelayState` (`Relay.pas:1237-1308`) — the
+    /// r4133 write mechanics for `Normal`/`State`, structurally identical to the
+    /// SwtControl twin (`SwtControl.pas:410-482`, RP3.7 A2):
+    ///
+    /// - lock guard (`:1244`): while `Locked`, a write whose property name
+    ///   starts with `a` (Action) or `s` (State) exits without touching
+    ///   anything; `Normal` (starts with `n`) still applies. The port's Relay
+    ///   already carried this rule at the property seam; it moves in here with
+    ///   the rest of the mechanics.
+    /// - `State`/`Normal`: ganged over slots `1..RELAYCONTROLMAXDIM` when the
+    ///   value was NOT quoted (`:1258-1277`), phase-by-phase through the
+    ///   AuxParser when it was (`:1278-1305`) — at most FIVE tokens honored
+    ///   (`:1286` `While … and (i < RELAYCONTROLMAXDIM)`), unlisted slots
+    ///   unchanged.
+    /// - tokens match on the first character only ([`match_state_token`]); a
+    ///   non-matching token leaves its slot unchanged (the `case` has no else).
+    ///
+    /// Measured on the r4133 DLL (`tmp/rp37/out_b1.txt` B1(1), `out_b1b.txt`
+    /// B1(3b)): on a 3-phase controlled element `state=(open)` renders
+    /// `[open, closed, closed, ]` while the bare `state=open` renders
+    /// `[open, open, open, ]`, and a six-token quoted list drops its sixth
+    /// token. The port's pre-RP3.7 seam read a one-element ordinal list as
+    /// ganged — right for the bare spelling, wrong for the quoted single.
+    ///
+    /// The **two r4133 defects** the SwtControl twin documents are not
+    /// reproduced here either: `Relay.pas:1278-1286` carries the identical
+    /// `Else`-without-`Begin` fall-through (only `:1280` sits under the `Else`;
+    /// the `DataStr` reads `:1282-1283` and the per-phase `While` `:1286` sit in
+    /// the enclosing `Begin`, so an unquoted ganged
+    /// write re-reads whatever the GLOBAL AuxParser still holds), and the
+    /// guard's `:1244` `property_name[1]` read is undefined for a positional token
+    /// (Edit leaves `ParamName` empty, `:519-521`). The port scopes the
+    /// per-phase loop to the quoted branch with a FRESH parser and keys the
+    /// guard on the property identity.
+    ///
+    /// The slot writes land in the arrays only; the controlled element is driven
+    /// by [`Relay::recalc`]'s per-phase force at `EndEdit` (r4133's
+    /// `RecalcElementData:965-980` re-drives every phase after `set_States`'
+    /// immediate one, so the deferred drive is the last word either way), and
+    /// the supplemental (`:616-619`) lives in the property side effects.
+    fn interpret_relay_state(&mut self, prop: RelayStateProp, param: &str, was_quoted: bool) {
+        // `:1244` — the guard keys on the property NAME's first char.
+        if self.f_locked && prop == RelayStateProp::State {
+            return;
+        }
+        if !was_quoted {
+            // `:1258-1277`: ganged specification, every slot.
+            if let Some(state) = match_state_token(param) {
+                match prop {
+                    RelayStateProp::State => self.set_all_present(state),
+                    RelayStateProp::Normal => self.set_all_normal(state),
+                }
+            }
+            return;
+        }
+        // `:1278-1305`: phase by phase through the AuxParser.
+        let mut parser = Parser::new();
+        let vars = ParserVars::new();
+        parser.set_auto_increment(false);
+        parser.set_cmd_string(param);
+        parser.next_param(&vars); // name slot — ignored, Pascal `:1282-1283`
+        let mut token = parser.make_string(&vars);
+        let mut i = 1usize;
+        // `:1286` `While (Length(DataStr2)>0) and (i<RELAYCONTROLMAXDIM)` — a
+        // sixth token is silently dropped (measured, `out_b1b.txt` B1(3b)).
+        while !token.is_empty() && i < RCMAX {
+            if let Some(state) = match_state_token(&token) {
+                match prop {
+                    RelayStateProp::State => self.present_state[i] = state,
+                    RelayStateProp::Normal => self.normal_state[i] = state,
+                }
+            }
+            parser.next_param(&vars);
+            token = parser.make_string(&vars);
+            i += 1;
+        }
+    }
+
+    /// Reconstruct Pascal `Parser.WasQuoted` for a value that reached the class
+    /// without an outer parser (`PropEngine::was_quoted == false`: JSON import,
+    /// the `MakePosSequence` applier, direct unit-test seams). The rule and its
+    /// one blind spot are the SwtControl twin's (`SwtControl::
+    /// value_implies_quoted`, RP3.7 A2 D5): a value that still carries its
+    /// opening bracket/quote, or one holding more than one token, is quoted; a
+    /// single bare token resolves to *ganged* — the spelling every corpus deck
+    /// writes (`state=open`, `normal=closed`). The distinction that ambiguity
+    /// loses (`state=(open)` writes phase 1 only) is carried faithfully wherever
+    /// the outer parser runs, i.e. every DSS script.
+    fn value_implies_quoted(value: &str) -> bool {
+        let v = value.trim_start();
+        if matches!(
+            v.as_bytes().first(),
+            Some(b'(' | b'[' | b'{' | b'"' | b'\'')
+        ) {
+            return true;
+        }
+        value
+            .split([' ', '\t', '\r', '\n', ','])
+            .filter(|t| !t.is_empty())
+            .count()
+            > 1
     }
 
     /// Pascal prop 54 (`Reset=Yes`): clear `Lock`, run `Reset`, and force the

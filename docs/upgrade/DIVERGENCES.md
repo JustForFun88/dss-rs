@@ -1341,9 +1341,12 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
   iteration run (capi015 re-nominalizes multi-step captures, L1 note) — so unit-
   test gating is the honest gate here (precedent: B1/D6/D7).
 - **D12** SwtControl `Normal`/`State` field mapping (`bb9c9785`) — **RE-LANDED**
-  (WP-U1.6 tail). `Normal`→`NormalState`, `State`→`PresentState`, `Action`→
-  `CurrentAction` (distinct offsets, `SwtControl.pas:156-166`); the side effects
-  sync `CurrentAction := NormalState`/`PresentState` (were the reverse). 0.14.5
+  (WP-U1.6 tail), then **superseded by the per-phase model** (R4133_PROPS RP3.7 —
+  the settlement at the end of this row). `Normal`→`NormalState`, `State`→
+  `PresentState`, `Action`→`CurrentAction` (distinct offsets,
+  `SwtControl.pas:156-166`); the side effects sync `CurrentAction :=
+  NormalState`/`PresentState` (were the reverse). All three were **scalar** fields
+  until RP3.7 replaced the first two with r4133's per-phase arrays. 0.14.5
   mapped all three onto the single `CurrentAction`, so a write to any changed the
   others' readback and `State` reported the *armed* action rather than the live
   switch. The props golden `swtcontrol.json` is re-baselined to capi015 (probed
@@ -1379,7 +1382,7 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
   `'Normal'` (`:128`), so arm 6 (`:201-204`) reaches `set_NormalStates`
   (`:556-561`), which has no lock guard. Probed on the vendored r4133 DLL: with
   `lock=yes`, `normal=open` moves `Normal` to `[open, open, open, ]` while
-  `state=`/`action=` move nothing. The port refuses all three
+  `state=`/`action=` move nothing. The port refused all three (pre-RP3.7)
   (`swt_control/accessors.rs:151-155`), following 0.14.5's `ConditionalReadOnly`
   flag on `Normal` (`SwtControl.pas:159-160`) — and its own **Relay** already
   implements the r4133 rule and documents it (`relay/accessors.rs:416-420`). By
@@ -1387,14 +1390,67 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
   is owned by `R4133_PROPS_PLAN.md` §RP3.7 (a2) (both lanes, with a pin), and
   `locked_ignores_normal_and_state_writes` is re-pointed there. No corpus deck
   writes `normal=` under lock, so nothing gates on it today.
+  **Settlement (2026-09-02, R4133_PROPS RP3.7 — landed in BOTH lanes).** The
+  scalar model went with the fix. `Normal` and `State` are now r4133's per-phase
+  arrays (`FNormalState`/`FPresentState : pStateArray`, `SwtControl.pas:37-38`,
+  allocated `:299-305`, driven per conductor by `set_States` `:532-549` →
+  `ControlledElement.Closed[Idx]`), written either **ganged** from a bare token
+  (`:433-451`, every slot) or **per phase** from any quoted list (`:453-480`,
+  first-character match, at most five tokens honored, unlisted slots unchanged),
+  and rendered as `[tok, tok, … ]` — one token per **controlled-element** phase
+  (`GetPropertyValue` `:589-599` Normal / `:600-610` State; `[]` when there is no
+  controlled element). `Create` initializes BOTH arrays all-CLOSED, so a fresh
+  control renders `[closed, closed, closed, ]` for `Normal` where 0.14.5/capi015
+  render the unset `''` / the `closed` scalar. The lock rule is r4133's, verbatim:
+  the guard is on the **property name** (`if Locked and ((LowerCase(param)[1] =
+  'a') or (… = 's')) Then Exit`, `:416-417`) and property 6 is `'Normal'`
+  (`:128`), so a locked `normal=` write reaches arm 6 (`:201-204`) →
+  `set_NormalStates` (`:556-561`) and APPLIES — ganged and quoted alike — while a
+  locked `state=` / `action=` writes nothing. The `{Supplemental Actions}` block
+  (`:220-228`) sits OUTSIDE the arm, so `NormalStateSet` latches even on a write
+  the guard refused (measured on the vendored r4133 DLL, RP3.7 A2a). Pins
+  (`elements/control/swt_control/tests.rs`):
+  `locked_normal_applies_locked_state_and_action_do_not` — the renamed
+  `locked_ignores_normal_and_state_writes`, now the full probe byte sequence
+  through the executive —
+  `a_locked_state_write_still_runs_the_normal_defaults_supplemental`,
+  `render_is_one_token_per_controlled_element_phase`,
+  `a_quoted_single_token_is_per_phase_a_bare_one_is_ganged`,
+  `per_phase_write_renders_the_r4133_bytes_through_both_seams`. Consequences
+  recorded elsewhere: the ten `Normal`/`State` cells of the capi015 props golden
+  `props/swtcontrol.json` are overlaid with the r4133 DLL's own bytes (the
+  artifact's own oracle block says so), and the AltDSS schema now spells both
+  properties `type: array` + `items: $ref` — the shape Relay already had
+  (`json/schema_full_port.json`, cause prose in `json/schema_divergences.json`).
+  Against the **capi** channel the render is a deliberate, pinned divergence:
+  0.14.5 has no per-phase model at all (scalar render; a quoted list is silently
+  dropped through the enum default), so the capi-gated cells are ledgered
+  (RP3.7 B2, 2026-09-02) and never re-baselined — **five** per-case
+  `capi_v0145` entries under one new cause
+  `swtcontrol-per-phase-state-render`, on `controls:swtcontrol/
+  swtcontrol_lock.dss` (its `state`/`normal` **probes** *and* its property
+  compare, 12 steps ⇒ 48 hits), `modes:makeposseq/makeposseq_ctrl.dss`
+  (2 property cells, the 1-token `[closed, ]` render) and the three
+  `IEEE_519.DSS` copies (4 each: two controls × two properties). Those five
+  cases carry the pair's 19 out-of-scope cells; the **40 in-scope** cells per
+  property sit on `midi_swtcontrol`, `swtcontrol_time` and `civanlar`, which are
+  `engines=r4133` and now render r4133's bytes exactly — so **no r4133 property
+  entry is staged or owed**, and the port's value there is held by
+  `exec::tests::controls::swtcontrol_state_renders_per_phase_on_the_r4133_only_decks`
+  (plan §1.1(c): no oracle channel can witness those cells before the RP4.1
+  unmask).
   Feature-sensitivity: unit
   `d12_normal_and_state_readbacks_are_independent` (0.14.5 conflated both onto
   `CurrentAction`). **Gating note (0.15.x-adoption sweep):** the "flipped to
   capi015" phrasing above is historical — all three moved decks (`swtcontrol_time`,
   `midi_swtcontrol`, `civanlar`) are now gated **`engines=r4133`** with empty
   ledgers, and the D12 Normal/State mapping was live-verified against r4133 (which
-  agrees with capi015 here) per WP-U2.4 D6; the re-baselined capi015 props golden
-  stays the offline pin.
+  agrees with capi015 here) per WP-U2.4 D6 — whose `Action` is, on r4133, exactly
+  a **ganged `State` write**: arms 3 and 7 share one body (`:205-207`), calling the same
+  `InterpretSwitchState` with the property name `'Action'`, so the same lock guard
+  applies and the ganged path always runs (`WasQuoted` is never consulted for it).
+  The re-baselined capi015 props golden stays the offline pin, with its ten
+  per-phase cells overlaid by RP3.7.
 - **D15** `LookupVariable` case-insensitivity (`4366b126`) — not-a-delta: the
   port's only equivalent (relay) already matches the fixed side.
 - **A7-r3723** GenController deregistration — not-a-delta: never registered in the

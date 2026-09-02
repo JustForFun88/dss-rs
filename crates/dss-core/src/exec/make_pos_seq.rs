@@ -184,6 +184,8 @@ impl Dss {
             enums,
             errors,
             foreign: None,
+            // Typed setters carry no string tokens — the quote state is moot.
+            was_quoted: false,
         };
 
         let mut editing_active = false;

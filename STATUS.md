@@ -185,8 +185,9 @@ re-ran the side effects that reset them, where r4133 orders the two the other
 way; **fixed and landed 2026-08-28**), RP3.6 `line.linecode` (r4133's `switch=yes` arm leaves `FLineCodeSpecified`
 TRUE; 5 cells, **all in scope**, so RP4.1 breaks without it; **both parts fixed
 and landed 2026-08-29**) and RP3.7 the
-per-phase switch/relay state (r4133 keeps a `pStateArray` per phase; the port one
-scalar). Closing bin 3 meant closing its **cells**, not only its pairs: three
+per-phase switch/relay state (r4133 keeps a `pStateArray` per phase; the port
+held one scalar; **fixed and landed 2026-09-02**, together with (a2)'s lock rule
+and Relay's live render bound). Closing bin 3 meant closing its **cells**, not only its pairs: three
 bin-2-labelled pairs carry enum-spelling cells, so `capcontrol.type` and
 `fault.bus2` joined RP2.3 and `invcontrol.voltage_curvex_ref` — a *live* r4133
 enum getter — was re-typed from `CaseFold` to a fifth `EnumSynonym` row. The
@@ -218,7 +219,8 @@ dss_capi-0.14.5 `SilentReadOnly` surfaces (`indmach012.pf`,
 and the port answers `''` only by a capi convention, so under the 2026-08-02
 policy the fix is an engine change and they are re-routed loudly into the new
 **§RP3.8**, which now **blocks RP4.1** alongside RP3.6/3.7 (RP3.5 landed
-2026-08-28); and `generator.d`
+2026-08-28, RP3.6 2026-08-29 and RP3.7 2026-09-02, so RP3.8 and RP3.9 are what
+is left); and `generator.d`
 is **not an echo** either — `Create` initialises `GenVars.D` and never `Dpu`
 (`generator.pas:969` vs `:669`/`:2585`), so r4133's `'0'` is its own live value
 and `InitStateVars` then runs generator dynamics **undamped** against the
@@ -920,8 +922,347 @@ the surviving object's name where the port used to answer `''`); r4133 echoes
 `PropertyValue[21]` there — no getter arm at `:1347-1429` — so this narrows the
 `line.spacing` census pair (`Owner::Rp23`) and widens nothing.
 
-**Next: RP3.7, RP3.8 and RP3.9** — they are what RP4.1 waits on (RP3.5 and
-RP3.6, both parts, have landed).
+**RP3.7 (per-phase switch and relay state) landed 2026-09-02 — `FIX` in both
+lanes for all three parts, and the widest RP3 sub-step so far: 50 engine, test,
+golden and ledger files (plus this record and three docs), the two control classes
+rebuilt on r4133's `pStateArray` model, ten overlaid golden cells and five live
+`capi_v0145` ledger entries.** The record below is measured
+throughout: every byte quoted from r4133 comes from the vendored EPRI DLL
+(`Version 11.0.0.1 (64-bit build) - Charlottesville`) through `epri-worker`, and
+every count is derived by a test rather than transcribed.
+
+**The probe ran first, on all three engines, and no kill criterion fired.**
+r4133 DLL, the pinned dss-python 0.15.7 / dss_capi 0.14.5, and the port built
+out-of-tree by path, over seven purpose-built micro-decks plus the vendored
+`civanlar` / `makeposseq_ctrl` shapes; no repo byte was written by the probe.
+**(1) Per-phase independence is real, on two independent observables.**
+`edit swtcontrol.sw1 state=(open, closed, closed)` renders
+`[open, closed, closed, ]` and, after `solve`, zeroes exactly phase 1 while
+phases 2/3 keep `-6.953452-12.035939j` / `-6.935750+12.030079j`; the bare ganged
+`state=open` zeroes all three. **(2) The render is one token per
+controlled-element phase** — `[closed, ]` on a 1-phase element, three tokens on a
+3-phase one, four on a 4-phase one (which r4133 accepts although it allocates
+three entries), and `[]` when there is no controlled element. **(3) The (a2) lock
+rule is exactly the source reading**: under `lock=yes` a ganged `normal=open`
+moves `Normal` to `[open, open, open, ]` and so does a *quoted* locked
+`normal=(open, closed, open)` → `[open, closed, open, ]` — the guard is on the
+property **name**, not the value shape — while locked `state=` / `action=` move
+nothing. **(4) Relay's resync is the getter's live bound**, not a state-array
+write: `MakePosSequence` (`Relay.pas:1008-1027`) does not touch the arrays, and
+`GetPropertyValue` 39/40 loop the live `ControlledElement.NPhases` (`:1407-1428`),
+as `Sample`, `RecalcElementData` and `Reset` do. **(5) capi 0.14.5 refuses the
+per-phase list on two independent channels**, which the plan text had merged into
+one: the locked-write channel (`ConditionalReadOnly`) and the enum-mismatch
+channel — `SwtControl`'s `StateEnum.DefaultValue := ord(CTRL_CLOSE)` makes a
+quoted list fall back to closed **silently**, while `Relay` sets no default and
+raises `#303` (`Common/DSSClass.pas:2440-2532`).
+
+**(a) The per-phase port.** `FPresentState`/`FNormalState` become
+`[ControlAction; 7]` arrays bounded by `SW_MAX = 6` (`SWTCONTROLMAXDIM`,
+`SwtControl.pas:14`) beside `normal_state_set` (`NormalStateSet`, `:42`), both
+initialized all-CLOSED by `Create` (`:299-307`) — which is why a fresh control's
+`Normal` moves off the port's old `''`. `interpret_switch_state` is
+`InterpretSwitchState` (`:410-482`) ported whole: the name-based lock guard, the
+always-ganged `Action` arm, the ganged 1..6 fill for an unquoted token, and the
+phase-by-phase branch through a **fresh** `dss_parser::Parser` with r4133's
+five-token cap (`i < SWTCONTROLMAXDIM`, `:461`), first-character matching and
+unlisted slots left unchanged. It is the **single write mechanics** for all three
+properties: `Normal`/`State` reach it through a new raw hook
+(`set_enum_array_raw`) and `Action` through `set_i32`, which maps its decoded
+ordinal back to the canonical first character — so the interpreter carries no
+production-dead branch. The drive model is r4133's *parse-time* one: `set_States`
+drives `ControlledElement.Closed[i]` mid-Edit (`:532-549`) and
+`RecalcElementData` re-drives every phase at `EndEdit` (`:234` → `:347-355`), the
+last write of the two, so the port defers a per-conductor
+`RefAction::SetConductorsClosed` (was the whole-terminal `SetSwitchClosed`) at
+`recalc`. **Bounds: in-bounds by decision.** r4133 allocates three entries and
+reads/writes up to six — a latent heap OOB absorbed by FastMM — so the port keeps
+six initialized in-bounds slots and reproduces only the observables: the render
+and drive bound `state_size()` = `min(6, controlled-element phases)` (`0` for a
+nil element) and the five-token parse cap, which stays deliberately *different*
+from the six-token render bound. **`WasQuoted` is plumbed** to the property seam
+(`obj/props/class_props/{parse,typed}.rs`, `obj/props/engine.rs`,
+`exec/{command,json_import,make_pos_seq}.rs`, `obj/base/mod.rs`) because a
+**single** token is the one shape where quoting changes the meaning: measured on
+r4133, `state=(open)` gives `[open, closed, closed, ]` where `state=open` gives
+`[open, open, open, ]`. Seams with no outer parser (JSON import, the
+`MakePosSequence` applier, direct calls) reconstruct it — `value_implies_quoted`:
+a leading `(` `[` `{` or quote, or more than one token — and a bare single token
+resolves to *ganged*, the only spelling any corpus deck writes. Finally the two
+enum registry entries gain `allow_longer` and a `Keep` default, so `state=bogus`
+is **silently unchanged** as on r4133 — neither the port's pre-RP3.7 error nor
+capi's silent close.
+
+**(a2) The locked-`normal` rule landed with it, in both lanes.** The scalar-era
+`Locked` gates are gone from `set_i32` and from `side_effects`; the only guard
+left is r4133's own, inside the interpreter. Two facts the sub-step measured
+rather than read: the guard refuses `Action`/`State` by property name
+(`:416-417`, comment *"Only allowed to change normal state if locked"*), and the
+`{Supplemental Actions}` block (`:220-228`) sits **outside** the arm, so
+`NormalStateSet` latches even on a write the guard refused — the discriminating
+pair is a locked `state=open` followed, after `lock=no`, by another `state=open`
+(Normal stays `[closed, closed, closed, ]`) against the same sequence unlocked
+(Normal follows to `[open, open, open, ]`). `docs/upgrade/DIVERGENCES.md` §D12,
+which asserted the opposite refusal and the scalar field mapping, now carries a
+`Settlement (2026-09-02)` paragraph with the per-phase model, the lock rule
+verbatim, five pin names and the ledger consequences.
+
+**(b) Relay: one fix, two symptoms — and four more mismatches on the same seam.**
+The plan framed (b) as a render gap; the probe showed that a single frozen
+`ctrl_snap` produces **both** the three-token render *and* a `Sample` that
+resyncs phases 2..3 off the end of a 1-conductor element, which is exactly why
+the frozen census cell reads `[closed, open, open, ]` and not
+`[closed, closed, closed, ]`. Refreshing `ctrl_snap` inside `make_pos_sequence`
+(the same refresh SwtControl took) settles both. Under "port gaps immediately"
+the probe's four further r4133 mismatches on that seam were fixed with it: a
+quoted single token was read as ganged, a refused or unmatched `action=` did not
+run the normal-defaults supplemental (`Relay.pas:616-619` covers internal 19 as
+well as 40), and the generic tokenizer honored six tokens where `:1286` honors
+five. Relay took the same raw write seam (`interpret_relay_state`,
+`Relay.pas:1237-1308`), and its old `values.len() == 1 → ganged` heuristic — the
+bug behind the quoted-single-token rows — is deleted. r4133's own 6-phase
+initialization OOB (a fresh relay on a 6-phase line renders
+`[closed, closed, closed, open, open, open, ]`, slots 4..6 being a heap read) is
+**not** reproduced, per the 2026-08-02 policy.
+
+**The cell arithmetic — and the measurement that decided it.** `bins.tsv` gives
+`swtcontrol.normal` and `swtcontrol.state` **59 cells / 40 in scope** each (the
+plan's 80), `relay.normal`/`relay.state` **1 / 0** each. The 80 in-scope cells sit
+on three `engines=r4133` decks — `controls:swtcontrol/midi_swtcontrol.dss` (12),
+`controls:swtcontrol/swtcontrol_time.dss` (12) and the `civinlar model`
+`civanlar.dss` (16 ties × 1 step) — i.e. **not** on the decks the fix reds. The
+first census run over those three decks (every earlier sweep had covered only
+out-of-scope cases) reports **zero** `Normal`/`State` rows on the r4133 channel:
+the 160 SwtControl divergence rows that remain there are `Reset` 40, `enabled`
+40, `Delay` 24 (RP3.1's staged entries), `Action` 16 (RP2.3 `EchoParse`) and
+`SwitchedObj` 40 — none of them this pair, and RP3.7 moved none of them. Read
+independently off the r4133 DLL on the same decks — all 16 civanlar ties (13
+closed / 3 open) and both duty decks before and after the manifest post — the
+renders are **byte-identical** to the port's. So the disposition of the 80
+in-scope cells is **80 / 80 COMPARE**, not excluded and not pinned by an
+exclusion, and **no r4133 `property` ledger entry is needed, staged or drafted —
+zero, as a measurement rather than a judgement**; a landed one would fail
+`assert_all_hit` as NEVER APPLIED at RP4.1. Until the RP4.1 unmask lets a channel
+witness them, the port's value there is held by plan §1.1(c)'s holder pin
+`exec::tests::controls::swtcontrol_state_renders_per_phase_on_the_r4133_only_decks`.
+The other **19 cells** are out of scope, on five `capi_v0145` cases, and they are
+excluded by **five landed entries under one new cause**
+(`swtcontrol-per-phase-state-render`): `controls:swtcontrol/swtcontrol_lock.dss`
+carries **both** exposure channels — its `state`/`normal` probes *and* its
+full-property compare, over 12 steps ⇒ 48 hits —
+`modes:makeposseq/makeposseq_ctrl.dss` 2 (the 1-token `[closed, ]` render after
+`MakePosSequence`), and the three `IEEE_519.DSS` copies 4 each (two controls ×
+two properties). Every cell is a non-numeric exact pair, so both `oracle` and
+`rust` are pinned and each entry goes stale the day the port converges to the
+0.14.5 scalar. `ledger.json`: causes **26 → 27**, entries **40 → 45**, hits
+**1442 → 1504**; `population.lock.json` moved **exactly five lines**, one
+`ledger=` field per case. `relay.normal`/`relay.state` need **no** entry on either
+channel: Relay is whole-element-skipped on capi (re-measured on `makeposseq_ctrl`
+— 2 elements / 80 cells skipped) and both cells are now byte-identical to r4133.
+**`DECLARED_RP35` stays `(8, 6, 5)`** — the contract's own answer, verified twice
+(the replay was 131 green before the routing rewrite and 132 after): `declare`
+reads the **frozen** `rust` column, so a settled sub-step does not shrink the
+bucket, exactly as RP3.5 and RP3.6 recorded. `CLAIMED_ARRAY_FORM` (203),
+`ROWS_FROZEN`, the other `DECLARED_*` counts and the props count locks 51 / 322 /
+8343 are all unchanged. The four routing rows (`swtcontrol.normal`/`.state`,
+`relay.normal`/`.state`) are rewritten as settled `FIX` verdicts, and a new
+derivation test
+`props_r4133_replay::the_rp37_census_decomposition_is_read_off_the_corpus`
+reconciles the decks, `population.lock.json`, the frozen census (per spelling —
+58 + 1 and 31 + 27 + 1 — and in total) and `ledger.json` against each other, so
+"exactly five entries" is derived rather than asserted in prose.
+
+**Goldens: ten cells, one schema block, one prose line, three digests.** The ten
+`Normal`/`State` cells of `tests/golden/props/swtcontrol.json` were **predicted
+first, then measured on the authority** — the five scenarios replayed through the
+r4133 DLL with the gate's own `clear` + `new circuit.propsprobe` preamble — and
+the port matches r4133 byte-for-byte on all ten and the committed golden on all
+45 unmoved cells; the artifact's diff is those ten lines plus its provenance
+prose. `Action` moves in none of the five scenarios. In
+`tests/golden/json/schema_full_port.json` (regenerated in its producing parity
+lane) `SwtControl.properties.{Normal,State}` become `type: array` + `items: $ref`
+with **no** `default` key — the emitter derives an array default from the sample
+object, and a bare sample SwtControl has no controlled element — which is the
+shape `Relay` already had; `schema_full_oracle.json` is untouched and
+`schema_divergences.json` gains one amended `cause` line. `golden.lock.json` moved
+three digests and no anchor. **The anchor decision A2b left open is: keep
+`capi015`.** Precedent and evidence point the same way — WP-U2.4 already overlaid
+r4133-only behavior on this same artifact, and the G0.1 provenance lock, six weeks
+later, registered it `capi015` *with* that overlay in place; `CAPI015_REASON` is a
+statement about the unreproducible 0.15.0b4 generator environment, still exactly
+true; and r4133 is demonstrably **not** this artifact's value authority — its
+`Action`, `Reset`, `Enabled`, `SwitchedObj` and `Delay` cells still hold
+capi-side values r4133 diverges from, so an `R4133_FAMILIES` row
+(`props/fuse.json`'s shape) would be a false statement and a `DEANCHORED`
+"born-self" row a second one. The ten overlaid cells are recorded in the
+artifact's own `oracle.engine` block with their r4133 line citations, the
+construction `props/fuse.json`'s lock reason already describes. `golden_lock` (4)
+and `props_roundtrip` (1) are green in both lanes with the anchor unmoved.
+
+**Pins.** Unit level, both lanes: `swt_control` 30 → **51**, `relay` 64 → **69**,
+`dss-core --lib` **1464** (1462 before B2's two engine-level pins). The load-bearing ones are
+`render_is_one_token_per_controlled_element_phase`,
+`nil_controlled_element_renders_the_empty_array`,
+`a_quoted_single_token_is_per_phase_a_bare_one_is_ganged`,
+`per_phase_write_renders_the_r4133_bytes_through_both_seams`,
+`the_property_seam_caps_the_per_phase_parse_at_five_tokens`,
+`a_multi_token_value_without_the_quote_flag_is_still_per_phase` (the JSON-import
+value-string seam), `the_render_bound_follows_makeposseq`,
+`a_locked_state_write_still_runs_the_normal_defaults_supplemental`,
+`locked_normal_applies_locked_state_and_action_do_not` (plan §RP3.7(a2)'s required
+pin — the renamed `locked_ignores_normal_and_state_writes`, now the full probe
+byte sequence through the executive),
+`per_phase_state_write_through_the_executive_opens_only_its_phase` and
+`per_phase_open_zeros_only_its_phase_currents_on_a_micro_deck` (the solved
+per-phase drive), plus the Relay twins
+(`a_refused_or_unmatched_action_still_runs_the_normal_defaults_supplemental`,
+`the_render_bound_follows_makeposseq`, the cap and quoted-token pins). Two
+engine-level pins carry the corpus:
+`exec::tests::controls::swtcontrol_state_renders_one_token_per_controlled_phase`
+— the witness for all five landed entries, reading the two gated decks from disk
+and closing with a 1/2/3-phase discriminator so it cannot pass against a
+hardwired three-token string — and the §1.1(c) holder above; both were proven
+non-vacuous by corruption. `props_r4133_pins::swtcontrol_action_renders_the_live_
+switch_state` moved its two `State` lines to the r4133 DLL's own bytes (`13_14` →
+`[closed, closed, closed, ]`, `10_14` → `[open, open, open, ]`) and gets *sharper*
+by it: `Action` still renders one word beside an array, and the two still agree.
+
+**The verify-A1 round (12 findings, settled inside this sub-step).** One is
+**refuted by measurement and must not be carried anywhere**: the "silent no-op
+after a failed edit" defect the probe reported (`probe.md` §8.3/§11.6/§12) was a
+probe-harness artifact — the harness printed a delta against a cumulative error
+high-water mark while every `Compile` in its loop cleared the error list; with
+absolute error lists printed, the later edit **applies** in all six variants and a
+second failing edit is reported. Two findings were already fixed by the render
+part (the JSON seam's per-phase reconstruction; the `min(6, nphases)` clamp), five
+landed as code or doc records — r4133's `Else`-without-`Begin` AuxParser
+fall-through (`SwtControl.pas:452-455` and `Relay.pas:1277-1306`, with
+`Fuse.pas:569-597`'s correct `Else Begin` as the counter-example, which is what
+makes it an upstream slip rather than a design); the lock guard keying on
+`LowerCase(ParamName[1])` of an **empty** string for a positional write; the
+mid-edit `switchedobj=` re-point that makes r4133 drive the *old* target too; and
+the registry comment that called `NO_DEFAULT` "the Pascal default 0" — and one
+tolerance was **tightened**: the micro-deck current band went from an ad-hoc
+`5e-4` *relative* (≈6.9e-3 A, blind to a ~7 mA per-phase drive error) to the
+calibrated `abs 1e-6` element-current floor from `tests/TOLERANCE_NOTES.md`, ~500×
+tighter, against full-precision r4133 magnitudes whose worst measured delta is
+3.66e-7. The first three are `investigations/to_opendss/` candidates, left
+unowned. Two findings are **recorded, with both engines measured**. (i) The
+retained 0.14.5 `Sample`/`DoPendingAction` machinery arms on a `normal=` write:
+after `edit swtcontrol.sw normal=open` on an unlocked control the port opens the
+switch at step 3 of the duty run (`State = [open, open, open, ]`, event log
+`Hour=0, Sec=0.5, ControlIter=1, Element=SwtControl.sw, Action=OPENED`) where the
+r4133 DLL leaves it closed for all eight steps and logs nothing — r4133 comments
+both bodies out. Retiring that machinery has **two** blocking channels, not one:
+the capi lane's `compare_ctrlqueue` pins its spurious `CTRL_LOCK` push, so
+`controls/swtcontrol/swtcontrol_lock.dss` must first be re-gated off
+`capi_v0145` — a manifest + ledger change RP3.7 could not make. Corpus exposure is
+zero (every corpus `normal=` is a ganged `normal=closed` over an all-closed state,
+and `swtcontrol_lock.dss` types `normal=closed` *before* `lock=yes` on the same
+`New`), and the divergence is held on purpose by the tripwire
+`swt_control::tests::sample_arms_on_a_normal_write_the_retained_capi_channel`,
+whose doc says it must be **deleted, not re-baselined**, when the body goes.
+(ii) The render bound's residual staleness is observable on both engines: after
+`edit line.swk phases=1` the r4133 DLL's `? swtcontrol.sw1.state` follows
+immediately to `[closed, ]` (its getter loops the live element) while the port
+keeps three tokens until the ref is re-resolved by a `switchedobj=` write. That is
+architectural — the port's classes hold ref *snapshots* by design — shared with
+Relay, and has zero corpus exposure; it is now `ORPHANED_GAPS.md` §1.13. Two
+smaller ones: `props_roundtrip` has no write-back path at all, so the audit's
+suspicion there is void; and the enum `Keep` default can be narrowed for `State`
+but never for `Action`, whose scalar seam needs it to reproduce r4133's no-else
+fall-through.
+
+**Recorded, not chased** (each with its evidence; the `tmp/rp37/out_*.txt`
+transcripts named here are local, gitignored probe artifacts). (a) The
+`RecalcElementData` bits the port never had (`SwtControl.pas:333-344`): the
+`ElementTerminal > NTerms` check (`DoErrorMsg` 384) is a **genuine validation
+gap** — the port silently clamps while emitting the sibling 387 for a missing
+element — and goes to `ORPHANED_GAPS.md` §1.15 together with the `FNphases >
+SWTCONTROLMAXDIM` warning; `HasSwtControl := TRUE` (`:344`) is **dead upstream
+state** (declared `CktElement.pas:99`, initialized `:213`, set here, never read),
+so that half closes by reading rather than deferring. (b) The sibling state seams
+RP3.7 did not touch — Recloser's twin defects (the same `values.len() == 1 →
+ganged` heuristic and a whole-object lock that refuses `Normal` too, where
+`Recloser.pas`'s guard is the same name-based rule), Fuse's missing ganged path,
+Relay's absent `ControlledElement = NIL → []` render and its `set_States`
+`ArmedForReset` — are `ORPHANED_GAPS.md` §1.14; none has corpus or census
+exposure, and Relay's NIL render was deliberately not landed on a hunch because
+`state_size()` has 14 call sites there. (c) `Dump`'s store-vs-live echo for
+properties 6/7 goes to **§RP3.11**: r4133's `DumpProperties` (`:563-571`) echoes
+the stored parse text (`~ Normal=` when never written) while the port's generic
+dump renders the live value, consistent with `?`, `all_properties` and `Save`; no
+golden and no gated cell renders a SwtControl `Dump` today. `Save` itself
+round-trips the array (`save_roundtrip` 9 green — the writer emits
+`Normal=[closed, closed, closed, ]` and the outer parser reads the brackets back
+as a quoted per-phase list). (d) `MakeLike`: r4133 copies **every** other piece of
+SwtControl state and omits `NormalStateSet` alone, whose observable is a clone's
+first `state=` write silently collapsing the base's declared `Normal` (measured on
+the DLL); the port copies the flag, i.e. does not reproduce it, and the omission
+is written up as `investigations/to_opendss/47-swtcontrol-makelike-drops-
+normalstateset.md` (gitignored, local-only — RP3.6 took 46, so the next free
+number is **48**). Verifying that report turned up a **second, previously
+unrecorded r4133 defect**, included in it: the same copy loop bounds itself with
+`ControlledElement.Nphases` on a pointer copied verbatim one line earlier with no
+nil check, so cloning a base whose `switchedobj=` never resolved
+access-violates — `Error 303 … Access violation … Read of address
+000000000000007C`, caught, the clone left half-built with `? …Normal` → `[]`. The
+port has no equivalent (its clone path is snapshot-based and the `[]` render is
+pinned), so there is nothing to fix in-engine. (e) `? relay.x.switchedobj` still
+renders the defaulted name where r4133 renders `''` — a pre-existing
+`CaseFold`-claimed census pair, not this sub-step's.
+
+**A hazard worth carrying: compiling `IEEE_519.DSS` in place rewrites tracked
+vendored corpus files.** The deck ends in `export monitor MPCC` + `show monitor
+MPCC`, so a hand probe of the three copies left
+`.../HarmonicsTMode/IEEE_519_Mon_mpcc_1.csv`,
+`.../HarmonicsTMode/IEEE_519_SavedVoltages.dbl` and
+`.../HarmonicsVariableLoad/IEEE_519_Mon_mpcc_1.csv` modified; they were restored
+by exact path. The corpus gate is protected by its own `CorpusGuard`, but
+`lane_dump` is not: the `lane_diff` run reported "restoring overwritten" on three
+tracked files (`Test/LineConstantsCode.DSS` and the two
+`IEEE_519_Mon_mpcc_1.csv`) and deleted 24 `Test/AutoTrans/*.txt` plus the
+`modes/autoadd` outputs — and, worth recording, its hygiene pass correctly
+recognised `ledger.json` and `population.lock.json` as **pre-dirty** and left them
+alone, so the 2026-08-02 blind-`git restore` accident did not recur. Two
+consequences taken: the entry witness pin **rebuilds** the IEEE_519 control block
+instead of compiling the deck (the three copies are byte-identical there, the same
+two lines at `:45-46`), and `TESTING.md` §Procedures now says in one sentence that
+a hand probe of such a deck runs on a copy.
+
+**Corrections this sub-step forced on its own earlier text.** (i) The corpus
+carries **eight** SwtControl decks, not five: the first sweep used
+`--include=*.dss` and missed the uppercase `IEEE_519.DSS` copies, which carry 6 of
+the 19 out-of-scope cells (2 controls × 2 properties × 3 copies). (ii) The
+prediction that the homogeneous cells would "fold into the existing `ArrayForm`
+rows" had the right conclusion and the wrong mechanism: the replay reads the
+**frozen** `rust` column, so no live render can move a bucket there
+(`CLAIMED_ARRAY_FORM` stayed 203), and on the live r4133 channel the two renders
+are byte-equal, so folding is never reached. (iii) The plan's part (b) is not
+render-only — one frozen snapshot produces two symptoms (the three-token render
+*and* `Sample` reading past a 1-conductor element), which is why the frozen census
+cell reads `[closed, open, open, ]`; both fall to the one refresh.
+
+**Gate.** All five commands green in both lanes, each exit code read individually:
+**4 252 tests per lane** (0 failed; the five `ignored` are pre-existing manual
+golden-generator and doctest markers, none in a file this branch touches), corpus
+gate **523/523** in both lanes (136.2 s / 135.7 s) with the ledger at **45 entries
+/ 1504 hits**, every entry hit and none stale. Both predicted reds closed — the
+five capi SwtControl cases on the new entries, and the pre-existing
+`props_r4133_pins` red on the two-line pin move — and `props_r4133_replay` 132,
+`props_r4133_pins` 40, `props_roundtrip` 1, `golden_lock` 4, `golden_schema` 104,
+`population_lock` 1, `oracle_parity_cfg_gate` 10. `lane_diff` was re-run because
+the drive shape changed (`SetSwitchClosed` → per-conductor
+`SetConductorsClosed`): **PASS**, both dumps rebuilt (216 MB each), 523 cases /
+3 220 861 records / ~4.83 M compared values, and **`max |Δ| = 0.000e0` and
+`max rel = 0.000e0` on every gated kind** — conv 2 162, cur 1 170 100, errs 519,
+iter 2 162, loss 366 476, pow 1 170 100, v 375 816, y 1 738 084, all reported
+"(identical)", 0 iteration counts drifted — so the 2026-07-31 baseline holds
+exactly and the default lane keeps precisely the parity lane's oracle standing.
+No solved-state byte moved in either lane.
+
+**Next: RP3.8 and RP3.9** — they are what RP4.1 waits on (RP3.5, RP3.6 both
+parts, and RP3.7 all three parts have landed; RP3.7 on 2026-09-02).
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1, **opened** on branch `golden-g1`
 (forked from `update` @ `4d3fc2d7`) — that branch carries G1.1's scratch census
 only and **nothing was committed there**; the WP-G1 sub-steps that actually land
@@ -3840,8 +4181,9 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
   - **The three RP3.5+ sub-steps** (full specs in `R4133_PROPS_PLAN.md`
     §WP-RP3; tier `opus-high+`, the RP3.1–RP3.4 row). **All three blocked
     RP4.1** (plan §0: "RP4.1 starts only after every RP1–RP3 sub-step is landed,
-    including any RP3.5+ sub-step RP2.2's triage opens"); **RP3.5 landed
-    2026-08-28**, so RP3.6 and RP3.7 are the two still outstanding here.
+    including any RP3.5+ sub-step RP2.2's triage opens"); **all three have since
+    landed — RP3.5 on 2026-08-28, RP3.6 on 2026-08-29, RP3.7 on 2026-09-02** —
+    so what still blocks RP4.1 from this WP is RP3.8 and RP3.9.
     - **RP3.5 — line length units lost by the matrix-branch merge. SETTLED
       2026-08-28 (`FIX`, both lanes; audit settled 2026-08-29) — see the §RP3.5
       record below.**
@@ -3884,7 +4226,9 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
       only RP3.5+ pair the unmask will actually compare, so **RP4.1 breaks on it
       if RP3.6 does not land first**. r4133 is the authority; "capi does it" is
       not evidence (CLAUDE.md).
-    - **RP3.7 — per-phase switch and relay state.** (a) r4133 keeps
+    - **RP3.7 — per-phase switch and relay state. SETTLED 2026-09-02 (`FIX`,
+      both lanes, all three parts — (a), (a2) and (b)) — see the §RP3.7 record
+      above.** (a) r4133 keeps
       `FPresentState`/`FNormalState : pStateArray` per phase
       (`SwtControl.pas:37-38`, `:299-305`), settable phase-by-phase from a quoted
       list (`:453-480`), each phase driving its own conductor (`:532-549`), and
@@ -4683,8 +5027,10 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
 > per-sub-step ritual. Four bin-7 root-cause pairs (RP3.1–RP3.4) plus the five
 > sub-steps the WP-RP2 triage opened (RP3.5–RP3.7 from RP2.2, RP3.8 from RP2.3's
 > kill ruling, RP3.9 from the RP2.4 audit settlement). RP4.1 waits on all of
-> them; **RP3.5 landed 2026-08-28 and its audit settled 2026-08-29**, so what is
-> left is RP3.6, RP3.7, RP3.8 and RP3.9.
+> them; **RP3.5 landed 2026-08-28 (audit settled 2026-08-29), RP3.6 both parts
+> 2026-08-29 (audit settled the same day) and RP3.7 2026-09-02**, so what is left
+> is RP3.8 and RP3.9. The RP3.6 and RP3.7 records live in §1 above, beside RP3.5's
+> narrative one.
 
 - **RP3.1** (2026-08-24) — `swtcontrol.delay`: **a wired property that r4133
   silently ignores.** **Zero product-crate bytes** (the port already behaves

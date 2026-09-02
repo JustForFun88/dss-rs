@@ -906,14 +906,26 @@ fn storagecontroller_modedischarge_renders_schedule() {
 /// cells across its sixteen tie switches. `State` is read beside `Action` so the
 /// pin says what "live" means here: the action the port reports is the one the
 /// switch is actually in.
+///
+/// **RP3.7 moved the `State` side of that reading, not the claim** (2026-09-02):
+/// `State` is now the per-phase render r4133 has always had — one token per
+/// controlled-element phase (`SwtControl.pas:600-610`) — so a 3-phase tie answers
+/// `[closed, closed, closed, ]` instead of the port's old scalar `closed`. Both
+/// values below were read off the r4133 DLL on this very deck
+/// (`tmp/rp37/out_b2_r4133b.txt`, RP3.7 B2), which is what makes the `Action`
+/// claim sharper rather than weaker: `Action` still renders one word while the
+/// state it is compared against is a per-phase array, and the two still agree.
 #[test]
 fn swtcontrol_action_renders_the_live_switch_state() {
     let mut deck =
         Deck::compile("electricdss-tst/Version8/Distrib/Examples/civinlar model/civanlar.dss");
     assert_eq!(deck.get("SwtControl.13_14.Action"), "close");
-    assert_eq!(deck.get("SwtControl.13_14.State"), "closed");
+    assert_eq!(
+        deck.get("SwtControl.13_14.State"),
+        "[closed, closed, closed, ]"
+    );
     assert_eq!(deck.get("SwtControl.10_14.Action"), "open");
-    assert_eq!(deck.get("SwtControl.10_14.State"), "open");
+    assert_eq!(deck.get("SwtControl.10_14.State"), "[open, open, open, ]");
 }
 
 /// `transformer.bhcurrent` / `transformer.bhflux` — `EchoCategory::

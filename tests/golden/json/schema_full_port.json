@@ -11512,16 +11512,20 @@
           "$dssPropertyOrder" : 5
         },
         "Normal" : {
-          "$ref" : "#/$defs/SwtControl/$defs/SwtControlState",
-          "default" : null,
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/$defs/SwtControl/$defs/SwtControlState"
+          },
           "description" : "ARRAY of strings {Open | Closed} representing the Normal state of the switch in each phase of the controlled element. The switch reverts to this state for reset, change of mode, etc. Defaults to \"State\" if not specifically declared.  Setting this property to {Open | Closed} sets the normal state to the specified value for all phases (ganged operation).",
           "title" : "Normal",
           "$dssPropertyIndex" : 6,
           "$dssPropertyOrder" : 6
         },
         "State" : {
-          "$ref" : "#/$defs/SwtControl/$defs/SwtControlState",
-          "default" : "closed",
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/$defs/SwtControl/$defs/SwtControlState"
+          },
           "description" : "ARRAY of strings {Open | Closed} representing the Actual state of the switch in each phase of the controlled element. Upon setting, immediately forces the state of the switch(es). Simulates manual control on Switch. Defaults to Closed for all phases. Setting this property to {Open | Closed} sets the actual state to the specified value for all phases (ganged operation).",
           "title" : "State",
           "$dssPropertyIndex" : 7,

@@ -1421,6 +1421,11 @@ impl Dss {
         let mut param_pointer: i64 = 0;
         let mut param_name = parser.next_param(vars);
         let mut param = parser.make_string(vars);
+        // Pascal `IsQuotedString` for the value token (r4133 per-phase switch
+        // and relay state writers key on it — the quotes are stripped before
+        // the property arm runs, so carry the flag beside the value;
+        // [`PropEngine::was_quoted`]).
+        let mut param_was_quoted = parser.is_quoted();
         while !param.is_empty() {
             if param_name.is_empty() {
                 param_pointer += 1;
@@ -1489,6 +1494,7 @@ impl Dss {
                         enums,
                         errors,
                         foreign: Some(&foreign),
+                        was_quoted: param_was_quoted,
                     };
                     if let Err(e) =
                         props.edit_property(&mut active_arena[oi], idx, &param, &mut eng)
@@ -1511,6 +1517,7 @@ impl Dss {
 
             param_name = parser.next_param(vars);
             param = parser.make_string(vars);
+            param_was_quoted = parser.is_quoted();
         }
 
         // Pascal `TFuseObj.Create` resolves `FuseCurve := Find('tlink')` in the

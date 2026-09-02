@@ -171,6 +171,8 @@ fn build_tcc(npts: &str, c: &str, t: &str) -> TccCurveObj {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut obj, idx, v, &mut eng).unwrap();
     }
@@ -1546,6 +1548,288 @@ fn r4133_property_table_has_71_props() {
         cls.property_index("Undervoltcurve"),
         Some(prop::UNDERVOLT_CURVE)
     );
+}
+
+/// RP3.7(b) — the r4133 `WasQuoted` split at the property seam
+/// (`Relay.pas:1256-1306`): a BARE single token is ganged, a QUOTED single token
+/// writes phase 1 only. The port's pre-RP3.7 `set_enum_array` keyed the split on
+/// `values.len() == 1`, so `state=(open)` filled all three phases.
+///
+/// Bytes measured on the vendored r4133 DLL through `epri-worker`
+/// (`tmp/rp37/probe_b1.py` -> `out_b1.txt` B1(1), deck `decks/p4_relay3.dss`):
+/// `state=(open)` -> `[open, closed, closed, ]` (Normal follows through the
+/// supplemental), `state=open` -> `[open, open, open, ]`, and `normal=(closed)`
+/// over an all-open Normal -> `[closed, open, open, ]`.
+///
+/// Non-vacuity: reverting the seam to the length heuristic renders
+/// `[open, open, open, ]` on the first assertion and `[closed, closed, closed, ]`
+/// on the last.
+#[test]
+fn a_quoted_single_token_is_per_phase_a_bare_one_is_ganged() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.p4a basekv=115 pu=1.0 phases=3 bus1=src",
+        "new line.l1 bus1=src bus2=b1 phases=3 r1=0.25 x1=0.6 c1=3 length=1 units=km",
+        "new relay.r1 monitoredobj=line.l1 monitoredterm=1 type=current phasetrip=800",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "setup: {:?}", dss.errors());
+    assert_eq!(dump(&mut dss, "State"), "[closed, closed, closed, ]");
+
+    // Quoted single token -> slot 1 only; Normal follows on this first write.
+    dss.command("edit relay.r1 state=(open)");
+    assert_eq!(dump(&mut dss, "State"), "[open, closed, closed, ]");
+    assert_eq!(dump(&mut dss, "Normal"), "[open, closed, closed, ]");
+
+    // Bare single token -> ganged.
+    dss.command("edit relay.r1 state=closed");
+    assert_eq!(dump(&mut dss, "State"), "[closed, closed, closed, ]");
+    dss.command("edit relay.r1 state=open");
+    assert_eq!(dump(&mut dss, "State"), "[open, open, open, ]");
+
+    // The same split on Normal, over an all-open Normal.
+    dss.command("edit relay.r1 normal=open");
+    assert_eq!(dump(&mut dss, "Normal"), "[open, open, open, ]");
+    dss.command("edit relay.r1 normal=(closed)");
+    assert_eq!(dump(&mut dss, "Normal"), "[closed, open, open, ]");
+    assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
+}
+
+/// RP3.7(b) — the per-phase parse honors at most FIVE tokens
+/// (`Relay.pas:1286` `While (Length(DataStr2)>0) and (i < RELAYCONTROLMAXDIM)`),
+/// while the render prints one token per controlled-element phase. The cap is
+/// only observable on a >5-phase controlled element, so the pin drives a 6-phase
+/// line; the generic ordinal tokenizer the seam used before RP3.7 read
+/// `array_size()` = six tokens and applied the sixth.
+///
+/// Measured on the r4133 DLL (`tmp/rp37/probe_b1b.py` -> `out_b1b.txt` B1(3b),
+/// deck `decks/b1_relay6.dss`): from an all-closed ganged baseline,
+/// `state=(closed, closed, closed, closed, closed, open)` leaves
+/// `[closed, closed, closed, closed, closed, closed, ]`.
+///
+/// r4133's own FRESH 6-phase render is `[closed, closed, closed, open, open,
+/// open, ]` (`out_b1.txt` B1(3)) — `Create` allocates `FPresentState` with
+/// `FNPhases` (3) entries and initializes only those (`Relay.pas:829-843`), so
+/// slots 4..6 are an out-of-bounds heap read. That defect is NOT reproduced
+/// (2026-08-02 policy, A1 D8/A2a D7): the port initializes all six in-bounds
+/// slots to closed, which is why the pin ganges to a known baseline first.
+#[test]
+fn the_property_seam_caps_the_per_phase_parse_at_five_tokens() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.b1 basekv=115 pu=1.0 phases=3 bus1=src",
+        "new line.l6 bus1=src.1.2.3.1.2.3 bus2=b1.1.2.3.1.2.3 phases=6 r1=0.25 x1=0.6 c1=3 length=1 units=km",
+        "new relay.r6 monitoredobj=line.l6 monitoredterm=1 type=current phasetrip=800",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "setup: {:?}", dss.errors());
+    let closed6 = "[closed, closed, closed, closed, closed, closed, ]";
+    let get = |dss: &mut Dss, prop: &str| {
+        dss.command(&format!("? relay.r6.{prop}"));
+        dss.result().to_string()
+    };
+    // One token per controlled-element phase (six), all in-bounds and closed.
+    assert_eq!(get(&mut dss, "State"), closed6);
+
+    dss.command("edit relay.r6 state=closed");
+    assert_eq!(get(&mut dss, "State"), closed6);
+    dss.command("edit relay.r6 state=(closed, closed, closed, closed, closed, open)");
+    assert_eq!(
+        get(&mut dss, "State"),
+        closed6,
+        "the 6th token must be dropped"
+    );
+
+    // Five tokens are all honored (the boundary the cap sits on).
+    dss.command("edit relay.r6 state=(open, closed, open, closed, open)");
+    assert_eq!(
+        get(&mut dss, "State"),
+        "[open, closed, open, closed, open, closed, ]"
+    );
+    assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
+}
+
+/// RP3.7(b) — the Edit supplemental (`Relay.pas:616-619`, `CASE PropertyIdxMap
+/// OF 19, 40:`) sits OUTSIDE `InterpretRelayState`, so a `State`/`Action` write
+/// latches `NormalStateSet` (copying Present into Normal) even when the
+/// interpreter refused it while `Locked` (`:1244`) or matched no `o`/`c` token.
+/// The port ran the latch for `State` (side effects are unconditional) but not
+/// for `Action`, whose early returns skipped it — so a locked `action=open`
+/// followed by an unlocked `state=open` carried Normal to open.
+///
+/// Measured on the r4133 DLL (`tmp/rp37/out_b1.txt` B1(2a)/(2b),
+/// `out_b1b.txt` B1(2e)/(2f)): in all four sequences the later unlocked
+/// `state=open` leaves `Normal` at `[closed, closed, closed, ]`, while the
+/// control sequence with no earlier write (B1(2c)) carries it to
+/// `[open, open, open, ]`.
+///
+/// Non-vacuity: restoring `state_side_effect()` inside `do_action`'s guarded
+/// path makes the two `action` rows render `[open, open, open, ]`.
+#[test]
+fn a_refused_or_unmatched_action_still_runs_the_normal_defaults_supplemental() {
+    let build = || {
+        let mut dss = Dss::new();
+        for c in [
+            "clear",
+            "new circuit.p4a basekv=115 pu=1.0 phases=3 bus1=src",
+            "new line.l1 bus1=src bus2=b1 phases=3 r1=0.25 x1=0.6 c1=3 length=1 units=km",
+            "new relay.r1 monitoredobj=line.l1 monitoredterm=1 type=current phasetrip=800",
+        ] {
+            dss.command(c);
+        }
+        dss
+    };
+    let closed = "[closed, closed, closed, ]";
+    let open = "[open, open, open, ]";
+
+    // Every first write that reaches the supplemental latches Normal at the
+    // pre-write (all-closed) Present, refused or unmatched.
+    for first in [
+        &["edit relay.r1 lock=yes", "edit relay.r1 state=open"][..],
+        &["edit relay.r1 lock=yes", "edit relay.r1 action=open"][..],
+        &["edit relay.r1 action=xyz"][..],
+        &["edit relay.r1 state=xyz"][..],
+    ] {
+        let mut dss = build();
+        for c in first {
+            dss.command(c);
+        }
+        assert_eq!(dump(&mut dss, "State"), closed, "{first:?}: State moved");
+        assert_eq!(dump(&mut dss, "Normal"), closed, "{first:?}: Normal moved");
+        dss.command("edit relay.r1 lock=no");
+        dss.command("edit relay.r1 state=open");
+        assert_eq!(dump(&mut dss, "State"), open, "{first:?}: State");
+        assert_eq!(
+            dump(&mut dss, "Normal"),
+            closed,
+            "{first:?}: the supplemental already latched NormalStateSet"
+        );
+        assert!(dss.errors().is_empty(), "{first:?}: {:?}", dss.errors());
+    }
+
+    // Control (r4133 B1(2c)): with no earlier write, the first state= carries
+    // Normal with it.
+    let mut dss = build();
+    dss.command("edit relay.r1 state=open");
+    assert_eq!(dump(&mut dss, "State"), open);
+    assert_eq!(dump(&mut dss, "Normal"), open);
+}
+
+/// RP3.7(b), the census cell — `GetPropertyValue` 39/40 loop the **live**
+/// `ControlledElement.NPhases` (`Relay.pas:1407-1428`), so after `makeposseq`
+/// reduces the switched line to one conductor the relay renders ONE token.
+/// `Sample` (`:1318`), `Reset` (`:1454`) and `RecalcElementData` (`:965`) use
+/// the same live `Min(RELAYCONTROLMAXDIM, ControlledElement.Nphases)` bound.
+///
+/// The port reads that count off the controlled-element snapshot, which
+/// `make_pos_sequence` now refreshes from the live `PosSeqCtx`; before RP3.7 the
+/// frozen parse-time 3 survived, so the render printed three tokens AND the
+/// `Sample` resync read conductors 2..3 past the end of the 1-conductor element
+/// as *open* — the port's pre-fix `State = [closed, open, open, ]`, which is the
+/// `props_r4133` census row for `relay.state` on
+/// `modes/makeposseq/makeposseq_ctrl.dss` (that deck's relay statement is
+/// reproduced here; `relay.normal` is its sibling row).
+///
+/// Bytes measured on the r4133 DLL (`tmp/rp37/probe.md` §6 P4(ii), re-measured
+/// `out_b1.txt` B1(4)): `[closed, closed, closed, ]` before, `[closed, ]` after
+/// — and still `[closed, ]` after a later unrelated `edit`, whose `recalc`
+/// re-reads the snapshot.
+#[test]
+fn the_render_bound_follows_makeposseq() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.psq basekv=115 pu=1.0 phases=3 bus1=src",
+        "new line.l2 bus1=src bus2=b1 phases=3 r1=0.25 x1=0.6 c1=3 length=1 units=km",
+        "new line.sw bus1=b1 bus2=b2 phases=3 switch=yes",
+        "new relay.rel monitoredobj=line.l2 monitoredterm=1 type=current phasetrip=800",
+        "new load.ld bus1=b2 phases=3 kv=115 kw=2000 pf=0.95 model=1",
+        "set voltagebases=[115]",
+        "calcvoltagebases",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "setup: {:?}", dss.errors());
+    let get = |dss: &mut Dss, prop: &str| {
+        dss.command(&format!("? relay.rel.{prop}"));
+        dss.result().to_string()
+    };
+    assert_eq!(get(&mut dss, "State"), "[closed, closed, closed, ]");
+    assert_eq!(get(&mut dss, "Normal"), "[closed, closed, closed, ]");
+
+    dss.command("makeposseq");
+    dss.command("solve"); // runs Sample against the now-1-conductor element
+    assert!(dss.errors().is_empty(), "makeposseq: {:?}", dss.errors());
+    assert_eq!(get(&mut dss, "State"), "[closed, ]");
+    assert_eq!(get(&mut dss, "Normal"), "[closed, ]");
+
+    // A later edit re-runs `recalc`, which re-reads the snapshot: the
+    // pre-pos-seq bound must not come back.
+    dss.command("edit relay.rel phasetrip=900");
+    assert_eq!(get(&mut dss, "State"), "[closed, ]");
+    assert_eq!(get(&mut dss, "Normal"), "[closed, ]");
+}
+
+/// RP3.7(b) — the per-phase write reaches the CONDUCTORS through the new raw
+/// seam, not just the render: `state=(open, closed, closed)` on a 3-phase
+/// controlled line zeroes phase 1's current and leaves phases 2/3 carrying load.
+///
+/// The r4133 DLL's own terminal currents for this deck+edit
+/// (`tmp/rp37/probe.md` §6 P4(i-a), `decks/p4_relay3.dss`) are
+/// `['0.000000 -0.000000j', '-7.824715 -7.067886j', '-2.219181 +10.328951j', …]`.
+/// The DLL prints six decimals, so the comparison band is that print's own
+/// rounding (5e-7 absolute per component) — the port lands inside it on every
+/// component (`-7.824714600188 -7.067886356275j`,
+/// `-2.219180813961 +10.328950858660j`, `tmp/rp37/out_b1_port_fixed.txt` /
+/// `probe_b1c`), i.e. the two engines agree far below the faer-vs-KLU floor.
+///
+/// Non-vacuity: a ganged interpretation of the quoted list (the pre-RP3.7 seam
+/// on a single token, or a `set_all_present` here) zeroes phases 2 and 3 too.
+#[test]
+fn per_phase_state_write_through_the_executive_opens_only_its_phase() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.p4a basekv=115 pu=1.0 phases=3 bus1=src",
+        "new line.l1 bus1=src bus2=b1 phases=3 r1=0.25 x1=0.6 c1=3 length=1 units=km",
+        "new relay.r1 monitoredobj=line.l1 monitoredterm=1 type=current phasetrip=800",
+        "new load.ld bus1=b1 phases=3 kv=115 kw=2000 pf=0.95 model=1",
+        "set voltagebases=[115]",
+        "calcvoltagebases",
+        "solve",
+        "edit relay.r1 state=(open, closed, closed)",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
+    assert_eq!(dump(&mut dss, "State"), "[open, closed, closed, ]");
+
+    let snaps = dss.snapshot_elements();
+    let l1 = snaps
+        .iter()
+        .find(|s| s.name.eq_ignore_ascii_case("Line.l1"))
+        .expect("no Line.l1");
+    // r4133's six-decimal print of terminal 1, phases 1..3.
+    for (k, want) in [
+        (0usize, Complex64::new(0.0, 0.0)),
+        (1, Complex64::new(-7.824_715, -7.067_886)),
+        (2, Complex64::new(-2.219_181, 10.328_951)),
+    ] {
+        let got = l1.currents[k];
+        assert!(
+            (got.re - want.re).abs() < 5e-7 && (got.im - want.im).abs() < 5e-7,
+            "phase {} current {got} vs r4133 {want}",
+            k + 1
+        );
+    }
+    // Phases 2/3 really are carrying load (the open phase is not the whole line).
+    assert!(l1.currents[1].norm() > 10.0 && l1.currents[2].norm() > 10.0);
 }
 
 fn line_term1_max_current(dss: &mut Dss, name: &str) -> f64 {

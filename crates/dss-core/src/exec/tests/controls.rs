@@ -1,3 +1,4 @@
+use super::common::query;
 use crate::exec::*;
 
 /// Build the 2-bus regulator micro-circuit the WP5.7 oracle probes used.
@@ -313,4 +314,204 @@ fn storagecontroller_peakshave_holds_target() {
     // The single battery is discharging (it has the headroom to hold the target).
     dss.command("? storage.sa.State");
     assert_eq!(dss.result(), "Discharging");
+}
+
+// ---------------------------------------------------------------------------
+// RP3.7 — the per-phase SwtControl switch-state render (`Normal` / `State`)
+// ---------------------------------------------------------------------------
+
+/// Compile a vendored corpus deck by absolute path and return the live engine.
+///
+/// The two decks read below (`controls/swtcontrol/swtcontrol_lock.dss` and
+/// `modes/makeposseq/makeposseq_ctrl.dss`) are in-repo synthetic decks that
+/// write no file, so no directory guard is needed; the vendored
+/// `electricdss-tst` decks read by the second pin are likewise read-only
+/// (`civanlar.dss` has no active `export`/`show`/`save`). Never `.inputs/` —
+/// the corpus tree is the one the live gate reads (CLAUDE.md).
+fn compile_corpus_deck(rel: &str) -> Dss {
+    let deck = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/corpus")
+        .join(rel);
+    assert!(deck.is_file(), "vendored corpus deck missing: {deck:?}");
+    let mut dss = Dss::new();
+    dss.command(&format!("compile \"{}\"", deck.display()));
+    assert!(dss.errors().is_empty(), "{rel}: {:?}", dss.errors());
+    dss
+}
+
+/// **The witness for the five landed `capi_v0145` ledger entries**
+/// `swtcontrol-per-phase-state-{lock,makeposseq,ieee519-tmode,ieee519-varload,
+/// ieee519-matlab}-capi-props` (cause `swtcontrol-per-phase-state-render`).
+///
+/// r4133 keeps the switch state per phase — `FPresentState`/`FNormalState :
+/// pStateArray` (`Version8/Source/Controls/SwtControl.pas:37-38`), one slot per
+/// phase from `Create` (`:299-307`) — and its two getters render **one token per
+/// CONTROLLED-ELEMENT phase**: property 6 `Normal` at `:589-599`, property 7
+/// `State` at `:600-610`. The pinned dss_capi 0.14.5 has no per-phase model at
+/// all and renders one bare word, so RP3.7's port of the r4133 model reds those
+/// five capi-gated cases on exactly these cells. The entries pin both sides of
+/// that divergence; this pin is what says the port's side is **right** rather
+/// than merely stable (the obligation the RP3.6 audit created, 2026-08-29).
+///
+/// Every expected value below was read off the r4133 DLL (Version 11.0.0.1,
+/// `tools/opendss/bin/r4133`) on 2026-09-02 over the gated decks themselves —
+/// transcripts `tmp/rp37/out_b2_r4133.txt` (the five capi decks) — not derived
+/// from the port. The three shapes are the three the ledger entries carry:
+///
+/// * **3-phase, ganged closed** (`swtcontrol_lock.dss`, and the two IEEE_519
+///   controls) → `[closed, closed, closed, ]`;
+/// * **the same deck after the manifest's locked `post`** — `action=open` under
+///   `lock=yes` is refused by r4133's name-keyed guard (`:416-417`), so both
+///   fields stay closed for all 12 gated steps;
+/// * **1-phase after `MakePosSequence`** (`makeposseq_ctrl.dss`) →
+///   `[closed, ]`, the whole of the pair's `'[closed, ]'` census spelling.
+///
+/// The `1 / 2 / 3` sweep at the end is the discriminator: the token count
+/// follows the controlled element's phase count, so this pin cannot pass against
+/// a hardwired three-token string.
+#[test]
+fn swtcontrol_state_renders_one_token_per_controlled_phase() {
+    const THREE: &str = "[closed, closed, closed, ]";
+
+    // (1) `controls:swtcontrol/swtcontrol_lock.dss` — the deck the entry
+    // `swtcontrol-per-phase-state-lock-capi-props` pins on 12 steps, through
+    // BOTH its probes and its full property compare.
+    let mut dss = compile_corpus_deck("controls/swtcontrol/swtcontrol_lock.dss");
+    assert_eq!(query(&mut dss, "SwtControl.sw.Normal"), THREE);
+    assert_eq!(query(&mut dss, "SwtControl.sw.State"), THREE);
+    // The manifest's post: `Locked` refuses an `action=` write on both engines
+    // (r4133 `:416-417` keys the guard on the property NAME), so neither field
+    // moves and `Lock` itself is not part of the divergence.
+    dss.command("edit swtcontrol.sw action=open");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "SwtControl.sw.Normal"), THREE);
+    assert_eq!(query(&mut dss, "SwtControl.sw.State"), THREE);
+    assert_eq!(query(&mut dss, "SwtControl.sw.Lock"), "Yes");
+
+    // (2) `modes:makeposseq/makeposseq_ctrl.dss` — the switched line drops to
+    // ONE phase, so the same getter renders one token
+    // (`swtcontrol-per-phase-state-makeposseq-capi-props`).
+    let mut psq = compile_corpus_deck("modes/makeposseq/makeposseq_ctrl.dss");
+    assert_eq!(query(&mut psq, "SwtControl.swc.Normal"), "[closed, ]");
+    assert_eq!(query(&mut psq, "SwtControl.swc.State"), "[closed, ]");
+
+    // (3) The IEEE_519 control block, rebuilt rather than compiled: the vendored
+    // deck ends in `export monitor` + `show monitor`, so running it here would
+    // write into the corpus tree. Its two declarations are byte-identical in all
+    // three copies (`IEEE_519.DSS:45-46`) and this is the line that matters —
+    // `SwitchedTerm=2` and `lock=open`, which `InterpretYesNo` reads as NOT-yes,
+    // so the control is unlocked and still renders three closed tokens.
+    let mut ieee = Dss::new();
+    for c in [
+        "New circuit.h519 basekv=12.47 phases=3 bus1=src",
+        "New Line.SW_3 bus1=src bus2=n3 phases=3 switch=yes",
+        "New Swtcontrol.SW_3_Ctrl basefreq=60 Delay=0.0 Action=Close \
+         SwitchedObj=Line.SW_3 SwitchedTerm=2 lock=open enabled=y",
+    ] {
+        ieee.command(c);
+    }
+    assert!(ieee.errors().is_empty(), "{:?}", ieee.errors());
+    assert_eq!(query(&mut ieee, "SwtControl.SW_3_Ctrl.Normal"), THREE);
+    assert_eq!(query(&mut ieee, "SwtControl.SW_3_Ctrl.State"), THREE);
+    assert_eq!(query(&mut ieee, "SwtControl.SW_3_Ctrl.Lock"), "No");
+
+    // (4) The discriminator: the token count is the CONTROLLED element's phase
+    // count, not a constant. One control per width, all three on one circuit.
+    let mut widths = Dss::new();
+    for c in [
+        "New circuit.w basekv=12.47 phases=3 bus1=src",
+        "New Line.l1 bus1=src.1 bus2=b1.1 phases=1 switch=yes",
+        "New Line.l2 bus1=src.1.2 bus2=b2.1.2 phases=2 switch=yes",
+        "New Line.l3 bus1=src bus2=b3 phases=3 switch=yes",
+        "New SwtControl.c1 switchedobj=line.l1 switchedterm=1",
+        "New SwtControl.c2 switchedobj=line.l2 switchedterm=1",
+        "New SwtControl.c3 switchedobj=line.l3 switchedterm=1",
+    ] {
+        widths.command(c);
+    }
+    assert!(widths.errors().is_empty(), "{:?}", widths.errors());
+    assert_eq!(query(&mut widths, "SwtControl.c1.State"), "[closed, ]");
+    assert_eq!(
+        query(&mut widths, "SwtControl.c2.State"),
+        "[closed, closed, ]"
+    );
+    assert_eq!(query(&mut widths, "SwtControl.c3.State"), THREE);
+}
+
+/// **The holder for the pair's 80 in-scope cells** — the three r4133-gating
+/// decks that carry every one of them, and that **no oracle channel can witness
+/// today**: the pinned dss_capi 0.14.5 cannot render the array at all, and the
+/// r4133 property compare stays masked until RP4.1 (plan §1.1(e)). Plan §1.1(c)
+/// asks for exactly this pin.
+///
+/// `swtcontrol.normal` and `swtcontrol.state` are 59 census cells each, 40 of
+/// them in scope, and the split is these three decks: `midi_swtcontrol.dss`
+/// (1 control × 12 steps), `swtcontrol_time.dss` (1 × 12) and `civanlar.dss`
+/// (16 × 1) = 40. The other 19 are the capi-gated cases the ledger entries pin.
+///
+/// Every value below was read off the r4133 DLL on 2026-09-02, right after
+/// `compile`, on these very decks (`tmp/rp37/out_b2_r4133b.txt`). Note what the
+/// two `duty`-mode decks say: `Normal` stays `[closed, closed, closed, ]` after
+/// the manifest's `action=open` fires, because `normal=closed` was typed
+/// explicitly, so r4133's `NormalStateSet` latch (`SwtControl.pas:42`, `:220-228`)
+/// is already TRUE and the Edit supplemental does not re-seed `Normal` from the
+/// now-open `State`. `civanlar.dss` is the load-bearing one: sixteen tie switches
+/// declared `Action=c`/`Action=o`, i.e. thirteen closed and three open, all with
+/// an untyped `Normal` that `Create`'s all-CLOSED initialisation (`:299-307`)
+/// answers — the one deck where the array's CONTENTS, not just its width, vary.
+#[test]
+fn swtcontrol_state_renders_per_phase_on_the_r4133_only_decks() {
+    const CLOSED3: &str = "[closed, closed, closed, ]";
+    const OPEN3: &str = "[open, open, open, ]";
+
+    // (1)+(2) The two `duty`-mode micro-decks: 12 steps each, one control each.
+    for deck in [
+        "controls/swtcontrol/midi_swtcontrol.dss",
+        "controls/swtcontrol/swtcontrol_time.dss",
+    ] {
+        let mut dss = compile_corpus_deck(deck);
+        assert_eq!(query(&mut dss, "SwtControl.sw.Normal"), CLOSED3, "{deck}");
+        assert_eq!(query(&mut dss, "SwtControl.sw.State"), CLOSED3, "{deck}");
+        // The manifest's post arms the delayed open; after it fires `State`
+        // follows per phase and `Normal` does not move.
+        dss.command("edit swtcontrol.sw action=open");
+        dss.command("solve");
+        assert!(dss.errors().is_empty(), "{deck}: {:?}", dss.errors());
+        assert_eq!(query(&mut dss, "SwtControl.sw.State"), OPEN3, "{deck}");
+        assert_eq!(query(&mut dss, "SwtControl.sw.Normal"), CLOSED3, "{deck}");
+    }
+
+    // (3) `civanlar.dss` — 16 controls, 16 cells per property, all in scope.
+    let mut civ = compile_corpus_deck(
+        "electricdss-tst/Version8/Distrib/Examples/civinlar model/civanlar.dss",
+    );
+    // The three ties the deck declares `Action=o`; every other one is `Action=c`.
+    const OPEN_TIES: [&str; 3] = ["5_11", "7_16", "10_14"];
+    const TIES: [&str; 16] = [
+        "1_4", "2_8", "3_13", "4_5", "4_6", "5_11", "6_7", "7_16", "8_9", "8_10", "9_11", "9_12",
+        "10_14", "13_14", "13_15", "15_16",
+    ];
+    let mut open_seen = 0;
+    for tie in TIES {
+        let want = if OPEN_TIES.contains(&tie) {
+            open_seen += 1;
+            OPEN3
+        } else {
+            CLOSED3
+        };
+        assert_eq!(
+            query(&mut civ, &format!("SwtControl.{tie}.State")),
+            want,
+            "{tie}"
+        );
+        // `Normal` is untyped on every one of them, so all sixteen answer
+        // `Create`'s all-CLOSED array — including the three that are open.
+        assert_eq!(
+            query(&mut civ, &format!("SwtControl.{tie}.Normal")),
+            CLOSED3,
+            "{tie}"
+        );
+    }
+    assert_eq!(open_seen, 3, "civanlar declares exactly three open ties");
 }

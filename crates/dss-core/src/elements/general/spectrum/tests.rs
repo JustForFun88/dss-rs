@@ -18,6 +18,8 @@ fn edit_and_dump(edits: &[(&str, &str)]) -> Vec<(String, String)> {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
@@ -67,6 +69,8 @@ fn build(edits: &[(&str, &str)]) -> SpectrumObj {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
@@ -130,6 +134,8 @@ fn get_mult_is_zero_before_end_edit() {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }

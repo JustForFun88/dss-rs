@@ -243,6 +243,10 @@ impl Dss {
                     enums,
                     errors,
                     foreign: Some(&foreign),
+                    // JSON carries no outer-parser quote state; class hooks key
+                    // off the value itself where the distinction matters
+                    // ([`PropEngine::was_quoted`]).
+                    was_quoted: false,
                 };
                 props.fill_from_json(&mut objects[oi], members, &mut eng);
             }

@@ -35,6 +35,8 @@ fn build_shape(mult: &str) -> LoadShapeObj {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
@@ -59,6 +61,8 @@ fn build_tshape(temp: &str) -> TShapeObj {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
@@ -83,6 +87,8 @@ fn edit_pvsystem(edits: &[(&str, &str)]) -> PVSystem {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut pv, idx, value, &mut eng).unwrap();
     }
