@@ -1968,7 +1968,9 @@ regulator decks, and the divergence is confined to the series/common winding
 while winding 1 agrees to 0.04 % — so a **RegControl tap** divergence is the
 first thing its owner should read. It is a lead and not a settled cause: the
 per-row current ratios are 1.032 / 1.056 / 1.069 / 1.082, not one uniform
-1.03125. (c) The post-`makeposseq` `Save`/`Dump`
+1.03125. **Owned and settled 2026-09-03 by §RP3.12** (record below): the lead
+was right — the cause is an r4133 `RegControl`-to-`TTransfObj` typecast,
+`UPSTREAM_BUG`, never reproduced. (c) The post-`makeposseq` `Save`/`Dump`
 surface belongs to **§RP3.11**: r4133 saves the five-digit tokens it holds in
 `PropertyValue[]` while the port saves the exact doubles, so a saved-and-
 reloaded converted circuit differs at ~5e-6 on exactly these elements. (d) The
@@ -2059,6 +2061,8 @@ source and re-derivation, never against plausibility:
   `autotrans.tap`/`taps` divergence on the same four capi-only regulator decks,
   which makes a RegControl tap divergence the lead. Still nobody's, still not
   RP3.9's — a multi-percent gap in a solved current is not display-class.
+  (**Owned 2026-09-03 by §RP3.12**, record below — verdict `UPSTREAM_BUG`,
+  the lead confirmed as the root cause.)
 * **Confirmed as correct, no action:** `DECLARED_RP39` staying `(55, 27, 19)`
   while `OPEN_RP39` went to `(0, 0, 0)` (it is a measurement of what
   `display_class_but_not_a_render` refuses, and no port render moved — both
@@ -2081,15 +2085,132 @@ ledger entry hit and none stale, no `#[ignore]` and no name filter. `lane_diff`
 was again not required: the settlement touched the same three test/evidence
 files plus this record, and no product crate.
 
+**RP3.12 (the `controls:autotrans/*` `wdgcurrents` gap) landed 2026-09-03 —
+`UPSTREAM_BUG` in r4133, never reproduced, with zero product-crate lines.** The
+sub-step exists because of RP3.9's P0 open item (note (b) and the "RECORDED, not
+fixed" bullet above): the **34** `autotrans.wdgcurrents` cells on the four
+`controls:autotrans/*` regulator decks (`autotrans_both`, `autotrans_reg`,
+`midi_autotrans`, `midi_autotrans_both`; 3-7.5 % apart) had no owner and no root
+cause, only RP2.4's display-class `OutOfScope` filing — which a multi-percent
+gap in a solved current cannot be.
+
+**Root cause, measured on the live r4133 DLL rather than inferred.** r4133's
+`RegControl` reaches its controlled element through five unchecked
+`TTransfObj(ControlledElement)` casts (`RegControl.pas:926`, `:1026`, `:1296`,
+`:1370`, `:1479`) although `TAutoTransObj = class(TPDElement)`
+(`AutoTrans.pas:88`) is not a `TTransfObj` (`Transformer.pas:92`) and
+`TAutoWinding` (`AutoTrans.pas:59`) lays its fields after `Rdcohms` at different
+offsets than `TWinding` (`Transformer.pas:62`), so `Increment :=
+TapIncrement[TapWinding]` (`RegControl.pas:1249`) reads the winding's
+`MaxTap` = 1.1 pu and `PendingTapChange := Round(BoostNeeded / Increment) *
+Increment` (`:1250`) rounds every realistic boost to zero. The control therefore
+never arms — **0** r4133 event-log lines on all four decks against the port's
+10-13 — so r4133's numbers are the **unregulated** circuit while the port's (and
+the pinned 0.14.5 oracle's, which the port matches exactly) are the regulated
+one. The defect is identical in r3723, r4088 and r4133; the DSS-Extensions fork
+fixed it while refactoring and the port already carries the fixed shape
+(`ControlledTransformer` virtual dispatch,
+`elements/pd/transformer/mod.rs:472`), so **no engine line changes**. Upstream
+report, gitignored and local-only:
+`investigations/to_opendss/50-regcontrol-autotrans-ttransfobj-typecast.md`.
+
+**Exposure: zero gated exposure today, in both lanes and on both channels.** All
+four decks are `engines: "capi_v0145"`
+(`tests/corpus/manifests/population.lock.json:74-77`) and no `r4133`-gated case
+pairs a RegControl with an AutoTrans, which is why the gate is green with
+nothing excluded. The divergence is whole-case (node voltages 2.2-2.6 %, the
+assembled Y, the AutoTrans branch currents/powers, meters, monitors, the event
+log, the control queue and all three manifest probes), so the right instrument
+is a case-level `kind: "skip"` on the `r4133` channel, not a field exclusion.
+Four such entries are **drafted only** (`tmp/rp312/staged_ledger.md`,
+`cause_ref: "regcontrol-autotrans-typecast"`, citing `RegControl.pas:1026`,
+`:1296`, `:1479`, `AutoTrans.pas:88` and probes E1/E2/E5): landing one today
+would be stale on arrival and fail-on-stale would red the gate, so they wait for
+the day a deck gains the channel.
+
+**The pin names both numbers on both legs.** `props_r4133_pins.rs:2997`,
+`autotrans_wdgcurrents_stay_regulated_where_r4133_never_taps_the_autotrans`. On
+`controls/autotrans/autotrans_reg.dss` the port renders `66.95905, (-28.006),
+151.5029, (151.99), ...` with `taps = [1, 1.03125, ]` and
+`RegControl.rat.TapNum = 5`; the same deck with `edit RegControl.rat enabled=no`
+and the tap put back reproduces r4133's census literal `66.99186, (-28.029),
+156.314, (151.97), ...` byte for byte with `taps = [1, 1, ]`. On
+`midi_autotrans.dss` it is `73.11371` vs `78.15456` A on the series winding
+(`[1, 1.06875, ]` / `TapNum = 11` vs `[1, 1, ]`). Both edits are read back
+before the re-solve, so "nothing moved" cannot pass on an edit that never
+landed. A second, discriminating reading holds each leg to the ampere-turn
+identity `|I_c|/|I_s|` vs `VBase_s*tap_s/(VBase_c*tap_c)` (rel < 1e-5), so the
+pin also reds if the winding-current derivation drifts without the tap moving —
+proven by a mutation probe that feeds the regulated leg tap 1.0 and reds
+(2.2626 vs 2.3333).
+
+**Count locks re-derived from the census artifacts, not edited blind.** New
+`DECLARED_RP312 = (8, 1, 0)`: 8 vendored spellings
+(`tests/corpus/props_r4133/examples_supplement.txt:127-134` =
+`tmp/props_census/r4133/claims.txt:1035-1042`) whose cells are
+9+8+3+3+3+3+3+2 = **34**, one pair, and **0** in scope on every spelling and on
+the pair total. `DECLARED_OUT_OF_SCOPE` (229, 22, 0) → **(221, 21, 0)**:
+229 − 8 = 221 rows, 22 − 1 = 21 pairs — the pair's only other row, the
+`makeposseq_xfmr` residue, is already RP3.9's, so the pair leaves the bucket
+entirely — and the third column stays 0, because a verdict does not create
+scope. RP3.9's `DECLARED_RP39` (55, 27, 19), `OPEN_RP39`, `RP39_ROUTING`,
+`RP39_PINS` and `RP39_SETTLED_VERDICTS` are byte-unchanged, and the RP2.4-dated
+(229, 22, 0) lines below (:5675, :5745, :5817-5818) stay as *that* sub-step's
+record. Both new locks are live-enforced: a mutated `(9, 1, 0)` /
+`(222, 21, 0)` copy reds three walks.
+
+**The false ledger cause is corrected, not left standing as history.**
+`tests/corpus/ledger.json:25` carried `autotrans-regcontrol-tap` — "a last-ulp
+voltage nudges the tap decision across a boundary ... FPC-vs-Delphi, not a port
+bug", exactly the conditioning excuse CLAUDE.md forbids, unchallenged since
+`9d5852bc` (2026-07-18). The key is renamed to `regcontrol-autotrans-typecast`
+and rewritten with the proven mechanism (no entry ever referenced the old key,
+and the gate never flags an unreferenced cause —
+`corpus_gate/ledger.rs:1452-1463`), and dated `Correction (2026-09-03, RP3.12)`
+notes that keep the original readings went into
+`docs/upgrade/sweeps/capi015_vs_r4088.md:43`, `docs/upgrade/DIVERGENCES.md:2086`,
+`docs/upgrade/known_diffs_burndown.md:70,150` and
+`tests/corpus/props_r4133/README.md` §RP1.2 (:213ff).
+
+*Gate.* All five commands green in both lanes, each exit code read individually:
+**4 288 passed / 0 failed / 5 ignored per lane** over 74 test binaries (+3 on
+RP3.9's 4 285 — `props_r4133_pins` 53 → **54**, `props_r4133_replay` 133 →
+**135**, every other binary unmoved), the same five pre-existing `ignored`, no
+`#[ignore]` and no name filter. `corpus_gate` **131** over the full 523-case
+population in both lanes with every ledger entry hit and none stale, zero
+NEVER-APPLIED entries and zero reds on either channel, and the four `ledger::*`
+self-tests green after the rename. No golden re-baselined, no tolerance
+consulted or moved, no `TODO(compat)` added. `lane_diff` was **not** owed: the
+commit is two test files, `ledger.json` and four docs — not one line under any
+crate's `src/` — so no engine path, `compat` kernel, lane alias or solver moved
+and the 2026-07-31 `max |Δ| = 0` bit-identical baseline stands.
+
+**Open, recorded not chased.** (a) The four staged `skip` entries have **no
+tripwire** that would red if a deck gained the `r4133` channel without them (the
+existing `the_staged_r4133_property_entries_have_not_landed_yet` is
+`property`-scoped); a `skip`-scoped analogue is a candidate plan line at RP4.1.
+(b) Two RP2.4-dated tables in `tests/corpus/props_r4133/README.md` (:569, :807)
+still name `§1.3 (autotrans.wdgcurrents)` as the owner — left as history, their
+in-scope column is 0 either way, and the dated correction at :213ff points here.
+(c) The two test lanes again dropped seven untracked
+`tests/corpus/electricdss-tst/Test/AutoTrans/*.txt` files — the known
+overlapping-guard snapshot race recorded at :7398-7413, third sighting, removed
+by exact name; no tracked corpus or golden file moved.
+
 **RP3.9 landed 2026-09-02** (audit settled 2026-09-03) — the display floor's
 round-trip residue is settled as 27 pinned `PRECISION_ROUNDTRIP` pairs (the
 §RP3.9 record above), so **every RP1–RP3 sub-step the unmask waits on has
 landed** (RP3.5 2026-08-28, RP3.6 both parts 2026-08-29, RP3.7 all three parts
 2026-09-02, RP3.8 2026-09-02, RP3.9 2026-09-02) and nothing in WP-RP1/2/3 blocks
-it any more. The two RP3 sub-steps still open — §RP3.10 (the reproduced
-`QMode=0` dispatch, user go-ahead required) and §RP3.11 (the `Save`/`Dump`
-re-serialization surface) — are outside that rule by construction: they run
-after RP4.1 and block §RP5.2, not the flip (plan §0).
+it any more. **RP3.12 landed 2026-09-03** — RP3.9's P0 open item,
+the 34 `controls:autotrans/*` `wdgcurrents` cells, is settled as an r4133
+`UPSTREAM_BUG` that no lane reproduces (§RP3.12 record above); it adds no
+precondition to the flip, since all four of its decks are capi-only and the
+r4133 channel gates none of them. The two RP3 sub-steps still open —
+§RP3.10 (the reproduced `QMode=0` dispatch, user go-ahead required) and
+§RP3.11 (the `Save`/`Dump` re-serialization surface) — are outside that rule
+by construction: they run after RP4.1 and block §RP5.2, not the flip
+(plan §0).
 
 **Next: RP4.1** — `all_properties` on the r4133 channel (G1.1's deliverable).
 It carries two preconditions of its own, both to be discharged **in** the

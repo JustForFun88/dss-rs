@@ -226,6 +226,22 @@ The three bin-7 rows split two ways:
   winding — the signature of a different landed tap, which is the reason those
   decks are capi-only in the first place. Recorded here for RP2.2's closed pair
   list; no RP3 sub-step is opened by it while it stays out of scope.
+  **Correction (2026-09-03, RP3.12):** the scope reading above stands (still 0
+  in-scope cells), the last clause does not — RP3.9's P0 open item did open a
+  sub-step for it, and the "different landed tap" is now decomposed: r4133's
+  `RegControl` reaches its controlled element through an unchecked
+  `TTransfObj(ControlledElement)` cast (`Version8/Source/Controls/RegControl.pas:926`,
+  `:1026`, `:1296`, `:1370`, `:1479`) while `TAutoTransObj = class(TPDElement)`
+  (`Version8/Source/PDElements/AutoTrans.pas:88`) is not a `TTransfObj`, so the
+  punned `TapIncrement` zeroes `PendingTapChange` (`:1249-1250`) and r4133 **never
+  taps an AutoTrans at all** — 0 event-log lines on all four decks, its cells are
+  the UNREGULATED circuit's. `UPSTREAM_BUG`, never reproduced in either lane; the
+  8 `controls:autotrans/*` spellings (34 cells) are declared to `Owner::Rp312`
+  (`props_r4133_replay::RP312_UPSTREAM_BUG`, pinned by
+  `props_r4133_pins::autotrans_wdgcurrents_stay_regulated_where_r4133_never_taps_the_autotrans`),
+  the ninth (`modes:makeposseq`) stays RP3.9's. The tables below that still read
+  `§1.3 (autotrans.wdgcurrents)` are RP2.4-dated records; the owner is RP3.12
+  since this date, and the in-scope column they turn on is 0 either way.
 
 **RP1.3 (WindGen `UserModel`/`UserData`), measured 2026-08-23** by two full
 `DSS_PROPS_CENSUS=1` runs on the same 439-case population — one on the pre-RP1.3

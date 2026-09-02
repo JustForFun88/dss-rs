@@ -502,6 +502,16 @@ const CLAIMED_SHAPE_ALLOWLIST: usize = 0;
 ///   excuse: the floor says what those two spellings are, where §1.3 only said
 ///   the unmask never looks at them. [`DECLARED_OUT_OF_SCOPE`] moves with it.
 ///
+///   **Correction, RP3.12 (2026-09-03): `autotrans.wdgcurrents` is a
+///   display-class pair for exactly ONE of its nine spellings.** The row this
+///   bullet moved into the floor is the `modes:makeposseq` residue (rel 1.1e-05,
+///   the settlement below then hands it to [`Owner::Rp39`]); the pair's other
+///   **8** spellings — the four `controls:autotrans/*` decks, 34 cells — are 3–7.5 %
+///   apart and could never be claimed by any floor. They are a solved-state
+///   upstream bug and are declared to [`Owner::Rp312`] now
+///   ([`RP312_UPSTREAM_BUG`]). This count is unaffected either way: the floor
+///   claims what its predicate claims.
+///
 /// No row claimed by an earlier link is also inside the floor
 /// ([`MULTI_LINK_ROWS`] is unchanged at 135), which is why this number is a
 /// clean addition to [`CLAIMED_TOTAL`] rather than a re-partition.
@@ -682,6 +692,36 @@ const DECLARED_RP39: (usize, usize, usize) = (55, 27, 19);
 /// and who retires it).
 const OPEN_RP39: (usize, usize, usize) = (0, 0, 0);
 
+/// **RP3.12 — the RegControl×AutoTrans typecast bug** ([`RP312_UPSTREAM_BUG`]):
+/// the 8 `autotrans.wdgcurrents` spellings the four `controls:autotrans/*` decks
+/// carry, **34 census cells, none in scope**.
+///
+/// `(8, 1, 0)` from 2026-09-03, taken out of [`DECLARED_OUT_OF_SCOPE`] — where
+/// RP2.4's accounting had left them under the bin-7 "no in-scope cell" arm, and
+/// where the display floor's own doc still listed the pair among four
+/// *display-class* ones. Neither reading was wrong about the scope and both were
+/// wrong about the class: the gap is 3–7.5 %, two to three orders of magnitude
+/// outside the floor, and it is a **solved-state** divergence — r4133's
+/// `RegControl` cannot tap an `AutoTrans` at all, so its cells are the
+/// UNREGULATED circuit's. A *verdict* is strictly better than a scope excuse, the
+/// same reason RP2.4 gave for preferring a claim to §1.3.
+///
+/// The count is a straight sum of the vendored extract's rows
+/// (`tests/corpus/props_r4133/examples_supplement.txt:127-134`, cells
+/// 9+8+3+3+3+3+3+2 = 34); `:135` is the ninth spelling of the same pair — the
+/// `modes:makeposseq` round-trip residue — which stays [`Owner::Rp39`]'s and is
+/// counted in [`DECLARED_RP39`]. The pair's live census reads
+/// `35 cells / 0 in scope / 9 spellings`
+/// (`tmp/props_census/r4133/claims_unclaimed_pairs.txt:8`), 34 + 1.
+///
+/// Nothing in the tree can shrink this on its own: the four cases are
+/// `engines: "capi_v0145"` (`population.lock.json:74-77`), so no `r4133`
+/// comparison runs on them and the case-level `skip` entries this verdict owes
+/// are **staged, not landed** (`tmp/rp312/staged_ledger.md`) — exactly the
+/// §1.1(e) window [`DECLARED_RP3`]'s note describes. RP4.1 retires the rows by
+/// hand with the unmask.
+const DECLARED_RP312: (usize, usize, usize) = (8, 1, 0);
+
 /// The **disposition** an [`RP39_ROUTING`] row records — what the settled pair
 /// owes the tree, in the shape [`RP3_SETTLED_SHAPES`] carries for
 /// [`RP3_ROUTING`]:
@@ -729,14 +769,23 @@ const DECLARED_RP35: (usize, usize, usize) = (8, 6, 5);
 /// `OutOfScope` rows must have **zero** in-scope cells — that is the whole
 /// claim the marker makes (plan §1.3).
 ///
-/// **`(229, 22, 0)` since RP2.4**, from RP2.3's `(134, 18, 0)`: **−10** rows the
+/// **`(229, 22, 0)` at RP2.4**, from RP2.3's `(134, 18, 0)`: **−10** rows the
 /// floor now *claims* outright instead (see [`CLAIMED_DISPLAY_FLOOR`]) and
 /// **+105** rows over 4 pairs re-declared here by [`RP24_OUT_OF_SCOPE`]. The
 /// third number is still zero, and after RP2.4 it is a *stronger* zero: it is
 /// no longer read off the pair's `cells_in_scope` alone but per row, which is
 /// what admits the four display-class pairs whose PAIR is in scope while these
 /// particular spellings are not.
-const DECLARED_OUT_OF_SCOPE: (usize, usize, usize) = (229, 22, 0);
+///
+/// **`(221, 21, 0)` since RP3.12** (2026-09-03): **−8** rows, and with them the
+/// whole `autotrans.wdgcurrents` pair, re-declared to [`Owner::Rp312`]
+/// ([`DECLARED_RP312`], [`RP312_UPSTREAM_BUG`]). Those eight sat here on the
+/// bin-7 `!in_scope()` arm — true about the scope, silent about the cause — and
+/// RP3.12 measured the cause: r4133's `RegControl` reads a `TAutoTransObj`
+/// through an unchecked `TTransfObj` cast and never taps it, so those cells are
+/// its UNREGULATED circuit. The zero third column is unchanged, because a
+/// verdict does not create scope.
+const DECLARED_OUT_OF_SCOPE: (usize, usize, usize) = (221, 21, 0);
 
 /// **The four pairs whose example rows RP2.4 re-declares out of scope, with the
 /// frozen ceiling that proves it** — `(pair, max_rel_in_scope, rows)`.
@@ -2347,6 +2396,20 @@ enum Owner {
     /// [`RP39_PINS`]. The bucket itself does not move for that: nothing claims
     /// the rows, so they stay declared here until RP4.1's unmask retires them.
     Rp39,
+    /// **RP3.12 — the sub-step RP3.9's P0 open item opened**: the 8
+    /// `autotrans.wdgcurrents` spellings of the four `controls:autotrans/*`
+    /// decks (34 cells, none in scope), where r4133's `RegControl` reads a
+    /// `TAutoTransObj` through an unchecked `TTransfObj` cast and therefore
+    /// never taps it. Its cells are the unregulated circuit's; ours are the
+    /// regulated one's, and under the 2026-08-02 policy that stays so. See
+    /// [`RP312_UPSTREAM_BUG`] and [`DECLARED_RP312`].
+    ///
+    /// They were [`Owner::OutOfScope`]'s until 2026-09-03. The move is a
+    /// verdict, not a re-scope: all 34 cells sit on `engines: "capi_v0145"`
+    /// cases either way, so nothing about the RP4.1 unmask changes — what
+    /// changes is that the divergence now has a measured cause and a witness
+    /// instead of a scope excuse.
+    Rp312,
     /// Nothing will claim it: every cell of the pair sits on an
     /// `engines: "capi_v0145"` case, which plan §1.3 keeps uncompared on r4133.
     OutOfScope,
@@ -2362,6 +2425,7 @@ impl Owner {
             Owner::Rp35 => "RP3.5+ (opened by RP2.2)",
             Owner::Rp38 => "RP3.8 (opened by RP2.3's kill criterion)",
             Owner::Rp39 => "RP3.9 (opened by the RP2.4 audit settlement)",
+            Owner::Rp312 => "RP3.12 (opened by RP3.9's P0 open item)",
             Owner::OutOfScope => "out of scope (§1.3)",
         }
     }
@@ -3703,6 +3767,14 @@ fn declare(row: &Example, ev: &PairEvidence) -> Result<Owner, String> {
             )),
         };
     }
+    // RP3.12's upstream bug, ahead of the bin rules for the same reason RP2.4's
+    // mechanism residual is: the cause is a property of the two engines' control
+    // paths, not of the pair's bin or of §1.3 scope. It runs AFTER the clause
+    // above so the pair's ninth spelling — the `modes:makeposseq` round-trip
+    // residue — stays [`Owner::Rp39`]'s. See [`RP312_UPSTREAM_BUG`].
+    if regcontrol_autotrans_typecast_row(row) {
+        return Ok(Owner::Rp312);
+    }
     if ev.numeric {
         return match ev.effective_bin() {
             // A display-class row the FLOOR did not claim (it runs before this
@@ -3787,6 +3859,23 @@ fn display_class_but_not_a_render(row: &Example) -> bool {
     };
     props_norm::display_rel(&row.rust, &row.r4133).is_some_and(|rel| rel <= floor)
         && !props_norm::display_is_render(&row.rust, &row.r4133)
+}
+
+/// **RP3.12's upstream bug, as a row predicate**: the row is on a pair
+/// [`RP312_UPSTREAM_BUG`] cites and is NOT the display-class residue
+/// [`display_class_but_not_a_render`] hands to [`Owner::Rp39`].
+///
+/// The second half is what keeps the two sub-steps' shares of
+/// `autotrans.wdgcurrents` apart without either of them naming a deck: RP3.9 owns
+/// the one spelling that IS inside the floor (the `modes:makeposseq` round trip),
+/// RP3.12 the eight that are 3–7.5 % out of it. Written as a predicate rather
+/// than a spelling list so a re-measure that moves a row across the floor fails
+/// one of the two ownership guards instead of silently re-filing itself.
+fn regcontrol_autotrans_typecast_row(row: &Example) -> bool {
+    RP312_UPSTREAM_BUG
+        .iter()
+        .any(|(pair, _, _, _, _, _)| *pair == row.pair)
+        && !display_class_but_not_a_render(row)
 }
 
 /// **The row-level scope proof RP2.4 needs** — does the pair's own frozen
@@ -4013,6 +4102,7 @@ fn every_example_row_is_claimed_or_declared_exactly_once() {
         (Owner::Rp35, DECLARED_RP35),
         (Owner::Rp38, DECLARED_RP38),
         (Owner::Rp39, DECLARED_RP39),
+        (Owner::Rp312, DECLARED_RP312),
         (Owner::OutOfScope, DECLARED_OUT_OF_SCOPE),
     ] {
         assert_eq!(
@@ -4252,15 +4342,23 @@ fn every_echo_row_pin_is_a_test_that_exists() {
         .chain(std::iter::once(RP38_CAPTURE_PIN))
         .collect();
     let rp39_named: BTreeSet<&str> = RP39_PINS.iter().map(|(_, pin, _)| *pin).collect();
+    let rp312_named: BTreeSet<&str> = RP312_UPSTREAM_BUG
+        .iter()
+        .map(|(_, _, _, _, _, pin)| *pin)
+        .collect();
     assert!(
         echo_named.is_disjoint(&ledger_named)
             && rp38_named.is_disjoint(&echo_named)
             && rp38_named.is_disjoint(&ledger_named)
             && rp39_named.is_disjoint(&echo_named)
             && rp39_named.is_disjoint(&ledger_named)
-            && rp39_named.is_disjoint(&rp38_named),
-        "a pin witnesses an echo row, a drafted ledger entry, RP3.8's skip rows or an RP3.9 \
-         round-trip residue pair, never two"
+            && rp39_named.is_disjoint(&rp38_named)
+            && rp312_named.is_disjoint(&echo_named)
+            && rp312_named.is_disjoint(&ledger_named)
+            && rp312_named.is_disjoint(&rp38_named)
+            && rp312_named.is_disjoint(&rp39_named),
+        "a pin witnesses an echo row, a drafted ledger entry, RP3.8's skip rows, an RP3.9 \
+         round-trip residue pair or RP3.12's upstream bug, never two"
     );
     for (name, what) in echo_named
         .iter()
@@ -4279,6 +4377,11 @@ fn every_echo_row_pin_is_a_test_that_exists() {
             rp39_named
                 .iter()
                 .map(|n| (*n, "an RP3.9 residue pair's witness")),
+        )
+        .chain(
+            rp312_named
+                .iter()
+                .map(|n| (*n, "RP3.12's upstream-bug witness")),
         )
     {
         assert!(
@@ -4302,11 +4405,12 @@ fn every_echo_row_pin_is_a_test_that_exists() {
         .copied()
         .chain(rp38_named.iter().copied())
         .chain(rp39_named.iter().copied())
+        .chain(rp312_named.iter().copied())
         .collect();
     assert_eq!(
         defined, cited,
         "{PINS} must define exactly the pins the echo rows, the drafted ledger entries, \
-         RP3.8's skip rows and RP3.9's residue pairs name"
+         RP3.8's skip rows, RP3.9's residue pairs and RP3.12's upstream bug name"
     );
 }
 
@@ -4752,6 +4856,57 @@ const RP39_PINS: &[(&str, &str, &str)] = &[
 /// The other three outcomes owe something else and live elsewhere; an unknown tag
 /// is a hard error naming this list, never a reason to loosen it.
 const RP39_SETTLED_VERDICTS: &[&str] = &["PRECISION_ROUNDTRIP", "STATE_DIFFERS"];
+
+/// **RP3.12's routing and its witness** — `(pair, example rows, rows on in-scope
+/// pairs, r4133 site, verdict, pin `#[test]`)`, the fifth citing set
+/// [`every_echo_row_pin_is_a_test_that_exists`] reads.
+///
+/// One pair, one verdict, `UPSTREAM_BUG` (`R4133_PROPS_PLAN.md` §RP3.9's fourth
+/// outcome, the tag RP3.12 inherits): r4133's `RegControl` reaches its controlled
+/// element through an unchecked `TTransfObj(ControlledElement)` cast
+/// (`Version8/Source/Controls/RegControl.pas:926`/`:1026`/`:1296`/`:1370`/`:1479`)
+/// while `TAutoTransObj = class(TPDElement)`
+/// (`Version8/Source/PDElements/AutoTrans.pas:88`) is not a `TTransfObj`, so
+/// `TapIncrement` reads the winding's `MaxTap` (1.1 pu) and
+/// `PendingTapChange := Round(BoostNeeded / Increment) * Increment` (`:1249-1250`)
+/// zeroes every realistic boost. r4133 logs 0 control events on all four decks
+/// and leaves the regulated bus outside its band; the 8 spellings below are its
+/// UNREGULATED circuit. The port keeps the regulated answer in both lanes —
+/// upstream bugs are never reproduced (CLAUDE.md, 2026-08-02) — and the report is
+/// `investigations/to_opendss/50-regcontrol-autotrans-ttransfobj-typecast.md`.
+///
+/// **Why the witness is a pin and not a [`LEDGER_ENTRY_PINS`] row.** The
+/// divergence is whole-case, not per-field: voltages (2.2–2.6 % at the regulated
+/// bus), the assembled Y, every element on the AutoTrans branch, the meters, the
+/// event log (10–13 lines vs 0), the control queue and all three manifest probes.
+/// The instrument is a case-level `kind: "skip"` on the `r4133` channel, one per
+/// deck — and the four cases are `engines: "capi_v0145"` today
+/// (`tests/corpus/manifests/population.lock.json:74-77`), so there is no r4133
+/// channel to skip and the entries are **drafted, not landed**
+/// (`tmp/rp312/staged_ledger.md`). A `property` entry, which is what
+/// [`LEDGER_ENTRY_PINS`] cites, would be the wrong shape as well as premature.
+///
+/// The counted columns behave exactly like [`RP39_ROUTING`]'s: they are
+/// re-measured from the walk by
+/// [`the_regcontrol_autotrans_typecast_rows_are_owned_by_rp312`], a pin does not
+/// make a link claim a row, and they retire by hand at RP4.1.
+const RP312_UPSTREAM_BUG: &[(&str, usize, usize, &str, &str, &str)] = &[(
+    "autotrans.wdgcurrents",
+    8,
+    0,
+    "RegControl.pas:1026/:1296/:1479 `TTransfObj(ControlledElement)` over \
+     AutoTrans.pas:88 `TAutoTransObj = class(TPDElement)`; the zeroed increment at \
+     RegControl.pas:1249-1250",
+    "UPSTREAM_BUG",
+    "autotrans_wdgcurrents_stay_regulated_where_r4133_never_taps_the_autotrans",
+)];
+
+/// The verdicts an [`RP312_UPSTREAM_BUG`] row may carry. One, deliberately: the
+/// sub-step exists because the divergence is an upstream defect the port does not
+/// reproduce. Anything else — a precision round trip, a port bug — owes a
+/// different obligation and belongs with that outcome's own table, so an unknown
+/// tag is a hard error naming this list rather than a reason to widen it.
+const RP312_VERDICTS: &[&str] = &["UPSTREAM_BUG"];
 
 /// **RP3.9's pin list is pinned literally**, like [`NOT_A_PIN`] and
 /// [`LEDGER_ENTRY_PINS`]: it is the third exemption from "every pin in [`PINS`]
@@ -8670,6 +8825,144 @@ fn the_display_floors_round_trip_residue_is_owned_by_rp39() {
         OPEN_RP39,
         "the residue still awaiting a verdict — RP3.9 settled all 27 pairs on 2026-09-02, so \
          this is (0, 0, 0) while DECLARED_RP39 keeps the measured rows"
+    );
+}
+
+/// **RP3.12's rows are exactly the ones the walk finds, and they are NOT
+/// display-class** — the ownership guard [`RP312_UPSTREAM_BUG`] owes, shaped like
+/// [`the_display_floors_round_trip_residue_is_owned_by_rp39`].
+///
+/// It asserts four things the doc alone would only claim: the table's counted
+/// columns sum to [`DECLARED_RP312`]; the rows [`regcontrol_autotrans_typecast_row`]
+/// selects are exactly the table's pairs and counts; every one of them is far
+/// **outside** the display floor (so RP2.4's mis-filing cannot come back — this is
+/// a solved-state jump, not a render) and unclaimed by every link of the chain;
+/// and the verdict is one an [`RP312_VERDICTS`] tag covers, cited to a
+/// `Version8/Source` `.pas:` line.
+///
+/// The measured minimum gap is asserted too. RP2.4's floor is 2e-4 and the
+/// smallest of these eight rows is 3.1e-2 — 150x out — so a future re-measure that
+/// drifted anywhere near the floor would red here rather than quietly change
+/// which sub-step owns the row.
+#[test]
+fn the_regcontrol_autotrans_typecast_rows_are_owned_by_rp312() {
+    assert_eq!(
+        (
+            RP312_UPSTREAM_BUG
+                .iter()
+                .map(|(_, n, _, _, _, _)| n)
+                .sum::<usize>(),
+            RP312_UPSTREAM_BUG.len(),
+            RP312_UPSTREAM_BUG
+                .iter()
+                .map(|(_, _, n, _, _, _)| n)
+                .sum::<usize>(),
+        ),
+        DECLARED_RP312,
+        "the routing's three columns must sum to the bucket lock"
+    );
+    let corpus = Corpus::load();
+    let floor = props_norm::display_floor().expect("RP2.4 derived the floor");
+    let mut seen: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+    let mut min_rel = f64::INFINITY;
+    for row in &corpus.rows {
+        if !regcontrol_autotrans_typecast_row(row) {
+            continue;
+        }
+        let (pair, _, _, cite, verdict, pin) = RP312_UPSTREAM_BUG
+            .iter()
+            .find(|(p, _, _, _, _, _)| *p == row.pair)
+            .expect("the predicate reads the table");
+        assert!(
+            cite.contains(".pas:"),
+            "{pair}: an RP3.12 routing must cite the r4133 site, got {cite:?}"
+        );
+        assert!(
+            RP312_VERDICTS.contains(verdict),
+            "{pair}: {verdict:?} is not a recorded RP3.12 verdict — extend RP312_VERDICTS \
+             with the obligations that outcome owes, never loosen"
+        );
+        assert!(!pin.is_empty(), "{pair}: the verdict owes a named witness");
+        // NOT display-class, and not by a hair: this is the reading RP2.4's
+        // accounting got wrong about the class while getting the scope right.
+        let rel = props_norm::display_rel(&row.rust, &row.r4133).expect("a numeric cell");
+        assert!(
+            rel > floor,
+            "{pair}: {rel:e} is inside the display floor {floor:e} — that row is RP3.9's \
+             round-trip residue, not this upstream bug"
+        );
+        min_rel = min_rel.min(rel);
+        assert!(!props_norm::under_display_floor(&row.rust, &row.r4133));
+        assert_eq!(
+            first_match(chain_verdicts(&corpus, row)),
+            None,
+            "{pair}: an RP3.12 row must be unclaimed by every link"
+        );
+        let ev = corpus.evidence(row).expect("a declared row has evidence");
+        let e = seen.entry(pair).or_default();
+        e.0 += 1;
+        e.1 += usize::from(row_in_scope(row, ev));
+    }
+    assert_eq!(
+        seen.iter().map(|(p, n)| (*p, *n)).collect::<Vec<_>>(),
+        RP312_UPSTREAM_BUG
+            .iter()
+            .map(|(p, n, s, _, _, _)| (*p, (*n, *s)))
+            .collect::<Vec<_>>(),
+        "the cited pairs, row counts and in-scope splits must be exactly what the walk selects"
+    );
+    assert!(
+        min_rel > 100.0 * floor,
+        "the smallest RP3.12 gap is {min_rel:e}, within 100x of the display floor {floor:e} — \
+         re-read which sub-step owns these rows instead of leaving the split to a rounding"
+    );
+    let led = account(&corpus, PROPS_NORM_R4133);
+    assert_eq!(
+        led.owner(Owner::Rp312),
+        DECLARED_RP312,
+        "RP3.12 inherits (rows, pairs, rows on in-scope pairs)"
+    );
+    // The pair's ninth spelling stays where RP3.9 settled it: one row, inside
+    // the floor, still declared to Owner::Rp39.
+    assert_eq!(
+        RP39_ROUTING
+            .iter()
+            .find(|(p, _, _, _, _)| *p == "autotrans.wdgcurrents")
+            .map(|(_, n, s, _, d)| (*n, *s, *d)),
+        Some((1, 0, "PIN")),
+        "RP3.9 keeps the makeposseq round-trip residue of the same pair"
+    );
+}
+
+/// **RP3.12's routing is pinned literally**, like [`NOT_A_PIN`],
+/// [`LEDGER_ENTRY_PINS`] and [`RP39_PINS`]: it is the fifth exemption from
+/// "every pin in [`PINS`] is named by an echo row", and an exemption that grows
+/// by iteration would let an un-cited `#[test]` through.
+///
+/// The literals are the sub-step's whole verdict — which pair, how many rows,
+/// how many of them the RP4.1 unmask compares, the r4133 site, the outcome and
+/// the witness — so a silent edit to any of the six columns fails here first.
+#[test]
+fn the_rp312_upstream_bug_list_is_pinned() {
+    assert_eq!(
+        RP312_UPSTREAM_BUG,
+        [(
+            "autotrans.wdgcurrents",
+            8,
+            0,
+            "RegControl.pas:1026/:1296/:1479 `TTransfObj(ControlledElement)` over \
+             AutoTrans.pas:88 `TAutoTransObj = class(TPDElement)`; the zeroed increment at \
+             RegControl.pas:1249-1250",
+            "UPSTREAM_BUG",
+            "autotrans_wdgcurrents_stay_regulated_where_r4133_never_taps_the_autotrans",
+        )],
+        "one pair, one verdict — the 8 controls:autotrans/* spellings of \
+         autotrans.wdgcurrents, 34 cells, none in scope"
+    );
+    assert_eq!(
+        RP312_VERDICTS,
+        ["UPSTREAM_BUG"],
+        "RP3.12 records exactly the outcome it measured"
     );
 }
 
