@@ -29,6 +29,8 @@ fn build_shape(mult: &str) -> LoadShapeObj {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
@@ -63,6 +65,8 @@ fn edit_generator(edits: &[(&str, &str)]) -> Generator {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut g, idx, value, &mut eng).unwrap();
     }
@@ -400,6 +404,8 @@ fn edit_gen_prop(g: &mut Generator, name: &str, value: &str) -> crate::diag::Err
         enums: &enums,
         errors: &mut errors,
         foreign: None,
+
+        was_quoted: false,
     };
     cls.edit_property(g, idx, value, &mut eng).unwrap();
     // The "Not Loaded" diagnostic is queued on the object (push_error), not on

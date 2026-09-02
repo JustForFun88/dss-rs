@@ -27,6 +27,8 @@ fn build_shape(edits: &[(&str, &str)]) -> LoadShapeObj {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
@@ -54,6 +56,8 @@ fn build_growth_shape(
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
@@ -169,6 +173,8 @@ fn edit_load(edits: &[(&str, &str)]) -> Load {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut load, idx, value, &mut eng).unwrap();
     }

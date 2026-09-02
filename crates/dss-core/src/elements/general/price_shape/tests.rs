@@ -18,6 +18,8 @@ fn edited(edits: &[(&str, &str)]) -> (ClassProps, PriceShapeObj, crate::diag::Er
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }

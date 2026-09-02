@@ -32,6 +32,8 @@ fn edit_windgen(edits: &[(&str, &str)]) -> WindGen {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut g, idx, value, &mut eng).unwrap();
     }

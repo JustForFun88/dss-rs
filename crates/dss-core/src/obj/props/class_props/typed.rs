@@ -166,6 +166,8 @@ mod tests {
             enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         f(&mut eng);
         errors.texts()

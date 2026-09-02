@@ -127,6 +127,8 @@ fn build_tcc(npts: &str, c: &str, t: &str) -> TccCurveObj {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut obj, idx, v, &mut eng).unwrap();
     }

@@ -781,7 +781,12 @@ the `CorpusGuard` (recursive; ported to the r4133 side as
 `crates/dss-epri/src/guard.rs`) restores each case dir on every engine side,
 but a run that writes OUTSIDE the case-dir tree (e.g. a manual `dss-cli`
 invocation, or the known export-CWD corner) is uncoverable —
-`git restore`/path-limited `git clean` the subtree if anything lingers.
+`git restore`/path-limited `git clean` the subtree if anything lingers. **Probe a
+vendored deck on a copy, never in place:** several of them write next to
+themselves over *tracked* files — compiling any of the three `IEEE_519.DSS`
+copies rewrites `IEEE_519_Mon_mpcc_1.csv` / `IEEE_519_SavedVoltages.dbl`, and
+`Test/LineConstantsCode.DSS` is the third of the trio `lane_diff.ps1` restores by
+exact path (measured, RP3.7 2026-09-02).
 
 **Regenerate a golden** (manual, deliberate — never in CI): install the pinned
 venv from `tools/golden/PIN.txt`, then run the matching `tools/golden/gen_*.py`.

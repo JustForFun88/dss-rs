@@ -99,26 +99,44 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums 
         &["Loadshape", "Time", "PeakshaveLow", "I-PeakshaveLow"],
         &[2, 4, 7, 9],
     ));
-    // SwtControl.pas TSwtControl.Create: ActionEnum / StateEnum. Both map onto
-    // the control's `CurrentAction` field; the ordinals are EControlAction
-    // (CTRL_CLOSE=2, CTRL_OPEN=1). Action renders close/open, State renders
-    // closed/open; both default to CTRL_CLOSE.
-    let swt_control_action = push(DssEnum::new(
+    // SwtControl.pas ActionEnum / StateEnum (0.14.5 `TSwtControl.Create`);
+    // ordinals are EControlAction (CTRL_CLOSE=2, CTRL_OPEN=1). Action renders
+    // close/open, State renders closed/open.
+    //
+    // RP3.7 A1 (r4133 authority, 2026-08-02 policy): r4133's
+    // `InterpretSwitchState` matches the value's FIRST CHARACTER ONLY —
+    // `case LowerCase(param)[1] of 'o': CTRL_OPEN; 'c': CTRL_CLOSE` with NO
+    // else arm (`Version8/Source/Controls/SwtControl.pas:423-426` ganged,
+    // `:464-467` per-phase; structurally identical to Relay's
+    // `InterpretRelayState`, probe tmp/rp37/probe.md §2). `allow_longer` +
+    // `max_chars=1` give the first-char windows, and the `Keep` default gives
+    // the no-else arm: a non-matching value (`state=bogus`, a multi-token list
+    // reaching this seam) leaves the slots unchanged, silently. This is
+    // 0.14.5's SILENT fallback shaped to r4133's no-op value (0.14.5's
+    // `DefaultValue = CTRL_CLOSE` closes on mismatch — refused per policy);
+    // probed r4133 leaves the state untouched (probe §9, out_r4133_micro).
+    let mut swt_control_action = DssEnum::new(
         "SwtControl: Action",
         false,
         1,
         1,
         &["close", "open"],
         &[2, 1],
-    ));
-    let swt_control_state = push(DssEnum::new(
+    );
+    swt_control_action.allow_longer = true;
+    swt_control_action.default_value = ControlAction::Keep.ordinal();
+    let swt_control_action = push(swt_control_action);
+    let mut swt_control_state = DssEnum::new(
         "SwtControl: State",
         false,
         1,
         1,
         &["closed", "open"],
         &[2, 1],
-    ));
+    );
+    swt_control_state.allow_longer = true;
+    swt_control_state.default_value = ControlAction::Keep.ordinal();
+    let swt_control_state = push(swt_control_state);
     // fuse.pas TFuse.Create: ActionEnum / StateEnum. EControlAction ordinals
     // (CTRL_CLOSE=2, CTRL_OPEN=1); Action renders close/open, State/Normal render
     // closed/open.

@@ -304,6 +304,16 @@ impl Dss {
     pub(crate) fn registered_classes(&self) -> &[DssClass] {
         &self.classes
     }
+
+    /// Mutable view of the registered class list, for unit tests that must
+    /// drive an object through seams the property surface does not expose yet
+    /// (RP3.7 A1: the per-phase `InterpretSwitchState` mechanics land on the
+    /// arena object before A2 wires them into the property parser; the test
+    /// then applies the deferred `RefAction`s exactly like the executive).
+    #[cfg(test)]
+    pub(crate) fn registered_classes_mut(&mut self) -> &mut [DssClass] {
+        &mut self.classes
+    }
 }
 
 impl Default for Dss {

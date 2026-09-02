@@ -580,6 +580,14 @@ impl ClassProps {
                 Ok(0)
             }
             PropType::MappedStringEnumArray => {
+                // Class-owned raw-value writer (r4133 `InterpretSwitchState`
+                // shape: ganged-vs-per-phase keyed on `WasQuoted`, first-char
+                // token match — [`DssObject::set_enum_array_raw`]). SwtControl
+                // `Normal`/`State` take it; every other enum array falls
+                // through to the generic tokenizer below.
+                if obj.set_enum_array_raw(idx, value, eng.was_quoted) {
+                    return Ok(0);
+                }
                 // Pascal `MappedStringEnumArrayProperty` + `SizeIsFunction`: a
                 // list of enum strings up to the object-computed count
                 // (`GetFuseStateSize`). A short input sets only the leading

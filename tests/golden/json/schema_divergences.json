@@ -15,7 +15,7 @@
     },
     {
       "class": "SwtControl",
-      "cause": "The port adopted the 0.15.x/r4133 SwtControl model (D12/WP-U1.6: Normal->NormalState, State->PresentState per-phase arrays instead of the shared 0.14.5 CurrentAction; the State GetState 'no controlled element -> CTRL_NONE' getter semantics), plus the r4133 RatedCurrent prop and the 0.15.x help catalog (deprecated Delay, per-phase Normal/State help). Its Normal/State schema defaults differ from the 0.14.5 oracle in getter semantics (not a clean line diff), so it is pinned to the port's bytes. See STATUS §OG-1.5c batch B5."
+      "cause": "The port adopted the 0.15.x/r4133 SwtControl model (D12/WP-U1.6: Normal->NormalState, State->PresentState per-phase arrays instead of the shared 0.14.5 CurrentAction; the State GetState 'no controlled element -> CTRL_NONE' getter semantics), plus the r4133 RatedCurrent prop and the 0.15.x help catalog (deprecated Delay, per-phase Normal/State help). Since R4133_PROPS RP3.7 the per-phase model is real: Normal/State are MappedStringEnumArray properties rendered one token per controlled-element phase (r4133 SwtControl.pas:589-599 / :600-610), so the port's schema spells them `type: array` + `items: $ref` where the 0.14.5 oracle spells a scalar `$ref` with a default - the same shape the port already emits for Relay's Normal/State. No `default` key is emitted for either: the schema emitter derives an array default from the sample object, and a sample SwtControl has no controlled element, hence array_size 0. The whole class is therefore pinned to the port's bytes. See STATUS §OG-1.5c batch B5 and §R4133_PROPS WP-RP3 (RP3.7)."
     },
     {
       "class": "WindGen",

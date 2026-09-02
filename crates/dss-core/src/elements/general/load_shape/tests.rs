@@ -19,6 +19,8 @@ fn edited(edits: &[(&str, &str)]) -> (ClassProps, LoadShapeObj, crate::diag::Err
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }

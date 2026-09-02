@@ -293,6 +293,80 @@ Oracle-backed pin without a new capture: the `est8` deck minus its
   census is 5 switch-shaped cells.
   **Priority: low**, but it is a real upstream divergence, not a stylistic one.
 
+### 1.13 Ref-snapshot staleness: a control's render and drive bound follow a frozen phase count
+- **Deferred by:** `R4133_PROPS_PLAN.md` §RP3.7 and its verify-A1 settlement (2026-09-02,
+  finding F8). RP3.7 fixed the one reachable instance it owned (`MakePosSequence` now refreshes
+  `ctrl_snap` on both SwtControl and Relay); the general gap is architectural and has no owner.
+- **What (measured on BOTH engines, 2026-09-02, r4133 DLL 11.0.0.1 vs the port):** with a
+  SwtControl wired to a 3-phase `line.swk`, `edit line.swk phases=1 bus1=src.1 bus2=ld.1` makes
+  r4133 answer `? swtcontrol.sw1.state` = `[closed, ]` immediately, while the port keeps
+  `[closed, closed, closed, ]` — through further unrelated edits of the control — until the ref is
+  re-resolved by a `switchedobj=` write. The same shape exists on Relay, and on Relay's
+  `mon_snap` it is *numeric*, not just a render: `recalc` re-reads the frozen monitored snapshot,
+  so an `edit relay.x …` after `makeposseq` restores the pre-pos-seq `Nphases` and with it
+  `vbase` / `PickupVolts47`.
+- **Spec.** r4133 reads the live object at every use: `SwtControl.pas:591`/`:602`
+  (`GetPropertyValue` 6/7 loop `ControlledElement.NPhases`), `:346` (`RecalcElementData`), `:633`
+  (`Reset`); `Relay.pas:1407-1428` (getters 39/40), `:1318` (`Sample`), `:965`
+  (`RecalcElementData`), `:1454` (`Reset`).
+- **Current Rust:** the port's classes hold ref **snapshots** by design — an object cannot read
+  another object — so `swt_control::SwtControl::state_size()` and `relay::Relay::state_size()`
+  read `ctrl_snap.nphases`, refreshed only at `switchedobj=`/`monitoredobj=` resolution and (since
+  RP3.7) in `make_pos_sequence`. The bound arithmetic itself is pinned
+  (`recalc_redrives_after_a_phase_count_change`, `the_render_bound_follows_makeposseq`).
+- **Why it is not a one-liner:** a live count needs an engine-level snapshot-refresh hook — every
+  ref-holding class has the same gap, not only these two — which is a `dss-core` object-model
+  change, not a control-class patch.
+- **Blast radius today: zero cells.** No corpus deck edits a controlled or monitored element's
+  phase count after wiring its control (swept for RP3.7). **Priority: low**, but it is a real
+  divergence from the authority engine, not a modelling preference.
+
+### 1.14 The per-phase state seam RP3.7 landed for SwtControl and Relay, and its three untouched siblings
+- **Deferred by:** `R4133_PROPS_PLAN.md` §RP3.7 (2026-09-02). RP3.7 owns `swtcontrol.normal`/
+  `.state` and `relay.normal`/`.state` only; no plan sub-step owns the Recloser or Fuse pairs
+  (checked against §RP3.8, §RP3.9, §RP3.10, §RP3.11 and §RP4.1), and the two Relay items below
+  were deliberately not landed on a hunch.
+- **What.** (a) **Recloser carries both defects RP3.7 removed from Relay**
+  (`crates/dss-core/src/elements/control/recloser/accessors.rs:334-362`): the
+  `values.len() == 1 → ganged` heuristic, which reads a *quoted* single token as a ganged write
+  where r4133 writes phase 1 only, and a whole-object `if self.f_locked { return; }` that refuses
+  `Normal` as well as `State`, where `Recloser.pas`'s guard is the same name-based `('a'|'s')`
+  rule the SwtControl/Relay interpreters use. It has no raw write hook and no five-token cap.
+  (b) **Fuse has no ganged path at all** (`elements/pd/fuse/accessors.rs:205-214`): it writes only
+  the leading `values.len()` slots, so a bare `fuse … state=open` sets phase 1 alone where
+  `Fuse.pas:569-597` — the one interpreter of the three that *has* the `Else Begin` — fills every
+  slot. (c) **Relay does not implement r4133's `ControlledElement = NIL → '[]'` render**
+  (`Relay.pas:1406-1408`/`:1417-1419`); SwtControl's twin landed in RP3.7 as `state_size() == 0`,
+  but Relay's `state_size` has **14** call sites (sensing loops in `logic.rs`, `DoPendingAction`,
+  `Reset`, `MakeLike`), so returning 0 there is a much wider behavioral change than the render and
+  would silently align `do_reset_action` with r4133's NIL-guarded `Reset` body — a second,
+  unprobed observable. (d) **`set_States`' `ArmedForReset := FALSE`** (`Relay.pas:1509-1540`) is
+  not reproduced: the port drives the element from `recalc` (r4133's `RecalcElementData:965-980`,
+  which clears `ArmedForOpen`/`ArmedForClose` but not `ArmedForReset`); observable only for an
+  `edit` issued mid-simulation with a reset armed.
+- **How to do it:** the RP3.7 pattern, per class — probe the authority DLL first (a quoted single
+  token, a bare token, a locked `normal=`, a 6-token list on a 6-phase element), then port
+  `InterpretFuseState`/the Recloser interpreter behind a `set_enum_array_raw` hook with the
+  `WasQuoted` reconstruction, and pin the measured bytes.
+- **Blast radius today: zero cells** on either channel (the census pairs for these classes carry
+  no `Normal`/`State` divergence, and Recloser/Relay are whole-element-skipped on the capi
+  channel). **Priority: low-medium** — the defects are real write-semantics divergences that a
+  deck could hit the day it writes a quoted list.
+
+### 1.15 `TSwtControlObj.RecalcElementData`'s terminal validation
+- **Deferred by:** `R4133_PROPS_PLAN.md` §RP3.7 (2026-09-02) — pre-existing omissions outside the
+  sub-step's line ranges, recorded rather than fixed.
+- **What.** r4133 raises `DoErrorMsg` **384** when the control's `ElementTerminal` exceeds the
+  controlled element's `NTerms` (`Version8/Source/Controls/SwtControl.pas:335-341`) and warns when
+  `FNphases > SWTCONTROLMAXDIM` (`:334`). The port emits the sibling **387** for a missing element
+  but silently clamps the terminal index instead of erroring — a genuine validation gap, i.e. a
+  deck typing `switchedterm=3` on a two-terminal line is diagnosed upstream and not here.
+- **Not part of it:** `HasSwtControl := TRUE` (`:344`) is dead upstream state (declared
+  `CktElement.pas:99`, initialized `:213`, set here, read nowhere), so it is deliberately **not**
+  ported and needs no row of its own.
+- **Blast radius today: zero cells** — no corpus deck mis-types the terminal. **Priority: low**;
+  it is one guarded error, but validation gaps are exactly what silently degrades a port.
+
 ---
 
 ## 2. Owned deferrals — NOT orphans (a live plan tracks them; do not re-port here)

@@ -39,7 +39,8 @@
     "linespacing-normamps": "Line built from LineSpacing+wiredata: dss_capi 0.14.5 reports Line.lsp.normamps=730/emergamps=1095 (the FIRST wire's NormAmps rating, ACSR_556) where the port and the newer engines (0.15.x/r4133) report 230/345 — the MINIMUM NormAmps over the phase conductors (min{556->730, 4-0->340, 1-0->230}=230; r4133 V8 LineGeometry.pas:1237-1239, WP-U1.2 D3). The port follows the corrected 0.15.x min-over-phase derivation, so on capi_v0145 it intentionally diverges from 0.14.5 (settled empirically 2026-07-18: port=230/345, oracle 0.14.5=730/1095 — the port value matches the r4133 source and is CORRECT). r4133 additionally #303-crashes this deck (skip). Exact-pair property entry on capi_v0145.",
     "generator-makeposseq-foreign-slots": "dss_capi 0.14.5's TGeneratorObj.MakePosSequence decides \"the user set kVA=/MVA=\" from the raw property-sequence slots [26]/[27] (Generator.pas:2804-2806), but its enum reorder moved Xdp/Xdpp into 26/27 while kVA/MVA sit at 23/24, so both rating guards read foreign cells: a 3-phase generator declared with kVA=/MVA= keeps its full rating after makeposseq instead of having it divided by the phase count. EPRI r4133 writes the same two literals (Version8/Source/PCElements/generator.pas:3060-3062) but there they are CORRECT — kVA is registered at 26 and MVA at 27 (:459-460), Xdp/Xdpp at 29/30 (:463/:465) — so the defect is a dss_capi regression, not upstream behaviour. Per the 2026-08-02 policy the port follows r4133 in both lanes and divides the rating; the pinned 0.14.5 oracle keeps the undivided value. Exact-pair (a discrete value jump, not display precision).",
     "line-merge-length-units-reset": "TLineObj.MergeWith's matrix-model series branch and the length units. EPRI r4133 saves the units before the merge (Version8/Source/PDElements/Line.pas:1627 LenUnitsSaved := LengthUnits) and re-applies them with a SEPARATE Edit that runs AFTER the Rmatrix/Xmatrix (:1778-1779) and Cmatrix (:1791-1792) Edits -- Format(' Length=%-g  Units=%s', [TotalLen, LineUnitsStr(LenUnitsSaved)]) at :1794-1796 -- precisely because the 12..14 property side effect calls ResetLengthUnits (:691-693). Its MakePosSequence uses the same construction for the same reason (:1595-1596, 'Repeat the Length Units to compensate for unexpected reset'). The pinned dss_capi 0.14.5 inverted the two: src/PDElements/Line.pas:1806-1807 writes Len and LengthUnits as FIELDS and :1815-1817 then runs PropertySideEffects(rmatrix/xmatrix/cmatrix), whose ResetLengthUnits (:2080-2085) wipes LengthUnits back to UNITS_NONE one statement later, so every matrix-model series merge on 0.14.5 reports 'none'. The port had copied that order; r4133 is the behavioral authority and its bugs are never reproduced (CLAUDE.md 2026-08-02), so R4133_PROPS_PLAN RP3.5 fixed it in BOTH lanes and the three merged lines of this deck now render their saved 'kft'. Probed live 2026-08-28 on the r4133 DLL (Version 11.0.0.1, tools/opendss/bin/r4133): 'kft' on all three merged lines here, and deck-dependent elsewhere ('mi'/'cm' on two purpose-built micro-decks, 'none' on a switch), so the getter is live state (LineUnitsStr(LengthUnits), :1404) and not an echo. NOTHING ELSE MOVES: ConvertLineUnits returns 1.0 whenever either side is UNITS_NONE (Shared/LineUnits.pas:110-115), so FUnitsConvert is 1.0 on both engines either way and the merged line's YPrim, the assembled Y, the node voltages, currents, powers, losses, the node count (88) and the iteration count (5) are identical -- 'units' is the only divergent cell on the whole case, measured on all three engines. Correct value pinned by dss_core::exec::tests::reduce::merged_matrix_line_keeps_the_surviving_lines_length_units, which reads two micro-decks whose surviving lines carry DIFFERENT saved units (so the pin cannot pass against a hardwired getter) plus an un-merged control and a post-merge rmatrix= reset.",
-    "line-switch-kills-linecode": "TLineObj.PropertySideEffects arm 15 (switch=) and the LineCode flag. EPRI r4133 keeps TWO independent pieces of state: FLineCodeSpecified (Boolean) and CondCode (the lowercased code name), both set by FetchLineCode (Version8/Source/PDElements/Line.pas:385-387, :413). The flag is cleared by the impedance side effects -- arms 6..11, 26..27 open with FLineCodeSpecified := FALSE (:685) and so do arms 12..14 (:691) -- but arm 15, the switch= arm, does NOT touch it: :694-700 assigns SymComponentsChanged, YprimInvalid, GeometrySpecified := FALSE, SpacingSpecified := False, r1/x1/r0/x0 := 1.0, c1 := 1.1e-9, c0 := 1.0e-9, len := 0.001 and calls ResetLengthUnits, and contains no FLineCodeSpecified statement. The omission is written arm by arm, one line above and one line below the two arms that do clear it, not forgotten at the end of a block. The flag is read live by the property getter (3: If FLineCodeSpecified Then Result := CondCode else Result := '', :1357) -- it is NOT an echo of PropertyValue[], so this pair carries no PROPS_ECHO_R4133 row -- and by the units= arm, which picks ConvertLineUnits(FLineCodeUnits, NewLengthUnits) when the flag is TRUE and FUnitsConvert * ConvertLineUnits(LengthUnits, NewLengthUnits) when it is FALSE (:626-627). The pinned dss_capi 0.14.5 ADDED a kill to that arm and flagged it in its own source: KillLineCodeSpecified(); //TODO: check if this missing is relevant bug (.inputs/dss_capi/src/PDElements/Line.pas:677). The port had copied 0.14.5 (elements/pd/line/accessors.rs, SWITCH arm). r4133 is the behavioral authority and upstream bugs are never reproduced (CLAUDE.md 2026-08-02), so R4133_PROPS_PLAN RP3.6 deleted that one call in BOTH lanes. r4133 clears the flag at EIGHT other statements -- :685, :691, FetchLineSpacing :1832, FetchConductorList :1853, FetchWireList :1952, FetchCNCableList :2016, FetchTSCableList :2075 and FetchGeometryCode :2131 -- and the port now carries a counterpart for every one of them: seven were already in place, and the eighth (FetchConductorList's) was added by the RP3.6 audit settlement on 2026-08-29, after a live r4133 probe measured '? Line.<x>.linecode' = '' behind a 'conductors=[..]' where the port still answered the code name. No impedance moves on this corpus: every one of the five cells declares units=m on the LineCode and units=m on the Line, so the TRUE branch computes ConvertLineUnits(m, m) = 1.0 and the FALSE branch computes 1.0 * ConvertLineUnits(none, m) = 1.0 (Shared/LineUnits.pas -- either operand UNITS_NONE yields 1.0). Measured live 2026-08-29 on all three engines: r1 = '1' on r4133, on the 0.14.5 oracle and in the port, node voltages agreeing to 1.1e-10 relative and the r4133-vs-port current spread (9.7e-08) SMALLER than the capi-vs-port spread (1.9e-07) on the same deck, i.e. the residual is the documented faer-vs-KLU near-cancellation floor on an ideal switch, not a flag effect. The flag's real consequence is pinned on a purpose-built discriminating deck (a code in kft, the line in m, where the two branches differ by 304.8) by exec::tests::line_fetch::switch_yes_keeps_the_linecode_and_its_units_conversion, in both lanes and without an oracle -- through the rendered r1 AND, since the audit settlement, through the SOLVED node voltages of that deck, pinned against the r4133 DLL's own YNodeVarray (the flagged switch drops 1/304.8 of what the identical bare switch drops). The r4133 channel needs no entry: after the RP4.1 unmask these five cells compare and MATCH, which is the point of the sub-step."
+    "line-switch-kills-linecode": "TLineObj.PropertySideEffects arm 15 (switch=) and the LineCode flag. EPRI r4133 keeps TWO independent pieces of state: FLineCodeSpecified (Boolean) and CondCode (the lowercased code name), both set by FetchLineCode (Version8/Source/PDElements/Line.pas:385-387, :413). The flag is cleared by the impedance side effects -- arms 6..11, 26..27 open with FLineCodeSpecified := FALSE (:685) and so do arms 12..14 (:691) -- but arm 15, the switch= arm, does NOT touch it: :694-700 assigns SymComponentsChanged, YprimInvalid, GeometrySpecified := FALSE, SpacingSpecified := False, r1/x1/r0/x0 := 1.0, c1 := 1.1e-9, c0 := 1.0e-9, len := 0.001 and calls ResetLengthUnits, and contains no FLineCodeSpecified statement. The omission is written arm by arm, one line above and one line below the two arms that do clear it, not forgotten at the end of a block. The flag is read live by the property getter (3: If FLineCodeSpecified Then Result := CondCode else Result := '', :1357) -- it is NOT an echo of PropertyValue[], so this pair carries no PROPS_ECHO_R4133 row -- and by the units= arm, which picks ConvertLineUnits(FLineCodeUnits, NewLengthUnits) when the flag is TRUE and FUnitsConvert * ConvertLineUnits(LengthUnits, NewLengthUnits) when it is FALSE (:626-627). The pinned dss_capi 0.14.5 ADDED a kill to that arm and flagged it in its own source: KillLineCodeSpecified(); //TODO: check if this missing is relevant bug (.inputs/dss_capi/src/PDElements/Line.pas:677). The port had copied 0.14.5 (elements/pd/line/accessors.rs, SWITCH arm). r4133 is the behavioral authority and upstream bugs are never reproduced (CLAUDE.md 2026-08-02), so R4133_PROPS_PLAN RP3.6 deleted that one call in BOTH lanes. r4133 clears the flag at EIGHT other statements -- :685, :691, FetchLineSpacing :1832, FetchConductorList :1853, FetchWireList :1952, FetchCNCableList :2016, FetchTSCableList :2075 and FetchGeometryCode :2131 -- and the port now carries a counterpart for every one of them: seven were already in place, and the eighth (FetchConductorList's) was added by the RP3.6 audit settlement on 2026-08-29, after a live r4133 probe measured '? Line.<x>.linecode' = '' behind a 'conductors=[..]' where the port still answered the code name. No impedance moves on this corpus: every one of the five cells declares units=m on the LineCode and units=m on the Line, so the TRUE branch computes ConvertLineUnits(m, m) = 1.0 and the FALSE branch computes 1.0 * ConvertLineUnits(none, m) = 1.0 (Shared/LineUnits.pas -- either operand UNITS_NONE yields 1.0). Measured live 2026-08-29 on all three engines: r1 = '1' on r4133, on the 0.14.5 oracle and in the port, node voltages agreeing to 1.1e-10 relative and the r4133-vs-port current spread (9.7e-08) SMALLER than the capi-vs-port spread (1.9e-07) on the same deck, i.e. the residual is the documented faer-vs-KLU near-cancellation floor on an ideal switch, not a flag effect. The flag's real consequence is pinned on a purpose-built discriminating deck (a code in kft, the line in m, where the two branches differ by 304.8) by exec::tests::line_fetch::switch_yes_keeps_the_linecode_and_its_units_conversion, in both lanes and without an oracle -- through the rendered r1 AND, since the audit settlement, through the SOLVED node voltages of that deck, pinned against the r4133 DLL's own YNodeVarray (the flagged switch drops 1/304.8 of what the identical bare switch drops). The r4133 channel needs no entry: after the RP4.1 unmask these five cells compare and MATCH, which is the point of the sub-step.",
+    "swtcontrol-per-phase-state-render": "TSwtControlObj's switch state is PER PHASE on EPRI r4133 and scalar on the pinned dss_capi 0.14.5, so the two engines render different SHAPES for the same state. r4133 holds FPresentState and FNormalState as pStateArray (Version8/Source/Controls/SwtControl.pas:37-38), allocated one slot per phase in Create (:299-307, every slot CLOSED), written ganged from a bare token (:433-451) or phase-by-phase from a quoted list (:453-480: a fresh AuxParser, first-CHARACTER match with no else arm, capped at SWTCONTROLMAXDIM = 5 tokens, :14), each slot driving its own conductor through set_States (:532-549 -> ControlledElement.Closed[Idx]) and re-applied per phase by RecalcElementData (:347-355). Its getters render ONE TOKEN PER CONTROLLED-ELEMENT PHASE in the '[tok, tok, ... ]' form -- property 6 Normal at :589-599, property 7 State at :600-610 -- and '[]' when the controlled element is nil. dss_capi 0.14.5 has no per-phase model at all (one enum per object, .inputs/dss_capi/src/Controls/SwtControl.pas), so it renders the bare word 'closed'/'open'. r4133 is the behavioral authority (CLAUDE.md 2026-08-02) and R4133_PROPS_PLAN RP3.7 ported the per-phase model in BOTH lanes, so every SwtControl Normal/State cell on the 0.14.5 channel is now a RENDERING-SHAPE divergence with the identical switch state behind it: the port's tokens are exactly the oracle's word, repeated once per controlled phase. Structural only -- no conductor, YPrim, node voltage, current, power, loss or iteration count moves, and Lock/Action/Delay/SwitchedObj are untouched (the census reports no other moved cell on any of the five cases). Measured live 2026-09-02 on the r4133 DLL (Version 11.0.0.1, tools/opendss/bin/r4133) over all five gated decks: swtcontrol_lock '[closed, closed, closed, ]' for Normal and State both before and after the locked post 'action=open', makeposseq_ctrl '[closed, ]' for both (the switched line is 1-phase after MakePosSequence), and each IEEE_519 copy '[closed, closed, closed, ]' for both of its two controls -- byte-identical to what the port now renders. The r4133 channel needs NO entry, staged or landed: the pair's 80 in-scope cells (swtcontrol.normal and swtcontrol.state, 40 each, on the three r4133-gating decks midi_swtcontrol, swtcontrol_time and civanlar) COMPARE after the fix -- re-measured 2026-09-02 with the RP0.2 census knob, which reports ZERO Normal/State rows on that channel and leaves only the pairs owned elsewhere (Delay, Action, Reset, SwitchedObj, enabled). Correct value pinned by dss_core::exec::tests::controls::swtcontrol_state_renders_one_token_per_controlled_phase (the gated decks plus the 1/2/3-phase discriminator) and dss_core::exec::tests::controls::swtcontrol_state_renders_per_phase_on_the_r4133_only_decks (the three in-scope decks, which no capi channel can witness because 0.14.5 cannot render the array at all)."
   },
   "entries": [
     {
@@ -935,6 +936,179 @@
       "source": "R4133_PROPS_PLAN RP3.6 measurement 2026-08-29: exact-pair property divergences on the switched, linecode-bearing lines of zone_3/Branches.dss (lines 161 and 165). Each line reads 'length=0.001 linecode=<code> ... Switch=True units=m', so the switch= arm runs AFTER the code is fetched: r4133 keeps FLineCodeSpecified TRUE there and renders the code name, the pinned dss_capi 0.14.5 kills the flag and renders ''. The port now follows r4133 in both lanes, so it diverges from the 0.14.5 oracle on exactly these cells. This case is kind=feeder, engines=both, so force_properties (crates/dss-core/tests/corpus_gate/scheduler.rs) turns on its full capi property compare today -- which is why this is a capi_v0145 entry that LANDS with the fix rather than a staged one: the plan's staging rule defers r4133 property entries only, because the r4133 props compare stays masked until RP4.1. The sibling deck Version8/Distrib/Examples/StoCtrl_Current_PeakShave/Line.DSS has the same shape but contributes ZERO cells: its case is kind=large, which force_properties excludes. Values read live 2026-08-29 from the r4133 DLL, the pinned 0.14.5 oracle and the port on byte copies of the vendored decks. The frozen census extracts under tests/corpus/props_r4133/ keep the PRE-FIX rust value ('') as the 2026-08-08 measurement -- they are a data lock, not a live re-measurement, and are deliberately not edited.",
       "measured": {
         "date": "2026-08-29"
+      }
+    },
+    {
+      "id": "swtcontrol-per-phase-state-lock-capi-props",
+      "case": "controls:swtcontrol/swtcontrol_lock.dss",
+      "channel": "capi_v0145",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^swtcontrol\\.sw\\.state$",
+          "oracle": "closed",
+          "rust": "[closed, closed, closed, ]"
+        },
+        {
+          "field": "probe",
+          "name_re": "(?i)^swtcontrol\\.sw\\.normal$",
+          "oracle": "closed",
+          "rust": "[closed, closed, closed, ]"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.sw\\.state$",
+          "oracle": "closed",
+          "rust": "[closed, closed, closed, ]"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.sw\\.normal$",
+          "oracle": "closed",
+          "rust": "[closed, closed, closed, ]"
+        }
+      ],
+      "cause_ref": "swtcontrol-per-phase-state-render",
+      "source": "R4133_PROPS_PLAN RP3.7 measurement 2026-09-02: the per-phase Normal/State render on the one micro-deck that both PROBES and property-compares a SwtControl. The deck declares 'new swtcontrol.sw switchedobj=line.feed switchedterm=1 normal=closed ~ delay=0.25 lock=yes' on a 3-phase line and the manifest arms the post 'edit swtcontrol.sw action=open', which the lock refuses on BOTH engines (r4133's guard fires on the property name's first character, SwtControl.pas:416-417), so the switch stays closed for all 12 steps and the only thing that moves is the render shape: the port answers r4133's '[closed, closed, closed, ]' where the pinned dss_capi 0.14.5 answers its scalar 'closed'. FOUR scopes for TWO cells, because the deck is exposed twice: the manifest declares probes [state, normal, lock] AND selected_elements ['*'], and force_properties (crates/dss-core/tests/corpus_gate/scheduler.rs) turns the full capi property compare on for every gates_capi() controls-family case -- so state and normal are each compared twice on each of the 12 steps (the gate stops at the first mismatch and showed only 'step 0: probe SwtControl.sw.state'). 'lock' is unaffected: both engines render 'Yes'. Note the deck writes normal=closed BEFORE lock=yes on the same New command, so no corpus deck exercises RP3.7(a2)'s locked-normal rule; that rule is pin-only. This is a capi_v0145 entry that LANDS with the fix rather than a staged one: the plan's section 1.1(e) staging rule defers r4133 property entries only, because only that channel stays masked until RP4.1. Values read live 2026-09-02 from the r4133 DLL (both before and after the locked post), the pinned 0.14.5 oracle and the port. The frozen census extracts under tests/corpus/props_r4133/ keep the PRE-FIX rust value ('closed') as the 2026-08-08 measurement -- they are a data lock, not a live re-measurement, and are deliberately not edited.",
+      "measured": {
+        "date": "2026-09-02"
+      }
+    },
+    {
+      "id": "swtcontrol-per-phase-state-makeposseq-capi-props",
+      "case": "modes:makeposseq/makeposseq_ctrl.dss",
+      "channel": "capi_v0145",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.swc\\.normal$",
+          "oracle": "closed",
+          "rust": "[closed, ]"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.swc\\.state$",
+          "oracle": "closed",
+          "rust": "[closed, ]"
+        }
+      ],
+      "cause_ref": "swtcontrol-per-phase-state-render",
+      "source": "R4133_PROPS_PLAN RP3.7 measurement 2026-09-02: the same per-phase render on the one-step MakePosSequence control deck, where the controlled 'line.sw' drops to ONE phase, so the array is one token long -- the port and r4133 both answer '[closed, ]' against the 0.14.5 oracle's scalar 'closed'. TWO cells (Normal and State on SwtControl.swc), property-compare only: the deck declares no SwtControl probe (its three probes are Capacitor.cap1, Transformer.reg and Storage.st1) while the MODES family forces compare_all_properties on the capi channel. This deck is what makes the render LIVE rather than a constant -- the same engine answers three tokens before 'makeposseq' and one after -- and it is the whole of the '[closed, ]' spelling the frozen census records for both swtcontrol.normal and swtcontrol.state (1 cell each). Its Relay and Recloser contribute NOTHING on this channel: both classes are whole-element-skipped there (crates/dss-core/tests/harness/mod.rs::skip_whole_element), which is why RP3.7(b)'s Relay render fix moves no capi cell and needs no entry. This is a capi_v0145 entry that LANDS with the fix rather than a staged one: the plan's section 1.1(e) staging rule defers r4133 property entries only, because only that channel stays masked until RP4.1. Values read live 2026-09-02 on the r4133 DLL, the pinned 0.14.5 oracle and the port. The frozen census extracts under tests/corpus/props_r4133/ keep the PRE-FIX rust value ('closed') as the 2026-08-08 measurement -- they are a data lock, not a live re-measurement, and are deliberately not edited.",
+      "measured": {
+        "date": "2026-09-02"
+      }
+    },
+    {
+      "id": "swtcontrol-per-phase-state-ieee519-tmode-capi-props",
+      "case": "solvable_now:Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS",
+      "channel": "capi_v0145",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.sw_2_ctrl\\.normal$",
+          "oracle": "closed",
+          "rust": "[closed, closed, closed, ]"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.sw_2_ctrl\\.state$",
+          "oracle": "closed",
+          "rust": "[closed, closed, closed, ]"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.sw_3_ctrl\\.normal$",
+          "oracle": "closed",
+          "rust": "[closed, closed, closed, ]"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.sw_3_ctrl\\.state$",
+          "oracle": "closed",
+          "rust": "[closed, closed, closed, ]"
+        }
+      ],
+      "cause_ref": "swtcontrol-per-phase-state-render",
+      "source": "R4133_PROPS_PLAN RP3.7 measurement 2026-09-02: the per-phase Normal/State render on the HarmonicsTMode copy of IEEE_519.DSS, whose control block declares TWO SwtControls -- 'New Swtcontrol.SW_3_Ctrl basefreq=60 Delay=0.0 Action=Close SwitchedObj=Line.SW_3 SwitchedTerm=2 lock=open enabled=y' and its SW_2_Ctrl twin (IEEE_519.DSS:45-46) -- on 3-phase lines. FOUR cells, not one: the port answers r4133's '[closed, closed, closed, ]' on both properties of both controls where the pinned dss_capi 0.14.5 answers 'closed'. kind=feeder, engines=capi_v0145, n_steps=1, no probes, so the single exposure is the full capi property compare force_properties turns on. The deck's own 'open Line.SW_3' / 'open Line.SW_2' commands act on the LINES directly, not through the controls, so neither control's state moves and the divergence is render shape only. This is a capi_v0145 entry that LANDS with the fix rather than a staged one: the plan's section 1.1(e) staging rule defers r4133 property entries only, because only that channel stays masked until RP4.1. Values read live 2026-09-02 on the r4133 DLL, the pinned 0.14.5 oracle and the port. The three IEEE_519 copies are byte-identical in that control block (same two lines, same line numbers) but are three separate corpus cases, so each owns its own per-case entry. The frozen census extracts under tests/corpus/props_r4133/ keep the PRE-FIX rust value ('closed') as the 2026-08-08 measurement -- they are a data lock, not a live re-measurement, and are deliberately not edited.",
+      "measured": {
+        "date": "2026-09-02"
+      }
+    },
+    {
+      "id": "swtcontrol-per-phase-state-ieee519-varload-capi-props",
+      "case": "solvable_now:Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS",
+      "channel": "capi_v0145",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.sw_2_ctrl\\.normal$",
+          "oracle": "closed",
+          "rust": "[closed, closed, closed, ]"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.sw_2_ctrl\\.state$",
+          "oracle": "closed",
+          "rust": "[closed, closed, closed, ]"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.sw_3_ctrl\\.normal$",
+          "oracle": "closed",
+          "rust": "[closed, closed, closed, ]"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.sw_3_ctrl\\.state$",
+          "oracle": "closed",
+          "rust": "[closed, closed, closed, ]"
+        }
+      ],
+      "cause_ref": "swtcontrol-per-phase-state-render",
+      "source": "R4133_PROPS_PLAN RP3.7 measurement 2026-09-02: the per-phase Normal/State render on the HarmonicsVariableLoad copy of IEEE_519.DSS, whose control block declares TWO SwtControls -- 'New Swtcontrol.SW_3_Ctrl basefreq=60 Delay=0.0 Action=Close SwitchedObj=Line.SW_3 SwitchedTerm=2 lock=open enabled=y' and its SW_2_Ctrl twin (IEEE_519.DSS:45-46) -- on 3-phase lines. FOUR cells, not one: the port answers r4133's '[closed, closed, closed, ]' on both properties of both controls where the pinned dss_capi 0.14.5 answers 'closed'. kind=feeder, engines=capi_v0145, n_steps=1, no probes, so the single exposure is the full capi property compare force_properties turns on. The deck's own 'open Line.SW_3' / 'open Line.SW_2' commands act on the LINES directly, not through the controls, so neither control's state moves and the divergence is render shape only. This is a capi_v0145 entry that LANDS with the fix rather than a staged one: the plan's section 1.1(e) staging rule defers r4133 property entries only, because only that channel stays masked until RP4.1. Values read live 2026-09-02 on the r4133 DLL, the pinned 0.14.5 oracle and the port. The three IEEE_519 copies are byte-identical in that control block (same two lines, same line numbers) but are three separate corpus cases, so each owns its own per-case entry. The frozen census extracts under tests/corpus/props_r4133/ keep the PRE-FIX rust value ('closed') as the 2026-08-08 measurement -- they are a data lock, not a live re-measurement, and are deliberately not edited.",
+      "measured": {
+        "date": "2026-09-02"
+      }
+    },
+    {
+      "id": "swtcontrol-per-phase-state-ieee519-matlab-capi-props",
+      "case": "solvable_now:Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/IEEE_519.DSS",
+      "channel": "capi_v0145",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.sw_2_ctrl\\.normal$",
+          "oracle": "closed",
+          "rust": "[closed, closed, closed, ]"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.sw_2_ctrl\\.state$",
+          "oracle": "closed",
+          "rust": "[closed, closed, closed, ]"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.sw_3_ctrl\\.normal$",
+          "oracle": "closed",
+          "rust": "[closed, closed, closed, ]"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^swtcontrol\\.sw_3_ctrl\\.state$",
+          "oracle": "closed",
+          "rust": "[closed, closed, closed, ]"
+        }
+      ],
+      "cause_ref": "swtcontrol-per-phase-state-render",
+      "source": "R4133_PROPS_PLAN RP3.7 measurement 2026-09-02: the per-phase Normal/State render on the Matlab/HarmonicT_MATLAB copy of IEEE_519.DSS, whose control block declares TWO SwtControls -- 'New Swtcontrol.SW_3_Ctrl basefreq=60 Delay=0.0 Action=Close SwitchedObj=Line.SW_3 SwitchedTerm=2 lock=open enabled=y' and its SW_2_Ctrl twin (IEEE_519.DSS:45-46) -- on 3-phase lines. FOUR cells, not one: the port answers r4133's '[closed, closed, closed, ]' on both properties of both controls where the pinned dss_capi 0.14.5 answers 'closed'. kind=feeder, engines=capi_v0145, n_steps=1, no probes, so the single exposure is the full capi property compare force_properties turns on. The deck's own 'open Line.SW_3' / 'open Line.SW_2' commands act on the LINES directly, not through the controls, so neither control's state moves and the divergence is render shape only. This is a capi_v0145 entry that LANDS with the fix rather than a staged one: the plan's section 1.1(e) staging rule defers r4133 property entries only, because only that channel stays masked until RP4.1. Values read live 2026-09-02 on the r4133 DLL, the pinned 0.14.5 oracle and the port. The three IEEE_519 copies are byte-identical in that control block (same two lines, same line numbers) but are three separate corpus cases, so each owns its own per-case entry. The frozen census extracts under tests/corpus/props_r4133/ keep the PRE-FIX rust value ('closed') as the 2026-08-08 measurement -- they are a data lock, not a live re-measurement, and are deliberately not edited.",
+      "measured": {
+        "date": "2026-09-02"
       }
     },
     {

@@ -38,6 +38,8 @@ fn edit_storage(edits: &[(&str, &str)]) -> Storage {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut st, idx, value, &mut eng).unwrap();
     }
@@ -87,6 +89,8 @@ fn build_shape(mult: &str) -> LoadShapeObj {
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
@@ -524,6 +528,8 @@ fn edit_storage_prop(st: &mut Storage, name: &str, value: &str) -> crate::diag::
         enums: &enums,
         errors: &mut errors,
         foreign: None,
+
+        was_quoted: false,
     };
     cls.edit_property(st, idx, value, &mut eng).unwrap();
     let mut msgs = errors;
@@ -724,6 +730,8 @@ fn apply_pos_seq(st: &mut Storage, actions: &[PosSeqAction], sys: &SysCtx) -> us
             enums: &enums,
             errors: &mut errors,
             foreign: None,
+
+            was_quoted: false,
         };
         match action {
             PosSeqAction::BeginEdit => editing = true,

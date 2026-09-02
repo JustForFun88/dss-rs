@@ -1084,7 +1084,7 @@
     },
     {
       "path": "tests/golden/json/schema_divergences.json",
-      "sha256": "dd95d503f94df02a28cc693675ac8060467866b269b071e37693f85156a56e62",
+      "sha256": "f0edae44e28b57699abbbd021e6c1cbe30ff31028c480f4fd83e5836edd814b6",
       "anchor": "capi_v0145",
       "produced_by": null
     },
@@ -1096,7 +1096,7 @@
     },
     {
       "path": "tests/golden/json/schema_full_port.json",
-      "sha256": "63fe73295285f4ea402651bccd6cb68c198034686c9635c2f60c1e9936d5416a",
+      "sha256": "c82e094883324d875781058874d8a4e2616a5b32c3910cc3fc59b5da99909e2a",
       "anchor": "self",
       "reason": "born-self: the port's own DSS_ExtractSchema document, spelled in the fpjson/CRLF rendering the parity lane produces. Its external half (json/schema_full_oracle.json + json/schema_divergences.json) stays capi_v0145 and frozen. Regen today bypasses the rails via REGEN_SCHEMA_PORT (golden_schema.rs::full_document_matches_port_golden); G3.6 routes it through harness::snapshot_*.",
       "produced_by": "parity"
@@ -1659,7 +1659,7 @@
     },
     {
       "path": "tests/golden/props/swtcontrol.json",
-      "sha256": "1cbee02df1c7edc85df47a759d4a89ac8a6e483466dae31ea8b878e99266f3fb",
+      "sha256": "061062afdfc9493aa77488de9c62790f3c39e009bf3adb3f591b8f0cd841bccd",
       "anchor": "capi015",
       "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
       "produced_by": null
