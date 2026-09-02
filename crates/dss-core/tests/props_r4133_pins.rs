@@ -27,7 +27,8 @@
 //!
 //! # The pins that no echo row can name (RP3.1 onwards)
 //!
-//! The last eight tests belong to no `EchoRow` at all, and could not. RP3.1's
+//! Eight of the tests below — RP3.1's two, RP3.2's four and RP3.4's two —
+//! belong to no `EchoRow` at all, and could not. RP3.1's
 //! divergence is one r4133 getter reading a field the `Edit` CASE never wires;
 //! RP3.2's is one r4133 getter reading the *wrong* live field — the
 //! dispatched Q where the property documents the base kvar; and RP3.4's is one
@@ -45,6 +46,14 @@
 //! (`every_echo_row_pin_is_a_test_that_exists`) that forbids an un-cited
 //! `#[test]` here reads that list too, so a pin cannot be added, renamed or
 //! deleted without moving its citation with it.
+//!
+//! Two later sub-steps hold pins of the same "no echo row could say this" kind,
+//! each with its own citation list read by that same guard: RP3.8's three
+//! (`props_r4133_replay::RP38_SUPERSEDED` and `RP38_CAPTURE_PIN` — five pairs
+//! whose r4133 getters render live where the 0.14.5 capture is `''`), and
+//! RP3.9's, which hold the port's value on the pairs RP2.4's display floor
+//! refuses because the `%.Ng` round trip happened upstream
+//! (`props_r4133_replay::RP39_PINS`; see the block at the end of this file).
 //!
 //! # The shape of a pin
 //!
@@ -2063,4 +2072,1183 @@ fn the_silent_readonly_capture_cells_are_empty() {
         cells, 21,
         "5 IndMach012 scenarios x PF + 4 StorageController scenarios x 4 aggregates"
     );
+}
+
+// ---------------------------------------------------------------------------
+// RP3.9 — the round-trip residue (`R4133_PROPS_PLAN.md` §RP3.9)
+// ---------------------------------------------------------------------------
+//
+// These pins hold the port's value on the pairs RP2.4's display floor refuses
+// (`props_norm::display_is_render`): r4133's number is NOT our number rounded to
+// the digits it printed, because the `%.Ng` round trip happened UPSTREAM —
+// inside `MakePosSequence`, which writes a command string of 5-significant-digit
+// tokens and lets its own `Edit` re-parse them (`Parser.CmdString := S; Edit`),
+// so everything derived afterwards is derived from the rounded input. The port
+// applies the same conversion as typed `f64` setters (`exec/make_pos_seq.rs:200`,
+// WPG.21), keeps the exact value, and diverges by that round trip and nothing
+// else.
+//
+// Each pin therefore names BOTH numbers — ours as a literal render of the live
+// getter, r4133's as the vendored census literal — and *reproduces* r4133's from
+// ours by running the Pascal chain's own arithmetic (`round_g`, below) and, where
+// the engine can be made to walk it, by feeding the port r4133's own token
+// through `edit` and reading the same getter back. Verdict on all thirteen pairs:
+// `PRECISION_ROUNDTRIP` — the port is exact, so nothing is fixed and nothing is
+// reproduced (CLAUDE.md: upstream numbers are pinned as the *other* named
+// literal, never emitted). Their citation list is
+// `props_r4133_replay::RP39_PINS`.
+
+/// FPC `Format('%-.<sig>g')` **as a value**: render `x` through the engine's own
+/// FPC `%g` kernel ([`dss_core::util::fmt_g`], the F-FMT seam both lanes share)
+/// and read the decimal back — precisely what `MakePosSequence` does when it
+/// prints a token and its own `Edit` parses it again.
+fn round_g(x: f64, sig: usize) -> f64 {
+    let text = dss_core::util::fmt_g(x, sig);
+    text.parse()
+        .unwrap_or_else(|e| panic!("{text:?} must re-parse as a number: {e}"))
+}
+
+/// FPC `Format('%-.<sig>g')` **as text** — what an r4133 getter prints when its
+/// arm is `%-.5g` / `%-.6g` / `%-.8g` / `%.6g`, rendered by the same kernel
+/// [`round_g`] parses back.
+fn text_g(x: f64, sig: usize) -> String {
+    dss_core::util::fmt_g(x, sig)
+}
+
+/// The port's own `?` render of a double — [`dss_core::util::float_to_str_ex`],
+/// the function `obj/props/class_props/value.rs:49` calls for every
+/// `PropType::Double`.
+fn render(x: f64) -> String {
+    dss_core::util::float_to_str_ex(x)
+}
+
+/// Pascal `Cabs(cmplx(re, im))` = `SQRT(re*re + im*im)` — the naive form, not
+/// `hypot` (`Version8/Source/Shared/Ucomplex.pas:80-83`).
+fn cabs(re: f64, im: f64) -> f64 {
+    (re * re + im * im).sqrt()
+}
+
+/// A property render read back as a number.
+fn number(deck: &mut Deck, target: &str) -> f64 {
+    let text = deck.get(target);
+    text.parse()
+        .unwrap_or_else(|e| panic!("{target} must render a number, got {text:?}: {e}"))
+}
+
+/// The numbers inside the port's `[a, b, ]` array render.
+fn numbers(text: &str) -> Vec<f64> {
+    text.trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            s.parse()
+                .unwrap_or_else(|e| panic!("{s:?} must be a number: {e}"))
+        })
+        .collect()
+}
+
+/// The `%-.5g` tokens `MakePosSequence` writes for a list of values, in the
+/// `a b c` shape its `( … )` array arguments take.
+fn tokens5(values: &[f64]) -> String {
+    values
+        .iter()
+        .map(|v| render(round_g(*v, 5)))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// `load.kva` — **r4133 re-derives kVA from the 5-digit `kW`/`kvar` tokens its
+/// own `MakePosSequence` wrote; the port derives it from the exact typed
+/// conversion** (§RP3.9, chain A; 15 census cells over 13 spellings on all six
+/// `modes:makeposseq` decks, none in scope today).
+///
+/// `TLoadObj.MakePosSequence` builds `Format(' kW=%-.5g  kvar=%-.5g',
+/// [kWbase/3.0, kvarbase/3.0])` (`Version8/Source/PCElements/Load.pas:2326`) and
+/// feeds the string to its own `Edit` (`:2331-2332`). `Edit` stores the raw token
+/// (`:570`) and re-parses it into `kWBase` (`:577`) and `kvarBase` (`:585`, side
+/// effect `LoadSpecType := 1` at `:667-671`); `RecalcElementData` then recomputes
+/// `kVABase := SQRT(SQR(kWbase) + SQR(kvarBase))` (`:1145`) **from the rounded
+/// pair**, and the getter prints that at full precision (`:2352`,
+/// `Format('%-g',[kVABase])`). The port runs the same two formulas
+/// (`elements/pc/load/accessors.rs:60-70` -> `exec/make_pos_seq.rs:200` ->
+/// `elements/pc/load/nominal.rs:315`) on `f64`s, with no text in between.
+///
+/// `makeposseq_pc.dss` converts twice (deck `:47`/`:49`), so its tokens are
+/// `r5(r5(kW/3)/3)`; `makeposseq_ctrl.dss` converts once. Both are reproduced
+/// here from the port's own post-conversion renders, and then again *inside the
+/// engine* by typing r4133's tokens into the port's own `edit`.
+///
+/// What a revert breaks: rounding the conversion (or dropping the `kVABase`
+/// recompute) moves the first assertions; a hardwired getter fails the `edit`
+/// readings.
+#[test]
+fn load_kva_after_makeposseq_is_the_exact_typed_conversion() {
+    // --- the twice-converted deck -------------------------------------------
+    let mut pc = Deck::compile("modes/makeposseq/makeposseq_pc.dss");
+    let kw_text = pc.get("Load.ld_wye.kW");
+    assert_eq!(
+        kw_text,
+        render(400.0 / 3.0 / 3.0),
+        "ours is the deck's 400 kW divided by three ONCE PER CONVERSION, exactly          (Load.pas:2326's argument, applied as a typed setter — and note (400/3)/3 is not the          same double as 400/9, which the parity lane's %g kernel can tell apart)"
+    );
+    assert!(
+        matches!(kw_text.as_str(), "44.4444444444444" | "44.4444444444445"),
+        "the census cell is the default lane's spelling 44.4444444444444; the parity lane's          FPC %g kernel spells the SAME double 44.4444444444445 (util.rs fmt_g_fpc_impl vs          fmt_g_native_impl, the F-FMT seam) — which is why this one byte is asserted as a          value, got {kw_text:?}"
+    );
+    assert_eq!(pc.get("Load.ld_wye.kvar"), "14.6081824523939");
+    assert_eq!(
+        pc.get("Load.ld_wye.kVA"),
+        "46.7836257309942",
+        "ours: the SQRT of the exact kW/9 and kvar/9 (Load.pas:1145 over typed setters)"
+    );
+    // The load whose spec is xfkVA keeps its pre-conversion nameplate on both
+    // engines (`PFChanged = FALSE`, so `:1160` is a no-op; ours: nominal.rs:335).
+    assert_eq!(pc.get("Load.ld_delta.kVA"), "300");
+
+    let kw = number(&mut pc, "Load.ld_wye.kW");
+    let kvar = number(&mut pc, "Load.ld_wye.kvar");
+    // Multiplying our state back by 3 recovers the input of the SECOND
+    // conversion; each conversion writes `%-.5g` of a third (Load.pas:2326).
+    let kw_t = round_g(round_g(3.0 * kw, 5) / 3.0, 5);
+    let kvar_t = round_g(round_g(3.0 * kvar, 5) / 3.0, 5);
+    assert_eq!(
+        (render(kw_t), render(kvar_t)),
+        ("44.443".to_string(), "14.608".to_string()),
+        "the two tokens r4133 wrote, which its own `? kW` / `? kvar` echo back"
+    );
+    let kva = (kw_t * kw_t + kvar_t * kvar_t).sqrt(); // Load.pas:1145
+    assert_eq!(
+        render(kva),
+        "46.7821965388544",
+        "r4133's census cell, reproduced from OUR number by its own round trip"
+    );
+
+    // …and the port's own recalc walks the same chain when handed r4133's tokens.
+    pc.cmd("edit Load.ld_wye kw=44.443 kvar=14.608");
+    assert_eq!(pc.get("Load.ld_wye.kW"), "44.443", "the edit took effect");
+    assert_eq!(pc.get("Load.ld_wye.kVA"), "46.7821965388544");
+    // The discriminating second reading: one digit of one token, and the cell
+    // moves — the getter is live, not a constant.
+    pc.cmd("edit Load.ld_wye kw=44.444 kvar=14.608");
+    assert_eq!(pc.get("Load.ld_wye.kVA"), "46.783146538043");
+
+    // --- a once-converted deck, two more cells ------------------------------
+    let mut ctrl = Deck::compile("modes/makeposseq/makeposseq_ctrl.dss");
+    assert_eq!(ctrl.get("Load.ld2.kVA"), "289.855072463768");
+    let kw = round_g(number(&mut ctrl, "Load.ld2.kW"), 5);
+    let kvar = round_g(number(&mut ctrl, "Load.ld2.kvar"), 5);
+    assert_eq!(
+        (render(kw), render(kvar)),
+        ("266.67".to_string(), "113.6".to_string())
+    );
+    assert_eq!(
+        render((kw * kw + kvar * kvar).sqrt()),
+        "289.858325566129",
+        "r4133's census cell"
+    );
+
+    assert_eq!(ctrl.get("Load.ld5.kVA"), "140.350877192982");
+    let kw5 = round_g(number(&mut ctrl, "Load.ld5.kW"), 5);
+    let kvar5 = round_g(number(&mut ctrl, "Load.ld5.kvar"), 5);
+    assert_eq!(
+        render((kw5 * kw5 + kvar5 * kvar5).sqrt()),
+        "140.347851871698",
+        "r4133's census cell on the second load of the same deck"
+    );
+
+    ctrl.cmd("edit Load.ld2 kw=266.67 kvar=113.6");
+    assert_eq!(ctrl.get("Load.ld2.kW"), "266.67", "the edit took effect");
+    assert_eq!(ctrl.get("Load.ld2.kVA"), "289.858325566129");
+    ctrl.cmd("edit Load.ld2 kw=266.68 kvar=113.6");
+    assert_eq!(ctrl.get("Load.ld2.kVA"), "289.86752560437");
+}
+
+/// `load.kw`, `load.kvar`, `load.xfkva` — **the four cells where r4133's state
+/// IS a `MakePosSequence` token** (§RP3.9, chain A; all on
+/// `modes:makeposseq/makeposseq_pc.dss`, none in scope today).
+///
+/// * `Load.ld_wye.kW`: `Format(' kW=%-.5g',[kWbase/3.0])`
+///   (`Version8/Source/PCElements/Load.pas:2326`) -> `Edit` `:577`
+///   `kWBase := DblValueNZ` -> `GetPropertyValue` `:2344` `Format('%-g')`. Twice
+///   over, so r4133 holds `r5(r5(400/3)/3) = 44.443` where we hold `400/9`.
+/// * `Load.ld_delta` is `LoadSpecType 3` (`xfkVA`): `:2328` writes
+///   `xfkVA=%-.5g` of `FConnectedkVA/3.0`, `Edit` `:599` hands it to
+///   `Set_ConnectedkVA` (`:2166-2171`), and `ComputeAllocatedLoad` re-derives
+///   **both** kW and kvar from the rounded nameplate inside the same parse loop
+///   (`:2200-2202`: `kWBase := FConnectedkVA*FkVAAllocationFactor*Abs(PFNominal)`,
+///   `kvarBase := kWBase*SQRT(1.0/SQR(PFNominal)-1.0)`) — the `kW=`/`kvar=`
+///   tokens of `:2326`, parsed moments earlier, are overwritten. Ours:
+///   `elements/pc/load/accessors.rs:72-73`, `:581-590` ->
+///   `elements/pc/load/nominal.rs:411-419`.
+/// * `xfkVA` has **no `GetPropertyValue` arm** at all (`:2337-2366`), so r4133
+///   falls through to `Inherited` (`:2364`) and returns `PropertyValue[21]` — the
+///   token text `:570` stored, `'55.557'`. We render the `f64`
+///   (`elements/pc/load/accessors.rs:275`). That surface is observable only after
+///   an *internal* token, i.e. after `makeposseq`: a user's own `xfkva=` text is
+///   echoed identically by both engines, which is why the pair needs no echo row.
+///
+/// What a revert breaks: rounding our conversion moves the first three
+/// assertions; dropping the `xfkVA` side effect moves the derived kW/kvar.
+#[test]
+fn load_kw_kvar_and_xfkva_after_makeposseq_are_the_exact_typed_conversion() {
+    let mut pc = Deck::compile("modes/makeposseq/makeposseq_pc.dss");
+
+    // (a) the plain wye load: r4133's kW is the token itself.
+    let kw_text = pc.get("Load.ld_wye.kW");
+    assert_eq!(
+        kw_text,
+        render(400.0 / 3.0 / 3.0),
+        "ours is the deck's 400 kW divided by three ONCE PER CONVERSION, exactly          (Load.pas:2326's argument, applied as a typed setter — and note (400/3)/3 is not the          same double as 400/9, which the parity lane's %g kernel can tell apart)"
+    );
+    assert!(
+        matches!(kw_text.as_str(), "44.4444444444444" | "44.4444444444445"),
+        "the census cell is the default lane's spelling 44.4444444444444; the parity lane's          FPC %g kernel spells the SAME double 44.4444444444445 (util.rs fmt_g_fpc_impl vs          fmt_g_native_impl, the F-FMT seam) — which is why this one byte is asserted as a          value, got {kw_text:?}"
+    );
+    let kw = number(&mut pc, "Load.ld_wye.kW");
+    assert_eq!(
+        render(round_g(round_g(3.0 * kw, 5) / 3.0, 5)),
+        "44.443",
+        "r4133's census cell = the second conversion's own token (Load.pas:2326 -> :577 -> :2344)"
+    );
+
+    // (b) the delta load with an xfkVA nameplate.
+    assert_eq!(pc.get("Load.ld_delta.xfkVA"), "55.5555555555556");
+    assert_eq!(pc.get("Load.ld_delta.kW"), "25.5555555555556");
+    assert_eq!(pc.get("Load.ld_delta.kvar"), "10.8866210790363");
+    let xf = number(&mut pc, "Load.ld_delta.xfkVA");
+    let alloc = number(&mut pc, "Load.ld_delta.allocationfactor");
+    let pf = number(&mut pc, "Load.ld_delta.pf");
+    assert_eq!(
+        (alloc, pf),
+        (0.5, 0.92),
+        "the other two factors of :2200 — the default allocation factor and the deck's own pf, \
+         which LoadSpecType 3 never recomputes"
+    );
+    let xf_t = round_g(round_g(3.0 * xf, 5) / 3.0, 5);
+    assert_eq!(
+        render(xf_t),
+        "55.557",
+        "r4133's census cell: the token text it echoes from PropertyValue[21] (:570 -> :2364)"
+    );
+    let kw_r4133 = xf_t * alloc * pf.abs(); // Load.pas:2200-2201
+    let kvar_r4133 = kw_r4133 * (1.0 / (pf * pf) - 1.0).sqrt(); // :2202
+    assert_eq!(
+        (render(kw_r4133), render(kvar_r4133)),
+        ("25.55622".to_string(), "10.8869041311844".to_string()),
+        "r4133's two census cells, derived from the ROUNDED nameplate, not from their own tokens"
+    );
+
+    // The port's own side effect walks the same two formulas when handed
+    // r4133's nameplate token.
+    pc.cmd("edit Load.ld_delta xfkva=55.557");
+    assert_eq!(
+        pc.get("Load.ld_delta.xfkVA"),
+        "55.557",
+        "the edit took effect"
+    );
+    assert_eq!(pc.get("Load.ld_delta.kW"), "25.55622");
+    assert_eq!(pc.get("Load.ld_delta.kvar"), "10.8869041311844");
+
+    // Discriminating second readings: one digit on each of the three getters.
+    pc.cmd("edit Load.ld_delta xfkva=55.558");
+    assert_eq!(pc.get("Load.ld_delta.xfkVA"), "55.558");
+    assert_eq!(pc.get("Load.ld_delta.kW"), "25.55668");
+    assert_eq!(pc.get("Load.ld_delta.kvar"), "10.8871000903638");
+    pc.cmd("edit Load.ld_wye kw=44.444");
+    assert_eq!(pc.get("Load.ld_wye.kW"), "44.444");
+}
+
+/// `vsource.isc3`, `vsource.puz1`, `vsource.puz0`, `vsource.puz2` — **r4133
+/// derives them from the 5-digit `BasekV` its own `MakePosSequence` wrote**
+/// (§RP3.9, chain B; 5 + 4 + 4 + 4 census cells, none in scope today).
+///
+/// `TVsourceObj.MakePosSequence` writes `Format('BasekV=%-.5g ',[kVbase/SQRT3])`
+/// (`Version8/Source/PCElements/Vsource.pas:1397`) — plus `R1`/`X1` at
+/// `:1398-1399`, which re-parse exactly on every one of these decks, so **the one
+/// rounded input is the kV**, not the impedance. `Edit` re-reads it at `:360` and
+/// recomputes `ZBase := SQR(kvBase)/BaseMVA` (`:473`, `BaseMVA = 100` per `:610`);
+/// `RecalcElementData` then derives `Isc3 := kVBase*1000/SQRT3/Cabs(cmplx(R1,X1))`
+/// (`:752`) and `puZ1/puZ0/puZ2 := (R/Zbase, X/Zbase)` (`:837-842`, with
+/// `R0 := R1`/`X0 := X1` at `:758-759` and `R2 := R1`/`X2 := X1` at `:459-460`,
+/// which is why the three per-sequence cells are the same string). The getters
+/// print `%-.5g` (`:1330`) and `[%-.8g, %-.8g]` (`:1340-1342`). Ours applies the
+/// typed `SetF64(BASEKV, kv_base/sqrt3())` (`elements/pc/vsource/solve.rs:176-188`)
+/// and derives from the full-precision kV (`solve.rs:87-88`, `:149-155`;
+/// `accessors.rs:346`).
+///
+/// `makeposseq_pc.dss` converts twice, so its kV token is
+/// `r5(r5(12.47/√3)/√3) = 4.1567`; the chain is asserted both ways there.
+///
+/// What a revert breaks: rounding our `BasekV` conversion collapses the two
+/// numbers into one; a stale `ZBase` or a `puZ` read off a specified-Z path fails
+/// the `edit` readings.
+#[test]
+fn vsource_isc3_and_puz_after_makeposseq_use_the_full_precision_basekv() {
+    let sqrt3 = 3.0_f64.sqrt(); // Common/DSSGlobals.pas:2033
+
+    // --- once converted, 12.47 kV -------------------------------------------
+    let mut line = Deck::compile("modes/makeposseq/makeposseq_line.dss");
+    assert_eq!(line.get("Vsource.source.BasekV"), "7.19955785679463");
+    assert_eq!(line.get("Vsource.source.Isc3"), "2520.34937016923");
+    let ours = "[0.771699713635098, 3.08679885454039]";
+    assert_eq!(line.get("Vsource.source.puZ1"), ours);
+    assert_eq!(line.get("Vsource.source.puZ0"), ours, "R0 := R1 (:758-759)");
+    assert_eq!(line.get("Vsource.source.puZ2"), ours, "R2 := R1 (:459-460)");
+
+    let kv = number(&mut line, "Vsource.source.BasekV");
+    let r1 = number(&mut line, "Vsource.source.R1");
+    let x1 = number(&mut line, "Vsource.source.X1");
+    assert_eq!(
+        (r1, x1),
+        (0.4, 1.6),
+        "R1/X1 re-parse exactly through :1398-1399, so only the kV is rounded"
+    );
+    let kv5 = round_g(kv, 5); // Vsource.pas:1397 -> :360
+    assert_eq!(render(kv5), "7.1996");
+    let zbase = kv5 * kv5 / 100.0; // :473
+    assert_eq!(
+        dss_core::util::fmt_g(kv5 * 1000.0 / sqrt3 / cabs(r1, x1), 5),
+        "2520.4",
+        "r4133's census cell (:752 rendered by :1330)"
+    );
+    assert_eq!(
+        format!(
+            "[{}, {}]",
+            dss_core::util::fmt_g(r1 / zbase, 8),
+            dss_core::util::fmt_g(x1 / zbase, 8)
+        ),
+        "[0.77169068, 3.0867627]",
+        "r4133's census cell, the same string on puZ1/puZ0/puZ2 (:837-842 -> :1340-1342)"
+    );
+
+    // Fed r4133's own kV, the port's derivations land on the doubles whose
+    // `%-.5g` / `%-.8g` ARE those census cells.
+    line.cmd("edit Vsource.source basekv=7.1996");
+    assert_eq!(line.get("Vsource.source.BasekV"), "7.1996", "the edit took");
+    assert_eq!(line.get("Vsource.source.Isc3"), "2520.36412324201");
+    let theirs = "[0.771690679298655, 3.08676271719462]";
+    assert_eq!(line.get("Vsource.source.puZ1"), theirs);
+    assert_eq!(line.get("Vsource.source.puZ0"), theirs);
+    assert_eq!(line.get("Vsource.source.puZ2"), theirs);
+    let isc3 = number(&mut line, "Vsource.source.Isc3");
+    assert_eq!(dss_core::util::fmt_g(isc3, 5), "2520.4");
+    // Discriminating second reading.
+    line.cmd("edit Vsource.source basekv=7.19");
+    assert_eq!(line.get("Vsource.source.Isc3"), "2517.00345104035");
+    assert_eq!(
+        line.get("Vsource.source.puZ1"),
+        "[0.773752758912181, 3.09501103564872]"
+    );
+
+    // --- twice converted: the deck's second source --------------------------
+    let mut pc = Deck::compile("modes/makeposseq/makeposseq_pc.dss");
+    assert_eq!(pc.get("Vsource.v2.BasekV"), "4.15666666666667");
+    assert_eq!(pc.get("Vsource.v2.Isc3"), "758.90003245438");
+    assert_eq!(
+        pc.get("Vsource.v2.puZ1"),
+        "[5.78774785226323, 17.3632435567897]"
+    );
+    let kv = number(&mut pc, "Vsource.v2.BasekV");
+    let kv5 = round_g(kv, 5);
+    assert_eq!(
+        kv5,
+        round_g(round_g(12.47 / sqrt3, 5) / sqrt3, 5),
+        "r4133 rounds once per conversion (deck :47/:49); on this deck both paths meet at 4.1567"
+    );
+    assert_eq!(render(kv5), "4.1567");
+    let (r1, x1) = (
+        number(&mut pc, "Vsource.v2.R1"),
+        number(&mut pc, "Vsource.v2.X1"),
+    );
+    assert_eq!((r1, x1), (1.0, 3.0));
+    let zbase = kv5 * kv5 / 100.0;
+    assert_eq!(
+        dss_core::util::fmt_g(kv5 * 1000.0 / sqrt3 / cabs(r1, x1), 5),
+        "758.91",
+        "r4133's census cell"
+    );
+    assert_eq!(
+        format!(
+            "[{}, {}]",
+            dss_core::util::fmt_g(r1 / zbase, 8),
+            dss_core::util::fmt_g(x1 / zbase, 8)
+        ),
+        "[5.787655, 17.362965]",
+        "r4133's census cell"
+    );
+    pc.cmd("edit Vsource.v2 basekv=4.1567");
+    assert_eq!(pc.get("Vsource.v2.Isc3"), "758.906118260575");
+    assert_eq!(
+        pc.get("Vsource.v2.puZ1"),
+        "[5.78765502662999, 17.36296507989]"
+    );
+    pc.cmd("edit Vsource.v2 basekv=4.16");
+    assert_eq!(pc.get("Vsource.v2.Isc3"), "759.50861307383");
+
+    // --- the 115 kV trio (ctrl/report/xfmr share one spelling) --------------
+    let mut ctrl = Deck::compile("modes/makeposseq/makeposseq_ctrl.dss");
+    assert_eq!(ctrl.get("Vsource.source.Isc3"), "19071.5461456915");
+    let kv5 = round_g(number(&mut ctrl, "Vsource.source.BasekV"), 5);
+    assert_eq!(render(kv5), "66.395");
+    let (r1, x1) = (
+        number(&mut ctrl, "Vsource.source.R1"),
+        number(&mut ctrl, "Vsource.source.X1"),
+    );
+    assert_eq!(
+        dss_core::util::fmt_g(kv5 * 1000.0 / sqrt3 / cabs(r1, x1), 5),
+        "19071",
+        "r4133's census cell — and note it is NOT our own number's 5-digit render, which \
+         rounds the other way"
+    );
+    assert_eq!(
+        dss_core::util::fmt_g(number(&mut ctrl, "Vsource.source.Isc3"), 5),
+        "19072",
+        "…the very reason the display floor's mechanism clause refuses this cell"
+    );
+}
+
+/// `vsource.mvasc3`, `vsource.mvasc1` — **the same 5-digit `BasekV`, squared**
+/// (§RP3.9, chain B; 2 + 2 census cells on `modes:makeposseq/makeposseq_pc.dss`,
+/// none in scope today).
+///
+/// `MVAsc3 := SQRT3*kVBase*Isc3/1000` and `MVAsc1 := Factor*kVBase*Isc1/1000`
+/// (`Version8/Source/PCElements/Vsource.pas:767-768`), with `Isc1` over
+/// `Zs = ((2R1+R0)/3, (2X1+X0)/3)` (`:766`) and `Factor = 1.0` for a 1-phase
+/// source (`:688`); `R0 := R1`, `X0 := X1` (`:758-759`), so the two aggregates
+/// agree to the last ulp and to every printed digit. Both are `%-.5g`
+/// (`:1328-1329`), and both are quadratic in the kV that
+/// `MakePosSequence` rounded (`:1397` -> `:360`) — the round trip enters twice.
+/// Ours: `elements/pc/vsource/solve.rs:87-102` on the full-precision kV.
+///
+/// What a revert breaks: rounding our conversion, or losing the `Factor`/`Zs`
+/// derivation, moves the literals; a constant getter fails the `edit` reading.
+#[test]
+fn vsource_mvasc1_and_mvasc3_after_makeposseq_use_the_full_precision_basekv() {
+    let sqrt3 = 3.0_f64.sqrt();
+    let mut pc = Deck::compile("modes/makeposseq/makeposseq_pc.dss");
+
+    for (element, ours, r4133, after_edit) in [
+        (
+            "Vsource.source",
+            "13.9683362871157",
+            "13.969",
+            "13.9685603190691",
+        ),
+        (
+            "Vsource.v2",
+            "5.46374469117864",
+            "5.4638",
+            "5.4638323217576",
+        ),
+    ] {
+        assert_eq!(pc.get(&format!("{element}.MVAsc3")), ours);
+        assert_eq!(
+            pc.get(&format!("{element}.MVAsc1")),
+            ours,
+            "a 1-phase source forces Z0 = Z1 (:758-759) and Factor = 1 (:688)"
+        );
+        let kv5 = round_g(number(&mut pc, &format!("{element}.BasekV")), 5);
+        assert_eq!(render(kv5), "4.1567", "twice through :1397 -> :360");
+        let r1 = number(&mut pc, &format!("{element}.R1"));
+        let x1 = number(&mut pc, &format!("{element}.X1"));
+        let (r0, x0) = (r1, x1); // Vsource.pas:758-759, Fnphases = 1
+        let isc3 = kv5 * 1000.0 / sqrt3 / cabs(r1, x1); // :752
+        let isc1 = kv5 * 1000.0 / 1.0 / cabs((2.0 * r1 + r0) / 3.0, (2.0 * x1 + x0) / 3.0); // :766
+        assert_eq!(
+            dss_core::util::fmt_g(sqrt3 * kv5 * isc3 / 1000.0, 5),
+            r4133,
+            "r4133's MVAsc3 census cell (:767 -> :1328)"
+        );
+        assert_eq!(
+            dss_core::util::fmt_g(1.0 * kv5 * isc1 / 1000.0, 5),
+            r4133,
+            "r4133's MVAsc1 census cell (:768 -> :1329)"
+        );
+
+        // Fed r4133's own kV token, we land on the double behind those bytes.
+        pc.cmd(&format!("edit {element} basekv=4.1567"));
+        assert_eq!(pc.get(&format!("{element}.BasekV")), "4.1567");
+        assert_eq!(pc.get(&format!("{element}.MVAsc3")), after_edit);
+        assert_eq!(pc.get(&format!("{element}.MVAsc1")), after_edit);
+        assert_eq!(
+            dss_core::util::fmt_g(number(&mut pc, &format!("{element}.MVAsc3")), 5),
+            r4133
+        );
+    }
+
+    // Discriminating second reading on the same getters.
+    pc.cmd("edit Vsource.v2 basekv=4.16");
+    assert_eq!(pc.get("Vsource.v2.MVAsc3"), "5.47251122758099");
+    assert_eq!(pc.get("Vsource.v2.MVAsc1"), "5.47251122758099");
+}
+
+/// `line.b1`, `line.b0` — **r4133's susceptance is computed from a `C1` its own
+/// `MakePosSequence` round-tripped through `%-.5g`** (§RP3.9, chain C; 2 + 2
+/// census cells on `modes:makeposseq/makeposseq_line.dss`, none in scope today).
+///
+/// The matrix branch of `TLineObj.MakePosSequence` averages the solved `Yc` into
+/// `C1_new` (`Version8/Source/PDElements/Line.pas:1585-1591`) and then scripts it:
+/// `Format(' R1=%-.5g  %-.5g  C1=%-.5g Phases=1', …)` (`:1593`),
+/// `Parser.CmdString := S; Edit` (`:1600-1601`). `Edit` re-parses property 10 as
+/// `c1 := Parser.Dblvalue * 1.0e-9` (`:610`) — the five-digit text is now the
+/// stored capacitance — and `RecalcElementData` copies `C0 := C1` for a 1-phase
+/// line (`:971`), which is why `b0` carries the identical byte. The getters print
+/// `Format('%.7g',[twopi*Basefrequency*C1*1.0e6/FUnitsConvert])` (`:1406`/`:1407`),
+/// with `FUnitsConvert = 1.0` after `ResetLengthUnits` + `Units=km`
+/// (`:683-689` -> `:2327-2331`, `:624-630`, `Shared/LineUnits.pas:110-114`).
+/// Ours computes the same `c1_new` (`elements/pd/line/solve.rs:632-644`) and
+/// stores it as a typed `f64` (`:653` -> `exec/make_pos_seq.rs:200`), so its `b`
+/// is the UNROUNDED capacitance.
+///
+/// The chain is observable at both ends: r4133's own `? c1` answers `10.84` /
+/// `10.842` where ours answers fifteen digits.
+///
+/// What a revert breaks: rounding `c1_new`, or losing the `C0 := C1` copy at the
+/// next `RecalcElementData`, moves the assertions; the `l_sym`/`l_spc` readings
+/// prove the edit is local.
+#[test]
+fn line_b1_and_b0_after_makeposseq_use_the_full_precision_c1() {
+    let mut deck = Deck::compile("modes/makeposseq/makeposseq_line.dss");
+    let two_pi = 2.0 * std::f64::consts::PI; // Common/DSSGlobals.pas:99 `TwoPi = 2.0 * PI`
+
+    for (name, ours_c1, ours_b, ours_b7, their_c1, their_b) in [
+        (
+            "l_geo",
+            "10.8400705196377",
+            "4.08661030906671",
+            "4.08661",
+            "10.84",
+            "4.086584",
+        ),
+        (
+            "l_spc",
+            "10.8415607417247",
+            "4.08717210955796",
+            "4.087172",
+            "10.842",
+            "4.087338",
+        ),
+    ] {
+        assert_eq!(deck.get(&format!("Line.{name}.c1")), ours_c1);
+        assert_eq!(deck.get(&format!("Line.{name}.b1")), ours_b);
+        assert_eq!(
+            deck.get(&format!("Line.{name}.b0")),
+            ours_b,
+            "C0 := C1 for a 1-phase line (Line.pas:971)"
+        );
+        let c1 = number(&mut deck, &format!("Line.{name}.c1"));
+        let b = number(&mut deck, &format!("Line.{name}.b1"));
+        assert_eq!(
+            dss_core::util::fmt_g(b, 7),
+            ours_b7,
+            "ours at r4133's OWN print precision — the two engines already part at the 6th \
+             significant digit, which is why the display floor's mechanism clause refuses \
+             these cells"
+        );
+        assert_ne!(dss_core::util::fmt_g(b, 7), their_b);
+        assert_eq!(
+            dss_core::util::fmt_g(two_pi * 60.0 * c1 * 1.0e-3, 13),
+            dss_core::util::fmt_g(b, 13),
+            "our b tracks the UNROUNDED C1: the :1406 expression recomputed from the (already \
+             15-digit-truncated) c1 render lands back on it, where r4133's input was 5 digits"
+        );
+        let c1_token = round_g(c1, 5); // Line.pas:1593
+        assert_eq!(
+            render(c1_token),
+            their_c1,
+            "the token r4133's own `? c1` echoes back"
+        );
+        assert_eq!(
+            dss_core::util::fmt_g(two_pi * 60.0 * (c1_token * 1.0e-9) * 1.0e6 / 1.0, 7),
+            their_b,
+            "r4133's census cell, on b1 and b0 alike (:610 -> :1406/:1407)"
+        );
+    }
+
+    // Handed the token r4133's `Edit` received, our own getter answers r4133's
+    // number — and `b0` follows only at the next `RecalcElementData` (`:971`),
+    // exactly as upstream.
+    deck.cmd("edit Line.l_geo c1=10.84");
+    assert_eq!(deck.get("Line.l_geo.c1"), "10.84", "the edit took effect");
+    assert_eq!(deck.get("Line.l_geo.b1"), "4.0865837237896");
+    assert_eq!(
+        dss_core::util::fmt_g(number(&mut deck, "Line.l_geo.b1"), 7),
+        "4.086584"
+    );
+    assert_eq!(
+        deck.get("Line.l_geo.b0"),
+        "4.08661030906671",
+        "C0 is still the converted one until the element is recalculated"
+    );
+    deck.cmd("solve");
+    assert_eq!(deck.get("Line.l_geo.b0"), "4.0865837237896");
+
+    // Discriminating readings: the sibling lines did not move, and the
+    // symcomponents line — whose conversion keeps its typed C1 (`:1568`) — is a
+    // plain render on both engines.
+    assert_eq!(deck.get("Line.l_spc.b1"), "4.08717210955796");
+    assert_eq!(deck.get("Line.l_sym.c1"), "3.4");
+    assert_eq!(deck.get("Line.l_sym.b1"), "1.28176980266464");
+}
+
+/// `autotrans.wdgcurrents` — **a solved-state cell that differs because
+/// `makeposseq` moved r4133's whole circuit through `%-.5g` command strings**
+/// (§RP3.9, chain C; 1 census cell on `modes:makeposseq/makeposseq_xfmr.dss`,
+/// not in scope today).
+///
+/// The property renders the element's own solved currents:
+/// `Version8/Source/PDElements/AutoTrans.pas:1863` ->
+/// `GeTAutoWindingCurrentsResult` (`:1662-1690`, `Format('%.7g, (%.5g), ')` at
+/// `:1682`) over `GetAllWindingCurrents` (`:1575`). Ours is the same render over
+/// the same computation (`elements/pd/auto_trans/yterminal.rs:478-502`), and
+/// **before** the conversion the two engines print the same twelve values to
+/// every digit — so neither the model, the solver nor the formatter diverges.
+/// What diverges is the circuit the deck's `makeposseq` leaves behind: every
+/// class scripts its conversion as five-significant-digit text —
+/// `AutoTrans.pas:2021`/`:2027`/`:2030` -> `Edit` `:2032`,
+/// `PDElements/Transformer.pas:1982`/`:1988`/`:1991` -> `:1993`,
+/// `PCElements/Load.pas:2311`/`:2326`, `PCElements/VSource.pas:1397` — while the
+/// port applies typed `f64` setters (`exec/make_pos_seq.rs:200-225`).
+///
+/// The pin rebuilds r4133's post-conversion circuit from the port's own state by
+/// re-applying exactly those `%-.5g` tokens, and the solved cell then matches
+/// r4133's census byte for byte. The AutoTrans-only replay is the discriminator:
+/// it lands on neither engine's number, so the divergence is the deck-wide
+/// scripting and not this element's own conversion.
+///
+/// The census reads its cells after one `solve` beyond the deck's own, which is
+/// what the second `solve` below reproduces.
+///
+/// What a revert breaks: any change to the typed conversion path shows up in the
+/// first literal; a broken winding-current computation shows up in both.
+#[test]
+fn autotrans_wdgcurrents_after_makeposseq_solve_the_exactly_converted_circuit() {
+    let mut deck = Deck::compile("modes/makeposseq/makeposseq_xfmr.dss");
+    assert_eq!(
+        deck.get("AutoTrans.at.WdgCurrents"),
+        "44.00113, (161.26), 29.32232, (161.26), "
+    );
+    deck.cmd("solve");
+    assert_eq!(
+        deck.get("AutoTrans.at.WdgCurrents"),
+        "44.00102, (161.26), 29.32224, (161.26), ",
+        "ours, at the census's own step-0 state (compile + one solve)"
+    );
+
+    // r4133's conversion of the same circuit, token for token, computed from the
+    // port's own post-conversion doubles.
+    let vs = tokens5(&[number(&mut deck, "Vsource.source.BasekV")]);
+    assert_eq!(vs, "66.395", "VSource.pas:1397");
+    let mut edits = vec![format!("edit Vsource.source basekv={vs}")];
+    for name in ["sub", "t3"] {
+        let kvs = tokens5(&numbers(&deck.get(&format!("Transformer.{name}.kVs"))));
+        let kvas = tokens5(&numbers(&deck.get(&format!("Transformer.{name}.kVAs"))));
+        let norm = tokens5(&[number(&mut deck, &format!("Transformer.{name}.NormHkVA"))]);
+        let emerg = tokens5(&[number(&mut deck, &format!("Transformer.{name}.EmergHkVA"))]);
+        edits.push(format!(
+            "edit Transformer.{name} kvs=({kvs}) kvas=({kvas}) normhkva={norm} emerghkva={emerg}"
+        ));
+    }
+    let kvs = tokens5(&numbers(&deck.get("AutoTrans.at.kVs")));
+    let kvas = tokens5(&numbers(&deck.get("AutoTrans.at.kVAs")));
+    let norm = tokens5(&[number(&mut deck, "AutoTrans.at.NormHkVA")]);
+    let emerg = tokens5(&[number(&mut deck, "AutoTrans.at.EmergHkVA")]);
+    assert_eq!(
+        (kvs.as_str(), kvas.as_str(), norm.as_str()),
+        ("2.4018 7.1996", "666.67 666.67", "733.33"),
+        "AutoTrans.pas:2021 (kVLL/SQRT3), :2027 (kVA/FNPhases), :2030 (NormMaxHkVA/FNPhases)"
+    );
+    let auto_edit =
+        format!("edit AutoTrans.at kvs=({kvs}) kvas=({kvas}) normhkva={norm} emerghkva={emerg}");
+    edits.push(auto_edit.clone());
+    for load in ["ld2", "ld4", "ld5"] {
+        let kv = tokens5(&[number(&mut deck, &format!("Load.{load}.kV"))]);
+        let kw = tokens5(&[number(&mut deck, &format!("Load.{load}.kW"))]);
+        let kvar = tokens5(&[number(&mut deck, &format!("Load.{load}.kvar"))]);
+        edits.push(format!("edit Load.{load} kv={kv} kw={kw} kvar={kvar}"));
+    }
+
+    let mut mimic = Deck::compile("modes/makeposseq/makeposseq_xfmr.dss");
+    for edit in &edits {
+        mimic.cmd(edit);
+    }
+    mimic.cmd("solve");
+    mimic.cmd("solve");
+    assert_eq!(
+        mimic.get("AutoTrans.at.kVs"),
+        "[2.4018, 7.1996, ]",
+        "the edits took effect"
+    );
+    assert_eq!(
+        mimic.get("AutoTrans.at.WdgCurrents"),
+        "44.00054, (161.26), 29.32187, (161.26), ",
+        "r4133's census cell, byte for byte, reproduced from OUR state by ITS round trip"
+    );
+
+    // Discriminating reading: this element's own conversion is not the cause.
+    let mut alone = Deck::compile("modes/makeposseq/makeposseq_xfmr.dss");
+    alone.cmd(&auto_edit);
+    alone.cmd("solve");
+    alone.cmd("solve");
+    assert_eq!(
+        alone.get("AutoTrans.at.WdgCurrents"),
+        "44.00086, (161.26), 29.32208, (161.26), ",
+        "the AutoTrans-only round trip lands on neither engine's number — the divergence is \
+         the deck-wide %-.5g scripting"
+    );
+}
+
+/// `reactor.x`, `reactor.z`, `reactor.lmh`, `reactor.normamps`,
+/// `reactor.emergamps` — **r4133 re-derives all five from the five-digit
+/// `kV`/`kvar` tokens its own `MakePosSequence` wrote; the port derives them from
+/// the exact typed conversion** (§RP3.9, chain D; 5 spellings / 5 census cells on
+/// `modes:makeposseq/makeposseq_shunt.dss`, none in scope today).
+///
+/// `TReactorObj.MakePosSequence` computes `kvarPerPhase := kvarRating/3.0`
+/// (`Version8/Source/PDElements/Reactor.pas:1158`) and `PhasekV := kVRating/
+/// SQRT3` (`:1159`), prints the pair as `Format(' kV=%-.5g kvar=%-.5g')`
+/// (`:1162`) and feeds the string to its own parser (`:1197-1198`). The `Edit`
+/// that follows re-derives everything from the ROUNDED pair, now with
+/// `Fnphases = 1`: `kvarPerPhase := kvarRating/Fnphases` (`:651`), `PhasekV :=
+/// kVRating` (`:658` — a 1-phase wye takes no √3), `X := SQR(PhasekV)*1000.0/
+/// kvarPerPhase` (`:663`), `L := X/twopi/BaseFrequency` (`:664`), `NormAmps :=
+/// kvarPerPhase/PhasekV` (`:667`), `EmergAmps := kvarPerPhase/PhasekV*1.35`
+/// (`:668`). The getters print `%-.8g` for `X`, `Z` and `LmH` (`:1092`, `:1097`,
+/// `:1098`) and FPC `%g` — 15 significant digits — for the two amps (`:1099`,
+/// `:1100`).
+///
+/// The port applies the same two arguments as typed `f64` setters
+/// (`elements/pd/reactor/solve.rs:365-375` -> `exec/make_pos_seq.rs:200`) and
+/// runs the same five formulas on them (`elements/pd/reactor/solve.rs:36-46`), so
+/// nothing is lost and the two amps — printed at full precision on BOTH sides —
+/// part company in the 7th digit. That is the entire gap: handed r4133's own
+/// tokens, the port's own recalc prints r4133's 15-digit strings bit for bit.
+///
+/// What a revert breaks: rounding the conversion (or deriving from the rounded
+/// nameplate) moves the first block; a hardwired getter fails the `edit`
+/// readings, which move the same five cells twice.
+#[test]
+fn reactor_amps_after_makeposseq_are_the_exact_typed_conversion() {
+    let mut deck = Deck::compile("modes/makeposseq/makeposseq_shunt.dss");
+
+    // The port's post-conversion nameplate: 12.47/SQRT3 and 200/3, exactly.
+    assert_eq!(deck.get("Reactor.rx_kvar.phases"), "1");
+    assert_eq!(
+        deck.get("Reactor.rx_kvar.kv"),
+        render(12.47 / 3f64.sqrt()),
+        "ours is Reactor.pas:1159's argument applied as a typed setter"
+    );
+    assert_eq!(deck.get("Reactor.rx_kvar.kvar"), render(200.0 / 3.0));
+    // …and the five cells derived from it (the census `rust` spellings).
+    assert_eq!(deck.get("Reactor.rx_kvar.normamps"), "9.25982789397956");
+    assert_eq!(deck.get("Reactor.rx_kvar.emergamps"), "12.5007676568724");
+    assert_eq!(deck.get("Reactor.rx_kvar.X"), "777.5045");
+    assert_eq!(deck.get("Reactor.rx_kvar.Z"), "[0, 777.5045]");
+    assert_eq!(deck.get("Reactor.rx_kvar.LmH"), "2062.39474085321");
+
+    // r4133's two tokens, computed from OUR state (Reactor.pas:1162).
+    let kv5 = round_g(number(&mut deck, "Reactor.rx_kvar.kv"), 5);
+    let kvar5 = round_g(number(&mut deck, "Reactor.rx_kvar.kvar"), 5);
+    assert_eq!(
+        (render(kv5), render(kvar5)),
+        ("7.1996".to_string(), "66.667".to_string()),
+        "the two tokens r4133 wrote, which its own `? kv` / `? kvar` echo back"
+    );
+    // …and its RecalcElementData on them, through its own getter widths.
+    let x = (kv5 * kv5) * 1000.0 / kvar5; // Reactor.pas:663
+    assert_eq!(
+        text_g(x, 8),
+        "777.50971",
+        "r4133's census cell, reproduced from OUR number by its own round trip (:1092)"
+    );
+    assert_eq!(
+        format!("[0, {}]", text_g(x, 8)),
+        "[0, 777.50971]",
+        "the same X through the Z getter (:1097)"
+    );
+    let l = x / (2.0 * std::f64::consts::PI) / 60.0; // Reactor.pas:664
+    assert_eq!(
+        text_g(l * 1000.0, 8),
+        "2062.4086",
+        "r4133's census cell (:1098); ours renders 2062.3947 at that width, so this is no \
+         %.Ng print of our value"
+    );
+    let norm = kvar5 / kv5; // Reactor.pas:667
+    assert_eq!(
+        render(norm),
+        "9.25981998999944",
+        "r4133's census cell (:1099)"
+    );
+    assert_eq!(
+        render(norm * 1.35),
+        "12.5007569864993",
+        "r4133's census cell (:1100)"
+    );
+
+    // …and the port's own recalc walks the chain when handed r4133's tokens.
+    deck.cmd("edit Reactor.rx_kvar phases=1 kv=7.1996 kvar=66.667");
+    assert_eq!(
+        deck.get("Reactor.rx_kvar.kv"),
+        "7.1996",
+        "the edit took effect"
+    );
+    assert_eq!(deck.get("Reactor.rx_kvar.normamps"), "9.25981998999944");
+    assert_eq!(deck.get("Reactor.rx_kvar.emergamps"), "12.5007569864993");
+    assert_eq!(deck.get("Reactor.rx_kvar.X"), "777.509714851426");
+    assert_eq!(deck.get("Reactor.rx_kvar.LmH"), "2062.40857367624");
+    // The discriminating second reading: the exact nameplate back, and every
+    // cell returns — the getters are live, not five constants.
+    deck.cmd("edit Reactor.rx_kvar phases=3 kv=12.47 kvar=200");
+    assert_eq!(
+        deck.get("Reactor.rx_kvar.kv"),
+        "12.47",
+        "the edit took effect"
+    );
+    assert_eq!(deck.get("Reactor.rx_kvar.normamps"), "9.25982789397956");
+    assert_eq!(deck.get("Reactor.rx_kvar.emergamps"), "12.5007676568724");
+    assert_eq!(deck.get("Reactor.rx_kvar.X"), "777.5045");
+    assert_eq!(deck.get("Reactor.rx_kvar.LmH"), "2062.39474085321");
+}
+
+/// `capacitor.cuf`, `capacitor.normamps`, `capacitor.emergamps` — **the same
+/// five-digit `MakePosSequence` re-Edit, one class over** (§RP3.9, chain D; 3
+/// spellings / 9 census cells over `makeposseq_shunt`, `makeposseq_ctrl` and
+/// `makeposseq_report`, none in scope today).
+///
+/// `TCapacitorObj.MakePosSequence` writes `Format(' kV=%-.5g kvar=(')`
+/// (`Version8/Source/PDElements/Capacitor.pas:798`, `:801`) and one
+/// `Format(' %-.5g')` per step of `FkvarRating^[i]/3.0` (`:805-806`), then
+/// re-parses the string (`:831-832`). `RecalcElementData` derives from the
+/// re-parsed pair at `Fnphases = 1`: `PhasekV := kVRating` (`:606`), `FC^[i] :=
+/// 1.0/(w*SQR(PhasekV)*1000.0/(FkvarRating^[1]/Fnphases))` (`:611`),
+/// `Ftotalkvar` (`:612`), then `kvarPerPhase := Ftotalkvar/Fnphases` and
+/// `NormAmps := kvarPerPhase/PhasekV*1.35` / `EmergAmps := ...*1.8`
+/// (`:645-646`). `cuf` prints `FC*1e6` through `GetDSSArray_Real`'s `%-.6g`
+/// (`:1098-1101` -> `Version8/Source/Common/Utilities.pas:2600-2607`); the two
+/// amps print FPC `%g` (`:1108`, `:1109`).
+///
+/// Here the 600 kvar divides into a five-digit-exact `200`, so the whole loss is
+/// in `kV`: r4133 keeps 7.1996 where the port keeps `12.47/SQRT3`
+/// (`elements/pd/capacitor/solve.rs:300-318` typed, derivations at `:34` and
+/// `:70-76`). `cuf` is the pair that shows the residue is not a display width at
+/// all — `%-.6g` of OUR double is `10.235`, and r4133 prints `10.2349`, the
+/// 6-digit print of a different number.
+///
+/// What a revert breaks: rounding the conversion moves the first block; a
+/// hardwired getter fails the `edit` readings.
+#[test]
+fn capacitor_cuf_and_amps_after_makeposseq_are_the_exact_typed_conversion() {
+    let mut deck = Deck::compile("modes/makeposseq/makeposseq_shunt.dss");
+
+    assert_eq!(deck.get("Capacitor.cap_kvar.phases"), "1");
+    assert_eq!(
+        deck.get("Capacitor.cap_kvar.kv"),
+        render(12.47 / 3f64.sqrt()),
+        "ours is Capacitor.pas:798's argument applied as a typed setter"
+    );
+    assert_eq!(deck.get("Capacitor.cap_kvar.kvar"), "[ 200]");
+    assert_eq!(deck.get("Capacitor.cap_kvar.cuf"), "[ 10.2349853339688]");
+    assert_eq!(deck.get("Capacitor.cap_kvar.normamps"), "37.5023029706172");
+    assert_eq!(deck.get("Capacitor.cap_kvar.emergamps"), "50.0030706274896");
+
+    // The three cells repeat verbatim on the two decks whose `cap1` carries the
+    // same typed line — 9 census cells over one spelling each.
+    let mut ctrl = Deck::compile("modes/makeposseq/makeposseq_ctrl.dss");
+    assert_eq!(ctrl.get("Capacitor.cap1.cuf"), "[ 10.2349853339688]");
+    assert_eq!(ctrl.get("Capacitor.cap1.normamps"), "37.5023029706172");
+    assert_eq!(ctrl.get("Capacitor.cap1.emergamps"), "50.0030706274896");
+
+    // r4133's tokens, computed from OUR state (Capacitor.pas:801, :806).
+    let kv5 = round_g(number(&mut deck, "Capacitor.cap_kvar.kv"), 5);
+    let kvar5 = round_g(numbers(&deck.get("Capacitor.cap_kvar.kvar"))[0], 5);
+    assert_eq!(
+        (render(kv5), render(kvar5)),
+        ("7.1996".to_string(), "200".to_string()),
+        "the kvar token is five-digit exact — the whole loss is in kV"
+    );
+    let w = 2.0 * std::f64::consts::PI * 60.0;
+    let fc = 1.0 / (w * (kv5 * kv5) * 1000.0 / (kvar5 / 1.0)); // Capacitor.pas:611
+    assert_eq!(
+        format!("[ {}]", text_g(fc * 1.0e6, 6)),
+        "[ 10.2349]",
+        "r4133's census cell, reproduced from OUR number by its own round trip"
+    );
+    assert_eq!(
+        text_g(numbers(&deck.get("Capacitor.cap_kvar.cuf"))[0], 6),
+        "10.235",
+        "and OUR double at r4133's own width is 10.235, not 10.2349 — the round trip is \
+         upstream of the print, which is why the display floor refuses this row"
+    );
+    let kvar_per_phase = kvar5 / 1.0; // Capacitor.pas:645, Fnphases = 1
+    assert_eq!(
+        render(kvar_per_phase / kv5 * 1.35),
+        "37.5020834490805",
+        "r4133's census cell (:1108)"
+    );
+    assert_eq!(
+        render(kvar_per_phase / kv5 * 1.8),
+        "50.0027779321073",
+        "r4133's census cell (:1109)"
+    );
+
+    // …and the port's own recalc, handed r4133's tokens.
+    deck.cmd("edit Capacitor.cap_kvar phases=1 kv=7.1996 kvar=200");
+    assert_eq!(
+        deck.get("Capacitor.cap_kvar.kv"),
+        "7.1996",
+        "the edit took effect"
+    );
+    assert_eq!(deck.get("Capacitor.cap_kvar.cuf"), "[ 10.2348655123603]");
+    assert_eq!(deck.get("Capacitor.cap_kvar.normamps"), "37.5020834490805");
+    assert_eq!(deck.get("Capacitor.cap_kvar.emergamps"), "50.0027779321073");
+    // The discriminating second reading: the exact nameplate back.
+    deck.cmd("edit Capacitor.cap_kvar phases=3 kv=12.47 kvar=600");
+    assert_eq!(
+        deck.get("Capacitor.cap_kvar.kv"),
+        "12.47",
+        "the edit took effect"
+    );
+    assert_eq!(deck.get("Capacitor.cap_kvar.cuf"), "[ 10.2349853339688]");
+    assert_eq!(deck.get("Capacitor.cap_kvar.normamps"), "37.5023029706172");
+}
+
+/// `generator.kva`, `generator.kvar`, `generator.maxkvar`, `generator.minkvar` —
+/// **r4133 re-derives all four from the five-digit `kW` token its own
+/// `MakePosSequence` wrote; the port derives them from the exact typed
+/// conversion** (§RP3.9, chain E; 4 spellings / 9 census cells on
+/// `modes:makeposseq/makeposseq_pc.dss`, none in scope today).
+///
+/// `TGeneratorObj.MakePosSequence` writes `Format(' kW=%-.5g  PF=%-.5g',
+/// [kWbase/Fnphases, PFNominal])` (`Version8/Source/PCElements/generator.pas:
+/// 3059`) under an `If Fnphases>1` guard (`:3057` — which is why the deck's
+/// SECOND `makeposseq` at `makeposseq_pc.dss:49` writes only `kV=` and moves
+/// nothing here), and re-parses the string (`:3065-3066`). `Edit` `:641` stores
+/// `kWBase := Parser.DblValueNZ` and its side-effect case `:699` calls
+/// `SyncUpPowerQuantities`, which derives *everything else* from that rounded
+/// `kWBase`: `kvarBase := kWBase*sqrt(1.0/Sqr(PFNominal) - 1.0)` (`:3130`),
+/// `kvarMax := 2.0*kvarBase` (`:3133`), `kvarMin := -kvarMax` (`:3134`) and,
+/// while `kVANotSet`, `kVARating := kWBase*1.2` (`:3137`). All four getters print
+/// `%.6g` (`:3018`, `:3019`, `:3020`, `:3021`).
+///
+/// The port applies the same argument as a typed `f64` setter
+/// (`elements/pc/generator/accessors.rs:77` -> `exec/make_pos_seq.rs:200`, the
+/// `old_phases > 1` guard at `:66`) and runs the same four formulas on it
+/// (`elements/pc/generator/nominal.rs:49-58`), so it keeps `200/3` where r4133
+/// keeps `66.667`.
+///
+/// Which element carries which cell is the `PrpSequence` bookkeeping of `:3060`
+/// / `:3061`: `g_kvar` typed `maxkvar`/`minkvar`, so the conversion wrote the
+/// exact tokens `40`/`-20` over the synced pair and BOTH engines hold them — the
+/// unmoved control below; `g_kva`/`g_mva` typed neither, so their max/min stay
+/// derived. `g_kva` and `g_mva` also cleared `kVANotSet` (`:734`), which is why
+/// `kva` is a residue cell only on `g_plain` and `g_kvar`.
+///
+/// What a revert breaks: rounding the conversion moves the first block; a
+/// hardwired getter fails the `edit` readings; dropping the `PrpSequence` guards
+/// moves the `40`/`-20` control.
+#[test]
+fn generator_ratings_after_makeposseq_are_the_exact_typed_conversion() {
+    let mut deck = Deck::compile("modes/makeposseq/makeposseq_pc.dss");
+
+    // The port's post-conversion nameplate: the deck's 200 kW over three,
+    // exactly, and untouched by the second conversion (generator.pas:3057).
+    assert_eq!(
+        deck.get("Generator.g_plain.kW"),
+        render(200.0 / 3.0),
+        "ours is generator.pas:3059's argument applied as a typed setter"
+    );
+    assert_eq!(deck.get("Generator.g_kva.kW"), render(200.0 / 3.0));
+    // …and the four derived cells (the census `rust` spellings).
+    assert_eq!(deck.get("Generator.g_plain.kVA"), "80");
+    assert_eq!(deck.get("Generator.g_kvar.kVA"), "80");
+    assert_eq!(deck.get("Generator.g_kva.kvar"), "21.9122736785909");
+    assert_eq!(deck.get("Generator.g_kvar.kvar"), "21.9122736785909");
+    assert_eq!(deck.get("Generator.g_mva.kvar"), "21.9122736785909");
+    assert_eq!(deck.get("Generator.g_kva.maxkvar"), "43.8245473571818");
+    assert_eq!(deck.get("Generator.g_kva.minkvar"), "-43.8245473571818");
+    assert_eq!(deck.get("Generator.g_mva.maxkvar"), "43.8245473571818");
+    assert_eq!(deck.get("Generator.g_mva.minkvar"), "-43.8245473571818");
+    // The unmoved control: `g_kvar` typed max/min, so :3060 wrote 120/3 and
+    // -60/3 as exact tokens and both engines print them.
+    assert_eq!(deck.get("Generator.g_kvar.maxkvar"), "40");
+    assert_eq!(deck.get("Generator.g_kvar.minkvar"), "-20");
+
+    // r4133's token, computed from OUR state (generator.pas:3059).
+    let kw5 = round_g(number(&mut deck, "Generator.g_plain.kW"), 5);
+    assert_eq!(
+        render(kw5),
+        "66.667",
+        "the token r4133 wrote, which its own `? kW` echoes back"
+    );
+    // …and its SyncUpPowerQuantities on it, through its own `%.6g` getters.
+    assert_eq!(
+        text_g(kw5 * 1.2, 6),
+        "80.0004",
+        "r4133's census cell, reproduced from OUR number by its own round trip \
+         (:3137 -> :3021)"
+    );
+    let pf = 0.95_f64;
+    let kvar_base = kw5 * (1.0 / (pf * pf) - 1.0).sqrt(); // generator.pas:3130
+    assert_eq!(
+        text_g(kvar_base, 6),
+        "21.9124",
+        "r4133's census cell (:3018)"
+    );
+    assert_eq!(
+        text_g(2.0 * kvar_base, 6),
+        "43.8248",
+        "r4133's census cell (:3133 -> :3019)"
+    );
+    assert_eq!(
+        text_g(-(2.0 * kvar_base), 6),
+        "-43.8248",
+        "r4133's census cell (:3134 -> :3020)"
+    );
+    // Ours is the same two formulas on the exact kW, and it is NOT that render.
+    assert_eq!(
+        render(200.0 / 3.0 * (1.0 / (pf * pf) - 1.0).sqrt()),
+        "21.9122736785909"
+    );
+    assert_eq!(
+        text_g(200.0 / 3.0 * 1.2, 6),
+        "80",
+        "ours at r4133's own width"
+    );
+
+    // …and the port's own sync walks the chain when handed r4133's token.
+    deck.cmd("edit Generator.g_plain kw=66.667");
+    assert_eq!(
+        deck.get("Generator.g_plain.kW"),
+        "66.667",
+        "the edit took effect"
+    );
+    assert_eq!(deck.get("Generator.g_plain.kVA"), "80.0004");
+    deck.cmd("edit Generator.g_kva kw=66.667");
+    assert_eq!(deck.get("Generator.g_kva.kvar"), "21.9123832399593");
+    assert_eq!(deck.get("Generator.g_kva.maxkvar"), "43.8247664799185");
+    assert_eq!(deck.get("Generator.g_kva.minkvar"), "-43.8247664799185");
+    // The discriminating second reading: a kW that IS five-digit exact, on which
+    // the two engines agree — the gap exists exactly when the token is not.
+    deck.cmd("edit Generator.g_plain kw=100");
+    assert_eq!(
+        deck.get("Generator.g_plain.kW"),
+        "100",
+        "the edit took effect"
+    );
+    assert_eq!(deck.get("Generator.g_plain.kVA"), "120");
+    deck.cmd("edit Generator.g_kva kw=100");
+    assert_eq!(deck.get("Generator.g_kva.kvar"), "32.8684105178863");
+    assert_eq!(deck.get("Generator.g_kva.maxkvar"), "65.7368210357726");
+}
+
+/// `transformer.normamps`, `transformer.emergamps` — **r4133 divides an exact
+/// kVA by a five-digit winding kV its own `MakePosSequence` wrote; the port
+/// divides by the exact one** (§RP3.9, chain E; 2 spellings / 2 census cells, on
+/// `modes:makeposseq/makeposseq_report.dss` and `…/makeposseq_xfmr.dss`, neither
+/// in scope today).
+///
+/// `TTransfObj.MakePosSequence` prints each winding as
+/// `Format(' %-.5g',[kVLL/SQRT3])` (`Version8/Source/PDElements/Transformer.pas:
+/// 1982`) and the ratings as `' NormHkVA='+Format(' %-.5g %-.5g',
+/// [NormMaxHkVA/FNPhases, EmergMaxHkVA/FNPhases])` (`:1991`), then re-parses the
+/// whole string (`:1993-1994`; `Edit` `:512` `InterpretAllkVRatings`).
+/// `RecalcElementData` takes `VFactor := Winding^[1].VBase*0.001` (`:1119`, wye)
+/// and divides: `NormAmps := NormMaxHkVA/Fnphases/Vfactor` (`:1129`),
+/// `EmergAmps := EmergMaxHkVA/Fnphases/Vfactor` (`:1130`); the override getters
+/// print `%-.5g` (`:1842`, `:1843`).
+///
+/// Both numerators are five-digit exact here (`1.1*15000/3 = 5500`,
+/// `1.5*1000/3 = 500`), so the entire divergence is the ROUND-TRIPPED
+/// denominator — `66.395` for `115/SQRT3`, `7.1996` for `12.47/SQRT3` — which the
+/// port keeps exact (`elements/pd/transformer/accessors.rs:169` typed ->
+/// `yterminal.rs:110-111`). The same port double `69.4487092048467` is printed
+/// `69.449` by r4133 on the five decks that never convert
+/// (`examples_full.txt:2783`) and `69.448` only here: the conversion, not the
+/// width, is the discriminant.
+///
+/// What a revert breaks: rounding the conversion moves the first literals; a
+/// hardwired getter fails the `edit` readings, which move both the denominator
+/// and the numerator.
+#[test]
+fn transformer_amps_after_makeposseq_are_the_exact_typed_conversion() {
+    // --- normamps: the 115 kV substation transformer ------------------------
+    let mut report = Deck::compile("modes/makeposseq/makeposseq_report.dss");
+    let kv1 = numbers(&report.get("Transformer.sub.kVs"))[0];
+    assert_eq!(
+        render(kv1),
+        render(115.0 / 3f64.sqrt()),
+        "ours is Transformer.pas:1982's argument applied as a typed setter"
+    );
+    assert_eq!(
+        report.get("Transformer.sub.NormHkVA"),
+        "5500",
+        "1.1*15000/3 — five-digit exact, so :1991 loses nothing on the numerator"
+    );
+    assert_eq!(report.get("Transformer.sub.normamps"), "82.8372125359028");
+
+    let tok = round_g(kv1, 5);
+    assert_eq!(render(tok), "66.395", "the token r4133 wrote (:1982)");
+    assert_eq!(
+        text_g(5500.0 / tok, 5),
+        "82.838",
+        "r4133's census cell, reproduced from OUR number by its own round trip \
+         (:1129 -> :1842)"
+    );
+    assert_eq!(
+        text_g(number(&mut report, "Transformer.sub.normamps"), 5),
+        "82.837",
+        "and OURS at r4133's own width is 82.837 — no `%.5g` print of our value is 82.838"
+    );
+
+    report.cmd("edit Transformer.sub kvs=(66.395 7.1996)");
+    assert_eq!(
+        numbers(&report.get("Transformer.sub.kVs"))[0],
+        66.395,
+        "the edit took effect"
+    );
+    assert_eq!(report.get("Transformer.sub.normamps"), "82.8375630695082");
+    // The discriminating second reading: the numerator moves too.
+    report.cmd("edit Transformer.sub normhkva=6000");
+    assert_eq!(
+        report.get("Transformer.sub.normamps"),
+        render(6000.0 / 66.395)
+    );
+
+    // --- emergamps: the 12.47 kV three-winding transformer -------------------
+    let mut xfmr = Deck::compile("modes/makeposseq/makeposseq_xfmr.dss");
+    let kv1 = numbers(&xfmr.get("Transformer.t3.kVs"))[0];
+    assert_eq!(render(kv1), render(12.47 / 3f64.sqrt()));
+    assert_eq!(
+        xfmr.get("Transformer.t3.EmergHkVA"),
+        "500",
+        "1.5*1000/3 — five-digit exact"
+    );
+    assert_eq!(xfmr.get("Transformer.t3.emergamps"), "69.4487092048467");
+
+    let tok = round_g(kv1, 5);
+    assert_eq!(render(tok), "7.1996");
+    assert_eq!(
+        text_g(500.0 / tok, 5),
+        "69.448",
+        "r4133's census cell (:1130 -> :1843)"
+    );
+    assert_eq!(
+        text_g(number(&mut xfmr, "Transformer.t3.emergamps"), 5),
+        "69.449",
+        "ours at r4133's own width — the spelling r4133 itself prints on the five decks \
+         that never convert"
+    );
+
+    xfmr.cmd("edit Transformer.t3 kvs=(7.1996 0.27713 0.13856)");
+    assert_eq!(
+        numbers(&xfmr.get("Transformer.t3.kVs"))[0],
+        7.1996,
+        "the edit took effect"
+    );
+    assert_eq!(xfmr.get("Transformer.t3.emergamps"), "69.4483026834824");
+    xfmr.cmd("edit Transformer.t3 emerghkva=600");
+    assert_eq!(xfmr.get("Transformer.t3.emergamps"), render(600.0 / 7.1996));
 }
