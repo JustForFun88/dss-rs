@@ -868,6 +868,70 @@ their per-pair row counts and in-scope splits, are in `RP39_ROUTING`; the
 in-scope residual table above (889 cells, bins 4/5/7) is unchanged, since all 70
 new cells are out of scope.
 
+### What RP3.9 settled (2026-09-02)
+
+A dated supplement under this file's §"Corrections measured after freezing"
+convention: the section above is **not** rewritten and no recorded number here
+moves. What changed is that the 55 spellings it re-declared now carry a verdict.
+
+RP3.9 read the r4133 round-trip chain off the Pascal for every one of the **27
+pairs (55 vendored spellings, 70 cells, 19 rows on in-scope pairs)** and settled
+all 27 as **`PRECISION_ROUNDTRIP`** — r4133's number is reproducible from the
+port's own state through a cited Pascal round trip, and the port is exact. **No
+`PORT_BUG`, no `UPSTREAM_BUG`, no `STATE_DIFFERS`, no `KILL`**, so nothing in a
+product crate moved and no `rust` spelling in these extracts went stale.
+
+One mechanism covers all five chains: `MakePosSequence` scripts its conversion as
+a command string of five-significant-digit tokens and lets its own `Edit`
+re-parse them (`Parser.CmdString := S; Edit`), so everything r4133 derives
+afterwards is derived from the rounded input; the port applies the same
+conversion as typed `f64` setters (`exec/make_pos_seq.rs:200`, WPG.21) and keeps
+the exact value. Where the getter then prints full precision on both sides
+(`Format('%g')` / `%-g`), the two 15-digit strings differ in the 6th-7th digit —
+which is why `props_norm::display_is_render` refuses these rows, and why they are
+not a display artifact.
+
+| chain | pairs | r4133 site (head of the chain) | pin `#[test]` in `crates/dss-core/tests/props_r4133_pins.rs` |
+|---|---|---|---|
+| A | `load.kva` | `Load.pas:2326` -> `:1145` -> `:2352` | `load_kva_after_makeposseq_is_the_exact_typed_conversion` |
+| A | `load.kw`, `load.kvar`, `load.xfkva` | `Load.pas:2326`/`:2328` -> `:2200-2202` | `load_kw_kvar_and_xfkva_after_makeposseq_are_the_exact_typed_conversion` |
+| B | `vsource.isc3`, `vsource.puz0`, `vsource.puz1`, `vsource.puz2` | `Vsource.pas:1397` -> `:473` -> `:1330`/`:1340-1342` | `vsource_isc3_and_puz_after_makeposseq_use_the_full_precision_basekv` |
+| B | `vsource.mvasc1`, `vsource.mvasc3` | `Vsource.pas:1397` -> `:1328-1329` | `vsource_mvasc1_and_mvasc3_after_makeposseq_use_the_full_precision_basekv` |
+| C | `line.b0`, `line.b1` | `Line.pas:1585-1593` -> `:1406-1407` | `line_b1_and_b0_after_makeposseq_use_the_full_precision_c1` |
+| C | `autotrans.wdgcurrents` | deck-wide `%-.5g` scripting -> `AutoTrans.pas:1863` | `autotrans_wdgcurrents_after_makeposseq_solve_the_exactly_converted_circuit` |
+| D | `reactor.x`, `reactor.z`, `reactor.lmh`, `reactor.normamps`, `reactor.emergamps` | `Reactor.pas:1162` -> `:663-668` -> `:1092`/`:1097`-`:1100` | `reactor_amps_after_makeposseq_are_the_exact_typed_conversion` |
+| D | `capacitor.cuf`, `capacitor.normamps`, `capacitor.emergamps` | `Capacitor.pas:801`/`:806` -> `:611`/`:645-646` -> `:1098-1109` | `capacitor_cuf_and_amps_after_makeposseq_are_the_exact_typed_conversion` |
+| E | `generator.kva`, `generator.kvar`, `generator.maxkvar`, `generator.minkvar` | `generator.pas:3059` -> `:3130-3137` -> `:3018-3021` | `generator_ratings_after_makeposseq_are_the_exact_typed_conversion` |
+| E | `transformer.normamps`, `transformer.emergamps` | `Transformer.pas:1982`/`:1991` -> `:1119-1130` -> `:1842-1843` | `transformer_amps_after_makeposseq_are_the_exact_typed_conversion` |
+
+Each pin names **both** numbers — the port's literal render of the live getter
+and r4133's literal from `examples_full.txt` / `examples_supplement.txt` — and
+reproduces r4133's from the port's own number by running the chain's arithmetic
+inside the test, then again *inside the engine* by feeding the port r4133's own
+five-digit token through `edit` and reading the same getter back. Two examples:
+`Reactor.rx_kvar.normamps` is `9.25982789397956` here and `9.25981998999944` on
+r4133, and the port prints r4133's 15-digit string bit for bit once it is handed
+`kv=7.1996 kvar=66.667`; `Capacitor.cap_kvar.cuf` shows the residue is not a
+width at all — `%-.6g` of the port's double is `10.235`, where r4133 prints
+`10.2349`, the 6-digit print of a different number.
+
+**Count deltas.** Only the *open* accounting moved:
+
+| constant (`props_r4133_replay.rs`) | before | after | why |
+|---|---|---|---|
+| `OPEN_RP39` (rows, pairs, in-scope rows) | — (implicitly `(55, 27, 19)`) | **`(0, 0, 0)`** | all 27 pairs disposed of as `PIN` |
+| `DECLARED_RP39` | `(55, 27, 19)` | **`(55, 27, 19)`** | measured, not declared: `account()` buckets whatever `display_class_but_not_a_render` refuses, and a pin does not make a link claim a row. RP4.1 retires these rows by hand with the unmask — the same reading `DECLARED_RP3` and `DECLARED_RP35` carry |
+| `RP39_ROUTING` | 27 rows, 4 columns | 27 rows, **5 columns** | a `disposition` column (`RP39_DISPOSITIONS`: `PIN` / `FIX` / `LEDGER` / `OPEN`); the three counted columns keep their measured values |
+| `RP39_PINS` | 13 rows (chains A-C) | **27 rows** | one row per pair, each with its `PRECISION_ROUNDTRIP` verdict; `the_rp39_pin_list_is_pinned` now checks completeness both ways |
+| `CLAIMED_*`, `DECLARED_*` (all others), `SUPERSEDED_RP38` | — | unchanged | no link's population moved |
+
+**No `property` ledger entry is staged.** The claims census still measures
+`count_in_scope = 0` on all 55 spellings, and every deck involved
+(`modes:makeposseq/*`) is an `engines: "capi_v0145"` case, so the r4133 channel
+compares none of these cells and an entry would have nothing to exclude. The
+drafts, should any of those decks ever move to `r4133`/`both`, are recorded in
+the sub-step's dossiers, not in `ledger.json` (plan §1.1(e)).
+
 ## Files
 
 | file | rows | origin |

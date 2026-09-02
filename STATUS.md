@@ -220,7 +220,8 @@ and the port answers `''` only by a capi convention, so under the 2026-08-02
 policy the fix is an engine change and they are re-routed loudly into the new
 **§RP3.8**, which then **blocked RP4.1** alongside RP3.6/3.7 (RP3.5 landed
 2026-08-28, RP3.6 2026-08-29, RP3.7 2026-09-02 and **RP3.8 itself landed
-2026-09-02** — see the §RP3.8 record below — so RP3.9 is what is left); and
+2026-09-02** — see the §RP3.8 record below — so RP3.9 was what was left, and
+**RP3.9 itself landed 2026-09-02** too, see the §RP3.9 record below); and
 `generator.d`
 is **not an echo** either — `Create` initialises `GenVars.D` and never `Dpu`
 (`generator.pas:969` vs `:669`/`:2585`), so r4133's `'0'` is its own live value
@@ -280,7 +281,9 @@ trip upstream of a derived quantity, or a plain state difference). The floor now
 tests it per cell (`props_norm::display_is_render`: r4133's number must be ours
 rounded to the digits r4133 printed), claims **1 951** vendored spellings, and
 the 55 are declared to a new **RP3.9** (`RP39_ROUTING`, 27 cited pairs) — back in
-`claims_unclaimed_pairs.txt` where WP-RP3 reads, and an RP4.1 precondition. The
+`claims_unclaimed_pairs.txt` where WP-RP3 reads, and an RP4.1 precondition
+(**settled 2026-09-02**: all 27 pairs `PRECISION_ROUNDTRIP` — §RP3.9 record
+below). The
 floor VALUE did not move; not one of the 55 has an in-scope cell, so the live
 in-scope claim is unchanged at 46 538. The same round also corrected the
 `Vsource.pas` line ranges and the `basekv` attribution in the mechanism table
@@ -1772,8 +1775,215 @@ adds a refresh pass on a new surface: **PASS**, 523 cases / 3 220 861 records,
 375 816, y 1 738 084, every one "(identical)"), 0 iteration counts drifted — the
 bit-identical baseline is exactly where RP3.8 left it.
 
-**Next: RP3.9** — it is what RP4.1 waits on (RP3.5, RP3.6 both parts, RP3.7
-all three parts and RP3.8 have landed; RP3.8 on 2026-09-02).
+**RP3.9 (the r4133 round-trip residue) landed 2026-09-02 — `PRECISION_ROUNDTRIP`
+on all 27 pairs, in one commit, with zero product-crate lines, zero golden bytes
+and zero census cells moved.** RP2.4's display floor
+(`harness/props_norm.rs`, `R4133_DISPLAY_FLOOR = 2e-4`, `display_is_render`)
+refuses **55 vendored spellings / 27 pairs / 70 live cells** because the two
+engines hold different doubles rather than one being a rounded render of the
+other. Every one of the 27 pairs is now settled by a cited Pascal round-trip
+chain and held by an expected-value pin; **none** is a `PORT_BUG`, an
+`UPSTREAM_BUG`, a `STATE_DIFFERS` or a `KILL`, so no engine line, no
+`TODO(compat)`, no `ledger.json` row and no upstream report is owed by the
+sub-step. The whole diff is three test/evidence files
+(`props_r4133_pins.rs` +1189/−1, `props_r4133_replay.rs` +517/−23,
+`tests/corpus/props_r4133/README.md` +64), nothing under any crate's `src/`.
+
+**One mechanism explains all 70 cells, and it was measured before it was
+written.** Every cell sits on one of the six `modes:makeposseq/makeposseq_*.dss`
+decks and is read **after** `MakePosSequence`, where r4133 converts an element
+by building a command string (`Format('%-.5g'/'%-.8g', …)`) and re-parsing it
+through its own `Edit`, while the port applies typed setters
+(`class_props/typed.rs`, WPG.21). The five-digit round trip therefore happens
+*upstream* of the getter, and the getter then derives at full precision —
+`Load.pas:2326 → :2352` (`kW/3` re-parsed, then `kVA` from the round-tripped
+`pf`); `Vsource.pas:1397 → :360 → :473`, where the rounded input is **`BasekV`**,
+not Z (`R1`/`X1` re-parse exactly on all six decks), then `:752`/`:766-768`/
+`:837-842` for `puz*`/`mvasc*`/`isc3`; `Line.pas:1585-1593 → :610 →
+:1406/:1407` (`b0`/`b1` from a round-tripped `C`); `Reactor.pas:1158-1162 →
+:651/:663-664 → :1092-1100`; `Capacitor.pas:798-832 → :606/:645-646 →
+:1098-1109` (with `Common/Utilities.pas:2600-2607`);
+`generator.pas:3054-3066 → :641/:699/:734 → :3018-3021/:3130-3137`;
+`Transformer.pas:1982-1994 → :512 → :1119-1130 → :1842-1843`;
+`AutoTrans.pas:2021/:2027/:2030 → :1863 → :1662-1690`. The rawest reading is
+`load.kw`: the port answers `400/9`, r4133 `44.443` = `%-.5g(400/3) = 133.33 →
+/3`, because `makeposseq_pc.dss` runs `makeposseq` **twice** — which is why no
+single `%.Ng` render explains the gap, and why the floor was right to refuse it.
+
+**The per-pair verdicts** (`props_r4133_replay.rs`: `RP39_ROUTING` :294 rows,
+`RP39_PINS` :4610 verdicts; the table is machine-extracted from those two
+consts, not transcribed). Chains: **A** `load.*`, **B** `vsource.*`, **C**
+`line.b*` + `autotrans.wdgcurrents`, **D** `reactor.*`/`capacitor.*`, **E**
+`generator.*`/`transformer.*`. All 27 verdicts are `PRECISION_ROUNDTRIP`, all
+27 dispositions `PIN`.
+
+| pair | rows | in scope | pin (chain) |
+|---|---|---|---|
+| `load.kva` | 13 | 0 | `load_kva_after_makeposseq_is_the_exact_typed_conversion` (A) |
+| `load.kw` | 2 | 0 | `load_kw_kvar_and_xfkva_after_makeposseq_are_the_exact_typed_conversion` (A) |
+| `load.kvar` | 1 | 0 | `load_kw_kvar_and_xfkva_…` (A) |
+| `load.xfkva` | 1 | 0 | `load_kw_kvar_and_xfkva_…` (A) |
+| `vsource.puz0` | 4 | 0 | `vsource_isc3_and_puz_after_makeposseq_use_the_full_precision_basekv` (B) |
+| `vsource.puz1` | 4 | 0 | `vsource_isc3_and_puz_…` (B) |
+| `vsource.puz2` | 4 | 0 | `vsource_isc3_and_puz_…` (B) |
+| `vsource.isc3` | 3 | 3 | `vsource_isc3_and_puz_…` (B) |
+| `vsource.mvasc1` | 2 | 2 | `vsource_mvasc1_and_mvasc3_after_makeposseq_use_the_full_precision_basekv` (B) |
+| `vsource.mvasc3` | 2 | 2 | `vsource_mvasc1_and_mvasc3_…` (B) |
+| `line.b1` | 2 | 2 | `line_b1_and_b0_after_makeposseq_use_the_full_precision_c1` (C) |
+| `line.b0` | 2 | 2 | `line_b1_and_b0_…` (C) |
+| `autotrans.wdgcurrents` | 1 | 0 | `autotrans_wdgcurrents_after_makeposseq_solve_the_exactly_converted_circuit` (C) |
+| `reactor.normamps` | 1 | 0 | `reactor_amps_after_makeposseq_are_the_exact_typed_conversion` (D) |
+| `reactor.emergamps` | 1 | 0 | `reactor_amps_…` (D) |
+| `reactor.lmh` | 1 | 1 | `reactor_amps_…` (D) |
+| `reactor.x` | 1 | 1 | `reactor_amps_…` (D) |
+| `reactor.z` | 1 | 1 | `reactor_amps_…` (D) |
+| `capacitor.cuf` | 1 | 0 | `capacitor_cuf_and_amps_after_makeposseq_are_the_exact_typed_conversion` (D) |
+| `capacitor.normamps` | 1 | 0 | `capacitor_cuf_and_amps_…` (D) |
+| `capacitor.emergamps` | 1 | 0 | `capacitor_cuf_and_amps_…` (D) |
+| `generator.kva` | 1 | 1 | `generator_ratings_after_makeposseq_are_the_exact_typed_conversion` (E) |
+| `generator.kvar` | 1 | 0 | `generator_ratings_…` (E) |
+| `generator.maxkvar` | 1 | 1 | `generator_ratings_…` (E) |
+| `generator.minkvar` | 1 | 1 | `generator_ratings_…` (E) |
+| `transformer.normamps` | 1 | 1 | `transformer_amps_after_makeposseq_are_the_exact_typed_conversion` (E) |
+| `transformer.emergamps` | 1 | 1 | `transformer_amps_…` (E) |
+
+**Ten pins (`props_r4133_pins.rs:2188-3254`) cover all 27 pairs, and each
+asserts the chain rather than narrating it:** (a) the port's literal render off
+`? Class.Name.Prop`; (b) r4133's census literal **recomputed from the port's own
+number by the chain's arithmetic inside the test**; (c) a discriminating second
+reading — for chains D/E the port is fed r4133's own five-digit token through
+`edit` and then prints r4133's literal itself, after which a third reading
+restores the exact nameplate and moves the cells back, with `? kv`/`? kW`/
+`? kVs` read each time so the edit cannot pass vacuously; (d)
+`Version8/Source/*.pas:` cites in the doc comment. The AutoTrans pin hard-codes
+none of r4133's command strings: it **computes** every `%-.5g` token from the
+port's own post-conversion doubles, replays them as `edit`s, solves twice, and
+reproduces r4133's census byte `44.00054, (161.26), 29.32187, (161.26), `
+exactly, with the AutoTrans-only replay (`44.00086, …`) asserted as the
+discriminator that the chain is deck-wide. Seven local helpers were added —
+chiefly `round_g`/`text_g` (FPC `Format('%-.Ng')` as a value and as text, both
+through the engine's own `dss_core::util::fmt_g`, the F-FMT seam, which is
+literally what `Parser.CmdString := S; Edit` does) and `render`
+(= `float_to_str_ex`, the function the `?` getter itself calls).
+
+**A lane trap was found and closed rather than papered over.** The parity lane's
+`fmt_g_fpc_impl` and the default lane's `fmt_g_native_impl` spell the *same
+stored double* differently on `Load.ld_wye.kW`: `44.4444444444445` vs
+`44.4444444444444`. The state is `(400/3)/3 = 44.444444444444446`, which is
+**not** `400/9 = 44.44444444444444`, and the FPC kernel distinguishes them at 15
+digits where the native one does not. The pin asserts that byte as a **value**
+(`render(400.0/3.0/3.0)`) plus a second assertion naming both lane spellings —
+**no `cfg`, no tolerance, no `#[ignore]`**; every other repeating-decimal
+literal in chains D/E was then checked in both lanes and none differs.
+
+**The accounting shrinks where a measurement allows it and nowhere else.**
+`RP39_ROUTING` (`props_r4133_replay.rs:294`) gained a fifth column, the per-pair
+**disposition** (all 27 = `PIN`), against the documented set
+`RP39_DISPOSITIONS = ["PIN", "FIX", "LEDGER", "OPEN"]` (:703 — `KILL`
+deliberately has **no** tag: a killed pair leaves the sub-step and is reported,
+not recorded); `RP39_PINS` (:4610) carries 27 rows of `(pair, pin, verdict)`,
+all `PRECISION_ROUNDTRIP`, read by `every_echo_row_pin_is_a_test_that_exists`
+as a fourth cited set; `the_rp39_pin_list_is_pinned` (:4765) now checks
+completeness **both** ways (every pin's pair is `PIN`-disposed, every
+`PIN`-disposed pair names a pin, any other disposition names none); and
+`the_display_floors_round_trip_residue_is_owned_by_rp39` (:8595) additionally
+rejects an unknown disposition tag by name. The new `OPEN_RP39` (:683) is the
+shrink: **`(55, 27, 19) → (0, 0, 0)`**. **`DECLARED_RP39` stays `(55, 27, 19)`
+on purpose:** it is not a declaration but a *measurement* — `account()` walks
+the vendored corpus and buckets whatever `display_class_but_not_a_render` routes
+to `Owner::Rp39`, a property of the two engines' doubles. No port render changed
+(all 27 verdicts are "the port is exact"), so writing a smaller number would
+either fail the guard's own equality or force it to be loosened — exactly the
+silent-progress claim the accounting exists to prevent. The rows retire by hand
+at RP4.1, as `DECLARED_RP3`'s and `DECLARED_RP35`'s notes already spell out for
+the earlier settled sub-steps.
+
+**The census was re-measured after the work, and every bucket is unchanged**
+(full walk, both channels, no `DSS_GATE_ONLY`: 440 cases / 1 059 178 rows /
+63.7 s; 6 r4133 + 22 capi oracle errors, as before): r4133 `UNCLAIMED`
+534 cells / 30 in scope / 292 spellings / 49 pairs, `under-floor`
+49 484 / 46 627 / 2 045 / 71, `echo-row` 488 019 / 468 046 / 170 / 82,
+`ledger-hit` 0, `mixed_disposition_spellings` 0; capi `ledger-hit` 21 (9 / 15 /
+12), `UNCLAIMED` 177 (141 / 29 / 11), **0 cells on every r4133 disposition** —
+every figure equal to the pre-work run, delta **0** in every bucket. All 27
+RP3.9 pairs appear in `claims_unclaimed_pairs.txt` with `cells_in_scope = 0` and
+cell/spelling counts equal line for line. A zero delta is the correct outcome —
+a pin does not make a `Link` claim a row — and a non-zero one would have meant a
+pin moved a render. **No `property` ledger entry is staged**, because with
+`count_in_scope = 0` on all 70 cells an r4133 entry would have nothing to
+exclude; the drafts, should a deck's `engines` key ever change, live in the
+sub-step's dossiers. One structural note: the census has **no disposition
+meaning "settled by an RP3.9 pin"** — the 70 cells still file as `UNCLAIMED`.
+That costs nothing today and is RP4.1's to decide, not this sub-step's to
+invent.
+
+*Gate.* All five commands green in both lanes, each exit code read individually:
+**4 285 passed / 0 failed / 5 ignored per lane** over 74 test binaries, the two
+totals identical binary for binary and the five `ignored` the same pre-existing
+ones (+11 on RP3.8's settled 4 274; no `#[ignore]`, no name filter).
+`corpus_gate` **131** over the full 523-case population in both lanes
+(142.9 s / 139.7 s) with every ledger entry hit and none stale, zero
+NEVER-APPLIED entries and zero reds on either channel; `props_r4133_pins`
+43 → **53**, `props_r4133_replay` 132 → **133**, and `props_r4133_evidence_lock`
+11 / `oracle_parity_cfg_gate` 11 / `dss-core --lib` 1 482 / `golden_lock` 4 /
+`golden_schema` 104 / `golden_json` 117 / `golden_reports` 305 /
+`props_roundtrip` 1 all unchanged — no golden re-baselined, no tolerance
+consulted or moved, no count lock moved other than the new `OPEN_RP39`, no
+`ledger.json` edit and no `TODO(compat)` added.
+`tests/corpus/props_r4133/README.md` gained a dated supplement
+`### What RP3.9 settled (2026-09-02)` (:871, before `## Files`, on RP3.8's
+precedent) and **no recorded number in any earlier section was rewritten**.
+`lane_diff` was **not** re-run and does not need to be: the sub-step touched
+three test/evidence files and not one line under any crate's `src/`, so no
+engine path, `compat` kernel, lane alias or solver moved and the 2026-07-31
+`max |Δ| = 0` bit-identical baseline — reproduced by RP3.8 the same day —
+stands untouched.
+
+**Recorded, not chased.** (a) r4133's `TStorageObj.MakePosSequence` emits
+`' kWrating=%-.5g'` where its own property is `kWrated`
+(`PCElements/Storage.pas:3979-3985` vs `:647`), so half of its own edit is DSS
+error #560 on `makeposseq_pc.dss` — already reported as
+`investigations/to_opendss/49` by RP3.8 and re-confirmed here; the case is
+`capi_v0145`-only, so the r4133 channel does not gate it. (b) The **34**
+`controls:autotrans/*` `wdgcurrents` cells (`autotrans_both`, `autotrans_reg`,
+`midi_autotrans`, `midi_autotrans_both`; 3–7.5 % apart, e.g. `151.5029` vs
+`156.2997` A on winding 2) involve **no** `makeposseq` and are a different
+mechanism from RP3.9's single tiny `makeposseq_xfmr` cell — out of scope
+(capi-only cases), filed `OutOfScope` by the RP2.4 re-filing, and still owed
+their own root cause; **nobody owns them yet** and a multi-percent gap in a
+solved current is not display-class. (c) The post-`makeposseq` `Save`/`Dump`
+surface belongs to **§RP3.11**: r4133 saves the five-digit tokens it holds in
+`PropertyValue[]` while the port saves the exact doubles, so a saved-and-
+reloaded converted circuit differs at ~5e-6 on exactly these elements. (d)
+Three citation nits in `RP39_ROUTING`'s `cite` column were left byte-identical
+on purpose, so the settlement diff is only the new column: chain B's cite says
+"from a round-tripped Z" where the rounded input is `BasekV`; chain A could add
+`Load.pas:570`/`:2364`; chain C could add `Line.pas:1593`. (e)
+`elements/pc/vsource/solve.rs:173` and `mod.rs:44-45` cite dss_capi 0.14.5 line
+numbers rather than r4133's `Vsource.pas:1390` — product-doc cosmetics,
+unacted.
+
+**RP3.9 landed 2026-09-02** — the display floor's round-trip residue is settled
+as 27 pinned `PRECISION_ROUNDTRIP` pairs (the §RP3.9 record above), so **every
+RP1–RP3 sub-step of this plan has landed** (RP3.5 2026-08-28, RP3.6 both parts
+2026-08-29, RP3.7 all three parts 2026-09-02, RP3.8 2026-09-02, RP3.9
+2026-09-02) and nothing in WP-RP1/2/3 blocks the unmask any more.
+
+**Next: RP4.1** — `all_properties` on the r4133 channel (G1.1's deliverable).
+It carries two preconditions of its own, both to be discharged **in** the
+sub-step and before the flip (plan §RP4.1): **(1)** narrow the **20 mixed echo
+rows per cell** — `PROPS_ECHO_R4133` is pair-scoped and on those 20 pairs is
+wider than each row's citation, so the moment the path is unmasked a genuine
+divergence (a wrong resolved loadshape name, a wrong ZIPV vector, a wrong
+`Bus2` terminal spelling) passes silently on r4133; fix by extending
+`props_norm::ECHO_CARVE_OUTS` or by giving each mixed row its measured echo
+spellings, which moves `CLAIMED_ECHO`/`MULTI_LINK_ROWS` and flips
+`a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses`. **(2)** the
+**staged-entries accounting commit** — nothing reads `ledger.json` from the
+replay accounting, so landing the eight staged `property` entries (RP3.1's two,
+RP3.2's four, RP3.4's two, plus RP1.4's) must in the same commit retire each
+settled `RP3_ROUTING` row, shrink `DECLARED_RP3` by exactly those rows, and
+re-state `the_staged_r4133_property_entries_have_not_landed_yet`.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1, **opened** on branch `golden-g1`
 (forked from `update` @ `4d3fc2d7`) — that branch carries G1.1's scratch census
 only and **nothing was committed there**; the WP-G1 sub-steps that actually land
@@ -4695,7 +4905,9 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     including any RP3.5+ sub-step RP2.2's triage opens"); **all three have since
     landed — RP3.5 on 2026-08-28, RP3.6 on 2026-08-29, RP3.7 on 2026-09-02** —
     and the fourth sub-step this WP opened, RP3.8, landed 2026-09-02 too, so
-    what still blocks RP4.1 from this WP is RP3.9 alone.
+    what still blocked RP4.1 from this WP was RP3.9 alone — and **RP3.9
+    landed 2026-09-02** as well (27 pairs, all `PRECISION_ROUNDTRIP`; see the
+    §RP3.9 record in §1), so this WP no longer blocks the unmask.
     - **RP3.5 — line length units lost by the matrix-branch merge. SETTLED
       2026-08-28 (`FIX`, both lanes; audit settled 2026-08-29) — see the §RP3.5
       record below.**
@@ -5475,7 +5687,8 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     full-precision `%-g`/`%g` getters where the two engines simply differ), which
     puts them back in `claims_unclaimed_pairs.txt` — the WP-RP3 work list — and
     makes RP4.1 wait on them (plan §0). No cell of the 55 is in scope, so nothing
-    the gate compares moved.
+    the gate compares moved. (**RP3.9 landed 2026-09-02** — all 27 pairs
+    `PRECISION_ROUNDTRIP`, its record in §1.)
   - **Locks moved by the settlement:** `CLAIMED_DISPLAY_FLOOR` 2 006 → **1 951**;
     `CLAIMED_TOTAL` 3 029 → **2 974**; `CLAIMED_SPELLINGS_LIVE` 3 036 →
     **2 981**; new `DECLARED_RP39` **(55, 27, 19)** and `RP39_ROUTING` (27 rows,
@@ -5548,9 +5761,11 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
 > same day: 11 findings, 9 fixed, 2 fixed with a sub-claim refuted, none
 > dropped)**, and **RP3.8 landed 2026-09-02** as well (audit settled the same
 > day: 8 findings after dedup, one major — `Save` was a fifth, un-refreshed
-> `get_value` reader — 7 fixed, 1 recorded, none dropped), so what is left is
-> RP3.9. The RP3.6, RP3.7 and RP3.8 records live in §1 above, beside RP3.5's
-> narrative one.
+> `get_value` reader — 7 fixed, 1 recorded, none dropped), and **RP3.9 landed
+> 2026-09-02** as well (27 pairs, all `PRECISION_ROUNDTRIP`, no product-crate
+> line), so every WP-RP3 sub-step has landed and RP4.1 no longer waits on this
+> WP. The RP3.6, RP3.7, RP3.8 and RP3.9 records live in §1 above, beside
+> RP3.5's narrative one.
 
 - **RP3.1** (2026-08-24) — `swtcontrol.delay`: **a wired property that r4133
   silently ignores.** **Zero product-crate bytes** (the port already behaves

@@ -271,168 +271,215 @@ const CLAIMED_SPELLINGS_LIVE: usize = 2982;
 /// (`Format('%-g')` / `Format('%g')` — `load.*`, `capacitor.normamps`,
 /// `reactor.normamps`).
 ///
-/// **They are a work list, not a disposition.** RP2.4's part-A survey claimed
-/// them as display cells and the audit round disproved it (both majors,
-/// 2026-08-23): each pair needs the round-trip chain read off the Pascal and
-/// then either an expected-value pin or a ledger entry, exactly like the RP3.1-8
-/// sub-steps. **No cell of any of them is in scope today** — the full claims
+/// **They were a work list, not a disposition — and RP3.9 settled all 27**
+/// (2026-09-02). RP2.4's part-A survey claimed them as display cells and the
+/// audit round disproved it (both majors, 2026-08-23): each pair needed the
+/// round-trip chain read off the Pascal and then either an expected-value pin or
+/// a ledger entry, exactly like the RP3.1-8 sub-steps. Every one came back
+/// §RP3.9 outcome 1, `PRECISION_ROUNDTRIP` — r4133's number is reproducible from
+/// the port's own state through a cited Pascal round trip and the port is exact
+/// — so every row now carries the `PIN` disposition and names its pin in
+/// [`RP39_PINS`]. **No cell of any of them is in scope today** — the full claims
 /// census measures `count_in_scope = 0` on all 55 spellings (70 cells), which is
-/// why the unmask is not blocked on the finding — but RP4.1 stays gated on
-/// RP3.9 all the same (plan §0), because scope is a property of today's manifest
-/// and the divergence is a property of the engines.
-/// Columns: `(pair, example rows, rows on in-scope pairs, r4133 site)`.
-const RP39_ROUTING: &[(&str, usize, usize, &str)] = &[
+/// why the unmask is not blocked on the finding, and why not one pair owes a
+/// staged `property` entry — but RP4.1 stays gated on RP3.9 all the same
+/// (plan §0), because scope is a property of today's manifest and the divergence
+/// is a property of the engines.
+///
+/// Columns: `(pair, example rows, rows on in-scope pairs, r4133 site,
+/// disposition)`, the last per [`RP39_DISPOSITIONS`]. The three counted columns
+/// do **not** drop to zero when a pair settles — they are re-measured from the
+/// walk, and nothing a pin does makes a link claim the row. What shrinks is
+/// [`OPEN_RP39`], `(55, 27, 19)` -> `(0, 0, 0)`.
+const RP39_ROUTING: &[(&str, usize, usize, &str, &str)] = &[
     (
         "autotrans.wdgcurrents",
         1,
         0,
         "AutoTrans.pas:1863 -> :1662 GeTAutoWindingCurrentsResult (solved state)",
+        "PIN",
     ),
     (
         "capacitor.cuf",
         1,
         0,
         "Capacitor.pas:1098-1103 -> Utilities.pas:2600-2607 `%-.6g`",
+        "PIN",
     ),
     (
         "capacitor.emergamps",
         1,
         0,
         "Capacitor.pas:1109 `%g` (full precision)",
+        "PIN",
     ),
     (
         "capacitor.normamps",
         1,
         0,
         "Capacitor.pas:1108 `%g` (full precision)",
+        "PIN",
     ),
     (
         "generator.kva",
         1,
         1,
         "generator.pas:3021 `%.6g` / MakePosSequence :3060 `%-.5g`",
+        "PIN",
     ),
     (
         "generator.kvar",
         1,
         0,
         "generator.pas:3018 `%.6g` / MakePosSequence :3058 `%-.5g`",
+        "PIN",
     ),
     (
         "generator.maxkvar",
         1,
         1,
         "generator.pas:3019 `%.6g` / MakePosSequence :3059 `%-.5g`",
+        "PIN",
     ),
     (
         "generator.minkvar",
         1,
         1,
         "generator.pas:3020 `%.6g` / MakePosSequence :3059 `%-.5g`",
+        "PIN",
     ),
     (
         "line.b0",
         2,
         2,
         "Line.pas:1407 `%.7g` of twopi*f*C0*1e6/units",
+        "PIN",
     ),
     (
         "line.b1",
         2,
         2,
         "Line.pas:1406 `%.7g` of twopi*f*C1*1e6/units",
+        "PIN",
     ),
     (
         "load.kva",
         13,
         0,
         "Load.pas:2352 `%-g` (full precision), kVA from a round-tripped pf",
+        "PIN",
     ),
-    ("load.kvar", 1, 0, "Load.pas:2350 `%-g` (full precision)"),
+    (
+        "load.kvar",
+        1,
+        0,
+        "Load.pas:2350 `%-g` (full precision)",
+        "PIN",
+    ),
     (
         "load.kw",
         2,
         0,
         "Load.pas:2344 `%-g` / MakePosSequence :2326 `%-.5g` of kW/3",
+        "PIN",
     ),
     (
         "load.xfkva",
         1,
         0,
         "Load.pas:325 prop 21, no getter arm -> PropertyValue[]; MakePosSequence :2328",
+        "PIN",
     ),
     (
         "reactor.emergamps",
         1,
         0,
         "Reactor.pas:1100 `%g` (full precision)",
+        "PIN",
     ),
-    ("reactor.lmh", 1, 1, "Reactor.pas:1098 `%-.8g` of L*1000"),
+    (
+        "reactor.lmh",
+        1,
+        1,
+        "Reactor.pas:1098 `%-.8g` of L*1000",
+        "PIN",
+    ),
     (
         "reactor.normamps",
         1,
         0,
         "Reactor.pas:1099 `%g` (full precision)",
+        "PIN",
     ),
     (
         "reactor.x",
         1,
         1,
         "Reactor.pas:1092 `%-.8g` / MakePosSequence :1145-1201 `%-.5g`",
+        "PIN",
     ),
     (
         "reactor.z",
         1,
         1,
         "Reactor.pas:1097 `[%-.8g, %-.8g]` of (R, X) — the same X",
+        "PIN",
     ),
     (
         "transformer.emergamps",
         1,
         1,
         "Transformer.pas:1843 `%-.5g`, amps from a round-tripped kVA",
+        "PIN",
     ),
     (
         "transformer.normamps",
         1,
         1,
         "Transformer.pas:1842 `%-.5g`, amps from a round-tripped kVA",
+        "PIN",
     ),
     (
         "vsource.isc3",
         3,
         3,
         "Vsource.pas:1330 `%-.5g`, Isc3 from a round-tripped Z",
+        "PIN",
     ),
     (
         "vsource.mvasc1",
         2,
         2,
         "Vsource.pas:1329 `%-.5g`, MVAsc from a round-tripped Z",
+        "PIN",
     ),
     (
         "vsource.mvasc3",
         2,
         2,
         "Vsource.pas:1328 `%-.5g`, MVAsc from a round-tripped Z",
+        "PIN",
     ),
     (
         "vsource.puz0",
         4,
         0,
         "Vsource.pas:1341 `[%-.8g, %-.8g]`, puZ0 from a round-tripped Z",
+        "PIN",
     ),
     (
         "vsource.puz1",
         4,
         0,
         "Vsource.pas:1340 `[%-.8g, %-.8g]`, puZ1 from a round-tripped Z",
+        "PIN",
     ),
     (
         "vsource.puz2",
         4,
         0,
         "Vsource.pas:1342 `[%-.8g, %-.8g]`, puZ2 from a round-tripped Z",
+        "PIN",
     ),
 ];
 
@@ -611,7 +658,49 @@ const DECLARED_RP3: (usize, usize, usize) = (6, 3, 6);
 /// compares and that the frozen ceilings do not prove out of scope; the LIVE
 /// census measures 0 in-scope cells on all 55 (README §"What the RP2.4 audit
 /// settlement moved").
+///
+/// **Unchanged by RP3.9's settlement (2026-09-02), deliberately** — the same
+/// reading [`DECLARED_RP3`]'s and [`DECLARED_RP35`]'s notes spell out. This
+/// bucket is *measured*: [`account`] walks the corpus and counts every row
+/// [`declare`] routes to [`Owner::Rp39`], and what routes a row there is
+/// `display_class_but_not_a_render` — a property of the two engines' doubles,
+/// which an expected-value pin does not touch. All 27 pairs are settled and the
+/// port was proven exact on every one, so no `rust` spelling moved either; a
+/// smaller number here would be a claim the tree does not hold. The shrink the
+/// plan's acceptance asks for is [`OPEN_RP39`], and RP4.1 retires these rows by
+/// hand with the unmask.
 const DECLARED_RP39: (usize, usize, usize) = (55, 27, 19);
+
+/// **What is still OPEN in the round-trip residue** — `(rows, pairs, rows on
+/// in-scope pairs)` summed over the [`RP39_ROUTING`] entries whose disposition is
+/// `OPEN`, i.e. the pairs RP3.9 has not yet given a verdict.
+///
+/// **`(0, 0, 0)` since 2026-09-02, from `(55, 27, 19)`**: the sub-step read every
+/// chain off the Pascal and settled all 27 pairs as `PIN`. Those are the deltas
+/// the plan's acceptance asks STATUS to state — of *open* residue, not of
+/// declared rows ([`DECLARED_RP39`] explains why the measured bucket cannot move
+/// and who retires it).
+const OPEN_RP39: (usize, usize, usize) = (0, 0, 0);
+
+/// The **disposition** an [`RP39_ROUTING`] row records — what the settled pair
+/// owes the tree, in the shape [`RP3_SETTLED_SHAPES`] carries for
+/// [`RP3_ROUTING`]:
+///
+/// * `PIN` — §RP3.9 outcomes 1 and 2 (`PRECISION_ROUNDTRIP`, `STATE_DIFFERS`):
+///   the port is exact, or differs by a proven precision-class cause, and the
+///   whole obligation is an expected-value test naming both numbers. It is cited
+///   in [`RP39_PINS`], whose own verdict column records which of the two it is.
+/// * `FIX` — §RP3.9 outcome 3 (`PORT_BUG`): the port computes the wrong number
+///   and is fixed in both lanes, witnessed beside the behaviour.
+/// * `LEDGER` — §RP3.9 outcome 4 (`UPSTREAM_BUG`): never reproduced, so the
+///   r4133 channel is excluded by a `property` entry staged into RP4.1 per
+///   §1.1(e), with its pin in [`LEDGER_ENTRY_PINS`].
+/// * `OPEN` — no verdict yet; every row carried this until 2026-09-02.
+///
+/// §RP3.9's fifth outcome, `KILL`, is deliberately not a tag: it is a stop, not a
+/// disposition — the pair leaves this sub-step for a root-cause one of its own,
+/// and the plan says to report it rather than record it here.
+const RP39_DISPOSITIONS: &[&str] = &["PIN", "FIX", "LEDGER", "OPEN"];
 /// The three sub-steps RP2.2 opened: **8 rows over 6 pairs, 5 of them in
 /// scope** — RP3.5 `line.units` (1 row, 0 in scope), RP3.6 `line.linecode`
 /// (2 rows, both in scope — the only RP3.5+ pair the RP4.1 unmask will actually
@@ -2252,6 +2341,11 @@ enum Owner {
     /// upstream command-string round trip amplified through a derived quantity,
     /// or a plain state difference). See [`RP39_ROUTING`]; RP4.1 does not start
     /// until it closes (plan §0).
+    ///
+    /// **All 27 pairs settled 2026-09-02** ([`OPEN_RP39`]) — every one a
+    /// reproduced upstream round trip with the port exact, pinned by
+    /// [`RP39_PINS`]. The bucket itself does not move for that: nothing claims
+    /// the rows, so they stay declared here until RP4.1's unmask retires them.
     Rp39,
     /// Nothing will claim it: every cell of the pair sits on an
     /// `engines: "capi_v0145"` case, which plan §1.3 keeps uncompared on r4133.
@@ -3599,7 +3693,7 @@ fn declare(row: &Example, ev: &PairEvidence) -> Result<Owner, String> {
     // nothing to do with the pair's bin or with §1.3 scope — the two engines
     // hold different doubles. See [`RP39_ROUTING`].
     if ev.numeric && display_class_but_not_a_render(row) {
-        return match RP39_ROUTING.iter().find(|(p, _, _, _)| *p == row.pair) {
+        return match RP39_ROUTING.iter().find(|(p, _, _, _, _)| *p == row.pair) {
             Some(_) => Ok(Owner::Rp39),
             None => Err(format!(
                 "{} '{}' vs '{}': inside RP2.4's display floor but no `%.Ng` render of our \
@@ -4157,11 +4251,16 @@ fn every_echo_row_pin_is_a_test_that_exists() {
         .map(|(_, _, _, pin)| *pin)
         .chain(std::iter::once(RP38_CAPTURE_PIN))
         .collect();
+    let rp39_named: BTreeSet<&str> = RP39_PINS.iter().map(|(_, pin, _)| *pin).collect();
     assert!(
         echo_named.is_disjoint(&ledger_named)
             && rp38_named.is_disjoint(&echo_named)
-            && rp38_named.is_disjoint(&ledger_named),
-        "a pin witnesses an echo row, a drafted ledger entry or RP3.8's skip rows, never two"
+            && rp38_named.is_disjoint(&ledger_named)
+            && rp39_named.is_disjoint(&echo_named)
+            && rp39_named.is_disjoint(&ledger_named)
+            && rp39_named.is_disjoint(&rp38_named),
+        "a pin witnesses an echo row, a drafted ledger entry, RP3.8's skip rows or an RP3.9 \
+         round-trip residue pair, never two"
     );
     for (name, what) in echo_named
         .iter()
@@ -4175,6 +4274,11 @@ fn every_echo_row_pin_is_a_test_that_exists() {
             rp38_named
                 .iter()
                 .map(|n| (*n, "an RP3.8 skip row's witness")),
+        )
+        .chain(
+            rp39_named
+                .iter()
+                .map(|n| (*n, "an RP3.9 residue pair's witness")),
         )
     {
         assert!(
@@ -4197,11 +4301,12 @@ fn every_echo_row_pin_is_a_test_that_exists() {
         .union(&ledger_named)
         .copied()
         .chain(rp38_named.iter().copied())
+        .chain(rp39_named.iter().copied())
         .collect();
     assert_eq!(
         defined, cited,
-        "{PINS} must define exactly the pins the echo rows, the drafted ledger entries and \
-         RP3.8's skip rows name"
+        "{PINS} must define exactly the pins the echo rows, the drafted ledger entries, \
+         RP3.8's skip rows and RP3.9's residue pairs name"
     );
 }
 
@@ -4471,6 +4576,370 @@ fn the_ledger_entry_pin_list_is_pinned() {
             entry.contains('(') && entry.contains(':'),
             "{pin}: the citation must name the drafted entry id and its case, got {entry:?}"
         );
+    }
+}
+
+/// **RP3.9's expected-value pins** — `(pair, pin `#[test]`, verdict)`, one row
+/// per settled pair of the round-trip residue [`RP39_ROUTING`] declares.
+///
+/// These pairs are neither echo rows (both engines' getters are LIVE — r4133's
+/// number is computed, not echoed back from a parse) nor, today, drafted ledger
+/// entries: the full claims census measures `count_in_scope = 0` on all 55
+/// spellings, so no case's gating channel compares any of these cells and a
+/// `property` entry would have nothing to exclude. What each pair owes is the
+/// other half of the RP3 discipline — an expected-value test that names BOTH
+/// numbers and reproduces r4133's from ours through the cited Pascal round trip
+/// (`R4133_PROPS_PLAN.md` §RP3.9, outcomes 1 and 2). This is where those pins are
+/// cited, so [`every_echo_row_pin_is_a_test_that_exists`] holds them to the same
+/// both-ways rule as the other three sets: an un-cited `#[test]` in [`PINS`]
+/// fails, and a pair naming a pin that does not exist fails too.
+///
+/// Only the two outcomes whose obligation *is* a pin and nothing else may appear
+/// here ([`RP39_SETTLED_VERDICTS`]): a `PORT_BUG` is fixed in both lanes and
+/// witnessed beside the behaviour, an `UPSTREAM_BUG` earns a staged entry and
+/// moves to [`LEDGER_ENTRY_PINS`], and a `KILL` has no verdict to record at all.
+/// The counted columns of [`RP39_ROUTING`] do **not** move when a pair settles:
+/// the vendored spellings are a data lock the walk still measures, exactly as the
+/// `FIX` sub-steps' extracts are (`RP22_ROUTING`), and they retire by hand at
+/// RP4.1; the settlement shows up in [`OPEN_RP39`] instead.
+///
+/// **Complete since 2026-09-02**: all 27 [`RP39_ROUTING`] pairs are `PIN` and all
+/// 27 are named here, so [`the_rp39_pin_list_is_pinned`] now checks the
+/// completeness half as well — a `PIN` disposition with no test, or a pin on a
+/// pair the routing disposes of some other way, is a hard error.
+const RP39_PINS: &[(&str, &str, &str)] = &[
+    (
+        "autotrans.wdgcurrents",
+        "autotrans_wdgcurrents_after_makeposseq_solve_the_exactly_converted_circuit",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "capacitor.cuf",
+        "capacitor_cuf_and_amps_after_makeposseq_are_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "capacitor.emergamps",
+        "capacitor_cuf_and_amps_after_makeposseq_are_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "capacitor.normamps",
+        "capacitor_cuf_and_amps_after_makeposseq_are_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "generator.kva",
+        "generator_ratings_after_makeposseq_are_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "generator.kvar",
+        "generator_ratings_after_makeposseq_are_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "generator.maxkvar",
+        "generator_ratings_after_makeposseq_are_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "generator.minkvar",
+        "generator_ratings_after_makeposseq_are_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "line.b0",
+        "line_b1_and_b0_after_makeposseq_use_the_full_precision_c1",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "line.b1",
+        "line_b1_and_b0_after_makeposseq_use_the_full_precision_c1",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "load.kva",
+        "load_kva_after_makeposseq_is_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "load.kvar",
+        "load_kw_kvar_and_xfkva_after_makeposseq_are_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "load.kw",
+        "load_kw_kvar_and_xfkva_after_makeposseq_are_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "load.xfkva",
+        "load_kw_kvar_and_xfkva_after_makeposseq_are_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "reactor.emergamps",
+        "reactor_amps_after_makeposseq_are_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "reactor.lmh",
+        "reactor_amps_after_makeposseq_are_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "reactor.normamps",
+        "reactor_amps_after_makeposseq_are_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "reactor.x",
+        "reactor_amps_after_makeposseq_are_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "reactor.z",
+        "reactor_amps_after_makeposseq_are_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "transformer.emergamps",
+        "transformer_amps_after_makeposseq_are_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "transformer.normamps",
+        "transformer_amps_after_makeposseq_are_the_exact_typed_conversion",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "vsource.isc3",
+        "vsource_isc3_and_puz_after_makeposseq_use_the_full_precision_basekv",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "vsource.mvasc1",
+        "vsource_mvasc1_and_mvasc3_after_makeposseq_use_the_full_precision_basekv",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "vsource.mvasc3",
+        "vsource_mvasc1_and_mvasc3_after_makeposseq_use_the_full_precision_basekv",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "vsource.puz0",
+        "vsource_isc3_and_puz_after_makeposseq_use_the_full_precision_basekv",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "vsource.puz1",
+        "vsource_isc3_and_puz_after_makeposseq_use_the_full_precision_basekv",
+        "PRECISION_ROUNDTRIP",
+    ),
+    (
+        "vsource.puz2",
+        "vsource_isc3_and_puz_after_makeposseq_use_the_full_precision_basekv",
+        "PRECISION_ROUNDTRIP",
+    ),
+];
+
+/// The verdicts an [`RP39_PINS`] row may carry: the two §RP3.9 outcomes whose
+/// whole obligation is an expected-value pin — the port is exact and r4133's
+/// number is a reproduced round trip (`PRECISION_ROUNDTRIP`), or the two engines'
+/// state genuinely differs by a proven precision-class cause (`STATE_DIFFERS`).
+/// The other three outcomes owe something else and live elsewhere; an unknown tag
+/// is a hard error naming this list, never a reason to loosen it.
+const RP39_SETTLED_VERDICTS: &[&str] = &["PRECISION_ROUNDTRIP", "STATE_DIFFERS"];
+
+/// **RP3.9's pin list is pinned literally**, like [`NOT_A_PIN`] and
+/// [`LEDGER_ENTRY_PINS`]: it is the third exemption from "every pin in [`PINS`]
+/// is named by an echo row", and an exemption that grows by iteration would let
+/// an un-cited `#[test]` through by being added to it.
+///
+/// Each row must also name a pair the residue actually holds and an outcome a pin
+/// alone can settle, so a routing verdict cannot be recorded here that owes a
+/// ledger entry or a fix.
+#[test]
+fn the_rp39_pin_list_is_pinned() {
+    assert_eq!(
+        RP39_PINS,
+        [
+            (
+                "autotrans.wdgcurrents",
+                "autotrans_wdgcurrents_after_makeposseq_solve_the_exactly_converted_circuit",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "capacitor.cuf",
+                "capacitor_cuf_and_amps_after_makeposseq_are_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "capacitor.emergamps",
+                "capacitor_cuf_and_amps_after_makeposseq_are_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "capacitor.normamps",
+                "capacitor_cuf_and_amps_after_makeposseq_are_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "generator.kva",
+                "generator_ratings_after_makeposseq_are_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "generator.kvar",
+                "generator_ratings_after_makeposseq_are_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "generator.maxkvar",
+                "generator_ratings_after_makeposseq_are_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "generator.minkvar",
+                "generator_ratings_after_makeposseq_are_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "line.b0",
+                "line_b1_and_b0_after_makeposseq_use_the_full_precision_c1",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "line.b1",
+                "line_b1_and_b0_after_makeposseq_use_the_full_precision_c1",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "load.kva",
+                "load_kva_after_makeposseq_is_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "load.kvar",
+                "load_kw_kvar_and_xfkva_after_makeposseq_are_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "load.kw",
+                "load_kw_kvar_and_xfkva_after_makeposseq_are_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "load.xfkva",
+                "load_kw_kvar_and_xfkva_after_makeposseq_are_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "reactor.emergamps",
+                "reactor_amps_after_makeposseq_are_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "reactor.lmh",
+                "reactor_amps_after_makeposseq_are_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "reactor.normamps",
+                "reactor_amps_after_makeposseq_are_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "reactor.x",
+                "reactor_amps_after_makeposseq_are_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "reactor.z",
+                "reactor_amps_after_makeposseq_are_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "transformer.emergamps",
+                "transformer_amps_after_makeposseq_are_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "transformer.normamps",
+                "transformer_amps_after_makeposseq_are_the_exact_typed_conversion",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "vsource.isc3",
+                "vsource_isc3_and_puz_after_makeposseq_use_the_full_precision_basekv",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "vsource.mvasc1",
+                "vsource_mvasc1_and_mvasc3_after_makeposseq_use_the_full_precision_basekv",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "vsource.mvasc3",
+                "vsource_mvasc1_and_mvasc3_after_makeposseq_use_the_full_precision_basekv",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "vsource.puz0",
+                "vsource_isc3_and_puz_after_makeposseq_use_the_full_precision_basekv",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "vsource.puz1",
+                "vsource_isc3_and_puz_after_makeposseq_use_the_full_precision_basekv",
+                "PRECISION_ROUNDTRIP",
+            ),
+            (
+                "vsource.puz2",
+                "vsource_isc3_and_puz_after_makeposseq_use_the_full_precision_basekv",
+                "PRECISION_ROUNDTRIP",
+            ),
+        ],
+        "all 27 pairs of RP3.9's round-trip residue — chains A (load.*), B (vsource.*), \
+         C (line.b*, autotrans.wdgcurrents), D (reactor.*, capacitor.*) and E \
+         (generator.*, transformer.*) — and nothing else"
+    );
+    for (pair, pin, verdict) in RP39_PINS {
+        let (_, _, _, _, disposition) = RP39_ROUTING
+            .iter()
+            .find(|(p, _, _, _, _)| p == pair)
+            .unwrap_or_else(|| {
+                panic!("{pin}: {pair} is not one of the round-trip residue's pairs")
+            });
+        assert_eq!(
+            *disposition, "PIN",
+            "{pair}: the routing disposes of it as {disposition}, which does not settle \
+             through a pin — {pin} belongs with that outcome's own witness"
+        );
+        assert!(
+            RP39_SETTLED_VERDICTS.contains(verdict),
+            "{pair}: {verdict:?} is not an outcome an expected-value pin alone settles — \
+             extend RP39_SETTLED_VERDICTS with the obligations it owes, never loosen"
+        );
+    }
+    // …and the completeness half: a `PIN` disposition with no test would be a
+    // verdict recorded against nothing.
+    for (pair, rows, _, _, disposition) in RP39_ROUTING {
+        let named = RP39_PINS.iter().any(|(p, _, _)| p == pair);
+        if *disposition == "PIN" {
+            assert!(
+                named,
+                "{pair}: settled as PIN, but no RP39_PINS row names its expected-value test \
+                 ({rows} vendored rows)"
+            );
+        } else {
+            assert!(
+                !named,
+                "{pair}: disposed of as {disposition}, so it must not be settled here"
+            );
+        }
     }
 }
 
@@ -8116,14 +8585,19 @@ fn the_display_floors_residual_rows_are_proved_out_of_scope() {
 ///   material), and no earlier link claims it;
 /// * each citation names an r4133 site, the same discipline
 ///   [`ECHO_CARVE_OUT_ROUTING`] and [`RP38_SUPERSEDED`] carry;
-/// * and the bucket the accounting builds is [`DECLARED_RP39`].
+/// * each row records a disposition from [`RP39_DISPOSITIONS`], so a pair cannot
+///   be settled by a tag whose obligations nothing checks;
+/// * the bucket the accounting builds is [`DECLARED_RP39`] — unchanged by the
+///   settlement, because it is measured from the walk;
+/// * and what the settlement actually retired is [`OPEN_RP39`], summed here over
+///   the rows still tagged `OPEN`.
 #[test]
 fn the_display_floors_round_trip_residue_is_owned_by_rp39() {
     assert_eq!(
         (
-            RP39_ROUTING.iter().map(|(_, n, _, _)| n).sum::<usize>(),
+            RP39_ROUTING.iter().map(|(_, n, _, _, _)| n).sum::<usize>(),
             RP39_ROUTING.len(),
-            RP39_ROUTING.iter().map(|(_, _, n, _)| n).sum::<usize>(),
+            RP39_ROUTING.iter().map(|(_, _, n, _, _)| n).sum::<usize>(),
         ),
         DECLARED_RP39,
         "the routing's three columns must sum to the bucket lock"
@@ -8135,9 +8609,9 @@ fn the_display_floors_round_trip_residue_is_owned_by_rp39() {
         if !display_class_but_not_a_render(row) {
             continue;
         }
-        let (pair, _, _, cite) = RP39_ROUTING
+        let (pair, _, _, cite, disposition) = RP39_ROUTING
             .iter()
-            .find(|(p, _, _, _)| *p == row.pair)
+            .find(|(p, _, _, _, _)| *p == row.pair)
             .unwrap_or_else(|| {
                 panic!(
                     "{} '{}' vs '{}': inside the floor, no `%.Ng` render, and no RP39_ROUTING \
@@ -8148,6 +8622,11 @@ fn the_display_floors_round_trip_residue_is_owned_by_rp39() {
         assert!(
             cite.contains(".pas:"),
             "{pair}: an RP3.9 routing must cite the r4133 site, got {cite:?}"
+        );
+        assert!(
+            RP39_DISPOSITIONS.contains(disposition),
+            "{pair}: {disposition:?} is not a recorded RP3.9 disposition — extend \
+             RP39_DISPOSITIONS with the obligations that outcome owes, never loosen"
         );
         // The METRIC would have claimed it; only the mechanism clause does not.
         let rel = props_norm::display_rel(&row.rust, &row.r4133).expect("a numeric cell");
@@ -8167,7 +8646,7 @@ fn the_display_floors_round_trip_residue_is_owned_by_rp39() {
         seen.iter().map(|(p, n)| (*p, *n)).collect::<Vec<_>>(),
         RP39_ROUTING
             .iter()
-            .map(|(p, n, s, _)| (*p, (*n, *s)))
+            .map(|(p, n, s, _, _)| (*p, (*n, *s)))
             .collect::<Vec<_>>(),
         "the cited pairs, row counts and in-scope splits must be exactly what the walk refuses"
     );
@@ -8176,6 +8655,21 @@ fn the_display_floors_round_trip_residue_is_owned_by_rp39() {
         led.owner(Owner::Rp39),
         DECLARED_RP39,
         "RP3.9 inherits (rows, pairs, rows on in-scope pairs)"
+    );
+    // …and what is still without a verdict, which is the half that shrinks.
+    let open: Vec<_> = RP39_ROUTING
+        .iter()
+        .filter(|(_, _, _, _, d)| *d == "OPEN")
+        .collect();
+    assert_eq!(
+        (
+            open.iter().map(|(_, n, _, _, _)| n).sum::<usize>(),
+            open.len(),
+            open.iter().map(|(_, _, n, _, _)| n).sum::<usize>(),
+        ),
+        OPEN_RP39,
+        "the residue still awaiting a verdict — RP3.9 settled all 27 pairs on 2026-09-02, so \
+         this is (0, 0, 0) while DECLARED_RP39 keeps the measured rows"
     );
 }
 
