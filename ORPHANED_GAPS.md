@@ -321,11 +321,12 @@ Oracle-backed pin without a new capture: the `est8` deck minus its
   phase count after wiring its control (swept for RP3.7). **Priority: low**, but it is a real
   divergence from the authority engine, not a modelling preference.
 
-### 1.14 The per-phase state seam RP3.7 landed for SwtControl and Relay, and its three untouched siblings
+### 1.14 The per-phase state seam RP3.7 landed for SwtControl and Relay, and its untouched siblings
 - **Deferred by:** `R4133_PROPS_PLAN.md` §RP3.7 (2026-09-02). RP3.7 owns `swtcontrol.normal`/
   `.state` and `relay.normal`/`.state` only; no plan sub-step owns the Recloser or Fuse pairs
-  (checked against §RP3.8, §RP3.9, §RP3.10, §RP3.11 and §RP4.1), and the two Relay items below
-  were deliberately not landed on a hunch.
+  (checked against §RP3.8, §RP3.9, §RP3.10, §RP3.11 and §RP4.1), and the Relay items below
+  were deliberately not landed on a hunch — except the NIL render, which the RP3.7 audit
+  settlement measured on the DLL and landed the same day (see (c)).
 - **What.** (a) **Recloser carries both defects RP3.7 removed from Relay**
   (`crates/dss-core/src/elements/control/recloser/accessors.rs:334-362`): the
   `values.len() == 1 → ganged` heuristic, which reads a *quoted* single token as a ganged write
@@ -335,12 +336,21 @@ Oracle-backed pin without a new capture: the `est8` deck minus its
   (b) **Fuse has no ganged path at all** (`elements/pd/fuse/accessors.rs:205-214`): it writes only
   the leading `values.len()` slots, so a bare `fuse … state=open` sets phase 1 alone where
   `Fuse.pas:569-597` — the one interpreter of the three that *has* the `Else Begin` — fills every
-  slot. (c) **Relay does not implement r4133's `ControlledElement = NIL → '[]'` render**
-  (`Relay.pas:1406-1408`/`:1417-1419`); SwtControl's twin landed in RP3.7 as `state_size() == 0`,
-  but Relay's `state_size` has **14** call sites (sensing loops in `logic.rs`, `DoPendingAction`,
-  `Reset`, `MakeLike`), so returning 0 there is a much wider behavioral change than the render and
-  would silently align `do_reset_action` with r4133's NIL-guarded `Reset` body — a second,
-  unprobed observable. (d) **`set_States`' `ArmedForReset := FALSE`** (`Relay.pas:1509-1540`) is
+  slot. (c) **The NIL-`ControlledElement` guards, minus the render.** The **render** half is
+  **CLOSED** by the RP3.7 audit settlement (2026-09-02): `Relay::render_size` carries r4133's
+  own getter-local guard (`Relay.pas:1407`/`:1418`), so `Normal`/`State` answer `'[]'` on a relay
+  whose `SwitchedObj` never resolved, exactly as the DLL does (measured on 11.0.0.1; pinned by
+  `relay::tests::nil_controlled_element_renders_the_empty_array`). It is scoped to the two render
+  accessors on purpose — the deferral's real subject was never the render but the other twelve
+  `state_size` call sites. **What is left** is the behavioral half: r4133 guards `Reset`
+  (`:1447` `If not Locked and (ControlledElement <> NIL)`) and `set_States` (`:1494`/`:1514`) on
+  the same pointer, so with no controlled element it restores **nothing**, while the port's
+  `reset_action`/`do_reset_action` run their state-array loop regardless (`Sample` is not a
+  question: r4133's `:1071` `WITH ControlledElement Do` faults outright, so there is no defined
+  observable to port). Unprobed, and the object it needs cannot exist in a corpus deck without a
+  #387 error first. (d) **The same NIL guard is unported on Recloser (`Recloser.pas:1377`/`:1388`)
+  and Fuse (`Fuse.pas:690`/`:701`)** — both render their own phase count where r4133 renders
+  `'[]'`; they belong with those classes' interpreter ports in (a)/(b), not with Relay's. (e) **`set_States`' `ArmedForReset := FALSE`** (`Relay.pas:1509-1540`) is
   not reproduced: the port drives the element from `recalc` (r4133's `RecalcElementData:965-980`,
   which clears `ArmedForOpen`/`ArmedForClose` but not `ArmedForReset`); observable only for an
   `edit` issued mid-simulation with a reset armed.
@@ -366,6 +376,42 @@ Oracle-backed pin without a new capture: the `est8` deck minus its
   ported and needs no row of its own.
 - **Blast radius today: zero cells** — no corpus deck mis-types the terminal. **Priority: low**;
   it is one guarded error, but validation gaps are exactly what silently degrades a port.
+
+### 1.16 SwtControl still runs the retired 0.14.5 `Sample`/`DoPendingAction` control-queue glue
+- **Deferred by:** `R4133_PROPS_PLAN.md` §RP3.7 and its verify-A1 settlement (2026-09-02,
+  finding F2), registered here by the RP3.7 audit settlement the same day. Pre-existing (the
+  scalar model armed identically), **not** an RP3.7 regression — but it is the only RP3.7 item
+  that moves a **solved** result, so it gets a row of its own rather than living in a test doc.
+- **What (measured on BOTH engines, 2026-09-02, r4133 DLL 11.0.0.1 vs the port):** r4133 comments
+  out both `TSwtControlObj.Sample` and `DoPendingAction`
+  (`Version8/Source/Controls/SwtControl.pas:396-408`, `:484-507`) — a SwtControl queues nothing
+  and operates nothing; the switch moves only at parse time, from `set_States`/
+  `RecalcElementData`. The port keeps the 0.14.5 bodies, and 0.14.5 maps all three state
+  properties onto one `CurrentAction` field, so `side_effects(NORMAL)` leaves
+  `current_action = Open` against an all-CLOSED `present_state` — `Sample`'s arming condition.
+  Consequence: after `edit swtcontrol.sw normal=open` the port OPENS the switch three duty steps
+  later (`Action=OPENED` in the event log) where the DLL leaves it closed for the whole run and
+  logs nothing. The **locked** write arms it too since RP3.7 (a2) applies a locked `normal=` per
+  `:416-417`; there the switch stays shut (`do_pending_action` is `!locked`-guarded) but the
+  queue push and the `armed` latch still happen.
+- **Current Rust:** `elements/control/swt_control/mod.rs::sample` / `::do_pending_action`, held
+  by the delete-don't-re-baseline tripwire
+  `swt_control::tests::sample_arms_on_a_normal_write_the_retained_capi_channel` (both the
+  unlocked and the locked arm).
+- **Why it is not a one-liner — the blocker, named.** `controls/swtcontrol/swtcontrol_lock.dss`
+  is gated `engines: "capi_v0145"` with `compare_ctrlqueue`, so the capi lane **pins** the
+  spurious `CTRL_LOCK` push this body makes. Retiring the body means re-gating that deck onto
+  `r4133`, which gives up the only capi deck that both probes and property-compares a SwtControl
+  and retires one of the five ledger entries RP3.7 landed. That is a channel decision, and RP3.7
+  **chose not to take it** — not a mechanical limit (the sub-step edited the manifest lock and
+  the ledger for other reasons). The capi015 props golden's `Action` readback is **not** a second
+  blocker: it reads `current_action` via `get_i32(ACTION)`, maintained by the property side
+  effects, which neither `Sample` nor `DoPendingAction` writes.
+- **Blast radius today: zero cells.** Every corpus `normal=` is a ganged `normal=closed` over an
+  all-closed state (swept for RP3.7 over all eight SwtControl decks: `midi_swtcontrol.dss:123`,
+  `swtcontrol_lock.dss:16`, `swtcontrol_time.dss:16`), and `swtcontrol_lock.dss` types
+  `normal=closed` **before** `lock=yes` on the same `New`. **Priority: medium** — zero exposure
+  today, but it is a live divergence from the behavioral authority that no gate can fail on.
 
 ---
 

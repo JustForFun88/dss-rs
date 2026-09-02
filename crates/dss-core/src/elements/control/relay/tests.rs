@@ -1400,6 +1400,39 @@ fn default_dump_matches_oracle() {
     assert_eq!(dump(&mut dss, "PhaseTrip"), dump(&mut dss, "PhPickup"));
 }
 
+/// `ControlledElement = NIL` renders the bare `'[]'` on Relay exactly as it
+/// does on SwtControl — r4133's getters 39/40 open with
+/// `If ControlledElement <> Nil Then` (`Relay.pas:1407`/`:1418`) and otherwise
+/// leave `Result` at `'['+']'`.
+///
+/// **Measured on the r4133 DLL 11.0.0.1** (RP3.7 audit settlement, 2026-09-02):
+/// a relay pointed at a non-existent `switchedobj` — the create raises #387 and
+/// leaves `ControlledElement` nil (`:984`) — answers `'[]'` for BOTH `Normal`
+/// and `State`. Before the settlement the port fell back to the relay's own
+/// phase count and printed `[closed, closed, closed, ]`.
+///
+/// The guard is the getters' own ([`Relay::render_size`]); the twelve
+/// sensing/reset/`MakeLike` loops keep [`Relay::state_size`], which is where
+/// `ORPHANED_GAPS.md` §1.14(c)'s residual lives.
+#[test]
+fn nil_controlled_element_renders_the_empty_array() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.rn basekv=12.47 phases=3 bus1=src",
+        "new line.l1 bus1=src bus2=b1 phases=3 r1=0.3 x1=0.6 length=1",
+        // r4133 #387 "CktElement ... Not Found" — the relay is still created.
+        "new relay.r1 monitoredobj=line.l1 monitoredterm=1 switchedobj=line.nosuch          switchedterm=1 type=current phasetrip=800",
+    ] {
+        dss.command(c);
+    }
+    assert_eq!(dump(&mut dss, "Normal"), "[]");
+    assert_eq!(dump(&mut dss, "State"), "[]");
+    // A resolvable switch restores the live bound — the guard is nil-only.
+    dss.command("edit relay.r1 switchedobj=line.l1");
+    assert_eq!(dump(&mut dss, "State"), "[closed, closed, closed, ]");
+}
+
 /// `state=open` (ganged) drives every phase's `FPresentState`, defaults
 /// `NormalState`, and forces the controlled terminal open at parse time.
 #[test]
@@ -1525,6 +1558,95 @@ fn recloseintervals_none_clears_the_array() {
     assert_eq!(dump(&mut dss, "Shots"), "1");
 }
 
+/// Relay's ordinal twin [`DssObject::set_enum_array`] — the SwtControl pin's
+/// missing counterpart, added by the RP3.7 audit settlement (2026-09-02).
+///
+/// The method is unreachable in production ([`Relay::set_enum_array_raw`]
+/// consumes every `Normal`/`State` write) but it re-implements the lock guard,
+/// the five-slot cap and the `Keep` rule by hand, and nothing tested it at all.
+/// Each row drives two identical relays — one through the ordinal setter, one
+/// through [`Relay::interpret_relay_state`] with the equivalent quoted
+/// spelling — and asserts BOTH the r4133 bytes and that the two agree, so a
+/// change to either path reds this test.
+#[test]
+fn the_ordinal_array_setter_matches_the_interpreter() {
+    use crate::obj::dss_enum::EnumRegistry;
+    let keep = ControlAction::Keep.ordinal();
+    let open = ControlAction::Open.ordinal();
+    // Every row starts from the all-closed baseline `Relay::new` gives its six
+    // in-bounds slots — the same baseline `out_b1b.txt` B1(3b) established on
+    // the DLL with a ganged `state=closed` before measuring the cap.
+    let cases: [(bool, usize, &[i32], &str, &str); 4] = [
+        (
+            false,
+            prop::STATE,
+            &[open, keep, open],
+            "open, keep, open",
+            "[open, closed, open, closed, closed, closed, ]",
+        ),
+        // The five-slot cap on both paths (`take(RCMAX - 1)` vs `:1286`); the
+        // 6th token is dropped, as B1(3b) measured on the r4133 DLL.
+        (
+            false,
+            prop::STATE,
+            &[open; 6],
+            "open, open, open, open, open, open",
+            "[open, open, open, open, open, closed, ]",
+        ),
+        // `Relay.pas:1244` — the guard keys on the property NAME.
+        (
+            true,
+            prop::STATE,
+            &[open; 3],
+            "open, open, open",
+            "[closed, closed, closed, closed, closed, closed, ]",
+        ),
+        (
+            true,
+            prop::NORMAL,
+            &[open; 3],
+            "open, open, open",
+            "[open, open, open, closed, closed, closed, ]",
+        ),
+    ];
+    let enums = EnumRegistry::new();
+    let cls = super::class_props(&enums);
+    for (locked, idx, ords, spelling, expected) in cases {
+        let (name, rprop) = if idx == prop::STATE {
+            ("State", RelayStateProp::State)
+        } else {
+            ("Normal", RelayStateProp::Normal)
+        };
+        // A 6-phase controlled element so the cap is observable in the render.
+        let snap = RefSnapshot {
+            full_name: "Line.l6".into(),
+            nphases: 6,
+            nterms: 1,
+            buses: vec!["b".into()],
+        };
+        let mut by_ordinal = Relay::new("r1");
+        by_ordinal.ccd.controlled_element = Some(ElemId::new(0, 0));
+        by_ordinal.ctrl_snap = Some(snap.clone());
+        by_ordinal.f_locked = locked;
+        by_ordinal.set_enum_array(idx, ords);
+
+        let mut by_interpreter = Relay::new("r2");
+        by_interpreter.ccd.controlled_element = Some(ElemId::new(0, 0));
+        by_interpreter.ctrl_snap = Some(snap);
+        by_interpreter.f_locked = locked;
+        by_interpreter.interpret_relay_state(rprop, spelling, true);
+
+        let pidx = cls.property_index(name).expect("prop");
+        let a = cls.get_value(&by_ordinal, pidx, &enums);
+        let b = cls.get_value(&by_interpreter, pidx, &enums);
+        assert_eq!(a, expected, "{name} locked={locked}: r4133 bytes");
+        assert_eq!(
+            a, b,
+            "{name} locked={locked}: the ordinal setter drifted from the interpreter"
+        );
+    }
+}
+
 /// The r4133 property table has 71 class props (+ BaseFreq/Enabled tail = 73
 /// defs, NumProps 74).
 #[test]
@@ -1609,12 +1731,19 @@ fn a_quoted_single_token_is_per_phase_a_bare_one_is_ganged() {
 /// `state=(closed, closed, closed, closed, closed, open)` leaves
 /// `[closed, closed, closed, closed, closed, closed, ]`.
 ///
-/// r4133's own FRESH 6-phase render is `[closed, closed, closed, open, open,
-/// open, ]` (`out_b1.txt` B1(3)) — `Create` allocates `FPresentState` with
-/// `FNPhases` (3) entries and initializes only those (`Relay.pas:829-843`), so
-/// slots 4..6 are an out-of-bounds heap read. That defect is NOT reproduced
-/// (2026-08-02 policy, A1 D8/A2a D7): the port initializes all six in-bounds
-/// slots to closed, which is why the pin ganges to a known baseline first.
+/// r4133's own FRESH 6-phase render has **no defined value** in slots 4..6:
+/// `Create` allocates `FPresentState` with `FNPhases` (3) entries and
+/// initializes only those (`Relay.pas:829-843`), while the getter loops the
+/// controlled element's six phases (`:1418-1428`), so those three tokens are an
+/// out-of-bounds heap read. Measured both ways on the same DLL 11.0.0.1
+/// (RP3.7 audit settlement, 2026-09-02): on `decks/b1_relay6.dss`, which ends in
+/// a `solve`, it reads `[closed, closed, closed, open, open, open, ]`
+/// (`out_b1.txt` B1(3), reproducible 2/2 on re-run), and on the same
+/// construction stopped before the `solve` it reads all-closed — the flip
+/// happens at the `solve`, i.e. it tracks heap content, not the model. That
+/// defect is NOT reproduced (2026-08-02 policy, A1 D8/A2a D7): the port
+/// initializes all six in-bounds slots to closed, which is why the pin ganges to
+/// a known baseline first and asserts nothing about a fresh 6-phase render.
 #[test]
 fn the_property_seam_caps_the_per_phase_parse_at_five_tokens() {
     let mut dss = Dss::new();

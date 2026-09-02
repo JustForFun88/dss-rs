@@ -10307,11 +10307,6 @@
           "items" : {
             "$ref" : "#/$defs/Relay/$defs/RelayState"
           },
-          "default" : [
-            "closed",
-            "closed",
-            "closed"
-          ],
           "description" : "ARRAY of strings {Open | Closed} representing the Actual state of the relay in each phase of the controlled element. Upon setting, immediately forces the state of the relay. Simulates manual control on the controlled relay. Defaults to Closed for all phases. Setting this property to {Open | Closed} sets the actual state to the specified value for all phases (ganged operation). \"Open\" causes the controlled element or respective phase to open and lock out. \"Closed\" causes the controlled element or respective phase to close and the relay to reset to its first operation.",
           "title" : "State",
           "$dssPropertyIndex" : 40,

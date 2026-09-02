@@ -519,13 +519,25 @@ impl SwtControl {
     /// `Action=OPENED` event (`tmp/rp37/out_port_probe10.txt`), where the
     /// r4133 DLL keeps `[closed, closed, closed, ]` for every step and logs
     /// nothing (`tmp/rp37/out_fixa1.txt` §F2). So the "queue branch stays
-    /// inert" invariant holds for `State`/`Action` writes only. Corpus exposure
-    /// is zero (every corpus `normal=` is a ganged `normal=closed` over an
-    /// all-closed present state — probe §7 sweep), which is why this is
-    /// recorded rather than fixed here: retiring the body requires re-gating
-    /// `swtcontrol_lock.dss` off the capi channel (a manifest/ledger change),
-    /// and the `Action` readback the capi015 props golden pins rides on the
-    /// same glue. Tripwire:
+    /// inert" invariant holds for `State`/`Action` writes only. A **locked**
+    /// `normal=` arms it too, since RP3.7 (a2) applies that write per r4133
+    /// `:416-417` where the scalar era refused it — the switch stays shut
+    /// (`do_pending_action` is `!locked`-guarded) but the push happens.
+    ///
+    /// Corpus exposure is zero (every corpus `normal=` is a ganged
+    /// `normal=closed` over an all-closed present state — probe §7 sweep), which
+    /// is why this is recorded rather than fixed here. The one blocking channel
+    /// is `controls/swtcontrol/swtcontrol_lock.dss`: it is gated on
+    /// `capi_v0145` with `compare_ctrlqueue`, so the capi lane pins the spurious
+    /// `CTRL_LOCK` push this body makes, and retiring the body means re-gating
+    /// that deck onto `r4133` — giving up the only capi deck that both probes
+    /// and property-compares a SwtControl, and retiring one of the five ledger
+    /// entries RP3.7 landed. That is a channel decision, not a mechanical edit,
+    /// and RP3.7 chose not to take it. The capi015 props golden's `Action`
+    /// readback is **not** a second blocker: it reads `current_action`
+    /// (`accessors::get_i32(ACTION)`), which the property side effects
+    /// maintain and neither `sample` nor `do_pending_action` writes. Owner:
+    /// `ORPHANED_GAPS.md` §1.16. Tripwire:
     /// `tests::sample_arms_on_a_normal_write_the_retained_capi_channel`.
     pub(crate) fn sample(&mut self, ctx: &mut CtrlCtx) {
         if self.lock_command != ControlAction::None {

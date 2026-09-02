@@ -880,8 +880,11 @@ fn render_is_one_token_per_controlled_element_phase() {
     assert_eq!(ask(&mut dss1, "? swtcontrol.sw1.state"), "[open, ]");
 
     // Four phases: r4133 renders four tokens off a 4-phase controlled element
-    // (probe P2(iv-b)) even though `Create` allocated three — the port answers
-    // the same four from its six in-bounds slots.
+    // (probe P2(iv-b)) even though `Create` allocated three (`:299-305`) — the
+    // port answers the same four from its six in-bounds slots. The COUNT is the
+    // pinned observable; the 4th token's VALUE is an out-of-bounds heap read
+    // upstream, which happens to read `closed` on this shape (re-measured
+    // 2026-09-02) but is not a defined r4133 answer.
     let mut dss4 = micro_dss(4);
     assert_eq!(
         ask(&mut dss4, "? swtcontrol.sw1.state"),
@@ -1073,40 +1076,91 @@ fn the_render_bound_follows_makeposseq() {
 /// (the raw hook consumes every write) but kept semantically identical, so a
 /// future caller cannot silently get ganged-vs-per-phase or the lock rule
 /// wrong. Same three rules: per-phase fill, five-slot cap, `Keep` = unchanged.
+///
+/// **RP3.7 audit settlement (2026-09-02): the identity is ENFORCED here, not
+/// claimed in prose.** Each row below drives two identical controls — one
+/// through the ordinal setter, one through
+/// [`SwtControl::interpret_switch_state`] with the equivalent quoted spelling —
+/// and asserts BOTH the r4133 bytes and that the two renders agree. The
+/// previous version asserted literals only: mutating the interpreter's lock
+/// guard to a whole-object `if self.locked { return; }` left it green while
+/// the two paths disagreed about `Normal`.
+///
+/// The `Keep` ordinal's spelling on the interpreter side is any token whose
+/// first character is neither `o` nor `c` — r4133's `case` has no else arm
+/// (`:464-467`), so such a slot is left unchanged exactly as `Keep` is.
 #[test]
 fn the_ordinal_array_setter_matches_the_interpreter() {
-    let mut sw = sw_with_snap(3);
-    sw.set_enum_array(
-        prop::STATE,
-        &[
-            ControlAction::Open.ordinal(),
-            ControlAction::Keep.ordinal(), // r4133's no-else arm: slot untouched
-            ControlAction::Open.ordinal(),
-        ],
-    );
-    assert_eq!(render(&sw, "State"), "[open, closed, open, ]");
-    // The five-slot cap, and `Normal` passing the lock guard while `State` is
-    // refused (`:416-417`).
-    let mut sw6 = sw_with_snap(6);
-    sw6.set_enum_array(prop::STATE, &[ControlAction::Open.ordinal(); 6]);
-    assert_eq!(
-        render(&sw6, "State"),
-        "[open, open, open, open, open, closed, ]"
-    );
-    let mut lk = sw_with_snap(3);
-    lk.locked = true;
-    lk.set_enum_array(prop::STATE, &[ControlAction::Open.ordinal(); 3]);
-    assert_eq!(
-        render(&lk, "State"),
-        "[closed, closed, closed, ]",
-        "state refused"
-    );
-    lk.set_enum_array(prop::NORMAL, &[ControlAction::Open.ordinal(); 3]);
-    assert_eq!(
-        render(&lk, "Normal"),
-        "[open, open, open, ]",
-        "normal applies"
-    );
+    /// phases, locked, property, ordinals, the quoted spelling, r4133 bytes.
+    type Case<'a> = (usize, bool, usize, &'a [i32], &'a str, &'a str);
+    let keep = ControlAction::Keep.ordinal();
+    let open = ControlAction::Open.ordinal();
+    let cases: [Case<'_>; 5] = [
+        (
+            3,
+            false,
+            prop::STATE,
+            &[open, keep, open],
+            "open, keep, open",
+            "[open, closed, open, ]",
+        ),
+        // The five-slot cap on both paths (`take(SW_MAX - 1)` vs `:461`).
+        (
+            6,
+            false,
+            prop::STATE,
+            &[open; 6],
+            "open, open, open, open, open, open",
+            "[open, open, open, open, open, closed, ]",
+        ),
+        // The lock guard keys on the property NAME (`:416-417`).
+        (
+            3,
+            true,
+            prop::STATE,
+            &[open; 3],
+            "open, open, open",
+            "[closed, closed, closed, ]",
+        ),
+        (
+            3,
+            true,
+            prop::NORMAL,
+            &[open; 3],
+            "open, open, open",
+            "[open, open, open, ]",
+        ),
+        (
+            3,
+            false,
+            prop::NORMAL,
+            &[keep, open, keep],
+            "keep, open, keep",
+            "[closed, open, closed, ]",
+        ),
+    ];
+    for (phases, locked, idx, ords, spelling, expected) in cases {
+        let (name, sprop) = if idx == prop::STATE {
+            ("State", SwtStateProp::State)
+        } else {
+            ("Normal", SwtStateProp::Normal)
+        };
+        let mut by_ordinal = sw_with_snap(phases);
+        by_ordinal.locked = locked;
+        by_ordinal.set_enum_array(idx, ords);
+
+        let mut by_interpreter = sw_with_snap(phases);
+        by_interpreter.locked = locked;
+        by_interpreter.interpret_switch_state(sprop, spelling, true);
+
+        let a = render(&by_ordinal, name);
+        let b = render(&by_interpreter, name);
+        assert_eq!(a, expected, "{name} locked={locked}: r4133 bytes");
+        assert_eq!(
+            a, b,
+            "{name} locked={locked}: the ordinal setter drifted from the interpreter"
+        );
+    }
 }
 
 /// r4133 authority over the scalar seam (2026-08-02 policy): a non-matching
@@ -1347,12 +1401,24 @@ fn sample_stays_inert_after_a_state_write() {
 /// `tmp/rp37/out_port_probe10.txt` vs the r4133 DLL in
 /// `tmp/rp37/out_fixa1.txt` §F2).
 ///
+/// The **locked** write arms it too, and that half is new with RP3.7 (audit
+/// settlement, 2026-09-02): before (a2) a locked `normal=` was refused outright
+/// by the scalar-era `ConditionalReadOnly` gates in `set_i32`/`side_effects`, so
+/// it could not reach the glue; r4133's own guard lets `n`ormal through
+/// (`:416-417`), the port now applies it, and `side_effects(NORMAL)` runs with
+/// it. The switch still does not move — [`SwtControl::do_pending_action`] is
+/// `!locked`-guarded — but the queue push and the `armed` latch happen, and the
+/// control queue is a compared surface (`compare_ctrlqueue`). Corpus exposure
+/// stays zero on this path as well: `swtcontrol_lock.dss` types
+/// `normal=closed` BEFORE `lock=yes` on the same `New`.
+///
 /// This pin asserts the CURRENT, divergent behavior on purpose: corpus exposure
 /// is zero (every corpus `normal=` is a ganged `normal=closed` over an
 /// all-closed state, so the ganged views agree and nothing arms), and retiring
 /// the 0.14.5 `Sample` body needs `swtcontrol_lock.dss` re-gated off the capi
-/// channel. When that happens this test must be DELETED, not re-baselined —
-/// it exists so the gap cannot be forgotten or deepened silently.
+/// channel (`ORPHANED_GAPS.md` §1.16). When that happens this test must be
+/// DELETED, not re-baselined — it exists so the gap cannot be forgotten or
+/// deepened silently.
 #[test]
 fn sample_arms_on_a_normal_write_the_retained_capi_channel() {
     let mut sw = sw_with_snap(3);
@@ -1370,6 +1436,32 @@ fn sample_arms_on_a_normal_write_the_retained_capi_channel() {
         sc.queue.queue_size(),
         1,
         "queued an action r4133 never queues"
+    );
+
+    // The locked twin: `lock=yes` first, then `normal=open`. The write applies
+    // (r4133's guard is on the property name), so the same glue arms — one
+    // CTRL_LOCK push from the lock write plus the spurious action push.
+    let mut lk = sw_with_snap(3);
+    edit_prop(&mut lk, "Lock", "yes", false);
+    edit_prop(&mut lk, "Normal", "open", false);
+    lk.take_ref_actions();
+    assert_eq!(
+        render(&lk, "Normal"),
+        "[open, open, open, ]",
+        "r4133 :416-417"
+    );
+    assert_eq!(
+        render(&lk, "State"),
+        "[closed, closed, closed, ]",
+        "the switch itself never moves while locked"
+    );
+    let mut sc2 = Scratch::new();
+    lk.sample(&mut sc2.ctx(0, 0.0));
+    assert!(lk.armed, "the capi glue arms off a LOCKED `normal=` too");
+    assert_eq!(
+        sc2.queue.queue_size(),
+        2,
+        "CTRL_LOCK + an action push r4133 never queues"
     );
 }
 

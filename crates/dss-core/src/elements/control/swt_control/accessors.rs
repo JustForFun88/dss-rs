@@ -261,11 +261,18 @@ impl DssObject for SwtControl {
     /// caller that has already tokenized to enum ordinals. Production never
     /// reaches it — `parse_into` consults the raw hook first and the JSON
     /// importer re-renders its array as a value string through the same
-    /// `edit_property` path — but the semantics are the interpreter's so the
-    /// two can never drift: a list writes phase by phase honoring the five-slot
-    /// cap (`:461` `i < SWTCONTROLMAXDIM`), a [`ControlAction::Keep`] ordinal
+    /// `edit_property` path — and it re-implements the interpreter's three
+    /// rules BY HAND: a list writes phase by phase honoring the five-slot cap
+    /// (`:461` `i < SWTCONTROLMAXDIM`), a [`ControlAction::Keep`] ordinal
     /// (r4133's no-else arm) leaves its slot unchanged, and the lock guard
     /// refuses `State` while letting `Normal` through (`:416-417`).
+    ///
+    /// Being a second implementation, it CAN drift — an earlier revision of
+    /// this doc claimed it could not, and a mutation of the interpreter's lock
+    /// guard proved otherwise (RP3.7 audit settlement, 2026-09-02). What holds
+    /// the two together is
+    /// `tests::the_ordinal_array_setter_matches_the_interpreter`, which runs
+    /// both paths on identical controls and compares the renders.
     fn set_enum_array(&mut self, idx: usize, values: &[i32]) {
         use super::prop::*;
         if idx == STATE && self.locked {

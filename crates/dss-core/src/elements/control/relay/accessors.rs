@@ -397,7 +397,9 @@ impl DssObject for Relay {
         use super::prop::*;
         match idx {
             RECLOSE_INTERVALS => self.num_reclose.max(0) as usize,
-            NORMAL | STATE => self.state_size(),
+            // The render bound carries r4133's getter-local nil guard
+            // ([`Relay::render_size`], `Relay.pas:1407`/`:1418`).
+            NORMAL | STATE => self.render_size(),
             _ => unreachable!("Relay has no function-sized array property {idx}"),
         }
     }
@@ -421,7 +423,8 @@ impl DssObject for Relay {
     }
 
     /// `Normal`/`State` render ordinals (1-based Pascal slots, exposed 0-based),
-    /// one per LIVE controlled-element phase ([`Relay::state_size`]).
+    /// one per LIVE controlled-element phase — none at all when there is no
+    /// controlled element ([`Relay::render_size`]).
     ///
     /// r4133's getters are a two-armed `case`: `CTRL_OPEN` prints `open`, the
     /// `else` prints `closed` for **every** other ordinal
@@ -430,7 +433,7 @@ impl DssObject for Relay {
     /// `closed`, and the fold happens here rather than in the enum table.
     fn get_enum_array(&self, idx: usize) -> Vec<i32> {
         use super::prop::*;
-        let n = self.state_size();
+        let n = self.render_size();
         let arr = match idx {
             NORMAL => &self.normal_state,
             STATE => &self.present_state,
@@ -474,11 +477,17 @@ impl DssObject for Relay {
     /// caller that has already tokenized to enum ordinals. Production never
     /// reaches it — `parse_into` consults the raw hook first and the JSON
     /// importer re-renders its array as a value string through the same
-    /// `edit_property` path — but the semantics are the interpreter's so the two
-    /// can never drift: a list writes phase by phase honoring the five-slot cap
+    /// `edit_property` path — and it re-implements the interpreter's three
+    /// rules BY HAND: a list writes phase by phase honoring the five-slot cap
     /// (`Relay.pas:1286` `i < RELAYCONTROLMAXDIM`), a [`ControlAction::Keep`]
     /// ordinal (r4133's no-else arm) leaves its slot unchanged, and the lock
     /// guard refuses `State` while letting `Normal` through (`:1244`).
+    ///
+    /// Being a second implementation, it CAN drift; what holds the two together
+    /// is `tests::the_ordinal_array_setter_matches_the_interpreter`, which
+    /// runs both paths on identical relays and compares the renders (added by
+    /// the RP3.7 audit settlement, 2026-09-02 — until then this twin had no
+    /// test at all).
     ///
     /// The pre-RP3.7 body read `values.len() == 1` as *ganged*; that heuristic is
     /// gone — r4133 keys the split on `WasQuoted`, and a quoted single token

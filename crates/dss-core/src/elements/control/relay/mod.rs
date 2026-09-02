@@ -625,6 +625,30 @@ impl Relay {
         RCMAX.min(ctrl_nphases.max(1))
     }
 
+    /// The **render** bound for `Normal`/`State` — [`Self::state_size`] behind
+    /// r4133's own nil guard, which lives in the getters and nowhere else:
+    /// `GetPropertyValue` 39/40 open with `If ControlledElement <> Nil Then`
+    /// (`Relay.pas:1407`/`:1418`) and otherwise leave `Result` at `'['+']'`, so
+    /// a relay whose `SwitchedObj` never resolved answers the bare `'[]'`.
+    /// Measured on the r4133 DLL 11.0.0.1 (`switchedobj=line.nosuch`, after the
+    /// #387 create error): `'[]'` for both properties, where the port used to
+    /// print three tokens off its own phase count.
+    ///
+    /// Scoped to the render on purpose. The same guard is NOT the bound of the
+    /// twelve sensing/reset/`MakeLike` loops that also call `state_size` —
+    /// r4133 guards those separately (`:1447` `Reset`, `:1494`/`:1514`
+    /// `set_States`, all already `Option`-guarded here) and its `Sample` path
+    /// dereferences the nil pointer outright (`:1071` `WITH ControlledElement
+    /// Do`), so nothing there is a defined observable to port. The residual —
+    /// r4133's nil-guarded `Reset` body vs the port's — stays
+    /// `ORPHANED_GAPS.md` §1.14(c) (RP3.7 audit settlement, 2026-09-02).
+    fn render_size(&self) -> usize {
+        if self.ccd.controlled_element.is_none() {
+            return 0; // `ControlledElement = NIL` -> `'[]'` (`:1407`/`:1418`)
+        }
+        self.state_size()
+    }
+
     /// Pascal `Edit` CASE `19,40`: default `NormalState` per phase from
     /// `PresentState` on the first `State`/`Action` write (`NormalStateSet`).
     fn state_side_effect(&mut self) {
