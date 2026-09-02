@@ -2099,7 +2099,10 @@ decomposed it on the live r4133 DLL: **EPRI's `RegControl` never taps an
 `PendingTapChange := Round(BoostNeeded/Increment)*Increment` (`:1249-1250`) zeroes
 every realistic boost. Evidence: 0 event-log lines on all four
 `controls:autotrans/*` decks vs 10–13 on the port and the 0.14.5 oracle; the
-regulated bus 2.0–2.6 V outside its band with 5–11 taps unused; `? RegControl.rat.tapnum`
+regulated bus left BELOW its band — `LOW.1`/166 = 118.04 V against `vreg=120 band=2`
+(0.96 V under the 119 V edge, 1.96 V under the setpoint) and `AT69.1`/332 = 119.25 V
+against `vreg=123 band=1.5` (3.00 V under the 122.25 V edge, 3.75 V under the
+setpoint) — with 5–11 taps unused; `? RegControl.rat.tapnum`
 tracks `Round(puTap/maxtap)` exactly when `maxtap` is edited; `tapnum=0` renders
 `taps=[1, 1.58101E-322]`, the winding's `NumTaps = 32` reinterpreted as a Double.
 The same four decks with the RegControl disabled make the port print EPRI's

@@ -2960,9 +2960,18 @@ fn autotrans_wdgcurrents_after_makeposseq_solve_the_exactly_converted_circuit() 
 /// regulator reads the winding's `MaxTap` (1.1 pu) where it means `TapIncrement`.
 /// `PendingTapChange := Round(BoostNeeded / Increment) * Increment`
 /// (`:1249-1250`) then rounds every realistic boost to zero and the control never
-/// arms — 0 event-log lines on all four decks, the regulated bus left 2.0 V
-/// (2.6 V on the midi deck) outside the band the deck asked for, 5 (11) taps of
-/// headroom unused and no diagnostic. `TAutoTransObj`'s own correct
+/// arms — 0 event-log lines on all four decks, and the regulated bus is left
+/// **below its band**: `LOW.1`/`ptratio` = 118.04 V against `vreg=120 band=2`,
+/// i.e. 0.96 V under the 119 V edge (1.96 V under the setpoint), and
+/// `AT69.1`/`ptratio` = 119.25 V against `vreg=123 band=1.5`, 3.00 V under the
+/// 122.25 V edge (3.75 V under the setpoint) — a 2.1 % / 2.6 % voltage gap, with
+/// 5 (11) taps of headroom unused and no diagnostic. (The figure is prose here,
+/// not an assertion: `Deck::get` reads `? Class.Name.Prop` and no `AutoTrans`
+/// property renders a bus voltage; what the test asserts is the tap, the
+/// `TapNum`, the render and the ampere-turn balance. RP3.12 audit settlement,
+/// 2026-09-03 — the landed text read "2.0 V (2.6 V on the midi deck) outside the
+/// band", which was the first deck's SETPOINT deviation and the second deck's
+/// PERCENT gap.) `TAutoTransObj`'s own correct
 /// `Get_TapIncrement` (`:1568`), `Get_MinTap` (`:1547`), `Get_MaxTap` (`:1554`)
 /// and `Get_PresentTap` (`:1478`) are never reached: the cast is unchecked and
 /// the accessors are not virtual. Present identically in r3723, r4088 and r4133;
@@ -2976,14 +2985,23 @@ fn autotrans_wdgcurrents_after_makeposseq_solve_the_exactly_converted_circuit() 
 /// lanes and nothing is reproduced. This pin names both numbers and derives
 /// r4133's from the port's own state through the one input that differs — the
 /// tap: disabling the regulator and putting winding 2 back on tap 1 makes the
-/// port print r4133's census literal byte for byte, on both decks.
+/// port print r4133's census literal byte for byte, on both decks. Those two
+/// legs witness 2 of the verdict's 8 spellings (10 of the 34 cells); the other
+/// six — the two `*_both` decks among them — are declared but not reproduced
+/// here, because their decks open with a snapshot `Solve` and reproducing
+/// r4133's unregulated state on them needs the RegControl disabled in the deck
+/// SOURCE rather than by an `edit` after the compile. The count is locked by
+/// `props_r4133_replay::the_rp312_pin_quotes_the_vendored_census_cells`
+/// (RP3.12 audit settlement, 2026-09-03).
 ///
 /// The discriminating second reading is the ampere-turn identity, which holds on
 /// *both* legs: `|I_common| / |I_series| = VBase_series / (VBase_common * tap_c)`,
 /// and the two bases are `(kVLL_1 - kVLL_2)/SQRT3` and `kVLL_2/SQRT3`
 /// (`AutoTrans.pas:1113-1132`, `:1125` and `:1118`), so the √3 cancels and the
 /// prediction is `(kV1 - kV2) / (kV2 * tap_c)` — 2.333333 / 2.262626 here,
-/// 0.666667 / 0.623782 on the midi deck. It fails if the winding-current
+/// 0.666667 / 0.623782 on the midi deck. Both sides of it are read **live** on
+/// both legs — the ratio off the engine's own `WdgCurrents` render, the
+/// prediction off the engine's own `Tap` — so it fails if the winding-current
 /// derivation drifts, not only if the tap does, which is what rules
 /// `GetAllWindingCurrents` (`:1575`) / `GeTAutoWindingCurrentsResult`
 /// (`:1662-1690`, `Format('%.7g, (%.5g), ')` at `:1682`) and our
@@ -3025,7 +3043,14 @@ fn autotrans_wdgcurrents_stay_regulated_where_r4133_never_taps_the_autotrans() {
         assert_eq!(deck.get("AutoTrans.at.Taps"), taps, "{rel}");
         assert_eq!(deck.get("RegControl.rat.TapNum"), tapnum, "{rel}");
         let tap_c: f64 = deck.get("AutoTrans.at.Tap").parse().expect("a tap");
-        let (m, p) = (common_over_series(regulated), ampere_turns(kv1, kv2, tap_c));
+        // Read the LIVE render, never the pinned literal: the `assert_eq!` above
+        // proves the two are the same string on a green tree, and taking the
+        // engine's own bytes is what makes this a physics reading of the port
+        // rather than arithmetic on a constant (RP3.12 audit settlement,
+        // 2026-09-03 — both legs used to measure the literal, and on the
+        // unregulated one that made both operands compile-time constants).
+        let live = deck.get("AutoTrans.at.WdgCurrents");
+        let (m, p) = (common_over_series(&live), ampere_turns(kv1, kv2, tap_c));
         assert!(
             (m - p).abs() / p < 1.0e-5,
             "{rel}: regulated ampere-turn balance {m} vs {p} — measured 2.7e-06 here and \
@@ -3058,9 +3083,15 @@ fn autotrans_wdgcurrents_stay_regulated_where_r4133_never_taps_the_autotrans() {
         assert_eq!(
             deck.get("AutoTrans.at.WdgCurrents"),
             unregulated,
+            // "byte for byte" is enforced, not asserted in prose:
+            // `props_r4133_replay::the_rp312_pin_quotes_the_vendored_census_cells`
+            // holds this literal (and the regulated one above) against the
+            // vendored `examples_supplement.txt` rows.
             "{rel}: r4133's census cell, byte for byte, from OUR state with the tap it never moves"
         );
-        let (m, p) = (common_over_series(unregulated), ampere_turns(kv1, kv2, 1.0));
+        let live = deck.get("AutoTrans.at.WdgCurrents");
+        let tap_c: f64 = deck.get("AutoTrans.at.Tap").parse().expect("a tap");
+        let (m, p) = (common_over_series(&live), ampere_turns(kv1, kv2, tap_c));
         assert!(
             (m - p).abs() / p < 1.0e-5,
             "{rel}: unregulated ampere-turn balance {m} vs {p} — measured 2.2e-06 here and \
