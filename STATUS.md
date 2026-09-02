@@ -1107,9 +1107,12 @@ true; and r4133 is demonstrably **not** this artifact's value authority — its
 capi-side values r4133 diverges from, so an `R4133_FAMILIES` row
 (`props/fuse.json`'s shape) would be a false statement and a `DEANCHORED`
 "born-self" row a second one. The ten overlaid cells are recorded in the
-artifact's own `oracle.engine` block with their r4133 line citations, the
-construction `props/fuse.json`'s lock reason already describes. `golden_lock` (4)
-and `props_roundtrip` (1) are green in both lanes with the anchor unmoved.
+artifact's own `oracle.engine` block with their r4133 line citations — and, since
+the audit settlement, in the **lock row** as well: the shared `CAPI015_REASON`
+could not carry a per-artifact note, so a new register `CAPI015_OVERLAYS` appends
+one (the construction `props/fuse.json`'s `R4133_FAMILIES` reason states, now
+available to an artifact that stays `capi015`). `golden_lock` (4) and
+`props_roundtrip` (1) are green in both lanes with the anchor unmoved.
 
 **Pins.** Unit level, both lanes: `swt_control` 26 → **51**, `relay` 63 → **68**,
 `dss-core --lib` **1464** (1462 before B2's two engine-level pins) — the
@@ -1337,14 +1340,11 @@ plus an action push r4133 never makes) while the switch itself stays closed. Bot
 arms are now in `sample_arms_on_a_normal_write_the_retained_capi_channel`.
 
 *Record fixes.* **(4)** The retained-glue blockers were overstated: there is
-**one** channel (`swtcontrol_lock.dss`'s `compare_ctrlqueue` on `capi_v0145`), not
-two — the capi015 props golden's `Action` readback rides on `current_action`,
-which the side effects maintain and neither `Sample` nor `DoPendingAction`
-writes — and "a manifest + ledger change RP3.7 could not make" was contradicted by
-the commit's own edits to `population.lock.json` and `ledger.json`: RP3.7 **chose
-not to** re-gate. **(5)** That divergence now has the register row it lacked
-(`ORPHANED_GAPS.md` §1.16) — it is the only RP3.7 item that moves a solved result,
-and a test doc comment is too weak a home for a gap no gate can fail on. **(6)**
+**one** channel, not two, and RP3.7 **chose not to** re-gate rather than could
+not — both corrections are written into the paragraph that describes the
+divergence (above, "Recorded, with both engines measured" (i)), not restated
+here. **(5)** That divergence also gets the register row it lacked,
+`ORPHANED_GAPS.md` §1.16, with its blocker named. **(6)**
 The civanlar pin's stated mechanism was wrong: `Normal` is not untyped there —
 every one of the sixteen `New` lines declares `Action=c`, so the Edit supplemental
 (`SwtControl.pas:219-228`) copies the closed Present into Normal and latches
