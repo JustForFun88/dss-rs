@@ -20,8 +20,10 @@
 //!
 //! Since **RP2.4** all four links carry a value, so the accounting is no longer
 //! "two live links and two named slots": every example row is claimed by one of
-//! them or declared to a sub-step that is itself still open (RP3, RP3.5+,
-//! RP3.8) or to `OutOfScope`. `DECLARED_RP22`/`RP23`/`RP24` are all `(0, 0, 0)`.
+//! them, declared to a sub-step that is itself still open (RP3, RP3.5+, RP3.9)
+//! or to `OutOfScope`, or — since RP3.8 changed the engine under five pairs —
+//! counted as **superseded**, the third state ([`RP38_SUPERSEDED`]).
+//! `DECLARED_RP22`/`RP23`/`RP24`/`RP38` are all `(0, 0, 0)`.
 //!
 //! Every row ends up in exactly one of two states, and **the accounting is
 //! total from day one**:
@@ -29,6 +31,10 @@
 //! * **claimed** — the first matching link of the chain recognises the two
 //!   spellings as one value (RP2.1's own deliverable, bins 1/2/4, plus RP2.2's
 //!   `EnumSynonym` rows for bin 3);
+//! * **superseded** — an engine change made the frozen `(rust, r4133)`
+//!   spelling counterfactual, so neither a link nor a sub-step can be asked
+//!   about it; the row is counted against a cited table whose evidence is live
+//!   ([`RP38_SUPERSEDED`], the only one today);
 //! * **declared pending** — no link claims it *yet*, and the row carries a
 //!   marker naming the sub-step whose mechanism will claim it (RP2.3, RP2.4,
 //!   RP3, or one of the RP3.5+ sub-steps RP2.2's dossier opened) or the reason
@@ -136,7 +142,8 @@ const CLAIMED_NORMALIZATION: usize = 854;
 /// **The echo table** — example rows the exclusion claims, i.e. the ones
 /// `PROPS_ECHO_R4133` covers that no earlier link took. 450 (the RP2.3 bucket)
 /// − 99 (claimed by the nine new normalization rows instead) − 181 (the five
-/// `SilentReadOnly` pairs re-routed to [`Owner::Rp38`]) − 1 (the audit
+/// `SilentReadOnly` pairs the kill ruling re-routed, now superseded —
+/// [`RP38_SUPERSEDED`]) − 1 (the audit
 /// settlement's carve-out, [`ECHO_CARVE_OUT_ROUTING`]) = 169 for RP2.3's 81
 /// rows, **+1 for RP3.3's 82nd** (`generator.model`, whose single example row
 /// `'4'` vs `'3'` leaves [`Owner::Rp3`] for this link) = **170**.
@@ -505,17 +512,40 @@ const DECLARED_RP22: (usize, usize, usize) = (0, 0, 0);
 /// * **169** claimed by the 81 rows RP2.3 landed in `PROPS_ECHO_R4133` — 169 of
 ///   [`CLAIMED_ECHO`]'s 170, the odd one being RP3.3's own row, which came out of
 ///   [`Owner::Rp3`]'s bucket and not out of this one;
-/// * **181** re-routed to [`Owner::Rp38`] by the kill ruling ([`RP38_ROUTING`]);
+/// * **181** re-routed to [`Owner::Rp38`] by the kill ruling, and since RP3.8
+///   landed accounted as superseded ([`RP38_SUPERSEDED`]);
 /// * **1** carved back out of its row and declared to RP2.4 by the audit
 ///   settlement ([`ECHO_CARVE_OUT_ROUTING`]).
 ///
 /// The variant stays so a regression that re-creates the bucket fails here by
 /// name.
 const DECLARED_RP23: (usize, usize, usize) = (0, 0, 0);
-/// **RP3.8 — the five `SilentReadOnly` pairs the RP2.3 kill criterion fired
-/// on**: 181 example rows over 5 pairs, all of them on pairs the RP4.1 unmask
-/// will compare (1 064 live cells, 772 in scope). See [`RP38_ROUTING`].
-const DECLARED_RP38: (usize, usize, usize) = (181, 5, 181);
+/// **`DECLARED_RP38` is `(0, 0, 0)` since RP3.8 closed** (2026-09-02), and the
+/// bucket did not empty by re-labelling: the sub-step changed the ENGINE, so the
+/// frozen `rust = ''` column of its 181 rows describes a port that no longer
+/// exists.
+///
+/// It inherited `(181, 5, 181)` from the RP2.3 kill ruling. Those rows are now
+/// accounted as **superseded** ([`SUPERSEDED_RP38`], [`RP38_SUPERSEDED`]): the
+/// port renders the same live quantity r4133 does, so on the r4133 channel —
+/// the only one this file's chain speaks for — the cells either agree outright
+/// or are the ordinary display class [`Link::DisplayFloor`] claims, and the
+/// capi-side `number` vs `''` is excluded by a `SKIP_PROPS_CAPI_ONLY` row pair
+/// with its own expected-value pins. What replaces the offline replay of a
+/// stale spelling is the LIVE measurement quoted at [`RP38_SUPERSEDED`].
+///
+/// The variant stays so a regression that re-creates the bucket fails here by
+/// name.
+const DECLARED_RP38: (usize, usize, usize) = (0, 0, 0);
+/// **The frozen rows RP3.8's engine change superseded** — `(rows, pairs, rows on
+/// in-scope pairs)`, the same triple every `DECLARED_*` lock carries, counted
+/// over exactly the [`RP38_SUPERSEDED`] pairs.
+///
+/// It is [`DECLARED_RP38`]'s old value, moved rather than deleted: 181 rows / 5
+/// pairs / 181 in-scope rows. A row that leaves or joins these five pairs moves
+/// this number, so the sub-step cannot quietly shrink the population it was
+/// accountable for.
+const SUPERSEDED_RP38: (usize, usize, usize) = (181, 5, 181);
 /// **`DECLARED_RP24` is `(0, 0, 0)` since RP2.4 closed**, and that zero is the
 /// sub-step's own acceptance. It inherited `(2101, 71, 2021)` — 2 100 rows over
 /// 70 pairs from RP2.1's bin-6 walk plus the cell [`ECHO_CARVE_OUT_ROUTING`]
@@ -721,7 +751,8 @@ const BIN7_ROOT_CAUSE: &[&str] = &[
 ///
 /// [`BIN7_ROOT_CAUSE`] names the four pairs [`declare`] routes to RP3; this is
 /// the per-pair accounting underneath that one number, in the shape
-/// [`RP38_ROUTING`] and [`RP39_ROUTING`] use for the sub-steps they opened. Each
+/// [`RP38_SUPERSEDED`] and [`RP39_ROUTING`] use for the sub-steps they opened.
+/// Each
 /// row's three counted columns are re-measured from the walk, so a pair that
 /// silently changes size (or vanishes) reds here instead of being absorbed by
 /// the bucket total.
@@ -1937,35 +1968,109 @@ const CELL_DISPOSITION: &[(&str, Owner, &str)] = &[
 ///
 /// Under the standing 2026-08-02 policy the 0.14.5 convention yields: the
 /// engine renders the live value and the resulting **capi-side** divergence is
-/// excluded field-by-field and pinned. That is an engine change, so it becomes
-/// plan §RP3.8 and these 181 example rows are declared to [`Owner::Rp38`] —
-/// loudly, with a count lock ([`DECLARED_RP38`]), never as a silent leftover
+/// excluded field-by-field and pinned. That is an engine change, so it became
+/// plan §RP3.8, and until that sub-step ran these 181 example rows were declared
+/// to [`Owner::Rp38`] — loudly, with a count lock, never as a silent leftover
 /// inside RP2.3's bucket. Giving them an `EchoCategory` instead would have been
 /// exactly the mislabel the kill criterion exists to prevent.
 ///
-/// Each row cites the r4133 live getter arm it renders from.
-const RP38_ROUTING: &[(&str, &str)] = &[
+/// # Why they are SUPERSEDED and not claimed (RP3.8, 2026-09-02)
+///
+/// RP3.8 landed the engine change: `PropFlags::RENDERS_LIVE_RESULT` rides
+/// alongside `SILENT_READ_ONLY` on exactly these five `PropDef`s and the render
+/// gate (`obj/props/class_props/value.rs`) stops suppressing them, in both
+/// lanes. So the `rust` column of all 181 frozen rows — `''`, by capture —
+/// records an engine that no longer exists, and the extracts cannot be
+/// re-frozen (`README.md` §"Corrections measured after freezing"). Replaying a
+/// counterfactual spelling through the shipped chain would prove nothing about
+/// the comparator, and inventing the port's new spelling into the `rust` column
+/// would be a fabricated measurement. The rows are therefore counted as
+/// **superseded** ([`SUPERSEDED_RP38`]) rather than claimed or declared, and
+/// what carries the proof instead is live evidence, per pair, below.
+///
+/// # What the live evidence says
+///
+/// Measured 2026-09-02 with `DSS_PROPS_CENSUS=claims` over the affected
+/// families, default lane, both channels, the §1.1(e) property masks bypassed
+/// (the numbers are in the RP3.8 STATUS record and at `SKIP_PROPS`' row group
+/// (g)):
+///
+/// * on **capi_v0145** the five pairs are now excluded outright — a
+///   `SKIP_PROPS` + `SKIP_PROPS_CAPI_ONLY` row pair, because 0.14.5 renders `''`
+///   for a mechanical reason (`PropertyOffset = -1`) and no value compare can
+///   bridge `number` vs `''`;
+/// * on **r4133** — the channel this accounting is about — they COMPARE, and
+///   the whole population of the five pairs leaves **105 divergent cells** (89
+///   in scope), of which **103** are [`Link::DisplayFloor`]'s own class (the
+///   port prints `float_to_str_ex`, r4133 its `%.6g`/`%-.8g` of the same
+///   double; worst 4.03e-08 rel, four orders under the 2e-4 floor). The other
+///   **2** are the `modes:makeposseq/makeposseq_ctrl.dss` cells of an upstream
+///   r4133 `MakePosSequence` bug, on a `capi_v0145`-only case the r4133 channel
+///   never gates (§1.3). Every remaining cell of the 1 064 the frozen census
+///   counted now compares EQUAL, at the case's own tier floor.
+///
+/// Each row below therefore carries four columns: the pair, the r4133 live
+/// getter arm it renders from, the measured live disposition on the r4133
+/// channel, and the expected-value pin that holds the port's own value
+/// (`props_r4133_pins.rs`; the same both-ways guard
+/// [`every_echo_row_pin_is_a_test_that_exists`] that forbids an un-cited
+/// `#[test]` there reads this column too).
+const RP38_SUPERSEDED: &[(&str, &str, &str, &str)] = &[
     (
         "indmach012.pf",
         "IndMach012.pas:1790 (arm 5: Format('%.6g',[PowerFactor(Power[1,ActiveActor])]))",
+        "no divergent cell at all, measured over all 6 cases holding the class: a power \
+         factor is bounded by 1, so r4133's %.6g render is at most 5e-07 ABSOLUTE from \
+         ours — inside the i_abs = 1e-6 the property compare uses at every tier, before \
+         the display floor is ever consulted. Ours 0.909167177168387 vs r4133 \
+         '0.909167' after compile on asymmetric:indmach/indmach_asym.dss",
+        "indmach012_pf_renders_the_live_power_factor",
     ),
     (
         "storagecontroller.kwhtotal",
-        "StorageController.pas:991 (GetkWhTotal)",
+        "StorageController.pas:991 (GetkWhTotal, body :1172-1184, Format('%-.8g'))",
+        "no divergent cell at all: every fleet kWh nameplate in the population is \
+         integer-valued, so the two renders are byte-identical",
+        "storagecontroller_fleet_aggregates_render_the_live_fleet",
     ),
     (
         "storagecontroller.kwtotal",
-        "StorageController.pas:992 (GetkWTotal)",
+        "StorageController.pas:992 (GetkWTotal, body :1186-1198, Format('%-.8g'))",
+        "1 divergent cell, out of scope: byte-identical everywhere except \
+         modes:makeposseq/makeposseq_ctrl.dss (ours '33.3333333333333' vs r4133 \
+         '100'), where r4133's own MakePosSequence writes `kWrating=` for the property \
+         `kWrated` (Storage.pas:3979-3985 vs :647) and never scales the rating — an \
+         upstream bug the port does not reproduce, on a capi_v0145-only case the r4133 \
+         channel never gates (§1.3)",
+        "storagecontroller_fleet_aggregates_render_the_live_fleet",
     ),
     (
         "storagecontroller.kwhactual",
-        "StorageController.pas:993 (GetkWhActual)",
+        "StorageController.pas:993 (GetkWhActual -> FleetkWh, :1032-1042)",
+        "79 divergent cells (67 in scope), every one claimed by the display floor: ours \
+         2627.39290900018 vs r4133 '2627.3929' on the StorageControllerTechNote \
+         PeakShave deck; worst cell of the pair 3.88e-08 rel",
+        "storagecontroller_fleet_aggregates_render_the_live_fleet",
     ),
     (
         "storagecontroller.kwactual",
-        "StorageController.pas:994 (GetkWActual)",
+        "StorageController.pas:994 (GetkWActual -> FleetkW, :1019-1029)",
+        "25 divergent cells (22 in scope): 24 claimed by the display floor — ours \
+         -18.8106796116505 vs r4133 '-18.81068', worst cell of the pair 4.03e-08 rel — \
+         plus the one makeposseq_ctrl cell of the kWTotal bug above (ours \
+         '-0.333333333333333' vs r4133 '-1'), out of scope",
+        "storagecontroller_fleet_aggregates_render_the_live_fleet",
     ),
 ];
+
+/// The pin that holds the **capi** half of RP3.8's exclusion — the committed
+/// 0.14.5 capture's own `''` for all 21 `props` golden cells of the five pairs.
+///
+/// It is not a per-pair witness (it speaks for all five at once), so it rides
+/// beside [`RP38_SUPERSEDED`] rather than inside it, and it is cited here for
+/// the same reason: [`every_echo_row_pin_is_a_test_that_exists`] must know every
+/// `#[test]` the pin file defines.
+const RP38_CAPTURE_PIN: &str = "the_silent_readonly_capture_cells_are_empty";
 
 /// **Who owns the cells an echo row carves out** (`props_norm::
 /// ECHO_CARVE_OUTS`) — the RP2.3 audit settlement's narrowing valve, accounted.
@@ -2133,8 +2238,13 @@ enum Owner {
     /// standing 2026-08-02 policy (r4133 is the behavioral authority; 0.14.5 is
     /// a numeric oracle only) the engine must render the live value and the
     /// resulting capi-side divergence is excluded + pinned THERE — an engine
-    /// change, forbidden inside RP2.3's zero-product-bytes scope. See
-    /// [`RP38_ROUTING`]; RP4.1 does not start until it closes (plan §0).
+    /// change, forbidden inside RP2.3's zero-product-bytes scope.
+    ///
+    /// **Empty since RP3.8 landed** (2026-09-02, [`DECLARED_RP38`]): the engine
+    /// renders the five live values now, so the frozen rows' `rust = ''` column
+    /// no longer describes this port and they are counted as superseded
+    /// ([`RP38_SUPERSEDED`], [`SUPERSEDED_RP38`]) instead of declared. The
+    /// variant stays so a regression that re-creates the bucket fails by name.
     Rp38,
     /// **RP3.9 — the sub-step the RP2.4 audit settlement opened**: 55 spellings
     /// over 27 pairs that sit inside the display floor and are no `%.Ng` render
@@ -2224,6 +2334,13 @@ struct Ledger {
     norm_hits: Vec<usize>,
     /// Declared rows per owner.
     declared: BTreeMap<Owner, Bucket>,
+    /// Rows whose frozen `(rust, r4133)` spelling an engine change made
+    /// counterfactual, so no link of the chain can be asked about them and no
+    /// sub-step owns them either — today exactly [`RP38_SUPERSEDED`]'s five
+    /// pairs ([`SUPERSEDED_RP38`]). The third and last state a row can end in,
+    /// and the narrowest: a row only reaches it by naming its pair in a cited
+    /// table.
+    superseded: Bucket,
     /// Rows for which more than one link matched.
     multi_link: usize,
     /// Rows no link claimed and no rule could declare — **the kill criterion**.
@@ -2237,6 +2354,17 @@ impl Ledger {
 
     fn declared_total(&self) -> usize {
         self.declared.values().map(|b| b.rows).sum()
+    }
+
+    /// `(rows, pairs, rows on in-scope pairs)` for the superseded bucket — the
+    /// same triple [`Ledger::owner`] reports, so [`SUPERSEDED_RP38`] can be read
+    /// against it like any `DECLARED_*` lock.
+    fn superseded(&self) -> (usize, usize, usize) {
+        (
+            self.superseded.rows,
+            self.superseded.pairs.len(),
+            self.superseded.in_scope_rows,
+        )
     }
 
     /// `(rows, pairs, rows on in-scope pairs)` for one owner.
@@ -3410,9 +3538,6 @@ fn classify_cell(rust: &str, r4133: &str) -> u8 {
 /// **The declaration rule.** Which sub-step's mechanism will claim a row RP2.1
 /// cannot — decided from the vendored evidence, in this order:
 ///
-/// 0. a pair RP2.3's kill criterion re-routed answers [`RP38_ROUTING`] — this
-///    comes first because those five pairs' cells *look* like bin 5 (one side
-///    empty) and every later rule would file them as echoes;
 /// 0. a pair RP2.2's dossier routed answers [`RP22_ROUTING`] — RP2.3's echo
 ///    table or one of the RP3.5+ sub-steps; a pair on **RP2.2's closed list**
 ///    (the eight bin-3 pairs plus the S6 singletons) that the routing does
@@ -3450,13 +3575,13 @@ fn declare(row: &Example, ev: &PairEvidence) -> Result<Owner, String> {
     {
         return Ok(*owner);
     }
-    // RP2.3's kill-criterion re-route comes next: these five pairs are neither
-    // an echo nor a spelling, and every rule below would have mis-filed them
-    // (their cells classify as bin 5 — one side empty — which is the echo
-    // table's shape). See [`RP38_ROUTING`].
-    if RP38_ROUTING.iter().any(|(p, _)| *p == row.pair) {
-        return Ok(Owner::Rp38);
-    }
+    // NOTE: RP2.3's kill-criterion re-route used to sit here, ahead of every
+    // rule below, because those five pairs' cells classify as bin 5 (one side
+    // empty) and would have been mis-filed as echoes. RP3.8 landed the engine
+    // change, so their frozen spellings are counted as superseded in `account`
+    // — before this function is ever reached ([`RP38_SUPERSEDED`]). If that
+    // interception is ever removed, the rows fall through to the bin-5 arm and
+    // land in [`Owner::Rp23`]'s closed bucket, which reds [`DECLARED_RP23`].
     if let Some((_, owner, _)) = RP22_ROUTING.iter().find(|(p, _, _)| *p == row.pair) {
         return Ok(*owner);
     }
@@ -3670,6 +3795,21 @@ fn account(corpus: &Corpus, table: &[NormRow]) -> Ledger {
                     ));
                     continue;
                 };
+                // A spelling an engine change made counterfactual is counted
+                // here and asked nothing further: `declare` reads the frozen
+                // `rust` column, which for these five pairs records a port that
+                // no longer exists. See [`RP38_SUPERSEDED`]. It sits AFTER the
+                // chain, so a link that ever did claim one of these rows would
+                // be credited with it and the bucket lock would red — the
+                // interception cannot hide a claim.
+                if RP38_SUPERSEDED.iter().any(|(p, _, _, _)| *p == row.pair) {
+                    led.superseded.rows += 1;
+                    led.superseded.pairs.insert(row.pair.clone());
+                    if row_in_scope(row, ev) {
+                        led.superseded.in_scope_rows += 1;
+                    }
+                    continue;
+                }
                 match declare(row, ev) {
                     Ok(owner) => {
                         let b = led.declared.entry(owner).or_default();
@@ -3795,11 +3935,19 @@ fn every_example_row_is_claimed_or_declared_exactly_once() {
          leaving a divergence unowned"
     );
 
-    // Totality, both ways.
+    // …and the third state: the rows RP3.8's engine change made counterfactual.
     assert_eq!(
-        led.claimed_total() + led.declared_total(),
+        led.superseded(),
+        SUPERSEDED_RP38,
+        "the superseded bucket inherits (rows, pairs, rows on in-scope pairs) — RP3.8's five \
+         pairs and nothing else"
+    );
+
+    // Totality, three ways.
+    assert_eq!(
+        led.claimed_total() + led.declared_total() + led.superseded.rows,
         corpus.rows.len(),
-        "every example row is claimed or declared, exactly once"
+        "every example row is claimed, declared or superseded, exactly once"
     );
     assert_eq!(
         led.multi_link, MULTI_LINK_ROWS,
@@ -3984,8 +4132,13 @@ fn every_echo_row_matches_its_cited_evidence() {
 /// [`LEDGER_ENTRY_PINS`]): they hold the port's value for a **drafted** ledger
 /// entry, in the window the §1.1(e) staging rule opens between the sub-step and
 /// RP4.1. They are cited from that table instead, and the both-ways check covers
-/// them the same way — the union of the two citations must be exactly what the
-/// file defines, so neither list can be the place an un-cited `#[test]` hides.
+/// them the same way — the union of the citations must be exactly what the
+/// file defines, so no list can be the place an un-cited `#[test]` hides.
+///
+/// RP3.8 adds a third citing table for the same reason and a different exclusion
+/// shape: its pins witness a `SKIP_PROPS_CAPI_ONLY` row pair (no ledger entry at
+/// all), and they are named by [`RP38_SUPERSEDED`]'s fourth column plus
+/// [`RP38_CAPTURE_PIN`].
 #[test]
 fn every_echo_row_pin_is_a_test_that_exists() {
     let path = repo_root().join(PINS);
@@ -3999,9 +4152,16 @@ fn every_echo_row_pin_is_a_test_that_exists() {
         .filter_map(|r| r.witness.pin())
         .collect();
     let ledger_named: BTreeSet<&str> = LEDGER_ENTRY_PINS.iter().map(|(n, _, _)| *n).collect();
+    let rp38_named: BTreeSet<&str> = RP38_SUPERSEDED
+        .iter()
+        .map(|(_, _, _, pin)| *pin)
+        .chain(std::iter::once(RP38_CAPTURE_PIN))
+        .collect();
     assert!(
-        echo_named.is_disjoint(&ledger_named),
-        "a pin witnesses an echo row or a drafted ledger entry, never both"
+        echo_named.is_disjoint(&ledger_named)
+            && rp38_named.is_disjoint(&echo_named)
+            && rp38_named.is_disjoint(&ledger_named),
+        "a pin witnesses an echo row, a drafted ledger entry or RP3.8's skip rows, never two"
     );
     for (name, what) in echo_named
         .iter()
@@ -4010,6 +4170,11 @@ fn every_echo_row_pin_is_a_test_that_exists() {
             ledger_named
                 .iter()
                 .map(|n| (*n, "a ledger entry's witness")),
+        )
+        .chain(
+            rp38_named
+                .iter()
+                .map(|n| (*n, "an RP3.8 skip row's witness")),
         )
     {
         assert!(
@@ -4028,10 +4193,15 @@ fn every_echo_row_pin_is_a_test_that_exists() {
         .filter_map(|rest| rest.split_once("() {").map(|(name, _)| name))
         .filter(|n| !NOT_A_PIN.contains(n))
         .collect();
-    let cited: BTreeSet<&str> = echo_named.union(&ledger_named).copied().collect();
+    let cited: BTreeSet<&str> = echo_named
+        .union(&ledger_named)
+        .copied()
+        .chain(rp38_named.iter().copied())
+        .collect();
     assert_eq!(
         defined, cited,
-        "{PINS} must define exactly the pins the echo rows and the drafted ledger entries name"
+        "{PINS} must define exactly the pins the echo rows, the drafted ledger entries and \
+         RP3.8's skip rows name"
     );
 }
 
@@ -4331,14 +4501,35 @@ fn the_non_pin_exemption_list_is_pinned() {
     );
 }
 
-/// **The kill-criterion re-route is exactly the five named pairs**, in both
-/// directions: they take no echo row, they land in [`Owner::Rp38`]'s bucket and
-/// nothing else does, and each carries the r4133 live-getter citation that
-/// makes the re-route a verdict rather than a shrug.
+/// **The five `SilentReadOnly` pairs are superseded by RP3.8's live render**,
+/// in both directions — the successor of
+/// `the_kill_criterion_reroute_is_the_five_silent_readonly_pairs`, which
+/// asserted the same five pairs while the sub-step was still open.
+///
+/// Four things, none of them transcription:
+///
+/// * the table is exactly those five pairs, each still carrying the r4133
+///   live-getter citation that made the re-route a verdict rather than a shrug,
+///   and none of them takes an echo row (the ruling forbids it: r4133's arm is
+///   live, so an `EchoRow` would misname the mechanism);
+/// * the superseded bucket holds their rows and **only** theirs, at
+///   [`SUPERSEDED_RP38`], while [`Owner::Rp38`]'s declared bucket is empty;
+/// * **the shipped disposition is asked of the harness, not described**: each
+///   pair must be value-skipped on `capi_v0145` and compared on `r4133`
+///   (`harness::skip_prop`, the `SKIP_PROPS` + `SKIP_PROPS_CAPI_ONLY` row pair
+///   RP3.8 landed). This is what makes the supersession falsifiable: revert the
+///   engine to `''` and the capi compare AGREES again, so the gate stays green
+///   — but then the skip rows are dead, and whoever removes them reds here;
+/// * each pair names an expected-value pin that
+///   [`every_echo_row_pin_is_a_test_that_exists`] proves exists — the holder of
+///   the port's own value for the 84 masked cells.
 #[test]
-fn the_kill_criterion_reroute_is_the_five_silent_readonly_pairs() {
+fn the_rp38_pairs_are_superseded_by_the_live_render() {
     assert_eq!(
-        RP38_ROUTING.iter().map(|(p, _)| *p).collect::<Vec<_>>(),
+        RP38_SUPERSEDED
+            .iter()
+            .map(|(p, _, _, _)| *p)
+            .collect::<Vec<_>>(),
         [
             "indmach012.pf",
             "storagecontroller.kwhtotal",
@@ -4346,26 +4537,47 @@ fn the_kill_criterion_reroute_is_the_five_silent_readonly_pairs() {
             "storagecontroller.kwhactual",
             "storagecontroller.kwactual",
         ],
-        "the five pairs the RP2.3 kill ruling re-routed"
+        "the five pairs the RP2.3 kill ruling re-routed and RP3.8 settled"
     );
-    for (pair, cite) in RP38_ROUTING {
+    for (pair, cite, disposition, pin) in RP38_SUPERSEDED {
         let (class, prop) = pair.split_once('.').expect("class.prop");
         assert!(
             !props_norm::has_echo_row(class, prop),
-            "{pair} must NOT have an echo row — the ruling forbids it"
+            "{pair} must NOT have an echo row — r4133's getter arm is live"
         );
         assert!(
             cite.contains(".pas:"),
-            "{pair}: the re-route must cite the r4133 live getter, got {cite:?}"
+            "{pair}: the row must cite the r4133 live getter, got {cite:?}"
+        );
+        assert!(
+            !disposition.is_empty() && !pin.is_empty(),
+            "{pair}: a superseded row owes its measured live disposition and a pin"
+        );
+        // The shipped skip disposition, read off the harness the gate uses.
+        assert!(
+            harness::skip_prop(class, prop, harness::PropsChannel::CapiV0145),
+            "{pair}: the 0.14.5 capture renders '' — the capi value compare must be skipped"
+        );
+        assert!(
+            !harness::skip_prop(class, prop, harness::PropsChannel::R4133),
+            "{pair}: r4133 shares the render — that channel must keep comparing it"
         );
     }
-    // …and the bucket holds their rows and only theirs.
+
     let corpus = Corpus::load();
     let led = account(&corpus, PROPS_NORM_R4133);
     assert_eq!(led.owner(Owner::Rp38), DECLARED_RP38);
-    let bucket = led.declared.get(&Owner::Rp38).expect("the RP3.8 bucket");
+    assert!(
+        led.declared.get(&Owner::Rp38).is_none_or(|b| b.rows == 0),
+        "RP3.8's declared bucket must be empty since the sub-step landed"
+    );
+    assert_eq!(led.superseded(), SUPERSEDED_RP38);
     assert_eq!(
-        bucket.pairs.iter().map(String::as_str).collect::<Vec<_>>(),
+        led.superseded
+            .pairs
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
         [
             "indmach012.pf",
             "storagecontroller.kwactual",
@@ -4373,7 +4585,7 @@ fn the_kill_criterion_reroute_is_the_five_silent_readonly_pairs() {
             "storagecontroller.kwhtotal",
             "storagecontroller.kwtotal",
         ],
-        "the RP3.8 bucket holds exactly the re-routed pairs"
+        "the superseded bucket holds exactly the five pairs"
     );
 }
 
@@ -7636,9 +7848,11 @@ fn the_echo_table_claims_only_its_cited_pairs_and_the_floor_only_its_derivation(
         worst.0,
         worst.1
     );
-    // The five re-routed pairs still carry `''`-on-one-side spellings — the
-    // shape bin 5 is built on — and are compared all the same.
-    for (pair, _) in RP38_ROUTING {
+    // The five superseded pairs still carry `''`-on-one-side spellings in the
+    // FROZEN extract — the shape bin 5 is built on — and take no echo row all
+    // the same. (The live port renders a number on both sides since RP3.8; see
+    // [`RP38_SUPERSEDED`].)
+    for (pair, _, _, _) in RP38_SUPERSEDED {
         let (class, prop) = pair.split_once('.').expect("class.prop");
         assert!(
             !props_norm::has_echo_row(class, prop),
@@ -7901,7 +8115,7 @@ fn the_display_floors_residual_rows_are_proved_out_of_scope() {
 ///   refuses it, not the metric — otherwise this would be ordinary bin-7
 ///   material), and no earlier link claims it;
 /// * each citation names an r4133 site, the same discipline
-///   [`ECHO_CARVE_OUT_ROUTING`] and [`RP38_ROUTING`] carry;
+///   [`ECHO_CARVE_OUT_ROUTING`] and [`RP38_SUPERSEDED`] carry;
 /// * and the bucket the accounting builds is [`DECLARED_RP39`].
 #[test]
 fn the_display_floors_round_trip_residue_is_owned_by_rp39() {

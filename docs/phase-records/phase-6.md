@@ -475,7 +475,12 @@ accumulators), `circuit/bus.rs` (`bus_int_duration` — the one missing
 - The 4 fleet-aggregate readbacks (`kWhTotal`/`kWTotal`/`kWhActual`/`kWActual`)
   are `SilentReadOnly + ReadByFunction` doubles whose `?` getter renders `''`
   regardless of fleet (verified vs the oracle **with and without** Storage);
-  modeled as read-only strings → `''`.
+  modeled as read-only strings → `''`. **Follow-up (R4133_PROPS §RP3.8,
+  2026-09-02, gate-green): that `''` is the 0.14.5 oracle's, not the
+  authority's** — r4133 renders all four live
+  (`StorageController.pas:991-994` → `:1162-1197`), so the port does too in both
+  lanes, with the capi cells excluded per `(class, property)` and pinned. See
+  STATUS §RP3.8.
 - **Tests:** 13 inline unit tests (defaults, prop-table shape, each side-effect,
   recalc 372, MakeFleetList 37201/14403, MakeLike copy) + 1 `exec` integration
   test (`storagecontroller_skeleton_solves_as_noop`: a circuit with a

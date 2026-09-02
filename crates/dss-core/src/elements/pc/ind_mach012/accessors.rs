@@ -148,6 +148,63 @@ impl CktElement for IndMach012 {
 }
 
 impl IndMach012 {
+    /// Recompute the live `pf` render cache from the present solution — the
+    /// executive's half of r4133's
+    /// `5: Result := Format('%.6g', [PowerFactor(Power[1, ActiveActor])])`
+    /// (`Version8/Source/PCElements/IndMach012.pas:1790`).
+    ///
+    /// `Power[1]` is `TDSSCktElement.Get_Power(1)` (`CktElement.pas:666-703`):
+    /// `Σ NodeV[n]·conj(Iterminal[k])` over terminal 1's conductors, ground refs
+    /// skipped, ×3 under positive sequence — which is exactly
+    /// [`CktElement::terminal_power`]. `PowerFactor` is `Utilities.pas:1821-1831`
+    /// (`sign(P·Q)·|P|/|S|`, unity when either part is zero), ported as
+    /// [`power_factor`]. The result is therefore identical to state variable #21
+    /// (`IndMach012.pas:1988`), by construction on both engines.
+    ///
+    /// **Which `Iterminal` feeds it.** r4133's `Get_Power` calls the
+    /// `SolutionCount`-cached `ComputeIterminal`; we take the **fresh** path,
+    /// [`CktElement::refresh_iterminal`] — the one
+    /// `exec::view::snapshot_elements` uses for Powers/Losses/Currents after the
+    /// `GOLDEN_REBASE_PLAN.md` G2.3 settlement of the Newton stale-`Iterminal`
+    /// bug (CLAUDE.md §"Known upstream bugs") — so `pf` is the power factor of
+    /// the power the port *reports*, under every algorithm. For this class the
+    /// two coincide anyway: `TIndMach012Obj.GetTerminalCurrents` carries its own
+    /// `SolutionCount` guard, so neither path recomputes the model while the
+    /// cache is stamped.
+    ///
+    /// **The read is pure — that guard is why the recompute runs on a clone.**
+    /// When the cache is NOT stamped (a circuit that has only been
+    /// `calcvoltagebases`-d, say) both engines recompute the machine model to
+    /// answer, and that recompute is *stateful*: `CalcPFlow` advances the
+    /// fixed-slope slip-Newton by one step and rewrites the sequence currents
+    /// (see `do_indmach_model`, and `Slip`'s own rendered property). r4133 keeps
+    /// the advance — reading `pf` there moves the machine, the
+    /// `VSConverter.GetCurrents` family of hazard (CLAUDE.md §"Known upstream
+    /// bugs") — and we do not reproduce it: the recompute runs on a throwaway
+    /// clone and only the resulting number is kept, so the rendered value is
+    /// r4133's while the model, its other rendered properties (`Slip` above all)
+    /// and the JSON export stay exactly where they were. Measured: without the
+    /// clone the `spectrum_refs` JSON golden's IndMach012 `Slip` moved
+    /// `0.007` → `0.006947528894572309` on a mere export.
+    ///
+    /// An unsolved / disabled / not-yet-connected machine renders
+    /// `PowerFactor(0) = 1`, r4133's own answer after `calcvoltagebases`
+    /// (measured on all five `tests/golden/props/indmach012.json` scenarios).
+    /// r4133 *without* `calcv` instead access-violates inside `Get_Power`
+    /// (`NodeRef = nil`, guarded only on `FEnabled`, `CktElement.pas:679`) and
+    /// after a solve on an unenergized bus prints `'NAN'`; neither is
+    /// reproduced — the guard below is the same one
+    /// [`CktElement::terminal_power`] already carries.
+    pub(crate) fn refresh_live_pf(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+            self.live_pf = power_factor(Complex64::ZERO);
+            return;
+        }
+        let mut probe = self.clone();
+        probe.refresh_iterminal(sys, node_v);
+        self.live_pf = power_factor(probe.terminal_power(sys, node_v, 1));
+    }
+
     /// Pascal `TIndMach012Obj.MakeLike` (+ the inherited `TPCElement.MakeLike`,
     /// which copies the spectrum). Note Pascal copies the whole `MachineData`
     /// record but **not** `Connection`/`S1`/`FixedSlip`/the dispatch shapes.
@@ -202,14 +259,15 @@ impl DssObject for IndMach012 {
         match idx {
             KV => self.kv_generator_base,
             KW => self.kw_base,
-            // Pascal `pf` ReadByFunction → PowerFactor(Power[1]). The text render is
-            // intercepted by SILENT_READ_ONLY (→ "" always — upstream leaves
-            // PropertyOffset at -1, so the GetObjPropertyValue guard never calls the
-            // read function, solved or not; probe-proven), so this arm is unreachable
-            // in practice. The live power factor is exposed as state variable #21
-            // (`get_all_variables_impl`, where the solution exists). Return the
-            // unsolved value (PowerFactor(0) = 1) as a placeholder.
-            PF => power_factor(Complex64::ZERO),
+            // `pf` = r4133 `PowerFactor(Power[1, ActiveActor])`
+            // (`IndMach012.pas:1790`), the same quantity state variable #21
+            // reports (`:1988`, `get_all_variables_impl`). A `&self` getter
+            // cannot reach the solution, so the read surfaces refresh the cache
+            // at their choke point (`Dss::refresh_vterminal_if_marked`, gated on
+            // `RENDERS_LIVE_RESULT`) immediately before this read — see
+            // [`IndMach012::refresh_live_pf`]. Before any refresh the field holds
+            // `PowerFactor(0) = 1`, r4133's own no-power answer.
+            PF => self.live_pf,
             KVA => self.kva_rating,
             H => self.h_mass,
             D => self.d,

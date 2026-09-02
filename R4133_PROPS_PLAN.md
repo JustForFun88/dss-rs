@@ -148,8 +148,9 @@ in RP2.1; its rows land in RP2.3); RP2.3 lands after RP2.2 (its row set is "bin 
 lands after RP2.3 whenever its outcome is an echo row; RP3.4 lands after RP2.3
 (its ledger twins must not duplicate echo rows). RP4.1 starts only after
 **every** RP1–RP3 sub-step is landed, including any RP3.5+ sub-step RP2.2's
-triage opens, **§RP3.8, which RP2.3's kill criterion opened** (its 1 064 cells
-are re-routed, not claimed — see `RP38_ROUTING` in the replay) **and §RP3.9,
+triage opens, **§RP3.8, which RP2.3's kill criterion opened** (landed 2026-09-02: the
+engine renders all five live and its 1 064 frozen cells are accounted
+`RP38_SUPERSEDED` / `SUPERSEDED_RP38` in the replay) **and §RP3.9,
 which RP2.4's audit settlement opened** (55 spellings / 27 pairs whose r4133
 value is no `%.Ng` render of ours — `RP39_ROUTING`; none of them in scope today,
 which is why the block is a discipline and not a gate failure), and after its own
@@ -377,7 +378,7 @@ sub-step's own numeric stop-and-report threshold holds.
   r4133 channel too. RP2.1 therefore disposes **every** `SKIP_PROPS` /
   `LANE_SKIP_PROPS` row for r4133: the changed-default rows — (Fuse,
   FuseCurve), (Fuse, RatedCurrent), (RegControl, RevThreshold) — must
-  **compare** on r4133 (`tests/TOLERANCE_NOTES.md:951-956` pins the r4133-side
+  **compare** on r4133 (`tests/TOLERANCE_NOTES.md:984-990` pins the r4133-side
   values and forbids masking them there); rows justified by channel-independent
   facts (heap-garbage matrix reads) stay skipped on both channels;
   `LANE_SKIP_PROPS`'s (Monitor, BaseFreq) stays deliberately channel-blind —
@@ -465,7 +466,7 @@ sub-step's own numeric stop-and-report threshold holds.
   (`GOLDEN_REBASE_PLAN.md:390-392`); that expectation is **superseded** here in
   favor of the standing TOLERANCE_NOTES doctrine ("Rather than mint parallel
   `PROPS_R4133` / `HIDE_R4133` mechanisms, the *identical* Rung-1 machinery is
-  reused", `tests/TOLERANCE_NOTES.md:943-956`). Mechanically safe: `prop_015x`
+  reused", `tests/TOLERANCE_NOTES.md:977-990`). Mechanically safe: `prop_015x`
   drops a Rust-side prop only when the oracle's own name list lacks it
   (`mod.rs:1495-1500`), so a `("GenDispatcher", &["weights"])` row is inert on
   the capi channel (whose list contains `weights`) and active on r4133 (whose
@@ -1870,6 +1871,64 @@ claimed accounting (or into a cited exclusion), and the replay's count locks
 moved with their deltas stated. Tier: `opus-high+`.
 Outcome: the last population RP4.1 has no owner for is owned.
 
+**As executed (2026-09-02) — outcome `FIX` (both lanes), zero golden bytes, zero
+ledger entries. Full record: STATUS §RP3.8.** The probe ran first and the kill
+criterion did **not** fire: all five renders are reproducible from the port's own
+state, measured cell-for-cell on 9 decks / 100 solved steps + 9 golden scenarios
++ 2 pin decks. Six points where the code corrected this section's premises or
+numbers:
+
+* **`PowerFactor` is `Version8/Source/Common/Utilities.pas:1821`, not
+  `mathutil`.** There is no `PowerFactor` in `Shared/mathutil.pas` at all; the
+  pointer above was off by a unit. Its `Else Result := 1.0` arm is why an
+  unsolved or disabled machine reports unity.
+* **The port renders full precision, not the Delphi `%.6g`/`%-.8g` this section
+  asked for.** Every other double in the port renders through `float_to_str_ex`;
+  emitting a Delphi width from these five alone would put a lossy string on
+  `Dump`/`Save`/export where every sibling is exact. The r4133 channel absorbs
+  the digit difference through RP2.4's `R4133_DISPLAY_FLOOR = 2e-4` +
+  `display_is_render` — measured worst gated cell **4.029e-08** rel, four orders
+  under the floor — and the pins carry r4133's own bytes through `fmt_g`.
+* **The `Var Sum` write-back is a dead store, so there was nothing to weigh.**
+  A whole-tree grep for `TotalkWhCapacity`/`TotalkWCapacity` returns six lines —
+  two declarations, the two property arms, two dead `RecalcElementData` calls
+  (`:1107-1108`) — and nothing reads them (0.14.5 commented the fields out). The
+  getters re-sum the fleet on every call, so the store feeds no render either:
+  not reproduced, and not even a pinnable divergence.
+* **Exposure: 22 StorageController + 6 IndMach012 cases; 24 red on capi / 84
+  cells / 1 006 comparisons.** Three corrections to the exposure list this plan
+  worked from: `Test/indmachtest/Master.DSS` and `Kersting4wire_{Lagging,
+  Leading}.dss` hold **no** IndMach012 (their hit is `UserModel=IndMach012a` on a
+  *Generator*), `StoCtrl_SeasonTarget/IEEE13NodecktMOD.dss` holds no
+  StorageController, and three cases were missing (`controls/combo/
+  midi_controls.dss`, `modes/makeposseq/makeposseq_ctrl.dss`,
+  `controls/relay/relay_generic.dss`). `StoCtrl_Current_PeakShave/master.dss` is
+  `kind: large`, hence never property-compared — which is why 22 holders produce
+  only 20 red cases.
+* **A pre-solve read of `indmach012.pf` mutates in r4133 and must not here.**
+  The recompute on an unstamped `Iterminal` cache runs `CalcPFlow` and advances
+  the slip-Newton; r4133 keeps that advance (the `VSConverter.GetCurrents`
+  family), and an in-place port of it moved a committed JSON golden
+  (`spectrum_refs.json`, `Slip`). The recompute is required — it is how both
+  engines get the number — so it runs on a throwaway `self.clone()` and only the
+  f64 is kept.
+* **The accounting took a third state, not either of the two this section
+  offered.** The frozen example rows record `rust = ''` **by capture** and cannot
+  be re-frozen, so neither "the ordinary claimed accounting" nor a cited
+  exclusion can hold them honestly — replaying a counterfactual spelling would
+  prove nothing about the comparator, and writing the port's new spelling into
+  that column would be a fabricated measurement. `DECLARED_RP38` still goes
+  `(181, 5, 181) → (0, 0, 0)`, but its old value **moves** into a new
+  `SUPERSEDED_RP38` bucket (`RP38_ROUTING` → `RP38_SUPERSEDED`), with
+  `claimed + declared + superseded == rows` and the shipped `skip_prop`
+  disposition asserted per pair.
+* **Two upstream bugs found and reported** (`investigations/to_opendss/`, 48 and
+  49): `? IndMach012.<n>.PF` before `NodeRef` is assigned access-violates in
+  r4133, and `TStorageObj.MakePosSequence` writes `kWrating=` for the property
+  `kWrated` (`PCElements/Storage.pas:3979-3985` vs `:647`), which is the one
+  measured r4133-side divergence these renders expose — see §RP4.1.
+
+
 ### RP3.9 — the r4133 round-trip residue (opened by the RP2.4 audit settlement)
 
 **Why it exists.** RP2.4's display floor claims a numeric cell only when its
@@ -2111,6 +2170,26 @@ RP3.4's two = eight**, plus RP1.4's, and all
 three sub-steps keep their `RP3_ROUTING` rows and their share of
 `DECLARED_RP3` `(6, 3, 6)` until this commit retires them. The tripwire
 `the_staged_r4133_property_entries_have_not_landed_yet` lists the same eight.
+
+**Pre-measured by RP3.8 (2026-09-02), so this sub-step need not rediscover it.**
+With the mask bypassed (`DSS_PROPS_CENSUS=claims`) the five surfaces RP3.8 made
+live produce **105 divergent r4133 cells / 89 in scope**, of which **103 are
+RP2.4's display class** (the port prints `float_to_str_ex`, r4133 its
+`%.6g`/`%-.8g` of the same double; worst rel `4.029e-08`, four orders under
+`R4133_DISPLAY_FLOOR`) and therefore need nothing here, while `indmach012.pf`
+and `storagecontroller.kwhtotal` produce **zero**. The remaining **2** are the
+one r4133-side exclusion candidate this sub-step inherits:
+`modes:makeposseq/makeposseq_ctrl.dss` `StorageController.kWTotal`
+(`33.3333333333333` vs `100`) and `.kWActual` (`-0.333333333333333` vs `-1`) —
+a factor of `Fnphases`, because r4133's `TStorageObj.MakePosSequence` writes
+`' kWrating=%-.5g'` (`Version8/Source/PCElements/Storage.pas:3979-3985`) where
+the class's property is `kWrated` (`:647`), so its own edit is an unknown
+parameter and the rating is never scaled; 0.14.5 fixed it by ordinal
+(`src/PCElements/Storage.pas:3340`/`:3349`) and the port follows. The case is
+`capi_v0145`-only today, so the r4133 channel does not gate it — if its
+`engines` key ever changes it needs a cited exclusion + pin, never a
+reproduction (upstream report `investigations/to_opendss/49-storage-makeposseq-
+writes-kwrating.md`).
 
 Stop masking properties on r4133: remove the per-channel clear in the gate path
 (`corpus_gate/scheduler.rs:357-363`) and the seeding path (`scheduler.rs:710-717`),

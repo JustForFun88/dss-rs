@@ -206,9 +206,9 @@ fn corpus_gate_props_census() {
 /// from each checkpoint's `all_properties` before dumping — NOT the whole block,
 /// and deliberately **not** the Stage F lane exclusions, which are deterministic
 /// and so belong in the bit-diff (that is why the predicate is `skip_prop_ub`
-/// and not `skip_prop`). Those
-/// pairs (DoubleSymMatrix `RMatrix`/`XMatrix`/`CMatrix`/`GMatrix` and the shunt-PD
-/// reliability inputs) render UNINITIALIZED heap memory in the upstream dss_capi
+/// and not `skip_prop`). The UB core of that set — the DoubleSymMatrix
+/// `RMatrix`/`XMatrix`/`CMatrix`/`GMatrix` pairs and the shunt-PD reliability
+/// inputs — renders UNINITIALIZED heap memory in the upstream dss_capi
 /// getter: a persistent worker's heap carries residue from prior cases where a
 /// fresh process's is zeroed, so those garbage bytes are order-dependent BY
 /// CONSTRUCTION — keeping them would make the bit-diff report the upstream UB, not
@@ -221,6 +221,14 @@ fn corpus_gate_props_census() {
 /// where a within-tolerance oracle-property drift could otherwise escape both the
 /// verdict channel and a whole-block strip). The property NAME is kept in all
 /// cases (only the value string is nulled), preserving the property-index shape.
+///
+/// `SKIP_PROPS` is a SUPERSET of that UB core since the changed-default rows
+/// (e)/(f) and RP3.8's live-render rows (g): those eight are deterministic on
+/// both sides, so nulling them here is a deliberate, recorded loss rather than
+/// the argument above (the twin note at `harness::skip_prop_ub` says the same).
+/// It costs the artifact nothing that its claims depend on: the stripped set is
+/// still exactly what the gate excludes from its VALUE compare, so no
+/// gate-asserted property is dropped.
 fn write_gate_dump(path: &str, run: &GateRun) {
     fn strip_ub_properties(v: &mut Value) {
         if let Some(cps) = v.get_mut("checkpoints").and_then(|c| c.as_array_mut()) {

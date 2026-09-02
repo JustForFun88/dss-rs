@@ -35,6 +35,7 @@ use crate::elements::pc::generator::Connection;
 use crate::elements::traits::{Idx, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
+use crate::support::mathutil::power_factor;
 use crate::util::{CDOUBLEONE, inv_sqrt3_x1000};
 
 mod accessors;
@@ -80,12 +81,26 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("kV")
             .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED | PropFlags::UNITS_KV),
         PropDef::double("kW").flags(PropFlags::REQUIRED),
-        // Pascal `pf` is `[SilentReadOnly, ReadByFunction]` → PowerFactor(Power[1]):
-        // read-only (writes silently ignored in set_f64), and the text render is ""
-        // always — upstream never sets PropertyOffset (stays -1), so the
-        // GetObjPropertyValue guard skips the read function even on a solved
-        // circuit (probe-proven; see SILENT_READ_ONLY).
-        PropDef::double("PF").flags(PropFlags::SILENT_READ_ONLY),
+        // `pf` is read-only on both engines (writes silently ignored in
+        // `set_f64`), but the two disagree on the TEXT RENDER, and r4133 is the
+        // authority (CLAUDE.md, 2026-08-02):
+        //
+        // * dss_capi 0.14.5 flags it `[SilentReadOnly, ReadByFunction]` and never
+        //   assigns a `PropertyOffset` (stays -1), so `GetObjPropertyValue`'s
+        //   outer guard (`DSSObjectHelper.pas:2203-2204`) short-circuits to `''`
+        //   even on a solved circuit;
+        // * r4133 renders the live value:
+        //   `5: Result := Format('%.6g', [PowerFactor(Power[1, ActiveActor])])`
+        //   (`Version8/Source/PCElements/IndMach012.pas:1790`; `PowerFactor` is
+        //   `Common/Utilities.pas:1821`, `Power[1]` is `TDSSCktElement.Get_Power`,
+        //   `CktElement.pas:666-703`).
+        //
+        // So `RENDERS_LIVE_RESULT` rides alongside `SILENT_READ_ONLY` (RP3.8):
+        // the `?`/`Dump`/`all_properties` render reads the live value from
+        // [`IndMach012::live_pf`], while the three surfaces the 0.14.5 convention
+        // still governs (JSON export omission, JSON load refusal, schema
+        // `readOnly`) are unchanged.
+        PropDef::double("PF").flags(PropFlags::SILENT_READ_ONLY | PropFlags::RENDERS_LIVE_RESULT),
         PropDef::mapped_string_enum("Conn", enums.connection),
         PropDef::double("kVA").flags(PropFlags::REQUIRED),
         PropDef::double("H"),
@@ -217,6 +232,23 @@ pub struct IndMach012 {
     pub yearly_shape_ref: Option<Idx<LoadShapeObj>>,
     pub daily_shape_ref: Option<Idx<LoadShapeObj>>,
     pub duty_shape_ref: Option<Idx<LoadShapeObj>>,
+
+    /// The render cache behind the live read-only `pf` property — r4133
+    /// `Format('%.6g', [PowerFactor(Power[1, ActiveActor])])`
+    /// (`IndMach012.pas:1790`). r4133 computes it inside the getter, from
+    /// `TDSSCktElement.Get_Power(1)` over the live solution; the Rust `&self`
+    /// getter reaches no solution, so the read surfaces refresh this field at
+    /// their one choke point (`Dss::refresh_vterminal_if_marked`, gated on
+    /// [`PropFlags::RENDERS_LIVE_RESULT`]) immediately before every render — the
+    /// same construction [`PropFlags::READS_VTERMINAL`] uses for Transformer
+    /// `WdgCurrents`. See [`IndMach012::refresh_live_pf`].
+    ///
+    /// It is a render cache, NOT model state: nothing in the power-flow /
+    /// dynamics path reads it, `MakeLike` does not copy it (Pascal has no such
+    /// field to copy), and its `Create` value is `PowerFactor(0) = 1.0` — what
+    /// r4133 answers for a machine with no power (`Utilities.pas:1821`, the
+    /// `Else Result := 1.0` arm).
+    pub(crate) live_pf: f64,
 }
 
 /// Pascal `SetNcondsForConnection`. Unlike the Generator, a **wye** induction
@@ -314,6 +346,10 @@ impl IndMach012 {
             yearly_shape_ref: None,
             daily_shape_ref: None,
             duty_shape_ref: None,
+            // `PowerFactor(S = 0)` = 1.0 (`Utilities.pas:1821`) — what r4133
+            // renders for a machine that carries no power (measured on all five
+            // `tests/golden/props/indmach012.json` scenarios: `'1'`).
+            live_pf: power_factor(Complex64::ZERO),
         };
         // Set slip local and make the generator model agree (Pascal Create:
         // set_LocalSlip(0.007) then PropertySideEffects(slip)).

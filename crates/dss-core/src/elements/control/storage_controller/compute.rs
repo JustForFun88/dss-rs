@@ -16,10 +16,14 @@
 use num_complex::Complex64;
 
 use crate::elements::pc::storage::StorageState;
+use crate::elements::traits::ElemId;
 use crate::solution::SolveMode;
 use crate::util::fmt_g;
 
-use super::{FleetFind, StorageController, StorageCtrlAction, StorageCtrlMode, StorageDispatchEnv};
+use super::{
+    FleetAggregates, FleetFind, FleetMemberLive, StorageController, StorageCtrlAction,
+    StorageCtrlMode, StorageDispatchEnv,
+};
 
 /// Pascal `EPSILON` (the idling-output guard band).
 const EPSILON: f64 = 0.001;
@@ -213,10 +217,43 @@ impl StorageController {
 
     // --- fleet aggregates (Pascal Get_FleetkW / Get_FleetkWh / ...) ---
 
-    fn get_fleet_kw(&self, env: &dyn StorageDispatchEnv) -> f64 {
+    /// The fleet, as the executive needs it to collect one
+    /// [`FleetMemberLive`] per member for [`Self::refresh_live_aggregates`]
+    /// (`FleetPointerList`, in Pascal's own order — the four aggregate sums are
+    /// order-free, so only membership matters).
+    pub(crate) fn fleet_refs(&self) -> &[ElemId] {
+        &self.fleet
+    }
+
+    /// Recompute the four live read-only aggregates
+    /// (`kWhTotal`/`kWTotal`/`kWhActual`/`kWActual`) from the fleet's live
+    /// state, into the render cache [`StorageController::live_aggregates`].
+    ///
+    /// Loop-for-loop `GetkWhTotal`/`GetkWTotal` (`StorageController.pas:1172-1198`,
+    /// `Sum := 0.0; for i := 1 to FleetPointerList.ListSize do sum := sum +
+    /// pStorage.StorageVars.kWhRating`) plus `GetkWhActual`/`GetkWActual`
+    /// (`:1162-1170`) over `FleetkWh`/`FleetkW` (`Get_FleetkWh`/`Get_FleetkW`,
+    /// `:1019-1042` — the same two sums [`Self::get_fleet_kwh`] and
+    /// [`Self::get_fleet_kw`] compute for the dispatch, over the dispatch env
+    /// instead of a collected slice; `fleet_aggregates_match_the_dispatch_sums`
+    /// pins that the two paths agree).
+    ///
+    /// `members` is one entry per [`Self::fleet_refs`] element. Pure: it writes
+    /// only the cache, never the fleet and never the two `Total*Capacity` fields
+    /// r4133's `Var Sum` getters store into (see [`FleetAggregates`]).
+    pub(crate) fn refresh_live_aggregates(&mut self, members: &[FleetMemberLive]) {
+        self.live_aggregates = FleetAggregates {
+            kwh_total: members.iter().map(|m| m.kwh_rating).sum(),
+            kw_total: members.iter().map(|m| m.kw_rating).sum(),
+            kwh_actual: members.iter().map(|m| m.kwh_stored).sum(),
+            kw_actual: members.iter().map(|m| m.present_kw).sum(),
+        };
+    }
+
+    pub(super) fn get_fleet_kw(&self, env: &dyn StorageDispatchEnv) -> f64 {
         self.fleet.iter().map(|&r| env.present_kw(r)).sum()
     }
-    fn get_fleet_kwh(&self, env: &dyn StorageDispatchEnv) -> f64 {
+    pub(super) fn get_fleet_kwh(&self, env: &dyn StorageDispatchEnv) -> f64 {
         self.fleet.iter().map(|&r| env.snap(r).kwh_stored).sum()
     }
     fn fleet_kwh_rating(&self, env: &dyn StorageDispatchEnv) -> f64 {
