@@ -722,6 +722,59 @@ const OPEN_RP39: (usize, usize, usize) = (0, 0, 0);
 /// hand with the unmask.
 const DECLARED_RP312: (usize, usize, usize) = (8, 1, 0);
 
+/// The **measured** minimum of `row gap / display floor` over the eight
+/// [`DECLARED_RP312`] rows: `153.4x`
+/// (`examples_supplement.txt:127`, `autotrans_both`, rel 3.068976e-02 against
+/// the 2e-4 floor; the largest is 376.9x on `:130`). Locked as a `>=` and
+/// bracketed above in
+/// [`the_regcontrol_autotrans_typecast_rows_are_owned_by_rp312`], the shape
+/// [`RP24_OUT_OF_SCOPE_MIN_RATIO`] was hardened into after a one-sided lock let
+/// a mutation through: the number is a **measurement** of how far this verdict
+/// sits from the display class, so a population that moved in *either*
+/// direction must be re-read, not quietly re-bracketed.
+const RP312_MIN_GAP_RATIO: f64 = 153.0;
+
+/// The ledger cause the RP3.12 verdict is filed under — renamed 2026-09-03 from
+/// the disproven `autotrans-regcontrol-tap` ("a last-ulp voltage nudges the tap
+/// decision across a boundary … FPC-vs-Delphi, not a port bug", the conditioning
+/// excuse `CLAUDE.md` forbids) and rewritten with the measured mechanism.
+const RP312_TYPECAST_CAUSE: &str = "regcontrol-autotrans-typecast";
+
+/// How many of the eight [`DECLARED_RP312`] rows the pin reproduces **verbatim,
+/// both columns** — `2`: `examples_supplement.txt:128` (`autotrans_reg`, 8 of
+/// the 34 cells) and `:134` (`midi_autotrans`, 2 cells), the pin's two legs.
+/// Locked by [`the_rp312_pin_quotes_the_vendored_census_cells`] so a
+/// re-baselined literal, or a leg quietly dropped, reds instead of narrowing the
+/// witness in silence. The other six spellings are declared but not reproduced
+/// in-tree (their decks open with a snapshot `Solve`, so r4133's unregulated
+/// state needs the RegControl disabled in the deck SOURCE).
+const RP312_WITNESSED_ROWS: usize = 2;
+
+/// The four cases the verdict covers and the `skip` entry each one owes the day
+/// it gains the `r4133` channel — `(case id, staged entry id)`, the ids of the
+/// drafted entries. All four are `engines: "capi_v0145"` today
+/// (`tests/corpus/manifests/population.lock.json:74-77`), which is why the
+/// entries are staged rather than landed; the pairing is enforced by
+/// [`the_autotrans_typecast_cases_pair_their_r4133_channel_with_a_skip_entry`].
+const RP312_STAGED_SKIPS: &[(&str, &str)] = &[
+    (
+        "controls:autotrans/autotrans_both.dss",
+        "r4133-autotrans-regcontrol-typecast-autotrans-both",
+    ),
+    (
+        "controls:autotrans/autotrans_reg.dss",
+        "r4133-autotrans-regcontrol-typecast-autotrans-reg",
+    ),
+    (
+        "controls:autotrans/midi_autotrans.dss",
+        "r4133-autotrans-regcontrol-typecast-midi-autotrans",
+    ),
+    (
+        "controls:autotrans/midi_autotrans_both.dss",
+        "r4133-autotrans-regcontrol-typecast-midi-autotrans-both",
+    ),
+];
+
 /// The **disposition** an [`RP39_ROUTING`] row records — what the settled pair
 /// owes the tree, in the shape [`RP3_SETTLED_SHAPES`] carries for
 /// [`RP3_ROUTING`]:
@@ -4323,6 +4376,16 @@ fn every_echo_row_matches_its_cited_evidence() {
 /// shape: its pins witness a `SKIP_PROPS_CAPI_ONLY` row pair (no ledger entry at
 /// all), and they are named by [`RP38_SUPERSEDED`]'s fourth column plus
 /// [`RP38_CAPTURE_PIN`].
+///
+/// **Five tables since RP3.12** — the doc had stopped at three while the
+/// assertion grew to five (RP3.12 audit settlement, 2026-09-03). The other two:
+/// [`RP39_PINS`]'s second column, whose pins hold the port's value on the
+/// display floor's round-trip residue — cells no exclusion row can state,
+/// because the port is exact and the r4133 side is a re-derivation; and
+/// [`RP312_UPSTREAM_BUG`]'s sixth column, whose pin holds the port's REGULATED
+/// answer on `autotrans.wdgcurrents` — no echo row and no ledger entry can say
+/// that either, since the four cases are `engines: "capi_v0145"` and the
+/// case-level `r4133` `skip` entries are staged, not landed.
 #[test]
 fn every_echo_row_pin_is_a_test_that_exists() {
     let path = repo_root().join(PINS);
@@ -5578,6 +5641,80 @@ fn the_staged_r4133_property_entries_have_not_landed_yet() {
          shrink DECLARED_RP3 by exactly those rows, and re-state this test against whatever is \
          still staged. Nothing does it for you: no link of the chain reads this file."
     );
+}
+
+/// **RP3.12's four `skip` entries are staged, and this is what makes them land
+/// in the same commit that makes them due** (RP3.12 audit settlement,
+/// 2026-09-03; both auditors raised the missing tripwire).
+///
+/// [`DECLARED_RP312`]'s verdict is `UPSTREAM_BUG`: r4133 never taps an
+/// `AutoTrans`, so on the four `controls:autotrans/*` decks its whole solved
+/// state is the UNREGULATED circuit's. Today nothing is excluded because nothing
+/// is compared — all four cases are `engines: "capi_v0145"`
+/// (`population.lock.json:74-77`) — and landing an entry now would be **stale on
+/// arrival**, which the gate's own fail-on-stale rule reds. So the four
+/// case-level `kind: "skip"` entries wait; and the day one of these decks gains
+/// the `r4133` channel, without this test the gate would fail as an unexplained
+/// whole-case divergence while the diagnosis sat in a gitignored draft.
+///
+/// The condition is therefore the **pairing**, both ways: a case gates r4133
+/// **iff** it carries an `r4133` `skip` entry citing [`RP312_TYPECAST_CAUSE`].
+/// Gaining the channel without the entry reds here with the entry to write;
+/// landing the entry while the case is still capi-only reds here too, before the
+/// corpus gate reds it as stale.
+///
+/// The cause key itself is asserted to exist, so the 2026-09-03 rename away from
+/// the disproven `autotrans-regcontrol-tap` ("FPC-vs-Delphi, not a port bug")
+/// cannot be undone silently either.
+#[test]
+fn the_autotrans_typecast_cases_pair_their_r4133_channel_with_a_skip_entry() {
+    let lock_path = repo_root().join(POPULATION_LOCK);
+    let lock: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&lock_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", lock_path.display())),
+    )
+    .expect("population.lock.json is JSON");
+
+    let ledger_path = repo_root().join(LEDGER);
+    let ledger: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&ledger_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", ledger_path.display())),
+    )
+    .expect("ledger.json is JSON");
+    assert!(
+        ledger["causes"][RP312_TYPECAST_CAUSE].is_string(),
+        "the cause key {RP312_TYPECAST_CAUSE:?} is gone from ledger.json — RP3.12 renamed \
+         the disproven `autotrans-regcontrol-tap` to it and all four staged entries cite it"
+    );
+    let entries = ledger["entries"]
+        .as_array()
+        .expect("ledger.json has an `entries` array");
+
+    for (case, staged_id) in RP312_STAGED_SKIPS {
+        let rigor = case_rigor(&lock, case);
+        let engines = rigor_field(&rigor, "engines");
+        let landed: Vec<&str> = entries
+            .iter()
+            .filter(|e| {
+                e["case"] == *case
+                    && e["channel"] == "r4133"
+                    && e["kind"] == "skip"
+                    && e["cause_ref"] == RP312_TYPECAST_CAUSE
+            })
+            .map(|e| e["id"].as_str().unwrap_or("<no id>"))
+            .collect();
+        assert_eq!(
+            engines != "capi_v0145",
+            !landed.is_empty(),
+            "{case}: engines={engines:?} while its RP3.12 `skip` entries are {landed:?} \
+             — the two move together. A deck gaining the r4133 channel owes, in the SAME \
+             commit, an entry `{staged_id}` with channel r4133, kind skip and cause_ref \
+             {RP312_TYPECAST_CAUSE:?}: r4133 never taps an AutoTrans (RegControl.pas:1026, \
+             :1296, :1479 over AutoTrans.pas:88, the zeroed increment at :1249-1250) and the \
+             WHOLE case diverges, so a field exclusion is the wrong instrument. An entry \
+             landing EARLY is stale on arrival and reds the corpus gate instead."
+        );
+    }
 }
 
 /// **RP3.1's census decomposition is read off the corpus, not off its own
@@ -8840,10 +8977,11 @@ fn the_display_floors_round_trip_residue_is_owned_by_rp39() {
 /// and the verdict is one an [`RP312_VERDICTS`] tag covers, cited to a
 /// `Version8/Source` `.pas:` line.
 ///
-/// The measured minimum gap is asserted too. RP2.4's floor is 2e-4 and the
-/// smallest of these eight rows is 3.1e-2 — 150x out — so a future re-measure that
-/// drifted anywhere near the floor would red here rather than quietly change
-/// which sub-step owns the row.
+/// The measured minimum gap is asserted too, and **bracketed both ways**
+/// ([`RP312_MIN_GAP_RATIO`]): RP2.4's floor is 2e-4 and the smallest of these
+/// eight rows is 3.068976e-02 — 153.4x out — so a future re-measure that drifted
+/// anywhere near the floor, or a population that moved the minimum in either
+/// direction, reds here rather than quietly changing which sub-step owns the row.
 #[test]
 fn the_regcontrol_autotrans_typecast_rows_are_owned_by_rp312() {
     assert_eq!(
@@ -8911,10 +9049,21 @@ fn the_regcontrol_autotrans_typecast_rows_are_owned_by_rp312() {
             .collect::<Vec<_>>(),
         "the cited pairs, row counts and in-scope splits must be exactly what the walk selects"
     );
+    let ratio = min_rel / floor;
     assert!(
-        min_rel > 100.0 * floor,
-        "the smallest RP3.12 gap is {min_rel:e}, within 100x of the display floor {floor:e} — \
-         re-read which sub-step owns these rows instead of leaving the split to a rounding"
+        ratio >= RP312_MIN_GAP_RATIO,
+        "the smallest RP3.12 gap is {min_rel:e}, only {ratio:.1}x the display floor {floor:e} \
+         (locked at {RP312_MIN_GAP_RATIO:.1}x) — re-read which sub-step owns these rows instead \
+         of leaving the split to a rounding"
+    );
+    // …and the lock is a MEASUREMENT, not a floor to hide behind: bracket it
+    // above too, exactly as `RP24_OUT_OF_SCOPE_MIN_RATIO` had to be after a
+    // mutation walked past its one-sided form.
+    assert!(
+        ratio < 154.0,
+        "the measured minimum is 153.4x (examples_supplement.txt:127, 3.068976e-02 against the \
+         2e-4 floor), got {ratio:.1}x — a different number means the population moved; \
+         re-record it, do not widen the `>=`"
     );
     let led = account(&corpus, PROPS_NORM_R4133);
     assert_eq!(
@@ -8931,6 +9080,69 @@ fn the_regcontrol_autotrans_typecast_rows_are_owned_by_rp312() {
             .map(|(_, n, s, _, d)| (*n, *s, *d)),
         Some((1, 0, "PIN")),
         "RP3.9 keeps the makeposseq round-trip residue of the same pair"
+    );
+}
+
+/// **The pin quotes the vendored census cells verbatim — and exactly two of the
+/// eight rows** (RP3.12 audit settlement, 2026-09-03).
+///
+/// [`the_regcontrol_autotrans_typecast_rows_are_owned_by_rp312`] proves WHICH
+/// rows the verdict owns; the pin's own `assert_eq!`s prove its literals are the
+/// port's live renders. What neither proves is the pin's remaining claim — that
+/// the string it reaches with the regulator disabled is *r4133's census cell,
+/// byte for byte*. Until this test that was a pasted literal tied to nothing:
+/// a mistyped digit in the r4133 side would have made the pin red only if the
+/// port happened to disagree with the typo, and the RP3.8/RP3.9 pins carry the
+/// same pattern.
+///
+/// So: flatten the pin file's Rust string continuations and count the
+/// [`DECLARED_RP312`] rows whose **both** columns appear in it verbatim. Two do
+/// — `examples_supplement.txt:128` (`autotrans_reg`, 8 cells) and `:134`
+/// (`midi_autotrans`, 2 cells), the pin's two legs — and the count is locked, so
+/// a re-baselined literal drops it to 1 and reds here.
+///
+/// The other six spellings (24 of the 34 cells, the two `*_both` decks among
+/// them) are **declared but not reproduced in-tree**: their decks open with a
+/// snapshot `Solve` before the daily loop, so reproducing r4133's unregulated
+/// state needs the RegControl disabled in the deck SOURCE rather than by an
+/// `edit` after the compile — a deck-copy construction the pin harness does not
+/// have. Recorded as residual coverage, per the brief's "one pin, two legs".
+#[test]
+fn the_rp312_pin_quotes_the_vendored_census_cells() {
+    let text = std::fs::read_to_string(repo_root().join(PINS))
+        .unwrap_or_else(|e| panic!("read {PINS}: {e}"))
+        .replace("\r\n", "\n");
+    // A trailing `\` in a Rust string literal swallows the newline AND the next
+    // line's leading whitespace, so the census cell is one flat run of bytes.
+    let mut flat = String::with_capacity(text.len());
+    let mut it = text.chars().peekable();
+    while let Some(c) = it.next() {
+        if c == '\\' && it.peek() == Some(&'\n') {
+            it.next();
+            while it.peek() == Some(&' ') {
+                it.next();
+            }
+        } else {
+            flat.push(c);
+        }
+    }
+    let corpus = Corpus::load();
+    let witnessed: Vec<&str> = corpus
+        .rows
+        .iter()
+        .filter(|row| regcontrol_autotrans_typecast_row(row))
+        .filter(|row| flat.contains(&row.rust) && flat.contains(&row.r4133))
+        .map(|row| row.r4133.as_str())
+        .collect();
+    assert_eq!(
+        witnessed.len(),
+        RP312_WITNESSED_ROWS,
+        "the pin must quote BOTH columns of exactly {RP312_WITNESSED_ROWS} of the \
+         {DECLARED_RP312:?} declared rows, verbatim; it quotes {} ({witnessed:?}). A literal \
+         edited on the r4133 side stops being the vendored census cell and the pin's \
+         'byte for byte' claim stops being true — re-derive it from \
+         examples_supplement.txt, do not re-baseline it",
+        witnessed.len()
     );
 }
 
