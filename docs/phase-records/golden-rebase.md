@@ -1536,3 +1536,1157 @@ each. `git diff --stat -- tests/golden` **empty** — the only addition under
 audit-round regen moved **0 digests**: the whole diff is four rows' `anchor`/`reason`
 cells (`props/{fuse,relay,recloser}.json` + the `flicker/` reason), verified row by
 row against the pre-fix lock.
+
+## Condensed records (moved from STATUS.md, 2026-09-03)
+
+> Moved verbatim from `STATUS.md` on 2026-09-03 (STATUS.md archiving round 2);
+> order preserved, nothing rewritten. These are STATUS §1's `### GOLDEN_REBASE`
+> condensed record blocks (WP-G0 / WP-G2, then WP-G1); the full session records
+> of the same work are above in this file.
+
+### GOLDEN_REBASE WP-G0 / WP-G2 — condensed records
+
+> Full session records (bug analysis, Pascal citations, pin inventories, audit
+> settlements) → [`docs/phase-records/golden-rebase.md`](docs/phase-records/golden-rebase.md).
+> Every step below ran the full five-command gate green before its commit, and
+> every one was audited by two fresh opus auditors plus a fix agent on the same
+> branch.
+
+- **G0.1** (`5261266c`, fix `9de32e82`, branch `golden-g0`, 2026-08-02) — the
+  provenance lock `tests/golden/golden.lock.json`: 737 rows (`path, sha256,
+  anchor, reason, produced_by`), anchors 700 `capi_v0145` / 11 `capi015` / 11
+  `r4133` / 10 `r3723` / 1 `fpc_3.2.2` / 4 `self`, enforced fail-on-stale in both
+  directions by the new `golden_lock.rs`. No golden byte moved. Audit: 12
+  findings, all settled, 0 digests moved.
+- **G0.2** (`1a841cb1`, fix `0cad83dc`, 2026-08-02; WP-G0 merged to `update` as
+  `34baa5b7`) — `harness::regen()` + `snapshot_text/bytes()`, the guarded writer
+  behind `DSS_UPDATE_GOLDENS`: refuses `ExternallyAnchored`, `WrongLane`,
+  `Unlocked` and `NoProducingLane`. Still no golden byte moved. Audit: 11
+  findings, all settled.
+- **G2.0** (`ef1ba28c`, fix `5d712272`, branch `golden-g2`, 2026-08-02) — WP-G2
+  rails only, no kernel touched: the TESTING.md re-anchor onto the five numeric
+  survivors (`compat::PI`, `round_f64`, `round_i32`, `kv_base_search_scale`,
+  `profile_ll_pu_divisor`), the `TORN_DOWN_ROWS` register with its six rot checks
+  and two census ties, and the `// LANE-EXCLUSION(<row>)` markers. `lane_diff.ps1`
+  re-run: max |Δ| = 0. Audit: 9 findings (2 major), all fixed.
+- **G2.1a** (`2d3b3d11`, fix `0e89651f`, 2026-08-03) — `stddev_single_point`
+  deleted: a one-element sample has no spread, so all four `support::mathutil`
+  entry points return `0.0` (r4133 `mathutil.pas:405/:429`, 0.14.5 ×4). Only the
+  parity lane moves. 31 → 30. Audit: 6 minor findings, settled.
+- **G2.1b** (`20179793`, docs `b7e5c867`, fix `add7e0ef`, 2026-08-03) —
+  `CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL` deleted: `make_like` copies
+  `control_signal_name` + `ctrl_signal_shape` unconditionally. 30 → 29. Audit: 3
+  minor, all fixed.
+- **G2.1c** (`91df2a25`, fix `04d845ab`, 2026-08-03) —
+  `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING` deleted: one `pct_of_rating`
+  closure returns `0.0` for a non-positive rating (an undefined rating is not a
+  percentage). The same loop's `IRESIDUAL_FROM_TERMINAL_1` is untouched — G2.2a
+  owns it. 29 → 28. Audit: 4 minor, all fixed.
+- **G2.1d** (`1c7f0501`, fix `68f5dade`, 2026-08-03) —
+  `REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT` deleted: `red_short_line_step` scans
+  the parent's whole shunt list with the same predicate the merge-with-child
+  branch always used. 28 → 27. Audit: 3 findings (1 filed major), settled with a
+  non-vacuity input the fix agent added.
+- **G2.1e** (`87a64820`, fix `9b5da5a6`, 2026-08-03) —
+  `STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL` deleted:
+  `fleet_needs_idling` is one unconditional `fleet_state != StorageState::Idling`.
+  27 → 26. Audit: 4 minor, three fixed as stated.
+- **G2.1f** (`f990dbed`, fix `08131c08`, 2026-08-03) —
+  `STORAGE_MULTIFILE_USES_THE_PV_PREFIX` deleted: the `RegKind::Storage` arm of
+  `gather_register_rows` returns `"EXP_STORAGE_"` plainly. 26 → 25. Audit: 5
+  minor, one refuted with a worked counter-example.
+- **G2.1g** (`359a2ca3`, fix `6f178b93`, 2026-08-04) —
+  `CIM_WYE_GROUNDED_IS_HARDCODED_TRUE` deleted: both `cim/export.rs` writers read
+  the neutral (capacitor `term2_nodes.all(== 0)`, load `neutral_node == 0`) — the
+  same test the unit's own transformer writer applies. 25 → 24. Audit: 3 minor,
+  fixed with a mixed-grounding deck added to the pin.
+- **G2.1h** (`a7b42939`, fix `848802dc`, 2026-08-05) —
+  `HEIGHT_UNIT_CHANGE_REREADS_THE_METRES_FIELD` deleted, the **last of the eight
+  zero-footprint G2.1 rows**: `set_user_height_unit` reads `height_offset()`
+  before the unit field moves, so a typed height is not converted twice (r4133
+  `LineConstants.pas:689-696`; the surface does not exist in 0.14.5, so the row is
+  cited and gated on `r4133` only). 24 → 23. Audit: both findings upheld,
+  docs-only.
+- **G2.2a** (2026-08-05) — the first two rows whose teardown a **golden compare
+  observes**, both dismantled by making an existing exclusion unconditional
+  rather than by moving a golden byte. `IRESIDUAL_FROM_TERMINAL_1`:
+  `CalcAndWriteSeqCurrents` applies the `(j-1)*Ncond` offset to its symmetric
+  components (r4133 `Version8/Source/Common/ExportResults.pas:323`) but not to
+  the residual sum (`:365-366`, dss_capi `:422-424`), so every terminal row
+  repeats terminal 1's residual; both lanes now sum the row's own terminal, and
+  the golden's `Terminal >= 2` `Iresidual` cells are excluded in **both** lanes
+  and pinned by `export_seqcurrents_iresidual_sums_the_rows_own_terminal`
+  (derived from `Export Currents`' `Iresid_j`, an independent anchor).
+  `BUS_INT_DURATION_WALKS_ALL_BUSES`: `CalcReliabilityIndices` sizes
+  `FeederSections` to its own zone (r4133 `Meters/EnergyMeter.pas:2507`) but
+  writes bus durations while walking every circuit bus (`:2567-2574`), and the
+  section-id zeroing that would clear a foreign id is itself per-zone (`:2472`),
+  so with two meters the later one overwrites the earlier one's durations; both
+  lanes now walk only their own zone, the `Duration` column of
+  `export_busreliability_multimeter` is masked in both lanes and pinned
+  literally by `export_busreliability_multimeter_duration_stays_in_the_meters_zone`
+  (`B1 = 4`, `B2 = 5`, not upstream's 6/9). 23 → 21; both rows carry
+  `Evidence::Exclusion`, the first use of that variant. The pin-walk
+  non-vacuity anchor for the integration-test shape moved off the torn-down
+  `IRESIDUAL_FROM_TERMINAL_1` onto the numeric survivor `PI`
+  (`crates/dss-parser/tests/parser_golden.rs`), which outlives WP-G2 and WP-G4.
+  Doc strikes in the same commit: CLAUDE.md's two bug bullets and its WP-G2
+  status line, `tests/TOLERANCE_NOTES.md`'s `Iresidual` note (rewritten in
+  place — it is a note about the `SeqCurrents` compare policy, and the
+  "deliberately-reproduced" section it might otherwise move to is about
+  reproductions, which this no longer is). No ledger or `population.lock.json`
+  movement: no live gate reads `Bus.Int_Duration` or report text yet (WP-G1's
+  G1.6 adds the reliability columns, which is why the plan orders this row
+  first), and the corpus gate stayed green in both lanes.
+  Audit: 6 minor, **all upheld and fixed** (docs plus one rail), no engine code
+  touched. Five were doc-rot the teardown left behind — `run_deck_export_capture`
+  and `GateSpec::Mask` still described their pre-G2.2a roles, the
+  `branches_on_lane` census still said `golden_reports.rs` ×15 (now ×9), the
+  `Evidence` `expect(dead_code)` note still claimed only `Site` is constructed,
+  and `GOLDEN_REBASE_PLAN.md`'s G5.1 list still promised a TOLERANCE_NOTES
+  *move* that was a rewrite-in-place (both plan lines now say so, so G5.1 does
+  not chase it). The sixth was real coverage: the re-anchored pin-walk
+  non-vacuity const keys on the bare token `PI`, which
+  `parser_golden.rs`'s incidental `f64::consts::PI` satisfies, so deleting the
+  deliberate `compat::PI` citation left the anchor green on a std-library
+  homonym — reproduced, then closed by re-checking the **qualified**
+  `compat::<alias>` spelling in the region the walk credited (the probe now
+  fails on that assert alone). `lane_diff.ps1` not re-run: the fix touches no
+  compat kernel, lane alias or solver.
+- **G2.2b** (2026-08-05) — the two **property**-exclusion rows.
+  `monitor_base_frequency`: `TMonitorObj.Create` re-assigns `Basefrequency :=
+  60.0` after the inherited `TDSSCktElement.Create` already wrote
+  `ActiveCircuit.Fundamental` (`Monitor.pas:472` == r4133 `:552`;
+  `CktElement.pas:203`) — left-over, not meant, since `Line.pas:974` /
+  `GICLine.pas:373` carry the same statement commented out with "set in base
+  class" and EnergyMeter/Sensor never write the field. Its one physical consumer
+  is mode-4 flicker (`Monitor.pas:1657` → `Pstcalc.pas:594`, where `fBase = 50`
+  picks the IEC 61000-4-15 230 V/50 Hz lamp weighting, `:609-626`).
+  `create_object_no_edit` now seeds `base_frequency = fundamental` for every
+  element with no Monitor arm at all; `harness::skip_prop`'s `LANE_SKIP_PROPS`
+  consultation is unconditional, and the pin was renamed to
+  `monitor_basefreq_inherits_the_fundamental` (inherited 50 on a 50 Hz deck,
+  unchanged 60 on a 60 Hz one, explicit `basefreq=` still overrides); the
+  kernel-vs-kernel test in `compat/tests.rs` went with the two kernels, and the
+  neighbouring `all_elements_inherit_the_50hz_base_frequency` simply gained the
+  monitor in its element list instead of a lane branch.
+  `ISOURCE_BUS2_NEVER_LATCHES`: `TIsourceObj.PropertySideEffects` has no `bus2`
+  case (`Isource.pas:221-262`; r4133 `Isource.pas` declares `Bus2Defined` `:61`,
+  copies `:335`, clears `:398` and never sets it), so the `bus1` case's
+  `if not Bus2Defined then SetBus(2, S2)` clobbers an explicit `Bus2=` parsed
+  first — while `Vsource.pas:498` (r4133 `:468`) and `Capacitor.pas:349` latch
+  on that very property. The `BUS2` arm now latches in both lanes;
+  `props_roundtrip.rs`'s `LANE_SKIP_SCENARIO_PROPS` is unconditional (its
+  `lane_skips` assert is now a plain equality against the list length, in both
+  lanes) and the pin is `bus2_latches_like_the_sibling_class`. 21 → 19, both
+  rows `Evidence::Exclusion`. **`LANE_SKIP_PROP_VALUE_CELLS = 33` did not move**
+  — it is the unrelated both-lane sym-matrix exclusion, and the plan calls a
+  movement there a finding, not a re-measurement. Doc strikes in the same
+  commit: CLAUDE.md's Monitor bullet, its WP-G2 status line and its
+  "documented inline" sentence (the row has had `investigations/
+  issue-06-monitor-basefrequency-60.md` for a while), and
+  `tools/golden/gen_props.py`'s `isource_full` KEEP-THIS-ORDER note — the
+  capture still needs the ordering, the port no longer does. No golden byte, no
+  ledger and no `population.lock.json` movement; the corpus gate stayed green in
+  both lanes, which is the classification check for both rows (the 50 Hz
+  `LVTestCase` monitors and the props `Bus2` cell are the only observables).
+  `lane_diff.ps1`: max |Δ| = 0.
+- **G2.2b fix** (2026-08-05) — three comment corrections, no code: the
+  `branches_on_lane` doc's surviving-read citation (`harness/mod.rs:2374`, and
+  `skip_prop`'s was the *first* of that file's two reads, not the second);
+  `compat.rs`'s "they **are** the two reproduced bugs" prose, now past-tense and
+  keyed by row *name* rather than by an ordinal that goes stale every teardown;
+  and `props_roundtrip.rs`'s `assert_shape_matches` header, which still said
+  "used in the default lane" of an exclusion its own list doc and call site call
+  both-lane. **Refuted, not fixed:** the audit claim that `LANE_SKIP_PROPS` is
+  unreachable inside `cargo test` — that `compare_all_properties` is opt-in per
+  case and only `corpus_live_properties` (`DSS_LIVE_PROPS=1`) turns it on. It
+  misses `corpus_gate/scheduler.rs:102-110 force_properties`, which sets the flag
+  in code for **every** live `solvable_now` case that gates capi and is not
+  `kind: large` — the manifest never needs the key. `LVTestCase/Master.dss` is
+  exactly that (`engines: both`, `kind: feeder`, no ledger entry), so the compare
+  runs in the mandatory gate. Measured by emptying the list and re-running the
+  gated case: `Monitor.line558_vi_vs_time property BaseFreq: actual 50 vs
+  expected 60` on the CapiV0145 channel. The exclusion is load-bearing, and its
+  going inert is itself loud (that red), so the fail-on-stale counter the finding
+  proposed as a safety net would be measuring a failure mode the gate already
+  reports. `lane_diff.ps1` not re-run: comments only — no compat kernel, lane
+  alias or solver touched.
+- **G2.2c** (2026-08-05) — the three **text-transform** rows, all dismantled by
+  making an existing oracle-text rewrite unconditional. `FAULT_DUMP_TAIL_
+  REPRINTS_MINAMPS`: `TFaultObj.DumpProperties` runs its generic tail from
+  `NumPropsThisClass`, which this class defines as `Ord(High(TProp))` = 9 =
+  `MinAmps` itself (`Fault.pas:533` with `:134`; r4133 `PDElements/Fault.pas:594`
+  with `Const NumPropsthisclass = 9` `:107`), so the loop's first iteration
+  reprints the property the custom `~ MinAmps=%.1f` line just wrote — the pair
+  `~ MinAmps=3.0` / `~ MinAmps=3`. Every sibling class with that loop writes
+  `NumPropsThisClass + 1` (`Transformer.pas:1276`, `AutoTrans.pas:1307`,
+  `XfmrCode.pas:663`), so both lanes now start at `NormAmps`;
+  `golden_reports::fault_dump_expected` drops the second line of each pair from
+  the oracle text in both lanes, and `fault_dump_goldens_carry_the_double_print`
+  (the row's pin, now unconditional) holds the four goldens it is applied to to
+  one `~ MinAmps=` per Fault, always the custom `%.1f` render.
+  `CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX`: one `if` in the CIM
+  shunt-compensator writer emits `grounded` under two class prefixes —
+  `ShuntCompensator.` for a wye bank (`ExportCIMXML.pas:3700`; r4133 `:3183`) and
+  `LinearShuntCompensator.` for a delta one six lines below (`:3706`; r4133
+  `:3187`) — and CIM100 declares the property on `ShuntCompensator`, so the delta
+  spelling resolves against no class at all. `CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_
+  B0CH`: the symmetrical-components line writer closes its `bch`/`gch`/`b0ch`/
+  `g0ch` quartet with a second `ACLineSegment.b0ch` (`:4367` after `:4366`; r4133
+  `:3756` after `:3755`), a copied line whose value was replaced and whose name
+  was not, leaving the segment with no `g0ch` and two contradictory `b0ch` nodes;
+  the `PerLengthSequenceImpedance` sibling of the same procedure (`:4521-4522`;
+  r4133 `:3895-3896`) spells the quartet correctly. Both lanes now write
+  `ShuntCompensator.grounded` and `ACLineSegment.g0ch`; `golden_cim`'s rewrite —
+  renamed `lane_expected_cim` → `expected_cim`, and its pin
+  `cim_lane_divergences_are_pinned` → `cim_writer_divergences_are_pinned`, since
+  neither reads the lane any more — applies both renames to the oracle text in
+  both lanes, and the pin gained two assertions the lane branch used to make
+  redundant: the expectation is the same length as the oracle and differs from it
+  in exactly the counted lines. 19 → 16. Evidence variants: `Site` for the Fault
+  row (the engine's `generic_props_from(…, prop::NORMAMPS)`) and for the `g0ch`
+  row (`"ACLineSegment.g0ch"` is unique inside the keyed `cim/export.rs`, and
+  the needle is the whole one-line call, which the split form could not be);
+  `Exclusion` for
+  the delta-prefix row, whose engine half a needle **cannot** discriminate — the
+  fixed delta arm's `"ShuntCompensator.grounded"` line is byte-identical to the
+  wye arm's, which the split form also carried, so the recorded anchor is the
+  renamed transform and the row's comment names the pin and the CIM byte compares
+  as what carries the engine half. No golden byte, no ledger and no
+  `population.lock.json` movement; no doc-surface citation exists for any of the
+  three (measured — the doc walk finds none), so no strikes. The corpus gate
+  stayed green in both lanes (the CIM writers and the Fault dump have no live
+  observable — no gated case exports CIM or dumps a Fault). `lane_diff.ps1`:
+  **PASS**, max |Δ| = 0 on every gated kind (3 219 862 records, 520 cases), with
+  only the two pre-existing Newton decks in the documented-divergence list.
+  Audit: 3 minor, all upheld and fixed, comments/docs only — the `g0ch` row's
+  `Evidence::Site` justification claimed tree-wide uniqueness for a literal that
+  also appears in `golden_cim.rs` and in the needle itself (reworded to the
+  claim that carries the check: uniqueness *inside the keyed file* plus the
+  one-line call shape the split form could not have; same correction in
+  `STATUS.md` and the local registry, which additionally mis-stated the split
+  form's extra indentation as four spaces where it was eight); the G2.1g caveat
+  at `GOLDEN_REBASE_PLAN.md:629` still named `lane_expected_cim` (annotated
+  **as executed: measured, did not fire**, so the row stayed in G2.1g); and two
+  stale citations in `branches_on_lane`'s doc comment (`golden_reports.rs:1620`
+  → `:1628`; the `reads_the_lane` line number dropped — the rustdoc link
+  resolves without one and the number had drifted ~430 lines). `lane_diff.ps1`
+  not re-run for the settle: comments and docs only, no compat kernel, lane
+  alias or solver touched.
+- **G2.2d** (2026-08-05) — the two **event-log** rows, both label-only.
+  `RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE`: `TRelayObj.Sample` closes its
+  `FPresentState` resync with a bare `AppendtoEventLog('Debug Sample: Relay.' +
+  Name, 'FPresentState: …')` (r4133 `Controls/Relay.pas:1325`) — no
+  `if DebugTrace`, and not gated on `ShowEventLog` either, so every relay writes
+  one debug line per control sample into the user-facing log. Exactly one line
+  lost that guard: the Recloser's byte-identical line keeps it
+  (`Recloser.pas:1044`), so do the class's own sibling traces (`:1822`, `:1845`),
+  and r4088 had no such line in `Sample` at all. `RELAY_RESET_EVENT_IS_LABELLED_
+  RECLOSER`: both `CTRL_RESET` arms of `TRelayObj.DoPendingAction` log
+  `'Recloser.' + Self.Name` (`Relay.pas:1196`, `:1212`), verbatim copies of
+  `Recloser.pas:909`/`:924`, while all eight other events of that procedure
+  (`:1087`-`:1176`) write `'Relay.' + Self.Name` and both earlier revisions of
+  these two lines label them correctly (r4088 `:971`, 0.14.5 `:1003`). Both lanes
+  now route the trace through the `Relay::dbg` helper the port already had and
+  name the emitting class on the reset. In `harness::lane::expected_eventlog` the
+  two Relay rewrites moved **above** the `if PARITY` early return, so they apply
+  in both lanes; the `EVENTLOG_REROUNDED` fold and its `REROUND_VISITS`/
+  `REROUND_HITS` accounting deliberately stayed **behind** it — that is the
+  `compat::fmt_g` precision row, alive until G4.1, and unconditionalizing it
+  would hand the parity lane the native `%g` spelling against FPC-spelled engine
+  output (a 1e-5 gap vs `compare_eventlog`'s 1e-6/1e-9 floor on
+  `controls:invcontrol/midi_invcontrol_drc.dss`). Same mixed shape as
+  `golden_json::lane_expected_json`. 16 → 14. Both rows recorded with
+  `Evidence::Site` on the engine kernels (`relay/mod.rs`: the `self.dbg(…)` call
+  at the trace block's own twelve spaces — the split form had it four deeper in
+  an `else` arm, and it is the file's only `self.dbg(` — and the one-line
+  `let reset_device = format!("Relay.{}", …)`, which the split form could not
+  be), plus the two `LANE-EXCLUSION` markers on the now-unconditional rewrites in
+  `harness/lane.rs`. Pins unconditional: `sample_state_trace_follows_debugtrace`
+  (renamed from `…_is_the_lane_guard`; still walks all four `DebugTrace` ×
+  `ShowEventLog` combinations, so the fix cannot degrade into "the line is gone")
+  and `do_pending_reset_only_resets_opcount_d4` (asserts both directions —
+  `Element=Relay.r1,` present, `Element=Recloser.r1,` absent). The two harness
+  unit tests that guarded the narrowness of the relabel became unconditional too.
+  No golden byte moves — no committed golden captures a relay event log
+  (measured) — and no ledger or `population.lock.json` field moves; the only
+  non-code edit is the `tests/corpus/controls/manifest.json` note, whose
+  parenthetical still claimed the compared log includes the `Debug Sample` lines
+  (`note` is not fingerprinted by `Case::rigor`). No doc-surface citation exists
+  for either row.
+  `lane_diff.ps1`: **max |Δ| = 0** on all eight gated kinds (520 cases, 3 219 862
+  records; 0 iteration counts drifted, `VERDICT: PASS`) — run at the settle
+  because the teardown edited two compat kernels and the implementation commit
+  had not recorded one. The only entries under "documented divergences" are the
+  two `modes:newton/` decks that G2.3 owns; no relay deck contributes, as
+  expected — `lane_dump` compares solved state, and both rows are event-log
+  labels.
+  **OPEN — one unexplained `corpus_gate` failure, not dismissed as a flake.**
+  During the settle, one default-lane `cargo test --workspace` failed at
+  `corpus_gate.rs:127` (the "N of M case(s) failed" panic); the failing case's
+  identity was lost to the output filter and **has not been reproduced** in seven
+  subsequent full runs (three default `--workspace`, one parity `--workspace`,
+  and a dedicated `--test corpus_gate` loop), so it is recorded here rather than
+  closed. What is established: it cannot originate in the settle commit — every
+  changed line under `crates/` there is a comment (`git diff 35ab18ee..f385d094
+  -- crates/` filtered of comment and blank lines is empty), so the built engine
+  and test binaries are behaviourally identical to the implementation commit,
+  whose own five-command gate was green. The suspected area is corpus-gate
+  infrastructure, not the engine: the scheduler runs cases in parallel across
+  directories several decks share, and `corpus_gate/runner.rs:42-55` already
+  documents nondeterministic pollution of exactly this kind ("reproduced on two
+  full `cargo test --workspace` runs, a different file set each time"). The same
+  signature was observed live here — the untracked artifact set left under
+  `tests/corpus/electricdss-tst/Test/AutoTrans/` differed run to run (15, then 9,
+  then 14 files), and that folder's decks emit export names that collide
+  case-insensitively on NTFS (`Auto3bus_noload_power.txt` from the positional
+  `export powers kva …` form vs the `file=`-form spelling). Next step when this
+  is picked up: re-run with `DSS_GATE_JOBS=1` to test the parallelism hypothesis,
+  and capture the full panic body rather than a filtered tail. Refuted along the
+  way: that `lane_diff.ps1`'s artifact cleanup removed a deck input — the
+  `LineConstantsCode.dss` files it deletes are pure `Show` output with no
+  `Redirect` consumer anywhere in the corpus.
+  **Audit settlement** (2026-08-05, three minor findings, all real, all prose —
+  no engine behavior changed): (1) the blast-radius
+  enumeration "the 15 gated `oracle: \"r4133\"` cases that carry a relay and
+  compare an event log" undercounted by two. Re-measured over the family
+  manifests' `compare_eventlog` + `engines` fields and confirmed against
+  `population.lock.json`, the set is **17** — nine `controls/relay/`, two
+  `controls/combo/`, **two `controls/fuse/indmach_r4133/`** (both instantiate
+  `Relay.mfrov/uv`, `Relay.mfr46`, `Relay.mfr47`), four TD21 decks. Corrected in
+  `harness/lane.rs` and `oracle_parity_cfg_gate.rs` plus the local
+  `investigations/issue-29-…` report that seeded the number. Behaviourally inert
+  (the `Debug Sample` drop is unconditional and case-independent, and neither
+  indmach deck sets `debugtrace`). The auditor's side claim that
+  `population.lock.json` "covers only the vendored electricdss-tst cases" is
+  **wrong** — its `family_rigor` map carries the synthetic families too, and both
+  indmach rows are in it with `evlog=1 engines=r4133`; the lock was a valid
+  source, the original reading of it was not. (2) Two surviving comments still
+  said the parity lane "rewrites nothing" (`lane.rs` `assert_reround_cells_are_
+  live` doc, and the over-broad-guard comment in
+  `eventlog_reround_cells_are_case_scoped_and_fail_on_stale`) — false since the
+  two Relay rewrites moved above the `if PARITY` return; both narrowed to "no
+  re-round cell runs there". (3) `golden_protection.rs` (:11-15, :229-231) called
+  the `Debug Sample` line "unconditional" — still true of upstream r4133, which
+  is what those sentences describe, but ambiguous now that the port gates it;
+  annotated in place rather than rewritten, since the retirement rationale is
+  unchanged. This file is not on the walked doc surface of
+  `operational_docs_cite_the_compat_machinery_accurately`, so nothing catches it
+  mechanically.
+- **G2.3** (2026-08-05) — the **Newton stale `Iterminal`** row
+  (`POWERS_REUSE_STALE_NEWTON_ITERMINAL`), the last CLAUDE.md upstream bug still
+  reproduced anywhere. `DoNewtonSolution` bumps `SolutionCount` *before* its
+  per-iteration `SumAllCurrents` — with the author's own comment "SumAllCurrents
+  Uses ITerminal So must force a recalc" (`Common/Solution.pas:944`, the sum at
+  `:947-948`) — so every element leaves the loop with `Iterminal` computed at the
+  pre-final guess `NodeV_{n-1}` *and marked solved for the live `SolutionCount`*
+  (`CktElement.pas:542-550`); `NodeV -= dV` runs only afterwards (`:965-968`). A
+  post-solve `Get_Powers`/`Get_Losses` therefore finds the cache mark fresh and
+  multiplies the converged `NodeV_n` by the conjugate of the *previous* step's
+  current, while `CktElement.Currents` recomputes at `NodeV_n` — one element, one
+  read, `S != V·conj(I)`, the identity `Powers` is defined by. Both lanes now
+  call `refresh_iterminal` once in `exec::view::snapshot_elements` and feed
+  Powers, Losses and Currents from that one current; nothing but a Newton solve
+  moves, because after every other algorithm the cache is already invalid at read
+  time. 14 → 13.
+  **Coverage note — what this costs, and why there was no cheaper option.** The
+  staleness is in *every* oracle channel (EPRI v9.8/r3723, v10.2/r4088,
+  v11.0/r4133, all fingerprint 0.478 kVA, checked 2026-07-08, plus the pinned
+  dss_capi 0.14.5), so no channel reports these decks' powers at the converged
+  `NodeV` and gating on `r4133` would not have helped. `LANE_SKIP_ELEM_POWERS`
+  (`harness/lane.rs`) therefore became **unconditional**: the two gated
+  `modes:newton/newton.dss` and `modes:newton/newton_feeder.dss` decks lose their
+  element powers/losses against **both** oracles in **both** lanes (measured
+  divergence 4.86e-4 and 2.46e-3 kVA on `Vsource.source` conductor 0 — ~60× and
+  ~35× their tier floors, so it could never be mistaken for drift). Everything
+  else about those two decks stays oracle-compared in both lanes: element names,
+  terminal **currents**, node voltages, the system Y, discrete state and the
+  iteration count. What replaces the lost signal is unchanged and now runs
+  identically in both lanes — the in-engine tripwire
+  `newton_dispatch_leaves_a_valid_but_stale_iterminal_cache` (untouched: it reads
+  the solver's leftover cache directly, so it fails if `Set algorithm=Newton`
+  ever falls back to `DoNormalSolution`) plus the pin below. No third deck is
+  affected: these are the only two gated decks that run a Newton solve.
+  **Pin.** `newton_powers_are_the_lane_kernel` → `newton_powers_match_the_normal_
+  algorithm`, unconditional: Newton's reported powers/losses equal the *normal*
+  algorithm's on the same 3-bus deck (< 1e-8 kVA / < 1e-5 W, measured 3.256e-11
+  kVA / 3.329e-8 W) — ten orders of magnitude from the stale reading (5.283e-1
+  kVA / 6.248e2 W), with the algorithm-independent currents (4.5e-12 A) as the
+  control. The normal algorithm's powers are oracle-gated on ~500 other corpus
+  cases, which closes the loop transitively.
+  **Bookkeeping.** Register row `Evidence::Exclusion` on `harness/lane.rs`
+  (needle: the unconditional `if LANE_SKIP_ELEM_POWERS.contains(&label) {`, which
+  under the split read `if !PARITY && …`) rather than the engine kernel:
+  `exec/view.rs`'s torn-down form is a bare
+  `elem.refresh_iterminal(&sys, &node_v);` at `snapshot_elements`' own
+  indentation — byte-identical to the line the *Currents* read three dozen lines
+  below already had, split form included — so no needle over that file can
+  discriminate a revert, and the row's comment names the pin + tripwire as what
+  carries the engine half instead (the same "say so in the row's comment" clause
+  `Evidence::Site` documents, used by G2.2c row 2). Both
+  `DOCUMENTED_DIVERGENCES` rows deleted from `examples/lane_dump.rs` — the list
+  is now **empty**, so every record in the lane dump is held to the ordinary
+  bound (it was fail-on-stale in the "entry must still fire" sense only, but
+  leaving them would have exempted two now-identical fields from the differential
+  gate). Doc strikes in the same commit: CLAUDE.md's bug-5 bullet and the WP-G2
+  status line, `TESTING.md`'s lane-diff paragraph, and the
+  `tests/corpus/modes/manifest.json` note for `newton.dss` (note text only —
+  `population_lock.rs::Case::rigor` does not fingerprint `note`, and
+  `population.lock.json` did not move). No golden byte moved (no golden deck runs
+  a Newton solve), no ledger entry moved.
+  `lane_diff.ps1` (mandatory here — this row *was* the lane differential's only
+  documented divergence): **max |Δ| = 0** on all eight gated kinds, 520 cases /
+  3 219 862 records, 0 iteration counts drifted, `VERDICT: PASS`, and
+  "documented divergences: none present in this dump". The measurement is
+  stronger than the previous runs' rather than merely equal to them: the two
+  `newton` decks' 74 `pow` and 15 `loss` compared pairs (148 and 30 scalars in
+  the dump, counted per `(re, im)` chunk) are now inside the gated `pow`/`loss`
+  totals — 1 169 132 and 366 234 pairs respectively — instead of exempt from
+  them, and they came back bit-identical; the lanes agree on exactly the
+  channels that used to be the reason the list existed.
+  **Audit settlement** (2026-08-05, three minor findings; one prose fix here,
+  one one-line doc fix, one deviation ratified — no behavior changed, so
+  `lane_diff.ps1` was not re-run). (1) This paragraph originally credited the
+  two `newton` decks with "1 169 132 `pow` and 366 234 `loss` values" — those
+  are the run's **global** per-kind compared columns, copied off the wrong line
+  of the report. Re-counted directly on `target/lanes/default.dump` (the 09:08
+  run this record describes), the two decks contribute 148 `pow` and 30 `loss`
+  scalars = 74 and 15 compared pairs; the conclusion (newly gated, and
+  bit-identical) is unchanged, its magnitude was not. (2) `tests/TOLERANCE_NOTES.md`
+  still told the reader "**The default lane excludes, it does not loosen**",
+  which reads as *only* the default lane excluding. Not falsified by this
+  sub-step — `LANE_SKIP_PROPS` was already unconditional at 09f15731 (G2.2b) and
+  the file's own Iresidual note says "in both lanes" — but stale since the
+  2026-08-02 policy and inconsistent inside one file, so the bullet was reworded
+  to "**The lanes exclude, they do not loosen**" with `LANE_SKIP_ELEM_POWERS`
+  named as the live unconditional example. No tolerance number moved. The
+  section's wider Stage-F framing ("the parity lane keeping the upstream
+  answer") still holds for the surviving *precision* rows and stays G5.1's to
+  retire. (3) The register row's `Evidence::Exclusion` on `harness/lane.rs`
+  instead of an `Evidence::Site` on the engine is **ratified**, not a deviation
+  to repair: re-verified that `git show 09f15731:…/exec/view.rs:232-233` is
+  byte-for-byte the post-teardown `:201-202` (`cat -A`: sixteen spaces,
+  `elem.refresh_iterminal(&sys, &node_v);` then `let cd = elem.cd();`), so no
+  single- *or* multi-line needle over that file can discriminate a revert, which
+  is exactly the escape clause the last paragraph of `Evidence::Site` documents
+  and the shape G2.2c row 2 already used. The recorded slice does not exist in
+  the split tree, and the marker obligation `Evidence::Exclusion` carries is met
+  at `harness/lane.rs:136-139`.
+- **G2.4** (2026-08-06) — the **monitor-channel padding** row
+  (`MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM`): the `[0.0]` it reproduced is a
+  client artifact, so the row is mostly *reclassified* rather than fixed — it was
+  the only row the compat module ever carried whose upstream was not Pascal.
+  13 → 12.
+  **The blocked measurement, and the owner decision.** The plan's G2.4 section
+  asked for a **channel-scoped** normalization firing only for `capi_v0145`, on
+  the premise "on r4133 there is no wrapper, so a `[0.0]` capture is a real
+  value". The sub-step's first attempt returned **blocked** because that premise
+  is false in this tree: the pad is a client-layer artifact on **both** gating
+  channels — dss-python pads in `dss/IMonitors.py` (`if cnt == 272: return
+  np.zeros((1,))`, 272 = the header-only `ByteStream`), and the `r4133` channel's
+  captures come from our own bridge, which replicates that decoder by design
+  (`crates/dss-epri/src/dss.rs:625-634`, "exactly like dss-python"). That bridge
+  decoder, not any Pascal accessor, is the load-bearing evidence on the r4133
+  channel. Channel-scoping was **measured** to red three gated `r4133`
+  cases (`modes:time/generaltime.dss`, `generaltime_yearly.dss`,
+  `generaltime_duty.dss`). The plan owner chose **resolution (A)** on 2026-08-06
+  and this commit amends the falsified plan text: keep the normalization
+  channel-**independent** and make it lane-independent. Rejected alternatives,
+  recorded so they are not re-proposed: (B) making the `dss-epri` decoder return
+  the honest empty channel would not make the bridge engine-faithful either (the
+  r4133 accessor's own answer here is `SampleCount` zeros, see below), it would
+  only swap one client fabrication for another while breaking the bridge's design
+  contract of being a dss-python-shaped reader so both channels' captures stay
+  comparable; (C) three ledger entries would name a divergence the gate cannot
+  see.
+  **The engine half — the settle's correction (2026-08-06, audit finding).** The
+  first write-up of this row said the engines return the *empty* channel for an
+  unflushed stream and that therefore "no engine value is asserted away". That is
+  false for the state actually gated. `Monitors_Get_Channel` keeps its empty
+  `DefaultResult` (`CAPI_Monitors.pas:304`) only for `SampleCount <= 0` (`:308`)
+  or an invalid index (`:313-320`); the `generaltime*` decks sit at
+  `SampleCount > 0` with a header-only stream (`TakeSample` increments the
+  counter, `Monitor.pas:1195`, while only `Save` grows the stream, `:1122-1125` —
+  and the harness compares `sample_count` strictly, so both sides agree it is 8),
+  so the C-API allocates `SampleCount` doubles (`:321`) and fills them from a
+  zero-filled `AllocMem` buffer (`:325`) whose `MonitorStream.Read`s all fail at
+  EOF: it returns `SampleCount` zeros conjured out of bytes it never wrote.
+  r4133's native accessor behaves the same — `DMonitors.pas:509-516` pads
+  `myDBLArray := [0]` only while `SampleCount = 0` and at `SampleCount > 0` takes
+  the read branch (`:517-541`) over that same unwritten region; so does the COM
+  wrapper (`DLL/ImplMonitors.pas:419-465`). So the value ladder is: both engines
+  `SampleCount` zeros, both clients `[0.0]`, this port `[]`. The port's answer is
+  the correct one under the 2026-08-02 no-bug-reproduction policy — fabricating
+  samples from unwritten stream bytes is an upstream defect, not a convention —
+  which makes G2.4 *also* a bug fix, not only a reclassification. It owes no
+  ledger entry because the defect is **unobservable through either gating
+  client**: both short-circuit at `cnt == 272` and never reach the accessor.
+  Recorded upstream-ready as
+  `investigations/to_opendss/35-monitors-channel-fabricates-zeros.md` (local-only
+  folder), the one artifact it produces. All the surfaces that carried the
+  overstated citation were corrected in this settle commit (engine doc, pin
+  comment, `compat.rs`, `lane.rs`, the `TORN_DOWN_ROWS` entry, plan §G2.4, the
+  Stage-F phase record, here).
+  **What landed.** The alias, both impls and both cfg arms are gone;
+  `Monitor::channel` folds the unflushed case into its index guard and returns
+  the empty channel in both lanes (which is what the neighbouring `dbl_hour`
+  read of the same stream always did). `harness::lane::expected_monitor_
+  channel` lost its `PARITY` early return and is now an unconditional capture
+  normalization carrying the row's `LANE-EXCLUSION` marker; no `EngineChannel`
+  parameter was threaded through `harness::compare_monitor` — nothing needs one
+  under (A). Its shape guards are unchanged: the rewrite fires only at
+  `flushed_records == 0` and only on a literal one-element `[0.0]`, so an engine
+  that loses real samples, or an oracle that starts reporting something else,
+  still fails loudly.
+  **The one rot the shape guards stopped catching, and its fix (settle).** Once
+  both lanes report `[]`, a client that *stopped* padding would also return `[]`
+  — equal to the engine's answer, so the compare would pass and the
+  normalization would quietly become dead code. (Pre-G2.4 the parity engine
+  emitted `[0.0]`, so that drift failed the length check there.) The first
+  write-up claimed "the transform can never rot into a silent pass", which is now
+  true only for captures that are neither `[0.0]` nor empty. Fixed rather than
+  merely re-worded: `lane.rs` counts placeholder hits vs non-placeholder
+  unflushed captures and `assert_monitor_pad_is_live` — called from
+  `corpus_gate.rs` beside `assert_reround_cells_are_live`, self-silencing when
+  nothing unflushed was visited — fails on any miss, held by the unit test
+  `monitor_pad_liveness_is_asserted_not_assumed`. Note the loss was
+  oracle-drift detection only: `sample_count` and the header stay strictly
+  compared for those monitors, and a flushed monitor is never rewritten.
+  **Pin** (this row had none): `monitor_channel_of_an_unflushed_stream_is_empty`
+  in `elements/meter/monitor/mod.rs` — four samples of a **three-channel**
+  monitor staged in `MonBuffer`, none flushed, every channel empty and `dbl_hour`
+  empty beside it, asserted unconditionally, so "empty" means "nothing flushed",
+  never "nothing sampled". The multi-channel staging is the settle's second
+  correction (the pin's loop originally ran over a one-channel fixture, so
+  "every channel" was a single call): it separates the folded guard's two halves
+  — after `save()` every in-range channel must carry its own four samples, while
+  index `0` and `RecordSize + 1` stay empty on both sides of the flush.
+  Register row `Evidence::Site` on the engine kernel: the folded
+  `if i < 1 || i > self.record_size || self.flushed_records == 0 {` exists only
+  after the teardown (the split had a second early return below it), so unlike
+  G2.3 a needle here does discriminate a revert.
+  **Bookkeeping.** No golden byte moved (no golden deck leaves a monitor
+  unflushed), no ledger entry and no `population.lock.json` field moved, and the
+  three `generaltime*` decks stay green on **both** channels in both lanes. No
+  doc-surface citation existed for this row (the walked surface never named it);
+  the stale claims that *did* exist were corrected in the same commit —
+  `GOLDEN_REBASE_PLAN.md` §G2.4 (the falsified premise → the measurement +
+  resolution A) and the compat module's "the only row whose upstream is not
+  Pascal" sentence, whose provenance is now stated as the client wrapper of both
+  oracle read paths. `docs/phase-records/depascalize-stagef.md` keeps its Stage-F
+  table as history but carries a dated correction block under it: that table is
+  where the overstated `Monitors_Get_Channel` citation was originally written,
+  and every later copy of it descends from that cell.
+  `lane_diff.ps1` (mandatory — a lane alias was deleted): **max |Δ| = 0** on all
+  eight gated kinds (520 cases, 3 219 862 records, 0 iteration counts drifted,
+  `VERDICT: PASS`, "documented divergences: none present in this dump"). As
+  predicted: monitors are not in the dump set, and the engine's default-lane
+  answer did not move — in that lane the teardown is behaviourally inert (the
+  alias already selected the empty channel and `expected_monitor_channel`'s
+  `PARITY ||` was already false), so only the parity lane's reading changed.
+  **Gate flakes seen on the way, both proven infrastructural, both in
+  `corpus_gate` and neither reproducible once the corpus tree was clean.**
+  (1) With ~28 untracked export artifacts left in `tests/corpus/electricdss-tst`
+  by an aborted run, two runs failed with 20 and then 7 *different* cases
+  diverging on `[R4133]` step-0 node voltages (rel ~5e-7) — decks with no
+  monitors among them; both vanished after deleting the artifacts file by file,
+  and the same binary then passed 53/53 twice. (2) Twice, one case failed with
+  the oracle's own `Show Voltage LN Nodes` raising DSS error 303 — "Unable to
+  create file … The process cannot access the file because it is being used by
+  another process" (`GFM_IEEE8500/IEEE8500u_VLN_Node.txt`) — the file-collision
+  class `corpus_gate/runner.rs:42-55` already documents, and the same
+  still-open item recorded at the G2.2d settle. The final green runs were made
+  from a clean corpus tree; the artifacts produced by each run were removed by
+  explicit per-file deletion, never a recursive one.
+  **One real defect caught by the gate and fixed in the same commit**: the new
+  pin first walked its channels as `for i in 1..=m.num_channels()`, which
+  `depascalize_metrics_gate::part3_metrics_audited_populations_do_not_grow`
+  rejected (P14: 107 `for … in 1..=` loops in `elements/`, ceiling 106). Rewritten
+  0-based with the `+ 1` at the 1-based `Channel(i)` boundary — same coverage, the
+  port's own indexing convention.
+  **Settle gate (2026-08-07).** Full five-command gate re-run from a clean
+  corpus tree after the corrections above: `fmt --check` clean, both clippy
+  lanes clean, `cargo test --workspace` and
+  `cargo test --workspace --features dss-core/oracle-parity` both exit 0 —
+  including the new `assert_monitor_pad_is_live` (no miss recorded on either
+  lane, so both clients still pad every unflushed monitor the gate visits).
+  `git diff --stat -- tests/golden` still empty over the whole range.
+  `lane_diff.ps1` was **not** re-run and is not owed: the settle touches no
+  compat kernel and no engine code at all — the `src/` diff is doc comments plus
+  the `#[cfg(test)]` fixture, so the implementation commit's measured
+  `max |Δ| = 0` still stands. Two markdown surfaces edited here
+  (`STATUS.md`/`GOLDEN_REBASE_PLAN.md`) and `docs/` are explicitly outside the
+  doc gate's walk (`oracle_parity_cfg_gate.rs::operational_docs`, "deliberately
+  excluded: plans and records").
+
+- **G2.5** (2026-08-07) — the **three corpus-blocked `WholeCase` bug fixes**:
+  GICTransformer `%R2` ignored, Capacitor `MakePosSequence` `Cuf` discarded,
+  LoadShape memory-mapped text accept-set. `Escape::WholeCase` **4 → 1** (the
+  survivor is the Generator Model=6 user-model row, deferred to
+  `WASM_USERMODELS_PLAN`); `SPLIT_ALIAS_POPULATION` does **not** move — none of
+  the three was ever a lane split, all three were reproduced identically in both
+  lanes, and all three are now fixed in both.
+  **The three fixes.** (1) `gic_transformer/solve.rs::recalc` derives winding 2's
+  conductance from `%R2`; both oracle revisions copied the `G1` line and renamed
+  the base but not the percentage (`GICTransformer.pas:441` == r4133
+  `Version8/Source/PDElements/GICTransformer.pas:495`), which the same
+  procedure's `else` arm — restoring `FPctR2` **from** `G2` — proves is a slip:
+  the two arms are mutual inverses only under `FPctR2`. (2)
+  `capacitor/solve.rs::make_pos_sequence` writes `Cs - Cm` through the **array**
+  setter in the property's own µF units, plus the `CUF` arm
+  `set_struct_f64_array` never had. 0.14.5 aims the scalar `SetDouble` at the
+  array property `Cuf` (`Capacitor.pas:814` + `DSSObjectHelper.pas:2812-2834`,
+  three scalar arms and no `else`), dropping the value with no error while still
+  running the `SpecType := 2` side effect — so the bank computed from the
+  `kvar=1200 kv=12.47` creation defaults (20.47 µF, ~5× the intended reactive
+  output) and the user's `cmatrix` left the Y build for good; r4133 *does* apply
+  it (`Capacitor.pas:829` → `InterpretDblArray`) but re-applies the `1.0e-6`
+  scale (`:411`) to an already-farad value, landing 4e-12 F where 4e-6 F was
+  meant. Neither revision produces the intended bank, and r4133 spells out what
+  was intended, so the port performs that write. (3)
+  `load_shape/compute.rs::mmf_text_value` takes the column verbatim through the
+  **same** aux parser the class's non-mapped reader uses; both revisions filter
+  it through an accept-set of bytes in `[46,58)` (`LoadShape.pas:1374` == r4133
+  `Common/Utilities.pas:834`), deleting sign, `+`, the exponent letter and
+  whitespace while keeping `/` inside the token. The witness that this is a slip
+  and not a dialect is the class itself: two readers, one file, and
+  `MemoryMapping=Yes` chooses storage, not meaning.
+  **What it cost, measured (2026-08-06, `DSS_GATE_ONLY` on both channels).** Four
+  gated decks move against their gating oracle(s) across the solved model —
+  `asymmetric:gic/gictransformer_gic.dss` (node V 4.502e-4 V, allowed 1.001e-6),
+  `asymmetric:gic/gic_midi.dss` (1.021e-4 vs 1.074e-6), both on **both** channels
+  since r4133 carries the identical line; `modes:makeposseq/makeposseq_shunt.dss`
+  (1.158e-1 V vs 3.339e-6) and `modes:inputformat/shape_mmf/shape_mmf.dss`
+  (1.641e1 V vs 8.179e-6) on `capi_v0145`. Each (deck, channel) is an
+  `exclusion` entry in `tests/corpus/ledger.json` — 6 entries — scoped
+  **by field**, to the fields measured to move rather than to the whole case:
+  `voltages`, `y`, `y_fingerprint`, the **named** YPrim(s) and `element` on all
+  four, plus `injection` and the four monitors on `shape_mmf` alone. Two
+  candidate scopes were probed and dropped as inert — the injection RHS on the
+  GIC and `makeposseq` decks (the GICLine/GICsource drives do not depend on the
+  solution) and `shape_mmf`'s `ls_pq` loadshape probes — so those keep comparing
+  against the oracle, as does everything else on those decks. (The `ls_pq`
+  probes are inert *by construction*, not merely clean: under
+  `MemoryMapping=Yes` `mult`/`qmult` return the `(<directive>)` string,
+  `LoadShape.pas:1844-1851`/`:1863-1868`, and `SetMaxPandQ` exits at
+  `:2044-2049` so `pmax`/`qmax` keep their creation defaults `:1273`. The live
+  witness for the MMF readers is the sibling deck.) The `voltages`/`element`/
+  `monitor` scopes are **deck-wide**, and the settle below re-measured them
+  artifact-by-artifact. The property jumps are pinned instead of skipped:
+  3 exact-pair `divergence` entries hold `GICTransformer.tg3/tg5.R2` (0.09522
+  ours vs 0.12696 upstream) and `Capacitor.cap_cmat.Cuf`/`NormAmps`/`EmergAmps`.
+  Ledger 27 → 36 entries over 23 causes; each `cause` cites its pin by full test
+  path, as the plan requires.
+  **New ledger machinery, and why it was unavoidable.** All three fixes move the
+  assembled **system Y** (the GIC transformer's and the capacitor's YPrim
+  directly; `shape_mmf` through `Load.ld_pq`'s `Yeq`), and the ledger had no
+  field that could name it — `y`/`y_fingerprint`/`yprim`/`meter` were the
+  §1.3-planned-but-unimplemented set the loader **rejects**. G2.5 implements
+  them as **exclusion-only** fields (`LedgerView::excluded`,
+  `EXCLUSION_ONLY_FIELDS`, refused on a `divergence` by `assert_structural`):
+  each names a whole compared
+  artifact with no remainder to tier-check and no envelope to re-assert, so the
+  only honest statement is "this (case, channel) does not compare it" — still
+  hit-accounted, so an exclusion whose scope stops matching fails the gate as
+  NEVER APPLIED. `injection` also learned to honour an exclusion (it had a
+  `Divergence`-only handler, and the RHS has no sub-selector either way), and
+  the probe/property exact-pair *pin* requirement is now scoped to `divergence`
+  entries, where it belongs. And because "has a runtime handler" had just become
+  **kind-dependent**, the whitelist grew its mirror: `EXCLUSION_FIELDS` refuses
+  an `exclusion` on `iterations`/`property`/`eventlog`/`ctrlqueue`, whose
+  handlers re-assert a pin or rewrite the oracle's line and would otherwise load
+  cleanly and then do nothing — the exact rot `LEDGER_FIELDS` exists to prevent.
+  **`shape_mmf.dss` keeps its job; its coverage moved before it was excluded.**
+  The deck exists *to observe* the quirk (its `mmpq8.csv` P column is exponent
+  notation on purpose), so it is the one that pays. Its unrelated surface — the
+  `sngfile=`/`dblfile=` MMF readers, the raw `mult=(sngfile=)` directive form
+  (Pascal `CustomSetRaw`), the two-column `pqcsvfile=` reader, the
+  `(<directive>)` array-property round-trip and the `Set/Get totaltime` option
+  surface — moved to the new sibling deck
+  `modes:inputformat/shape_mmf_io/shape_mmf_io.dss`, whose `mmpq8_plain.csv`
+  holds the same numbers in plain decimal (so the upstream filter is the
+  identity on it) and which gates **clean** against the pinned oracle on the
+  first run. Corpus population 520 → 521 cases (517 solvable), which is growth,
+  not a shrink; `population.lock.json` regenerated in the same commit and its
+  diff is 6 lines. `tools/decks/gen_shape_mmf_fixtures.py` now writes both
+  fixture sets.
+  **Golden side: zero bytes moved, two field-scoped exclusions added.** Two
+  committed artifacts observe the GICTransformer row and were excluded, never
+  re-baselined. (a) `tests/golden/props/gictransformer.json`'s
+  `gictransformer_auto` scenario — `("gictransformer_auto", "R2")` joins
+  `props_roundtrip.rs::LANE_SKIP_SCENARIO_PROPS`, value-only and property-scoped,
+  so `%R1`/`%R2`/`R1`/the bases/the `type=Auto` bus promotion stay compared (the
+  file's cell-count lock is unchanged: one cell moves from `compared` to
+  `lane_skips`). (b) `tests/golden/reports/export_gicmvars.txt` — both value
+  columns masked with `GateSpec::Mask` (the `export_busreliability` `Duration`
+  precedent from G2.2a), since every row moves (8.8e-4 relative even on `b1`,
+  the row furthest from `tg3`) and no row key separates them. Its replacement,
+  `export_gicmvars_matches_the_equivalent_ohms_spec`, does more than restate the
+  new numbers: it rebuilds the fixture with `tg3` given `R1=0.7935 R2=0.12696` —
+  upstream's *effective* conductances, reached through the `R1=`/`R2=` arm
+  neither revision ever got wrong — and demands the committed capture back
+  inside the golden's own band, so the report path, the quasi-DC solve, the
+  K-factor Mvar path and the VarCurve path are re-earned against the oracle
+  bytes; then it rebuilds with `R2=0.09522` (`ZBase2·%R2/100`) and demands
+  equality with the live `%R` spec, cell for cell; then it asserts the masked
+  cells really moved, so the mask cannot buy silence.
+  **Pins.** `exec::tests::compat_quirks::gic_transformer_pct_r2_drives_winding_two`
+  (the `%R` spec equals its ohms twin on `R1`, `R2` **and** the stamped YPrim, on
+  deliberately asymmetric bases where the three candidate readings — 4 Ω, 3 Ω and
+  upstream's 1 Ω — are pairwise distinct);
+  `capacitor::tests::make_pos_sequence_cmatrix_applies_the_positive_sequence_cuf`
+  (the reduced bank is indistinguishable from one declared `phases=1 cuf=4`,
+  YPrim for YPrim — an anchor that is neither a captured number nor the fixed
+  kernel) and `...::make_pos_sequence_cmatrix` for the emitted action's shape;
+  `load_shape::tests::mmf_text_reader_agrees_with_its_non_mapped_twin` (the two
+  readers agree bit-for-bit on content carrying `-`, `e-`, `+` and leading
+  whitespace, *and* are not the accept-set's readings) plus
+  `...::mmf_plaintext_reader_keeps_sign_and_exponent` and
+  `...::mmf_accept_set_fix_is_gated_by_exactly_one_deck`, which measures in corpus
+  bytes that exactly one deck can see the change — the vendored
+  `MemoryMappingLoadShapes/ckt24` files and the new sibling's fixture are all on
+  the identity side of the upstream filter.
+  **Bookkeeping.** Three `TORN_DOWN_ROWS` rows with `Kind::WholeCase` and
+  `Evidence::Ledger` (its first use — the variant's `expect(dead_code)` note
+  amended accordingly), each carrying its `EXPECTED-VALUE-PIN` marker; three
+  `ESCAPE_REGISTER` rows and their `TODO(compat)` markers deleted;
+  `EXIT_POPULATION[WholeCase]` 4 → 1; the two `compat.rs` narrative paragraphs
+  rewritten in place; `TESTING.md` (ledger kinds/fields/counts, 521/517) and
+  `CLAUDE.md` (521/517) updated; the local `investigations/TODO_COMPAT_REGISTRY.md`
+  §2.6/§2.7/§2.8 «fate» entries rewritten. No doc-surface `compat::` citation
+  named any of the three rows, so the alias-citation floor is untouched.
+  `lane_diff.ps1`: **max |Δ| = 0** on every gated kind — the three fixes are
+  single kernels, identical in both lanes, so the lanes stay bit-identical.
+
+- **G2.5 settle** (2026-08-07) — twelve audit findings (1 major, 11 minor; three
+  pairs raised independently by both auditors), all settled against measurement
+  or source, none dropped and none refuted-only. Nothing in the three engine
+  fixes changed; the settle is test machinery + audit trail.
+  **The exclusion kind gets the half of fail-on-stale it can honestly carry.**
+  Both auditors flagged that `LedgerView::excluded` never calls `mark_exceeded`,
+  so an `exclusion` could outlive its cause silently. Half of that is now
+  mechanical: a `voltages` scope IS measured node-by-node inside
+  `voltage_keep_mask` (the diff and the tier floor are already in hand), so the
+  `Kind::Exclusion` arm records the exceed and `assert_all_hit` reports an
+  applied-but-never-exceeding voltages exclusion as **STALE** — and every
+  exclusion that pays for an engine fix carries one, because moving node voltages
+  is what makes such a fix need this kind at all. Two sub-claims of that finding
+  are refuted on the record: TESTING.md never overclaimed (its Runtime rules
+  already read "every `divergence` must still exceed the tier floor"), and "no
+  mechanism can ever notice a revert" is false at the level of the five-command
+  gate — reverting the MMF fix reds
+  `mmf_plaintext_reader_keeps_sign_and_exponent`, reverting the other two reds
+  their pins *and* their sibling exact-pair `divergence` entries. What was
+  genuinely missing is the "the divergence disappeared for some other reason,
+  prune the entry" signal, and that is what landed. The other half is declined
+  with its reason: `y`/`y_fingerprint`/`yprim`/`meter`/`injection`/`monitor`/`probe`/
+  `element` exclusions make the runner *skip* the artifact, so a verdict would
+  mean a second copy of each comparator inside the ledger — a new drift surface —
+  and their anti-rot guard stays the expected-value pin the `cause` names
+  (mandatory, registered both ways in `TORN_DOWN_ROWS`; reverting any of the three
+  fixes reds a pin whether or not the corpus gate notices). Non-vacuity is a
+  canary, not a claim: `a_voltages_exclusion_that_masks_nothing_is_stale` drives
+  `assert_all_hit` over a synthetic applied-but-clean entry and asserts the STALE
+  text, that the same entry passes once something exceeds, and that a
+  coarse-field-only exclusion is *not* policed. All six live entries stayed green
+  (full corpus gate, both channels).
+  **The deck-wide scopes are now measured, artifact by artifact.** The G2.5
+  ledger `source` strings said "every element channel" moved; that was a physical
+  argument, not a measurement. Re-measured with a throwaway per-artifact verdict
+  probe (`catch_unwind` around each `compare_element`/`compare_monitor`, the
+  blanket scopes neutralized, `DSS_GATE_ONLY` on the four decks, both channels):
+  `gictransformer_gic` **9/9** elements and all nodes above floor;
+  `makeposseq_shunt` **14/14** and all nodes; `shape_mmf` **6/6**
+  electrically-connected elements, all 4 monitors and all nodes at every one of
+  its 8 steps (the 4 `Monitor` *elements* inside the blanket carry no
+  current/power channel at all, so they mask nothing that exists);
+  `gic_midi` **12/18** elements and **26/33** nodes — the one deck where the
+  blanket is wider than the above-floor set. It is kept, on the record that the
+  six sub-floor elements (`GICLine.gl12/gl23/gl34`, `GICTransformer.tg3`,
+  `Reactor.gg3`, `Reactor.g2`) and seven sub-floor nodes (`B3.*`, `B3X.*`) are
+  **not unaffected** — every one of them moves, they merely land under the floor
+  (`B3.1` 9.291e-7 against a 3.139e-6 floor) — and that a 12-name allowlist would
+  be twelve claims each needing its own liveness the exclusion kind does not
+  have. Every `source` string and the STATUS sentence above now say which scopes
+  are deck-wide and what the per-artifact verdict was.
+  **Smaller settlements.** `assert_structural` now refuses an `exclusion` scope
+  carrying `max_rel`/`max_abs`/`num_rel`/`rust`/`oracle`/`policy`/`line_re` (the
+  exclusion path ignores them, so they would read as a promise the gate never
+  keeps); `every_exclusion_field_is_honoured_by_the_runtime` drives
+  `LedgerView::excluded` synthetically over every whitelisted exclusion field, so
+  `probe` and `meter` — which no live entry uses — are proven to apply, along with
+  the `name_re`/`steps`/kind selector rules.
+  `mmf_accept_set_fix_is_gated_by_exactly_one_deck`
+  gained the corpus's **fourth** mapped plain-text fixture,
+  `modes/upgrade/mmf_singlecol/mm8.csv` (r4133-gated), which the enumeration had
+  missed. Two `Utilities.pas:833` citations corrected to `:834` (the accept-set
+  line; `:833` is its comment). `shape_mmf.dss`'s own header and its manifest
+  `notes` — the two documents the fix made false — rewritten to say the deck
+  exists to *observe* the quirk, that the port reads the file verbatim since
+  G2.5, that it is ledger-excluded, and that its reader coverage moved to
+  `shape_mmf_io`; no lock field moves (`Case::rigor` does not fingerprint
+  `note`/`notes`). The `recalc` doc comment and the `gic-pct-r2-ignored` cause now
+  state the true divergence class — **any** `%R`-specified GICTransformer, since a
+  deck writing only `%R1=` now takes the `%R2` creation default `0.2`
+  (`GICTransformer.pas:409-410`, r4133 `:458-459`) instead of repeating `%R1`;
+  no corpus deck has that shape (grep: the two ledgered decks are the only `%R`
+  decks and both set both). `ORPHANED_GAPS.md`'s "4 `WholeCase` compat markers /
+  unowned policy call" row now names only the Generator Model=6 survivor and
+  records the other three as closed by G2.5.
+  `population.lock.json` regenerated: the diff is exactly the six edited entries'
+  digests on four cases — no rigor field, no case membership. Zero golden bytes
+  moved (`git diff --stat -- tests/golden` empty over the whole range).
+  No engine kernel changed (the only engine-file edit is a doc comment), so
+  `lane_diff.ps1` was not re-run — G2.5's own run already reported max |Δ| = 0
+  and nothing since can move it.
+
+- **G2.6** (2026-08-07) — the **`Show` device-name column width**, the capi-only
+  row the `4f977d9e` alignment pass missed and the last of WP-G2.
+  `compat::max_device_name_length` reproduced a **defect**, not a rendering
+  convention: dss_capi's `SetMaxDeviceNameLength` zeroes the unit variable
+  (`Common/ShowResults.pas:116`, declared `:82`) and then accumulates the maximum
+  inside `with DSS.ActiveCircuit do` (`:117-121`), where the identifier resolves
+  to the **shadowing** `TDSSCircuit` field (`Common/Circuit.pas:100`, initialized
+  to 30 at `:379`) — so the writers, which read the unit variable, format every
+  `Show` name column against **0**. Verified against both sources in this
+  sub-step: r4133 has no such field, `MaxDeviceNameLength` lives there only as a
+  unit variable (`Version8/Source/Common/ShowResults.pas:66`, loop `:79-90`), and
+  its `WriteTerminalPowerSeq` writes the terminal as `j:3` (`:1160`) rather than
+  `IntToStr(j)` — two independent reasons the authority cannot glue. **Teardown:**
+  the alias and both `_impl` kernels are gone; all seven `report::show` writers
+  call `device_name_width` directly, in both lanes.
+  **Blast radius, re-measured rather than assumed.** Only the `IntToStr` site
+  (`ShowResults.pas:1375`) is tokenizable, so only the three `show_busflow*`
+  goldens are affected; every other consumer pads with spaces or `PadDots` runs,
+  which `harness::split_fields` drops. Measured by running the whole
+  `golden_reports` suite in the **parity** lane after the flip (249 tests green,
+  including every `Show` family) and by a tree-wide search for a closing quote
+  followed by a non-space in `tests/golden/reports/show_*.txt`: the only hits are
+  the three busflow files (5 + 5 + 3 rows) plus four reports that do not use this
+  width at all. Their oracle text is de-glued by `golden_reports::busflow_expected`,
+  now **unconditional** (`LANE-EXCLUSION(max_device_name_length)`); the parity
+  early return and the non-vacuity test's lane arm are gone, while that test's
+  capture-reading assert stays (it reads the committed oracle capture, a fact
+  about dss_capi 0.14.5, not about our lane — it dies at G3.3b).
+  `terminal_total_expected` and its non-vacuity lane arm were deliberately **not**
+  touched: they belong to `compat::render_rows` over `PadDots('   TERMINAL
+  TOTAL')`, which lives until WP-G4.5.
+  **Pin.** `device_name_column_width_is_the_lane_kernel` →
+  `exec::tests::compat_quirks::device_name_column_is_sized_from_its_content`
+  (`EXPECTED-VALUE-PIN(max_device_name_length)`), unconditional, and strengthened
+  while it lost its branches: besides the measured width and both sides of the
+  glue boundary (a short name gets its own terminal column; the *longest* name
+  fills `width + 2` exactly and still glues), it now asserts the real
+  `Show busflow` text from the executive's own formatter, so the seven call sites
+  are covered and not just the measuring function. That third claim bites in the
+  parity lane, where `compat::render_rows` replays Pascal's `Pad`; the default
+  lane's table kernel would separate the columns anyway. (As first written that
+  claim did not discriminate at all — corrected at the settle below.)
+  **Collateral, found by the parity gate and repaired in the same sub-step.**
+  The neighbouring `render_rows` pin `show_table_layout_is_the_lane_kernel`
+  claimed "the two `Show Losses` rows' numbers start at the same column only when
+  a table sized them" — a discriminator that worked *because* the parity width
+  was 0: with an honest width, `Pad` aligns the rows with each other too, so the
+  claim went red in the parity lane. It was **not** relaxed: claim 2 is now made
+  against each kernel's own sizing rule (parity pads to the engine's circuit-wide
+  `width + 2`, the table sizes from the names it actually prints), and the
+  fixture was given a **Load** whose name is longer than either Line's — `Show
+  Losses` lists only PD elements, so that name sets Pascal's field width without
+  ever reaching the table, which re-separates the kernels by ~12 columns. The
+  fixture's discriminating property is itself asserted, so a rename cannot make
+  the test vacuous.
+  **Bookkeeping.** `SPLIT_ALIAS_POPULATION` 12 → 11 with the eleven survivors
+  enumerated at the constant; `TORN_DOWN_ROWS` gains the row (`Kind::SplitAlias`,
+  `Evidence::Site` on `report/show/bus_powers.rs` — the one call site a golden
+  observes, the other six being unobservable by construction now that the alias
+  itself is deleted); the F-FMT narrative at `oracle_parity_cfg_gate.rs:488`
+  records that six of F.4's seven rows survive and the seventh was never a
+  rendering convention; the `compat.rs:47` table row and the `max_bus_name_length`
+  note in `report/show/mod.rs` are re-pointed. **No doc-surface citation existed**
+  (measured over the walked surface — CLAUDE.md / TESTING.md / TOLERANCE_NOTES /
+  ledger / manifests / `tools/**`: zero hits for the alias), so no doc edit was
+  owed. The `branches_on_lane` doc-measurement is re-taken: `golden_reports.rs`
+  now reads the lane ×4 (was ×6) and, having lost its last split alias, is no
+  longer a pin file — so **no** surviving row's pin depends on the `lane::PARITY`
+  arm; it stays as the recogniser for the harness spelling, and the doc now says
+  so instead of claiming it load-bearing.
+  **Local-only docs (gitignored, written in this sub-step).** This row had neither
+  an `issue-*` report nor a registry section — it is the one bug the investigation
+  series missed. Both were written:
+  `investigations/issue-36-show-device-name-column-width-zero.md` and
+  `TODO_COMPAT_REGISTRY.md` §3.32, plus a correction to §3.31 (which had counted
+  the width among eleven FPC *formatting* places) and a tenth row in
+  `investigations/to_opendss/NOT-APPLICABLE-TO-R4133.md` carrying the
+  `Circuit.pas:100` field citation. No `to_opendss` report is owed — r4133 does
+  not carry the defect.
+  Zero golden bytes moved (`git diff --stat -- tests/golden` empty over the
+  range); the corpus gate is green in both lanes, which is what would have
+  falsified the classification. `lane_diff.ps1` re-run because a compat kernel
+  was deleted: **max |Δ| = 0** on all eight gated kinds over 521 cases /
+  3 220 212 records, zero drifted iteration counts — as predicted, report text is
+  not in the dump set, so the flip is invisible there.
+
+- **G2.6 settle** (2026-08-07) — five auditor findings, four fixed and one
+  refuted-then-fixed-anyway; no engine behaviour changed (every edit is a test
+  assertion or a doc comment), so `lane_diff.ps1` was not re-run and zero golden
+  bytes moved.
+  **The pin's third claim was vacuous** (major). It asserted `!row.contains("\"1")`
+  on `Line.l1`'s seq-power row, but `Line.l1` reaches `b2` by its **second**
+  terminal (`check_bus_reference` returns the matched terminal), so the row
+  carries a `2` and the needle could not match at *either* width. Proven by
+  mutation, not by reading: forcing `show_bus_powers`' `mdnl` to 0 — the exact
+  value G2.6 tore down — left the pin **green** in the parity lane. It now
+  asserts that the first two whitespace tokens are `"Line.l1"` and `2` (a glued
+  row fails: the mutation reports `["\"Line.l1\"2", "-0.0"]`) **and** that the
+  terminal starts no earlier than column `measured + 2`, which a shrunk-but-still-
+  separating width fails too (`mdnl = 20` → column 22 against the measured 32).
+  Both mutations were re-run against the repaired pin and both go red. The claim
+  bites in the parity lane only, and now for a stated reason: the table kernel
+  builds columns from cell *text* and ignores the declared width, so no default-lane
+  report can observe a width regression — what covers that lane is claim 1, on the
+  measuring function both lanes share. Claim 2 is relabelled as what it is: an
+  assertion about Pascal's `Pad`, not about a report.
+  **`show_table_layout_is_the_lane_kernel` claim 2 is an equality again.** G2.6
+  had rewritten it as `kw_col >= width + 2`, which accepts any over-padding on the
+  parity side; each row is now reconstructed whole from `Pad(EncloseQuotes(name),
+  width + 2) + Format('%10.5f, ', …)` and compared, the way claim 1 treats the
+  aggregate line. Verified by mutation: padding the name cell to `width + 12`
+  passes the old bound and fails the equality.
+  **Doc corrections.** `report/show/powers.rs`'s glue note claimed the honest
+  width glues the longest name "in both lanes" — only the parity kernel glues
+  (`report::table::render_rows_table_impl` gives every cell its own column);
+  `golden_reports.rs::run_feeder_show_expected` still required its transform to be
+  the identity in the parity lane, an invariant G2.6 deliberately dropped for
+  `busflow_expected` — it now states that the reach is the caller's row
+  (identity while a split survives, unconditional once the row is torn down).
+  **The `max_bus_name_length` diagnosis was wrong and is now evidence-backed.**
+  The note called the backend's effective width "nondeterministic (no single value
+  reproduces it)". It is the *same* shadowing defect as the device-name one, one
+  identifier over: `SetMaxBusNameLength` assigns 4 to the unit variable
+  (`ShowResults.pas:105`, declared `:81`) and max-accumulates inside
+  `with DSS.ActiveCircuit do` (`:106-108`) into the shadowing field
+  (`Circuit.pas:100`, init 12 at `:380`). Two reachable values, and both are
+  visible in committed captures: `show_voltages.txt:4` is `Pad('Bus', …)` from
+  `ShowVoltages` (`:414`, outside the `with`) at width 4, while the bus rows below
+  it come from `WriteSeqVoltages`, whose whole body is a `with` (`:135`), at width
+  12; `show_powers_elem.txt:8` is `Pad('  Bus', …)` from `ShowPowers` (`:1130`,
+  outside) at width 4. r4133 has no such field (`ShowResults.pas:65`, loop
+  `:75-76`). The disposition is unchanged — the honest width stays — but it now
+  rests on the 2026-08-02 policy instead of the UB rule, and no row was ever owed
+  because the width only feeds padding no oracle-compared token can see.
+  Recorded in the local-only docs: `TODO_COMPAT_REGISTRY.md` §3.32 and a sibling
+  section in `investigations/issue-36-*.md` naming it a candidate row for the
+  series (no `to_opendss` row: it is capi-only and unobservable).
+
+
+### GOLDEN_REBASE WP-G1 — records
+
+> Plan: `GOLDEN_REBASE_PLAN.md` §WP-G1. G1.1 is handed to `R4133_PROPS_PLAN.md`
+> RP4.1 (kill criterion fired, see §1) and **delivered by it on 2026-09-03** —
+> the unmask shipped and RP4.1's own kill criterion did not fire. The sub-steps
+> that do not depend on it
+> land on `r4133-props`, the branch that currently holds the fail-on-stale
+> `population.lock.json` / `ledger.json` (single-branch lock discipline).
+
+- **G1.2** (2026-08-29) — **class `ESPVLControl` now has live corpus coverage**
+  (it had none: no vendored deck and no family deck instantiated it, and
+  `makeposseq_ctrl.dss:10` documents its absence there as deliberate).
+  New deck `tests/corpus/controls/espvlcontrol/espvlcontrol.dss` (+ its manifest
+  row in `tests/corpus/controls/manifest.json`): **six** ESPVLControls on one
+  monitored line over a 12-step daily ramp, `kind=micro`, `n_steps=12`,
+  `selected_elements=["*"]`, **8** probe specs, `compare_eventlog=true`,
+  `compare_ctrlqueue=true`, `isolate=true`, `ad=off:unclassified-new-deck`
+  (the last three added by the audit settlement below). Classification:
+  **`engines: "both"` with the r4133 channel ledger-`skip`ped** — gated live on
+  `capi_v0145` only, for a measured reason (below). Not `expect_solve_abort`:
+  the pinned oracle compiles and solves it cleanly. That is a **third** outcome
+  where the plan's acceptance enumerated two ("solves on both channels" /
+  `expect_solve_abort` with a reason), so `GOLDEN_REBASE_PLAN.md` §G1.2 now
+  carries the as-executed note that says which one landed and why — the G1.1
+  precedent for annotating a sub-step rather than leaving its text reading as
+  open instructions.
+  - *What is LIVE-GATED, and what is only unit-pinned* (the distinction is
+    **measured**, not asserted — see the settlement paragraph). Oracle-gated per
+    step on `capi_v0145`: (1) `? ESPVLControl.scan.LocalControlWeights` moves
+    `''` (pre-solve) → `'[ 1 1 1 1 1]'` (post-solve) **only because `Sample`
+    ran** — the one Sample-derived observable the class has, produced by
+    `MakeLocalControlList`'s no-list branch sweeping the whole class for
+    *enabled* controls (`ESPVLControl.pas:609-611`, type-blind: local, system and
+    untyped alike), so both the value and its **length** are two-sided; (2) the
+    full 14-property table of all six controls (`compare_all_properties` is
+    force-enabled for the `controls` family on the capi channel), including the
+    `''` rendering of `plain`'s unset `Type`; (3) the no-op contract — `g1`/`g2`
+    hold their input bases (`600`/`0`, `400`/`193.72884193514102`), the event log
+    stays **empty** and the control queue stays **empty**. *Not* oracle-gated,
+    on any channel: the redispatch arithmetic and `sys`'s whole named-list branch
+    (below); their net is `elements/control/espvl_control/tests.rs` +
+    `exec/tests/espvl_control.rs`, whose module doc now says so.
+  - *All four instantiation shapes are present.* `sys` = SystemController over a
+    **named** `LocalControlList` with weights `[3, 1]`; `scan` = SystemController
+    with **no** list; `loc1`/`loc2` = LocalControllers whose PVSystem/Storage
+    pointer lists are dead upstream (round-trip only); **`plain`** = no `type=`
+    at all (`Ftype = 0`: `Type` dumps `''`, `MakeLocalControlList` returns false
+    at its `Ftype` gate `ESPVLControl.pas:595`, `Sample` no-ops — yet the control
+    still counts as *enabled* in `scan`'s type-blind sweep); `off` = disabled, so
+    it never joins `scan`'s fleet of five. Feature sensitivity, all probe-visible
+    and two-process byte-identical on the pinned oracle: enabling `off` →
+    `'[ 1 1 1 1 1 1]'`; dropping `plain` → `'[ 1 1 1 1]'`; `plain
+    type=SystemController` → `plain` itself renders `'[ 1 1 1 1 1]'`; `sys`
+    weights `[5, 2]` → `'[ 5 2]'`; `scan type=LocalController` blanks its weights
+    entirely (the `Ftype` gate).
+  - *The `FkWLimit` crossing is real but buys no coverage.* The head power does
+    cross the hardcoded `FkWLimit = 8000 kW` (`ESPVLControl.pas:321`; there is
+    **no** `kWLimit` property, so `kvarLimit`'s default reads `4000`) on both
+    signs — `PDiff` per step = −5887 / −4520 / −2960 / −1482 / −367 / **+754 /
+    +1505 / +380** / −1111 / −2407 / −3879 / −5341 — but the redispatch it
+    triggers is **unobservable** (settlement finding 2/7), so the crossing is
+    documented, not claimed as gating power.
+  - *No `MakePosSequence`.* The ESPVLControl override dereferences the always-NIL
+    `ControlledElement` and aborts the oracle
+    (`docs/wpg21_makeposseq_probes.md`); `makeposseq_ctrl.dss` is untouched.
+  - **Measured upstream finding — r4133 cannot instantiate ESPVLControl at all.**
+    The official EPRI r4133 DLL (Version 11.0.0.1) raises `#303 Access violation
+    … Read of address 0x0` inside `ProcessCommand` on **every** `New
+    espvlcontrol.<name>`, before any property is parsed. Isolated with
+    `epri-worker`: `New espvlcontrol.a element=line.l1 terminal=1` on the deck's
+    feeder → AV at offset `15440`, read of `0x0`; the bare `New espvlcontrol.a`
+    on `clear; New circuit.min basekv=12.47 phases=3 bus1=src` → AV at offset
+    `8F3F2D`, read of `0x70`. Not deck-specific, not a port issue: the port and
+    the pinned 0.14.5 oracle both build and sample the class. Ledgered as
+    `r4133-espvlcontrol-uninstantiable` (`kind=skip`, channel `r4133`) under the
+    new cause `epri-espvlcontrol-uninstantiable`; the entry is HIT by the gate.
+  - *Lock delta.* `population.lock.json` regenerated: `family_counts.controls`
+    **105 → 106**, one new row — after the settlement
+    `kind=micro steps=12 sel=1 mm=0 probes=8 vars=0 evlog=1 ctrlq=1 props=0 …
+    isolate=1 defer=0
+    ledger=r4133:r4133-espvlcontrol-uninstantiable@69c59d7407db83f4`. Ledger now
+    40 entries / 26 causes (was 39 / 25).
+  - *Corpus population, and a stale count G1.2 inherited.* The gate's walked
+    population is **522 → 523 cases** (519 solvable; the 4 abort-by-design are
+    unchanged) — growth, not a shrink, and **measured** rather than derived:
+    `DSS_GATE_ONLY=espvlcontrol` reports `kept 1/523`, the scheduler's own
+    `before` count over the union of the four manifests
+    (`scheduler.rs::build_unified_cases`; 294 `solvable_now` + 53 `asymmetric` +
+    106 `controls` + 70 `modes`). `CLAUDE.md` and `TESTING.md` both said
+    **521 / 517** and were therefore *two* behind, not one: the other case is
+    RP1.2's single-phase `asymmetric:autotrans/autotrans_xfmrcode.dss`
+    (`8a221016`, asymmetric 52 → 53), which regenerated the lock without
+    updating the two prose counts. Both files are corrected to **523 / 519**
+    here — the G2.5 precedent, which updated the same two sentences when the
+    population went 520 → 521. `TESTING.md`'s two other current-state count
+    paragraphs were stale the same way and are re-measured in the same pass, so
+    the file does not contradict itself: the corpus-gate section's per-family
+    split (`293/47/105/69 = 514` → **294/53/106/70 = 523**, with the `engines`
+    split now stated in full — 367 `both` / 59 `capi_v0145` / 97 `r4133`), and
+    the ledger's "current contents" (36 entries / 23 causes → **40 / 26**:
+    `skip` 4 → 5 by this sub-step, `capi_v0145 divergence` 5 → 8 by RP3.5's one
+    and RP3.6(a)'s two). Every one of those numbers is counted off the shipped
+    manifests and `ledger.json`, not carried forward. Not touched: the dated
+    measurements that quote
+    521 (the RP0.1/RP0.2 census population, the vendored
+    `props_r4133/README.md`, the escape register's `n/520` blast radii) — those
+    record what a walk measured on a given day and are frozen by convention.
+  - *`linemedium` mapping (the sub-step's parenthetical).* `linemedium` is a
+    **props-golden scenario name, not a class** — no deck is owed for it. Its
+    subject matter (`Line.l1` with `EpsRMedium` / `HeightOffset` / `HeightUnit`)
+    is already live-gated by `tests/corpus/modes/upgrade/upgrade_linecs_epsrmedium.dss`
+    and `tests/corpus/modes/upgrade/upgrade_linecs_heightoffset.dss`. G3.1 carries
+    this mapping into `TWINS.md`.
+  - **Audit settlement (2026-08-29).** Two auditors, **11 findings** (two of them
+    the same defect reported twice, so **10 distinct**): **10 fixed / 0 recorded
+    unfixed / 0 refuted** — every finding held up under measurement, and the
+    duplicate was fixed once. All eleven are minor; none moved a number the port
+    computes. Settled, each against its own evidence:
+    1. **Solving the deck corrupts the pinned-oracle process** — CONFIRMED and
+       reproduced in a scratch dss-python 0.15.7 process: `compile` the deck,
+       solve **once**, then `compile` any deck ⇒ `NumCircuits = 0`,
+       `Error.Number = 0`, every later call `(#8888) There is no active circuit!`.
+       Discriminated in seven runs: no solve → clean; `expcontrol_basic` in the
+       same slot → clean; all controls disabled → clean; **only** the Local
+       Controllers enabled → clean; `sys` alone with `kWBand = 1e9` (redispatch
+       provably never fires) → **still broken**. So it is the *System Controller*
+       `Sample`/`MakeLocalControlList` path, not the type-confused `kWBase`
+       write. Today's gate is safe only by two defaults that are not this case's
+       contract (`oracle_server.py::run_case` issues a top-level `clear` before
+       `Compile` — measured to heal it — and `engines.rs::recycle_after()`
+       defaults to one fresh worker per case, overridable via
+       `DSS_GATE_RECYCLE_AFTER`). Fixed: the manifest row now carries
+       **`isolate: true`** (the flag exists for exactly a proven
+       worker-state-contamination case) with the mechanism in its `note`, and the
+       "proven no-op" wording is narrowed everywhere it appeared — manifest note,
+       deck header, this record, and `elements/control/espvl_control/mod.rs` —
+       to *no effect on any observable state of the compiled deck, while the
+       upstream class's `Sample` corrupts the host process's global state*.
+    2. **The `FkWLimit` band crossing has zero gating power** — CONFIRMED by
+       mutation: two 12-step oracle runs of the deck, one as-is and one with
+       `kWBand = 1e9` on `sys`+`scan`, snapshotting **405 cells per step** (every
+       property of every element + all bus voltages + `Iterations` +
+       `ControlIterations` + event log + control queue) differ in **24 cells, all
+       of them the mutated `kWBand` cell itself**; two independent base runs were
+       byte-identical. So `PDiff`/`HalfkWBand`, the weights, `TotalWeight`, the
+       `Max(1.0, …)` floor **and** `sys`'s entire named-list branch (its `'[ 3 1]'`
+       is the parse round-trip, identical pre- and post-solve) are invisible on
+       every channel. No coverage is actually missing — they are pinned by
+       `espvl_control/tests.rs::system_controller_named_list_respects_weights` /
+       `_floors_at_one` / `_in_band_does_nothing` — so the fix is honesty, not new
+       tests: the manifest note, the deck header and this record now separate
+       oracle-gated coverage from unit-pinned coverage explicitly. (Same defect as
+       finding 7, reported by both auditors; fixed once.)
+    3. **r4133's 12th `ESPVLControl` property `Forecast` was recorded nowhere** —
+       CONFIRMED against the source:
+       `.inputs/electricdss-code-r4133-trunk/Version8/Source/Controls/ESPVLControl.pas:133`
+       (`NumPropsThisClass = 12`) and `:178` (`PropertyName^[12] := 'Forecast'`),
+       against 11 in the pinned 0.14.5 and `NUM_PROPS = 14` in the port's
+       `class_props`. Fixed: a standing open follow-up now names it, including why
+       the R4133_PROPS census can never surface it (finding 1's sibling — r4133
+       cannot build the class at all).
+    4. **`ControlIterations` was presented as gated** — CONFIRMED: nothing in
+       `tests/harness/`, `tests/corpus_gate/`, `dss-epri/src/capture.rs` or
+       `tools/golden/*.py` compares it; the only compared iteration count is the
+       power-flow `sol.Iterations` (`oracle_server.py:430`). Fixed twice over —
+       the claim is corrected here, **and** the observable proxy is now genuinely
+       compared (finding 6).
+    5. **`ledger.json` lost its trailing newline** — CONFIRMED at the byte level
+       (`git cat-file -p 727d2355:tests/corpus/ledger.json` ends `…]\n}`, where
+       `bb467974`'s ended `…]\n}\n`, and every sibling manifest ends with one).
+       Fixed: newline restored, so the next hand-edit of this fail-on-stale file
+       no longer carries a spurious closing-brace hunk. (Reported by both
+       auditors — finding 10 is the same defect.)
+    6. **The control queue was not compared** — CONFIRMED: `runner.rs:589` only
+       fetches the queue when `compare_ctrlqueue` is set, and the request sent
+       `"ctrlqueue": false`. Fixed: the row now sets `compare_ctrlqueue: true`.
+       Measured first, so it is a real assertion and not a rubber stamp — the
+       oracle's queue is `['No events']` (⇒ the normalized empty list) at all 12
+       steps, with `ControlIterations = 1` throughout, and the filtered gate is
+       green with the comparison on. A port that queued a no-op action now fails
+       the corpus gate, not merely the in-crate exec test.
+    7. Same defect as finding 2 (the other auditor's wording) — fixed there.
+    8. **`exec/tests/espvl_control.rs:1` still claimed "no corpus deck exists for
+       this class"** — CONFIRMED by reading it, and it was the last such claim in
+       `crates/dss-core/src`. Fixed: the module doc now names the deck and states
+       the split of duties, with an explicit instruction not to thin these tests
+       on the grounds that a corpus deck exists — they are the *only* net for
+       everything finding 2 proved invisible.
+    9. **The fourth instantiation shape was missing while the header advertised
+       "three of the four"** — CONFIRMED. Fixed: `New espvlcontrol.plain
+       element=line.l1 terminal=1` (no `type=`) joins the deck with a `Type` /
+       `enabled` / `LocalControlList` / `LocalControlWeights` probe. Measured on
+       the oracle: `plain` renders `Type = ''` and `LocalControlWeights = ''`
+       before *and* after the solve (the `Ftype` no-op, now live-gated instead of
+       mock-only), and `scan`'s fleet becomes `'[ 1 1 1 1 1]'` — the audit's point
+       that this makes the fleet count a two-sided assertion. Both new
+       sensitivities re-measured (see the shapes bullet).
+    10. Duplicate of finding 5 — fixed there.
+    11. **`kind=skip` ledger entries self-hit, so the r4133 blackout can never be
+       reported stale** — CONFIRMED in `corpus_gate/ledger.rs:272-283`
+       (`channel_is_skipped` bumps `hits` unconditionally whenever the case
+       dispatches), and correctly identified as pre-existing infrastructure shared
+       with the four `r4133-*-303` skips, not something G1.2 introduced. Fixed as
+       far as this sub-step's scope allows: the entry's `source` now carries an
+       explicit **re-measure obligation** (re-probe with
+       `DSS_GATE_SEED_LEDGER=1 DSS_GATE_SEED_ONLY=espvlcontrol` whenever the
+       r4133 DLL is re-vendored, and delete the entry if the constructor is
+       fixed), and the general limitation is a standing open follow-up covering
+       all five skip entries.
+

@@ -123,3 +123,32 @@ keep this handoff lean. It is still the architectural reference §3/§4/§5 belo
 build on — only its location changed.
 
 ---
+
+## The 2026-08-05 archiving note (moved from STATUS.md, 2026-09-03)
+
+> Moved verbatim from `STATUS.md` on 2026-09-03 (STATUS.md archiving round 2);
+> order preserved, nothing rewritten. This is the blockquote STATUS.md carried
+> at its head after round 1, listing the files that round created.
+
+> **Full history archived (2026-08-05).** This file was 16 368 lines; every
+> historical session record was moved **verbatim** into `docs/phase-records/`.
+> New this round: [`golden-rebase.md`](docs/phase-records/golden-rebase.md),
+> [`depascalize-stagef.md`](docs/phase-records/depascalize-stagef.md),
+> [`depascalize-w3.md`](docs/phase-records/depascalize-w3.md),
+> [`depascalize-r2b-r3.md`](docs/phase-records/depascalize-r2b-r3.md),
+> [`depascalize-r1-r2.md`](docs/phase-records/depascalize-r1-r2.md),
+> [`depascalize-p-series.md`](docs/phase-records/depascalize-p-series.md),
+> [`unified-gate.md`](docs/phase-records/unified-gate.md),
+> [`epri-bridge.md`](docs/phase-records/epri-bridge.md),
+> [`wasm-usermodels.md`](docs/phase-records/wasm-usermodels.md),
+> [`orphaned-gaps.md`](docs/phase-records/orphaned-gaps.md),
+> [`bug-wps.md`](docs/phase-records/bug-wps.md),
+> [`adopt-015x.md`](docs/phase-records/adopt-015x.md),
+> [`era-summaries.md`](docs/phase-records/era-summaries.md),
+> [`gate-history.md`](docs/phase-records/gate-history.md),
+> [`design-decisions.md`](docs/phase-records/design-decisions.md),
+> [`phase-index.md`](docs/phase-records/phase-index.md). Appended to:
+> `depascalize-p1.md`, `phase-7.md`, `upgrade-rung1.md`. The pre-existing
+> `phase-3..8`, `gaps`, `corpus-rounds`, `part2-adiakoptics`,
+> `final-acceptance`, `test-triage-*` records are unchanged.
+
