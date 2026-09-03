@@ -549,8 +549,10 @@ impl WorkerPool {
 // ---------------------------------------------------------------------------
 
 /// Resolve the `epri-worker` binary (§3.1): `DSS_EPRI_WORKER` env override →
-/// `<workspace>/target/<profile>/epri-worker(.exe)` → OnceLock `cargo build`
-/// fallback (loud failure). Resolved once per test process.
+/// `$CARGO_TARGET_DIR/<profile>/epri-worker(.exe)` (when the target dir is
+/// redirected, which is where the fallback build below actually writes) →
+/// `<workspace>/target/<profile>/…` → OnceLock `cargo build` fallback (loud
+/// failure). Resolved once per test process.
 fn epri_worker_bin() -> PathBuf {
     static RESOLVED: OnceLock<PathBuf> = OnceLock::new();
     RESOLVED
@@ -574,13 +576,22 @@ fn epri_worker_bin() -> PathBuf {
                 "epri-worker"
             };
             let root: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", ".."].iter().collect();
-            let candidate = root.join("target").join(profile).join(exe);
-            if candidate.is_file() {
-                return candidate;
+            // `CARGO_TARGET_DIR` first when it is set: the fallback build below
+            // honours it, so the in-tree `target/` would otherwise be searched for
+            // a binary cargo just wrote somewhere else (RP3.13 audit note T7 — it
+            // blocked running the gate from an out-of-tree copy).
+            let candidates: Vec<PathBuf> = std::env::var_os("CARGO_TARGET_DIR")
+                .map(PathBuf::from)
+                .into_iter()
+                .chain(std::iter::once(root.join("target")))
+                .map(|d| d.join(profile).join(exe))
+                .collect();
+            if let Some(found) = candidates.iter().find(|p| p.is_file()) {
+                return found.clone();
             }
             // Fallback: build it once (covers `cargo test -p dss-core` invocations
             // that did not build the whole workspace).
-            eprintln!("epri-worker not found at {candidate:?} — building it once…");
+            eprintln!("epri-worker not found at {candidates:?} — building it once…");
             let mut cmd =
                 Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string()));
             cmd.arg("build")
@@ -599,11 +610,11 @@ fn epri_worker_bin() -> PathBuf {
                 "`cargo build -p dss-epri --bin epri-worker` failed — build it manually \
                  (or set DSS_EPRI_WORKER) before running the corpus gate"
             );
-            assert!(
-                candidate.is_file(),
-                "epri-worker still missing after build: {candidate:?}"
-            );
-            candidate
+            candidates
+                .iter()
+                .find(|p| p.is_file())
+                .unwrap_or_else(|| panic!("epri-worker still missing after build: {candidates:?}"))
+                .clone()
         })
         .clone()
 }

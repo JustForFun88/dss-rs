@@ -2846,11 +2846,13 @@ gate-only override — `ncim_swing_source_currents` — is **deleted** from
 `exec/view.rs` as well, and `snapshot_elements` is left with no NCIM special case
 at all. Nothing is `cfg`-gated and no `compat::` kernel is touched: both lanes get the same values.
 Neither upstream overrun is reproduced (CLAUDE.md 2026-08-02): r4133's per-phase
-write over the length-1 `InitPQGen` array **deadlocks the r4133 DLL** on an
-8-line deck (`epri-worker` never replies; runs of 150 s and 200 s), and
-`DOForceFlatStart`'s `NodeV[1..3]` **corrupts its heap** on a 2-node circuit (it
-answers, then cannot `quit`) — so neither is pinnable against r4133, and both are
-pinned by physics and by "does not panic" instead.
+write over the length-1 `InitPQGen` array **corrupts the r4133 DLL** on an 8-line
+deck — the solve still answers (`converged=True`, 5 iterations, node voltages the
+port matches to the digit) and the DLL then hangs on the first *element* access
+after it (`set_active_element` never returns) — and `DOForceFlatStart`'s
+`NodeV[1..3]` **corrupts its heap** on a 2-node circuit (it answers, then cannot
+`quit`). Both are pinned against r4133's solve-level answer where it has one and
+by "does not panic" for the element rows it cannot report.
 
 **Exposure, measured before the fix and after it — no gated field moved.** The
 gate's element channel is `dss.snapshot_elements()`, whose NCIM generator rows
@@ -2916,8 +2918,9 @@ any NCIM deck, so **0** golden bytes moved. `tests/harness/lane.rs` and its
 panic converges in 5 iterations, `gen_model = 4` / `ncim_expv = true` /
 `ncim_idx = 1` / `delta_q_nom = [-500000.0; 3]`, i.e. it promoted PQ→PV, overshot
 the −1500 kvar limit and converted back at `qMin`, which is positive proof the
-promotion arm ran; KCL at `genbus` `(7.5e-12, 2.7e-12)`; the doc comment records
-that r4133 cannot be the oracle here, because the deck deadlocks its DLL),
+promotion arm ran; KCL at `genbus` `(7.5e-12, 2.7e-12)`; the audit settlement
+added the r4133 leg the first measurement had wrongly declared unavailable —
+`converged=True`, 5 iterations and all six node voltages, live),
 `ncim_missing_voltage_bases_does_not_panic` (:684 — `is_solved = false`, 15
 iterations, `SOURCEBUS.1..3` equal to r4133's `7199.557856794634 + 0j` /
 `-3599.77892839732 - 6234.999999999999j` / `-3599.778928397315 + 6235.000000000001j`,
@@ -2930,7 +2933,7 @@ both engines' powers and currents quoted, KCL closed),
 `ncim_gate_reader_and_ordinary_reader_agree` (:866 — `snapshot_elements` against
 the element path, conductor by conductor, exact `==`, which is what makes the
 deleted override provably lossless), the tripwire
-`ncim_swing_bus_carries_no_generator_on_the_gated_decks` (:929 — the stated reason
+`ncim_swing_bus_carries_no_pc_element_on_the_gated_decks` (:929 — the stated reason
 the gate cannot move; it reds the day a gated NCIM deck puts a generator **or a
 second source** on the swing bus), `ncim_vsource_export_currents_match_oracle` (:1018 — the swing
 `VSource`, three decks × four legs: the `Export Currents` `Vsource.SOURCE` row
@@ -2943,21 +2946,28 @@ element path, which is what retires the second override) and
 `ncim_second_slack_node_vsource_reports_its_own_current` (:1179 — a second
 `Vsource` at `sourcebus` reports its own Thevenin current `|E2 - V| / |Z1|` =
 `1388.97 A ∠104.04°` rather than the swing stamp, and the swing row stays the
-Pascal bus sum `-I(Line.l1 t1) + I(Vsource.src2 t1)`; r4133 cannot referee that
-deck — its per-read recursion overflows the DLL's stack — so the pin asserts
-physics and the port's own identity, and leaves the untested `cadd` PC sign
-(`VSource.pas` l.1169) to the tripwire). **No new corpus case**: the two repro decks would be `engines: r4133`
-entries r4133 cannot answer (deadlock / heap corruption), i.e. un-gateable, so they
-stay in-engine physics pins.
+Kirchhoff bus sum `-I(Line.l1 t1) - I(Vsource.src2 t1)` — the `cadd` PC sign the
+pin originally left open was settled in the audit settlement below and is now
+subtracted; r4133 cannot referee that deck, its per-read recursion overflows the
+DLL's stack, so the pin asserts physics and the port's own identity).
+**No new corpus case**: the repro decks would be `engines: r4133` entries whose
+element rows r4133 cannot report (element-access hang / heap corruption), i.e.
+un-gateable, so they stay in-engine physics pins.
 
-**Three r4133 defects proven, none reproduced** — `UpdateGenQ`'s per-phase write
+**Four r4133 defects proven, none reproduced** (three in the sub-step, a fourth in
+its audit settlement) — `UpdateGenQ`'s per-phase write
 over the length-1 `InitPQGen` array, `DOForceFlatStart`'s `NodeV[1..3]` write, and
 `TGeneratorObj.GetCurrents`' partial fill leaving shared-`cBuffer` garbage in
 conductor `NPhases+1` of r4133's own `Export Currents`. Upstream reports, gitignored
 and local-only: `investigations/to_opendss/51-ncim-updategenq-deltaqnom-overrun.md`,
 `52-ncim-doforceflatstart-nodev-overrun.md`,
 `53-ncim-generator-getcurrents-partial-fill.md`. The third costs nothing — the port
-already emitted 0 there and the gate already compares 0.
+already emitted 0 there and the gate already compares 0. **A fourth** was found by
+the audit settlement below and is the only one that changes a reported number:
+`TVsourceObj.CalcInjCurrAtBus` adds PC-element terminal currents where it subtracts
+the PD ones (`VSource.pas` l.1169 vs l.1135), so r4133's swing-source row misses
+KCL by exactly twice the PC current at the bus; report
+`54-ncim-calcinjcurratbus-pc-sign.md`.
 
 **Open, recorded not chased.** *(Bug B′ was the first draft's item (a),
 "measured, pinned in prose and NOT fixed", with the swing-`Vsource` numbers
@@ -2969,7 +2979,7 @@ values it names are unchanged bit for bit, so the pre-existing
 `ncim_vsource_reported_currents_match_oracle` is still green on the same literals
 `[(-83.67028508386699, 33.3498024511199), (70.71691867579602, 55.78569119895437),
 (12.95336640806454, -89.1354936500793), 0, 0, 0]`, magnitude `90.0718`. The
-tripwire `ncim_swing_bus_carries_no_generator_on_the_gated_decks` keeps its job:
+tripwire `ncim_swing_bus_carries_no_pc_element_on_the_gated_decks` keeps its job:
 it reds the day a gated NCIM deck puts a generator on the swing bus and the
 generator's stamp starts feeding that sum.)*
 (a) RP3.11's **AC-5** round-trip question is *not* closed by this sub-step, only
@@ -2984,10 +2994,11 @@ table — `capacitor.faultrate` (r4133 `0` vs port `0.0005`) and `autotrans.tap`
 neither, no oracle channel compares `Dump` bytes and neither cell has a
 `PROPS_ECHO_R4133` row, so the exposure is zero on both channels; RP3.11's open
 item (e) keeps them, with §RP5.2 to confirm whether the owning cases are
-r4133-gated. (c) The `epri-worker` cannot be used as an oracle on either repro
-deck (deadlock / heap corruption), so P1–P3 are physics-and-no-panic pins with
-r4133's partial answers doc-commented; if EPRI fixes either overrun, those three
-pins are the place to add the r4133 leg.
+r4133-gated. (c) The `epri-worker` answers the **solve** on both repro decks and
+P1/P2/P3 pin that answer (P1's leg was added by the audit settlement); what it
+cannot report on them is the **element** rows (the deltaQNom deck hangs on the
+first element access, the 1-phase deck corrupts its heap), so the terminal-power
+and current legs of those three pins stay physics-and-no-panic.
 
 *Gate, re-run end to end on the final tree (the one that carries the swing-`VSource`
 arm too).* Landed in **one commit** — the four fixes, the eight pins and the
@@ -3047,6 +3058,169 @@ the §RP4.1 record below) and every run of this sub-step since. The set is
 `Auto3bus_HL_current.txt`), and the final runs left **8** — which is itself
 evidence for the race. Removed by exact name after every run, `git clean` never
 used, no tracked corpus or golden file moved.
+
+***Audit settlement (2026-09-03).*** Both auditors ran at `opus-xhigh` over
+`9fbb0abf..2ce1a66e` and returned **twelve** findings (5 code + 7 tests); the
+dedicated fix agent settled each one against evidence — a live `epri-worker`
+probe, the r4133 Pascal, or a recomputation — never against plausibility.
+**Six fixed, six recorded, none refuted.** Two were substantive.
+
+* **AC-2 (major) — FIXED, and it is a fifth defect, not a fourth.** The ported
+  `ncim_stamp_swing_source_currents` reproduced r4133's PC-loop `cadd`
+  (`VSource.pas` l.1169) while subtracting the PD terms (l.1135), and P8 pinned
+  that identity. Settled by measurement, on the one deck shape where the two
+  engines can differ and r4133 can still answer — a 1000 kW / 400 kvar load
+  bonded straight onto the swing bus (r4133 stack-overflows on P8's *two-source*
+  deck, which is why the question had been left open). Both engines diverge
+  identically there (any PC element on the slack node breaks NCIM's slack
+  constraint; 10 kW / 100 kW / 1000 kW loads and a 500 kW generator all hit the
+  iteration limit on both), and at the shared 15-iteration state they agree on
+  every node voltage and on the `Line`/`Load` terminal currents to the digit.
+  r4133's swing row is then `Vsource.source I1 = -12.910456 + 52.625721j A`
+  (`54.1862 ∠103.78°`) = exactly `-I(Line.l1 t1) + I(Load.ldswing)`, leaving a KCL
+  residual of `85.035098 - 43.071927j A` = precisely `2·I(Load.ldswing)`. Since
+  every OpenDSS `GetCurrents` returns the current flowing *into* the element (PD
+  and PC alike — it is what makes a load report `+P` and a generator `-P`, and
+  `Solution.pas:2108` stamps the NCIM generator the same way), KCL at the bus is
+  `I(source) + Σ I(others) = 0` and **both** loops must subtract: the `cadd` is an
+  upstream sign bug, and CLAUDE.md forbids reproducing one in any lane. The PC
+  loop now subtracts (`solution/solution/ncim.rs`), so the same read is
+  `-97.945554 + 95.697649j A` (`Export Currents` prints `136.936 ∠135.67`) and KCL
+  closes to `< 1e-9 A`. Pinned by the new
+  `ncim_swing_sum_subtracts_pc_terminals_and_closes_kcl`, which names both
+  engines' rows and asserts the residual is exactly twice the load current;
+  upstream report `investigations/to_opendss/54-ncim-calcinjcurratbus-pc-sign.md`
+  (it also names the two neighbouring defects the port already refused: the PC
+  loop's un-reset `myTerm` and its `NPhases` stride). **Zero oracle exposure**,
+  re-derived rather than inherited: the divergence needs a PC element other than
+  the source on the slack node, no gated NCIM case has one, and `ledger.json`,
+  `tests/golden/` and every gated channel are unmoved. P8 keeps its deck but now
+  asserts plain KCL — `I(SOURCE) + I(Line.l1 t1) + I(SRC2) = 0`, with
+  `Vsource.SOURCE` printing `1332.03 ∠-79.45` where the `cadd` form printed
+  `1450.64 ∠107.23`.
+* **AC-1 (major) — FIXED; the sub-step's own evidence was wrong.** RP3.13 recorded
+  that r4133 "cannot answer `repro_pq2pv.dss` at all — the `epri-worker` never
+  replies". It answers: own re-probe 2026-09-03, `converged=True`, **5**
+  iterations and six node voltages the port matches to the digit. What the
+  `deltaQNom` overrun actually kills is the **first element access after the
+  solve** (`set_active_element Line.l1` never returns; the run killed at 150 s had
+  burned 0.12 s of worker CPU — blocked, not spinning), which is what the original
+  element-reading probe hung on. So P1 gained the oracle leg it should have had —
+  `is_solved`, `iteration == 5` and all six `YNodeVarray` entries against live
+  r4133 — and the false claim was corrected in all six places that carried it
+  (`solution/solution/ncim.rs`, `exec/tests/ncim.rs`, `STATUS.md` ×3, the plan
+  §RP3.13 and `docs/upgrade/DIVERGENCES.md`). The overrun is still a proven,
+  non-reproduced r4133 defect; only its *symptom* is restated.
+* **T1 (major) — FIXED.** The eight (now nine) pins were in no existence/citation
+  guard, breaking the convention RP3.11 and RP3.12 both followed, so a rename
+  would have orphaned every `STATUS.md` / plan / `docs/` citation with a green
+  suite. `RP313_NCIM_PINS` + `every_rp313_ncim_pin_exists_and_is_cited` now sit
+  beside `RP311_SERIALIZATION_PINS` in `crates/dss-core/tests/props_r4133_replay.rs`
+  (each row must name a real `#[test]` **and** be cited by name here).
+* **AC-4 / T3 (minor) — FIXED.** The tripwire checked three of the five gated NCIM
+  cases and argued the other two in prose. It is renamed
+  `ncim_swing_bus_carries_no_pc_element_on_the_gated_decks` and widened twice
+  over: on the three small decks it now checks **every** enabled PC element
+  (loads and sources included, not just generators) against the swing source's own
+  bus — which is exactly the set `CalcInjCurrAtBus`' PC loop sums — and
+  `Xmission_System_Kundur2Area` (`b1`) and `IEEE118Bus` (`89_clinchrv`) are
+  covered by a source scan of every `.dss` file in their directories for an
+  uncommented PC-class `bus1=`/`bus=` binding to the swing bus. They cannot be
+  compiled in a unit test (their masters end in `export`/`show`/`summary`, which
+  would write into the vendored corpus tree), and the scan honours `!` comments,
+  `~` continuations and `bus1=89_clinchrv.1.2.3` node lists.
+* **T4 (minor) — FIXED.** P8's Thevenin band was `1e-3` relative where the
+  measured agreement is `8.4e-10`; it is now `1e-6` (three orders of margin) and
+  its angle band `5e-2 → 5e-3`, the 2-decimal print half-ulp its sibling legs
+  already use. Tightened only — no band anywhere was loosened.
+* **T2 (minor) — FIXED.** The gating ledger's `ncim-oppoint` cause still named
+  `exec/view.rs::ncim_swing_source_currents`, deleted by this sub-step. It now
+  names `ncim_stamp_swing_source_currents`, the `vsource/solve.rs` arm and the PC
+  sign decision. (Documentary text only: the cause is referenced by no entry, so
+  nothing gated moved — which is also why it could go stale unnoticed.)
+* **T7 (note, pre-existing and outside the audited range) — FIXED anyway,** since
+  it cost an auditor a round-trip and blocks reproducing the gate from any
+  out-of-tree copy: `corpus_gate/engines.rs::epri_worker_bin` hard-coded
+  `<workspace>/target/<profile>/epri-worker` and ignored `CARGO_TARGET_DIR`, which
+  is where its own fallback `cargo build` actually writes. It now tries
+  `CARGO_TARGET_DIR` first when set, then the in-tree path.
+* **AC-3 (minor) — RECORDED, not fixed, and it is now an open item.** `SysCtx.ncim`
+  is r4133's **global** `Algorithm`, not a per-solve flag, so the new generator
+  NCIM arm — and its precedence over the `LastSolutionWasDirect` shortcut — also
+  governs a `direct`/`dynamics`/`harmonics` solve run while `Set algorithm=NCIM`
+  is still in force: the machine reports the last NCIM stamp evaluated at the new
+  voltages. Not a divergence — the auditor measured **live r4133 returning the
+  identical numbers** in the same sequence (`ncim_pv_pq` + `Set mode=direct;
+  Solve` → `Generator.G1 78.5593 ∠117.52°`, `(-783.9 kW, -1504.8 kvar)`, KCL at
+  `genbus` off by `(1216.1, -704.8)`) — and unreachable from every gated case. Not
+  fixed here because, unlike AC-2, there is no measured "correct" answer to move
+  to: what a generator *should* report in a direct solve while the NCIM stamp is
+  the only current the solver wrote is its own question, and inventing one would
+  leave the sole live NCIM oracle on an untested surface. Documented at the arm
+  (`elements/pc/generator/accessors.rs`) with both engines' numbers; the candidate
+  fix is a `ncim_stamped_at` marker mirroring `VSource::ncim_swing_stamped_at`.
+* **AC-5 (note) — RECORDED.** The generator NCIM arm zero-fills conductors at and
+  beyond `NPhases`, and `compute_iterminal`/`refresh_iterminal` copy that buffer
+  back, so the machine's neutral `Iterminal` slot is zeroed where Pascal's aliased
+  self-copy leaves it as it was. No observable moves (r4133's own API path
+  zero-fills, and that zero is what every gate channel and `Export Currents` cell
+  compares); the alternative — reproducing r4133's untouched tail — is reproducing
+  shared-`cBuffer` garbage. Noted at the arm.
+* **T5 (note) — RECORDED.** In P6 the `Export Currents` row leg discriminates the
+  swing *stamp* but not the VSource NCIM *arm*; the arm's removal is caught by the
+  snapshot-vs-element identity leg instead. Both legs stay; recorded so nobody
+  "simplifies" the identity leg away as redundant.
+* **T6 (note) — RECORDED.** P2 pins `genbus = NaN` as the shared degenerate answer
+  for the `VBase = 0` deck. It pins the *shape* (not-a-number, not a panic and not
+  a plausible-looking wrong answer), which is the point; if the engine ever
+  validates `Set VoltageBases` without `CalcVoltageBases`, that pin is rewritten
+  as an improvement, not read as a regression.
+* **AC's "suspicious / too convenient" — no finding, but recorded:** the claim
+  "the gate's element channel already read the deleted overrides' formulas, so no
+  oracle observable moved" is true **empirically** (the gate runs are the
+  evidence), not structurally — the retired override computed from `delta_q_nom`
+  while the new path returns the `UpdateGenQ` `Iterminal` stamp, and the two can
+  differ on a pass where the PV→PQ conversion is the last iteration. The new path
+  is the more faithful of the two; the sentence should be read as measured, not
+  guaranteed.
+
+Everything above is lane-unconditional (no `cfg`, no `compat::`, no
+`TODO(compat)`), and the settlement moved **0** golden bytes and **0** gated
+`ledger.json` entries — the one `ledger.json` line it touched is the documentary
+`ncim-oppoint` cause text.
+
+*Settlement gate.* All five mandatory commands green in **both** lanes, each exit
+code read individually — `cargo fmt --all --check` clean, both `clippy` lanes
+clean with `-D warnings`, and `cargo test --workspace` **4 449 passed / 0 failed /
+5 ignored** in each lane over **74** test binaries, the two lanes identical binary
+for binary (library **1 502** per lane, of which `exec::tests::ncim` is **19** —
+one more than the sub-step's 18, the new P9; `props_r4133_replay` **149**, one
+more than RP3.11's 148, the new citation guard; `props_r4133_pins` **54** and
+`oracle_parity_cfg_gate` **11** unmoved). The corpus gate ran **unfiltered** in
+both lanes — `DSS_GATE_ONLY` explicitly cleared — **138 passed / 0 failed / 0
+ignored / 0 filtered out** per lane over the whole 523-case population (146.54 s
+default, 144.47 s parity), both channels, every ledger entry hit and none stale.
+No `#[ignore]`, no `should_panic`, no name filter used to claim green, no
+tolerance consulted or moved, no `TODO(compat)` added, and **0** golden bytes
+moved. `pwsh -File tools/lanes/lane_diff.ps1` was **owed** (product `src/` moved —
+the PC sign) and came back **VERDICT: PASS, Δ = 0** on every gated kind over 523
+cases / 3 220 861 records (`conv` 2 162, `cur` 1 170 100, `errs` 519, `iter`
+2 162, `loss` 366 476, `pow` 1 170 100, `v` 375 816, `y` 1 738 084 — all
+`max |d| = 0.000e0` and `max rel = 0.000e0`, 0 iteration counts drifted), so the
+default lane stays bit-identical to the parity lane and keeps precisely its oracle
+standing. **Discrimination, proven by mutation** rather than asserted: reverting
+the PC sign to r4133's `cadd` reds P9 *and* P8 with the exact pinned residual
+(`85.035098 - 43.071927j A` = `2·I(Load.ldswing)`) and makes the port's swing row
+`-12.910456091136894 + 52.62572124287604j` — live r4133's own value to ~1e-13,
+which is the sharpest available proof that the port's arithmetic is otherwise
+identical and only the sign differs; uncommenting `Generators.DSS:5` or
+`generators.dss:44` in a scratch copy of the vendored corpus reds the widened
+tripwire naming the file, the line and the element (both restored with
+`git restore`, no tracked corpus byte moved). The runs again left the known
+untracked `tests/corpus/…` deck-written set behind — the `CorpusGuard`
+overlapping-guard race in §"Standing open follow-ups", **eighth** sighting —
+removed by exact name afterwards; `git clean` never used.
+
 
 **RP4.1 (`all_properties` unmasked on the r4133 channel) landed 2026-09-03 —
 WP-RP4's single sub-step and G1.1's deliverable, in one commit, with zero
