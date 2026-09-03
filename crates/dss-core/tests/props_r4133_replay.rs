@@ -5064,6 +5064,111 @@ fn every_landed_property_entry_has_a_witness_pin_that_exists() {
     }
 }
 
+/// **The RP3.11 `Save`/`Dump` serialization pins** — `(pin, role, file)`.
+///
+/// RP3.11's verdict is the one this plan carries with **no** echo row and **no**
+/// `ledger.json` entry behind it: no oracle channel reads a `Save` or a `Dump`
+/// byte (`TESTING.md` §"What the corpus gate does not compare"), so the whole
+/// record rests on these plain `#[test]`s. That is exactly the hole the RP3.6
+/// audit closed for the compare side with [`LANDED_PROPERTY_ENTRY_PINS`], and
+/// [`every_rp311_serialization_pin_exists_and_is_cited`] closes it here: a
+/// rename or a deletion reds instead of silently orphaning the `STATUS.md`
+/// citations.
+///
+/// The **re-compilability** half pins a guard that keeps the emitted deck
+/// loadable; the **divergence** half names *both* serializations, the port's
+/// bytes and r4133's measured bytes, as the plan's acceptance requires.
+const RP311_SERIALIZATION_PINS: &[(&str, &str, &str)] = &[
+    // P1-P4, the ported upstream guards.
+    (
+        "save_writes_calcvoltagebases_like_r4133",
+        "re-compilability",
+        "crates/dss-core/src/exec/tests/report.rs",
+    ),
+    (
+        "save_write_puts_npts_first_for_loadshape",
+        "re-compilability",
+        "crates/dss-core/src/exec/tests/report.rs",
+    ),
+    (
+        "xycurve_save_write_puts_npts_first",
+        "re-compilability",
+        "crates/dss-core/src/elements/general/xy_curve/tests.rs",
+    ),
+    (
+        "regcontrol_save_write_puts_the_transformer_first",
+        "re-compilability",
+        "crates/dss-core/src/elements/control/reg_control/tests.rs",
+    ),
+    // P5-P7, the audit settlement: the rest of the union plus the port's own
+    // sizing guard.
+    (
+        "save_rewrites_xfmrcode_windings_like_capi_0145",
+        "re-compilability",
+        "crates/dss-core/src/exec/tests/report.rs",
+    ),
+    (
+        "save_writes_the_dyn_init_tail_like_capi_0145",
+        "re-compilability",
+        "crates/dss-core/src/exec/tests/report.rs",
+    ),
+    (
+        "save_puts_the_sizing_property_first_for_every_curve_class",
+        "re-compilability",
+        "crates/dss-core/src/exec/tests/report.rs",
+    ),
+    // The four that name both serializations.
+    (
+        "save_renders_the_live_model_after_ncim_pv2pq",
+        "divergence",
+        "crates/dss-core/src/exec/tests/report.rs",
+    ),
+    (
+        "dump_renders_the_live_model_after_ncim_pv2pq",
+        "divergence",
+        "crates/dss-core/src/exec/tests/report.rs",
+    ),
+    (
+        "save_membership_follows_property_tracking_not_prpsequence",
+        "divergence",
+        "crates/dss-core/src/exec/tests/report.rs",
+    ),
+    (
+        "save_omits_the_tapwinding_that_r4133_stamps",
+        "divergence",
+        "crates/dss-core/src/exec/tests/report.rs",
+    ),
+];
+
+/// The existence + citation guard for [`RP311_SERIALIZATION_PINS`]: every row
+/// names a real `#[test]` **and** is cited by name in `STATUS.md`, so the record
+/// and the tree cannot drift apart in either direction.
+#[test]
+fn every_rp311_serialization_pin_exists_and_is_cited() {
+    let status = std::fs::read_to_string(repo_root().join("STATUS.md"))
+        .expect("STATUS.md")
+        .replace("\r\n", "\n");
+    assert!(
+        RP311_SERIALIZATION_PINS.len() >= 11,
+        "RP3.11 landed 8 pins and its audit settlement 3 more; the table has {}",
+        RP311_SERIALIZATION_PINS.len()
+    );
+    for (pin, role, file) in RP311_SERIALIZATION_PINS {
+        let path = repo_root().join(file);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("{pin} ({role}): read {}: {e}", path.display()))
+            .replace("\r\n", "\n");
+        assert!(
+            text.contains(&format!("#[test]\nfn {pin}(")),
+            "{pin} ({role}) is cited by the RP3.11 record, but {file} defines no such #[test]"
+        );
+        assert!(
+            status.contains(pin),
+            "{pin} ({role}) is in the tree but no longer cited in STATUS.md's RP3.11 record"
+        );
+    }
+}
+
 /// **The pins that witness a `ledger.json` entry rather than an echo row** —
 /// `(pin, sub-step, the entry it holds the port's value for)`.
 ///

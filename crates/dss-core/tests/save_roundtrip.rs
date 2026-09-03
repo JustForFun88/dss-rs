@@ -126,6 +126,28 @@ fn discrete_state(dss: &Dss) -> DiscreteState {
     )
 }
 
+/// Every bus's `kVBase`, keyed by bus name. RP3.11 settlement (audit finding
+/// T5): the node-voltage / Y / discrete-state compares are all in **absolute**
+/// volts, so none of them can see a base-kV regression — which is exactly how
+/// 0.14.5's `! CalcVoltageBases` comment survived in the emitted
+/// `BusVoltageBases.dss` behind the (retracted) claim that the base list "only
+/// affects per-unit reporting". It does not: per-unit-driven controls read these
+/// bases, and with the line commented out every bus of a re-compiled tree came
+/// back at `kVBase = 0` (RP3.11 P1, `tmp/rp311/out_bisect.txt` §B: the
+/// `expcontrol` PV moved -0.0060 kvar / 14 iterations to +307.94 kvar / 53).
+/// Compared **exactly**: `CalcVoltageBases` re-derives each base from the same
+/// `Set VoltageBases=(…)` list by the same rule, so a round trip that differs at
+/// all is a Save defect, not a float floor.
+fn bus_kv_bases(dss: &Dss) -> std::collections::BTreeMap<String, f64> {
+    let ckt = dss.circuit().expect("circuit solved");
+    (0..ckt.buses.len())
+        .map(|i| {
+            let name = ckt.bus_list.name(i).unwrap_or("?").to_string();
+            (name, ckt.buses[i].kv_base)
+        })
+        .collect()
+}
+
 /// Solve `master`, `save circuit` to a scratch dir, `clear`, re-compile the
 /// emitted `Master.dss`, re-solve, and assert node voltages (≤1e-6 rel) +
 /// iteration count match the pre-save solution.
@@ -181,8 +203,13 @@ fn round_trip_full(tag: &str, master: PathBuf, pre_only: &[&str], both: &[&str],
     );
     let (pre, pre_iter) = snapshot(&dss);
     let pre_discrete = discrete_state(&dss);
+    let pre_bases = bus_kv_bases(&dss);
     let pre_y = y_checkpoint(&mut dss);
     assert!(!pre.is_empty(), "{tag}: no nodes pre-save");
+    assert!(
+        pre_bases.values().any(|&b| b > 0.0),
+        "{tag}: no bus carries a kVBase pre-save — the compare below would be vacuous"
+    );
     assert!(!pre_y.is_empty(), "{tag}: empty checkpoint Y pre-save");
 
     dss.command(&format!(
@@ -224,7 +251,26 @@ fn round_trip_full(tag: &str, master: PathBuf, pre_only: &[&str], both: &[&str],
     );
     let (post, post_iter) = snapshot(&dss);
     let post_discrete = discrete_state(&dss);
+    let post_bases = bus_kv_bases(&dss);
     let post_y = y_checkpoint(&mut dss);
+
+    // Base kV, exactly (see `bus_kv_bases`): the one quantity of the emitted
+    // deck that every other compare here is blind to.
+    assert_eq!(
+        pre_bases.len(),
+        post_bases.len(),
+        "{tag}: bus count changed across save round-trip"
+    );
+    for (name, base) in &pre_bases {
+        let got = post_bases
+            .get(name)
+            .unwrap_or_else(|| panic!("{tag}: bus {name:?} missing after round-trip"));
+        assert_eq!(
+            got, base,
+            "{tag}: bus {name:?} kVBase changed across save round-trip \
+             ({base} -> {got}); 0.0 is the `! CalcVoltageBases` symptom"
+        );
+    }
 
     // Checkpoint Y (`DE_PASCALIZE_PLAN.md` §F-FMT sequencing guard: "Save output
     // in the default lane must stay re-compilable by our own parser — Save →

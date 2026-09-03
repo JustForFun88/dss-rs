@@ -2189,6 +2189,18 @@ row), **0** literal tests moved, **8** pins added — four re-compilability, fou
 divergence pins naming both serializations. Gate green in both lanes;
 `lane_diff` **Δ = 0**. Tier as executed: `opus-xhigh`. Full record:
 STATUS §RP3.11.
+*Audit settlement (same day):* the union statement above was true of the policy
+but not yet of the tree — both auditors found it shipped for 6 of the 8 upstream
+overrides. Settled with three more lane-unconditional guards, all of them
+re-compilability: **P5** `TXfmrCodeObj.SaveWrite`
+(`CAPI:General/XfmrCode.pas:667-745` — r4133's own save keeps the active winding
+only), **P6** `TDynEqPCE.SaveWrite` (`CAPI:PCElements/DynEqPCE.pas:252-273`, the
+`UserDynInit` tail r4133 has no counterpart for) and **P7** the sizing-property
+hoist for the five curve classes neither upstream guards (`TCC_Curve`,
+`GrowthShape`, `PriceShape`, `TShape`, `Spectrum`). Exposure stays **0** golden
+bytes and **0** ledger rows; pins 8 → **11**, all registered in
+`props_r4133_replay.rs::RP311_SERIALIZATION_PINS`. Every finding's disposition is
+in STATUS §RP3.11 ("audit settlement").
 
 ### RP3.12 — `autotrans.wdgcurrents` on the regulator decks (opened by RP3.9's P0 open item)
 
