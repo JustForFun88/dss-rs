@@ -59,6 +59,19 @@ tooling. (`PROPS_015X` still bridges the 0.15.x-shaped tables r4133 renders; on
 an r4133 capture an r4133-only prop is carried by the oracle's own name list and
 therefore compares in full.)
 
+**What this channel does *not* compare: `Save`/`Dump` bytes.** The property
+capture reads the engine's property getters; no comparison kind on either channel
+reads a serialized `Save circuit` / `Dump` line, and the only oracle that ever
+sees those bytes is the pinned dss-python capture behind the `reports/` goldens.
+R4133_PROPS RP3.11 (2026-09-03) settled that surface for every class at once —
+verdict `KEEP_LIVE_PINNED` on both `Save` and `Dump` (values = the live field,
+membership = the explicitly-set chain) — and the divergences from r4133's own
+serializer are pinned in-engine, quoting both engines' bytes, in
+`crates/dss-core/src/exec/tests/report.rs`
+(`save_renders_the_live_model_after_ncim_pv2pq` and its three siblings). The
+r4133 side of those pins was measured through this bridge, with
+`epri_worker.py`; re-measuring one is a probe, not a gate run.
+
 ## A-Diakoptics reference regen (no tool ships anymore)
 
 The committed A-Diakoptics trusted baseline

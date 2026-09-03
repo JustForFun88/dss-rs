@@ -2,7 +2,7 @@
 
 === BusVoltageBases.dss ===
 Set VoltageBases=(12.47, )
-! CalcVoltageBases
+CalcVoltageBases
 === EnergyMeter.dss ===
 New "EnergyMeter.zone_2" Element=Line.main20 Terminal=1 Option=[E, R, C]
 === GrowthShape.dss ===

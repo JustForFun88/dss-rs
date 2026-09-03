@@ -113,7 +113,10 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               **RP4.1 LANDED 2026-09-03** — `all_properties` is
                               compared on the r4133 channel for every live
                               non-`large` case and the re-armed kill criterion
-                              did not fire; next RP3.11, then RP3.10 and WP-RP5.
+                              did not fire. **RP3.11 LANDED 2026-09-03** — the
+                              `Save`/`Dump` re-serialization surface is settled
+                              `KEEP_LIVE_PINNED` on both surfaces (the kill
+                              criterion fired); next RP3.10 and WP-RP5.
                               RP5.2 flips this row to COMPLETE.
                               Runs inside the GOLDEN_REBASE window on branch
                               `r4133-props` off `update`.

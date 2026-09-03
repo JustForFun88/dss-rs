@@ -168,8 +168,8 @@ in-sub-step precondition, the **per-cell narrowing of the 20 mixed echo rows**
 *(**All of that ordering is discharged: RP4.1 landed 2026-09-03** with both
 preconditions met — the 20 mixed echo rows narrowed per cell, the eight staged
 `property` entries landed — and every RP1–RP3 sub-step it waited on landed
-before it. §RP3.10 and §RP3.11 remain, outside this rule, as the next paragraph
-says.)*
+before it. §RP3.11 followed on 2026-09-03 (`KEEP_LIVE_PINNED`, both surfaces);
+§RP3.10 remains, outside this rule, as the next paragraph says.)*
 **Two RP3 sub-steps are deliberately outside that rule.** **§RP3.10** (the
 reproduced `QMode=0` dispatch, opened by RP3.2's audit settlement) is a
 solve-side fix with no property cell of its own — our `kvar` render reads
@@ -177,9 +177,10 @@ solve-side fix with no property cell of its own — our `kvar` render reads
 closing record, and not the unmask; it also runs only on the user's go-ahead
 (§RP3.10). **§RP3.11** (the `Save`/`Dump` re-serialization surface, opened by
 RP3.3's audit settlement) is the mirror image: no *compared* channel reads it at
-all, so it cannot block a gate flip — it blocks **§RP5.2** too, and it runs after
-RP4.1 has fixed which pairs are echoes, because that list is exactly the list of
-properties where the two serializers disagree.
+all, so it cannot block a gate flip — it blocks **§RP5.2** too, and it ran after
+RP4.1 had fixed which pairs are echoes, because that list is exactly the list of
+properties where the two serializers disagree. *(**Executed 2026-09-03** —
+`KEEP_LIVE_PINNED` on both surfaces; see the dated line in §RP3.11.)*
 Execution is on a **single branch only — never in parallel
 worktrees**: `tests/corpus/ledger.json`, `tests/corpus/manifests/population.lock.json`
 and `tests/golden/golden.lock.json` are fail-on-stale and are rewritten by this
@@ -1371,7 +1372,10 @@ discrete-state pair in the tail is explained.
 > carries a `PF=0.88` the deck never typed. No oracle channel compares that
 > surface, on these decks or any other, so it is neither this commit's regression
 > nor part of the echo classification: it is **§RP3.11**, which the settlement
-> opened for it. The settlement also closed two holes in the census
+> opened for it. *(Executed 2026-09-03: verdict `KEEP_LIVE_PINNED` on both
+> surfaces — and the premise above is corrected there, `PropertyValue[iProp]`
+> being the **virtual** getter that 49 r4133 units answer live; see the dated
+> line in §RP3.11.)* The settlement also closed two holes in the census
 > decomposition's own sweep (abbreviated `Set` option spellings and the
 > `.dss`-only file universe), tied the
 > `ECHO_ROWS_ON_R4133_ONLY_CASES` entry to the derivation that claims to produce
@@ -2092,10 +2096,17 @@ prose.
 and the cell is excluded. RP3.3 measured, for the first time, what that same
 difference does on a surface **no oracle channel compares** — the re-serializers.
 Pascal `TDSSObject.SaveWrite` (`Version8/Source/General/DSSObject.pas:145-165`)
-writes `PropertyValue[iProp]`, the store; the port's `save_write`
-(`crates/dss-core/src/report/save/save.rs:34-53`) renders each property through
-`ClassProps::get_value`, the live field — its own doc comment quotes the Pascal
-line it does not do. On `modes:ncim/ncim_pv_pq.dss`, after the converged NCIM
+writes `PropertyValue[iProp]`; the port's `save_write`
+(`crates/dss-core/src/report/save/save.rs`) renders each property through
+`ClassProps::get_value`, the live field. *(**Corrected at execution, 2026-09-03,
+and the correction is half the verdict:** `PropertyValue[iProp]` is
+`Get_PropertyValue` → the **virtual** `GetPropertyValue` (`:45`, `:117-120`),
+which **49** r4133 units override to answer *live* on a hand-picked index set —
+so "the store" is not a meaning of `Save` in r4133 at all, and `model=3` is
+printed only because `TGeneratorObj.GetPropertyValue` happens to have no arm 6
+(`PCElements/generator.pas:3007-3038`) while `TStorageObj`'s arm list carries
+`propMODEL` (`PCElements/Storage.pas:1525-1596`). The port's doc comment was
+re-written accordingly.)* On `modes:ncim/ncim_pv_pq.dss`, after the converged NCIM
 solve that moves the generator PV→PQ, the two `Save Circuit` outputs are
 (both measured 2026-08-24):
 
@@ -2154,6 +2165,31 @@ legitimately move are regenerated with the argument in the same commit; STATUS
 Outcome: the last surface where this plan's echo mechanism has a behavioral
 consequence stops being unowned.
 
+**Executed 2026-09-03 — verdict `KEEP_LIVE_PINNED` on BOTH surfaces.** The kill
+criterion **fired**: matching r4133's `Save` on the deciding cell means printing
+`model=3` while `gen_model == 4` in the same process, which the 2026-08-02
+policy forbids — so the outcome is a recorded, pinned divergence from r4133's
+serializer, not a port change. `Dump` shares the one `get_value` with `Save`,
+`?`, the property API and batchedit (as both Pascals share their one virtual
+getter), so the same cell settles it, with all 88 committed `dump*` artifacts
+behind the alternative. The `PF=0.88`-class sequence difference is **explained,
+not fixed** (0.14.5's property-tracking seeds, which r4133 has no counterpart
+for and which the AltDSS JSON export — a surface with no r4133 counterpart
+either — depends on; no `set_as_next_seq`/`clear_seq` site moved). What did
+change is structural only, lane-unconditional, and taken as the *union* of both
+upstreams' `SaveWrite` guards, every one of which exists to keep the emitted
+deck re-compilable: P1 the unconditional `CalcVoltageBases`
+(`Common/Circuit.pas:2716-2740`; 0.14.5's `! CalcVoltageBases` cost every saved
+circuit its bus `kVBase`s), P2 the LoadShape `npts`-first branch
+(`General/DSSObject.pas:144-173`), P3 `TXYcurveObj.SaveWrite`
+(`General/XYcurve.pas:978-1003`), P4 `TRegcontrolObj.SaveWrite`
+(`Controls/RegControl.pas:1399-1421`). Exposure: **1** golden content line +
+**1** lock digest (a self-golden, so no `tools/golden/*.py` run and no ledger
+row), **0** literal tests moved, **8** pins added — four re-compilability, four
+divergence pins naming both serializations. Gate green in both lanes;
+`lane_diff` **Δ = 0**. Tier as executed: `opus-xhigh`. Full record:
+STATUS §RP3.11.
+
 ### RP3.12 — `autotrans.wdgcurrents` on the regulator decks (opened by RP3.9's P0 open item)
 
 **Why it exists.** RP3.9 closed with one item it refused to absorb: the **34**
@@ -2203,6 +2239,46 @@ none of them and RP4.1 gains no precondition. Tier as executed: `opus-high+`
 12 findings, 11 distinct — 9 fixed, 2 recorded, 0 refuted) and this docs
 commit. Gate green in both lanes, 4 290 tests per lane; `lane_diff` not owed (no
 `src/` line moved). Full record: STATUS §RP3.12.
+
+### RP3.13 (PROPOSED, not scheduled — opened by RP3.11's P0 findings)
+
+**Why it exists.** RP3.11's mandated round-trip measurement of `Save` walked
+`modes:ncim/ncim_pv_pq.dss` on both engines and turned up two engine-side
+defects that have nothing to do with serialization and no owner anywhere in this
+plan. Recorded with their evidence in STATUS §RP3.11 ("Open, recorded not
+chased", items (a) and (b)); this section is the **proposal** the plan owner
+accepts or rejects — nothing here is authorized by RP3.11.
+
+* **(a) A plain user script panics a `#![forbid(unsafe_code)]` product crate.**
+  `crates/dss-core/src/solution/solution/ncim.rs:683` — *index out of bounds: the
+  len is 1 but the index is 1*. The arm writes `gobj.delta_q_nom[j]` for
+  `j < nphases`, but the vector is still the length-1 one built at `:540`
+  (`vec![gobj.q_nominal_per_phase]`); the per-phase sizing (`:277`,
+  `vec![0.0; nphases]`) sits in a branch a model-4-at-birth generator never
+  enters. An 11-line repro with no `Save` involved was measured, and r4133 on
+  the identical deck does not crash. **Release-blocking**: a supported input
+  aborts the engine.
+* **(b) NCIM PV→PQ reporting violates KCL.** On the unmodified deck the port
+  reports `Generator.G1` −800 kW / −431.8 kvar (42.0103 A) while the solve
+  injects the clamped −1500 kvar (78.5593 A on r4133); node voltages and the
+  Line/Load rows match r4133 digit for digit, so KCL at `genbus` is off by
+  1068.2 kvar. Same family as the Newton stale-`Iterminal` bug (CLAUDE.md
+  §"Known upstream bugs"), and it is what makes RP3.11's saved `Model=4` line
+  look self-consistent while re-compiling to a different problem.
+
+**Do first:** decide whether (a) and (b) are one defect or two — (b) is a
+reporting read of the same PV→PQ arm — then fix in **both** lanes, since neither
+is an upstream behaviour to reproduce. **Kill criterion:** if (b) turns out to
+be r4133's own defect rather than the port's, it stops being a fix and becomes a
+recorded, pinned divergence (the port already reports the physical current), per
+the 2026-08-02 policy. **Acceptance:** the panic is impossible from any deck
+(pinned by the repro), the reported generator power satisfies KCL at the bus on
+the ncim decks, and the `modes:ncim/*` golden/corpus exposure is measured before
+either change lands. **Blocks nothing in this plan** (no property cell moves —
+the `Save`/`Dump` verdict is independent of it), so it can run after §RP5.2.
+Tier: `opus-xhigh` (a solve-side engine change in both lanes with golden and
+corpus exposure). Runs **only on the user's go-ahead**, as its own sub-step with
+its own audit pair.
 
 ---
 

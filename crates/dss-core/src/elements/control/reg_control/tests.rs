@@ -561,3 +561,63 @@ fn reg_control_action_pins_queue_codes() {
     );
     assert_eq!(RegControlAction::from_ordinal(2), None);
 }
+
+/// RP3.11 P4 — `TRegcontrolObj.SaveWrite` (r4133
+/// `Version8/Source/Controls/RegControl.pas:1399-1421`) writes `transformer=`
+/// **first**, outside the property chain, and then skips index 1 in the walk.
+/// Pascal's own reason: *"Write Transformer name out first so that it is set for
+/// later operations"* — `winding=`/`tapnum=`/`vreg=`/`ptratio=` are all resolved
+/// against the controlled transformer as they are parsed.
+///
+/// Measured before this override, on a deck typing `transformer=` last, the port
+/// wrote `New "RegControl.rc1" Winding=2 VReg=122 Band=3 PTRatio=20
+/// Transformer=t1`; r4133 writes `New "RegControl.rc1" transformer=t1 winding=2
+/// tapwinding=2 vreg=122 band=3 ptratio=20` (epri-worker probe,
+/// OpenDSSDirect.dll 11.0.0.1 r4133, RP3.11 I1). The `tapwinding` in r4133's
+/// line is a separate *sequence* divergence, decided in RP3.11 §3.3 and pinned
+/// there: r4133 stamps it as a side effect of `winding=`
+/// (`RegControl.pas:480-483`), dss_capi 0.14.5 dropped that stamp
+/// (`CAPI:Controls/RegControl.pas:417`, *"not really required"*) and this port
+/// followed — round-trip-safe, since re-parsing `Winding=2` re-fires the same
+/// `TapWinding := winding` side effect.
+#[test]
+fn regcontrol_save_write_puts_the_transformer_first() {
+    use crate::exec::Dss;
+
+    let dir = std::env::temp_dir().join(format!("dss_rp311_rc_{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.rp311rc basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "new transformer.t1 windings=2 buses=[src b] conns=[wye wye] kvs=[12.47 4.16] \
+         kvas=[1000 1000] xhl=6",
+        // `transformer=` typed LAST
+        "new regcontrol.rc1 winding=2 vreg=122 band=3 ptratio=20 transformer=t1",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        dir.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "save errors: {:?}", dss.errors());
+
+    let text = std::fs::read_to_string(dir.join("RegControl.dss")).expect("RegControl.dss");
+    let line = text
+        .lines()
+        .find(|l| l.contains("RegControl.rc1"))
+        .unwrap_or_else(|| panic!("no RegControl.rc1 line in {text:?}"));
+    assert_eq!(
+        line, "New \"RegControl.rc1\" Transformer=t1 Winding=2 VReg=122 Band=3 PTRatio=20",
+        "r4133 writes `New \"RegControl.rc1\" transformer=t1 winding=2 tapwinding=2 \
+         vreg=122 band=3 ptratio=20`"
+    );
+    assert_eq!(
+        line.matches("Transformer=").count(),
+        1,
+        "the transformer must be written exactly once: {line:?}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

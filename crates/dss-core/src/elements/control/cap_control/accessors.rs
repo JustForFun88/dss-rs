@@ -400,7 +400,11 @@ impl DssObject for CapControl {
                 }
             }
             // CAPACITOR: Pascal stores ControlVars.CapacitorName :=
-            // ControlledElement.FullName for Save; Save is not ported.
+            // ControlledElement.FullName here, and its Save/Dump echo that
+            // copy. `Save` IS ported (`report/save/save.rs`); under RP3.11's
+            // `KEEP_LIVE_PINNED` verdict it renders the live getter instead —
+            // `get_string(CAPACITOR)` above returns `controlled_name`, the name
+            // as typed — so no stored copy is kept here.
             VBUS => {
                 self.voverride_bus_name = self.voverride_bus_name.to_ascii_lowercase();
                 self.voverride_bus_specified = true;

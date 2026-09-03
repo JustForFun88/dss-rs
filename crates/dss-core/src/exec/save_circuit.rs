@@ -16,9 +16,11 @@
 //! executive `Save circuit` command (`DoSaveCmd`) always calls it with an
 //! **empty** set, so every flag-gated branch below
 //! (`SingleFile`/`KeepOrder`/`IncludeOptions`/`SetVoltageBases`/`IsOpen`/
-//! `IncludeDisabled`/`ExcludeDefault`/`ExcludeMeterZones`/`CalcVoltageBases`) is
-//! DORMANT. The [`SaveFlags`] set is defined faithfully for C-API parity, but
-//! only the reachable empty-set path is exercised/gated.
+//! `IncludeDisabled`/`ExcludeDefault`/`ExcludeMeterZones`) is DORMANT. The
+//! [`SaveFlags`] set is defined faithfully for C-API parity, but only the
+//! reachable empty-set path is exercised/gated. `CalcVoltageBases` left that
+//! list at RP3.11: r4133 writes the `CalcVoltageBases` line unconditionally, so
+//! [`Dss::save_voltage_bases`] no longer reads the bit at all.
 
 use super::*;
 use crate::report::save::save::{SaveCtx, class_file_text, write_dss_object};
@@ -51,7 +53,10 @@ impl SaveFlags {
         SaveFlags(0)
     }
 
-    /// Pascal `flag in saveFlags`.
+    /// Pascal `flag in saveFlags`. Unread since RP3.11 removed the last
+    /// flag-gated branch on the command path (`CalcVoltageBases`); kept, like
+    /// the [`DssSaveFlag`] bits themselves, for C-API parity.
+    #[allow(dead_code)] // C-API parity: no reachable caller passes a non-empty set.
     pub(crate) fn contains(self, f: DssSaveFlag) -> bool {
         (self.0 & (1u16 << (f as u16))) != 0
     }
@@ -564,26 +569,44 @@ impl Dss {
             .is_some_and(|e| e.cd().enabled)
     }
 
-    /// Pascal `TDSSCircuit.SaveVoltageBases` (`Circuit.pas:2708-2747`,
-    /// `circF = NIL`): `BusVoltageBases.dss` = `Set VoltageBases=<get
-    /// voltagebases>` then, since the `CalcVoltageBases` save flag is off on the
-    /// command path, the commented `! CalcVoltageBases` (probe-proven — the
-    /// pinned oracle emits the comment, and the base-kV list only affects
-    /// per-unit reporting, not the absolute-volt re-solve). The `SetVoltageBases`
-    /// per-bus `SetkVBase` block is flag-gated → dormant.
-    fn save_voltage_bases(&mut self, dir: &Path, flags: SaveFlags) {
+    /// Pascal `TDSSCircuit.SaveVoltageBases` (r4133
+    /// `Version8/Source/Common/Circuit.pas:2716-2740`): `BusVoltageBases.dss` =
+    /// `Set VoltageBases=<get voltagebases>` followed — **unconditionally** — by
+    /// `CalcVoltageBases`. r4133 writes the pair as two plain `Writeln`s with no
+    /// flag in sight; its per-bus `SetkVBase` block is commented out in the
+    /// Pascal (`:2727-2729`) and flag-gated here → dormant either way.
+    ///
+    /// **Why not 0.14.5's commented form (RP3.11 P1).** dss_capi 0.14.5 is the
+    /// only engine that ever comments the second line
+    /// (`.inputs/dss_capi/src/Common/Circuit.pas:2708-2731`), and even there its
+    /// own `DSS_CAPI_NOCOMPATFLAGS` branch writes `CalcVoltageBases`
+    /// **un**commented: `! CalcVoltageBases` is the compat-flag side of a flag
+    /// this port hard-codes to the ON side. RP3.11 measured what that comment
+    /// costs — every circuit the port saved re-compiled with `kVBase = 0` on
+    /// **every** bus (`bus_kvbase(genbus)` **0.0**, against 7.199557856794634
+    /// from r4133's own save of `modes/ncim/ncim_pv_pq.dss`), so the ncim tree
+    /// came back NOT CONVERGED at 15 iterations and the `expcontrol` PV moved
+    /// from -0.0060 kvar / 14 iterations to +307.94 kvar / 53: per-unit-driven
+    /// controls (ExpControl/InvControl/RegControl) read those bases. The claim
+    /// this doc comment used to carry — "the base-kV list only affects per-unit
+    /// reporting, not the absolute-volt re-solve" — is measurably false and is
+    /// retracted. Pinned by
+    /// [`crate::exec::tests::report`]`::save_writes_calcvoltagebases_like_r4133`.
+    ///
+    /// [`DssSaveFlag::CalcVoltageBases`] stays defined for C-API parity; it
+    /// simply no longer suppresses the line.
+    fn save_voltage_bases(&mut self, dir: &Path, _flags: SaveFlags) {
         let Some(ckt) = self.circuit.as_ref() else {
             return;
         };
         // Reuse the ported `get voltagebases` renderer (Pascal `ParseCommand
         // ('get voltagebases')` → `GlobalResult`).
         let vbases = super::get_cmd::voltage_bases_result(ckt);
-        let mut out = format!("Set VoltageBases={vbases}\n");
-        if flags.contains(DssSaveFlag::CalcVoltageBases) {
-            out.push_str("CalcVoltageBases\n");
-        } else {
-            out.push_str("! CalcVoltageBases\n");
-        }
+        // Pascal `Writeln(F,'Set Voltagebases='+VBases); Writeln(F,
+        // 'CalcVoltagebases');`. The two spellings stay the port's own
+        // (`VoltageBases`/`CalcVoltageBases`) — one spelling per name, and the
+        // command lookup that re-reads them is case-insensitive.
+        let out = format!("Set VoltageBases={vbases}\nCalcVoltageBases\n");
         let path = dir.join("BusVoltageBases.dss");
         if let Err(e) = std::fs::write(&path, out) {
             self.errors
