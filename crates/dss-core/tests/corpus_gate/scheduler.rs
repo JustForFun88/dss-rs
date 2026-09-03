@@ -96,21 +96,39 @@ fn dir_key_of(abs: &str) -> String {
         .to_lowercase()
 }
 
-/// Apply the per-source property-forcing rule to a live case. `compare_all_
-/// properties` is a **capi_v0145-channel** feature (§1.2: property parity stays
-/// pinned to the capi oracle; the r4133 bridge has no all-properties capture),
-/// so it is forced only for cases that gate the capi channel; the r4133 request
-/// masks it off per-channel in [`run_one_case`].
+/// Apply the per-source property-forcing rule to a live case.
+///
+/// **Since R4133_PROPS RP4.1 (2026-09-03) the property compare runs on BOTH
+/// channels.** It used to be a capi_v0145-channel feature — §1.2 pinned property
+/// parity to the capi oracle while the r4133 bridge had no all-properties
+/// capture — so it was forced only for cases gating capi, and [`run_one_case`]
+/// plus [`seed_one`] masked it off per-channel on the r4133 request. Both
+/// premises are gone: the bridge grew `capture_all_properties`
+/// (`crates/dss-epri/src/capture.rs`) at the unified gate's Phase D, and RP4.1
+/// removed the two masks, so an r4133-gating case now has its property table
+/// compared exactly like a capi one. The request costs an extra per-case
+/// `? name.Like` + `? name.prop` sweep on the r4133 worker.
+///
+/// The rule is therefore **every live case**, with the plan's one cost guard:
+/// `kind=large*` decks stay out on the `solvable_now` arm. That guard is also
+/// definitional — the RP0.1/RP0.2 census population every property measurement
+/// in `R4133_PROPS_PLAN.md` rests on is exactly "live, non-`large`"
+/// ([`run_props_census`]).
+///
+/// Written without a channel predicate on purpose: `gates_capi() ||
+/// gates_r4133()` is a tautology over the three legal `engines` values
+/// (`capi_v0145|both|r4133`), and a tautological guard reads like a filter while
+/// filtering nothing (the RegControl no-load-zone precedent, CLAUDE.md).
 fn force_properties(source: &str, c: &mut SolvableCase, fam_props: bool) {
     match source {
         "solvable_now" => {
-            if c.gates_capi() && !c.kind.starts_with("large") {
+            if !c.kind.starts_with("large") {
                 c.compare_all_properties = true;
             }
         }
         _ => {
             // family: fam_props is the family-level flag (true for all three).
-            c.compare_all_properties |= fam_props && c.gates_capi();
+            c.compare_all_properties |= fam_props;
         }
     }
 }
@@ -356,13 +374,14 @@ fn run_one_case(uc: &UnifiedCase, ctx: &Ctx) -> CaseOutcome {
                     continue;
                 }
                 let channel = ctx.channel(uc, ch);
-                // The r4133 bridge's all-properties capture is capability-only
-                // (report tooling; §2.2) — §1.2 keeps property PARITY capi_v0145-only,
-                // so mask it off in both the request and compare on r4133.
-                let mut cc = uc.case.clone();
-                if ch == EngineChannel::R4133 {
-                    cc.compare_all_properties = false;
-                }
+                // R4133_PROPS RP4.1 (2026-09-03): the per-channel
+                // `compare_all_properties = false` that used to stand here is
+                // GONE — property parity is no longer capi_v0145-only, and the
+                // r4133 request now carries the same all-properties capture the
+                // capi one does ([`force_properties`], `dss-epri::capture`). The
+                // clone is what the compare closure below owns; it is no longer
+                // per-channel, so both channels see the same case.
+                let cc = uc.case.clone();
                 let req = build_run_request(&uc.abs, &cc);
                 let resp = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     channel.call(&req)
@@ -715,10 +734,11 @@ fn seed_one(uc: &UnifiedCase, ch: EngineChannel, ctx: &Ctx) -> SeedRecord {
     };
     let _guard = CorpusGuard::new(&uc.abs);
     let channel = ctx.channel(uc, ch);
-    let mut cc = uc.case.clone();
-    if ch == EngineChannel::R4133 {
-        cc.compare_all_properties = false;
-    }
+    // R4133_PROPS RP4.1 (2026-09-03): the seeding path's per-channel
+    // `compare_all_properties = false` went with the gate path's — a seeding
+    // measurement must see exactly what the gate compares, on both channels. The
+    // clone is what the compare closure below owns.
+    let cc = uc.case.clone();
     let req = build_run_request(&uc.abs, &cc);
     let resp = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| channel.call(&req))) {
         Ok(r) => r,
@@ -747,8 +767,10 @@ fn seed_one(uc: &UnifiedCase, ch: EngineChannel, ctx: &Ctx) -> SeedRecord {
 // Property census mode (`R4133_PROPS_PLAN.md` RP0.2 — DSS_PROPS_CENSUS).
 // ---------------------------------------------------------------------------
 
-/// Walk every live case on BOTH channels with `all_properties` forced on —
-/// bypassing the §1.1 gate masks that keep property parity capi-only — and
+/// Walk every live case on BOTH channels with `all_properties` forced on — which
+/// until R4133_PROPS RP4.1 (2026-09-03) meant bypassing the §1.1 gate masks that
+/// kept property parity capi-only, and since RP4.1 (which deleted those masks)
+/// means only ignoring the case's own `engines` key — and
 /// COLLECT every divergent cell instead of asserting. Writes
 /// `tmp/props_census.json` plus the per-channel RP0.1 extracts
 /// ([`crate::props_census`]); **asserts nothing about the data**.
@@ -763,7 +785,9 @@ fn seed_one(uc: &UnifiedCase, ch: EngineChannel, ctx: &Ctx) -> SeedRecord {
 /// which is where the census's GenDispatcher and Sensor shape rows come from.
 ///
 /// The normal gate path is untouched: nothing here runs unless the env var is
-/// set, and the masks at [`run_one_case`] / [`seed_one`] are unchanged.
+/// set. (The per-channel masks this doc used to point at, in [`run_one_case`]
+/// and [`seed_one`], were removed by RP4.1; what still separates this walk from
+/// the gate is that it ignores `engines` and asserts nothing.)
 pub(crate) fn run_props_census(raw_mode: &str) {
     let mode = CensusMode::from_env(raw_mode);
     let jobs = std::env::var("DSS_GATE_JOBS")

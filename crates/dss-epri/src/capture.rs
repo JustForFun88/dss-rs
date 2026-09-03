@@ -189,8 +189,9 @@ struct VariablesCap {
     values: Vec<f64>,
 }
 
-/// One element's every-property dump (§2.2 all-properties parity, report tooling
-/// only — NOT a gating channel). Serializes to the exact shape
+/// One element's every-property dump (§2.2 all-properties parity — a **gating**
+/// capture since R4133_PROPS RP4.1, 2026-09-03; report tooling only before it).
+/// Serializes to the exact shape
 /// `oracle_server.capture_all_properties` emits and `harness::PropsCap`
 /// deserializes: `{"element": name, "props": [[prop, value], ...]}` in
 /// `AllPropertyNames` (property-index) order.
@@ -623,10 +624,13 @@ fn capture_probes(engine: &Engine, specs: &[ProbeSpec]) -> Result<Vec<ProbeCap>,
 /// class's `AllPropertyNames` off the now-active object (`DSSElementV` mode 0),
 /// then read each value via `? name.prop` in property-index order.
 ///
-/// Report-tooling only: this channel is NOT compared for gating (property parity
-/// stays capi_v0145-only per the plan; the scheduler masks `all_properties` off
-/// on the r4133 request). Any non-zero errno on a read escalates, exactly like
-/// [`capture_probes`] (matching dss-python's raise-on-error).
+/// **Gating, since R4133_PROPS RP4.1 (2026-09-03).** This capture was
+/// report-tooling only while property parity was pinned to capi_v0145 and the
+/// scheduler masked `all_properties` off the r4133 request; RP4.1 removed both
+/// masks, so what this function returns is now value-compared against the port
+/// for every live non-`large` r4133-gating case. Any non-zero errno on a read
+/// escalates, exactly like [`capture_probes`] (matching dss-python's
+/// raise-on-error).
 fn capture_all_properties(engine: &Engine) -> Result<Vec<PropsCap>, EngineError> {
     let mut out = Vec::new();
     for name in engine.all_element_names() {

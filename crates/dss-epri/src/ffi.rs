@@ -67,8 +67,9 @@ pub struct DllFns {
 
     /// `DSSElementV` — mode 0 returns the active DSS object's
     /// `ParentClass.AllPropertyNames` (`DDSSElement.pas` line 63, type tag 4,
-    /// `\0`-separated). Backs the all-properties enumeration (§2.2, report-tooling
-    /// parity): `? name.Like` activates the object, then this reads its property
+    /// `\0`-separated). Backs the all-properties enumeration (§2.2 — report-tooling
+    /// parity when written, gating since R4133_PROPS RP4.1): `? name.Like`
+    /// activates the object, then this reads its property
     /// list — the WPG.1-safe path that covers terminal-less `DSS_OBJECT`s too.
     pub dss_element_v: FnV,
 

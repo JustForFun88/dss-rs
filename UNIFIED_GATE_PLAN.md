@@ -84,7 +84,7 @@ One schema for all four families (`asymmetric`, `controls`, `modes`, and the ven
 | `check_meters_monitors` | bool, false | Monitor channels + meter registers/zone per step. |
 | `probes` | `[{element, props:[..]}]` | `? element.prop` probes. |
 | `compare_variables` | `[string]` | PC-element `AllVariableValues`. |
-| `compare_eventlog` / `compare_ctrlqueue` / `compare_all_properties` / `compare_global_result` / `compare_autoadd_log` | bool | Unchanged. `compare_all_properties` remains family-forced **on the capi_v0145 channel only** and never for `kind=large*` (r4133's 0.15.x-shaped tables are exactly what `PROPS_015X` exists for; keep property parity pinned to capi_v0145). |
+| `compare_eventlog` / `compare_ctrlqueue` / `compare_all_properties` / `compare_global_result` / `compare_autoadd_log` | bool | Unchanged. *(Superseded 2026-09-03 by R4133_PROPS RP4.1: the compare runs on both channels; only the `kind=large*` guard survives.)* `compare_all_properties` remains family-forced **on the capi_v0145 channel only** and never for `kind=large*` (r4133's 0.15.x-shaped tables are exactly what `PROPS_015X` exists for; keep property parity pinned to capi_v0145). |
 | `pending` | bool, false | Unchanged (`assert_pending_errors_loudly`; applies regardless of engines). |
 | `expect_solve_abort` | string? | Unchanged; now valid on both channels (the Rust worker captures the DLL error first-class — an r4133 abort-message delta becomes a ledger `divergence` on the abort message, or the case narrows to `engines:"capi_v0145"` with cause). |
 | `expect_warnings` | `[string]` | Unchanged (drives `warn_and_continue`, errnos 567/570/1570). |
@@ -194,7 +194,7 @@ Init sequence per worker process: `LoadLibraryExW("tools/opendss/bin/r4133/OpenD
 | monitors (header/sample_count/channels) | `MonitorsI/S/V` (ByteStream parse — same binary layout dss-python decodes; cross-validated bit-for-bit in Phase 2) |
 | meters (registers, zone lists) | `MetersI/F/S/V` (replicate the `NONE`-placeholder and Delphi trailing-empty-element filtering from `capture_all_meters`) |
 | ctrlqueue | `CtrlQueueI`, `CtrlQueueV` (drop header/`No events` rows, as `capture_ctrlqueue`) |
-| all-properties enumeration | `DSSPut_Command("? name.Like")` + `DSSElementV` (AllPropertyNames) — the WPG.1-safe path (not needed for gating: all-props stays capi_v0145-only; implement anyway for report tooling parity) |
+| all-properties enumeration | `DSSPut_Command("? name.Like")` + `DSSElementV` (AllPropertyNames) — the WPG.1-safe path (not needed for gating: all-props stays capi_v0145-only; implement anyway for report tooling parity) *(Superseded 2026-09-03 by R4133_PROPS RP4.1: it IS needed for gating — the r4133 property table is compared.)* |
 | discrete state | `TransformersI/F/S`, `RegControlsI/F/S`, `CapacitorsI/S/V` (mirror `gc.capture_discrete`) |
 | eventlog | `DSSPut_Command("export eventlog")` → read CSV with UTF-8-BOM strip (port the `utf-8-sig` + per-line `\u{FEFF}` logic from `capture_eventlog`, r4133-specific WP-U2.5 behavior) |
 
