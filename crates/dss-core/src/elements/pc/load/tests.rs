@@ -684,6 +684,7 @@ fn direct_shortcut_selects_yprim_currents() {
     let direct = SysCtx {
         solution_count: 2,
         last_solution_was_direct: true,
+        ncim: false,
         ..default_recalc_ctx()
     };
     let mut i_direct = vec![Complex64::ZERO; 4];
@@ -717,6 +718,7 @@ fn direct_shortcut_selects_yprim_currents() {
     assert!(
         !SysCtx {
             last_solution_was_direct: true,
+            ncim: false,
             is_harmonic_model: true,
             ..default_recalc_ctx()
         }
@@ -726,6 +728,7 @@ fn direct_shortcut_selects_yprim_currents() {
     assert!(
         !SysCtx {
             last_solution_was_direct: true,
+            ncim: false,
             is_dynamic_model: true,
             ..default_recalc_ctx()
         }

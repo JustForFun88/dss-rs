@@ -1857,7 +1857,14 @@ of the offset-written array is **unshifted**. capi015 0.15.0b4 (e936d210) instea
 wrote `ce.GetCurrents(ElmCurrents)` at index 0 and read `ElmCurrents[j]` 1-based — a
 one-conductor shift. The port dropped the `+1` in
 `exec/view.rs::ncim_swing_source_currents` (the `TODO(compat)` removed) and now
-reproduces r4133's unshifted read.
+reproduces r4133's unshifted read. *(**Correction, 2026-09-03,
+R4133_PROPS_PLAN §RP3.13.** That code no longer lives in `exec/view.rs`: the
+override was deleted and the same unshifted read now sits in
+`solution::solution::ncim::ncim_stamp_swing_source_currents`, stamped into the
+swing source's `Iterminal` at convergence and echoed by
+`TVsourceObj.GetCurrents`' ported NCIM arm in
+`elements/pc/vsource/solve.rs`, so the element path and the corpus gate read one
+live state. The values below are unchanged.)*
 
 **Live r4133 probe evidence** (own `epri-worker` run, r4133 = `Version 11.0.0.1
 (64-bit build) - Charlottesville`, 2026-07-20; `ncim_pq` = the `pq_circuit(1)` unit
@@ -1982,6 +1989,77 @@ frozen capi015 goldens `tests/golden/ncim/` still pass **unchanged** (both decks
 Jacobian nnz + values, deltaF/deltaZ shape, and the byte-exact PV2PQ list) — the
 cadence changes how the fixpoint is reached, not the converged Jacobian or which
 generator ends up converted.
+
+---
+
+### UPDATE — three r4133 NCIM defects, proven and NOT reproduced (R4133_PROPS_PLAN §RP3.13, 2026-09-03)
+
+**Correction to the two UPDATEs above, dated 2026-09-03.** They say "the 4 NCIM
+corpus decks"; there are **five** r4133-gated cases that run `Set algorithm=NCIM` —
+the three `modes/ncim/*` decks, `Xmission_System_Kundur2Area` and
+`IEEETestCases/IEEE118Bus/master_file.dss` (`population.lock.json:538`,
+`engines: "r4133"`, `kind: "large"`). The same "4 NCIM decks" wording stands in the
+`ncim-oppoint` cause string of `tests/corpus/ledger.json` (a 2026-07-20 record kept
+as history; the cause is documentary and referenced by no entry). Nothing else in
+those UPDATEs changes: no ledger entry, no tolerance, no golden.
+
+**Three r4133 defects on the NCIM path, all measured on the live DLL and none
+reproduced** (CLAUDE.md 2026-08-02 policy; port-side fixes and pins in
+`R4133_PROPS_PLAN.md` §RP3.13 / STATUS §RP3.13, upstream reports in the gitignored
+`investigations/to_opendss/51..53`):
+
+1. **`UpdateGenQ` writes `deltaQNom[j]` over a length-1 array.** `InitPQGen`
+   (`R4133:Common/Solution.pas:1678-1679`) sizes `deltaQNom` to **1** for every
+   non-PV machine, but all three writers index it per phase — the PV arm's stamp
+   (`:2107`), the PV→PQ clamp (`:2152-2154`) and the PQ→PV promotion (`:2254-2256`), each
+   `j := 0 to NPhases-1`. A generator born `model=4` that the promotion arm later
+   flips to PV therefore writes past the end (unchecked in FPC). Measured
+   2026-09-03: the r4133 DLL **deadlocks** on an 8-line deck
+   (`tmp/rp313/repro_pq2pv.dss` — the `epri-worker` never replies, runs of 150 s
+   and 200 s). The port sizes it per phase, as r4133's own model-3 path does at
+   `:1928-1930` (`solution/solution/ncim.rs:566`).
+2. **`DOForceFlatStart` writes `NodeV[1..3]` on any circuit**
+   (`Solution.pas:1650-1654`). On a circuit with fewer than three nodes that runs
+   past the `NumNodes+1` allocation and **corrupts the DLL's heap**: measured on a
+   1-phase 8-line deck (`tmp/rp313/repro_1ph_nogen.dss`) r4133 still answers
+   (`converged=False`, 15 iterations, `SOURCEBUS.1 = 7199.557856794634 + 0j`,
+   `LOADBUS.1 = -2432.428875690357 - 4868.236987187187j`) and then cannot `quit`.
+   The port clamps to the node count (`ncim.rs:244`); on every circuit with ≥ 3
+   nodes the two are identical, and the port reproduces r4133's two node values
+   bit for bit, which is what proves the overrun did not perturb its own answer.
+3. **`TGeneratorObj.GetCurrents`' NCIM arm fills only conductors `1..NPhases`**
+   (`R4133:PCElements/generator.pas:1408-1409`), leaving the rest of the caller's
+   buffer untouched — visible as shared-`cBuffer` leftovers in r4133's own
+   `Export Currents`: `5.32907E-015` in conductor 4 of `modes/ncim/ncim_pv_pq`'s
+   generator and `853.417 A` in conductor 4 of all three Kundur generators. Its API
+   path zero-fills and returns `0.0`, which is what the corpus gate compares. Not
+   reproduced: the port zeroes the tail (`elements/pc/generator/accessors.rs:363`),
+   which is also what it emitted before the port gained the arm.
+
+**Where the port is being corrected, not r4133.** The same sub-step fixed two port
+bugs of its own — the missing NCIM reporting arm (the port reported the *declared*
+`kvar` through `varBase`/`YQFixed` instead of the dispatched `deltaQNom`:
+`Generator.G1` on `modes/ncim/ncim_pv_pq` read `-800.0, -431.8` kW/kvar /
+`42.0103 A ∠151.09°` against r4133's `-800.0, -1500.0` / `78.5593 A ∠117.52°`, a
+1068.2 kvar KCL miss at `genbus`) and the two panics the overruns above map to.
+**A third port gap, first recorded open and then closed inside the same sub-step
+(2026-09-03):** the port had no counterpart of `TVsourceObj.GetCurrents`' NCIM arm
+(`R4133:VSource.pas:1194`), so the ordinary `Export Currents` reported
+`YPrim·V − Iinj`, which cancels at the ideal-EMF swing bus: `Vsource.SOURCE` phase-A
+magnitude was `3.24074e-05` / `3.24074e-05` / `4.42577e-05` / `0.0106809` A on
+`ncim_pq` / `ncim_pv_pq` / `ncim_midi` / `Kundur2Area` against r4133's `90.0718` /
+`64.2127` / `124.964` / `20295.6`. RP3.13 ported `CalcInjCurrAtBus`
+(`R4133:VSource.pas:1085`) as `solution::solution::ncim::ncim_stamp_swing_source_currents`,
+which `do_ncim_solution` calls once after the Newton loop and stamps into the
+source's `Iterminal`, and `elements/pc/vsource/solve.rs`'s new NCIM arm echoes that
+stamp — so `Export Currents` now prints `90.0718 ∠158.27` / `64.2127 ∠-150.28` /
+`124.964 ∠161.49`, digit-identical to r4133's own `EXP_CURRENTS.CSV` rows (pin
+`exec::tests::ncim::ncim_vsource_export_currents_match_oracle`). With that the
+`exec/view.rs` override `ncim_swing_source_currents` — the gate's private reader,
+pinned by `exec::tests::ncim::ncim_vsource_reported_currents_match_oracle` (the
+table further up this section) — is **deleted**: its values are unchanged bit for
+bit and are now produced by the element path itself. No gated channel moved, no
+ledger entry, no golden byte.
 
 ---
 

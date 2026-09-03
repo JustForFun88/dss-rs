@@ -338,6 +338,36 @@ impl CktElement for Generator {
             curr.fill(Complex64::ZERO);
             return;
         }
+        // Pascal `TGeneratorObj.GetCurrents` (r4133 `PCElements/generator.pas`
+        // l.1406-1410) — the NCIM arm, which precedes everything else, exactly as
+        // here: `if Algorithm = NCIMSOLVE then for i := 1 to nphases do Curr[i] :=
+        // ITerminal[i] else inherited GetCurrents`. Under NCIM the reported
+        // terminal current IS the stamp `UpdateGenQ` wrote from `deltaQNom`
+        // (`Common/Solution.pas` l.2108 on the PV arm, l.2305 on the ELSE arm,
+        // both at the just-updated `NodeV`); the machine's power-flow kernels
+        // (`DoPVTypeGen`/`DoFixedQGen` &c.) are never consulted. That is what
+        // makes a PV→PQ-converted machine report its **dispatched** Q rather than
+        // the declared `kvar` its `varBase`/`YQFixed` still carry: on
+        // `tests/corpus/modes/ncim/ncim_pv_pq.dss` r4133 reports
+        // `Generator.G1 = (-800.0 kW, -1500.0 kvar)`, `|I| = 78.5593 A ∠117.52°`
+        // and KCL closes at `genbus`, where this port reported the declared
+        // `(-800.0, -431.8)` / `42.0103 A ∠151.09°` and missed KCL by 1068.2 kvar
+        // (own measurement 2026-09-03, RP3.13).
+        //
+        // r4133 copies only conductors `1..NPhases` and leaves the rest of the
+        // caller's buffer untouched — visible as the shared-`cBuffer` leftovers
+        // its own `Export Currents` prints in conductor 4 (853.417 A on all three
+        // Kundur generators, own probe 2026-09-03). Its API path zero-fills, and
+        // that zero is what the corpus gate compares; not reproduced — zero the
+        // rest.
+        if sys.ncim {
+            curr.fill(Complex64::ZERO);
+            let n = self.cd.nphases.min(curr.len()).min(self.cd.iterminal.len());
+            curr[..n].copy_from_slice(&self.cd.iterminal[..n]);
+            self.cd.iterminal_updated = true;
+            self.cd.mark_iterminal_solved(sys.solution_count);
+            return;
+        }
         // Pascal `TPCElement.GetCurrents` l.137 (`LastSolutionWasDirect`
         // shortcut): report `YPrim · Vterminal` after a direct solve.
         if sys.pc_direct_shortcut() {
