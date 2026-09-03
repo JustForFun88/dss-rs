@@ -36,6 +36,9 @@ RP0.2 knob (order RP0.2 before RP0.1 in that case, and say so in STATUS).
 > **G1.1 is superseded by this plan**: its deliverable (the unmask) lands as
 > RP4.1; GOLDEN_REBASE WP-G3 sub-steps that presume live props on both channels
 > (G3.4 `GOLDEN_REBASE_PLAN.md:928`, G3.5 `:941`) wait for RP4.1.
+> *(**RP4.1 landed 2026-09-03** — G1.1's deliverable shipped and its kill
+> criterion did not fire, so G3.4/G3.5 are unblocked; §RP4.1's as-executed notes
+> and `STATUS.md` §RP4.1.)*
 >
 > The construction has three parts, in this order: **1)** make the evidence
 > durable and the property tables complete (WP-RP0 evidence + census rails,
@@ -162,6 +165,11 @@ product-crate lines; it added no precondition to the flip either, all four of
 its decks being capi-only), and after its own
 in-sub-step precondition, the **per-cell narrowing of the 20 mixed echo rows**
 (RP2.3's audit settlement, §RP4.1's first paragraph); RP5 is last.
+*(**All of that ordering is discharged: RP4.1 landed 2026-09-03** with both
+preconditions met — the 20 mixed echo rows narrowed per cell, the eight staged
+`property` entries landed — and every RP1–RP3 sub-step it waited on landed
+before it. §RP3.10 and §RP3.11 remain, outside this rule, as the next paragraph
+says.)*
 **Two RP3 sub-steps are deliberately outside that rule.** **§RP3.10** (the
 reproduced `QMode=0` dispatch, opened by RP3.2's audit settlement) is a
 solve-side fix with no property cell of its own — our `kvar` render reads
@@ -2410,7 +2418,8 @@ stays).** Landed in the single RP4.1 commit; the full record is `STATUS.md`
   literal "`visits > 0` summed over the tables" is unsound here, because sibling
   unit tests in the same binary drive the comparator and moved those statics
   through the whole masked era.
-- **Gate:** 4 382 passed / 0 failed / 5 ignored per lane over 74 binaries;
+- **Gate:** 4 382 passed / 0 failed / 5 ignored per lane over 74 binaries
+  (**4 427** on the settled tree, `corpus_gate` 135 → 138 tests);
   `corpus_gate` 523/523 unfiltered, ledger 53 entries / 1 534 hits, none stale.
   `corpus_gate` wall 141.78 s default / 142.94 s parity against 142.90 s /
   139.68 s before the unmask. `lane_diff` run anyway (no product line moved):
@@ -2425,6 +2434,13 @@ stays).** Landed in the single RP4.1 commit; the full record is `STATUS.md`
   rows; and `RP3_LEDGERED`'s retirement is now checked per **spelling**
   (`RP3_LEDGERED_UNNAMED`), since an entry pins one exact `(rust, oracle)` while
   the interception retires the pair.
+- **As-executed line-number corrections.** The citations in the pre-execution
+  text above drifted (`scheduler.rs:357-363` → `:359-365`, `:710-717` →
+  `:717-721`, `:97-114` → `:97-116`; `harness/mod.rs:1452-1458` → `:3043-3049`;
+  `capture.rs:619-664` → fn `:630-662`, doc `:618-628`; the population figures
+  "96 r4133-only / 366 both / 462 gating" → 97 / 367 / 464 on the lock). They are
+  recorded in `STATUS.md` §RP4.1 and deliberately **not** edited into the
+  historical text here (coordinator decision 7, 2026-09-02).
 
 ---
 

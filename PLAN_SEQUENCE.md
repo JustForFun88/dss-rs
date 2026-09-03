@@ -89,8 +89,9 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               (merged to `update` @ 4d3fc2d7); WP-G1 (live gate
                               to fastdss parity) open — G1.1 fired its kill
                               criterion 2026-08-08 and is handed to
-                              R4133_PROPS_PLAN.md (its RP4.1 delivers the
-                              unmask; G3.4/G3.5 wait on it), G1.2 (the
+                              R4133_PROPS_PLAN.md (its RP4.1 delivered the
+                              unmask on 2026-09-03, so G3.4/G3.5 are
+                              unblocked), G1.2 (the
                               ESPVLControl corpus deck, the last zero-coverage
                               class) landed 2026-08-29 on `r4133-props`, and
                               G1.3a-d + G1.4-G1.11c remain; WP-G3–G5 queued.
@@ -109,6 +110,10 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               next the four root-causes plus RP3.5-RP3.8
                               (WP-RP3), then the unmask (RP4.1 =
                               G1.1's deliverable, kill criterion re-armed).
+                              **RP4.1 LANDED 2026-09-03** — `all_properties` is
+                              compared on the r4133 channel for every live
+                              non-`large` case and the re-armed kill criterion
+                              did not fire; next RP3.11, then RP3.10 and WP-RP5.
                               RP5.2 flips this row to COMPLETE.
                               Runs inside the GOLDEN_REBASE window on branch
                               `r4133-props` off `update`.
