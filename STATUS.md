@@ -307,8 +307,10 @@ worst cell **live** at exactly 6.431124e-05 and puts `under-floor` at **49 381
 cells / 46 538 in scope** over 1 957 spellings and 69 pairs, `UNCLAIMED` down
 51 105 → **1 724** (47 427 → **889**, 104 → 59 pairs) with **every one of the
 889 attributed to an RP3.x sub-step** (all of them open when RP2.4 measured it;
-RP3.1 and RP3.2 have since settled 24 + 4 = **28** of the 889, and they stay
-UNCLAIMED until their six drafted entries land at RP4.1 — §1.1(e), whereas
+RP3.1 and RP3.2 have since settled 24 + 4 = **28** of the 889, and they stayed
+UNCLAIMED until their six drafted entries **landed at RP4.1 on 2026-09-03**
+(§1.1(e); the HEAD census now reads those 28 cells as `ledger-hit` — 28 of the
+30 in-scope hits, the other 2 being RP3.4's), whereas
 **RP3.3's 2 left the bucket at once**, its exclusion being an echo row the tree
 holds now: the 2026-08-24 re-run measures `UNCLAIMED` **1 722 / 887 in scope /
 58 pairs** against `echo-row` **488 019 / 468 046 in scope, 170 spellings, 82
@@ -344,7 +346,7 @@ wires it (`src/Controls/SwtControl.pas:185`) and the port follows, so **no engin
 change was owed**. Reported upstream (`investigations/to_opendss/43-*`, local),
 excluded by **two drafted per-case ledger `property` entries** — never a
 `PROPS_ECHO_R4133` row, which would misname a live getter — that land at RP4.1
-per §1.1(e), and held meanwhile by two new pins. `DECLARED_RP3` stays
+per §1.1(e) (**both landed 2026-09-03**), and held meanwhile by two new pins. `DECLARED_RP3` stays
 **`(7, 4, 7)`**: the rows may not leave the work list while the tree holds no
 exclusion for them, and the new per-pair work list `RP3_ROUTING` records each of
 the four sub-steps' state instead — and, since the same-day audit settlement,
@@ -368,7 +370,8 @@ typing `kvar=500` renders `0`, and `Edit kvar=777` still renders `0` while `PF`
 moves to `0.968058` — parsed, then ignored by the render; `Save Circuit` writes
 `kvar=0` back. Our physics already match (probed terminal powers agree on all
 five windgen decks), so again **no engine change was owed**: report 44 (local) +
-**four** drafted per-case entries + four pins, `DECLARED_RP3` unmoved. Its
+**four** drafted per-case entries (**all four landed 2026-09-03 at RP4.1**) +
+four pins, `DECLARED_RP3` unmoved. Its
 same-day settlement hardened both census readers (quoted declarations and
 `Edit`/`BatchEdit` lines are in scope now), derived the `QMode=` mechanism from
 the decks instead of asserting it, and gave the one reproduced upstream bug the
@@ -419,8 +422,8 @@ shape stayed `LEDGER` and **no `PROPS_ECHO_R4133` row was added**: the exclusion
 is **two drafted per-case entries** —
 `gic-pct-r2-honoured-gictransformer-r4133-props` and
 `gic-pct-r2-honoured-midi-r4133-props`, reusing the existing
-`gic-pct-r2-ignored` cause verbatim — landing at RP4.1 per §1.1(e) and held
-meanwhile by two new pins. No new upstream report: report **07** (local) is
+`gic-pct-r2-ignored` cause verbatim — landing at RP4.1 per §1.1(e) (**both
+landed 2026-09-03**) and held meanwhile by two new pins. No new upstream report: report **07** (local) is
 already written against r4133 and reproduces exactly this surface, so the next
 free number stays **45** (RP3.5 has since taken it). The census derives to **2 cells, both in scope**, one
 per `%R`-specified GICTransformer (`gictransformer_gic.dss` `tg3`,
@@ -1067,6 +1070,10 @@ zero, as a measurement rather than a judgement**; a landed one would fail
 `assert_all_hit` as NEVER APPLIED at RP4.1. Until the RP4.1 unmask lets a channel
 witness them, the port's value there is held by plan §1.1(c)'s holder pin
 `exec::tests::controls::swtcontrol_state_renders_per_phase_on_the_r4133_only_decks`.
+*(**Witnessed 2026-09-03**: the RP4.1 unmask compared exactly those 80 cells —
+40 on `swtcontrol.normal` and 40 on `swtcontrol.state` — and every one matched
+without normalization, which is what exposed the two `ArrayForm` rows as stale
+and retired them into `RP37_SUPERSEDED`; §RP4.1 record. The holder pin stays.)*
 The other **19 cells** are out of scope, on five `capi_v0145` cases, and they are
 excluded by **five landed entries under one new cause**
 (`swtcontrol-per-phase-state-render`): `controls:swtcontrol/swtcontrol_lock.dss`
@@ -1527,7 +1534,8 @@ rows 250/250/250/250 + 6. Two silent holes are recorded rather than fixed:
 `StoCtrl_Current_PeakShave/master.dss` holds a controller but is `kind: large`,
 so the scheduler never property-compares it at all (which is why the exposure
 list has 22 SC cases and only 20 red), and the three `r4133`-only cases have no
-property compare until RP4.1. The disposition is a `SKIP_PROPS` row group **(g)**
+property compare until RP4.1 (*they gained one on 2026-09-03 — §RP4.1; the
+`SKIP_PROPS` group (g) rows keep masking the five properties on both channels*). The disposition is a `SKIP_PROPS` row group **(g)**
 — `("IndMach012","PF")` + the four `("StorageController", …)` — mirrored in
 `SKIP_PROPS_CAPI_ONLY` so the two lists still **partition** `SKIP_PROPS`
 (12 → 17 and 5 → 10 rows; `SKIP_PROPS_BOTH_CHANNELS` unchanged at 7), per
@@ -1609,7 +1617,9 @@ absolute from ours while the property compare's floor is `tol.i_abs = 1e-6` at
 every tier — the cell matches before any display floor is consulted (verified
 non-vacuous: `Capacitor.cuf` on the same case, gap 3.4e-3, *is* reported).
 `kwhtotal` is zero too. **The 2 unclaimed cells are RP4.1's inheritance, already
-root-caused:** on `modes:makeposseq/makeposseq_ctrl.dss` the port answers
+root-caused** (*disposed 2026-09-03: `makeposseq_ctrl.dss` stays
+`engines: capi_v0145` per coordinator decision 5, so no entry was landed and the
+two cells are accounted out of scope in the §RP4.1 record's per-owner table*): on `modes:makeposseq/makeposseq_ctrl.dss` the port answers
 `kWTotal` `33.3333333333333` and `kWActual` `-0.333333333333333` where r4133
 says `100` / `-1` — exactly a factor of `Fnphases` — because r4133's
 `TStorageObj.MakePosSequence` emits `' kWrating=%-.5g'`
@@ -2633,11 +2643,9 @@ it any more. **RP3.12 landed 2026-09-03** — RP3.9's P0 open item,
 the 34 `controls:autotrans/*` `wdgcurrents` cells, is settled as an r4133
 `UPSTREAM_BUG` that no lane reproduces (§RP3.12 record above); it adds no
 precondition to the flip, since all four of its decks are capi-only and the
-r4133 channel gates none of them. The two RP3 sub-steps still open —
-§RP3.10 (the reproduced `QMode=0` dispatch, user go-ahead required) and
-§RP3.11 (the `Save`/`Dump` re-serialization surface) — are outside that rule
-by construction: they run after RP4.1 and block §RP5.2, not the flip
-(plan §0).
+r4133 channel gates none of them. (The two RP3 sub-steps still open, §RP3.10 and
+§RP3.11, were outside that rule by construction — they block §RP5.2, not the
+flip, plan §0 — and are the "Next" line below.)
 
 **RP4.1 landed 2026-09-03** — WP-RP4 is closed and G1.1's deliverable shipped:
 `all_properties` is compared on the r4133 channel for every live non-`large`
@@ -6459,7 +6467,11 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
 > 2026-09-03** as well (audit settled the same day: 12 findings, 11 distinct —
 > 9 fixed, 2 recorded, 0 refuted) — RP3.9's P0 open item, settled
 > `UPSTREAM_BUG`/never-reproduced with zero product-crate lines, and no
-> precondition to the flip either, its four decks being capi-only. The WP's two
+> precondition to the flip either, its four decks being capi-only. **RP4.1 itself
+> landed 2026-09-03** (audit settled the same day: nine dispositions, eight fixed,
+> one recorded), taking the eight `property` entries RP3.1/RP3.2/RP3.4 staged into
+> `ledger.json` and retiring their `RP3_ROUTING` rows — so nothing below is
+> "staged" any more; the §RP4.1 record in §1 carries the landing. The WP's two
 > remaining sub-steps, §RP3.10 and §RP3.11, run after RP4.1 and block §RP5.2
 > instead (plan §0). The RP3.6, RP3.7, RP3.8, RP3.9 and RP3.12 records live in
 > §1 above, beside RP3.5's narrative one.
@@ -6526,7 +6538,10 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     echo would be a false statement). Per §1.1(e) the two entries are **drafted
     here and land in RP4.1's unmask commit** — earlier they would fail
     `assert_all_hit` as NEVER APPLIED, the r4133 property compare being masked
-    until then. Verbatim, to be copied into `tests/corpus/ledger.json` at RP4.1:
+    until then. Verbatim, to be copied into `tests/corpus/ledger.json` at RP4.1
+    (*copied verbatim and **landed 2026-09-03** in RP4.1's commit `59e521e5`,
+    with the cause below; both entries hit — 24 in-scope cells — on the first
+    unmasked run*):
 
     ```json
     "swtcontrol-delay-not-wired": "EPRI r4133 never wires SwtControl property 5 `Delay`: the Edit CASE (Version8/Source/Controls/SwtControl.pas:195-218) has arms 1,2,3,4,6,7,8,9 and NO arm 5, so `delay=` lands only in the echo store (:192-193) while `TimeDelay` keeps its Create value 120.0 (:310) and the LIVE getter renders it (:588, Format('%-.7g',[TimeDelay])). dss_capi 0.14.5 wires the property through its typed table (src/Controls/SwtControl.pas:185, PropertyOffset[ord(TProp.Delay)] := ptruint(@obj.TimeDelay)) and the port follows it, so a deck that sets `delay=` reads back its own value here and 120 there. The divergence is RENDER-ONLY on r4133: nothing consumes TimeDelay there — Sample's queue-pushing body is commented out wholesale (:484-507, pushes at :492/:498, and LockCommand is commented out of the class declaration at :39 so the block no longer even compiles), DoPendingAction likewise (:396-408), and set_States acts immediately (:532-549); the two decks' event log and control queue are empty under r4133 and are live-compared. Per the 2026-08-02 policy the port keeps the correct behavior (the property is wired) and the upstream defect is reported (investigations/to_opendss/43-swtcontrol-delay-not-wired.md, local) + excluded here + pinned by the expected-value pins named in `source`. Exact-pair (a discrete value jump, not display precision)."
@@ -6780,7 +6795,9 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     none for this pair (only `windgen.dynout`). Per §1.1(e) the **four** entries
     (one per diverging case; the fifth deck owes none) are **drafted here and
     land in RP4.1's unmask commit**. Verbatim, to be copied into
-    `tests/corpus/ledger.json` at RP4.1:
+    `tests/corpus/ledger.json` at RP4.1 (*copied verbatim and **landed
+    2026-09-03** in RP4.1's commit `59e521e5`, with the cause below; all four
+    hit — 4 in-scope cells — on the first unmasked run*):
 
     ```json
     "windgen-kvar-renders-dispatched-q": "EPRI r4133 renders WindGen property 11 `kvar` from the DISPATCHED reactive power instead of the base kvar the property documents: GetPropertyValue arm 11 (Version8/Source/PCElements/WindGen.pas:2896) is Format('%.6g',[presentkvar]) and Get_Presentkvar (:2297-2300) returns WindGenvars.Qnominalperphase*0.001*Fnphases. The Edit arm EXISTS (:629 `11: Presentkvar := Parser.DblValue`) and Set_Presentkvar (:2996-3009) stores the value in kvarBase, so this is NOT an echo: probed live on r4133 via epri-worker, a deck typing `kvar=500` renders `0`, and after `Edit kvar=777` the render is still `0` while `? PF` renders 0.968058 (= 3000/sqrt(3000^2+777^2)) — the value IS parsed and the getter reports a different live field. The rendered zero on these decks comes from a second, independent upstream defect: the steady-state `case WindModelDyn.QMode` (:1276-1322) implements arms 1 (PF) and 2 (Volt-Var) but has NO arm 0, while QMode defaults to 0 (:1020) and both the property help (:429-430 'Q control mode (0:Q, 1:PF, 2:VV).') and WTG3_Model.pas:252 document 0 as constant-Q — so `Else kvarCalc := 0` (:1320-1321) zeroes the dispatch and the getter reports that zero. The render is wrong independently of it: with QMode=1 the same deck renders 363.54 for a typed kvar=500 (the operating-point Q), and in dynamics — where :1254 skips the Q block — it renders Set_Presentkvar's intermediate 777 while kvarBase is 792.718441186736 and the measured terminal Q is -37087.76 kvar. The sibling class settles it inside the same trunk: Generator has the identical Get_Presentkvar (Generator.pas:2402-2405) and the identical property help (:396) yet renders the base (Generator.pas:3018, Format('%.6g',[kvarBase])). Consequence beyond the API: TDSSObject.SaveWrite reads PropertyValue[] (DSSObject.pas:156), which is virtual-dispatched to this getter (DSSObject.pas:117-120), so `Save Circuit` writes `kvar=0` for a machine built with kvar=500 (produced on r4133) and the reload resets PFNominal to 1.0 and kvarMax/kvarMin to 0 (:3001-3008) — silent model corruption. dss_capi 0.14.5 has no WindGen class at all, so there is no second oracle witness; the port renders kvar_base (crates/dss-core/src/elements/pc/windgen/accessors.rs:431), exactly as its Generator does and as r4133's own Generator does. Per the 2026-08-02 policy the port keeps the correct behavior and the upstream defect is reported (investigations/to_opendss/44-windgen-kvar-renders-dispatched-q.md, local) + excluded here + pinned by the expected-value pins named in `source`. The two engines' SOLVED state is unaffected and stays fully compared: probed terminal powers agree on every windgen deck (power-flow Q -2.1e-05/-4.2e-05 kvar on both; dynamics -37087.81 vs -37087.76 and -29216.72 vs -29216.67 kvar). Exact-pair (a discrete value jump, not display precision)."
@@ -7365,7 +7382,8 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     `makeposseq` cases and **false as stated** for `line_spacing_asym.dss`; the
     mechanism above is what the record carries.
   - **The two drafted entries, VERBATIM — they land at RP4.1 per §1.1(e), NOT
-    here.** Both reuse the existing `gic-pct-r2-ignored` cause unchanged (it
+    here** (*landed 2026-09-03 in RP4.1's commit `59e521e5`, verbatim, on the
+    pre-existing `gic-pct-r2-ignored` cause; both hit — 2 in-scope cells*)**.** Both reuse the existing `gic-pct-r2-ignored` cause unchanged (it
     already names the r4133 lines), and the ids mirror the capi originals'
     `-props` suffix because plain `…-r4133` is taken by the G2.5 solved-model
     exclusions. Schema checked against `corpus_gate/ledger.rs:1420-1560`.
@@ -7937,6 +7955,16 @@ the site comment carries each row's measured cost.
   RP5.2 closing record, or price a `large`-deck property sweep (the `?`-sweep on
   the biggest feeders is the whole reason for the guard).
 
+- **`DECLARED_RP35`'s four remaining declared pairs owe a per-pair disposition —
+  OPEN (R4133_PROPS RP4.1, 2026-09-03).** RP4.1 retired only the two pairs its
+  unmask measured (`swtcontrol.normal`/`.state` → `RP37_SUPERSEDED`); `line.units`
+  (RP3.5), `line.linecode` (RP3.6), `relay.normal` and `relay.state` keep their
+  declared rows (`DECLARED_RP35 = (5, 4, 2)`). The HEAD census shows no divergent
+  cell for any of the four either, but a superseded row owes a **per-pair live
+  disposition, a cited r4133 getter arm and a pin**, and nobody has produced that
+  trio for them. Not RP4.1 work (the same item is recorded in the §RP4.1 record);
+  it belongs to whoever closes the WP-RP3 accounting, at the latest RP5.2.
+
 - **r4133 `New espvlcontrol.*` access violation — upstream-report candidate, OPEN
   (GOLDEN_REBASE G1.2, 2026-08-29).** The official EPRI r4133 DLL cannot
   instantiate class `ESPVLControl` at all (`#303`, read of `0x0`; offsets `15440`
@@ -7997,8 +8025,12 @@ the site comment carries each row's measured cost.
   R4133_PROPS §RP3.12's own gate and settlement runs:** seven and then six
   untracked files in the same directory (`AutoHLT_*` / `auto3bus_*`, the
   spelling and the exact set varying again), both lanes green with them present,
-  both removed by exact name; no tracked corpus or golden file moved. Four
-  sightings make it a pattern, not a fluke:
+  both removed by exact name; no tracked corpus or golden file moved. **Fifth and
+  sixth sightings, 2026-09-03, at R4133_PROPS §RP4.1's gate and settlement runs:**
+  eight and then five untracked files in the same directory, both lanes green
+  with them present, both removed by exact name; `lane_diff.ps1`'s own artifact
+  sweep removed the same class in its run without touching the two intended
+  working-tree changes. Six sightings make it a pattern, not a fluke:
   whoever picks it up should start with `DSS_GATE_JOBS=1` per the G2.2d note.
 
 **Carried-forward handoffs — work a *declared-complete* plan deferred to a
