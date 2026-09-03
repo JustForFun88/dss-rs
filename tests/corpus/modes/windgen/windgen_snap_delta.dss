@@ -1,6 +1,14 @@
 ! WP-U1.8 — WindGen snapshot power flow, delta connection, PF=0.9.
 ! Exercises the delta YPrim/injection path (Y/3 conversion, L-N Vmag) and the
-! QMode=0 (constant-Q via PF) reactive dispatch. oracle capi015.
+! QMode=0 CONSTANT-Q reactive dispatch -- the arm EPRI r4133 does not have:
+! SetNominalGeneration's `case WindModelDyn.QMode` (WindGen.pas:1276-1322) has no
+! `0:` arm, so its `Else kvarCalc := 0` (:1320-1321) injects ZERO vars here however
+! pf=0.9 reads. The port implements the documented constant-Q arm instead
+! (`0: kvarCalc := kvarBase`, R4133_PROPS_PLAN RP3.10, both lanes) and dispatches
+! this deck's kvarBase = 726.4831572567788 kvar. Its whole solved model therefore
+! diverges from r4133: excluded per case in tests/corpus/ledger.json
+! (windgen-qmode0-constant-q-snapdelta-r4133, cause windgen-qmode0-no-arm) and
+! pinned by the unit test qmode0_dispatches_the_base_kvar instead. oracle capi015.
 Clear
 New Circuit.wtg_delta basekv=12.47 phases=3 bus1=srcbus
 New Line.l1 bus1=srcbus bus2=wbus phases=3 r1=0.1 x1=0.5 length=1

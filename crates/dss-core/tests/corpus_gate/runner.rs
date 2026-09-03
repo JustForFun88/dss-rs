@@ -560,7 +560,17 @@ pub(crate) fn compare_capture(
             "{ctx}: oracle variables-capture count differs from the manifest spec"
         );
         for v in &cp.variables {
-            compare_variables(dss, v, tol, &ctx);
+            // Per-variable ledger exclusions (`R4133_PROPS_PLAN.md` RP3.10).
+            // The key is the lowercased `element:variable` pair —
+            // `windgen.w1:pgen` — with `:` as the separator because the element
+            // name already carries the class dot; it is the `element.prop`
+            // probe key above one level down. `compare_variables` still asserts
+            // the variable COUNT unconditionally, so an exclusion can only ever
+            // drop a value comparison, never hide a missing variable.
+            let elem = v.name.to_lowercase();
+            compare_variables(dss, v, tol, &ctx, &|var: &str| {
+                excluded("variables", Some(&format!("{elem}:{}", var.to_lowercase())))
+            });
         }
         if c.compare_eventlog {
             // A ledger eventlog `line_re` scope normalizes the diffing oracle line

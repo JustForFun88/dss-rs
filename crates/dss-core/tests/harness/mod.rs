@@ -4013,7 +4013,31 @@ pub struct VariablesCap {
 }
 
 /// Compare a PC element's state variables (`Dss::element_variables`).
-pub fn compare_variables(dss: &mut Dss, exp: &VariablesCap, tol: &Tolerances, ctx: &str) {
+///
+/// `skip` is the ledger hook (`R4133_PROPS_PLAN.md` RP3.10): it is asked about
+/// every variable, by the name the **port** gives that index, and returns `true`
+/// when this (case, channel) does not compare that one. The granularity is
+/// per-variable on purpose — the only alternative to it, dropping the element
+/// from the manifest's `variables` list, would mask the deck's whole dynamics
+/// surface (22 state variables) to excuse the 3-4 an engine fix moves. Pass
+/// `&|_| false` where no ledger is in play.
+///
+/// Two guarantees hold whatever `skip` answers:
+///
+/// * the **count** assertion is unconditional — an excluded variable is still a
+///   variable the port must expose, so a dropped, added or reordered surface
+///   still reds the gate;
+/// * an index `skip` drops must carry the SAME name on both engines
+///   (ASCII-case-insensitive). The mask selects by name, so a rename on either
+///   side would otherwise slide it silently onto a clean channel; the assertion
+///   is what makes an exclusion mean the variable it names.
+pub fn compare_variables(
+    dss: &mut Dss,
+    exp: &VariablesCap,
+    tol: &Tolerances,
+    ctx: &str,
+    skip: &dyn Fn(&str) -> bool,
+) {
     let act = dss
         .element_variables(&exp.name)
         .unwrap_or_else(|| panic!("{ctx}: no element {} (variables)", exp.name));
@@ -4024,14 +4048,38 @@ pub fn compare_variables(dss: &mut Dss, exp: &VariablesCap, tol: &Tolerances, ct
         exp.name,
         exp.var_names
     );
+    let names = dss
+        .element_variable_names(&exp.name)
+        .unwrap_or_else(|| panic!("{ctx}: no element {} (variable names)", exp.name));
+    assert_eq!(
+        names.len(),
+        act.len(),
+        "{ctx}: {} exposes {} variable value(s) but {} name(s)",
+        exp.name,
+        act.len(),
+        names.len()
+    );
     for (i, (a, e)) in act.iter().zip(&exp.values).enumerate() {
+        let port_name = names[i].as_str();
+        let oracle_name = exp.var_names.get(i).map(String::as_str).unwrap_or("?");
+        if skip(port_name) {
+            assert!(
+                port_name.eq_ignore_ascii_case(oracle_name),
+                "{ctx}: {} variable {} is excluded by name ({port_name:?}), but the \
+                 oracle calls that index {oracle_name:?} — the exclusion would drop \
+                 a different variable than the one it names",
+                exp.name,
+                i + 1
+            );
+            continue;
+        }
         let allowed = tol.i_abs + tol.i_rel * e.abs();
         assert!(
             (a - e).abs() <= allowed,
             "{ctx}: {} variable {} ({}) differs: {a} vs {e} (|diff|={:.3e} > allowed {allowed:.3e})",
             exp.name,
             i + 1,
-            exp.var_names.get(i).map(String::as_str).unwrap_or("?"),
+            oracle_name,
             (a - e).abs()
         );
     }

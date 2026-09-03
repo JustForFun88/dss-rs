@@ -40,9 +40,10 @@ has shrunk to a precision-compat lane and is scheduled for full teardown.
 
 **In flight.** `R4133_PROPS_PLAN.md` on branch **`r4133-props`** (forked from
 `update` @ `2ee6bb00`), inside the `GOLDEN_REBASE_PLAN.md` window
-(`PLAN_SEQUENCE.md` rows 5a/5b). **WP-RP0, WP-RP1 and WP-RP2 COMPLETE**;
-**WP-RP3 open**, RP3.1–RP3.9 and RP3.11–RP3.13 landed and **§RP3.10 the last one
-left**; **WP-RP4 closed** — RP4.1, G1.1's deliverable, landed 2026-09-03.
+(`PLAN_SEQUENCE.md` rows 5a/5b). **WP-RP0, WP-RP1, WP-RP2 and WP-RP3 COMPLETE**;
+§RP3.10 landed 2026-09-04 in one commit (verdict `FIX` — the reproduced
+`QMode=0` zero-var dispatch is gone from both lanes), its audit pair still to
+settle; **WP-RP4 closed** — RP4.1, G1.1's deliverable, landed 2026-09-03.
 Execution is single-branch, never parallel worktrees: `tests/corpus/ledger.json`,
 `tests/corpus/manifests/population.lock.json` and `tests/golden/golden.lock.json`
 are fail-on-stale and are rewritten by this plan and by the still-open
@@ -88,11 +89,12 @@ sub-step. Full record:
 [`r4133-props-rp2.md`](docs/phase-records/r4133-props-rp2.md) section
 "R4133_PROPS WP-RP2 — condensed records".
 
-**WP-RP3 (genuine-jump closure) — OPEN**, twelve sub-steps landed, one left.
-Nothing in it blocked the unmask; §RP3.10 blocks §RP5.2 alone. Full records:
+**WP-RP3 (genuine-jump closure) — COMPLETE**: all thirteen sub-steps landed,
+§RP3.10 last (2026-09-04); only its audit settlement is still owed. Nothing in the WP blocked
+the unmask, and §RP5.2's one remaining blocker is now discharged. Full records:
 [`r4133-props-rp3.md`](docs/phase-records/r4133-props-rp3.md) — section
 "R4133_PROPS WP-RP3 — condensed records" (RP3.1–RP3.5) and section "Full
-sub-step records RP3.6 – RP3.13 (moved from STATUS §1)".
+sub-step records RP3.6 – RP3.13 and RP3.10 (moved from STATUS §1)".
 
 - **RP3.1–RP3.4** (all 2026-08-24, one commit each, zero product-crate and zero
   `ledger.json` bytes) — the four bin-7 root causes: `swtcontrol.delay` (r4133
@@ -129,7 +131,16 @@ sub-step records RP3.6 – RP3.13 (moved from STATUS §1)".
   fixed lane-unconditionally with zero ledger entries and zero golden bytes; its
   settlement (12 findings — 6 fixed, 6 recorded, 0 refuted) stopped reproducing
   a fourth r4133 defect, `CalcInjCurrAtBus`' PC-element sign.
-- **§RP3.10** — the one sub-step still open; see *Next* below.
+- **RP3.10** — the reproduced `QMode=0` dispatch (2026-09-04, **one** commit on
+  `r4133-props`; settlement owed, so its sha and the settlement's are named
+  together by the settlement's docs sync, as at §RP3.13): verdict `FIX`.
+  `SetNominalGeneration` gets the constant-Q arm r4133 never wrote (`Else
+  kvarCalc := 0`, `WindGen.pas:1320-1321`) in **both** lanes, at the cost of four
+  r4133 `exclusion` entries (new cause `windgen-qmode0-no-arm`), the gate's new
+  `variables` exclusion field, five pins (four new, one re-centred) with a
+  citation guard, and `DIVERGENCES.md` §L7 — over zero golden bytes, with
+  `lane_diff` Δ = 0 on every gated kind. Full record:
+  [`r4133-props-rp3.md`](docs/phase-records/r4133-props-rp3.md).
 
 **WP-RP4 (the unmask) — COMPLETE** (RP4.1, 2026-09-03, `59e521e5`, 23 files
 +2 576 / −536; zero product-crate lines, zero golden bytes, zero tolerances
@@ -159,13 +170,14 @@ zero-coverage class) landed 2026-08-29 on `r4133-props`; G1.3a–d, G1.4–G1.11
 and WP-G3–G5 remain. Full record: the same file, section "GOLDEN_REBASE WP-G1 —
 records".
 
-**Next.** The queue is exactly **§RP3.10** (the reproduced `QMode=0` dispatch,
-opened by the RP3.2 audit settlement; `opus-xhigh`, user go-ahead given) →
+**Next.** §RP3.10 landed 2026-09-04, so the queue is its **audit settlement**
+(the `audit-code` + `audit-tests` pair over the sub-step's commit range) →
 **RP5.1** (operational docs) → **RP5.2** (the closing record, which flips this
-plan's `PLAN_SEQUENCE.md` row to COMPLETE) → **closeout**. RP3.10 blocks §RP5.2
-and not the unmask: our `kvar` render reads `kvar_base`, which the dispatch
-never writes. Queued behind GOLDEN_REBASE: `WASM_USERMODELS` follow-ups,
-RESONANCE, MULTITHREADING, the UPGRADE line.
+plan's `PLAN_SEQUENCE.md` row to COMPLETE) → **closeout**. §RP5.2's precondition
+"§RP3.10 is closed" is discharged by the fix, and the unmask was never at risk:
+our `kvar` render reads `kvar_base`, which the dispatch never writes. Queued
+behind GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING,
+the UPGRADE line.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
@@ -544,7 +556,7 @@ and this file; none was rewritten.
 | `r4133-props-frontier-log.md` | section 1's frontier narrative RP0 → RP3.5, the landed-recap / next / parked paragraphs, and round 1's closing archive note |
 | `r4133-props-rp0-rp1.md` | R4133_PROPS WP-RP0 (RP0.1, RP0.2) and WP-RP1 (RP1.1–RP1.4) condensed records |
 | `r4133-props-rp2.md` | R4133_PROPS WP-RP2 (RP2.1–RP2.4 and the RP2.4 audit settlement) |
-| `r4133-props-rp3.md` | R4133_PROPS WP-RP3 — the RP3.1–RP3.5 condensed records **and** the full RP3.6–RP3.13 records with their audit settlements; read by the two `props_r4133_replay.rs` pin-citation guards |
+| `r4133-props-rp3.md` | R4133_PROPS WP-RP3 — the RP3.1–RP3.5 condensed records **and** the full RP3.6–RP3.13 records with their audit settlements; read by the three `props_r4133_replay.rs` pin-citation guards (RP3.10, RP3.11, RP3.13) |
 | `r4133-props-rp4.md` | R4133_PROPS WP-RP4 — the RP4.1 `all_properties` unmask record and its audit settlement |
 | `follow-ups-carried.md` | the carried-forward handoffs and the residual-floor / parked items, open and closed rows alike |
 | `golden-rebase.md` (appended 2026-09-03) | section 1's `### GOLDEN_REBASE` WP-G0 / WP-G2 and WP-G1 condensed record blocks |

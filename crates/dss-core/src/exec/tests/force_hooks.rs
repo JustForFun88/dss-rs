@@ -335,14 +335,27 @@ fn generator_force_inj_freezes_iterminal() {
 /// must stay frozen at the pre-force operating point (the model recompute at the
 /// forced operating point is skipped).
 ///
-/// Discriminating + r4133-cross-validated: a weak source + a large `[400,0,400]`
-/// A force pulls the recompute far from the frozen value. **Own r4133 probe**
-/// (epri-worker, this exact deck, `set InjCurrent=[400 0 400 0 400 0]` + re-solve,
-/// `ActiveCktElement.Currents`) reports the frozen
-/// `[-89.231224, -11.202775, 34.913725, 82.877894, 54.317500, -71.675120]` — the
-/// port matches it to a faer-vs-KLU floor. Dropping the guard makes the port
-/// recompute `[-86.039, -58.979, …]` (imag −11.20 → −58.98, a ≈48 A miss), so
-/// this assertion fails without the fix (verified by toggling the guard).
+/// Discriminating: a weak source + a large `[400,0,400]` A force pulls the
+/// recompute far from the frozen value. Dropping the guard makes the port
+/// recompute `[-110.744, -31.467, …]` (imag +18.88 → −31.47, a ≈50 A miss) and
+/// energises the neutral conductor, so this assertion fails without the fix
+/// (re-verified by toggling the guard, RP3.10).
+///
+/// **Both engines' numbers.** The deck's WindGen types `pf=0.95` and no
+/// `QMode=`, so since R4133_PROPS_PLAN RP3.10 the frozen operating point itself
+/// differs by design: this engine dispatches `kvarBase` in the constant-Q mode
+/// (`elements/pc/windgen/nominal.rs`), r4133 dispatches nothing (`Else kvarCalc
+/// := 0`, `WindGen.pas:1320-1321` — an upstream omission that CLAUDE.md's
+/// 2026-08-02 policy forbids reproducing; cause `windgen-qmode0-no-arm`, pinned
+/// by `elements::pc::windgen::tests::qmode0_dispatches_the_base_kvar`). The
+/// **own r4133 probe** (epri-worker, this exact deck, `set InjCurrent=[400 0 400
+/// 0 400 0]` + re-solve, `ActiveCktElement.Currents`) reported the frozen
+/// `[-89.231224, -11.202775, 34.913725, 82.877894, 54.317500, -71.675120]`,
+/// which the port matched to a faer-vs-KLU floor while it still reproduced the
+/// missing arm; the port now freezes at the values below — the same real part on
+/// conductor 1 to ≈0.1 A, with the reactive dispatch showing in the imaginary
+/// parts. What this test asserts is unchanged: the guard freezes `GetCurrents`
+/// at the pre-force operating point, whatever that point is.
 #[test]
 fn windgen_force_inj_freezes_iterminal() {
     let mut dss = Dss::new();
@@ -370,19 +383,23 @@ fn windgen_force_inj_freezes_iterminal() {
         .iter()
         .find(|e| e.name.eq_ignore_ascii_case("WindGen.w1"))
         .expect("WindGen.w1 in snapshot");
-    // r4133 epri-worker frozen currents (own probe); the port must match, and
-    // WITHOUT the guard it recomputes [-86.039, -58.979, …] (fails here).
-    let r4133 = [
-        Complex64::new(-89.231_224_458_194_29, -11.202_774_501_306_344),
-        Complex64::new(34.913_724_927_561_354, 82.877_894_438_227_46),
-        Complex64::new(54.317_499_523_801_17, -71.675_119_953_123_74),
+    // The frozen pre-force currents of THIS engine (RP3.10 constant-Q dispatch);
+    // r4133 freezes at its own zero-var point [-89.231224, -11.202775,
+    // 34.913725, 82.877894, 54.317500, -71.675120] (see the doc above).
+    // WITHOUT the guard the port recomputes [-110.744, -31.467, …] (fails here).
+    let frozen = [
+        Complex64::new(-89.136_414_184_261_7, 18.879_903_493_579_636),
+        Complex64::new(60.918_683_146_319_42, 67.754_447_332_089_28),
+        Complex64::new(28.217_731_026_031_643, -86.634_350_838_908_26),
     ];
-    for (k, &want) in r4133.iter().enumerate() {
+    for (k, &want) in frozen.iter().enumerate() {
         let got = wg.currents[k];
         assert!(
             (got.re - want.re).abs() < 1e-6 && (got.im - want.im).abs() < 1e-6,
-            "WindGen forced current[{k}] {got} must stay frozen at the r4133 value {want} \
-             (dropping the ForceInjCurr guard recomputes it ≈48 A off)"
+            "WindGen forced current[{k}] {got} must stay frozen at the pre-force \
+             value {want} (dropping the ForceInjCurr guard recomputes it ≈50 A \
+             off; r4133 freezes at its own zero-var operating point, cause \
+             `windgen-qmode0-no-arm`)"
         );
     }
 }
