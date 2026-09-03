@@ -2410,7 +2410,11 @@ iterations to **+307.94 kvar / 53** (per-unit-driven controls read those bases;
 the old doc claim *"only affects per-unit reporting, not the absolute-volt
 re-solve"* is retracted in place, `exec/save_circuit.rs:572-597`); **P2** the
 LoadShape `npts`-first branch of `SaveWrite`
-(`R4133:General/DSSObject.pas:144-173`, r4133-only); **P3**
+(`R4133:General/DSSObject.pas:144-173`; **both** upstreams guard this class —
+0.14.5 does it from the other end, `TLoadShapeObj.SaveWrite` stamping
+`PrpSequence[npts] := -999; // make sure Npts prop is first`,
+`CAPI:General/LoadShape.pas:2376-2380` — and only this port had neither);
+**P3**
 `TXYcurveObj.SaveWrite` (`R4133:General/XYcurve.pas:978-1003`, new
 `elements/general/xy_curve/save.rs`); **P4** `TRegcontrolObj.SaveWrite`
 (`R4133:Controls/RegControl.pas:1399-1421`, new
@@ -2500,19 +2504,19 @@ keeps `R1=…`), RP3.8's `save_renders_the_live_result_properties`,
 re-purposed as *sequence* pins by the new module docs, not edited. The four
 re-compilability pins are `save_writes_calcvoltagebases_like_r4133`
 (`exec/tests/report.rs:975`), `save_write_puts_npts_first_for_loadshape`
-(`:1054`), `xycurve_save_write_puts_npts_first`
+(`:1072`), `xycurve_save_write_puts_npts_first`
 (`elements/general/xy_curve/tests.rs:375`) and
 `regcontrol_save_write_puts_the_transformer_first`
 (`elements/control/reg_control/tests.rs:584`); the four **divergence** pins each
 name *both* serializations — `save_renders_the_live_model_after_ncim_pv2pq`
-(`report.rs:1151`: the port's `New "Generator.g1" PF=0.88 Bus1=genbus Phases=3
+(`report.rs:1202`: the port's `New "Generator.g1" PF=0.88 Bus1=genbus Phases=3
 kV=12.47 kW=800 Model=4 Maxkvar=1500 Minkvar=-1500 Vpu=1.01` against r4133's
 `New "Generator.g1" bus1=genbus phases=3 kv=12.47 kW=800 model=3 maxkvar=1500
 minkvar=-1500 Vpu=1.01`), `dump_renders_the_live_model_after_ncim_pv2pq`
-(`:1224`, `~ Model=4` against `~ model=3`),
-`save_membership_follows_property_tracking_not_prpsequence` (`:1300`, the
+(`:1302`, `~ Model=4` against `~ model=3`),
+`save_membership_follows_property_tracking_not_prpsequence` (`:1420`, the
 `PF=0.88` head plus the JSON reader's key sequence) and
-`save_omits_the_tapwinding_that_r4133_stamps` (`:1387`, the reverse direction,
+`save_omits_the_tapwinding_that_r4133_stamps` (`:1507`, the reverse direction,
 with the re-parse asserted). Every r4133 byte they quote comes from this
 sub-step's `epri-worker` probes (`OpenDSSDirect.dll` 11.0.0.1, rev r4133); the
 port's bytes are re-derived live, so a regression on either side breaks the test
@@ -2597,13 +2601,131 @@ wrap, the hardcoded `~ Refuel=False` that contradicts r4133's own getter —
 bearing on the store-vs-live verdict, and it is recorded as an unowned scope
 question rather than silently answered. (g) The port has no counterpart of
 r4133's `Set_NumPoints` *"keep properties in order for save command"* re-stamp
-(`R4133:General/LoadShape.pas:631-636` + `:1665-1677`, `XYcurve.pas:1005-1019`);
-P2/P3 make it invisible on `Save`, but the AltDSS JSON export walks the same
-un-re-stamped bitmap. (h) The divergence runs both ways: r4133's own `SaveWrite`
+(`R4133:General/LoadShape.pas:631-636` + `:1665-1677`, `PriceShape.pas:303` +
+`:910-916`, `TempShape.pas:302`, `XYcurve.pas:1005-1019` — the setter re-stamps
+the sizing property **and then** the array property, so the two stay adjacent in
+that order). P2/P3 made it invisible on `Save` for `LoadShape` and `XYcurve`
+only; the audit settlement measured the other five classes and closed them with
+the port's own sizing-property hoist (P7 below), so `Save` is now guarded on all
+seven. What stays open is the **AltDSS JSON export**, which walks the same
+un-re-stamped bitmap and is not touched by a Save-time hoist. (h) The divergence runs both ways: r4133's own `SaveWrite`
 emits `windgen.kvar=0`, which on reload flattens `PFNominal` to 1.0 and
 `kvarMax/kvarMin` to 0 (`tests/props_r4133_replay.rs:1197-1199`) — an upstream
 defect on this very surface, where the port is already right; cross-referenced
 from the first divergence pin.
+
+**RP3.11 audit settlement (2026-09-03) — the declared "union of both upstreams'
+`SaveWrite` overrides" is now actually shipped, and the sizing-property guard
+covers every curve class instead of two.** Both auditors landed on the same
+substantive gap from opposite sides, and both were right: the sub-step stated a
+policy it implemented for 6 of the 8 upstream overrides, and the biggest thing
+that policy would have removed — a silent, converging wrong circuit — was still
+in the tree. Three product changes, all lane-unconditional, none of them touching
+*which* value is printed: **P5** `TXfmrCodeObj.SaveWrite`
+(`CAPI:General/XfmrCode.pas:667-745`, new
+`elements/general/xfmr_code/save.rs`) — without it a 3-winding code saved as
+`New "XfmrCode.xc" … Wdg=3 Conn=wye kV=4.16 kVA=5000 %R=0.7 Tap=0.975`, the
+active winding only, and re-compiled into a *different* code that converges;
+r4133 has the identical defect (measured: `New "XfmrCode.xc" phases=3 windings=3
+Xhl=7 Xht=9 Xlt=8 wdg=3 conn=wye kV=4.16 kVA=5000 %R=0.7 tap=0.975`), 0.14.5
+fixed it, and the 2026-08-02 policy forbids reproducing r4133's side. **P6**
+`TDynEqPCE.SaveWrite` (`CAPI:PCElements/DynEqPCE.pas:252-273`, the `UserDynInit`
+tail, dispatched in `report/save/save.rs` because Pascal appends it after
+`inherited`) — closes the Phase-8 deferral named in `elements/pc/dyneq_pce.rs`;
+on the vendored `Dynamic_KundurDynExp-steady-state-only.dss` r4133 writes
+`… DynOut=[speed,dpshaft,]` and stops, losing all six state-variable
+initializers (r4133 has no `UserDynInit` at all), while the port now emits and
+re-reads `damp=0 pshaft=P0 pterm=P speed=0 theta=Edp mass="3.5 2 * 2220000000
+376.99112 / *"`. **P7** the sizing-property hoist
+(`report/save/save.rs::sizing_property`): P2/P3 guarded `LoadShape` and
+`XYcurve`, but `TCC_Curve`, `GrowthShape`, `PriceShape`, `TShape` and `Spectrum`
+still emitted `npts`/`numharm` **last** whenever a deck re-set it after the
+arrays, and that line reloads as zeros. Measured on the live r4133 DLL, three of
+the five have the same defect upstream (`New "TCC_Curve.z" C_array=[ 1 2]
+T_array=[ 10 5] npts=2`, `New "GrowthShape.g" year=(1, 2, ) mult=(1.05, 1.06, )
+npts=2`, `New "Spectrum.sp" harmonic=(1, 3, ) %mag=(100, 30, ) angle=(0, 0, )
+NumHarm=2`) and two come out safe only through the `Set_NumPoints` re-stamp this
+port does not have (item (g)) — so the guard is the port's own, *hoisting* a
+sizing property the deck actually set and never adding a token. Exposure: **0**
+golden bytes (every committed `Save` line already carries its sizing property
+first, and no golden holds a saved `XfmrCode` or a `DynInit` tail), **0**
+tolerances, **0** ledger rows, **3** pins added
+(`save_rewrites_xfmrcode_windings_like_capi_0145`,
+`save_writes_the_dyn_init_tail_like_capi_0145`,
+`save_puts_the_sizing_property_first_for_every_curve_class`, all in
+`exec/tests/report.rs`), each with a re-compile leg that asserts the recovered
+data.
+
+*Findings, one line each.* **AC-1/T2 (major, FIXED)** — the missing
+`TXfmrCodeObj.SaveWrite`: P5 above. **AC-2/T3 (major, FIXED)** — P2's doc claimed
+*"r4133 never hits that case"* and *"r4133-only: neither dss_capi 0.14.5 nor this
+port had it"*; both are false and both are now corrected in the product doc, in
+the pin and in this record: 0.14.5 **does** guard `LoadShape`
+(`PrpSequence[npts] := -999`, `CAPI:General/LoadShape.pas:2376-2380`), and r4133
+**does** print the token twice on any shape that parses no array property
+(measured: `New "LoadShape.ls3" npts=5 npts=5`, `New "LoadShape.ls4" npts=4
+npts=4 interval=2`). The port's one-`npts`-first output is therefore a
+deliberate non-reproduction, now pinned naming both serializations by the two new
+legs of `save_write_puts_npts_first_for_loadshape`. **AC-3 (minor, FIXED)** —
+`TDynEqPCE.SaveWrite`: P6 above. **AC-4 (minor, FIXED, doc)** — the two new
+overrides route through `save_write_token`, which trims and skips the `----`
+sentinel where their Pascals do neither; both deviations are now written down at
+the call sites (they can only suppress a token that would not re-parse, and no
+reachable property of either class renders blanks or the sentinel). **AC-5
+(question, RECORDED)** — the round-trip measurement is pinned, not closed: the
+port's saved `ncim` deck still re-compiles to `|V| genbus.1` 7161.277193 against
+the original 7213.235350 on **both** engines. That is what the plan's kill
+criterion prescribes (the alternative is printing `model=3` beside a live
+`gen_model == 4`), and closing it in substance depends on open item (b), owned by
+the proposed §RP3.13 — not re-opened here. **AC-6 (note, FIXED)** — the four pin
+line citations pointed at the `#[test]` attribute; they now name the `fn` lines
+and were re-anchored after this settlement's edits. **T1 (major, FIXED)** — the
+five unguarded sizing classes: P7 above, and open item (g) is rewritten (its
+claim that P2/P3 make the missing re-stamp *"invisible on Save"* was true for two
+classes out of seven; what remains open is the AltDSS JSON export, which a
+Save-time hoist cannot reach). **T4 (minor, FIXED)** — none of the pins was
+enumerated by anything, so a rename left the suite green while STATUS cited the
+name: `props_r4133_replay.rs::RP311_SERIALIZATION_PINS` (11 rows) +
+`every_rp311_serialization_pin_exists_and_is_cited` now assert both halves —
+every row names a real `#[test]` **and** is still cited by name in `STATUS.md`.
+**T5 (minor, FIXED)** — `save_roundtrip`'s snapshot compared only absolute-volt
+quantities, so reverting P1 left all nine feeder round trips green;
+`bus_kv_bases` now compares every bus's `kVBase` **exactly** across the round
+trip, with a pre-save vacuity guard. Proven discriminating: with `!
+CalcVoltageBases` restored, **7 of 9** cases red with
+`bus "611" kVBase changed across save round-trip (2.4017771198288433 -> 0)`.
+**T6 (minor, FIXED)** — the `Dump` verdict pin was three `contains` over a
+~160-line artifact; it now reads the live field first (`? generator.g1.model` ==
+`4`), asserts the header, asserts the **48** `~` rows are all there, and compares
+the `Model`, `kvar` and `PF` rows by exact line. Its `431.79425771047` message no
+longer calls that number *"the live dispatched kvar"* — it is the
+`PFNominal`-derived nominal (800·tan(acos 0.88)), identical on both engines, and
+the message now cross-references open item (b), whose 1068.2 kvar KCL gap is the
+same number seen from the Powers side. **T7 (note, FIXED for the deciding pin)** —
+`save_renders_the_live_model_after_ncim_pv2pq` now *derives* r4133's half: it
+reads the `model=` token out of the deck's own bytes, asserts it is `3` (r4133's
+getter has no arm 6, so its `SaveWrite` echoes the parsed token verbatim) and
+asserts the live value differs, so both numbers of "the port prints 4 where r4133
+prints 3" are measured in-test. **T8 (note, RECORDED, evidence closed)** — the
+golden re-run script covered the 25 `golden_*` binaries but not
+`tests/adiakoptics.rs`, the owner of the one golden that moved; `adiakoptics` +
+`golden_lock` were run explicitly (34 + 4 green, the digest equal to the file's
+own SHA-256), and they are part of the full `cargo test --workspace` gate below
+in any case. *Gate:* all five commands green in **both** lanes on the
+settled tree, each exit code read individually — **4 439 passed / 0 failed / 5
+ignored / 0 filtered out** per lane over **74** binaries, all 74 `test result:
+ok` and the two lanes identical binary for binary (**+4** on RP3.11's 4 435: the
+three new pins, library 1 490 → **1 493**, plus the new citation guard,
+`props_r4133_replay` 147 → **148**); `corpus_gate` green on the full unfiltered
+population in both lanes with every ledger entry hit and none stale;
+`save_roundtrip` 9, `adiakoptics` 34 (+1 pre-existing ignored), `golden_lock` 4.
+**0** golden bytes moved (`git status --short tests/golden` empty after the run),
+0 ledger rows, 0 tolerances, no `#[ignore]`, no name filter. `pwsh -File
+tools/lanes/lane_diff.ps1` was owed (product `src/` moved) and came back
+**VERDICT: PASS, Δ = 0** on every gated kind over 523 cases / 3 220 861 records
+(`conv`/`cur`/`errs`/`iter`/`loss`/`pow`/`v`/`y` all `max |d| = 0.000e0`, 0
+iteration counts drifted) — expected, since the settlement changes the bytes an
+emitted deck carries, not the solved model the dump stream compares.
 
 **RP4.1 (`all_properties` unmasked on the r4133 channel) landed 2026-09-03 —
 WP-RP4's single sub-step and G1.1's deliverable, in one commit, with zero
@@ -2942,8 +3064,12 @@ ledger entries or pins born from the sub-step's own residual triage (kill
 criterion ~15 — it did not fire). Full record in §RP4.1 above.
 **RP3.11 landed 2026-09-03**, the first sub-step after the flip — the
 `Save`/`Dump` re-serialization surface (plan §RP3.11, opened by the RP3.3 audit
-settlement) is settled `KEEP_LIVE_PINNED` on both surfaces, with four
-re-compilability guards ported and eight pins (§RP3.11 record above).
+settlement) is settled `KEEP_LIVE_PINNED` on both surfaces, with **seven**
+re-compilability guards ported and **eleven** pins — four in the sub-step, three
+more in its audit settlement the same day (`XfmrCode` and `DynEqPCE`, which
+completed the declared union of both upstreams' `SaveWrite` overrides, plus the
+sizing-property hoist for the five curve classes neither upstream guards);
+§RP3.11 record above.
 **Next: RP3.13** (PROPOSED, opened by RP3.11's own
 round-trip measurement — the `ncim.rs:683` panic and the NCIM PV→PQ KCL gap;
 user go-ahead required), then **RP3.10** (the reproduced `QMode=0` dispatch, also

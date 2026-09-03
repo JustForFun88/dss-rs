@@ -40,11 +40,18 @@ impl XyCurveObj {
         let mut iprop = self.data().next_property_set(None);
         while let Some(i) = iprop {
             if i != NPTS {
-                // Pascal writes ` %s=%s` unconditionally here; `save_write_token`
-                // adds the generic empty / `----` skip, exactly as the Line
-                // override does (`elements/pd/line/save.rs`) — our `get_value`
-                // re-renders from state and an empty render would emit a bare
-                // ` Name=` that does not re-parse.
+                // Pascal writes ` %s=%s` unconditionally here (no trim, no
+                // sentinel test); `save_write_token` applies the *generic*
+                // `SaveWrite` body instead — `trim`, the `----` skip and the
+                // empty skip — exactly as the Line override does
+                // (`elements/pd/line/save.rs`). All three can only *suppress* a
+                // token that would not re-parse: our `get_value` re-renders from
+                // state, so an empty (or blank-only, or `----`) render would emit
+                // a bare ` Name=`. No reachable XYcurve property renders leading
+                // or trailing blanks or the sentinel, so the deviation is
+                // currently unobservable; it is written down because the doc
+                // above claims loop-for-loop fidelity to the Pascal (RP3.11
+                // audit finding AC-4).
                 save_write_token(out, cx, self, i);
             }
             iprop = self.data().next_property_set(Some(i));

@@ -52,7 +52,10 @@
 //!   *sequence* witnesses, not render ones.
 //! * **structure and ordering guards** — the **union** of both upstreams'
 //!   `SaveWrite` overrides (see [`write_dss_object`]), because every one of them
-//!   exists to make the emitted deck re-compile.
+//!   exists to make the emitted deck re-compile; plus, where *neither* upstream
+//!   guards a class whose arrays are sized by a property, this port's own
+//!   sizing-property hoist ([`sizing_property`]) — same purpose, no upstream
+//!   counterpart, pinned as a deliberate divergence.
 //!
 //! [`DssObjData::next_property_set`]: crate::obj::base::DssObjData::next_property_set
 //! [`ClassProps::get_value`]: crate::obj::props::ClassProps::get_value
@@ -99,56 +102,123 @@ pub(crate) fn save_write_token(out: &mut String, cx: &SaveCtx, obj: &dyn DssObje
 /// in the order they were actually set** (`GetNextPropertySet`), through
 /// [`save_write_token`].
 ///
-/// **The LoadShape `npts`-first branch** (RP3.11 P2, `:139-150` + `:163-172`,
-/// r4133-only — neither 0.14.5 nor this port had it). When the parent class is
-/// `LoadShape` the walk starts at property 1 (`npts`) instead of at the head of
-/// the chain, then restarts the chain from the beginning and ignores index 1
-/// when it comes up again (`LShpFlag`/`NptsRdy`): *"created to guarantee that
-/// the npts property will be the first to be declared when saving LoadShapes"*.
-/// A LoadShape that re-emits `Mult=` before `NPts=` reloads with the wrong
-/// point count, so this is a re-compilability guard, not a spelling.
+/// **The sizing-property-first branch** ([`sizing_property`]). A curve/shape
+/// class allocates its arrays from a *sizing* property (`npts`, `numharm`), so a
+/// line that emits `Mult=`/`C_Array=`/`Harmonic=` **before** that property
+/// reloads as a zero-filled array of the wrong length: the arrays parse against
+/// the reloaded object's default count, and the sizing property then
+/// re-allocates over whatever they did read.
+/// The walk therefore starts at the sizing property, restarts the chain from the
+/// beginning and ignores that index when it comes up again (Pascal
+/// `LShpFlag`/`NptsRdy`).
 ///
-/// One deliberate deviation from the letter of the Pascal, forced by a
-/// *sequence* difference and measured against the live r4133 DLL: Pascal tests
-/// `NptsRdy` only on the non-restart advance, so a chain whose **head** is index
-/// 1 would print `npts` twice. r4133 never hits that case, because
-/// `TLoadShapeObj.Set_NumPoints` re-stamps `PropertyValue[1]` (`LoadShape.pas:
-/// 1665-1677`) every time an array property is parsed (`:631-636`, *"Keep
-/// Properties in order for save command"*) — which pushes `npts` to the *back*
-/// of its chain. This port has no such re-stamp (RP3.11 §4 adds and removes no
-/// sequence site), so its chain does head with `npts`; applying the `NptsRdy`
-/// skip to the restart as well is what reproduces r4133's measured bytes —
-/// `New "LoadShape.ls1" npts=3 interval=1 mult=[ 1 2 3]`, one `npts`, for a deck
-/// typing `npts` first *and* for one re-setting it last (epri-worker probe,
-/// OpenDSSDirect.dll 11.0.0.1 r4133, RP3.11 I1).
+/// * **`LoadShape` — r4133's own branch** (RP3.11 P2,
+///   `R4133:General/DSSObject.pas:139-150` + `:163-172`, *"created to guarantee
+///   that the npts property will be the first to be declared when saving
+///   LoadShapes"*), written even when the deck never set `npts`. dss_capi 0.14.5
+///   reaches the same output by a different route — `TLoadShapeObj.SaveWrite`
+///   stamps `PrpSequence[npts] := -999` and calls `inherited`
+///   (`CAPI:General/LoadShape.pas:2376-2380`) — so on this class both upstreams
+///   agree and the port matches both.
+/// * **`TCC_Curve`, `GrowthShape`, `PriceShape`, `TShape`, `Spectrum` — this
+///   port's own guard** (RP3.11 settlement P7), *hoisted only when the deck set
+///   the sizing property*, so the emitted token set is unchanged and only the
+///   order moves. Neither upstream protects these five; measured on the live
+///   `OpenDSSDirect.dll` 11.0.0.1 rev r4133 for a deck whose sizing property is
+///   re-set last, r4133 emits
+///   `New "TCC_Curve.z" C_array=[ 1 2] T_array=[ 10 5] npts=2`,
+///   `New "GrowthShape.g" year=(1, 2, ) mult=(1.05, 1.06, ) npts=2` and
+///   `New "Spectrum.sp" harmonic=(1, 3, ) %mag=(100, 30, ) angle=(0, 0, )
+///   NumHarm=2` — three lines that reload as zeros. (On `PriceShape`/`TShape` it
+///   *does* come out safe, but through the re-stamp described below, not through
+///   a guard.) Pinned by
+///   `exec::tests::report::save_puts_the_sizing_property_first_for_every_curve_class`.
+///
+/// **One deliberate deviation from the letter of the Pascal, measured against the
+/// live r4133 DLL.** Pascal tests `NptsRdy` only on the non-restart advance, so a
+/// chain whose **head** is the sizing property prints it twice; r4133 really does
+/// hit that case, and the port does not reproduce it:
+///
+/// ```text
+/// r4133: New "LoadShape.ls3" npts=5 npts=5          port: New "LoadShape.ls3" NPts=5
+/// r4133: New "LoadShape.ls4" npts=4 npts=4 interval=2   port: New "LoadShape.ls4" NPts=4 Interval=2
+/// ```
+///
+/// (epri-worker, `OpenDSSDirect.dll` 11.0.0.1 rev r4133, RP3.11 settlement.) The
+/// double token appears exactly when no array property was parsed, because
+/// r4133's *"Keep Properties in order for save command"* re-stamp —
+/// `Set_NumPoints` re-stamping `PropertyValue[npts]` **and then** the array
+/// property (`R4133:General/LoadShape.pas:631-636`, `PriceShape.pas:303` +
+/// `:910-916`, `TempShape.pas:302`, `XYcurve.pas:317`) — never fires, so `npts`
+/// stays at the head of the chain. This port has no such re-stamp (RP3.11 §4
+/// adds and removes no sequence site; STATUS open item (g)), so it applies the
+/// `NptsRdy` skip to the restart as well: one `npts`, always first. That is
+/// 0.14.5's rule (`PrpSequence[npts] := -999` puts it first and leaves it there)
+/// expressed through r4133's structure, and it reproduces r4133 byte for byte on
+/// every deck that types an array — `New "LoadShape.ls1" npts=3 interval=1
+/// mult=[ 1 2 3]`, for a deck typing `npts` first *and* for one re-setting it
+/// last. Both serializations are pinned by
+/// `exec::tests::report::save_write_puts_npts_first_for_loadshape`.
 pub fn save_write(out: &mut String, cx: &SaveCtx, obj: &dyn DssObject) {
-    /// Pascal property 1 = LoadShape's `npts` (`LoadShape.pas:225`;
-    /// [`crate::elements::general::load_shape`] `prop::NPTS`).
-    const NPTS: usize = 1;
-
-    // Pascal `if ParentClass.Name = 'LoadShape'` — a case-sensitive compare on
-    // the registered class name, so only LoadShape (not PriceShape/TempShape).
-    let load_shape = cx.cls.class_name() == "LoadShape";
-    let mut iprop = if load_shape {
-        Some(NPTS) // Pascal `iProp := 1`
+    let sizing = sizing_property(cx.cls.class_name());
+    // Pascal `if ParentClass.Name = 'LoadShape' then iProp := 1` — the walk
+    // starts at the sizing property; the `hoist` classes only do so when the
+    // deck actually set it, so the emitted token *set* never changes.
+    let start_at_size = match sizing {
+        Some((i, always)) => always || obj.data().prp_specified(i),
+        None => false,
+    };
+    let size_idx = sizing.map(|(i, _)| i);
+    let mut iprop = if start_at_size {
+        size_idx // Pascal `iProp := 1`
     } else {
         obj.data().next_property_set(None)
     };
-    let mut lshp_flag = load_shape;
-    let mut npts_ready = false;
+    // Pascal `LShpFlag` / `NptsRdy`.
+    let mut lshp_flag = start_at_size;
+    let mut size_ready = false;
     while let Some(i) = iprop {
         save_write_token(out, cx, obj, i);
         if lshp_flag {
-            // Pascal: start the chain over, `npts` is already processed.
+            // Pascal: start the chain over, the sizing property is done.
             lshp_flag = false;
-            npts_ready = true;
+            size_ready = true;
             iprop = obj.data().next_property_set(None);
         } else {
             iprop = obj.data().next_property_set(Some(i));
         }
-        if npts_ready && iprop == Some(NPTS) {
-            iprop = obj.data().next_property_set(Some(NPTS));
+        if size_ready && iprop == size_idx {
+            iprop = obj.data().next_property_set(size_idx);
         }
+    }
+}
+
+/// The class's **allocation-sizing** property — the one whose value decides how
+/// many points the array properties of the same object hold on reload — and
+/// whether it is written even when the deck never set it.
+///
+/// `true` (write it always) is r4133's own rule for `LoadShape`
+/// (`General/DSSObject.pas:139-150`, the `ParentClass.Name = 'LoadShape'`
+/// test); `false` is this port's own guard for the five classes **neither**
+/// upstream protects — it only *hoists* a sizing property the deck did set, so
+/// the set of tokens is unchanged and only their order moves. See
+/// [`save_write`]'s doc for the measured r4133 lines it deliberately does not
+/// reproduce.
+fn sizing_property(class_name: &str) -> Option<(usize, bool)> {
+    use crate::elements::general::{
+        growth_shape, load_shape, price_shape, spectrum, tcc_curve, temp_shape,
+    };
+    // Pascal's own test is a case-sensitive compare on the registered class
+    // name. Each ordinal comes from the class's own property table, so a
+    // reordering of that table moves this guard with it.
+    match class_name {
+        "LoadShape" => Some((load_shape::prop::NPTS, true)),
+        "TCC_Curve" => Some((tcc_curve::prop::NPTS, false)),
+        "GrowthShape" => Some((growth_shape::prop::NPTS, false)),
+        "PriceShape" => Some((price_shape::prop::NPTS, false)),
+        "TShape" => Some((temp_shape::prop::NPTS, false)),
+        "Spectrum" => Some((spectrum::prop::NUM_HARM, false)),
+        _ => None,
     }
 }
 
@@ -176,10 +246,16 @@ pub fn write_dss_object(
     // form. (More overrides are added here if/when a class needs one.)
     //
     // RP3.11 §1.1: the override set is the **union** of both upstreams', because
-    // every one of them exists to keep the emitted deck re-compilable — the
-    // 0.14.5-derived Transformer/AutoTrans/LineGeometry/Line four, plus r4133's
-    // XYcurve (`XYcurve.pas:978-1003`) and RegControl
-    // (`RegControl.pas:1399-1421`) allocation/ordering guards.
+    // every one of them exists to keep the emitted deck re-compilable. It is the
+    // complete union, class for class, and it was completed by the RP3.11
+    // settlement: the 0.14.5-derived Transformer / AutoTrans / LineGeometry /
+    // Line four, r4133's XYcurve (`XYcurve.pas:978-1003`) and RegControl
+    // (`RegControl.pas:1399-1421`) allocation/ordering guards, and 0.14.5's
+    // XfmrCode (`CAPI:General/XfmrCode.pas:667-745`, the winding rewrite —
+    // r4133 has none and drops every winding but the active one) plus DynEqPCE
+    // (`CAPI:PCElements/DynEqPCE.pas:252-273`, the `UserDynInit` tail, appended
+    // below because Pascal calls `inherited SaveWrite` first). 0.14.5's ninth,
+    // `TLoadShapeObj.SaveWrite`, is the `LoadShape` arm of [`sizing_property`].
     if let Some(xf) = arena.get::<crate::elements::pd::transformer::Transformer>(idx) {
         xf.save_write_body(out, cx);
     } else if let Some(at) = arena.get::<crate::elements::pd::auto_trans::AutoTrans>(idx) {
@@ -194,8 +270,33 @@ pub fn write_dss_object(
         xy.save_write_body(out, cx);
     } else if let Some(rc) = arena.get::<crate::elements::control::reg_control::RegControl>(idx) {
         rc.save_write_body(out, cx);
+    } else if let Some(xc) = arena.get::<crate::elements::general::xfmr_code::XfmrCodeObj>(idx) {
+        xc.save_write_body(out, cx);
     } else {
         save_write(out, cx, arena.obj(idx));
+    }
+    // Pascal `TDynEqPCE.SaveWrite` (`CAPI:PCElements/DynEqPCE.pas:252-273`):
+    // `inherited SaveWrite(F)` and then every `UserDynInit` assignment — the
+    // `DynamicEq` state-variable initializers, which are not class properties
+    // and so are in no `PrpSequence` chain. Without the tail a Generator /
+    // PVSystem / Storage driven by a `DynamicEq` re-compiles with every
+    // initializer lost. A `TJSONNumber` prints through `FloatToStr`, a
+    // `TJSONString` through `CheckForBlanks` (the same split the AltDSS JSON
+    // `"DynInit"` tail makes, `report/export/json/build.rs`).
+    if let Some(dyneq) = arena.obj(idx).as_dyneq() {
+        for (var, val) in &dyneq.user_dyn_init {
+            out.push(' ');
+            out.push_str(var);
+            out.push('=');
+            match val {
+                crate::elements::pc::dyneq_pce::DynInitValue::Number(n) => {
+                    out.push_str(&crate::util::float_to_str(*n));
+                }
+                crate::elements::pc::dyneq_pce::DynInitValue::Text(t) => {
+                    out.push_str(&crate::util::check_for_blanks(t));
+                }
+            }
+        }
     }
     if arena
         .try_ckt_elem(idx)
