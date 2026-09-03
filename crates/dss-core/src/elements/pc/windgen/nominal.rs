@@ -220,7 +220,52 @@ impl WindGen {
                         }
                     }
                 }
+                // Constant Q (`QMode=0`, `Create`'s default — `WindGen.pas:1020`).
+                //
+                // `WindGen.pas:1276-1322` has **no `0:` arm**: mode 0 falls through
+                // to `Else kvarCalc := 0` (`:1320-1321`), so a default-configured
+                // WindGen injects zero vars however its `kvar=`/`pf=` reads. That is
+                // an upstream slip, not a design, and CLAUDE.md's 2026-08-02 policy
+                // fixes it in both lanes instead of reproducing it: the property
+                // help documents `0:Q` (`:429-430`), the dynamics model spells the
+                // same mode `QMode := 0; // 0 -> Constant Q` (`WTG3_Model.pas:252`)
+                // and implements it as `Qord := Qref` (`:1059-1061`), models 4/5
+                // inject `varBase = 1000*kvarBase/Fnphases` unconditionally
+                // (`:1361`, `:1797`, comment `:1775` "Q is always kvarBase"), arm 1's
+                // saturation fallback *is* `kvarBase` (`:1284`), and arm 2 is
+                // `kvarBase` scaled by the VV curve and saturated at `|kvarBase|`
+                // (`:1313-1316`). The parent class writes the same dispatch outright
+                // — `Qnominalperphase := 1000*kvarBase*Factor*ShapeFactor.im/Fnphases`
+                // (`Generator.pas:1163`, ported at
+                // `pc/generator/nominal.rs:196-199`) — which WindGen could not
+                // transcribe because its `ShapeFactor` carries the wind SPEED, not a
+                // pu multiplier (`:1241`), and dropped.
+                //
+                // No `kVArating` clamp: `|kvarBase| <= kVArating` is an invariant
+                // `RecalcElementData` re-establishes at every `Edit` tail
+                // (`:1375-1384`), and arm 1's clamp — whose own fallback is
+                // `kvarBase` — is dead by that same construction (measured). No
+                // `LeadLag` either: the sign already lives in `kvar_base`
+                // (`sync_up_power_quantities` above; `WindGen.pas:3028` / the typed
+                // `kvar=` `:3001`), and re-applying `LeadLag` would double-negate —
+                // arm 1 reaches the same signed answer by putting the sign in
+                // `LeadLag` over a non-negative `sqrt` (probed: `pf=-0.9` gives
+                // `+484.32` through either path). `Factor` (`GenMultiplier`) still
+                // applies: `:1325` sits OUTSIDE the `case` (probed: `Set genmult=0.5`
+                // halves the dispatch, exactly as it halves arm 1's).
+                //
+                // r4133 keeps dispatching 0, so the four corpus decks that declare a
+                // WindGen without a `QMode=` token diverge across the solved model:
+                // excluded per case in `tests/corpus/ledger.json` (cause
+                // `windgen-qmode0-no-arm`) and pinned by
+                // `tests::qmode0_dispatches_the_base_kvar`.
+                0 => kvar_calc = self.kvar_base,
                 _ => {
+                    // Out-of-range modes keep upstream's `Else` (`:1320-1321`).
+                    // Reachable: `q_mode` is a plain `i32` and
+                    // `set_wgen_variable(15)` (`dynamics.rs:464`) accepts any
+                    // integer, even though the property itself is a
+                    // `mapped_int_enum` (`mod.rs:182`).
                     kvar_calc = 0.0;
                 }
             }

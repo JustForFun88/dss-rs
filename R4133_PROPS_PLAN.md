@@ -169,7 +169,8 @@ in-sub-step precondition, the **per-cell narrowing of the 20 mixed echo rows**
 preconditions met — the 20 mixed echo rows narrowed per cell, the eight staged
 `property` entries landed — and every RP1–RP3 sub-step it waited on landed
 before it. §RP3.11 followed on 2026-09-03 (`KEEP_LIVE_PINNED`, both surfaces);
-§RP3.10 remains, outside this rule, as the next paragraph says.)*
+§RP3.10 followed on 2026-09-04 — outside this rule, as the next paragraph
+says, and now executed.)*
 **Two RP3 sub-steps are deliberately outside that rule** — three since
 2026-09-03, when the plan owner accepted §RP3.13 (last sentence of this
 block). **§RP3.10** (the
@@ -177,7 +178,10 @@ reproduced `QMode=0` dispatch, opened by RP3.2's audit settlement) is a
 solve-side fix with no property cell of its own — our `kvar` render reads
 `kvar_base`, which the dispatch never writes — so it blocks **§RP5.2**, the
 closing record, and not the unmask; it also runs only on the user's go-ahead
-(§RP3.10). **§RP3.11** (the `Save`/`Dump` re-serialization surface, opened by
+(§RP3.10). *(**Executed 2026-09-04** — verdict `FIX`, the constant-Q arm
+implemented in both lanes with four r4133 `exclusion` entries and five pins over
+zero golden bytes; see the dated line in §RP3.10. That leaves **§RP5.2 with no
+open blocker**.)* **§RP3.11** (the `Save`/`Dump` re-serialization surface, opened by
 RP3.3's audit settlement) is the mirror image: no *compared* channel reads it at
 all, so it cannot block a gate flip — it blocks **§RP5.2** too, and it ran after
 RP4.1 had fixed which pairs are echoes, because that list is exactly the list of
@@ -1269,6 +1273,18 @@ in-scope numeric jump (rel 9.86e+2) is explained.
 > power-flow ones) — a separate decision; it does not disturb this landing (the
 > render reads `kvar_base`, which the dispatch never touches). **Since the audit
 > settlement it is owned, not merely flagged: §RP3.10.**
+> **Dated correction (2026-09-04, §RP3.10 executed — nothing above deleted):**
+> the two sentences of this record that read *"our live Q is 0 too"* and *"the
+> probed terminal powers agree on all five decks"* were true when RP3.2 measured
+> them, and true **because** the port then reproduced the missing arm. §RP3.10
+> implements `0: kvarCalc := kvarBase` in both lanes, so the port's terminal Q is
+> now −726.4838 / −986.0531 kvar on the two power-flow decks and −37 077.425 /
+> −29 209.383 kvar on the two dynamics ones, against r4133's −4.2e−05 / −2.1e−05 /
+> −37 087.759 / −29 216.667 — excluded per case in `tests/corpus/ledger.json`
+> (cause `windgen-qmode0-no-arm`) and pinned by
+> `windgen::tests::qmode0_dispatches_the_base_kvar`. **This landing is untouched:**
+> the render still reads `kvar_base`, which no dispatch writes, so all four RP3.2
+> property entries keep their pinned pairs and all four render pins still pass.
 >
 > **Audit-settled the same day** (ten minor findings, one commit, still zero
 > product-crate and zero ledger bytes; nothing touched the sub-step's premise).
@@ -2100,6 +2116,31 @@ STATUS §WP-RP3 carries the verdict and this section is marked as executed.
 Outcome: the last reproduced upstream bug this plan uncovered stops living in
 prose.
 
+**As executed (2026-09-04) — verdict `FIX`; the kill criterion did NOT fire.**
+Refuted both halves: a complete 20-hit `Qnominalperphase` write census leaves no
+other site that fills it for mode 0, and the live r4133 DLL dispatches exactly 0
+under `QMode=0` on all five corpus decks and in every configuration probed
+(including decks typing `kvar=`, `pf=` and `kVA=`), while the same engine
+dispatches the base the moment the `case` is bypassed (`model=4`/`DoFixedQGen`)
+or an arm exists (a flat `y=+1` volt-var curve gives exactly `kvarBase`). So
+`0 => kvar_calc = self.kvar_base` landed in **both** lanes
+(`elements/pc/windgen/nominal.rs`, no `cfg`, no `compat::`, no `kVArating` clamp
+and no `LeadLag` — each omission measured, `Factor` still applying), with the
+`Else` kept for out-of-range modes. Exposure: four r4133 `exclusion` entries
+(`windgen-qmode0-constant-q-{snapdelta,daily,dyn,dynfault}-r4133`, one new cause
+`windgen-qmode0-no-arm`, ledger 53 → 57 entries / 29 → 30 causes), four
+`population.lock.json` rows, a new gate exclusion field `variables` (13 → 14
+handlers) built for the WTG3 state variables the two dynamics decks move, four
+new expected-value pins naming both engines' numbers plus one pre-existing pin
+re-centred on the new operating point, corrected deck/manifest prose —
+and **zero** golden bytes, zero tolerances, zero property cells (RP4.1's four
+`r4133-windgen-kvar-dispatched-*` entries and RP3.2's pins are unchanged, as this
+section predicted). Dispatched: 726.4831572567788 / 986.0523155365896 kvar on the
+power-flow decks, 854.95263026673 on both dynamics decks, 0 on `windgen_snap`
+(`pf=1.0`), against r4133's 0 everywhere. Upstream report:
+`investigations/to_opendss/55-windgen-qmode0-zero-var-dispatch.md` (local). Full
+record: `docs/phase-records/r4133-props-rp3.md` §RP3.10.
+
 ### RP3.11 — the `Save`/`Dump` re-serialization surface (opened by the RP3.3 audit settlement)
 
 **Why it exists.** Every echo row in this plan says the same thing about a
@@ -2168,8 +2209,9 @@ divergence from r4133's serializer instead of a port change.
 **Blocks §RP5.2** (the closing record), **not RP4.1** — the unmask compares
 properties through `compare_all_properties`, which never reads a `Save` or
 `Dump` byte on the r4133 channel. Tier: `opus-xhigh`. *(**Discharged
-2026-09-03** — the sub-step landed, so §RP5.2 waits on §RP3.10 alone; see the
-dated lines below.)*
+2026-09-03** — the sub-step landed; §RP3.10, the only §RP5.2 blocker left after
+it, was executed 2026-09-04, so §RP5.2 now has none. See the dated lines
+below.)*
 **Acceptance:** both surfaces carry a recorded verdict; whatever stays divergent
 from r4133 is pinned by an expected-value test naming both serializations; the
 `PF=0.88`-class sequence difference is explained or fixed; goldens that
@@ -2703,6 +2745,9 @@ closed** — executed or refuted with evidence. It is the one reproduced upstrea
 bug this plan uncovered, and the 2026-08-02 policy does not let it be archived as
 a note; if the user has not sanctioned the fix by then, it moves to
 `ORPHANED_GAPS.md` with its evidence instead of vanishing with the plan.
+*(**Discharged 2026-09-04** — executed as a `FIX` in both lanes, with its
+divergences excluded per case and pinned; the `ORPHANED_GAPS.md` fallback is
+moot. See §RP3.10's dated line.)*
 **Acceptance:** no doc
 disagrees with any other on counts or state; clean tree. Outcome: the plan
 closes and GOLDEN_REBASE resumes with G1.1 satisfied.

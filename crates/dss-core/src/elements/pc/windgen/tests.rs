@@ -380,43 +380,465 @@ fn aerodynamic_wind_speed_sweep() {
     }
 }
 
-/// Offline pin of the WTG3 dynamics state (the `windgen_dyn` deck run for 20x1ms
-/// steps) against the capi015 reference values (probed on dss_capi 0.15.0b4).
-/// The `modes/windgen/windgen_dyn.dss` live gate pins all 22 variables exactly;
-/// this guards against a Rust-side regression even without the oracle installed.
+/// RP3.10 — offline pin of the WTG3 dynamics state on BOTH `modes/windgen`
+/// dynamics decks — `windgen_dyn.dss` (20x1ms, healthy) and
+/// `windgen_dyn_fault.dss` (30x1ms, sustained 3-phase fault) — **naming both
+/// engines' numbers**.
+///
+/// Neither deck carries a `QMode=` token, so both run the constant-Q arm this
+/// port implements and r4133 lacks (`nominal.rs`; upstream falls through to
+/// `Else kvarCalc := 0`, `WindGen.pas:1320-1321`). `WindGen.pas:1254` skips the
+/// whole P/Q block in dynamics, so that arm reaches these runs through **one**
+/// channel: the snapshot `solve` each deck performs before `Set mode=dynamic`,
+/// which now injects `kvarBase = 854.95263026673` kvar
+/// (`q_nominal_per_phase = 284984.21008891` var/phase) instead of 0 and moves
+/// the WTG3 initial condition.
+///
+/// Three of the 22 state variables move out of the band they were pinned at on
+/// the healthy deck and four on the faulted one (`thetaPitch` is the extra);
+/// both engines' readings are named below — r4133's re-measured live on the
+/// EPRI r4133 DLL (Version 11.0.0.1) through `epri-worker`. The other checked
+/// ones still agree with the oracle at their original tolerances, which is what
+/// proves the divergence is confined to the Q channel. The live gate excludes
+/// exactly those three / four variables on the matching deck
+/// (`tests/corpus/ledger.json`, `windgen-qmode0-constant-q-dyn-r4133` and
+/// `windgen-qmode0-constant-q-dynfault-r4133`, cause `windgen-qmode0-no-arm`)
+/// and keeps the other 19 / 18 compared.
+///
+/// Tolerances are the ones this test has always used (1e-3 / 1e-4 / 1e-2 /
+/// 1e-6) — re-centred, never loosened. The faulted deck's `thetaPitch` is
+/// pinned at 1e-4 rather than the healthy deck's 1e-2 because its divergence is
+/// 2.99e-4: a looser band could not tell the two engines apart.
 #[test]
-fn dynamics_variables_match_capi015_reference() {
-    let mut dss = Dss::new();
-    for c in [
-        "clear",
-        "new circuit.wtg_dyn basekv=0.69 phases=3 bus1=srcbus",
-        "new line.l1 bus1=srcbus bus2=wbus phases=3 r1=0.005 x1=0.02 length=1",
-        "new windgen.w1 bus1=wbus phases=3 kv=0.69 kW=1500 kva=1800 conn=wye model=1 vss=1 pss=1 qss=0 vwind=12",
-        "set voltagebases=[0.69]",
-        "calcvoltagebases",
-        "solve",
-        "set mode=dynamic stepsize=0.001 number=20",
-        "solve",
-    ] {
-        dss.command(c);
-    }
-    assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
-    let v = dss.element_variables("WindGen.w1").expect("vars");
-    // capi015 reference (probe_windgen.py, dss_capi 0.15.0b4, 20x1ms):
-    // idx (0-based): 4=Pgen, 6=Qgen, 8=Vmag, 11=WtAct, 17=thetaPitch, 18=Pg,
-    //                21=s.
-    let check = |i: usize, name: &str, expect: f64, tol: f64| {
+fn dynamics_variables_match_the_qmode0_dispatch() {
+    // The two decks, verbatim (`tests/corpus/modes/windgen/windgen_dyn.dss` and
+    // `.../windgen_dyn_fault.dss`); the faulted one adds the sustained 3-phase
+    // `Fault.f1` and runs 30 steps instead of 20.
+    let run = |fault: bool| -> Vec<f64> {
+        let mut dss = Dss::new();
+        let mut cmds: Vec<String> = vec![
+            "clear".into(),
+            format!(
+                "new circuit.{} basekv=0.69 phases=3 bus1=srcbus",
+                if fault { "wtg_fault" } else { "wtg_dyn" }
+            ),
+            "new line.l1 bus1=srcbus bus2=wbus phases=3 r1=0.005 x1=0.02 length=1".into(),
+            "new windgen.w1 bus1=wbus phases=3 kv=0.69 kW=1500 kva=1800 conn=wye \
+             model=1 vss=1 pss=1 qss=0 vwind=12"
+                .into(),
+        ];
+        if fault {
+            cmds.push("new fault.f1 bus1=wbus phases=3 r=0.05".into());
+        }
+        cmds.push("set voltagebases=[0.69]".into());
+        cmds.push("calcvoltagebases".into());
+        cmds.push("solve".into());
+        cmds.push(format!(
+            "set mode=dynamic stepsize=0.001 number={}",
+            if fault { 30 } else { 20 }
+        ));
+        cmds.push("solve".into());
+        for c in &cmds {
+            dss.command(c);
+        }
+        assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
+        dss.element_variables("WindGen.w1").expect("vars")
+    };
+    // idx (0-based): 4=Pgen, 6=Qgen, 8=Vmag, 11=WtAct, 12=dOmg,
+    //                17=thetaPitch, 18=Pg, 21=s.
+    let check = |v: &[f64], deck: &str, i: usize, name: &str, expect: f64, tol: f64| {
         assert!(
             (v[i] - expect).abs() < tol,
-            "{name}: Rust {} vs capi015 {expect} (tol {tol})",
+            "{deck} {name}: Rust {} vs capi015/r4133 {expect} (tol {tol})",
             v[i]
         );
     };
-    check(4, "Pgen", 1.0021984, 1e-3);
-    check(6, "Qgen", -0.0062978, 1e-3);
-    check(8, "Vmag", 1.0152462, 1e-3);
-    check(11, "WtAct", 1.1999977, 1e-4);
-    check(17, "thetaPitch", 4.3769679, 1e-2);
-    check(18, "Pg", 1584.0, 1e-6); // kVA*PF re-derive, not the parsed kW=1500
-    check(21, "s", -0.1387536, 1e-6);
+    // The variables the constant-Q dispatch moves. `port` is this engine's
+    // measured value, `oracle` the number the upstream engine reports; the
+    // second assert keeps the divergence deliberate — it fails the moment the
+    // engine drifts back onto the upstream zero-var dispatch.
+    let diverges =
+        |v: &[f64], deck: &str, i: usize, name: &str, port: f64, oracle: f64, tol: f64| {
+            assert!(
+                (v[i] - port).abs() < tol,
+                "{deck} {name}: Rust {} vs the RP3.10 constant-Q value {port} (tol {tol})",
+                v[i]
+            );
+            assert!(
+                (v[i] - oracle).abs() > tol,
+                "{deck} {name}: Rust {} must NOT match the upstream zero-var \
+                 reading {oracle} — r4133/capi015 dispatch 0 vars here (`Else \
+                 kvarCalc := 0`, WindGen.pas:1320-1321), excluded per case in \
+                 ledger.json, cause `windgen-qmode0-no-arm`",
+                v[i]
+            );
+        };
+
+    // ---- windgen_dyn.dss (healthy, 20x1ms) ------------------------------
+    // Oracle: capi015 reference (probe_windgen.py, dss_capi 0.15.0b4); r4133
+    // reproduces it (both engines take the `Else kvarCalc := 0` path), live
+    // readings Pgen 1.002198412222774, Qgen -0.006297830900882717, dOmg
+    // 0.010128443304934094.
+    let v = run(false);
+    diverges(
+        &v,
+        "windgen_dyn",
+        4,
+        "Pgen",
+        1.0045538616795757,
+        1.0021984,
+        1e-3,
+    );
+    diverges(
+        &v,
+        "windgen_dyn",
+        6,
+        "Qgen",
+        -0.00768950341712867,
+        -0.0062978,
+        1e-3,
+    );
+    diverges(
+        &v,
+        "windgen_dyn",
+        12,
+        "dOmg",
+        0.012407481452484234,
+        0.010128443304934094,
+        1e-3,
+    );
+    // Unmoved (measured post-fix: Vmag 1.0151455298956373, WtAct
+    // 1.2000018957179186, thetaPitch 4.377043172761117, s -0.13875361782251128)
+    // — still the oracle's readings at the original tolerances.
+    check(&v, "windgen_dyn", 8, "Vmag", 1.0152462, 1e-3);
+    check(&v, "windgen_dyn", 11, "WtAct", 1.1999977, 1e-4);
+    check(&v, "windgen_dyn", 17, "thetaPitch", 4.3769679, 1e-2);
+    check(&v, "windgen_dyn", 18, "Pg", 1584.0, 1e-6); // kVA*PF re-derive, not kW=1500
+    check(&v, "windgen_dyn", 21, "s", -0.1387536, 1e-6);
+
+    // ---- windgen_dyn_fault.dss (sustained 3-phase fault, 30x1ms) --------
+    // The fault holds the terminal near 0.898 pu, so LVPL/LVQL engage and the
+    // moved snapshot state reaches one variable more than on the healthy deck.
+    // Oracle values re-measured live on r4133 (epri-worker, Version 11.0.0.1).
+    let v = run(true);
+    diverges(
+        &v,
+        "windgen_dyn_fault",
+        4,
+        "Pgen",
+        1.0086500012360733,
+        1.0042629667839191,
+        1e-3,
+    );
+    diverges(
+        &v,
+        "windgen_dyn_fault",
+        6,
+        "Qgen",
+        0.0688589386657973,
+        0.07121218770486548,
+        1e-3,
+    );
+    diverges(
+        &v,
+        "windgen_dyn_fault",
+        12,
+        "dOmg",
+        -0.08630408763613222,
+        -0.0812032858835468,
+        1e-3,
+    );
+    diverges(
+        &v,
+        "windgen_dyn_fault",
+        17,
+        "thetaPitch",
+        4.37634056945387,
+        4.376041805109156,
+        1e-4,
+    );
+    // Unmoved on this deck too (port Vmag 0.8982642716641427, WtAct
+    // 1.1999354709415782 — 3.3e-5 and 1.2e-5 from r4133, both inside the gate's
+    // ~1.2e-4 floor, so they stay oracle-compared there as well).
+    check(&v, "windgen_dyn_fault", 8, "Vmag", 0.8982967694080912, 1e-3);
+    check(
+        &v,
+        "windgen_dyn_fault",
+        11,
+        "WtAct",
+        1.1999230833079593,
+        1e-4,
+    );
+    check(&v, "windgen_dyn_fault", 18, "Pg", 1584.0, 1e-6);
+    check(&v, "windgen_dyn_fault", 21, "s", -0.13875361782251128, 1e-6);
+}
+
+/// RP3.10 — `QMode=0` dispatches the base kvar, in BOTH lanes.
+///
+/// `TWindGenObj.SetNominalGeneration`'s `case WindModelDyn.QMode`
+/// (`WindGen.pas:1276-1322`) implements arm 1 (PF) and arm 2 (volt-var) and has
+/// **no arm 0**, so mode 0 — `Create`'s default (`:1020`) — falls through to
+/// `Else kvarCalc := 0` (`:1320-1321`) and a default-configured WindGen injects
+/// **zero vars** however its `kvar=`/`pf=` reads. Both numbers, per token set:
+/// r4133 dispatches `0` (probed live on the EPRI r4133 DLL, Version 11.0.0.1,
+/// on all five `modes/windgen` decks and in every configuration), this engine
+/// dispatches `kvarBase` — the reading the property help (`:429-430`, `0:Q`),
+/// the WTG3 model (`WTG3_Model.pas:252`, `:1059-1061`), models 4/5 (`:1361`,
+/// `:1797`), arm 1's saturation fallback (`:1284`) and arm 2's scale point
+/// (`:1313-1316`) all agree on. The divergence is excluded per case in
+/// `tests/corpus/ledger.json` (cause `windgen-qmode0-no-arm`).
+#[test]
+fn qmode0_dispatches_the_base_kvar() {
+    let sys = default_recalc_ctx();
+    let dispatch = |edits: &[(&str, &str)]| {
+        let mut g = edit_windgen(edits);
+        assert_eq!(g.wind_model_dyn.q_mode, 0, "the decks type no QMode=");
+        g.set_nominal_generation(&sys, &[]);
+        (g.kw_base, g.kvar_base, g.q_nominal_per_phase)
+    };
+    let msg = "r4133 dispatches 0 here (`Else kvarCalc := 0`, \
+               WindGen.pas:1320-1321) — excluded per case in ledger.json, \
+               cause `windgen-qmode0-no-arm`";
+
+    // modes/windgen/windgen_snap_delta.dss
+    let (kw, kvar, q) = dispatch(&[
+        ("phases", "3"),
+        ("kv", "12.47"),
+        ("kW", "1500"),
+        ("pf", "0.9"),
+        ("conn", "delta"),
+        ("model", "1"),
+        ("vwind", "12"),
+    ]);
+    assert_eq!(kw, 1500.0);
+    assert_eq!(kvar, 726.4831572567788, "snap_delta kvarBase");
+    // The arm is a copy, not arithmetic: `Qnominalperphase = 1e3*kvarCalc*
+    // LeadLag*Factor/Fnphases` (`:1325`) with LeadLag = Factor = 1.
+    assert_eq!(q, 1e3 * 726.4831572567788 / 3.0, "snap_delta: {msg}");
+    assert_eq!(q, 242161.05241892627);
+
+    // modes/windgen/windgen_daily.dss
+    let (kw, kvar, q) = dispatch(&[
+        ("phases", "3"),
+        ("kv", "12.47"),
+        ("kW", "3000"),
+        ("pf", "0.95"),
+        ("conn", "wye"),
+        ("model", "1"),
+        ("vwind", "12"),
+    ]);
+    assert_eq!(kw, 3000.0);
+    assert_eq!(kvar, 986.0523155365896, "daily kvarBase");
+    assert_eq!(q, 1e3 * 986.0523155365896 / 3.0, "daily: {msg}");
+    assert_eq!(q, 328684.1051788632);
+
+    // modes/windgen/windgen_dyn.dss + windgen_dyn_fault.dss (kVA set, no PF:
+    // RecalcElementData re-derives kWBase = kVA*|PF| and kvarBase =
+    // sqrt(kVA^2 - kWBase^2), `WindGen.pas:1375-1384`).
+    let (kw, kvar, q) = dispatch(&[
+        ("phases", "3"),
+        ("kv", "0.69"),
+        ("kW", "1500"),
+        ("kva", "1800"),
+        ("conn", "wye"),
+        ("model", "1"),
+        ("vwind", "12"),
+    ]);
+    assert_eq!(kw, 1584.0, "kVA*|PF| re-derive, not the parsed kW=1500");
+    assert_eq!(kvar, 854.95263026673, "dyn kvarBase");
+    assert_eq!(q, 1e3 * 854.95263026673 / 3.0, "dyn: {msg}");
+    assert_eq!(q, 284984.21008891);
+
+    // modes/windgen/windgen_snap.dss — unity PF, so the new arm is a literal
+    // no-op and this deck stays byte-identical to r4133 (no ledger entry).
+    let (kw, kvar, q) = dispatch(&[
+        ("phases", "3"),
+        ("kv", "12.47"),
+        ("kW", "1500"),
+        ("pf", "1.0"),
+        ("conn", "wye"),
+        ("model", "1"),
+        ("vwind", "12"),
+    ]);
+    assert_eq!(kw, 1500.0);
+    assert_eq!(kvar, 0.0);
+    assert_eq!(q, 0.0, "unity PF: nothing to dispatch");
+
+    // Discriminator: the same daily object under `QMode=1` still takes arm 1,
+    // which follows the wind (`Pg`) instead of the base. At the daily shape's
+    // hour-1 10 m/s (Pg = 1262.291928212379 kW) arm 1 dispatches
+    // 138298.43096632924 var/phase (414.89529289898772 kvar total) against the
+    // base's 986.0523155365896 kvar — so this pin separates the arms rather
+    // than hardwiring `kvarBase` into every mode.
+    let mut g = edit_windgen(&[
+        ("phases", "3"),
+        ("kv", "12.47"),
+        ("kW", "3000"),
+        ("pf", "0.95"),
+        ("conn", "wye"),
+        ("model", "1"),
+        ("vwind", "10"),
+        ("qmode", "1"),
+    ]);
+    assert_eq!(g.wind_model_dyn.q_mode, 1);
+    g.set_nominal_generation(&sys, &[]);
+    assert_eq!(g.pg, 1262.291928212379);
+    assert_eq!(
+        g.q_nominal_per_phase, 138298.43096632924,
+        "arm 1, Pg-driven"
+    );
+    // ... while mode 0 on the very same tokens ignores the wind entirely.
+    let (_, _, q0) = dispatch(&[
+        ("phases", "3"),
+        ("kv", "12.47"),
+        ("kW", "3000"),
+        ("pf", "0.95"),
+        ("conn", "wye"),
+        ("model", "1"),
+        ("vwind", "10"),
+    ]);
+    assert_eq!(q0, 1e3 * 986.0523155365896 / 3.0, "constant in wind: {msg}");
+}
+
+/// RP3.10 — the mode-0 dispatch carries `kvarBase`'s sign and scales with
+/// `Factor` (`GenMultiplier`), exactly as arms 1/2 do.
+///
+/// Sign: `kvarBase` is already signed by the typed `kvar=`
+/// (`WindGen.pas:3001`) or by `pf<0` (`:3028`), while arm 1 reaches the same
+/// signed answer by putting the sign in `LeadLag` over a non-negative `sqrt`
+/// (`:1286-1287`) — so the new arm leaves `LeadLag` at 1; re-applying it would
+/// double-negate. Probed on r4133: `kW=1000 pf=-0.9` gives `+484.32` kvar at the
+/// terminal through arm 1 (`QMode=1`) and through `model=4` alike.
+/// `Factor`: `:1325` sits OUTSIDE the `case`, so every arm scales with it
+/// (probed: `Set genmult=0.5` halves arm 1's dispatch), while `varBase` — the
+/// models 4/5 injection, `:1361` — does not.
+#[test]
+fn qmode0_dispatch_carries_the_sign_and_scales_with_genmult() {
+    let sys = default_recalc_ctx();
+    let run = |edits: &[(&str, &str)], sys: &crate::elements::traits::SysCtx| {
+        let mut g = edit_windgen(edits);
+        g.set_nominal_generation(sys, &[]);
+        (g.kvar_base, g.q_nominal_per_phase, g.var_base)
+    };
+    let neg_pf: &[(&str, &str)] = &[
+        ("phases", "3"),
+        ("kv", "0.69"),
+        ("kW", "1000"),
+        ("pf", "-0.9"),
+        ("vwind", "12"),
+    ];
+    let (kvar_base, q_mode0, _) = run(neg_pf, &sys);
+    assert_eq!(kvar_base, -484.3221048378525, "pf<0 signs kvarBase itself");
+    assert_eq!(q_mode0, -161440.7016126175);
+    assert_eq!(q_mode0, 1e3 * -484.3221048378525 / 3.0);
+    // Arm 1 on the same tokens agrees to the last ulp — it just gets there
+    // through `LeadLag = -1` on a non-negative `sqrt` (r4133 dispatches 0 in
+    // mode 0; cause `windgen-qmode0-no-arm`).
+    let mut arm1 = neg_pf.to_vec();
+    arm1.push(("qmode", "1"));
+    let (_, q_mode1, _) = run(&arm1, &sys);
+    assert_eq!(q_mode1, -161440.70161261753);
+    assert!(
+        (q_mode0 - q_mode1).abs() <= f64::EPSILON * q_mode0.abs(),
+        "mode 0 {q_mode0} vs arm 1 {q_mode1}: same signed answer, 1 ulp apart"
+    );
+
+    // A typed negative `kvar=` reaches the same convention exactly.
+    let neg_kvar: &[(&str, &str)] = &[
+        ("phases", "3"),
+        ("kv", "0.69"),
+        ("kW", "1000"),
+        ("kvar", "-400"),
+        ("vwind", "12"),
+    ];
+    let (kvar_base, q_mode0, _) = run(neg_kvar, &sys);
+    assert_eq!(kvar_base, -400.0);
+    assert_eq!(q_mode0, 1e3 * -400.0 / 3.0);
+    assert_eq!(q_mode0, -133333.33333333334);
+
+    // Factor: halve `GenMultiplier` and the mode-0 dispatch halves exactly,
+    // while `varBase` (models 4/5) is untouched.
+    let mut sys05 = default_recalc_ctx();
+    sys05.gen_multiplier = 0.5;
+    let pos_pf: &[(&str, &str)] = &[
+        ("phases", "3"),
+        ("kv", "0.69"),
+        ("kW", "1000"),
+        ("pf", "0.9"),
+        ("vwind", "12"),
+    ];
+    let (_, q_full, var_base_full) = run(pos_pf, &sys);
+    let (_, q_half, var_base_half) = run(pos_pf, &sys05);
+    assert_eq!(q_full, 161440.7016126175);
+    assert_eq!(q_half, 161440.7016126175 / 2.0);
+    assert_eq!(q_half, 80720.35080630875);
+    assert_eq!(
+        var_base_full, var_base_half,
+        "varBase ignores GenMultiplier"
+    );
+    assert_eq!(var_base_full, 161440.7016126175);
+}
+
+/// RP3.10 — mode 0 dispatches zero only where the base itself is zero, and the
+/// paths that zero Q for every mode keep doing so.
+///
+/// This is the guard against "fixing" the missing arm into a new hardwired
+/// constant: `pf=1.0` (the `windgen_snap.dss` deck) has `kvarBase = 0`, so it
+/// stays byte-identical to r4133; above `VCutOut` the turbine-off block
+/// (`WindGen.pas:1243-1250`) zeroes `Qnominalperphase` before the `case` is
+/// ever reached; and an out-of-range `QMode` — reachable through
+/// `SetVariable(15)` (`dynamics.rs`), which takes any integer — keeps
+/// upstream's `Else`.
+#[test]
+fn qmode0_zero_only_when_the_base_is_zero() {
+    let sys = default_recalc_ctx();
+
+    // Unity PF: zero base, zero dispatch (both engines agree here).
+    let mut g = edit_windgen(&[
+        ("phases", "3"),
+        ("kv", "12.47"),
+        ("kW", "1500"),
+        ("pf", "1.0"),
+        ("vwind", "12"),
+    ]);
+    g.set_nominal_generation(&sys, &[]);
+    assert_eq!(g.kvar_base, 0.0);
+    assert_eq!(g.q_nominal_per_phase, 0.0);
+
+    // Above VCutOut (23 m/s): the turbine is off, so Q is 0 in every mode even
+    // though the base is 726.48 kvar.
+    for mode in ["0", "1", "2"] {
+        let mut g = edit_windgen(&[
+            ("phases", "3"),
+            ("kv", "12.47"),
+            ("kW", "1500"),
+            ("pf", "0.9"),
+            ("vwind", "30"),
+            ("qmode", mode),
+        ]);
+        g.set_nominal_generation(&sys, &[]);
+        assert_eq!(g.kvar_base, 726.4831572567788);
+        assert_eq!(g.pg, 0.0);
+        assert_eq!(
+            g.q_nominal_per_phase, 0.0,
+            "above VCutOut QMode={mode} must dispatch nothing"
+        );
+    }
+
+    // An out-of-range mode still falls through to `Else kvarCalc := 0`.
+    let mut g = edit_windgen(&[
+        ("phases", "3"),
+        ("kv", "12.47"),
+        ("kW", "1500"),
+        ("pf", "0.9"),
+        ("vwind", "12"),
+    ]);
+    g.set_wgen_variable(15, 7.0);
+    assert_eq!(g.wind_model_dyn.q_mode, 7);
+    g.set_nominal_generation(&sys, &[]);
+    assert_eq!(g.kvar_base, 726.4831572567788);
+    assert_eq!(
+        g.q_nominal_per_phase, 0.0,
+        "out-of-range QMode keeps the Else"
+    );
 }

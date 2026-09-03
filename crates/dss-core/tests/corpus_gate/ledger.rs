@@ -396,14 +396,25 @@ impl LedgerRuntime {
 /// it (or a typo'd field) would silently never apply, so loading rejects
 /// anything outside this list loudly (pre-E/F audit UGA-T4).
 ///
-/// The last four — `y`, `y_fingerprint`, `yprim`, `meter` — are
-/// **exclusion-only** ([`EXCLUSION_ONLY_FIELDS`]): they name a whole compared
-/// artifact rather than a value with a natural envelope, so the only thing the
-/// ledger can say about them is "this (case, channel) does not compare it".
-/// `GOLDEN_REBASE_PLAN.md` G2.5 added them, because an engine fix that declines
-/// an upstream bug moves the assembled admittance of the affected deck and
-/// nothing else in this file could express that.
-const LEDGER_FIELDS: [&str; 13] = [
+/// The last five — `y`, `y_fingerprint`, `yprim`, `meter`, `variables` — are
+/// **exclusion-only** ([`EXCLUSION_ONLY_FIELDS`]). The first four name a whole
+/// compared artifact rather than a value with a natural envelope, so the only
+/// thing the ledger can say about them is "this (case, channel) does not
+/// compare it"; `GOLDEN_REBASE_PLAN.md` G2.5 added them, because an engine fix
+/// that declines an upstream bug moves the assembled admittance of the affected
+/// deck and nothing else in this file could express that.
+///
+/// `variables` (`R4133_PROPS_PLAN.md` RP3.10, the WindGen `QMode=0` fix) is the
+/// odd one out: a state variable IS a scalar with the natural
+/// `i_abs + i_rel*|oracle|` envelope, but no handler re-asserts one, so
+/// whitelisting it for `divergence` too would let an entry promise a
+/// measurement the runtime never makes. It is selected **per variable**
+/// (`name_re` over the lowercased `element:variable` key) precisely so the
+/// exclusion stays that small: the only other way to stop comparing 3 of a
+/// dynamics deck's 22 state variables is to drop the element from the
+/// manifest's `variables` list, which masks the other 19 — and the population
+/// lock counts that as a rigor shrink.
+const LEDGER_FIELDS: [&str; 14] = [
     "iterations",
     "voltages",
     "injection",
@@ -417,12 +428,13 @@ const LEDGER_FIELDS: [&str; 13] = [
     "y_fingerprint",
     "yprim",
     "meter",
+    "variables",
 ];
 
 /// Fields an entry may name only with `kind: "exclusion"` — see
 /// [`LEDGER_FIELDS`]. A `divergence` naming one would promise an envelope
 /// nothing re-asserts.
-const EXCLUSION_ONLY_FIELDS: [&str; 4] = ["y", "y_fingerprint", "yprim", "meter"];
+const EXCLUSION_ONLY_FIELDS: [&str; 5] = ["y", "y_fingerprint", "yprim", "meter", "variables"];
 
 /// Fields an `exclusion` entry may name — the mirror obligation of
 /// [`LEDGER_FIELDS`], because "has a runtime handler" turned out to be
@@ -436,7 +448,16 @@ const EXCLUSION_ONLY_FIELDS: [&str; 4] = ["y", "y_fingerprint", "yprim", "meter"
 /// oracle's line before the compare — none of which an exclusion can mean), so
 /// an `exclusion` naming one of them would pass the loader and then do nothing.
 /// Refused by `assert_structural` instead.
-const EXCLUSION_FIELDS: [&str; 9] = [
+///
+/// `variables` (`R4133_PROPS_PLAN.md` RP3.10) is served by
+/// [`LedgerView::excluded`] like the coarse four, keyed on the lowercased
+/// `element:variable` pair the runner builds (`corpus_gate/runner.rs`, e.g.
+/// `windgen.w1:pgen`), so `every_exclusion_field_is_honoured_by_the_runtime`
+/// covers it with no new drive. `compare_variables` keeps its **count**
+/// assertion unconditional whatever the ledger says, and asserts for every
+/// index an exclusion drops that both engines spell that variable the same —
+/// a mask selected by name must not be able to slide onto a clean channel.
+const EXCLUSION_FIELDS: [&str; 10] = [
     "voltages",
     "element",
     "injection",
@@ -446,6 +467,7 @@ const EXCLUSION_FIELDS: [&str; 9] = [
     "y_fingerprint",
     "yprim",
     "meter",
+    "variables",
 ];
 
 fn compile_scope(id: &str, s: &RawScope) -> Scope {

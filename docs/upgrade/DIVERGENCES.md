@@ -2350,3 +2350,85 @@ and neither oracle channel is exposed on any of the five `modes:windgen/*` decks
 deck that names a native DLL is ever gated on a channel where the oracle DOES
 load it, the divergence is a whole-element one (their model runs, ours cannot)
 and must be excluded case-by-case rather than papered over here.
+
+## L7 — WindGen `QMode=0` dispatches `kvarBase` (r4133 zero-var bug, not reproduced) — R4133_PROPS RP3.10, 2026-09-04
+
+**Observable.** A `WindGen` that does not type `QMode=` — i.e. every default
+one — injects **zero vars** in power flow on r4133 however its `kvar=`, `pf=` or
+`kVA=` reads. The port dispatches the machine's `kvarBase` instead, so the two
+engines diverge across the solved model of any deck that declares a WindGen with
+a non-zero base.
+
+**EPRI r4133.** `TWindGenObj.SetNominalGeneration`'s steady-state
+`case WindModelDyn.QMode` (`Version8/Source/PCElements/WindGen.pas:1276-1322`)
+implements arm 1 (PF, `:1277-1288`) and arm 2 (volt-var, `:1289-1319`) and has
+**no arm 0**, so mode 0 falls through to `Else kvarCalc := 0` (`:1320-1321`) and
+`:1325` then stores `Qnominalperphase := 1e3 * 0 * … = 0`. `QMode` *defaults* to
+0 (`Create`, `:1020`), the property help documents it as
+`'Q control mode (0:Q, 1:PF, 2:VV).'` (`:429-430`), and the dynamics model
+spells the same mode `QMode := 0; // 0 -> Constant Q` (`WTG3_Model.pas:252`),
+implemented as `Qord := Qref` (`:1059-1061`). It is an omission, not a design:
+arm 1's own saturation fallback **is** `kvarBase` (`:1284`), arm 2 is `kvarBase`
+scaled by the VV curve and saturated at `|kvarBase|` (`:1313-1316`), models 4/5
+inject `varBase = 1000*kvarBase/Fnphases` unconditionally (`:1361`, `:1797`,
+comment `:1775` *"Q is always kvarBase"*), and the parent class writes the
+dispatch outright (`Generator.pas:1163`) — which WindGen could not transcribe
+because its `ShapeFactor` carries the wind **speed**, not a pu multiplier
+(`:1241`). A complete 20-hit `Qnominalperphase` write census leaves no other
+filler for mode 0: `:1245` (turbine off → 0), `:1325` (the dispatch) and the two
+seeds `:3002`/`:3025`, both overwritten by `:1325` before any solve;
+`InitDQDVCalc`/`BumpUpQ`/`ResetStartPoint` have no WindGen caller
+(`Common/Solution.pas:963-1000` walks `Generators` only).
+
+**Live measurement** (EPRI r4133 DLL 11.0.0.1 through `epri-worker`, RP3.10's
+probe and its `DSS_GATE_ONLY=windgen` gate run). Under `QMode=0` r4133
+dispatches **exactly 0** on all five `modes:windgen/*` corpus decks and in every
+configuration probed, including decks that type `kvar=`, `pf=` **and** `kVA=`
+(`kW=1000 pf=0.9`, `kW=1000 kvar=±400` all give
+`P = -1000.0000016773234, Q = -8.437050548309344e-06`); `edit … QMode=0` is
+inert and re-entrant. The same engine dispatches the base the moment the `case`
+is bypassed or an arm exists — `model=4`/`DoFixedQGen` gives
+`-726.4287342535065` on `windgen_snap_delta` and `-985.9891404764404` on
+`windgen_daily`, and arm 2 with a flat `y=+1` volt-var curve gives exactly
+`kvarBase`. Per deck, port against r4133:
+
+| deck | `kvar_base` (kvar) | port `q_nominal_per_phase` (VAr) | port terminal Q (kvar) | r4133 terminal Q (kvar) |
+|---|---|---|---|---|
+| `modes:windgen/windgen_snap_delta.dss` | 726.4831572567788 | 242161.05241892627 | −726.4838 | −4.216133426461965e-05 |
+| `modes:windgen/windgen_daily.dss` | 986.0523155365896 | 328684.1051788632 | −986.0531 | −2.1275018134247148e-05 |
+| `modes:windgen/windgen_dyn.dss` | 854.95263026673 | 284984.21008891 | −37077.425 | −37087.759 |
+| `modes:windgen/windgen_dyn_fault.dss` | 854.95263026673 | 284984.21008891 | −29209.383 | −29216.667 |
+| `modes:windgen/windgen_snap.dss` | 0 (`pf=1.0`) | 0 | — | — (no divergence) |
+
+`WindGen.pas:1254` skips the whole P/Q block in dynamics, so the two dynamics
+decks move only through the snapshot `solve` their own deck line performs before
+`Set mode=dynamic`; `windgen_snap` types `pf=1.0`, so its base is 0 and the arm
+is a literal no-op there.
+
+**Decision — fix it in both lanes, never reproduce it** (CLAUDE.md's 2026-08-02
+policy). `crates/dss-core/src/elements/pc/windgen/nominal.rs` gains one
+unconditional arm, `0 => kvar_calc = self.kvar_base`, with no `cfg`, no
+`compat::` alias and no `kVArating` clamp (`|kvarBase| <= kVArating` is a
+`RecalcElementData` invariant, `:1375-1384`) and no `LeadLag` re-application (the
+sign already lives in `kvar_base`); `Factor` (`GenMultiplier`) still applies
+because `:1325` sits outside the `case`. The `_` arm keeps upstream's `Else` for
+out-of-range modes. `lane_diff` measured `max |Δ| = 0` on every gated kind, so
+both lanes compute the identical `q_nominal_per_phase`.
+
+**Exclusions and pins.** The four decks' divergence is excluded field-by-field
+in `tests/corpus/ledger.json` — `windgen-qmode0-constant-q-{snapdelta,daily,dyn,dynfault}-r4133`,
+`kind: exclusion`, channel `r4133`, cause `windgen-qmode0-no-arm` — and pinned by
+`elements::pc::windgen::tests::qmode0_dispatches_the_base_kvar`,
+`::qmode0_dispatch_carries_the_sign_and_scales_with_genmult`,
+`::qmode0_zero_only_when_the_base_is_zero` and
+`::dynamics_variables_match_the_qmode0_dispatch`, each naming both engines'
+numbers, plus the re-centred
+`exec::tests::force_hooks::windgen_force_inj_freezes_iterminal`;
+`every_rp310_windgen_pin_exists_and_is_cited`
+(`crates/dss-core/tests/props_r4133_replay.rs`) keeps those citations from
+drifting. `modes:windgen/windgen_snap.dss` gets **no** entry — nothing moves
+there. The property side is untouched: r4133's `kvar` getter renders the
+*dispatched* Q (`:2896`, RP3.2's finding) while the port renders `kvar_base`,
+which this dispatch never writes. Upstream report:
+`investigations/to_opendss/55-windgen-qmode0-zero-var-dispatch.md` (local-only).
+Full record: `docs/phase-records/r4133-props-rp3.md` §RP3.10.
