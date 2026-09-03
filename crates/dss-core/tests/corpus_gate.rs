@@ -149,6 +149,27 @@ fn corpus_gate_all_cases_match_engines() {
     // than a loud mismatch. Self-silencing when no unflushed monitor was
     // compared, so `DSS_GATE_ONLY` runs do not trip it.
     harness::lane::assert_monitor_pad_is_live();
+    // And the GLOBAL half of the r4133 property accounting (plan §RP4.1): the
+    // two per-row asserts BELOW say nothing when NO row was visited, which is
+    // exactly what a re-mask of the r4133 property request would produce — a
+    // silent, green gate. This one fails when the whole r4133 property compare
+    // never ran, counted at the single gating call site
+    // (`harness::compare_all_properties`'s r4133 arm) rather than off the
+    // tables, whose statics sibling unit tests in this binary legitimately move.
+    // It is the loud half of "a scheduler-side re-mask is invisible to
+    // `population.lock.json`"; the other half is the landed `property`-scoped
+    // r4133 entries going NEVER APPLIED in `assert_all_hit` above, and the
+    // static third is `scheduler::the_property_forcing_rule_is_every_live_non_
+    // large_case`, which also catches a PARTIAL re-mask this boolean cannot see.
+    //
+    // It runs BEFORE the two per-row guards (RP4.1 audit settlement,
+    // 2026-09-03): "did the compare run at all" is the precondition that makes
+    // their per-row verdicts mean anything, and running it first keeps a
+    // wholesale re-mask reporting as one line instead of 19 rows of
+    // "narrowed row never visited".
+    let (props_walks, props_elements) = harness::props_norm::r4133_props_walk_counters();
+    eprintln!("corpus_gate r4133 props: {props_walks} gating walk(s), {props_elements} element(s)");
+    harness::props_norm::assert_r4133_props_compare_ran();
     // And for the RP2.1 r4133 property-normalization rows, for the first
     // reason: each row lets the engine spell a property value differently from
     // r4133, so one that stops folding anything must fail rather than sit in
@@ -167,21 +188,11 @@ fn corpus_gate_all_cases_match_engines() {
     // there. Live on the same schedule (it was zero-visit until RP4.1's unmask),
     // skipping a `DSS_GATE_ONLY` run the same explicit way, plus silent for the
     // two rows whose cited cells sit on capi-only cases
-    // (`props_norm::ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`).
+    // (`props_norm::ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`). For the 20 rows narrowed
+    // to measured spellings the staleness signal is inverted — visits == 0 while
+    // the seam ran (RP4.1 audit settlement) — because a narrowed row can only
+    // ever count a divergent cell.
     harness::props_norm::assert_echo_rows_are_live();
-    // And the GLOBAL half of the same accounting (plan §RP4.1): the two asserts
-    // above are per-row and say nothing when NO row was visited, which is
-    // exactly what a re-mask of the r4133 property request would produce — a
-    // silent, green gate. This one fails when the whole r4133 property compare
-    // never ran, counted at the single gating call site
-    // (`harness::compare_all_properties`'s r4133 arm) rather than off the
-    // tables, whose statics sibling unit tests in this binary legitimately move.
-    // It is the loud half of "a scheduler-side re-mask is invisible to
-    // `population.lock.json`"; the other half is the landed `property`-scoped
-    // r4133 entries going NEVER APPLIED in `assert_all_hit` above.
-    let (props_walks, props_elements) = harness::props_norm::r4133_props_walk_counters();
-    eprintln!("corpus_gate r4133 props: {props_walks} gating walk(s), {props_elements} element(s)");
-    harness::props_norm::assert_r4133_props_compare_ran();
 }
 
 /// The property census (`R4133_PROPS_PLAN.md` RP0.2, `DSS_PROPS_CENSUS`): walk

@@ -133,6 +133,92 @@ fn force_properties(source: &str, c: &mut SolvableCase, fam_props: bool) {
     }
 }
 
+/// **The forced property population, pinned** — `(cases forced, of them
+/// `engines: "both"`, `engines: "r4133"`, `engines: "capi_v0145"`)`.
+///
+/// Measured off the four manifests at RP4.1's audit settlement (2026-09-03),
+/// re-derived by [`the_property_forcing_rule_is_every_live_non_large_case`] on
+/// every run: 523 cases → 519 live → **440** forced once the 79 live
+/// `kind=large*` decks (all of them `solvable_now`) come off, of which **396**
+/// gate the r4133 channel (313 `both` + 83 r4133-only) and 44 are capi-only.
+///
+/// 440 is exactly the census population every property measurement in
+/// `R4133_PROPS_PLAN.md` rests on ([`run_props_census`] walks the same set), so
+/// this lock also keeps the census and the gate talking about one population.
+const FORCED_PROPS_POPULATION: (usize, usize, usize, usize) = (440, 313, 83, 44);
+
+/// **The property-forcing rule is a rule, not a habit** — the static half of
+/// RP4.1's re-mask alarm (audit settlement, 2026-09-03).
+///
+/// [`force_properties`] is what the whole r4133 property compare hangs on, and
+/// nothing else can see it: `population.lock.json` fingerprints manifest flags
+/// and per-case ledger tags, not scheduler code, and the live guard
+/// `props_norm::assert_r4133_props_compare_ran` is a boolean — a *partial*
+/// re-mask (re-adding `gates_capi()`, which would drop the 83 r4133-only cases
+/// while the 313 `both` ones keep walking) passes it. This test is the one that
+/// does not: it walks the four manifests without an oracle and asserts the
+/// forced set **is** the live non-`large` population, cell for cell, with the
+/// per-`engines` split pinned by [`FORCED_PROPS_POPULATION`].
+///
+/// It also guards the family arm's missing cost guard: the arm ORs the
+/// family-level flag with no `kind=large*` test, which is inert only while no
+/// family case is `large`. That premise is asserted here rather than assumed,
+/// so a family deck that ever grows into `large` is a review, not a silent
+/// +1000-weight property sweep.
+#[test]
+fn the_property_forcing_rule_is_every_live_non_large_case() {
+    let cases = build_unified_cases();
+    let mut forced = (0usize, 0usize, 0usize, 0usize);
+    let mut wrong: Vec<String> = Vec::new();
+    for uc in &cases {
+        let live = uc.class == CaseClass::Live;
+        let large = uc.case.kind.starts_with("large");
+        let family = uc.label.split(':').next() != Some("solvable_now");
+        assert!(
+            !(family && large),
+            "{}: a family deck is `kind={}` — `force_properties`' family arm carries no `large` \
+             cost guard, so this case would be property-forced without review. Add the guard, or \
+             re-classify the deck.",
+            uc.label,
+            uc.case.kind
+        );
+        // The rule, per source: every live case, minus `large` on `solvable_now`.
+        // A manifest may also set the flag itself, which only ever ADDS.
+        let expected = live && !large;
+        if uc.case.compare_all_properties != expected {
+            wrong.push(format!(
+                "{}: kind={} engines={} class={} → compare_all_properties={} (expected {expected})",
+                uc.label,
+                uc.case.kind,
+                uc.case.engines,
+                if live { "live" } else { "not-live" },
+                uc.case.compare_all_properties,
+            ));
+        }
+        if uc.case.compare_all_properties {
+            forced.0 += 1;
+            match uc.case.engines.as_str() {
+                "both" => forced.1 += 1,
+                "r4133" => forced.2 += 1,
+                _ => forced.3 += 1,
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "the property-forcing rule is `every live non-`large` case` since R4133_PROPS RP4.1 \
+         (2026-09-03) — these cases disagree with it:\n  {}",
+        wrong.join("\n  ")
+    );
+    assert_eq!(
+        forced, FORCED_PROPS_POPULATION,
+        "(forced, both, r4133-only, capi-only) moved. A DROP in the r4133 halves is a re-mask of \
+         the property request — the thing `props_norm::assert_r4133_props_compare_ran` cannot \
+         see, because the `both` half keeps it green. A legitimate corpus change moves this lock \
+         together with `population.lock.json`."
+    );
+}
+
 /// Build one unified case, applying the exact per-source property-forcing +
 /// classification of the pre-Phase-B gates.
 fn make_case(

@@ -96,6 +96,15 @@
 //!   disposition, zeros included) plus `mixed_disposition_spellings`, the
 //!   spellings whose cells disagreed and were folded to the weakest verdict.
 //!
+//!   Both of those two are **per-spelling** and therefore lossy: a spelling
+//!   whose cells disposition differently is reported under its weakest verdict,
+//!   which is why `swtcontrol.delay` still appears "UNCLAIMED, 24 in scope"
+//!   after RP4.1 landed its two ledger entries. An acceptance question about
+//!   COMPARED cells is answered by the lossless per-cell `props_census.json`.
+//!   Since the RP4.1 audit settlement (2026-09-03) both artifacts carry that
+//!   reading rule in themselves — a `reading_rule` field and a header note — so
+//!   a re-run cannot recreate the misreading.
+//!
 //! Two vendored extracts are deliberately NOT re-derived here, because the plain
 //! census does not carry what they need: `bins.tsv` needs the §1.1 bin policy
 //! (RP2.1's disposition mode owns it) and the three `*_in_scope` files need the
@@ -392,6 +401,13 @@ pub(crate) struct Row {
     /// (2026-09-03) it is the present tense. Carried on every row in every mode; only the
     /// claims artifacts report the split, which is what makes a claims run
     /// comparable with `bins.tsv`'s `cells_in_scope` column.
+    ///
+    /// The predicate is `engines` **only**, while the gate additionally leaves
+    /// `kind=large*` decks unforced (`scheduler::force_properties`' cost guard).
+    /// The two agree here because the census walks exactly the forced population
+    /// — live, non-`large` — so no `large` case can produce a row at all; on any
+    /// other population "in scope" would be the wider of the two (RP4.1 audit
+    /// settlement, 2026-09-03).
     pub(crate) in_scope: bool,
     /// The claims mode's per-cell verdict (`None` in plain mode, and on rows
     /// that are not value cells).
@@ -908,7 +924,14 @@ impl ChannelExtracts {
         }
         let mut rows: Vec<_> = per_pair.into_iter().collect();
         rows.sort_by(|a, b| b.1.1.cmp(&a.1.1).then(b.1.0.cmp(&a.1.0)).then(a.0.cmp(b.0)));
-        let mut s = String::from("class.prop | cells | cells_in_scope | spellings\n");
+        // The header carries the reading rule the per-spelling fold forces
+        // (RP4.1 audit settlement, 2026-09-03): a spelling whose cells
+        // disposition differently is listed under its WEAKEST verdict, so
+        // `swtcontrol.delay` appears here with 24 in-scope cells that are in
+        // fact `ledger-hit`. The per-cell truth is `props_census.json`.
+        let mut s = String::from(
+            "class.prop | cells | cells_in_scope | spellings  (per-spelling, folded to the weakest disposition; per-cell truth: props_census.json)\n",
+        );
         for (pair, (cells, in_scope, spellings)) in rows {
             s.push_str(&format!("{pair} | {cells} | {in_scope} | {spellings}\n"));
         }
@@ -963,8 +986,19 @@ impl ChannelExtracts {
             "shape_rows": self.shape_rows,
             "shape_rows_in_scope": self.shape_rows_in_scope,
             // Spellings whose cells disagreed and were folded to the weakest
-            // verdict (`ChannelExtracts::ingest`) — 0 on every measured run.
+            // verdict (`ChannelExtracts::ingest`) — 1 on the RP4.1 population
+            // (`swtcontrol.delay`: `ledger-hit` in scope, UNCLAIMED out of it).
             "mixed_disposition_spellings": self.mixed_disposition_spellings(),
+            // …and the reading rule that fold forces, carried IN the artifact
+            // because this file is the one a reader opens first (RP4.1 audit
+            // settlement, 2026-09-03): the per-cell question "does any COMPARED
+            // cell still lack a disposition?" is answered by the lossless
+            // `props_census.json`, never by these per-spelling tallies.
+            "reading_rule": "per-SPELLING tallies: a spelling whose cells disposition \
+                             differently is folded to its weakest verdict (see \
+                             mixed_disposition_spellings), so a non-zero UNCLAIMED here may be \
+                             entirely out-of-scope or already-excluded cells. Per-cell truth: \
+                             props_census.json.",
         })
     }
 
@@ -1918,7 +1952,7 @@ mod tests {
         );
         assert_eq!(
             e.unclaimed_text(),
-            "class.prop | cells | cells_in_scope | spellings\nline.ratings | 1 | 1 | 1\n",
+            "class.prop | cells | cells_in_scope | spellings  (per-spelling, folded to the weakest disposition; per-cell truth: props_census.json)\nline.ratings | 1 | 1 | 1\n",
             "an echo-excluded cell is CLAIMED, so it leaves the work list RP4.1 reads"
         );
         let s = e.claims_summary();

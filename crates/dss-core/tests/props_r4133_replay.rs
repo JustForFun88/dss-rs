@@ -201,6 +201,16 @@ const CLAIMED_TOTAL: usize =
 /// no divergent cell for either pair). Dropping the rows removes the same 2
 /// from the offline side and the identity below holds again on a number both
 /// accountings measure.
+///
+/// **What `cargo test` enforces about this number, exactly** (RP4.1 audit
+/// settlement, 2026-09-03): the OFFLINE identity only —
+/// `CLAIMED_NORMALIZATION + LIVE_ONLY_SPELLINGS.len()`. The "and the live census
+/// measures the same" half rests on an opt-in `DSS_PROPS_CENSUS=claims` run
+/// (last re-measured at HEAD on 2026-09-03: 21 `ArrayForm` pairs / 201
+/// spellings, which is what moved this lock by −2). That is by design — the
+/// mandatory gate must not need an oracle census — but it means a live-only
+/// drift shows up here only when someone runs the census, not on the next
+/// commit.
 const CLAIMED_TOTAL_LIVE: usize = 853;
 
 /// The spellings the live claims census sees and the vendored evidence cannot,
@@ -1270,6 +1280,37 @@ const RP3_LEDGERED: &[(&str, &str, usize, usize, &str)] = &[
          r4133-windgen-kvar-dispatched-dyn, r4133-windgen-kvar-dispatched-dynfault",
     ),
 ];
+
+/// **The frozen spellings a ledgered pair retires that NO landed entry names**
+/// — `(pair, rust, r4133, why it is sound anyway)`.
+///
+/// [`RP3_LEDGERED`] intercepts per PAIR, while a ledger `property` scope pins an
+/// exact `(rust, oracle)` spelling (`corpus_gate/ledger.rs`'s exact-pair rule),
+/// so a pair may hold a frozen census row no entry excludes. That is sound only
+/// while such a spelling has no in-scope cell: an in-scope one would reach the
+/// r4133 value compare with nothing to exclude it and RED the gate — the correct
+/// outcome, not a hole, but a fact the accounting must state rather than imply.
+///
+/// Landed by the RP4.1 audit settlement (2026-09-03), which found the one row
+/// below credited as "ledgered" although the two `swtcontrol.delay` entries pin
+/// `rust: "0.25"` only. Both directions are checked by
+/// [`the_ledgered_rows_are_excluded_by_entries_that_are_really_in_the_ledger`]:
+/// every unnamed spelling must be listed here, and every row here must still be
+/// an unnamed spelling of a ledgered pair.
+const RP3_LEDGERED_UNNAMED: &[(&str, &str, &str, &str)] = &[(
+    "swtcontrol.delay",
+    "0",
+    "120",
+    "the SAME divergence as the two entries, at another typed value: the three \
+     `Version8/Distrib/Examples/**/IEEE_519.DSS` decks type `Delay=0.0` (line \
+     45-46 there), which the port honours and renders `0`, while r4133 ignores \
+     the property and keeps its Create default \
+     (`Controls/SwtControl.pas:195-218` has no `Delay` arm, `:310` \
+     `TimeDelay := 120.0`). All 6 cells sit on `engines: capi_v0145` decks — 0 \
+     in scope in the HEAD claims census (2026-09-03) — so no entry is owed; if \
+     one ever becomes in-scope the value compare reds, which is the review this \
+     row exists to make loud.",
+)];
 
 /// **The rows the landed `ledger.json` entries exclude** — `(rows, pairs, rows
 /// on in-scope pairs)`, the same triple every `DECLARED_*` lock carries, counted
@@ -6219,6 +6260,13 @@ fn naming_a_witness_is_a_whole_identifier_match() {
 ///   accounting move reds this test, which is precisely the obligation the
 ///   pre-RP4.1 tripwire carried.
 ///
+/// Since the RP4.1 audit settlement (2026-09-03) it also checks the retirement
+/// per **spelling**, not only per pair: the interception retires every frozen
+/// row of a ledgered pair, while an entry excludes one exact `(rust, oracle)`,
+/// so a row no entry names must be listed in [`RP3_LEDGERED_UNNAMED`] with the
+/// measurement that makes crediting it sound (and every listed row must still
+/// be one).
+///
 /// The counted columns are re-measured from the walk by
 /// [`every_example_row_is_claimed_or_declared_exactly_once`] (the
 /// [`LEDGERED_RP3`] lock) and by the zero-row half of
@@ -6267,6 +6315,8 @@ fn the_ledgered_rows_are_excluded_by_entries_that_are_really_in_the_ledger() {
         .as_array()
         .expect("ledger.json has an `entries` array");
 
+    let corpus = Corpus::load();
+    let mut unnamed_used: BTreeSet<(&str, &str, &str)> = BTreeSet::new();
     let mut named: Vec<&str> = Vec::new();
     for (pair, step, rows, in_scope, ids) in RP3_LEDGERED {
         let routing = RP3_ROUTING
@@ -6293,6 +6343,7 @@ fn the_ledgered_rows_are_excluded_by_entries_that_are_really_in_the_ledger() {
              pair that was excluded"
         );
         let (class, prop) = pair.split_once('.').expect("class.prop");
+        let mut entry_spellings: BTreeSet<(String, String)> = BTreeSet::new();
         for id in ids.split(", ") {
             named.push(id);
             let entry = entries.iter().find(|e| e["id"] == *id).unwrap_or_else(|| {
@@ -6339,8 +6390,45 @@ fn the_ledgered_rows_are_excluded_by_entries_that_are_really_in_the_ledger() {
                 sc["rust"],
                 sc["oracle"]
             );
+            entry_spellings.insert((
+                sc["rust"].as_str().unwrap().to_string(),
+                sc["oracle"].as_str().unwrap().to_string(),
+            ));
+        }
+        // …and per SPELLING, not just per pair (RP4.1 audit settlement): the
+        // interception retires every frozen row of the pair, while an entry
+        // excludes one exact `(rust, oracle)`. A row no entry names is credited
+        // as "ledgered" only if [`RP3_LEDGERED_UNNAMED`] says why that is sound.
+        for row in corpus.rows.iter().filter(|r| r.pair == *pair) {
+            if entry_spellings.contains(&(row.rust.clone(), row.r4133.clone())) {
+                continue;
+            }
+            let listed = RP3_LEDGERED_UNNAMED
+                .iter()
+                .find(|(p, rust, r4133, _)| p == pair && *rust == row.rust && *r4133 == row.r4133)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{pair} '{}' vs '{}': RP3_LEDGERED credits this frozen row to a landed \
+                         entry, but no entry of {ids} pins that spelling — the row would reach \
+                         the r4133 value compare unexcluded. Land an entry for it, or record it \
+                         in RP3_LEDGERED_UNNAMED with the measurement that makes it sound.",
+                        row.rust, row.r4133
+                    )
+                });
+            unnamed_used.insert((listed.0, listed.1, listed.2));
         }
     }
+    // No dead rows in the exemption table either.
+    let unnamed_listed: BTreeSet<(&str, &str, &str)> = RP3_LEDGERED_UNNAMED
+        .iter()
+        .map(|(p, rust, r4133, _)| (*p, *rust, *r4133))
+        .collect();
+    assert_eq!(
+        unnamed_used, unnamed_listed,
+        "every RP3_LEDGERED_UNNAMED row must still be a frozen spelling of a ledgered pair that \
+         no entry names — a row that stopped being one is either now excluded (drop the row) or \
+         its pair left the interception"
+    );
     assert_eq!(
         (
             RP3_LEDGERED.iter().map(|(_, _, n, _, _)| n).sum::<usize>(),
