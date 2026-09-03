@@ -493,6 +493,14 @@ and live-gate.
   PC-loop stateful `myTerm` cross-element accumulation (r4133 still has it: `myTerm:=0`
   once at l.1146, not reset) stays NON-reproduced (UB refusal, comment re-cited to
   r4133 lines).
+  *(**Correction, 2026-09-03, R4133_PROPS_PLAN §RP3.13.** The function no longer
+  lives in `exec/view.rs`: that snapshot-only override was **deleted** and the
+  identical unshifted read now sits in
+  `solution::solution::ncim::ncim_stamp_swing_source_currents`, called once at the
+  end of `do_ncim_solution` and stamped into the swing source's `Iterminal`, which
+  `TVsourceObj.GetCurrents`' ported NCIM arm (`elements/pc/vsource/solve.rs`,
+  `VSource.pas:1194`) echoes — so `Export Currents` and the corpus gate read one
+  live state. Values unchanged bit for bit; the `myTerm` non-reproduction stands.)*
 - **Re-pinned vs live r4133.** `ncim_vsource_reported_currents_match_oracle` now pins
   the r4133 `Vsource.source` currents/powers/losses captured via `epri-worker`
   (r4133 = `Version 11.0.0.1 (64-bit build) - Charlottesville`, own probe 2026-07-20).

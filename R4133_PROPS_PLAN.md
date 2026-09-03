@@ -170,7 +170,9 @@ preconditions met — the 20 mixed echo rows narrowed per cell, the eight staged
 `property` entries landed — and every RP1–RP3 sub-step it waited on landed
 before it. §RP3.11 followed on 2026-09-03 (`KEEP_LIVE_PINNED`, both surfaces);
 §RP3.10 remains, outside this rule, as the next paragraph says.)*
-**Two RP3 sub-steps are deliberately outside that rule.** **§RP3.10** (the
+**Two RP3 sub-steps are deliberately outside that rule** — three since
+2026-09-03, when the plan owner accepted §RP3.13 (last sentence of this
+block). **§RP3.10** (the
 reproduced `QMode=0` dispatch, opened by RP3.2's audit settlement) is a
 solve-side fix with no property cell of its own — our `kvar` render reads
 `kvar_base`, which the dispatch never writes — so it blocks **§RP5.2**, the
@@ -182,7 +184,12 @@ RP4.1 had fixed which pairs are echoes, because that list is exactly the list of
 properties where the two serializers disagree. *(**Executed 2026-09-03** —
 `KEEP_LIVE_PINNED` on both surfaces, `97107e54` + `0194b086`; see the dated
 lines in §RP3.11. That §RP5.2 precondition is therefore **discharged**, leaving
-§RP3.10 as the closing record's only open blocker.)*
+§RP3.10 as the closing record's only open blocker.)* **§RP3.13** (the two NCIM
+port bugs, opened by RP3.11's own P0 findings) is the third: it moves no
+property cell at all — both defects are in the NCIM solve and its reporting arms
+— so it blocks neither the unmask nor §RP5.2, and it ran on the user's go-ahead
+straight after RP3.11. *(**Executed 2026-09-03** — verdict `PORT_BUG` × 2, fixed
+in both lanes with zero ledger entries and zero golden bytes; see §RP3.13.)*
 Execution is on a **single branch only — never in parallel
 worktrees**: `tests/corpus/ledger.json`, `tests/corpus/manifests/population.lock.json`
 and `tests/golden/golden.lock.json` are fail-on-stale and are rewritten by this
@@ -219,6 +226,7 @@ audits on `opus-xhigh` exec rows are themselves `opus-xhigh`.
 | RP3.12 | `opus-high+` | `opus-high+` | `opus-high+` | as executed: a verdict-only sub-step over one already-decomposed root cause — no product line, no numerics of its own, the judgement calls being the count-lock re-derivation and the ledger-cause rewrite |
 | RP3.10 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | a behavioral port change in both lanes (the reproduced `QMode=0` dispatch) that moves solved powers on four r4133-gating decks — live probe + per-case power-channel ledger work |
 | RP3.11 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | a serialization-semantics decision (store vs live) over every class at once, with `Save`/`Dump`/`props_roundtrip` golden exposure in both lanes |
+| RP3.13 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | as executed: a behavioral engine change in both lanes — two NCIM port bugs, one of them a panic in a `#![forbid(unsafe_code)]` crate — where r4133 is the only live oracle (0.14.5 has no NCIM) and three upstream overruns had to be proven and *not* reproduced |
 | RP4.1 | `opus-high+` | `opus-high+` | `opus-high+` | flag flip + residual triage (G1.1's own tier) |
 | RP5.1, RP5.2 | `opus-high+` | `opus-high+` | `opus-high+` | doc surgery validated by `oracle_parity_cfg_gate.rs` doc tests |
 
@@ -2265,14 +2273,18 @@ none of them and RP4.1 gains no precondition. Tier as executed: `opus-high+`
 commit. Gate green in both lanes, 4 290 tests per lane; `lane_diff` not owed (no
 `src/` line moved). Full record: STATUS §RP3.12.
 
-### RP3.13 (PROPOSED, not scheduled — opened by RP3.11's P0 findings)
+### RP3.13 — the two NCIM port bugs (opened by RP3.11's P0 findings)
 
 **Why it exists.** RP3.11's mandated round-trip measurement of `Save` walked
 `modes:ncim/ncim_pv_pq.dss` on both engines and turned up two engine-side
 defects that have nothing to do with serialization and no owner anywhere in this
 plan. Recorded with their evidence in STATUS §RP3.11 ("Open, recorded not
-chased", items (a) and (b)); this section is the **proposal** the plan owner
-accepts or rejects — nothing here is authorized by RP3.11.
+chased", items (a) and (b)). RP3.11 drafted this section as a **proposal** it
+was not authorized to act on; the plan owner **accepted and scheduled it on
+2026-09-03**, and it ran the same day as its own sub-step with its own audit
+pair. The two bullets below are RP3.11's evidence as written, kept verbatim as
+the sub-step's starting point; what the investigation actually found follows
+them.
 
 * **(a) A plain user script panics a `#![forbid(unsafe_code)]` product crate.**
   `crates/dss-core/src/solution/solution/ncim.rs:683` — *index out of bounds: the
@@ -2304,6 +2316,94 @@ the `Save`/`Dump` verdict is independent of it), so it can run after §RP5.2.
 Tier: `opus-xhigh` (a solve-side engine change in both lanes with golden and
 corpus exposure). Runs **only on the user's go-ahead**, as its own sub-step with
 its own audit pair.
+
+**Verdict: `PORT_BUG` × 2 — the kill criterion did not fire.** (b) is the port's
+defect, not r4133's: r4133's `Generator.G1` numbers close KCL at `genbus` to the
+printed digit while the port's missed it by 1068.2 kvar, and the port's own
+`exec/view.rs` NCIM override — the reader the corpus gate uses — already agreed
+with r4133, so the engine disagreed with itself. (a) and (b) are **two** defects,
+not one: (a) is a sizing overrun in `ncim_init_pq_gen`, (b) a missing *reporting*
+arm; (a) makes the promotion path unreachable, which is why (b) was only ever
+seen on the PV→PQ side. The read-only investigation found **two more** of the
+same family, both fixed here: **Bug C**, the flat-start slack override writing
+`node_v[1..3]` on a circuit with fewer than three nodes (a second panic), and
+**Bug B′**, `TVsourceObj.GetCurrents`' NCIM arm (`R4133:VSource.pas:1194`),
+which the port also lacked. B′ was first recorded as measured-and-open; the
+coordinator then had it fixed **inside this sub-step, before its commit** (a
+measured gap is never parked), so all four defects land together.
+
+**Obligations, as landed.** All lane-unconditional (no `cfg`, no `compat::`;
+both lanes get the same values): `deltaQNom` is sized per phase for every NCIM
+generator (`solution/solution/ncim.rs:566`, r4133 `Common/Solution.pas:1678-1679`
+vs its three per-phase writers `:2107` / `:2152-2154` / `:2254-2256`, and
+`:1928-1930` for the model-3 sizing it already had); the
+flat-start slack override is clamped to the node count (`ncim.rs:244`,
+`Solution.pas:1650-1654`); a new `SysCtx.ncim` (`elements/traits.rs:542`,
+`solution/solution/state.rs:704`) carries `Algorithm = NCIMSOLVE` to the
+reporting arms, and `TGeneratorObj.GetCurrents`' NCIM arm
+(`R4133:PCElements/generator.pas:1406-1410`) is ported at
+`elements/pc/generator/accessors.rs:363`, ahead of the `LastSolutionWasDirect`
+shortcut exactly as in Pascal; the gate-only override `ncim_generator_currents`
+is **deleted** from `exec/view.rs` so one live state feeds every reader (the
+RP3.8 principle). The swing `VSource` follows the same rule and needs one extra
+step, because `TVsourceObj.CalcInjCurrAtBus` (`R4133:VSource.pas:1085`, reached
+from `GetCurrents` at `:1194`) sums *every* element at the swing bus, which one
+element cannot do from inside its own `get_currents`: the sum is ported as
+`ncim_stamp_swing_source_currents` (`solution/solution/ncim.rs:772`), called once
+as the last statement of `do_ncim_solution` (`ncim.rs:963`) and stamped into the
+source's `Iterminal`, and the NCIM arm of `TVsourceObj.GetCurrents`
+(`elements/pc/vsource/solve.rs:315`, guarded `sys.ncim && node_ref.first() ==
+Some(&1)` as Pascal's `NodeRef^[1] = 1`, **plus** the marker
+`VSource::ncim_swing_stamped_at` that says the stamp is this element's and current
+for this `SolutionCount`) returns that stamp — after which
+the second gate-only override, `ncim_swing_source_currents`, is **deleted** from
+`exec/view.rs` too and `snapshot_elements` has no NCIM special case left at all.
+Eight expected-value pins in `crate::exec::tests::ncim`
+(`ncim_pq2pv_promotion_does_not_panic_and_closes_kcl`,
+`ncim_missing_voltage_bases_does_not_panic`,
+`ncim_below_three_nodes_does_not_panic`,
+`ncim_generator_reports_the_dispatched_q_not_the_declared_kvar`,
+`ncim_gate_reader_and_ordinary_reader_agree`,
+`ncim_swing_bus_carries_no_generator_on_the_gated_decks` — widened to red on a
+second slack-node *source* as well —,
+`ncim_vsource_export_currents_match_oracle`,
+`ncim_second_slack_node_vsource_reports_its_own_current`), each naming both
+engines' numbers where an oracle exists: on the two-source deck r4133 has none —
+its per-read `CalcInjCurrAtBus` recursion overflows the DLL's stack (own probe
+2026-09-03) — so that pin asserts the Thevenin physics `|E2 - V| / |Z1| =
+1388.97 A` and the port's own bus-sum identity instead. **Zero `ledger.json` entries, zero golden bytes, zero
+tolerances**: the five gated NCIM cases are `engines: "r4133"` with no ledger
+entry, the gate's element channel already read the deleted overrides' formulas,
+and `tests/golden/ncim/` is solve-side only — so no oracle observable moved and
+the field-by-field exclusion obligation is vacuous rather than waived. Three
+r4133 defects are proven and **not reproduced** (the `deltaQNom[j]` write over
+the length-1 `InitPQGen` array, which deadlocks the r4133 DLL; `DOForceFlatStart`'s
+`NodeV[1..3]` write, which corrupts its heap on a sub-3-node circuit; and
+`GetCurrents`' partial fill, which leaves shared-`cBuffer` garbage in conductor
+`NPhases+1` of r4133's own `Export Currents`); the upstream reports are the
+gitignored `investigations/to_opendss/51-ncim-updategenq-deltaqnom-overrun.md`,
+`52-ncim-doforceflatstart-nodev-overrun.md` and
+`53-ncim-generator-getcurrents-partial-fill.md`.
+
+**Blocks nothing** — no property cell moves, so neither the unmask (landed) nor
+§RP5.2 gains a precondition. Tier as executed: `opus-xhigh` (exec and both
+audits). **Executed 2026-09-03**; the sub-step, its audit settlement and this
+docs commit are named by sha in STATUS §RP3.13, which is the full record. **Bug
+B′ landed here too, not after it:** `Export Currents`' `Vsource.SOURCE` phase-A
+magnitude read `3.24074e-05` / `3.24074e-05` / `4.42577e-05` / `0.0106809` A on
+`ncim_pq` / `ncim_pv_pq` / `ncim_midi` / `Xmission_System_Kundur2Area` against
+r4133's `90.0718` / `64.2127` / `124.964` / `20295.6`; the first three now print
+`90.0718 ∠158.27` / `64.2127 ∠-150.28` / `124.964 ∠161.49`, digit-identical to
+r4133's own `EXP_CURRENTS.CSV` rows (pin
+`ncim_vsource_export_currents_match_oracle`), and `Xmission_System_Kundur2Area`
+stays 4/4 green on its live r4133 whole-model compare, which includes the swing
+`Vsource`'s current, power and loss. No gated channel moved (the gate reads
+`snapshot_elements`, whose values are unchanged bit for bit and are now `==` the
+element path), and the tripwire pin above still reds the day a gated NCIM deck
+puts a generator on the swing bus. **Open after it:** nothing on the NCIM path —
+what is left is RP3.11's AC-5 round-trip question and the two `Dump`
+store-vs-live cells (`capacitor.faultrate`, `autotrans.tap`), both record-only
+and both listed in STATUS §RP3.13's own open items.
 
 ---
 

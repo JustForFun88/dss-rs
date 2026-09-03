@@ -112,7 +112,11 @@ oracle build.
   NCIM at all). Its `NCIM_CalcInjCurrAtBus` fills `ce.GetCurrents(ElmCurrents)` at
   index 0 then reads `ElmCurrents[j]` (`j:=1..NPhases`) — a one-conductor shift.
   The port's `+1` in `exec/view.rs::ncim_swing_source_currents` reproduces this
-  0.15.0b4 shift **exactly** (unit test `ncim_vsource_reported_currents_match_oracle`
+  0.15.0b4 shift **exactly** *(both since superseded: UPGRADE Rung 1 dropped the
+  `+1` for r4133's unshifted read, and R4133_PROPS §RP3.13, 2026-09-03, deleted the
+  `exec/view.rs` override altogether — the read now lives in
+  `solution::solution::ncim::ncim_stamp_swing_source_currents` and is echoed by
+  `TVsourceObj.GetCurrents`' ported NCIM arm)* (unit test `ncim_vsource_reported_currents_match_oracle`
   green). r4133 VSource.pas:1123 FIXED the shift (`GetCurrents(@(ElmCurrents[1]))`,
   an offset write) — so the port matches capi015 and diverges from r4133, a
   determinate, defined capi015-vs-r4133 upstream divergence (known-bug policy,

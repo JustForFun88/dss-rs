@@ -229,7 +229,19 @@ fn ncim_init(ckt: &mut Circuit, env: &mut SolveEnv, init_y: bool) -> Result<usiz
         // Slack-bus override: the first circuit element is the source (VSource).
         if let Some((kv_base, per_unit, angle)) = src {
             let mag = (kv_base * 1e3 / sqrt3()) * per_unit;
-            for i in 1..=3usize {
+            // r4133 `DOForceFlatStart` (`Common/Solution.pas` l.1650-1654) writes
+            // `NodeV[1..3]` unconditionally. On a circuit with fewer than three
+            // nodes that runs past `ReAllocMem(NodeV, … * (NumNodes+1))` — an
+            // unchecked overrun in FPC that corrupts the DLL's heap (own
+            // `epri-worker` probe 2026-09-03 on a 1-phase 8-line deck: r4133
+            // answers `converged=False`, 15 iterations, then the worker cannot
+            // `quit`). NCIM is 3-phase-shaped throughout — `CalcInjCurr` zeroes
+            // `deltaF[0..5]` as "the swing bus" (l.1874-1875) and `BuildJacobian`
+            // special-cases `GRow < 6` (l.2312-2340) — so on a sub-3-node circuit
+            // there is nothing to converge to either way; clamp rather than
+            // reproduce the overrun (CLAUDE.md: upstream bugs are never
+            // reproduced). Identical on every circuit with ≥ 3 nodes.
+            for i in 1..=3usize.min(ckt.num_nodes) {
                 let ang = (angle * std::f64::consts::PI / 180.0) + FLAT_START_ANG[i - 1];
                 ckt.solution.node_v[i] = Complex64::from_polar(mag, ang);
             }
@@ -537,7 +549,21 @@ fn ncim_init_pq_gen(ckt: &mut Circuit, env: &mut SolveEnv) {
             .typed_mut::<Generator>(r)
             .expect("generators list holds Generators");
         if gobj.cd.enabled && gobj.gen_model != 3 {
-            gobj.delta_q_nom = vec![gobj.q_nominal_per_phase];
+            // r4133 `InitPQGen` (`Common/Solution.pas` l.1678-1679) sizes this to
+            // **1**, but every *writer* indexes it per phase: the PV arm's own
+            // stamp (l.2107), the PV→PQ clamp (l.2155) and the PQ→PV promotion
+            // (l.2255) all run `j := 0 to NPhases-1`. So a machine born `model=4`
+            // that the promotion arm later flips to PV writes past the end of the
+            // length-1 dynamic array — unchecked in FPC; measured 2026-09-03 it
+            // **deadlocks the r4133 DLL** on an 8-line deck (the `epri-worker`
+            // never replies), while the port panicked here. Same class as the
+            // `Bus_Int_Duration` overrun; not reproduced (CLAUDE.md 2026-08-02).
+            // `deltaQNom` is per-phase state, so size it that way — every reader of
+            // the scalar form takes `[0]` (l.1326 model-4 power, l.2306 the ELSE
+            // arm's current stamp), which this leaves bit-identical, and the
+            // model-3 path is re-sized by `GetNumGenerators` (l.1928-1930) before
+            // anything indexes it.
+            gobj.delta_q_nom = vec![gobj.q_nominal_per_phase; gobj.cd.nphases];
         }
     }
 }
@@ -705,6 +731,164 @@ fn ncim_update_gen_q(ckt: &mut Circuit, env: &mut SolveEnv) {
     }
 }
 
+/// Pascal `TVsourceObj.CalcInjCurrAtBus` (r4133 `PCElements/VSource.pas` l.1085),
+/// reached from `TVsourceObj.GetCurrents` (l.1194-1195) when `Algorithm =
+/// NCIMSOLVE` and `NodeRef[1] = 1`: the swing source's NCIM-reported terminal
+/// currents. NCIM holds the swing bus at the ideal EMF, so `YPrim·V - Iinj` is ~0
+/// there; instead the source's terminal current is the Kirchhoff sum at its bus —
+/// **minus** every connected PD-element terminal current (the PD loop, l.1113-1138)
+/// — **plus** every other connected PC-element terminal current (the PC loop,
+/// l.1148-1173). The swing source is the [`VSource`] whose first node is the
+/// global slack (`NodeRef[0] == 1`); with none, nothing is stamped.
+///
+/// **Stamped once here, echoed by every reader** (RP3.13). `CalcInjCurrAtBus`
+/// needs every element at the bus, which `get_currents(&mut self, sys, node_v,
+/// curr)` cannot reach from inside one element; so the sum is computed once at
+/// the end of [`do_ncim_solution`], written into the source's `Iterminal`, and
+/// returned from there by `TVsourceObj.GetCurrents`' NCIM arm
+/// (`elements/pc/vsource/solve.rs`) - one live state for the element path
+/// (`Export Currents`/`Powers`, `Show`, the CLI, monitors, meters) and for
+/// `Dss::snapshot_elements`, which the corpus gate reads and which carried this
+/// sum as a private override until RP3.13.
+///
+/// **Why the once-at-convergence stamp equals r4133's on-demand recompute.**
+/// r4133 re-runs the whole sum on every read, calling `ActivePDE.GetCurrents`
+/// (l.1123) / `ActivePCE.GetCurrents` (l.1158) fresh - a *direct* call that
+/// bypasses the `ComputeIterminal` `SolutionCount` cache. This function makes the
+/// same recompute here: [`CktElement::refresh_iterminal`] on each element at the
+/// bus (cache-bypassing, the same call `snapshot_elements` makes) against the
+/// converged `NodeV` the Newton loop has just left in place. Nothing between this
+/// point and a later read moves `NodeV` or any of those elements' state, so a
+/// reader that recomputed instead would divide the same powers by the same
+/// voltages and land on the same complex numbers - the stamp is not an
+/// approximation of the live sum, it *is* that sum, taken at the only voltages
+/// that exist after the solve. (Where the two shapes genuinely differ is a read
+/// with no stamp behind it - a solve that aborted before this line, or
+/// `Set algorithm=NCIM` typed after a normal `Solve` with no re-solve: r4133 sums
+/// live, the port returns the last stamp.)
+///
+/// PD elements use the Pascal `Round(Yorder/2)` conductors-per-terminal stride
+/// (l.1135, its 2-terminal assumption); PC elements use `NPhases` (l.1169).
+fn ncim_stamp_swing_source_currents(ckt: &Circuit, env: &mut SolveEnv) {
+    // The swing VSource: a source whose first node is the global slack node 1
+    // (Pascal `NodeRef[1] = 1`, l.1194 - 1-based there, i.e. the *first* node
+    // reference of terminal 1, which is what `node_ref.first()` is here).
+    let Some(src_ref) = ckt.sources.iter().copied().find(|&r| {
+        env.store.typed::<VSource>(r).is_some()
+            && env.store.ckt_elem(r).cd().node_ref.first() == Some(&1)
+    }) else {
+        return;
+    };
+
+    let (src_bus, nphases, yorder) = {
+        let cd = env.store.ckt_elem(src_ref).cd();
+        let Some(t0) = cd.terminals.first() else {
+            return;
+        };
+        (t0.bus_ref, cd.nphases, cd.yorder)
+    };
+    let sys = super::state::sys_ctx(ckt);
+    let node_v = &ckt.solution.node_v;
+    let mut curr = vec![ZERO; yorder];
+
+    // The 0-based terminal of `cd` connected to the source bus, if any (Pascal
+    // `BusName = StripExtension(ce.GetBus(j))`).
+    //
+    // NON-reproduced quirk (deliberate, per CLAUDE.md "do not reproduce UB"):
+    // r4133 computes `myTerm` fresh per element only in the **PD** loop
+    // (`myTerm := 0` inside `for idx in myList`, VSource.pas l.1119). In the **PC**
+    // loop (l.1148) `myTerm := 0` is set ONCE before the loop (l.1146) and never
+    // reset, so its terminal-finder `inc(myTerm)` accumulates across PCEs at the bus
+    // — a stateful cross-element index (r4133 STILL has this; it is unrelated to the
+    // off-by-one r4133 fixed). That accumulation is inert whenever each PCE connects
+    // at its first terminal (`inc` never fires → myTerm stays 0), which is the only
+    // deterministic in-range case; with a PCE bonded at a non-first terminal it can
+    // run the `ElmCurrents[(myTerm*NPhases)+j]` index (l.1169) past
+    // `SetLength(…, Yorder+1)` (l.1157) into an OOB heap read. We compute `my_term`
+    // fresh per element for both loops: identical to r4133 on the defined path, and
+    // refusing to reproduce the OOB.
+    let my_term = |cd: &crate::elements::ckt::CktElementData| -> Option<usize> {
+        (0..cd.nterms).find(|&t| cd.terminals.get(t).and_then(|x| x.bus_ref) == src_bus)
+    };
+
+    // r4133 fills a length-`Yorder+1` dynamic `ElmCurrents` with an **offset write**
+    // — `ActivePDE.GetCurrents(@(ElmCurrents[1]))` (VSource.pas l.1123; the PC loop
+    // l.1158) writes conductor 1 into `ElmCurrents[1]`, leaving slot 0 unused — then
+    // reads `ElmCurrents[(myTerm*stride)+j]` with `j := 1..NPhases` (l.1135 PD /
+    // l.1169 PC). That 1-based read of the offset-written array is UNSHIFTED: `j=1`
+    // reads conductor 1. The port's `iterminal` is 0-based (`iterminal[0]` =
+    // conductor 1 = r4133 `ElmCurrents[1]`), so the faithful index is `t*stride + i`
+    // with `i := 0..nphases-1` (no `+1`). This aligns the port with r4133, the sole
+    // live NCIM oracle (the retired capi015 0.15.0b4 (e936d210) wrote
+    // `ce.GetCurrents(ElmCurrents)` at index 0 then read `ElmCurrents[j]` 1-based —
+    // a one-conductor shift; the port formerly reproduced that shift as a documented
+    // compat pin, dropped in the oracle-of-record flip capi015→r4133, own r4133
+    // epri-worker probes 2026-07-20, `docs/upgrade/DIVERGENCES.md`). The read is
+    // in-range by construction (`SetLength(ElmCurrents, Yorder+1)`); the defensive
+    // `.get` returns 0 only for a degenerate multi-terminal stride overrun.
+    let clip = |v: Option<&Complex64>| v.copied().unwrap_or(ZERO);
+
+    // PD elements (+ faults) at the bus: subtract their terminal currents. Pascal
+    // stride `Round(ce.Yorder / 2)` (its 2-terminal conductors-per-terminal).
+    for &r in ckt.pd_elements.iter().chain(ckt.faults.iter()) {
+        let elem = env.store.ckt_elem_mut(r);
+        let cd = elem.cd();
+        // `refresh_iterminal` (like Pascal's `GetCurrents`) indexes `NodeRef`, so
+        // an unconnected element is skipped rather than recomputed - the same
+        // guard `snapshot_elements` applied before its refresh, hence the same
+        // set of elements whose `Iterminal` this sum read there.
+        if !cd.enabled || cd.node_ref.is_empty() {
+            continue;
+        }
+        let Some(t) = my_term(cd) else { continue };
+        let stride = ((cd.yorder as f64) / 2.0).round() as usize;
+        elem.refresh_iterminal(&sys, node_v);
+        let cd = elem.cd();
+        for (i, c) in curr.iter_mut().enumerate().take(nphases) {
+            *c -= clip(cd.iterminal.get(t * stride + i));
+        }
+    }
+    // PC elements (+ other sources) at the bus, excluding the source itself: add
+    // their terminal currents (stride `ce.NPhases`).
+    for &r in ckt.pc_elements.iter().chain(ckt.sources.iter()) {
+        if r == src_ref {
+            continue;
+        }
+        let elem = env.store.ckt_elem_mut(r);
+        let cd = elem.cd();
+        if !cd.enabled || cd.node_ref.is_empty() {
+            continue;
+        }
+        let Some(t) = my_term(cd) else { continue };
+        let stride = cd.nphases;
+        elem.refresh_iterminal(&sys, node_v);
+        let cd = elem.cd();
+        for (i, c) in curr.iter_mut().enumerate().take(nphases) {
+            *c += clip(cd.iterminal.get(t * stride + i));
+        }
+    }
+
+    // The stamp. `curr` is `Yorder` long with zeros past `NPhases`, exactly the
+    // buffer r4133 hands back (`Curr[1..Yorder] := CZero`, l.1110-1111, then only
+    // `1..NPhases` written), so the whole vector is copied. Marked solved for this
+    // `SolutionCount` so the cache-aware `ComputeIterminal` readers
+    // (`Get_Powers`/`Get_Losses`) see it without a recompute; the cache-bypassing
+    // ones re-enter `GetCurrents`, whose NCIM arm hands the same stamp back —
+    // and `ncim_swing_stamped_at` is what tells that arm the stamp is this
+    // element's and is current, so a *second* source on the slack node (which
+    // this function never stamps) keeps reporting its own physical terminal
+    // current instead of echoing an empty cache. r4133 has no such marker and
+    // stack-overflows on that deck; see `VSource::ncim_swing_stamped_at`.
+    let src = env
+        .store
+        .typed_mut::<VSource>(src_ref)
+        .expect("the swing source was found as a VSource above");
+    let n = curr.len().min(src.cd.iterminal.len());
+    src.cd.iterminal[..n].copy_from_slice(&curr[..n]);
+    src.cd.mark_iterminal_solved(sys.solution_count);
+    src.ncim_swing_stamped_at = Some(sys.solution_count);
+}
+
 /// Pascal `DoNCIMSolution` (l.981): the NCIM Newton loop. `V ← V − ΔV` each
 /// iteration until `Converged()` (the `NCIM_Converged` mismatch test) and the
 /// min/max-iteration clause.
@@ -768,6 +952,15 @@ pub(crate) fn do_ncim_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveRe
             break;
         }
     }
+
+    // The swing source reports the KCL sum at its bus under NCIM, not
+    // `YPrim·V - Iinj` (Pascal `TVsourceObj.GetCurrents` takes the
+    // `CalcInjCurrAtBus` branch whenever `Algorithm = NCIMSOLVE` and
+    // `NodeRef[1] = 1` - r4133 `VSource.pas` l.1194). That sum needs every
+    // element at the bus, so it is stamped here, once, at the converged `NodeV`;
+    // `get_currents` echoes the stamp. See
+    // [`ncim_stamp_swing_source_currents`].
+    ncim_stamp_swing_source_currents(ckt, env);
 
     Ok(())
 }
