@@ -877,7 +877,8 @@ fn dynamics_integrates_the_guests_first_order_lag() {
 /// Discriminating against the built-in path: after 20 ms of model-1 dynamics the
 /// WTG3 controller states are firmly non-zero (`Pgen ≈ 1.0`, `Vmag ≈ 1.015`,
 /// `WtAct ≈ 1.2`, `thetaPitch ≈ 4.38` — pinned in
-/// `elements::pc::windgen::tests::dynamics_variables_match_capi015_reference`),
+/// `elements::pc::windgen::tests::dynamics_variables_match_the_qmode0_dispatch`,
+/// renamed from `dynamics_variables_match_capi015_reference` at RP3.10),
 /// so every one of them reading exactly 0.0 is proof the WTG3 never stepped.
 #[test]
 fn model_6_dynamics_never_touches_the_wtg3_model() {

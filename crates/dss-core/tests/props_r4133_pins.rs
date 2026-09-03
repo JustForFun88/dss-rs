@@ -1468,11 +1468,26 @@ fn swtcontrol_delay_wires_the_property_on_the_midi_tie() {
 /// getter (`Generator.pas:2402-2405`) and the identical help, yet renders the
 /// base (`Generator.pas:3018`, `Format('%.6g', [kvarBase])`). The port does the
 /// same (`elements/pc/windgen/accessors.rs:431`, `KVAR => self.kvar_base`, the
-/// twin of `pc/generator/accessors.rs:495`). The two engines' *physics* agree:
-/// the port ports `SetNominalGeneration` loop-for-loop, `Else kvarCalc := 0`
-/// (`WindGen.pas:1320-1321`) included (`windgen/nominal.rs:223-225`), and the
-/// probed terminal powers match on all five decks. Upstream report:
-/// `investigations/to_opendss/44-windgen-kvar-renders-dispatched-q.md` (local).
+/// twin of `pc/generator/accessors.rs:495`). The two engines' *physics* agreed
+/// when RP3.2 measured them — the port then ported `SetNominalGeneration`
+/// loop-for-loop, `Else kvarCalc := 0` (`WindGen.pas:1320-1321`) included, and
+/// the probed terminal powers matched on all five decks. **They no longer do,
+/// and by design**: §RP3.10 (2026-09-04) implements the constant-Q arm r4133
+/// never had (`0 => kvar_calc = self.kvar_base`, `windgen/nominal.rs`) in both
+/// lanes, so four of the five decks now dispatch their base kvar where r4133
+/// dispatches 0 — terminal Q `-726.4838` (delta) / `-986.0531` (daily) /
+/// `-37077.425` (dyn) / `-29209.383` kvar (dyn_fault) against r4133's
+/// `-4.2e-05` / `-2.1e-05` / `-37087.759` / `-29216.667` — excluded per case in
+/// `tests/corpus/ledger.json` (cause `windgen-qmode0-no-arm`) and pinned by
+/// `dss_core::elements::pc::windgen::tests::qmode0_dispatches_the_base_kvar`.
+/// **This pair is untouched by that fix**: r4133 renders `Qnominalperphase`, we
+/// render `kvar_base`, and the dispatch never writes `kvar_base` — so the four
+/// entries' `rust`/`oracle` values and every pin below stand unchanged (the
+/// fifth deck, `windgen_snap.dss`, has `kvar_base = 0` and does not move at
+/// all). Upstream reports:
+/// `investigations/to_opendss/44-windgen-kvar-renders-dispatched-q.md` (this
+/// render) and `55-windgen-qmode0-zero-var-dispatch.md` (the missing arm), both
+/// local.
 ///
 /// Deck: `modes/windgen/windgen_daily.dss` (`WindGen.w1`, `kW=3000 pf=0.95`,
 /// no `kVA=`), the case behind the landed entry
@@ -1566,8 +1581,11 @@ fn windgen_kvar_renders_the_base_on_the_delta_snapshot() {
 /// the same `kvarBase`, and it renders `777` anyway: in dynamics `:1254` skips
 /// the Q block, so `Get_Presentkvar` (`:2297-2300`) is still reporting
 /// `Set_Presentkvar`'s "init to something reasonable" `1000*777/3` (`:3002`)
-/// while the machine's measured terminal Q is `-37087.76 kvar`. Three different
-/// numbers for one property; the render tracks none of them.
+/// while the machine's measured terminal Q is `-37087.76 kvar` (r4133's own
+/// reading, and still current on that engine; since §RP3.10 the port's terminal
+/// Q on this deck is `-37077.425 kvar`, excluded by the ledger entry
+/// `windgen-qmode0-constant-q-dyn-r4133` and unrelated to this render).
+/// Three different numbers for one property; the render tracks none of them.
 #[test]
 fn windgen_kvar_renders_the_base_on_the_dynamics_deck() {
     let mut deck = Deck::compile("modes/windgen/windgen_dyn.dss");
@@ -1598,10 +1616,17 @@ fn windgen_kvar_renders_the_base_on_the_dynamics_deck() {
 /// through the whole dynamics solve; the base-kvar derivation is identical
 /// (`kW=1500 kva=1800`, `Create`'s `pf=0.88`) and so is the render bug
 /// (`Version8/Source/PCElements/WindGen.pas:2896` → `:2297-2300`). The entries
-/// are per case, so this deck owes its own reading. The solved state is *not*
-/// divergent — probed terminal Q is `-29216.72 kvar` on the port against
-/// `-29216.67` on r4133 — which is exactly why the exclusion is scoped to the
-/// property field and nothing else.
+/// are per case, so this deck owes its own reading. The solved state was *not*
+/// divergent when RP3.2 measured it — probed terminal Q `-29216.72 kvar` on the
+/// port against `-29216.67` on r4133 — because the port then reproduced r4133's
+/// missing `QMode=0` arm. §RP3.10 (2026-09-04) implements that arm in both
+/// lanes, so the port's terminal Q here is now `-29209.383 kvar` and this
+/// deck's solved model is excluded against r4133 by
+/// `windgen-qmode0-constant-q-dynfault-r4133`. The **property** exclusion is
+/// still scoped to the property field and nothing else, and independently of
+/// that one: the two engines read different fields for `kvar` (r4133
+/// `Qnominalperphase`, the port `kvar_base`), and the dispatch never writes
+/// `kvar_base` — the readings below are unchanged.
 #[test]
 fn windgen_kvar_renders_the_base_on_the_fault_ride_through_deck() {
     let mut deck = Deck::compile("modes/windgen/windgen_dyn_fault.dss");

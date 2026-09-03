@@ -1185,10 +1185,18 @@ const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
          (:629) stores the token in kvarBase via Set_Presentkvar (:2996-3009). NOT an echo \
          (probed live on the r4133 DLL: a deck typing kvar=500 renders 0, and after `Edit \
          kvar=777` it still renders 0 while PF moves to 0.968058 — the value IS parsed; the echo \
-         store's own default for the slot is '60', :2446) and NOT a port bug (probed: solved \
-         terminal powers agree on all five decks — Q -2.1e-05/-4.2e-05 kvar in power flow, \
-         -37087.81 vs -37087.76 kvar in dynamics), hence NO echo row and no engine change: the \
-         port renders kvar_base (elements/pc/windgen/accessors.rs:431), exactly as its Generator \
+         store's own default for the slot is '60', :2446) and NOT a port bug — agreed at RP3.2 \
+         BECAUSE the port then reproduced r4133's missing QMode=0 arm, which is why the probe \
+         found the solved terminal powers matching on all five decks (Q -2.1e-05/-4.2e-05 kvar \
+         in power flow, -37087.81 vs -37087.76 kvar in dynamics); §RP3.10 (2026-09-04) \
+         implemented that arm in both lanes, so the solved Q now diverges deliberately on four \
+         of the five decks (-726.4838 / -986.0531 / -37077.425 / -29209.383 kvar against \
+         r4133's -4.2e-05 / -2.1e-05 / -37087.759 / -29216.667), excluded per case in \
+         tests/corpus/ledger.json under cause windgen-qmode0-no-arm and pinned by \
+         dss_core::elements::pc::windgen::tests::qmode0_dispatches_the_base_kvar, while THIS \
+         pair — the render — is untouched by it. Hence NO echo row and no engine change \
+         here: the port renders kvar_base (elements/pc/windgen/accessors.rs:431), exactly \
+         as its Generator \
          does and as r4133's own Generator does (Generator.pas:3018 against the identical getter \
          :2402-2405 and the identical help :396). Upstream is wrong three ways: with QMode=1 it \
          renders the operating-point 363.54 for a typed kvar=500; in dynamics — where :1254 \
@@ -1196,10 +1204,12 @@ const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
          kvarBase is 792.718441186736 and the measured terminal Q is -37087.76 kvar; and \
          SaveWrite (DSSObject.pas:156 through the virtual :117-120) makes `Save Circuit` emit \
          kvar=0, which on reload also flattens PFNominal to 1.0 and kvarMax/kvarMin to 0 \
-         (:3001-3008). The rendered zero itself comes from a second defect, reported but out of \
-         scope here: the steady-state QMode case (:1276-1322) has no arm 0 though QMode defaults \
+         (:3001-3008). The rendered zero itself comes from a second defect, out of scope here \
+         and owned by §RP3.10, which FIXED it in both lanes on 2026-09-04 (upstream report 55): \
+         the steady-state QMode case (:1276-1322) has no arm 0 though QMode defaults \
          to 0 (:1020) and the help documents 0:Q (:429-430), so Else kvarCalc := 0 \
-         (:1320-1321). The exclusion is four per-case ledger `property` entries \
+         (:1320-1321) — the path r4133 still takes and the port no longer does. The \
+         exclusion is four per-case ledger `property` entries \
          (r4133-windgen-kvar-dispatched-daily / -delta / -dyn / -dynfault), drafted here and \
          LANDED at RP4.1 (2026-09-03) per §1.1(e), witnessed by \
          windgen_kvar_renders_the_base_on_the_daily_deck, \
@@ -1441,10 +1451,15 @@ const RP31_NO_DELAY_CASES: &[(&str, usize)] = &[
 /// difference (type a `kvar=` there and the two diverge like everywhere else).
 ///
 /// **None of the five types `QMode=` either** ([`windgen_dispatch`], asserted):
-/// `WindModelDyn.QMode` stays `Create`'s 0 (`WindGen.pas:1020`), the
+/// `WindModelDyn.QMode` stays `Create`'s 0 (`WindGen.pas:1020`), r4133's
 /// steady-state `case` (`:1276-1322`) falls to `Else kvarCalc := 0`, and *that*
 /// is why the value r4133 renders through `Get_Presentkvar` is `0` on all of
-/// them.
+/// them. The assertion is about the **decks** and is unchanged by §RP3.10
+/// (2026-09-04), which gave the port the constant-Q arm r4133 lacks: the `Else`
+/// is the path r4133 still takes and the port no longer does, so r4133's render
+/// is still the dispatched `0` while our solved Q moved (excluded per case
+/// under cause `windgen-qmode0-no-arm`; this pair's cells did not move — we
+/// render `kvar_base`, which no dispatch writes).
 ///
 /// The table is a *claim of completeness*: the test walks every `.dss` under
 /// `tests/corpus` and fails if a deck outside this table and
@@ -2944,8 +2959,10 @@ const POPULATION_LOCK: &str = "tests/corpus/manifests/population.lock.json";
 /// [`the_staged_r4133_property_entries_landed_at_rp41`], by
 /// [`the_ledgered_rows_are_excluded_by_entries_that_are_really_in_the_ledger`],
 /// by [`the_autotrans_typecast_cases_pair_their_r4133_channel_with_a_skip_entry`]
-/// and by [`r4133_skipped_cases`], and by nothing else in this file. **No `Link`
-/// of the declaration chain reads it** (see [`DECLARED_RP3`]): those readers are
+/// by [`r4133_skipped_cases`] and (since RP3.10, 2026-09-04) by
+/// [`every_rp310_windgen_pin_exists_and_is_cited`], and by nothing else in this
+/// file. **No `Link` of the declaration chain reads it** (see
+/// [`DECLARED_RP3`]): those readers are
 /// assertions *about* the file, not sources of a declaration, which is why RP4.1
 /// had to land [`RP3_LEDGERED`] to move the rows the entries exclude — the
 /// accounting still does not shrink by itself.
@@ -3542,9 +3559,14 @@ fn sig8(v: f64) -> String {
 /// (`Version8/Source/PCElements/WindGen.pas:1276-1322`) has an arm 1 (PF), an
 /// arm 2 (Volt-Var, `kvarCalc := kvarBase * VV_Curve(Vmag)`, `:1313`) and no arm
 /// 0 — `Else kvarCalc := 0` (`:1320-1321`) — while `QMode` defaults to 0
-/// (`:1020`). Reading the token is what separates the two populations RP3.2
+/// (`:1020`). Since §RP3.10 (2026-09-04) that `Else` is **r4133's** path alone:
+/// the port implements the documented `0: kvarCalc := kvarBase`, so on a deck
+/// that types no `QMode=` the two engines' dispatch diverges by design (ledger
+/// cause `windgen-qmode0-no-arm`) while their *renders* keep the RP3.2
+/// mechanism this table is about. Reading the token is what separates the two
+/// populations RP3.2
 /// reasons about: the five census decks type **no** `QMode=`, so they take the
-/// `Else` arm and r4133's render is the dispatched zero, whereas the two decks
+/// `Else` arm on r4133 and its render is the dispatched zero, whereas the two decks
 /// held out of the population type `QMode=2` with a real curve and take the
 /// volt-var arm — a *different* mechanism, which is why nothing here may claim a
 /// measured r4133 value for them ([`RP32_WINDGEN_SKIPPED_DECKS`]).
@@ -5261,6 +5283,104 @@ fn every_rp313_ncim_pin_exists_and_is_cited() {
             record.contains(pin),
             "{pin} ({role}) is in the tree but no longer cited in the RP3.13 record \
              (docs/phase-records/r4133-props-rp3.md; STATUS.md §7 forwards §RP3.13 there)"
+        );
+    }
+}
+
+/// **The RP3.10 WindGen `QMode=0` pins** — `(pin, role, cited by the ledger)`,
+/// each given by its **full module path**, because this sub-step's five pins live
+/// in two different source files.
+///
+/// RP3.10 is where the port stopped reproducing r4133's zero-var steady-state
+/// dispatch (`Else kvarCalc := 0`, `WindGen.pas:1320-1321`), so — unlike RP3.11
+/// and RP3.13, which moved none — it *does* move [`LEDGER`]: four `exclusion`
+/// entries under the cause `windgen-qmode0-no-arm` name four of these pins as the
+/// holders of the port's side of every excluded pair, which is what the
+/// "excluded field-by-field **and** pinned by an expected-value test naming both
+/// numbers" rule requires. The fifth,
+/// `exec::tests::force_hooks::windgen_force_inj_freezes_iterminal`, is the
+/// pre-existing pin the fix re-centred; its deck is not a corpus case, so no
+/// ledger entry cites it and its row is `false`.
+/// [`every_rp310_windgen_pin_exists_and_is_cited`] is what stops a rename or a
+/// deletion from silently orphaning the RP3.10 record's citations (in
+/// `docs/phase-records/r4133-props-rp3.md`, forwarded from `STATUS.md` §7) or
+/// the ledger's, exactly as [`RP313_NCIM_PINS`] does one sub-step earlier.
+const RP310_WINDGEN_PINS: &[(&str, &str, bool)] = &[
+    (
+        "elements::pc::windgen::tests::qmode0_dispatches_the_base_kvar",
+        "the four corpus token sets dispatch kvarBase (726.4831572567788 / \
+         986.0523155365896 / 854.95263026673 kvar) where r4133 dispatches 0",
+        true,
+    ),
+    (
+        "elements::pc::windgen::tests::qmode0_dispatch_carries_the_sign_and_scales_with_genmult",
+        "the sign lives in kvarBase (no LeadLag re-application) and `Factor` still \
+         applies, `WindGen.pas:1325` sitting outside the `case`",
+        true,
+    ),
+    (
+        "elements::pc::windgen::tests::qmode0_zero_only_when_the_base_is_zero",
+        "`pf=1.0` (windgen_snap) and above `VCutOut` still dispatch 0, and an \
+         out-of-range mode still takes upstream's `Else`",
+        true,
+    ),
+    (
+        "elements::pc::windgen::tests::dynamics_variables_match_the_qmode0_dispatch",
+        "both dynamics decks: the moved WTG3 state variables the ledger's \
+         `variables` scopes exclude, against r4133's live readings",
+        true,
+    ),
+    (
+        "exec::tests::force_hooks::windgen_force_inj_freezes_iterminal",
+        "the re-centred forced-injection pin — no corpus case, so no ledger entry",
+        false,
+    ),
+];
+
+/// The existence + citation guard for [`RP310_WINDGEN_PINS`]: every row names a
+/// real `#[test]` in the file its module path points at, **and** is cited by name
+/// in the RP3.10 record, **and** — for the four the ledger leans on — in
+/// [`LEDGER`] itself, so the tree, the record and the gating exclusions cannot
+/// drift apart in any direction. Citations are matched as whole identifiers
+/// ([`names_identifier`]), not substrings.
+#[test]
+fn every_rp310_windgen_pin_exists_and_is_cited() {
+    let record = std::fs::read_to_string(repo_root().join("docs/phase-records/r4133-props-rp3.md"))
+        .expect("docs/phase-records/r4133-props-rp3.md")
+        .replace("\r\n", "\n");
+    let ledger_path = repo_root().join(LEDGER);
+    let ledger = std::fs::read_to_string(&ledger_path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", ledger_path.display()));
+    assert!(
+        RP310_WINDGEN_PINS.len() >= 5,
+        "RP3.10 landed four new pins and re-centred one; the table has {}",
+        RP310_WINDGEN_PINS.len()
+    );
+    for (path, role, in_ledger) in RP310_WINDGEN_PINS {
+        let (module, pin) = path
+            .rsplit_once("::")
+            .unwrap_or_else(|| panic!("{path}: not a `module::path::fn` pin path"));
+        let file = repo_root().join(format!(
+            "crates/dss-core/src/{}.rs",
+            module.replace("::", "/")
+        ));
+        let text = std::fs::read_to_string(&file)
+            .unwrap_or_else(|e| panic!("read {}: {e}", file.display()))
+            .replace("\r\n", "\n");
+        assert!(
+            text.contains(&format!("#[test]\nfn {pin}(")),
+            "{pin} ({role}) is cited by the RP3.10 record, but {} defines no such #[test]",
+            file.display()
+        );
+        assert!(
+            names_identifier(&record, pin),
+            "{pin} ({role}) is in the tree but no longer cited in the RP3.10 record \
+             (docs/phase-records/r4133-props-rp3.md; STATUS.md §7 forwards §RP3.10 there)"
+        );
+        assert!(
+            !in_ledger || names_identifier(&ledger, pin),
+            "{pin} ({role}) holds the port's side of an RP3.10 exclusion, but no entry \
+             in {LEDGER} names it — the excluded pair would have no pin"
         );
     }
 }
@@ -7134,8 +7254,12 @@ fn the_rp32_census_decomposition_is_read_off_the_corpus() {
 
     // The mechanism behind r4133's `0`, read off the decks: none of the five
     // selects a Q-dispatch arm, so `WindModelDyn.QMode` stays Create's 0
-    // (`WindGen.pas:1020`) and the steady-state case falls to `Else kvarCalc :=
-    // 0` (`:1320-1321`).
+    // (`WindGen.pas:1020`) and r4133's steady-state case falls to `Else kvarCalc
+    // := 0` (`:1320-1321`) — the path the port stopped taking at §RP3.10
+    // (2026-09-04), which implements the documented constant-Q arm. The
+    // assertion is unchanged: it is about what the decks type, and it is what
+    // keeps both mechanisms (r4133's render AND the ledgered dispatch
+    // divergence) attached to this population.
     for (case, ..) in RP32_WINDGEN_CASES {
         let (qmode, vv_curve) = windgen_dispatch(&case_deck(case));
         assert_eq!(

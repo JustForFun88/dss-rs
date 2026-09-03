@@ -407,24 +407,35 @@ Entry kinds (`kind`):
   because the exclusion path ignores them and they would read as a promise the
   gate never keeps.
 
-Scope `field` must be one of the **13 implemented** handlers — `iterations`,
+Scope `field` must be one of the **14 implemented** handlers — `iterations`,
 `voltages`, `injection`, `element`, `probe`, `property`, `monitor`, `eventlog`,
-`ctrlqueue`, plus the four **exclusion-only** ones `y`, `y_fingerprint`,
-`yprim`, `meter` — anything else (typo or the §1.3-planned but unimplemented
-`global_result`) is rejected loudly at load. The exclusion-only four name a
-whole compared artifact rather than a value with a natural envelope (the
-assembled system Y, its fingerprint, one element's YPrim, one EnergyMeter's
-register block), so `assert_structural` refuses them on a `divergence`.
+`ctrlqueue`, plus the five **exclusion-only** ones `y`, `y_fingerprint`,
+`yprim`, `meter`, `variables` — anything else (typo or the §1.3-planned but
+unimplemented `global_result`) is rejected loudly at load. Four of the
+exclusion-only five name a whole compared artifact rather than a value with a
+natural envelope (the assembled system Y, its fingerprint, one element's YPrim,
+one EnergyMeter's register block), so `assert_structural` refuses them on a
+`divergence`. `variables` (added by `R4133_PROPS_PLAN.md` RP3.10) is
+exclusion-only for the other reason: a PC element's state variable does have the
+`i_abs + i_rel·|oracle|` envelope, but no handler re-asserts one, so a
+`divergence` naming it would promise a measurement the runtime never makes.
 Location selectors: `node_re`/`name_re`/`channel_idx` (0-based)/`channels`,
 optional `steps` (0-based). `iterations` takes exact `{rust, oracle}` pairs or
 `policy: "rust_le_oracle"`; `yprim`/`monitor`/`meter`/`probe` exclusions select
-the artifact by `name_re` (absent ⇒ all). The reverse rule holds too: an
-`exclusion` may name only a field the exclusion path actually handles
-(`voltages`, `element`, `injection`, `monitor`, `probe` + the four above) —
-`iterations`, `property`, `eventlog` and `ctrlqueue` are divergence-only,
-because their handlers re-assert a pin or rewrite the oracle's line, and a scope
-that loads cleanly and then never applies is the one thing the field whitelist
-exists to prevent.
+the artifact by `name_re` (absent ⇒ all), and a `variables` exclusion selects
+**one state variable** by `name_re` over the lowercased `element:variable` key
+(`windgen.w1:pgen`) — deliberately finer than the element, because the coarse
+alternative (dropping the element from the manifest's `variables` list) would
+mask a dynamics deck's whole 22-variable surface and shrink the population lock.
+`compare_variables` keeps its variable-COUNT assertion unconditional, and
+asserts that both engines spell any excluded index the same, so a mask can
+neither hide a missing variable nor slide onto a clean one. The reverse rule
+holds too: an `exclusion` may name only a field the exclusion path actually
+handles (`voltages`, `element`, `injection`, `monitor`, `probe` + the five
+above) — `iterations`, `property`, `eventlog` and `ctrlqueue` are
+divergence-only, because their handlers re-assert a pin or rewrite the oracle's
+line, and a scope that loads cleanly and then never applies is the one thing the
+field whitelist exists to prevent.
 
 Runtime rules: every applicable entry must be **hit** ≥ 1 (never-applied →
 gate fails), every `divergence` — and every `exclusion` carrying a `voltages`
@@ -442,7 +453,7 @@ apply. Every entry is fingerprinted
 into the population lock as `id@FNV-1a64(entry JSON)` per channel — adding,
 widening, or re-scoping an entry is always a reviewable lock diff.
 
-Current contents (re-counted off the file 2026-09-03): 53 entries over 29
+Current contents (re-counted off the file 2026-09-04): 57 entries over 30
 documented causes — 5 r4133 `skip`
 (the four #303 crash decks plus `r4133-espvlcontrol-uninstantiable`, where the
 r4133 DLL cannot construct an `ESPVLControl` at all), 29 r4133 `divergence`
@@ -461,12 +472,21 @@ pinned as exact pairs rather than skipped — the three `property` entries the
 R4133_PROPS line-merge/switch fixes landed on the live capi compare
 (`reduce-merge-units-restored-midi-capi-props`, RP3.5, and
 `line-switch-keeps-linecode-zone2/zone3-capi-props`, RP3.6a) and the five
-`swtcontrol-per-phase-state-*-capi-props` entries RP3.7 landed), and 6
-`exclusion` — 4 capi_v0145 + 2 r4133 — from
-`GOLDEN_REBASE_PLAN.md` G2.5, where the engine stopped reproducing three
+`swtcontrol-per-phase-state-*-capi-props` entries RP3.7 landed), and 10
+`exclusion` — 4 capi_v0145 + 6 r4133, from two engine fixes. Six are
+`GOLDEN_REBASE_PLAN.md` G2.5's (4 capi_v0145 + 2 r4133), where the engine
+stopped reproducing three
 upstream bugs (GICTransformer `%R2`, Capacitor `MakePosSequence` `Cuf`,
 LoadShape MMF accept-set) and the four decks that observe them therefore
-diverge from their gating channel(s) across the solved model.
+diverge from their gating channel(s) across the solved model. The other four
+are R4133_PROPS RP3.10's (2026-09-04, all r4133, one cause
+`windgen-qmode0-no-arm`): the engine implements the constant-Q `QMode=0` arm
+`TWindGenObj.SetNominalGeneration` never had (`WindGen.pas:1276-1322` falls to
+`Else kvarCalc := 0`), so the four corpus decks that declare a WindGen without a
+`QMode=` token diverge from r4133 across `voltages`, `injection` and `element`,
+on the two power-flow decks also across `y`/`y_fingerprint`/`yprim`, and on the
+two dynamics decks across three (`windgen_dyn`) and four (`windgen_dyn_fault`)
+WTG3 state `variables` — the exclusion field that same sub-step added.
 
 **The ledger is not a tolerance.** Envelopes are per-case, per-channel,
 per-scope **measured facts** (size them with `DSS_LEDGER_MEASURE=1`, record
