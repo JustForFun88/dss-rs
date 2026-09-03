@@ -554,9 +554,15 @@ fn ncim_init_pq_gen(ckt: &mut Circuit, env: &mut SolveEnv) {
             // stamp (l.2107), the PV→PQ clamp (l.2155) and the PQ→PV promotion
             // (l.2255) all run `j := 0 to NPhases-1`. So a machine born `model=4`
             // that the promotion arm later flips to PV writes past the end of the
-            // length-1 dynamic array — unchecked in FPC; measured 2026-09-03 it
-            // **deadlocks the r4133 DLL** on an 8-line deck (the `epri-worker`
-            // never replies), while the port panicked here. Same class as the
+            // length-1 dynamic array — unchecked in FPC; measured 2026-09-03 on an
+            // 8-line deck (`tmp/rp313/repro_pq2pv.dss`) it **corrupts the r4133
+            // DLL**: the solve itself still answers (`converged=True`, 5
+            // iterations, node voltages the port matches to the digit — own
+            // `epri-worker` probe, re-measured in the RP3.13 audit settlement),
+            // and the DLL then **hangs on the first element access after it**
+            // (`set_active_element Line.l1` never returns; a run killed at 150 s
+            // had burned 0.12 s of worker CPU: blocked, not spinning). The port
+            // panicked here instead. Same class as the
             // `Bus_Int_Duration` overrun; not reproduced (CLAUDE.md 2026-08-02).
             // `deltaQNom` is per-phase state, so size it that way — every reader of
             // the scalar form takes `[0]` (l.1326 model-4 power, l.2306 the ELSE
@@ -736,10 +742,37 @@ fn ncim_update_gen_q(ckt: &mut Circuit, env: &mut SolveEnv) {
 /// NCIMSOLVE` and `NodeRef[1] = 1`: the swing source's NCIM-reported terminal
 /// currents. NCIM holds the swing bus at the ideal EMF, so `YPrim·V - Iinj` is ~0
 /// there; instead the source's terminal current is the Kirchhoff sum at its bus —
-/// **minus** every connected PD-element terminal current (the PD loop, l.1113-1138)
-/// — **plus** every other connected PC-element terminal current (the PC loop,
-/// l.1148-1173). The swing source is the [`VSource`] whose first node is the
-/// global slack (`NodeRef[0] == 1`); with none, nothing is stamped.
+/// **minus** every other connected element's terminal current, PD (the PD loop,
+/// l.1113-1138) and PC (the PC loop, l.1148-1173) alike. The swing source is the
+/// [`VSource`] whose first node is the global slack (`NodeRef[0] == 1`); with
+/// none, nothing is stamped.
+///
+/// **Upstream sign bug, NOT reproduced** (CLAUDE.md 2026-08-02: an upstream bug
+/// is never reproduced in any lane). r4133 subtracts the PD terms (`csub`,
+/// l.1135) but **adds** the PC terms (`cadd`, l.1169). Every `GetCurrents` in
+/// OpenDSS returns the current flowing *into* the element ("Gets total Currents
+/// going INTO a device's terminals", `TPCElement.GetCurrents`), for PC and PD
+/// alike — a load reports `+P`, a generator `−P` — so KCL at the bus is
+/// `I(source) + Σ I(others) = 0` and the source's own share is `−Σ`, both loops
+/// subtracting. Measured 2026-09-03 on `tmp/rp313/settle/swing_pc.dss` (a 1000 kW
+/// / 400 kvar `Load.ldswing` bonded straight onto `sourcebus`, live `epri-worker`
+/// vs this engine): both engines print the same non-converged 15-iteration state
+/// to the digit (`SOURCEBUS.1 = 7532.646248 ∠−5.0617°`) and the same
+/// `Line.L1`/`Load.LDSWING` terminal currents, and r4133's own `Export Currents`
+/// gives `Vsource.SOURCE` conductor 1 `−12.910456 + 52.625721j A`
+/// (`54.1862 ∠103.78°`) = `−I(Line.l1 t1) + I(Load.ldswing)`, leaving a KCL
+/// residual of `85.035098 − 43.071927j A` = exactly `2·I(Load.ldswing)`. This
+/// port subtracts both loops, so the same read is `−97.945554 + 95.697649j A`
+/// (`136.9357 ∠135.669°`) and KCL closes to `< 1e-9 A`. Pinned by
+/// `exec::tests::ncim::ncim_swing_sum_subtracts_pc_terminals_and_closes_kcl`,
+/// which names both engines' numbers. **Zero oracle exposure**: the divergence
+/// needs a PC element other than the source on the slack node, none of the five
+/// r4133-gated NCIM cases has one (tripwire
+/// `ncim_swing_bus_carries_no_pc_element_on_the_gated_decks`), and any deck that
+/// grows one stops converging under NCIM on *both* engines (measured: 10 kW,
+/// 100 kW, 1000 kW loads and a 500 kW generator all hit the iteration limit) —
+/// so no ledger entry and no golden byte moves. Upstream report:
+/// `investigations/to_opendss/54-ncim-calcinjcurratbus-pc-sign.md`.
 ///
 /// **Stamped once here, echoed by every reader** (RP3.13). `CalcInjCurrAtBus`
 /// needs every element at the bus, which `get_currents(&mut self, sys, node_v,
@@ -848,8 +881,9 @@ fn ncim_stamp_swing_source_currents(ckt: &Circuit, env: &mut SolveEnv) {
             *c -= clip(cd.iterminal.get(t * stride + i));
         }
     }
-    // PC elements (+ other sources) at the bus, excluding the source itself: add
-    // their terminal currents (stride `ce.NPhases`).
+    // PC elements (+ other sources) at the bus, excluding the source itself:
+    // **subtract** their terminal currents (stride `ce.NPhases`, l.1169), which is
+    // where this port leaves r4133 — see the sign-bug paragraph on the fn doc.
     for &r in ckt.pc_elements.iter().chain(ckt.sources.iter()) {
         if r == src_ref {
             continue;
@@ -864,7 +898,7 @@ fn ncim_stamp_swing_source_currents(ckt: &Circuit, env: &mut SolveEnv) {
         elem.refresh_iterminal(&sys, node_v);
         let cd = elem.cd();
         for (i, c) in curr.iter_mut().enumerate().take(nphases) {
-            *c += clip(cd.iterminal.get(t * stride + i));
+            *c -= clip(cd.iterminal.get(t * stride + i));
         }
     }
 

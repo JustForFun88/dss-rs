@@ -2003,10 +2003,10 @@ the three `modes/ncim/*` decks, `Xmission_System_Kundur2Area` and
 as history; the cause is documentary and referenced by no entry). Nothing else in
 those UPDATEs changes: no ledger entry, no tolerance, no golden.
 
-**Three r4133 defects on the NCIM path, all measured on the live DLL and none
-reproduced** (CLAUDE.md 2026-08-02 policy; port-side fixes and pins in
+**Four r4133 defects on the NCIM path, all measured on the live DLL and none
+reproduced** (the fourth added by the RP3.13 audit settlement) (CLAUDE.md 2026-08-02 policy; port-side fixes and pins in
 `R4133_PROPS_PLAN.md` §RP3.13 / STATUS §RP3.13, upstream reports in the gitignored
-`investigations/to_opendss/51..53`):
+`investigations/to_opendss/51..54`):
 
 1. **`UpdateGenQ` writes `deltaQNom[j]` over a length-1 array.** `InitPQGen`
    (`R4133:Common/Solution.pas:1678-1679`) sizes `deltaQNom` to **1** for every
@@ -2014,10 +2014,15 @@ reproduced** (CLAUDE.md 2026-08-02 policy; port-side fixes and pins in
    (`:2107`), the PV→PQ clamp (`:2152-2154`) and the PQ→PV promotion (`:2254-2256`), each
    `j := 0 to NPhases-1`. A generator born `model=4` that the promotion arm later
    flips to PV therefore writes past the end (unchecked in FPC). Measured
-   2026-09-03: the r4133 DLL **deadlocks** on an 8-line deck
-   (`tmp/rp313/repro_pq2pv.dss` — the `epri-worker` never replies, runs of 150 s
-   and 200 s). The port sizes it per phase, as r4133's own model-3 path does at
-   `:1928-1930` (`solution/solution/ncim.rs:566`).
+   2026-09-03 on an 8-line deck (`tmp/rp313/repro_pq2pv.dss`): the **solve** still
+   answers — `converged=True`, 5 iterations, and node voltages the port matches to
+   the digit (`GENBUS.1 = 7065.195045516548 - 20.00602724009179j`) — and the DLL
+   then **hangs on the first element access after it** (`set_active_element
+   Line.l1` never returns; the run killed at 150 s had burned 0.12 s of worker
+   CPU: blocked, not spinning). (The first RP3.13 measurement read elements and so
+   recorded the whole deck as unanswerable; corrected by the audit settlement, own
+   re-probe 2026-09-03.) The port sizes it per phase, as r4133's own model-3 path
+   does at `:1928-1930` (`solution/solution/ncim.rs:566`).
 2. **`DOForceFlatStart` writes `NodeV[1..3]` on any circuit**
    (`Solution.pas:1650-1654`). On a circuit with fewer than three nodes that runs
    past the `NumNodes+1` allocation and **corrupts the DLL's heap**: measured on a
@@ -2035,6 +2040,38 @@ reproduced** (CLAUDE.md 2026-08-02 policy; port-side fixes and pins in
    path zero-fills and returns `0.0`, which is what the corpus gate compares. Not
    reproduced: the port zeroes the tail (`elements/pc/generator/accessors.rs:363`),
    which is also what it emitted before the port gained the arm.
+4. **`TVsourceObj.CalcInjCurrAtBus` adds PC-element terminal currents where it
+   subtracts the PD ones**, so the swing source's NCIM-reported current violates
+   KCL (found by the RP3.13 audit settlement, 2026-09-03). The PD loop is
+   `csub(Curr[j], …)` (`R4133:PCElements/VSource.pas:1135`), the PC loop
+   `cadd(Curr[j], …)` (`:1169`). Every OpenDSS `GetCurrents` returns the current
+   flowing *into* the element — `TPCElement.GetCurrents`' own header says so, and
+   it is what makes a load report `+P` and a generator `−P`; the NCIM generator
+   stamp `Iterminal[j+1] := cnegate(conjg(cdiv(cmplx(Pnominalperphase,
+   deltaQNom[j]), Volt)))` (`Common/Solution.pas:2108`) is the same convention —
+   so KCL at the bus is `I(source) + Σ I(others) = 0` and **both** loops must
+   subtract. Measured live on a deck with a 1000 kW / 400 kvar load bonded onto
+   the swing bus (`tmp/rp313/settle/swing_pc.dss`; both engines diverge
+   identically there — any PC element on the slack node breaks NCIM's slack
+   constraint — and agree on every node voltage and on the `Line`/`Load` terminal
+   currents to the digit): r4133 reports `Vsource.source I1 = -12.910456091137 +
+   52.625721242876j A` (`54.1862 ∠103.78°`), which is exactly
+   `-I(Line.l1 t1) + I(Load.ldswing)` and leaves a KCL residual of
+   `85.035098 - 43.071927j A` = precisely `2·I(Load.ldswing)`. Not reproduced: the
+   port subtracts both loops (`solution/solution/ncim.rs`), reads
+   `-97.945554 + 95.697649j A` (`Export Currents` prints `136.936 ∠135.67`) and
+   closes KCL to `< 1e-9 A` — pinned by
+   `exec::tests::ncim::ncim_swing_sum_subtracts_pc_terminals_and_closes_kcl`,
+   which names both engines' rows. Zero gated exposure: the divergence needs a PC
+   element other than the source on the slack node and no gated NCIM case has one
+   (`exec::tests::ncim::ncim_swing_bus_carries_no_pc_element_on_the_gated_decks`),
+   so no ledger entry and no golden byte moves. The same routine carries two
+   further defects the port also refuses — the PC loop's `myTerm` is reset once
+   before the loop rather than per element (`:1146` vs the PD loop's `:1119`), so
+   its terminal-finder accumulates across PC elements and can index past
+   `SetLength(ElmCurrents, Yorder+1)`; and its per-terminal stride is `NPhases`
+   where the PD loop uses `Round(Yorder/2)`. Upstream report
+   `investigations/to_opendss/54-ncim-calcinjcurratbus-pc-sign.md`.
 
 **Where the port is being corrected, not r4133.** The same sub-step fixed two port
 bugs of its own — the missing NCIM reporting arm (the port reported the *declared*
