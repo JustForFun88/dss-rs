@@ -175,7 +175,9 @@ Retires the target-rev one-shot Oracle/Oddie shim for the mandatory gate: the
   (Capi/Epri × Pool/OneShot). Iteration policy is per-channel: capi_v0145 = exact
   1:1; r4133 = `rust_le_oracle`. Eventlog masks keyed on the channel. The r4133
   request masks `all_properties` off (capi_v0145-only per §1.2 — the bridge has no
-  all-props capture).
+  all-props capture). *(Superseded 2026-09-03: Phase D gave the bridge
+  `capture_all_properties`, and R4133_PROPS RP4.1 removed the mask — the r4133
+  request carries `all_properties` and its property table is gated.)*
 - **Re-validation (§4/§5 R9) — all 106 r4133 cases gated live against the epri
   bridge.** 95 pass green; **11 deferred** to Phase D (all were `oracle:capi015`,
   the retired 0.15.0b4 line, and reproduce on NEITHER surviving channel — proven by
@@ -608,7 +610,8 @@ no golden touched.
   the scheduler masks it off per-channel; gating is unaffected (property parity
   is capi_v0145-only by plan). Recorded as an accepted §2.2 deviation: implement
   only if report tooling ever needs it (`DSSPut_Command("? name.Like")` +
-  `DSSElementV`).
+  `DSSElementV`). *(Superseded 2026-09-03: implemented in Phase D and made
+  gating by R4133_PROPS RP4.1.)*
 - **UGA-6 — "Rust runs once per case" (§3.3/D7) violated for `engines:"both"`**:
   `compare_with_result` re-runs the deterministic Rust engine per channel (2×).
   Cost-only (~150 s full gate ≪ 10 min target), disclosed in the scheduler
@@ -698,7 +701,8 @@ without deviation). Implemented: `DSSElementV` FFI binding (mode 0 = AllProperty
 **Gating semantics UNCHANGED**: the scheduler still masks `all_properties` off on the
 r4133 request (property parity stays capi_v0145-only per plan) — the r4133 all-props
 path is capability-only (report tooling). Unsafe stays inside dss-epri (SAFETY comment;
-V-protocol copied immediately).
+V-protocol copied immediately). *(Superseded 2026-09-03: R4133_PROPS RP4.1 removed
+both masks; this capture is what the r4133 property compare reads.)*
 
 **Ledger measurement aid.** `DSS_LEDGER_MEASURE=1` makes the numeric handlers print
 the live divergence per scope (env-gated stderr, NO gating-semantics change) so

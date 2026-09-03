@@ -449,7 +449,8 @@ impl Engine {
     /// The active DSS object's `ParentClass.AllPropertyNames`, in property-index
     /// order (`DSSElementV` mode 0 — `DDSSElement.pas`). Read after activating the
     /// object with `? name.Like`; empty class ⇒ `["None"]` (Pascal placeholder).
-    /// Backs [`crate::capture`]'s all-properties enumeration (§2.2).
+    /// Backs [`crate::capture`]'s all-properties enumeration (§2.2), which gates
+    /// the r4133 property compare since R4133_PROPS RP4.1 (2026-09-03).
     pub fn element_all_property_names(&self) -> Vec<String> {
         self.v_strings(self.dll.dss_element_v, 0)
     }

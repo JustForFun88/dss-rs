@@ -52,10 +52,12 @@ fallback, ping-asserts `{"epri": true, "rev": "r4133"}`, and recycles the
 worker per case by default (determinism). Which cases gate on this channel is
 the manifests' `engines` field; measured r4133 divergences are pinned in the
 gating ledger `tests/corpus/ledger.json` (kinds, envelopes, and the triage
-procedure: `TESTING.md`). The r4133 request masks `all_properties` off —
-property parity is a `capi_v0145`-channel check (`PROPS_015X` exists precisely
-because r4133 renders 0.15.x-shaped tables); the bridge's own
-`capture_all_properties` is capability-only report tooling.
+procedure: `TESTING.md`). Since R4133_PROPS RP4.1 (2026-09-03) the r4133 request
+carries `all_properties` like the capi one — the per-channel mask is gone, and
+the bridge's own `capture_all_properties` is a **gating** capture, not report
+tooling. (`PROPS_015X` still bridges the 0.15.x-shaped tables r4133 renders; on
+an r4133 capture an r4133-only prop is carried by the oracle's own name list and
+therefore compares in full.)
 
 ## A-Diakoptics reference regen (no tool ships anymore)
 

@@ -123,14 +123,15 @@ pub fn run_smoke() -> Result<SmokeReport, String> {
         inj.len()
     ));
 
-    // 5. all-properties enumeration is readable + deterministic (§2.2
-    // report-tooling parity, capability-only — NOT a gating channel): `DSSElementV`
-    // (AllPropertyNames) + `? name.prop` value reads. Re-reading the first element's
-    // first property directly must equal the dumped value. This proves the
-    // enumeration is non-empty and the getter is deterministic (same code path both
-    // times) — it is NOT a value-correctness check against an independent baseline
-    // (fix-round audit F1: the r4133 all-props capture is report tooling; the pinned
-    // capi oracle, not this smoke, gates property correctness).
+    // 5. all-properties enumeration is readable + deterministic (§2.2):
+    // `DSSElementV` (AllPropertyNames) + `? name.prop` value reads. Re-reading the
+    // first element's first property directly must equal the dumped value. This
+    // proves the enumeration is non-empty and the getter is deterministic (same
+    // code path both times) — it is NOT a value-correctness check against an
+    // independent baseline. What checks the values is the corpus gate: since
+    // R4133_PROPS RP4.1 (2026-09-03) this capture is a gating channel, compared
+    // cell-by-cell against the port on every live non-`large` r4133-gating case.
+    // (Written when it was capability-only report tooling — fix-round audit F1.)
     let dump = crate::capture::all_properties_dump(&engine).map_err(|e| e.to_string())?;
     if dump.is_empty() {
         return Err("all_properties dump is empty (no elements enumerated)".to_string());

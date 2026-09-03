@@ -1081,8 +1081,8 @@ means *outside the floor*, and those probes were re-measured to stay so), and no
 The rows are evidence-bound and both-ways live: each cites its census pair by
 `(pair, bin, cells)` in `tests/corpus/props_r4133/`, the offline replay proves
 every row claims at least one real census spelling, and per-row hit counters
-(dormant until RP4.1 unmasks the r4133 props path) fail on a row that stops
-folding anything.
+(dormant until RP4.1 unmasked the r4133 props path on 2026-09-03, live since)
+fail on a row that stops folding anything.
 
 The **channel dispositions of `SKIP_PROPS`** land in the same sub-step and are
 the other half of this: a row justified by a *channel-independent* fact (the

@@ -219,9 +219,10 @@ pub(crate) enum Disposition {
     /// live double printed by two `Format('%[-].Ng', …)` getters.
     /// **r4133 rows only.**
     UnderFloor,
-    /// A `property`-scoped ledger entry NAMES the cell (plan §1.1(e); the
-    /// staging rule keeps r4133 property entries out of the tree until RP4.1,
-    /// so this is structurally zero on that channel today).
+    /// A `property`-scoped ledger entry NAMES the cell (plan §1.1(e)). This was
+    /// structurally zero on the r4133 channel while the staging rule kept those
+    /// entries out of the tree; RP4.1 landed the eight staged ones (2026-09-03),
+    /// so the tag carries r4133 cells now.
     LedgerHit,
     /// Nothing in the chain claims it. This is the bucket RP2.2/RP2.3/RP2.4/RP3
     /// still owe rows for, and the one RP4.1's acceptance requires to be empty.
@@ -242,9 +243,10 @@ impl Disposition {
     /// Every disposition the summary reports, in chain order — so a tally
     /// prints its zeros too: a mechanism that claimed nothing must be visible
     /// rather than absent, or a reader cannot tell "leaned on for nothing" from
-    /// "not reported at all". (All four chain links carry a value since RP2.4;
-    /// the tag that is structurally zero on the r4133 channel is `ledger-hit`,
-    /// which the staging rule keeps out of the tree until RP4.1.)
+    /// "not reported at all". (All four chain links carry a value since RP2.4,
+    /// and `ledger-hit` — structurally zero on the r4133 channel while the
+    /// staging rule held those entries back — carries cells since RP4.1 landed
+    /// the eight staged entries, 2026-09-03.)
     pub(crate) fn all() -> Vec<Disposition> {
         let mut v: Vec<Disposition> = ["BoolFold", "CaseFold", "ArrayForm", "EnumSynonym"]
             .into_iter()
@@ -384,9 +386,10 @@ pub(crate) struct Row {
     pub(crate) channel: PropsChannel,
     pub(crate) step: i64,
     pub(crate) kind: RowKind,
-    /// Is this row's case one the RP4.1 unmask will actually compare on the
-    /// r4133 channel — `engines ∈ {"both", "r4133"}` (the vendored README's
-    /// §"The in-scope filter")? Carried on every row in every mode; only the
+    /// Is this row's case one the gate actually compares on the r4133 channel
+    /// — `engines ∈ {"both", "r4133"}` (the vendored README's §"The in-scope
+    /// filter")? Written before RP4.1 as "will compare"; since that unmask
+    /// (2026-09-03) it is the present tense. Carried on every row in every mode; only the
     /// claims artifacts report the split, which is what makes a claims run
     /// comparable with `bins.tsv`'s `cells_in_scope` column.
     pub(crate) in_scope: bool,

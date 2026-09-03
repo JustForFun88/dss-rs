@@ -199,9 +199,15 @@ impl SolvableCase {
             ),
         }
     }
-    /// The single primary channel for weighting / property-forcing decisions
-    /// (a `"both"` case is capi-forced for property parity; §1.2 keeps
-    /// `compare_all_properties` on the capi_v0145 channel only).
+    /// Does this case gate the pinned dss_capi 0.14.5 channel?
+    ///
+    /// **No longer a property-forcing predicate.** It used to select the cases
+    /// whose property table was compared (§1.2 kept `compare_all_properties` on
+    /// the capi_v0145 channel only); R4133_PROPS RP4.1 (2026-09-03) unmasked the
+    /// r4133 channel and [`crate::scheduler::force_properties`] now forces
+    /// properties on every live non-`large` case regardless of `engines`. What is
+    /// left is the `DSS_LIVE_PROPS` pilot in `corpus_gate.rs`, which drives the
+    /// pinned oracle directly and therefore still has to skip r4133-only cases.
     pub(crate) fn gates_capi(&self) -> bool {
         matches!(self.engines.as_str(), "capi_v0145" | "both")
     }

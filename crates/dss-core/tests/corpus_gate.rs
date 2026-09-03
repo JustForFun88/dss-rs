@@ -152,20 +152,36 @@ fn corpus_gate_all_cases_match_engines() {
     // And for the RP2.1 r4133 property-normalization rows, for the first
     // reason: each row lets the engine spell a property value differently from
     // r4133, so one that stops folding anything must fail rather than sit in
-    // the table. **Dormant until RP4.1** — the r4133 props path is masked
-    // (`corpus_gate/scheduler.rs`), so every row has zero visits today and this
-    // is a no-op; it is wired now so the flip arms it instead of having to
-    // remember it. Self-silencing under `DSS_GATE_ONLY` for the same reason the
-    // two above are.
+    // the table. **Live since RP4.1** (2026-09-03) — the r4133 props path is
+    // no longer masked (`corpus_gate/scheduler.rs::force_properties`), so a full
+    // gate run visits these rows for real; it was wired dormant at RP2.1 so the
+    // flip would arm it instead of having to remember it. It skips a
+    // `DSS_GATE_ONLY` run by an explicit check rather than by zero visits, which
+    // is where it parts company with the two above: a row spans cases, so a
+    // filtered run can visit one without reaching the case that makes it fold
+    // (RP4.1 measured exactly that).
     harness::props_norm::assert_norm_rows_are_live();
     // And for the RP2.3 r4133 property-ECHO rows, for the same reason with a
     // sharper edge: each row stops the r4133 value compare of a whole pair, so
     // one that excludes nothing is a mask over a divergence that is no longer
-    // there. Dormant on the same schedule (zero visits until RP4.1) and
-    // silent-when-dormant for the same `DSS_GATE_ONLY` reason, plus for the two
-    // rows whose cited cells sit on capi-only cases
+    // there. Live on the same schedule (it was zero-visit until RP4.1's unmask),
+    // skipping a `DSS_GATE_ONLY` run the same explicit way, plus silent for the
+    // two rows whose cited cells sit on capi-only cases
     // (`props_norm::ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`).
     harness::props_norm::assert_echo_rows_are_live();
+    // And the GLOBAL half of the same accounting (plan §RP4.1): the two asserts
+    // above are per-row and say nothing when NO row was visited, which is
+    // exactly what a re-mask of the r4133 property request would produce — a
+    // silent, green gate. This one fails when the whole r4133 property compare
+    // never ran, counted at the single gating call site
+    // (`harness::compare_all_properties`'s r4133 arm) rather than off the
+    // tables, whose statics sibling unit tests in this binary legitimately move.
+    // It is the loud half of "a scheduler-side re-mask is invisible to
+    // `population.lock.json`"; the other half is the landed `property`-scoped
+    // r4133 entries going NEVER APPLIED in `assert_all_hit` above.
+    let (props_walks, props_elements) = harness::props_norm::r4133_props_walk_counters();
+    eprintln!("corpus_gate r4133 props: {props_walks} gating walk(s), {props_elements} element(s)");
+    harness::props_norm::assert_r4133_props_compare_ran();
 }
 
 /// The property census (`R4133_PROPS_PLAN.md` RP0.2, `DSS_PROPS_CENSUS`): walk

@@ -16,8 +16,10 @@ the pinned dss-python oracle (`tools/golden/PIN.txt`).
   (`tools/opendss/`), not this server.
   The `"all_properties": true` request field adds `capture_all_properties`
   (WP8.5b): every `AllElementNames` element's every property, `[[prop, Val]]` in
-  `AllPropertyNames` order, read via `? name.prop` (the WPG.1-safe probe path) —
-  property parity is gated only against this pinned capi oracle.
+  `AllPropertyNames` order, read via `? name.prop` (the WPG.1-safe probe path).
+  Property parity was gated only against this pinned capi oracle until
+  R4133_PROPS RP4.1 (2026-09-03); the r4133 bridge's own `capture_all_properties`
+  now gates the r4133 channel the same way.
 - **`corpus_guard.py`** — restores the vendored corpus tree after a run (the
   engine writes reports/DI files next to each deck); the Rust side has a mirror
   `CorpusGuard`.

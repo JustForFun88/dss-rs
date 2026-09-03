@@ -20,12 +20,14 @@
 //!
 //! Since **RP2.4** all four links carry a value, so the accounting is no longer
 //! "two live links and two named slots": every example row is claimed by one of
-//! them, declared to a sub-step that is itself still open (RP3, RP3.5+, RP3.9)
-//! or to `OutOfScope`, or — since RP3.8 changed the engine under five pairs —
-//! counted as **superseded**, the third state ([`RP38_SUPERSEDED`]).
-//! `DECLARED_RP22`/`RP23`/`RP24`/`RP38` are all `(0, 0, 0)`.
+//! them, declared to a sub-step that is itself still open (RP3.5+, RP3.9,
+//! RP3.12) or to `OutOfScope`, or — since RP3.8 changed the engine under five
+//! pairs and RP3.7 under two — counted as **superseded** ([`RP38_SUPERSEDED`],
+//! [`RP37_SUPERSEDED`]), or — since RP4.1 landed WP-RP3's staged `ledger.json`
+//! entries — counted as **ledgered** ([`RP3_LEDGERED`]).
+//! `DECLARED_RP22`/`RP23`/`RP24`/`RP3`/`RP38` are all `(0, 0, 0)`.
 //!
-//! Every row ends up in exactly one of two states, and **the accounting is
+//! Every row ends up in exactly one of four states, and **the accounting is
 //! total from day one**:
 //!
 //! * **claimed** — the first matching link of the chain recognises the two
@@ -34,7 +36,12 @@
 //! * **superseded** — an engine change made the frozen `(rust, r4133)`
 //!   spelling counterfactual, so neither a link nor a sub-step can be asked
 //!   about it; the row is counted against a cited table whose evidence is live
-//!   ([`RP38_SUPERSEDED`], the only one today);
+//!   ([`RP38_SUPERSEDED`], and since RP4.1 [`RP37_SUPERSEDED`] — each locked
+//!   separately, and disjoint by [`the_two_superseded_tables_are_disjoint`]);
+//! * **ledgered** — a landed `tests/corpus/ledger.json` `property` entry
+//!   excludes the cell, so the exclusion is real but lives outside `props_norm`
+//!   and no link can be credited with it ([`RP3_LEDGERED`], whose entry ids are
+//!   read back out of the ledger);
 //! * **declared pending** — no link claims it *yet*, and the row carries a
 //!   marker naming the sub-step whose mechanism will claim it (RP2.3, RP2.4,
 //!   RP3, or one of the RP3.5+ sub-steps RP2.2's dossier opened) or the reason
@@ -127,18 +134,25 @@ const CLAIMED_BOOL_FOLD: usize = 114;
 /// before: an echo row would have masked them, and a typed rule compares them
 /// instead (props_norm module doc §"RP2.3's nine off-bin rows").
 const CLAIMED_CASE_FOLD: usize = 528;
-/// …**203**: RP2.1's 192 **+11** for RP2.3's six off-bin `ArrayForm` rows —
-/// `line.wires` 2, `load.zipv` 2, `generator.userdata` 2, `storage.dynadata` 1,
-/// `storagecontroller.seasontargets`/`seasontargetslow` 2 each.
-const CLAIMED_ARRAY_FORM: usize = 203;
+/// …**201 since RP4.1**: RP2.1's 192 **+11** for RP2.3's six off-bin
+/// `ArrayForm` rows — `line.wires` 2, `load.zipv` 2, `generator.userdata` 2,
+/// `storage.dynadata` 1, `storagecontroller.seasontargets`/`seasontargetslow`
+/// 2 each — **−2** for the two `swtcontrol` rows RP4.1 dropped as dead
+/// (`props_norm` module doc §"Two `ArrayForm` rows sit on RP2.2's S6 list"):
+/// their one-token spellings leave the normalization link and are superseded
+/// with the rest of the pair ([`RP37_SUPERSEDED`]). The live claims census
+/// measures the same 201 `normalized-by-ArrayForm` spellings on the r4133
+/// channel, so the two accountings agree on this rule kind exactly.
+const CLAIMED_ARRAY_FORM: usize = 201;
 /// RP2.2's five `EnumSynonym` rows: `vsource.scantype`/`sequence` one spelling
 /// each, `isource.scantype`/`sequence` two each, and
 /// `invcontrol.voltage_curvex_ref` three (`examples_full.txt`).
 const CLAIMED_ENUM_SYNONYM: usize = 9;
 /// The four rule kinds together — the NORMALIZATION link's own total, which is
 /// what [`CLAIMED_TOTAL_LIVE`] reconciles against. RP2.1 measured 748, RP2.2
-/// 755, RP2.3 854 (+99, the nine off-bin rows).
-const CLAIMED_NORMALIZATION: usize = 854;
+/// 755, RP2.3 854 (+99, the nine off-bin rows), RP4.1 **852** (−2, the two
+/// dropped `swtcontrol` `ArrayForm` rows).
+const CLAIMED_NORMALIZATION: usize = 852;
 /// **The echo table** — example rows the exclusion claims, i.e. the ones
 /// `PROPS_ECHO_R4133` covers that no earlier link took. 450 (the RP2.3 bucket)
 /// − 99 (claimed by the nine new normalization rows instead) − 181 (the five
@@ -174,12 +188,20 @@ const CLAIMED_TOTAL: usize =
 /// populations could diverge silently while the module doc kept claiming
 /// "spelling-level completeness before the unmask" (RP2.1 audit round).
 ///
-/// **855 since RP2.3** (756 + 99): the nine off-bin normalization rows claim
+/// **855 at RP2.3** (756 + 99): the nine off-bin normalization rows claim
 /// exactly the same 99 spellings live as offline — RP2.3 part A re-measured
 /// each pair's live spelling inventory against the frozen one and they match
 /// pair for pair (6 446 live cells, 6 370 in scope). The term itself is
 /// unchanged, still the one `autotrans.conn` spelling.
-const CLAIMED_TOTAL_LIVE: usize = 855;
+///
+/// **853 since RP4.1** (2026-09-03), and this is a *convergence*, not a
+/// bookkeeping shift: the two `swtcontrol` `ArrayForm` rows claimed 2 spellings
+/// offline that the live population had already stopped producing (RP3.7(a)
+/// made both sides spell every cell identically, so the claims census records
+/// no divergent cell for either pair). Dropping the rows removes the same 2
+/// from the offline side and the identity below holds again on a number both
+/// accountings measure.
+const CLAIMED_TOTAL_LIVE: usize = 853;
 
 /// The spellings the live claims census sees and the vendored evidence cannot,
 /// each with the pair it belongs to, the two sides, and why no file carries it.
@@ -255,7 +277,14 @@ const LIVE_ONLY_DISPLAY_PAIRS: &[&str] = &[
 /// `generator.model` echo row adds the one spelling back — **re-measured**, not
 /// bumped: the census walk of 2026-08-24 (`DSS_PROPS_CENSUS=claims`) reports the
 /// pair's two live cells as `echo-row` and its claimed-spelling total as 2 982.
-const CLAIMED_SPELLINGS_LIVE: usize = 2982;
+///
+/// **2 980 since RP4.1** (2026-09-03): the two `swtcontrol` `ArrayForm` rows
+/// leave the normalization link ([`CLAIMED_ARRAY_FORM`]) and take the identity
+/// below with them. The live side loses nothing it still had — the 2026-08-24
+/// measurement predates RP3.7(a), and at HEAD the claims census counts 201
+/// `normalized-by-ArrayForm` spellings against the 203 the table claimed, which
+/// is exactly this pair of rows.
+const CLAIMED_SPELLINGS_LIVE: usize = 2980;
 
 /// **RP3.9 — the round-trip residue RP2.4's mechanism clause refuses**:
 /// `(pair, example rows, r4133 site)`.
@@ -512,9 +541,10 @@ const CLAIMED_SHAPE_ALLOWLIST: usize = 0;
 ///   ([`RP312_UPSTREAM_BUG`]). This count is unaffected either way: the floor
 ///   claims what its predicate claims.
 ///
-/// No row claimed by an earlier link is also inside the floor
-/// ([`MULTI_LINK_ROWS`] is unchanged at 135), which is why this number is a
-/// clean addition to [`CLAIMED_TOTAL`] rather than a re-partition.
+/// No row claimed by an earlier link is also inside the floor (RP2.4 left
+/// [`MULTI_LINK_ROWS`] at the 135 RP2.3 had measured; RP4.1 P1 has since taken
+/// it to 0), which is why this number is a clean addition to [`CLAIMED_TOTAL`]
+/// rather than a re-partition.
 ///
 /// **1 951 since the RP2.4 audit settlement** (2026-08-23), from 2 006: the
 /// floor's mechanism clause (`props_norm::display_is_render`) refuses the **55**
@@ -524,19 +554,40 @@ const CLAIMED_SHAPE_ALLOWLIST: usize = 0;
 /// clause makes the refusal a property of the predicate rather than of a survey.
 const CLAIMED_DISPLAY_FLOOR: usize = 1951;
 
-/// Rows for which **more than one** link matches — **135 since RP2.3**, over 20
-/// pairs that hold a `PROPS_NORM_R4133` row AND a `PROPS_ECHO_R4133` row.
+/// Rows for which **more than one** link matches — **0 since RP4.1 P1**
+/// (2026-09-03), 135 from RP2.3 until then.
 ///
 /// It was zero while the echo table was empty, and RP2.1 made it a lock rather
 /// than a structural assert precisely so RP2.3 would have to re-read the
-/// first-match argument instead of silently starting to rely on it. Re-read,
-/// and it holds: normalization precedes the exclusion
-/// ([`first_match_returns_the_earliest_link`]), so on each of those 20 pairs
-/// the typed rule claims its foldable spellings and only the rest is credited
-/// to the echo row. The split is measured per pair by
-/// [`the_typed_rules_and_the_echo_rows_split_their_shared_pairs_offline`], whose
-/// doc is also where the difference between this attribution and the live
-/// (pair-scoped) mask is spelled out.
+/// first-match argument instead of silently starting to rely on it. RP2.3 made
+/// it 135: 20 pairs hold a `PROPS_NORM_R4133` row AND a `PROPS_ECHO_R4133` row,
+/// the exclusion was pair-scoped, so every spelling the typed rule claimed on
+/// those pairs matched the echo link as well and the first-match order
+/// ([`first_match_returns_the_earliest_link`]) was the only thing deciding it.
+///
+/// **RP4.1's precondition 1 removed the overlap outright.**
+/// `props_norm::ECHO_NARROWED` holds each of those 20 rows to the spellings its
+/// citation explains, and that set is by construction exactly the rows the typed
+/// rules do NOT claim
+/// ([`the_narrowed_echo_rows_carry_exactly_the_spellings_the_typed_rules_leave`]),
+/// so no row can match both links any more. The lock stays — as **0** it is the
+/// tripwire a re-widened echo row (or a deleted narrowing) trips immediately,
+/// and the accounting no longer leans on chain order for a partition the tables
+/// themselves now make disjoint.
+///
+/// The population this used to count is now [`MIXED_PAIR_NORM_ROWS`].
+const MULTI_LINK_ROWS: usize = 0;
+
+/// The rows of the 20 **mixed** pairs that the typed rule claims — 135, the
+/// number [`MULTI_LINK_ROWS`] carried from RP2.3 to RP4.1 P1.
+///
+/// Same population, different statement: this is a property of
+/// `PROPS_NORM_R4133`'s reach on the pairs that also carry an echo row (what the
+/// per-pair split literal in
+/// [`the_typed_rules_and_the_echo_rows_split_their_shared_pairs_offline`] sums
+/// to), not of two links overlapping. It is also the exact complement of
+/// `props_norm::ECHO_NARROWED`'s 66 spellings inside those 20 pairs' 201 census
+/// rows, which is why the two locks move together or not at all.
 ///
 /// The 20: the four mixed bin-1 pairs (`recloser.eventlog` 1,
 /// `regcontrol.idle` 1, `relay.distreverse` 2, `relay.reset` 1), the six
@@ -547,7 +598,7 @@ const CLAIMED_DISPLAY_FLOOR: usize = 1951;
 /// `invcontrol.monvoltagecalc` 2, `line.wires` 2, `load.zipv` 2,
 /// `generator.userdata` 2, `storage.dynadata` 1,
 /// `storagecontroller.seasontargets`/`seasontargetslow` 2 each).
-const MULTI_LINK_ROWS: usize = 135;
+const MIXED_PAIR_NORM_ROWS: usize = 135;
 
 /// Declared-pending rows per owner: `(rows, pairs, rows on in-scope pairs)`.
 /// This is what RP2.3, RP2.4, RP3 and the RP3.5+ sub-steps each inherit.
@@ -603,6 +654,15 @@ const DECLARED_RP38: (usize, usize, usize) = (0, 0, 0);
 /// this number, so the sub-step cannot quietly shrink the population it was
 /// accountable for.
 const SUPERSEDED_RP38: (usize, usize, usize) = (181, 5, 181);
+/// **The frozen rows RP3.7's engine change superseded** — the same triple, over
+/// exactly the [`RP37_SUPERSEDED`] pairs: **5 rows / 2 pairs / 5 in-scope
+/// rows**.
+///
+/// Two of the five came out of the NORMALIZATION link (the one-token spellings
+/// the two dropped `swtcontrol` `ArrayForm` rows used to claim) and three out
+/// of [`DECLARED_RP35`], which loses exactly them. The arithmetic is stated at
+/// both ends so neither side can move alone.
+const SUPERSEDED_RP37: (usize, usize, usize) = (5, 2, 5);
 /// **`DECLARED_RP24` is `(0, 0, 0)` since RP2.4 closed**, and that zero is the
 /// sub-step's own acceptance. It inherited `(2101, 71, 2021)` — 2 100 rows over
 /// 70 pairs from RP2.1's bin-6 walk plus the cell [`ECHO_CARVE_OUT_ROUTING`]
@@ -618,49 +678,39 @@ const SUPERSEDED_RP38: (usize, usize, usize) = (181, 5, 181);
 /// The variant stays so a regression that re-creates the bucket fails here by
 /// name.
 const DECLARED_RP24: (usize, usize, usize) = (0, 0, 0);
-/// **WP-RP3's root-cause residue** — **`(6, 3, 6)` since RP3.3
-/// (2026-08-24)**, from the `(7, 4, 7)` the work package inherited: 7 example
-/// rows over 4 pairs, all of them on pairs the RP4.1 unmask will compare. The
-/// per-pair split, each sub-step's verdict and what it landed are
+/// **WP-RP3's root-cause residue** — **`(0, 0, 0)` since RP4.1 landed the
+/// staged entries (2026-09-03)**, from the `(7, 4, 7)` the work package
+/// inherited: 7 example rows over 4 pairs, all of them on pairs the RP4.1 unmask
+/// compares. The per-pair split, each sub-step's verdict and what it landed are
 /// [`RP3_ROUTING`].
 ///
-/// **RP3.3 is the one sub-step so far that shrinks it, and the reason is the
-/// outcome tag, not the progress.** Its exclusion is a `PROPS_ECHO_R4133` row
-/// (`generator.model`, `EchoParse`), which the tree holds *now* — so
-/// [`Link::Echo`] claims the pair's one example row and [`declare`] never sees
-/// it. The bucket loses `(1, 1, 1)` because something really claims those rows,
-/// which is exactly the condition the note below reserves the shrink for. The
-/// three columns are `(rows, pairs, rows on in-scope pairs)`, and `pairs` is the
-/// count of pairs with a row *left* — 3 — while [`RP3_ROUTING`] keeps all four
-/// entries so the table still covers every [`BIN7_ROOT_CAUSE`] pair; the routing
-/// guard compares against the entries that still declare rows.
+/// **The bucket emptied in two moves, and both are measurements rather than
+/// progress reports.** RP3.3 (2026-08-24) took `(1, 1, 1)` out of it because its
+/// outcome was an `ECHO` row that shipped in its own commit, so [`Link::Echo`]
+/// claims `generator.model`'s one example row and [`declare`] never sees it.
+/// RP4.1 (2026-09-03) took the remaining `(6, 3, 6)` — `gictransformer.r2` 1,
+/// `swtcontrol.delay` 2, `windgen.kvar` 3 — because the eight `property`
+/// entries §1.1(e) had staged into the unmask commit are now IN
+/// `tests/corpus/ledger.json`: the tree holds the exclusion, so the rows are
+/// excluded, not declared. The three columns are `(rows, pairs, rows on in-scope
+/// pairs)`, and `pairs` is the count of pairs with a row *left*; [`RP3_ROUTING`]
+/// keeps all four entries so the table still covers every [`BIN7_ROOT_CAUSE`]
+/// pair, and the routing guard compares against the entries that still declare
+/// rows.
 ///
-/// **Unchanged by RP3.1, RP3.2 and RP3.4 (all 2026-08-24), deliberately.** Those
-/// sub-steps root-caused `swtcontrol.delay`, `windgen.kvar` and
-/// `gictransformer.r2`, reported the first two upstream (the third was already
-/// reported against r4133) and landed their two, four and two expected-value
-/// pins — but each
-/// exclusion is a `ledger.json` `property` entry, and §1.1(e) stages every such
-/// entry into RP4.1's unmask commit. Until that commit the tree holds no
-/// exclusion for these rows, so they stay *declared*: this bucket is what a
-/// sub-step **inherits**, not a progress bar. With RP3.4 all four sub-steps have
-/// run and the bucket still holds `(6, 3, 6)` — the clearest statement there is
-/// that this number tracks the tree, not the work.
-///
-/// **The shrink is a hand edit at RP4.1, not a consequence of landing the
-/// entries** (RP3.1 audit settlement, 2026-08-24 — the earlier wording, "may
-/// only shrink when something in the tree actually claims the rows", implied a
-/// self-correction this file cannot perform). Nothing in the chain reads
-/// `tests/corpus/ledger.json`: it is [`Link::ORDER`]'s four links,
-/// [`chain_verdicts`] evaluates exactly those four, and [`declare`] routes every
-/// bin-7 row on [`BIN7_ROOT_CAUSE`] to [`Owner::Rp3`] unconditionally. So when
-/// RP4.1 lands the two staged entries this constant will **not** move on its
-/// own and nothing here would notice; that commit must retire the rows — here
-/// and in [`RP3_ROUTING`] — by hand. What makes the obligation unmissable is
-/// [`the_staged_r4133_property_entries_have_not_landed_yet`], which reds the
-/// moment a `property`-scoped `r4133` entry appears in the ledger and carries
-/// the instruction in its message.
-const DECLARED_RP3: (usize, usize, usize) = (6, 3, 6);
+/// **What actually moves the rows is [`RP3_LEDGERED`], not this constant.** No
+/// [`Link::ORDER`] link reads `tests/corpus/ledger.json` — [`chain_verdicts`]
+/// evaluates exactly the four, and [`declare`] routes every bin-7 row on
+/// [`BIN7_ROOT_CAUSE`] to [`Owner::Rp3`] unconditionally — so editing this
+/// number alone would have been a claim with nothing behind it (the RP3.1 audit
+/// settlement, 2026-08-24, spelled out that the shrink is a hand edit and that
+/// nothing self-corrects). RP4.1 therefore landed the *interception*
+/// [`RP3_LEDGERED`], which reads the ledger live and counts these rows in their
+/// own bucket ([`LEDGERED_RP3`]) between the chain and [`declare`], exactly the
+/// way [`RP38_SUPERSEDED`] does for the spellings an engine change made
+/// counterfactual. Delete an entry from the ledger and the interception's guard
+/// reds; leave the entry and re-declare the row here and the bucket lock reds.
+const DECLARED_RP3: (usize, usize, usize) = (0, 0, 0);
 /// **RP3.9 — the round-trip residue the RP2.4 audit settlement opened**: the 55
 /// example rows over 27 pairs whose gap is inside the floor and whose r4133 side
 /// is no `%.Ng` render of our value ([`RP39_ROUTING`], which carries the per-pair
@@ -794,31 +844,42 @@ const RP312_STAGED_SKIPS: &[(&str, &str)] = &[
 /// disposition — the pair leaves this sub-step for a root-cause one of its own,
 /// and the plan says to report it rather than record it here.
 const RP39_DISPOSITIONS: &[&str] = &["PIN", "FIX", "LEDGER", "OPEN"];
-/// The three sub-steps RP2.2 opened: **8 rows over 6 pairs, 5 of them in
-/// scope** — RP3.5 `line.units` (1 row, 0 in scope), RP3.6 `line.linecode`
-/// (2 rows, both in scope — the only RP3.5+ pair the RP4.1 unmask will actually
-/// compare), RP3.7 `swtcontrol.normal`/`state` (1 + 2 rows, all in scope; their
-/// one-token spellings are claimed by `ArrayForm` and are not here) and
-/// `relay.normal`/`state` (1 row each, both out of scope). RP4.1 does not start
-/// until all three close (plan §0).
+/// The three sub-steps RP2.2 opened inherited **8 rows over 6 pairs, 5 of them
+/// in scope** — RP3.5 `line.units` (1 row, 0 in scope), RP3.6 `line.linecode`
+/// (2 rows, both in scope — the only RP3.5+ pair the RP4.1 unmask actually
+/// compares), RP3.7 `swtcontrol.normal`/`state` (1 + 2 rows, all in scope;
+/// their one-token spellings were claimed by `ArrayForm` and were not here) and
+/// `relay.normal`/`state` (1 row each, both out of scope). RP4.1 did not start
+/// until all three closed (plan §0).
 ///
-/// **All three have now closed — RP3.5 (2026-08-28), RP3.6 (2026-08-29) and
-/// RP3.7 (2026-09-02) — and the constant has NOT moved.** That is the same
-/// reading [`DECLARED_RP3`]'s note spells out: this number tracks the tree, not
-/// the work. All three settled `FIX`, so the port now renders r4133's own value
-/// on every one of these pairs and there is nothing left to exclude on the
-/// r4133 channel — but the vendored extracts are a **data lock** recording the
+/// **All three closed — RP3.5 (2026-08-28), RP3.6 (2026-08-29) and RP3.7
+/// (2026-09-02) — all three settling `FIX`**, so the port renders r4133's own
+/// value on every one of these pairs and there is nothing left to exclude on
+/// the r4133 channel. The vendored extracts are a **data lock** recording the
 /// 2026-08-08 measurement, so their `rust` columns still hold the PRE-FIX
 /// spellings (`'none'`, `''`, `'closed'`, `'open'`, `'[closed, open, open, ]'`)
-/// and no link of the chain claims them. The rows retire by hand at RP4.1,
-/// where the live compare finally sees the fixed renders; until then the
-/// verdicts in [`RP22_ROUTING`] carry what was decided, for whom, and what
-/// holds each port value meanwhile (`exec::tests::line_fetch::…`,
+/// and no link of the chain claims them.
+///
+/// **`(5, 4, 2)` since RP4.1** (2026-09-03), from `(8, 6, 5)`: RP3.7's two
+/// pairs retire here into [`RP37_SUPERSEDED`] — 3 rows, all in scope. They are
+/// the two the unmask MEASURED: their `PROPS_NORM_R4133` rows went live with
+/// the channel, folded nothing across 40 compared cells each, and were dropped;
+/// the HEAD claims census records no divergent cell for either pair; and
+/// [`the_rp37_census_decomposition_is_read_off_the_corpus`] derives the 59/40
+/// split from the decks. That is what a superseded row owes and what the other
+/// four pairs do not have yet: `line.units`, `line.linecode` and
+/// `relay.normal`/`state` keep their declared rows until a sub-step gives them
+/// the same per-pair live disposition and witness (recorded as an open item in
+/// RP4.1's STATUS record — the plan's "the rows retire by hand at RP4.1" is
+/// discharged for RP3.7 only).
+///
+/// Meanwhile the verdicts in [`RP22_ROUTING`] carry what was decided, for whom,
+/// and what holds each port value (`exec::tests::line_fetch::…`,
 /// `exec::tests::reduce::…`, `exec::tests::controls::…`, `relay::tests::…`).
 /// What each fix DID move is the live `capi_v0145` channel — 1 + 2 + 5 landed
 /// property entries, all outside this accounting
 /// ([`LANDED_PROPERTY_ENTRY_PINS`]).
-const DECLARED_RP35: (usize, usize, usize) = (8, 6, 5);
+const DECLARED_RP35: (usize, usize, usize) = (5, 4, 2);
 /// `OutOfScope` rows must have **zero** in-scope cells — that is the whole
 /// claim the marker makes (plan §1.3).
 ///
@@ -955,13 +1016,17 @@ const BIN7_ROOT_CAUSE: &[&str] = &[
 /// is a `ledger.json` `property` entry, and by the §1.1(e) staging rule that
 /// entry lands in RP4.1's unmask commit, not here. Writing "claimed" while the
 /// tree holds no exclusion would be exactly the silent-progress claim this
-/// accounting exists to prevent — so their rows keep their counts and the
-/// verdict column carries what was decided, for whom, and where it lands.
-/// **Their rows will not leave this table on their own when the entries land**:
-/// no link of the chain reads the ledger ([`DECLARED_RP3`]'s note), so RP4.1
-/// retires them here by hand and
-/// [`the_staged_r4133_property_entries_have_not_landed_yet`] is the tripwire
-/// that says so.
+/// accounting exists to prevent — so between the sub-step and the unmask their
+/// rows kept their counts and the verdict column carried what was decided, for
+/// whom, and where it would land.
+///
+/// **RP4.1 landed all eight entries on 2026-09-03, so those three rows now read
+/// `0, 0`.** They did not leave on their own: no link of the chain reads the
+/// ledger ([`DECLARED_RP3`]'s note), so the unmask commit retired them here and
+/// landed [`RP3_LEDGERED`], the interception that counts their example rows
+/// against the entries it reads back out of `tests/corpus/ledger.json`. The
+/// tripwire that made the obligation unmissable, and now states it in its landed
+/// form, is [`the_staged_r4133_property_entries_landed_at_rp41`].
 ///
 /// **RP3.3 is the other case.** Its outcome is `ECHO`, i.e. a
 /// `PROPS_ECHO_R4133` row that ships in this commit, so [`Link::Echo`] claims
@@ -1032,8 +1097,8 @@ const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
     (
         "gictransformer.r2",
         "RP3.4",
-        1,
-        1,
+        0,
+        0,
         "LEDGER — RP3.4 (2026-08-24): both gating oracles carry the SAME slip and render it \
          through a LIVE getter. r4133's RecalcElementData builds winding 2's conductance from the \
          H-winding percentage — Version8/Source/PDElements/GICTransformer.pas:495 \
@@ -1051,9 +1116,12 @@ const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
          pinned by gic-pct-r2-honoured-gictransformer-capi-props and \
          gic-pct-r2-honoured-midi-capi-props; this sub-step only adds the r4133-channel twins \
          gic-pct-r2-honoured-gictransformer-r4133-props and gic-pct-r2-honoured-midi-r4133-props, \
-         DRAFTED here and landing at RP4.1 per §1.1(e), witnessed meanwhile by \
+         drafted here and LANDED at RP4.1 (2026-09-03) per §1.1(e), witnessed by \
          gictransformer_r2_honours_the_x_winding_percentage and \
-         gictransformer_r2_honours_the_x_winding_percentage_on_the_ring. Census, derived per \
+         gictransformer_r2_honours_the_x_winding_percentage_on_the_ring. Rows retired to 0, 0 \
+         in that same commit: both entries are in tests/corpus/ledger.json now, so \
+         RP3_LEDGERED intercepts this pair's example row and it is excluded, not merely \
+         declared. Census, derived per \
          element by `the_rp34_census_decomposition_is_read_off_the_corpus`: 2 cells, all 2 in \
          scope, 1 + 1 over the 2 %R decks (asymmetric:gic/gic_midi.dss tg5, \
          asymmetric:gic/gictransformer_gic.dss tg3), each `%R1=0.2 %R2=0.15 kvll1=345 kvll2=138 \
@@ -1073,8 +1141,8 @@ const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
     (
         "swtcontrol.delay",
         "RP3.1",
-        2,
-        2,
+        0,
+        0,
         "LEDGER — RP3.1 (2026-08-24): r4133's Edit CASE has NO arm 5 \
          (Version8/Source/Controls/SwtControl.pas:195-218), so `delay=` reaches only the echo \
          store (:192-193) while `TimeDelay` keeps Create's 120.0 (:310) and the LIVE getter \
@@ -1083,9 +1151,12 @@ const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
          commented out (:484-507, and LockCommand's declaration with them at :39), DoPendingAction \
          likewise (:396-408), set_States is immediate (:532-549) — hence NO echo row: the \
          exclusion is two per-case ledger `property` entries \
-         (r4133-swtcontrol-delay-ignored-time / -midi), DRAFTED here and landing at RP4.1 per \
-         §1.1(e), witnessed meanwhile by swtcontrol_delay_wires_the_property and \
-         swtcontrol_delay_wires_the_property_on_the_midi_tie. Census, derived per case by \
+         (r4133-swtcontrol-delay-ignored-time / -midi), drafted here and LANDED at RP4.1 \
+         (2026-09-03) per §1.1(e), witnessed by swtcontrol_delay_wires_the_property and \
+         swtcontrol_delay_wires_the_property_on_the_midi_tie. Rows retired to 0, 0 in that \
+         same commit: both entries are in tests/corpus/ledger.json now, so RP3_LEDGERED \
+         intercepts this pair's two example rows and they are excluded, not merely declared. \
+         Census, derived per case by \
          `the_rp31_census_decomposition_is_read_off_the_corpus`: the `'0.25'` spelling's 36 cells \
          are 24 in scope, 12 + 12 over the two r4133 decks, plus 12 on capi_v0145's \
          swtcontrol_lock.dss; the `'0'` spelling's 6 cells are three capi_v0145 IEEE_519 copies. \
@@ -1095,8 +1166,8 @@ const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
     (
         "windgen.kvar",
         "RP3.2",
-        3,
-        3,
+        0,
+        0,
         "LEDGER — RP3.2 (2026-08-24): r4133's kvar getter is wired and LIVE but reads the WRONG \
          live field — GetPropertyValue arm 11 (Version8/Source/PCElements/WindGen.pas:2896) \
          renders Format('%.6g',[presentkvar]) = Qnominalperphase*0.001*Fnphases (:2297-2300), \
@@ -1119,12 +1190,15 @@ const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
          scope here: the steady-state QMode case (:1276-1322) has no arm 0 though QMode defaults \
          to 0 (:1020) and the help documents 0:Q (:429-430), so Else kvarCalc := 0 \
          (:1320-1321). The exclusion is four per-case ledger `property` entries \
-         (r4133-windgen-kvar-dispatched-daily / -delta / -dyn / -dynfault), DRAFTED here and \
-         landing at RP4.1 per §1.1(e), witnessed meanwhile by \
+         (r4133-windgen-kvar-dispatched-daily / -delta / -dyn / -dynfault), drafted here and \
+         LANDED at RP4.1 (2026-09-03) per §1.1(e), witnessed by \
          windgen_kvar_renders_the_base_on_the_daily_deck, \
          windgen_kvar_renders_the_base_on_the_delta_snapshot, \
          windgen_kvar_renders_the_base_on_the_dynamics_deck and \
-         windgen_kvar_renders_the_base_on_the_fault_ride_through_deck. Census, derived per case \
+         windgen_kvar_renders_the_base_on_the_fault_ride_through_deck. Rows retired to 0, 0 in \
+         that same commit: all four entries are in tests/corpus/ledger.json now, so \
+         RP3_LEDGERED intercepts this pair's three example rows and they are excluded, not \
+         merely declared. Census, derived per case \
          by `the_rp32_census_decomposition_is_read_off_the_corpus`: 4 cells, all 4 in scope, \
          1 + 1 + 1 + 1 over the 4 diverging decks ('726.483157256779' x1, '854.95263026673' x2, \
          '986.05231553659' x1); no deck types kvar= at all, so every value is a pf=/kVA= side \
@@ -1135,6 +1209,78 @@ const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
          investigations/to_opendss/44-windgen-kvar-renders-dispatched-q.md (local)",
     ),
 ];
+
+/// **The rows RP4.1 excluded by landing WP-RP3's staged `ledger.json` entries**
+/// — `(pair, sub-step, example rows, rows on in-scope pairs, the entry ids that
+/// exclude them)`.
+///
+/// This is the mechanism [`DECLARED_RP3`]'s shrink rests on, and it exists
+/// because the shrink could not otherwise be *measured*. None of
+/// [`Link::ORDER`]'s four links reads `tests/corpus/ledger.json` (they are
+/// `props_norm`'s tables and the display floor), and [`declare`] routes every
+/// bin-7 row on [`BIN7_ROOT_CAUSE`] to [`Owner::Rp3`] unconditionally — so
+/// editing the bucket lock to `(0, 0, 0)` on its own would have been a claim
+/// with nothing behind it. The interception sits between the chain and
+/// [`declare`], exactly where [`RP38_SUPERSEDED`]'s does and for the same
+/// reason: a row whose disposition is decided OUTSIDE the four links is counted
+/// against a cited table whose evidence is checkable, never silently absorbed by
+/// a bucket total.
+///
+/// **What it asserts, and why it is not a rubber stamp.** The entries are read
+/// LIVE out of `tests/corpus/ledger.json`
+/// ([`the_ledgered_rows_are_excluded_by_entries_that_are_really_in_the_ledger`]):
+/// each id must exist, be `channel: "r4133"` + `kind: "divergence"`, carry a
+/// `property` scope whose `name_re` is the anchored-literal
+/// `(?i)^<class>\.<element>\.<prop>$` form naming THIS pair, and pin both an
+/// exact `rust` and an exact `oracle`. Delete an entry from the ledger and this
+/// guard reds before the corpus gate can go quietly green on a pair nothing
+/// excludes any more; land a *new* `property`-scoped `r4133` entry without an
+/// accounting row here and
+/// [`the_staged_r4133_property_entries_landed_at_rp41`] reds instead. The
+/// counted columns are re-measured from the walk, so a pair that changes size or
+/// vanishes reds too.
+///
+/// **Scope.** This table covers exactly WP-RP3's staged set — the eight entries
+/// of RP3.1, RP3.2 and RP3.4 ([`LEDGER_ENTRY_PINS`]). It is deliberately NOT a
+/// general "any ledger entry claims its pair" rule: [`Owner::Rp35`]'s
+/// `line.units` is excluded by a `capi_v0145` entry that landed with RP3.5's own
+/// commit and its retirement is a separate decision, not a side effect of this
+/// one (RP4.1 coordinator decision 6, 2026-09-02).
+const RP3_LEDGERED: &[(&str, &str, usize, usize, &str)] = &[
+    (
+        "gictransformer.r2",
+        "RP3.4",
+        1,
+        1,
+        "gic-pct-r2-honoured-gictransformer-r4133-props, gic-pct-r2-honoured-midi-r4133-props",
+    ),
+    (
+        "swtcontrol.delay",
+        "RP3.1",
+        2,
+        2,
+        "r4133-swtcontrol-delay-ignored-time, r4133-swtcontrol-delay-ignored-midi",
+    ),
+    (
+        "windgen.kvar",
+        "RP3.2",
+        3,
+        3,
+        "r4133-windgen-kvar-dispatched-daily, r4133-windgen-kvar-dispatched-delta, \
+         r4133-windgen-kvar-dispatched-dyn, r4133-windgen-kvar-dispatched-dynfault",
+    ),
+];
+
+/// **The rows the landed `ledger.json` entries exclude** — `(rows, pairs, rows
+/// on in-scope pairs)`, the same triple every `DECLARED_*` lock carries, counted
+/// over exactly the [`RP3_LEDGERED`] pairs.
+///
+/// It is [`DECLARED_RP3`]'s old value, moved rather than deleted: 6 rows / 3
+/// pairs / 6 in-scope rows, the residue left after RP3.3's `ECHO` row took
+/// `generator.model` out. A row that leaves or joins these three pairs moves
+/// this number, so RP4.1 cannot quietly shrink the population WP-RP3 was
+/// accountable for.
+const LEDGERED_RP3: (usize, usize, usize) = (6, 3, 6);
 
 /// **The outcome tags a settled [`RP3_ROUTING`] verdict may open with** —
 /// `(tag, the obligation the tag carries)`, one row per outcome plan §WP-RP3
@@ -1170,8 +1316,9 @@ const RP3_SETTLED_SHAPES: &[(&str, &str)] = &[
          lanes`; nothing is excluded on the r4133 channel, so the pair carries no echo row and \
          no staged entry. A fix that also moves the port off the pinned 0.14.5 *oracle* still \
          lands its own live `capi_v0145` ledger entries in the same commit — the §1.1(e) \
-         staging rule defers r4133 property entries only, because only that channel is masked \
-         until RP4.1 (RP3.5 `line.units`, RP3.6 `line.linecode`)",
+         staging rule deferred r4133 property entries only, because only that channel was \
+         masked until RP4.1, which landed them (2026-09-03) (RP3.5 `line.units`, RP3.6 \
+         `line.linecode`)",
     ),
 ];
 
@@ -1598,16 +1745,20 @@ const BIN7_ECHO_SUPPLEMENT: &[&str] = &[
 /// [`rp22_settled_every_pair_it_was_handed`] proves that with no third state —
 /// so `Owner::Rp22`'s bucket is empty ([`DECLARED_RP22`]).
 ///
-/// **Four of these pairs carry an RP2.1 `ArrayForm` row**, and RP2.2 read their
-/// getters anyway (disclosure, RP2.1 audit round — `harness/props_norm.rs`
-/// §"Four `ArrayForm` rows sit on RP2.2's S6 list"): `invcontrol.monbus` /
-/// `monbusesvbase`, where every census spelling folds (bracketed vs bare, equal
-/// token counts) and RP2.2 therefore found nothing left to route, and
-/// `swtcontrol.normal` / `state`, where only the one-token spelling folds — 1
-/// cell of 59 each, while the 58/31/27-cell per-phase renders are refused by the
-/// token-count rule and are routed to RP3.7 below. A row on this list was
-/// therefore never proof that RP2.1 left the pair alone; it was proof that the
-/// pair's *unclaimed* cells were RP2.2's.
+/// **Four of these pairs carried an RP2.1 `ArrayForm` row, two still do**, and
+/// RP2.2 read their getters anyway (disclosure, RP2.1 audit round —
+/// `harness/props_norm.rs` §"Two `ArrayForm` rows sit on RP2.2's S6 list"):
+/// `invcontrol.monbus` / `monbusesvbase`, where every census spelling folds
+/// (bracketed vs bare, equal token counts) and RP2.2 therefore found nothing
+/// left to route, and `swtcontrol.normal` / `state`, where only the one-token
+/// spelling folded — 1 cell of 59 each, while the 58/31/27-cell per-phase
+/// renders were refused by the token-count rule and routed to RP3.7 below.
+/// **RP4.1 dropped those last two rows** (2026-09-03): RP3.7(a) made the port
+/// render per phase, the rows folded nothing on the first unmasked r4133
+/// property run, and their five frozen example rows are now superseded
+/// ([`RP37_SUPERSEDED`]). A row on this list was therefore never proof that
+/// RP2.1 left the pair alone; it was proof that the pair's *unclaimed* cells
+/// were RP2.2's.
 const RP22_S6: &[&str] = &[
     "expcontrol.derlist",
     "invcontrol.monbus",
@@ -1938,9 +2089,14 @@ const RP22_ROUTING: &[(&str, Owner, &str)] = &[
     // DIVERGENCES.md` §D12 carries the corrected record.
     //
     // The frozen `rust='closed'` column of these rows is therefore HISTORICAL
-    // (the extracts are a data lock, never edited), which is why they still
-    // declare to this bucket — see [`DECLARED_RP35`]. What the fix moved is the
-    // two channels, in opposite directions:
+    // (the extracts are a data lock, never edited). They declared to
+    // [`Owner::Rp35`]'s bucket until RP4.1 unmasked the channel and MEASURED
+    // the fix; since 2026-09-03 all five are counted as **superseded** instead
+    // ([`RP37_SUPERSEDED`], [`SUPERSEDED_RP37`]), and the two
+    // `PROPS_NORM_R4133` rows that claimed the one-token spelling are dropped —
+    // they folded nothing across 40 compared cells each. The verdict below
+    // stays: it is what routed the pair out of RP2.2 in the first place. What
+    // the fix moved is the two channels, in opposite directions:
     //
     // * **r4133 — nothing to exclude.** All 80 in-scope cells (40 per pair, on
     //   `midi_swtcontrol` 12, `swtcontrol_time` 12 and `civanlar` 16) now render
@@ -1952,8 +2108,9 @@ const RP22_ROUTING: &[(&str, Owner, &str)] = &[
     //   `exec::tests::controls::
     //   swtcontrol_state_renders_per_phase_on_the_r4133_only_decks` — plan
     //   §1.1(c): those three decks are `engines: r4133`, and the 0.14.5 oracle
-    //   cannot render the array at all, so no oracle channel witnesses them
-    //   until RP4.1.
+    //   cannot render the array at all, so no oracle channel witnessed them
+    //   until RP4.1's unmask (2026-09-03); from that commit the r4133 channel
+    //   compares them live, and agrees byte-for-byte (the zero above).
     // * **capi_v0145 — five LIVE entries, landed with the fix.** The 19
     //   out-of-scope cells sit on five capi-gated cases whose property compare
     //   runs today: `swtcontrol_lock` (12 steps x 2 cells, and twice over —
@@ -2254,6 +2411,85 @@ const RP38_SUPERSEDED: &[(&str, &str, &str, &str)] = &[
     ),
 ];
 
+/// **The frozen rows RP3.7's per-phase render superseded** — the RP3.8-shaped
+/// accounting for `swtcontrol.normal` and `swtcontrol.state`, landed by RP4.1.
+///
+/// # Why they are SUPERSEDED and not claimed or declared
+///
+/// RP3.7(a) landed the engine change (2026-09-02): the port carries r4133's
+/// per-phase model — `[ControlAction; 6]` arrays plus the `NormalStateSet`
+/// latch — and its getters render one token per controlled-element phase. So
+/// the `rust` column of all five frozen rows (`'closed'`, `'open'`) records a
+/// port that no longer exists, which is exactly the [`RP38_SUPERSEDED`] shape,
+/// and the extracts are a data lock that may not be re-frozen. Two of the five
+/// were claimed by `PROPS_NORM_R4133`'s two `swtcontrol` `ArrayForm` rows until
+/// RP4.1 dropped those rows as dead; the other three were [`DECLARED_RP35`]'s,
+/// which loses exactly them ([`SUPERSEDED_RP37`] states the arithmetic).
+///
+/// # What the live evidence says (the reason this table exists, not a shrug)
+///
+/// RP4.1's unmask (2026-09-03) put these pairs under the r4133 property compare
+/// for the first time, and three independent measurements agree:
+///
+/// * the two dropped normalization rows were **visited on 40 compared cells
+///   each and folded nothing** — `props_norm::check_rows_are_live`, the
+///   liveness guard the unmask made able to fire, is what reported them;
+/// * the HEAD claims census (`DSS_PROPS_CENSUS=claims`, 440 cases, both
+///   channels, 1 059 178 rows) lists **no row at all** for either pair, i.e.
+///   not one divergent cell in the whole walk;
+/// * the full unified gate is green on all three r4133-gating decks that hold
+///   the class, and [`the_rp37_census_decomposition_is_read_off_the_corpus`]
+///   derives their 59 cells / 40 in scope from the decks themselves.
+///
+/// Columns: the pair, the r4133 getter arm it renders from, the measured live
+/// disposition on the r4133 channel, and the expected-value pin that holds the
+/// port's own render — with the file that defines it, because these pins live
+/// beside the behaviour (`exec::tests::controls`) rather than in [`PINS`],
+/// which is the [`LANDED_PROPERTY_ENTRY_PINS`] shape. Both halves are read back
+/// by [`the_rp37_pairs_are_superseded_by_the_per_phase_render`].
+const RP37_SUPERSEDED: &[(&str, &str, &str, &str, &str)] = &[
+    (
+        "swtcontrol.normal",
+        "SwtControl.pas:589-599 (arm 6: one 'open'/'closed' token per \
+         ControlledElement.NPhases off FNormalState^, the pStateArray declared \
+         :37-38 and allocated :299-307)",
+        "no divergent cell at all, measured over the whole population: the port \
+         renders the same per-phase token list since RP3.7(a), so all 59 cells — \
+         40 of them in scope, on midi_swtcontrol 12 + swtcontrol_time 12 + \
+         civanlar 16 — compare EQUAL on the r4133 channel. The frozen row \
+         'closed' vs '[closed, closed, closed, ]' is what the port printed on \
+         2026-08-08 and cannot occur now.",
+        "swtcontrol_state_renders_per_phase_on_the_r4133_only_decks",
+        "crates/dss-core/src/exec/tests/controls.rs",
+    ),
+    (
+        "swtcontrol.state",
+        "SwtControl.pas:600-610 (arm 7, the same loop off FPresentState^)",
+        "no divergent cell at all, same population and the same three decks. The \
+         pair's out-of-scope half is the five landed capi_v0145 entries \
+         swtcontrol-per-phase-state-{lock,makeposseq,ieee519-tmode,\
+         ieee519-varload,ieee519-matlab}-capi-props (cause \
+         swtcontrol-per-phase-state-render), on cases the r4133 channel never \
+         gates.",
+        "swtcontrol_state_renders_one_token_per_controlled_phase",
+        "crates/dss-core/src/exec/tests/controls.rs",
+    ),
+];
+
+/// Which superseded table, if any, owns a pair — the closed set [`account`]
+/// intercepts on, and the key [`Ledger::superseded`] reports under. Two tables
+/// since RP4.1; a pair may name at most one, which
+/// [`the_two_superseded_tables_are_disjoint`] proves.
+fn superseded_tag(pair: &str) -> Option<&'static str> {
+    if RP37_SUPERSEDED.iter().any(|(p, ..)| *p == pair) {
+        Some("RP3.7")
+    } else if RP38_SUPERSEDED.iter().any(|(p, ..)| *p == pair) {
+        Some("RP3.8")
+    } else {
+        None
+    }
+}
+
 /// The pin that holds the **capi** half of RP3.8's exclusion — the committed
 /// 0.14.5 capture's own `''` for all 21 `props` golden cells of the five pairs.
 ///
@@ -2347,7 +2583,9 @@ enum Link {
     /// exclusion. 82 cited
     /// rows, consulted only after the normalization link has had its chance, so
     /// on a mixed pair a typed rule *claims* the foldable spellings first and
-    /// this link is credited with what is left ([`MULTI_LINK_ROWS`]).
+    /// this link is credited with what is left ([`MIXED_PAIR_NORM_ROWS`] is
+    /// the other half, and since RP4.1 P1 the two halves are disjoint by
+    /// construction rather than by chain order).
     ///
     /// **This accounting is per spelling; the shipped exclusion is per pair.**
     /// The two are the same statement only for the cells the census recorded: at
@@ -2405,7 +2643,12 @@ enum Owner {
     /// closed** ([`DECLARED_RP24`]): its population is claimed by
     /// [`Link::DisplayFloor`] or re-declared by [`RP24_OUT_OF_SCOPE`].
     Rp24,
-    /// RP3 — the four genuine value jumps that are not echo.
+    /// RP3 — the four genuine value jumps that are not echo. **Empty since
+    /// RP4.1 landed the staged entries** (2026-09-03, [`DECLARED_RP3`]): RP3.3's
+    /// row went to [`Link::Echo`] in its own commit and the other three pairs'
+    /// rows are excluded by the eight `ledger.json` `property` entries, counted
+    /// as ledgered ([`RP3_LEDGERED`], [`LEDGERED_RP3`]). The variant stays so a
+    /// regression that re-creates the bucket fails here by name.
     Rp3,
     /// **RP3.5+ — the sub-steps RP2.2's dossier opened** (plan §RP2.2's third
     /// outcome, §0: RP4.1 does not start until they close). Three of them, all
@@ -2447,7 +2690,10 @@ enum Owner {
     /// **All 27 pairs settled 2026-09-02** ([`OPEN_RP39`]) — every one a
     /// reproduced upstream round trip with the port exact, pinned by
     /// [`RP39_PINS`]. The bucket itself does not move for that: nothing claims
-    /// the rows, so they stay declared here until RP4.1's unmask retires them.
+    /// the rows, and RP4.1's unmask did **not** retire them — a pin is not a
+    /// ledger entry, so the unmask has nothing to hit here (coordinator ruling of
+    /// 2026-09-02: RP4.1 retires only the `RP3_LEDGERED` pairs). They stay
+    /// declared.
     Rp39,
     /// **RP3.12 — the sub-step RP3.9's P0 open item opened**: the 8
     /// `autotrans.wdgcurrents` spellings of the four `controls:autotrans/*`
@@ -2547,11 +2793,20 @@ struct Ledger {
     declared: BTreeMap<Owner, Bucket>,
     /// Rows whose frozen `(rust, r4133)` spelling an engine change made
     /// counterfactual, so no link of the chain can be asked about them and no
-    /// sub-step owns them either — today exactly [`RP38_SUPERSEDED`]'s five
-    /// pairs ([`SUPERSEDED_RP38`]). The third and last state a row can end in,
-    /// and the narrowest: a row only reaches it by naming its pair in a cited
-    /// table.
-    superseded: Bucket,
+    /// sub-step owns them either — keyed by the sub-step whose engine change
+    /// stranded them ([`superseded_tag`]): `"RP3.7"`'s two pairs
+    /// ([`SUPERSEDED_RP37`]) and `"RP3.8"`'s five ([`SUPERSEDED_RP38`]). The
+    /// third state a row can end in, and a narrow one: a row only reaches it by
+    /// naming its pair in a cited table, and each table is locked separately so
+    /// one can never absorb the other's rows.
+    superseded: BTreeMap<&'static str, Bucket>,
+    /// Rows a landed `tests/corpus/ledger.json` `property` entry excludes, so
+    /// no link of the chain claims them and no sub-step declares them either —
+    /// today exactly [`RP3_LEDGERED`]'s three pairs ([`LEDGERED_RP3`]). The
+    /// fourth state a row can end in, and as narrow as the third: a row only
+    /// reaches it by naming its pair in a cited table whose entry ids are read
+    /// back out of the ledger.
+    ledgered: Bucket,
     /// Rows for which more than one link matched.
     multi_link: usize,
     /// Rows no link claimed and no rule could declare — **the kill criterion**.
@@ -2567,14 +2822,30 @@ impl Ledger {
         self.declared.values().map(|b| b.rows).sum()
     }
 
-    /// `(rows, pairs, rows on in-scope pairs)` for the superseded bucket — the
-    /// same triple [`Ledger::owner`] reports, so [`SUPERSEDED_RP38`] can be read
+    /// `(rows, pairs, rows on in-scope pairs)` for ONE superseded table — the
+    /// same triple [`Ledger::owner`] reports, so [`SUPERSEDED_RP37`] and
+    /// [`SUPERSEDED_RP38`] can each be read against it like any `DECLARED_*`
+    /// lock.
+    fn superseded(&self, tag: &str) -> (usize, usize, usize) {
+        self.superseded
+            .get(tag)
+            .map(|b| (b.rows, b.pairs.len(), b.in_scope_rows))
+            .unwrap_or((0, 0, 0))
+    }
+
+    /// Rows superseded by any table — the term the totality assert needs.
+    fn superseded_rows(&self) -> usize {
+        self.superseded.values().map(|b| b.rows).sum()
+    }
+
+    /// `(rows, pairs, rows on in-scope pairs)` for the ledgered bucket — the
+    /// same triple [`Ledger::owner`] reports, so [`LEDGERED_RP3`] can be read
     /// against it like any `DECLARED_*` lock.
-    fn superseded(&self) -> (usize, usize, usize) {
+    fn ledgered(&self) -> (usize, usize, usize) {
         (
-            self.superseded.rows,
-            self.superseded.pairs.len(),
-            self.superseded.in_scope_rows,
+            self.ledgered.rows,
+            self.ledgered.pairs.len(),
+            self.ledgered.in_scope_rows,
         )
     }
 
@@ -2628,11 +2899,14 @@ const CORPUS: &str = "tests/corpus";
 /// The anti-shrink lock, whose per-case rigor strings carry `steps=`/`engines=`.
 const POPULATION_LOCK: &str = "tests/corpus/manifests/population.lock.json";
 /// The gating divergence ledger — read by
-/// [`the_staged_r4133_property_entries_have_not_landed_yet`] and by
-/// [`r4133_skipped_cases`], and by nothing else in this file. **No `Link` of the
-/// declaration chain reads it** (see [`DECLARED_RP3`]): the two readers above are
-/// assertions *about* the file, not sources of a declaration, so the accounting
-/// still does not shrink by itself when RP4.1 lands the staged entries.
+/// [`the_staged_r4133_property_entries_landed_at_rp41`], by
+/// [`the_ledgered_rows_are_excluded_by_entries_that_are_really_in_the_ledger`],
+/// by [`the_autotrans_typecast_cases_pair_their_r4133_channel_with_a_skip_entry`]
+/// and by [`r4133_skipped_cases`], and by nothing else in this file. **No `Link`
+/// of the declaration chain reads it** (see [`DECLARED_RP3`]): those readers are
+/// assertions *about* the file, not sources of a declaration, which is why RP4.1
+/// had to land [`RP3_LEDGERED`] to move the rows the entries exclude — the
+/// accounting still does not shrink by itself.
 const LEDGER: &str = "tests/corpus/ledger.json";
 
 /// The deck path of a corpus case id, relative to [`CORPUS`]: `family:rel` for
@@ -4033,16 +4307,34 @@ fn account(corpus: &Corpus, table: &[NormRow]) -> Ledger {
                 };
                 // A spelling an engine change made counterfactual is counted
                 // here and asked nothing further: `declare` reads the frozen
-                // `rust` column, which for these five pairs records a port that
-                // no longer exists. See [`RP38_SUPERSEDED`]. It sits AFTER the
-                // chain, so a link that ever did claim one of these rows would
-                // be credited with it and the bucket lock would red — the
-                // interception cannot hide a claim.
-                if RP38_SUPERSEDED.iter().any(|(p, _, _, _)| *p == row.pair) {
-                    led.superseded.rows += 1;
-                    led.superseded.pairs.insert(row.pair.clone());
+                // `rust` column, which for these seven pairs records a port that
+                // no longer exists. See [`RP37_SUPERSEDED`] and
+                // [`RP38_SUPERSEDED`]. It sits AFTER the chain, so a link that
+                // ever did claim one of these rows would be credited with it and
+                // the bucket lock would red — the interception cannot hide a
+                // claim.
+                if let Some(tag) = superseded_tag(&row.pair) {
+                    let b = led.superseded.entry(tag).or_default();
+                    b.rows += 1;
+                    b.pairs.insert(row.pair.clone());
                     if row_in_scope(row, ev) {
-                        led.superseded.in_scope_rows += 1;
+                        b.in_scope_rows += 1;
+                    }
+                    continue;
+                }
+                // …and a spelling a LANDED `ledger.json` `property` entry
+                // excludes: the tree really holds the exclusion, but it lives
+                // outside `props_norm`, so no link of the chain can be credited
+                // with it and no sub-step still owns it. Same placement and the
+                // same reason as the interception above — AFTER the chain, so a
+                // link that ever did claim one of these rows would be credited
+                // with it and the bucket lock would red. See [`RP3_LEDGERED`],
+                // whose entry ids are checked against the live ledger.
+                if RP3_LEDGERED.iter().any(|(p, ..)| *p == row.pair) {
+                    led.ledgered.rows += 1;
+                    led.ledgered.pairs.insert(row.pair.clone());
+                    if row_in_scope(row, ev) {
+                        led.ledgered.in_scope_rows += 1;
                     }
                     continue;
                 }
@@ -4172,29 +4464,146 @@ fn every_example_row_is_claimed_or_declared_exactly_once() {
          leaving a divergence unowned"
     );
 
-    // …and the third state: the rows RP3.8's engine change made counterfactual.
+    // …and the third state: the rows an engine change made counterfactual,
+    // counted against the table that owns them.
     assert_eq!(
-        led.superseded(),
+        led.superseded("RP3.8"),
         SUPERSEDED_RP38,
         "the superseded bucket inherits (rows, pairs, rows on in-scope pairs) — RP3.8's five \
          pairs and nothing else"
     );
-
-    // Totality, three ways.
     assert_eq!(
-        led.claimed_total() + led.declared_total() + led.superseded.rows,
+        led.superseded("RP3.7"),
+        SUPERSEDED_RP37,
+        "…and RP3.7's two pairs, which RP4.1 retired out of DECLARED_RP35 and out of the two \
+         dropped `swtcontrol` ArrayForm rows"
+    );
+    assert_eq!(
+        led.superseded.keys().copied().collect::<Vec<_>>(),
+        ["RP3.7", "RP3.8"],
+        "a third superseded table owes its own lock, never a share of these two"
+    );
+
+    // …and the fourth: the rows RP4.1 excluded by landing WP-RP3's staged
+    // `ledger.json` entries. It is `DECLARED_RP3`'s old value, moved.
+    assert_eq!(
+        led.ledgered(),
+        LEDGERED_RP3,
+        "the ledgered bucket inherits (rows, pairs, rows on in-scope pairs) — RP3.1's, RP3.2's \
+         and RP3.4's three pairs and nothing else"
+    );
+
+    // Totality, four ways.
+    assert_eq!(
+        led.claimed_total() + led.declared_total() + led.superseded_rows() + led.ledgered.rows,
         corpus.rows.len(),
-        "every example row is claimed, declared or superseded, exactly once"
+        "every example row is claimed, declared, superseded or ledgered, exactly once"
     );
     assert_eq!(
         led.multi_link, MULTI_LINK_ROWS,
-        "rows matched by more than one link — RP2.3's echo rows made this positive, and the \
-         first-match order (pinned by first_match_returns_the_earliest_link) is what decides them"
+        "rows matched by more than one link — RP2.3's echo rows made this 135 and RP4.1 P1's \
+         per-cell narrowing took it back to 0; a positive number here means an echo row covers a \
+         spelling its pair's typed rule already claims"
+    );
+}
+
+/// **`props_norm::ECHO_NARROWED` is re-derived from the corpus, both ways** —
+/// RP4.1's precondition 1 (plan §RP4.1 ¶1), proved rather than transcribed.
+///
+/// The derivation is deliberately **not** the echo link: asking the chain which
+/// rows `Link::Echo` claims would be circular now that the link reads the very
+/// table under test. Instead it asks the two links that come BEFORE it — the
+/// shape allowlist and the typed normalization rules — plus the carve-outs, and
+/// takes what they leave. That set is, by definition, "the spellings the typed
+/// rules refuse", i.e. the cells whose divergence the pair's `EchoRow` citation
+/// is the only remaining explanation for; the table must hold exactly it.
+///
+/// Both directions, because either failure mode is a live regression:
+/// * a spelling in the table that the corpus does not leave to the echo row =
+///   a mask over a cell a typed rule already claims (the old pair-scoped bug in
+///   miniature);
+/// * a spelling the corpus leaves that the table lacks = a cell that used to be
+///   masked and is now COMPARED — which is what the narrowing wants, but only
+///   with the row's citation behind it, so it has to be a reviewed edit here.
+///
+/// It also pins the shape the narrowing depends on: the table names a pair iff
+/// that pair is mixed (holds both kinds of row), so the 62 pure echo rows keep
+/// the conservative pair scope.
+#[test]
+fn the_narrowed_echo_rows_carry_exactly_the_spellings_the_typed_rules_leave() {
+    /// Per pair: how many rows the links BEFORE the exclusion claim, and the
+    /// spellings they leave to the echo row.
+    type Leftover<'a> = (usize, BTreeSet<(&'a str, &'a str)>);
+
+    let corpus = Corpus::load();
+    let mut left: BTreeMap<&str, Leftover<'_>> = BTreeMap::new();
+    for row in &corpus.rows {
+        if !props_norm::has_echo_row(&row.class, &row.prop) {
+            continue;
+        }
+        let e = left.entry(row.pair.as_str()).or_default();
+        let [shape, norm, _echo, _floor] = chain_verdicts(&corpus, row);
+        let carved = ECHO_CARVE_OUT_ROUTING
+            .iter()
+            .any(|(p, r, o, _, _)| *p == row.pair && *r == row.rust && *o == row.r4133);
+        if shape || norm {
+            e.0 += 1;
+        } else if !carved {
+            // A carved-out cell is neither: its own routing hands it to a later
+            // link (`ECHO_CARVE_OUT_ROUTING`), and it never belonged to the echo
+            // row's scope in the first place.
+            e.1.insert((row.rust.as_str(), row.r4133.as_str()));
+        }
+    }
+    let mixed: BTreeMap<&str, &BTreeSet<(&str, &str)>> = left
+        .iter()
+        .filter(|(_, (claimed, _))| *claimed > 0)
+        .map(|(p, (_, sp))| (*p, sp))
+        .collect();
+
+    // Direction 1: the table names exactly the mixed pairs.
+    let named: BTreeSet<String> = props_norm::ECHO_NARROWED
+        .iter()
+        .map(|r| format!("{}.{}", r.class, r.prop))
+        .collect();
+    let measured: BTreeSet<String> = mixed.keys().map(|p| p.to_string()).collect();
+    assert_eq!(
+        named, measured,
+        "ECHO_NARROWED must hold exactly the pairs that carry BOTH a typed rule and an echo \
+         row — the 62 pure echo rows keep the pair scope plan §1.2 prescribes"
+    );
+
+    // Direction 2: per pair, exactly the spellings the earlier links leave.
+    for (pair, want) in &mixed {
+        let (class, prop) = pair.split_once('.').expect("class.prop");
+        let got: BTreeSet<(&str, &str)> = props_norm::narrowed_spellings(class, prop)
+            .unwrap_or_else(|| panic!("{pair}: a mixed pair with no ECHO_NARROWED row"))
+            .iter()
+            .copied()
+            .collect();
+        assert_eq!(
+            got, **want,
+            "{pair}: ECHO_NARROWED must carry exactly the census spellings the typed rules leave"
+        );
+    }
+
+    // …and the two locks the table states, re-derived here rather than read
+    // back off the table itself.
+    assert_eq!(mixed.len(), 20, "mixed pairs");
+    assert_eq!(
+        mixed.values().map(|s| s.len()).sum::<usize>(),
+        66,
+        "the spellings the 20 mixed pairs leave to their echo rows"
+    );
+    assert_eq!(
+        left.values().map(|(claimed, _)| claimed).sum::<usize>(),
+        MIXED_PAIR_NORM_ROWS,
+        "…and their complement is the mixed-pair normalization lock"
     );
 }
 
 /// **The per-pair split of the OFFLINE attribution** on the pairs that hold
-/// both kinds of row — the per-pair half of [`MULTI_LINK_ROWS`].
+/// both kinds of row — the per-pair half of [`MIXED_PAIR_NORM_ROWS`].
 ///
 /// Read what this measures, and what it does not (RP2.3 audit settlement,
 /// 2026-08-23 — it used to be called `the_echo_table_masks_only_what_the_typed_
@@ -4277,8 +4686,8 @@ fn the_typed_rules_and_the_echo_rows_split_their_shared_pairs_offline() {
     );
     assert_eq!(
         mixed.iter().map(|(_, n, _)| n).sum::<usize>(),
-        MULTI_LINK_ROWS,
-        "the per-pair normalization counts must sum to the multi-link lock"
+        MIXED_PAIR_NORM_ROWS,
+        "the per-pair normalization counts must sum to the mixed-pair lock"
     );
     assert_eq!(
         split.values().map(|(_, e)| e).sum::<usize>(),
@@ -4298,7 +4707,8 @@ fn the_typed_rules_and_the_echo_rows_split_their_shared_pairs_offline() {
 ///
 /// A row that claims no example row is masking a divergence the vendored census
 /// never recorded: it either names the wrong pair or is obsolete. (The LIVE
-/// half is `props_norm::assert_echo_rows_are_live`, dormant until RP4.1.)
+/// half is `props_norm::assert_echo_rows_are_live` — dormant until RP4.1, live
+/// since its unmask on 2026-09-03.)
 #[test]
 fn every_echo_row_claims_at_least_one_example_row() {
     let corpus = Corpus::load();
@@ -4386,6 +4796,14 @@ fn every_echo_row_matches_its_cited_evidence() {
 /// answer on `autotrans.wdgcurrents` — no echo row and no ledger entry can say
 /// that either, since the four cases are `engines: "capi_v0145"` and the
 /// case-level `r4133` `skip` entries are staged, not landed.
+///
+/// **Still five since RP4.1.** [`RP37_SUPERSEDED`] names pins too, but they sit
+/// beside the behaviour (`exec::tests::controls`) rather than in [`PINS`] — the
+/// [`LANDED_PROPERTY_ENTRY_PINS`] shape, whose fourth column carries the file —
+/// so they are read back by
+/// [`the_rp37_pairs_are_superseded_by_the_per_phase_render`] instead. Adding
+/// them to the union here would red the both-ways check, which is the point:
+/// this test speaks for one file.
 #[test]
 fn every_echo_row_pin_is_a_test_that_exists() {
     let path = repo_root().join(PINS);
@@ -4605,7 +5023,7 @@ fn every_landed_property_entry_has_a_witness_pin_that_exists() {
     }
 }
 
-/// **The pins that witness a DRAFTED ledger entry rather than an echo row** —
+/// **The pins that witness a `ledger.json` entry rather than an echo row** —
 /// `(pin, sub-step, the entry it holds the port's value for)`.
 ///
 /// RP3.1 is the first sub-step whose exclusion shape is a per-case `ledger.json`
@@ -4621,11 +5039,13 @@ fn every_landed_property_entry_has_a_witness_pin_that_exists() {
 /// mis-derived one procedure earlier, so `Format('%.8g',[1.0/G2])`
 /// (`GICTransformer.pas:723`) is a correct read of a wrong number. Under the
 /// §1.1(e)
-/// staging rule the entries are
-/// drafted in the sub-step and land in RP4.1's unmask commit — earlier they
-/// would fail `assert_all_hit` as NEVER APPLIED, the r4133 property compare
-/// being masked until then — so between the two there is a window in which the
-/// port's value has no holder in the tree at all. These pins are that holder.
+/// staging rule the entries were
+/// drafted in the sub-step and landed in RP4.1's unmask commit (2026-09-03) —
+/// earlier they would have failed `assert_all_hit` as NEVER APPLIED, the r4133
+/// property compare being masked until then — so between the two there was a
+/// window in which the port's value had no holder in the tree at all. These pins
+/// were that holder, and they stay: the ledger entry now names the same two
+/// numbers, and the pin is what asserts them without an oracle, in both lanes.
 ///
 /// Listed here, and not left to a naming convention, for the same reason
 /// [`NOT_A_PIN`] is: this table is the *only* thing that lets a `#[test]` live
@@ -4682,9 +5102,11 @@ const LEDGER_ENTRY_PINS: &[(&str, &str, &str)] = &[
 /// and an exemption that grows by iteration would let an un-cited `#[test]`
 /// through by simply being added to it.
 ///
-/// Each row must name a real drafted entry id and the case it is drafted for, so
-/// the citation stays checkable against STATUS's verbatim record until RP4.1
-/// lands the entries in `tests/corpus/ledger.json`.
+/// Each row must name a real entry id and the case it was landed as, so the
+/// citation stays checkable against STATUS's verbatim record and — since RP4.1
+/// (2026-09-03) — against `tests/corpus/ledger.json` itself, which
+/// [`the_staged_r4133_property_entries_landed_at_rp41`] reads back through this
+/// very column.
 #[test]
 fn the_ledger_entry_pin_list_is_pinned() {
     assert_eq!(
@@ -5258,9 +5680,9 @@ fn the_rp38_pairs_are_superseded_by_the_live_render() {
         led.declared.get(&Owner::Rp38).is_none_or(|b| b.rows == 0),
         "RP3.8's declared bucket must be empty since the sub-step landed"
     );
-    assert_eq!(led.superseded(), SUPERSEDED_RP38);
+    assert_eq!(led.superseded("RP3.8"), SUPERSEDED_RP38);
     assert_eq!(
-        led.superseded
+        led.superseded["RP3.8"]
             .pairs
             .iter()
             .map(String::as_str)
@@ -5274,6 +5696,130 @@ fn the_rp38_pairs_are_superseded_by_the_live_render() {
         ],
         "the superseded bucket holds exactly the five pairs"
     );
+}
+
+/// **The two `swtcontrol` pairs are superseded by RP3.7's per-phase render**,
+/// in both directions — the RP3.8 test's sibling, for the sub-step whose rows
+/// RP4.1 retired.
+///
+/// Four things, and none of them a transcription of [`RP37_SUPERSEDED`]:
+///
+/// * the table is exactly those two pairs, each citing the r4133 getter arm it
+///   renders from, and neither takes an echo row (r4133's arm is live, so an
+///   `EchoRow` would misname the mechanism) **or a normalization row** — the
+///   drop RP4.1 landed, asserted here so a re-add reds;
+/// * the superseded bucket holds their rows and only theirs, at
+///   [`SUPERSEDED_RP37`], while [`Owner::Rp35`]'s declared bucket keeps exactly
+///   the four pairs RP3.5/RP3.6 left ([`DECLARED_RP35`]);
+/// * **the shipped disposition is asked of the harness, not described**: both
+///   pairs must be COMPARED on both channels (`harness::skip_prop` false), which
+///   is what makes the supersession falsifiable — revert the engine to the
+///   scalar render and the r4133 property compare goes red on 40 cells per pair
+///   with no row and no entry to absorb it;
+/// * each pair names an expected-value pin, in the file that defines it, and the
+///   `#[test]` is read back out of that file. These pins sit beside the
+///   behaviour rather than in [`PINS`], the [`LANDED_PROPERTY_ENTRY_PINS`]
+///   shape, so [`every_echo_row_pin_is_a_test_that_exists`] does not see them.
+#[test]
+fn the_rp37_pairs_are_superseded_by_the_per_phase_render() {
+    assert_eq!(
+        RP37_SUPERSEDED.iter().map(|(p, ..)| *p).collect::<Vec<_>>(),
+        ["swtcontrol.normal", "swtcontrol.state"],
+        "the two pairs RP2.2 routed to RP3.7 and RP3.7(a) fixed"
+    );
+    for (pair, cite, disposition, pin, file) in RP37_SUPERSEDED {
+        let (class, prop) = pair.split_once('.').expect("class.prop");
+        assert!(
+            !props_norm::has_echo_row(class, prop),
+            "{pair} must NOT have an echo row — r4133's getter arm is live"
+        );
+        assert!(
+            !PROPS_NORM_R4133
+                .iter()
+                .any(|r| r.class.eq_ignore_ascii_case(class) && r.prop.eq_ignore_ascii_case(prop)),
+            "{pair}'s ArrayForm row was dropped at RP4.1 because it folded nothing; a row here \
+             would claim the frozen spelling again and empty this table"
+        );
+        assert!(
+            cite.contains(".pas:"),
+            "{pair}: the row must cite the r4133 live getter, got {cite:?}"
+        );
+        assert!(
+            !disposition.is_empty() && !pin.is_empty(),
+            "{pair}: a superseded row owes its measured live disposition and a pin"
+        );
+        // Both channels COMPARE these pairs: RP3.7's capi exclusion is five
+        // per-case `ledger.json` entries, never a class-wide skip.
+        for channel in [
+            harness::PropsChannel::R4133,
+            harness::PropsChannel::CapiV0145,
+        ] {
+            assert!(
+                !harness::skip_prop(class, prop, channel),
+                "{pair}: {channel:?} must keep comparing it — the exclusion is per case"
+            );
+        }
+        let path = repo_root().join(file);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("{pair}: read {}: {e}", path.display()))
+            .replace("\r\n", "\n");
+        assert!(
+            text.contains(&format!("#[test]\nfn {pin}(")),
+            "{pair} names the witness {pin}, but {file} defines no such #[test]"
+        );
+    }
+
+    let corpus = Corpus::load();
+    let led = account(&corpus, PROPS_NORM_R4133);
+    assert_eq!(led.superseded("RP3.7"), SUPERSEDED_RP37);
+    assert_eq!(
+        led.superseded["RP3.7"]
+            .pairs
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["swtcontrol.normal", "swtcontrol.state"],
+        "the RP3.7 bucket holds exactly the two pairs"
+    );
+    assert_eq!(led.owner(Owner::Rp35), DECLARED_RP35);
+    let still_declared: BTreeSet<&str> = led.declared[&Owner::Rp35]
+        .pairs
+        .iter()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        still_declared.iter().copied().collect::<Vec<_>>(),
+        ["line.linecode", "line.units", "relay.normal", "relay.state"],
+        "RP3.5's and RP3.6's pairs keep their declared rows — RP4.1 retired RP3.7's only, the \
+         two whose live disposition the unmask actually measured"
+    );
+}
+
+/// **A pair belongs to at most one superseded table**, and `superseded_tag`
+/// answers for exactly the pairs the two tables name.
+///
+/// Without this the interception in [`account`] would silently prefer whichever
+/// table it tests first, and a pair could be moved between sub-steps' locks
+/// without either lock moving.
+#[test]
+fn the_two_superseded_tables_are_disjoint() {
+    let rp37: BTreeSet<&str> = RP37_SUPERSEDED.iter().map(|(p, ..)| *p).collect();
+    let rp38: BTreeSet<&str> = RP38_SUPERSEDED.iter().map(|(p, ..)| *p).collect();
+    assert!(
+        rp37.is_disjoint(&rp38),
+        "a pair superseded by two engine changes would be counted under one lock and missing \
+         from the other"
+    );
+    assert_eq!(rp37.len(), RP37_SUPERSEDED.len(), "one row per pair");
+    assert_eq!(rp38.len(), RP38_SUPERSEDED.len(), "one row per pair");
+    for pair in &rp37 {
+        assert_eq!(superseded_tag(pair), Some("RP3.7"), "{pair}");
+    }
+    for pair in &rp38 {
+        assert_eq!(superseded_tag(pair), Some("RP3.8"), "{pair}");
+    }
+    assert_eq!(superseded_tag("swtcontrol.action"), None);
+    assert_eq!(superseded_tag("line.ratings"), None);
 }
 
 /// **WP-RP3's bucket has a per-pair work list, and a settled sub-step stays in
@@ -5462,6 +6008,13 @@ fn the_bin7_root_cause_pairs_are_routed_to_their_sub_steps() {
         if first_match(chain_verdicts(&corpus, row)).is_some() {
             continue;
         }
+        // The rows a landed `ledger.json` entry excludes are intercepted before
+        // `declare` in `account` (RP3_LEDGERED); mirror that here, or this split
+        // would report the pre-RP4.1 population against a table that no longer
+        // declares it. The zero-row half below is what re-measures those pairs.
+        if RP3_LEDGERED.iter().any(|(p, ..)| *p == row.pair) {
+            continue;
+        }
         let Some(ev) = corpus.evidence(row) else {
             continue;
         };
@@ -5489,39 +6042,99 @@ fn the_bin7_root_cause_pairs_are_routed_to_their_sub_steps() {
             continue;
         }
         assert!(
-            verdict.starts_with("ECHO — "),
-            "{pair}: only an ECHO outcome ships its exclusion in the sub-step's own commit, so \
-             only an ECHO verdict may declare zero rows — {step} says {verdict:?}"
+            verdict.starts_with("ECHO — ") || verdict.starts_with("LEDGER — "),
+            "{pair}: a zero-row entry means the tree holds the exclusion NOW — only an ECHO \
+             outcome (its row ships in the sub-step's own commit) or a LEDGER outcome whose \
+             entries have landed may declare zero rows — {step} says {verdict:?}"
         );
-        let mut claimed = 0usize;
+        let ledgered = RP3_LEDGERED.iter().find(|(p, ..)| *p == *pair);
+        let mut ledgered_rows = 0usize;
+        let mut ledgered_in_scope = 0usize;
+        assert_eq!(
+            ledgered.is_some(),
+            verdict.starts_with("LEDGER — "),
+            "{pair}: a zero-row LEDGER outcome is accounted by RP3_LEDGERED and nothing else \
+             is — {step} says {verdict:?}"
+        );
+        let mut settled = 0usize;
         for row in corpus.rows.iter().filter(|r| r.pair == *pair) {
-            let link = first_match(chain_verdicts(&corpus, row)).unwrap_or_else(|| {
-                panic!(
-                    "{pair} '{}' vs '{}': {step} declares no rows, so the chain must claim every \
-                     example row of the pair — this one is claimed by nothing",
-                    row.rust, row.r4133
-                )
-            });
-            assert_eq!(
-                link,
-                Link::Echo,
-                "{pair}: {step}'s outcome is the echo table, so its rows must be claimed by that \
-                 link and not by an earlier one"
-            );
-            claimed += 1;
+            match ledgered {
+                // The echo half: the chain itself claims every row, on the
+                // echo link and not on an earlier one.
+                None => {
+                    let link = first_match(chain_verdicts(&corpus, row)).unwrap_or_else(|| {
+                        panic!(
+                            "{pair} '{}' vs '{}': {step} declares no rows, so the chain must \
+                             claim every example row of the pair — this one is claimed by \
+                             nothing",
+                            row.rust, row.r4133
+                        )
+                    });
+                    assert_eq!(
+                        link,
+                        Link::Echo,
+                        "{pair}: {step}'s outcome is the echo table, so its rows must be \
+                         claimed by that link and not by an earlier one"
+                    );
+                }
+                // The ledger half: the exclusion lives OUTSIDE props_norm, so
+                // the chain must still decline the row — a link that claimed it
+                // would mean two mechanisms cover the same cell and the ledger
+                // entry would be the stale one — and the interception must be
+                // what accounts for it.
+                Some((_, _, _, _, ids)) => {
+                    ledgered_rows += 1;
+                    assert!(
+                        first_match(chain_verdicts(&corpus, row)).is_none(),
+                        "{pair} '{}' vs '{}': {step}'s exclusion is the ledger entries {ids}, \
+                         yet a props_norm link claims this row too — one of the two mechanisms \
+                         is redundant and the ledger entry would go stale silently",
+                        row.rust,
+                        row.r4133
+                    );
+                    let ev = corpus.evidence(row).unwrap_or_else(|| {
+                        panic!(
+                            "{pair} '{}' vs '{}': no bins.tsv row and no supplement provenance",
+                            row.rust, row.r4133
+                        )
+                    });
+                    assert_eq!(
+                        declare(row, ev),
+                        Ok(Owner::Rp3),
+                        "{pair} '{}' vs '{}': without the RP3_LEDGERED interception this row \
+                         would still be declared to RP3 — that is what makes the interception \
+                         the thing that empties the bucket",
+                        row.rust,
+                        row.r4133
+                    );
+                    ledgered_in_scope += usize::from(row_in_scope(row, ev));
+                }
+            }
+            settled += 1;
         }
         assert!(
-            claimed > 0,
+            settled > 0,
             "{pair}: {step} declares no rows AND the corpus holds none — the pair vanished from \
              the evidence base instead of being excluded"
         );
+        // The ledgered pairs left `declaring()` empty above, so this is where
+        // their per-pair split is re-measured from the walk — the same guard the
+        // declared pairs get, moved to the table that now owns them.
+        if let Some((_, _, rows_want, in_scope_want, _)) = ledgered {
+            assert_eq!(
+                (ledgered_rows, ledgered_in_scope),
+                (*rows_want, *in_scope_want),
+                "{pair}: RP3_LEDGERED's row and in-scope columns must be exactly what the walk \
+                 hands the interception"
+            );
+        }
     }
     let led = account(&corpus, PROPS_NORM_R4133);
     assert_eq!(
         led.owner(Owner::Rp3),
         DECLARED_RP3,
-        "RP3 inherits (rows, pairs, rows on in-scope pairs) — unchanged while RP3.1's entries \
-         are staged into RP4.1"
+        "RP3 inherits (rows, pairs, rows on in-scope pairs) — empty since RP4.1 landed the \
+         eight staged entries and RP3_LEDGERED took its rows"
     );
 }
 
@@ -5584,46 +6197,163 @@ fn naming_a_witness_is_a_whole_identifier_match() {
     ));
 }
 
-/// **The staged r4133 `property` entries have NOT landed — and this is the
-/// tripwire that turns RP4.1's landing into a red test** (RP3.1 audit
-/// settlement, 2026-08-24).
+/// **[`RP3_LEDGERED`]'s rows are excluded by entries that are really in the
+/// ledger** — the both-ways guard that makes [`DECLARED_RP3`]'s `(0, 0, 0)` a
+/// measurement instead of an edit (RP4.1, 2026-09-03).
 ///
-/// [`DECLARED_RP3`] and [`RP3_ROUTING`] promise that a settled sub-step's rows
-/// leave the work list once its artifact lands. Nothing in this file can deliver
-/// that on its own: the chain is [`Link::ORDER`]'s four links, none of which
-/// reads `tests/corpus/ledger.json`, and [`declare`] routes bin-7 root-cause
-/// rows to [`Owner::Rp3`] unconditionally. So the accounting move is a hand edit
-/// in RP4.1's commit, and the only way to make a hand edit unmissable is to fail
-/// loudly the moment it becomes due.
+/// The interception itself only knows a list of pairs; on its own it would be a
+/// way to make rows disappear from the accounting by typing a pair name. What
+/// makes it an exclusion is `tests/corpus/ledger.json`, read here LIVE:
 ///
-/// The condition is deliberately the whole class, not one sub-step's ids:
-/// **any** `property`-scoped entry on the `r4133` channel means the unmask commit
-/// is landing staged entries, which is exactly when every staged sub-step's rows
-/// must be re-declared. Staged by WP-RP3 today, **eight**, every one owed a
-/// re-declaration at RP4.1 (plan §RP4.1 precondition 2 lists the same set):
+/// * each id [`RP3_LEDGERED`] names must exist in the ledger, on
+///   `channel: "r4133"`, `kind: "divergence"`, with a `property` scope;
+/// * that scope's `name_re` must be the anchored case-insensitive literal
+///   `(?i)^<class>\.<element>\.<prop>$` the loader keys on
+///   (`corpus_gate/ledger.rs::scope_names_prop`), and its `<class>` / `<prop>`
+///   must be THIS pair — an entry that excludes some other property cannot be
+///   what retires this pair's rows;
+/// * it must pin an exact `rust` AND an exact `oracle` (plan §1.3's exact-pair
+///   rule for discrete state), so the retirement rests on two named numbers;
+/// * and, both ways, every `property`-scoped `r4133` entry in the ledger must be
+///   named by exactly one row here — landing a ninth staged entry without an
+///   accounting move reds this test, which is precisely the obligation the
+///   pre-RP4.1 tripwire carried.
 ///
-/// * RP3.1's two — `r4133-swtcontrol-delay-ignored-time` and
-///   `r4133-swtcontrol-delay-ignored-midi`;
-/// * RP3.2's four — `r4133-windgen-kvar-dispatched-daily` / `-delta` / `-dyn` /
-///   `-dynfault`;
-/// * RP3.4's two — `gic-pct-r2-honoured-gictransformer-r4133-props` and
-///   `gic-pct-r2-honoured-midi-r4133-props` (staged 2026-08-24);
-///
-/// — plus RP1.4's, staged outside WP-RP3, and whatever RP3.5+ stages.
-/// **RP3.3 is not among them and never will be**: it closed `ECHO`
-/// (2026-08-24), its exclusion is the `PROPS_ECHO_R4133` row that shipped in its
-/// own commit, and its [`RP3_ROUTING`] row was retired to `0, 0` there — so
-/// RP4.1 owes it no accounting move at all (RP3.3 audit settlement corrected
-/// this list, which still named it).
+/// The counted columns are re-measured from the walk by
+/// [`every_example_row_is_claimed_or_declared_exactly_once`] (the
+/// [`LEDGERED_RP3`] lock) and by the zero-row half of
+/// [`the_bin7_root_cause_pairs_are_routed_to_their_sub_steps`], so this test is
+/// about the *entries*, not about the counts.
 #[test]
-fn the_staged_r4133_property_entries_have_not_landed_yet() {
+fn the_ledgered_rows_are_excluded_by_entries_that_are_really_in_the_ledger() {
+    /// `(?i)^<class>\.<element>\.<prop>$` -> `(class, prop)`, lowercased. Any
+    /// other regex shape is a hard failure: this guard may not silently stop
+    /// understanding the scope it is checking.
+    fn literal_class_prop(id: &str, name_re: &str) -> (String, String) {
+        let body = name_re
+            .strip_prefix("(?i)^")
+            .and_then(|b| b.strip_suffix('$'))
+            .unwrap_or_else(|| {
+                panic!(
+                    "{id}: RP3_LEDGERED can only vouch for the anchored case-insensitive \
+                     literal scope form `(?i)^class\\.element\\.prop$`, got {name_re:?}"
+                )
+            });
+        let parts: Vec<&str> = body.split("\\.").collect();
+        assert_eq!(
+            parts.len(),
+            3,
+            "{id}: a property scope keys on `element.prop` where `element` is `class.name` \
+             (corpus_gate/ledger.rs), so the literal has three dotted parts — got {name_re:?}"
+        );
+        for part in &parts {
+            assert!(
+                !part.is_empty()
+                    && part
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '%')),
+                "{id}: {part:?} is not a plain literal, so this scope may match more than the \
+                 pair RP3_LEDGERED claims it does — {name_re:?}"
+            );
+        }
+        (parts[0].to_lowercase(), parts[2].to_lowercase())
+    }
+
     let path = repo_root().join(LEDGER);
     let text =
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     let doc: serde_json::Value = serde_json::from_str(&text).expect("ledger.json is JSON");
-    let landed: Vec<&str> = doc["entries"]
+    let entries = doc["entries"]
         .as_array()
-        .expect("ledger.json has an `entries` array")
+        .expect("ledger.json has an `entries` array");
+
+    let mut named: Vec<&str> = Vec::new();
+    for (pair, step, rows, in_scope, ids) in RP3_LEDGERED {
+        let routing = RP3_ROUTING
+            .iter()
+            .find(|(p, ..)| p == pair)
+            .unwrap_or_else(|| panic!("{pair}: RP3_LEDGERED names a pair RP3_ROUTING does not"));
+        assert_eq!(
+            routing.1, *step,
+            "{pair}: the two tables must agree on which sub-step owns the pair"
+        );
+        assert_eq!(
+            (routing.2, routing.3),
+            (0, 0),
+            "{pair}: a ledgered pair declares no rows — retire its RP3_ROUTING row in the same \
+             commit that lands its entries"
+        );
+        assert!(
+            routing.4.starts_with("LEDGER — "),
+            "{pair}: only a LEDGER outcome is excluded by a ledger entry"
+        );
+        assert!(
+            *rows > 0 && *in_scope > 0,
+            "{pair}: an interception that accounts for no row is a pair that vanished, not a \
+             pair that was excluded"
+        );
+        let (class, prop) = pair.split_once('.').expect("class.prop");
+        for id in ids.split(", ") {
+            named.push(id);
+            let entry = entries.iter().find(|e| e["id"] == *id).unwrap_or_else(|| {
+                panic!(
+                    "{pair}: RP3_LEDGERED names {id:?}, which is not in \
+                     tests/corpus/ledger.json — the interception would retire rows nothing \
+                     excludes"
+                )
+            });
+            assert_eq!(
+                entry["channel"], "r4133",
+                "{id}: only an r4133 entry can exclude a cell of this file's chain"
+            );
+            assert_eq!(
+                entry["kind"], "divergence",
+                "{id}: an exclusion of a single property cell is a `divergence` with an exact \
+                 pair, never a `skip` or a deck-wide `exclusion`"
+            );
+            let scopes: Vec<&serde_json::Value> = entry["match"]
+                .as_array()
+                .unwrap_or_else(|| panic!("{id}: a divergence entry carries a `match` array"))
+                .iter()
+                .filter(|m| m["field"] == "property")
+                .collect();
+            assert_eq!(
+                scopes.len(),
+                1,
+                "{id}: RP3_LEDGERED vouches for exactly one property scope per entry"
+            );
+            let sc = scopes[0];
+            let name_re = sc["name_re"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{id}: a property scope needs a `name_re`"));
+            let (got_class, got_prop) = literal_class_prop(id, name_re);
+            assert_eq!(
+                (got_class.as_str(), got_prop.as_str()),
+                (class, prop),
+                "{id}: the scope names a different property than the pair it is credited with"
+            );
+            assert!(
+                sc["rust"].is_string() && sc["oracle"].is_string(),
+                "{id}: a discrete-state exclusion pins BOTH numbers (plan §1.3) — got \
+                 rust={:?} oracle={:?}",
+                sc["rust"],
+                sc["oracle"]
+            );
+        }
+    }
+    assert_eq!(
+        (
+            RP3_LEDGERED.iter().map(|(_, _, n, _, _)| n).sum::<usize>(),
+            RP3_LEDGERED.len(),
+            RP3_LEDGERED.iter().map(|(_, _, _, n, _)| n).sum::<usize>(),
+        ),
+        LEDGERED_RP3,
+        "the interception's three columns must sum to the bucket lock"
+    );
+
+    // …and the other direction: no landed r4133 property entry may sit outside
+    // this accounting. This is the pre-RP4.1 tripwire's obligation, kept.
+    let landed: BTreeSet<&str> = entries
         .iter()
         .filter(|e| e["channel"] == "r4133")
         .filter(|e| {
@@ -5633,13 +6363,112 @@ fn the_staged_r4133_property_entries_have_not_landed_yet() {
         })
         .map(|e| e["id"].as_str().unwrap_or("<no id>"))
         .collect();
-    assert!(
-        landed.is_empty(),
-        "r4133 `property` ledger entries have landed ({landed:?}), so the RP4.1 unmask is here \
-         — now move the RP3 accounting BY HAND, in that same commit: retire each settled \
-         RP3_ROUTING row whose entry landed (its rows are excluded now, not merely declared), \
-         shrink DECLARED_RP3 by exactly those rows, and re-state this test against whatever is \
-         still staged. Nothing does it for you: no link of the chain reads this file."
+    let accounted: BTreeSet<&str> = named.iter().copied().collect();
+    assert_eq!(
+        named.len(),
+        accounted.len(),
+        "RP3_LEDGERED names an entry twice: {named:?}"
+    );
+    assert_eq!(
+        landed, accounted,
+        "every `property`-scoped `r4133` ledger entry must be accounted for by an RP3_LEDGERED \
+         row, and every row must name entries that exist. A NEW staged entry landing here \
+         without its accounting move is exactly what this half catches — retire its RP3_ROUTING \
+         row (or the successor table that owns it), shrink the bucket lock by exactly those \
+         rows, and name the entry above."
+    );
+}
+
+/// **The r4133 `property` entries WP-RP3 staged landed at RP4.1** — the
+/// pre-unmask tripwire `the_staged_r4133_property_entries_have_not_landed_yet`,
+/// restated in its landed form (RP3.1 audit settlement 2026-08-24, executed
+/// 2026-09-03).
+///
+/// Until RP4.1 this test asserted that **no** `property`-scoped `r4133` entry
+/// existed, because landing one earlier would have failed the corpus gate's
+/// `assert_all_hit` as NEVER APPLIED (the r4133 property compare was masked —
+/// plan §1.1(e)'s staging rule). Its message carried the hand accounting move
+/// RP4.1 owed. RP4.1 made the move, so the tripwire is now the positive
+/// statement of the same fact: exactly the staged eight are in the ledger, each
+/// on the case its [`LEDGER_ENTRY_PINS`] row cites, and nothing else. The other
+/// half of the old message — "no NEW property-scoped r4133 entry appears
+/// un-reviewed" — is enforced next door, by
+/// [`the_ledgered_rows_are_excluded_by_entries_that_are_really_in_the_ledger`].
+///
+/// Staged by WP-RP3, **eight**, all landed 2026-09-03:
+///
+/// * RP3.1's two — `r4133-swtcontrol-delay-ignored-time` and
+///   `r4133-swtcontrol-delay-ignored-midi`;
+/// * RP3.2's four — `r4133-windgen-kvar-dispatched-daily` / `-delta` / `-dyn` /
+///   `-dynfault`;
+/// * RP3.4's two — `gic-pct-r2-honoured-gictransformer-r4133-props` and
+///   `gic-pct-r2-honoured-midi-r4133-props`.
+///
+/// **RP1.4 staged none, and the earlier "plus RP1.4's" in this doc — and in
+/// plan §RP4.1 ¶2 — was wrong**: corrected by the RP4.1 coordinator ruling of
+/// 2026-09-02 after re-reading RP1.4's own record (`STATUS.md` §WP-RP1). Its
+/// `gendispatcher.weights` divergence is whole-solution, no pin could cover a
+/// flip to `engines: "both"`, its decks therefore stay `capi_v0145`, and its
+/// artifact is a `PROPS_015X` allowlist row — not a ledger entry.
+/// [`LEDGER_ENTRY_PINS`] carries eight rows and none of them is RP1.4's, which
+/// is the same statement from the code side.
+///
+/// **RP3.3 is not among them and never will be**: it closed `ECHO`
+/// (2026-08-24), its exclusion is the `PROPS_ECHO_R4133` row that shipped in its
+/// own commit, and its [`RP3_ROUTING`] row was retired to `0, 0` there — so
+/// RP4.1 owed it no accounting move at all. Neither is RP3.9's or RP3.12's
+/// residue: RP3.9 settles as `PRECISION_ROUNDTRIP` pins with no entry, and
+/// RP3.12's four `skip` entries are still staged behind their own tripwire
+/// [`the_autotrans_typecast_cases_pair_their_r4133_channel_with_a_skip_entry`],
+/// their decks being `capi_v0145`-only.
+#[test]
+fn the_staged_r4133_property_entries_landed_at_rp41() {
+    let path = repo_root().join(LEDGER);
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let doc: serde_json::Value = serde_json::from_str(&text).expect("ledger.json is JSON");
+    let entries = doc["entries"]
+        .as_array()
+        .expect("ledger.json has an `entries` array");
+    let landed: BTreeSet<&str> = entries
+        .iter()
+        .filter(|e| e["channel"] == "r4133")
+        .filter(|e| {
+            e["match"]
+                .as_array()
+                .is_some_and(|ms| ms.iter().any(|m| m["field"] == "property"))
+        })
+        .map(|e| e["id"].as_str().unwrap_or("<no id>"))
+        .collect();
+
+    // What was staged, read off the pin list rather than re-typed: each row
+    // cites `<entry id> (<case>)`.
+    let mut staged: BTreeSet<&str> = BTreeSet::new();
+    for (pin, step, cite) in LEDGER_ENTRY_PINS {
+        let (id, case) = cite
+            .split_once(" (")
+            .and_then(|(i, c)| c.strip_suffix(')').map(|c| (i, c)))
+            .unwrap_or_else(|| {
+                panic!("{pin}: a citation reads `<entry id> (<case>)`, got {cite:?}")
+            });
+        staged.insert(id);
+        let entry = entries.iter().find(|e| e["id"] == id).unwrap_or_else(|| {
+            panic!(
+                "{step}'s entry {id:?} (witness {pin}) is NOT in tests/corpus/ledger.json — \
+                 RP4.1 lands every staged entry, or the pin has nothing to hold"
+            )
+        });
+        assert_eq!(
+            entry["case"], case,
+            "{id}: the landed entry sits on a different case than {pin} cites"
+        );
+    }
+    assert_eq!(
+        landed, staged,
+        "the `property`-scoped `r4133` entries in the ledger must be exactly WP-RP3's staged \
+         eight (LEDGER_ENTRY_PINS). An id on the left only is a NEW exclusion that owes a pin, \
+         an accounting move and a STATUS record (plan §1.1(e)); an id on the right only means \
+         RP4.1's unmask commit dropped one and its pair's rows are retired against nothing."
     );
 }
 
@@ -7572,11 +8401,16 @@ const RP36_TEMPLATE_REDIRECT: (&str, &str) = (
 ///   `population.lock.json` over those edges ([`redirect_paths`]) —
 ///   `zone_2/Branches.dss` is reached by its own zone master *and* by
 ///   `Master_Interconnected.dss`, and only the first is property-compared;
-/// * the **scope**: a cell exists where `force_properties` turns the capi
+/// * the **scope**: a cell exists where `force_properties` turned the capi
 ///   property compare on (`gates_capi() && !kind.starts_with("large")` for
 ///   `solvable_now`), and it is *in scope* where the r4133 channel also gates the
 ///   case and no ledger `skip` drops it ([`r4133_skipped_cases`] — the RP3.4
-///   audit settlement's correction);
+///   audit settlement's correction). **The quoted predicate is the PRE-RP4.1
+///   rule** — the one in force when the 2026-08-08 census this test reconciles
+///   was measured. RP4.1's unmask (2026-09-03) dropped the `gates_capi()` half,
+///   so the live rule is now "every live non-`large` case"; the frozen extracts
+///   are a data lock and do not move with it, which is why the predicate is kept
+///   verbatim here instead of being re-pointed at today's scheduler;
 /// * the **counter-claims**: the deck the plan named, and the token order that
 ///   silences `LVTestCaseNorthAmerican`'s 160 declarations;
 /// * the **reconciliation**: the derived totals must be `examples_full.txt`'s
@@ -7690,10 +8524,13 @@ fn the_rp36_census_decomposition_is_read_off_the_corpus() {
         let steps: usize = rigor_field(&rigor, "steps")
             .parse()
             .unwrap_or_else(|e| panic!("{case}: steps= is not a number: {e}"));
-        // `force_properties` (`corpus_gate/scheduler.rs`), verbatim: the capi
-        // property compare is on for a `solvable_now` case that gates capi and is
-        // not `large`, and for a family case that gates capi (all three families
-        // set the family-level flag).
+        // `force_properties` (`corpus_gate/scheduler.rs`) AS IT STOOD WHEN THE
+        // FROZEN CENSUS WAS MEASURED (2026-08-08), verbatim: the capi property
+        // compare is on for a `solvable_now` case that gates capi and is not
+        // `large`, and for a family case that gates capi (all three families set
+        // the family-level flag). RP4.1 (2026-09-03) dropped the `gates_capi`
+        // half from the live rule; this derivation reconciles frozen data and
+        // therefore keeps the rule that produced it.
         let gates_capi = engines != "r4133";
         let property_compared =
             gates_capi && (!case.starts_with("solvable_now:") || !kind.starts_with("large"));
@@ -9448,8 +10285,11 @@ fn rp22_settled_every_pair_it_was_handed() {
     //    so the pair must now HAVE one. This is strictly stronger than the old
     //    check: it is not enough for the row to have left the bucket, the table
     //    has to name the pair.
-    //  * `Owner::Rp35` — still pending, so it must still declare a row (RP4.1
-    //    does not start until those sub-steps close, plan §0).
+    //  * `Owner::Rp35` — the pair must still leave at least one example row
+    //    unclaimed BY THE CHAIN. That is what the routing promised and all this
+    //    check has ever measured; since RP4.1 the row it finds may be declared
+    //    (RP3.5/RP3.6) or superseded (RP3.7's two pairs, [`RP37_SUPERSEDED`]) —
+    //    what would be stale is a chain link claiming the pair outright.
     let mut dead: Vec<&str> = Vec::new();
     let mut unconsumed: Vec<&str> = Vec::new();
     for (pair, owner, _) in RP22_ROUTING {

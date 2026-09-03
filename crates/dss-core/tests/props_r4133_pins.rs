@@ -1375,7 +1375,7 @@ fn storagecontroller_seasontargets_render_the_live_targets() {
 /// `investigations/to_opendss/43-swtcontrol-delay-not-wired.md` (local).
 ///
 /// Deck: `controls/swtcontrol/swtcontrol_time.dss` (`SwtControl.sw`, `delay=0.25`
-/// at `:17`), the case behind the drafted entry
+/// at `:17`), the case behind the landed entry
 /// `r4133-swtcontrol-delay-ignored-time` — 12 in-scope cells, one per step 0..11.
 /// Two discriminating readings, because "our render is 0.25" alone would pass
 /// against a getter that merely echoed the deck's token: an `edit` proves the
@@ -1405,7 +1405,7 @@ fn swtcontrol_delay_wires_the_property() {
 }
 
 /// `swtcontrol.delay` on the second r4133-gating deck — the witness of the
-/// drafted entry `r4133-swtcontrol-delay-ignored-midi`.
+/// landed entry `r4133-swtcontrol-delay-ignored-midi`.
 ///
 /// Same mechanism as [`swtcontrol_delay_wires_the_property`]; the entries are
 /// per case, so each owes its own reading. Deck:
@@ -1475,7 +1475,7 @@ fn swtcontrol_delay_wires_the_property_on_the_midi_tie() {
 /// `investigations/to_opendss/44-windgen-kvar-renders-dispatched-q.md` (local).
 ///
 /// Deck: `modes/windgen/windgen_daily.dss` (`WindGen.w1`, `kW=3000 pf=0.95`,
-/// no `kVA=`), the case behind the drafted entry
+/// no `kVA=`), the case behind the landed entry
 /// `r4133-windgen-kvar-dispatched-daily` — one in-scope cell, and the pair's
 /// worst (`rel 9.86e+02`, `tests/corpus/props_r4133/bins.tsv:303`). No deck
 /// types `kvar=` at all: the value is the `SyncUpPowerQuantities` side effect
@@ -1504,7 +1504,7 @@ fn windgen_kvar_renders_the_base_on_the_daily_deck() {
     );
 }
 
-/// `windgen.kvar` on the delta snapshot deck — the witness of the drafted entry
+/// `windgen.kvar` on the delta snapshot deck — the witness of the landed entry
 /// `r4133-windgen-kvar-dispatched-delta`, plus the measurement that the pair's
 /// one clean deck is clean by *value*, not by mode.
 ///
@@ -1548,7 +1548,7 @@ fn windgen_kvar_renders_the_base_on_the_delta_snapshot() {
     );
 }
 
-/// `windgen.kvar` on the WTG3 dynamics deck — the witness of the drafted entry
+/// `windgen.kvar` on the WTG3 dynamics deck — the witness of the landed entry
 /// `r4133-windgen-kvar-dispatched-dyn`, and the reading that proves r4133's
 /// render is a *stale intermediate* rather than merely the wrong field.
 ///
@@ -1590,7 +1590,7 @@ fn windgen_kvar_renders_the_base_on_the_dynamics_deck() {
     );
 }
 
-/// `windgen.kvar` on the fault-ride-through twin — the witness of the drafted
+/// `windgen.kvar` on the fault-ride-through twin — the witness of the landed
 /// entry `r4133-windgen-kvar-dispatched-dynfault`.
 ///
 /// `modes/windgen/windgen_dyn_fault.dss` is `windgen_dyn.dss` plus a sustained
@@ -1676,7 +1676,7 @@ fn windgen_kvar_renders_the_base_on_the_fault_ride_through_deck() {
 ///
 /// Deck: `asymmetric/gic/gictransformer_gic.dss` (`GICTransformer.tg3`,
 /// `%R1=0.2 %R2=0.15 kvll1=345 kvll2=138 mva=300 type=Auto` at `:18-19`), the
-/// case behind the drafted entry
+/// case behind the landed entry
 /// `gic-pct-r2-honoured-gictransformer-r4133-props` — one in-scope cell.
 /// `ZBase2 = 138²/300 = 63.48 Ω`, so ours is `63.48*0.15/100 = 0.09522` against
 /// both oracles' `63.48*0.20/100 = 0.12696` (rel 2.50e-01).
@@ -1745,7 +1745,7 @@ fn gictransformer_r2_honours_the_x_winding_percentage() {
     );
 }
 
-/// `gictransformer.r2` on the 6-substation ring — the witness of the drafted
+/// `gictransformer.r2` on the 6-substation ring — the witness of the landed
 /// entry `gic-pct-r2-honoured-midi-r4133-props`.
 ///
 /// Same mechanism as [`gictransformer_r2_honours_the_x_winding_percentage`]
@@ -1810,7 +1810,7 @@ fn gictransformer_r2_honours_the_x_winding_percentage_on_the_ring() {
 // LIVE, and the capi capture that renders nothing
 // ---------------------------------------------------------------------------
 //
-// These three belong to no `EchoRow` and to no drafted `ledger.json` entry: the
+// These three belong to no `EchoRow` and to no `ledger.json` entry: the
 // exclusion RP3.8 lands is a `SKIP_PROPS` + `SKIP_PROPS_CAPI_ONLY` row pair
 // (`harness/mod.rs`, row group (g)), which masks the **capi** value compare of
 // `IndMach012.PF` and `StorageController.kWhTotal`/`kWTotal`/`kWhActual`/
