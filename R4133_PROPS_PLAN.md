@@ -2318,6 +2318,98 @@ Outcome: the 96 r4133-only cases get a property check for the first time, and
 the 366 `both` cases get their r4133 property table checked — G1.1's outcome,
 delivered.
 
+**As executed, part 1 of 2 (2026-09-03, RP4.1 P2 — the staged entries landed and
+the accounting moved; the section above is the pre-execution text and stays).**
+
+- **"plus RP1.4's" (¶2 above, and "the ledger entries staged by RP1.4/RP3" and
+  the kill criterion's "staged by RP1.4/RP3") is wrong, and RP4.1 landed
+  **eight** entries, not eight-plus-RP1.4's.** RP1.4 staged **no** ledger entry:
+  its `gendispatcher.weights` divergence is whole-solution, no pin could cover a
+  flip to `engines: "both"`, its decks therefore stay `capi_v0145`, and its
+  artifact is a `PROPS_015X` allowlist row (STATUS §WP-RP1, RP1.4's own record).
+  `LEDGER_ENTRY_PINS` has carried exactly eight rows since RP3.4 and none of them
+  is RP1.4's. Coordinator ruling of 2026-09-02, binding for this sub-step; the
+  same phrase was corrected in the tripwire's doc, which is live code.
+- **The eight landed verbatim from their STATUS drafts** (RP3.1 ×2, RP3.2 ×4,
+  RP3.4 ×2) into `tests/corpus/ledger.json`, with the two new `causes` keys
+  `swtcontrol-delay-not-wired` and `windgen-kvar-renders-dispatched-q`; RP3.4's
+  two reuse the existing `gic-pct-r2-ignored`. The ledger is now **53 entries /
+  29 causes** (`ledger_is_structurally_valid`).
+- **Precondition 2's accounting move needed a mechanism, not just a hand edit.**
+  The plan (and `DECLARED_RP3`'s own note) said the shrink is a hand edit because
+  no chain link reads `ledger.json` — but `DECLARED_RP3` is *asserted against the
+  measured walk*, so editing the constant alone would have reded
+  `every_example_row_is_claimed_or_declared_exactly_once`. RP4.1 therefore landed
+  `RP3_LEDGERED` (`props_r4133_replay.rs`), an interception in the shape
+  `RP38_SUPERSEDED` already uses — between the chain and `declare` — with its own
+  bucket lock `LEDGERED_RP3 = (6, 3, 6)` and a both-ways guard
+  (`the_ledgered_rows_are_excluded_by_entries_that_are_really_in_the_ledger`)
+  that reads the entry ids back out of the live ledger. `DECLARED_RP3` is now
+  `(0, 0, 0)` as a measurement, and `RP3_ROUTING`'s three `LEDGER` rows are
+  retired to `0, 0` with their verdicts amended to "landed at RP4.1".
+- **The tripwire was renamed**, its doc rewritten:
+  `the_staged_r4133_property_entries_have_not_landed_yet` →
+  `the_staged_r4133_property_entries_landed_at_rp41`. It now asserts the positive
+  form (the landed `property`-scoped `r4133` set is exactly
+  `LEDGER_ENTRY_PINS`' eight, each on the case its pin cites); the "no NEW
+  un-reviewed entry" half moved to the `RP3_LEDGERED` guard next door.
+- **Stale plan line numbers found while executing** (reported, never edited into
+  the historical text above): `scheduler.rs:357-363` → `:359-365`;
+  `scheduler.rs:710-717` → `:717-721`; `scheduler.rs:97-114` → `:97-116`;
+  `harness/mod.rs:1452-1458` → `:3043-3049`; `capture.rs:619-664` → fn `:630-662`,
+  doc `:618-628`; the population figures "96 r4133-only / 366 both / 462 gating"
+  → the lock reads 97 / 367 / 464 (523 cases, 80 `large`, 396 non-large
+  r4133-gating) and must be re-derived, not transcribed.
+- **P2 alone leaves the tree knowingly red** and is therefore not a commit of its
+  own: a landed `r4133` `property` entry is NEVER APPLIED while the scheduler
+  mask stands, so `ledger.assert_all_hit` fails until P3 removes it (coordinator
+  decision 4 — the whole sub-step is one commit). `population_lock` is red here
+  too, by design: the `ledger=` component of the eight cases moved and P5
+  regenerates the lock.
+
+**As executed, part 2 of 2 (2026-09-03, RP4.1 P1/P3/P4/P5 — the flip, the
+acceptance and the alarm; the section above is the pre-execution text and
+stays).** Landed in the single RP4.1 commit; the full record is `STATUS.md`
+§RP4.1.
+
+- **The flip.** The per-channel `compare_all_properties = false` clears are gone
+  from the gate path (`corpus_gate/scheduler.rs`) and the seeding path, and
+  `force_properties` forces the property request on **every live non-`large`
+  case** — `gates_capi ∪ gates_r4133` is every live case, so the two-arm test was
+  replaced by that honest spelling; the `large` cost guard stays. 83 r4133-only
+  non-large cases property-checked for the first time, 367 `both` cases comparing
+  their r4133 table; 1 670 gating walks over 151 782 elements per full run.
+- **Precondition A, mechanism (b)** (coordinator decision 3): `ECHO_NARROWED`
+  gives each of the 20 mixed echo rows its 66 measured `(rust, oracle)`
+  spellings; the 62 pure echo rows keep the pair scope; `ECHO_CARVE_OUTS`' doc
+  owns the inversion. `MULTI_LINK_ROWS` 135 → 0, restated as
+  `MIXED_PAIR_NORM_ROWS = 135`.
+- **Deviation, recorded (coordinator decision 1): acceptance is read as "zero
+  UNCLAIMED cells IN SCOPE"** — the gate never compares an out-of-scope cell, so
+  the plan's "per-cell accounting closes" applies to compared cells. No new
+  census disposition was added. Measured at HEAD over one full-population run
+  (440 cases × 2 channels, 1 059 178 rows): r4133 `UNCLAIMED` in scope **0**,
+  `ledger-hit` in scope **30** (the eight entries, cell for cell), and the 504
+  out-of-scope `UNCLAIMED` cells accounted per owner in the STATUS record. A
+  second reading rule: acceptance is read off `props_census.json`, never off
+  `claims_summary.json`, which collapses a mixed-disposition spelling to its
+  weakest cell.
+- **Kill criterion did not fire:** 0 ledger entries and 0 pins born from RP4.1's
+  own residual triage, 0 residuals that could not be pinned. The one finding was
+  a **stale exclusion** — the `ArrayForm` rows `swtcontrol.normal`/`.state`,
+  dead since RP3.7(a) — dropped and re-owned by `RP37_SUPERSEDED`.
+- **Deviation, recorded: the global assert counts the gating call site, not the
+  tables' `visits`.** `assert_r4133_props_compare_ran()` is invoked once from the
+  corpus gate's epilogue and self-silences under `DSS_GATE_ONLY`; the plan's
+  literal "`visits > 0` summed over the tables" is unsound here, because sibling
+  unit tests in the same binary drive the comparator and moved those statics
+  through the whole masked era.
+- **Gate:** 4 382 passed / 0 failed / 5 ignored per lane over 74 binaries;
+  `corpus_gate` 523/523 unfiltered, ledger 53 entries / 1 534 hits, none stale.
+  `corpus_gate` wall 141.78 s default / 142.94 s parity against 142.90 s /
+  139.68 s before the unmask. `lane_diff` run anyway (no product line moved):
+  PASS, `max |Δ| = 0` on all eight kinds.
+
 ---
 
 ## WP-RP5 — Documentation and the restated property argument

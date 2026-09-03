@@ -319,8 +319,9 @@ UNCLAIMED 1 654 / 425 / 37 — the delta is exactly RP3.9's 70 cells).
 `DECLARED_RP24` `(2101, 71, 2021)` → **`(0, 0, 0)`** — the sub-step's own
 acceptance — and RP2.3's `reactor.kvar` carve-out hand-off is discharged by the
 floor claiming it.
-**WP-RP3 is OPEN — but nothing in it blocks the unmask any more: every sub-step
-RP4.1 waits on (RP3.1–RP3.4 below, RP3.5–RP3.9 in the records above) has landed,
+**WP-RP3 is OPEN — nothing in it blocked the unmask, which landed 2026-09-03
+(§RP4.1 record below): every sub-step
+RP4.1 waited on (RP3.1–RP3.4 below, RP3.5–RP3.9 in the records above) has landed,
 as has §RP3.12 (2026-09-03, RP3.9's P0 open item — the 34
 `controls:autotrans/*` `wdgcurrents` cells, an r4133 `UPSTREAM_BUG` no lane
 reproduces; it never blocked the flip, all four of its decks being capi-only),
@@ -350,7 +351,10 @@ the four sub-steps' state instead — and, since the same-day audit settlement,
 **that move is a hand edit RP4.1 owes** (no link of the chain reads
 `ledger.json`, so the tripwire
 `the_staged_r4133_property_entries_have_not_landed_yet` reds when the entries
-land and says what to do). The settlement also typed the settled-verdict
+land and says what to do; *discharged 2026-09-03* — RP4.1 landed the eight
+entries and moved the accounting mechanically via `RP3_LEDGERED` rather than by
+hand, and the tripwire is now
+`the_staged_r4133_property_entries_landed_at_rp41`; §RP4.1 record below). The settlement also typed the settled-verdict
 contract to plan §WP-RP3's three outcomes, made the r4133 citation and the
 witness naming un-shadowable, and turned the 24 = 12 + 12 census decomposition
 into a derivation over the corpus.
@@ -1928,7 +1932,9 @@ exclude; the drafts, should a deck's `engines` key ever change, are staged in
 out of the gitignored dossiers, where the forward reference would have dangled). One structural note: the census has **no disposition
 meaning "settled by an RP3.9 pin"** — the 70 cells still file as `UNCLAIMED`.
 That costs nothing today and is RP4.1's to decide, not this sub-step's to
-invent.
+invent. *Decided 2026-09-03 (RP4.1):* no census disposition was added —
+acceptance is read as zero UNCLAIMED cells *in scope*, and these 70 cells are
+accounted out of scope, owner by owner, in the §RP4.1 record below.
 
 *Gate.* All five commands green in both lanes, each exit code read individually:
 **4 285 passed / 0 failed / 5 ignored per lane** over 74 test binaries, the two
@@ -2311,6 +2317,199 @@ strengthened in place). The known overlapping-guard snapshot race dropped six
 untracked `Test/AutoTrans/*.txt` again (fourth sighting), removed by exact name;
 no tracked corpus or golden file moved.
 
+**RP4.1 (`all_properties` unmasked on the r4133 channel) landed 2026-09-03 —
+WP-RP4's single sub-step and G1.1's deliverable, in one commit, with zero
+product-crate lines, zero golden bytes and zero tolerances moved.** The
+per-channel `compare_all_properties = false` clears are gone from both the
+**gate** path and the **seeding** path (`corpus_gate/scheduler.rs`), and
+`force_properties` now forces the property request on **every live non-`large`
+case** — `gates_capi ∪ gates_r4133` is every live case, so the honest spelling
+replaced the two-arm test, and the `large` cost guard stays. The **83 r4133-only
+non-large** cases get a property check for the first time and the **367 `both`**
+cases get their r4133 property table compared: a full run now does **1 670**
+gating r4133 property walks over **151 782** elements, identically in both
+lanes. ~24 stale doc claims asserting that the r4133 channel never
+property-compares were corrected, or left with a dated "superseded by
+R4133_PROPS RP4.1" note where the file is a historical record
+(`docs/phase-records/`, `UNIFIED_GATE_PLAN.md`). The commit is 22 files
+(+2 305 / −515); the only `src/` diffs are comment-only, in a `#[cfg(test)]`
+module (`exec/tests/controls.rs`) and in the `publish = false` bridge
+(`crates/dss-epri`).
+
+*Precondition A (RP2.3's audit settlement) — the 20 mixed echo rows narrowed
+**per cell**, before the flip.* Mechanism (b) of the plan's two, per the
+coordinator's ruling: `ECHO_NARROWED` gives each of the 20 rows the measured
+`(rust, oracle)` spellings its citation actually explains — **66** spellings,
+every one present verbatim in the frozen census — and `echo_excluded` /
+`echo_excluded_r4133` match on them via `row_covers`; the 62 pure echo rows keep
+the conservative pair scope, and `ECHO_CARVE_OUTS`' doc was rewritten to own the
+inversion for the 20 explicitly (on those rows an *unseen* spelling now falls
+**out** of the exclusion and is compared — which is the point of the
+precondition). `MULTI_LINK_ROWS` 135 → **0** (no frozen row matches two links
+any more), the old population restated as `MIXED_PAIR_NORM_ROWS = 135` = the 20
+pairs' 201 census rows − 66. `a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses`
+was **replaced, not deleted**: its first assertion now asserts the cell is
+COMPARED on r4133, with the capi and neighbour assertions kept.
+
+*Precondition B (RP3.1's audit settlement) — the staged entries landed and the
+accounting moved with them.* The **eight** entries landed verbatim from their
+STATUS drafts into `tests/corpus/ledger.json` — `r4133-swtcontrol-delay-ignored-time`
+and `-midi` (RP3.1), `r4133-windgen-kvar-dispatched-{daily,delta,dyn,dynfault}`
+(RP3.2), `gic-pct-r2-honoured-gictransformer-r4133-props` and
+`gic-pct-r2-honoured-midi-r4133-props` (RP3.4) — with the two new causes
+`swtcontrol-delay-not-wired` and `windgen-kvar-renders-dispatched-q`; RP3.4's
+two reuse the existing `gic-pct-r2-ignored`. Ledger **45 → 53 entries / 27 → 29
+causes**. The accounting move needed a mechanism, not a hand edit: `DECLARED_RP3`
+is asserted against the measured walk, so RP4.1 landed `RP3_LEDGERED` (the
+interception shape `RP38_SUPERSEDED` already uses) with its own bucket lock
+`LEDGERED_RP3 = (6, 3, 6)` and a both-ways guard that reads the eight ids back
+out of the live ledger; `DECLARED_RP3` is `(0, 0, 0)` as a *measurement*, and the
+three `RP3_ROUTING` rows (`swtcontrol.delay`, `windgen.kvar`,
+`gictransformer.r2`) are retired to `0, 0` with their verdicts amended to "landed
+at RP4.1". The tripwire was renamed
+`the_staged_r4133_property_entries_have_not_landed_yet` →
+`the_staged_r4133_property_entries_landed_at_rp41` and re-stated positively (the
+landed `property`-scoped `r4133` set is exactly `LEDGER_ENTRY_PINS`' eight, each
+on the case its pin cites); the "no NEW un-reviewed entry" half moved to the
+`RP3_LEDGERED` guard. RP3.12's four `controls:autotrans/*` decks and
+`makeposseq_ctrl.dss` keep `engines: capi_v0145` and their drafted skips were NOT
+landed (coordinator decision 5), and `DECLARED_RP39` / RP3.12's tables were not
+retired (decision 6).
+
+*Residual triage — the kill criterion does not fire.* **Zero** ledger entries and
+**zero** pins were born from RP4.1's own residual triage (criterion: more than
+~15, or any residual that cannot be pinned → stop; the eight of precondition B do
+not count), and no residual failed to be pinned. What the first unmasked run did
+find was a **stale exclusion**, not a divergence: the two `ArrayForm` rows
+`swtcontrol.normal` and `swtcontrol.state` folded nothing across 40 compared
+cells, because RP3.7(a) made both sides spell the array identically
+(`Version8/Source/Controls/SwtControl.pas:589-599` / `:600-610`, per-phase
+`pStateArray`). The rows are dropped and re-owned by the RP3.8-shaped
+`RP37_SUPERSEDED` (`SUPERSEDED_RP37 = (5, 2, 5)`, `Ledger::superseded` now per
+table), with `DECLARED_RP35 (8, 6, 5) → (5, 4, 2)` and the six claim locks
+re-derived: `NORM_ROWS` 170 → 168, `NORM_ARRAY_FORM_ROWS` 23 → 21,
+`CLAIMED_ARRAY_FORM` 203 → 201, `CLAIMED_NORMALIZATION` 854 → 852,
+`CLAIMED_TOTAL_LIVE` 855 → 853, `CLAIMED_SPELLINGS_LIVE` 2 982 → 2 980. The live
+census independently reports 21 `ArrayForm` pairs / 201 spellings, so the offline
+and live accountings now agree on this rule.
+
+*Acceptance — the census at HEAD against the P0 baseline.* One full-population
+run, not an aggregation of `DSS_GATE_ONLY` slices: **440 cases × 2 channels,
+1 059 178 rows, 56 s**, `gate_only: null`.
+
+| r4133 disposition | P0 cells | HEAD cells | P0 in scope | HEAD in scope | pairs P0 → HEAD |
+|---|---|---|---|---|---|
+| `UNCLAIMED` | 534 | **528** | 30 | **0** (reading rule below) | 49 → **47** |
+| `ledger-hit` | 0 | **6**\* | 0 | **6**\* | 0 → **2** |
+| `echo-row` | 488 019 | 488 019 | 468 046 | 468 046 | 82 → 82 |
+| `normalized-by-BoolFold` | 294 519 | 294 519 | 280 915 | 280 915 | 77 → 77 |
+| `normalized-by-CaseFold` | 99 023 | 99 023 | 95 270 | 95 270 | 65 → 65 |
+| `normalized-by-ArrayForm` | 122 754 | 122 754 | 118 744 | 118 744 | 21 → 21 |
+| `normalized-by-EnumSynonym` | 4 619 | 4 619 | 3 817 | 3 817 | 5 → 5 |
+| `under-floor` | 49 484 | 49 484 | 46 627 | 46 627 | 71 → 71 |
+| value cells | 1 058 952 | 1 058 952 | 1 013 449 | 1 013 449 | — |
+
+\* **Second reading rule, to be carried forward:** acceptance is read off the
+lossless `props_census.json`, **never** off `claims_summary.json`, which
+collapses a mixed-disposition spelling to its weakest cell
+(`mixed_disposition_spellings: 1`, `swtcontrol.delay` — 24 in-scope `ledger-hit`
+cells on the two entry decks plus 12 out-of-scope `UNCLAIMED` on the capi-only
+`swtcontrol_lock.dss`). Streamed per row over all 1 059 178 rows the lossless
+record reads: r4133 `UNCLAIMED` in scope **0**, `UNCLAIMED` out of scope **504**,
+`ledger-hit` in scope **30** = 24 (`swtcontrol.delay`) + 4 (`windgen.kvar`) + 2
+(`gictransformer.r2`) — cell for cell the eight entries' 30 live gate hits, and
+exactly the P0 prediction. No new pair appeared (two deletions, zero additions).
+The **capi channel A/B is bit-identical**: all 8/8 capi_v0145 census artifacts
+byte-equal to the pre-flip baseline.
+
+**Plan-text deviation, recorded verbatim (coordinator decision 1, 2026-09-02):**
+"**Acceptance is read as "zero UNCLAIMED cells IN SCOPE"** (the gate never
+compares an out-of-scope cell, so the plan's "per-cell accounting closes" applies
+to compared cells). No new census disposition is added in RP4.1. P4 MUST
+additionally close the out-of-scope accounting in its handoff and STATUS with a
+per-owner table of every out-of-scope UNCLAIMED cell (RP3.9 pins / RP3.12 pin /
+`RP24_OUT_OF_SCOPE` gendispatcher / G2.5 Cuf), each owner citing its pin or
+record, so the total (534 → whatever HEAD reports) is accounted line by line."
+The 504 out-of-scope cells — **22 cases / 47 pairs, all on `engines:
+capi_v0145` decks** — are accounted per owner:
+
+| cells | dominant pairs | owner and citation |
+|---|---|---|
+| 195 | `generator.kvar` 104, `generator.kw` 91 (`controls:gendispatcher/*`) | **RP1.4** (decks stay capi-only, artifact = a `PROPS_015X` allowlist row) + **RP2.4** offline: `RP24_OUT_OF_SCOPE` row `("generator.kvar", 1.55e-06, 102)`; r4133 does not register `GenDispatcher.weights` at all |
+| 136 | `autotrans.wdgcurrents`/`.tap`/`.taps` and `regcontrol.tapnum`, 34 each | **RP3.12** — `RP312_UPSTREAM_BUG`, cause `regcontrol-autotrans-typecast`, pin `autotrans_wdgcurrents_stay_regulated_where_r4133_never_taps_the_autotrans` (`RegControl.pas:1026/:1296/:1479`, `AutoTrans.pas:88`) |
+| 72 | `load.kva`, `vsource.puz*`/`isc3`, `capacitor.*amps`, `line.b*` (`modes:makeposseq/*`) | **RP3.9** — `DECLARED_RP39 = (55, 27, 19)`, verdict `PRECISION_ROUNDTRIP`, pins in `RP39_PINS` |
+| 68 | `sensor.kvs` 61, `sensor.currents` 5, `.kws`/`.kvars` 1+1 | **`Owner::OutOfScope`** (RP2.1/RP2.3) — `CELL_DISPOSITION` rows, "plan §1.3 / §RP2.1" |
+| 18 | `swtcontrol.delay` on `swtcontrol_lock` plus three `IEEE_519` copies | **RP3.1**'s own cause `swtcontrol-delay-not-wired`; the decks are capi-only, so an entry there would be NEVER APPLIED |
+| 8 | `storage.kva/kw/kwrated`, `storagecontroller.kwtotal/kwactual` | **RP2.3** pin `storagecontroller_fleet_aggregates_render_the_live_fleet` (plus RP2.4 for `storage.kw`), `RP38_SUPERSEDED` |
+| 1 | `storagecontroller.kwneed` | **RP2.4** — `RP24_OUT_OF_SCOPE` row `(…, 4.96e-06, 1)` |
+| 1 | `capacitor.cuf` (`[ 4]` vs `[ 4E-006]`) | **G2.5** — `RP24_OUT_OF_SCOPE` row `("capacitor.cuf", 4.00e-06, 1)` |
+| 5 | `line.r1/x1/rmatrix/xmatrix`, `isource.bus1` | **`DECLARED_OUT_OF_SCOPE`** scope arm only, `(221, 21, 0)` — the only five whose owner is a scope arm rather than a cause; flagged, not owed by RP4.1 |
+| **504** | **22 cases / 47 pairs** | **total, fully accounted** |
+
+**Second plan-text deviation, recorded verbatim (coordinator decision 2):**
+"**RP1.4 staged no ledger entry** (its artifact is a `PROPS_015X` allowlist row;
+decks stay capi-only). Correct the phrase in BOTH copies (plan §RP4.1 and the
+tripwire doc) in P2." Both copies are corrected: RP4.1 landed **eight** entries,
+not "eight plus RP1.4's".
+
+*The re-mask alarm.* `population.lock.json` fingerprints manifest flags and
+per-case ledger tags but **no scheduler code**, so re-masking the request would
+be invisible to it. RP4.1 therefore adds
+`props_norm::assert_r4133_props_compare_ran()`, invoked once from the corpus
+gate's epilogue beside the two per-row liveness guards and self-silencing under
+`DSS_GATE_ONLY`; it fails when the r4133 property compare never ran, and the
+epilogue also prints the live figure. **Deviation from the plan's letter,
+deliberately:** the plan spelled the quantity as `visits > 0` summed over the two
+tables, but those statics are moved by sibling unit tests in the same binary that
+drive the comparator themselves — the sum was already > 0 through the whole
+masked era and would stay green under a re-mask — so the counters are bumped at
+the single gating call site (`compare_all_properties`'s `PropsChannel::R4133`
+arm) and the census walk is deliberately not counted. Both directions are pinned
+offline over injected counters. Together with the landed entries (which would go
+NEVER APPLIED in `assert_all_hit`) a wholesale re-mask is loud in two independent
+ways. The two per-row guards `assert_norm_rows_are_live` /
+`assert_echo_rows_are_live`, dormant since RP2.1, are now live and silent.
+
+*Lock.* `population.lock.json` regenerated in the same commit: **8 lines**, all
+in `family_rigor`, all moving only the `ledger=` component of the eight entries'
+cases. The `props=` component did not move on any line — it is the *manifest*
+flag, and RP4.1 changed the scheduler, not a manifest.
+
+*Gate.* All five commands green in both lanes, each exit code read individually:
+**4 382 passed / 0 failed / 5 ignored / 0 filtered out** per lane over 74 test
+binaries (+92 on the RP3.12 settlement's 4 290 — four new
+`harness::props_norm::tests` compiled into each of the 22 harness-linking
+binaries, plus `props_r4133_replay`'s own four; `props_r4133_pins` stays at 54,
+0 entries and 0 pins being born here), the same five pre-existing `ignored`, no
+`#[ignore]` and no name filter. `corpus_gate` **135** per lane over the full
+523-case population, ledger **53 entries / 1 534 hits**, none stale, zero
+NEVER-APPLIED, zero reds on either channel. Wall clock for `corpus_gate`:
+**141.78 s** default / **142.94 s** parity against **142.90 s / 139.68 s** before
+the unmask — the flip costs nothing measurable (±2 % run-to-run) against a
+budgeted +1–3 min, even though the run now walks 1 670 r4133 property tables.
+`lane_diff` was **run to completion** although no product line moved (so it was
+not owed): `VERDICT: PASS`, 523 cases / 3 220 861 records / 4 825 419 compared
+values, **`max |Δ| = 0.000e0` and `max rel = 0.000e0` on every one of the eight
+kinds** (`conv`, `cur`, `errs`, `iter`, `loss`, `pow`, `v`, `y`), zero iteration
+drifts — the 2026-07-31 bit-identical default↔parity baseline reproduced
+unchanged. The known overlapping-guard snapshot race again dropped untracked
+`Test/AutoTrans/*.txt` (fifth sighting; §"Standing open follow-ups"), removed by
+exact name; no tracked corpus or golden file moved.
+
+*As-executed corrections to the plan's cited lines* (reported, never edited into
+the historical text): `scheduler.rs:357-363` → `:359-365`; `:710-717` →
+`:717-721`; `:97-114` → `:97-116`; `harness/mod.rs:1452-1458` → `:3043-3049`
+(the cited range is now unrelated power/loss code); `capture.rs:619-664` → fn
+`:630-662`, doc `:618-628`; the population figures "96 r4133-only / 366 both /
+462 gating" → the lock reads **97 / 367 / 464** (523 cases, 80 `large`, 396
+non-large r4133-gating) and must be re-derived, not transcribed.
+
+*Open follow-up (recorded, not RP4.1 work).* `DECLARED_RP35` still declares four
+pairs — `line.units` (RP3.5), `line.linecode` (RP3.6), `relay.normal` and
+`relay.state` — whose HEAD census shows no divergent cell either, but a
+superseded row owes a per-pair live disposition, a cited r4133 getter arm and a
+pin, and nobody has produced that trio for them.
+
 **RP3.9 landed 2026-09-02** (audit settled 2026-09-03) — the display floor's
 round-trip residue is settled as 27 pinned `PRECISION_ROUNDTRIP` pairs (the
 §RP3.9 record above), so **every RP1–RP3 sub-step the unmask waits on has
@@ -2326,21 +2525,25 @@ r4133 channel gates none of them. The two RP3 sub-steps still open —
 by construction: they run after RP4.1 and block §RP5.2, not the flip
 (plan §0).
 
-**Next: RP4.1** — `all_properties` on the r4133 channel (G1.1's deliverable).
-It carries two preconditions of its own, both to be discharged **in** the
-sub-step and before the flip (plan §RP4.1): **(1)** narrow the **20 mixed echo
-rows per cell** — `PROPS_ECHO_R4133` is pair-scoped and on those 20 pairs is
-wider than each row's citation, so the moment the path is unmasked a genuine
-divergence (a wrong resolved loadshape name, a wrong ZIPV vector, a wrong
-`Bus2` terminal spelling) passes silently on r4133; fix by extending
-`props_norm::ECHO_CARVE_OUTS` or by giving each mixed row its measured echo
-spellings, which moves `CLAIMED_ECHO`/`MULTI_LINK_ROWS` and flips
-`a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses`. **(2)** the
-**staged-entries accounting commit** — nothing reads `ledger.json` from the
-replay accounting, so landing the eight staged `property` entries (RP3.1's two,
-RP3.2's four, RP3.4's two, plus RP1.4's) must in the same commit retire each
-settled `RP3_ROUTING` row, shrink `DECLARED_RP3` by exactly those rows, and
-re-state `the_staged_r4133_property_entries_have_not_landed_yet`.
+**RP4.1 landed 2026-09-03** — WP-RP4 is closed and G1.1's deliverable shipped:
+`all_properties` is compared on the r4133 channel for every live non-`large`
+case, so the **83 r4133-only** non-large cases get a property check for the
+first time and the **367 `both`** cases get their r4133 property table compared
+(1 670 gating property walks over 151 782 elements per full run). Both
+preconditions were discharged in the sub-step and before the flip: the **20
+mixed echo rows** are narrowed per cell (66 measured spellings, mechanism (b)),
+and the **eight** staged `property` entries landed with their accounting
+(`RP3_LEDGERED`/`LEDGERED_RP3 = (6, 3, 6)`, `DECLARED_RP3 → (0, 0, 0)`, the
+three `RP3_ROUTING` rows retired, the tripwire re-stated positively). The
+per-cell accounting closes: **zero UNCLAIMED r4133 cells in scope**, 30 in-scope
+`ledger-hit` cells, the 504 out-of-scope cells accounted per owner, and **zero**
+ledger entries or pins born from the sub-step's own residual triage (kill
+criterion ~15 — it did not fire). Full record in §RP4.1 above.
+**Next: RP3.11** — the `Save`/`Dump` re-serialization surface (plan §RP3.11,
+opened by the RP3.3 audit settlement) — then §RP3.10 (the reproduced `QMode=0`
+dispatch, user go-ahead required) and **WP-RP5** (RP5.1 operational docs, RP5.2
+the closing record); `GOLDEN_REBASE_PLAN.md` G3.4/G3.5, which waited on this
+flip, are unblocked.
 Alongside it, `GOLDEN_REBASE_PLAN.md` WP-G1, **opened** on branch `golden-g1`
 (forked from `update` @ `4d3fc2d7`) — that branch carries G1.1's scratch census
 only and **nothing was committed there**; the WP-G1 sub-steps that actually land
@@ -2387,7 +2590,9 @@ row-by-row r4133 disposition of the channel-blind `SKIP_PROPS`/`LANE_SKIP_PROPS`
 — plus a `bins.tsv` RP0.1 artifact, the harness-local channel type note
 (`EngineChannel` is `pub(crate)` to corpus_gate), NCIM/probe/fixture pointers,
 and ~15 citation/ordering minors). G1.1 is handed to it: RP4.1 delivers the unmask with the kill
-criterion re-armed; GOLDEN_REBASE G3.4/G3.5 wait on RP4.1; PLAN_SEQUENCE rows
+criterion re-armed — *delivered 2026-09-03*, and that kill criterion did **not**
+fire (0 ledger entries and 0 pins born from RP4.1's own residual triage; §RP4.1
+record above), so GOLDEN_REBASE G3.4/G3.5, which waited on RP4.1, are unblocked; PLAN_SEQUENCE rows
 5a/5b added the same day. Execution of that plan started 2026-08-22 on
 `r4133-props` (records below); the local-only census is no longer the single
 copy of the evidence — its extracts are vendored by RP0.1 and the whole census
@@ -3345,7 +3550,9 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
 ### GOLDEN_REBASE WP-G1 — records
 
 > Plan: `GOLDEN_REBASE_PLAN.md` §WP-G1. G1.1 is handed to `R4133_PROPS_PLAN.md`
-> RP4.1 (kill criterion fired, see §1). The sub-steps that do not depend on it
+> RP4.1 (kill criterion fired, see §1) and **delivered by it on 2026-09-03** —
+> the unmask shipped and RP4.1's own kill criterion did not fire. The sub-steps
+> that do not depend on it
 > land on `r4133-props`, the branch that currently holds the fail-on-stale
 > `population.lock.json` / `ledger.json` (single-branch lock discipline).
 

@@ -440,10 +440,13 @@ fn swtcontrol_state_renders_one_token_per_controlled_phase() {
 }
 
 /// **The holder for the pair's 80 in-scope cells** — the three r4133-gating
-/// decks that carry every one of them, and that **no oracle channel can witness
-/// today**: the pinned dss_capi 0.14.5 cannot render the array at all, and the
-/// r4133 property compare stays masked until RP4.1 (plan §1.1(e)). Plan §1.1(c)
-/// asks for exactly this pin.
+/// decks that carry every one of them, and that **no oracle channel could
+/// witness when this pin was written**: the pinned dss_capi 0.14.5 cannot render
+/// the array at all, and the r4133 property compare was masked until RP4.1
+/// (plan §1.1(e)). Plan §1.1(c) asks for exactly this pin, and it keeps its job
+/// after RP4.1's unmask (2026-09-03): the r4133 channel compares these cells now
+/// and agrees byte-for-byte, so the gate can only say "equal" — only this pin
+/// says WHAT the two engines agree on.
 ///
 /// `swtcontrol.normal` and `swtcontrol.state` are 59 census cells each, 40 of
 /// them in scope, and the split is these three decks: `midi_swtcontrol.dss`

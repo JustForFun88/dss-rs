@@ -625,7 +625,8 @@ is **declared** for the sub-step that will claim it (including the cells an echo
 row deliberately does not cover — `props_norm::ECHO_CARVE_OUTS` and their
 `ECHO_CARVE_OUT_ROUTING` owner, matched both ways), that every
 `PROPS_NORM_R4133` row claims at least one row (offline liveness — the live half
-is the per-row hit accounting, dormant until RP4.1), and that each table row's
+is the per-row hit accounting, dormant until RP4.1's unmask and live since it,
+2026-09-03), and that each table row's
 `(pair, bin, cells)` citation matches the vendored evidence it names. The
 supplement (`tests/corpus/props_r4133/examples_supplement.txt`) is measured, not
 frozen: the 26 pairs no 2026-08-08 row can carry (the WP-RP1 shape closures plus
@@ -636,8 +637,9 @@ with an assertion rather than a comment: `LIVE_ONLY_SPELLINGS` names the one
 spelling the claims census sees and no file may carry (`autotrans.conn
 'series'/'Series'`, on a pair whose `bins.tsv` row predates RP1.2's deck),
 reconciles the replay's normalization-link spelling count with the census's
-(748/749 at RP2.1, **854/855 since RP2.3**), and pins that the shipped rule still
-claims it.
+(748/749 at RP2.1, 854/855 at RP2.3, **852/853 since RP4.1** — the two dead
+`swtcontrol` `ArrayForm` rows dropped from both sides at once), and pins that the
+shipped rule still claims it.
 
 Since **RP2.2** the file also carries that sub-step's dossier as data:
 `RP22_ROUTING` is one row per pair RP2.2 read and routed, each citing the r4133
@@ -699,6 +701,18 @@ back both ways, so a renamed or orphaned pin fails rather than leaving a row
 citing a witness that is not there (its `NOT_A_PIN` exemption list is pinned
 literally beside it).
 
+**How wide a row is.** 62 of the 82 rows are *pair-scoped* (the shape plan
+§1.2 prescribes, `SKIP_PROPS`'), minus the one cited counterexample in
+`props_norm::ECHO_CARVE_OUTS`. The other 20 — the pairs that also carry a
+`PROPS_NORM_R4133` normalization row — are **per cell** since RP4.1's
+precondition 1: `props_norm::ECHO_NARROWED` lists the 66 measured `(rust, r4133)`
+spellings those rows cover, and a cell of such a pair that the typed rule
+*refused* (a wrong resolved loadshape name, a wrong ZIPV vector, a wrong `Bus2`
+terminal spelling) is compared on r4133 instead of being swallowed by the pair.
+The 66 are derived from the frozen census rather than chosen —
+`props_r4133_replay::the_narrowed_echo_rows_carry_exactly_the_spellings_the_typed_rules_leave`
+recomputes them from `tests/corpus/props_r4133/` and matches the table both ways.
+
 **Which rows owe a pin** — plan §1.2 mechanic (c), both halves. A row whose pair
 the capi channel cannot compare at all (`PROPS_015X`, `SKIP_PROPS`, the
 whole-element skip) obviously does; so does a row that masks cells on
@@ -722,10 +736,15 @@ live walk.
 
 The corpus gate's property-parity check (`harness::compare_all_properties`)
 asserts the Rust property-table **shape** (count + name order) against the
-oracle capture. It runs on the **capi_v0145 channel only** — the scheduler
-masks `all_properties` off the r4133 request (r4133's 0.15.x-shaped tables are
-exactly what the allowlist exists to bridge); all three synthetic families
-force it on for their capi-gating live cases. The pinned oracle is dss_capi
+oracle capture. It runs on **both channels** since R4133_PROPS RP4.1
+(2026-09-03) deleted the per-channel mask the scheduler used to apply to the
+r4133 request: `force_properties` (`corpus_gate/scheduler.rs`) now forces the
+compare on every live non-`large` case whatever its `engines` key, and all three
+synthetic families force it on for their live cases. (Until RP4.1 it was
+capi_v0145-only, which is why the allowlist is framed around the 0.15.x-shaped
+tables r4133 renders — on an r4133 capture an r4133-only prop is carried by the
+oracle's own name list, so it is kept by `filter_015x` and compares in full.)
+The pinned oracle is dss_capi
 **0.14.5**, so a deliberately ported 0.15.x property (which cannot appear in a
 0.14.5 capture) is declared in the named per-class allowlist `PROPS_015X`
 (`tests/harness/mod.rs`): a Rust-side prop in the allowlist and absent from the
@@ -762,7 +781,7 @@ All verified against the consumers named. The `DSS_GATE_*` knobs live in
 | `DSS_GATE_DUMP` | corpus_gate | `<path>` → write a label-sorted `{verdict, result}` artifact (three-way bit-diff proofs) |
 | `DSS_GATE_SEED_LEDGER` | corpus_gate | `1` → seeding **report** mode: measure every case on BOTH channels, write `tmp/ledger_candidates.json`, assert nothing |
 | `DSS_GATE_SEED_ONLY` | corpus_gate | substring filter for the seeding run |
-| `DSS_PROPS_CENSUS` | corpus_gate | `1` → arms the property **census** test `corpus_gate_props_census` (`R4133_PROPS_PLAN.md` RP0.2; a separate `#[test]`, so the var can never divert the mandatory gate): walk every live non-`large` case on BOTH channels with `all_properties` forced on (the §1.1 r4133 masks bypassed), collect every divergent cell instead of asserting, write `tmp/props_census.json` + `tmp/props_census/run.json` + `tmp/props_census/<channel>/{structural_pairs,numeric_pairs,examples_full,shape,summary}` in the RP0.1 extract format. Honors `DSS_GATE_ONLY` (stamped into the artifacts); **asserts nothing** — a divergence is the measurement. `claims` → the same walk in RP2.1's **disposition** mode: every value row annotated `normalized-by-<rule>`/`echo-row`/`under-floor`/`ledger-hit`/`UNCLAIMED` through the shipped policy predicates, plus `claims{,_unclaimed_pairs,_summary}` per channel and the in-scope split; plain-mode artifacts are byte-identical either way. Any other value fails loudly |
+| `DSS_PROPS_CENSUS` | corpus_gate | `1` → arms the property **census** test `corpus_gate_props_census` (`R4133_PROPS_PLAN.md` RP0.2; a separate `#[test]`, so the var can never divert the mandatory gate): walk every live non-`large` case on BOTH channels with `all_properties` forced on — the case's own `engines` key ignored, which before R4133_PROPS RP4.1 (2026-09-03) also meant bypassing the §1.1 r4133 masks the gate applied — collect every divergent cell instead of asserting, write `tmp/props_census.json` + `tmp/props_census/run.json` + `tmp/props_census/<channel>/{structural_pairs,numeric_pairs,examples_full,shape,summary}` in the RP0.1 extract format. Honors `DSS_GATE_ONLY` (stamped into the artifacts); **asserts nothing** — a divergence is the measurement. `claims` → the same walk in RP2.1's **disposition** mode: every value row annotated `normalized-by-<rule>`/`echo-row`/`under-floor`/`ledger-hit`/`UNCLAIMED` through the shipped policy predicates, plus `claims{,_unclaimed_pairs,_summary}` per channel and the in-scope split; plain-mode artifacts are byte-identical either way. Any other value fails loudly |
 | `DSS_LEDGER_MEASURE` | corpus_gate | `1` → numeric ledger handlers print the live divergence per scope (envelope sizing; no gating change) |
 | `DSS_UPDATE_POPULATION_LOCK` | population_lock | `1` → rewrite `population.lock.json` from the current manifests (deliberate regen) |
 | `DSS_UPDATE_GOLDENS` | `harness::regen` | `1` → arm the self-golden write rails (`snapshot_text`/`snapshot_bytes`). Refuses any artifact not anchored `self` in `golden.lock.json`, and any family whose `produced_by` is not this build's lane. Inert otherwise; no driver calls the helpers yet (WP-G3) |

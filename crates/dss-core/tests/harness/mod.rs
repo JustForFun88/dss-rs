@@ -2833,6 +2833,21 @@ mod props_policy_tests {
     /// audit settlement that swap left the entire suite green — the order was
     /// pinned in the two offline copies of the chain and nowhere at the seam.
     ///
+    /// **What RP4.1 P1's narrowing changed here.** `reactor.bus2` is one of the
+    /// 20 narrowed rows, so the echo seam now counts only the cells the row
+    /// covers: the foldable cell arrives at the exclusion already folded
+    /// (`b2.0` on both sides), which is not one of the row's measured spellings,
+    /// so it is no longer an echo visit. The swap is still caught, by the other
+    /// half of the same accounting — under echo-first the row's own measured
+    /// cell would be excluded before the typed rule ever saw it, and the
+    /// normalization counters below would move by one instead of two.
+    ///
+    /// The measured spelling is `rust 'b2.0'` vs `r4133 'b2.0.0.0'`
+    /// (`tests/corpus/props_r4133/examples_full.txt:545`) — r4133 answers the
+    /// padded `GetBus(2)` snapshot, the port the live terminal — and this test
+    /// drives it in that orientation since the narrowing made the orientation
+    /// load-bearing.
+    ///
     /// Counter hygiene: this test owns `reactor.bus2` (no other test drives it)
     /// and leaves both of its rows with `hits > 0` — the foldable cell for the
     /// norm row, the echo cell for the echo row.
@@ -2857,21 +2872,22 @@ mod props_policy_tests {
             "the normalization seam must see and fold the mixed pair's foldable cell BEFORE the \
              echo row is consulted — that hit is what keeps the row provably live after RP4.1"
         );
-        // The echo row saw the same cell, with the two sides already equal, so
-        // it counts a visit and not a hit.
+        // The echo row saw the same cell — already folded to `b2.0` on both
+        // sides — and since RP4.1 P1 that is not one of its measured spellings,
+        // so it is neither a visit nor a hit.
         assert_eq!(
             super::props_norm::echo_counters("reactor", "bus2"),
-            Some((echo_before.0 + 1, echo_before.1))
+            Some(echo_before)
         );
         // …and the pair's real echo cell — r4133's stale `GetBus(2)` snapshot —
         // is a hit, which is what the liveness guard needs from this binary.
         assert!(run(
-            &[("Bus2", "b2.0.0.0"), ("kV", "12.47")],
             &[("Bus2", "b2.0"), ("kV", "12.47")],
+            &[("Bus2", "b2.0.0.0"), ("kV", "12.47")],
         ));
         assert_eq!(
             super::props_norm::echo_counters("reactor", "bus2"),
-            Some((echo_before.0 + 2, echo_before.1 + 1))
+            Some((echo_before.0 + 1, echo_before.1 + 1))
         );
         assert_eq!(
             super::props_norm::norm_counters("reactor", "bus2"),
@@ -2881,27 +2897,31 @@ mod props_policy_tests {
         );
     }
 
-    /// **The honest statement of what a mixed pair's exclusion covers** (RP2.3
-    /// audit settlement, 2026-08-23).
+    /// **A mixed pair's exclusion covers only the spellings it measured** — the
+    /// replacement RP2.3's audit settlement (2026-08-23) asked for and RP4.1's
+    /// precondition 1 landed (2026-09-03).
     ///
     /// `load.yearly`'s `CaseFold` row cannot fold `'day'` against `'night'` —
-    /// that is a genuine divergence, the kind the row exists to keep comparable
-    /// — but the pair-scoped echo row masks it on r4133 all the same, because
-    /// the exclusion is asked about the PAIR. The capi channel is what still
-    /// fails on it, and that is the whole of the port's live protection on those
-    /// 20 pairs until RP4.1 narrows the rows per cell.
+    /// that is a genuine divergence, the kind the row exists to keep comparable.
+    /// Until the narrowing the pair-scoped echo row masked it on r4133 all the
+    /// same, because the exclusion was asked about the PAIR, and the capi
+    /// channel was the whole of the port's live protection on those 20 pairs.
+    /// Now `props_norm::ECHO_NARROWED` holds the row to the 23 spellings the
+    /// census credits to it (`examples_full.txt:267-306`, all of the form
+    /// `'<shape>'` vs `''`), so `'day'` vs `'night'` falls out of the exclusion
+    /// and the r4133 channel fails on it too.
     ///
-    /// This test pins the behaviour that actually ships rather than the one the
-    /// docs used to describe; it must be *replaced* by the narrowing, not
-    /// deleted — the day the mask is per-cell, the first assertion flips to
-    /// `!run_load(...)`.
+    /// This is the test the settlement wrote to be *replaced, not deleted*: its
+    /// first assertion is the flipped one, and the capi and neighbour assertions
+    /// are unchanged, so the diff shows exactly which behaviour moved.
     #[test]
     fn a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses() {
         // Counter hygiene first, and it is per TEST, not per binary: this one
         // drives `load.yearly`'s normalization row on cells it cannot fold, and
         // the gate's `assert_norm_rows_are_live()` may run before or after it in
         // the same process. One foldable cell up front leaves that row with
-        // `hits > 0` whatever the ordering.
+        // `hits > 0` whatever the ordering. The echo row gets its own hit from
+        // the measured-spelling assertion at the end.
         assert!(run_load(
             PropsChannel::R4133,
             &[("Yearly", "day"), ("kW", "10")],
@@ -2912,14 +2932,21 @@ mod props_policy_tests {
             [("Yearly", "night"), ("kW", "10")],
         );
         assert!(
-            run_load(PropsChannel::R4133, &divergent.0, &divergent.1),
-            "today the pair-scoped echo row swallows it — when RP4.1 narrows the 20 mixed rows \
-             per cell this assertion becomes its negation"
+            !run_load(PropsChannel::R4133, &divergent.0, &divergent.1),
+            "the narrowed echo row covers only its measured spellings, so a refused cell of a \
+             mixed pair is compared on r4133 too (RP4.1 precondition 1)"
         );
         assert!(
             !run_load(PropsChannel::CapiV0145, &divergent.0, &divergent.1),
-            "…and the capi channel is the only live witness of that value meanwhile"
+            "…and the capi channel, which excludes nothing, still fails on it as well"
         );
+        // The row's own measured spelling is still excluded on r4133 — the
+        // narrowing removed the over-breadth, not the exclusion.
+        assert!(run_load(
+            PropsChannel::R4133,
+            &[("Yearly", "day"), ("kW", "10")],
+            &[("Yearly", ""), ("kW", "10")],
+        ));
         // The neighbour is untouched either way: the mask is field-scoped.
         assert!(!run_load(
             PropsChannel::R4133,
@@ -3045,7 +3072,10 @@ pub const PROPS_015X: &[(&str, &[&str])] = &[
     // capi015 property tables). This name-based row (not the `PropFlags::HIDE_R4133`
     // flag, dropped at U2.5 when the SwtControl surface went full-r4133) is what
     // excludes it from the count/order/name walk on every default-oracle capture
-    // (0.14.5 and capi015); r4133-oracle cases do not property-compare.
+    // (0.14.5 and capi015). Since R4133_PROPS RP4.1 (2026-09-03) r4133-oracle
+    // cases DO property-compare, and there this row is inert in exactly the way
+    // the `Generator` row below is: the r4133 capture's own name list carries
+    // `RatedCurrent`, so `filter_015x` keeps it and it compares in full.
     ("SwtControl", &["RatedCurrent"]),
     // R4133_PROPS_PLAN RP1.1 (EPRI r4133 upstream stubs, `PropFlags::UPSTREAM_STUB`):
     // Generator props 48 -> 50 — `Rneut`/`Xneut` at display slots 16/17
@@ -3320,6 +3350,13 @@ pub fn compare_all_properties(
     ctx: &str,
 ) {
     let policy = PropsPolicy::for_channel(channel);
+    // The r4133 half of this walk is what RP4.1 unmasked, and nothing else in
+    // the tree can say whether it ran: see
+    // [`props_norm::assert_r4133_props_compare_ran`], the gate-epilogue guard
+    // this counter feeds. Counted here, at the ONE gating entry point, rather
+    // than off the tables' `(visits, hits)` — see that helper's doc for why the
+    // table sums cannot answer the question.
+    let mut compared_elements = 0usize;
     for pc in exp {
         let class = pc.element.split('.').next().unwrap_or("");
         // The channel-scoped Recloser/Relay whole-element skip: their tables are
@@ -3349,6 +3386,10 @@ pub fn compare_all_properties(
             tol.i_abs,
             ctx,
         );
+        compared_elements += 1;
+    }
+    if channel == PropsChannel::R4133 {
+        props_norm::record_r4133_props_walk(compared_elements);
     }
 }
 
