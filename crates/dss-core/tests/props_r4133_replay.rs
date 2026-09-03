@@ -1845,7 +1845,8 @@ const RP22_S6: &[&str] = &[
 ///   modelling differs, so a numbered sub-step must decide it before RP4.1.
 ///
 /// Every row's `cite` names the r4133 `Version8/Source` site the verdict was
-/// read from; the full dossier prose is STATUS §WP-RP2's RP2.2 record.
+/// read from; the full dossier prose is the RP2.2 record in
+/// `docs/phase-records/r4133-props-rp2.md` (STATUS §7 forwards §WP-RP2 there).
 const RP22_ROUTING: &[(&str, Owner, &str)] = &[
     // --- bin 3, the four pairs that are NOT enum synonyms --------------------
     // `'close'` vs `'open'` (12 cells of 34) is a stale STORE, not a state
@@ -5072,8 +5073,10 @@ fn every_landed_property_entry_has_a_witness_pin_that_exists() {
 /// record rests on these plain `#[test]`s. That is exactly the hole the RP3.6
 /// audit closed for the compare side with [`LANDED_PROPERTY_ENTRY_PINS`], and
 /// [`every_rp311_serialization_pin_exists_and_is_cited`] closes it here: a
-/// rename or a deletion reds instead of silently orphaning the `STATUS.md`
-/// citations.
+/// rename or a deletion reds instead of silently orphaning the RP3.11
+/// record's citations. That record lives in
+/// `docs/phase-records/r4133-props-rp3.md` since the 2026-09-03 archiving
+/// round; `STATUS.md` §7 forwards §RP3.11 there.
 ///
 /// The **re-compilability** half pins a guard that keeps the emitted deck
 /// loadable; the **divergence** half names *both* serializations, the port's
@@ -5141,12 +5144,15 @@ const RP311_SERIALIZATION_PINS: &[(&str, &str, &str)] = &[
 ];
 
 /// The existence + citation guard for [`RP311_SERIALIZATION_PINS`]: every row
-/// names a real `#[test]` **and** is cited by name in `STATUS.md`, so the record
-/// and the tree cannot drift apart in either direction.
+/// names a real `#[test]` **and** is cited by name in the RP3.11 record, so the
+/// record and the tree cannot drift apart in either direction. The record moved
+/// out of `STATUS.md` into `docs/phase-records/r4133-props-rp3.md` on 2026-09-03
+/// (verbatim); `STATUS.md` §7 forwards §RP3.11 there, so this guard follows the
+/// text, not the filename.
 #[test]
 fn every_rp311_serialization_pin_exists_and_is_cited() {
-    let status = std::fs::read_to_string(repo_root().join("STATUS.md"))
-        .expect("STATUS.md")
+    let record = std::fs::read_to_string(repo_root().join("docs/phase-records/r4133-props-rp3.md"))
+        .expect("docs/phase-records/r4133-props-rp3.md")
         .replace("\r\n", "\n");
     assert!(
         RP311_SERIALIZATION_PINS.len() >= 11,
@@ -5163,8 +5169,9 @@ fn every_rp311_serialization_pin_exists_and_is_cited() {
             "{pin} ({role}) is cited by the RP3.11 record, but {file} defines no such #[test]"
         );
         assert!(
-            status.contains(pin),
-            "{pin} ({role}) is in the tree but no longer cited in STATUS.md's RP3.11 record"
+            record.contains(pin),
+            "{pin} ({role}) is in the tree but no longer cited in the RP3.11 record \
+             (docs/phase-records/r4133-props-rp3.md; STATUS.md §7 forwards §RP3.11 there)"
         );
     }
 }
@@ -5179,8 +5186,10 @@ fn every_rp311_serialization_pin_exists_and_is_cited() {
 /// record — two fixed panics, the dispatched-Q report, the swing-source stamp
 /// and the non-reproduced upstream PC sign — rests on these plain `#[test]`s.
 /// [`every_rp313_ncim_pin_exists_and_is_cited`] is what stops a rename or a
-/// deletion from silently orphaning the `STATUS.md` / `R4133_PROPS_PLAN.md`
-/// citations, exactly as [`RP311_SERIALIZATION_PINS`] does one sub-step earlier.
+/// deletion from silently orphaning the RP3.13 record's citations (in
+/// `docs/phase-records/r4133-props-rp3.md` since 2026-09-03, forwarded from
+/// `STATUS.md` §7) or `R4133_PROPS_PLAN.md`'s, exactly as
+/// [`RP311_SERIALIZATION_PINS`] does one sub-step earlier.
 const RP313_NCIM_PINS: &[(&str, &str)] = &[
     // P1-P3: a supported deck must never abort a `#![forbid(unsafe_code)]` crate.
     (
@@ -5224,12 +5233,14 @@ const RP313_NCIM_PINS: &[(&str, &str)] = &[
 ];
 
 /// The existence + citation guard for [`RP313_NCIM_PINS`]: every row names a
-/// real `#[test]` **and** is cited by name in `STATUS.md`, so the record and the
-/// tree cannot drift apart in either direction.
+/// real `#[test]` **and** is cited by name in the RP3.13 record, so the record
+/// and the tree cannot drift apart in either direction. The record moved out of
+/// `STATUS.md` into `docs/phase-records/r4133-props-rp3.md` on 2026-09-03
+/// (verbatim); `STATUS.md` §7 forwards §RP3.13 there.
 #[test]
 fn every_rp313_ncim_pin_exists_and_is_cited() {
-    let status = std::fs::read_to_string(repo_root().join("STATUS.md"))
-        .expect("STATUS.md")
+    let record = std::fs::read_to_string(repo_root().join("docs/phase-records/r4133-props-rp3.md"))
+        .expect("docs/phase-records/r4133-props-rp3.md")
         .replace("\r\n", "\n");
     let path = repo_root().join("crates/dss-core/src/exec/tests/ncim.rs");
     let text = std::fs::read_to_string(&path)
@@ -5247,8 +5258,9 @@ fn every_rp313_ncim_pin_exists_and_is_cited() {
              crates/dss-core/src/exec/tests/ncim.rs defines no such #[test]"
         );
         assert!(
-            status.contains(pin),
-            "{pin} ({role}) is in the tree but no longer cited in STATUS.md's RP3.13 record"
+            record.contains(pin),
+            "{pin} ({role}) is in the tree but no longer cited in the RP3.13 record \
+             (docs/phase-records/r4133-props-rp3.md; STATUS.md §7 forwards §RP3.13 there)"
         );
     }
 }
@@ -5333,8 +5345,9 @@ const LEDGER_ENTRY_PINS: &[(&str, &str, &str)] = &[
 /// through by simply being added to it.
 ///
 /// Each row must name a real entry id and the case it was landed as, so the
-/// citation stays checkable against STATUS's verbatim record and — since RP4.1
-/// (2026-09-03) — against `tests/corpus/ledger.json` itself, which
+/// citation stays checkable against the verbatim records in
+/// `docs/phase-records/r4133-props-rp3.md` and `r4133-props-rp4.md` and — since
+/// RP4.1 (2026-09-03) — against `tests/corpus/ledger.json` itself, which
 /// [`the_staged_r4133_property_entries_landed_at_rp41`] reads back through this
 /// very column.
 #[test]
@@ -6683,7 +6696,8 @@ fn the_ledgered_rows_are_excluded_by_entries_that_are_really_in_the_ledger() {
 ///
 /// **RP1.4 staged none, and the earlier "plus RP1.4's" in this doc — and in
 /// plan §RP4.1 ¶2 — was wrong**: corrected by the RP4.1 coordinator ruling of
-/// 2026-09-02 after re-reading RP1.4's own record (`STATUS.md` §WP-RP1). Its
+/// 2026-09-02 after re-reading RP1.4's own record (§WP-RP1, moved verbatim to
+/// `docs/phase-records/r4133-props-rp0-rp1.md` on 2026-09-03). Its
 /// `gendispatcher.weights` divergence is whole-solution, no pin could cover a
 /// flip to `engines: "both"`, its decks therefore stay `capi_v0145`, and its
 /// artifact is a `PROPS_015X` allowlist row — not a ledger entry.
