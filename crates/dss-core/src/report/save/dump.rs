@@ -14,9 +14,30 @@
 //! element kind — plain object / CktElement / PCElement) plus per-class override
 //! bodies dispatched by a typed `ClassArena` read (the same pattern the register exports
 //! use). Property lines reuse [`ClassProps::get_value`] — Pascal
-//! `PropertyValue[i] == GetPropertyValue(i)` for every element (only
-//! `TLoadShapeObj` overrides the getter, and LoadShape has no `DumpProperties`
-//! override), so the ported renderer is byte-faithful (`props_roundtrip` pins it).
+//! `PropertyValue[i] == GetPropertyValue(i)` for every element, so the ported
+//! renderer is byte-faithful against the pinned oracle (`props_roundtrip` pins
+//! it).
+//!
+//! **Whose getter that is (corrected by R4133_PROPS RP3.11, 2026-09-03).** The
+//! claim this doc used to make — *"only `TLoadShapeObj` overrides the getter"* —
+//! is true of the pinned dss_capi 0.14.5 (exactly two `GetPropertyValue`
+//! definitions in `src/`: the base and `TLoadShapeObj`) and **false of r4133**,
+//! which overrides it in **49** units of `Version8/Source` to answer *live* on a
+//! hand-picked index set. RP3.11 decided the surface for every class at once and
+//! recorded the verdict `KEEP_LIVE_PINNED`: `Dump` keeps rendering the live field
+//! through the one `get_value` it shares with [`super::save`], `?`, the property
+//! API and batchedit. Matching r4133's stored `~ model=3` would mean printing a
+//! value the engine knows to be superseded (`gen_model == 4` after the NCIM
+//! PV→PQ conversion), which CLAUDE.md's 2026-08-02 policy forbids — and `Dump`
+//! applies no `PrpSequence` filter (`PCElements/generator.pas:2489-2500`), so all
+//! 88 committed `dump*` artifacts sit behind the alternative. The divergence is
+//! pinned, both engines' bytes quoted, by [`crate::exec::tests::report`]`::
+//! dump_renders_the_live_model_after_ncim_pv2pq`; the `Save`-side policy
+//! paragraph lives in [`super::save`]. Recorded and **not** answered there:
+//! r4133 carries **64** `DumpProperties` overrides to the 20 this port inherited
+//! from 0.14.5 (`!DQDV=`, the 34/36 double-paren wrap, the hardcoded
+//! `~ Refuel=False` that contradicts r4133's own getter) — a scope question with
+//! those same 88 goldens behind it, tracked in STATUS §RP3.11.
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::meter::EnergyMeter;

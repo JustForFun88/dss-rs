@@ -951,3 +951,503 @@ fn dump_solution_renders_ldcurve_name() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// RP3.11 P1 — `Save circuit` writes `CalcVoltageBases` **uncommented**, the way
+/// r4133 does (`Version8/Source/Common/Circuit.pas:2716-2740`:
+/// `Writeln(F,'Set Voltagebases='+VBases); Writeln(F, 'CalcVoltagebases');`,
+/// two plain `Writeln`s with no flag between them). dss_capi 0.14.5 is the only
+/// engine that ever writes `! CalcVoltageBases`
+/// (`.inputs/dss_capi/src/Common/Circuit.pas:2708-2731`) and only outside its
+/// own `DSS_CAPI_NOCOMPATFLAGS` branch, i.e. as the compat-flag side of a flag
+/// this port hard-codes to the ON side; the port followed 0.14.5 until RP3.11.
+///
+/// The comment is not cosmetic: without the `CalcVoltageBases` call the
+/// re-compiled tree carries `kVBase = 0` on **every** bus, which is what this
+/// test pins on the emitted circuit. RP3.11 measured the consequence on
+/// `modes/ncim/ncim_pv_pq.dss`: `bus_kvbase(genbus)` 0.0 instead of
+/// 7.199557856794634, the deck NOT CONVERGED at 15 iterations; and on
+/// `controls/expcontrol/expcontrol_basic.dss` the PV moved from -0.0060 kvar /
+/// 14 iterations to +307.94 kvar / 53 — per-unit-driven controls read those
+/// bases (`tmp/rp311/out_bisect.txt` §A, §B: swapping this one file into
+/// r4133's own otherwise-exact save is what breaks the round trip, on either
+/// engine).
+#[test]
+fn save_writes_calcvoltagebases_like_r4133() {
+    let dir = std::env::temp_dir().join(format!("dss_rp311_vbases_{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.rp311vb basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "new line.l1 bus1=src bus2=b length=1 units=km r1=0.1 x1=0.3 c1=0 c0=0",
+        "new load.ld1 bus1=b phases=3 kv=12.47 kw=500 pf=0.95",
+        "set voltagebases=[12.47]",
+        "calcv",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        dir.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "save errors: {:?}", dss.errors());
+
+    // r4133's two lines, ours: identical but for the property-name spelling
+    // (`Set Voltagebases`/`CalcVoltagebases` there, `Set VoltageBases`/
+    // `CalcVoltageBases` here — one spelling per name, re-parsed
+    // case-insensitively).
+    let text = std::fs::read_to_string(dir.join("BusVoltageBases.dss")).expect("BusVoltageBases");
+    assert_eq!(
+        text, "Set VoltageBases=(12.47, )\nCalcVoltageBases\n",
+        "emitted BusVoltageBases.dss"
+    );
+    assert!(
+        !text.contains("! CalcVoltageBases"),
+        "the 0.14.5 compat-flag comment must be gone: {text:?}"
+    );
+
+    // The line has to *do* something: re-compiling the emitted tree restores a
+    // non-zero base on every bus. Without it every `kv_base` reads 0.0.
+    let mut back = Dss::new();
+    back.command(&format!(
+        "compile \"{}\"",
+        dir.join("Master.dss").to_string_lossy().replace('\\', "/")
+    ));
+    assert!(
+        back.errors().is_empty(),
+        "re-compile errors: {:?}",
+        back.errors()
+    );
+    let ckt = back.circuit.as_ref().expect("circuit");
+    let ib = ckt.bus_list.find("b").expect("bus b");
+    assert_eq!(
+        ckt.buses[ib].kv_base,
+        12.47 / f64::sqrt(3.0),
+        "re-compiled bus kVBase (L-N); 0.0 is the `! CalcVoltageBases` symptom"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// RP3.11 P2 — `TDSSObject.SaveWrite`'s LoadShape branch (r4133
+/// `Version8/Source/General/DSSObject.pas:139-150` + `:163-172`, r4133-only:
+/// neither dss_capi 0.14.5 nor this port had it). `npts` sizes the `Mult`/
+/// `Hour` allocation on reload, so the Pascal starts the walk at property 1
+/// instead of at the head of the chain and then restarts the chain ignoring
+/// index 1 — *"created to guarantee that the npts property will be the first to
+/// be declared when saving LoadShapes"*.
+///
+/// Both orders are pinned, because only the second one moved: `ls1` types
+/// `npts` first (this port already emitted it first), `ls2` re-sets it last and
+/// used to save as `Interval=1 Mult=[ 1 2 3] NPts=3` — a line that reloads a
+/// 0-point shape and drops the multipliers. r4133 saves **both** as
+/// `New "LoadShape.lsN" npts=3 interval=1 mult=[ 1 2 3]` (epri-worker probe,
+/// OpenDSSDirect.dll 11.0.0.1 r4133, RP3.11 I1); the port writes the same
+/// tokens under its own property-name spelling. The `matches("NPts=") == 1`
+/// leg is the load-bearing one: r4133 reaches it through
+/// `TLoadShapeObj.Set_NumPoints` re-stamping `PropertyValue[1]`
+/// (`LoadShape.pas:1665-1677`, called at `:631-636` *"Keep Properties in order
+/// for save command"*), which this port does not do, so the skip has to cover
+/// the restart as well.
+#[test]
+fn save_write_puts_npts_first_for_loadshape() {
+    let dir = std::env::temp_dir().join(format!("dss_rp311_lshp_{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.rp311ls basekv=12.47 pu=1.0 phases=3 bus1=src",
+        // npts typed FIRST
+        "new loadshape.ls1 npts=3 interval=1 mult=[1 2 3]",
+        // npts re-set LAST: its sequence stamp moves to the end of the chain
+        "new loadshape.ls2 npts=3 interval=1 mult=[1 2 3]",
+        "edit loadshape.ls2 npts=3",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        dir.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "save errors: {:?}", dss.errors());
+
+    let text = std::fs::read_to_string(dir.join("LoadShape.dss")).expect("LoadShape.dss");
+    for name in ["LoadShape.ls1", "LoadShape.ls2"] {
+        let line = text
+            .lines()
+            .find(|l| l.contains(name))
+            .unwrap_or_else(|| panic!("no {name} line in {text:?}"));
+        assert_eq!(
+            line,
+            format!("New \"{name}\" NPts=3 Interval=1 Mult=[ 1 2 3]"),
+            "r4133 writes `New \"{name}\" npts=3 interval=1 mult=[ 1 2 3]`"
+        );
+        assert_eq!(
+            line.matches("NPts=").count(),
+            1,
+            "npts must be written exactly once: {line:?}"
+        );
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// RP3.11 §1 — **the `Save` verdict: KEEP_LIVE_PINNED.** `Save` renders the
+/// *live* field, and the divergence from r4133's serializer is recorded here
+/// instead of being reproduced.
+///
+/// Deck: `tests/corpus/modes/ncim/ncim_pv_pq.dss` — a model-3 (PV) generator
+/// whose reactive target exceeds `maxkvar`, so the NCIM solve clamps Q and
+/// converts the machine to model 4 (PQ). After the converged solve the two
+/// engines serialize the same object differently. Both lines are measured
+/// (2026-09-03, `epri-worker` / `OpenDSSDirect.dll` 11.0.0.1 rev r4133 against
+/// this port on the same deck; transcripts
+/// `tmp/rp311/out/{r4133,port}_ncim/save/Generator.dss`):
+///
+/// ```text
+/// r4133: New "Generator.g1" bus1=genbus phases=3 kv=12.47 kW=800 model=3 maxkvar=1500 minkvar=-1500 Vpu=1.01
+/// port : New "Generator.g1" PF=0.88 Bus1=genbus Phases=3 kV=12.47 kW=800 Model=4 Maxkvar=1500 Minkvar=-1500 Vpu=1.01
+/// ```
+///
+/// **Why the port does not match, and must not.** `TDSSObject.SaveWrite` writes
+/// `PropertyValue[iProp]` (`R4133:General/DSSObject.pas:156`), which is *not* a
+/// parse store: it resolves to the **virtual** `GetPropertyValue` (`:45`,
+/// `:117-120` — *"This is virtual function that may call routine"*), and 49
+/// classes of the live `Version8/Source` tree override it to answer live on a
+/// hand-picked index set.
+/// `TGeneratorObj.GetPropertyValue` (`R4133:PCElements/generator.pas:3007-3038`)
+/// has arms for 3 `kv`, 4 `kW`, 5 `pf`, 13 `kvar`, 19/20 `maxkvar`/`minkvar`,
+/// 26/27 `kVA`/`MVA`, 34/36 and 37-46 — and **no arm 6**, which is the only
+/// reason `model` falls through to the parsed token `3`. Storage's arm list
+/// *contains* `propMODEL` (`R4133:PCElements/Storage.pas:1525-1596`): the same
+/// property, the opposite treatment, in the same engine. The live/store split is
+/// an artifact of which arms each class's author happened to write, not a rule.
+///
+/// So matching r4133 here means printing `model=3` while `gen_model == 4` in the
+/// same process — reproducing the echo as *behaviour*, which the 2026-08-02
+/// policy forbids. RP3.11's **kill criterion fires**, and `Save` keeps the live
+/// render it shares with `Dump`, the property API, `?` and batchedit through the
+/// one [`crate::obj::props::ClassProps`]`::get_value`. The compare-side twin of
+/// this very cell is already excluded and pinned: the `generator.model` echo row
+/// (`harness::props_norm::PROPS_ECHO_R4133`) →
+/// `props_r4133_pins::generator_model_renders_the_live_pv2pq_conversion`.
+///
+/// **The cost, recorded rather than dressed up** (RP3.11 §1.4,
+/// `tmp/rp311/out_bisect.txt` §A/§C1): `Save` renders live values over an
+/// *authored* membership, so on a property the solve mutates it reproduces
+/// neither the authored problem nor the full solved state. Re-compiling the
+/// port's line yields a PQ machine at pf 0.88 — Q = 800·tan(acos 0.88) =
+/// 431.79 kvar instead of the authored PV machine clamped at 1500 kvar — and
+/// `|V| genbus.1` moves 7213.235350 → 7161.277193 V (both engines reproduce each
+/// other's numbers on the substituted deck). The same hybrid is inherent to
+/// r4133's 49 partial getters; the port's version is the one that never prints a
+/// value the engine knows to be superseded.
+///
+/// The divergence runs both ways on this surface: r4133's own `SaveWrite` emits
+/// `kvar=0` for a `windgen`, which on reload flattens `PFNominal` to 1.0 and
+/// `kvarMax`/`kvarMin` to 0 (`tests/props_r4133_replay.rs:1197-1199`) — an
+/// upstream defect the port does not have.
+#[test]
+fn save_renders_the_live_model_after_ncim_pv2pq() {
+    let deck = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/corpus/modes/ncim/ncim_pv_pq.dss");
+    assert!(deck.is_file(), "vendored corpus deck missing: {deck:?}");
+    let dir = std::env::temp_dir().join(format!("dss_rp311_ncimsave_{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+
+    let mut dss = Dss::new();
+    dss.command(&format!("compile \"{}\"", deck.display()));
+    assert!(dss.errors().is_empty(), "ncim_pv_pq: {:?}", dss.errors());
+
+    // What the engine knows: the NCIM solve converted the machine to PQ.
+    dss.command("? generator.g1.model");
+    assert_eq!(
+        dss.result(),
+        "4",
+        "the deck authors model=3; the converged NCIM solve clamps Q at maxkvar \
+         and converts the generator to model 4"
+    );
+
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        dir.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "save errors: {:?}", dss.errors());
+    let text = std::fs::read_to_string(dir.join("Generator.dss")).expect("Generator.dss");
+    std::fs::remove_dir_all(&dir).ok();
+    let line = text
+        .lines()
+        .find(|l| l.contains("Generator.g1"))
+        .unwrap_or_else(|| panic!("no Generator.g1 line in {text:?}"));
+
+    assert_eq!(
+        line,
+        "New \"Generator.g1\" PF=0.88 Bus1=genbus Phases=3 kV=12.47 kW=800 Model=4 \
+         Maxkvar=1500 Minkvar=-1500 Vpu=1.01",
+        "the port's serialization; r4133 writes `New \"Generator.g1\" bus1=genbus \
+         phases=3 kv=12.47 kW=800 model=3 maxkvar=1500 minkvar=-1500 Vpu=1.01` \
+         (measured), which is the parsed token for a machine the same process \
+         already converted to model 4"
+    );
+    assert!(
+        !line.to_ascii_lowercase().contains("model=3"),
+        "printing r4133's stale `model=3` is the kill criterion: {line:?}"
+    );
+}
+
+/// RP3.11 §2 — **the `Dump` verdict: KEEP_LIVE_PINNED**, for `Save`'s reasons
+/// plus one of its own.
+///
+/// `Dump` renders through the same [`crate::obj::props::ClassProps`]`::get_value`
+/// as `Save`, the property API, `?` and batchedit, so every argument of
+/// [`save_renders_the_live_model_after_ncim_pv2pq`] applies unchanged — and
+/// `TGeneratorObj.DumpProperties` (`R4133:PCElements/generator.pas:2489-2500`)
+/// walks **all** properties with no `PrpSequence` filter, so answering the parse
+/// store here would land on all 88 committed `dump*` artifacts (44 `.txt` + 44
+/// `.meta.json`, 162 lines), every one of them captured from an oracle that
+/// renders live.
+///
+/// Measured on `tests/corpus/modes/ncim/ncim_pv_pq.dss` after the converged NCIM
+/// solve (2026-09-03; `tmp/rp311/out/{r4133,port}_ncim/dump_Generator_g1.txt`),
+/// the store-vs-live axis is exactly **one** of the ten differing rows:
+///
+/// ```text
+/// r4133: ~ pf=0.88     ~ kvar=431.794           ~ model=3
+/// port : ~ PF=0.88     ~ kvar=431.79425771047   ~ Model=4
+/// ```
+///
+/// (The other nine rows belong to axes with their own owners: r4133's deleted
+/// `DumpProperties` overrides — `!DQDV=`, the double-paren wrap, `Refuel=False`,
+/// itself an r4133 bug against its own getter `generator.pas:2495` vs `:3028` —
+/// the RP3 name census, `fmt_g` float spelling and header quoting.)
+#[test]
+fn dump_renders_the_live_model_after_ncim_pv2pq() {
+    let deck = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/corpus/modes/ncim/ncim_pv_pq.dss");
+    assert!(deck.is_file(), "vendored corpus deck missing: {deck:?}");
+    let dir = std::env::temp_dir().join(format!("dss_rp311_ncimdump_{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let mut dss = Dss::new();
+    dss.command(&format!("compile \"{}\"", deck.display()));
+    assert!(dss.errors().is_empty(), "ncim_pv_pq: {:?}", dss.errors());
+    dss.command(&format!("set datapath=\"{}\"", dir.display()));
+    dss.command("dump generator.g1");
+    assert!(dss.errors().is_empty(), "dump errors: {:?}", dss.errors());
+    let produced = std::fs::read_to_string(dss.last_result_file()).unwrap();
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert!(
+        produced.contains("~ Model=4\n"),
+        "`Dump` renders the live model; r4133 writes `~ model=3` here: {produced:?}"
+    );
+    assert!(
+        !produced.to_ascii_lowercase().contains("~ model=3"),
+        "r4133's stale `~ model=3` must not be reproduced: {produced:?}"
+    );
+    // The live `kvar` the same getter answers, for context: r4133 prints the
+    // same number under its `%.6g` display (`~ kvar=431.794`).
+    assert!(
+        produced.contains("~ kvar=431.79425771047\n"),
+        "the live dispatched kvar: {produced:?}"
+    );
+}
+
+/// RP3.11 §3 — the `PF=0.88`-class item: **a membership (sequence) difference,
+/// explained, not a port bug.** `Save`'s *values* are live (§1); its *membership
+/// and order* are the explicitly-set chain, and that chain differs from r4133's
+/// because this port carries dss_capi 0.14.5's **property tracking**, which
+/// r4133 has no counterpart for.
+///
+/// ```text
+/// r4133: New "Generator.g1" bus1=genbus phases=3 kv=12.47 kW=800 model=3 …   (no `pf` at all)
+/// port : New "Generator.g1" PF=0.88 Bus1=genbus Phases=3 kV=12.47 kW=800 …   (`PF` first)
+/// ```
+///
+/// **Mechanism.** In r4133 `PrpSequence` is stamped **only** by
+/// `Set_PropertyValue` (`R4133:General/DSSObject.pas:213-221`) — the parser
+/// storing a token — and `InitPropertyValues` ends in `ClearPropSeqArray`
+/// (`:122-129` → `:62-69`), so no constructor mark can survive; `SetAsNextSeq`
+/// does not exist in r4133 (0 hits over `Version8/Source`). dss_capi 0.14.5
+/// introduced it as its documented property-tracking feature — 124 call sites —
+/// guarded upstream by `DSSCompatFlag.NoPropertyTracking`
+/// (`CAPI:PCElements/Generator.pas:953-958`), whose OFF state upstream documents
+/// as *"following the original OpenDSS implementation"*. This port carries the
+/// six creation seeds verbatim ([`crate::elements::pc::generator`] `mod.rs:587-588`
+/// and the PVSystem/Storage/VSource/Fault/Transformer twins), and seeds take
+/// sequence 1..n — which is exactly why `PF` is printed first.
+///
+/// **Why they stay** (RP3.11 §3.2, the evidence the earlier survey missed): the
+/// same bitmap has a second product reader, the AltDSS JSON export
+/// (`report/export/json/build.rs:61-70` ← `CAPI_Obj.pas:665-733`), and *there*
+/// dss_capi is not an outdated oracle — r4133 has no JSON export at all, so its
+/// goldens are the only specification that exists, and they encode
+/// tracking-**on**. Leg (2) below is that reader, on the committed golden
+/// `tests/golden/json/vsource_micro.json`'s own bytes: a deck typing neither
+/// `mvasc3` nor `mvasc1` emits both, ahead of the typed `BasekV`. Dropping the
+/// seeds would buy a partial alignment on a surface that stays divergent anyway
+/// (§1) and pay for it with a measured loss on the only surface where 0.14.5
+/// *is* the authority.
+///
+/// Nothing here is stale: `0.88` is the live `PFNominal` on **both** engines, and
+/// r4133's own `Dump` prints `~ pf=0.88` for this machine. No sequence-axis row
+/// has a measured consequence in either direction — substituting the port's
+/// `Line.dss`, `Vsource.dss`, `ExpControl.dss`, `PVSystem.dss` or `Master.dss`
+/// into r4133's own save changes nothing (`tmp/rp311/out_bisect.txt` §A). The
+/// reverse direction is [`save_omits_the_tapwinding_that_r4133_stamps`].
+#[test]
+fn save_membership_follows_property_tracking_not_prpsequence() {
+    use crate::report::export::json::JsonOpts;
+
+    // (1) `Save`: the port's chain heads with the seeded `PF`; r4133's line has
+    // no `pf` token at all.
+    let deck = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/corpus/modes/ncim/ncim_pv_pq.dss");
+    assert!(deck.is_file(), "vendored corpus deck missing: {deck:?}");
+    let dir = std::env::temp_dir().join(format!("dss_rp311_seq_{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    let mut dss = Dss::new();
+    dss.command(&format!("compile \"{}\"", deck.display()));
+    assert!(dss.errors().is_empty(), "ncim_pv_pq: {:?}", dss.errors());
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        dir.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "save errors: {:?}", dss.errors());
+    let text = std::fs::read_to_string(dir.join("Generator.dss")).expect("Generator.dss");
+    std::fs::remove_dir_all(&dir).ok();
+    let line = text
+        .lines()
+        .find(|l| l.contains("Generator.g1"))
+        .unwrap_or_else(|| panic!("no Generator.g1 line in {text:?}"));
+    assert!(
+        line.starts_with("New \"Generator.g1\" PF=0.88 "),
+        "the 0.14.5 creation seed puts the never-typed `PF` first; r4133 writes \
+         `New \"Generator.g1\" bus1=genbus phases=3 …` with no `pf` token: {line:?}"
+    );
+
+    // (2) The second reader that decides it: the AltDSS JSON export walks the
+    // same `next_property_set` chain. These are the committed bytes of
+    // `tests/golden/json/vsource_micro.json`'s `vsource.source` / `default`
+    // capture — the pinned 0.14.5 oracle's own JSON, in seed order.
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.probe basekv=115 bus1=sourcebus");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let json = dss
+        .obj_to_json("vsource.source", JsonOpts::NONE)
+        .expect("vsource.source");
+    // Membership and order only: the float *spelling* is the lane's display
+    // kernel (parity renders the oracle's `2.0000000000000000E+003`, the default
+    // lane the shortest `2e3`), and it is not what this pin is about.
+    let keys: Vec<&str> = json
+        .match_indices("\":")
+        .map(|(i, _)| {
+            let head = &json[..i];
+            &head[head.rfind('"').map(|p| p + 1).unwrap_or(0)..]
+        })
+        .collect();
+    assert_eq!(
+        keys,
+        ["Name", "MVASC3", "MVASC1", "BasekV", "Bus1"],
+        "the deck types neither `mvasc3` nor `mvasc1`; the oracle's own golden \
+         emits both, ahead of the typed `BasekV` — the seeded chain. Its bytes: \
+         {{\"Name\":\"source\",\"MVASC3\":2.0000000000000000E+003,\
+         \"MVASC1\":2.1000000000000000E+003,\"BasekV\":1.1500000000000000E+002,\
+         \"Bus1\":\"sourcebus\"}}; ours: {json}"
+    );
+}
+
+/// RP3.11 §3.3 — the sequence axis in the **other** direction: r4133 stamps a
+/// property this port does not, and the port's line is still round-trip-safe.
+///
+/// r4133's `winding=` arm writes `PropertyValue[20] := Param`
+/// (`R4133:Controls/RegControl.pas:480-483`), so `tapwinding` joins the chain
+/// and `SaveWrite` prints it. dss_capi 0.14.5 deliberately dropped that stamp
+/// (`CAPI:Controls/RegControl.pas:417` — *"not really required"*) and this port
+/// followed. Measured on both engines (2026-09-03, `epri-worker` probe
+/// `tmp/rp311/i1/probe_saveorder.py` on the deck below, and the corpus deck
+/// `controls/autotrans/midi_autotrans.dss` in `tmp/rp311/out/*_autotrans/save/`):
+///
+/// ```text
+/// r4133: New "RegControl.rc1" transformer=t1 winding=2 tapwinding=2 vreg=122 band=3 ptratio=20
+/// port : New "RegControl.rc1" Transformer=t1 Winding=2 VReg=122 Band=3 PTRatio=20
+/// r4133: New "RegControl.rat" transformer=at winding=2 tapwinding=2 vreg=123 band=1.5 ptratio=332 EventLog=yes
+/// port : New "RegControl.rat" Transformer=at Winding=2 VReg=123 Band=1.5 PTRatio=332 EventLog=Yes
+/// ```
+///
+/// The omission is harmless because re-parsing `Winding=2` re-fires the same
+/// side effect r4133 was recording — `TapWinding := ElementTerminal`
+/// (`elements/control/reg_control/accessors.rs`, the `WINDING` arm) — which leg
+/// (2) below asserts on the re-compiled tree. (`Transformer=` coming first is
+/// RP3.11 P4, r4133's own `SaveWrite` override, pinned separately by
+/// `elements::control::reg_control::tests::regcontrol_save_write_puts_the_transformer_first`.)
+#[test]
+fn save_omits_the_tapwinding_that_r4133_stamps() {
+    let dir = std::env::temp_dir().join(format!("dss_rp311_tapwdg_{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.rp311tw basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "new line.l1 bus1=src bus2=b2 r1=0.1 x1=0.2 c1=0 length=1",
+        "new transformer.t1 windings=2 buses=[b2 b3] conns=[wye wye] kvs=[12.47 4.16] \
+         kvas=[1000 1000] xhl=6",
+        "new load.ld1 bus1=b3 phases=3 kv=4.16 kw=100 pf=0.95",
+        "new regcontrol.rc1 winding=2 vreg=122 band=3 ptratio=20 transformer=t1",
+        "set voltagebases=[12.47, 4.16]",
+        "calcv",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        dir.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "save errors: {:?}", dss.errors());
+
+    // (1) The port's bytes, and the absent stamp.
+    let text = std::fs::read_to_string(dir.join("RegControl.dss")).expect("RegControl.dss");
+    let line = text
+        .lines()
+        .find(|l| l.contains("RegControl.rc1"))
+        .unwrap_or_else(|| panic!("no RegControl.rc1 line in {text:?}"))
+        .to_string();
+    assert_eq!(
+        line, "New \"RegControl.rc1\" Transformer=t1 Winding=2 VReg=122 Band=3 PTRatio=20",
+        "the port's serialization; r4133 writes `New \"RegControl.rc1\" \
+         transformer=t1 winding=2 tapwinding=2 vreg=122 band=3 ptratio=20` \
+         (measured), the extra token being its `winding=` side-effect stamp"
+    );
+    assert!(
+        !line.to_ascii_lowercase().contains("tapwinding"),
+        "0.14.5 dropped the stamp and this port follows: {line:?}"
+    );
+
+    // (2) …and it costs nothing: the re-compiled deck restores `TapWinding`,
+    // because `Winding=2` re-fires the side effect on the way in.
+    let mut back = Dss::new();
+    back.command(&format!(
+        "compile \"{}\"",
+        dir.join("Master.dss").to_string_lossy().replace('\\', "/")
+    ));
+    assert!(
+        back.errors().is_empty(),
+        "re-compile errors: {:?}",
+        back.errors()
+    );
+    back.command("? regcontrol.rc1.tapwinding");
+    assert_eq!(
+        back.result(),
+        "2",
+        "re-parsing `Winding=2` re-fires `TapWinding := ElementTerminal`, so the \
+         token r4133 prints is redundant"
+    );
+    back.command("? regcontrol.rc1.winding");
+    assert_eq!(back.result(), "2", "the winding itself round-trips");
+    std::fs::remove_dir_all(&dir).ok();
+}

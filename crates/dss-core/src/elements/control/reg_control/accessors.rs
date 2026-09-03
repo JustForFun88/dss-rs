@@ -341,9 +341,16 @@ impl DssObject for RegControl {
         match idx {
             TRANSFORMER => {
                 // MonitoredElement := ControlledElement (same for this
-                // controller). Pascal also sets PrpSequence[transformer] :=
-                // -10 so Save writes it first; Save is not ported (Phase 6+),
-                // so the mark is omitted.
+                // controller). 0.14.5 additionally sets `PrpSequence[Idx] :=
+                // -10` ("make sure Transformer prop is first",
+                // `CAPI:Controls/RegControl.pas:412`); the mark stays omitted
+                // here — r4133 has no such stamp and gets the same ordering from
+                // `TRegcontrolObj.SaveWrite` (`R4133:Controls/RegControl.pas:
+                // 1399-1421`), which RP3.11 ported instead (see
+                // `reg_control/save.rs`, pinned by
+                // `regcontrol_save_write_puts_the_transformer_first`). Sequence
+                // marks are not Save-local: the same bitmap feeds the AltDSS
+                // JSON export and `prp_specified`.
                 self.ccd.monitored_element = self.ccd.controlled_element;
             }
             WINDING => {

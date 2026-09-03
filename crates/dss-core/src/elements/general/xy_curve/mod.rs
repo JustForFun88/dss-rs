@@ -16,6 +16,7 @@
 mod tests;
 
 mod accessors;
+mod save;
 
 use crate::obj::base::{DssObjData, FileLoad};
 use crate::obj::props::{PropDef, PropFlags, define_properties};
