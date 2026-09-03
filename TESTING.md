@@ -275,6 +275,28 @@ citations at `crates/dss-core/src/elements/control/relay/tests.rs` and
 The three `der_controls` / `line_constants` / `harmonics` gates share one
 replay engine, `tests/harness/scenario.rs::check_family`.
 
+**Which oracle ever sees a `Save`/`Dump` byte** (R4133_PROPS RP3.11,
+2026-09-03). Only one: the pinned dss-python capture behind the `reports/`
+family (`gen_reports.py` → `golden_reports.rs`, the `save*` lines and the 44
+`dump*` artifacts). **No channel of the unified corpus gate compares this
+surface at all** — `capi_v0145` and `r4133` compare the assembled model and,
+since RP4.1, the property table through `harness::compare_all_properties`
+(`exec/view.rs::element_properties`), which reads the same `ClassProps::
+get_value` renderer but never a serialized `Save`/`Dump` line. So a divergence
+between the port's re-serializer and **r4133's** can be caught by no golden and
+no ledger row, and is carried instead by expected-value pins that quote **both**
+engines' bytes: `save_renders_the_live_model_after_ncim_pv2pq`,
+`dump_renders_the_live_model_after_ncim_pv2pq`,
+`save_membership_follows_property_tracking_not_prpsequence` and
+`save_omits_the_tapwinding_that_r4133_stamps`
+(`crates/dss-core/src/exec/tests/report.rs`), with the r4133 side measured
+through `epri-worker`. RP3.11's verdict for both surfaces is `KEEP_LIVE_PINNED`
+— values are the live field, membership is the explicitly-set chain — and it is
+documented where the code lives (`report/save/save.rs` and `report/save/
+dump.rs` module docs) and recorded in STATUS §RP3.11. Adding a `Save`/`Dump`
+case to the corpus gate is therefore not a thing you can do by editing a
+manifest: it would need a new comparison kind on both channels.
+
 ### The unified corpus gate (`crates/dss-core/tests/corpus_gate.rs`)
 
 One scheduler-driven `#[test]` — `corpus_gate_all_cases_match_engines` — runs

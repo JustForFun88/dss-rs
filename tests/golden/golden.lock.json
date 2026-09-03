@@ -73,7 +73,7 @@
     },
     {
       "path": "tests/golden/adiakoptics/midi_torn_tree.txt",
-      "sha256": "ef50daceac2e4a7c7d5ddc1ddd26ce216e6bfd6681f13e6680ab9ffb2315d988",
+      "sha256": "8d2e1fb22bac758455c91ada3b6d544ef9f8042892299bd44090f865eceb3195",
       "anchor": "self",
       "reason": "born-self: the emitted Torn_Circuit tree is our own D2 partitioner + Format_SubCircuits output; no oracle emits a comparable tree (the external A-Diakoptics witness is the separate r3723 numeric fixture set). Regen today bypasses the rails via DSS_REGEN_AD_GOLDEN (adiakoptics.rs::torn_tree_matches_golden); G3.6 routes it through harness::snapshot_*.",
       "produced_by": "parity"

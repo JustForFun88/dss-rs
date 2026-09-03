@@ -1018,9 +1018,16 @@ fn switch_yes_keeps_the_linecode_and_its_units_conversion() {
     // measured on the DLL), and its `Save` is flag-gated the same way, so a line
     // whose flag arm 6 cleared writes no `linecode=` on either engine. The
     // emitted scalars are the getter's, hence `1/304.8` here and not `1`; r4133
-    // emits **no** `R1..C0` on a switch at all, the `set_as_next_seq(R1..C0)`
-    // residue §RP3.11 owns (0.14.5's `PrpSequence` bookkeeping,
-    // `src/PDElements/Line.pas:691-700`).
+    // emits **no** `R1..C0` on a switch at all — 0.14.5's `PrpSequence`
+    // bookkeeping (`src/PDElements/Line.pas:691-700`), which §RP3.11 settled
+    // on 2026-09-03 by keeping it: `Save`'s membership is the explicitly-set
+    // chain *including* 0.14.5's property-tracking stamps (the AltDSS JSON
+    // export, which has no r4133 counterpart, is captured with them), the
+    // values re-emitted are the live switch values, and the divergence from
+    // r4133 is pinned by
+    // `crate::exec::tests::report::save_membership_follows_property_tracking_not_prpsequence`.
+    // This leg is that verdict's *sequence* witness — its `R1=…` literal must
+    // not be "cleaned up".
     let out = std::env::temp_dir().join(format!("dss_rp36_save_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&out);
     let mut dss = Dss::new();

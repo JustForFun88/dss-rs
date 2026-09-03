@@ -26,6 +26,7 @@ mod tests;
 mod accessors;
 mod control_loop;
 mod dump;
+mod save;
 
 use crate::elements::control::control_elem::{ControlElemData, RefSnapshot};
 use crate::elements::control::mon_phase::MonPhase;

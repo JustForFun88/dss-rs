@@ -357,3 +357,61 @@ fn make_like_copies_curve() {
     assert_eq!(get(&cls, &obj, "xarray"), "[ 0 1]");
     assert_eq!(get(&cls, &obj, "yarray"), "[ 5 7]");
 }
+
+/// RP3.11 P3 — `TXYcurveObj.SaveWrite` (r4133
+/// `Version8/Source/General/XYcurve.pas:978-1003`) writes ` Npts=<NumPoints>`
+/// **outside** the property chain and then ignores index 1 in the walk, so the
+/// arrays it sizes are always allocated before they are re-read. Pascal's own
+/// header: *"Write Npts out first so that arrays get allocated properly"*.
+///
+/// Deck-order-independent, which is the whole point: `xy1` types `npts` first,
+/// `xy2` re-sets it last and used to save as
+/// `New "XYcurve.xy2" XArray=[ 0 1] YArray=[ 0 2] NPts=2` — a line that reloads
+/// an empty curve. r4133 saves both as
+/// `New "XYcurve.xyN" Npts=2 Xarray=[0, 1, ] Yarray=[0, 2, ]` (epri-worker
+/// probe, OpenDSSDirect.dll 11.0.0.1 r4133, RP3.11 I1); the port writes the same
+/// tokens under its own property-name spelling and array rendering.
+#[test]
+fn xycurve_save_write_puts_npts_first() {
+    use crate::exec::Dss;
+
+    let dir = std::env::temp_dir().join(format!("dss_rp311_xy_{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.rp311xy basekv=12.47 pu=1.0 phases=3 bus1=src",
+        // npts typed FIRST
+        "new xycurve.xy1 npts=2 xarray=[0 1] yarray=[0 2]",
+        // npts re-set LAST: its sequence stamp moves to the end of the chain
+        "new xycurve.xy2 npts=2 xarray=[0 1] yarray=[0 2]",
+        "edit xycurve.xy2 npts=2",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        dir.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "save errors: {:?}", dss.errors());
+
+    let text = std::fs::read_to_string(dir.join("XYcurve.dss")).expect("XYcurve.dss");
+    for name in ["XYcurve.xy1", "XYcurve.xy2"] {
+        let line = text
+            .lines()
+            .find(|l| l.contains(name))
+            .unwrap_or_else(|| panic!("no {name} line in {text:?}"));
+        assert_eq!(
+            line,
+            format!("New \"{name}\" NPts=2 XArray=[ 0 1] YArray=[ 0 2]"),
+            "r4133 writes `New \"{name}\" Npts=2 Xarray=[0, 1, ] Yarray=[0, 2, ]`"
+        );
+        assert_eq!(
+            line.matches("NPts=").count(),
+            1,
+            "npts must be written exactly once: {line:?}"
+        );
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}
