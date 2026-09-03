@@ -420,21 +420,26 @@ apply. Every entry is fingerprinted
 into the population lock as `id@FNV-1a64(entry JSON)` per channel — adding,
 widening, or re-scoping an entry is always a reviewable lock diff.
 
-Current contents: 40 entries over 26 documented causes — 5 r4133 `skip`
+Current contents (re-counted off the file 2026-09-03): 53 entries over 29
+documented causes — 5 r4133 `skip`
 (the four #303 crash decks plus `r4133-espvlcontrol-uninstantiable`, where the
-r4133 DLL cannot construct an `ESPVLControl` at all), 21 r4133 `divergence`
+r4133 DLL cannot construct an `ESPVLControl` at all), 29 r4133 `divergence`
 (Delphi 6-sig-fig display-precision
 probes on Storage/PVSystem, FPC-vs-Delphi injection/element ulp floors on the
 IndMach asymmetric decks, one monitor sequence-magnitude drift, the GFM
-`%stored` rounding class, and the RegControl `idle`
-revThreshold/fwdThreshold getter-convention exact-pair), 8 capi_v0145
+`%stored` rounding class, the RegControl `idle`
+revThreshold/fwdThreshold getter-convention exact-pair, and the **eight**
+`property` entries R4133_PROPS RP4.1 landed with its unmask — `swtcontrol.delay`
+×2 (RP3.1), `windgen.kvar` ×4 (RP3.2) and `gictransformer.r2` ×2 (RP3.4), each
+an exact pair on the r4133 channel), 13 capi_v0145
 `divergence` (the `line_spacing_asym` and the Generator `MakePosSequence`
 exact-pair-numeric upgrade pins, three G2.5 property-jump entries —
 `GICTransformer.tg3/tg5.R2` and `Capacitor.cap_cmat.Cuf`/`NormAmps`/`EmergAmps`,
-pinned as exact pairs rather than skipped — and the three `property` entries the
-R4133_PROPS line-merge/switch fixes landed on the live capi compare:
-`reduce-merge-units-restored-midi-capi-props` (RP3.5) and
-`line-switch-keeps-linecode-zone2/zone3-capi-props` (RP3.6a)), and 6
+pinned as exact pairs rather than skipped — the three `property` entries the
+R4133_PROPS line-merge/switch fixes landed on the live capi compare
+(`reduce-merge-units-restored-midi-capi-props`, RP3.5, and
+`line-switch-keeps-linecode-zone2/zone3-capi-props`, RP3.6a) and the five
+`swtcontrol-per-phase-state-*-capi-props` entries RP3.7 landed), and 6
 `exclusion` — 4 capi_v0145 + 2 r4133 — from
 `GOLDEN_REBASE_PLAN.md` G2.5, where the engine stopped reproducing three
 upstream bugs (GICTransformer `%R2`, Capacitor `MakePosSequence` `Cuf`,
