@@ -601,7 +601,13 @@ on capi, so a capi row is only ever `ledger-hit` or `UNCLAIMED` — the capi zer
 is the contract, not a measurement. A spelling whose cells disagree (only the
 per-(case, channel) ledger link can do that) is reported as the **weakest** of
 them and counted in `claims_summary.json`'s `mixed_disposition_spellings`; the
-per-row `disposition` in `props_census.json` stays lossless. It adds three per-channel files — `claims.txt`
+per-row `disposition` in `props_census.json` stays lossless. **Read an acceptance
+question off `props_census.json`, never off the two per-spelling artifacts** —
+after RP4.1 landed its two `swtcontrol.delay` entries the summary still reports
+that spelling as `UNCLAIMED` with 24 in-scope cells, because its out-of-scope
+cells are UNCLAIMED and the fold takes the weakest; since the RP4.1 audit
+settlement (2026-09-03) both artifacts carry that rule in themselves (a
+`reading_rule` field and a header note). It adds three per-channel files — `claims.txt`
 (`examples_full.txt`'s rows plus `count_in_scope` and the disposition),
 `claims_unclaimed_pairs.txt` (the pairs that still owe a rule/exclusion row) and
 `claims_summary.json` (per-disposition cell tallies, zeros included) — and two
@@ -712,6 +718,14 @@ terminal spelling) is compared on r4133 instead of being swallowed by the pair.
 The 66 are derived from the frozen census rather than chosen —
 `props_r4133_replay::the_narrowed_echo_rows_carry_exactly_the_spellings_the_typed_rules_leave`
 recomputes them from `tests/corpus/props_r4133/` and matches the table both ways.
+Because they are derived *mechanically* (the pair's census rows the typed rule
+does not claim), the narrowing changes no cell on the measured population; what
+it buys is the next, unmeasured spelling, which is compared instead of inheriting
+the citation. Staleness is reported for them the other way round
+(`props_norm::check_echo_rows_are_live`, RP4.1 audit settlement): a narrowed row
+counts only cells it covers, so `visits == hits` always and the "excluded
+nothing" arm cannot fire — instead a narrowed row that is **never visited** in a
+full run is the stale one.
 
 **Which rows owe a pin** — plan §1.2 mechanic (c), both halves. A row whose pair
 the capi channel cannot compare at all (`PROPS_015X`, `SKIP_PROPS`, the
@@ -740,7 +754,14 @@ oracle capture. It runs on **both channels** since R4133_PROPS RP4.1
 (2026-09-03) deleted the per-channel mask the scheduler used to apply to the
 r4133 request: `force_properties` (`corpus_gate/scheduler.rs`) now forces the
 compare on every live non-`large` case whatever its `engines` key, and all three
-synthetic families force it on for their live cases. (Until RP4.1 it was
+synthetic families force it on for their live cases. That population is pinned,
+not described: `scheduler::the_property_forcing_rule_is_every_live_non_large_case`
+walks the four manifests with no oracle and asserts the forced set is exactly the
+live non-`large` one — **440** cases = 313 `both` + 83 r4133-only + 44 capi-only
+(`FORCED_PROPS_POPULATION`) — which is what makes a *partial* re-mask loud;
+`props_norm::assert_r4133_props_compare_ran` only sees a wholesale one. The
+guard's cost is that the **54** `kind=large*` `both` decks (and 14 r4133-only,
+11 capi-only) compare no property table at all. (Until RP4.1 it was
 capi_v0145-only, which is why the allowlist is framed around the 0.15.x-shaped
 tables r4133 renders — on an r4133 capture an r4133-only prop is carried by the
 oracle's own name list, so it is kept by `filter_015x` and compares in full.)
