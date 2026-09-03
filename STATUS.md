@@ -330,8 +330,10 @@ reproduces; it never blocked the flip, all four of its decks being capi-only),
 and has **§RP3.11** (2026-09-03, the `Save`/`Dump` re-serialization surface —
 `KEEP_LIVE_PINNED` on both surfaces, the kill criterion firing; record below),
 so what is left is §RP3.10 alone, deliberately sequenced *after*
-RP4.1 (it blocks §RP5.2, plan §0). Its four bin-7 root-cause sub-steps are ALL
-COMPLETE — RP3.1
+RP4.1 (it blocks §RP5.2, plan §0) — beside the **PROPOSED, not scheduled**
+§RP3.13 that RP3.11's own P0 findings opened (the `ncim.rs:683` panic and the
+NCIM PV→PQ KCL gap; user go-ahead required, plan §RP3.13).
+Its four bin-7 root-cause sub-steps are ALL COMPLETE — RP3.1
 (`swtcontrol.delay`), RP3.2 (`windgen.kvar`), RP3.3 (`generator.model`) and
 RP3.4 (`gictransformer.r2`)** (all 2026-08-24, one commit each, **zero
 product-crate bytes and zero
@@ -409,7 +411,10 @@ opened **§RP3.11** for the one surface no channel compares — `Save`/`Dump`
 re-serialization, where the port writes the live `Model=4` against r4133's stored
 `model=3`; it ran after RP4.1 and blocked §RP5.2, not the unmask — and
 **landed 2026-09-03** as `KEEP_LIVE_PINNED` on both surfaces (§RP3.11 record
-below).
+below), which also corrected the premise this sentence carries: r4133 prints
+`model=3` not because `Save` means "the store" but because
+`TGeneratorObj.GetPropertyValue` has no arm 6 — the virtual getter that **49**
+r4133 units answer live.
 **RP3.4 closes the quartet, and it is the one sub-step that root-causes nothing
 new**: `gictransformer.r2` is the r4133-channel twin of a divergence
 `GOLDEN_REBASE_PLAN.md` G2.5 already fixed and already pinned against capi.
@@ -1719,7 +1724,8 @@ r4133 bytes measured rather than transcribed.
 *The major one — `Save` is a **fifth** `ClassProps::get_value` reader, and it
 rendered a cache nobody refreshed.* The sub-step's own inventory said four
 (`?`, `Dump`, `element_properties` refreshing at the choke point;
-`batchedit … where` not). `Save` (`report/save/save.rs:38`, reached from
+`batchedit … where` not). `Save` (`report/save/save.rs::save_write_token`, cited
+by name because RP3.11's guards moved the line, reached from
 `exec/save_circuit.rs` and `exec/report.rs::write_class_file`) is the fifth, and
 it emits every property a deck explicitly **set** — and a write to one of these
 read-only properties is silently ignored *yet still marks the property set*, so
@@ -2614,10 +2620,12 @@ emits `windgen.kvar=0`, which on reload flattens `PFNominal` to 1.0 and
 defect on this very surface, where the port is already right; cross-referenced
 from the first divergence pin.
 
-**RP3.11 audit settlement (2026-09-03) — the declared "union of both upstreams'
-`SaveWrite` overrides" is now actually shipped, and the sizing-property guard
-covers every curve class instead of two.** Both auditors landed on the same
-substantive gap from opposite sides, and both were right: the sub-step stated a
+**RP3.11 audit settlement (2026-09-03) — 14 raw findings from the two auditors
+(6 code + 8 tests), 12 distinct after dedup (both raised the missing `XfmrCode`
+override and P2's false doc claim): 10 fixed, 2 recorded, 0 refuted. The declared
+"union of both upstreams' `SaveWrite` overrides" is now actually shipped, and the
+sizing-property guard covers every curve class instead of two.** Both auditors
+landed on the same substantive gap from opposite sides, and both were right: the sub-step stated a
 policy it implemented for 6 of the 8 upstream overrides, and the biggest thing
 that policy would have removed — a silent, converging wrong circuit — was still
 in the tree. Three product changes, all lane-unconditional, none of them touching
@@ -3065,11 +3073,13 @@ criterion ~15 — it did not fire). Full record in §RP4.1 above.
 **RP3.11 landed 2026-09-03**, the first sub-step after the flip — the
 `Save`/`Dump` re-serialization surface (plan §RP3.11, opened by the RP3.3 audit
 settlement) is settled `KEEP_LIVE_PINNED` on both surfaces, with **seven**
-re-compilability guards ported and **eleven** pins — four in the sub-step, three
-more in its audit settlement the same day (`XfmrCode` and `DynEqPCE`, which
-completed the declared union of both upstreams' `SaveWrite` overrides, plus the
-sizing-property hoist for the five curve classes neither upstream guards);
-§RP3.11 record above.
+re-compilability guards ported — four in the sub-step (P1–P4) and three more in
+its audit settlement the same day (`XfmrCode` and `DynEqPCE`, which completed the
+declared union of both upstreams' `SaveWrite` overrides, plus the
+sizing-property hoist for the five curve classes neither upstream guards) — and
+**eleven** pins, eight then three, over **0** golden bytes moved by the
+settlement and 1 content line + 1 lock digest by the sub-step; §RP3.11 record
+above.
 **Next: RP3.13** (PROPOSED, opened by RP3.11's own
 round-trip measurement — the `ncim.rs:683` panic and the NCIM PV→PQ KCL gap;
 user go-ahead required), then **RP3.10** (the reproduced `QMode=0` dispatch, also
@@ -6883,7 +6893,10 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
 > "staged" any more; the §RP4.1 record in §1 carries the landing. Of the WP's
 > two sub-steps that run after RP4.1 and block §RP5.2 instead (plan §0),
 > **§RP3.11 landed 2026-09-03** (`KEEP_LIVE_PINNED` on both `Save` and `Dump`;
-> the kill criterion fired), and only §RP3.10 is left. The RP3.6, RP3.7, RP3.8,
+> the kill criterion fired; audit settled the same day — 14 raw findings, 12
+> distinct: 10 fixed, 2 recorded, 0 refuted, three more `SaveWrite` guards
+> ported), and only §RP3.10 is left (beside the PROPOSED, unscheduled §RP3.13
+> that RP3.11's P0 findings opened). The RP3.6, RP3.7, RP3.8,
 > RP3.9, RP3.11 and RP3.12 records live in §1 above, beside RP3.5's narrative
 > one.
 
@@ -7668,8 +7681,9 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
       "No behavioural divergence" was true of every compared channel and the
       audit bounded it: r4133's `Save`/`Dump` print the same parse store, so its
       round trip re-creates the model-3 generator, while the port's serializer
-      renders the LIVE field (`report/save/save.rs:34-53` goes through
-      `ClassProps::get_value` where Pascal `SaveWrite` reads
+      renders the LIVE field (`report/save/save.rs::save_write_token` — the
+      2026-08-24 reading cited `:34-53`, which RP3.11's guards moved — goes
+      through `ClassProps::get_value` where Pascal `SaveWrite` reads
       `PropertyValue[iProp]`, `General/DSSObject.pas:145-165`). Measured here on
       `ncim_pv_pq.dss` after the converged solve: the port writes
       `New "Generator.g1" PF=0.88 Bus1=genbus Phases=3 kV=12.47 kW=800 Model=4

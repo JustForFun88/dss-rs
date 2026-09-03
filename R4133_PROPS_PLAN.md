@@ -180,7 +180,9 @@ RP3.3's audit settlement) is the mirror image: no *compared* channel reads it at
 all, so it cannot block a gate flip — it blocks **§RP5.2** too, and it ran after
 RP4.1 had fixed which pairs are echoes, because that list is exactly the list of
 properties where the two serializers disagree. *(**Executed 2026-09-03** —
-`KEEP_LIVE_PINNED` on both surfaces; see the dated line in §RP3.11.)*
+`KEEP_LIVE_PINNED` on both surfaces, `97107e54` + `0194b086`; see the dated
+lines in §RP3.11. That §RP5.2 precondition is therefore **discharged**, leaving
+§RP3.10 as the closing record's only open blocker.)*
 Execution is on a **single branch only — never in parallel
 worktrees**: `tests/corpus/ledger.json`, `tests/corpus/manifests/population.lock.json`
 and `tests/golden/golden.lock.json` are fail-on-stale and are rewritten by this
@@ -2156,7 +2158,9 @@ divergence from r4133's serializer instead of a port change.
 
 **Blocks §RP5.2** (the closing record), **not RP4.1** — the unmask compares
 properties through `compare_all_properties`, which never reads a `Save` or
-`Dump` byte on the r4133 channel. Tier: `opus-xhigh`.
+`Dump` byte on the r4133 channel. Tier: `opus-xhigh`. *(**Discharged
+2026-09-03** — the sub-step landed, so §RP5.2 waits on §RP3.10 alone; see the
+dated lines below.)*
 **Acceptance:** both surfaces carry a recorded verdict; whatever stays divergent
 from r4133 is pinned by an expected-value test naming both serializations; the
 `PF=0.88`-class sequence difference is explained or fixed; goldens that
@@ -2201,6 +2205,15 @@ hoist for the five curve classes neither upstream guards (`TCC_Curve`,
 bytes and **0** ledger rows; pins 8 → **11**, all registered in
 `props_r4133_replay.rs::RP311_SERIALIZATION_PINS`. Every finding's disposition is
 in STATUS §RP3.11 ("audit settlement").
+**Landed 2026-09-03** — `97107e54` (sub-step: P1–P4, eight pins, one golden
+content line + one lock digest), `0194b086` (audit settlement: 14 raw findings,
+12 distinct — 10 fixed, 2 recorded, 0 refuted; P5–P7 and three more pins) and
+this docs commit. Gate green in both lanes, each exit code read individually —
+**4 439 passed / 0 failed / 5 ignored** per lane over 74 binaries, the corpus
+gate unfiltered over the full 523-case population with every ledger entry hit
+and none stale; `lane_diff` owed (product `src/` moved) and **PASS, Δ = 0** on
+every gated kind. Verdict as executed: `KEEP_LIVE_PINNED` on both surfaces.
+Full record: STATUS §RP3.11.
 
 ### RP3.12 — `autotrans.wdgcurrents` on the regulator decks (opened by RP3.9's P0 open item)
 
