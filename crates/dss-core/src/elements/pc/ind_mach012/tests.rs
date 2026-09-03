@@ -180,6 +180,7 @@ fn direct_shortcut_selects_yprim_currents() {
     let mut m_d = build();
     let sys_direct = SysCtx {
         last_solution_was_direct: true,
+        ncim: false,
         solution_count: 0,
         ..default_recalc_ctx()
     };

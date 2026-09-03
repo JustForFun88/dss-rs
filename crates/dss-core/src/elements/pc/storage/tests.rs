@@ -414,6 +414,7 @@ fn direct_shortcut_excluded_in_gfm_mode() {
 
     let sys_direct = SysCtx {
         last_solution_was_direct: true,
+        ncim: false,
         solution_count: 0, // == default iterminal_solution_count → model skipped
         ..ctx()
     };

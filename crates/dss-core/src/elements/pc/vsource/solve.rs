@@ -278,8 +278,52 @@ impl CktElement for VSource {
     /// Pascal `TVsourceObj.GetCurrents`: `Yprim·V(node)` minus a freshly
     /// recomputed injection (into a local, mirroring Pascal's `ComplexBuffer`
     /// scratch — the solver's `InjCurrent` stays untouched).
+    ///
+    /// **NCIM swing arm** (r4133 `PCElements/VSource.pas` l.1194:
+    /// `if ((Algorithm = NCIMSOLVE) and (NodeRef[1] = 1)) then
+    /// CalcInjCurrAtBus(Curr, ActorID)`). NCIM holds the swing bus at the ideal
+    /// EMF, so the `Yprim·V - Iinj` branch below cancels to ~0 there — measured
+    /// on the corpus decks before RP3.13, `Export Currents`' `Vsource.SOURCE`
+    /// `|I1|` read `3.24074e-05 A` (`modes/ncim/ncim_pq` and `ncim_pv_pq`) and
+    /// `4.42577e-05 A` (`ncim_midi`) where live r4133 reports `90.0718`,
+    /// `64.2127` and `124.964 A`. The physical current is the Kirchhoff sum at
+    /// the source bus, which needs every element there and so cannot be built
+    /// from inside one element: the solver stamps it into `Iterminal` once at
+    /// the converged `NodeV`
+    /// (`solution::solution::ncim::ncim_stamp_swing_source_currents`, the port of
+    /// `CalcInjCurrAtBus`) and this arm echoes that stamp, so the element path
+    /// and `Dss::snapshot_elements` (the corpus gate's reader) are one live
+    /// state. The Pascal test is on the **first node reference** being the global
+    /// slack node 1 — `NodeRef^[1] = 1` is 1-based indexing of `NodeRef`, i.e.
+    /// `node_ref.first() == Some(&1)` here, not "node 1 of some terminal".
+    ///
+    /// One condition r4133 does not have is added: the stamp must be **this**
+    /// element's and current for this `SolutionCount`
+    /// ([`VSource::ncim_swing_stamped_at`]). r4133 needs no marker because it
+    /// re-runs `CalcInjCurrAtBus` on every read — and pays for it: with two
+    /// sources on the slack node each one's sum calls the other's
+    /// `GetCurrents` (`VSource.pas` l.1158 excludes only the element itself,
+    /// l.1149), so the pair recurses until the stack dies (measured
+    /// 2026-09-03, RP3.13: the r4133 DLL overflows its stack on
+    /// `export currents`). Here the solver stamps the one swing source; any
+    /// other slack-node source, and any read with no stamp behind it (a solve
+    /// that aborted before the stamp, or `Set algorithm=NCIM` typed after a
+    /// normal `Solve` with no re-solve), falls through to the ordinary branch
+    /// and reports its own `YPrim·V - Iinj` terminal current.
     #[allow(clippy::needless_range_loop)] // loop-for-loop Pascal port
     fn get_currents(&mut self, sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
+        if sys.ncim
+            && self.cd.node_ref.first() == Some(&1)
+            && self.ncim_swing_stamped_at == Some(sys.solution_count)
+        {
+            // r4133 zeroes `Curr[1..Yorder]` and writes conductors `1..NPhases`
+            // (VSource.pas l.1110-1111, l.1135/l.1169); the stamp carries exactly
+            // that vector, zeros in the tail included, so it is copied whole.
+            curr.fill(Complex64::ZERO);
+            let n = curr.len().min(self.cd.iterminal.len());
+            curr[..n].copy_from_slice(&self.cd.iterminal[..n]);
+            return;
+        }
         let yorder = self.cd.yorder;
         for i in 0..yorder {
             self.cd.vterminal[i] = node_v[self.cd.node_ref[i]];

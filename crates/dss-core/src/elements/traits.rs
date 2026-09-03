@@ -531,6 +531,15 @@ pub struct SysCtx {
     /// via the `CalcYPrimContribution` shortcut ("the model is entirely in the
     /// Y matrix") instead of the load-model compensation current.
     pub last_solution_was_direct: bool,
+    /// `Solution.Algorithm = NCIMSOLVE` — the flag the NCIM *reporting* arms
+    /// branch on: `TGeneratorObj.GetCurrents` (r4133 `PCElements/generator.pas`
+    /// l.1406) reports the terminal current `UpdateGenQ` stamped from
+    /// `deltaQNom`, and `TVsourceObj.GetCurrents` (`VSource.pas` l.1194) reports
+    /// the KCL sum at the swing bus. Under NCIM a generator's power-flow kernels
+    /// (`DoPVTypeGen`/`DoFixedQGen`) are never consulted for reporting, so a
+    /// PV→PQ-converted machine reports its *dispatched* Q, not its declared
+    /// `kvar`.
+    pub ncim: bool,
 }
 
 impl SysCtx {
@@ -580,6 +589,7 @@ impl SysCtx {
             dyna_t: 0.0,
             iteration_flag: IterationFlag::NewTimeStep,
             last_solution_was_direct: false,
+            ncim: false,
         }
     }
 }

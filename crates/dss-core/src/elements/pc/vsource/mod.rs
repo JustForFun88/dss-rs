@@ -246,6 +246,26 @@ pub struct VSource {
     /// actual); `(1, 0)` outside a loadshape mode.
     pub shape_factor: Complex64,
     pub shape_is_actual: bool,
+    /// `Solution.SolutionCount` at which
+    /// [`crate::solution::solution::ncim::ncim_stamp_swing_source_currents`]
+    /// last wrote this source's `Iterminal` with the `CalcInjCurrAtBus` KCL sum
+    /// at the swing bus — i.e. the marker that says *this* `VSource` is the one
+    /// the NCIM solver stamped. `None` (or a stale count) means no stamp stands
+    /// behind a read, and [`CktElement::get_currents`] must take the ordinary
+    /// `YPrim·V - Iinj` branch.
+    ///
+    /// r4133 needs no such marker: `TVsourceObj.GetCurrents` (`VSource.pas`
+    /// l.1194) re-runs `CalcInjCurrAtBus` per read and per element. That is also
+    /// why it cannot survive **two** sources on the global slack node - each
+    /// one's `CalcInjCurrAtBus` calls the other's `GetCurrents` (l.1158; only
+    /// the element *itself* is excluded, l.1149), so the two recurse until the
+    /// stack dies: measured 2026-09-03 (RP3.13 micro-part S2), the r4133 DLL
+    /// overflows its stack and the `epri-worker` process is killed on
+    /// `export currents` for a deck with a second `Vsource` at `sourcebus`.
+    /// The port stamps once, for the one swing source, and every other source
+    /// keeps reporting its own physical terminal current through the ordinary
+    /// branch.
+    pub ncim_swing_stamped_at: Option<i32>,
 }
 
 impl VSource {
@@ -309,6 +329,7 @@ impl VSource {
             duty_shape_ref: None,
             shape_factor: Complex64::new(1.0, 0.0),
             shape_is_actual: false,
+            ncim_swing_stamped_at: None,
         };
         // Property tracking defaults (NoPropertyTracking is off by default).
         vs.cd.obj.set_as_next_seq(prop::MVASC3);

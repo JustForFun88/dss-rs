@@ -728,6 +728,30 @@ landed. Spec = `Common/ExportResults.pas` (`ExportJacobian`/`ExportdeltaF`/
   generator terminal currents are overridden in the snapshot from the solver's
   `-conj((Pnom+j·deltaQNom)/V)` — the post-NCIM `YPrim`/`Yeq` is stale, so the general
   `YPrim·V-Iinj` recompute no longer collapses to it (`ncim_generator_currents`).
+  *(**Correction, 2026-09-03, R4133_PROPS_PLAN §RP3.13.** That override was a
+  snapshot-only reader: the element's own `GetCurrents` kept reporting the
+  **declared** `kvar` through `varBase`/`YQFixed`, so `Export Powers`/`Currents`,
+  `Show`, the CLI and the monitors disagreed with the gate — `Generator.G1` on
+  `modes/ncim/ncim_pv_pq` read `-800.0, -431.8` kW/kvar / `42.0103 A ∠151.09°`
+  against r4133's `-800.0, -1500.0` / `78.5593 A ∠117.52°`. RP3.13 ported r4133's
+  NCIM arm of `TGeneratorObj.GetCurrents` (`PCElements/generator.pas:1406-1410`)
+  into `elements/pc/generator/accessors.rs` and **deleted** `ncim_generator_currents`,
+  so one live state now feeds both readers; the snapshot values are unchanged bit
+  for bit — pinned by `exec::tests::ncim::ncim_gate_reader_and_ordinary_reader_agree`.
+  The **`VSource` override in the bullet above is gone the same way**: RP3.13
+  moved its `CalcInjCurrAtBus` sum into the solver as
+  `solution::solution::ncim::ncim_stamp_swing_source_currents` — called once at
+  the end of `do_ncim_solution` and stamped into the swing source's `Iterminal` —
+  and ported `TVsourceObj.GetCurrents`' NCIM arm (`PCElements/VSource.pas:1194`)
+  into `elements/pc/vsource/solve.rs`, so the ordinary `Export Currents` stopped
+  printing the `YPrim·V - Iinj` cancellation (`Vsource.SOURCE` phase-A magnitude
+  `3.24074e-05` A on `modes/ncim/ncim_pv_pq`) and now prints r4133's
+  `64.2127 A ∠-150.28°` — pinned by
+  `exec::tests::ncim::ncim_vsource_export_currents_match_oracle`. The snapshot
+  values are unchanged bit for bit, and `exec/view.rs::snapshot_elements` has no
+  NCIM special case left at all; the `TODO(compat)` off-by-one named in that
+  bullet had already been dropped in favour of r4133's unshifted read
+  (`docs/upgrade/DIVERGENCES.md`, 2026-07-20).)*
 - **Corpus decks** `tests/corpus/modes/ncim/` (all `oracle:"capi015"`, `pending:false`,
   live-compared in `modes_cases_match_oracle`, `population.lock` regenerated):
   `ncim_pq` (micro PQ, 9 nodes, 3 iters), `ncim_pv_pq` (PV→PQ Q-limit, 6 nodes, 8 iters),
