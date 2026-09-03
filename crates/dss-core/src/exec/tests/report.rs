@@ -1031,25 +1031,43 @@ fn save_writes_calcvoltagebases_like_r4133() {
 }
 
 /// RP3.11 P2 — `TDSSObject.SaveWrite`'s LoadShape branch (r4133
-/// `Version8/Source/General/DSSObject.pas:139-150` + `:163-172`, r4133-only:
-/// neither dss_capi 0.14.5 nor this port had it). `npts` sizes the `Mult`/
-/// `Hour` allocation on reload, so the Pascal starts the walk at property 1
-/// instead of at the head of the chain and then restarts the chain ignoring
-/// index 1 — *"created to guarantee that the npts property will be the first to
-/// be declared when saving LoadShapes"*.
+/// `Version8/Source/General/DSSObject.pas:139-150` + `:163-172`). `npts` sizes
+/// the `Mult`/`Hour` allocation on reload, so the Pascal starts the walk at
+/// property 1 instead of at the head of the chain and then restarts the chain
+/// ignoring index 1 — *"created to guarantee that the npts property will be the
+/// first to be declared when saving LoadShapes"*. dss_capi 0.14.5 reaches the
+/// same output from the other end: `TLoadShapeObj.SaveWrite` stamps
+/// `PrpSequence[ord(TProp.npts)] := -999; // make sure Npts prop is first` and
+/// calls `inherited` (`CAPI:General/LoadShape.pas:2376-2380`). Both upstreams
+/// guard this class; this port had neither guard until RP3.11.
 ///
-/// Both orders are pinned, because only the second one moved: `ls1` types
-/// `npts` first (this port already emitted it first), `ls2` re-sets it last and
-/// used to save as `Interval=1 Mult=[ 1 2 3] NPts=3` — a line that reloads a
-/// 0-point shape and drops the multipliers. r4133 saves **both** as
-/// `New "LoadShape.lsN" npts=3 interval=1 mult=[ 1 2 3]` (epri-worker probe,
-/// OpenDSSDirect.dll 11.0.0.1 r4133, RP3.11 I1); the port writes the same
-/// tokens under its own property-name spelling. The `matches("NPts=") == 1`
-/// leg is the load-bearing one: r4133 reaches it through
-/// `TLoadShapeObj.Set_NumPoints` re-stamping `PropertyValue[1]`
-/// (`LoadShape.pas:1665-1677`, called at `:631-636` *"Keep Properties in order
-/// for save command"*), which this port does not do, so the skip has to cover
-/// the restart as well.
+/// Legs (1)/(2) — a deck that types an array property, the only case r4133's
+/// re-stamp fires in — are the agreement case: `ls1` types `npts` first (this
+/// port already emitted it first), `ls2` re-sets it last and used to save as
+/// `Interval=1 Mult=[ 1 2 3] NPts=3`, a line that reloads a 0-point shape and
+/// drops the multipliers. r4133 saves **both** as `New "LoadShape.lsN" npts=3
+/// interval=1 mult=[ 1 2 3]`; the port writes the same tokens under its own
+/// property-name spelling.
+///
+/// Leg (3) is the **divergence**, and it is why the port applies the `NptsRdy`
+/// skip to the restart as well. Pascal tests `NptsRdy` only on the non-restart
+/// advance, so a chain whose head is index 1 prints `npts` twice — and r4133
+/// really does reach that state, on any LoadShape that parses no array property
+/// (`TLoadShapeObj.Set_NumPoints` re-stamps `PropertyValue[1]` **and then** the
+/// array property, `R4133:General/LoadShape.pas:631-636` + `:1665-1677`, so
+/// without an array `npts` stays at the head). Both serializations, measured
+/// 2026-09-03 on `OpenDSSDirect.dll` 11.0.0.1 rev r4133 (`epri-worker`,
+/// `tmp/rp311/fix/probe_settle.log`):
+///
+/// ```text
+/// r4133: New "LoadShape.ls3" npts=5 npts=5              port: New "LoadShape.ls3" NPts=5
+/// r4133: New "LoadShape.ls4" npts=4 npts=4 interval=2   port: New "LoadShape.ls4" NPts=4 Interval=2
+/// ```
+///
+/// The duplicate is harmless on reload but is still a defect the port does not
+/// reproduce (CLAUDE.md 2026-08-02); writing `npts` exactly once, first, is also
+/// literally 0.14.5's rule, so the port matches one upstream on every deck and
+/// the other on every deck that types an array.
 #[test]
 fn save_write_puts_npts_first_for_loadshape() {
     let dir = std::env::temp_dir().join(format!("dss_rp311_lshp_{}", std::process::id()));
@@ -1063,6 +1081,9 @@ fn save_write_puts_npts_first_for_loadshape() {
         // npts re-set LAST: its sequence stamp moves to the end of the chain
         "new loadshape.ls2 npts=3 interval=1 mult=[1 2 3]",
         "edit loadshape.ls2 npts=3",
+        // no array property at all: the case where r4133 prints `npts` twice
+        "new loadshape.ls3 npts=5",
+        "new loadshape.ls4 npts=4 interval=2",
     ] {
         dss.command(c);
     }
@@ -1074,15 +1095,44 @@ fn save_write_puts_npts_first_for_loadshape() {
     assert!(dss.errors().is_empty(), "save errors: {:?}", dss.errors());
 
     let text = std::fs::read_to_string(dir.join("LoadShape.dss")).expect("LoadShape.dss");
-    for name in ["LoadShape.ls1", "LoadShape.ls2"] {
-        let line = text
-            .lines()
+    let line_of = |name: &str| {
+        text.lines()
             .find(|l| l.contains(name))
-            .unwrap_or_else(|| panic!("no {name} line in {text:?}"));
+            .unwrap_or_else(|| panic!("no {name} line in {text:?}"))
+            .to_string()
+    };
+    // (1)/(2) the two array decks, where both engines agree.
+    for name in ["LoadShape.ls1", "LoadShape.ls2"] {
+        let line = line_of(name);
         assert_eq!(
             line,
             format!("New \"{name}\" NPts=3 Interval=1 Mult=[ 1 2 3]"),
             "r4133 writes `New \"{name}\" npts=3 interval=1 mult=[ 1 2 3]`"
+        );
+        assert_eq!(
+            line.matches("NPts=").count(),
+            1,
+            "npts must be written exactly once: {line:?}"
+        );
+    }
+    // (3) the array-less decks, where r4133 prints the token twice and the port
+    // deliberately does not.
+    for (name, want, r4133) in [
+        (
+            "LoadShape.ls3",
+            "New \"LoadShape.ls3\" NPts=5",
+            "New \"LoadShape.ls3\" npts=5 npts=5",
+        ),
+        (
+            "LoadShape.ls4",
+            "New \"LoadShape.ls4\" NPts=4 Interval=2",
+            "New \"LoadShape.ls4\" npts=4 npts=4 interval=2",
+        ),
+    ] {
+        let line = line_of(name);
+        assert_eq!(
+            line, want,
+            "the port's serialization; r4133 writes `{r4133}` (measured),              printing the sizing property twice because its `NptsRdy` test does              not cover the restart"
         );
         assert_eq!(
             line.matches("NPts=").count(),
@@ -1156,6 +1206,28 @@ fn save_renders_the_live_model_after_ncim_pv2pq() {
     let dir = std::env::temp_dir().join(format!("dss_rp311_ncimsave_{}", std::process::id()));
     std::fs::remove_dir_all(&dir).ok();
 
+    // r4133's half of the divergence is *derived*, not pasted: its
+    // `TGeneratorObj.GetPropertyValue` has no arm 6, so `SaveWrite` prints the
+    // parsed token verbatim — i.e. exactly what the deck authors.
+    let authored = {
+        let text = std::fs::read_to_string(&deck).expect("deck text");
+        let line = text
+            .lines()
+            .map(str::to_ascii_lowercase)
+            .find(|l| l.contains("generator.g1"))
+            .expect("the deck must author Generator.g1");
+        let at = line.find("model=").expect("the deck must author a model=");
+        line[at + "model=".len()..]
+            .split_whitespace()
+            .next()
+            .expect("model token")
+            .to_string()
+    };
+    assert_eq!(
+        authored, "3",
+        "the deck's own `model=` token — the value r4133's SaveWrite echoes"
+    );
+
     let mut dss = Dss::new();
     dss.command(&format!("compile \"{}\"", deck.display()));
     assert!(dss.errors().is_empty(), "ncim_pv_pq: {:?}", dss.errors());
@@ -1165,8 +1237,13 @@ fn save_renders_the_live_model_after_ncim_pv2pq() {
     assert_eq!(
         dss.result(),
         "4",
-        "the deck authors model=3; the converged NCIM solve clamps Q at maxkvar \
-         and converts the generator to model 4"
+        "the deck authors model={authored}; the converged NCIM solve clamps Q at \
+         maxkvar and converts the generator to model 4"
+    );
+    assert_ne!(
+        dss.result(),
+        authored,
+        "the two serializations must actually differ, or this pin is vacuous"
     );
 
     dss.command(&format!(
@@ -1233,25 +1310,67 @@ fn dump_renders_the_live_model_after_ncim_pv2pq() {
     let mut dss = Dss::new();
     dss.command(&format!("compile \"{}\"", deck.display()));
     assert!(dss.errors().is_empty(), "ncim_pv_pq: {:?}", dss.errors());
+
+    // The state change that makes r4133's token stale, read from the live field
+    // first (the standard of the `Save` twin).
+    dss.command("? generator.g1.model");
+    assert_eq!(
+        dss.result(),
+        "4",
+        "the deck authors model=3; the converged NCIM solve converts the \
+         generator to model 4"
+    );
+
     dss.command(&format!("set datapath=\"{}\"", dir.display()));
     dss.command("dump generator.g1");
     assert!(dss.errors().is_empty(), "dump errors: {:?}", dss.errors());
     let produced = std::fs::read_to_string(dss.last_result_file()).unwrap();
     std::fs::remove_dir_all(&dir).ok();
 
+    // The artifact is whole: header + every property row, not a truncated file
+    // that happens to carry the one line this pin reads.
     assert!(
-        produced.contains("~ Model=4\n"),
-        "`Dump` renders the live model; r4133 writes `~ model=3` here: {produced:?}"
+        produced.starts_with("\nNew \"Generator.g1\"\n"),
+        "dump header: {produced:?}"
+    );
+    let rows: Vec<&str> = produced.lines().filter(|l| l.starts_with("~ ")).collect();
+    assert_eq!(
+        rows.len(),
+        48,
+        "`Dump` prints every property with no `PrpSequence` filter \
+         (`R4133:PCElements/generator.pas:2489-2500`): {produced:?}"
+    );
+
+    let row = |name: &str| {
+        rows.iter()
+            .find(|l| l.starts_with(&format!("~ {name}=")))
+            .unwrap_or_else(|| panic!("no `~ {name}=` row in {produced:?}"))
+            .to_string()
+    };
+    assert_eq!(
+        row("Model"),
+        "~ Model=4",
+        "`Dump` renders the live model; r4133 writes `~ model=3` here (measured)"
     );
     assert!(
         !produced.to_ascii_lowercase().contains("~ model=3"),
         "r4133's stale `~ model=3` must not be reproduced: {produced:?}"
     );
-    // The live `kvar` the same getter answers, for context: r4133 prints the
-    // same number under its `%.6g` display (`~ kvar=431.794`).
-    assert!(
-        produced.contains("~ kvar=431.79425771047\n"),
-        "the live dispatched kvar: {produced:?}"
+    // Context, and a cross-reference: `431.794…` is the `PFNominal`-derived
+    // nominal (800 * tan(acos 0.88)), NOT the kvar the NCIM solve dispatched —
+    // the solve clamps Q at `maxkvar` = 1500. Both engines print the same
+    // number here (r4133 `~ kvar=431.794` under its `%.6g` display), so it is
+    // not part of this divergence; the gap between it and the dispatched 1500
+    // is STATUS §RP3.11 open item (b), owned by the proposed §RP3.13.
+    assert_eq!(
+        row("kvar"),
+        "~ kvar=431.79425771047",
+        "the PFNominal-derived nominal kvar, identical on both engines"
+    );
+    assert_eq!(
+        row("PF"),
+        "~ PF=0.88",
+        "r4133 writes `~ pf=0.88` (measured)"
     );
 }
 
@@ -1450,4 +1569,313 @@ fn save_omits_the_tapwinding_that_r4133_stamps() {
     back.command("? regcontrol.rc1.winding");
     assert_eq!(back.result(), "2", "the winding itself round-trips");
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// RP3.11 settlement P5 — `TXfmrCodeObj.SaveWrite` (dss_capi 0.14.5
+/// `General/XfmrCode.pas:667-745`), the eighth member of the "union of both
+/// upstreams' `SaveWrite` overrides" the sub-step declared and the audit found
+/// missing.
+///
+/// Both serializations, measured 2026-09-03 on a 3-winding code whose windings
+/// were written with the per-winding `wdg=` scalars (`epri-worker`,
+/// `OpenDSSDirect.dll` 11.0.0.1 rev r4133 / this port, `tmp/rp311/fix/`):
+///
+/// ```text
+/// r4133: New "XfmrCode.xc" phases=3 windings=3 Xhl=7 Xht=9 Xlt=8 wdg=3 conn=wye kV=4.16 kVA=5000 %R=0.7 tap=0.975
+/// port : New "XfmrCode.xc" Phases=3 Windings=3 XHL=7 XHT=9 XLT=8 Conns=[delta, wye, wye, ] kVs=[115, 12.47, 4.16, ] kVAs=[5000, 5000, 5000, ] Taps=[1, 1.025, 0.975, ] %Rs=[0.5, 0.6, 0.7, ] Wdg=1 Wdg=2 Wdg=3
+/// ```
+///
+/// r4133's line keeps one `wdg=`/`conn=`/`kV=`/`kVA=`/`%R=`/`tap=` token whose
+/// getter answers the **active** winding only, so windings 1 and 2 come back at
+/// their defaults — a silent wrong circuit, because the re-compile converges.
+/// 0.14.5 fixed it with the same array rewrite `TTransfObj.SaveWrite` uses
+/// (*"Like Transformer's, XfmrCode structure not conducive to standard means of
+/// saving"*), and CLAUDE.md's 2026-08-02 policy forbids reproducing r4133's
+/// side. Leg (2) is the point of the guard: the re-compiled code carries all
+/// three windings.
+#[test]
+fn save_rewrites_xfmrcode_windings_like_capi_0145() {
+    let dir = std::env::temp_dir().join(format!("dss_rp311_xfc_{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.rp311xfc basekv=115 bus1=sourcebus",
+        "new xfmrcode.xc phases=3 windings=3 xhl=7 xht=9 xlt=8 \
+         wdg=1 conn=delta kv=115 kva=5000 %r=0.5 tap=1.0 \
+         wdg=2 conn=wye kv=12.47 kva=5000 %r=0.6 tap=1.025 \
+         wdg=3 conn=wye kv=4.16 kva=5000 %r=0.7 tap=0.975",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        dir.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "save errors: {:?}", dss.errors());
+
+    // (1) the port's bytes.
+    let text = std::fs::read_to_string(dir.join("XfmrCode.dss")).expect("XfmrCode.dss");
+    let line = text
+        .lines()
+        .find(|l| l.contains("XfmrCode.xc"))
+        .unwrap_or_else(|| panic!("no XfmrCode.xc line in {text:?}"))
+        .to_string();
+    assert_eq!(
+        line,
+        "New \"XfmrCode.xc\" Phases=3 Windings=3 XHL=7 XHT=9 XLT=8 \
+         Conns=[delta, wye, wye, ] kVs=[115, 12.47, 4.16, ] kVAs=[5000, 5000, 5000, ] \
+         Taps=[1, 1.025, 0.975, ] %Rs=[0.5, 0.6, 0.7, ] Wdg=1 Wdg=2 Wdg=3",
+        "the port's serialization (0.14.5's array rewrite); r4133 writes \
+         `New \"XfmrCode.xc\" phases=3 windings=3 Xhl=7 Xht=9 Xlt=8 wdg=3 conn=wye \
+         kV=4.16 kVA=5000 %R=0.7 tap=0.975` (measured), which keeps only the \
+         active winding"
+    );
+
+    // (2) …and it re-compiles into the same code, all three windings intact.
+    let mut back = Dss::new();
+    back.command(&format!(
+        "compile \"{}\"",
+        dir.join("Master.dss").to_string_lossy().replace('\\', "/")
+    ));
+    assert!(
+        back.errors().is_empty(),
+        "re-compile errors: {:?}",
+        back.errors()
+    );
+    for (wdg, conn, kv, pct_r) in [(1, "delta", "115", "0.5"), (2, "wye", "12.47", "0.6")] {
+        back.command(&format!("edit xfmrcode.xc wdg={wdg}"));
+        for (prop, want) in [("conn", conn), ("kv", kv), ("%r", pct_r)] {
+            back.command(&format!("? xfmrcode.xc.{prop}"));
+            assert_eq!(
+                back.result(),
+                want,
+                "winding {wdg} `{prop}` after the round trip; r4133's line loses it"
+            );
+        }
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// RP3.11 settlement P7 — the sizing property (`npts` / `numharm`) is written
+/// **first** for every curve/shape class, not only `LoadShape` (P2) and
+/// `XYcurve` (P3).
+///
+/// A deck that re-sets the sizing property after its arrays moves it to the tail
+/// of the set-order chain, and the emitted line then reloads as a zero-filled
+/// array of the wrong length. Neither upstream guards these five classes;
+/// measured 2026-09-03 on the live `OpenDSSDirect.dll` 11.0.0.1 rev r4133
+/// (`tmp/rp311/fix/probe_settle.log`), r4133 emits, for the same decks:
+///
+/// ```text
+/// New "TCC_Curve.z" C_array=[ 1 2] T_array=[ 10 5] npts=2
+/// New "GrowthShape.g" year=(1, 2, ) mult=(1.05, 1.06, ) npts=2
+/// New "Spectrum.sp" harmonic=(1, 3, ) %mag=(100, 30, ) angle=(0, 0, ) NumHarm=2
+/// New "PriceShape.p" interval=1 npts=3 price=[ 1 2 3]
+/// New "TShape.s" interval=1 npts=3 temp=[ 1 2 3]
+/// ```
+///
+/// — the first three reload as zeros; the last two come out safe only because
+/// `Set_NumPoints` re-stamps `npts` *and then* the array property
+/// (`R4133:General/PriceShape.pas:303` + `:910-916`, `TempShape.pas:302`), a
+/// mechanism this port does not have (STATUS open item (g)). The port's guard is
+/// a *hoist*: it moves a sizing property the deck set, and never adds a token.
+/// Leg (2) is what the guard buys — every array survives the round trip.
+#[test]
+fn save_puts_the_sizing_property_first_for_every_curve_class() {
+    let dir = std::env::temp_dir().join(format!("dss_rp311_sizing_{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.rp311sz basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "new tcc_curve.z npts=2 c_array=[1 2] t_array=[10 5]",
+        "new growthshape.g npts=2 year=[1 2] mult=[1.05 1.06]",
+        "new priceshape.p npts=3 interval=1 price=[1 2 3]",
+        "new tshape.s npts=3 interval=1 temp=[1 2 3]",
+        "new spectrum.sp numharm=2 harmonic=[1 3] %mag=[100 30] angle=[0 10]",
+        // re-set the sizing property: its stamp moves to the end of the chain
+        "edit tcc_curve.z npts=2",
+        "edit growthshape.g npts=2",
+        "edit priceshape.p npts=3",
+        "edit tshape.s npts=3",
+        "edit spectrum.sp numharm=2",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        dir.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "save errors: {:?}", dss.errors());
+
+    // (1) the port's bytes, class by class.
+    for (file, name, want) in [
+        (
+            "TCC_Curve.dss",
+            "TCC_Curve.z",
+            "New \"TCC_Curve.z\" NPts=2 C_Array=[ 1 2] T_Array=[ 10 5]",
+        ),
+        (
+            "GrowthShape.dss",
+            "GrowthShape.g",
+            "New \"GrowthShape.g\" NPts=2 Year=[ 1 2] Mult=[ 1.05 1.06]",
+        ),
+        (
+            "PriceShape.dss",
+            "PriceShape.p",
+            "New \"PriceShape.p\" NPts=3 Interval=1 Price=[ 1 2 3]",
+        ),
+        (
+            "TShape.dss",
+            "TShape.s",
+            "New \"TShape.s\" NPts=3 Interval=1 Temp=[ 1 2 3]",
+        ),
+        (
+            "Spectrum.dss",
+            "Spectrum.sp",
+            // `Angle` is zeroed by the `numharm=` re-edit on BOTH engines
+            // (`Set_NumPoints` always re-allocates the angle array), so the
+            // saved zeros are the live values, not a Save artifact.
+            "New \"Spectrum.sp\" NumHarm=2 Harmonic=[ 1 3] %Mag=[ 100 30] Angle=[ 0 0]",
+        ),
+    ] {
+        let text =
+            std::fs::read_to_string(dir.join(file)).unwrap_or_else(|e| panic!("{file}: {e}"));
+        let line = text
+            .lines()
+            .find(|l| l.contains(name))
+            .unwrap_or_else(|| panic!("no {name} line in {text:?}"));
+        assert_eq!(
+            line, want,
+            "{name}: the sizing property must lead, so the line reloads with its \
+             arrays; r4133 writes it last on TCC_Curve/GrowthShape/Spectrum \
+             (measured) and those lines reload as zeros"
+        );
+    }
+
+    // (2) …and the re-compiled tree keeps every array.
+    let mut back = Dss::new();
+    back.command(&format!(
+        "compile \"{}\"",
+        dir.join("Master.dss").to_string_lossy().replace('\\', "/")
+    ));
+    assert!(
+        back.errors().is_empty(),
+        "re-compile errors: {:?}",
+        back.errors()
+    );
+    for (query, want) in [
+        ("? tcc_curve.z.c_array", "[ 1 2]"),
+        ("? tcc_curve.z.t_array", "[ 10 5]"),
+        ("? growthshape.g.mult", "[ 1.05 1.06]"),
+        ("? priceshape.p.price", "[ 1 2 3]"),
+        ("? tshape.s.temp", "[ 1 2 3]"),
+        ("? spectrum.sp.%mag", "[ 100 30]"),
+    ] {
+        back.command(query);
+        assert_eq!(
+            back.result(),
+            want,
+            "{query} after the round trip: a sizing-property-last line reloads \
+             this as zeros"
+        );
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// RP3.11 settlement P6 — `TDynEqPCE.SaveWrite` (dss_capi 0.14.5
+/// `PCElements/DynEqPCE.pas:252-273`), the ninth member of the union: the
+/// `UserDynInit` tail. The `DynamicEq` state-variable initializers are not class
+/// properties, so they are in no `PrpSequence` chain and the generic walk cannot
+/// see them; Pascal calls `inherited SaveWrite` and then appends them.
+///
+/// Both serializations on the vendored deck
+/// `electricdss-tst/…/Dynamic_Expressions/Dynamic_KundurDynExp-steady-state-only.dss`
+/// (measured 2026-09-03, `epri-worker` / `OpenDSSDirect.dll` 11.0.0.1 rev r4133
+/// against this port):
+///
+/// ```text
+/// r4133: New "Generator.g1" bus1=LT kv=24 kW=1.998E006 kvar=967920 model=1 Vminpu=0.80 Vmaxpu=1.4 DynamicEq=myDiffEq MVA=2220 XRdp=1e12 Xdp=0.3 Xdpp=0.25 DynOut=[speed,dpshaft,]
+/// port : … DynamicEq=mydiffeq MVA=2220 XRdp=1000000000000 Xdp=0.3 Xdpp=0.25 DynOut=[speed, theta] damp=0 pshaft=P0 pterm=P speed=0 theta=Edp mass="3.5 2 * 2220000000 376.99112 / *"
+/// ```
+///
+/// r4133 has no `UserDynInit` at all (0 hits over `Version8/Source`), so its save
+/// drops all six initializers; 0.14.5 keeps them, and the port now matches
+/// 0.14.5 — a `TJSONNumber` through `FloatToStr`, a `TJSONString` (a calc-value
+/// operand or an RPN constant) through `CheckForBlanks`. Leg (2) is the guard:
+/// the emitted tail re-compiles and re-serializes to the same bytes.
+#[test]
+fn save_writes_the_dyn_init_tail_like_capi_0145() {
+    let deck = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(
+        "../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/Dynamic_Expressions/\
+         Dynamic_KundurDynExp-steady-state-only.dss",
+    );
+    assert!(deck.is_file(), "vendored corpus deck missing: {deck:?}");
+    let dir = std::env::temp_dir().join(format!("dss_rp311_dyninit_{}", std::process::id()));
+    let dir2 = dir.with_extension("rt");
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::remove_dir_all(&dir2).ok();
+
+    let mut dss = Dss::new();
+    dss.command(&format!("compile \"{}\"", deck.display()));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        dir.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "save errors: {:?}", dss.errors());
+    let text = std::fs::read_to_string(dir.join("Generator.dss")).expect("Generator.dss");
+    let line = text
+        .lines()
+        .find(|l| l.contains("Generator.g1"))
+        .unwrap_or_else(|| panic!("no Generator.g1 line in {text:?}"))
+        .to_string();
+
+    // (1) the tail, verbatim: every initializer the deck typed, in order.
+    let tail = line
+        .split_once(" DynOut=")
+        .map(|(_, t)| t.to_string())
+        .unwrap_or_else(|| panic!("no DynOut= in {line:?}"));
+    assert_eq!(
+        tail,
+        "[speed, theta] damp=0 pshaft=P0 pterm=P speed=0 theta=Edp \
+         mass=\"3.5 2 * 2220000000 376.99112 / *\"",
+        "the 0.14.5 `UserDynInit` tail; r4133 writes `DynOut=[speed,dpshaft,]` \
+         and stops, losing all six initializers (measured)"
+    );
+
+    // (2) …and it re-compiles: the same tail comes back out of the reloaded tree.
+    let mut back = Dss::new();
+    back.command(&format!(
+        "compile \"{}\"",
+        dir.join("Master.dss").to_string_lossy().replace('\\', "/")
+    ));
+    assert!(
+        back.errors().is_empty(),
+        "re-compile errors: {:?}",
+        back.errors()
+    );
+    back.command(&format!(
+        "save circuit dir=\"{}\"",
+        dir2.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(
+        back.errors().is_empty(),
+        "re-save errors: {:?}",
+        back.errors()
+    );
+    let text2 = std::fs::read_to_string(dir2.join("Generator.dss")).expect("Generator.dss (rt)");
+    let line2 = text2
+        .lines()
+        .find(|l| l.contains("Generator.g1"))
+        .unwrap_or_else(|| panic!("no Generator.g1 line in {text2:?}"));
+    assert!(
+        line2.ends_with(&tail),
+        "the initializers must survive the round trip: {line2:?}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::remove_dir_all(&dir2).ok();
 }

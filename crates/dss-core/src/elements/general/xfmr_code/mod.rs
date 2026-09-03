@@ -20,6 +20,7 @@ mod tests;
 
 mod accessors;
 mod dump;
+mod save;
 
 use crate::elements::pd::winding::Winding;
 use crate::obj::base::DssObjData;

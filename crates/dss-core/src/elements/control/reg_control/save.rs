@@ -37,7 +37,13 @@ impl RegControl {
     pub(crate) fn save_write_body(&self, out: &mut String, cx: &SaveCtx) {
         // Pascal `iProp := 1; If Length(PropertyValue[iProp])>0 Then Write(…)`
         // — outside the chain, and skipped when the value renders empty (the
-        // `Length>0` guard `save_write_token` carries).
+        // `Length>0` guard `save_write_token` carries). Pascal's own guard is
+        // only that length test: `save_write_token` also `trim`s and skips the
+        // `----` sentinel, because it is the *generic* `SaveWrite` body. Both
+        // additions can only suppress a token that would not re-parse, and no
+        // reachable RegControl property renders blanks or the sentinel, so the
+        // deviation is unobservable — written down rather than left implicit
+        // (RP3.11 audit finding AC-4).
         save_write_token(out, cx, self, TRANSFORMER);
         // Pascal `While iProp > 0 … If iProp <> 1 Then` — every other set
         // property in chain order, the transformer never repeated.
