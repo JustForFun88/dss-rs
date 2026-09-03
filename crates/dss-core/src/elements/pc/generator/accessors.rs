@@ -359,7 +359,23 @@ impl CktElement for Generator {
         // its own `Export Currents` prints in conductor 4 (853.417 A on all three
         // Kundur generators, own probe 2026-09-03). Its API path zero-fills, and
         // that zero is what the corpus gate compares; not reproduced — zero the
-        // rest.
+        // rest. One state consequence Pascal does not have: `ComputeIterminal`
+        // hands `ITerminal` itself in as `Curr`, so where Pascal leaves the
+        // neutral conductor as it was, this zeroes it. Measured harmless (r4133's
+        // own API read returns the same zero and it is what every gate channel and
+        // `Export Currents` cell compares); recorded, RP3.13 audit note AC-5.
+        //
+        // `sys.ncim` is r4133's **global** `Algorithm`, not a per-solve flag, so
+        // this arm — and its precedence over the `LastSolutionWasDirect` shortcut
+        // below — also governs a `direct`/`dynamics`/`harmonics` solve run while
+        // `Set algorithm=NCIM` is still in force: the machine then reports the
+        // last NCIM stamp evaluated at the new voltages. Faithful, not a
+        // divergence — live r4133 returns the identical numbers on
+        // `ncim_pv_pq` + `Set mode=direct; Solve` (`Generator.G1 78.5593 ∠117.52°`,
+        // `(-783.9 kW, -1504.8 kvar)`, KCL at `genbus` off by
+        // `(1216.1, -704.8)`) — and unreachable from any gated case; whether the
+        // port should leave r4133 here (a stamp marker like
+        // `VSource::ncim_swing_stamped_at`) is RP3.13's open item, STATUS §RP3.13.
         if sys.ncim {
             curr.fill(Complex64::ZERO);
             let n = self.cd.nphases.min(curr.len()).min(self.cd.iterminal.len());

@@ -594,13 +594,19 @@ fn gen_ncim_state(dss: &Dss, name: &str) -> (i32, bool, i32, f64, Vec<f64>, Vec<
 /// (r4133 `Common/Solution.pas` l.2216-2258). That write —
 /// `deltaQNom[j] := qMax|qMin` for `j := 0 .. NPhases-1` over the array
 /// `InitPQGen` sized to **1** (l.1678-1679) — is the defect: the port panicked
-/// ("index out of bounds: the len is 1 but the index is 1") and **r4133 cannot
-/// answer this deck at all** — measured 2026-09-03, the `epri-worker` never
-/// replies (two runs killed at 150 s and 200 s, worker CPU 0.12 s: blocked, not
-/// spinning), because the unchecked overrun kills the DLL's actor thread. So
-/// r4133 is not available as the oracle here and this pin is **physics**: KCL.
-/// (Its degenerate sibling, [`ncim_missing_voltage_bases_does_not_panic`], is
-/// the one deck of this shape r4133 does answer.)
+/// ("index out of bounds: the len is 1 but the index is 1"), and the unchecked
+/// overrun **corrupts the r4133 DLL**.
+///
+/// What r4133 can and cannot answer here, re-measured in the RP3.13 audit
+/// settlement (2026-09-03; the sub-step's first probe read elements and so
+/// recorded the whole deck as unanswerable — it is not): the **solve** answers
+/// in seconds — `converged=True`, `iterations=5` and the six `YNodeVarray`
+/// entries pinned below — and the DLL then **hangs on the first element access
+/// after it** (`set_active_element Line.l1` never returns; a run killed at 150 s
+/// had burned 0.12 s of worker CPU: blocked, not spinning). So the convergence
+/// flag, the iteration count and the node voltages ARE oracle-pinned below
+/// against live r4133, and only the terminal-power leg — which needs the element
+/// rows r4133 cannot hand out on this deck — is physics (KCL).
 ///
 /// What the port now does, with `deltaQNom` sized per phase: promote to PV on
 /// the first pass (which is why `NCIM_ExPV` can be set at all — only the PV→PQ
@@ -623,10 +629,37 @@ fn ncim_pq2pv_promotion_does_not_panic_and_closes_kcl() {
     ]);
 
     let ckt = dss.circuit().expect("circuit");
-    assert!(ckt.is_solved, "the promoted machine's solve must converge");
-    assert_eq!(ckt.solution.iteration, 5, "converges in 5 NCIM iterations");
-    for (k, v) in ckt.solution.node_v.iter().enumerate().skip(1) {
-        assert!(v.re.is_finite() && v.im.is_finite(), "node {k} = {v:?}");
+    assert!(
+        ckt.is_solved,
+        "the promoted machine's solve must converge (r4133: converged=True)"
+    );
+    assert_eq!(
+        ckt.solution.iteration, 5,
+        "converges in 5 NCIM iterations (r4133: 5)"
+    );
+    // Live r4133 `YNodeVarray` on this deck (`epri-worker`, OpenDSSDirect.dll
+    // r4133 "Version 11.0.0.1 (64-bit build)", own probe 2026-09-03 — the solve
+    // answers, only the element reads after it hang).
+    const R4133_NODE_V: [(f64, f64); 6] = [
+        (7199.557856794634, 0.0),
+        (-3599.77892839732, -6234.999999999999),
+        (-3599.778928397315, 6235.000000000001),
+        (7065.195045516548, -20.00602724009179),
+        (-3549.923250576999, -6108.635378489235),
+        (-3515.271794939548, 6128.641405729329),
+    ];
+    for (k, &(re, im)) in R4133_NODE_V.iter().enumerate() {
+        let v = ckt.solution.node_v[k + 1];
+        assert!(
+            v.re.is_finite() && v.im.is_finite(),
+            "node {} = {v:?}",
+            k + 1
+        );
+        assert!(
+            (v.re - re).abs() < 1e-6 && (v.im - im).abs() < 1e-6,
+            "node {}: {v:?} V vs live r4133 ({re}, {im})",
+            k + 1
+        );
     }
 
     // The promotion ran: `NCIM_ExPV` is set only by the PV→PQ conversion
@@ -911,22 +944,35 @@ fn ncim_gate_reader_and_ordinary_reader_agree() {
 
 /// **P7** — the tripwire behind "the corpus gate cannot move" (RP3.13 §3).
 ///
-/// The swing source's NCIM reported current is the KCL sum at its bus
+/// The swing source's NCIM reported current is the Kirchhoff sum at its bus
 /// (`TVsourceObj.GetCurrents` → `CalcInjCurrAtBus`, r4133 `VSource.pas` l.1194;
-/// port `solution::solution::ncim::ncim_stamp_swing_source_currents`),
-/// summed from the connected
-/// elements' `Iterminal`. Making the generator's `Iterminal` the NCIM dispatch
-/// stamp therefore *would* move that sum — but only for a generator sitting on
-/// the swing bus, and none of the gated NCIM cases has one: `ncim_pq` has no
-/// generator at all, `ncim_pv_pq` and `ncim_midi` put theirs at `genbus`/`b5`,
-/// `Xmission_System_Kundur2Area` has `Generator.G1` commented out in its
-/// `Generators.DSS` and G2/G3/G4 at B2/B3/B4, and `IEEE118Bus/master_file.dss`
-/// (also an NCIM deck) has its swing-bus machine `Gen_at_89_1` commented out.
-/// The three small decks are checked live here; the day one of them puts a
-/// generator on node 1, this reds instead of the divergence appearing silently
-/// in the swing row.
+/// port `solution::solution::ncim::ncim_stamp_swing_source_currents`), summed
+/// from the connected elements' `Iterminal`. Two RP3.13 changes therefore *would*
+/// move that sum, but only for a **PC element other than the swing source sitting
+/// on the swing bus**: making the generator's `Iterminal` the NCIM dispatch stamp,
+/// and (from the audit settlement) subtracting the PC terms where r4133 adds them
+/// (`VSource.pas` l.1169 — the upstream KCL sign bug, documented at
+/// `ncim_stamp_swing_source_currents` and pinned by
+/// [`ncim_swing_sum_subtracts_pc_terminals_and_closes_kcl`]). None of the five
+/// r4133-gated NCIM cases has such an element, and this pin checks all five:
+///
+/// * `ncim_pq` / `ncim_pv_pq` / `ncim_midi` — compiled and solved here, then
+///   every enabled PC element (generators, loads, sources, …) is checked against
+///   the swing source's own bus. `ncim_pq` has no generator at all; `ncim_pv_pq`
+///   and `ncim_midi` put theirs at `genbus`/`b5`.
+/// * `Xmission_System_Kundur2Area` (swing bus `b1`) and `IEEE118Bus`
+///   (`89_clinchrv`) — their masters end in `export`/`show`/`summary`, which a
+///   compile inside a unit test would write into the vendored corpus tree (see
+///   [`ncim_vsource_export_currents_match_oracle`]), so they are checked by
+///   scanning every deck file in their directories for an **uncommented**
+///   PC-class binding to the swing bus. Today `Generators.DSS:5`
+///   (`!New Generator.G1 Bus1=B1 …`) and `generators.dss:44`
+///   (`! New Generator.Gen_at_89_1 bus1=89_clinchrv …`) are both commented out;
+///   the day a re-vendor uncomments either — or adds any other machine, load or
+///   source there — this reds instead of the divergence appearing silently in
+///   that case's `Vsource` row.
 #[test]
-fn ncim_swing_bus_carries_no_generator_on_the_gated_decks() {
+fn ncim_swing_bus_carries_no_pc_element_on_the_gated_decks() {
     let base =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/corpus/modes/ncim");
     for deck in ["ncim_pq.dss", "ncim_pv_pq.dss", "ncim_midi.dss"] {
@@ -936,46 +982,141 @@ fn ncim_swing_bus_carries_no_generator_on_the_gated_decks() {
         dss.command(&format!("compile \"{}\"", path.display()));
         assert!(dss.errors().is_empty(), "{deck}: {:?}", dss.errors());
         let ckt = dss.circuit().expect("circuit");
-        for &r in &ckt.generators {
-            let g = dss.classes[r.class_ord()]
+
+        // The stamped swing source: the first enabled `VSource` on the global
+        // slack node (`ncim_stamp_swing_source_currents`'s own rule), and its bus.
+        let elem_of = |r: crate::elements::ElemId| {
+            dss.classes[r.class_ord()]
                 .arena
-                .get::<crate::elements::pc::generator::Generator>(r.index())
-                .expect("generators list holds Generators");
-            assert!(
-                !g.cd.enabled || g.cd.node_ref.first() != Some(&1),
-                "{deck}: Generator.{} sits on the swing node — the swing-source \
-                 KCL sum now reads its NCIM dispatch stamp, so this case's \
-                 `Vsource` row moves and needs a pin",
-                g.cd.obj.name()
-            );
-        }
-        // The same for a second *source* on the slack node: the stamp is written
-        // for exactly one of them (`ncim_stamp_swing_source_currents` takes the
-        // first), the others report their own `YPrim·V - Iinj`
-        // ([`ncim_second_slack_node_vsource_reports_its_own_current`]), and the
-        // stamp's PC term would carry them into the swing row through the
-        // untested `cadd` sign (`VSource.pas` l.1169). r4133 cannot referee that
-        // deck at all — its per-read `CalcInjCurrAtBus` recursion overflows the
-        // stack — so the day a gated deck grows one, it needs its own pin.
-        let slack_sources = ckt
+                .try_ckt_elem(r.index())
+                .expect("element lists hold circuit elements")
+                .cd()
+        };
+        let swing = ckt
             .sources
             .iter()
-            .filter(|&&r| {
-                let cd = dss.classes[r.class_ord()]
-                    .arena
-                    .try_ckt_elem(r.index())
-                    .expect("sources list holds circuit elements")
-                    .cd();
+            .copied()
+            .find(|&r| {
+                let cd = elem_of(r);
                 cd.enabled && cd.node_ref.first() == Some(&1)
             })
-            .count();
+            .unwrap_or_else(|| panic!("{deck}: no enabled source on the slack node"));
+        let swing_bus = elem_of(swing).terminals.first().and_then(|t| t.bus_ref);
+
+        // Every other enabled PC element (generators, loads, sources, …) must be
+        // off that bus: it is exactly the set `CalcInjCurrAtBus`' PC loop sums.
+        for &r in ckt.pc_elements.iter().chain(ckt.sources.iter()) {
+            if r == swing {
+                continue;
+            }
+            let cd = elem_of(r);
+            if !cd.enabled {
+                continue;
+            }
+            assert!(
+                !cd.terminals.iter().any(|t| t.bus_ref == swing_bus),
+                "{deck}: {} sits on the swing bus — the swing-source Kirchhoff sum \
+                 reads its terminal current (and the port subtracts it where r4133 \
+                 adds it), so this case's `Vsource` row moves and needs a pin",
+                cd.obj.name()
+            );
+        }
+    }
+
+    // The two large gated NCIM cases, by source scan (see the doc comment).
+    let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/corpus");
+    for (dir, swing) in [
+        (
+            "electricdss-tst/Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area",
+            "b1",
+        ),
+        (
+            "electricdss-tst/Version8/Distrib/IEEETestCases/IEEE118Bus",
+            "89_clinchrv",
+        ),
+    ] {
+        let dir = corpus.join(dir);
+        assert!(dir.is_dir(), "vendored corpus deck dir missing: {dir:?}");
+        let hits = pc_bindings_to_bus(&dir, swing);
         assert!(
-            slack_sources <= 1,
-            "{deck}: {slack_sources} enabled sources sit on the swing node — only \
-             one is stamped with the `CalcInjCurrAtBus` sum; this case's `Vsource` \
-             rows need their own pin"
+            hits.is_empty(),
+            "{}: PC element(s) bound to the swing bus `{swing}`: {hits:?} - the \
+             swing-source Kirchhoff sum now reads their terminal currents, so this \
+             case's `Vsource` row moves and needs a pin",
+            dir.display()
         );
     }
+}
+
+/// Every **uncommented** PC-class object in `dir`'s `.dss` files whose `bus1=`
+/// (or `bus=`) binds it to `bus` — the source-level form of P7's structural
+/// check, for the two gated NCIM decks a unit test must not compile.
+///
+/// `New Circuit.…` is deliberately not a PC class here: the circuit's own swing
+/// `VSource` is the element the sum is written *for*, not one of its terms.
+fn pc_bindings_to_bus(dir: &std::path::Path, bus: &str) -> Vec<String> {
+    const PC_CLASSES: [&str; 12] = [
+        "load",
+        "generator",
+        "pvsystem",
+        "storage",
+        "vsource",
+        "isource",
+        "windgen",
+        "vccs",
+        "gicline",
+        "upfc",
+        "indmach012",
+        "generic5",
+    ];
+    let mut hits = Vec::new();
+    let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("read_dir {dir:?}: {e}"))
+        .map(|e| e.expect("dir entry").path())
+        .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("dss")))
+        .collect();
+    files.sort();
+    for path in files {
+        let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path:?}: {e}"));
+        // The class/name of the object the `~` continuation lines belong to.
+        let mut current: Option<String> = None;
+        for (n, raw) in text.lines().enumerate() {
+            // `!` starts a comment — the vendored decks disable an element by
+            // commenting its whole line, which is exactly what this must honour.
+            let line = raw.split('!').next().unwrap_or("").trim();
+            if line.is_empty() {
+                continue;
+            }
+            let low = line.to_ascii_lowercase();
+            if let Some(rest) = low.strip_prefix("new ").map(str::trim_start) {
+                current = match rest.split_once('.') {
+                    Some((class, name)) if PC_CLASSES.contains(&class) => Some(format!(
+                        "{}:{} {class}.{}",
+                        path.file_name().unwrap_or_default().to_string_lossy(),
+                        n + 1,
+                        name.split_whitespace().next().unwrap_or(name)
+                    )),
+                    _ => None,
+                };
+            } else if !low.starts_with('~') {
+                // Any other command ends the object the `~` lines were editing.
+                current = None;
+            }
+            let Some(tag) = current.clone() else { continue };
+            for key in ["bus1=", "bus="] {
+                let Some(v) = low.split(key).nth(1) else {
+                    continue;
+                };
+                let v = v.split_whitespace().next().unwrap_or("");
+                // `bus1=89_clinchrv.1.2.3` binds the same bus as `bus1=89_clinchrv`.
+                if v.split('.').next().unwrap_or(v) == bus {
+                    hits.push(tag);
+                    break;
+                }
+            }
+        }
+    }
+    hits
 }
 
 /// **P6** — the swing `VSource`'s NCIM terminal currents, through the
@@ -1169,12 +1310,19 @@ fn ncim_vsource_export_currents_match_oracle() {
 /// and the `epri-worker` process is killed on `export currents`. So this pin
 /// asserts physics and the port's own internal identity, not an oracle row:
 /// `SRC2`'s magnitude is its Thevenin current `|E2 - V| / |Z1|` =
-/// `0.02·7199.5578 V / (12.47² / 1500 Ω)` = `1389.0 A`, and the stamp equals
-/// the Pascal sum over the bus. Whether that sum's **PC sign** (`cadd`,
-/// `VSource.pas` l.1169) is the physically right one for a PC element that is
-/// not the swing source is untested by any oracle and is exactly what the
-/// tripwire [`ncim_swing_bus_carries_no_generator_on_the_gated_decks`] guards
-/// on the gated decks; it is not decided here.
+/// `0.02·7199.5578 V / (12.47² / 1500 Ω)` = `1389.0 A`, and the stamp is the
+/// Kirchhoff sum over the bus.
+///
+/// That sum's **PC sign** was left open when this pin first landed and was
+/// settled by the RP3.13 audit settlement: r4133's `cadd` (`VSource.pas` l.1169,
+/// against `csub` for the PD loop at l.1135) is an upstream **bug**, measured on
+/// a deck r4133 *can* answer and not reproduced here — see
+/// [`ncim_swing_sum_subtracts_pc_terminals_and_closes_kcl`] and the sign-bug
+/// paragraph on `ncim_stamp_swing_source_currents`. So the identity asserted
+/// below is plain KCL: `I(SOURCE) + I(Line.l1 t1) + I(SRC2) = 0`, so
+/// `Vsource.SOURCE` = `-I(Line.l1 t1) - I(SRC2)` prints `1332.03 A ∠-79.45°`
+/// (the stiffer swing source absorbs most of what `SRC2` pushes in) where the
+/// `cadd` form printed `1450.64 A ∠107.23°`.
 #[test]
 fn ncim_second_slack_node_vsource_reports_its_own_current() {
     let mut dss = run(&[
@@ -1201,15 +1349,17 @@ fn ncim_second_slack_node_vsource_reports_its_own_current() {
     let z1 = 12.47 * 12.47 / 1500.0;
     let expect = (0.02 * 12.47e3 / 3.0_f64.sqrt()) / z1;
     for (k, i) in i_src2.iter().take(3).enumerate() {
+        // Band: the measured agreement is 8.4e-10 relative, three orders inside
+        // this floor; it is the physics band, not a fitted one.
         assert!(
-            (i.norm() - expect).abs() < 1e-3 * expect,
+            (i.norm() - expect).abs() < 1e-6 * expect,
             "Vsource.src2 conductor {k}: |I| = {} A, Thevenin |E2-V|/|Z1| = {expect} A \
              (RP3.13 regression: the swing echo printed 0 here)",
             i.norm()
         );
     }
     assert!(
-        (cdang(i_src2[0]) - 104.04).abs() < 5e-2,
+        (cdang(i_src2[0]) - 104.04).abs() < 5e-3,
         "Vsource.src2 |I1| ∠ = {}, measured 104.04°",
         cdang(i_src2[0])
     );
@@ -1221,23 +1371,174 @@ fn ncim_second_slack_node_vsource_reports_its_own_current() {
         export_row(&mut dss, "currents", "Vsource.SRC2")
     );
 
-    // The swing source still takes the stamp, and the stamp is the Pascal sum
-    // over every element at the bus: `-Σ PD + Σ other PC` (`VSource.pas`
-    // l.1135 / l.1169). With `SRC2` echoing a stamp it never received this
-    // identity read `I(SOURCE) = -I(Line.l1 t1)` instead.
+    // The swing source still takes the stamp, and the stamp is the Kirchhoff sum
+    // over every element at the bus — `-Σ PD - Σ other PC` (`VSource.pas`
+    // l.1135 / l.1169, the PC term with the upstream sign bug fixed). With `SRC2`
+    // echoing a stamp it never received this identity read
+    // `I(SOURCE) = -I(Line.l1 t1)` instead.
     let i_source = elem_currents(&mut dss, "Vsource.source");
     let i_line = elem_currents(&mut dss, "Line.l1");
     for k in 0..3 {
-        let sum = -i_line[k] + i_src2[k];
+        let kcl = i_source[k] + i_line[k] + i_src2[k];
         assert!(
-            (i_source[k] - sum).norm() < 1e-9,
-            "Vsource.source conductor {k}: stamp {:?} vs the Pascal bus sum {sum:?}",
-            i_source[k]
+            kcl.norm() < 1e-9,
+            "KCL at sourcebus conductor {k}: I(SOURCE) {:?} + I(Line.l1 t1) {:?} \
+             + I(SRC2) {:?} = {kcl:?} A (must be 0)",
+            i_source[k],
+            i_line[k],
+            i_src2[k]
         );
     }
     assert!(
         i_source[0].norm() > 1e3,
         "the swing source must carry the feeder and the second source: {:?}",
         i_source[0]
+    );
+}
+
+/// **P9** — the swing-bus Kirchhoff sum subtracts PC terminal currents; r4133
+/// adds them and violates KCL (RP3.13 audit settlement, 2026-09-03).
+///
+/// `TVsourceObj.CalcInjCurrAtBus` (r4133 `PCElements/VSource.pas` l.1085)
+/// subtracts every PD terminal current at the swing bus (`csub`, l.1135) and
+/// **adds** every PC one (`cadd`, l.1169). Every `GetCurrents` in OpenDSS returns
+/// the current flowing *into* the element — "Gets total Currents going INTO a
+/// device's terminals", for PD and PC alike, which is why a load reports `+P` and
+/// a generator `−P` — so KCL at the bus is `I(source) + Σ I(others) = 0` and both
+/// loops must subtract. The `cadd` is an upstream **sign bug**, and CLAUDE.md
+/// (2026-08-02) forbids reproducing it in any lane.
+///
+/// The deck below is the measurement: a 1000 kW / 400 kvar `Load.ldswing` bonded
+/// straight onto `sourcebus`, which is the only shape where the two engines can
+/// differ. Both diverge identically (any PC element on the slack node breaks
+/// NCIM's slack constraint — 10 kW, 100 kW and 1000 kW loads and a 500 kW
+/// generator all hit the iteration limit on both engines), and at the shared
+/// 15-iteration state they agree on every node voltage and on the `Line`/`Load`
+/// terminal currents to the digit. Live `epri-worker` (OpenDSSDirect.dll r4133,
+/// "Version 11.0.0.1 (64-bit build)"), own probe 2026-09-03:
+///
+/// ```text
+/// converged False   iters 15
+/// SOURCEBUS.1  7503.271052270615 - 664.5923616499286j
+/// Vsource.source   I1 = -12.910456091137 + 52.625721242876j   (54.1862 A ∠103.78°)
+/// Line.l1          I1 =  55.428005336360 - 74.161684780923j
+/// Load.ldswing     I1 =  42.517549245224 - 21.535963538047j
+/// ```
+///
+/// r4133's swing row is exactly `−I(Line.l1 t1) + I(Load.ldswing)`, leaving a KCL
+/// residual of `85.035098 − 43.071927j A` = precisely `2·I(Load.ldswing)`. This
+/// port subtracts both loops, so the same read is `−97.945554 + 95.697649j A`
+/// (`136.9357 A ∠135.669°`) and KCL closes to `< 1e-9 A`.
+///
+/// **Zero oracle exposure**: the divergence needs a PC element other than the
+/// source on the slack node, and no gated NCIM case has one —
+/// [`ncim_swing_bus_carries_no_pc_element_on_the_gated_decks`] reds if that ever
+/// changes. Upstream report:
+/// `investigations/to_opendss/54-ncim-calcinjcurratbus-pc-sign.md`.
+#[test]
+fn ncim_swing_sum_subtracts_pc_terminals_and_closes_kcl() {
+    let mut dss = run(&[
+        "Clear",
+        "New circuit.swingpc basekv=12.47 phases=3 bus1=sourcebus",
+        "New Line.l1 bus1=sourcebus bus2=loadbus phases=3 r1=0.12 x1=0.35 length=3",
+        "New Load.ld1 bus1=loadbus phases=3 kv=12.47 kw=2000 kvar=800 model=1",
+        "New Load.ldswing bus1=sourcebus phases=3 kv=12.47 kw=1000 kvar=400 model=1",
+        "Set VoltageBases=[12.47]",
+        "CalcVoltageBases",
+        "Set algorithm=NCIM",
+        "Solve",
+    ]);
+
+    // The shared non-converged state, live r4133 `YNodeVarray` (same probe).
+    {
+        let ckt = dss.circuit().expect("circuit");
+        assert!(
+            !ckt.is_solved,
+            "a PC element on the slack node breaks NCIM on both engines \
+             (r4133: converged=False)"
+        );
+        assert_eq!(
+            ckt.solution.iteration, 15,
+            "both engines stop at the iteration limit (r4133: 15)"
+        );
+        const R4133_NODE_V: [(f64, f64); 6] = [
+            (7503.271052270615, -664.5923616499286),
+            (-3102.837842233346, -5615.634473190251),
+            (-4310.1202905672635, 6366.070841489593),
+            (7404.628403125423, -694.0336321632785),
+            (-3179.66732683407, -5538.888611878764),
+            (-4160.265214596268, 6344.860363531688),
+        ];
+        for (k, &(re, im)) in R4133_NODE_V.iter().enumerate() {
+            let v = ckt.solution.node_v[k + 1];
+            assert!(
+                (v.re - re).abs() < 1e-6 && (v.im - im).abs() < 1e-6,
+                "node {}: {v:?} V vs live r4133 ({re}, {im})",
+                k + 1
+            );
+        }
+    }
+
+    // The two terms of the sum, both digit-identical to r4133 (same probe).
+    let i_line = elem_currents(&mut dss, "Line.l1");
+    let i_load = elem_currents(&mut dss, "Load.ldswing");
+    const R4133_LINE_T1: [(f64, f64); 3] = [
+        (55.42800533636046, -74.16168478092283),
+        (-41.42898607201852, -86.61900928944644),
+        (-24.206901069953346, 135.18134035947878),
+    ];
+    const R4133_LDSWING: [(f64, f64); 3] = [
+        (42.517549245223506, -21.53596353804701),
+        (-37.842633727895155, -30.94779217302181),
+        (-10.287532697054237, 47.1892855853643),
+    ];
+    for k in 0..3 {
+        let (re, im) = R4133_LINE_T1[k];
+        assert!(
+            (i_line[k].re - re).abs() < 1e-6 && (i_line[k].im - im).abs() < 1e-6,
+            "Line.l1 t1 conductor {k}: {:?} A vs live r4133 ({re}, {im})",
+            i_line[k]
+        );
+        let (re, im) = R4133_LDSWING[k];
+        assert!(
+            (i_load[k].re - re).abs() < 1e-6 && (i_load[k].im - im).abs() < 1e-6,
+            "Load.ldswing conductor {k}: {:?} A vs live r4133 ({re}, {im})",
+            i_load[k]
+        );
+    }
+
+    // The swing row: KCL closes here, and the r4133 row is the `cadd` form.
+    let i_source = elem_currents(&mut dss, "Vsource.source");
+    for k in 0..3 {
+        let kcl = i_source[k] + i_line[k] + i_load[k];
+        assert!(
+            kcl.norm() < 1e-9,
+            "KCL at sourcebus conductor {k}: I(SOURCE) {:?} + I(Line.l1 t1) {:?} \
+             + I(Load.ldswing) {:?} = {kcl:?} A (must be 0)",
+            i_source[k],
+            i_line[k],
+            i_load[k]
+        );
+        // r4133's own row on this deck, and the residual it leaves.
+        let r4133 = -i_line[k] + i_load[k];
+        let residual = r4133 + i_line[k] + i_load[k];
+        assert!(
+            (residual - 2.0 * i_load[k]).norm() < 1e-9,
+            "conductor {k}: r4133's `cadd` row {r4133:?} leaves {residual:?} A, \
+             expected exactly 2·I(Load.ldswing) = {:?}",
+            2.0 * i_load[k]
+        );
+    }
+    // Conductor 1, both engines' numbers spelled out.
+    assert!(
+        (i_source[0] - Complex64::new(-97.945554, 95.697649)).norm() < 1e-5,
+        "Vsource.source conductor 0: this port {:?} A (KCL), live r4133 \
+         (-12.910456091137, 52.625721242876) A (`cadd`, KCL off by 2·I(load))",
+        i_source[0]
+    );
+    let row = export_row(&mut dss, "currents", "Vsource.SOURCE");
+    assert!(
+        row.starts_with("Vsource.SOURCE, 136.936, 135.67,"),
+        "Export Currents Vsource.SOURCE row: {row} (r4133 prints 54.1862, 103.78)"
     );
 }

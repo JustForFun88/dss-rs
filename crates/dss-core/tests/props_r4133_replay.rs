@@ -5169,6 +5169,90 @@ fn every_rp311_serialization_pin_exists_and_is_cited() {
     }
 }
 
+/// **The RP3.13 NCIM pins** — `(pin, role)`, all in
+/// `crates/dss-core/src/exec/tests/ncim.rs`.
+///
+/// RP3.13 is in the same position RP3.11 was, and for the same reason: it moved
+/// **no** `ledger.json` entry and **no** golden byte (the five gated NCIM cases
+/// are `engines: "r4133"` with no ledger entry, and the gate's element channel
+/// already read the deleted `exec/view.rs` overrides' formulas), so the whole
+/// record — two fixed panics, the dispatched-Q report, the swing-source stamp
+/// and the non-reproduced upstream PC sign — rests on these plain `#[test]`s.
+/// [`every_rp313_ncim_pin_exists_and_is_cited`] is what stops a rename or a
+/// deletion from silently orphaning the `STATUS.md` / `R4133_PROPS_PLAN.md`
+/// citations, exactly as [`RP311_SERIALIZATION_PINS`] does one sub-step earlier.
+const RP313_NCIM_PINS: &[(&str, &str)] = &[
+    // P1-P3: a supported deck must never abort a `#![forbid(unsafe_code)]` crate.
+    (
+        "ncim_pq2pv_promotion_does_not_panic_and_closes_kcl",
+        "no panic (deltaQNom sized per phase) + live r4133 solve",
+    ),
+    (
+        "ncim_missing_voltage_bases_does_not_panic",
+        "no panic (VBase = 0) + live r4133 solve",
+    ),
+    (
+        "ncim_below_three_nodes_does_not_panic",
+        "no panic (flat-start slack override clamped to the node count)",
+    ),
+    // P4-P6: one live state feeds every reader.
+    (
+        "ncim_generator_reports_the_dispatched_q_not_the_declared_kvar",
+        "generator NCIM arm vs live r4133",
+    ),
+    (
+        "ncim_gate_reader_and_ordinary_reader_agree",
+        "the deleted gate-only overrides were lossless",
+    ),
+    (
+        "ncim_vsource_export_currents_match_oracle",
+        "swing-source stamp + echo vs live r4133 `Export Currents`",
+    ),
+    // P7-P9: the exposure argument and the upstream sign bug.
+    (
+        "ncim_swing_bus_carries_no_pc_element_on_the_gated_decks",
+        "tripwire: the gated decks carry no PC element on the swing bus",
+    ),
+    (
+        "ncim_second_slack_node_vsource_reports_its_own_current",
+        "an unstamped slack-node source reports its own current",
+    ),
+    (
+        "ncim_swing_sum_subtracts_pc_terminals_and_closes_kcl",
+        "r4133's `cadd` PC sign is a KCL bug and is not reproduced",
+    ),
+];
+
+/// The existence + citation guard for [`RP313_NCIM_PINS`]: every row names a
+/// real `#[test]` **and** is cited by name in `STATUS.md`, so the record and the
+/// tree cannot drift apart in either direction.
+#[test]
+fn every_rp313_ncim_pin_exists_and_is_cited() {
+    let status = std::fs::read_to_string(repo_root().join("STATUS.md"))
+        .expect("STATUS.md")
+        .replace("\r\n", "\n");
+    let path = repo_root().join("crates/dss-core/src/exec/tests/ncim.rs");
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+        .replace("\r\n", "\n");
+    assert!(
+        RP313_NCIM_PINS.len() >= 9,
+        "RP3.13 landed 8 pins and its audit settlement 1 more; the table has {}",
+        RP313_NCIM_PINS.len()
+    );
+    for (pin, role) in RP313_NCIM_PINS {
+        assert!(
+            text.contains(&format!("#[test]\nfn {pin}(")),
+            "{pin} ({role}) is cited by the RP3.13 record, but \
+             crates/dss-core/src/exec/tests/ncim.rs defines no such #[test]"
+        );
+        assert!(
+            status.contains(pin),
+            "{pin} ({role}) is in the tree but no longer cited in STATUS.md's RP3.13 record"
+        );
+    }
+}
+
 /// **The pins that witness a `ledger.json` entry rather than an echo row** —
 /// `(pin, sub-step, the entry it holds the port's value for)`.
 ///

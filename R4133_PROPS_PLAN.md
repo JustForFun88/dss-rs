@@ -2358,32 +2358,48 @@ Some(&1)` as Pascal's `NodeRef^[1] = 1`, **plus** the marker
 for this `SolutionCount`) returns that stamp — after which
 the second gate-only override, `ncim_swing_source_currents`, is **deleted** from
 `exec/view.rs` too and `snapshot_elements` has no NCIM special case left at all.
-Eight expected-value pins in `crate::exec::tests::ncim`
+**Nine** expected-value pins in `crate::exec::tests::ncim` (eight in the sub-step
+and a ninth from its audit settlement), registered in `RP313_NCIM_PINS` +
+`every_rp313_ncim_pin_exists_and_is_cited`
+(`crates/dss-core/tests/props_r4133_replay.rs`) so a rename cannot orphan the
+record
 (`ncim_pq2pv_promotion_does_not_panic_and_closes_kcl`,
 `ncim_missing_voltage_bases_does_not_panic`,
 `ncim_below_three_nodes_does_not_panic`,
 `ncim_generator_reports_the_dispatched_q_not_the_declared_kvar`,
 `ncim_gate_reader_and_ordinary_reader_agree`,
-`ncim_swing_bus_carries_no_generator_on_the_gated_decks` — widened to red on a
+`ncim_swing_bus_carries_no_pc_element_on_the_gated_decks` — widened to red on a
 second slack-node *source* as well —,
 `ncim_vsource_export_currents_match_oracle`,
-`ncim_second_slack_node_vsource_reports_its_own_current`), each naming both
+`ncim_second_slack_node_vsource_reports_its_own_current`,
+`ncim_swing_sum_subtracts_pc_terminals_and_closes_kcl`), each naming both
 engines' numbers where an oracle exists: on the two-source deck r4133 has none —
 its per-read `CalcInjCurrAtBus` recursion overflows the DLL's stack (own probe
 2026-09-03) — so that pin asserts the Thevenin physics `|E2 - V| / |Z1| =
-1388.97 A` and the port's own bus-sum identity instead. **Zero `ledger.json` entries, zero golden bytes, zero
+1388.97 A` and plain KCL at the bus instead. **Zero `ledger.json` entries, zero golden bytes, zero
 tolerances**: the five gated NCIM cases are `engines: "r4133"` with no ledger
 entry, the gate's element channel already read the deleted overrides' formulas,
 and `tests/golden/ncim/` is solve-side only — so no oracle observable moved and
-the field-by-field exclusion obligation is vacuous rather than waived. Three
+the field-by-field exclusion obligation is vacuous rather than waived. **Four**
 r4133 defects are proven and **not reproduced** (the `deltaQNom[j]` write over
-the length-1 `InitPQGen` array, which deadlocks the r4133 DLL; `DOForceFlatStart`'s
+the length-1 `InitPQGen` array, which corrupts the r4133 DLL — its solve still
+answers, and the DLL then hangs on the first element access after it (own
+re-probe in the audit settlement, 2026-09-03); `DOForceFlatStart`'s
 `NodeV[1..3]` write, which corrupts its heap on a sub-3-node circuit; and
 `GetCurrents`' partial fill, which leaves shared-`cBuffer` garbage in conductor
 `NPhases+1` of r4133's own `Export Currents`); the upstream reports are the
 gitignored `investigations/to_opendss/51-ncim-updategenq-deltaqnom-overrun.md`,
 `52-ncim-doforceflatstart-nodev-overrun.md` and
-`53-ncim-generator-getcurrents-partial-fill.md`.
+`53-ncim-generator-getcurrents-partial-fill.md`. The **fourth** was found by the
+audit settlement and is the only one that changes a reported number:
+`TVsourceObj.CalcInjCurrAtBus` **adds** PC-element terminal currents (`cadd`,
+`VSource.pas` l.1169) where it subtracts the PD ones (l.1135), so the swing
+source's reported current violates KCL by exactly twice the PC current at its bus
+— measured live on a deck with a load bonded onto the swing bus (r4133
+`Vsource.source I1 = -12.910456 + 52.625721j A` = `-I(Line) + I(Load)`, residual
+`2·I(Load)`; the port subtracts both loops and prints `136.936 ∠135.67`, KCL
+closed). Unreachable on every gated case (the widened tripwire is the proof);
+report `54-ncim-calcinjcurratbus-pc-sign.md`.
 
 **Blocks nothing** — no property cell moves, so neither the unmask (landed) nor
 §RP5.2 gains a precondition. Tier as executed: `opus-xhigh` (exec and both
