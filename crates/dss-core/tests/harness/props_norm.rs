@@ -2262,9 +2262,24 @@ const ECHO_CARVE_OUT_CELLS: usize = 1;
 /// property at all); after it, it would have been a green gate proving less than
 /// it says.
 ///
-/// A row here names the exact `(rust, r4133)` spellings the pair's `EchoRow`
-/// citation actually explains, and [`echo_excluded`] excludes **only** those.
-/// Everything else on the pair is compared — which is the point.
+/// A row here names the exact `(rust, r4133)` spellings the pair's exclusion
+/// still covers, and [`echo_excluded`] excludes **only** those. Everything else
+/// on the pair is compared — which is the point.
+///
+/// **What that sentence does and does not claim** (RP4.1 audit settlement,
+/// 2026-09-03). The spellings are *measured*, not *re-argued*: they are
+/// mechanically the pair's census rows the typed [`PROPS_NORM_R4133`] rule does
+/// not claim, i.e. exactly the cells that rule refused. So on the population
+/// this table was derived from, the narrowed exclusion covers cell for cell
+/// what the old pair-scoped one covered, and the flip unmasks nothing here that
+/// it would not have unmasked anyway. **What the narrowing buys is
+/// prospective**: from now on a *new* spelling on one of these 20 pairs is
+/// compared instead of silently inheriting the pair's citation. Each spelling
+/// is evidenced by its own frozen census row (the `src` file:line every
+/// [`EchoRow`] carries), not by a per-cell re-reading of the Pascal getter; the
+/// citation that explains the pair's *shape* is the `EchoRow`'s, and a spelling
+/// that turns out not to fit it is a finding this table cannot catch — the
+/// value compare it no longer masks is what would.
 ///
 /// # Provenance
 ///
@@ -2547,10 +2562,18 @@ fn carved_out(class: &str, prop: &str, rust: &str, oracle: &str) -> bool {
 /// prove for those 20 rows: every covered spelling is divergent by construction
 /// (the census records divergent cells only), so a narrowed row's visits equal
 /// its hits and `check_echo_rows_are_live`'s `visits > 0 && hits == 0` arm can
-/// never fire on one. What replaces it is stronger and static — a narrowed row
-/// literally cannot mask a cell outside its measured list, and the list itself
-/// is re-derived from the corpus by
-/// `props_r4133_replay::the_narrowed_echo_rows_carry_exactly_the_spellings_the_typed_rules_leave`.
+/// never fire on one. Two things replace it. Static: a narrowed row literally
+/// cannot mask a cell outside its measured list, and the list is re-derived
+/// from the corpus by `props_r4133_replay::
+/// the_narrowed_echo_rows_carry_exactly_the_spellings_the_typed_rules_leave`.
+/// Live (RP4.1 audit settlement, 2026-09-03): the staleness arm the coverage
+/// gate disabled is replaced by its mirror image — a narrowed row that is
+/// **never visited** in a run whose seam ran at all has stopped excluding
+/// anything, which is the same rot the `hits == 0` arm reports for the 62
+/// pair-scoped rows. Without it a narrowed row could go dead exactly the way
+/// `swtcontrol.normal`/`.state` did (RP4.1 P4b) and no live guard would say so,
+/// because the offline derivation reads the FROZEN census, which still carries
+/// the obsolete spelling.
 pub fn echo_excluded_r4133(class: &str, prop: &str, rust: &str, oracle: &str) -> bool {
     if !row_covers(class, prop, rust, oracle) || carved_out(class, prop, rust, oracle) {
         return false;
@@ -2616,7 +2639,9 @@ pub fn echo_counters(class: &str, prop: &str) -> Option<(usize, usize)> {
 ///
 /// A row that was VISITED on r4133 and never excluded a differing cell is
 /// masking a divergence that is no longer there: drop it, or re-measure it. It
-/// is **silent when the row was never visited** and silent for the two rows the
+/// is **silent when the row was never visited** — except for the 20
+/// [`ECHO_NARROWED`] rows, where "never visited" IS the rot signal (see the
+/// second arm in [`check_echo_rows_are_live`]) — and silent for the two rows the
 /// census measured as having no in-scope cell at all
 /// ([`ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`]).
 ///
@@ -2643,33 +2668,79 @@ pub fn assert_echo_rows_are_live() {
 /// the same reason [`check_rows_are_live`]'s does: the shipped statics cannot
 /// be made stale from a test, so both directions are proven offline
 /// ([`tests::the_echo_liveness_guard_is_silent_when_dormant_or_live`],
-/// [`tests::the_echo_liveness_guard_fires_on_a_stale_row`]).
+/// [`tests::the_echo_liveness_guard_fires_on_a_stale_row`],
+/// [`tests::the_echo_liveness_guard_fires_on_an_unvisited_narrowed_row`]).
+///
+/// **Two arms, because the 20 [`ECHO_NARROWED`] rows count differently**
+/// (RP4.1 audit settlement, 2026-09-03):
+///
+/// * pair-scoped row (62 of them) — `visits > 0 && hits == 0`: it was asked
+///   about compared cells and stopped excluding any of them;
+/// * narrowed row (20) — `visits == 0` in a run whose seam ran at all: a
+///   narrowed row only ever counts a *covered* (hence divergent) cell, so
+///   `visits == hits` by construction and the first arm cannot fire on it; what
+///   rot looks like there is the counter staying at zero while the rest of the
+///   table moves.
+///
+/// The `seam_ran` qualifier keeps the second arm from firing on a process that
+/// never compared a property at all — that case is the global guard's
+/// ([`check_r4133_props_compare_ran`], invoked first in the gate epilogue), and
+/// it deserves its own one-line diagnosis rather than 19 row messages.
+///
+/// Honest limit of the second arm: the shipped statics are process-global, so a
+/// sibling unit test in the same binary that drives the comparator on one of the
+/// 20 pairs supplies that row's visit by itself. In the gate binary that is
+/// exactly one row — `load.yearly`, via
+/// `harness::tests::a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses`,
+/// which asserts the row still excludes its own measured spelling. The arm is
+/// therefore a floor for the other 19 and a no-op for that one, the same
+/// property the global guard's doc records about table sums.
 fn check_echo_rows_are_live(table: &[EchoRow], visits: &[usize], hits: &[usize]) {
     assert_eq!(
         (table.len(), table.len()),
         (visits.len(), hits.len()),
         "the counters are indexed exactly like the table"
     );
+    let seam_ran = visits.iter().any(|&v| v > 0);
     // Every stale row in one panic, for the reason [`check_rows_are_live`] gives.
     let stale: Vec<String> = table
         .iter()
         .enumerate()
-        .filter(|&(i, r)| {
+        .filter_map(|(i, r)| {
             let dormant_by_design = ECHO_ROWS_WITH_NO_IN_SCOPE_CELL
                 .iter()
                 .any(|(c, p)| c.eq_ignore_ascii_case(r.class) && p.eq_ignore_ascii_case(r.prop));
-            visits[i] > 0 && hits[i] == 0 && !dormant_by_design
-        })
-        .map(|(i, r)| {
-            format!(
-                "stale r4133 property echo row: {}.{} ({}) excluded nothing across {} \
-                 compared cell(s). Cited: {}",
-                r.class,
-                r.prop,
-                r.category.tag(),
-                visits[i],
-                r.cite
-            )
+            if dormant_by_design {
+                return None;
+            }
+            let narrowed = narrowed_row(r.class, r.prop).is_some();
+            if narrowed {
+                (seam_ran && visits[i] == 0).then(|| {
+                    format!(
+                        "stale r4133 property echo row: {}.{} ({}) is narrowed to {} measured \
+                         spelling(s) and not one of them occurred in this run. Either the \
+                         spellings are gone (drop or re-measure the row — DSS_PROPS_CENSUS) or \
+                         the r4133 property compare did not reach the row's cases. Cited: {}",
+                        r.class,
+                        r.prop,
+                        r.category.tag(),
+                        narrowed_row(r.class, r.prop).map_or(0, |n| n.spellings.len()),
+                        r.cite
+                    )
+                })
+            } else {
+                (visits[i] > 0 && hits[i] == 0).then(|| {
+                    format!(
+                        "stale r4133 property echo row: {}.{} ({}) excluded nothing across {} \
+                         compared cell(s). Cited: {}",
+                        r.class,
+                        r.prop,
+                        r.category.tag(),
+                        visits[i],
+                        r.cite
+                    )
+                })
+            }
         })
         .collect();
     assert!(
@@ -2745,6 +2816,24 @@ pub fn r4133_props_walk_counters() -> (usize, usize) {
 /// re-mask it is meant to catch. These counters are bumped at the ONE gating
 /// call site instead, so they stay 0 unless the gate really compared r4133
 /// properties.
+///
+/// **What it does NOT see: a PARTIAL re-mask** (RP4.1 audit settlement,
+/// 2026-09-03). It is a boolean — `walks > 0` — so re-adding a channel
+/// predicate to `force_properties` (say `gates_capi()`, which drops the 83
+/// `engines: "r4133"` cases while the 313 `both` ones keep ~1 300 walks) passes
+/// it. Two other guards catch that, and both are load-bearing:
+///
+/// * `corpus_gate::scheduler::the_property_forcing_rule_is_every_live_non_large_case`
+///   — a static, oracle-free walk of the four manifests asserting the forced set
+///   **is** the live non-`large` population, with the (both, r4133-only,
+///   capi-only) split pinned. It fails on any re-mask, partial included, and is
+///   the one that does not depend on which entries happen to be in the ledger.
+/// * `ledger::assert_all_hit` — six of the eight landed `property`-scoped
+///   `r4133` entries sit on `engines: "r4133"` cases and two on `both` cases, so
+///   either half of a partial re-mask makes an entry NEVER APPLIED. That
+///   coupling is *implicit*: retiring or re-homing those six entries would
+///   silently remove this detector for the r4133-only half, which is why the
+///   scheduler test above exists and does not rely on them.
 ///
 /// Silent under `DSS_GATE_ONLY` for the reason its two neighbours are
 /// ([`assert_norm_rows_are_live`]): a filtered run may legitimately hold no
@@ -4963,26 +5052,82 @@ mod tests {
         check_echo_rows_are_live(PROPS_ECHO_R4133, &vec![0; n], &vec![0; n]);
         check_echo_rows_are_live(PROPS_ECHO_R4133, &vec![9; n], &vec![4; n]);
         // Visited but excluding nothing — legitimate ONLY for the exempt rows.
+        // The 20 narrowed rows must carry a visit here, or the second arm
+        // (RP4.1 audit settlement) reports them instead: this run's seam ran.
         let mut visits = vec![0; n];
-        let hits = vec![0; n];
+        let mut hits = vec![0; n];
+        for (i, r) in PROPS_ECHO_R4133.iter().enumerate() {
+            if narrowed_row(r.class, r.prop).is_some() {
+                visits[i] = 3;
+                hits[i] = 3;
+            }
+        }
         for (class, prop) in ECHO_ROWS_WITH_NO_IN_SCOPE_CELL {
             let i = find_echo_row(PROPS_ECHO_R4133, class, prop).expect("a shipped row");
             visits[i] = 11;
+            hits[i] = 0;
         }
+        check_echo_rows_are_live(PROPS_ECHO_R4133, &visits, &hits);
+    }
+
+    /// …and the second arm's silent direction: every narrowed row visited, the
+    /// pair-scoped ones dormant. A narrowed row's `visits == hits` is the shape
+    /// [`echo_excluded_r4133`] produces for it, so this is the real full-run
+    /// shape of the 20, not a contrived one.
+    #[test]
+    fn the_echo_liveness_guard_is_silent_when_every_narrowed_row_was_visited() {
+        let n = PROPS_ECHO_R4133.len();
+        let mut visits = vec![0; n];
+        let mut hits = vec![0; n];
+        for (i, r) in PROPS_ECHO_R4133.iter().enumerate() {
+            if narrowed_row(r.class, r.prop).is_some() {
+                visits[i] = 7;
+                hits[i] = 7;
+            }
+        }
+        check_echo_rows_are_live(PROPS_ECHO_R4133, &visits, &hits);
+    }
+
+    /// …and its firing direction (RP4.1 audit settlement): the seam ran, but
+    /// one narrowed row's measured spellings never occurred — the rot the
+    /// coverage gate made invisible to the `hits == 0` arm.
+    ///
+    /// Driven on `load.yearly`, the largest of the 20 (23 measured spellings,
+    /// tens of thousands of live cells), so a zero there can only mean the row
+    /// stopped matching, never a thin population.
+    #[test]
+    #[should_panic(expected = "stale r4133 property echo row: load.yearly")]
+    fn the_echo_liveness_guard_fires_on_an_unvisited_narrowed_row() {
+        let n = PROPS_ECHO_R4133.len();
+        let mut visits = vec![1; n];
+        let hits = vec![1; n];
+        let i = find_echo_row(PROPS_ECHO_R4133, "load", "yearly").expect("a shipped row");
+        visits[i] = 0;
         check_echo_rows_are_live(PROPS_ECHO_R4133, &visits, &hits);
     }
 
     /// …and the other direction: a row that was COMPARED and excluded nothing
     /// is masking a divergence that is no longer there, and the guard says so,
-    /// naming the row. (Driven on a pair that is NOT on the exemption list.)
+    /// naming the row. (Driven on `monitor.mode`, a **pair-scoped** row that is
+    /// not on the exemption list — the arm does not apply to the 20 narrowed
+    /// ones, whose visits are their hits; theirs is the test below.)
     #[test]
-    #[should_panic(expected = "stale r4133 property echo row: regcontrol.idle")]
+    #[should_panic(expected = "stale r4133 property echo row: monitor.mode")]
     fn the_echo_liveness_guard_fires_on_a_stale_row() {
         let n = PROPS_ECHO_R4133.len();
-        let i = find_echo_row(PROPS_ECHO_R4133, "regcontrol", "idle").expect("a shipped row");
+        let i = find_echo_row(PROPS_ECHO_R4133, "monitor", "mode").expect("a shipped row");
+        // The narrowed rows carry their full-run shape, so the only complaint
+        // this run can produce is the stale pair-scoped one.
         let mut visits = vec![0; n];
-        let hits = vec![0; n];
+        let mut hits = vec![0; n];
+        for (k, r) in PROPS_ECHO_R4133.iter().enumerate() {
+            if narrowed_row(r.class, r.prop).is_some() {
+                visits[k] = 2;
+                hits[k] = 2;
+            }
+        }
         visits[i] = 15;
+        hits[i] = 0;
         check_echo_rows_are_live(PROPS_ECHO_R4133, &visits, &hits);
     }
 

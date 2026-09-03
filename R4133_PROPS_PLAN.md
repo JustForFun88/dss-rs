@@ -2377,8 +2377,14 @@ stays).** Landed in the single RP4.1 commit; the full record is `STATUS.md`
   `force_properties` forces the property request on **every live non-`large`
   case** — `gates_capi ∪ gates_r4133` is every live case, so the two-arm test was
   replaced by that honest spelling; the `large` cost guard stays. 83 r4133-only
-  non-large cases property-checked for the first time, 367 `both` cases comparing
-  their r4133 table; 1 670 gating walks over 151 782 elements per full run.
+  non-large cases property-checked for the first time, **313** non-`large`
+  `both` cases comparing their r4133 table (the audit settlement corrected this
+  line: the other **54** `both` cases are `kind=large*` and the cost guard leaves
+  them property-unchecked on both channels — an open item for the RP5.2 closing
+  record, not a regression); 1 670 gating walks over 151 782 elements per full
+  run. The forced population is pinned by
+  `corpus_gate::scheduler::the_property_forcing_rule_is_every_live_non_large_case`
+  (`FORCED_PROPS_POPULATION = (440, 313, 83, 44)`), added by the same settlement.
 - **Precondition A, mechanism (b)** (coordinator decision 3): `ECHO_NARROWED`
   gives each of the 20 mixed echo rows its 66 measured `(rust, oracle)`
   spellings; the 62 pure echo rows keep the pair scope; `ECHO_CARVE_OUTS`' doc
@@ -2409,6 +2415,16 @@ stays).** Landed in the single RP4.1 commit; the full record is `STATUS.md`
   `corpus_gate` wall 141.78 s default / 142.94 s parity against 142.90 s /
   139.68 s before the unmask. `lane_diff` run anyway (no product line moved):
   PASS, `max |Δ| = 0` on all eight kinds.
+- **Audit settlement (2026-09-03).** Nine findings, eight fixed, one recorded;
+  the full per-finding disposition is in the STATUS §RP4.1 record. The three
+  that changed what this section claims: the forced population is **313**
+  non-`large` `both` cases (not 367) and is now pinned by
+  `the_property_forcing_rule_is_every_live_non_large_case`, which is also the
+  only guard that catches a *partial* re-mask; `check_echo_rows_are_live` grew
+  the inverted staleness arm the per-cell narrowing had disabled for the 20
+  rows; and `RP3_LEDGERED`'s retirement is now checked per **spelling**
+  (`RP3_LEDGERED_UNNAMED`), since an entry pins one exact `(rust, oracle)` while
+  the interception retires the pair.
 
 ---
 

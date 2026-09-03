@@ -2325,22 +2325,28 @@ per-channel `compare_all_properties = false` clears are gone from both the
 `force_properties` now forces the property request on **every live non-`large`
 case** — `gates_capi ∪ gates_r4133` is every live case, so the honest spelling
 replaced the two-arm test, and the `large` cost guard stays. The **83 r4133-only
-non-large** cases get a property check for the first time and the **367 `both`**
-cases get their r4133 property table compared: a full run now does **1 670**
-gating r4133 property walks over **151 782** elements, identically in both
-lanes. ~24 stale doc claims asserting that the r4133 channel never
+non-large** cases get a property check for the first time and the **313
+non-`large` `both`** cases get their r4133 property table compared: a full run
+now does **1 670** gating r4133 property walks over **151 782** elements,
+identically in both lanes. (The audit settlement corrected this figure from
+"367 `both`": the cost guard leaves the remaining **54** `both` cases —
+every `kind=large*` one — property-unchecked on *both* channels, which is the
+plan's deliberate cost guard and an open item for the RP5.2 closing record, not
+a regression.) ~24 stale doc claims asserting that the r4133 channel never
 property-compares were corrected, or left with a dated "superseded by
 R4133_PROPS RP4.1" note where the file is a historical record
-(`docs/phase-records/`, `UNIFIED_GATE_PLAN.md`). The commit is 22 files
-(+2 305 / −515); the only `src/` diffs are comment-only, in a `#[cfg(test)]`
-module (`exec/tests/controls.rs`) and in the `publish = false` bridge
+(`docs/phase-records/`, `UNIFIED_GATE_PLAN.md`). The commit is **23 files
+(+2 576 / −536)** (`59e521e5`; the first draft of this paragraph said 22 files
+/ +2 305 / −515 and missed `tools/oracle/README.md` — corrected by the audit
+settlement); the only `src/` diffs are comment-only, in a `#[cfg(test)]` module
+(`exec/tests/controls.rs`) and in the `publish = false` bridge
 (`crates/dss-epri`).
 
 *Precondition A (RP2.3's audit settlement) — the 20 mixed echo rows narrowed
 **per cell**, before the flip.* Mechanism (b) of the plan's two, per the
 coordinator's ruling: `ECHO_NARROWED` gives each of the 20 rows the measured
-`(rust, oracle)` spellings its citation actually explains — **66** spellings,
-every one present verbatim in the frozen census — and `echo_excluded` /
+`(rust, oracle)` spellings its exclusion still covers — **66** spellings, every
+one present verbatim in the frozen census — and `echo_excluded` /
 `echo_excluded_r4133` match on them via `row_covers`; the 62 pure echo rows keep
 the conservative pair scope, and `ECHO_CARVE_OUTS`' doc was rewritten to own the
 inversion for the 20 explicitly (on those rows an *unseen* spelling now falls
@@ -2510,6 +2516,114 @@ pairs — `line.units` (RP3.5), `line.linecode` (RP3.6), `relay.normal` and
 superseded row owes a per-pair live disposition, a cited r4133 getter arm and a
 pin, and nobody has produced that trio for them.
 
+*Audit settlement (2026-09-03, RP4.1 — ten findings from the two auditors, four
+minor + six notes; audit-code's partial-re-mask note and audit-tests' T3 are the
+same issue, so nine dispositions: eight fixed, one recorded, every one settled
+against evidence rather than plausibility).*
+
+* **The coverage headline was overstated by 54 cases (audit-code 1) — FIXED.**
+  "The **367 `both`** cases get their r4133 property table compared" counted the
+  whole `engines: both` population, but `force_properties` keeps the plan's
+  `!kind.starts_with("large")` cost guard, and all 79 live `kind=large*` decks are
+  `solvable_now`. Re-derived from `population.lock.json`: 523 cases → 519 live →
+  **440 forced** = **313** `both` + **83** r4133-only + 44 capi-only, which is
+  also exactly the 440 the claims census walks and the only reading consistent
+  with the measured 1 670 walks. The three copies of the sentence (this record,
+  the frontier note, the plan's as-executed part 2) now say **313 non-`large`
+  `both`**, and the **54** `kind=large*` `both` cases that have no property
+  compare on *either* channel are recorded as an open item for the RP5.2 closing
+  record. The figures are no longer prose: `corpus_gate::scheduler::
+  the_property_forcing_rule_is_every_live_non_large_case` walks the four
+  manifests without an oracle, asserts the forced set **is** the live non-`large`
+  population case for case, and pins the split as
+  `FORCED_PROPS_POPULATION = (440, 313, 83, 44)`.
+* **That new test is also the missing PARTIAL-re-mask alarm (audit-code note /
+  audit-tests 3) — FIXED.** `assert_r4133_props_compare_ran` is a boolean
+  (`walks > 0`), so re-adding `gates_capi()` to `force_properties` — which would
+  drop all 83 r4133-only cases while the 313 `both` ones keep ~1 300 walks —
+  passes it; what caught that until now was `assert_all_hit` on the six landed
+  entries whose cases are `engines: "r4133"`, an *implicit* coupling that would
+  vanish with those entries. The scheduler test fails on any re-mask, partial
+  included, without depending on the ledger; the coupling is now stated in the
+  global guard's doc, and the guard is invoked **first** in the gate epilogue so
+  "nothing ran at all" reports as one line instead of nineteen row messages.
+* **The narrowed echo rows had lost their live staleness detector (audit-tests 1)
+  — FIXED.** After precondition A a narrowed row counts only cells it *covers*,
+  so `visits == hits` by construction and `check_echo_rows_are_live`'s
+  `visits > 0 && hits == 0` arm can never fire on one; a narrowed row going dead
+  the way `swtcontrol.normal`/`.state` did would have been invisible, because the
+  compensating derivation test reads the **frozen** census. The guard grows the
+  mirror-image arm: a narrowed row with `visits == 0` in a run whose seam ran at
+  all is stale. Sound on this population — the HEAD claims census gives 19 of the
+  20 pairs between 4 and 75 160 in-scope `echo-row` cells, and the twentieth
+  (`fault.bus2`) is already the sanctioned `ECHO_ROWS_WITH_NO_IN_SCOPE_CELL` row
+  — and both directions are pinned offline over injected counters
+  (`the_echo_liveness_guard_is_silent_when_every_narrowed_row_was_visited`,
+  `the_echo_liveness_guard_fires_on_an_unvisited_narrowed_row`); the old stale-row
+  pin moved from `regcontrol.idle` (now narrowed) to the pair-scoped
+  `monitor.mode`, so it still tests the arm it names.
+* **`ECHO_NARROWED`'s doc claimed a per-citation review nobody performed
+  (audit-code 2) — FIXED as a doc correction, the substance verified.** The 66
+  spellings are derived mechanically ("the pair's census rows the typed rule does
+  not claim"), i.e. exactly the cells that rule refused, so on the measured
+  population the narrowed exclusion is cell-for-cell the old pair-scoped one and
+  **the narrowing unmasks nothing the flip would not have unmasked anyway**;
+  what it buys is prospective — a *new* spelling on one of these 20 pairs is
+  compared instead of inheriting the citation. The doc now says that in the
+  shipped table (and no longer says "the spellings its citation actually
+  explains"), with the same correction in this record. The auditor's stronger
+  option — one assertion per narrowed row tying each spelling to its
+  `EchoCategory` shape — was weighed and **not** taken: the categories are prose
+  citations of a Pascal getter arm, and turning them into a machine-checkable
+  shape is an RP5-sized invention, not a settlement; what protects the 20 pairs
+  meanwhile is that an unlisted spelling is now COMPARED.
+* **STATUS's own commit-size line was wrong (audit-code 3) — FIXED.** `59e521e5`
+  is **23 files, +2 576 / −536**, not 22 / +2 305 / −515; the missing file was
+  `tools/oracle/README.md`.
+* **The census artifacts a reader opens first still report a non-zero
+  (audit-code note) — FIXED in the writer.** `claims_summary.json` and
+  `claims_unclaimed_pairs.txt` are **per-spelling** and fold a mixed-disposition
+  spelling to its weakest verdict, which is why `swtcontrol.delay` still shows
+  "UNCLAIMED, 24 in scope" after its two entries landed. Both artifacts now carry
+  the reading rule in themselves — a `reading_rule` field and a header note — and
+  the module doc says acceptance is read off the lossless `props_census.json`; the
+  stale comment "`mixed_disposition_spellings` — 0 on every measured run" is
+  corrected to 1, naming the spelling.
+* **`force_properties`' family arm has no `large` guard, and `Row::in_scope` is
+  `engines`-only (audit-code notes) — FIXED as assertions/doc.** The family arm's
+  premise ("no family deck is `kind=large*`") is now asserted by the new
+  scheduler test instead of being inert-by-luck, and `Row::in_scope`'s doc states
+  that the gate additionally excludes `kind=large*` and that the two predicates
+  coincide only because the census walks the forced population.
+* **`RP3_LEDGERED` credited a spelling no landed entry names (audit-tests 2) —
+  FIXED.** The interception retires rows per PAIR while an entry pins one exact
+  `(rust, oracle)`, so the frozen row `swtcontrol.delay '0' vs '120'` counted as
+  ledgered although both entries pin `rust: "0.25"`. Measured at HEAD: its 6 cells
+  sit on the three `Version8/Distrib/Examples/**/IEEE_519.DSS` decks, all
+  `engines: capi_v0145`, **0 in scope** — no entry is owed, but the accounting now
+  says so out loud. New `RP3_LEDGERED_UNNAMED` names the spelling with that
+  measurement and the same `SwtControl.pas:195-218` / `:310` citation the entries
+  carry, and the guard test checks both ways: an unnamed spelling that is not
+  listed fails, and a listed row that stops being unnamed fails.
+* **`CLAIMED_TOTAL_LIVE` / `CLAIMED_SPELLINGS_LIVE` enforce only their offline
+  half (audit-tests 4) — RECORDED, not fixed.** The identity `cargo test` checks
+  is `CLAIMED_NORMALIZATION + LIVE_ONLY_SPELLINGS.len()`; the "and the live census
+  measures the same" half rests on an opt-in `DSS_PROPS_CENSUS=claims` run. That
+  is deliberate — the mandatory gate must not require an oracle census — and the
+  numbers were re-measured at HEAD (21 `ArrayForm` pairs / 201 spellings). The
+  limitation is now stated at the constant instead of being implied by its name.
+
+*Gate (settlement).* All five commands green in both lanes on the settled tree —
+**4 427 passed / 0 failed / 5 ignored** per lane over 74 binaries (+45 against
+RP4.1's 4 382: the two new offline echo pins compile into every
+harness-including binary, plus the scheduler test), `corpus_gate` **523/523**
+unfiltered in both lanes (147.5 s default / 142.2 s parity) with `assert_all_hit`
+green over an untouched `ledger.json`. Nothing product-side moved in the
+settlement either (test harness, census writer and docs only), so `lane_diff` was
+not owed a second time. The known overlapping-guard snapshot race dropped five
+untracked `Test/AutoTrans/*.txt` again (sixth sighting); removed by exact name,
+no tracked corpus or golden file moved.
+
 **RP3.9 landed 2026-09-02** (audit settled 2026-09-03) — the display floor's
 round-trip residue is settled as 27 pinned `PRECISION_ROUNDTRIP` pairs (the
 §RP3.9 record above), so **every RP1–RP3 sub-step the unmask waits on has
@@ -2528,8 +2642,9 @@ by construction: they run after RP4.1 and block §RP5.2, not the flip
 **RP4.1 landed 2026-09-03** — WP-RP4 is closed and G1.1's deliverable shipped:
 `all_properties` is compared on the r4133 channel for every live non-`large`
 case, so the **83 r4133-only** non-large cases get a property check for the
-first time and the **367 `both`** cases get their r4133 property table compared
-(1 670 gating property walks over 151 782 elements per full run). Both
+first time and the **313 non-`large` `both`** cases get their r4133 property
+table compared (1 670 gating property walks over 151 782 elements per full run;
+the 54 `kind=large*` `both` cases stay out on the plan's cost guard). Both
 preconditions were discharged in the sub-step and before the flip: the **20
 mixed echo rows** are narrowed per cell (66 measured spellings, mechanism (b)),
 and the **eight** staged `property` entries landed with their accounting
@@ -7809,6 +7924,18 @@ the site comment carries each row's measured cost.
 > general forwarding rule.
 
 ### Standing open follow-ups (actionable)
+
+- **54 `kind=large*` `engines: both` cases have no property compare on EITHER
+  channel — OPEN, by design, owed a decision at RP5.2 (R4133_PROPS RP4.1 audit
+  settlement, 2026-09-03).** `scheduler::force_properties` keeps the plan's cost
+  guard (`!kind.starts_with("large")`), so of the 367 `both` cases only **313**
+  compare their property table; the same guard also leaves 14 r4133-only and 11
+  capi-only `large` decks out, but those two never had one. The forced population
+  is pinned (`FORCED_PROPS_POPULATION = (440, 313, 83, 44)`, asserted by
+  `the_property_forcing_rule_is_every_live_non_large_case`), so this is measured,
+  not drifting. What is owed is a decision — accept the gap permanently in the
+  RP5.2 closing record, or price a `large`-deck property sweep (the `?`-sweep on
+  the biggest feeders is the whole reason for the guard).
 
 - **r4133 `New espvlcontrol.*` access violation — upstream-report candidate, OPEN
   (GOLDEN_REBASE G1.2, 2026-08-29).** The official EPRI r4133 DLL cannot
