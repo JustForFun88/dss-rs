@@ -332,7 +332,9 @@ and has **§RP3.11** (2026-09-03, the `Save`/`Dump` re-serialization surface —
 and has **§RP3.13** (2026-09-03, the two NCIM port bugs RP3.11's own P0
 findings opened — the `ncim.rs:683` panic and the NCIM PV→PQ KCL gap, both
 verdict `PORT_BUG`, fixed lane-unconditionally with zero `ledger.json` entries
-and zero golden bytes; record below),
+and zero golden bytes; audit settled the same day — 12 findings, 6 fixed,
+6 recorded, 0 refuted, one of them a fourth r4133 defect proven and not
+reproduced; record below),
 so what is left is §RP3.10 alone, deliberately sequenced *after*
 RP4.1 (it blocks §RP5.2, plan §0).
 Its four bin-7 root-cause sub-steps are ALL COMPLETE — RP3.1
@@ -3065,7 +3067,8 @@ dedicated fix agent settled each one against evidence — a live `epri-worker`
 probe, the r4133 Pascal, or a recomputation — never against plausibility.
 **Six fixed, six recorded, none refuted.** Two were substantive.
 
-* **AC-2 (major) — FIXED, and it is a fifth defect, not a fourth.** The ported
+* **AC-2 (major) — FIXED, and it is a fifth defect fixed by this sub-step (after
+  A, B, C and B′) — the fourth r4133 defect it proves.** The ported
   `ncim_stamp_swing_source_currents` reproduced r4133's PC-loop `cadd`
   (`VSource.pas` l.1169) while subtracting the PD terms (l.1135), and P8 pinned
   that identity. Settled by measurement, on the one deck shape where the two
@@ -3220,6 +3223,13 @@ tripwire naming the file, the line and the element (both restored with
 untracked `tests/corpus/…` deck-written set behind — the `CorpusGuard`
 overlapping-guard race in §"Standing open follow-ups", **eighth** sighting —
 removed by exact name afterwards; `git clean` never used.
+
+*Commits.* `2ce1a66e` (the sub-step — the four fixes, eight pins and this
+record), `217355da` (the audit settlement — the PC-sign non-reproduction, pin P9,
+the `RP313_NCIM_PINS` citation guard and the corrected AC-1 symptom, 9 files
++805/−132) and this docs commit (the §RP3.13 / plan / follow-up sync). Nothing
+else on `r4133-props` between them; the plan's §0 and §RP3.13 dated lines name
+the same three.
 
 
 **RP4.1 (`all_properties` unmasked on the r4133 channel) landed 2026-09-03 —
@@ -3574,8 +3584,11 @@ the stale PV→PQ reported Q (the machine kept the PF-derived `Q` while the solv
 injected the clamped one, so `Export Powers`/`Currents` violated KCL). Both
 `PORT_BUG`, fixed lane-unconditionally in one commit with zero ledger entries and
 zero golden bytes, plus two more defects of the same family found and fixed on
-the way (the flat-start clamp, the swing-`VSource` NCIM arm);
-§RP3.13 record above. **Next: RP3.10** (the reproduced `QMode=0` dispatch, user
+the way (the flat-start clamp, the swing-`VSource` NCIM arm). Its audit
+settlement the same day (`217355da`, 12 findings — 6 fixed, 6 recorded, 0
+refuted) added a ninth pin and stopped reproducing a **fourth** r4133 defect,
+`CalcInjCurrAtBus`' PC-element sign, which is the only one of the four that
+changes a reported number; §RP3.13 record above. **Next: RP3.10** (the reproduced `QMode=0` dispatch, user
 go-ahead) and then **WP-RP5** (RP5.1 operational docs, RP5.2 the closing
 record); `GOLDEN_REBASE_PLAN.md` G3.4/G3.5, which waited on this flip, are
 unblocked.
@@ -7390,7 +7403,9 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
 > distinct: 10 fixed, 2 recorded, 0 refuted, three more `SaveWrite` guards
 > ported), and only §RP3.10 is left — **§RP3.13**, which RP3.11's P0 findings
 > opened, was accepted and landed 2026-09-03 (two NCIM `PORT_BUG`s fixed in both
-> lanes, zero ledger entries, zero golden bytes). The RP3.6, RP3.7, RP3.8,
+> lanes — four defects in all, with a fifth fixed by its audit settlement the
+> same day: 12 findings, 6 fixed, 6 recorded, 0 refuted — zero ledger entries,
+> zero golden bytes). The RP3.6, RP3.7, RP3.8,
 > RP3.9, RP3.11, RP3.12 and RP3.13 records live in §1 above, beside RP3.5's
 > narrative one.
 
@@ -8042,7 +8057,12 @@ file (`oracle_parity_cfg_gate.rs::operational_docs` deliberately excludes it).
     (`obj/props/class_props/value.rs` → `elements/pc/generator/accessors.rs`) and
     its NCIM (`solution/solution/ncim.rs`) ports r4133's *executed* code
     loop-for-loop, including not restoring the model — which is now known to be
-    correct rather than a gap.
+    correct rather than a gap. *(**Correction 2026-09-03, §RP3.13:**
+    "loop-for-loop" no longer holds everywhere in that file — two array overruns
+    the faithful port had inherited, `InitPQGen`'s length-1 `deltaQNom` sizing
+    and `DOForceFlatStart`'s unconditional `node_v[1..3]` write, are proven
+    r4133 defects and are **not** reproduced; the model-restore reading above is
+    untouched.)*
   - **Landed: one echo row, one pin, one derivation.** The row is
     `echo("generator", "model", EchoParse, 2, …, Pin(…))`, the **82nd** in
     `PROPS_ECHO_R4133` and the first contributed by a WP-RP3 sub-step rather than
@@ -8868,6 +8888,25 @@ the site comment carries each row's measured cost.
 
 ### Standing open follow-ups (actionable)
 
+- **The generator's NCIM reporting arm is keyed on the *global* algorithm —
+  OPEN, recorded by the R4133_PROPS §RP3.13 audit settlement (AC-3,
+  2026-09-03).** `SysCtx.ncim` mirrors r4133's global `Algorithm`, not a
+  per-solve flag, so `TGeneratorObj.GetCurrents`' new NCIM arm — and its
+  precedence over the `LastSolutionWasDirect` shortcut — also governs a
+  `direct`/`dynamics`/`harmonics` solve run while `Set algorithm=NCIM` is still
+  in force: the machine then reports the last `UpdateGenQ` stamp evaluated at the
+  new voltages. **Not a divergence** — the auditor measured live r4133 returning
+  the identical numbers in the same sequence (`ncim_pv_pq` + `Set mode=direct;
+  Solve` → `Generator.G1 78.5593 ∠117.52°`, `(-783.9 kW, -1504.8 kvar)`, KCL at
+  `genbus` off by `(1216.1, -704.8)`) — and unreachable from every gated case,
+  which is why RP3.13 recorded it instead of inventing an answer: unlike the
+  PC-sign finding it settled, there is no measured "correct" value to move to,
+  and guessing one would leave the sole live NCIM oracle on an untested surface.
+  Documented at the arm (`elements/pc/generator/accessors.rs`); the candidate fix
+  is a `ncim_stamped_at` marker mirroring `VSource::ncim_swing_stamped_at`.
+  Whoever takes it owes a probe of what a generator *should* report in that
+  sequence before the arm moves.
+
 - **54 `kind=large*` `engines: both` cases have no property compare on EITHER
   channel — OPEN, by design, owed a decision at RP5.2 (R4133_PROPS RP4.1 audit
   settlement, 2026-09-03).** `scheduler::force_properties` keeps the plan's cost
@@ -8955,8 +8994,18 @@ the site comment carries each row's measured cost.
   eight and then five untracked files in the same directory, both lanes green
   with them present, both removed by exact name; `lane_diff.ps1`'s own artifact
   sweep removed the same class in its run without touching the two intended
-  working-tree changes. Six sightings make it a pattern, not a fluke:
-  whoever picks it up should start with `DSS_GATE_JOBS=1` per the G2.2d note.
+  working-tree changes. **Seventh and eighth sightings, 2026-09-03, at
+  R4133_PROPS §RP3.13's gate and settlement runs**, and the first measurement of
+  the nondeterminism itself: successive unfiltered runs of the *same* tree left
+  9, then 6, then 6, then an 11-file set carrying mixed-case duplicates
+  (`auto3bus_hl_current.txt` beside `Auto3bus_HL_current.txt`) and finally 8,
+  while the settlement's runs left 36 across `tests/corpus/…`; every set removed
+  by exact name, `git clean` never used, no tracked corpus or golden byte moved,
+  both lanes green with them present. The §RP3.13 record also logs an
+  unexplained one-off `corpus_gate` `137 passed; 1 failed` that never reproduced
+  and whose most likely cause is this race. Eight sightings make it a pattern,
+  not a fluke: whoever picks it up should start with `DSS_GATE_JOBS=1` per the
+  G2.2d note.
 
 **Carried-forward handoffs — work a *declared-complete* plan deferred to a
 successor plan that has NOT finished it** (audited 2026-07-17; surfaced here so the

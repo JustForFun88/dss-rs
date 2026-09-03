@@ -189,7 +189,8 @@ port bugs, opened by RP3.11's own P0 findings) is the third: it moves no
 property cell at all — both defects are in the NCIM solve and its reporting arms
 — so it blocks neither the unmask nor §RP5.2, and it ran on the user's go-ahead
 straight after RP3.11. *(**Executed 2026-09-03** — verdict `PORT_BUG` × 2, fixed
-in both lanes with zero ledger entries and zero golden bytes; see §RP3.13.)*
+in both lanes with zero ledger entries and zero golden bytes, `2ce1a66e` +
+`217355da`; see §RP3.13.)*
 Execution is on a **single branch only — never in parallel
 worktrees**: `tests/corpus/ledger.json`, `tests/corpus/manifests/population.lock.json`
 and `tests/golden/golden.lock.json` are fail-on-stale and are rewritten by this
@@ -226,7 +227,7 @@ audits on `opus-xhigh` exec rows are themselves `opus-xhigh`.
 | RP3.12 | `opus-high+` | `opus-high+` | `opus-high+` | as executed: a verdict-only sub-step over one already-decomposed root cause — no product line, no numerics of its own, the judgement calls being the count-lock re-derivation and the ledger-cause rewrite |
 | RP3.10 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | a behavioral port change in both lanes (the reproduced `QMode=0` dispatch) that moves solved powers on four r4133-gating decks — live probe + per-case power-channel ledger work |
 | RP3.11 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | a serialization-semantics decision (store vs live) over every class at once, with `Save`/`Dump`/`props_roundtrip` golden exposure in both lanes |
-| RP3.13 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | as executed: a behavioral engine change in both lanes — two NCIM port bugs, one of them a panic in a `#![forbid(unsafe_code)]` crate — where r4133 is the only live oracle (0.14.5 has no NCIM) and three upstream overruns had to be proven and *not* reproduced |
+| RP3.13 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | as executed: a behavioral engine change in both lanes — two NCIM port bugs, one of them a panic in a `#![forbid(unsafe_code)]` crate — where r4133 is the only live oracle (0.14.5 has no NCIM) and four upstream defects had to be proven and *not* reproduced (three overruns plus, in the audit settlement, the `CalcInjCurrAtBus` PC-element sign) |
 | RP4.1 | `opus-high+` | `opus-high+` | `opus-high+` | flag flip + residual triage (G1.1's own tier) |
 | RP5.1, RP5.2 | `opus-high+` | `opus-high+` | `opus-high+` | doc surgery validated by `oracle_parity_cfg_gate.rs` doc tests |
 
@@ -2403,8 +2404,15 @@ report `54-ncim-calcinjcurratbus-pc-sign.md`.
 
 **Blocks nothing** — no property cell moves, so neither the unmask (landed) nor
 §RP5.2 gains a precondition. Tier as executed: `opus-xhigh` (exec and both
-audits). **Executed 2026-09-03**; the sub-step, its audit settlement and this
-docs commit are named by sha in STATUS §RP3.13, which is the full record. **Bug
+audits). **Landed 2026-09-03** — `2ce1a66e` (the sub-step: the four fixes, eight
+pins, the record), `217355da` (the audit settlement: 12 findings — 6 fixed,
+6 recorded, 0 refuted; the `CalcInjCurrAtBus` PC-sign non-reproduction, pin P9
+and the `RP313_NCIM_PINS` citation guard) and this docs commit. Gate green in
+both lanes, each exit code read individually — **4 449 passed / 0 failed /
+5 ignored** per lane over 74 binaries, the corpus gate unfiltered over the full
+523-case population with every ledger entry hit and none stale; `lane_diff` owed
+(product `src/` moved) and **PASS, Δ = 0** on every gated kind. Full record:
+STATUS §RP3.13. **Bug
 B′ landed here too, not after it:** `Export Currents`' `Vsource.SOURCE` phase-A
 magnitude read `3.24074e-05` / `3.24074e-05` / `4.42577e-05` / `0.0106809` A on
 `ncim_pq` / `ncim_pv_pq` / `ncim_midi` / `Xmission_System_Kundur2Area` against
