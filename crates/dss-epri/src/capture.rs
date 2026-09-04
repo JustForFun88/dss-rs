@@ -566,10 +566,10 @@ fn capture_aggregates(engine: &Engine, warn: bool) -> Result<AggregatesCap, Engi
         let (errno, desc) = engine.poll_error();
         if errno == 0 {
             return Ok(AggregatesCap {
-                losses_w: complex_pair(&losses),
-                line_losses_kw: complex_pair(&line_losses),
-                substation_losses_kw: complex_pair(&substation_losses),
-                total_power_kw: complex_pair(&total_power),
+                losses_w: complex_pair(&losses, "Circuit.Losses")?,
+                line_losses_kw: complex_pair(&line_losses, "Circuit.LineLosses")?,
+                substation_losses_kw: complex_pair(&substation_losses, "Circuit.SubstationLosses")?,
+                total_power_kw: complex_pair(&total_power, "Circuit.TotalPower")?,
                 all_element_losses_kw: all_element_losses,
             });
         }
@@ -586,13 +586,25 @@ fn capture_aggregates(engine: &Engine, warn: bool) -> Result<AggregatesCap, Engi
 }
 
 /// A `myType = 3` single-element complex reply as the `[re, im]` pair the capi
-/// transport emits. A short reply pads with zeros rather than panicking — the
-/// same convention [`capture_all_elements`] uses for `loss_w`.
-fn complex_pair(v: &[f64]) -> Vec<f64> {
-    vec![
-        v.first().copied().unwrap_or(0.0),
-        v.get(1).copied().unwrap_or(0.0),
-    ]
+/// transport emits.
+///
+/// The length is checked, not padded: all four `CircuitV` aggregate modes do
+/// `setlength(myCmplxArray, 1)` unconditionally before any `nil` test
+/// (`DDLL/DCircuit.pas:293-303`, `:305-325`, `:327-347`, `:349-368`), so a
+/// reply that is not exactly two doubles is a transport failure, never a value.
+/// Padding it would be indistinguishable from the true answer for
+/// `SubstationLosses`, which is a legitimate `(0, 0)` on every deck without a
+/// `sub=yes` transformer (G1.9 audit CODE-3 / T4).
+fn complex_pair(v: &[f64], what: &str) -> Result<Vec<f64>, EngineError> {
+    if v.len() != 2 {
+        return Err(EngineError::Other(format!(
+            "{what}: the DLL returned {} double(s) for a myType=3 complex \
+             reply, expected exactly 2 (`DDLL/DCircuit.pas` sets length 1 \
+             unconditionally, so this is a transport failure)",
+            v.len()
+        )));
+    }
+    Ok(vec![v[0], v[1]])
 }
 
 /// Group C of the step capture: the ten order-free `Solution` scalars of G1.9.
@@ -894,4 +906,28 @@ fn read_autoadd_log(engine: &Engine, case_path: &str) -> Option<String> {
     let log = dir.join(format!("{name}_AutoAddLog.csv"));
     let raw = std::fs::read_to_string(log).ok()?;
     Some(raw.replace("\r\n", "\n").replace('\r', "\n"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::complex_pair;
+
+    /// A `myType = 3` reply is exactly two doubles or it is a transport
+    /// failure — the bridge must never pad one into a plausible `(0, 0)`
+    /// (`Circuit.SubstationLosses` is a legitimate `(0, 0)` on most decks, so a
+    /// padded short read would be indistinguishable from the true value).
+    /// `DDLL/DCircuit.pas:293-303` sets length 1 unconditionally.
+    #[test]
+    fn complex_pair_refuses_a_reply_that_is_not_two_doubles() {
+        assert_eq!(complex_pair(&[1.5, -2.5], "x").unwrap(), vec![1.5, -2.5]);
+        for short in [&[][..], &[1.0][..], &[1.0, 2.0, 3.0][..]] {
+            let err = complex_pair(short, "Circuit.SubstationLosses")
+                .expect_err("a reply of the wrong length must be an error, not a padded pair");
+            let msg = err.to_string();
+            assert!(
+                msg.contains("Circuit.SubstationLosses") && msg.contains("expected exactly 2"),
+                "unhelpful message: {msg}"
+            );
+        }
+    }
 }

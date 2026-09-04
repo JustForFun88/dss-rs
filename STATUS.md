@@ -160,7 +160,7 @@ satisfied**, **G3.4**/**G3.5** unblocked; **G1.2** (the ESPVLControl deck)
 2026-08-29; **G1.0**, the rails ahead of G1.3a (ten-flag vocabulary in one lock
 regen, exclusion `channels`, the capture-presence guard, the r4133 bridge rails
 whose 96-mode probe **also discharges G1.11's mode-capability acceptance for
-the whole WP**) 2026-09-04; **G1.9** (lane `lane-s`, 2026-09-04, `<sha>`), the
+the whole WP**) 2026-09-04; **G1.9** (lane `lane-s`, 2026-09-04, `9757d26c` + its audit settlement), the
 five `Circuit` aggregates and ten `Solution` scalars on all 519 live cases of
 both channels, unflagged and universal — no lock regen, **0 ledger entries / 0
 new `LEDGER_FIELDS` / 0 golden bytes**, no new floor, all three kill criteria
