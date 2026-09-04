@@ -36,26 +36,26 @@ the behavioral authority, the pinned dss_capi 0.14.5 is a numeric oracle only,
 and upstream bugs are never reproduced in any lane** — the `oracle-parity` lane
 has shrunk to a precision-compat lane and is scheduled for full teardown.
 
-**In flight.** `GOLDEN_REBASE_PLAN.md` **WP-G1**, on branch **`update`** (the
-R4133_PROPS branch `r4133-props` was merged and deleted 2026-09-04). **`R4133_PROPS_PLAN.md` is COMPLETE**
-(2026-09-04, §RP5.2) — all six WPs gate-green in both lanes over 26 sub-steps /
-**67** RP-titled commits (64 through RP5.1's `64474762`, plus RP5.2's
-`5a110653`, its settlement `bc16430b` and this record), plan archived to
-`docs/plans-archive/`, `PLAN_SEQUENCE.md` row 5b COMPLETE with the final
-counters, record in
-[`era-summaries.md`](docs/phase-records/era-summaries.md) §1a, **G1.1 handed back
-satisfied**. Close-out 2026-09-04: `update` fast-forwarded to `r4133-props`
-@ `2724a139` (32 commits) and pushed to `origin/update`. Execution stays
-single-branch: `ledger.json`, `population.lock.json`, `golden.lock.json` are
-fail-on-stale.
+**In flight.** `GOLDEN_REBASE_PLAN.md` **WP-G1**. Integration branch is
+**`update`**; since 2026-09-04 (**D7**, user decision) independent sub-step
+chains run in parallel `lane-*` worktrees and `update` takes one lane sub-step
+at a time through a merge agent (which regenerates `population.lock.json` and
+unions `ledger.json`; all three locks stay fail-on-stale).
+**`R4133_PROPS_PLAN.md` is COMPLETE** (2026-09-04, §RP5.2) — all six WPs
+gate-green in both lanes over 26 sub-steps / **67** RP-titled commits (64
+through RP5.1's `64474762`, plus RP5.2's `5a110653`, its settlement
+`bc16430b` and its record), plan archived to `docs/plans-archive/`,
+`PLAN_SEQUENCE.md` row 5b COMPLETE with the final counters, record in
+[`era-summaries.md`](docs/phase-records/era-summaries.md) §1a, **G1.1 handed
+back satisfied**; branch `r4133-props` merged (`update` ff to `2724a139`, 32
+commits, pushed to `origin/update`) and deleted.
 
 **Record placement (from 2026-09-03).** Every sub-step's **full** record is
-appended to its per-WP file under `docs/phase-records/` — WP-RP3 →
-[`r4133-props-rp3.md`](docs/phase-records/r4133-props-rp3.md), where §RP3.10's
-went; a later WP → a new `r4133-props-<wp>.md` (WP-RP5 →
-[`r4133-props-rp5.md`](docs/phase-records/r4133-props-rp5.md)). The pin-citation guards
-in `crates/dss-core/tests/props_r4133_replay.rs` read that file, and section 7
-forwards the `§RPx.y` citations to it. Section 1 gets a **3–6 line** landed
+appended to its per-WP file under `docs/phase-records/` — R4133_PROPS to
+`r4133-props-rp<N>.md` (read by the `props_r4133_replay.rs` pin-citation
+guards), GOLDEN_REBASE to
+[`golden-rebase.md`](docs/phase-records/golden-rebase.md) — and section 7
+forwards the `§RPx.y` citations there. Section 1 gets a **3–6 line** landed
 paragraph per sub-step — verdict, date, commit, pointer — and never grows a full
 record again; the ritual's "update `STATUS.md`" / "read `STATUS.md` end to end"
 steps therefore mean STATUS **plus** the sub-step's phase-records file.
@@ -133,13 +133,11 @@ the closing commit; the +1 is the thirteenth `oracle_parity_cfg_gate` test its
 settlement added), and the gating-case outcome as the lock's **464** r4133-gating
 cases (**313** non-`large` `both` compared), not the plan's stale 462. Its
 settlement (14 findings — 12 fixed, 1 recorded, 1 superseded, 0 refuted) closed
-both citation-guard gaps — an unanchored `file.rs:LINE` citation now **fails**
-instead of being checked for existence only (58 anchored, six re-spelled), and a
-thirteenth test resolves the seven `record.md:LINE` citations Rust comments carry
-— and corrected two live cross-doc counts (`GOLDEN_REBASE_PLAN.md`'s stale 96
-r4133-only cases → 97; 25 → 26 sub-steps) plus four self-description defects.
-Full records — including the condensed table of all 26 sub-steps and the 13+
-`max |Δ| = 0` `lane_diff` runs:
+both citation-guard gaps (an unanchored `file.rs:LINE` citation now **fails**,
+58 anchored; a thirteenth test resolves the seven `record.md:LINE` citations)
+and corrected two live cross-doc counts (96 → 97 r4133-only cases, 25 → 26
+sub-steps) plus four self-description defects. Full records — including the
+condensed table of all 26 sub-steps and the 13+ `max |Δ| = 0` `lane_diff` runs:
 [`r4133-props-rp5.md`](docs/phase-records/r4133-props-rp5.md) §RP5.1 / §RP5.2.
 
 **GOLDEN_REBASE WP-G0 (rails) + WP-G2 (bug-kernel teardown) — COMPLETE**, merged
@@ -153,19 +151,20 @@ WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 **GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened
 2026-08-08). Landed: **G1.1** (killed; satisfied by `R4133_PROPS_PLAN.md`
 RP4.1, 2026-09-03, unblocking **G3.4**/**G3.5**), **G1.2** (ESPVLControl
-deck, 2026-08-29), **G1.0** (rails D1/D2/D3, 2026-09-04, whose mode probe
-**also discharges the G1.11 mode-capability acceptance for the whole WP**)
-and **G1.4a** (2026-09-04, lane `lane-b`, D7) — the bus surface's
-divergence-free half on both channels for every live non-`large*` case,
-after a spec-time STOP that **D8** settled by moving the sequence quantities
-and `VLL`/`puVLL` (an r4133 hang) into a new **G1.4c**. G1.4a's exact
-`kv_base` compare bought the workspace `serde_json` `float_roundtrip`
-(**D11(1)**) and caught two oracle-side faults: capi 0.14.5 disagrees with
-itself on `GICTransformer` decks, so those four now gate on `r4133` alone
-with `makeposseq_shunt` split (**D12**/**D14**; ledger 57 → 53, corpus 524),
-and the r4133 worker no longer leaks `DefaultBaseFreq` through the Windows
-registry (**D13**, commit `6b0dbd32`, rule in `TESTING.md`). No golden byte
-moved. G1.3a–d, G1.4b/c, G1.5–G1.11c, WP-G3–G5 remain.
+deck, 2026-08-29), **G1.0** (rails D1/D2/D3, 2026-09-04, `c4b67a6e`, whose
+mode probe **also discharges the G1.11 mode-capability acceptance for the
+whole WP**) and **G1.4a** (2026-09-04/05, lane `lane-b`, D7; `6b0dbd32` +
+`be01e413`, audits settled in `10417d99`) — the bus surface's divergence-free
+half on both channels for every live non-`large*` case, after a spec-time STOP
+that **D8** settled by moving the sequence quantities and `VLL`/`puVLL` (an
+r4133 hang) into a new **G1.4c**. G1.4a's exact `kv_base` compare bought the
+workspace `serde_json` `float_roundtrip` (**D11(1)**) and caught two
+oracle-side faults: capi 0.14.5 disagrees with itself on `GICTransformer`
+decks, so those four now gate on `r4133` alone with `makeposseq_shunt` split
+(**D12**/**D14**; ledger 57 → 53, corpus 523 → 524), and the r4133 worker no
+longer leaks `DefaultBaseFreq` through the Windows registry (**D13**, rule in
+`TESTING.md`). No golden byte moved; **4 835 / 0 / 5** per lane, `lane_diff`
+PASS max |Δ| = 0. G1.3a–d, G1.4b/c, G1.5–G1.11c, WP-G3–G5 remain.
 
 **Next.** Bus lane (`lane-b`): **G1.5** (short-circuit
 `Zsc*`/`Ysc*`/`Isc`/`Voc` on G1.4a's per-bus capture), then **G1.4c** (D8)
@@ -268,14 +267,14 @@ the site comment carries each row's measured cost.
 - **54 `kind=large*` `engines: both` cases have no property compare on EITHER
   channel — DECIDED at RP5.2 (2026-09-04): accepted permanently** (raised by the
   R4133_PROPS RP4.1 audit settlement, 2026-09-03). `scheduler::force_properties`
-  keeps the plan's §1.3 cost guard (`!kind.starts_with("large")`), so of the 367
-  `both` cases **313** compare their property table; the same guard also leaves
+  keeps the plan's §1.3 cost guard (`!kind.starts_with("large")`), so of the 364
+  `both` cases **310** compare their property table; the same guard also leaves
   14 r4133-only and 11 capi-only `large` decks out, but those two never had one.
-  The forced population is pinned (`FORCED_PROPS_POPULATION` = (440, 313, 83,
-  44), asserted by `the_property_forcing_rule_is_every_live_non_large_case`), so
-  the gap is measured, bounded and locked. Pricing a `large`-deck property sweep
-  stays available to GOLDEN_REBASE, owed by nothing: `r4133-props-rp5.md`
-  §RP5.2.
+  The forced population is pinned (`FORCED_PROPS_POPULATION` = (441, 310, 87,
+  44) since G1.4a's D12/D14 flip — the gap itself unchanged at 54 — asserted by
+  `the_property_forcing_rule_is_every_live_non_large_case`), so it is measured,
+  bounded and locked. Pricing a `large`-deck property sweep stays available to
+  GOLDEN_REBASE, owed by nothing: `r4133-props-rp5.md` §RP5.2.
 
 - **`DECLARED_RP35`'s four remaining declared pairs owe a per-pair disposition —
   OPEN (R4133_PROPS RP4.1, 2026-09-03).** RP4.1 retired only the two pairs its
