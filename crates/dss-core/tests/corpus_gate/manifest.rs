@@ -561,7 +561,7 @@ pub(crate) const G1_SURFACE_FLAGS: &[G1Flag] = &[
     G1Flag {
         name: "compare_topology",
         sub_step: "G1.7",
-        wired: false,
+        wired: true,
         get: |c| c.compare_topology,
     },
     G1Flag {
@@ -992,11 +992,12 @@ fn no_unwired_g1_surface_flag_is_set_in_any_manifest() {
     }
 }
 
-/// Non-vacuity for the rail above (§1.1(f)): the manifests set none of the ten
-/// flags today, so the walk passes on an empty premise. Drive each flag on a
-/// synthetic case and assert the refusal actually fires — and that a wired flag
-/// (simulated by reading the row's own `wired`) is the only thing that lets one
-/// through.
+/// Non-vacuity for the rail above (§1.1(f)): only `compare_topology` is declared
+/// in the manifests today (G1.7, on its seven witness decks —
+/// `scheduler::TOPOLOGY_DECLARED_IN_MANIFEST`), so for the other nine flags the
+/// walk passes on an empty premise. Drive each flag on a synthetic case and
+/// assert the refusal actually fires — and that a wired flag (simulated by
+/// reading the row's own `wired`) is the only thing that lets one through.
 #[test]
 fn an_unwired_g1_surface_flag_on_a_case_is_refused() {
     for f in G1_SURFACE_FLAGS {

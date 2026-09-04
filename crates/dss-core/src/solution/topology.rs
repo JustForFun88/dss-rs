@@ -12,7 +12,7 @@
 
 use crate::circuit::Circuit;
 use crate::circuit::ckt_tree::{
-    BusAdjLists, CktTree, all_terminals_closed, build_active_bus_adjacency_lists,
+    BusAdjLists, CktTree, all_terminals_closed, build_active_bus_adjacency_lists, is_shunt_element,
 };
 use crate::elements::ckt::ElemFlags;
 use crate::elements::pd::line::Line;
@@ -106,10 +106,13 @@ fn get_pc_elements_connected_to_bus(
     }
 }
 
-/// Pascal `GetShuntPDElementsConnectedToBus`: attach the bus's shunt PD elements.
-/// The Rust `BusAdjLists.pd` holds only **non-shunt** PD (shunt PD is already in
-/// `.pc`, handled by [`get_pc_elements_connected_to_bus`]), so this is a faithful
-/// no-op — Pascal likewise passes `lstPD` (non-shunt) here and finds nothing.
+/// Pascal `GetShuntPDElementsConnectedToBus` (capi `Shared/CktTree.pas:599-620`):
+/// attach the bus's shunt PD elements. The Rust `BusAdjLists.pd` holds only
+/// **non-shunt** PD (shunt PD is already in `.pc`, handled by
+/// [`get_pc_elements_connected_to_bus`]), so this is a faithful no-op — Pascal
+/// likewise passes `lstPD` (non-shunt) here and finds nothing. The test is
+/// [`is_shunt_element`] (upstream's class-switching `IsShuntElement`), never the
+/// element's own `TPDElement.IsShunt`.
 fn get_shunt_pd_elements_connected_to_bus(
     adj_lst: &[ElemId],
     store: &mut dyn ElemStore,
@@ -117,8 +120,7 @@ fn get_shunt_pd_elements_connected_to_bus(
     analyze: bool,
 ) {
     for &p in adj_lst {
-        let is_shunt = store.ckt_elem(p).is_shunt();
-        if !store.ckt_elem(p).cd().enabled || !is_shunt {
+        if !store.ckt_elem(p).cd().enabled || !is_shunt_element(store, p) {
             continue;
         }
         if analyze {
@@ -160,8 +162,11 @@ fn find_all_child_branches(
         if !analyze && checked {
             continue;
         }
-        let is_shunt = store.ckt_elem(p).is_shunt();
-        if is_shunt || !all_terminals_closed(store.ckt_elem(p)) {
+        // `IsShuntElement`, not `TPDElement.IsShunt` (capi
+        // `Shared/CktTree.pas:566`): a GICTransformer sets its own `IsShunt` but
+        // is a tree BRANCH here, and closes a loop when two of its terminals land
+        // on the same bus.
+        if is_shunt_element(store, p) || !all_terminals_closed(store.ckt_elem(p)) {
             continue;
         }
         let nterms = store.ckt_elem(p).cd().nterms;

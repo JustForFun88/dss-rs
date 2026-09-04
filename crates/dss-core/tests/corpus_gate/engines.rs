@@ -27,6 +27,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::harness::aggregates::{AggregatesCap, SolutionScalarsCap};
+use crate::harness::topology::TopologyCap;
 use crate::harness::{
     ElementCap, Injection, MeterCap, MonitorCap, ProbeCap, PropsCap, VariablesCap, YFingerprint,
     YMat, YPrim,
@@ -100,6 +101,20 @@ pub(crate) struct Checkpoint {
     /// presence contract as [`Checkpoint::aggregates`].
     #[serde(default)]
     pub(crate) solution_scalars: Option<SolutionScalarsCap>,
+    /// `GOLDEN_REBASE_PLAN.md` G1.7 — the six order-free `ITopology` quantities.
+    /// Unlike G1.9's two, this surface is **flag-gated**
+    /// (`SolvableCase::compare_topology`), so `None` is the honest reply when the
+    /// case did not request it; the comparator's presence rail
+    /// (`harness::capture_guard::require_capture_opt`) turns `None` into a
+    /// failure exactly when the flag IS on.
+    ///
+    /// Both transports read it **strictly last** in a step — the first
+    /// `Topology` read builds the memoized tree and rewrites
+    /// `Checked`/`IsIsolated`/`BusChecked` on every element (r4133
+    /// `Common/Circuit.pas:2932-2950`, `:2937-2947`) — and
+    /// `crates/dss-core/tests/capture_order.rs` asserts that from their source.
+    #[serde(default)]
+    pub(crate) topology: Option<TopologyCap>,
 }
 
 /// The per-case wall-clock deadline for a single oracle request
@@ -135,6 +150,10 @@ pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
         "eventlog": c.compare_eventlog,
         "ctrlqueue": c.compare_ctrlqueue,
         "all_properties": c.compare_all_properties,
+        // G1.7: both transports honor this key (`oracle_server.py` reads
+        // `req["topology"]`, `dss-epri`'s `RunRequest::topology`) and both read
+        // the surface strictly last in the step.
+        "topology": c.compare_topology,
         "global_result": c.compare_global_result,
         "autoadd_log": c.compare_autoadd_log,
         "warn_and_continue": !c.expect_warnings.is_empty(),

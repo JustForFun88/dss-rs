@@ -1360,12 +1360,12 @@ dated). What was checked, and against what:
 | claim here | landed at | verdict |
 |---|---|---|
 | the floor is `2e-4` relative | `R4133_DISPLAY_FLOOR` at `harness/props_norm.rs:895` (`Option<f64>` = `Some(2e-4)`) | unchanged |
-| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:3317`) | unchanged |
+| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:3323`) | unchanged |
 | the four derivation rows (6.431124e-05 / 1.374769e-03 / 4.404256e-03 / 5.524501e-02) | the constant's own doc table, `props_norm.rs:786-792` | identical, both places |
 | 1 951 vendored spellings claimed (from 2 006, less the 55 the mechanism clause refuses) | `props_r4133_replay::CLAIMED_DISPLAY_FLOOR` = 1951 (`props_r4133_replay.rs:565`) | unchanged |
-| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:911-920` and `:928-937` (`i_rel`/`i_abs`) | unchanged |
-| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1103-1112` and `:1092-1101` | unchanged |
-| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:2508` (asserted as `i_abs / floor`) | unchanged |
+| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:917-920` and `:928-937` (`i_rel`/`i_abs`) | unchanged |
+| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1109-1112` and `:1092-1101` | unchanged |
+| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:2514` (asserted as `i_abs / floor`) | unchanged |
 | no `Tolerances` field, no `tol_for` tier moved by this plan | `Tolerances` has no props field; the floor is read only by `props_norm` | unchanged |
 
 The floor therefore still sits **3.110×** above the worst cell it claims and
@@ -1555,6 +1555,27 @@ so the one-sidedness costs nothing today. `load_mult` is compared with an exact
 f64 `assert_eq!` on a lane that does not yet carry coordinator decision D11's
 `serde_json` `float_roundtrip` fix; it is green today and can only tighten after
 that sync ("D11 — pending sync").
+
+
+## G1.7 topology interface (`harness::topology`) — **no floor, deliberately**
+
+The topology surface introduces **no tolerance of any kind**, in either lane, and
+the absence is a decision rather than an omission. All six compared quantities are
+discrete: `NumLoops`, `NumIsolatedBranches` and `NumIsolatedLoads` are counts, and
+`AllLoopedPairs`, `AllIsolatedBranches` and `AllIsolatedLoads` are lists of
+qualified element names. Counts are compared with `assert_eq!` and names with an
+ASCII-case-insensitive equality (r4133 emits `QualifiedName`, capi `FullName`;
+measured byte-identical, same case and same order, on all 336 both-gated cases),
+in **sequence** order — both sides walk a `TPointerList` in creation order, and
+that order is exactly what a topology gate exists to catch, so no set comparison
+and no reordering is admitted either.
+
+Nothing here can accumulate a floating-point error: no quantity is a sum, a
+product or a solve output, so the "prove the floor by decomposition" rule has
+nothing to bite on and a band would only be able to hide a real divergence. The
+two measured Rust↔oracle differences on this surface are structural upstream
+defects, not numerics, and are handled by positive assertions with zero ledger
+rows (`TESTING.md` §"The two topology settlements"), never by a tolerance.
 
 
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)
