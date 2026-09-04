@@ -125,21 +125,18 @@ record: [`r4133-props-rp4.md`](docs/phase-records/r4133-props-rp4.md).
 **46** `file.rs:LINE` citations, which its settlement turned into an executable
 walk over all **58** (its two handed-forward wording items were both **refuted**
 and are recorded as deliberately not edited). **RP5.2 landed 2026-09-04**
-(`5a110653` + settlement `bc16430b` + this record) — the closing record and the
-archive move, with the final counters published as measured: normalization
-**168** / echo **82** rows, ledger **36 → 57** entries over **23 → 30** causes,
-one new tolerance (the 2e-4 display floor), **4 499 / 0 / 5** per lane (4 498 at
-the closing commit; the +1 is the thirteenth `oracle_parity_cfg_gate` test its
-settlement added), and the gating-case outcome as the lock's **464** r4133-gating
-cases (**313** non-`large` `both` compared), not the plan's stale 462. Its
-settlement (14 findings — 12 fixed, 1 recorded, 1 superseded, 0 refuted) closed
-both citation-guard gaps — an unanchored `file.rs:LINE` citation now **fails**
-instead of being checked for existence only (58 anchored, six re-spelled), and a
-thirteenth test resolves the seven `record.md:LINE` citations Rust comments carry
-— and corrected two live cross-doc counts (`GOLDEN_REBASE_PLAN.md`'s stale 96
-r4133-only cases → 97; 25 → 26 sub-steps) plus four self-description defects.
-Full records — including the condensed table of all 26 sub-steps and the 13+
-`max |Δ| = 0` `lane_diff` runs:
+(`5a110653` + settlement `bc16430b`) — the closing record and the archive move,
+with the final counters published as measured: normalization **168** / echo **82**
+rows, ledger **36 → 57** entries over **23 → 30** causes, one new tolerance (the
+2e-4 display floor), **4 499 / 0 / 5** per lane, and the gating-case outcome as
+the lock's **464** r4133-gating cases (**313** non-`large` `both` compared), not
+the plan's stale 462. Its settlement (14 findings — 12 fixed, 1 recorded, 1
+superseded, 0 refuted) closed both citation-guard gaps — an unanchored
+`file.rs:LINE` citation now **fails** instead of being checked for existence only
+(58 anchored, six re-spelled), and a thirteenth test resolves the seven
+`record.md:LINE` citations Rust comments carry — and corrected two live cross-doc
+counts plus four self-description defects. Full records, including the condensed
+table of all 26 sub-steps and the 13+ `max |Δ| = 0` `lane_diff` runs:
 [`r4133-props-rp5.md`](docs/phase-records/r4133-props-rp5.md) §RP5.1 / §RP5.2.
 
 **GOLDEN_REBASE WP-G0 (rails) + WP-G2 (bug-kernel teardown) — COMPLETE**, merged
@@ -151,27 +148,30 @@ the six CLAUDE.md §"Known upstream bugs" reproduced in any lane. Full record:
 WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 
 **GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened
-2026-08-08). Landed so far: **G1.1** — killed on day one (433 of 438 walked
-live cases diverged), handed to `R4133_PROPS_PLAN.md` (user decision
-2026-08-22) and delivered by its RP4.1 on 2026-09-03, so **G1.1 is satisfied**
-and **G3.4** (`cim/`, `json/`, `json_import/`) + **G3.5** (`props/`) are
-unblocked, their value witness now the live r4133 property compare. **G1.2**
-(the ESPVLControl deck, the last zero-coverage class) landed 2026-08-29.
-**G1.0** — a new rails sub-step ahead of G1.3a (D1/D2/D3) — landed 2026-09-04
-(`c4b67a6e`, audit settlement `42454b64`): the ten-flag manifest vocabulary in
-**one** lock regen, explicit `channels` on the ten bare `element` exclusions, the
-capture-presence guard, and the r4133 bridge rails, whose 96-mode probe **also
-discharges the G1.11 mode-capability acceptance for the whole WP** (zero misses);
-it compares nothing new — 0 ledger entries, 0 golden bytes. G1.3a–d, G1.4–G1.11c
-and WP-G3–G5 remain. Full record: the same file, section "GOLDEN_REBASE WP-G1 — records".
+2026-08-08). Landed so far: **G1.1** — killed on day one (433 of 438 walked live
+cases diverged), handed to `R4133_PROPS_PLAN.md` (user decision 2026-08-22) and
+delivered by its RP4.1 on 2026-09-03, so **G1.1 is satisfied** and **G3.4**
+(`cim/`, `json/`, `json_import/`) + **G3.5** (`props/`) are unblocked, their
+witness now the live r4133 property compare. **G1.2** (the ESPVLControl deck, the
+last zero-coverage class) landed 2026-08-29. **G1.0** — rails ahead of G1.3a
+(D1/D2/D3) — landed 2026-09-04 (`c4b67a6e`, settlement `42454b64`): the ten-flag
+manifest vocabulary in **one** lock regen, explicit `channels` on the bare
+`element` exclusions, the capture-presence guard and the r4133 bridge rails,
+whose mode probe **also discharges the G1.11 mode-capability acceptance for the
+whole WP**; 0 ledger entries, 0 golden bytes. **G1.3a** — the first surface
+sub-step — landed 2026-09-04 on lane `lane-e` (D7): `Enabled` plus per-element
+`CurrentsMagAng`/`VoltagesMagAng`/`Residuals` on **both** channels over 442 cases,
+the A/B/C capture order enforced by `tests/capture_order.rs`, `WP_G1_MODES`
+96 → 97; **1** new ledger entry (capi-only CapControl TIMECONTROL bus,
+`DIVERGENCES.md` L8) + **13** measured scope widenings, 0 golden bytes, 0 band
+movement. G1.3b–d, G1.4–G1.11c and WP-G3–G5 remain. Full record: the same file,
+section "GOLDEN_REBASE WP-G1 — records".
 
-**Next.** **`GOLDEN_REBASE_PLAN.md` G1.3a** (per-element `CurrentsMagAng`,
-`VoltagesMagAng`, `Residuals`) — the first surface sub-step now that G1.0's
-rails are in: it wires **both** channels in one commit and its capture test
-asserts the A/B/C request order (plan §1.1(a), D3). Then G1.3b–d, G1.4–G1.11c
-and WP-G3–G5 — inside which **G3.4**/**G3.5**, blocked since 2026-08-08, are
-runnable. Queued behind GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE,
-MULTITHREADING, UPGRADE.
+**Next.** **`GOLDEN_REBASE_PLAN.md` G1.3d(i)** on the element lane (then
+G1.3d(ii) → G1.3b → G1.3c), with the bus, PD/meter and singles lanes running in
+parallel per D7. Then G1.4–G1.11c and WP-G3–G5 — inside which **G3.4**/**G3.5**,
+blocked since 2026-08-08, are runnable. Queued behind GOLDEN_REBASE:
+`WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
