@@ -356,6 +356,10 @@ pub(crate) fn compare_capture(
     let star = c.selected_elements == ["*"];
     // A view with no applicable entries behaves exactly like `None` (fast path).
     let ledger = ledger.filter(|v| !v.is_empty());
+    // G1.7 / D15: the port's isolation topology at step 0 of THIS case+channel
+    // run — the memoization reference the topology comparator rebases onto once
+    // a conductor has opened (`harness::topology::compare_topology`).
+    let mut topo_step0: Option<harness::topology::IsolationSnapshot> = None;
 
     for (i, cp) in oc.checkpoints.iter().enumerate() {
         dss.command("solve");
@@ -716,6 +720,29 @@ pub(crate) fn compare_capture(
                     .collect();
                 compare_all_properties(dss, &rewritten, tol, channel.props_channel(), &ctx);
             }
+        }
+
+        // `GOLDEN_REBASE_PLAN.md` G1.7 — the `ITopology` interface, compared
+        // LAST in the step on purpose, mirroring both transports' capture order
+        // (`oracle_server.py::run_case`, `dss-epri::capture::run`): building the
+        // topology tree stamps `Checked`/`IsIsolated`/`BusChecked` on every
+        // element (r4133 `Common/Circuit.pas:2937-2947`), upstream on its
+        // circuit and `Dss::topology_view` on ours, so no other comparison of
+        // this step may run after it. The surface is flag-gated, so the
+        // `capture_guard` rail applies: the flag being ON with nothing captured
+        // FAILS the case instead of comparing nothing.
+        if c.compare_topology {
+            let topo = capture_guard::require_capture_opt(
+                "compare_topology",
+                channel_tag(channel),
+                cp.topology.as_ref(),
+                &ctx,
+            );
+            // `topo_step0` carries the port's OWN step-0 isolation topology
+            // across the steps of this case+channel run: coordinator decision
+            // D15's rule is defined against it, and the engine is re-run per
+            // channel, so the reference is per run and never shared.
+            harness::topology::compare_topology(dss, topo, &ctx, label, i, &mut topo_step0);
         }
     }
 

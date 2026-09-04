@@ -59,6 +59,9 @@ pub struct RunRequest {
     pub ctrlqueue: bool,
     #[serde(default)]
     pub all_properties: bool,
+    /// `GOLDEN_REBASE_PLAN.md` G1.7 — the six order-free `Topology` reads.
+    #[serde(default)]
+    pub topology: bool,
     #[serde(default)]
     pub global_result: bool,
     #[serde(default)]
@@ -123,6 +126,7 @@ struct Checkpoint {
     global_result: String,
     aggregates: AggregatesCap,
     solution_scalars: SolutionScalarsCap,
+    topology: Option<TopologyCap>,
 }
 
 #[derive(Serialize)]
@@ -252,6 +256,27 @@ struct SolutionScalarsCap {
     system_y_changed: bool,
     seconds: f64,
     load_mult: f64,
+}
+
+/// The six `Topology` quantities of `GOLDEN_REBASE_PLAN.md` G1.7, in the exact
+/// shape `oracle_server.capture_topology` emits (identical JSON keys, identical
+/// normalized list shape) — the six rows of `DDLL/DTopology.pas` that never
+/// touch `ActiveCircuit.ActiveCktElement`. See [`capture_topology`].
+///
+/// `looped_pairs` is FLAT, `[a0, b0, a1, b1, ...]`: `TopologyV(0)`
+/// (`DTopology.pas:270-305`) writes the two `QualifiedName`s of one looped pair
+/// as two consecutive entries. The comparator pairs them up; the count is NOT
+/// its length — `num_loops` is the `IsLoopedHere` tally halved
+/// (`DTopology.pas:65-73`, `Result := Result div 2`), so IEEE13 answers
+/// `num_loops = 1` with three pairs.
+#[derive(Serialize)]
+struct TopologyCap {
+    num_loops: i32,
+    num_isolated_branches: i32,
+    num_isolated_loads: i32,
+    looped_pairs: Vec<String>,
+    isolated_branches: Vec<String>,
+    isolated_loads: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -385,6 +410,18 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             } else {
                 Vec::new()
             };
+            // G1.7 — read STRICTLY LAST, after `all_properties`, on both
+            // transports (`oracle_server.run_case` does the same; the source
+            // order of both is asserted by
+            // `crates/dss-core/tests/capture_order.rs`). Why last, and why
+            // these six modes only: see [`capture_topology`].
+            let topology = if req.topology {
+                let cap = capture_topology(engine)?;
+                engine.assert_clean("topology")?;
+                Some(cap)
+            } else {
+                None
+            };
 
             let _ = step;
             checkpoints.push(Checkpoint {
@@ -411,6 +448,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 global_result,
                 aggregates,
                 solution_scalars,
+                topology,
             });
         }
 
@@ -830,6 +868,101 @@ fn capture_all_properties(engine: &Engine) -> Result<Vec<PropsCap>, EngineError>
     Ok(out)
 }
 
+/// The G1.7 topology capture: the six order-free `Topology` rows, read LAST in
+/// the step (after [`capture_all_properties`]) on both transports.
+///
+/// Two independent reasons for "last", the stronger one first:
+///  * the FIRST `Topology` read is what BUILDS the tree — every arm goes through
+///    `ActiveTree = ActiveCircuit.GetTopology` (`DDLL/DTopology.pas:13-17`),
+///    which memoizes it (`Common/Circuit.pas:2932-2950`) and on the way rewrites
+///    `Checked` / `IsIsolated` / `BusChecked` on every element (`:2937-2947`).
+///    Nothing in today's capture reads those flags, but reading last makes that
+///    independent of every future addition — the argument that put
+///    `all_properties` last.
+///  * `TopologyI(1)`/`(2)` and `TopologyV(1)`/`(2)` walk
+///    `ActiveCircuit.PDElements` / `PCElements` `.First`/`.Next` to exhaustion
+///    (`DTopology.pas:75-84`, `:85-94`, `:319-352`, `:354-390`; recorded as
+///    `modes::TOPOLOGY_*`'s `TOPO_PD_LIST` / `TOPO_PC_LIST` effects), leaving
+///    those `TPointerList` cursors at the end, where `Circuit.NextPDElement` /
+///    `NextPCElement` would resume.
+///
+/// These six are also the only `Topology` rows that never assign
+/// `ActiveCircuit.ActiveCktElement`: the cursor rows — `ActiveBranch`,
+/// `BranchName`, `ActiveLevel`, `First`/`Next`, `ForwardBranch`,
+/// `BackwardBranch`, `LoopedBranch`, `ParallelBranch`, `FirstLoad`/`NextLoad`
+/// (`DTopology.pas:29-54`, `:96-160`, `:170-186`) and all of `TopologyS` — do,
+/// and would poison the per-element capture, so they are never called. That
+/// absence is asserted from this file's source text by
+/// `crates/dss-core/tests/capture_order.rs` (`GOLDEN_REBASE_PLAN.md` G1.7, the
+/// B16 parity gap: three of `ITopology`'s nine fastdss columns are deliberately
+/// not captured).
+fn capture_topology(engine: &Engine) -> Result<TopologyCap, EngineError> {
+    // Same read order as `oracle_server.capture_topology`: the three counts,
+    // then the three name lists.
+    let num_loops = engine.topology_num_loops()?;
+    let num_isolated_branches = engine.topology_num_isolated_branches()?;
+    let num_isolated_loads = engine.topology_num_isolated_loads()?;
+    let looped_pairs = topo_names(
+        engine.topology_all_looped_pairs()?,
+        "Topology.AllLoopedPairs",
+    )?;
+    let isolated_branches = topo_names(
+        engine.topology_all_isolated_branches()?,
+        "Topology.AllIsolatedBranches",
+    )?;
+    let isolated_loads = topo_names(
+        engine.topology_all_isolated_loads()?,
+        "Topology.AllIsolatedLoads",
+    )?;
+    Ok(TopologyCap {
+        num_loops,
+        num_isolated_branches,
+        num_isolated_loads,
+        looped_pairs,
+        isolated_branches,
+        isolated_loads,
+    })
+}
+
+/// Normalize one `TopologyV` string reply to the list shape both transports
+/// emit — the transport-side sentinel decode, and nothing else.
+///
+/// r4133 pre-seeds `TStr[0] := 'NONE'` and emits that single token for an empty
+/// list (`DTopology.pas:271-275`, `:319-325`, `:354-360`); capi's
+/// `DefaultResult(..., 'NONE')` (`CAPI/CAPI_Utils.pas:115`) does the same, so
+/// `["NONE"] -> []` is a shared decode of "no entries", never a value. A
+/// qualified name is always `Class.name`, so a bare `NONE` can never be a real
+/// entry. Measured on the whole population: 1 281 / 1 555 / 1 694 sentinel
+/// replies over 455 r4133-gating cases, and the capi channel byte-identical
+/// after its own normalization (`GOLDEN_REBASE_PLAN.md` G1.7 §3.1-S1/§3.2).
+///
+/// Every other shape is REFUSED rather than repaired. In particular an empty
+/// entry is a transport failure on this channel, never a value: r4133 filters
+/// them at the source — `DTopology.pas:283-297`, `:337-347`, `:372-382` all
+/// write only `if TStr[i] <> ''` — and 4 530 list reads over those 455 cases
+/// returned exactly zero empty entries. The capi transport is the one that
+/// appends a single trailing `''` (`CAPI_Topology.pas:126-132` sets
+/// `Length := k + 1` and then copies `Length(Result)` entries, while
+/// `AllLoopedPairs` at `:100-115` starts from `k := -1` and does not), and it
+/// drops exactly that one in `oracle_server._topo_names`. That arm has no
+/// counterpart here on purpose: swallowing an empty would hide precisely the
+/// shape change this check exists to catch.
+fn topo_names(v: Vec<String>, what: &str) -> Result<Vec<String>, EngineError> {
+    if v.len() == 1 && v[0] == "NONE" {
+        return Ok(Vec::new());
+    }
+    if let Some(i) = v.iter().position(String::is_empty) {
+        return Err(EngineError::Other(format!(
+            "{what}: an empty entry at index {i} of {} \
+             — r4133 filters empties at the source \
+             (DTopology.pas:337-347), so this is a transport failure, \
+             never a value: {v:?}",
+            v.len()
+        )));
+    }
+    Ok(v)
+}
+
 /// Oracle-free smoke hook (§2.4): dump every element's every property for the
 /// currently-compiled circuit, so `smoke.rs` can prove the `DSSElementV`
 /// enumeration + `? name.prop` value read round-trips without an oracle.
@@ -910,7 +1043,7 @@ fn read_autoadd_log(engine: &Engine, case_path: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::complex_pair;
+    use super::{complex_pair, topo_names};
 
     /// A `myType = 3` reply is exactly two doubles or it is a transport
     /// failure — the bridge must never pad one into a plausible `(0, 0)`
@@ -926,6 +1059,42 @@ mod tests {
             let msg = err.to_string();
             assert!(
                 msg.contains("Circuit.SubstationLosses") && msg.contains("expected exactly 2"),
+                "unhelpful message: {msg}"
+            );
+        }
+    }
+
+    /// The `TopologyV` sentinel decode, and the shape checks around it (G1.7).
+    ///
+    /// `["NONE"]` is r4133's "no entries" reply (`DTopology.pas:271-275` seeds
+    /// `TStr[0] := 'NONE'`), so it decodes to an empty list; a qualified name is
+    /// always `Class.name`, so nothing real is swallowed. An EMPTY entry is
+    /// refused rather than dropped: r4133 filters empties at the source
+    /// (`DTopology.pas:337-347`) and 4 530 list reads over the 455 r4133-gating
+    /// corpus cases returned none, so one arriving is a transport failure. (The
+    /// capi transport is the one with a single trailing `''`,
+    /// `CAPI_Topology.pas:126-132`; it drops it in `oracle_server._topo_names`.)
+    #[test]
+    fn topo_names_decodes_the_none_sentinel_and_refuses_an_empty_entry() {
+        let n = |v: &[&str]| topo_names(v.iter().map(|s| s.to_string()).collect(), "x");
+        assert_eq!(n(&["NONE"]).unwrap(), Vec::<String>::new());
+        assert_eq!(n(&[]).unwrap(), Vec::<String>::new());
+        // A real one-entry list, and a name that merely contains NONE, survive.
+        assert_eq!(n(&["Line.l1"]).unwrap(), vec!["Line.l1".to_string()]);
+        assert_eq!(n(&["Load.none"]).unwrap(), vec!["Load.none".to_string()]);
+        assert_eq!(
+            n(&["NONE", "Line.l1"]).unwrap(),
+            vec!["NONE".to_string(), "Line.l1".to_string()]
+        );
+        for bad in [&["Line.l1", ""][..], &["", "Line.l1"][..], &["", ""][..]] {
+            let err = topo_names(
+                bad.iter().map(|s| s.to_string()).collect(),
+                "Topology.AllIsolatedBranches",
+            )
+            .expect_err("an empty entry must be an error, not a silent drop");
+            let msg = err.to_string();
+            assert!(
+                msg.contains("Topology.AllIsolatedBranches") && msg.contains("empty entry"),
                 "unhelpful message: {msg}"
             );
         }

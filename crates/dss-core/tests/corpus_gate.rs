@@ -149,6 +149,16 @@ fn corpus_gate_all_cases_match_engines() {
     // than a loud mismatch. Self-silencing when no unflushed monitor was
     // compared, so `DSS_GATE_ONLY` runs do not trip it.
     harness::lane::assert_monitor_pad_is_live();
+    // And the same fail-on-stale discipline for GOLDEN_REBASE G1.7's two
+    // topology settlements (coordinator decisions D15/D16), which deliberately
+    // write NO ledger rows: the populations where the comparator rebases the
+    // isolation half onto the port's step-0 answer (upstream's memoized tree)
+    // and where upstream's window scan drops a looped pair are re-derived from
+    // this run and must equal their pinned constants in both directions. Placed
+    // with the other live rails, i.e. after the per-case failures are reported:
+    // a failing case may not have reached its topology compare, and a census
+    // measured from a partial run would be noise on top of a real failure.
+    scheduler::assert_topology_declines_are_the_pinned_population();
     // And the GLOBAL half of the r4133 property accounting (plan §RP4.1): the
     // two per-row asserts BELOW say nothing when NO row was visited, which is
     // exactly what a re-mask of the r4133 property request would produce — a

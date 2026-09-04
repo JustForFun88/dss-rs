@@ -630,6 +630,56 @@ these, so this sub-step is straight parity, not a bonus; `ActiveLevel`/
 `BranchName`/`ActiveBranch` are iteration cursors and are deliberately not
 compared).
 
+> **As executed (2026-09-04/05, lane `lane-s`).** The six rows landed on both channels in one
+> commit: flag `compare_topology` flipped to `wired: true` and **forced on every live
+> non-`large` case** — 440 = 313 `both` / 83 `r4133` / 44 `capi_v0145`
+> (`scheduler::FORCED_TOPOLOGY_POPULATION`, re-derived each run and asserted equal to the
+> property surface's population) — with seven decks also *declaring* the flag, because
+> `population.lock.json` fingerprints the manifest flag and cannot see scheduler-side forcing
+> (`TOPOLOGY_DECLARED_IN_MANIFEST`, one witness per gating channel). The lock moved by exactly
+> seven `topo=0 → topo=1` tokens; **0** golden bytes, **0** ledger entries, 0 new
+> `LEDGER_FIELDS`, and **no floor** — the surface is fully discrete (counts and identifier
+> lists), which `tests/TOLERANCE_NOTES.md` now records as deliberate. **No FFI was added**:
+> G1.0 had already bound and classified the six `TopologyI`/`TopologyV` modes `Served`.
+> Four corrections to the text above. (1) **Not "iteration cursors".** `ActiveLevel`,
+> `BranchName` and `ActiveBranch` are excluded for a stronger reason: each *reassigns*
+> `ActiveCircuit.ActiveCktElement` (r4133 `DDLL/DTopology.pas:29-54`, `:96-160`, `:170-186`;
+> capi `CAPI/CAPI_Topology.pas:98-110`) and would poison the per-element capture of the same
+> step — the brief's B16 gap, now a source-text rail rather than a comment: six new cases in
+> `crates/dss-core/tests/capture_order.rs` assert that the surface is read **strictly last**
+> (the first `Topology` read builds the memoized tree and rewrites
+> `Checked`/`IsIsolated`/`BusChecked`, r4133 `Common/Circuit.pas:2932-2950`) and that exactly
+> six of `ITopology`'s eighteen members are touched on either transport — the bridge binds no
+> other. (2) **Two shape normalizations**, transport-side and measured corpus-wide: the empty
+> sentinel `["NONE"] → []` (r4133 pre-seeds `TStr[0] := 'NONE'`, `DTopology.pas:271-275`; capi
+> `DefaultResult(…, 'NONE')`, `CAPI_Utils.pas:115`) and capi's single trailing `''`
+> (`CAPI_Topology.pas:126-132`; absent on r4133 and on `AllLoopedPairs`, `k := -1`). The
+> comparator **asserts the fixpoint** instead of repeating the repair, so a transport that
+> stops normalizing fails rather than comparing a phantom entry as empty. (3) **Two upstream
+> defects are asserted, not excluded** (coordinator decisions D15/D16, 0 ledger rows): both
+> oracles memoize `Branch_List` and never invalidate it on a conductor open/close, and both
+> dedup the looped-pair buffer in overlapping windows (`i := i + 1`,
+> `DTopology.pas:286-296`), dropping a genuinely new pair that coincides with a straddling
+> window. The port does neither; where the port's fresh answer differs the comparator asserts
+> the *mechanism* — `oracle(k) == port(step 0)` for the four isolation fields, and
+> `oracle.looped_pairs == window_dedup(port candidates)` for the pair list — with two
+> fail-on-stale populations, `TOPOLOGY_STALE_DECLINES = (16 cases, 135 case-steps)` and
+> `LOOPED_PAIR_WINDOW_DECLINES = (8, 96)`, over 3 314 compared (case, step, channel) triples.
+> (4) **Two PORT gaps the new surface exposed were fixed in-part**, each in its own commit
+> ahead of the surface: topology adjacency routed by `TPDElement.IsShunt` instead of Pascal's
+> class-switched `IsShuntElement` (capi `Shared/CktTree.pas:522-528`, r4133
+> `Common/Utilities.pas:1262-1274`), which hid every `GICTransformer` loop; and
+> `CktElementData::set_nconds` forcing a terminal reallocation that r4133's own guard
+> (`Common/CktElement.pas:349-361`, `:386`) would have skipped, which unwired every terminal
+> on a no-op `Phases=` re-set — a second `MakePosSequence` left the whole model
+> bus-unresolved. Coordinator decisions applied: **D2** (no bridge change owed), **D3**
+> (capture order), **D4** (defect ⇒ the port computes the correct value), **D7** (lane
+> `lane-s`), **D15**, **D16**.
+> **Tier as executed:** §0's `opus-high+` row held for the capture, comparator, flag and
+> docs parts; the two settlement parts (the D15 isolation rebase and the D16 window model,
+> with the engine-side candidate sequence) ran at `opus-xhigh`, as the sub-step brief
+> foresaw for "the memoization question".
+
 ### G1.8 — incidence/Laplacian
 
 Run `CalcIncMatrix`/`CalcLaplacian` on flagged cases; compare

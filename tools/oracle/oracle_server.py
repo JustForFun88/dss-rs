@@ -348,6 +348,89 @@ def capture_all_meters(ckt) -> list:
     return out
 
 
+def _topo_names(v) -> list:
+    """Normalize one `ITopology` string array to its comparable shape.
+
+    Exactly two transport-side normalizations, both measured over the whole
+    corpus (GOLDEN_REBASE_PLAN.md §G1.7):
+
+    * the **empty sentinel** — an empty array comes back as the single entry
+      `NONE`: `DefaultResult(..., 'NONE')` on the capi channel
+      (`.inputs/dss_capi/src/CAPI/CAPI_Topology.pas:139-142`, `:196-199`,
+      `:392-395` via `CAPI_Utils.pas:115`), and the same word on r4133, whose
+      `TStr` is pre-seeded `'NONE'` (`DDLL/DTopology.pas:274-275`). Mapped to
+      `[]`, so an empty list compares as empty and not as a phantom
+      one-element list (the `capture_all_meters` precedent above).
+    * **one trailing empty entry** — capi grows its array with
+      `SetLength(Result, k + 1)` after each hit and then copies
+      `Length(Result)` entries, so a NON-EMPTY `AllIsolatedBranches` /
+      `AllIsolatedLoads` carries exactly one trailing `''`
+      (`CAPI_Topology.pas:127-134` + `:145-149`; `:379-387` + `:399-403`),
+      while r4133 filters empties (`DTopology.pas:341-347`, `if TStr[i] <> ''`).
+      `AllLoopedPairs` starts at `k := -1` on both channels and lands exactly on
+      `2 * npairs`, so it carries NO trailing slot (`CAPI_Topology.pas:164`,
+      `:198-203`; `DTopology.pas:276`) — the asymmetry is real, and exactly ONE
+      trailing `''` is ever dropped.
+
+    Anything else empty — an interior entry, a second trailing one, a
+    whitespace-only name — is a shape change and RAISES: this normalization
+    must never quietly swallow a missing element name.
+    """
+    xs = [str(s) for s in v]
+    if xs == ["NONE"]:
+        return []
+    if xs and xs[-1] == "":
+        xs = xs[:-1]
+    blank = [i for i, s in enumerate(xs) if not s.strip()]
+    if blank:
+        raise ValueError(
+            f"topology name array has unexpected empty entries at {blank}: {xs!r} "
+            "(only ONE trailing '' — the capi SetLength artifact — is dropped)"
+        )
+    return xs
+
+
+def capture_topology(ckt) -> dict:
+    """The six order-free `ITopology` quantities of GOLDEN_REBASE G1.7.
+
+    Surface: `dss/ITopology.py:41/50/59/157/166/175` on `origin/fastdss`
+    (`.inputs/DSS-Python`). Engine side: `NumLoops` walks the topology tree and
+    halves the `IsLoopedHere` count (capi
+    `.inputs/dss_capi/src/CAPI/CAPI_Topology.pas:81-97`; r4133
+    `Version8/Source/DDLL/DTopology.pas:67-77`), `NumIsolatedBranches` /
+    `NumIsolatedLoads` count `IsIsolated` over `PDElements` / `PCElements`
+    (capi `:302-334`, `:448-480`; r4133 `:79-88`, `:89-98`), and the three
+    lists emit those same elements' `FullName` (capi `:114-151`, `:160-215`,
+    `:369-405`) / `QualifiedName` (r4133 `:271-321`, `:322-356`, `:357-391`) —
+    measured byte-identical on all 336 both-gated corpus cases.
+
+    The other three fields of the class's nine `_columns` (`ITopology.py:10-20`)
+    — `ActiveLevel`, `BranchName`, `ActiveBranch` — are deliberately NOT read,
+    and neither is any cursor mode (`First`, `Next`, `ForwardBranch`,
+    `BackwardBranch`, `LoopedBranch`, `ParallelBranch`, `FirstLoad`, `NextLoad`,
+    `BusName`): every one of them reassigns `ActiveCircuit.ActiveCktElement`
+    (capi `CAPI_Topology.pas:98-110`; r4133 `DTopology.pas:28-40` and `:42-53`,
+    reached by modes 3-12, plus `:187-233`) and would poison the per-element
+    capture. The omission is asserted by
+    `crates/dss-core/tests/capture_order.rs`, not just by this comment.
+
+    The FIRST of these six reads is what BUILDS the memoized `Branch_List` and
+    rewrites `Checked` / `IsIsolated` / `BusChecked` on every element (r4133
+    `Common/Circuit.pas:2932-2950`) — which is why the call site is strictly
+    last in the per-step capture, the `all_properties` argument made
+    independent of every future addition.
+    """
+    t = ckt.Topology
+    return {
+        "num_loops": int(t.NumLoops),
+        "num_isolated_branches": int(t.NumIsolatedBranches),
+        "num_isolated_loads": int(t.NumIsolatedLoads),
+        "looped_pairs": _topo_names(t.AllLoopedPairs),
+        "isolated_branches": _topo_names(t.AllIsolatedBranches),
+        "isolated_loads": _topo_names(t.AllIsolatedLoads),
+    }
+
+
 # OpenDSS `Show`/`Export`/`Save` write report files into the compiled case's
 # directory (`OutputDirectory := DataDirectory := <case dir>` in
 # `DSSGlobals.SetDataPath`, which `Compile` calls). The live gate only compares
@@ -442,6 +525,9 @@ def run_case(d, req: dict) -> dict:
     # (heavy: elements x props x steps queries) — the Rust property gate and the
     # env-gated `corpus_live_properties` pilot force it.
     want_all_props = bool(req.get("all_properties", False))
+    # GOLDEN_REBASE G1.7 (`compare_topology`): the six order-free `ITopology`
+    # reads, captured strictly LAST in the step (see `capture_topology`).
+    want_topology = bool(req.get("topology", False))
     # WPG.5 (AutoAdd): `DSS.GlobalResult` after each solve (the winner + figure)
     # and the `<CircuitName_>AutoAddLog.csv` the search writes. `Text.Result` is
     # captured IMMEDIATELY after `solve`, before any `?`-query capture overwrites
@@ -567,12 +653,22 @@ def run_case(d, req: dict) -> dict:
                         "variables": capture_variables(ckt, variables),
                         "eventlog": (capture_eventlog(d, ckt) if want_eventlog else []),
                         "ctrlqueue": capture_ctrlqueue(ckt) if want_ctrlqueue else [],
-                        # WP8.5b: read LAST, after every established capture above,
-                        # so the property sweep's `?` queries never perturb any
-                        # other read's active-element state.
+                        # WP8.5b: read after every established capture above, so
+                        # the property sweep's `?` queries never perturb any
+                        # other read's active-element state. Only G1.7's
+                        # topology read (below) comes later, for the same
+                        # reason applied to itself.
                         "all_properties": (
                             capture_all_properties(d, ckt) if want_all_props else []
                         ),
+                        # G1.7: read STRICTLY LAST, after `all_properties` —
+                        # the first `Topology` read builds the tree and rewrites
+                        # `Checked`/`IsIsolated`/`BusChecked` on every element
+                        # (r4133 `Common/Circuit.pas:2932-2950`). `None` (not
+                        # `[]`) when the case does not request it, so the Rust
+                        # side's `Option<TopologyCap>` tells "not captured" from
+                        # "captured empty".
+                        "topology": (capture_topology(ckt) if want_topology else None),
                         "global_result": global_result,
                         # G1.9 — read at the top of the step (see the block
                         # above); listed last only because the dict is

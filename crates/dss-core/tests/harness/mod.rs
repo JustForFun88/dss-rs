@@ -60,6 +60,12 @@ pub mod capture_guard;
 /// [`compare_element_channels`] itself calls) and the two live comparators.
 pub mod aggregates;
 
+/// `GOLDEN_REBASE_PLAN.md` WP-G1 sub-step G1.7: the `ITopology` interface —
+/// `NumLoops`, the two isolation counts and the three identifier lists — as a
+/// capture struct, the gate-side statement of the two transport shape
+/// normalizations and one fully discrete, zero-tolerance live comparator.
+pub mod topology;
+
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
