@@ -646,3 +646,210 @@ fn cmath_lib_f_takes_two_doubles() {
 
     w.quit();
 }
+
+// ---------------------------------------------------------------------------
+// D13 — the bridge must not carry state between cases or between processes
+// ---------------------------------------------------------------------------
+
+/// `HKCU\Software\OpenDSS\MainSect` — the key `TIniRegSave.Create('\Software\' +
+/// ProgramName)` opens with `ProgramName := 'OpenDSS'`
+/// (r4133 `Common/DSSGlobals.pas:2093`, `:2078`; `Shared/IniRegSave.pas:63-71`).
+const REG_KEY: &str = r"HKCU\Software\OpenDSS\MainSect";
+
+/// Read one `REG_SZ` value with `reg.exe query`; `None` when absent.
+fn reg_read(name: &str) -> Option<String> {
+    let out = Command::new("reg")
+        .args(["query", REG_KEY, "/v", name])
+        .output()
+        .expect("run reg query");
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    for line in text.lines() {
+        let mut parts = line.split_whitespace();
+        if parts.next() == Some(name) && parts.next() == Some("REG_SZ") {
+            return parts.next().map(str::to_string);
+        }
+    }
+    None
+}
+
+/// Restore one `REG_SZ` value with `reg.exe add` (used only on the failure path,
+/// so a regression cannot leave the machine's key poisoned).
+fn reg_write(name: &str, value: &str) {
+    let ok = Command::new("reg")
+        .args([
+            "add", REG_KEY, "/v", name, "/t", "REG_SZ", "/d", value, "/f",
+        ])
+        .status()
+        .expect("run reg add")
+        .success();
+    assert!(
+        ok,
+        "could not restore value {name:?} under {REG_KEY} to {value:?}"
+    );
+}
+
+/// D13 (i): **`clear` must reset `DefaultBaseFreq` to the port's 60 Hz.**
+///
+/// r4133's `clear` (`Executive/ExecHelper.pas:987-995` → `TExecutive.Clear`,
+/// `Executive/Executive.pas:234-275`) resets `DefaultEarthModel`, `LogQueries`
+/// and `MaxAllocationIterations` and nothing else; `DefaultBaseFreq` survives, so
+/// a 50 Hz deck used to leak its base frequency into every later deck the same
+/// worker compiled (`TDSSCircuit.Create` takes `Fundamental := DefaultBaseFreq`,
+/// `Common/Circuit.pas:416`). `Engine::clear` now issues
+/// `Set DefaultBaseFrequency=60` after the `clear`, matching the port's fresh
+/// `Dss::new()` (`crates/dss-core/src/exec/construct.rs:173`).
+///
+/// The pre-`clear` half of the test is the live control: it proves the observable
+/// really moves with `DefaultBaseFreq`, so the post-`clear` `60` is a reset and
+/// not a constant. With the reset removed both post-`clear` reads come back `50`
+/// (measured 2026-09-04 on a throwaway copy of the bridge).
+///
+/// `Get DefaultBaseFrequency` needs an active circuit — `DoGetCmd_NoCircuit`
+/// (`Executive/ExecOptions.pas:1510`) does not serve option 73 — hence the
+/// `new circuit.…` before each read.
+#[test]
+fn clear_resets_the_default_base_frequency_to_sixty() {
+    let mut w = WorkerProc::spawn();
+
+    w.exec("Set DefaultBaseFrequency=50");
+    w.exec("new circuit.d13probe50 basekv=12.47 phases=3 bus1=b1");
+    assert_eq!(
+        w.exec("Get DefaultBaseFrequency")["reply"],
+        json!("50"),
+        "the 50 Hz control did not take — the observable is not live"
+    );
+    assert_eq!(
+        w.exec("? Vsource.source.frequency")["reply"],
+        json!("50"),
+        "the default Vsource did not follow DefaultBaseFreq"
+    );
+
+    // The protocol `clear` runs `Engine::clear`.
+    w.ok(json!({"cmd": "clear"}));
+
+    w.exec("new circuit.d13probe60 basekv=12.47 phases=3 bus1=b1");
+    assert_eq!(
+        w.exec("Get DefaultBaseFrequency")["reply"],
+        json!("60"),
+        "clear left DefaultBaseFreq at the previous deck's value"
+    );
+    assert_eq!(
+        w.exec("? Vsource.source.frequency")["reply"],
+        json!("60"),
+        "the circuit built after clear inherited a stale Fundamental"
+    );
+
+    w.quit();
+}
+
+/// D13 (iii): **a fresh session must not inherit the registry's base frequency.**
+///
+/// `Set RegistryUpdate=No` (see `Engine::new`) stops this process from *writing*
+/// the key, but the *read* is already done by then: `ReadDSS_Registry` assigns
+/// `DefaultBaseFreq := StrToInt(DSS_Registry.ReadString('BaseFrequency', '60'))`
+/// (r4133 `Common/DSSGlobals.pas:1005`) inside `TExecutive.Create`
+/// (`Executive/Executive.pas:124`), i.e. at DLL load, before the bridge can
+/// issue a single command. Every gate path clears first (`run_case` →
+/// `Engine::clear`, `capture.rs`), but a bare probe session that only issues
+/// `exec` never does, so `Engine::new` issues `Set DefaultBaseFrequency=60`
+/// itself — the port's own starting value (`Dss::new()` sets
+/// `default_base_freq: 60.0`, `crates/dss-core/src/exec/construct.rs:173`).
+///
+/// The test pre-poisons the machine key with `50` — the one non-60 base
+/// frequency the corpus actually uses (`LVTestCase/Master.dss`) — spawns a fresh
+/// worker and reads the default back **without any `clear`**. With the init
+/// reset removed the read comes back `50` (measured 2026-09-04 on a throwaway
+/// copy of the bridge). The saved value is restored on every exit path, so a
+/// regression cannot leave the machine's key poisoned.
+///
+/// `Get DefaultBaseFrequency` needs an active circuit — `DoGetCmd_NoCircuit`
+/// (`Executive/ExecOptions.pas:1510`) does not serve option 73 — hence the
+/// `new circuit.…`, which is not a `clear` and does not touch
+/// `DefaultBaseFreq`.
+#[test]
+fn init_resets_the_default_base_frequency_to_sixty() {
+    let before = reg_read("BaseFrequency");
+    reg_write("BaseFrequency", "50");
+
+    let mut w = WorkerProc::spawn();
+    w.exec("new circuit.d13init basekv=12.47 phases=3 bus1=b1");
+    let got = w.exec("Get DefaultBaseFrequency")["reply"].clone();
+    let src = w.exec("? Vsource.source.frequency")["reply"].clone();
+    w.quit();
+
+    // Restore the machine key before any assertion can unwind.
+    match before.as_deref() {
+        Some(v) => reg_write("BaseFrequency", v),
+        None => reg_write("BaseFrequency", "60"),
+    }
+
+    assert_eq!(
+        got,
+        json!("60"),
+        "a fresh worker inherited BaseFrequency=50 from {REG_KEY}: \
+         `Set DefaultBaseFrequency=60` is missing from Engine::new \
+         (key restored to {before:?})"
+    );
+    assert_eq!(
+        src,
+        json!("60"),
+        "the first circuit of a bare probe session took its Fundamental \
+         from the registry (key restored to {before:?})"
+    );
+}
+
+/// D13 (ii): **the worker must not write `HKCU\Software\OpenDSS` on exit.**
+///
+/// r4133 reads `BaseFrequency` from that key at DLL load
+/// (`Common/DSSGlobals.pas:1005` from `TExecutive.Create`,
+/// `Executive/Executive.pas:124`) and writes it back at process exit when
+/// `UpdateRegistry` is true (`Common/DSSGlobals.pas:1015`, `:1022`, from
+/// `TExecutive.Destroy`, `Executive/Executive.pas:141`, reached through the unit
+/// `Finalization` at `Common/DSSGlobals.pas:2159`). `UpdateRegistry` defaults to
+/// `TRUE` (`:2131`), so every unguarded worker leaked its last base frequency to
+/// the next worker process **on the whole machine** — the cross-worktree channel
+/// D13 closes. `Engine::new` now issues `Set RegistryUpdate=No`
+/// (`Executive/ExecOptions.pas:146` names option 102; `:574` sets it with no
+/// circuit active).
+///
+/// The flag has no readable getter to assert against: r4133's `DoGetCmd` case 102
+/// assigns `UpdateRegistry := InterpretYesNo(Param)` instead of appending a result
+/// (`Executive/ExecOptions.pas:1314`), so `Get RegistryUpdate` returns `""` and
+/// silently clobbers the flag. The registry value itself is the observable.
+///
+/// The sentinel is `37` so a *different* worker exiting concurrently (another
+/// lane's gate) cannot green or red this test by accident — no deck and no
+/// default produces 37. Measured 2026-09-04 without the fix: the key moved
+/// `60 -> 37`; with it, unchanged.
+#[test]
+fn the_worker_never_writes_the_opendss_registry_key() {
+    let before = reg_read("BaseFrequency");
+
+    let mut w = WorkerProc::spawn();
+    // Not followed by a `clear`, so this value is what `WriteDSS_Registry` would
+    // persist at process exit.
+    w.exec("Set DefaultBaseFrequency=37");
+    w.quit();
+
+    let after = reg_read("BaseFrequency");
+    if after.as_deref() == Some("37") {
+        // Regression: restore the machine's key before failing.
+        match before.as_deref() {
+            Some(v) => reg_write("BaseFrequency", v),
+            None => reg_write("BaseFrequency", "60"),
+        }
+        panic!(
+            "the worker wrote BaseFrequency=37 into {REG_KEY}: \
+             `Set RegistryUpdate=No` is missing from Engine::new \
+             (key restored to {before:?})"
+        );
+    }
+    assert_ne!(
+        after.as_deref(),
+        Some("37"),
+        "the BaseFrequency value under {REG_KEY} carries the worker's sentinel"
+    );
+}
