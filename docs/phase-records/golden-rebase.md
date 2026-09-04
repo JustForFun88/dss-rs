@@ -2790,3 +2790,47 @@ row against the pre-fix lock.
   but its polar samples must be **re-measured at the merge**, once the GICTransformer line moves out.
   Gate re-run in full and green in both lanes (figures above): ledger 58 entries / 0 stale,
   `tests/golden` byte-untouched, no tolerance moved.
+
+- **G1.3d(i)** (2026-09-04/05, lane `lane-e`; coordinator decisions D4/D7/D19) — **the per-element
+  index/name scalars, plus the two G1.3d documentation verdicts.** `NumTerminals`/`NumConductors`/
+  `NumPhases` (r4133 `DDLL/DCktElement.pas:139`/`:144`/`:149`, capi `CAPI/CAPI_CktElement.pas:182-211`),
+  `NodeOrder` (`CktElementV(17)`, `:1032-1056`; capi `CAPI/CAPI_Alt.pas:953-977`) and `EnergyMeter`
+  (`CktElementS(4)`, `:442-449`; capi `:672-687`) are captured on both channels and compared
+  **exactly** by `harness::compare_element_extras` — no `Tolerances`, no ledger sub-channel, so a
+  discrete divergence is a STOP rather than a maskable band. `Enabled` was not re-added (G1.3a owns
+  it); `PhaseLosses` and the control-derived extras are G1.3d(ii). `NodeOrder` is read for enabled
+  elements with terminals only (r4133 `:1048` dereferences a nil `NodeRef`, capi raises 15013), and
+  the comparator's `!enabled` branch asserts the *oracle* side is silent because an element disabled
+  after a solve legitimately keeps its mapping. **Ledger: 0 new entries, 0 widenings** (the forecast),
+  **0 golden bytes**, no floor introduced or moved; the single channel normalization is the D4
+  no-meter sentinel (`''` capi / `'0'` r4133) folded at the capture boundary and pinned. Forced on
+  **440** cases via `force_element_extras` + `FORCED_ELEMENT_EXTRAS_POPULATION` (440, 313, 83, 44),
+  re-derived every run. Pins: `exec::tests::element_extras::*` (8), `harness::element_extras_pins::*`
+  (18, 12 of them `should_panic` rejection legs), `corpus_manifest::extras_population::*` (3),
+  `scheduler::the_element_extras_forcing_rule_is_every_live_non_large_case`,
+  `capture_order::a_group_c_read_may_sit_between_a_group_a_and_a_group_b_read`; all 31 are held
+  against this prose by `oracle_parity_cfg_gate::every_pin_the_g13d1_record_names_exists_and_is_cited`
+  (the G1.0 registry rule, G1.3a's twin). Verdicts (TESTING.md,
+  plan §G1.3d): `Lines.Yprim` is already witnessed by the per-element `CktElement.Yprim` live compare
+  on both channels (`CAPI_Lines.pas:777-796` == `CAPI_CktElement.pas:583-599`; `DLines.pas:771-796` ==
+  `DCktElement.pas:856-883`, modulo the `IsLine()` filter) — not double-captured, with the honest
+  residual recorded (235/523 cases declare `selected_elements`); `LineGeometries.Rmatrix/Xmatrix/
+  Zmatrix` leaves the parity claim (fastdss skips them as methods, `save_outputs.py:140-141`; the
+  r4133 DLL has no `LineGeometr*` family). Two STOPs settled: **D19** — the spec's D9-independence
+  claim was false (`Test/indmachtest/Master.DSS` redirects its meter then calls `MakeBusList`), so
+  lane-m's D9 engine commit was cherry-picked onto this lane — **amended (D19′)**: its pin's
+  PDElements half reads the elements directly here, since `Dss::pd_elements` arrives with G1.6b, and
+  the merge takes `update`'s form; and the corpus meter-name census raced the live gate's own
+  deck-written exports, so it moved from `corpus_gate/runner.rs` to the oracle-free
+  `corpus_manifest.rs` binary (structural fix, no weakened assertion). As executed:
+  `GOLDEN_REBASE_PLAN.md` §G1.3d. Commits: D19 cherry-pick `e4d99806`, then the sub-step commit and
+  this docs commit (TO FILL: shas — the docs commit that follows). Gate: the part-P re-drive ran
+  `--test corpus_gate` unfiltered in **both** lanes — **523/523 cases passed, 0 failed** each
+  (201.7 s default / 180.6 s parity), ledger **58 entries, 1 636 hits, none unhit, 0 stale**, and
+  `tests/golden`, `ledger.json` and `population.lock.json` byte-untouched; `fmt --check` clean and
+  `oracle_parity_cfg_gate` / `population_lock` / `golden_lock` 15 / 3 / 4 passed (the pin registry the
+  self-check added lifts the first to 16). Full five-command gate: all five commands exit 0,
+  **5 370 passed / 0 failed / 5 ignored / 0 filtered out** per lane, identical suite by suite
+  (`corpus_gate` 185 / 0 / 0 each); `lane_diff` **PASS** — 523 cases / 3 220 861 records,
+  **max |Δ| = 0 exactly** on all eight gated kinds and 0 iteration drift, as expected for an
+  additive read-only accessor.

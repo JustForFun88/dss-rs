@@ -17,9 +17,9 @@ use crate::engines::{CaseResult, Channel, Oracle};
 use crate::harness::{
     self, ExportPolicy, RowPolicy, Tolerances, capture_guard, compare_all_properties,
     compare_ctrlqueue, compare_discrete, compare_element_channels, compare_element_derived,
-    compare_eventlog, compare_export, compare_fingerprint, compare_injection, compare_meter,
-    compare_monitor, compare_probe, compare_system_y, compare_variables, compare_yprim, lane,
-    tol_for,
+    compare_element_extras, compare_eventlog, compare_export, compare_fingerprint,
+    compare_injection, compare_meter, compare_monitor, compare_probe, compare_system_y,
+    compare_variables, compare_yprim, lane, tol_for,
 };
 use crate::manifest::{EngineChannel, SolvableCase};
 
@@ -558,6 +558,39 @@ pub(crate) fn compare_capture(
                 match el_rewrites.get(&ec.name.to_lowercase()) {
                     Some(rw) => compare_element_derived(&snaps, rw, tol, &ctx, channels),
                     None => compare_element_derived(&snaps, ec, tol, &ctx, channels),
+                }
+            }
+        }
+
+        // WP-G1 G1.3d(i): the per-element **discrete index/name extras** —
+        // `NumTerminals` / `NumConductors` / `NumPhases` (r4133
+        // `DDLL/DCktElement.pas:139`/`:144`/`:149`), `EnergyMeter` (`:442`) and
+        // `NodeOrder` (`:1032`). Everything here is discrete and compared
+        // exactly: no tolerance, no `ElemChannels` selector, no ledger
+        // sub-channel.
+        //
+        // Fed from the same `el_rewrites`-or-raw caps as the two loops above so
+        // the block keeps their shape, which costs nothing and hides nothing: a
+        // ledger rewrite is a full `clone_element_cap` (`ledger.rs:1695-1697`,
+        // `ec.clone()`) with only its six named value channels overwritten
+        // (`rewrite_element_selected`, `:1702`), so the five extras fields it
+        // hands back are always the untouched oracle ones.
+        //
+        // The guard is the flag's own non-vacuity rail: under `element_extras`
+        // BOTH transports emit the four scalars for every element, so a channel
+        // that ignored the request answers with zero `n_terms` fields and the
+        // case fails instead of comparing nothing.
+        if c.compare_element_extras {
+            capture_guard::require_capture(
+                "compare_element_extras",
+                channel_tag(channel),
+                cp.elements.iter().filter(|e| e.n_terms.is_some()).count(),
+                &ctx,
+            );
+            for ec in &cp.elements {
+                match el_rewrites.get(&ec.name.to_lowercase()) {
+                    Some(rw) => compare_element_extras(&snaps, rw, &ctx),
+                    None => compare_element_extras(&snaps, ec, &ctx),
                 }
             }
         }

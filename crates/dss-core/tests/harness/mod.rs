@@ -865,6 +865,15 @@ pub struct YFingerprint {
 /// the way `i_re`/`i_im` already are, so the comparator never does stride-2
 /// index arithmetic. All seven are `serde(default)`: an off-flag reply and
 /// every committed checkpoint golden simply leave them absent.
+///
+/// The **last five** are the G1.3d(i) **discrete index/name extras**, present
+/// only when the case's `compare_element_extras` manifest flag is on — the three
+/// counts and `EnergyMeter` for *every* element (all four are pure field reads
+/// on both engines), `NodeOrder` only for an element that is `Enabled` **and**
+/// has `NumTerminals > 0` (neither transport survives a nil `NodeRef`). They are
+/// `serde(default)` for the same reason as the seven above, and they are
+/// compared exactly, by [`compare_element_extras`], with no tolerance and no
+/// ledger sub-channel.
 #[derive(Debug, Default, Clone, Deserialize)]
 pub struct ElementCap {
     pub name: String,
@@ -908,6 +917,46 @@ pub struct ElementCap {
     /// `VoltagesMagAng` angles (degrees).
     #[serde(default)]
     pub vma_ang: Vec<f64>,
+    /// `CktElement.NumTerminals` (`NTerms`) — r4133
+    /// `DDLL/DCktElement.pas:139` (`CktElementI` mode `0`), capi
+    /// `CAPI/CAPI_CktElement.pas:202`; a fastdss `_columns` surface
+    /// (`dss/ICktElement.py` on `origin/fastdss`). Captured for EVERY element
+    /// under the flag, which is why its absence is what
+    /// [`compare_element_extras`] reads as "this element was captured without
+    /// the flag" (the element-level twin of [`capture_guard::require_capture`]).
+    #[serde(default)]
+    pub n_terms: Option<i32>,
+    /// `CktElement.NumConductors` (`NConds`) — r4133 `DDLL/DCktElement.pas:144`
+    /// (mode `1`), capi `CAPI/CAPI_CktElement.pas:182`.
+    #[serde(default)]
+    pub n_conds: Option<i32>,
+    /// `CktElement.NumPhases` (`NPhases`) — r4133 `DDLL/DCktElement.pas:149`
+    /// (mode `2`), capi `CAPI/CAPI_CktElement.pas:192`. Not derivable from the
+    /// other two: `NConds` is `NPhases` plus the neutral conductors.
+    #[serde(default)]
+    pub n_phases: Option<i32>,
+    /// `CktElement.EnergyMeter`, **raw**: each transport's own "no meter"
+    /// spelling is preserved here and normalized by [`oracle_meter_name`] —
+    /// capi returns `NIL` (`CAPI/CAPI_CktElement.pas:672-687`), which the pinned
+    /// dss-python renders as the empty string, and r4133 returns the
+    /// `CktElementS` family default `'0'` (`DDLL/DCktElement.pas:421`, left
+    /// untouched by arm `4` at `:442-449` when `HasEnergyMeter` is clear).
+    #[serde(default)]
+    pub energy_meter: Option<String>,
+    /// `CktElement.NodeOrder`: the bus-local node number of every conductor
+    /// slot, conductor-minor inside terminal-major (length `NTerms · NConds`),
+    /// ground = `0` — r4133 `DDLL/DCktElement.pas:1032` (`CktElementV` mode
+    /// `17`, the `GetNodeNum(NodeRef^[j])` map at `:1048`), capi
+    /// `CAPI/CAPI_Alt.pas:953`. Emitted only for an element that is `Enabled`
+    /// **and** has `NumTerminals > 0`; [`compare_element_extras`] asserts the
+    /// resulting shape on both sides rather than assuming it.
+    ///
+    /// Unrelated to the checkpoint-level `node_order` of
+    /// `crates/dss-epri/src/capture.rs::CaseResult`, which is the **Y node name
+    /// order** of the whole circuit; the two live in different JSON objects and
+    /// share nothing but the word.
+    #[serde(default)]
+    pub node_order: Vec<i32>,
 }
 
 /// The node injection-current vector (RHS of Y*V=I), nodes 1..n.
@@ -1793,7 +1842,7 @@ fn no_polar_payload(mag: &[f64], ang: &[f64]) -> bool {
 /// there, which is not an oracle-comparable fact and is pinned in-engine by
 /// `exec::tests::derived_polar::a_never_enabled_element_has_no_polar_payload`);
 /// a **0-terminal** element, which `UPFCControl` legitimately is (r4133
-/// `Version8/Source/Controls/UPFCControl.pas:229-245`), carries no payload on
+/// `Version8/Source/Controls/UPFCControl.pas:230-246`), carries no payload on
 /// **either** side, up to the capi sentinel shape ([`no_polar_payload`]); and
 /// every array length matches on both sides. The
 /// enabled-only capture is what makes the two oracle transports agree in shape —
@@ -1858,7 +1907,7 @@ pub fn compare_element_derived(
     let yorder = exp.i_re.len();
     let nterms = snap.bus_names.len();
     // A **0-terminal** element is legitimate, and every engine agrees on it:
-    // `TUPFCControlObj.Create` (r4133 `Version8/Source/Controls/UPFCControl.pas:229-245`
+    // `TUPFCControlObj.Create` (r4133 `Version8/Source/Controls/UPFCControl.pas:230-246`
     // — capi 0.14.5 `src/Controls/UPFCControl.pas:151-164` is the same code) never
     // assigns `Nterms`/`Nphases`/`Setbus`, unlike every other control class
     // (`Controls/CapControl.pas:481-483`: `Nterms := 1; // this forces allocation
@@ -2221,7 +2270,7 @@ mod derived_polar_floors {
     }
 
     /// An **enabled** `UPFCControl`: `TUPFCControlObj.Create` (r4133
-    /// `Version8/Source/Controls/UPFCControl.pas:229-245`, capi 0.14.5
+    /// `Version8/Source/Controls/UPFCControl.pas:230-246`, capi 0.14.5
     /// `src/Controls/UPFCControl.pas:151-164`) never assigns
     /// `Nterms`/`Nphases`/`Setbus`, so the element carries 0 terminals, 0
     /// conductor slots and six empty channels on every engine.
@@ -2236,6 +2285,11 @@ mod derived_polar_floors {
             currents_mag_ang: Vec::new(),
             voltages_mag_ang: Vec::new(),
             residuals: Vec::new(),
+            n_terms: 0,
+            n_conds: 0,
+            n_phases: 0,
+            node_order: Vec::new(),
+            energy_meter: None,
         };
         let cap = ElementCap {
             name: "UPFCControl.myupfcctrl".to_string(),
@@ -2329,6 +2383,540 @@ mod derived_polar_floors {
         let (mut snaps, cap) = zero_terminal_pair();
         snaps[0].bus_names = vec!["b1".to_string()];
         compare_element_derived(&snaps, &cap, &tol_for("feeder"), "upfc", ElemChannels::ALL);
+    }
+}
+
+/// The oracle's **raw** `CktElement.EnergyMeter` string, read as "the bare name
+/// of the meter that meters this element, or `None` when none does".
+///
+/// The two transports spell "no meter" differently, which is a capture-boundary
+/// **sentinel shape** rather than a divergence — coordinator decision D4, the
+/// [`props_norm`] and [`no_polar_payload`] precedent — so it is normalized here
+/// for **0 ledger rows** and pinned by
+/// `element_extras_pins::the_no_meter_sentinel_is_normalized_on_both_channels`:
+///
+/// * **capi** returns `NIL` (`CAPI/CAPI_CktElement.pas:672-687`: `Result := NIL`
+///   unless `Flg.HasEnergyMeter in elem.Flags`, `pd.MeterObj.Name` at `:685`),
+///   which the pinned dss-python renders as the empty string;
+/// * **r4133** returns `'0'` — the `CktElementS` family default assigned before
+///   the `case` (`DDLL/DCktElement.pas:421`) and left untouched by arm `4`
+///   (`:442-449`), whose `MeterObj.Name` read is itself guarded by
+///   `HasEnergyMeter` at `:444`.
+///
+/// A meter literally **named** `0` would collide with the r4133 sentinel. The
+/// collision can only produce a false **failure**, never a false pass: the port
+/// answers `Some("0")` against a normalized `None` and the compare reds (pinned
+/// by `a_meter_named_zero_reds_instead_of_passing`). The vendored corpus carries
+/// no such name either — `extras_population::no_corpus_energymeter_is_named_zero`
+/// in `crates/dss-core/tests/corpus_manifest.rs` is the census.
+fn oracle_meter_name(raw: &str) -> Option<&str> {
+    match raw {
+        "" | "0" => None,
+        name => Some(name),
+    }
+}
+
+/// Compare one element's **discrete index/name extras** against a capture:
+/// `NumTerminals`, `NumConductors`, `NumPhases`, `EnergyMeter` and `NodeOrder`
+/// (`GOLDEN_REBASE_PLAN.md` WP-G1 sub-step G1.3d(i)).
+///
+/// Runs when the case's `compare_element_extras` manifest flag is on,
+/// *alongside* — never instead of — [`compare_element_channels`] and
+/// [`compare_element_derived`].
+///
+/// **Everything here is discrete, so everything is compared exactly.** There is
+/// no `Tolerances` argument, no [`ElemChannels`] selector and no ledger
+/// sub-channel: a mismatch on an index or a name is a port bug or an upstream
+/// defect, never a floor, and the ledger's `divergence` envelope
+/// (`max_abs`/`max_rel`) has no meaning for it. Consequence, stated so it is not
+/// discovered by surprise: the first live mismatch **stops** the sub-step and the
+/// mechanism is designed then, rather than shipping exclusion machinery that
+/// `every_exclusion_field_is_honoured_by_the_runtime` could never exercise. A
+/// committed `element` scope cannot reach these fields either — the ledger's
+/// `clone_element_cap` is a full `ec.clone()`
+/// (`corpus_gate/ledger.rs:1695-1697`) and `rewrite_element_selected` (`:1702`)
+/// writes only its six named value channels (`currents`, `powers`, `losses`,
+/// `currents_mag_ang`, `voltages_mag_ang`, `residuals`).
+///
+/// **Structure, asserted under every policy** (the rule [`compare_element_channels`]
+/// already follows: a value exclusion may never excuse a shape or an existence
+/// miss):
+///
+/// * the element exists in the Rust snapshot, and the capture carries all four
+///   scalars plus `Enabled` — their absence means the flag is on and the element
+///   was captured without them, the element-level twin of
+///   [`capture_guard::require_capture`];
+/// * `Enabled` matches exactly. It is re-asserted here rather than borrowed from
+///   [`compare_element_derived`], because the two flags are independent and the
+///   `NodeOrder` capture predicate rests on this bit;
+/// * the three counts match exactly, and two internal ties bind them to shapes
+///   that were *already* gated: the port's own `bus_names` list (which
+///   [`compare_element_derived`] uses as its terminal count) and the oracle's
+///   `Currents` length (`Yorder = NTerms · NConds`);
+/// * `NodeOrder` is compared slot by slot when the element is enabled with at
+///   least one terminal; on a **0-terminal** element both sides must be empty
+///   (two-sided, so a payload on either side still fails); on a **disabled**
+///   element only the *oracle* side must be empty — the capture skips the read
+///   there, while the port legitimately keeps the mapping it was last given (an
+///   element disabled after a solve; pinned in-engine by
+///   `exec::tests::element_extras::a_disabled_element_keeps_the_node_order_it_was_given`).
+///
+/// Capture predicate, from the sources rather than from caution: mode `17`
+/// dereferences `NodeRef^[j]` with no nil guard (r4133
+/// `DDLL/DCktElement.pas:1048`) and capi raises 15013 from its nil-`NodeRef`
+/// guard (`CAPI/CAPI_Alt.pas:960-966`), so a never-enabled element is not read;
+/// and on a 0-terminal element (`UPFCControl` never assigns `Nterms` — r4133
+/// `Controls/UPFCControl.pas:230-246`) r4133 would answer a 0-length array where
+/// capi raises, so not issuing the read removes that shape asymmetry instead of
+/// normalizing it.
+///
+/// No tolerance is introduced or consulted anywhere in this function
+/// (tests/TOLERANCE_NOTES.md §G1.3d(i)).
+pub fn compare_element_extras(snaps: &[ElementSnapshot], exp: &ElementCap, ctx: &str) {
+    let snap = snaps
+        .iter()
+        .find(|s| s.name.eq_ignore_ascii_case(&exp.name))
+        .unwrap_or_else(|| panic!("{ctx}: no element {}", exp.name));
+    fn missing(ctx: &str, name: &str, field: &str) -> String {
+        format!(
+            "{ctx} {name}: the extras capture carries no `{field}` field — the \
+             case's `compare_element_extras` flag is on but this element was \
+             captured without it"
+        )
+    }
+    let n_terms = exp
+        .n_terms
+        .unwrap_or_else(|| panic!("{}", missing(ctx, &exp.name, "n_terms")));
+    let n_conds = exp
+        .n_conds
+        .unwrap_or_else(|| panic!("{}", missing(ctx, &exp.name, "n_conds")));
+    let n_phases = exp
+        .n_phases
+        .unwrap_or_else(|| panic!("{}", missing(ctx, &exp.name, "n_phases")));
+    let raw_meter = exp
+        .energy_meter
+        .as_deref()
+        .unwrap_or_else(|| panic!("{}", missing(ctx, &exp.name, "energy_meter")));
+    let enabled = exp
+        .enabled
+        .unwrap_or_else(|| panic!("{}", missing(ctx, &exp.name, "enabled")));
+
+    assert_eq!(
+        snap.enabled, enabled,
+        "{ctx} {}: Enabled differs (rust {} vs oracle {enabled})",
+        exp.name, snap.enabled
+    );
+
+    let count = |what: &str, rust: usize, oracle: i32| {
+        let want = usize::try_from(oracle)
+            .unwrap_or_else(|_| panic!("{ctx} {}: oracle {what} is negative ({oracle})", exp.name));
+        assert_eq!(
+            rust, want,
+            "{ctx} {}: {what} differs (rust {rust} vs oracle {oracle})",
+            exp.name
+        );
+    };
+    count("NumTerminals", snap.n_terms, n_terms);
+    count("NumConductors", snap.n_conds, n_conds);
+    count("NumPhases", snap.n_phases, n_phases);
+
+    // The two ties. Neither is an independent measurement — `bus_names` is built
+    // over `1..=nterms` (`exec/view.rs`) and `Yorder` is `NTerms · NConds` on
+    // every engine — but they are what makes the newly gated counts do work for
+    // channels that were already gated: from here on the oracle's `NumTerminals`
+    // stands behind `compare_element_derived`'s terminal count, and its
+    // `NumConductors` behind the length of every per-conductor array.
+    assert_eq!(
+        snap.bus_names.len(),
+        snap.n_terms,
+        "{ctx} {}: the port's bus-name list ({}) disagrees with its own \
+         NumTerminals ({})",
+        exp.name,
+        snap.bus_names.len(),
+        snap.n_terms
+    );
+    if enabled && !exp.i_re.is_empty() {
+        assert_eq!(
+            snap.n_terms * snap.n_conds,
+            exp.i_re.len(),
+            "{ctx} {}: NTerms·NConds ({} · {}) != the oracle's Currents length ({})",
+            exp.name,
+            snap.n_terms,
+            snap.n_conds,
+            exp.i_re.len()
+        );
+    }
+
+    // Exact, with no case folding: both engines lowercase the name in the
+    // EnergyMeter constructor (r4133 `Meters/EnergyMeter.pas:921`
+    // `Name := LowerCase(...)`, capi `src/Meters/EnergyMeter.pas:952`
+    // `AnsiLowerCase`) and so does the port (`elements/ckt.rs:258`).
+    assert_eq!(
+        snap.energy_meter.as_deref(),
+        oracle_meter_name(raw_meter),
+        "{ctx} {}: EnergyMeter differs (rust {:?} vs oracle {raw_meter:?})",
+        exp.name,
+        snap.energy_meter
+    );
+
+    if snap.n_terms == 0 {
+        assert!(
+            exp.node_order.is_empty() && snap.node_order.is_empty(),
+            "{ctx} {}: a 0-terminal element must carry no NodeOrder on either \
+             side (oracle {}, rust {})",
+            exp.name,
+            exp.node_order.len(),
+            snap.node_order.len()
+        );
+        return;
+    }
+    if !enabled {
+        assert!(
+            exp.node_order.is_empty(),
+            "{ctx} {}: a disabled element must carry no oracle NodeOrder ({} \
+             slots) — the capture read a channel it must skip",
+            exp.name,
+            exp.node_order.len()
+        );
+        return;
+    }
+    let want = snap.n_terms * snap.n_conds;
+    assert_eq!(
+        exp.node_order.len(),
+        want,
+        "{ctx} {}: oracle NodeOrder length {} != NTerms·NConds ({want})",
+        exp.name,
+        exp.node_order.len()
+    );
+    assert_eq!(
+        snap.node_order.len(),
+        want,
+        "{ctx} {}: rust NodeOrder length {} != NTerms·NConds ({want})",
+        exp.name,
+        snap.node_order.len()
+    );
+    assert_eq!(
+        snap.node_order, exp.node_order,
+        "{ctx} {}: NodeOrder differs (rust {:?} vs oracle {:?})",
+        exp.name, snap.node_order, exp.node_order
+    );
+}
+
+/// The G1.3d(i) discrete-extras pins: the no-meter sentinel normalization and
+/// the comparator's structural rules, pinned directly (no oracle) the way
+/// `derived_polar_floors` pins the polar bands. Every acceptance carries its
+/// rejection leg, so none of them is a one-sided "accepts everything" green.
+#[cfg(test)]
+mod element_extras_pins {
+    use super::{ElementCap, ElementSnapshot, compare_element_extras, oracle_meter_name};
+
+    /// The measured `Line.l1` of the in-engine fixture deck
+    /// (`exec::tests::element_extras`): 2 terminals × 3 conductors, 3 phases,
+    /// metered by `EnergyMeter.Feeder`, `NodeOrder = [1, 2, 3, 1, 2, 3]`. The
+    /// oracle side is spelled the way the **capi** transport spells it (a bare
+    /// name, no sentinel).
+    fn metered_line() -> (Vec<ElementSnapshot>, ElementCap) {
+        let snap = ElementSnapshot {
+            name: "Line.l1".to_string(),
+            enabled: true,
+            bus_names: vec!["src.1.2.3".to_string(), "b1.1.2.3".to_string()],
+            powers: vec![num_complex::Complex64::new(0.0, 0.0); 6],
+            currents: vec![num_complex::Complex64::new(0.0, 0.0); 6],
+            loss_w: (0.0, 0.0),
+            currents_mag_ang: Vec::new(),
+            voltages_mag_ang: Vec::new(),
+            residuals: Vec::new(),
+            n_terms: 2,
+            n_conds: 3,
+            n_phases: 3,
+            node_order: vec![1, 2, 3, 1, 2, 3],
+            energy_meter: Some("feeder".to_string()),
+        };
+        let cap = ElementCap {
+            name: "Line.l1".to_string(),
+            i_re: vec![0.0; 6],
+            i_im: vec![0.0; 6],
+            enabled: Some(true),
+            n_terms: Some(2),
+            n_conds: Some(3),
+            n_phases: Some(3),
+            energy_meter: Some("feeder".to_string()),
+            node_order: vec![1, 2, 3, 1, 2, 3],
+            ..ElementCap::default()
+        };
+        (vec![snap], cap)
+    }
+
+    /// An **enabled** `UPFCControl` (r4133
+    /// `Version8/Source/Controls/UPFCControl.pas:230-246` never assigns
+    /// `Nterms`): 0 terminals, 0 conductors, no `NodeOrder` read on either
+    /// transport. The oracle side carries the **r4133** no-meter sentinel `'0'`
+    /// here, so the fixture exercises the other spelling too.
+    fn zero_terminal() -> (Vec<ElementSnapshot>, ElementCap) {
+        let snap = ElementSnapshot {
+            name: "UPFCControl.myupfcctrl".to_string(),
+            enabled: true,
+            bus_names: Vec::new(),
+            powers: Vec::new(),
+            currents: Vec::new(),
+            loss_w: (0.0, 0.0),
+            currents_mag_ang: Vec::new(),
+            voltages_mag_ang: Vec::new(),
+            residuals: Vec::new(),
+            n_terms: 0,
+            n_conds: 0,
+            n_phases: 0,
+            node_order: Vec::new(),
+            energy_meter: None,
+        };
+        let cap = ElementCap {
+            name: "UPFCControl.myupfcctrl".to_string(),
+            enabled: Some(true),
+            n_terms: Some(0),
+            n_conds: Some(0),
+            n_phases: Some(0),
+            energy_meter: Some("0".to_string()),
+            ..ElementCap::default()
+        };
+        (vec![snap], cap)
+    }
+
+    /// The acceptance leg: the measured fixture compares clean end to end.
+    #[test]
+    fn the_measured_fixture_element_compares_clean() {
+        let (snaps, cap) = metered_line();
+        compare_element_extras(&snaps, &cap, "fixture");
+    }
+
+    /// Both transports' "no meter" spellings mean the same thing — capi's `''`
+    /// (`Result := NIL`, `CAPI/CAPI_CktElement.pas:677`) and r4133's `'0'` (the
+    /// `CktElementS` pre-`case` default, `DDLL/DCktElement.pas:421`) — and
+    /// nothing else is normalized: a real name, including a numeric one the
+    /// corpus actually carries (`EnergyMeter.25607`), stays itself.
+    #[test]
+    fn the_no_meter_sentinel_is_normalized_on_both_channels() {
+        assert_eq!(oracle_meter_name(""), None);
+        assert_eq!(oracle_meter_name("0"), None);
+        assert_eq!(oracle_meter_name("feeder"), Some("feeder"));
+        assert_eq!(oracle_meter_name("25607"), Some("25607"));
+        assert_eq!(oracle_meter_name("00"), Some("00"));
+        assert_eq!(oracle_meter_name("0.0"), Some("0.0"));
+        assert_eq!(oracle_meter_name(" "), Some(" "));
+        // End to end, on both spellings, against a port that says `None`.
+        let (snaps, mut cap) = zero_terminal();
+        compare_element_extras(&snaps, &cap, "r4133 sentinel");
+        cap.energy_meter = Some(String::new());
+        compare_element_extras(&snaps, &cap, "capi sentinel");
+    }
+
+    /// The collision leg: a meter literally **named** `0` is indistinguishable
+    /// from the r4133 sentinel, and that can only red — never pass silently.
+    /// (The corpus carries no such name;
+    /// `extras_population::no_corpus_energymeter_is_named_zero` in
+    /// `crates/dss-core/tests/corpus_manifest.rs` is the census.)
+    #[test]
+    #[should_panic(expected = "EnergyMeter differs")]
+    fn a_meter_named_zero_reds_instead_of_passing() {
+        let (mut snaps, mut cap) = metered_line();
+        snaps[0].energy_meter = Some("0".to_string());
+        cap.energy_meter = Some("0".to_string());
+        compare_element_extras(&snaps, &cap, "collision");
+    }
+
+    /// The name is compared with **no** case folding — both engines and the port
+    /// lowercase it in the constructor (r4133 `Meters/EnergyMeter.pas:921`,
+    /// capi `src/Meters/EnergyMeter.pas:952`, port `elements/ckt.rs:258`), so a
+    /// capture that came back in the deck's spelling is a finding, not noise.
+    #[test]
+    #[should_panic(expected = "EnergyMeter differs")]
+    fn the_meter_name_is_compared_without_case_folding() {
+        let (snaps, mut cap) = metered_line();
+        cap.energy_meter = Some("Feeder".to_string());
+        compare_element_extras(&snaps, &cap, "case");
+    }
+
+    /// A metered element whose meter the port failed to resolve must red, in the
+    /// direction a one-sided "the oracle said nothing" check would miss.
+    #[test]
+    #[should_panic(expected = "EnergyMeter differs")]
+    fn a_port_that_lost_the_meter_name_fails() {
+        let (mut snaps, cap) = metered_line();
+        snaps[0].energy_meter = None;
+        compare_element_extras(&snaps, &cap, "lost meter");
+    }
+
+    /// The element-level twin of `capture_guard::require_capture`: all four
+    /// scalars **and** `Enabled` are emitted for every element under the flag, so
+    /// a missing one means the element was captured without it. Never papered
+    /// over — each absence names its own field.
+    #[test]
+    fn the_extras_comparator_requires_the_capture_to_carry_them() {
+        /// Removes one required field from an otherwise complete capture.
+        type Drop = fn(&mut ElementCap);
+        let drop: [(&str, Drop); 5] = [
+            ("n_terms", |c| c.n_terms = None),
+            ("n_conds", |c| c.n_conds = None),
+            ("n_phases", |c| c.n_phases = None),
+            ("energy_meter", |c| c.energy_meter = None),
+            ("enabled", |c| c.enabled = None),
+        ];
+        for (field, remove) in drop {
+            let (snaps, mut cap) = metered_line();
+            remove(&mut cap);
+            let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                compare_element_extras(&snaps, &cap, "no-capture");
+            }))
+            .expect_err(&format!("a capture without `{field}` must fail the case"));
+            let msg = err
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| err.downcast_ref::<&str>().copied())
+                .unwrap_or("");
+            assert!(
+                msg.contains(&format!("carries no `{field}` field")),
+                "the panic for a missing `{field}` reads {msg:?}"
+            );
+        }
+    }
+
+    /// The three counts are compared exactly, each in its own right —
+    /// `NumPhases` in particular is the one no other channel's shape implies.
+    #[test]
+    fn the_counts_are_compared_exactly() {
+        for (what, corrupt) in [
+            ("NumTerminals", 0usize),
+            ("NumConductors", 1usize),
+            ("NumPhases", 2usize),
+        ] {
+            let (mut snaps, cap) = metered_line();
+            match corrupt {
+                0 => snaps[0].n_terms += 1,
+                1 => snaps[0].n_conds += 1,
+                _ => snaps[0].n_phases += 1,
+            }
+            let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                compare_element_extras(&snaps, &cap, "count");
+            }))
+            .expect_err(&format!("a corrupted {what} must fail"));
+            let msg = err
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| err.downcast_ref::<&str>().copied())
+                .unwrap_or("");
+            assert!(
+                msg.contains(&format!("{what} differs")),
+                "the panic for a corrupted {what} reads {msg:?}"
+            );
+        }
+    }
+
+    /// The `Yorder` tie: the oracle's own counts must explain the length of the
+    /// currents array it sent under the same capture.
+    #[test]
+    #[should_panic(expected = "the oracle's Currents length")]
+    fn the_counts_must_explain_the_oracle_currents_length() {
+        let (snaps, mut cap) = metered_line();
+        cap.i_re.push(0.0);
+        compare_element_extras(&snaps, &cap, "yorder");
+    }
+
+    /// `NodeOrder` is compared slot by slot: a rotation keeps every value and the
+    /// length and still fails.
+    #[test]
+    #[should_panic(expected = "NodeOrder differs")]
+    fn the_node_order_is_compared_slot_by_slot() {
+        let (snaps, mut cap) = metered_line();
+        cap.node_order = vec![2, 3, 1, 1, 2, 3];
+        compare_element_extras(&snaps, &cap, "rotate");
+    }
+
+    /// …and its length must be `NTerms · NConds` on **both** sides.
+    #[test]
+    #[should_panic(expected = "oracle NodeOrder length 5")]
+    fn a_short_oracle_node_order_fails() {
+        let (snaps, mut cap) = metered_line();
+        cap.node_order.pop();
+        compare_element_extras(&snaps, &cap, "short oracle");
+    }
+
+    #[test]
+    #[should_panic(expected = "rust NodeOrder length 5")]
+    fn a_short_port_node_order_fails() {
+        let (mut snaps, cap) = metered_line();
+        snaps[0].node_order.pop();
+        compare_element_extras(&snaps, &cap, "short rust");
+    }
+
+    /// A 0-terminal element carries no `NodeOrder` on either side (the read is
+    /// never issued), accepted two-sidedly.
+    #[test]
+    fn a_zero_terminal_element_has_no_node_order_on_either_side() {
+        let (snaps, cap) = zero_terminal();
+        compare_element_extras(&snaps, &cap, "upfc");
+    }
+
+    #[test]
+    #[should_panic(expected = "0-terminal element must carry no NodeOrder")]
+    fn a_zero_terminal_element_with_an_oracle_node_order_fails() {
+        let (snaps, mut cap) = zero_terminal();
+        cap.node_order = vec![1];
+        compare_element_extras(&snaps, &cap, "upfc");
+    }
+
+    #[test]
+    #[should_panic(expected = "0-terminal element must carry no NodeOrder")]
+    fn a_zero_terminal_element_with_a_port_node_order_fails() {
+        let (mut snaps, cap) = zero_terminal();
+        snaps[0].node_order = vec![1];
+        compare_element_extras(&snaps, &cap, "upfc");
+    }
+
+    /// A **disabled** element: the capture skips the `NodeOrder` read (a
+    /// never-enabled element has no `NodeRef`), so only the *oracle* side must be
+    /// empty. The port keeps the mapping it was last given — an element disabled
+    /// **after** a solve still carries its full `NodeOrder`, measured and pinned
+    /// in-engine by
+    /// `exec::tests::element_extras::a_disabled_element_keeps_the_node_order_it_was_given`
+    /// — so requiring the port to be empty here would red on every deck that
+    /// switches an element out.
+    #[test]
+    fn a_disabled_element_keeps_its_port_node_order_while_the_oracle_stays_silent() {
+        let (mut snaps, mut cap) = metered_line();
+        snaps[0].enabled = false;
+        cap.enabled = Some(false);
+        cap.node_order = Vec::new();
+        // The port still carries [1, 2, 3, 1, 2, 3] — and the counts, the meter
+        // and `Enabled` itself are all still compared.
+        compare_element_extras(&snaps, &cap, "disabled");
+    }
+
+    #[test]
+    #[should_panic(expected = "disabled element must carry no oracle NodeOrder")]
+    fn a_disabled_element_with_an_oracle_node_order_fails() {
+        let (mut snaps, mut cap) = metered_line();
+        snaps[0].enabled = false;
+        cap.enabled = Some(false);
+        compare_element_extras(&snaps, &cap, "disabled");
+    }
+
+    /// `Enabled` is re-asserted here, not borrowed from
+    /// [`super::compare_element_derived`]: the two manifest flags are
+    /// independent, and this bit is the `NodeOrder` capture predicate.
+    #[test]
+    #[should_panic(expected = "Enabled differs")]
+    fn enabled_is_compared_by_this_comparator_too() {
+        let (mut snaps, cap) = metered_line();
+        snaps[0].enabled = false;
+        compare_element_extras(&snaps, &cap, "enabled");
+    }
+
+    /// An element the oracle sent and the port does not have is an existence
+    /// miss, never a silent skip.
+    #[test]
+    #[should_panic(expected = "no element Line.l1")]
+    fn an_element_missing_from_the_snapshot_fails() {
+        let (_, cap) = metered_line();
+        compare_element_extras(&[], &cap, "missing");
     }
 }
 
@@ -2584,7 +3172,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:1158-1163` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:1178-1183` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -2613,7 +3201,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:1158-1163` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:1178-1183` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -2677,7 +3265,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     **compare** on r4133. The exclusion is a statement about the 0.14.5
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
-    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1158-1163`
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1178-1183`
     //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
@@ -2723,7 +3311,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///
 /// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1158-1163` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1178-1183` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
@@ -2916,7 +3504,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1158-1163`
+    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1178-1183`
     /// forbids masking there, plus the two `pctperm` rows RP2.1 measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {
