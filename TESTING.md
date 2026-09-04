@@ -787,10 +787,12 @@ the capi channel cannot compare at all (`PROPS_015X`, `SKIP_PROPS`, the
 whole-element skip) obviously does; so does a row that masks cells on
 `engines: "r4133"` **cases**, where the capi channel never runs — measured by
 crossing the claims census with each case's manifest flag and recorded as
-`props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES` (57 of the 81 rows, 34 969 cells),
-with `every_row_exposed_on_r4133_only_cases_names_a_pin` enforcing it. That rule
-is why the file holds **29** pins covering **63** of the 81 rows rather than the
-20 RP2.3 first landed (RP2.3 audit settlement, 2026-08-23). The complementary
+`props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES` (**58** of the 82 rows, **34 971**
+cells — the 57/34 969 first written here predates RP3.3's `generator.model` row;
+re-derived from the table on 2026-09-04, RP5.1), with
+`every_row_exposed_on_r4133_only_cases_names_a_pin` enforcing it. That rule is
+why the file holds **30** pins covering **64** of the 82 rows rather than the 20
+RP2.3 first landed (RP2.3 audit settlement, 2026-08-23). The complementary
 guard `a_capi_witness_is_a_pair_the_capi_channel_can_compare` keeps a `Capi(n)`
 witness from naming a pair that channel never sees.
 
@@ -835,6 +837,144 @@ table loses to a registration off-by-one**, so it is inert here and relieves the
 r4133 shape walk only. Rules + row-documentation requirements:
 `tests/TOLERANCE_NOTES.md` §"0.15.x property-table allowlist (shape
 relaxation)".
+
+### The r4133 property policy — the claim chain (R4133_PROPS)
+
+Since RP4.1 unmasked the r4133 property request (§`PROPS_015X` above), a
+property cell of a live non-`large` case is asserted on **both** channels. The
+two channels do not spell values identically, so the r4133 side runs a
+**channel-scoped claim chain** whose links are consulted in one fixed order and
+never on `capi_v0145`. One function holds the whole order —
+`harness::compare_prop_lists` (`crates/dss-core/tests/harness/mod.rs:3243`) —
+and every value link is a `PropsPolicy` method gated on `is_r4133()`
+(`mod.rs:3444`, `:3489`; the channel type is `PropsChannel`, `mod.rs:3410`):
+
+| # | link | seam | what it does | if it does not claim |
+|---|---|---|---|---|
+| 0 | shape allowlist `PROPS_015X` | `filter_015x`, `mod.rs:3261` | drops a Rust-side prop the capture cannot carry — **shape only** | the name walk fails |
+| 1 | skip rows `SKIP_PROPS` / `LANE_SKIP_PROPS` | `skip_prop`, `mod.rs:3281` (rule at `:2027`) | value-only skip, per channel | fall through |
+| 2 | normalization `PROPS_NORM_R4133` | `PropsPolicy::normalize`, `mod.rs:3290` | **re-spells** the oracle side when a typed rule proves the two are the same value | both raw spellings continue |
+| 3 | echo table `PROPS_ECHO_R4133` | `PropsPolicy::echo_excluded`, `mod.rs:3301` | drops the **value** compare of that cell (name + index order still assert) | fall through |
+| 4 | display floor `R4133_DISPLAY_FLOOR` | `PropsPolicy::under_display_floor`, `mod.rs:3311` | passes a numeric cell that is our value rendered to r4133's own digits | the cell reaches the assert |
+| 5 | the assert | `assert_value_matches_tol`, `mod.rs:3320` | the case's tier floors (`tol_for`) | **gate red, both spellings in the message** |
+
+A divergence the ledger owns is handled outside this chain, by the case's
+`property`-scoped `ledger.json` entry (`corpus_gate/ledger.rs:1030`, `:1065`) —
+which is why the triage order below ends there and not before.
+
+**Link 2 — the normalization table** (`harness/props_norm.rs:560`). **168 rows**
+of `(class, prop)` → `NormRule`, each citing the vendored census by
+*(pair, bin, cells)*. The contract is **value-preserving spelling only**
+(`NormRule::claims`, `props_norm.rs:911`): a rule may change how a value is
+written, never which value it is; anything else is an exclusion, not a rule.
+
+| rule | rows | folds |
+|---|---|---|
+| `BoolFold` | 77 | `{yes,y,true}` / `{no,n,false}`, case-insensitively — `''` is **not** a boolean |
+| `CaseFold` | 65 | case + leading/trailing blanks |
+| `ArrayForm` | 21 | delimiters/brackets only; a token-count difference is a value difference |
+| `EnumSynonym` | 5 | an explicit per-row spelling map, each mapping citing the r4133 line that prints it |
+
+*Count lock:* `props_norm::tests::count_locks_hold` asserts the total **and**
+that the four per-kind locks (`NORM_ROWS` … `NORM_ENUM_SYNONYM_ROWS`,
+`props_norm.rs:742-764`) partition it, so a row cannot be added without moving a
+documented number. *Liveness:* `props_norm::assert_norm_rows_are_live`
+(`props_norm.rs:1412`, called in the gate epilogue, `corpus_gate.rs:184`) fails
+a full run in which a row was visited and folded nothing — the fail-on-stale
+half. The offline half is the replay (§"The r4133 props replay accounting"):
+every row must claim at least one vendored example row. Both halves skip a
+`DSS_GATE_ONLY` run by an explicit check, because a row spans cases and a
+filtered run cannot make a whole-population staleness claim.
+
+**Link 3 — the echo table** (`props_norm.rs:1772`). **82 rows**, each a
+value-only exclusion carrying (a) the r4133 `Version8/Source` line that proves
+its category and (b) a **witness** that still holds the port's value
+(`EchoWitness`, `props_norm.rs:1558`: `Capi(n)` cases, a named expected-value
+`Pin`, or both).
+
+| category | rows | mechanism |
+|---|---|---|
+| `EchoDefault` | 50 | r4133 has no `GetPropertyValue` arm and echoes `InitPropertyValues`' default |
+| `EchoParse` | 8 | it echoes what the deck's own command string wrote |
+| `EmptyCollectionRender` | 14 | an unset collection renders empty |
+| `LiveSemanticsDiffer` | 10 | both sides render live state, but of different things |
+
+*Count lock:* the same `count_locks_hold`, on `ECHO_ROWS` and the four category
+locks (`props_norm.rs:2024-2032`), plus
+`props_norm::tests::the_echo_table_is_the_measured_row_set`, which rebuilds the
+row set from the frozen census. *Row width:* 62 rows are pair-scoped (minus the
+one cited counterexample in `ECHO_CARVE_OUTS`, `props_norm.rs:2238`); the other
+20 — the pairs that also carry a normalization row — are **per cell** since
+RP4.1, covering only the 66 measured spellings of `ECHO_NARROWED`
+(`props_norm.rs:2344`; locks `ECHO_NARROWED_PAIRS` `:2459` and
+`ECHO_NARROWED_SPELLINGS` `:2463`), derived from the census by
+`props_r4133_replay::the_narrowed_echo_rows_carry_exactly_the_spellings_the_typed_rules_leave`.
+*Witness obligation:* **58** of the 82 rows mask cells on `engines: "r4133"`
+cases (**34 971** cells), where the capi channel never runs; each must name a
+pin (`ECHO_ROWS_ON_R4133_ONLY_CASES`, `props_norm.rs:2082`, enforced by
+`props_norm::tests::every_row_exposed_on_r4133_only_cases_names_a_pin`), and the
+converse guard `a_capi_witness_is_a_pair_the_capi_channel_can_compare` refuses a
+`Capi(n)` witness on a pair that channel cannot compare. The pins themselves are
+**30** expected-value tests covering **64** of the 82 rows, in
+`crates/dss-core/tests/props_r4133_pins.rs` (§"The r4133 echo-exclusion pins"),
+tied to the table both ways by
+`props_r4133_replay::every_echo_row_pin_is_a_test_that_exists`. *Liveness:*
+`props_norm::assert_echo_rows_are_live` (`props_norm.rs:2657`,
+`corpus_gate.rs:195`) — `visits > 0 && hits == 0` for a pair-scoped row,
+`visits == 0` for a narrowed one (a narrowed row counts only covered cells, so
+`visits == hits` by construction and the first arm cannot fire on it).
+
+**Link 4 — the display floor** (`R4133_DISPLAY_FLOOR = 2e-4` rel,
+`props_norm.rs:895`). The **only** tolerance this plan introduced: r4133-only,
+property-cells-only, and a *cell* predicate — it reads the two rendered strings,
+so no `(class, prop)` is masked by name and there is no row to go stale. Two
+clauses, both necessary: the **metric** (`display_rel ≤ 2e-4`) and the
+**mechanism** (`display_is_render`, `props_norm.rs:1082` — every number on the
+r4133 side must be our number rounded to the significant digits r4133 itself
+printed). It touches no `Tolerances` field, no `tol_for` tier, no golden and no
+model quantity, and it is unreachable on `capi_v0145`
+(`props_policy_tests::the_capi_channel_never_applies_the_display_floor`,
+`mod.rs:2459`). Its derivation — the measured worst cell, the empty band, the
+`%.Ng` site table and the 55 refused spellings — is
+`tests/TOLERANCE_NOTES.md` §"r4133 props display floor".
+
+**The `SKIP_PROPS` dispositions (plan §1.2).** `skip_prop` is channel-aware
+since RP2.1 (`mod.rs:2027`), because after RP4.1 a channel-blind row would
+value-mask the r4133 channel by accident. Every one of the **17** `SKIP_PROPS`
+rows (`mod.rs:1580`) is dispositioned exactly once, in its own row comment:
+
+| list | rows | on r4133 | why |
+|---|---|---|---|
+| `SKIP_PROPS_CAPI_ONLY` (`mod.rs:1936`) | 10 | **compared** | the justification is a 0.14.5-capture fact: the three changed defaults (`Fuse.FuseCurve`, `Fuse.RatedCurrent`, `RegControl.RevThreshold`), the two `pctperm` rows (`Capacitor`, `Reactor`), and RP3.8's five `''`-render rows (`IndMach012.PF`, the four `StorageController` totals) |
+| `SKIP_PROPS_BOTH_CHANNELS` (`mod.rs:1977`) | 7 | **skipped** | channel-independent facts — the heap-garbage matrix reads (`Capacitor.CMatrix`, `Reactor.RMatrix`/`XMatrix`, `Fault.GMatrix`, `Transformer.WdgCurrents`) and the two `FaultRate` rows |
+| `LANE_SKIP_PROPS` (`mod.rs:2017`) | 1 | **skipped, deliberately channel-blind** | `(Monitor, BaseFreq)` — an upstream bug BOTH gating oracles share (`Monitor.pas` r4133:552); the port's correct value is pinned by `monitor_basefreq_inherits_the_fundamental` |
+
+*Partition lock:*
+`skip_props_disposition_tests::every_skip_props_row_has_an_r4133_disposition`
+(`mod.rs:2067`) fails on a row listed twice, in neither list, or deleted from
+`SKIP_PROPS` — a new skip cannot silently inherit "masked on r4133 too". The
+channel-blindness of the `LANE_SKIP_PROPS` row has its own pin
+(`the_monitor_basefreq_exclusion_is_channel_blind`, `mod.rs:2224`). The two
+**whole-element** skips are channel-scoped the same way: Recloser and Relay are
+skipped on capi only, because their Rust tables are r4133-shaped
+(`skip_whole_element`, `mod.rs:3196`;
+`recloser_and_relay_are_whole_element_skipped_on_capi_only`, `mod.rs:2249`).
+
+**Did the chain run at all?** `props_norm::assert_r4133_props_compare_ran`
+(`props_norm.rs:2841`) runs first in the gate epilogue (`corpus_gate.rs:172`),
+so a wholesale re-mask reports as one line instead of 19 stale-row messages; a
+*partial* re-mask is caught instead by the forcing-rule lock
+`scheduler::the_property_forcing_rule_is_every_live_non_large_case`
+(`corpus_gate/scheduler.rs:169`, `FORCED_PROPS_POPULATION = (440, 313, 83, 44)`
+at `:148`).
+
+**Where the rest of the machinery is documented:** the measurement knob
+`DSS_PROPS_CENSUS` and its `claims` disposition mode — §"Vendored r4133 property
+census" and the §Environment variables row; the offline accounting that proves
+every table row claims a vendored example — §"The r4133 props replay
+accounting"; the expected-value pins — §"The r4133 echo-exclusion pins"; the
+frozen evidence itself — `tests/corpus/props_r4133/README.md`.
+
 
 ## Environment variables
 
@@ -964,6 +1104,52 @@ Validate on the pinned oracle first (two-process determinism + feature
 sensitivity, GAPS_PLAN.md §2.1); run the seeding report (below) to measure the
 r4133 side. The `*_manifest_is_complete` gate enforces the dir↔manifest
 bijection; regenerate the population lock in the same commit.
+
+**Triage a property divergence (the r4133 channel)** — the specialization of
+the ledger triage below, and the *only* order in which the four links may be
+tried. Every step is CLAUDE.md-bound first: a Rust↔oracle gap is a port bug
+until proven otherwise, so step 0 is always "is our value right?" — if it is
+not, fix the port and stop. Then, and only then:
+
+0. **Locate the cell.** The failure message carries `class.prop` and both raw
+   spellings. Measure the whole pair rather than the one case:
+   `DSS_PROPS_CENSUS=claims cargo test -p dss-core --test corpus_gate
+   corpus_gate_props_census -- --nocapture` writes
+   `tmp/props_census/<channel>/claims{,_unclaimed_pairs,_summary}` — read the
+   per-cell `disposition` in `tmp/props_census.json`, never the per-spelling
+   fold (§"The disposition mode").
+1. **Normalize** — `harness/props_norm.rs`, `PROPS_NORM_R4133`. Only if the two
+   sides are the SAME value differently spelled, and only through a typed rule
+   (`BoolFold`/`CaseFold`/`ArrayForm`/`EnumSynonym`) whose predicate proves it.
+   The row cites the vendored census by *(pair, bin, cells)* and moves a
+   per-kind count lock. Never a regex, never a "close enough".
+2. **Echo-exclude** — same file, `PROPS_ECHO_R4133`. Only if the two sides do
+   not spell one value at all because r4133 renders an echo (no
+   `GetPropertyValue` arm, a parsed command string, an empty collection) or
+   different live state. The row needs the r4133 `Version8/Source` unit:line
+   that proves its category **and** a witness: capi coverage, or a named
+   expected-value pin in `crates/dss-core/tests/props_r4133_pins.rs`. A row
+   whose cells reach `engines: "r4133"` cases needs the pin regardless
+   (`ECHO_ROWS_ON_R4133_ONLY_CASES`). On one of the 20 mixed pairs, extend
+   `ECHO_NARROWED` with the measured spelling — do not widen the row back to
+   pair scope.
+3. **Display floor** — same file, `R4133_DISPLAY_FLOOR`. Nothing to edit: it is
+   a cell predicate. If it does not claim the cell, the gap is either above
+   `2e-4` or not a `%.Ng` render of our number, and **the floor is never
+   widened** to make it fit (`tests/TOLERANCE_NOTES.md` §"r4133 props display
+   floor" carries the derivation the widening would have to overturn).
+4. **Ledger** — `tests/corpus/ledger.json`, a `property`-scoped entry, per case
+   and per channel. This is where a *genuine* measured upstream divergence
+   goes: the port computes the correct value, r4133 does not, and the entry
+   pins both numbers (`rust`+`oracle`) with a `cause` and `source`. Follow the
+   full procedure below, and pair the entry with the expected-value test that
+   names both numbers — an entry without one is a mask.
+
+If the cell reaches none of the four, it is a bug — in the port (fix it) or in
+r4133 (fix the port, ledger the divergence, and file the report under
+`investigations/to_opendss/`). "Skip it for now" is not a step: `SKIP_PROPS` is
+capi-capture bookkeeping, not a place to park an r4133 divergence, and every one
+of its rows is dispositioned for r4133 by a test.
 
 **Triage a divergence into the ledger** — only for a **measured upstream
 divergence**, never a shortcut past a red gate:

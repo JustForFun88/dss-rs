@@ -42,9 +42,9 @@ has shrunk to a precision-compat lane and is scheduled for full teardown.
 
 **In flight.** `R4133_PROPS_PLAN.md` on branch **`r4133-props`** (forked from
 `update` @ `2ee6bb00`), inside the `GOLDEN_REBASE_PLAN.md` window
-(`PLAN_SEQUENCE.md` rows 5a/5b). **WP-RP0 – WP-RP4 COMPLETE**: WP-RP3's last
-sub-step §RP3.10 landed and settled 2026-09-04 (`9f55095b` + `9f067c19`), and
-WP-RP4's RP4.1, G1.1's deliverable, landed 2026-09-03. **Only WP-RP5 is left.**
+(`PLAN_SEQUENCE.md` rows 5a/5b). **WP-RP0 – WP-RP4 COMPLETE** (§RP3.10 landed and
+settled 2026-09-04, `9f55095b` + `9f067c19`; RP4.1, G1.1's deliverable,
+2026-09-03) and **WP-RP5's §RP5.1 landed 2026-09-04** — only RP5.2 + closeout.
 Execution is single-branch, never parallel worktrees: `tests/corpus/ledger.json`,
 `tests/corpus/manifests/population.lock.json` and `tests/golden/golden.lock.json`
 are fail-on-stale and are rewritten by this plan and by the still-open
@@ -53,8 +53,8 @@ GOLDEN_REBASE WP-G1 sub-steps alike.
 **Record placement (from 2026-09-03).** Every sub-step's **full** record is
 appended to its per-WP file under `docs/phase-records/` — WP-RP3 →
 [`r4133-props-rp3.md`](docs/phase-records/r4133-props-rp3.md), where §RP3.10's
-went; a later WP → a new `r4133-props-<wp>.md` (WP-RP5 → `r4133-props-rp5.md`
-for RP5.1, RP5.2 and the closeout). The pin-citation guards
+went; a later WP → a new `r4133-props-<wp>.md` (WP-RP5 →
+[`r4133-props-rp5.md`](docs/phase-records/r4133-props-rp5.md)). The pin-citation guards
 in `crates/dss-core/tests/props_r4133_replay.rs` read that file, and section 7
 forwards the `§RPx.y` citations to it. Section 1 gets a **3–6 line** landed
 paragraph per sub-step — verdict, date, commit, pointer — and never grows a full
@@ -152,6 +152,13 @@ full run, identically in both lanes. G1.1's re-armed kill criterion did **not**
 fire (zero ledger entries and zero pins from RP4.1's own residual triage). Full
 record: [`r4133-props-rp4.md`](docs/phase-records/r4133-props-rp4.md).
 
+**WP-RP5 (operational docs + closing record) — IN PROGRESS.** **RP5.1 landed
+2026-09-04**, docs only (`TESTING.md` +190/−4, `TOLERANCE_NOTES.md` +33/−2, two
+doc comments; zero product-crate lines, zero tolerances, zero golden bytes): the
+r4133 claim chain (normalize → echo → floor → assert, each link with its liveness
+guarantee) and the property-divergence triage procedure, **42** citation rows over
+7 files; gate green both lanes. Full record: [`r4133-props-rp5.md`](docs/phase-records/r4133-props-rp5.md).
+
 **GOLDEN_REBASE WP-G0 (rails) + WP-G2 (bug-kernel teardown) — COMPLETE**, merged
 to `update` (`6e7ee691` / `77e1799a` / `4d3fc2d7`, all pushed): G2.0, G2.1a–h,
 G2.2a–d, G2.3, G2.4, G2.5 and G2.6 landed, `SPLIT_ALIAS_POPULATION` **31 → 11**,
@@ -170,12 +177,12 @@ zero-coverage class) landed 2026-08-29 on `r4133-props`; G1.3a–d, G1.4–G1.11
 and WP-G3–G5 remain. Full record: the same file, section "GOLDEN_REBASE WP-G1 —
 records".
 
-**Next.** **RP5.1** (operational docs) → **RP5.2** (the closing record, which
-flips this plan's `PLAN_SEQUENCE.md` row to COMPLETE) → **closeout**. §RP5.2 has
-no open blocker left: its "§RP3.10 is closed" precondition is discharged by the
-fix, which never put the unmask at risk (our `kvar` render reads `kvar_base`,
-which the dispatch never writes). Queued behind GOLDEN_REBASE:
-`WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, the UPGRADE line.
+**Next.** **RP5.2 → closeout** (RP5.1 landed 2026-09-04, see WP-RP5 above).
+**RP5.2** is the closing record, which flips this plan's `PLAN_SEQUENCE.md` row
+to COMPLETE; it has no open blocker left (§RP3.10 discharged the last one) and it
+owns RP5.1's one handed-forward item, CLAUDE.md:196-198's "Stage F introduces no
+tolerance anywhere", which RP2.4's display floor qualifies. Queued behind
+GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
@@ -546,7 +553,8 @@ Resolve **section 1's WP-RP narrative** → `r4133-props-frontier-log.md`; the
 **per-sub-step records §RPx.y** → `r4133-props-rpN.md` — `§WP-RP0`, `§RP0.x`,
 `§WP-RP1`, `§RP1.x` → `r4133-props-rp0-rp1.md`; `§WP-RP2`, `§RP2.x` →
 `r4133-props-rp2.md`; `§WP-RP3`, `§RP3.1` … `§RP3.13` → `r4133-props-rp3.md`;
-`§WP-RP4`, `§RP4.1` → `r4133-props-rp4.md`; the **GOLDEN_REBASE condensed
+`§WP-RP4`, `§RP4.1` → `r4133-props-rp4.md`; `§WP-RP5`, `§RP5.x` →
+`r4133-props-rp5.md` (created 2026-09-04); the **GOLDEN_REBASE condensed
 records** (`§WP-G0`, `§WP-G1`, `§WP-G2`) → `golden-rebase.md`; the
 carried-forward and residual-floor follow-ups → `follow-ups-carried.md`.
 `rg '§RP3.7' docs/phase-records/` finds any of them. Measured at this round:
@@ -560,6 +568,7 @@ and this file; none was rewritten.
 | `r4133-props-rp2.md` | R4133_PROPS WP-RP2 (RP2.1–RP2.4 and the RP2.4 audit settlement) |
 | `r4133-props-rp3.md` | R4133_PROPS WP-RP3 — the RP3.1–RP3.5 condensed records **and** the full RP3.6–RP3.13 records with their audit settlements; read by the three `props_r4133_replay.rs` pin-citation guards (RP3.10, RP3.11, RP3.13) |
 | `r4133-props-rp4.md` | R4133_PROPS WP-RP4 — the RP4.1 `all_properties` unmask record and its audit settlement |
+| `r4133-props-rp5.md` | R4133_PROPS WP-RP5 — the RP5.1 operational-docs record (created 2026-09-04); RP5.2 and the closeout land here |
 | `follow-ups-carried.md` | the carried-forward handoffs and the residual-floor / parked items, open and closed rows alike |
 | `golden-rebase.md` (appended 2026-09-03) | section 1's `### GOLDEN_REBASE` WP-G0 / WP-G2 and WP-G1 condensed record blocks |
 | `phase-index.md` (appended 2026-09-03) | round 1's own 2026-08-05 archive note, listing the files that round created |
