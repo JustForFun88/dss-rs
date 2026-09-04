@@ -110,8 +110,8 @@ The middle column is the pinned dss_capi 0.14.5 kernel, which is what the parity
 lane reproduces; every row but `compat::round_f64` is the same statement in the
 r4133 behavioural authority, cited inline.
 
-Two rails keep this list honest as the teardown proceeds, both in
-`crates/dss-core/tests/oracle_parity_cfg_gate.rs`: every `compat::` alias any
+Three rails keep the operational documents honest as the teardown proceeds, all
+in `crates/dss-core/tests/oracle_parity_cfg_gate.rs`: every `compat::` alias any
 operational document names must still be declared by a compat module (so the
 sentences above cannot survive their rows), and `TORN_DOWN_ROWS` records every
 row that *left* the split — its census decrement, the evidence in the tree, and
@@ -124,6 +124,19 @@ fails, and so does one whose evidence declares a harness exclusion that carries
 no marker. The register also re-reads what a teardown is *for* — the recorded
 pin must be a declared `#[test]` whose body no longer branches on the lane,
 because once the row leaves the census nothing else looks at that test.
+
+The third rail is about *citations* rather than rows, and covers this file and
+`tests/TOLERANCE_NOTES.md` wherever they name a Rust line
+(`operational_docs_line_citations_point_at_the_line_they_name`, added 2026-09-04
+by R4133_PROPS §RP5.1's audit settlement). Every `<file>.rs:<line>` a sentence
+here spells — and every bare `` `:<line>` `` continuation of one — must name
+exactly one file in the tree, land on a line that exists and is not blank, and
+sit within ±3 lines of something the sentence itself backticks. A citation that
+resolves to no file, or to several with no fully-qualified spelling before it,
+**fails** rather than being skipped; per-document floors keep the walk from
+going vacuous if the citations were ever deleted wholesale. So a doc line
+naming a code line is a checked claim here, not a promise: when the code moves,
+this file goes red with it.
 
 ### The parity↔default differential gate
 

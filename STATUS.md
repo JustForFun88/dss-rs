@@ -15,16 +15,12 @@
 > `r4133-props-rp3.md`, `r4133-props-rp4.md`, `follow-ups-carried.md`; appended
 > to `golden-rebase.md` (section 1's `### GOLDEN_REBASE` condensed blocks) and
 > `phase-index.md` (round 1's own archive note). Section 7's table says what each
-> holds. Zero loss is proven by script, not asserted. **Correction carried
-> forward:** round 1's note said "no test parses this file", which stopped being
-> true at RP3.11 (2026-09-02) — `props_r4133_replay.rs`'s pin-citation guards
-> `every_rp311_serialization_pin_exists_and_is_cited`,
-> `::every_rp313_ncim_pin_exists_and_is_cited` and, since 2026-09-04,
-> `::every_rp310_windgen_pin_exists_and_is_cited` read its pin citations. All
-> **three** now follow
-> [`r4133-props-rp3.md`](docs/phase-records/r4133-props-rp3.md), every assertion
-> unchanged, so the claim holds again here. Section 7 forwards the
-> `STATUS §X` citations.
+> holds and forwards the `STATUS §X` citations. Zero loss is proven by script,
+> not asserted. **Correction carried forward:** round 1's note said "no test
+> parses this file", which stopped being true at RP3.11 (2026-09-02) — but all
+> **three** `props_r4133_replay.rs` pin-citation guards (RP3.10, RP3.11, RP3.13)
+> now read [`r4133-props-rp3.md`](docs/phase-records/r4133-props-rp3.md)
+> instead, every assertion unchanged, so the claim holds again here.
 
 > **Round 1 (2026-08-05)** archived 16 368 -> 415 lines and created the sixteen
 > `docs/phase-records/` files it lists; that note is kept verbatim at the foot of
@@ -153,14 +149,13 @@ fire (zero ledger entries and zero pins from RP4.1's own residual triage). Full
 record: [`r4133-props-rp4.md`](docs/phase-records/r4133-props-rp4.md).
 
 **WP-RP5 (operational docs + closing record) — IN PROGRESS.** **RP5.1 landed
-2026-09-04** (`dd0b9e5b`), docs only (zero product-crate lines, zero tolerances,
-zero golden bytes): the r4133 claim chain (normalize → echo → floor → assert,
-each link with its liveness guarantee) and the property-divergence triage
-procedure, **46** `file.rs:LINE` citations over 6 code files. Its audit
+2026-09-04** (`dd0b9e5b` + `8802fb6a`), docs only: the r4133 claim chain
+(normalize → echo → floor → assert, each link with its liveness guarantee), the
+property-divergence triage procedure and **46** `file.rs:LINE` citations. Its
 settlement made those citations executable — a twelfth `oracle_parity_cfg_gate`
-test resolves and anchors all **58** of them — and corrected six prose defects
-(two findings refuted, both forwarded to RP5.2); gate green both lanes. Full
-record: [`r4133-props-rp5.md`](docs/phase-records/r4133-props-rp5.md).
+test anchors all **58** — and corrected six prose defects (two refuted, both
+forwarded to RP5.2); gate green both lanes, 4 498 per lane. Full record:
+[`r4133-props-rp5.md`](docs/phase-records/r4133-props-rp5.md).
 
 **GOLDEN_REBASE WP-G0 (rails) + WP-G2 (bug-kernel teardown) — COMPLETE**, merged
 to `update` (`6e7ee691` / `77e1799a` / `4d3fc2d7`, all pushed): G2.0, G2.1a–h,
@@ -183,9 +178,11 @@ records".
 **Next.** **RP5.2 → closeout** (RP5.1 landed 2026-09-04, see WP-RP5 above).
 **RP5.2** is the closing record, which flips this plan's `PLAN_SEQUENCE.md` row
 to COMPLETE; it has no open blocker left (§RP3.10 discharged the last one) and it
-owns RP5.1's one handed-forward item, CLAUDE.md:196-198's "Stage F introduces no
-tolerance anywhere", which RP2.4's display floor qualifies. Queued behind
-GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, UPGRADE.
+owns RP5.1's two handed-forward wording items — both **refuted** as errors, kept
+as optional cross-doc pointers: CLAUDE.md:196-198's "Stage F introduces no
+tolerance anywhere" (RP2.4's display floor qualifies it) and the vendored census
+README's historical "81 rows" against today's 82. Queued behind GOLDEN_REBASE:
+`WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
@@ -339,18 +336,18 @@ the site comment carries each row's measured cost.
   Consistent with an overlapping-guard snapshot race (cf. the unit test
   `corpus_guard_overlapping_guards_still_sweep`) plus the case-insensitive
   collision `corpus_gate/runner.rs:42-55` (the same file appears both
-  `Auto3bus_HL_current.txt` and `auto3bus_hl_current.txt`). **Eleven sightings**
+  `Auto3bus_HL_current.txt` and `auto3bus_hl_current.txt`). **Twelve sightings**
   2026-08-29 … 2026-09-04 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2,
-  §RP3.10 ×3), the set varying in size (1 … 36 files) and in case between
-  successive runs of the *same* tree — the nondeterminism itself was measured at
-  §RP3.13 — and once accompanied by an unreproducible `corpus_gate` `137 passed;
-  1 failed` whose most likely cause is this race. Every set was removed before
-  the commit (by exact name, or with `git clean -fd` scoped to the vendored deck
-  tree at §RP3.10); both lanes were green with the files present and no tracked
-  corpus or golden byte ever moved, so the leak costs hygiene only. Per-run
-  detail is in the per-WP records (`r4133-props-rp3.md`, `-rp4.md`,
-  `golden-rebase.md`). Eleven sightings make it a pattern, not a fluke: whoever
-  picks it up should start with `DSS_GATE_JOBS=1` per the G2.2d note.
+  §RP3.10 ×3, §RP5.1 ×1), the set varying in size (1 … 36 files) and in case
+  between successive runs of the *same* tree — the nondeterminism itself was
+  measured at §RP3.13 — and once accompanied by an unreproducible `corpus_gate`
+  `137 passed; 1 failed` whose most likely cause is this race. Every set was
+  removed before the commit — by exact name, `git clean -fd` scoped to the deck
+  tree (§RP3.10), or by hand (§RP5.1) — and both lanes were green with the files
+  present, no tracked corpus or golden byte ever moving, so the leak costs
+  hygiene only. Per-run detail is in the per-WP records (`r4133-props-rp3.md`,
+  `-rp4.md`, `golden-rebase.md`). Twelve sightings make it a pattern, not a
+  fluke: whoever picks it up should start with `DSS_GATE_JOBS=1` per G2.2d.
 
 **Carried-forward and residual-floor items — the rows still open.** Full text,
 closed rows and all:
@@ -571,7 +568,7 @@ and this file; none was rewritten.
 | `r4133-props-rp2.md` | R4133_PROPS WP-RP2 (RP2.1–RP2.4 and the RP2.4 audit settlement) |
 | `r4133-props-rp3.md` | R4133_PROPS WP-RP3 — the RP3.1–RP3.5 condensed records **and** the full RP3.6–RP3.13 records with their audit settlements; read by the three `props_r4133_replay.rs` pin-citation guards (RP3.10, RP3.11, RP3.13) |
 | `r4133-props-rp4.md` | R4133_PROPS WP-RP4 — the RP4.1 `all_properties` unmask record and its audit settlement |
-| `r4133-props-rp5.md` | R4133_PROPS WP-RP5 — the RP5.1 operational-docs record (created 2026-09-04); RP5.2 and the closeout land here |
+| `r4133-props-rp5.md` | R4133_PROPS WP-RP5 — the RP5.1 operational-docs record and its audit settlement (created 2026-09-04); RP5.2 and the closeout land here |
 | `follow-ups-carried.md` | the carried-forward handoffs and the residual-floor / parked items, open and closed rows alike |
 | `golden-rebase.md` (appended 2026-09-03) | section 1's `### GOLDEN_REBASE` WP-G0 / WP-G2 and WP-G1 condensed record blocks |
 | `phase-index.md` (appended 2026-09-03) | round 1's own 2026-08-05 archive note, listing the files that round created |

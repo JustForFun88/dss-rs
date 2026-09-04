@@ -146,13 +146,15 @@ CLAUDE.md:196-198's "Stage F introduces **no** tolerance anywhere", which RP2.4'
 display floor now qualifies. It is a documentation-consistency question with no
 gate, lane or test depending on it; **owner: RP5.2**.
 
-**Two commits.** RP5.1 landed as a single commit carrying the three
-documentation files together with this record and STATUS section 1's landed
-paragraph; the audit round then added the settlement commit below. Nothing under
-`tmp/` or `investigations/` was staged by either (the whole `tmp/rp51/` working
-set is gitignored).
+**Three commits.** RP5.1 landed as a single commit, `dd0b9e5b`, carrying the
+three documentation files together with this record and STATUS section 1's
+landed paragraph; the audit round added the settlement commit `8802fb6a` below;
+ritual step 6 added this settlement-record commit (STATUS + this file + the
+plan's dated lines + one `TESTING.md` sentence). Nothing under `tmp/` or
+`investigations/` was staged by any of them (the whole `tmp/rp51/` working set
+is gitignored).
 
-### RP5.1 — audit settlement (2026-09-04)
+### RP5.1 — audit settlement (2026-09-04, `8802fb6a`)
 
 Two fresh auditors (`/audit-code`, `/audit-tests`) read `45f2ece3..dd0b9e5b`.
 Neither found a lost deliverable, a weakened test, a moved tolerance or a
@@ -275,3 +277,46 @@ tests are the pre-existing set and the settlement added no `#[ignore]`.
 `lane_diff` was **not** run and does not apply — the settlement moved no product
 code (`git diff --name-only` matches nothing under any crate's `src/`); the one
 non-documentation file is a test binary.
+
+### RP5.1 — settlement record (ritual step 6, 2026-09-04)
+
+Read end to end: `STATUS.md` (599 lines after this pass, from 602 — the
+under-600 discipline holds) and this file. What RP5.1 had left stale, and what
+moved:
+
+- **STATUS section 1, the WP-RP5 paragraph** named only `dd0b9e5b`. It now names
+  the settlement `8802fb6a` too and the post-settlement lane total (4 498 per
+  lane), and is back inside the 3–6-line record-placement budget; the detail it
+  shed is above, unchanged.
+- **STATUS's "Next." paragraph** said RP5.2 owns "one handed-forward item". The
+  settlement refuted **two** — `CLAUDE.md:196-198` (AC-7) and the vendored census
+  README's historical "81 rows" (AC-6) — and recorded both as optional cross-doc
+  pointers with owner RP5.2. Both are now named there.
+- **The `CorpusGuard` leak follow-up** was at "eleven sightings"; the settlement
+  run left five more deck-written `Auto3bus_*` files under
+  `tests/corpus/electricdss-tst/Test/AutoTrans/`, which the settling agent could
+  not delete (its sandbox refused the removal) and did not commit. Twelfth
+  sighting recorded, files removed here, tracked corpus byte-unchanged.
+- **STATUS's round-2 archive note** restated section 7's forwarding rule and
+  spelled all three pin-citation guards by name where the section 7 table row
+  already names them; condensed by four lines, every claim kept.
+- **`TESTING.md`'s "Two rails" paragraph** described the compat-alias rail and
+  `TORN_DOWN_ROWS` as the only two things keeping the operational docs honest.
+  The settlement added a third — the `file.rs:LINE` citation walk — and the
+  paragraph now says so, so a reader of `TESTING.md` learns their citations are
+  checked without reading this record.
+- **`R4133_PROPS_PLAN.md`** gained §RP5.1's dated landed line (shas, gate
+  totals, pointer here) and the matching §0 note beside "RP5 is last".
+- **Not touched, deliberately:** `tests/corpus/props_r4133/README.md` (AC-6 is
+  true history under its own dated header — RP5.2's cross-doc sweep owns the
+  optional pointer), `CLAUDE.md` (AC-7, same owner), and the pre-archive
+  `STATUS §RPx.y` citations across the plan and the corpus README, which
+  STATUS section 7's forwarding rule deliberately leaves unrewritten.
+
+**Gate for this pass.** Documentation only — five `.md` files, not one line of
+Rust. `cargo fmt --all --check` **0** and `cargo test -p dss-core --test
+oracle_parity_cfg_gate` **12 passed / 0 failed** (both lanes), which is the
+executable check that covers exactly what moved: the doc-walk and the new
+line-citation walk both read `TESTING.md`. The five-command gate was not re-run
+for a `.md`-only diff and `lane_diff` does not apply — no product code, no test
+logic, no golden, no ledger, no tolerance moved by this commit.
