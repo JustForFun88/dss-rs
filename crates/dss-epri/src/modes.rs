@@ -633,6 +633,22 @@ pub const BUS_SEQ_VOLTAGES: ModeSpec = ModeSpec::array(
     3,
     ModeEffect::Pure,
 );
+/// `BUSV(2)` — the bus's node **numbers**, ascending (not the bus's internal
+/// insertion order): the arm runs the
+/// `repeat NodeIdx := FindIdx(jj); inc(jj) until NodeIdx > 0` walk and reports
+/// `GetNum(NodeIdx)` (`DBus.pas:319-345`), the same walk and the same order as
+/// the capi twin `Alt_Bus_Get_Nodes` (`CAPI/CAPI_Alt.pas:2143-2163`) and as
+/// every per-node array of this family (modes 5/13/14). Its `jj` scan is
+/// bounded in practice — each of the `NumNodesThisBus` node numbers is distinct
+/// and >= 1, so the scan finds them all — unlike the `VLL`/`puVLL` pairing loop
+/// (modes 11/12), whose second `repeat` cycles `jj` in `{1,2,3,4}` and can spin
+/// forever (G1.4c).
+///
+/// The surface it serves is fastdss' `IBus._columns` `'Nodes'`
+/// (`origin/fastdss` `dss/IBus.py:19-53`, reached through `save_state`'s
+/// `ActiveBus`, `tests/save_outputs.py:351`).
+pub const BUS_NODES: ModeSpec =
+    ModeSpec::array("Bus", 2, "Bus.Nodes", "DBus.pas:319", 1, ModeEffect::Pure);
 /// `BUSV(3)` — open-circuit voltage `Voc` at the bus (fault study).
 pub const BUS_VOC: ModeSpec =
     ModeSpec::array("Bus", 3, "Bus.Voc", "DBus.pas:351", 3, ModeEffect::Pure);
@@ -763,6 +779,26 @@ pub const CIRCUIT_TOTAL_POWER: ModeSpec = ModeSpec::array(
     "Circuit.TotalPower",
     "DCircuit.pas:349",
     3,
+    ModeEffect::Pure,
+);
+/// `CircuitV(7)` — every bus name, in `BusList` order (`BusList.Get(i+1)` for
+/// `i = 0 .. NumBuses-1`, `DCircuit.pas:439-456`), NUL-separated. The
+/// enumeration the per-bus capture walks; its capi twin is
+/// `Circuit_Get_AllBusNames` (`CAPI/CAPI_Circuit.pas:419-436`,
+/// `BusList.NameOfIndex(i+1)`), same order.
+/// A circuit with no buses writes the single string `'None'`
+/// (`DCircuit.pas:453-454`) where the capi twin writes one empty string
+/// (`DefaultResult`, `CAPI_Circuit.pas:426-430`); either way `SetActiveBus` then
+/// returns `-1`, so the caller's index re-assert fails the case loudly on both
+/// transports instead of capturing nothing. No live corpus case takes that path
+/// (measured G1.4a: 0 of the 520 live cases have an empty bus list, and no bus is
+/// named `none` or empty).
+pub const CIRCUIT_ALL_BUS_NAMES: ModeSpec = ModeSpec::array(
+    "Circuit",
+    7,
+    "Circuit.AllBusNames",
+    "DCircuit.pas:439",
+    4,
     ModeEffect::Pure,
 );
 /// `CircuitV(8)` — per-element losses, complex, in `AllElementNames` order.
@@ -1309,11 +1345,16 @@ pub const PD_ELEMENTS_TOTAL_MILES: ModeSpec = ModeSpec::scalar(
     ModeEffect::Pure,
 );
 
-/// Every mode WP-G1 reads through the r4133 bridge — 96 rows over the seven
+/// Every mode WP-G1 reads through the r4133 bridge — 98 rows over the seven
 /// families the plan's surface sub-steps touch (`GOLDEN_REBASE_PLAN.md` WP-G1).
 /// The set was measured `Served` on the vendored DLL by the G1.0 probe
 /// (2026-09-04) with zero misses, and the acceptance test
 /// `crates/dss-epri/tests/modes.rs` re-proves that on every run.
+///
+/// G1.4a (2026-09-04) added the two rows its bus capture reads and G1.0 had not
+/// listed — [`CIRCUIT_ALL_BUS_NAMES`] (the walk) and [`BUS_NODES`] (a compared
+/// value) — so that no capture read bypasses [`crate::dss::Engine::read_mode`]'s
+/// `myType` check. 96 -> 98.
 ///
 /// Each row also has a typed accessor on [`crate::dss::Engine`] that takes the
 /// row **by reference**, so no mode number is ever written twice.
@@ -1341,6 +1382,7 @@ pub const WP_G1_MODES: &[&ModeSpec] = &[
     &CKT_ELEMENT_TOTAL_POWERS,
     &BUS_DISTANCE,
     &BUS_SEQ_VOLTAGES,
+    &BUS_NODES,
     &BUS_VOC,
     &BUS_ISC,
     &BUS_PU_VOLTAGES,
@@ -1359,6 +1401,7 @@ pub const WP_G1_MODES: &[&ModeSpec] = &[
     &CIRCUIT_LINE_LOSSES,
     &CIRCUIT_SUBSTATION_LOSSES,
     &CIRCUIT_TOTAL_POWER,
+    &CIRCUIT_ALL_BUS_NAMES,
     &CIRCUIT_ALL_ELEMENT_LOSSES,
     &CIRCUIT_ALL_BUS_MAG_PU,
     &CIRCUIT_ALL_BUS_DISTANCES,
@@ -1563,7 +1606,7 @@ mod tests {
     fn the_wp_g1_mode_table_is_internally_consistent() {
         assert_eq!(
             WP_G1_MODES.len(),
-            96,
+            98,
             "WP-G1 mode count changed — update the count, the record and TESTING.md"
         );
         let mut names: Vec<&str> = Vec::new();

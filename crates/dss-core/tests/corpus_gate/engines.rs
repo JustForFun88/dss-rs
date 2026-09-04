@@ -27,8 +27,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::harness::{
-    ElementCap, Injection, MeterCap, MonitorCap, ProbeCap, PropsCap, VariablesCap, YFingerprint,
-    YMat, YPrim,
+    BusCap, ElementCap, Injection, MeterCap, MonitorCap, ProbeCap, PropsCap, VariablesCap,
+    YFingerprint, YMat, YPrim,
 };
 use crate::manifest::SolvableCase;
 
@@ -89,6 +89,16 @@ pub(crate) struct Checkpoint {
     pub(crate) ctrlqueue: Vec<String>,
     #[serde(default)]
     pub(crate) all_properties: Vec<PropsCap>,
+    /// G1.4a: every bus's voltage surface, in the oracle's `BusList` order.
+    #[serde(default)]
+    pub(crate) buses: Vec<BusCap>,
+    /// G1.4a: `Circuit.AllBusVmagPu` — every NODE's per-unit voltage magnitude,
+    /// in bus-list order x the bus's INTERNAL node index (the `AllNodeNames`
+    /// permutation, which is neither the per-bus ascending-node-number order of
+    /// [`BusCap`] nor the gated `YNodeOrder`). `CAPI_Circuit.pas:521-548` ==
+    /// r4133 `Circuit.AllBusMagPu`, `DCircuit.pas:481-500`.
+    #[serde(default)]
+    pub(crate) all_bus_vmag_pu: Vec<f64>,
 }
 
 /// The per-case wall-clock deadline for a single oracle request
@@ -123,6 +133,7 @@ pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
         "variables": c.compare_variables,
         "eventlog": c.compare_eventlog,
         "ctrlqueue": c.compare_ctrlqueue,
+        "buses": c.compare_bus,
         "all_properties": c.compare_all_properties,
         "global_result": c.compare_global_result,
         "autoadd_log": c.compare_autoadd_log,

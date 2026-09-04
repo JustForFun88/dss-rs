@@ -1768,7 +1768,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:987-993` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:1092-1098` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -1797,7 +1797,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:987-993` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:1092-1098` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -1861,7 +1861,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     **compare** on r4133. The exclusion is a statement about the 0.14.5
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
-    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:987-993`
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1092-1098`
     //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
@@ -1907,7 +1907,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///
 /// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:987-993` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1092-1098` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
@@ -2100,7 +2100,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:987-993`
+    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1092-1098`
     /// forbids masking there, plus the two `pctperm` rows RP2.1 measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {
@@ -4594,6 +4594,541 @@ pub fn compare_meter(dss: &Dss, exp: &MeterCap, tol: &Tolerances, ctx: &str) {
     cmp_members(&zone.all_branches_in_zone, &exp.branches, "branch");
     cmp_members(&zone.all_end_elements, &exp.ends, "end");
     cmp_members(&zone.zone_pce, &exp.pce, "PCE");
+}
+
+// ---------------------------------------------------------------------------
+// GOLDEN_REBASE_PLAN.md WP-G1 sub-step G1.4a: the per-bus voltage surface.
+//
+// The bus flavours of the solved node voltages both oracles publish —
+// `Bus.puVoltages`, `Bus.VMagAngle`, `Bus.puVMagAngle` and the circuit-level
+// `Circuit.AllBusVmagPu` (the fastdss harness dumps the whole `IBus`/`ICircuit`
+// `_columns` set, `origin/fastdss` `tests/save_outputs.py:348,351`). Captured by
+// `tools/oracle/oracle_server.py::capture_all_buses` (capi channel) and
+// `crates/dss-epri/src/capture.rs::capture_all_buses` (r4133 channel); read back
+// from the engine through `Dss::all_bus_voltages` / `Dss::all_bus_vmag_pu`
+// (`crates/dss-core/src/exec/view.rs`).
+//
+// **Three ordering conventions meet here and must never be mixed.**
+//   1. ascending node NUMBER, per bus — the three `BusCap` value arrays: the
+//      `repeat NodeIdx := FindIdx(jj); inc(jj) until NodeIdx > 0` walk both
+//      engines run (`CAPI/CAPI_Alt.pas:2251-2280` == r4133
+//      `Version8/Source/DDLL/DBus.pas:399-430`);
+//   2. bus-list order x the bus's INTERNAL node index — `all_bus_vmag_pu`
+//      (`CAPI_Circuit.pas:521-548` == `DCircuit.pas:481-500`);
+//   3. `YNodeOrder` — the node-voltage channel's own permutation, gated
+//      separately in `corpus_gate/runner.rs`.
+// `BusVoltageView::nodes` keeps the bus's INSERTION order, a fourth one; both
+// oracles report `Bus.Nodes` ascending (`CAPI_Alt.pas:2143-2163` ==
+// `DBus.pas:319-345`), so `compare_bus` sorts before it compares.
+//
+// **Tolerances: this surface adds no new constant.** Every band is the exact
+// image of the already-calibrated node-voltage band `v_abs + v_rel*|V|` (the
+// `assert_complex_close` in `runner.rs`, over the same `Solution.NodeV` these
+// quantities are read from) under an engine-identical exact transformation.
+// Derivations: tests/TOLERANCE_NOTES.md §"Bus voltage surface (GOLDEN_REBASE
+// G1.4a)".
+// ---------------------------------------------------------------------------
+
+/// One bus's captured voltage surface — the `compare_bus` wire shape both
+/// transports emit, GOLDEN_REBASE_PLAN.md WP-G1 G1.4a. Parity target
+/// `origin/fastdss` `dss/IBus.py:19-53` `_columns`.
+///
+/// All three value arrays are `2 * nodes.len()` doubles (interleaved re/im for
+/// `pu_voltages`, `(magnitude, angle°)` pairs for the two polar ones) and share
+/// ONE ordering convention: **ascending node number** (see the module block
+/// above). `nodes` is ascending too, on both channels.
+///
+/// The divergent bus quantities (`SeqVoltages`/`CplxSeqVoltages`, `VLL`/`puVLL`)
+/// are G1.4c's and are deliberately absent (coordinator decision D8); they
+/// arrive as further `#[serde(default)]` fields, so an older capture stays
+/// readable.
+#[derive(Debug, Deserialize)]
+pub struct BusCap {
+    /// `Bus.Name`, in `Circuit.AllBusNames` (= `BusList`) order.
+    pub name: String,
+    /// `Bus.kVBase` in kV; `<= 0` = not set.
+    pub kv_base: f64,
+    /// `Bus.Nodes` — the bus's node NUMBERS, ascending
+    /// (`CAPI_Alt.pas:2143-2163` == r4133 `DBus.pas:319-345`).
+    pub nodes: Vec<i32>,
+    /// `NodeV / BaseFactor`, interleaved (re, im).
+    pub pu_voltages: Vec<f64>,
+    /// Interleaved (magnitude in V, angle in degrees)
+    /// (`CAPI_Alt.pas:2573-2597` == r4133 `DBus.pas:659-689`).
+    pub vmag_angle: Vec<f64>,
+    /// Interleaved (magnitude in per unit, angle in degrees) — only the
+    /// magnitude is divided by `BaseFactor`
+    /// (`CAPI_Alt.pas:2540-2571` == r4133 `DBus.pas:690-723`).
+    pub pu_vmag_angle: Vec<f64>,
+}
+
+/// The `BaseFactor` both engines divide the per-unit bus quantities by:
+/// `1000 * kVBase`, or `1.0` when the bus has no base (`CAPI_Alt.pas:2262-2265`
+/// == `DBus.pas:413-414` == `CAPI_Circuit.pas:538-541` == `DCircuit.pas:493`).
+/// Taken from the ORACLE's `kv_base`, which [`compare_bus`] has already pinned
+/// exactly against the port's — so the two engines scale by the same bits and
+/// the divide contributes no error of its own.
+fn bus_base_factor(kv_base: f64) -> f64 {
+    if kv_base > 0.0 { 1000.0 * kv_base } else { 1.0 }
+}
+
+/// Fold a degree difference into `(-180, 180]` — the range Pascal `ctopolardeg`
+/// (`Shared/Ucomplex.pas`, via `arctan2`) reports angles in. A phasor sitting on
+/// the ±180° seam flips sign between the engines on a 1-ulp difference in its
+/// imaginary part, so a raw subtraction there reads ~360° for what is physically
+/// the same angle.
+///
+/// *Dedup at merge (D7):* the element lane's G1.3a builds the same wrap-aware
+/// compare as `polar_close`; keep ONE of the two when the lanes merge.
+fn wrap_deg(d: f64) -> f64 {
+    let r = d % 360.0;
+    if r > 180.0 {
+        r - 360.0
+    } else if r <= -180.0 {
+        r + 360.0
+    } else {
+        r
+    }
+}
+
+/// The angular band a magnitude band implies — the **exact** image, in degrees.
+///
+/// The oracle publishes `(|V|, arg V)` of the same `Solution.NodeV[k]` the
+/// node-voltage channel compares at `|dV| <= v_abs + v_rel*|V|`. The set of
+/// phasors within `eps` of `V` subtends a half-angle `asin(eps/|V|)` about
+/// `arg V` while `eps < |V|`, and the whole circle once `eps >= |V|`, so
+///
+/// ```text
+/// allowed_deg = if eps >= |V| { 180 } else { degrees(asin(eps / |V|)) },
+/// eps = v_abs + v_rel * |V|
+/// ```
+///
+/// is the tightest band that cannot red on a voltage the node channel accepts.
+/// `f64::to_degrees` multiplies by `180/PI = 57.29577951308232`, the same
+/// full-precision constant [`compare_monitor`]'s polar-angle band uses; that
+/// band is this one linearized (`asin x ≈ x`), which agrees to `<2e-3` relative
+/// while `eps/|V| <= 0.1` — the whole healthy regime — but *under*-estimates the
+/// image as `eps/|V| → 1`. Bus magnitudes legitimately reach the absolute floor
+/// (unenergized buses; the `NEVTestCase` neutral-earth buses sit at ~2 V), so
+/// the exact arcsine is used here rather than its linearization. Saturating at
+/// 180° is not a free pass: the magnitude channel still pins `|V|` itself inside
+/// `eps` on its own row, so a bus whose angle is unconstrained is exactly a bus
+/// whose voltage is at or below the floor in both engines.
+fn bus_angle_band_deg(mag_v: f64, tol: &Tolerances) -> f64 {
+    if mag_v > 0.0 {
+        let ratio = (tol.v_abs + tol.v_rel * mag_v) / mag_v;
+        if ratio >= 1.0 {
+            180.0
+        } else {
+            ratio.asin().to_degrees()
+        }
+    } else {
+        // A zero (or non-finite) magnitude carries no angular information at
+        // all; the whole wrapped range is the honest band. `NaN > 0.0` is
+        // false, so it lands here too.
+        180.0
+    }
+}
+
+/// Wrap-aware polar-angle compare against [`bus_angle_band_deg`]`(mag_v)`.
+/// `mag_v` is the SAME sample's magnitude **in volts** (the pu channel multiplies
+/// its per-unit magnitude back by `BaseFactor`), so both polar flavours share one
+/// physical band.
+fn bus_polar_close(actual_deg: f64, expected_deg: f64, mag_v: f64, tol: &Tolerances, what: &str) {
+    let d = wrap_deg(actual_deg - expected_deg);
+    let allowed = bus_angle_band_deg(mag_v, tol);
+    assert!(
+        d.abs() <= allowed,
+        "{what}: angle differs: {actual_deg} vs {expected_deg} deg \
+         (wrapped |diff| = {:.3e} > allowed {allowed:.3e} at |V| = {mag_v:e} V)",
+        d.abs()
+    );
+}
+
+/// Compare every bus's captured voltage surface against the engine's, in
+/// `BusList` order (GOLDEN_REBASE_PLAN.md G1.4a).
+///
+/// Structure per bus, strongest first:
+/// * the bus **name sequence** — the port's `BusList` order against the oracle's
+///   `AllBusNames`, case-insensitively. An independent pin: `YNodeOrder` (gated
+///   in `runner.rs`) is a different permutation and never witnesses a bus that
+///   carries no node.
+/// * `nodes` — exact integer equality after sorting the port's insertion-order
+///   list (both oracles publish ascending node numbers; see the module block).
+/// * `kv_base` — compared **exactly**. Both engines derive it by the same
+///   `SetVoltageBases` walk (`Solution.pas:1103` == r4133 `:2541`,
+///   `kVBase := NearestBasekV/SQRT3`) from the same legal-base list, so a
+///   disagreement is a finding, not a floor. NOTE: the base *search* scale is a
+///   Stage-F lane row (`compat::kv_base_search_scale`, truncated `0.001732` in
+///   the parity lane vs `SQRT3/1000` in the default lane) that can only pick a
+///   different legal base when the estimate sits within 2.93e-5 of a tie between
+///   two adjacent bases — a lane-dependent failure here is that knife edge, not
+///   a floor to widen.
+/// * the three value arrays — images of the node-voltage band; see
+///   [`bus_angle_band_deg`] and tests/TOLERANCE_NOTES.md.
+///
+/// `voltages_excluded` is set by the caller when the divergence ledger already
+/// excludes this case/channel's `voltages` field
+/// (`LedgerView::excluded("voltages", None, step)`). The bus quantities are exact
+/// images of exactly those node voltages, so re-comparing them would re-raise a
+/// divergence that has already been triaged and pinned — one structural rule
+/// instead of a ledger row per case. It suppresses ONLY the three continuous
+/// arrays: the bus count, the name sequence, `nodes`, `kv_base` and every array
+/// length stay compared, so the surface's own content (the orderings, the bus
+/// identity, the voltage bases) is never unwitnessed.
+pub fn compare_bus(
+    dss: &Dss,
+    exp: &[BusCap],
+    tol: &Tolerances,
+    voltages_excluded: bool,
+    ctx: &str,
+) {
+    let views = dss.all_bus_voltages();
+    assert_eq!(
+        views.len(),
+        exp.len(),
+        "{ctx}: bus count differs ({} vs {})",
+        views.len(),
+        exp.len()
+    );
+    for (i, (v, e)) in views.iter().zip(exp).enumerate() {
+        assert!(
+            v.name.eq_ignore_ascii_case(&e.name),
+            "{ctx}: bus {i} name differs: {} vs {}",
+            v.name,
+            e.name
+        );
+        let mut nodes = v.nodes.clone();
+        nodes.sort_unstable();
+        assert_eq!(
+            nodes, e.nodes,
+            "{ctx}: bus {} nodes differ (port insertion order {:?})",
+            e.name, v.nodes
+        );
+        assert_eq!(v.kv_base, e.kv_base, "{ctx}: bus {} kVBase differs", e.name);
+        let n = nodes.len();
+        for (arr, what) in [
+            (&e.pu_voltages, "puVoltages"),
+            (&e.vmag_angle, "VMagAngle"),
+            (&e.pu_vmag_angle, "puVMagAngle"),
+        ] {
+            assert_eq!(
+                arr.len(),
+                2 * n,
+                "{ctx}: bus {} {what} length {} is not 2*{n}",
+                e.name,
+                arr.len()
+            );
+        }
+        if voltages_excluded {
+            continue;
+        }
+        let base_factor = bus_base_factor(e.kv_base);
+        // `puVoltages` = `NodeV / BaseFactor` componentwise
+        // (`CAPI_Alt.pas:2277-2280` == `DBus.pas:423`, `cdivreal`): the
+        // node-voltage band divided by the same exact constant.
+        let actual: Vec<f64> = v.pu_voltages.iter().flat_map(|c| [c.re, c.im]).collect();
+        assert_complex_close(
+            &actual,
+            &e.pu_voltages,
+            tol.v_rel,
+            tol.v_abs / base_factor,
+            &format!("{ctx}: bus {} puVoltages", e.name),
+        );
+        for (k, node) in nodes.iter().enumerate() {
+            // `VMagAngle`: magnitude in volts — the reverse triangle inequality
+            // maps the node-voltage band onto it unchanged.
+            let (am, aa) = v.vmag_angle[k];
+            let (em, ea) = (e.vmag_angle[2 * k], e.vmag_angle[2 * k + 1]);
+            let allowed = tol.v_abs + tol.v_rel * em.abs();
+            assert!(
+                (am - em).abs() <= allowed,
+                "{ctx}: bus {} node {node} VMagAngle magnitude differs: {am} vs {em} \
+                 (|diff| = {:.3e} > allowed {allowed:.3e})",
+                e.name,
+                (am - em).abs()
+            );
+            bus_polar_close(
+                aa,
+                ea,
+                em.abs(),
+                tol,
+                &format!("{ctx}: bus {} node {node} VMagAngle", e.name),
+            );
+            // `puVMagAngle`: the same magnitude over `BaseFactor`, same angle.
+            let (apm, apa) = v.pu_vmag_angle[k];
+            let (epm, epa) = (e.pu_vmag_angle[2 * k], e.pu_vmag_angle[2 * k + 1]);
+            let allowed = tol.v_abs / base_factor + tol.v_rel * epm.abs();
+            assert!(
+                (apm - epm).abs() <= allowed,
+                "{ctx}: bus {} node {node} puVMagAngle magnitude differs: {apm} vs {epm} \
+                 (|diff| = {:.3e} > allowed {allowed:.3e})",
+                e.name,
+                (apm - epm).abs()
+            );
+            bus_polar_close(
+                apa,
+                epa,
+                epm.abs() * base_factor,
+                tol,
+                &format!("{ctx}: bus {} node {node} puVMagAngle", e.name),
+            );
+        }
+    }
+}
+
+/// Compare `Circuit.AllBusVmagPu` — every NODE's per-unit voltage magnitude in
+/// **convention 2** (bus-list order × the bus's internal node index, i.e. the
+/// `AllNodeNames` permutation), `CAPI_Circuit.pas:521-548` ==
+/// `DCircuit.pas:481-500`.
+///
+/// The band is per-entry `v_abs / BaseFactor(bus) + v_rel * |expected|`, the
+/// image of the node-voltage band under that bus's own scaling. The per-entry
+/// `BaseFactor` is rebuilt from the port's bus list — the same walk the engine
+/// accessor uses, whose per-bus `kv_base` [`compare_bus`] pins exactly against
+/// the oracle in the same block; the length identity
+/// `Σ nodes == len(AllBusVmagPu)` is asserted here, so the per-bus walk
+/// (convention 1) and the circuit walk (convention 2) cannot drift apart
+/// silently.
+///
+/// `voltages_excluded`: see [`compare_bus`] — the length identity still holds.
+pub fn compare_all_bus_vmag_pu(
+    dss: &Dss,
+    exp: &[f64],
+    tol: &Tolerances,
+    voltages_excluded: bool,
+    ctx: &str,
+) {
+    let actual = dss.all_bus_vmag_pu();
+    assert_eq!(
+        actual.len(),
+        exp.len(),
+        "{ctx}: AllBusVmagPu length differs ({} vs {})",
+        actual.len(),
+        exp.len()
+    );
+    if voltages_excluded {
+        return;
+    }
+    // Convention 2 walks each bus's nodes by INTERNAL index, so the label below
+    // is the insertion-order node number — deliberately not the sorted one
+    // `compare_bus` uses.
+    let mut base: Vec<(String, i32, f64)> = Vec::with_capacity(actual.len());
+    for v in dss.all_bus_voltages() {
+        let bf = bus_base_factor(v.kv_base);
+        for node in &v.nodes {
+            base.push((v.name.clone(), *node, bf));
+        }
+    }
+    assert_eq!(
+        base.len(),
+        actual.len(),
+        "{ctx}: AllBusVmagPu length {} disagrees with the bus-list node total {}",
+        actual.len(),
+        base.len()
+    );
+    for (k, (a, e)) in actual.iter().zip(exp).enumerate() {
+        let (name, node, bf) = &base[k];
+        let allowed = tol.v_abs / bf + tol.v_rel * e.abs();
+        assert!(
+            (a - e).abs() <= allowed,
+            "{ctx}: AllBusVmagPu entry {k} ({name}.{node}) differs: {a} vs {e} \
+             (|diff| = {:.3e} > allowed {allowed:.3e})",
+            (a - e).abs()
+        );
+    }
+}
+
+#[cfg(test)]
+mod bus_comparator_tests {
+    use super::{
+        BusCap, Tolerances, bus_angle_band_deg, compare_all_bus_vmag_pu, compare_bus, tol_for,
+        wrap_deg,
+    };
+    use dss_core::exec::Dss;
+
+    /// The deck of `exec/view.rs::bus_voltage_tests` (G1.4a F1), which exercises
+    /// all three orderings at once: `b3` is declared `.2.1.3` (insertion order
+    /// ≠ ascending node number) and `b1` gains nodes 2 and 3 only after `b2`
+    /// was handed its node ref (convention 2 ≠ `YNodeOrder`).
+    fn solved() -> Dss {
+        let mut dss = Dss::new();
+        for c in [
+            "clear",
+            "New circuit.busview basekv=12.47 pu=1.0 phases=3 bus1=sourcebus",
+            "New Line.l1 bus1=sourcebus.1 bus2=b1.1 phases=1 r1=0.1 x1=0.3 c1=0 length=1",
+            "New Line.l2 bus1=b1.1 bus2=b2.1 phases=1 r1=0.1 x1=0.3 c1=0 length=1",
+            "New Line.l3 bus1=sourcebus.2.3 bus2=b1.2.3 phases=2 r1=0.1 x1=0.3 c1=0 length=1",
+            "New Line.l4 bus1=sourcebus.1.2.3 bus2=b3.2.1.3 phases=3 r1=0.1 x1=0.3 c1=0 length=1",
+            "New Load.ld bus1=b1.1 phases=1 kv=7.2 kw=500 pf=0.95",
+            "Set voltagebases=[12.47]",
+            "CalcVoltageBases",
+            "Solve",
+        ] {
+            dss.command(c);
+        }
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    /// Build the capture the oracles would send for this deck out of the port's
+    /// own view — the positive control every negative drive below perturbs.
+    fn capture(dss: &Dss) -> Vec<BusCap> {
+        dss.all_bus_voltages()
+            .iter()
+            .map(|v| {
+                let mut nodes = v.nodes.clone();
+                nodes.sort_unstable();
+                BusCap {
+                    name: v.name.clone(),
+                    kv_base: v.kv_base,
+                    nodes,
+                    pu_voltages: v.pu_voltages.iter().flat_map(|c| [c.re, c.im]).collect(),
+                    vmag_angle: v.vmag_angle.iter().flat_map(|p| [p.0, p.1]).collect(),
+                    pu_vmag_angle: v.pu_vmag_angle.iter().flat_map(|p| [p.0, p.1]).collect(),
+                }
+            })
+            .collect()
+    }
+
+    /// [`wrap_deg`] folds the ±180° seam (a phasor whose angle the two engines
+    /// report as +179.999… and −179.999… is 2e-3° apart, not 360°), and
+    /// [`bus_angle_band_deg`] is the exact arcsine image of the magnitude band,
+    /// saturating at 180° once the band swallows the magnitude.
+    #[test]
+    fn the_bus_angle_band_wraps_the_seam_and_images_the_magnitude_band() {
+        assert_eq!(wrap_deg(0.0), 0.0);
+        assert_eq!(wrap_deg(180.0), 180.0);
+        assert_eq!(wrap_deg(-180.0), 180.0);
+        // The seam: +179.999 vs -179.999 is 0.002 deg apart.
+        let d = wrap_deg(179.999 - (-179.999));
+        assert!((d.abs() - 0.002).abs() < 1e-9, "{d}");
+        // …and it stays exact through a full turn.
+        assert_eq!(wrap_deg(360.0), 0.0);
+
+        let tol: Tolerances = tol_for("feeder"); // v_abs 1e-6 V, v_rel 1e-8
+        // Healthy magnitude: the band is the arcsine image, and within 2e-3
+        // relative of the linearized `compare_monitor` construction.
+        let mag = 7199.557856794634_f64;
+        let eps = tol.v_abs + tol.v_rel * mag;
+        let got = bus_angle_band_deg(mag, &tol);
+        assert_eq!(got, (eps / mag).asin().to_degrees());
+        let linear = 57.29577951308232 * eps / mag;
+        assert!((got / linear - 1.0).abs() < 2e-3, "{got} vs {linear}");
+        // At/below the absolute floor the angle carries no information: the
+        // band saturates at the full wrapped range (the magnitude itself is
+        // still pinned inside `eps` on its own row).
+        assert_eq!(bus_angle_band_deg(tol.v_abs / 2.0, &tol), 180.0);
+        assert_eq!(bus_angle_band_deg(0.0, &tol), 180.0);
+    }
+
+    /// Positive control: the comparator accepts the engine's own surface, and
+    /// still accepts it when every value is nudged by (just under) its band —
+    /// so the bands below are live, not vacuously wide.
+    #[test]
+    fn compare_bus_accepts_the_engines_own_surface_and_its_band() {
+        let dss = solved();
+        let tol = tol_for("feeder");
+        let exp = capture(&dss);
+        compare_bus(&dss, &exp, &tol, false, "positive control");
+        compare_all_bus_vmag_pu(
+            &dss,
+            &dss.all_bus_vmag_pu(),
+            &tol,
+            false,
+            "positive control",
+        );
+
+        // Nudge each channel by 90% of its own allowed band.
+        let nudged: Vec<BusCap> = exp
+            .iter()
+            .map(|e| {
+                let bf = if e.kv_base > 0.0 {
+                    1000.0 * e.kv_base
+                } else {
+                    1.0
+                };
+                let pu_step = 0.9 * tol.v_abs / bf;
+                let v_step = 0.9 * tol.v_abs;
+                BusCap {
+                    name: e.name.clone(),
+                    kv_base: e.kv_base,
+                    nodes: e.nodes.clone(),
+                    // The complex band is on |Δ|, so split the nudge over re/im.
+                    pu_voltages: e
+                        .pu_voltages
+                        .iter()
+                        .map(|x| x + pu_step / std::f64::consts::SQRT_2)
+                        .collect(),
+                    vmag_angle: e
+                        .vmag_angle
+                        .iter()
+                        .enumerate()
+                        .map(|(i, x)| if i % 2 == 0 { x + v_step } else { *x })
+                        .collect(),
+                    pu_vmag_angle: e
+                        .pu_vmag_angle
+                        .iter()
+                        .enumerate()
+                        .map(|(i, x)| if i % 2 == 0 { x + pu_step } else { *x })
+                        .collect(),
+                }
+            })
+            .collect();
+        compare_bus(&dss, &nudged, &tol, false, "band drive");
+    }
+
+    /// Non-vacuity (§1.1(f) corruption (i)): a per-unit base off by the
+    /// `1000×` factor — the divide that makes `puVoltages` per-unit — reds this
+    /// comparator while node voltages, Y, elements and `node_order` all stay
+    /// green (they never see `BaseFactor` at all).
+    #[test]
+    #[should_panic(expected = "puVoltages")]
+    fn a_pu_base_off_by_the_kv_factor_reds_the_bus_comparator() {
+        let dss = solved();
+        let mut exp = capture(&dss);
+        for x in &mut exp[1].pu_voltages {
+            *x *= 1000.0;
+        }
+        compare_bus(&dss, &exp, &tol_for("feeder"), false, "corruption (i)");
+    }
+
+    /// Non-vacuity (§1.1(f) corruption (ii)): the per-bus arrays delivered in
+    /// the bus's INSERTION order instead of ascending node number. Only
+    /// convention 1 sees it — `b3` is declared `.2.1.3`, and 83 767 corpus buses
+    /// carry such a non-prefix node set.
+    #[test]
+    #[should_panic(expected = "VMagAngle")]
+    fn insertion_order_instead_of_ascending_node_number_reds_the_bus_comparator() {
+        let dss = solved();
+        let mut exp = capture(&dss);
+        let b3 = exp
+            .iter_mut()
+            .find(|b| b.name == "b3")
+            .expect("bus b3 declared .2.1.3");
+        assert_eq!(b3.nodes, vec![1, 2, 3]);
+        // Insertion order 2,1,3 => swap the first two node slots (pairs).
+        for arr in [&mut b3.vmag_angle, &mut b3.pu_vmag_angle] {
+            arr.swap(0, 2);
+            arr.swap(1, 3);
+        }
+        compare_bus(&dss, &exp, &tol_for("feeder"), false, "corruption (ii)");
+    }
+
+    /// `voltages_excluded` suppresses the three continuous arrays and NOTHING
+    /// else: a corrupted `kv_base` (a discrete, solution-independent quantity)
+    /// still reds, so the rule cannot hide a bus-identity or voltage-base defect.
+    #[test]
+    #[should_panic(expected = "kVBase differs")]
+    fn the_voltage_exclusion_still_pins_kv_base() {
+        let dss = solved();
+        let mut exp = capture(&dss);
+        for x in &mut exp[1].pu_voltages {
+            *x *= 1000.0; // would red — but is excluded
+        }
+        exp[1].kv_base += 1.0; // …this must not be
+        compare_bus(&dss, &exp, &tol_for("feeder"), true, "exclusion drive");
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -249,6 +249,98 @@ def capture_all_meters(ckt) -> list:
     return out
 
 
+def capture_all_buses(ckt) -> list:
+    """Every bus's node set, kV base and the three per-node voltage surfaces.
+
+    GOLDEN_REBASE_PLAN.md WP-G1 G1.4a (the `compare_bus` surface). Walked in
+    `ckt.AllBusNames` order — the engine's own `BusList` order, which
+    `SetActiveBus`'s returned 0-based index re-asserts per bus (a failed lookup
+    leaves the previous bus active, which would otherwise silently attribute one
+    bus's voltages to another).
+
+    Per bus (`origin/fastdss` `dss/IBus.py:19-53` `_columns` — the parity
+    target):
+
+    * `nodes` — `Bus.Nodes`: the bus's node NUMBERS in **ascending** order, not
+      the bus's internal insertion order (`CAPI_Alt.pas:2143-2163` == r4133
+      `DBus.pas:319-345`; both walk `repeat NodeIdx := FindIdx(jj); inc(jj)
+      until NodeIdx > 0` and report `GetNum(NodeIdx)`). Verified live on a
+      `.2.1.3`-declared bus: `AllNodeNames` is `b1.2, b1.1, b1.3` while `Nodes`
+      is `[1, 2, 3]`.
+    * `kv_base` — `Bus.kVBase` in kV. Both engines derive the per-unit divisor
+      as `BaseFactor = 1000·kVBase` when positive, else `1.0` — the branch
+      11 480 of the corpus's 209 211 buses take.
+    * `pu_voltages` — `NodeV[GetRef]/BaseFactor`, `2·NumNodes` interleaved
+      (re, im), in that same ascending-node-number order
+      (`CAPI_Alt.pas:2251-2280` == r4133 `DBus.pas:399-430`).
+    * `vmag_angle` — `2·NumNodes` interleaved (magnitude in V, angle in degrees)
+      (`CAPI_Alt.pas:2573-2597` == r4133 `DBus.pas:659-689`).
+    * `pu_vmag_angle` — the same pairs with only the magnitude divided by
+      `BaseFactor` (`CAPI_Alt.pas:2540-2571` == r4133 `DBus.pas:690-723`).
+
+    All four value surfaces are the identical algorithm on both gating channels
+    (re-read at HEAD). The bus quantities that do diverge between the channels
+    (`SeqVoltages`/`CplxSeqVoltages`, `VLL`/`puVLL`) belong to G1.4c and are
+    deliberately NOT read here — `VLL`/`puVLL` additionally hang the r4133
+    channel on the NEV decks (coordinator decision D8).
+
+    Capture-order class: **group C, order-free** (GOLDEN_REBASE_PLAN.md §1.1(a),
+    coordinator decision D3). Every read goes straight to `Solution.NodeV`
+    (`CAPI_Alt.pas:2276`) and touches neither `ComputeIterminal` nor
+    `ActiveCktElement`; only `ActiveBusIndex` moves. The fixed per-bus read
+    order below is therefore a contract the capture-order test asserts, not a
+    staleness hazard.
+
+    Shapes are asserted, never assumed: a `2·len(nodes)` mismatch fails the case
+    loudly instead of shipping a short row the comparator would misread as a
+    length divergence. That also catches a process running with
+    `DSS.AdvancedTypes = True`, where these accessors return complex arrays of
+    half the length (the pinned oracle runs with the default `False`). A 0-node
+    bus (2 in the corpus: `loadbus2` of `Test/REACTORTest.DSS` and
+    `Test/Source012Test.dss`) returns empty arrays and passes the same assert.
+    """
+    out = []
+    for i, name in enumerate(ckt.AllBusNames):
+        idx = ckt.SetActiveBus(name)
+        if idx != i:
+            raise RuntimeError(
+                f"bus capture: SetActiveBus({name!r}) returned {idx}, expected {i} "
+                "(AllBusNames must be the engine's BusList order)"
+            )
+        b = ckt.ActiveBus
+        nodes = [int(x) for x in b.Nodes]
+        cap = {
+            "name": str(b.Name),
+            "kv_base": float(b.kVBase),
+            "nodes": nodes,
+            "pu_voltages": [float(x) for x in b.puVoltages],
+            "vmag_angle": [float(x) for x in b.VMagAngle],
+            "pu_vmag_angle": [float(x) for x in b.puVmagAngle],
+        }
+        for key in ("pu_voltages", "vmag_angle", "pu_vmag_angle"):
+            if len(cap[key]) != 2 * len(nodes):
+                raise RuntimeError(
+                    f"bus capture: {name}.{key} returned {len(cap[key])} values, "
+                    f"expected 2*{len(nodes)} for nodes {nodes}"
+                )
+        out.append(cap)
+    return out
+
+
+def capture_all_bus_vmag_pu(ckt) -> list:
+    """`Circuit.AllBusVmagPu` — every NODE's per-unit voltage magnitude.
+
+    Ordered bus-list order x the bus's INTERNAL node index (`GetRef(j)` for
+    `j = 1..NumNodesThisBus`, i.e. the `AllNodeNames` order) — a different
+    permutation from the ascending-node-number order of the per-bus arrays in
+    [`capture_all_buses`] AND from the gated `YNodeOrder`
+    (`CAPI_Circuit.pas:521-548` == r4133 `Circuit.AllBusMagPu`,
+    `DCircuit.pas:481-500`, which share the `BaseFactor` rule). Read once per
+    checkpoint; order-free (group C).
+    """
+    return [float(x) for x in ckt.AllBusVmagPu]
+
+
 # OpenDSS `Show`/`Export`/`Save` write report files into the compiled case's
 # directory (`OutputDirectory := DataDirectory := <case dir>` in
 # `DSSGlobals.SetDataPath`, which `Compile` calls). The live gate only compares
@@ -343,6 +435,10 @@ def run_case(d, req: dict) -> dict:
     # (heavy: elements x props x steps queries) — the Rust property gate and the
     # env-gated `corpus_live_properties` pilot force it.
     want_all_props = bool(req.get("all_properties", False))
+    # G1.4a bus surface (`compare_bus`): the per-bus voltage arrays plus the
+    # circuit-level `AllBusVmagPu`. Opt-in — cheap (41 ms for the 4 876-bus
+    # 8500-Node deck) but it doubles a large deck's JSON payload.
+    want_buses = bool(req.get("buses", False))
     # WPG.5 (AutoAdd): `DSS.GlobalResult` after each solve (the winner + figure)
     # and the `<CircuitName_>AutoAddLog.csv` the search writes. `Text.Result` is
     # captured IMMEDIATELY after `solve`, before any `?`-query capture overwrites
@@ -461,6 +557,14 @@ def run_case(d, req: dict) -> dict:
                         "variables": capture_variables(ckt, variables),
                         "eventlog": (capture_eventlog(d, ckt) if want_eventlog else []),
                         "ctrlqueue": capture_ctrlqueue(ckt) if want_ctrlqueue else [],
+                        # G1.4a: order-free (group C) bus reads — they move only
+                        # `ActiveBusIndex`, so their slot is free; kept here, ahead
+                        # of the property sweep, so the `?` queries below stay the
+                        # last reads of the step.
+                        "buses": capture_all_buses(ckt) if want_buses else [],
+                        "all_bus_vmag_pu": (
+                            capture_all_bus_vmag_pu(ckt) if want_buses else []
+                        ),
                         # WP8.5b: read LAST, after every established capture above,
                         # so the property sweep's `?` queries never perturb any
                         # other read's active-element state.

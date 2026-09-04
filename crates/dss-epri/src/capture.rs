@@ -46,6 +46,10 @@ pub struct RunRequest {
     pub eventlog: bool,
     #[serde(default)]
     pub ctrlqueue: bool,
+    /// G1.4a `compare_bus`: capture every bus's voltage surface
+    /// ([`capture_all_buses`]) plus the checkpoint-level `AllBusVmagPu`.
+    #[serde(default)]
+    pub buses: bool,
     #[serde(default)]
     pub all_properties: bool,
     #[serde(default)]
@@ -108,6 +112,8 @@ struct Checkpoint {
     variables: Vec<VariablesCap>,
     eventlog: Vec<String>,
     ctrlqueue: Vec<String>,
+    buses: Vec<BusCap>,
+    all_bus_vmag_pu: Vec<f64>,
     all_properties: Vec<PropsCap>,
     global_result: String,
 }
@@ -187,6 +193,44 @@ struct VariablesCap {
     name: String,
     var_names: Vec<String>,
     values: Vec<f64>,
+}
+
+/// One bus's captured voltage surface — the `compare_bus` wire shape
+/// (GOLDEN_REBASE_PLAN.md WP-G1 sub-step G1.4a), serialized field-for-field as
+/// `tools/oracle/oracle_server.py::capture_all_buses` emits it and
+/// `corpus_gate::engines::BusCap` deserializes it.
+///
+/// Parity target: fastdss' `IBus._columns` (`origin/fastdss` `dss/IBus.py:19-53`,
+/// reached through `save_state`'s `ActiveBus`, `tests/save_outputs.py:351`).
+/// The four surfaces below are the ones both gating channels compute with the
+/// identical algorithm; the bus quantities that diverge
+/// (`SeqVoltages`/`CplxSeqVoltages`, `VLL`/`puVLL` — the latter also hang this
+/// channel, `DBus.pas:575-583`) belong to G1.4c and are deliberately not read
+/// (coordinator decision D8).
+///
+/// All three value arrays are `2 * nodes.len()` doubles in ONE order --
+/// **ascending node number** — and never the bus's internal insertion order:
+/// see [`crate::modes::BUS_NODES`] for the `FindIdx` walk all four arms share.
+#[derive(Serialize)]
+struct BusCap {
+    /// `Circuit.AllBusNames` entry i, re-asserted as the active bus by
+    /// `SetActiveBus`'s returned index (`DCircuit.pas:439`, `:247-250`).
+    name: String,
+    /// `Bus.kVBase` in kV (`BUSF(0)`). Both engines take
+    /// `BaseFactor = 1000 * kVBase` when positive, else `1.0`
+    /// (`DBus.pas:413-414` == `CAPI_Alt.pas:2262-2265`).
+    kv_base: f64,
+    /// `Bus.Nodes` — node numbers, ascending (`BUSV(2)`, `DBus.pas:319-345`).
+    nodes: Vec<i32>,
+    /// `Bus.puVoltages` — `NodeV[GetRef]/BaseFactor`, interleaved `(re, im)`
+    /// (`BUSV(5)`, `DBus.pas:399-430` == `CAPI_Alt.pas:2251-2280`).
+    pu_voltages: Vec<f64>,
+    /// `Bus.VMagAngle` — interleaved `(magnitude V, angle deg)`
+    /// (`BUSV(13)`, `DBus.pas:659-689` == `CAPI_Alt.pas:2573-2597`).
+    vmag_angle: Vec<f64>,
+    /// `Bus.puVMagAngle` — the same pairs with only the magnitude divided by
+    /// `BaseFactor` (`BUSV(14)`, `DBus.pas:690-723` == `CAPI_Alt.pas:2540-2571`).
+    pu_vmag_angle: Vec<f64>,
 }
 
 /// One element's every-property dump (§2.2 all-properties parity — a **gating**
@@ -303,6 +347,22 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             } else {
                 Vec::new()
             };
+            let (buses, all_bus_vmag_pu) = if req.buses {
+                let buses = capture_all_buses(engine)?;
+                let all_bus_vmag_pu = capture_all_bus_vmag_pu(engine)?;
+                let nodes: usize = buses.iter().map(|b| b.nodes.len()).sum();
+                if all_bus_vmag_pu.len() != nodes {
+                    return Err(EngineError::Other(format!(
+                        "bus capture: AllBusVmagPu has {} values but the per-bus walk saw {nodes} \
+                         nodes over {} buses",
+                        all_bus_vmag_pu.len(),
+                        buses.len()
+                    )));
+                }
+                (buses, all_bus_vmag_pu)
+            } else {
+                (Vec::new(), Vec::new())
+            };
             // Read LAST (after every other capture), like `oracle_server.run_case`:
             // the `? name.Like`/`? name.prop` sweep perturbs the active-element
             // cursor, so it must not run before any other read (§2.2).
@@ -333,6 +393,8 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 variables,
                 eventlog,
                 ctrlqueue,
+                buses,
+                all_bus_vmag_pu,
                 all_properties,
                 global_result,
             });
@@ -672,6 +734,90 @@ fn capture_all_properties(engine: &Engine) -> Result<Vec<PropsCap>, EngineError>
 /// enumeration + `? name.prop` value read round-trips without an oracle.
 pub fn all_properties_dump(engine: &Engine) -> Result<Vec<PropsCap>, EngineError> {
     capture_all_properties(engine)
+}
+
+/// Every bus's node set, kV base and the three per-node voltage surfaces — the
+/// r4133 half of the `compare_bus` capture, a field-for-field port of
+/// `oracle_server.capture_all_buses` over the typed mode accessors
+/// ([`crate::modes`] rows `Circuit.AllBusNames`, `Bus.Nodes`, `Bus.puVoltages`,
+/// `Bus.VMagAngle`, `Bus.puVMagAngle`; `Bus.kVBase` is `BUSF(0)`).
+///
+/// Walked in `BusList` order, which `SetActiveBus`'s returned 0-based index
+/// (`DCircuit.pas:247-250`, `ActiveBusIndex - 1`) re-asserts per bus: a failed
+/// lookup leaves `ActiveBusIndex` at 0 (`Common/DSSGlobals.pas:739-757`) and
+/// would otherwise attribute the previous bus's voltages to this one.
+///
+/// Capture-order class **C, order-free** (GOLDEN_REBASE_PLAN.md §1.1(a),
+/// coordinator decision D3): every arm reads `Solution.NodeV` directly and
+/// touches neither `ComputeIterminal` nor `ActiveCktElement` — only
+/// `ActiveBusIndex` moves. The per-bus read order below matches the capi
+/// transport's and is a contract, not a staleness hazard.
+///
+/// Shapes are asserted, never assumed: `2 * len(nodes)` per value array (a
+/// 0-node bus — 2 in the corpus — yields empty arrays and passes at `0 == 0`),
+/// and the node numbers must come back strictly ascending, which is what makes
+/// this capture comparable to the port's sorted view.
+fn capture_all_buses(engine: &Engine) -> Result<Vec<BusCap>, EngineError> {
+    let names = engine.circuit_all_bus_names()?;
+    let mut out = Vec::with_capacity(names.len());
+    for (i, name) in names.iter().enumerate() {
+        let idx = engine.set_active_bus(name);
+        if idx != i as i32 {
+            return Err(EngineError::Other(format!(
+                "bus capture: SetActiveBus({name:?}) returned {idx}, expected {i} \
+                 (AllBusNames must be the engine's BusList order)"
+            )));
+        }
+        let nodes = engine.bus_nodes()?;
+        let kv_base = engine.bus_kvbase();
+        let pu_voltages = engine.bus_pu_voltages()?;
+        let vmag_angle = engine.bus_vmag_angle()?;
+        let pu_vmag_angle = engine.bus_pu_vmag_angle()?;
+        if nodes.windows(2).any(|w| w[1] <= w[0]) {
+            return Err(EngineError::Other(format!(
+                "bus capture: {name}.Nodes {nodes:?} is not strictly ascending \
+                 (DBus.pas:319-345 walks FindIdx(jj) upward)"
+            )));
+        }
+        for (key, v) in [
+            ("pu_voltages", &pu_voltages),
+            ("vmag_angle", &vmag_angle),
+            ("pu_vmag_angle", &pu_vmag_angle),
+        ] {
+            if v.len() != 2 * nodes.len() {
+                return Err(EngineError::Other(format!(
+                    "bus capture: {name}.{key} returned {} values, expected 2*{} for nodes {nodes:?}",
+                    v.len(),
+                    nodes.len()
+                )));
+            }
+        }
+        out.push(BusCap {
+            name: name.clone(),
+            kv_base,
+            nodes,
+            pu_voltages,
+            vmag_angle,
+            pu_vmag_angle,
+        });
+    }
+    engine.assert_clean("buses")?;
+    Ok(out)
+}
+
+/// `Circuit.AllBusMagPu` — every NODE's per-unit voltage magnitude
+/// (`CircuitV(9)`, `DCircuit.pas:481-500` == `CAPI_Circuit.pas:521-548`).
+///
+/// Ordered bus-list order x the bus's INTERNAL node index (`GetRef(j)` for
+/// `j = 1..NumNodesThisBus`, i.e. the `AllNodeNames` permutation) — neither the
+/// ascending-node-number order of [`capture_all_buses`] nor the gated
+/// `YNodeOrder`. Its length is `NumNodes`, which is also the sum of the per-bus
+/// node counts: the caller checks that identity, so the two walks cannot drift
+/// apart silently.
+fn capture_all_bus_vmag_pu(engine: &Engine) -> Result<Vec<f64>, EngineError> {
+    let v = engine.circuit_all_bus_mag_pu()?;
+    engine.assert_clean("all_bus_vmag_pu")?;
+    Ok(v)
 }
 
 fn capture_variables(engine: &Engine, names: &[String]) -> Result<Vec<VariablesCap>, EngineError> {
