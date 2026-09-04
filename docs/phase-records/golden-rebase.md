@@ -2722,7 +2722,7 @@ row against the pre-fix lock.
   (`Cabs(3,4)` = 5.0, pre-fix 3.0), `do_not_call_refuses_the_two_unsafe_modes_without_touching_the_dll`,
   `no_unwired_g1_surface_flag_is_set_in_any_manifest`, `every_manifest_compare_flag_has_a_rigor_token`,
   `a_scope_that_misuses_channels_is_refused_at_load`, the four `capture_guard::tests::*`.
-  Commits: <filled by the docs agent>. Gate: fmt + clippy clean in both lanes;
+  Commits: `c4b67a6e`. Gate: fmt + clippy clean in both lanes;
   `cargo test --workspace` **4 601 / 0 failed / 5 ignored** in both lanes (4 499 before
   G1.0), corpus gate 523/523, ledger 57 entries / 1 588 hits, 0 stale, `git status
   --porcelain -- tests/golden` empty; `lane_diff` measured anyway although not owed —
@@ -2731,39 +2731,38 @@ row against the pre-fix lock.
   `WP_G1_MODES` **96 → 99** rows and `EXCLUDED_WRITE_MODES` **2 → 3**; the mode-capability
   acceptance re-runs over all 99 and still reports zero misses.
 
-- **G1.6b** (2026-09-04, lane `lane-m`; decisions **D7** lanes, **D9** the engine fix) — **the
-  `PDElements` walk is live-gated on both channels**, WP-G1's first surface. **13** fastdss columns,
-  not the plan's 9 (`IPDElements._columns` also carries `FaultRate`, `TotalMiles`
-  = `AccumulatedMilesDownStream`, `pctPermanent`) plus `parent_name`, all off `CktElementData` via
-  `Dss::pd_elements` (`crates/dss-core/src/exec/view.rs:767`), compared **exactly** (`rel = abs = 0`;
-  derivation in `tests/TOLERANCE_NOTES.md`, no floor added) on the same 440 live non-`large` cases as
-  `all_properties` — capi 1 645 walks / 93 707 elements, r4133 1 669 / 97 194, identical in both lanes.
-  `ParentPDElement` is read **last** per element and the walk is captured between the meters and the
-  probes: that read re-points `ActiveCktElement` at the parent and never restores it (r4133
-  `DDLL/DPDELements.pas:88-97`, capi `CAPI/CAPI_PDElements.pas:245-257`; a fastdss-order capture moves
-  215 of its own IEEE 123 cells), asserted in `crates/dss-core/tests/pd_elements_pins.rs` and against
-  the DLL in `crates/dss-epri/tests/modes.rs`; `WP_G1_MODES` **96 → 99**, `EXCLUDED_WRITE_MODES`
-  **2 → 3**. **0 ledger entries** — the one measured divergence is an uninitialized read in *both*
-  oracles on in-zone shunt Capacitors/Reactors (`EnergyMeter.pas` assigns through `pPCelem:
-  TPCElement`, r4133 `:1868-1869` / capi `:1927-1929`), nondeterministic and therefore un-envelopable,
-  excluded per (channel, class, field) in `harness::PD_SKIP_FIELDS` (8 rows, register +
-  fail-on-stale, all live ≥ 24 hits) and pinned by
-  `pd_elements_shunt_reliability_inputs_survive_the_meter_zone` and
-  `pd_elements_shunt_branch_flt_rate_survives_the_meter_zone`, with membership and linkage by
-  `pd_elements_walk_on_the_gated_combo_deck` + the four `exec::tests::pd_elements` pins; report
-  `investigations/to_opendss/56-energymeter-zone-corrupts-shunt-pd-reliability-fields.md` (local-only).
-  **D9, in its own commit ahead of the surface:** `do_reset_meter_zones` moved back into
-  `reprocess_bus_defs`' tail (r4133 `Common/Circuit.pas:2411`, capi `:2246`), which `MakeBusList` had
-  been bypassing and so leaving every EnergyMeter with an empty zone — of the 20 `MakeBusList` corpus
-  decks exactly one changes state (`solvable_now:Test/indmachtest/Master.DSS`, now matching both
-  oracles), pin `makebuslist_keeps_the_meter_zones`, no entry stale, no golden byte, lock identical.
-  `section_id`/`total_miles`/`lambda`/`accumulated_l` are wired and compared but **0 on every live
-  case** (no deck runs `RelCalc`): their oracle-compared non-vacuity and the re-derivation of the
-  exactness note are **owed by G1.6(i)**.
-  Commits: <filled by the docs agent>. Gate: fmt + clippy clean in both lanes; corpus gate 523/523
-  cases (154 passed / 0 failed) in both lanes, ledger **57 entries / 1 588 hits / 0 stale**,
-  `git status --porcelain -- tests/golden` empty, `population_lock` 2 / `golden_lock` 4 /
-  `oracle_parity_cfg_gate` 13 passed per lane. Full five-command gate and `lane_diff` (owed — F0 and
-  F1 move product code): all five commands exit 0, **4 747 passed / 0 failed / 5 ignored** per lane
-  (the five are the pre-existing manual/diagnostic ignores); `lane_diff` `VERDICT: PASS` over 523
-  cases / 3 220 861 records, **max |Δ| = 0** on all eight kinds, 0 iteration drifts.
+- **G1.6b** (2026-09-04, lane `lane-m`; **D7** lanes, **D9** the engine fix) — **the `PDElements` walk
+  is live-gated on both channels**, WP-G1's first surface: the **13** `IPDElements._columns` (not the
+  plan's 9) plus `parent_name`, read off `CktElementData` by `Dss::pd_elements`
+  (`crates/dss-core/src/exec/view.rs:778`), compared **exactly** (`rel = abs = 0`, derived in
+  `tests/TOLERANCE_NOTES.md`) on the 440 live non-`large` cases `all_properties` uses, with
+  `ParentPDElement` read **last** per element because it hijacks `ActiveCktElement` (r4133
+  `DDLL/DPDELements.pas:88-97`, capi `CAPI/CAPI_PDElements.pas:245-257`); read order and capture slot
+  are asserted in `crates/dss-core/tests/pd_elements_pins.rs` and against the DLL in
+  `crates/dss-epri/tests/modes.rs`. `WP_G1_MODES` **96 → 99**, `EXCLUDED_WRITE_MODES` **2 → 3**, **0
+  ledger entries**: the one divergence is an uninitialized read in *both* oracles on in-zone shunt
+  Capacitors/Reactors (r4133 `Meters/EnergyMeter.pas:1868-1869`, capi `:1927-1929`; report
+  `investigations/to_opendss/56-energymeter-zone-corrupts-shunt-pd-reliability-fields.md`), excluded —
+  never enveloped — in `harness::PD_SKIP_FIELDS` and pinned by
+  `pd_elements_shunt_reliability_inputs_survive_the_meter_zone` +
+  `pd_elements_shunt_branch_flt_rate_survives_the_meter_zone`. **D9**, its own commit ahead of the
+  surface: `do_reset_meter_zones` moved back into `reprocess_bus_defs`' tail (r4133
+  `Common/Circuit.pas:2411`, capi `:2246`), which `MakeBusList` was bypassing and so left every
+  EnergyMeter an empty zone — one corpus deck changes state, pin `makebuslist_keeps_the_meter_zones`.
+  `section_id`/`total_miles`/`lambda`/`accumulated_l` compare 0 everywhere (no live deck runs
+  `RelCalc`): non-vacuity **owed by G1.6(i)**.
+  Commits: `06808a6d` (D9), `e1e18367` (surface), `SETTLESHA` (audit settlement). Gate: five commands
+  exit 0 in both lanes, **4 792 passed / 0 failed / 5 ignored**; corpus gate 523/523, ledger 57 /
+  1 588 hits / 0 stale, no golden byte and no lock content moved; `lane_diff` `VERDICT: PASS`, max
+  |Δ| = 0; walk counters from the gate epilogue — capi 1 645 / 93 707, r4133 1 669 / 97 194.
+  *Audit settlement* (`tmp/g16b/settle.md`): 15 rows / 12 distinct findings — **9 fixed / 2 recorded / 1 refuted**.
+  `PD_SKIP_FIELDS` is now scoped to the element the defect reaches, an in-zone shunt one
+  (`harness::pd_skip_applies` over the port's `PdElementView::in_meter_zone`, pin
+  `pd_elements_in_meter_zone_is_the_zone_membership_the_skip_rows_need`): ~350 clean cases per channel
+  return to the compare and visits == hits on all eight rows. Every row's `pin` must now resolve to a
+  `#[test]` (`every_pd_skip_row_pin_is_a_test_that_exists`, drive-proven); the cited `to_opendss`
+  report was written; three stale doc claims re-pointed. Recorded: `06808a6d` does not build alone (its
+  pin calls `pd_elements()`, landed in `e1e18367`) — **the merge agent squashes the pair or merges
+  `--no-ff`**. Refuted: the `Show Isolated` reset is Pascal-faithful at both revs (capi
+  `ShowResults.pas:2859-2860`, r4133 `:2537-2538` calls it twice) and runs under the `show_isolated`
+  golden; the corpus deck said to issue it has the line commented out.
