@@ -54,6 +54,12 @@ pub use regen::{regen, snapshot_bytes, snapshot_text};
 /// comparing nothing.
 pub mod capture_guard;
 
+/// `GOLDEN_REBASE_PLAN.md` WP-G1 sub-step G1.9: the five `Circuit` aggregates
+/// and the ten `Solution` scalars — capture structs, the shared per-element
+/// loss envelope ([`aggregates::element_loss_allowance_kw`], which
+/// [`compare_element_channels`] itself calls) and the two live comparators.
+pub mod aggregates;
+
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -1471,15 +1477,12 @@ pub fn compare_element_channels(
     // Captured by the live gate only; old checkpoint goldens leave it empty.
     // The allowed error is the exact accumulation of the per-conductor power
     // tolerance: losses = Σ_k S_k, so |δ(losses)| ≤ Σ_k (abs·|V_k| + rel·|S_k|)
-    // — no new tolerance class, just the conductor policy summed.
+    // — no new tolerance class, just the conductor policy summed. Since
+    // GOLDEN_REBASE G1.9 that sum lives in
+    // `aggregates::element_loss_allowance_kw`, so the circuit-aggregate
+    // comparator propagates the identical envelope instead of a second one.
     if channels.losses && exp.loss_w.len() == 2 {
-        let mut allowed_kw = 0.0;
-        for k in 0..exp.p_kw.len() {
-            let p_mag = (exp.p_kw[k].powi(2) + exp.p_kvar[k].powi(2)).sqrt();
-            let i_mag = (exp.i_re[k].powi(2) + exp.i_im[k].powi(2)).sqrt();
-            let vkv = if i_mag > 1e-12 { p_mag / i_mag } else { 1.0 };
-            allowed_kw += tol.i_abs * vkv.max(1.0) + tol.i_rel * p_mag;
-        }
+        let allowed_kw = aggregates::element_loss_allowance_kw(exp, tol);
         let allowed_w = allowed_kw * 1000.0;
         let (ar, ai) = snap.loss_w;
         let (er, ei) = (exp.loss_w[0], exp.loss_w[1]);

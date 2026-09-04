@@ -533,6 +533,46 @@ pub(crate) fn compare_capture(
             }
         }
 
+        // `GOLDEN_REBASE_PLAN.md` G1.9 — the five `Circuit` aggregates and the
+        // ten `Solution` scalars. The surface is UNFLAGGED and universal (no
+        // `G1_SURFACE_FLAGS` row, no rigor token, no forced population), so the
+        // capture is demanded on every live case of every gating channel; the
+        // `capture_guard` rail is not reused because its message is
+        // manifest-flag shaped and there is no flag to name here.
+        let agg = cp.aggregates.as_ref().unwrap_or_else(|| {
+            panic!(
+                "{ctx}: the `{}` capture carries no `aggregates` member. G1.9 is an \
+                 unflagged, universal surface — every live case must compare it, so \
+                 an absent capture FAILS the case instead of silently comparing \
+                 nothing (GOLDEN_REBASE_PLAN.md §1.1(f)).",
+                channel_tag(channel)
+            )
+        });
+        let scalars = cp.solution_scalars.as_ref().unwrap_or_else(|| {
+            panic!(
+                "{ctx}: the `{}` capture carries no `solution_scalars` member \
+                 (unflagged universal surface — see the `aggregates` refusal above).",
+                channel_tag(channel)
+            )
+        });
+        harness::aggregates::compare_aggregates(
+            dss,
+            agg,
+            &snaps,
+            &cp.elements,
+            &el_rewrites,
+            tol,
+            channels,
+            &ctx,
+        );
+        harness::aggregates::compare_solution_scalars(
+            dss,
+            scalars,
+            cp.iterations,
+            channel.iterations_exact(),
+            &ctx,
+        );
+
         compare_discrete(dss, &cp.transformers, &cp.regcontrols, &cp.capacitors, &ctx);
 
         // A ledger monitor scope neutralizes only its pinned channel_idx (rewrites

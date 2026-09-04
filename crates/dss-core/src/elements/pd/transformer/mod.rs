@@ -461,6 +461,17 @@ impl Transformer {
     pub fn set_live_frequency(&mut self, frequency: f64) {
         self.live_frequency = frequency;
     }
+
+    /// Pascal `TTransfObj.IsSubstation` (the `sub=y/n` property,
+    /// `Transformer.pas:321` property 30, set at `:528`): the flag `Circuit.SubstationLosses`
+    /// filters the `Transformers` list on (`CAPI_Circuit.pas:300-304`, r4133
+    /// `DDLL/DCircuit.pas:335-341`). A plain getter so
+    /// [`crate::exec::Dss::substation_losses`] reads the flag directly instead
+    /// of routing an aggregate through the property VM
+    /// (`accessors.rs`'s `get_bool(SUB)`).
+    pub fn is_substation(&self) -> bool {
+        self.is_substation
+    }
 }
 
 /// The controlled-transformer surface RegControl's `Sample`/`DoPendingAction`

@@ -97,6 +97,63 @@ pub struct BusScView {
     pub vbus: Vec<num_complex::Complex64>,
 }
 
+/// The lower-cased `Class.name` of every summand the four scalar circuit
+/// aggregates walk — the membership behind [`Dss::losses`],
+/// [`Dss::line_losses`], [`Dss::substation_losses`] and [`Dss::total_power`].
+///
+/// The live corpus gate reconstructs each oracle aggregate over these names out
+/// of the oracle's **own** per-element capture (`GOLDEN_REBASE_PLAN.md` G1.9,
+/// arm P1), and the expected-value pins in `exec::tests::aggregates` assert them
+/// directly — so a wrongly included or omitted summand surfaces as a
+/// *membership* error (one whole element's loss) instead of hiding inside a
+/// blurred sum.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AggregateTerms {
+    /// `Circuit.Losses` (`CAPI_Circuit.pas:171-186` → r4133
+    /// `Common/Circuit.pas:2428-2445`): the `PDElements` that are enabled and
+    /// not shunt.
+    pub losses: Vec<String>,
+    /// `Circuit.LineLosses` (`CAPI_Circuit.pas:145-162`, r4133
+    /// `DDLL/DCircuit.pas:305-325`): every `Lines` entry, unfiltered.
+    pub line_losses: Vec<String>,
+    /// `Circuit.SubstationLosses` (`CAPI_Circuit.pas:289-307`, r4133
+    /// `DDLL/DCircuit.pas:327-347`): the `Transformers` entries with `sub=yes`.
+    /// `AutoTrans` objects are registered on the separate `AutoTransformers`
+    /// list (`Common/Circuit.pas:2272-2273`) and therefore never appear here,
+    /// whatever their own `sub=` says.
+    pub substation_losses: Vec<String>,
+    /// `Circuit.TotalPower` (`CAPI_Circuit.pas:316-338`, r4133
+    /// `DDLL/DCircuit.pas:349-368`): every `Sources` entry, unfiltered.
+    pub total_power: Vec<String>,
+}
+
+/// Sum `Get_Losses` over one of the circuit's `TPointerList` kind lists
+/// (`refs`), in list (= creation) order.
+///
+/// No `enabled` filter: upstream walks the raw pointer lists for `LineLosses` /
+/// `SubstationLosses` / `AllElementLosses`, and a disabled element contributes
+/// `CZERO` through `TDSSCktElement.Get_Losses`'s own guard
+/// (`Common/CktElement.pas:707-712`), which
+/// [`crate::elements::traits::CktElement::losses`] mirrors. `Circuit.Losses` is
+/// the one aggregate that *does* filter, and it filters in [`Circuit::losses`]
+/// where Pascal filters (`Common/Circuit.pas:2436-2440`).
+fn sum_list_losses(
+    classes: &mut [DssClass],
+    refs: &[ElemId],
+    sys: &crate::elements::traits::SysCtx,
+    node_v: &[num_complex::Complex64],
+) -> num_complex::Complex64 {
+    let mut total = num_complex::Complex64::ZERO;
+    for &r in refs {
+        let elem = classes[r.class_ord()]
+            .arena
+            .try_ckt_elem_mut(r.index())
+            .expect("circuit kind lists hold circuit elements");
+        total += elem.losses(sys, node_v);
+    }
+    total
+}
+
 impl Dss {
     /// Snapshot every circuit element's terminal powers and currents in
     /// creation order (the oracle's `First/Next` order). Pascal
@@ -924,6 +981,132 @@ impl Dss {
         let mut store = ClassStore { classes };
         let total = ckt.losses(&mut store, &sys);
         (total.re, total.im)
+    }
+
+    /// CAPI `Circuit_Get_LineLosses` (`CAPI_Circuit.pas:145-162`; r4133
+    /// `DDLL/DCircuit.pas:305-325`, `Circuit.LineLosses` = `CircuitV` mode 1) —
+    /// **kW/kvar**: `Get_Losses` summed over the circuit's `Lines` list, scaled
+    /// by `0.001`. Both revisions walk the raw pointer list with no `enabled`
+    /// filter; see [`sum_list_losses`].
+    pub fn line_losses(&mut self) -> (f64, f64) {
+        let Dss {
+            classes, circuit, ..
+        } = self;
+        let ckt = circuit.as_ref().expect("line_losses needs a circuit");
+        let sys = crate::solution::solution::sys_ctx(ckt);
+        let node_v = ckt.solution.node_v.clone();
+        let total = sum_list_losses(classes, &ckt.lines, &sys, &node_v);
+        (total.re * 0.001, total.im * 0.001)
+    }
+
+    /// CAPI `Circuit_Get_SubstationLosses` (`CAPI_Circuit.pas:289-307`; r4133
+    /// `DDLL/DCircuit.pas:327-347`, `CircuitV` mode 2) — **kW/kvar** over the
+    /// `Transformers` list, keeping the entries whose `sub=` flag is set
+    /// (`TTransfObj.IsSubstation`).
+    ///
+    /// `AutoTrans` objects are registered on the separate `AutoTransformers`
+    /// list (`Common/Circuit.pas:2272-2273`; the port mirrors the split in
+    /// [`Circuit::add_ckt_element`]), so an `AutoTrans ... sub=yes` contributes
+    /// **nothing** here — upstream's walk cannot reach it. Pinned by
+    /// `exec::tests::aggregates::substation_losses_exclude_autotrans`.
+    pub fn substation_losses(&mut self) -> (f64, f64) {
+        let Dss {
+            classes, circuit, ..
+        } = self;
+        let ckt = circuit.as_ref().expect("substation_losses needs a circuit");
+        let sys = crate::solution::solution::sys_ctx(ckt);
+        let node_v = ckt.solution.node_v.clone();
+        let subs: Vec<ElemId> = ckt
+            .transformers
+            .iter()
+            .copied()
+            .filter(|r| {
+                classes[r.class_ord()]
+                    .arena
+                    .get::<transformer::Transformer>(r.index())
+                    .expect("the transformers list holds Transformers")
+                    .is_substation()
+            })
+            .collect();
+        let total = sum_list_losses(classes, &subs, &sys, &node_v);
+        (total.re * 0.001, total.im * 0.001)
+    }
+
+    /// CAPI `Circuit_Get_AllElementLosses` (`CAPI_Circuit.pas:445-468`; r4133
+    /// `DDLL/DCircuit.pas:458-479`, `CircuitV` mode 8) — each element's
+    /// `Get_Losses × 0.001` (**kW/kvar**) in `ckt_elements` creation order, i.e.
+    /// exactly the order and length (`NumDevices`) of the oracle's
+    /// `AllElementNames` / [`Dss::snapshot_elements`]. Disabled elements keep
+    /// their slot and report `(0, 0)`.
+    pub fn all_element_losses(&mut self) -> Vec<(f64, f64)> {
+        let Dss {
+            classes, circuit, ..
+        } = self;
+        let ckt = circuit
+            .as_ref()
+            .expect("all_element_losses needs a circuit");
+        let sys = crate::solution::solution::sys_ctx(ckt);
+        let node_v = ckt.solution.node_v.clone();
+        let mut out = Vec::with_capacity(ckt.ckt_elements.len());
+        for &r in &ckt.ckt_elements {
+            let elem = classes[r.class_ord()]
+                .arena
+                .try_ckt_elem_mut(r.index())
+                .expect("ckt_elements refs are circuit elements");
+            let loss = elem.losses(&sys, &node_v);
+            out.push((loss.re * 0.001, loss.im * 0.001));
+        }
+        out
+    }
+
+    /// The summand membership of the four scalar circuit aggregates, as
+    /// lower-cased `Class.name` strings in walk order — see [`AggregateTerms`].
+    /// Empty (`AggregateTerms::default()`) when no circuit exists.
+    pub fn aggregate_terms(&self) -> AggregateTerms {
+        let Some(ckt) = self.circuit.as_ref() else {
+            return AggregateTerms::default();
+        };
+        let full_name = |r: ElemId| -> String {
+            format!(
+                "{}.{}",
+                self.classes[r.class_ord()].props.class_name(),
+                self.classes[r.class_ord()]
+                    .arena
+                    .obj(r.index())
+                    .data()
+                    .name()
+            )
+            .to_ascii_lowercase()
+        };
+        AggregateTerms {
+            // `Common/Circuit.pas:2436-2440`: enabled AND not shunt — the one
+            // aggregate upstream filters (mirrored by `Circuit::losses`).
+            losses: ckt
+                .pd_elements
+                .iter()
+                .copied()
+                .filter(|r| {
+                    let elem = self.classes[r.class_ord()].arena.ckt_elem(r.index());
+                    elem.cd().enabled && !elem.is_shunt()
+                })
+                .map(&full_name)
+                .collect(),
+            line_losses: ckt.lines.iter().copied().map(&full_name).collect(),
+            substation_losses: ckt
+                .transformers
+                .iter()
+                .copied()
+                .filter(|r| {
+                    self.classes[r.class_ord()]
+                        .arena
+                        .get::<transformer::Transformer>(r.index())
+                        .expect("the transformers list holds Transformers")
+                        .is_substation()
+                })
+                .map(&full_name)
+                .collect(),
+            total_power: ckt.sources.iter().copied().map(&full_name).collect(),
+        }
     }
 
     /// `DSS.ActiveCircuit.Solution.EventLog`: the accumulated event-log lines

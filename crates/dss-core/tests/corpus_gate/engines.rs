@@ -26,6 +26,7 @@ use std::time::{Duration, Instant};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::harness::aggregates::{AggregatesCap, SolutionScalarsCap};
 use crate::harness::{
     ElementCap, Injection, MeterCap, MonitorCap, ProbeCap, PropsCap, VariablesCap, YFingerprint,
     YMat, YPrim,
@@ -89,6 +90,16 @@ pub(crate) struct Checkpoint {
     pub(crate) ctrlqueue: Vec<String>,
     #[serde(default)]
     pub(crate) all_properties: Vec<PropsCap>,
+    /// `GOLDEN_REBASE_PLAN.md` G1.9 — the five `Circuit` aggregates. Optional
+    /// in the schema only so a transport that predates the surface deserializes;
+    /// the comparator DEMANDS it on every live case (the surface is unflagged
+    /// and universal), so `None` fails the case rather than skipping it.
+    #[serde(default)]
+    pub(crate) aggregates: Option<AggregatesCap>,
+    /// `GOLDEN_REBASE_PLAN.md` G1.9 — the ten `Solution` scalars, same
+    /// presence contract as [`Checkpoint::aggregates`].
+    #[serde(default)]
+    pub(crate) solution_scalars: Option<SolutionScalarsCap>,
 }
 
 /// The per-case wall-clock deadline for a single oracle request
