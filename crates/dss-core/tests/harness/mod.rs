@@ -4768,8 +4768,10 @@ fn bus_polar_close(actual_deg: f64, expected_deg: f64, mag_v: f64, tol: &Toleran
 ///   [`bus_angle_band_deg`] and tests/TOLERANCE_NOTES.md.
 ///
 /// `voltages_excluded` is set by the caller when the divergence ledger already
-/// excludes this case/channel's `voltages` field
-/// (`LedgerView::excluded("voltages", None, step)`). The bus quantities are exact
+/// excludes this case/channel's `voltages` field DECK-WIDE
+/// (`LedgerView::bus_arrays_suppressed(step)` — a `voltages` scope that names a
+/// node subset excludes fewer nodes than the arrays cover and suppresses
+/// nothing here). The bus quantities are exact
 /// images of exactly those node voltages, so re-comparing them would re-raise a
 /// divergence that has already been triaged and pinned — one structural rule
 /// instead of a ledger row per case. It suppresses ONLY the three continuous
@@ -4891,7 +4893,9 @@ pub fn compare_bus(
 /// (convention 1) and the circuit walk (convention 2) cannot drift apart
 /// silently.
 ///
-/// `voltages_excluded`: see [`compare_bus`] — the length identity still holds.
+/// `voltages_excluded`: see [`compare_bus`] — the oracle length compare and the
+/// port-internal length identity both still run; only the per-entry values are
+/// dropped.
 pub fn compare_all_bus_vmag_pu(
     dss: &Dss,
     exp: &[f64],
@@ -4907,12 +4911,12 @@ pub fn compare_all_bus_vmag_pu(
         actual.len(),
         exp.len()
     );
-    if voltages_excluded {
-        return;
-    }
     // Convention 2 walks each bus's nodes by INTERNAL index, so the label below
     // is the insertion-order node number — deliberately not the sorted one
-    // `compare_bus` uses.
+    // `compare_bus` uses. Built BEFORE the `voltages_excluded` return: the
+    // port-internal identity `Σ nodes == len(AllBusVmagPu)` (the circuit walk
+    // against the per-bus walk) is not an oracle comparison and holds on a
+    // suppressed case too (G1.4a audit settlement AC-7).
     let mut base: Vec<(String, i32, f64)> = Vec::with_capacity(actual.len());
     for v in dss.all_bus_voltages() {
         let bf = bus_base_factor(v.kv_base);
@@ -4927,6 +4931,9 @@ pub fn compare_all_bus_vmag_pu(
         actual.len(),
         base.len()
     );
+    if voltages_excluded {
+        return;
+    }
     for (k, (a, e)) in actual.iter().zip(exp).enumerate() {
         let (name, node, bf) = &base[k];
         let allowed = tol.v_abs / bf + tol.v_rel * e.abs();
@@ -5098,7 +5105,7 @@ mod bus_comparator_tests {
     /// convention 1 sees it — `b3` is declared `.2.1.3`, and 83 767 corpus buses
     /// carry such a non-prefix node set.
     #[test]
-    #[should_panic(expected = "VMagAngle")]
+    #[should_panic(expected = "VMagAngle magnitude")]
     fn insertion_order_instead_of_ascending_node_number_reds_the_bus_comparator() {
         let dss = solved();
         let mut exp = capture(&dss);
@@ -5128,6 +5135,83 @@ mod bus_comparator_tests {
         }
         exp[1].kv_base += 1.0; // …this must not be
         compare_bus(&dss, &exp, &tol_for("feeder"), true, "exclusion drive");
+    }
+
+    /// Non-vacuity of the ANGLE channel (G1.4a audit settlement T2): the
+    /// magnitude rows are the ones the two committed corruptions above trip, so
+    /// the wrap-aware angle compare needs its own drive. 1e-3° is ~1700× the
+    /// band at 7.2 kV (`asin(eps/|V|)` ≈ 5.8e-7°).
+    #[test]
+    #[should_panic(expected = "VMagAngle: angle differs")]
+    fn an_out_of_band_angle_reds_the_bus_comparator() {
+        let dss = solved();
+        let mut exp = capture(&dss);
+        let b3 = exp
+            .iter_mut()
+            .find(|b| b.name == "b3")
+            .expect("bus b3 declared .2.1.3");
+        b3.vmag_angle[1] += 1e-3; // node 1's angle only — magnitudes untouched
+        compare_bus(&dss, &exp, &tol_for("feeder"), false, "angle drive");
+    }
+
+    /// …and the per-unit angle channel is compared too: the same nudge on
+    /// `puVMagAngle` alone (both magnitudes and the volt-angle left exact) reds.
+    #[test]
+    #[should_panic(expected = "puVMagAngle: angle differs")]
+    fn an_out_of_band_pu_angle_reds_the_bus_comparator() {
+        let dss = solved();
+        let mut exp = capture(&dss);
+        let b3 = exp
+            .iter_mut()
+            .find(|b| b.name == "b3")
+            .expect("bus b3 declared .2.1.3");
+        b3.pu_vmag_angle[1] += 1e-3;
+        compare_bus(&dss, &exp, &tol_for("feeder"), false, "pu angle drive");
+    }
+
+    /// The ±180° seam is folded, not compared raw: an oracle that reports every
+    /// angle a full turn away is accepted (`wrap_deg`), while the 1e-3° drives
+    /// above still red — so the fold is not a free pass.
+    #[test]
+    fn a_full_turn_of_angle_is_accepted_by_the_bus_comparator() {
+        let dss = solved();
+        let mut exp = capture(&dss);
+        for b in &mut exp {
+            for arr in [&mut b.vmag_angle, &mut b.pu_vmag_angle] {
+                for (i, x) in arr.iter_mut().enumerate() {
+                    if i % 2 == 1 {
+                        *x -= 360.0;
+                    }
+                }
+            }
+        }
+        compare_bus(&dss, &exp, &tol_for("feeder"), false, "seam drive");
+    }
+
+    /// Non-vacuity of `compare_all_bus_vmag_pu` (G1.4a audit settlement T1): the
+    /// circuit-level walk (convention 2 — bus-list order × INTERNAL node index)
+    /// has its own accessor and its own comparator, and neither corruption above
+    /// touches it. 1e-3 pu is ~1e5× its per-entry band.
+    #[test]
+    #[should_panic(expected = "AllBusVmagPu entry")]
+    fn a_corrupted_all_bus_vmag_pu_entry_reds_the_comparator() {
+        let dss = solved();
+        let mut exp = dss.all_bus_vmag_pu();
+        assert!(exp.len() > 3, "deck must have several nodes");
+        exp[3] += 1e-3;
+        compare_all_bus_vmag_pu(&dss, &exp, &tol_for("feeder"), false, "vmagpu drive");
+    }
+
+    /// …and under `voltages_excluded` the length compare against the oracle
+    /// still runs (only the per-entry values are dropped), so a node the oracle
+    /// does not report cannot slip through a suppressed case.
+    #[test]
+    #[should_panic(expected = "AllBusVmagPu length differs")]
+    fn the_voltage_exclusion_still_pins_the_all_bus_vmag_pu_length() {
+        let dss = solved();
+        let mut exp = dss.all_bus_vmag_pu();
+        exp.pop();
+        compare_all_bus_vmag_pu(&dss, &exp, &tol_for("feeder"), true, "exclusion drive");
     }
 }
 

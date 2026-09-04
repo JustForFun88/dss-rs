@@ -482,10 +482,15 @@ knowing:
   (`tests/TOLERANCE_NOTES.md` §"Bus voltage surface"); `kv_base` and `nodes` are
   compared **exactly**.
 * **One documented normalization, printed by the gate.** On a case whose
-  `voltages` field is already ledger-excluded, the three continuous per-bus
-  arrays are suppressed — they are exact images of a divergence that is already
-  triaged and pinned there, so comparing them again would mean ten new ledger
-  rows for one cause (coordinator decision **D11(2)**, 2026-09-04). Bus count,
+  `voltages` field is already ledger-excluded **deck-wide**, the three continuous
+  per-bus arrays are suppressed — they are exact images of a divergence that is
+  already triaged and pinned there, so comparing them again would mean ten new
+  ledger rows for one cause (coordinator decision **D11(2)**, 2026-09-04).
+  "Deck-wide" is enforced, not assumed: the predicate is
+  `LedgerView::bus_arrays_suppressed`, which honours only a `voltages` scope with
+  neither `name_re` nor `node_re` — a scope naming a node SUBSET excludes fewer
+  nodes than the bus arrays cover, so it suppresses nothing here (G1.4a audit
+  settlement, 2026-09-05). Bus count,
   name sequence, `nodes`, `kv_base` and every array length stay compared, which
   `the_voltage_exclusion_still_pins_kv_base` (`mod.rs:5123`) drives negatively.
   It is not a mask and does not read as one: every suppressed case is listed in
@@ -577,10 +582,12 @@ Entry kinds (`kind`):
   `rust`/`oracle`/`policy`/`line_re` on an `exclusion` are refused at load,
   because the exclusion path ignores them and they would read as a promise the
   gate never keeps.
-  *(**2026-09-04**, G1.4a: a `voltages` scope now also suppresses that case's
-  three continuous per-bus arrays — §"The bus voltage surface" above. That
-  suppression is reported case by case in the gate summary and changes nothing
-  about this scope's own node-by-node fail-on-stale measurement.)*
+  *(**2026-09-04**, G1.4a: a **deck-wide** `voltages` scope — no `name_re`, no
+  `node_re` — now also suppresses that case's three continuous per-bus arrays —
+  §"The bus voltage surface" above. A node-scoped one keeps its node-by-node
+  meaning and suppresses no bus array. The suppression is reported case by case
+  in the gate summary and changes nothing about this scope's own node-by-node
+  fail-on-stale measurement.)*
 
 Scope `field` must be one of the **14 implemented** handlers — `iterations`,
 `voltages`, `injection`, `element`, `probe`, `property`, `monitor`, `eventlog`,
@@ -1100,7 +1107,7 @@ deliberate exception: `skip_prop` is a free function taking the channel, so its
 | 5 | the assert | `assert_value_matches_tol`, `mod.rs:3326` | the case's tier floors (`tol_for`) | **gate red, both spellings in the message** |
 
 A divergence the ledger owns is handled outside this chain, by the case's
-`property`-scoped `ledger.json` entry (`corpus_gate/ledger.rs:1153`, `:1188`) —
+`property`-scoped `ledger.json` entry (`corpus_gate/ledger.rs:1196`, `:1231`) —
 which is why the triage order below ends there and not before.
 
 **Link 2 — the normalization table** `PROPS_NORM_R4133` (`harness/props_norm.rs:560`). **168 rows**
@@ -1449,13 +1456,25 @@ decks in the same folder writing the same report name, or the gate test and
 which pair collided here was **not** isolated. Treat it as environmental, re-run the
 case alone, and escalate only if it recurs with the machine quiet.
 
-**A stale `epri-worker.exe` is used as-is.** `engines.rs::epri_worker_bin` builds the
-worker only when the file is **missing**, so a bridge change reaches
-`cargo test --workspace` / `cargo test -p dss-epri` but not a scoped
-`cargo test -p dss-core --test corpus_gate`. Measured 2026-09-04: a binary four
-minutes older than the D13 commit still inherited `DefaultBaseFrequency=50` from the
-registry. Rebuild (`cargo build -p dss-epri --bin epri-worker`, or point
-`DSS_EPRI_WORKER` at a fresh one) before believing any bridge measurement.
+**A stale `epri-worker.exe` is rebuilt, not used as-is** (G1.4a audit settlement,
+2026-09-05). `engines.rs::epri_worker_bin` used to build the worker only when the file
+was **missing**, so a bridge change reached `cargo test --workspace` /
+`cargo test -p dss-epri` but not a scoped `cargo test -p dss-core --test corpus_gate`
+— measured 2026-09-04: a binary four minutes older than the D13 commit still inherited
+`DefaultBaseFrequency=50` from the registry. It now compares the binary's mtime against
+the newest of `crates/dss-epri/{src/**,Cargo.toml}` and rebuilds an older one (drive:
+`touch crates/dss-epri/src/dss.rs` then run
+`the_epri_worker_binary_is_not_older_than_its_bridge_sources`, which logs the rebuild).
+An explicit `DSS_EPRI_WORKER` is honoured verbatim — its freshness is the operator's.
+
+**The D13 registry tests write a machine-global key.** `crates/dss-epri/tests/protocol.rs`
+poisons `HKCU\Software\OpenDSS\MainSect\BaseFrequency` (or a `37` sentinel) for the
+duration of a worker spawn and restores it on every exit path — rewriting the saved value,
+or DELETING it when the machine had none (`reg_restore`). The key is shared by every lane
+and every worktree, so two lanes running those tests at the same instant can briefly see
+each other's value; the `Engine::new` reset makes that harmless (each worker pins 60 Hz
+regardless of what it read), which is exactly why the reset, not the restore, is the
+load-bearing fix.
 
 **Regenerate a golden** (manual, deliberate — never in CI): install the pinned
 venv from `tools/golden/PIN.txt`, then run the matching `tools/golden/gen_*.py`.

@@ -675,8 +675,31 @@ fn reg_read(name: &str) -> Option<String> {
     None
 }
 
-/// Restore one `REG_SZ` value with `reg.exe add` (used only on the failure path,
-/// so a regression cannot leave the machine's key poisoned).
+/// Put the key back exactly as it was found: rewrite the saved value, or DELETE
+/// the value when the machine did not have one (G1.4a audit settlement T6 —
+/// writing a default `60` there would create machine state the test found
+/// absent, and r4133 reads that key at DLL load).
+fn reg_restore(name: &str, before: Option<&str>) {
+    match before {
+        Some(v) => reg_write(name, v),
+        None => reg_delete(name),
+    }
+}
+
+/// Delete one value with `reg.exe delete`; a missing value is already the
+/// wanted state, so only a *present* value that survives is an error.
+fn reg_delete(name: &str) {
+    let _ = Command::new("reg")
+        .args(["delete", REG_KEY, "/v", name, "/f"])
+        .output()
+        .expect("run reg delete");
+    assert!(
+        reg_read(name).is_none(),
+        "could not remove value {name:?} under {REG_KEY} (the test found it absent)"
+    );
+}
+
+/// Restore one `REG_SZ` value with `reg.exe add`.
 fn reg_write(name: &str, value: &str) {
     let ok = Command::new("reg")
         .args([
@@ -688,6 +711,31 @@ fn reg_write(name: &str, value: &str) {
     assert!(
         ok,
         "could not restore value {name:?} under {REG_KEY} to {value:?}"
+    );
+}
+
+/// [`reg_restore`]'s absent-value branch, driven on a scratch value name (the
+/// live tests below find `BaseFrequency` present on a developed machine, so
+/// their restore takes the rewrite branch). Proves that "restored" means the key
+/// is left exactly as found — the value is removed, not created with a default
+/// r4133 would then read at DLL load (G1.4a audit settlement T6).
+#[test]
+fn reg_restore_removes_a_value_the_machine_did_not_have() {
+    const PROBE: &str = "DssRsSettleProbe";
+    assert!(
+        reg_read(PROBE).is_none(),
+        "{PROBE} under {REG_KEY} is not a scratch name after all — pick another"
+    );
+    reg_write(PROBE, "37");
+    assert_eq!(
+        reg_read(PROBE).as_deref(),
+        Some("37"),
+        "the scratch write did not take — the probe proves nothing"
+    );
+    reg_restore(PROBE, None);
+    assert!(
+        reg_read(PROBE).is_none(),
+        "restoring an absent value must DELETE it, not write a default"
     );
 }
 
@@ -762,8 +810,9 @@ fn clear_resets_the_default_base_frequency_to_sixty() {
 /// frequency the corpus actually uses (`LVTestCase/Master.dss`) — spawns a fresh
 /// worker and reads the default back **without any `clear`**. With the init
 /// reset removed the read comes back `50` (measured 2026-09-04 on a throwaway
-/// copy of the bridge). The saved value is restored on every exit path, so a
-/// regression cannot leave the machine's key poisoned.
+/// copy of the bridge). The machine key is put back on every exit path — the
+/// saved value rewritten, or the value DELETED when the machine had none
+/// ([`reg_restore`]) — so a regression cannot leave it poisoned.
 ///
 /// `Get DefaultBaseFrequency` needs an active circuit — `DoGetCmd_NoCircuit`
 /// (`Executive/ExecOptions.pas:1510`) does not serve option 73 — hence the
@@ -781,10 +830,7 @@ fn init_resets_the_default_base_frequency_to_sixty() {
     w.quit();
 
     // Restore the machine key before any assertion can unwind.
-    match before.as_deref() {
-        Some(v) => reg_write("BaseFrequency", v),
-        None => reg_write("BaseFrequency", "60"),
-    }
+    reg_restore("BaseFrequency", before.as_deref());
 
     assert_eq!(
         got,
@@ -835,21 +881,15 @@ fn the_worker_never_writes_the_opendss_registry_key() {
     w.quit();
 
     let after = reg_read("BaseFrequency");
-    if after.as_deref() == Some("37") {
-        // Regression: restore the machine's key before failing.
-        match before.as_deref() {
-            Some(v) => reg_write("BaseFrequency", v),
-            None => reg_write("BaseFrequency", "60"),
-        }
-        panic!(
-            "the worker wrote BaseFrequency=37 into {REG_KEY}: \
-             `Set RegistryUpdate=No` is missing from Engine::new \
-             (key restored to {before:?})"
-        );
-    }
+    // Restore the machine's key first, so the assertion below is the only exit
+    // (G1.4a audit settlement T6: the old shape restored inside an `if` and left
+    // an unreachable `assert_ne!` behind it).
+    reg_restore("BaseFrequency", before.as_deref());
     assert_ne!(
         after.as_deref(),
         Some("37"),
-        "the BaseFrequency value under {REG_KEY} carries the worker's sentinel"
+        "the worker wrote BaseFrequency=37 into {REG_KEY}: \
+         `Set RegistryUpdate=No` is missing from Engine::new \
+         (key restored to {before:?})"
     );
 }

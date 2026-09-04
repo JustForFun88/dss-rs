@@ -2719,63 +2719,62 @@ row against the pre-fix lock.
   (`Cabs(3,4)` = 5.0, pre-fix 3.0), `do_not_call_refuses_the_two_unsafe_modes_without_touching_the_dll`,
   `no_unwired_g1_surface_flag_is_set_in_any_manifest`, `every_manifest_compare_flag_has_a_rigor_token`,
   `a_scope_that_misuses_channels_is_refused_at_load`, the four `capture_guard::tests::*`.
-  Commits: <filled by the docs agent>. Gate: fmt + clippy clean in both lanes;
+  Commits: `c4b67a6e`. Gate: fmt + clippy clean in both lanes;
   `cargo test --workspace` **4 601 / 0 failed / 5 ignored** in both lanes (4 499 before
   G1.0), corpus gate 523/523, ledger 57 entries / 1 588 hits, 0 stale, `git status
   --porcelain -- tests/golden` empty; `lane_diff` measured anyway although not owed —
   `VERDICT: PASS`, max |Δ| = 0 on all eight kinds.
 
-- **G1.4a** (2026-09-04, lane `lane-b`, bus chain) — **the bus voltage surface, its
-  divergence-free half** (coordinator decisions **D7** lanes, **D8** re-scope, **D11(1)**+**(2)**,
-  **D12**/**D14** GIC channel, **D13** bridge). Live on both channels for every live
-  non-`large*` case: per bus in `BusList` order `Nodes`/`kVBase`/`puVoltages`/`VMagAngle`/
-  `puVmagAngle` plus the checkpoint-level `AllBusVmagPu` — the two arms run identical
-  algorithms (`CAPI_Alt.pas:2143`/`:2251`/`:2573`/`:2540` == r4133 `DDLL/DBus.pas:319`/`:399`/
-  `:659`/`:690`; `CAPI_Circuit.pas:521` == `DCircuit.pas:481`). The port side is a pure read
-  over `Solution.NodeV` + `Bus::{nodes, ref_no, kv_base}` (`exec/view.rs::BusVoltageView`); the
-  comparator is the shared per-bus plumbing G1.5/G1.6(ii) inherit, its bands exact images of the
-  node-voltage band — **no** new tolerance constant (`tests/TOLERANCE_NOTES.md` §"Bus voltage
-  surface"). **D8:** the sub-step STOPPED at spec time; `SeqVoltages`/`CplxSeqVoltages` (r4133's
-  `-1` on `NumNodes != 3`, 18 cases / 138 buses) and `VLL`/`puVLL` (an r4133 **hang** — the
-  unbounded `jj>3 ⇒ jj:=1` pairing loop `DDLL/DBus.pas:549-602`, bounded to three tries in capi)
-  moved to a new **G1.4c**; chain order G1.4a → G1.5 → G1.4c → G1.4b. **D11(1):** the exact
-  `kv_base` compare — the gate's first — reddened 4 of the then 523 cases at 1 ULP with the port
-  and **both** transports agreeing bit-for-bit, so the workspace `Cargo.toml` gains `serde_json`'s
-  `float_roundtrip`: its default parser is not correctly rounded (`402cc085eaa86924` decoded
-  `…23`, `402a8ee073ff4979` `…78`, `3fceb850fb376e1b` `…1a`), a strict strengthening with no band
-  and zero golden bytes. **D11(2):** where a case's `voltages` field is ledger-excluded the three
-  continuous per-bus arrays are suppressed (count, name sequence, `nodes`, `kv_base`, lengths
-  still compared) — 0 new rows instead of 10 for one already-pinned cause — on
-  `asymmetric:gic/gic_midi`, `…/gictransformer_gic`, `modes:makeposseq/makeposseq_shunt`,
-  `modes:inputformat/shape_mmf/shape_mmf` and the four `modes:windgen/windgen_{snap_delta,daily,
-  dyn,dyn_fault}`, each printed by the gate beside the entry that caused it (**8** (case,
-  channel) pairs after D12/D14). Measured: **0** new ledger entries from the bus surface (a
-  `DSS_GATE_SEED_LEDGER=1` run over the then 519 live cases × 2 channels produced no bus-shaped
-  candidate) and **0** golden bytes; the lock moves only through D12/D14 (`rigor` fingerprints the
-  *manifest* flag, which no case sets — the force rule's guard is `FORCED_BUS_POPULATION =
-  (441, 310, 87, 44)` + its re-derivation test); `Bus.Nodes` (`BUSV(2)`) and `Circuit.AllBusNames`
-  (`CircuitV(7)`) were ported on the way, so `WP_G1_MODES` is **98** rows on this lane. Pins:
-  `bus_pu_voltages_come_out_in_ascending_node_number_order`,
+- **G1.4a** (2026-09-04, lane `lane-b`, bus chain) — **the bus voltage surface, its divergence-free
+  half** (coordinator decisions **D7** lanes, **D8** re-scope, **D11(1)**+**(2)**, **D12**/**D14**,
+  **D13**). Live on both channels for every live non-`large*` case: per bus in `BusList` order
+  `Nodes`/`kVBase`/`puVoltages`/`VMagAngle`/`puVmagAngle` plus checkpoint-level `AllBusVmagPu` — the
+  two arms run identical algorithms (`CAPI_Alt.pas:2143`/`:2251`/`:2573`/`:2540` == r4133
+  `DDLL/DBus.pas:319`/`:399`/`:659`/`:690`; `CAPI_Circuit.pas:521` == `DCircuit.pas:481`). Port side:
+  a pure read over `Solution.NodeV` (`exec/view.rs::BusVoltageView`); comparator: the shared per-bus
+  plumbing G1.5/G1.6(ii) inherit, bands exact images of the node-voltage band — **no** new constant
+  (`tests/TOLERANCE_NOTES.md` §"Bus voltage surface").
+  **D8:** `SeqVoltages`/`CplxSeqVoltages` and `VLL`/`puVLL` (an r4133 hang, `DDLL/DBus.pas:549-602`)
+  moved to a new **G1.4c**; order G1.4a → G1.5 → G1.4c → G1.4b. **D11(1):** the gate's first exact
+  float compare (`kv_base`) proved serde_json's default parser 1 ULP low on three oracle floats →
+  workspace `float_roundtrip`, a strict strengthening with no band. **D11(2):** a **deck-wide**
+  `voltages` exclusion suppresses the three continuous per-bus arrays and nothing else, printed beside
+  the causing entry (8 (case, channel) pairs). **D12/D14** (`DIVERGENCES.md` §D12/D14): capi 0.14.5
+  disagrees with itself across processes on every `GICTransformer` deck (7/60 vs 0/40; r4133 80/80),
+  so those four decks gate on `r4133` alone and `makeposseq_shunt`'s GICTransformer split into the new
+  `makeposseq_gic.dss`. **D13** (`TESTING.md` §"One gate or probe per worktree at a time"): the bridge
+  no longer leaks `DefaultBaseFreq` through `HKCU\Software\OpenDSS`, in its own commit.
+  Measured: **0** new ledger entries from the surface, **0** golden bytes, `golden.lock.json` unmoved;
+  ledger 57 → **53**, corpus 523 → **524** / 520 live; the force rule's own guard is
+  `FORCED_BUS_POPULATION = (441, 310, 87, 44)`; `WP_G1_MODES` **98** on this lane.
+  Pins: `bus_pu_voltages_come_out_in_ascending_node_number_order`,
   `bus_pu_voltages_use_a_unit_base_when_kv_base_is_not_set`,
-  `all_bus_vmag_pu_walks_buses_times_internal_node_index`,
-  `the_voltage_exclusion_still_pins_kv_base`,
+  `all_bus_vmag_pu_walks_buses_times_internal_node_index`, `the_voltage_exclusion_still_pins_kv_base`,
   `a_suppressed_bus_array_is_named_with_the_entry_that_caused_it`,
   `the_bus_capture_reads_in_one_fixed_order_on_both_transports`,
-  `the_bus_forcing_rule_is_every_live_non_large_case`. Non-vacuity (scratch, never committed): a
-  one-bus `1000·kVBase → kVBase` corruption and an insertion-order corruption each red
-  `compare_bus` on `solvable_now:Test/IEEE13_LineSpacing.dss`; nothing else reads the accessors.
-  **D12/D14** — that same exact compare exposed the pinned capi 0.14.5 oracle disagreeing with
-  *itself* across fresh processes on every deck instantiating a `GICTransformer` (7 bad runs of
-  60 with one, 0 of 40 without; r4133 80/80; root cause measured in `SetVoltageBases`' zero-load
-  snapshot), so those four decks gate on `r4133` alone (guard
-  `no_capi_gated_case_instantiates_a_gictransformer`) and `makeposseq_shunt`'s GICTransformer
-  moved into the new `makeposseq_gic.dss` rather than the deck following it into r4133's
-  5-significant-digit `MakePosSequence` round trip: ledger 57 → **53**, corpus 523 → **524**
-  cases / 520 live, `golden.lock.json` unmoved (`DIVERGENCES.md` §D12/D14). **D13** — the bridge
-  no longer leaks `DefaultBaseFreq` through `HKCU\Software\OpenDSS\MainSect` (`Set
-  RegistryUpdate=No` + `Set DefaultBaseFrequency=60` at init and after every `clear`, mirrored in
-  `oracle_server.py`, pinned in `crates/dss-epri/tests/protocol.rs`), in its own commit
-  `6b0dbd32`; it explains the earlier 21-red parity run (injecting 50 Hz reproduces that run's
-  oracle numbers bit-for-bit) and the operating rule is `TESTING.md` §"One gate or probe per
-  worktree at a time".
-  Commits: <filled by the docs agent>. Gate: <filled by the gate agent>.
+  `the_bus_forcing_rule_is_every_live_non_large_case`,
+  `no_capi_gated_case_instantiates_a_gictransformer`.
+  Commits: `6b0dbd32` (D13 bridge) + `be01e413` (the surface). Gate: fmt + clippy clean in both lanes;
+  `cargo test --workspace` **4 722 / 0 / 5 ignored** in both lanes, corpus gate 524/524, ledger 53
+  entries / 1 516 hits / 0 stale, `tests/golden` untouched; `lane_diff` **PASS**, max |Δ| = 0.
+
+  *Audit settlement (2026-09-05, this lane):* **15** findings over the two reports (11 distinct) —
+  **9 fixed, 1 fixed in part, 1 recorded, 0 refuted**. Fixed: the D11(2) predicate now honours only a **deck-wide**
+  `voltages` exclusion (`LedgerView::bus_arrays_suppressed`, no `name_re`/`node_re`, driven both
+  ways in `a_suppressed_bus_array_is_named_with_the_entry_that_caused_it`); D2's cross-transport
+  check landed live (`the_two_transports_agree_on_the_bus_capture_of_a_gated_both_case` on
+  `asymmetric:line/line_asym.dss`, worst |capi − r4133| = 1.5e-11 V at twice the node band);
+  `compare_all_bus_vmag_pu` and both angle channels gained negative drives (plus a full-turn
+  positive control) and its port-internal length identity now runs on suppressed cases too;
+  `epri_worker_bin` rebuilds a bridge older than `crates/dss-epri` (pinned by
+  `the_epri_worker_binary_is_not_older_than_its_bridge_sources`); the D13 registry restore deletes
+  a value the machine did not have; and `makeposseq-cuf-applied-capi`'s deck-wide blanket was
+  re-measured on the 13-element deck (13/13 elements, 3/3 nodes above floor). Recorded: the D14
+  two-commit split (landed as one commit; its `population.lock.json` justification corrected — the
+  lock moves for D12/D14 alone). No product code, tolerance, golden byte or ledger row moved
+  (`lane_diff` not owed); details in `tmp/g14a/settle.md`.
+  Lock: the ledger `source` re-measurement moved ONE `population.lock.json` line (the entry's
+  content hash), regenerated by the documented procedure. Gate (2026-09-05, this worktree quiet):
+  fmt + clippy clean in both lanes, `cargo test --workspace` **4 835 / 0 failed / 5 ignored** in
+  both lanes (75 binaries each), corpus gate 524/524, ledger 53 entries / 1 516 hits / 0 stale, the
+  D11(2) report still 8 (case, channel) pairs, `tests/golden` untouched.

@@ -597,12 +597,38 @@ fn epri_worker_bin() -> PathBuf {
                 .chain(std::iter::once(root.join("target")))
                 .map(|d| d.join(profile).join(exe))
                 .collect();
+            // Freshness, not mere existence (G1.4a audit settlement T5): a scoped
+            // `cargo test -p dss-core --test corpus_gate` does NOT rebuild the
+            // bridge, so an existing binary can predate a `crates/dss-epri`
+            // change — which is how a scoped r4133 run could silently gate
+            // against a worker without the D13 registry pins (measured: F9's
+            // first poisoned-registry probe read 50/50 off a four-minute-old
+            // worker, 60/60 after a rebuild). An out-of-date binary falls
+            // through to the build below.
+            let epri = root.join("crates").join("dss-epri");
+            let src_mtime = [
+                newest_mtime(&epri.join("src")),
+                file_mtime(&epri.join("Cargo.toml")),
+            ]
+            .into_iter()
+            .flatten()
+            .max();
             if let Some(found) = candidates.iter().find(|p| p.is_file()) {
-                return found.clone();
+                let bin_mtime = found.metadata().ok().and_then(|m| m.modified().ok());
+                match (bin_mtime, src_mtime) {
+                    // Unknown timestamps: keep the historical behaviour.
+                    (None, _) | (_, None) => return found.clone(),
+                    (Some(b), Some(s)) if b >= s => return found.clone(),
+                    _ => eprintln!(
+                        "epri-worker at {} is older than crates/dss-epri — rebuilding it…",
+                        found.display()
+                    ),
+                }
+            } else {
+                // Fallback: build it once (covers `cargo test -p dss-core`
+                // invocations that did not build the whole workspace).
+                eprintln!("epri-worker not found at {candidates:?} — building it once…");
             }
-            // Fallback: build it once (covers `cargo test -p dss-core` invocations
-            // that did not build the whole workspace).
-            eprintln!("epri-worker not found at {candidates:?} — building it once…");
             let mut cmd =
                 Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string()));
             cmd.arg("build")
@@ -628,6 +654,73 @@ fn epri_worker_bin() -> PathBuf {
                 .clone()
         })
         .clone()
+}
+
+/// The r4133 channel's premise, asserted rather than assumed (G1.4a audit
+/// settlement T5): the `epri-worker` the gate resolves is not older than the
+/// bridge sources it was built from. [`epri_worker_bin`] rebuilds a stale one,
+/// so this test fails only if the rebuild itself failed to refresh the binary —
+/// and it names the hazard the D13 rule (`TESTING.md`) depends on: a scoped
+/// `cargo test -p dss-core --test corpus_gate` builds no workspace binary.
+///
+/// `DSS_EPRI_WORKER` is an explicit operator override (a hand-built or archived
+/// bridge): the resolver honours it verbatim, so the freshness claim is about
+/// the resolved default only.
+#[test]
+fn the_epri_worker_binary_is_not_older_than_its_bridge_sources() {
+    let bin = epri_worker_bin();
+    assert!(
+        bin.is_file(),
+        "epri-worker did not resolve to a file: {bin:?}"
+    );
+    if std::env::var_os("DSS_EPRI_WORKER").is_some() {
+        eprintln!("DSS_EPRI_WORKER override in effect ({bin:?}) — freshness is the operator's");
+        return;
+    }
+    let root: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", ".."].iter().collect();
+    let epri = root.join("crates").join("dss-epri");
+    let src = [
+        newest_mtime(&epri.join("src")),
+        file_mtime(&epri.join("Cargo.toml")),
+    ]
+    .into_iter()
+    .flatten()
+    .max()
+    .expect("crates/dss-epri sources must be readable");
+    let got = file_mtime(&bin).expect("epri-worker must be stat-able");
+    assert!(
+        got >= src,
+        "{} is older than crates/dss-epri ({got:?} < {src:?}) — a scoped corpus-gate run \
+         would compare the r4133 channel against a stale bridge",
+        bin.display()
+    );
+}
+
+/// Modification time of one file, or `None` when it cannot be stat'd.
+fn file_mtime(p: &std::path::Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(p).ok().and_then(|m| m.modified().ok())
+}
+
+/// Newest modification time under `dir` (recursively), ignoring anything that
+/// cannot be stat'd. `None` when the tree is unreadable or empty — the caller
+/// then keeps its historical behaviour rather than guessing staleness.
+fn newest_mtime(dir: &std::path::Path) -> Option<std::time::SystemTime> {
+    let mut newest: Option<std::time::SystemTime> = None;
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return None;
+    };
+    for entry in rd.flatten() {
+        let p = entry.path();
+        let t = if p.is_dir() {
+            newest_mtime(&p)
+        } else {
+            entry.metadata().ok().and_then(|m| m.modified().ok())
+        };
+        if let Some(t) = t {
+            newest = Some(newest.map_or(t, |n| n.max(t)));
+        }
+    }
+    newest
 }
 
 /// Spawn a persistent `epri-worker` process with drain threads (mirrors
