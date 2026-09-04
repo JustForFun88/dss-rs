@@ -116,7 +116,12 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               did not fire. **RP3.11 LANDED 2026-09-03** — the
                               `Save`/`Dump` re-serialization surface is settled
                               `KEEP_LIVE_PINNED` on both surfaces (the kill
-                              criterion fired); next RP3.10 and WP-RP5.
+                              criterion fired). **RP3.12 + RP3.13 LANDED
+                              2026-09-03** and **RP3.10 LANDED 2026-09-04**
+                              (`9f55095b` + `9f067c19`, verdict FIX — the
+                              reproduced WindGen `QMode=0` zero-var dispatch is
+                              gone from both lanes), so **WP-RP3 is COMPLETE
+                              (13/13)** and only WP-RP5 is left.
                               RP5.2 flips this row to COMPLETE.
                               Runs inside the GOLDEN_REBASE window on branch
                               `r4133-props` off `update`.
