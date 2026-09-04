@@ -1190,3 +1190,285 @@ impl Dss {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// GOLDEN_REBASE G1.6(i): the `Meters` reliability surface.
+//
+// The half of the dss-python `IMeters` facade the live gate has never read —
+// the indices `CalcReliabilityIndices` writes, the per-section block behind
+// `SetActiveSection`, the two load-allocation arrays and the class-wide
+// register totals. `DSS-Python@origin/fastdss:tests/save_outputs.py:283-291`
+// archives the same fields (it reads section 1 only; this reads every
+// section) and `:330-332` records the `Totals` read-order trap below.
+//
+// Everything here is a read of already-solved state: none of these accessors
+// runs the reliability sweep and nothing in `solution/meters/reliability.rs`
+// is touched. Both oracles answer the same fields only *after* the executive
+// `RelCalc` command has run; before that every number is the Pascal zero-init.
+// ---------------------------------------------------------------------------
+
+/// One feeder section of an EnergyMeter — the oracle's *active-section* block,
+/// read as `Meters.SetActiveSection(idx)` followed by the eight per-section
+/// getters (capi `CAPI/CAPI_Meters.pas:729-740` + `:742-852`, r4133
+/// `Version8/Source/DDLL/DMeters.pas` `MetersI` 22-27 `:254-307` and `MetersF`
+/// 4-6 `:369-393`).
+///
+/// Section indices are **1-based**: slot 0 of Pascal's `FeederSections` is the
+/// span above the first OCP device and neither oracle will report it — capi
+/// refuses it in `InvalidActiveSection` (`CAPI_Meters.pas:122-134`, error
+/// 5055) and r4133 guards every getter with `If ActiveSection > 0` — so it
+/// never appears here either.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FeederSectionView {
+    /// The 1-based index this row was read at (the `SetActiveSection`
+    /// argument), running `1..=`[`MeterReliabilityView::num_sections`].
+    pub idx: i32,
+    /// `Meters.OCPDeviceType` — 1=Fuse, 2=Recloser, 3=Relay (0 = none).
+    pub ocp_device_type: i32,
+    /// `Meters.NumSectionCustomers` = `FeederSections[idx].NCustomers`.
+    pub num_section_customers: i32,
+    /// `Meters.NumSectionBranches` = `NBranches`.
+    pub num_section_branches: i32,
+    /// `Meters.SectSeqIdx` = `SeqIndex` — the 1-based `SequenceList` position
+    /// of the PD element that carries this section's OCP device.
+    pub sect_seq_idx: i32,
+    /// `Meters.SectTotalCust` = `TotalCustomers`.
+    pub sect_total_cust: i32,
+    /// `Meters.SumBranchFltRates`.
+    pub sum_branch_flt_rates: f64,
+    /// `Meters.AvgRepairTime` = `AverageRepairTime` = `SumFltRatesXRepairHrs /
+    /// SumBranchFltRates` — an **unguarded** division on all three engines
+    /// (port `solution/meters/reliability.rs:259`; r4133
+    /// `Version8/Source/Meters/EnergyMeter.pas` `AverageRepairTime`), so a
+    /// section whose branches all have `faultrate=0` evaluates to `NaN`
+    /// identically everywhere.
+    pub avg_repair_time: f64,
+    /// `Meters.FaultRateXRepairHrs` = `SumFltRatesXRepairHrs`.
+    pub fault_rate_x_repair_hrs: f64,
+}
+
+/// One row of the `Meters` reliability walk — the fields the oracles expose per
+/// meter once `RelCalc` has run, in the order the capture reads them.
+///
+/// Oracle sources: capi `CAPI/CAPI_Meters.pas` (`Meters_Get_TotalCustomers`
+/// `:685-694` → `CAPI/CAPI_Alt.pas:1683-1696`, `SAIFI` `:617-626`, `SAIFIKW`
+/// `:652-661`, `SAIDI` `:696-705`, `CustInterrupts` `:707-716`, `NumSections`
+/// `:718-727`, `CalcCurrent` `:335-350`, `AllocFactors` `:379-391`); r4133
+/// `Version8/Source/DDLL/DMeters.pas` (`MetersI` 20/21 `:232-253`, `MetersF`
+/// 0-3 `:329-368`, `MetersV` 6/8 `:609-624` / `:645-661`, the zone lists
+/// `MetersV` 10-12 `:662-758`).
+///
+/// The walk that produces these rows is `Meters.First`/`Next`, which **skips
+/// disabled meters** on both channels (r4133 `DMeters.pas:32-71` loops on
+/// `If pMeter.Enabled`; capi routes through `Generic_CktElement_Get_First` /
+/// `_Next`, `CAPI/CAPI_Utils.pas:718-759`), so [`Dss::meter_reliability`]
+/// skips them too.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MeterReliabilityView {
+    /// `Meters.Name` — the bare object name, as both oracles report it.
+    pub name: String,
+    /// `Meters.TotalCustomers` = `BusTotalNumCustomers` of the bus at the
+    /// `FromTerminal` of `SequenceList[1]` — the zone head's upstream bus, not
+    /// a field of the meter. `0` when the zone was never built (empty
+    /// `SequenceList`), which is what both oracles return there as well.
+    pub total_customers: i32,
+    /// `Meters.SAIFI`.
+    pub saifi: f64,
+    /// `Meters.SAIFIKW`.
+    pub saifi_kw: f64,
+    /// `Meters.SAIDI`.
+    pub saidi: f64,
+    /// `Meters.CustInterrupts`.
+    pub cust_interrupts: f64,
+    /// `CAIDI` = `SAIDI / SAIFI`. **Not an oracle API field** — neither
+    /// channel has a `CAIDI` mode — so no capture carries it and the
+    /// comparator never reads it from one; it reaches the live gate as
+    /// EnergyMeter property `CAIDI`, which `compare_all_properties` already
+    /// compares on both channels. It is carried here so the pin that names the
+    /// arithmetic can read it.
+    pub caidi: f64,
+    /// `Meters.CalcCurrent` — `|CalculatedCurrent[k]|` for `k` in
+    /// `0..NPhases`. The oracles read the array from its **start**, with no
+    /// `(MeteredTerminal-1)·NConds` offset (capi `:346-349`, r4133
+    /// `:622-623`), while `TMeterElement.CalcAllocationFactors` *writes* it at
+    /// exactly that offset (r4133
+    /// `Version8/Source/Meters/MeterElement.pas:54-72`); the API's indexing is
+    /// what both channels report, so it is what this returns. All-zero until an
+    /// `AllocateLoads` runs — on the oracles it is uninitialised heap there,
+    /// since `AllocateSensorArrays` `ReallocMem`s the array without zeroing
+    /// (`MeterElement.pas:45-52`).
+    pub calc_current: Vec<f64>,
+    /// `Meters.AllocFactors` = `PhsAllocationFactor[0..NPhases]`; same
+    /// uninitialised-until-`AllocateLoads` caveat as [`Self::calc_current`].
+    pub alloc_factors: Vec<f64>,
+    /// `Meters.AllBranchesInZone`, in `SequenceList` order.
+    pub branches: Vec<String>,
+    /// `Meters.AllEndElements`, in `ZoneEndsList` order.
+    pub ends: Vec<String>,
+    /// `Meters.ZonePCE`, in zone-walk order.
+    pub pce: Vec<String>,
+    /// `Meters.NumSections` = `SectionCount`.
+    pub num_sections: i32,
+    /// The sections `1..=`[`Self::num_sections`], read in ascending order.
+    pub sections: Vec<FeederSectionView>,
+}
+
+impl Dss {
+    /// The `Meters` reliability walk — one [`MeterReliabilityView`] per
+    /// **enabled** EnergyMeter, in the circuit's `EnergyMeters` pointer-list
+    /// (creation) order, which is the order `Meters.First`/`Next` visits on
+    /// both oracle channels.
+    ///
+    /// Read-only: it neither runs `CalcReliabilityIndices` nor moves an
+    /// active-object cursor, so unlike the oracle walk it can be called at any
+    /// point without perturbing anything.
+    pub fn meter_reliability(&self) -> Vec<MeterReliabilityView> {
+        let Some(ckt) = self.circuit.as_ref() else {
+            return Vec::new();
+        };
+        let mut out = Vec::with_capacity(ckt.energy_meters.len());
+        for &r in &ckt.energy_meters {
+            let Some(em) = self.classes[r.class_ord()]
+                .arena
+                .get::<energymeter::EnergyMeter>(r.index())
+            else {
+                continue;
+            };
+            if !em.enabled() {
+                continue;
+            }
+            let name = em.data().name().to_string();
+
+            // `Buses^[Terminals^[FromTerminal].BusRef].BusTotalNumCustomers` of
+            // `SequenceList.Get(1)` (r4133 `DMeters.pas:232-243`, capi
+            // `CAPI_Alt.pas:1683-1696`). Every step is fallible on a zone that
+            // was never built, and both oracles answer 0 there rather than
+            // failing (capi's `checkSequenceList` guard, r4133's
+            // `If Assigned(PD_Element)`).
+            let total_customers = em
+                .sequence_list()
+                .first()
+                .and_then(|&head| {
+                    self.classes[head.class_ord()]
+                        .arena
+                        .try_ckt_elem(head.index())
+                })
+                .and_then(|head| {
+                    let cd = head.cd();
+                    cd.from_terminal.and_then(|t| cd.terminals.get(t))
+                })
+                .and_then(|term| term.bus_ref)
+                .and_then(|bus| ckt.buses.get(bus))
+                .map_or(0, |bus| bus.bus_total_num_customers);
+
+            // The three ordered zone lists come from `meter_zone`, so the
+            // ordered assertion this surface adds and the existing
+            // set-compare (`harness::compare_meter`) are looking at one list
+            // rather than at two resolutions of it.
+            let zone = self.meter_zone(&name);
+
+            let nphases = em.med.cd.nphases;
+            let calc_current = (0..nphases)
+                .map(|k| em.med.calculated_current.get(k).map_or(0.0, |c| c.norm()))
+                .collect();
+            let alloc_factors = (0..nphases)
+                .map(|k| em.med.phs_allocation_factor.get(k).copied().unwrap_or(0.0))
+                .collect();
+
+            let num_sections = em.section_count();
+            let sections = (1..=num_sections.max(0))
+                .filter_map(|idx| {
+                    // `FeederSections` keeps its previous length after an
+                    // aborted `RelCalc` (only a successful sweep reallocates
+                    // it), so the slot is fetched, never assumed. A short
+                    // array would silently shorten the row, which the
+                    // comparator would then read as a length divergence, so
+                    // the mismatch is caught here in debug builds too.
+                    let slot = em.feeder_sections().get(idx as usize);
+                    debug_assert!(
+                        slot.is_some(),
+                        "EnergyMeter {name}: SectionCount {num_sections} exceeds                          the FeederSections array ({} slots)",
+                        em.feeder_sections().len()
+                    );
+                    let s = slot?;
+                    Some(FeederSectionView {
+                        idx,
+                        ocp_device_type: s.ocp_device_type.ordinal(),
+                        num_section_customers: s.n_customers,
+                        num_section_branches: s.n_branches,
+                        sect_seq_idx: s.seq_index as i32,
+                        sect_total_cust: s.total_customers,
+                        sum_branch_flt_rates: s.sum_branch_flt_rates,
+                        avg_repair_time: s.average_repair_time,
+                        fault_rate_x_repair_hrs: s.sum_flt_rates_x_repair_hrs,
+                    })
+                })
+                .collect();
+
+            out.push(MeterReliabilityView {
+                name,
+                total_customers,
+                saifi: em.saifi(),
+                saifi_kw: em.saifi_kw(),
+                saidi: em.saidi(),
+                cust_interrupts: em.cust_interrupts(),
+                caidi: em.caidi(),
+                calc_current,
+                alloc_factors,
+                branches: zone
+                    .as_ref()
+                    .map(|z| z.all_branches_in_zone.clone())
+                    .unwrap_or_default(),
+                ends: zone
+                    .as_ref()
+                    .map(|z| z.all_end_elements.clone())
+                    .unwrap_or_default(),
+                pce: zone.map(|z| z.zone_pce).unwrap_or_default(),
+                num_sections,
+                sections,
+            });
+        }
+        out
+    }
+
+    /// `Meters.Totals` — Pascal `TDSSCircuit.TotalizeMeters` (r4133
+    /// `Version8/Source/Common/Circuit.pas:2520-2538`, reached through capi
+    /// `Meters_Get_Totals` `CAPI/CAPI_Meters.pas:279-290` and r4133
+    /// `MetersV(3)` `DDLL/DMeters.pas:558-573`): `RegisterTotals[i] =
+    /// Σ_meters Registers[i] · TotalsMask[i]`, length
+    /// [`energymeter::NUM_EM_REGISTERS`].
+    ///
+    /// Two details are load-bearing and both follow the Pascal literally: the
+    /// sum runs over **every** meter in the circuit's `EnergyMeters` list —
+    /// there is no `Enabled` filter, unlike the `Meters.First`/`Next` walk of
+    /// [`Self::meter_reliability`] — and it runs in that list's creation order,
+    /// which is observable in the last bits of a float sum.
+    ///
+    /// On the oracles this read is **destructive to the meter cursor**:
+    /// `TotalizeMeters` walks `EnergyMeters.First`/`Next` itself, so a capture
+    /// that reads `Totals` mid-walk loses every meter after the current one
+    /// (`DSS-Python@origin/fastdss:tests/save_outputs.py:330-332`, "This breaks
+    /// the iteration"). Here it is a pure read, but the capture transports must
+    /// still read it last — the harness asserts that order.
+    pub fn meter_totals(&self) -> Vec<f64> {
+        let mut totals = vec![0.0; energymeter::NUM_EM_REGISTERS];
+        let Some(ckt) = self.circuit.as_ref() else {
+            return totals;
+        };
+        for &r in &ckt.energy_meters {
+            let Some(em) = self.classes[r.class_ord()]
+                .arena
+                .get::<energymeter::EnergyMeter>(r.index())
+            else {
+                continue;
+            };
+            for (total, (reg, mask)) in totals
+                .iter_mut()
+                .zip(em.registers().iter().zip(em.totals_mask()))
+            {
+                *total += reg * mask;
+            }
+        }
+        totals
+    }
+}

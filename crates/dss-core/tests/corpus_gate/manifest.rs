@@ -112,12 +112,29 @@ pub(crate) struct SolvableCase {
     pub(crate) compare_zsc: bool,
     /// G1.6: the **meter extras + per-bus reliability** surface — `CalcCurrent`,
     /// `AllocFactors`, `SAIFI`/`SAIFIKW`/`SAIDI`/`CustInterrupts`, the ordered
-    /// zone vectors and the active-section fields (`origin/fastdss`
-    /// `dss/IMeters.py:13-42` `_columns`), plus `Bus.Lambda`/`N_interrupts`/
-    /// `N_Customers`/`Cust_Interrupts`/`Cust_Duration`/`Int_Duration`/
-    /// `TotalMiles`/`SectionID` (`dss/IBus.py:25-36`). Also drives the executive
-    /// `RelCalc` the surface needs (`save_outputs.py:117-129`); r4133
-    /// `DDLL/DMeters.pas`.
+    /// zone vectors, the active-section fields and `Meters.Totals`
+    /// (`origin/fastdss` `dss/IMeters.py:13-42` `_columns`; r4133
+    /// `DDLL/DMeters.pas`). **Wired 2026-09-04 by G1.6(i)**; the per-bus
+    /// reliability columns (`Bus.Lambda`/`N_interrupts`/`N_Customers`/
+    /// `Cust_Interrupts`/`Cust_Duration`/`Int_Duration`/`TotalMiles`/
+    /// `SectionID`, `dss/IBus.py:25-36`) join the same payload at G1.6(ii).
+    ///
+    /// It is the ONLY flag that also DRIVES an executive command: no vendored
+    /// deck runs `RelCalc` (measured: the two that do are `expect_solve_abort`),
+    /// so without driving it the whole reliability half would compare `0 == 0`.
+    /// The gate therefore runs it once per case on the LAST step, on all three
+    /// engines (`corpus_gate/runner.rs`); it is not idempotent, so never per
+    /// step.
+    ///
+    /// Set by the MANIFESTS, never scheduler-forced — and the absence of a
+    /// `force_reliability` beside [`super::scheduler::force_pdelements`] is a
+    /// decision, not an omission: the predicate is "this deck defines an
+    /// EnergyMeter", which is not a manifest field, and forcing the flag
+    /// circuit-wide would fire the executive's `28724 No EnergyMeter Objects
+    /// Defined` on the ~340 meterless cases on three engines. The population is
+    /// therefore the manifest set, which `population.lock.json` records through
+    /// `population_lock::rigor`'s `rel=` token; `harness::
+    /// assert_reliability_compare_ran` is the fail-on-nothing-ran half.
     #[serde(default)]
     pub(crate) compare_reliability: bool,
     /// G1.6b: the **PDElements** interface walk — all THIRTEEN
@@ -555,7 +572,7 @@ pub(crate) const G1_SURFACE_FLAGS: &[G1Flag] = &[
     G1Flag {
         name: "compare_reliability",
         sub_step: "G1.6",
-        wired: false,
+        wired: true,
         get: |c| c.compare_reliability,
     },
     G1Flag {

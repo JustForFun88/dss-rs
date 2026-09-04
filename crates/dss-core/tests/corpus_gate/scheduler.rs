@@ -138,14 +138,17 @@ fn force_properties(source: &str, c: &mut SolvableCase, fam_props: bool) {
 ///
 /// Measured off the four manifests at RP4.1's audit settlement (2026-09-03),
 /// re-derived by [`the_property_forcing_rule_is_every_live_non_large_case`] on
-/// every run: 523 cases → 519 live → **440** forced once the 79 live
-/// `kind=large*` decks (all of them `solvable_now`) come off, of which **396**
-/// gate the r4133 channel (313 `both` + 83 r4133-only) and 44 are capi-only.
+/// every run: 524 cases → 520 live → **441** forced once the 79 live
+/// `kind=large*` decks (all of them `solvable_now`) come off, of which **397**
+/// gate the r4133 channel (314 `both` + 83 r4133-only) and 44 are capi-only.
+/// GOLDEN_REBASE G1.6(i) added the 524th case,
+/// `controls:energymeter/midi_relcalc.dss` (`both`, `micro`) — the corpus's
+/// only `AllocateLoads` deck — which is the whole of the +1/+1 move.
 ///
-/// 440 is exactly the census population every property measurement in
+/// 441 is exactly the census population every property measurement in
 /// `R4133_PROPS_PLAN.md` rests on ([`run_props_census`] walks the same set), so
 /// this lock also keeps the census and the gate talking about one population.
-const FORCED_PROPS_POPULATION: (usize, usize, usize, usize) = (440, 313, 83, 44);
+const FORCED_PROPS_POPULATION: (usize, usize, usize, usize) = (441, 314, 83, 44);
 
 /// **The property-forcing rule is a rule, not a habit** — the static half of
 /// RP4.1's re-mask alarm (audit settlement, 2026-09-03).
@@ -155,7 +158,7 @@ const FORCED_PROPS_POPULATION: (usize, usize, usize, usize) = (440, 313, 83, 44)
 /// and per-case ledger tags, not scheduler code, and the live guard
 /// `props_norm::assert_r4133_props_compare_ran` is a boolean — a *partial*
 /// re-mask (re-adding `gates_capi()`, which would drop the 83 r4133-only cases
-/// while the 313 `both` ones keep walking) passes it. This test is the one that
+/// while the 314 `both` ones keep walking) passes it. This test is the one that
 /// does not: it walks the four manifests without an oracle and asserts the
 /// forced set **is** the live non-`large` population, cell for cell, with the
 /// per-`engines` split pinned by [`FORCED_PROPS_POPULATION`].
@@ -270,7 +273,7 @@ fn force_pdelements(source: &str, c: &mut SolvableCase) {
 /// on every run. It is written out rather than aliased so that a future
 /// divergence between the two rules shows up as a lock diff on the surface that
 /// moved, instead of silently following the other one.
-const FORCED_PDELEMENTS_POPULATION: (usize, usize, usize, usize) = (440, 313, 83, 44);
+const FORCED_PDELEMENTS_POPULATION: (usize, usize, usize, usize) = (441, 314, 83, 44);
 
 /// **The PDElements-forcing rule is a rule, not a habit** — the static half of
 /// G1.6b's re-mask alarm, modeled on
@@ -282,7 +285,7 @@ const FORCED_PDELEMENTS_POPULATION: (usize, usize, usize, usize) = (440, 313, 83
 ///
 /// `harness::assert_pd_elements_compare_ran` is the live half, and it is a
 /// boolean: re-adding a channel predicate (say `gates_capi()`, which drops the
-/// 83 `engines: "r4133"` cases while the 313 `both` ones keep walking) passes
+/// 83 `engines: "r4133"` cases while the 314 `both` ones keep walking) passes
 /// it. This test does not — it walks the four manifests without an oracle and
 /// asserts the forced set **is** the live non-`large` population, cell for
 /// cell, with the per-`engines` split pinned by

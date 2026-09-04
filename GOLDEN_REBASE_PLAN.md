@@ -226,7 +226,7 @@ today:
 |---|---|---|---|
 | 1 | per-element SeqCurrents / SeqVoltages / SeqPowers / CplxSeq* / Residuals / *MagAng / TotalPowers | `tests/golden/reports/export_seq*` | G1.3a–c |
 | 2 | Bus Zsc1 / Zsc0 / ZscMatrix / YscMatrix / Isc / Voc | `fault_study` golden | G1.5 |
-| 3 | meter extras: CalcCurrent, AllocFactors, Totals, SAIFI/SAIFIKW/SAIDI/CustInterrupts, active-section fields (fastdss captures the FIRST section only — parity = at least that), **ordered** zone vectors (the live gate already set-compares `AllBranchesInZone`/`AllEndElements`/`ZonePCE` — `harness/mod.rs:2022-2041`, `oracle_server.py:226-246`; the gap is order + the extras, NOT the lists' existence), **plus the per-bus reliability columns** `Bus.Lambda / N_interrupts / N_Customers / Cust_Interrupts / Cust_Duration / Int_Duration / TotalMiles / SectionID` (`IBus._columns` on `origin/fastdss` — the very columns `Export BusReliability` renders and the `BUS_INT_DURATION` surface, hence the G2.2a-before-G1.6 ordering). CAIDI does **not** exist in the DSS-Python API on either branch — it is gated only if the r4133 DLL exposes it (measure in G1.11c), else documented as not-comparable | `reliability`/`export_busreliability*` goldens | G1.6 |
+| 3 | meter extras: CalcCurrent, AllocFactors, Totals, SAIFI/SAIFIKW/SAIDI/CustInterrupts, active-section fields (fastdss captures the FIRST section only — parity = at least that), **ordered** zone vectors (the live gate already set-compares `AllBranchesInZone`/`AllEndElements`/`ZonePCE` — `harness/mod.rs:2022-2041`, `oracle_server.py:226-246`; the gap is order + the extras, NOT the lists' existence), **plus the per-bus reliability columns** `Bus.Lambda / N_interrupts / N_Customers / Cust_Interrupts / Cust_Duration / Int_Duration / TotalMiles / SectionID` (`IBus._columns` on `origin/fastdss` — the very columns `Export BusReliability` renders and the `BUS_INT_DURATION` surface, hence the G2.2a-before-G1.6 ordering). CAIDI does **not** exist in the DSS-Python API on either branch — it is gated only if the r4133 DLL exposes it (measure in G1.11c), else documented as not-comparable (**as executed 2026-09-05, part (i)**: the set compare is `compare_meter`'s `cmp_members`, `harness/mod.rs:4584-4599` — **not** `:2022-2041`, a stale citation — and the ordered arm is `compare_reliability`, `harness/mod.rs:6597`; CAIDI **is** compared, as EnergyMeter property #22 through `compare_all_properties` on both channels, so "not-comparable" was never written; see §G1.6) | `reliability`/`export_busreliability*` goldens | G1.6 |
 | 4 | Topology interface: NumLoops, NumIsolatedBranches/Loads, AllLoopedPairs, AllIsolatedBranches/Loads | `show_topology`/`show_isolated` goldens | G1.7 |
 | 5 | Bus.Distance, AllBusDistances, AllNodeDistances | `profile` goldens | G1.4 |
 | 6 | Solution.IncMatrix/IncMatrixCols/IncMatrixRows/Laplacian (fastdss-branch-only additions — exactly why the reference is `origin/fastdss`) | `inc_matrix/` goldens | G1.8 |
@@ -616,6 +616,52 @@ set-compare to **ordered** name vectors, and the **per-bus** reliability surface
 (`IBus._columns` on `origin/fastdss`) — the columns `Export BusReliability`
 renders.
 
+> **As executed — part (i) (2026-09-05, lane `lane-m`; decisions D7, D17a, D18).** The sub-step is
+> split: **(i)** the meter extras + the run protocol (here); **(ii)** the eight per-bus reliability
+> columns + `Bus.Int_Duration` (next on this lane). Part (i) is the only WP-G1 sub-step that changes
+> **how a case is run**: no live corpus deck ran `CalcReliabilityIndices` (both occurrences are
+> comments in `expect_solve_abort` decks), so the whole reliability half would have compared
+> `0 == 0`. Three decisions carry it. **D-i-1** — the executive `RelCalc` is driven **once** per
+> case, on the last step, after the error assert and the `Text.Result` read (the command overwrites
+> it) and before every capture of that checkpoint, on all three engines: it is **not idempotent**
+> (a second run re-accumulates `Bus.TotalMiles`, measured `13.825757575757578 →
+> 22.348484848484844` on both oracles), so the payload lives on the last checkpoint only and the
+> runner asserts exactly that. **D-i-2** — the flag is **manifest-set, never forced**: "has an
+> EnergyMeter" is not a manifest field and forcing it would fire `28724 No EnergyMeter Objects
+> Defined` on ~340 meterless decks, so no `FORCED_RELIABILITY_POPULATION` pin is owed; the four
+> `DOCTechNote` `large*` decks stay out under the same cost guard `force_properties` /
+> `force_pdelements` already apply, and the multi-meter `Bus_Int_Duration` divergence therefore
+> keeps its existing witness (the `export_busreliability_multimeter` golden + its G2.2a pin) and
+> gains no live one. **D-i-3** — `Meters.CalcCurrent` / `AllocFactors` are an **uninitialised read
+> in both oracles** on any deck that never ran `AllocateLoads` (`MeterElement.pas:45-52` ReallocMems
+> without zeroing; only `CalcAllocationFactors` `:54-72` writes them, driven solely by
+> `ExecHelper.pas:2624-2683`), nondeterministic across processes and therefore un-envelopable: a
+> field-scoped `RELIABILITY_SKIP_FIELDS` exclusion with a pin, not a ledger row — and **not a
+> permanent hole**, because the sub-step adds the corpus's only `AllocateLoads` deck
+> (`tests/corpus/controls/energymeter/midi_relcalc.dss`, `both`, three sections) where both fields
+> are compared live on both channels. Population **6 cases** (4 capi-gating / 5 r4133-gating,
+> including the 52902 abort witness); corpus **523 → 524** cases / 520 live, and the two
+> `FORCED_*_POPULATION` locks move `(440, 313, 83, 44) → (441, 314, 83, 44)` with it.
+> Compared **exactly** (`rel = abs = 0`) — the two oracle engines return bit-identical doubles for
+> the whole payload — with three banded cells derived from existing tiers, never new ones:
+> `Meters.Totals` on the **energy** tier (D17a: it is `Σ registers·Mask`, not a reliability number)
+> and `calc_current` / `alloc_factors` on the **current** tier and its image under
+> `SensorCurrent/|I|`. **0 ledger entries** (budget 10). Deliberately **not** re-read from
+> `IMeters._columns`: `SeqListSize` / `CountBranches` / `CountEndElements` are the lengths of the
+> three zone lists we compare in full, and `MeteredElement` / `MeteredTerminal` / `Peakcurrent` are
+> EnergyMeter properties #0/#1/#6 already live-compared by `compare_all_properties` — as is
+> **CAIDI** (property #22), which the plan's row 3 said would be "documented as not-comparable";
+> `CountEndElements` is additionally a **do-not-call** on the r4133 arm (`DMeters.pas:157-163`
+> dereferences `pMeter.BranchList.ZoneEndsList` with no `BranchList` guard, where capi guards with
+> `CheckBranchList(5500)`), recorded in TESTING.md's bridge section. `WP_G1_MODES` **99 → 100** (the
+> one selector `MetersI(22)` `Meters.SetActiveSection`, the table's single declared non-getter).
+> One honest deviation from the spec's test recipe: its `Meters.Totals` non-vacuity corruption
+> (drop the `TotalsMask` multiply) is **vacuous on this population** — no flagged deck sets `mask=`
+> — so the mask arm is pinned in-engine (`meter_totals_is_the_masked_register_sum`) and the
+> gate-level demo is a value drive instead. Exact float compares on this surface (and on G1.6b's)
+> depend on `serde_json`'s `float_roundtrip`: decision **D11/D18**, committed on this lane.
+> Full record: `docs/phase-records/golden-rebase.md` §"GOLDEN_REBASE WP-G1 — records".
+
 ### G1.6b — PDElements interface
 
 `AccumulatedL`, `ParentPDElement`, `FromTerminal`, `IsShunt`, `Numcustomers`,
@@ -645,8 +691,12 @@ fastdss compares wholesale.
 > D9) restoring `DoResetMeterZones` to `ReProcessBusDefs`' tail (r4133 `Circuit.pas:2411`),
 > without which `MakeBusList` left every EnergyMeter with an empty zone. `SectionID`,
 > `TotalMiles`, `Lambda` and `AccumulatedL` are wired and compared but **0 on every live
-> case** (no deck runs `RelCalc`); their oracle-compared non-vacuity and the re-derivation
-> of the exactness note are **owed by G1.6(i)**. Full record:
+> case** at the time (no deck ran `RelCalc`); **G1.6(i) discharged both obligations on
+> 2026-09-05** — the four fields are live and oracle-compared on three cases (pin
+> `pd_elements_relcalc_fields_are_live_after_relcalc`), and the exactness note is re-derived
+> affirmatively at `tests/TOLERANCE_NOTES.md:812`: the twelve 1-ULP cells the live gate first
+> reported were the gate's own JSON decoder (D11/D18 — the wire tokens round-trip bit for bit,
+> 15/15), so no floor was added and `compare_pd_elements` keeps `rel = abs = 0`. Full record:
 > `docs/phase-records/golden-rebase.md` §"GOLDEN_REBASE WP-G1 — records".
 
 ### G1.7 — topology interface

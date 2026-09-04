@@ -362,20 +362,26 @@ impl LedgerRuntime {
             }
             // Per-value masks need their own liveness: `applied`/`exceeded` are
             // per ENTRY, so a dead `variables` scope on an entry that also
-            // excludes voltages would never be reported. Each `variables` scope
-            // must have matched at least one variable this run.
-            for sc in e.scopes.iter().filter(|sc| sc.field == "variables") {
+            // excludes voltages would never be reported. Each
+            // [`PER_VALUE_EXCLUSION_FIELDS`] scope must have matched at least
+            // one value this run.
+            for sc in e
+                .scopes
+                .iter()
+                .filter(|sc| PER_VALUE_EXCLUSION_FIELDS.contains(&sc.field.as_str()))
+            {
                 if !sc.hit.load(Ordering::Relaxed) {
                     problems.push(format!(
                         "  ledger entry `{}` ({:?}, {:?}) has a STALE \
-                         `variables` scope {:?} — it matched no state \
-                         variable this run (a renamed variable, or the \
+                         `{}` scope {:?} — it matched no \
+                         value this run (a renamed selector, or the \
                          divergence is gone). Prune or re-scope it; the \
                          other scopes of this entry cannot report a dead \
                          per-value mask.",
                         e.id,
                         e.case,
                         e.channel,
+                        sc.field,
                         sc.name_re.as_ref().map(|r| r.as_str()).unwrap_or("<all>")
                     ));
                 }
@@ -423,7 +429,8 @@ impl LedgerRuntime {
 /// it (or a typo'd field) would silently never apply, so loading rejects
 /// anything outside this list loudly (pre-E/F audit UGA-T4).
 ///
-/// The last five — `y`, `y_fingerprint`, `yprim`, `meter`, `variables` — are
+/// The last six — `y`, `y_fingerprint`, `yprim`, `meter`, `variables`,
+/// `reliability` — are
 /// **exclusion-only** ([`EXCLUSION_ONLY_FIELDS`]). The first four name a whole
 /// compared artifact rather than a value with a natural envelope, so the only
 /// thing the ledger can say about them is "this (case, channel) does not
@@ -441,7 +448,16 @@ impl LedgerRuntime {
 /// dynamics deck's 22 state variables is to drop the element from the
 /// manifest's `variables` list, which masks the other 19 — and the population
 /// lock counts that as a rigor shrink.
-const LEDGER_FIELDS: [&str; 14] = [
+///
+/// `reliability` (`GOLDEN_REBASE_PLAN.md` G1.6(i)) is the same per-VALUE shape
+/// one level up: the key is the lowercased `<meter>:<field>` pair (`em:saidi`,
+/// `em:sum_branch_flt_rates`) plus the bare `totals` for the circuit-level
+/// `Meters.Totals` array, and `compare_reliability` compares every value
+/// EXACTLY, so — like `variables` — there is no envelope a `divergence` could
+/// re-assert. Its COUNTS (meter walk length, section count, array lengths) stay
+/// unconditional whatever the ledger says, so an exclusion can only ever drop a
+/// value compare, never hide a missing meter.
+const LEDGER_FIELDS: [&str; 15] = [
     "iterations",
     "voltages",
     "injection",
@@ -456,12 +472,20 @@ const LEDGER_FIELDS: [&str; 14] = [
     "yprim",
     "meter",
     "variables",
+    "reliability",
 ];
 
 /// Fields an entry may name only with `kind: "exclusion"` — see
 /// [`LEDGER_FIELDS`]. A `divergence` naming one would promise an envelope
 /// nothing re-asserts.
-const EXCLUSION_ONLY_FIELDS: [&str; 5] = ["y", "y_fingerprint", "yprim", "meter", "variables"];
+const EXCLUSION_ONLY_FIELDS: [&str; 6] = [
+    "y",
+    "y_fingerprint",
+    "yprim",
+    "meter",
+    "variables",
+    "reliability",
+];
 
 /// Fields an `exclusion` entry may name — the mirror obligation of
 /// [`LEDGER_FIELDS`], because "has a runtime handler" turned out to be
@@ -484,7 +508,7 @@ const EXCLUSION_ONLY_FIELDS: [&str; 5] = ["y", "y_fingerprint", "yprim", "meter"
 /// assertion unconditional whatever the ledger says, and asserts for every
 /// index an exclusion drops that both engines spell that variable the same —
 /// a mask selected by name must not be able to slide onto a clean channel.
-const EXCLUSION_FIELDS: [&str; 10] = [
+const EXCLUSION_FIELDS: [&str; 11] = [
     "voltages",
     "element",
     "injection",
@@ -495,6 +519,7 @@ const EXCLUSION_FIELDS: [&str; 10] = [
     "yprim",
     "meter",
     "variables",
+    "reliability",
 ];
 
 /// Fields whose [`Scope::channels`] selects **sub-channels** of a multi-part
@@ -1754,6 +1779,13 @@ fn manifest_engines_map() -> std::collections::BTreeMap<String, Vec<EngineChanne
 /// `GOLDEN_REBASE_PLAN.md` G2.5 entries in `tests/corpus/ledger.json`.
 const EXCLUSION_FIELDS_WITH_PARTITIONING_HANDLER: [&str; 2] = ["voltages", "element"];
 
+/// The [`EXCLUSION_FIELDS`] whose scopes select a single VALUE rather than a
+/// whole artifact, and which therefore need their own per-SCOPE liveness in
+/// [`LedgerRuntime::assert_all_hit`]: `applied`/`exceeded_floor` are per ENTRY,
+/// so a dead selector on an entry that also excludes something coarse would
+/// never be reported (RP3.10 audit finding AT-4, generalized by G1.6(i)).
+const PER_VALUE_EXCLUSION_FIELDS: [&str; 2] = ["variables", "reliability"];
+
 /// Every field [`EXCLUSION_FIELDS`] lets an `exclusion` name must actually be
 /// honoured at runtime — the same guarantee [`LEDGER_FIELDS`] gives one level
 /// up, at the kind granularity `GOLDEN_REBASE_PLAN.md` G2.5 introduced.
@@ -2045,7 +2077,7 @@ fn a_voltages_exclusion_that_masks_nothing_is_stale() {
     // The coarse fields carry no verdict, so they are not policed here — a rule
     // that reported them stale would red the gate on every honest entry.
     for field in EXCLUSION_FIELDS {
-        if field == "voltages" || field == "variables" {
+        if field == "voltages" || PER_VALUE_EXCLUSION_FIELDS.contains(&field) {
             continue;
         }
         assert!(
@@ -2054,27 +2086,28 @@ fn a_voltages_exclusion_that_masks_nothing_is_stale() {
         );
     }
 
-    // `variables` is the one per-VALUE exclusion field, and it is policed by
-    // its own per-SCOPE hit flag rather than by the entry's `exceeded_floor`:
-    // a `name_re` that stops matching (a renamed state variable) would leave
-    // the entry `applied` through its other scopes and mask nothing in silence.
-    // Both directions (RP3.10 audit settlement, finding AT-4).
-    let vars_unhit = mk("variables", true);
-    let err = vars_unhit
-        .assert_all_hit()
-        .expect_err("a `variables` scope that matched nothing must fail the gate");
-    assert!(
-        err.contains("STALE `variables` scope") && err.contains("canary"),
-        "wrong failure text: {err}"
-    );
-    let vars_hit = mk("variables", true);
-    vars_hit.entries[0].scopes[0]
-        .hit
-        .store(true, Ordering::Relaxed);
-    assert!(
-        vars_hit.assert_all_hit().is_ok(),
-        "a `variables` scope that matched a variable must pass"
-    );
+    // The per-VALUE exclusion fields are policed by their own per-SCOPE hit
+    // flag rather than by the entry's `exceeded_floor`: a `name_re` that stops
+    // matching (a renamed state variable, a renamed meter) would leave the
+    // entry `applied` through its other scopes and mask nothing in silence.
+    // Both directions, for every field on the register (RP3.10 audit
+    // settlement finding AT-4; GOLDEN_REBASE G1.6(i) added `reliability`).
+    for field in PER_VALUE_EXCLUSION_FIELDS {
+        let unhit = mk(field, true);
+        let err = unhit
+            .assert_all_hit()
+            .expect_err("a per-value scope that matched nothing must fail the gate");
+        assert!(
+            err.contains(&format!("STALE `{field}` scope")) && err.contains("canary"),
+            "wrong failure text for {field:?}: {err}"
+        );
+        let hit = mk(field, true);
+        hit.entries[0].scopes[0].hit.store(true, Ordering::Relaxed);
+        assert!(
+            hit.assert_all_hit().is_ok(),
+            "a `{field}` scope that matched a value must pass"
+        );
+    }
 }
 
 /// The three [`check_scope_channels`] rules, driven on synthetic scopes because

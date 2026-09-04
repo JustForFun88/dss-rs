@@ -785,7 +785,7 @@ pinned oracle, an artifact, not an engine gap.
 
 ## `PDElements` walk — exact, and why it earns no floor (G1.6b, 2026-09-04)
 
-`harness::compare_pd_elements` (`crates/dss-core/tests/harness/mod.rs:5009`)
+`harness::compare_pd_elements` (`crates/dss-core/tests/harness/mod.rs:5018`)
 compares all fourteen fields of the per-PD-element walk with **`rel = abs = 0`**
 and takes no `Tolerances` argument at all. That is a derivation, not an
 optimism: on every gated case today each compared value is one of
@@ -809,12 +809,197 @@ in both oracles, which is excluded field-by-field in `PD_SKIP_FIELDS`
 value that changes every process would not be a fact. See TESTING.md
 §"The `PDElements` walk".
 
-**Standing obligation for G1.6(i).** `Lambda`, `AccumulatedL` and `TotalMiles`
-are 0 on every live case today because no gated deck runs `RelCalc`. The moment
-G1.6(i) drives it they become accumulated sums over a zone walk
-(`PDElement.pas:106-110`), summation order becomes observable, and this section
-must be **re-derived** before those three stay in the exact set — they are the
-only fields on this surface that can ever acquire a floor.
+**Standing obligation for G1.6(i) — discharged (micro-part F2s, 2026-09-04).**
+G1.6(i) drives the executive `RelCalc`, so `Lambda`, `AccumulatedL` and
+`TotalMiles` are live accumulated sums over the zone walk
+(`PDElement.pas:106-110`) and summation order is observable. **All three stay in
+the exact set**, and the re-derivation is a measurement, not an argument. The
+live gate first reported twelve `PDElements` cells (`accumulated_l`,
+`total_miles`) as 1-ULP Rust↔oracle gaps on BOTH channels. They are not gaps:
+the raw JSON number token each oracle puts on the wire was read for every one of
+them — and for the three reliability cells below — and **15/15 round-trip to the
+port's own f64 bit for bit**, on the capi (`tools/oracle/oracle_server.py`) and
+r4133 (`epri-worker`) transports alike. What lost the last bit was the gate's own
+decoder: `serde_json` without the `float_roundtrip` feature decodes a
+17-significant-digit token as `significand as f64` followed by one divide by a
+power of ten — two roundings — landing 1 ULP away (measured directly against
+`str::parse`: 9 of 9 tokens misparsed, each to exactly the value the gate printed
+as `oracle`). That is the defect coordinator decision **D11** fixes
+workspace-wide (`serde_json` + `float_roundtrip`, lane `lane-b`); with the
+feature on, the five reliability-flagged cases are green in both lanes
+(measured). `SectionID` is discrete and untouched. Both numbers are pinned by
+`exec::tests::reliability::reliability_accumulators_are_correctly_rounded_f64_sums`
+(`0.24000000000000002` vs the decoded `0.24`; `0.9469696969696969` vs
+`0.9469696969696968`). **No floor is added to this surface**, and
+`compare_pd_elements` keeps its no-`Tolerances` signature.
+
+## The `Meters` reliability surface (G1.6(i)) — exact, with one energy-tier exception
+
+`harness::compare_reliability` compares the `RelCalc` payload with
+**`rel = abs = 0`** on every reliability value, discrete and continuous alike.
+The justification is measured twice over:
+
+* the two independent oracle engines return **bit-identical** doubles for every
+  reliability number on `modes:time/midi_duty_ctrl.dss` (`SAIFI
+  0.05600000000000001`, `SAIDI 0.16799999999999998`, `CustInterrupts
+  0.11200000000000002`, `SumBranchFltRates 0.0031360000000000008`,
+  `AvgRepairTime 2.999999999999999`, `FaultRateXRepairHrs 0.009408`) — the
+  arithmetic is sums over integer customer counts and deck literals in a fixed
+  zone-walk order, and the walk order itself was measured bit-identical to both
+  oracles on all five flagged cases;
+* every cell where the port looked 1 ULP off was traced to the wire and found
+  bit-identical (the `PDElements` paragraph above; the reliability cells are
+  `cust_interrupts`, `saifikw` and a section's `sum_branch_flt_rates`).
+
+So a Rust gap on this surface is an **order bug**, never a floor.
+
+**The one exception is `Meters.Totals`** (coordinator decision **D17a**), which
+is compared at the existing energy-accumulation tier `tol.energy_rel` /
+`tol.energy_abs` (both `1e-4`). It is not a reliability quantity at all:
+`TotalizeMeters` (r4133 `Common/Circuit.pas:2520-2538`, capi `:2347-2360`) is
+`Σ_meters Registers[i] · TotalsMask[i]` over the circuit's meter list, i.e. a
+masked sum of the very energy registers `compare_meter` already compares at that
+tier (PORTING_PLAN §4). A sum of quantities that are not exact cannot itself be
+exact, so it **inherits** the summands' floor — this is an existing band applied
+to the same physical quantity, not a new one. Measured on
+`controls:energymeter/midi_energymeter.dss` (the only live two-meter deck): 64
+non-zero slots over the two channels, worst relative deviation
+**7.450981e-10** (slot 24, r4133: `3263.4261264650568` vs `3263.4261288966295`),
+five orders of magnitude inside the tier. The structural identity behind the
+inheritance — masked sum, every meter, creation order — is pinned by
+`exec::tests::reliability::meter_totals_is_the_masked_register_sum`.
+
+### The unguarded `AverageRepairTime` division — NaN and ±inf agree, NaN vs a number does not
+
+`AverageRepairTime := SumFltRatesXRepairHrs / SumBranchFltRates` is written
+without a zero test on **all three** engines: r4133
+`Version8/Source/Meters/EnergyMeter.pas:2563`, capi 0.14.5
+`src/Meters/EnergyMeter.pas:2518`, port `average_repair_time`
+(`crates/dss-core/src/solution/meters/reliability.rs:259`). A feeder section whose
+branches all carry `faultrate=0` therefore evaluates `0.0 / 0.0` and yields
+`NaN` — identically everywhere, since IEEE-754 fixes that result and the port
+performs the same single division on the same two f64 accumulators.
+
+`harness::rel_num_eq` treats two `NaN`s as **agreement** and `±inf` as agreement
+only with the same sign; `NaN` against any finite number is a **failure**, as is
+`+inf` against `-inf`. That is not a tolerance and not a mask: it is the only
+equality relation under which "both engines computed `0/0` here" is expressible,
+and it is strictly narrower than dropping the cell (which is what a skip row
+would do). The regime does not occur in today's flagged population — every
+section measured has `SumBranchFltRates > 0` — so the arm is proved by a harness
+unit test that drives the comparator with `NaN` on both sides (passes) and `NaN`
+against `0.0` (fails):
+`harness::reliability_tests::nan_agrees_with_nan_and_never_with_a_number`. The
+same rule is applied to `Meters.Totals` on top of its energy band.
+
+### `Meters.CalcCurrent` / `Meters.AllocFactors` — the current tier, and where they are not defined at all
+
+These two per-phase arrays are the only cells of this surface that are **not**
+deck-literal arithmetic, so they are the only ones that do not ride the
+exactness rule above. `TMeterElement.CalcAllocationFactors` (r4133
+`Version8/Source/Meters/MeterElement.pas:54-72`) writes
+
+```
+CalculatedCurrent[i] := <the metered element's terminal current>
+PhsAllocationFactor[i] := SensorCurrent[i] / Cabs(CalculatedCurrent[i])   { else 1.0 }
+```
+
+so `CalcCurrent` is literally `|GetCurrents|` of the metered element — the same
+quantity `harness::compare_element` already gates — and `AllocFactors` is that
+quantity in a denominator.
+
+**`calc_current` takes the current tier verbatim**: `i_abs + i_rel·|oracle|`
+(`harness::reliability_array_band`). No new band; the same numbers
+`compare_element` uses.
+
+**`alloc_factors` takes the *image* of that band under `f = S / |I|`**, not a
+band of its own. With `S` fixed (a deck literal, parsed identically on both
+sides) and `|I|` admitted to move by `δ = i_abs + i_rel·|I|`, the induced
+first-order motion of `f` is
+
+```
+|Δf| = |f| · δ / |I| = |f| · (i_rel + i_abs / |I|)
+```
+
+which is what the harness computes, with `|I| = max(|I_port|, |I_oracle|)` as
+the denominator gate (the larger of the two, so a near-zero port current cannot
+inflate the band) and an **exact** compare when both currents are zero — which
+is exactly the Pascal's `ELSE PhsAllocationFactor^[i] := 1.0` branch, where no
+division happened on either side. This mirrors the band-limited-denominator rule
+already documented for the `SeqCurrents %I…` columns: a ratio inherits its
+numerator's band divided by a denominator that is never allowed to vanish.
+
+Measured on `controls:energymeter/midi_relcalc.dss`, the only corpus deck that
+runs `AllocateLoads` (G1.6(i) part F3; port, capi 0.14.5 and EPRI r4133 all read
+through the transports the live gate uses):
+
+| k | port | capi 0.14.5 | EPRI r4133 | capi↔r4133 rel | port↔worst-oracle rel |
+|---|---|---|---|---|---|
+| `calc_current[0]` | `115.69585353499207` | `115.69585353499478` | `115.69585353499097` | 3.29e-14 | 2.34e-14 (capi) |
+| `calc_current[1]` | `84.8661220964024` | `84.86612209639719` | `84.86612209639911` | 2.26e-14 | **6.14e-14** (capi) |
+| `calc_current[2]` | `85.38036092989663` | `85.38036092989765` | `85.38036092989825` | 6.99e-15 | 1.90e-14 (r4133) |
+| `alloc_factors[0]` | `1.0372022534386347` | `1.0372022534386103` | `1.0372022534386445` | 3.30e-14 | 2.35e-14 (capi) |
+| `alloc_factors[1]` | `1.1783264927129167` | `1.178326492712989` | `1.1783264927129624` | 2.26e-14 | **6.14e-14** (capi) |
+| `alloc_factors[2]` | `1.0541065769667621` | `1.0541065769667495` | `1.0541065769667421` | 6.95e-15 | 1.90e-14 (r4133) |
+
+The two **independent oracle engines**, both KLU-based, already disagree with
+each other by up to `3.30e-14` relative here while agreeing bit-for-bit on every
+scalar, every section field and all 67 `Meters.Totals` slots of the same
+payload — that is the proof these two arrays alone are solve-derived. The port's
+worst gap against either of them is `6.14e-14` = `1.9×` the spread the two
+oracles leave between themselves, i.e. faer-vs-KLU on the same footing as
+KLU-vs-KLU. The micro tier (`i_rel = 1e-9`, `i_abs = 1e-6`) leaves four to five
+orders of headroom; the concrete bands the shipped comparator computes on this
+deck are `1.116e-6` for `calc_current[0]` (`1e-6 + 1e-9·115.7`) and `1.000e-8`
+for `alloc_factors[0]` (`1.0372·(1e-9 + 1e-6/115.7)`) — the propagated band is
+~100× *tighter* than applying `i_abs + i_rel·|f|` to a dimensionless ~1.0
+quantity would have been. Both are shown non-vacuous by perturbing the port's
+arrays by 1e-6 relative in a scratch copy, which reds the case on both channels
+(G1.6(i) part F3), and the identity itself is pinned with all three engines'
+numbers by
+`tests/reliability_pins.rs::meter_allocation_factors_are_the_peak_current_over_the_metered_current`.
+
+**Everywhere else the two fields are excluded, and that is not a floor.** Until a
+deck runs the executive `AllocateLoads`, both oracles read the arrays out of
+**uninitialized memory**: `TMeterElement.AllocateSensorArrays` `ReallocMem`s
+`CalculatedCurrent` and `PhsAllocationFactor` without zeroing them (r4133
+`Version8/Source/Meters/MeterElement.pas:45-52`), only
+`CalcAllocationFactors` (`:54-72`) ever writes them, and its sole driver is
+`TExecHelper.DoAllocateLoadsCmd` (r4133
+`Version8/Source/Executive/ExecHelper.pas:2624-2683`). Measured on
+`controls:combo/combo_protection.dss` with three fresh `epri-worker` processes
+(G1.6(i) part R): `Meters.AllocFactors` =
+`[2.806806272625585e-309, 2.121995791e-314, 2.37e-322]` in run 1 and
+`[…, …, 2.4e-322]` in runs 2-3 — denormal garbage whose third slot **changes
+between processes**. A value that changes every run cannot be enveloped, so
+there is no band to derive and no `tests/corpus/ledger.json` row to write
+(coordinator decision D4, the `PD_SKIP_FIELDS` precedent): the cells are dropped
+field-by-field by `harness::RELIABILITY_SKIP_FIELDS`, whose predicate is the
+**port's own** regime (both arrays still exactly zero) so it evaporates on the
+one deck that allocates, and the port's side is pinned by
+`tests/reliability_pins.rs::meter_alloc_factors_are_zero_until_allocateloads_runs`.
+
+### Two notes that keep this section true
+
+**The zone lists are compared in order, not as sets.** The exactness argument
+above rests on both engines accumulating in the same zone-walk order, so since
+G1.6(i) part F4 `compare_reliability` asserts the sequence of
+`AllBranchesInZone` / `AllEndElements` / `ZonePCE` element by element and not
+merely their membership (`compare_meter`'s deliberate order-independence is
+untouched — this surface layers the stronger contract on top). Measured
+bit-identical, port vs both oracles, on every flagged case.
+
+**A corpus deck that makes `SAIFIkW` solve-derived would break this section.**
+`SAIFIkW = Σ kWBase·RelWeighting·Bus_Num_Interrupt / Σ kWBase` (r4133
+`Version8/Source/Meters/EnergyMeter.pas:2605,2632`), so it is deck-literal
+arithmetic only while the zone's loads carry a literal `kW`. An early draft of
+`midi_relcalc.dss` used `xfkva=`/`allocationfactor=` loads, whose `kWBase` is
+recomputed from the solve: `SAIFIkW` then measured `0.18812283916834857` on capi
+against `0.18812283916834877` on r4133 (1.06e-15 relative) while every other
+scalar stayed bit-identical. The shipped deck uses kW-spec loads for exactly
+this reason (recorded in its header and manifest note); a future reliability
+deck must do the same, or `SAIFIkW` leaves the exact set and needs its own
+derivation here.
 
 ## r4133 event-log masks (`harness::EVENTLOG_MASKS`, §1.3-3)
 

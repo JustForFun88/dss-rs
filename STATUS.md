@@ -149,30 +149,30 @@ the six CLAUDE.md §"Known upstream bugs" reproduced in any lane. Full record:
 [`golden-rebase.md`](docs/phase-records/golden-rebase.md) section "GOLDEN_REBASE
 WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 
-**GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened
-2026-08-08). Landed: **G1.1** — killed on day one, delivered instead by
-`R4133_PROPS_PLAN.md` RP4.1 (2026-09-03), so **G1.1 is satisfied** and **G3.4**
-(`cim/`, `json/`, `json_import/`) + **G3.5** (`props/`) are unblocked. **G1.2**
-(the ESPVLControl deck, the last zero-coverage class) 2026-08-29. **G1.0** (the
-rails, D1/D2/D3) 2026-09-04 `c4b67a6e`: the ten-flag manifest vocabulary, explicit
-`channels` on the ten bare `element` exclusions, the capture-presence guard and the
-r4133 bridge rails, whose mode probe **discharges the G1.11 mode-capability
-acceptance for the whole WP**; nothing new compared. **G1.6b** — the WP's first
-surface, the `PDElements` walk (13 fastdss columns + `parent_name`, both channels,
-compared exactly) — landed 2026-09-04 on lane `lane-m` (`06808a6d` + `e1e18367`,
-settlement `c6a3c0a8`): 0 ledger entries, 0 golden bytes, eight `PD_SKIP_FIELDS`
-cells excluded and pinned for a proven uninitialized read in **both** oracles
-(scoped to the in-zone shunt element), `WP_G1_MODES` 96 → 99, plus the D9 engine
-fix (`MakeBusList` now resets the meter zones, `Circuit.pas:2411`; one deck
-moved). **Merging `lane-m`: `06808a6d` does not build alone — squash the pair or
-merge `--no-ff`.** G1.3a–d, G1.4–G1.11c and WP-G3–G5 remain. Full record: the
-same file, "GOLDEN_REBASE WP-G1 — records".
+**GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened 2026-08-08).
+Landed: **G1.1** — killed on day one and delivered instead by `R4133_PROPS_PLAN.md`
+RP4.1 (2026-09-03), so it is **satisfied** and **G3.4**/**G3.5** are unblocked;
+**G1.2** (the ESPVLControl deck, the last zero-coverage class) 2026-08-29; **G1.0**
+(the rails, D1/D2/D3) 2026-09-04 `c4b67a6e` — the ten-flag manifest vocabulary, the
+ledger `channels` spelling, the capture-presence guard and the r4133 bridge rails,
+whose mode probe **discharges the G1.11 mode-capability acceptance for the whole WP**.
+On lane `lane-m`: **G1.6b** (2026-09-04, `06808a6d` + `e1e18367` + `c6a3c0a8`) — the
+`PDElements` walk, 13 fastdss columns, both channels, exact, 0 ledger rows, eight
+pinned skip cells for an uninitialized read in **both** oracles, plus the D9 fix; and
+**G1.6(i)** (2026-09-05, `e343d9e8` + the surface commit) — meter extras and **the run
+protocol**: the gate drives the executive `RelCalc` once per case on six flagged cases
+and compares the indices, the section fields, `CalcCurrent`/`AllocFactors`,
+`Meters.Totals` and the **ordered** zone lists, exact but for three cells banded from
+existing tiers (D17a); 0 ledger rows, one pinned skip exclusion closed on the corpus's
+only `AllocateLoads` deck (523 → **524** cases), `WP_G1_MODES` 96 → **100**, and
+G1.6b's two deferrals discharged (**D11/D18**). **Merging `lane-m`: `06808a6d` does
+not build alone — squash the pair or merge `--no-ff`.** G1.3a–d, G1.4–G1.11c and
+WP-G3–G5 remain. Full record: the same file, "GOLDEN_REBASE WP-G1 — records".
 
-**Next.** **`GOLDEN_REBASE_PLAN.md` G1.6(i)** on lane `lane-m` — meter extras +
-the per-bus reliability columns; it drives `RelCalc` and owes the oracle-compared
-non-vacuity of G1.6b's four zone-derived fields. In parallel:
-element `G1.3a → 3d(i) → 3d(ii) → 3b → 3c`, bus `G1.4a → G1.5 → G1.4c → G1.4b`,
-singles `G1.9 → G1.7 → G1.8 → G1.10a/b/c`; **G3.4**/**G3.5** runnable. Queued
+**Next.** **`GOLDEN_REBASE_PLAN.md` G1.6(ii)** on lane `lane-m` — the eight per-bus
+reliability columns + `Bus.Int_Duration`, on G1.6(i)'s population and protocol. In
+parallel: element `G1.3a → 3d(i) → 3d(ii) → 3b → 3c`, bus `G1.4a → G1.5 → G1.4c →
+G1.4b`, singles `G1.9 → G1.7 → G1.8 → G1.10a/b/c`; **G3.4**/**G3.5** runnable. Queued
 behind GOLDEN_REBASE: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
