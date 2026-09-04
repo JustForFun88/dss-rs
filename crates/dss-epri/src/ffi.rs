@@ -7,6 +7,8 @@
 //!
 //! - `XxxI(mode: longint, arg: longint): longint`      → [`FnI`]
 //! - `XxxF(mode: longint, arg: double): double`        → [`FnF`]
+//!   (two families declare a second double instead — `CircuitF`/`CmathLibF`,
+//!   → [`FnF2`])
 //! - `XxxS(mode: longint, arg: PAnsiChar): PAnsiChar`  → [`FnS`]
 //! - `XxxV(mode: longint; var ptr; var type, size)`    → [`FnV`] (the "V-protocol":
 //!   the DLL fills a global dynamic array and hands back a borrowed pointer + a
@@ -34,6 +36,26 @@ use libloading::os::windows::{Library, Symbol};
 pub type FnI = unsafe extern "C" fn(i32, i32) -> i32;
 /// `XxxF(mode, arg): double` — float scalar in/out.
 pub type FnF = unsafe extern "C" fn(i32, f64) -> f64;
+/// `XxxF(mode, arg1, arg2): double` — the **two-double** `F` variant.
+///
+/// The `F` shape is not uniform across the DDLL: exactly two of the 42 families
+/// declare a second double — `CircuitF(mode: longint; arg1, arg2: double)`
+/// (`DCircuit.pas:27`, impl `:193`; mode 0 `Circuit.Capacity` takes
+/// `CapacityStart` + `CapacityIncrement`) and `CmathLibF(mode: longint;
+/// arg1, arg2: double)` (`DCmathLib.pas:5`, impl `:12`; mode 0 `Cabs`, mode 1
+/// `Cdang`, both over `cmplx(arg1, arg2)`). Every other `XxxF` — and every
+/// `XxxI`/`XxxS`/`XxxV` — is uniform (exhaustive sweep of the vendored DDLL
+/// `interface` sections, G1.0).
+///
+/// # SAFETY
+/// Binding these two with [`FnF`] is an ABI mismatch, not a nuisance: the second
+/// double is never placed in `XMM2`, so the callee reads whatever the register
+/// happened to hold. Measured against the vendored DLL before the fix
+/// (2026-09-04): `CmathLibF(0, 3.0, ?)` returned `3.0` instead of
+/// `Cabs(3+4j) = 5.0`. [`crate::families::TWO_DOUBLE_F`] names the two families
+/// and [`crate::families::FamilyTable::load`] binds them here; the pin is
+/// `crates/dss-epri/tests/protocol.rs::cmath_lib_f_takes_two_doubles`.
+pub type FnF2 = unsafe extern "C" fn(i32, f64, f64) -> f64;
 /// `XxxS(mode, arg): PAnsiChar` — string in/out (borrowed `\0`-terminated bytes).
 pub type FnS = unsafe extern "C" fn(i32, *const c_char) -> *const c_char;
 /// `XxxV(mode; var ptr; var type; var size)` — the V-protocol array getter.

@@ -24,17 +24,40 @@
 
 use libloading::os::windows::Library;
 
-use crate::ffi::{FnF, FnI, FnS, FnV, sym};
+use crate::ffi::{FnF, FnF2, FnI, FnS, FnV, sym};
 
 /// One family's four possible entry points. Any may be `None` (the family lacks
 /// that ABI shape). `Copy`/`Send`: bare `fn` pointers borrow nothing.
+///
+/// The `F` shape comes in two ABIs: the uniform one-double [`FnF`] (`f`) and the
+/// two-double [`FnF2`] (`f2`) that exactly the [`TWO_DOUBLE_F`] families declare.
+/// A family carries **at most one** of them — enforced at load.
 #[derive(Clone, Copy, Default)]
 pub struct Family {
     pub i: Option<FnI>,
     pub f: Option<FnF>,
+    /// The two-double `F` entry point ([`FnF2`]); `Some` only for the
+    /// [`TWO_DOUBLE_F`] families, and then `f` is `None`.
+    pub f2: Option<FnF2>,
     pub s: Option<FnS>,
     pub v: Option<FnV>,
 }
+
+impl Family {
+    /// `true` when the family has an `F` entry point of **either** ABI.
+    pub fn has_f(&self) -> bool {
+        self.f.is_some() || self.f2.is_some()
+    }
+}
+
+/// The families whose `F` export takes **two** doubles rather than one:
+/// `CircuitF(mode; arg1, arg2: double)` (`DCircuit.pas:27`, impl `:193`) and
+/// `CmathLibF(mode; arg1, arg2: double)` (`DCmathLib.pas:5`, impl `:12`). An
+/// exhaustive sweep of the vendored DDLL `interface` sections (G1.0, 2026-09-04)
+/// found no third one, and every `XxxI`/`XxxS`/`XxxV` uniform. [`FamilyTable::load`]
+/// binds these two through [`FnF2`] and leaves [`Family::f`] `None`; the
+/// mismatch was live-measured before the fix (see [`FnF2`]).
+pub const TWO_DOUBLE_F: [&str; 2] = ["Circuit", "CmathLib"];
 
 /// A `\0`-terminated export symbol name, or `None` if the family lacks the shape.
 type Sym = Option<&'static [u8]>;
@@ -353,19 +376,40 @@ impl FamilyTable {
     /// The returned pointers are valid only while `lib` stays loaded, which
     /// [`crate::ffi::Dll`] guarantees by leaking it for the session.
     pub unsafe fn load(lib: &Library) -> Result<FamilyTable, String> {
+        // Every `TWO_DOUBLE_F` name must be a real registry family that really
+        // has an `F` symbol — otherwise the split would silently drop an entry
+        // point (or name a family that does not exist).
+        for want in TWO_DOUBLE_F {
+            match REGISTRY.iter().find(|(n, ..)| *n == want) {
+                None => return Err(format!("TWO_DOUBLE_F names unknown family {want:?}")),
+                Some((_, _, f, _, _)) if f.is_none() => {
+                    return Err(format!(
+                        "TWO_DOUBLE_F names {want:?}, which has no F symbol"
+                    ));
+                }
+                Some(_) => {}
+            }
+        }
         let mut entries = Vec::with_capacity(REGISTRY.len());
         for &(name, i, f, s, v) in REGISTRY {
+            let two_double = TWO_DOUBLE_F.contains(&name);
             // SAFETY: each `sym::<Fn*>` matches the listed symbol's transcribed
             // ABI (module invariant); a missing symbol is a hard error (below),
-            // never a silent skip — a wrong DLL must fail loudly.
+            // never a silent skip — a wrong DLL must fail loudly. The `F` symbol
+            // of a `TWO_DOUBLE_F` family is transcribed as `FnF2` instead
+            // (`DCircuit.pas:27` / `DCmathLib.pas:5`).
             let fam = Family {
                 i: match i {
                     Some(n) => Some(unsafe { sym::<FnI>(lib, n) }?),
                     None => None,
                 },
                 f: match f {
-                    Some(n) => Some(unsafe { sym::<FnF>(lib, n) }?),
-                    None => None,
+                    Some(n) if !two_double => Some(unsafe { sym::<FnF>(lib, n) }?),
+                    _ => None,
+                },
+                f2: match f {
+                    Some(n) if two_double => Some(unsafe { sym::<FnF2>(lib, n) }?),
+                    _ => None,
                 },
                 s: match s {
                     Some(n) => Some(unsafe { sym::<FnS>(lib, n) }?),
@@ -376,6 +420,16 @@ impl FamilyTable {
                     None => None,
                 },
             };
+            // No family may carry both `F` ABIs, and the split must not lose an
+            // entry point the registry declared.
+            if fam.f.is_some() && fam.f2.is_some() {
+                return Err(format!("family {name} bound both F ABIs"));
+            }
+            if f.is_some() != fam.has_f() {
+                return Err(format!(
+                    "family {name} lost its F entry point in the ABI split"
+                ));
+            }
             entries.push((name, fam));
         }
         Ok(FamilyTable { entries })
@@ -390,7 +444,9 @@ impl FamilyTable {
     }
 
     /// `(family, kinds)` pairs for the `caps` handshake, where `kinds` is the
-    /// present-shape subset of `"ifsv"` (e.g. `"isv"` for Monitors).
+    /// present-shape subset of `"ifsv"` (e.g. `"isv"` for Monitors). A
+    /// [`TWO_DOUBLE_F`] family reports `f` like any other — the ABI split is an
+    /// internal detail of how the same entry point is called, not a lost shape.
     pub fn manifest(&self) -> Vec<(&'static str, String)> {
         self.entries
             .iter()
@@ -399,7 +455,7 @@ impl FamilyTable {
                 if f.i.is_some() {
                     k.push('i');
                 }
-                if f.f.is_some() {
+                if f.has_f() {
                     k.push('f');
                 }
                 if f.s.is_some() {
@@ -414,12 +470,14 @@ impl FamilyTable {
     }
 
     /// Total bound family entry points (for the smoke's coverage assertion).
+    /// The two `F` ABIs count as the one entry point they are, so the total
+    /// stays 147 across the [`TWO_DOUBLE_F`] split.
     pub fn entry_point_count(&self) -> usize {
         self.entries
             .iter()
             .map(|(_, f)| {
                 f.i.is_some() as usize
-                    + f.f.is_some() as usize
+                    + f.has_f() as usize
                     + f.s.is_some() as usize
                     + f.v.is_some() as usize
             })
@@ -615,6 +673,36 @@ mod tests {
             decode_v(tag, &bytes),
             VData::Strings(vec!["a".into(), "bb".into()])
         );
+    }
+
+    /// The two-double `F` split is declared over the registry, offline: both
+    /// names exist, both really have an `F` symbol, and the registry still
+    /// declares 42 families / 147 entry points (so the split can only move an
+    /// `F` between two ABIs, never drop one). The live counterpart is
+    /// [`FamilyTable::load`]'s hard error.
+    #[test]
+    fn two_double_f_names_real_f_bearing_families_and_moves_no_entry_point() {
+        for want in TWO_DOUBLE_F {
+            let row = REGISTRY
+                .iter()
+                .find(|(n, ..)| *n == want)
+                .unwrap_or_else(|| panic!("TWO_DOUBLE_F names unknown family {want:?}"));
+            assert!(
+                row.2.is_some(),
+                "TWO_DOUBLE_F names {want:?}, which has no F symbol"
+            );
+        }
+        assert_eq!(REGISTRY.len(), 42, "family registry drifted");
+        let points: usize = REGISTRY
+            .iter()
+            .map(|(_, i, f, s, v)| {
+                i.is_some() as usize
+                    + f.is_some() as usize
+                    + s.is_some() as usize
+                    + v.is_some() as usize
+            })
+            .sum();
+        assert_eq!(points, 147, "entry-point count drifted");
     }
 
     #[test]

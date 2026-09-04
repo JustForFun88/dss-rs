@@ -66,7 +66,12 @@
           "name_re": "(?i)^capacitor\\.cap_cmat$"
         },
         {
-          "field": "element"
+          "field": "element",
+          "channels": [
+            "currents",
+            "powers",
+            "losses"
+          ]
         }
       ],
       "cause_ref": "makeposseq-cuf-discarded",
@@ -92,7 +97,12 @@
           "name_re": "(?i)^gictransformer\\.tg3$"
         },
         {
-          "field": "element"
+          "field": "element",
+          "channels": [
+            "currents",
+            "powers",
+            "losses"
+          ]
         }
       ],
       "cause_ref": "gic-pct-r2-ignored",
@@ -118,7 +128,12 @@
           "name_re": "(?i)^gictransformer\\.tg3$"
         },
         {
-          "field": "element"
+          "field": "element",
+          "channels": [
+            "currents",
+            "powers",
+            "losses"
+          ]
         }
       ],
       "cause_ref": "gic-pct-r2-ignored",
@@ -144,7 +159,12 @@
           "name_re": "(?i)^gictransformer\\.tg5$"
         },
         {
-          "field": "element"
+          "field": "element",
+          "channels": [
+            "currents",
+            "powers",
+            "losses"
+          ]
         }
       ],
       "cause_ref": "gic-pct-r2-ignored",
@@ -170,7 +190,12 @@
           "name_re": "(?i)^gictransformer\\.tg5$"
         },
         {
-          "field": "element"
+          "field": "element",
+          "channels": [
+            "currents",
+            "powers",
+            "losses"
+          ]
         }
       ],
       "cause_ref": "gic-pct-r2-ignored",
@@ -259,7 +284,12 @@
           "field": "injection"
         },
         {
-          "field": "element"
+          "field": "element",
+          "channels": [
+            "currents",
+            "powers",
+            "losses"
+          ]
         },
         {
           "field": "monitor"
@@ -1287,7 +1317,12 @@
           "field": "injection"
         },
         {
-          "field": "element"
+          "field": "element",
+          "channels": [
+            "currents",
+            "powers",
+            "losses"
+          ]
         },
         {
           "field": "yprim",
@@ -1325,7 +1360,12 @@
           "field": "injection"
         },
         {
-          "field": "element"
+          "field": "element",
+          "channels": [
+            "currents",
+            "powers",
+            "losses"
+          ]
         },
         {
           "field": "yprim",
@@ -1363,7 +1403,12 @@
           "field": "injection"
         },
         {
-          "field": "element"
+          "field": "element",
+          "channels": [
+            "currents",
+            "powers",
+            "losses"
+          ]
         },
         {
           "field": "variables",
@@ -1394,7 +1439,12 @@
           "field": "injection"
         },
         {
-          "field": "element"
+          "field": "element",
+          "channels": [
+            "currents",
+            "powers",
+            "losses"
+          ]
         },
         {
           "field": "variables",

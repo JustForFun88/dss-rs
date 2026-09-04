@@ -14,8 +14,11 @@
 use std::ffi::{c_char, c_void};
 use std::path::Path;
 
-use crate::families::{Family, FamilyTable, VData, decode_v, encode_v_set, vset_len};
+use crate::families::{
+    Family, FamilyTable, VData, decode_string_raw, decode_v, encode_v_set, vset_len,
+};
 use crate::ffi::{Dll, DllFns, FnV, YMatrixFns, cstr_to_string, to_cstring};
+use crate::modes::{self, ModeKind, ModeSpec, ModeStatus};
 
 /// An untolerated engine error (mirrors dss-python raising on `Error.Number != 0`).
 #[derive(Debug, Clone)]
@@ -48,7 +51,8 @@ pub type Pcl = (Vec<f64>, Vec<f64>, Vec<f64>);
 
 /// One generic C-API call request for [`Engine::ffi_dispatch`]. `kind` selects
 /// the ABI shape (`"i"`/`"f"`/`"s"`/`"v"`); only the matching scalar
-/// (`iarg`/`farg`/`sarg`) is used. `vset` (V only) drives an array-SET mode.
+/// (`iarg`/`farg`[`/farg2`](FfiCall::farg2)/`sarg`) is used. `vset` (V only)
+/// drives an array-SET mode.
 #[derive(Debug, Clone, Default)]
 pub struct FfiCall<'a> {
     pub family: &'a str,
@@ -56,6 +60,10 @@ pub struct FfiCall<'a> {
     pub mode: i32,
     pub iarg: i32,
     pub farg: f64,
+    /// The **second** double of a [`crate::families::TWO_DOUBLE_F`] family's `F`
+    /// entry point (`CircuitF`/`CmathLibF` — `DCircuit.pas:27`,
+    /// `DCmathLib.pas:5`). Ignored by every other family; `Default` = `0.0`.
+    pub farg2: f64,
     pub sarg: &'a str,
     pub vset: Option<VData>,
 }
@@ -761,6 +769,98 @@ impl Engine {
         self.families.entry_point_count()
     }
 
+    /// Ask whether this DLL revision serves `(family, kind, mode)`.
+    ///
+    /// The grouped DDLL API has no `GetProcAddress` miss to detect: an absent
+    /// property falls through its family's `case` into an `else` branch that
+    /// returns a **sentinel** ([`crate::modes`]). This drives the mode with a
+    /// neutral argument (`0` / `0.0` / `""`, the array *getter* for `V`) and
+    /// classifies the reply, so a capture never records `-1` or `"Error, …"` as
+    /// data. It never panics.
+    ///
+    /// Refusals, all *before* any FFI:
+    /// * a `(family, kind, mode)` on [`modes::DO_NOT_CALL`] returns
+    ///   [`ModeStatus::DoNotCall`] — the DLL is not touched;
+    /// * an `S` probe on a family with no measured sentinel
+    ///   ([`modes::s_sentinel`]), or a `V` probe on one whose `else` branch
+    ///   writes no sentinel at all ([`modes::V_WITHOUT_SENTINEL`]), is an
+    ///   `Err` — reporting `Served` there would be a silent mask.
+    ///
+    /// **Point this at getter modes only.** A `mode` that is a *setter* in the
+    /// DDLL `case` would be executed with the neutral argument, writing engine
+    /// state; the classification cannot tell the two apart.
+    ///
+    /// The errno is drained afterwards (as [`crate::script::handle_ffi`] does)
+    /// so a probe cannot poison the next [`Engine::assert_clean`]; it is not part
+    /// of the verdict (measured 2026-09-04: every unknown-mode reply left
+    /// errno 0).
+    pub fn probe_mode(
+        &self,
+        family: &str,
+        kind: ModeKind,
+        mode: i32,
+    ) -> Result<ModeStatus, EngineError> {
+        if let Some(refusal) = modes::check_callable(family, kind, mode) {
+            return Ok(refusal);
+        }
+        match kind {
+            ModeKind::S if modes::s_sentinel(family).is_none() => {
+                return Err(EngineError::Other(format!(
+                    "probe_mode: no measured S unknown-mode sentinel for family {family:?} — \
+                     add its D*.pas else-branch literal to modes::S_SENTINELS before probing S"
+                )));
+            }
+            ModeKind::V if modes::v_sentinel_undetectable(family) => {
+                return Err(EngineError::Other(format!(
+                    "probe_mode: family {family:?} writes no V unknown-mode sentinel \
+                     (modes::V_WITHOUT_SENTINEL) — a miss cannot be detected from its reply"
+                )));
+            }
+            _ => {}
+        }
+        let status = match kind {
+            ModeKind::V => {
+                // The raw `myType` tag matters here (`ActiveClassV` reports the
+                // miss as `myType = -1`), and `decode_v` folds every unknown tag
+                // into `Bytes`, so read the V buffer directly instead.
+                let fam = self
+                    .families
+                    .get(family)
+                    .ok_or_else(|| EngineError::Other(format!("unknown FFI family {family:?}")))?;
+                let f = fam.v.ok_or_else(|| {
+                    EngineError::Other(format!("family {family} has no V entry point"))
+                })?;
+                let (ty, bytes) = self.call_v(f, mode);
+                let strings = if ty == modes::SENTINEL_V_TYPE_TAG {
+                    decode_string_raw(&bytes)
+                } else {
+                    Vec::new()
+                };
+                modes::classify_v(ty, &strings)
+            }
+            _ => {
+                let out = self.ffi_dispatch(FfiCall {
+                    family,
+                    kind: kind.as_str(),
+                    mode,
+                    ..Default::default()
+                })?;
+                match out {
+                    FfiOut::I(v) => modes::classify_i(v),
+                    FfiOut::F(v) => modes::classify_f(v),
+                    FfiOut::S(s) => modes::classify_s(family, &s),
+                    FfiOut::V(_) | FfiOut::VSet(_) => {
+                        return Err(EngineError::Other(format!(
+                            "probe_mode: {kind} dispatch returned a V reply for {family}:{mode}"
+                        )));
+                    }
+                }
+            }
+        };
+        let _ = self.poll_error();
+        Ok(status)
+    }
+
     /// Dispatch one generic C-API call ([`FfiCall`]). For a `"v"` call,
     /// `vset = None` reads the array getter for `mode`; `vset = Some(_)` drives the
     /// SET mode, handing the array in via `myPointer`. The caller polls
@@ -772,6 +872,7 @@ impl Engine {
             mode,
             iarg,
             farg,
+            farg2,
             sarg,
             vset,
         } = call;
@@ -788,9 +889,23 @@ impl Engine {
                 Ok(FfiOut::I(unsafe { f(mode, iarg) }))
             }
             "f" => {
-                let f = fam.f.ok_or_else(|| missing("F"))?;
-                // SAFETY: `f` is a transcribed `XxxF(mode, arg): double` cdecl.
-                Ok(FfiOut::F(unsafe { f(mode, farg) }))
+                // Two ABIs share this shape: the uniform one-double `XxxF` and
+                // the two-double `CircuitF`/`CmathLibF`
+                // (`crate::families::TWO_DOUBLE_F`). A family with neither keeps
+                // the "no F entry point" error.
+                match (fam.f, fam.f2) {
+                    (Some(f), _) => {
+                        // SAFETY: `f` is a transcribed `XxxF(mode, arg): double` cdecl.
+                        Ok(FfiOut::F(unsafe { f(mode, farg) }))
+                    }
+                    (None, Some(f2)) => {
+                        // SAFETY: `f2` is a transcribed
+                        // `XxxF(mode; arg1, arg2: double): double` cdecl
+                        // (`DCircuit.pas:27`, `DCmathLib.pas:5`).
+                        Ok(FfiOut::F(unsafe { f2(mode, farg, farg2) }))
+                    }
+                    (None, None) => Err(missing("F")),
+                }
             }
             "s" => {
                 let f = fam.s.ok_or_else(|| missing("S"))?;
@@ -812,6 +927,616 @@ impl Engine {
             }
             other => Err(EngineError::Other(format!("unknown FFI kind {other:?}"))),
         }
+    }
+
+    // ---- typed WP-G1 mode accessors (G1.0 rails) --------------------------
+    //
+    // One thin `pub fn` per [`modes::WP_G1_MODES`] row: the mode *number* lives
+    // only in that table, and each accessor takes its row by reference, so a
+    // number can never drift between the table and its reader. Every accessor
+    // funnels through [`Engine::read_mode`], which refuses a do-not-call mode
+    // before any FFI and checks the reply's shape against the row.
+    //
+    // These are **rails**, not capture: no gate path calls them yet. Each WP-G1
+    // surface sub-step wires the rows it needs into `crate::capture` and
+    // compares them against the capi channel on a gated `both` case
+    // (`GOLDEN_REBASE_PLAN.md` WP-G1, coordinator decision D2).
+
+    /// Read one WP-G1 mode ([`modes::ModeSpec`]) generically — the path every
+    /// typed accessor below shares, and the one a table-driven test walks.
+    ///
+    /// Refuses **before any FFI** a mode on [`modes::DO_NOT_CALL`], and rejects
+    /// a reply whose shape is not the row's: for a `V` row the observed `myType`
+    /// must equal the tag the `case` arm assigns ([`modes::ModeSpec::v_type`]),
+    /// so a shape change in a future DLL revision fails loudly instead of being
+    /// decoded as garbage.
+    ///
+    /// Drives the mode with the neutral argument (`0` / `0.0` / `""`, the array
+    /// *getter* for `V`), which is sound because every table row is a getter
+    /// (`modes::EXCLUDED_WRITE_MODES` records the two arms that are not, and a
+    /// unit test keeps them out of the table).
+    pub fn read_mode(&self, spec: &ModeSpec) -> Result<FfiOut, EngineError> {
+        if let Some(refusal) = modes::check_callable(spec.family, spec.kind, spec.mode) {
+            return Err(EngineError::Other(format!("{spec}: {refusal}")));
+        }
+        let out = self.ffi_dispatch(FfiCall {
+            family: spec.family,
+            kind: spec.kind.as_str(),
+            mode: spec.mode,
+            ..Default::default()
+        })?;
+        match (&out, spec.kind) {
+            (FfiOut::I(_), ModeKind::I)
+            | (FfiOut::F(_), ModeKind::F)
+            | (FfiOut::S(_), ModeKind::S) => Ok(out),
+            (FfiOut::V(v), ModeKind::V) => {
+                let want = spec.v_type.ok_or_else(|| {
+                    EngineError::Other(format!("{spec}: a V row must declare its myType tag"))
+                })?;
+                if v.type_tag() == want {
+                    Ok(out)
+                } else {
+                    Err(EngineError::Other(format!(
+                        "{spec}: the DLL replied with myType {} but the case arm assigns {want} \
+                         — the V shape of this mode changed",
+                        v.type_tag()
+                    )))
+                }
+            }
+            (other, kind) => Err(EngineError::Other(format!(
+                "{spec}: a {kind} mode replied {other:?}"
+            ))),
+        }
+    }
+
+    /// The scalar `i32` of an `I` row.
+    fn read_mode_i(&self, spec: &ModeSpec) -> Result<i32, EngineError> {
+        match self.read_mode(spec)? {
+            FfiOut::I(v) => Ok(v),
+            other => Err(EngineError::Other(format!(
+                "{spec}: expected I, got {other:?}"
+            ))),
+        }
+    }
+
+    /// The scalar `f64` of an `F` row.
+    fn read_mode_f(&self, spec: &ModeSpec) -> Result<f64, EngineError> {
+        match self.read_mode(spec)? {
+            FfiOut::F(v) => Ok(v),
+            other => Err(EngineError::Other(format!(
+                "{spec}: expected F, got {other:?}"
+            ))),
+        }
+    }
+
+    /// The string of an `S` row.
+    fn read_mode_s(&self, spec: &ModeSpec) -> Result<String, EngineError> {
+        match self.read_mode(spec)? {
+            FfiOut::S(v) => Ok(v),
+            other => Err(EngineError::Other(format!(
+                "{spec}: expected S, got {other:?}"
+            ))),
+        }
+    }
+
+    /// The `i32` array of a `myType = 1` `V` row.
+    fn read_mode_ints(&self, spec: &ModeSpec) -> Result<Vec<i32>, EngineError> {
+        match self.read_mode(spec)? {
+            FfiOut::V(VData::Ints(v)) => Ok(v),
+            other => Err(EngineError::Other(format!(
+                "{spec}: expected an int array, got {other:?}"
+            ))),
+        }
+    }
+
+    /// The `f64` array of a `myType = 2` (real) or `myType = 3` (complex,
+    /// interleaved `[re, im, …]`) `V` row — the flat layout the DLL writes and
+    /// the existing typed accessors already return.
+    fn read_mode_doubles(&self, spec: &ModeSpec) -> Result<Vec<f64>, EngineError> {
+        match self.read_mode(spec)? {
+            FfiOut::V(VData::Doubles(v) | VData::Complex(v)) => Ok(v),
+            other => Err(EngineError::Other(format!(
+                "{spec}: expected a double array, got {other:?}"
+            ))),
+        }
+    }
+
+    /// The string array of a `myType = 4` `V` row (raw — no monitor-header
+    /// strip; [`crate::families::decode_string_raw`]).
+    fn read_mode_strings(&self, spec: &ModeSpec) -> Result<Vec<String>, EngineError> {
+        match self.read_mode(spec)? {
+            FfiOut::V(VData::Strings(v)) => Ok(v),
+            other => Err(EngineError::Other(format!(
+                "{spec}: expected a string array, got {other:?}"
+            ))),
+        }
+    }
+
+    // -- CktElement --------------------------------------------------------------
+    /// `CktElementI(0)` `CktElement.NumTerminals` — `DCktElement.pas:139`. See [`modes::CKT_ELEMENT_NUM_TERMINALS`].
+    pub fn ckt_element_num_terminals(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::CKT_ELEMENT_NUM_TERMINALS)
+    }
+
+    /// `CktElementI(1)` `CktElement.NumConductors` — `DCktElement.pas:144`. See [`modes::CKT_ELEMENT_NUM_CONDUCTORS`].
+    pub fn ckt_element_num_conductors(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::CKT_ELEMENT_NUM_CONDUCTORS)
+    }
+
+    /// `CktElementI(2)` `CktElement.NumPhases` — `DCktElement.pas:149`. See [`modes::CKT_ELEMENT_NUM_PHASES`].
+    pub fn ckt_element_num_phases(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::CKT_ELEMENT_NUM_PHASES)
+    }
+
+    /// `CktElementI(7)` `CktElement.HasSwitchControl` — `DCktElement.pas:207`. See [`modes::CKT_ELEMENT_HAS_SWITCH_CONTROL`].
+    pub fn ckt_element_has_switch_control(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::CKT_ELEMENT_HAS_SWITCH_CONTROL)
+    }
+
+    /// `CktElementI(8)` `CktElement.HasVoltControl` — `DCktElement.pas:222`. See [`modes::CKT_ELEMENT_HAS_VOLT_CONTROL`].
+    pub fn ckt_element_has_volt_control(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::CKT_ELEMENT_HAS_VOLT_CONTROL)
+    }
+
+    /// `CktElementI(9)` `CktElement.NumControls` — `DCktElement.pas:237`. See [`modes::CKT_ELEMENT_NUM_CONTROLS`].
+    pub fn ckt_element_num_controls(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::CKT_ELEMENT_NUM_CONTROLS)
+    }
+
+    /// `CktElementI(10)` `CktElement.OCPDevIndex` — `DCktElement.pas:242`. See [`modes::CKT_ELEMENT_OCP_DEV_INDEX`].
+    pub fn ckt_element_ocp_dev_index(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::CKT_ELEMENT_OCP_DEV_INDEX)
+    }
+
+    /// `CktElementI(11)` `CktElement.OCPDevType` — `DCktElement.pas:259`. See [`modes::CKT_ELEMENT_OCP_DEV_TYPE`].
+    pub fn ckt_element_ocp_dev_type(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::CKT_ELEMENT_OCP_DEV_TYPE)
+    }
+
+    /// `CktElementI(15)` `CktElement.HasOCPDevice` — `DCktElement.pas:300`. See [`modes::CKT_ELEMENT_HAS_OCP_DEVICE`].
+    pub fn ckt_element_has_ocp_device(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::CKT_ELEMENT_HAS_OCP_DEVICE)
+    }
+
+    /// `CktElementS(4)` `CktElement.EnergyMeter` — `DCktElement.pas:442`. See [`modes::CKT_ELEMENT_ENERGY_METER`].
+    pub fn ckt_element_energy_meter(&self) -> Result<String, EngineError> {
+        self.read_mode_s(&modes::CKT_ELEMENT_ENERGY_METER)
+    }
+
+    /// `CktElementV(6)` `CktElement.PhaseLosses` — `DCktElement.pas:637`. See [`modes::CKT_ELEMENT_PHASE_LOSSES`].
+    pub fn ckt_element_phase_losses(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CKT_ELEMENT_PHASE_LOSSES)
+    }
+
+    /// `CktElementV(7)` `CktElement.SeqVoltages` — `DCktElement.pas:660`. See [`modes::CKT_ELEMENT_SEQ_VOLTAGES`].
+    pub fn ckt_element_seq_voltages(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CKT_ELEMENT_SEQ_VOLTAGES)
+    }
+
+    /// `CktElementV(8)` `CktElement.SeqCurrents` — `DCktElement.pas:700`. See [`modes::CKT_ELEMENT_SEQ_CURRENTS`].
+    pub fn ckt_element_seq_currents(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CKT_ELEMENT_SEQ_CURRENTS)
+    }
+
+    /// `CktElementV(9)` `CktElement.SeqPowers` — `DCktElement.pas:739`. See [`modes::CKT_ELEMENT_SEQ_POWERS`].
+    pub fn ckt_element_seq_powers(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CKT_ELEMENT_SEQ_POWERS)
+    }
+
+    /// `CktElementV(11)` `CktElement.Residuals` — `DCktElement.pas:827`. See [`modes::CKT_ELEMENT_RESIDUALS`].
+    pub fn ckt_element_residuals(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CKT_ELEMENT_RESIDUALS)
+    }
+
+    /// `CktElementV(13)` `CktElement.CplxSeqVoltages` — `DCktElement.pas:885`. See [`modes::CKT_ELEMENT_CPLX_SEQ_VOLTAGES`].
+    pub fn ckt_element_cplx_seq_voltages(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CKT_ELEMENT_CPLX_SEQ_VOLTAGES)
+    }
+
+    /// `CktElementV(14)` `CktElement.CplxSeqCurrents` — `DCktElement.pas:931`. See [`modes::CKT_ELEMENT_CPLX_SEQ_CURRENTS`].
+    pub fn ckt_element_cplx_seq_currents(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CKT_ELEMENT_CPLX_SEQ_CURRENTS)
+    }
+
+    /// `CktElementV(17)` `CktElement.NodeOrder` — `DCktElement.pas:1032`. See [`modes::CKT_ELEMENT_NODE_ORDER`].
+    pub fn ckt_element_node_order(&self) -> Result<Vec<i32>, EngineError> {
+        self.read_mode_ints(&modes::CKT_ELEMENT_NODE_ORDER)
+    }
+
+    /// `CktElementV(18)` `CktElement.CurrentsMagAng` — `DCktElement.pas:1058`. See [`modes::CKT_ELEMENT_CURRENTS_MAG_ANG`].
+    pub fn ckt_element_currents_mag_ang(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CKT_ELEMENT_CURRENTS_MAG_ANG)
+    }
+
+    /// `CktElementV(19)` `CktElement.VoltagesMagAng` — `DCktElement.pas:1082`. See [`modes::CKT_ELEMENT_VOLTAGES_MAG_ANG`].
+    pub fn ckt_element_voltages_mag_ang(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CKT_ELEMENT_VOLTAGES_MAG_ANG)
+    }
+
+    /// `CktElementV(20)` `CktElement.TotalPowers` — `DCktElement.pas:1109`. See [`modes::CKT_ELEMENT_TOTAL_POWERS`].
+    pub fn ckt_element_total_powers(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CKT_ELEMENT_TOTAL_POWERS)
+    }
+
+    // -- Bus --------------------------------------------------------------
+    /// `BUSF(5)` `Bus.Distance` — `DBus.pas:122`. See [`modes::BUS_DISTANCE`].
+    pub fn bus_distance(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::BUS_DISTANCE)
+    }
+
+    /// `BUSV(1)` `Bus.SeqVoltages` — `DBus.pas:285`. See [`modes::BUS_SEQ_VOLTAGES`].
+    pub fn bus_seq_voltages(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::BUS_SEQ_VOLTAGES)
+    }
+
+    /// `BUSV(3)` `Bus.Voc` — `DBus.pas:351`. See [`modes::BUS_VOC`].
+    pub fn bus_voc(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::BUS_VOC)
+    }
+
+    /// `BUSV(4)` `Bus.Isc` — `DBus.pas:374`. See [`modes::BUS_ISC`].
+    pub fn bus_isc(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::BUS_ISC)
+    }
+
+    /// `BUSV(5)` `Bus.PuVoltages` — `DBus.pas:399`. See [`modes::BUS_PU_VOLTAGES`].
+    pub fn bus_pu_voltages(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::BUS_PU_VOLTAGES)
+    }
+
+    /// `BUSV(6)` `Bus.ZscMatrix` — `DBus.pas:431`. See [`modes::BUS_ZSC_MATRIX`].
+    pub fn bus_zsc_matrix(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::BUS_ZSC_MATRIX)
+    }
+
+    /// `BUSV(7)` `Bus.Zsc1` — `DBus.pas:461`. See [`modes::BUS_ZSC1`].
+    pub fn bus_zsc1(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::BUS_ZSC1)
+    }
+
+    /// `BUSV(8)` `Bus.Zsc0` — `DBus.pas:476`. See [`modes::BUS_ZSC0`].
+    pub fn bus_zsc0(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::BUS_ZSC0)
+    }
+
+    /// `BUSV(9)` `Bus.YscMatrix` — `DBus.pas:491`. See [`modes::BUS_YSC_MATRIX`].
+    pub fn bus_ysc_matrix(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::BUS_YSC_MATRIX)
+    }
+
+    /// `BUSV(10)` `Bus.CplxSeqVoltages` — `DBus.pas:520`. See [`modes::BUS_CPLX_SEQ_VOLTAGES`].
+    pub fn bus_cplx_seq_voltages(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::BUS_CPLX_SEQ_VOLTAGES)
+    }
+
+    /// `BUSV(11)` `Bus.VLL` — `DBus.pas:549`. See [`modes::BUS_VLL`].
+    pub fn bus_vll(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::BUS_VLL)
+    }
+
+    /// `BUSV(12)` `Bus.PuVLL` — `DBus.pas:603`. See [`modes::BUS_PU_VLL`].
+    pub fn bus_pu_vll(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::BUS_PU_VLL)
+    }
+
+    /// `BUSV(13)` `Bus.VMagAngle` — `DBus.pas:659`. See [`modes::BUS_VMAG_ANGLE`].
+    pub fn bus_vmag_angle(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::BUS_VMAG_ANGLE)
+    }
+
+    /// `BUSV(14)` `Bus.PuVMagAngle` — `DBus.pas:690`. See [`modes::BUS_PU_VMAG_ANGLE`].
+    pub fn bus_pu_vmag_angle(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::BUS_PU_VMAG_ANGLE)
+    }
+
+    /// `BUSV(18)` `Bus.AllPCEatBus` — `DBus.pas:840`. See [`modes::BUS_ALL_PCE_AT_BUS`].
+    pub fn bus_all_pce_at_bus(&self) -> Result<Vec<String>, EngineError> {
+        self.read_mode_strings(&modes::BUS_ALL_PCE_AT_BUS)
+    }
+
+    /// `BUSV(19)` `Bus.AllPDEatBus` — `DBus.pas:867`. See [`modes::BUS_ALL_PDE_AT_BUS`].
+    pub fn bus_all_pde_at_bus(&self) -> Result<Vec<String>, EngineError> {
+        self.read_mode_strings(&modes::BUS_ALL_PDE_AT_BUS)
+    }
+
+    // -- Circuit --------------------------------------------------------------
+    /// `CircuitV(0)` `Circuit.Losses` — `DCircuit.pas:294`. See [`modes::CIRCUIT_LOSSES`].
+    pub fn circuit_losses(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CIRCUIT_LOSSES)
+    }
+
+    /// `CircuitV(1)` `Circuit.LineLosses` — `DCircuit.pas:305`. See [`modes::CIRCUIT_LINE_LOSSES`].
+    pub fn circuit_line_losses(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CIRCUIT_LINE_LOSSES)
+    }
+
+    /// `CircuitV(2)` `Circuit.SubstationLosses` — `DCircuit.pas:327`. See [`modes::CIRCUIT_SUBSTATION_LOSSES`].
+    pub fn circuit_substation_losses(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CIRCUIT_SUBSTATION_LOSSES)
+    }
+
+    /// `CircuitV(3)` `Circuit.TotalPower` — `DCircuit.pas:349`. See [`modes::CIRCUIT_TOTAL_POWER`].
+    pub fn circuit_total_power(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CIRCUIT_TOTAL_POWER)
+    }
+
+    /// `CircuitV(8)` `Circuit.AllElementLosses` — `DCircuit.pas:458`. See [`modes::CIRCUIT_ALL_ELEMENT_LOSSES`].
+    pub fn circuit_all_element_losses(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CIRCUIT_ALL_ELEMENT_LOSSES)
+    }
+
+    /// `CircuitV(9)` `Circuit.AllBusMagPu` — `DCircuit.pas:481`. See [`modes::CIRCUIT_ALL_BUS_MAG_PU`].
+    pub fn circuit_all_bus_mag_pu(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CIRCUIT_ALL_BUS_MAG_PU)
+    }
+
+    /// `CircuitV(12)` `Circuit.AllBusDistances` — `DCircuit.pas:566`. See [`modes::CIRCUIT_ALL_BUS_DISTANCES`].
+    pub fn circuit_all_bus_distances(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CIRCUIT_ALL_BUS_DISTANCES)
+    }
+
+    /// `CircuitV(13)` `Circuit.AllNodeDistances` — `DCircuit.pas:582`. See [`modes::CIRCUIT_ALL_NODE_DISTANCES`].
+    pub fn circuit_all_node_distances(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::CIRCUIT_ALL_NODE_DISTANCES)
+    }
+
+    // -- Meters --------------------------------------------------------------
+    /// `MetersI(20)` `Meters.TotalCustomers` — `DMeters.pas:232`. See [`modes::METERS_TOTAL_CUSTOMERS`].
+    pub fn meters_total_customers(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::METERS_TOTAL_CUSTOMERS)
+    }
+
+    /// `MetersI(21)` `Meters.NumSections` — `DMeters.pas:244`. See [`modes::METERS_NUM_SECTIONS`].
+    pub fn meters_num_sections(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::METERS_NUM_SECTIONS)
+    }
+
+    /// `MetersI(23)` `Meters.OCPDeviceType` — `DMeters.pas:265`. See [`modes::METERS_OCP_DEVICE_TYPE`].
+    pub fn meters_ocp_device_type(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::METERS_OCP_DEVICE_TYPE)
+    }
+
+    /// `MetersI(24)` `Meters.NumSectionCustomers` — `DMeters.pas:275`. See [`modes::METERS_NUM_SECTION_CUSTOMERS`].
+    pub fn meters_num_section_customers(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::METERS_NUM_SECTION_CUSTOMERS)
+    }
+
+    /// `MetersI(25)` `Meters.NumSectionBranches` — `DMeters.pas:285`. See [`modes::METERS_NUM_SECTION_BRANCHES`].
+    pub fn meters_num_section_branches(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::METERS_NUM_SECTION_BRANCHES)
+    }
+
+    /// `MetersI(26)` `Meters.SectSeqIdx` — `DMeters.pas:295`. See [`modes::METERS_SECT_SEQ_IDX`].
+    pub fn meters_sect_seq_idx(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::METERS_SECT_SEQ_IDX)
+    }
+
+    /// `MetersI(27)` `Meters.SectTotalCust` — `DMeters.pas:305`. See [`modes::METERS_SECT_TOTAL_CUST`].
+    pub fn meters_sect_total_cust(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::METERS_SECT_TOTAL_CUST)
+    }
+
+    /// `MetersF(0)` `Meters.SAIFI` — `DMeters.pas:329`. See [`modes::METERS_SAIFI`].
+    pub fn meters_saifi(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::METERS_SAIFI)
+    }
+
+    /// `MetersF(1)` `Meters.SAIFIkW` — `DMeters.pas:340`. See [`modes::METERS_SAIFI_KW`].
+    pub fn meters_saifi_kw(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::METERS_SAIFI_KW)
+    }
+
+    /// `MetersF(2)` `Meters.SAIDI` — `DMeters.pas:351`. See [`modes::METERS_SAIDI`].
+    pub fn meters_saidi(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::METERS_SAIDI)
+    }
+
+    /// `MetersF(3)` `Meters.CustInterrupts` — `DMeters.pas:360`. See [`modes::METERS_CUST_INTERRUPTS`].
+    pub fn meters_cust_interrupts(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::METERS_CUST_INTERRUPTS)
+    }
+
+    /// `MetersF(4)` `Meters.AvgRepairTime` — `DMeters.pas:369`. See [`modes::METERS_AVG_REPAIR_TIME`].
+    pub fn meters_avg_repair_time(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::METERS_AVG_REPAIR_TIME)
+    }
+
+    /// `MetersF(5)` `Meters.FaultRateXRepairHrs` — `DMeters.pas:378`. See [`modes::METERS_FAULT_RATE_X_REPAIR_HRS`].
+    pub fn meters_fault_rate_x_repair_hrs(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::METERS_FAULT_RATE_X_REPAIR_HRS)
+    }
+
+    /// `MetersF(6)` `Meters.SumBranchFltRates` — `DMeters.pas:387`. See [`modes::METERS_SUM_BRANCH_FLT_RATES`].
+    pub fn meters_sum_branch_flt_rates(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::METERS_SUM_BRANCH_FLT_RATES)
+    }
+
+    /// `MetersV(3)` `Meters.Totals` — `DMeters.pas:558`. See [`modes::METERS_TOTALS`].
+    pub fn meters_totals(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::METERS_TOTALS)
+    }
+
+    /// `MetersV(6)` `Meters.CalcCurrent` — `DMeters.pas:609`. See [`modes::METERS_CALC_CURRENT`].
+    pub fn meters_calc_current(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::METERS_CALC_CURRENT)
+    }
+
+    /// `MetersV(8)` `Meters.AllocFactors` — `DMeters.pas:645`. See [`modes::METERS_ALLOC_FACTORS`].
+    pub fn meters_alloc_factors(&self) -> Result<Vec<f64>, EngineError> {
+        self.read_mode_doubles(&modes::METERS_ALLOC_FACTORS)
+    }
+
+    // -- Topology --------------------------------------------------------------
+    /// `TopologyI(0)` `Topology.NumLoops` — `DTopology.pas:67`. See [`modes::TOPOLOGY_NUM_LOOPS`].
+    pub fn topology_num_loops(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::TOPOLOGY_NUM_LOOPS)
+    }
+
+    /// `TopologyI(1)` `Topology.NumIsolatedBranches` — `DTopology.pas:79`. See [`modes::TOPOLOGY_NUM_ISOLATED_BRANCHES`].
+    pub fn topology_num_isolated_branches(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::TOPOLOGY_NUM_ISOLATED_BRANCHES)
+    }
+
+    /// `TopologyI(2)` `Topology.NumIsolatedLoads` — `DTopology.pas:89`. See [`modes::TOPOLOGY_NUM_ISOLATED_LOADS`].
+    pub fn topology_num_isolated_loads(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::TOPOLOGY_NUM_ISOLATED_LOADS)
+    }
+
+    /// `TopologyV(0)` `Topology.AllLoopedPairs` — `DTopology.pas:271`. See [`modes::TOPOLOGY_ALL_LOOPED_PAIRS`].
+    pub fn topology_all_looped_pairs(&self) -> Result<Vec<String>, EngineError> {
+        self.read_mode_strings(&modes::TOPOLOGY_ALL_LOOPED_PAIRS)
+    }
+
+    /// `TopologyV(1)` `Topology.AllIsolatedBranches` — `DTopology.pas:322`. See [`modes::TOPOLOGY_ALL_ISOLATED_BRANCHES`].
+    pub fn topology_all_isolated_branches(&self) -> Result<Vec<String>, EngineError> {
+        self.read_mode_strings(&modes::TOPOLOGY_ALL_ISOLATED_BRANCHES)
+    }
+
+    /// `TopologyV(2)` `Topology.AllIsolatedLoads` — `DTopology.pas:357`. See [`modes::TOPOLOGY_ALL_ISOLATED_LOADS`].
+    pub fn topology_all_isolated_loads(&self) -> Result<Vec<String>, EngineError> {
+        self.read_mode_strings(&modes::TOPOLOGY_ALL_ISOLATED_LOADS)
+    }
+
+    // -- Solution --------------------------------------------------------------
+    /// `SolutionI(1)` `Solution.Mode` — `DSolution.pas:29`. See [`modes::SOLUTION_MODE`].
+    pub fn solution_mode(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::SOLUTION_MODE)
+    }
+
+    /// `SolutionI(3)` `Solution.Hour` — `DSolution.pas:37`. See [`modes::SOLUTION_HOUR`].
+    pub fn solution_hour(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::SOLUTION_HOUR)
+    }
+
+    /// `SolutionI(5)` `Solution.Year` — `DSolution.pas:47`. See [`modes::SOLUTION_YEAR`].
+    pub fn solution_year(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::SOLUTION_YEAR)
+    }
+
+    /// `SolutionI(7)` `Solution.Iterations` — `DSolution.pas:54`. See [`modes::SOLUTION_ITERATIONS`].
+    pub fn solution_iterations(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::SOLUTION_ITERATIONS)
+    }
+
+    /// `SolutionI(22)` `Solution.ControlIterations` — `DSolution.pas:113`. See [`modes::SOLUTION_CONTROL_ITERATIONS`].
+    pub fn solution_control_iterations(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::SOLUTION_CONTROL_ITERATIONS)
+    }
+
+    /// `SolutionI(37)` `Solution.SystemYChanged` — `DSolution.pas:192`. See [`modes::SOLUTION_SYSTEM_Y_CHANGED`].
+    pub fn solution_system_y_changed(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::SOLUTION_SYSTEM_Y_CHANGED)
+    }
+
+    /// `SolutionI(40)` `Solution.TotalIterations` — `DSolution.pas:218`. See [`modes::SOLUTION_TOTAL_ITERATIONS`].
+    pub fn solution_total_iterations(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::SOLUTION_TOTAL_ITERATIONS)
+    }
+
+    /// `SolutionI(41)` `Solution.MostIterationsDone` — `DSolution.pas:222`. See [`modes::SOLUTION_MOST_ITERATIONS_DONE`].
+    pub fn solution_most_iterations_done(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::SOLUTION_MOST_ITERATIONS_DONE)
+    }
+
+    /// `SolutionI(42)` `Solution.ControlActionsDone` — `DSolution.pas:226`. See [`modes::SOLUTION_CONTROL_ACTIONS_DONE`].
+    pub fn solution_control_actions_done(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::SOLUTION_CONTROL_ACTIONS_DONE)
+    }
+
+    /// `SolutionF(2)` `Solution.Seconds` — `DSolution.pas:312`. See [`modes::SOLUTION_SECONDS`].
+    pub fn solution_seconds(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::SOLUTION_SECONDS)
+    }
+
+    /// `SolutionF(6)` `Solution.LoadMult` — `DSolution.pas:336`. See [`modes::SOLUTION_LOAD_MULT`].
+    pub fn solution_load_mult(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::SOLUTION_LOAD_MULT)
+    }
+
+    /// `SolutionF(20)` `Solution.dblHour` — `DSolution.pas:400`. See [`modes::SOLUTION_DBL_HOUR`].
+    pub fn solution_dbl_hour(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::SOLUTION_DBL_HOUR)
+    }
+
+    /// `SolutionV(1)` `Solution.IncMatrix` — `DSolution.pas:542`. See [`modes::SOLUTION_INC_MATRIX`].
+    pub fn solution_inc_matrix(&self) -> Result<Vec<i32>, EngineError> {
+        self.read_mode_ints(&modes::SOLUTION_INC_MATRIX)
+    }
+
+    /// `SolutionV(3)` `Solution.IncMatrixRows` — `DSolution.pas:589`. See [`modes::SOLUTION_INC_MATRIX_ROWS`].
+    pub fn solution_inc_matrix_rows(&self) -> Result<Vec<String>, EngineError> {
+        self.read_mode_strings(&modes::SOLUTION_INC_MATRIX_ROWS)
+    }
+
+    /// `SolutionV(4)` `Solution.IncMatrixCols` — `DSolution.pas:609`. See [`modes::SOLUTION_INC_MATRIX_COLS`].
+    pub fn solution_inc_matrix_cols(&self) -> Result<Vec<String>, EngineError> {
+        self.read_mode_strings(&modes::SOLUTION_INC_MATRIX_COLS)
+    }
+
+    /// `SolutionV(5)` `Solution.Laplacian` — `DSolution.pas:640`. See [`modes::SOLUTION_LAPLACIAN`].
+    pub fn solution_laplacian(&self) -> Result<Vec<i32>, EngineError> {
+        self.read_mode_ints(&modes::SOLUTION_LAPLACIAN)
+    }
+
+    // -- PDElements --------------------------------------------------------------
+    /// `PDElementsI(3)` `PDElements.IsShunt` — `DPDELements.pas:61`. See [`modes::PD_ELEMENTS_IS_SHUNT`].
+    pub fn pd_elements_is_shunt(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::PD_ELEMENTS_IS_SHUNT)
+    }
+
+    /// `PDElementsI(4)` `PDElements.NumCustomers` — `DPDELements.pas:70`. See [`modes::PD_ELEMENTS_NUM_CUSTOMERS`].
+    pub fn pd_elements_num_customers(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::PD_ELEMENTS_NUM_CUSTOMERS)
+    }
+
+    /// `PDElementsI(5)` `PDElements.TotalCustomers` — `DPDELements.pas:79`. See [`modes::PD_ELEMENTS_TOTAL_CUSTOMERS`].
+    pub fn pd_elements_total_customers(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::PD_ELEMENTS_TOTAL_CUSTOMERS)
+    }
+
+    /// `PDElementsI(6)` `PDElements.ParentPDElement` — `DPDELements.pas:88`. See [`modes::PD_ELEMENTS_PARENT_PD_ELEMENT`].
+    pub fn pd_elements_parent_pd_element(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::PD_ELEMENTS_PARENT_PD_ELEMENT)
+    }
+
+    /// `PDElementsI(7)` `PDElements.FromTerminal` — `DPDELements.pas:101`. See [`modes::PD_ELEMENTS_FROM_TERMINAL`].
+    pub fn pd_elements_from_terminal(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::PD_ELEMENTS_FROM_TERMINAL)
+    }
+
+    /// `PDElementsI(8)` `PDElements.SectionID` — `DPDELements.pas:110`. See [`modes::PD_ELEMENTS_SECTION_ID`].
+    pub fn pd_elements_section_id(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::PD_ELEMENTS_SECTION_ID)
+    }
+
+    /// `PDElementsF(0)` `PDElements.FaultRate` — `DPDELements.pas:133`. See [`modes::PD_ELEMENTS_FAULT_RATE`].
+    pub fn pd_elements_fault_rate(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::PD_ELEMENTS_FAULT_RATE)
+    }
+
+    /// `PDElementsF(2)` `PDElements.PctPermanent` — `DPDELements.pas:152`. See [`modes::PD_ELEMENTS_PCT_PERMANENT`].
+    pub fn pd_elements_pct_permanent(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::PD_ELEMENTS_PCT_PERMANENT)
+    }
+
+    /// `PDElementsF(4)` `PDElements.Lambda` — `DPDELements.pas:171`. See [`modes::PD_ELEMENTS_LAMBDA`].
+    pub fn pd_elements_lambda(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::PD_ELEMENTS_LAMBDA)
+    }
+
+    /// `PDElementsF(5)` `PDElements.AccumulatedL` — `DPDELements.pas:181`. See [`modes::PD_ELEMENTS_ACCUMULATED_L`].
+    pub fn pd_elements_accumulated_l(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::PD_ELEMENTS_ACCUMULATED_L)
+    }
+
+    /// `PDElementsF(6)` `PDElements.RepairTime` — `DPDELements.pas:191`. See [`modes::PD_ELEMENTS_REPAIR_TIME`].
+    pub fn pd_elements_repair_time(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::PD_ELEMENTS_REPAIR_TIME)
+    }
+
+    /// `PDElementsF(7)` `PDElements.TotalMiles` — `DPDELements.pas:201`. See [`modes::PD_ELEMENTS_TOTAL_MILES`].
+    pub fn pd_elements_total_miles(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::PD_ELEMENTS_TOTAL_MILES)
     }
 
     /// Drive a V-protocol **SET** mode: hand the caller's array in via
