@@ -1127,8 +1127,16 @@ impl Dss {
     // ------------------------------------------------------------------
 
     /// Pascal `ReprocessBusDefs` + `Solution.SystemYChanged := TRUE`, the tail of
-    /// the reprocessing strategies. Drains pending signals, rebuilds bus defs and
+    /// the reprocessing strategies (`ReduceAlgs.pas`, capi `:292-294` /
+    /// `:444-446` / `:535-537`). Drains pending signals, rebuilds bus defs and
     /// meter zones, forces a Y rebuild.
+    ///
+    /// The meter-zone rebuild is `ReprocessBusDefs`' own tail
+    /// (`Circuit.pas:2411` / capi `:2246`), so it is not called again here —
+    /// exactly as capi's own comment at `ReduceAlgs.pas:293` says
+    /// (`// DSS.ActiveCircuit.DoResetMeterZones(); … -- already called in
+    /// ReprocessBusDefs`). r4133 `ReduceAlgs.pas:282` keeps the redundant second
+    /// call; `DoResetMeterZones` is idempotent, so the two revisions agree.
     fn red_reprocess(&mut self) {
         self.red_drain_all();
         let Dss {
@@ -1144,7 +1152,6 @@ impl Dss {
         };
         let mut store = ClassStore { classes };
         ckt.reprocess_bus_defs(&mut store, aux_parser, vars, errors);
-        crate::solution::meters::do_reset_meter_zones(ckt, &mut store);
         ckt.solution.system_y_changed = true;
     }
 
