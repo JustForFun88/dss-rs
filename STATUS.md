@@ -157,13 +157,13 @@ live cases diverged), handed to `R4133_PROPS_PLAN.md` (user decision
 and **G3.4** (`cim/`, `json/`, `json_import/`) + **G3.5** (`props/`) are
 unblocked, their value witness now the live r4133 property compare. **G1.2**
 (the ESPVLControl deck, the last zero-coverage class) landed 2026-08-29.
-**G1.0** — a new rails sub-step ahead of G1.3a (decisions D1/D2/D3) — landed
-2026-09-04: the ten-flag manifest vocabulary in **one** lock regen, explicit
-`channels` on the ten bare `element` exclusions, the capture-presence guard, and
-the r4133 bridge rails, whose 96-mode probe **also discharges the G1.11
-mode-capability acceptance for the whole WP** (zero misses); it compares nothing
-new — 0 ledger entries, 0 golden bytes. G1.3a–d, G1.4–G1.11c and WP-G3–G5
-remain. Full record: the same file, section "GOLDEN_REBASE WP-G1 — records".
+**G1.0** — a new rails sub-step ahead of G1.3a (D1/D2/D3) — landed 2026-09-04
+(`c4b67a6e`, audit settlement `42454b64`): the ten-flag manifest vocabulary in
+**one** lock regen, explicit `channels` on the ten bare `element` exclusions, the
+capture-presence guard, and the r4133 bridge rails, whose 96-mode probe **also
+discharges the G1.11 mode-capability acceptance for the whole WP** (zero misses);
+it compares nothing new — 0 ledger entries, 0 golden bytes. G1.3a–d, G1.4–G1.11c
+and WP-G3–G5 remain. Full record: the same file, section "GOLDEN_REBASE WP-G1 — records".
 
 **Next.** **`GOLDEN_REBASE_PLAN.md` G1.3a** (per-element `CurrentsMagAng`,
 `VoltagesMagAng`, `Residuals`) — the first surface sub-step now that G1.0's
