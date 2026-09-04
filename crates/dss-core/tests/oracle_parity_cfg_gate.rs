@@ -3921,3 +3921,92 @@ fn rust_comments_citing_a_record_line_point_at_the_passage_they_name() {
         citing_files
     );
 }
+
+/// Every test the GOLDEN_REBASE **G1.0** record and `TESTING.md` name as a pin
+/// still exists, in the file they say it lives in (G1.0 audit settlement T3).
+///
+/// The repo's own precedent is an explicit registry
+/// (`props_r4133_replay.rs::every_rp311_serialization_pin_exists_and_is_cited`):
+/// without one, renaming or deleting a pin leaves the prose claiming a
+/// guarantee that no longer exists, with a green suite —
+/// [`operational_docs_line_citations_point_at_the_line_they_name`] cannot
+/// help, because it only resolves the citations that carry a `:LINE` suffix and
+/// `docs/phase-records/` is deliberately outside [`LINE_CITED_DOCS`].
+///
+/// Each row must also still be *named* by the prose, so the table cannot
+/// outlive the claim it backs either.
+#[test]
+fn every_pin_the_g10_record_names_exists_and_is_cited() {
+    const G10_PINS: &[(&str, &str)] = &[
+        // Half B — the r4133 bridge rails.
+        (
+            "r4133_mode_capability_is_complete_for_wp_g1",
+            "crates/dss-epri/tests/modes.rs",
+        ),
+        (
+            "cmath_lib_f_takes_two_doubles",
+            "crates/dss-epri/tests/protocol.rs",
+        ),
+        (
+            "the_raw_ffi_command_refuses_the_do_not_call_modes",
+            "crates/dss-epri/tests/protocol.rs",
+        ),
+        (
+            "do_not_call_refuses_the_two_unsafe_modes_without_touching_the_dll",
+            "crates/dss-epri/src/modes.rs",
+        ),
+        (
+            "the_capture_order_partition_is_the_one_d3_names",
+            "crates/dss-epri/src/modes.rs",
+        ),
+        // Half A — the lock, ledger and capture-presence rails.
+        (
+            "no_unwired_g1_surface_flag_is_set_in_any_manifest",
+            "crates/dss-core/tests/corpus_gate/manifest.rs",
+        ),
+        (
+            "every_manifest_compare_flag_has_a_rigor_token",
+            "crates/dss-core/tests/population_lock.rs",
+        ),
+        (
+            "the_drift_guard_scanners_see_every_visibility_and_every_flag_row",
+            "crates/dss-core/tests/population_lock.rs",
+        ),
+        (
+            "a_scope_that_misuses_channels_is_refused_at_load",
+            "crates/dss-core/tests/corpus_gate/ledger.rs",
+        ),
+        (
+            "an_empty_capture_fails",
+            "crates/dss-core/tests/harness/capture_guard.rs",
+        ),
+    ];
+    let root = repo_root();
+    let prose: String = ["TESTING.md", "docs/phase-records/golden-rebase.md"]
+        .iter()
+        .map(|d| std::fs::read_to_string(root.join(d)).unwrap_or_else(|e| panic!("read {d}: {e}")))
+        .collect();
+    let mut bad = Vec::new();
+    for (pin, file) in G10_PINS {
+        let src =
+            std::fs::read_to_string(root.join(file)).unwrap_or_else(|e| panic!("read {file}: {e}"));
+        let decl = format!("fn {pin}(");
+        if src.matches(&decl).count() != 1 {
+            bad.push(format!(
+                "{pin}: expected exactly one `{decl}` in {file}, found {}",
+                src.matches(&decl).count()
+            ));
+        }
+        if !prose.contains(pin) {
+            bad.push(format!(
+                "{pin}: no longer named by TESTING.md or the phase record — a pin nothing \
+                 claims is not a pin"
+            ));
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "G1.0 pin registry is stale (rename/delete the pin AND its prose in one commit):\n  {}",
+        bad.join("\n  ")
+    );
+}

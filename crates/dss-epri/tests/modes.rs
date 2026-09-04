@@ -87,9 +87,11 @@ fn solved_ieee13() -> Engine {
 }
 
 /// Re-select the fixture the family rows read from. Called before **every**
-/// mode: three rows are [`ModeEffect::Impure`] and move a cursor
-/// (`PDElements.ParentPDElement` moves `ActiveCktElement` itself), so without
-/// this a later row would silently read a different object.
+/// mode: eleven rows are [`ModeEffect::Impure`] and move a cursor or a memoized
+/// structure (`PDElements.ParentPDElement` moves `ActiveCktElement` itself; the
+/// four `Circuit` loss/power rows and the two `CktElement.Has*Control` rows walk
+/// a `PointerList` to exhaustion), so without this a later row would silently
+/// read a different object.
 fn select_fixture(e: &Engine) {
     // `Meters.First` (`MetersI(0)`, `DMeters.pas:32-52`) sets `ActiveCktElement`
     // to the meter object itself, so it must run BEFORE the element selection —
@@ -116,6 +118,7 @@ fn r4133_mode_capability_is_complete_for_wp_g1() {
     the_bus_v_sentinel_is_only_caught_by_containment(&e);
     the_do_not_call_modes_are_refused_before_any_ffi(&e);
     every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(&e);
+    distinguishing_readings_separate_same_shape_modes_within_a_family(&e);
     // Nothing in the walk left a non-zero errno behind for the next caller.
     let (errno, desc) = e.poll_error();
     assert_eq!(errno, 0, "the mode walk left errno {errno} set: {desc}");
@@ -150,6 +153,73 @@ fn the_fixture_selects_the_line_the_bus_and_the_meter(e: &Engine) {
     assert_eq!(e.bus_distance().unwrap(), 1.2192, "bus 671's DistFromMeter");
     select_fixture(e);
     assert_eq!(e.solution_iterations().unwrap(), 2, "IEEE13 snapshot solve");
+}
+
+/// G1.0 audit settlement (T4): the walk above proves *capability* — that each
+/// mode exists and decodes into its declared shape — not *identity*: a mode
+/// index transposed with a sibling of the same family and shape would still
+/// classify `Served`. These are exact readings of the vendored r4133 DLL on the
+/// vendored IEEE13 fixture (measured 2026-09-04) chosen so that a transposition
+/// inside a family moves the number, family by family.
+///
+/// `Meters` is deliberately absent: every one of its `I:20..27` / `F:0..6`
+/// reliability registers reads `0` / `0.0` on this fixture (no `RelCalc`), so no
+/// pin there could discriminate. G1.6 wires that surface and gets its own
+/// values; the full per-mode value validation is D2's job for each surface
+/// sub-step, not this rail's.
+fn distinguishing_readings_separate_same_shape_modes_within_a_family(e: &Engine) {
+    // Circuit V:0 (whole-circuit PD losses, W) vs V:1 (Line losses only, kW) vs
+    // V:3 (source power) — three `myType = 3` rows of one family.
+    select_fixture(e);
+    assert_eq!(
+        e.circuit_losses().unwrap(),
+        vec![112_391.709_058_989_2, 327_860.856_436_449_6],
+        "Circuit.Losses (V:0)"
+    );
+    select_fixture(e);
+    assert_eq!(
+        e.circuit_line_losses().unwrap(),
+        vec![106.484_751_187_618_73, 317.175_285_717_855_73],
+        "Circuit.LineLosses (V:1) — a different mode of the same family and shape"
+    );
+    select_fixture(e);
+    assert_eq!(
+        e.circuit_total_power().unwrap(),
+        vec![-3_567.053_778_419_098_3, -1_736.439_510_362_667_5],
+        "Circuit.TotalPower (V:3)"
+    );
+    // Topology I:0 vs its two I siblings, which are both 0 on this radial deck.
+    select_fixture(e);
+    assert_eq!(
+        e.topology_num_loops().unwrap(),
+        1,
+        "Topology.NumLoops (I:0)"
+    );
+    // PDElements: two `I` and two `F` rows that are pairwise distinct.
+    select_fixture(e);
+    assert_eq!(
+        e.pd_elements_total_customers().unwrap(),
+        15,
+        "PDElements.TotalCustomers (I:5)"
+    );
+    select_fixture(e);
+    assert_eq!(
+        e.pd_elements_from_terminal().unwrap(),
+        1,
+        "PDElements.FromTerminal (I:7)"
+    );
+    select_fixture(e);
+    assert_eq!(
+        e.pd_elements_pct_permanent().unwrap(),
+        20.0,
+        "PDElements.PctPermanent (F:2)"
+    );
+    select_fixture(e);
+    assert_eq!(
+        e.pd_elements_repair_time().unwrap(),
+        3.0,
+        "PDElements.RepairTime (F:6)"
+    );
 }
 
 /// **The G1.0 acceptance**: every mode WP-G1 will read is served by the
