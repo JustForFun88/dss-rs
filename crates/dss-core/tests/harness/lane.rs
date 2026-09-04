@@ -1037,12 +1037,37 @@ mod tests {
         for label in LANE_SKIP_ELEM_POWERS {
             let ch = elem_channels_for(label);
             assert!(ch.currents, "{label}: currents stay gated in every lane");
+            // Field by field, not just `== CURRENTS_ONLY`: comparing a value
+            // against the very constant it was built from is a tautology, so
+            // flipping a field OF the constant would silently drop that channel
+            // on every gated case in both lanes (G1.3a audit settlement).
+            assert!(
+                ch.currents_mag_ang && ch.voltages_mag_ang && ch.residuals,
+                "{label}: the G1.3a polar channels stay gated in every lane —                  they render `Currents`/`NodeV`, not the cache-aware                  `Get_Powers`/`Get_Losses` read the Newton staleness lives in"
+            );
+            assert!(
+                !ch.powers && !ch.losses,
+                "{label}: powers/losses are the excluded pair"
+            );
             assert_eq!(
                 ch,
                 ElemChannels::CURRENTS_ONLY,
                 "{label}: powers/losses are excluded in both lanes"
             );
         }
+        // The unexcluded default is every channel — the same anti-tautology
+        // rule applied to `ALL` itself, so a field flipped there cannot go
+        // unnoticed either.
+        let all = ElemChannels::ALL;
+        assert!(
+            all.currents
+                && all.powers
+                && all.losses
+                && all.currents_mag_ang
+                && all.voltages_mag_ang
+                && all.residuals,
+            "ElemChannels::ALL must compare every channel; a `false` here              removes that channel from every gated case in both lanes"
+        );
         // Nothing else is excluded — including a label that merely *contains* an
         // excluded one (the match is exact, not a substring).
         for label in [

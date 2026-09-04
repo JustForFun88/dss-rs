@@ -605,8 +605,8 @@ pub const CKT_ELEMENT_OCP_DEV_TYPE: ModeSpec = ModeSpec::scalar(
 /// This is the **read** arm; its paired **write** arm `13:`
 /// (`DCktElement.pas:271`, `if arg=1 then … Enabled := BData`) is deliberately
 /// not a row — the generic reader drives a mode with the neutral argument `0`,
-/// which that arm would store as `Enabled := FALSE` (the rule
-/// [`EXCLUDED_WRITE_MODES`] records for `PDElements`).
+/// which that arm would store as `Enabled := FALSE`. That omission is carried
+/// as a row of [`EXCLUDED_WRITE_MODES`], not as prose (G1.3a audit settlement).
 ///
 /// The arm's codomain is exactly `{0, 1}`: it raises the `CktElementI`
 /// pre-`case` default `Result := 0` (`DCktElement.pas:137`) to 1 only when
@@ -1589,6 +1589,11 @@ pub const WP_G1_MODES: &[&ModeSpec] = &[
 /// r4133 source shows modes 1 and 3 are the setters paired with the readers at 0
 /// and 2, which [`WP_G1_MODES`] carries instead. Recorded here — and enforced by
 /// a unit test — so the omission is a decision, not a gap.
+///
+/// The register is **not** PDElements-only: G1.3a's `CktElement.Enabled` read
+/// (`I:12`) sits next to the most destructive write arm in the bridge (`I:13`
+/// disables the active element), so that arm is a row here too (G1.3a audit
+/// settlement, 2026-09-04) rather than a sentence in the reader's doc.
 pub const EXCLUDED_WRITE_MODES: &[(&str, ModeKind, i32, &str)] = &[
     (
         "PDElements",
@@ -1603,6 +1608,14 @@ pub const EXCLUDED_WRITE_MODES: &[(&str, ModeKind, i32, &str)] = &[
         3,
         "PDElements.PctPermanent WRITE — DPDELements.pas:162 assigns ActivePDElement.PctPerm := arg; \
          the reader is F:2",
+    ),
+    (
+        "CktElement",
+        ModeKind::I,
+        13,
+        "CktElement.Enabled WRITE — DCktElement.pas:271 stores Enabled := (arg = 1) on the \
+         active element, so the generic reader's neutral argument 0 would DISABLE it; the \
+         reader is I:12",
     ),
 ];
 
@@ -1625,7 +1638,8 @@ pub fn wp_g1_mode(name: &str) -> Option<&'static ModeSpec> {
 
 /// `CktElementV(3)` — terminal currents, complex `[re, im, …]`. Group **B**:
 /// the arm allocates `cBuffer` and calls `GetCurrents` into it
-/// (`DCktElement.pas:583`). Read by [`crate::dss::Engine::element_currents`].
+/// (`DCktElement.pas:583-584`). Read by
+/// [`crate::dss::Engine::element_currents`].
 pub const CKT_ELEMENT_CURRENTS: ModeSpec = ModeSpec::array(
     "CktElement",
     3,
@@ -1635,7 +1649,7 @@ pub const CKT_ELEMENT_CURRENTS: ModeSpec = ModeSpec::array(
     POISONS_ITERMINAL,
 );
 /// `CktElementV(4)` — per-conductor powers, kW/kvar. Group **A**:
-/// `GetPhasePower` (`DCktElement.pas:606`) is
+/// `GetPhasePower` (`DCktElement.pas:608`) is
 /// `TDSSCktElement.GetPhasePower` (`Common/CktElement.pas:1041`), which calls
 /// `ComputeIterminal` at `:1049`. Read by
 /// [`crate::dss::Engine::element_powers`].
@@ -1897,13 +1911,26 @@ mod tests {
         }
         // Non-vacuity: the excluded rows really are the neighbours of table rows
         // in the same family and shape, so the check above is not comparing
-        // against an empty or unrelated set.
-        assert_eq!(EXCLUDED_WRITE_MODES.len(), 2);
-        assert!(EXCLUDED_WRITE_MODES.iter().all(|(f, k, ..)| {
-            *f == PD_ELEMENTS_FAULT_RATE.family && *k == PD_ELEMENTS_FAULT_RATE.kind
-        }));
+        // against an empty or unrelated set. (The register is no longer
+        // PDElements-only — G1.3a's `CktElement.Enabled` read brought its write
+        // arm in — so the neighbourhood is asserted against the table itself.)
+        assert_eq!(EXCLUDED_WRITE_MODES.len(), 3);
+        for (fam, kind, mode, why) in EXCLUDED_WRITE_MODES {
+            assert!(
+                WP_G1_MODES
+                    .iter()
+                    .any(|m| m.kind == *kind && m.family.eq_ignore_ascii_case(fam)),
+                "{fam} {kind:?}:{mode} is excluded but that family/shape drives no                  reader, so the exclusion guards nothing: {why}"
+            );
+        }
         assert_eq!(PD_ELEMENTS_FAULT_RATE.mode, 0);
         assert_eq!(PD_ELEMENTS_PCT_PERMANENT.mode, 2);
+        // The `CktElement` row's own reader neighbour, named (`I:12` read /
+        // `I:13` write, `DCktElement.pas:263` / `:271`).
+        assert_eq!(
+            (CKT_ELEMENT_ENABLED.kind, CKT_ELEMENT_ENABLED.mode),
+            (ModeKind::I, 12)
+        );
     }
 
     /// The §1.1(a) / D3 capture-order partition, pinned as data.
