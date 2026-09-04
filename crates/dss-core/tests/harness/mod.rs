@@ -1856,7 +1856,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
     //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:987-993`
-    //     makes for (e)/(f). Measured with the §1.1(e) property mask bypassed
+    //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
     //     divergent cells on the r4133 channel (89 in scope), of which **103**
@@ -2094,8 +2094,8 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values `tests/TOLERANCE_NOTES.md:987-993` forbids masking there,
-    /// plus the two `pctperm` rows the RP2.1 probe census measured clean.
+    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:987-993`
+    /// forbids masking there, plus the two `pctperm` rows RP2.1 measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {
         for (class, prop) in SKIP_PROPS_CAPI_ONLY {

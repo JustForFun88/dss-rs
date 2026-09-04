@@ -26,7 +26,10 @@ roadmap CLAUDE.md mandates reading first — encodes the still-live §4.1 `TODO(
 convention, the known-upstream-bug ledger, and the binding `#![forbid(unsafe_code)]`/faer
 decisions), `DE_PASCALIZE_PLAN.md` (paused after wave 1), `DIAKOPTICS_PSTCALC_PLAN.md`
 (Part II open), `GOLDEN_REBASE_PLAN.md` (WP-G1 open), `RESONANCE_PLAN.md`,
-`MULTITHREADING_PLAN.md`, `WASM_USERMODELS_PLAN.md`,
+`MULTITHREADING_PLAN.md`, `WASM_USERMODELS_PLAN.md`, `UNIFIED_GATE_PLAN.md`
+(executed 2026-07-18–19 — Phases 0 and A–F plus §6 final acceptance, record
+`docs/phase-records/unified-gate.md`; its own banner still reads *PLANNED*, and
+`TESTING.md` cites it as the live gate's design record),
 the master index `PLAN_SEQUENCE.md`, and `SPLITTING_RULES.md`.
 
 **Residual work these plans left behind** that no active/future plan owns is tracked as an
