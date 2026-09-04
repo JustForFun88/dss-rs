@@ -116,6 +116,7 @@ fn r4133_mode_capability_is_complete_for_wp_g1() {
     the_bus_v_sentinel_is_only_caught_by_containment(&e);
     the_do_not_call_modes_are_refused_before_any_ffi(&e);
     every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(&e);
+    the_parent_read_hijacks_the_active_element_and_the_capture_reads_it_last(&e);
     // Nothing in the walk left a non-zero errno behind for the next caller.
     let (errno, desc) = e.poll_error();
     assert_eq!(errno, 0, "the mode walk left errno {errno} set: {desc}");
@@ -438,6 +439,9 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
     chk!(SOLUTION_INC_MATRIX_COLS, e.solution_inc_matrix_cols());
     chk!(SOLUTION_LAPLACIAN, e.solution_laplacian());
     // PDElements
+    chk!(PD_ELEMENTS_FIRST, e.pd_elements_first());
+    chk!(PD_ELEMENTS_NEXT, e.pd_elements_next());
+    chk!(PD_ELEMENTS_NAME, e.pd_elements_name());
     chk!(PD_ELEMENTS_IS_SHUNT, e.pd_elements_is_shunt());
     chk!(PD_ELEMENTS_NUM_CUSTOMERS, e.pd_elements_num_customers());
     chk!(PD_ELEMENTS_TOTAL_CUSTOMERS, e.pd_elements_total_customers());
@@ -461,4 +465,107 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
         "these WP-G1 rows have no typed accessor call: {missing:?}"
     );
     assert_eq!(seen.len(), modes::WP_G1_MODES.len());
+}
+
+/// The behavioural half of GOLDEN_REBASE G1.6b's read-order contract: the
+/// `ParentPDElement` trap is real on this DLL, and
+/// [`dss_epri::capture::capture_pd_elements`] does not fall into it.
+///
+/// `PDElementsI(6)` (`DPDELements.pas:88-97`) does
+/// `ActiveCktElement := ActivePDElement.ParentPDElement` and never restores it,
+/// so every field read after it in the same record returns the **parent's**
+/// value. fastdss reads it second (`IPDElements._columns`) and contaminates 215
+/// of the 138-element IEEE123 walk's own cells (measured on both oracle
+/// channels, 2026-09-04), which is why the capture reads it last.
+///
+/// Every number below was read off the vendored r4133 DLL on this fixture
+/// (2026-09-04); the trap is only *observable* on a pair whose values differ, so
+/// the `assert_ne!` guards this test against becoming a tautology.
+fn the_parent_read_hijacks_the_active_element_and_the_capture_reads_it_last(e: &Engine) {
+    select_fixture(e);
+    // (1) The trap, live. `Line.632670` serves 10 downstream customers; its
+    // parent `Line.650632` serves 15.
+    e.set_active_element("Line.632670");
+    let own = e.pd_elements_total_customers().unwrap();
+    assert_eq!(own, 10, "Line.632670's own BranchTotalCustomers");
+    assert_eq!(
+        e.pd_elements_parent_pd_element().unwrap(),
+        1,
+        "Line.650632's ClassIndex (1-based, per-class creation order)"
+    );
+    let after = e.pd_elements_total_customers().unwrap();
+    assert_eq!(
+        after, 15,
+        "the read AFTER the parent read returns the parent's value"
+    );
+    assert_ne!(
+        after, own,
+        "the parent and the child must differ, or this test proves nothing"
+    );
+    assert_eq!(
+        e.pd_elements_name().unwrap(),
+        "Line.650632",
+        "the name read off the hijacked cursor is the parent's"
+    );
+
+    // (2) The capture is immune: it reads the parent last, so the record keeps
+    // the element's own twelve values and carries the parent separately.
+    let walk = dss_epri::capture::capture_pd_elements(e).expect("capture_pd_elements");
+    assert_eq!(
+        walk.len(),
+        19,
+        "IEEE13 + EnergyMeter.m1 has 19 enabled PD elements"
+    );
+    assert_eq!(
+        walk[0].name, "Transformer.sub",
+        "the walk is the circuit's PDElements pointer-list order"
+    );
+    let rec = walk
+        .iter()
+        .find(|r| r.name == "Line.632670")
+        .expect("Line.632670 is in the walk");
+    assert_eq!(
+        rec.total_customers, own,
+        "the capture kept the element's own value, not the parent's {after}"
+    );
+    assert_eq!(rec.num_customers, 3);
+    assert_eq!(rec.from_terminal, 1, "FromTerminal is 1-based upstream");
+    assert!(!rec.is_shunt);
+    assert_eq!(rec.fault_rate, 0.1);
+    assert_eq!(rec.pct_permanent, 20.0);
+    assert_eq!(rec.repair_time, 3.0);
+    assert_eq!(rec.parent_class_index, 1);
+    assert_eq!(rec.parent_name, "Line.650632");
+    // No `RelCalc` ran on this deck, so the four reliability-sweep fields are
+    // untouched zeros (GOLDEN_REBASE G1.6(i) is the sub-step that fills them).
+    assert_eq!(
+        (
+            rec.section_id,
+            rec.lambda,
+            rec.accumulated_l,
+            rec.total_miles
+        ),
+        (0, 0.0, 0.0, 0.0)
+    );
+
+    // (3) A root branch has no parent: the DDLL leaves `ActiveCktElement` alone
+    // there (`DPDELements.pas:92`), so the capture must skip the name read
+    // rather than echo the element's own name.
+    let root = walk
+        .iter()
+        .find(|r| r.name == "Line.650632")
+        .expect("Line.650632 is in the walk");
+    assert_eq!(root.total_customers, 15);
+    assert_eq!(
+        (root.parent_class_index, root.parent_name.as_str()),
+        (0, "")
+    );
+
+    // (4) The shunt classification is a real two-valued field on this fixture.
+    let shunts: Vec<&str> = walk
+        .iter()
+        .filter(|r| r.is_shunt)
+        .map(|r| r.name.as_str())
+        .collect();
+    assert_eq!(shunts, vec!["Capacitor.cap1", "Capacitor.cap2"]);
 }

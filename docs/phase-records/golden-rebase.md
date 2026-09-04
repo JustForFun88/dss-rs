@@ -2486,8 +2486,11 @@ row against the pre-fix lock.
 > RP4.1 (kill criterion fired, see §1) and **delivered by it on 2026-09-03** —
 > the unmask shipped and RP4.1's own kill criterion did not fire. The sub-steps
 > that do not depend on it
-> land on `r4133-props`, the branch that currently holds the fail-on-stale
-> `population.lock.json` / `ledger.json` (single-branch lock discipline).
+> landed on `r4133-props` until it was merged and deleted (2026-09-04). *Corrected
+> 2026-09-04:* execution moved to `update`, and since coordinator decision **D7** the
+> independent sub-step chains run in parallel `lane-*` worktrees branched from it — a merge
+> agent takes one lane sub-step at a time, regenerating `population.lock.json` on the merged
+> tree and unioning `ledger.json` (the fail-on-stale locks stay single-branch at `update`).
 
 - **G1.2** (2026-08-29) — **class `ESPVLControl` now has live corpus coverage**
   (it had none: no vendored deck and no family deck instantiated it, and
@@ -2724,3 +2727,43 @@ row against the pre-fix lock.
   G1.0), corpus gate 523/523, ledger 57 entries / 1 588 hits, 0 stale, `git status
   --porcelain -- tests/golden` empty; `lane_diff` measured anyway although not owed —
   `VERDICT: PASS`, max |Δ| = 0 on all eight kinds.
+  *Amended by G1.6b (2026-09-04):* the r4133 mode table grew with its first surface —
+  `WP_G1_MODES` **96 → 99** rows and `EXCLUDED_WRITE_MODES` **2 → 3**; the mode-capability
+  acceptance re-runs over all 99 and still reports zero misses.
+
+- **G1.6b** (2026-09-04, lane `lane-m`; decisions **D7** lanes, **D9** the engine fix) — **the
+  `PDElements` walk is live-gated on both channels**, WP-G1's first surface. **13** fastdss columns,
+  not the plan's 9 (`IPDElements._columns` also carries `FaultRate`, `TotalMiles`
+  = `AccumulatedMilesDownStream`, `pctPermanent`) plus `parent_name`, all off `CktElementData` via
+  `Dss::pd_elements` (`crates/dss-core/src/exec/view.rs:767`), compared **exactly** (`rel = abs = 0`;
+  derivation in `tests/TOLERANCE_NOTES.md`, no floor added) on the same 440 live non-`large` cases as
+  `all_properties` — capi 1 645 walks / 93 707 elements, r4133 1 669 / 97 194, identical in both lanes.
+  `ParentPDElement` is read **last** per element and the walk is captured between the meters and the
+  probes: that read re-points `ActiveCktElement` at the parent and never restores it (r4133
+  `DDLL/DPDELements.pas:88-97`, capi `CAPI/CAPI_PDElements.pas:245-257`; a fastdss-order capture moves
+  215 of its own IEEE 123 cells), asserted in `crates/dss-core/tests/pd_elements_pins.rs` and against
+  the DLL in `crates/dss-epri/tests/modes.rs`; `WP_G1_MODES` **96 → 99**, `EXCLUDED_WRITE_MODES`
+  **2 → 3**. **0 ledger entries** — the one measured divergence is an uninitialized read in *both*
+  oracles on in-zone shunt Capacitors/Reactors (`EnergyMeter.pas` assigns through `pPCelem:
+  TPCElement`, r4133 `:1868-1869` / capi `:1927-1929`), nondeterministic and therefore un-envelopable,
+  excluded per (channel, class, field) in `harness::PD_SKIP_FIELDS` (8 rows, register +
+  fail-on-stale, all live ≥ 24 hits) and pinned by
+  `pd_elements_shunt_reliability_inputs_survive_the_meter_zone` and
+  `pd_elements_shunt_branch_flt_rate_survives_the_meter_zone`, with membership and linkage by
+  `pd_elements_walk_on_the_gated_combo_deck` + the four `exec::tests::pd_elements` pins; report
+  `investigations/to_opendss/56-energymeter-zone-corrupts-shunt-pd-reliability-fields.md` (local-only).
+  **D9, in its own commit ahead of the surface:** `do_reset_meter_zones` moved back into
+  `reprocess_bus_defs`' tail (r4133 `Common/Circuit.pas:2411`, capi `:2246`), which `MakeBusList` had
+  been bypassing and so leaving every EnergyMeter with an empty zone — of the 20 `MakeBusList` corpus
+  decks exactly one changes state (`solvable_now:Test/indmachtest/Master.DSS`, now matching both
+  oracles), pin `makebuslist_keeps_the_meter_zones`, no entry stale, no golden byte, lock identical.
+  `section_id`/`total_miles`/`lambda`/`accumulated_l` are wired and compared but **0 on every live
+  case** (no deck runs `RelCalc`): their oracle-compared non-vacuity and the re-derivation of the
+  exactness note are **owed by G1.6(i)**.
+  Commits: <filled by the docs agent>. Gate: fmt + clippy clean in both lanes; corpus gate 523/523
+  cases (154 passed / 0 failed) in both lanes, ledger **57 entries / 1 588 hits / 0 stale**,
+  `git status --porcelain -- tests/golden` empty, `population_lock` 2 / `golden_lock` 4 /
+  `oracle_parity_cfg_gate` 13 passed per lane. Full five-command gate and `lane_diff` (owed — F0 and
+  F1 move product code): all five commands exit 0, **4 747 passed / 0 failed / 5 ignored** per lane
+  (the five are the pre-existing manual/diagnostic ignores); `lane_diff` `VERDICT: PASS` over 523
+  cases / 3 220 861 records, **max |Δ| = 0** on all eight kinds, 0 iteration drifts.

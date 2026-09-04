@@ -383,7 +383,7 @@ switched off later with no lock diff at all:
 | `compare_bus` | `bus=` | G1.4 | `puVoltages`/`puVmagAngle`/`VMagAngle`/`VLL`/`puVLL`, bus `SeqVoltages`/`CplxSeqVoltages`, `AllPCEatBus`/`AllPDEatBus`, `Distance`/`AllBusDistances`/`AllNodeDistances`/`AllBusVmagPu` |
 | `compare_zsc` | `zsc=` | G1.5 | `Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix`/`Isc`/`Voc` |
 | `compare_reliability` | `rel=` | G1.6 | meter extras + the per-bus reliability columns; also drives the executive `RelCalc` |
-| `compare_pdelements` | `pde=` | G1.6b | the `PDElements` interface walk |
+| `compare_pdelements` | `pde=` | G1.6b | the `PDElements` interface walk — **wired 2026-09-04** |
 | `compare_topology` | `topo=` | G1.7 | `NumLoops`/`NumIsolated*`/`AllLoopedPairs`/`AllIsolated*` |
 | `compare_inc_matrix` | `incm=` | G1.8 | `IncMatrix`/`IncMatrixCols`/`IncMatrixRows`/`Laplacian` |
 | `compare_run_files` | `runf=` | G1.10a | the non-monitor CSV set + contents the deck emits under DataPath, and the `save circuit` file set |
@@ -393,7 +393,7 @@ G1.9 (circuit aggregates + solution scalars) deliberately gets **no** flag — i
 is universal and cheap — so nobody adds an eleventh flag and a second lock regen.
 
 **A flag may not be set before its surface exists.** `G1_SURFACE_FLAGS`
-(`crates/dss-core/tests/corpus_gate/manifest.rs:524`) carries each flag's owning
+(`crates/dss-core/tests/corpus_gate/manifest.rs:530`) carries each flag's owning
 sub-step and a `wired` bit; the structural family gate refuses any manifest case
 that sets a flag whose `wired` is still `false`, because the request builder
 would not send it, the oracle would return nothing, and the case would compare an
@@ -411,7 +411,8 @@ absent or empty, the case **fails**, naming the flag, the channel tag and the
 case. It is never a silent skip, because every comparator in the harness is a
 "for each item the oracle sent" walk and an empty capture passes one trivially.
 The two day-one callers are `compare_all_properties` and `compare_autoadd_log`
-in `corpus_gate/runner.rs`.
+in `corpus_gate/runner.rs`; G1.6b's `PDElements` walk (below) is the third, and
+uses the `_opt` form because an empty walk is legal there.
 
 **Capture order is contractual on the capi channel** (`GOLDEN_REBASE_PLAN.md`
 §1.1(a), restated 2026-09-04). Per element, in three groups:
@@ -429,6 +430,53 @@ oracle's answer depends on request order. `SeqPowers` is a poisoner, not a
 victim. G1.3a is the sub-step that first adds group-B reads, and its capture test
 asserts the request order; the golden path already states the rule at
 `tools/golden/gen_checkpoints.py::capture_element`.
+
+**The `PDElements` walk (G1.6b, 2026-09-04).** `compare_pdelements` turns on the
+per-PD-element walk fastdss compares wholesale — the **13** `IPDElements._columns`
+of `DSS-Python@origin/fastdss` plus `parent_name` — on every live non-`large`
+case (`force_pdelements`, `crates/dss-core/tests/corpus_gate/scheduler.rs:252`;
+the forced split is re-derived and pinned by `FORCED_PDELEMENTS_POPULATION`,
+`crates/dss-core/tests/corpus_gate/scheduler.rs:273`). The port side is
+`Dss::pd_elements` (`crates/dss-core/src/exec/view.rs:767`), a `&self` read of
+`CktElementData`; the comparator is `harness::compare_pd_elements`
+(`crates/dss-core/tests/harness/mod.rs:4971`), which asserts the walk first
+(length, then the name sequence case-insensitively — the oracle's
+`PDElements.Count` is the raw `ListSize` and is deliberately **not** used) and
+then all fourteen fields **exactly**, `rel = abs = 0`: nothing on this surface is
+computed on either side (derivation in `tests/TOLERANCE_NOTES.md`). Three rules
+come with it.
+
+* **`ParentPDElement` is read last, per element, on both transports.** That read
+  re-points `ActiveCktElement` at the parent and never restores it (r4133
+  `DDLL/DPDELements.pas:88-97`, capi `CAPI/CAPI_PDElements.pas:245-257`), so
+  reading it in the fastdss column position contaminates every later field of the
+  same record — 215 cells on IEEE 123, measured. The contract is asserted
+  statically over both capture sources by
+  `the_capi_pd_capture_reads_parentpdelement_last` and its r4133 twin
+  (`crates/dss-core/tests/pd_elements_pins.rs:361`), whose own non-vacuity test
+  requires the scan to reject corrupted copies of the real capture bodies, and
+  behaviourally against the DLL in `crates/dss-epri/tests/modes.rs`. The same file
+  asserts each capture sits **between** the meters capture and the probes capture
+  in its transport's `run_case`.
+* **An empty walk is legal; an empty comparison is not.** 96 of the 372 walked
+  live capi cases hold no PD element at all, so the per-case rail is
+  `require_capture_opt` (presence, not count), and the capture is `null` when the
+  flag is off and `[]` when it is on over a PD-less circuit. The hole that leaves
+  is closed globally: `assert_pd_elements_compare_ran`
+  (`crates/dss-core/tests/harness/mod.rs:5044`) fails the run unless **each**
+  gating channel compared at least one non-empty walk.
+* **`PD_SKIP_FIELDS` is fail-on-stale.** Both oracles read four cells out of
+  uninitialized memory on in-zone shunt Capacitors/Reactors (`EnergyMeter.pas`
+  assigns through `pPCelem: TPCElement`; nondeterministic across processes and, on
+  r4133, within one), so those cells are excluded per (channel, class, field) in
+  `PD_SKIP_FIELDS` (`crates/dss-core/tests/harness/mod.rs:4822`) — never
+  enveloped, and never wider than measured: `fault_rate`/`pct_permanent` stay
+  compared on `r4133`, `lambda`/`accumulated_l` on `capi_v0145`, and Line /
+  Transformer / AutoTrans / GICTransformer keep all four on both channels. Every
+  row carries its Pascal citation and the pin that holds its value, a register
+  test refuses a silent add or drop, and `assert_pd_skip_rows_are_live`
+  (`crates/dss-core/tests/harness/mod.rs:5096`) fails a row that excluded nothing
+  in the whole run. The gate epilogue prints every row's visit/hit counts.
 
 ### The divergence ledger (`tests/corpus/ledger.json`)
 
@@ -983,9 +1031,9 @@ property cell of a live non-`large` case is asserted on **both** channels. The
 two channels do not spell values identically, so the r4133 side runs a
 **channel-scoped claim chain** whose links are consulted in one fixed order and
 never on `capi_v0145`. One function holds the whole order —
-`harness::compare_prop_lists` (`crates/dss-core/tests/harness/mod.rs:3249`) —
-and links 2-4 are `PropsPolicy` methods gated on `is_r4133()` (`mod.rs:3450`,
-`:3495`; the channel type is `PropsChannel`, `mod.rs:3416`). Link 1 is the
+`harness::compare_prop_lists` (`crates/dss-core/tests/harness/mod.rs:3252`) —
+and links 2-4 are `PropsPolicy` methods gated on `is_r4133()` (`mod.rs:3453`,
+`:3498`; the channel type is `PropsChannel`, `mod.rs:3419`). Link 1 is the
 deliberate exception: `skip_prop` is a free function taking the channel, so its
 `LANE_SKIP_PROPS` half stays channel-blind (row 1 below says so).
 
@@ -1175,7 +1223,7 @@ The `S` literals are transcribed verbatim, upstream wording and typo included �
 
 **Mode capability — measured, and the acceptance for all of WP-G1.** The modes
 WP-G1 needs live once, as `ModeSpec` rows in `WP_G1_MODES`
-(`crates/dss-epri/src/modes.rs:1320`), each carrying its (family, kind, mode)
+(`crates/dss-epri/src/modes.rs:1358`), each carrying its (family, kind, mode)
 triple, the `D*.pas` line of the `case` arm it transcribes, the `myType` tag a
 `V` arm assigns, and any state the arm moves. `Engine::read_mode`
 (`crates/dss-epri/src/dss.rs:958`) takes the row **by reference** — a mode number
@@ -1183,7 +1231,7 @@ cannot drift between the table and its reader — and rejects a reply whose shap
 not the row's, so a future DLL revision fails loudly instead of decoding garbage.
 `r4133_mode_capability_is_complete_for_wp_g1`
 (`crates/dss-epri/tests/modes.rs:111`) proves against the real DLL, on a solved
-IEEE13 with an EnergyMeter attached, that **all 96 rows classify `Served`** and
+IEEE13 with an EnergyMeter attached, that **all 99 rows classify `Served`** and
 decode into their declared shape: **zero misses, the expected-miss list is empty,
 no per-channel r4133 mask is owed by any WP-G1 surface sub-step.** Its non-vacuity
 is in the same test — a mode index past every family's last arm (`987`) classifies
@@ -1195,8 +1243,13 @@ Three rules that table carries, each of which a capture must respect:
   *write* arm would be executed. `PDElements F:1` (`FaultRate`) and `F:3`
   (`PctPermanent`) are write arms that return the pre-`case` default `0.0` rather
   than the `-1.0` sentinel — invisible downstream — so they are recorded in
-  `EXCLUDED_WRITE_MODES` (`crates/dss-epri/src/modes.rs:1428`) instead of the
-  table, alongside their readers (`F:0`, `F:2`). Hence 96 rows, not 98.
+  `EXCLUDED_WRITE_MODES` (`crates/dss-epri/src/modes.rs:1473`) instead of the
+  table, alongside their readers (`F:0`, `F:2`). G1.6b added a third row of a
+  different shape: `PDElements S:1` (`Name`) is a **write** arm that re-selects
+  `ActiveCktElement` by searching the whole `PDElements` list for its argument,
+  so the generic reader's neutral `""` matches nothing and leaves the
+  pointer-list cursor past the end of the list — it silently truncates an
+  in-progress walk instead of storing a number. Hence 99 rows, not 101.
 * **`ModeEffect::Impure` rows move state.** `Meters.Totals` re-runs
   `TotalizeMeters`; `PDElements.ParentPDElement` re-points `ActiveCktElement`;
   the `Topology` rows build and memoize `GetTopology` and walk a `PointerList`

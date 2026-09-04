@@ -18,7 +18,8 @@ use crate::harness::{
     self, ExportPolicy, RowPolicy, Tolerances, capture_guard, compare_all_properties,
     compare_ctrlqueue, compare_discrete, compare_element_channels, compare_eventlog,
     compare_export, compare_fingerprint, compare_injection, compare_meter, compare_monitor,
-    compare_probe, compare_system_y, compare_variables, compare_yprim, lane, tol_for,
+    compare_pd_elements, compare_probe, compare_system_y, compare_variables, compare_yprim, lane,
+    tol_for,
 };
 use crate::manifest::{EngineChannel, SolvableCase};
 
@@ -676,6 +677,31 @@ pub(crate) fn compare_capture(
                     .collect();
                 compare_all_properties(dss, &rewritten, tol, channel.props_channel(), &ctx);
             }
+        }
+
+        // The PDElements interface walk (GOLDEN_REBASE G1.6b). Last in the
+        // step, next to the other whole-model surface: `Dss::pd_elements` is a
+        // `&self` read over `Circuit.pd_elements` that depends on no active
+        // element and no solve state, so its position among the comparators is
+        // free — unlike the CAPTURE order, which is fixed on both transports
+        // (after the meters, before the probes) because the oracles' own
+        // `ParentPDElement` read hijacks `ActiveCktElement`.
+        //
+        // `require_capture_opt`, not `require_capture`: 96 of the 372 walked
+        // live capi cases hold no PD element at all, so an EMPTY walk is a
+        // legitimate answer the comparator must still match (`[]` against a
+        // non-empty port walk fails on the length assert). What must never
+        // pass is an ABSENT field — a channel that ignored the request — and
+        // the global collapse to zero everywhere, which
+        // `harness::assert_pd_elements_compare_ran` catches in the epilogue.
+        if c.compare_pdelements {
+            let pde = capture_guard::require_capture_opt(
+                "compare_pdelements",
+                channel_tag(channel),
+                cp.pd_elements.as_deref(),
+                &ctx,
+            );
+            compare_pd_elements(dss, pde, channel.props_channel(), &ctx);
         }
     }
 

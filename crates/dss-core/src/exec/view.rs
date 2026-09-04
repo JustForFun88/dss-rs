@@ -97,6 +97,71 @@ pub struct BusScView {
     pub vbus: Vec<num_complex::Complex64>,
 }
 
+/// One row of the `PDElements` walk — the dss-python `ActiveCircuit.PDElements`
+/// surface the fastdss harness compares wholesale
+/// (`DSS-Python@origin/fastdss:dss/IPDElements.py:26-40` `_columns`, archived by
+/// `tests/save_outputs.py:365`). Thirteen oracle fields plus [`Self::parent_name`],
+/// which is ours: the oracle's `ParentPDElement` returns only a per-class
+/// `ClassIndex`, so the parent's identity is not observable from it alone.
+///
+/// Oracle sources per field: capi `CAPI/CAPI_PDElements.pas:119-313`, r4133
+/// `Version8/Source/DDLL/DPDELements.pas` (`PDElementsI` :13-124, `PDElementsF`
+/// :125-216, `PDElementsS` :217-258). Membership is the circuit's `PDElements`
+/// list — Line / Transformer / AutoTrans / Capacitor / Reactor / GICTransformer;
+/// `Fault` is `NON_PCPD_ELEM` and never appears (`PDElements/Fault.pas:114`).
+///
+/// **The values are the *stored* `TPDElement` fields, never `CalcFltRate`'s
+/// product.** [`Self::lambda`] is `BranchFltRate` and [`Self::accumulated_l`] is
+/// `AccumulatedBrFltRate` — both 0 until the EnergyMeter reliability sweep
+/// (`RelCalc`) writes them — while [`Self::fault_rate`] / [`Self::pct_permanent`]
+/// are that sweep's *inputs*. Reading
+/// [`crate::elements::traits::ReliabilityData::branch_flt_rate`] here instead
+/// would report a value no oracle ever returns.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PdElementView {
+    /// `PDElements.Name`: the `Class.name` FullName (capi `:183-191`,
+    /// r4133 `PDElementsS:0` `:226-236`).
+    pub name: String,
+    /// `AccumulatedL` = `AccumulatedBrFltRate` (capi `:215-223`, r4133 `F:5`).
+    pub accumulated_l: f64,
+    /// `FromTerminal`, **1-based** as the oracle reports it; `0` when unset.
+    /// Pascal's default is `FromTerminal := 1`
+    /// (r4133 `PDElements/PDElement.pas:194`), i.e. `Some(0)` on the port.
+    pub from_terminal: i32,
+    /// `IsShunt` (capi `:145-153`, r4133 `I:3`, which encodes it 0/1).
+    pub is_shunt: bool,
+    /// `Numcustomers` = `BranchNumCustomers` (capi `:235-243`, r4133 `I:4`).
+    pub num_customers: i32,
+    /// `SectionID` = `BranchSectionID` (capi `:305-313`, r4133 `I:8`).
+    pub section_id: i32,
+    /// `FaultRate` — the stored `TPDElement.FaultRate` (capi `:119-127`,
+    /// r4133 `F:0`).
+    pub fault_rate: f64,
+    /// `RepairTime` = `HrsToRepair` (capi `:259-267`, r4133 `F:6`).
+    pub repair_time: f64,
+    /// `TotalMiles` = `AccumulatedMilesDownStream` (capi `:294-303`, r4133
+    /// `F:7`) — a different quantity from `Bus.TotalMiles`.
+    pub total_miles: f64,
+    /// `Totalcustomers` = `BranchTotalCustomers` (capi `:269-282`, r4133 `I:5`).
+    pub total_customers: i32,
+    /// `pctPermanent` — the stored `TPDElement.PctPerm` (capi `:155-163`,
+    /// r4133 `F:2`).
+    pub pct_permanent: f64,
+    /// `Lambda` = `BranchFltRate` (capi `:225-233`, r4133 `F:4`).
+    pub lambda: f64,
+    /// `ParentPDElement`: the parent's `ClassIndex` — a **1-based, per-class**
+    /// creation index (`General/DSSObject.pas:43`, written by
+    /// `AddObjectToList`), `0` when the branch has no upline parent. Note both
+    /// oracles reassign `ActiveCktElement` to the parent while answering this
+    /// and never restore it (capi `:245-257`, r4133 `I:6` `:88-100`), so it must be
+    /// read last of the walk's fields.
+    pub parent_class_index: i32,
+    /// The parent's FullName, `""` when [`Self::parent_class_index`] is 0. Not
+    /// an oracle field of its own: on both channels it is the name of whatever
+    /// element the `ParentPDElement` read left active.
+    pub parent_name: String,
+}
+
 impl Dss {
     /// Snapshot every circuit element's terminal powers and currents in
     /// creation order (the oracle's `First/Next` order). Pascal
@@ -686,6 +751,62 @@ impl Dss {
             }
         }
         None
+    }
+
+    /// The circuit's `PDElements` walk — the oracle's
+    /// `PDElements.First`/`Next` iteration over `Circuit.PDElements`, one
+    /// [`PdElementView`] per **enabled** PD element (both oracles skip
+    /// `not Enabled`: capi `CAPI/CAPI_Utils.pas:718-759`
+    /// `Generic_CktElement_Get_First/Next`, r4133 `DPDELements.pas:27-59`).
+    ///
+    /// Order is `Circuit.pd_elements` — the `AddCktElement` creation order that
+    /// both oracles' pointer lists carry (`Common/Circuit.pas:2242-2248`;
+    /// port side `circuit/circuit.rs:488-561`). Read-only: unlike the oracles,
+    /// which leave `ActiveCktElement` pointing at the last-read *parent*
+    /// (see [`PdElementView::parent_class_index`]), this touches no engine state.
+    pub fn pd_elements(&self) -> Vec<PdElementView> {
+        let Some(ckt) = self.circuit.as_ref() else {
+            return Vec::new();
+        };
+        let full_name = |r: ElemId| -> String {
+            format!(
+                "{}.{}",
+                self.classes[r.class_ord()].props.class_name(),
+                self.classes[r.class_ord()].arena[r.index()].data().name()
+            )
+        };
+        let mut out = Vec::with_capacity(ckt.pd_elements.len());
+        for &r in &ckt.pd_elements {
+            let Some(elem) = self.classes[r.class_ord()].arena.try_ckt_elem(r.index()) else {
+                continue;
+            };
+            let cd = elem.cd();
+            if !cd.enabled {
+                continue;
+            }
+            // `fault_rate` / `pct_perm` / `hrs_to_repair` are the STORED
+            // `TPDElement` inputs (`ReliabilityData`); the accumulators below
+            // come from `CktElementData`, never from `branch_flt_rate`, which
+            // is `CalcFltRate`'s product rather than the reported field.
+            let rel = elem.reliability_data();
+            out.push(PdElementView {
+                name: full_name(r),
+                accumulated_l: cd.accumulated_br_flt_rate,
+                from_terminal: cd.from_terminal.map_or(0, |t| t as i32 + 1),
+                is_shunt: elem.is_shunt(),
+                num_customers: cd.branch_num_customers,
+                section_id: cd.branch_section_id,
+                fault_rate: rel.fault_rate,
+                repair_time: rel.hrs_to_repair,
+                total_miles: cd.accumulated_miles_downstream,
+                total_customers: cd.branch_total_customers,
+                pct_permanent: rel.pct_perm,
+                lambda: cd.branch_flt_rate,
+                parent_class_index: cd.parent_pd.map_or(0, |p| p.index() as i32 + 1),
+                parent_name: cd.parent_pd.map_or(String::new(), full_name),
+            });
+        }
+        out
     }
 
     /// A load's `(kWbase, FAllocationFactor)` by name — the oracle's
