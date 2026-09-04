@@ -643,11 +643,13 @@ pub(crate) fn compare_capture(
         // `voltages_excluded` is the one structural rule this surface needs: the
         // bus bands are exact images of the node-voltage band over the SAME
         // `Solution.NodeV` (`harness::compare_bus`), so on a case whose
-        // `voltages` field is already ledger-excluded the bus arrays would
-        // re-raise a divergence that is already triaged and pinned — ten new
-        // ledger rows for one cause. It suppresses only the three continuous
+        // `voltages` field is already ledger-excluded DECK-WIDE the bus arrays
+        // would re-raise a divergence that is already triaged and pinned — ten
+        // new ledger rows for one cause. It suppresses only the three continuous
         // arrays; the bus count, the name sequence, `nodes`, `kv_base` and every
-        // array length stay compared on those cases too.
+        // array length stay compared on those cases too. A `voltages` scope that
+        // names a node subset (`node_re`) suppresses NOTHING here — it would be
+        // far wider than its cause; see `LedgerView::bus_arrays_suppressed`.
         if c.compare_bus {
             capture_guard::require_capture(
                 "compare_bus",
@@ -655,7 +657,7 @@ pub(crate) fn compare_capture(
                 cp.buses.len(),
                 &ctx,
             );
-            let v_excluded = excluded("voltages", None);
+            let v_excluded = ledger.is_some_and(|v| v.bus_arrays_suppressed(i));
             harness::compare_bus(dss, &cp.buses, tol, v_excluded, &ctx);
             harness::compare_all_bus_vmag_pu(dss, &cp.all_bus_vmag_pu, tol, v_excluded, &ctx);
         }
