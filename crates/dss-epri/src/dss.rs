@@ -112,7 +112,63 @@ pub struct Engine {
 impl Engine {
     /// Load the r4133 DLL (leaking its `Library` handle — see [`Engine`]) and run
     /// the init sequence (`UNIFIED_GATE_PLAN.md` §2.2): `DSSI(8,0)` disable forms
-    /// → read Version. All subsequent DLL calls happen on this same thread.
+    /// → read Version → `Set RegistryUpdate=No` →
+    /// `Set DefaultBaseFrequency=60`. All subsequent DLL calls happen
+    /// on this same thread.
+    ///
+    /// # `Set RegistryUpdate=No` — the process-global registry channel (D13)
+    ///
+    /// r4133 keeps `DefaultBaseFreq` in `HKCU\Software\OpenDSS`, section
+    /// `MainSect`, value `BaseFrequency`: the key is
+    /// `TIniRegSave.Create('\Software\' + ProgramName)` with
+    /// `ProgramName := 'OpenDSS'` (`Common/DSSGlobals.pas:2093`, `:2078`;
+    /// `Shared/IniRegSave.pas:63-71`). `ReadDSS_Registry` loads it
+    /// (`Common/DSSGlobals.pas:1005`) from `TExecutive.Create`
+    /// (`Executive/Executive.pas:124`) — i.e. once, at DLL load, before this
+    /// bridge can issue anything — and `WriteDSS_Registry` writes it back
+    /// (`Common/DSSGlobals.pas:1022`) from `TExecutive.Destroy`
+    /// (`Executive/Executive.pas:141`), reached through the unit `Finalization`
+    /// (`Common/DSSGlobals.pas:2159` → `LocalFinalization`) at process exit. The
+    /// write is guarded by `UpdateRegistry` (`Common/DSSGlobals.pas:1015`), which
+    /// defaults to `TRUE` (`:2131`) and is the `RegistryUpdate` option 102
+    /// (`Executive/ExecOptions.pas:146`), settable with no circuit active
+    /// (`:574`, inside `DoSetCmd_NoCircuit` `:545`, dispatched by
+    /// `Executive/ExecCommands.pas:641-644`).
+    ///
+    /// So without this command every worker process leaks its last
+    /// `DefaultBaseFreq` into the machine-wide registry and the next worker
+    /// process — in any worktree — reads it back as its startup default. Measured
+    /// against this DLL (2026-09-04): a worker that runs
+    /// `Set DefaultBaseFrequency=37` and exits leaves `BaseFrequency = 37` in the
+    /// key; with this command issued first the key does not move.
+    ///
+    /// # `Set DefaultBaseFrequency=60` — the init reset (D13)
+    ///
+    /// `Set RegistryUpdate=No` stops this process from *writing* the key; it
+    /// cannot undo the *read*, which has already happened. `ReadDSS_Registry`
+    /// assigns `DefaultBaseFreq := StrToInt(DSS_Registry.ReadString(
+    /// 'BaseFrequency', '60'))` (`Common/DSSGlobals.pas:1005`) from
+    /// `TExecutive.Create` (`Executive/Executive.pas:124`), i.e. at DLL load,
+    /// before this bridge can issue anything — so a session that starts while
+    /// the key holds `50` (left there by any pre-fix worker on this machine)
+    /// begins at 50 Hz. [`Engine::clear`] covers every gate path (`run_case`
+    /// clears before it compiles), but a bare probe session that only issues
+    /// `exec` never clears and would inherit the registry value, so the reset
+    /// is issued once here as well. Both land the bridge on the port's own
+    /// starting point: `Dss::new()` sets `default_base_freq: 60.0`
+    /// (`crates/dss-core/src/exec/construct.rs:173`).
+    ///
+    /// `Get RegistryUpdate` cannot be used to observe the flag: r4133's
+    /// `DoGetCmd` case 102 assigns `UpdateRegistry := InterpretYesNo(Param)`
+    /// instead of appending a result (`Executive/ExecOptions.pas:1314`), so it
+    /// returns the empty string *and* clobbers the flag. The pin is the registry
+    /// value itself (`tests/protocol.rs`).
+    ///
+    /// The capi channel needs no counterpart: dss_capi keeps `DefaultBaseFreq`
+    /// per `TDSSContext` with no registry at all
+    /// (`.inputs/dss_capi/src/Common/DSSClass.pas:1278`) and rejects option 102
+    /// outright (`.inputs/dss_capi/src/Executive/ExecOptions.pas:259-260`,
+    /// `DoSimpleMsg(... 302)`).
     pub fn new(dll_path: &Path) -> Result<Engine, EngineError> {
         let dll = Dll::load(dll_path).map_err(EngineError::Other)?;
         // Never `FreeLibrary`: dropping the DLL deadlocks in its finalization
@@ -133,6 +189,17 @@ impl Engine {
         };
         // Clear any stray error from the setup commands.
         let _ = eng.poll_error();
+        // D13: stop this process from persisting `DefaultBaseFreq` (and
+        // `LastFile`/`DataPath`) into `HKCU\Software\OpenDSS` on exit — see the
+        // fn doc. Strict: a DLL that does not accept the option must fail loudly,
+        // never leave the registry channel open.
+        eng.command_strict("Set RegistryUpdate=No", "init")?;
+        // D13: the registry read already happened at DLL load
+        // (`Common/DSSGlobals.pas:1005`), so start this session from the port's
+        // own default (`crates/dss-core/src/exec/construct.rs:173`, 60 Hz)
+        // instead of whatever the key held — a bare probe session that never
+        // calls `clear` would otherwise inherit it. Strict for the same reason.
+        eng.command_strict("Set DefaultBaseFrequency=60", "init")?;
         Ok(eng)
     }
 
@@ -230,8 +297,33 @@ impl Engine {
 
     // ---- compile / solve --------------------------------------------------
 
+    /// `clear` + the per-case `DefaultBaseFreq` reset (D13).
+    ///
+    /// r4133's `clear` (`Executive/ExecHelper.pas:987-995` → `TExecutive.Clear`,
+    /// `Executive/Executive.pas:234-275`) resets `DefaultEarthModel`,
+    /// `LogQueries` and `MaxAllocationIterations` but **not** `DefaultBaseFreq`:
+    /// the only assignments to it are `Set DefaultBaseFrequency`
+    /// (`Executive/ExecOptions.pas:573` with no circuit, `:829` with one), the
+    /// registry read at DLL load (see [`Engine::new`]) and the unit
+    /// initialization's `DefaultBaseFreq := 60.0`
+    /// (`Common/DSSGlobals.pas:2055`), which runs once per DLL load. So a deck
+    /// that sets 50 Hz leaks it into every later deck this process compiles —
+    /// `TDSSCircuit.Create` takes `Fundamental := DefaultBaseFreq`
+    /// (`Common/Circuit.pas:416`) and the default `Vsource` follows.
+    ///
+    /// Measured against this DLL (2026-09-04): `Set DefaultBaseFrequency=50` →
+    /// `clear` → `new circuit.…` reports `Get DefaultBaseFrequency` = 50 and
+    /// `? Vsource.source.frequency` = 50.
+    ///
+    /// The port starts every case from a fresh `Dss::new()` whose
+    /// `default_base_freq` is `60.0`
+    /// (`crates/dss-core/src/exec/construct.rs:173`), so the bridge restores that
+    /// same starting point after every `clear`. A deck that wants 50 Hz still
+    /// gets it: the reset precedes the `Compile`.
     pub fn clear(&self) -> Result<(), EngineError> {
-        self.command_strict("clear", "clear").map(|_| ())
+        self.command_strict("clear", "clear")?;
+        self.command_strict("Set DefaultBaseFrequency=60", "clear")?;
+        Ok(())
     }
 
     /// Compile a deck; tolerate `{250}` (+ user-model errnos when `warn`).
