@@ -559,6 +559,52 @@ const RIGOR_FLAG_TOKENS: &[(&str, &str)] = &[
     ("compare_di", "di"),
 ];
 
+/// The `compare_*` flags that predate WP-G1 and therefore own no
+/// `corpus_gate::manifest::G1_SURFACE_FLAGS` row: their request + comparator
+/// have always been wired, so the "an unwired flag may not be set" refusal does
+/// not apply to them.
+///
+/// Everything else must own a row (G1.0 audit settlement T2). Without this
+/// partition the unwired-flag protection is opt-in: an eleventh surface flag
+/// added to `SolvableCase` and to [`RIGOR_FLAG_TOKENS`] — which the drift guard
+/// does force — but *not* to `G1_SURFACE_FLAGS` would silently lose the
+/// refusal, and a case that sets it would compare an empty capture against an
+/// empty capture and pass.
+const PRE_G1_COMPARE_FLAGS: &[&str] = &[
+    "compare_variables",
+    "compare_eventlog",
+    "compare_ctrlqueue",
+    "compare_all_properties",
+    "compare_global_result",
+    "compare_autoadd_log",
+];
+
+/// The `name:` field of every `G1Flag` row, read out of `corpus_gate/manifest.rs`.
+///
+/// A source-text scan for the same reason [`compare_fields`] is one: this test
+/// binary does not link `corpus_gate`, so a compiled mirror of the table would
+/// be a second copy that can drift.
+fn g1_surface_flag_names(src: &str) -> std::collections::BTreeSet<String> {
+    let anchor = format!("const {}: &[G1Flag] = &[", "G1_SURFACE_FLAGS");
+    let start = src
+        .find(&anchor)
+        .unwrap_or_else(|| panic!("{anchor:?} not found — was G1_SURFACE_FLAGS renamed?"));
+    let body = &src[start + anchor.len()..];
+    let end = body
+        .find("\n];")
+        .expect("no closing bracket for G1_SURFACE_FLAGS");
+    let mut out = std::collections::BTreeSet::new();
+    for line in body[..end].lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("name: \"")
+            && let Some((name, _)) = rest.split_once('"')
+        {
+            out.insert(name.to_string());
+        }
+    }
+    out
+}
+
 fn crate_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
@@ -579,12 +625,35 @@ fn compare_fields(src: &str, decl: &str) -> std::collections::BTreeSet<String> {
     let mut out = std::collections::BTreeSet::new();
     for line in body[..end].lines() {
         let t = line.trim();
-        let t = t.strip_prefix("pub(crate) ").unwrap_or(t);
-        if !t.starts_with("compare_") {
+        if t.starts_with("//") || t.starts_with("#[") {
             continue;
         }
-        if let Some((name, _)) = t.split_once(':') {
-            out.insert(name.trim().to_string());
+        // Strip ANY visibility keyword, not just `pub(crate) ` (G1.0 audit
+        // settlement T1): a field spelled `pub compare_x: bool` is legal inside
+        // the struct and would otherwise be invisible to this scan, escaping
+        // both the count check and the coverage loop — the one spelling of the
+        // silent drift this guard exists to make loud.
+        let t = match t.strip_prefix("pub") {
+            Some(rest) => rest
+                .strip_prefix('(')
+                .and_then(|r| r.split_once(')'))
+                .map_or(rest, |(_, after)| after)
+                .trim_start(),
+            None => t,
+        };
+        if let Some((name, ty)) = t.split_once(':') {
+            let name = name.trim();
+            if name.starts_with("compare_") {
+                out.insert(name.to_string());
+                continue;
+            }
+            // Belt and braces: a `compare_*` declaration this scan could not
+            // parse must not be silently skipped either.
+            assert!(
+                !(name.contains("compare_") && ty.contains("bool")),
+                "compare_fields could not parse the declaration {line:?} of {decl:?} — \
+                 fix the scan rather than letting the field drop out"
+            );
         }
     }
     out
@@ -627,6 +696,65 @@ fn rigor_format_literal(src: &str) -> String {
         }
     }
     out
+}
+
+/// Non-vacuity of the two source scanners the drift guard is built on, driven
+/// over **synthetic** source text (G1.0 audit settlement T1/T2).
+///
+/// Committed rather than demonstrated once by mutating the real files: the
+/// guard's whole value is that it sees a field the author spelled differently,
+/// and the previous scanner stripped only `pub(crate) `, so a `pub compare_x`
+/// escaped every assertion below it — the one spelling of exactly the drift the
+/// lock exists to make loud.
+#[test]
+fn the_drift_guard_scanners_see_every_visibility_and_every_flag_row() {
+    let struct_src = concat!(
+        "pub(crate) struct Synthetic {\n",
+        "    pub(crate) path: String,\n",
+        "    /// doc line naming compare_not_a_field: bool\n",
+        "    #[serde(default)]\n",
+        "    pub(crate) compare_crate_visible: bool,\n",
+        "    pub compare_pub_visible: bool,\n",
+        "    pub(super) compare_super_visible: bool,\n",
+        "    compare_private: bool,\n",
+        "    unrelated: bool,\n",
+        "}\n",
+    );
+    let got = compare_fields(struct_src, "pub(crate) struct Synthetic {");
+    assert_eq!(
+        got.iter().map(String::as_str).collect::<Vec<_>>(),
+        vec![
+            "compare_crate_visible",
+            "compare_private",
+            "compare_pub_visible",
+            "compare_super_visible",
+        ],
+        "the scan must see a compare_* field at ANY visibility, and must not \
+         pick a field name out of a doc comment"
+    );
+
+    let table_src = concat!(
+        "const G1_SURFACE_FLAGS: &[G1Flag] = &[\n",
+        "    G1Flag {\n",
+        "        name: \"compare_alpha\",\n",
+        "        sub_step: \"G9.9\",\n",
+        "        wired: false,\n",
+        "        get: |c| c.compare_alpha,\n",
+        "    },\n",
+        "    G1Flag {\n",
+        "        name: \"compare_beta\",\n",
+        "        sub_step: \"G9.9\",\n",
+        "        wired: true,\n",
+        "        get: |c| c.compare_beta,\n",
+        "    },\n",
+        "];\n",
+    );
+    let names = g1_surface_flag_names(table_src);
+    assert_eq!(
+        names.iter().map(String::as_str).collect::<Vec<_>>(),
+        vec!["compare_alpha", "compare_beta"],
+        "the G1_SURFACE_FLAGS scan must read every row's `name:`"
+    );
 }
 
 /// The rails that keep the fingerprint honest as the manifest schema grows
@@ -700,6 +828,31 @@ fn every_manifest_compare_flag_has_a_rigor_token() {
              would leave population.lock.json byte-identical — the silent shrink this lock \
              exists to catch. Add the field to `population_lock::Case`, a token to `rigor()`, \
              a row here, and regenerate the lock in the same commit."
+        );
+    }
+    // (iv) every compare flag is either a pre-WP-G1 one or owns a
+    // `G1_SURFACE_FLAGS` row, so the unwired-flag refusal cannot be opted out of
+    // by forgetting one table (G1.0 audit settlement T2).
+    let g1 = g1_surface_flag_names(&manifest_src);
+    assert!(
+        !g1.is_empty(),
+        "G1_SURFACE_FLAGS scanned empty — the scan lost its anchor and this check is vacuous"
+    );
+    for field in &declared {
+        let pre = PRE_G1_COMPARE_FLAGS.contains(&field.as_str());
+        assert!(
+            pre != g1.contains(field),
+            "{field:?} must be EITHER a named pre-WP-G1 flag (PRE_G1_COMPARE_FLAGS) OR own \
+             a `G1_SURFACE_FLAGS` row in corpus_gate/manifest.rs, not both and not neither: \
+             without a row it silently loses the unwired-flag refusal and a case that sets \
+             it compares an empty capture against an empty capture"
+        );
+    }
+    for name in &g1 {
+        assert!(
+            declared.contains(name),
+            "G1_SURFACE_FLAGS names {name:?}, which is not a `compare_*` field of \
+             `corpus_gate::SolvableCase`"
         );
     }
 }

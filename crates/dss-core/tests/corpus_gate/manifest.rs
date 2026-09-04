@@ -33,9 +33,24 @@ pub(crate) struct ProbeSpec {
     pub(crate) props: Vec<String>,
 }
 
+/// One manifest case.
+///
+/// `deny_unknown_fields` (G1.0 audit settlement): every field below is
+/// `#[serde(default)]`, so without it a misspelled key — `compare_zsc_`,
+/// `compare_zsC` — deserializes cleanly to `false`, the unwired-flag gate never
+/// fires, the lock records the flag as off and the author believes the surface
+/// is on. That is exactly the silent vacuity the G1.0 rails exist to close, so
+/// an unknown key is a load error naming the case.
 #[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct SolvableCase {
     pub(crate) path: String,
+    /// Free-text authoring rationale (`tests/corpus/modes/manifest.json`). Never
+    /// read by the gate; declared so `deny_unknown_fields` above can refuse a
+    /// key that is *not* one of ours.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub(crate) notes: String,
     #[serde(default = "default_kind")]
     pub(crate) kind: String,
     #[serde(default)]

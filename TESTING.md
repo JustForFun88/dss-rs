@@ -393,7 +393,7 @@ G1.9 (circuit aggregates + solution scalars) deliberately gets **no** flag — i
 is universal and cheap — so nobody adds an eleventh flag and a second lock regen.
 
 **A flag may not be set before its surface exists.** `G1_SURFACE_FLAGS`
-(`crates/dss-core/tests/corpus_gate/manifest.rs:524`) carries each flag's owning
+(`crates/dss-core/tests/corpus_gate/manifest.rs:539`) carries each flag's owning
 sub-step and a `wired` bit; the structural family gate refuses any manifest case
 that sets a flag whose `wired` is still `false`, because the request builder
 would not send it, the oracle would return nothing, and the case would compare an
@@ -401,6 +401,16 @@ empty capture against an empty capture — green and vacuous. Each sub-step flip
 its own row in the **same commit** that adds the request field and the
 comparator (`no_unwired_g1_surface_flag_is_set_in_any_manifest`, driven
 non-vacuously by `an_unwired_g1_surface_flag_on_a_case_is_refused`).
+
+Two rails keep that refusal from being opted out of by accident. `SolvableCase`
+is `#[serde(deny_unknown_fields)]`: every field is `#[serde(default)]`, so
+without it a misspelled key (`compare_zsc_`, `compare_zsC`) would deserialize to
+`false`, the gate would never fire and the lock would record the flag as off
+while its author believed the surface was on. And
+`every_manifest_compare_flag_has_a_rigor_token` asserts the two tables
+**partition** the vocabulary: every `compare_*` field is either a named pre-WP-G1
+flag or owns a `G1_SURFACE_FLAGS` row — never both, never neither — so an
+eleventh flag cannot own the fingerprint table and silently miss the refusal.
 
 **And a wired flag may not compare nothing.** Every flag-gated comparator calls
 `harness::capture_guard::require_capture`
@@ -411,7 +421,13 @@ absent or empty, the case **fails**, naming the flag, the channel tag and the
 case. It is never a silent skip, because every comparator in the harness is a
 "for each item the oracle sent" walk and an empty capture passes one trivially.
 The two day-one callers are `compare_all_properties` and `compare_autoadd_log`
-in `corpus_gate/runner.rs`.
+in `corpus_gate/runner.rs`. `compare_eventlog`, `compare_ctrlqueue` and
+`compare_global_result` deliberately do **not** call it: an empty event log or
+control queue is a legitimate reading there, so the rail would change live gate
+behaviour. Adding it belongs to whoever proves the emptiness contract for those
+three surfaces. The guard's own non-vacuity is offline
+(`capture_guard::tests::{a_present_capture_passes, an_empty_capture_fails,
+an_absent_capture_fails, the_message_names_the_flag_the_channel_the_context_and_the_shape}`).
 
 **Capture order is contractual on the capi channel** (`GOLDEN_REBASE_PLAN.md`
 §1.1(a), restated 2026-09-04). Per element, in three groups:
@@ -647,6 +663,10 @@ refuses drift in either direction — a field with no row, a row with no field, 
 token the `format!` string does not actually emit, a duplicate token. It is a
 source-text gate in the `oracle_parity_cfg_gate.rs` style, so the *eleventh*
 flag is safe even though nobody will remember this rule (GOLDEN_REBASE G1.0).
+Its scanners strip **any** visibility keyword, not just `pub(crate) ` — a
+`pub compare_x: bool` used to escape every assertion, one spelling of the very
+drift the guard exists to catch — and both are driven over synthetic source text
+by `the_drift_guard_scanners_see_every_visibility_and_every_flag_row`.
 
 **The lock records the MANIFEST flag, not the scheduler's effective one.**
 `population_lock.rs` is a manifest-only reader in its own test binary and cannot
@@ -1158,19 +1178,23 @@ The `S` literals are transcribed verbatim, upstream wording and typo included �
 "Error, parameter not recognized", `Meters` "Error, Parameter not recognized",
 `Topology` "Error, parameter not valid", `Solution`
 "Error, paratemer not recognized", `PDElements` "Error, parameter not valid"
-(`S_SENTINELS`, `crates/dss-epri/src/modes.rs:177`). Three consequences:
+(`S_SENTINELS`, `crates/dss-epri/src/modes.rs:204`). Three consequences:
 
 * **Containment is mandatory for `V`.** `DBusV`'s `else` is the one branch that
   omits the `setlength(myStrArray, 0)` its siblings do, so it *appends* to the
   DLL-global string buffer. Measured verbatim after priming with `CircuitV(987)`:
   "Error, parameter not recognizedCommand not recognized" — equality misses it.
-* **`CktElementS`'s bare "Error" is ambiguous** — served mode 4 returns the same
-  string — so it is usable by the probe/diagnostic path only, never as a
-  capture's miss test.
+* **`CktElementS`'s bare "Error" is ambiguous** — the served **mode 6**
+  `CktElement.ActiveVariableName` returns the same string as its own default when
+  the variable does not exist (`DCktElement.pas:461-462`) — so it is usable by the
+  probe/diagnostic path only, never as a capture's miss test. Mode 6 is not a
+  table row; the one `CktElementS` row WP-G1 reads is mode 4
+  (`CktElement.EnergyMeter`), whose default is the function default `'0'`
+  (`DCktElement.pas:421`).
 * **A family this crate has not measured is refused, not guessed.** `probe_mode`
   (`crates/dss-epri/src/dss.rs:797`) refuses an `S` probe on a family with no
   `S_SENTINELS` row, and a `V` probe on a family in `V_WITHOUT_SENTINEL`
-  (`crates/dss-epri/src/modes.rs:157` — `CapacitorsV` writes **no** sentinel at
+  (`crates/dss-epri/src/modes.rs:180` — `CapacitorsV` writes **no** sentinel at
   all), rather than reporting a silent `Served`.
 
 **Mode capability — measured, and the acceptance for all of WP-G1.** The modes
@@ -1178,7 +1202,7 @@ WP-G1 needs live once, as `ModeSpec` rows in `WP_G1_MODES`
 (`crates/dss-epri/src/modes.rs:1320`), each carrying its (family, kind, mode)
 triple, the `D*.pas` line of the `case` arm it transcribes, the `myType` tag a
 `V` arm assigns, and any state the arm moves. `Engine::read_mode`
-(`crates/dss-epri/src/dss.rs:958`) takes the row **by reference** — a mode number
+(`crates/dss-epri/src/dss.rs:987`) takes the row **by reference** — a mode number
 cannot drift between the table and its reader — and rejects a reply whose shape is
 not the row's, so a future DLL revision fails loudly instead of decoding garbage.
 `r4133_mode_capability_is_complete_for_wp_g1`
@@ -1188,6 +1212,26 @@ decode into their declared shape: **zero misses, the expected-miss list is empty
 no per-channel r4133 mask is owed by any WP-G1 surface sub-step.** Its non-vacuity
 is in the same test — a mode index past every family's last arm (`987`) classifies
 `UnknownMode` with that family's own sentinel, across all 26 (family, shape) pairs.
+A `V` reply also goes through `classify_v` when its tag is 4, because the
+unknown-mode reply carries tag 4 too: without it the two
+`Solution.IncMatrix{Rows,Cols}` rows would decode
+"Error, paratemer not recognized" as data. On `I`/`F` no such check is possible —
+the sentinel is the plain value `-1` / `-1.0`, which several served modes return
+legally — so that shape's guarantee is this acceptance test, which trips the
+moment a re-vendored DLL drops a mode.
+
+That acceptance is **capability, not correctness**: `Served` means "not this
+family's `else` sentinel", and `read_mode` additionally validates the `V` shape,
+so a mode index transposed with a same-shape sibling of the same family would
+still pass. Exact readings therefore pin identity family by family —
+`Circuit.Losses` vs `LineLosses` vs `TotalPower`, `Topology.NumLoops`,
+`PDElements.TotalCustomers`/`FromTerminal`/`PctPermanent`/`RepairTime`, on top of
+the fixture's own seven
+(`distinguishing_readings_separate_same_shape_modes_within_a_family`). `Meters` is
+deliberately absent: every one of its reliability registers reads `0` / `0.0` on
+this fixture (no `RelCalc`), so no pin there could discriminate; G1.6 wires that
+surface and gets its own. Per-mode *value* validation against the capi channel
+stays each surface sub-step's job (decision D2).
 
 Three rules that table carries, each of which a capture must respect:
 
@@ -1195,12 +1239,27 @@ Three rules that table carries, each of which a capture must respect:
   *write* arm would be executed. `PDElements F:1` (`FaultRate`) and `F:3`
   (`PctPermanent`) are write arms that return the pre-`case` default `0.0` rather
   than the `-1.0` sentinel — invisible downstream — so they are recorded in
-  `EXCLUDED_WRITE_MODES` (`crates/dss-epri/src/modes.rs:1428`) instead of the
+  `EXCLUDED_WRITE_MODES` (`crates/dss-epri/src/modes.rs:1562`) instead of the
   table, alongside their readers (`F:0`, `F:2`). Hence 96 rows, not 98.
-* **`ModeEffect::Impure` rows move state.** `Meters.Totals` re-runs
+* **`ModeEffect` is the authority on what a row moves, and it carries the
+  capture-order partition.** `Impure` rows move state: `Meters.Totals` re-runs
   `TotalizeMeters`; `PDElements.ParentPDElement` re-points `ActiveCktElement`;
-  the `Topology` rows build and memoize `GetTopology` and walk a `PointerList`
-  cursor to exhaustion. A capture re-selects after them.
+  the `Topology` rows build and memoize `GetTopology`; the four `Circuit`
+  loss/power rows and `CktElement.Has{Switch,Volt}Control` walk a `PointerList`
+  to exhaustion (`Circuit.Losses` does it one level down, in
+  `TDSSCircuit.Get_Losses`, `Common/Circuit.pas:2436-2443`). A capture re-selects
+  after them. The other two variants **are** the A/B partition below:
+  `ReadsIterminalCache` (group A — `CktElement.PhaseLosses`, `TotalPowers`, which
+  reach `ComputeIterminal`) and `PoisonsIterminalCache` (group B —
+  `SeqCurrents`, `SeqPowers`, `Residuals`, `CplxSeqCurrents`, `CurrentsMagAng`,
+  which call `GetCurrents` into a scratch buffer). Membership is pinned as data
+  by `the_capture_order_partition_is_the_one_d3_names`, so a row cannot be
+  annotated `Pure` and quietly tell a capture author that the reads commute.
+  Measured on the vendored DLL (snapshot and harmonics, G1.0 settlement,
+  2026-09-04) the poisoning is *latent* on IEEE13 — the converged solve leaves
+  the counter current, so nothing refreshes and nothing is starved — which is
+  precisely why the rule is recorded as data instead of as a live test that would
+  pass vacuously.
 * **Selection order matters.** `MetersI(0)` (`First`) sets `ActiveCktElement` to
   the meter object, so a fixture that selects the element *before* the meter
   reads the meter everywhere and still classifies every mode `Served` — green and
@@ -1229,9 +1288,14 @@ runs `ComputeCapacity`, and its correctness rides the same code path as the
 `CmathLib` pin.
 
 **Do-not-call modes.** Two DDLL arms are memory-unsafe and are refused **before
-any FFI** by `check_callable`, consulted by both `probe_mode` and `read_mode`; no
-accessor exists for either (`DO_NOT_CALL`,
-`crates/dss-epri/src/modes.rs:271`):
+any FFI** by `check_callable`, consulted at the crate's single dispatch
+chokepoint `Engine::ffi_dispatch` — so the worker's raw `{"cmd":"ffi"}` channel,
+the one a probe author reaches for first, is refused as well
+(`the_raw_ffi_command_refuses_the_do_not_call_modes`, which then pings the worker
+to prove it survived) — as well as by `probe_mode`, which reports the refusal as a
+typed `ModeStatus` rather than an error; no accessor exists for either
+(`DO_NOT_CALL`,
+`crates/dss-epri/src/modes.rs:298`):
 
 * `Solution` V:2 `BusLevels` — `DSolution.pas:580-582` does
   `setlength(myIntArray, ArrSize)` then `for IMIdx := 0 to ArrSize`, i.e.
