@@ -153,18 +153,20 @@ WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 2026-08-08). Landed: **G1.1** — killed on day one, delivered instead by
 `R4133_PROPS_PLAN.md` RP4.1 (2026-09-03), so **G1.1 is satisfied** and **G3.4**
 (`cim/`, `json/`, `json_import/`) + **G3.5** (`props/`) are unblocked. **G1.2**
-(the ESPVLControl deck, the last zero-coverage class) 2026-08-29. **G1.0** (the rails, D1/D2/D3) 2026-09-04: the
-ten-flag manifest vocabulary in **one** lock regen, explicit `channels` on the
-ten bare `element` exclusions, the capture-presence guard and the r4133 bridge
-rails, whose mode probe **discharges the G1.11 mode-capability acceptance for
-the whole WP**; it compares nothing new. **G1.6b** — the WP's first surface,
-the `PDElements` walk (13 fastdss columns + `parent_name`, both channels,
-compared exactly) — landed 2026-09-04 on lane `lane-m`: 0 ledger entries, 0
-golden bytes, no floor, eight `PD_SKIP_FIELDS` cells excluded for a proven
-uninitialized read in **both** oracles and pinned, `WP_G1_MODES` 96 → 99, plus
-the D9 engine fix (`MakeBusList` now resets the meter zones,
-`Circuit.pas:2411`; one corpus deck moved). G1.3a–d, G1.4–G1.11c and WP-G3–G5
-remain. Full record: the same file, section "GOLDEN_REBASE WP-G1 — records".
+(the ESPVLControl deck, the last zero-coverage class) 2026-08-29. **G1.0** (the
+rails, D1/D2/D3) 2026-09-04 `c4b67a6e`: the ten-flag manifest vocabulary, explicit
+`channels` on the ten bare `element` exclusions, the capture-presence guard and the
+r4133 bridge rails, whose mode probe **discharges the G1.11 mode-capability
+acceptance for the whole WP**; nothing new compared. **G1.6b** — the WP's first
+surface, the `PDElements` walk (13 fastdss columns + `parent_name`, both channels,
+compared exactly) — landed 2026-09-04 on lane `lane-m` (`06808a6d` + `e1e18367`,
+settlement `c6a3c0a8`): 0 ledger entries, 0 golden bytes, eight `PD_SKIP_FIELDS`
+cells excluded and pinned for a proven uninitialized read in **both** oracles
+(scoped to the in-zone shunt element), `WP_G1_MODES` 96 → 99, plus the D9 engine
+fix (`MakeBusList` now resets the meter zones, `Circuit.pas:2411`; one deck
+moved). **Merging `lane-m`: `06808a6d` does not build alone — squash the pair or
+merge `--no-ff`.** G1.3a–d, G1.4–G1.11c and WP-G3–G5 remain. Full record: the
+same file, "GOLDEN_REBASE WP-G1 — records".
 
 **Next.** **`GOLDEN_REBASE_PLAN.md` G1.6(i)** on lane `lane-m` — meter extras +
 the per-bus reliability columns; it drives `RelCalc` and owes the oracle-compared
@@ -327,28 +329,26 @@ the site comment carries each row's measured cost.
   re-probe the skip-bearing cases with `DSS_GATE_SEED_LEDGER=1
   DSS_GATE_SEED_ONLY=<case>` and delete any entry whose cause upstream has fixed,
   so the r4133 channel re-lights instead of staying dark forever.
-- **`CorpusGuard` can leak deck-written artifacts under concurrency —
-  OPEN, out-of-scope observation (first seen at GOLDEN_REBASE G1.2,
-  2026-08-29).** Unfiltered `cargo test --workspace` runs intermittently leave
-  untracked deck-written exports inside the tracked corpus tree — nearly always
-  `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*` / `AutoHLT_*`
-  `.txt`, written by the vendored decks' own `export … file=` lines) —
-  contradicting TESTING.md's "keep `tests/corpus` pristine afterwards".
-  Consistent with an overlapping-guard snapshot race (cf. the unit test
-  `corpus_guard_overlapping_guards_still_sweep`) plus the case-insensitive
-  collision `corpus_gate/runner.rs:42-55` (the same file appears both
-  `Auto3bus_HL_current.txt` and `auto3bus_hl_current.txt`). **Twelve sightings**
-  2026-08-29 … 2026-09-04 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2,
-  §RP3.10 ×3, §RP5.1 ×1), the set varying in size (1 … 36 files) and in case
-  between successive runs of the *same* tree — the nondeterminism itself was
-  measured at §RP3.13 — and once accompanied by an unreproducible `corpus_gate`
-  `137 passed; 1 failed` whose most likely cause is this race. Every set was
-  removed before the commit — by exact name, `git clean -fd` scoped to the deck
-  tree (§RP3.10), or by hand (§RP5.1) — and both lanes were green with the files
-  present, no tracked corpus or golden byte ever moving, so the leak costs
-  hygiene only. Per-run detail is in the per-WP records (`r4133-props-rp3.md`,
-  `-rp4.md`, `golden-rebase.md`). Twelve sightings make it a pattern, not a
-  fluke: whoever picks it up should start with `DSS_GATE_JOBS=1` per G2.2d.
+- **`CorpusGuard` leaks deck-written artifacts under concurrency — mechanism
+  MEASURED at GOLDEN_REBASE G1.6b (2026-09-04, audit settlement T5); still OPEN,
+  owed a hygiene sub-step** (first seen at G1.2, 2026-08-29). Unfiltered
+  `cargo test --workspace` runs intermittently leave untracked deck-written exports
+  in the tracked corpus tree — nearly always
+  `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*` / `AutoHLT_*` `.txt`,
+  from the decks' own `export … file=` lines) — contradicting TESTING.md's "keep
+  `tests/corpus` pristine afterwards". **Thirteen sightings** 2026-08-29 …
+  2026-09-04 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2, §RP3.10 ×3, §RP5.1 ×1,
+  G1.6b ×1), 1 … 36 files, varying between runs of the *same* tree; every set was
+  removed before its commit and no tracked corpus or golden byte ever moved, so the
+  leak costs hygiene only. **It is a drop-order race, not a missing sweep:**
+  `impl Drop for CorpusGuard` (`corpus_gate/runner.rs:161-190`) releases the
+  directory lock *before* `sweep_created` and the restore loop run, so a sibling
+  case starting in that window (`Test/AutoTrans` holds five cases in one directory)
+  photographs the outgoing case's exports as "vendored" and its own drop rewrites
+  them — only files under `RESTORE_MAX`, and scoped or single-binary runs leave it
+  clean. The fix (hold the lock across sweep + restore) owes a gate-contention
+  measurement in a file every lane is editing (**D7**). Per-run detail:
+  `r4133-props-rp3.md`, `-rp4.md`, `golden-rebase.md`.
 
 **Carried-forward and residual-floor items — the rows still open.** Full text,
 closed rows and all:
