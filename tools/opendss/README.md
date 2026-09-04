@@ -96,10 +96,27 @@ longer exists.
   pollute the vendored corpus (`git status tests/corpus` must stay clean).
 - **UI suppression**: the bridge's init sequence calls `DSSI(8, 0)`, which sets
   the engine's `NoFormsAllowed := TRUE` (`DDSS.pas` mode 8 — note the inverted
-  argument), so a corpus sweep opens no forms/popups. (The old Oddie python
-  channel additionally issued `Set RegistryUpdate=No` / `Set
-  Editor=rundll32.exe`; the Rust bridge issues no such commands — that pair
-  survives only in the frozen `tools/golden/gen_protection.py` generator.)
+  argument), so a corpus sweep opens no forms/popups.
+- **No process-global state escapes the worker** (GOLDEN_REBASE G1.4a, coordinator
+  decision D13). r4133 persists `DefaultBaseFreq`, `LastFile` and `DataPath` in
+  `HKCU\Software\OpenDSS\MainSect` — read at DLL load in `TExecutive.Create`
+  (`Common/DSSGlobals.pas:1005`, `Executive/Executive.pas:124`), written back at
+  process exit in `TExecutive.Destroy` when `UpdateRegistry` is true
+  (`Common/DSSGlobals.pas:1015,1022`, `Executive/Executive.pas:141`) — so an
+  unguarded worker leaks its last base frequency to every later worker on the
+  machine, in any worktree. The bridge therefore issues **`Set RegistryUpdate=No`
+  at init** (`crates/dss-epri/src/dss.rs`, `Engine::new`), which stops the write
+  back, and **`Set DefaultBaseFrequency=60` both at init and after every
+  `clear`** (`Engine::new` / `Engine::clear`) — the registry *read* has already
+  happened by the time the bridge gets control, and r4133's `clear` does not
+  reset the value either (`Executive/Executive.pas:234-275`), so a bare probe
+  session and every gate case alike start where the port does, at 60 Hz
+  (`crates/dss-core/src/exec/construct.rs:173`). `tools/oracle/oracle_server.py`
+  mirrors the frequency reset on the capi channel (which has no registry and
+  rejects `Set RegistryUpdate` outright). Both are pinned by
+  `crates/dss-epri/tests/protocol.rs`. `Set Editor=rundll32.exe`, the other
+  command the old Oddie python channel issued, survives only in the frozen
+  `tools/golden/gen_protection.py` generator.
 - **The DLL is never `FreeLibrary`'d** (`Dll::leak()`): the r4133 unit
   finalization tears down its Delphi solver actor thread through a
   message-pumping `TThread.WaitFor` that deadlocks in a headless process. The

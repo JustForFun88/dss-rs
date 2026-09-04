@@ -540,6 +540,22 @@ def run_case(d, req: dict) -> dict:
             node_order = None
             checkpoints = []
             d.Text.Command = "clear"
+            # D13: `clear` does NOT reset `DefaultBaseFreq` on this channel
+            # either. dss_capi keeps it per `TDSSContext`, initialized once from
+            # `GlobalDefaultBaseFreq` = 60.0 (`Common/DSSClass.pas:1278`,
+            # `Common/DSSGlobals.pas:143`); `TExecutive.Clear`
+            # (`Executive/Executive.pas:268-318`) never touches it, and the only
+            # assignments are `Set DefaultBaseFrequency`
+            # (`Executive/ExecOptions.pas:257` with no circuit, `:611` with one)
+            # and the JSON circuit loader (`CAPI/CAPI_Obj.pas:2919`). This server
+            # is long-lived, so a 50 Hz deck would otherwise leak its base
+            # frequency into every later deck of the sweep, while the Rust engine
+            # starts each case at 60 Hz (`crates/dss-core/src/exec/construct.rs:173`).
+            # Restore that starting point before the compile; a deck that wants
+            # 50 Hz still sets it itself. (No registry counterpart here: unlike
+            # r4133, dss_capi has none and rejects `Set RegistryUpdate`
+            # outright — `Executive/ExecOptions.pas:259-260`, error 302.)
+            d.Text.Command = "Set DefaultBaseFrequency=60"
             try:
                 d.Text.Command = f'Compile "{case_path}"'
             except _dss.DSSException as e:
