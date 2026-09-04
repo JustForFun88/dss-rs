@@ -342,6 +342,11 @@ branch deletion never touches `.inputs`.
   needed, 1–3 short bullets — not half a page. State *what changed and why* in a
   sentence or two; the detailed rationale belongs in `STATUS.md`/code comments, not
   the commit body. Don't restate the diff.
+- **STATUS/record entries: keep them short too.** A sub-step record is 5–10
+  lines: what changed and why, the r4133 citation, the ledger exclusions and
+  their pins by name, the commits, the gate result. Point at evidence that
+  already exists (tests, `ledger.json`, doc comments, `DIVERGENCES.md`, audit
+  reports) instead of restating it; no before/after tables, no narrative.
 
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph
