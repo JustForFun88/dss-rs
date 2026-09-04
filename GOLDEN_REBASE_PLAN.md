@@ -401,7 +401,10 @@ gets its expected-value pin (§1.1(e)). Regenerate `population.lock.json` same
 commit. **Kill criterion:** more than ~15 new ledger entries, or any entry that
 cannot be pinned → stop and report; that magnitude means the r4133 property
 surface diverges materially and needs its own plan.
-Outcome: the 96 r4133-only cases get a property check for the first time.
+Outcome: the r4133-only cases get a property check for the first time.
+*(**2026-09-04**, RP5.2 audit settlement: **97**, not the 96 counted when this
+sub-step was authored — `tests/corpus/manifests/population.lock.json` carries 523
+cases = 367 `both` + 97 `r4133` + 59 `capi_v0145`, i.e. **464** r4133-gating.)*
 
 > **2026-08-22 — superseded by `R4133_PROPS_PLAN.md`** (user decision; the kill
 > criterion fired 2026-08-08 — census: 433 of ~512 live cases diverge, 209

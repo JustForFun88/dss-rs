@@ -110,7 +110,7 @@ The middle column is the pinned dss_capi 0.14.5 kernel, which is what the parity
 lane reproduces; every row but `compat::round_f64` is the same statement in the
 r4133 behavioural authority, cited inline.
 
-Three rails keep the operational documents honest as the teardown proceeds, all
+Four rails keep the operational documents honest as the teardown proceeds, all
 in `crates/dss-core/tests/oracle_parity_cfg_gate.rs`: every `compat::` alias any
 operational document names must still be declared by a compat module (so the
 sentences above cannot survive their rows), and `TORN_DOWN_ROWS` records every
@@ -125,18 +125,18 @@ no marker. The register also re-reads what a teardown is *for* — the recorded
 pin must be a declared `#[test]` whose body no longer branches on the lane,
 because once the row leaves the census nothing else looks at that test.
 
-The third rail is about *citations* rather than rows, and covers this file and
-`tests/TOLERANCE_NOTES.md` wherever they name a Rust line
-(`operational_docs_line_citations_point_at_the_line_they_name`, added 2026-09-04
-by R4133_PROPS §RP5.1's audit settlement). Every `<file>.rs:<line>` a sentence
-here spells — and every bare `` `:<line>` `` continuation of one — must name
-exactly one file in the tree, land on a line that exists and is not blank, and
-sit within ±3 lines of something the sentence itself backticks. A citation that
-resolves to no file, or to several with no fully-qualified spelling before it,
-**fails** rather than being skipped; per-document floors keep the walk from
-going vacuous if the citations were ever deleted wholesale. So a doc line
-naming a code line is a checked claim here, not a promise: when the code moves,
-this file goes red with it.
+The third and fourth rails are about *citations* rather than rows, and run in
+both directions. `operational_docs_line_citations_point_at_the_line_they_name`
+(§RP5.1's settlement) covers this file and `tests/TOLERANCE_NOTES.md` wherever
+they name a Rust line: every `<file>.rs:<line>` — and every bare `` `:<line>` ``
+continuation — must name exactly one file, land on a line that exists and is
+not blank, and sit within ±3 lines of something the sentence itself backticks;
+since §RP5.2's settlement an *unanchored* citation **fails** too, so nothing is
+checked for existence only. The fourth,
+`rust_comments_citing_a_record_line_point_at_the_passage_they_name`, runs the
+other way: a Rust comment citing `<record>.md:LO-HI` must land inside that
+record, on a passage it quotes, inside the `§`section it names, or sharing a
+backticked symbol with it. Floors keep both walks from going vacuous.
 
 ### The parity↔default differential gate
 
@@ -877,7 +877,7 @@ A divergence the ledger owns is handled outside this chain, by the case's
 `property`-scoped `ledger.json` entry (`corpus_gate/ledger.rs:1030`, `:1065`) —
 which is why the triage order below ends there and not before.
 
-**Link 2 — the normalization table** (`harness/props_norm.rs:560`). **168 rows**
+**Link 2 — the normalization table** `PROPS_NORM_R4133` (`harness/props_norm.rs:560`). **168 rows**
 of `(class, prop)` → `NormRule`, each citing the vendored census by
 *(pair, bin, cells)*. The contract is **value-preserving spelling only**
 (`NormRule::claims`, `props_norm.rs:911`): a rule may change how a value is
@@ -904,7 +904,7 @@ makes none. The offline half needs no such check and has none — it reads the
 frozen census files, not the gate population, so it runs unconditionally
 (`props_r4133_replay.rs` holds zero `env::var` calls).
 
-**Link 3 — the echo table** (`props_norm.rs:1772`). **82 rows**, each a
+**Link 3 — the echo table** `PROPS_ECHO_R4133` (`props_norm.rs:1772`). **82 rows**, each a
 value-only exclusion carrying (a) the r4133 `Version8/Source` line that proves
 its category and (b) a **witness** that still holds the port's value
 (`EchoWitness`, `props_norm.rs:1558`: `Capi(n)` cases, a named expected-value
@@ -942,7 +942,7 @@ tied to the table both ways by
 `visits == 0` for a narrowed one (a narrowed row counts only covered cells, so
 `visits == hits` by construction and the first arm cannot fire on it).
 
-**Link 4 — the display floor** (`R4133_DISPLAY_FLOOR = 2e-4` rel,
+**Link 4 — the display floor** (`R4133_DISPLAY_FLOOR` = 2e-4 rel,
 `props_norm.rs:895`). The **only** tolerance this plan introduced: r4133-only,
 property-cells-only, and a *cell* predicate — it reads the two rendered strings,
 so no `(class, prop)` is masked by name and there is no row to go stale. Two
@@ -986,7 +986,7 @@ skipped on capi only, because their Rust tables are r4133-shaped
 so a wholesale re-mask reports as one line instead of 19 stale-row messages; a
 *partial* re-mask is caught instead by the forcing-rule lock
 `scheduler::the_property_forcing_rule_is_every_live_non_large_case`
-(`corpus_gate/scheduler.rs:169`, `FORCED_PROPS_POPULATION = (440, 313, 83, 44)`
+(`corpus_gate/scheduler.rs:169`, `FORCED_PROPS_POPULATION` = (440, 313, 83, 44)
 at `:148`).
 
 **Where the rest of the machinery is documented:** the measurement knob

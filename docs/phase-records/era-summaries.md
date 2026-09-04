@@ -111,7 +111,7 @@ regenerated in-commit.
 dedicated successor GOLDEN_REBASE **G1.1**'s kill criterion demanded (user
 decision 2026-08-22, after G1.1 fired on 2026-08-08: unmasking r4133 properties
 diverged on 433 of the 438 walked live cases). All six work packages landed
-gate-green in **both** lanes over **25 sub-steps / 64 RP-titled commits**
+gate-green in **both** lanes over **26 sub-steps / 64 RP-titled commits**
 (`f887f806..64474762` on branch `r4133-props`), each one implement + two fresh
 independent auditors + a dedicated fix agent. **WP-RP0** vendored the census
 evidence and made re-measurement a permanent knob (`DSS_PROPS_CENSUS`);
@@ -126,9 +126,12 @@ the plan's **one** new tolerance, the *derived* **2e-4** r4133 display floor
 taking in-scope UNCLAIMED cells **521 841 → 889**; **WP-RP3** closed all thirteen
 genuine jumps — six `FIX`-in-both-lanes port fixes (`line.units`,
 `line.linecode`, per-phase switch/relay state, the five live-rendered read-only
-text surfaces, the WindGen `QMode=0` dispatch, two NCIM port bugs), one
+text surfaces, the WindGen `QMode=0` dispatch, two NCIM port bugs), four
+upstream/echo divergences excluded and pinned with their staged ledger entries
+(`swtcontrol.delay`, `windgen.kvar`, `generator.model`, `gictransformer.r2`), one
 `UPSTREAM_BUG` and one `KEEP_LIVE_PINNED` recorded-and-pinned rather than
-reproduced, and 27 `PRECISION_ROUNDTRIP` pairs; **WP-RP4** delivered G1.1 itself
+reproduced, and one sub-step of 27 `PRECISION_ROUNDTRIP` pairs — 6 + 4 + 1 + 1 +
+1 = 13 (RP5.2 audit settlement, 2026-09-04); **WP-RP4** delivered G1.1 itself
 — `all_properties` unmasked on the r4133 channel for every live non-`large`
 case, with the re-armed kill criterion **not** firing; **WP-RP5** wrote the
 operational docs (with an executable line-citation walk) and this closing record.
