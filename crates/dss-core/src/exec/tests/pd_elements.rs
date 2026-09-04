@@ -357,3 +357,93 @@ fn pd_elements_relcalc_fields_are_zero_without_relcalc() {
         "the walk reports the stored BranchFltRate, which RelCalc never wrote"
     );
 }
+
+/// **Pin (G1.6b audit settlement).** `in_meter_zone` is the port's
+/// `TPDElement.MeterObj <> nil`, and together with `is_shunt` it is the
+/// predicate `harness::pd_skip_applies` uses to scope `PD_SKIP_FIELDS` to the
+/// elements the oracles' zone build corrupts.
+///
+/// `MakeMeterZoneLists` files an enabled **shunt** Capacitor/Reactor on the
+/// meter's **PC** adjacency list (`Version8/Source/Shared/CktTree.pas:664-666`)
+/// and then writes `SensorObj`/`MeterObj` into it through a `TPCElement` cursor
+/// aimed at a `TPDElement` (`Meters/EnergyMeter.pas:1868-1869`, capi
+/// `:1927-1929`); the port performs the same assignment correctly at
+/// `solution/meters/zones/build.rs:284`. A **series** Reactor goes on the PD
+/// list instead (`build.rs:344`) and a shunt one in an unmetered circuit is
+/// never reached — neither is corrupted, so both stay fully compared.
+///
+/// **Both numbers**, for the excluded and the compared element alike: the port
+/// answers the parsed Capacitor defaults `FaultRate` **0.0005** / `PctPerm`
+/// **100.0** (`PDElements/Capacitor.pas:555-557`) in every one of the three
+/// configurations, where the capi oracle answers a heap pointer
+/// (~`6.5e-312`) for the in-zone shunt one only.
+#[test]
+fn pd_elements_in_meter_zone_is_the_zone_membership_the_skip_rows_need() {
+    fn feeder(with_meter: bool) -> Dss {
+        let mut dss = Dss::new();
+        dss.command("New circuit.z basekv=12.47 bus1=src phases=3");
+        dss.command("New line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1");
+        dss.command("New line.l2 bus1=b2 bus2=b1 length=1 units=mi r1=0.1 x1=0.1");
+        dss.command("New capacitor.c1 bus1=b2 phases=3 kv=12.47 kvar=300");
+        dss.command("New reactor.r1 bus1=b1 bus2=b3 phases=3 r=0.1 x=1.0");
+        dss.command("New load.ld1 bus1=b2 phases=3 kv=12.47 kw=100");
+        if with_meter {
+            dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        }
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    let metered = feeder(true);
+    let walk = metered.pd_elements();
+    let row = |n: &str| {
+        walk.iter()
+            .find(|v| v.name == n)
+            .unwrap_or_else(|| panic!("{n} is not in the PDElements walk"))
+    };
+
+    // The one element the defect reaches: shunt AND in the zone.
+    let c1 = row("Capacitor.c1");
+    assert_eq!(
+        (c1.is_shunt, c1.in_meter_zone),
+        (true, true),
+        "Capacitor.c1"
+    );
+    // A series Reactor of the same zone: on the PD list, written correctly.
+    let r1 = row("Reactor.r1");
+    assert_eq!((r1.is_shunt, r1.in_meter_zone), (false, true), "Reactor.r1");
+    // The zone's own branches carry the meter too.
+    assert!(row("Line.l1").in_meter_zone && row("Line.l2").in_meter_zone);
+    for v in [c1, r1] {
+        assert_eq!(
+            (v.fault_rate, v.pct_permanent),
+            (0.0005, 100.0),
+            "{} reliability inputs",
+            v.name
+        );
+    }
+
+    // The same circuit with no EnergyMeter: nothing is in a zone, so no cell of
+    // any class is excluded on either channel.
+    let bare = feeder(false);
+    for v in bare.pd_elements() {
+        assert!(
+            !v.in_meter_zone,
+            "{} claims a meter zone in a circuit that has no meter",
+            v.name
+        );
+    }
+    let bare_c1 = bare
+        .pd_elements()
+        .into_iter()
+        .find(|v| v.name == "Capacitor.c1")
+        .expect("Capacitor.c1");
+    assert_eq!(
+        (bare_c1.is_shunt, bare_c1.fault_rate, bare_c1.pct_permanent),
+        (true, 0.0005, 100.0),
+        "an unmetered shunt capacitor keeps its parsed defaults"
+    );
+}

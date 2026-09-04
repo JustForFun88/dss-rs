@@ -437,9 +437,9 @@ of `DSS-Python@origin/fastdss` plus `parent_name` — on every live non-`large`
 case (`force_pdelements`, `crates/dss-core/tests/corpus_gate/scheduler.rs:252`;
 the forced split is re-derived and pinned by `FORCED_PDELEMENTS_POPULATION`,
 `crates/dss-core/tests/corpus_gate/scheduler.rs:273`). The port side is
-`Dss::pd_elements` (`crates/dss-core/src/exec/view.rs:767`), a `&self` read of
+`Dss::pd_elements` (`crates/dss-core/src/exec/view.rs:778`), a `&self` read of
 `CktElementData`; the comparator is `harness::compare_pd_elements`
-(`crates/dss-core/tests/harness/mod.rs:4971`), which asserts the walk first
+(`crates/dss-core/tests/harness/mod.rs:5009`), which asserts the walk first
 (length, then the name sequence case-insensitively — the oracle's
 `PDElements.Count` is the raw `ListSize` and is deliberately **not** used) and
 then all fourteen fields **exactly**, `rel = abs = 0`: nothing on this surface is
@@ -463,19 +463,26 @@ come with it.
   `require_capture_opt` (presence, not count), and the capture is `null` when the
   flag is off and `[]` when it is on over a PD-less circuit. The hole that leaves
   is closed globally: `assert_pd_elements_compare_ran`
-  (`crates/dss-core/tests/harness/mod.rs:5044`) fails the run unless **each**
+  (`crates/dss-core/tests/harness/mod.rs:5089`) fails the run unless **each**
   gating channel compared at least one non-empty walk.
 * **`PD_SKIP_FIELDS` is fail-on-stale.** Both oracles read four cells out of
   uninitialized memory on in-zone shunt Capacitors/Reactors (`EnergyMeter.pas`
   assigns through `pPCelem: TPCElement`; nondeterministic across processes and, on
   r4133, within one), so those cells are excluded per (channel, class, field) in
-  `PD_SKIP_FIELDS` (`crates/dss-core/tests/harness/mod.rs:4822`) — never
-  enveloped, and never wider than measured: `fault_rate`/`pct_permanent` stay
-  compared on `r4133`, `lambda`/`accumulated_l` on `capi_v0145`, and Line /
-  Transformer / AutoTrans / GICTransformer keep all four on both channels. Every
-  row carries its Pascal citation and the pin that holds its value, a register
-  test refuses a silent add or drop, and `assert_pd_skip_rows_are_live`
-  (`crates/dss-core/tests/harness/mod.rs:5096`) fails a row that excluded nothing
+  `PD_SKIP_FIELDS` (`crates/dss-core/tests/harness/mod.rs:4832`) — never
+  enveloped, and never wider than measured. The scope is the element too, not the
+  class: a row is consulted only where that write lands, on an in-zone **shunt**
+  Capacitor/Reactor (`pd_skip_applies`,
+  `crates/dss-core/tests/harness/mod.rs:4956`, port state
+  `PdElementView::in_meter_zone`), so a series member of either class and a shunt
+  one outside every zone stay fully compared — the defect is measured on 22
+  (capi) / 29 (r4133) of the 372 / 431 walked cases. `fault_rate`/`pct_permanent`
+  also stay compared on `r4133`, `lambda`/`accumulated_l` on `capi_v0145`, and
+  Line / Transformer / AutoTrans / GICTransformer keep all four on both channels.
+  Every row carries its Pascal citation and the pin that holds its value, a
+  register test refuses a silent add or drop, a second one refuses a `pin` no
+  `#[test]` defines, and `assert_pd_skip_rows_are_live`
+  (`crates/dss-core/tests/harness/mod.rs:5142`) fails a row that excluded nothing
   in the whole run. The gate epilogue prints every row's visit/hit counts.
 
 ### The divergence ledger (`tests/corpus/ledger.json`)

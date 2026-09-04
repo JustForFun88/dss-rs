@@ -4,8 +4,10 @@
 //! # The pins
 //!
 //! `harness::PD_SKIP_FIELDS` stops the value comparison of four
-//! `(channel, class, field)` cells per oracle channel, because both oracles read
-//! them out of **uninitialized memory**: `TEnergyMeter.MakeMeterZoneLists` files
+//! `(channel, class, field)` cells per oracle channel — and only on the elements
+//! the defect reaches, an **in-zone shunt** Capacitor/Reactor
+//! (`harness::pd_skip_applies`) — because both oracles read them out of
+//! **uninitialized memory**: `TEnergyMeter.MakeMeterZoneLists` files
 //! shunt Capacitors and Reactors on the **PC** adjacency list and then writes
 //! through a `TPCElement` cursor that is really pointing at a `TPDElement`
 //! (r4133 `Version8/Source/Meters/EnergyMeter.pas:1868-1869`, capi
@@ -189,10 +191,11 @@ fn midi_protection() -> (Dss, DeckDirGuard) {
 /// One row of a `Dss::pd_elements()` walk by full name (the port renders
 /// `Class.name` with the class capitalized and the object name lowercased).
 ///
-/// A macro rather than a function because `exec::view::PdElementView` is
-/// crate-private — `exec/mod.rs:82` re-exports the other view types but not this
-/// one — so an integration test can only reach the walk through inference, the
-/// same way `harness/mod.rs:4972` does.
+/// A macro rather than a function so the borrow of `$walk` stays in the
+/// caller's scope: a `fn(&[PdElementView], &str) -> &PdElementView` would work
+/// too (the type is public since `exec/mod.rs:82`), but every call site here
+/// holds the walk in a local and reads several rows out of it, which is exactly
+/// what `harness/mod.rs:5009`'s `compare_pd_elements` does with its own.
 macro_rules! row {
     ($walk:expr, $name:expr) => {{
         let name: &str = $name;
@@ -525,10 +528,11 @@ fn pd_elements_shunt_reliability_inputs_survive_the_meter_zone() {
         assert_eq!(v.pct_permanent, 100.0, "{name}.pct_permanent");
         assert_eq!(v.repair_time, 3.0, "{name}.repair_time");
     }
-    // The series Reactor of the same deck reads clean on both oracles: the
-    // exclusion is class-scoped only because the comparator cannot see the
-    // oracle's `IsShunt` when it decides. The port's value is the same either
-    // way, which is what makes the class scope safe.
+    // The series Reactor of the same deck reads clean on both oracles, and it
+    // is fully compared there: `harness::pd_skip_applies` scopes the rows to an
+    // in-zone SHUNT element, which is where `MakeMeterZoneLists` writes. Both
+    // members carry the same parsed defaults, so this pin holds the value for
+    // the excluded and the compared one alike.
     let rser = row!(walk, "Reactor.rser");
     assert!(!rser.is_shunt);
     assert_eq!(rser.fault_rate, 0.0005);

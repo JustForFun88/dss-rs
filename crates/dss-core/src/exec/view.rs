@@ -160,6 +160,17 @@ pub struct PdElementView {
     /// an oracle field of its own: on both channels it is the name of whatever
     /// element the `ParentPDElement` read left active.
     pub parent_name: String,
+    /// `MeterObj <> nil`: this PD element sits in some EnergyMeter's zone. Not
+    /// an oracle column either — no `PDElements` arm reports it — and never
+    /// compared; it is the port-side half of the predicate that scopes
+    /// `harness::PD_SKIP_FIELDS` to the elements the oracles' zone build
+    /// actually corrupts. Together with [`Self::is_shunt`] it names exactly the
+    /// PD elements `MakeMeterZoneLists` files on the **PC** adjacency list
+    /// (`Version8/Source/Shared/CktTree.pas:664-666`) and then writes
+    /// `MeterObj`/`SensorObj` into through a `TPCElement` cursor
+    /// (r4133 `Meters/EnergyMeter.pas:1868-1869`); port side, that write is
+    /// `solution/meters/zones/build.rs:284`.
+    pub in_meter_zone: bool,
 }
 
 impl Dss {
@@ -777,7 +788,19 @@ impl Dss {
         };
         let mut out = Vec::with_capacity(ckt.pd_elements.len());
         for &r in &ckt.pd_elements {
-            let Some(elem) = self.classes[r.class_ord()].arena.try_ckt_elem(r.index()) else {
+            // Every id in `Circuit.pd_elements` was pushed by `AddCktElement`
+            // for a PD class, so the slot always holds a circuit element; the
+            // `else` is unreachable and stays total rather than panicking in a
+            // read-only accessor (a dropped row would red the comparator's
+            // length assert first).
+            let slot = self.classes[r.class_ord()].arena.try_ckt_elem(r.index());
+            debug_assert!(
+                slot.is_some(),
+                "Circuit.pd_elements holds a non-ckt slot at class {} index {}",
+                r.class_ord(),
+                r.index()
+            );
+            let Some(elem) = slot else {
                 continue;
             };
             let cd = elem.cd();
@@ -804,6 +827,7 @@ impl Dss {
                 lambda: cd.branch_flt_rate,
                 parent_class_index: cd.parent_pd.map_or(0, |p| p.index() as i32 + 1),
                 parent_name: cd.parent_pd.map_or(String::new(), full_name),
+                in_meter_zone: cd.meter_obj.is_some(),
             });
         }
         out
