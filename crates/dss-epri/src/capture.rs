@@ -15,7 +15,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::dss::{Engine, EngineError};
+use crate::dss::{Engine, EngineError, RelCalcResult};
 use crate::guard::CorpusGuard;
 
 /// Retry a non-converged case in-process up to this many times
@@ -43,6 +43,17 @@ pub struct RunRequest {
     /// transports are requested and ordered identically.
     #[serde(default)]
     pub pd_elements: bool,
+    /// Drive the executive `RelCalc` and capture the reliability surface
+    /// (GOLDEN_REBASE G1.6(i)). The capi channel spells the same request key
+    /// (`oracle_server.run_case`), so both transports run the command at the
+    /// same point of the same step and read the same fields.
+    ///
+    /// This is the only request flag that *changes how the case is run* rather
+    /// than only what is read: without it no live-compared corpus deck ever
+    /// executes `CalcReliabilityIndices`, and the whole reliability half would
+    /// compare `0 == 0`.
+    #[serde(default)]
+    pub reliability: bool,
     #[serde(default)]
     pub probes: Vec<ProbeSpec>,
     #[serde(default)]
@@ -109,6 +120,11 @@ struct Checkpoint {
     capacitors: BTreeMap<String, Vec<i32>>,
     monitors: Vec<MonitorCap>,
     meters: Vec<MeterCap>,
+    /// `None` when the run did not request `RelCalc`; `Some(_)` on **exactly
+    /// one** checkpoint of a requesting run — the last one (see
+    /// [`capture_reliability`]). Sits between `meters` and `pd_elements`
+    /// because that is where the reads happen.
+    reliability: Option<ReliabilityCap>,
     /// `None` when the run did not request the walk — distinct from `Some([])`,
     /// "requested, and this circuit has no enabled PD element" (96 of the 372
     /// walked live cases). The gate's capture guard refuses `None` on a case
@@ -183,6 +199,75 @@ struct MeterCap {
     branches: Vec<String>,
     ends: Vec<String>,
     pce: Vec<String>,
+}
+
+/// The reliability surface of one case (GOLDEN_REBASE G1.6(i)), captured once —
+/// on the last checkpoint, right after the executive `RelCalc` ran.
+///
+/// Key names and types are the contract on the wire (the worker serializes
+/// through `serde_json::Value`, which sorts object keys, so JSON order carries
+/// no meaning); they match `oracle_server.capture_reliability` field for field,
+/// which is what the gate's harness deserializes on both channels.
+#[derive(Serialize)]
+pub struct ReliabilityCap {
+    /// The `RelCalc` hit the tolerated `52902` abort ([`Engine::relcalc`]).
+    pub aborted: bool,
+    /// The abort message, verbatim; empty when it did not abort.
+    pub message: String,
+    /// Every **enabled** meter, in `Meters.First`/`Next` order.
+    pub meters: Vec<MeterReliabilityCap>,
+    /// `Meters.Totals` — read LAST, see [`capture_reliability`].
+    pub totals: Vec<f64>,
+}
+
+/// One meter's reliability record. Field order here is the *shape* contract, not
+/// the read order — see [`capture_reliability`], which reads in
+/// `IMeters._columns` order.
+#[derive(Serialize)]
+pub struct MeterReliabilityCap {
+    pub name: String,
+    /// `MetersI(20)`: `BusTotalNumCustomers` of the first sequence-list
+    /// element's `FromTerminal` bus (`DMeters.pas:232-242`).
+    pub total_customers: i32,
+    pub saifi: f64,
+    /// `MetersF(1)`; the API spells it `SAIFIkW`.
+    pub saifikw: f64,
+    pub saidi: f64,
+    pub cust_interrupts: f64,
+    /// `MetersV(6)`: `Cabs(CalculatedCurrent[k+1])`, `k = 0..NPhases-1` —
+    /// **no** `MeteredTerminal` offset (`DMeters.pas:609-624`), unlike the
+    /// writer `TMeterElement.CalcAllocationFactors`.
+    pub calc_current: Vec<f64>,
+    /// `MetersV(8)`: `PhsAllocationFactor[1..NPhases]` (`DMeters.pas:645-661`).
+    pub alloc_factors: Vec<f64>,
+    /// The three zone lists, **ordered** as the DDLL's `BranchList` walk emits
+    /// them (`DMeters.pas:706-734`, `:682-705`, `:735-762`); the existing
+    /// `meters` capture compares the same names as a set.
+    pub branches: Vec<String>,
+    pub ends: Vec<String>,
+    pub pce: Vec<String>,
+    pub num_sections: i32,
+    pub sections: Vec<FeederSectionCap>,
+}
+
+/// One feeder section of one meter, read behind its own
+/// `Meters.SetActiveSection`.
+#[derive(Serialize)]
+pub struct FeederSectionCap {
+    /// The 1-based index handed to `Meters.SetActiveSection`.
+    pub idx: i32,
+    pub num_section_customers: i32,
+    pub num_section_branches: i32,
+    pub sect_seq_idx: i32,
+    pub sect_total_cust: i32,
+    /// 1 = Fuse, 2 = Recloser, 3 = Relay (`EnergyMeter.pas`); 0 = none.
+    pub ocp_device_type: i32,
+    pub sum_branch_flt_rates: f64,
+    /// `SumFltRatesXRepairHrs / SumBranchFltRates`, **unguarded** on every
+    /// engine — a section with no fault rate is `0/0 = NaN` identically
+    /// everywhere.
+    pub avg_repair_time: f64,
+    pub fault_rate_x_repair_hrs: f64,
 }
 
 /// One enabled PD element's `PDElements` record (GOLDEN_REBASE G1.6b): the
@@ -281,6 +366,19 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 String::new()
             };
 
+            // GOLDEN_REBASE G1.6(i): the executive `RelCalc` runs exactly ONCE
+            // per case — on the LAST step, after the solve reply has been read
+            // (`RelCalc` overwrites `Text.Result` with its own empty reply) and
+            // BEFORE every capture of this checkpoint, which is the slot
+            // `oracle_server.run_case` uses on the capi transport. It is not
+            // idempotent (`Bus.TotalMiles` accumulates across calls), so a
+            // per-step drive would be semantically wrong, not merely slower.
+            let relcalc = if req.reliability && step + 1 == req.n_steps {
+                Some(engine.relcalc()?)
+            } else {
+                None
+            };
+
             // selected_elements=["*"] -> every YPrim-bearing element (rebuilt each
             // solve so a deck that adds an element mid-solve is covered).
             let sel: Vec<String> = if star {
@@ -341,6 +439,14 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 Vec::new()
             };
 
+            // The reliability reads sit between the meter walk and the
+            // PD-elements walk on both transports; `Some` on exactly the step
+            // whose `RelCalc` ran (the last one).
+            let reliability = match &relcalc {
+                Some(rel) => Some(capture_reliability(engine, rel)?),
+                None => None,
+            };
+
             // After the meters and BEFORE the probes — the slot
             // `oracle_server.run_case` gives it, so the two transports issue the
             // walk at the same point of the step. The walk is an active-element
@@ -390,6 +496,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 capacitors,
                 monitors,
                 meters,
+                reliability,
                 pd_elements,
                 probes,
                 variables,
@@ -634,6 +741,116 @@ fn capture_meters(engine: &Engine) -> Result<Vec<MeterCap>, EngineError> {
     }
     engine.assert_clean("meters")?;
     Ok(out)
+}
+
+/// The reliability surface (GOLDEN_REBASE G1.6(i)): every meter's reliability
+/// indices, its three ordered zone lists, its allocation state and each of its
+/// feeder sections, plus the circuit-wide `Meters.Totals`.
+///
+/// Called **after** [`capture_meters`] and **before** [`capture_pd_elements`] —
+/// the slot `oracle_server.run_case` gives it — and only on the step whose
+/// [`Engine::relcalc`] just ran, whose outcome comes in as `rel`.
+///
+/// # The read order is the contract
+/// 1. per meter, the non-section fields in `IMeters._columns` order
+///    (`DSS-Python origin/fastdss:dss/IMeters.py:13-42`), with `ZonePCE` — which
+///    `_columns` does not list — appended to the two zone lists;
+/// 2. still inside the per-meter loop, `Meters.SetActiveSection(k)` for
+///    `k in 1..=NumSections` followed by that section's eight fields, again in
+///    `_columns` order. `ActiveSection` is a per-meter field the meter walk never
+///    resets (`DMeters.pas:254-264`), so a section read without its selector
+///    would answer for the previous section;
+/// 3. `Meters.Totals` **last, after the walk has finished**: it calls
+///    `TotalizeMeters` (`DMeters.pas:566` -> `Common/Circuit.pas:2520-2538`),
+///    which itself walks `EnergyMeters.First`/`Next` and so leaves the meter
+///    cursor past the end — reading it mid-walk silently truncates the capture
+///    (measured on both transports; fastdss says the same at
+///    `save_outputs.py:330-332`).
+///
+/// This is group **C** of the capture-order partition (`GOLDEN_REBASE_PLAN.md`
+/// §1.1(a), coordinator decision D3): not one read here goes through
+/// `GetCurrents` into a scratch buffer (`Meters.CalcCurrent` returns the
+/// *stored* `CalculatedCurrent` array, `DMeters.pas:609-624`), so this surface
+/// neither imposes anything on the element capture order nor inherits anything
+/// from it.
+///
+/// Stronger than fastdss on purpose: `save_outputs.py:283-291` captures the
+/// **first** section only, this captures every one of them.
+pub fn capture_reliability(
+    engine: &Engine,
+    rel: &RelCalcResult,
+) -> Result<ReliabilityCap, EngineError> {
+    let mut meters = Vec::new();
+    // `RelCalc` itself walked `EnergyMeters.First`/`Next` to the end
+    // (`ExecHelper.pas:4417`, `:4439-4441`), so the walk must restart from `First`.
+    let mut has = engine.meters_first();
+    while has {
+        // `IMeters._columns` order, section fields excluded (step 1 above).
+        let name = engine.meter_name();
+        let alloc_factors = engine.meters_alloc_factors()?;
+        let ends = lst(engine.meter_all_end_elements());
+        let saifikw = engine.meters_saifi_kw()?;
+        let saidi = engine.meters_saidi()?;
+        let total_customers = engine.meters_total_customers()?;
+        let saifi = engine.meters_saifi()?;
+        let cust_interrupts = engine.meters_cust_interrupts()?;
+        let calc_current = engine.meters_calc_current()?;
+        let branches = lst(engine.meter_all_branches_in_zone());
+        let pce = lst(engine.meter_zone_pce());
+        let num_sections = engine.meters_num_sections()?;
+        // Step 2: select, then read that section's fields — again in
+        // `_columns` order (`NumSectionCustomers`, `SectSeqIdx`,
+        // `SumBranchFltRates`, `AvgRepairTime`, `SectTotalCust`,
+        // `OCPDeviceType`, `FaultRateXRepairHrs`, `NumSectionBranches`).
+        let mut sections = Vec::with_capacity(num_sections.max(0) as usize);
+        for idx in 1..=num_sections {
+            engine.meters_set_active_section(idx)?;
+            let num_section_customers = engine.meters_num_section_customers()?;
+            let sect_seq_idx = engine.meters_sect_seq_idx()?;
+            let sum_branch_flt_rates = engine.meters_sum_branch_flt_rates()?;
+            let avg_repair_time = engine.meters_avg_repair_time()?;
+            let sect_total_cust = engine.meters_sect_total_cust()?;
+            let ocp_device_type = engine.meters_ocp_device_type()?;
+            let fault_rate_x_repair_hrs = engine.meters_fault_rate_x_repair_hrs()?;
+            let num_section_branches = engine.meters_num_section_branches()?;
+            sections.push(FeederSectionCap {
+                idx,
+                num_section_customers,
+                num_section_branches,
+                sect_seq_idx,
+                sect_total_cust,
+                ocp_device_type,
+                sum_branch_flt_rates,
+                avg_repair_time,
+                fault_rate_x_repair_hrs,
+            });
+        }
+        meters.push(MeterReliabilityCap {
+            name,
+            total_customers,
+            saifi,
+            saifikw,
+            saidi,
+            cust_interrupts,
+            calc_current,
+            alloc_factors,
+            branches,
+            ends,
+            pce,
+            num_sections,
+            sections,
+        });
+        has = engine.meters_next();
+    }
+    // Step 3: LAST, after the walk — `TotalizeMeters` ends it.
+    let totals = engine.meters_totals()?;
+    engine.assert_clean("reliability")?;
+    Ok(ReliabilityCap {
+        aborted: rel.aborted,
+        message: rel.message.clone(),
+        meters,
+        totals,
+    })
 }
 
 /// The `PDElements` walk (GOLDEN_REBASE G1.6b): every **enabled** PD element of

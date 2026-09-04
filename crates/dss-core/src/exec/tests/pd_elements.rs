@@ -298,19 +298,22 @@ fn pd_elements_parent_is_the_upline_branch_by_name_and_class_index() {
 /// (`solution/meters/reliability.rs:113-115,180`; Pascal `CalcFltRate`'s only
 /// caller is `EnergyMeter.pas:2479` inside `CalcReliabilityIndices`, and
 /// `BranchSectionID`/`AccumulatedMilesDownStream` come from
-/// `PDElements/PDElement.pas:106-110,183`). No live corpus deck runs
-/// `RelCalc`, so on a merely metered-and-solved circuit all four are **0** on
-/// the port exactly as on both oracles.
+/// `PDElements/PDElement.pas:106-110,183`). On a merely metered-and-solved
+/// circuit — this fixture, and every corpus case the gate does not flag for
+/// `compare_reliability` — all four are **0** on the port exactly as on both
+/// oracles.
 ///
 /// The reading is deliberately the *stored* `TPDElement` field, not
 /// `CalcFltRate`'s product: `Line.l115` has `FaultRate` 0.1 and `PctPerm` 20.0
 /// with `Len` 0.4, so `ReliabilityData::branch_flt_rate` is 0.008 — reporting
 /// **that** as `Lambda` would manufacture a divergence on every metered deck.
 ///
-/// **G1.6(i) owns these four fields' non-vacuity demo**: it drives `RelCalc`
-/// and turns them into accumulated sums. Until then they are wired and
-/// compared — which asserts the port does not populate them prematurely — but
-/// they are not multi-valued coverage.
+/// This pin is the *zero* half of the coverage: it asserts the port does not
+/// populate the four fields prematurely. The multi-valued half was owed by
+/// G1.6(i) and is discharged — the gate drives the executive `RelCalc` on its
+/// flagged cases and the four fields become oracle-compared accumulated sums
+/// there (`crates/dss-core/tests/reliability_pins.rs`,
+/// `pd_elements_relcalc_fields_are_live_after_relcalc`).
 #[test]
 fn pd_elements_relcalc_fields_are_zero_without_relcalc() {
     let dss = ieee123();

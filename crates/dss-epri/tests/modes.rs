@@ -117,6 +117,8 @@ fn r4133_mode_capability_is_complete_for_wp_g1() {
     the_do_not_call_modes_are_refused_before_any_ffi(&e);
     every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(&e);
     the_parent_read_hijacks_the_active_element_and_the_capture_reads_it_last(&e);
+    // LAST: this phase runs `RelCalc` and adds elements to the circuit.
+    the_relcalc_protocol_and_the_section_cursor(&e);
     // Nothing in the walk left a non-zero errno behind for the next caller.
     let (errno, desc) = e.poll_error();
     assert_eq!(errno, 0, "the mode walk left errno {errno} set: {desc}");
@@ -381,6 +383,7 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
     // Meters
     chk!(METERS_TOTAL_CUSTOMERS, e.meters_total_customers());
     chk!(METERS_NUM_SECTIONS, e.meters_num_sections());
+    chk!(METERS_SET_ACTIVE_SECTION, e.meters_set_active_section(1));
     chk!(METERS_OCP_DEVICE_TYPE, e.meters_ocp_device_type());
     chk!(
         METERS_NUM_SECTION_CUSTOMERS,
@@ -568,4 +571,216 @@ fn the_parent_read_hijacks_the_active_element_and_the_capture_reads_it_last(e: &
         .map(|r| r.name.as_str())
         .collect();
     assert_eq!(shunts, vec!["Capacitor.cap1", "Capacitor.cap2"]);
+}
+
+/// The r4133 half of GOLDEN_REBASE G1.6(i)'s run protocol, proven against the
+/// DLL itself: the `RelCalc` abort is tolerated *and reported*, the feeder-section
+/// cursor behaves as [`dss_epri::capture::capture_reliability`] assumes, and
+/// `Meters.Totals` ends the meter walk.
+///
+/// Runs **last** in the phase sequence because it executes `RelCalc` and adds a
+/// Recloser and a second EnergyMeter to the circuit — which is also what makes
+/// it the discharge of G1.6b's deferred demo: the four reliability-sweep
+/// `PDElements` fields are zero for every phase above (asserted there) and live
+/// here.
+///
+/// Every literal below was read off the vendored r4133 DLL on this fixture
+/// (2026-09-04).
+fn the_relcalc_protocol_and_the_section_cursor(e: &Engine) {
+    select_fixture(e);
+
+    // (1) The zone of `m1` holds no overcurrent device, so `RelCalc` aborts per
+    // meter with 52902 (`Meters/EnergyMeter.pas:2502`). `Engine::relcalc`
+    // tolerates exactly that errno and hands the text back — the abort is a
+    // compared observable, not a bridge detail — and the message is character
+    // for character the one dss-python raises on the same deck.
+    let abort = e
+        .relcalc()
+        .expect("RelCalc must not fail the case on 52902");
+    assert!(abort.aborted, "IEEE13 + m1 has no OCP device in the zone");
+    assert_eq!(
+        abort.message,
+        "Error: No Overcurrent Protection device (Relay, Recloser, or Fuse) defined. \
+         Aborting Reliability calc."
+    );
+    assert!(e.meters_first(), "the walk must restart after RelCalc");
+    assert_eq!(
+        e.meters_num_sections().unwrap(),
+        0,
+        "an aborted calc defines no sections"
+    );
+
+    // (2) With a Recloser on the metered branch the calc completes: no abort, an
+    // empty message, and one section carrying real numbers.
+    e.post("New Recloser.rec1 MonitoredObj=Line.650632 MonitoredTerm=1")
+        .expect("add a Recloser to the zone");
+    e.solve(false).expect("re-solve with the Recloser");
+    let done = e.relcalc().expect("RelCalc with an OCP device present");
+    assert!(!done.aborted, "the zone now has a Recloser");
+    assert!(done.message.is_empty());
+    assert!(e.meters_first());
+    assert_eq!(e.meters_num_sections().unwrap(), 1);
+    e.meters_set_active_section(1).unwrap();
+    assert_eq!(
+        (
+            e.meters_ocp_device_type().unwrap(),
+            e.meters_num_section_customers().unwrap(),
+            e.meters_num_section_branches().unwrap(),
+            e.meters_sect_seq_idx().unwrap(),
+            e.meters_sect_total_cust().unwrap(),
+        ),
+        (2, 15, 13, 1, 15),
+        "section 1 = the Recloser section (1 = Fuse, 2 = Recloser, 3 = Relay)"
+    );
+    assert_eq!(e.meters_sum_branch_flt_rates().unwrap(), 26896.006560000395);
+    assert_eq!(
+        e.meters_fault_rate_x_repair_hrs().unwrap(),
+        80688.01968000119
+    );
+    assert_eq!(e.meters_avg_repair_time().unwrap(), 3.0000000000000004);
+    assert_eq!(
+        (
+            e.meters_saifi().unwrap(),
+            e.meters_saifi_kw().unwrap(),
+            e.meters_saidi().unwrap(),
+            e.meters_cust_interrupts().unwrap(),
+            e.meters_total_customers().unwrap(),
+        ),
+        (
+            164.00001999999998,
+            164.00002,
+            492.0000600000001,
+            2460.0002999999997,
+            15
+        )
+    );
+
+    // (3) The section cursor is a **per-meter** field the meter walk never
+    // resets (`DMeters.pas:254-264`), which is why the capture selects before
+    // every section block; `0` and any out-of-range index deselect (the `Else`
+    // arm), after which the eight section reads answer `0`.
+    assert!(e.meters_first());
+    assert_eq!(
+        e.meters_ocp_device_type().unwrap(),
+        2,
+        "Meters.First must not reset ActiveSection"
+    );
+    e.meters_set_active_section(0).unwrap();
+    assert_eq!(e.meters_ocp_device_type().unwrap(), 0, "0 deselects");
+    e.meters_set_active_section(99).unwrap();
+    assert_eq!(
+        (
+            e.meters_ocp_device_type().unwrap(),
+            e.meters_avg_repair_time().unwrap()
+        ),
+        (0, 0.0),
+        "an index past SectionCount deselects too"
+    );
+
+    // (4) `Meters.Totals` calls `TotalizeMeters` (`DMeters.pas:566` ->
+    // `Common/Circuit.pas:2520-2538`), which walks `EnergyMeters.First`/`Next`
+    // itself and so **ends** an in-progress walk. Two meters make that
+    // observable: with one, the truncation would be invisible.
+    e.post("New EnergyMeter.m2 element=Line.632670 terminal=1")
+        .expect("add a second EnergyMeter");
+    e.solve(false).expect("re-solve with two meters");
+    assert!(e.meters_first());
+    assert!(e.meters_next(), "two meters: Next finds the second");
+    assert!(e.meters_first());
+    let totals = e.meters_totals().unwrap();
+    assert_eq!(totals.len(), 67, "NumEMRegisters = 32 + 5*7");
+    assert!(
+        !e.meters_next(),
+        "Totals totalizes over EnergyMeters.First/Next and leaves the cursor \
+         past the end — the capture must read it LAST"
+    );
+
+    // (5) The capture itself, end to end. `m2`'s zone has no OCP device, so this
+    // `RelCalc` aborts again — per meter: `m1` still gets its section, and the
+    // reported abort is the command's, exactly as the capi transport reports it.
+    let rel = e.relcalc().expect("RelCalc over both meters");
+    assert!(rel.aborted, "m2's zone has no OCP device");
+    let cap = dss_epri::capture::capture_reliability(e, &rel).expect("capture_reliability");
+    assert!(cap.aborted);
+    assert_eq!(cap.message, abort.message, "the same 52902 text");
+    assert_eq!(cap.totals.len(), 67);
+    let names: Vec<&str> = cap.meters.iter().map(|m| m.name.as_str()).collect();
+    assert_eq!(names, vec!["m1", "m2"], "Meters.First/Next order");
+    let m1 = &cap.meters[0];
+    assert_eq!(m1.num_sections, 1);
+    assert_eq!(m1.sections.len(), 1);
+    assert_eq!(m1.sections[0].idx, 1);
+    assert_eq!(m1.sections[0].ocp_device_type, 2);
+    assert_eq!(
+        m1.branches,
+        vec![
+            "Line.650632",
+            "Line.632645",
+            "Line.645646",
+            "Line.632633",
+            "Transformer.xfm1"
+        ],
+        "the zone list is the BranchList walk order (DMeters.pas:706-734)"
+    );
+    assert_eq!(m1.ends, vec!["Line.645646", "Transformer.xfm1"]);
+    assert_eq!(
+        m1.pce,
+        vec![
+            "Load.645",
+            "Load.646",
+            "Load.634a",
+            "Load.634b",
+            "Load.634c"
+        ]
+    );
+    let m2 = &cap.meters[1];
+    assert_eq!(
+        (m2.num_sections, m2.sections.len()),
+        (0, 0),
+        "the aborted meter has no sections, and the capture still records it"
+    );
+    // `CalcCurrent`/`AllocFactors` are NPhases long on both meters. Their
+    // *values* are an uninitialised read on this engine — `AllocateSensorArrays`
+    // (`Meters/MeterElement.pas:45-52`) `ReallocMem`s without zeroing and only
+    // `AllocateLoads` ever writes them — so only the shape is asserted here
+    // (measured on this fixture: `m2.alloc_factors[2] = 1.10343781146e-312`,
+    // process-dependent garbage; GOLDEN_REBASE G1.6(i) decision D-i-3).
+    for m in &cap.meters {
+        assert_eq!(m.calc_current.len(), 3);
+        assert_eq!(m.alloc_factors.len(), 3);
+    }
+
+    // (6) G1.6b's deferred non-vacuity demo, discharged: the four
+    // reliability-sweep `PDElements` fields are all zero before `RelCalc`
+    // (asserted in the phase above) and live after it. `m1`'s zone completed, so
+    // its branches also carry a `SectionID`; `m2`'s aborted after the backward
+    // sweep, which is why its branch has `Lambda`/`AccumulatedL`/`TotalMiles`
+    // but `SectionID` 0.
+    let walk = dss_epri::capture::capture_pd_elements(e).expect("capture_pd_elements");
+    let in_m1 = walk
+        .iter()
+        .find(|r| r.name == "Line.650632")
+        .expect("Line.650632");
+    assert_eq!(
+        (
+            in_m1.section_id,
+            in_m1.lambda,
+            in_m1.accumulated_l,
+            in_m1.total_miles
+        ),
+        (1, 40.0, 66.0, 0.625)
+    );
+    let in_m2 = walk
+        .iter()
+        .find(|r| r.name == "Line.632670")
+        .expect("Line.632670");
+    assert_eq!(
+        (
+            in_m2.section_id,
+            in_m2.lambda,
+            in_m2.accumulated_l,
+            in_m2.total_miles
+        ),
+        (0, 13.34, 98.00002, 0.928030303030303)
+    );
 }

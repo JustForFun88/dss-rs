@@ -1,0 +1,87 @@
+! GOLDEN_REBASE G1.6(i) reliability + load-allocation deck. TWO jobs no other
+! corpus case can do:
+!
+! (1) It is the ONLY deck that runs the executive `AllocateLoads`, and that is
+!     the only thing that makes `Meters.CalcCurrent` / `Meters.AllocFactors`
+!     DEFINED on either oracle: `TMeterElement.AllocateSensorArrays` ReallocMems
+!     `CalculatedCurrent` and `PhsAllocationFactor` WITHOUT zeroing them (r4133
+!     Version8/Source/Meters/MeterElement.pas:45-52; capi 0.14.5 identical) and
+!     only `TMeterElement.CalcAllocationFactors` (:54-72) ever writes them, whose
+!     sole driver is `TExecHelper.DoAllocateLoadsCmd`
+!     (r4133 Version8/Source/Executive/ExecHelper.pas:2624-2683). Everywhere else
+!     both oracles answer from uninitialized heap (harness
+!     `RELIABILITY_SKIP_FIELDS`), so this deck is where the two fields are
+!     compared for real, on both channels.
+! (2) It is the only `both`-channel case with a MULTI-section meter zone: three
+!     Reclosers (the OCP class both oracle revisions spell identically, and the
+!     one the `both`-gated modes:time/midi_duty_ctrl.dss already proves) split
+!     the zone into three feeder sections, so `Meters.SetActiveSection` and the
+!     nine per-section fields are exercised on the r4133 and capi channels at
+!     once. Every reliability input is a deck literal -- per-line faultrate /
+!     pctperm / repair, per-load numcust / relweight, the meter's peakcurrent --
+!     so no reported number is a class default.
+!
+! The trip settings sit far above the zone's load current (~116 A), so the reclosers
+! are pure section markers: no control ever operates and the deck stays a plain
+! snapshot. Feature-sensitive: deleting the trailing `AllocateLoads` leaves every
+! `AllocFactors` at the port's zero (and oracle garbage) and every zone load's
+! `AllocationFactor` at its 0.5 default.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.emrelcalc basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000
+
+new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi
+
+! Zone: head span + two laterals, one of them two segments. Per-line reliability
+! data, all non-default (Line defaults: faultrate=0.1 pctperm=20 repair=3).
+new line.feed bus1=src bus2=mid linecode=lc length=1.5 units=mi
+~ faultrate=0.13 pctperm=35 repair=4.5
+new line.lat1 bus1=mid bus2=la linecode=lc length=0.8 units=mi
+~ faultrate=0.21 pctperm=60 repair=2.5
+new line.lat2 bus1=mid bus2=lb linecode=lc length=1.2 units=mi
+~ faultrate=0.17 pctperm=45 repair=3.5
+new line.lat3 bus1=lb bus2=lc linecode=lc length=0.6 units=mi
+~ faultrate=0.29 pctperm=25 repair=1.5
+
+! Three section boundaries: the head span and both laterals. Explicit A/D curves
+! for the reason modes:time/midi_duty_ctrl.dss names them (r4133 dropped the
+! built-in default recloser curves, WP-U2.2 D2).
+new recloser.rfeed monitoredobj=line.feed monitoredterm=1
+~ switchedobj=line.feed switchedterm=1 phasefast=a phasedelayed=d
+~ phasetrip=1200 groundtrip=800
+new recloser.rlat1 monitoredobj=line.lat1 monitoredterm=1
+~ switchedobj=line.lat1 switchedterm=1 phasefast=a phasedelayed=d
+~ phasetrip=1200 groundtrip=800
+new recloser.rlat2 monitoredobj=line.lat2 monitoredterm=1
+~ switchedobj=line.lat2 switchedterm=1 phasefast=a phasedelayed=d
+~ phasetrip=1200 groundtrip=800
+
+! Loads are kW-SPEC on purpose. `TEnergyMeterObj.AllocateLoad` multiplies every
+! zone load's `AllocationFactor` whatever its spec type (r4133
+! Meters/EnergyMeter.pas:2173-2194), so the allocation stays observable through
+! that property; but `Set_AllocationFactor` only recomputes kW for the kWh /
+! xfkVA spec types, and a solve-derived `kWBase` would drag `SAIFIkW` --
+! `SUM(kWBase*RelWeighting*Bus_Num_Interrupt) / SUM(kWBase)`, r4133
+! `EnergyMeter.pas:2605,2632` -- off the exact set the whole reliability surface
+! is compared on. Measured with `xfkva=`/`allocationfactor=` loads instead: the
+! two oracles land 1.06e-15 rel apart on SAIFIkW (0.18812283916834857 capi vs
+! 0.18812283916834877 r4133) while every other scalar stays bit-identical. With
+! kW literals the only solve-derived cells on this deck are the two arrays this
+! deck exists for. The single-phase load on phase 1 unbalances the three metered
+! phases, giving three distinct allocation factors.
+new load.ld1 bus1=la phases=3 kv=12.47 kw=650 pf=0.92
+~ model=1 numcust=17 relweight=1.3
+new load.ld2 bus1=lb phases=3 kv=12.47 kw=1000 pf=0.9
+~ model=1 numcust=9 relweight=0.8
+new load.ld3 bus1=lc.1 phases=1 kv=7.2 kw=200 pf=0.95
+~ model=1 numcust=4 relweight=1.1
+
+! `peakcurrent` seeds SensorCurrent per phase (the EnergyMeter constructor's
+! default is 400 A on every phase), so every allocation factor is
+! literal / |I_phase|.
+new energymeter.em element=line.feed terminal=1 peakcurrent=[120, 100, 90]
+
+set voltagebases=[12.47]
+calcvoltagebases
+AllocateLoads

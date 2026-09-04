@@ -322,9 +322,18 @@ pub enum ModeEffect {
 /// [`crate::dss::Engine`] takes a `&ModeSpec`, so the table can be walked by a
 /// single test and a number can never drift between a table row and its reader.
 ///
-/// **Getters only.** A DDLL `case` arm that *writes* is not a table row: the
-/// generic reader drives a mode with a neutral argument, which for a write arm
-/// would store that argument into the engine (see [`EXCLUDED_WRITE_MODES`]).
+/// **Getters only, with one declared selector.** A DDLL `case` arm that *writes
+/// model data* is not a table row: the generic reader drives a mode with a
+/// neutral argument, which for a write arm would store that argument into the
+/// engine (see [`EXCLUDED_WRITE_MODES`]). The single exception is
+/// [`METERS_SET_ACTIVE_SECTION`] (`MetersI(22)`), a *selector*: it stores no
+/// caller data in the model — it only moves the per-meter section cursor the
+/// eight `MetersI(23..27)` / `MetersF(4..6)` reads answer from — and its
+/// neutral argument is the arm's own documented "deselect"
+/// (`Else pMeter.ActiveSection := 0`, `DMeters.pas:261`), so the generic walk
+/// stays sound. The capture drives it with a real 1-based index through
+/// [`crate::dss::Engine::meters_set_active_section`]. Its mode number lives in
+/// this table like every other, which is the reason it is a row at all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModeSpec {
     /// The [`crate::families`] registry name (case-insensitive lookup).
@@ -821,6 +830,32 @@ pub const METERS_NUM_SECTIONS: ModeSpec = ModeSpec::scalar(
     "Meters.NumSections",
     "DMeters.pas:244",
     ModeEffect::Pure,
+);
+/// `MetersI(22)` — **select** the feeder section that every `MetersI(23..27)` /
+/// `MetersF(4..6)` read then answers for (GOLDEN_REBASE G1.6(i)).
+///
+/// The one WP-G1 row that consumes its argument: `DMeters.pas:254-264` stores
+/// `pMeter.ActiveSection := arg` for `1 <= arg <= SectionCount` and `0`
+/// otherwise, and assigns no `Result` — the function default `0`
+/// (`DMeters.pas:30`) is the only legal reply, so a `-1` means this DLL does not
+/// serve the selector at all.
+///
+/// `ActiveSection` is a **per-meter** field which the `Meters.First`/`Next` walk
+/// (`DMeters.pas:32-71`) never resets, so a section field read without a
+/// preceding selection answers for whichever section that meter last had (or 0):
+/// selecting before every section block is a correctness requirement of
+/// [`crate::capture::capture_reliability`], not a convention.
+pub const METERS_SET_ACTIVE_SECTION: ModeSpec = ModeSpec::scalar(
+    "Meters",
+    ModeKind::I,
+    22,
+    "Meters.SetActiveSection",
+    "DMeters.pas:254",
+    ModeEffect::Impure(
+        "sets pMeter.ActiveSection (DMeters.pas:254-264) — the per-meter cursor \r
+         every MetersI 23-27 / MetersF 4-6 section read answers from; never reset \r
+         by Meters.First/Next",
+    ),
 );
 /// `MetersI(23)` — OCP device type of the section selected by
 /// `Meters.SetActiveSection` (`MetersI(22)`); 0 when no section is active.
@@ -1403,6 +1438,7 @@ pub const WP_G1_MODES: &[&ModeSpec] = &[
     &CIRCUIT_ALL_NODE_DISTANCES,
     &METERS_TOTAL_CUSTOMERS,
     &METERS_NUM_SECTIONS,
+    &METERS_SET_ACTIVE_SECTION,
     &METERS_OCP_DEVICE_TYPE,
     &METERS_NUM_SECTION_CUSTOMERS,
     &METERS_NUM_SECTION_BRANCHES,
@@ -1617,7 +1653,7 @@ mod tests {
     fn the_wp_g1_mode_table_is_internally_consistent() {
         assert_eq!(
             WP_G1_MODES.len(),
-            99,
+            100,
             "WP-G1 mode count changed — update the count, the record and TESTING.md"
         );
         let mut names: Vec<&str> = Vec::new();

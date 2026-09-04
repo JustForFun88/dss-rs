@@ -249,6 +249,151 @@ def capture_all_meters(ckt) -> list:
     return out
 
 
+def capture_reliability(ckt, aborted: bool, message: str) -> dict:
+    """The `Meters` reliability surface, read AFTER the executive `RelCalc`
+    (`GOLDEN_REBASE_PLAN.md` §1.1, sub-step G1.6(i)).
+
+    `RelCalc` (`Executive/ExecCommands.pas:154` -> `TExecHelper.DoLambdaCalcs`,
+    r4133 `Executive/ExecHelper.pas:4404-4440`; capi `ExecCommands.pas:631` ->
+    `ExecHelper.pas:4847`) is the only thing that ever fills these fields, and
+    **no live corpus deck runs it** — so without driving it the whole
+    reliability half of the meter surface would compare `0 == 0`. The gate
+    therefore drives it itself, exactly once per case, right after the LAST
+    solve: it is NOT idempotent (`Bus.TotalMiles` accumulates —
+    `13.825757575757578 -> 22.348484848484844` on
+    `modes/time/midi_duty_ctrl.dss`, measured on both oracle channels), so a
+    per-step drive would be semantically garbage.
+
+    READ-ORDER CONTRACT — three rules, all asserted statically by
+    `crates/dss-core/tests/reliability_pins.rs`:
+
+    1. per meter, the non-section fields in `IMeters._columns` order (the
+       fastdss harness's own record order, `dss/IMeters.py:13-42`); `ZonePCE`
+       is not in `_columns` and is appended right after `AllBranchesInZone`;
+    2. a section field is read ONLY after `SetActiveSection(k)`. The selection
+       lives on the METER (`COM_ActiveSection`, capi `CAPI_Meters.pas:729-740`;
+       `pMeter.ActiveSection`, r4133 `DDLL/DMeters.pas:254-262`) and the meter
+       walk never resets it (capi `Meters_Get_First`/`_Next` `:153-167` ->
+       `Generic_CktElement_Get_First`/`_Next`; r4133 `DMeters.pas:38-71`), so a
+       section read without a preceding `SetActiveSection` returns the
+       previously selected section. With none selected — or an out-of-range
+       index — `InvalidActiveSection` (`CAPI_Meters.pas:122-134`) yields 0/0.0
+       and, under `DSS_CAPI_EXT_ERRORS`, raises: measured on the pinned oracle,
+       both cases raise `(#5055, 'Invalid active section. Has SetActiveSection
+       been called?')`, so this rule is a hard requirement here, not just a
+       stale-value hazard. The loop below selects every `k in 1..=NumSections`,
+       so a meter whose calc aborted (`NumSections == 0`) reads no section
+       field at all;
+    3. `Meters.Totals` is read LAST, after the `First`/`Next` walk has
+       finished. It calls `TotalizeMeters` (`CAPI_Meters.pas:279-290`, `:287`
+       -> `Common/Circuit.pas:2347-2360`; r4133 `DMeters.pas:566` ->
+       `Circuit.pas:2520-2538`), which walks `EnergyMeters` itself and destroys
+       the meter cursor. The fastdss harness says so verbatim
+       (`tests/save_outputs.py:332-333`, *"This breaks the iteration"*), and it
+       is measured on BOTH channels: on
+       `controls/energymeter/midi_energymeter.dss` (meters `em`, `em2`) a
+       mid-walk `Totals` read makes the very next `Meters.Next` return 0, so the
+       clean walk `['em', 'em2']` silently truncates to `['em']`.
+
+    This surface is group **C** of the §1.1(a) capture-order partition: none of
+    its reads calls `GetCurrents` into a scratch buffer — `CalcCurrent` returns
+    `Cabs` of the STORED `CalculatedCurrent` array (`CAPI_Meters.pas:335-350`),
+    `AllocFactors` a `Move` of `PhsAllocationFactor` (`:379-392`) — so it
+    neither imposes anything on the element capture order nor inherits anything
+    from it.
+
+    Fastdss parity, both directions, deliberately: we are STRICTLY STRONGER on
+    the sections (fastdss captures the first section only,
+    `tests/save_outputs.py:284-291`; we capture every one), and we deliberately
+    do NOT re-read `SeqListSize` / `CountBranches` / `CountEndElements` (the
+    lengths of the three ordered lists compared outright below) or
+    `MeteredElement` / `MeteredTerminal` / `Peakcurrent` (EnergyMeter properties
+    #0 / #1 / #6 — `EnergyMeter.pas:480-486` — already live-compared by
+    `capture_all_properties`). `CountEndElements` is additionally a do-not-call
+    on the r4133 DDLL arm, which dereferences `BranchList.ZoneEndsList` with no
+    nil guard (`DMeters.pas:156-164`, against capi's `CheckBranchList(5501)`).
+
+    `aborted` / `message` are NOT reads: they carry the outcome of the `RelCalc`
+    command itself (errno 52902, `Meters/EnergyMeter.pas:2456` capi == `:2502`
+    r4133 == the port's `solution/meters/reliability.rs` text). The error COUNT
+    is deliberately not reported — the port raises once per failing meter while
+    dss-python raises once per command.
+    """
+    meters = []
+    m = ckt.Meters
+
+    # Same placeholder/artifact filter as `capture_all_meters` (the C-API
+    # `['NONE']` DefaultResult and the Delphi trailing-separator empty entry).
+    def _lst(v):
+        xs = [s for s in (str(s).strip() for s in v) if s]
+        return [] if xs == ["NONE"] else xs
+
+    i = m.First
+    while i:
+        # --- rule 1: reads in `IMeters._columns` order (index in the comment).
+        name = str(m.Name)  # _columns[0]
+        alloc_factors = [float(x) for x in m.AllocFactors]  # _columns[6]
+        ends = _lst(m.AllEndElements)  # _columns[7]
+        saifikw = float(m.SAIFIKW)  # _columns[8]
+        saidi = float(m.SAIDI)  # _columns[10]
+        total_customers = int(m.TotalCustomers)  # _columns[11]
+        saifi = float(m.SAIFI)  # _columns[13]
+        cust_interrupts = float(m.CustInterrupts)  # _columns[14]
+        calc_current = [float(x) for x in m.CalcCurrent]  # _columns[16]
+        branches = _lst(m.AllBranchesInZone)  # _columns[17]
+        pce = _lst(m.ZonePCE)  # (not in _columns)
+        num_sections = int(m.NumSections)  # _columns[18]
+        # --- rule 2: still inside the per-meter walk, one selection per section.
+        sections = []
+        for k in range(1, num_sections + 1):
+            m.SetActiveSection(k)
+            sections.append(
+                {
+                    "idx": k,
+                    # discrete (compared exactly)
+                    "num_section_customers": int(m.NumSectionCustomers),
+                    "num_section_branches": int(m.NumSectionBranches),
+                    "sect_seq_idx": int(m.SectSeqIdx),
+                    "sect_total_cust": int(m.SectTotalCust),
+                    "ocp_device_type": int(m.OCPDeviceType),
+                    # continuous
+                    "sum_branch_flt_rates": float(m.SumBranchFltRates),
+                    "avg_repair_time": float(m.AvgRepairTime),
+                    "fault_rate_x_repair_hrs": float(m.FaultRateXRepairHrs),
+                }
+            )
+        meters.append(
+            {
+                "name": name,
+                "total_customers": total_customers,
+                "saifi": saifi,
+                "saifikw": saifikw,
+                "saidi": saidi,
+                "cust_interrupts": cust_interrupts,
+                "calc_current": calc_current,
+                "alloc_factors": alloc_factors,
+                # ORDERED zone lists — own reads. `capture_all_meters` compares
+                # the same three lists as a case-insensitive SET (deliberately,
+                # see its comment); the ordered assertion lives on these copies.
+                "branches": branches,
+                "ends": ends,
+                "pce": pce,
+                "num_sections": num_sections,
+                "sections": sections,
+            }
+        )
+        i = m.Next
+
+    # --- rule 3: LAST, after the walk. `TotalizeMeters` destroys the cursor.
+    totals = [float(x) for x in m.Totals]
+    return {
+        "aborted": bool(aborted),
+        "message": str(message),
+        "meters": meters,
+        "totals": totals,
+    }
+
+
 def capture_pd_elements(ckt) -> list:
     """Every ENABLED PD element's `PDElements` interface record — the thirteen
     `IPDElements._columns` fields of the fastdss parity target plus the parent's
@@ -372,6 +517,22 @@ _TOLERATED_COMPILE_ERRNOS = {250}
 # Redirect chain); EarlyAbort is toggled per request in main() and restored.
 _USER_MODEL_ERRNOS = {567, 570, 1570}
 
+# G1.6(i). A SEPARATE, deliberately narrow scope: the ONE DoSimpleMsg number the
+# executive `RelCalc` raises as its own by-design abort, tolerated ONLY around
+# that command and never at compile or solve (hence not folded into
+# `_TOLERATED_COMPILE_ERRNOS` above).
+#   52902 — "Error: No Overcurrent Protection device (Relay, Recloser, or Fuse)
+#           defined. Aborting Reliability calc." — raised per meter whose zone
+#           carries no OCP device (`Meters/EnergyMeter.pas:2456` capi ==
+#           r4133 `:2502`). The reliability calc then leaves that meter at
+#           `SectionCount = 0`; the Rust engine reports the identical text on
+#           `Dss::errors()` (`solution/meters/reliability.rs`) and the r4133
+#           bridge tolerates the same single number (`crates/dss-epri`), so the
+#           three engines' abort is compared, not masked (`aborted`/`message`
+#           of `capture_reliability`).
+# Any other errno out of `RelCalc` re-raises — a real failure is never swallowed.
+_RELCALC_TOLERATED_ERRNOS = {52902}
+
 
 def _set_early_abort(d, val) -> bool:
     """Best-effort `DSS.Error.EarlyAbort = val`. Returns True on success; a
@@ -429,6 +590,13 @@ def run_case(d, req: dict) -> dict:
     # "requested, and this circuit simply has no PD element" (96 of the 372 walked
     # live cases have none) — `harness::capture_guard::require_capture_opt`.
     want_pde = bool(req.get("pd_elements", False))
+    # G1.6(i): the `Meters` reliability surface (manifest flag
+    # `compare_reliability`). The ONLY request flag that DRIVES an executive
+    # command — `RelCalc`, once, after the last solve — because no live corpus
+    # deck runs it and the whole surface would otherwise compare `0 == 0`. Off
+    # -> every checkpoint carries `None`; on -> only the LAST one carries the
+    # payload (`harness::capture_guard::require_capture_opt`).
+    want_rel = bool(req.get("reliability", False))
     # CF-C Port 2 user-model decks: tolerate the `_USER_MODEL_ERRNOS` at compile
     # AND at every solve (EarlyAbort is turned off around this call in main()).
     warn_and_continue = bool(req.get("warn_and_continue", False))
@@ -458,7 +626,7 @@ def run_case(d, req: dict) -> dict:
                 d.Text.Command = c
 
             ckt = d.ActiveCircuit
-            for _ in range(n_steps):
+            for step in range(n_steps):
                 try:
                     d.Text.Command = "solve"
                 except _dss.DSSException as e:
@@ -474,6 +642,30 @@ def run_case(d, req: dict) -> dict:
                 # WPG.5: read GlobalResult right after the solve, before any
                 # `?`-query capture below overwrites `Text.Result`.
                 global_result = str(d.Text.Result) if want_global_result else ""
+                # G1.6(i): drive the executive `RelCalc` ONCE, on the LAST step
+                # only, HERE — after `Text.Result` has been read (`RelCalc`
+                # overwrites it with its own reply) and before every capture of
+                # this checkpoint, so the reliability payload and the fields it
+                # feeds (`PDElements.{AccumulatedL,Lambda,TotalMiles,SectionID}`,
+                # `Bus.*`, EnergyMeter properties #19-23) are read post-calc on
+                # all three engines at the same point. Never per step: the calc
+                # is not idempotent (see `capture_reliability`).
+                rel_aborted = False
+                rel_message = ""
+                if want_rel and step == n_steps - 1:
+                    try:
+                        d.Text.Command = "RelCalc"
+                    except _dss.DSSException as e:
+                        # Only 52902, the by-design "no OCP device in the zone"
+                        # abort; anything else is a real failure and re-raises.
+                        errno = e.args[0] if e.args else None
+                        if errno not in _RELCALC_TOLERATED_ERRNOS:
+                            raise
+                        rel_aborted = True
+                        rel_message = str(e.args[1]) if len(e.args) > 1 else ""
+                        log(
+                            f"oracle: tolerated RelCalc abort #{errno} on {case_path}"
+                        )
                 # `selected_elements=["*"]` -> every element's YPrim (small decks;
                 # the Rust side then asserts the returned name set covers ALL
                 # YPrim-bearing elements instead of the fixed count). Control /
@@ -514,6 +706,21 @@ def run_case(d, req: dict) -> dict:
                         "capacitors": disc["capacitors"],
                         "monitors": capture_all_monitors(ckt) if check_mm else [],
                         "meters": capture_all_meters(ckt) if check_mm else [],
+                        # G1.6(i): immediately AFTER the meters — the two meter
+                        # walks stay adjacent — and BEFORE `pd_elements`, whose
+                        # `ParentPDElement` hijack must remain the checkpoint's
+                        # last active-element mutation. `Meters.Totals` (the
+                        # last read inside) destroys the meter cursor, so it
+                        # must not precede `capture_all_meters`. `None` on every
+                        # step but the last, and whenever the flag is off, so
+                        # the gate can tell "not requested / not this step" from
+                        # "requested, and this circuit simply has no meter";
+                        # `crates/dss-epri`'s `run_case` uses the identical slot.
+                        "reliability": (
+                            capture_reliability(ckt, rel_aborted, rel_message)
+                            if want_rel and step == n_steps - 1
+                            else None
+                        ),
                         # G1.6b: AFTER the meters, BEFORE the probes. The walk
                         # mutates the active element (`ParentPDElement`), and
                         # every reader below re-selects its own element

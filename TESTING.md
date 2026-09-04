@@ -150,7 +150,7 @@ pwsh -File tools/lanes/lane_diff.ps1 -SkipDump  # re-diff existing dumps
 
 It builds `crates/dss-core/examples/lane_dump.rs` once per lane (each into its
 own target dir under `target/lanes/`, so re-runs do not thrash the other lane's
-cache), walks **all 523 manifest cases** on each engine — solving the 519 that
+cache), walks **all 524 manifest cases** on each engine — solving the 520 that
 are not abort-by-design — and writes one record per compared quantity: engine
 error *count* (not the message text; the corpus gate reconciles that), per-step
 convergence flag and iteration count, every node voltage, every element's
@@ -316,9 +316,9 @@ One scheduler-driven `#[test]` — `corpus_gate_all_cases_match_engines` — run
 the union of all four case manifests live: the vendored family
 `tests/corpus/manifests/solvable_now.json` (294 decks from the
 `tests/corpus/electricdss-tst` mirror) plus the synthetic families
-`asymmetric` (53) / `controls` (106) / `modes` (70) — 523 cases. Each case's
+`asymmetric` (53) / `controls` (107) / `modes` (70) — 524 cases. Each case's
 **`engines`** field names its gating channel(s): `"capi_v0145"` (59), `"r4133"`
-(97), or `"both"` (the default; 367 cases gate on both channels). Case key = the gate
+(97), or `"both"` (the default; 368 cases gate on both channels). Case key = the gate
 label `solvable_now:<path>` / `<family>:<path>`. The test fails iff any case
 failed **or any ledger entry is stale**, printing the complete failure list
 (manifest order), and reports per-entry ledger hit counts.
@@ -372,7 +372,7 @@ Case classes beyond plain live-compare:
 `GOLDEN_REBASE_PLAN.md` WP-G1 widens the live gate to fastdss parity one surface
 at a time, and each surface is opt-in per case. All ten flags were declared in
 **one** commit (sub-step G1.0, 2026-09-04) rather than one per sub-step, because
-each addition to the rigor fingerprint rewrites all 523 rows of
+each addition to the rigor fingerprint rewrites all 524 rows of
 `population.lock.json`, and a flag that is *not* in that fingerprint can be
 switched off later with no lock diff at all:
 
@@ -393,7 +393,7 @@ G1.9 (circuit aggregates + solution scalars) deliberately gets **no** flag — i
 is universal and cheap — so nobody adds an eleventh flag and a second lock regen.
 
 **A flag may not be set before its surface exists.** `G1_SURFACE_FLAGS`
-(`crates/dss-core/tests/corpus_gate/manifest.rs:530`) carries each flag's owning
+(`crates/dss-core/tests/corpus_gate/manifest.rs:547`) carries each flag's owning
 sub-step and a `wired` bit; the structural family gate refuses any manifest case
 that sets a flag whose `wired` is still `false`, because the request builder
 would not send it, the oracle would return nothing, and the case would compare an
@@ -439,7 +439,7 @@ the forced split is re-derived and pinned by `FORCED_PDELEMENTS_POPULATION`,
 `crates/dss-core/tests/corpus_gate/scheduler.rs:273`). The port side is
 `Dss::pd_elements` (`crates/dss-core/src/exec/view.rs:778`), a `&self` read of
 `CktElementData`; the comparator is `harness::compare_pd_elements`
-(`crates/dss-core/tests/harness/mod.rs:5009`), which asserts the walk first
+(`crates/dss-core/tests/harness/mod.rs:5018`), which asserts the walk first
 (length, then the name sequence case-insensitively — the oracle's
 `PDElements.Count` is the raw `ListSize` and is deliberately **not** used) and
 then all fourteen fields **exactly**, `rel = abs = 0`: nothing on this surface is
@@ -463,7 +463,7 @@ come with it.
   `require_capture_opt` (presence, not count), and the capture is `null` when the
   flag is off and `[]` when it is on over a PD-less circuit. The hole that leaves
   is closed globally: `assert_pd_elements_compare_ran`
-  (`crates/dss-core/tests/harness/mod.rs:5089`) fails the run unless **each**
+  (`crates/dss-core/tests/harness/mod.rs:5098`) fails the run unless **each**
   gating channel compared at least one non-empty walk.
 * **`PD_SKIP_FIELDS` is fail-on-stale.** Both oracles read four cells out of
   uninitialized memory on in-zone shunt Capacitors/Reactors (`EnergyMeter.pas`
@@ -482,8 +482,114 @@ come with it.
   Every row carries its Pascal citation and the pin that holds its value, a
   register test refuses a silent add or drop, a second one refuses a `pin` no
   `#[test]` defines, and `assert_pd_skip_rows_are_live`
-  (`crates/dss-core/tests/harness/mod.rs:5142`) fails a row that excluded nothing
+  (`crates/dss-core/tests/harness/mod.rs:5151`) fails a row that excluded nothing
   in the whole run. The gate epilogue prints every row's visit/hit counts.
+
+**The `Meters` reliability surface (G1.6(i), 2026-09-05).** `compare_reliability` is
+the only compare flag that **drives a command**: on a flagged case the gate runs the
+executive `RelCalc` once, on the **last** step, after the per-step error assert and
+after `Text.Result`/`GlobalResult` has been read (the command overwrites it) and
+before every capture of that checkpoint — on all three engines
+(the `RelCalc` drive, `crates/dss-core/tests/corpus_gate/runner.rs:403`;
+`tools/oracle/oracle_server.py:646`, `Engine::relcalc`,
+`crates/dss-epri/src/dss.rs:341`). *Once*, because `RelCalc` is **not idempotent**: a
+second run re-accumulates `Bus.TotalMiles` (`13.825757575757578 →
+22.348484848484844`, measured on both oracles and pinned in the port by
+`relcalc_is_not_idempotent_and_the_gate_runs_it_once`). The payload therefore lives
+on the last checkpoint only, and the runner asserts exactly that before it compares
+anything. Port side: `Dss::meter_reliability` / `Dss::meter_totals`
+(`crates/dss-core/src/exec/view.rs:1325` / `:1453`) — `&self` reads of solved state,
+the reliability math itself untouched. Comparator: `harness::compare_reliability`
+(`crates/dss-core/tests/harness/mod.rs:6428`). The flag is **manifest-set, never
+forced** (six cases): "has an EnergyMeter" is not a manifest field, and forcing it
+circuit-wide would fire `28724 No EnergyMeter Objects Defined` on ~340 meterless
+decks — so there is no `FORCED_RELIABILITY_POPULATION` lock, deliberately. `large*`
+decks stay out under the same cost guard `force_properties`/`force_pdelements` apply,
+which is why the multi-meter `Bus_Int_Duration` divergence keeps its existing witness
+(the `export_busreliability_multimeter` golden and its G2.2a pin) and gains no live
+one. Six rules come with the surface.
+
+* **Errno 52902 is tolerated — and only it — on both transports.** A zone with no
+  OCP device aborts the calc (r4133 `Meters/EnergyMeter.pas:2502`, capi `:2456`),
+  which is a **compared observable**, not an error to swallow:
+  `_RELCALC_TOLERATED_ERRNOS` (`tools/oracle/oracle_server.py:534`) and
+  `RELCALC_TOLERATED` (`crates/dss-epri/src/dss.rs:112`) are separate single-value
+  scopes, every other errno (28724 included) still fails the case, and the comparator
+  asserts abort symmetry on the **boolean and the message, never the count** — the
+  port reports once per failing meter, dss-python once per command
+  (`relcalc_abort_is_symmetric_on_a_zone_without_ocp`).
+* **Read order inside the surface is contractual, and statically enforced.** Per
+  meter, the non-section fields in `IMeters._columns` order; then
+  `Meters.SetActiveSection(k)` before **every** section block (`ActiveSection` is a
+  per-meter field the `First`/`Next` walk never resets — r4133
+  `DDLL/DMeters.pas:254-264`); then `Meters.Totals` **last, after the walk**, because
+  it re-runs `TotalizeMeters` (`Common/Circuit.pas:2520-2538`) and destroys the meter
+  cursor — measured: a mid-walk read drops the second meter of a two-meter deck.
+  `crates/dss-core/tests/reliability_pins.rs` reads both capture bodies as text and
+  checks each transport against its own pinned 24-read sequence, the three rules over
+  the sequence, the two transports against each other (the per-meter prefix
+  element-by-element, the section block as a set — the two channels legitimately order
+  the section getters differently, and a section field is a pure getter on the
+  already-selected section) and the payload's slot between the meters and the PD
+  elements, with a negative drive over corrupted copies of the real bodies. This
+  surface is group **(C)** of the capture-order partition above: no read of it goes
+  through `GetCurrents`, so it neither imposes nor inherits an element order.
+* **Exact, with three cells banded from existing tiers.** Every reliability value is
+  compared at `rel = abs = 0`: the two independent oracle engines return bit-identical
+  doubles for the whole payload on the flagged decks, so a gap is an order bug, not a
+  floor (derivations in `tests/TOLERANCE_NOTES.md`). The exceptions are
+  `Meters.Totals`, which is `Σ registers·Mask` and rides the **energy** tier its own
+  summands ride — so a `Totals` regression demo must exceed 1e-4 relative to be a demo
+  at all — and `calc_current`/`alloc_factors`, which ride the **current** tier and its
+  image under `SensorCurrent/|I|`. `AverageRepairTime` is an unguarded division on all
+  three engines, so `NaN`/`±inf` agreement counts as agreement while `NaN` against a
+  finite number fails.
+* **An exact float compare needs `float_roundtrip`** (decisions **D11/D18**). The
+  gate decodes oracle JSON with `serde_json`'s `float_roundtrip` feature; without it a
+  17-significant-digit token decodes up to 1 ULP off and every exact compare on this
+  surface — and on the `PDElements` one — reports phantom gaps (measured: the wire
+  tokens round-trip to the port's own f64 15/15, the non-`float_roundtrip` parser
+  misparses 9/9).
+* **The zone lists gain an ordered arm, unconditionally.** `compare_meter`'s
+  `cmp_members` set compare is deliberately order-independent and is untouched;
+  `compare_reliability` layers length → case-insensitive membership →
+  element-by-element sequence on top, each with its own message (a set compare can see
+  neither a reordering nor a multiplicity error — `midi_energymeter` legitimately
+  lists `Transformer.t8` twice in its ends list). Both oracles walk
+  `BranchList.First`/`GoForward` (capi `CAPI/CAPI_Meters.pas:589-595`, r4133
+  `DDLL/DMeters.pas:706-733`) and the port pushes `sequence_list()` from the same tree
+  walk; the order was measured identical on all six flagged cases before the arm was
+  turned on, and reversing the port's list reds 12 cells on both channels while no
+  membership assertion fires.
+* **`RELIABILITY_SKIP_FIELDS` is fail-on-stale, and not a permanent hole.**
+  `Meters.CalcCurrent`/`AllocFactors` are read out of uninitialized memory on both
+  oracles until a deck runs `AllocateLoads` (`TMeterElement.AllocateSensorArrays`
+  ReallocMems both arrays without zeroing, r4133 `Meters/MeterElement.pas:45-52`; only
+  `CalcAllocationFactors` `:54-72` writes them, and its sole driver is
+  `TExecHelper.DoAllocateLoadsCmd`, `Executive/ExecHelper.pas:2624-2683`) — measured
+  denormal garbage that changes across processes, hence excluded per (channel, case,
+  field) in `RELIABILITY_SKIP_FIELDS` (`crates/dss-core/tests/harness/mod.rs:6230`),
+  never enveloped, each row carrying its citation and a pin that a register test
+  requires to name a real `#[test]`. The corpus's only `AllocateLoads` deck,
+  `tests/corpus/controls/energymeter/midi_relcalc.dss` (`both`, three sections), is
+  where both fields **are** compared live on both channels; the global rails
+  `assert_reliability_compare_ran` and `assert_reliability_skip_rows_are_live` fail a
+  run in which a gating channel compared nothing or a row excluded nothing.
+
+Three parity notes, recorded rather than assumed. We capture **every** section, where
+fastdss reads section 1 only (`save_outputs.py:283-291`) — strictly stronger.
+`SeqListSize`/`CountBranches`/`CountEndElements` are the lengths of the three zone
+lists we compare in full, and `MeteredElement`/`MeteredTerminal`/`Peakcurrent` are
+EnergyMeter properties #0/#1/#6 already live-compared by `compare_all_properties` — as
+is **CAIDI**, which has no API mode on either channel (capi exports none; r4133's
+`MetersF` stops at mode 6) but is EnergyMeter property **#22** and moves the moment
+`RelCalc` runs, so it is *property-compared*, never "not comparable"
+(`caidi_is_saidi_over_saifi_on_a_reliability_deck`). And a deck whose zone loads are
+`xfkva`/`kwh`-spec makes `SAIFIkW` solve-derived
+(`Σ kWBase·RelWeighting·Bus_Num_Interrupt / Σ kWBase`) and drops it out of the exact
+set — measured `0.18812283916834857` (capi) vs `0.18812283916834877` (r4133) — which
+is why `midi_relcalc.dss`'s loads are kW literals; anyone adding a reliability deck
+should keep them so.
 
 ### The divergence ledger (`tests/corpus/ledger.json`)
 
@@ -632,14 +738,14 @@ WTG3 state `variables` — the exclusion field that same sub-step added.
 *empty ⇒ all of them* — so a committed entry written for those three would
 silently widen onto every new element sub-channel WP-G1 adds (G1.3a–c), with no
 ledger diff and no population-lock trip. `SUBCHANNEL_FIELDS`
-(`crates/dss-core/tests/corpus_gate/ledger.rs:512`) closes that with three
+(`crates/dss-core/tests/corpus_gate/ledger.rs:537`) closes that with three
 load-time rules: a scope on such a field must carry a **non-empty** `channels`;
 every name in it must be one of that field's declared sub-channels (a typo like
 `"curents"` otherwise loads cleanly, selects nothing, and leaves the entry
 reporting itself applied while masking not one value); and a scope on any other
 field must carry no `channels` at all, since the runtime would never read it.
 "All sub-channels" survives only as a named, reviewed exception in
-`BARE_CHANNELS_ALLOWED` (`ledger.rs:520`), which is **empty**. The rules are
+`BARE_CHANNELS_ALLOWED` (`ledger.rs:545`), which is **empty**. The rules are
 driven both ways by `a_scope_that_misuses_channels_is_refused_at_load`. When a
 sub-step adds a new element sub-channel it adds the name to `SUBCHANNEL_FIELDS`
 **in the same commit**, so the ten committed exclusions keep the width they were
@@ -1054,7 +1160,7 @@ deliberate exception: `skip_prop` is a free function taking the channel, so its
 | 5 | the assert | `assert_value_matches_tol`, `mod.rs:3326` | the case's tier floors (`tol_for`) | **gate red, both spellings in the message** |
 
 A divergence the ledger owns is handled outside this chain, by the case's
-`property`-scoped `ledger.json` entry (`corpus_gate/ledger.rs:1116`, `:1151`) —
+`property`-scoped `ledger.json` entry (`corpus_gate/ledger.rs:1198`, `:1151`) —
 which is why the triage order below ends there and not before.
 
 **Link 2 — the normalization table** `PROPS_NORM_R4133` (`harness/props_norm.rs:560`). **168 rows**
@@ -1223,22 +1329,22 @@ The `S` literals are transcribed verbatim, upstream wording and typo included �
   string — so it is usable by the probe/diagnostic path only, never as a
   capture's miss test.
 * **A family this crate has not measured is refused, not guessed.** `probe_mode`
-  (`crates/dss-epri/src/dss.rs:797`) refuses an `S` probe on a family with no
+  (`crates/dss-epri/src/dss.rs:873`) refuses an `S` probe on a family with no
   `S_SENTINELS` row, and a `V` probe on a family in `V_WITHOUT_SENTINEL`
   (`crates/dss-epri/src/modes.rs:157` — `CapacitorsV` writes **no** sentinel at
   all), rather than reporting a silent `Served`.
 
 **Mode capability — measured, and the acceptance for all of WP-G1.** The modes
 WP-G1 needs live once, as `ModeSpec` rows in `WP_G1_MODES`
-(`crates/dss-epri/src/modes.rs:1358`), each carrying its (family, kind, mode)
+(`crates/dss-epri/src/modes.rs:1393`), each carrying its (family, kind, mode)
 triple, the `D*.pas` line of the `case` arm it transcribes, the `myType` tag a
 `V` arm assigns, and any state the arm moves. `Engine::read_mode`
-(`crates/dss-epri/src/dss.rs:958`) takes the row **by reference** — a mode number
+(`crates/dss-epri/src/dss.rs:1034`) takes the row **by reference** — a mode number
 cannot drift between the table and its reader — and rejects a reply whose shape is
 not the row's, so a future DLL revision fails loudly instead of decoding garbage.
 `r4133_mode_capability_is_complete_for_wp_g1`
 (`crates/dss-epri/tests/modes.rs:111`) proves against the real DLL, on a solved
-IEEE13 with an EnergyMeter attached, that **all 99 rows classify `Served`** and
+IEEE13 with an EnergyMeter attached, that **all 100 rows classify `Served`** and
 decode into their declared shape: **zero misses, the expected-miss list is empty,
 no per-channel r4133 mask is owed by any WP-G1 surface sub-step.** Its non-vacuity
 is in the same test — a mode index past every family's last arm (`987`) classifies
@@ -1250,13 +1356,19 @@ Three rules that table carries, each of which a capture must respect:
   *write* arm would be executed. `PDElements F:1` (`FaultRate`) and `F:3`
   (`PctPermanent`) are write arms that return the pre-`case` default `0.0` rather
   than the `-1.0` sentinel — invisible downstream — so they are recorded in
-  `EXCLUDED_WRITE_MODES` (`crates/dss-epri/src/modes.rs:1473`) instead of the
+  `EXCLUDED_WRITE_MODES` (`crates/dss-epri/src/modes.rs:1509`) instead of the
   table, alongside their readers (`F:0`, `F:2`). G1.6b added a third row of a
   different shape: `PDElements S:1` (`Name`) is a **write** arm that re-selects
   `ActiveCktElement` by searching the whole `PDElements` list for its argument,
   so the generic reader's neutral `""` matches nothing and leaves the
   pointer-list cursor past the end of the list — it silently truncates an
-  in-progress walk instead of storing a number. Hence 99 rows, not 101.
+  in-progress walk instead of storing a number. **One deliberate non-getter is in
+  the table**: `Meters I:22` (`SetActiveSection`, added by G1.6(i)) is a *selector* —
+  it stores no caller data in the model, only moves the per-meter section cursor the
+  eight `MetersI(23..27)` / `MetersF(4..6)` reads answer from, and its neutral
+  argument is the arm's own documented deselect (`Else pMeter.ActiveSection := 0`,
+  `DMeters.pas:261`), so the generic table walk stays sound while the capture drives
+  it with a real 1-based index. Hence **100** rows today (99 at G1.6b), not 102.
 * **`ModeEffect::Impure` rows move state.** `Meters.Totals` re-runs
   `TotalizeMeters`; `PDElements.ParentPDElement` re-points `ActiveCktElement`;
   the `Topology` rows build and memoize `GetTopology` and walk a `PointerList`
@@ -1306,6 +1418,15 @@ Neither is on WP-G1's mode list, so neither costs a comparison channel. Both are
 upstream r4133 defects; the refusal lives in code, so the register cannot rot into
 a comment nobody reads
 (`do_not_call_refuses_the_two_unsafe_modes_without_touching_the_dll`).
+
+A third unsafe arm is **recorded and never bound**: `Meters I:13`
+(`CountEndElements`) dereferences `pMeter.BranchList.ZoneEndsList` behind a
+`pMeter <> Nil` test only (`DMeters.pas:157-163`), so a meter whose zone was never
+built nil-derefs inside the DLL — where capi guards the same property with
+`CheckBranchList(5500)` (`CAPI/CAPI_Meters.pas:535-544`). WP-G1 never needs it: it
+is the length of a list G1.6(i)'s reliability capture reads in full, so it has **no
+`ModeSpec` row** and the bridge has no way to reach it (`read_mode` takes a row by
+reference). A later sub-step that wants it must put it in `DO_NOT_CALL` first.
 
 
 ## Environment variables
