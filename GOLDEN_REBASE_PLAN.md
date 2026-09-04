@@ -151,6 +151,26 @@ sub-step always rebases onto the latest `update` before regenerating them. Nothi
 in WP-G3 starts before **both** G1 and G2 are complete; WP-G4 starts only after
 WP-G3 is fully landed; WP-G5 is last.
 
+> **2026-09-04 amendment — parallel lanes (user decision; coordinator decision D7).**
+> The "single branch only — never in parallel worktrees" rule above is relaxed for
+> the rest of WP-G1 and for WP-G3/WP-G4. Sub-steps that share no accessor,
+> comparator or exclusion list (the 2026-08-29 synthesis chains: element
+> G1.3a → G1.3d(i) → G1.3d(ii) → G1.3b → G1.3c; bus G1.4a → G1.5 → G1.4b;
+> PD/meter G1.6b → G1.6(i) → G1.6(ii); the singles G1.7 / G1.8 / G1.9 /
+> G1.10a–c) run as **lanes** in per-lane git worktrees (`.claude/worktrees/lane-*`,
+> branches `lane-*`) branched from `update`. `update` stays the integration branch
+> and its main working tree receives **merges only**, one lane sub-step at a
+> time: a merge agent resolves conflicts semantically; `population.lock.json` is
+> **regenerated** on the merged tree (never hand-merged); `ledger.json` is the
+> union of both sides' entries; the full five-command gate (both lanes) — plus
+> `lane_diff.ps1` when product code moved on both sides since the merge base —
+> runs on the merged tree before the merge commit is kept. A lane fast-forwards
+> onto `update` before starting its next sub-step. This is safe precisely because
+> the locks are fail-on-stale: a merged lock or ledger that does not match the
+> merged tree fails loudly on the merged-tree gate, so no stale state survives a
+> merge. The per-sub-step ritual, the audit pair and the records are unchanged;
+> each record names its lane branch and the merge commit.
+
 | WP | What | Why it is ordered here |
 |---|---|---|
 | WP-G0 | Golden provenance lock + regen rails | pure instrumentation; makes every later byte movement a loud, reviewed event |
