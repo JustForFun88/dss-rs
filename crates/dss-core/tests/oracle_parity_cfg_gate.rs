@@ -4010,3 +4010,86 @@ fn every_pin_the_g10_record_names_exists_and_is_cited() {
         bad.join("\n  ")
     );
 }
+
+// ---------------------------------------------------------------------------
+// GOLDEN_REBASE G1.9 — the pin names the operational docs cite must exist.
+// ---------------------------------------------------------------------------
+
+/// Every expected-value pin the G1.9 circuit-aggregates surface is documented
+/// by, in `TESTING.md`, `tests/TOLERANCE_NOTES.md`, `GOLDEN_REBASE_PLAN.md` and
+/// the phase record.
+///
+/// Why a hand-kept list: the `RP<n>.<n>` substep-marker tagger
+/// ([`substep_markers_are_tagged_and_do_not_shadow_the_register`]) only accepts
+/// the `R4133_PROPS` spelling and the reserved pin-marker spelling belongs to a
+/// torn-down `compat` row, so a G-plan sub-step's pins were in no
+/// machine-checked guard at all — renaming or deleting one left four documents
+/// citing a test that no longer exists, and nothing reded (G1.9 audit T3).
+const G1_9_PINS: [&str; 16] = [
+    // `crates/dss-core/src/exec/tests/aggregates.rs`
+    "circuit_losses_are_watts_not_kilowatts",
+    "substation_losses_exclude_autotrans",
+    "losses_skip_shunt_elements",
+    "line_losses_sum_the_lines_list",
+    "total_power_is_terminal_one_of_every_source",
+    "total_iterations_is_an_alias_of_iterations",
+    "all_element_losses_follow_creation_order",
+    "the_two_boolean_solution_flags_take_both_values",
+    // `crates/dss-epri/{src/capture.rs, tests/modes.rs}`
+    "r4133_solution_flags_are_zero_one_ints",
+    "the_five_circuit_aggregate_rows_are_impure",
+    "complex_pair_refuses_a_reply_that_is_not_two_doubles",
+    // the audit-settlement guards (`corpus_gate/ledger.rs`, `harness/aggregates.rs`)
+    "the_aggregate_value_arms_inherit_exactly_the_recorded_element_scopes",
+    "a_currents_only_scope_leaves_the_total_power_arm_running",
+    // `crates/dss-core/tests/capture_order.rs`
+    "capi_capture_reads_the_aggregates_before_any_currents_read",
+    "r4133_capture_reads_the_aggregates_before_any_currents_read",
+    "the_gate_rejects_a_swapped_or_renamed_capture",
+];
+
+/// The documents that cite the G1.9 pins by name. Each pin must be named by at
+/// least one of them, so the guard is a tripwire in **both** directions: a
+/// renamed test reds on the tree side, and a pin quietly dropped from the docs
+/// reds on this side.
+const G1_9_PIN_DOCS: [&str; 4] = [
+    "TESTING.md",
+    "tests/TOLERANCE_NOTES.md",
+    "GOLDEN_REBASE_PLAN.md",
+    "docs/phase-records/golden-rebase.md",
+];
+
+#[test]
+fn the_g1_9_pins_the_docs_cite_exist_exactly_once() {
+    let root = repo_root();
+    let sources: Vec<String> = rust_sources(&root)
+        .iter()
+        .map(|p| fs::read_to_string(p).expect("source is readable"))
+        .collect();
+    let docs: Vec<String> = G1_9_PIN_DOCS
+        .iter()
+        .map(|rel| {
+            fs::read_to_string(root.join(rel))
+                .unwrap_or_else(|e| panic!("{rel} is part of the G1.9 doc surface: {e}"))
+        })
+        .collect();
+
+    for pin in G1_9_PINS {
+        let needle = format!("fn {pin}(");
+        let defs: usize = sources.iter().map(|t| t.matches(&needle).count()).sum();
+        assert_eq!(
+            defs,
+            1,
+            "the G1.9 pin `{pin}` is defined {defs} times in the tree, expected \
+             exactly 1 — {} cite it by name, so a rename or a deletion must red \
+             here instead of leaving them stale",
+            G1_9_PIN_DOCS.join(" / ")
+        );
+        assert!(
+            docs.iter().any(|d| d.contains(pin)),
+            "the G1.9 pin `{pin}` is in this registry but no longer named by any \
+             of {} — either restore the citation or drop the pin from the list",
+            G1_9_PIN_DOCS.join(" / ")
+        );
+    }
+}
