@@ -153,11 +153,14 @@ fire (zero ledger entries and zero pins from RP4.1's own residual triage). Full
 record: [`r4133-props-rp4.md`](docs/phase-records/r4133-props-rp4.md).
 
 **WP-RP5 (operational docs + closing record) — IN PROGRESS.** **RP5.1 landed
-2026-09-04**, docs only (`TESTING.md` +190/−4, `TOLERANCE_NOTES.md` +33/−2, two
-doc comments; zero product-crate lines, zero tolerances, zero golden bytes): the
-r4133 claim chain (normalize → echo → floor → assert, each link with its liveness
-guarantee) and the property-divergence triage procedure, **42** citation rows over
-7 files; gate green both lanes. Full record: [`r4133-props-rp5.md`](docs/phase-records/r4133-props-rp5.md).
+2026-09-04** (`dd0b9e5b`), docs only (zero product-crate lines, zero tolerances,
+zero golden bytes): the r4133 claim chain (normalize → echo → floor → assert,
+each link with its liveness guarantee) and the property-divergence triage
+procedure, **46** `file.rs:LINE` citations over 6 code files. Its audit
+settlement made those citations executable — a twelfth `oracle_parity_cfg_gate`
+test resolves and anchors all **58** of them — and corrected six prose defects
+(two findings refuted, both forwarded to RP5.2); gate green both lanes. Full
+record: [`r4133-props-rp5.md`](docs/phase-records/r4133-props-rp5.md).
 
 **GOLDEN_REBASE WP-G0 (rails) + WP-G2 (bug-kernel teardown) — COMPLETE**, merged
 to `update` (`6e7ee691` / `77e1799a` / `4d3fc2d7`, all pushed): G2.0, G2.1a–h,

@@ -846,8 +846,10 @@ two channels do not spell values identically, so the r4133 side runs a
 **channel-scoped claim chain** whose links are consulted in one fixed order and
 never on `capi_v0145`. One function holds the whole order —
 `harness::compare_prop_lists` (`crates/dss-core/tests/harness/mod.rs:3243`) —
-and every value link is a `PropsPolicy` method gated on `is_r4133()`
-(`mod.rs:3444`, `:3489`; the channel type is `PropsChannel`, `mod.rs:3410`):
+and links 2-4 are `PropsPolicy` methods gated on `is_r4133()` (`mod.rs:3444`,
+`:3489`; the channel type is `PropsChannel`, `mod.rs:3410`). Link 1 is the
+deliberate exception: `skip_prop` is a free function taking the channel, so its
+`LANE_SKIP_PROPS` half stays channel-blind (row 1 below says so).
 
 | # | link | seam | what it does | if it does not claim |
 |---|---|---|---|---|
@@ -882,9 +884,12 @@ documented number. *Liveness:* `props_norm::assert_norm_rows_are_live`
 (`props_norm.rs:1412`, called in the gate epilogue, `corpus_gate.rs:184`) fails
 a full run in which a row was visited and folded nothing — the fail-on-stale
 half. The offline half is the replay (§"The r4133 props replay accounting"):
-every row must claim at least one vendored example row. Both halves skip a
-`DSS_GATE_ONLY` run by an explicit check, because a row spans cases and a
-filtered run cannot make a whole-population staleness claim.
+every row must claim at least one vendored example row. Only the **live** half
+reads `DSS_GATE_ONLY` (`props_norm.rs:1413`), and returns on it: a row spans
+cases, so a filtered run cannot make a whole-population staleness claim and
+makes none. The offline half needs no such check and has none — it reads the
+frozen census files, not the gate population, so it runs unconditionally
+(`props_r4133_replay.rs` holds zero `env::var` calls).
 
 **Link 3 — the echo table** (`props_norm.rs:1772`). **82 rows**, each a
 value-only exclusion carrying (a) the r4133 `Version8/Source` line that proves
@@ -941,7 +946,10 @@ model quantity, and it is unreachable on `capi_v0145`
 **The `SKIP_PROPS` dispositions (plan §1.2).** `skip_prop` is channel-aware
 since RP2.1 (`mod.rs:2027`), because after RP4.1 a channel-blind row would
 value-mask the r4133 channel by accident. Every one of the **17** `SKIP_PROPS`
-rows (`mod.rs:1580`) is dispositioned exactly once, in its own row comment:
+rows (`mod.rs:1580`) is dispositioned exactly once, in its own row comment —
+**17 = 10 + 7**, the first two lists below. The third list is a separate table
+(`LANE_SKIP_PROPS` is not a `SKIP_PROPS` row and the partition lock does not
+union it), shown here because `skip_prop` consults it on the same call:
 
 | list | rows | on r4133 | why |
 |---|---|---|---|
@@ -1050,7 +1058,7 @@ pinned as-is. It covers every **externally anchored** artifact — everything
 writes `props/recloser.json` and `props/relay.json`, whose committed values are
 the port's own renders (a regen must repeat the manual r4133 cross-validation
 their lock reasons describe). The other two `self` artifacts have their own
-in-test knobs — `DSS_REGEN_AD_GOLDEN` (`adiakoptics.rs:578`) and
+in-test knobs — `DSS_REGEN_AD_GOLDEN` (`tests/adiakoptics.rs:578`) and
 `REGEN_SCHEMA_PORT` (`golden_schema.rs:629`).
 
 **Regenerate a self-golden (R1–R4)** — the *other* regeneration procedure, for
