@@ -736,7 +736,12 @@ pub const CIRCUIT_LOSSES: ModeSpec = ModeSpec::array(
     "Circuit.Losses",
     "DCircuit.pas:294",
     3,
-    ModeEffect::Pure,
+    ModeEffect::Impure(
+        "walks ActiveCircuit.PDElements.First/Next to exhaustion (Common/Circuit.pas:2436-2443 via \
+         DCircuit.pas:294), leaving the PDElements list cursor at the end — Circuit.NextPDElement \
+         resumes from there — and refreshes every enabled non-shunt PD element's Iterminal cache \
+         (Get_Losses calls ComputeIterminal, Common/CktElement.pas:743)",
+    ),
 );
 /// `CircuitV(1)` — losses of the Line elements only.
 pub const CIRCUIT_LINE_LOSSES: ModeSpec = ModeSpec::array(
@@ -745,7 +750,11 @@ pub const CIRCUIT_LINE_LOSSES: ModeSpec = ModeSpec::array(
     "Circuit.LineLosses",
     "DCircuit.pas:305",
     3,
-    ModeEffect::Pure,
+    ModeEffect::Impure(
+        "walks ActiveCircuit.Lines.First/Next to exhaustion (DCircuit.pas:313-318), leaving the Lines \
+         list cursor at the end, and refreshes every line's Iterminal cache (Get_Losses calls \
+         ComputeIterminal, Common/CktElement.pas:743)",
+    ),
 );
 /// `CircuitV(2)` — losses of the Transformer elements only.
 pub const CIRCUIT_SUBSTATION_LOSSES: ModeSpec = ModeSpec::array(
@@ -754,7 +763,12 @@ pub const CIRCUIT_SUBSTATION_LOSSES: ModeSpec = ModeSpec::array(
     "Circuit.SubstationLosses",
     "DCircuit.pas:327",
     3,
-    ModeEffect::Pure,
+    ModeEffect::Impure(
+        "walks ActiveCircuit.Transformers.First/Next to exhaustion (DCircuit.pas:335-340), leaving the \
+         Transformers list cursor at the end — the cursor the discrete capture's \
+         Transformers.First/Next drives — and refreshes each IsSubstation transformer's Iterminal cache \
+         (Get_Losses calls ComputeIterminal, Common/CktElement.pas:743)",
+    ),
 );
 /// `CircuitV(3)` — total power drawn from the sources, complex.
 pub const CIRCUIT_TOTAL_POWER: ModeSpec = ModeSpec::array(
@@ -763,7 +777,11 @@ pub const CIRCUIT_TOTAL_POWER: ModeSpec = ModeSpec::array(
     "Circuit.TotalPower",
     "DCircuit.pas:349",
     3,
-    ModeEffect::Pure,
+    ModeEffect::Impure(
+        "walks ActiveCircuit.Sources.First/Next to exhaustion (DCircuit.pas:356-360), leaving the \
+         Sources list cursor at the end, and Get_Power sets ActiveTerminalIdx := 1 and calls \
+         ComputeIterminal on every source (Common/CktElement.pas:677-680)",
+    ),
 );
 /// `CircuitV(8)` — per-element losses, complex, in `AllElementNames` order.
 pub const CIRCUIT_ALL_ELEMENT_LOSSES: ModeSpec = ModeSpec::array(
@@ -772,7 +790,11 @@ pub const CIRCUIT_ALL_ELEMENT_LOSSES: ModeSpec = ModeSpec::array(
     "Circuit.AllElementLosses",
     "DCircuit.pas:458",
     3,
-    ModeEffect::Pure,
+    ModeEffect::Impure(
+        "walks ActiveCircuit.CktElements.First/Next to exhaustion (DCircuit.pas:468-473), leaving the \
+         CktElements list cursor at the end, and calls Get_Losses -> ComputeIterminal on EVERY \
+         element (Common/CktElement.pas:743), refreshing the whole circuit's Iterminal caches",
+    ),
 );
 /// `CircuitV(9)` — per-unit voltage magnitude of every node.
 pub const CIRCUIT_ALL_BUS_MAG_PU: ModeSpec = ModeSpec::array(

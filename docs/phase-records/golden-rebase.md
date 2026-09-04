@@ -2485,9 +2485,12 @@ row against the pre-fix lock.
 > Plan: `GOLDEN_REBASE_PLAN.md` §WP-G1. G1.1 is handed to `R4133_PROPS_PLAN.md`
 > RP4.1 (kill criterion fired, see §1) and **delivered by it on 2026-09-03** —
 > the unmask shipped and RP4.1's own kill criterion did not fire. The sub-steps
-> that do not depend on it
-> land on `r4133-props`, the branch that currently holds the fail-on-stale
-> `population.lock.json` / `ledger.json` (single-branch lock discipline).
+> that do not depend on it landed on `r4133-props` and, after its close-out, on
+> `update`. Since decision **D7** (2026-09-04) the independent chains run in
+> per-lane worktrees (`.claude/worktrees/lane-*`) and are merged into `update`
+> one sub-step at a time; the merge agent regenerates `population.lock.json` on
+> the merged tree and takes the union of both sides' `ledger.json` entries, so
+> the locks stay fail-on-stale.
 
 - **G1.2** (2026-08-29) — **class `ESPVLControl` now has live corpus coverage**
   (it had none: no vendored deck and no family deck instantiated it, and
@@ -2724,3 +2727,32 @@ row against the pre-fix lock.
   G1.0), corpus gate 523/523, ledger 57 entries / 1 588 hits, 0 stale, `git status
   --porcelain -- tests/golden` empty; `lane_diff` measured anyway although not owed —
   `VERDICT: PASS`, max |Δ| = 0 on all eight kinds.
+
+- **G1.9** (2026-09-04, lane `lane-s`, coordinator decisions **D3**/**D4**/**D7**) — the five
+  `Circuit` aggregates (`DDLL/DCircuit.pas:294`, `:305`, `:327`, `:349`, `:458`; only
+  `Circuit.Losses` is W/var, `Common/Circuit.pas:2428-2445`, and AutoTrans is a separate list,
+  `:2272-2273`) and the ten `Solution` scalars go live on **both** channels in one commit —
+  unflagged and universal on all 519 live cases, so no flag, no rigor token and **no lock regen**
+  (G1.0's decision). New `exec/view.rs` accessors feed `harness/aggregates.rs`'s three arms:
+  membership, the `AllElementLosses` identity plus the gate's first **ordered** element-name check,
+  and value inside the *propagated* per-element loss floors — **no new floor, no tolerance touched**
+  (derivations: `tests/TOLERANCE_NOTES.md` §"G1.9 circuit aggregates + solution scalars").
+  **0 ledger entries / 0 new `LEDGER_FIELDS` / 0 golden bytes**: the value arms inherit
+  `LedgerView::element_rewrites` rather than re-pin a scoped element's echo (~14 rows = the kill
+  criterion), while the membership arms never soften. TESTING.md carries that inheritance rule, the
+  `Totaliterations` ≡ `Iteration` (`DDLL/DSolution.pas:218-220`) and `YCurrents` ≡ `injection`
+  (`DDLL/DCircuit.pas:777-787`) equivalences — neither built as a second comparison — and the five
+  `modes.rs` `Circuit` rows corrected `Pure` → `Impure`; the plan's dated §G1.9 note records what
+  the sub-step settled against the sources. All three kill criteria **NOT met** (feeder
+  `max |Δ|/|Losses|` = `2.719409449622587e-08` vs 1e-4; 0 `ControlIterations` differences in 3 493
+  checkpoints; 0 entries). Pins: `circuit_losses_are_watts_not_kilowatts`,
+  `substation_losses_exclude_autotrans`, `losses_skip_shunt_elements`,
+  `line_losses_sum_the_lines_list`, `total_power_is_terminal_one_of_every_source`,
+  `total_iterations_is_an_alias_of_iterations`, `all_element_losses_follow_creation_order`,
+  `r4133_solution_flags_are_zero_one_ints`, `the_five_circuit_aggregate_rows_are_impure`, the three
+  `capture_order.rs` cases; six comparator corruptions each red their intended arm (`tmp/g19/`,
+  never committed). Commits: <filled by the docs agent>. Gate: fmt + clippy clean in both lanes,
+  `cargo test --workspace` **4 678 / 0 failed / 5 ignored** per lane, corpus gate 523/523 on both
+  channels, ledger 57 entries / 0 stale, `population_lock` green **without** a regen, `golden_lock`
+  green, `lane_diff` run (product code moved: `exec/view.rs`, `transformer/mod.rs`) — `VERDICT:
+  PASS`, max |Δ| = 0 on all eight kinds.

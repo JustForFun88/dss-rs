@@ -87,7 +87,7 @@ fn solved_ieee13() -> Engine {
 }
 
 /// Re-select the fixture the family rows read from. Called before **every**
-/// mode: three rows are [`ModeEffect::Impure`] and move a cursor
+/// mode: eight rows are [`ModeEffect::Impure`] and move a cursor
 /// (`PDElements.ParentPDElement` moves `ActiveCktElement` itself), so without
 /// this a later row would silently read a different object.
 fn select_fixture(e: &Engine) {
@@ -116,6 +116,7 @@ fn r4133_mode_capability_is_complete_for_wp_g1() {
     the_bus_v_sentinel_is_only_caught_by_containment(&e);
     the_do_not_call_modes_are_refused_before_any_ffi(&e);
     every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(&e);
+    r4133_solution_flags_are_zero_one_ints(&e);
     // Nothing in the walk left a non-zero errno behind for the next caller.
     let (errno, desc) = e.poll_error();
     assert_eq!(errno, 0, "the mode walk left errno {errno} set: {desc}");
@@ -461,4 +462,85 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
         "these WP-G1 rows have no typed accessor call: {missing:?}"
     );
     assert_eq!(seen.len(), modes::WP_G1_MODES.len());
+}
+
+/// **G1.9 bridge pin.** The two `Solution` flag rows come back from r4133 as
+/// `0|1` *ints*, not booleans: `SolutionI(37)` is
+/// `if ...SystemYChanged then Result:=1 else Result:=0`
+/// (`DDLL/DSolution.pas:192-197`) and `SolutionI(42)` is
+/// `Result:=0; ... if ...ControlActionsDone then Result := 1`
+/// (`:226-230`).
+///
+/// `capture::capture_solution_scalars` converts both with `!= 0` so this
+/// transport's `CaseResult` JSON stays shape-identical to
+/// `oracle_server.capture_solution_scalars`, whose dss-python reads are already
+/// Python `bool`s (decision D4: a sentinel/shape difference between the two
+/// channels is a bridge normalization plus one pin, never a ledger row). This
+/// is that pin: it fixes both the `{0, 1}` codomain the conversion relies on and
+/// the values the vendored DLL actually returns on the solved fixture.
+///
+/// The two readings are the ones measured across the whole G1.9 sample
+/// (14 decks x every step, snapshot and daily): `SystemYChanged` is `0` after
+/// every solve — the solve rebuilds Y and clears the flag, including here where
+/// the fixture adds an EnergyMeter between `Compile` and `Solve` — and
+/// `ControlActionsDone` is `1`, the control loop having run to completion.
+fn r4133_solution_flags_are_zero_one_ints(e: &Engine) {
+    select_fixture(e);
+    let syc = e.solution_system_y_changed().expect("SolutionI(37)");
+    select_fixture(e);
+    let cad = e.solution_control_actions_done().expect("SolutionI(42)");
+    assert!(
+        syc == 0 || syc == 1,
+        "SystemYChanged must be the 0|1 int DSolution.pas:192-197 assigns, got {syc} — \
+         the `!= 0` normalization in capture.rs would silently mis-read anything else"
+    );
+    assert!(
+        cad == 0 || cad == 1,
+        "ControlActionsDone must be the 0|1 int DSolution.pas:226-230 assigns, got {cad}"
+    );
+    assert_eq!(syc, 0, "a converged solve leaves SystemYChanged clear");
+    assert_eq!(cad, 1, "a converged solve leaves ControlActionsDone set");
+}
+
+/// **G1.9 table pin.** The five `Circuit` aggregate rows are *not* pure reads,
+/// and the table must say so: each one walks a `TPointerList` to exhaustion and
+/// leaves its cursor at the end, and each one refreshes the `Iterminal` cache of
+/// every element it walks (`Get_Losses`/`Get_Power` call `ComputeIterminal` —
+/// `Common/CktElement.pas:743` and `:677-680`).
+///
+/// This is not cosmetic bookkeeping. `Circuit.Losses` moves exactly the
+/// `PDElements` cursor that `Circuit.NextPDElement` resumes from
+/// (`Common/Circuit.pas:2436-2443`), and `Circuit.SubstationLosses` moves the
+/// `Transformers` cursor the discrete capture drives — so a caller that reads
+/// one of these rows mid-walk and trusts a `Pure` label reads the wrong object.
+/// [`select_fixture`] re-selects before every row precisely because of this
+/// class of row.
+///
+/// Needs no DLL: it is a statement about [`modes`]' own table.
+#[test]
+fn the_five_circuit_aggregate_rows_are_impure() {
+    let rows: [(&str, &ModeSpec); 5] = [
+        ("PDElements", &modes::CIRCUIT_LOSSES),
+        ("Lines", &modes::CIRCUIT_LINE_LOSSES),
+        ("Transformers", &modes::CIRCUIT_SUBSTATION_LOSSES),
+        ("Sources", &modes::CIRCUIT_TOTAL_POWER),
+        ("CktElements", &modes::CIRCUIT_ALL_ELEMENT_LOSSES),
+    ];
+    for (list, row) in rows {
+        let ModeEffect::Impure(why) = row.effect else {
+            panic!(
+                "{row} walks ActiveCircuit.{list}.First/Next to exhaustion and calls \
+                 ComputeIterminal on what it walks (r4133 DDLL/DCircuit.pas), so it cannot be \
+                 ModeEffect::Pure"
+            );
+        };
+        assert!(
+            why.contains(list),
+            "{row}: the Impure payload must name the {list} list it moves, got: {why}"
+        );
+        assert!(
+            why.contains("ComputeIterminal"),
+            "{row}: the Impure payload must name the Iterminal refresh, got: {why}"
+        );
+    }
 }

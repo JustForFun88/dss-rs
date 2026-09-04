@@ -23,6 +23,17 @@ use crate::guard::CorpusGuard;
 /// fresh-process convergence misfire without masking a real non-convergence.
 const RUN_ATTEMPTS: usize = 3;
 
+/// The user-written-model `DoSimpleMsg` errnos the official Direct DLL warns on
+/// and solves through — the same three as `dss::USER_MODEL` (`dss.rs`, private
+/// to that module) and `oracle_server._USER_MODEL_ERRNOS`.
+///
+/// Needed here because G1.9 made the group-A aggregates the FIRST post-solve
+/// read that recomputes `Iterminal`, so on a `warn_and_continue` deck the single
+/// priming warning now fires inside [`capture_aggregates`] instead of
+/// `Engine::element_pcl`. Kept in sync with the other two lists by hand
+/// (dedup at merge).
+const USER_MODEL_ERRNOS: &[i32] = &[567, 570, 1570];
+
 // ---------------------------------------------------------------------------
 // Request (deserialized from the line-JSON `run` message).
 // ---------------------------------------------------------------------------
@@ -110,6 +121,8 @@ struct Checkpoint {
     ctrlqueue: Vec<String>,
     all_properties: Vec<PropsCap>,
     global_result: String,
+    aggregates: AggregatesCap,
+    solution_scalars: SolutionScalarsCap,
 }
 
 #[derive(Serialize)]
@@ -201,6 +214,46 @@ pub struct PropsCap {
     pub props: Vec<(String, String)>,
 }
 
+/// The five `Circuit` aggregates of `GOLDEN_REBASE_PLAN.md` G1.9, in the exact
+/// shape `oracle_server.capture_aggregates` emits.
+///
+/// The units are in the key names because r4133 does not scale them uniformly:
+/// `Circuit.Losses` (`DDLL/DCircuit.pas:294` -> `Common/Circuit.pas:2436-2443`)
+/// is raw **W/var**, while `LineLosses` (`DCircuit.pas:305-325`),
+/// `SubstationLosses` (`:327-347`), `TotalPower` (`:349-368`) and
+/// `AllElementLosses` (`:458-479`) all carry the arm's own
+/// `cmulreal(..., 0.001)` and are kW/kvar.
+#[derive(Serialize)]
+struct AggregatesCap {
+    losses_w: Vec<f64>,
+    line_losses_kw: Vec<f64>,
+    substation_losses_kw: Vec<f64>,
+    total_power_kw: Vec<f64>,
+    all_element_losses_kw: Vec<f64>,
+}
+
+/// The ten `Solution` scalars of G1.9, in the exact shape
+/// `oracle_server.capture_solution_scalars` emits.
+///
+/// `iterations` and `dbl_hour` are deliberately absent — [`Checkpoint`] already
+/// carries and the gate already compares them.
+#[derive(Serialize)]
+struct SolutionScalarsCap {
+    mode: i32,
+    hour: i32,
+    year: i32,
+    control_iterations: i32,
+    total_iterations: i32,
+    most_iterations_done: i32,
+    /// `SolutionI(42)` is a `0|1` int (`DSolution.pas:226-230`); normalized to
+    /// the capi transport's JSON `bool` here, at the bridge.
+    control_actions_done: bool,
+    /// `SolutionI(37)`, same `0|1` normalization (`DSolution.pas:192-197`).
+    system_y_changed: bool,
+    seconds: f64,
+    load_mult: f64,
+}
+
 // ---------------------------------------------------------------------------
 // The run.
 // ---------------------------------------------------------------------------
@@ -230,6 +283,27 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             } else {
                 String::new()
             };
+
+            // G1.9 (`GOLDEN_REBASE_PLAN.md`, §1.1(a) + decision D3) — the circuit
+            // aggregates and the solution scalars, read HERE and nowhere later,
+            // for two independent reasons:
+            //  * group A before group B. Every aggregate is a
+            //    `Get_Losses`/`Get_Power` read, i.e. a `ComputeIterminal`
+            //    (`Common/CktElement.pas:743` / `:677-680`) over the elements it
+            //    walks, while `capture_all_elements` below issues Powers *then*
+            //    `Currents` per element — and `Currents` is the read that fills a
+            //    scratch buffer. Group A therefore runs first.
+            //  * cursor hygiene. `Losses` walks PDElements, `LineLosses` walks
+            //    Lines, `SubstationLosses` walks Transformers, `TotalPower` walks
+            //    Sources and `AllElementLosses` walks CktElements
+            //    (`DDLL/DCircuit.pas:294/313/335/356/468`), each leaving that
+            //    `TPointerList` cursor at the end — and `capture_discrete` below
+            //    drives `Transformers.First/Next`. Reading before any First/Next
+            //    walk removes the interaction by construction.
+            // Mirrors `oracle_server.run_case` exactly; the source order of both
+            // transports is asserted by `crates/dss-core/tests/capture_order.rs`.
+            let aggregates = capture_aggregates(engine, warn)?;
+            let solution_scalars = capture_solution_scalars(engine)?;
 
             // selected_elements=["*"] -> every YPrim-bearing element (rebuilt each
             // solve so a deck that adds an element mid-solve is covered).
@@ -335,6 +409,8 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 ctrlqueue,
                 all_properties,
                 global_result,
+                aggregates,
+                solution_scalars,
             });
         }
 
@@ -467,6 +543,81 @@ fn capture_injection(flat: &[f64]) -> Injection {
         re: re.into_iter().skip(1).collect(),
         im: im.into_iter().skip(1).collect(),
     }
+}
+
+/// Group A of the step capture (`GOLDEN_REBASE_PLAN.md` G1.9): the five
+/// `Circuit` aggregates, read before any group-B (`Currents`) read and before
+/// any `First/Next` walk. See the call site in [`run_case`] for the ordering
+/// argument and the Pascal citations.
+///
+/// The retry mirrors `Engine::element_pcl`: on a `warn_and_continue` deck the
+/// first post-solve `ComputeIterminal` fires one non-fatal user-model
+/// `DoSimpleMsg` (#567/#570/#1570) and clears it, and since G1.9 that first
+/// recompute happens here. The reads are pure, so repeating all five is
+/// idempotent; anything but a tolerated errno — and any errno at all on the
+/// second attempt — is returned as an error, never absorbed.
+fn capture_aggregates(engine: &Engine, warn: bool) -> Result<AggregatesCap, EngineError> {
+    for attempt in 0..2 {
+        let losses = engine.circuit_losses()?;
+        let line_losses = engine.circuit_line_losses()?;
+        let substation_losses = engine.circuit_substation_losses()?;
+        let total_power = engine.circuit_total_power()?;
+        let all_element_losses = engine.circuit_all_element_losses()?;
+        let (errno, desc) = engine.poll_error();
+        if errno == 0 {
+            return Ok(AggregatesCap {
+                losses_w: complex_pair(&losses),
+                line_losses_kw: complex_pair(&line_losses),
+                substation_losses_kw: complex_pair(&substation_losses),
+                total_power_kw: complex_pair(&total_power),
+                all_element_losses_kw: all_element_losses,
+            });
+        }
+        if warn && USER_MODEL_ERRNOS.contains(&errno) && attempt == 0 {
+            continue; // priming read fired + cleared the warning; retry once
+        }
+        return Err(EngineError::Dss {
+            errno,
+            desc,
+            ctx: "aggregates".to_string(),
+        });
+    }
+    unreachable!()
+}
+
+/// A `myType = 3` single-element complex reply as the `[re, im]` pair the capi
+/// transport emits. A short reply pads with zeros rather than panicking — the
+/// same convention [`capture_all_elements`] uses for `loss_w`.
+fn complex_pair(v: &[f64]) -> Vec<f64> {
+    vec![
+        v.first().copied().unwrap_or(0.0),
+        v.get(1).copied().unwrap_or(0.0),
+    ]
+}
+
+/// Group C of the step capture: the ten order-free `Solution` scalars of G1.9.
+///
+/// The two flag reads come back from r4133 as `0|1` ints
+/// (`DSolution.pas:192-197` and `:226-230`, both `IF ... THEN Result := 1`), so
+/// the `!= 0` here is the bridge-level normalization that keeps this transport's
+/// `CaseResult` JSON byte-shape-identical to `oracle_server`'s, whose
+/// dss-python reads are already Python `bool`s. Pinned by
+/// `tests/modes.rs::r4133_solution_flags_are_zero_one_ints`.
+fn capture_solution_scalars(engine: &Engine) -> Result<SolutionScalarsCap, EngineError> {
+    let cap = SolutionScalarsCap {
+        mode: engine.solution_mode()?,
+        hour: engine.solution_hour()?,
+        year: engine.solution_year()?,
+        control_iterations: engine.solution_control_iterations()?,
+        total_iterations: engine.solution_total_iterations()?,
+        most_iterations_done: engine.solution_most_iterations_done()?,
+        control_actions_done: engine.solution_control_actions_done()? != 0,
+        system_y_changed: engine.solution_system_y_changed()? != 0,
+        seconds: engine.solution_seconds()?,
+        load_mult: engine.solution_load_mult()?,
+    };
+    engine.assert_clean("solution scalars")?;
+    Ok(cap)
 }
 
 /// `capture_all_elements`: every element's terminal currents/powers/losses, read
