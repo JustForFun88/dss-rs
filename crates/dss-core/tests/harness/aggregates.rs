@@ -54,7 +54,23 @@
 //! `aggregates` ledger row for every deck it touches (measured: 12 cases carry
 //! a deck-wide element scope; re-pinning their echo would have cost ~14 rows
 //! and tripped the §1.1(f) kill criterion for a divergence the ledger already
-//! owns). The **membership and identity arms do not soften**: P1 and P1b run on
+//! owns). On a deck where every summand's `losses` is scoped the value arm is
+//! then a self-comparison, and that is **inherent, not a slip**: re-stating it
+//! against the oracle's own aggregate with the accepted divergence added to the
+//! envelope is a tautology by the triangle inequality
+//! (`|Σ(r−o)| ≤ Σ|r−a| + |Σ(a−o)|`), so once the ledger owns every summand the
+//! aggregate carries no oracle information any comparator could recover. What
+//! must therefore not happen silently is the inheritance *spreading*: the
+//! deck-wide `element` scopes it applies to are pinned by
+//! `corpus_gate::ledger::the_aggregate_value_arms_inherit_exactly_the_recorded_element_scopes`,
+//! so a new one reds until its author records it (the D11 visibility rule).
+//! `TotalPower` cannot be reconstructed from the cap at all (terminal 1, and
+//! the capture has no `nconds`), so instead of being dropped whenever a source
+//! appears in the rewrite map — whatever sub-channel the entry scoped — its
+//! envelope absorbs the accepted `powers` divergence summed over **all** of
+//! that source's conductors, a documented conservative superset. An entry that
+//! scopes only `currents` no longer switches the arm off.
+//! The **membership and identity arms do not soften**: P1 and P1b run on
 //! the raw oracle capture on every case, so no deck loses the arms that carry
 //! the teeth. The two `newton*` decks are the lane-policy analogue: their
 //! `Powers`/`Losses` sub-channels are dropped in both lanes
@@ -411,7 +427,6 @@ pub fn compare_aggregates(
         }
         s
     };
-
     if channels.losses {
         let rust_losses = dss.losses();
         let oracle_losses = accepted_sum(&terms.losses, "Circuit.Losses", 1.0);
@@ -490,27 +505,47 @@ pub fn compare_aggregates(
 
     // `TotalPower` sums `Power[1]` — a per-TERMINAL quantity the capture does
     // not split out (it carries no `nconds`), so unlike the loss aggregates it
-    // cannot be rebuilt from an accepted per-element cap. Where the ledger
-    // scopes a source's `powers`, the divergence is therefore inherited
-    // whole: the value arm is dropped for this (case, channel), exactly as the
-    // element comparator already treats that source. Its membership and
-    // terminal-1/x3 semantics stay pinned in-engine by
+    // cannot be rebuilt from an accepted per-element cap. What the ledger
+    // accepted for a scoped source is still *bounded*, though: the sum over
+    // ALL of its conductors of |accepted - raw| dominates the terminal-1 part,
+    // the same conservative superset the allowance itself uses. Adding that to
+    // the envelope keeps the arm running field-by-field on a scoped deck,
+    // where the earlier `tp_scoped` test dropped the whole comparison on
+    // element PRESENCE — whatever sub-channel the entry actually scoped
+    // (G1.9 audit CODE-2). Membership and the terminal-1/x3 semantics stay
+    // pinned in-engine by
     // `exec::tests::aggregates::total_power_is_terminal_one_of_every_source`.
-    let tp_scoped = terms
+    let tp_slack: f64 = terms
         .total_power
         .iter()
-        .any(|t| accepted.contains_key(&t.to_lowercase()));
-    if channels.powers && !tp_scoped {
+        .map(|t| {
+            let i = idx_of(t, "Circuit.TotalPower");
+            let raw = &elements[i];
+            let acc = cap_for(i);
+            let n = raw
+                .p_kw
+                .len()
+                .min(raw.p_kvar.len())
+                .min(acc.p_kw.len())
+                .min(acc.p_kvar.len());
+            (0..n)
+                .map(|k| cdiff((acc.p_kw[k], acc.p_kvar[k]), (raw.p_kw[k], raw.p_kvar[k])))
+                .sum::<f64>()
+        })
+        .sum();
+    if channels.powers {
         let rust_tp = dss.total_power();
         let oracle_tp = (cap.total_power_kw[0], cap.total_power_kw[1]);
         // The allowance uses each source's WHOLE conductor set — terminal 1 is
         // a subset, so this is a documented conservative superset.
-        let allowed = allowance_kw(&terms.total_power, "Circuit.TotalPower");
+        let allowed = allowance_kw(&terms.total_power, "Circuit.TotalPower") + tp_slack;
         let d = cdiff(rust_tp, oracle_tp);
         assert!(
             d <= allowed,
             "{ctx}: Circuit.TotalPower differs: Rust ({}, {}) kW vs oracle \
-             ({}, {}) kW; |diff| = {d:e} > allowed {allowed:e} ({} sources)",
+             ({}, {}) kW; |diff| = {d:e} > allowed {allowed:e} (the propagated \
+             per-source envelope plus {tp_slack:e} the ledger accepted on \
+             their `powers`) ({} sources)",
             rust_tp.0,
             rust_tp.1,
             oracle_tp.0,
@@ -658,6 +693,111 @@ mod tests {
 
     fn tol() -> Tolerances {
         super::super::tol_for("feeder")
+    }
+
+    /// Build + solve a two-bus feeder and hand `compare_aggregates` a PERFECT
+    /// oracle capture built from the port's own numbers, so only the arm under
+    /// test can red.
+    fn solved_case() -> (Dss, Vec<ElementSnapshot>, Vec<ElementCap>, AggregatesCap) {
+        let mut dss = Dss::new();
+        for line in [
+            "Clear",
+            "New Circuit.aggtest basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210",
+            "New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.3 x1=0.9 r0=0.9 x0=2.7 length=2 units=km",
+            "New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=900 pf=0.92 model=1",
+            "Set voltagebases=[12.47]",
+            "Calcvoltagebases",
+            "Solve",
+        ] {
+            dss.command(line);
+            assert!(dss.errors().is_empty(), "`{line}` -> {:?}", dss.errors());
+        }
+        let snaps = dss.snapshot_elements();
+        let elements: Vec<ElementCap> = snaps
+            .iter()
+            .map(|s| ElementCap {
+                name: s.name.clone(),
+                i_re: s.currents.iter().map(|c| c.re).collect(),
+                i_im: s.currents.iter().map(|c| c.im).collect(),
+                p_kw: s.powers.iter().map(|c| c.re).collect(),
+                p_kvar: s.powers.iter().map(|c| c.im).collect(),
+                loss_w: vec![s.loss_w.0, s.loss_w.1],
+            })
+            .collect();
+        let losses = dss.losses();
+        let line_losses = dss.line_losses();
+        let sub = dss.substation_losses();
+        let tp = dss.total_power();
+        let mut ael = Vec::new();
+        for (re, im) in dss.all_element_losses() {
+            ael.push(re);
+            ael.push(im);
+        }
+        let cap = AggregatesCap {
+            losses_w: vec![losses.0, losses.1],
+            line_losses_kw: vec![line_losses.0, line_losses.1],
+            substation_losses_kw: vec![sub.0, sub.1],
+            total_power_kw: vec![tp.0, tp.1],
+            all_element_losses_kw: ael,
+        };
+        (dss, snaps, elements, cap)
+    }
+
+    /// A perfect capture passes every arm — the baseline the two drives below
+    /// are measured against (without it a `should_panic` proves nothing).
+    #[test]
+    fn a_perfect_capture_passes_every_arm() {
+        let (mut dss, snaps, elements, cap) = solved_case();
+        compare_aggregates(
+            &mut dss,
+            &cap,
+            &snaps,
+            &elements,
+            &BTreeMap::new(),
+            &tol(),
+            ElemChannels::ALL,
+            "self-test",
+        );
+    }
+
+    /// A ledger scope that rewrites a source's **currents** must NOT switch the
+    /// `Circuit.TotalPower` value arm off: the arm keyed on the source merely
+    /// appearing in the rewrite map until the G1.9 audit settlement (CODE-2),
+    /// which is not field-by-field — `powers` was never excluded here. With the
+    /// old test this drive passed silently.
+    #[test]
+    #[should_panic(expected = "Circuit.TotalPower differs")]
+    fn a_currents_only_scope_leaves_the_total_power_arm_running() {
+        let (mut dss, snaps, elements, mut cap) = solved_case();
+        // The oracle's TotalPower is far from the port's.
+        cap.total_power_kw[0] += 1.0e6;
+        // …and the ledger rewrote the source's CURRENTS only.
+        let src = elements
+            .iter()
+            .find(|e| e.name.to_lowercase().starts_with("vsource."))
+            .expect("the deck has a Vsource");
+        let mut rewritten = ElementCap {
+            name: src.name.clone(),
+            i_re: src.i_re.clone(),
+            i_im: src.i_im.clone(),
+            p_kw: src.p_kw.clone(),
+            p_kvar: src.p_kvar.clone(),
+            loss_w: src.loss_w.clone(),
+        };
+        for v in &mut rewritten.i_re {
+            *v += 1.0;
+        }
+        let accepted = BTreeMap::from([(src.name.to_lowercase(), rewritten)]);
+        compare_aggregates(
+            &mut dss,
+            &cap,
+            &snaps,
+            &elements,
+            &accepted,
+            &tol(),
+            ElemChannels::ALL,
+            "self-test",
+        );
     }
 
     /// The extracted envelope must still be the formula

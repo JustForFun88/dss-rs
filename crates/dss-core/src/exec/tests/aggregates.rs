@@ -458,3 +458,64 @@ fn all_element_losses_follow_creation_order() {
         }
     }
 }
+
+// Expected-value pin, both boolean `Solution` scalars are two-sided. The live
+// gate compares `ControlActionsDone` and `SystemYChanged` with an exact
+// `assert_eq!` on every case, but every corpus checkpoint measured so far
+// reports the same value for both (`true` / `false` — a converged solve settles
+// its controls and leaves Y freshly built), so those two asserts have no corpus
+// witness of the other value. This pin supplies one in-engine for each: the
+// max-control-iteration exit (`solve_snap`, Pascal `SolveSnap`) leaves
+// `ControlActionsDone` clear, and a structural edit after a solve raises
+// `SystemYChanged` again. Without it a port that could never produce the second
+// value would pass the gate unnoticed.
+#[test]
+fn the_two_boolean_solution_flags_take_both_values() {
+    // (1) A converged solve: controls settled, Y rebuilt and the flag cleared.
+    let mut dss = solve(FEEDER);
+    {
+        let sol = &dss.circuit().unwrap().solution;
+        assert!(
+            sol.control_actions_done,
+            "a converged, control-free solve must end with ControlActionsDone set"
+        );
+        assert!(
+            !sol.system_y_changed,
+            "a converged solve must leave Y built, i.e. SystemYChanged clear"
+        );
+    }
+
+    // (2) A structural edit dirties Y again — the `true` witness.
+    dss.command("New Load.ld2 bus1=b1 phases=3 kv=12.47 kw=100 pf=1 model=1");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert!(
+        dss.circuit().unwrap().solution.system_y_changed,
+        "adding an element must raise SystemYChanged"
+    );
+
+    // (3) A regulator that cannot settle inside `MaxControlIter` — the `false`
+    // witness. `solve_snap` breaks on the iteration limit with the flag clear
+    // and reports "Max Control Iterations Exceeded".
+    let mut dss = build(&[
+        "Clear",
+        "New Circuit.g19reg basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210",
+        "New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 length=2 units=km",
+        "New Transformer.tx1 phases=3 windings=2 buses=[b1, b2] conns=[wye wye] \
+         kvs=[12.47 12.47] kvas=[5000 5000] xhl=1",
+        "New RegControl.rc1 transformer=tx1 winding=2 vreg=126 band=1 ptratio=60 delay=0",
+        "New Load.ld1 bus1=b2 phases=3 kv=12.47 kw=3000 pf=0.95 model=1",
+        "Set voltagebases=[12.47]",
+        "Calcvoltagebases",
+        "Set maxcontroliter=1",
+    ]);
+    dss.command("Solve");
+    let sol = &dss.circuit().unwrap().solution;
+    assert_eq!(
+        sol.control_iteration, 1,
+        "the deck must stop at MaxControlIter=1 for this pin to mean anything"
+    );
+    assert!(
+        !sol.control_actions_done,
+        "a solve that hits MaxControlIter must leave ControlActionsDone clear"
+    );
+}

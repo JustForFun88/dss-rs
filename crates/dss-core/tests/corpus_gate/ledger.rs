@@ -2155,6 +2155,85 @@ fn a_scope_that_misuses_channels_is_refused_at_load() {
     }
 }
 
+/// The (case, channel) pairs on which GOLDEN_REBASE G1.9's aggregate **value**
+/// arms inherit the element ledger *whole*: a deck-wide `element` scope that
+/// selects the `losses` sub-channel rewrites EVERY summand to the port's own
+/// value, so the aggregate's value arm becomes a self-comparison there.
+///
+/// That is inherent, not a comparator slip — with every summand accepted, no
+/// bound on their sum can carry oracle content the entries do not already own
+/// (triangle inequality; see `harness::aggregates`' module doc). What must not
+/// happen silently is the inheritance SPREADING, so the set is recorded here
+/// and asserted exactly: a new deck-wide `element` scope reds this test until
+/// its author acknowledges that it also switches that deck's aggregate value
+/// arm off. Same visibility rule as coordinator decision D11(2) for the bus
+/// arrays. Membership (P1) and identity (P1b) are untouched on these decks —
+/// they run on the raw oracle capture everywhere.
+const AGGREGATE_VALUE_ARMS_INHERITING_THE_ELEMENT_LEDGER: [(&str, &str); 14] = [
+    ("asymmetric:combo/combo_mesh_asym.dss", "r4133"),
+    ("asymmetric:combo/midi_asym.dss", "r4133"),
+    ("asymmetric:gic/gic_midi.dss", "capi_v0145"),
+    ("asymmetric:gic/gic_midi.dss", "r4133"),
+    ("asymmetric:gic/gictransformer_gic.dss", "capi_v0145"),
+    ("asymmetric:gic/gictransformer_gic.dss", "r4133"),
+    ("asymmetric:indmach/indmach_asym.dss", "r4133"),
+    ("asymmetric:indmach/midi_indmach_asym.dss", "r4133"),
+    ("modes:inputformat/shape_mmf/shape_mmf.dss", "capi_v0145"),
+    ("modes:makeposseq/makeposseq_shunt.dss", "capi_v0145"),
+    ("modes:windgen/windgen_daily.dss", "r4133"),
+    ("modes:windgen/windgen_dyn.dss", "r4133"),
+    ("modes:windgen/windgen_dyn_fault.dss", "r4133"),
+    ("modes:windgen/windgen_snap_delta.dss", "r4133"),
+];
+
+#[test]
+fn the_aggregate_value_arms_inherit_exactly_the_recorded_element_scopes() {
+    let text = std::fs::read_to_string(ledger_path()).expect("ledger.json is readable");
+    let doc: Value = serde_json::from_str(&text).expect("ledger.json parses");
+    let mut found: BTreeSet<(String, String)> = BTreeSet::new();
+    for entry in doc["entries"].as_array().expect("`entries` is an array") {
+        // A `skip` entry carries no `match` array.
+        let Some(scopes) = entry.get("match").and_then(Value::as_array) else {
+            continue;
+        };
+        for scope in scopes {
+            if scope["field"].as_str() != Some("element") {
+                continue;
+            }
+            // An absent `name_re` and `.*` both mean "every element".
+            let deck_wide = match scope.get("name_re").and_then(Value::as_str) {
+                None => true,
+                Some(re) => re == ".*",
+            };
+            // An absent `channels` means all three (G1.0 spelled them out).
+            let selects_losses = match scope.get("channels").and_then(Value::as_array) {
+                None => true,
+                Some(list) => list.iter().any(|c| c.as_str() == Some("losses")),
+            };
+            if deck_wide && selects_losses {
+                found.insert((
+                    entry["case"].as_str().expect("case").to_string(),
+                    entry["channel"].as_str().expect("channel").to_string(),
+                ));
+            }
+        }
+    }
+    let recorded: BTreeSet<(String, String)> = AGGREGATE_VALUE_ARMS_INHERITING_THE_ELEMENT_LEDGER
+        .iter()
+        .map(|(c, ch)| ((*c).to_string(), (*ch).to_string()))
+        .collect();
+    assert_eq!(
+        found,
+        recorded,
+        "the set of (case, channel) pairs whose G1.9 aggregate VALUE arms          inherit the element ledger whole has changed.
+new: {:?}
+gone: {:?}
+         A deck-wide `element` scope selecting `losses` also switches that          deck's Circuit.Losses / LineLosses / SubstationLosses /          AllElementLosses value comparison into a self-comparison (membership          and identity still run). Record the pair here once that is the          intended reading — never leave it undeclared.",
+        found.difference(&recorded).collect::<Vec<_>>(),
+        recorded.difference(&found).collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn ledger_is_structurally_valid() {
     let rt = LedgerRuntime::load();
