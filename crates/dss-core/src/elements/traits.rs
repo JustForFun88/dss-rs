@@ -633,6 +633,17 @@ pub struct ReliabilityData {
     pub hrs_to_repair: f64,
     /// `MilesThisLine`: branch length in miles (0 for non-line PD elements).
     pub miles_this_line: f64,
+    /// `TPDElement.FaultRate`, the *stored* annual fault rate — the `Faultrate`
+    /// input of `CalcFltRate`, not its product
+    /// (r4133 `PDElements/PDElement.pas:34`, capi `PDElements/PDElement.pas:30`).
+    /// Read only by the `PDElements` walk
+    /// ([`crate::exec::view::PdElementView::fault_rate`]); the reliability sweep
+    /// itself consumes [`Self::branch_flt_rate`].
+    pub fault_rate: f64,
+    /// `TPDElement.PctPerm`, the *stored* percent of faults that are permanent
+    /// (r4133 `PDElements/PDElement.pas:35`, capi `PDElements/PDElement.pas:31`).
+    /// Same reader as [`Self::fault_rate`].
+    pub pct_perm: f64,
 }
 
 /// Pascal `TDSSCktElement` virtual surface (Phase 3 subset).

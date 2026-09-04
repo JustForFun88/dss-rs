@@ -233,7 +233,7 @@ today:
 | 7 | circuit aggregates: TotalPower, Losses, LineLosses, SubstationLosses, **AllElementLosses**, plus the Solution scalars ControlIterations / Totaliterations / MostIterationsDone / ControlActionsDone / SystemYChanged / Seconds / LoadMult / Year / Hour / Mode | `export_losses`/`summary` goldens | G1.9 |
 | 8 | run-produced files: **every** `*.csv` the deck emits under DataPath (fastdss archives and compares them all, incl. the forced `export profile phases=all` — DI CSVs are just the closedi subset); `save circuit` output **file set** (fastdss archives it but never compares — `compare_outputs.py:426-529` has no `.dss` branch — so our file-set + round-trip check is strictly stronger; state that, don't claim parity) | `di_*`/`save_*` goldens | G1.10 |
 | 9 | CktElement discrete extras: PhaseLosses, NodeOrder, EnergyMeter, OCPDevType, OCPDevIndex, HasVoltControl, HasSwitchControl, NumControls, NumTerminals/NumPhases/NumConductors; LineGeometries.Rmatrix/Xmatrix/Zmatrix (measure-first); Lines.Yprim (verify it is already witnessed by the per-element YPrim live compare, record in TESTING.md) | scattered `props/`/report goldens | G1.3d |
-| 10 | PDElements interface: AccumulatedL, ParentPDElement, FromTerminal, IsShunt, Numcustomers, SectionID, RepairTime, Totalcustomers, Lambda | `reliability` goldens (partially) | G1.6b |
+| 10 | PDElements interface: AccumulatedL, ParentPDElement, FromTerminal, IsShunt, Numcustomers, SectionID, RepairTime, Totalcustomers, Lambda (**as executed 2026-09-04: 13 columns** — also FaultRate, TotalMiles, pctPermanent — plus `parent_name`; see §G1.6b) | `reliability` goldens (partially) | G1.6b |
 | 11 | Bus extras: VLL/puVLL, VMagAngle, AllPCEatBus/AllPDEatBus | `export_seq*`/`profile` goldens | G1.4 |
 
 Where our gate is already stronger than fastdss (monitor channels, event log,
@@ -622,6 +622,33 @@ renders.
 `SectionID`, `RepairTime`, `Totalcustomers`, `Lambda` — the per-PD-element walk
 fastdss compares wholesale.
 
+> **As executed (2026-09-04, lane `lane-m`, decisions D7 + D9).** The surface above is
+> **incomplete**: `IPDElements._columns` on `DSS-Python@origin/fastdss` carries **13**
+> columns — the nine listed plus `FaultRate`, `TotalMiles` (= `AccumulatedMilesDownStream`,
+> *not* `Bus.TotalMiles`) and `pctPermanent` — and the sub-step landed all 13 plus
+> `parent_name`, on **both** channels, compared **exactly** (`rel = abs = 0`; every value is
+> a class default, a deck literal or an untouched `0.0`, so the derivation went to
+> `tests/TOLERANCE_NOTES.md` and no floor was added). **0** ledger entries: the only
+> measured divergence is an uninitialized read in *both* oracles on in-zone shunt
+> Capacitors/Reactors (`EnergyMeter.pas` assigns through `pPCelem: TPCElement` — r4133
+> `:1868-1869`, capi `:1927-1929`), nondeterministic and therefore un-envelopable; it is
+> excluded per (channel, class, field) **and per element** in `harness::PD_SKIP_FIELDS` (4 capi
+> cells `fault_rate`/`pct_permanent`, 4 r4133 cells `lambda`/`accumulated_l`, consulted only where
+> the write lands — an in-zone shunt member, `pd_skip_applies`, narrowed by the audit settlement —
+> each still visited and hit-accounted) and pinned by
+> `pd_elements_shunt_reliability_inputs_survive_the_meter_zone` and
+> `pd_elements_shunt_branch_flt_rate_survives_the_meter_zone`. `WP_G1_MODES` **96 → 99**
+> (`PDElementsI:1`/`:2`, `PDElementsS:0`) and `EXCLUDED_WRITE_MODES` **2 → 3**. Two
+> deviations from the plan's letter, both recorded: `ParentPDElement` is read **last** per
+> element (it re-points `ActiveCktElement` at the parent and never restores it), not in the
+> fastdss column order; and the sub-step carries a **separate engine-fix commit** (decision
+> D9) restoring `DoResetMeterZones` to `ReProcessBusDefs`' tail (r4133 `Circuit.pas:2411`),
+> without which `MakeBusList` left every EnergyMeter with an empty zone. `SectionID`,
+> `TotalMiles`, `Lambda` and `AccumulatedL` are wired and compared but **0 on every live
+> case** (no deck runs `RelCalc`); their oracle-compared non-vacuity and the re-derivation
+> of the exactness note are **owed by G1.6(i)**. Full record:
+> `docs/phase-records/golden-rebase.md` §"GOLDEN_REBASE WP-G1 — records".
+
 ### G1.7 — topology interface
 
 `NumLoops`, `NumIsolatedBranches`, `NumIsolatedLoads`, `AllLoopedPairs`,
@@ -705,7 +732,8 @@ the symbol name in TESTING.md — never a silent capi-only fallback.
 superseded — the DLL has **no** `*_Get_*` symbols. It is the grouped DDLL API, one
 entry point per (family, ABI shape) with the property selected by a mode index, so
 the acceptance is the **mode probe**, and G1.0 executed it once for all of WP-G1:
-all 96 modes these three sub-steps need classify `Served`, the expected-miss list is
+all 96 modes these three sub-steps need classify `Served` (99 since G1.6b added the
+PDElements walk arms), the expected-miss list is
 empty (`crates/dss-epri/tests/modes.rs`). The `X_Get_Y` spellings below and above
 name the *properties* to capture, not symbols to bind. See the WP-G1 preamble note
 and TESTING.md §"The r4133 bridge — entry points, mode capability, do-not-call".)*

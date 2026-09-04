@@ -2727,6 +2727,9 @@ row against the pre-fix lock.
   correctness" gap. The one recorded-not-fixed finding (record length) is carried:
   the record above is trimmed 34 → 22 → 14 lines, still over CLAUDE.md's 5–10 — recorded, not
   hidden.
+  *Amended by G1.6b (2026-09-04):* the r4133 mode table grew with its first surface —
+  `WP_G1_MODES` **96 → 99** rows and `EXCLUDED_WRITE_MODES` **2 → 3**; the mode-capability
+  acceptance re-runs over all 99 and still reports zero misses.
 
 - **G1.9** (2026-09-04, lane `lane-s`, decisions **D3**/**D4**/**D7**) — the five `Circuit`
   aggregates (`DDLL/DCircuit.pas:294`…`:458`; only `Circuit.Losses` is W/var,
@@ -2777,3 +2780,42 @@ row against the pre-fix lock.
   `publish = false` bridge moved).
 
   merge: lane lane-s -> update, see git log
+
+- **G1.6b** (2026-09-04, lane `lane-m`; **D7** lanes, **D9** the engine fix) — **WP-G1's first surface:
+  the `PDElements` walk, live-gated on both channels** — all **13** `IPDElements._columns` plus
+  `parent_name`, compared **exactly**, `ParentPDElement` read **last** per element because it hijacks
+  `ActiveCktElement` (r4133 `DDLL/DPDELements.pas:88-97`, capi `CAPI/CAPI_PDElements.pas:245-257`).
+  **0 ledger entries**: the one divergence is an uninitialized
+  read in *both* oracles on in-zone shunt Capacitors/Reactors (r4133 `Meters/EnergyMeter.pas:1868-1869`,
+  capi `:1927-1929`; report
+  `investigations/to_opendss/56-energymeter-zone-corrupts-shunt-pd-reliability-fields.md`), excluded —
+  never enveloped — in `harness::PD_SKIP_FIELDS` and pinned by
+  `pd_elements_shunt_reliability_inputs_survive_the_meter_zone` +
+  `pd_elements_shunt_branch_flt_rate_survives_the_meter_zone`. **D9**, its own commit ahead of the
+  surface: `do_reset_meter_zones` returns to `reprocess_bus_defs`' tail (r4133 `Common/Circuit.pas:2411`,
+  capi `:2246`) — `MakeBusList` was bypassing it and left every EnergyMeter an empty zone; pin
+  `makebuslist_keeps_the_meter_zones`, one corpus deck changes state. The four zone-derived columns
+  compare 0 on every live case (no deck runs `RelCalc`): non-vacuity **owed by G1.6(i)**. Detail — the
+  column list, the exactness derivation, `WP_G1_MODES` 96 → 99, the two deviations from the plan's
+  letter: `GOLDEN_REBASE_PLAN.md` §G1.6b as-executed, `TESTING.md` §"The `PDElements` walk".
+  Commits: `06808a6d` (D9), `e1e18367` (surface), `c6a3c0a8` (audit settlement) + docs. Gate: five
+  commands exit 0 in both lanes, **4 792 passed / 0 failed / 5 ignored**; corpus gate 523/523, ledger
+  57 / 1 588 hits / 0 stale, no golden byte and no lock content moved; `lane_diff` `VERDICT: PASS`,
+  max |Δ| = 0 on all eight kinds.
+  *Audit settlement* (`c6a3c0a8`): 15 rows / 12 distinct findings — **9 fixed / 2 recorded / 1
+  refuted**. `PD_SKIP_FIELDS` is now scoped to the element the defect reaches, an in-zone shunt one
+  (`harness::pd_skip_applies` over the port's `PdElementView::in_meter_zone`, pin
+  `pd_elements_in_meter_zone_is_the_zone_membership_the_skip_rows_need`): ~350 clean cases per channel
+  return to the compare and visits == hits on all eight rows. Every row's `pin` must now resolve to a
+  `#[test]` (`every_pd_skip_row_pin_is_a_test_that_exists`, drive-proven); the cited `to_opendss`
+  report was written; three stale doc claims re-pointed. **Recorded:** `06808a6d` does not build alone
+  (its pin calls `pd_elements()`, landed in `e1e18367`) — **the merge agent squashes the pair or merges
+  `--no-ff`**; and `assert_pd_skip_rows_are_live`'s `hits == 0` arm stays heap-dependent by construction
+  (it fails safe — spurious red, never false green — and its doc comment says so). **Refuted:** the
+  `Show Isolated` reset is Pascal-faithful at both revs (capi `ShowResults.pas:2859-2860`, r4133
+  `:2537-2538` calls it twice) and runs under the `show_isolated` golden; the corpus deck said to issue
+  it has the line commented out. Measured on the way, out of scope: the long-standing `CorpusGuard`
+  leak is a **drop-order race**, not a missing sweep — mechanism, negative controls and why it is not
+  fixed here are in STATUS's standing follow-up.
+
+  merge: lane lane-m -> update, see git log

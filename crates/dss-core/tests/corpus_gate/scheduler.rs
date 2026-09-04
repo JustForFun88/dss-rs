@@ -219,6 +219,136 @@ fn the_property_forcing_rule_is_every_live_non_large_case() {
     );
 }
 
+/// Apply the per-source **PDElements**-forcing rule to a live case
+/// (`GOLDEN_REBASE_PLAN.md` §G1.6b).
+///
+/// The rule is [`force_properties`]': **every live case**, with the same one
+/// cost guard — `kind=large*` decks stay out on the `solvable_now` arm. It is
+/// deliberately the same population, so the two whole-model surfaces the gate
+/// forces (properties and PDElements) never drift into talking about different
+/// case sets; [`FORCED_PDELEMENTS_POPULATION`] re-derives it and pins the split.
+///
+/// Two shape notes, both deliberate:
+///
+/// * no channel predicate — `gates_capi() || gates_r4133()` is a tautology over
+///   the three legal `engines` values, and a tautological guard reads like a
+///   filter while filtering nothing (the RegControl no-load-zone precedent,
+///   CLAUDE.md). Both transports capture the walk
+///   (`tools/oracle/oracle_server.py::capture_pd_elements`,
+///   `crates/dss-epri/src/capture.rs::capture_pd_elements`), and D2 requires
+///   both channels in the same commit;
+/// * no family-flag parameter — [`force_properties`] takes `fam_props` because
+///   `Family` carries a per-family `compare_all_properties`; there is no such
+///   knob for this surface and inventing one would be a false switch (all three
+///   families would set it). The family arm therefore forces unconditionally,
+///   exactly what `fam_props` evaluates to for all three families today, and
+///   the missing `large` guard on that arm is asserted inert by
+///   [`the_pdelements_forcing_rule_is_every_live_non_large_case`] rather than
+///   assumed.
+///
+/// Cost: measured ≈ 5 µs per PD element on the capi channel (1 283 elements in
+/// 5.9 ms), i.e. well under a second added across the whole population against
+/// a ~155 s corpus gate.
+fn force_pdelements(source: &str, c: &mut SolvableCase) {
+    match source {
+        "solvable_now" => {
+            if !c.kind.starts_with("large") {
+                c.compare_pdelements = true;
+            }
+        }
+        // family: the surface applies to every live family deck.
+        _ => c.compare_pdelements = true,
+    }
+}
+
+/// **The forced PDElements population, pinned** — `(cases forced, of them
+/// `engines: "both"`, `engines: "r4133"`, `engines: "capi_v0145"`)`.
+///
+/// Identical to [`FORCED_PROPS_POPULATION`] by construction (both rules are
+/// "every live case, minus `kind=large*` on `solvable_now`"), and re-derived —
+/// never copied — by [`the_pdelements_forcing_rule_is_every_live_non_large_case`]
+/// on every run. It is written out rather than aliased so that a future
+/// divergence between the two rules shows up as a lock diff on the surface that
+/// moved, instead of silently following the other one.
+const FORCED_PDELEMENTS_POPULATION: (usize, usize, usize, usize) = (440, 313, 83, 44);
+
+/// **The PDElements-forcing rule is a rule, not a habit** — the static half of
+/// G1.6b's re-mask alarm, modeled on
+/// [`the_property_forcing_rule_is_every_live_non_large_case`] and load-bearing
+/// for the same reason: `population.lock.json` fingerprints the *manifest*
+/// `compare_pdelements` flag (`population_lock.rs::rigor`'s `pde=` token), and
+/// no manifest sets it — the whole population is scheduler-forced, so the lock
+/// cannot see a re-mask here at all.
+///
+/// `harness::assert_pd_elements_compare_ran` is the live half, and it is a
+/// boolean: re-adding a channel predicate (say `gates_capi()`, which drops the
+/// 83 `engines: "r4133"` cases while the 313 `both` ones keep walking) passes
+/// it. This test does not — it walks the four manifests without an oracle and
+/// asserts the forced set **is** the live non-`large` population, cell for
+/// cell, with the per-`engines` split pinned by
+/// [`FORCED_PDELEMENTS_POPULATION`].
+#[test]
+fn the_pdelements_forcing_rule_is_every_live_non_large_case() {
+    let cases = build_unified_cases();
+    let mut forced = (0usize, 0usize, 0usize, 0usize);
+    let mut wrong: Vec<String> = Vec::new();
+    for uc in &cases {
+        let live = uc.class == CaseClass::Live;
+        let large = uc.case.kind.starts_with("large");
+        let family = uc.label.split(':').next() != Some("solvable_now");
+        assert!(
+            !(family && large),
+            "{}: a family deck is `kind={}` — `force_pdelements`' family arm carries no `large` \
+             cost guard, so this case would be PDElements-forced without review. Add the guard, \
+             or re-classify the deck.",
+            uc.label,
+            uc.case.kind
+        );
+        // The rule, per source: every live case, minus `large` on
+        // `solvable_now`. A manifest may also set the flag itself, which only
+        // ever ADDS (none does today — the `props=0`-everywhere shape).
+        let expected = live && !large;
+        if uc.case.compare_pdelements != expected {
+            wrong.push(format!(
+                "{}: kind={} engines={} class={} → compare_pdelements={} (expected {expected})",
+                uc.label,
+                uc.case.kind,
+                uc.case.engines,
+                if live { "live" } else { "not-live" },
+                uc.case.compare_pdelements,
+            ));
+        }
+        if uc.case.compare_pdelements {
+            forced.0 += 1;
+            match uc.case.engines.as_str() {
+                "both" => forced.1 += 1,
+                "r4133" => forced.2 += 1,
+                _ => forced.3 += 1,
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "the PDElements-forcing rule is `every live non-`large` case` since GOLDEN_REBASE G1.6b \
+         (2026-09-04) — these cases disagree with it:\n  {}",
+        wrong.join("\n  ")
+    );
+    assert_eq!(
+        forced, FORCED_PDELEMENTS_POPULATION,
+        "(forced, both, r4133-only, capi-only) moved. A DROP in the r4133 halves is a re-mask of \
+         the PDElements request — the thing `harness::assert_pd_elements_compare_ran` cannot \
+         see once the `both` half keeps it green. A legitimate corpus change moves this lock \
+         together with `population.lock.json`."
+    );
+    // The two forced surfaces must stay one population (see
+    // `FORCED_PDELEMENTS_POPULATION`): a divergence here means one of the two
+    // rules moved without the other, which is a review, not a silent split.
+    assert_eq!(
+        forced, FORCED_PROPS_POPULATION,
+        "the PDElements and property forcing rules have drifted apart"
+    );
+}
+
 /// Build one unified case, applying the exact per-source property-forcing +
 /// classification of the pre-Phase-B gates.
 fn make_case(
@@ -251,6 +381,7 @@ fn make_case(
     };
     if class == CaseClass::Live {
         force_properties(source, &mut c, fam_props);
+        force_pdelements(source, &mut c);
     }
     let weight = kind_weight(&c.kind) * (c.n_steps.max(1) as u64);
     let dir_key = dir_key_of(&abs);

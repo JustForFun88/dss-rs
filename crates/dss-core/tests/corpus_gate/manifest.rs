@@ -135,10 +135,16 @@ pub(crate) struct SolvableCase {
     /// `DDLL/DMeters.pas`.
     #[serde(default)]
     pub(crate) compare_reliability: bool,
-    /// G1.6b: the **PDElements** interface walk — `AccumulatedL`,
-    /// `ParentPDElement`, `FromTerminal`, `IsShunt`, `Numcustomers`, `SectionID`,
-    /// `RepairTime`, `Totalcustomers`, `Lambda` (`origin/fastdss`
-    /// `dss/IPDElements.py:26-40` `_columns`; r4133 `DDLL/DPDELements.pas`).
+    /// G1.6b: the **PDElements** interface walk — all THIRTEEN
+    /// `IPDElements._columns` fields (`Name`, `AccumulatedL`,
+    /// `ParentPDElement`, `FromTerminal`, `IsShunt`, `Numcustomers`,
+    /// `SectionID`, `FaultRate`, `RepairTime`, `TotalMiles`, `Totalcustomers`,
+    /// `pctPermanent`, `Lambda` — `origin/fastdss` `dss/IPDElements.py:26-40`;
+    /// r4133 `DDLL/DPDELements.pas`) plus the parent's full name, which the
+    /// `ParentPDElement` active-element hijack hands out for free. **Wired
+    /// 2026-09-04**; forced on every live non-`large` case by
+    /// `scheduler::force_pdelements`, so no manifest sets it (the
+    /// `compare_all_properties` shape).
     #[serde(default)]
     pub(crate) compare_pdelements: bool,
     /// G1.7: the **topology** interface — `NumLoops`, `NumIsolatedBranches`/
@@ -570,7 +576,7 @@ pub(crate) const G1_SURFACE_FLAGS: &[G1Flag] = &[
     G1Flag {
         name: "compare_pdelements",
         sub_step: "G1.6b",
-        wired: false,
+        wired: true,
         get: |c| c.compare_pdelements,
     },
     G1Flag {
