@@ -38,8 +38,8 @@ has shrunk to a precision-compat lane and is scheduled for full teardown.
 
 **In flight.** `GOLDEN_REBASE_PLAN.md` **WP-G1**, on branch **`r4133-props`**
 (forked from `update` @ `2ee6bb00`). **`R4133_PROPS_PLAN.md` is COMPLETE**
-(2026-09-04, §RP5.2) — all six WPs gate-green in both lanes over 25 sub-steps /
-64 commits, plan archived to `docs/plans-archive/`, `PLAN_SEQUENCE.md` row 5b
+(2026-09-04, §RP5.2) — all six WPs gate-green in both lanes over 26 sub-steps /
+64 RP-titled commits to `64474762`, plan archived to `docs/plans-archive/`, `PLAN_SEQUENCE.md` row 5b
 COMPLETE with the final counters, record in
 [`era-summaries.md`](docs/phase-records/era-summaries.md) §1a, **G1.1 handed back
 satisfied**. Execution stays single-branch: `ledger.json`,
@@ -145,8 +145,16 @@ non-`large` `both` compared), not the plan's stale 462. **RP5.1 landed
 and **46** `file.rs:LINE` citations; its settlement made those citations
 executable — a twelfth `oracle_parity_cfg_gate` test anchors all **58** — and
 corrected six prose defects (two refuted, recorded by RP5.2 as deliberately not
-edited). Full records — including the condensed table of all 25 sub-steps and
-the 13+ `max |Δ| = 0` `lane_diff` runs:
+edited). **RP5.2's own settlement** (2026-09-04) corrected six accuracy defects
+in the closing record and two live cross-doc counts (`GOLDEN_REBASE_PLAN.md`'s
+stale 96 r4133-only cases → 97; 25 → 26 sub-steps), and closed the two guard gaps
+its auditors measured: an unanchored `file.rs:LINE` citation now **fails**
+instead of being checked for existence only (all **58** anchored, six re-spelled),
+and a **thirteenth** `oracle_parity_cfg_gate` test resolves the seven
+`record.md:LINE` citations Rust comments carry — the class that walk had skipped,
+and the exact rot RP5.2 itself had to repair. Three RP3 pin tables moved from
+`>= n` floors to exact counts. Full records — including the condensed table of
+all 26 sub-steps and the 13+ `max |Δ| = 0` `lane_diff` runs:
 [`r4133-props-rp5.md`](docs/phase-records/r4133-props-rp5.md) §RP5.1 / §RP5.2.
 
 **GOLDEN_REBASE WP-G0 (rails) + WP-G2 (bug-kernel teardown) — COMPLETE**, merged
@@ -260,6 +268,16 @@ the site comment carries each row's measured cost.
   is a `ncim_stamped_at` marker mirroring `VSource::ncim_swing_stamped_at`.
   Whoever takes it owes a probe of what a generator *should* report in that
   sequence before the arm moves.
+
+- **`UNIFIED_GATE_PLAN.md` still reads `Status: PLANNED` while its execution is
+  recorded as finished — OPEN (found by the R4133_PROPS RP5.2 audit settlement,
+  2026-09-04).** The plan sits at the repo root, `TESTING.md` cites it as the
+  live gate's design record, and `docs/phase-records/unified-gate.md` records
+  Phases 0 and A–F plus §6 final acceptance (2026-07-19). RP5.2's settlement
+  added it to the `docs/plans-archive/README.md` root-plan list, which had
+  omitted it entirely, and stopped there: flipping another plan's lifecycle
+  banner — and deciding whether it archives — belongs to whoever owns it, not to
+  a closing record for a different plan.
 
 - **54 `kind=large*` `engines: both` cases have no property compare on EITHER
   channel — DECIDED at RP5.2 (2026-09-04): accepted permanently (raised by the
@@ -567,7 +585,7 @@ and this file; none was rewritten.
 | `r4133-props-rp2.md` | R4133_PROPS WP-RP2 (RP2.1–RP2.4 and the RP2.4 audit settlement) |
 | `r4133-props-rp3.md` | R4133_PROPS WP-RP3 — the RP3.1–RP3.5 condensed records **and** the full RP3.6–RP3.13 records with their audit settlements; read by the three `props_r4133_replay.rs` pin-citation guards (RP3.10, RP3.11, RP3.13) |
 | `r4133-props-rp4.md` | R4133_PROPS WP-RP4 — the RP4.1 `all_properties` unmask record and its audit settlement |
-| `r4133-props-rp5.md` | R4133_PROPS WP-RP5 — the RP5.1 operational-docs record and its audit settlement, and §RP5.2, the plan's closing record (2026-09-04): final counters, the `lane_diff` table, the condensed per-sub-step record of all 25 sub-steps |
+| `r4133-props-rp5.md` | R4133_PROPS WP-RP5 — the RP5.1 operational-docs record and its audit settlement, and §RP5.2, the plan's closing record (2026-09-04): final counters, the `lane_diff` table, the condensed per-sub-step record of all 26 sub-steps, and the RP5.2 audit settlement |
 | `follow-ups-carried.md` | the carried-forward handoffs and the residual-floor / parked items, open and closed rows alike |
 | `golden-rebase.md` (appended 2026-09-03) | section 1's `### GOLDEN_REBASE` WP-G0 / WP-G2 and WP-G1 condensed record blocks |
 | `phase-index.md` (appended 2026-09-03) | round 1's own 2026-08-05 archive note, listing the files that round created |

@@ -105,7 +105,7 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               own RP5.2) — property parity on the r4133 channel,
                               the dedicated successor G1.1's kill criterion
                               demanded. All six work packages landed, both lanes
-                              gate-green: **25 sub-steps / 64 RP-titled commits**
+                              gate-green: **26 sub-steps / 64 RP-titled commits**
                               (RP0.1 `cbcfafeb` … RP5.1 `64474762`), each one
                               implement + two fresh auditors + fix agent.
                               **Final counters** — normalization table **168** rows

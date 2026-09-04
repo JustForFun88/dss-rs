@@ -1335,7 +1335,10 @@ const LEDGERED_RP3: (usize, usize, usize) = (6, 3, 6);
 
 /// **The outcome tags a settled [`RP3_ROUTING`] verdict may open with** —
 /// `(tag, the obligation the tag carries)`, one row per outcome plan §WP-RP3
-/// sanctions (`docs/plans-archive/R4133_PROPS_PLAN.md:1148-1151`).
+/// sanctions — "exactly one outcome — a port bug **fixed in both lanes**, or an
+/// upstream/echo divergence **excluded + pinned** … or an upstream bug
+/// **reported** with its exclusion + pin"
+/// (`docs/plans-archive/R4133_PROPS_PLAN.md:1148-1151`).
 ///
 /// Landed by the RP3.1 audit settlement (2026-08-24). Before it, the guard read
 /// RP3.1's own shape — cite a `.pas:`, name `RP4.1` and `§1.1(e)`, own a
@@ -5176,10 +5179,12 @@ fn every_rp311_serialization_pin_exists_and_is_cited() {
     let record = std::fs::read_to_string(repo_root().join("docs/phase-records/r4133-props-rp3.md"))
         .expect("docs/phase-records/r4133-props-rp3.md")
         .replace("\r\n", "\n");
-    assert!(
-        RP311_SERIALIZATION_PINS.len() >= 11,
-        "RP3.11 landed 8 pins and its audit settlement 3 more; the table has {}",
-        RP311_SERIALIZATION_PINS.len()
+    assert_eq!(
+        RP311_SERIALIZATION_PINS.len(),
+        11,
+        "RP3.11 landed 8 pins and its audit settlement 3 more, and the RP5 records \
+         publish 11 as an exact count — a floor lets the table grow past what every \
+         record claims (RP5.2 audit settlement, 2026-09-04)"
     );
     for (pin, role, file) in RP311_SERIALIZATION_PINS {
         let path = repo_root().join(file);
@@ -5268,10 +5273,12 @@ fn every_rp313_ncim_pin_exists_and_is_cited() {
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
         .replace("\r\n", "\n");
-    assert!(
-        RP313_NCIM_PINS.len() >= 9,
-        "RP3.13 landed 8 pins and its audit settlement 1 more; the table has {}",
-        RP313_NCIM_PINS.len()
+    assert_eq!(
+        RP313_NCIM_PINS.len(),
+        9,
+        "RP3.13 landed 8 pins and its audit settlement 1 more, and the RP5 records \
+         publish 9 as an exact count — a floor lets the table grow past what every \
+         record claims (RP5.2 audit settlement, 2026-09-04)"
     );
     for (pin, role) in RP313_NCIM_PINS {
         assert!(
@@ -5352,10 +5359,12 @@ fn every_rp310_windgen_pin_exists_and_is_cited() {
     let ledger_path = repo_root().join(LEDGER);
     let ledger = std::fs::read_to_string(&ledger_path)
         .unwrap_or_else(|e| panic!("read {}: {e}", ledger_path.display()));
-    assert!(
-        RP310_WINDGEN_PINS.len() >= 5,
-        "RP3.10 landed four new pins and re-centred one; the table has {}",
-        RP310_WINDGEN_PINS.len()
+    assert_eq!(
+        RP310_WINDGEN_PINS.len(),
+        5,
+        "RP3.10 landed four new pins and re-centred one, and the RP5 records publish \
+         5 as an exact count — a floor lets the table grow past what every record \
+         claims (RP5.2 audit settlement, 2026-09-04)"
     );
     for (path, role, in_ledger) in RP310_WINDGEN_PINS {
         let (module, pin) = path

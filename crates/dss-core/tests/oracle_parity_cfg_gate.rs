@@ -3587,6 +3587,22 @@ fn operational_docs_line_citations_point_at_the_line_they_name() {
                     continue;
                 }
                 if idents.is_empty() {
+                    // Before RP5.2's audit settlement this was a silent
+                    // `continue`, which made the citation existence-only: any
+                    // non-blank line of the right file passed. Six of the 58
+                    // citations sat in that hole — including the four the
+                    // R4133_PROPS counters lean on (the normalization table,
+                    // the echo table, the display floor, the forced
+                    // population) — so the doc claim "resolves *and anchors*
+                    // all 58" was true of 52. Anchoring costs one backticked
+                    // symbol on the citing line.
+                    bad.push(format!(
+                        "    {doc}:{}: `{cited}:{ln}` names no backticked symbol on \
+                         its own line or the one above, so nothing but the line's \
+                         existence can be checked — spell the symbol the cited line \
+                         defines",
+                        i + 1
+                    ));
                     continue;
                 }
                 let lo = ln.saturating_sub(4);
@@ -3620,5 +3636,288 @@ fn operational_docs_line_citations_point_at_the_line_they_name() {
          sentence); do NOT delete the line number:\n{}\nchecked: {:?}",
         bad.join("\n"),
         counts
+    );
+}
+
+/// Every `` `path.md:LO[-HI]` `` citation on one line of Rust, in reading order.
+///
+/// Same shape as [`file_citations_in`], narrowed to Markdown targets and
+/// widened to the `LO-HI` ranges a prose citation actually uses: a plan
+/// sentence spans lines, and a one-line citation into it would be a claim about
+/// the wrong half of the sentence.
+fn md_citations_in(line: &str) -> Vec<(String, usize, usize)> {
+    let chars: Vec<char> = line.chars().collect();
+    let is_path = |c: char| c.is_ascii_alphanumeric() || matches!(c, '_' | '/' | '.' | '-');
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        if !is_path(chars[i]) {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < chars.len() && is_path(chars[i]) {
+            i += 1;
+        }
+        let run: String = chars[start..i].iter().collect();
+        if !run.ends_with(".md") || chars.get(i) != Some(&':') {
+            continue;
+        }
+        let mut j = i + 1;
+        while chars.get(j).is_some_and(char::is_ascii_digit) {
+            j += 1;
+        }
+        let Ok(lo) = chars[i + 1..j].iter().collect::<String>().parse::<usize>() else {
+            continue;
+        };
+        let mut hi = lo;
+        if chars.get(j) == Some(&'-') {
+            let mut k = j + 1;
+            while chars.get(k).is_some_and(char::is_ascii_digit) {
+                k += 1;
+            }
+            if let Ok(end) = chars[j + 1..k].iter().collect::<String>().parse::<usize>() {
+                hi = end;
+                j = k;
+            }
+        }
+        out.push((run, lo, hi));
+        i = i.max(j);
+    }
+    out
+}
+
+/// The section tokens a comment names (`WP-RP3`, `RP5.2`, `1.1`), each spelled
+/// behind a section sign.
+fn section_tokens_in(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let chars: Vec<char> = text.chars().collect();
+    for (i, c) in chars.iter().enumerate() {
+        if *c != '\u{a7}' {
+            continue;
+        }
+        let mut j = i + 1;
+        while chars
+            .get(j)
+            .is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+        {
+            j += 1;
+        }
+        let tok: String = chars[i + 1..j].iter().collect();
+        let tok = tok.trim_end_matches(['.', '-']).to_string();
+        if tok.len() > 1 {
+            out.push(tok);
+        }
+    }
+    out
+}
+
+/// The 1-based span of every Markdown heading whose title names `token`, each
+/// running to the next heading of the same or higher level.
+fn heading_spans(lines: &[&str], token: &str) -> Vec<(usize, usize)> {
+    let level = |l: &str| {
+        let n = l.chars().take_while(|c| *c == '#').count();
+        (n > 0 && l.chars().nth(n) == Some(' ')).then_some(n)
+    };
+    let mut out = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        let Some(lv) = level(line) else { continue };
+        if !line.contains(token) {
+            continue;
+        }
+        let mut end = lines.len();
+        for (j, later) in lines.iter().enumerate().skip(i + 1) {
+            if level(later).is_some_and(|l| l <= lv) {
+                end = j;
+                break;
+            }
+        }
+        out.push((i + 1, end));
+    }
+    out
+}
+
+/// Markdown prose reduced to the words it says: comment markers, emphasis and
+/// backticks dropped, whitespace collapsed, so a quotation matches across a
+/// line wrap and across `**bold**` the quoter kept or dropped.
+fn normalized_md(text: &str) -> String {
+    let plain: String = text
+        .lines()
+        .map(|l| l.trim_start().trim_start_matches('/').trim_start())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace(['`', '*'], "");
+    plain.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The opening words of every quoted phrase a comment carries, cut at the first
+/// ellipsis and capped at eight words.
+///
+/// A quotation is the strongest form of citation — it claims the passage says
+/// *this* — so it is checked against the passage, which makes a citation that
+/// drifts *within* a section fail too, not only one that leaves it.
+fn quoted_prefixes(block: &str) -> Vec<String> {
+    normalized_md(block)
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .filter_map(|quote| {
+            let head = quote
+                .split('\u{2026}')
+                .next()
+                .unwrap_or(quote)
+                .split("...")
+                .next()
+                .unwrap_or(quote);
+            let words: Vec<&str> = head.split_whitespace().take(8).collect();
+            (words.len() >= 4).then(|| words.join(" "))
+        })
+        .collect()
+}
+
+/// The contiguous comment block a Rust line sits in — the sentence that makes
+/// the claim, not an arbitrary window around it.
+fn comment_block(lines: &[&str], at: usize) -> String {
+    let is_comment = |l: &&str| l.trim_start().starts_with("//");
+    let mut lo = at;
+    while lo > 0 && is_comment(&lines[lo - 1]) {
+        lo -= 1;
+    }
+    let mut hi = at;
+    while hi + 1 < lines.len() && is_comment(&lines[hi + 1]) {
+        hi += 1;
+    }
+    lines[lo..=hi].join("\n")
+}
+
+/// A `record.md:LO-HI` citation inside a Rust comment still points at the
+/// passage the comment names.
+///
+/// The mirror image of [`operational_docs_line_citations_point_at_the_line_they_name`],
+/// and the class that walk deliberately drops: it resolves `.rs` targets and
+/// `continue`s past every other extension, so a comment citing a plan or a
+/// phase record was checked by nothing at all. The rot is measured, not
+/// hypothetical — R4133_PROPS RP5.2's only code edit was re-pointing the two
+/// `props_r4133_replay.rs` citations of the WP-RP3 sanctioned-outcome sentence,
+/// whose range had drifted onto the RP2.4 display-floor derivation while both
+/// lanes stayed green. Its audit round (2026-09-04) found the repair itself
+/// unguarded, which is this test.
+///
+/// Three checks: the record exists; the cited range is inside it and not all
+/// blank; and the passage is **anchored** — either the comment names a section
+/// whose span contains the range, or comment and passage share a backticked
+/// symbol. An unanchored citation fails: a bare line number into a 2 800-line
+/// plan is a claim no reader can check and no edit can invalidate.
+#[test]
+fn rust_comments_citing_a_record_line_point_at_the_passage_they_name() {
+    let root = repo_root();
+    let mut bad: Vec<String> = Vec::new();
+    let mut cache: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut checked = 0usize;
+    let mut citing_files: Vec<String> = Vec::new();
+
+    for path in rust_sources(&root) {
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("{rel}: {e}"));
+        let lines: Vec<&str> = text.lines().collect();
+
+        for (i, line) in lines.iter().enumerate() {
+            for (doc, lo, hi) in md_citations_in(line) {
+                if !root.join(&doc).is_file() {
+                    bad.push(format!(
+                        "    {rel}:{}: `{doc}:{lo}` names no file in the tree",
+                        i + 1
+                    ));
+                    continue;
+                }
+                checked += 1;
+                if !citing_files.contains(&rel) {
+                    citing_files.push(rel.clone());
+                }
+
+                let doc_text = cache.entry(doc.clone()).or_insert_with(|| {
+                    fs::read_to_string(root.join(&doc))
+                        .unwrap_or_else(|e| panic!("{doc}: {e}"))
+                        .lines()
+                        .map(str::to_string)
+                        .collect()
+                });
+                let doc_lines: Vec<&str> = doc_text.iter().map(String::as_str).collect();
+
+                if lo == 0 || hi < lo || hi > doc_lines.len() {
+                    bad.push(format!(
+                        "    {rel}:{}: `{doc}:{lo}-{hi}` is not inside {doc} ({} lines)",
+                        i + 1,
+                        doc_lines.len()
+                    ));
+                    continue;
+                }
+                let cited = &doc_lines[lo - 1..hi];
+                if cited.iter().all(|l| l.trim().is_empty()) {
+                    bad.push(format!(
+                        "    {rel}:{}: `{doc}:{lo}-{hi}` is blank in {doc}",
+                        i + 1
+                    ));
+                    continue;
+                }
+
+                let block = comment_block(&lines, i);
+                let passage = normalized_md(&cited.join("\n"));
+                let quotes = quoted_prefixes(&block);
+                let by_quote = quotes.iter().any(|q| passage.contains(q.as_str()));
+                if !quotes.is_empty() && !by_quote {
+                    bad.push(format!(
+                        "    {rel}:{}: `{doc}:{lo}-{hi}` — the comment quotes {quotes:?} \
+                         and the cited lines say none of it",
+                        i + 1
+                    ));
+                    continue;
+                }
+                if by_quote {
+                    continue;
+                }
+                let tokens = section_tokens_in(&block);
+                let by_section = tokens.iter().any(|tok| {
+                    heading_spans(&doc_lines, tok)
+                        .iter()
+                        .any(|(start, end)| *start <= lo && hi <= *end)
+                });
+                if by_section {
+                    continue;
+                }
+                let named: Vec<String> = block.lines().flat_map(backticked_idents).collect();
+                let passage: Vec<String> =
+                    cited.iter().flat_map(|l| backticked_idents(l)).collect();
+                if named.iter().any(|id| passage.contains(id)) {
+                    continue;
+                }
+                bad.push(format!(
+                    "    {rel}:{}: `{doc}:{lo}-{hi}` is unanchored — the comment names \
+                     no section {tokens:?} whose span holds those lines, and the passage \
+                     spells none of the symbols the comment does. Name the section, or \
+                     quote a symbol the cited lines carry",
+                    i + 1
+                ));
+            }
+        }
+    }
+
+    assert!(
+        checked >= 5 && citing_files.len() >= 2,
+        "the walk found only {checked} `record.md:LINE` citations over {citing_files:?} \
+         — either they were all deleted or the scanner stopped seeing them, and this \
+         gate went vacuous"
+    );
+    assert!(
+        bad.is_empty(),
+        "a Rust comment cites a record line that no longer carries the passage it \
+         names. Re-read the record and re-point the range (or re-word the comment); \
+         do NOT delete the line number:\n{}\nchecked: {checked} citations over {:?}",
+        bad.join("\n"),
+        citing_files
     );
 }
