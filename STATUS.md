@@ -44,8 +44,10 @@ has shrunk to a precision-compat lane and is scheduled for full teardown.
 `docs/plans-archive/`, `PLAN_SEQUENCE.md` row 5b COMPLETE with the final
 counters, record in
 [`era-summaries.md`](docs/phase-records/era-summaries.md) §1a, **G1.1 handed back
-satisfied**. Execution stays single-branch: `ledger.json`,
-`population.lock.json`, `golden.lock.json` are fail-on-stale.
+satisfied**. Close-out 2026-09-04: `update` fast-forwarded to `r4133-props`
+@ `2724a139` (32 commits) and pushed to `origin/update`. Execution stays
+single-branch: `ledger.json`, `population.lock.json`, `golden.lock.json` are
+fail-on-stale.
 
 **Record placement (from 2026-09-03).** Every sub-step's **full** record is
 appended to its per-WP file under `docs/phase-records/` — WP-RP3 →
@@ -164,8 +166,8 @@ file, section "GOLDEN_REBASE WP-G1 — records".
 **Next.** **Back to `GOLDEN_REBASE_PLAN.md` WP-G1** with **G1.1 satisfied** by
 the archived R4133_PROPS plan (RP5.2, 2026-09-04): open work is **G1.3a–d** and
 **G1.4–G1.11c**, then WP-G3–G5 — inside which **G3.4**/**G3.5**, blocked since
-2026-08-08, are runnable. Then the close-out merge of `r4133-props` into
-`update`. Queued behind GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE,
+2026-08-08, are runnable (the close-out merge into `update` is done,
+2026-09-04). Queued behind GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE,
 MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
