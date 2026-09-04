@@ -2496,3 +2496,91 @@ field-by-field by `tests/corpus/ledger.json` entry
 needs no entry at all**, and both numbers are pinned by
 `dss_core::exec::tests::derived_polar::capcontrol_time_voltages_follow_the_monitored_elements_terminal`.
 No EPRI report is owed — r4133 is the side that is right.
+
+## D12/D14 — GICTransformer decks gate on **r4133 only**; the pinned capi 0.14.5 oracle is nondeterministic on them — GOLDEN_REBASE G1.4a, 2026-09-04
+
+*(`D12`/`D14` here are the **coordinator session decisions** of the 2026-09-04 GOLDEN_REBASE
+run, not this file's own upstream-divergence rows `D12` (SwtControl `Normal`/`State`, §WP-U1.6)
+and `D14` (DynamicExp RPN evaluator) above. Every citation elsewhere written
+"`DIVERGENCES.md` §D12/D14" means this section.)*
+
+**Not an engine divergence: an oracle-channel decision.** No port behavior
+changes here, no tolerance moves, no golden byte moves.
+
+**The finding (D12).** The pinned dss-python 0.15.7 / dss_capi 0.14.5 oracle
+disagrees with **itself** across fresh processes on any deck that instantiates a
+`GICTransformer`. Measured on lane `lane-b` with fresh one-shot
+`tools/oracle/oracle_server.py` processes over the same deck text:
+**7 bad runs of 60** with the `new gictransformer.…` line present, **0 of 40**
+with that one line deleted. A bad run is not noise in the last ulp — the whole
+no-load solve lands elsewhere (`src` at 2332 V instead of ~7199 V) and
+`Bus.kVBase` is punted to 0. EPRI r4133 through `epri-worker` is deterministic
+over the same experiment: **80/80** bit-identical solved node voltages plus every
+`(bus, kVBase)` (20 fresh one-shot runs × the four decks), and **20/20** on the
+new deck below. An oracle channel that disagrees with itself cannot gate, and
+CLAUDE.md's policy says so: *"where r4133 does not share the bug, prefer gating
+the affected case on the r4133 channel"*. The decision does not depend on the
+root cause — the measurement alone disqualifies the channel — but the cause was
+**measured** afterwards (2026-09-04, same sub-step): the element's `YPrim` and
+the assembled system `Y` are bit-identical across processes, and the divergence
+sits in `SetVoltageBases`' zero-load snapshot
+(`.inputs/dss_capi/src/Common/Solution.pas:1083` → `:1025`-`:1051` → `:1103`),
+where `NodeV` is `ReAllocMem`'d and only `NodeV[0]` zeroed
+(`Common/YMatrix.pas:416`), `SolveSystem`'s return code is discarded, and
+whatever a node happens to hold is read straight into `nearestBasekV` — which
+punts `kVBase` to 0. r4133 carries the identical code
+(`Version8/Source/Common/Solution.pas:2486-2514`, `:2541`;
+`Common/YMatrix.pas:242-245`), so this is a latent upstream defect whose
+realization is capi-process-specific (`investigations/issue-37-…`, local-only).
+
+**Why the shunt deck is SPLIT, not flipped (D14).** Three of the four affected
+decks (`asymmetric:gic/gictransformer_gic.dss`, `asymmetric:gic/gic_midi.dss`,
+`solvable_now:Version8/Distrib/Examples/GICExample/GIC_Example.dss`) were `both`
+and flip to `r4133` at zero cost. The fourth,
+`modes:makeposseq/makeposseq_shunt.dss`, is a WPG.21 `MakePosSequence` deck gated
+on capi alone, and moving it to r4133 would have quantized the very outputs it
+exists to check: **every r4133 `MakePosSequence` override builds a command STRING
+with `Format('%-.5g')` and re-parses it** — `Version8/Source/PDElements/
+Capacitor.pas:801`, `:806`, `:829` into the parser at `:834-835`, and the same
+shape in `PCElements/Vsource.pas:1396-1402`, `PCElements/Load.pas:2305-2332`,
+`PDElements/Line.pas:1591-1596` — where the pinned dss_capi 0.14.5 and the port
+aim typed setters at the same properties and keep full f64. Measured images on
+that deck: reduced `kV` reads `7.1996` against the port's `7.19955785679463`
+(rel 5.85e-06), `load.kw` `133.33` vs `133.333333333333` (2.50e-05), `reactor.r`
+`0.26667` vs `0.266666666666667` (1.25e-05); the quantized Vsource base kV alone
+moves the injection RHS by `3.407076218201843e-02` (rel 5.854e-06) with the
+cmatrix capacitor deleted, while **without** the trailing `makeposseq` the two
+oracles agree to f64-ulp (max `9.094947e-13`, rel `1.563e-16`). The r4133
+property census on that one case returned **13 unclaimed cells / 12 pairs** plus
+the model artifacts and the deck's own manifest probes — more than ten new ledger
+rows for one deck, so the sub-step's kill criterion fired and the coordinator
+settled on the split.
+
+**What landed.** `makeposseq_shunt.dss` loses its single
+`new gictransformer.gt busH=b1 busNH=b1.4.4.4 R1=0.1 type=GSU` line and keeps its
+full-precision capi gating (re-measured: **20/20** identical capi runs without the
+element, and its two ledger entries `makeposseq-cuf-applied-capi{,-props}` are
+still hit). The GICTransformer's `MakePosSequence` override — `Phases=1` plus the
+inherited bus strip, r4133 `PDElements/GICTransformer.pas:736-747` == pinned capi
+0.14.5 `src/PDElements/GICTransformer.pas:588-593`, base `CktElement.pas:1352-1363`
+— moves to the new `r4133`-gated micro deck
+`tests/corpus/modes/makeposseq/makeposseq_gic.dss`, whose every **other** reduced
+parameter is chosen so the 5-digit round trip is exact (`basekv = 7.2·√3` ⇒
+line-neutral `7.2`, `kw=900` ⇒ `300`/phase, `pf=1` ⇒ `kvar 0`, `r1/x1/c1/normamps`
+already 5-digit). It needs **zero** ledger rows: the live compare against r4133
+passes clean. The four capi-side entries
+`gic-pct-r2-honoured-{gictransformer,midi}-capi{,-props}` are deleted (ledger
+**57 → 53**); their r4133 twins keep every port-side assertion, and no pin loses
+one (`compat_quirks::gic_transformer_pct_r2_drives_winding_two`,
+`props_r4133_pins::gictransformer_r2_honours_the_x_winding_percentage{,_on_the_ring}`,
+`golden_reports::export_gicmvars_matches_the_equivalent_ohms_spec` read no capi
+oracle). The unreferenced ledger cause `makeposseq-fpc-delphi` claimed
+"transcendental last-ulp drift"; the census above shows the mechanism is the 5-sf
+string round trip, so the cause text is **rewritten**, not deleted. A guard test
+`corpus_gate::manifest::no_capi_gated_case_instantiates_a_gictransformer` pins
+both halves — the closed set of corpus decks that `new` one, and that each gated
+case naming one declares `engines: "r4133"` — with its refusal driven
+non-vacuously by `…::the_gictransformer_channel_guard_refuses_a_capi_gated_deck`.
+`FORCED_PROPS_POPULATION` / `FORCED_BUS_POPULATION` move
+`(440, 313, 83, 44) → (441, 310, 87, 44)` (three flips + one new case), both
+re-derived from the manifests on every run.

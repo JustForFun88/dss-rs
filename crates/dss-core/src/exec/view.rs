@@ -262,6 +262,122 @@ pub struct PdElementView {
     pub in_meter_zone: bool,
 }
 
+/// A bus's solved voltages in the three flavours both oracles publish — the
+/// dss-python / COM `Bus.puVoltages`, `Bus.VMagAngle` and `Bus.puVMagAngle`
+/// surface (the fastdss harness dumps the whole `IBus` `_columns` set for the
+/// active bus, `tests/save_outputs.py:351` on `origin/fastdss`).
+///
+/// The two oracles run the *same* arithmetic on these three: capi
+/// `Alt_Bus_Get_puVoltages` / `Alt_Bus_Get_VMagAngle` /
+/// `Alt_Bus_Get_puVMagAngle` (`CAPI/CAPI_Alt.pas:2251`, `:2573`, `:2540`)
+/// and r4133 `BUSV` modes 5 / 13 / 14
+/// (`Version8/Source/DDLL/DBus.pas:399`, `:659`, `:690`).
+///
+/// **Ordering.** `pu_voltages`, `vmag_angle` and `pu_vmag_angle` are ordered by
+/// ascending node *number* — the `repeat NodeIdx := FindIdx(jj); inc(jj) until
+/// NodeIdx > 0` walk both engines run (`CAPI_Alt.pas:2270-2275` ==
+/// `DBus.pas:415-421`) — while [`BusVoltageView::nodes`] keeps `TDSSBus.Nodes`'
+/// insertion order. A bus declared `.2.1.3` therefore reports
+/// `nodes = [2, 1, 3]` next to voltages ordered `1, 2, 3`. That is neither the
+/// `YNodeOrder` permutation nor the bus × internal-node-index order of
+/// [`Dss::all_bus_vmag_pu`]; the three conventions must never be mixed.
+///
+/// `VLL` / `puVLL` are deliberately absent: the fastdss harness drops them in
+/// this configuration (`save_outputs.py:205-209`, `COM_VLL_BROKEN`), and the
+/// r4133 pairing loop has a state-dependent hang there — they land with the
+/// sequence quantities in GOLDEN_REBASE G1.4c.
+#[derive(Debug, Clone)]
+pub struct BusVoltageView {
+    /// The bus's (lowercased) name, `Circuit.AllBusNames` spelling.
+    pub name: String,
+    /// `TDSSBus.kVBase`, line-to-neutral kV; `0.0` = not set.
+    pub kv_base: f64,
+    /// User node numbers on the bus (`Nodes`), **insertion** order.
+    pub nodes: Vec<i32>,
+    /// `Bus.puVoltages`: `NodeV / BaseFactor`, ascending node number.
+    pub pu_voltages: Vec<num_complex::Complex64>,
+    /// `Bus.VMagAngle`: `(|V| volts, angle°)`, ascending node number.
+    pub vmag_angle: Vec<(f64, f64)>,
+    /// `Bus.puVMagAngle`: `(|V|/BaseFactor, angle°)`, ascending node number.
+    pub pu_vmag_angle: Vec<(f64, f64)>,
+}
+
+/// The `BaseFactor` both engines divide the per-unit bus quantities by:
+/// `1000 · kVBase`, or `1.0` when the bus has no base
+/// (`CAPI_Alt.pas:2262-2265` == `DBus.pas:413-414` == `CAPI_Circuit.pas:538-541`
+/// == `DCircuit.pas:493`). The `1.0` arm is live, not dead: 11 480 of the
+/// corpus's 209 211 buses have `kVBase <= 0` (measured for GOLDEN_REBASE G1.4a).
+fn bus_base_factor(bus: &crate::circuit::bus::Bus) -> f64 {
+    if bus.kv_base > 0.0 {
+        1000.0 * bus.kv_base
+    } else {
+        1.0
+    }
+}
+
+/// The bus's local node indices in ascending node-**number** order — the
+/// `repeat NodeIdx := FindIdx(jj); inc(jj) until NodeIdx > 0` walk of
+/// `CAPI_Alt.pas:2270-2275` == `DBus.pas:415-421`, whose comment reads *"this
+/// code so nodes come out in order from smallest to larges"*.
+///
+/// A stable sort by node number is exactly that walk: `Circuit::add_bus` never
+/// pushes node 0 (ground short-circuits to `ref_no = 0` before the
+/// `nodes.push`, `circuit/circuit.rs:599-603`), so every entry of `Bus::nodes`
+/// is a distinct number `>= 1` and the engines' `jj = 1, 2, 3, …` scan finds
+/// them in sorted order.
+fn ascending_node_indices(bus: &crate::circuit::bus::Bus) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..bus.num_nodes_this_bus()).collect();
+    order.sort_by_key(|&i| bus.get_num(i));
+    order
+}
+
+/// `Solution.NodeV[node_ref]`, the way both engines index it (slot 0 = ground);
+/// total here because `node_v` is empty before the first allocation.
+fn node_voltage(ckt: &Circuit, node_ref: usize) -> num_complex::Complex64 {
+    ckt.solution
+        .node_v
+        .get(node_ref)
+        .copied()
+        .unwrap_or_default()
+}
+
+/// Build one [`BusVoltageView`] over bus `bus_idx` (`BusList` index).
+fn bus_voltage_view(ckt: &Circuit, bus_idx: usize) -> BusVoltageView {
+    use crate::support::complexutil::c_to_polar_deg;
+
+    let bus = &ckt.buses[bus_idx];
+    let base_factor = bus_base_factor(bus);
+    let n = bus.num_nodes_this_bus();
+
+    let mut pu_voltages = Vec::with_capacity(n);
+    let mut vmag_angle = Vec::with_capacity(n);
+    let mut pu_vmag_angle = Vec::with_capacity(n);
+    for i in ascending_node_indices(bus) {
+        let v = node_voltage(ckt, bus.get_ref(i));
+        // capi divides the two components (`CAPI_Alt.pas:2277-2280`), r4133
+        // calls `cdivreal` (`DBus.pas:423`) — the same componentwise divide.
+        pu_voltages.push(num_complex::Complex64::new(
+            v.re / base_factor,
+            v.im / base_factor,
+        ));
+        // Pascal `ctopolardeg` on the same `NodeV` entry; only the magnitude is
+        // scaled, and only for the pu flavour (`CAPI_Alt.pas:2566-2569` ==
+        // `DBus.pas:713-716`).
+        let p = c_to_polar_deg(v);
+        vmag_angle.push((p.mag, p.ang));
+        pu_vmag_angle.push((p.mag / base_factor, p.ang));
+    }
+
+    BusVoltageView {
+        name: bus.name.clone(),
+        kv_base: bus.kv_base,
+        nodes: bus.nodes.clone(),
+        pu_voltages,
+        vmag_angle,
+        pu_vmag_angle,
+    }
+}
+
 impl Dss {
     /// Snapshot every circuit element's terminal powers and currents in
     /// creation order (the oracle's `First/Next` order). Pascal
@@ -841,6 +957,61 @@ impl Dss {
             isc: b.bus_current.clone(),
             vbus: b.vbus.clone(),
         })
+    }
+
+    /// Read one bus's solved voltages — the dss-python `Bus.puVoltages` /
+    /// `Bus.VMagAngle` / `Bus.puVMagAngle` surface (see [`BusVoltageView`] for
+    /// the ordering contract and the Pascal citations). `name` is the bus name
+    /// (case-insensitive); `None` if no such bus exists.
+    pub fn bus_voltages(&self, name: &str) -> Option<BusVoltageView> {
+        let ckt = self.circuit.as_ref()?;
+        let idx = ckt.bus_list.find(name)?;
+        Some(bus_voltage_view(ckt, idx))
+    }
+
+    /// Every bus's [`BusVoltageView`] in `BusList` order — the order
+    /// `Circuit.AllBusNames` reports (`CAPI_Circuit.pas` /
+    /// `DCircuit.pas:439`). Empty when no circuit exists.
+    pub fn all_bus_voltages(&self) -> Vec<BusVoltageView> {
+        match self.circuit.as_ref() {
+            Some(ckt) => (0..ckt.buses.len())
+                .map(|i| bus_voltage_view(ckt, i))
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
+    /// `Circuit.AllBusVmagPu`: `|NodeV| / BaseFactor` for every node, walked as
+    /// **bus × internal node index** — `for i := 1 to NumBuses do for j := 1 to
+    /// Buses[i].NumNodesThisBus do … GetRef(j)`
+    /// (`CAPI_Circuit.pas:521-548` == `DCircuit.pas:481-500`, r4133 mode 9;
+    /// fastdss dumps it with the rest of `ICircuit._columns`,
+    /// `tests/save_outputs.py:348`). Length = `NumNodes`.
+    ///
+    /// This is the *second* of the three bus orderings and is neither
+    /// [`BusVoltageView`]'s ascending-node-number order nor `YNodeOrder`: a bus
+    /// that gains a node after a later bus was created holds node refs that are
+    /// not contiguous, so the walk visits `NodeV` out of ref order.
+    ///
+    /// capi guards the read with a `MissingSolution` early-out
+    /// (`CAPI_Circuit.pas:528-532`) that r4133 does not have and that cannot
+    /// fire post-solve; under the r4133-authority policy it is not reproduced.
+    pub fn all_bus_vmag_pu(&self) -> Vec<f64> {
+        let Some(ckt) = self.circuit.as_ref() else {
+            return Vec::new();
+        };
+        let mut out = Vec::with_capacity(ckt.num_nodes);
+        for bus in &ckt.buses {
+            let base_factor = bus_base_factor(bus);
+            for j in 0..bus.num_nodes_this_bus() {
+                // Pascal `Cabs`: the naive modulus, proven bit-identical to
+                // `f64::hypot`/`Complex::norm` on every reachable operand
+                // (`support/line_constants/tests.rs`,
+                // `naive_modulus_equals_hypot_until_the_square_overflows`).
+                out.push(node_voltage(ckt, bus.get_ref(j)).norm() / base_factor);
+            }
+        }
+        out
     }
 
     /// Read a monitor's recorded data — the dss-python `Monitors.Header` /
@@ -1483,5 +1654,187 @@ impl Dss {
             Some(ckt) => ckt.solution.currents.clone(),
             None => Vec::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod bus_voltage_tests {
+    use super::*;
+    use crate::support::complexutil::c_to_polar_deg;
+    use num_complex::Complex64;
+
+    /// One deck that exercises all three orderings at once.
+    ///
+    /// * `b3` is declared `.2.1.3`, so its **insertion** order differs from the
+    ///   ascending node-number order the oracles publish (convention 1).
+    /// * `b1` is first seen with node 1 only and gains nodes 2 and 3 *after*
+    ///   `b2` was handed its node ref, so the bus × node-index walk of
+    ///   [`Dss::all_bus_vmag_pu`] (convention 2) is a different permutation
+    ///   from `YNodeOrder`.
+    fn bus_deck() -> Dss {
+        let mut dss = Dss::new();
+        dss.command("New circuit.busview basekv=12.47 pu=1.0 phases=3 bus1=sourcebus");
+        dss.command("New Line.l1 bus1=sourcebus.1 bus2=b1.1 phases=1 r1=0.1 x1=0.3 c1=0 length=1");
+        dss.command("New Line.l2 bus1=b1.1 bus2=b2.1 phases=1 r1=0.1 x1=0.3 c1=0 length=1");
+        dss.command(
+            "New Line.l3 bus1=sourcebus.2.3 bus2=b1.2.3 phases=2 r1=0.1 x1=0.3 c1=0 length=1",
+        );
+        dss.command(
+            "New Line.l4 bus1=sourcebus.1.2.3 bus2=b3.2.1.3 phases=3 r1=0.1 x1=0.3 c1=0 length=1",
+        );
+        dss.command("New Load.ld bus1=b1.1 phases=1 kv=7.2 kw=500 pf=0.95");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    fn solved_with_bases() -> Dss {
+        let mut dss = bus_deck();
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    /// Convention 1: `puVoltages`/`VMagAngle`/`puVMagAngle` come out ordered by
+    /// ascending node **number** (`CAPI_Alt.pas:2270-2275` == `DBus.pas:415-421`),
+    /// while `nodes` keeps `TDSSBus.Nodes`' insertion order. Pinned on a bus
+    /// declared `.2.1.3`; 140 corpus cases carry such non-prefix node sets.
+    #[test]
+    fn bus_pu_voltages_come_out_in_ascending_node_number_order() {
+        let dss = solved_with_bases();
+        let ckt = dss.circuit().expect("circuit");
+        let ib = ckt.bus_list.find("b3").expect("bus b3");
+        let bus = &ckt.buses[ib];
+        assert_eq!(bus.nodes, vec![2, 1, 3], "declared .2.1.3");
+
+        // Bus lookup is case-insensitive, like `SetActiveBus`.
+        let v = dss.bus_voltages("B3").expect("bus b3");
+        assert_eq!(v.name, "b3");
+        assert_eq!(v.nodes, vec![2, 1, 3], "the view keeps insertion order");
+        assert_eq!(v.kv_base, bus.kv_base);
+
+        let bf = 1000.0 * bus.kv_base;
+        assert!(bf > 0.0);
+        for (k, node) in [1i32, 2, 3].into_iter().enumerate() {
+            let raw = ckt.solution.node_v[bus.find(node)];
+            assert_eq!(
+                v.pu_voltages[k],
+                Complex64::new(raw.re / bf, raw.im / bf),
+                "slot {k} must be node {node}"
+            );
+            let p = c_to_polar_deg(raw);
+            assert_eq!(v.vmag_angle[k], (p.mag, p.ang));
+            assert_eq!(v.pu_vmag_angle[k], (p.mag / bf, p.ang));
+        }
+
+        // The two orders are observably different, not just nominally.
+        // `Line.l4` maps source phase 1 -> b3 node 2, phase 2 -> node 1,
+        // phase 3 -> node 3, so ascending node order (1, 2, 3) carries the
+        // source angles (-120, 0, +120) while the insertion order (2, 1, 3)
+        // would carry (0, -120, +120): the first two slots swap.
+        assert!(
+            (v.vmag_angle[0].1 + 120.0).abs() < 15.0,
+            "slot 0 = node 1 = source phase 2 near -120 deg, got {}",
+            v.vmag_angle[0].1
+        );
+        assert!(
+            v.vmag_angle[1].1.abs() < 15.0,
+            "slot 1 = node 2 = source phase 1 near 0 deg, got {}",
+            v.vmag_angle[1].1
+        );
+        assert!(
+            (v.vmag_angle[2].1 - 120.0).abs() < 15.0,
+            "slot 2 = node 3 = source phase 3 near +120 deg, got {}",
+            v.vmag_angle[2].1
+        );
+    }
+
+    /// `BaseFactor` is `1000 * kVBase`, falling back to `1.0` when the bus has
+    /// no base (`CAPI_Alt.pas:2262-2265` == `DBus.pas:413-414`). Both arms are
+    /// pinned: 11 480 of the corpus's 209 211 buses take the `1.0` arm, and the
+    /// `1000*` factor (not a bare `kVBase`) is what makes the pu magnitude ~ 1.
+    #[test]
+    fn bus_pu_voltages_use_a_unit_base_when_kv_base_is_not_set() {
+        // No `CalcVoltageBases`: every bus keeps `TDSSBus.Create`'s kVBase = 0.
+        let mut dss = bus_deck();
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let v = dss.bus_voltages("b3").expect("bus b3");
+        assert_eq!(v.kv_base, 0.0, "no CalcVoltageBases means kVBase unset");
+        let ckt = dss.circuit().expect("circuit");
+        let bus = &ckt.buses[ckt.bus_list.find("b3").expect("bus b3")];
+        for (k, node) in [1i32, 2, 3].into_iter().enumerate() {
+            let raw = ckt.solution.node_v[bus.find(node)];
+            assert_eq!(v.pu_voltages[k], raw, "BaseFactor = 1.0 gives raw volts");
+            assert_eq!(v.pu_vmag_angle[k], v.vmag_angle[k]);
+        }
+        assert!(
+            v.pu_vmag_angle[0].0 > 1000.0,
+            "unit base gives volts, got {}",
+            v.pu_vmag_angle[0].0
+        );
+
+        // The other arm, on the same deck with bases calculated.
+        let dss = solved_with_bases();
+        let v = dss.bus_voltages("b3").expect("bus b3");
+        let bf = 1000.0 * v.kv_base;
+        assert_eq!(v.kv_base, 12.47 / crate::util::sqrt3());
+        assert_eq!(v.pu_vmag_angle[0].0, v.vmag_angle[0].0 / bf);
+        assert!(
+            (0.5..1.5).contains(&v.pu_vmag_angle[0].0),
+            "per-unit, not per-kV: {}",
+            v.pu_vmag_angle[0].0
+        );
+    }
+
+    /// Convention 2: `AllBusVmagPu` walks buses x internal node index
+    /// (`CAPI_Circuit.pas:535-546` == `DCircuit.pas:490-498`), which on this
+    /// deck is a different permutation from `YNodeOrder` (node-ref order) *and*
+    /// from the ascending-node-number order of [`Dss::bus_voltages`].
+    #[test]
+    fn all_bus_vmag_pu_walks_buses_times_internal_node_index() {
+        let dss = solved_with_bases();
+        let ckt = dss.circuit().expect("circuit");
+        let all = dss.all_bus_vmag_pu();
+        assert_eq!(all.len(), ckt.num_nodes);
+
+        // The node refs this walk visits, in order - b1 gained nodes 2 and 3
+        // after b2's node ref was handed out, so the sequence is not 1..=n.
+        let mut refs = Vec::new();
+        for bus in &ckt.buses {
+            for j in 0..bus.num_nodes_this_bus() {
+                refs.push(bus.get_ref(j));
+            }
+        }
+        assert_eq!(
+            refs,
+            vec![1, 2, 3, 4, 6, 7, 5, 8, 9, 10],
+            "bus x node-index order, NOT YNodeOrder (1..=NumNodes)"
+        );
+        for (k, &r) in refs.iter().enumerate() {
+            let bus = &ckt.buses[ckt.map_node_to_bus[r].bus_ref];
+            let bf = if bus.kv_base > 0.0 {
+                1000.0 * bus.kv_base
+            } else {
+                1.0
+            };
+            assert_eq!(all[k], ckt.solution.node_v[r].norm() / bf);
+        }
+
+        // Contrast with convention 1 on the `.2.1.3` bus: the last three slots
+        // are that bus in insertion order (2, 1, 3), while `bus_voltages`
+        // reports 1, 2, 3.
+        let v = dss.bus_voltages("b3").expect("bus b3");
+        let tail = &all[all.len() - 3..];
+        assert_eq!(tail[0], v.pu_vmag_angle[1].0, "slot 0 = node 2");
+        assert_eq!(tail[1], v.pu_vmag_angle[0].0, "slot 1 = node 1");
+        assert_eq!(tail[2], v.pu_vmag_angle[2].0, "slot 2 = node 3");
+
+        // `all_bus_voltages` is the same bus sequence as `AllBusNames`.
+        let views = dss.all_bus_voltages();
+        assert_eq!(views.len(), ckt.buses.len());
+        let names: Vec<&str> = views.iter().map(|v| v.name.as_str()).collect();
+        assert_eq!(names, vec!["sourcebus", "b1", "b2", "b3"]);
     }
 }

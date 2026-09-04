@@ -113,11 +113,11 @@ sub-step records RP3.6 – RP3.13 and RP3.10 (moved from STATUS §1)".
 **WP-RP4 (the unmask) — COMPLETE** (RP4.1, 2026-09-03, `59e521e5`, 23 files
 +2 576 / −536; zero product-crate lines, zero golden bytes, zero tolerances
 moved). `all_properties` is compared on the r4133 channel for every live
-non-`large` case: the **83 r4133-only** non-large cases get a property check for
-the first time and the **313 non-`large` `both`** cases get their r4133 property
-table compared — **1 670** gating property walks over **151 782** elements per
-full run, identically in both lanes. G1.1's re-armed kill criterion did **not**
-fire (zero ledger entries and zero pins from RP4.1's own residual triage). Full
+non-`large` case: at RP4.1 the **83 r4133-only** non-large cases got a first
+property check and the **313 non-`large` `both`** cases their r4133 property
+table — **1 670** gating walks over **151 782** elements per run (since G1.4a's
+flip: 87/310, 1 671), both lanes. G1.1's re-armed kill criterion did **not**
+fire (zero ledger entries and zero pins from RP4.1's residual triage). Full
 record: [`r4133-props-rp4.md`](docs/phase-records/r4133-props-rp4.md).
 
 **WP-RP5 (operational docs + closing record) — COMPLETE.** **RP5.1 landed
@@ -148,32 +148,32 @@ the six CLAUDE.md §"Known upstream bugs" reproduced in any lane. Full record:
 WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 
 **GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened 2026-08-08;
-since 2026-09-04 its chains run in parallel **lanes** — worktrees
-`.claude/worktrees/lane-*`, D7 — merged into `update` one sub-step at a time).
-Landed: **G1.1**, killed on day one and delivered by `R4133_PROPS_PLAN.md` RP4.1
-2026-09-03 (**G1.1 satisfied**, **G3.4**/**G3.5** unblocked); **G1.2** (the
-ESPVLControl deck) 2026-08-29; and, all on 2026-09-04, **G1.0** the rails — flag
-vocabulary in one lock regen, exclusion `channels`, capture-presence guard, the
-r4133 bridge whose mode probe **discharges G1.11 for the whole WP** (`c4b67a6e` +
-`42454b64`/`14bb0f23`); **G1.9** (lane `lane-s`, `9757d26c` + `f27f9598`), the
-five `Circuit` aggregates and ten `Solution` scalars, universal on both channels;
-**G1.6b** (lane `lane-m`, `06808a6d` + `e1e18367` + `c6a3c0a8`), the `PDElements`
-walk (13 fastdss columns + `parent_name`, exact, both channels) with eight pinned
-`PD_SKIP_FIELDS` cells and the **D9** engine fix (`MakeBusList` resets the meter
-zones, `Circuit.pas:2411`); and **G1.3a** (lane `lane-e`, `d8e71991` + settlement
-`588e0bfe` + `9f9c723d`), the first **per-element** surface — `Enabled` plus
-`CurrentsMagAng`/`VoltagesMagAng`/`Residuals` on both channels over 442 cases,
-the A/B/C capture order enforced by `tests/capture_order.rs`, **1** new ledger
-entry (capi-only CapControl TIMECONTROL bus, `DIVERGENCES.md` L8) + **13**
-measured widenings, 0 band movement, `lane_diff` max |Δ| = 0. `WP_G1_MODES` is
-**100**; G1.3b–d, G1.4–G1.8, G1.10–G1.11c and WP-G3–G5 remain; record: same file.
+since 2026-09-04 its chains run in parallel **lanes** — worktrees `lane-*`, D7 —
+merged into `update` one sub-step at a time). Landed: **G1.1**, killed on day
+one and delivered by `R4133_PROPS_PLAN.md` RP4.1 2026-09-03 (**G1.1 satisfied**,
+**G3.4**/**G3.5** unblocked); **G1.2** (the ESPVLControl deck) 2026-08-29; and,
+on 2026-09-04/05, the rails and four surfaces — **G1.0** (`c4b67a6e` +
+`42454b64`/`14bb0f23`), the flag vocabulary, exclusion `channels`, the
+capture-presence guard and the r4133 bridge whose mode probe **discharges G1.11
+for the whole WP**; **G1.9** (`lane-s`, `9757d26c` + `f27f9598`), the `Circuit`
+aggregates + `Solution` scalars; **G1.6b** (`lane-m`, `06808a6d` + `e1e18367` +
+`c6a3c0a8`), the `PDElements` walk and the **D9** engine fix; **G1.3a**
+(`lane-e`, `d8e71991` + `588e0bfe` + `9f9c723d`), per-element `Enabled` + the
+three polar channels, **1** new entry (`DIVERGENCES.md` L8) + **13** widenings;
+**G1.4a** (`lane-b`, `6b0dbd32` + `be01e413` + `10417d99` + `7063faad`), the bus
+surface's divergence-free half (**0** new entries; **D8** deferred the rest to a
+new G1.4c), **D11(1)** the workspace `float_roundtrip`, **D12**/**D14** the four
+`GICTransformer` decks onto `r4133` alone (ledger −4, corpus 523 → 524) and
+**D13** the worker's registry leak. No golden byte moved, `lane_diff` |Δ| = 0
+throughout; `WP_G1_MODES` **102**, ledger **54** / 31 causes; G1.3b–d, G1.4b/c,
+G1.5–G1.8, G1.10–G1.11c, WP-G3–G5 remain.
 
-**Next.** The element lane takes **G1.3d(i)** (then G1.3d(ii) → G1.3b → G1.3c);
-`lane-m` **G1.6(i)** (meter extras + per-bus reliability columns; it drives
-`RelCalc` and owes the non-vacuity of G1.6b's four zone-derived fields); `lane-s`
-**G1.7** (topology), then G1.8, G1.10a–c; the bus lane G1.4a→G1.5→G1.4c→G1.4b.
-Then WP-G3–G5 (**G3.4**/**G3.5** runnable there); queued behind:
-`WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
+**Next.** Element lane **G1.3d(i)** (then G1.3d(ii) → G1.3b → G1.3c); `lane-m`
+**G1.6(i)** (meter extras + per-bus reliability; it drives `RelCalc` and owes
+the non-vacuity of G1.6b's four zone-derived fields); `lane-s` **G1.7**
+(topology), then G1.8, G1.10a–c; bus lane **G1.5** → G1.4c (D8) → G1.4b. Then
+WP-G3–G5 (**G3.4**/**G3.5** runnable); queued: `WASM_USERMODELS`, RESONANCE,
+MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
@@ -270,14 +270,14 @@ the site comment carries each row's measured cost.
 - **54 `kind=large*` `engines: both` cases have no property compare on EITHER
   channel — DECIDED at RP5.2 (2026-09-04): accepted permanently** (raised by the
   R4133_PROPS RP4.1 audit settlement, 2026-09-03). `scheduler::force_properties`
-  keeps the plan's §1.3 cost guard (`!kind.starts_with("large")`), so of the 367
-  `both` cases **313** compare their property table; the same guard also leaves
+  keeps the plan's §1.3 cost guard (`!kind.starts_with("large")`), so of the 364
+  `both` cases **310** compare their property table; the same guard also leaves
   14 r4133-only and 11 capi-only `large` decks out, but those two never had one.
-  The forced population is pinned (`FORCED_PROPS_POPULATION` = (440, 313, 83,
-  44), asserted by `the_property_forcing_rule_is_every_live_non_large_case`), so
-  the gap is measured, bounded and locked. Pricing a `large`-deck property sweep
-  stays available to GOLDEN_REBASE, owed by nothing: `r4133-props-rp5.md`
-  §RP5.2.
+  The forced population is pinned (`FORCED_PROPS_POPULATION` = (441, 310, 87,
+  44) since G1.4a's D12/D14 flip — the gap itself unchanged at 54 — asserted by
+  `the_property_forcing_rule_is_every_live_non_large_case`), so it is measured,
+  bounded and locked. Pricing a `large`-deck property sweep stays available to
+  GOLDEN_REBASE, owed by nothing: `r4133-props-rp5.md` §RP5.2.
 
 - **`DECLARED_RP35`'s four remaining declared pairs owe a per-pair disposition —
   OPEN (R4133_PROPS RP4.1, 2026-09-03).** RP4.1 retired only the two pairs its

@@ -699,6 +699,37 @@ pub(crate) fn compare_capture(
             );
         }
 
+        // The bus voltage surface (GOLDEN_REBASE_PLAN.md G1.4a). Placed here to
+        // mirror the capi transport's capture slot — after `ctrlqueue`, before
+        // the `all_properties` `?` sweep that must stay last
+        // (`tools/oracle/oracle_server.py`). Every bus read is class C
+        // (order-free) under §1.1(a)/D3: both engines read `Solution.NodeV`
+        // directly (`CAPI/CAPI_Alt.pas:2275` == r4133 `DDLL/DBus.pas:423`) and
+        // move only `ActiveBusIndex`, so nothing here can stale a cached
+        // `Iterminal`.
+        //
+        // `voltages_excluded` is the one structural rule this surface needs: the
+        // bus bands are exact images of the node-voltage band over the SAME
+        // `Solution.NodeV` (`harness::compare_bus`), so on a case whose
+        // `voltages` field is already ledger-excluded DECK-WIDE the bus arrays
+        // would re-raise a divergence that is already triaged and pinned — ten
+        // new ledger rows for one cause. It suppresses only the three continuous
+        // arrays; the bus count, the name sequence, `nodes`, `kv_base` and every
+        // array length stay compared on those cases too. A `voltages` scope that
+        // names a node subset (`node_re`) suppresses NOTHING here — it would be
+        // far wider than its cause; see `LedgerView::bus_arrays_suppressed`.
+        if c.compare_bus {
+            capture_guard::require_capture(
+                "compare_bus",
+                channel_tag(channel),
+                cp.buses.len(),
+                &ctx,
+            );
+            let v_excluded = ledger.is_some_and(|v| v.bus_arrays_suppressed(i));
+            harness::compare_bus(dss, &cp.buses, tol, v_excluded, &ctx);
+            harness::compare_all_bus_vmag_pu(dss, &cp.all_bus_vmag_pu, tol, v_excluded, &ctx);
+        }
+
         if c.compare_all_properties {
             capture_guard::require_capture(
                 "compare_all_properties",

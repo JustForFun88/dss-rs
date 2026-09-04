@@ -990,6 +990,112 @@ G1.6(i) drives it they become accumulated sums over a zone walk
 must be **re-derived** before those three stay in the exact set — they are the
 only fields on this surface that can ever acquire a floor.
 
+## Bus voltage surface (GOLDEN_REBASE G1.4a, `harness::compare_bus`)
+
+`compare_bus` / `compare_all_bus_vmag_pu` gate the bus flavours of the solved
+node voltages — `Bus.puVoltages`, `Bus.VMagAngle`, `Bus.puVMagAngle` and
+`Circuit.AllBusVmagPu`. **The surface adds no tolerance constant.** Every band is
+the *exact image* of the already-calibrated node-voltage band
+`eps = v_abs + v_rel*|V|` (the `assert_complex_close` in `corpus_gate/runner.rs`,
+over the very same `Solution.NodeV` these quantities are read from) under a
+transformation both engines run identically. Derivations, in the order the
+comparator applies them:
+
+1. **`kv_base`, `nodes`, the bus-name sequence — exact, no band.** `kVBase` is
+   `NearestBasekV/SQRT3` off the deck's own legal-base list (`Solution.pas:1103`
+   == r4133 `:2541`), `Nodes` and `BusList` are discrete. A disagreement is a
+   finding, not a floor. (Lane note: the base *search* scale is a Stage-F row,
+   `compat::kv_base_search_scale` — truncated `0.001732` in the parity lane vs
+   `SQRT3/1000` in the default lane — which can only select a different legal
+   base when the estimate lands within 2.93e-5 of a tie between two adjacent
+   bases; a lane-dependent failure here is that knife edge, never a band to
+   widen.)
+2. **`puVoltages`, `puVMagAngle`.mag, `AllBusVmagPu`** — the quantity is
+   `NodeV / BaseFactor` with `BaseFactor = 1000*kVBase` (or `1.0`, 11 480 corpus
+   buses) an *exact, engine-identical* constant by (1), so
+   `|dV|/BF <= v_abs/BF + v_rel*|V/BF|`:
+
+   > `allowed = v_abs / BaseFactor + v_rel * |expected|`
+
+   The scaled absolute term is the point: the raw `v_abs` applied to a per-unit
+   number would be an 8e-6 pu band on a 0.12 kV bus and 7e-12 pu on a 138 kV
+   bus, while the image means the same thing everywhere. `AllBusVmagPu` takes
+   the `BaseFactor` of the bus each entry belongs to (convention 2 — bus-list
+   order x internal node index), rebuilt from the port's own bus list, whose
+   per-bus `kv_base` (1) pins exactly.
+3. **`VMagAngle`.mag** — `| |V_a| - |V_e| | <= |V_a - V_e|` (reverse triangle),
+   so the node-voltage band carries over unchanged: `allowed = v_abs +
+   v_rel*|expected|`.
+4. **The two angle channels** — the *exact* angular image, compared wrap-aware.
+   Phasors within `eps` of `V` subtend a half-angle `asin(eps/|V|)` about
+   `arg V` while `eps < |V|`, and the whole circle once `eps >= |V|`:
+
+   > `allowed_deg = if eps >= |V| { 180 } else { degrees(asin(eps / |V|)) }`,
+   > with `|V|` the **same sample's magnitude in volts** (the pu channel
+   > multiplies its per-unit magnitude back by `BaseFactor`, so both polar
+   > flavours share one physical band).
+
+   `f64::to_degrees` is `180/PI = 57.29577951308232` — the same full-precision
+   constant §monitor-f32-floor's polar-ANGLE band uses. That band is this one
+   *linearized* (`asin x ~ x`); the two agree to <2e-3 relative while
+   `eps/|V| <= 0.1` (the whole healthy regime) but the linearization
+   *under*-estimates the image as `eps/|V| -> 1`, and bus magnitudes legitimately
+   reach the absolute floor (unenergized buses; the `NEVTestCase` neutral-earth
+   buses sit at ~2 V on a 7.6 kV base). Saturating at 180 deg is not a free pass:
+   the magnitude channel still pins `|V|` itself inside `eps` on its own row, so
+   an unconstrained angle is exactly a bus whose voltage is at or below the floor
+   in **both** engines. The compare folds the difference into `(-180, 180]`
+   because `ctopolardeg` returns that range and a phasor on the seam flips sign
+   between engines on a 1-ulp difference.
+
+**Measured headroom** (2026-09-04, lane `lane-b`; port vs each case's *gating*
+channel(s), all live, 24 356 bus-step comparisons; every case was additionally
+run against its NON-gating channel, which is how `4Bus-YYD/YYD-Master` shows a
+153x capi divergence — precisely why it is r4133-gated). The number is
+`worst |diff| / allowed`; 1.0 would be a failure:
+
+| case (kind) | gating | puVoltages | VMagAngle mag / ang | puVMagAngle mag / ang | AllBusVmagPu |
+|---|---|---|---|---|---|
+| `IEEE13_CDPSM` (large) | both | **0.658** | 0.494 / 0.435 | 0.494 / 0.435 | 0.494 |
+| `Master_ckt5` (large) | both | 0.397 | 0.356 / 0.176 | 0.356 / 0.176 | 0.356 |
+| `4Bus-YYD/YYD-Master` (large) | r4133 | 0.355 | 0.310 / 0.300 | 0.310 / 0.300 | 0.310 |
+| `Auto3bus` (large_near_ideal_source) | both | 0.291 | 0.026 / 0.290 | 0.026 / 0.290 | 0.026 |
+| `TestDDRegulator` (large_floating_zeroseq) | both | 0.268 | 0.256 / 0.262 | 0.256 / 0.262 | 0.256 |
+| `IEEE13Nodeckt` (feeder, 24 steps) | both | 0.266 | 0.149 / 0.221 | 0.149 / 0.221 | 0.149 |
+| `GFM_IEEE123 GFMSnap` (large_floating_delta) | both | 0.112 | 0.108 / 0.108 | 0.108 / 0.108 | 0.108 |
+| `IEEE123Master` (large, 24 steps) | both | 0.080 | 0.070 / 0.078 | 0.070 / 0.078 | 0.070 |
+| `LVTestCaseNorthAmerican` (large_floating_zeroseq) | both | 0.076 | 0.070 / 0.076 | 0.070 / 0.076 | 0.070 |
+| `NEVMASTER` (feeder, 55 `>3`-node buses) | both | 0.053 | 0.053 / 0.049 | 0.053 / 0.049 | 0.053 |
+| `8500-Node/Master` (large, 4 876 buses) | both | 2.60e-4 | 2.60e-4 / 1.32e-4 | 2.60e-4 / 1.32e-4 | 2.60e-4 |
+| `indmachtest/Master` (feeder) | both | 1.32e-7 | 1.35e-7 / 5.0e-8 | 1.35e-7 / 5.0e-8 | 1.35e-7 |
+
+`kv_base`, `nodes` and the bus-name sequence matched **exactly on every one of
+those buses, on both channels** (0 mismatches in all 24 390 bus-steps measured,
+the non-gating and ledger-excluded runs included).
+
+The worst ratio (0.658, `IEEE13_CDPSM` bus `650.4` at 59.86 V) is *identically*
+the ratio the node-voltage channel already runs at on that node — algebraically
+so for `puVoltages`, since `|dV|/BF / (v_abs/BF + v_rel*|V|/BF) = |dV| / (v_abs +
+v_rel*|V|)`. That is the point of the construction: **`compare_bus` cannot red
+where `voltages` is green**, so it introduces no new numeric risk and its whole
+gating value is the discrete content — the three ordering conventions, the bus
+identity/`BusList` order, the node sets and the voltage bases.
+
+**The converse, and why `voltages_excluded` exists.** Because the bands are exact
+images, a case whose node voltages are ledger-*excluded* diverges on the bus
+surface by the same factor. Measured on the eight such cases, then carrying ten
+`{"field": "voltages"}` scopes in `tests/corpus/ledger.json` (**eight** since the
+same sub-step's D12/D14 flip moved the two GIC decks to the r4133 channel alone —
+the same eight cases): `gic_midi` **1.8e5x** over band on both channels,
+`makeposseq_shunt` **7.5e5x** (capi), `windgen_daily` **3.3e6x** (r4133).
+Re-comparing them would demand one ledger row per case/channel — ten as measured,
+at the §1.1(f) kill threshold — for a cause already triaged and pinned. So `compare_bus`/`compare_all_bus_vmag_pu` take a
+`voltages_excluded` flag that suppresses **only** the three continuous arrays;
+the bus count, name sequence, `nodes`, `kv_base` and every array length stay
+compared, so nothing the bus surface uniquely witnesses is dropped. One
+structural rule, no ledger rows, and the negative drive
+`the_voltage_exclusion_still_pins_kv_base` proves the suppression is not a mask.
+
 ## r4133 event-log masks (`harness::EVENTLOG_MASKS`, §1.3-3)
 
 `compare_eventlog` compares the cumulative event log line-for-line (numeric
