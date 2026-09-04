@@ -2819,8 +2819,8 @@ pub fn r4133_props_walk_counters() -> (usize, usize) {
 ///
 /// **What it does NOT see: a PARTIAL re-mask** (RP4.1 audit settlement,
 /// 2026-09-03). It is a boolean — `walks > 0` — so re-adding a channel
-/// predicate to `force_properties` (say `gates_capi()`, which drops the 83
-/// `engines: "r4133"` cases while the 313 `both` ones keep ~1 300 walks) passes
+/// predicate to `force_properties` (say `gates_capi()`, which drops the 87
+/// `engines: "r4133"` cases while the 310 `both` ones keep ~1 300 walks) passes
 /// it. Two other guards catch that, and both are load-bearing:
 ///
 /// * `corpus_gate::scheduler::the_property_forcing_rule_is_every_live_non_large_case`
@@ -5145,7 +5145,7 @@ mod tests {
     fn the_global_props_compare_guard_is_silent_when_the_walk_ran() {
         // The smallest run that really compared something.
         check_r4133_props_compare_ran(1, 1);
-        // The shape a whole-population run leaves: 396 non-`large` r4133-gating
+        // The shape a whole-population run leaves: 397 non-`large` r4133-gating
         // cases, one walk per compared checkpoint, tens of elements each.
         check_r4133_props_compare_ran(1_209, 41_735);
         // And the shipped statics agree with the accessor the adapter reads —

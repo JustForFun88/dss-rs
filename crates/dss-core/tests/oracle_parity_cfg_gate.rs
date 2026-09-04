@@ -2163,12 +2163,14 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     (
         "GIC_TRANSFORMER_G2_SCALES_OFF_PCT_R1",
         Kind::WholeCase,
-        // One key per (case, channel); the other three
-        // (`…-gictransformer-r4133`, `…-midi-capi`, `…-midi-r4133`, plus the
-        // two exact-pair property entries) live beside it in the same file and
-        // are held by the ledger's own fail-on-stale accounting. The row names
-        // the deck-and-channel pair whose loss is largest.
-        Evidence::Ledger("gic-pct-r2-honoured-gictransformer-capi"),
+        // One key per (case, channel); the twin `…-midi-r4133` (plus the two
+        // exact-pair property entries) lives beside it in the same file and is
+        // held by the ledger's own fail-on-stale accounting. The capi twins went
+        // when GOLDEN_REBASE G1.4a moved every GICTransformer deck onto the
+        // r4133 channel alone (coordinator decisions D12/D14 — capi 0.14.5 is
+        // nondeterministic on them; `docs/upgrade/DIVERGENCES.md`), so the row
+        // now names the surviving deck-and-channel pair whose loss is largest.
+        Evidence::Ledger("gic-pct-r2-honoured-gictransformer-r4133"),
         Some((
             "crates/dss-core/src/exec/tests/compat_quirks.rs",
             "gic_transformer_pct_r2_drives_winding_two",

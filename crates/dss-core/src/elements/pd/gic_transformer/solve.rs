@@ -52,7 +52,7 @@ impl GicTransformer {
     /// `else` arm's inverse settles which value winding 2 owns. No corpus deck
     /// has that shape today (`gictransformer_gic.dss:18` and `gic_midi.dss:27`
     /// are the only `%R` decks and both set **both** percentages; every other
-    /// GICTransformer, `GIC_Example.dss` and `makeposseq_shunt.dss:40`
+    /// GICTransformer, `GIC_Example.dss` and `makeposseq_gic.dss:24`
     /// included, uses the ohms `R1=`/`R2=` spec and the untouched `else` arm),
     /// which is why only those two are ledgered — measured, not assumed. The
     /// `gictransformer_default` props scenario is unaffected: both percentages
