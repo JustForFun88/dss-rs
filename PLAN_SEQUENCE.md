@@ -105,9 +105,11 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               own RP5.2) — property parity on the r4133 channel,
                               the dedicated successor G1.1's kill criterion
                               demanded. All six work packages landed, both lanes
-                              gate-green: **26 sub-steps / 64 RP-titled commits**
-                              (RP0.1 `cbcfafeb` … RP5.1 `64474762`), each one
-                              implement + two fresh auditors + fix agent.
+                              gate-green: **26 sub-steps / 67 RP-titled commits**
+                              (RP0.1 `cbcfafeb` … RP5.2 `bc16430b` + its
+                              settlement record; 64 of them through RP5.1's
+                              `64474762`), each one implement + two fresh
+                              auditors + fix agent.
                               **Final counters** — normalization table **168** rows
                               (77 BoolFold / 65 CaseFold / 21 ArrayForm / 5
                               EnumSynonym); echo table **82** rows (50 default / 8
@@ -120,8 +122,11 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               entries RP4.1 landed; in-scope UNCLAIMED cells on the
                               r4133 channel **521 841 → 889** (RP2.4) **→ 0** (RP4.1;
                               504 out-of-scope cells remain, each owned by a named
-                              pin or record); **4 498 passed / 0 failed / 5 ignored**
-                              per lane. **The gating-case outcome**: the unmask
+                              pin or record); **4 499 passed / 0 failed / 5 ignored**
+                              per lane (4 498 at the closing commit — the +1 is
+                              the thirteenth `oracle_parity_cfg_gate` test the
+                              RP5.2 settlement added). **The gating-case
+                              outcome**: the unmask
                               compares `all_properties` on the r4133 channel
                               for every live non-`large` case — **523** manifest
                               cases, **464** of them r4133-gating (367 `both` + 97

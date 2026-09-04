@@ -353,8 +353,8 @@ Nothing is transcribed from the plan text.
 | in-scope UNCLAIMED cells, r4133 channel | **521 841 → 889** (RP2.4) **→ 0** (RP4.1); 504 out-of-scope cells remain, each accounted to a named pin or record | the **→ 0** half is the live lock: an in-scope UNCLAIMED cell fails `corpus_gate`, and `assert_r4133_props_compare_ran` stops the walk going vacuous. The three census figures are *measurements* (`DSS_PROPS_CENSUS=claims`, both oracles), not constants in the tree — recorded at `r4133-props-rp4.md:96-124` (RP5.2 audit settlement, 2026-09-04) |
 | **the gating-case outcome** | **523** manifest cases; **464** r4133-gating = **367** `both` + **97** r4133-only (plus 59 capi-only); 80 `kind=large`; the population `force_properties` actually compares = **313** non-`large` `both` cases | derived from `tests/corpus/manifests/population.lock.json` rigor fingerprints; the 313 is pinned by `the_property_forcing_rule_is_every_live_non_large_case` |
 | RP3.x pin tables | `RP39_PINS` **27**, `RP310_WINDGEN_PINS` **5**, `RP311_SERIALIZATION_PINS` **11**, `RP312_UPSTREAM_BUG` **1** (plus 4 staged skips), `RP313_NCIM_PINS` **9**, `LEDGER_ENTRY_PINS` **8**, `LANDED_PROPERTY_ENTRY_PINS` **8** | `props_r4133_replay.rs:5572` / `:5315` / `:5109` / `:5751` / `:5220` / `:5428` / `:4983` (re-measured after the RP5.2 audit settlement moved lines below `:1341`) |
-| tests | **4 498 passed / 0 failed / 5 ignored — per lane**, over 74 binaries; `props_r4133_pins` 54, `props_r4133_replay` 152, `props_r4133_evidence_lock` 11, `oracle_parity_cfg_gate` 12 | RP5.2's own five-command gate on this tree (§"Gate for this pass"), reproducing RP5.1's `8802fb6a` figures to the unit; the 5 ignored are the pre-existing set — **no `#[ignore]` was added anywhere in this plan** |
-| commits | **26** sub-steps — 25 of them landed before this closing commit, which is the 26th — and **64** RP-titled commits in `f887f806..64474762` (70 in the range; the other six are the plan's own round-2 hardening, GOLDEN_REBASE G1.2 and the STATUS round-2 archiving) | `git log --oneline f887f806..64474762`, the parent this record was measured at; `..HEAD` moves with every later commit and is *not* the range that yields these numbers (RP5.2 audit settlement, 2026-09-04) |
+| tests | **4 499 passed / 0 failed / 5 ignored — per lane** at the plan's close, over 74 binaries; `props_r4133_pins` 54, `props_r4133_replay` 152, `props_r4133_evidence_lock` 11, `oracle_parity_cfg_gate` **13** | the closing commit's own gate measured **4 498** with 12 `oracle_parity_cfg_gate` tests (§"Gate for this pass", reproducing RP5.1's `8802fb6a` figures to the unit); the audit settlement's thirteenth test is the +1 (§"Gate for the settlement"). The 5 ignored are the pre-existing set — **no `#[ignore]` was added anywhere in this plan** (settlement record, ritual step 6, 2026-09-04) |
+| commits | **26** sub-steps — 25 of them landed before this closing commit, which is the 26th — and **67** RP-titled commits at the plan's close: **64** in `f887f806..64474762`, plus RP5.2's `5a110653`, its audit settlement `bc16430b` and its settlement record (ritual step 6, 2026-09-04) (70 in the range; the other six are the plan's own round-2 hardening, GOLDEN_REBASE G1.2 and the STATUS round-2 archiving) | `git log --oneline f887f806..64474762`, the parent this record was measured at; `..HEAD` moves with every later commit and is *not* the range that yields these numbers (RP5.2 audit settlement, 2026-09-04) |
 
 **The "462-case outcome" the plan asked RP5.2 to publish is stale by two, and is
 published here as the measured 464.** The archived plan at `:266`, `:2616` and in
@@ -815,3 +815,63 @@ about the committed tree. The five ignored are still the pre-existing set — no
 binaries of both lanes.
 `lane_diff` is not owed: `git diff --stat -- 'crates/*/src'` is empty (the
 settlement touches three test files and eight `.md`, and no product crate).
+
+---
+
+### RP5.2 — settlement record (ritual step 6, 2026-09-04)
+
+Read end to end: `STATUS.md` (**595** lines after this pass, from 616 — the
+under-600 working length restored) and this file, plus the archived plan's
+§RP5.2, `PLAN_SEQUENCE.md` row 5b, `era-summaries.md` §1a and `ORPHANED_GAPS.md`
+§1.11. The sub-step's own two commits are `5a110653` (closing record + archive
+move) and `bc16430b` (audit settlement); this is the third. What RP5.2 and its
+settlement had left stale, and what moved:
+
+- **The plan's final counters were one commit out of date in four documents.**
+  The closing record published the tree at `5a110653` — **4 498** tests per lane
+  over 74 binaries with 12 `oracle_parity_cfg_gate` tests, and 64 RP-titled
+  commits through `64474762`. The settlement then added a thirteenth test and two
+  more commits, so the plan's *close* is **4 499 / 0 / 5** per lane and **67**
+  RP-titled commits (64 + `5a110653` + `bc16430b` + this record). Both figures now
+  read the same in `STATUS.md` §1, `PLAN_SEQUENCE.md` row 5b, this file's counters
+  table and `era-summaries.md` §1a, each stating the 4 498 measurement and what
+  the +1 is — the closing gate's own numbers are not overwritten, they are dated.
+- **The archived plan's §RP5.2 landed line carried no shas** while every other
+  landed line in the plan (§RP5.1 included) names its commits. It now names
+  `5a110653`, `bc16430b` and this settlement record, with the post-settlement
+  lane totals. The edit sits at the file's foot, ~1 660 lines below the
+  `:1148-1151` range the two `props_r4133_replay.rs` doc comments cite, so the
+  thirteenth guard's targets did not move — verified by re-running it, not
+  assumed.
+- **`STATUS.md` section 1 was above its working length and restated the plan's
+  completion four times.** 616 → 595 lines: the "In flight", WP-G1 and "Next"
+  paragraphs each keep one statement of *their own* stake in it (the frontier,
+  G1.1 satisfied → G3.4/G3.5 unblocked, what runs next — now including the
+  close-out merge of `r4133-props` into `update`); the WP-RP5 paragraph is back
+  inside the 3–6-line-per-sub-step record-placement budget with the final
+  counters; the thirteen per-sub-step RP3.x bullets are condensed into three
+  outcome-grouped bullets (four excluded-and-pinned, six `FIX`-in-both-lanes,
+  three recorded-never-reproduced) that still name every sub-step — their shas
+  and settlements are the condensed table above, and their full records are in
+  `r4133-props-rp3.md`. Two closed section-2 items (the `large`-case decision,
+  the `UNIFIED_GATE_PLAN.md` banner) were tightened, not dropped. Nothing was
+  deleted that is not held verbatim elsewhere.
+- **Verified, not edited:** `ORPHANED_GAPS.md` §1.11 already names the archived
+  path and RP5.2's re-verification; `GOLDEN_REBASE_PLAN.md` carries the dated
+  **SATISFIED** paragraph and the two "unblocked" edits from the closing commit;
+  section 7's `r4133-props-rp5.md` row already forwards §RP5.1/§RP5.2. The ~40
+  bare-name `R4133_PROPS_PLAN.md` §-citations in Rust comments stay unrewritten
+  under section 7's forwarding rule — they name a section, not a path, and the
+  two that *were* line-cited were repointed at `5a110653`.
+
+**Gate for this pass.** Documentation only — five `.md` files, not one line of
+Rust, no test logic, no golden, no ledger, no tolerance. `cargo fmt --all
+--check` **0** and `cargo test -p dss-core --test oracle_parity_cfg_gate` **13
+passed / 0 failed** in **both** lanes — the executable check that covers exactly
+what moved, since its thirteenth test reads the archived plan and its twelfth
+walks `TESTING.md`'s citations. The five-command gate was not re-run for a
+`.md`-only diff (the settlement ran it green on the final content at
+`bc16430b`), and `lane_diff` does not apply: `git diff --stat -- 'crates/*/src'`
+is empty. **WP-RP5, and with it `R4133_PROPS_PLAN.md`, is closed**; the frontier
+returns to `GOLDEN_REBASE_PLAN.md` WP-G1 with G1.1 satisfied and G3.4/G3.5
+unblocked.
