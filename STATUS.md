@@ -160,11 +160,12 @@ satisfied**, **G3.4**/**G3.5** unblocked; **G1.2** (the ESPVLControl deck)
 2026-08-29; **G1.0**, the rails ahead of G1.3a (ten-flag vocabulary in one lock
 regen, exclusion `channels`, the capture-presence guard, the r4133 bridge rails
 whose 96-mode probe **also discharges G1.11's mode-capability acceptance for
-the whole WP**) 2026-09-04; **G1.9** (lane `lane-s`, 2026-09-04, `9757d26c` + its audit settlement), the
-five `Circuit` aggregates and ten `Solution` scalars on all 519 live cases of
-both channels, unflagged and universal — no lock regen, **0 ledger entries / 0
-new `LEDGER_FIELDS` / 0 golden bytes**, no new floor, all three kill criteria
-not met. Full record: the same file, section "GOLDEN_REBASE WP-G1 — records".
+the whole WP**) 2026-09-04; **G1.9** (lane `lane-s`, 2026-09-04, `9757d26c` +
+settlement `f27f9598` + docs; audits 13 findings — 6 fixed / 5 recorded / 2
+refuted, no port bug), the five `Circuit` aggregates and ten `Solution` scalars
+live and universal on both channels — no lock regen, 0 ledger entries, 0 golden
+bytes, no new floor, all three kill criteria not met. Full record: the same
+file, section "GOLDEN_REBASE WP-G1 — records".
 
 **Next.** Lane `lane-s` takes **G1.7** (topology: `NumLoops`, `NumIsolated*`,
 `AllLoopedPairs`), then G1.8 and G1.10a–c; the element lane runs G1.3a→3d→3b→3c,
@@ -337,18 +338,17 @@ the site comment carries each row's measured cost.
   Consistent with an overlapping-guard snapshot race (cf. the unit test
   `corpus_guard_overlapping_guards_still_sweep`) plus the case-insensitive
   collision `corpus_gate/runner.rs:42-55` (the same file appears both
-  `Auto3bus_HL_current.txt` and `auto3bus_hl_current.txt`). **Twelve sightings**
-  2026-08-29 … 2026-09-04 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2,
-  §RP3.10 ×3, §RP5.1 ×1), the set varying in size (1 … 36 files) and in case
-  between successive runs of the *same* tree — the nondeterminism itself was
-  measured at §RP3.13 — and once accompanied by an unreproducible `corpus_gate`
-  `137 passed; 1 failed` whose most likely cause is this race. Every set was
-  removed before the commit — by exact name, `git clean -fd` scoped to the deck
-  tree (§RP3.10), or by hand (§RP5.1) — and both lanes were green with the files
-  present, no tracked corpus or golden byte ever moving, so the leak costs
-  hygiene only. Per-run detail is in the per-WP records (`r4133-props-rp3.md`,
-  `-rp4.md`, `golden-rebase.md`). Twelve sightings make it a pattern, not a
-  fluke: whoever picks it up should start with `DSS_GATE_JOBS=1` per G2.2d.
+  `Auto3bus_HL_current.txt` and `auto3bus_hl_current.txt`). **Fourteen sightings**
+  2026-08-29 … 2026-09-04 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2, §RP3.10 ×3,
+  §RP5.1 ×1, G1.9 ×2), the set varying in size (1 … 36 files) and in case between
+  successive runs of the *same* tree — the nondeterminism itself was measured at
+  §RP3.13 — and once accompanied by an unreproducible `corpus_gate` `137 passed; 1
+  failed` whose most likely cause is this race. Every set was removed before the commit
+  — by exact name, `git clean -fd` scoped to the deck tree (§RP3.10), or by hand
+  (§RP5.1) — and both lanes were green with the files present, no tracked corpus or
+  golden byte ever moving, so the leak costs hygiene only. Per-run detail is in the
+  per-WP records (`r4133-props-rp3.md`, `-rp4.md`, `golden-rebase.md`). Fourteen sightings
+  make it a pattern: whoever picks it up should start with `DSS_GATE_JOBS=1` per G2.2d.
 
 **Carried-forward and residual-floor items — the rows still open.** Full text,
 closed rows and all:
