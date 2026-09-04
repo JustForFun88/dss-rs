@@ -763,6 +763,18 @@ impl Circuit {
         }
         // < RestoreBusInfo
 
+        // Pascal `ReprocessBusDefs` tail (r4133 `Common/Circuit.pas:2411`
+        // `DoResetMeterZones(ActorID);  // Fix up meter zones to correspond`,
+        // capi `Common/Circuit.pas:2246`): the meter zones are rebuilt HERE,
+        // inside the reprocess, before the flag is cleared — every caller of
+        // `ReprocessBusDefs` therefore gets fresh zones, not just the
+        // `BuildYMatrix` one. Hoisting it into the callers left `MakeBusList`
+        // (`ExecCommands.pas` → `exec/solve.rs::do_make_bus_list_cmd`) consuming
+        // `bus_name_redefined` without ever resetting the zones, so a deck that
+        // issues `MakeBusList` after defining an EnergyMeter kept an empty zone
+        // (GOLDEN_REBASE G1.6b/D9).
+        crate::solution::meters::do_reset_meter_zones(self, store);
+
         self.bus_name_redefined = false;
     }
 
