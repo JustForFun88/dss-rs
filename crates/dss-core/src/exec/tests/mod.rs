@@ -32,6 +32,7 @@ mod ncim;
 mod newton;
 mod open_close;
 mod options_timing;
+mod pd_elements;
 mod pvsystem;
 mod reduce;
 mod reliability;

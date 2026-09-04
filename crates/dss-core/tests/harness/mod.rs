@@ -57,6 +57,9 @@ pub mod capture_guard;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
+// GOLDEN_REBASE G1.6b: the PDElements skip-row and per-channel walk counters
+// (`PD_SKIP_VISITS` …), spelled like `props_norm`'s.
+use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrd};
 
 use dss_core::exec::{Dss, ElementSnapshot};
 use num_complex::Complex64;
@@ -1768,7 +1771,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:987-993` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:1020-1026` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -1797,7 +1800,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:987-993` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:1020-1026` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -1861,7 +1864,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     **compare** on r4133. The exclusion is a statement about the 0.14.5
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
-    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:987-993`
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1020-1026`
     //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
@@ -1907,7 +1910,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///
 /// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:987-993` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1020-1026` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
@@ -2100,7 +2103,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:987-993`
+    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1020-1026`
     /// forbids masking there, plus the two `pctperm` rows RP2.1 measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {
@@ -4594,6 +4597,763 @@ pub fn compare_meter(dss: &Dss, exp: &MeterCap, tol: &Tolerances, ctx: &str) {
     cmp_members(&zone.all_branches_in_zone, &exp.branches, "branch");
     cmp_members(&zone.all_end_elements, &exp.ends, "end");
     cmp_members(&zone.zone_pce, &exp.pce, "PCE");
+}
+
+// ---------------------------------------------------------------------------
+// GOLDEN_REBASE G1.6b: the `PDElements` interface walk.
+//
+// The dss-python `ActiveCircuit.PDElements` surface the fastdss harness
+// compares wholesale (`DSS-Python@origin/fastdss:dss/IPDElements.py:26-40`
+// `_columns`, archived by `tests/save_outputs.py:365`), captured live on both
+// channels (`tools/oracle/oracle_server.py::capture_pd_elements`,
+// `crates/dss-epri/src/capture.rs::capture_pd_elements`) and compared against
+// `Dss::pd_elements`.
+// ---------------------------------------------------------------------------
+
+/// One enabled PD element's `PDElements` record, exactly as **both** channels
+/// serialize it: the thirteen `IPDElements._columns` fields plus `parent_name`.
+///
+/// The two transports are field-for-field identical by construction — the capi
+/// side builds the dict in `oracle_server.capture_pd_elements`, the r4133 side
+/// serializes `dss-epri`'s `PdElementCap` — so one struct deserializes both. No
+/// `#[serde(default)]` anywhere: a channel that drops a field must fail loudly
+/// here rather than compare a zero.
+///
+/// Values are the **stored** `TPDElement` fields. `lambda` is `BranchFltRate`
+/// and `accumulated_l` is `AccumulatedBrFltRate` — both 0 until an EnergyMeter
+/// `RelCalc` sweep writes them (r4133 `Version8/Source/PDElements/
+/// PDElement.pas:106-110`, whose only caller is `Meters/EnergyMeter.pas`'s
+/// `CalcReliabilityIndices`) — while `fault_rate` / `pct_permanent` are that
+/// sweep's inputs.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PdElementCap {
+    pub name: String,
+    pub accumulated_l: f64,
+    /// 1-based, as both oracles report it (`TPDElement.FromTerminal`); 0 =
+    /// unset.
+    pub from_terminal: i32,
+    /// r4133's `PDElementsI(3)` answers 0/1 and the capi side a bool; the r4133
+    /// capture normalizes to bool, so the wire shape is one type.
+    pub is_shunt: bool,
+    pub num_customers: i32,
+    pub section_id: i32,
+    pub fault_rate: f64,
+    pub repair_time: f64,
+    /// `AccumulatedMilesDownStream` — a different quantity from
+    /// `Bus.TotalMiles` (`CAPI/CAPI_PDElements.pas:294-303`,
+    /// `Version8/Source/DDLL/DPDELements.pas:201-209`).
+    pub total_miles: f64,
+    pub total_customers: i32,
+    pub pct_permanent: f64,
+    pub lambda: f64,
+    /// The parent's `ClassIndex` (1-based, per-class creation order,
+    /// `General/DSSObject.pas:43`), 0 = no upline parent.
+    pub parent_class_index: i32,
+    /// The parent's full `Class.Name`, `""` when the index is 0 — not an oracle
+    /// column of its own but the element the `ParentPDElement` read left
+    /// active, which carries strictly more information than the bare class
+    /// index (88 distinct values against 85 on IEEE123).
+    pub parent_name: String,
+}
+
+/// The record's fourteen JSON keys, in the frozen order that **is** the capture
+/// read order (`GOLDEN_REBASE_PLAN.md` §G1.6b; the `ParentPDElement` pair last).
+/// Used by [`PD_SKIP_FIELDS`]' register test to reject a row naming a field the
+/// record does not have.
+const PD_FIELD_NAMES: [&str; 14] = [
+    "name",
+    "accumulated_l",
+    "from_terminal",
+    "is_shunt",
+    "num_customers",
+    "section_id",
+    "fault_rate",
+    "repair_time",
+    "total_miles",
+    "total_customers",
+    "pct_permanent",
+    "lambda",
+    "parent_class_index",
+    "parent_name",
+];
+
+/// One field of a `PDElements` record, type-tagged so the comparator can walk
+/// all fourteen uniformly (one skip lookup, one accounting site, one message
+/// shape) instead of fourteen hand-written asserts.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum PdVal<'a> {
+    F(f64),
+    I(i32),
+    B(bool),
+    S(&'a str),
+}
+
+impl PdVal<'_> {
+    /// Equality as this surface defines it (named `matches`, not `eq`, so the
+    /// derived `PartialEq` — which is exact on the name fields too — stays
+    /// reachable for the unit tests): **exact** for every numeric field
+    /// (see [`compare_pd_elements`] for why there is no tolerance), and
+    /// case-insensitive for the two name fields — the port renders
+    /// `Capacitor.c83` (capitalized class, lowercased object name) while both
+    /// oracles echo the deck's own spelling (`Capacitor.C83`).
+    fn matches(self, other: Self) -> bool {
+        match (self, other) {
+            (PdVal::F(a), PdVal::F(b)) => a == b,
+            (PdVal::I(a), PdVal::I(b)) => a == b,
+            (PdVal::B(a), PdVal::B(b)) => a == b,
+            (PdVal::S(a), PdVal::S(b)) => a.eq_ignore_ascii_case(b),
+            _ => false,
+        }
+    }
+
+    /// Full-precision rendering for a failure message (`{:?}` on `f64` is the
+    /// shortest round-tripping decimal, so a denormal reads as `1.03e-311`
+    /// rather than `0`).
+    fn render(self) -> String {
+        match self {
+            PdVal::F(x) => format!("{x:?}"),
+            PdVal::I(x) => x.to_string(),
+            PdVal::B(x) => x.to_string(),
+            PdVal::S(s) => format!("{s:?}"),
+        }
+    }
+}
+
+/// The fourteen `(field name, value)` pairs of one record, in
+/// [`PD_FIELD_NAMES`] order.
+///
+/// A macro rather than two functions on purpose: it expands over **both**
+/// [`PdElementCap`] (the oracle side) and `dss_core`'s `PdElementView` (the
+/// port side), so the two extractions cannot drift — a field renamed on either
+/// type stops this file compiling.
+macro_rules! pd_fields {
+    ($x:expr) => {{
+        let r = $x;
+        [
+            ("name", PdVal::S(&r.name)),
+            ("accumulated_l", PdVal::F(r.accumulated_l)),
+            ("from_terminal", PdVal::I(r.from_terminal)),
+            ("is_shunt", PdVal::B(r.is_shunt)),
+            ("num_customers", PdVal::I(r.num_customers)),
+            ("section_id", PdVal::I(r.section_id)),
+            ("fault_rate", PdVal::F(r.fault_rate)),
+            ("repair_time", PdVal::F(r.repair_time)),
+            ("total_miles", PdVal::F(r.total_miles)),
+            ("total_customers", PdVal::I(r.total_customers)),
+            ("pct_permanent", PdVal::F(r.pct_permanent)),
+            ("lambda", PdVal::F(r.lambda)),
+            ("parent_class_index", PdVal::I(r.parent_class_index)),
+            ("parent_name", PdVal::S(&r.parent_name)),
+        ]
+    }};
+}
+
+/// One `PDElements` cell an oracle channel reads out of **uninitialized
+/// memory**, excluded field-by-field with its pin. See [`PD_SKIP_FIELDS`] for
+/// the mechanism and the measurements.
+pub struct PdSkipRow {
+    /// [`PropsChannel::tag`] of the channel whose value is garbage.
+    pub channel: &'static str,
+    /// The element class the row applies to (matched case-insensitively).
+    pub class: &'static str,
+    /// The [`PD_FIELD_NAMES`] key this row drops on that channel.
+    pub field: &'static str,
+    /// The expected-value test that pins the port's correct value against the
+    /// measured garbage — every exclusion names its pin
+    /// (`GOLDEN_REBASE_PLAN.md` §1.1(e)).
+    pub pin: &'static str,
+    /// The upstream source line the defect lives on.
+    pub cite: &'static str,
+}
+
+/// **The PDElements cells an oracle channel cannot be compared on** — a proven
+/// uninitialized read in the EnergyMeter zone build, present on BOTH oracles.
+///
+/// `TEnergyMeter.MakeMeterZoneLists` puts shunt Capacitors and Reactors on the
+/// **PC** adjacency list (r4133 `Version8/Source/Meters/EnergyMeter.pas:1855`,
+/// comment *"Capacitor and Reactor put on the PC list if IsShunt=TRUE"*) and
+/// then assigns through a `pPCelem: TPCElement` cursor (`:1739` decl, `:1843`
+/// assignment):
+///
+/// ```text
+/// If Not pPCelem.HasSensorObj then pPCelem.SensorObj := TPDElement(ActiveBranch).SensorObj;
+/// pPCelem.MeterObj := Self;                                  {EnergyMeter.pas:1868-1869}
+/// ```
+///
+/// The object is a `TPDElement`, so the two writes land at `TPCElement`'s field
+/// offsets on a `TPDElement` instance — i.e. on two adjacent `Double`s of the
+/// PD reliability block. capi 0.14.5 carries the identical code
+/// (`.inputs/dss_capi/src/Meters/EnergyMeter.pas:1783` decl, `:1927-1929`) with
+/// a different class layout, so a **different** pair of doubles is hit.
+///
+/// **Measured** (G1.6b part R, corpus-wide over the live non-`large`
+/// population): `capi_v0145` corrupts `FaultRate` + `pctPermanent` — 194 cells
+/// (96 + 96 Capacitor, 1 + 1 Reactor) over 22 cases; `r4133` corrupts
+/// `Lambda` + `AccumulatedL` — 214 cells (105 + 105 Capacitor, 2 + 2 Reactor)
+/// over 29 cases. The trigger is the zone build, not the element: a shunt capacitor
+/// reads clean with a CapControl, a Monitor, a sibling capacitor or a
+/// transformer present and goes garbage the moment an EnergyMeter is added,
+/// already after `Compile` and before any solve. A metered deck whose capacitor
+/// sits outside the zone stays clean, which is why the exclusion cannot be
+/// keyed on the deck.
+///
+/// **Nondeterministic**: the same cells come back every run with a different
+/// value every run — a heap pointer under ASLR. capi `Capacitor.c83.FaultRate`
+/// measured `1.043284808626e-311` / `8.210645577926e-312` /
+/// `1.511547243828e-311` in three separate processes; r4133
+/// `Capacitor.cap1.Lambda` `7.20016348108e-312` then `7.20016742902e-312`
+/// **inside one worker process**. An envelope over such a value is not a fact
+/// (the `reliability_bus_int_duration_oob_bug_report.md` precedent), and the 51
+/// (case, channel) pairs it touches would blow the plan's ~10-entry ledger kill
+/// criterion with identical rows — so the exclusion is class-scoped here,
+/// beside [`SKIP_PROPS_BOTH_CHANNELS`], which excludes the very same defect on
+/// the property surface, and `tests/corpus/ledger.json` gains **nothing**.
+///
+/// The asymmetry is coverage, not loss: `fault_rate` / `pct_permanent` stay
+/// compared on `r4133` and `lambda` / `accumulated_l` stay compared on
+/// `capi_v0145`, and Line / Transformer / AutoTrans / GICTransformer keep all
+/// four fields on both channels.
+///
+/// Two guards keep the table honest, both in the `PROPS_ECHO_R4133` spirit:
+/// `the_pd_skip_register_is_exactly_the_measured_rows` (a row cannot be added
+/// or dropped without an edit that says so) and
+/// [`assert_pd_skip_rows_are_live`] (a row that excludes nothing fails the
+/// gate).
+pub const PD_SKIP_FIELDS: &[PdSkipRow] = &[
+    PdSkipRow {
+        channel: "capi_v0145",
+        class: "Capacitor",
+        field: "fault_rate",
+        pin: "pd_elements_shunt_reliability_inputs_survive_the_meter_zone",
+        cite: "dss_capi/src/Meters/EnergyMeter.pas:1927-1929",
+    },
+    PdSkipRow {
+        channel: "capi_v0145",
+        class: "Capacitor",
+        field: "pct_permanent",
+        pin: "pd_elements_shunt_reliability_inputs_survive_the_meter_zone",
+        cite: "dss_capi/src/Meters/EnergyMeter.pas:1927-1929",
+    },
+    PdSkipRow {
+        channel: "capi_v0145",
+        class: "Reactor",
+        field: "fault_rate",
+        pin: "pd_elements_shunt_reliability_inputs_survive_the_meter_zone",
+        cite: "dss_capi/src/Meters/EnergyMeter.pas:1927-1929",
+    },
+    PdSkipRow {
+        channel: "capi_v0145",
+        class: "Reactor",
+        field: "pct_permanent",
+        pin: "pd_elements_shunt_reliability_inputs_survive_the_meter_zone",
+        cite: "dss_capi/src/Meters/EnergyMeter.pas:1927-1929",
+    },
+    PdSkipRow {
+        channel: "r4133",
+        class: "Capacitor",
+        field: "lambda",
+        pin: "pd_elements_shunt_branch_flt_rate_survives_the_meter_zone",
+        cite: "Version8/Source/Meters/EnergyMeter.pas:1868-1869",
+    },
+    PdSkipRow {
+        channel: "r4133",
+        class: "Capacitor",
+        field: "accumulated_l",
+        pin: "pd_elements_shunt_branch_flt_rate_survives_the_meter_zone",
+        cite: "Version8/Source/Meters/EnergyMeter.pas:1868-1869",
+    },
+    PdSkipRow {
+        channel: "r4133",
+        class: "Reactor",
+        field: "lambda",
+        pin: "pd_elements_shunt_branch_flt_rate_survives_the_meter_zone",
+        cite: "Version8/Source/Meters/EnergyMeter.pas:1868-1869",
+    },
+    PdSkipRow {
+        channel: "r4133",
+        class: "Reactor",
+        field: "accumulated_l",
+        pin: "pd_elements_shunt_branch_flt_rate_survives_the_meter_zone",
+        cite: "Version8/Source/Meters/EnergyMeter.pas:1868-1869",
+    },
+];
+
+/// Per-row visit counter, indexed exactly like [`PD_SKIP_FIELDS`]: cells the
+/// row was consulted about.
+static PD_SKIP_VISITS: [AtomicUsize; PD_SKIP_FIELDS.len()] =
+    [const { AtomicUsize::new(0) }; PD_SKIP_FIELDS.len()];
+/// Per-row hit counter: visits whose two sides actually differed, i.e. value
+/// compares this row really excluded.
+static PD_SKIP_HITS: [AtomicUsize; PD_SKIP_FIELDS.len()] =
+    [const { AtomicUsize::new(0) }; PD_SKIP_FIELDS.len()];
+
+/// Gating `PDElements` walks this process compared, per channel, indexed by
+/// [`pd_channel_slot`].
+static PD_WALKS: [AtomicUsize; 2] = [const { AtomicUsize::new(0) }; 2];
+/// …and the elements those walks compared.
+static PD_ELEMENTS: [AtomicUsize; 2] = [const { AtomicUsize::new(0) }; 2];
+
+/// Index into [`PD_WALKS`]/[`PD_ELEMENTS`] for a channel.
+fn pd_channel_slot(channel: PropsChannel) -> usize {
+    match channel {
+        PropsChannel::CapiV0145 => 0,
+        PropsChannel::R4133 => 1,
+    }
+}
+
+/// The element class of a full `Class.name`, or the whole string when it
+/// carries no dot (which no PD element name does — both oracles answer
+/// `FullName`).
+fn pd_class(full_name: &str) -> &str {
+    full_name.split_once('.').map_or(full_name, |(c, _)| c)
+}
+
+/// Which [`PD_SKIP_FIELDS`] row covers `(channel, class, field)`, if any.
+///
+/// A pure function so both directions are provable offline
+/// (`the_pd_skip_lookup_matches_only_its_own_channel_class_and_field`) — the
+/// shipped counters cannot be rewound once a gate run has moved them.
+fn pd_skip_row(channel: &str, class: &str, field: &str) -> Option<usize> {
+    PD_SKIP_FIELDS.iter().position(|r| {
+        r.channel == channel && r.class.eq_ignore_ascii_case(class) && r.field == field
+    })
+}
+
+/// What [`compare_pd_elements`] has counted in this process, as
+/// `(capi walks, capi elements, r4133 walks, r4133 elements)`.
+pub fn pd_walk_counters() -> (usize, usize, usize, usize) {
+    (
+        PD_WALKS[0].load(AtomicOrd::Relaxed),
+        PD_ELEMENTS[0].load(AtomicOrd::Relaxed),
+        PD_WALKS[1].load(AtomicOrd::Relaxed),
+        PD_ELEMENTS[1].load(AtomicOrd::Relaxed),
+    )
+}
+
+/// One [`PD_SKIP_FIELDS`] row's live `(visits, hits)`, or `None` when the table
+/// has no such row.
+pub fn pd_skip_counters(channel: &str, class: &str, field: &str) -> Option<(usize, usize)> {
+    let i = pd_skip_row(channel, class, field)?;
+    Some((
+        PD_SKIP_VISITS[i].load(AtomicOrd::Relaxed),
+        PD_SKIP_HITS[i].load(AtomicOrd::Relaxed),
+    ))
+}
+
+/// Compare one channel's `PDElements` walk against the engine's
+/// (`GOLDEN_REBASE_PLAN.md` §G1.6b).
+///
+/// The walk itself is asserted first — length, then the name **sequence**,
+/// case-insensitively — because it is the membership *and* the order contract
+/// in one: both oracles iterate the circuit's `PDElements` pointer list
+/// skipping `not Enabled` (capi `CAPI/CAPI_Utils.pas:718-759`, r4133
+/// `Version8/Source/DDLL/DPDELements.pas:27-59`), `Fault` objects never appear
+/// (`PDElements/Fault.pas:114`), and `Dss::pd_elements` walks
+/// `Circuit.pd_elements` in the same `AddCktElement` creation order. The
+/// oracle's `PDElements.Count` is the raw `ListSize` and counts disabled
+/// elements too — measured 2 against a walk of 1 — so the walk, never `Count`,
+/// is what is compared.
+///
+/// Then every field of every record, **exactly**: `rel = abs = 0`, no
+/// [`Tolerances`] argument at all. Nothing on this surface is computed on
+/// either side — each float is a class-default constant (`Capacitor.pas:555-557`
+/// 0.0005 / 100 / 3, `Line.pas:839-841` 0.1 / 20 / 3), a deck literal that FPC
+/// `Val` and Rust `str::parse::<f64>` both round correctly, or an untouched
+/// `0.0` — so a difference is a bug, not a floor
+/// (`tests/TOLERANCE_NOTES.md`). Four of the fourteen fields (`section_id`,
+/// `total_miles`, `lambda`, `accumulated_l`) are 0 on every walked case because
+/// no live deck runs `RelCalc`: comparing them asserts the port does not
+/// populate them prematurely, and their non-vacuity demo is owed by G1.6(i).
+///
+/// The only cells not compared are [`PD_SKIP_FIELDS`]', which the channel reads
+/// out of uninitialized memory; each one is still *visited* and accounted, so a
+/// row that stops excluding a divergence fails the gate.
+pub fn compare_pd_elements(dss: &Dss, exp: &[PdElementCap], channel: PropsChannel, ctx: &str) {
+    let act = dss.pd_elements();
+    let tag = channel.tag();
+    assert_eq!(
+        act.len(),
+        exp.len(),
+        "{ctx}: PDElements walk length differs against `{tag}`: Rust {} vs oracle {} (Rust head \
+         {:?}, oracle head {:?}). The walk is the ENABLED PD-element list in `AddCktElement` \
+         creation order — `Fault` is NON_PCPD_ELEM and never in it \
+         (`PDElements/Fault.pas:114`), and `PDElements.Count` is the raw ListSize, not this \
+         length.",
+        act.len(),
+        exp.len(),
+        act.iter().take(5).map(|p| &p.name).collect::<Vec<_>>(),
+        exp.iter().take(5).map(|p| &p.name).collect::<Vec<_>>(),
+    );
+    if let Some(k) = act
+        .iter()
+        .zip(exp)
+        .position(|(a, e)| !a.name.eq_ignore_ascii_case(&e.name))
+    {
+        panic!(
+            "{ctx}: PDElements walk differs against `{tag}` at index {k}: Rust `{}` vs oracle \
+             `{}` (membership or order — both sides are the circuit's PDElements pointer list)",
+            act[k].name, exp[k].name,
+        );
+    }
+    for (a, e) in act.iter().zip(exp) {
+        let class = pd_class(&e.name);
+        let av = pd_fields!(a);
+        let ev = pd_fields!(e);
+        for ((fa, va), (fe, ve)) in av.iter().zip(ev.iter()) {
+            debug_assert_eq!(fa, fe, "both extractions are the one `pd_fields!` macro");
+            let equal = va.matches(*ve);
+            if let Some(i) = pd_skip_row(tag, class, fa) {
+                PD_SKIP_VISITS[i].fetch_add(1, AtomicOrd::Relaxed);
+                if !equal {
+                    PD_SKIP_HITS[i].fetch_add(1, AtomicOrd::Relaxed);
+                }
+                continue;
+            }
+            assert!(
+                equal,
+                "{ctx}: PDElements `{}` field `{fa}` differs against `{tag}`: Rust {} vs oracle \
+                 {}. This surface is compared EXACTLY (rel = abs = 0): no value on either side \
+                 is computed, so a difference is a bug, never a floor.",
+                e.name,
+                va.render(),
+                ve.render(),
+            );
+        }
+    }
+    let slot = pd_channel_slot(channel);
+    PD_WALKS[slot].fetch_add(1, AtomicOrd::Relaxed);
+    PD_ELEMENTS[slot].fetch_add(exp.len(), AtomicOrd::Relaxed);
+}
+
+/// **Fail-on-nothing-ran for the whole PDElements surface** — the G1.6b half of
+/// plan §1.1(f), modeled on `props_norm::assert_r4133_props_compare_ran`.
+///
+/// 96 of the 372 walked live capi cases hold **no** PD element at all, so
+/// [`capture_guard::require_capture`] (count > 0) cannot be the per-case rail
+/// here: the runner uses the *presence* form
+/// ([`capture_guard::require_capture_opt`]) and lets an empty oracle walk match
+/// an empty port walk. That leaves one hole, which this closes — a global
+/// collapse to zero (the scheduler stops forcing the flag, a transport stops
+/// honoring the request, the port loses every PD element on every deck) would
+/// compare `[] == []` everywhere and pass. It fails unless **each** gating
+/// channel compared at least one non-empty walk, because a surface wired on one
+/// channel only is exactly what the plan's D2 forbids.
+///
+/// Silent under `DSS_GATE_ONLY` for the reason its neighbours are: a filtered
+/// run may legitimately hold no case that gates a given channel.
+pub fn assert_pd_elements_compare_ran() {
+    if std::env::var("DSS_GATE_ONLY").is_ok() {
+        return;
+    }
+    let (cw, ce, rw, re) = pd_walk_counters();
+    check_pd_elements_compare_ran((cw, ce), (rw, re));
+}
+
+/// The rule itself, over **injected** counters — the split exists for the
+/// reason `props_norm::check_r4133_props_compare_ran`'s does: the shipped
+/// statics cannot be zeroed once a gate run has moved them, so both directions
+/// are pinned offline.
+fn check_pd_elements_compare_ran(capi: (usize, usize), r4133: (usize, usize)) {
+    assert!(
+        capi.1 > 0 && r4133.1 > 0,
+        "the PDElements compare never reached one of the two channels: capi_v0145 {} walk(s) / \
+         {} element(s), r4133 {} walk(s) / {} element(s). Since GOLDEN_REBASE G1.6b every live \
+         non-`large` case compares its full PDElements walk on every channel it gates \
+         (`corpus_gate/scheduler.rs::force_pdelements`, pinned by \
+         `FORCED_PDELEMENTS_POPULATION`). A zero here means the request was masked off, a \
+         transport stopped honoring it, or the port lost every PD element — none of which any \
+         manifest flag or `population.lock.json` fingerprint would show, because the per-case \
+         rail must tolerate the 96 live cases that legitimately hold no PD element.",
+        capi.0,
+        capi.1,
+        r4133.0,
+        r4133.1,
+    );
+}
+
+/// **Fail-on-stale for [`PD_SKIP_FIELDS`]** — every row must still exclude a
+/// real divergence.
+///
+/// Two arms, each of which is a mask over nothing:
+///
+/// * `visits == 0` — the row's `(channel, class, field)` never occurred in the
+///   whole population, so it excludes nothing that exists;
+/// * `hits == 0` — it was consulted on real cells and the two sides agreed
+///   every time, so the defect it names is gone.
+///
+/// Silent under `DSS_GATE_ONLY`, and silent when the surface never ran on both
+/// channels — that case is [`assert_pd_elements_compare_ran`]'s, invoked first
+/// in the gate epilogue, and it deserves one line of diagnosis rather than
+/// eight rows of "never visited".
+///
+/// Honest limit: the excluded value is a heap pointer, so `hits` measures live
+/// memory rather than a constant. The Reactor rows are the thin ones (1 cell
+/// per capi row, 2 per r4133 row over the whole population), and a run in which
+/// those cells happened to read a nil pointer would report them stale. That is
+/// still the verdict to surface loudly — re-measure the row before dropping it
+/// — and the Capacitor rows (96 / 105 cells) carry the channel-level signal
+/// with a wide margin.
+pub fn assert_pd_skip_rows_are_live() {
+    if std::env::var("DSS_GATE_ONLY").is_ok() {
+        return;
+    }
+    let read = |c: &[AtomicUsize]| -> Vec<usize> {
+        c.iter().map(|c| c.load(AtomicOrd::Relaxed)).collect()
+    };
+    let (_, ce, _, re) = pd_walk_counters();
+    check_pd_skip_rows_are_live(
+        PD_SKIP_FIELDS,
+        &read(&PD_SKIP_VISITS),
+        &read(&PD_SKIP_HITS),
+        ce > 0 && re > 0,
+    );
+}
+
+/// The staleness rule over **injected** counters (see
+/// [`assert_pd_skip_rows_are_live`]); `surface_ran` is false when the walk did
+/// not compare anything on some channel, which silences both arms.
+fn check_pd_skip_rows_are_live(
+    table: &[PdSkipRow],
+    visits: &[usize],
+    hits: &[usize],
+    surface_ran: bool,
+) {
+    assert_eq!(
+        (table.len(), table.len()),
+        (visits.len(), hits.len()),
+        "the counters are indexed exactly like the table"
+    );
+    if !surface_ran {
+        return;
+    }
+    let stale: Vec<String> = table
+        .iter()
+        .enumerate()
+        .filter_map(|(i, r)| {
+            if visits[i] == 0 {
+                Some(format!(
+                    "stale PDElements skip row: {}/{}.{} was never consulted — no `{}`-gating \
+                     case in the population holds an enabled {}. Cited: {}",
+                    r.channel, r.class, r.field, r.channel, r.class, r.cite
+                ))
+            } else if hits[i] == 0 {
+                Some(format!(
+                    "stale PDElements skip row: {}/{}.{} excluded nothing across {} compared \
+                     cell(s) — the two sides agreed every time, so the uninitialized read it \
+                     names is gone (or this run's heap handed back the port's value). \
+                     Re-measure before dropping. Cited: {}, pinned by `{}`",
+                    r.channel, r.class, r.field, visits[i], r.cite, r.pin
+                ))
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert!(
+        stale.is_empty(),
+        "{}\n— each row drops a PDElements cell from the oracle compare, so it must name a \
+         divergence that is really there (GOLDEN_REBASE_PLAN.md §1.1(e)).",
+        stale.join("\n")
+    );
+}
+
+#[cfg(test)]
+mod pd_elements_tests {
+    use super::*;
+
+    /// A record whose every field is distinguishable, so an extraction that
+    /// mixed two fields up cannot pass by coincidence.
+    fn cap() -> PdElementCap {
+        PdElementCap {
+            name: "Capacitor.C83".to_string(),
+            accumulated_l: 1.0,
+            from_terminal: 2,
+            is_shunt: true,
+            num_customers: 3,
+            section_id: 4,
+            fault_rate: 5.0,
+            repair_time: 6.0,
+            total_miles: 7.0,
+            total_customers: 8,
+            pct_permanent: 9.0,
+            lambda: 10.0,
+            parent_class_index: 11,
+            parent_name: "Line.L115".to_string(),
+        }
+    }
+
+    /// The extraction covers all fourteen keys, in the frozen read order, with
+    /// the right type on each. The *port* side of the same macro is checked by
+    /// the compiler: `pd_fields!` expands over `PdElementView` too, so a field
+    /// renamed there stops `harness/mod.rs` compiling.
+    #[test]
+    fn the_field_extraction_is_the_fourteen_frozen_keys_in_read_order() {
+        let c = cap();
+        let got = pd_fields!(&c);
+        let names: Vec<&str> = got.iter().map(|(n, _)| *n).collect();
+        assert_eq!(names, PD_FIELD_NAMES.to_vec());
+        assert_eq!(got[0].1, PdVal::S("Capacitor.C83"));
+        assert_eq!(got[1].1, PdVal::F(1.0));
+        assert_eq!(got[2].1, PdVal::I(2));
+        assert_eq!(got[3].1, PdVal::B(true));
+        assert_eq!(got[13].1, PdVal::S("Line.L115"));
+        // `parent_class_index` is the LAST oracle field read and `parent_name`
+        // the read that follows it — the active-element hijack contract
+        // (`CAPI/CAPI_PDElements.pas:245-257`).
+        assert_eq!(names[12], "parent_class_index");
+        assert_eq!(names[13], "parent_name");
+    }
+
+    /// Equality is exact on numbers and case-insensitive on the two name
+    /// fields — the port capitalizes the class and lowercases the object name
+    /// while the oracles echo the deck.
+    #[test]
+    fn field_equality_is_exact_on_numbers_and_case_insensitive_on_names() {
+        assert!(PdVal::S("Capacitor.C83").matches(PdVal::S("capacitor.c83")));
+        assert!(!PdVal::S("Capacitor.C83").matches(PdVal::S("Capacitor.C84")));
+        assert!(PdVal::F(0.0005).matches(PdVal::F(0.0005)));
+        // One ULP apart must FAIL: there is no tolerance on this surface.
+        assert!(!PdVal::F(0.0005).matches(PdVal::F(f64::from_bits(0.0005f64.to_bits() + 1))));
+        // The measured UB denormal against the port's correct 0.0.
+        assert!(!PdVal::F(0.0).matches(PdVal::F(1.043284808626e-311)));
+        assert!(!PdVal::I(1).matches(PdVal::I(0)));
+        assert!(!PdVal::B(true).matches(PdVal::B(false)));
+        assert!(!PdVal::I(1).matches(PdVal::F(1.0)));
+        assert_eq!(
+            PdVal::F(1.043284808626e-311).render(),
+            "1.043284808626e-311"
+        );
+    }
+
+    /// The skip lookup is scoped to its own channel, class and field in all
+    /// three directions — the asymmetry between the channels is the point:
+    /// `fault_rate` stays compared on r4133, `lambda` on capi_v0145.
+    #[test]
+    fn the_pd_skip_lookup_matches_only_its_own_channel_class_and_field() {
+        assert!(pd_skip_row("capi_v0145", "Capacitor", "fault_rate").is_some());
+        assert!(pd_skip_row("capi_v0145", "capacitor", "fault_rate").is_some());
+        assert!(pd_skip_row("r4133", "Capacitor", "fault_rate").is_none());
+        assert!(pd_skip_row("r4133", "Capacitor", "lambda").is_some());
+        assert!(pd_skip_row("capi_v0145", "Capacitor", "lambda").is_none());
+        assert!(pd_skip_row("capi_v0145", "Line", "fault_rate").is_none());
+        assert!(pd_skip_row("capi_v0145", "Transformer", "pct_permanent").is_none());
+        assert!(pd_skip_row("capi_v0145", "Capacitor", "repair_time").is_none());
+        assert_eq!(pd_class("Capacitor.c83"), "Capacitor");
+        assert_eq!(pd_class("nodot"), "nodot");
+    }
+
+    /// **The register**: the eight rows, spelled out a second time, so neither
+    /// adding nor dropping one can happen without an edit that says so. Every
+    /// row must also name a real field, one of the two channel tags, a
+    /// non-empty citation and its pin.
+    #[test]
+    fn the_pd_skip_register_is_exactly_the_measured_rows() {
+        let got: Vec<String> = PD_SKIP_FIELDS
+            .iter()
+            .map(|r| format!("{}/{}.{} -> {}", r.channel, r.class, r.field, r.pin))
+            .collect();
+        let capi_pin = "pd_elements_shunt_reliability_inputs_survive_the_meter_zone";
+        let r4133_pin = "pd_elements_shunt_branch_flt_rate_survives_the_meter_zone";
+        let expected = vec![
+            format!("capi_v0145/Capacitor.fault_rate -> {capi_pin}"),
+            format!("capi_v0145/Capacitor.pct_permanent -> {capi_pin}"),
+            format!("capi_v0145/Reactor.fault_rate -> {capi_pin}"),
+            format!("capi_v0145/Reactor.pct_permanent -> {capi_pin}"),
+            format!("r4133/Capacitor.lambda -> {r4133_pin}"),
+            format!("r4133/Capacitor.accumulated_l -> {r4133_pin}"),
+            format!("r4133/Reactor.lambda -> {r4133_pin}"),
+            format!("r4133/Reactor.accumulated_l -> {r4133_pin}"),
+        ];
+        assert_eq!(
+            got, expected,
+            "PD_SKIP_FIELDS moved. Every row drops an oracle cell from the compare, so a row may \
+             only be added with its measurement + pin, and only be dropped once the \
+             uninitialized read is gone upstream (GOLDEN_REBASE_PLAN.md §1.1(e))."
+        );
+        for r in PD_SKIP_FIELDS {
+            assert!(
+                PD_FIELD_NAMES.contains(&r.field),
+                "{}/{}.{} names a field the record does not have",
+                r.channel,
+                r.class,
+                r.field
+            );
+            assert!(
+                [PropsChannel::CapiV0145.tag(), PropsChannel::R4133.tag()].contains(&r.channel),
+                "{} is not a gating channel tag",
+                r.channel
+            );
+            assert!(!r.cite.is_empty() && !r.pin.is_empty());
+        }
+        // No row may be listed twice — a duplicate would split the liveness
+        // accounting and hide a stale twin behind its live neighbour.
+        let mut keys: Vec<(&str, &str, &str)> = PD_SKIP_FIELDS
+            .iter()
+            .map(|r| (r.channel, r.class, r.field))
+            .collect();
+        keys.sort_unstable();
+        let n = keys.len();
+        keys.dedup();
+        assert_eq!(keys.len(), n, "PD_SKIP_FIELDS holds a duplicate row");
+    }
+
+    /// The global guard fires unless BOTH channels walked something — a surface
+    /// wired on one channel only is a failure, not a half-success.
+    #[test]
+    fn the_global_pd_guard_fires_unless_both_channels_walked() {
+        check_pd_elements_compare_ran((12, 340), (9, 271));
+        for (capi, r4133) in [
+            ((0, 0), (9, 271)),
+            ((12, 340), (0, 0)),
+            ((0, 0), (0, 0)),
+            ((12, 0), (9, 271)),
+        ] {
+            let payload =
+                std::panic::catch_unwind(move || check_pd_elements_compare_ran(capi, r4133))
+                    .expect_err("the guard must fire");
+            let msg = payload
+                .downcast_ref::<String>()
+                .cloned()
+                .unwrap_or_else(|| "<non-string panic>".to_string());
+            assert!(msg.contains("force_pdelements"), "{msg}");
+        }
+    }
+
+    /// The row-liveness guard: both arms fire, and both silences hold.
+    #[test]
+    fn the_pd_skip_liveness_guard_fires_on_an_unvisited_or_never_hitting_row() {
+        let row = |field| PdSkipRow {
+            channel: "r4133",
+            class: "Capacitor",
+            field,
+            pin: "pd_elements_shunt_branch_flt_rate_survives_the_meter_zone",
+            cite: "Version8/Source/Meters/EnergyMeter.pas:1868-1869",
+        };
+        let table: &[PdSkipRow] = &[row("lambda"), row("accumulated_l")];
+        // Live: both rows excluded something.
+        check_pd_skip_rows_are_live(table, &[105, 105], &[105, 105], true);
+        // Silent when the surface never ran (the global guard's business).
+        check_pd_skip_rows_are_live(table, &[0, 0], &[0, 0], false);
+        let fire = |visits: [usize; 2], hits: [usize; 2]| -> String {
+            let payload = std::panic::catch_unwind(move || {
+                check_pd_skip_rows_are_live(table, &visits, &hits, true)
+            })
+            .expect_err("the guard must fire");
+            payload
+                .downcast_ref::<String>()
+                .cloned()
+                .unwrap_or_else(|| "<non-string panic>".to_string())
+        };
+        let never_visited = fire([0, 105], [0, 105]);
+        assert!(never_visited.contains("never consulted"), "{never_visited}");
+        assert!(
+            !never_visited.contains("accumulated_l"),
+            "only the stale row is reported: {never_visited}"
+        );
+        let never_hit = fire([105, 105], [105, 0]);
+        assert!(never_hit.contains("excluded nothing"), "{never_hit}");
+        assert!(never_hit.contains("accumulated_l"), "{never_hit}");
+    }
 }
 
 // ---------------------------------------------------------------------------

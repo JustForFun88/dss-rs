@@ -1194,6 +1194,32 @@ pub const SOLUTION_LAPLACIAN: ModeSpec = ModeSpec::array(
 
 // -- PDElements (DPDELements.pas) -------------------------------------------
 
+/// `PDElementsI(1)` — advance the walk to the **first enabled** PD element.
+pub const PD_ELEMENTS_FIRST: ModeSpec = ModeSpec::scalar(
+    "PDElements",
+    ModeKind::I,
+    1,
+    "PDElements.First",
+    "DPDELements.pas:27",
+    ModeEffect::Impure(
+        "moves the circuit's PDElements pointer-list cursor to the first *enabled* PD element \
+         and assigns ActiveCktElement from it (DPDELements.pas:27-42); returns 1 when one was \
+         found, 0 when the circuit holds no enabled PD element",
+    ),
+);
+/// `PDElementsI(2)` — advance the walk to the next enabled PD element.
+pub const PD_ELEMENTS_NEXT: ModeSpec = ModeSpec::scalar(
+    "PDElements",
+    ModeKind::I,
+    2,
+    "PDElements.Next",
+    "DPDELements.pas:44",
+    ModeEffect::Impure(
+        "advances the circuit's PDElements pointer-list cursor to the next *enabled* PD element \
+         and assigns ActiveCktElement from it (DPDELements.pas:44-59); returns 0 at the end of \
+         the list, leaving ActiveCktElement wherever the previous arm put it",
+    ),
+);
 /// `PDElementsI(3)` — 1 when the active PD element is a shunt.
 pub const PD_ELEMENTS_IS_SHUNT: ModeSpec = ModeSpec::scalar(
     "PDElements",
@@ -1308,8 +1334,20 @@ pub const PD_ELEMENTS_TOTAL_MILES: ModeSpec = ModeSpec::scalar(
     "DPDELements.pas:201",
     ModeEffect::Pure,
 );
+/// `PDElementsS(0)` — the active PD element's full name,
+/// `Format('%s.%s', [Parentclass.Name, Name])`, or `""` when the active element
+/// is not a `TPDElement` (read; the **write** arm `S:1` is deliberately absent
+/// — [`EXCLUDED_WRITE_MODES`]).
+pub const PD_ELEMENTS_NAME: ModeSpec = ModeSpec::scalar(
+    "PDElements",
+    ModeKind::S,
+    0,
+    "PDElements.Name",
+    "DPDELements.pas:226",
+    ModeEffect::Pure,
+);
 
-/// Every mode WP-G1 reads through the r4133 bridge — 96 rows over the seven
+/// Every mode WP-G1 reads through the r4133 bridge — 99 rows over the seven
 /// families the plan's surface sub-steps touch (`GOLDEN_REBASE_PLAN.md` WP-G1).
 /// The set was measured `Served` on the vendored DLL by the G1.0 probe
 /// (2026-09-04) with zero misses, and the acceptance test
@@ -1402,6 +1440,8 @@ pub const WP_G1_MODES: &[&ModeSpec] = &[
     &SOLUTION_INC_MATRIX_ROWS,
     &SOLUTION_INC_MATRIX_COLS,
     &SOLUTION_LAPLACIAN,
+    &PD_ELEMENTS_FIRST,
+    &PD_ELEMENTS_NEXT,
     &PD_ELEMENTS_IS_SHUNT,
     &PD_ELEMENTS_NUM_CUSTOMERS,
     &PD_ELEMENTS_TOTAL_CUSTOMERS,
@@ -1414,17 +1454,22 @@ pub const WP_G1_MODES: &[&ModeSpec] = &[
     &PD_ELEMENTS_ACCUMULATED_L,
     &PD_ELEMENTS_REPAIR_TIME,
     &PD_ELEMENTS_TOTAL_MILES,
+    &PD_ELEMENTS_NAME,
 ];
 
 /// DDLL `case` arms a naive reading of WP-G1's mode *ranges* would include but
 /// that this bridge must never drive: they are **write** arms, and the generic
-/// reader supplies a neutral argument, so calling one would store `0.0` into the
-/// active PD element instead of reading anything.
+/// reader supplies a neutral argument, so calling one would mutate the circuit
+/// instead of reading anything — `F:1`/`F:3` store `0.0` into the active PD
+/// element, `S:1` re-selects the active element by name and walks the
+/// `PDElements` cursor to the end of the list.
 ///
 /// `tmp/g10/spec.md` §2.B B4 listed `PDElements F:0..7` as a range; the vendored
 /// r4133 source shows modes 1 and 3 are the setters paired with the readers at 0
-/// and 2, which [`WP_G1_MODES`] carries instead. Recorded here — and enforced by
-/// a unit test — so the omission is a decision, not a gap.
+/// and 2, which [`WP_G1_MODES`] carries instead. G1.6b added the third row when
+/// it took the `S:0` reader ([`PD_ELEMENTS_NAME`]) for the PDElements walk.
+/// Recorded here — and enforced by a unit test — so each omission is a decision,
+/// not a gap.
 pub const EXCLUDED_WRITE_MODES: &[(&str, ModeKind, i32, &str)] = &[
     (
         "PDElements",
@@ -1439,6 +1484,15 @@ pub const EXCLUDED_WRITE_MODES: &[(&str, ModeKind, i32, &str)] = &[
         3,
         "PDElements.PctPermanent WRITE — DPDELements.pas:162 assigns ActivePDElement.PctPerm := arg; \
          the reader is F:2",
+    ),
+    (
+        "PDElements",
+        ModeKind::S,
+        1,
+        "PDElements.Name WRITE — DPDELements.pas:237-251 re-selects ActiveCktElement by \
+         searching the whole PDElements list for `arg`; driven with the generic reader's neutral \
+         \"\" it matches nothing and leaves the pointer-list cursor past the end of the list, \
+         silently truncating an in-progress walk; the reader is S:0",
     ),
 ];
 
@@ -1563,7 +1617,7 @@ mod tests {
     fn the_wp_g1_mode_table_is_internally_consistent() {
         assert_eq!(
             WP_G1_MODES.len(),
-            96,
+            99,
             "WP-G1 mode count changed — update the count, the record and TESTING.md"
         );
         let mut names: Vec<&str> = Vec::new();
@@ -1646,12 +1700,22 @@ mod tests {
         // Non-vacuity: the excluded rows really are the neighbours of table rows
         // in the same family and shape, so the check above is not comparing
         // against an empty or unrelated set.
-        assert_eq!(EXCLUDED_WRITE_MODES.len(), 2);
-        assert!(EXCLUDED_WRITE_MODES.iter().all(|(f, k, ..)| {
-            *f == PD_ELEMENTS_FAULT_RATE.family && *k == PD_ELEMENTS_FAULT_RATE.kind
-        }));
+        assert_eq!(EXCLUDED_WRITE_MODES.len(), 3);
+        for (reader, write_mode) in [
+            (&PD_ELEMENTS_FAULT_RATE, 1),
+            (&PD_ELEMENTS_PCT_PERMANENT, 3),
+            (&PD_ELEMENTS_NAME, 1),
+        ] {
+            assert!(
+                EXCLUDED_WRITE_MODES.iter().any(|(f, k, m, _)| {
+                    *f == reader.family && *k == reader.kind && *m == write_mode
+                }),
+                "{reader}'s write arm is not on the excluded register"
+            );
+        }
         assert_eq!(PD_ELEMENTS_FAULT_RATE.mode, 0);
         assert_eq!(PD_ELEMENTS_PCT_PERMANENT.mode, 2);
+        assert_eq!(PD_ELEMENTS_NAME.mode, 0);
     }
 
     #[test]

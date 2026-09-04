@@ -193,6 +193,31 @@ fn corpus_gate_all_cases_match_engines() {
     // the seam ran (RP4.1 audit settlement) — because a narrowed row can only
     // ever count a divergent cell.
     harness::props_norm::assert_echo_rows_are_live();
+    // And the two GOLDEN_REBASE G1.6b PDElements guards, in that order for the
+    // reason the property pair is in that order: "did the walk run at all, on
+    // BOTH channels" is the precondition that makes the per-row verdicts mean
+    // anything. The first one exists because the per-case rail cannot be a
+    // count contract here — 96 of the 372 walked live capi cases legitimately
+    // hold no PD element, so `[] == []` is a valid case outcome and a global
+    // collapse to zero would be silently green. The second is the fail-on-stale
+    // for `PD_SKIP_FIELDS`, whose eight rows each drop an oracle cell that is
+    // read out of uninitialized memory; a row that stops excluding a divergence
+    // is a mask over nothing. Both self-silence under `DSS_GATE_ONLY`.
+    let (pd_cw, pd_ce, pd_rw, pd_re) = harness::pd_walk_counters();
+    eprintln!(
+        "corpus_gate PDElements: capi_v0145 {pd_cw} walk(s) / {pd_ce} element(s), \
+         r4133 {pd_rw} walk(s) / {pd_re} element(s)"
+    );
+    for r in harness::PD_SKIP_FIELDS {
+        let (v, h) = harness::pd_skip_counters(r.channel, r.class, r.field)
+            .expect("every shipped row is findable by its own key");
+        eprintln!(
+            "corpus_gate PDElements skip {}/{}.{}: {v} visit(s), {h} hit(s)",
+            r.channel, r.class, r.field
+        );
+    }
+    harness::assert_pd_elements_compare_ran();
+    harness::assert_pd_skip_rows_are_live();
 }
 
 /// The property census (`R4133_PROPS_PLAN.md` RP0.2, `DSS_PROPS_CENSUS`): walk

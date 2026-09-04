@@ -27,8 +27,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::harness::{
-    ElementCap, Injection, MeterCap, MonitorCap, ProbeCap, PropsCap, VariablesCap, YFingerprint,
-    YMat, YPrim,
+    ElementCap, Injection, MeterCap, MonitorCap, PdElementCap, ProbeCap, PropsCap, VariablesCap,
+    YFingerprint, YMat, YPrim,
 };
 use crate::manifest::SolvableCase;
 
@@ -79,6 +79,16 @@ pub(crate) struct Checkpoint {
     pub(crate) monitors: Vec<MonitorCap>,
     #[serde(default)]
     pub(crate) meters: Vec<MeterCap>,
+    /// GOLDEN_REBASE G1.6b: the `PDElements` interface walk. `Option`, not
+    /// `Vec`: 96 of the 372 walked live capi cases legitimately hold no PD
+    /// element, so `None` ("the channel was not asked / did not answer") must
+    /// stay distinguishable from `Some([])` ("asked, this circuit has none").
+    /// Both transports emit exactly that (`oracle_server.py` sends `null` with
+    /// the flag off; `dss-epri`'s `Checkpoint.pd_elements` is the same
+    /// `Option`), and `capture_guard::require_capture_opt` is what turns the
+    /// first shape into a case failure.
+    #[serde(default)]
+    pub(crate) pd_elements: Option<Vec<PdElementCap>>,
     #[serde(default)]
     pub(crate) probes: Vec<ProbeCap>,
     #[serde(default)]
@@ -124,6 +134,7 @@ pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
         "eventlog": c.compare_eventlog,
         "ctrlqueue": c.compare_ctrlqueue,
         "all_properties": c.compare_all_properties,
+        "pd_elements": c.compare_pdelements,
         "global_result": c.compare_global_result,
         "autoadd_log": c.compare_autoadd_log,
         "warn_and_continue": !c.expect_warnings.is_empty(),

@@ -1479,6 +1479,33 @@ impl Engine {
     }
 
     // -- PDElements --------------------------------------------------------------
+    /// `PDElementsI(1)` `PDElements.First` — `DPDELements.pas:27`. See [`modes::PD_ELEMENTS_FIRST`].
+    ///
+    /// `true` when the walk found an enabled PD element (and `ActiveCktElement`
+    /// now points at it); `false` when the circuit holds none.
+    pub fn pd_elements_first(&self) -> Result<bool, EngineError> {
+        Ok(self.read_mode_i(&modes::PD_ELEMENTS_FIRST)? != 0)
+    }
+
+    /// `PDElementsI(2)` `PDElements.Next` — `DPDELements.pas:44`. See [`modes::PD_ELEMENTS_NEXT`].
+    ///
+    /// `false` ends the walk; the DDLL then leaves `ActiveCktElement` wherever
+    /// the previous arm put it (`DPDELements.pas:44-59`), so a caller that needs
+    /// a defined active element must re-select one.
+    pub fn pd_elements_next(&self) -> Result<bool, EngineError> {
+        Ok(self.read_mode_i(&modes::PD_ELEMENTS_NEXT)? != 0)
+    }
+
+    /// `PDElementsS(0)` `PDElements.Name` — `DPDELements.pas:226`. See [`modes::PD_ELEMENTS_NAME`].
+    ///
+    /// The **active** element's full `Class.Name`, not the walk cursor's: after
+    /// [`Engine::pd_elements_parent_pd_element`] has hijacked `ActiveCktElement`
+    /// this reads the *parent's* name (which is exactly how
+    /// [`crate::capture::capture_pd_elements`] obtains it).
+    pub fn pd_elements_name(&self) -> Result<String, EngineError> {
+        self.read_mode_s(&modes::PD_ELEMENTS_NAME)
+    }
+
     /// `PDElementsI(3)` `PDElements.IsShunt` — `DPDELements.pas:61`. See [`modes::PD_ELEMENTS_IS_SHUNT`].
     pub fn pd_elements_is_shunt(&self) -> Result<i32, EngineError> {
         self.read_mode_i(&modes::PD_ELEMENTS_IS_SHUNT)
