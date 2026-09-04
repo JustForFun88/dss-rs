@@ -2751,7 +2751,7 @@ row against the pre-fix lock.
   EnergyMeter an empty zone — one corpus deck changes state, pin `makebuslist_keeps_the_meter_zones`.
   `section_id`/`total_miles`/`lambda`/`accumulated_l` compare 0 everywhere (no live deck runs
   `RelCalc`): non-vacuity **owed by G1.6(i)**.
-  Commits: `06808a6d` (D9), `e1e18367` (surface), `SETTLESHA` (audit settlement). Gate: five commands
+  Commits: `06808a6d` (D9), `e1e18367` (surface), `c6a3c0a8` (audit settlement). Gate: five commands
   exit 0 in both lanes, **4 792 passed / 0 failed / 5 ignored**; corpus gate 523/523, ledger 57 /
   1 588 hits / 0 stale, no golden byte and no lock content moved; `lane_diff` `VERDICT: PASS`, max
   |Δ| = 0; walk counters from the gate epilogue — capi 1 645 / 93 707, r4133 1 669 / 97 194.
