@@ -689,6 +689,7 @@
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 24,
+   "compare_topology": true,
    "selected_elements": [
     "*"
    ],
@@ -857,6 +858,7 @@
    "ad": "off:mode-outside-AD-scope",
    "kind": "feeder",
    "n_steps": 2,
+   "compare_topology": true,
    "engines": "r4133",
    "wp": "WP-U2.1",
    "selected_elements": [

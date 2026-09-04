@@ -332,6 +332,33 @@ pub fn all_terminals_closed(elem: &dyn crate::elements::traits::CktElement) -> b
     true
 }
 
+/// Pascal `IsShuntElement` (capi `Shared/CktTree.pas:522-528`, r4133
+/// `Common/Utilities.pas:1262-1274`): the **topology** notion of "shunt", which
+/// is NOT `TPDElement.IsShunt`. Upstream switches on the class first and reads
+/// the object's own `IsShunt` only for a Capacitor or a Reactor; every other PD
+/// class answers `FALSE` **even when it sets its own `IsShunt` flag**. The one
+/// class where the two differ is the GICTransformer, which pins
+/// `IsShunt := True` in its constructor and in both bus setters (r4133
+/// `PDElements/GICTransformer.pas:445`, `:217`, `:254`) yet is a plain
+/// `PD_ELEMENT` (`:95`): upstream buckets it by ALL its terminals, so it is a
+/// tree BRANCH and can close a loop — which is what both oracles report on
+/// `modes/makeposseq/makeposseq_shunt.dss`, where `GICTransformer.gt` has both
+/// terminals on `b1`.
+///
+/// Use this — never `CktElement::is_shunt` — wherever Pascal calls
+/// `IsShuntElement`: the adjacency-list buckets below,
+/// `get_shunt_pd_elements_connected_to_bus` and `find_all_child_branches`
+/// (`solution/topology.rs`). `CktElement::is_shunt` stays the faithful
+/// `TPDElement.IsShunt` that its own consumers (circuit losses, `Show Powers`,
+/// the demand interval) read.
+pub fn is_shunt_element(store: &dyn ElemStore, r: ElemId) -> bool {
+    use crate::elements::pd::capacitor::Capacitor;
+    use crate::elements::pd::reactor::Reactor;
+    use crate::elements::traits::TypedStore;
+    (store.typed::<Capacitor>(r).is_some() || store.typed::<Reactor>(r).is_some())
+        && store.ckt_elem(r).is_shunt()
+}
+
 /// Pascal `BuildActiveBusAdjacencyLists` (CktTree.pas l.678): walk the
 /// circuit's PC and PD lists and bucket enabled elements by terminal bus.
 pub fn build_active_bus_adjacency_lists(ckt: &Circuit, store: &dyn ElemStore) -> BusAdjLists {
@@ -357,8 +384,9 @@ pub fn build_active_bus_adjacency_lists(ckt: &Circuit, store: &dyn ElemStore) ->
         if !elem.cd().enabled {
             continue;
         }
-        if elem.is_shunt() {
-            // Shunt capacitors/reactors go on the PC list (terminal 1).
+        if is_shunt_element(store, r) {
+            // Shunt capacitors/reactors — and ONLY those two classes, per
+            // `IsShuntElement` above — go on the PC list (terminal 1).
             if let Some(i) = elem.cd().terminals[0].bus_ref
                 && i < n_bus
             {

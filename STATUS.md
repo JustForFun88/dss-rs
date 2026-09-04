@@ -154,25 +154,25 @@ WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 **GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened
 2026-08-08; since 2026-09-04 its independent chains run in parallel **lanes** —
 worktrees `.claude/worktrees/lane-*`, D7 — and `update` takes merges only, one
-lane sub-step at a time). Landed: **G1.1**, killed on day one, handed to
-`R4133_PROPS_PLAN.md` and delivered by its RP4.1 2026-09-03 — **G1.1
-satisfied**, **G3.4**/**G3.5** unblocked; **G1.2** (the ESPVLControl deck)
-2026-08-29; **G1.0**, the rails ahead of G1.3a (ten-flag vocabulary in one lock
-regen, exclusion `channels`, the capture-presence guard, the r4133 bridge rails
-whose 96-mode probe **also discharges G1.11's mode-capability acceptance for
-the whole WP**) 2026-09-04; **G1.9** (lane `lane-s`, 2026-09-04, `9757d26c` +
-settlement `f27f9598` + docs; audits 13 findings — 6 fixed / 5 recorded / 2
-refuted, no port bug), the five `Circuit` aggregates and ten `Solution` scalars
-live and universal on both channels — no lock regen, 0 ledger entries, 0 golden
-bytes, no new floor, all three kill criteria not met. Full record: the same
-file, section "GOLDEN_REBASE WP-G1 — records".
+lane sub-step at a time). Landed: **G1.1**, delivered by `R4133_PROPS_PLAN.md`
+RP4.1 2026-09-03 (**G1.1 satisfied**, **G3.4**/**G3.5** unblocked); **G1.2**
+(the ESPVLControl deck) 2026-08-29; **G1.0** 2026-09-04, the WP rails, whose
+96-mode probe **also discharges G1.11's mode-capability acceptance for the
+whole WP**; **G1.9** (lane `lane-s`, 2026-09-04, `9757d26c` + `f27f9598`;
+audits 13 findings, no port bug), the five `Circuit` aggregates and ten
+`Solution` scalars universal on both channels; **G1.7** (lane `lane-s`,
+2026-09-05), the six order-free `Topology` rows on both channels on the 440
+live non-`large` cases (lock +7 `topo=`), the memoized-tree and window-dedup
+upstream defects **asserted, not excluded** (D15/D16, fail-on-stale populations
+`(16, 135)` / `(8, 96)`), two port gaps fixed en route. All: 0 ledger entries,
+0 golden bytes, no new floor, kill criteria not met. Full record: same file,
+section "GOLDEN_REBASE WP-G1 — records".
 
-**Next.** Lane `lane-s` takes **G1.7** (topology: `NumLoops`, `NumIsolated*`,
-`AllLoopedPairs`), then G1.8 and G1.10a–c; the element lane runs G1.3a→3d→3b→3c,
-the bus lane G1.4a→G1.5→G1.4c→G1.4b, the PD/meter lane G1.6b→G1.6(i)→G1.6(ii),
-each merged into `update` one sub-step at a time. Then WP-G3–G5, inside which
-**G3.4**/**G3.5**, blocked since 2026-08-08, are runnable. Queued behind
-GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, UPGRADE.
+**Next.** Lane `lane-s` takes **G1.8** (incidence/Laplacian), then G1.10a–c;
+the element lane runs G1.3a→3d→3b→3c, the bus lane G1.4a→G1.5→G1.4c→G1.4b, the
+PD/meter lane G1.6b→G1.6(i)→G1.6(ii), merged into `update` one sub-step at a
+time. Then WP-G3–G5, inside which **G3.4**/**G3.5** are runnable. Queued behind
+it: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the

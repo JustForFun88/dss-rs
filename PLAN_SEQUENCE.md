@@ -101,8 +101,9 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               G1.0 (the WP-G1 rails) and G1.9 (circuit
                               aggregates + solution scalars) landed 2026-09-04,
                               the latter in lane `lane-s` per decision D7;
-                              G1.3a-d + the rest of G1.4-G1.11c remain;
-                              WP-G3–G5 queued.
+                              G1.7 (the topology interface) followed in the same
+                              lane 2026-09-05; G1.3a-d and the remainder of
+                              G1.4-G1.11c remain; WP-G3–G5 queued.
                               Added 2026-08-22 per the user's request.
  5b. R4133_PROPS_PLAN.md      **COMPLETE 2026-09-04** (authored + opened
      (docs/plans-archive/)    2026-08-22; moved to `docs/plans-archive/` by its

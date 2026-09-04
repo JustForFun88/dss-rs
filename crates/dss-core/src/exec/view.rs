@@ -127,6 +127,85 @@ pub struct AggregateTerms {
     pub total_power: Vec<String>,
 }
 
+// ---------------------------------------------------------------------------
+// GOLDEN_REBASE G1.7 — the topology interface (`ITopology`)
+// ---------------------------------------------------------------------------
+
+/// The circuit's connected-branch topology: the six **order-free** `ITopology`
+/// quantities the live corpus gate compares, returned by
+/// [`Dss::topology_view`].
+///
+/// Surface: the fastdss harness column set `ITopology._columns`
+/// (`.inputs/DSS-Python` `origin/fastdss:dss/ITopology.py:10-20`) **minus** its
+/// three cursor fields `ActiveLevel` / `BranchName` / `ActiveBranch`. Those are
+/// deliberately not part of this view: reading them reassigns
+/// `ActiveCircuit.ActiveCktElement` (r4133 `Version8/Source/DDLL/DTopology.pas:42-53`
+/// `ActiveBranch`, `:96-160` the `First`/`Next`/`ForwardBranch` cursor modes,
+/// `:170-186` `TopologyS`), which would corrupt the per-element capture the same
+/// checkpoint takes.
+///
+/// Upstream answers all six from a **memoized** `Branch_List`, built on the first
+/// read and freed only in `Destroy` and `DoResetMeterZones` (r4133
+/// `Common/Circuit.pas:2932-2950`, `:703`, `:2308`; capi
+/// `CAPI_Topology.pas:47-63` `ActiveTree` over the same `GetTopology`), so an
+/// `Open`/`Close` between two reads is invisible to it. The port caches nothing —
+/// [`Dss::topology_view`] rebuilds the tree on every call and therefore answers
+/// from the present conductor state (CLAUDE.md: an upstream defect is never
+/// reproduced; pinned by
+/// `exec::tests::topology::an_open_conductor_isolates_the_downstream_branch`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TopologyView {
+    /// `Topology.NumLoops` — the number of `IsLoopedHere` tree nodes, integer
+    /// **halved** (r4133 `DTopology.pas:67-77`, `Result := Result div 2` at `:77`;
+    /// capi `CAPI_Topology.pas:81-98`). This is *not* `looped_pairs.len()`: the
+    /// halving counts loop *ends* while the pair list deduplicates by identity
+    /// (IEEE13 measures 3 pairs and 1 loop — see
+    /// `exec::tests::topology::num_loops_is_the_looped_here_count_halved`).
+    pub num_loops: i32,
+    /// `Topology.NumIsolatedBranches` = `isolated_branches.len()` — the PD
+    /// elements the tree never reached (r4133 `DTopology.pas:79-88`; capi
+    /// `CAPI_Topology.pas:302-316`).
+    pub num_isolated_branches: i32,
+    /// `Topology.NumIsolatedLoads` = `isolated_loads.len()` — the same over the
+    /// PC elements (r4133 `DTopology.pas:89-98`; capi `CAPI_Topology.pas:448-462`).
+    pub num_isolated_loads: i32,
+    /// `Topology.AllLoopedPairs` — `(branch, the branch it loops onto)` in
+    /// tree-walk order, deduplicated in both orientations (r4133
+    /// `DTopology.pas:271-321`; capi `CAPI_Topology.pas:160-215`). Both oracles
+    /// transport it as the flat `[a0, b0, a1, b1, ...]` string list this view
+    /// pairs up.
+    pub looped_pairs: Vec<(String, String)>,
+    /// `Topology.AllIsolatedBranches` — the isolated PD elements' `FullName`s in
+    /// `PDElements` (= creation) order (r4133 `DTopology.pas:322-356`, which emits
+    /// `QualifiedName`; capi `CAPI_Topology.pas:114-151`, `FullName` — measured
+    /// byte-identical on all 336 both-gated corpus cases).
+    pub isolated_branches: Vec<String>,
+    /// `Topology.AllIsolatedLoads` — the same over `PCElements` (r4133
+    /// `DTopology.pas:357-392`; capi `CAPI_Topology.pas:369-405`).
+    pub isolated_loads: Vec<String>,
+    /// **Not one of the six compared quantities** — the *pre-dedup* looped-pair
+    /// candidate sequence, in tree-walk order: one `(branch, branch it loops
+    /// onto)` entry per `IsLoopedHere` node, exactly what upstream feeds into its
+    /// own dedup scan before any candidate is dropped (r4133
+    /// `DTopology.pas:283-285`, `pdLoop := topo.PresentBranch.LoopLineObj`; capi
+    /// `CAPI_Topology.pas:177-179`). [`Self::looped_pairs`] is this sequence
+    /// reduced by the port's per-pair rule.
+    ///
+    /// It exists because the two engines reduce the same sequence by two
+    /// *different* rules and the live corpus gate asserts that difference
+    /// positively instead of skipping the field (GOLDEN_REBASE coordinator
+    /// decision D16): upstream scans its flat `[a0, b0, a1, b1, ...]` buffer in
+    /// **overlapping windows** (`i := i + 1`, r4133 `DTopology.pas:286-296`, capi
+    /// `CAPI_Topology.pas:180-190`) and so also drops a genuinely new candidate
+    /// that happens to equal a *straddling* window `(b_j, a_{j+1})`, contradicting
+    /// its own comment "see if we already found this pair"
+    /// (`DTopology.pas:286`) — an upstream defect the port does not reproduce
+    /// (CLAUDE.md). Re-applying that window scan to this sequence reproduces
+    /// either oracle's `AllLoopedPairs` exactly
+    /// (`exec::tests::topology::the_oracle_pair_list_is_the_window_scan_of_the_candidates`).
+    pub looped_pair_candidates: Vec<(String, String)>,
+}
+
 /// Sum `Get_Losses` over one of the circuit's `TPointerList` kind lists
 /// (`refs`), in list (= creation) order.
 ///
@@ -1225,6 +1304,135 @@ impl Dss {
         match &self.circuit {
             Some(ckt) => ckt.solution.currents.clone(),
             None => Vec::new(),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // GOLDEN_REBASE G1.7 — the topology interface (`ITopology`)
+    // -----------------------------------------------------------------------
+
+    /// The six order-free `ITopology` quantities of [`TopologyView`], computed
+    /// from a **freshly built** topology tree
+    /// ([`crate::solution::topology::get_topology`], Pascal
+    /// `TDSSCircuit.GetTopology`, r4133 `Common/Circuit.pas:2932-2950`).
+    ///
+    /// `&mut self` because building the tree stamps the Pascal flags upstream
+    /// stamps — `Checked` / `Terminals[i].Checked` cleared, `IsIsolated` set on
+    /// every circuit element "till proven otherwise", `BusChecked` cleared
+    /// (r4133 `Common/Circuit.pas:2937-2947`) — and then clears `IsIsolated` on
+    /// everything the walk from `Sources.First` reaches. Upstream's first
+    /// `Topology` read does exactly the same to its own circuit, which is why the
+    /// live gate reads this surface **last** in a checkpoint.
+    ///
+    /// Empty (`TopologyView::default()`) when no circuit exists — upstream's
+    /// `ActiveTree` guard (capi `CAPI_Topology.pas:47-63`, r4133's
+    /// `if topo <> nil`) returns the same zeros / `NONE` sentinels there.
+    ///
+    /// This is a second, independent consumer of `get_topology`; the
+    /// `Show Topology` report (`report/show/topology.rs`) keeps its own walk.
+    pub fn topology_view(&mut self) -> TopologyView {
+        use crate::elements::ckt::ElemFlags;
+        let Dss {
+            classes, circuit, ..
+        } = self;
+        let Some(ckt) = circuit.as_mut() else {
+            return TopologyView::default();
+        };
+        // The build needs the element store mutably; names are read back once
+        // that borrow ends (the `show_topology` pattern).
+        let mut tree = {
+            let mut store = ClassStore { classes };
+            crate::solution::topology::get_topology(ckt, &mut store)
+        };
+        let classes: &[DssClass] = classes;
+        let full_name = |r: ElemId| -> String {
+            format!(
+                "{}.{}",
+                classes[r.class_ord()].props.class_name(),
+                classes[r.class_ord()].arena[r.index()].data().name()
+            )
+        };
+
+        // One walk feeds both loop quantities (r4133 `DTopology.pas:67-77` for the
+        // count, `:280-303` for the pairs; capi `CAPI_Topology.pas:90-97` /
+        // `:173-199`): `NumLoops` counts the `IsLoopedHere` nodes and halves,
+        // while every looped node contributes one `(branch, LoopLineObj)`
+        // CANDIDATE, in walk order and before any dedup — the same sequence
+        // upstream feeds into its own scan (`DTopology.pas:283-285`; capi
+        // `CAPI_Topology.pas:177-179`).
+        let mut looped_here = 0i32;
+        let mut looped_pair_candidates: Vec<(String, String)> = Vec::new();
+        let mut pd = tree.first();
+        while let Some(pd_ref) = pd {
+            let (is_looped, loop_elem) = {
+                let node = tree.present_node();
+                (node.is_looped, node.loop_elem)
+            };
+            if is_looped {
+                looped_here += 1;
+                // Pascal reads `PresentBranch.LoopLineObj` unguarded; the port's
+                // `loop_elem` is set together with `is_looped`
+                // (`solution/topology.rs:178-190`), so `None` is unreachable —
+                // and a missing partner must not invent a pair either way.
+                if let Some(le) = loop_elem {
+                    looped_pair_candidates.push((full_name(pd_ref), full_name(le)));
+                }
+            }
+            pd = tree.go_forward();
+        }
+
+        // Dedup semantics: both oracles scan their flat `[a0, b0, a1, b1, ...]`
+        // buffer with `i := 1; while (i <= k); i := i + 1` (r4133
+        // `DTopology.pas:286-296`, capi `CAPI_Topology.pas:180-190`), i.e. over
+        // *overlapping* windows `(buf[i-1], buf[i])` — so a candidate that happens
+        // to coincide with a straddling window `(b_j, a_{j+1})` is dropped although
+        // that pair was never found. The port implements the stated intent ("see if
+        // we already found this pair", `DTopology.pas:286`): a candidate is dropped
+        // only when an already-stored PAIR matches it in either orientation
+        // (CLAUDE.md — an upstream defect is never reproduced in any lane). The
+        // difference is not hidden: the raw candidate sequence stays available as
+        // `TopologyView::looped_pair_candidates`, and the live gate re-applies the
+        // window scan to it and requires the oracle list back (decision D16).
+        let mut looped_pairs: Vec<(String, String)> = Vec::new();
+        for pair in &looped_pair_candidates {
+            let seen = looped_pairs
+                .iter()
+                .any(|(a, b)| (a == &pair.0 && b == &pair.1) || (a == &pair.1 && b == &pair.0));
+            if !seen {
+                looped_pairs.push(pair.clone());
+            }
+        }
+
+        // The isolated lists walk the circuit's own PD / PC pointer lists in
+        // creation order and keep what the walk above never reached (r4133
+        // `DTopology.pas:79-88` / `:89-98` for the counts, `:322-356` / `:357-392`
+        // for the names; capi `CAPI_Topology.pas:302-316` / `:448-462` and
+        // `:114-151` / `:369-405`). Count and list come from the same filter, so
+        // the two can never disagree — as they cannot upstream, where each pair is
+        // the same loop over the same list.
+        let isolated = |refs: &[ElemId]| -> Vec<String> {
+            refs.iter()
+                .copied()
+                .filter(|&r| {
+                    classes[r.class_ord()]
+                        .arena
+                        .try_ckt_elem(r.index())
+                        .is_some_and(|e| e.cd().flags.contains(ElemFlags::IS_ISOLATED))
+                })
+                .map(&full_name)
+                .collect()
+        };
+        let isolated_branches = isolated(&ckt.pd_elements);
+        let isolated_loads = isolated(&ckt.pc_elements);
+
+        TopologyView {
+            num_loops: looped_here / 2,
+            num_isolated_branches: isolated_branches.len() as i32,
+            num_isolated_loads: isolated_loads.len() as i32,
+            looped_pairs,
+            isolated_branches,
+            isolated_loads,
+            looped_pair_candidates,
         }
     }
 }

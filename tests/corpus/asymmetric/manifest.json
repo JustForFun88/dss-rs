@@ -416,6 +416,7 @@
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
+   "compare_topology": true,
    "selected_elements": [
     "Line.lfa",
     "Line.lfb",
