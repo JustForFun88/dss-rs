@@ -431,19 +431,22 @@ impl LedgerRuntime {
     /// caused it.
     ///
     /// The predicate is the runner's own, read back off the recorded hits: an
-    /// `exclusion` entry with a `voltages` scope that carries no `name_re` (a
-    /// named scope never matches the unnamed `excluded("voltages", None, …)`
-    /// call) and that actually fired. `excluded()` is the only writer of a
-    /// `voltages` scope's `hit` flag — `voltage_keep_mask` marks the ENTRY, not
-    /// the scope — and the bus block is its only caller, so a scope listed here
-    /// suppressed arrays on this run and one that is silent did not.
+    /// `exclusion` entry with a deck-wide `voltages` scope (no `name_re`, no
+    /// `node_re` — see [`LedgerView::bus_arrays_suppressed`]) that actually
+    /// fired. That method is the only writer of a `voltages` scope's `hit` flag
+    /// — `voltage_keep_mask` marks the ENTRY, not the scope — and the bus block
+    /// is its only caller, so a scope listed here suppressed arrays on this run
+    /// and one that is silent did not.
     pub(crate) fn bus_array_suppressions(&self) -> Vec<(String, String, EngineChannel)> {
         self.entries
             .iter()
             .filter(|e| e.kind == Kind::Exclusion)
             .filter(|e| {
                 e.scopes.iter().any(|s| {
-                    s.field == "voltages" && s.name_re.is_none() && s.hit.load(Ordering::Relaxed)
+                    s.field == "voltages"
+                        && s.name_re.is_none()
+                        && s.node_re.is_none()
+                        && s.hit.load(Ordering::Relaxed)
                 })
             })
             .map(|e| (e.case.clone(), e.id.clone(), e.channel))
@@ -717,6 +720,46 @@ impl LedgerView<'_> {
                     sc.hit.store(true, Ordering::Relaxed);
                     hit = true;
                 }
+            }
+        }
+        hit
+    }
+
+    /// The D11(2) bus-array normalization's predicate — deliberately NARROWER
+    /// than [`Self::excluded`]`("voltages", None, step)`.
+    ///
+    /// `harness::compare_bus` / `compare_all_bus_vmag_pu` drop the three
+    /// continuous per-bus arrays when this (case, channel)'s node voltages are
+    /// already ledger-excluded at this step, because the arrays are exact images
+    /// of exactly those node voltages — one structural rule instead of a ledger
+    /// row per case. That argument holds only for a scope that excludes the
+    /// WHOLE node set: a `voltages` scope carrying a `node_re` excludes a SUBSET
+    /// of nodes ([`Self::voltage_keep_mask`] drops only the matching ones) while
+    /// the bus arrays cover every bus of the case, so honouring it here would
+    /// suppress far more than the triaged cause. Such a scope therefore
+    /// suppresses nothing: the bus arrays stay compared, and a divergence that
+    /// survives is triaged in its own right (or the exclusion is widened
+    /// deliberately — D10). `name_re` is refused for the reason
+    /// `excluded(…, None, …)` refuses it: a named scope never applies to an
+    /// unnamed artifact.
+    ///
+    /// This is the ONLY writer of a `voltages` scope's `hit` flag, which is what
+    /// makes [`LedgerRuntime::bus_array_suppressions`] an exact report of the
+    /// suppressions this run actually performed (G1.4a audit settlement AC-1/T3).
+    pub(crate) fn bus_arrays_suppressed(&self, step: usize) -> bool {
+        let mut hit = false;
+        for e in self.entries().filter(|e| e.kind == Kind::Exclusion) {
+            for sc in &e.scopes {
+                if sc.field != "voltages"
+                    || !sc.applies_step(step)
+                    || sc.name_re.is_some()
+                    || sc.node_re.is_some()
+                {
+                    continue;
+                }
+                Self::mark_applied(e);
+                sc.hit.store(true, Ordering::Relaxed);
+                hit = true;
             }
         }
         hit
@@ -2122,19 +2165,24 @@ fn a_voltages_exclusion_that_masks_nothing_is_stale() {
 ///
 /// Driven both ways on synthetic entries, because the report is only worth
 /// printing if it tracks the runner's own predicate: it must appear exactly when
-/// `excluded("voltages", None, step)` fired (that call being the sole writer of a
-/// `voltages` scope's `hit` flag), stay silent for an entry that was never
+/// [`LedgerView::bus_arrays_suppressed`] fired (that call being the sole writer
+/// of a `voltages` scope's `hit` flag), stay silent for an entry that was never
 /// consulted, and never claim a suppression for a `voltages` scope carrying a
-/// `name_re` — which the unnamed call can never match — or for a
-/// divergence-kind entry, which `excluded()` ignores.
+/// `name_re` — which the unnamed artifact can never match — for one carrying a
+/// `node_re` — which excludes a node SUBSET, far narrower than every bus of the
+/// case (G1.4a audit settlement AC-1/T3) — or for a divergence-kind entry, which
+/// the exclusion path ignores.
 #[test]
 fn a_suppressed_bus_array_is_named_with_the_entry_that_caused_it() {
     fn scope(field: &str, name_re: Option<&str>) -> Scope {
+        scope_n(field, name_re, None)
+    }
+    fn scope_n(field: &str, name_re: Option<&str>, node_re: Option<&str>) -> Scope {
         Scope {
             field: field.to_string(),
             policy: None,
             steps: None,
-            node_re: None,
+            node_re: node_re.map(|r| Regex::new(r).expect("test regex")),
             name_re: name_re.map(|r| Regex::new(r).expect("test regex")),
             channel_idx: None,
             channels: Vec::new(),
@@ -2181,6 +2229,12 @@ fn a_suppressed_bus_array_is_named_with_the_entry_that_caused_it() {
                 vec![scope("voltages", Some("^b1$"))],
             ),
             entry(
+                "node-scoped",
+                "synthetic:node_scoped.dss",
+                Kind::Exclusion,
+                vec![scope_n("voltages", None, Some("(?i)^b3\\.[123]$"))],
+            ),
+            entry(
                 "divergence",
                 "synthetic:divergence.dss",
                 Kind::Divergence,
@@ -2197,19 +2251,41 @@ fn a_suppressed_bus_array_is_named_with_the_entry_that_caused_it() {
     // `harness::compare_bus` drop the three arrays.
     assert!(
         rt.view("synthetic:fires.dss", EngineChannel::CapiV0145)
-            .excluded("voltages", None, 0),
-        "the unnamed voltages exclusion must fire for its own case"
+            .bus_arrays_suppressed(0),
+        "the deck-wide voltages exclusion must fire for its own case"
     );
-    // The named and divergence entries are consulted on their own cases and
-    // must NOT report: `excluded` never matches a `name_re` scope against an
-    // unnamed artifact, and never honours a divergence entry.
-    for case in ["synthetic:named.dss", "synthetic:divergence.dss"] {
+    // The named, node-scoped and divergence entries are consulted on their own
+    // cases and must NOT report: a `name_re` scope never applies to an unnamed
+    // artifact, a `node_re` scope excludes a node subset (never every bus of the
+    // case), and a divergence entry is not an exclusion.
+    for case in [
+        "synthetic:named.dss",
+        "synthetic:node_scoped.dss",
+        "synthetic:divergence.dss",
+    ] {
         assert!(
             !rt.view(case, EngineChannel::CapiV0145)
-                .excluded("voltages", None, 0),
+                .bus_arrays_suppressed(0),
             "{case}: this scope must not suppress the bus arrays"
         );
     }
+    // …and the node-scoped one is still a live voltages exclusion for the node
+    // channel itself: `voltage_keep_mask` drops exactly the matching node.
+    let keep = rt
+        .view("synthetic:node_scoped.dss", EngineChannel::CapiV0145)
+        .voltage_keep_mask(
+            0,
+            &["b3.1".to_string(), "b4.1".to_string()],
+            &[1.0, 0.0, 1.0, 0.0],
+            &[1.0, 0.0, 1.0, 0.0],
+            &crate::harness::tol_for("feeder"),
+            "settlement drive",
+        );
+    assert_eq!(
+        keep,
+        Some(vec![false, true]),
+        "a node-scoped voltages exclusion must still mask its own node"
+    );
     let got = rt.bus_array_suppressions();
     assert_eq!(
         got,
