@@ -4284,6 +4284,10 @@ fn every_pin_the_g13d1_record_names_exists_and_is_cited() {
             "crates/dss-core/tests/harness/mod.rs",
         ),
         (
+            "the_r4133_zero_sentinel_is_undecidable_and_the_census_is_the_guard",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
             "the_meter_name_is_compared_without_case_folding",
             "crates/dss-core/tests/harness/mod.rs",
         ),
@@ -4376,7 +4380,7 @@ fn every_pin_the_g13d1_record_names_exists_and_is_cited() {
         (
             "harness::element_extras_pins",
             "crates/dss-core/tests/harness/mod.rs",
-            18,
+            19,
         ),
         (
             "corpus_manifest::extras_population",

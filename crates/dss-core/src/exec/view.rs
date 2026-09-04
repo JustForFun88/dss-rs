@@ -128,7 +128,7 @@ pub struct ElementSnapshot {
     /// `exec::tests::element_extras::node_order_matches_the_export_nodeorder_row`).
     ///
     /// **Empty** when the element has no `NodeRef` yet (never energized — the
-    /// state where capi raises 15013 at `CAPI_Alt.pas:960-966` and r4133
+    /// state where capi raises 15013 at `CAPI_CktElement.pas:900-906` and r4133
     /// dereferences nil at `DCktElement.pas:1048`) or when it has no terminals
     /// at all (`UPFCControl`, r4133 `Controls/UPFCControl.pas:230-246`). A
     /// `NodeRef` shorter than `yorder` — reachable on a *disabled* element that
@@ -431,12 +431,12 @@ impl Dss {
             // touched (`GOLDEN_REBASE_PLAN.md` WP-G1: no golden byte moves).
             // `yorder == nterms · nconds` by construction (`elements/ckt.rs:326`),
             // which is the length both oracles allocate
-            // (r4133 `DCktElement.pas:1043`, capi `CAPI_Alt.pas:968`).
+            // (r4133 `DCktElement.pas:1043`, capi `CAPI_CktElement.pas:908`).
             //
             // Both engines answer this from `NodeRef` alone, with no `Enabled`
             // guard, so the empty answer here means exactly "no mapping yet":
             // it is the state where capi warns 15013 and returns its
-            // `DefaultResult` (`CAPI_Alt.pas:960-966`) and r4133, which has no
+            // `DefaultResult` (`CAPI_CktElement.pas:900-906`) and r4133, which has no
             // guard, dereferences the nil pointer at `:1048`. A `NodeRef`
             // shorter than `yorder` (a disabled element that grew phases —
             // see the `voltages_mag_ang` note above) reads its missing slots as

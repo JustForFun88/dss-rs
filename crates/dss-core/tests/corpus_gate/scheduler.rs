@@ -436,6 +436,15 @@ fn the_derived_forcing_rule_is_every_live_non_large_case_plus_the_opt_ins() {
 /// expected set carries no exception, so a manifest key switching the flag on
 /// for a `large` deck reds here instead of quietly widening the population
 /// ([`force_element_extras`] documents why there is nothing to opt in).
+///
+/// The model here (`live && !large`, for **every** source) is one notch stricter
+/// than [`force_element_extras`], whose `large` exception sits on the
+/// `solvable_now` arm alone — the family arm ORs the flag on with no `kind`
+/// test. The two agree only while no family deck is `large`, so that premise is
+/// asserted rather than assumed (the
+/// [`the_property_forcing_rule_is_every_live_non_large_case`] precedent, G1.3d(i)
+/// audit settlement 2026-09-05): a family deck growing into `large` is a review,
+/// not a silently forced extras sweep and not a confusing red here.
 #[test]
 fn the_element_extras_forcing_rule_is_every_live_non_large_case() {
     let cases = build_unified_cases();
@@ -444,7 +453,17 @@ fn the_element_extras_forcing_rule_is_every_live_non_large_case() {
     for uc in &cases {
         let live = uc.class == CaseClass::Live;
         let large = uc.case.kind.starts_with("large");
-        // The rule, per source: every live case, minus `large` on `solvable_now`.
+        let family = uc.label.split(':').next() != Some("solvable_now");
+        assert!(
+            !(family && large),
+            "{}: a family deck is `kind={}` — `force_element_extras`' family arm carries no \
+             `large` cost guard, so this case would be extras-forced without review. Add the \
+             guard, or re-classify the deck.",
+            uc.label,
+            uc.case.kind
+        );
+        // The rule, per source: every live case, minus `large` on `solvable_now`
+        // (equivalently `live && !large` while the assert above holds).
         let expected = live && !large;
         if uc.case.compare_element_extras != expected {
             wrong.push(format!(
