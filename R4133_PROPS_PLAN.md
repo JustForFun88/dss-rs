@@ -178,6 +178,9 @@ preconditions met — the 20 mixed echo rows narrowed per cell, the eight staged
 before it. §RP3.11 followed on 2026-09-03 (`KEEP_LIVE_PINNED`, both surfaces);
 §RP3.10 followed on 2026-09-04 — outside this rule, as the next paragraph
 says, and now executed.)*
+*(**§RP5.1 landed 2026-09-04** — `dd0b9e5b` + `8802fb6a`, docs only, gate green
+in both lanes; see the dated line in §RP5.1. Only §RP5.2 and the closeout
+remain.)*
 **Two RP3 sub-steps are deliberately outside that rule** — three since
 2026-09-03, when the plan owner accepted §RP3.13 (last sentence of this
 block). **§RP3.10** (the
@@ -2747,6 +2750,21 @@ already covers this plan; verify the gate section needs no change. The
 walks — the new tables are harness code, not compat aliases). **Acceptance:**
 every doc claim added here cites the landed code line; doc tests green.
 Outcome: the machinery is discoverable without reading this plan.
+
+**Landed 2026-09-04** — `dd0b9e5b` (the sub-step: the new `TESTING.md` claim-chain
+section and the r4133 triage procedure, the `tests/TOLERANCE_NOTES.md`
+cross-check, two stale doc comments in `props_norm.rs`; 46 `file.rs:LINE`
+citations over 6 code files), `8802fb6a` (audit settlement: 8 findings — 6
+fixed, 2 refuted and recorded for RP5.2) and this docs commit. Documentation
+only: zero product-crate lines, zero table rows, zero tolerances, zero golden
+bytes, zero ledger entries. Gate green in both lanes — **4 498 passed / 0 failed
+/ 5 ignored** per lane over 74 binaries (+1 on the RP5.1 baseline: the twelfth
+`oracle_parity_cfg_gate` test); `lane_diff` not owed (no `src/` line moved).
+**Acceptance met, and upgraded:** the settlement turned "every doc claim cites
+the landed code line" from a hand-verification into
+`operational_docs_line_citations_point_at_the_line_they_name`, which resolves and
+anchors all **58** citations in `TESTING.md` + `tests/TOLERANCE_NOTES.md` on
+every run. Full record: `docs/phase-records/r4133-props-rp5.md` §RP5.1.
 
 ### RP5.2 — closing record
 
