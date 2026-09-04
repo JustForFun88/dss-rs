@@ -354,8 +354,13 @@ fn generator_force_inj_freezes_iterminal() {
 /// which the port matched to a faer-vs-KLU floor while it still reproduced the
 /// missing arm; the port now freezes at the values below — the same real part on
 /// conductor 1 to ≈0.1 A, with the reactive dispatch showing in the imaginary
-/// parts. What this test asserts is unchanged: the guard freezes `GetCurrents`
-/// at the pre-force operating point, whatever that point is.
+/// parts. Both sets are asserted: the port must sit on its own frozen point
+/// **and** stay off r4133's (`> 1e-6`), so the oracle leg survives as an
+/// assertion instead of as prose, and a regression of the constant-Q arm —
+/// which would put the port back on r4133's numbers — reds this test as well
+/// as the four `windgen::tests` pins. What the test asserts about the guard
+/// itself is unchanged: it freezes `GetCurrents` at the pre-force operating
+/// point, whatever that point is.
 #[test]
 fn windgen_force_inj_freezes_iterminal() {
     let mut dss = Dss::new();
@@ -383,16 +388,28 @@ fn windgen_force_inj_freezes_iterminal() {
         .iter()
         .find(|e| e.name.eq_ignore_ascii_case("WindGen.w1"))
         .expect("WindGen.w1 in snapshot");
-    // The frozen pre-force currents of THIS engine (RP3.10 constant-Q dispatch);
-    // r4133 freezes at its own zero-var point [-89.231224, -11.202775,
-    // 34.913725, 82.877894, 54.317500, -71.675120] (see the doc above).
-    // WITHOUT the guard the port recomputes [-110.744, -31.467, …] (fails here).
+    // The frozen pre-force currents of THIS engine (RP3.10 constant-Q
+    // dispatch). WITHOUT the guard the port recomputes [-110.744, -31.467,
+    // …] (fails here).
     let frozen = [
         Complex64::new(-89.136_414_184_261_7, 18.879_903_493_579_636),
         Complex64::new(60.918_683_146_319_42, 67.754_447_332_089_28),
         Complex64::new(28.217_731_026_031_643, -86.634_350_838_908_26),
     ];
-    for (k, &want) in frozen.iter().enumerate() {
+    // r4133's own frozen set on this exact deck (epri-worker, EPRI r4133 DLL
+    // 11.0.0.1, `set InjCurrent=[400 0 400 0 400 0]` + re-solve, re-probed at
+    // the RP3.10 audit settlement): it freezes at its zero-var operating
+    // point, which is a DIFFERENT point — that is the divergence this deck
+    // carries, and asserting it keeps the oracle inside the assertion instead
+    // of only in the prose. It is also a second way to catch a regression of
+    // the constant-Q arm: revert `nominal.rs`'s mode-0 arm and the port lands
+    // ON these numbers, which reds the second assertion below.
+    let r4133 = [
+        Complex64::new(-89.231_224_458_194_29, -11.202_774_501_306_344),
+        Complex64::new(34.913_724_927_561_354, 82.877_894_438_227_46),
+        Complex64::new(54.317_499_523_801_17, -71.675_119_953_123_74),
+    ];
+    for (k, (&want, &oracle)) in frozen.iter().zip(r4133.iter()).enumerate() {
         let got = wg.currents[k];
         assert!(
             (got.re - want.re).abs() < 1e-6 && (got.im - want.im).abs() < 1e-6,
@@ -400,6 +417,14 @@ fn windgen_force_inj_freezes_iterminal() {
              value {want} (dropping the ForceInjCurr guard recomputes it ≈50 A \
              off; r4133 freezes at its own zero-var operating point, cause \
              `windgen-qmode0-no-arm`)"
+        );
+        assert!(
+            (got - oracle).norm() > 1e-6,
+            "WindGen forced current[{k}] {got} must NOT be r4133's frozen \
+             {oracle}: the deck types no `QMode=`, so this engine dispatches \
+             kvarBase where r4133 dispatches 0 (cause `windgen-qmode0-no-arm`) \
+             — landing on the oracle's point means the constant-Q arm \
+             regressed"
         );
     }
 }

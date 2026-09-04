@@ -5314,7 +5314,8 @@ const RP310_WINDGEN_PINS: &[(&str, &str, bool)] = &[
     ),
     (
         "elements::pc::windgen::tests::qmode0_dispatch_carries_the_sign_and_scales_with_genmult",
-        "the sign lives in kvarBase (no LeadLag re-application) and `Factor` still \
+        "the sign comes from PFNominal through LeadLag, as arm 1 does \
+         (a typed `kVA=` strips it from kvarBase), and `Factor` still \
          applies, `WindGen.pas:1325` sitting outside the `case`",
         true,
     ),

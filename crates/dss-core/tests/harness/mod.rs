@@ -4085,6 +4085,83 @@ pub fn compare_variables(
     }
 }
 
+#[cfg(test)]
+mod variables_exclusion_name_safety {
+    use super::{VariablesCap, compare_variables};
+    use dss_core::exec::Dss;
+
+    /// A WindGen solved once — the element the RP3.10 `variables`
+    /// exclusions are written against; it exposes the 22 WTG3 state
+    /// variables in both lanes.
+    fn solved() -> (Dss, Vec<f64>, Vec<String>) {
+        let mut dss = Dss::new();
+        for c in [
+            "clear",
+            "new circuit.nm basekv=0.69 phases=3 bus1=srcbus",
+            "new line.l1 bus1=srcbus bus2=wbus phases=3 r1=0.005 x1=0.02 length=1",
+            "new windgen.w1 bus1=wbus phases=3 kv=0.69 kW=1500 kva=1800 conn=wye \
+             model=1 vss=1 pss=1 qss=0 vwind=12",
+            "set voltagebases=[0.69]",
+            "calcvoltagebases",
+            "solve",
+        ] {
+            dss.command(c);
+        }
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let values = dss.element_variables("WindGen.w1").expect("variables");
+        let names = dss.element_variable_names("WindGen.w1").expect("names");
+        (dss, values, names)
+    }
+
+    /// The negative drive of the name-safety assert in
+    /// [`super::compare_variables`] (RP3.10 audit settlement, finding AT-4):
+    /// when the ledger excludes an index by the PORT's name for it, and the
+    /// oracle calls that same index something else, the exclusion would drop
+    /// a different variable than the one it names — that must abort the
+    /// comparison, not slide onto a clean channel. Asserted here by driving
+    /// the guard with a `var_names` list whose excluded index disagrees.
+    #[test]
+    #[should_panic(expected = "the exclusion would drop a different variable")]
+    fn an_excluded_index_whose_oracle_name_differs_aborts() {
+        let (mut dss, values, names) = solved();
+        let mut oracle_names = names.clone();
+        oracle_names[6] = "SomethingElse".to_string();
+        let exp = VariablesCap {
+            name: "WindGen.w1".to_string(),
+            var_names: oracle_names,
+            values,
+        };
+        compare_variables(
+            &mut dss,
+            &exp,
+            &super::tol_for("micro_wtg3_dynamics"),
+            "name-safety drive",
+            &|n: &str| n.eq_ignore_ascii_case("Qgen"),
+        );
+    }
+
+    /// The same drive with the names in agreement passes — the guard is
+    /// about a MISMATCH, not about excluding at all.
+    #[test]
+    fn an_excluded_index_whose_names_agree_is_dropped_quietly() {
+        let (mut dss, values, names) = solved();
+        let mut corrupted = values.clone();
+        corrupted[6] = 1.0e9; // would red loudly if it were still compared
+        let exp = VariablesCap {
+            name: "WindGen.w1".to_string(),
+            var_names: names,
+            values: corrupted,
+        };
+        compare_variables(
+            &mut dss,
+            &exp,
+            &super::tol_for("micro_wtg3_dynamics"),
+            "name-safety drive",
+            &|n: &str| n.eq_ignore_ascii_case("Qgen"),
+        );
+    }
+}
+
 /// One documented per-rev event-log normalization (§1.3-3): a literal substring
 /// `find` replaced by `to` on **both** engines' lines before comparison. `note`
 /// cites the `tests/TOLERANCE_NOTES.md` §"r4133 event-log masks" entry that

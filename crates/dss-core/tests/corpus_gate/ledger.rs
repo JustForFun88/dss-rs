@@ -134,6 +134,12 @@ struct Scope {
     oracle: Option<Value>,
     num_rel: Option<f64>,
     line_re: Option<Regex>,
+    /// Per-SCOPE hit accounting, policed for `variables` scopes by
+    /// `assert_all_hit`. The entry-level `applied` flag cannot see a dead
+    /// per-value mask: an entry that also carries `voltages`/`element` scopes
+    /// stays `applied` through them, so a `variables` `name_re` that stops
+    /// matching (a renamed state variable, a typo) would silently mask nothing.
+    hit: AtomicBool,
 }
 
 impl Scope {
@@ -352,6 +358,27 @@ impl LedgerRuntime {
                     "  ledger entry `{}` ({:?}, {:?}) recorded zero hits.",
                     e.id, e.case, e.channel
                 ));
+                continue;
+            }
+            // Per-value masks need their own liveness: `applied`/`exceeded` are
+            // per ENTRY, so a dead `variables` scope on an entry that also
+            // excludes voltages would never be reported. Each `variables` scope
+            // must have matched at least one variable this run.
+            for sc in e.scopes.iter().filter(|sc| sc.field == "variables") {
+                if !sc.hit.load(Ordering::Relaxed) {
+                    problems.push(format!(
+                        "  ledger entry `{}` ({:?}, {:?}) has a STALE \
+                         `variables` scope {:?} — it matched no state \
+                         variable this run (a renamed variable, or the \
+                         divergence is gone). Prune or re-scope it; the \
+                         other scopes of this entry cannot report a dead \
+                         per-value mask.",
+                        e.id,
+                        e.case,
+                        e.channel,
+                        sc.name_re.as_ref().map(|r| r.as_str()).unwrap_or("<all>")
+                    ));
+                }
             }
         }
         if problems.is_empty() {
@@ -498,6 +525,7 @@ fn compile_scope(id: &str, s: &RawScope) -> Scope {
         oracle: s.oracle.clone(),
         num_rel: s.num_rel,
         line_re: mk(&s.line_re),
+        hit: AtomicBool::new(false),
     }
 }
 
@@ -563,6 +591,7 @@ impl LedgerView<'_> {
                 };
                 if m {
                     Self::mark_applied(e);
+                    sc.hit.store(true, Ordering::Relaxed);
                     hit = true;
                 }
             }
@@ -1663,6 +1692,7 @@ fn every_exclusion_field_is_honoured_by_the_runtime() {
             oracle: None,
             num_rel: None,
             line_re: None,
+            hit: AtomicBool::new(false),
         }
     }
     fn entry(id: &str, kind: Kind, scopes: Vec<Scope>) -> Entry {
@@ -1786,6 +1816,7 @@ fn property_scope_keys_names_the_cells_the_gate_would_handle() {
             oracle: None,
             num_rel: None,
             line_re: None,
+            hit: AtomicBool::new(false),
         }
     }
     fn entry(kind: Kind, scopes: Vec<Scope>) -> Entry {
@@ -1892,6 +1923,7 @@ fn a_voltages_exclusion_that_masks_nothing_is_stale() {
             oracle: None,
             num_rel: None,
             line_re: None,
+            hit: AtomicBool::new(false),
         }
     }
     let mk = |field: &str, exceeded: bool| LedgerRuntime {
@@ -1922,7 +1954,7 @@ fn a_voltages_exclusion_that_masks_nothing_is_stale() {
     // The coarse fields carry no verdict, so they are not policed here — a rule
     // that reported them stale would red the gate on every honest entry.
     for field in EXCLUSION_FIELDS {
-        if field == "voltages" {
+        if field == "voltages" || field == "variables" {
             continue;
         }
         assert!(
@@ -1930,6 +1962,28 @@ fn a_voltages_exclusion_that_masks_nothing_is_stale() {
             "{field:?}-only exclusion was wrongly reported stale"
         );
     }
+
+    // `variables` is the one per-VALUE exclusion field, and it is policed by
+    // its own per-SCOPE hit flag rather than by the entry's `exceeded_floor`:
+    // a `name_re` that stops matching (a renamed state variable) would leave
+    // the entry `applied` through its other scopes and mask nothing in silence.
+    // Both directions (RP3.10 audit settlement, finding AT-4).
+    let vars_unhit = mk("variables", true);
+    let err = vars_unhit
+        .assert_all_hit()
+        .expect_err("a `variables` scope that matched nothing must fail the gate");
+    assert!(
+        err.contains("STALE `variables` scope") && err.contains("canary"),
+        "wrong failure text: {err}"
+    );
+    let vars_hit = mk("variables", true);
+    vars_hit.entries[0].scopes[0]
+        .hit
+        .store(true, Ordering::Relaxed);
+    assert!(
+        vars_hit.assert_all_hit().is_ok(),
+        "a `variables` scope that matched a variable must pass"
+    );
 }
 
 #[test]

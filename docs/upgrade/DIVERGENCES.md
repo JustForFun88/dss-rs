@@ -2407,12 +2407,36 @@ is a literal no-op there.
 
 **Decision — fix it in both lanes, never reproduce it** (CLAUDE.md's 2026-08-02
 policy). `crates/dss-core/src/elements/pc/windgen/nominal.rs` gains one
-unconditional arm, `0 => kvar_calc = self.kvar_base`, with no `cfg`, no
-`compat::` alias and no `kVArating` clamp (`|kvarBase| <= kVArating` is a
-`RecalcElementData` invariant, `:1375-1384`) and no `LeadLag` re-application (the
-sign already lives in `kvar_base`); `Factor` (`GenMultiplier`) still applies
-because `:1325` sits outside the `case`. The `_` arm keeps upstream's `Else` for
-out-of-range modes. `lane_diff` measured `max |Δ| = 0` on every gated kind, so
+unconditional arm — `kvar_base` read raw where `kVA=` is unset (it already
+carries the `pf` sign there), `|kvar_base|` with `lead_lag = -1` for
+`PFNominal < 0` where a typed `kVA=` has stripped it, which is arm 1's own sign
+discipline (`:1286-1287`) — with no `cfg`, no
+`compat::` alias and no `kVArating` clamp: arm 1's saturation test cannot fire,
+because `kVATmp = sqrt(Pg² + kvarCalc²)` is `Pg/|PF|` while `Pg` is capped at
+`kWBase` (`:1268-1269`), so `kVATmp <= kWBase/|PF| == kVArating` bit-for-bit
+(measured on `3000/0.95`, `1584/0.88` and `1080/0.9`). Taking `kvar_base` raw
+instead would dispatch the opposite sign whenever a deck types `kVA=`:
+`RecalcElementData`'s kVA-set branch re-derives `kvarBase := sqrt(kVArating² −
+kWBase²)` (`:1377-1378`), a non-negative root that strips the sign a typed
+`pf<0`/`kvar<0` put there. Probed live on r4133 for `kW=1000 kVA=1200 pf=-0.9`:
+arm 1 gives terminal `Q = +523.0678462465884` kvar (the machine **absorbs** —
+the documented meaning of `pf<0`) while upstream's own `model=4`, reading the
+stripped base through `varBase`, gives `-523.0475290915948` (injecting); this
+engine's mode 0 follows arm 1, pinned by
+`::qmode0_dispatch_carries_the_sign_and_scales_with_genmult`. `Factor`
+(`GenMultiplier`) still applies because `:1325` sits outside the `case`. The `_`
+arm keeps upstream's `Else` for out-of-range modes.
+
+The dispatch feeds `Yeq := (Pnominalperphase − j·Qnominalperphase)/Vbase²`
+(`:1338`, with `Yeq95`/`Yeq105` derived from it), so the arm moves **every**
+WindGen `GenModel` that reads `Yeq` — not only the constant-P/Q model 1 the
+corpus exercises: model 2 (constant Z) takes its whole current from `Yeq`, and
+model 6 (user model) seeds `InjCurrent` from the same `YPrim`. Models 4/5
+(`DoFixedQGen`/`DoFixedQZGen`) read `varBase` instead and are untouched; models
+3/7 are out of scope in the port and fall into its constant-PQ arm. Every
+`modes:windgen` deck declares `model=1`, so nothing beyond the four gated decks
+moves in the measured population — the exposure table above is complete for what
+the gate compares, not a claim that mode 0 only touches model 1. `lane_diff` measured `max |Δ| = 0` on every gated kind, so
 both lanes compute the identical `q_nominal_per_phase`.
 
 **Exclusions and pins.** The four decks' divergence is excluded field-by-field

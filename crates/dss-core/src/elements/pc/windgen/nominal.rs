@@ -241,25 +241,63 @@ impl WindGen {
                 // transcribe because its `ShapeFactor` carries the wind SPEED, not a
                 // pu multiplier (`:1241`), and dropped.
                 //
-                // No `kVArating` clamp: `|kvarBase| <= kVArating` is an invariant
-                // `RecalcElementData` re-establishes at every `Edit` tail
-                // (`:1375-1384`), and arm 1's clamp — whose own fallback is
-                // `kvarBase` — is dead by that same construction (measured). No
-                // `LeadLag` either: the sign already lives in `kvar_base`
-                // (`sync_up_power_quantities` above; `WindGen.pas:3028` / the typed
-                // `kvar=` `:3001`), and re-applying `LeadLag` would double-negate —
-                // arm 1 reaches the same signed answer by putting the sign in
-                // `LeadLag` over a non-negative `sqrt` (probed: `pf=-0.9` gives
-                // `+484.32` through either path). `Factor` (`GenMultiplier`) still
-                // applies: `:1325` sits OUTSIDE the `case` (probed: `Set genmult=0.5`
-                // halves the dispatch, exactly as it halves arm 1's).
+                // No `kVArating` clamp, because arm 1's saturation test can
+                // never fire: `kVATmp = sqrt(Pg² + kvarCalc²)` is `Pg/|PF|` and
+                // `Pg` is capped at `kWBase` a few lines above (`:1268-1269`),
+                // so `kVATmp <= kWBase/|PF| == kVArating` — measured, and
+                // bit-for-bit equal at the cap (`3000/0.95`, `1584/0.88`,
+                // `1080/0.9` all land exactly on the rating, never above it).
+                // That same identity is why arm 1's dispatch *coincides* with
+                // `kvarBase` to 1 ulp whenever the wind caps `Pg`, and its
+                // saturation fallback is `kvarBase` in any case (`:1284`).
+                //
+                // The SIGN, and why the arm splits on `kVANotSet`
+                // (`R4133_PROPS_PLAN.md` §RP3.10 audit settlement, finding
+                // RP310-CODE-1). The `pf` convention is "kW and kvar carry
+                // OPPOSITE signs when `PFNominal < 0`". With `kVA=` unset
+                // `kvarBase` already carries exactly that sign, for every
+                // combination of `kW`/`pf` signs — `sync_up_power_quantities`
+                // negates it when `pf<0` (`:3028`) and a typed `kvar<0` goes in
+                // straight (`Set_Presentkvar`, `:3001`) — so the base is read
+                // raw there and this arm moves nothing. When a deck types
+                // `kVA=`, `RecalcElementData` re-derives
+                // `kWBase := kVArating*|PFNominal|` (non-negative) and
+                // `kvarBase := sqrt(kVArating² - kWBase²)` (`:1377-1378`,
+                // ported below) — a non-negative root that STRIPS the sign.
+                // Reading the base raw there would dispatch the OPPOSITE sign
+                // from arm 1 on identical tokens, so it is restored the way arm
+                // 1 carries its own: `LeadLag = -1` when `PFNominal < 0`
+                // (`:1286-1287`). Probed live on r4133 for
+                // `kW=1000 kVA=1200 pf=-0.9` (renormalised to `kWBase = 1080`,
+                // `kvarBase = 523.0678732248808`): arm 1 reports terminal
+                // `Q = +523.0678462465884` kvar — the machine ABSORBS, which is
+                // what `pf<0` means — while the raw base would inject. Pinned by
+                // `tests::qmode0_dispatch_carries_the_sign_and_scales_with_genmult`.
+                // (Upstream's own arm 2 and models 4/5 read the stripped base
+                // and so keep the injecting sign there — `model=4` on those
+                // tokens reports terminal `Q = -523.0475290915948`; separate
+                // upstream defects, recorded in the RP3.10 record, reproduced
+                // by neither this arm nor any pin.)
+                //
+                // `Factor` (`GenMultiplier`) still applies: `:1325` sits OUTSIDE
+                // the `case` (probed: `Set genmult=0.5` halves the dispatch,
+                // exactly as it halves arm 1's).
                 //
                 // r4133 keeps dispatching 0, so the four corpus decks that declare a
                 // WindGen without a `QMode=` token diverge across the solved model:
                 // excluded per case in `tests/corpus/ledger.json` (cause
                 // `windgen-qmode0-no-arm`) and pinned by
                 // `tests::qmode0_dispatches_the_base_kvar`.
-                0 => kvar_calc = self.kvar_base,
+                0 => {
+                    if self.kva_not_set {
+                        kvar_calc = self.kvar_base;
+                    } else {
+                        kvar_calc = self.kvar_base.abs();
+                        if self.pf_nominal < 0.0 {
+                            lead_lag = -1.0;
+                        }
+                    }
+                }
                 _ => {
                     // Out-of-range modes keep upstream's `Else` (`:1320-1321`).
                     // Reachable: `q_mode` is a plain `i32` and

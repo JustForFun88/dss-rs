@@ -2122,11 +2122,20 @@ other site that fills it for mode 0, and the live r4133 DLL dispatches exactly 0
 under `QMode=0` on all five corpus decks and in every configuration probed
 (including decks typing `kvar=`, `pf=` and `kVA=`), while the same engine
 dispatches the base the moment the `case` is bypassed (`model=4`/`DoFixedQGen`)
-or an arm exists (a flat `y=+1` volt-var curve gives exactly `kvarBase`). So
-`0 => kvar_calc = self.kvar_base` landed in **both** lanes
-(`elements/pc/windgen/nominal.rs`, no `cfg`, no `compat::`, no `kVArating` clamp
-and no `LeadLag` — each omission measured, `Factor` still applying), with the
-`Else` kept for out-of-range modes. Exposure: four r4133 `exclusion` entries
+or an arm exists (a flat `y=+1` volt-var curve gives exactly `kvarBase`). So the
+constant-Q arm landed in **both** lanes (`elements/pc/windgen/nominal.rs`, no
+`cfg`, no `compat::`, no `kVArating` clamp — measured dead — and `Factor` still
+applying), with the `Else` kept for out-of-range modes. *(**Corrected by the
+audit settlement, 2026-09-04, finding RP310-CODE-1:** it first landed as
+`0 => kvar_calc = self.kvar_base`, which reads the WRONG SIGN whenever a deck
+types `kVA=` — `RecalcElementData` then re-derives `kvarBase` as a non-negative
+`sqrt` (`:1377-1378`) and strips the sign a typed `pf<0`/`kvar<0` put there, so
+mode 0 dispatched `+174355.95774162695` VAr on `kW=1000 kVA=1200 pf=-0.9` where
+r4133's arm 1 absorbs `+523.0678462465884` kvar at the terminal. The arm now splits on
+`kVANotSet`: `kvarBase` raw where `kVA=` is unset (bit-identical to the form it
+replaces, in every sign combination) and `|kvarBase|` with `LeadLag = -1` from
+`PFNominal < 0` in the branch that strips the sign — arm 1's own discipline
+(`:1286-1287`) — so no landed number moved.)* Exposure: four r4133 `exclusion` entries
 (`windgen-qmode0-constant-q-{snapdelta,daily,dyn,dynfault}-r4133`, one new cause
 `windgen-qmode0-no-arm`, ledger 53 → 57 entries / 29 → 30 causes), four
 `population.lock.json` rows, a new gate exclusion field `variables` (13 → 14

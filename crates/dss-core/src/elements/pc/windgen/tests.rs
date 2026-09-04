@@ -703,12 +703,24 @@ fn qmode0_dispatches_the_base_kvar() {
 /// RP3.10 — the mode-0 dispatch carries `kvarBase`'s sign and scales with
 /// `Factor` (`GenMultiplier`), exactly as arms 1/2 do.
 ///
-/// Sign: `kvarBase` is already signed by the typed `kvar=`
-/// (`WindGen.pas:3001`) or by `pf<0` (`:3028`), while arm 1 reaches the same
-/// signed answer by putting the sign in `LeadLag` over a non-negative `sqrt`
-/// (`:1286-1287`) — so the new arm leaves `LeadLag` at 1; re-applying it would
-/// double-negate. Probed on r4133: `kW=1000 pf=-0.9` gives `+484.32` kvar at the
-/// terminal through arm 1 (`QMode=1`) and through `model=4` alike.
+/// Sign, in the two branches `RecalcElementData` has. With `kVA=` **unset**
+/// `kvarBase` already carries the sign the `pf` convention demands (kW and kvar
+/// of opposite signs when `PFNominal < 0`): `SyncUpPowerQuantities` negates it
+/// (`:3028`) and a typed `kvar<0` goes in straight through `Set_Presentkvar`
+/// (`:3001`), so the arm reads it raw — probed on r4133, `kW=1000 pf=-0.9`
+/// gives `+484.32` kvar at the terminal (absorbing) through arm 1 (`QMode=1`)
+/// and through `model=4` alike. With `kVA=` **typed** the base loses that sign:
+/// the kVA-set branch re-derives `kWBase := kVArating*|PFNominal|` and
+/// `kvarBase := sqrt(kVArating² - kWBase²)` (`:1377-1378`), a non-negative root,
+/// so the arm restores it the way arm 1 carries its own — `LeadLag = -1` when
+/// `PFNominal < 0` (`:1286-1287`). Probed live on r4133 for
+/// `kW=1000 kVA=1200 pf=-0.9` (renormalised to `kWBase = 1080`,
+/// `kvarBase = 523.0678732248808`): arm 1 reports terminal
+/// `Q = +523.0678462465884` kvar — the machine **absorbs**, the documented
+/// meaning of `pf<0` — while upstream's `model=4`, which reads the stripped
+/// base through `varBase`, reports `Q = -523.0475290915948` (injecting). This
+/// engine's mode 0 follows arm 1. (`R4133_PROPS_PLAN.md` §RP3.10 audit
+/// settlement, finding RP310-CODE-1.)
 /// `Factor`: `:1325` sits OUTSIDE the `case`, so every arm scales with it
 /// (probed: `Set genmult=0.5` halves arm 1's dispatch), while `varBase` — the
 /// models 4/5 injection, `:1361` — does not.
@@ -741,6 +753,41 @@ fn qmode0_dispatch_carries_the_sign_and_scales_with_genmult() {
     assert!(
         (q_mode0 - q_mode1).abs() <= f64::EPSILON * q_mode0.abs(),
         "mode 0 {q_mode0} vs arm 1 {q_mode1}: same signed answer, 1 ulp apart"
+    );
+
+    // The kVA-set branch: `RecalcElementData` re-derives `kvarBase` as a
+    // NON-negative `sqrt` (`:1377-1378`), stripping the sign `pf=-0.9` put
+    // there — so in THAT branch the arm takes the sign from `PFNominal`, as
+    // arm 1 does, or it would dispatch the opposite one. Both engines' numbers:
+    // r4133's arm 1 absorbs `+523.0678462465884` kvar at the terminal on these
+    // tokens (probed live, EPRI r4133 DLL 11.0.0.1) and its mode 0 dispatches
+    // `0`; this engine's mode 0 dispatches the absorbing base below.
+    let kva_neg: &[(&str, &str)] = &[
+        ("phases", "3"),
+        ("kv", "12.47"),
+        ("kW", "1000"),
+        ("kVA", "1200"),
+        ("pf", "-0.9"),
+        ("vwind", "12"),
+    ];
+    let (kvar_base, q_mode0, _) = run(kva_neg, &sys);
+    assert_eq!(
+        kvar_base, 523.0678732248808,
+        "the kVA-set branch re-derives a NON-negative base"
+    );
+    assert_eq!(
+        q_mode0, -174355.95774162695,
+        "mode 0 absorbs (LeadLag = -1 from PFNominal < 0), it does not inject          the stripped base +174355.95774162695"
+    );
+    assert_eq!(q_mode0, 1e3 * -523.0678732248808 / 3.0);
+    // ... and arm 1 on the identical tokens lands on the very same number: the
+    // wind caps `Pg` at `kWBase`, so its `Pg·sqrt(1/PF²-1)` IS `kvarBase`.
+    let mut kva_arm1 = kva_neg.to_vec();
+    kva_arm1.push(("qmode", "1"));
+    let (_, q_kva_arm1, _) = run(&kva_arm1, &sys);
+    assert_eq!(
+        q_kva_arm1, -174355.95774162695,
+        "arm 1 signs through LeadLag; mode 0 must agree, not negate it"
     );
 
     // A typed negative `kvar=` reaches the same convention exactly.
