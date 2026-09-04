@@ -632,9 +632,10 @@ fastdss compares wholesale.
 > measured divergence is an uninitialized read in *both* oracles on in-zone shunt
 > Capacitors/Reactors (`EnergyMeter.pas` assigns through `pPCelem: TPCElement` — r4133
 > `:1868-1869`, capi `:1927-1929`), nondeterministic and therefore un-envelopable; it is
-> excluded field-and-class-scoped in `harness::PD_SKIP_FIELDS` (4 capi cells
-> `fault_rate`/`pct_permanent`, 4 r4133 cells `lambda`/`accumulated_l`, each still visited
-> and hit-accounted) and pinned by
+> excluded per (channel, class, field) **and per element** in `harness::PD_SKIP_FIELDS` (4 capi
+> cells `fault_rate`/`pct_permanent`, 4 r4133 cells `lambda`/`accumulated_l`, consulted only where
+> the write lands — an in-zone shunt member, `pd_skip_applies`, narrowed by the audit settlement —
+> each still visited and hit-accounted) and pinned by
 > `pd_elements_shunt_reliability_inputs_survive_the_meter_zone` and
 > `pd_elements_shunt_branch_flt_rate_survives_the_meter_zone`. `WP_G1_MODES` **96 → 99**
 > (`PDElementsI:1`/`:2`, `PDElementsS:0`) and `EXCLUDED_WRITE_MODES` **2 → 3**. Two
