@@ -8,6 +8,7 @@
 
 mod common;
 
+mod aggregates;
 mod allocation;
 mod autoadd;
 mod autotrans_xfmrcode;

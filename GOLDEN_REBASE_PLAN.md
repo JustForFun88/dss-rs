@@ -646,6 +646,40 @@ numbers on every case (cheap, universal). Plus the Solution scalars
 (discrete/counter → exact; the iteration-count lane policy of `lane.rs` applies
 where it already exists).
 
+> **As executed (2026-09-04, lane `lane-s`).** Both channels wired in one commit,
+> **unflagged and universal** as G1.0 decided — no `G1_SURFACE_FLAGS` row, no rigor
+> token, **no `population.lock.json` regen**, 0 golden bytes, **0** ledger entries and
+> 0 new `LEDGER_FIELDS`. Five things were settled in-part and are not what this text
+> assumed. (1) `Totaliterations` is *literally* `Solution.Iteration`
+> (`DDLL/DSolution.pas:218-220`), so it is captured and asserted as an alias — in
+> engine and live on every checkpoint — instead of being oracle-compared twice; the
+> same treatment for `Circuit.YCurrents` (`DDLL/DCircuit.pas:777-787` = the
+> already-compared `injection` vector), which is therefore not built at all.
+> (2) The dossier's cancellation model for `Circuit.Losses` is **refuted by
+> measurement** — `Σ|term| / |Σ term|` is 1.000…1.5036 corpus-wide (worst ckt24), the
+> summands being each element's own same-signed loss — so no floor was written for it
+> and the kill criterion ("looser than 1e-4 rel on a feeder case") is answered by the
+> measured feeder maximum `2.719409449622587e-08`. (3) The value arms **inherit** the
+> ledger instead of re-pinning it: an aggregate is a linear functional of per-element
+> quantities the ledger already partitions, and pinning that echo would have cost ~14
+> rows (kill criterion) for divergences already owned — so they consume the runner's
+> `LedgerView::element_rewrites`, while the membership/identity arms stay on the raw
+> oracle capture on every case. (4) `MostIterationsDone` is per-**step**, not per-run
+> (`Common/Solution.pas:2568` zeroes it in `SnapShotInit`), which is what makes it
+> comparable checkpoint-by-checkpoint. (5) Five `modes.rs` `Circuit` rows moved
+> `ModeEffect::Pure` → `Impure` (each walks a `TPointerList` to exhaustion and calls
+> `ComputeIterminal` on what it walks) — `CIRCUIT_LOSSES` moves the very `PDElements`
+> cursor G1.6b reads. Also settled: the two open measurements — `SystemYChanged` agrees
+> after every solve on both engines (nothing to exclude, the Y-rebuild scheduling matches),
+> and `SubstationLosses` already has corpus witnesses (`8500-Node`, `ckt5`, `ckt24`), so **no**
+> synthetic deck and no population change was owed — and both transports gained the element
+> capture's retry-once tolerance, the aggregates now being the first post-solve read to prime a
+> user-model `DoSimpleMsg` (found and fixed in-part, not parked). Coordinator decisions applied:
+> **D3** (the A/B/C capture order, asserted by `crates/dss-core/tests/capture_order.rs`),
+> **D4** (r4133's `0|1` `SystemYChanged`/`ControlActionsDone` normalized to `bool` at the bridge
+> — a shape normalization plus one pin, never a ledger row) and **D7** (lane `lane-s`).
+> Full record: `docs/phase-records/golden-rebase.md` §"GOLDEN_REBASE WP-G1 — records".
+
 ### G1.10 — run-file artifacts
 
 **Every** CSV the deck emits under DataPath (fastdss archives and compares them

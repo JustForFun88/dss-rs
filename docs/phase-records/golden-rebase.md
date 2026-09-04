@@ -2485,9 +2485,12 @@ row against the pre-fix lock.
 > Plan: `GOLDEN_REBASE_PLAN.md` §WP-G1. G1.1 is handed to `R4133_PROPS_PLAN.md`
 > RP4.1 (kill criterion fired, see §1) and **delivered by it on 2026-09-03** —
 > the unmask shipped and RP4.1's own kill criterion did not fire. The sub-steps
-> that do not depend on it
-> land on `r4133-props`, the branch that currently holds the fail-on-stale
-> `population.lock.json` / `ledger.json` (single-branch lock discipline).
+> that do not depend on it landed on `r4133-props` and, after its close-out, on
+> `update`. Since decision **D7** (2026-09-04) the independent chains run in
+> per-lane worktrees (`.claude/worktrees/lane-*`) and are merged into `update`
+> one sub-step at a time; the merge agent regenerates `population.lock.json` on
+> the merged tree and takes the union of both sides' `ledger.json` entries, so
+> the locks stay fail-on-stale.
 
 - **G1.2** (2026-08-29) — **class `ESPVLControl` now has live corpus coverage**
   (it had none: no vendored deck and no family deck instantiated it, and
@@ -2724,3 +2727,53 @@ row against the pre-fix lock.
   correctness" gap. The one recorded-not-fixed finding (record length) is carried:
   the record above is trimmed 34 → 22 → 14 lines, still over CLAUDE.md's 5–10 — recorded, not
   hidden.
+
+- **G1.9** (2026-09-04, lane `lane-s`, decisions **D3**/**D4**/**D7**) — the five `Circuit`
+  aggregates (`DDLL/DCircuit.pas:294`…`:458`; only `Circuit.Losses` is W/var,
+  `Common/Circuit.pas:2428-2445`, and AutoTrans is a separate list, `:2272-2273`) and the ten
+  `Solution` scalars go live on **both** channels in one commit, unflagged and universal on all
+  519 live cases — new `exec/view.rs` accessors, three `harness/aggregates.rs` arms, **no flag,
+  no rigor token, no lock regen, no new floor, 0 ledger entries, 0 new `LEDGER_FIELDS`, 0 golden
+  bytes**: the value arms inherit `LedgerView::element_rewrites` instead of re-pinning a scoped
+  element's echo (~14 rows = the kill criterion). All three kill criteria **NOT met** (feeder
+  `max |Δ|/|Losses|` `2.719409449622587e-08` vs 1e-4; 0 `ControlIterations` differences in 3 493
+  checkpoints; 0 entries). Derivations, the ledger-inheritance rule and the `Totaliterations` ≡
+  `Iteration` / `YCurrents` ≡ `injection` equivalences: `tests/TOLERANCE_NOTES.md` §G1.9,
+  TESTING.md and the plan's dated §G1.9 note (the five source settlements). Pins in `G1_9_PINS`:
+  `circuit_losses_are_watts_not_kilowatts`, `substation_losses_exclude_autotrans`,
+  `losses_skip_shunt_elements`, `line_losses_sum_the_lines_list`,
+  `total_power_is_terminal_one_of_every_source`, `total_iterations_is_an_alias_of_iterations`,
+  `all_element_losses_follow_creation_order`, `r4133_solution_flags_are_zero_one_ints`,
+  `the_five_circuit_aggregate_rows_are_impure`, the three `capture_order.rs` cases.
+  Commits: `9757d26c` (surface) + `f27f9598` (settlement) + `44294de7` and this record (docs).
+  Gate at `9757d26c`: fmt/clippy clean, **4 678 / 0 / 5 ignored** per lane, 523 manifest cases
+  (519 compared) on both channels, 57 ledger entries / 0 stale, `population_lock` green without
+  a regen, `lane_diff` **PASS**, max |Δ| = 0.
+
+  *Audit settlement (2026-09-04, `f27f9598`)* — 13 findings, **6 fixed / 5 recorded / 2
+  refuted**; no port bug, no ledger entry, no floor moved, no golden byte. **Fixed:**
+  `TotalPower`'s value arm no longer drops when a source merely appears in the rewrite map (a
+  `currents`-only scope killed a `powers` comparison nothing had excluded) but absorbs that
+  source's accepted `powers` divergence — `a_currents_only_scope_leaves_the_total_power_arm_running`,
+  proved load-bearing against the old condition; `complex_pair` refuses a `myType=3` reply that
+  is not two doubles instead of padding a plausible `(0, 0)` (`DDLL/DCircuit.pas:293-303` sets
+  length 1 unconditionally); the two boolean scalars, constant corpus-wide, gain an in-engine
+  two-sided witness and TOLERANCE_NOTES loses its "nothing is vacuous" over-claim; the 14 (case,
+  channel) pairs whose value arms inherit the element ledger whole are asserted exactly (D11(2)
+  visibility); the pin names are machine-checked both ways; both doc placeholders filled — the
+  four settlement pins are named in TESTING.md and `tests/TOLERANCE_NOTES.md`. **Recorded:**
+  that self-comparison is *inherent* (restating the arm against the oracle's own aggregate is a
+  triangle tautology — drafted, refuted by a 200 000-draw search, reverted), so the remedy is
+  visibility; `control_iterations` keeps `rust <= oracle` on r4133 (the `iteration-count-delta`
+  cause owns that class) though a scratch exact-assert run over the whole corpus measured **0**
+  differences; `load_mult` stays exact pending D11's `float_roundtrip` sync; the third
+  `USER_MODEL_ERRNOS` copy waits for merge dedup. **Refuted:** the capture reorder's priming
+  equivalence *is* gated live (arm P1 rebuilds the oracle's aggregate from its own per-element
+  losses on every `warn_and_continue` deck); the untracked droppings were already gone. Gate
+  after the settlement, both lanes: fmt + clippy clean, **4 726 / 0 failed / 5 ignored** per lane
+  (+48 on 4 678 — the two new `harness::aggregates` cases compile into all 22 binaries carrying
+  `mod harness`), corpus gate green on both channels, ledger 57 / 0 stale, no lock or golden
+  byte moved; `lane_diff` **not owed** (nothing outside `#[cfg(test)]` and the
+  `publish = false` bridge moved).
+
+  merge: lane lane-s -> update, see git log

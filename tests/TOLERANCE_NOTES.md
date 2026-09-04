@@ -778,7 +778,10 @@ the operating point itself is gated far tighter than this round-trip band.
 Reuses the same comparators and classes verbatim. Differences from the checkpoint
 goldens: the **full** assembled Y is compared every case (nothing is stored, so
 size is irrelevant — checkpoints store only a fingerprint for large feeders); the
-Rust/oracle element name sets must be identical; monitors/meters are compared live
+Rust/oracle element name sets must be identical (**2026-09-04, G1.9**: the
+`AllElementLosses` arm additionally asserts the two name vectors match
+*element by element in creation order* — see §"G1.9 circuit aggregates + solution
+scalars"); monitors/meters are compared live
 only for cases that sample them in deterministic modes (`check_meters_monitors` in
 `solvable_now.json`) — an unsampled monitor returns a phantom channel from the
 pinned oracle, an artifact, not an engine gap.
@@ -1360,9 +1363,9 @@ dated). What was checked, and against what:
 | both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:3317`) | unchanged |
 | the four derivation rows (6.431124e-05 / 1.374769e-03 / 4.404256e-03 / 5.524501e-02) | the constant's own doc table, `props_norm.rs:786-792` | identical, both places |
 | 1 951 vendored spellings claimed (from 2 006, less the 55 the mechanism clause refuses) | `props_r4133_replay::CLAIMED_DISPLAY_FLOOR` = 1951 (`props_r4133_replay.rs:565`) | unchanged |
-| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:904-913` and `:921-930` (`i_rel`/`i_abs`) | unchanged |
-| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1096-1105` and `:1085-1094` | unchanged |
-| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:2501` (asserted as `i_abs / floor`) | unchanged |
+| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:911-920` and `:928-937` (`i_rel`/`i_abs`) | unchanged |
+| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1103-1112` and `:1092-1101` | unchanged |
+| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:2508` (asserted as `i_abs / floor`) | unchanged |
 | no `Tolerances` field, no `tol_for` tier moved by this plan | `Tolerances` has no props field; the floor is read only by `props_norm` | unchanged |
 
 The floor therefore still sits **3.110×** above the worst cell it claims and
@@ -1370,6 +1373,188 @@ The floor therefore still sits **3.110×** above the worst cell it claims and
 `(6.431124e-05, 1.374769e-03)` is still the empty one the placement argument
 rests on. Nothing in this section was widened; the one edit tightened a
 description (RP5.1, docs-only).
+
+
+## G1.9 circuit aggregates + solution scalars (`harness::aggregates`)
+
+`GOLDEN_REBASE_PLAN.md` WP-G1 G1.9 put the five `Circuit` aggregates
+(`Losses`, `LineLosses`, `SubstationLosses`, `TotalPower`, `AllElementLosses`)
+and the ten `Solution` scalars on the live corpus gate, unflagged and universal
+(all 519 live cases, every gating channel). **No tolerance class changed and no
+new floor was introduced**; the two bands below are f64 *identity* bands over
+quantities that are the same sum on both sides, and every value comparison
+reuses an existing floor. Numbers measured 2026-09-04 on the whole corpus
+(3 493 checkpoints across both channels), lane `lane-s`.
+
+### P1 — membership reconstruction (`AGG_SUM_REL` 1e-12 / `AGG_SUM_ABS` 1e-9)
+
+Each loss aggregate is rebuilt from the **oracle's own** per-element `Losses`
+capture over the **port's** summand list (`Dss::aggregate_terms`) and compared
+to the oracle's own reported aggregate. Both sides are the same f64
+accumulation of the same terms in the same order — upstream walks `PDElements`
+/ `Lines` / `Transformers` in list (creation) order (`Common/Circuit.pas`
+:2436-2444, `DDLL/DCircuit.pas`:313-320, :335-342) and the port mirrors those
+lists — so the only admissible difference is `N * eps` accumulation noise:
+`4889 * 2.22e-16 ~= 1.1e-12` relative on the largest corpus deck. Hence
+`1e-12 * sum|term| + 1e-9`.
+
+Measured worst `|recon - oracle| / sum|term|`:
+
+| aggregate | worst ratio | worst case |
+|---|---|---|
+| `Circuit.Losses` | `8.259339087510259e-16` | `StorageControllerTechNote/Schedule/ScheduleRun.dss` |
+| `Circuit.LineLosses` | `1.610151713239062e-14` | `EPRITestCircuits/ckt7/Master_ckt7.dss` |
+| `Circuit.SubstationLosses` | `1.497413754786237e-16` | `StorageControllerTechNote/PeakShaveDch_PeakShaveLow_Ch` |
+
+i.e. 60x (LineLosses) to 1 200x (Losses) inside the band. Rows over the band:
+**0 of 3 493**. This band may only ever tighten — it is not a floor absorbing a
+physical difference, and a failure here means the summand SET differs (one
+whole element's loss moves the reconstruction), not that a number drifted.
+
+The dossier's pre-measurement model for this surface — that `Circuit.Losses`
+sums *throughput* and therefore carries a 1e2..1e3 cancellation amplification
+between elements — is **refuted by measurement**: it sums each element's own
+loss, and those are same-signed. `sum|term| / |sum term|` measured `1.000 …
+1.503` (worst 1.5036 on ckt24). No between-element cancellation exists, so no
+looser floor is owed anywhere; the amplification that does exist is *inside*
+each element's `Get_Losses` and is already priced by
+`aggregates::element_loss_allowance_kw` (below).
+
+### P1b — `AllElementLosses` identity (`AEL_IDENT_REL` 1e-12 / `AEL_IDENT_ABS` 1e-9, W)
+
+The oracle's `AllElementLosses[i]` and its own `elements[i].Losses` are the same
+`Get_Losses` one `x 0.001` apart (`DDLL/DCircuit.pas`:471 vs
+`Common/CktElement.pas`:707-767), i.e. one multiply-rounding. Measured worst
+absolute `4.768371582031250e-07 W` (`Test/Dynamic_Kundur.dss`, whose worst
+relative is `1.935e-16`), worst relative `6.449284436551366e-16`
+(`StorageControllerTechNote/PeakShave`) — **1 550x** inside the relative band.
+Rows over the band: **0 of 3 493**.
+
+The same arm asserts `len(AllElementLosses) == 2 * NumDevices` and — new
+coverage the gate did not have, since `corpus_gate/runner.rs` compares element
+names as `BTreeSet`s — that the port's `ckt_elements` creation order equals the
+oracle's `AllElementNames` order, element by element. Measured: **0 order
+mismatches** in 3 493 checkpoints on both channels.
+
+### P2 — value: a propagated bound, NOT a calibrated floor
+
+The port's aggregate is compared to the accepted per-element reference inside
+
+    allowed = sum over the aggregate's summands of
+              element_loss_allowance_kw(e, tol)          [x1000 for the W-valued Losses]
+
+which is exactly `harness::aggregates::element_loss_allowance_kw` — the
+per-conductor envelope `compare_element_channels` has always applied to
+`CktElement.Losses` (`sum_k (i_abs * max(1,|V_k|) + i_rel * |S_k|)`, with
+`|V_k| = |S_k| / |I_k|`), extracted verbatim so the two can never drift apart.
+**No new constant enters**: `losses = sum_k S_k` propagates the conductor
+policy, so an aggregate can never pass on a floor its own summands would fail.
+
+Be honest about what that bound is worth. Its *effective* relative width is a
+per-case quantity, not a tolerance: `allow / |value|` ranges from `6.5e-4`
+(`SubstationLosses` on a feeder) through `6.1e-2` (`Losses`,
+`large_floating_zeroseq`) to `2.7` (`Losses` on `Auto1bus-step1`, whose tier
+`i_abs` is 0.1 A by construction) and larger still where the aggregate is
+near-zero. On the stiff tiers P2 is therefore weak, and it is not the arm that
+holds this surface: the numbers are already gated element-by-element upstream of
+the sum, and what an aggregate adds is **membership, units and aggregation** —
+which P1, P1b and the in-engine pins (`exec::tests::aggregates`, seven of them)
+hold. Do not dress P2 up as a tight floor and do not invent a tighter guessed
+one.
+
+Measured `|delta| / allowed` on the fully oracle-gated (case, channel) set
+(3 460 checkpoints; see "ledger-scoped summands" below), worst per arm:
+
+| arm | worst `\|d\|/allowed` | case |
+|---|---|---|
+| `Circuit.Losses` | `9.938936237724940e-04` | `Examples/AutoTrans/Auto1bus.dss` |
+| `Circuit.LineLosses` | `1.510781045877623e-03` | `Test/CapControlFollow.dss` step 23 |
+| `Circuit.SubstationLosses` | `2.494356373731410e-03` | `ADiakoptics/EPRI_Ckt5-G/Torn_Circuit` |
+| `Circuit.TotalPower` | `5.825499501120617e-01` | `Examples/AutoTrans/Auto1bus.dss` |
+| `AllElementLosses[i]` | `5.825499501120617e-01` | same (`Vsource.source`) |
+
+The tightest arm therefore still has 1.7x headroom, and it sits on the
+`large_near_ideal_source` tier where the source current is ill-determined by
+construction — the same per-element floor the element comparator already
+accepts for that `Vsource`.
+
+**`GOLDEN_REBASE_PLAN.md` §G1.9 kill criterion (`Circuit.Losses` would need a
+floor looser than `1e-4` relative on a `feeder`-tier case): NOT met.** Measured
+feeder-tier `max |delta| / |Losses|` = `2.719409449622587e-08`
+(`Test/CapControlFollow.dss` step 0: `|d| = 4.774932e-03 W` against
+`|Losses| = 1.755871e+05 W`) — 3 700x under the threshold, and no floor is
+written for it at all.
+
+### Ledger-scoped summands (why this surface added 0 ledger rows)
+
+An aggregate is a linear functional of per-element quantities the gate already
+partitions. Where `ledger.json` scopes an element's `powers`/`losses`
+sub-channels on a (case, channel), `LedgerView::element_rewrites` hands the
+element comparator the accepted cap; the aggregate value arm consumes exactly
+those accepted caps, so an already-excluded, already-pinned divergence is
+inherited field-by-field instead of being re-stated as an `aggregates` row on
+every deck it touches. Twelve corpus cases carry a deck-wide element scope
+(the `%R2`-honoured GIC pair, the MMF text reader, `makeposseq_shunt`, the four
+WindGen qmode0 decks, the four asym combo/indmach envelope rows); re-pinning
+their echo would have cost ~14 rows and tripped the §1.1(f) "> ~10 entries"
+kill criterion for a divergence the ledger already owns. `Circuit.TotalPower`
+sums `Power[1]`, a per-terminal quantity the capture does not split out, so it
+cannot be rebuilt from an accepted cap: since the G1.9 audit settlement its
+envelope instead absorbs the accepted `powers` divergence summed over **all**
+of a scoped source's conductors (a conservative superset of the terminal-1
+part), so the arm keeps running and an entry that scopes only `currents` no
+longer switches it off. **P1 and P1b never soften** — they run on the raw
+oracle capture on every case, so no deck loses the arms with the teeth.
+
+Where a deck-wide scope selects `losses`, the loss-aggregate value arms are a
+self-comparison on that deck, and that is **inherent**: restating them against
+the oracle's own aggregate with the accepted divergence added to the envelope is
+a tautology (`|Σ(r−o)| ≤ Σ|r−a| + |Σ(a−o)|`), so once the ledger owns every
+summand no bound on their sum can carry oracle content the entries do not
+already own. The settlement therefore adds *visibility*, not a wider arm: the 14
+(case, channel) pairs are recorded and asserted exactly by
+`corpus_gate::ledger::the_aggregate_value_arms_inherit_exactly_the_recorded_element_scopes`,
+so a new deck-wide element scope reds until its author acknowledges the
+consequence (coordinator decision D11(2)'s rule for the bus arrays).
+
+### Solution scalars — every policy reused, none invented
+
+| field | policy | why it is not a new floor |
+|---|---|---|
+| `mode`, `hour`, `year`, `control_actions_done`, `system_y_changed` | exact, both lanes | discrete state (CLAUDE.md keeps discrete exact in the default lane too) |
+| `load_mult` | exact, both lanes | a user/mode-set scalar the engine never computes |
+| `seconds` | `abs < 1e-9` (`CLOCK_ABS_S`) | the same constant the already-gated `dblHour` compare uses in `corpus_gate/runner.rs`; `Seconds` is `DynaVars.t` and `dblHour` is maintained from it, so a second value would be incoherent |
+| `control_iterations` | exact on `capi_v0145`, `rust <= oracle` on `r4133`, **both lanes** | the `ITER_SLACK` drift model is about the inner power-flow convergence boundary and does not transfer to control-loop passes; a difference here is a control-loop divergence, i.e. a bug |
+| `most_iterations_done` | `harness::lane::compare_iterations` / `_le` | it is a max over the step's inner solves (`Common/Solution.pas`:2568 resets it per step, :2701 raises it), so it inherits the inner count's existing policy verbatim |
+| `total_iterations` | not compared against the port at all | `SolutionI(40)` returns `Solution.Iteration` verbatim (`DDLL/DSolution.pas`:218-220; capi `CAPI_Solution.pas`:731-738 "Same as Iterations interface"); the oracle-side alias is asserted live on every checkpoint and the port-side one is pinned in-engine |
+
+Measured: **0 scalar mismatches of any kind** in 3 493 checkpoints across both
+channels — including `SystemYChanged`, whose agreement answers the G1.9 open
+question Q6 (the two engines schedule the Y rebuild identically; nothing to
+exclude) and `ControlIterations`, whose §G1.9 kill criterion ("differs anywhere
+on the `capi_v0145` channel") is therefore **NOT met**. Witness census over the
+same run: `mode` 18 distinct values,
+`hour` 79, `year` 2, `load_mult` 7, `seconds` 128, `control_iterations` 39,
+`most_iterations_done` 14.
+
+**Two of the ten scalars are one-sided, and the census does not cover them**
+(G1.9 audit settlement, correcting an earlier "nothing is vacuous by
+construction" here). `control_actions_done` and `system_y_changed` were *not* in
+the measured field list, and on every checkpoint that was dumped both are
+constant (`true` / `false`): a converged solve settles its controls and leaves Y
+freshly built, so the corpus witnesses only one value of each. Their exact
+`assert_eq!`s still catch a port that flips one, but the corpus supplies no
+witness of the other value, so the two-sidedness is pinned **in-engine** instead
+— `dss_core::exec::tests::aggregates::the_two_boolean_solution_flags_take_both_values`
+drives the `MaxControlIter` exit (`ControlActionsDone` clear) and a post-solve
+structural edit (`SystemYChanged` set). Likewise `control_iterations` is
+one-sided on the `r4133` channel by policy (`rust <= oracle`, the row above), so
+an *under*-counting control loop is caught only on the 422 capi-served live
+cases; measured, the two counts are equal on every one of the 3 493 checkpoints,
+so the one-sidedness costs nothing today. `load_mult` is compared with an exact
+f64 `assert_eq!` on a lane that does not yet carry coordinator decision D11's
+`serde_json` `float_roundtrip` fix; it is green today and can only tighten after
+that sync ("D11 — pending sync").
 
 
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)
