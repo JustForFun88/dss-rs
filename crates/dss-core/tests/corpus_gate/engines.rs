@@ -134,6 +134,14 @@ pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
         // on both, which is what keeps an off-flag reply byte-identical to the
         // pre-G1.3a payload.
         "derived": c.compare_derived,
+        // WP-G1 G1.3d(i): the per-element discrete index/name scalars
+        // (`NumTerminals`/`NumConductors`/`NumPhases`/`EnergyMeter`/`NodeOrder`
+        // plus `Enabled`). One key for the whole `compare_element_extras`
+        // surface, honored by BOTH transports —
+        // `tools/oracle/oracle_server.py::capture_all_elements` (capi_v0145)
+        // and `crates/dss-epri/src/capture.rs::RunRequest::element_extras`
+        // (r4133). Absent ⇒ off on both. G1.3d(ii) widens the same key.
+        "element_extras": c.compare_element_extras,
         "warn_and_continue": !c.expect_warnings.is_empty(),
     })
 }

@@ -2447,6 +2447,15 @@ fn polar_envelope_fixture() -> (Entry, ElementCap, dss_core::exec::ElementSnapsh
     let snap = dss_core::exec::ElementSnapshot {
         name: "Transformer.t8".to_string(),
         enabled: true,
+        // One terminal, one conductor: the shape of the single-slot payload
+        // below (GOLDEN_REBASE G1.3d(i) added these five fields to
+        // `ElementSnapshot`; this fixture never reaches
+        // `harness::compare_element_extras`).
+        n_terms: 1,
+        n_conds: 1,
+        n_phases: 1,
+        node_order: Vec::new(),
+        energy_meter: None,
         bus_names: vec!["b".to_string()],
         powers: vec![num_complex::Complex64::new(0.0, 0.0)],
         currents: vec![num_complex::Complex64::new(0.0, 0.0)],

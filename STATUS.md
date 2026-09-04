@@ -147,29 +147,29 @@ the six CLAUDE.md §"Known upstream bugs" reproduced in any lane. Full record:
 WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 
 **GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened
-2026-08-08). Landed so far: **G1.1** — killed on day one (433 of 438 walked live
-cases diverged) and satisfied instead by R4133_PROPS RP4.1 (above), whose live
-r4133 property compare unblocks **G3.4** (`cim/`, `json/`, `json_import/`) and
-**G3.5** (`props/`). **G1.2** (the ESPVLControl deck, the last zero-coverage
-class) landed 2026-08-29. **G1.0** — rails ahead of G1.3a
-(D1/D2/D3) — landed 2026-09-04 (`c4b67a6e`, settlement `42454b64`): the ten-flag
-manifest vocabulary in **one** lock regen, explicit `channels` on the bare
-`element` exclusions, the capture-presence guard and the r4133 bridge rails,
-whose mode probe **also discharges the G1.11 mode-capability acceptance for the
-whole WP**; 0 ledger entries, 0 golden bytes. **G1.3a** — the first surface
-sub-step — landed 2026-09-04 on lane `lane-e` (D7; `d8e71991`, settlement
-`588e0bfe`): `Enabled` plus per-element
-`CurrentsMagAng`/`VoltagesMagAng`/`Residuals` on **both** channels over 442
-cases, the A/B/C capture order enforced by `tests/capture_order.rs`,
-`WP_G1_MODES` 96 → 97; **1** new ledger entry (capi-only CapControl TIMECONTROL
-bus, `DIVERGENCES.md` L8) + **13** measured scope widenings, 0 golden bytes, 0
-band movement, **4 959 / 0 / 5** per lane and `lane_diff` max |Δ| = 0. G1.3b–d,
-G1.4–G1.11c and WP-G3–G5 remain. Full record: the same file, section
-"GOLDEN_REBASE WP-G1 — records".
+2026-08-08). Landed: **G1.1** — killed on day one and satisfied instead by
+R4133_PROPS RP4.1 (above), whose live r4133 property compare unblocks
+**G3.4**/**G3.5**. **G1.2** (the ESPVLControl deck, the last zero-coverage
+class) landed 2026-08-29. **G1.0** — rails ahead of G1.3a (D1/D2/D3) — landed
+2026-09-04 (`c4b67a6e`, settlement `42454b64`): the ten-flag manifest
+vocabulary in **one** lock regen, explicit `channels`, the capture-presence
+guard and the r4133 bridge rails, whose mode probe **discharges the G1.11
+mode-capability acceptance for the whole WP**. **G1.3a** landed 2026-09-04 on
+lane `lane-e` (D7; `d8e71991`, settlement `588e0bfe`): `Enabled` plus
+per-element `CurrentsMagAng`/`VoltagesMagAng`/`Residuals` on **both** channels
+over 442 cases, the A/B/C capture order enforced, `WP_G1_MODES` 96 → 97; **1**
+new ledger entry (capi-only CapControl TIMECONTROL bus, `DIVERGENCES.md` L8) +
+**13** measured scope widenings, 0 golden bytes, **4 959 / 0 / 5** per lane,
+`lane_diff` Δ = 0. **G1.3d(i)** landed 2026-09-05 on `lane-e` (D4/D19): the
+per-element counts, `NodeOrder` and `EnergyMeter` on both channels over 440
+cases, compared exactly, the two G1.3d verdicts (`Lines.Yprim` already
+witnessed; `LineGeometries.R/X/Zmatrix` out of the parity claim) and the D19
+cherry-pick of lane-m's D9 `MakeBusList` zone-reset fix — 0 ledger entries, 0
+golden bytes, 0 band movement. G1.3d(ii), G1.3b–c, G1.4–G1.11c and WP-G3–G5
+remain. Full record: the same file, section "GOLDEN_REBASE WP-G1 — records".
 
-**Next.** **`GOLDEN_REBASE_PLAN.md` G1.3d(i)** on the element lane (then
-G1.3d(ii) → G1.3b → G1.3c), with the bus, PD/meter and singles lanes running in
-parallel per D7. Then G1.4–G1.11c and WP-G3–G5 — inside which **G3.4**/**G3.5**,
+**Next.** **`GOLDEN_REBASE_PLAN.md` G1.3d(ii)** on the element lane (then G1.3b →
+G1.3c), with the bus, PD/meter and singles lanes running in parallel per D7. Then G1.4–G1.11c and WP-G3–G5 — inside which **G3.4**/**G3.5**,
 blocked since 2026-08-08, are runnable. Queued behind GOLDEN_REBASE:
 `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, UPGRADE.
 
