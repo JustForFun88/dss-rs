@@ -2807,10 +2807,13 @@ row against the pre-fix lock.
   Both G1.3d verdicts (`Lines.Yprim` already witnessed, residual 235/523 `selected_elements`;
   `LineGeometries.R/X/Zmatrix` dropped) and the two settled STOPs (D19/D19′ D9 cherry-pick; the
   census↔live-gate file race) are recorded in TESTING.md and plan §G1.3d. Commits: `e4d99806`
-  (D19), `b7d7da2a`; gate green in both lanes (5 370/0/5, `corpus_gate` 523/523, ledger 58/1 636/0
-  stale, goldens+lock byte-untouched, `lane_diff` max |Δ| = 0).
-- **G1.3d(i) audit settlement** (2026-09-05) — 15 findings: **12 fixed / 2 recorded / 1 refuted**;
-  full table + gate figures in `tmp/g13d1/settle.md`. Fixed: 15 capi `NodeOrder` citations
+  (D19′ cherry-pick), `b7d7da2a`, audit settlement `c9c4ac09`, + docs (this record). Gate after the
+  settlement, both lanes: **5 392 / 0 / 5**, fmt + clippy clean, `corpus_gate` 523/523, ledger 58
+  entries / 0 stale, goldens + `population.lock.json` byte-untouched, `lane_diff` PASS max |Δ| = 0
+  on all eight gated kinds over 523 cases / 3 220 861 records (5 370 / 0 / 5 at `b7d7da2a`; the
+  +22 are one new pin seen from the 22 harness-linking test binaries).
+- **G1.3d(i) audit settlement** (2026-09-05, `c9c4ac09`) — 15 findings: **12 fixed / 2 recorded /
+  1 refuted**. Fixed: 15 capi `NodeOrder` citations
   re-pointed from the Alt-API twin to `CAPI/CAPI_CktElement.pas:885-917` (`:900-906` = the 15013
   guard), the entry point dss-python really calls; `oracle_meter_name` folds only its own channel's
   sentinel; the D19′ pin asserts the parent *identity* `Line.l1`; the forcing-rule test asserts its

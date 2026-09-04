@@ -379,7 +379,7 @@ switched off later with no lock diff at all:
 | manifest flag | rigor token | owning sub-step | surface |
 | --- | --- | --- | --- |
 | `compare_derived` | `derived=` | G1.3a–c | per-element `CurrentsMagAng`/`VoltagesMagAng`/`Residuals`, `SeqCurrents`/`SeqVoltages`/`SeqPowers`, `CplxSeq*`, `TotalPowers`. **Wired since G1.3a (2026-09-04)**, which serves the first third — `Enabled` plus the three polar channels; the sequence surfaces follow in G1.3b/c |
-| `compare_element_extras` | `elemx=` | G1.3d | `PhaseLosses`, `NodeOrder`, `EnergyMeter`, `OCPDevType`/`OCPDevIndex`, `HasVoltControl`/`HasSwitchControl`, `NumControls`, `NumTerminals`/`NumPhases`/`NumConductors`. **Wired since G1.3d(i) (2026-09-04)**, which serves the index/name scalars — the three counts, `NodeOrder` and `EnergyMeter`; `PhaseLosses` and the control-derived extras follow in G1.3d(ii) |
+| `compare_element_extras` | `elemx=` | G1.3d | `PhaseLosses`, `NodeOrder`, `EnergyMeter`, `OCPDevType`/`OCPDevIndex`, `HasVoltControl`/`HasSwitchControl`, `NumControls`, `NumTerminals`/`NumPhases`/`NumConductors`. **Wired since G1.3d(i) (2026-09-04/05)**, which serves the index/name scalars — the three counts, `NodeOrder` and `EnergyMeter`; `PhaseLosses` and the control-derived extras follow in G1.3d(ii) |
 | `compare_bus` | `bus=` | G1.4 | `puVoltages`/`puVmagAngle`/`VMagAngle`/`VLL`/`puVLL`, bus `SeqVoltages`/`CplxSeqVoltages`, `AllPCEatBus`/`AllPDEatBus`, `Distance`/`AllBusDistances`/`AllNodeDistances`/`AllBusVmagPu` |
 | `compare_zsc` | `zsc=` | G1.5 | `Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix`/`Isc`/`Voc` |
 | `compare_reliability` | `rel=` | G1.6 | meter extras + the per-bus reliability columns; also drives the executive `RelCalc` |
