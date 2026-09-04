@@ -178,15 +178,25 @@ fn every_dss_is_accounted_for_exactly_once() {
 /// walk against the live gate hit
 /// `EPRITestCircuits/ckt7/ckt7_Power_elem_kVA.txt` "Permission denied", which is
 /// exactly how this test failed once in the corpus-gate binary. `cargo` runs test
-/// binaries one at a time, so here there is no concurrent writer at all.
+/// binaries one at a time, so here there is no concurrent writer at all — a
+/// premise, not a law: it holds for `cargo`'s own sequential runner plus the
+/// one-gate-per-worktree rule (coordinator decision D13), and a parallel runner
+/// (`cargo-nextest`) or two concurrent `cargo test` invocations in one worktree
+/// would put a live-gate writer back beside this walk.
 ///
 /// Leftover exports from an earlier run are still counted (the file count is
 /// therefore `>=`, not `==`); they can only ADD names, never remove one, so the
 /// `0` assertion below stays conservative.
 ///
-/// The collision would be a false *failure*, never a false pass
-/// (`harness::element_extras_pins::a_meter_named_zero_reds_instead_of_passing`);
-/// this census is what says the failure is not waiting to happen.
+/// This census is the **load-bearing** guard for that collision, not a
+/// belt-and-braces one: on the r4133 channel a meter named `0` is
+/// indistinguishable from the sentinel in BOTH directions — a port that HAS the
+/// name reds
+/// (`harness::element_extras_pins::a_meter_named_zero_reds_instead_of_passing`),
+/// but a port that LOST it would compare `None == None` and pass
+/// (`..::the_r4133_zero_sentinel_is_undecidable_and_the_census_is_the_guard`).
+/// What makes the case unreachable is this walk (G1.3d(i) audit settlement,
+/// 2026-09-05).
 mod extras_population {
     use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};

@@ -699,10 +699,15 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
   **capture-boundary spelling fold, not a tolerance**: "no meter" arrives as
   `''` from capi (`Result := NIL`, `CAPI/CAPI_CktElement.pas:672-687`) and as
   `'0'` from r4133 (the `CktElementS` pre-`case` default,
-  `DDLL/DCktElement.pas:421`), and both fold to "no meter" before the exact
-  compare — value-preserving in the `PROPS_NORM_R4133` sense, and self-detecting
-  in the other direction (a meter literally named `0` reds against the port's
-  `Some("0")` rather than passing; `element_extras_pins::a_meter_named_zero_reds_instead_of_passing`).
+  `DDLL/DCktElement.pas:421`), and each folds **on its own channel only** before
+  the exact compare — value-preserving in the `PROPS_NORM_R4133` sense. It is not
+  self-detecting: on r4133 a meter literally named `0` reds when the port HAS the
+  name (`element_extras_pins::a_meter_named_zero_reds_instead_of_passing`) but
+  passes when the port LOST it
+  (`element_extras_pins::the_r4133_zero_sentinel_is_undecidable_and_the_census_is_the_guard`),
+  so the corpus census `extras_population::no_corpus_energymeter_is_named_zero` —
+  not the fold — is what keeps that unreachable (G1.3d(i) audit settlement,
+  2026-09-05).
 
 - **Dynamics fixpoint residuals** (`dSpeed`/`dTheta`/`speed`) are pinned against
   the oracle's actual (small, non-zero) value, not `≈0`: `dSpeed = (Pshaft +
@@ -1548,12 +1553,12 @@ dated). What was checked, and against what:
 | claim here | landed at | verdict |
 |---|---|---|
 | the floor is `2e-4` relative | `R4133_DISPLAY_FLOOR` at `harness/props_norm.rs:895` (`Option<f64>` = `Some(2e-4)`) | unchanged |
-| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:5007`) | unchanged |
+| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:5074`) | unchanged |
 | the four derivation rows (6.431124e-05 / 1.374769e-03 / 4.404256e-03 / 5.524501e-02) | the constant's own doc table, `props_norm.rs:786-792` | identical, both places |
 | 1 951 vendored spellings claimed (from 2 006, less the 55 the mechanism clause refuses) | `props_r4133_replay::CLAIMED_DISPLAY_FLOOR` = 1951 (`props_r4133_replay.rs:565`) | unchanged |
 | capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:999-1008` and `:1016-1025` (`i_rel`/`i_abs`) | unchanged |
 | the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1191-1200` and `:1180-1189` | unchanged |
-| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:3902` (asserted as `i_abs / floor`) | unchanged |
+| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:3966` (asserted as `i_abs / floor`) | unchanged |
 | no `Tolerances` field, no `tol_for` tier moved by this plan | `Tolerances` has no props field; the floor is read only by `props_norm` | unchanged |
 
 The floor therefore still sits **3.110×** above the worst cell it claims and

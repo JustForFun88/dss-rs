@@ -27,7 +27,7 @@
 //! (`CktElementI` modes `0`/`1`/`2`), `:442` (`CktElementS` mode `4`), `:1032`
 //! (`CktElementV` mode `17`, over `Common/Utilities.pas:1718` `GetNodeNum`);
 //! capi `CAPI/CAPI_CktElement.pas:202`/`:182`/`:192`/`:672` and
-//! `CAPI/CAPI_Alt.pas:953`. All five are fastdss `ICktElement._columns`
+//! `CAPI/CAPI_CktElement.pas:885`. All five are fastdss `ICktElement._columns`
 //! surfaces (`git -C .inputs/DSS-Python show origin/fastdss:dss/ICktElement.py`).
 
 use crate::exec::{Dss, ElementSnapshot};
@@ -86,7 +86,7 @@ fn scratch(tag: &str) -> std::path::PathBuf {
 
 // Expected-value pin — `NodeOrder` is `GetNodeNum(NodeRef^[j])` per conductor
 // slot, terminal-major (r4133 `DDLL/DCktElement.pas:1043-1050`, capi
-// `CAPI/CAPI_Alt.pas:970-977`), i.e. the *bus-local* node number the element's
+// `CAPI/CAPI_CktElement.pas:910-917`), i.e. the *bus-local* node number the element's
 // own bus spec assigned to that conductor — never the global node index and
 // never a fixed `1..nconds` run. `GetNodeNum(0) = 0` is ground
 // (`Common/Utilities.pas:1718-1722`).
@@ -246,7 +246,7 @@ fn energy_meter_is_the_bare_lowercased_meter_name() {
 // Expected-value pin (G1.3d(i) capture predicate) — the two shapes with nothing
 // to report. A never-enabled element never gets `SetNodeRef`, so its `NodeRef`
 // is still nil upstream: capi warns 15013 and returns its `DefaultResult`
-// (`CAPI/CAPI_Alt.pas:960-966`) while r4133, which has no such guard,
+// (`CAPI/CAPI_CktElement.pas:900-906`) while r4133, which has no such guard,
 // dereferences the nil pointer (`DDLL/DCktElement.pas:1048`). A 0-terminal
 // element makes r4133 allocate a zero-length array (`:1043`) while capi still
 // takes its nil-`NodeRef` branch. The capture therefore issues the read only

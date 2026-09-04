@@ -123,7 +123,7 @@ pub(crate) struct SolvableCase {
     /// `NumPhases` (r4133 `DDLL/DCktElement.pas:139`/`:144`/`:149`, `CktElementI`
     /// arms 0..2; capi `CAPI/CAPI_CktElement.pas:182-211`) and `EnergyMeter`
     /// (`:442`, `CktElementS(4)`; capi `:672-687`), plus `NodeOrder`
-    /// (`:1032-1056`, `CktElementV(17)`; capi `CAPI/CAPI_Alt.pas:953-977`) on
+    /// (`:1032-1056`, `CktElementV(17)`; capi `CAPI/CAPI_CktElement.pas:885-917`) on
     /// elements that are `Enabled` **and** carry `NumTerminals > 0` — the two
     /// conditions under which neither transport dereferences a nil `NodeRef`.
     /// G1.3d(ii) widens this same flag with `PhaseLosses` and the

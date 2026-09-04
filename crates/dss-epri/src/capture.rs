@@ -553,7 +553,7 @@ fn capture_injection(flat: &[f64]) -> Injection {
 /// and on a 0-terminal element (`UPFCControl` never assigns `Nterms` —
 /// `Controls/UPFCControl.pas:230-246`) this channel would return a 0-length
 /// array while capi raises 15013 from its nil-`NodeRef` guard
-/// (`CAPI/CAPI_Alt.pas:960-966`) — not issuing the read removes that shape
+/// (`CAPI/CAPI_CktElement.pas:900-906`) — not issuing the read removes that shape
 /// asymmetry instead of normalizing it. The comparator asserts both sides are
 /// empty there, so neither skip can hide a payload.
 ///

@@ -261,6 +261,23 @@ fn branch_customers(dss: &Dss, full: &str) -> (i32, i32) {
     panic!("element {full} not found");
 }
 
+/// Helper: the full `Class.Name` of a named element's `ParentPDElement`, or
+/// `None` at the zone root — the identity assertion the oracles make
+/// (`Line.l2` -> `Line.l1`), not just "some parent is set".
+fn branch_parent_name(dss: &Dss, full: &str) -> Option<String> {
+    let id = branch_parent(dss, full)?;
+    let cls = id.class_name();
+    let class = dss
+        .classes
+        .iter()
+        .find(|c| c.props.class_name().eq_ignore_ascii_case(cls))
+        .unwrap_or_else(|| panic!("class {cls} not registered"));
+    Some(format!(
+        "{cls}.{}",
+        class.arena.obj(id.index()).data().name()
+    ))
+}
+
 /// Helper: `ParentPDElement` (as an arena id) for a named element.
 fn branch_parent(dss: &Dss, full: &str) -> Option<crate::elements::ElemId> {
     let (cls, name) = full.split_once('.').unwrap();
@@ -339,12 +356,14 @@ fn makebuslist_keeps_the_meter_zones() {
             (1, 1),
             "MakeBusList={make_bus_list}: Line.l2 customers (oracles: 1 / 1)"
         );
-        assert!(
-            branch_parent(&dss, "Line.l2").is_some(),
-            "MakeBusList={make_bus_list}: Line.l2 has a parent (oracles: Line.l1)"
+        assert_eq!(
+            branch_parent_name(&dss, "Line.l2").as_deref(),
+            Some("Line.l1"),
+            "MakeBusList={make_bus_list}: Line.l2's ParentPDElement (oracles: Line.l1)"
         );
-        assert!(
-            branch_parent(&dss, "Line.l1").is_none(),
+        assert_eq!(
+            branch_parent_name(&dss, "Line.l1"),
+            None,
             "Line.l1 is the zone root"
         );
     }

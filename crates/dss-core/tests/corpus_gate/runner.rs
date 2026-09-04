@@ -587,10 +587,14 @@ pub(crate) fn compare_capture(
                 cp.elements.iter().filter(|e| e.n_terms.is_some()).count(),
                 &ctx,
             );
+            // The channel travels with the capture for one reason only: the
+            // "no meter" sentinel is spelled per channel and is folded per
+            // channel (`harness::oracle_meter_name`, G1.3d(i) audit settlement).
+            let ch = channel.props_channel();
             for ec in &cp.elements {
                 match el_rewrites.get(&ec.name.to_lowercase()) {
-                    Some(rw) => compare_element_extras(&snaps, rw, &ctx),
-                    None => compare_element_extras(&snaps, ec, &ctx),
+                    Some(rw) => compare_element_extras(&snaps, rw, ch, &ctx),
+                    None => compare_element_extras(&snaps, ec, ch, &ctx),
                 }
             }
         }
