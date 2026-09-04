@@ -137,7 +137,7 @@ def capture_all_elements(
     `NodeOrder` only for an element that is `Enabled` **and** has
     `NumTerminals > 0`:
       * a never-enabled element never got `SetNodeRef`, so `NodeRef` is nil:
-        capi raises 15013 (`CAPI/CAPI_Alt.pas:960-966`) and r4133 dereferences
+        capi raises 15013 (`CAPI/CAPI_CktElement.pas:900-906`) and r4133 dereferences
         the nil pointer at `DDLL/DCktElement.pas:1048` with no guard;
       * a 0-terminal element is legitimate (`UPFCControl` never assigns
         `Nterms` — r4133 `Controls/UPFCControl.pas:230-246`), and there the two

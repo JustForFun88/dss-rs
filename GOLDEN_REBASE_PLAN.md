@@ -642,8 +642,10 @@ in TESTING.md instead of double-capturing.
 > **(i)** the index/name scalars `NumTerminals`/`NumConductors`/`NumPhases`, `NodeOrder`,
 > `EnergyMeter` and the two documentation verdicts; **(ii)** `PhaseLosses` and the
 > control-derived extras (`OCPDevType`/`OCPDevIndex`, `HasVoltControl`/`HasSwitchControl`,
-> `NumControls`). `CktElement.Enabled` is **not** re-added here — G1.3a already landed it
-> as the enabled-only capture predicate. Forced on **440** cases
+> `NumControls`). `CktElement.Enabled` is not a NEW channel here — G1.3a landed it — but it
+> is re-emitted under the `element_extras` request (the two manifest flags are independent)
+> and re-asserted by this comparator, since the `NodeOrder` capture predicate rests on it.
+> Forced on **440** cases
 > (`FORCED_ELEMENT_EXTRAS_POPULATION` `(440, 313, 83, 44)`), both oracle channels,
 > **0 new ledger entries and 0 widenings** — the §3 forecast held exactly, and no tolerance
 > is introduced or consulted (every field is discrete, compared exactly).
@@ -654,7 +656,10 @@ in TESTING.md instead of double-capturing.
 >   `GetYprimValues(ALL_YPRIM)` plus a bulk `Move` of `2·Yorder²` doubles — and r4133's
 >   `LinesV` mode 7 (`DDLL/DLines.pas:771-796`) and `CktElementV` mode 12
 >   (`DDLL/DCktElement.pas:856-883`) likewise copy `SQR(Yorder)` complexes from one such
->   call; the only difference is the `Lines` path's `IsLine()` type filter. The gate already
+>   call; on capi the two are exactly equivalent modulo the `Lines` path's `IsLine()` type
+>   filter, and on r4133 they differ only outside the payload (mode 12 `Exit`s on a nil
+>   `cValues`, `DCktElement.pas:869-872`, before assigning `myPointer`/`mySize` at `:882-883`;
+>   mode 7 assigns them regardless, `DLines.pas:794-795`). The gate already
 >   compares `CktElement.Yprim` live on both channels, so the conclusion and its honest
 >   per-case residual are recorded in TESTING.md instead of a second capture.
 > * **`LineGeometries.Rmatrix/Xmatrix/Zmatrix` dropped from the parity claim**, on two
@@ -668,7 +673,7 @@ in TESTING.md instead of double-capturing.
 > * **The `NodeOrder` capture predicate is source-derived, not defensive.** It is read only
 >   for an element that is `Enabled` **and** has `NumTerminals > 0`: r4133's `CktElementV(17)`
 >   dereferences `NodeRef^[j]` with no nil guard (`DDLL/DCktElement.pas:1048`) and kills the
->   worker on a never-enabled element, while capi raises 15013 (`CAPI/CAPI_Alt.pas:960-966`);
+>   worker on a never-enabled element, while capi raises 15013 (`CAPI/CAPI_CktElement.pas:900-906`);
 >   and on a 0-terminal element (`UPFCControl` never assigns `Nterms`,
 >   `Controls/UPFCControl.pas:230-246`) r4133 answers a 0-length array where capi raises. Not
 >   issuing the read removes that shape asymmetry instead of normalizing it. The comparator's
@@ -678,10 +683,11 @@ in TESTING.md instead of double-capturing.
 > * **One channel normalization, 0 ledger rows (coordinator decision D4):** "no meter" is
 >   spelled `''` on capi (`Result := NIL`, `CAPI/CAPI_CktElement.pas:672-687`) and `'0'` on
 >   r4133 (the `CktElementS` pre-`case` default, `DDLL/DCktElement.pas:421`; arm 4 at
->   `:442-449`, guarded by `HasEnergyMeter` at `:444`). Both are folded to "no meter" at the
->   capture boundary and pinned; a meter literally *named* `0` reds instead of passing, and a
->   corpus census (92 distinct meter names, none of them `0`) says that collision is not
->   waiting to happen.
+>   `:442-449`, guarded by `HasEnergyMeter` at `:444`). Each channel's OWN spelling is folded
+>   at the capture boundary and pinned (audit settlement 2026-09-05: the fold takes the channel,
+>   so on capi a meter *named* `0` is a name and reds if the port loses it, while on r4133 the
+>   collision is undecidable in both directions) — what keeps it unreachable is the corpus
+>   census (1310 decks, 92 distinct meter names, none of them `0`), not the fold.
 > * **D19 (coordinator, 2026-09-05):** lane-m's D9 engine commit — `MakeBusList` must reset
 >   the meter zones (`Common/Circuit.pas:2411`) — was cherry-picked onto `lane-e`, because this
 >   is the first surface that makes D9 observable in the gate; **amended (D19′): the pin's
