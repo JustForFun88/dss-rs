@@ -7,11 +7,12 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
 
 > **Plan file locations (2026-07-18).** The completed plans below — `PHASE4–8_PLAN.md`,
 > `GAPS_PLAN.md`, `JSON_EXPORT_PLAN.md`, `UPGRADE_PLAN.md`, plus the finished test-infra
-> build-plans `CORPUS_TEST_PLAN.md` / `CONTROL_COVERAGE_PLAN.md` — are archived under
+> build-plans `CORPUS_TEST_PLAN.md` / `CONTROL_COVERAGE_PLAN.md`, and (since
+> 2026-09-04, by its own RP5.2) `R4133_PROPS_PLAN.md` — are archived under
 > **`docs/plans-archive/`** (their names in the ordering are unchanged). Active/foundational
 > plans stay at the repo root: `PORTING_PLAN.md`, `DE_PASCALIZE_PLAN.md`,
-> `DIAKOPTICS_PSTCALC_PLAN.md`, `GOLDEN_REBASE_PLAN.md`, `R4133_PROPS_PLAN.md`,
-> `RESONANCE_PLAN.md`, `MULTITHREADING_PLAN.md`, `WASM_USERMODELS_PLAN.md`.
+> `DIAKOPTICS_PSTCALC_PLAN.md`, `GOLDEN_REBASE_PLAN.md`, `RESONANCE_PLAN.md`,
+> `MULTITHREADING_PLAN.md`, `WASM_USERMODELS_PLAN.md`.
 > Residual work no plan owns is tracked in `ORPHANED_GAPS.md`.
 
 ```
@@ -88,43 +89,58 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               WP-G0 rails + WP-G2 bug-kernel teardown COMPLETE
                               (merged to `update` @ 4d3fc2d7); WP-G1 (live gate
                               to fastdss parity) open — G1.1 fired its kill
-                              criterion 2026-08-08 and is handed to
-                              R4133_PROPS_PLAN.md (its RP4.1 delivered the
-                              unmask on 2026-09-03, so G3.4/G3.5 are
-                              unblocked), G1.2 (the
+                              criterion 2026-08-08 and was handed to the dedicated
+                              `docs/plans-archive/R4133_PROPS_PLAN.md`, which
+                              COMPLETED it 2026-09-04 — RP4.1 delivered the unmask
+                              2026-09-03, so **G1.1 is satisfied** and the two
+                              sub-steps that waited on it, **G3.4** (self-snapshot
+                              `cim/`, `json/`, `json_import/`) and **G3.5**
+                              (self-snapshot `props/`), are unblocked; G1.2 (the
                               ESPVLControl corpus deck, the last zero-coverage
                               class) landed 2026-08-29 on `r4133-props`, and
                               G1.3a-d + G1.4-G1.11c remain; WP-G3–G5 queued.
                               Added 2026-08-22 per the user's request.
- 5b. R4133_PROPS_PLAN.md      IN FLIGHT (authored + opened 2026-08-22) — property
-                              parity on the r4133 channel, the dedicated
-                              successor G1.1's kill criterion demanded: census
-                              rails (WP-RP0) and
-                              property-table shape closure (WP-RP1) COMPLETE
-                              (RP1.4, 2026-08-23: r4133 shape classes 5 -> 0),
-                              and the channel-aware value comparator (WP-RP2:
-                              normalization + echo exclusions + the derived 2e-4
-                              display floor) COMPLETE (RP2.4, 2026-08-23:
-                              in-scope UNCLAIMED cells 521 841 -> 889, all of
-                              them attributed to an open RP3.x sub-step);
-                              next the four root-causes plus RP3.5-RP3.8
-                              (WP-RP3), then the unmask (RP4.1 =
-                              G1.1's deliverable, kill criterion re-armed).
-                              **RP4.1 LANDED 2026-09-03** — `all_properties` is
-                              compared on the r4133 channel for every live
-                              non-`large` case and the re-armed kill criterion
-                              did not fire. **RP3.11 LANDED 2026-09-03** — the
-                              `Save`/`Dump` re-serialization surface is settled
-                              `KEEP_LIVE_PINNED` on both surfaces (the kill
-                              criterion fired). **RP3.12 + RP3.13 LANDED
-                              2026-09-03** and **RP3.10 LANDED 2026-09-04**
-                              (`9f55095b` + `9f067c19`, verdict FIX — the
-                              reproduced WindGen `QMode=0` zero-var dispatch is
-                              gone from both lanes), so **WP-RP3 is COMPLETE
-                              (13/13)** and only WP-RP5 is left.
-                              RP5.2 flips this row to COMPLETE.
-                              Runs inside the GOLDEN_REBASE window on branch
-                              `r4133-props` off `update`.
+ 5b. R4133_PROPS_PLAN.md      **COMPLETE 2026-09-04** (authored + opened
+     (docs/plans-archive/)    2026-08-22; moved to `docs/plans-archive/` by its
+                              own RP5.2) — property parity on the r4133 channel,
+                              the dedicated successor G1.1's kill criterion
+                              demanded. All six work packages landed, both lanes
+                              gate-green: **25 sub-steps / 64 RP-titled commits**
+                              (RP0.1 `cbcfafeb` … RP5.1 `64474762`), each one
+                              implement + two fresh auditors + fix agent.
+                              **Final counters** — normalization table **168** rows
+                              (77 BoolFold / 65 CaseFold / 21 ArrayForm / 5
+                              EnumSynonym); echo table **82** rows (50 default / 8
+                              parse / 14 empty-collection / 10 live-semantics), 20
+                              narrowed pairs over 66 spellings; one new tolerance,
+                              the derived **2e-4** r4133 display floor; ledger
+                              `tests/corpus/ledger.json` **36 → 57** entries
+                              (**+21**, none removed) over **23 → 30** causes, of
+                              which **8** are the staged r4133 `property`-scoped
+                              entries RP4.1 landed; in-scope UNCLAIMED cells on the
+                              r4133 channel **521 841 → 889** (RP2.4) **→ 0** (RP4.1;
+                              504 out-of-scope cells remain, each owned by a named
+                              pin or record); **4 498 passed / 0 failed / 5 ignored**
+                              per lane. **The gating-case outcome**: the unmask
+                              compares `all_properties` on the r4133 channel
+                              for every live non-`large` case — **523** manifest
+                              cases, **464** of them r4133-gating (367 `both` + 97
+                              r4133-only), of which **313** non-`large` `both`
+                              cases are the population `force_properties` actually
+                              compares. (The plan text's "462 / 96 / 366" was a
+                              2026-08-22 authoring estimate; the population lock
+                              reads 464 / 97 / 367 — recorded as an as-executed
+                              correction at RP4.1 and published here.) `lane_diff`
+                              was run at every sub-step that moved a `src/` line —
+                              **13+ recorded runs, every one `max |Δ| = 0`**,
+                              including the two the plan owed at RP1.2 and RP1.3.
+                              Full record: `docs/phase-records/r4133-props-rp5.md`
+                              §RP5.2 (per-sub-step condensed table); the archived
+                              plan record is in
+                              `docs/phase-records/era-summaries.md` §1a.
+                              Ran inside the GOLDEN_REBASE window on branch
+                              `r4133-props` off `update`; **hands GOLDEN_REBASE
+                              G1.1 back satisfied**, unblocking G3.4 + G3.5.
                               Added 2026-08-22 per the user's request.
  6. RESONANCE_PLAN.md         WP-R1 iterative refinement (default lane on, parity off —
                               needs Stage F), WP-R2 resonance analysis, WP-R3 diagnostics

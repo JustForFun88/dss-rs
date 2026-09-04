@@ -1,5 +1,12 @@
 # R4133_PROPS — property parity on the r4133 channel (the GOLDEN_REBASE G1.1 successor)
 
+> **ARCHIVED 2026-09-04: complete** — all six work packages (WP-RP0 … WP-RP5)
+> landed and are gate-green in both lanes; `PLAN_SEQUENCE.md` row 5b is COMPLETE.
+> The closing record is `docs/phase-records/r4133-props-rp5.md` §RP5.2, and the
+> archived STATUS §1a plan record is in
+> `docs/phase-records/era-summaries.md` (`STATUS.md` section 7 forwards the
+> `§RPx.y` citations). Frozen history — superseded only by the code and tests.
+
 ## Source-integrity gate — ritual step 0 (before the model-tier check)
 
 The Pascal at `.inputs/dss_capi` (186 `.pas` files) is the *spec*; oracle/live work
@@ -2787,3 +2794,23 @@ moot. See §RP3.10's dated line.)*
 **Acceptance:** no doc
 disagrees with any other on counts or state; clean tree. Outcome: the plan
 closes and GOLDEN_REBASE resumes with G1.1 satisfied.
+
+**Landed 2026-09-04** — documentation only; zero product-crate lines, zero test
+logic, zero table rows, zero tolerances, zero golden bytes, zero ledger entries.
+`PLAN_SEQUENCE.md` row 5b is COMPLETE with the measured final counters
+(normalization **168** rows, echo **82** rows, ledger **36 → 57** entries over
+**23 → 30** causes, one new tolerance — the 2e-4 display floor, **4 498 passed /
+0 failed / 5 ignored** per lane) and the gating-case outcome published as the
+population lock's **464** r4133-gating cases (367 `both` + 97 r4133-only;
+**313** non-`large` `both` actually property-compared) rather than the stale 462
+this section asked for; row 5a records **G1.1 as satisfied**, with **G3.4** and
+**G3.5** unblocked. The §1.3 deferral row (`ORPHANED_GAPS.md` §1.11, WindGen
+models 3/7) was verified present; nothing was added there. This file moved to
+`docs/plans-archive/` in the same commit, and the two `props_r4133_replay.rs`
+doc comments that cited it were repointed (their line range was already wrong).
+The five-command gate ran green in **both** lanes on this tree — **4 498
+passed / 0 failed / 5 ignored** each, zero delta against the RP5.1 baseline, all
+four ledger guards `ok`; `lane_diff` not owed (no `src/` line moved).
+**Acceptance met.** Full record:
+`docs/phase-records/r4133-props-rp5.md` §RP5.2; archived-plan record:
+`docs/phase-records/era-summaries.md` §1a.

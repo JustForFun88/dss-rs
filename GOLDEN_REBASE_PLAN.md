@@ -410,6 +410,12 @@ Outcome: the 96 r4133-only cases get a property check for the first time.
 > kill criterion re-armed there; the `PROPS_R4133` shape-allowlist expectation
 > above is superseded by the TOLERANCE_NOTES reuse doctrine (R4133_PROPS §1.2 —
 > `PROPS_015X` is reused). G3.4/G3.5 wait for RP4.1.
+>
+> **2026-09-04 — SATISFIED.** RP4.1 delivered the unmask 2026-09-03 (the re-armed
+> kill criterion did not fire) and `R4133_PROPS_PLAN.md` COMPLETED 2026-09-04,
+> archived at `docs/plans-archive/R4133_PROPS_PLAN.md`; its closing record is
+> `docs/phase-records/r4133-props-rp5.md` §RP5.2. **G1.1 is closed and G3.4/G3.5
+> are unblocked.**
 
 ### G1.2 — corpus deck for the one zero-coverage class
 
@@ -953,7 +959,7 @@ Same mechanics.
 ### G3.4 — self-snapshot: `cim/`, `json/`, `json_import/`
 
 Same mechanics. `json/schema_full_oracle.json` + `schema_divergences.json` stay
-frozen (§1.2); `cim/` value semantics are witnessed by G1.1's live props (delivered by `R4133_PROPS_PLAN.md` RP4.1 — this sub-step waits for it) + the
+frozen (§1.2); `cim/` value semantics are witnessed by G1.1's live props (delivered by `R4133_PROPS_PLAN.md` RP4.1; **that plan completed 2026-09-04, so this sub-step is unblocked**) + the
 r4133 CIM bug fixes from G2.2c (and G2.1g, only if its measurement showed a
 committed golden observes the flag) land here as predicted diffs. Order inside
 the commit: self-snapshot `cim/` **first**, then retire `expected_cim`
@@ -965,7 +971,7 @@ snapshot reds the gate); the CIM pins stay.
 
 ### G3.5 — self-snapshot: `props/`
 
-`props/` value truth is live (`all_properties` on both channels after G1.1 — delivered by `R4133_PROPS_PLAN.md` RP4.1; this sub-step waits for it); the
+`props/` value truth is live (`all_properties` on both channels after G1.1 — delivered by `R4133_PROPS_PLAN.md` RP4.1; **that plan completed 2026-09-04, so this sub-step is unblocked**); the
 snapshot pins the text rendering only. Of its 51 files, the six `capi015`
 scenarios are not snapshotted (the guard refuses them). `pstcalc/`, `plot_callback/`, `ncim/` are
 **not** snapshotted — they have no live value twin and stay `capi_v0145`-frozen

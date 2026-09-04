@@ -228,7 +228,9 @@ Oracle-backed pin without a new capture: the `est8` deck minus its
 ### 1.11 WindGen power-flow models **3** (`DoPVTypeGen`) and **7** (`DoCurrentLimitedPQ`)
 - **Deferred by:** `R4133_PROPS_PLAN.md` §1.3 + **RP1.3** (2026-08-23), the sub-step that ported
   WindGen `UserModel`/`UserData` and admitted model **6**. §1.3 names this file as the row's home
-  and no other plan claims the two models.
+  and no other plan claims the two models. That plan completed 2026-09-04 and is frozen at
+  `docs/plans-archive/R4133_PROPS_PLAN.md`; its §RP5.2 re-verified this row as the one §1.3
+  deferral that was owed one, and left it open — the row is now this file's alone.
 - **What:** r4133 dispatches seven WindGen power-flow models
   (`Version8/Source/PCElements/WindGen.pas:2109-2118`); the port admits 1/2/4/5 and — since RP1.3 —
   6. Models 3 and 7 are simply absent. No corpus deck sets either (all five `modes:windgen/*` decks
