@@ -23,7 +23,7 @@
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 
 use regex::Regex;
 use serde::Deserialize;
@@ -145,9 +145,40 @@ struct Scope {
     /// stays `applied` through them, so a `variables` `name_re` that stops
     /// matching (a renamed state variable, a typo) would silently mask nothing.
     hit: AtomicBool,
+    /// Per-SUB-CHANNEL floor-exceed accounting for a [`SUBCHANNEL_FIELDS`]
+    /// scope: bit `i` is set once `channels[i]` was measured diverging beyond
+    /// its tier floor. The entry-level `exceeded_floor` is an OR over every
+    /// channel, so a widened scope whose new sub-channel masks nothing would
+    /// ride along on a sibling channel's divergence for ever — the sub-channel
+    /// twin of the `variables` staleness hole (G1.3a audit settlement,
+    /// 2026-09-04). Policed by `assert_all_hit` for `divergence` entries, which
+    /// are the ones that measure at all (see [`LedgerView::excluded`] on why an
+    /// `exclusion` carries no verdict).
+    channels_exceeded: AtomicU32,
 }
 
 impl Scope {
+    /// Record that sub-channel `ch` of this scope was measured beyond its tier
+    /// floor. A name not in `channels` (i.e. a bare "all sub-channels" scope)
+    /// is silently ignored — there is nothing to attribute the exceed to.
+    fn mark_channel_exceeded(&self, ch: &str) {
+        if let Some(i) = self.channels.iter().position(|c| c == ch) {
+            self.channels_exceeded
+                .fetch_or(1u32 << (i as u32 % 32), Ordering::Relaxed);
+        }
+    }
+
+    /// The `channels` entries never measured beyond their floor this run.
+    fn dead_channels(&self) -> Vec<&str> {
+        let bits = self.channels_exceeded.load(Ordering::Relaxed);
+        self.channels
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| bits & (1u32 << (*i as u32 % 32)) == 0)
+            .map(|(_, c)| c.as_str())
+            .collect()
+    }
+
     fn applies_step(&self, step: usize) -> bool {
         self.steps
             .as_ref()
@@ -364,6 +395,29 @@ impl LedgerRuntime {
                     e.id, e.case, e.channel
                 ));
                 continue;
+            }
+            // Per-SUB-CHANNEL liveness on a measured (`divergence`) entry: the
+            // entry-level `exceeded` above is an OR over every sub-channel, so a
+            // scope widened onto a channel that masks nothing keeps riding on a
+            // sibling's divergence. Only `divergence` entries reach
+            // `envelope_element` and therefore measure at all — an `exclusion`
+            // names whole artifacts it never fetches a verdict for (see
+            // [`LedgerView::excluded`]), so its sub-channels stay backed by the
+            // measured provenance recorded in the entry itself.
+            for sc in e.scopes.iter().filter(|sc| !sc.channels.is_empty()) {
+                if e.kind != Kind::Divergence {
+                    continue;
+                }
+                let dead = sc.dead_channels();
+                if !dead.is_empty() {
+                    problems.push(format!(
+                        "  ledger entry `{}` ({:?}, {:?}) has STALE `{}` \
+                         sub-channel(s) {:?} — every selected value on them is \
+                         within the tier floor, so widening the scope onto them \
+                         masks nothing. Drop those names from `channels`.",
+                        e.id, e.case, e.channel, sc.field, dead
+                    ));
+                }
             }
             // Per-value masks need their own liveness: `applied`/`exceeded` are
             // per ENTRY, so a dead `variables` scope on an entry that also
@@ -639,6 +693,7 @@ fn compile_scope(id: &str, s: &RawScope) -> Scope {
         num_rel: s.num_rel,
         line_re: mk(&s.line_re),
         hit: AtomicBool::new(false),
+        channels_exceeded: AtomicU32::new(0),
     }
 }
 
@@ -1464,8 +1519,12 @@ fn envelope_element(
 ) {
     let want = |ch: &str| sc.channels.is_empty() || sc.channels.iter().any(|c| c == ch);
     // `Cell` rather than a `mut` capture so the rectangular and polar helpers
-    // below can coexist as `Fn` closures over one shared flag.
+    // below can coexist as `Fn` closures over one shared flag. `block` is the
+    // same flag scoped to the sub-channel currently being measured, so a
+    // widened `channels` list can be held to per-sub-channel liveness
+    // (`Scope::dead_channels`) instead of one OR for the whole entry.
     let exceeded = std::cell::Cell::new(false);
+    let block = std::cell::Cell::new(false);
     let record = |label: &str, diff: f64, base: f64, floor: f64| {
         let env = sc.max_abs + sc.max_rel * base;
         assert!(
@@ -1477,6 +1536,7 @@ fn envelope_element(
         measure_note(&e.id, "element", diff, base, floor);
         if diff > floor {
             exceeded.set(true);
+            block.set(true);
         }
     };
     let check = |label: &str, a: f64, o: f64| {
@@ -1518,18 +1578,27 @@ fn envelope_element(
             );
         }
     };
+    block.set(false);
     if want("currents") {
         for (k, (re, im)) in ec.i_re.iter().zip(&ec.i_im).enumerate() {
             check(&format!("i_re[{k}]"), snap.currents[k].re, *re);
             check(&format!("i_im[{k}]"), snap.currents[k].im, *im);
         }
     }
+    if block.get() {
+        sc.mark_channel_exceeded("currents");
+    }
+    block.set(false);
     if want("powers") {
         for (k, (kw, kvar)) in ec.p_kw.iter().zip(&ec.p_kvar).enumerate() {
             check(&format!("p_kw[{k}]"), snap.powers[k].re, *kw);
             check(&format!("p_kvar[{k}]"), snap.powers[k].im, *kvar);
         }
     }
+    if block.get() {
+        sc.mark_channel_exceeded("powers");
+    }
+    block.set(false);
     if want("losses") && ec.loss_w.len() == 2 {
         check("loss_re", snap.loss_w.0, ec.loss_w[0]);
         check("loss_im", snap.loss_w.1, ec.loss_w[1]);
@@ -1540,30 +1609,45 @@ fn envelope_element(
     // the sum of the conductors' bands). Empty on a disabled element — the
     // capture skips those channels there — so the loops are inert rather than
     // special-cased.
+    if block.get() {
+        sc.mark_channel_exceeded("losses");
+    }
+    block.set(false);
     if want("currents_mag_ang") {
-        for (k, (om, oa)) in ec.cma_mag.iter().zip(&ec.cma_ang).enumerate() {
+        // Zipped against the port vector as well: a shape mismatch on a
+        // ledger-scoped element must surface as `compare_element_derived`'s
+        // length message (it runs after this), never as an index panic here.
+        for (k, ((om, oa), p)) in ec
+            .cma_mag
+            .iter()
+            .zip(&ec.cma_ang)
+            .zip(&snap.currents_mag_ang)
+            .enumerate()
+        {
             let band = tol.i_abs + tol.i_rel * om.abs();
-            polar(
-                &format!("cma[{k}]"),
-                &snap.currents_mag_ang[k],
-                *om,
-                *oa,
-                band,
-            );
+            polar(&format!("cma[{k}]"), p, *om, *oa, band);
         }
     }
+    if block.get() {
+        sc.mark_channel_exceeded("currents_mag_ang");
+    }
+    block.set(false);
     if want("voltages_mag_ang") {
-        for (k, (om, oa)) in ec.vma_mag.iter().zip(&ec.vma_ang).enumerate() {
+        for (k, ((om, oa), p)) in ec
+            .vma_mag
+            .iter()
+            .zip(&ec.vma_ang)
+            .zip(&snap.voltages_mag_ang)
+            .enumerate()
+        {
             let band = tol.v_abs + tol.v_rel * om.abs();
-            polar(
-                &format!("vma[{k}]"),
-                &snap.voltages_mag_ang[k],
-                *om,
-                *oa,
-                band,
-            );
+            polar(&format!("vma[{k}]"), p, *om, *oa, band);
         }
     }
+    if block.get() {
+        sc.mark_channel_exceeded("voltages_mag_ang");
+    }
+    block.set(false);
     if want("residuals") {
         let nterms = ec.res_mag.len();
         // `Residuals` is one entry per terminal (r4133
@@ -1571,10 +1655,30 @@ fn envelope_element(
         // buffer (`:836-837`), so nconds is their quotient. A zero-terminal cap
         // leaves the loop below empty, so the fallback divides nothing.
         let nconds = ec.i_re.len().checked_div(nterms).unwrap_or(0);
-        for (t, (om, oa)) in ec.res_mag.iter().zip(&ec.res_ang).enumerate() {
+        // The same shape rule `harness::residual_close` asserts before deriving
+        // `nconds`: a cap whose conductor slots do not divide into its terminals
+        // would silently get a too-small band here instead of failing loudly.
+        assert!(
+            nterms == 0 || ec.i_re.len().is_multiple_of(nterms),
+            "{ctx}: ledger `{}` element {}: {} conductor slots do not divide into \
+             {nterms} terminals",
+            e.id,
+            ec.name,
+            ec.i_re.len()
+        );
+        for (t, ((om, oa), p)) in ec
+            .res_mag
+            .iter()
+            .zip(&ec.res_ang)
+            .zip(&snap.residuals)
+            .enumerate()
+        {
             let band = residual_band(ec, t, nconds, tol.i_rel, tol.i_abs);
-            polar(&format!("res[{t}]"), &snap.residuals[t], *om, *oa, band);
+            polar(&format!("res[{t}]"), p, *om, *oa, band);
         }
+    }
+    if block.get() {
+        sc.mark_channel_exceeded("residuals");
     }
     LedgerView::mark_applied(e);
     if exceeded.get() {
@@ -1913,6 +2017,7 @@ fn every_exclusion_field_is_honoured_by_the_runtime() {
             num_rel: None,
             line_re: None,
             hit: AtomicBool::new(false),
+            channels_exceeded: AtomicU32::new(0),
         }
     }
     fn entry(id: &str, kind: Kind, scopes: Vec<Scope>) -> Entry {
@@ -2037,6 +2142,7 @@ fn property_scope_keys_names_the_cells_the_gate_would_handle() {
             num_rel: None,
             line_re: None,
             hit: AtomicBool::new(false),
+            channels_exceeded: AtomicU32::new(0),
         }
     }
     fn entry(kind: Kind, scopes: Vec<Scope>) -> Entry {
@@ -2144,6 +2250,7 @@ fn a_voltages_exclusion_that_masks_nothing_is_stale() {
             num_rel: None,
             line_re: None,
             hit: AtomicBool::new(false),
+            channels_exceeded: AtomicU32::new(0),
         }
     }
     let mk = |field: &str, exceeded: bool| LedgerRuntime {
@@ -2317,6 +2424,7 @@ fn polar_envelope_fixture() -> (Entry, ElementCap, dss_core::exec::ElementSnapsh
         num_rel: None,
         line_re: None,
         hit: AtomicBool::new(false),
+        channels_exceeded: AtomicU32::new(0),
     };
     let entry = Entry {
         id: "test-polar-envelope".to_string(),
@@ -2405,4 +2513,51 @@ fn an_unmasked_polar_angle_still_hits_the_envelope() {
         "the fixture must be an UNMASKED sample or it proves nothing",
     );
     envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+}
+
+// Per-SUB-CHANNEL staleness (G1.3a audit settlement, 2026-09-04, finding T3):
+// `exceeded_floor` is ONE flag for the whole entry, so a scope widened onto a
+// sub-channel that masks nothing rides on a sibling channel's divergence for
+// ever and the fail-on-stale gate cannot see it. `Scope::channels_exceeded`
+// attributes each floor-exceed to the sub-channel that produced it.
+/// A sub-channel that never exceeds its floor is reported stale; its diverging
+/// sibling in the same scope is not.
+#[test]
+fn a_widened_sub_channel_that_masks_nothing_is_reported_stale() {
+    let (mut entry, mut cap, mut snap) = polar_envelope_fixture();
+    entry.scopes[0].channels = vec!["currents".to_string(), "currents_mag_ang".to_string()];
+    let tol = crate::harness::tol_for("micro");
+    // `currents` diverges by 1e-5 A: above the micro floor (1e-6 A) and inside
+    // the entry's envelope (2e-5 A). `currents_mag_ang` is identical on both
+    // sides, i.e. the widening onto it masks nothing.
+    cap.i_re[0] = 0.0;
+    snap.currents[0] = num_complex::Complex64::new(1e-5, 0.0);
+    cap.cma_mag[0] = 0.0;
+    cap.cma_ang[0] = 0.0;
+    snap.currents_mag_ang[0] = Polar { mag: 0.0, ang: 0.0 };
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    assert!(
+        entry.exceeded_floor.load(Ordering::Relaxed),
+        "the entry as a whole still masks something — that is exactly why the \
+         per-entry flag cannot report the dead sub-channel",
+    );
+    entry.hits.store(1, Ordering::Relaxed);
+    let rt = LedgerRuntime {
+        causes: std::collections::BTreeMap::new(),
+        entries: vec![entry],
+    };
+    let err = rt
+        .assert_all_hit()
+        .expect_err("a sub-channel that masks nothing must fail the gate");
+    assert!(
+        err.contains("STALE `element`") && err.contains("[\"currents_mag_ang\"]"),
+        "wrong failure text: {err}"
+    );
+    // The other direction: once that sub-channel does exceed its floor, the
+    // entry passes — the rule reports dead channels, not every channel.
+    rt.entries[0].scopes[0].mark_channel_exceeded("currents_mag_ang");
+    assert!(
+        rt.assert_all_hit().is_ok(),
+        "a sub-channel that masks something must pass"
+    );
 }

@@ -665,7 +665,6 @@
           "name_re": ".*",
           "channels": [
             "currents",
-            "powers",
             "losses",
             "currents_mag_ang"
           ],
@@ -681,7 +680,8 @@
         "note": "whole-model fpc-delphi-ulp on the current/power channels + loss near-cancellation; voltages/yprim/discrete tier-clean",
         "date": "2026-07-19",
         "g13a_polar_first_failure": "currents_mag_ang -- Transformer.tg cma[4] ANGLE 149.44935563998544 deg vs r4133 149.44935577472327 deg, |d| 1.3473783155859564e-7 > band 9.649498570331597e-8 at |I| = 1.4616566273058197e3 A",
-        "g13a_polar_date": "2026-09-04"
+        "g13a_polar_date": "2026-09-04",
+        "g13a_settlement_powers_pruned": "2026-09-04 (G1.3a audit settlement): `powers` dropped from this element scope. The per-sub-channel liveness guard added with the settlement measured every p_kw/p_kvar sample on this deck INSIDE the tier floor over the full 523-case run, so the mask covered nothing (the comparator's own power floor -- `harness::assert_power_close`'s voltage-scaled `abs*max(1,|V_kv|) + rel*|P|` -- is looser still, so dropping the mask cannot red the case). `currents`, `losses` and the polar sub-channel keep exceeding their floors."
       }
     },
     {
@@ -700,7 +700,6 @@
           "name_re": ".*",
           "channels": [
             "currents",
-            "powers",
             "losses",
             "currents_mag_ang"
           ],
@@ -716,7 +715,8 @@
         "note": "whole-model fpc-delphi-ulp on the current/power channels + loss near-cancellation; voltages/yprim/discrete tier-clean",
         "date": "2026-07-19",
         "g13a_polar_first_failure": "currents_mag_ang -- IndMach012.m1 cma[0] magnitude 974.6471392050366 A vs r4133 974.6471372242506 A, |d| 1.9807860098808305e-6 > band 1.9746471372242506e-6",
-        "g13a_polar_date": "2026-09-04"
+        "g13a_polar_date": "2026-09-04",
+        "g13a_settlement_powers_pruned": "2026-09-04 (G1.3a audit settlement): `powers` dropped from this element scope. The per-sub-channel liveness guard added with the settlement measured every p_kw/p_kvar sample on this deck INSIDE the tier floor over the full 523-case run, so the mask covered nothing (the comparator's own power floor -- `harness::assert_power_close`'s voltage-scaled `abs*max(1,|V_kv|) + rel*|P|` -- is looser still, so dropping the mask cannot red the case). `currents`, `losses` and the polar sub-channel keep exceeding their floors."
       }
     },
     {
@@ -735,7 +735,6 @@
           "name_re": ".*",
           "channels": [
             "currents",
-            "powers",
             "losses",
             "currents_mag_ang"
           ],
@@ -751,7 +750,8 @@
         "note": "whole-model fpc-delphi-ulp on the current/power channels + loss near-cancellation; voltages/yprim/discrete tier-clean",
         "date": "2026-07-19",
         "g13a_polar_first_failure": "currents_mag_ang -- Transformer.tg cma[4] ANGLE 144.50063395880753 deg vs r4133 144.5006340669244 deg, |d| 1.0811686479428317e-7 > band 8.916392577029153e-8 at |I| = 1.7979012350026755e3 A",
-        "g13a_polar_date": "2026-09-04"
+        "g13a_polar_date": "2026-09-04",
+        "g13a_settlement_powers_pruned": "2026-09-04 (G1.3a audit settlement): `powers` dropped from this element scope. The per-sub-channel liveness guard added with the settlement measured every p_kw/p_kvar sample on this deck INSIDE the tier floor over the full 523-case run, so the mask covered nothing (the comparator's own power floor -- `harness::assert_power_close`'s voltage-scaled `abs*max(1,|V_kv|) + rel*|P|` -- is looser still, so dropping the mask cannot red the case). `currents`, `losses` and the polar sub-channel keep exceeding their floors."
       }
     },
     {
@@ -770,7 +770,6 @@
           "name_re": ".*",
           "channels": [
             "currents",
-            "powers",
             "losses"
           ],
           "max_abs": 2e-05,
@@ -783,7 +782,8 @@
         "injection_max_abs_seen": 4.05e-06,
         "element_max_abs_seen": 9.09e-06,
         "note": "whole-model fpc-delphi-ulp on the current/power channels + loss near-cancellation; voltages/yprim/discrete tier-clean",
-        "date": "2026-07-19"
+        "date": "2026-07-19",
+        "g13a_settlement_powers_pruned": "2026-09-04 (G1.3a audit settlement): `powers` dropped from this element scope. The per-sub-channel liveness guard added with the settlement measured every p_kw/p_kvar sample on this deck INSIDE the tier floor over the full 523-case run, so the mask covered nothing (the comparator's own power floor -- `harness::assert_power_close`'s voltage-scaled `abs*max(1,|V_kv|) + rel*|P|` -- is looser still, so dropping the mask cannot red the case). `currents`, `losses` and the polar sub-channel keep exceeding their floors."
       }
     },
     {

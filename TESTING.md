@@ -616,14 +616,14 @@ the r4133 channel of the same case needs no entry).
 *empty ⇒ all of them* — so a committed entry written for the original three would
 silently widen onto every new element sub-channel WP-G1 adds (G1.3a–c), with no
 ledger diff and no population-lock trip. `SUBCHANNEL_FIELDS`
-(`crates/dss-core/tests/corpus_gate/ledger.rs:529`) closes that with three
+(`crates/dss-core/tests/corpus_gate/ledger.rs:583`) closes that with three
 load-time rules: a scope on such a field must carry a **non-empty** `channels`;
 every name in it must be one of that field's declared sub-channels (a typo like
 `"curents"` otherwise loads cleanly, selects nothing, and leaves the entry
 reporting itself applied while masking not one value); and a scope on any other
 field must carry no `channels` at all, since the runtime would never read it.
 "All sub-channels" survives only as a named, reviewed exception in
-`BARE_CHANNELS_ALLOWED` (`ledger.rs:547`), which is **empty**. The rules are
+`BARE_CHANNELS_ALLOWED` (`ledger.rs:601`), which is **empty**. The rules are
 driven both ways by `a_scope_that_misuses_channels_is_refused_at_load`. When a
 sub-step adds a new element sub-channel it adds the name to `SUBCHANNEL_FIELDS`
 **in the same commit**, so the committed exclusions keep the width they were
@@ -641,6 +641,22 @@ scale, and a **masked** angle — magnitude at or under its own band, where
 all: bounding an angle the gate never reads would need a ±180 ° "envelope" that
 bounds nothing (`a_masked_polar_angle_is_not_envelope_checked` /
 `an_unmasked_polar_angle_still_hits_the_envelope`).
+
+**A widened sub-channel has to keep masking something** (G1.3a audit settlement,
+2026-09-04). `applied`/`exceeded_floor` are per ENTRY, so a scope widened onto a
+sub-channel that diverges by nothing rides on a sibling channel's divergence for
+ever and fail-on-stale cannot see it. `Scope::channels_exceeded` therefore
+attributes every floor-exceed to the sub-channel that produced it, and
+`assert_all_hit` reports each `channels` name of a **`divergence`** entry that
+never exceeded (`a_widened_sub_channel_that_masks_nothing_is_reported_stale`).
+Its first run pruned four dead masks: the `powers` sub-channel of the four
+`*-injection-ulp` entries, whose p_kW/p_kvar samples are all inside the tier
+floor (the comparator's own power floor, `assert_power_close`'s voltage-scaled
+`abs·max(1,|V_kv|) + rel·|P|`, is looser still, so dropping the mask cannot red
+the case). An **`exclusion`** entry is not policed this way, for the reason
+`LedgerView::excluded` gives: it names whole artifacts the runner never fetches
+a verdict for, so there is no measurement to attribute; its sub-channels stay
+backed by the `measured` provenance the entry itself carries.
 
 **Adding a comparison surface to the ledger** — the recipe every WP-G1 surface
 sub-step follows, since no field or handler may exist before the comparator it
@@ -1067,7 +1083,7 @@ deliberate exception: `skip_prop` is a free function taking the channel, so its
 | 5 | the assert | `assert_value_matches_tol`, `mod.rs:332` | the case's tier floors (`tol_for`) | **gate red, both spellings in the message** |
 
 A divergence the ledger owns is handled outside this chain, by the case's
-`property`-scoped `ledger.json` entry (`corpus_gate/ledger.rs:1129`, `:1151`) —
+`property`-scoped `ledger.json` entry (`corpus_gate/ledger.rs:1184`, `:1204`) —
 which is why the triage order below ends there and not before.
 
 **Link 2 — the normalization table** `PROPS_NORM_R4133` (`harness/props_norm.rs:560`). **168 rows**
@@ -1287,7 +1303,7 @@ Three rules that table carries, each of which a capture must respect:
   *write* arm would be executed. `PDElements F:1` (`FaultRate`) and `F:3`
   (`PctPermanent`) are write arms that return the pre-`case` default `0.0` rather
   than the `-1.0` sentinel — invisible downstream — so they are recorded in
-  `EXCLUDED_WRITE_MODES` (`crates/dss-epri/src/modes.rs:1592`) instead of the
+  `EXCLUDED_WRITE_MODES` (`crates/dss-epri/src/modes.rs:1597`) instead of the
   table, alongside their readers (`F:0`, `F:2`). Hence 97 rows, not 99 (the
   count was 96 until G1.3a added `CktElement.Enabled`, `CktElementI(12)`).
 * **`ModeEffect` is the authority on what a row moves, and it carries the

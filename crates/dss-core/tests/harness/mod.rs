@@ -1788,11 +1788,14 @@ fn no_polar_payload(mag: &[f64], ang: &[f64]) -> bool {
 /// **Structure, asserted under every channel policy** (a value exclusion may
 /// never excuse a shape or an existence miss — the rule
 /// [`compare_element_channels`] already follows): the element exists in the Rust
-/// snapshot; `Enabled` matches exactly; a **disabled** element — and a
-/// **0-terminal** one, which `UPFCControl` legitimately is (r4133
-/// `Version8/Source/Controls/UPFCControl.pas:229-245`) — carries no polar
-/// payload at all, asserted on **both** sides up to the capi sentinel shape
-/// ([`no_polar_payload`]); and every array length matches on both sides. The
+/// snapshot; `Enabled` matches exactly; a **disabled** element carries no oracle
+/// payload at all (asserted here — the *port* keeps the shape and reads zero
+/// there, which is not an oracle-comparable fact and is pinned in-engine by
+/// `exec::tests::derived_polar::a_never_enabled_element_has_no_polar_payload`);
+/// a **0-terminal** element, which `UPFCControl` legitimately is (r4133
+/// `Version8/Source/Controls/UPFCControl.pas:229-245`), carries no payload on
+/// **either** side, up to the capi sentinel shape ([`no_polar_payload`]); and
+/// every array length matches on both sides. The
 /// enabled-only capture is what makes the two oracle transports agree in shape —
 /// a never-enabled element has no `NodeRef`, where r4133 dereferences nil
 /// (`DDLL/DCktElement.pas:1099`, no guard) and capi returns a one-element
