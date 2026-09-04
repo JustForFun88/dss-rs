@@ -21,6 +21,7 @@
 //! index, so they are rejected here. (This file spells the tag only at runtime,
 //! so it does not trip its own gate.)
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -3328,5 +3329,296 @@ fn operational_docs_cite_the_compat_machinery_accurately() {
         alias_refs >= 4,
         "only {alias_refs} `compat::` reference(s) across the doc surface — the \
          walk shrank and this half of the gate went vacuous"
+    );
+}
+
+/// The operational docs whose sections cite code by `file.rs:LINE`.
+///
+/// Both are already in [`operational_docs`] for the compat half above; the two
+/// halves are split because the two ways such a sentence rots are independent.
+/// That half asks *does the file this tag-line names still carry a marker*;
+/// this one asks *does the line this sentence names still hold the thing the
+/// sentence calls it*. R4133_PROPS RP5.1 wrote 46 fresh `file.rs:LINE`
+/// citations into these two files and its audit round found the second question
+/// asked by nobody — the compat walk's path extractor stops at `.rs` and never
+/// reads a `:LINE` suffix.
+///
+/// `docs/` records and the plans stay out, for the reason
+/// [`operational_docs`] already gives: they state history and are *allowed* to
+/// differ from HEAD.
+const LINE_CITED_DOCS: &[(&str, usize)] = &[
+    // (doc, the floor its own citations must not fall below)
+    ("TESTING.md", 40),
+    ("tests/TOLERANCE_NOTES.md", 10),
+];
+
+/// Every file-shaped token on one documentation line, in reading order.
+///
+/// `None` as the line number is a mention without a `:LINE` suffix — it still
+/// matters, because it is the antecedent a later bare `` `:LINE` `` inherits.
+/// That inheritance is why non-Rust extensions are returned too: most bare
+/// continuations in `tests/TOLERANCE_NOTES.md` hang off a `.pas` citation into
+/// the Pascal spec, which lives outside this repository and must NOT be
+/// resolved against it.
+///
+/// An empty path is the bare form itself.
+fn file_citations_in(line: &str) -> Vec<(String, Option<usize>)> {
+    let chars: Vec<char> = line.chars().collect();
+    let is_path = |c: char| c.is_ascii_alphanumeric() || matches!(c, '_' | '/' | '.' | '-');
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        // The bare continuation, always backtick-anchored so a stray `:12` in
+        // prose is not read as a citation.
+        if chars[i] == '`' && chars.get(i + 1) == Some(&':') {
+            let mut j = i + 2;
+            while chars.get(j).is_some_and(char::is_ascii_digit) {
+                j += 1;
+            }
+            if j > i + 2 {
+                let n: String = chars[i + 2..j].iter().collect();
+                out.push((String::new(), n.parse::<usize>().ok()));
+                i = j;
+                continue;
+            }
+        }
+        if !is_path(chars[i]) {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < chars.len() && is_path(chars[i]) {
+            i += 1;
+        }
+        // Sentence punctuation ("... `props_norm.rs`.") is not part of the path.
+        let mut end = i;
+        while end > start && matches!(chars[end - 1], '.' | '-') {
+            end -= 1;
+        }
+        let run: String = chars[start..end].iter().collect();
+        let Some(dot) = run.rfind('.') else { continue };
+        let ext = &run[dot + 1..];
+        if dot == 0
+            || !(2..=4).contains(&ext.len())
+            || !ext.chars().all(|c| c.is_ascii_alphabetic())
+        {
+            continue;
+        }
+        // A `:LINE` suffix, if the run is immediately followed by one.
+        let mut j = end;
+        let mut lineno = None;
+        if chars.get(j) == Some(&':') {
+            let mut k = j + 1;
+            while chars.get(k).is_some_and(char::is_ascii_digit) {
+                k += 1;
+            }
+            if k > j + 1 {
+                let n: String = chars[j + 1..k].iter().collect();
+                lineno = n.parse::<usize>().ok();
+                j = k;
+            }
+        }
+        out.push((run, lineno));
+        i = i.max(j);
+    }
+    out
+}
+
+/// The backticked Rust identifiers a documentation line names, `::`-tails only.
+///
+/// This is the *anchor* half of the citation check: a line number alone is a
+/// weak claim (a 5 000-line harness file has a line 3 311 no matter how far the
+/// thing it named drifted), so the citation must land near something the
+/// sentence itself spells.
+fn backticked_idents(line: &str) -> Vec<String> {
+    line.split('`')
+        .skip(1)
+        .step_by(2)
+        .filter(|span| {
+            span.chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                && span
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
+        })
+        .map(|span| span.rsplit("::").next().unwrap_or(span).to_string())
+        .filter(|s| s.len() > 2)
+        .collect()
+}
+
+/// The tree files a documentation-spelled path can mean: an exact
+/// repo-relative match, or any file whose path ends with it (`mod.rs`,
+/// `harness/mod.rs`).
+fn resolve_cited(by_base: &BTreeMap<String, Vec<String>>, cited: &str, base: &str) -> Vec<String> {
+    let suffix = format!("/{cited}");
+    by_base
+        .get(base)
+        .map(|v| {
+            v.iter()
+                .filter(|rel| *rel == cited || rel.ends_with(&suffix))
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// A `file.rs:LINE` citation in the operational docs still points at the line
+/// the sentence names.
+///
+/// Three failures, all of them silent before this test: the file is gone or the
+/// path is spelled too loosely to name one file; the line is past the end of
+/// it; or the line drifted away from what the sentence calls it. The third is
+/// the one that actually happens — harness files grow by hundreds of lines a
+/// sub-step, and nothing in the tree read a `:LINE` suffix.
+///
+/// Resolution follows the reader's own rule: a path is matched against the tree
+/// by suffix, and a shortened repeat (`mod.rs:3281` after the section spelled
+/// `crates/dss-core/tests/harness/mod.rs:3243`) is disambiguated by the nearest
+/// fully-qualified mention **earlier in the same document**. A citation that
+/// resolves to neither fails rather than being skipped — an ambiguous citation
+/// is a doc defect, not an exemption.
+#[test]
+fn operational_docs_line_citations_point_at_the_line_they_name() {
+    let root = repo_root();
+
+    let mut by_base: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for path in rust_sources(&root) {
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let Some(base) = rel.rsplit('/').next().map(str::to_string) else {
+            continue;
+        };
+        by_base.entry(base).or_default().push(rel);
+    }
+
+    let mut cache: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut bad: Vec<String> = Vec::new();
+    let mut counts: Vec<(&str, usize)> = Vec::new();
+
+    for (doc, floor) in LINE_CITED_DOCS {
+        let text = fs::read_to_string(root.join(doc)).unwrap_or_else(|e| panic!("{doc}: {e}"));
+        let lines: Vec<&str> = text.lines().collect();
+        let mut full_of_base: BTreeMap<String, String> = BTreeMap::new();
+        let mut last_file: Option<String> = None;
+        let mut checked = 0usize;
+
+        for (i, line) in lines.iter().enumerate() {
+            let mut idents = backticked_idents(line);
+            if i > 0 {
+                // Docs wrap: the name and its citation routinely straddle a
+                // line break.
+                idents.extend(backticked_idents(lines[i - 1]));
+            }
+
+            for (tok, lineno) in file_citations_in(line) {
+                let cited = if tok.is_empty() {
+                    match &last_file {
+                        Some(f) => f.clone(),
+                        None => continue,
+                    }
+                } else {
+                    // Register a fully-qualified spelling so the section's
+                    // later short repeats resolve.
+                    if tok.contains('/') && tok.ends_with(".rs") {
+                        let base = tok.rsplit('/').next().unwrap_or(&tok).to_string();
+                        let hits = resolve_cited(&by_base, &tok, &base);
+                        if hits.len() == 1 {
+                            full_of_base.insert(base, hits[0].clone());
+                        }
+                    }
+                    last_file = Some(tok.clone());
+                    tok
+                };
+                let Some(ln) = lineno else { continue };
+                if !cited.ends_with(".rs") {
+                    continue;
+                }
+
+                let base = cited.rsplit('/').next().unwrap_or(&cited).to_string();
+                let hits = resolve_cited(&by_base, &cited, &base);
+                let target = match (hits.len(), full_of_base.get(&base)) {
+                    (1, _) => hits[0].clone(),
+                    (_, Some(full)) => full.clone(),
+                    (0, None) => {
+                        bad.push(format!(
+                            "    {doc}:{}: `{cited}:{ln}` names no file in the tree",
+                            i + 1
+                        ));
+                        continue;
+                    }
+                    (n, None) => {
+                        bad.push(format!(
+                            "    {doc}:{}: `{cited}:{ln}` matches {n} files and no \
+                             fully-qualified spelling precedes it — spell enough of \
+                             the path",
+                            i + 1
+                        ));
+                        continue;
+                    }
+                };
+
+                let src = cache.entry(target.clone()).or_insert_with(|| {
+                    fs::read_to_string(root.join(&target))
+                        .unwrap_or_else(|e| panic!("{target}: {e}"))
+                        .lines()
+                        .map(str::to_string)
+                        .collect()
+                });
+                checked += 1;
+
+                if ln == 0 || ln > src.len() {
+                    bad.push(format!(
+                        "    {doc}:{}: `{cited}:{ln}` is past the end of {target} \
+                         ({} lines)",
+                        i + 1,
+                        src.len()
+                    ));
+                    continue;
+                }
+                if src[ln - 1].trim().is_empty() {
+                    bad.push(format!(
+                        "    {doc}:{}: `{cited}:{ln}` points at a blank line of {target}",
+                        i + 1
+                    ));
+                    continue;
+                }
+                if idents.is_empty() {
+                    continue;
+                }
+                let lo = ln.saturating_sub(4);
+                let hi = (ln + 3).min(src.len());
+                let window = src[lo..hi].join("\n");
+                if !idents.iter().any(|id| window.contains(id.as_str())) {
+                    bad.push(format!(
+                        "    {doc}:{}: `{cited}:{ln}` — {target} lines {}-{} name \
+                         none of {:?}",
+                        i + 1,
+                        lo + 1,
+                        hi,
+                        idents
+                    ));
+                }
+            }
+        }
+        counts.push((doc, checked));
+        assert!(
+            checked >= *floor,
+            "{doc} yielded only {checked} `file.rs:LINE` citations (floor {floor}) \
+             — either the section that carries them is gone or the scanner stopped \
+             seeing them, and this gate went vacuous"
+        );
+    }
+
+    assert!(
+        bad.is_empty(),
+        "documentation citing a code line that no longer says what the sentence \
+         claims. Re-read the cited file and re-point the citation (or re-word the \
+         sentence); do NOT delete the line number:\n{}\nchecked: {:?}",
+        bad.join("\n"),
+        counts
     );
 }
