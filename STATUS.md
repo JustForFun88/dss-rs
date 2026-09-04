@@ -17,11 +17,13 @@
 > `phase-index.md` (round 1's own archive note). Section 7's table says what each
 > holds. Zero loss is proven by script, not asserted. **Correction carried
 > forward:** round 1's note said "no test parses this file", which stopped being
-> true at RP3.11 (2026-09-02) —
-> `props_r4133_replay.rs::every_rp311_serialization_pin_exists_and_is_cited` and
-> `::every_rp313_ncim_pin_exists_and_is_cited` read its pin citations. Both now
-> follow [`r4133-props-rp3.md`](docs/phase-records/r4133-props-rp3.md), every
-> assertion unchanged, so the claim holds again here. Section 7 forwards the
+> true at RP3.11 (2026-09-02) — `props_r4133_replay.rs`'s pin-citation guards
+> `every_rp311_serialization_pin_exists_and_is_cited`,
+> `::every_rp313_ncim_pin_exists_and_is_cited` and, since 2026-09-04,
+> `::every_rp310_windgen_pin_exists_and_is_cited` read its pin citations. All
+> **three** now follow
+> [`r4133-props-rp3.md`](docs/phase-records/r4133-props-rp3.md), every assertion
+> unchanged, so the claim holds again here. Section 7 forwards the
 > `STATUS §X` citations.
 
 > **Round 1 (2026-08-05)** archived 16 368 -> 415 lines and created the sixteen
@@ -40,10 +42,9 @@ has shrunk to a precision-compat lane and is scheduled for full teardown.
 
 **In flight.** `R4133_PROPS_PLAN.md` on branch **`r4133-props`** (forked from
 `update` @ `2ee6bb00`), inside the `GOLDEN_REBASE_PLAN.md` window
-(`PLAN_SEQUENCE.md` rows 5a/5b). **WP-RP0, WP-RP1, WP-RP2 and WP-RP3 COMPLETE**;
-§RP3.10 landed 2026-09-04 in two commits (verdict `FIX` — the reproduced
-`QMode=0` zero-var dispatch is gone from both lanes — plus its audit
-settlement, which found and fixed a sign bug in the new arm); **WP-RP4 closed** — RP4.1, G1.1's deliverable, landed 2026-09-03.
+(`PLAN_SEQUENCE.md` rows 5a/5b). **WP-RP0 – WP-RP4 COMPLETE**: WP-RP3's last
+sub-step §RP3.10 landed and settled 2026-09-04 (`9f55095b` + `9f067c19`), and
+WP-RP4's RP4.1, G1.1's deliverable, landed 2026-09-03. **Only WP-RP5 is left.**
 Execution is single-branch, never parallel worktrees: `tests/corpus/ledger.json`,
 `tests/corpus/manifests/population.lock.json` and `tests/golden/golden.lock.json`
 are fail-on-stale and are rewritten by this plan and by the still-open
@@ -51,9 +52,9 @@ GOLDEN_REBASE WP-G1 sub-steps alike.
 
 **Record placement (from 2026-09-03).** Every sub-step's **full** record is
 appended to its per-WP file under `docs/phase-records/` — WP-RP3 →
-[`r4133-props-rp3.md`](docs/phase-records/r4133-props-rp3.md), which is where
-**§RP3.10** goes; a later WP → a new `r4133-props-<wp>.md` (WP-RP5 →
-`r4133-props-rp5.md` for RP5.1, RP5.2 and the closeout). The pin-citation guards
+[`r4133-props-rp3.md`](docs/phase-records/r4133-props-rp3.md), where §RP3.10's
+went; a later WP → a new `r4133-props-<wp>.md` (WP-RP5 → `r4133-props-rp5.md`
+for RP5.1, RP5.2 and the closeout). The pin-citation guards
 in `crates/dss-core/tests/props_r4133_replay.rs` read that file, and section 7
 forwards the `§RPx.y` citations to it. Section 1 gets a **3–6 line** landed
 paragraph per sub-step — verdict, date, commit, pointer — and never grows a full
@@ -132,19 +133,13 @@ sub-step records RP3.6 – RP3.13 and RP3.10 (moved from STATUS §1)".
   settlement (12 findings — 6 fixed, 6 recorded, 0 refuted) stopped reproducing
   a fourth r4133 defect, `CalcInjCurrAtBus`' PC-element sign.
 - **RP3.10** — the reproduced `QMode=0` dispatch (2026-09-04, `9f55095b` +
-  the audit settlement on `r4133-props`): verdict `FIX`.
-  `SetNominalGeneration` gets the constant-Q arm r4133 never wrote (`Else
-  kvarCalc := 0`, `WindGen.pas:1320-1321`) in **both** lanes, at the cost of four
-  r4133 `exclusion` entries (new cause `windgen-qmode0-no-arm`), the gate's new
-  `variables` exclusion field, five pins (four new, one re-centred) with a
-  citation guard, and `DIVERGENCES.md` §L7 — over zero golden bytes, with
-  `lane_diff` Δ = 0 on every gated kind. Its settlement (ten findings — eight
-  fixed, one recorded, one refuted) caught a **port bug in the new arm**: read
-  raw, `kvarBase` carries no sign once a deck types `kVA=`
-  (`RecalcElementData`'s non-negative `sqrt`, `WindGen.pas:1377-1378`), so mode 0
-  dispatched the opposite sign from arm 1 there; the arm now takes `|kvarBase|`
-  with `LeadLag` from `PFNominal`, moving no landed number. It also gave the
-  `variables` exclusion field per-scope staleness accounting. Full record:
+  `9f067c19`): verdict `FIX`. `SetNominalGeneration` gets the constant-Q arm
+  r4133 never wrote (`Else kvarCalc := 0`, `WindGen.pas:1320-1321`) in **both**
+  lanes, over four r4133 `exclusion` entries, the gate's new `variables`
+  exclusion field, five pins with a citation guard and zero golden bytes
+  (`lane_diff` Δ = 0). Its settlement (ten findings — eight fixed, one recorded
+  as the AT-1 follow-up below, one refuted) caught a port bug in the new arm:
+  the dispatched sign under a typed `kVA=`. Full record:
   [`r4133-props-rp3.md`](docs/phase-records/r4133-props-rp3.md).
 
 **WP-RP4 (the unmask) — COMPLETE** (RP4.1, 2026-09-03, `59e521e5`, 23 files
@@ -175,13 +170,12 @@ zero-coverage class) landed 2026-08-29 on `r4133-props`; G1.3a–d, G1.4–G1.11
 and WP-G3–G5 remain. Full record: the same file, section "GOLDEN_REBASE WP-G1 —
 records".
 
-**Next.** §RP3.10 landed and settled 2026-09-04, so the queue is
-**RP5.1** (operational docs) → **RP5.2** (the closing record, which flips this
-plan's `PLAN_SEQUENCE.md` row to COMPLETE) → **closeout**. §RP5.2's precondition
-"§RP3.10 is closed" is discharged by the fix, and the unmask was never at risk:
-our `kvar` render reads `kvar_base`, which the dispatch never writes. Queued
-behind GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING,
-the UPGRADE line.
+**Next.** **RP5.1** (operational docs) → **RP5.2** (the closing record, which
+flips this plan's `PLAN_SEQUENCE.md` row to COMPLETE) → **closeout**. §RP5.2 has
+no open blocker left: its "§RP3.10 is closed" precondition is discharged by the
+fix, which never put the unmask at risk (our `kvar` render reads `kvar_base`,
+which the dispatch never writes). Queued behind GOLDEN_REBASE:
+`WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, the UPGRADE line.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
@@ -232,21 +226,20 @@ the site comment carries each row's measured cost.
   `windgen-qmode0-constant-q-{snapdelta,daily}-r4133` entries exclude
   `voltages`, `injection`, `element`, `y`, `y_fingerprint` and the WindGen
   `yprim` on them — deliberately, because the port dispatches `kvarBase` where
-  r4133 dispatches 0 and there is no envelope to re-assert. Both decks declare
-  only `Circuit`/`Line`/`WindGen`, so what still runs against the oracle there is
-  the iteration count (2 == 2), the forced property surface and the two
-  non-WindGen YPrims: a regression in the delta-YPrim/L-N-Vmag path or the
-  daily wind-speed dispatch — the behaviours those two cases were written to
-  gate — would now pass. The offline pins cover the pre-solve dispatch value, not
-  the solved model. **The fix is a sibling deck per case with `QMode=1`** (or
-  `QMode=2` plus a flat `y=+1` volt-var curve), `engines: "r4133"`, same
-  delta/daily paths: both engines then take the same arm, so node V, the RHS,
-  the elements, Y and YPrim are all compared again with no ledger entry. Not
-  built inside the settlement because two new manifest cases are a measured
-  population change (the lock's anti-shrink accounting and the 523-case count in
-  `CLAUDE.md`, `TESTING.md` and `corpus_gate/scheduler.rs`), i.e. its own
-  sub-step with its own audit pair. Whoever takes it owes the usual live
-  measurement that the new decks compare clean on every channel.
+  r4133 dispatches 0 and there is no envelope to re-assert. What still runs
+  against the oracle is the iteration count (2 == 2), the forced property surface
+  and the two non-WindGen YPrims, so a regression in the delta-YPrim/L-N-Vmag
+  path or the daily wind-speed dispatch — the behaviours those two cases were
+  written to gate — would now pass. **The fix is a sibling deck per case with
+  `QMode=1`** (or `QMode=2` plus a flat `y=+1` volt-var curve),
+  `engines: "r4133"`, same delta/daily paths: both engines then take the same
+  arm, so node V, the RHS, the elements, Y and YPrim are compared again with no
+  ledger entry. Not built inside the settlement because two new manifest cases
+  are a measured population change (the lock's anti-shrink accounting, the
+  523-case count in `CLAUDE.md`, `TESTING.md` and `corpus_gate/scheduler.rs`),
+  i.e. its own sub-step with its own audit pair, owing the usual live measurement
+  that the new decks compare clean on every channel. Full text: the §RP3.10
+  record.
 
 - **The generator's NCIM reporting arm is keyed on the *global* algorithm —
   OPEN, recorded by the R4133_PROPS §RP3.13 audit settlement (AC-3,
@@ -327,45 +320,27 @@ the site comment carries each row's measured cost.
   DSS_GATE_SEED_ONLY=<case>` and delete any entry whose cause upstream has fixed,
   so the r4133 channel re-lights instead of staying dark forever.
 - **`CorpusGuard` can leak deck-written artifacts under concurrency —
-  OPEN, out-of-scope observation (seen during GOLDEN_REBASE G1.2, 2026-08-29).**
-  One `cargo test --workspace` run left five untracked files in
-  `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*.txt`, written by
-  the vendored `Auto3bus.dss:57 export currents file=…`), contradicting
-  TESTING.md's "keep `tests/corpus` pristine afterwards". **Intermittent**: a
-  filtered two-case run (`DSS_GATE_ONLY=Auto3bus`), the AD test alone, and a
-  second full unfiltered `corpus_gate_all_cases_match_engines` run all left the
-  tree clean. Consistent with an overlapping-guard snapshot race (cf. the unit
-  test `corpus_guard_overlapping_guards_still_sweep`); not attributed further —
-  it belongs to the gate infrastructure, not to a G1 sub-step. No gate went red.
-  **Second sighting, same day, at the G1.2 settlement's own gate run:** seven
-  files in the same directory (`auto3bus_{hl,ht}_{current,losses}.txt`,
-  `auto3bus_lt_current.txt`, `autohlt_hl_current.txt`,
-  `autohlt_noload_power.txt`), a *different* set from the first five and spelled
-  **lowercase** where the first sighting's were `Auto3bus_*` — the
-  case-insensitive collision `corpus_gate/runner.rs:42-55` and the G2.2d record
-  already describe, now observed on the leak itself. Deleted by name (never a
-  recursive delete); both gate lanes were green with them present, so the leak
-  still costs nothing but hygiene. **Third and fourth sightings, 2026-09-03, at
-  R4133_PROPS §RP3.12's own gate and settlement runs:** seven and then six
-  untracked files in the same directory (`AutoHLT_*` / `auto3bus_*`, the
-  spelling and the exact set varying again), both lanes green with them present,
-  both removed by exact name; no tracked corpus or golden file moved. **Fifth and
-  sixth sightings, 2026-09-03, at R4133_PROPS §RP4.1's gate and settlement runs:**
-  eight and then five untracked files in the same directory, both lanes green
-  with them present, both removed by exact name; `lane_diff.ps1`'s own artifact
-  sweep removed the same class in its run without touching the two intended
-  working-tree changes. **Seventh and eighth sightings, 2026-09-03, at
-  R4133_PROPS §RP3.13's gate and settlement runs**, and the first measurement of
-  the nondeterminism itself: successive unfiltered runs of the *same* tree left
-  9, then 6, then 6, then an 11-file set carrying mixed-case duplicates
-  (`auto3bus_hl_current.txt` beside `Auto3bus_HL_current.txt`) and finally 8,
-  while the settlement's runs left 36 across `tests/corpus/…`; every set removed
-  by exact name, `git clean` never used, no tracked corpus or golden byte moved,
-  both lanes green with them present. The §RP3.13 record also logs an
-  unexplained one-off `corpus_gate` `137 passed; 1 failed` that never reproduced
-  and whose most likely cause is this race. Eight sightings make it a pattern,
-  not a fluke: whoever picks it up should start with `DSS_GATE_JOBS=1` per the
-  G2.2d note.
+  OPEN, out-of-scope observation (first seen at GOLDEN_REBASE G1.2,
+  2026-08-29).** Unfiltered `cargo test --workspace` runs intermittently leave
+  untracked deck-written exports inside the tracked corpus tree — nearly always
+  `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*` / `AutoHLT_*`
+  `.txt`, written by the vendored decks' own `export … file=` lines) —
+  contradicting TESTING.md's "keep `tests/corpus` pristine afterwards".
+  Consistent with an overlapping-guard snapshot race (cf. the unit test
+  `corpus_guard_overlapping_guards_still_sweep`) plus the case-insensitive
+  collision `corpus_gate/runner.rs:42-55` (the same file appears both
+  `Auto3bus_HL_current.txt` and `auto3bus_hl_current.txt`). **Eleven sightings**
+  2026-08-29 … 2026-09-04 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2,
+  §RP3.10 ×3), the set varying in size (1 … 36 files) and in case between
+  successive runs of the *same* tree — the nondeterminism itself was measured at
+  §RP3.13 — and once accompanied by an unreproducible `corpus_gate` `137 passed;
+  1 failed` whose most likely cause is this race. Every set was removed before
+  the commit (by exact name, or with `git clean -fd` scoped to the vendored deck
+  tree at §RP3.10); both lanes were green with the files present and no tracked
+  corpus or golden byte ever moved, so the leak costs hygiene only. Per-run
+  detail is in the per-WP records (`r4133-props-rp3.md`, `-rp4.md`,
+  `golden-rebase.md`). Eleven sightings make it a pattern, not a fluke: whoever
+  picks it up should start with `DSS_GATE_JOBS=1` per the G2.2d note.
 
 **Carried-forward and residual-floor items — the rows still open.** Full text,
 closed rows and all:

@@ -118,7 +118,10 @@ No batching of audits across sub-steps, no shared fix agent across sub-steps.
    `#[ignore]`, no name-filter that can green on zero matches; a red test blocks
    the commit.
 3. **Update `STATUS.md`** (frontier + the plan record), **commit** (code + STATUS
-   together).
+   together). *(**Since 2026-09-03** this means the sub-step's **full** record
+   goes to its `docs/phase-records/` file — WP-RP3 → `r4133-props-rp3.md`, WP-RP5
+   → `r4133-props-rp5.md` — while `STATUS.md` section 1 gets only a **3–6 line**
+   landed paragraph; the rule itself is STATUS section 1 "Record placement".)*
 4. **`/audit-code` + `/audit-tests` in parallel** — two **fresh independent
    agents, never forks**, spawned with the explicit audit-tier override. Each gets
    a self-contained brief: the sub-step's commit range (`<sha>^..HEAD`), the diff,
@@ -136,7 +139,11 @@ No batching of audits across sub-steps, no shared fix agent across sub-steps.
 6. **STATUS review** — read `STATUS.md` end to end; sync whatever the sub-step
    made stale (no two places disagreeing), dedup restated paragraphs; if anything
    changed, re-run the five-command gate and land a `docs:` commit, so the
-   sub-step ends on a **clean tree**. Then stop and report **in Russian** (code,
+   sub-step ends on a **clean tree**. *(**Since 2026-09-03** "end to end" covers
+   `STATUS.md` **and** the sub-step's `docs/phase-records/` file, which is where
+   its full record lives — STATUS section 1 keeps only its 3–6 line paragraph;
+   the rule itself is STATUS section 1 "Record placement".)* Then stop and report
+   **in Russian** (code,
    identifiers, commit messages and STATUS stay English): what landed, what the
    audits found and how the fix agent settled it, gate status, next sub-step.
 
@@ -180,15 +187,16 @@ solve-side fix with no property cell of its own — our `kvar` render reads
 closing record, and not the unmask; it also runs only on the user's go-ahead
 (§RP3.10). *(**Executed 2026-09-04** — verdict `FIX`, the constant-Q arm
 implemented in both lanes with four r4133 `exclusion` entries and five pins over
-zero golden bytes; see the dated line in §RP3.10. That leaves **§RP5.2 with no
-open blocker**.)* **§RP3.11** (the `Save`/`Dump` re-serialization surface, opened by
+zero golden bytes, `9f55095b` + `9f067c19`; see the dated line in §RP3.10. That
+leaves **§RP5.2 with no open blocker**.)* **§RP3.11** (the `Save`/`Dump` re-serialization surface, opened by
 RP3.3's audit settlement) is the mirror image: no *compared* channel reads it at
 all, so it cannot block a gate flip — it blocks **§RP5.2** too, and it ran after
 RP4.1 had fixed which pairs are echoes, because that list is exactly the list of
 properties where the two serializers disagree. *(**Executed 2026-09-03** —
 `KEEP_LIVE_PINNED` on both surfaces, `97107e54` + `0194b086`; see the dated
 lines in §RP3.11. That §RP5.2 precondition is therefore **discharged**, leaving
-§RP3.10 as the closing record's only open blocker.)* **§RP3.13** (the two NCIM
+§RP3.10 as the closing record's only open blocker — itself discharged the next
+day, as the §RP3.10 note above records.)* **§RP3.13** (the two NCIM
 port bugs, opened by RP3.11's own P0 findings) is the third: it moves no
 property cell at all — both defects are in the NCIM solve and its reporting arms
 — so it blocks neither the unmask nor §RP5.2, and it ran on the user's go-ahead
@@ -2116,7 +2124,8 @@ STATUS §WP-RP3 carries the verdict and this section is marked as executed.
 Outcome: the last reproduced upstream bug this plan uncovered stops living in
 prose.
 
-**As executed (2026-09-04) — verdict `FIX`; the kill criterion did NOT fire.**
+**As executed (2026-09-04, `9f55095b` + the audit settlement `9f067c19`) —
+verdict `FIX`; the kill criterion did NOT fire.**
 Refuted both halves: a complete 20-hit `Qnominalperphase` write census leaves no
 other site that fills it for mode 0, and the live r4133 DLL dispatches exactly 0
 under `QMode=0` on all five corpus decks and in every configuration probed

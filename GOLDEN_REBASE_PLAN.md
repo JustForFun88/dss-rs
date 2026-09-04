@@ -108,7 +108,10 @@ DE_PASCALIZE Stage-F group-fixer pattern is explicitly rescinded for this plan).
    kernel, a lane alias, or the solver. No `#[ignore]`, no name-filter that can
    green on zero matches; a red test blocks the commit.
 3. **Update `STATUS.md`** (frontier + the plan record), **commit** (code + STATUS
-   together).
+   together). *(**Since 2026-09-03** this means the sub-step's **full** record
+   goes to its `docs/phase-records/` file — GOLDEN_REBASE → `golden-rebase.md` —
+   while `STATUS.md` section 1 gets only a **3–6 line** landed paragraph; the
+   rule itself is STATUS section 1 "Record placement".)*
 4. **`/audit-code` + `/audit-tests` in parallel** — two **fresh independent agents,
    never forks**, spawned with the explicit audit-tier override. Each gets a
    self-contained brief: the sub-step's commit range (`<sha>^..HEAD`), the diff, the
@@ -125,7 +128,11 @@ DE_PASCALIZE Stage-F group-fixer pattern is explicitly rescinded for this plan).
 6. **STATUS review** — read `STATUS.md` end to end; sync whatever the sub-step made
    stale (no two places disagreeing), dedup restated paragraphs; if anything
    changed, re-run the five-command gate and land a `docs:` commit, so the sub-step
-   ends on a **clean tree** (§1.2 regen rule R1 depends on it). Then stop and
+   ends on a **clean tree** (§1.2 regen rule R1 depends on it). *(**Since
+   2026-09-03** "end to end" covers `STATUS.md` **and** the sub-step's
+   `docs/phase-records/` file, which is where its full record lives — STATUS
+   section 1 keeps only its 3–6 line paragraph; the rule itself is STATUS
+   section 1 "Record placement".)* Then stop and
    report **in Russian** (code, identifiers, commit messages and STATUS stay
    English): what landed, what the audits found and how the fix agent settled it,
    gate status, next sub-step.
