@@ -160,13 +160,13 @@ per-element `CurrentsMagAng`/`VoltagesMagAng`/`Residuals` on **both** channels
 over 442 cases, the A/B/C capture order enforced, `WP_G1_MODES` 96 → 97; **1**
 new ledger entry (capi-only CapControl TIMECONTROL bus, `DIVERGENCES.md` L8) + **13**
 measured scope widenings, 0 golden bytes, **4 959 / 0 / 5** per lane, Δ = 0.
-**G1.3d(i)** landed 2026-09-05 on `lane-e` (D4/D19; `b7d7da2a` + audit
-settlement): the per-element counts, `NodeOrder` and `EnergyMeter` on both
-channels over 440 cases, compared exactly, both G1.3d verdicts and the D19
+**G1.3d(i)** landed 2026-09-05 on `lane-e` (D4/D19; `e4d99806` + `b7d7da2a`,
+settlement `c9c4ac09`): the per-element counts, `NodeOrder` and `EnergyMeter` on
+both channels over 440 cases, compared exactly, both G1.3d verdicts and the D19
 cherry-pick of lane-m's D9 `MakeBusList` zone-reset — 0 ledger entries, 0 golden
-bytes, 0 band movement; its audit settled 15 findings (12 fixed / 2 recorded /
-1 refuted). G1.3d(ii), G1.3b–c, G1.4–G1.11c and WP-G3–G5 remain. Full record:
-the same file, section "GOLDEN_REBASE WP-G1 — records".
+bytes, 0 band movement, **5 392 / 0 / 5** per lane, Δ = 0; its audit settled 15
+findings (12 fixed / 2 recorded / 1 refuted). G1.3d(ii), G1.3b–c, G1.4–G1.11c
+and WP-G3–G5 remain. Full records: the same file, section "GOLDEN_REBASE WP-G1 — records".
 
 **Next.** **`GOLDEN_REBASE_PLAN.md` G1.3d(ii)** on the element lane (then G1.3b →
 G1.3c), with the bus, PD/meter and singles lanes running in parallel per D7. Then G1.4–G1.11c and WP-G3–G5 — inside which **G3.4**/**G3.5**,
