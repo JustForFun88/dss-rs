@@ -29,7 +29,7 @@ use crate::exec::{Dss, ElementSnapshot};
 use crate::support::complexutil::cdang;
 
 /// The `feeder` tolerance tier — `tests/harness/mod.rs::tol_for` (`"feeder"`,
-/// `:921-930`), the tier IEEE13 is gated at, restated here because a `src`
+/// `:967-976`), the tier IEEE13 is gated at, restated here because a `src`
 /// unit test cannot reach the integration harness. Every band below is that
 /// tier's *derived* image (`tests/TOLERANCE_NOTES.md`), never a fresh number.
 const I_ABS: f64 = 1e-5;
@@ -416,6 +416,58 @@ fn capcontrol_time_voltages_follow_the_monitored_elements_terminal() {
         assert!(
             (cc.voltages_mag_ang[0].mag - CAPACITOR_V).abs() > 6.5e1,
             "{name} must NOT read the capacitor's bus ({CAPACITOR_V} V, capi 0.14.5)",
+        );
+    }
+}
+
+// Regression pin (G1.3a audit settlement, 2026-09-04) — the polar accessor must
+// not panic on a stale `NodeRef`. `set_nterms`/`set_nconds` grow `Yorder` and
+// reallocate the terminal buffers but leave `node_ref` alone
+// (`elements/ckt.rs:326`, `:334-346`); only `set_node_ref` resizes it (`:382`),
+// and `TDSSCircuit.ReProcessBusDefs` re-runs it for **enabled** elements only
+// (`circuit/circuit.rs:735`, Pascal `Common/Circuit.pas:2380-2400`). So a
+// disabled element that grows phases keeps a `node_ref` SHORTER than its
+// `yorder`, and the first cut of the G1.3a block sliced `node_ref[..yorder]`
+// there — a panic in the public `snapshot_elements` reachable from ordinary
+// deck input (found by the G1.3a code audit; `range end index 6 out of range
+// for slice of length 2`).
+/// A disabled element whose `NodeRef` is shorter than its `Yorder` reports a
+/// full-length `voltages_mag_ang` whose stale slots read as ground.
+#[test]
+fn a_stale_node_ref_shorter_than_yorder_reads_as_ground() {
+    let mut dss = Dss::new();
+    for cmd in [
+        "clear",
+        "new circuit.stale basekv=12.47 phases=3 bus1=src",
+        "new line.a bus1=src.1 bus2=b.1 phases=1 r1=0.1 x1=0.1 length=1",
+        "new load.l bus1=b.1 phases=1 kv=7.2 kw=10",
+        "solve",
+        // Disabled first, so `ReProcessBusDefs` no longer re-runs `SetNodeRef`
+        // on it; then grown, so `Yorder` (2 -> 6) outruns `node_ref` (2).
+        "edit line.a enabled=no",
+        "edit line.a phases=3",
+        "edit line.a bus1=src.1.2.3 bus2=b.1.2.3",
+        "solve",
+    ] {
+        dss.command(cmd);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let snaps = dss.snapshot_elements();
+    let a = elem(&snaps, "Line.a");
+    assert!(!a.enabled, "Line.a stays disabled");
+    assert_eq!(
+        a.voltages_mag_ang.len(),
+        6,
+        "one entry per conductor slot (yorder), stale `NodeRef` or not",
+    );
+    // The two live slots keep whatever the stale mapping pointed at; the four
+    // that have no `NodeRef` entry at all read the ground node, exactly like a
+    // `NodeRef` of 0 (`NodeV[0]` is the always-zero ground slot).
+    for (k, v) in a.voltages_mag_ang.iter().enumerate().skip(2) {
+        assert_eq!(
+            (v.mag, v.ang),
+            (0.0, 0.0),
+            "conductor slot {k} has no `NodeRef` and must read ground",
         );
     }
 }

@@ -295,11 +295,20 @@ impl Dss {
             // so the floating-point summation matches `Caccum`'s. The offset
             // that `Export SeqCurrents` drops (CLAUDE.md upstream bug 1) is
             // present on both API paths and is honoured here.
+            //
+            // Read through a per-terminal chunk, never a flat offset: the
+            // terminal-major offset arithmetic lives only in the `elements::ckt`
+            // accessors (`elements/ckt.rs:415-419`). `chunks` refuses a zero
+            // width, so a conductor-less element (`nconds = 0`, hence
+            // `yorder = 0` and an empty `currents`) takes the width `1` — the
+            // iterator is empty either way and every terminal's residual is the
+            // empty sum, exactly what the flat form produced.
+            let mut terminal_currents = currents.chunks(cd.nconds.max(1));
             let residuals: Vec<Polar> = (0..cd.nterms)
-                .map(|t| {
+                .map(|_| {
                     let mut resid = num_complex::Complex64::ZERO;
-                    for c in 0..cd.nconds {
-                        resid += currents[t * cd.nconds + c];
+                    for &i in terminal_currents.next().unwrap_or(&[]) {
+                        resid += i;
                     }
                     c_to_polar_deg(resid)
                 })
@@ -310,16 +319,24 @@ impl Dss {
             // node vector itself. `NodeRef[i] = 0` is the ground node and
             // `NodeV[0]` is zero (`solution::ymatrix`, Pascal's `// ok if =0`).
             // A `NodeRef` left over from before a topology change can outrun the
-            // present `NodeV` (only reachable on a disabled element, which no
-            // oracle channel compares here — upstream would read freed memory);
-            // that stale slot reads as ground instead, the same safe-`.get()`
-            // discipline `solution::meters::reliability` uses.
+            // present `NodeV`, and `Yorder` can outrun the `NodeRef` itself —
+            // both only on a disabled element, which no oracle channel compares
+            // here (upstream would read freed memory). `set_nterms`/`set_nconds`
+            // grow `yorder` and reallocate the terminal buffers, but only
+            // `set_node_ref` resizes `node_ref` (`elements/ckt.rs:326`,
+            // `:334-346`, `:382`) and `reprocess_bus_defs` re-runs it for
+            // **enabled** elements only (`circuit/circuit.rs:735`), so a
+            // disabled element that grows phases keeps a short `node_ref`.
+            // Both stale slots read as ground instead of panicking — the
+            // safe-`.get()` discipline `solution::meters::reliability` uses,
+            // applied to the length as well as to the value. Pinned by
+            // `exec::tests::derived_polar::a_stale_node_ref_shorter_than_yorder_reads_as_ground`.
             let voltages_mag_ang: Vec<Polar> = if cd.node_ref.is_empty() {
                 Vec::new()
             } else {
-                cd.node_ref[..yorder]
-                    .iter()
-                    .map(|&n| {
+                (0..yorder)
+                    .map(|i| {
+                        let n = cd.node_ref.get(i).copied().unwrap_or(0);
                         c_to_polar_deg(
                             node_v
                                 .get(n)
