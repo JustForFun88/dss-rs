@@ -4266,28 +4266,46 @@ configuration probed — including decks that type `kvar=`, `pf=` **and** `kVA=`
 `P=-1000.0000016773234, Q=-8.437050548309344e-06`); `edit … QMode=0` is inert and
 re-entrant; and the **same engine dispatches the base kvar the moment the `case`
 is bypassed or an arm exists** — `model=4`/`DoFixedQGen` (`:1797`, comment
-`:1775` *"Q is always kvarBase"*) gives `-726.4287342535065` on
-`windgen_snap_delta` and `-985.9891404764404` on `windgen_daily`, and arm 2 with
-a flat `y=+1` volt-var curve gives **exactly `kvarBase`**. Arm 1's own saturation
+`:1775` *"Q is always kvarBase"*) reports terminal
+`Q = -726.4287342535065` kvar on `windgen_snap_delta` and `-985.9891404764404`
+on `windgen_daily` — i.e. it *injects* the base — and arm 2 with a flat `y=+1`
+volt-var curve dispatches **exactly `kvarBase`**. Arm 1's own saturation
 fallback *is* `kvarBase` (`:1284`), and the parent class writes the dispatch
 outright (`Generator.pas:1163`), which WindGen could not transcribe because its
 `ShapeFactor` carries the wind **speed**, not a pu multiplier (`:1241`). Upstream
 report: `investigations/to_opendss/55-windgen-qmode0-zero-var-dispatch.md`
 (gitignored, local-only).
 
-**The fix — one arm, both lanes, no `cfg`.** `0 => kvar_calc = self.kvar_base` in
+**The fix — one arm, both lanes, no `cfg`.** A `0 =>` arm in
 `crates/dss-core/src/elements/pc/windgen/nominal.rs`, with the `_` arm keeping
 upstream's `Else` for out-of-range modes (reachable: `q_mode` is a plain `i32`
-and `set_wgen_variable(15)` accepts any integer). The doc comment carries the
-five independent grounds and the three deliberate omissions: **no `kVArating`
-clamp** (`|kvarBase| <= kVArating` is a `RecalcElementData` invariant,
-`:1375-1384`, so arm 1's clamp is dead by construction — measured), **no
-`LeadLag`** (the sign already lives in `kvar_base`; re-applying it would
-double-negate, and arm 1 reaches the same signed answer by putting the sign in
-`LeadLag` over a non-negative `sqrt` — probed: `pf=-0.9` gives `+484.32` through
-either path), and **`Factor` (`GenMultiplier`) still applies**, because `:1325`
-sits outside the `case` (probed: `Set genmult=0.5` halves the mode-0 dispatch
-exactly as it halves arm 1's). Dynamics and harmonics are untouched:
+and `set_wgen_variable(15)` accepts any integer). It dispatches `kvarBase` raw where `kVA=` is unset —
+there `SyncUpPowerQuantities`/`Set_Presentkvar` have already put the `pf`
+convention's sign into it — and `|kvarBase|` with `LeadLag = -1` for
+`PFNominal < 0` where a typed `kVA=` has stripped that sign, which is arm 1's
+own discipline (`:1286-1287`). *(The sub-step first landed the shorter `0 => kvar_calc =
+self.kvar_base`; the audit settlement below, finding **RP310-CODE-1**, proved
+that reads the wrong sign whenever a deck types `kVA=` and corrected it. The
+paragraph describes the settled arm.)* The doc comment carries the five
+independent grounds and the two deliberate omissions: **no `kVArating` clamp**
+— arm 1's saturation test cannot fire, because `kVATmp = sqrt(Pg² + kvarCalc²)`
+is `Pg/|PF|` while `Pg` is capped at `kWBase` (`:1268-1269`), so
+`kVATmp <= kWBase/|PF| == kVArating` bit-for-bit (measured on `3000/0.95`,
+`1584/0.88` and `1080/0.9`; that identity is also why arm 1 *coincides* with
+`kvarBase` to 1 ulp whenever the wind caps `Pg`) — and **no `kvar_max`/`kvar_min` clamp**
+— the port carries neither field (a `§1.3` gap of its own, not this arm's:
+upstream's `case` does not clamp with them either; only `TGeneratorObj`'s
+`GenModel=3` arm does, `Generator.pas:1153-1158`). **`Factor` (`GenMultiplier`) still
+applies**, because `:1325` sits outside the `case` (probed: `Set genmult=0.5`
+halves the mode-0 dispatch exactly as it halves arm 1's).
+
+The dispatch feeds `Yeq := (Pnominalperphase − j·Qnominalperphase)/Vbase²`
+(`:1338`), so the arm moves every `GenModel` that reads `Yeq` — model 1 (which
+every `modes:windgen` deck declares), model 2 (constant Z) and the model-6 user
+model's `YPrim` seed; models 4/5 read `varBase` and are untouched, models 3/7 are
+out of scope in the port. Nothing outside the four gated decks moves in the
+measured population, but the exposure below is what the **gate compares**, not a
+claim that mode 0 touches model 1 only (audit settlement, **RP310-CODE-3**). Dynamics and harmonics are untouched:
 `WindGen.pas:1254` already skips the whole P/Q block, so the new arm never runs
 there and the two dynamics decks move **only** through the snapshot `solve` their
 own deck line performs before `Set mode=dynamic` — measured, not predicted.
@@ -4451,8 +4469,15 @@ deck" mis-states the daily figure. Under the gate's replay
 `QMode=1` dispatches **−414.8954549079094 kvar** (`? kvar` renders `'414.895'`),
 and the ≈ −986 family is the *snap-mode capped-`Pg`* reading — the same deck with
 `Set mode=snap` gives `P = -3000.0009 kW`, `Q = -986.057422577853`, i.e. arm 1
-sitting on its saturation fallback `kvarCalc := kvarBase = 986.0523155365896`,
-which is also what the constant-Q arm dispatches. Any statement about the daily
+landing on `kvarBase = 986.0523155365896`, which is also what the constant-Q arm
+dispatches. *(**Second correction, 2026-09-04, RP3.10's audit settlement,
+finding RP310-CODE-4.** The mechanism is not the saturation fallback: arm 1's
+`if kVATmp > kVArating` never fires — `kVATmp = sqrt(Pg² + kvarCalc²)` is
+`Pg/|PF|`, `Pg` is capped at `kWBase` (`:1268-1269`), and `3000/0.95` gives
+`3157.8947368421054` on **both** sides of the comparison, bit-for-bit. What
+happens instead is that the capped `Pg = kWBase` makes arm 1's own formula
+`Pg·sqrt(1/PF² − 1)` **equal** `kvarBase` to the last ulp. Same number, different
+route — and the code comment's "the clamp is dead by construction" stands.)* Any statement about the daily
 deck must use **−414.895…** (arm 1) or **−986.052…** (the fix), never −985.69.
 The originals stay where they are, corrected here and not rewritten.
 
@@ -4477,15 +4502,38 @@ fingerprint and the WindGen YPrim. What is no longer compared on them is the
 solved model itself (node V, the RHS, element currents/powers/losses), plus
 Y/fingerprint/YPrim on the two power-flow decks. It is **not** repaired by adding
 decks in this sub-step (scope creep): a `QMode=1` sibling deck, which would gate
-the solved model on an arm both engines share, is a follow-up idea.
+the solved model on an arm both engines share, is a follow-up — **owned** since
+the audit settlement below (finding **AT-1**), as a row in `STATUS.md`
+§*Standing open follow-ups*, not an idea inside a record.
 
 **Open, recorded not chased** (none is this sub-step's, all found by its probe and
 none reproduced): (a) r4133 raises an **access violation** when a deck declares
-`QMode=2` on the `New` line without a `VV_Curve=` (minimal repro
-`tmp/rp310/decks/syn5_crash.dss`); (b) `varBase` is computed *before*
-`RecalcElementData` renormalises `kvarBase`, so models 4/5 can dispatch a stale
-base; (c) arm 2 double-negates a negative `kvarBase`. Each is a distinct upstream
-defect and would need its own report; the fix above touches none of them.
+`QMode=2` on the `New` line without a `VV_Curve=`; (b) `varBase` is computed
+*before* `RecalcElementData` renormalises `kvarBase`, so models 4/5 can dispatch
+a stale base — measured on `kW=1000 kVA=1200 pf=-0.9`, where the first
+`RecalcElementData` leaves `varBase` on the pre-branch **signed** base and the
+second on the stripped one; (c) arm 2 double-negates a negative `kvarBase`, and
+— the same root as (b) — arm 2 and models 4/5 read the sign-stripped base, so on
+a typed `kVA=` with `pf<0` they carry the *injecting* sign where arm 1 (and this
+engine's mode 0) absorb. Each is a distinct upstream defect and would need its
+own report; the fix above touches none of them.
+
+The (a) repro is six lines, so it is inlined here rather than left in the
+sub-step's scratch directory, which is gitignored and does not survive it
+(audit settlement, **AT-5**) — `compile` this on the r4133 DLL and the process
+dies inside `Calcvoltagebases`:
+
+```
+Clear
+New Circuit.syn basekv=12.47 phases=3 bus1=srcbus
+New Line.l1 bus1=srcbus bus2=wbus phases=3 r1=0.1 x1=0.5 length=1
+New WindGen.w1 bus1=wbus phases=3 kv=12.47 conn=wye model=1 vwind=12 kW=1000 pf=0.9 QMode=2
+Set voltagebases=[12.47]
+Calcvoltagebases
+```
+
+(The same `QMode=2` applied *after* `compile`, through `edit WindGen.w1
+QMode=2`, is harmless — which is how the probe measured arm 2 at all.)
 
 *Gate.* The micro-parts each ran their own: E1 `cargo test -p dss-core --lib`
 **1 505 passed / 0 failed** in *both* lanes (the whole library suite, not a
@@ -4574,3 +4622,113 @@ transcript, the binaries that read `STATUS.md`, `docs/phase-records/` and
 `props_r4133_evidence_lock` **11**, `oracle_parity_cfg_gate` **11**, 0 failed, 0
 ignored — plus `cargo fmt --all --check` and
 `clippy -p dss-core --test props_r4133_replay -- -D warnings`.
+
+**RP3.10 audit settlement (2026-09-04).** The `audit-code` + `audit-tests` pair
+over `08f91bbb..9f55095b` returned **ten** findings (1 major, 4 minor, 5 notes).
+Settled: **eight fixed, one recorded with its reason, one refuted on a
+re-measurement.** Every verdict below was taken against evidence — the r4133
+Pascal, a live `epri-worker` probe of the EPRI r4133 DLL 11.0.0.1, or a
+re-measurement on the real gate path — never on plausibility. The one that
+mattered is `RP310-CODE-1`: it found a **port bug in the arm this sub-step
+landed**, and the rule "a port bug found here is fixed here" applied.
+
+| # | finding | verdict |
+|---|---|---|
+| `RP310-CODE-1` (major) | the "no `LeadLag`, the sign already lives in `kvar_base`" justification is false when a deck types `kVA=`, and the arm then dispatches the **opposite** sign from arm 1 | **FIXED** |
+| `RP310-CODE-2` / `AT-3` | `windgen_force_inj_freezes_iterminal` lost its cross-engine anchor: r4133's frozen currents survived only in prose | **FIXED** |
+| `RP310-CODE-3` (note) | the exposure prose is written entirely in terms of the four `model=1` decks; the arm actually reaches every `GenModel` that reads `Yeq` | **FIXED** (documented) |
+| `RP310-CODE-4` (note) | two landed sentences contradict each other about arm 1's `kVArating` clamp | **FIXED** (the record's sentence was the wrong one) |
+| `RP310-CODE-5` (note) | provenance imprecision: a port measurement called "probed", an r4133 terminal-Q reading called a "dispatch" | **FIXED** (prose) |
+| `AT-1` (minor) | after the exclusions the two power-flow decks keep essentially no oracle-compared solved state, and the compensating deck is an idea in a record | **RECORDED**, now owned |
+| `AT-2` (minor) | four quoted "port" literals are not the port's measured value at full precision | **REFUTED** |
+| `AT-4` (note) | the new `variables` exclusion has no staleness accounting of its own, and the name-safety assert is never driven negatively | **FIXED** (both halves) |
+| `AT-5` (note) | the recorded r4133 `QMode=2` access violation's only artifact is a gitignored scratch path | **FIXED** |
+
+**`RP310-CODE-1` — a real port bug, and the settlement's one engine change.**
+`RecalcElementData`'s kVA-set branch re-derives `kvarBase := sqrt(kVArating² −
+kWBase²)` (`WindGen.pas:1377-1378`, ported at `windgen/nominal.rs`), a
+**non-negative** root: whenever a deck types `kVA=`, the sign a typed `pf<0`
+(`:3028`) or `kvar<0` (`:3001`) had put into `kvarBase` is gone. So the landed
+`0 => kvar_calc = self.kvar_base` dispatched the *injecting* sign exactly where
+arm 1 — which takes a non-negative `sqrt` and puts the sign in `LeadLag`
+(`:1286-1287`) — absorbs. Measured, not argued: for `kW=1000 kVA=1200 pf=-0.9`
+(which `RecalcElementData` renormalises to `kWBase = 1080`,
+`kvarBase = 523.0678732248808`) the live r4133 DLL reports, through arm 1,
+terminal `Q = +523.0678462465884` kvar — the machine **absorbs**, the documented
+meaning of `pf<0` (kW and kvar of opposite signs) — while this engine dispatched
+`q_nominal_per_phase = +174355.95774162695` VAr, i.e. it injected. The arm now splits on
+`kVANotSet`: it reads `kvar_base` raw where `kVA=` is unset — bit-identical to
+the previous form there, in every combination of `kW`/`pf` signs, because
+`sync_up_power_quantities` and `Set_Presentkvar` have already signed the base —
+and takes `|kvar_base|` with `lead_lag = -1` for `PFNominal < 0` in the branch
+that strips it. It therefore moves **no** landed number: the four gated decks type `pf` positive, so the ledger, the
+lock, `DIVERGENCES.md`'s table and all four dispatch pins are unchanged — the
+corpus gate and `lane_diff` confirm it. The regression pin is
+`qmode0_dispatch_carries_the_sign_and_scales_with_genmult`, extended with the
+kVA-typed token set and both engines' numbers; reverting the arm reds it with
+`left: 174355.95774162695 / right: -174355.95774162695` (verified by toggling).
+The false justification was repeated in five places and all five were corrected:
+the `nominal.rs` doc comment, the ledger cause `windgen-qmode0-no-arm`,
+`DIVERGENCES.md` §L7, this record's fix paragraph and the
+`RP310_WINDGEN_PINS[1]` role string. Upstream's own arm 2 and models 4/5 read the
+stripped base and so keep the injecting sign in that configuration; that is a
+separate upstream defect, recorded under *Open, recorded not chased* (c), not
+reproduced and not fixed here.
+
+**`RP310-CODE-2` / `AT-3` — the oracle leg is back inside the assertion.**
+r4133's frozen currents for the `force_hooks` deck were re-probed live in the
+settlement (`set InjCurrent=[400 0 400 0 400 0]` + re-solve on the r4133 DLL) and
+came back exactly as the doc comment quoted:
+`[-89.23122445819429, -11.202774501306344, 34.913724927561354,
+82.87789443822746, 54.31749952380117, -71.67511995312374]`. The test now asserts
+**both** legs per conductor — the port sits on its own frozen point *and* stays
+`> 1e-6` off r4133's — so the deck's operating point is cross-checked again, and
+a regression of the constant-Q arm (which would put the port back onto r4133's
+numbers) reds this test as well as the four `windgen::tests` pins.
+
+**`AT-2` — refuted by re-measurement on the gate's own path.** The auditor's
+standalone probe crate reported four last-digit-different "port" values
+(`1e-16`…`3e-14`). Re-measured two ways here: (1) the pin's own driver, printing
+all 22 variables with `{:?}`, and (2) the **real corpus gate**, by narrowing the
+ledger's `variables` `name_re` one variable at a time and reading the
+comparator's own failure line. Both return the committed literals digit for
+digit — `windgen_dyn` `Qgen -0.00768950341712867`, `dOmg 0.012407481452484234`,
+`thetaPitch 4.377043172761117`; `windgen_dyn_fault` `thetaPitch 4.37634056945387`
+— so the tree's numbers, the ledger `source` strings and the manifest notes are
+correct as they stand and the auditor's third path is the outlier. Nothing moved.
+
+**`AT-4` — the `variables` mask now polices itself.** `assert_all_hit` gained
+per-**scope** liveness for `variables` scopes (`corpus_gate/ledger.rs`): `Scope`
+carries a `hit` flag that `LedgerView::excluded` sets, and an applied entry whose
+`variables` scope matched no state variable this run is reported STALE by name.
+The entry-level `applied`/`exceeded_floor` flags could never see that — an entry
+that also excludes `voltages`/`element` stays alive through those — which is
+exactly the silent-no-op risk a renamed WTG3 variable would have created.
+Mutation-proved on the real ledger: adding a `variables` scope matching
+`nosuchvariable` to `windgen-qmode0-constant-q-dyn-r4133` reds the full gate with
+*"has a STALE `variables` scope … it matched no state variable this run"*, and
+the unit test `a_voltages_exclusion_that_masks_nothing_is_stale` gained both
+directions for the new rule, and `TESTING.md`'s ledger runtime-rules paragraph
+now states it. The second half — the name-safety assert in
+`compare_variables` being exercised only in the passing direction — is answered
+by two new harness tests (`harness::variables_exclusion_name_safety::*`): one
+drives the guard with an oracle `var_names` list that disagrees at the excluded
+index and must panic with *"the exclusion would drop a different variable"*, the
+other proves the same exclusion is silent when the names agree.
+
+**`AT-1` — recorded, with a reason, and given an owner.** Building the
+compensating `QMode=1` sibling decks was **not** done in the settlement: new
+gating cases are a measured population change (two more manifest cases, the
+`population.lock.json` anti-shrink accounting and the 523-case count that
+`CLAUDE.md`, `TESTING.md` and `corpus_gate/scheduler.rs` all state), i.e. their
+own sub-step with its own audit pair, not a fix agent's side effect. What the
+finding correctly identified as the actionable defect — that the restoration idea
+lived only in a record's prose — is fixed: it is now a row in `STATUS.md`
+§*Standing open follow-ups*, naming the two decks, the arm to use and what it
+would restore.
+
+*Gate (settlement).* The full five commands in **both** lanes on the settled
+tree, plus `pwsh -File tools/lanes/lane_diff.ps1` (product code moved). Nothing
+under `tmp/` or `investigations/` is staged; no `#[ignore]`, no name filter used
+to claim a green; the one `should_panic` added is the AT-4 negative drive, whose
+whole purpose is the panic; no tolerance touched.
