@@ -865,6 +865,14 @@ impl Engine {
     /// `vset = None` reads the array getter for `mode`; `vset = Some(_)` drives the
     /// SET mode, handing the array in via `myPointer`. The caller polls
     /// [`Engine::poll_error`] afterwards for the structured errno surface.
+    ///
+    /// This is the crate's **single chokepoint**: [`Engine::probe_mode`],
+    /// [`Engine::read_mode`], every typed accessor and the worker's raw
+    /// `{"cmd":"ffi"}` command all funnel through it, so the
+    /// [`modes::DO_NOT_CALL`] register is enforced here — a triple on it is an
+    /// `Err` and the DLL is never touched, whatever the caller. (`probe_mode`
+    /// still consults the register itself, because its contract is to report the
+    /// refusal as a typed [`ModeStatus`] rather than as an error.)
     pub fn ffi_dispatch(&self, call: FfiCall) -> Result<FfiOut, EngineError> {
         let FfiCall {
             family,
@@ -876,6 +884,14 @@ impl Engine {
             sarg,
             vset,
         } = call;
+        if let Some(k) = ModeKind::from_tag(kind)
+            && let Some(refusal) = modes::check_callable(family, k, mode)
+        {
+            return Err(EngineError::Other(format!(
+                "{family}{}:{mode} is on the do-not-call register: {refusal}",
+                k.as_str().to_ascii_uppercase()
+            )));
+        }
         let fam = self
             .families
             .get(family)
@@ -951,6 +967,19 @@ impl Engine {
     /// so a shape change in a future DLL revision fails loudly instead of being
     /// decoded as garbage.
     ///
+    /// **Sentinel classification.** The `myType` check alone does not separate a
+    /// served string array from the `V` unknown-mode reply, which also carries
+    /// tag 4 — the two `Solution.IncMatrix{Rows,Cols}` rows would decode
+    /// `"Error, paratemer not recognized"` as data — so a tag-4 reply is run
+    /// through [`modes::classify_v`] and an [`modes::ModeStatus::UnknownMode`]
+    /// verdict is an `Err`. On `I`/`F` no such check is possible: the sentinel is
+    /// the plain value `-1` / `-1.0`, which several served modes may return
+    /// legally (module doc of [`crate::modes`]), so classifying here would turn
+    /// legitimate data into an error. The guarantee for those shapes is
+    /// `r4133_mode_capability_is_complete_for_wp_g1`, which classifies **all**
+    /// table rows through [`Engine::probe_mode`] against the git-tracked DLL and
+    /// therefore trips the moment a re-vendored revision drops a mode.
+    ///
     /// Drives the mode with the neutral argument (`0` / `0.0` / `""`, the array
     /// *getter* for `V`), which is sound because every table row is a getter
     /// (`modes::EXCLUDED_WRITE_MODES` records the two arms that are not, and a
@@ -974,6 +1003,15 @@ impl Engine {
                     EngineError::Other(format!("{spec}: a V row must declare its myType tag"))
                 })?;
                 if v.type_tag() == want {
+                    if let crate::families::VData::Strings(ss) = v
+                        && let ModeStatus::UnknownMode { sentinel } =
+                            modes::classify_v(v.type_tag(), ss)
+                    {
+                        return Err(EngineError::Other(format!(
+                            "{spec}: the DLL replied with the V unknown-mode sentinel \
+                             {sentinel:?} — this revision does not serve the mode"
+                        )));
+                    }
                     Ok(out)
                 } else {
                     Err(EngineError::Other(format!(

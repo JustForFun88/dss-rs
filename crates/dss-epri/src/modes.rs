@@ -15,7 +15,16 @@
 //!
 //! Two further modes are *unsafe to call at all* in this DLL revision; they are
 //! held in the [`DO_NOT_CALL`] register and refused by [`check_callable`]
-//! **before** any FFI happens (see the register's own citations).
+//! **before** any FFI happens (see the register's own citations), and
+//! [`crate::dss::Engine::ffi_dispatch`] — the one chokepoint every call path
+//! funnels through, the worker's raw `ffi` command included — consults it too.
+//!
+//! A third hazard is *ordering*, not safety: several `CktElement` getters drive
+//! `GetCurrents` into a scratch buffer and leave the element's `Iterminal`
+//! cache marked fresh but unfilled, so a `Powers`/`Losses` read afterwards
+//! returns a stale current. That partition is recorded per row in
+//! [`ModeEffect`] (`GOLDEN_REBASE_PLAN.md` §1.1(a), coordinator decision D3) and
+//! pinned by `the_capture_order_partition_is_the_one_d3_names`.
 //!
 //! This module performs **no FFI** — it is pure classification plus two static
 //! registers, so it needs no `// SAFETY` invariant of its own; the calling side
@@ -59,6 +68,20 @@ impl ModeKind {
             ModeKind::F => "f",
             ModeKind::S => "s",
             ModeKind::V => "v",
+        }
+    }
+}
+
+impl ModeKind {
+    /// The inverse of [`ModeKind::as_str`]: the shape a [`crate::dss::FfiCall`]
+    /// `kind` tag names, or `None` for a tag no ABI shape uses.
+    pub fn from_tag(tag: &str) -> Option<ModeKind> {
+        match tag {
+            "i" => Some(ModeKind::I),
+            "f" => Some(ModeKind::F),
+            "s" => Some(ModeKind::S),
+            "v" => Some(ModeKind::V),
+            _ => None,
         }
     }
 }
@@ -166,14 +189,18 @@ pub fn v_sentinel_undetectable(family: &str) -> bool {
 
 /// The measured per-family `XxxS` unknown-mode literal. The DDLL spells this
 /// `else` branch differently in almost every unit (seven distinct literals over
-/// the whole surface, five of them in the WP-G1 families), so it is a table and
+/// the whole surface, six of them in the WP-G1 families — `Topology` and
+/// `PDElements` share one), so it is a table and
 /// not a constant. Each row cites the `else` branch it transcribes; every literal
 /// was confirmed live by the G1.0 probe (2026-09-04).
 ///
 /// `CktElement`'s bare `"Error"` is **ambiguous in principle** — a served string
 /// mode returns exactly that when a variable name is unknown
-/// (`DCktElement.pas:462`, inside the served mode 4) — so it is fit for the
-/// probe/diagnostic path only and must never gate a capture.
+/// (`DCktElement.pas:462`, the *default* of the served **mode 6**
+/// `CktElement.ActiveVariableName`) — so it is fit for the probe/diagnostic path
+/// only and must never gate a capture. Mode 6 is not a table row; the one
+/// `CktElementS` row WP-G1 reads is mode 4 (`CktElement.EnergyMeter`), whose own
+/// default is the function default `'0'` (`DCktElement.pas:421`).
 pub const S_SENTINELS: &[(&str, &str)] = &[
     // `DCktElement.pas:483` — bare, ambiguous (see above).
     ("CktElement", "Error"),
@@ -302,18 +329,103 @@ pub fn check_callable(family: &str, kind: ModeKind, mode: i32) -> Option<ModeSta
 /// What calling a mode does to engine state beyond returning its value.
 ///
 /// The DDLL `case` arms are not uniformly pure: several *getters* walk a
-/// `PointerList` or the topology tree and leave its cursor moved, and one
-/// re-totalises the meter registers. A capture that reads such a mode must
-/// re-select its fixture afterwards, so the effect is part of the table rather
-/// than a comment someone has to find.
+/// `PointerList` or the topology tree and leave its cursor moved, one
+/// re-totalises the meter registers, and a whole class of them drives
+/// `GetCurrents` through the element's `Iterminal` cache. A capture that reads
+/// such a mode must re-select its fixture afterwards — and, for the cache
+/// class, must read in the right *order* — so the effect is part of the table
+/// rather than a comment someone has to find.
+///
+/// The three non-`Pure` variants are exactly the A/B/C partition of the
+/// §1.1(a) capture-order rule (`GOLDEN_REBASE_PLAN.md`, coordinator decision
+/// **D3**): [`ReadsIterminalCache`](ModeEffect::ReadsIterminalCache) is group
+/// **A** (read first), [`PoisonsIterminalCache`](ModeEffect::PoisonsIterminalCache)
+/// is group **B** (read after every group-A mode of the same element), and
+/// [`Pure`](ModeEffect::Pure) is group **C** (order-free).
+/// [`Impure`](ModeEffect::Impure) is orthogonal to the order rule: it moves a
+/// cursor or a memoized structure rather than the current cache.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModeEffect {
-    /// A pure read: nothing in the engine changes.
+    /// A pure read: nothing in the engine changes (D3 group **C**,
+    /// order-free).
     Pure,
-    /// A read that also mutates engine state. The payload names exactly what
-    /// moves (cursor, memoized cache, …) and cites the Pascal.
+    /// D3 group **A** — a *cache-aware* read: the arm reaches
+    /// `TDSSCktElement.ComputeIterminal` (`Common/CktElement.pas:632-639`),
+    /// which recomputes `Iterminal` **only** when the element's
+    /// `IterminalSolutionCount` differs from `Solution.SolutionCount`.
+    /// Correct on its own; a
+    /// [`PoisonsIterminalCache`](ModeEffect::PoisonsIterminalCache) read of the
+    /// same element *before* it makes it skip that recompute and return a
+    /// stale current, so every group-A mode is read FIRST. The payload names
+    /// the path and cites the Pascal.
+    ReadsIterminalCache(&'static str),
+    /// D3 group **B** — the arm calls `GetCurrents` (directly or through
+    /// `CalcSeqCurrents`) into a **scratch** buffer. On a PC element that lands
+    /// in `TPCElement.GetTerminalCurrents`
+    /// (`PCElements/PCElement.pas:247-266`), which fills the scratch buffer and
+    /// then marks the cache fresh (`set_ITerminalUpdated(TRUE)`,
+    /// `PCElements/PCElement.pas:510-514`) **without filling `Iterminal`**; on a
+    /// PD element it overwrites the element's own `Vterminal`
+    /// (`PDElements/PDElement.pas:224-231`). Neither is "nothing changes", and
+    /// the first is the mechanism behind the upstream harmonics
+    /// `Powers`-after-`Currents` defect this project never reproduces
+    /// (CLAUDE.md §"Known upstream bugs"; `crate::capture` reads Powers first
+    /// for exactly this reason).
+    ///
+    /// Measured on the vendored r4133 DLL + vendored IEEE13, snapshot **and**
+    /// harmonics (G1.0 settlement probe, 2026-09-04): the poisoning is
+    /// *latent* there — `TotalPowers` reads the same value before and after
+    /// `SeqPowers`/`CurrentsMagAng`, because the converged solve already left
+    /// `IterminalSolutionCount` current, so no read refreshes and none is
+    /// starved. The hazard is real but conditional on a stale counter (the
+    /// documented Thevenin-DER harmonics case), which is why the order rule is
+    /// recorded as data instead of being left to a live test that would pass
+    /// vacuously.
+    PoisonsIterminalCache(&'static str),
+    /// A read that also mutates engine state — a `PointerList` cursor, a
+    /// memoized topology tree, the meter registers. The payload names exactly
+    /// what moves and cites the Pascal; a capture must re-select its fixture
+    /// afterwards.
     Impure(&'static str),
 }
+
+impl ModeEffect {
+    /// The §1.1(a)/D3 capture-order group: `'A'` must be read before `'B'`
+    /// on the same element; `'C'` is order-free. [`Impure`](ModeEffect::Impure)
+    /// is order-free too (it moves a cursor, not the current cache) but still
+    /// demands a fixture re-selection.
+    pub fn capture_group(self) -> char {
+        match self {
+            ModeEffect::ReadsIterminalCache(_) => 'A',
+            ModeEffect::PoisonsIterminalCache(_) => 'B',
+            ModeEffect::Pure | ModeEffect::Impure(_) => 'C',
+        }
+    }
+
+    /// The payload of every non-[`Pure`](ModeEffect::Pure) variant.
+    pub fn why(self) -> Option<&'static str> {
+        match self {
+            ModeEffect::Pure => None,
+            ModeEffect::ReadsIterminalCache(w)
+            | ModeEffect::PoisonsIterminalCache(w)
+            | ModeEffect::Impure(w) => Some(w),
+        }
+    }
+}
+
+/// The shared payload of the two `CktElement` group-A rows.
+const READS_ITERMINAL: ModeEffect = ModeEffect::ReadsIterminalCache(
+    "reaches TDSSCktElement.ComputeIterminal (Common/CktElement.pas:632-639) through \
+     GetPhaseLosses/GetPhasePower (Common/CktElement.pas:1049, :1090), which recomputes \
+     Iterminal only when the solution counter is stale",
+);
+
+/// The shared payload of the five `CktElement` group-B rows.
+const POISONS_ITERMINAL: ModeEffect = ModeEffect::PoisonsIterminalCache(
+    "calls GetCurrents into a scratch buffer, which on a PC element advances \
+     ITerminalSolutionCount without filling Iterminal (PCElements/PCElement.pas:247-266, \
+     :510-514) and on a PD element overwrites Vterminal (PDElements/PDElement.pas:224-231)",
+);
 
 /// One mode WP-G1 reads through the r4133 bridge: the DDLL `(family, kind,
 /// mode)` triple plus the `case` arm it transcribes.
@@ -443,7 +555,10 @@ pub const CKT_ELEMENT_HAS_SWITCH_CONTROL: ModeSpec = ModeSpec::scalar(
     7,
     "CktElement.HasSwitchControl",
     "DCktElement.pas:207",
-    ModeEffect::Pure,
+    ModeEffect::Impure(
+        "walks ActiveCktElement.ControlElementList.First/Next to the first SwtControl or to \
+         exhaustion (DCktElement.pas:209-218), leaving that list's cursor moved",
+    ),
 );
 /// `CktElementI(8)` — 1 when a voltage-regulating control is attached.
 pub const CKT_ELEMENT_HAS_VOLT_CONTROL: ModeSpec = ModeSpec::scalar(
@@ -452,7 +567,10 @@ pub const CKT_ELEMENT_HAS_VOLT_CONTROL: ModeSpec = ModeSpec::scalar(
     8,
     "CktElement.HasVoltControl",
     "DCktElement.pas:222",
-    ModeEffect::Pure,
+    ModeEffect::Impure(
+        "walks ActiveCktElement.ControlElementList.First/Next to the first Cap/RegControl or to \
+         exhaustion (DCktElement.pas:224-233), leaving that list's cursor moved",
+    ),
 );
 /// `CktElementI(9)` — size of the element's `ControlElementList`.
 pub const CKT_ELEMENT_NUM_CONTROLS: ModeSpec = ModeSpec::scalar(
@@ -511,7 +629,7 @@ pub const CKT_ELEMENT_PHASE_LOSSES: ModeSpec = ModeSpec::array(
     "CktElement.PhaseLosses",
     "DCktElement.pas:637",
     3,
-    ModeEffect::Pure,
+    READS_ITERMINAL,
 );
 /// `CktElementV(7)` — symmetrical-component voltage **magnitudes** per terminal
 /// (`myType := 2`, real doubles).
@@ -530,7 +648,7 @@ pub const CKT_ELEMENT_SEQ_CURRENTS: ModeSpec = ModeSpec::array(
     "CktElement.SeqCurrents",
     "DCktElement.pas:700",
     2,
-    ModeEffect::Pure,
+    POISONS_ITERMINAL,
 );
 /// `CktElementV(9)` — sequence powers per terminal, complex `[re, im, …]`.
 pub const CKT_ELEMENT_SEQ_POWERS: ModeSpec = ModeSpec::array(
@@ -539,7 +657,7 @@ pub const CKT_ELEMENT_SEQ_POWERS: ModeSpec = ModeSpec::array(
     "CktElement.SeqPowers",
     "DCktElement.pas:739",
     3,
-    ModeEffect::Pure,
+    POISONS_ITERMINAL,
 );
 /// `CktElementV(11)` — residual current per terminal, as `(magnitude, angle°)`.
 pub const CKT_ELEMENT_RESIDUALS: ModeSpec = ModeSpec::array(
@@ -548,7 +666,7 @@ pub const CKT_ELEMENT_RESIDUALS: ModeSpec = ModeSpec::array(
     "CktElement.Residuals",
     "DCktElement.pas:827",
     3,
-    ModeEffect::Pure,
+    POISONS_ITERMINAL,
 );
 /// `CktElementV(13)` — complex sequence voltages per terminal.
 pub const CKT_ELEMENT_CPLX_SEQ_VOLTAGES: ModeSpec = ModeSpec::array(
@@ -566,7 +684,7 @@ pub const CKT_ELEMENT_CPLX_SEQ_CURRENTS: ModeSpec = ModeSpec::array(
     "CktElement.CplxSeqCurrents",
     "DCktElement.pas:931",
     3,
-    ModeEffect::Pure,
+    POISONS_ITERMINAL,
 );
 /// `CktElementV(17)` — the element's node order (`myType := 1`). The `case`
 /// comment spells it `Nodeorder`.
@@ -585,7 +703,7 @@ pub const CKT_ELEMENT_CURRENTS_MAG_ANG: ModeSpec = ModeSpec::array(
     "CktElement.CurrentsMagAng",
     "DCktElement.pas:1058",
     3,
-    ModeEffect::Pure,
+    POISONS_ITERMINAL,
 );
 /// `CktElementV(19)` — terminal voltages as `(magnitude, angle°)` pairs.
 pub const CKT_ELEMENT_VOLTAGES_MAG_ANG: ModeSpec = ModeSpec::array(
@@ -603,7 +721,7 @@ pub const CKT_ELEMENT_TOTAL_POWERS: ModeSpec = ModeSpec::array(
     "CktElement.TotalPowers",
     "DCktElement.pas:1109",
     3,
-    ModeEffect::Pure,
+    READS_ITERMINAL,
 );
 
 // -- Bus (DBus.pas) ---------------------------------------------------------
@@ -736,7 +854,11 @@ pub const CIRCUIT_LOSSES: ModeSpec = ModeSpec::array(
     "Circuit.Losses",
     "DCircuit.pas:294",
     3,
-    ModeEffect::Pure,
+    ModeEffect::Impure(
+        "ActiveCircuit.Losses is TDSSCircuit.Get_Losses (Common/Circuit.pas:2436-2443), which \
+         walks PDElements.First/Next to exhaustion and refreshes each visited element's \
+         Iterminal via ComputeIterminal — Circuit.NextPDElement resumes from the end",
+    ),
 );
 /// `CircuitV(1)` — losses of the Line elements only.
 pub const CIRCUIT_LINE_LOSSES: ModeSpec = ModeSpec::array(
@@ -745,7 +867,10 @@ pub const CIRCUIT_LINE_LOSSES: ModeSpec = ModeSpec::array(
     "Circuit.LineLosses",
     "DCircuit.pas:305",
     3,
-    ModeEffect::Pure,
+    ModeEffect::Impure(
+        "walks Lines.First/Next to exhaustion (DCircuit.pas:313-318), leaving the Lines cursor \
+         at the end and refreshing each line's Iterminal via ComputeIterminal",
+    ),
 );
 /// `CircuitV(2)` — losses of the Transformer elements only.
 pub const CIRCUIT_SUBSTATION_LOSSES: ModeSpec = ModeSpec::array(
@@ -754,7 +879,10 @@ pub const CIRCUIT_SUBSTATION_LOSSES: ModeSpec = ModeSpec::array(
     "Circuit.SubstationLosses",
     "DCircuit.pas:327",
     3,
-    ModeEffect::Pure,
+    ModeEffect::Impure(
+        "walks Transformers.First/Next to exhaustion (DCircuit.pas:335-340), leaving the \
+         Transformers cursor at the end",
+    ),
 );
 /// `CircuitV(3)` — total power drawn from the sources, complex.
 pub const CIRCUIT_TOTAL_POWER: ModeSpec = ModeSpec::array(
@@ -763,7 +891,10 @@ pub const CIRCUIT_TOTAL_POWER: ModeSpec = ModeSpec::array(
     "Circuit.TotalPower",
     "DCircuit.pas:349",
     3,
-    ModeEffect::Pure,
+    ModeEffect::Impure(
+        "walks Sources.First/Next to exhaustion (DCircuit.pas:356-360), leaving the Sources \
+         cursor at the end",
+    ),
 );
 /// `CircuitV(8)` — per-element losses, complex, in `AllElementNames` order.
 pub const CIRCUIT_ALL_ELEMENT_LOSSES: ModeSpec = ModeSpec::array(
@@ -772,7 +903,10 @@ pub const CIRCUIT_ALL_ELEMENT_LOSSES: ModeSpec = ModeSpec::array(
     "Circuit.AllElementLosses",
     "DCircuit.pas:458",
     3,
-    ModeEffect::Pure,
+    ModeEffect::Impure(
+        "walks CktElements.First/Next to exhaustion (DCircuit.pas:468-473), leaving the \
+         circuit's element cursor at the end — Circuit.NextElement resumes from there",
+    ),
 );
 /// `CircuitV(9)` — per-unit voltage magnitude of every node.
 pub const CIRCUIT_ALL_BUS_MAG_PU: ModeSpec = ModeSpec::array(
@@ -1585,10 +1719,10 @@ mod tests {
                 ),
                 _ => assert_eq!(m.v_type, None, "{m} — only V rows carry a myType tag"),
             }
-            if let ModeEffect::Impure(why) = m.effect {
+            if let Some(why) = m.effect.why() {
                 assert!(
                     why.contains(".pas") || why.contains("TotalizeMeters"),
-                    "{m} — an Impure row must say what moves, with its citation"
+                    "{m} — a non-Pure row must say what moves, with its citation"
                 );
             }
             assert!(!names.contains(&m.name), "duplicate row name {}", m.name);
@@ -1652,6 +1786,64 @@ mod tests {
         }));
         assert_eq!(PD_ELEMENTS_FAULT_RATE.mode, 0);
         assert_eq!(PD_ELEMENTS_PCT_PERMANENT.mode, 2);
+    }
+
+    /// The §1.1(a) / D3 capture-order partition, pinned as data.
+    ///
+    /// Group **A** (`ReadsIterminalCache`) is read before group **B**
+    /// (`PoisonsIterminalCache`) on the same element; everything else is
+    /// order-free. The membership below was derived from the Pascal by reading
+    /// each `case` arm (G1.0 audit settlement, 2026-09-04): the group-B arms all
+    /// reach `GetCurrents` into a scratch buffer — directly (`SeqPowers`
+    /// `DCktElement.pas:758`, `Residuals` `:837`, `CurrentsMagAng` `:1069`) or
+    /// through `CalcSeqCurrents` (`SeqCurrents` `:717`, `CplxSeqCurrents`
+    /// `:949`) — while the group-A arms reach `ComputeIterminal` through
+    /// `GetPhaseLosses` / `GetPhasePower`.
+    ///
+    /// This is the assertion that makes the register load-bearing: flipping any
+    /// of these seven rows back to `Pure`, or annotating a new row into the
+    /// wrong group, fails here instead of silently telling a capture author that
+    /// the reads commute.
+    #[test]
+    fn the_capture_order_partition_is_the_one_d3_names() {
+        let group = |g: char| {
+            let mut v: Vec<&str> = WP_G1_MODES
+                .iter()
+                .filter(|m| m.effect.capture_group() == g)
+                .map(|m| m.name)
+                .collect();
+            v.sort_unstable();
+            v
+        };
+        assert_eq!(
+            group('A'),
+            vec!["CktElement.PhaseLosses", "CktElement.TotalPowers"],
+            "group A = every table row that reaches ComputeIterminal"
+        );
+        assert_eq!(
+            group('B'),
+            vec![
+                "CktElement.CplxSeqCurrents",
+                "CktElement.CurrentsMagAng",
+                "CktElement.Residuals",
+                "CktElement.SeqCurrents",
+                "CktElement.SeqPowers",
+            ],
+            "group B = every table row that calls GetCurrents into a scratch buffer"
+        );
+        // The two voltage siblings of the group-B rows are genuinely order-free:
+        // `CalcSeqVoltages` reads NodeV, never GetCurrents.
+        assert_eq!(CKT_ELEMENT_SEQ_VOLTAGES.effect.capture_group(), 'C');
+        assert_eq!(CKT_ELEMENT_CPLX_SEQ_VOLTAGES.effect.capture_group(), 'C');
+        // Non-vacuity of `why()`: every A/B row carries its Pascal citation.
+        for m in WP_G1_MODES {
+            if matches!(m.effect.capture_group(), 'A' | 'B') {
+                assert!(
+                    m.effect.why().is_some_and(|w| w.contains(".pas")),
+                    "{m} — an ordered row must cite the Pascal that orders it"
+                );
+            }
+        }
     }
 
     #[test]
