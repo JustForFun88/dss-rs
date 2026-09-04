@@ -36,8 +36,8 @@ the behavioral authority, the pinned dss_capi 0.14.5 is a numeric oracle only,
 and upstream bugs are never reproduced in any lane** — the `oracle-parity` lane
 has shrunk to a precision-compat lane and is scheduled for full teardown.
 
-**In flight.** `GOLDEN_REBASE_PLAN.md` **WP-G1**, on branch **`r4133-props`**
-(forked from `update` @ `2ee6bb00`). **`R4133_PROPS_PLAN.md` is COMPLETE**
+**In flight.** `GOLDEN_REBASE_PLAN.md` **WP-G1**, on branch **`update`** (the
+R4133_PROPS branch `r4133-props` was merged and deleted 2026-09-04). **`R4133_PROPS_PLAN.md` is COMPLETE**
 (2026-09-04, §RP5.2) — all six WPs gate-green in both lanes over 26 sub-steps /
 **67** RP-titled commits (64 through RP5.1's `64474762`, plus RP5.2's
 `5a110653`, its settlement `bc16430b` and this record), plan archived to
