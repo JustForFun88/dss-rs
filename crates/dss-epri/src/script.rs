@@ -94,8 +94,9 @@ pub fn handle_read(engine: &Engine, req: &Value) -> Result<Value, EngineError> {
 
 /// Dispatch one `{"cmd":"ffi","family":…,"kind":"i"|"f"|"s"|"v","mode":…}` request
 /// — the generic capability channel that reaches every mode of every DDLL family
-/// (see [`crate::families`]). Scalar arg by kind: `iarg` (i) / `farg` (f) /
-/// `sarg` (s). For a `"v"` call, an optional `{"vset":{"type":…,"data":[…]}}`
+/// (see [`crate::families`]). Scalar arg by kind: `iarg` (i) / `farg` (+ the
+/// optional `farg2` for the two-double families `Circuit`/`CmathLib`, default
+/// `0.0`) (f) / `sarg` (s). For a `"v"` call, an optional `{"vset":{"type":…,"data":[…]}}`
 /// drives the array-SET mode; absent = the getter. The reply always carries the
 /// **structured errno surface** (`errno` + `error`) polled right after the call —
 /// something the Python bridge never exposed per-call.
@@ -116,6 +117,9 @@ pub fn handle_ffi(engine: &Engine, req: &Value) -> Result<Value, EngineError> {
         as i32;
     let iarg = req.get("iarg").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
     let farg = req.get("farg").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    // The second double of a two-double `F` family (`CircuitF`/`CmathLibF` —
+    // `crate::families::TWO_DOUBLE_F`); ignored by every other family.
+    let farg2 = req.get("farg2").and_then(|v| v.as_f64()).unwrap_or(0.0);
     let sarg = req.get("sarg").and_then(|v| v.as_str()).unwrap_or("");
     let vset = parse_vset(req.get("vset"))?;
 
@@ -125,6 +129,7 @@ pub fn handle_ffi(engine: &Engine, req: &Value) -> Result<Value, EngineError> {
         mode,
         iarg,
         farg,
+        farg2,
         sarg,
         vset,
     })?;

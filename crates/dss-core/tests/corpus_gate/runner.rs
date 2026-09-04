@@ -15,10 +15,10 @@ use serde_json::json;
 
 use crate::engines::{CaseResult, Channel, Oracle};
 use crate::harness::{
-    self, ExportPolicy, RowPolicy, Tolerances, compare_all_properties, compare_ctrlqueue,
-    compare_discrete, compare_element_channels, compare_eventlog, compare_export,
-    compare_fingerprint, compare_injection, compare_meter, compare_monitor, compare_probe,
-    compare_system_y, compare_variables, compare_yprim, lane, tol_for,
+    self, ExportPolicy, RowPolicy, Tolerances, capture_guard, compare_all_properties,
+    compare_ctrlqueue, compare_discrete, compare_element_channels, compare_eventlog,
+    compare_export, compare_fingerprint, compare_injection, compare_meter, compare_monitor,
+    compare_probe, compare_system_y, compare_variables, compare_yprim, lane, tol_for,
 };
 use crate::manifest::{EngineChannel, SolvableCase};
 
@@ -304,6 +304,18 @@ fn class_member_names(snaps: &[dss_core::exec::ElementSnapshot], class: &str) ->
         .filter(|(cls, _)| cls.eq_ignore_ascii_case(class))
         .map(|(_, name)| name.to_lowercase())
         .collect()
+}
+
+/// This channel's tag for the [`capture_guard`] refusal messages
+/// (`capi_v0145` / `r4133`).
+///
+/// It reuses the single channel→tag mapping the tree already has
+/// ([`harness::PropsChannel::tag`]) instead of adding a second copy:
+/// `EngineChannel` is `pub(crate)` to this one test binary while `harness/`
+/// compiles into ~20 others, so the guard takes a `&str`
+/// ([`EngineChannel::props_channel`] records that channel-threading trap).
+fn channel_tag(channel: EngineChannel) -> &'static str {
+    channel.props_channel().tag()
 }
 
 /// Compile + post + reconcile warnings; return the driven [`Dss`] (not yet
@@ -620,10 +632,11 @@ pub(crate) fn compare_capture(
         }
 
         if c.compare_all_properties {
-            assert!(
-                !cp.all_properties.is_empty(),
-                "{ctx}: compare_all_properties set but the oracle returned no \
-                 property dump (all_properties request not honored?)"
+            capture_guard::require_capture(
+                "compare_all_properties",
+                channel_tag(channel),
+                cp.all_properties.len(),
+                &ctx,
             );
             // A ledger `property` scope pins one (element, prop) pair — an exact
             // `oracle` pin, or `num_rel` for numeric-skeleton values (§1.3; same
@@ -667,9 +680,12 @@ pub(crate) fn compare_capture(
     }
 
     if c.compare_autoadd_log {
-        let oracle_log = oc.autoadd_log.as_deref().unwrap_or_else(|| {
-            panic!("{label}: compare_autoadd_log set but the oracle returned no AutoAddLog")
-        });
+        let oracle_log = capture_guard::require_capture_opt(
+            "compare_autoadd_log",
+            channel_tag(channel),
+            oc.autoadd_log.as_deref(),
+            label,
+        );
         let case_name = dss
             .circuit()
             .expect("circuit exists after AutoAdd")

@@ -151,23 +151,26 @@ the six CLAUDE.md §"Known upstream bugs" reproduced in any lane. Full record:
 WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 
 **GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened
-2026-08-08). **G1.1 fired its kill criterion** that day — unmasking r4133
-properties diverged on 433 of the 438 walked live cases (209 structural pairs /
-960 129 cells, 94 numeric pairs / 95 317 cells, 5 shape gaps) — and the user's
-2026-08-22 decision handed it to `R4133_PROPS_PLAN.md`, whose RP4.1 delivered it
-2026-09-03. **That plan COMPLETED 2026-09-04 and is archived, so G1.1 is
-satisfied**, and **G3.4** (`cim/`, `json/`, `json_import/`) and **G3.5**
-(`props/`) are unblocked — their value witness is now the live r4133 property
-compare. **G1.2** (the ESPVLControl deck, the last zero-coverage class) landed
-2026-08-29 on `r4133-props`; G1.3a–d, G1.4–G1.11c and WP-G3–G5 remain. Full
-record: the same
-file, section "GOLDEN_REBASE WP-G1 — records".
+2026-08-08). Landed so far: **G1.1** — killed on day one (433 of 438 walked
+live cases diverged), handed to `R4133_PROPS_PLAN.md` (user decision
+2026-08-22) and delivered by its RP4.1 on 2026-09-03, so **G1.1 is satisfied**
+and **G3.4** (`cim/`, `json/`, `json_import/`) + **G3.5** (`props/`) are
+unblocked, their value witness now the live r4133 property compare. **G1.2**
+(the ESPVLControl deck, the last zero-coverage class) landed 2026-08-29.
+**G1.0** — a new rails sub-step ahead of G1.3a (decisions D1/D2/D3) — landed
+2026-09-04: the ten-flag manifest vocabulary in **one** lock regen, explicit
+`channels` on the ten bare `element` exclusions, the capture-presence guard, and
+the r4133 bridge rails, whose 96-mode probe **also discharges the G1.11
+mode-capability acceptance for the whole WP** (zero misses); it compares nothing
+new — 0 ledger entries, 0 golden bytes. G1.3a–d, G1.4–G1.11c and WP-G3–G5
+remain. Full record: the same file, section "GOLDEN_REBASE WP-G1 — records".
 
-**Next.** **Back to `GOLDEN_REBASE_PLAN.md` WP-G1** with **G1.1 satisfied** by
-the archived R4133_PROPS plan (RP5.2, 2026-09-04): open work is **G1.3a–d** and
-**G1.4–G1.11c**, then WP-G3–G5 — inside which **G3.4**/**G3.5**, blocked since
-2026-08-08, are runnable (the close-out merge into `update` is done,
-2026-09-04). Queued behind GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE,
+**Next.** **`GOLDEN_REBASE_PLAN.md` G1.3a** (per-element `CurrentsMagAng`,
+`VoltagesMagAng`, `Residuals`) — the first surface sub-step now that G1.0's
+rails are in: it wires **both** channels in one commit and its capture test
+asserts the A/B/C request order (plan §1.1(a), D3). Then G1.3b–d, G1.4–G1.11c
+and WP-G3–G5 — inside which **G3.4**/**G3.5**, blocked since 2026-08-08, are
+runnable. Queued behind GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE,
 MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,

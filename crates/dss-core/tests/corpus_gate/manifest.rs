@@ -75,6 +75,81 @@ pub(crate) struct SolvableCase {
     /// WPG.5: compare the `<CircuitName_>AutoAddLog.csv` the AutoAdd solve writes.
     #[serde(default)]
     pub(crate) compare_autoadd_log: bool,
+    // -- WP-G1 compare-depth surface flags (`GOLDEN_REBASE_PLAN.md` §1.1(d),
+    //    sub-step G1.0). Declared here ONCE for the whole work package so the
+    //    population lock's rigor fingerprint gains its ten tokens in a single
+    //    regen instead of one per surface sub-step (a flag absent from
+    //    `population_lock.rs::rigor()` is invisible to the anti-shrink guard).
+    //    Every one is `#[serde(default)]` ⇒ `false`, and none may be set by a
+    //    manifest before its sub-step wires the request + comparator — see
+    //    [`G1_SURFACE_FLAGS`] and `no_unwired_g1_surface_flag_is_set_in_any_manifest`.
+    /// G1.3a–c: the per-element **derived** channels of the fastdss facade —
+    /// `VoltagesMagAng`/`CurrentsMagAng`/`Residuals`, `SeqVoltages`/`SeqCurrents`/
+    /// `SeqPowers`, `CplxSeqVoltages`/`CplxSeqCurrents`, `TotalPowers`
+    /// (`.inputs/DSS-Python` `origin/fastdss` `dss/ICktElement.py:53,58-69`
+    /// `_columns`; r4133 transport `DDLL/DCktElement.pas` `CktElementV`).
+    #[serde(default)]
+    pub(crate) compare_derived: bool,
+    /// G1.3d: the per-element **discrete extras** — `PhaseLosses`, `NodeOrder`,
+    /// `EnergyMeter`, `OCPDevType`/`OCPDevIndex`, `HasVoltControl`/
+    /// `HasSwitchControl`, `NumControls`, `NumTerminals`/`NumPhases`/
+    /// `NumConductors` (`origin/fastdss` `dss/ICktElement.py:35-38,46-52,56,69`;
+    /// r4133 `DDLL/DCktElement.pas` `CktElementI`/`CktElementS`).
+    #[serde(default)]
+    pub(crate) compare_element_extras: bool,
+    /// G1.4: the **bus** surface — `puVoltages`/`puVmagAngle`/`VMagAngle`/`VLL`/
+    /// `puVLL`, `SeqVoltages`/`CplxSeqVoltages`, `AllPCEatBus`/`AllPDEatBus`,
+    /// `Distance` (+ the circuit-level `AllBusDistances`/`AllNodeDistances`/
+    /// `AllBusVmagPu`) — `origin/fastdss` `dss/IBus.py:19-53` `_columns`;
+    /// r4133 `DDLL/DBus.pas`.
+    #[serde(default)]
+    pub(crate) compare_bus: bool,
+    /// G1.5: the bus **short-circuit** surface — `Zsc1`/`Zsc0`/`ZscMatrix`/
+    /// `YscMatrix`/`Isc`/`Voc` (`origin/fastdss` `dss/IBus.py:30,39,41-44`;
+    /// r4133 `DDLL/DBus.pas`). Split from [`Self::compare_bus`] because it needs
+    /// a fault study, not just a solve.
+    #[serde(default)]
+    pub(crate) compare_zsc: bool,
+    /// G1.6: the **meter extras + per-bus reliability** surface — `CalcCurrent`,
+    /// `AllocFactors`, `SAIFI`/`SAIFIKW`/`SAIDI`/`CustInterrupts`, the ordered
+    /// zone vectors and the active-section fields (`origin/fastdss`
+    /// `dss/IMeters.py:13-42` `_columns`), plus `Bus.Lambda`/`N_interrupts`/
+    /// `N_Customers`/`Cust_Interrupts`/`Cust_Duration`/`Int_Duration`/
+    /// `TotalMiles`/`SectionID` (`dss/IBus.py:25-36`). Also drives the executive
+    /// `RelCalc` the surface needs (`save_outputs.py:117-129`); r4133
+    /// `DDLL/DMeters.pas`.
+    #[serde(default)]
+    pub(crate) compare_reliability: bool,
+    /// G1.6b: the **PDElements** interface walk — `AccumulatedL`,
+    /// `ParentPDElement`, `FromTerminal`, `IsShunt`, `Numcustomers`, `SectionID`,
+    /// `RepairTime`, `Totalcustomers`, `Lambda` (`origin/fastdss`
+    /// `dss/IPDElements.py:26-40` `_columns`; r4133 `DDLL/DPDELements.pas`).
+    #[serde(default)]
+    pub(crate) compare_pdelements: bool,
+    /// G1.7: the **topology** interface — `NumLoops`, `NumIsolatedBranches`/
+    /// `NumIsolatedLoads`, `AllLoopedPairs`, `AllIsolatedBranches`/
+    /// `AllIsolatedLoads` (`origin/fastdss` `dss/ITopology.py:10-20` `_columns`;
+    /// r4133 `DDLL/DTopology.pas`).
+    #[serde(default)]
+    pub(crate) compare_topology: bool,
+    /// G1.8: the **incidence-matrix** surface — `IncMatrix`, `IncMatrixCols`,
+    /// `IncMatrixRows`, `Laplacian`: the fastdss-branch-only Solution additions
+    /// (`origin/fastdss` `tests/save_outputs.py:187`, fed by the `CalcIncMatrix`
+    /// at `:117`; r4133 `DDLL/DSolution.pas`).
+    #[serde(default)]
+    pub(crate) compare_inc_matrix: bool,
+    /// G1.10a: the **run-produced file set** — every non-monitor `*.csv` the deck
+    /// emits under DataPath plus the `save circuit` output file set
+    /// (`origin/fastdss` `tests/save_outputs.py:597-609`, which archives every
+    /// `*.csv` under the run dir; the `.dss` set is archived but never compared —
+    /// our file-set + round-trip check is strictly stronger).
+    #[serde(default)]
+    pub(crate) compare_run_files: bool,
+    /// G1.10b: the **demand-interval tree** — the `closedi` subset of the CSV set
+    /// above (`origin/fastdss` `tests/save_outputs.py:64,597`), split off because
+    /// a DI tree exists only for a deck that runs `closedi`.
+    #[serde(default)]
+    pub(crate) compare_di: bool,
     /// The feature this case covers is not ported yet (GAPS_PLAN.md §2.3/§3.1):
     /// the gate asserts the Rust engine errors loudly instead of live-comparing.
     #[serde(default)]
@@ -413,6 +488,116 @@ pub(crate) fn assert_isolate_carries_note(label: &str, c: &SolvableCase) {
             c.note.as_deref().is_some_and(|n| !n.trim().is_empty()),
             "{label}: `isolate: true` requires a non-empty `note` documenting the \
              proven worker-state contamination (UNIFIED_GATE_PLAN §1.2/§4 Phase B)"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// WP-G1 compare-depth surface flags (`GOLDEN_REBASE_PLAN.md` §1.1(d), G1.0).
+// ---------------------------------------------------------------------------
+
+/// One WP-G1 compare-depth surface flag: the manifest field name, the sub-step
+/// that owns it, whether its request + comparator are wired yet, and the reader
+/// that pulls it off a case.
+///
+/// `wired` is the structural half of the rails. A flag whose surface is not
+/// wired yet is a field the loader accepts and the runtime ignores: the request
+/// builder would not send it, the oracle would return nothing, and the case
+/// would "compare" an empty capture against an empty capture — green, silently
+/// vacuous. Each surface sub-step flips its own row to `true` **in the same
+/// commit** that adds the request field and the comparator (the
+/// `pending ⇒ wp` / `isolate ⇒ note` structural-gate pattern of
+/// [`family_manifest_is_complete`]).
+pub(crate) struct G1Flag {
+    /// The `serde` field name, exactly as a manifest spells it.
+    pub(crate) name: &'static str,
+    /// The `GOLDEN_REBASE_PLAN.md` sub-step that owns the surface.
+    pub(crate) sub_step: &'static str,
+    /// Is the capture request + comparator in the tree yet?
+    pub(crate) wired: bool,
+    pub(crate) get: fn(&SolvableCase) -> bool,
+}
+
+/// The whole WP-G1 flag vocabulary, declared once (G1.0). Order matches the
+/// declaration order in [`SolvableCase`] and the token order in
+/// `population_lock.rs::rigor()`.
+pub(crate) const G1_SURFACE_FLAGS: &[G1Flag] = &[
+    G1Flag {
+        name: "compare_derived",
+        sub_step: "G1.3a-c",
+        wired: false,
+        get: |c| c.compare_derived,
+    },
+    G1Flag {
+        name: "compare_element_extras",
+        sub_step: "G1.3d",
+        wired: false,
+        get: |c| c.compare_element_extras,
+    },
+    G1Flag {
+        name: "compare_bus",
+        sub_step: "G1.4",
+        wired: false,
+        get: |c| c.compare_bus,
+    },
+    G1Flag {
+        name: "compare_zsc",
+        sub_step: "G1.5",
+        wired: false,
+        get: |c| c.compare_zsc,
+    },
+    G1Flag {
+        name: "compare_reliability",
+        sub_step: "G1.6",
+        wired: false,
+        get: |c| c.compare_reliability,
+    },
+    G1Flag {
+        name: "compare_pdelements",
+        sub_step: "G1.6b",
+        wired: false,
+        get: |c| c.compare_pdelements,
+    },
+    G1Flag {
+        name: "compare_topology",
+        sub_step: "G1.7",
+        wired: false,
+        get: |c| c.compare_topology,
+    },
+    G1Flag {
+        name: "compare_inc_matrix",
+        sub_step: "G1.8",
+        wired: false,
+        get: |c| c.compare_inc_matrix,
+    },
+    G1Flag {
+        name: "compare_run_files",
+        sub_step: "G1.10a",
+        wired: false,
+        get: |c| c.compare_run_files,
+    },
+    G1Flag {
+        name: "compare_di",
+        sub_step: "G1.10b",
+        wired: false,
+        get: |c| c.compare_di,
+    },
+];
+
+/// Refuse a manifest case that sets a [`G1_SURFACE_FLAGS`] flag whose surface is
+/// not wired yet (G1.0 rails). Shared by the manifest walk below and its
+/// synthetic non-vacuity drive.
+pub(crate) fn assert_no_unwired_g1_flag(label: &str, c: &SolvableCase) {
+    for f in G1_SURFACE_FLAGS {
+        assert!(
+            !((f.get)(c) && !f.wired),
+            "{label}: sets `{}`, but that surface is not wired yet ({} owns it). \
+             The request builder would not send it and the comparator does not \
+             exist, so the case would compare an empty capture against an empty \
+             capture and pass. Flip `G1Flag::wired` in the SAME commit that adds \
+             the capture request + the comparator (GOLDEN_REBASE_PLAN.md §1.1(d)/(f)).",
+            f.name,
+            f.sub_step
         );
     }
 }
@@ -787,4 +972,84 @@ fn controls_manifest_is_complete() {
 #[test]
 fn modes_manifest_is_complete() {
     family_manifest_is_complete(&MODES);
+}
+
+/// G1.0 rails: no manifest may switch on a WP-G1 surface flag before the
+/// sub-step that owns it has wired the capture request and the comparator.
+///
+/// Walks all four manifests (`solvable_now` + the three synthetic families), so
+/// the moment a surface sub-step's flag appears in a deck's JSON without its
+/// `G1Flag::wired` flip, the gate names the case and the flag.
+#[test]
+fn no_unwired_g1_surface_flag_is_set_in_any_manifest() {
+    for c in load_solvable() {
+        assert_no_unwired_g1_flag(&format!("solvable_now:{}", c.path), &c);
+    }
+    for fam in FAMILIES {
+        for c in load_family(fam.name) {
+            assert_no_unwired_g1_flag(&format!("{}:{}", fam.name, c.path), &c);
+        }
+    }
+}
+
+/// Non-vacuity for the rail above (§1.1(f)): the manifests set none of the ten
+/// flags today, so the walk passes on an empty premise. Drive each flag on a
+/// synthetic case and assert the refusal actually fires — and that a wired flag
+/// (simulated by reading the row's own `wired`) is the only thing that lets one
+/// through.
+#[test]
+fn an_unwired_g1_surface_flag_on_a_case_is_refused() {
+    for f in G1_SURFACE_FLAGS {
+        let mut c = SolvableCase {
+            path: "synthetic.dss".to_string(),
+            ..Default::default()
+        };
+        set_g1_flag(&mut c, f.name);
+        assert!(
+            (f.get)(&c),
+            "{}: `set_g1_flag` did not set the field the row reads",
+            f.name
+        );
+        let err = std::panic::catch_unwind(|| {
+            assert_no_unwired_g1_flag("synthetic:case.dss", &c);
+        });
+        if f.wired {
+            assert!(
+                err.is_ok(),
+                "{}: the flag is wired, so setting it must be allowed",
+                f.name
+            );
+        } else {
+            let payload = err.expect_err(&format!(
+                "{}: an unwired flag set on a case must be refused",
+                f.name
+            ));
+            let msg = crate::runner::panic_msg(payload);
+            assert!(
+                msg.contains(f.name) && msg.contains(f.sub_step) && msg.contains("synthetic"),
+                "{}: refusal must name the flag, its sub-step and the case; got {msg:?}",
+                f.name
+            );
+        }
+    }
+}
+
+/// Test-only writer mirroring [`G1Flag::get`]: the pair is what makes the drive
+/// above non-vacuous (a row whose reader and writer disagree fails its own
+/// `set_g1_flag` assertion). Kept next to the drive rather than in `G1Flag` so
+/// the production table stays read-only.
+fn set_g1_flag(c: &mut SolvableCase, name: &str) {
+    match name {
+        "compare_derived" => c.compare_derived = true,
+        "compare_element_extras" => c.compare_element_extras = true,
+        "compare_bus" => c.compare_bus = true,
+        "compare_zsc" => c.compare_zsc = true,
+        "compare_reliability" => c.compare_reliability = true,
+        "compare_pdelements" => c.compare_pdelements = true,
+        "compare_topology" => c.compare_topology = true,
+        "compare_inc_matrix" => c.compare_inc_matrix = true,
+        "compare_run_files" => c.compare_run_files = true,
+        "compare_di" => c.compare_di = true,
+        other => panic!("G1_SURFACE_FLAGS row {other:?} has no writer in `set_g1_flag`"),
+    }
 }

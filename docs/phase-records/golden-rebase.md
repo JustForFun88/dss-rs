@@ -2690,3 +2690,37 @@ row against the pre-fix lock.
        fixed), and the general limitation is a standing open follow-up covering
        all five skip entries.
 
+
+- **G1.0** (2026-09-04, branch `update`) — **WP-G1's rails, landed before its first surface**
+  (new sub-step; coordinator decisions **D1** rails, **D2** the r4133-bridge re-scope, **D3** the
+  A/B/C capture-order partition, all three written into `GOLDEN_REBASE_PLAN.md`'s WP-G1 preamble).
+  *Half A* — the ten compare-depth flags declared once (`corpus_gate/manifest.rs`) and
+  fingerprinted in **one** `population.lock.json` regen instead of ten, each unusable until its own
+  sub-step wires it; the ten bare `element` ledger exclusions (8 cases) now spell
+  `channels: ["currents","powers","losses"]` (meaning-preserving — empty already means those three)
+  under three load-time rules, so G1.3a–c cannot widen a reviewed entry with no ledger diff; and
+  `harness::capture_guard` fails a case whose flag is on while that channel's capture is absent or
+  empty, instead of comparing 0 == 0. *Half B* — the DLL is the grouped DDLL API (42 families / 147
+  entry points, no `*_Get_*` symbol), so a missing property is a per-family `else` **sentinel**:
+  `crates/dss-epri/src/modes.rs` types them, `Engine::read_mode` serves the 96-row `WP_G1_MODES`
+  table (getters only; two `PDElements` write arms excluded), the two-double `F` ABI is fixed
+  (`DCircuit.pas:27`, `DCmathLib.pas:5`, angles per `Ucomplex.pas:96-121` — which is why
+  `Cdang(0,1)` is 89.99999999516423 and never the spec's 90.0), and two memory-unsafe arms are
+  refused pre-FFI (`DSolution.pas:580-582` `ArrSize+1` writes; `DBus.pas:803-838` nil `Zsc`, a
+  measured process kill), neither on WP-G1's list. **G1.11′ is discharged here for the whole WP**:
+  all 96 modes classify `Served`, the expected-miss list is empty. Nothing is compared anew — **0**
+  new ledger entries (57 / 30 causes unchanged), 0 golden bytes, no floor, no `lane_diff` owed
+  (`crates/dss-epri` is `publish = false`, not linked into `examples/lane_dump`). TESTING.md carries
+  the flag list, the ledger recipe, the bridge's mode/sentinel/do-not-call record and the decision
+  that the lock fingerprints the **manifest** flag (with its `FORCED_<FLAG>_POPULATION`
+  obligation); 29 stale `file.rs:LINE` citations there and in `tests/TOLERANCE_NOTES.md` were
+  re-pointed after the rails moved their targets (no floor, tier or verdict touched).
+  Pins: `r4133_mode_capability_is_complete_for_wp_g1`, `cmath_lib_f_takes_two_doubles`
+  (`Cabs(3,4)` = 5.0, pre-fix 3.0), `do_not_call_refuses_the_two_unsafe_modes_without_touching_the_dll`,
+  `no_unwired_g1_surface_flag_is_set_in_any_manifest`, `every_manifest_compare_flag_has_a_rigor_token`,
+  `a_scope_that_misuses_channels_is_refused_at_load`, the four `capture_guard::tests::*`.
+  Commits: <filled by the docs agent>. Gate: fmt + clippy clean in both lanes;
+  `cargo test --workspace` **4 601 / 0 failed / 5 ignored** in both lanes (4 499 before
+  G1.0), corpus gate 523/523, ledger 57 entries / 1 588 hits, 0 stale, `git status
+  --porcelain -- tests/golden` empty; `lane_diff` measured anyway although not owed —
+  `VERDICT: PASS`, max |Δ| = 0 on all eight kinds.

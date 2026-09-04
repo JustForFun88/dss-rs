@@ -90,7 +90,7 @@ DE_PASCALIZE Stage-F group-fixer pattern is explicitly rescinded for this plan).
    «Этот шаг требует <tier>. Переключи сессию (/model + reasoning effort) и повтори
    команду.» and stop. If the session's reasoning effort is not visible, ask the
    user to confirm it before executing — **mandatory on the `opus-xhigh` rows**
-   (G1.3a–c, G1.5, G1.11a–c, G2.5, G4.1), per `PLAN_SEQUENCE.md` §Model-tier
+   (G1.0, G1.3a–c, G1.5, G1.11a–c, G2.5, G4.1), per `PLAN_SEQUENCE.md` §Model-tier
    protocol. Fable is used only with explicit user approval (standing rule since
    2026-07-19).
 1. **Implement** — one dedicated implementation agent (or the session itself at
@@ -167,6 +167,7 @@ audits on `opus-xhigh` exec rows are themselves `opus-xhigh`.
 | Sub-step | Exec | Audit-code | Audit-tests | Why |
 |---|---|---|---|---|
 | G0.1, G0.2 | `opus-high+` | `opus-high+` | `opus-high+` | new test infra cloned from a proven pattern (`population_lock.rs`) |
+| G1.0 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | rails over the two fail-on-stale artifacts (`population.lock.json`, `ledger.json`) + the unsafe-adjacent r4133 bridge crate |
 | G1.1 | `opus-high+` | `opus-high+` | `opus-high+` | flag flip + ledger triage; capture already built (`dss-epri/src/capture.rs:208-367`) |
 | G1.2 | `opus-high+` | `opus-high+` | `opus-high+` | one new deck for a class with known oracle-abort paths (`makeposseq_ctrl.dss:9-13`) |
 | G1.3a, G1.3b, G1.3c | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | new engine accessors over solver state + cross-engine floor calibration |
@@ -228,7 +229,11 @@ exposes every field natively via `tools/oracle/oracle_server.py` capture additio
 `Powers`/`SeqPowers`/`TotalPowers`/`Losses` are read BEFORE any `Currents`-family
 read (CLAUDE.md upstream bug 4 — harmonics stale-`Iterminal`; today the rule lives
 in `gen_checkpoints.py::capture_element`), carried as a comment at the capture site
-plus a test asserting the request order; (b) Rust side gets a read-only accessor
+plus a test asserting the request order — *(**2026-09-04**, D3: restated as the
+A/B/C partition in the WP-G1 preamble note; `SeqPowers` belongs to the
+`GetCurrents`-into-a-scratch-buffer group that must be read **last**, and
+`PhaseLosses` to the cache-aware group that must be read first)*; (b) Rust side
+gets a read-only accessor
 (`exec/view.rs` pattern) that computes the quantity from solved state, reusing the
 shared math the reports call — e.g. the 012 transform `SymComp::phase_to_sym`
 (`support/mathutil/mod.rs:105`, shared by `report/export/*` and `report/show/*`;
@@ -236,11 +241,24 @@ note the per-terminal/rating/Iresidual logic of `seq_currents.rs` itself is NOT
 exercised by the live path — the goldens keep covering that until G3); (c) a
 comparator in `tests/harness/mod.rs` with floors derived per
 `tests/TOLERANCE_NOTES.md` discipline (documented, never guessed); (d) manifest
-opt-in flags (`compare_derived`, `compare_zsc`, `compare_topology`,
-`compare_inc_matrix`, `compare_reliability`, `compare_di` — same shape as
-`compare_all_properties`), force-enabled by the scheduler for the suitable families
-(the `scheduler.rs:102-114` pattern), `population.lock.json` regenerated in the same
-commit; (e) every known upstream quirk triaged into `ledger.json` with r4133
+opt-in flags — the whole vocabulary, same shape as `compare_all_properties`,
+declared **once** (G1.0, 2026-09-04) in `corpus_gate/manifest.rs` and mirrored in
+`population_lock.rs::rigor()`: `compare_derived` (G1.3a–c), `compare_element_extras`
+(G1.3d), `compare_bus` (G1.4), `compare_zsc` (G1.5), `compare_reliability` (G1.6),
+`compare_pdelements` (G1.6b), `compare_topology` (G1.7), `compare_inc_matrix` (G1.8),
+`compare_run_files` (G1.10a), `compare_di` (G1.10b). *(**2026-09-04**, G1.0: this
+supersedes the six names originally written here — `compare_derived` now means the
+per-element row only, `compare_bus` carries G1.4's half, and the other three names
+were added; **G1.9 gets no flag**, its aggregates and solution scalars being
+universal and cheap, so nobody adds an eleventh flag and a second lock regen. A flag
+may be **set** by a manifest only once its own sub-step has flipped
+`G1_SURFACE_FLAGS`' `wired` in the same commit as its request field + comparator.)*
+Force-enabled by the scheduler for the suitable families (the `force_properties`
+pattern in `corpus_gate/scheduler.rs`) — and since G1.0 a force rule ships in the
+same commit as its own `FORCED_<FLAG>_POPULATION` pin + re-derivation test, because
+the lock records the **manifest** flag, not the effective one;
+`population.lock.json` regenerated in the same commit; (e) every known upstream
+quirk triaged into `ledger.json` with r4133
 evidence (do NOT assume the export-side bug shapes — measure the API path), **and
 where the divergence is ours-is-right (an upstream defect, not a floor), an
 expected-value pin naming the value our engine must produce — the ledger entry's
@@ -388,6 +406,72 @@ Each sub-step lands capi-channel capture + Rust accessor + comparator + floors +
 manifest flags + ledger triage (+ pins for ours-is-right divergences), per §1.1
 mechanics (a)–(f). The r4133 channel joins in G1.11a–c for the groups the DLL
 exposes.
+
+> **2026-09-04 — three amendments (coordinator decisions D1/D2/D3), all landed by
+> the new rails sub-step G1.0** (branch `update`; full record:
+> `docs/phase-records/golden-rebase.md`, §"GOLDEN_REBASE WP-G1 — records").
+>
+> **D1 — G1.0 added, ahead of G1.3a.** Three rails every later G1 sub-step would
+> otherwise re-pay or silently skip, landed once with **zero** comparator, zero
+> engine change, zero ledger entry and zero golden byte:
+> (1) the **whole** manifest flag vocabulary is declared once in
+> `corpus_gate/manifest.rs` and mirrored in `population_lock.rs::rigor()` in a
+> **single** `population.lock.json` regen — a flag absent from that format string
+> is invisible to the anti-shrink guard, and ten sub-steps each rewriting all 523
+> rigor rows is ten unreviewable diffs instead of one; a `G1_SURFACE_FLAGS` table
+> refuses any manifest that sets a flag whose capture request + comparator do not
+> exist yet, so a surface flag can never go live vacuous.
+> (2) The **ten** committed bare `element` ledger exclusions (8 cases) now spell
+> their `channels` explicitly: `Scope::channels` empty means *all*, so the element
+> sub-channels G1.3a–c adds would have widened reviewed entries with no ledger
+> diff and no lock trip. Three load-time rules keep it that way, including the
+> typo that today loads cleanly and selects nothing.
+> (3) `harness::capture_guard` — the rail a flag-gated comparator calls first, so
+> a flag that is ON while that channel's capture is absent/empty **fails the
+> case** instead of comparing 0 == 0.
+>
+> **D2 — G1.11a/b/c re-scoped.** The vendored r4133 DLL is the **grouped DDLL**
+> API — 42 families / 147 entry points (`CktElementI/F/S/V`, `BUSI/F/S/V`, …),
+> every one bound at load — and has **no** `*_Get_*` symbols, so those sub-steps'
+> `GetProcAddress`-miss acceptance clause is not executable as written. It is
+> replaced by a **mode-probe** clause: an unknown property falls through its
+> family's Pascal `case` into an `else` that returns a **sentinel**, and
+> `crates/dss-epri/src/modes.rs` classifies the four ABI shapes' sentinels into
+> `Served` / `UnknownMode` / `DoNotCall`. G1.0 landed the rails (the probe, the
+> typed mode accessors, the two-double `CircuitF`/`CmathLibF` ABI fix, the
+> do-not-call register) **and executed this acceptance once for all of WP-G1**:
+> `crates/dss-epri/tests/modes.rs::r4133_mode_capability_is_complete_for_wp_g1`
+> proves all **96** modes WP-G1 needs classify `Served` on a solved deck, so the
+> expected-miss list is **empty**. Each surface sub-step therefore wires **both**
+> channels in the same commit (capi via `tools/oracle/oracle_server.py`, r4133 via
+> the typed accessors); a group the DLL cannot serve is recorded in `TESTING.md`
+> with its mode and sentinel, never masked capi-only. WP-G1 still closes with the
+> `TESTING.md` mode-capability record (**G1.11′**).
+>
+> **D3 — §1.1(a)'s capture-order rule, restated as an A/B/C partition.** On the
+> capi channel, per element: **(A)** the cache-aware quantities that go through
+> `ComputeIterminal` — `Powers`, `TotalPowers`, `Losses`, `PhaseLosses` — are read
+> **before** **(B)** every read that calls `GetCurrents` into a scratch buffer —
+> `SeqPowers`, `SeqCurrents`, `CplxSeqCurrents`, `Residuals`, `CurrentsMagAng`,
+> `Currents`; **(C)** order-free reads (voltages, discrete state) go anywhere.
+> `SeqPowers` is a *poisoner*, not a victim, and `PhaseLosses` belongs to the
+> must-read-first group — neither follows from the pre-G1.0 wording. G1.3a's
+> capture test asserts the request order; G1.0 adds no capture read on either
+> transport, so it owes no order test (stated so the absence does not read as a
+> gap).
+>
+> **As executed (2026-09-04).** G1.0 landed on `update` exactly as scoped — no
+> comparator, no `crates/dss-core/src` change, **0** ledger entries, 0 golden bytes,
+> no floor, no `lane_diff` owed — with three corrections settled in-part against the
+> vendored r4133 source and now enforced by code: `Cdang(0,1)` cannot return the
+> 90.0 this plan's draft expected (`Ucomplex.pas:96-121`, two truncated constants),
+> the WP-G1 mode table is **96** rows and not 98 (`PDElements` `F:1`/`F:3` are
+> *write* arms, `DPDELements.pas:143`/`:162`, held in `modes::EXCLUDED_WRITE_MODES`),
+> and the acceptance is a single `#[test]` because the DDLL is a process-global
+> singleton. One unplanned edit: 29 `file.rs:LINE` citations in `TESTING.md` and
+> `tests/TOLERANCE_NOTES.md` were re-pointed after the rails moved their targets (no
+> floor, tier or verdict changed). Full record: `docs/phase-records/golden-rebase.md`
+> §"GOLDEN_REBASE WP-G1 — records".
 
 ### G1.1 — `all_properties` on the r4133 channel
 
@@ -562,6 +646,15 @@ docs, `#![deny(unsafe_op_in_unsafe_fn)]` — the crate's standing rules.
 **Acceptance (all three G1.11 sub-steps):** for every symbol, either a working
 capture proven on one gated r4133 case, or a recorded `GetProcAddress` miss with
 the symbol name in TESTING.md — never a silent capi-only fallback.
+
+*(**2026-09-04**, decision D2, landed by G1.0: the `GetProcAddress`-miss half is
+superseded — the DLL has **no** `*_Get_*` symbols. It is the grouped DDLL API, one
+entry point per (family, ABI shape) with the property selected by a mode index, so
+the acceptance is the **mode probe**, and G1.0 executed it once for all of WP-G1:
+all 96 modes these three sub-steps need classify `Served`, the expected-miss list is
+empty (`crates/dss-epri/tests/modes.rs`). The `X_Get_Y` spellings below and above
+name the *properties* to capture, not symbols to bind. See the WP-G1 preamble note
+and TESTING.md §"The r4133 bridge — entry points, mode capability, do-not-call".)*
 
 ### G1.11b — r4133 channel: Bus families
 

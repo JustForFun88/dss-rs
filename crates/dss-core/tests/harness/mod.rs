@@ -48,6 +48,12 @@ pub mod regen;
 #[allow(unused_imports)]
 pub use regen::{regen, snapshot_bytes, snapshot_text};
 
+/// `GOLDEN_REBASE_PLAN.md` WP-G1 rails (G1.0): the "flag set but the oracle
+/// returned nothing" guard every flag-gated corpus comparator calls before it
+/// compares, so an absent/empty capture fails the case instead of silently
+/// comparing nothing.
+pub mod capture_guard;
+
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
