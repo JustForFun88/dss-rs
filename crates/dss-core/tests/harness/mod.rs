@@ -61,7 +61,7 @@ use std::path::PathBuf;
 // (`PD_SKIP_VISITS` …), spelled like `props_norm`'s.
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrd};
 
-use dss_core::exec::{Dss, ElementSnapshot};
+use dss_core::exec::{Dss, ElementSnapshot, PdElementView};
 use num_complex::Complex64;
 use serde::Deserialize;
 
@@ -4805,14 +4805,24 @@ pub struct PdSkipRow {
 /// **inside one worker process**. An envelope over such a value is not a fact
 /// (the `reliability_bus_int_duration_oob_bug_report.md` precedent), and the 51
 /// (case, channel) pairs it touches would blow the plan's ~10-entry ledger kill
-/// criterion with identical rows — so the exclusion is class-scoped here,
-/// beside [`SKIP_PROPS_BOTH_CHANNELS`], which excludes the very same defect on
-/// the property surface, and `tests/corpus/ledger.json` gains **nothing**.
+/// criterion with identical rows — so the exclusion lives here, beside
+/// [`SKIP_PROPS_BOTH_CHANNELS`], which excludes the very same defect on the
+/// property surface, and `tests/corpus/ledger.json` gains **nothing**.
 ///
-/// The asymmetry is coverage, not loss: `fault_rate` / `pct_permanent` stay
-/// compared on `r4133` and `lambda` / `accumulated_l` stay compared on
-/// `capi_v0145`, and Line / Transformer / AutoTrans / GICTransformer keep all
-/// four fields on both channels.
+/// **Scope — (channel, class, field) AND the element.** A row is consulted only
+/// where the corrupting write actually lands: on an **in-zone shunt**
+/// Capacitor/Reactor ([`pd_skip_applies`]). A series member of either class, and
+/// a shunt one no meter zone reached, stays compared on all fourteen fields on
+/// both channels — the defect touches 22 (capi) / 29 (r4133) of the 372 / 431
+/// walked cases, so a class-wide row would drop ~350 clean comparisons per
+/// channel, and Capacitor/Reactor `FaultRate`/`PctPerm` have no live check left
+/// anywhere else (`SKIP_PROPS_BOTH_CHANNELS`/`SKIP_PROPS_CAPI_ONLY` drop them on
+/// the property surface for this same defect).
+///
+/// The remaining asymmetry is coverage, not loss: `fault_rate` /
+/// `pct_permanent` stay compared on `r4133` and `lambda` / `accumulated_l` stay
+/// compared on `capi_v0145`, and Line / Transformer / AutoTrans /
+/// GICTransformer keep all four fields on both channels.
 ///
 /// Two guards keep the table honest, both in the `PROPS_ECHO_R4133` spirit:
 /// `the_pd_skip_register_is_exactly_the_measured_rows` (a row cannot be added
@@ -4878,6 +4888,11 @@ pub const PD_SKIP_FIELDS: &[PdSkipRow] = &[
     },
 ];
 
+/// The file, relative to `crates/dss-core`, that must define every
+/// [`PdSkipRow::pin`] — checked by
+/// `pd_elements_tests::every_pd_skip_row_pin_is_a_test_that_exists`.
+const PD_PINS_FILE: &str = "tests/pd_elements_pins.rs";
+
 /// Per-row visit counter, indexed exactly like [`PD_SKIP_FIELDS`]: cells the
 /// row was consulted about.
 static PD_SKIP_VISITS: [AtomicUsize; PD_SKIP_FIELDS.len()] =
@@ -4917,6 +4932,29 @@ fn pd_skip_row(channel: &str, class: &str, field: &str) -> Option<usize> {
     PD_SKIP_FIELDS.iter().position(|r| {
         r.channel == channel && r.class.eq_ignore_ascii_case(class) && r.field == field
     })
+}
+
+/// Whether [`PD_SKIP_FIELDS`] may speak about this element at all.
+///
+/// The defect the table names is not a property of the class: it is the write
+/// `MakeMeterZoneLists` performs on what it files on the meter's **PC**
+/// adjacency list — an enabled **shunt** Capacitor/Reactor inside some meter's
+/// zone (`Version8/Source/Shared/CktTree.pas:664-666` files them there,
+/// `Meters/EnergyMeter.pas:1868-1869` then writes `MeterObj`/`SensorObj`
+/// through a `TPCElement` cursor aimed at that `TPDElement`). A series
+/// Capacitor/Reactor goes on the PD list instead and is written by nothing; a
+/// shunt one outside every zone is never reached. Both read clean on both
+/// oracles — `Reactor.rser` is clean on the very deck whose `Reactor.rsh` is
+/// garbage (`pd_elements_shunt_reliability_inputs_survive_the_meter_zone`).
+///
+/// Both halves are the PORT's own state, and neither can hide a divergence:
+/// `is_shunt` is itself compared (field 3 of 14, ahead of every skipped field),
+/// so a port that got it wrong reds on that field; `in_meter_zone` is not an
+/// oracle column at all ([`PdElementView::in_meter_zone`]), and a port that got
+/// *it* wrong would suppress two cells whose correct value is a parsed class
+/// default or an untouched `0.0` — the numbers both pins hold literally.
+fn pd_skip_applies(a: &PdElementView) -> bool {
+    a.is_shunt && a.in_meter_zone
 }
 
 /// What [`compare_pd_elements`] has counted in this process, as
@@ -4997,12 +5035,15 @@ pub fn compare_pd_elements(dss: &Dss, exp: &[PdElementCap], channel: PropsChanne
     }
     for (a, e) in act.iter().zip(exp) {
         let class = pd_class(&e.name);
+        // A skip row speaks only about the elements the oracle's zone build
+        // wrote through the wrong cursor — see [`pd_skip_applies`].
+        let skippable = pd_skip_applies(a);
         let av = pd_fields!(a);
         let ev = pd_fields!(e);
         for ((fa, va), (fe, ve)) in av.iter().zip(ev.iter()) {
             debug_assert_eq!(fa, fe, "both extractions are the one `pd_fields!` macro");
             let equal = va.matches(*ve);
-            if let Some(i) = pd_skip_row(tag, class, fa) {
+            if let Some(i) = pd_skip_row(tag, class, fa).filter(|_| skippable) {
                 PD_SKIP_VISITS[i].fetch_add(1, AtomicOrd::Relaxed);
                 if !equal {
                     PD_SKIP_HITS[i].fetch_add(1, AtomicOrd::Relaxed);
@@ -5013,10 +5054,14 @@ pub fn compare_pd_elements(dss: &Dss, exp: &[PdElementCap], channel: PropsChanne
                 equal,
                 "{ctx}: PDElements `{}` field `{fa}` differs against `{tag}`: Rust {} vs oracle \
                  {}. This surface is compared EXACTLY (rel = abs = 0): no value on either side \
-                 is computed, so a difference is a bug, never a floor.",
+                 is computed, so a difference is a bug, never a floor. The only excluded cells \
+                 are `PD_SKIP_FIELDS`', on an in-zone SHUNT Capacitor/Reactor, which this \
+                 element is not (port: is_shunt = {}, in_meter_zone = {}).",
                 e.name,
                 va.render(),
                 ve.render(),
+                a.is_shunt,
+                a.in_meter_zone,
             );
         }
     }
@@ -5076,8 +5121,9 @@ fn check_pd_elements_compare_ran(capi: (usize, usize), r4133: (usize, usize)) {
 ///
 /// Two arms, each of which is a mask over nothing:
 ///
-/// * `visits == 0` — the row's `(channel, class, field)` never occurred in the
-///   whole population, so it excludes nothing that exists;
+/// * `visits == 0` — the row's `(channel, class, field)` never occurred on an
+///   in-zone shunt element ([`pd_skip_applies`]) anywhere in the population, so
+///   it excludes nothing that exists;
 /// * `hits == 0` — it was consulted on real cells and the two sides agreed
 ///   every time, so the defect it names is gone.
 ///
@@ -5295,6 +5341,71 @@ mod pd_elements_tests {
         let n = keys.len();
         keys.dedup();
         assert_eq!(keys.len(), n, "PD_SKIP_FIELDS holds a duplicate row");
+    }
+
+    /// A port-side walk row, shaped by the two halves of the skip scope.
+    fn view(is_shunt: bool, in_meter_zone: bool) -> PdElementView {
+        PdElementView {
+            name: "Capacitor.c83".to_string(),
+            accumulated_l: 0.0,
+            from_terminal: 1,
+            is_shunt,
+            num_customers: 0,
+            section_id: 0,
+            fault_rate: 0.0005,
+            repair_time: 3.0,
+            total_miles: 0.0,
+            total_customers: 0,
+            pct_permanent: 100.0,
+            lambda: 0.0,
+            parent_class_index: 0,
+            parent_name: String::new(),
+            in_meter_zone,
+        }
+    }
+
+    /// **The scope**: a row applies only where the oracle's zone build wrote
+    /// through the wrong cursor — an in-zone SHUNT Capacitor/Reactor. The three
+    /// other combinations are compared on every field, which is what keeps the
+    /// ~350 clean cases per channel under live comparison.
+    #[test]
+    fn the_pd_skip_scope_is_the_in_zone_shunt_element() {
+        assert!(pd_skip_applies(&view(true, true)));
+        assert!(!pd_skip_applies(&view(true, false)), "no meter reached it");
+        assert!(
+            !pd_skip_applies(&view(false, true)),
+            "series: on the PD list"
+        );
+        assert!(!pd_skip_applies(&view(false, false)));
+    }
+
+    /// **Every row's `pin` is a test that exists** — the
+    /// `props_r4133_replay::every_echo_row_pin_is_a_test_that_exists` idiom.
+    ///
+    /// [`the_pd_skip_register_is_exactly_the_measured_rows`] pins the pin
+    /// *names*; without this guard renaming or deleting either pin would leave
+    /// the whole gate green while eight oracle cells kept being dropped with no
+    /// expected-value test behind them — exactly the "mask over nothing" the
+    /// rows exist to prevent (GOLDEN_REBASE_PLAN.md §1.1(e), CLAUDE.md).
+    #[test]
+    fn every_pd_skip_row_pin_is_a_test_that_exists() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(PD_PINS_FILE);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+            // Line endings are the checkout's, not this test's business.
+            .replace("\r\n", "\n");
+        let mut named: Vec<&str> = PD_SKIP_FIELDS.iter().map(|r| r.pin).collect();
+        named.sort_unstable();
+        named.dedup();
+        assert_eq!(named.len(), 2, "the eight rows are pinned by two tests");
+        for pin in named {
+            assert!(
+                text.contains(&format!("#[test]\nfn {pin}() {{")),
+                "PD_SKIP_FIELDS names `{pin}` as its pin, but crates/dss-core/{PD_PINS_FILE} \
+                 defines no such #[test]. An exclusion without its expected-value test is a \
+                 mask over nothing."
+            );
+        }
     }
 
     /// The global guard fires unless BOTH channels walked something — a surface
