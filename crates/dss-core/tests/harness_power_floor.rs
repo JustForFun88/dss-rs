@@ -21,6 +21,9 @@ fn cap(i_re: f64, p_kw: f64) -> ElementCap {
         p_kw: vec![p_kw],
         p_kvar: vec![0.0],
         loss_w: vec![],
+        // The G1.3a derived channels are a different comparator's input; this
+        // fixture drives `assert_power_close` only.
+        ..ElementCap::default()
     }
 }
 

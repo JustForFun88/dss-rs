@@ -16,9 +16,10 @@ use serde_json::json;
 use crate::engines::{CaseResult, Channel, Oracle};
 use crate::harness::{
     self, ExportPolicy, RowPolicy, Tolerances, capture_guard, compare_all_properties,
-    compare_ctrlqueue, compare_discrete, compare_element_channels, compare_eventlog,
-    compare_export, compare_fingerprint, compare_injection, compare_meter, compare_monitor,
-    compare_probe, compare_system_y, compare_variables, compare_yprim, lane, tol_for,
+    compare_ctrlqueue, compare_discrete, compare_element_channels, compare_element_derived,
+    compare_eventlog, compare_export, compare_fingerprint, compare_injection, compare_meter,
+    compare_monitor, compare_probe, compare_system_y, compare_variables, compare_yprim, lane,
+    tol_for,
 };
 use crate::manifest::{EngineChannel, SolvableCase};
 
@@ -530,6 +531,34 @@ pub(crate) fn compare_capture(
             match el_rewrites.get(&ec.name.to_lowercase()) {
                 Some(rw) => compare_element_channels(&snaps, rw, tol, &ctx, channels),
                 None => compare_element_channels(&snaps, ec, tol, &ctx, channels),
+            }
+        }
+
+        // WP-G1 G1.3a: the per-element **derived** channels — `Enabled` plus
+        // the polar renderings `CurrentsMagAng` / `VoltagesMagAng` / `Residuals`
+        // (r4133 `DDLL/DCktElement.pas:1058`/`:1082`/`:827`). Compared on the
+        // same caps the loop above just used, so a ledger `element` scope that
+        // pins one of the new sub-channels neutralizes it here too, and an
+        // unscoped element is compared against the untouched oracle cap.
+        //
+        // The guard is the flag's own non-vacuity rail: under `derived` BOTH
+        // transports emit `enabled` for every element (present even on the
+        // disabled ones, whose polar channels the capture must skip — r4133
+        // `CktElementV(19)` dereferences a nil `NodeRef` there), so a channel
+        // that ignored the request answers with zero `enabled` fields and the
+        // case fails instead of comparing nothing.
+        if c.compare_derived {
+            capture_guard::require_capture(
+                "compare_derived",
+                channel_tag(channel),
+                cp.elements.iter().filter(|e| e.enabled.is_some()).count(),
+                &ctx,
+            );
+            for ec in &cp.elements {
+                match el_rewrites.get(&ec.name.to_lowercase()) {
+                    Some(rw) => compare_element_derived(&snaps, rw, tol, &ctx, channels),
+                    None => compare_element_derived(&snaps, ec, tol, &ctx, channels),
+                }
             }
         }
 
