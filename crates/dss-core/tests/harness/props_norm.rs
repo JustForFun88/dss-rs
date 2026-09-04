@@ -1426,7 +1426,7 @@ pub fn assert_norm_rows_are_live() {
 /// statics with no way to make them stale from a test, so before the RP2.1 audit
 /// round nothing in the tree proved this guard can fire — it was structurally
 /// silent while the r4133 props path was masked, and RP4.1's unmask (2026-09-03)
-/// made it the sole live anti-rot guard for all 157 rows. With the counters as
+/// made it the sole live anti-rot guard for all 168 rows. With the counters as
 /// parameters the two directions are pinned offline
 /// ([`tests::the_liveness_guard_is_silent_when_dormant_or_live`] and
 /// [`tests::the_liveness_guard_fires_on_a_stale_row`]), so the guard is proven
@@ -4356,7 +4356,7 @@ mod tests {
     /// and both halves of it need a canary: the helper is structurally a no-op
     /// wherever nothing visited a row (which, until RP4.1's unmask on
     /// 2026-09-03, was every run — the r4133 props path was masked, so every row
-    /// had `visits == 0`), and it is the only live anti-rot guard the 157 rows
+    /// had `visits == 0`), and it is the only live anti-rot guard the 168 rows
     /// have once the gate does visit them. This test pins the two silent cases;
     /// the next one pins that it can actually fire.
     #[test]

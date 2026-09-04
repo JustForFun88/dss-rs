@@ -1257,8 +1257,16 @@ floor — so a property that is genuinely wrong by 2e-4 has to be wrong *only* i
 its own render to escape. (c) Every genuine jump the census knows exceeds the
 floor by ≥5×: the nearest is 22.02× and the nearest in scope 276.2×; the four
 root-cause pairs (`swtcontrol.delay`, `windgen.kvar`, `generator.model`,
-`gictransformer.r2`) and RP3.5–RP3.9's residual all stay UNCLAIMED and are still
-compared raw. (d) The floor's refusals are pinned as tests, not assumed: a
+`gictransformer.r2`) and RP3.5–RP3.9's residual are all refused by **this
+floor**. What happened to them afterwards is *not* "still compared raw", and the
+RP5.1 cross-check (2026-09-04) corrects the as-landed wording: RP3.3 gave
+`generator.model` a `PROPS_ECHO_R4133` row with its own pin, and RP4.1 landed
+eight `property`-scoped `ledger.json` entries — two for `swtcontrol.delay`, four
+for `windgen.kvar`, two for `gictransformer.r2` — each pinning both numbers on
+its own case (`props_r4133_replay::LEDGER_ENTRY_PINS`). They are therefore
+handled by the link *after* the floor, per case and per channel, and every other
+cell of those pairs still reaches the assert raw. RP3.9's 55 refused spellings
+do stay UNCLAIMED (`count_in_scope = 0`, no entry owed). (d) The floor's refusals are pinned as tests, not assumed: a
 4.7e-4 error on a floor-*claimed* property still fails, a 1.1e-5 error on it that
 is not a `%.Ng` render fails too, a non-numeric cell on it still fails raw, a
 neighbour property 2.1e-4 out still fails, and capi fails on all of it
@@ -1340,6 +1348,29 @@ provide (audit round); both refusals are pinned in
 a rounding of our value to the digits r4133 printed — no floor can, and the
 mechanism clause narrows that residue without closing it. What bounds it is (a)
 and (b) above, with (a)'s own magnitude hole stated there.
+
+**RP5.1 cross-check against the landed tree (2026-09-04).** Every number this
+section states was re-read from the code at HEAD rather than carried over, and
+one claim was corrected (the (c) clause above; the correction is inline and
+dated). What was checked, and against what:
+
+| claim here | landed at | verdict |
+|---|---|---|
+| the floor is `2e-4` relative | `harness/props_norm.rs:895` (`R4133_DISPLAY_FLOOR: Option<f64> = Some(2e-4)`) | unchanged |
+| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and `harness/mod.rs:3311` | unchanged |
+| the four derivation rows (6.431124e-05 / 1.374769e-03 / 4.404256e-03 / 5.524501e-02) | the constant's own doc table, `props_norm.rs:786-792` | identical, both places |
+| 1 951 vendored spellings claimed (from 2 006, less the 55 the mechanism clause refuses) | `props_r4133_replay::CLAIMED_DISPLAY_FLOOR = 1951` (`props_r4133_replay.rs:565`) | unchanged |
+| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:898-907` and `:915-924` (`i_rel`/`i_abs`) | unchanged |
+| the two loosest kinds — `midi` 1e-6/1e-4 (the `_` fallback, no arm of its own), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1090-1099` and `:1079-1088` | unchanged |
+| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:2495` (asserted as `i_abs / floor`) | unchanged |
+| no `Tolerances` field, no `tol_for` tier moved by this plan | `Tolerances` has no props field; the floor is read only by `props_norm` | unchanged |
+
+The floor therefore still sits **3.110×** above the worst cell it claims and
+**6.874×** under the nearest row above the band, and the band
+`(6.431124e-05, 1.374769e-03)` is still the empty one the placement argument
+rests on. Nothing in this section was widened; the one edit tightened a
+description (RP5.1, docs-only).
+
 
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)
 
