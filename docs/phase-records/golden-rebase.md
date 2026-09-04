@@ -2747,7 +2747,7 @@ row against the pre-fix lock.
   `total_power_is_terminal_one_of_every_source`, `total_iterations_is_an_alias_of_iterations`,
   `all_element_losses_follow_creation_order`, `r4133_solution_flags_are_zero_one_ints`,
   `the_five_circuit_aggregate_rows_are_impure`, the three `capture_order.rs` cases — all registered
-  in `G1_9_PINS`. Commits: `9757d26c` (surface) + the settlement commit below. Gate: fmt/clippy
+  in `G1_9_PINS`. Commits: `9757d26c` (surface) + `f27f9598` (the settlement below). Gate: fmt/clippy
   clean, `cargo test --workspace` **4 678 / 0 / 5 ignored** per lane, corpus gate 523 manifest
   cases (519 compared) on both channels, 57 ledger entries / 0 stale, `population_lock` green
   without a regen, `lane_diff` `VERDICT: PASS`, max |Δ| = 0.
