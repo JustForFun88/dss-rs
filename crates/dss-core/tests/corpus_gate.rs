@@ -106,6 +106,28 @@ fn corpus_gate_all_cases_match_engines() {
             eprintln!("  {id} [{ch:?} {kind}]: {n} hit(s)");
         }
     }
+    // The bus surface's one structural normalization, said out loud (G1.4a,
+    // coordinator decision D11(2)): on a case whose `voltages` field is already
+    // ledger-excluded, `harness::compare_bus` drops the three continuous per-bus
+    // arrays — exact images of the node-voltage band over the same
+    // `Solution.NodeV` — because re-raising that one triaged cause per bus would
+    // mean ten new ledger rows for a divergence already pinned. Bus count, name
+    // sequence, `nodes`, `kv_base` and every array length stay compared there.
+    // It is not a mask and must never read as one, so every suppressed case is
+    // listed next to the entry that caused it
+    // (`ledger::LedgerRuntime::bus_array_suppressions`, driven both ways by
+    // `a_suppressed_bus_array_is_named_with_the_entry_that_caused_it`).
+    let suppressed = run.ledger.bus_array_suppressions();
+    if !suppressed.is_empty() {
+        eprintln!(
+            "corpus_gate bus arrays suppressed (D11(2)) on {} (case, channel) pair(s) — \
+             count/names/nodes/kv_base still compared:",
+            suppressed.len()
+        );
+        for (case, id, ch) in &suppressed {
+            eprintln!("  {case} [{ch:?}]: by ledger entry `{id}`");
+        }
+    }
     assert_eq!(
         run.outcomes.len(),
         run.total,
@@ -353,6 +375,350 @@ fn write_gate_dump(path: &str, run: &GateRun) {
         "corpus_gate [{}]: wrote contamination dump -> {path}",
         run.mode
     );
+}
+
+// ===========================================================================
+// Capture-order contract (GOLDEN_REBASE_PLAN.md §1.1(a), coordinator decision
+// D3; TESTING.md §"Capture order is contractual on the capi channel").
+// ===========================================================================
+
+/// The five per-bus reads, capi marker first, r4133 marker second — ONE table,
+/// so the fixed order and the cross-transport correspondence are the same fact.
+/// (`CAPI_Alt.pas:2143`/`Bus.kVBase`/`:2251`/`:2573`/`:2540` == r4133
+/// `DDLL/DBus.pas:319`/`BUSF(0)`/`:399`/`:659`/`:690`.)
+const BUS_READ_ORDER: [(&str, &str); 5] = [
+    ("b.Nodes", "engine.bus_nodes()"),
+    ("b.kVBase", "engine.bus_kvbase()"),
+    ("b.puVoltages", "engine.bus_pu_voltages()"),
+    ("b.VMagAngle", "engine.bus_vmag_angle()"),
+    ("b.puVmagAngle", "engine.bus_pu_vmag_angle()"),
+];
+
+/// Read a repo file (`rel` is repo-relative) for a source-order assertion.
+fn repo_text(rel: &str) -> String {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join(rel);
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {rel}: {e}"))
+}
+
+/// Byte offset of `needle` in `hay`, asserting it occurs EXACTLY once — a marker
+/// that gained a second occurrence would otherwise silently start measuring a
+/// different site.
+fn sole_offset(hay: &str, needle: &str, what: &str) -> usize {
+    let n = hay.matches(needle).count();
+    assert_eq!(
+        n, 1,
+        "{what}: marker {needle:?} occurs {n} time(s), expected exactly 1 — \
+         re-point the capture-order test at the read it is meant to measure"
+    );
+    hay.find(needle).expect("checked above")
+}
+
+/// Assert `markers` appear in `hay` in the given order.
+fn assert_source_order(hay: &str, markers: &[&str], what: &str) {
+    let offs: Vec<usize> = markers.iter().map(|m| sole_offset(hay, m, what)).collect();
+    for i in 1..offs.len() {
+        assert!(
+            offs[i - 1] < offs[i],
+            "{what}: {:?} must be read before {:?} (offsets {} vs {})",
+            markers[i - 1],
+            markers[i],
+            offs[i - 1],
+            offs[i]
+        );
+    }
+}
+
+/// The bus surface's capture order is a CONTRACT, on both transports
+/// (`GOLDEN_REBASE_PLAN.md` G1.4a; the §1.1(a)/D3 partition).
+///
+/// Every bus read is **group C — order-free**: `puVoltages`/`VMagAngle`/
+/// `puVmagAngle`/`Nodes`/`kVBase` and `AllBusVmagPu` go straight to
+/// `Solution.NodeV` (`CAPI/CAPI_Alt.pas:2276` == r4133 `DDLL/DBus.pas:423`) and
+/// move only `ActiveBusIndex`; none goes through `ComputeIterminal` (group A)
+/// or `GetCurrents` into a scratch buffer (group B), so no bus read can stale a
+/// cached `Iterminal` and none is staled by one. The order below is therefore
+/// pinned as a **contract between the two transports** — the capi capture and
+/// the r4133 capture must ship the same five quantities read the same way, so a
+/// divergence is the engines' and never the harness's — and not as protection
+/// against CLAUDE.md's upstream bug 4.
+///
+/// Three things are asserted, all off the transports' own source text:
+/// 1. the checkpoint slot — the bus block sits after `variables`/`eventlog`/
+///    `ctrlqueue` and BEFORE `all_properties`, which stays the last read of the
+///    step on both transports (WP8.5b: the `?` property sweep perturbs the
+///    active-element cursor);
+/// 2. the per-bus read order, identical on both transports ([`BUS_READ_ORDER`]);
+/// 3. the group-C claim itself: neither bus-capture body touches an
+///    element-scoped accessor, which is what would make the slot matter.
+#[test]
+fn the_bus_capture_reads_in_one_fixed_order_on_both_transports() {
+    // ---- capi transport: tools/oracle/oracle_server.py ---------------------
+    let py = repo_text("tools/oracle/oracle_server.py");
+    assert_source_order(
+        &py,
+        &[
+            "\"variables\":",
+            "\"eventlog\":",
+            "\"ctrlqueue\":",
+            "\"buses\":",
+            "\"all_bus_vmag_pu\":",
+            "\"all_properties\":",
+        ],
+        "oracle_server.py checkpoint slot",
+    );
+    let py_body = fn_body(&py, "def capture_all_buses(", |l| l.starts_with("def "));
+    let py_code = strip_python_docstring(&py_body);
+    let capi_markers: Vec<&str> = BUS_READ_ORDER.iter().map(|(c, _)| *c).collect();
+    assert_source_order(
+        &py_code,
+        &capi_markers,
+        "oracle_server.py capture_all_buses",
+    );
+
+    // ---- r4133 transport: crates/dss-epri/src/capture.rs -------------------
+    let rs = repo_text("crates/dss-epri/src/capture.rs");
+    assert_source_order(
+        &rs,
+        &[
+            "req.eventlog",
+            "req.ctrlqueue",
+            "req.buses",
+            "req.all_properties",
+        ],
+        "capture.rs run_case slot",
+    );
+    let rs_body = fn_body(&rs, "fn capture_all_buses(", |l| l == "}");
+    let rs_code = strip_rust_line_comments(&rs_body);
+    let epri_markers: Vec<&str> = BUS_READ_ORDER.iter().map(|(_, r)| *r).collect();
+    assert_source_order(&rs_code, &epri_markers, "capture.rs capture_all_buses");
+
+    // ---- (3) the group-C claim ---------------------------------------------
+    // An element-scoped read inside either bus capture would put a group-A/B
+    // quantity in the middle of an order-free block, and the slot above would
+    // stop being free. Scanned on code only (docstring/comments stripped), so
+    // the prose that EXPLAINS the rule cannot trip it.
+    for (what, code, forbidden) in [
+        (
+            "oracle_server.py capture_all_buses",
+            py_code.as_str(),
+            ["ActiveCktElement", "SetActiveElement"].as_slice(),
+        ),
+        (
+            "capture.rs capture_all_buses",
+            rs_code.as_str(),
+            ["set_active_element", ".element_"].as_slice(),
+        ),
+    ] {
+        for f in forbidden {
+            assert!(
+                !code.contains(f),
+                "{what}: {f:?} appears in a capture documented as group C \
+                 (order-free) — an element-scoped read there breaks the \
+                 §1.1(a)/D3 partition; re-classify the block or drop the read"
+            );
+        }
+    }
+}
+
+/// D2's cross-transport validation of the bus capture, live (G1.4a audit
+/// settlement AC-3): the r4133 capture is compared against the capi capture on
+/// one gated `both` case, so a wiring defect on either transport — a swapped
+/// slot, an unscaled magnitude, a node set in insertion order — surfaces as
+/// "the two oracles disagree" instead of only as a slower Rust-vs-oracle red.
+///
+/// The deck is `asymmetric:line/line_asym.dss` (`engines: "both"`, `micro`, one
+/// step, no ledger entry): 5 buses, three different node sets, and `b2` acquires
+/// nodes `2,3` from `line.l2` before node `1` from `line.l1`, so insertion order
+/// ≠ ascending order there — the distinction convention 1 and convention 2 are
+/// built on. `compare_bus` is set by hand exactly as the scheduler's `force_bus`
+/// rule sets it for every live non-`large` case.
+///
+/// The band is **twice** the node-voltage band: each transport is within one
+/// band of the port on this case (the gate asserts precisely that, both
+/// channels), so `|A − B| ≤ |A − P| + |P − B| ≤ 2·band`. Angles are compared by
+/// reconstructing the phasor rather than by a degree band — the same disc, and
+/// no seam to fold. Measured worst on this deck (2026-09-05): well inside; F3's
+/// wider one-off over four decks put the worst relative gap at 2.2e-9
+/// (`tmp/g14a/f3_xcheck.json`).
+#[test]
+fn the_two_transports_agree_on_the_bus_capture_of_a_gated_both_case() {
+    let mut case = load_family("asymmetric")
+        .into_iter()
+        .find(|c| c.path == "line/line_asym.dss")
+        .expect("asymmetric:line/line_asym.dss must be in the family manifest");
+    assert_eq!(
+        case.engines, "both",
+        "the cross-transport check needs a case both channels gate"
+    );
+    case.compare_bus = true; // scheduler::force_bus
+    let abs = family_file("asymmetric", &case.path);
+    let req = engines::build_run_request(&abs, &case);
+
+    let capi = Oracle::for_spec(None).run_case(&abs, &case);
+    let resp = engines::EpriOneShot::new().call(&req);
+    assert!(resp.ok, "r4133 one-shot failed: {:?}", resp.error);
+    let epri: engines::CaseResult =
+        serde_json::from_value(resp.result.expect("r4133 ok response missing result"))
+            .expect("r4133 malformed CaseResult");
+
+    let tol = harness::tol_for(&case.kind);
+    let band = |v_volts: f64| 2.0 * (tol.v_abs + tol.v_rel * v_volts.abs());
+    assert_eq!(
+        capi.checkpoints.len(),
+        epri.checkpoints.len(),
+        "the transports disagree on the step count"
+    );
+    let mut worst: f64 = 0.0;
+    for (s, (a, b)) in capi.checkpoints.iter().zip(&epri.checkpoints).enumerate() {
+        assert!(
+            !a.buses.is_empty(),
+            "step {s}: the capi bus capture is empty"
+        );
+        assert_eq!(
+            a.buses.len(),
+            b.buses.len(),
+            "step {s}: bus count differs between the transports"
+        );
+        let mut check = |what: &str, x: f64, y: f64, scale_v: f64| {
+            let allowed = band(scale_v);
+            assert!(
+                (x - y).abs() <= allowed,
+                "step {s}: {what}: capi {x} vs r4133 {y} \
+                 (|diff| = {:.3e} > allowed {allowed:.3e})",
+                (x - y).abs()
+            );
+            worst = worst.max((x - y).abs());
+        };
+        for (ba, bb) in a.buses.iter().zip(&b.buses) {
+            assert!(
+                ba.name.eq_ignore_ascii_case(&bb.name),
+                "step {s}: bus name differs: {} vs {}",
+                ba.name,
+                bb.name
+            );
+            assert_eq!(ba.nodes, bb.nodes, "step {s}: bus {} nodes differ", ba.name);
+            assert_eq!(
+                ba.kv_base, bb.kv_base,
+                "step {s}: bus {} kVBase differs",
+                ba.name
+            );
+            // `BaseFactor` (`CAPI_Alt.pas:2262-2265` == `DBus.pas:413-414`): the pu arrays
+            // are volts over this, so scaling a pu gap back by it puts every
+            // comparison on the one physical band.
+            let bf = if ba.kv_base > 0.0 {
+                1000.0 * ba.kv_base
+            } else {
+                1.0
+            };
+            for k in 0..ba.nodes.len() {
+                let (re_a, im_a) = (ba.pu_voltages[2 * k], ba.pu_voltages[2 * k + 1]);
+                let (re_b, im_b) = (bb.pu_voltages[2 * k], bb.pu_voltages[2 * k + 1]);
+                let mag_v = (re_b * re_b + im_b * im_b).sqrt() * bf;
+                check("puVoltages re", re_a * bf, re_b * bf, mag_v);
+                check("puVoltages im", im_a * bf, im_b * bf, mag_v);
+                // Polar: reconstruct the phasor, so the ±180° seam and the
+                // magnitude/angle split need no band of their own.
+                for (what, arr_a, arr_b, scale) in [
+                    ("VMagAngle", &ba.vmag_angle, &bb.vmag_angle, 1.0),
+                    ("puVMagAngle", &ba.pu_vmag_angle, &bb.pu_vmag_angle, bf),
+                ] {
+                    let (ma, aa) = (arr_a[2 * k] * scale, arr_a[2 * k + 1].to_radians());
+                    let (mb, ab) = (arr_b[2 * k] * scale, arr_b[2 * k + 1].to_radians());
+                    check(&format!("{what} magnitude"), ma, mb, mb);
+                    check(&format!("{what} re"), ma * aa.cos(), mb * ab.cos(), mb);
+                    check(&format!("{what} im"), ma * aa.sin(), mb * ab.sin(), mb);
+                }
+            }
+        }
+        // `AllBusVmagPu` (convention 2): bus-list order × the bus's own nodes,
+        // so the per-entry `BaseFactor` is rebuilt from the bus block above.
+        let bfs: Vec<f64> = a
+            .buses
+            .iter()
+            .flat_map(|bu| {
+                let bf = if bu.kv_base > 0.0 {
+                    1000.0 * bu.kv_base
+                } else {
+                    1.0
+                };
+                std::iter::repeat_n(bf, bu.nodes.len())
+            })
+            .collect();
+        assert_eq!(
+            a.all_bus_vmag_pu.len(),
+            bfs.len(),
+            "step {s}: AllBusVmagPu length disagrees with the bus node total"
+        );
+        assert_eq!(
+            a.all_bus_vmag_pu.len(),
+            b.all_bus_vmag_pu.len(),
+            "step {s}: AllBusVmagPu length differs between the transports"
+        );
+        for (k, (x, y)) in a.all_bus_vmag_pu.iter().zip(&b.all_bus_vmag_pu).enumerate() {
+            check(
+                &format!("AllBusVmagPu entry {k}"),
+                x * bfs[k],
+                y * bfs[k],
+                y * bfs[k],
+            );
+        }
+    }
+    eprintln!(
+        "cross-transport bus capture on asymmetric:line/line_asym.dss: \
+         worst |capi − r4133| = {worst:.3e} V"
+    );
+}
+
+/// The text of the function whose signature line contains `head`, up to the
+/// first later line that satisfies `is_end`.
+///
+/// Line-based on purpose: the working tree carries both CRLF and LF files
+/// (`core.autocrlf`), so a byte-offset scan for `"\n}\n"` silently runs past the
+/// end of a CRLF function and swallows its neighbours — which is exactly how
+/// this test first went wrong.
+fn fn_body(src: &str, head: &str, is_end: fn(&str) -> bool) -> String {
+    let lines: Vec<&str> = src.lines().collect();
+    let n = lines.iter().filter(|l| l.contains(head)).count();
+    assert_eq!(
+        n, 1,
+        "capture-order test: {head:?} matches {n} line(s), expected exactly 1"
+    );
+    let start = lines
+        .iter()
+        .position(|l| l.contains(head))
+        .expect("checked");
+    let mut out: Vec<&str> = vec![lines[start]];
+    for l in &lines[start + 1..] {
+        out.push(l);
+        if is_end(l) {
+            break;
+        }
+    }
+    out.join("\n")
+}
+
+/// Drop the leading `"""…"""` docstring so a doc that NAMES a forbidden read
+/// cannot fail the scan that looks for the read itself.
+fn strip_python_docstring(body: &str) -> String {
+    let Some(open) = body.find("\"\"\"") else {
+        return body.to_string();
+    };
+    let after = open + 3;
+    match body[after..].find("\"\"\"") {
+        Some(close) => body[after + close + 3..].to_string(),
+        None => body[after..].to_string(),
+    }
+}
+
+/// Same, for Rust `//`-comment lines inside a function body.
+fn strip_rust_line_comments(body: &str) -> String {
+    body.lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 // ===========================================================================

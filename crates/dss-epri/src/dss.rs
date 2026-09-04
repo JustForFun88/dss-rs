@@ -1380,6 +1380,16 @@ impl Engine {
         self.read_mode_doubles(&modes::BUS_SEQ_VOLTAGES)
     }
 
+    /// `BUSV(2)` `Bus.Nodes` — `DBus.pas:319`. See [`modes::BUS_NODES`].
+    ///
+    /// The active bus's node **numbers** in ascending order (not the bus's
+    /// internal insertion order), the same order every per-node array of this
+    /// family uses — see [`modes::BUS_NODES`] for the shared `FindIdx` walk and
+    /// its capi twin.
+    pub fn bus_nodes(&self) -> Result<Vec<i32>, EngineError> {
+        self.read_mode_ints(&modes::BUS_NODES)
+    }
+
     /// `BUSV(3)` `Bus.Voc` — `DBus.pas:351`. See [`modes::BUS_VOC`].
     pub fn bus_voc(&self) -> Result<Vec<f64>, EngineError> {
         self.read_mode_doubles(&modes::BUS_VOC)
@@ -1469,6 +1479,16 @@ impl Engine {
     /// `CircuitV(3)` `Circuit.TotalPower` — `DCircuit.pas:349`. See [`modes::CIRCUIT_TOTAL_POWER`].
     pub fn circuit_total_power(&self) -> Result<Vec<f64>, EngineError> {
         self.read_mode_doubles(&modes::CIRCUIT_TOTAL_POWER)
+    }
+
+    /// `CircuitV(7)` `Circuit.AllBusNames` — `DCircuit.pas:439`. See
+    /// [`modes::CIRCUIT_ALL_BUS_NAMES`].
+    ///
+    /// Every bus name in `BusList` order — the walk order of the per-bus
+    /// capture, which re-asserts it bus by bus through
+    /// [`Engine::set_active_bus`]'s returned index.
+    pub fn circuit_all_bus_names(&self) -> Result<Vec<String>, EngineError> {
+        self.read_mode_strings(&modes::CIRCUIT_ALL_BUS_NAMES)
     }
 
     /// `CircuitV(8)` `Circuit.AllElementLosses` — `DCircuit.pas:458`. See [`modes::CIRCUIT_ALL_ELEMENT_LOSSES`].

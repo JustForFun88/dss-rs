@@ -438,6 +438,7 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
     // Bus
     chk!(BUS_DISTANCE, e.bus_distance());
     chk!(BUS_SEQ_VOLTAGES, e.bus_seq_voltages());
+    chk!(BUS_NODES, e.bus_nodes());
     chk!(BUS_VOC, e.bus_voc());
     chk!(BUS_ISC, e.bus_isc());
     chk!(BUS_PU_VOLTAGES, e.bus_pu_voltages());
@@ -457,6 +458,7 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
     chk!(CIRCUIT_LINE_LOSSES, e.circuit_line_losses());
     chk!(CIRCUIT_SUBSTATION_LOSSES, e.circuit_substation_losses());
     chk!(CIRCUIT_TOTAL_POWER, e.circuit_total_power());
+    chk!(CIRCUIT_ALL_BUS_NAMES, e.circuit_all_bus_names());
     chk!(CIRCUIT_ALL_ELEMENT_LOSSES, e.circuit_all_element_losses());
     chk!(CIRCUIT_ALL_BUS_MAG_PU, e.circuit_all_bus_mag_pu());
     chk!(CIRCUIT_ALL_BUS_DISTANCES, e.circuit_all_bus_distances());

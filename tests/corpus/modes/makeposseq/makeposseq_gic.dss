@@ -1,0 +1,33 @@
+! makeposseq_gic.dss — GICTransformer MakePosSequence coverage (WPG.21), r4133-gated.
+! Split out of makeposseq_shunt.dss by GOLDEN_REBASE G1.4a (coordinator decisions D12/D14,
+! 2026-09-04): the pinned dss_capi 0.14.5 oracle is NONDETERMINISTIC across fresh processes
+! on any deck that instantiates a GICTransformer (7 bad runs of 60 with the element, 0 of 40
+! without), while EPRI r4133 is deterministic (80/80 bit-identical), so this coverage lives on
+! the r4133 channel and makeposseq_shunt.dss keeps its full-precision capi gating.
+! Covered override: TGICTransformerObj.MakePosSequence — `Phases=1` + the inherited bus strip
+! (r4133 Version8/Source/PDElements/GICTransformer.pas:736-747 == pinned dss_capi 0.14.5
+! src/PDElements/GICTransformer.pas:588-593; base strip CktElement.pas:1352-1363).
+! Every OTHER reduced parameter is chosen so that r4133's `Format('%-.5g')` command-string
+! round trip is EXACT (it quantizes to 5 significant digits where capi 0.14.5 and the port use
+! typed setters at full precision — Vsource.pas:1396-1402, Load.pas:2305-2332,
+! Line.pas:1591-1596): basekv = 7.2*sqrt(3) so the line-neutral base is exactly 7.2, kw=900 so
+! kW/3 is exactly 300, pf=1 so kvar is 0, and r1/x1/c1/normamps are already 5-digit.
+! build -> solve -> makeposseq -> solve.
+clear
+set defaultbasefrequency=60
+new circuit.psq_gic basekv=12.470765814495916 pu=1.0 phases=3 bus1=src
+~ r1=0.3 x1=1.2 r0=0.9 x0=3.6
+
+new line.feed bus1=src bus2=b1 phases=3 r1=0.2 x1=0.5 c1=3 length=1 units=km
+
+! GICTransformer (DC/GIC resistance model, GSU type)
+new gictransformer.gt busH=b1 busNH=b1.4.4.4 R1=0.1 type=GSU
+
+new load.ld1 bus1=b1 phases=3 kv=12.470765814495916 kw=900 pf=1 model=1
+
+set voltagebases=[12.470765814495916]
+calcvoltagebases
+set maxiterations=100
+solve
+makeposseq
+solve
