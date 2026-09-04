@@ -45,9 +45,10 @@ R4133_PROPS branch `r4133-props` was merged and deleted 2026-09-04). **`R4133_PR
 counters, record in
 [`era-summaries.md`](docs/phase-records/era-summaries.md) §1a, **G1.1 handed back
 satisfied**. Close-out 2026-09-04: `update` fast-forwarded to `r4133-props`
-@ `2724a139` (32 commits) and pushed to `origin/update`. Execution stays
-single-branch: `ledger.json`, `population.lock.json`, `golden.lock.json` are
-fail-on-stale.
+@ `2724a139` (32 commits) and pushed to `origin/update`. Since D7 (2026-09-04)
+WP-G1 executes in per-chain lanes merged back into `update`, which the merge
+agent regenerates `population.lock.json` on; that lock, `ledger.json` and
+`golden.lock.json` stay fail-on-stale.
 
 **Record placement (from 2026-09-03).** Every sub-step's **full** record is
 appended to its per-WP file under `docs/phase-records/` — WP-RP3 →
@@ -150,28 +151,27 @@ the six CLAUDE.md §"Known upstream bugs" reproduced in any lane. Full record:
 [`golden-rebase.md`](docs/phase-records/golden-rebase.md) section "GOLDEN_REBASE
 WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 
-**GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened
-2026-08-08). Landed so far: **G1.1** — killed on day one (433 of 438 walked
-live cases diverged), handed to `R4133_PROPS_PLAN.md` (user decision
-2026-08-22) and delivered by its RP4.1 on 2026-09-03, so **G1.1 is satisfied**
-and **G3.4** (`cim/`, `json/`, `json_import/`) + **G3.5** (`props/`) are
-unblocked, their value witness now the live r4133 property compare. **G1.2**
-(the ESPVLControl deck, the last zero-coverage class) landed 2026-08-29.
-**G1.0** — the rails sub-step ahead of G1.3a (D1/D2/D3) — landed 2026-09-04
-(`c4b67a6e`, settlement `42454b64` + `14bb0f23`, + this docs commit): the ten-flag
-manifest vocabulary in **one** lock regen, explicit `channels` on the ten bare
-`element` exclusions, the capture-presence guard and the r4133 bridge rails, whose
-96-mode probe **discharges the G1.11 mode-capability acceptance for the whole WP**;
-0 ledger entries, 0 golden bytes, gate **4 605 / 0 / 5** per lane, `lane_diff` max
-|Δ| = 0. G1.3a–d, G1.4–G1.11c and WP-G3–G5 remain; full record: the same file.
+**GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened 2026-08-08;
+since 2026-09-04 its chains run in parallel **lanes** — worktrees
+`.claude/worktrees/lane-*`, D7 — merged into `update` one sub-step at a time).
+Landed: **G1.1**, killed on day one, handed to `R4133_PROPS_PLAN.md` and delivered
+by its RP4.1 2026-09-03 — **G1.1 satisfied**, **G3.4**/**G3.5** unblocked; **G1.2**
+(the ESPVLControl deck) 2026-08-29; **G1.0**, the rails ahead of G1.3a (the flag
+vocabulary in one lock regen, exclusion `channels`, the capture-presence guard, the
+r4133 bridge whose 96-mode probe **discharges G1.11 for the whole WP**), 2026-09-04
+on `update`, `c4b67a6e` + `42454b64`/`14bb0f23`, gate **4 605 / 0 / 5** per lane,
+`lane_diff` max |Δ| = 0; **G1.9** (lane `lane-s`, 2026-09-04, `9757d26c` +
+settlement `f27f9598` + docs; audits 6 fixed / 5 recorded / 2 refuted), the five
+`Circuit` aggregates and ten `Solution` scalars live and universal on both channels
+— no lock regen, 0 ledger entries, no kill criterion met. G1.3a–d, G1.4–G1.8,
+G1.10–G1.11c and WP-G3–G5 remain; full record: the same file.
 
-**Next.** **`GOLDEN_REBASE_PLAN.md` G1.3a** (per-element `CurrentsMagAng`,
-`VoltagesMagAng`, `Residuals`) — the first surface sub-step now that G1.0's
-rails are in: it wires **both** channels in one commit and its capture test
-asserts the A/B/C request order (plan §1.1(a), D3). Then G1.3b–d, G1.4–G1.11c
-and WP-G3–G5 — inside which **G3.4**/**G3.5**, blocked since 2026-08-08, are
-runnable. Queued behind GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE,
-MULTITHREADING, UPGRADE.
+**Next.** Lane `lane-s` takes **G1.7** (topology: `NumLoops`, `NumIsolated*`,
+`AllLoopedPairs`), then G1.8 and G1.10a–c; the element lane runs G1.3a→3d→3b→3c,
+the bus lane G1.4a→G1.5→G1.4c→G1.4b, the PD/meter lane G1.6b→G1.6(i)→G1.6(ii),
+each merged into `update` one sub-step at a time. Then WP-G3–G5, inside which
+**G3.4**/**G3.5**, blocked since 2026-08-08, are runnable. Queued behind
+GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
@@ -337,18 +337,18 @@ the site comment carries each row's measured cost.
   Consistent with an overlapping-guard snapshot race (cf. the unit test
   `corpus_guard_overlapping_guards_still_sweep`) plus the case-insensitive
   collision `corpus_gate/runner.rs:42-55` (the same file appears both
-  `Auto3bus_HL_current.txt` and `auto3bus_hl_current.txt`). **Fourteen sightings**
-  2026-08-29 … 2026-09-04 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2,
-  §RP3.10 ×3, §RP5.1 ×1, G1.0 ×2), the set varying in size (1 … 36 files) and in case
+  `Auto3bus_HL_current.txt` and `auto3bus_hl_current.txt`). **Sixteen sightings**
+  2026-08-29 … 2026-09-04 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2, §RP3.10 ×3,
+  §RP5.1 ×1, G1.0 ×2, G1.9 ×2), the set varying in size (1 … 36 files) and in case
   between successive runs of the *same* tree — the nondeterminism itself was
-  measured at §RP3.13 — and once accompanied by an unreproducible `corpus_gate`
-  `137 passed; 1 failed` whose most likely cause is this race. Every set was
-  removed before the commit — by exact name, `git clean -fd` scoped to the deck
-  tree (§RP3.10), or by hand (§RP5.1) — and both lanes were green with the files
-  present, no tracked corpus or golden byte ever moving, so the leak costs
-  hygiene only. Per-run detail is in the per-WP records (`r4133-props-rp3.md`,
-  `-rp4.md`, `golden-rebase.md`). Fourteen sightings make it a pattern, not a
-  fluke: whoever picks it up should start with `DSS_GATE_JOBS=1` per G2.2d.
+  measured at §RP3.13 — and once accompanied by an unreproducible `corpus_gate` `137
+  passed; 1 failed`, most likely this race. Every set was removed before the commit
+  — by exact name, `git clean -fd` scoped to the deck tree (§RP3.10), or by hand
+  (§RP5.1) — and both lanes were green with the files present, no tracked corpus or
+  golden byte ever moving, so the leak costs hygiene only. Per-run detail is in the
+  per-WP records (`r4133-props-rp3.md`, `-rp4.md`, `golden-rebase.md`). Sixteen
+  sightings make it a pattern, not a fluke: whoever picks it up should start with
+  `DSS_GATE_JOBS=1` per G2.2d.
 
 **Carried-forward and residual-floor items — the rows still open.** Full text,
 closed rows and all:

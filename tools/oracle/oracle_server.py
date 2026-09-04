@@ -61,6 +61,105 @@ def reply(obj: dict) -> None:
     sys.stdout.flush()
 
 
+def _tolerant_read(fn, tolerate_user_model: bool):
+    """Run `fn`, absorbing the ONE priming `_USER_MODEL_ERRNOS` raise a
+    user-written-model deck fires the first time its terminal currents are
+    recomputed after a solve (the measurement is in `capture_all_elements`'s
+    doc: read 1 raises #567 and zeroes `Error.Number`, read 2 returns the
+    correct Yprim-only values). Any other errno re-raises — a real failure is
+    never masked.
+
+    `capture_all_elements` keeps its own inline copy of this retry so that
+    established capture stays byte-identical; the two are deduped at merge.
+    """
+    import dss as _dss
+
+    try:
+        return fn()
+    except _dss.DSSException as e:
+        errno = e.args[0] if e.args else None
+        if not (tolerate_user_model and errno in _USER_MODEL_ERRNOS):
+            raise
+        return fn()  # priming read fired the warning + cleared it; retry is cached
+
+
+def capture_aggregates(ckt, tolerate_user_model: bool = False) -> dict:
+    """The five `Circuit` aggregates of GOLDEN_REBASE_PLAN.md G1.9, with their
+    units spelled in the key names because the engine does NOT scale them
+    uniformly:
+
+    * `Circuit.Losses` (r4133 `DDLL/DCircuit.pas:294` -> `Common/Circuit.pas:2436-2443`)
+      is **W/var** — the raw sum over the enabled, non-shunt PD elements, with
+      no `x 0.001`;
+    * `LineLosses` (`DCircuit.pas:305-325`), `SubstationLosses`
+      (`:327-347`, `IsSubstation` transformers only — AutoTrans lives on its own
+      list, `Common/Circuit.pas:2272-2273`, and never contributes),
+      `TotalPower` (`:349-368`, terminal 1 of every Source) and
+      `AllElementLosses` (`:458-479`, one complex per element in
+      `AllElementNames` order) all carry the `cmulreal(..., 0.001)` => kW/kvar.
+
+    Every one of them is a `Get_Losses`/`Get_Power` read, i.e. a
+    `ComputeIterminal` (`Common/CktElement.pas:743` / `:677-680`) over the
+    elements it walks — a **group-A** read in the §1.1(a)/D3 partition, so the
+    call site puts it ahead of every group-B read. See `run_case`.
+
+    `tolerate_user_model` mirrors `capture_all_elements`: since this is now the
+    first post-solve read that recomputes `Iterminal`, a `warn_and_continue`
+    deck fires its single priming #567 here.
+    """
+
+    def _read():
+        losses = ckt.Losses  # W/var
+        line_losses = ckt.LineLosses  # kW/kvar
+        sub_losses = ckt.SubstationLosses  # kW/kvar
+        total_power = ckt.TotalPower  # kW/kvar
+        ael = ckt.AllElementLosses  # kW/kvar, 2 * NumDevices flat
+        return {
+            "losses_w": [float(losses[0]), float(losses[1])],
+            "line_losses_kw": [float(line_losses[0]), float(line_losses[1])],
+            "substation_losses_kw": [float(sub_losses[0]), float(sub_losses[1])],
+            "total_power_kw": [float(total_power[0]), float(total_power[1])],
+            "all_element_losses_kw": [float(x) for x in ael],
+        }
+
+    return _tolerant_read(_read, tolerate_user_model)
+
+
+def capture_solution_scalars(sol) -> dict:
+    """The ten `Solution` scalars of G1.9 — `DDLL/DSolution.pas:29` (Mode),
+    `:37` (Hour), `:47` (Year), `:113` (ControlIterations), `:218`
+    (Totaliterations), `:222` (MostIterationsDone), `:226`
+    (ControlActionsDone), `:192` (SystemYChanged), `:312` (Seconds), `:336`
+    (LoadMult).
+
+    All ten are **order-free** (group C): plain field reads that touch no
+    cursor and no `Iterminal` cache, so their position in the capture is free.
+    They are read here anyway, beside the aggregates, so the whole G1.9 surface
+    is one block.
+
+    `Iterations` (`:54`) and `dblHour` (`:400`) are deliberately absent — the
+    checkpoint already carries and compares them. `Totaliterations` IS carried:
+    r4133 returns `Solution.Iteration` for it verbatim (`:218-220`), and the
+    equality is pinned in-engine rather than compared twice (TESTING.md).
+
+    `ControlActionsDone` and `SystemYChanged` are emitted as JSON **booleans**;
+    the r4133 transport normalizes its `0|1` ints to the same shape
+    (`dss-epri/src/capture.rs::capture_solution_scalars`).
+    """
+    return {
+        "mode": int(sol.Mode),
+        "hour": int(sol.Hour),
+        "year": int(sol.Year),
+        "control_iterations": int(sol.ControlIterations),
+        "total_iterations": int(sol.Totaliterations),
+        "most_iterations_done": int(sol.MostIterationsDone),
+        "control_actions_done": bool(sol.ControlActionsDone),
+        "system_y_changed": bool(sol.SystemYChanged),
+        "seconds": float(sol.Seconds),
+        "load_mult": float(sol.LoadMult),
+    }
+
+
 def capture_all_elements(ckt, tolerate_user_model: bool = False) -> list:
     """Every circuit element's terminal currents (A), powers (kW/kvar), and
     losses (W/var — `CktElement.Losses`, the engine's own Get_Losses path).
@@ -401,6 +500,29 @@ def run_case(d, req: dict) -> dict:
                 # WPG.5: read GlobalResult right after the solve, before any
                 # `?`-query capture below overwrites `Text.Result`.
                 global_result = str(d.Text.Result) if want_global_result else ""
+                # G1.9 (GOLDEN_REBASE_PLAN.md, §1.1(a) + decision D3) — the
+                # circuit aggregates and the solution scalars, read HERE and
+                # nowhere later, for two independent reasons:
+                #  * group A before group B. Every aggregate is a
+                #    `Get_Losses`/`Get_Power` read, i.e. a `ComputeIterminal`
+                #    over the elements it walks, while `capture_all_elements`
+                #    below issues Powers *then* `Currents` per element — and
+                #    `Currents` is the read that fills a scratch buffer. Group A
+                #    therefore runs first, ahead of every group-B read.
+                #  * cursor hygiene. `Losses` walks PDElements, `LineLosses`
+                #    walks Lines, `SubstationLosses` walks Transformers,
+                #    `TotalPower` walks Sources and `AllElementLosses` walks
+                #    CktElements (r4133 `DDLL/DCircuit.pas:294/313/335/356/468`),
+                #    each leaving that `TPointerList` cursor at the end — and
+                #    `gc.capture_discrete` below drives `Transformers.First/Next`.
+                #    Reading before any First/Next walk removes the interaction
+                #    by construction.
+                # `global_result` above still comes first: it reads `Text.Result`,
+                # which any later `?` query would overwrite.
+                # The source order is asserted by
+                # `crates/dss-core/tests/capture_order.rs`.
+                aggregates = capture_aggregates(ckt, warn_and_continue)
+                solution_scalars = capture_solution_scalars(ckt.Solution)
                 # `selected_elements=["*"]` -> every element's YPrim (small decks;
                 # the Rust side then asserts the returned name set covers ALL
                 # YPrim-bearing elements instead of the fixed count). Control /
@@ -452,6 +574,11 @@ def run_case(d, req: dict) -> dict:
                             capture_all_properties(d, ckt) if want_all_props else []
                         ),
                         "global_result": global_result,
+                        # G1.9 — read at the top of the step (see the block
+                        # above); listed last only because the dict is
+                        # serialization order, not read order.
+                        "aggregates": aggregates,
+                        "solution_scalars": solution_scalars,
                     }
                 )
             bad = [i for i, cp in enumerate(checkpoints) if not cp["converged"]]

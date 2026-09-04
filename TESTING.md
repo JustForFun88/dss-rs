@@ -389,8 +389,79 @@ switched off later with no lock diff at all:
 | `compare_run_files` | `runf=` | G1.10a | the non-monitor CSV set + contents the deck emits under DataPath, and the `save circuit` file set |
 | `compare_di` | `di=` | G1.10b | the DI tree |
 
-G1.9 (circuit aggregates + solution scalars) deliberately gets **no** flag — it
-is universal and cheap — so nobody adds an eleventh flag and a second lock regen.
+**G1.9 — circuit aggregates + solution scalars (unflagged, universal).** G1.9
+deliberately gets **no** flag — it is universal and cheap — so nobody adds an
+eleventh flag and a second lock regen. Both transports emit two *unconditional*
+checkpoint members: `aggregates` (`losses_w`, the one W/var member, plus
+`line_losses_kw`, `substation_losses_kw`, `total_power_kw`,
+`all_element_losses_kw` — upstream rescales four of the five arms and not
+`Circuit.Losses`, so the unit is in the key name) and `solution_scalars`
+(`mode`, `hour`, `year`, `control_iterations`, `total_iterations`,
+`most_iterations_done`, `control_actions_done`, `system_y_changed`, `seconds`,
+`load_mult`). `harness::aggregates::compare_aggregates`
+(`crates/dss-core/tests/harness/aggregates.rs:251`) and its
+`compare_solution_scalars` sibling run on **every** live case of every gating
+channel; because there is no flag to name, the surface refuses an absent capture
+with its own assert naming surface, channel tag and case rather than with
+`capture_guard::require_capture`, whose message is manifest-flag shaped. The
+capture sits in **group A** — ahead of every `Currents` read *and* ahead of every
+`First/Next` walk, since each arm leaves its own
+`PDElements`/`Lines`/`Transformers`/`Sources`/`CktElements` cursor at the end —
+and `crates/dss-core/tests/capture_order.rs` asserts that position in both
+transports' sources — `capi_capture_reads_the_aggregates_before_any_currents_read`,
+`r4133_capture_reads_the_aggregates_before_any_currents_read` and the
+self-test `the_gate_rejects_a_swapped_or_renamed_capture`. r4133 returns
+`SystemYChanged`/`ControlActionsDone` as `0|1`
+ints (`DDLL/DSolution.pas:192-196`, `:226-230`); the **bridge** normalizes them to
+the capi transport's JSON `bool` so both transports stay byte-identical in shape,
+pinned by `r4133_solution_flags_are_zero_one_ints`, and refuses a `myType=3`
+reply that is not exactly two doubles rather than padding it into a plausible
+`(0, 0)` (`complex_pair_refuses_a_reply_that_is_not_two_doubles`). Both booleans
+are the same value on every corpus checkpoint measured, so their two-sidedness is
+witnessed in-engine instead: `the_two_boolean_solution_flags_take_both_values`.
+The G1.9 pin names these docs cite are machine-checked by
+`the_g1_9_pins_the_docs_cite_exist_exactly_once`
+(`crates/dss-core/tests/oracle_parity_cfg_gate.rs`), so renaming one reds the
+gate instead of silently falsifying this file.
+
+Two quantities on the surface's list are captured or witnessed but deliberately
+**not** compared a second time. `Solution.Totaliterations` *is*
+`Solution.Iteration` upstream (`DDLL/DSolution.pas:218-220`; `CAPI_Solution.pas`
+carries the comment "Same as Iterations interface"), so the gate asserts that
+oracle-side alias live on every checkpoint instead of re-comparing the already
+compared `iterations`. `Circuit.YCurrents` (`DDLL/DCircuit.pas:777-787`) returns
+`Solution.Currents` — byte-for-byte the `injection` vector
+`tools/golden/gen_checkpoints.py` captures and the gate already compares — so no
+`YCurrents` channel was built at all.
+
+**The value arms inherit the ledger; they never re-pin it.** An aggregate is a
+linear functional of the per-element `currents`/`powers`/`losses` the ledger
+already partitions, so re-pinning a scoped element's echo in the sum would grow
+the ledger for a divergence it already owns. `compare_aggregates` therefore feeds
+its value arm from the runner's accepted `LedgerView::element_rewrites`
+(`crates/dss-core/tests/corpus_gate/ledger.rs:894`) — the same caps
+`compare_element_channels` is handed one loop above. Where a **deck-wide**
+`element` scope selects `losses`, every summand is rewritten and the value arm
+is then a self-comparison on that deck. That is inherent, not a comparator
+choice: re-stating the arm against the oracle's own aggregate with the accepted
+divergence added to the envelope is a tautology (triangle inequality), so once
+the ledger owns every summand no bound on their sum carries oracle content the
+entries do not already own. What the G1.9 audit settlement adds is **visibility**
+— the 14 (case, channel) pairs where that happens are recorded and asserted
+exactly by
+`corpus_gate::ledger::the_aggregate_value_arms_inherit_exactly_the_recorded_element_scopes`,
+so a new deck-wide element scope reds until its author acknowledges that it also
+switches that deck's aggregate value arm off (coordinator decision D11(2)'s rule
+for the analogous bus-array suppression). `Circuit.TotalPower` is unrebuildable
+from a per-element cap (it reads terminal 1 and the capture carries no
+`nconds`), so instead of being dropped whenever a source merely appears in the
+rewrite map it absorbs the accepted `powers` divergence summed over **all** of
+that source's conductors — the same documented conservative superset its
+allowance already uses. An entry that scopes only `currents` no longer switches
+the arm off. The membership and identity arms never soften: they run on the raw
+oracle capture on every case, ledger-scoped ones included. Net effect on the
+ledger: **0** entries and 0 new `LEDGER_FIELDS`. Bands and their derivations:
+`tests/TOLERANCE_NOTES.md` §"G1.9 circuit aggregates + solution scalars".
 
 **A flag may not be set before its surface exists.** `G1_SURFACE_FLAGS`
 (`crates/dss-core/tests/corpus_gate/manifest.rs:539`) carries each flag's owning
@@ -619,6 +690,11 @@ serves (a dead handler is a promise the gate does not keep):
 5. one runtime handler, plus a case in the synthetic drive
    `every_exclusion_field_is_honoured_by_the_runtime`, so a field with no live
    entry is still proven to apply.
+
+A surface whose values are a *function* of an already-ledgered field adds
+nothing here: it consumes that field's accepted scopes instead of re-pinning
+their echo — the G1.9 aggregates are the worked example (above), and they added
+0 fields and 0 entries.
 
 `compile_scope` panics on a field outside `LEDGER_FIELDS`, naming
 `global_result` as the worked example — still accurate: it has a comparator and
@@ -1003,9 +1079,9 @@ property cell of a live non-`large` case is asserted on **both** channels. The
 two channels do not spell values identically, so the r4133 side runs a
 **channel-scoped claim chain** whose links are consulted in one fixed order and
 never on `capi_v0145`. One function holds the whole order —
-`harness::compare_prop_lists` (`crates/dss-core/tests/harness/mod.rs:3249`) —
-and links 2-4 are `PropsPolicy` methods gated on `is_r4133()` (`mod.rs:3450`,
-`:3495`; the channel type is `PropsChannel`, `mod.rs:3416`). Link 1 is the
+`harness::compare_prop_lists` (`crates/dss-core/tests/harness/mod.rs:3252`) —
+and links 2-4 are `PropsPolicy` methods gated on `is_r4133()` (`mod.rs:3455`,
+`:3498`; the channel type is `PropsChannel`, `mod.rs:3419`). Link 1 is the
 deliberate exception: `skip_prop` is a free function taking the channel, so its
 `LANE_SKIP_PROPS` half stays channel-blind (row 1 below says so).
 
@@ -1199,14 +1275,14 @@ The `S` literals are transcribed verbatim, upstream wording and typo included �
 
 **Mode capability — measured, and the acceptance for all of WP-G1.** The modes
 WP-G1 needs live once, as `ModeSpec` rows in `WP_G1_MODES`
-(`crates/dss-epri/src/modes.rs:1320`), each carrying its (family, kind, mode)
+(`crates/dss-epri/src/modes.rs:1461`), each carrying its (family, kind, mode)
 triple, the `D*.pas` line of the `case` arm it transcribes, the `myType` tag a
 `V` arm assigns, and any state the arm moves. `Engine::read_mode`
 (`crates/dss-epri/src/dss.rs:987`) takes the row **by reference** — a mode number
 cannot drift between the table and its reader — and rejects a reply whose shape is
 not the row's, so a future DLL revision fails loudly instead of decoding garbage.
 `r4133_mode_capability_is_complete_for_wp_g1`
-(`crates/dss-epri/tests/modes.rs:111`) proves against the real DLL, on a solved
+(`crates/dss-epri/tests/modes.rs:114`) proves against the real DLL, on a solved
 IEEE13 with an EnergyMeter attached, that **all 96 rows classify `Served`** and
 decode into their declared shape: **zero misses, the expected-miss list is empty,
 no per-channel r4133 mask is owed by any WP-G1 surface sub-step.** Its non-vacuity
@@ -1239,23 +1315,31 @@ Three rules that table carries, each of which a capture must respect:
   *write* arm would be executed. `PDElements F:1` (`FaultRate`) and `F:3`
   (`PctPermanent`) are write arms that return the pre-`case` default `0.0` rather
   than the `-1.0` sentinel — invisible downstream — so they are recorded in
-  `EXCLUDED_WRITE_MODES` (`crates/dss-epri/src/modes.rs:1562`) instead of the
+  `EXCLUDED_WRITE_MODES` (`crates/dss-epri/src/modes.rs:1569`) instead of the
   table, alongside their readers (`F:0`, `F:2`). Hence 96 rows, not 98.
 * **`ModeEffect` is the authority on what a row moves, and it carries the
   capture-order partition.** `Impure` rows move state: `Meters.Totals` re-runs
   `TotalizeMeters`; `PDElements.ParentPDElement` re-points `ActiveCktElement`;
-  the `Topology` rows build and memoize `GetTopology`; the four `Circuit`
-  loss/power rows and `CktElement.Has{Switch,Volt}Control` walk a `PointerList`
-  to exhaustion (`Circuit.Losses` does it one level down, in
-  `TDSSCircuit.Get_Losses`, `Common/Circuit.pas:2436-2443`). A capture re-selects
-  after them. The other two variants **are** the A/B partition below:
-  `ReadsIterminalCache` (group A — `CktElement.PhaseLosses`, `TotalPowers`, which
-  reach `ComputeIterminal`) and `PoisonsIterminalCache` (group B —
-  `SeqCurrents`, `SeqPowers`, `Residuals`, `CplxSeqCurrents`, `CurrentsMagAng`,
-  which call `GetCurrents` into a scratch buffer). Membership is pinned as data
-  by `the_capture_order_partition_is_the_one_d3_names`, so a row cannot be
-  annotated `Pure` and quietly tell a capture author that the reads commute.
-  Measured on the vendored DLL (snapshot and harmonics, G1.0 settlement,
+  the `Topology` rows build and memoize `GetTopology` and walk a `PointerList`
+  cursor to exhaustion; `CktElement.Has{Switch,Volt}Control` walk a `PointerList`
+  to exhaustion; and all five `Circuit` aggregate rows — `Losses` (V:0),
+  `LineLosses` (V:1), `SubstationLosses` (V:2), `TotalPower` (V:3) and
+  `AllElementLosses` (V:8) — walk a `TPointerList` to exhaustion *and* call
+  `Get_Losses`/`Get_Power` → `ComputeIterminal` on everything they walk
+  (`Common/CktElement.pas:743`, `:677-680`; `Circuit.Losses` does it one level
+  down, in `TDSSCircuit.Get_Losses`, `Common/Circuit.pas:2436-2443`). Those five
+  read `Pure` until G1.9 measured them against the criterion the `Topology` rows
+  already used (`CIRCUIT_LOSSES`, `crates/dss-epri/src/modes.rs:851`); the label
+  is load-bearing rather than cosmetic, because the cursor `Circuit.Losses` moves
+  is exactly the one `Circuit.NextPDElement` resumes from — G1.6b's surface.
+  A capture re-selects after them. The other two variants **are** the A/B
+  partition below: `ReadsIterminalCache` (group A — `CktElement.PhaseLosses`,
+  `TotalPowers`, which reach `ComputeIterminal`) and `PoisonsIterminalCache`
+  (group B — `SeqCurrents`, `SeqPowers`, `Residuals`, `CplxSeqCurrents`,
+  `CurrentsMagAng`, which call `GetCurrents` into a scratch buffer). Membership is
+  pinned as data by `the_capture_order_partition_is_the_one_d3_names`, so a row
+  cannot be annotated `Pure` and quietly tell a capture author that the reads
+  commute. Measured on the vendored DLL (snapshot and harmonics, G1.0 settlement,
   2026-09-04) the poisoning is *latent* on IEEE13 — the converged solve leaves
   the counter current, so nothing refreshes and nothing is starved — which is
   precisely why the rule is recorded as data instead of as a live test that would
