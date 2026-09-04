@@ -45,9 +45,10 @@ R4133_PROPS branch `r4133-props` was merged and deleted 2026-09-04). **`R4133_PR
 counters, record in
 [`era-summaries.md`](docs/phase-records/era-summaries.md) §1a, **G1.1 handed back
 satisfied**. Close-out 2026-09-04: `update` fast-forwarded to `r4133-props`
-@ `2724a139` (32 commits) and pushed to `origin/update`. Execution stays
-single-branch: `ledger.json`, `population.lock.json`, `golden.lock.json` are
-fail-on-stale.
+@ `2724a139` (32 commits) and pushed to `origin/update`. Since D7 (2026-09-04)
+WP-G1 executes in per-chain lanes merged back into `update`, which the merge
+agent regenerates `population.lock.json` on; that lock, `ledger.json` and
+`golden.lock.json` stay fail-on-stale.
 
 **Record placement (from 2026-09-03).** Every sub-step's **full** record is
 appended to its per-WP file under `docs/phase-records/` — WP-RP3 →
@@ -151,27 +152,26 @@ the six CLAUDE.md §"Known upstream bugs" reproduced in any lane. Full record:
 WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 
 **GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened
-2026-08-08). Landed so far: **G1.1** — killed on day one (433 of 438 walked
-live cases diverged), handed to `R4133_PROPS_PLAN.md` (user decision
-2026-08-22) and delivered by its RP4.1 on 2026-09-03, so **G1.1 is satisfied**
-and **G3.4** (`cim/`, `json/`, `json_import/`) + **G3.5** (`props/`) are
-unblocked, their value witness now the live r4133 property compare. **G1.2**
-(the ESPVLControl deck, the last zero-coverage class) landed 2026-08-29.
-**G1.0** — a new rails sub-step ahead of G1.3a (decisions D1/D2/D3) — landed
-2026-09-04: the ten-flag manifest vocabulary in **one** lock regen, explicit
-`channels` on the ten bare `element` exclusions, the capture-presence guard, and
-the r4133 bridge rails, whose 96-mode probe **also discharges the G1.11
-mode-capability acceptance for the whole WP** (zero misses); it compares nothing
-new — 0 ledger entries, 0 golden bytes. G1.3a–d, G1.4–G1.11c and WP-G3–G5
-remain. Full record: the same file, section "GOLDEN_REBASE WP-G1 — records".
+2026-08-08; since 2026-09-04 its independent chains run in parallel **lanes** —
+worktrees `.claude/worktrees/lane-*`, D7 — and `update` takes merges only, one
+lane sub-step at a time). Landed: **G1.1**, killed on day one, handed to
+`R4133_PROPS_PLAN.md` and delivered by its RP4.1 2026-09-03 — **G1.1
+satisfied**, **G3.4**/**G3.5** unblocked; **G1.2** (the ESPVLControl deck)
+2026-08-29; **G1.0**, the rails ahead of G1.3a (ten-flag vocabulary in one lock
+regen, exclusion `channels`, the capture-presence guard, the r4133 bridge rails
+whose 96-mode probe **also discharges G1.11's mode-capability acceptance for
+the whole WP**) 2026-09-04; **G1.9** (lane `lane-s`, 2026-09-04, `<sha>`), the
+five `Circuit` aggregates and ten `Solution` scalars on all 519 live cases of
+both channels, unflagged and universal — no lock regen, **0 ledger entries / 0
+new `LEDGER_FIELDS` / 0 golden bytes**, no new floor, all three kill criteria
+not met. Full record: the same file, section "GOLDEN_REBASE WP-G1 — records".
 
-**Next.** **`GOLDEN_REBASE_PLAN.md` G1.3a** (per-element `CurrentsMagAng`,
-`VoltagesMagAng`, `Residuals`) — the first surface sub-step now that G1.0's
-rails are in: it wires **both** channels in one commit and its capture test
-asserts the A/B/C request order (plan §1.1(a), D3). Then G1.3b–d, G1.4–G1.11c
-and WP-G3–G5 — inside which **G3.4**/**G3.5**, blocked since 2026-08-08, are
-runnable. Queued behind GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE,
-MULTITHREADING, UPGRADE.
+**Next.** Lane `lane-s` takes **G1.7** (topology: `NumLoops`, `NumIsolated*`,
+`AllLoopedPairs`), then G1.8 and G1.10a–c; the element lane runs G1.3a→3d→3b→3c,
+the bus lane G1.4a→G1.5→G1.4c→G1.4b, the PD/meter lane G1.6b→G1.6(i)→G1.6(ii),
+each merged into `update` one sub-step at a time. Then WP-G3–G5, inside which
+**G3.4**/**G3.5**, blocked since 2026-08-08, are runnable. Queued behind
+GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
