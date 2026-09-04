@@ -47,6 +47,16 @@ num-complex.workspace = true
 # `dss-usermodel`'s fixture-hash scaffold — same version, no new closure.
 sha2 = "0.10"
 
+# GOLDEN_REBASE G1.3a — `tests/capture_order.rs` resolves each
+# `capture-order: <Name> (<A|B|C>)` marker's D3 group through
+# `dss_epri::modes::capture_group_of`, so the capture bodies and the gate that
+# checks them share the ONE mode table instead of growing a second, competing
+# order table (spec amendment item 1). Test-only, Windows-only: `dss-epri` is
+# `#[cfg(windows)]` (the vendored EPRI binary is a Win64 DLL) and
+# `publish = false`, so nothing here reaches the shipped engine.
+[target.'cfg(windows)'.dev-dependencies]
+dss-epri = { path = "../dss-epri" }
+
 [[bench]]
 name = "snapshot_8500"
 harness = false

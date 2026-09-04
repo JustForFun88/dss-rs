@@ -600,6 +600,35 @@ pub const CKT_ELEMENT_OCP_DEV_TYPE: ModeSpec = ModeSpec::scalar(
     "DCktElement.pas:259",
     ModeEffect::Pure,
 );
+/// `CktElementI(12)` — 1 when the active element is `Enabled`, 0 when it is not.
+///
+/// This is the **read** arm; its paired **write** arm `13:`
+/// (`DCktElement.pas:271`, `if arg=1 then … Enabled := BData`) is deliberately
+/// not a row — the generic reader drives a mode with the neutral argument `0`,
+/// which that arm would store as `Enabled := FALSE` (the rule
+/// [`EXCLUDED_WRITE_MODES`] records for `PDElements`).
+///
+/// The arm's codomain is exactly `{0, 1}`: it raises the `CktElementI`
+/// pre-`case` default `Result := 0` (`DCktElement.pas:137`) to 1 only when
+/// `Enabled`, so [`crate::dss::Engine::ckt_element_enabled`] decodes strictly
+/// and refuses anything else. A `!= 0` decode would read the family's
+/// unknown-mode sentinel `-1` (`DCktElement.pas:308`) as *enabled*, which is
+/// the one input that routes a capture into `CktElementV(19)`'s unguarded
+/// `NodeRef^[i]` dereference (`DCktElement.pas:1099`; capi guards it at
+/// `CAPI/CAPI_Alt.pas:1081`) and kills the process.
+///
+/// Read for every element by the GOLDEN_REBASE G1.3a derived capture: it is
+/// the safety predicate that enabled-only capture needs, and a fastdss
+/// `_columns` parity surface in its own right (`dss/ICktElement.py` on
+/// `origin/fastdss`).
+pub const CKT_ELEMENT_ENABLED: ModeSpec = ModeSpec::scalar(
+    "CktElement",
+    ModeKind::I,
+    12,
+    "CktElement.Enabled",
+    "DCktElement.pas:263",
+    ModeEffect::Pure,
+);
 /// `CktElementI(15)` — 1 when the element has an over-current protection device.
 pub const CKT_ELEMENT_HAS_OCP_DEVICE: ModeSpec = ModeSpec::scalar(
     "CktElement",
@@ -1443,7 +1472,7 @@ pub const PD_ELEMENTS_TOTAL_MILES: ModeSpec = ModeSpec::scalar(
     ModeEffect::Pure,
 );
 
-/// Every mode WP-G1 reads through the r4133 bridge — 96 rows over the seven
+/// Every mode WP-G1 reads through the r4133 bridge — 97 rows over the seven
 /// families the plan's surface sub-steps touch (`GOLDEN_REBASE_PLAN.md` WP-G1).
 /// The set was measured `Served` on the vendored DLL by the G1.0 probe
 /// (2026-09-04) with zero misses, and the acceptance test
@@ -1460,6 +1489,7 @@ pub const WP_G1_MODES: &[&ModeSpec] = &[
     &CKT_ELEMENT_NUM_CONTROLS,
     &CKT_ELEMENT_OCP_DEV_INDEX,
     &CKT_ELEMENT_OCP_DEV_TYPE,
+    &CKT_ELEMENT_ENABLED,
     &CKT_ELEMENT_HAS_OCP_DEVICE,
     &CKT_ELEMENT_ENERGY_METER,
     &CKT_ELEMENT_PHASE_LOSSES,
@@ -1582,6 +1612,94 @@ pub fn wp_g1_mode(name: &str) -> Option<&'static ModeSpec> {
     WP_G1_MODES.iter().copied().find(|m| m.name == name)
 }
 
+// -- the element reads that predate the table ------------------------------
+//
+// [`WP_G1_MODES`] is the set of modes WP-G1 *adds*, so the three element reads
+// `crate::capture` has always performed (the port of
+// `oracle_server.capture_all_elements`) are not in it. The §1.1(a)/D3 capture
+// order rules them all the same, so they are declared as [`ModeSpec`] rows like
+// every other read — same type, same `ModeEffect`, same Pascal citation —
+// rather than growing a second, competing order table (GOLDEN_REBASE G1.3a spec
+// amendment, 2026-09-04). [`capture_group_of`] resolves a marker against both
+// lists.
+
+/// `CktElementV(3)` — terminal currents, complex `[re, im, …]`. Group **B**:
+/// the arm allocates `cBuffer` and calls `GetCurrents` into it
+/// (`DCktElement.pas:583`). Read by [`crate::dss::Engine::element_currents`].
+pub const CKT_ELEMENT_CURRENTS: ModeSpec = ModeSpec::array(
+    "CktElement",
+    3,
+    "CktElement.Currents",
+    "DCktElement.pas:573",
+    3,
+    POISONS_ITERMINAL,
+);
+/// `CktElementV(4)` — per-conductor powers, kW/kvar. Group **A**:
+/// `GetPhasePower` (`DCktElement.pas:606`) is
+/// `TDSSCktElement.GetPhasePower` (`Common/CktElement.pas:1041`), which calls
+/// `ComputeIterminal` at `:1049`. Read by
+/// [`crate::dss::Engine::element_powers`].
+pub const CKT_ELEMENT_POWERS: ModeSpec = ModeSpec::array(
+    "CktElement",
+    4,
+    "CktElement.Powers",
+    "DCktElement.pas:597",
+    3,
+    READS_ITERMINAL,
+);
+/// `CktElementV(5)` — the element's total losses `[W, var]`. Group **A**: the
+/// `Losses` property is `TDSSCktElement.Get_Losses`
+/// (`Common/CktElement.pas:707`), whose first act on an enabled element is
+/// `ComputeIterminal` (`:743`). Read by
+/// [`crate::dss::Engine::element_losses`].
+pub const CKT_ELEMENT_LOSSES: ModeSpec = ModeSpec::array(
+    "CktElement",
+    5,
+    "CktElement.Losses",
+    "DCktElement.pas:620",
+    3,
+    ModeEffect::ReadsIterminalCache(
+        "the Losses property is TDSSCktElement.Get_Losses (Common/CktElement.pas:707), which          calls ComputeIterminal (:743) before summing V·conj(I) over every conductor",
+    ),
+);
+
+/// The element reads [`crate::capture`] performs outside [`WP_G1_MODES`] — see
+/// the section comment above.
+pub const PRE_G1_ELEMENT_READS: &[&ModeSpec] = &[
+    &CKT_ELEMENT_CURRENTS,
+    &CKT_ELEMENT_POWERS,
+    &CKT_ELEMENT_LOSSES,
+];
+
+/// The §1.1(a)/D3 capture group of the read a `capture-order: <name> (<group>)`
+/// marker names: `'A'` (read first), `'B'` (read after every group-A read of the
+/// same element) or `'C'` (order-free).
+///
+/// This is the **one** home of that mapping. The group always comes from
+/// [`ModeEffect::capture_group`] of the row that transcribes the Pascal `case`
+/// arm, so the capture bodies' markers and the source gate that checks them
+/// (`crates/dss-core/tests/capture_order.rs`) cannot drift from the mode table
+/// — there is no second order table to keep in sync.
+///
+/// `family` is the DDLL family the capture body reads in (`"CktElement"` for
+/// both element captures); a `name` that already carries a `Family.` prefix
+/// overrides it, which is how a marker names a read from another family.
+/// `None` means no row declares that name: a *selector* (`SetActiveElement`,
+/// `AllElementNames`, …) moves a cursor instead of reading a quantity and is
+/// declared by the gate itself, not here.
+pub fn capture_group_of(family: &str, name: &str) -> Option<char> {
+    let full = if name.contains('.') {
+        name.to_string()
+    } else {
+        format!("{family}.{name}")
+    };
+    WP_G1_MODES
+        .iter()
+        .chain(PRE_G1_ELEMENT_READS.iter())
+        .find(|m| m.name == full)
+        .map(|m| m.effect.capture_group())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1697,7 +1815,7 @@ mod tests {
     fn the_wp_g1_mode_table_is_internally_consistent() {
         assert_eq!(
             WP_G1_MODES.len(),
-            96,
+            97,
             "WP-G1 mode count changed — update the count, the record and TESTING.md"
         );
         let mut names: Vec<&str> = Vec::new();
@@ -1843,6 +1961,56 @@ mod tests {
                     "{m} — an ordered row must cite the Pascal that orders it"
                 );
             }
+        }
+    }
+
+    /// The capture bodies' `capture-order:` markers resolve through this module
+    /// and nowhere else (GOLDEN_REBASE G1.3a spec amendment): every group comes
+    /// from [`ModeEffect::capture_group`] of a real row, so a marker cannot
+    /// claim an order the Pascal does not support, and the three pre-table
+    /// element reads keep exactly the discipline
+    /// [`the_wp_g1_mode_table_is_internally_consistent`] imposes on
+    /// [`WP_G1_MODES`].
+    #[test]
+    fn every_capture_order_marker_resolves_through_the_mode_table() {
+        // The three reads that predate the table (`Engine::element_pcl`).
+        assert_eq!(capture_group_of("CktElement", "Losses"), Some('A'));
+        assert_eq!(capture_group_of("CktElement", "Powers"), Some('A'));
+        assert_eq!(capture_group_of("CktElement", "Currents"), Some('B'));
+        // G1.3a's four, straight out of `WP_G1_MODES`.
+        assert_eq!(capture_group_of("CktElement", "CurrentsMagAng"), Some('B'));
+        assert_eq!(capture_group_of("CktElement", "Residuals"), Some('B'));
+        assert_eq!(capture_group_of("CktElement", "VoltagesMagAng"), Some('C'));
+        assert_eq!(capture_group_of("CktElement", "Enabled"), Some('C'));
+        // A qualified name overrides the family context...
+        assert_eq!(capture_group_of("CktElement", "Bus.SeqVoltages"), Some('C'));
+        // ...and an unqualified name is resolved in the body's own family, so
+        // the two `SeqVoltages` rows never collide.
+        assert_eq!(capture_group_of("Bus", "SeqVoltages"), Some('C'));
+        // A selector has no row: the gate declares those, this table does not.
+        assert_eq!(capture_group_of("CktElement", "SetActiveElement"), None);
+        assert_eq!(capture_group_of("CktElement", "Nonesuch"), None);
+
+        // The two lists are disjoint, and the pre-table rows carry the same
+        // citation discipline as the table's own.
+        assert_eq!(PRE_G1_ELEMENT_READS.len(), 3);
+        for m in PRE_G1_ELEMENT_READS {
+            assert!(wp_g1_mode(m.name).is_none(), "{m} is in both lists");
+            assert_eq!(m.family, "CktElement");
+            assert_eq!(m.kind, ModeKind::V);
+            assert_eq!(m.v_type, Some(3), "{m} — every arm tags myType := 3");
+            assert!(
+                m.pas.starts_with('D') && m.pas.contains(".pas:"),
+                "{m} — pas must cite the DDLL unit and line"
+            );
+            assert!(
+                m.effect.why().is_some_and(|w| w.contains(".pas")),
+                "{m} — an ordered row must cite the Pascal that orders it"
+            );
+            assert!(
+                matches!(m.effect.capture_group(), 'A' | 'B'),
+                "{m} — every pre-table element read is ordered"
+            );
         }
     }
 

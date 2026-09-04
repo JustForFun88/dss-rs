@@ -6,9 +6,10 @@
 //! (`CaseResult { node_order, n_steps, checkpoints, autoadd_log }`), so the Rust
 //! gate's `serde` deserialize accepts it unchanged (bit-diff-proven against the
 //! Python path by `xcheck_bridge.py`, itself retired with that stack in Phase
-//! E). Read order within a step matches `oracle_server` exactly (notably
-//! Powers-before-Currents in the element capture — the harmonics stale-`Iterminal`
-//! ordering, CLAUDE.md).
+//! E). Read order within a step matches `oracle_server` exactly — notably the
+//! §1.1(a)/D3 group-A-before-group-B rule in the element capture
+//! (Losses, Powers, then Currents: the harmonics stale-`Iterminal` ordering,
+//! CLAUDE.md), which every read line declares with a `capture-order:` marker.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -48,6 +49,13 @@ pub struct RunRequest {
     pub ctrlqueue: bool,
     #[serde(default)]
     pub all_properties: bool,
+    /// Manifest flag `compare_derived` (GOLDEN_REBASE G1.3a): capture
+    /// `CktElement.Enabled` for every element and the three polar channels
+    /// `CurrentsMagAng` / `Residuals` / `VoltagesMagAng` for the **enabled**
+    /// ones. Absent or `false` ⇒ none of the seven keys is emitted and the
+    /// reply is byte-identical to a pre-G1.3a one.
+    #[serde(default)]
+    pub derived: bool,
     #[serde(default)]
     pub global_result: bool,
     #[serde(default)]
@@ -146,6 +154,31 @@ struct ElementCap {
     p_kw: Vec<f64>,
     p_kvar: Vec<f64>,
     loss_w: Vec<f64>,
+    // The GOLDEN_REBASE G1.3a derived channels, emitted only under
+    // `RunRequest::derived` — every one is skipped when empty/absent, so an
+    // off-flag reply keeps the byte-for-byte shape it had before G1.3a
+    // (`oracle_server.capture_all_elements` emits exactly the same keys).
+    /// `CktElement.Enabled` — present for EVERY element under the flag, so the
+    /// enabled-only polar capture below can never silently drop an element.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    enabled: Option<bool>,
+    /// `CurrentsMagAng`, de-interleaved into magnitude (A) and angle (degrees)
+    /// the way `i_re`/`i_im` already are, so the comparator never does stride-2
+    /// index arithmetic.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    cma_mag: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    cma_ang: Vec<f64>,
+    /// `Residuals` — one `(magnitude, angle)` pair per terminal.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    res_mag: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    res_ang: Vec<f64>,
+    /// `VoltagesMagAng` — magnitude (V) and angle (degrees) per conductor.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    vma_mag: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    vma_ang: Vec<f64>,
 }
 
 #[derive(Serialize)]
@@ -274,7 +307,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             }
             engine.assert_clean("yprims")?;
 
-            let elements = capture_all_elements(engine, warn)?;
+            let elements = capture_all_elements(engine, warn, req.derived)?;
 
             let inj = engine.injection_raw(engine.num_nodes());
             let injection = capture_injection(&inj);
@@ -470,12 +503,39 @@ fn capture_injection(flat: &[f64]) -> Injection {
 }
 
 /// `capture_all_elements`: every element's terminal currents/powers/losses, read
-/// Powers-then-Currents-then-Losses with the user-model retry.
-fn capture_all_elements(engine: &Engine, warn: bool) -> Result<Vec<ElementCap>, EngineError> {
-    let names = engine.all_element_names();
+/// Losses-then-Powers-then-Currents (the §1.1(a)/D3 order —
+/// [`Engine::element_pcl`]) with the user-model retry.
+///
+/// Under `derived` (manifest flag `compare_derived`, GOLDEN_REBASE G1.3a) each
+/// element also reports `CktElement.Enabled`, and every **enabled** element the
+/// three polar channels [`Engine::element_polar`] reads. Disabled elements are
+/// skipped there deliberately: `CktElementV(19)` kills the process on an element
+/// whose `NodeRef` was never allocated (spec §1.4-H1, and the doc of
+/// `element_polar`), while `enabled` itself is captured for every element so the
+/// skip cannot hide one.
+///
+/// Every read line carries a machine-checkable `capture-order: NAME (A|B|C)`
+/// marker whose group is [`crate::modes::capture_group_of`]'s — a call into
+/// another capture helper declares the reads that helper performs, in its order
+/// (`crates/dss-core/tests/capture_order.rs` is the gate). A *selector*
+/// (`AllElementNames`, `SetActiveElement`) has no mode row: it moves a cursor
+/// rather than reading a quantity, so it is order-free by construction and the
+/// gate declares it, not the mode table.
+fn capture_all_elements(
+    engine: &Engine,
+    warn: bool,
+    derived: bool,
+) -> Result<Vec<ElementCap>, EngineError> {
+    let names = engine.all_element_names(); // capture-order: AllElementNames (C)
     let mut out = Vec::with_capacity(names.len());
     for name in names {
-        engine.set_active_element(&name);
+        engine.set_active_element(&name); // capture-order: SetActiveElement (C)
+        let enabled = if derived {
+            Some(engine.ckt_element_enabled()?) // capture-order: Enabled (C)
+        } else {
+            None
+        };
+        // capture-order: Losses (A), Powers (A), Currents (B)
         let (powers, currents, losses) = engine.element_pcl(warn, &format!("element {name}"))?;
         let (i_re, i_im) = deinterleave(&currents);
         let (p_kw, p_kvar) = deinterleave(&powers);
@@ -483,14 +543,30 @@ fn capture_all_elements(engine: &Engine, warn: bool) -> Result<Vec<ElementCap>, 
             losses.first().copied().unwrap_or(0.0),
             losses.get(1).copied().unwrap_or(0.0),
         ];
-        out.push(ElementCap {
+        let mut cap = ElementCap {
             name,
             i_re,
             i_im,
             p_kw,
             p_kvar,
             loss_w,
-        });
+            enabled,
+            cma_mag: Vec::new(),
+            cma_ang: Vec::new(),
+            res_mag: Vec::new(),
+            res_ang: Vec::new(),
+            vma_mag: Vec::new(),
+            vma_ang: Vec::new(),
+        };
+        if enabled == Some(true) {
+            // capture-order: CurrentsMagAng (B), Residuals (B), VoltagesMagAng (C)
+            let (cma, res, vma) =
+                engine.element_polar(warn, &format!("element {} derived", cap.name))?;
+            (cap.cma_mag, cap.cma_ang) = deinterleave(&cma);
+            (cap.res_mag, cap.res_ang) = deinterleave(&res);
+            (cap.vma_mag, cap.vma_ang) = deinterleave(&vma);
+        }
+        out.push(cap);
     }
     Ok(out)
 }

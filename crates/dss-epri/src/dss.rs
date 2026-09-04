@@ -49,6 +49,12 @@ impl std::error::Error for EngineError {}
 /// Powers, Currents, Losses (each flat `[re, im, ...]`) for one element.
 pub type Pcl = (Vec<f64>, Vec<f64>, Vec<f64>);
 
+/// `CurrentsMagAng`, `Residuals`, `VoltagesMagAng` (each the flat
+/// `[mag, ang, ...]` array the DDLL writes, angles in degrees on the
+/// `(-180, 180]` branch cut) for one **enabled** element — the GOLDEN_REBASE
+/// G1.3a derived capture ([`Engine::element_polar`]).
+pub type Polar3 = (Vec<f64>, Vec<f64>, Vec<f64>);
+
 /// One generic C-API call request for [`Engine::ffi_dispatch`]. `kind` selects
 /// the ABI shape (`"i"`/`"f"`/`"s"`/`"v"`); only the matching scalar
 /// (`iarg`/`farg`[`/farg2`](FfiCall::farg2)/`sarg`) is used. `vset` (V only)
@@ -437,17 +443,22 @@ impl Engine {
         self.v_f64s(self.dll.ckt_element_v, 12)
     }
 
+    /// Terminal currents, flat `[re, im, ...]`. See
+    /// [`modes::CKT_ELEMENT_CURRENTS`] — D3 capture group **B**.
     pub fn element_currents(&self) -> Vec<f64> {
-        self.v_f64s(self.dll.ckt_element_v, 3)
+        self.v_f64s(self.dll.ckt_element_v, modes::CKT_ELEMENT_CURRENTS.mode)
     }
 
+    /// Per-conductor powers, flat `[kW, kvar, ...]`. See
+    /// [`modes::CKT_ELEMENT_POWERS`] — D3 capture group **A**.
     pub fn element_powers(&self) -> Vec<f64> {
-        self.v_f64s(self.dll.ckt_element_v, 4)
+        self.v_f64s(self.dll.ckt_element_v, modes::CKT_ELEMENT_POWERS.mode)
     }
 
-    /// Total losses `[re, im]` in W/var (`CktElement.Losses`, one complex).
+    /// Total losses `[re, im]` in W/var (`CktElement.Losses`, one complex). See
+    /// [`modes::CKT_ELEMENT_LOSSES`] — D3 capture group **A**.
     pub fn element_losses(&self) -> Vec<f64> {
-        self.v_f64s(self.dll.ckt_element_v, 5)
+        self.v_f64s(self.dll.ckt_element_v, modes::CKT_ELEMENT_LOSSES.mode)
     }
 
     pub fn element_variable_names(&self) -> Vec<String> {
@@ -467,19 +478,68 @@ impl Engine {
         self.v_f64s(self.dll.ckt_element_v, 16)
     }
 
-    /// Read Powers then Currents then Losses on the active element, with a single
-    /// user-model retry (`oracle_server.capture_all_elements`'s `_read`): a
-    /// Generator model=6 fires #567 on the first current recompute after a solve,
-    /// which the recompute itself clears — so a retry returns the cached, correct
-    /// Yprim-only currents.
+    /// Read **Losses, then Powers, then Currents** on the active element — the
+    /// §1.1(a)/D3 capture order (`GOLDEN_REBASE_PLAN.md`, coordinator decision
+    /// D3): both cache-aware group-A reads run before the group-B `Currents`,
+    /// which fills a *scratch* buffer while still stamping the element's
+    /// `IterminalSolutionCount` (`PCElements/PCElement.pas:247-266`) and can
+    /// therefore starve a cache-aware read that follows it. The name and the
+    /// returned tuple keep their `(powers, currents, losses)` shape — only the
+    /// read order moved (GOLDEN_REBASE G1.3a; both reordered reads are group A,
+    /// so no captured value can change, proven byte-for-byte on IEEE13, two
+    /// harmonics decks and the two user-model decks).
+    ///
+    /// One user-model retry (`oracle_server.capture_all_elements`'s `_read`): a
+    /// Generator model=6 fires #567 on the first current recompute after a
+    /// solve — under this order that is the `Losses` read rather than `Powers`
+    /// — which the recompute itself clears, so a retry returns the cached,
+    /// correct Yprim-only values.
     pub fn element_pcl(&self, warn: bool, ctx: &str) -> Result<Pcl, EngineError> {
         for attempt in 0..2 {
-            let powers = self.element_powers();
-            let currents = self.element_currents();
-            let losses = self.element_losses();
+            let losses = self.element_losses(); // capture-order: Losses (A)
+            let powers = self.element_powers(); // capture-order: Powers (A)
+            let currents = self.element_currents(); // capture-order: Currents (B)
             let (errno, desc) = self.poll_error();
             if errno == 0 {
                 return Ok((powers, currents, losses));
+            }
+            if warn && USER_MODEL.contains(&errno) && attempt == 0 {
+                continue; // priming read fired + cleared the warning; retry once
+            }
+            return Err(EngineError::Dss {
+                errno,
+                desc,
+                ctx: ctx.to_string(),
+            });
+        }
+        unreachable!()
+    }
+
+    /// Read `CurrentsMagAng`, `Residuals` and `VoltagesMagAng` on the active
+    /// element — the GOLDEN_REBASE G1.3a derived capture, in D3 order (the two
+    /// group-B reads first; `VoltagesMagAng` is group C, reading
+    /// `NodeV[NodeRef[i]]` only) and with the same single user-model retry as
+    /// [`Engine::element_pcl`], so an errno is attributed to its own element.
+    ///
+    /// **Only ever called on an `Enabled` element**
+    /// ([`Engine::ckt_element_enabled`], checked at the one call site
+    /// `crate::capture::capture_all_elements`): `CktElementV(19)` dereferences
+    /// `NodeRef^[i]` with no nil guard (`DCktElement.pas:1099`, where capi has
+    /// one at `CAPI/CAPI_Alt.pas:1081`) and **kills the process** on a
+    /// never-enabled element — measured on `controls/fuse/midi_fuse.dss`'s
+    /// `Line.tie`. Capturing enabled elements only removes that crash class and
+    /// makes the two oracle channels' shapes identical, so no sentinel
+    /// normalization is owed.
+    pub fn element_polar(&self, warn: bool, ctx: &str) -> Result<Polar3, EngineError> {
+        for attempt in 0..2 {
+            // capture-order: CurrentsMagAng (B)
+            let cma = self.ckt_element_currents_mag_ang()?;
+            let res = self.ckt_element_residuals()?; // capture-order: Residuals (B)
+            // capture-order: VoltagesMagAng (C)
+            let vma = self.ckt_element_voltages_mag_ang()?;
+            let (errno, desc) = self.poll_error();
+            if errno == 0 {
+                return Ok((cma, res, vma));
             }
             if warn && USER_MODEL.contains(&errno) && attempt == 0 {
                 continue; // priming read fired + cleared the warning; retry once
@@ -1129,6 +1189,27 @@ impl Engine {
     /// `CktElementI(11)` `CktElement.OCPDevType` — `DCktElement.pas:259`. See [`modes::CKT_ELEMENT_OCP_DEV_TYPE`].
     pub fn ckt_element_ocp_dev_type(&self) -> Result<i32, EngineError> {
         self.read_mode_i(&modes::CKT_ELEMENT_OCP_DEV_TYPE)
+    }
+
+    /// `CktElementI(12)` `CktElement.Enabled` — `DCktElement.pas:263`. See [`modes::CKT_ELEMENT_ENABLED`].
+    ///
+    /// Decodes **strictly**. The arm's codomain is exactly `{0, 1}` (the
+    /// `CktElementI` default `Result := 0` at `DCktElement.pas:137`, raised to 1
+    /// only when `Enabled`), so anything else is an error rather than a truthy
+    /// "enabled": under a `!= 0` decode the family's unknown-mode sentinel `-1`
+    /// (`DCktElement.pas:308`) would read as *enabled* and route the derived
+    /// capture into `CktElementV(19)`'s unguarded `NodeRef^[i]` dereference
+    /// (`:1099`), which kills the process.
+    pub fn ckt_element_enabled(&self) -> Result<bool, EngineError> {
+        match self.read_mode_i(&modes::CKT_ELEMENT_ENABLED)? {
+            0 => Ok(false),
+            1 => Ok(true),
+            other => Err(EngineError::Other(format!(
+                "{}: replied {other}, but the case arm's codomain is {{0, 1}} \
+                 (DCktElement.pas:137, :263)",
+                modes::CKT_ELEMENT_ENABLED
+            ))),
+        }
     }
 
     /// `CktElementI(15)` `CktElement.HasOCPDevice` — `DCktElement.pas:300`. See [`modes::CKT_ELEMENT_HAS_OCP_DEVICE`].

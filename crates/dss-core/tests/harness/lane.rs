@@ -140,6 +140,21 @@ const LANE_SKIP_ELEM_POWERS: &[&str] =
 /// Which element sub-channels the corpus gate oracle-compares for the case
 /// `label` — [`ElemChannels::ALL`] everywhere except [`LANE_SKIP_ELEM_POWERS`],
 /// in either lane.
+///
+/// # G1.3a: the three derived polar channels do NOT join the exclusion
+///
+/// `CurrentsMagAng`, `VoltagesMagAng` and `Residuals`
+/// (`GOLDEN_REBASE_PLAN.md` G1.3a) stay compared on the two `newton*` decks.
+/// The staleness above is confined to the **cache-aware** read path —
+/// `Get_Powers`/`Get_Losses` reuse `ComputeIterminal`, which returns the stamped
+/// `Iterminal` untouched when the solution count already matches (r4133
+/// `Common/CktElement.pas:632-640`, called from `Get_Power` `:666` at `:680` and
+/// from `Get_Losses` `:707` at `:743`). The three new surfaces do not use it:
+/// upstream reads them through a scratch `GetCurrents`
+/// (r4133 `DDLL/DCktElement.pas:837`/`:1069`) and `VoltagesMagAng` only reads
+/// `NodeV` through `NodeRef` (`:1096-1100`), never `Iterminal`. So the two decks
+/// *gain* three oracle-compared channels here — a strengthening, not a widening
+/// — and [`ElemChannels::CURRENTS_ONLY`] keeps all three `true`.
 pub fn elem_channels_for(label: &str) -> ElemChannels {
     if LANE_SKIP_ELEM_POWERS.contains(&label) {
         ElemChannels::CURRENTS_ONLY

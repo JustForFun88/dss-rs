@@ -6,6 +6,7 @@ use super::*;
 use crate::report::export::json::{
     JsonOpts, build as json_build, circuit as json_circuit, serialize as json_serialize,
 };
+use crate::support::complexutil::{Polar, c_to_polar_deg};
 
 /// A monitor's recorded buffer for the golden/test harness (dss-python
 /// `Monitors.Header` / `SampleCount` / `Channel(i)` / `dblHour`).
@@ -71,6 +72,37 @@ pub struct ElementSnapshot {
     /// `CktElement.Losses` surface): `Σ NodeV[ref]·conj(Iterminal)` over all
     /// conductors, ×3 under positive sequence.
     pub loss_w: (f64, f64),
+    /// `CktElement.CurrentsMagAng`: `ctopolardeg` of every terminal current,
+    /// conductor-minor inside terminal-major — the polar rendering of
+    /// [`currents`](Self::currents), same length (`yorder`). Pascal r4133
+    /// `DDLL/DCktElement.pas:1058` (mode `18`), capi `CAPI/CAPI_Alt.pas:1043`
+    /// (`Alt_CE_Get_CurrentsMagAng`); a fastdss `_columns` surface
+    /// (`dss/ICktElement.py:64` on `origin/fastdss`).
+    pub currents_mag_ang: Vec<Polar>,
+    /// `CktElement.VoltagesMagAng`: `ctopolardeg(NodeV[NodeRef[i]])` over the
+    /// same conductor layout — the element's own view of the node voltages,
+    /// i.e. a live check of its `NodeRef` mapping. Pascal r4133
+    /// `DDLL/DCktElement.pas:1082` (mode `19`), capi `CAPI/CAPI_Alt.pas:1072`;
+    /// fastdss `dss/ICktElement.py:58`.
+    ///
+    /// **Empty** when `node_ref` is empty — a never-energized element, whose
+    /// `NodeRef` upstream is still `NIL`: capi returns its one-element
+    /// `DefaultResult` `[0.0]` there (`CAPI_Alt.pas:1081` guards on
+    /// `elem.NodeRef = NIL`) and r4133, which has no such guard, dereferences
+    /// the nil pointer at `DCktElement.pas:1099` and takes the process down.
+    /// Both sentinel shapes are a capture-boundary concern; the engine reports
+    /// "no mapping yet" as the empty vector.
+    pub voltages_mag_ang: Vec<Polar>,
+    /// `CktElement.Residuals`: `ctopolardeg(Σ_c I[t·nconds + c])` per terminal
+    /// (length `nterms`), each terminal summing **its own** conductors —
+    /// Pascal r4133 `DDLL/DCktElement.pas:827` (mode `11`, the
+    /// `k := (i-1)*Nconds` offset at `:842`), capi
+    /// `CAPI/CAPI_CktElement.pas:541`; fastdss `dss/ICktElement.py:67`.
+    /// Both API paths carry the offset — the missing-offset defect of
+    /// CLAUDE.md upstream bug 1 is confined to the `Export SeqCurrents`
+    /// report path and is not on this surface (pinned by
+    /// `exec::tests::derived_polar::residuals_sum_the_rows_own_terminal`).
+    pub residuals: Vec<Polar>,
 }
 
 /// `(n, [(row, col, value)])` — the assembled, unfactored system Y as 0-based
@@ -237,6 +269,66 @@ impl Dss {
             }
             let cd = elem.cd();
             let bus_names = (1..=cd.nterms).map(|i| cd.get_bus(i).to_string()).collect();
+            // The three polar surfaces (`CurrentsMagAng`, `Residuals`,
+            // `VoltagesMagAng`) are *renderings* of state this loop has already
+            // produced, so they are formed here from the one current computed
+            // above rather than by a second read path: upstream allocates a
+            // scratch buffer and calls `GetCurrents` again for each of them
+            // (r4133 `DDLL/DCktElement.pas:1068`/`:837`), which is the same
+            // current whenever the cache is invalid and, after a Newton solve,
+            // the *fresh* one this snapshot already uses (CLAUDE.md upstream
+            // bug 5 / `GOLDEN_REBASE_PLAN.md` G2.3 — see the block comment
+            // above). Doing it here also keeps `report/export/*` untouched.
+            //
+            // `c_to_polar_deg` is the port of `CtoPOLARdeg`
+            // (`Shared/Ucomplex.pas:131` in r4133 == `DSSUcomplex.pas` in capi):
+            // `Cabs` for the magnitude and the truncated-constant `CDANG`
+            // (`57.29577951`, `Ucomplex.pas:118`) for the angle in
+            // `(-180, 180]`. Both gating oracles carry that same truncation, so
+            // no new compat site is created here — the existing one is
+            // compat-tagged on the constants themselves (`support::complexutil`).
+            let currents_mag_ang: Vec<Polar> =
+                currents.iter().copied().map(c_to_polar_deg).collect();
+            // Residual per terminal: the sum of *that terminal's own*
+            // conductors, `k := (i-1)*Nconds` (r4133 `DCktElement.pas:842`,
+            // capi `CAPI_CktElement.pas:562`) — accumulated in conductor order
+            // so the floating-point summation matches `Caccum`'s. The offset
+            // that `Export SeqCurrents` drops (CLAUDE.md upstream bug 1) is
+            // present on both API paths and is honoured here.
+            let residuals: Vec<Polar> = (0..cd.nterms)
+                .map(|t| {
+                    let mut resid = num_complex::Complex64::ZERO;
+                    for c in 0..cd.nconds {
+                        resid += currents[t * cd.nconds + c];
+                    }
+                    c_to_polar_deg(resid)
+                })
+                .collect();
+            // `VoltagesMagAng` reads `NodeV` through the element's own
+            // `NodeRef` (r4133 `DCktElement.pas:1096-1100`), so it is the one
+            // surface that exposes the per-element node mapping rather than the
+            // node vector itself. `NodeRef[i] = 0` is the ground node and
+            // `NodeV[0]` is zero (`solution::ymatrix`, Pascal's `// ok if =0`).
+            // A `NodeRef` left over from before a topology change can outrun the
+            // present `NodeV` (only reachable on a disabled element, which no
+            // oracle channel compares here — upstream would read freed memory);
+            // that stale slot reads as ground instead, the same safe-`.get()`
+            // discipline `solution::meters::reliability` uses.
+            let voltages_mag_ang: Vec<Polar> = if cd.node_ref.is_empty() {
+                Vec::new()
+            } else {
+                cd.node_ref[..yorder]
+                    .iter()
+                    .map(|&n| {
+                        c_to_polar_deg(
+                            node_v
+                                .get(n)
+                                .copied()
+                                .unwrap_or(num_complex::Complex64::ZERO),
+                        )
+                    })
+                    .collect()
+            };
             out.push(ElementSnapshot {
                 name,
                 enabled: cd.enabled,
@@ -244,6 +336,9 @@ impl Dss {
                 powers,
                 currents,
                 loss_w: (loss.re, loss.im),
+                currents_mag_ang,
+                voltages_mag_ang,
+                residuals,
             });
         }
         // NCIM needs **no** reporting override here any more (RP3.13). Two used

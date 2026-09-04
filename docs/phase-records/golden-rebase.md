@@ -2741,3 +2741,29 @@ row against the pre-fix lock.
   not fixed: this record is 22 lines against CLAUDE.md's 5–10 (trimmed from 34; the settlement
   itself is the overrun). Gate re-run in full: **4 605 / 0 / 5** per lane
   (4 601 before the settlement, +4 new pins), 0 filtered, fmt + clippy clean in both lanes.
+
+- **G1.3a** (2026-09-04, lane `lane-e`; coordinator decisions D3/D4/D7/D10) — **WP-G1's first
+  surface.** Per-element `Enabled` + `CurrentsMagAng`/`VoltagesMagAng`/`Residuals` compare live on
+  both channels over **442** cases (`FORCED_DERIVED_POPULATION`; the two `Test/AutoTrans` manifest
+  opt-ins are exactly the decks `origin/fastdss` `tests/compare_outputs.py:56-59` skips `Residuals`
+  on). Engine side is additive (`exec/view.rs::snapshot_elements`; r4133 `DDLL/DCktElement.pas`
+  `:1058`/`:1082`/`:827`), read for **enabled elements only** — r4133 `:1099` derefs a nil `NodeRef`
+  and kills the worker — hence the one new mode `CktElement.Enabled` (`WP_G1_MODES` 96 → **97**).
+  The three floors are derived images of the disc `harness::assert_complex_close_c` already admits
+  (`tests/TOLERANCE_NOTES.md` §G1.3a; no band moved, D10's √2 correction refuted), D3's A/B/C
+  capture order is enforced by `crates/dss-core/tests/capture_order.rs`, and **no channel joins
+  `LANE_SKIP_ELEM_POWERS`**. Ledger 57 → **58**: one new capi entry
+  `capi-capcontrol-time-bus-is-the-capacitors` (r4133 `Controls/CapControl.pas:605` + `:622` vs capi
+  0.14.5 `:597-608` → `:619`; `docs/upgrade/DIVERGENCES.md` L8) pinned by
+  `capcontrol_time_voltages_follow_the_monitored_elements_terminal`, plus **13** measured widenings
+  of committed `element` scopes (`measured.g13a_polar_first_failure` each); the kill criterion did
+  not fire. Other pins: the four remaining `exec::tests::derived_polar::*`, the 15
+  `harness::derived_polar_floors::*`, `ledger::{a_masked_polar_angle_is_not_envelope_checked,
+  an_unmasked_polar_angle_still_hits_the_envelope}`,
+  `scheduler::the_derived_forcing_rule_is_every_live_non_large_case_plus_the_opt_ins`; non-vacuity =
+  three live accessor mutants. `crates/dss-core/Cargo.toml` gains a **test-only**
+  `[target.'cfg(windows)'.dev-dependencies] dss-epri` line (no non-test target of dss-core links it).
+  As-executed detail and the deviations: `GOLDEN_REBASE_PLAN.md` §G1.3a. Commits: <filled by the
+  docs agent>. Gate: corpus gate 523/523 and 165/0/0 per lane, ledger 58 entries / 1 636 hits /
+  0 stale, `tests/golden` byte-untouched, fmt clean; the workspace totals and `lane_diff` are
+  <filled by the docs agent>.

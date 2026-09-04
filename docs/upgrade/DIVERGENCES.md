@@ -2456,3 +2456,43 @@ there. The property side is untouched: r4133's `kvar` getter renders the
 which this dispatch never writes. Upstream report:
 `investigations/to_opendss/55-windgen-qmode0-zero-var-dispatch.md` (local-only).
 Full record: `docs/phase-records/r4133-props-rp3.md` §RP3.10.
+
+## L8 — CapControl TIMECONTROL binds its bus to the MONITORED element's terminal (capi 0.14.5 uses the capacitor's bus) — GOLDEN_REBASE G1.3a, 2026-09-04
+
+**Observable.** A `type=time` CapControl that names an `element=` reports its own
+terminal-1 voltages at the *monitored* element's terminal. The pinned dss_capi
+0.14.5 reports them at the *controlled capacitor's* bus instead. On
+`tests/corpus/controls/capcontrol/capcontrol_time.dss`
+(`line.lf bus1=src bus2=b`, both capacitors on `b`, both banks
+`element=line.lf terminal=1`) `CapControl.cc1.VoltagesMagAng[0]` is
+**7342.020904321447 V** (bus `src`) on the port and on r4133, and
+**7276.216225426737 V** (bus `b`) on capi 0.14.5 — 65.80467889471038 V, 0.90 %
+apart, i.e. a different bus, not a numeric gap.
+
+**EPRI r4133 (the authority).** `Version8/Source/Controls/CapControl.pas:605`
+computes `ElmReq := ElmReq and (ControlType <> FOLLOWCONTROL)`, so **only**
+FOLLOWCONTROL skips the monitored element; with one present the control binds
+`Setbus(1, MonitoredElement.GetBus(ElementTerminal))` (`:622`) and sizes
+`cBuffer`/`CondOffset` off that element (`:624`/`:625`). The
+`ControlledElement.GetBus(1)` arm at `:633` is the no-monitored-element branch
+only. **capi 0.14.5** (`.inputs/dss_capi/src/Controls/CapControl.pas:597-608`)
+still carries the pre-`b9bc87b8` form: for TIMECONTROL *and* FOLLOWCONTROL it
+sets `effElement := ControlledElement` and forces `ElementTerminal := 1`, then
+`Setbus(1, effElement.GetBus(ElementTerminal))` at `:619`.
+
+**Decision — port follows r4133; not adopted from the 0.15.x side alone.** This
+is the bus half of the split whose *readback* half (`effElement`/`Terminal`) was
+already adopted at UPGRADE WP-U1.6 as **D11 (part 2)** above, on r4133 +
+capi015-probe evidence; the port's `control_type != Follow` arm
+(`crates/dss-core/src/elements/control/cap_control/mod.rs`) implements both
+halves at once, so no engine code moved here. What is new in G1.3a is the
+*gate*: `CktElement.VoltagesMagAng` reads `NodeV` through the element's own
+`NodeRef`, so it is the first live channel that can see which bus a control sat
+down on. Nothing is masked silently — the `capi_v0145` divergence is excluded
+field-by-field by `tests/corpus/ledger.json` entry
+`capi-capcontrol-time-bus-is-the-capacitors` (`element` sub-channel
+`voltages_mag_ang`, `name_re` the two CapControls only, cause
+`capcontrol-time-bus-is-the-capacitors`), the **r4133 channel of the same case
+needs no entry at all**, and both numbers are pinned by
+`dss_core::exec::tests::derived_polar::capcontrol_time_voltages_follow_the_monitored_elements_terminal`.
+No EPRI report is owed — r4133 is the side that is right.
