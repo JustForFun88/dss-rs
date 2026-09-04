@@ -532,3 +532,117 @@ fn ymatrix_before_compile_is_guarded_not_a_crash() {
     );
     w.quit();
 }
+
+/// G1.0 / WP-G1 rail: the **two-double `XxxF` ABI**. `CmathLibF(mode; arg1,
+/// arg2: double)` (`DCmathLib.pas:5`, impl `:12`) and `CircuitF(mode; arg1,
+/// arg2: double)` (`DCircuit.pas:27`, impl `:193`) are the only two of the 42
+/// DDLL families whose `F` export takes a second double; the bridge used to bind
+/// every `F` as `fn(i32, f64)`, so `XMM2` carried whatever the caller left
+/// behind.
+///
+/// Measured against this same DLL **before** the fix (2026-09-04):
+/// `CmathLibF(0, 3.0, ?)` = `3.0` instead of `Cabs(3+4j)` = `5.0` — XMM2 held a
+/// tiny positive leftover, so `sqrt(9 + ε²)` rounded back to `3.0`.
+///
+/// Every reading below is pinned by **exact** equality; none is 90°-clean,
+/// because r4133's own complex math is built on two truncated constants:
+/// `CDANG(a) = ATAN2(a.re, a.im) * 57.29577951` (`Ucomplex.pas:117-120`) over
+/// OpenDSS's hand-written `ATAN2` with `CONST PI = 3.14159265359`
+/// (`Ucomplex.pas:96-111`). So `Cdang(0+1j)` is `(3.14159265359/2)·57.29577951`
+/// = `89.99999999516423`, **not** `90.0`, and `Cdang(3+4j)` is
+/// `arctan(4/3)·57.29577951` = `53.13010235129776`. These are *oracle* readings
+/// of the DLL under test, not values `dss-core` reproduces.
+///
+/// `Cdang(0, 1)` alone would NOT prove the fix: the angle of a purely imaginary
+/// number is the same for every positive magnitude, so the pre-fix garbage read
+/// the identical `89.99999999516423`. `Cdang(3, 4)` is the discriminating one —
+/// with the one-double binding it reads `arctan(ε/3)·57.29577951 ≈ 0`.
+///
+/// `CircuitF` mode 0 (`Circuit.Capacity`) is deliberately NOT driven: it writes
+/// `CapacityStart`/`CapacityIncrement` and runs `ComputeCapacity`
+/// (`DCircuit.pas:195-203`) — a mutating probe. Its correctness rides on the
+/// same `FnF2` binding this test pins.
+#[test]
+fn cmath_lib_f_takes_two_doubles() {
+    let mut w = WorkerProc::spawn();
+
+    // Cabs(3 + 4j) == 5.0 exactly (was 3.0 = arg1 with the one-double binding).
+    let cabs = w.ffi(json!({
+        "cmd": "ffi", "family": "CmathLib", "kind": "f", "mode": 0,
+        "farg": 3.0, "farg2": 4.0
+    }));
+    assert_eq!(cabs["kind"], "f", "Cabs kind: {cabs}");
+    assert_eq!(
+        cabs["value"].as_f64(),
+        Some(5.0),
+        "CmathLib.Cabs(3, 4) != 5.0 — the second double did not reach XMM2: {cabs}"
+    );
+    assert_eq!(cabs["errno"], 0, "Cabs errno: {cabs}");
+
+    // Cdang(3 + 4j) == arctan(4/3) * 57.29577951, exactly (was ~0 pre-fix).
+    let cdang = w.ffi(json!({
+        "cmd": "ffi", "family": "CmathLib", "kind": "f", "mode": 1,
+        "farg": 3.0, "farg2": 4.0
+    }));
+    assert_eq!(
+        cdang["value"].as_f64(),
+        Some(53.13010235129776),
+        "CmathLib.Cdang(3, 4) != arctan(4/3)*57.29577951: {cdang}"
+    );
+
+    // Cdang(0 + 1j) == (3.14159265359 / 2) * 57.29577951, exactly — r4133's
+    // truncated PI and rad->deg constants, NOT a clean 90.0.
+    let quarter = w.ffi(json!({
+        "cmd": "ffi", "family": "CmathLib", "kind": "f", "mode": 1,
+        "farg": 0.0, "farg2": 1.0
+    }));
+    assert_eq!(
+        quarter["value"].as_f64(),
+        Some(89.99999999516423),
+        "CmathLib.Cdang(0, 1) != (3.14159265359/2)*57.29577951: {quarter}"
+    );
+
+    // Non-vacuity: the fix is the SECOND argument, not a changed mode 0. Drop
+    // `farg2` (defaults to 0.0) and Cabs(3, 0) must be 3.0 — i.e. the call really
+    // reads what the caller passes, rather than always returning 5.0.
+    let degenerate = w.ffi(json!({
+        "cmd": "ffi", "family": "CmathLib", "kind": "f", "mode": 0, "farg": 3.0
+    }));
+    assert_eq!(
+        degenerate["value"].as_f64(),
+        Some(3.0),
+        "Cabs(3, 0) must be 3.0: {degenerate}"
+    );
+
+    // The unknown-mode sentinel of the `F` shape is `-1.0` (`DCmathLib.pas:22`),
+    // and it is reachable through the same two-double binding.
+    let bogus = w.ffi(json!({
+        "cmd": "ffi", "family": "CmathLib", "kind": "f", "mode": 987,
+        "farg": 3.0, "farg2": 4.0
+    }));
+    assert_eq!(
+        bogus["value"].as_f64(),
+        Some(-1.0),
+        "CmathLibF unknown-mode sentinel: {bogus}"
+    );
+
+    // `Circuit` still reports an `f` shape in the capability handshake — the ABI
+    // split must not drop its entry point.
+    let caps = w.ok(json!({"cmd": "caps"}));
+    let kinds = caps["families"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["name"] == "Circuit")
+        .unwrap_or_else(|| panic!("Circuit missing from caps: {caps}"))["kinds"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(kinds, "ifsv", "Circuit lost its F shape in the ABI split");
+    assert_eq!(
+        caps["family_entry_points"], 147,
+        "entry-point count moved with the F ABI split: {caps}"
+    );
+
+    w.quit();
+}

@@ -43,6 +43,9 @@
 //! - [`script`] — the generic `exec`/`read`/`chdir` scripting surface for the
 //!   manual regen drivers + probes (functional parity with the retired Oddie
 //!   bridge's ad-hoc `Text.Command` + property reads; never used by the gate).
+//! - [`modes`] — mode-capability classification for the grouped DDLL API: the
+//!   unknown-mode sentinels of the four ABI shapes, and the do-not-call register
+//!   of modes whose r4133 implementation is memory-unsafe (WP-G1 rails, G1.0).
 //!
 //! The `epri-worker` binary (`src/bin/epri-worker.rs`) drives all of the above
 //! over the persistent line-JSON `ping`/`run`/`quit` protocol, byte-compatible
@@ -60,6 +63,8 @@ pub mod families;
 pub mod ffi;
 #[cfg(windows)]
 pub mod guard;
+#[cfg(windows)]
+pub mod modes;
 #[cfg(windows)]
 pub mod script;
 #[cfg(windows)]

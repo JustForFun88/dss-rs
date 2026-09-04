@@ -88,6 +88,32 @@ struct Case {
     compare_global_result: bool,
     #[serde(default)]
     compare_autoadd_log: bool,
+    // WP-G1 compare-depth surface flags (`GOLDEN_REBASE_PLAN.md` §1.1(d),
+    // sub-step G1.0). The vocabulary is declared once in
+    // `corpus_gate/manifest.rs::SolvableCase`; this mirror exists because the
+    // lock is a manifest-only reader in its own test binary, and it is kept
+    // honest by [`RIGOR_FLAG_TOKENS`] + the source-text drift guard
+    // `every_manifest_compare_flag_has_a_rigor_token`.
+    #[serde(default)]
+    compare_derived: bool,
+    #[serde(default)]
+    compare_element_extras: bool,
+    #[serde(default)]
+    compare_bus: bool,
+    #[serde(default)]
+    compare_zsc: bool,
+    #[serde(default)]
+    compare_reliability: bool,
+    #[serde(default)]
+    compare_pdelements: bool,
+    #[serde(default)]
+    compare_topology: bool,
+    #[serde(default)]
+    compare_inc_matrix: bool,
+    #[serde(default)]
+    compare_run_files: bool,
+    #[serde(default)]
+    compare_di: bool,
     #[serde(default)]
     pending: bool,
     #[serde(default)]
@@ -130,7 +156,9 @@ impl Case {
     fn rigor(&self, ledger_tag: &str) -> String {
         format!(
             "kind={} steps={} sel={} mm={} probes={} vars={} evlog={} ctrlq={} \
-             props={} gresult={} aalog={} pending={} abort={} engines={} isolate={} defer={} \
+             props={} gresult={} aalog={} \
+             derived={} elemx={} bus={} zsc={} rel={} pde={} topo={} incm={} runf={} di={} \
+             pending={} abort={} engines={} isolate={} defer={} \
              ledger={}",
             self.kind,
             self.n_steps,
@@ -143,6 +171,16 @@ impl Case {
             self.compare_all_properties as u8,
             self.compare_global_result as u8,
             self.compare_autoadd_log as u8,
+            self.compare_derived as u8,
+            self.compare_element_extras as u8,
+            self.compare_bus as u8,
+            self.compare_zsc as u8,
+            self.compare_reliability as u8,
+            self.compare_pdelements as u8,
+            self.compare_topology as u8,
+            self.compare_inc_matrix as u8,
+            self.compare_run_files as u8,
+            self.compare_di as u8,
             self.pending as u8,
             self.expect_solve_abort.is_some() as u8,
             self.engines,
@@ -484,4 +522,184 @@ fn population_lock_matches_manifests() {
          then commit the population.lock.json diff alongside the manifest change.\n",
     );
     panic!("{diff}");
+}
+
+// ---------------------------------------------------------------------------
+// Anti-drift guard for the rigor fingerprint (GOLDEN_REBASE_PLAN.md G1.0).
+// ---------------------------------------------------------------------------
+
+/// Every `compare_*` field of `corpus_gate::SolvableCase`, with the token it
+/// occupies in [`Case::rigor`].
+///
+/// A manifest compare flag missing here is invisible to the anti-shrink guard:
+/// it would never reach the fingerprint, so switching it **off** on a case that
+/// had it on would leave `population.lock.json` byte-identical — precisely the
+/// silent coverage shrink this file exists to make loud. The table is not
+/// decoration: [`every_manifest_compare_flag_has_a_rigor_token`] reads both
+/// source files and refuses drift in either direction.
+///
+/// Order matches the declaration order in `SolvableCase` and the token order in
+/// the `format!` string.
+const RIGOR_FLAG_TOKENS: &[(&str, &str)] = &[
+    ("compare_variables", "vars"),
+    ("compare_eventlog", "evlog"),
+    ("compare_ctrlqueue", "ctrlq"),
+    ("compare_all_properties", "props"),
+    ("compare_global_result", "gresult"),
+    ("compare_autoadd_log", "aalog"),
+    ("compare_derived", "derived"),
+    ("compare_element_extras", "elemx"),
+    ("compare_bus", "bus"),
+    ("compare_zsc", "zsc"),
+    ("compare_reliability", "rel"),
+    ("compare_pdelements", "pde"),
+    ("compare_topology", "topo"),
+    ("compare_inc_matrix", "incm"),
+    ("compare_run_files", "runf"),
+    ("compare_di", "di"),
+];
+
+fn crate_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+/// The `compare_*` field names declared by the struct `decl` opens in `src`.
+///
+/// A deliberately dumb line scan rather than a parser: both structs are plain
+/// `#[derive(Deserialize)]` records with one field per line, and a scan cannot
+/// "helpfully" resolve a field the serde loader would not see.
+fn compare_fields(src: &str, decl: &str) -> std::collections::BTreeSet<String> {
+    let start = src
+        .find(decl)
+        .unwrap_or_else(|| panic!("struct declaration {decl:?} not found — was it renamed?"));
+    let body = &src[start + decl.len()..];
+    let end = body
+        .find("\n}")
+        .unwrap_or_else(|| panic!("no closing brace for {decl:?}"));
+    let mut out = std::collections::BTreeSet::new();
+    for line in body[..end].lines() {
+        let t = line.trim();
+        let t = t.strip_prefix("pub(crate) ").unwrap_or(t);
+        if !t.starts_with("compare_") {
+            continue;
+        }
+        if let Some((name, _)) = t.split_once(':') {
+            out.insert(name.trim().to_string());
+        }
+    }
+    out
+}
+
+/// The `format!` literal of [`Case::rigor`], read from this file's own source
+/// text with Rust's `\`-at-end-of-line continuations folded out (that escape
+/// swallows the newline and the next line's leading whitespace), so the result
+/// is the fingerprint layout as it is actually emitted.
+///
+/// The two needles are assembled at runtime so this function's own source does
+/// not contain them — otherwise the scan could match itself instead of `rigor`.
+fn rigor_format_literal(src: &str) -> String {
+    let needle = format!("fn {}(&self, ledger_tag: &str) -> String {{", "rigor");
+    let f = src
+        .find(&needle)
+        .unwrap_or_else(|| panic!("{needle:?} not found — did `rigor` change signature?"));
+    let rest = &src[f..];
+    let open = rest
+        .find(&format!("{}!(", "format"))
+        .expect("`rigor` must build exactly one format string");
+    let q1 = open + rest[open..].find('"').expect("format string opens");
+    let q2 = q1 + 1 + rest[q1 + 1..].find('"').expect("format string closes");
+    let mut out = String::new();
+    let mut it = rest[q1 + 1..q2].chars().peekable();
+    while let Some(c) = it.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        // Line continuation: drop the rest of the line…
+        for n in it.by_ref() {
+            if n == '\n' {
+                break;
+            }
+        }
+        // …then the next line's leading whitespace, exactly as rustc does.
+        while it.peek().is_some_and(|n| n.is_whitespace()) {
+            it.next();
+        }
+    }
+    out
+}
+
+/// The rails that keep the fingerprint honest as the manifest schema grows
+/// (`GOLDEN_REBASE_PLAN.md` G1.0): every `compare_*` manifest field owns a rigor
+/// token, every token is actually emitted, and no table row is orphaned.
+///
+/// A **source-text** gate (the `oracle_parity_cfg_gate.rs` pattern) because what
+/// it polices is exactly what a compiled mirror cannot see: this test binary
+/// deserializes its own [`Case`], so a `compare_*` field added to
+/// `corpus_gate::SolvableCase` and *not* mirrored here compiles, loads, and
+/// silently drops out of the fingerprint. WP-G1 adds ten such fields
+/// (`GOLDEN_REBASE_PLAN.md` §1.1(d)); this is what makes the eleventh safe.
+#[test]
+fn every_manifest_compare_flag_has_a_rigor_token() {
+    let manifest_src = std::fs::read_to_string(
+        crate_dir()
+            .join("tests")
+            .join("corpus_gate")
+            .join("manifest.rs"),
+    )
+    .expect("read corpus_gate/manifest.rs");
+    let own_src = std::fs::read_to_string(crate_dir().join("tests").join("population_lock.rs"))
+        .expect("read population_lock.rs");
+
+    let declared = compare_fields(
+        &manifest_src,
+        &format!("pub(crate) struct {} {{", "SolvableCase"),
+    );
+    assert!(
+        declared.len() == RIGOR_FLAG_TOKENS.len(),
+        "scanned {} `compare_*` fields out of `SolvableCase` but RIGOR_FLAG_TOKENS has {} \
+         rows: {declared:?}",
+        declared.len(),
+        RIGOR_FLAG_TOKENS.len()
+    );
+    let mirrored = compare_fields(&own_src, &format!("struct {} {{", "Case"));
+    let emitted = rigor_format_literal(&own_src);
+
+    let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for (field, token) in RIGOR_FLAG_TOKENS {
+        // (iii) no orphan row: the field must really exist on `SolvableCase`…
+        assert!(
+            declared.contains(*field),
+            "RIGOR_FLAG_TOKENS names {field:?}, which is not a `compare_*` field of \
+             `corpus_gate::SolvableCase` — drop the row or fix the spelling"
+        );
+        // …and on this file's mirror, or the fingerprint would record the serde
+        // default for every case whatever the manifest says.
+        assert!(
+            mirrored.contains(*field),
+            "RIGOR_FLAG_TOKENS names {field:?}, which `population_lock::Case` does not \
+             mirror — every case would fingerprint the serde default"
+        );
+        // (ii) the token is actually emitted by `rigor()`.
+        assert!(
+            emitted.contains(&format!("{token}=")),
+            "rigor token {token:?} ({field}) is absent from the `rigor()` format string \
+             ({emitted:?}) — an unemitted token fingerprints nothing"
+        );
+        assert!(
+            seen.insert(token),
+            "rigor token {token:?} is used by more than one field (last: {field})"
+        );
+    }
+    // (i) every declared manifest compare flag is covered.
+    for field in &declared {
+        assert!(
+            RIGOR_FLAG_TOKENS.iter().any(|(f, _)| f == field),
+            "`corpus_gate::SolvableCase` declares {field:?} but RIGOR_FLAG_TOKENS has no row \
+             for it: it would never reach the rigor fingerprint, so switching it off on a case \
+             would leave population.lock.json byte-identical — the silent shrink this lock \
+             exists to catch. Add the field to `population_lock::Case`, a token to `rigor()`, \
+             a row here, and regenerate the lock in the same commit."
+        );
+    }
 }

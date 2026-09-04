@@ -497,6 +497,92 @@ const EXCLUSION_FIELDS: [&str; 10] = [
     "variables",
 ];
 
+/// Fields whose [`Scope::channels`] selects **sub-channels** of a multi-part
+/// comparison, each with the closed set of names it accepts.
+///
+/// `element` is the only one today (its cap carries currents, powers and
+/// losses). Both handlers spell the selector as
+/// `sc.channels.is_empty() || sc.channels.contains(ch)` — so an omitted
+/// `channels` reads as "all of them", and a committed entry written for those
+/// three would **silently widen** onto every sub-channel WP-G1 adds to the
+/// element row (`GOLDEN_REBASE_PLAN.md` §1.1 surface #1, G1.3a–c): no ledger
+/// diff, no population-lock trip, an exclusion quietly covering more than it was
+/// reviewed for. Every committed scope on such a field must therefore name its
+/// channels, and may name only these.
+const SUBCHANNEL_FIELDS: &[(&str, &[&str])] = &[("element", &["currents", "powers", "losses"])];
+
+/// Entry ids allowed to leave `channels` off a [`SUBCHANNEL_FIELDS`] field — the
+/// named, reviewed escape hatch for a scope that really does mean "every
+/// sub-channel, including ones added later".
+///
+/// **Empty**, and meant to stay that way: after G1.0 "all" is a decision someone
+/// wrote down here with a reason, never the default an omitted key falls into.
+const BARE_CHANNELS_ALLOWED: &[&str] = &[];
+
+/// The three load-time `channels` rules (`GOLDEN_REBASE_PLAN.md` G1.0 rails):
+///
+/// 1. a scope on a [`SUBCHANNEL_FIELDS`] field carries a non-empty `channels`
+///    (unless its id is in [`BARE_CHANNELS_ALLOWED`]) — the anti-widening rule;
+/// 2. every name in `channels` is one of that field's declared sub-channels — a
+///    typo like `"curents"` otherwise loads cleanly and selects **nothing**,
+///    leaving the entry `applied` through its other scopes while masking not one
+///    value (the same dead-mask rot [`LEDGER_FIELDS`] exists to prevent);
+/// 3. a scope on any other field carries no `channels` at all — the runtime
+///    never reads one there, so it would sit in the file as a promise the gate
+///    does not keep (the rule `assert_structural` already applies to
+///    `max_rel`/`rust`/`oracle`/… on an exclusion scope).
+///
+/// Returns the failure text rather than panicking so the unit tests below can
+/// drive all three rules on synthetic scopes.
+fn check_scope_channels(id: &str, sc: &RawScope) -> Result<(), String> {
+    let declared = SUBCHANNEL_FIELDS
+        .iter()
+        .find(|(f, _)| *f == sc.field.as_str())
+        .map(|(_, names)| *names);
+    let Some(names) = declared else {
+        // Rule 3.
+        return match sc.channels {
+            Some(_) => Err(format!(
+                "ledger entry {id:?}: scope on {:?} carries `channels`, which only \
+                 sub-channel fields ({:?}) read — it would sit in the ledger as a \
+                 promise the runtime ignores",
+                sc.field,
+                SUBCHANNEL_FIELDS
+                    .iter()
+                    .map(|(f, _)| *f)
+                    .collect::<Vec<_>>()
+            )),
+            None => Ok(()),
+        };
+    };
+    let listed = sc.channels.as_deref().unwrap_or(&[]);
+    // Rule 1.
+    if listed.is_empty() {
+        if BARE_CHANNELS_ALLOWED.contains(&id) {
+            return Ok(());
+        }
+        return Err(format!(
+            "ledger entry {id:?}: scope on {:?} must name its `channels` (one or more \
+             of {names:?}). An omitted/empty list reads as ALL sub-channels, so the \
+             entry would silently widen onto every sub-channel added later — add the \
+             names it was measured on, or its id to BARE_CHANNELS_ALLOWED with a reason",
+            sc.field
+        ));
+    }
+    // Rule 2.
+    for ch in listed {
+        if !names.contains(&ch.as_str()) {
+            return Err(format!(
+                "ledger entry {id:?}: scope on {:?} names sub-channel {ch:?}, which is \
+                 not one of {names:?} — it would select nothing and mask nothing while \
+                 the entry still reports itself applied",
+                sc.field
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn compile_scope(id: &str, s: &RawScope) -> Scope {
     assert!(
         LEDGER_FIELDS.contains(&s.field.as_str()),
@@ -1518,6 +1604,11 @@ pub(crate) fn assert_structural(
         // would claim a measurement the runtime never makes
         // (`GOLDEN_REBASE_PLAN.md` G2.5).
         for sc in &e.match_scopes {
+            // The `channels` sub-channel rules (G1.0 rails) — see
+            // [`check_scope_channels`] for the three and why each one exists.
+            if let Err(msg) = check_scope_channels(&e.id, sc) {
+                panic!("{msg}");
+            }
             assert!(
                 !(EXCLUSION_ONLY_FIELDS.contains(&sc.field.as_str()) && e.kind != "exclusion"),
                 "ledger entry {:?}: field {:?} is exclusion-only — a {} entry naming it \
@@ -1984,6 +2075,84 @@ fn a_voltages_exclusion_that_masks_nothing_is_stale() {
         vars_hit.assert_all_hit().is_ok(),
         "a `variables` scope that matched a variable must pass"
     );
+}
+
+/// The three [`check_scope_channels`] rules, driven on synthetic scopes because
+/// `assert_structural` can only ever see the committed `ledger.json` — and the
+/// whole point of the rules is what happens to an entry nobody has written yet.
+///
+/// Scopes are deserialized from JSON rather than built field-by-field so the
+/// drive exercises the same `Option<Vec<String>>` shape the loader sees: an
+/// absent key and an empty list are both "all sub-channels" to the runtime, and
+/// both must be refused.
+#[test]
+fn a_scope_that_misuses_channels_is_refused_at_load() {
+    let scope = |json: &str| -> RawScope { serde_json::from_str(json).expect("test scope") };
+
+    // Rule 1 — a sub-channel field with no `channels`, in both spellings.
+    for json in [
+        r#"{"field": "element"}"#,
+        r#"{"field": "element", "channels": []}"#,
+    ] {
+        let err = check_scope_channels("bare", &scope(json))
+            .expect_err("a bare `element` scope must be refused");
+        assert!(
+            err.contains("must name its `channels`") && err.contains("bare"),
+            "wrong rule-1 text: {err}"
+        );
+    }
+    // …and the named escape hatch is the only way through (empty today, so the
+    // rule cannot be dodged without editing BARE_CHANNELS_ALLOWED).
+    assert!(
+        BARE_CHANNELS_ALLOWED.is_empty(),
+        "BARE_CHANNELS_ALLOWED gained {BARE_CHANNELS_ALLOWED:?} — each id needs a \
+         written reason, and the population lock must show the entry's digest move"
+    );
+
+    // Rule 2 — a typo selects nothing at runtime, so it is refused at load.
+    let err = check_scope_channels(
+        "typo",
+        &scope(r#"{"field": "element", "channels": ["curents"]}"#),
+    )
+    .expect_err("a misspelled sub-channel must be refused");
+    assert!(
+        err.contains("curents") && err.contains("select nothing"),
+        "wrong rule-2 text: {err}"
+    );
+    // A real name passes, alone or with its siblings.
+    for json in [
+        r#"{"field": "element", "channels": ["losses"]}"#,
+        r#"{"field": "element", "channels": ["currents", "powers", "losses"]}"#,
+    ] {
+        check_scope_channels("ok", &scope(json)).expect("a declared sub-channel must pass");
+    }
+
+    // Rule 3 — `channels` on a field that does not read it.
+    for field in ["voltages", "yprim", "monitor"] {
+        let json = format!(r#"{{"field": "{field}", "channels": ["currents"]}}"#);
+        let err = check_scope_channels("stray", &scope(&json))
+            .expect_err("`channels` on a non-sub-channel field must be refused");
+        assert!(
+            err.contains("carries `channels`") && err.contains(field),
+            "wrong rule-3 text: {err}"
+        );
+        // …while the same scope without it is fine.
+        check_scope_channels("stray", &scope(&format!(r#"{{"field": "{field}"}}"#)))
+            .expect("a scope with no `channels` must pass");
+    }
+
+    // Every declared sub-channel field is a field the loader accepts at all —
+    // otherwise the rules would police a name `compile_scope` already rejects.
+    for (field, names) in SUBCHANNEL_FIELDS {
+        assert!(
+            LEDGER_FIELDS.contains(field),
+            "SUBCHANNEL_FIELDS names {field:?}, which is not a ledger field"
+        );
+        assert!(
+            !names.is_empty(),
+            "SUBCHANNEL_FIELDS row {field:?} declares no sub-channel names"
+        );
+    }
 }
 
 #[test]
