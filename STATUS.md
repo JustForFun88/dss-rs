@@ -41,9 +41,9 @@ has shrunk to a precision-compat lane and is scheduled for full teardown.
 **In flight.** `R4133_PROPS_PLAN.md` on branch **`r4133-props`** (forked from
 `update` @ `2ee6bb00`), inside the `GOLDEN_REBASE_PLAN.md` window
 (`PLAN_SEQUENCE.md` rows 5a/5b). **WP-RP0, WP-RP1, WP-RP2 and WP-RP3 COMPLETE**;
-§RP3.10 landed 2026-09-04 in one commit (verdict `FIX` — the reproduced
-`QMode=0` zero-var dispatch is gone from both lanes), its audit pair still to
-settle; **WP-RP4 closed** — RP4.1, G1.1's deliverable, landed 2026-09-03.
+§RP3.10 landed 2026-09-04 in two commits (verdict `FIX` — the reproduced
+`QMode=0` zero-var dispatch is gone from both lanes — plus its audit
+settlement, which found and fixed a sign bug in the new arm); **WP-RP4 closed** — RP4.1, G1.1's deliverable, landed 2026-09-03.
 Execution is single-branch, never parallel worktrees: `tests/corpus/ledger.json`,
 `tests/corpus/manifests/population.lock.json` and `tests/golden/golden.lock.json`
 are fail-on-stale and are rewritten by this plan and by the still-open
@@ -89,8 +89,8 @@ sub-step. Full record:
 [`r4133-props-rp2.md`](docs/phase-records/r4133-props-rp2.md) section
 "R4133_PROPS WP-RP2 — condensed records".
 
-**WP-RP3 (genuine-jump closure) — COMPLETE**: all thirteen sub-steps landed,
-§RP3.10 last (2026-09-04); only its audit settlement is still owed. Nothing in the WP blocked
+**WP-RP3 (genuine-jump closure) — COMPLETE**: all thirteen sub-steps landed and
+settled, §RP3.10 last (2026-09-04, settled the same day). Nothing in the WP blocked
 the unmask, and §RP5.2's one remaining blocker is now discharged. Full records:
 [`r4133-props-rp3.md`](docs/phase-records/r4133-props-rp3.md) — section
 "R4133_PROPS WP-RP3 — condensed records" (RP3.1–RP3.5) and section "Full
@@ -131,15 +131,20 @@ sub-step records RP3.6 – RP3.13 and RP3.10 (moved from STATUS §1)".
   fixed lane-unconditionally with zero ledger entries and zero golden bytes; its
   settlement (12 findings — 6 fixed, 6 recorded, 0 refuted) stopped reproducing
   a fourth r4133 defect, `CalcInjCurrAtBus`' PC-element sign.
-- **RP3.10** — the reproduced `QMode=0` dispatch (2026-09-04, **one** commit on
-  `r4133-props`; settlement owed, so its sha and the settlement's are named
-  together by the settlement's docs sync, as at §RP3.13): verdict `FIX`.
+- **RP3.10** — the reproduced `QMode=0` dispatch (2026-09-04, `9f55095b` +
+  the audit settlement on `r4133-props`): verdict `FIX`.
   `SetNominalGeneration` gets the constant-Q arm r4133 never wrote (`Else
   kvarCalc := 0`, `WindGen.pas:1320-1321`) in **both** lanes, at the cost of four
   r4133 `exclusion` entries (new cause `windgen-qmode0-no-arm`), the gate's new
   `variables` exclusion field, five pins (four new, one re-centred) with a
   citation guard, and `DIVERGENCES.md` §L7 — over zero golden bytes, with
-  `lane_diff` Δ = 0 on every gated kind. Full record:
+  `lane_diff` Δ = 0 on every gated kind. Its settlement (ten findings — eight
+  fixed, one recorded, one refuted) caught a **port bug in the new arm**: read
+  raw, `kvarBase` carries no sign once a deck types `kVA=`
+  (`RecalcElementData`'s non-negative `sqrt`, `WindGen.pas:1377-1378`), so mode 0
+  dispatched the opposite sign from arm 1 there; the arm now takes `|kvarBase|`
+  with `LeadLag` from `PFNominal`, moving no landed number. It also gave the
+  `variables` exclusion field per-scope staleness accounting. Full record:
   [`r4133-props-rp3.md`](docs/phase-records/r4133-props-rp3.md).
 
 **WP-RP4 (the unmask) — COMPLETE** (RP4.1, 2026-09-03, `59e521e5`, 23 files
@@ -170,8 +175,7 @@ zero-coverage class) landed 2026-08-29 on `r4133-props`; G1.3a–d, G1.4–G1.11
 and WP-G3–G5 remain. Full record: the same file, section "GOLDEN_REBASE WP-G1 —
 records".
 
-**Next.** §RP3.10 landed 2026-09-04, so the queue is its **audit settlement**
-(the `audit-code` + `audit-tests` pair over the sub-step's commit range) →
+**Next.** §RP3.10 landed and settled 2026-09-04, so the queue is
 **RP5.1** (operational docs) → **RP5.2** (the closing record, which flips this
 plan's `PLAN_SEQUENCE.md` row to COMPLETE) → **closeout**. §RP5.2's precondition
 "§RP3.10 is closed" is discharged by the fix, and the unmask was never at risk:
@@ -220,6 +224,29 @@ the site comment carries each row's measured cost.
 > count. The rows still open are listed after the standing follow-ups below.
 
 ### Standing open follow-ups (actionable)
+
+- **The two WindGen power-flow decks keep almost no oracle-compared solved state
+  — OPEN, recorded by the R4133_PROPS §RP3.10 audit settlement (AT-1,
+  2026-09-04).** `modes:windgen/windgen_snap_delta.dss` and
+  `modes:windgen/windgen_daily.dss` gate on `r4133` only, and RP3.10's
+  `windgen-qmode0-constant-q-{snapdelta,daily}-r4133` entries exclude
+  `voltages`, `injection`, `element`, `y`, `y_fingerprint` and the WindGen
+  `yprim` on them — deliberately, because the port dispatches `kvarBase` where
+  r4133 dispatches 0 and there is no envelope to re-assert. Both decks declare
+  only `Circuit`/`Line`/`WindGen`, so what still runs against the oracle there is
+  the iteration count (2 == 2), the forced property surface and the two
+  non-WindGen YPrims: a regression in the delta-YPrim/L-N-Vmag path or the
+  daily wind-speed dispatch — the behaviours those two cases were written to
+  gate — would now pass. The offline pins cover the pre-solve dispatch value, not
+  the solved model. **The fix is a sibling deck per case with `QMode=1`** (or
+  `QMode=2` plus a flat `y=+1` volt-var curve), `engines: "r4133"`, same
+  delta/daily paths: both engines then take the same arm, so node V, the RHS,
+  the elements, Y and YPrim are all compared again with no ledger entry. Not
+  built inside the settlement because two new manifest cases are a measured
+  population change (the lock's anti-shrink accounting and the 523-case count in
+  `CLAUDE.md`, `TESTING.md` and `corpus_gate/scheduler.rs`), i.e. its own
+  sub-step with its own audit pair. Whoever takes it owes the usual live
+  measurement that the new decks compare clean on every channel.
 
 - **The generator's NCIM reporting arm is keyed on the *global* algorithm —
   OPEN, recorded by the R4133_PROPS §RP3.13 audit settlement (AC-3,

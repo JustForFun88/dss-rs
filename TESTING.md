@@ -441,7 +441,15 @@ Runtime rules: every applicable entry must be **hit** ≥ 1 (never-applied →
 gate fails), every `divergence` — and every `exclusion` carrying a `voltages`
 scope — must still exceed the tier floor somewhere (fail-on-stale; the
 `divergence` half proven live by canary in the Phase D/E audits, the
-`exclusion` half by `a_voltages_exclusion_that_masks_nothing_is_stale`). The
+`exclusion` half by `a_voltages_exclusion_that_masks_nothing_is_stale`).
+Since the R4133_PROPS §RP3.10 audit settlement every **`variables`** scope
+carries its own liveness on top of that: those flags are per *entry*, so an
+entry that also excludes `voltages`/`element` would stay alive through them
+while a renamed state variable silently emptied its per-value mask — therefore
+each `variables` scope must itself have matched ≥ 1 variable this run, and
+`assert_all_hit` names the dead scope's `name_re` when it has not
+(`a_voltages_exclusion_that_masks_nothing_is_stale` drives that rule both
+ways). The
 oracle-free
 structural test (`ledger_is_structurally_valid`) checks unique ids, case ∈
 manifest, channel ∈ the case's `engines`, non-empty `match` for divergences,
