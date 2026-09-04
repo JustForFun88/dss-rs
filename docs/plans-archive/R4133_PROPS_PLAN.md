@@ -2800,7 +2800,7 @@ logic, zero table rows, zero tolerances, zero golden bytes, zero ledger entries.
 `PLAN_SEQUENCE.md` row 5b is COMPLETE with the measured final counters
 (normalization **168** rows, echo **82** rows, ledger **36 → 57** entries over
 **23 → 30** causes, one new tolerance — the 2e-4 display floor, **4 498 passed /
-0 failed / 5 ignored** per lane) and the gating-case outcome published as the
+0 failed / 5 ignored** per lane at this commit — 4 499 after the settlement below) and the gating-case outcome published as the
 population lock's **464** r4133-gating cases (367 `both` + 97 r4133-only;
 **313** non-`large` `both` actually property-compared) rather than the stale 462
 this section asked for; row 5a records **G1.1 as satisfied**, with **G3.4** and
@@ -2811,6 +2811,14 @@ doc comments that cited it were repointed (their line range was already wrong).
 The five-command gate ran green in **both** lanes on this tree — **4 498
 passed / 0 failed / 5 ignored** each, zero delta against the RP5.1 baseline, all
 four ledger guards `ok`; `lane_diff` not owed (no `src/` line moved).
-**Acceptance met.** Full record:
-`docs/phase-records/r4133-props-rp5.md` §RP5.2; archived-plan record:
+**Acceptance met.** Shas: `5a110653` (the closing record and the archive move),
+`bc16430b` (audit settlement, 2026-09-04 — 14 findings, 12 fixed, 1 recorded,
+1 superseded, 0 refuted: the record's own counters corrected against the tree,
+`GOLDEN_REBASE_PLAN.md`'s stale 96 r4133-only cases → 97, and both
+citation-guard gaps closed) and this sub-step's settlement-record docs commit
+(ritual step 6). Post-settlement gate, both lanes: **4 499 passed / 0 failed /
+5 ignored** — the +1 over the closing commit's 4 498 is the thirteenth
+`oracle_parity_cfg_gate` test the settlement added. Full record:
+`docs/phase-records/r4133-props-rp5.md` §RP5.2 (closing record, audit
+settlement and settlement record); archived-plan record:
 `docs/phase-records/era-summaries.md` §1a.
