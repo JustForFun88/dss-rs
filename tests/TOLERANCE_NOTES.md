@@ -513,6 +513,177 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
   newly-opened sub-ulp window; a future defect is ≥2 ulps there or visible in
   the same steps' f64 surfaces (node V / currents / powers / variables), which
   keep full tier floors.
+- **§G1.3a — the derived polar channels** (`harness::compare_element_derived`,
+  `GOLDEN_REBASE_PLAN.md` WP-G1 G1.3a): `CktElement.CurrentsMagAng`,
+  `VoltagesMagAng` and `Residuals` are *renderings* of quantities the gate
+  already compares, so **no floor is calibrated for them** — each one is the
+  image of an existing, already-calibrated tier band.
+
+  **0. The set they are images OF is a disc, not a rectangle** (written down
+  explicitly because the G1.3a F5 measurement raised the question; coordinator
+  decision D10 asked for a `√2` correction and the code refutes it). Element
+  currents go through `harness::compare_element_channels` →
+  `harness::assert_complex_close_c`, whose three operative lines are
+  `let diff = ((ar - er).powi(2) + (ai - ei).powi(2)).sqrt();`,
+  `let mag = (er * er + ei * ei).sqrt();` and
+  `let allowed = abs_floor + rel * mag;` — it bands the **modulus** of the
+  complex difference, `|Δz| ≤ abs + rel·|z|`. Node voltages reach the same
+  function through `harness::assert_complex_close`
+  (`corpus_gate/runner.rs:441,444`). So the admitted error set is the closed
+  **disc** `D(z, ρ)` with `ρ = abs + rel·|z|`, and derivations 1, 2 and 4 below
+  are images of that disc.
+  *Had* the gate banded `re` and `im` separately at `abs + rel·|component|`, the
+  admitted set would have been an axis-aligned rectangle whose modulus reaches
+  `√2·abs + rel·|z|` at 45° (Minkowski:
+  `√((abs+rel|re|)²+(abs+rel|im|)²) ≤ √2·abs + rel·√(re²+im²)`, attained iff
+  `|re| = |im|`) — up to `√2` looser than the disc. It does not, so **no `√2`
+  enters any band here and no band moves**. Pinned in both directions by
+  `harness::derived_polar_floors::the_inherited_current_band_is_a_disc_not_a_rectangle`
+  and its rejection leg `…::the_rectangles_diagonal_reach_fails_the_disc_band`
+  (feeder tier, 600 A at 45°: disc radius 7e-5 A, the rectangle's diagonal reach
+  7.414213562373095e-5 A = 1.0591733660532994× — admitted by a rectangle,
+  rejected by the gate).
+  The two live angle failures that raised the question are **not** in that gap
+  either way (`asymmetric:indmach/indmach_asym.dss` and
+  `asymmetric:combo/combo_mesh_asym.dss`, both `kind=micro`, `Transformer.tg`
+  `CurrentsMagAng[4]` on the r4133 channel): measured `1.0811686479428317e-7 °`
+  against a band of `8.916392577029153e-8 °` (×1.2125628594777123) at
+  `|I| = 1.7979012350026755e3 A`, and `1.3473783155859564e-7 °` against
+  `9.649498570331597e-8 °` (×1.3963195141855491) at
+  `|I| = 1.4616566273058197e3 A`. A rectangle would have inflated those bands by
+  only `(√2·abs + rel|z|)/(abs + rel|z|)` = ×1.148044383122301 and
+  ×1.1682661821224167 (the micro tier's `abs = 1e-6` is the only term a `√2`
+  touches), i.e. **both would still have failed**. They are genuine divergences
+  on decks whose `element` ledger entry already excludes the `currents` channel
+  they are the polar rendering of — settled by widening those scopes
+  (`tests/corpus/ledger.json`), never by a band.
+
+  The five derivations:
+
+  1. **Magnitude is the exact image of that disc.** `| |a| − |b| | ≤
+     |a − b|` (reverse triangle inequality), so a complex value already inside
+     `abs + rel·|oracle|` is inside the same band in magnitude; the bound is
+     attained at `a = z(1 ± ρ/|z|)`, so the magnitude channel admits neither more
+     nor less than the disc does. `CurrentsMagAng`
+     is the polar rendering of `CktElement.Currents` (`i_rel/i_abs`, gated
+     element-by-element by `compare_element_channels`); `VoltagesMagAng` is the
+     rendering of `NodeV[NodeRef[·]]` (`v_rel/v_abs`, gated node-by-node in
+     `harness::assert_complex_close`,
+     `corpus_gate/runner.rs:441-444`). The two evaluations of `|·|` themselves
+     differ by at most an ulp each (`num_complex::norm` = hypot vs the naive FPC
+     `Cabs`, proven equal on the whole reachable domain by
+     `line_constants::tests::naive_modulus_equals_hypot_until_the_square_overflows`),
+     i.e. ≤ 2·2.2e-16 rel — six orders under the tightest `rel` in the table
+     (micro 1e-9). Nothing widens.
+  2. **Angle = the conservative linearization of that disc's angular image.**
+     `arg` maps `D(z, ρ)` onto exactly `±asin(ρ/|z|)` radians — the tangent from
+     the origin to the error circle, valid while `ρ < |z|` (derivation 3 covers
+     the rest). The band `harness::polar_angle_band` emits is that image's
+     **linearization**, `rad2deg · allowed_mag/|z|` degrees — the same
+     construction as the voltage-scaled power floor and the `compare_monitor`
+     angle companion term above. Because `asin(x) ≥ x` the linearization is never
+     *looser* than the exact image: the angle channel can only be **stricter**
+     than the complex band it renders, never more permissive, so it can produce a
+     false failure but never a false pass. The gap is
+     `asin(x)/x − 1 = x²/6 + O(x⁴)`: at the magnitudes the corpus actually judges
+     it is below one f64 ulp (`x = 1.6841552121877197e-9` on the
+     `combo_mesh_asym` sample above → `x²/6 = 4.727297964565105e-19`; the emitted
+     `9.649498570331597e-8 °` and the exact `9.649498570331596e-8 °` differ only by
+     the ulp of the multiplication order), while at the widest band the live
+     corpus has ever emitted (`37.0083678180735 °`, `x = 0.6459178692144925`) the
+     exact image would be `40.23452908031853 °` — the band is 8.7 % tighter there,
+     with no consequence: the whole `midi_fuse` residual-angle channel measures
+     ≤ 3.9428730418000316e-7 of its band. Pinned by
+     `harness::derived_polar_floors::the_angle_band_is_the_conservative_linearization_of_its_exact_image`.
+     If a future sample ever fails **only** inside that gap, the fix is to emit
+     the exact `asin` image — a re-derivation, not a widened tolerance.
+     The band uses the **full-precision**
+     `57.29577951308232`: a tolerance is not a printed value, so the truncated
+     `57.29577951` of `CDANG` (r4133 `Shared/Ucomplex.pas:118`) belongs only
+     inside the kernel that renders the angle. At healthy magnitudes the image is
+     far *tighter* than any base band — 6.57e-6 ° at 683 A on the feeder tier,
+     and the largest band the whole IEEE13 `VoltagesMagAng` channel ever emits is
+     7.83e-7 °.
+  3. **The near-zero mask, and why the band cannot exceed 57.3 °.** Where
+     `|oracle mag| ≤ allowed_mag` the phasor is indistinguishable from zero at
+     the accepted precision and its argument carries **no** information; the
+     angle is then skipped while the magnitude — never masked — keeps the channel
+     two-sided. Because the mask fires exactly where the image would reach
+     `rad2deg · 1`, the emitted angle band can never exceed `57.29577951308232 °`
+     by construction (pinned by
+     `harness::derived_polar_floors::the_angle_band_never_exceeds_one_radian_in_degrees`;
+     largest band measured on live data: 37.0083678180735 ° on `midi_fuse`
+     residuals, 23.9211430402150 ° on IEEE13 residuals — residuals are a
+     near-cancellation by construction, so their band is the widest). The mask is
+     load-bearing, not cosmetic: the worst *masked* sample disagrees by
+     165.564025012130 ° at |I| = 5.550898829703193e-12 A (`midi_fuse`
+     `CurrentsMagAng`) and 179.999999990328 ° at |res| = 1.1368683772161605e-13 A
+     — angles of numerical zero. Every masked `VoltagesMagAng` sample is an
+     exactly-grounded conductor (`NodeRef = 0`, `NodeV[0] = 0`), where both
+     engines report 0 ° and the mask therefore hides nothing (measured: 29 of
+     134 conductors on IEEE13, 42 of 275 on `midi_fuse`, worst masked Δ = 0 ° in
+     both). For comparison the `CurrentsMagAng` mask fires on 7 of 134 / 10 of
+     275 conductors and the `Residuals` mask on 27 of 58 / 37 of 106 terminals.
+  4. **`Residuals` = a sum of conductor currents, so the band is the sum of their
+     bands.** `|δ(Σ_c I_c)| ≤ Σ_c (i_abs + i_rel·|I_c|) = nconds·i_abs +
+     i_rel·Σ_c|I_c|` (`harness::residual_band`) — the Minkowski sum of the
+     conductors' discs is the disc of the summed radius, so the bound is exact
+     rather than slack (attained when the conductor errors are collinear), and it
+     is exactly the derivation
+     `compare_element_channels` already uses for `Get_Losses` (`losses = Σ_k
+     S_k`), transplanted from powers to currents. No new tolerance class. It
+     matters because the residual is a near-cancellation by construction (≈0 on a
+     balanced terminal): IEEE13 `Line.671680` terminal 1 reads 2.83e-5 A against a
+     band of 3.0e-5 A, i.e. entirely inside the absolute floor, while
+     `Line.650632` carries ~144 A on both terminals. Honesty note: on today's
+     corpus the plain per-sample band `i_abs + i_rel·|res|` would also have
+     passed, so this derivation is not fitted to a failure — it is written down so
+     nobody later "tightens" it into a false failure on a balanced terminal.
+  5. **Angle differences are taken on the circle.** `CDANG` returns
+     `(−180, 180]`, so a phasor astride the negative real axis reads
+     `+179.99999999032846 °` on one engine and `−179.99999999032846 °` on the
+     other for an imaginary part of ±1e-18: the raw difference is
+     `359.9999999806569 °` for a physical difference of
+     `1.9343133317306638e-08 °`. `harness::wrapped_deg` folds the difference into
+     `[−180, 180]` first. This is not a relaxation — it is what "angle" means — and
+     it is bounded: a genuine sign flip still measures a full `180 °`, which is
+     above the 57.3 ° ceiling of derivation 3 and therefore fails in every case
+     (rejection leg:
+     `harness::derived_polar_floors::a_sign_flipped_angle_still_fails_the_band`).
+
+  **Measured headroom** (port vs the pinned `capi_v0145` oracle, `feeder` tier,
+  plain snapshot, worst |Δ|/band over every conductor and terminal of every
+  enabled element — `< 1` means inside the band):
+
+  | deck | cma.mag | cma.ang | vma.mag | vma.ang | res.mag | res.ang |
+  |---|---|---|---|---|---|---|
+  | IEEE13Nodeckt (38 elements) | 0.2509 | 0.04539 | 0.04588 | 0.05124 | 0.01393 | 0.01032 |
+  | controls/fuse/midi_fuse (66) | 9.006e-6 | 1.012e-5 | 3.037e-4 | 3.313e-4 | 1.018e-5 | 3.943e-7 |
+
+  The cross-*oracle* twin of the same measurement (capi_v0145 vs r4133, same
+  decks, same request) sits at the same scale — worst ratio 0.2509 on IEEE13
+  `Line.671692[1]`, `|Δ| = 4.228323e-06 A` against a band of `1.685074e-05 A` —
+  so the band is neither vacuous nor exceeded on either channel.
+
+  *Ledger side (F6′, 2026-09-04 — no band moved).* The full-corpus measurement
+  put **12** of the 442 gated cases over one of these bands, every one of them on
+  a deck whose committed `element` ledger scope already excludes the rectangular
+  channel the polar one renders; the scopes were widened per sub-channel, iterated
+  to a fixpoint (`tests/corpus/ledger.json`,
+  `measured.g13a_polar_first_failure`), plus one genuinely new capi-only entry
+  (`capi-capcontrol-time-bus-is-the-capacitors`, a different bus — not a floor
+  question). Two consequences for the derivations above. (1) The `envelope_element`
+  handler applies **exactly** these two floors, so a ledger envelope is measured on
+  the comparator's own scale. (2) A **masked** angle — magnitude at or under its
+  band, where derivation 3 says the angle carries no information and
+  `polar_close` skips it — is not envelope-checked either: measured on
+  `r4133-combomidi-injection-ulp`, a numerically-zero conductor read
+  `Transformer.t8 cma[9].ang` **139.4 °** from the oracle, so the only envelope
+  that could admit it is ±180 °, i.e. one that bounds nothing. The magnitude is
+  never skipped, so the sample stays two-sided and the entry can still go stale
+  (`ledger::a_masked_polar_angle_is_not_envelope_checked` and its rejecting twin
+  `::an_unmasked_polar_angle_still_hits_the_envelope`).
+
 - **Dynamics fixpoint residuals** (`dSpeed`/`dTheta`/`speed`) are pinned against
   the oracle's actual (small, non-zero) value, not `≈0`: `dSpeed = (Pshaft +
   electrical_power)/Mmass` is a ~1.5e-8-rel residual the oracle reproduces; a value
@@ -788,7 +959,7 @@ pinned oracle, an artifact, not an engine gap.
 
 ## `PDElements` walk — exact, and why it earns no floor (G1.6b, 2026-09-04)
 
-`harness::compare_pd_elements` (`crates/dss-core/tests/harness/mod.rs:5012`)
+`harness::compare_pd_elements` (`crates/dss-core/tests/harness/mod.rs:5828`)
 compares all fourteen fields of the per-PD-element walk with **`rel = abs = 0`**
 and takes no `Tolerances` argument at all. That is a derivation, not an
 optimism: on every gated case today each compared value is one of
@@ -808,7 +979,7 @@ optimism: on every gated case today each compared value is one of
 rounding to absorb and any difference at all is a bug, not a floor. The one
 divergence the corpus does measure is not numeric drift but an uninitialized read
 in both oracles, which is excluded field-by-field in `PD_SKIP_FIELDS`
-(`crates/dss-core/tests/harness/mod.rs:4835`) and pinned — an envelope over a
+(`crates/dss-core/tests/harness/mod.rs:5651`) and pinned — an envelope over a
 value that changes every process would not be a fact. See TESTING.md
 §"The `PDElements` walk".
 
@@ -1393,12 +1564,12 @@ dated). What was checked, and against what:
 | claim here | landed at | verdict |
 |---|---|---|
 | the floor is `2e-4` relative | `R4133_DISPLAY_FLOOR` at `harness/props_norm.rs:895` (`Option<f64>` = `Some(2e-4)`) | unchanged |
-| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:3320`) | unchanged |
+| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:4428`) | unchanged |
 | the four derivation rows (6.431124e-05 / 1.374769e-03 / 4.404256e-03 / 5.524501e-02) | the constant's own doc table, `props_norm.rs:786-792` | identical, both places |
 | 1 951 vendored spellings claimed (from 2 006, less the 55 the mechanism clause refuses) | `props_r4133_replay::CLAIMED_DISPLAY_FLOOR` = 1951 (`props_r4133_replay.rs:565`) | unchanged |
-| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:914-923` and `:931-940` (`i_rel`/`i_abs`) | unchanged |
-| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1106-1115` and `:1095-1104` | unchanged |
-| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:2511` (asserted as `i_abs / floor`) | unchanged |
+| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:959-968` and `:976-985` (`i_rel`/`i_abs`) | unchanged |
+| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1151-1160` and `:1140-1149` | unchanged |
+| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:3323` (asserted as `i_abs / floor`) | unchanged |
 | no `Tolerances` field, no `tol_for` tier moved by this plan | `Tolerances` has no props field; the floor is read only by `props_norm` | unchanged |
 
 The floor therefore still sits **3.110×** above the worst cell it claims and

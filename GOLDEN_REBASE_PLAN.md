@@ -568,6 +568,56 @@ same commit.
 from the already-gated I/V tier, documented in TOLERANCE_NOTES. Ledger triage per
 §1.1(e) — do NOT assume the export-side Iresidual bug shape; measure the API path.
 
+> **2026-09-04 — AS EXECUTED (lane `lane-e`).** Landed with `Enabled` alongside the
+> three polar channels, forced on **442** cases (`FORCED_DERIVED_POPULATION`
+> `(442, 315, 83, 44)`), both oracle channels.
+>
+> * **Q-1 settled by measurement, 0 rows.** Both API paths carry the `(i-1)*Nconds`
+>   terminal offset (r4133 `DDLL/DCktElement.pas:842`, capi
+>   `CAPI/CAPI_CktElement.pas:562`); the `Export SeqCurrents` `Iresidual` defect is
+>   confined to the report path, so it costs no ledger entry — as the plan
+>   suspected but did not assume.
+> * **Enabled-only capture.** r4133's `CktElementV(19)` dereferences a nil
+>   `NodeRef` (`DCktElement.pas:1099`, no guard) and **kills the worker** on a
+>   never-enabled element, where capi answers a one-element `DefaultResult`
+>   sentinel (`CAPI_Alt.pas:1081`). Reading the three channels for `Enabled`
+>   elements only removes the crash class and makes both transports' shapes
+>   identical — no sentinel normalization owed, no ledger row.
+> * **One mode taken here:** `CktElement.Enabled` (`CktElementI(12)`,
+>   `DCktElement.pas:263`), so `WP_G1_MODES` is **97**, not 96 — it is the safety
+>   predicate the enabled-only capture needs, and a fastdss `_columns` surface in
+>   its own right.
+> * **Two manifest opt-ins** — `Test/AutoTrans/{Auto3bus,AutoHLT}.dss`, the exact
+>   two decks fastdss *skips* `Residuals` on (`origin/fastdss`
+>   `tests/compare_outputs.py:56-59`, "Close enough for the system"): gating them
+>   is where this gate is strictly stronger than the harness it reaches parity with.
+> * **No new channel joins `LANE_SKIP_ELEM_POWERS`.** The Newton staleness is
+>   confined to the cache-aware `Get_Powers`/`Get_Losses` path
+>   (`Common/CktElement.pas:632-640`); all three of these come from a fresh
+>   `GetCurrents` or from `NodeV`, so the two `newton*` decks gain three compared
+>   channels rather than an exclusion.
+> * **Ledger: §3.4's "0 new entries" forecast was wrong in one place.** The final
+>   count is **1 new entry + 13 measured widenings** of committed `element` scopes
+>   (the kill criterion, "> ~10 **new** entries", did not fire). The new entry is
+>   `capi-capcontrol-time-bus-is-the-capacitors`: a TIMECONTROL CapControl binds
+>   its bus 1 to the **monitored element's** terminal (r4133
+>   `Controls/CapControl.pas:605` + `:622`), while capi 0.14.5 still uses the
+>   controlled capacitor's bus (`:597-608` → `:619`) — the port follows r4133, the
+>   r4133 channel needs no entry, `docs/upgrade/DIVERGENCES.md` L8 records it and
+>   `capcontrol_time_voltages_follow_the_monitored_elements_terminal` pins both
+>   numbers. The 13 widenings are per-sub-channel and measured (fixpoint iteration;
+>   `r4133-indmachmidi-injection-ulp` did not fail and was left alone).
+> * **Two comparator-shape findings the spec did not predict**, both settled without
+>   a tolerance: a 0-terminal element (`UPFCControl`, r4133
+>   `Controls/UPFCControl.pas:229-245` never sets `Nterms`) is accepted two-sidedly
+>   when neither side carries a payload, up to the capi `DefaultResult` sentinel
+>   (coordinator decision D4); and the spec's √2 rectangular-band correction (D10)
+>   is **refuted** — `harness::assert_complex_close_c` bands the *modulus*, so the
+>   inherited set is a disc and every derivation was already its image. No band moved.
+> * The first launch of this sub-step collided with G1.0's audit settlement in the
+>   main tree; F1 backed out cleanly and the sub-step was relaunched on `lane-e`
+>   (`tmp/g13a/spec_amendment.md`).
+
 ### G1.3b — per-element sequence transform
 
 `SeqCurrents`, `SeqVoltages`, `SeqPowers`: one shared accessor over
@@ -732,9 +782,12 @@ the symbol name in TESTING.md — never a silent capi-only fallback.
 superseded — the DLL has **no** `*_Get_*` symbols. It is the grouped DDLL API, one
 entry point per (family, ABI shape) with the property selected by a mode index, so
 the acceptance is the **mode probe**, and G1.0 executed it once for all of WP-G1:
-all 96 modes these three sub-steps need classify `Served` (99 since G1.6b added the
-PDElements walk arms), the expected-miss list is
-empty (`crates/dss-epri/tests/modes.rs`). The `X_Get_Y` spellings below and above
+all 96 modes these three sub-steps need classify `Served`, the expected-miss list is
+empty (`crates/dss-epri/tests/modes.rs`). **2026-09-04:** the table is now **100**
+rows — G1.6b added the three PDElements walk arms, and G1.3a added
+`CktElement.Enabled` (`CktElementI(12)`, `DCktElement.pas:263`), the safety
+predicate its enabled-only polar capture needs; the probe was re-run at 100/100
+`Served`, still zero misses. The `X_Get_Y` spellings below and above
 name the *properties* to capture, not symbols to bind. See the WP-G1 preamble note
 and TESTING.md §"The r4133 bridge — entry points, mode capability, do-not-call".)*
 

@@ -69,8 +69,9 @@ def _tolerant_read(fn, tolerate_user_model: bool):
     correct Yprim-only values). Any other errno re-raises — a real failure is
     never masked.
 
-    `capture_all_elements` keeps its own inline copy of this retry so that
-    established capture stays byte-identical; the two are deduped at merge.
+    `capture_all_elements` calls this one definition too (its inline copy was
+    deduped into this helper at the D7 lane merge, 2026-09-05); the absorbed
+    errno set and the single retry are therefore identical on both paths.
     """
     import dss as _dss
 
@@ -160,12 +161,67 @@ def capture_solution_scalars(sol) -> dict:
     }
 
 
-def capture_all_elements(ckt, tolerate_user_model: bool = False) -> list:
+def _polar_pair(flat) -> tuple:
+    """De-interleave a Pascal `[mag, ang, mag, ang, ...]` polar array into a
+    `(mags, angs)` pair — the `i_re`/`i_im`, `p_kw`/`p_kvar` convention
+    `gen_checkpoints.capture_element` already uses, so the Rust comparator
+    never does stride-2 index arithmetic. Angles are degrees on the
+    `(-180, 180]` branch cut (`Ctopolardeg` -> `CDang`, r4133
+    `Shared/Ucomplex.pas:118`)."""
+    vals = list(flat)
+    return [float(x) for x in vals[0::2]], [float(x) for x in vals[1::2]]
+
+
+def capture_all_elements(
+    ckt, tolerate_user_model: bool = False, derived: bool = False
+) -> list:
     """Every circuit element's terminal currents (A), powers (kW/kvar), and
-    losses (W/var — `CktElement.Losses`, the engine's own Get_Losses path).
+    losses (W/var — `CktElement.Losses`, the engine's own Get_Losses path);
+    under `derived` also `Enabled` and the three polar channels
+    `CurrentsMagAng` / `VoltagesMagAng` / `Residuals` (GOLDEN_REBASE G1.3a).
 
     The plan mandates comparing *all* element currents/powers/losses (not just
     the selected set), so the live gate captures the whole element list here.
+
+    Capture order is contractual (GOLDEN_REBASE_PLAN.md §1.1(a), D3) and is
+    asserted from the `capture-order: NAME (A|B|C)` markers below by
+    `crates/dss-core/tests/capture_order.rs` — a marker sits on the read line
+    itself, or on the comment line immediately above it when the read does not
+    fit; a call into another capture helper declares the reads that helper
+    performs, in its order:
+
+      A  cache-aware reads answered through `ComputeIterminal` — `Powers`,
+         `Losses` (r4133 `Common/CktElement.pas:707` `Get_Losses`, capi
+         `Common/CktElement.pas:601`), `TotalPowers`, `PhaseLosses`;
+      B  reads that run `GetCurrents` into a scratch buffer — `Currents`,
+         `CurrentsMagAng` (capi `CAPI/CAPI_Alt.pas:1043`), `Residuals` (capi
+         `CAPI/CAPI_CktElement.pas:541`, r4133 `DDLL/DCktElement.pas:827`,
+         both carrying the `(i-1)*Nconds` terminal offset), `SeqCurrents`,
+         `CplxSeqCurrents`, `SeqPowers`;
+      C  order-free reads — the element selectors, discrete state, and the
+         voltages (`VoltagesMagAng` reads `NodeV[NodeRef[i]]` only, capi
+         `CAPI/CAPI_Alt.pas:1072`).
+
+    Every A read must precede every B read: `TPCElement.GetTerminalCurrents`
+    fills the CALLER's buffer yet still stamps `IterminalSolutionCount` (r4133
+    `PCElements/PCElement.pas:247`, stamp at `:265`; capi `:107`, stamp at
+    `:126`), leaving `Iterminal` itself stale while the cache reads as fresh,
+    so a cache-aware read that follows one can answer from that stale cache
+    (CLAUDE.md upstream bug 4, harmonics `Powers`-after-`Currents`).
+    `Losses` is therefore read BEFORE `gc.capture_element` rather than after
+    it — a reordering of two group-A reads, so no captured value moves
+    (proven byte-for-byte on IEEE13, two harmonics decks and the two
+    user-model decks; G1.3a record).
+
+    `derived` (request key `"derived"`, manifest flag `compare_derived`): the
+    three polar channels are read for `Enabled` elements ONLY. r4133's
+    `CktElementV(19)` (`VoltagesMagAng`, `DDLL/DCktElement.pas:1099`)
+    dereferences `NodeRef^[i]` with no nil guard and kills the worker on a
+    never-enabled element, where capi returns its 1-element `DefaultResult`
+    (`CAPI/CAPI_Alt.pas:1081` guards `elem.NodeRef = NIL`); capturing enabled
+    elements only removes that crash class AND makes the two channels' shapes
+    identical, so no sentinel normalization is owed. `enabled` itself is
+    captured for every element and compared exactly.
 
     `tolerate_user_model` (CF-C Port 2): a Generator model=6 whose user-written
     model is not loaded fires DoSimpleMsg #567 the FIRST time its terminal
@@ -173,25 +229,33 @@ def capture_all_elements(ckt, tolerate_user_model: bool = False) -> list:
     correct (Yprim-only) currents and clears the error, so a second read returns
     them cleanly (verified: read 1 raises #567 + zeroes Error.Number, read 2 OK).
     We absorb that single priming raise (retry once) exactly as the official
-    Direct DLL warns-and-continues; any other errno re-raises.
+    Direct DLL warns-and-continues; any other errno re-raises. Under the new
+    order that priming raise lands on `Losses` instead of `Powers` — same
+    recompute, same absorbed warning.
     """
-    import dss as _dss
-
     def _read(fn):
-        try:
-            return fn()
-        except _dss.DSSException as e:
-            errno = e.args[0] if e.args else None
-            if not (tolerate_user_model and errno in _USER_MODEL_ERRNOS):
-                raise
-            return fn()  # priming read fired the warning + cleared it; retry is cached
+        # One definition of the priming retry, shared with `capture_aggregates`
+        # (the dedup its doc promised at the D7 lane merge, 2026-09-05).
+        return _tolerant_read(fn, tolerate_user_model)
 
     out = []
-    for name in ckt.AllElementNames:
+    el = ckt.ActiveCktElement  # capture-order: ActiveCktElement (C)
+    for name in ckt.AllElementNames:  # capture-order: AllElementNames (C)
+        ckt.SetActiveElement(name)  # capture-order: SetActiveElement (C)
+        enabled = bool(el.Enabled)  # capture-order: Enabled (C)
+        loss = _read(lambda: el.Losses)  # capture-order: Losses (A)
+        # capture-order: Powers (A), Currents (B)
         cap = _read(lambda: gc.capture_element(ckt, name))
-        # capture_element leaves the element active; Losses reads it.
-        loss = _read(lambda: ckt.ActiveCktElement.Losses)
         cap["loss_w"] = [float(loss[0]), float(loss[1])]
+        if derived:
+            cap["enabled"] = enabled
+            if enabled:
+                cma = _read(lambda: el.CurrentsMagAng)  # capture-order: CurrentsMagAng (B)
+                res = _read(lambda: el.Residuals)  # capture-order: Residuals (B)
+                vma = _read(lambda: el.VoltagesMagAng)  # capture-order: VoltagesMagAng (C)
+                cap["cma_mag"], cap["cma_ang"] = _polar_pair(cma)
+                cap["res_mag"], cap["res_ang"] = _polar_pair(res)
+                cap["vma_mag"], cap["vma_ang"] = _polar_pair(vma)
         out.append(cap)
     return out
 
@@ -509,6 +573,12 @@ def run_case(d, req: dict) -> dict:
     # (heavy: elements x props x steps queries) — the Rust property gate and the
     # env-gated `corpus_live_properties` pilot force it.
     want_all_props = bool(req.get("all_properties", False))
+    # GOLDEN_REBASE G1.3a (manifest flag `compare_derived`): the per-element
+    # polar channels `CurrentsMagAng` / `VoltagesMagAng` / `Residuals` plus
+    # `Enabled`. Opt-in because the three extra reads roughly double the
+    # per-element payload; the same request key reaches the r4133 worker
+    # unchanged (`corpus_gate::engines::build_run_request`).
+    want_derived = bool(req.get("derived", False))
     # WPG.5 (AutoAdd): `DSS.GlobalResult` after each solve (the winner + figure)
     # and the `<CircuitName_>AutoAddLog.csv` the search writes. `Text.Result` is
     # captured IMMEDIATELY after `solve`, before any `?`-query capture overwrites
@@ -645,7 +715,9 @@ def run_case(d, req: dict) -> dict:
                         "y": gc.capture_system_y(d) if full_csc else None,
                         "y_fingerprint": gc.capture_fingerprint(d),
                         "yprims": [gc.capture_yprim(ckt, nm) for nm in sel],
-                        "elements": capture_all_elements(ckt, warn_and_continue),
+                        "elements": capture_all_elements(
+                            ckt, warn_and_continue, want_derived
+                        ),
                         "injection": gc.capture_injection(d),
                         "transformers": disc["transformers"],
                         "regcontrols": disc["regcontrols"],
