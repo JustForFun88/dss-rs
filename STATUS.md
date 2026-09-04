@@ -154,24 +154,26 @@ WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 **GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened 2026-08-08;
 since 2026-09-04 its chains run in parallel **lanes** — worktrees
 `.claude/worktrees/lane-*`, D7 — merged into `update` one sub-step at a time).
-Landed: **G1.1**, killed on day one, handed to `R4133_PROPS_PLAN.md` and delivered
-by its RP4.1 2026-09-03 — **G1.1 satisfied**, **G3.4**/**G3.5** unblocked; **G1.2**
-(the ESPVLControl deck) 2026-08-29; **G1.0**, the rails ahead of G1.3a (the flag
-vocabulary in one lock regen, exclusion `channels`, the capture-presence guard, the
-r4133 bridge whose 96-mode probe **discharges G1.11 for the whole WP**), 2026-09-04
-on `update`, `c4b67a6e` + `42454b64`/`14bb0f23`, gate **4 605 / 0 / 5** per lane,
-`lane_diff` max |Δ| = 0; **G1.9** (lane `lane-s`, 2026-09-04, `9757d26c` +
-settlement `f27f9598` + docs; audits 6 fixed / 5 recorded / 2 refuted), the five
-`Circuit` aggregates and ten `Solution` scalars live and universal on both channels
-— no lock regen, 0 ledger entries, no kill criterion met. G1.3a–d, G1.4–G1.8,
-G1.10–G1.11c and WP-G3–G5 remain; full record: the same file.
+Landed: **G1.1**, killed on day one and delivered by `R4133_PROPS_PLAN.md` RP4.1
+2026-09-03 (**G1.1 satisfied**, **G3.4**/**G3.5** unblocked); **G1.2** (the
+ESPVLControl deck) 2026-08-29; **G1.0** the rails — flag vocabulary in one lock
+regen, exclusion `channels`, capture-presence guard, the r4133 bridge whose mode
+probe **discharges G1.11 for the whole WP** — `c4b67a6e` + `42454b64`/`14bb0f23`;
+**G1.9** (lane `lane-s`, `9757d26c` + `f27f9598`), the five `Circuit` aggregates
+and ten `Solution` scalars, universal on both channels; **G1.6b** (lane `lane-m`,
+`06808a6d` + `e1e18367` + `c6a3c0a8`), the WP's **first surface** — the
+`PDElements` walk (13 fastdss columns + `parent_name`, exact, both channels), eight
+pinned `PD_SKIP_FIELDS` cells for an uninitialized read in **both** oracles,
+`WP_G1_MODES` 96 → 99, plus the **D9** engine fix (`MakeBusList` resets the meter
+zones, `Circuit.pas:2411`); merged `--no-ff`, `06808a6d` not building alone. The
+last three landed 2026-09-04, each with **0** ledger entries and 0 golden bytes.
+G1.3a–d, G1.4–G1.8, G1.10–G1.11c and WP-G3–G5 remain; record: same file.
 
-**Next.** Lane `lane-s` takes **G1.7** (topology: `NumLoops`, `NumIsolated*`,
-`AllLoopedPairs`), then G1.8 and G1.10a–c; the element lane runs G1.3a→3d→3b→3c,
-the bus lane G1.4a→G1.5→G1.4c→G1.4b, the PD/meter lane G1.6b→G1.6(i)→G1.6(ii),
-each merged into `update` one sub-step at a time. Then WP-G3–G5, inside which
-**G3.4**/**G3.5**, blocked since 2026-08-08, are runnable. Queued behind
-GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING, UPGRADE.
+**Next.** `lane-m` takes **G1.6(i)** (meter extras + per-bus reliability columns;
+it drives `RelCalc` and owes the non-vacuity of G1.6b's four zone-derived fields);
+`lane-s` **G1.7** (topology), then G1.8, G1.10a–c; the element lane
+G1.3a→3d(i)→3d(ii)→3b→3c, the bus lane G1.4a→G1.5→G1.4c→G1.4b. Then WP-G3–G5;
+queued behind: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
@@ -327,28 +329,26 @@ the site comment carries each row's measured cost.
   re-probe the skip-bearing cases with `DSS_GATE_SEED_LEDGER=1
   DSS_GATE_SEED_ONLY=<case>` and delete any entry whose cause upstream has fixed,
   so the r4133 channel re-lights instead of staying dark forever.
-- **`CorpusGuard` can leak deck-written artifacts under concurrency —
-  OPEN, out-of-scope observation (first seen at GOLDEN_REBASE G1.2,
-  2026-08-29).** Unfiltered `cargo test --workspace` runs intermittently leave
-  untracked deck-written exports inside the tracked corpus tree — nearly always
-  `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*` / `AutoHLT_*`
-  `.txt`, written by the vendored decks' own `export … file=` lines) —
-  contradicting TESTING.md's "keep `tests/corpus` pristine afterwards".
-  Consistent with an overlapping-guard snapshot race (cf. the unit test
-  `corpus_guard_overlapping_guards_still_sweep`) plus the case-insensitive
-  collision `corpus_gate/runner.rs:42-55` (the same file appears both
-  `Auto3bus_HL_current.txt` and `auto3bus_hl_current.txt`). **Sixteen sightings**
-  2026-08-29 … 2026-09-04 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2, §RP3.10 ×3,
-  §RP5.1 ×1, G1.0 ×2, G1.9 ×2), the set varying in size (1 … 36 files) and in case
-  between successive runs of the *same* tree — the nondeterminism itself was
-  measured at §RP3.13 — and once accompanied by an unreproducible `corpus_gate` `137
-  passed; 1 failed`, most likely this race. Every set was removed before the commit
-  — by exact name, `git clean -fd` scoped to the deck tree (§RP3.10), or by hand
-  (§RP5.1) — and both lanes were green with the files present, no tracked corpus or
-  golden byte ever moving, so the leak costs hygiene only. Per-run detail is in the
-  per-WP records (`r4133-props-rp3.md`, `-rp4.md`, `golden-rebase.md`). Sixteen
-  sightings make it a pattern, not a fluke: whoever picks it up should start with
-  `DSS_GATE_JOBS=1` per G2.2d.
+- **`CorpusGuard` leaks deck-written artifacts under concurrency — mechanism MEASURED
+  at GOLDEN_REBASE G1.6b (2026-09-04, audit settlement T5); still OPEN, owed a hygiene
+  sub-step** (first seen at G1.2, 2026-08-29). Unfiltered `cargo test --workspace`
+  runs intermittently leave untracked deck-written exports in the tracked corpus tree
+  — nearly always `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*` /
+  `AutoHLT_*` `.txt`, from the decks' own `export … file=` lines). **Seventeen
+  sightings** 2026-08-29 … 2026-09-04 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2,
+  §RP3.10 ×3, §RP5.1 ×1, G1.0 ×2, G1.9 ×2, G1.6b ×1), 1 … 36 files, varying between
+  runs of the *same* tree (measured at §RP3.13) and once with an unreproducible
+  `corpus_gate` `137 passed; 1 failed`; every set was removed before its commit and
+  both lanes were green with the files present, no tracked corpus or golden byte ever
+  moving, so the leak costs hygiene only. **It is a drop-order race, not a missing
+  sweep:** `impl Drop for CorpusGuard` (`corpus_gate/runner.rs:161-190`) releases the
+  directory lock *before* `sweep_created` and the restore loop run, so a sibling case
+  starting in that window (`Test/AutoTrans` holds five cases in one directory)
+  photographs the outgoing case's exports as "vendored" and its own drop rewrites them
+  — only files under `RESTORE_MAX`; scoped or single-binary runs leave it clean, and
+  the case-insensitive collision at `runner.rs:42-55` compounds it. The fix (hold the
+  lock across sweep + restore) owes a gate-contention measurement in a file every lane
+  is editing (**D7**); start with `DSS_GATE_JOBS=1` per G2.2d.
 
 **Carried-forward and residual-floor items — the rows still open.** Full text,
 closed rows and all:

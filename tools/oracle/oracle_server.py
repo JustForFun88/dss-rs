@@ -348,6 +348,73 @@ def capture_all_meters(ckt) -> list:
     return out
 
 
+def capture_pd_elements(ckt) -> list:
+    """Every ENABLED PD element's `PDElements` interface record — the thirteen
+    `IPDElements._columns` fields of the fastdss parity target plus the parent's
+    full name (`GOLDEN_REBASE_PLAN.md` §1.1 row 10, sub-step G1.6b).
+
+    Membership and order are the circuit's `PDElements` pointer list, walked by
+    `PDElements_Get_First`/`_Get_Next` (`CAPI/CAPI_PDElements.pas:129-143` ->
+    `Generic_CktElement_Get_First`/`_Next`, `CAPI/CAPI_Utils.pas:721-758`), which
+    skip `not Enabled` and assign `ActiveCktElement` from the list. `Fault`
+    objects are `FAULTOBJECT + NON_PCPD_ELEM` (`PDElements/Fault.pas:114`) and so
+    never appear; the six classes that do are Line / Transformer / AutoTrans /
+    Capacitor / Reactor / GICTransformer (`Common/Circuit.pas:2242-2248`).
+
+    READ-ORDER CONTRACT — `ParentPDElement` is read LAST, and nothing but the
+    parent-name read may follow it. `PDElements_Get_ParentPDElement`
+    (`CAPI/CAPI_PDElements.pas:245-257`; the r4133 DDLL arm
+    `Version8/Source/DDLL/DPDELements.pas:88-97` is identical) does
+    `ActiveCircuit.ActiveCktElement := elem.ParentPDElement` and never restores
+    it, so every field read after it returns the *parent's* value. fastdss reads
+    it second (`_columns` order) and so contaminates its own records: measured,
+    215 cells of the 138-element IEEE123 walk move — identically on both channels
+    (e.g. `Line.l1.Totalcustomers` 1 -> 91, `Line.l2.Numcustomers` 0 -> 1).
+    Reading it last makes the mutation free and lets us read the parent's FULL
+    name off `ActiveCktElement` (`CktElement_Get_Name` returns `elem.FullName`,
+    `CAPI/CAPI_CktElement.pas:172-180`) — the strictly stronger half of the
+    comparison (88 distinct values on IEEE123 against the `ClassIndex`'s 85).
+    The iteration itself is immune: `Get_Next` advances the pointer list, not
+    `ActiveCktElement` (`CAPI/CAPI_Utils.pas:740-758`). Asserted statically by
+    `crates/dss-core/tests/pd_elements_pins.rs`.
+
+    `parent_name` is read ONLY when `parent_class_index` is non-zero: with a NIL
+    parent the getter leaves the active element alone ("leaves ActiveCktElement
+    as is", `CAPI/CAPI_PDElements.pas:251`) and a name read would echo the
+    element's own name instead of the empty string.
+    """
+    out = []
+    pde = ckt.PDElements
+    i = pde.First
+    while i:
+        # The twelve order-free fields, in the record order. `IsShunt` is a bool
+        # here and 0/1 on the r4133 DDLL — both capture sides emit a bool.
+        rec = {
+            "name": str(pde.Name),
+            "accumulated_l": float(pde.AccumulatedL),
+            "from_terminal": int(pde.FromTerminal),
+            "is_shunt": bool(pde.IsShunt),
+            "num_customers": int(pde.Numcustomers),
+            "section_id": int(pde.SectionID),
+            "fault_rate": float(pde.FaultRate),
+            "repair_time": float(pde.RepairTime),
+            "total_miles": float(pde.TotalMiles),
+            "total_customers": int(pde.Totalcustomers),
+            "pct_permanent": float(pde.pctPermanent),
+            "lambda": float(pde.Lambda),
+        }
+        # LAST field read of the record (the contract above); it moves
+        # `ActiveCktElement` to the parent, so the parent's full name is read
+        # immediately after it and nothing else may come between.
+        rec["parent_class_index"] = int(pde.ParentPDElement)
+        rec["parent_name"] = (
+            str(ckt.ActiveCktElement.Name) if rec["parent_class_index"] else ""
+        )
+        out.append(rec)
+        i = pde.Next
+    return out
+
+
 # OpenDSS `Show`/`Export`/`Save` write report files into the compiled case's
 # directory (`OutputDirectory := DataDirectory := <case dir>` in
 # `DSSGlobals.SetDataPath`, which `Compile` calls). The live gate only compares
@@ -455,6 +522,12 @@ def run_case(d, req: dict) -> dict:
     # incidental monitors would surface ill-defined snapshot-sampling edge cases
     # (e.g. a monitor defined after the master's only Solve) unrelated to the gate.
     check_mm = bool(req.get("check_meters_monitors", False))
+    # G1.6b: the per-PD-element `PDElements` interface walk. Opt-in (the Rust
+    # scheduler forces it on every live non-`large` case); when off the checkpoint
+    # carries `None`, not `[]`, so the gate can tell "not requested" apart from
+    # "requested, and this circuit simply has no PD element" (96 of the 372 walked
+    # live cases have none) — `harness::capture_guard::require_capture_opt`.
+    want_pde = bool(req.get("pd_elements", False))
     # CF-C Port 2 user-model decks: tolerate the `_USER_MODEL_ERRNOS` at compile
     # AND at every solve (EarlyAbort is turned off around this call in main()).
     warn_and_continue = bool(req.get("warn_and_continue", False))
@@ -563,6 +636,13 @@ def run_case(d, req: dict) -> dict:
                         "capacitors": disc["capacitors"],
                         "monitors": capture_all_monitors(ckt) if check_mm else [],
                         "meters": capture_all_meters(ckt) if check_mm else [],
+                        # G1.6b: AFTER the meters, BEFORE the probes. The walk
+                        # mutates the active element (`ParentPDElement`), and
+                        # every reader below re-selects its own element
+                        # (`? el.prop` / `SetActiveElement`), so this is the one
+                        # slot where it perturbs nothing; `crates/dss-epri`'s
+                        # `run_case` uses the identical slot.
+                        "pd_elements": capture_pd_elements(ckt) if want_pde else None,
                         "probes": capture_probes(d, probes),
                         "variables": capture_variables(ckt, variables),
                         "eventlog": (capture_eventlog(d, ckt) if want_eventlog else []),
