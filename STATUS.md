@@ -36,18 +36,17 @@ the behavioral authority, the pinned dss_capi 0.14.5 is a numeric oracle only,
 and upstream bugs are never reproduced in any lane** — the `oracle-parity` lane
 has shrunk to a precision-compat lane and is scheduled for full teardown.
 
-**In flight.** `GOLDEN_REBASE_PLAN.md` **WP-G1**, on branch **`update`** (the
-R4133_PROPS branch `r4133-props` was merged and deleted 2026-09-04). **`R4133_PROPS_PLAN.md` is COMPLETE**
-(2026-09-04, §RP5.2) — all six WPs gate-green in both lanes over 26 sub-steps /
-**67** RP-titled commits (64 through RP5.1's `64474762`, plus RP5.2's
-`5a110653`, its settlement `bc16430b` and this record), plan archived to
-`docs/plans-archive/`, `PLAN_SEQUENCE.md` row 5b COMPLETE with the final
-counters, record in
-[`era-summaries.md`](docs/phase-records/era-summaries.md) §1a, **G1.1 handed back
-satisfied**. Close-out 2026-09-04: `update` fast-forwarded to `r4133-props`
-@ `2724a139` (32 commits) and pushed to `origin/update`. Execution stays
-single-branch: `ledger.json`, `population.lock.json`, `golden.lock.json` are
-fail-on-stale.
+**In flight.** `GOLDEN_REBASE_PLAN.md` **WP-G1**, integrating on branch
+**`update`** (the R4133_PROPS branch `r4133-props` was merged and deleted
+2026-09-04); since 2026-09-04 the WP's independent sub-step chains run in
+parallel `lane-*` worktrees and a merge agent lands one at a time, regenerating
+`population.lock.json` on the merged tree and unioning `ledger.json` (**D7**) —
+the three fail-on-stale locks stay single-branch on `update`.
+**`R4133_PROPS_PLAN.md` is COMPLETE** (2026-09-04, §RP5.2) — six WPs / 26
+sub-steps / **67** RP-titled commits, plan archived to `docs/plans-archive/`,
+`PLAN_SEQUENCE.md` row 5b COMPLETE with the final counters, record in
+[`era-summaries.md`](docs/phase-records/era-summaries.md) §1a, **G1.1 handed
+back satisfied**.
 
 **Record placement (from 2026-09-03).** Every sub-step's **full** record is
 appended to its per-WP file under `docs/phase-records/` — WP-RP3 →
@@ -151,27 +150,28 @@ the six CLAUDE.md §"Known upstream bugs" reproduced in any lane. Full record:
 WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 
 **GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened
-2026-08-08). Landed so far: **G1.1** — killed on day one (433 of 438 walked
-live cases diverged), handed to `R4133_PROPS_PLAN.md` (user decision
-2026-08-22) and delivered by its RP4.1 on 2026-09-03, so **G1.1 is satisfied**
-and **G3.4** (`cim/`, `json/`, `json_import/`) + **G3.5** (`props/`) are
-unblocked, their value witness now the live r4133 property compare. **G1.2**
-(the ESPVLControl deck, the last zero-coverage class) landed 2026-08-29.
-**G1.0** — a new rails sub-step ahead of G1.3a (decisions D1/D2/D3) — landed
-2026-09-04: the ten-flag manifest vocabulary in **one** lock regen, explicit
-`channels` on the ten bare `element` exclusions, the capture-presence guard, and
-the r4133 bridge rails, whose 96-mode probe **also discharges the G1.11
-mode-capability acceptance for the whole WP** (zero misses); it compares nothing
-new — 0 ledger entries, 0 golden bytes. G1.3a–d, G1.4–G1.11c and WP-G3–G5
+2026-08-08). Landed: **G1.1** — killed on day one, delivered instead by
+`R4133_PROPS_PLAN.md` RP4.1 (2026-09-03), so **G1.1 is satisfied** and **G3.4**
+(`cim/`, `json/`, `json_import/`) + **G3.5** (`props/`) are unblocked. **G1.2**
+(the ESPVLControl deck, the last zero-coverage class) 2026-08-29. **G1.0** (the rails, D1/D2/D3) 2026-09-04: the
+ten-flag manifest vocabulary in **one** lock regen, explicit `channels` on the
+ten bare `element` exclusions, the capture-presence guard and the r4133 bridge
+rails, whose mode probe **discharges the G1.11 mode-capability acceptance for
+the whole WP**; it compares nothing new. **G1.6b** — the WP's first surface,
+the `PDElements` walk (13 fastdss columns + `parent_name`, both channels,
+compared exactly) — landed 2026-09-04 on lane `lane-m`: 0 ledger entries, 0
+golden bytes, no floor, eight `PD_SKIP_FIELDS` cells excluded for a proven
+uninitialized read in **both** oracles and pinned, `WP_G1_MODES` 96 → 99, plus
+the D9 engine fix (`MakeBusList` now resets the meter zones,
+`Circuit.pas:2411`; one corpus deck moved). G1.3a–d, G1.4–G1.11c and WP-G3–G5
 remain. Full record: the same file, section "GOLDEN_REBASE WP-G1 — records".
 
-**Next.** **`GOLDEN_REBASE_PLAN.md` G1.3a** (per-element `CurrentsMagAng`,
-`VoltagesMagAng`, `Residuals`) — the first surface sub-step now that G1.0's
-rails are in: it wires **both** channels in one commit and its capture test
-asserts the A/B/C request order (plan §1.1(a), D3). Then G1.3b–d, G1.4–G1.11c
-and WP-G3–G5 — inside which **G3.4**/**G3.5**, blocked since 2026-08-08, are
-runnable. Queued behind GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE,
-MULTITHREADING, UPGRADE.
+**Next.** **`GOLDEN_REBASE_PLAN.md` G1.6(i)** on lane `lane-m` — meter extras +
+the per-bus reliability columns; it drives `RelCalc` and owes the oracle-compared
+non-vacuity of G1.6b's four zone-derived fields. In parallel:
+element `G1.3a → 3d(i) → 3d(ii) → 3b → 3c`, bus `G1.4a → G1.5 → G1.4c → G1.4b`,
+singles `G1.9 → G1.7 → G1.8 → G1.10a/b/c`; **G3.4**/**G3.5** runnable. Queued
+behind GOLDEN_REBASE: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the

@@ -783,6 +783,39 @@ only for cases that sample them in deterministic modes (`check_meters_monitors` 
 `solvable_now.json`) — an unsampled monitor returns a phantom channel from the
 pinned oracle, an artifact, not an engine gap.
 
+## `PDElements` walk — exact, and why it earns no floor (G1.6b, 2026-09-04)
+
+`harness::compare_pd_elements` (`crates/dss-core/tests/harness/mod.rs:4971`)
+compares all fourteen fields of the per-PD-element walk with **`rel = abs = 0`**
+and takes no `Tolerances` argument at all. That is a derivation, not an
+optimism: on every gated case today each compared value is one of
+
+* a **class default** the constructor stores verbatim (r4133 line numbers) —
+  `Capacitor` / `Reactor` `FaultRate` 0.0005, `PctPerm` 100.0, `HrsToRepair` 3.0
+  (`Capacitor.pas:555-557`, `Reactor.pas:601-603`), `Line` 0.1 / 20.0 / 3.0
+  (`Line.pas:839-841`), `Transformer` 0.007 / 0.0 / 0.0 (`Transformer.pas:959`
+  sets only `FaultRate`; the other two keep Pascal's zero-initialized 0.0);
+* a **deck literal** parsed independently by both engines — FPC `Val` and Rust
+  `str::parse::<f64>` are both correctly-rounded decimal→binary64, so the two
+  bit patterns are identical, not merely close;
+* an **untouched `0.0`** (the four `RelCalc`-dependent fields, below);
+* or a **discrete** integer / bool / name string.
+
+**No arithmetic is performed on either side of this surface**, so there is no
+rounding to absorb and any difference at all is a bug, not a floor. The one
+divergence the corpus does measure is not numeric drift but an uninitialized read
+in both oracles, which is excluded field-by-field in `PD_SKIP_FIELDS`
+(`crates/dss-core/tests/harness/mod.rs:4822`) and pinned — an envelope over a
+value that changes every process would not be a fact. See TESTING.md
+§"The `PDElements` walk".
+
+**Standing obligation for G1.6(i).** `Lambda`, `AccumulatedL` and `TotalMiles`
+are 0 on every live case today because no gated deck runs `RelCalc`. The moment
+G1.6(i) drives it they become accumulated sums over a zone walk
+(`PDElement.pas:106-110`), summation order becomes observable, and this section
+must be **re-derived** before those three stay in the exact set — they are the
+only fields on this surface that can ever acquire a floor.
+
 ## r4133 event-log masks (`harness::EVENTLOG_MASKS`, §1.3-3)
 
 `compare_eventlog` compares the cumulative event log line-for-line (numeric
