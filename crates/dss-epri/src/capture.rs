@@ -49,6 +49,11 @@ pub struct RunRequest {
     pub selected_elements: Vec<String>,
     #[serde(default)]
     pub check_meters_monitors: bool,
+    /// Capture the `PDElements` walk (GOLDEN_REBASE G1.6b). The capi channel
+    /// spells the same request key (`oracle_server.run_case`), so the two
+    /// transports are requested and ordered identically.
+    #[serde(default)]
+    pub pd_elements: bool,
     #[serde(default)]
     pub probes: Vec<ProbeSpec>,
     #[serde(default)]
@@ -115,6 +120,11 @@ struct Checkpoint {
     capacitors: BTreeMap<String, Vec<i32>>,
     monitors: Vec<MonitorCap>,
     meters: Vec<MeterCap>,
+    /// `None` when the run did not request the walk — distinct from `Some([])`,
+    /// "requested, and this circuit has no enabled PD element" (96 of the 372
+    /// walked live cases). The gate's capture guard refuses `None` on a case
+    /// whose manifest set the flag.
+    pd_elements: Option<Vec<PdElementCap>>,
     probes: Vec<ProbeCap>,
     variables: Vec<VariablesCap>,
     eventlog: Vec<String>,
@@ -186,6 +196,46 @@ struct MeterCap {
     branches: Vec<String>,
     ends: Vec<String>,
     pce: Vec<String>,
+}
+
+/// One enabled PD element's `PDElements` record (GOLDEN_REBASE G1.6b): the
+/// thirteen columns `IPDElements._columns` compares wholesale on
+/// `DSS-Python origin/fastdss:dss/IPDElements.py`, plus `parent_name` — the
+/// parent's full name, which `ParentPDElement`'s active-element hijack hands
+/// out for free and which is immune to the `ClassIndex` ambiguity a bare
+/// per-class index carries.
+///
+/// Field order **is** the read order, and the read order is the contract: the
+/// twelve order-free reads first, then `parent_class_index`
+/// (`DPDELements.pas:88-97` reassigns `ActiveCktElement` to the parent and never
+/// restores it), then the parent's name off that hijacked cursor. The key
+/// *names* and types are the contract on the wire — the worker's
+/// `serde_json::Value` sorts object keys, so JSON order carries no meaning —
+/// and they match `oracle_server.capture_pd_elements` field for field, which is
+/// what `harness::PdElementCap` deserializes on both channels.
+#[derive(Serialize)]
+pub struct PdElementCap {
+    pub name: String,
+    pub accumulated_l: f64,
+    /// 1-based, as the DDLL reports it (`TPDElement.FromTerminal`); 0 = unset.
+    pub from_terminal: i32,
+    /// `PDElementsI(3)` answers 0/1; normalized to the `bool` the capi channel
+    /// returns, so the two transports agree on the JSON shape.
+    pub is_shunt: bool,
+    pub num_customers: i32,
+    pub section_id: i32,
+    pub fault_rate: f64,
+    pub repair_time: f64,
+    /// `AccumulatedMilesDownStream` (`DPDELements.pas:201-209`) — a different
+    /// quantity from `Bus.TotalMiles`.
+    pub total_miles: f64,
+    pub total_customers: i32,
+    pub pct_permanent: f64,
+    pub lambda: f64,
+    /// The parent's `ClassIndex` (1-based, per-class creation order), 0 = none.
+    pub parent_class_index: i32,
+    /// The parent's full `Class.Name`, `""` when there is no parent.
+    pub parent_name: String,
 }
 
 #[derive(Serialize)]
@@ -365,6 +415,17 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 Vec::new()
             };
 
+            // After the meters and BEFORE the probes — the slot
+            // `oracle_server.run_case` gives it, so the two transports issue the
+            // walk at the same point of the step. The walk is an active-element
+            // mutator (`PDElements.First/Next/ParentPDElement`), so its
+            // placement is fixed, not incidental.
+            let pd_elements = if req.pd_elements {
+                Some(capture_pd_elements(engine)?)
+            } else {
+                None
+            };
+
             let probes = capture_probes(engine, &req.probes)?;
             let variables = capture_variables(engine, &req.variables)?;
             let eventlog = if req.eventlog {
@@ -403,6 +464,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 capacitors,
                 monitors,
                 meters,
+                pd_elements,
                 probes,
                 variables,
                 eventlog,
@@ -734,6 +796,78 @@ fn capture_meters(engine: &Engine) -> Result<Vec<MeterCap>, EngineError> {
         has = engine.meters_next();
     }
     engine.assert_clean("meters")?;
+    Ok(out)
+}
+
+/// The `PDElements` walk (GOLDEN_REBASE G1.6b): every **enabled** PD element of
+/// the circuit, in `PDElements` pointer-list order (`DPDELements.pas:27-59`
+/// skips the disabled ones, exactly like the capi channel's
+/// `Generic_CktElement_Get_First/Next`).
+///
+/// The read order inside a record is load-bearing.
+/// `PDElementsI(6)` (`PDElements.ParentPDElement`, `DPDELements.pas:88-97`)
+/// does `ActiveCktElement := ActivePDElement.ParentPDElement` and never restores
+/// it, so **every** field read after it in the same record returns the
+/// *parent's* value: fastdss reads it second (`IPDElements._columns`) and
+/// contaminates 215 of the 138-element IEEE123 walk's own cells (measured on
+/// both channels, 2026-09-04). This capture therefore reads it **last**, and
+/// only then reads the name off the hijacked cursor to obtain `parent_name`.
+/// When there is no parent the DDLL leaves `ActiveCktElement` alone
+/// (`DPDELements.pas:92` "leaves ActiveCktElement as is"), so the name read is
+/// skipped — it would echo the element's own name.
+///
+/// The iteration itself survives the hijack: `First`/`Next` drive the circuit's
+/// `PDElements` pointer list, not `ActiveCktElement`.
+///
+/// The walk length is **not** `PDElements.Count` (`PDElementsI(0)` returns the
+/// raw `ListSize`, disabled elements included): measured on a two-line circuit
+/// with one `enabled=no` line, `I:0` = 2 while the walk yields the one enabled
+/// element. A circuit with no PD element at all returns an empty `Vec` — 96 of
+/// the 372 walked live corpus cases are in that shape, so the gate's guard is
+/// presence-based, never `len() > 0`.
+pub fn capture_pd_elements(engine: &Engine) -> Result<Vec<PdElementCap>, EngineError> {
+    let mut out = Vec::new();
+    let mut has = engine.pd_elements_first()?;
+    while has {
+        // The twelve order-free reads, in the `IPDElements._columns` order.
+        let name = engine.pd_elements_name()?;
+        let accumulated_l = engine.pd_elements_accumulated_l()?;
+        let from_terminal = engine.pd_elements_from_terminal()?;
+        let is_shunt = engine.pd_elements_is_shunt()? != 0;
+        let num_customers = engine.pd_elements_num_customers()?;
+        let section_id = engine.pd_elements_section_id()?;
+        let fault_rate = engine.pd_elements_fault_rate()?;
+        let repair_time = engine.pd_elements_repair_time()?;
+        let total_miles = engine.pd_elements_total_miles()?;
+        let total_customers = engine.pd_elements_total_customers()?;
+        let pct_permanent = engine.pd_elements_pct_permanent()?;
+        let lambda = engine.pd_elements_lambda()?;
+        // LAST: this moves `ActiveCktElement` to the parent (see the doc above).
+        let parent_class_index = engine.pd_elements_parent_pd_element()?;
+        let parent_name = if parent_class_index != 0 {
+            engine.pd_elements_name()?
+        } else {
+            String::new()
+        };
+        out.push(PdElementCap {
+            name,
+            accumulated_l,
+            from_terminal,
+            is_shunt,
+            num_customers,
+            section_id,
+            fault_rate,
+            repair_time,
+            total_miles,
+            total_customers,
+            pct_permanent,
+            lambda,
+            parent_class_index,
+            parent_name,
+        });
+        has = engine.pd_elements_next()?;
+    }
+    engine.assert_clean("pd_elements")?;
     Ok(out)
 }
 
