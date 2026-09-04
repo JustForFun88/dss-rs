@@ -272,6 +272,74 @@ fn force_pdelements(source: &str, c: &mut SolvableCase) {
 /// moved, instead of silently following the other one.
 const FORCED_PDELEMENTS_POPULATION: (usize, usize, usize, usize) = (440, 313, 83, 44);
 
+/// Apply the per-source **derived-channel** forcing rule to a live case
+/// (`GOLDEN_REBASE_PLAN.md` §1.1(e), G1.3a).
+///
+/// Same shape and the same one cost guard as [`force_properties`]: **every live
+/// case, minus `kind=large*` on the `solvable_now` arm.** Both channels honor
+/// the request (`engines::build_run_request`'s `derived` key), so there is no
+/// channel predicate here either — writing one would be the same tautology
+/// [`force_properties`] documents.
+///
+/// Kept as a **separate** function and a separate lock
+/// ([`FORCED_DERIVED_POPULATION`]) rather than folded into the property rule
+/// even though the two forcing rules coincide today (the populations already
+/// differ by the two opt-ins): they answer to different plans (the RP4.1
+/// census vs WP-G1's surface roll-out), and a later divergence of the rules
+/// — G1.3b/c widen this flag's surface, and a heavy deck could earn an
+/// opt-out from one and not the other — must show as its own lock's diff.
+///
+/// The family arm carries no `large` test, exactly like [`force_properties`]';
+/// it is inert while no family deck is `kind=large*`, which
+/// [`the_property_forcing_rule_is_every_live_non_large_case`] asserts over this
+/// very population rather than assuming.
+///
+/// A manifest may also set `compare_derived` itself, which only ever ADDS — see
+/// [`DERIVED_MANIFEST_OPT_INS`].
+fn force_derived(source: &str, c: &mut SolvableCase) {
+    match source {
+        "solvable_now" => {
+            if !c.kind.starts_with("large") {
+                c.compare_derived = true;
+            }
+        }
+        _ => c.compare_derived = true,
+    }
+}
+
+/// The cases whose **manifest** switches `compare_derived` on, on top of
+/// [`force_derived`]'s rule — pinned here so an opt-in is a reviewed line of
+/// Rust, not a JSON key nobody re-reads.
+///
+/// Both are `kind=large_near_ideal_source` (hence outside the cost guard) but
+/// carry only 8 and 5 elements, so the guard's cost rationale does not apply to
+/// them; and they are exactly the two decks the fastdss reference harness
+/// **skips** `Residuals` on — `.inputs/DSS-Python` `origin/fastdss`
+/// `tests/compare_outputs.py:56-59` ("Close enough for the system"). Gating them
+/// is where our comparator is strictly stronger than the harness we are reaching
+/// parity with (`GOLDEN_REBASE_PLAN.md` §1.1), so the opt-in is the point, not a
+/// convenience.
+const DERIVED_MANIFEST_OPT_INS: &[&str] = &[
+    "solvable_now:Test/AutoTrans/Auto3bus.dss",
+    "solvable_now:Test/AutoTrans/AutoHLT.dss",
+];
+
+/// **The forced derived-channel population, pinned** — `(cases with
+/// `compare_derived` on, of them `engines: "both"`, `engines: "r4133"`,
+/// `engines: "capi_v0145"`)`.
+///
+/// Measured off the four manifests at G1.3a (2026-09-04) and re-derived by
+/// [`the_derived_forcing_rule_is_every_live_non_large_case_plus_the_opt_ins`] on
+/// every run: [`FORCED_PROPS_POPULATION`]'s 440 live non-`large` cases plus the
+/// two [`DERIVED_MANIFEST_OPT_INS`] decks (both `engines: "both"`).
+///
+/// The population lock fingerprints the **manifest** flag, not the effective
+/// one ([`Case::rigor`]'s `derived=` token in `population_lock.rs`), so a
+/// re-mask of [`force_derived`] would move 440 cases without moving one byte of
+/// `population.lock.json`. This const is the only thing that sees it — the
+/// reason [`FORCED_PROPS_POPULATION`] exists, applied to the second rule.
+const FORCED_DERIVED_POPULATION: (usize, usize, usize, usize) = (442, 315, 83, 44);
+
 /// **The PDElements-forcing rule is a rule, not a habit** — the static half of
 /// G1.6b's re-mask alarm, modeled on
 /// [`the_property_forcing_rule_is_every_live_non_large_case`] and load-bearing
@@ -349,6 +417,84 @@ fn the_pdelements_forcing_rule_is_every_live_non_large_case() {
     );
 }
 
+/// **The derived-channel forcing rule is a rule, not a habit** (G1.3a) — the
+/// twin of [`the_property_forcing_rule_is_every_live_non_large_case`], for the
+/// same reason: `population.lock.json` fingerprints the *manifest* flag, so a
+/// re-mask of [`force_derived`] (a channel predicate, a widened `large` guard, a
+/// dropped source arm) would silently stop comparing
+/// `CurrentsMagAng`/`VoltagesMagAng`/`Residuals` on hundreds of cases while
+/// every lock, every ledger digest and the two opt-in decks stayed green.
+///
+/// It walks the four manifests without an oracle and asserts the flagged set
+/// **is** `live non-large` ∪ [`DERIVED_MANIFEST_OPT_INS`], case by case, with
+/// the per-`engines` split pinned by [`FORCED_DERIVED_POPULATION`]. Each opt-in
+/// is additionally required to be a live case the rule would *not* have covered
+/// — otherwise the entry is dead weight that reads like a decision.
+#[test]
+fn the_derived_forcing_rule_is_every_live_non_large_case_plus_the_opt_ins() {
+    let cases = build_unified_cases();
+    let mut flagged = (0usize, 0usize, 0usize, 0usize);
+    let mut wrong: Vec<String> = Vec::new();
+    let mut opt_in_seen: Vec<&str> = Vec::new();
+    for uc in &cases {
+        let live = uc.class == CaseClass::Live;
+        let large = uc.case.kind.starts_with("large");
+        let opt_in = DERIVED_MANIFEST_OPT_INS.contains(&uc.label.as_str());
+        if opt_in {
+            opt_in_seen.push(uc.label.as_str());
+            assert!(
+                live && large,
+                "{}: listed in `DERIVED_MANIFEST_OPT_INS`, but it is {} and kind={} — the \
+                 forcing rule already covers it, so the manifest key is dead weight. Drop the \
+                 key and the entry.",
+                uc.label,
+                if live { "live" } else { "not-live" },
+                uc.case.kind
+            );
+        }
+        // The rule, per source: every live case, minus `large` on `solvable_now`
+        // — plus the reviewed manifest opt-ins, which only ever ADD.
+        let expected = live && (!large || opt_in);
+        if uc.case.compare_derived != expected {
+            wrong.push(format!(
+                "{}: kind={} engines={} class={} → compare_derived={} (expected {expected})",
+                uc.label,
+                uc.case.kind,
+                uc.case.engines,
+                if live { "live" } else { "not-live" },
+                uc.case.compare_derived,
+            ));
+        }
+        if uc.case.compare_derived {
+            flagged.0 += 1;
+            match uc.case.engines.as_str() {
+                "both" => flagged.1 += 1,
+                "r4133" => flagged.2 += 1,
+                _ => flagged.3 += 1,
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "the derived-channel forcing rule is `every live non-`large` case, plus \
+         DERIVED_MANIFEST_OPT_INS` (GOLDEN_REBASE_PLAN.md G1.3a) — these cases disagree with \
+         it:\n  {}",
+        wrong.join("\n  ")
+    );
+    assert_eq!(
+        opt_in_seen, DERIVED_MANIFEST_OPT_INS,
+        "an opt-in label matched no case (a renamed or dropped deck): the manifest key it names \
+         is gone, so the entry masks nothing and must be pruned"
+    );
+    assert_eq!(
+        flagged, FORCED_DERIVED_POPULATION,
+        "(flagged, both, r4133-only, capi-only) moved. A DROP means the derived channels stopped \
+         being compared on that many cases — invisible to `population.lock.json`, which records \
+         the manifest flag and not `force_derived`'s effect. A legitimate corpus change moves \
+         this lock together with the lock file."
+    );
+}
+
 /// Build one unified case, applying the exact per-source property-forcing +
 /// classification of the pre-Phase-B gates.
 fn make_case(
@@ -382,6 +528,7 @@ fn make_case(
     if class == CaseClass::Live {
         force_properties(source, &mut c, fam_props);
         force_pdelements(source, &mut c);
+        force_derived(source, &mut c);
     }
     let weight = kind_weight(&c.kind) * (c.n_steps.max(1) as u64);
     let dir_key = dir_key_of(&abs);

@@ -103,6 +103,13 @@ pub(crate) struct SolvableCase {
     /// `SeqPowers`, `CplxSeqVoltages`/`CplxSeqCurrents`, `TotalPowers`
     /// (`.inputs/DSS-Python` `origin/fastdss` `dss/ICktElement.py:53,58-69`
     /// `_columns`; r4133 transport `DDLL/DCktElement.pas` `CktElementV`).
+    ///
+    /// **Live since G1.3a** (`wired: true` in [`G1_SURFACE_FLAGS`]): the flag
+    /// today carries `Enabled` + `CurrentsMagAng`/`VoltagesMagAng`/`Residuals`
+    /// (`DDLL/DCktElement.pas:1058`/`:1082`/`:827`). G1.3b adds the symmetrical
+    /// components and G1.3c `TotalPowers`; both extend this same flag rather
+    /// than adding their own, so a case that opts in now gains those channels
+    /// with them.
     #[serde(default)]
     pub(crate) compare_derived: bool,
     /// G1.3d: the per-element **discrete extras** — `PhaseLosses`, `NodeOrder`,
@@ -543,10 +550,16 @@ pub(crate) struct G1Flag {
 /// declaration order in [`SolvableCase`] and the token order in
 /// `population_lock.rs::rigor()`.
 pub(crate) const G1_SURFACE_FLAGS: &[G1Flag] = &[
+    // Wired by G1.3a (2026-09-04) — request key `derived` in
+    // `engines::build_run_request`, capture in `tools/oracle/oracle_server.py`
+    // + `crates/dss-epri/src/capture.rs`, comparator
+    // `harness::compare_element_derived` behind
+    // `capture_guard::require_capture` in `runner::compare_capture`. G1.3b/c
+    // widen the same flag's surface; the row stays as it is.
     G1Flag {
         name: "compare_derived",
         sub_step: "G1.3a-c",
-        wired: false,
+        wired: true,
         get: |c| c.compare_derived,
     },
     G1Flag {
@@ -1013,8 +1026,10 @@ fn no_unwired_g1_surface_flag_is_set_in_any_manifest() {
     }
 }
 
-/// Non-vacuity for the rail above (§1.1(f)): the manifests set none of the ten
-/// flags today, so the walk passes on an empty premise. Drive each flag on a
+/// Non-vacuity for the rail above (§1.1(f)): the manifests set only the one
+/// wired flag today (G1.3a's `compare_derived`, on the two `Test/AutoTrans`
+/// opt-ins), so the walk's refusal arm passes on an empty premise. Drive each
+/// flag on a
 /// synthetic case and assert the refusal actually fires — and that a wired flag
 /// (simulated by reading the row's own `wired`) is the only thing that lets one
 /// through.

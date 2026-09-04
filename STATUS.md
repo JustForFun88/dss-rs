@@ -36,8 +36,9 @@ the behavioral authority, the pinned dss_capi 0.14.5 is a numeric oracle only,
 and upstream bugs are never reproduced in any lane** — the `oracle-parity` lane
 has shrunk to a precision-compat lane and is scheduled for full teardown.
 
-**In flight.** `GOLDEN_REBASE_PLAN.md` **WP-G1**, on branch **`update`** (the
-R4133_PROPS branch `r4133-props` was merged and deleted 2026-09-04). **`R4133_PROPS_PLAN.md` is COMPLETE**
+**In flight.** `GOLDEN_REBASE_PLAN.md` **WP-G1** on **`update`**, its sub-step chains
+running since 2026-09-04 in parallel `lane-*` worktree branches that merge back one at
+a time (D7; `r4133-props` was merged and deleted then too). **`R4133_PROPS_PLAN.md` is COMPLETE**
 (2026-09-04, §RP5.2) — all six WPs gate-green in both lanes over 26 sub-steps /
 **67** RP-titled commits (64 through RP5.1's `64474762`, plus RP5.2's
 `5a110653`, its settlement `bc16430b` and this record), plan archived to
@@ -51,15 +52,14 @@ agent regenerates `population.lock.json` on; that lock, `ledger.json` and
 `golden.lock.json` stay fail-on-stale.
 
 **Record placement (from 2026-09-03).** Every sub-step's **full** record is
-appended to its per-WP file under `docs/phase-records/` — WP-RP3 →
-[`r4133-props-rp3.md`](docs/phase-records/r4133-props-rp3.md), where §RP3.10's
-went; a later WP → a new `r4133-props-<wp>.md` (WP-RP5 →
-[`r4133-props-rp5.md`](docs/phase-records/r4133-props-rp5.md)). The pin-citation guards
-in `crates/dss-core/tests/props_r4133_replay.rs` read that file, and section 7
-forwards the `§RPx.y` citations to it. Section 1 gets a **3–6 line** landed
-paragraph per sub-step — verdict, date, commit, pointer — and never grows a full
-record again; the ritual's "update `STATUS.md`" / "read `STATUS.md` end to end"
-steps therefore mean STATUS **plus** the sub-step's phase-records file.
+appended to its per-WP file under `docs/phase-records/` — R4133_PROPS →
+`r4133-props-rp<N>.md` (the pin-citation guards in
+`crates/dss-core/tests/props_r4133_replay.rs` read `-rp3.md`; section 7 forwards
+the `§RPx.y` citations), GOLDEN_REBASE →
+[`golden-rebase.md`](docs/phase-records/golden-rebase.md). Section 1 gets a **3–6
+line** landed paragraph per sub-step — verdict, date, commits, pointer — and never
+grows a full record again; the ritual's "update `STATUS.md`" / "read `STATUS.md`
+end to end" steps mean STATUS **plus** that records file.
 
 **WP-RP0 – WP-RP2 — COMPLETE** (RP0.1–RP0.2 2026-08-22; RP1.1–RP1.4 2026-08-22
 and 2026-08-23; RP2.1–RP2.4 2026-08-23). The evidence base and census rails (the vendored
@@ -124,23 +124,19 @@ record: [`r4133-props-rp4.md`](docs/phase-records/r4133-props-rp4.md).
 2026-09-04** (`dd0b9e5b` + `8802fb6a`), docs only: the r4133 claim chain
 (normalize → echo → floor → assert), the property-divergence triage procedure and
 **46** `file.rs:LINE` citations, which its settlement turned into an executable
-walk over all **58** (its two handed-forward wording items were both **refuted**
-and are recorded as deliberately not edited). **RP5.2 landed 2026-09-04**
-(`5a110653` + settlement `bc16430b` + this record) — the closing record and the
-archive move, with the final counters published as measured: normalization
-**168** / echo **82** rows, ledger **36 → 57** entries over **23 → 30** causes,
-one new tolerance (the 2e-4 display floor), **4 499 / 0 / 5** per lane (4 498 at
-the closing commit; the +1 is the thirteenth `oracle_parity_cfg_gate` test its
-settlement added), and the gating-case outcome as the lock's **464** r4133-gating
-cases (**313** non-`large` `both` compared), not the plan's stale 462. Its
-settlement (14 findings — 12 fixed, 1 recorded, 1 superseded, 0 refuted) closed
-both citation-guard gaps — an unanchored `file.rs:LINE` citation now **fails**
-instead of being checked for existence only (58 anchored, six re-spelled), and a
-thirteenth test resolves the seven `record.md:LINE` citations Rust comments carry
-— and corrected two live cross-doc counts (`GOLDEN_REBASE_PLAN.md`'s stale 96
-r4133-only cases → 97; 25 → 26 sub-steps) plus four self-description defects.
-Full records — including the condensed table of all 26 sub-steps and the 13+
-`max |Δ| = 0` `lane_diff` runs:
+walk over all **58**. **RP5.2 landed 2026-09-04** (`5a110653` + settlement
+`bc16430b`) — the closing record and the archive move,
+with the final counters published as measured: normalization **168** / echo **82**
+rows, ledger **36 → 57** entries over **23 → 30** causes, one new tolerance (the
+2e-4 display floor), **4 499 / 0 / 5** per lane, and the gating-case outcome as
+the lock's **464** r4133-gating cases (**313** non-`large` `both` compared), not
+the plan's stale 462. Its settlement (14 findings — 12 fixed, 1 recorded, 1
+superseded, 0 refuted) closed both citation-guard gaps — an unanchored
+`file.rs:LINE` citation now **fails** instead of being checked for existence only,
+and a thirteenth test resolves the seven
+`record.md:LINE` citations Rust comments carry — and corrected two live cross-doc
+counts plus four self-description defects. Full records, including the condensed
+table of all 26 sub-steps and the 13+ `max |Δ| = 0` `lane_diff` runs:
 [`r4133-props-rp5.md`](docs/phase-records/r4133-props-rp5.md) §RP5.1 / §RP5.2.
 
 **GOLDEN_REBASE WP-G0 (rails) + WP-G2 (bug-kernel teardown) — COMPLETE**, merged
@@ -156,24 +152,28 @@ since 2026-09-04 its chains run in parallel **lanes** — worktrees
 `.claude/worktrees/lane-*`, D7 — merged into `update` one sub-step at a time).
 Landed: **G1.1**, killed on day one and delivered by `R4133_PROPS_PLAN.md` RP4.1
 2026-09-03 (**G1.1 satisfied**, **G3.4**/**G3.5** unblocked); **G1.2** (the
-ESPVLControl deck) 2026-08-29; **G1.0** the rails — flag vocabulary in one lock
-regen, exclusion `channels`, capture-presence guard, the r4133 bridge whose mode
-probe **discharges G1.11 for the whole WP** — `c4b67a6e` + `42454b64`/`14bb0f23`;
-**G1.9** (lane `lane-s`, `9757d26c` + `f27f9598`), the five `Circuit` aggregates
-and ten `Solution` scalars, universal on both channels; **G1.6b** (lane `lane-m`,
-`06808a6d` + `e1e18367` + `c6a3c0a8`), the WP's **first surface** — the
-`PDElements` walk (13 fastdss columns + `parent_name`, exact, both channels), eight
-pinned `PD_SKIP_FIELDS` cells for an uninitialized read in **both** oracles,
-`WP_G1_MODES` 96 → 99, plus the **D9** engine fix (`MakeBusList` resets the meter
-zones, `Circuit.pas:2411`); merged `--no-ff`, `06808a6d` not building alone. The
-last three landed 2026-09-04, each with **0** ledger entries and 0 golden bytes.
-G1.3a–d, G1.4–G1.8, G1.10–G1.11c and WP-G3–G5 remain; record: same file.
+ESPVLControl deck) 2026-08-29; and, all on 2026-09-04, **G1.0** the rails — flag
+vocabulary in one lock regen, exclusion `channels`, capture-presence guard, the
+r4133 bridge whose mode probe **discharges G1.11 for the whole WP** (`c4b67a6e` +
+`42454b64`/`14bb0f23`); **G1.9** (lane `lane-s`, `9757d26c` + `f27f9598`), the
+five `Circuit` aggregates and ten `Solution` scalars, universal on both channels;
+**G1.6b** (lane `lane-m`, `06808a6d` + `e1e18367` + `c6a3c0a8`), the `PDElements`
+walk (13 fastdss columns + `parent_name`, exact, both channels) with eight pinned
+`PD_SKIP_FIELDS` cells and the **D9** engine fix (`MakeBusList` resets the meter
+zones, `Circuit.pas:2411`); and **G1.3a** (lane `lane-e`, `d8e71991` + settlement
+`588e0bfe` + `9f9c723d`), the first **per-element** surface — `Enabled` plus
+`CurrentsMagAng`/`VoltagesMagAng`/`Residuals` on both channels over 442 cases,
+the A/B/C capture order enforced by `tests/capture_order.rs`, **1** new ledger
+entry (capi-only CapControl TIMECONTROL bus, `DIVERGENCES.md` L8) + **13**
+measured widenings, 0 band movement, `lane_diff` max |Δ| = 0. `WP_G1_MODES` is
+**100**; G1.3b–d, G1.4–G1.8, G1.10–G1.11c and WP-G3–G5 remain; record: same file.
 
-**Next.** `lane-m` takes **G1.6(i)** (meter extras + per-bus reliability columns;
-it drives `RelCalc` and owes the non-vacuity of G1.6b's four zone-derived fields);
-`lane-s` **G1.7** (topology), then G1.8, G1.10a–c; the element lane
-G1.3a→3d(i)→3d(ii)→3b→3c, the bus lane G1.4a→G1.5→G1.4c→G1.4b. Then WP-G3–G5;
-queued behind: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
+**Next.** The element lane takes **G1.3d(i)** (then G1.3d(ii) → G1.3b → G1.3c);
+`lane-m` **G1.6(i)** (meter extras + per-bus reliability columns; it drives
+`RelCalc` and owes the non-vacuity of G1.6b's four zone-derived fields); `lane-s`
+**G1.7** (topology), then G1.8, G1.10a–c; the bus lane G1.4a→G1.5→G1.4c→G1.4b.
+Then WP-G3–G5 (**G3.4**/**G3.5** runnable there); queued behind:
+`WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the

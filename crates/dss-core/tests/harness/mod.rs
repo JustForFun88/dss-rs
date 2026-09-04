@@ -68,6 +68,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrd};
 
 use dss_core::exec::{Dss, ElementSnapshot, PdElementView};
+use dss_core::support::complexutil::Polar;
 use num_complex::Complex64;
 use serde::Deserialize;
 
@@ -862,7 +863,18 @@ pub struct YFingerprint {
 /// `loss_w` (W, var — the oracle `CktElement.Losses`, i.e. the engine's own
 /// `Get_Losses` path) is captured by the live gate only; committed checkpoint
 /// goldens predate it and leave it empty (skipped).
-#[derive(Debug, Deserialize)]
+///
+/// The last seven fields are the `GOLDEN_REBASE_PLAN.md` G1.3a **derived polar
+/// channels**, present only when the case's `compare_derived` manifest flag is
+/// on — `enabled` for every element, the six arrays for *enabled* elements only
+/// (a never-enabled element has no `NodeRef`, where r4133 `VoltagesMagAng`
+/// dereferences nil and capi answers a one-element sentinel). Both transports
+/// emit exactly this shape (`tools/oracle/oracle_server.py`,
+/// `crates/dss-epri/src/capture.rs`), de-interleaved into magnitude and angle
+/// the way `i_re`/`i_im` already are, so the comparator never does stride-2
+/// index arithmetic. All seven are `serde(default)`: an off-flag reply and
+/// every committed checkpoint golden simply leave them absent.
+#[derive(Debug, Default, Clone, Deserialize)]
 pub struct ElementCap {
     pub name: String,
     pub i_re: Vec<f64>,
@@ -871,6 +883,40 @@ pub struct ElementCap {
     pub p_kvar: Vec<f64>,
     #[serde(default)]
     pub loss_w: Vec<f64>,
+    /// `CktElement.Enabled` (r4133 `DDLL/DCktElement.pas:263`, the `CktElementI`
+    /// read arm) — captured for EVERY element under the flag, so the
+    /// enabled-only polar capture can never silently drop one. Structure, not a
+    /// value channel: [`compare_element_derived`] compares it exactly and no
+    /// sub-channel selector can mask it.
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    /// `CktElement.CurrentsMagAng` magnitudes (A), conductor-minor inside
+    /// terminal-major — r4133 `DDLL/DCktElement.pas:1058` (mode `18`), capi
+    /// `CAPI/CAPI_Alt.pas:1043`; a fastdss `_columns` surface
+    /// (`dss/ICktElement.py:64` on `origin/fastdss`).
+    #[serde(default)]
+    pub cma_mag: Vec<f64>,
+    /// `CurrentsMagAng` angles (degrees, `(-180, 180]` — `CDANG`, r4133
+    /// `Shared/Ucomplex.pas:118`).
+    #[serde(default)]
+    pub cma_ang: Vec<f64>,
+    /// `CktElement.Residuals` magnitudes (A), one per **terminal** — r4133
+    /// `DDLL/DCktElement.pas:827` (mode `11`, the `k := (i-1)*Nconds` offset at
+    /// `:842`), capi `CAPI/CAPI_CktElement.pas:541` (offset `:562`); fastdss
+    /// `dss/ICktElement.py:67`.
+    #[serde(default)]
+    pub res_mag: Vec<f64>,
+    /// `Residuals` angles (degrees).
+    #[serde(default)]
+    pub res_ang: Vec<f64>,
+    /// `CktElement.VoltagesMagAng` magnitudes (V), same conductor layout as
+    /// `cma_mag` — r4133 `DDLL/DCktElement.pas:1082` (mode `19`), capi
+    /// `CAPI/CAPI_Alt.pas:1072`; fastdss `dss/ICktElement.py:58`.
+    #[serde(default)]
+    pub vma_mag: Vec<f64>,
+    /// `VoltagesMagAng` angles (degrees).
+    #[serde(default)]
+    pub vma_ang: Vec<f64>,
 }
 
 /// The node injection-current vector (RHS of Y*V=I), nodes 1..n.
@@ -1395,6 +1441,13 @@ pub struct ElemChannels {
     pub currents: bool,
     pub powers: bool,
     pub losses: bool,
+    /// `CurrentsMagAng` — the polar rendering of `currents`
+    /// (`GOLDEN_REBASE_PLAN.md` G1.3a).
+    pub currents_mag_ang: bool,
+    /// `VoltagesMagAng` — `NodeV` read through the element's own `NodeRef`.
+    pub voltages_mag_ang: bool,
+    /// `Residuals` — the per-terminal conductor sum of `currents`.
+    pub residuals: bool,
 }
 
 impl ElemChannels {
@@ -1403,13 +1456,28 @@ impl ElemChannels {
         currents: true,
         powers: true,
         losses: true,
+        currents_mag_ang: true,
+        voltages_mag_ang: true,
+        residuals: true,
     };
     /// Currents only: the `S = V·conj(I)` channels are a deliberate divergence
     /// in this lane and are pinned by their own expected-value test instead.
+    ///
+    /// The three G1.3a derived channels stay **on** here, deliberately: the
+    /// Newton staleness lives in the cache-aware read path
+    /// (`Get_Powers`/`Get_Losses` reusing `ComputeIterminal`, r4133
+    /// `Common/CktElement.pas:632-640`), while `Currents` — and therefore
+    /// `CurrentsMagAng` and `Residuals`, which are renderings of it — come from
+    /// a fresh `GetCurrents`, and `VoltagesMagAng` reads `NodeV` and never
+    /// touches `Iterminal` at all. So the two `newton*` decks *gain* three
+    /// compared channels; nothing joins `lane::LANE_SKIP_ELEM_POWERS`.
     pub const CURRENTS_ONLY: Self = Self {
         currents: true,
         powers: false,
         losses: false,
+        currents_mag_ang: true,
+        voltages_mag_ang: true,
+        residuals: true,
     };
 }
 
@@ -1519,6 +1587,754 @@ pub fn compare_element_channels(
              |diff| = {diff:e} > allowed {allowed_w:e}",
             exp.name
         );
+    }
+}
+
+/// Degrees per radian at **full** f64 precision.
+///
+/// A tolerance is not a printed value: the truncated `57.29577951` that `CDANG`
+/// multiplies by (r4133 `Shared/Ucomplex.pas:118`, `TRUNCATED_RAD_TO_DEG` in
+/// `dss_core::support::complexutil`) belongs inside the kernel that *renders* an
+/// angle, never inside the band that *judges* one. This is the same constant the
+/// `compare_monitor` angle companion term uses (tests/TOLERANCE_NOTES.md
+/// §monitor-f32-floor).
+const POLAR_RAD_TO_DEG: f64 = 57.29577951308232;
+
+/// `|a − b|` for two angles in degrees, taken **on the circle**: the raw
+/// difference is folded into `[−180, 180]` first.
+///
+/// `CDANG` returns `(−180, 180]`, so a phasor sitting astride the negative real
+/// axis reads `+179.99999999032846 °` on one engine and `−179.99999999032846 °`
+/// on the other for an imaginary part of ±1e-18 — a raw gap of
+/// `359.9999999806569 °` for a physical gap of `1.9343133317306638e-08 °`
+/// (measured, pinned by `the_angle_comparison_is_wrap_aware`). Wrapping is not a
+/// relaxation, it is what "angle" means: a genuine sign flip still measures a
+/// full `180 °`, which no band this module emits can admit — the angle band's
+/// ceiling is [`POLAR_RAD_TO_DEG`] (see [`polar_angle_band`]).
+///
+/// NaN propagates (`NaN <= band` is false), so a NaN angle fails loudly instead
+/// of slipping through.
+pub fn wrapped_deg(diff: f64) -> f64 {
+    ((diff + 180.0).rem_euclid(360.0) - 180.0).abs()
+}
+
+/// The angular image of an accepted magnitude band: how far the *argument* of a
+/// phasor may move when its magnitude is known only to ±`allowed_mag`.
+///
+/// The set inherited here is a **disc**, not a per-component rectangle:
+/// [`assert_complex_close_c`] bands the *modulus* of the complex difference
+/// (`|Δz| ≤ abs + rel·|z|`, the `diff`/`allowed` lines of that function), so
+/// `arg` maps it onto exactly `±asin(allowed_mag/|z|)` radians. What this
+/// function returns is that image's **linearization**,
+/// `rad2deg · allowed_mag/|z|` degrees — the same construction as the
+/// voltage-scaled power floor (`assert_power_close`) and the `compare_monitor`
+/// angle companion term. Since `asin(x) ≥ x` the linearization is never
+/// *looser* than the exact image: the angle channel can only be stricter than
+/// the complex band it renders, never more permissive (pinned by
+/// `the_angle_band_is_the_conservative_linearization_of_its_exact_image`; the
+/// gap `asin(x)/x − 1 = x²/6 + O(x⁴)` is under one f64 ulp at every magnitude
+/// the corpus judges). At healthy magnitudes the band is far *tighter* than any
+/// base band (6.6e-6 ° at 683 A on the feeder tier).
+///
+/// Returns `None` when `|oracle_mag| ≤ allowed_mag`: there the phasor is
+/// indistinguishable from zero at the accepted precision and its angle carries
+/// **no** information — the two oracle channels report angles up to 180 ° apart
+/// for one and the same ~1e-12 A current. The magnitude is never masked, so the
+/// channel stays two-sided. And because the mask fires exactly where the image
+/// would reach `rad2deg · 1`, the emitted band can never exceed
+/// [`POLAR_RAD_TO_DEG`] by construction (pinned by
+/// `the_angle_band_never_exceeds_one_radian_in_degrees`).
+pub fn polar_angle_band(allowed_mag: f64, oracle_mag: f64) -> Option<f64> {
+    let m = oracle_mag.abs();
+    (m > allowed_mag).then(|| POLAR_RAD_TO_DEG * allowed_mag / m)
+}
+
+/// One polar channel compared sample-by-sample against its de-interleaved oracle
+/// arrays, with a caller-supplied magnitude band per sample.
+///
+/// Lengths are asserted here as well as in [`compare_element_derived`]: this
+/// helper is the one place a mismatched pair could otherwise compare a prefix.
+fn polar_close_with(
+    actual: &[Polar],
+    om: &[f64],
+    oa: &[f64],
+    allowed_mag: impl Fn(usize) -> f64,
+    ctx: &str,
+) {
+    assert_eq!(
+        om.len(),
+        oa.len(),
+        "{ctx}: the oracle magnitude ({}) and angle ({}) arrays disagree",
+        om.len(),
+        oa.len()
+    );
+    assert_eq!(
+        actual.len(),
+        om.len(),
+        "{ctx}: length mismatch (rust {} vs oracle {})",
+        actual.len(),
+        om.len()
+    );
+    for (k, (a, (m, ang))) in actual.iter().zip(om.iter().zip(oa)).enumerate() {
+        let allowed = allowed_mag(k);
+        let dm = (a.mag - m).abs();
+        assert!(
+            dm <= allowed,
+            "{ctx} [{k}]: magnitude {} vs oracle {m} (|diff| = {dm:e} > allowed {allowed:e})",
+            a.mag
+        );
+        // Below its own magnitude band the phasor has no argument to compare —
+        // documented mask, tests/TOLERANCE_NOTES.md §G1.3a.
+        let Some(allowed_ang) = polar_angle_band(allowed, *m) else {
+            continue;
+        };
+        let da = wrapped_deg(a.ang - ang);
+        assert!(
+            da <= allowed_ang,
+            "{ctx} [{k}]: angle {} deg vs oracle {ang} deg (wrapped |diff| = {da:e} > \
+             allowed {allowed_ang:e} at |mag| = {m:e})",
+            a.ang
+        );
+    }
+}
+
+/// A polar channel whose re/im original is already gated at
+/// `|Δz| ≤ abs + rel·|z|` — the **disc** [`assert_complex_close_c`] admits, not
+/// a per-component rectangle (pinned by
+/// `the_inherited_current_band_is_a_disc_not_a_rectangle`).
+///
+/// The magnitude inherits that band exactly — `||a| − |b|| ≤ |a − b|` (reverse
+/// triangle inequality), and the bound is attained at `a = z(1 ± ρ/|z|)`, so the
+/// magnitude channel admits neither more nor less than the disc does — and the
+/// angle gets its angular image ([`polar_angle_band`]). Nothing is calibrated
+/// here; both floors are images of the already-gated `i_rel/i_abs` and
+/// `v_rel/v_abs` tiers (tests/TOLERANCE_NOTES.md §G1.3a).
+pub fn polar_close(actual: &[Polar], om: &[f64], oa: &[f64], rel: f64, abs: f64, ctx: &str) {
+    polar_close_with(actual, om, oa, |k| abs + rel * om[k].abs(), ctx);
+}
+
+/// The magnitude band of terminal `t`'s `Residuals` sample: the residual is the
+/// **sum** of that terminal's `nconds` conductor currents
+/// (r4133 `DDLL/DCktElement.pas:842`), so its band is the sum of their bands —
+/// `|δ(Σ_c I_c)| ≤ Σ_c (abs + rel·|I_c|) = nconds·abs + rel·Σ_c|I_c|`.
+///
+/// Exactly the derivation `compare_element_channels` already uses for
+/// `Get_Losses` (`losses = Σ_k S_k`), transplanted to the current sum: no new
+/// tolerance class, just the conductor policy summed. The bound is *exact*, not
+/// slack — the Minkowski sum of the conductors' discs is the disc of the summed
+/// radius, attained when their errors are collinear. It matters because the
+/// residual is a near-cancellation by construction (≈0 on a balanced terminal).
+pub fn residual_band(exp: &ElementCap, t: usize, nconds: usize, rel: f64, abs: f64) -> f64 {
+    let sum: f64 = (0..nconds)
+        .map(|c| {
+            let k = t * nconds + c;
+            exp.i_re[k].hypot(exp.i_im[k])
+        })
+        .sum();
+    nconds as f64 * abs + rel * sum
+}
+
+/// `Residuals` compared per terminal at the conductor-sum band
+/// ([`residual_band`]), angles wrap-aware and masked below their own band.
+pub fn residual_close(actual: &[Polar], exp: &ElementCap, rel: f64, abs: f64, ctx: &str) {
+    let nterms = exp.res_mag.len();
+    assert!(nterms > 0, "{ctx}: the oracle reports no terminal");
+    assert_eq!(
+        exp.i_re.len() % nterms,
+        0,
+        "{ctx}: {} conductor slots do not divide into {nterms} terminals",
+        exp.i_re.len()
+    );
+    let nconds = exp.i_re.len() / nterms;
+    polar_close_with(
+        actual,
+        &exp.res_mag,
+        &exp.res_ang,
+        |t| residual_band(exp, t, nconds, rel, abs),
+        ctx,
+    );
+}
+
+/// Does this *oracle* polar channel say "nothing to report"?
+///
+/// Two shapes mean that, and they are the two the transports actually produce:
+///
+/// * **empty** — r4133's answer and the engine's. r4133 has no nil-`NodeRef`
+///   guard on mode 19, but it sizes the result at `NConds·Nterms` and its
+///   `for i := 1 to numcond` loop never runs when that is 0
+///   (`DDLL/DCktElement.pas:1082-1100`), so a 0-terminal element yields a
+///   0-length array;
+/// * the capi **`DefaultResult` sentinel** — with `DSS_CAPI_COM_DEFAULTS` on
+///   (dss-python's default) a guarded read hands back a **one-element `[0.0]`**
+///   array (`CAPI/CAPI_Utils.pas:212-221`), which de-interleaves into
+///   `mag = [0.0]`, `ang = []`. `Alt_CE_Get_VoltagesMagAng` takes that path
+///   whenever `elem.NodeRef = NIL` (`CAPI/CAPI_Alt.pas:1080-1084`) — which on an
+///   element with no terminals is unconditional — and
+///   `Alt_CE_Get_CurrentsMagAng` (`:1043-1052`) / `Alt_CE_Get_Residuals` reach
+///   the same sentinel through their `MissingSolution` guard.
+///
+/// A capture-boundary **sentinel shape**, therefore, not a divergence: it is
+/// normalized here (coordinator decision D4, the `PROPS_NORM_R4133` precedent)
+/// for 0 ledger rows, and pinned by
+/// `derived_polar_floors::the_capi_default_result_sentinel_reads_as_no_payload`.
+/// It is consulted **only** where a real payload would have length
+/// `yorder = 0`, so the sentinel can never hide a reading, and only on the
+/// oracle side — the engine has no sentinel and must be strictly empty.
+fn no_polar_payload(mag: &[f64], ang: &[f64]) -> bool {
+    (mag.is_empty() || mag == [0.0]) && ang.is_empty()
+}
+
+/// Compare one element's **derived polar channels** against a capture:
+/// `Enabled`, `CurrentsMagAng`, `VoltagesMagAng`, `Residuals`
+/// (`GOLDEN_REBASE_PLAN.md` WP-G1 G1.3a).
+///
+/// Runs only when the case's `compare_derived` manifest flag is on, *alongside*
+/// — never instead of — [`compare_element_channels`].
+///
+/// **Structure, asserted under every channel policy** (a value exclusion may
+/// never excuse a shape or an existence miss — the rule
+/// [`compare_element_channels`] already follows): the element exists in the Rust
+/// snapshot; `Enabled` matches exactly; a **disabled** element carries no oracle
+/// payload at all (asserted here — the *port* keeps the shape and reads zero
+/// there, which is not an oracle-comparable fact and is pinned in-engine by
+/// `exec::tests::derived_polar::a_never_enabled_element_has_no_polar_payload`);
+/// a **0-terminal** element, which `UPFCControl` legitimately is (r4133
+/// `Version8/Source/Controls/UPFCControl.pas:229-245`), carries no payload on
+/// **either** side, up to the capi sentinel shape ([`no_polar_payload`]); and
+/// every array length matches on both sides. The
+/// enabled-only capture is what makes the two oracle transports agree in shape —
+/// a never-enabled element has no `NodeRef`, where r4133 dereferences nil
+/// (`DDLL/DCktElement.pas:1099`, no guard) and capi returns a one-element
+/// sentinel (`CAPI/CAPI_Alt.pas:1081`) — so no sentinel normalization is owed,
+/// and `enabled` being compared exactly is what keeps that skip honest.
+///
+/// **Floors** (derivations in tests/TOLERANCE_NOTES.md §G1.3a):
+/// `CurrentsMagAng` inherits the already-gated complex current band
+/// (`i_abs + i_rel·|I|`), `VoltagesMagAng` the node-voltage band
+/// (`v_abs + v_rel·|V|`), `Residuals` the conductor-sum band
+/// ([`residual_band`]); every angle gets the angular image of its own magnitude
+/// band, wrap-aware. No tolerance is calibrated here.
+pub fn compare_element_derived(
+    snaps: &[ElementSnapshot],
+    exp: &ElementCap,
+    tol: &Tolerances,
+    ctx: &str,
+    channels: ElemChannels,
+) {
+    let snap = snaps
+        .iter()
+        .find(|s| s.name.eq_ignore_ascii_case(&exp.name))
+        .unwrap_or_else(|| panic!("{ctx}: no element {}", exp.name));
+    // `enabled` is emitted for EVERY element under the flag; its absence means
+    // the capture ran without the flag, which the comparator must never paper
+    // over (the element-level twin of `capture_guard::require_capture`).
+    let enabled = exp.enabled.unwrap_or_else(|| {
+        panic!(
+            "{ctx} {}: the derived capture carries no `enabled` field — the case's \
+             `compare_derived` flag is on but this element was captured without it",
+            exp.name
+        )
+    });
+    assert_eq!(
+        snap.enabled, enabled,
+        "{ctx} {}: Enabled differs (rust {} vs oracle {enabled})",
+        exp.name, snap.enabled
+    );
+    if !enabled {
+        assert!(
+            exp.cma_mag.is_empty()
+                && exp.cma_ang.is_empty()
+                && exp.vma_mag.is_empty()
+                && exp.vma_ang.is_empty()
+                && exp.res_mag.is_empty()
+                && exp.res_ang.is_empty(),
+            "{ctx} {}: a disabled element must carry no polar payload \
+             (cma {}/{}, vma {}/{}, res {}/{}) — the capture read channels it \
+             must skip",
+            exp.name,
+            exp.cma_mag.len(),
+            exp.cma_ang.len(),
+            exp.vma_mag.len(),
+            exp.vma_ang.len(),
+            exp.res_mag.len(),
+            exp.res_ang.len()
+        );
+        return;
+    }
+    let yorder = exp.i_re.len();
+    let nterms = snap.bus_names.len();
+    // A **0-terminal** element is legitimate, and every engine agrees on it:
+    // `TUPFCControlObj.Create` (r4133 `Version8/Source/Controls/UPFCControl.pas:229-245`
+    // — capi 0.14.5 `src/Controls/UPFCControl.pas:151-164` is the same code) never
+    // assigns `Nterms`/`Nphases`/`Setbus`, unlike every other control class
+    // (`Controls/CapControl.pas:481-483`: `Nterms := 1; // this forces allocation
+    // of terminals and conductors in base class`) — that class sets them only in
+    // `MakePosSequence` (`UPFCControl.pas:284-293`). So an enabled `UPFCControl`
+    // carries `Nterms = 0`, `Yorder = 0` and six legitimately empty channels.
+    // Accepted **two-sidedly**, like the disabled branch above: an element that
+    // grows a payload on either side still fails, so the acceptance can never
+    // swallow a real capture. The one shape the oracle side may add is the capi
+    // `DefaultResult` sentinel — see [`no_polar_payload`].
+    if yorder == 0 && nterms == 0 {
+        assert!(
+            no_polar_payload(&exp.cma_mag, &exp.cma_ang)
+                && no_polar_payload(&exp.vma_mag, &exp.vma_ang)
+                && no_polar_payload(&exp.res_mag, &exp.res_ang)
+                && snap.currents_mag_ang.is_empty()
+                && snap.voltages_mag_ang.is_empty()
+                && snap.residuals.is_empty(),
+            "{ctx} {}: a 0-terminal element must carry no polar payload on either \
+             side (oracle cma {}/{}, vma {}/{}, res {}/{}; rust cma {}, vma {}, \
+             res {})",
+            exp.name,
+            exp.cma_mag.len(),
+            exp.cma_ang.len(),
+            exp.vma_mag.len(),
+            exp.vma_ang.len(),
+            exp.res_mag.len(),
+            exp.res_ang.len(),
+            snap.currents_mag_ang.len(),
+            snap.voltages_mag_ang.len(),
+            snap.residuals.len()
+        );
+        return;
+    }
+    assert!(
+        nterms > 0 && yorder.is_multiple_of(nterms),
+        "{ctx} {}: {yorder} conductor slots do not divide into {nterms} terminals",
+        exp.name
+    );
+    let shape = |what: &str, om: &[f64], oa: &[f64], rust: usize, want: usize| {
+        assert_eq!(
+            om.len(),
+            want,
+            "{ctx} {}: oracle {what} magnitude length {} != {want}",
+            exp.name,
+            om.len()
+        );
+        assert_eq!(
+            oa.len(),
+            want,
+            "{ctx} {}: oracle {what} angle length {} != {want}",
+            exp.name,
+            oa.len()
+        );
+        assert_eq!(
+            rust, want,
+            "{ctx} {}: rust {what} length {rust} != {want}",
+            exp.name
+        );
+    };
+    shape(
+        "CurrentsMagAng",
+        &exp.cma_mag,
+        &exp.cma_ang,
+        snap.currents_mag_ang.len(),
+        yorder,
+    );
+    shape(
+        "VoltagesMagAng",
+        &exp.vma_mag,
+        &exp.vma_ang,
+        snap.voltages_mag_ang.len(),
+        yorder,
+    );
+    shape(
+        "Residuals",
+        &exp.res_mag,
+        &exp.res_ang,
+        snap.residuals.len(),
+        nterms,
+    );
+
+    if channels.currents_mag_ang {
+        polar_close(
+            &snap.currents_mag_ang,
+            &exp.cma_mag,
+            &exp.cma_ang,
+            tol.i_rel,
+            tol.i_abs,
+            &format!("{ctx} {} CurrentsMagAng", exp.name),
+        );
+    }
+    if channels.voltages_mag_ang {
+        polar_close(
+            &snap.voltages_mag_ang,
+            &exp.vma_mag,
+            &exp.vma_ang,
+            tol.v_rel,
+            tol.v_abs,
+            &format!("{ctx} {} VoltagesMagAng", exp.name),
+        );
+    }
+    if channels.residuals {
+        residual_close(
+            &snap.residuals,
+            exp,
+            tol.i_rel,
+            tol.i_abs,
+            &format!("{ctx} {} Residuals", exp.name),
+        );
+    }
+}
+
+/// The three floor derivations of the G1.3a polar channels, pinned directly
+/// (no oracle) the way `harness_power_floor.rs` pins the voltage-scaled power
+/// floor: the wrap, the angular image and its ceiling, and the conductor-sum
+/// residual band. Each carries its rejection leg, so none of them is a one-sided
+/// "accepts everything" green.
+#[cfg(test)]
+mod derived_polar_floors {
+    use super::{
+        ElemChannels, ElementCap, ElementSnapshot, POLAR_RAD_TO_DEG, Polar, assert_complex_close_c,
+        compare_element_derived, no_polar_payload, polar_angle_band, polar_close, residual_band,
+        residual_close, tol_for, wrapped_deg,
+    };
+    use dss_core::support::complexutil::cdang;
+    use num_complex::Complex64;
+    use std::f64::consts::SQRT_2;
+
+    /// The feeder tier's current floors — the ones the `cma`/`res` channels use.
+    const REL: f64 = 1e-7;
+    const ABS: f64 = 1e-5;
+
+    /// A phasor astride the negative real axis reads at both ends of `CDANG`'s
+    /// `(−180, 180]` range: on the line the two readings are a full turn apart,
+    /// on the circle they are 1.9e-8 ° apart. The comparator must use the second
+    /// number — and must still see a genuine sign flip as a half turn.
+    #[test]
+    fn the_angle_comparison_is_wrap_aware() {
+        let plus = cdang(Complex64::new(-1.0, 1e-18));
+        let minus = cdang(Complex64::new(-1.0, -1e-18));
+        assert_eq!(plus, 179.99999999032846);
+        assert_eq!(minus, -179.99999999032846);
+        assert_eq!((plus - minus).abs(), 359.9999999806569);
+        assert_eq!(wrapped_deg(plus - minus), 1.9343133317306638e-08);
+        // So the real comparator accepts the pair on a healthy 1 A magnitude at
+        // the *micro* tier (1e-9 rel / 1e-6 abs → a 5.7e-5 ° angle band).
+        polar_close(
+            &[Polar {
+                mag: 1.0,
+                ang: plus,
+            }],
+            &[1.0],
+            &[minus],
+            1e-9,
+            1e-6,
+            "branch cut",
+        );
+        // Wrapping is not a blanket relaxation: a sign flip still measures a
+        // full half turn, from either side of the cut.
+        assert_eq!(wrapped_deg(180.0), 180.0);
+        assert_eq!(wrapped_deg(-180.0), 180.0);
+        assert!(wrapped_deg(f64::NAN).is_nan());
+    }
+
+    /// The rejection leg of the wrap: 180 ° is above the angle band's ceiling
+    /// (`POLAR_RAD_TO_DEG`), so a flipped phasor fails however it is wrapped.
+    #[test]
+    #[should_panic(expected = "angle")]
+    fn a_sign_flipped_angle_still_fails_the_band() {
+        polar_close(
+            &[Polar { mag: 1.0, ang: 0.0 }],
+            &[1.0],
+            &[180.0],
+            1e-9,
+            1e-6,
+            "flip",
+        );
+    }
+
+    /// The angular image of a magnitude band is bounded by one radian in
+    /// degrees, and the mask fires exactly at the boundary `|mag| ≤ band` — i.e.
+    /// the angle is skipped precisely where it would otherwise be compared at
+    /// ≥ 57.3 °, which is no comparison at all.
+    #[test]
+    fn the_angle_band_never_exceeds_one_radian_in_degrees() {
+        let mut engaged = 0;
+        for e in -12..=6 {
+            let mag = 10f64.powi(e);
+            let allowed = ABS + REL * mag;
+            match polar_angle_band(allowed, mag) {
+                None => assert!(
+                    mag <= allowed,
+                    "the mask fired at |mag| = {mag:e} > allowed {allowed:e}"
+                ),
+                Some(b) => {
+                    assert!(
+                        mag > allowed,
+                        "the mask failed to fire at |mag| = {mag:e} <= allowed {allowed:e}"
+                    );
+                    assert!(
+                        b > 0.0 && b <= POLAR_RAD_TO_DEG,
+                        "band {b:e} deg outside (0, {POLAR_RAD_TO_DEG}] at |mag| = {mag:e}"
+                    );
+                    engaged += 1;
+                }
+            }
+        }
+        assert!(
+            engaged >= 6,
+            "the sweep never left the mask ({engaged} banded samples)"
+        );
+        // The ceiling is approached only from below, one ulp outside the mask…
+        let b = polar_angle_band(1.0, 1.0 + f64::EPSILON).expect("just outside the mask");
+        assert_eq!(b, 57.29577951308231);
+        assert!(b < POLAR_RAD_TO_DEG);
+        // …and exactly at the boundary the angle is skipped, never compared at a
+        // 57.3 ° band.
+        assert_eq!(polar_angle_band(1.0, 1.0), None);
+        assert_eq!(polar_angle_band(1.0, -1.0), None);
+        // At a healthy magnitude the image is far tighter than the base band:
+        // 683 A at the feeder tier gets 6.57e-6 °.
+        assert_eq!(
+            polar_angle_band(ABS + REL * 683.0, 683.0),
+            Some(6.5684619851747365e-06)
+        );
+    }
+
+    /// One synthetic 3-conductor terminal: the residual band is the **sum** of
+    /// the three conductor bands, not one conductor's band, because the residual
+    /// is their sum.
+    #[test]
+    fn the_residual_floor_is_the_sum_of_the_conductor_bands() {
+        let exp = synthetic_terminal();
+        // 3·1e-5 + 1e-7·600 = 9e-5 A (in f64: 8.999999999999999e-05), where the
+        // single-sample band would be 1e-5 + 1e-7·600 = 7e-5 A.
+        let band = residual_band(&exp, 0, 3, REL, ABS);
+        assert_eq!(band, 8.999999999999999e-05);
+        assert_eq!(ABS + REL * 600.0, 7e-05);
+        assert!(band > ABS + REL * 600.0);
+        // Accepted just inside the band (8.900000000267028e-05 A of error)…
+        residual_close(
+            &[Polar {
+                mag: 600.0 + 8.9e-5,
+                ang: 0.0,
+            }],
+            &exp,
+            REL,
+            ABS,
+            "inside",
+        );
+        // …and the angle that comes with it is banded by the image of THIS band.
+        assert_eq!(polar_angle_band(band, 600.0), Some(8.594366926962348e-6));
+    }
+
+    /// The rejection leg of the residual band: 9.099999999762076e-05 A of error
+    /// on the same terminal is outside 8.999999999999999e-05 A and fails.
+    #[test]
+    #[should_panic(expected = "magnitude")]
+    fn a_residual_above_the_conductor_sum_band_fails() {
+        residual_close(
+            &[Polar {
+                mag: 600.0 + 9.1e-5,
+                ang: 0.0,
+            }],
+            &synthetic_terminal(),
+            REL,
+            ABS,
+            "outside",
+        );
+    }
+
+    /// One terminal, three conductors carrying 100/200/300 A real, so
+    /// `Σ_c |I_c| = 600 A` exactly and the residual is 600 A at 0 °.
+    fn synthetic_terminal() -> ElementCap {
+        ElementCap {
+            name: "line.synthetic".to_string(),
+            i_re: vec![100.0, 200.0, 300.0],
+            i_im: vec![0.0, 0.0, 0.0],
+            res_mag: vec![600.0],
+            res_ang: vec![0.0],
+            ..ElementCap::default()
+        }
+    }
+
+    /// The set the polar channels are images **of** is a disc, not a rectangle:
+    /// [`assert_complex_close_c`] (`harness/mod.rs:799-801`) bands the *modulus*
+    /// of the complex difference, `|Δz| ≤ abs + rel·|z|`. A per-component band
+    /// would admit a rectangle whose modulus reaches `√2·abs + rel·|z|` at 45 °
+    /// — this test rejects exactly that error, which is why no `√2` appears in
+    /// any of the derivations of tests/TOLERANCE_NOTES.md §G1.3a.
+    #[test]
+    fn the_inherited_current_band_is_a_disc_not_a_rectangle() {
+        // 600 A at 45 °, feeder tier: rho = 1e-5 + 1e-7·600 = 7e-5 A.
+        let m = 600.0;
+        let z = Complex64::new(m / SQRT_2, m / SQRT_2);
+        let rho = ABS + REL * m;
+        assert_eq!(rho, 7e-5);
+        // A diagonal error of the disc radius is admitted…
+        let d = rho * (1.0 - 1e-9) / SQRT_2;
+        assert_complex_close_c(&[z + Complex64::new(d, d)], &[z], REL, ABS, "disc");
+        // …and the Minkowski bound of the per-component rectangle at 45 ° —
+        // `√2·abs + rel·|z|` = 7.414213562373095e-5 A, 1.059× the disc radius —
+        // is NOT (rejection leg below). That bound is attained: it is the modulus
+        // of the rectangle's own corner, to the last ulp.
+        let rect = SQRT_2 * ABS + REL * m;
+        assert_eq!(rect, 7.414213562373095e-5);
+        assert_eq!(rect / rho, 1.0591733660532994);
+        let corner = Complex64::new(ABS + REL * m / SQRT_2, ABS + REL * m / SQRT_2).norm();
+        assert_eq!(corner, 7.414213562373094e-5);
+        assert!((rect - corner).abs() <= f64::EPSILON * rect);
+    }
+
+    /// The rejection leg: an error of the rectangle's diagonal reach fails the
+    /// disc band, so a later "the gate bands re and im separately" reading
+    /// cannot be reintroduced silently.
+    #[test]
+    #[should_panic(expected = "entry 0 differs")]
+    fn the_rectangles_diagonal_reach_fails_the_disc_band() {
+        let m = 600.0;
+        let z = Complex64::new(m / SQRT_2, m / SQRT_2);
+        let d = (SQRT_2 * ABS + REL * m) / SQRT_2;
+        assert_complex_close_c(&[z + Complex64::new(d, d)], &[z], REL, ABS, "disc");
+    }
+
+    /// The angle band is the **linearization** of the exact angular image of the
+    /// disc: `arg` maps `D(z, ρ)` onto `±asin(ρ/|z|)`, and `asin(x) ≥ x`, so
+    /// `rad2deg·ρ/|z|` is never *looser* than the exact image — the channel can
+    /// only be stricter than the band it inherits, never more permissive.
+    #[test]
+    fn the_angle_band_is_the_conservative_linearization_of_its_exact_image() {
+        // Everywhere the gap is above f64 noise, the band is strictly tighter.
+        for e in -6..=0 {
+            let x = 10f64.powi(e);
+            let band = POLAR_RAD_TO_DEG * x;
+            let exact = POLAR_RAD_TO_DEG * x.asin();
+            assert!(
+                band < exact,
+                "band {band:e} !< exact image {exact:e} at x = {x:e}"
+            );
+        }
+        // At the widest band the live corpus ever emitted (37.0083678180735 ° on
+        // `midi_fuse` residuals, x = 0.6459178692144925) the exact image is
+        // 40.23452908031853 ° — the emitted band is 8.7 % tighter, with no
+        // consequence: the whole `midi_fuse` residual-angle channel measures
+        // ≤ 3.9428730418000316e-7 of its band.
+        let x = 37.0083678180735 / POLAR_RAD_TO_DEG;
+        assert_eq!(x, 0.6459178692144925);
+        assert_eq!(POLAR_RAD_TO_DEG * x.asin(), 40.23452908031853);
+        // At the magnitudes the corpus actually judges (x ≈ 1.6e-9) the two are
+        // the same f64 to within one ulp of the multiplication order: the
+        // `combo_mesh_asym` micro-tier sample of §G1.3a.
+        let m = 1.4616566273058197e3;
+        let rho = 1e-6 + 1e-9 * m;
+        let band = polar_angle_band(rho, m).expect("far outside the mask");
+        assert_eq!(band, 9.649498570331597e-8);
+        let exact = POLAR_RAD_TO_DEG * (rho / m).asin();
+        assert_eq!(exact, 9.649498570331596e-8);
+        assert!((band - exact).abs() <= f64::EPSILON * exact);
+    }
+
+    /// An **enabled** `UPFCControl`: `TUPFCControlObj.Create` (r4133
+    /// `Version8/Source/Controls/UPFCControl.pas:229-245`, capi 0.14.5
+    /// `src/Controls/UPFCControl.pas:151-164`) never assigns
+    /// `Nterms`/`Nphases`/`Setbus`, so the element carries 0 terminals, 0
+    /// conductor slots and six empty channels on every engine.
+    fn zero_terminal_pair() -> (Vec<ElementSnapshot>, ElementCap) {
+        let snap = ElementSnapshot {
+            name: "UPFCControl.myupfcctrl".to_string(),
+            enabled: true,
+            bus_names: Vec::new(),
+            powers: Vec::new(),
+            currents: Vec::new(),
+            loss_w: (0.0, 0.0),
+            currents_mag_ang: Vec::new(),
+            voltages_mag_ang: Vec::new(),
+            residuals: Vec::new(),
+        };
+        let cap = ElementCap {
+            name: "UPFCControl.myupfcctrl".to_string(),
+            enabled: Some(true),
+            ..ElementCap::default()
+        };
+        (vec![snap], cap)
+    }
+
+    /// The empty acceptance itself: with both sides empty the comparator returns
+    /// instead of tripping the `yorder % nterms` shape assert (which read
+    /// `0 conductor slots do not divide into 0 terminals` on all nine
+    /// `UPFCControl` corpus cases).
+    #[test]
+    fn a_zero_terminal_element_is_accepted_when_both_sides_are_empty() {
+        let (snaps, cap) = zero_terminal_pair();
+        compare_element_derived(&snaps, &cap, &tol_for("feeder"), "upfc", ElemChannels::ALL);
+    }
+
+    /// Rejection leg 1 — the **oracle** grows a payload the port does not have.
+    #[test]
+    #[should_panic(expected = "0-terminal element must carry no polar payload")]
+    fn a_zero_terminal_element_with_an_oracle_payload_fails() {
+        let (snaps, mut cap) = zero_terminal_pair();
+        cap.cma_mag = vec![1.0];
+        cap.cma_ang = vec![0.0];
+        compare_element_derived(&snaps, &cap, &tol_for("feeder"), "upfc", ElemChannels::ALL);
+    }
+
+    /// The one shape the oracle side may add on a 0-terminal element: the capi
+    /// `DefaultResult` COM sentinel. `Alt_CE_Get_VoltagesMagAng` returns
+    /// one-element `[0.0]` whenever `elem.NodeRef = NIL`
+    /// (`CAPI/CAPI_Alt.pas:1080-1084` → `CAPI/CAPI_Utils.pas:212-221`), which
+    /// de-interleaves into `mag = [0.0]`, `ang = []`; r4133 and the engine both
+    /// report an empty array. Measured live on all nine `UPFCControl` corpus
+    /// cases, CapiV0145 channel only, as `vma 1/0`.
+    #[test]
+    fn the_capi_default_result_sentinel_reads_as_no_payload() {
+        assert!(no_polar_payload(&[], &[]));
+        assert!(no_polar_payload(&[0.0], &[]));
+        // …and nothing else does: a real one-sample reading, a non-zero
+        // sentinel-shaped magnitude, or an angle without a magnitude all fail.
+        assert!(!no_polar_payload(&[0.0], &[0.0]));
+        assert!(!no_polar_payload(&[1.0], &[]));
+        assert!(!no_polar_payload(&[0.0, 0.0], &[]));
+        assert!(!no_polar_payload(&[], &[0.0]));
+        // End to end: the sentinel on the channel that actually carries it.
+        let (snaps, mut cap) = zero_terminal_pair();
+        cap.vma_mag = vec![0.0];
+        compare_element_derived(&snaps, &cap, &tol_for("feeder"), "upfc", ElemChannels::ALL);
+    }
+
+    /// The sentinel acceptance is a *shape* rule, not a value one: a one-element
+    /// magnitude that is not the sentinel's `0.0` still fails.
+    #[test]
+    #[should_panic(expected = "0-terminal element must carry no polar payload")]
+    fn a_sentinel_shaped_but_non_zero_oracle_payload_fails() {
+        let (snaps, mut cap) = zero_terminal_pair();
+        cap.vma_mag = vec![1e-30];
+        compare_element_derived(&snaps, &cap, &tol_for("feeder"), "upfc", ElemChannels::ALL);
+    }
+
+    /// Rejection leg 2 — the **port** grows a payload the oracle does not have,
+    /// which is the direction a one-sided `is_empty()` check on `exp` would miss.
+    #[test]
+    #[should_panic(expected = "0-terminal element must carry no polar payload")]
+    fn a_zero_terminal_element_with_a_port_payload_fails() {
+        let (mut snaps, cap) = zero_terminal_pair();
+        snaps[0].residuals = vec![Polar { mag: 1.0, ang: 0.0 }];
+        compare_element_derived(&snaps, &cap, &tol_for("feeder"), "upfc", ElemChannels::ALL);
+    }
+
+    /// The acceptance is scoped to `Yorder == 0 && Nterms == 0`: conductor slots
+    /// without terminals still hit the shape assert, so the branch cannot be
+    /// used to wave a real shape miss through.
+    #[test]
+    #[should_panic(expected = "conductor slots do not divide into 0 terminals")]
+    fn conductor_slots_without_terminals_still_fail_the_shape_assert() {
+        let (snaps, mut cap) = zero_terminal_pair();
+        cap.i_re = vec![1.0, 2.0];
+        cap.i_im = vec![0.0, 0.0];
+        compare_element_derived(&snaps, &cap, &tol_for("feeder"), "upfc", ElemChannels::ALL);
+    }
+
+    /// …and the mirror — terminals without conductor slots — falls through to the
+    /// per-channel length asserts, which catch it on `Residuals` (one entry per
+    /// terminal).
+    #[test]
+    #[should_panic(expected = "oracle Residuals magnitude length 0 != 1")]
+    fn terminals_without_conductor_slots_still_fail_the_length_asserts() {
+        let (mut snaps, cap) = zero_terminal_pair();
+        snaps[0].bus_names = vec!["b1".to_string()];
+        compare_element_derived(&snaps, &cap, &tol_for("feeder"), "upfc", ElemChannels::ALL);
     }
 }
 
@@ -1774,7 +2590,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:1020-1026` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:1194-1200` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -1803,7 +2619,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:1020-1026` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:1194-1200` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -1867,7 +2683,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     **compare** on r4133. The exclusion is a statement about the 0.14.5
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
-    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1020-1026`
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1194-1200`
     //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
@@ -1913,7 +2729,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///
 /// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1020-1026` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1194-1200` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
@@ -2106,7 +2922,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1020-1026`
+    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1194-1200`
     /// forbids masking there, plus the two `pctperm` rows RP2.1 measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {
