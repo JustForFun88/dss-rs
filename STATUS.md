@@ -39,8 +39,10 @@ has shrunk to a precision-compat lane and is scheduled for full teardown.
 **In flight.** `GOLDEN_REBASE_PLAN.md` **WP-G1**, on branch **`r4133-props`**
 (forked from `update` @ `2ee6bb00`). **`R4133_PROPS_PLAN.md` is COMPLETE**
 (2026-09-04, §RP5.2) — all six WPs gate-green in both lanes over 26 sub-steps /
-64 RP-titled commits to `64474762`, plan archived to `docs/plans-archive/`, `PLAN_SEQUENCE.md` row 5b
-COMPLETE with the final counters, record in
+**67** RP-titled commits (64 through RP5.1's `64474762`, plus RP5.2's
+`5a110653`, its settlement `bc16430b` and this record), plan archived to
+`docs/plans-archive/`, `PLAN_SEQUENCE.md` row 5b COMPLETE with the final
+counters, record in
 [`era-summaries.md`](docs/phase-records/era-summaries.md) §1a, **G1.1 handed back
 satisfied**. Execution stays single-branch: `ledger.json`,
 `population.lock.json`, `golden.lock.json` are fail-on-stale.
@@ -79,49 +81,31 @@ execution (verdict `FIX`), not by the `ORPHANED_GAPS.md` fallback. Full records:
 sub-step records RP3.6 – RP3.13 and RP3.10 (moved from STATUS §1)".
 
 - **RP3.1–RP3.4** (all 2026-08-24, one commit each, zero product-crate and zero
-  `ledger.json` bytes) — the four bin-7 root causes: `swtcontrol.delay` (r4133
-  never wires property 5), `windgen.kvar` (its getter renders the dispatched
-  value, not the base), `generator.model` (the first ECHO outcome, the 82nd
-  `PROPS_ECHO_R4133` row) and `gictransformer.r2` (LEDGER, the r4133 twin of a
-  G2.5 fix). No engine change owed; their staged entries landed at RP4.1.
-- **RP3.5** — `line.units` (2026-08-28, settled 2026-08-29): the first `FIX` and
-  the first to move product-crate bytes. Five `TLineObj.MergeWith` defects, one
-  landed capi ledger entry, seven oracle-free pins; no golden byte moved.
-- **RP3.6** — `line.linecode` (both parts 2026-08-29): r4133's `switch=yes` arm
-  must not clear `FLineCodeSpecified`; part (b) split that flag from `CondCode`
-  and restored the CIM LineCode-units back-fill. No committed golden byte moved.
-- **RP3.7** — per-phase switch and relay state (2026-09-02, settled the same
-  day): both control classes rebuilt on r4133's `pStateArray` model, plus the
-  locked-`normal` rule and Relay's live render bound. The widest RP3 sub-step —
-  50 engine, test, golden and ledger files.
-- **RP3.8** — the five read-only text surfaces r4133 renders live (2026-09-02):
-  `indmach012.pf` and the four `storagecontroller` totals render live behind one
-  engine flag; 25 files, zero golden bytes. Its settlement caught `Save` as a
-  fifth, un-refreshed `get_value` reader.
-- **RP3.9** — the r4133 round-trip residue (2026-09-02, settled 2026-09-03): all
-  27 pairs `PRECISION_ROUNDTRIP` and pinned, `OPEN_RP39 = (0, 0, 0)`, zero
-  product-crate lines and zero golden bytes.
-- **RP3.11** — the `Save`/`Dump` re-serialization surface (2026-09-03,
-  `97107e54` + `0194b086`): `KEEP_LIVE_PINNED` on both surfaces, seven
-  re-compilability guards, eleven pins; the kill criterion fired on the one cell
-  that decides it, so the divergence is recorded, not reproduced.
-- **RP3.12** — `autotrans.wdgcurrents` on the regulator decks (2026-09-03,
-  `09e70233` + `c2a8b68c`): RP3.9's P0 open item, settled `UPSTREAM_BUG` (r4133
-  never taps an AutoTrans), never reproduced, zero product-crate lines.
-- **RP3.13** — the two NCIM port bugs (2026-09-03, `2ce1a66e` + `217355da`): the
-  `ncim.rs:683` sizing panic and the stale PV→PQ reported Q, both `PORT_BUG`,
-  fixed lane-unconditionally with zero ledger entries and zero golden bytes; its
-  settlement (12 findings — 6 fixed, 6 recorded, 0 refuted) stopped reproducing
-  a fourth r4133 defect, `CalcInjCurrAtBus`' PC-element sign.
-- **RP3.10** — the reproduced `QMode=0` dispatch (2026-09-04, `9f55095b` +
-  `9f067c19`): verdict `FIX`. `SetNominalGeneration` gets the constant-Q arm
-  r4133 never wrote (`Else kvarCalc := 0`, `WindGen.pas:1320-1321`) in **both**
-  lanes, over four r4133 `exclusion` entries, the gate's new `variables`
-  exclusion field, five pins with a citation guard and zero golden bytes
-  (`lane_diff` Δ = 0). Its settlement (ten findings — eight fixed, one recorded
-  as the AT-1 follow-up below, one refuted) caught a port bug in the new arm:
-  the dispatched sign under a typed `kVA=`. Full record:
-  [`r4133-props-rp3.md`](docs/phase-records/r4133-props-rp3.md).
+  `ledger.json` bytes) — the four bin-7 root causes, each excluded and pinned
+  with no engine change owed: `swtcontrol.delay` (r4133 never wires property 5),
+  `windgen.kvar` (its getter renders the dispatched value), `generator.model`
+  (the first ECHO outcome, the 82nd `PROPS_ECHO_R4133` row) and
+  `gictransformer.r2` (LEDGER); their staged entries landed at RP4.1.
+- **The six `FIX`-in-both-lanes port fixes** — RP3.5 `line.units` (2026-08-28,
+  five `TLineObj.MergeWith` defects, the first sub-step to move product-crate
+  bytes), RP3.6 `line.linecode` (2026-08-29, the `switch=yes` arm plus the
+  `FLineCodeSpecified`/`CondCode` split and the CIM units back-fill), RP3.7
+  per-phase switch and relay state (2026-09-02, both control classes rebuilt on
+  r4133's `pStateArray` model — the widest sub-step, 50 files), RP3.8 the five
+  read-only text surfaces r4133 renders live (2026-09-02; its settlement caught
+  `Save` as a fifth un-refreshed `get_value` reader), RP3.10 the WindGen
+  `QMode=0` dispatch (2026-09-04, `9f55095b` + `9f067c19`, `lane_diff` Δ = 0;
+  its settlement caught the dispatched sign under a typed `kVA=` and opened the
+  AT-1 follow-up below) and RP3.13 the two NCIM port bugs (2026-09-03,
+  `2ce1a66e` + `217355da`, zero ledger entries and zero golden bytes; its
+  settlement stopped reproducing a fourth r4133 defect, `CalcInjCurrAtBus`'
+  PC-element sign).
+- **The three recorded-but-never-reproduced sub-steps** — RP3.9's 27
+  `PRECISION_ROUNDTRIP` pairs with `OPEN_RP39 = (0, 0, 0)` (2026-09-02), RP3.11's
+  `KEEP_LIVE_PINNED` `Save`/`Dump` re-serialization surface (2026-09-03, whose P0
+  findings opened RP3.13) and RP3.12's `autotrans.wdgcurrents` `UPSTREAM_BUG`
+  (2026-09-03) — zero product-crate lines between them. Per-sub-step shas,
+  verdicts and settlements: the condensed table in `r4133-props-rp5.md` §RP5.2.
 
 **WP-RP4 (the unmask) — COMPLETE** (RP4.1, 2026-09-03, `59e521e5`, 23 files
 +2 576 / −536; zero product-crate lines, zero golden bytes, zero tolerances
@@ -133,28 +117,27 @@ full run, identically in both lanes. G1.1's re-armed kill criterion did **not**
 fire (zero ledger entries and zero pins from RP4.1's own residual triage). Full
 record: [`r4133-props-rp4.md`](docs/phase-records/r4133-props-rp4.md).
 
-**WP-RP5 (operational docs + closing record) — COMPLETE.** **RP5.2 landed
-2026-09-04** in one commit on top of `64474762`, closing and archiving the plan;
-documentation only, counters published as measured — normalization **168** /
-echo **82** rows, ledger **36 → 57** entries over **23 → 30** causes, one new
-tolerance (the 2e-4 display floor), **4 498 / 0 / 5** per lane, and the
-gating-case outcome as the lock's **464** r4133-gating cases (**313**
-non-`large` `both` compared), not the plan's stale 462. **RP5.1 landed
+**WP-RP5 (operational docs + closing record) — COMPLETE.** **RP5.1 landed
 2026-09-04** (`dd0b9e5b` + `8802fb6a`), docs only: the r4133 claim chain
-(normalize → echo → floor → assert), the property-divergence triage procedure
-and **46** `file.rs:LINE` citations; its settlement made those citations
-executable — a twelfth `oracle_parity_cfg_gate` test anchors all **58** — and
-corrected six prose defects (two refuted, recorded by RP5.2 as deliberately not
-edited). **RP5.2's own settlement** (2026-09-04) corrected six accuracy defects
-in the closing record and two live cross-doc counts (`GOLDEN_REBASE_PLAN.md`'s
-stale 96 r4133-only cases → 97; 25 → 26 sub-steps), and closed the two guard gaps
-its auditors measured: an unanchored `file.rs:LINE` citation now **fails**
-instead of being checked for existence only (all **58** anchored, six re-spelled),
-and a **thirteenth** `oracle_parity_cfg_gate` test resolves the seven
-`record.md:LINE` citations Rust comments carry — the class that walk had skipped,
-and the exact rot RP5.2 itself had to repair. Three RP3 pin tables moved from
-`>= n` floors to exact counts. Full records — including the condensed table of
-all 26 sub-steps and the 13+ `max |Δ| = 0` `lane_diff` runs:
+(normalize → echo → floor → assert), the property-divergence triage procedure and
+**46** `file.rs:LINE` citations, which its settlement turned into an executable
+walk over all **58** (its two handed-forward wording items were both **refuted**
+and are recorded as deliberately not edited). **RP5.2 landed 2026-09-04**
+(`5a110653` + settlement `bc16430b` + this record) — the closing record and the
+archive move, with the final counters published as measured: normalization
+**168** / echo **82** rows, ledger **36 → 57** entries over **23 → 30** causes,
+one new tolerance (the 2e-4 display floor), **4 499 / 0 / 5** per lane (4 498 at
+the closing commit; the +1 is the thirteenth `oracle_parity_cfg_gate` test its
+settlement added), and the gating-case outcome as the lock's **464** r4133-gating
+cases (**313** non-`large` `both` compared), not the plan's stale 462. Its
+settlement (14 findings — 12 fixed, 1 recorded, 1 superseded, 0 refuted) closed
+both citation-guard gaps — an unanchored `file.rs:LINE` citation now **fails**
+instead of being checked for existence only (58 anchored, six re-spelled), and a
+thirteenth test resolves the seven `record.md:LINE` citations Rust comments carry
+— and corrected two live cross-doc counts (`GOLDEN_REBASE_PLAN.md`'s stale 96
+r4133-only cases → 97; 25 → 26 sub-steps) plus four self-description defects.
+Full records — including the condensed table of all 26 sub-steps and the 13+
+`max |Δ| = 0` `lane_diff` runs:
 [`r4133-props-rp5.md`](docs/phase-records/r4133-props-rp5.md) §RP5.1 / §RP5.2.
 
 **GOLDEN_REBASE WP-G0 (rails) + WP-G2 (bug-kernel teardown) — COMPLETE**, merged
@@ -171,20 +154,19 @@ properties diverged on 433 of the 438 walked live cases (209 structural pairs /
 960 129 cells, 94 numeric pairs / 95 317 cells, 5 shape gaps) — and the user's
 2026-08-22 decision handed it to `R4133_PROPS_PLAN.md`, whose RP4.1 delivered it
 2026-09-03. **That plan COMPLETED 2026-09-04 and is archived, so G1.1 is
-satisfied** and the two sub-steps that waited on it — **G3.4** (`cim/`, `json/`,
-`json_import/`) and **G3.5** (`props/`) — are unblocked, their value witness now
-being the live r4133 property compare. **G1.2**
-(the ESPVLControl deck, the last zero-coverage class) landed 2026-08-29 on
-`r4133-props`; G1.3a–d, G1.4–G1.11c and WP-G3–G5 remain. Full record: the same
+satisfied**, and **G3.4** (`cim/`, `json/`, `json_import/`) and **G3.5**
+(`props/`) are unblocked — their value witness is now the live r4133 property
+compare. **G1.2** (the ESPVLControl deck, the last zero-coverage class) landed
+2026-08-29 on `r4133-props`; G1.3a–d, G1.4–G1.11c and WP-G3–G5 remain. Full
+record: the same
 file, section "GOLDEN_REBASE WP-G1 — records".
 
-**Next.** **Back to `GOLDEN_REBASE_PLAN.md` WP-G1**, **G1.1 satisfied** by the
-archived R4133_PROPS plan (RP5.2, 2026-09-04): open work is **G1.3a–d** and
+**Next.** **Back to `GOLDEN_REBASE_PLAN.md` WP-G1** with **G1.1 satisfied** by
+the archived R4133_PROPS plan (RP5.2, 2026-09-04): open work is **G1.3a–d** and
 **G1.4–G1.11c**, then WP-G3–G5 — inside which **G3.4**/**G3.5**, blocked since
-2026-08-08, are runnable. RP5.1's two handed-forward wording items are closed —
-both **refuted** as errors, recorded by RP5.2 as deliberately not edited. Queued
-behind GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING,
-UPGRADE.
+2026-08-08, are runnable. Then the close-out merge of `r4133-props` into
+`update`. Queued behind GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE,
+MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
@@ -271,27 +253,24 @@ the site comment carries each row's measured cost.
 
 - **`UNIFIED_GATE_PLAN.md` still reads `Status: PLANNED` while its execution is
   recorded as finished — OPEN (found by the R4133_PROPS RP5.2 audit settlement,
-  2026-09-04).** The plan sits at the repo root, `TESTING.md` cites it as the
-  live gate's design record, and `docs/phase-records/unified-gate.md` records
-  Phases 0 and A–F plus §6 final acceptance (2026-07-19). RP5.2's settlement
-  added it to the `docs/plans-archive/README.md` root-plan list, which had
-  omitted it entirely, and stopped there: flipping another plan's lifecycle
-  banner — and deciding whether it archives — belongs to whoever owns it, not to
-  a closing record for a different plan.
+  2026-09-04).** The plan sits at the repo root, `TESTING.md` cites it as the live
+  gate's design record, and `docs/phase-records/unified-gate.md` records Phases 0
+  and A–F plus §6 final acceptance (2026-07-19). RP5.2's settlement added it to
+  the `docs/plans-archive/README.md` root-plan list, which had omitted it, and
+  stopped there: flipping another plan's lifecycle banner — and deciding whether
+  it archives — belongs to whoever owns it.
 
 - **54 `kind=large*` `engines: both` cases have no property compare on EITHER
-  channel — DECIDED at RP5.2 (2026-09-04): accepted permanently (raised by the
-  R4133_PROPS RP4.1 audit settlement, 2026-09-03).** `scheduler::force_properties` keeps the plan's cost
-  guard (`!kind.starts_with("large")`), so of the 367 `both` cases only **313**
-  compare their property table; the same guard also leaves 14 r4133-only and 11
-  capi-only `large` decks out, but those two never had one. The forced population
-  is pinned (`FORCED_PROPS_POPULATION = (440, 313, 83, 44)`, asserted by
-  `the_property_forcing_rule_is_every_live_non_large_case`), so this is measured,
-  not drifting. The RP5.2 closing record accepts the gap permanently — it is the
-  plan's own §1.3 cost rule, measured, bounded and locked — and leaves pricing a
-  `large`-deck property sweep (the `?`-sweep on the biggest feeders is the whole
-  reason for the guard) available to GOLDEN_REBASE, owed by nothing:
-  `r4133-props-rp5.md` §RP5.2.
+  channel — DECIDED at RP5.2 (2026-09-04): accepted permanently** (raised by the
+  R4133_PROPS RP4.1 audit settlement, 2026-09-03). `scheduler::force_properties`
+  keeps the plan's §1.3 cost guard (`!kind.starts_with("large")`), so of the 367
+  `both` cases **313** compare their property table; the same guard also leaves
+  14 r4133-only and 11 capi-only `large` decks out, but those two never had one.
+  The forced population is pinned (`FORCED_PROPS_POPULATION` = (440, 313, 83,
+  44), asserted by `the_property_forcing_rule_is_every_live_non_large_case`), so
+  the gap is measured, bounded and locked. Pricing a `large`-deck property sweep
+  stays available to GOLDEN_REBASE, owed by nothing: `r4133-props-rp5.md`
+  §RP5.2.
 
 - **`DECLARED_RP35`'s four remaining declared pairs owe a per-pair disposition —
   OPEN (R4133_PROPS RP4.1, 2026-09-03).** RP4.1 retired only the two pairs its
@@ -585,7 +564,7 @@ and this file; none was rewritten.
 | `r4133-props-rp2.md` | R4133_PROPS WP-RP2 (RP2.1–RP2.4 and the RP2.4 audit settlement) |
 | `r4133-props-rp3.md` | R4133_PROPS WP-RP3 — the RP3.1–RP3.5 condensed records **and** the full RP3.6–RP3.13 records with their audit settlements; read by the three `props_r4133_replay.rs` pin-citation guards (RP3.10, RP3.11, RP3.13) |
 | `r4133-props-rp4.md` | R4133_PROPS WP-RP4 — the RP4.1 `all_properties` unmask record and its audit settlement |
-| `r4133-props-rp5.md` | R4133_PROPS WP-RP5 — the RP5.1 operational-docs record and its audit settlement, and §RP5.2, the plan's closing record (2026-09-04): final counters, the `lane_diff` table, the condensed per-sub-step record of all 26 sub-steps, and the RP5.2 audit settlement |
+| `r4133-props-rp5.md` | R4133_PROPS WP-RP5 — the RP5.1 operational-docs record and its audit settlement, and §RP5.2, the plan's closing record (2026-09-04): final counters, the `lane_diff` table, the condensed per-sub-step record of all 26 sub-steps, the RP5.2 audit settlement and its settlement record |
 | `follow-ups-carried.md` | the carried-forward handoffs and the residual-floor / parked items, open and closed rows alike |
 | `golden-rebase.md` (appended 2026-09-03) | section 1's `### GOLDEN_REBASE` WP-G0 / WP-G2 and WP-G1 condensed record blocks |
 | `phase-index.md` (appended 2026-09-03) | round 1's own 2026-08-05 archive note, listing the files that round created |
