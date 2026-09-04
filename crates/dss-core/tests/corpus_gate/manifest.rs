@@ -97,11 +97,18 @@ pub(crate) struct SolvableCase {
     /// r4133 `DDLL/DCktElement.pas` `CktElementI`/`CktElementS`).
     #[serde(default)]
     pub(crate) compare_element_extras: bool,
-    /// G1.4: the **bus** surface — `puVoltages`/`puVmagAngle`/`VMagAngle`/`VLL`/
-    /// `puVLL`, `SeqVoltages`/`CplxSeqVoltages`, `AllPCEatBus`/`AllPDEatBus`,
-    /// `Distance` (+ the circuit-level `AllBusDistances`/`AllNodeDistances`/
-    /// `AllBusVmagPu`) — `origin/fastdss` `dss/IBus.py:19-53` `_columns`;
-    /// r4133 `DDLL/DBus.pas`.
+    /// G1.4: the **bus** surface — `origin/fastdss` `dss/IBus.py:19-53`
+    /// `_columns`; r4133 `DDLL/DBus.pas`, capi `CAPI/CAPI_Alt.pas`.
+    ///
+    /// **Wired by G1.4a (2026-09-04, settlement D8):** `puVoltages`
+    /// (`DBus.pas:399-430` == `CAPI_Alt.pas:2251-2280`), `VMagAngle`
+    /// (`:659-689` == `:2573-2597`), `puVmagAngle` (`:690-723` == `:2540-2571`),
+    /// the per-bus `Nodes`/`kVBase` (`:319-345` == `:2143-2163`) and the
+    /// circuit-level `AllBusVmagPu` (`DCircuit.pas:481-500` ==
+    /// `CAPI_Circuit.pas:521-548`) — the arms both oracles run identically.
+    /// **Still to come on this same flag:** `SeqVoltages`/`CplxSeqVoltages` and
+    /// `VLL`/`puVLL` (G1.4c — the channels disagree there), `AllPCEatBus`/
+    /// `AllPDEatBus`/`Distance` + `AllBusDistances`/`AllNodeDistances` (G1.4b).
     #[serde(default)]
     pub(crate) compare_bus: bool,
     /// G1.5: the bus **short-circuit** surface — `Zsc1`/`Zsc0`/`ZscMatrix`/
@@ -537,7 +544,7 @@ pub(crate) const G1_SURFACE_FLAGS: &[G1Flag] = &[
     G1Flag {
         name: "compare_bus",
         sub_step: "G1.4",
-        wired: false,
+        wired: true,
         get: |c| c.compare_bus,
     },
     G1Flag {
@@ -844,6 +851,10 @@ const MODES_REQUIRED: &[&str] = &[
     "makeposseq/makeposseq_line.dss",
     "makeposseq/makeposseq_xfmr.dss",
     "makeposseq/makeposseq_shunt.dss",
+    // GOLDEN_REBASE G1.4a (D12/D14, 2026-09-04): the GICTransformer arm of the
+    // shunt deck, split into its own `engines: "r4133"` case because capi 0.14.5
+    // is nondeterministic on any deck that instantiates a GICTransformer.
+    "makeposseq/makeposseq_gic.dss",
     "makeposseq/makeposseq_pc.dss",
     "makeposseq/makeposseq_ctrl.dss",
     "makeposseq/makeposseq_report.dss",
@@ -1052,4 +1063,211 @@ fn set_g1_flag(c: &mut SolvableCase, name: &str) {
         "compare_di" => c.compare_di = true,
         other => panic!("G1_SURFACE_FLAGS row {other:?} has no writer in `set_g1_flag`"),
     }
+}
+
+// ---------------------------------------------------------------------------
+// GICTransformer decks gate on r4133 alone (GOLDEN_REBASE G1.4a, coordinator
+// decisions D12/D14, 2026-09-04 — see `DIVERGENCES.md` and `TESTING.md`).
+// ---------------------------------------------------------------------------
+
+/// Every corpus deck that `new`s a `GICTransformer`, relative to
+/// `tests/corpus/`, sorted.
+///
+/// Pinned as a closed set, not merely walked, because the per-case scan below
+/// reads only the deck a case names: a GICTransformer hidden one `Redirect`
+/// deeper would slip past it. A new deck here fails this test and forces the
+/// channel review — the element makes the pinned dss_capi 0.14.5 oracle
+/// **nondeterministic across processes** (7 bad runs of 60 with one in the deck,
+/// 0 of 40 without; the whole no-load solve lands elsewhere and `Bus.kVBase` is
+/// punted to 0), while EPRI r4133 is deterministic (80/80 bit-identical), so
+/// such a deck may gate on `r4133` only.
+const GICTRANSFORMER_DECKS: &[&str] = &[
+    "asymmetric/gic/gic_midi.dss",
+    "asymmetric/gic/gictransformer_gic.dss",
+    "electricdss-tst/Version8/Distrib/Examples/GICExample/GIC_Example.dss",
+    "modes/makeposseq/makeposseq_gic.dss",
+];
+
+/// `tests/corpus/` itself (the four manifests' two deck roots live under it).
+fn corpus_root() -> PathBuf {
+    [env!("CARGO_MANIFEST_DIR"), "..", "..", "tests", "corpus"]
+        .iter()
+        .collect()
+}
+
+/// Does this deck text create a `GICTransformer`?
+///
+/// Comment-stripped (`!` and `//` run to end of line, the DSS comment rules) so
+/// a prose mention — `makeposseq_shunt.dss`'s header now carries one — is not an
+/// instantiation, and `New` must be the verb: `edit`/`~` lines touch an element
+/// that already exists and cannot introduce the nondeterminism.
+fn deck_instantiates_a_gictransformer(text: &str) -> bool {
+    for line in text.lines() {
+        let code = line.split('!').next().unwrap_or_default();
+        let code = code.split("//").next().unwrap_or_default();
+        let lower = code.to_ascii_lowercase();
+        let mut toks = lower.split_whitespace();
+        while let Some(tok) = toks.next() {
+            if tok != "new" {
+                continue;
+            }
+            let Some(obj) = toks.next() else { continue };
+            let obj = obj.trim_start_matches('"');
+            if obj == "gictransformer" || obj.starts_with("gictransformer.") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Collect every `.dss` under `dir` that [`deck_instantiates_a_gictransformer`]
+/// accepts, as forward-slashed paths relative to `base`.
+fn collect_gictransformer_decks(dir: &Path, base: &Path, out: &mut Vec<String>) {
+    for entry in std::fs::read_dir(dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display())) {
+        let p = entry.expect("dir entry").path();
+        if p.is_dir() {
+            collect_gictransformer_decks(&p, base, out);
+            continue;
+        }
+        if !p.extension().is_some_and(|e| e.eq_ignore_ascii_case("dss")) {
+            continue;
+        }
+        // Decks are ASCII/Latin-1 in practice; a non-UTF-8 byte must not hide a
+        // GICTransformer, so read lossily instead of skipping the file.
+        let text = String::from_utf8_lossy(
+            &std::fs::read(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display())),
+        )
+        .into_owned();
+        if deck_instantiates_a_gictransformer(&text) {
+            out.push(
+                p.strip_prefix(base)
+                    .expect("under corpus root")
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
+        }
+    }
+}
+
+/// The refusal itself, factored out so the negative drive can fire it without
+/// mutating the corpus.
+fn assert_gictransformer_case_gates_r4133(label: &str, engines: &str) {
+    assert_eq!(
+        engines, "r4133",
+        "{label}: this deck instantiates a GICTransformer, so it must gate on the r4133 channel \
+         ALONE (`engines: \"r4133\"`), not `{engines}`. The pinned dss_capi 0.14.5 oracle \
+         disagrees with ITSELF across fresh processes on such decks (7 bad runs of 60 with the \
+         element, 0 of 40 without — the whole no-load solve lands elsewhere and Bus.kVBase is \
+         punted to 0), and an oracle channel that disagrees with itself cannot gate; r4133 is \
+         deterministic (80/80). GOLDEN_REBASE G1.4a, coordinator decisions D12/D14 — see \
+         DIVERGENCES.md."
+    );
+}
+
+/// **No capi-gated case instantiates a GICTransformer** (D12/D14).
+///
+/// Two rails in one test: the corpus-wide census pins WHICH decks carry the
+/// element ([`GICTRANSFORMER_DECKS`]), and the manifest walk pins that every
+/// gated case naming one of them declares `engines: "r4133"`.
+#[test]
+fn no_capi_gated_case_instantiates_a_gictransformer() {
+    let root = corpus_root();
+    let mut found: Vec<String> = Vec::new();
+    collect_gictransformer_decks(&root, &root, &mut found);
+    found.sort();
+    assert_eq!(
+        found, GICTRANSFORMER_DECKS,
+        "the set of corpus decks that `new` a GICTransformer moved. Every one of them must gate \
+         on the r4133 channel alone (capi 0.14.5 is nondeterministic on them — D12/D14); update \
+         GICTRANSFORMER_DECKS in the same commit that adds or removes one."
+    );
+
+    let mut checked: Vec<String> = Vec::new();
+    for c in load_solvable() {
+        let rel = format!("electricdss-tst/{}", c.path.replace('\\', "/"));
+        if GICTRANSFORMER_DECKS.contains(&rel.as_str()) {
+            let label = format!("solvable_now:{}", c.path);
+            assert_gictransformer_case_gates_r4133(&label, &c.engines);
+            checked.push(label);
+        }
+    }
+    for fam in FAMILIES {
+        for c in load_family(fam.name) {
+            let rel = format!("{}/{}", fam.name, c.path.replace('\\', "/"));
+            if GICTRANSFORMER_DECKS.contains(&rel.as_str()) {
+                let label = format!("{}:{}", fam.name, c.path);
+                assert_gictransformer_case_gates_r4133(&label, &c.engines);
+                checked.push(label);
+            }
+        }
+    }
+    assert_eq!(
+        checked.len(),
+        GICTRANSFORMER_DECKS.len(),
+        "every GICTransformer deck is a gated case exactly once; walked {checked:?}"
+    );
+}
+
+/// Non-vacuity for the guard above (§1.1(f)): the scanner must separate a prose
+/// mention from an instantiation, and the refusal must fire on both capi-gating
+/// spellings.
+#[test]
+fn the_gictransformer_channel_guard_refuses_a_capi_gated_deck() {
+    // The scanner, driven on a MUTATED COPY of a real deck (never written to
+    // disk): `makeposseq_shunt.dss` mentions the element in prose since G1.4a
+    // split it out, and must read as clean until a `new` line is appended.
+    let shunt =
+        std::fs::read_to_string(corpus_root().join("modes/makeposseq/makeposseq_shunt.dss"))
+            .expect("read makeposseq_shunt.dss");
+    assert!(
+        shunt.to_ascii_lowercase().contains("gictransformer"),
+        "the drive is vacuous unless the deck still mentions the element in prose"
+    );
+    assert!(
+        !deck_instantiates_a_gictransformer(&shunt),
+        "a `!` comment mentioning a GICTransformer is not an instantiation"
+    );
+    let mutated =
+        format!("{shunt}\nnew gictransformer.gt busH=b1 busNH=b1.4.4.4 R1=0.1 type=GSU\n");
+    assert!(
+        deck_instantiates_a_gictransformer(&mutated),
+        "appending the `new` line must be seen"
+    );
+    for clean in [
+        "// new gictransformer.gt busH=b1",
+        "edit gictransformer.gt R1=0.2",
+        "~ gictransformer=no",
+    ] {
+        assert!(
+            !deck_instantiates_a_gictransformer(clean),
+            "{clean:?} creates no GICTransformer"
+        );
+    }
+    for created in [
+        "New GICTransformer.tg1 busH=b1 R1=0.12 type=GSU",
+        "  new \"gictransformer.gt\" busH=b1",
+    ] {
+        assert!(
+            deck_instantiates_a_gictransformer(created),
+            "{created:?} creates a GICTransformer"
+        );
+    }
+
+    // The refusal: both capi-gating spellings must panic, `r4133` must not.
+    for engines in ["capi_v0145", "both"] {
+        let payload = std::panic::catch_unwind(|| {
+            assert_gictransformer_case_gates_r4133("modes:mutated_gic.dss", engines)
+        })
+        .expect_err("a capi-gated GICTransformer case must be refused");
+        let msg = crate::runner::panic_msg(payload);
+        assert!(
+            msg.contains("mutated_gic.dss") && msg.contains("r4133") && msg.contains("D12/D14"),
+            "the refusal must name the case, the channel and the decision; got {msg:?}"
+        );
+    }
+    assert!(
+        std::panic::catch_unwind(|| assert_gictransformer_case_gates_r4133("ok", "r4133")).is_ok(),
+        "an r4133-gated GICTransformer case must be allowed"
+    );
 }

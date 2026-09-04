@@ -413,6 +413,43 @@ impl LedgerRuntime {
             .collect()
     }
 
+    /// The (case, entry, channel) triples on which the bus comparator suppressed
+    /// its three continuous per-bus arrays this run — the visibility half of
+    /// coordinator decision **D11(2)** (`GOLDEN_REBASE_PLAN.md` §G1.4, G1.4a).
+    ///
+    /// `harness::compare_bus` bands `puVoltages`/`VMagAngle`/`puVmagAngle` as
+    /// exact images of the node-voltage band over the SAME `Solution.NodeV`, so
+    /// on a case whose `voltages` field is already ledger-excluded those arrays
+    /// would re-raise a divergence that is already triaged and pinned. The
+    /// runner therefore passes `excluded("voltages", None, step)` down as
+    /// `voltages_excluded` and the comparator drops **only** those three arrays
+    /// (bus count, name sequence, `nodes`, `kv_base` and every array length stay
+    /// compared, `harness::mod.rs::the_voltage_exclusion_still_pins_kv_base`).
+    /// That is a documented normalization, not a mask — and a normalization the
+    /// gate has to SAY out loud, which is what this report is: the summary lists
+    /// every case whose bus arrays were suppressed next to the ledger entry that
+    /// caused it.
+    ///
+    /// The predicate is the runner's own, read back off the recorded hits: an
+    /// `exclusion` entry with a `voltages` scope that carries no `name_re` (a
+    /// named scope never matches the unnamed `excluded("voltages", None, …)`
+    /// call) and that actually fired. `excluded()` is the only writer of a
+    /// `voltages` scope's `hit` flag — `voltage_keep_mask` marks the ENTRY, not
+    /// the scope — and the bus block is its only caller, so a scope listed here
+    /// suppressed arrays on this run and one that is silent did not.
+    pub(crate) fn bus_array_suppressions(&self) -> Vec<(String, String, EngineChannel)> {
+        self.entries
+            .iter()
+            .filter(|e| e.kind == Kind::Exclusion)
+            .filter(|e| {
+                e.scopes.iter().any(|s| {
+                    s.field == "voltages" && s.name_re.is_none() && s.hit.load(Ordering::Relaxed)
+                })
+            })
+            .map(|e| (e.case.clone(), e.id.clone(), e.channel))
+            .collect()
+    }
+
     fn cause_keys(&self) -> Vec<&String> {
         self.causes.keys().collect()
     }
@@ -2074,6 +2111,114 @@ fn a_voltages_exclusion_that_masks_nothing_is_stale() {
     assert!(
         vars_hit.assert_all_hit().is_ok(),
         "a `variables` scope that matched a variable must pass"
+    );
+}
+
+/// The D11(2) normalization must be VISIBLE: a case whose per-bus continuous
+/// arrays the bus comparator suppressed is listed in the gate summary next to
+/// the ledger entry that caused it
+/// ([`LedgerRuntime::bus_array_suppressions`], printed by
+/// `corpus_gate_all_cases_match_engines`).
+///
+/// Driven both ways on synthetic entries, because the report is only worth
+/// printing if it tracks the runner's own predicate: it must appear exactly when
+/// `excluded("voltages", None, step)` fired (that call being the sole writer of a
+/// `voltages` scope's `hit` flag), stay silent for an entry that was never
+/// consulted, and never claim a suppression for a `voltages` scope carrying a
+/// `name_re` — which the unnamed call can never match — or for a
+/// divergence-kind entry, which `excluded()` ignores.
+#[test]
+fn a_suppressed_bus_array_is_named_with_the_entry_that_caused_it() {
+    fn scope(field: &str, name_re: Option<&str>) -> Scope {
+        Scope {
+            field: field.to_string(),
+            policy: None,
+            steps: None,
+            node_re: None,
+            name_re: name_re.map(|r| Regex::new(r).expect("test regex")),
+            channel_idx: None,
+            channels: Vec::new(),
+            max_rel: 0.0,
+            max_abs: 0.0,
+            rust: None,
+            oracle: None,
+            num_rel: None,
+            line_re: None,
+            hit: AtomicBool::new(false),
+        }
+    }
+    fn entry(id: &str, case: &str, kind: Kind, scopes: Vec<Scope>) -> Entry {
+        Entry {
+            id: id.to_string(),
+            case: case.to_string(),
+            channel: EngineChannel::CapiV0145,
+            kind,
+            scopes,
+            applied: AtomicBool::new(false),
+            exceeded_floor: AtomicBool::new(false),
+            hits: AtomicUsize::new(0),
+        }
+    }
+    let rt = LedgerRuntime {
+        causes: std::collections::BTreeMap::new(),
+        entries: vec![
+            entry(
+                "fires",
+                "synthetic:fires.dss",
+                Kind::Exclusion,
+                vec![scope("voltages", None)],
+            ),
+            entry(
+                "untouched",
+                "synthetic:untouched.dss",
+                Kind::Exclusion,
+                vec![scope("voltages", None)],
+            ),
+            entry(
+                "named",
+                "synthetic:named.dss",
+                Kind::Exclusion,
+                vec![scope("voltages", Some("^b1$"))],
+            ),
+            entry(
+                "divergence",
+                "synthetic:divergence.dss",
+                Kind::Divergence,
+                vec![scope("voltages", None)],
+            ),
+        ],
+    };
+    // Nothing was consulted yet: the gate reports no suppression.
+    assert!(
+        rt.bus_array_suppressions().is_empty(),
+        "a ledger nobody consulted must report no suppression"
+    );
+    // The runner's call for `synthetic:fires.dss` — the only thing that makes
+    // `harness::compare_bus` drop the three arrays.
+    assert!(
+        rt.view("synthetic:fires.dss", EngineChannel::CapiV0145)
+            .excluded("voltages", None, 0),
+        "the unnamed voltages exclusion must fire for its own case"
+    );
+    // The named and divergence entries are consulted on their own cases and
+    // must NOT report: `excluded` never matches a `name_re` scope against an
+    // unnamed artifact, and never honours a divergence entry.
+    for case in ["synthetic:named.dss", "synthetic:divergence.dss"] {
+        assert!(
+            !rt.view(case, EngineChannel::CapiV0145)
+                .excluded("voltages", None, 0),
+            "{case}: this scope must not suppress the bus arrays"
+        );
+    }
+    let got = rt.bus_array_suppressions();
+    assert_eq!(
+        got,
+        vec![(
+            "synthetic:fires.dss".to_string(),
+            "fires".to_string(),
+            EngineChannel::CapiV0145
+        )],
+        "the suppression report must name exactly the case+entry that fired"
     );
 }
 

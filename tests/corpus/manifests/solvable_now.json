@@ -606,7 +606,8 @@
   },
   {
    "path": "Version8/Distrib/Examples/GICExample/GIC_Example.dss",
-   "engines": "both",
+   "engines": "r4133",
+   "note": "GOLDEN_REBASE G1.4a (2026-09-04, coordinator decision D12): gated on r4133 ONLY. The pinned dss_capi 0.14.5 oracle disagrees with ITSELF across fresh processes on any deck that instantiates a GICTransformer -- 7 bad runs of 60 with the element, 0 of 40 without; the whole no-load solve lands elsewhere and Bus.kVBase is punted to 0. EPRI r4133 is deterministic (80/80 bit-identical over 20 one-shot runs x 4 decks), and an oracle channel that disagrees with itself cannot gate (CLAUDE.md: prefer the r4133 channel). See DIVERGENCES.md D12/D14.",
    "kind": "feeder",
    "n_steps": 1
   },
