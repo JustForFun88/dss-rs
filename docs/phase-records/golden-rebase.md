@@ -2755,7 +2755,9 @@ row against the pre-fix lock.
   `capcontrol_time_voltages_follow_the_monitored_elements_terminal`, plus **13** measured widenings of
   committed `element` scopes; pins `exec::tests::derived_polar::*` (6),
   `harness::derived_polar_floors::*` (15), two `ledger::*`, one `scheduler::*`. As executed:
-  `GOLDEN_REBASE_PLAN.md` §G1.3a. Commits: `d8e71991` + the audit settlement below.
+  `GOLDEN_REBASE_PLAN.md` §G1.3a. Commits: `d8e71991`, audit settlement `588e0bfe`, + docs (this
+  record). Gate after the settlement, both lanes: **4 959 / 0 / 5**, fmt + clippy clean, corpus gate
+  523/523, `lane_diff` PASS max |Δ| = 0 on every gated kind (4 956 / 0 / 5 at `d8e71991`).
 
   **Audit settlement** (2026-09-04) — 15 findings: **11 fixed / 3 recorded / 1 refuted**. Major 1: the
   new `voltages_mag_ang` block sliced `node_ref[..yorder]`, and a **disabled** element that grows
@@ -2786,5 +2788,5 @@ row against the pre-fix lock.
   and the **merge agent deletes them together with their entries** when lane-b lands D12/D14 ("D12 —
   pending sync"); `makeposseq-cuf-applied-capi` is NOT one of them (D14 keeps that deck capi-gated),
   but its polar samples must be **re-measured at the merge**, once the GICTransformer line moves out.
-  Gate re-run in full: **4 959 / 0 / 5** per lane, fmt + clippy clean in both, corpus gate 523/523,
-  ledger 58 entries / 0 stale, `tests/golden` byte-untouched, `lane_diff` max |Δ| = 0 on every gated kind.
+  Gate re-run in full and green in both lanes (figures above): ledger 58 entries / 0 stale,
+  `tests/golden` byte-untouched, no tolerance moved.
