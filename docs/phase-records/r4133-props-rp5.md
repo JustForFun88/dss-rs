@@ -320,3 +320,377 @@ executable check that covers exactly what moved: the doc-walk and the new
 line-citation walk both read `TESTING.md`. The five-command gate was not re-run
 for a `.md`-only diff and `lane_diff` does not apply — no product code, no test
 logic, no golden, no ledger, no tolerance moved by this commit.
+
+---
+
+### RP5.2 — closing record (2026-09-04)
+
+**RP5.2 closed `R4133_PROPS_PLAN.md` and moved it to `docs/plans-archive/`** (the
+2026-07 convention: a completed plan leaves the repo root, its condensed record
+joins `era-summaries.md` §1a, and `PLAN_SEQUENCE.md` carries the COMPLETE row).
+Documentation only, by design: zero product-crate lines, zero test *logic*, zero
+table rows, zero tolerances, zero golden bytes, zero ledger entries, zero
+manifest bytes. The only non-`.md` edit is a pair of **doc comments** in
+`crates/dss-core/tests/props_r4133_replay.rs` (+5/−4, all `///` prose) whose plan
+citation the move forced — and which were *already wrong* before it (see "Two
+stale citations" below).
+
+#### Final counters
+
+Every number was re-measured on this tree at `64474762` (clean, branch
+`r4133-props`); the command that produced each one is in `tmp/rp52/counters.md`.
+Nothing is transcribed from the plan text.
+
+| Counter | Final value | Where it is locked |
+|---|---|---|
+| normalization table `PROPS_NORM_R4133` | **168** rows — 77 `BoolFold` / 65 `CaseFold` / 21 `ArrayForm` / 5 `EnumSynonym` | `harness/props_norm.rs:742` (`NORM_ROWS`) + the four per-kind locks `:745`/`:750`/`:758`/`:764` |
+| echo table `PROPS_ECHO_R4133` | **82** rows — 50 `EchoDefault` / 8 `EchoParse` / 14 `EchoEmptyCollection` / 10 `EchoLiveSemantics` | `props_norm.rs:2024` (`ECHO_ROWS`) + `:2026`/`:2028`/`:2030`/`:2032` |
+| — rows living only on r4133-only cases | **58** rows over **34 971** cells / **833** cases | `R4133_ONLY_ROWS :2145`, `R4133_ONLY_CELLS :2147`, `R4133_ONLY_CASES :2155` |
+| — per-cell narrowed pairs | **20** pairs over **66** spellings; **1** carve-out | `ECHO_NARROWED_PAIRS :2459`, `ECHO_NARROWED_SPELLINGS :2463`, `ECHO_CARVE_OUT_CELLS :2251` |
+| tolerances introduced by the whole plan | **one** — the derived r4133 display floor **2e-4** | `R4133_DISPLAY_FLOOR = Some(2e-4)`, `props_norm.rs:895`; no `Tolerances` field or tier moved |
+| ledger `tests/corpus/ledger.json` | **36 → 57** entries (**+21**, **none removed**) over **23 → 30** causes (8 added, 1 removed); `property`-scoped entries **21** (13 `capi_v0145` / **8** `r4133`) | measured `git show f887f806:tests/corpus/ledger.json` vs HEAD; the eight r4133 ones are exactly `LEDGER_ENTRY_PINS` (`props_r4133_replay.rs:5419`) |
+| new ledger `match` field | **`variables`** (2 uses, both RP3.10) | `TESTING.md:431` |
+| in-scope UNCLAIMED cells, r4133 channel | **521 841 → 889** (RP2.4) **→ 0** (RP4.1); 504 out-of-scope cells remain, each accounted to a named pin or record | `r4133-props-rp4.md:96-124` |
+| **the gating-case outcome** | **523** manifest cases; **464** r4133-gating = **367** `both` + **97** r4133-only (plus 59 capi-only); 80 `kind=large`; the population `force_properties` actually compares = **313** non-`large` `both` cases | derived from `tests/corpus/manifests/population.lock.json` rigor fingerprints; the 313 is pinned by `the_property_forcing_rule_is_every_live_non_large_case` |
+| RP3.x pin tables | `RP39_PINS` **27**, `RP310_WINDGEN_PINS` **5**, `RP311_SERIALIZATION_PINS` **11**, `RP312_UPSTREAM_BUG` **1** (plus 4 staged skips), `RP313_NCIM_PINS` **9**, `LEDGER_ENTRY_PINS` **8**, `LANDED_PROPERTY_ENTRY_PINS` **8** | `props_r4133_replay.rs:5563` / `:5308` / `:5106` / `:5742` / `:5215` / `:5419` / `:4980` |
+| tests | **4 498 passed / 0 failed / 5 ignored — per lane**, over 74 binaries; `props_r4133_pins` 54, `props_r4133_replay` 152, `props_r4133_evidence_lock` 11, `oracle_parity_cfg_gate` 12 | RP5.2's own five-command gate on this tree (§"Gate for this pass"), reproducing RP5.1's `8802fb6a` figures to the unit; the 5 ignored are the pre-existing set — **no `#[ignore]` was added anywhere in this plan** |
+| commits | **25** sub-steps, **64** RP-titled commits in `f887f806..HEAD` (70 in the range; the other six are the plan's own round-2 hardening, GOLDEN_REBASE G1.2 and the STATUS round-2 archiving) | `git log --oneline f887f806..HEAD` |
+
+**The "462-case outcome" the plan asked RP5.2 to publish is stale by two, and is
+published here as the measured 464.** The archived plan at `:266`, `:2616` and in
+the RP5.2 section itself says "462 gating / 96 r4133-only / 366 both" — a 2026-08-22
+authoring estimate. The population lock reads **464 / 97 / 367**. RP4.1 recorded
+the correction as-executed (the archived plan at `:2736`,
+`r4133-props-rp4.md:198`) and deliberately did not rewrite its historical text;
+the closing counters therefore carry 464, together with the companion figure
+RP4.1's audit corrected — the forced population is **313** non-`large` `both`
+cases, not 367.
+
+#### Recorded `lane_diff` runs
+
+The plan owed `pwsh -File tools/lanes/lane_diff.ps1` at **RP1.2** and **RP1.3**
+(the two sub-steps that change engine behavior: Y-invalidation via AutoTrans
+`XfmrCode`, WindGen model dispatch). In practice it ran at every sub-step that
+moved a `src/` line, and **every recorded run came back `max |Δ| = 0`** — so the
+default lane stayed bit-identical to the parity lane across the whole plan, and
+the transitive chain `|default − oracle| ≤ |default − parity| + |parity −
+oracle|` keeps its measured-zero left term (CLAUDE.md §Gate).
+
+| Sub-step | Owed? | Result | Record |
+|---|---|---|---|
+| **RP1.2** | **yes** | PASS — 522 cases / 3 220 247 records, max abs Δ = 0 on all eight kinds | `r4133-props-rp0-rp1.md:818-820` |
+| **RP1.3** | **yes** | PASS — 522 cases / 3 220 247 records, max abs Δ = 0, zero iteration drift; both lane dumps byte-identical to the pre-edit baselines (default 226 437 002 B `a155aaa4…8672bbfe`, parity 226 437 001 B `dd7c5d59…226e65af`) | `r4133-props-rp0-rp1.md:952-958`, `:1019-1023` |
+| RP3.5 + its settlement | settlement yes | PASS ×2 — max abs Δ = 0, 3 220 247 records / 522 cases | `r4133-props-rp3.md:1316-1320`, `:1506-1510` |
+| RP3.6 (a), (b) + settlement | settlement yes | PASS ×3 — settlement run max abs Δ = 0.000e0 **and** max rel = 0.000e0 on all eight kinds | `r4133-props-rp3.md:1612-1616`, `:1763-1767`, `:1914-1918` |
+| RP3.7 | yes | PASS — 523 cases / 3 220 861 records / ~4.83 M values, max abs Δ = 0.000e0 | `r4133-props-rp3.md:2329-2333` |
+| RP3.8 / RP3.9 / RP3.11 / RP3.12 / RP3.13 | run wherever `src/` moved | PASS each | `r4133-props-rp3.md:2662`, `:2810`, `:3124`, `:3569`, `:3737`, `:4038`, `:4204` |
+| **RP3.10** | **yes** (mandatory) | PASS — Δ = 0 | `r4133-props-rp3.md:4576`, `:4757`; `STATUS.md` §1 |
+| RP4.1 | no (test-policy flip, no `src/` line) | run to completion anyway — PASS | `r4133-props-rp4.md:184` |
+| RP5.1, RP5.2 | no — `.md` only | does not apply; no `src/` line moved | `r4133-props-rp5.md:138`, `:277`, `:321`, and this record |
+
+**13+ recorded runs, zero non-zero deltas.**
+
+#### The whole plan, sub-step by sub-step
+
+*(the GOLDEN_REBASE WP-G2 condensed-record shape: one bullet per sub-step,
+`(implement sha, fix sha, docs sha, date)`, then what it settled. Full records:
+`r4133-props-rp0-rp1.md`, `-rp2.md`, `-rp3.md`, `-rp4.md`, and this file. Every
+sub-step ran the full five-command gate green in **both** lanes before its
+commit, and every one was audited by two fresh independent auditors plus a
+dedicated fix agent — no batching, no shared fix agent across sub-steps.)*
+
+- **RP0.1** (`cbcfafeb`, fix `19fc68d7`, 2026-08-22) — the G1.1 census evidence
+  vendored to `tests/corpus/props_r4133/`: five byte-identical copies of the
+  gitignored `investigations/g1_1_r4133_props/` extracts (24 944 B) plus five
+  derivations of the 270 MiB local census, with a `.gitattributes -text` rule so
+  nothing is rewritten on checkout. The plan's load-bearing evidence stopped
+  being local-only.
+- **RP0.2** (`fd79db48`, fix `23070130`, docs `8dde5802`, 2026-08-22) — the
+  census became a permanent knob: `DSS_PROPS_CENSUS=1` arms
+  `corpus_gate_props_census`, a separate `#[test]` that walks every live
+  non-`large` case on **both** channels with `all_properties` forced on, masks
+  bypassed, collect-don't-panic, asserting nothing. It reproduced the vendored
+  rows on 209 of 210 structural pairs and all 94 numeric ones over the full
+  438-case re-census.
+- **RP1.1** (`e2415376`, fix `9fb45c6c`, docs `fccd7915`, 2026-08-22) — the three
+  r4133 **upstream-stub** rows: Generator `Rneut`/`Xneut` (display slots 16/17)
+  and Sensor `Action` (slot 13). Two shape gaps closed (generator 48 → 50 names,
+  sensor 15 → 16) via one new property flag and one new `PropDef` field.
+- **RP1.2** (`8a221016`, fix `0a23443d`, 2026-08-22) — AutoTrans `XfmrCode`, a
+  **real behavioral port** (r4133 `AutoTrans.pas:329`, help `:414`,
+  `FetchXfmrCode` `:520` → `:2339-2396`; dss_capi 0.14.5 deleted the row
+  outright). Third shape gap closed, autotrans 52 → 53 names. `lane_diff` PASS,
+  max abs Δ = 0.
+- **RP1.3** (`c345434c`, fix `bdbdc63f`, docs `9b641a18`, 2026-08-23) — WindGen
+  `UserModel`/`UserData`, a **real behavioral port over the WASM user-model
+  host** (r4133 `WindGen.pas:391-395`, Edit arms `:641-642`, `MakeLike` `:829` +
+  `:834-835`, getter `:2903`), with the whole `Model=6` behavior they feed.
+  Fourth shape gap closed. `lane_diff` PASS, max abs Δ = 0, both lane dumps
+  byte-identical to the pre-edit baselines. Models **3** and **7** were
+  explicitly out of scope and handed to `ORPHANED_GAPS.md` §1.11 (below).
+- **RP1.4** (`d3077994`, fix `d404ff30`, 2026-08-23) — GenDispatcher `weights`:
+  the allowlist row plus an upstream report. **Zero engine change** — the port is
+  right and matches dss_capi; the fifth and last `shape.txt` row is the only one
+  that runs *backwards*, a property the port has and r4133's own table loses.
+  **WP-RP1 COMPLETE: r4133 shape classes 5 → 0.**
+- **RP2.1** (`e96d9248`, fix `1b93b91e`, 2026-08-23) — channel threading, the
+  normalization engine, the replay accounting and the census's **disposition**
+  mode (`DSS_PROPS_CENSUS=claims`). Zero engine change: the whole sub-step is
+  harness + tests + vendored evidence + docs, and no ledger entry (the §1.1(e)
+  staging rule).
+- **RP2.2** (`ab2bf041`, fix `94db1542`, 2026-08-23) — enum synonyms and the S6
+  dossier. Zero engine change; the dossier is what opened RP3.5, RP3.6 and RP3.7.
+- **RP2.3** (`e15435fb`, fix `d7881fd4`, 2026-08-23) — the echo-exclusion table
+  and its pins. Zero engine change, `R4133_DISPLAY_FLOOR` still `None`; the kill
+  ruling taken here re-routed five pairs to RP3.8.
+- **RP2.4** (`256e33e6`, fix `cfca32a0`, 2026-08-23) — **the r4133 props display
+  floor; WP-RP2 closes with it.** The 2e-4 value is a *measurement*, not the
+  plan's paragraph: worst display rel confirmed at 6.431124e-05 (`load.pf`,
+  33 cells, in scope) against a nearest genuine value jump of 1.374769e-03
+  (`storagecontroller.kwneed`, 6.874× the floor). Zero engine change, zero
+  product-crate bytes, no `Tolerances` field or tier touched. In-scope UNCLAIMED
+  cells **521 841 → 889**, every survivor attributed to an open RP3.x sub-step.
+- **RP3.1** (`9319d427`, fix `3e878d30`, 2026-08-24) — `swtcontrol.delay`: a
+  wired property that **r4133 silently ignores**. Zero product-crate bytes (the
+  port already behaves correctly) and zero `ledger.json` bytes in this commit —
+  the §1.1(e) **staging rule**: pins land in the sub-step, the entries themselves
+  in RP4.1's unmask commit, because an entry landed earlier would fail
+  `assert_all_hit` as NEVER APPLIED while the r4133 props compare is still masked.
+- **RP3.2** (`c46bca42`, fix `24a3298f`, 2026-08-24) — `windgen.kvar`: a wired
+  property whose **r4133 getter reads the wrong live field**. Zero product-crate
+  bytes, staged entry. Its audit settlement opened **RP3.10** and made RP3.10's
+  closure a precondition of RP5.2 itself.
+- **RP3.3** (`fb0e9e7f`, fix `52770c5f`, 2026-08-24) — `generator.model`: a
+  getter with no arm, echoing the deck's own token past a live conversion. Zero
+  product-crate bytes (both engines' live state is identical). Its settlement
+  opened **RP3.11**.
+- **RP3.4** (`cab2e667`, fix `6821639a`, 2026-08-24) — `gictransformer.r2`: the
+  r4133 twin of an already-fixed, already-pinned divergence (GOLDEN_REBASE G2.5
+  fixed the engine in both lanes on 2026-08-06). Zero product-crate bytes.
+- **RP3.5** (`9daff660`, fix `de2c179d`, docs `feea6a6a`, 2026-08-28) —
+  `line.units`: outcome **`FIX` in both lanes** for three independent defects in
+  one routine (`TLineObj.MergeWith`), plus one upstream report for a fourth that
+  is r4133's alone. The first RP3 sub-step whose fix moves the port's own render.
+  `lane_diff` PASS ×2, max abs Δ = 0.
+- **RP3.6** (`f0837aca` part (a) + `4b146ab9` part (b), fix `bb467974`,
+  2026-08-29) — `switch=yes` must not clear the linecode flag: the second
+  **`FIX`**, and the one RP4.1 actually waits on (r4133 `Line.pas:694-700`), plus
+  the `FLineCodeSpecified`/`CondCode` split and the CIM-units follow-on. Fourteen
+  audit findings settled. `lane_diff` PASS ×3 — the settlement run reports max
+  abs Δ = 0.000e0 **and** max rel = 0.000e0.
+- **RP3.7** (`82022dab`, fix `1273cf14`, docs `d0718fb0`, 2026-09-02) — per-phase
+  switch and relay state: **`FIX` in both lanes for all three parts**, and the
+  widest RP3 sub-step — 50 engine/test/golden/ledger files, the two control
+  classes rebuilt on r4133's `pStateArray` model, ten overlaid golden cells, five
+  live pins. Eleven audit findings, all minor, all settled. It also spun out four
+  `ORPHANED_GAPS.md` rows (§1.13–§1.16). `lane_diff` PASS, 523 cases.
+- **RP3.8** (`17a165c4`, fix `6b9b115d`, docs `16edbc2f`, 2026-09-02) — the five
+  read-only text surfaces r4133 renders live (`indmach012.pf`,
+  `storagecontroller.kwhtotal`/`kwtotal`/`kwhactual`, …): **`FIX` in both lanes**,
+  one engine flag, 25 files, **zero golden bytes moved**. The settlement found
+  `Save` as a fifth `get_value` reader and fixed it.
+- **RP3.9** (`648ce284`, fix `d8ccc954`, docs `b2ca9c11`, 2026-09-02) — the r4133
+  round-trip residue: **`PRECISION_ROUNDTRIP` on all 27 pairs**, in one commit,
+  with zero product-crate lines, zero golden bytes and zero census cells moved.
+  Its P0 open item is what opened **RP3.12**.
+- **RP3.10** (`9f55095b`, fix `9f067c19`, docs `45f2ece3`, 2026-09-04) — the
+  reproduced `QMode=0` dispatch: verdict **`FIX`**, and the kill criterion did
+  **not** fire. The last reproduced upstream bug this plan uncovered is gone from
+  **both** lanes — `TWindGenObj.SetNominalGeneration` gains the constant-Q arm
+  r4133 never wrote — at the price of four r4133 `exclusion` entries, the new
+  `variables` ledger `match` field and five pins behind a citation guard. Zero
+  golden bytes; `lane_diff` PASS, Δ = 0. Ten findings settled; it opened one
+  standing follow-up (AT-1, the two WindGen decks' thinned solved-state coverage).
+- **RP3.11** (`97107e54`, fix `0194b086`, docs `9fbb0abf`, 2026-09-03) — the
+  `Save`/`Dump` re-serialization surface: **`KEEP_LIVE_PINNED` on both surfaces**
+  — the kill criterion fires on the one cell that decides it, so the divergence
+  from r4133's serializer is recorded and pinned rather than reproduced. Eight
+  pins, one golden; the settlement shipped the `SaveWrite` union it had only
+  written. Its P0 findings opened **RP3.13**.
+- **RP3.12** (`09e70233`, fix `c2a8b68c`, docs `28f37e4c`, 2026-09-03) —
+  `autotrans.wdgcurrents` on the regulator decks: **`UPSTREAM_BUG` in r4133,
+  never reproduced**, with zero product-crate lines. One pair, cause
+  `regcontrol-autotrans-typecast`, minimum gap ratio 153.0 over 2 witnessed rows,
+  plus four staged skips.
+- **RP3.13** (`2ce1a66e`, fix `217355da`, docs `185e8648`, 2026-09-03) — the two
+  NCIM port bugs: verdict **`PORT_BUG` × 2, both fixed lane-unconditionally**,
+  with zero `ledger.json` entries, zero golden bytes and zero tolerances moved
+  (nine pins). Three further r4133 NCIM defects were proven and **not** reproduced
+  (`docs/upgrade/DIVERGENCES.md:1995`). **WP-RP3 COMPLETE, 13/13.**
+- **RP4.1** (`59e521e5`, fix `6d787a8f`, docs `762df50b`, 2026-09-03) —
+  **`all_properties` unmasked on the r4133 channel: WP-RP4's single sub-step and
+  G1.1's deliverable**, in one commit, with zero product-crate lines, zero golden
+  bytes and zero tolerances moved. The per-channel `compare_all_properties =
+  false` clears are gone from *both* the gate path and the seeding path
+  (`corpus_gate/scheduler.rs`), and `force_properties` now forces the property
+  request on every live non-`large` case. The eight staged r4133 `property`
+  entries landed in this commit (pinned by
+  `the_staged_r4133_property_entries_landed_at_rp41`). **The re-armed kill
+  criterion did not fire**; acceptance was read off the lossless census — r4133
+  in-scope UNCLAIMED **0**, 504 out-of-scope accounted per owner, and the capi
+  channel A/B **bit-identical** (8/8 artifacts byte-equal to the pre-flip
+  baseline).
+- **RP5.1** (`dd0b9e5b`, fix `8802fb6a`, docs `64474762`, 2026-09-04) — the
+  operational docs: the four-link claim chain (normalize → echo → floor →
+  assert), the property-divergence triage procedure, the `SKIP_PROPS` r4133
+  disposition table, 46 `file.rs:LINE` citations. Its settlement turned those
+  citations from a hand-verification into
+  `operational_docs_line_citations_point_at_the_line_they_name`, a twelfth
+  `oracle_parity_cfg_gate` test that resolves and anchors all **58** citations in
+  `TESTING.md` + `tests/TOLERANCE_NOTES.md` on every run.
+- **RP5.2** (this record, 2026-09-04) — the closing record and the archive move.
+
+#### What RP5.2 itself changed
+
+| File | What |
+|---|---|
+| `R4133_PROPS_PLAN.md` → `docs/plans-archive/R4133_PROPS_PLAN.md` | `git mv`, plus a seven-line ARCHIVED banner under the H1 in the blockquote style the other archived plans use (naming this record and the archived §1a record), plus §RP5.2's own dated **Landed 2026-09-04** line at the foot — the closing marker every other section carries. +26/−0 |
+| `PLAN_SEQUENCE.md` | row **5b** flipped **IN FLIGHT → COMPLETE 2026-09-04** with the final counters and the measured gating-case outcome; row **5a**'s G1.1 hand-off note now says the successor COMPLETED it, so **G1.1 is satisfied** and **G3.4** + **G3.5** are unblocked; the "Plan file locations" note moves the plan from the root list to the archived list |
+| `GOLDEN_REBASE_PLAN.md` | §G1.1's superseded-by note gains a dated **SATISFIED** paragraph, and §G3.4 / §G3.5's "this sub-step waits for it" become "unblocked" — the one cross-doc disagreement the closing record's acceptance would otherwise have left standing |
+| `docs/plans-archive/README.md` | the eleventh table row, the header's date note, and `GOLDEN_REBASE_PLAN.md` added to the "still at the repo root" list (it was missing there) |
+| `docs/phase-records/r4133-props-rp5.md` | this record |
+| `docs/phase-records/era-summaries.md` | the archived-plan record, in the shape of the other archived-plan records |
+| `STATUS.md` | section 1: "In flight." becomes the plan-complete sentence; the WP-RP5 paragraph gains RP5.2; the WP-G1 paragraph records G1.1 as satisfied and G3.4/G3.5 as unblocked; "Next." becomes the hand-back to GOLDEN_REBASE WP-G1; section 7's `era-summaries.md` row names the R4133_PROPS archived-plan record. To hold the file under its 600-line ceiling (it was at **599**), the three now-closed **WP-RP0 / WP-RP1 / WP-RP2** work-package paragraphs were condensed into one — nothing is lost (their full records are in `r4133-props-rp0-rp1.md` and `-rp2.md`, and the condensed table above), and their two stale counts were corrected on the way: the normalization table reads **168** (not 157) and the echo table **82** (not 81) rows at close. Section 2's two open items that named RP5.2 as their owner got their dated disposition (accepted / handed on — see below), and section 7's `r4133-props-rp5.md` row now names this closing record. Final length **598** lines, under the 600 ceiling |
+| `ORPHANED_GAPS.md` | §1.11's "Deferred by" line now names the archived path (a verification pass — no owed row was missing) |
+| `crates/dss-core/tests/props_r4133_replay.rs` | **two doc comments only** (+5/−4 lines of `///` prose) — the plan citation repointed and its line range corrected |
+
+**Two stale citations, corrected because the move forced the edit.**
+`props_r4133_replay.rs:1338` and `:6510` both cited
+`` `R4133_PROPS_PLAN.md:1084-1090` `` for the WP-RP3 sanctioned-outcome sentence.
+That range is the **RP2.4 display-floor derivation**; the sentence they quote
+("…exactly one outcome — a port bug **fixed in both lanes**, or an upstream/echo
+divergence **excluded + pinned** …, or an upstream bug **reported** with its
+exclusion + pin") is at `:1148-1151` of the archived file (the banner shifts
+every line by 7). Nothing gated this: `LINE_CITED_DOCS`
+(`oracle_parity_cfg_gate.rs:3349-3353`) covers only `TESTING.md` and
+`tests/TOLERANCE_NOTES.md`, so RP5.1's new line-citation walk does not reach a
+`.rs` doc comment. Both now read
+`docs/plans-archive/R4133_PROPS_PLAN.md:1148-1151`.
+
+**The move breaks no test — verified, not assumed.** `operational_docs()`
+(`oracle_parity_cfg_gate.rs:2980-3059`) names five fixed files — `CLAUDE.md`,
+`TESTING.md`, `tests/TOLERANCE_NOTES.md`, `tests/corpus/ledger.json`,
+`tests/corpus/props_r4133/README.md` — plus the `tests/corpus` and `tools` walks;
+`docs/` is **not** walked and the plan is not in the list, so neither the old nor
+the new location is gated. No Rust source opens the plan (the two
+`"R4133_PROPS_PLAN` hits in `props_r4133_replay.rs` are assertion-message
+*content*, not paths), the three pin-citation guards read
+`docs/phase-records/r4133-props-rp3.md`, and **no Markdown file links the plan**
+— every one of the other references is a bare-name prose citation the move leaves
+valid. `.gitattributes:8` names the plan in a **comment**; its EOL patterns key
+on `tests/corpus/props_r4133/**` and are untouched.
+
+**CLAUDE.md was not edited.** `rg -c R4133_PROPS_PLAN CLAUDE.md` = **0** — it
+never named the plan path — so the instruction "if and only if CLAUDE.md names
+the plan path, edit that one sentence" does not fire.
+
+#### The §1.3 deferrals — verified; one row owed, one row present
+
+The archived plan's §1.3 lists five out-of-scope items; exactly one was
+instructed to land an `ORPHANED_GAPS.md` row, and it is there:
+
+| §1.3 item | Owed a row? | State |
+|---|---|---|
+| **WindGen power-flow models 3 (`DoPVTypeGen`) and 7 (`DoCurrentLimitedPQ`)** | **yes** | **present** — `ORPHANED_GAPS.md` §1.11, with r4133 citations (`WindGen.pas:2109-2118`, `:1413`, `:1406-1408`, `:1335-1345`), the current-Rust admission gate (the `WindGen: Model` enum lists `&[1, 2, 4, 5, 6]`), a "do NOT transcribe" trap note for model 7's never-assigned limit fields, and the local report `investigations/to_opendss/39-windgen-model7-uninitialized-current-limit.md`. Cross-referenced from `windgen/solve.rs:313` and `registry/pc.rs:207` |
+| the 59 capi-only cases' r4133 behavior | no — owned per case by the manifests' `engines` key | n/a |
+| Report/Dump/Save rendering | no — GOLDEN_REBASE WP-G3/G4 | n/a (RP3.8 and RP3.11 did touch `Save`; that is recorded, not deferred) |
+| the `props/` golden migration to self-anchors | no — GOLDEN_REBASE **G3.5** | now unblocked; stated in `PLAN_SEQUENCE.md` row 5a and in STATUS |
+| no tolerance tier moves | no | held — the 2e-4 floor is a new named parameter; no `Tolerances` field or tier moved |
+
+**Nothing was added to `ORPHANED_GAPS.md`.** In particular the RP5.2
+precondition's fallback ("if the user has not sanctioned the RP3.10 fix, it moves
+to `ORPHANED_GAPS.md` with its evidence instead of vanishing with the plan") is
+**moot**: RP3.10 was executed as a `FIX` in both lanes on 2026-09-04, so there
+was nothing to park. The one item RP3.10 *did* open — AT-1, the two
+`modes:windgen/*` decks whose r4133-only gating now compares almost no solved
+state — is a standing follow-up in `STATUS.md`, which is where an open item with
+a named fix belongs, not an orphan.
+
+#### Cross-doc state at close
+
+- **RP5.1's two handed-forward wording items**, both **refuted** as errors by its
+  own settlement and kept only as optional pointers, are recorded here as
+  *deliberately not edited*: (1) `CLAUDE.md:196-198`'s "Stage F introduces **no**
+  tolerance anywhere" is true **of Stage F** — RP2.4's 2e-4 display floor is a
+  later, channel-scoped parameter, not a Stage F tolerance, so no qualifying
+  clause is owed; (2) `tests/corpus/props_r4133/README.md`'s "81 rows" is a
+  **historical RP2.3-time** figure under its own dated header, while the live
+  count-lock is `ECHO_ROWS = 82` (`props_norm.rs:2024`). Editing the README would
+  also touch a file `operational_docs()` gates, for no gain.
+- **Landing-marker wording is not uniform across the archived plan's sections** —
+  RP0.1/RP0.2/RP1.1–RP1.4/RP2.1/RP2.4/RP3.6 use "As executed"/"Outcome" prose
+  rather than a dated "**Landed**" line, and RP0.1 carries no dated line inside
+  the plan at all (its record is in `r4133-props-rp0-rp1.md`). Recorded, not
+  rewritten: the plan is frozen history now, and the per-sub-step table above is
+  the uniform index it lacked.
+- No doc disagrees with another on a count or a state: the counters above are the
+  measured ones, `PLAN_SEQUENCE.md` row 5b carries them, `STATUS.md` section 1
+  points here, and the archived §1a record in `era-summaries.md` repeats the same
+  numbers. The one disagreement the archive move would have left standing —
+  `GOLDEN_REBASE_PLAN.md` §G1.1 still reading "superseded … G3.4/G3.5 wait for
+  RP4.1", and §G3.4/§G3.5 each reading "this sub-step waits for it" — was closed
+  in the same commit with a dated **SATISFIED** paragraph and two "unblocked"
+  edits, so the successor plan's own text now agrees with `PLAN_SEQUENCE.md` row
+  5a and with STATUS.
+
+#### The two items STATUS owed to RP5.2 — disposed
+
+`STATUS.md` §2 carried two open items whose named owner was this sub-step. Both
+are disposed here, neither is deleted:
+
+- **The 54 `kind=large*` `engines: both` cases with no property compare on either
+  channel (RP4.1 audit settlement, 2026-09-03) — DECIDED: accepted permanently.**
+  `scheduler::force_properties`'s `!kind.starts_with("large")` guard is the
+  plan's own §1.3 cost rule, not a drift: of the 367 `both` cases **313** compare
+  their property table, and the forced population is pinned
+  (`FORCED_PROPS_POPULATION = (440, 313, 83, 44)`, asserted by
+  `the_property_forcing_rule_is_every_live_non_large_case`), so the gap is
+  measured, bounded and locked. Pricing a `large`-deck property sweep — the
+  `?`-sweep on the biggest feeders is the whole reason for the guard — stays
+  available to GOLDEN_REBASE, but nothing in this plan is owed it.
+- **`DECLARED_RP35`'s four remaining declared pairs (`line.units`,
+  `line.linecode`, `relay.normal`, `relay.state`, `DECLARED_RP35 = (5, 4, 2)`) —
+  NOT closed here, handed on with its evidence.** Retiring a declared row owes a
+  per-pair live disposition, a cited r4133 getter arm and a pin — test logic,
+  which a documentation-only sub-step must not write; and the census shows no
+  divergent cell for any of the four, so nothing is unguarded in the meantime.
+  The item stays open in `STATUS.md` §2 with this record named as its evidence,
+  handed to whoever closes the WP-RP3 accounting inside GOLDEN_REBASE WP-G1.
+
+#### Gate for this pass
+
+Documentation only — seven `.md` files (one of them the `git mv`-ed plan itself)
+plus **two doc comments** in one test file, `props_r4133_replay.rs` at +5/-4, all
+of it `///` prose; **not one line under any crate's `src/`**. The five-command
+gate was nonetheless run in full on this exact tree (`64474762` + the working
+copy), each command's exit code read individually:
+
+| # | command | exit | wall |
+|---|---|---|---|
+| 1 | `cargo fmt --all --check` | **0** | 2.8 s |
+| 2 | `cargo clippy --workspace --all-targets -- -D warnings` | **0** | 2.6 s |
+| 3 | `cargo clippy --workspace --all-targets --features dss-core/oracle-parity -- -D warnings` | **0** | 7.6 s |
+| 4 | `cargo test --workspace` | **0** | 242 s |
+| 5 | `cargo test --workspace --features dss-core/oracle-parity` | **0** | 273 s |
+
+**Both lanes: 4 498 passed / 0 failed / 5 ignored / 0 filtered out over 74
+binaries** — identical binary for binary, and a delta of **0** against the RP5.1
+baseline at `8802fb6a`, which is the predicted outcome for a documentation-only
+sub-step. `corpus_gate` ran its whole 140-test binary at full population on both
+oracle channels (155.3 s default / 146.7 s parity) with all four ledger guards
+`ok`: **no ledger entry stale, none NEVER-APPLIED**, zero reds on either channel.
+`grep -c '^warning'` over both clippy logs = **0**, and both printed `Checking
+dss-core` rather than a warm no-op, so the current file contents really were
+re-checked. The five ignored are the pre-existing set (three WASM/WM5 golden
+generators, the ckt24 `.graph` diagnostic, one doc-test) — `rg '#\[ignore'
+crates/ --include=*.rs` returns exactly those, so **RP5.2 added no `#[ignore]`
+and no name filter**. `lane_diff` is not owed and does not apply: `git diff
+--stat -- 'crates/*/src'` is empty. The gate's 8 untracked `Export` byproducts
+under `tests/corpus/electricdss-tst/Test/AutoTrans/` were deleted afterwards, so
+the tree is byte-for-byte the one that passed; no tracked corpus or golden file
+was modified at any point. Logs: `tmp/rp52/gate.md`.
+
+**One commit.** RP5.2 lands as a single commit — implement, gate and record
+together — with no fix commit and no follow-on `docs:` commit: the sub-step is
+documentation only, the gate was green on the first run, and the record was
+written against the gate's own measured totals rather than a prediction.

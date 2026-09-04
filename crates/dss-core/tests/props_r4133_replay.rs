@@ -1335,7 +1335,7 @@ const LEDGERED_RP3: (usize, usize, usize) = (6, 3, 6);
 
 /// **The outcome tags a settled [`RP3_ROUTING`] verdict may open with** —
 /// `(tag, the obligation the tag carries)`, one row per outcome plan §WP-RP3
-/// sanctions (`R4133_PROPS_PLAN.md:1084-1090`).
+/// sanctions (`docs/plans-archive/R4133_PROPS_PLAN.md:1148-1151`).
 ///
 /// Landed by the RP3.1 audit settlement (2026-08-24). Before it, the guard read
 /// RP3.1's own shape — cite a `.pas:`, name `RP4.1` and `§1.1(e)`, own a
@@ -6507,9 +6507,10 @@ fn the_bin7_root_cause_pairs_are_routed_to_their_sub_steps() {
 /// guard dispatches on: a tag quietly added here would carry whatever
 /// obligations its author felt like writing.
 ///
-/// Plan §WP-RP3 (`R4133_PROPS_PLAN.md:1084-1090`): "exactly one outcome — a port
-/// bug **fixed in both lanes**, or an upstream/echo divergence **excluded +
-/// pinned** (ledger entry per §1.1(e) or echo row per RP2.3), or an upstream bug
+/// Plan §WP-RP3 (`docs/plans-archive/R4133_PROPS_PLAN.md:1148-1151`):
+/// "exactly one outcome — a port bug **fixed in both lanes**, or an
+/// upstream/echo divergence **excluded + pinned** (ledger entry per §1.1(e)
+/// or echo row per RP2.3), or an upstream bug
 /// **reported** with its exclusion + pin" — the reported case lands as one of the
 /// two exclusions, which is why the tags are three and not four.
 #[test]
