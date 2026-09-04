@@ -157,13 +157,13 @@ live cases diverged), handed to `R4133_PROPS_PLAN.md` (user decision
 and **G3.4** (`cim/`, `json/`, `json_import/`) + **G3.5** (`props/`) are
 unblocked, their value witness now the live r4133 property compare. **G1.2**
 (the ESPVLControl deck, the last zero-coverage class) landed 2026-08-29.
-**G1.0** — a new rails sub-step ahead of G1.3a (D1/D2/D3) — landed 2026-09-04
-(`c4b67a6e`, audit settlement `42454b64`): the ten-flag manifest vocabulary in
-**one** lock regen, explicit `channels` on the ten bare `element` exclusions, the
-capture-presence guard, and the r4133 bridge rails, whose 96-mode probe **also
-discharges the G1.11 mode-capability acceptance for the whole WP** (zero misses);
-it compares nothing new — 0 ledger entries, 0 golden bytes. G1.3a–d, G1.4–G1.11c
-and WP-G3–G5 remain. Full record: the same file, section "GOLDEN_REBASE WP-G1 — records".
+**G1.0** — the rails sub-step ahead of G1.3a (D1/D2/D3) — landed 2026-09-04
+(`c4b67a6e`, settlement `42454b64` + `14bb0f23`, + this docs commit): the ten-flag
+manifest vocabulary in **one** lock regen, explicit `channels` on the ten bare
+`element` exclusions, the capture-presence guard and the r4133 bridge rails, whose
+96-mode probe **discharges the G1.11 mode-capability acceptance for the whole WP**;
+0 ledger entries, 0 golden bytes, gate **4 605 / 0 / 5** per lane, `lane_diff` max
+|Δ| = 0. G1.3a–d, G1.4–G1.11c and WP-G3–G5 remain; full record: the same file.
 
 **Next.** **`GOLDEN_REBASE_PLAN.md` G1.3a** (per-element `CurrentsMagAng`,
 `VoltagesMagAng`, `Residuals`) — the first surface sub-step now that G1.0's
@@ -337,9 +337,9 @@ the site comment carries each row's measured cost.
   Consistent with an overlapping-guard snapshot race (cf. the unit test
   `corpus_guard_overlapping_guards_still_sweep`) plus the case-insensitive
   collision `corpus_gate/runner.rs:42-55` (the same file appears both
-  `Auto3bus_HL_current.txt` and `auto3bus_hl_current.txt`). **Twelve sightings**
+  `Auto3bus_HL_current.txt` and `auto3bus_hl_current.txt`). **Fourteen sightings**
   2026-08-29 … 2026-09-04 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2,
-  §RP3.10 ×3, §RP5.1 ×1), the set varying in size (1 … 36 files) and in case
+  §RP3.10 ×3, §RP5.1 ×1, G1.0 ×2), the set varying in size (1 … 36 files) and in case
   between successive runs of the *same* tree — the nondeterminism itself was
   measured at §RP3.13 — and once accompanied by an unreproducible `corpus_gate`
   `137 passed; 1 failed` whose most likely cause is this race. Every set was
@@ -347,7 +347,7 @@ the site comment carries each row's measured cost.
   tree (§RP3.10), or by hand (§RP5.1) — and both lanes were green with the files
   present, no tracked corpus or golden byte ever moving, so the leak costs
   hygiene only. Per-run detail is in the per-WP records (`r4133-props-rp3.md`,
-  `-rp4.md`, `golden-rebase.md`). Twelve sightings make it a pattern, not a
+  `-rp4.md`, `golden-rebase.md`). Fourteen sightings make it a pattern, not a
   fluke: whoever picks it up should start with `DSS_GATE_JOBS=1` per G2.2d.
 
 **Carried-forward and residual-floor items — the rows still open.** Full text,
