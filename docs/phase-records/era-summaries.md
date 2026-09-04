@@ -2,6 +2,12 @@
 
 > Moved verbatim from `STATUS.md` on 2026-08-05 (STATUS.md history archiving);
 > order preserved, nothing rewritten.
+>
+> **Since then, a plan archived under the 2026-07 convention appends its record
+> to §1a here** rather than to `STATUS.md` (which since 2026-09-03 keeps only a
+> 3–6 line landed paragraph per sub-step). §1a's own 2026-07-17 intro below
+> therefore enumerates only the plans it held at that date; the dated records
+> appended after it are: **R4133_PROPS** (2026-09-04, at the end of §1a).
 
 ## 1a. Archived — completed plan records (100% done)
 
@@ -100,6 +106,51 @@ it, so PRIMARY.4 diverges 13.363452 vs 13.363170 (|diff| 2.82e-4), above the fee
 genuine user-model DoSimpleMsg cases; Rust independently enforces convergence + exact iterations
 + bit-identical V). `solvable_now` 290→292, `skipped_needs_investigation` 15→13; `population.lock`
 regenerated in-commit.
+
+**R4133_PROPS — COMPLETE (2026-09-04), archived by its own §RP5.2.** The
+dedicated successor GOLDEN_REBASE **G1.1**'s kill criterion demanded (user
+decision 2026-08-22, after G1.1 fired on 2026-08-08: unmasking r4133 properties
+diverged on 433 of the 438 walked live cases). All six work packages landed
+gate-green in **both** lanes over **25 sub-steps / 64 RP-titled commits**
+(`f887f806..64474762` on branch `r4133-props`), each one implement + two fresh
+independent auditors + a dedicated fix agent. **WP-RP0** vendored the census
+evidence and made re-measurement a permanent knob (`DSS_PROPS_CENSUS`);
+**WP-RP1** closed the property-table shape gap **5 → 0** with two real
+behavioral ports (AutoTrans `XfmrCode`, WindGen `UserModel`/`UserData` over the
+WASM host); **WP-RP2** built the channel-aware value comparator — a **168**-row
+normalization table (77 `BoolFold` / 65 `CaseFold` / 21 `ArrayForm` / 5
+`EnumSynonym`), an **82**-row echo-exclusion table (50 default / 8 parse / 14
+empty-collection / 10 live-semantics, 20 narrowed pairs over 66 spellings) and
+the plan's **one** new tolerance, the *derived* **2e-4** r4133 display floor
+(measured: worst display rel 6.431124e-05 vs nearest genuine jump 1.374769e-03),
+taking in-scope UNCLAIMED cells **521 841 → 889**; **WP-RP3** closed all thirteen
+genuine jumps — six `FIX`-in-both-lanes port fixes (`line.units`,
+`line.linecode`, per-phase switch/relay state, the five live-rendered read-only
+text surfaces, the WindGen `QMode=0` dispatch, two NCIM port bugs), one
+`UPSTREAM_BUG` and one `KEEP_LIVE_PINNED` recorded-and-pinned rather than
+reproduced, and 27 `PRECISION_ROUNDTRIP` pairs; **WP-RP4** delivered G1.1 itself
+— `all_properties` unmasked on the r4133 channel for every live non-`large`
+case, with the re-armed kill criterion **not** firing; **WP-RP5** wrote the
+operational docs (with an executable line-citation walk) and this closing record.
+**Final counters:** ledger `tests/corpus/ledger.json` **36 → 57** entries
+(**+21**, none removed) over **23 → 30** causes, 8 of them the staged r4133
+`property`-scoped entries RP4.1 landed, plus the new `variables` `match` field;
+in-scope UNCLAIMED cells **→ 0** at RP4.1 (504 out-of-scope, each accounted to a
+named pin or record); **523** manifest cases of which **464** are r4133-gating
+(**367** `both` + **97** r4133-only), the population `force_properties` actually
+compares being the **313** non-`large` `both` cases (the plan text's "462 / 96 /
+366" was a 2026-08-22 authoring estimate, corrected as-executed at RP4.1);
+**4 498 passed / 0 failed / 5 ignored** per lane, with **no `#[ignore]` added
+anywhere**; **13+ recorded `lane_diff` runs, every one `max |Δ| = 0`**, including
+the two the plan owed at RP1.2 and RP1.3. **No upstream bug is reproduced in
+either lane** by anything this plan touched, and every deliberate divergence is
+excluded field-by-field and pinned by an expected-value test. It hands
+GOLDEN_REBASE **G1.1 back satisfied**, unblocking **G3.4** and **G3.5**. Full
+detail: **`docs/phase-records/r4133-props-rp5.md`** §RP5.2 (final counters, the
+`lane_diff` table and the condensed per-sub-step record of the whole plan), with
+the per-WP records in `r4133-props-rp0-rp1.md`, `-rp2.md`, `-rp3.md`, `-rp4.md`
+and the frontier narrative in `r4133-props-frontier-log.md`. The plan itself is
+frozen at **`docs/plans-archive/R4133_PROPS_PLAN.md`**.
 
 > Working cadence and the standing toolchain note are just below; the full
 > per-step ritual is `PLAN_SEQUENCE.md` / the active plan's §0.
