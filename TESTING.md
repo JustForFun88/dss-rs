@@ -399,7 +399,7 @@ checkpoint members: `aggregates` (`losses_w`, the one W/var member, plus
 (`mode`, `hour`, `year`, `control_iterations`, `total_iterations`,
 `most_iterations_done`, `control_actions_done`, `system_y_changed`, `seconds`,
 `load_mult`). `harness::aggregates::compare_aggregates`
-(`crates/dss-core/tests/harness/aggregates.rs:235`) and its
+(`crates/dss-core/tests/harness/aggregates.rs:251`) and its
 `compare_solution_scalars` sibling run on **every** live case of every gating
 channel; because there is no flag to name, the surface refuses an absent capture
 with its own assert naming surface, channel tag and case rather than with
@@ -408,10 +408,21 @@ capture sits in **group A** — ahead of every `Currents` read *and* ahead of ev
 `First/Next` walk, since each arm leaves its own
 `PDElements`/`Lines`/`Transformers`/`Sources`/`CktElements` cursor at the end —
 and `crates/dss-core/tests/capture_order.rs` asserts that position in both
-transports' sources. r4133 returns `SystemYChanged`/`ControlActionsDone` as `0|1`
+transports' sources — `capi_capture_reads_the_aggregates_before_any_currents_read`,
+`r4133_capture_reads_the_aggregates_before_any_currents_read` and the
+self-test `the_gate_rejects_a_swapped_or_renamed_capture`. r4133 returns
+`SystemYChanged`/`ControlActionsDone` as `0|1`
 ints (`DDLL/DSolution.pas:192-196`, `:226-230`); the **bridge** normalizes them to
 the capi transport's JSON `bool` so both transports stay byte-identical in shape,
-pinned by `r4133_solution_flags_are_zero_one_ints`.
+pinned by `r4133_solution_flags_are_zero_one_ints`, and refuses a `myType=3`
+reply that is not exactly two doubles rather than padding it into a plausible
+`(0, 0)` (`complex_pair_refuses_a_reply_that_is_not_two_doubles`). Both booleans
+are the same value on every corpus checkpoint measured, so their two-sidedness is
+witnessed in-engine instead: `the_two_boolean_solution_flags_take_both_values`.
+The G1.9 pin names these docs cite are machine-checked by
+`the_g1_9_pins_the_docs_cite_exist_exactly_once`
+(`crates/dss-core/tests/oracle_parity_cfg_gate.rs`), so renaming one reds the
+gate instead of silently falsifying this file.
 
 Two quantities on the surface's list are captured or witnessed but deliberately
 **not** compared a second time. `Solution.Totaliterations` *is*
@@ -429,12 +440,27 @@ already partitions, so re-pinning a scoped element's echo in the sum would grow
 the ledger for a divergence it already owns. `compare_aggregates` therefore feeds
 its value arm from the runner's accepted `LedgerView::element_rewrites`
 (`crates/dss-core/tests/corpus_gate/ledger.rs:894`) — the same caps
-`compare_element_channels` is handed one loop above — and drops the
-`Circuit.TotalPower` value arm whole on a (case, channel) where a source is
-scoped, that aggregate being unrebuildable from a per-element cap. The
-membership and identity arms never soften: they run on the raw oracle capture on
-every case, ledger-scoped ones included. Net effect on the ledger: **0** entries
-and 0 new `LEDGER_FIELDS`. Bands and their derivations:
+`compare_element_channels` is handed one loop above. Where a **deck-wide**
+`element` scope selects `losses`, every summand is rewritten and the value arm
+is then a self-comparison on that deck. That is inherent, not a comparator
+choice: re-stating the arm against the oracle's own aggregate with the accepted
+divergence added to the envelope is a tautology (triangle inequality), so once
+the ledger owns every summand no bound on their sum carries oracle content the
+entries do not already own. What the G1.9 audit settlement adds is **visibility**
+— the 14 (case, channel) pairs where that happens are recorded and asserted
+exactly by
+`corpus_gate::ledger::the_aggregate_value_arms_inherit_exactly_the_recorded_element_scopes`,
+so a new deck-wide element scope reds until its author acknowledges that it also
+switches that deck's aggregate value arm off (coordinator decision D11(2)'s rule
+for the analogous bus-array suppression). `Circuit.TotalPower` is unrebuildable
+from a per-element cap (it reads terminal 1 and the capture carries no
+`nconds`), so instead of being dropped whenever a source merely appears in the
+rewrite map it absorbs the accepted `powers` divergence summed over **all** of
+that source's conductors — the same documented conservative superset its
+allowance already uses. An entry that scopes only `currents` no longer switches
+the arm off. The membership and identity arms never soften: they run on the raw
+oracle capture on every case, ledger-scoped ones included. Net effect on the
+ledger: **0** entries and 0 new `LEDGER_FIELDS`. Bands and their derivations:
 `tests/TOLERANCE_NOTES.md` §"G1.9 circuit aggregates + solution scalars".
 
 **A flag may not be set before its surface exists.** `G1_SURFACE_FLAGS`

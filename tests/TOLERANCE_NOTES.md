@@ -1499,9 +1499,23 @@ WindGen qmode0 decks, the four asym combo/indmach envelope rows); re-pinning
 their echo would have cost ~14 rows and tripped the §1.1(f) "> ~10 entries"
 kill criterion for a divergence the ledger already owns. `Circuit.TotalPower`
 sums `Power[1]`, a per-terminal quantity the capture does not split out, so it
-cannot be rebuilt from an accepted cap: there the value arm is dropped whole on
-those (case, channel)s. **P1 and P1b never soften** — they run on the raw
+cannot be rebuilt from an accepted cap: since the G1.9 audit settlement its
+envelope instead absorbs the accepted `powers` divergence summed over **all**
+of a scoped source's conductors (a conservative superset of the terminal-1
+part), so the arm keeps running and an entry that scopes only `currents` no
+longer switches it off. **P1 and P1b never soften** — they run on the raw
 oracle capture on every case, so no deck loses the arms with the teeth.
+
+Where a deck-wide scope selects `losses`, the loss-aggregate value arms are a
+self-comparison on that deck, and that is **inherent**: restating them against
+the oracle's own aggregate with the accepted divergence added to the envelope is
+a tautology (`|Σ(r−o)| ≤ Σ|r−a| + |Σ(a−o)|`), so once the ledger owns every
+summand no bound on their sum can carry oracle content the entries do not
+already own. The settlement therefore adds *visibility*, not a wider arm: the 14
+(case, channel) pairs are recorded and asserted exactly by
+`corpus_gate::ledger::the_aggregate_value_arms_inherit_exactly_the_recorded_element_scopes`,
+so a new deck-wide element scope reds until its author acknowledges the
+consequence (coordinator decision D11(2)'s rule for the bus arrays).
 
 ### Solution scalars — every policy reused, none invented
 
@@ -1519,9 +1533,28 @@ channels — including `SystemYChanged`, whose agreement answers the G1.9 open
 question Q6 (the two engines schedule the Y rebuild identically; nothing to
 exclude) and `ControlIterations`, whose §G1.9 kill criterion ("differs anywhere
 on the `capi_v0145` channel") is therefore **NOT met**. Witness census over the
-same run (nothing is vacuous by construction): `mode` 18 distinct values,
+same run: `mode` 18 distinct values,
 `hour` 79, `year` 2, `load_mult` 7, `seconds` 128, `control_iterations` 39,
 `most_iterations_done` 14.
+
+**Two of the ten scalars are one-sided, and the census does not cover them**
+(G1.9 audit settlement, correcting an earlier "nothing is vacuous by
+construction" here). `control_actions_done` and `system_y_changed` were *not* in
+the measured field list, and on every checkpoint that was dumped both are
+constant (`true` / `false`): a converged solve settles its controls and leaves Y
+freshly built, so the corpus witnesses only one value of each. Their exact
+`assert_eq!`s still catch a port that flips one, but the corpus supplies no
+witness of the other value, so the two-sidedness is pinned **in-engine** instead
+— `dss_core::exec::tests::aggregates::the_two_boolean_solution_flags_take_both_values`
+drives the `MaxControlIter` exit (`ControlActionsDone` clear) and a post-solve
+structural edit (`SystemYChanged` set). Likewise `control_iterations` is
+one-sided on the `r4133` channel by policy (`rust <= oracle`, the row above), so
+an *under*-counting control loop is caught only on the 422 capi-served live
+cases; measured, the two counts are equal on every one of the 3 493 checkpoints,
+so the one-sidedness costs nothing today. `load_mult` is compared with an exact
+f64 `assert_eq!` on a lane that does not yet carry coordinator decision D11's
+`serde_json` `float_roundtrip` fix; it is green today and can only tighten after
+that sync ("D11 — pending sync").
 
 
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)
