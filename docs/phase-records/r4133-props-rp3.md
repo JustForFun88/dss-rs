@@ -540,9 +540,14 @@
     *(**Correction, 2026-09-04, §RP3.10's probe.** The daily deck's `QMode=1`
     figure is **−414.8954549079094 kvar** under the gate's own replay
     (`Set mode=daily stepsize=1h number=1`, `Pg = 1262.29 kW`); the ≈ −986 family
-    is the snap-mode capped-`Pg` reading, where arm 1 sits on its saturation
-    fallback `kvarCalc := kvarBase = 986.0523155365896` — which is also what the
-    constant-Q arm dispatches. Never −985.69; see the §RP3.10 record below.)* Under the 2026-08-02
+    is the snap-mode capped-`Pg` reading, where arm 1 lands on
+    `kvarBase = 986.0523155365896` — which is also what the constant-Q arm
+    dispatches. Never −985.69; see the §RP3.10 record below. **Mechanism
+    corrected the same day by the §RP3.10 audit settlement, finding
+    `RP310-CODE-4`:** it is not arm 1's saturation fallback — that
+    `if kVATmp > kVArating` test can never fire — but the capped `Pg = kWBase`
+    making arm 1's own formula `Pg·sqrt(1/PF² − 1)` equal `kvarBase` to the last
+    ulp.)* Under the 2026-08-02
     policy a reproduced upstream bug may not stand, but fixing it **moves solved
     powers on the r4133-gated windgen decks** — directly on the two power-flow
     ones, and on the two dynamics decks only through the snapshot solve they run
@@ -4610,12 +4615,16 @@ tests/corpus/ledger.json names it"*; both mutations were reverted and the guard
 re-run green in both lanes (`cargo test -p dss-core --test props_r4133_replay
 rp310` matches exactly this one test).
 
-*Commits.* The sub-step lands in **one** commit on `r4133-props` (the engine arm,
-the `variables` exclusion field, the four ledger entries and their cause, the
+*Commits.* The sub-step lands in **one** commit on `r4133-props`,
+**`9f55095b`** (the engine arm, the `variables` exclusion field, the four ledger entries and their cause, the
 lock, the five pins, the citation guard, `DIVERGENCES.md` §L7, the corpus and
-manifest prose and this record); its sha and the audit settlement's are named by
-the settlement's docs sync, as at §RP3.13, together with the plan's §0 and
-§RP3.10 dated lines. Because the step-3 edits above land after the five-command
+manifest prose and this record); the audit settlement below is **`9f067c19`**,
+and this docs sync (2026-09-04) is the third and last commit of the sub-step — it
+names both shas here, in `STATUS.md` §1, in `PLAN_SEQUENCE.md`'s row 5b and in
+the plan's §0 and §RP3.10 dated lines, as at §RP3.13. It moves `.md` bytes only,
+so its own gate is `cargo fmt --all --check` plus the binaries that read these
+documents at runtime, in **both** lanes — `props_r4133_replay` **152**,
+`oracle_parity_cfg_gate` **11**, 0 failed, 0 ignored, 0 filtered. Because the step-3 edits above land after the five-command
 transcript, the binaries that read `STATUS.md`, `docs/phase-records/` and
 `ledger.json` at runtime were re-run on the final tree in **both** lanes —
 `props_r4133_replay` **150**, `props_r4133_pins` **54**,
@@ -4728,7 +4737,29 @@ lived only in a record's prose — is fixed: it is now a row in `STATUS.md`
 would restore.
 
 *Gate (settlement).* The full five commands in **both** lanes on the settled
-tree, plus `pwsh -File tools/lanes/lane_diff.ps1` (product code moved). Nothing
-under `tmp/` or `investigations/` is staged; no `#[ignore]`, no name filter used
-to claim a green; the one `should_panic` added is the AT-4 negative drive, whose
-whole purpose is the panic; no tolerance touched.
+tree (transcript `tmp/rp310/settle_gate_*.log`): `fmt` and both `clippy
+--workspace --all-targets -- -D warnings` runs clean, and `cargo test
+--workspace` with and without `--features dss-core/oracle-parity` both **4 497
+passed / 0 failed / 5 ignored** over the same 74 result-reporting targets, the
+two lanes identical binary for binary. The +45 against the sub-step gate's 4 452
+is accounted for target by target (the two logs diffed): the **two** new
+`harness::variables_exclusion_name_safety` drives are compiled into each of the
+**22** harness-carrying binaries (+44 — which is also why `corpus_gate` reads
+**140**, not 138), and `props_r4133_replay` carries one more (+1, 149 → **152**)
+for the `every_rp310_windgen_pin_exists_and_is_cited` citation guard, which
+landed at ritual step 3 after the gate transcript above was taken. AT-4a's staleness rule
+extended an existing unit test rather than adding one, so it moves no count.
+`props_r4133_pins` **54**, `props_r4133_evidence_lock` **11**,
+`oracle_parity_cfg_gate` **11**. Commands 4 and 5 exited `101` on their first
+pass; the settlement records the cause as its last two documentation edits
+(`TESTING.md` and one sentence of this record) landing while those runs read
+them, and both were re-run to completion on the final tree — the transcript
+above. The five ignored are the pre-existing set, unchanged. `lane_diff` was mandatory
+again (product code moved) and returned **PASS, `max |Δ| = 0` and `max rel = 0`
+on every gated kind** — conv 2 162, iter 2 162, errs 519, v 375 816, cur
+1 170 100, pow 1 170 100, loss 366 476, y 1 738 084, all "(identical)", 0
+iteration drifts — which is the required outcome for a single unconditional arm.
+Nothing under `tmp/` or `investigations/` is staged; no `#[ignore]`, no name
+filter used to claim a green; the one `should_panic` added is the AT-4 negative
+drive, whose whole purpose is the panic; no tolerance touched. The settlement
+commit is **`9f067c19`** (12 files, +542/−74).
