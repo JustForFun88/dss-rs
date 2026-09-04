@@ -2837,3 +2837,55 @@ row against the pre-fix lock.
   `VERDICT: PASS`, max |Δ| = 0.
 
   merge: lane lane-b -> update, see git log
+
+- **G1.3a** (2026-09-04, lane `lane-e`; coordinator decisions D3/D4/D7/D10) — **WP-G1's first
+  surface.** Per-element `Enabled` + `CurrentsMagAng`/`VoltagesMagAng`/`Residuals` compare live on
+  both oracle channels over **442** cases, additive in `exec/view.rs::snapshot_elements` (r4133
+  `DDLL/DCktElement.pas:1058`/`:1082`/`:827`) and captured for **enabled elements only** — `:1099`
+  derefs a nil `NodeRef` and kills the worker — hence the one new mode `CktElement.Enabled`
+  (`WP_G1_MODES` 96 → **97** on the lane; **100** on `update`, G1.6b's three
+  PDElements walk arms merged in). Floors are derived images of the disc `assert_complex_close_c` already
+  admits (`tests/TOLERANCE_NOTES.md` §G1.3a: no band moved, D10's √2 refuted), D3's capture order is
+  enforced by `tests/capture_order.rs`, and nothing joins `LANE_SKIP_ELEM_POWERS`. Ledger 57 → **58**:
+  `capi-capcontrol-time-bus-is-the-capacitors` (r4133 `Controls/CapControl.pas:605`/`:622` vs capi
+  0.14.5 `:597-608`, `docs/upgrade/DIVERGENCES.md` L8) pinned by
+  `capcontrol_time_voltages_follow_the_monitored_elements_terminal`, plus **13** measured widenings of
+  committed `element` scopes; pins `exec::tests::derived_polar::*` (6),
+  `harness::derived_polar_floors::*` (15), two `ledger::*`, one `scheduler::*`. As executed:
+  `GOLDEN_REBASE_PLAN.md` §G1.3a. Commits: `d8e71991`, audit settlement `588e0bfe`, + docs (this
+  record). Gate after the settlement, both lanes: **4 959 / 0 / 5**, fmt + clippy clean, corpus gate
+  523/523, `lane_diff` PASS max |Δ| = 0 on every gated kind (4 956 / 0 / 5 at `d8e71991`).
+
+  **Audit settlement** (2026-09-04) — 15 findings: **11 fixed / 3 recorded / 1 refuted**. Major 1: the
+  new `voltages_mag_ang` block sliced `node_ref[..yorder]`, and a **disabled** element that grows
+  phases keeps a shorter `node_ref` (`elements/ckt.rs:326`/`:382`, `circuit/circuit.rs:735`) — a
+  reachable panic in the public `snapshot_elements`, reproduced and now pinned by
+  `a_stale_node_ref_shorter_than_yorder_reads_as_ground` (a stale slot reads ground). Major 2: the
+  three new `ElemChannels` bools were only ever compared against the constant they came from, so one
+  `false` would silently drop a channel on all 442 cases in both lanes — the lane test now asserts
+  them field by field, `ElemChannels::ALL` included. Major 3: the sub-step's 25 pins are registered in
+  `every_pin_the_g13a_record_names_exists_and_is_cited` (G1.0's rule), which also machine-checks the
+  two group counts above. Also fixed: per-sub-channel ledger liveness (`Scope::channels_exceeded`,
+  `a_widened_sub_channel_that_masks_nothing_is_reported_stale`) — its first run found four dead masks
+  and pruned `powers` from the four `*-injection-ulp` entries (every p_kW/p_kvar sample inside the
+  tier floor; the lock digest moved on those four cases only); the residual loop reads
+  `chunks(nconds)` instead of a flat offset; `EXCLUDED_WRITE_MODES` gains the `CktElementI(13)` write
+  arm; the ledger's polar loops zip the port vector and assert the residual shape; three file:LINE
+  citations re-pointed; the record's two placeholders filled and the block trimmed 26 → 14 lines.
+  **Recorded, not fixed:** an `exclusion` entry's sub-channels stay unpoliced — it fetches no verdict
+  (`LedgerView::excluded`), so their liveness rests on each entry's `measured` provenance; the
+  conductor-sum residual band masks about half the `Residuals` samples (derived and disclosed,
+  TOLERANCE_NOTES §G1.3a derivation 4 — carry into G1.3b/c); a qualified-form (`* cd.nconds`) needle
+  for the de-Pascalization metric is not added, 7 of the 8 such sites being `elements/ckt.rs`'s own
+  accessors, the module the convention names; and this settlement is itself over the 5–10-line rule.
+  **Refuted:** the two `gic-*-capi` polar widenings were *measured*, not copied from the r4133 row — a
+  scoped negative drive prints the capi oracle's own `27.20469355379569` (a live dss-python probe
+  reads that value up to the 1-ULP serde_json transport defect D11 pins), and the two channels agree
+  bit-for-bit on that deck. They are load-bearing today (dropping them reds the case), so they stay
+  and the **merge agent deletes them together with their entries** when lane-b lands D12/D14 ("D12 —
+  pending sync"); `makeposseq-cuf-applied-capi` is NOT one of them (D14 keeps that deck capi-gated),
+  but its polar samples must be **re-measured at the merge**, once the GICTransformer line moves out.
+  Gate re-run in full and green in both lanes (figures above): ledger 58 entries / 0 stale,
+  `tests/golden` byte-untouched, no tolerance moved.
+
+  merge: lane lane-e -> update, see git log

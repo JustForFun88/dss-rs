@@ -153,6 +153,16 @@ fn the_fixture_selects_the_line_the_bus_and_the_meter(e: &Engine) {
         "the PDElements cursor must see the Line (its default faultrate), not the meter"
     );
     select_fixture(e);
+    // `CktElementI(12)`'s codomain is {0, 1} (`DCktElement.pas:137`, `:263`), so
+    // the strict decode must read the live element as enabled — under a `!= 0`
+    // decode the family's `-1` unknown-mode sentinel (`:308`) would read the
+    // same way, which is what routes a capture into `CktElementV(19)`'s
+    // unguarded `NodeRef^[i]` (`:1099`).
+    assert!(
+        e.ckt_element_enabled().unwrap(),
+        "Line.650632 is enabled in IEEE13"
+    );
+    select_fixture(e);
     assert_eq!(e.bus_distance().unwrap(), 1.2192, "bus 671's DistFromMeter");
     select_fixture(e);
     assert_eq!(e.solution_iterations().unwrap(), 2, "IEEE13 snapshot solve");
@@ -399,6 +409,7 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
     chk!(CKT_ELEMENT_NUM_CONTROLS, e.ckt_element_num_controls());
     chk!(CKT_ELEMENT_OCP_DEV_INDEX, e.ckt_element_ocp_dev_index());
     chk!(CKT_ELEMENT_OCP_DEV_TYPE, e.ckt_element_ocp_dev_type());
+    chk!(CKT_ELEMENT_ENABLED, e.ckt_element_enabled());
     chk!(CKT_ELEMENT_HAS_OCP_DEVICE, e.ckt_element_has_ocp_device());
     chk!(CKT_ELEMENT_ENERGY_METER, e.ckt_element_energy_meter());
     chk!(CKT_ELEMENT_PHASE_LOSSES, e.ckt_element_phase_losses());

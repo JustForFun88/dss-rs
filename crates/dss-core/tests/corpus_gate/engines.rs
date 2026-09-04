@@ -148,6 +148,14 @@ pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
         "pd_elements": c.compare_pdelements,
         "global_result": c.compare_global_result,
         "autoadd_log": c.compare_autoadd_log,
+        // WP-G1 G1.3a: the per-element derived polar channels. One key for the
+        // whole `compare_derived` surface, honored by BOTH transports —
+        // `tools/oracle/oracle_server.py::capture_all_elements` (capi_v0145) and
+        // `crates/dss-epri/src/capture.rs::RunRequest::derived` (r4133) — so the
+        // two channels can never disagree about what was requested. Absent ⇒ off
+        // on both, which is what keeps an off-flag reply byte-identical to the
+        // pre-G1.3a payload.
+        "derived": c.compare_derived,
         "warn_and_continue": !c.expect_warnings.is_empty(),
     })
 }
