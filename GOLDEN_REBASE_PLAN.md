@@ -155,7 +155,8 @@ WP-G3 is fully landed; WP-G5 is last.
 > The "single branch only — never in parallel worktrees" rule above is relaxed for
 > the rest of WP-G1 and for WP-G3/WP-G4. Sub-steps that share no accessor,
 > comparator or exclusion list (the 2026-08-29 synthesis chains: element
-> G1.3a → G1.3d(i) → G1.3d(ii) → G1.3b → G1.3c; bus G1.4a → G1.5 → G1.4b;
+> G1.3a → G1.3d(i) → G1.3d(ii) → G1.3b → G1.3c; bus G1.4a → G1.5 → G1.4b
+> (**2026-09-04**, D8: now G1.4a → G1.5 → G1.4c → G1.4b — §G1.4's as-executed note);
 > PD/meter G1.6b → G1.6(i) → G1.6(ii); the singles G1.7 / G1.8 / G1.9 /
 > G1.10a–c) run as **lanes** in per-lane git worktrees (`.claude/worktrees/lane-*`,
 > branches `lane-*`) branched from `update`. `update` stays the integration branch
@@ -210,6 +211,12 @@ audits on `opus-xhigh` exec rows are themselves `opus-xhigh`.
 | G4.2–G4.5 | `opus-high+` | `opus-high+` | `opus-high+` | one print kernel each (G4.3: two), categorical regen diff |
 | G4.6 | `opus-high+` | `opus-high+` | `opus-high+` | closure: `fmt_battery` retirement + census |
 | G5.1, G5.2 | `opus-high+` | `opus-high+` | `opus-high+` | doc surgery validated by `oracle_parity_cfg_gate.rs:1310` |
+
+*(**2026-09-04**, coordinator decision **D8**: **G1.4a** ran at `opus-xhigh`, not the
+`G1.4` row's `opus-high+` — three engine-semantics triggers, a new engine accessor and
+the per-bus capture struct G1.5/G1.6(ii) inherit — and its spin-off **G1.4c** is
+`opus-xhigh` too, for those triggers plus the `crates/dss-epri` do-not-call guard the
+r4133 `VLL` hang needs. The `G1.4` row above now stands for **G1.4b** alone.)*
 
 ## 1. Plan-wide design decisions
 
@@ -594,6 +601,57 @@ in TESTING.md instead of double-capturing.
 `Bus.VLL`/`puVLL`, `Bus.VMagAngle`, `AllPCEatBus`/`AllPDEatBus`, `Bus.Distance`,
 `AllBusDistances`, `AllNodeDistances` (meter-zone distances — cases with meters
 only; manifest-flagged).
+
+> **As executed (2026-09-04, lane `lane-b`).** G1.4a **STOPPED at spec
+> time** and was re-scoped by coordinator decision **D8**: three measured
+> triggers put the surface over the §1.1(f) kill threshold at once — r4133's
+> `-1` sentinel on `SeqVoltages`/`CplxSeqVoltages` for every `NumNodes != 3`
+> bus (18 cases / 138 buses, 10 after the `large*` force guard: the
+> threshold exactly), an r4133 **hang** in `BUSV(11)`/`BUSV(12)` on the two
+> NEV decks (the unbounded `jj>3 ⇒ jj:=1` pairing loop,
+> `DDLL/DBus.pas:549-602`, bounded to three tries in capi), and an unsettled
+> third question (a ≥3-node bus with no node 1/2/3). So G1.4a lands the four
+> **divergence-free** quantities (`puVoltages`, `puVmagAngle`, `VMagAngle`,
+> `AllBusVmagPu`, plus `Nodes`/`kVBase`) and the shared per-bus capture
+> struct + comparator G1.5 and G1.6(ii) reuse; the sequence quantities and
+> `VLL`/`puVLL` move to a new sub-step **G1.4c** (one structural
+> normalization + pins, never per-case rows; a state-dependent do-not-call
+> guard in `crates/dss-epri` for the hang), chain order G1.4a → G1.5 → G1.4c
+> → G1.4b. Two settlements were confirmed mid-execution as **D11**: (1) the
+> first EXACT float compare the gate has ever run (`Bus.kVBase`) reddened 4
+> of the then 523 cases at 1 ULP with the port and **both** transports agreeing
+> bit-for-bit — the wire was wrong, so the workspace `Cargo.toml` gains
+> `serde_json`'s `float_roundtrip` (a strict strengthening: no band, zero
+> golden bytes, and every earlier floor can only re-measure tighter); (2) on
+> a case whose `voltages` field is ledger-excluded the three continuous
+> per-bus arrays are suppressed — 0 new rows instead of 10 for one
+> already-pinned cause — while bus count, name sequence, `nodes`, `kv_base`
+> and lengths stay compared, printed by the gate next to the entry that
+> caused it. Two predictions of this plan are corrected:
+> `population.lock.json` does **not** move *for the bus surface*
+> (`population_lock.rs::rigor` fingerprints the *manifest* flag and no case sets
+> `compare_bus` — the guard is the pinned `FORCED_BUS_POPULATION` + its
+> re-derivation test; the lock does move for D12/D14 below), and
+> the WP-G1 mode table is **98** rows on this lane, not the 96 the G1.0 note
+> above records (`Bus.Nodes` `BUSV(2)` and `Circuit.AllBusNames`
+> `CircuitV(7)` were ported here under "port gaps immediately"). The bus surface
+> itself adds **0** ledger entries and **0** golden bytes. Two further settlements
+> landed inside the sub-step. **D12/D14:** the same exact `kv_base` compare caught
+> the pinned capi 0.14.5 oracle disagreeing with *itself* across fresh processes on
+> every deck that instantiates a `GICTransformer` (7 bad runs of 60 with one, 0 of
+> 40 without; r4133 80/80 bit-identical; root cause = `SetVoltageBases`' zero-load
+> snapshot reading un-zeroed `NodeV`), so those four decks gate on `r4133` alone,
+> `makeposseq_shunt`'s GICTransformer moved into the new r4133-gated micro deck
+> `modes/makeposseq/makeposseq_gic.dss` (flipping the shunt deck itself would have
+> quantized its own coverage through r4133's 5-significant-digit `MakePosSequence`
+> round trip), the four `gic-…-capi{,-props}` entries are deleted (57 → **53**) and
+> a manifest guard test forbids a capi-gated GICTransformer deck; the corpus is
+> **524** cases / 520 live. **D13:** the r4133 worker no longer inherits or persists
+> `DefaultBaseFreq` through `HKCU\Software\OpenDSS\MainSect` (its own bridge
+> commit) — that machine-wide channel, not the scheduler, was the "21 red, all
+> `R4133`" parity run, and the operating rule ("one gate or probe per worktree at a
+> time") is in `TESTING.md`. Full record:
+> `docs/phase-records/golden-rebase.md` §"WP-G1 — records".
 
 ### G1.5 — short-circuit surface
 

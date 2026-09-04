@@ -112,11 +112,11 @@ sub-step records RP3.6 – RP3.13 and RP3.10 (moved from STATUS §1)".
 **WP-RP4 (the unmask) — COMPLETE** (RP4.1, 2026-09-03, `59e521e5`, 23 files
 +2 576 / −536; zero product-crate lines, zero golden bytes, zero tolerances
 moved). `all_properties` is compared on the r4133 channel for every live
-non-`large` case: the **83 r4133-only** non-large cases get a property check for
-the first time and the **313 non-`large` `both`** cases get their r4133 property
-table compared — **1 670** gating property walks over **151 782** elements per
-full run, identically in both lanes. G1.1's re-armed kill criterion did **not**
-fire (zero ledger entries and zero pins from RP4.1's own residual triage). Full
+non-`large` case: at RP4.1 the **83 r4133-only** non-large cases got a first
+property check and the **313 non-`large` `both`** cases their r4133 property
+table — **1 670** gating walks over **151 782** elements per run (since G1.4a's
+flip: 87/310, 1 671), both lanes. G1.1's re-armed kill criterion did **not**
+fire (zero ledger entries and zero pins from RP4.1's residual triage). Full
 record: [`r4133-props-rp4.md`](docs/phase-records/r4133-props-rp4.md).
 
 **WP-RP5 (operational docs + closing record) — COMPLETE.** **RP5.1 landed
@@ -151,27 +151,27 @@ the six CLAUDE.md §"Known upstream bugs" reproduced in any lane. Full record:
 WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 
 **GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened
-2026-08-08). Landed so far: **G1.1** — killed on day one (433 of 438 walked
-live cases diverged), handed to `R4133_PROPS_PLAN.md` (user decision
-2026-08-22) and delivered by its RP4.1 on 2026-09-03, so **G1.1 is satisfied**
-and **G3.4** (`cim/`, `json/`, `json_import/`) + **G3.5** (`props/`) are
-unblocked, their value witness now the live r4133 property compare. **G1.2**
-(the ESPVLControl deck, the last zero-coverage class) landed 2026-08-29.
-**G1.0** — a new rails sub-step ahead of G1.3a (decisions D1/D2/D3) — landed
-2026-09-04: the ten-flag manifest vocabulary in **one** lock regen, explicit
-`channels` on the ten bare `element` exclusions, the capture-presence guard, and
-the r4133 bridge rails, whose 96-mode probe **also discharges the G1.11
-mode-capability acceptance for the whole WP** (zero misses); it compares nothing
-new — 0 ledger entries, 0 golden bytes. G1.3a–d, G1.4–G1.11c and WP-G3–G5
-remain. Full record: the same file, section "GOLDEN_REBASE WP-G1 — records".
+2026-08-08). Landed: **G1.1** (killed; satisfied by `R4133_PROPS_PLAN.md`
+RP4.1, 2026-09-03, unblocking **G3.4**/**G3.5**), **G1.2** (ESPVLControl
+deck, 2026-08-29), **G1.0** (rails D1/D2/D3, 2026-09-04, whose mode probe
+**also discharges the G1.11 mode-capability acceptance for the whole WP**)
+and **G1.4a** (2026-09-04, lane `lane-b`, D7) — the bus surface's
+divergence-free half on both channels for every live non-`large*` case,
+after a spec-time STOP that **D8** settled by moving the sequence quantities
+and `VLL`/`puVLL` (an r4133 hang) into a new **G1.4c**. G1.4a's exact
+`kv_base` compare bought the workspace `serde_json` `float_roundtrip`
+(**D11(1)**) and caught two oracle-side faults: capi 0.14.5 disagrees with
+itself on `GICTransformer` decks, so those four now gate on `r4133` alone
+with `makeposseq_shunt` split (**D12**/**D14**; ledger 57 → 53, corpus 524),
+and the r4133 worker no longer leaks `DefaultBaseFreq` through the Windows
+registry (**D13**, commit `6b0dbd32`, rule in `TESTING.md`). No golden byte
+moved. G1.3a–d, G1.4b/c, G1.5–G1.11c, WP-G3–G5 remain.
 
-**Next.** **`GOLDEN_REBASE_PLAN.md` G1.3a** (per-element `CurrentsMagAng`,
-`VoltagesMagAng`, `Residuals`) — the first surface sub-step now that G1.0's
-rails are in: it wires **both** channels in one commit and its capture test
-asserts the A/B/C request order (plan §1.1(a), D3). Then G1.3b–d, G1.4–G1.11c
-and WP-G3–G5 — inside which **G3.4**/**G3.5**, blocked since 2026-08-08, are
-runnable. Queued behind GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE,
-MULTITHREADING, UPGRADE.
+**Next.** Bus lane (`lane-b`): **G1.5** (short-circuit
+`Zsc*`/`Ysc*`/`Isc`/`Voc` on G1.4a's per-bus capture), then **G1.4c** (D8)
+and **G1.4b**; in parallel element lane G1.3a–d, PD/meter lane G1.6b→G1.6,
+singles G1.9/G1.7/G1.8/G1.10a–c, `update` taking one lane sub-step at a time
+by a merge agent (D7). Then G1.11a–c, WP-G3–G5 and the lines parked below.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
