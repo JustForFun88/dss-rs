@@ -684,6 +684,26 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
   (`ledger::a_masked_polar_angle_is_not_envelope_checked` and its rejecting twin
   `::an_unmasked_polar_angle_still_hits_the_envelope`).
 
+- **§G1.3d(i) — the per-element discrete extras** (`harness::compare_element_extras`,
+  `GOLDEN_REBASE_PLAN.md` WP-G1 G1.3d): `CktElement.NumTerminals`,
+  `NumConductors`, `NumPhases`, `NodeOrder` and `EnergyMeter` are **discrete** —
+  three counts, a vector of bus-local node numbers and a name — so they are
+  compared **exactly**, with no `Tolerances` argument, no tier lookup and no
+  band of any kind. **No floor is introduced, and no existing floor moves**:
+  this sub-step neither reads nor writes `Tolerances`/`tol_for`. Two
+  consequences worth stating so a later reader does not look for a band that
+  does not exist. (1) The surface takes no ledger sub-channel either
+  (`SUBCHANNEL_FIELDS` is unchanged), so a divergence here cannot be masked by a
+  committed `element` scope — it is a gate red and a STOP, which is the whole
+  point of gating discrete state. (2) The one normalization it does apply is a
+  **capture-boundary spelling fold, not a tolerance**: "no meter" arrives as
+  `''` from capi (`Result := NIL`, `CAPI/CAPI_CktElement.pas:672-687`) and as
+  `'0'` from r4133 (the `CktElementS` pre-`case` default,
+  `DDLL/DCktElement.pas:421`), and both fold to "no meter" before the exact
+  compare — value-preserving in the `PROPS_NORM_R4133` sense, and self-detecting
+  in the other direction (a meter literally named `0` reds against the port's
+  `Some("0")` rather than passing; `element_extras_pins::a_meter_named_zero_reds_instead_of_passing`).
+
 - **Dynamics fixpoint residuals** (`dSpeed`/`dTheta`/`speed`) are pinned against
   the oracle's actual (small, non-zero) value, not `≈0`: `dSpeed = (Pshaft +
   electrical_power)/Mmass` is a ~1.5e-8-rel residual the oracle reproduces; a value
@@ -1528,12 +1548,12 @@ dated). What was checked, and against what:
 | claim here | landed at | verdict |
 |---|---|---|
 | the floor is `2e-4` relative | `R4133_DISPLAY_FLOOR` at `harness/props_norm.rs:895` (`Option<f64>` = `Some(2e-4)`) | unchanged |
-| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:4419`) | unchanged |
+| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:5007`) | unchanged |
 | the four derivation rows (6.431124e-05 / 1.374769e-03 / 4.404256e-03 / 5.524501e-02) | the constant's own doc table, `props_norm.rs:786-792` | identical, both places |
 | 1 951 vendored spellings claimed (from 2 006, less the 55 the mechanism clause refuses) | `props_r4133_replay::CLAIMED_DISPLAY_FLOOR` = 1951 (`props_r4133_replay.rs:565`) | unchanged |
-| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:950-959` and `:967-976` (`i_rel`/`i_abs`) | unchanged |
-| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1142-1151` and `:1131-1140` | unchanged |
-| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:3314` (asserted as `i_abs / floor`) | unchanged |
+| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:999-1008` and `:1016-1025` (`i_rel`/`i_abs`) | unchanged |
+| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1191-1200` and `:1180-1189` | unchanged |
+| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:3902` (asserted as `i_abs / floor`) | unchanged |
 | no `Tolerances` field, no `tol_for` tier moved by this plan | `Tolerances` has no props field; the floor is read only by `props_norm` | unchanged |
 
 The floor therefore still sits **3.110×** above the worst cell it claims and

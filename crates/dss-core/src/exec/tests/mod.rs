@@ -17,6 +17,7 @@ mod controls;
 mod derived_polar;
 mod distribute_uuids;
 mod dynamics;
+mod element_extras;
 mod energymeter_registers;
 mod energymeter_zones;
 mod espvl_control;

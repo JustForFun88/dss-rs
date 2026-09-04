@@ -70,8 +70,11 @@
 //! smuggling in a brand-new undeclared read (on both the Python and the Rust
 //! transport), a malformed marker, a marker no read consumes, a group that
 //! contradicts the mode table, a name the table does not know, a read that
-//! disappears, and a helper call that misdeclares the helper's order. No file
-//! on disk is ever mutated.
+//! disappears, and a helper call that misdeclares the helper's order. One
+//! further mutation states the rule's *positive* half — a group-**C** read moved
+//! between a group-A and a group-B read raises the declaration-bookkeeping
+//! violation but **not** the `order:` one, because C is order-free by
+//! construction. No file on disk is ever mutated.
 //!
 //! # Platform
 //!
@@ -139,13 +142,14 @@ struct CaptureBody {
 }
 
 /// The capi channel's element capture, its helper, and the r4133 channel's
-/// three bodies.
+/// four bodies.
 ///
 /// `oracle_server.capture_all_elements` reads `Losses` **before** delegating to
 /// `gen_checkpoints.capture_element` (which reads `Powers` then `Currents`):
 /// two group-A reads followed by the group-B one. `dss.rs::element_pcl` is the
-/// r4133 mirror of exactly that, and `element_polar` adds the three G1.3a
-/// derived channels.
+/// r4133 mirror of exactly that, `element_polar` adds the three G1.3a derived
+/// channels, and `element_extras` the four unconditional G1.3d(i) discrete
+/// scalars (`NodeOrder`, the conditional fifth, stays at the call site).
 const BODIES: &[CaptureBody] = &[
     CaptureBody {
         key: "oracle_server.capture_all_elements",
@@ -167,6 +171,11 @@ const BODIES: &[CaptureBody] = &[
             "CurrentsMagAng",
             "Residuals",
             "VoltagesMagAng",
+            "NumTerminals",
+            "NumConductors",
+            "NumPhases",
+            "EnergyMeter",
+            "NodeOrder",
         ],
     },
     CaptureBody {
@@ -208,6 +217,19 @@ const BODIES: &[CaptureBody] = &[
         declared: &["CurrentsMagAng", "Residuals", "VoltagesMagAng"],
     },
     CaptureBody {
+        key: "element_extras",
+        file: "crates/dss-epri/src/dss.rs",
+        func: "element_extras",
+        lang: Lang::Rust,
+        family: "CktElement",
+        marked: true,
+        receivers: &["self"],
+        // Not a read of the element: it drains the DLL's error slot
+        // (`Engine::check_read`), the same role `poll_error` plays above.
+        exempt: &["assert_clean"],
+        declared: &["NumTerminals", "NumConductors", "NumPhases", "EnergyMeter"],
+    },
+    CaptureBody {
         key: "capture.capture_all_elements",
         file: "crates/dss-epri/src/capture.rs",
         func: "capture_all_elements",
@@ -215,7 +237,10 @@ const BODIES: &[CaptureBody] = &[
         family: "CktElement",
         marked: true,
         receivers: &["engine"],
-        exempt: &[],
+        // Drains the DLL's error slot after the one conditional read that does
+        // not go through a helper (`NodeOrder`), so an errno is attributed to
+        // its own element instead of to the next one's `element_pcl`.
+        exempt: &["assert_clean"],
         declared: &[
             "AllElementNames",
             "SetActiveElement",
@@ -226,6 +251,11 @@ const BODIES: &[CaptureBody] = &[
             "CurrentsMagAng",
             "Residuals",
             "VoltagesMagAng",
+            "NumTerminals",
+            "NumConductors",
+            "NumPhases",
+            "EnergyMeter",
+            "NodeOrder",
         ],
     },
 ];
@@ -243,6 +273,7 @@ fn helper_key(member: &str) -> Option<&'static str> {
         "capture_element" => Some("capture_element"),
         "element_pcl" => Some("element_pcl"),
         "element_polar" => Some("element_polar"),
+        "element_extras" => Some("element_extras"),
         _ => None,
     }
 }
@@ -749,6 +780,13 @@ fn assert_fires(bad: &[String], kind: &str) {
     );
 }
 
+fn assert_silent(bad: &[String], kind: &str) {
+    assert!(
+        !kinds(bad).contains(&kind),
+        "expected NO `{kind}:` violation, got {bad:?}"
+    );
+}
+
 #[test]
 fn the_gate_fires_when_a_group_a_read_moves_after_a_group_b_read() {
     let (b, text) = capi();
@@ -760,6 +798,29 @@ fn the_gate_fires_when_a_group_a_read_moves_after_a_group_b_read() {
         &move_line_after(&text, "capture-order: Losses (A)", "gc.capture_element"),
     );
     assert_fires(&bad, "order");
+}
+
+/// The positive half of the A-before-B rule, which no other test states: a
+/// group-**C** read is order-free *by construction* (`ModeEffect::Pure` — it
+/// reads a field and never runs `ComputeIterminal` or `GetCurrents`), so moving
+/// one into the middle of the A/B block cannot violate the D3 order. Moving the
+/// G1.3d(i) `NumPhases` read (`CktElementI(2)`, `DDLL/DCktElement.pas:149`) to
+/// sit between the group-A `Losses` and the group-A/B `capture_element`
+/// delegation raises only the declaration-bookkeeping violation — proof the
+/// mutation really landed — and never an `order:` one.
+#[test]
+fn a_group_c_read_may_sit_between_a_group_a_and_a_group_b_read() {
+    let (b, text) = capi();
+    assert!(check(b, &text).is_empty(), "the real body must be clean");
+    let moved = move_line_after(
+        &text,
+        "capture-order: NumPhases (C)",
+        "capture-order: Losses (A)",
+    );
+    assert_ne!(moved, text, "the mutation must actually move a line");
+    let bad = check(b, &moved);
+    assert_silent(&bad, "order");
+    assert_fires(&bad, "sequence");
 }
 
 /// Both directions of rule 4: stripping a marker off an existing read, and —

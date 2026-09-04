@@ -875,3 +875,14 @@ walks `TESTING.md`'s citations. The five-command gate was not re-run for a
 is empty. **WP-RP5, and with it `R4133_PROPS_PLAN.md`, is closed**; the frontier
 returns to `GOLDEN_REBASE_PLAN.md` WP-G1 with G1.1 satisfied and G3.4/G3.5
 unblocked.
+
+**2026-09-05 — locator correction (GOLDEN_REBASE G1.3d(i), lane `lane-e`); content unchanged.**
+The `TESTING.md:<line>` numbers above were measured when this record was written; `TESTING.md`
+has grown since (WP-G1's G1.0, G1.3a and G1.3d(i) insertions), so the two sections it names now
+sit at `TESTING.md:1171` ("The r4133 property policy — the claim chain (R4133_PROPS)", was
+`:841`) and `TESTING.md:1622` ("Triage a property divergence (the r4133 channel)", was `:1116`);
+the `:863`/`:880`/`:907`/`:946`/`:990` locators of the six re-spelled citations shifted with them.
+Every anchor this record names is unchanged and still guarded by
+`oracle_parity_cfg_gate::operational_docs_line_citations_point_at_the_line_they_name`; what is
+unguarded is exactly the class this record already flags — a line-number citation *into*
+`TESTING.md` from a phase record.

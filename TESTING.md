@@ -379,7 +379,7 @@ switched off later with no lock diff at all:
 | manifest flag | rigor token | owning sub-step | surface |
 | --- | --- | --- | --- |
 | `compare_derived` | `derived=` | G1.3a–c | per-element `CurrentsMagAng`/`VoltagesMagAng`/`Residuals`, `SeqCurrents`/`SeqVoltages`/`SeqPowers`, `CplxSeq*`, `TotalPowers`. **Wired since G1.3a (2026-09-04)**, which serves the first third — `Enabled` plus the three polar channels; the sequence surfaces follow in G1.3b/c |
-| `compare_element_extras` | `elemx=` | G1.3d | `PhaseLosses`, `NodeOrder`, `EnergyMeter`, `OCPDevType`/`OCPDevIndex`, `HasVoltControl`/`HasSwitchControl`, `NumControls`, `NumTerminals`/`NumPhases`/`NumConductors` |
+| `compare_element_extras` | `elemx=` | G1.3d | `PhaseLosses`, `NodeOrder`, `EnergyMeter`, `OCPDevType`/`OCPDevIndex`, `HasVoltControl`/`HasSwitchControl`, `NumControls`, `NumTerminals`/`NumPhases`/`NumConductors`. **Wired since G1.3d(i) (2026-09-04)**, which serves the index/name scalars — the three counts, `NodeOrder` and `EnergyMeter`; `PhaseLosses` and the control-derived extras follow in G1.3d(ii) |
 | `compare_bus` | `bus=` | G1.4 | `puVoltages`/`puVmagAngle`/`VMagAngle`/`VLL`/`puVLL`, bus `SeqVoltages`/`CplxSeqVoltages`, `AllPCEatBus`/`AllPDEatBus`, `Distance`/`AllBusDistances`/`AllNodeDistances`/`AllBusVmagPu` |
 | `compare_zsc` | `zsc=` | G1.5 | `Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix`/`Isc`/`Voc` |
 | `compare_reliability` | `rel=` | G1.6 | meter extras + the per-bus reliability columns; also drives the executive `RelCalc` |
@@ -393,7 +393,7 @@ G1.9 (circuit aggregates + solution scalars) deliberately gets **no** flag — i
 is universal and cheap — so nobody adds an eleventh flag and a second lock regen.
 
 **A flag may not be set before its surface exists.** `G1_SURFACE_FLAGS`
-(`crates/dss-core/tests/corpus_gate/manifest.rs:546`) carries each flag's owning
+(`crates/dss-core/tests/corpus_gate/manifest.rs:558`) carries each flag's owning
 sub-step and a `wired` bit; the structural family gate refuses any manifest case
 that sets a flag whose `wired` is still `false`, because the request builder
 would not send it, the oracle would return nothing, and the case would compare an
@@ -428,6 +428,97 @@ behaviour. Adding it belongs to whoever proves the emptiness contract for those
 three surfaces. The guard's own non-vacuity is offline
 (`capture_guard::tests::{a_present_capture_passes, an_empty_capture_fails,
 an_absent_capture_fails, the_message_names_the_flag_the_channel_the_context_and_the_shape}`).
+
+**G1.3d(i) — the per-element discrete extras** (2026-09-04/05, lane `lane-e`).
+`harness::compare_element_extras`
+(`crates/dss-core/tests/harness/mod.rs:2475`) compares `NumTerminals`,
+`NumConductors`, `NumPhases`, `NodeOrder` and `EnergyMeter` **exactly**: it takes
+no `Tolerances` argument and owns **no** ledger sub-channel, so a divergence in
+discrete state cannot be masked by a committed `element` scope — it is a gate red
+and a STOP (`tests/TOLERANCE_NOTES.md` §G1.3d(i) says why no floor exists here).
+Five things about it that are not obvious from the field names:
+
+* **`NodeOrder` is captured for `Enabled` elements with `NumTerminals > 0` only**,
+  and the predicate is source-derived rather than defensive: r4133's
+  `CktElementV(17)` dereferences `NodeRef^[j]` with no nil guard
+  (`DDLL/DCktElement.pas:1048`) and kills the worker on a never-enabled element,
+  where capi raises 15013 (`CAPI/CAPI_Alt.pas:960-966`), and on a 0-terminal
+  element (`UPFCControl`, `Controls/UPFCControl.pas:230-246`) r4133 answers a
+  0-length array where capi raises. Not issuing the read removes the shape
+  asymmetry instead of normalizing it away.
+* **The `!enabled` branch asserts the ORACLE side is silent, not both.** An
+  element disabled *after* a solve legitimately keeps the mapping it was given
+  (both oracles would too — neither mode-17 arm has an `Enabled` guard; only the
+  capture skips it), so demanding an empty port vector there would red every deck
+  that switches an element out. Pinned both ways in `element_extras_pins`
+  (`mod.rs:2610`).
+* **"No meter" is a two-channel spelling, folded at the capture boundary**
+  (coordinator decision D4, 0 ledger rows): capi returns `''` (`Result := NIL`,
+  `CAPI/CAPI_CktElement.pas:672-687`), r4133 returns `'0'` (the `CktElementS`
+  pre-`case` default, `DDLL/DCktElement.pas:421`; arm 4 at `:442-449` is guarded
+  by `HasEnergyMeter` at `:444`). `harness::oracle_meter_name`
+  (`mod.rs:2412`) folds both to "no meter" before the exact compare — a
+  value-preserving spelling rule in the `PROPS_NORM_R4133` sense, not a
+  tolerance. It is self-detecting in the other direction: a meter literally named
+  `0` reds against the port's `Some("0")` instead of passing
+  (`a_meter_named_zero_reds_instead_of_passing`, `mod.rs:2719`), and the corpus
+  census below says that collision is not waiting to happen.
+* **`EnergyMeter` is sparse by design — do not read it as zone coverage.**
+  `SetHasMeterFlag` sets `HasEnergyMeter` on each enabled meter's
+  `MeteredElement` only (r4133 `Meters/EnergyMeter.pas:1712-1719`; port
+  `solution/meters/zones/flags.rs::set_has_meter_flag`), so exactly one element
+  per enabled meter carries a name and every other element of the zone reports
+  none.
+* **Two unrelated `node_order` fields share the name.** The per-element
+  `ElementCap::node_order` (`mod.rs:959`) is the bus-local node number per
+  conductor per terminal; the checkpoint-level `CaseResult::node_order`
+  (`crates/dss-epri/src/capture.rs:100`) is the **Y node name order** of the
+  whole circuit. They live in different JSON objects and share nothing but the
+  word; both field docs say so.
+
+**The corpus meter-name census lives in the oracle-free binary, on purpose.**
+`no_corpus_energymeter_is_named_zero` (`crates/dss-core/tests/corpus_manifest.rs:282`,
+module `extras_population` at `:190`) walks every vendored deck and asserts no
+`New EnergyMeter.<name>` is spelled `0` — measured: **1310** deck files, **92**
+distinct meter names, none of them `0`. It started in `corpus_gate/runner.rs` and
+**flaked** there: the live gate in the same binary has decks writing exports into
+the same tree, and a Windows sharing violation on a gate-written `.txt` made the
+walk panic (an instrumented run counted 1311 files — the census was reading the
+gate's own droppings). `cargo` runs one test binary at a time, so moving the
+module to the oracle-free corpus-hygiene binary removes the race structurally: no
+assertion was weakened, and there is no retry, skip or `#[ignore]` anywhere in it.
+
+**`Lines.Yprim` is already witnessed; `LineGeometries.Rmatrix/Xmatrix/Zmatrix`
+leaves the parity claim** (the two G1.3d documentation verdicts). `Lines_Get_Yprim`
+(`CAPI/CAPI_Lines.pas:777-796`) and `CktElement_Get_Yprim`
+(`CAPI/CAPI_CktElement.pas:583-599`) are the same two statements —
+`GetYprimValues(ALL_YPRIM)` and a bulk `Move` of `2·Yorder²` doubles
+(`Move(cValues[1], …)` and `Move(cValues^, …)` are the same address for a 1-based
+`pComplexArray`) — and r4133's `LinesV` mode 7 (`DDLL/DLines.pas:771-796`) and
+`CktElementV` mode 12 (`DDLL/DCktElement.pas:856-883`) likewise copy `SQR(Yorder)`
+complexes out of one such call; the only difference on either channel is the
+`Lines` path's `IsLine()` type filter. The gate already captures and compares
+`CktElement.Yprim` live on both channels (`tools/oracle/oracle_server.py:556`,
+`crates/dss-epri/src/capture.rs:331` over `Engine::element_yprim`
+(`crates/dss-epri/src/dss.rs:450`), Rust side `compare_yprim` at
+`corpus_gate/runner.rs:494` → `harness::compare_yprim`
+(`crates/dss-core/tests/harness/mod.rs:1354`)), so a
+second `Lines`-shaped capture would add no information. **The honest residual is
+coverage, not spelling:** YPrim is compared only for a case's
+`selected_elements`, and over the four manifests **235 of 523** cases declare a
+non-empty list (192 `["*"]`, 43 explicit) while the other **288** compare no YPrim
+at all — that gap closes by flipping `selected_elements` on more cases, never by a
+Lines-specific capture. `LineGeometries.Rmatrix/Xmatrix/Zmatrix` are dropped from
+the parity target on two independent kills: in fastdss they are computing
+**methods** taking `(Frequency, Length, Units)` (`origin/fastdss`
+`dss/ILineGeometries.py:84`/`:88`/`:92`), so `adjust_to_json` raises
+`StopIteration` on them (`tests/save_outputs.py:140-141`) and the caller swallows
+it (`:277-279`) — they are skipped in *every* fastdss run and are therefore not in
+the surface this gate is reaching parity with; and the r4133 DLL has no
+`LineGeometr*` family at all (no `DDLL/DLineGeometries.pas`, and
+`OpenDSSDirect.dpr`'s `exports` clause carries only `LinesI/F/S/V`), so the
+surface is capi-only by capability. Neither is captured; neither costs a ledger
+row.
 
 **Capture order is contractual on the capi channel** (`GOLDEN_REBASE_PLAN.md`
 §1.1(a), restated 2026-09-04). Per element, in three groups:
@@ -735,7 +826,24 @@ per-`engines` split. G1.3a added the second such rule and its own pin:
 manifest opt-ins, both `engines: "both"` — is re-derived on every run by
 `the_derived_forcing_rule_is_every_live_non_large_case_plus_the_opt_ins`. The two
 opt-ins are listed in Rust as `DERIVED_MANIFEST_OPT_INS`, each required to be a
-live case the rule would not already cover. **Cost (G1.3a, Q-8):** the three extra
+live case the rule would not already cover. G1.3d(i) added the third:
+`force_element_extras` (`crates/dss-core/tests/corpus_gate/scheduler.rs:244`)
+turns `compare_element_extras` on for every live case except `kind=large*` on the
+`solvable_now` arm — no opt-in table, because fastdss's `KNOWN_COM_DIFF` carries
+no row for any of the five fields — and `FORCED_ELEMENT_EXTRAS_POPULATION` =
+(440, 313, 83, 44) (`scheduler.rs:271`) is re-derived on every run by
+`the_element_extras_forcing_rule_is_every_live_non_large_case` (`:440`). It is the
+same 440 as `FORCED_PROPS_POPULATION`, which is the same rule without opt-ins.
+**Cost (G1.3d(i)):** the five extra reads per element bought **no measurable gate
+time** — `cargo test -p dss-core --test corpus_gate` measured 218.7 s / 179.3 s /
+180.6 s / 180.9 s (parity) / 164.8 s across five drives, plus the post-D19
+re-drive's 201.7 s (default) / 180.6 s (parity), inside this machine's own
+run-to-run spread on the G1.3a tree (177.6 s … 198.6 s over five runs), with the
+cleanest post-move run *faster* than every G1.3a measurement. None of these runs
+had the machine to itself (D7 lanes gate concurrently from separate `target`
+dirs), so a number tighter than "no signal above the ±20 s spread" would need
+repeated paired runs on a quiet machine.
+**Cost (G1.3a, Q-8):** the three extra
 reads per enabled element cost ~+3 µs/element on the capi channel and roughly
 double the per-element JSON payload; end to end
 `cargo test -p dss-core --test corpus_gate` went **≈155 s → 171.7 s** (default
@@ -1067,19 +1175,19 @@ property cell of a live non-`large` case is asserted on **both** channels. The
 two channels do not spell values identically, so the r4133 side runs a
 **channel-scoped claim chain** whose links are consulted in one fixed order and
 never on `capi_v0145`. One function holds the whole order —
-`harness::compare_prop_lists` (`crates/dss-core/tests/harness/mod.rs:4062`) —
-and links 2-4 are `PropsPolicy` methods gated on `is_r4133()` (`mod.rs:3450`,
-`:3495`; the channel type is `PropsChannel`, `mod.rs:4229`). Link 1 is the
+`harness::compare_prop_lists` (`crates/dss-core/tests/harness/mod.rs:4650`) —
+and links 2-4 are `PropsPolicy` methods gated on `is_r4133()` (`mod.rs:4038`,
+`:4083`; the channel type is `PropsChannel`, `mod.rs:4817`). Link 1 is the
 deliberate exception: `skip_prop` is a free function taking the channel, so its
 `LANE_SKIP_PROPS` half stays channel-blind (row 1 below says so).
 
 | # | link | seam | what it does | if it does not claim |
 |---|---|---|---|---|
-| 0 | shape allowlist `PROPS_015X` | `filter_015x`, `mod.rs:3985` | drops a Rust-side prop the capture cannot carry — **shape only** | the name walk fails |
-| 1 | skip rows `SKIP_PROPS` / `LANE_SKIP_PROPS` | `skip_prop`, `mod.rs:2846` (channel rule at `:2861`) | value-only skip, per channel | fall through |
-| 2 | normalization `PROPS_NORM_R4133` | `PropsPolicy::normalize`, `mod.rs:4332` | **re-spells** the oracle side when a typed rule proves the two are the same value | both raw spellings continue |
-| 3 | echo table `PROPS_ECHO_R4133` | `PropsPolicy::echo_excluded`, `mod.rs:4377` | drops the **value** compare of that cell (name + index order still assert) | fall through |
-| 4 | display floor `R4133_DISPLAY_FLOOR` | `PropsPolicy::under_display_floor`, `mod.rs:4419` | passes a numeric cell that is our value rendered to r4133's own digits | the cell reaches the assert |
+| 0 | shape allowlist `PROPS_015X` | `filter_015x`, `mod.rs:4573` | drops a Rust-side prop the capture cannot carry — **shape only** | the name walk fails |
+| 1 | skip rows `SKIP_PROPS` / `LANE_SKIP_PROPS` | `skip_prop`, `mod.rs:3434` (channel rule at `:3449`) | value-only skip, per channel | fall through |
+| 2 | normalization `PROPS_NORM_R4133` | `PropsPolicy::normalize`, `mod.rs:4920` | **re-spells** the oracle side when a typed rule proves the two are the same value | both raw spellings continue |
+| 3 | echo table `PROPS_ECHO_R4133` | `PropsPolicy::echo_excluded`, `mod.rs:4965` | drops the **value** compare of that cell (name + index order still assert) | fall through |
+| 4 | display floor `R4133_DISPLAY_FLOOR` | `PropsPolicy::under_display_floor`, `mod.rs:5007` | passes a numeric cell that is our value rendered to r4133's own digits | the cell reaches the assert |
 | 5 | the assert | `assert_value_matches_tol`, `mod.rs:332` | the case's tier floors (`tol_for`) | **gate red, both spellings in the message** |
 
 A divergence the ledger owns is handled outside this chain, by the case's
@@ -1161,34 +1269,34 @@ r4133 side must be our number rounded to the significant digits r4133 itself
 printed). It touches no `Tolerances` field, no `tol_for` tier, no golden and no
 model quantity, and it is unreachable on `capi_v0145`
 (`props_policy_tests::the_capi_channel_never_applies_the_display_floor`,
-`mod.rs:3278`). Its derivation — the measured worst cell, the empty band, the
+`mod.rs:3866`). Its derivation — the measured worst cell, the empty band, the
 `%.Ng` site table and the 55 refused spellings — is
 `tests/TOLERANCE_NOTES.md` §"r4133 props display floor".
 
 **The `SKIP_PROPS` dispositions (plan §1.2).** `skip_prop` is channel-aware
-since RP2.1 (`skip_prop`, `mod.rs:2846`), because after RP4.1 a channel-blind row would
+since RP2.1 (`skip_prop`, `mod.rs:3434`), because after RP4.1 a channel-blind row would
 value-mask the r4133 channel by accident. Every one of the **17** `SKIP_PROPS`
-rows (`SKIP_PROPS`, `mod.rs:2399`) is dispositioned exactly once, in its own row comment —
+rows (`SKIP_PROPS`, `mod.rs:2987`) is dispositioned exactly once, in its own row comment —
 **17 = 10 + 7**, the first two lists below. The third list is a separate table
 (`LANE_SKIP_PROPS` is not a `SKIP_PROPS` row and the partition lock does not
 union it), shown here because `skip_prop` consults it on the same call:
 
 | list | rows | on r4133 | why |
 |---|---|---|---|
-| `SKIP_PROPS_CAPI_ONLY` (`mod.rs:2755`) | 10 | **compared** | the justification is a 0.14.5-capture fact: the three changed defaults (`Fuse.FuseCurve`, `Fuse.RatedCurrent`, `RegControl.RevThreshold`), the two `pctperm` rows (`Capacitor`, `Reactor`), and RP3.8's five `''`-render rows (`IndMach012.PF`, the four `StorageController` totals) |
-| `SKIP_PROPS_BOTH_CHANNELS` (`mod.rs:2796`) | 7 | **skipped** | channel-independent facts — the heap-garbage matrix reads (`Capacitor.CMatrix`, `Reactor.RMatrix`/`XMatrix`, `Fault.GMatrix`, `Transformer.WdgCurrents`) and the two `FaultRate` rows |
-| `LANE_SKIP_PROPS` (`mod.rs:2836`) | 1 | **skipped, deliberately channel-blind** | `(Monitor, BaseFreq)` — an upstream bug BOTH gating oracles share (`Monitor.pas` r4133:552); the port's correct value is pinned by `monitor_basefreq_inherits_the_fundamental` |
+| `SKIP_PROPS_CAPI_ONLY` (`mod.rs:3343`) | 10 | **compared** | the justification is a 0.14.5-capture fact: the three changed defaults (`Fuse.FuseCurve`, `Fuse.RatedCurrent`, `RegControl.RevThreshold`), the two `pctperm` rows (`Capacitor`, `Reactor`), and RP3.8's five `''`-render rows (`IndMach012.PF`, the four `StorageController` totals) |
+| `SKIP_PROPS_BOTH_CHANNELS` (`mod.rs:3384`) | 7 | **skipped** | channel-independent facts — the heap-garbage matrix reads (`Capacitor.CMatrix`, `Reactor.RMatrix`/`XMatrix`, `Fault.GMatrix`, `Transformer.WdgCurrents`) and the two `FaultRate` rows |
+| `LANE_SKIP_PROPS` (`mod.rs:3424`) | 1 | **skipped, deliberately channel-blind** | `(Monitor, BaseFreq)` — an upstream bug BOTH gating oracles share (`Monitor.pas` r4133:552); the port's correct value is pinned by `monitor_basefreq_inherits_the_fundamental` |
 
 *Partition lock:*
 `skip_props_disposition_tests::every_skip_props_row_has_an_r4133_disposition`
-(`mod.rs:2886`) fails on a row listed twice, in neither list, or deleted from
+(`mod.rs:3474`) fails on a row listed twice, in neither list, or deleted from
 `SKIP_PROPS` — a new skip cannot silently inherit "masked on r4133 too". The
 channel-blindness of the `LANE_SKIP_PROPS` row has its own pin
-(`the_monitor_basefreq_exclusion_is_channel_blind`, `mod.rs:3043`). The two
+(`the_monitor_basefreq_exclusion_is_channel_blind`, `mod.rs:3631`). The two
 **whole-element** skips are channel-scoped the same way: Recloser and Relay are
 skipped on capi only, because their Rust tables are r4133-shaped
-(`skip_whole_element`, `mod.rs:4015`;
-`recloser_and_relay_are_whole_element_skipped_on_capi_only`, `mod.rs:3068`).
+(`skip_whole_element`, `mod.rs:4603`;
+`recloser_and_relay_are_whole_element_skipped_on_capi_only`, `mod.rs:3656`).
 
 **Did the chain run at all?** `props_norm::assert_r4133_props_compare_ran`
 (`props_norm.rs:2841`) runs first in the gate epilogue (`corpus_gate.rs:172`),
@@ -1254,9 +1362,11 @@ The `S` literals are transcribed verbatim, upstream wording and typo included �
   probe/diagnostic path only, never as a capture's miss test. Mode 6 is not a
   table row; the one `CktElementS` row WP-G1 reads is mode 4
   (`CktElement.EnergyMeter`), whose default is the function default `'0'`
-  (`DCktElement.pas:421`).
+  (`DCktElement.pas:421`). G1.3d(i) is the sub-step that reads it live, and
+  that default is exactly why the capture folds `'0'` (r4133) and `''` (capi) to
+  "no meter" before comparing — see the D4 fold above.
 * **A family this crate has not measured is refused, not guessed.** `probe_mode`
-  (`crates/dss-epri/src/dss.rs:857`) refuses an `S` probe on a family with no
+  (`crates/dss-epri/src/dss.rs:893`) refuses an `S` probe on a family with no
   `S_SENTINELS` row, and a `V` probe on a family in `V_WITHOUT_SENTINEL`
   (`crates/dss-epri/src/modes.rs:180` — `CapacitorsV` writes **no** sentinel at
   all), rather than reporting a silent `Served`.
@@ -1266,7 +1376,7 @@ WP-G1 needs live once, as `ModeSpec` rows in `WP_G1_MODES`
 (`crates/dss-epri/src/modes.rs:1320`), each carrying its (family, kind, mode)
 triple, the `D*.pas` line of the `case` arm it transcribes, the `myType` tag a
 `V` arm assigns, and any state the arm moves. `Engine::read_mode`
-(`crates/dss-epri/src/dss.rs:1047`) takes the row **by reference** — a mode number
+(`crates/dss-epri/src/dss.rs:1083`) takes the row **by reference** — a mode number
 cannot drift between the table and its reader — and rejects a reply whose shape is
 not the row's, so a future DLL revision fails loudly instead of decoding garbage.
 `r4133_mode_capability_is_complete_for_wp_g1`
@@ -1305,7 +1415,10 @@ Three rules that table carries, each of which a capture must respect:
   than the `-1.0` sentinel — invisible downstream — so they are recorded in
   `EXCLUDED_WRITE_MODES` (`crates/dss-epri/src/modes.rs:1597`) instead of the
   table, alongside their readers (`F:0`, `F:2`). Hence 97 rows, not 99 (the
-  count was 96 until G1.3a added `CktElement.Enabled`, `CktElementI(12)`).
+  count was 96 until G1.3a added `CktElement.Enabled`, `CktElementI(12)`). G1.3d(i)
+  adds no row and live-compares **five more** of the 97 — `CktElementI` 0/1/2
+  (`NumTerminals`/`NumConductors`/`NumPhases`), `CktElementV(17)` (`NodeOrder`)
+  and `CktElementS(4)` (`EnergyMeter`).
 * **`ModeEffect` is the authority on what a row moves, and it carries the
   capture-order partition.** `Impure` rows move state: `Meters.Totals` re-runs
   `TotalizeMeters`; `PDElements.ParentPDElement` re-points `ActiveCktElement`;

@@ -117,6 +117,18 @@ pub(crate) struct SolvableCase {
     /// `HasSwitchControl`, `NumControls`, `NumTerminals`/`NumPhases`/
     /// `NumConductors` (`origin/fastdss` `dss/ICktElement.py:35-38,46-52,56,69`;
     /// r4133 `DDLL/DCktElement.pas` `CktElementI`/`CktElementS`).
+    ///
+    /// **Live since G1.3d(i)** (`wired: true` in [`G1_SURFACE_FLAGS`]): the flag
+    /// today carries the four pure scalars `NumTerminals`/`NumConductors`/
+    /// `NumPhases` (r4133 `DDLL/DCktElement.pas:139`/`:144`/`:149`, `CktElementI`
+    /// arms 0..2; capi `CAPI/CAPI_CktElement.pas:182-211`) and `EnergyMeter`
+    /// (`:442`, `CktElementS(4)`; capi `:672-687`), plus `NodeOrder`
+    /// (`:1032-1056`, `CktElementV(17)`; capi `CAPI/CAPI_Alt.pas:953-977`) on
+    /// elements that are `Enabled` **and** carry `NumTerminals > 0` — the two
+    /// conditions under which neither transport dereferences a nil `NodeRef`.
+    /// G1.3d(ii) widens this same flag with `PhaseLosses` and the
+    /// control-derived extras (`OCPDev*`, `Has*Control`, `NumControls`) rather
+    /// than adding its own, so a case that opts in now gains those with it.
     #[serde(default)]
     pub(crate) compare_element_extras: bool,
     /// G1.4: the **bus** surface — `puVoltages`/`puVmagAngle`/`VMagAngle`/`VLL`/
@@ -556,10 +568,18 @@ pub(crate) const G1_SURFACE_FLAGS: &[G1Flag] = &[
         wired: true,
         get: |c| c.compare_derived,
     },
+    // Wired by G1.3d(i) (2026-09-04) — request key `element_extras` in
+    // `engines::build_run_request`, capture in `tools/oracle/oracle_server.py`
+    // + `crates/dss-epri/src/capture.rs` (`Engine::element_extras` in `dss.rs`
+    // for the four pure scalars; the conditional `NodeOrder` read stays at the
+    // call site), comparator `harness::compare_element_extras` behind
+    // `capture_guard::require_capture` in `runner::compare_capture`. G1.3d(ii)
+    // widens the same flag's surface (`PhaseLosses`, the control-derived
+    // extras); the row stays as it is.
     G1Flag {
         name: "compare_element_extras",
         sub_step: "G1.3d",
-        wired: false,
+        wired: true,
         get: |c| c.compare_element_extras,
     },
     G1Flag {

@@ -609,7 +609,7 @@ from the already-gated I/V tier, documented in TOLERANCE_NOTES. Ledger triage pe
 >   `r4133-indmachmidi-injection-ulp` did not fail and was left alone).
 > * **Two comparator-shape findings the spec did not predict**, both settled without
 >   a tolerance: a 0-terminal element (`UPFCControl`, r4133
->   `Controls/UPFCControl.pas:229-245` never sets `Nterms`) is accepted two-sidedly
+>   `Controls/UPFCControl.pas:230-246` never sets `Nterms`) is accepted two-sidedly
 >   when neither side carries a payload, up to the capi `DefaultResult` sentinel
 >   (coordinator decision D4); and the spec's √2 rectangular-band correction (D10)
 >   is **refuted** — `harness::assert_complex_close_c` bands the *modulus*, so the
@@ -637,6 +637,66 @@ transform.
 divergence is proven, per the no-guessing rule); `Lines.Yprim` — verify it is
 already witnessed by the per-element YPrim live compare and record the conclusion
 in TESTING.md instead of double-capturing.
+
+> **2026-09-04/05 — AS EXECUTED (lane `lane-e`), part (i).** The sub-step is split:
+> **(i)** the index/name scalars `NumTerminals`/`NumConductors`/`NumPhases`, `NodeOrder`,
+> `EnergyMeter` and the two documentation verdicts; **(ii)** `PhaseLosses` and the
+> control-derived extras (`OCPDevType`/`OCPDevIndex`, `HasVoltControl`/`HasSwitchControl`,
+> `NumControls`). `CktElement.Enabled` is **not** re-added here — G1.3a already landed it
+> as the enabled-only capture predicate. Forced on **440** cases
+> (`FORCED_ELEMENT_EXTRAS_POPULATION` `(440, 313, 83, 44)`), both oracle channels,
+> **0 new ledger entries and 0 widenings** — the §3 forecast held exactly, and no tolerance
+> is introduced or consulted (every field is discrete, compared exactly).
+>
+> * **`Lines.Yprim` — verified already witnessed, not double-captured.** `Lines_Get_Yprim`
+>   (capi `CAPI/CAPI_Lines.pas:777-796`) and `CktElement_Get_Yprim`
+>   (`CAPI/CAPI_CktElement.pas:583-599`) are the same two statements —
+>   `GetYprimValues(ALL_YPRIM)` plus a bulk `Move` of `2·Yorder²` doubles — and r4133's
+>   `LinesV` mode 7 (`DDLL/DLines.pas:771-796`) and `CktElementV` mode 12
+>   (`DDLL/DCktElement.pas:856-883`) likewise copy `SQR(Yorder)` complexes from one such
+>   call; the only difference is the `Lines` path's `IsLine()` type filter. The gate already
+>   compares `CktElement.Yprim` live on both channels, so the conclusion and its honest
+>   per-case residual are recorded in TESTING.md instead of a second capture.
+> * **`LineGeometries.Rmatrix/Xmatrix/Zmatrix` dropped from the parity claim**, on two
+>   independent kills: they are computing **methods** taking `(Frequency, Length, Units)`
+>   (`origin/fastdss` `dss/ILineGeometries.py:84`/`:88`/`:92`), so fastdss's own harness
+>   raises `StopIteration` on them (`tests/save_outputs.py:140-141`) and the caller swallows
+>   it (`:277-279`) — they are skipped in *every* fastdss run, i.e. they are not part of the
+>   parity target; and the r4133 DLL has no `LineGeometr*` family at all (no
+>   `DDLL/DLineGeometries.pas`, and `OpenDSSDirect.dpr`'s `exports` clause carries only
+>   `LinesI/F/S/V`), so the surface is capi-only by capability. No capture, no ledger row.
+> * **The `NodeOrder` capture predicate is source-derived, not defensive.** It is read only
+>   for an element that is `Enabled` **and** has `NumTerminals > 0`: r4133's `CktElementV(17)`
+>   dereferences `NodeRef^[j]` with no nil guard (`DDLL/DCktElement.pas:1048`) and kills the
+>   worker on a never-enabled element, while capi raises 15013 (`CAPI/CAPI_Alt.pas:960-966`);
+>   and on a 0-terminal element (`UPFCControl` never assigns `Nterms`,
+>   `Controls/UPFCControl.pas:230-246`) r4133 answers a 0-length array where capi raises. Not
+>   issuing the read removes that shape asymmetry instead of normalizing it. The comparator's
+>   `!enabled` branch then asserts the **oracle** side is silent only: an element disabled
+>   *after* a solve legitimately keeps its mapping in the port, and so would both oracles
+>   (neither mode-17 arm has an `Enabled` guard).
+> * **One channel normalization, 0 ledger rows (coordinator decision D4):** "no meter" is
+>   spelled `''` on capi (`Result := NIL`, `CAPI/CAPI_CktElement.pas:672-687`) and `'0'` on
+>   r4133 (the `CktElementS` pre-`case` default, `DDLL/DCktElement.pas:421`; arm 4 at
+>   `:442-449`, guarded by `HasEnergyMeter` at `:444`). Both are folded to "no meter" at the
+>   capture boundary and pinned; a meter literally *named* `0` reds instead of passing, and a
+>   corpus census (92 distinct meter names, none of them `0`) says that collision is not
+>   waiting to happen.
+> * **D19 (coordinator, 2026-09-05):** lane-m's D9 engine commit — `MakeBusList` must reset
+>   the meter zones (`Common/Circuit.pas:2411`) — was cherry-picked onto `lane-e`, because this
+>   is the first surface that makes D9 observable in the gate; **amended (D19′): the pin's
+>   PDElements half is read directly on lane-e** (`Dss::pd_elements` arrives only with G1.6b,
+>   so `exec/tests/energymeter_zones.rs` reads the customers/parent numbers through the file's
+>   own `branch_customers`/`branch_parent` helpers — same oracle numbers, engine hunks
+>   byte-identical), which leaves exactly one predictable merge conflict in that file, resolved
+>   toward `update`'s PDElements-walk form.
+> * **F5 STOP-1:** the spec's D9-independence claim was false — it was measured per *file*,
+>   while `Test/indmachtest/Master.DSS` redirects its meter and only then calls `MakeBusList`,
+>   so `Line.l1` reported no meter until the D19 cherry-pick (never a ledger row, per D9).
+> * **F5 STOP-2:** the corpus meter-name census raced the live gate's own deck-written
+>   exports (a Windows sharing violation on a file the gate owns), so it moved verbatim from
+>   `corpus_gate/runner.rs` into the oracle-free `corpus_manifest.rs` binary — the race is
+>   removed structurally, with no weakened assertion, no retry and no skip.
 
 ### G1.4 — bus surface: pu-voltages, seq voltages, distances, extras
 
