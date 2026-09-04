@@ -27,8 +27,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::harness::{
-    ElementCap, Injection, MeterCap, MonitorCap, PdElementCap, ProbeCap, PropsCap, VariablesCap,
-    YFingerprint, YMat, YPrim,
+    ElementCap, Injection, MeterCap, MonitorCap, PdElementCap, ProbeCap, PropsCap, ReliabilityCap,
+    VariablesCap, YFingerprint, YMat, YPrim,
 };
 use crate::manifest::SolvableCase;
 
@@ -89,6 +89,15 @@ pub(crate) struct Checkpoint {
     /// first shape into a case failure.
     #[serde(default)]
     pub(crate) pd_elements: Option<Vec<PdElementCap>>,
+    /// GOLDEN_REBASE G1.6(i): the `Meters` reliability payload, carried by the
+    /// LAST checkpoint only — `RelCalc` runs once per case, after the last
+    /// solve, on all three engines (it is not idempotent). `Option` for the
+    /// [`super::harness::capture_guard::require_capture_opt`] reason
+    /// [`Self::pd_elements`] is one, with the extra step dimension: `None`
+    /// means "not requested, or not this step", `Some` with an empty `meters`
+    /// list means "requested, and this circuit has no enabled meter".
+    #[serde(default)]
+    pub(crate) reliability: Option<ReliabilityCap>,
     #[serde(default)]
     pub(crate) probes: Vec<ProbeCap>,
     #[serde(default)]
@@ -135,6 +144,7 @@ pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
         "ctrlqueue": c.compare_ctrlqueue,
         "all_properties": c.compare_all_properties,
         "pd_elements": c.compare_pdelements,
+        "reliability": c.compare_reliability,
         "global_result": c.compare_global_result,
         "autoadd_log": c.compare_autoadd_log,
         "warn_and_continue": !c.expect_warnings.is_empty(),

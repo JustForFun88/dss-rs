@@ -2745,7 +2745,8 @@ row against the pre-fix lock.
   surface: `do_reset_meter_zones` returns to `reprocess_bus_defs`' tail (r4133 `Common/Circuit.pas:2411`,
   capi `:2246`) — `MakeBusList` was bypassing it and left every EnergyMeter an empty zone; pin
   `makebuslist_keeps_the_meter_zones`, one corpus deck changes state. The four zone-derived columns
-  compare 0 on every live case (no deck runs `RelCalc`): non-vacuity **owed by G1.6(i)**. Detail — the
+  compare 0 on every live case (no deck ran `RelCalc`): non-vacuity **owed by G1.6(i)** and
+  **discharged there on 2026-09-05** (see its record below). Detail — the
   column list, the exactness derivation, `WP_G1_MODES` 96 → 99, the two deviations from the plan's
   letter: `GOLDEN_REBASE_PLAN.md` §G1.6b as-executed, `TESTING.md` §"The `PDElements` walk".
   Commits: `06808a6d` (D9), `e1e18367` (surface), `c6a3c0a8` (audit settlement) + docs. Gate: five
@@ -2767,3 +2768,29 @@ row against the pre-fix lock.
   it has the line commented out. Measured on the way, out of scope: the long-standing `CorpusGuard`
   leak is a **drop-order race**, not a missing sweep — mechanism, negative controls and why it is not
   fixed here are in STATUS's standing follow-up.
+
+- **G1.6(i)** (2026-09-05, lane `lane-m`; decisions **D7** lanes, **D17a** `Meters.Totals` at the energy
+  tier, **D18/D11** the JSON decoder) — **meter extras + the run protocol**, the only WP-G1 sub-step that
+  changes how a case is *run*: no live deck ran `CalcReliabilityIndices`, so the gate drives the executive
+  `RelCalc` **once** per case, on the last step, on all three engines (not idempotent), tolerating errno
+  **52902** alone (r4133 `Meters/EnergyMeter.pas:2502`) and comparing the abort as boolean + message.
+  Six manifest-flagged cases compare the indices, all active sections, `CalcCurrent`/`AllocFactors`,
+  `Meters.Totals` and the zone lists' new ordered arm — exact but for three cells banded from existing
+  tiers. **0 ledger entries:** both oracles read `CalcCurrent`/`AllocFactors` out of uninitialised memory
+  until a deck runs `AllocateLoads` (r4133 `Meters/MeterElement.pas:45-52`), so those are excluded per
+  (channel, case, field) in `harness::RELIABILITY_SKIP_FIELDS`, pinned
+  `meter_alloc_factors_are_zero_until_allocateloads_runs`, and compared for real on the corpus's only
+  `AllocateLoads` deck `controls:energymeter/midi_relcalc.dss` (523 → **524** cases). G1.6b's two
+  deferrals are discharged: pin `pd_elements_relcalc_fields_are_live_after_relcalc` and the affirmative
+  re-derivation at `tests/TOLERANCE_NOTES.md:812`. Detail — the three D-i decisions, the read-order
+  contract, `WP_G1_MODES` 99 → 100 and the one vacuous demo recipe: `GOLDEN_REBASE_PLAN.md` §G1.6
+  as-executed (i) and `TESTING.md` §"The `Meters` reliability surface (G1.6(i))". Commits: `e343d9e8`
+  (the D11 `serde_json` hunk, on this lane by itself) + the surface commit (sha named by the settle
+  step). Gate: fmt clean; `corpus_gate` **164 / 0**, 524/524 cases, in **both** lanes, ledger 57 entries
+  / 1 588 hits / 0 stale; `oracle_parity_cfg_gate` 13, `population_lock` 2, `golden_lock` 4 with **no
+  digest moved**. Seventeen `file:LINE` citations that this sub-step's own insertions pushed out of
+  place were re-pointed (TESTING.md, `TOLERANCE_NOTES.md`, five `harness/mod.rs` comments), and the
+  523/519 case counts in `CLAUDE.md` and `TESTING.md` corrected to 524/520 (with TESTING.md’s
+  family and `both`-channel splits, part S). The five-command workspace gate is
+  green in both lanes (4 987 passed / 0 failed / 5 ignored) and the owed `lane_diff` (F1a moved
+  `exec/view.rs`) returns `max |Δ| = 0` on all eight kinds, 0 iteration drift.

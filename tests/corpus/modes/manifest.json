@@ -1101,6 +1101,7 @@
   },
   {
    "path": "makeposseq/makeposseq_ctrl.dss",
+   "compare_reliability": true,
    "engines": "capi_v0145",
    "ad": "off:save-roundtrip-control",
    "kind": "micro",
@@ -1241,6 +1242,7 @@
   },
   {
    "path": "time/midi_duty_ctrl.dss",
+   "compare_reliability": true,
    "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",

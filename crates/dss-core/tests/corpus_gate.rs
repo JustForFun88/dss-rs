@@ -218,6 +218,33 @@ fn corpus_gate_all_cases_match_engines() {
     }
     harness::assert_pd_elements_compare_ran();
     harness::assert_pd_skip_rows_are_live();
+    // And the two GOLDEN_REBASE G1.6(i) reliability guards, in the same order
+    // and for the same reason: "did the surface run at all, on BOTH channels"
+    // is what makes the per-row verdicts mean anything. The first one exists
+    // because `compare_reliability` is a MANIFEST flag with no scheduler force
+    // rule (the predicate "defines an EnergyMeter" is not a manifest field), so
+    // losing the rows would silently compare nothing. The second is the
+    // fail-on-stale for `RELIABILITY_SKIP_FIELDS`, whose four rows drop the two
+    // `Meters` arrays both oracles read out of uninitialized memory until a deck
+    // runs `AllocateLoads`; that table is policed on VISITS only - its `hits`
+    // are printed here because a fresh `ReallocMem` region often reads back as
+    // the port's own 0.0, which would make a hit rule fail at random. Both
+    // self-silence under `DSS_GATE_ONLY`.
+    let (rel_cw, rel_cm, rel_rw, rel_rm) = harness::reliability_walk_counters();
+    eprintln!(
+        "corpus_gate reliability: capi_v0145 {rel_cw} payload(s) / {rel_cm} meter(s), \
+         r4133 {rel_rw} payload(s) / {rel_rm} meter(s)"
+    );
+    for r in harness::RELIABILITY_SKIP_FIELDS {
+        let (v, h) = harness::reliability_skip_counters(r.channel, r.field)
+            .expect("every shipped row is findable by its own key");
+        eprintln!(
+            "corpus_gate reliability skip {}/{}: {v} visit(s), {h} hit(s)",
+            r.channel, r.field
+        );
+    }
+    harness::assert_reliability_compare_ran();
+    harness::assert_reliability_skip_rows_are_live();
 }
 
 /// The property census (`R4133_PROPS_PLAN.md` RP0.2, `DSS_PROPS_CENSUS`): walk
