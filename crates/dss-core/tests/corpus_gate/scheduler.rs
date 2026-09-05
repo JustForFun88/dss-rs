@@ -156,6 +156,62 @@ fn force_properties(source: &str, c: &mut SolvableCase, fam_props: bool) {
 /// data lock and stay at the population of that day.
 const FORCED_PROPS_POPULATION: (usize, usize, usize, usize) = (441, 310, 87, 44);
 
+/// Apply the per-source **element-extras** forcing rule to a live case
+/// (`GOLDEN_REBASE_PLAN.md` §1.1(e), G1.3d(i)).
+///
+/// Same shape and the same one cost guard as [`force_properties`] /
+/// [`force_derived`]: **every live case, minus `kind=large*` on the
+/// `solvable_now` arm.** Both channels honour the request
+/// (`engines::build_run_request`'s `element_extras` key), so there is no channel
+/// predicate here either — writing one would be the same tautology
+/// [`force_properties`] documents.
+///
+/// **No opt-in list, deliberately.** [`force_derived`] carries
+/// [`DERIVED_MANIFEST_OPT_INS`] because the fastdss reference harness *skips*
+/// `Residuals` on those two decks, so gating them is where our comparator is
+/// strictly stronger than the harness we are reaching parity with. That same
+/// table — `.inputs/DSS-Python` `origin/fastdss`
+/// `tests/compare_outputs.py:32-88` `KNOWN_COM_DIFF` — has **no** row for
+/// `NodeOrder`, `EnergyMeter` or the three counts, so there is no deck an
+/// opt-in would buy anything on: a const here would be dead weight that reads
+/// like a decision.
+///
+/// Kept as a **separate** function with a separate lock
+/// ([`FORCED_ELEMENT_EXTRAS_POPULATION`]) rather than folded into
+/// [`force_derived`], for the reason that one is kept separate from
+/// [`force_properties`]: the two rules answer to different sub-steps
+/// (G1.3d(ii) widens this flag, G1.3b/c widen that one), and a later divergence
+/// must show as its own lock's diff.
+fn force_element_extras(source: &str, c: &mut SolvableCase) {
+    match source {
+        "solvable_now" => {
+            if !c.kind.starts_with("large") {
+                c.compare_element_extras = true;
+            }
+        }
+        _ => c.compare_element_extras = true,
+    }
+}
+
+/// **The forced element-extras population, pinned** — `(cases with
+/// `compare_element_extras` on, of them `engines: "both"`, `engines: "r4133"`,
+/// `engines: "capi_v0145"`)`.
+///
+/// Measured off the four manifests at G1.3d(i) (2026-09-04, re-derived at the
+/// merge into `update` 2026-09-05 after G1.4a's D12/D14 corpus flips) and by
+/// [`the_element_extras_forcing_rule_is_every_live_non_large_case`] on every
+/// run: exactly [`FORCED_PROPS_POPULATION`]'s live non-`large` population,
+/// because the rule is the same one and there are no opt-ins
+/// ([`force_element_extras`]). It is nevertheless its own const: the two rules
+/// are free to diverge, and a divergence must land as a reviewed diff here.
+///
+/// It exists for the reason [`FORCED_DERIVED_POPULATION`] does — the
+/// population lock fingerprints the **manifest** flag (`Case::rigor`'s `elemx=`
+/// token in `population_lock.rs`), not the effective one, so a re-mask of
+/// [`force_element_extras`] would stop comparing the five discrete channels on
+/// every one of these cases without moving one byte of `population.lock.json`.
+const FORCED_ELEMENT_EXTRAS_POPULATION: (usize, usize, usize, usize) = (441, 310, 87, 44);
+
 /// **The property-forcing rule is a rule, not a habit** — the static half of
 /// RP4.1's re-mask alarm (audit settlement, 2026-09-03).
 ///
@@ -599,6 +655,86 @@ fn the_bus_forcing_rule_is_every_live_non_large_case() {
     );
 }
 
+/// **The element-extras forcing rule is a rule, not a habit** (G1.3d(i)) — the
+/// twin of
+/// [`the_derived_forcing_rule_is_every_live_non_large_case_plus_the_opt_ins`],
+/// for the same reason: `population.lock.json` fingerprints the *manifest*
+/// flag, so a re-mask of [`force_element_extras`] (a channel predicate, a
+/// widened `large` guard, a dropped source arm) would silently stop comparing
+/// `NumTerminals`/`NumConductors`/`NumPhases`/`EnergyMeter`/`NodeOrder` on
+/// hundreds of cases while every lock and every ledger digest stayed green.
+///
+/// It walks the four manifests without an oracle and asserts the flagged set
+/// **is** the live non-`large` population, case by case, with the per-`engines`
+/// split pinned by [`FORCED_ELEMENT_EXTRAS_POPULATION`]. The absence of an
+/// opt-in table is asserted too, in the only way that survives a rename: the
+/// expected set carries no exception, so a manifest key switching the flag on
+/// for a `large` deck reds here instead of quietly widening the population
+/// ([`force_element_extras`] documents why there is nothing to opt in).
+///
+/// The model here (`live && !large`, for **every** source) is one notch stricter
+/// than [`force_element_extras`], whose `large` exception sits on the
+/// `solvable_now` arm alone — the family arm ORs the flag on with no `kind`
+/// test. The two agree only while no family deck is `large`, so that premise is
+/// asserted rather than assumed (the
+/// [`the_property_forcing_rule_is_every_live_non_large_case`] precedent, G1.3d(i)
+/// audit settlement 2026-09-05): a family deck growing into `large` is a review,
+/// not a silently forced extras sweep and not a confusing red here.
+#[test]
+fn the_element_extras_forcing_rule_is_every_live_non_large_case() {
+    let cases = build_unified_cases();
+    let mut flagged = (0usize, 0usize, 0usize, 0usize);
+    let mut wrong: Vec<String> = Vec::new();
+    for uc in &cases {
+        let live = uc.class == CaseClass::Live;
+        let large = uc.case.kind.starts_with("large");
+        let family = uc.label.split(':').next() != Some("solvable_now");
+        assert!(
+            !(family && large),
+            "{}: a family deck is `kind={}` — `force_element_extras`' family arm carries no \
+             `large` cost guard, so this case would be extras-forced without review. Add the \
+             guard, or re-classify the deck.",
+            uc.label,
+            uc.case.kind
+        );
+        // The rule, per source: every live case, minus `large` on `solvable_now`
+        // (equivalently `live && !large` while the assert above holds).
+        let expected = live && !large;
+        if uc.case.compare_element_extras != expected {
+            wrong.push(format!(
+                "{}: kind={} engines={} class={} → compare_element_extras={} \
+                 (expected {expected})",
+                uc.label,
+                uc.case.kind,
+                uc.case.engines,
+                if live { "live" } else { "not-live" },
+                uc.case.compare_element_extras,
+            ));
+        }
+        if uc.case.compare_element_extras {
+            flagged.0 += 1;
+            match uc.case.engines.as_str() {
+                "both" => flagged.1 += 1,
+                "r4133" => flagged.2 += 1,
+                _ => flagged.3 += 1,
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "the element-extras forcing rule is `every live non-`large` case` \
+         (GOLDEN_REBASE_PLAN.md G1.3d(i)) — these cases disagree with it:\n  {}",
+        wrong.join("\n  ")
+    );
+    assert_eq!(
+        flagged, FORCED_ELEMENT_EXTRAS_POPULATION,
+        "(flagged, both, r4133-only, capi-only) moved. A DROP means the four index/name scalars \
+         and `NodeOrder` stopped being compared on that many cases — invisible to \
+         `population.lock.json`, which records the manifest flag and not `force_element_extras`' \
+         effect. A legitimate corpus change moves this lock together with the lock file."
+    );
+}
+
 /// Build one unified case, applying the exact per-source property-forcing +
 /// classification of the pre-Phase-B gates.
 fn make_case(
@@ -634,6 +770,7 @@ fn make_case(
         force_pdelements(source, &mut c);
         force_derived(source, &mut c);
         force_bus(&mut c);
+        force_element_extras(source, &mut c);
     }
     let weight = kind_weight(&c.kind) * (c.n_steps.max(1) as u64);
     let dir_key = dir_key_of(&abs);
