@@ -404,6 +404,17 @@ impl LedgerRuntime {
             // names whole artifacts it never fetches a verdict for (see
             // [`LedgerView::excluded`]), so its sub-channels stay backed by the
             // measured provenance recorded in the entry itself.
+            //
+            // Deliberate, not an omission (G1.3d(ii) audit settlement,
+            // 2026-09-05, which widened ten `exclusion` scopes onto
+            // `phase_losses`): an `exclusion` is what a cause gets when its
+            // channel cannot be measured *reliably*. Four of those ten sit on
+            // GICTransformer decks whose capi 0.14.5 oracle disagrees with
+            // ITSELF across processes (coordinator decision D12), so a
+            // "did this mask anything on THIS run" verdict would be a coin flip
+            // and a STALE report a flaky gate. What stands behind an exclusion
+            // is instead the measured first failure recorded in the entry
+            // (`measured.*` + `source`), and TESTING.md states the rule.
             for sc in e.scopes.iter().filter(|sc| !sc.channels.is_empty()) {
                 if e.kind != Kind::Divergence {
                     continue;
@@ -582,7 +593,7 @@ const EXCLUSION_FIELDS: [&str; 10] = [
 /// measured NOT to fail and keeps the original three.
 ///
 /// G1.3d(ii) (2026-09-05) added `phase_losses` — `CktElement.PhaseLosses`
-/// (r4133 `Common/CktElement.pas:1078-1116`), the same `V·conj(I)` products
+/// (r4133 `Common/CktElement.pas:1078-1120`), the same `V·conj(I)` products
 /// `powers` carries, bucketed by phase — handled by [`envelope_element`] and
 /// [`rewrite_element_selected`] like the six before it. Same discipline: the
 /// live drive measured which committed scopes actually fail on it and widened
@@ -1821,7 +1832,7 @@ fn rewrite_element_selected(
         }
     }
     // G1.3d(ii): the snapshot is W/var and the capture kW/kvar (each oracle
-    // scales at its API boundary — r4133 `DDLL/DCktElement.pas:650`, capi
+    // scales at its API boundary — r4133 `DDLL/DCktElement.pas:651`, capi
     // `CAPI/CAPI_Alt.pas:464-467`), so the pin writes the SCALED value, the same
     // ×0.001 `harness::compare_element_phase_losses` applies. The snapshot
     // length joins the `min` so that a shape mismatch survives to that

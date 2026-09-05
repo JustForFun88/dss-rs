@@ -570,7 +570,7 @@ pub(crate) fn compare_capture(
         // `GetOCPDeviceType`), all discrete and compared exactly: no tolerance,
         // no `ElemChannels` selector, no ledger sub-channel.
         //
-        // Part (ii)'s sixth field, `PhaseLosses` (`:636-658` over
+        // Part (ii)'s sixth field, `PhaseLosses` (`:637-659` over
         // `Common/CktElement.pas:1078`), is numeric and goes through its own
         // comparator on the powers tier, with the `ElemChannels` selector: it
         // reaches the same cache-aware `ComputeIterminal` as Powers/Losses and
@@ -602,7 +602,10 @@ pub(crate) fn compare_capture(
                 &ctx,
             );
             capture_guard::require_capture(
-                "compare_element_extras",
+                // Its own flag spelling (G1.3d(ii) audit settlement): the two
+                // rails read disjoint capture fields, so a missing `n_terms`
+                // and a missing `pl_kw` must not print the same sentence.
+                "compare_element_extras (PhaseLosses)",
                 channel_tag(channel),
                 cp.elements.iter().filter(|e| !e.pl_kw.is_empty()).count(),
                 &ctx,
@@ -624,6 +627,12 @@ pub(crate) fn compare_capture(
                 let cap = el_rewrites.get(&ec.name.to_lowercase()).unwrap_or(ec);
                 compare_element_extras(&snaps, cap, ch, &ctx);
                 compare_element_phase_losses(&snaps, cap, tol, &ctx, channels);
+                // The gating population's control census — the guard behind
+                // D-ii-1 costing zero ledger rows (`harness::
+                // assert_no_multi_control_element`, checked in the gate's
+                // epilogue). Counted from the ORACLE's `NumControls`, which the
+                // compare above has just held the port to.
+                harness::record_control_census(cap.num_controls, cap.ocp_dev_type);
             }
         }
 

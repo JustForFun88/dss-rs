@@ -2535,11 +2535,18 @@ which a reorder would move control-action event logs — is deliberately untouch
 
 **Nothing is masked: the divergence costs 0 ledger rows because it is not
 observable on the corpus.** It needs an element carrying controls of two classes
-*and* a later re-edit; a live capi census over `tests/corpus/controls/**` (106
-decks, 97 compiled) finds 60 controlled elements with `max NumControls = 1` and
-**zero** elements with two controls, and the one static heterogeneous candidate
-in the whole corpus is a merge artefact of two self-contained decks. Both numbers
-are pinned in-engine by
+*and* a later re-edit. **Measured over the whole gated population** (G1.3d(ii)
+audit settlement, 2026-09-05, after the first census — a live capi walk of
+`tests/corpus/controls/**` only — proved too narrow): of 298 565 compared
+(case, channel, step, element) rows, 3 184 carry a control and **18** carry two or
+more; all 18 are **Relay-only** lists — `Line.thev` under `Relay.21src` +
+`Relay.21rev` in the eight Distance/TD21 relay decks, `Line.motorleads` under
+`Relay.{mfrov/uv,mfr46,mfr47}` in `controls:fuse/indmach_r4133/
+indmach_{snap,dyn}.dss` — so every permutation answers the same `OCPDevIndex = 1`
+and `OCPDevType = 3`, and the remaining three scalars are order-free by
+construction. The census is re-derived on every full run and fails on stale in
+both directions (`harness::assert_no_multi_control_element`, called from the
+corpus gate's epilogue). The engine numbers are pinned by
 `dss_core::exec::tests::element_extras::ocp_dev_type_follows_the_last_attach_order`
 (port and r4133 `1`, capi 0.14.5 `3`), with
 `the_control_sampling_order_is_not_reordered_by_a_re_edit` guarding the sampling

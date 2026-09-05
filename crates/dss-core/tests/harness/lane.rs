@@ -165,8 +165,8 @@ const LANE_SKIP_ELEM_POWERS: &[&str] =
 /// The fourth surface added since — `PhaseLosses`
 /// (`GOLDEN_REBASE_PLAN.md` G1.3d(ii)) — is on the other side of that same
 /// line: `GetPhaseLosses` opens with the identical cache-aware
-/// `ComputeIterminal` (r4133 `Common/CktElement.pas:1088`, capi
-/// `src/Common/CktElement.pas:897`) and forms the identical
+/// `ComputeIterminal` (r4133 `Common/CktElement.pas:1090`, capi
+/// `src/Common/CktElement.pas:896`) and forms the identical
 /// `NodeV·conj(Iterminal)` products, merely bucketed by phase instead of summed,
 /// so no oracle channel reports it at the converged `NodeV` on these two decks
 /// either. [`ElemChannels::CURRENTS_ONLY`] therefore clears
@@ -1050,11 +1050,26 @@ mod tests {
     }
 
     /// The one element-channel exclusion: the `newton*` decks' `Powers`/
-    /// `Losses` are dropped in **both** lanes since `GOLDEN_REBASE_PLAN.md`
-    /// G2.3 (no oracle channel reports them at the converged `NodeV`), their
-    /// **currents** are kept in both, and no other case is touched.
+    /// `Losses`/`PhaseLosses` are dropped in **both** lanes since
+    /// `GOLDEN_REBASE_PLAN.md` G2.3 (G1.3d(ii) for the third), because no oracle
+    /// channel reports them at the converged `NodeV`; their **currents** are
+    /// kept in both, and no other case is touched.
     #[test]
     fn newton_powers_are_the_only_element_channel_exclusion() {
+        // The case list itself, spelled out (the `LANE_SKIP_PROPS` precedent,
+        // G1.3d(ii) audit settlement 2026-09-05): the loop below and the
+        // negative list further down both pass for a list that GREW, and since
+        // G1.3d(ii) one more entry drops THREE oracle-compared channels — not
+        // two — on a whole case in both lanes. A third deck must be argued for
+        // in this assertion, in the doc block above and in the record, or not
+        // at all.
+        assert_eq!(
+            LANE_SKIP_ELEM_POWERS,
+            &["modes:newton/newton.dss", "modes:newton/newton_feeder.dss"],
+            "the element-channel exclusion is these two Newton decks and \
+             nothing else; widening it hides Powers, Losses AND PhaseLosses on \
+             that case in both lanes"
+        );
         for label in LANE_SKIP_ELEM_POWERS {
             let ch = elem_channels_for(label);
             assert!(ch.currents, "{label}: currents stay gated in every lane");
@@ -1064,11 +1079,14 @@ mod tests {
             // on every gated case in both lanes (G1.3a audit settlement).
             assert!(
                 ch.currents_mag_ang && ch.voltages_mag_ang && ch.residuals,
-                "{label}: the G1.3a polar channels stay gated in every lane —                  they render `Currents`/`NodeV`, not the cache-aware                  `Get_Powers`/`Get_Losses` read the Newton staleness lives in"
+                "{label}: the G1.3a polar channels stay gated in every lane — \
+                 they render `Currents`/`NodeV`, not the cache-aware \
+                 `Get_Powers`/`Get_Losses` read the Newton staleness lives in"
             );
             assert!(
-                !ch.powers && !ch.losses,
-                "{label}: powers/losses are the excluded pair"
+                !ch.powers && !ch.losses && !ch.phase_losses,
+                "{label}: powers, losses and per-phase losses are the excluded \
+                 triple (G1.3d(ii) added the third)"
             );
             assert_eq!(
                 ch,
@@ -1086,8 +1104,10 @@ mod tests {
                 && all.losses
                 && all.currents_mag_ang
                 && all.voltages_mag_ang
-                && all.residuals,
-            "ElemChannels::ALL must compare every channel; a `false` here              removes that channel from every gated case in both lanes"
+                && all.residuals
+                && all.phase_losses,
+            "ElemChannels::ALL must compare every channel; a `false` here \
+             removes that channel from every gated case in both lanes"
         );
         // Nothing else is excluded — including a label that merely *contains* an
         // excluded one (the match is exact, not a substring).

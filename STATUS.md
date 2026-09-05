@@ -150,12 +150,12 @@ A/B/C capture order enforced, `WP_G1_MODES` 96 → 97, **1** new ledger entry
 `c9c4ac09`): the per-element counts, `NodeOrder` and `EnergyMeter` over 440 cases
 compared exactly, both G1.3d verdicts and the D19 `MakeBusList` zone-reset
 cherry-pick, **0** ledger entries, **5 392 / 0 / 5** per lane, Δ = 0, audit 15
-findings (12 fixed / 2 recorded / 1 refuted); **G1.3d(ii)** 2026-09-05 (sha + gate
-totals in the phase record): `PhaseLosses` + the five control-derived scalars over
-the same 440 cases — **§G1.3d complete** — with a derived `PhaseLosses` floor, the
-first channel to join `LANE_SKIP_ELEM_POWERS`, **0** new ledger entries + **10**
-measured widenings, adjacent defect A-1 fixed on the way and `DIVERGENCES.md` L9
-recording r4133's per-edit control re-attach. No golden byte moved in any of them.
+findings (12 fixed / 2 recorded / 1 refuted); **G1.3d(ii)** 2026-09-05 (`e6d66d66`,
+settlement + totals in the phase record): `PhaseLosses` + the five control-derived scalars
+over the same 440 cases — **§G1.3d complete** — a derived floor, the first channel to join
+`LANE_SKIP_ELEM_POWERS`, **0** new ledger entries + **10** measured widenings, A-1 fixed,
+`DIVERGENCES.md` L9 (r4133's per-edit re-attach); audit 18 findings (13 fixed / 1 recorded /
+0 refuted), the real one: `MakePosSeq` must NOT re-attach. No golden byte moved in any.
 G1.3b–c, G1.4–G1.11c and WP-G3–G5 remain; full records in the same file, section
 "GOLDEN_REBASE WP-G1 — records".
 **Next.** **`GOLDEN_REBASE_PLAN.md` G1.3b** on the element lane (then G1.3c),

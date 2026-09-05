@@ -39,8 +39,8 @@
 //! Pascal: r4133 `Version8/Source/DDLL/DCktElement.pas:139`/`:144`/`:149`
 //! (`CktElementI` modes `0`/`1`/`2`), `:207-262` (modes `7`-`11`, over
 //! `Common/Utilities.pas:3165-3184` `GetOCPDeviceType`), `:442`
-//! (`CktElementS` mode `4`), `:636-658` (`CktElementV` mode `6`, over
-//! `Common/CktElement.pas:1078-1116` `GetPhaseLosses`), `:1032`
+//! (`CktElementS` mode `4`), `:637-659` (`CktElementV` mode `6`, over
+//! `Common/CktElement.pas:1078-1120` `GetPhaseLosses`), `:1032`
 //! (`CktElementV` mode `17`, over `Common/Utilities.pas:1718` `GetNodeNum`);
 //! capi `CAPI/CAPI_CktElement.pas:202`/`:182`/`:192`/`:672`/`:689-988`/`:885`
 //! and `CAPI/CAPI_Alt.pas:449-467`. All eleven are fastdss
@@ -464,12 +464,12 @@ fn control_fixture() -> Dss {
 
 // Expected-value pin — the engine reports `GetPhaseLosses` in **W/var**, like
 // `Get_Losses` and unlike `Powers` (kW/kvar): both oracle surfaces apply the
-// ×0.001 at the API boundary (r4133 `DDLL/DCktElement.pas:636-658`, capi
+// ×0.001 at the API boundary (r4133 `DDLL/DCktElement.pas:637-659`, capi
 // `CAPI/CAPI_Alt.pas:449-467`), so that scaling is a capture-boundary encoding
 // and belongs in the harness comparator, not in the engine. The identities
 // below are a real cross-check: `Get_Losses` walks the flat conductor list
 // (`Common/CktElement.pas:707-770`) while `GetPhaseLosses` walks phase-major
-// with the `k = (j-1)·NConds + i` offset (`:1078-1116`), and `Powers` is a third
+// with the `k = (j-1)·NConds + i` offset (`:1078-1120`), and `Powers` is a third
 // walk again — they must still agree on an element whose `NConds == NPhases`
 // (no neutral conductor to drop).
 /// `PhaseLosses` is in watts, sums to `Get_Losses` and equals `Powers` bucketed
@@ -533,7 +533,7 @@ fn phase_losses_are_watts_and_sum_to_get_losses() {
 
 // Expected-value pin — Pascal sets `Num_Phases := Fnphases` *before* the
 // `If FEnabled` test and zero-fills in the `else`
-// (`Common/CktElement.pas:1087`, `:1113-1114`), so the reported length never
+// (`Common/CktElement.pas:1088`, `:1118-1119`), so the reported length never
 // depends on the solve state; the port gives the same answer for the
 // nil-`NodeRef` state Pascal would dereference.
 /// A disabled element reports `NPhases` zeros, not an empty vector.
@@ -716,6 +716,74 @@ fn ocp_dev_type_follows_the_last_attach_order() {
         (3, 1, 1),
         "the relay re-appended at the end leaves Fuse.f first: r4133 says 1, \
          capi 0.14.5 says 3",
+    );
+}
+
+// Expected-value pin (G1.3d(ii) audit settlement, 2026-09-05) — the converse of
+// the pin above: `MakePosSequence` is NOT an edit. r4133's `DoMakePosSeq` calls
+// only `CktElem.MakePosSequence` (`Executive/ExecHelper.pas:3069-3086`), and
+// every control override mutates its own fields and ends with `inherited` — the
+// base bus rename, `Common/CktElement.pas:1352` (`Controls/Relay.pas:1008`,
+// `Recloser.pas:738`, `SwtControl.pas:367`, `CapControl.pas:656`,
+// `RegControl.pas:1491`; `Fuse` has no override). None reaches
+// `RecalcElementData`, so no `Set_ControlledElement` runs and no
+// `ControlElementList` is reordered. The port keeps the re-attach outside the
+// shared post-edit tail for exactly that reason
+// (`exec/command.rs::reattach_edited_control`).
+/// `MakePosSeq` leaves the control lists alone: after the re-edit above,
+/// `Line.l1` still answers `OCPDevType` 1 (Fuse first), not the 3 a re-attach in
+/// creation order would give back.
+#[test]
+fn makeposseq_does_not_reattach_controls() {
+    let mut dss = control_fixture();
+    dss.command("edit relay.r delay=0.05");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let snaps = dss.snapshot_elements();
+    let l1 = elem(&snaps, "Line.l1");
+    assert_eq!(
+        (l1.num_controls, l1.ocp_dev_index, l1.ocp_dev_type),
+        (3, 1, 1),
+        "precondition: the re-edited relay sits at the end of the list, so the \
+         Fuse is the first OCP member",
+    );
+    let l1_id = *dss
+        .circuit()
+        .expect("circuit")
+        .pd_elements
+        .iter()
+        .find(|&&r| {
+            dss.classes[r.class_ord()].arena[r.index()]
+                .data()
+                .name()
+                .eq_ignore_ascii_case("l1")
+        })
+        .expect("Line.l1 is a PD element");
+    let attach_before = dss.circuit().expect("circuit").control_attach_order.clone();
+    let list_before = crate::circuit::controls::derive_control_lists(
+        &dss.classes,
+        dss.circuit().expect("circuit"),
+    )
+    .remove(&l1_id)
+    .expect("Line.l1 carries three controls");
+
+    dss.command("makeposseq");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let ckt = dss.circuit().expect("circuit");
+    assert_eq!(
+        ckt.control_attach_order, attach_before,
+        "MakePosSequence must not re-attach: a post-edit tail that ran the \
+         control's `Set_ControlledElement` for every element would rewrite the \
+         attach order into `CktElements` (creation) order",
+    );
+    let list_after = crate::circuit::controls::derive_control_lists(&dss.classes, ckt)
+        .remove(&l1_id)
+        .expect("Line.l1 still carries three controls");
+    assert_eq!(
+        list_after, list_before,
+        "Line.l1's ControlElementList order survives MakePosSeq — the Fuse stays \
+         first, so `OCPDevType` stays 1 (r4133's answer); a re-attach would put \
+         the Relay back in front and answer 3",
     );
 }
 

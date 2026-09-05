@@ -166,11 +166,11 @@ pub struct ElementSnapshot {
     /// `n_phases`), `Σ_terminals NodeV[NodeRef[k]]·conj(Iterminal[k])` at
     /// `k = j·NConds + i`, neutral conductors ignored —
     /// [`CktElement::phase_losses`](crate::elements::traits::CktElement::phase_losses),
-    /// the port of r4133 `Common/CktElement.pas:1078-1116`
+    /// the port of r4133 `Common/CktElement.pas:1078-1120`
     /// (`TDSSCktElement.GetPhaseLosses`).
     ///
     /// **W/var here**, like [`loss_w`](Self::loss_w): both oracle surfaces scale
-    /// by `0.001` at the API boundary — r4133 `DDLL/DCktElement.pas:636-658`
+    /// by `0.001` at the API boundary — r4133 `DDLL/DCktElement.pas:637-659`
     /// (`CktElementV` mode `6`), capi `CAPI/CAPI_Alt.pas:449-467`
     /// (`Alt_CE_Get_PhaseLosses`, facade `CAPI/CAPI_CktElement.pas:327-338`) —
     /// so the kW/kvar rendering is a capture-boundary encoding and lives in the
@@ -179,7 +179,7 @@ pub struct ElementSnapshot {
     /// (`git -C .inputs/DSS-Python show origin/fastdss:dss/ICktElement.py`).
     ///
     /// This is a **cache-aware** quantity (`ComputeIterminal`,
-    /// `Common/CktElement.pas:1088`) like `Powers`/`Losses`, so it is read from
+    /// `Common/CktElement.pas:1090`) like `Powers`/`Losses`, so it is read from
     /// the one fresh terminal current this snapshot computes and it shares their
     /// `newton*` lane exclusion (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`).
     pub phase_losses: Vec<num_complex::Complex64>,
@@ -405,7 +405,7 @@ impl Dss {
             // Powers and Losses are one and the same current by construction.
             let loss = elem.losses(&sys, &node_v);
             // `PhaseLosses` — the same cache-aware `ComputeIterminal`
-            // (r4133 `Common/CktElement.pas:1088`), so it reads the one current
+            // (r4133 `Common/CktElement.pas:1090`), so it reads the one current
             // Powers and Losses just used: the `refresh_iterminal` above stamped
             // it for this `SolutionCount`. Read here, before the Currents
             // refresh below, so this element's three cache-aware quantities are

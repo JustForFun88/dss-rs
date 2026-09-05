@@ -1623,12 +1623,12 @@ dated). What was checked, and against what:
 | claim here | landed at | verdict |
 |---|---|---|
 | the floor is `2e-4` relative | `R4133_DISPLAY_FLOOR` at `harness/props_norm.rs:895` (`Option<f64>` = `Some(2e-4)`) | unchanged |
-| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:5991`) | unchanged |
+| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:6157`) | unchanged |
 | the four derivation rows (6.431124e-05 / 1.374769e-03 / 4.404256e-03 / 5.524501e-02) | the constant's own doc table, `props_norm.rs:786-792` | identical, both places |
 | 1 951 vendored spellings claimed (from 2 006, less the 55 the mechanism clause refuses) | `props_r4133_replay::CLAIMED_DISPLAY_FLOOR` = 1951 (`props_r4133_replay.rs:565`) | unchanged |
 | capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:1072-1081` and `:1089-1098` (`i_rel`/`i_abs`) | unchanged |
 | the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1264-1273` and `:1253-1262` | unchanged |
-| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:4883` (asserted as `i_abs / floor`) | unchanged |
+| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:5049` (asserted as `i_abs / floor`) | unchanged |
 | no `Tolerances` field, no `tol_for` tier moved by this plan | `Tolerances` has no props field; the floor is read only by `props_norm` | unchanged |
 
 The floor therefore still sits **3.110×** above the worst cell it claims and

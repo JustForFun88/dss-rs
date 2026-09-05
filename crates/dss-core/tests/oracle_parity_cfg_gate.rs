@@ -4428,10 +4428,20 @@ fn every_pin_the_g13d1_record_names_exists_and_is_cited() {
             cited += 1;
         }
     }
+    // The G1.3d(ii) registry below re-asserts these two modules' member counts
+    // EXACTLY (it is the newer sub-step writing into them), which is why the
+    // check here is a floor. Every OTHER group keeps its exact lock right here —
+    // otherwise `corpus_manifest::extras_population`'s count would be owned by
+    // nobody (G1.3d(ii) audit settlement, 2026-09-05).
+    const OWNED_BY_G13D2: &[&str] = &[
+        "exec::tests::element_extras",
+        "harness::element_extras_pins",
+    ];
     for (group, file, want) in G13D1_PIN_GROUPS {
         if !prose.contains(*group) {
             bad.push(format!(
-                "{group}: no longer named by TESTING.md, the phase record,                  TOLERANCE_NOTES or the ledger — a pin group nothing claims is not a group"
+                "{group}: no longer named by TESTING.md, the phase record, \
+                 TOLERANCE_NOTES or the ledger — a pin group nothing claims is not a group"
             ));
         }
         let src = read(file);
@@ -4451,11 +4461,17 @@ fn every_pin_the_g13d1_record_names_exists_and_is_cited() {
             None => src.clone(),
         };
         let got = body.matches("#[test]").count();
-        if got < *want {
+        let exact = !OWNED_BY_G13D2.contains(group);
+        if got < *want || (exact && got != *want) {
             bad.push(format!(
-                "{group}: the G1.3d(i) record claims {want} pins, the module carries only \
+                "{group}: the G1.3d(i) record claims {want} pins, the module carries \
                  {got} — a pin this sub-step named was deleted, or the record and this \
-                 table disagree (the exact total is owned by the G1.3d(ii) registry)"
+                 table disagree ({})",
+                if exact {
+                    "exact: no later registry owns this module's total"
+                } else {
+                    "a floor: the exact total is owned by the G1.3d(ii) registry"
+                }
             ));
         }
         let rows = G13D1_PINS.iter().filter(|(_, f)| f == file).count();
@@ -4467,7 +4483,8 @@ fn every_pin_the_g13d1_record_names_exists_and_is_cited() {
     }
     assert!(
         cited >= 4,
-        "the prose no longer names ANY G1.3d(i) pin individually ({cited} found) —          either the record was rewritten or this registry drifted off the sub-step"
+        "the prose no longer names ANY G1.3d(i) pin individually ({cited} found) — \
+         either the record was rewritten or this registry drifted off the sub-step"
     );
     assert!(
         bad.is_empty(),
@@ -4516,6 +4533,7 @@ fn every_pin_the_g13d2_record_names_exists_and_is_cited() {
         ("num_controls_counts_disabled_controls_too", ENGINE),
         ("a_disabled_ocp_control_still_wins_the_ocp_scan", ENGINE),
         ("ocp_dev_type_follows_the_last_attach_order", ENGINE),
+        ("makeposseq_does_not_reattach_controls", ENGINE),
         (
             "ocp_dev_index_is_one_based_and_zero_when_there_is_none",
             ENGINE,
@@ -4536,6 +4554,16 @@ fn every_pin_the_g13d2_record_names_exists_and_is_cited() {
         ("the_measured_controlled_element_compares_clean", HARNESS),
         ("the_control_extras_are_compared_exactly", HARNESS),
         ("the_oracle_ocp_index_and_type_are_zero_together", HARNESS),
+        // …and the population guard behind D-ii-1's zero ledger rows.
+        (
+            "the_control_census_passes_on_the_measured_population",
+            HARNESS,
+        ),
+        (
+            "the_control_census_fires_on_a_new_multi_control_element",
+            HARNESS,
+        ),
+        ("the_control_census_fires_when_nothing_was_counted", HARNESS),
         (
             "the_oracle_ocp_index_cannot_exceed_the_control_count",
             HARNESS,
@@ -4594,8 +4622,8 @@ fn every_pin_the_g13d2_record_names_exists_and_is_cited() {
     // registry must carry for that file)`. The exact count is this registry's to
     // own: it is the newest sub-step writing into these modules.
     const G13D2_PIN_GROUPS: &[(&str, &str, usize, usize)] = &[
-        ("exec::tests::element_extras", ENGINE, 19, 11),
-        ("harness::element_extras_pins", HARNESS, 23, 4),
+        ("exec::tests::element_extras", ENGINE, 20, 12),
+        ("harness::element_extras_pins", HARNESS, 26, 7),
         ("harness::phase_loss_bands", HARNESS, 10, 10),
     ];
     let root = repo_root();
@@ -4648,11 +4676,18 @@ fn every_pin_the_g13d2_record_names_exists_and_is_cited() {
                  re-count the record and this table in the same commit"
             ));
         }
-        let rows = G13D2_PINS.iter().filter(|(_, f)| f == file).count();
+        // Per GROUP, not per file (G1.3d(ii) audit settlement, 2026-09-05):
+        // counting every row for `file` let the two HARNESS groups both pass
+        // against the same 14 rows, so neither `own` could ever bind. A row
+        // belongs to this group iff its `fn NAME(` is inside the module body.
+        let rows = G13D2_PINS
+            .iter()
+            .filter(|(p, f)| f == file && body.contains(&format!("fn {p}(")))
+            .count();
         if rows < *own {
             bad.push(format!(
-                "{group}: {rows} registry rows for {file} against {own} pins this \
-                 sub-step claims there"
+                "{group}: {rows} registry rows inside that module against {own} \
+                 pins this sub-step claims there"
             ));
         }
     }
