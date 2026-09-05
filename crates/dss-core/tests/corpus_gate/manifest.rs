@@ -567,7 +567,7 @@ pub(crate) const G1_SURFACE_FLAGS: &[G1Flag] = &[
     G1Flag {
         name: "compare_inc_matrix",
         sub_step: "G1.8",
-        wired: false,
+        wired: true,
         get: |c| c.compare_inc_matrix,
     },
     G1Flag {

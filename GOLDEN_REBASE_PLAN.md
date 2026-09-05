@@ -647,6 +647,8 @@ compared).
 > capi `CAPI/CAPI_Topology.pas:98-110`) and would poison the per-element capture of the same
 > step — the brief's B16 gap, now a source-text rail rather than a comment: six new cases in
 > `crates/dss-core/tests/capture_order.rs` assert that the surface is read **strictly last**
+> (amended 2026-09-05 by G1.8: last but for the incidence pair, which the same file's
+> `check_inc_matrix_last` puts after it — the topology read still precedes every other read)
 > (the first `Topology` read builds the memoized tree and rewrites
 > `Checked`/`IsIsolated`/`BusChecked`, r4133 `Common/Circuit.pas:2932-2950`) and that exactly
 > six of `ITopology`'s eighteen members are touched on either transport — the bridge binds no
@@ -685,6 +687,63 @@ compared).
 Run `CalcIncMatrix`/`CalcLaplacian` on flagged cases; compare
 `Solution.IncMatrix/IncMatrixCols/IncMatrixRows/Laplacian` as exact integer/index
 vectors (discrete → zero tolerance).
+
+> **As executed (2026-09-05, lane `lane-s`).** The four flat quantities landed on both
+> channels in one surface commit, preceded by one port-gap commit (below). `CalcIncMatrix`
+> + `CalcLaplacian` are issued and `IncMatrix` / `Laplacian` / `IncMatrixRows` /
+> `IncMatrixCols` read back **strictly last in the step**, after G1.7's topology block, for
+> two independent reasons: on r4133 the pair is not a pure read (`AddSeriesReac2IncMatrix`
+> re-points `LastClassReferenced`/`ActiveDSSClass` and calls `ActiveDSSClass.First`,
+> `Common/Solution.pas:3007-3010`, moving `ActiveCktElement`; the pinned capi 0.14.5 uses a
+> typed class iterator and does not — the stronger channel sets the rule for both), and it
+> must follow the read that memoizes `Branch_List`, on which G1.7's two censuses are
+> defined. The order *inside* the pair is a contract: r4133's `CalcLaplacian` has no
+> `Assigned(IncMat)` guard (`Executive/ExecCommands.pas:911-917`) and nil-derefs, while
+> dss_capi (`:421-433`) and the port raise 8877. Flag `compare_inc_matrix` flipped to
+> `wired: true` and **forced on every live non-`large` case** — 440 = 313 `both` / 83
+> `r4133` / 44 `capi_v0145`, re-derived each run as `FORCED_INC_MATRIX_POPULATION` and
+> asserted equal to the topology and property populations (one forced set, three rules) —
+> with **six** decks also declaring the flag so `population.lock.json` can see the surface;
+> the lock moved by exactly six `incm=0 → incm=1` tokens (red before the regen). **0**
+> golden bytes, **0** ledger entries, 0 new `LEDGER_FIELDS`, **no floor** (fully discrete;
+> `tests/TOLERANCE_NOTES.md` §G1.8 records why). **No FFI and no mode were added**: G1.0
+> had already bound and classified `SolutionV(1)/(3)/(4)/(5)` as `Served`.
+> Five things the two-line text above did not say. (1) **Three transport normalizations**,
+> all asserted and none in the comparator: capi's over-allocated `+1` cell
+> (`CAPI_Solution.pas:910`, `:873`) is checked `== 0` and dropped, r4133's one-cell `[0]`
+> nil/empty sentinel (`DSolution.pas:544`, `:642`) is decoded, and the empty-name-list
+> sentinels (blank on capi `:961`, `None` on r4133 `:605`) are decoded only where the
+> engine can reach them; every other shape raises. The comparator asserts the fixpoint, so
+> a transport that stops normalizing fails there. Measured: 0 non-zero trailing cells and 0
+> bad lengths in 1 733 capi steps, 104 sentinel steps of 1 756 on r4133, and — after the
+> three rules — **byte-identical arrays on the 358 both-gated cases**. (2) **`IncMatrixCols`
+> needed engine code the export writer does not have**: after a flat build `Inc_Mat_Cols`
+> is empty and the getter answers the whole `BusList` (r4133 `DSolution.pas:616`,
+> `:627-631`; capi `CAPI_Solution.pas:1008-1018`), so `exec/view.rs::inc_matrix_cols`
+> implements that branch — without it the gate would compare an empty list against N bus
+> names on every case. (3) **Settlement S-INC** (the D15/D16 shape, 0 ledger rows): both
+> oracles advance the incidence row cursor for EVERY reactor (`inc(ActiveIncCell[0])` at
+> `Common/Solution.pas:3039`, outside the `:3015` emit guard, unlike Lines `:2885`,
+> Transformers `:2938`, series Capacitors `:2986`), so a series reactor after a skipped
+> shunt one carries a row index that does not index `Inc_Mat_Rows`. The port emits dense
+> rows (its own commit, ahead of the surface — CLAUDE.md's "port gaps immediately") and the
+> comparator asserts upstream's rule positively,
+> `remap(port, upstream_row_index) == oracle`, with the Laplacian arm compared **unmapped**
+> (measured invariant under the row gap). Population pinned both ways as
+> `INC_UPSTREAM_ROW_DECLINES = (4 cases, 5 case-steps)` over 3 314 compared
+> `(case, step, channel)` triples; pins
+> `the_incidence_row_cursor_skips_a_shunt_reactor`,
+> `the_row_cursor_settlement_holds_on_the_corpus_witness`,
+> `the_laplacian_is_blind_to_the_row_cursor`. (4) **Two further defects of the same walk
+> are reproduced on purpose and registered** in §WP-G2 (below): the one-terminal reactor
+> misclassified as series and given a phantom edge to the last bus, and the missing
+> `Enabled` test. They decide *which element is a row*, a modelling question, not an
+> indexing one. (5) **`CalcIncMatrix_O` and `BusLevels` stay out of the live gate**, which
+> re-scopes §G3.2c — see the dated note there. Coordinator decisions applied: **D2** (no
+> bridge change owed), **D3** (capture order), **D4** (defect ⇒ the port computes the
+> correct value), **D7** (lane `lane-s`).
+> **Tier as executed:** §0's `opus-high+` row held throughout; the G3.2c coupling was
+> settled at the sub-step's spec stage as the row's `xhigh` note foresaw.
 
 ### G1.9 — circuit aggregates + solution scalars
 
@@ -814,6 +873,29 @@ in every commit (all fail-on-stale):
   **numeric** survivors (`PI`, `round_f64`, `round_i32`, `kv_base_search_scale`,
   `profile_ll_pu_divisor` — they survive WP-G4 too) in the same commit, or the
   test goes red.
+
+> **Two candidate rows found by G1.8 (2026-09-05, lane `lane-s`) — registered here, not
+> torn down.** Both live in the flat incidence builder's reactor walk
+> (`Common/Solution.pas:2994-3042`), both are reproduced by the port today, and both are
+> *which element becomes a row* — a modelling question, not the indexing one G1.8's
+> settlement S-INC settled — so neither belongs in a comparison sub-step and neither is a
+> `TORN_DOWN_ROWS` entry yet (that register's two arithmetic ties count rows leaving the
+> `SplitAlias` / `WholeCase` censuses, and these were never lane-split). (a) **A
+> one-terminal reactor becomes a phantom branch.** `GetBus(2)` returns a blank string, so
+> the `.0` test that classifies a reactor as shunt never fires; the bus search then misses
+> and the fallback column is the LAST bus of the list. Witness
+> `asymmetric:reactor/reactor_asym.dss`: `Reactor.rdel` (1 terminal, delta shunt) gets a
+> row and the triples `(4,3,+1)` `(4,4,-1)`, an edge from `b3` to `b4` in a five-bus list,
+> and it moves the Laplacian. Both oracles and the port agree. (b) **The reactor walk has
+> no `Enabled` test**, unlike its three siblings (`:2862`, `:2916`, `:2964`), so a disabled
+> series reactor is still a row; no corpus deck disables one today, so it is currently
+> unexposed. Current behaviour is stated with both numbers by
+> `exec::tests::inc_matrix::a_one_terminal_reactor_becomes_a_phantom_branch_to_the_last_bus`
+> and `::a_disabled_series_reactor_is_still_a_row`; the upstream report covering both (and
+> the row cursor G1.8 did fix) is
+> `investigations/to_opendss/63-incidence-row-cursor-counts-skipped-reactors.md`. A future
+> sub-step that changes either one must re-measure the eight `*_flat_*` golden stems, the
+> `INC_UPSTREAM_ROW_DECLINES` census and the Laplacian on `reactor_asym`.
 
 **Acceptance criterion for the whole WP:** `git diff --stat -- tests/golden` is
 **empty**, `TORN_DOWN_ROWS` names every torn-down row with an existing pin, and
@@ -1123,6 +1205,30 @@ TWINS.md.
 ### G3.2c — delete: `inc_matrix/`
 
 56 files + driver — superseded by G1.8's live exact compare.
+
+> **Re-scoped as executed (2026-09-05, lane `lane-s`, decided inside G1.8).** The 56 files
+> are **28 stems × 2** (`.txt` + `.meta.json`), of which **8** are `*_flat_*` and **20**
+> are `*_org_*` — the plan text's "delete 56 files + driver" and the sub-step brief's
+> "seven flat stems" were both wrong on the counts. G1.8's live compare covers the FLAT
+> builder only, so G3.2c deletes the **eight `*_flat_*` stems (16 files)** and
+> **self-snapshots the twenty `*_org_*` stems (40 files)** under WP-G3's rails; the driver
+> `crates/dss-core/tests/inc_matrix_reports.rs` survives. Reasons, all measured in G1.8:
+> `Calc_Inc_Matrix_Org` calls `GetTopology` (`Common/Solution.pas:3146`, `:3173`), which
+> rebuilds and re-memoizes the branch tree G1.7's `TOPOLOGY_STALE_DECLINES` /
+> `LOOPED_PAIR_WINDOW_DECLINES` are defined on, so running it per step would move those
+> two censuses; `Solution.BusLevels` can never be read on r4133 (`DSolution.pas:580-582`,
+> a one-element heap overflow — on the bridge's do-not-call register), so covering it live
+> would mean a permanent capi-only mask for a quantity whose only other witness is a
+> golden we would be deleting; and the `org` stems are the only witness of the ordered
+> builder, of `BusLevels` and of the CSV writer `report/export/inc_matrix.rs`, which
+> differs from the API getter exactly on `IncMatrixCols`. Deleting the eight flat stems is
+> justified: their values are what the live compare now gates, and every structural branch
+> of the flat builder has a corpus twin (all four row builders fire on
+> `asymmetric:capacitor/midi_capacitor_asym.dss` and on `NEVMASTER.DSS`; series capacitors
+> also on `asymmetric:capacitor/capacitor_asym.dss`, series reactors on
+> `asymmetric:reactor/*_asym.dss`) — the mapping goes into `TWINS.md` at G3.1. Note for
+> whoever runs G3.2c: the flat **Laplacian** and the flat **`cols`** have no golden stem at
+> all; G1.8 gave them their first witness.
 
 ### G3.3a — self-snapshot: `reports/export*` (146 files)
 

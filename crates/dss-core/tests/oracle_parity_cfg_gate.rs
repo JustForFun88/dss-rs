@@ -4133,3 +4133,104 @@ fn the_g1_7_pins_the_docs_cite_exist_exactly_once() {
         );
     }
 }
+
+/// The G1.8 (incidence matrix / Laplacian surface) names the operational docs
+/// and the phase record cite, with the number of definitions each one must have
+/// in the tree — the [`G1_9_PINS`] / [`G1_7_PINS`] pattern, third instance.
+///
+/// G1.8 landed without its twin (its F9 handoff flagged the gap), so ~17
+/// identifiers were cited by four documents with nothing to red on a rename.
+/// Everything here is one definition: unlike G1.7's `window_dedup` there is no
+/// deliberate engine-side duplicate, and `capture_inc_matrix` is deliberately
+/// NOT in the list — `capture_order.rs` names it in two search needles and once
+/// more in a synthetic fixture, so a count there would pin test scaffolding
+/// rather than the capture.
+const G1_8_PINS: [(&str, usize); 22] = [
+    // the capture-order gates (`crates/dss-core/tests/capture_order.rs`)
+    ("capi_capture_reads_the_incidence_surface_last", 1),
+    ("r4133_capture_reads_the_incidence_surface_last", 1),
+    (
+        "the_incidence_capture_issues_calcincmatrix_then_calclaplacian",
+        1,
+    ),
+    (
+        "neither_capture_calls_calcincmatrix_o_or_reads_buslevels",
+        1,
+    ),
+    ("the_incidence_gates_reject_a_swapped_or_early_capture", 1),
+    // settlement S-INC, both numbers (`crates/dss-core/tests/inc_matrix_pins.rs`)
+    ("the_incidence_row_cursor_skips_a_shunt_reactor", 1),
+    ("the_row_cursor_settlement_holds_on_the_corpus_witness", 1),
+    ("the_laplacian_is_blind_to_the_row_cursor", 1),
+    // the transport / getter shape pins (same file)
+    ("inc_matrix_cols_are_the_bus_list_when_unordered", 1),
+    ("capi_incmatrix_carries_one_trailing_zero", 1),
+    ("capi_and_r4133_incmatrix_lengths_differ_by_one", 1),
+    ("an_empty_incidence_matrix_reads_back_as_no_rows", 1),
+    ("calclaplacian_without_calcincmatrix_raises_8877", 1),
+    // the two defects left reproduced (`exec/tests/inc_matrix.rs`) and the fix
+    // that was not (`solution/inc_matrix/tests.rs`)
+    (
+        "a_one_terminal_reactor_becomes_a_phantom_branch_to_the_last_bus",
+        1,
+    ),
+    ("a_disabled_series_reactor_is_still_a_row", 1),
+    ("the_reactor_row_cursor_advances_only_on_an_emitted_row", 1),
+    // the rails (`corpus_gate/scheduler.rs`, `harness/inc_matrix.rs`)
+    (
+        "the_inc_matrix_forcing_rule_is_every_live_non_large_case",
+        1,
+    ),
+    (
+        "the_inc_matrix_surface_is_declared_on_every_gating_channel",
+        1,
+    ),
+    ("assert_declines_are_the_pinned_population", 1),
+    // the comparator, the accessor and its two helpers
+    ("compare_inc_matrix", 1),
+    ("inc_matrix_view", 1),
+    ("inc_matrix_cols", 1),
+];
+
+/// The documents that cite the G1.8 names, same rule as [`G1_9_PIN_DOCS`].
+const G1_8_PIN_DOCS: [&str; 4] = [
+    "TESTING.md",
+    "tests/TOLERANCE_NOTES.md",
+    "GOLDEN_REBASE_PLAN.md",
+    "docs/phase-records/golden-rebase.md",
+];
+
+#[test]
+fn the_g1_8_pins_the_docs_cite_exist_exactly_once() {
+    let root = repo_root();
+    let sources: Vec<String> = rust_sources(&root)
+        .iter()
+        .map(|p| fs::read_to_string(p).expect("source is readable"))
+        .collect();
+    let docs: Vec<String> = G1_8_PIN_DOCS
+        .iter()
+        .map(|rel| {
+            fs::read_to_string(root.join(rel))
+                .unwrap_or_else(|e| panic!("{rel} is part of the G1.8 doc surface: {e}"))
+        })
+        .collect();
+
+    for (pin, want) in G1_8_PINS {
+        let needle = format!("fn {pin}(");
+        let defs: usize = sources.iter().map(|t| t.matches(&needle).count()).sum();
+        assert_eq!(
+            defs,
+            want,
+            "the G1.8 name `{pin}` is defined {defs} times in the tree, expected \
+             exactly {want} — {} cite it by name, so a rename, a deletion or an \
+             undocumented second copy must red here instead of leaving them stale",
+            G1_8_PIN_DOCS.join(" / ")
+        );
+        assert!(
+            docs.iter().any(|d| d.contains(pin)),
+            "the G1.8 name `{pin}` is in this registry but no longer named by any \
+             of {} — either restore the citation or drop it from the list",
+            G1_8_PIN_DOCS.join(" / ")
+        );
+    }
+}
