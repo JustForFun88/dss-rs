@@ -152,12 +152,12 @@ over 440 cases + the D19 `MakeBusList` zone-reset cherry-pick, **0** entries,
 `PhaseLosses` + the five control-derived scalars, **§G1.3d complete**, the
 first channel to join `LANE_SKIP_ELEM_POWERS`, **0** entries + **10**
 widenings, `DIVERGENCES.md` L9, **5 784 / 0 / 5**, Δ = 0; **G1.3b** 2026-09-05
-(D24; `TBD-G13B-SHA`) — `SeqCurrents`/`SeqVoltages`/`SeqPowers` over the same
-442 cases, an r4133-only `SEQ_C012` band term, the n/A `SeqPowers` sentinel
-folded channel-scoped, r4133's 1φ-posseq slot defect unreproduced and
-unledgered behind a fail-on-stale (297 896, 79, 0) arm census, **0** entries +
-**31** widenings, **6 547 / 0 / 5** per lane, Δ = 0. Full records in
-`golden-rebase.md` §WP-G1.
+(D24; `40a65ffd` / settlement) — `SeqCurrents`/`SeqVoltages`/`SeqPowers` over
+the same 442 cases, an r4133-only `SEQ_C012` band term, the n/A `SeqPowers`
+sentinel folded channel-scoped, r4133's 1φ-posseq slot defect unreproduced and
+unledgered behind an arm census pinning the r4133 `0` and railing (297 896, 79)
+at documented floors, **0** entries + **31** widenings, **6 547 / 0 / 5** per
+lane, Δ = 0. Full records in `golden-rebase.md` §WP-G1.
 **Next.** **`GOLDEN_REBASE_PLAN.md` G1.3c** on the element lane; bus / PD-meter
 / singles lanes in parallel (D7). Then G1.4–G1.11c and WP-G3–G5 — inside which
 **G3.4**/**G3.5**, blocked since 2026-08-08, are runnable. Queued behind
