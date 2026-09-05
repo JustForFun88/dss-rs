@@ -336,14 +336,19 @@ pub fn all_terminals_closed(elem: &dyn crate::elements::traits::CktElement) -> b
 /// `Common/Utilities.pas:1262-1274`): the **topology** notion of "shunt", which
 /// is NOT `TPDElement.IsShunt`. Upstream switches on the class first and reads
 /// the object's own `IsShunt` only for a Capacitor or a Reactor; every other PD
-/// class answers `FALSE` **even when it sets its own `IsShunt` flag**. The one
-/// class where the two differ is the GICTransformer, which pins
-/// `IsShunt := True` in its constructor and in both bus setters (r4133
-/// `PDElements/GICTransformer.pas:445`, `:217`, `:254`) yet is a plain
-/// `PD_ELEMENT` (`:95`): upstream buckets it by ALL its terminals, so it is a
-/// tree BRANCH and can close a loop — which is what both oracles report on
-/// `modes/makeposseq/makeposseq_shunt.dss`, where `GICTransformer.gt` has both
-/// terminals on `b1`.
+/// class answers `FALSE` **even when it sets its own `IsShunt` flag**. Two
+/// classes do exactly that. The GICTransformer pins `IsShunt := True` in its
+/// constructor and in both bus setters (r4133 `PDElements/GICTransformer.pas:445`,
+/// `:217`, `:254`) yet is a plain `PD_ELEMENT` (`:95`): upstream buckets it by
+/// ALL its terminals, so it is a tree BRANCH and can close a loop — which is
+/// what both oracles report on `modes/makeposseq/makeposseq_shunt.dss`, where
+/// `GICTransformer.gt` has both terminals on `b1`. A **Fault** is the second
+/// (`PDElements/Fault.pas:244`, `:409`, cleared at `:300` once `Bus2` names a
+/// different bus) and is `FAULTOBJECT + NON_PCPD_ELEM` (`:114`), so
+/// `IsShuntElement` answers `FALSE` for it too; it never reaches the call sites
+/// below because upstream keeps it off `PDElements` and the port off
+/// `Circuit::pd_elements` (`circuit/circuit.rs`, `ElemKind::Fault` → `faults`) —
+/// were that ever to change, this function is already the upstream answer.
 ///
 /// Use this — never `CktElement::is_shunt` — wherever Pascal calls
 /// `IsShuntElement`: the adjacency-list buckets below,

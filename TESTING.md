@@ -132,7 +132,11 @@ they name a Rust line: every `<file>.rs:<line>` — and every bare `` `:<line>` 
 continuation — must name exactly one file, land on a line that exists and is
 not blank, and sit within ±3 lines of something the sentence itself backticks;
 since §RP5.2's settlement an *unanchored* citation **fails** too, so nothing is
-checked for existence only. The fourth,
+checked for existence only. Since G1.7's audit settlement a `:A-B` **range** is
+read whole: the end must be a real line of the same file and not precede the
+start, and the anchor must sit inside the range rather than near its start — a
+range that has drifted off the block it names now reds (a range still
+overlapping that block does not, so a re-point still needs reading). The fourth,
 `rust_comments_citing_a_record_line_point_at_the_passage_they_name`, runs the
 other way: a Rust comment citing `<record>.md:LO-HI` must land inside that
 record, on a passage it quotes, inside the `§`section it names, or sharing a
@@ -541,7 +545,11 @@ empty and not as a phantom one-element list. (2) A **non-empty**
 trailing `''` (`SetLength(Result, k + 1)`, `CAPI_Topology.pas:126-132`), which
 r4133 filters at the source and which `AllLoopedPairs` never carries on either
 channel (`k := -1`); exactly that one is dropped, and any other empty entry
-**raises** in the transport rather than silently losing an element name. The
+**raises** in the transport rather than silently losing an element name. Measured
+over the capi corpus replay (422 cases / 2 155 step-blocks): 134 `AllIsolatedBranches`
+and 46 `AllIsolatedLoads` reads carry it — 100 % of the non-empty isolated lists,
+over 65 and 21 distinct cases — against 0 of the 611 non-empty `AllLoopedPairs`
+reads and 0 on r4133. The
 comparator (`harness::topology::normalize_topo_names`) does not repeat the repair:
 it asserts the capture is already at the fixpoint, so a transport that stops
 normalizing fails there instead of comparing a phantom entry as if it were empty.
@@ -597,7 +605,7 @@ LVTestCase and ckt24 feeders diverge the same way but are `kind=large*` and out 
 the compare, so narrowing the population means re-measuring it.
 
 **Two port gaps the topology surface exposed** (fixed in-part per CLAUDE.md's
-"port gaps immediately", each in its own commit ahead of G1.7's): the topology
+"port gaps immediately", both inside G1.7's own surface commit): the topology
 adjacency lists routed PD elements by `TPDElement.IsShunt` where both oracles use
 the class-switched `IsShuntElement` (capi `Shared/CktTree.pas:522-528`, r4133
 `Common/Utilities.pas:1262-1274`), which made every `GICTransformer` a shunt and

@@ -273,9 +273,14 @@ pub(crate) fn get_isolated_sub_area(
 /// Pascal `TDSSCircuit.GetTopology` (`Circuit.pas:3034`): reset every element's
 /// `CHECKED`/`terminals_checked` + set `IS_ISOLATED` (till proven otherwise) and
 /// every bus's `bus_checked`, then build the analysing sub-area tree from the first
-/// source. Returns a fresh tree each call (the port does not cache `Branch_List`
-/// on the circuit — the reports are the only consumer and a rebuild is
-/// observationally identical). Returns an empty tree if the circuit has no source.
+/// source. Returns a fresh tree each call: upstream memoizes `Branch_List` on the
+/// circuit and frees it only in `Destroy` / `DoResetMeterZones`
+/// (`Common/Circuit.pas:2932-2950`, `:703`, `:2308`), so a conductor opened
+/// between two reads leaves it answering from the pre-trip tree — an upstream
+/// defect the port never reproduces (CLAUDE.md; GOLDEN_REBASE G1.7 decision D15,
+/// where the live gate asserts the memoization instead). Two consumers today: the
+/// `Show Topology`/`Show Isolated` reports and `exec/view.rs::topology_view`.
+/// Returns an empty tree if the circuit has no source.
 pub(crate) fn get_topology(ckt: &mut Circuit, store: &mut dyn ElemStore) -> CktTree {
     for &r in &ckt.ckt_elements {
         let cd = store.ckt_elem_mut(r).cd_mut();
