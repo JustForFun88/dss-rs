@@ -161,7 +161,7 @@ RP4.1 2026-09-03 (**G1.1 satisfied**, **G3.4**/**G3.5** unblocked); **G1.2**
 whole WP**; **G1.9** (lane `lane-s`, 2026-09-04, `9757d26c` + `f27f9598`;
 audits 13 findings, no port bug), the five `Circuit` aggregates and ten
 `Solution` scalars universal on both channels; **G1.7** (lane `lane-s`,
-2026-09-05, `8fc32991` + settlement), the six order-free `Topology` rows on
+2026-09-05, `8fc32991` + `898f8a86`), the six order-free `Topology` rows on
 both channels, 440 live non-`large` cases (lock +7 `topo=`), the memoized-tree
 and window-dedup defects **asserted, not excluded** (D15/D16, fail-on-stale
 `(16, 135)` / `(8, 96)`), two port gaps fixed en route. All: 0 ledger entries,
