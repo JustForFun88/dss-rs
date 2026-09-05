@@ -233,14 +233,14 @@ today:
 |---|---|---|---|
 | 1 | per-element SeqCurrents / SeqVoltages / SeqPowers / CplxSeq* / Residuals / *MagAng / TotalPowers | `tests/golden/reports/export_seq*` | G1.3a–c |
 | 2 | Bus Zsc1 / Zsc0 / ZscMatrix / YscMatrix / Isc / Voc | `fault_study` golden | G1.5 |
-| 3 | meter extras: CalcCurrent, AllocFactors, Totals, SAIFI/SAIFIKW/SAIDI/CustInterrupts, active-section fields (fastdss captures the FIRST section only — parity = at least that), **ordered** zone vectors (the live gate already set-compares `AllBranchesInZone`/`AllEndElements`/`ZonePCE` — `harness/mod.rs:2022-2041`, `oracle_server.py:226-246`; the gap is order + the extras, NOT the lists' existence), **plus the per-bus reliability columns** `Bus.Lambda / N_interrupts / N_Customers / Cust_Interrupts / Cust_Duration / Int_Duration / TotalMiles / SectionID` (`IBus._columns` on `origin/fastdss` — the very columns `Export BusReliability` renders and the `BUS_INT_DURATION` surface, hence the G2.2a-before-G1.6 ordering). CAIDI does **not** exist in the DSS-Python API on either branch — it is gated only if the r4133 DLL exposes it (measure in G1.11c), else documented as not-comparable | `reliability`/`export_busreliability*` goldens | G1.6 |
+| 3 | meter extras: CalcCurrent, AllocFactors, Totals, SAIFI/SAIFIKW/SAIDI/CustInterrupts, active-section fields (fastdss captures the FIRST section only — parity = at least that), **ordered** zone vectors (the live gate already set-compares `AllBranchesInZone`/`AllEndElements`/`ZonePCE` — `harness/mod.rs:2022-2041`, `oracle_server.py:226-246`; the gap is order + the extras, NOT the lists' existence), **plus the per-bus reliability columns** `Bus.Lambda / N_interrupts / N_Customers / Cust_Interrupts / Cust_Duration / Int_Duration / TotalMiles / SectionID` (`IBus._columns` on `origin/fastdss` — the very columns `Export BusReliability` renders and the `BUS_INT_DURATION` surface, hence the G2.2a-before-G1.6 ordering). CAIDI does **not** exist in the DSS-Python API on either branch — it is gated only if the r4133 DLL exposes it (measure in G1.11c), else documented as not-comparable (**as executed 2026-09-05, part (i)**: the set compare is `compare_meter`'s `cmp_members`, `harness/mod.rs:6064-6079` — **not** `:2022-2041`, a stale citation — and the ordered arm is `compare_reliability`, `harness/mod.rs:8755-8790`; CAIDI **is** compared, as EnergyMeter property #22 through `compare_all_properties` on both channels, so "not-comparable" was never written; see §G1.6) | `reliability`/`export_busreliability*` goldens | G1.6 |
 | 4 | Topology interface: NumLoops, NumIsolatedBranches/Loads, AllLoopedPairs, AllIsolatedBranches/Loads | `show_topology`/`show_isolated` goldens | G1.7 |
 | 5 | Bus.Distance, AllBusDistances, AllNodeDistances | `profile` goldens | G1.4 |
 | 6 | Solution.IncMatrix/IncMatrixCols/IncMatrixRows/Laplacian (fastdss-branch-only additions — exactly why the reference is `origin/fastdss`) | `inc_matrix/` goldens | G1.8 |
 | 7 | circuit aggregates: TotalPower, Losses, LineLosses, SubstationLosses, **AllElementLosses**, plus the Solution scalars ControlIterations / Totaliterations / MostIterationsDone / ControlActionsDone / SystemYChanged / Seconds / LoadMult / Year / Hour / Mode | `export_losses`/`summary` goldens | G1.9 |
 | 8 | run-produced files: **every** `*.csv` the deck emits under DataPath (fastdss archives and compares them all, incl. the forced `export profile phases=all` — DI CSVs are just the closedi subset); `save circuit` output **file set** (fastdss archives it but never compares — `compare_outputs.py:426-529` has no `.dss` branch — so our file-set + round-trip check is strictly stronger; state that, don't claim parity) | `di_*`/`save_*` goldens | G1.10 |
 | 9 | CktElement discrete extras: PhaseLosses, NodeOrder, EnergyMeter, OCPDevType, OCPDevIndex, HasVoltControl, HasSwitchControl, NumControls, NumTerminals/NumPhases/NumConductors; LineGeometries.Rmatrix/Xmatrix/Zmatrix (measure-first); Lines.Yprim (verify it is already witnessed by the per-element YPrim live compare, record in TESTING.md) | scattered `props/`/report goldens | G1.3d |
-| 10 | PDElements interface: AccumulatedL, ParentPDElement, FromTerminal, IsShunt, Numcustomers, SectionID, RepairTime, Totalcustomers, Lambda | `reliability` goldens (partially) | G1.6b |
+| 10 | PDElements interface: AccumulatedL, ParentPDElement, FromTerminal, IsShunt, Numcustomers, SectionID, RepairTime, Totalcustomers, Lambda (**as executed 2026-09-04: 13 columns** — also FaultRate, TotalMiles, pctPermanent — plus `parent_name`; see §G1.6b) | `reliability` goldens (partially) | G1.6b |
 | 11 | Bus extras: VLL/puVLL, VMagAngle, AllPCEatBus/AllPDEatBus | `export_seq*`/`profile` goldens | G1.4 (VMagAngle: G1.4a; VLL/puVLL: G1.4c, landed 2026-09-05; AllPCEatBus/AllPDEatBus: G1.4b) |
 
 Where our gate is already stronger than fastdss (monitor channels, event log,
@@ -575,6 +575,56 @@ same commit.
 from the already-gated I/V tier, documented in TOLERANCE_NOTES. Ledger triage per
 §1.1(e) — do NOT assume the export-side Iresidual bug shape; measure the API path.
 
+> **2026-09-04 — AS EXECUTED (lane `lane-e`).** Landed with `Enabled` alongside the
+> three polar channels, forced on **442** cases (`FORCED_DERIVED_POPULATION`
+> `(442, 315, 83, 44)`), both oracle channels.
+>
+> * **Q-1 settled by measurement, 0 rows.** Both API paths carry the `(i-1)*Nconds`
+>   terminal offset (r4133 `DDLL/DCktElement.pas:842`, capi
+>   `CAPI/CAPI_CktElement.pas:562`); the `Export SeqCurrents` `Iresidual` defect is
+>   confined to the report path, so it costs no ledger entry — as the plan
+>   suspected but did not assume.
+> * **Enabled-only capture.** r4133's `CktElementV(19)` dereferences a nil
+>   `NodeRef` (`DCktElement.pas:1099`, no guard) and **kills the worker** on a
+>   never-enabled element, where capi answers a one-element `DefaultResult`
+>   sentinel (`CAPI_Alt.pas:1081`). Reading the three channels for `Enabled`
+>   elements only removes the crash class and makes both transports' shapes
+>   identical — no sentinel normalization owed, no ledger row.
+> * **One mode taken here:** `CktElement.Enabled` (`CktElementI(12)`,
+>   `DCktElement.pas:263`), so `WP_G1_MODES` is **97**, not 96 — it is the safety
+>   predicate the enabled-only capture needs, and a fastdss `_columns` surface in
+>   its own right.
+> * **Two manifest opt-ins** — `Test/AutoTrans/{Auto3bus,AutoHLT}.dss`, the exact
+>   two decks fastdss *skips* `Residuals` on (`origin/fastdss`
+>   `tests/compare_outputs.py:56-59`, "Close enough for the system"): gating them
+>   is where this gate is strictly stronger than the harness it reaches parity with.
+> * **No new channel joins `LANE_SKIP_ELEM_POWERS`.** The Newton staleness is
+>   confined to the cache-aware `Get_Powers`/`Get_Losses` path
+>   (`Common/CktElement.pas:632-640`); all three of these come from a fresh
+>   `GetCurrents` or from `NodeV`, so the two `newton*` decks gain three compared
+>   channels rather than an exclusion.
+> * **Ledger: §3.4's "0 new entries" forecast was wrong in one place.** The final
+>   count is **1 new entry + 13 measured widenings** of committed `element` scopes
+>   (the kill criterion, "> ~10 **new** entries", did not fire). The new entry is
+>   `capi-capcontrol-time-bus-is-the-capacitors`: a TIMECONTROL CapControl binds
+>   its bus 1 to the **monitored element's** terminal (r4133
+>   `Controls/CapControl.pas:605` + `:622`), while capi 0.14.5 still uses the
+>   controlled capacitor's bus (`:597-608` → `:619`) — the port follows r4133, the
+>   r4133 channel needs no entry, `docs/upgrade/DIVERGENCES.md` L8 records it and
+>   `capcontrol_time_voltages_follow_the_monitored_elements_terminal` pins both
+>   numbers. The 13 widenings are per-sub-channel and measured (fixpoint iteration;
+>   `r4133-indmachmidi-injection-ulp` did not fail and was left alone).
+> * **Two comparator-shape findings the spec did not predict**, both settled without
+>   a tolerance: a 0-terminal element (`UPFCControl`, r4133
+>   `Controls/UPFCControl.pas:230-246` never sets `Nterms`) is accepted two-sidedly
+>   when neither side carries a payload, up to the capi `DefaultResult` sentinel
+>   (coordinator decision D4); and the spec's √2 rectangular-band correction (D10)
+>   is **refuted** — `harness::assert_complex_close_c` bands the *modulus*, so the
+>   inherited set is a disc and every derivation was already its image. No band moved.
+> * The first launch of this sub-step collided with G1.0's audit settlement in the
+>   main tree; F1 backed out cleanly and the sub-step was relaunched on `lane-e`
+>   (`tmp/g13a/spec_amendment.md`).
+
 ### G1.3b — per-element sequence transform
 
 `SeqCurrents`, `SeqVoltages`, `SeqPowers`: one shared accessor over
@@ -594,6 +644,173 @@ transform.
 divergence is proven, per the no-guessing rule); `Lines.Yprim` — verify it is
 already witnessed by the per-element YPrim live compare and record the conclusion
 in TESTING.md instead of double-capturing.
+
+> **2026-09-04/05 — AS EXECUTED (lane `lane-e`), part (i).** The sub-step is split:
+> **(i)** the index/name scalars `NumTerminals`/`NumConductors`/`NumPhases`, `NodeOrder`,
+> `EnergyMeter` and the two documentation verdicts; **(ii)** `PhaseLosses` and the
+> control-derived extras (`OCPDevType`/`OCPDevIndex`, `HasVoltControl`/`HasSwitchControl`,
+> `NumControls`). `CktElement.Enabled` is not a NEW channel here — G1.3a landed it — but it
+> is re-emitted under the `element_extras` request (the two manifest flags are independent)
+> and re-asserted by this comparator, since the `NodeOrder` capture predicate rests on it.
+> Forced on **441** cases
+> (`FORCED_ELEMENT_EXTRAS_POPULATION` `(441, 310, 87, 44)` after the merge into
+> `update`; `(440, 313, 83, 44)` on the lane, before G1.4a's D12/D14 flips), both oracle channels,
+> **0 new ledger entries and 0 widenings** — the §3 forecast held exactly, and no tolerance
+> is introduced or consulted (every field is discrete, compared exactly).
+>
+> * **`Lines.Yprim` — verified already witnessed, not double-captured.** `Lines_Get_Yprim`
+>   (capi `CAPI/CAPI_Lines.pas:777-796`) and `CktElement_Get_Yprim`
+>   (`CAPI/CAPI_CktElement.pas:583-599`) are the same two statements —
+>   `GetYprimValues(ALL_YPRIM)` plus a bulk `Move` of `2·Yorder²` doubles — and r4133's
+>   `LinesV` mode 7 (`DDLL/DLines.pas:771-796`) and `CktElementV` mode 12
+>   (`DDLL/DCktElement.pas:856-883`) likewise copy `SQR(Yorder)` complexes from one such
+>   call; on capi the two are exactly equivalent modulo the `Lines` path's `IsLine()` type
+>   filter, and on r4133 they differ only outside the payload (mode 12 `Exit`s on a nil
+>   `cValues`, `DCktElement.pas:869-872`, before assigning `myPointer`/`mySize` at `:882-883`;
+>   mode 7 assigns them regardless, `DLines.pas:794-795`). The gate already
+>   compares `CktElement.Yprim` live on both channels, so the conclusion and its honest
+>   per-case residual are recorded in TESTING.md instead of a second capture.
+> * **`LineGeometries.Rmatrix/Xmatrix/Zmatrix` dropped from the parity claim**, on two
+>   independent kills: they are computing **methods** taking `(Frequency, Length, Units)`
+>   (`origin/fastdss` `dss/ILineGeometries.py:84`/`:88`/`:92`), so fastdss's own harness
+>   raises `StopIteration` on them (`tests/save_outputs.py:140-141`) and the caller swallows
+>   it (`:277-279`) — they are skipped in *every* fastdss run, i.e. they are not part of the
+>   parity target; and the r4133 DLL has no `LineGeometr*` family at all (no
+>   `DDLL/DLineGeometries.pas`, and `OpenDSSDirect.dpr`'s `exports` clause carries only
+>   `LinesI/F/S/V`), so the surface is capi-only by capability. No capture, no ledger row.
+> * **The `NodeOrder` capture predicate is source-derived, not defensive.** It is read only
+>   for an element that is `Enabled` **and** has `NumTerminals > 0`: r4133's `CktElementV(17)`
+>   dereferences `NodeRef^[j]` with no nil guard (`DDLL/DCktElement.pas:1048`) and kills the
+>   worker on a never-enabled element, while capi raises 15013 (`CAPI/CAPI_CktElement.pas:900-906`);
+>   and on a 0-terminal element (`UPFCControl` never assigns `Nterms`,
+>   `Controls/UPFCControl.pas:230-246`) r4133 answers a 0-length array where capi raises. Not
+>   issuing the read removes that shape asymmetry instead of normalizing it. The comparator's
+>   `!enabled` branch then asserts the **oracle** side is silent only: an element disabled
+>   *after* a solve legitimately keeps its mapping in the port, and so would both oracles
+>   (neither mode-17 arm has an `Enabled` guard).
+> * **One channel normalization, 0 ledger rows (coordinator decision D4):** "no meter" is
+>   spelled `''` on capi (`Result := NIL`, `CAPI/CAPI_CktElement.pas:672-687`) and `'0'` on
+>   r4133 (the `CktElementS` pre-`case` default, `DDLL/DCktElement.pas:421`; arm 4 at
+>   `:442-449`, guarded by `HasEnergyMeter` at `:444`). Each channel's OWN spelling is folded
+>   at the capture boundary and pinned (audit settlement 2026-09-05: the fold takes the channel,
+>   so on capi a meter *named* `0` is a name and reds if the port loses it, while on r4133 the
+>   collision is undecidable in both directions) — what keeps it unreachable is the corpus
+>   census (1310 decks, 92 distinct meter names, none of them `0`), not the fold.
+> * **D19 (coordinator, 2026-09-05):** lane-m's D9 engine commit — `MakeBusList` must reset
+>   the meter zones (`Common/Circuit.pas:2411`) — was cherry-picked onto `lane-e`, because this
+>   is the first surface that makes D9 observable in the gate; **amended (D19′): the pin's
+>   PDElements half is read directly on lane-e** (`Dss::pd_elements` arrives only with G1.6b,
+>   so `exec/tests/energymeter_zones.rs` reads the customers/parent numbers through the file's
+>   own `branch_customers`/`branch_parent` helpers — same oracle numbers, engine hunks
+>   byte-identical), which leaves exactly one predictable merge conflict in that file, resolved
+>   toward `update`'s PDElements-walk form.
+> * **F5 STOP-1:** the spec's D9-independence claim was false — it was measured per *file*,
+>   while `Test/indmachtest/Master.DSS` redirects its meter and only then calls `MakeBusList`,
+>   so `Line.l1` reported no meter until the D19 cherry-pick (never a ledger row, per D9).
+> * **F5 STOP-2:** the corpus meter-name census raced the live gate's own deck-written
+>   exports (a Windows sharing violation on a file the gate owns), so it moved verbatim from
+>   `corpus_gate/runner.rs` into the oracle-free `corpus_manifest.rs` binary — the race is
+>   removed structurally, with no weakened assertion, no retry and no skip.
+
+> **2026-09-05 — AS EXECUTED (lane `lane-e`), part (ii).** `PhaseLosses` and the five
+> control-derived scalars `NumControls`, `OCPDevIndex`, `OCPDevType`, `HasVoltControl`,
+> `HasSwitchControl` compare live on **both** channels over the same **440** cases
+> (`FORCED_ELEMENT_EXTRAS_POPULATION` `(440, 313, 83, 44)`, unchanged — this sub-step widens the
+> flag's *fields*, not its population), which completes the `compare_element_extras` surface and
+> §G1.3d as a whole. **0 new ledger entries, 0 new causes** (58 / 31 unchanged on the lane), **10** measured
+> widenings of committed `element` scopes, 0 golden bytes, no existing band moved.
+> *(On `update` after the merge: the population is **443** = (443, 312, 87, 44) and the ledger **54** / 31 —
+> `gic-pct-r2-honoured-{gictransformer,midi}-capi` were already deleted by G1.4a's **D12**/**D14**, so two of
+> the ten widenings went with their entries and **eight** land; `makeposseq-cuf-applied-capi`'s sample was
+> re-measured on the moved deck and still fails. Phase record, merge note.)*
+>
+> * **`PhaseLosses` is ported, not derived from `Losses`.** The port had no `GetPhaseLosses`;
+>   `CktElement::phase_losses` (`elements/traits.rs`) is r4133
+>   `Common/CktElement.pas:1078-1120` loop-for-loop — `ComputeIterminal` at `:1090`, the phase
+>   loop `:1093-1112` summing `NodeV[NodeRef[(j-1)*FNconds+i]]·conj(Iterminal[…])` over the
+>   element's terminals and skipping `n = 0`, ×3 under positive sequence, `CZERO` zero-fill on
+>   `!FEnabled` (`:1118-1119`). It returns **W/var**; the oracles' ×0.001 (r4133
+>   `DDLL/DCktElement.pas:637` mode 6, the `cmulreal(…, 0.001)` at `:651`; capi
+>   `CAPI/CAPI_Alt.pas:449-467`, the multiply at `:466`) is a capture-boundary encoding applied
+>   at exactly one site, the comparator.
+> * **The band is a derivation, not a new class** (`tests/TOLERANCE_NOTES.md` §G1.3d(ii)):
+>   `harness::phase_loss_band` sums `assert_power_close`'s per-conductor floor over exactly the
+>   conductors `GetPhaseLosses` sums, i.e. the construction `Get_Losses` already applies over
+>   *all* of them, restricted to one phase — strictly tighter, and no `Tolerances` field is read
+>   or written. The `Get_Losses` oracle-self-consistency trust escape is deliberately **not**
+>   copied (it exists for a capi015 quirk on a rev this gate does not run).
+> * **`PhaseLosses` DOES join `LANE_SKIP_ELEM_POWERS`** on the two `newton*` decks, unlike G1.3a's
+>   three polar channels: it opens with the same cache-aware `ComputeIterminal` as
+>   `Get_Powers`/`Get_Losses`, so no oracle reports it at the converged `NodeV`
+>   (CLAUDE.md bug 5 / G2.3). **Measured before the bit was added**, both decks red on
+>   `Vsource.source` phase 0 at 55.5× / 34.4× the band (`|Δ| = 4.8559011331706704e-4` and
+>   `2.460687672864992e-3` kVA) — bit-identical to the `Powers` figures the row already records,
+>   which is the mechanism, not a coincidence. The five discrete scalars stay compared there.
+>   *(Audit settlement, 2026-09-05: that first measurement stopped at the `capi_v0145` channel,
+>   because a case aborts on its first failing channel. Re-measured on the **`r4133`** channel by
+>   flipping the two cases to `engines: "r4133"` in a scratch copy: same element, same phase,
+>   `|Δ| = 4.855901044093186e-4 > 8.753018514278278e-6` and
+>   `2.4606876731535624e-3 > 7.144000397412528e-5` kVA — i.e. both gating channels carry the
+>   staleness, as CLAUDE.md bug 5 says of every official rev. Nothing was committed from that copy.)*
+> * **D-ii-1 — the control list is attach-ordered, and r4133 re-attaches on every edit.** Pascal's
+>   per-element `ControlElementList` is remove-then-append (`Controls/ControlElem.pas:113-131`,
+>   `RemoveSelfFromControlElementList` at `:81-99`); r4133 re-runs
+>   `ControlledElement := CktElements.Get(DevIndex)` inside **`RecalcElementData`**, i.e. on every
+>   Edit (`Relay.pas:955` from `:626`; `Recloser.pas:702`, `SwtControl.pas:332`,
+>   `CapControl.pas:580`, `RegControl.pas:693`), while capi 0.14.5 makes `ControlledElement` a
+>   property-write target only (`Controls/Relay.pas:439-441`). Measured: after
+>   `edit relay.r delay=0.05`, r4133 answers `OCPDevType` **1** (the fuse, the relay having moved
+>   to the end) and capi **3**. The port follows r4133 — a new `Circuit::control_attach_order`
+>   maintained at the port's `RecalcElementData` moment, derived per element by
+>   `circuit::controls::derive_control_lists`, which `Show Controlled` now shares so the report and
+>   the API cannot drift. **0 ledger rows:** no corpus deck carries a *heterogeneous*
+>   multi-control element, so the divergence is not observable in the gate; it is pinned by
+>   `ocp_dev_type_follows_the_last_attach_order` (port 1, r4133 1, capi 3) and recorded in
+>   `docs/upgrade/DIVERGENCES.md` **L9**.
+>   *(Audit settlement, 2026-09-05. The census quoted here — 60 controlled elements,
+>   `max NumControls = 1` — was a live capi walk of `tests/corpus/controls/**` only, and does NOT
+>   hold over the gated population: the whole-gate census now re-derived on every run finds
+>   **18** (case, channel, step, element) rows with ≥ 2 controls, out of 3 184 controlled rows in
+>   298 565. All 18 are Relay-ONLY lists — `Line.thev` under `Relay.21src` + `Relay.21rev` in the
+>   eight Distance/TD21 relay decks, `Line.motorleads` under `Relay.{mfrov/uv,mfr46,mfr47}` in
+>   `controls:fuse/indmach_r4133/indmach_{snap,dyn}.dss` — so every permutation answers the same
+>   `OCPDevIndex = 1` / `OCPDevType = 3` and the conclusion stands, now on the right premise. The
+>   counts are pinned fail-on-stale in both directions by
+>   `harness::assert_no_multi_control_element`, called from the gate epilogue.)*
+> * **D-ii-2 — a *disabled* OCP control still holds its slot and still wins the scan** (r4133
+>   `Common/Utilities.pas:3165-3184` has no `Enabled` test; both channels agree). The accessors
+>   therefore recompute from the derived list with no `Enabled` filter anywhere, instead of reading
+>   the port's registration latch `CktElementData::ocp_device_type`, which is written for the first
+>   *enabled* OCP control and answers `3` where both oracles answer `1`. Pinned by
+>   `a_disabled_ocp_control_still_wins_the_ocp_scan` (names all three numbers).
+> * **Ledger: one new sub-channel, ten measured widenings, no new entry.** `phase_losses` joins
+>   `SUBCHANNEL_FIELDS`' `element` list (seven names now) in the same commit, and both ledger
+>   handlers honour it — `rewrite_element_selected` writes the port's kW/kvar back and
+>   `envelope_element` bands each phase with the same derived floor. Ten committed `element` scopes
+>   that already select `powers`/`losses` were widened onto it, each **only** after the live gate
+>   printed its own failing sample on its own channel (`measured.g13d2_phase_losses_first_failure`):
+>   `mmf-accept-set-honoured-capi`, `makeposseq-cuf-applied-capi`,
+>   `gic-pct-r2-honoured-{gictransformer,midi}-{capi,r4133}` and
+>   `windgen-qmode0-constant-q-{daily,snapdelta,dyn,dynfault}-r4133`. The four
+>   `r4133-*-injection-ulp` entries (which select `losses`) were measured **not** to fail and keep
+>   their committed lists; `capi-capcontrol-time-bus-is-the-capacitors` likewise (a CapControl has
+>   no `Iterminal`, so its `PhaseLosses` is zero on both sides). The staleness half is proved live:
+>   a deliberate eleventh widening of `r4133-indmach-injection-ulp` was reported STALE by
+>   `Scope::dead_channels` on an unfiltered run, then reverted.
+> * **No mode, no capability gap.** All six r4133 modes already existed and were proven `Served` by
+>   G1.0, so `WP_G1_MODES` stays **97** and `crates/dss-epri/src/modes.rs` is byte-untouched.
+>   Measured on a 0-phase element (`UPFCControl`, `controls/upfc/upfc_dual.dss`): `CktElementV(6)`
+>   returns a 0-length array and the worker survives, capi returns `[]` — no capture predicate, no
+>   sentinel normalization and **no `DoNotCall` row** is owed.
+> * **Adjacent defect A-1 fixed here; A-2 recorded.** The reliability sweep's
+>   `pSection.OCPDeviceType` was the same registration latch where Pascal calls
+>   `GetOCPDeviceType` live (r4133 `Meters/EnergyMeter.pas:2538`); it now calls the shared live
+>   scan (`solution/meters/reliability.rs::live_ocp_device_type`), measured at **zero** golden and
+>   corpus movement and pinned by
+>   `section_device_type_is_the_live_ocp_scan_not_the_registration_latch`. **A-2** — the port never
+>   clears `HAS_OCP_DEVICE`/`HAS_AUTO_OCP_DEVICE` where r4133 clears them at the head of every
+>   control `RecalcElementData` (`Controls/Relay.pas:946-964`) — is deliberately untouched (its
+>   blast radius is the whole reliability sweep) and is recorded in STATUS as owned by G1.6/G1.6b.
 
 ### G1.4 — bus surface: pu-voltages, seq voltages, distances, extras
 
@@ -646,7 +863,9 @@ only; manifest-flagged).
 > quantized its own coverage through r4133's 5-significant-digit `MakePosSequence`
 > round trip), the four `gic-…-capi{,-props}` entries are deleted (57 → **53**) and
 > a manifest guard test forbids a capi-gated GICTransformer deck; the corpus is
-> **524** cases / 520 live. **D13:** the r4133 worker no longer inherits or persists
+> **524** cases / 520 live. (On `update` after the merge the ledger is **54** entries
+> — 58 on the merged base minus those four — and `WP_G1_MODES` **102**; see the record's
+> merge note.) **D13:** the r4133 worker no longer inherits or persists
 > `DefaultBaseFreq` through `HKCU\Software\OpenDSS\MainSect` (its own bridge
 > commit) — that machine-wide channel, not the scheduler, was the "21 red, all
 > `R4133`" parity run, and the operating rule ("one gate or probe per worktree at a
@@ -736,8 +955,10 @@ populated, never re-runs the study). Manifest flag on the faultstudy-family case
 > **does** move here: one new case row, the only hand-set `compare_zsc` in the
 > tree, so the lock fingerprints the surface (`zsc=1`) and a later narrowing is
 > visible in it. The scheduler's `force_zsc` turns the surface on for every live
-> non-`large*` case regardless (`FORCED_ZSC_POPULATION = (442, 311, 87, 44)`,
-> re-derived, not trusted).
+> non-`large*` case regardless (`FORCED_ZSC_POPULATION = (442, 311, 87, 44)` on the
+> lane, re-derived, not trusted; **(443, 312, 87, 44)** on `update` after the merge,
+> where G1.6(i)'s `midi_relcalc` deck joins this one — corpus 525 → **526** / 522 live —
+> and every other `FORCED_*_POPULATION` moves with it).
 > **(4)** A port gap found in spec and closed in-step under "port gaps
 > immediately": `ReduceAlgs`' `kVBase <= 0` branch skipped Pascal's
 > `Solution.UpdateVBus` (r4133 `Meters/ReduceAlgs.pas:500-508`, capi `:487-494`),
@@ -768,11 +989,91 @@ set-compare to **ordered** name vectors, and the **per-bus** reliability surface
 (`IBus._columns` on `origin/fastdss`) — the columns `Export BusReliability`
 renders.
 
+> **As executed — part (i) (2026-09-05, lane `lane-m`; decisions D7, D17a, D18).** The sub-step is
+> split: **(i)** the meter extras + the run protocol (here); **(ii)** the eight per-bus reliability
+> columns + `Bus.Int_Duration` (next on this lane). Part (i) is the only WP-G1 sub-step that changes
+> **how a case is run**: no live corpus deck ran `CalcReliabilityIndices` (both occurrences are
+> comments in `expect_solve_abort` decks), so the whole reliability half would have compared
+> `0 == 0`. Three decisions carry it. **D-i-1** — the executive `RelCalc` is driven **once** per
+> case, on the last step, after the error assert and the `Text.Result` read (the command overwrites
+> it) and before every capture of that checkpoint, on all three engines: it is **not idempotent**
+> (a second run re-accumulates `Bus.TotalMiles`, measured `13.825757575757578 →
+> 22.348484848484844` on both oracles), so the payload lives on the last checkpoint only and the
+> runner asserts exactly that. **D-i-2** — the flag is **manifest-set, never forced**: "has an
+> EnergyMeter" is not a manifest field and forcing it would fire `28724 No EnergyMeter Objects
+> Defined` on ~340 meterless decks, so no `FORCED_RELIABILITY_POPULATION` pin is owed; the four
+> `DOCTechNote` `large*` decks stay out under the same cost guard `force_properties` /
+> `force_pdelements` already apply, and the multi-meter `Bus_Int_Duration` divergence therefore
+> keeps its existing witness (the `export_busreliability_multimeter` golden + its G2.2a pin) and
+> gains no live one. **D-i-3** — `Meters.CalcCurrent` / `AllocFactors` are an **uninitialised read
+> in both oracles** on any deck that never ran `AllocateLoads` (`MeterElement.pas:45-52` ReallocMems
+> without zeroing; only `CalcAllocationFactors` `:54-72` writes them, driven solely by
+> `ExecHelper.pas:2624-2683`), nondeterministic across processes and therefore un-envelopable: a
+> field-scoped `RELIABILITY_SKIP_FIELDS` exclusion with a pin, not a ledger row — and **not a
+> permanent hole**, because the sub-step adds the corpus's only `AllocateLoads` deck
+> (`tests/corpus/controls/energymeter/midi_relcalc.dss`, `both`, three sections) where both fields
+> are compared live on both channels. Population **6 cases** (4 capi-gating / 5 r4133-gating,
+> including the 52902 abort witness); corpus **524 → 525** cases / 521 live at the merge into
+> `update` (523 → 524 on the lane itself, before G1.4a's D12/D14 corpus flips arrived), and the
+> `FORCED_*_POPULATION` locks move `(441, 310, 87, 44) → (442, 311, 87, 44)` with it —
+> `FORCED_TOPOLOGY_POPULATION` (G1.7, merged first) included.
+> Compared **exactly** (`rel = abs = 0`) — the two oracle engines return bit-identical doubles for
+> the whole payload — with three banded cells derived from existing tiers, never new ones:
+> `Meters.Totals` on the **energy** tier (D17a: it is `Σ registers·Mask`, not a reliability number)
+> and `calc_current` / `alloc_factors` on the **current** tier and its image under
+> `SensorCurrent/|I|`. **0 ledger entries** (budget 10). Deliberately **not** re-read from
+> `IMeters._columns`: `SeqListSize` / `CountBranches` / `CountEndElements` are the lengths of the
+> three zone lists we compare in full, and `MeteredElement` / `MeteredTerminal` / `Peakcurrent` are
+> EnergyMeter properties #0/#1/#6 already live-compared by `compare_all_properties` — as is
+> **CAIDI** (property #22), which the plan's row 3 said would be "documented as not-comparable";
+> `CountEndElements` is additionally a **do-not-call** on the r4133 arm (`DMeters.pas:157-163`
+> dereferences `pMeter.BranchList.ZoneEndsList` with no `BranchList` guard, where capi guards with
+> `CheckBranchList(5500)`), recorded in TESTING.md's bridge section. `WP_G1_MODES` **102 → 103**
+> at the merge (**99 → 100** on the lane; the
+> one selector `MetersI(22)` `Meters.SetActiveSection`, the table's single declared non-getter).
+> One honest deviation from the spec's test recipe: its `Meters.Totals` non-vacuity corruption
+> (drop the `TotalsMask` multiply) is **vacuous on this population** — no flagged deck sets `mask=`
+> — so the mask arm is pinned in-engine (`meter_totals_is_the_masked_register_sum`) and the
+> gate-level demo is a value drive instead. Exact float compares on this surface (and on G1.6b's)
+> depend on `serde_json`'s `float_roundtrip`: decision **D11/D18**, committed on this lane.
+> Full record: `docs/phase-records/golden-rebase.md` §"GOLDEN_REBASE WP-G1 — records".
+
 ### G1.6b — PDElements interface
 
 `AccumulatedL`, `ParentPDElement`, `FromTerminal`, `IsShunt`, `Numcustomers`,
 `SectionID`, `RepairTime`, `Totalcustomers`, `Lambda` — the per-PD-element walk
 fastdss compares wholesale.
+
+> **As executed (2026-09-04, lane `lane-m`, decisions D7 + D9).** The surface above is
+> **incomplete**: `IPDElements._columns` on `DSS-Python@origin/fastdss` carries **13**
+> columns — the nine listed plus `FaultRate`, `TotalMiles` (= `AccumulatedMilesDownStream`,
+> *not* `Bus.TotalMiles`) and `pctPermanent` — and the sub-step landed all 13 plus
+> `parent_name`, on **both** channels, compared **exactly** (`rel = abs = 0`; every value is
+> a class default, a deck literal or an untouched `0.0`, so the derivation went to
+> `tests/TOLERANCE_NOTES.md` and no floor was added). **0** ledger entries: the only
+> measured divergence is an uninitialized read in *both* oracles on in-zone shunt
+> Capacitors/Reactors (`EnergyMeter.pas` assigns through `pPCelem: TPCElement` — r4133
+> `:1868-1869`, capi `:1927-1929`), nondeterministic and therefore un-envelopable; it is
+> excluded per (channel, class, field) **and per element** in `harness::PD_SKIP_FIELDS` (4 capi
+> cells `fault_rate`/`pct_permanent`, 4 r4133 cells `lambda`/`accumulated_l`, consulted only where
+> the write lands — an in-zone shunt member, `pd_skip_applies`, narrowed by the audit settlement —
+> each still visited and hit-accounted) and pinned by
+> `pd_elements_shunt_reliability_inputs_survive_the_meter_zone` and
+> `pd_elements_shunt_branch_flt_rate_survives_the_meter_zone`. `WP_G1_MODES` **96 → 99**
+> (`PDElementsI:1`/`:2`, `PDElementsS:0`) and `EXCLUDED_WRITE_MODES` **2 → 3**. Two
+> deviations from the plan's letter, both recorded: `ParentPDElement` is read **last** per
+> element (it re-points `ActiveCktElement` at the parent and never restores it), not in the
+> fastdss column order; and the sub-step carries a **separate engine-fix commit** (decision
+> D9) restoring `DoResetMeterZones` to `ReProcessBusDefs`' tail (r4133 `Circuit.pas:2411`),
+> without which `MakeBusList` left every EnergyMeter with an empty zone. `SectionID`,
+> `TotalMiles`, `Lambda` and `AccumulatedL` are wired and compared but **0 on every live
+> case** at the time (no deck ran `RelCalc`); **G1.6(i) discharged both obligations on
+> 2026-09-05** — the four fields are live and oracle-compared on three cases (pin
+> `pd_elements_relcalc_fields_are_live_after_relcalc`), and the exactness note is re-derived
+> affirmatively at `tests/TOLERANCE_NOTES.md:1011`: the twelve 1-ULP cells the live gate first
+> reported were the gate's own JSON decoder (D11/D18 — the wire tokens round-trip bit for bit,
+> 15/15), so no floor was added and `compare_pd_elements` keeps `rel = abs = 0`. Full record:
+> `docs/phase-records/golden-rebase.md` §"GOLDEN_REBASE WP-G1 — records".
 
 ### G1.7 — topology interface
 
@@ -781,6 +1082,59 @@ fastdss compares wholesale.
 these, so this sub-step is straight parity, not a bonus; `ActiveLevel`/
 `BranchName`/`ActiveBranch` are iteration cursors and are deliberately not
 compared).
+
+> **As executed (2026-09-04/05, lane `lane-s`).** The six rows landed on both channels in one
+> commit: flag `compare_topology` flipped to `wired: true` and **forced on every live
+> non-`large` case** — on the lane 440 = 313 `both` / 83 `r4133` / 44 `capi_v0145`
+> (`scheduler::FORCED_TOPOLOGY_POPULATION`, re-derived each run and asserted equal to the
+> property surface's population) — with seven decks also *declaring* the flag, because
+> `population.lock.json` fingerprints the manifest flag and cannot see scheduler-side forcing
+> (`TOPOLOGY_DECLARED_IN_MANIFEST`, one witness per gating channel). The lock moved by exactly
+> seven `topo=0 → topo=1` tokens; **0** golden bytes, **0** ledger entries, 0 new
+> `LEDGER_FIELDS`, and **no floor** — the surface is fully discrete (counts and identifier
+> lists), which `tests/TOLERANCE_NOTES.md` now records as deliberate. **No FFI was added**:
+> G1.0 had already bound and classified the six `TopologyI`/`TopologyV` modes `Served`.
+> Four corrections to the text above. (1) **Not "iteration cursors".** `ActiveLevel`,
+> `BranchName` and `ActiveBranch` are excluded for a stronger reason: each *reassigns*
+> `ActiveCircuit.ActiveCktElement` (r4133 `DDLL/DTopology.pas:29-54`, `:96-160`, `:170-186`;
+> capi `CAPI/CAPI_Topology.pas:98-110`) and would poison the per-element capture of the same
+> step — the brief's B16 gap, now a source-text rail rather than a comment: six new cases in
+> `crates/dss-core/tests/capture_order.rs` assert that the surface is read **strictly last**
+> (the first `Topology` read builds the memoized tree and rewrites
+> `Checked`/`IsIsolated`/`BusChecked`, r4133 `Common/Circuit.pas:2932-2950`) and that exactly
+> six of `ITopology`'s eighteen members are touched on either transport — the bridge binds no
+> other. (2) **Two shape normalizations**, transport-side and measured corpus-wide: the empty
+> sentinel `["NONE"] → []` (r4133 pre-seeds `TStr[0] := 'NONE'`, `DTopology.pas:271-275`; capi
+> `DefaultResult(…, 'NONE')`, `CAPI_Utils.pas:115`) and capi's single trailing `''`
+> (`CAPI_Topology.pas:126-132`; absent on r4133 and on `AllLoopedPairs`, `k := -1`). The
+> comparator **asserts the fixpoint** instead of repeating the repair, so a transport that
+> stops normalizing fails rather than comparing a phantom entry as empty. (3) **Two upstream
+> defects are asserted, not excluded** (coordinator decisions D15/D16, 0 ledger rows): both
+> oracles memoize `Branch_List` and never invalidate it on a conductor open/close, and both
+> dedup the looped-pair buffer in overlapping windows (`i := i + 1`,
+> `DTopology.pas:286-296`), dropping a genuinely new pair that coincides with a straddling
+> window. The port does neither; where the port's fresh answer differs the comparator asserts
+> the *mechanism* — `oracle(k) == port(step 0)` for the four isolation fields, and
+> `oracle.looped_pairs == window_dedup(port candidates)` for the pair list — with two
+> fail-on-stale populations, `TOPOLOGY_STALE_DECLINES = (16 cases, 135 case-steps)` and
+> `LOOPED_PAIR_WINDOW_DECLINES = (8, 96)`, over 3 314 compared (case, step, channel) triples
+> on the lane (3 312 after the merge into `update`, both constants unmoved;
+> `FORCED_TOPOLOGY_POPULATION` re-derived there to `(441, 310, 87, 44)` for G1.4a's D12/D14
+> corpus flips).
+> (4) **Two PORT gaps the new surface exposed were fixed in-part**, both inside the
+> surface commit: topology adjacency routed by `TPDElement.IsShunt` instead of Pascal's
+> class-switched `IsShuntElement` (capi `Shared/CktTree.pas:522-528`, r4133
+> `Common/Utilities.pas:1262-1274`), which hid every `GICTransformer` loop; and
+> `CktElementData::set_nconds` forcing a terminal reallocation that r4133's own guard
+> (`Common/CktElement.pas:349-361`, `:386`) would have skipped, which unwired every terminal
+> on a no-op `Phases=` re-set — a second `MakePosSequence` left the whole model
+> bus-unresolved. Coordinator decisions applied: **D2** (no bridge change owed), **D3**
+> (capture order), **D4** (defect ⇒ the port computes the correct value), **D7** (lane
+> `lane-s`), **D15**, **D16**.
+> **Tier as executed:** §0's `opus-high+` row held for the capture, comparator, flag and
+> docs parts; the two settlement parts (the D15 isolation rebase and the D16 window model,
+> with the engine-side candidate sequence) ran at `opus-xhigh`, as the sub-step brief
+> foresaw for "the memoization question".
 
 ### G1.8 — incidence/Laplacian
 
@@ -797,6 +1151,40 @@ numbers on every case (cheap, universal). Plus the Solution scalars
 `ControlActionsDone`, `SystemYChanged`, `Seconds`/`LoadMult`/`Year`/`Hour`/`Mode`
 (discrete/counter → exact; the iteration-count lane policy of `lane.rs` applies
 where it already exists).
+
+> **As executed (2026-09-04, lane `lane-s`).** Both channels wired in one commit,
+> **unflagged and universal** as G1.0 decided — no `G1_SURFACE_FLAGS` row, no rigor
+> token, **no `population.lock.json` regen**, 0 golden bytes, **0** ledger entries and
+> 0 new `LEDGER_FIELDS`. Five things were settled in-part and are not what this text
+> assumed. (1) `Totaliterations` is *literally* `Solution.Iteration`
+> (`DDLL/DSolution.pas:218-220`), so it is captured and asserted as an alias — in
+> engine and live on every checkpoint — instead of being oracle-compared twice; the
+> same treatment for `Circuit.YCurrents` (`DDLL/DCircuit.pas:777-787` = the
+> already-compared `injection` vector), which is therefore not built at all.
+> (2) The dossier's cancellation model for `Circuit.Losses` is **refuted by
+> measurement** — `Σ|term| / |Σ term|` is 1.000…1.5036 corpus-wide (worst ckt24), the
+> summands being each element's own same-signed loss — so no floor was written for it
+> and the kill criterion ("looser than 1e-4 rel on a feeder case") is answered by the
+> measured feeder maximum `2.719409449622587e-08`. (3) The value arms **inherit** the
+> ledger instead of re-pinning it: an aggregate is a linear functional of per-element
+> quantities the ledger already partitions, and pinning that echo would have cost ~14
+> rows (kill criterion) for divergences already owned — so they consume the runner's
+> `LedgerView::element_rewrites`, while the membership/identity arms stay on the raw
+> oracle capture on every case. (4) `MostIterationsDone` is per-**step**, not per-run
+> (`Common/Solution.pas:2568` zeroes it in `SnapShotInit`), which is what makes it
+> comparable checkpoint-by-checkpoint. (5) Five `modes.rs` `Circuit` rows moved
+> `ModeEffect::Pure` → `Impure` (each walks a `TPointerList` to exhaustion and calls
+> `ComputeIterminal` on what it walks) — `CIRCUIT_LOSSES` moves the very `PDElements`
+> cursor G1.6b reads. Also settled: the two open measurements — `SystemYChanged` agrees
+> after every solve on both engines (nothing to exclude, the Y-rebuild scheduling matches),
+> and `SubstationLosses` already has corpus witnesses (`8500-Node`, `ckt5`, `ckt24`), so **no**
+> synthetic deck and no population change was owed — and both transports gained the element
+> capture's retry-once tolerance, the aggregates now being the first post-solve read to prime a
+> user-model `DoSimpleMsg` (found and fixed in-part, not parked). Coordinator decisions applied:
+> **D3** (the A/B/C capture order, asserted by `crates/dss-core/tests/capture_order.rs`),
+> **D4** (r4133's `0|1` `SystemYChanged`/`ControlActionsDone` normalized to `bool` at the bridge
+> — a shape normalization plus one pin, never a ledger row) and **D7** (lane `lane-s`).
+> Full record: `docs/phase-records/golden-rebase.md` §"GOLDEN_REBASE WP-G1 — records".
 
 ### G1.10 — run-file artifacts
 
@@ -824,7 +1212,13 @@ superseded — the DLL has **no** `*_Get_*` symbols. It is the grouped DDLL API,
 entry point per (family, ABI shape) with the property selected by a mode index, so
 the acceptance is the **mode probe**, and G1.0 executed it once for all of WP-G1:
 all 96 modes these three sub-steps need classify `Served`, the expected-miss list is
-empty (`crates/dss-epri/tests/modes.rs`). The `X_Get_Y` spellings below and above
+empty (`crates/dss-epri/tests/modes.rs`). **2026-09-05:** the table is now **103**
+rows — G1.6b added the three PDElements walk arms, G1.3a added
+`CktElement.Enabled` (`CktElementI(12)`, `DCktElement.pas:263`), the safety
+predicate its enabled-only polar capture needs, G1.4a added `Circuit.AllBusNames`
+and `Bus.Nodes`, and G1.6(i) added `Meters.SetActiveSection`, the section cursor
+its reliability capture drives; the probe was re-run at 103/103
+`Served`, still zero misses. The `X_Get_Y` spellings below and above
 name the *properties* to capture, not symbols to bind. See the WP-G1 preamble note
 and TESTING.md §"The r4133 bridge — entry points, mode capability, do-not-call".)*
 
@@ -836,8 +1230,10 @@ Serving G1.4 + G1.5: `Bus_Get_puVmagAngle/SeqVoltages/CplxSeqVoltages/Distance/`
 
 ### G1.11c — r4133 channel: Meters/Topology/Solution/Circuit families
 
-Serving G1.6–G1.9 (incl. the CAIDI capability measurement of G1.6). A group the
-DLL cannot serve stays capi-only with a one-line note in TESTING.md.
+Serving G1.6–G1.9. A group the DLL cannot serve stays capi-only with a one-line note in
+TESTING.md. (**2026-09-05, G1.6(i):** the CAIDI capability measurement is moot — CAIDI has
+no API mode on either channel and is EnergyMeter property #22 of `AllPropertyNames`,
+live-compared through `compare_all_properties` on both channels; see §G1.6 as-executed.)
 
 ---
 

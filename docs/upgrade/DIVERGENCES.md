@@ -2457,6 +2457,46 @@ which this dispatch never writes. Upstream report:
 `investigations/to_opendss/55-windgen-qmode0-zero-var-dispatch.md` (local-only).
 Full record: `docs/phase-records/r4133-props-rp3.md` §RP3.10.
 
+## L8 — CapControl TIMECONTROL binds its bus to the MONITORED element's terminal (capi 0.14.5 uses the capacitor's bus) — GOLDEN_REBASE G1.3a, 2026-09-04
+
+**Observable.** A `type=time` CapControl that names an `element=` reports its own
+terminal-1 voltages at the *monitored* element's terminal. The pinned dss_capi
+0.14.5 reports them at the *controlled capacitor's* bus instead. On
+`tests/corpus/controls/capcontrol/capcontrol_time.dss`
+(`line.lf bus1=src bus2=b`, both capacitors on `b`, both banks
+`element=line.lf terminal=1`) `CapControl.cc1.VoltagesMagAng[0]` is
+**7342.020904321447 V** (bus `src`) on the port and on r4133, and
+**7276.216225426737 V** (bus `b`) on capi 0.14.5 — 65.80467889471038 V, 0.90 %
+apart, i.e. a different bus, not a numeric gap.
+
+**EPRI r4133 (the authority).** `Version8/Source/Controls/CapControl.pas:605`
+computes `ElmReq := ElmReq and (ControlType <> FOLLOWCONTROL)`, so **only**
+FOLLOWCONTROL skips the monitored element; with one present the control binds
+`Setbus(1, MonitoredElement.GetBus(ElementTerminal))` (`:622`) and sizes
+`cBuffer`/`CondOffset` off that element (`:624`/`:625`). The
+`ControlledElement.GetBus(1)` arm at `:633` is the no-monitored-element branch
+only. **capi 0.14.5** (`.inputs/dss_capi/src/Controls/CapControl.pas:597-608`)
+still carries the pre-`b9bc87b8` form: for TIMECONTROL *and* FOLLOWCONTROL it
+sets `effElement := ControlledElement` and forces `ElementTerminal := 1`, then
+`Setbus(1, effElement.GetBus(ElementTerminal))` at `:619`.
+
+**Decision — port follows r4133; not adopted from the 0.15.x side alone.** This
+is the bus half of the split whose *readback* half (`effElement`/`Terminal`) was
+already adopted at UPGRADE WP-U1.6 as **D11 (part 2)** above, on r4133 +
+capi015-probe evidence; the port's `control_type != Follow` arm
+(`crates/dss-core/src/elements/control/cap_control/mod.rs`) implements both
+halves at once, so no engine code moved here. What is new in G1.3a is the
+*gate*: `CktElement.VoltagesMagAng` reads `NodeV` through the element's own
+`NodeRef`, so it is the first live channel that can see which bus a control sat
+down on. Nothing is masked silently — the `capi_v0145` divergence is excluded
+field-by-field by `tests/corpus/ledger.json` entry
+`capi-capcontrol-time-bus-is-the-capacitors` (`element` sub-channel
+`voltages_mag_ang`, `name_re` the two CapControls only, cause
+`capcontrol-time-bus-is-the-capacitors`), the **r4133 channel of the same case
+needs no entry at all**, and both numbers are pinned by
+`dss_core::exec::tests::derived_polar::capcontrol_time_voltages_follow_the_monitored_elements_terminal`.
+No EPRI report is owed — r4133 is the side that is right.
+
 ## D12/D14 — GICTransformer decks gate on **r4133 only**; the pinned capi 0.14.5 oracle is nondeterministic on them — GOLDEN_REBASE G1.4a, 2026-09-04
 
 *(`D12`/`D14` here are the **coordinator session decisions** of the 2026-09-04 GOLDEN_REBASE
@@ -2544,6 +2584,73 @@ non-vacuously by `…::the_gictransformer_channel_guard_refuses_a_capi_gated_dec
 `FORCED_PROPS_POPULATION` / `FORCED_BUS_POPULATION` move
 `(440, 313, 83, 44) → (441, 310, 87, 44)` (three flips + one new case), both
 re-derived from the manifests on every run.
+
+## L9 — a control re-attaches to the END of its element's `ControlElementList` on every Edit (capi 0.14.5 only on a `SwitchedObj` write) — GOLDEN_REBASE G1.3d(ii), 2026-09-05
+
+**Observable.** `CktElement.OCPDevIndex` / `OCPDevType` / `NumControls` /
+`HasVoltControl` / `HasSwitchControl` all answer from the element's
+`ControlElementList`, so their answer depends on the list's ORDER whenever an
+element carries controls of more than one class. Probed on a 3-phase line
+carrying `Relay.r`, `Fuse.f` and `SwtControl.s` (attached in that order): all
+three engines report `OCPDevType = 3` (Relay) after the build; after
+`edit relay.r delay=0.05` + `solve`, **EPRI r4133 answers 1 (the Fuse)** because
+the relay moved to the end of the list, while **dss_capi 0.14.5 still answers 3**.
+
+**EPRI r4133 (the authority).** `TControlElem.Set_ControlledElement`
+(`Version8/Source/Controls/ControlElem.pas:113-131`) is a remove-then-append:
+`RemoveSelfFromControlElementList` (`:81-99`) rebuilds the list omitting self,
+then `ControlElementList.Add(Self)` appends at the end. r4133 re-assigns
+`ControlledElement := ActiveCircuit[ActorID].CktElements.Get(DevIndex)` inside
+**`RecalcElementData`** — i.e. on **every** edit — for each of the six control
+classes that join a list (`Controls/Relay.pas:955`, reached from `:626`;
+`Recloser.pas:702`, `SwtControl.pas:332`, `CapControl.pas:580`,
+`RegControl.pas:693`, `fuse.pas:470`). **capi 0.14.5** instead makes
+`ControlledElement` a property-write target
+(`.inputs/dss_capi/src/Controls/Relay.pas:439-441`: `PropertyOffset[SwitchedObj]
+:= @obj.FControlledElement`, `PropertyWriteFunction := @SetControlledElement`),
+so an edit that does not write `SwitchedObj` leaves the list order untouched.
+
+**Decision — port follows r4133.** The port materialised no `ControlElementList`
+at all (`report/show/controlled.rs` scanned `Circuit::controls`, i.e. *creation*
+order, and `CktElementData::ocp_device_type` was a latch written once at
+registration). G1.3d(ii) adds the list as a circuit-wide attach order
+(`Circuit::control_attach_order`, maintained by `Circuit::reattach_control` at
+the port's `RecalcElementData` moment) bucketed per element by
+`circuit::controls::derive_control_lists`, which `Show Controlled`, the five
+`CktElement` scalars and the reliability sweep's live `GetOCPDeviceType` all
+share. `Circuit::controls` — the *sampling* order, which no oracle exposes and
+which a reorder would move control-action event logs — is deliberately untouched.
+
+**Nothing is masked: the divergence costs 0 ledger rows because it is not
+observable on the corpus.** It needs an element carrying controls of two classes
+*and* a later re-edit. **Measured over the whole gated population** (G1.3d(ii)
+audit settlement, 2026-09-05, after the first census — a live capi walk of
+`tests/corpus/controls/**` only — proved too narrow): of 298 565 compared
+(case, channel, step, element) rows, 3 184 carry a control and **18** carry two or
+more; all 18 are **Relay-only** lists — `Line.thev` under `Relay.21src` +
+`Relay.21rev` in the eight Distance/TD21 relay decks, `Line.motorleads` under
+`Relay.{mfrov/uv,mfr46,mfr47}` in `controls:fuse/indmach_r4133/
+indmach_{snap,dyn}.dss` — so every permutation answers the same `OCPDevIndex = 1`
+and `OCPDevType = 3`, and the remaining three scalars are order-free by
+construction. The census is re-derived on every full run and fails on stale in
+both directions (`harness::assert_no_multi_control_element`, called from the
+corpus gate's epilogue). The engine numbers are pinned by
+`dss_core::exec::tests::element_extras::ocp_dev_type_follows_the_last_attach_order`
+(port and r4133 `1`, capi 0.14.5 `3`), with
+`the_control_sampling_order_is_not_reordered_by_a_re_edit` guarding the sampling
+order and `only_six_control_classes_join_an_elements_control_list` guarding the
+class set. No EPRI report is owed — r4133 is the side that is right; capi 0.14.5
+is a numeric oracle only.
+
+**A second, non-divergent fact settled with it.** `GetOCPDeviceType`
+(r4133 `Common/Utilities.pas:3165-3184`) has **no `Enabled` test**, so a
+*disabled* OCP control still holds its slot and still wins the scan; both
+channels agree (`Line.l2` with a disabled `Fuse.fd` ahead of an enabled
+`Relay.rd` reads `OCPDevType = 1` on capi and on r4133). The port's registration
+latch answered `3` there, so the accessors recompute from the derived list with
+no `Enabled` filter anywhere — pinned by
+`a_disabled_ocp_control_still_wins_the_ocp_scan`, and the same live scan replaced
+the latch in the reliability sweep (`Meters/EnergyMeter.pas:2538`).
 
 ## G1.4c — Bus `SeqVoltages`/`CplxSeqVoltages` and `VLL`/`puVLL`: the port's semantics differ from **both** oracles — GOLDEN_REBASE G1.4c, 2026-09-05
 
