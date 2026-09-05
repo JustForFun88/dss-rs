@@ -2886,27 +2886,29 @@ row against the pre-fix lock.
   `SymComp::official()` source (2.1e-7 tighter), the n/A magnitude sentinel `1.0` as a convention
   `seq_arm` disambiguates, `dead_channels` policing `divergence` entries only (`ledger.rs:414-418`).
 - **G1.3c** (2026-09-06, lane `lane-e`; D4/D7/D24) — per-element `CplxSeqCurrents`, `CplxSeqVoltages`
-  and `TotalPowers` on both channels over the same 442 `compare_derived` cases, completing the flag's
+  and `TotalPowers` on both channels over the same 442 `compare_derived` cases, closing the flag at
   thirteen fields; **0 new ledger entries / 0 causes** (58 / 31), **31** measured widenings on 11
   `element` scopes, 0 golden bytes, no band moved, `WP_G1_MODES` still 97. Neither G1.3b divergence
-  reaches here, both measured: the n/A sentinel is `(-1, 0)` on **both** engines (r4133
-  `DDLL/DCktElement.pas:60`/`:106`, capi `CAPI/CAPI_Alt.pas:268`/`:324`) and D-b1's posseq defect lives
-  only in mode 9 — no fold, no census (D24). `TotalPowers` becomes the fourth `LANE_SKIP_ELEM_POWERS`
-  channel on the two `newton*` decks (`GetPhasePower` opens with `ComputeIterminal`, r4133
-  `Common/CktElement.pas:1049`; ~20x the band on both channels), the `CplxSeq*` pair stays compared —
-  gating it at all is stronger than fastdss. Detail: plan §G1.3c, TESTING.md, TOLERANCE_NOTES §G1.3c;
-  pins **7** `exec::tests::derived_totals` + 1 `exec::tests::newton` / **33**
-  `harness::cplx_seq_and_total_power_floors` / **13** `ledger::*` / 1 `capture_order::*`. `548bc7b8`
-  + the settlement below; gate **7 319 / 0 / 5** per lane after it (**7 318** at `548bc7b8`),
-  `lane_diff` PASS max |Δ| = 0; the settlement moved no product line (comment-only in `src/`).
-- **G1.3c audit settlement** (2026-09-06, `a15e2ae3`) — 11 findings: **7 fixed / 4 recorded / 0 refuted**
-  (`tmp/g13c/settle.md`). Fixed: the missing registry `every_pin_the_g13c_record_names_exists_and_is_cited`
+  reaches here (measured): the n/A sentinel is `(-1, 0)` on both engines (r4133
+  `DDLL/DCktElement.pas:60`/`:106`, capi `CAPI/CAPI_Alt.pas:268`/`:324`) and D-b1's posseq defect
+  lives only in mode 9 — no fold, no census (D24). `TotalPowers` joins `LANE_SKIP_ELEM_POWERS` as its
+  fourth channel on the two `newton*` decks (`GetPhasePower` opens with `ComputeIterminal`, r4133
+  `Common/CktElement.pas:1049`; ~20x the band on both channels); the `CplxSeq*` pair stays compared,
+  stronger than fastdss. Detail: plan §G1.3c, TESTING.md, TOLERANCE_NOTES §G1.3c; **55** pins — 7
+  `exec::tests::derived_totals` + 1 `exec::tests::newton`, 33 `harness::cplx_seq_and_total_power_floors`,
+  13 `ledger::*`, 1 `capture_order::*`. `548bc7b8` / `a15e2ae3` + docs; gate **7 319 / 0 / 5** per lane
+  after the settlement (**7 318** at `548bc7b8`), `lane_diff` PASS max |Δ| = 0 (523 cases / 3 220 861).
+- **G1.3c audit settlement** (2026-09-06, `a15e2ae3`) — 11 findings: **7 fixed / 4 recorded / 0
+  refuted**. Fixed: the missing registry `every_pin_the_g13c_record_names_exists_and_is_cited`
   (55 pins, both group counts — the one **major**); a fourth `require_capture` rail on `cseq_v_re`
-  (`runner.rs:615`) driven empty on **both** channels, plus the r4133 leg of the `CplxSeqCurrents` rail;
-  ~20 Pascal anchors re-pointed at the construct they name (copy loops `:906-910`/`:952-956` vs capi's
-  copy-free `ResultPtr` writes, `setlength` `:900`/`:946`/`:1118`, `GetPhasePower` `:1120`, `cmulreal`
-  `:1132`, guards `:878`/`:906`); the ledger's G1.3c date; this record trimmed. Recorded: `dead_channels`
+  (`runner.rs:615`) driven empty on **both** channels, plus the r4133 leg of the `CplxSeqCurrents`
+  rail; ~20 Pascal anchors re-pointed at the construct they name (copy loops `:906-910`/`:952-956`
+  vs capi's copy-free `ResultPtr` writes, `setlength` `:900`/`:946`/`:1118`, `GetPhasePower` `:1120`,
+  `cmulreal` `:1132`, guards `:878`/`:906`); the ledger's G1.3c date. Recorded: `dead_channels`
   polices `divergence` entries only (139 `element` sub-channel names, 128 on exclusions — noted in
   `ledger.rs`), the three `envelope_element` branches no divergence selects yet (fixture-covered;
-  inventing a row to make them live is the mask WP-G1 forbids), ranges stopping 1-2 lines short of a
-  procedure's `end;`, and coordinator note "D28", absent in this lane.
+  inventing a row to make them live is the mask WP-G1 forbids), procedure ranges stopping 1-2 lines
+  short of the closing `end;`, and coordinator note "D28", absent in this lane. Carried out of range:
+  the `file.rs:LINE` tripwire reads only TESTING.md / TOLERANCE_NOTES, so `harness/mod.rs:2773` and
+  `runner.rs:681` still cite `ledger.rs:1695-1697` / `:1702` for `clone_element_cap` /
+  `rewrite_element_selected`, which sit at `:2157-2159` / `:2164` today.
