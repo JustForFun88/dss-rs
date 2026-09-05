@@ -154,7 +154,7 @@ case and six flagged cases compare the indices, every section, `CalcCurrent`/`Al
 `Meters.Totals` and the **ordered** zone lists, exact but for three cells banded from
 existing tiers (**D17a**), **0** new entries, one pinned skip closed on the corpus's only
 `AllocateLoads` deck (524 → **525** cases), G1.6b's two deferrals discharged (**D11/D18**);
-and **G1.6(ii)** (2026-09-05, `lane-m`, `3e65ae2d` + `572954e6` + settlement), the eight per-bus
+and **G1.6(ii)** (2026-09-05, `lane-m`, `3e65ae2d` + `572954e6` + `fc4dfa73`), the eight per-bus
 reliability columns inside that same payload — 6 cases / 50 capi + 84 r4133 buses, compared
 exactly, keys `bus:<bus>:<field>` on the existing `reliability` field, **0** new entries, plus
 the **D20/D22** engine fix (`calc_reliability_indices` recomputes `TotalUpDownstreamCustomers`,
@@ -314,10 +314,11 @@ each row's measured cost.
   sub-step** (first seen at G1.2, 2026-08-29). Unfiltered `cargo test --workspace` runs
   intermittently leave untracked deck-written exports in the tracked corpus tree — nearly
   always `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*` / `AutoHLT_*` `.txt`,
-  from the decks' own `export … file=` lines). **Nineteen sightings** 2026-08-29 …
-  2026-09-05 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2, §RP3.10 ×3, §RP5.1 ×1, G1.0 ×2,
-  G1.9 ×2, G1.6b ×1, G1.6(i) ×2 — the last, after a settlement gate + `lane_diff`, was 22
-  `.txt` plus a 0-byte `controls/gfm/DA3ABD.tmp`, a new shape), 1 … 36 files, varying
+  from the decks' own `export … file=` lines). **Twenty sightings** 2026-08-29 … 2026-09-05
+  (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2, §RP3.10 ×3, §RP5.1 ×1, G1.0 ×2, G1.9 ×2,
+  G1.6b ×1, G1.6(i) ×2, G1.6(ii) ×1 — G1.6(i)'s last was 22 `.txt` plus a 0-byte
+  `controls/gfm/DA3ABD.tmp`, a new shape, G1.6(ii)'s 12: 5 `AutoTrans` exports + 7
+  `IEEE8500u_Mon_storage_*` csv, its settlement gate then clean first attempt), 1 … 36 files, varying
   between runs of the *same* tree (measured at §RP3.13) and once with an unreproducible
   `corpus_gate` `137 passed; 1 failed`; every set was removed before its commit and both
   lanes were green with the files present, no tracked corpus or golden byte ever moving, so
