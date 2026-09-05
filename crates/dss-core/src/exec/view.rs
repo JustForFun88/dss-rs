@@ -1373,7 +1373,16 @@ impl Dss {
                 // Pascal reads `PresentBranch.LoopLineObj` unguarded; the port's
                 // `loop_elem` is set together with `is_looped`
                 // (`solution/topology.rs:178-190`), so `None` is unreachable —
-                // and a missing partner must not invent a pair either way.
+                // and a missing partner must not invent a pair either way. The
+                // claim is enforced where it is made rather than left as a silent
+                // skip (G1.7 audit settlement): every test build, the corpus gate
+                // included, runs this assert on every looped node.
+                debug_assert!(
+                    loop_elem.is_some(),
+                    "a node flagged `is_looped` carries no `loop_elem`: \
+                     `num_loops` and `looped_pairs` would part company silently \
+                     (the two are set together in `solution/topology.rs`)"
+                );
                 if let Some(le) = loop_elem {
                     looped_pair_candidates.push((full_name(pd_ref), full_name(le)));
                 }
