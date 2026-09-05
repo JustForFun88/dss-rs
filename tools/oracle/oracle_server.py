@@ -72,6 +72,19 @@ def _polar_pair(flat) -> tuple:
     return [float(x) for x in vals[0::2]], [float(x) for x in vals[1::2]]
 
 
+def _re_im_pair(flat) -> tuple:
+    """De-interleave a Pascal complex `[re, im, re, im, ...]` array into a
+    `(res, ims)` pair — the same `i_re`/`i_im`, `p_kw`/`p_kvar` convention
+    `gen_checkpoints.capture_element` uses, so the Rust comparator never does
+    stride-2 index arithmetic.
+
+    Identical arithmetic to `_polar_pair`, deliberately NOT the same function:
+    the name is what tells the reader (and the comparator author) that the two
+    halves are rectangular components, not `(magnitude, angle)`."""
+    vals = list(flat)
+    return [float(x) for x in vals[0::2]], [float(x) for x in vals[1::2]]
+
+
 def capture_all_elements(
     ckt,
     tolerate_user_model: bool = False,
@@ -130,11 +143,39 @@ def capture_all_elements(
     captured for every element and compared exactly.
 
     `element_extras` (request key `"element_extras"`, manifest flag
-    `compare_element_extras`): the discrete index/name scalars. The four
-    scalars are read for EVERY element — all four are pure field reads
+    `compare_element_extras`): the discrete index/name scalars (G1.3d(i)), the
+    five control-derived scalars and `PhaseLosses` (G1.3d(ii)). Nine of those
+    ten are read for EVERY element; only `NodeOrder` is conditional (below).
+
+    The four G1.3d(i) scalars are pure field reads
     (`CAPI/CAPI_CktElement.pas:182-211` for the counts, `:672-687` for
-    `EnergyMeter`; r4133 `DDLL/DCktElement.pas:139`/`:144`/`:149`/`:442`) — and
-    `NodeOrder` only for an element that is `Enabled` **and** has
+    `EnergyMeter`; r4133 `DDLL/DCktElement.pas:139`/`:144`/`:149`/`:442`).
+
+    The five G1.3d(ii) control-derived scalars — `NumControls`
+    (`CAPI/CAPI_CktElement.pas:939`, r4133 `DDLL/DCktElement.pas:237`),
+    `OCPDevIndex` (`:951` / `:242`), `OCPDevType` (`:978` / `:259`),
+    `HasVoltControl` (`:689` / `:222`) and `HasSwitchControl` (`:713` / `:207`)
+    — all answer from the element's `ControlElementList` and never touch
+    `Iterminal`, so they are order-free (group C). The two `Has*` reads do move
+    that list's cursor (`ModeEffect::Impure`), which is unobservable: every
+    consumer restarts the walk with `First`/`Get(i)`.
+
+    `PhaseLosses` (`CAPI/CAPI_CktElement.pas:327` -> `CAPI/CAPI_Alt.pas:449`,
+    r4133 `DDLL/DCktElement.pas:637`) is the exception: it is
+    `TDSSCktElement.GetPhaseLosses` (capi `Common/CktElement.pas:879`, r4133
+    `Common/CktElement.pas:1075`), whose first act on an enabled element is
+    `ComputeIterminal` (capi `:896`, r4133 `:1088`) — a cache-aware group-**A**
+    read, and therefore the FIRST element read this body issues, ahead of
+    `Losses` and of the group-B `Currents` inside `gc.capture_element`. It is
+    read for EVERY element, enabled or not: both engines zero-fill a disabled
+    one (capi guards `(not FEnabled) or (NodeRef = NIL)` at
+    `Common/CktElement.pas:890`, r4133 takes the `Else … CZERO` branch at
+    `Common/CktElement.pas:1114-1116`), so — unlike `NodeOrder` — no capture
+    predicate is owed. Units are **kW/kvar**, both transports scaling by
+    `0.001` (capi `CAPI/CAPI_Alt.pas:464`, r4133 `DDLL/DCktElement.pas:651`) —
+    unlike `Losses`, which is W/var.
+
+    `NodeOrder` is read only for an element that is `Enabled` **and** has
     `NumTerminals > 0`:
       * a never-enabled element never got `SetNodeRef`, so `NodeRef` is nil:
         capi raises 15013 (`CAPI/CAPI_CktElement.pas:900-906`) and r4133 dereferences
@@ -155,9 +196,11 @@ def capture_all_elements(
     correct (Yprim-only) currents and clears the error, so a second read returns
     them cleanly (verified: read 1 raises #567 + zeroes Error.Number, read 2 OK).
     We absorb that single priming raise (retry once) exactly as the official
-    Direct DLL warns-and-continues; any other errno re-raises. Under the new
-    order that priming raise lands on `Losses` instead of `Powers` — same
-    recompute, same absorbed warning.
+    Direct DLL warns-and-continues; any other errno re-raises. Under the D3
+    order that priming raise lands on the first cache-aware read of the element
+    rather than on `Powers`: `PhaseLosses` when `element_extras` is on, `Losses`
+    otherwise. `_read` wraps each read individually, so either absorber is
+    correct — it is the same recompute, and it clears the warning either way.
     """
     import dss as _dss
 
@@ -175,6 +218,9 @@ def capture_all_elements(
     for name in ckt.AllElementNames:  # capture-order: AllElementNames (C)
         ckt.SetActiveElement(name)  # capture-order: SetActiveElement (C)
         enabled = bool(el.Enabled)  # capture-order: Enabled (C)
+        pl = None
+        if element_extras:
+            pl = _read(lambda: el.PhaseLosses)  # capture-order: PhaseLosses (A)
         loss = _read(lambda: el.Losses)  # capture-order: Losses (A)
         # capture-order: Powers (A), Currents (B)
         cap = _read(lambda: gc.capture_element(ckt, name))
@@ -199,6 +245,14 @@ def capture_all_elements(
             # (`CktElementS`'s pre-`case` default, `DDLL/DCktElement.pas:421`).
             # Normalizing the two is the comparator's job, not the capture's.
             cap["energy_meter"] = str(el.EnergyMeter)  # capture-order: EnergyMeter (C)
+            cap["pl_kw"], cap["pl_kvar"] = _re_im_pair(pl)
+            cap["num_controls"] = int(el.NumControls)  # capture-order: NumControls (C)
+            cap["ocp_dev_index"] = int(el.OCPDevIndex)  # capture-order: OCPDevIndex (C)
+            cap["ocp_dev_type"] = int(el.OCPDevType)  # capture-order: OCPDevType (C)
+            # capture-order: HasVoltControl (C)
+            cap["has_volt_control"] = bool(el.HasVoltControl)
+            # capture-order: HasSwitchControl (C)
+            cap["has_switch_control"] = bool(el.HasSwitchControl)
             if enabled and n_terms > 0:
                 order = el.NodeOrder  # capture-order: NodeOrder (C)
                 cap["node_order"] = [int(v) for v in order]

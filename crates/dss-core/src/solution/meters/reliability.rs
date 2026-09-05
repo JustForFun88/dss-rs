@@ -3,8 +3,9 @@
 //! backward fault-rate sweep, the forward interruption sweep (counting the
 //! feeder sections delimited by OCP devices), then SAIFI/SAIDI/CAIDI.
 
+use crate::circuit::controls::control_category;
 use crate::circuit::{Bus, Circuit};
-use crate::elements::ckt::ElemFlags;
+use crate::elements::ckt::{ElemFlags, OcpDeviceType};
 use crate::elements::meter::energymeter::FeederSection;
 use crate::elements::pc::load::Load;
 use crate::elements::traits::{CktElement, ElemId, ElemStore, TypedStore};
@@ -20,6 +21,40 @@ fn pd_from_bus(store: &dyn ElemStore, r: ElemId) -> usize {
         .from_terminal
         .expect("zone PD element has a metered terminal")]
     .bus_idx()
+}
+
+/// Pascal `GetOCPDeviceType(PD_Elem)` (r4133 `Common/Utilities.pas:3165-3184`,
+/// dss_capi `Common/Utilities.pas:1996-2018`), evaluated **live** at the one
+/// place the sweep asks for it — r4133 `Meters/EnergyMeter.pas:2538` under
+/// `If PD_Elem.HasOCPDevice`, dss_capi `Meters/EnergyMeter.pas:2494`.
+///
+/// The scan walks the element's `ControlElementList` in attach order (Pascal
+/// `TControlElem.Set_ControlledElement`, r4133 `Controls/ControlElem.pas:113-131`
+/// — remove self, then append), which the port derives from
+/// [`Circuit::control_attach_order`] exactly as
+/// [`crate::circuit::controls::derive_control_lists`] and the five
+/// `CktElement` control scalars do, and stops at the first
+/// `FUSE_CONTROL`/`RECLOSER_CONTROL`/`RELAY_CONTROL` (`1`/`2`/`3`; `Result := 0`
+/// when the list holds none).
+///
+/// There is **no `Enabled` filter** on that scan, while `HasOCPDevice` — the
+/// flag gating the call — is set only by an *enabled* OCP control, so the two
+/// can disagree. Measured on the pinned capi oracle
+/// (`tmp/g13d2/probe_f5_ocp.py`: a disabled `Fuse` plus an enabled `Relay` on
+/// the section head): `Meters.OCPDeviceType == 1` (FUSE) while the port's
+/// registration-time latch `CktElementData::ocp_device_type` — written once for
+/// the first *enabled* OCP control (`exec/command.rs`
+/// `RefAction::SetOcpDevice`) — holds `3` (RELAY). The latch is therefore not
+/// read here; pinned by `exec::tests::reliability`'s
+/// `section_device_type_is_the_live_ocp_scan_not_the_registration_latch`.
+fn live_ocp_device_type(ckt: &Circuit, store: &dyn ElemStore, r: ElemId) -> OcpDeviceType {
+    ckt.control_attach_order
+        .iter()
+        .filter(|&&c| store.ckt_elem(c).controlled_element() == Some(r))
+        .map(|&c| control_category(c))
+        .find(|cat| cat.is_ocp())
+        .and_then(|cat| OcpDeviceType::from_ordinal(cat.ocp_code()))
+        .unwrap_or_default()
 }
 
 /// Pascal `TExecHelper.DoLambdaCalcs` (ExecHelper.pas l.4847): zero every bus's
@@ -211,7 +246,6 @@ fn calc_reliability_indices(
             branch_total,
             accum_br,
             has_ocp,
-            ocp_type,
         ) = {
             let cd = store.ckt_elem(r).cd();
             (
@@ -226,7 +260,6 @@ fn calc_reliability_indices(
                 cd.branch_total_customers,
                 cd.accumulated_br_flt_rate,
                 cd.flags.contains(ElemFlags::HAS_OCP_DEVICE),
-                cd.ocp_device_type,
             )
         };
         // CalcCustInterrupts.
@@ -244,10 +277,11 @@ fn calc_reliability_indices(
         s.sum_branch_flt_rates += to_num_int * branch_flt;
         s.sum_flt_rates_x_repair_hrs += to_num_int * branch_flt * rel.hrs_to_repair;
         if has_ocp {
-            // Pascal `pSection.OCPDeviceType := GetOCPDeviceType(PD_Elem)` — the
-            // 1/2/3 ordinal recorded on the element when its Relay/Recloser/Fuse
-            // resolved (WP7.2 step 3). `SeqIndex` is the 1-based sequence index.
-            s.ocp_device_type = ocp_type;
+            // Pascal `pSection.OCPDeviceType := GetOCPDeviceType(PD_Elem)`
+            // (r4133 `Meters/EnergyMeter.pas:2538`) — recomputed live from this
+            // element's control list, never the registration-time latch (see
+            // [`live_ocp_device_type`]). `SeqIndex` is the 1-based sequence index.
+            s.ocp_device_type = live_ocp_device_type(ckt, store, r);
             s.seq_index = idx;
             s.total_customers = branch_total;
             s.sect_fault_rate = accum_br;

@@ -17,9 +17,9 @@ use crate::engines::{CaseResult, Channel, Oracle};
 use crate::harness::{
     self, ExportPolicy, RowPolicy, Tolerances, capture_guard, compare_all_properties,
     compare_ctrlqueue, compare_discrete, compare_element_channels, compare_element_derived,
-    compare_element_extras, compare_eventlog, compare_export, compare_fingerprint,
-    compare_injection, compare_meter, compare_monitor, compare_probe, compare_system_y,
-    compare_variables, compare_yprim, lane, tol_for,
+    compare_element_extras, compare_element_phase_losses, compare_eventlog, compare_export,
+    compare_fingerprint, compare_injection, compare_meter, compare_monitor, compare_probe,
+    compare_system_y, compare_variables, compare_yprim, lane, tol_for,
 };
 use crate::manifest::{EngineChannel, SolvableCase};
 
@@ -562,12 +562,19 @@ pub(crate) fn compare_capture(
             }
         }
 
-        // WP-G1 G1.3d(i): the per-element **discrete index/name extras** —
-        // `NumTerminals` / `NumConductors` / `NumPhases` (r4133
-        // `DDLL/DCktElement.pas:139`/`:144`/`:149`), `EnergyMeter` (`:442`) and
-        // `NodeOrder` (`:1032`). Everything here is discrete and compared
-        // exactly: no tolerance, no `ElemChannels` selector, no ledger
-        // sub-channel.
+        // WP-G1 G1.3d: the per-element **extras**. Part (i)'s discrete
+        // index/name scalars — `NumTerminals` / `NumConductors` / `NumPhases`
+        // (r4133 `DDLL/DCktElement.pas:139`/`:144`/`:149`), `EnergyMeter`
+        // (`:442`) and `NodeOrder` (`:1032`) — plus part (ii)'s five
+        // control-derived scalars (`:207-262`, over `Common/Utilities.pas:3165`
+        // `GetOCPDeviceType`), all discrete and compared exactly: no tolerance,
+        // no `ElemChannels` selector, no ledger sub-channel.
+        //
+        // Part (ii)'s sixth field, `PhaseLosses` (`:636-658` over
+        // `Common/CktElement.pas:1078`), is numeric and goes through its own
+        // comparator on the powers tier, with the `ElemChannels` selector: it
+        // reaches the same cache-aware `ComputeIterminal` as Powers/Losses and
+        // shares their `newton*` lane exclusion (see `harness::lane`).
         //
         // Fed from the same `el_rewrites`-or-raw caps as the two loops above so
         // the block keeps their shape, which costs nothing and hides nothing: a
@@ -576,10 +583,17 @@ pub(crate) fn compare_capture(
         // (`rewrite_element_selected`, `:1702`), so the five extras fields it
         // hands back are always the untouched oracle ones.
         //
-        // The guard is the flag's own non-vacuity rail: under `element_extras`
-        // BOTH transports emit the four scalars for every element, so a channel
-        // that ignored the request answers with zero `n_terms` fields and the
-        // case fails instead of comparing nothing.
+        // The guard is the flag's own non-vacuity rail, and there are two of
+        // them because the two comparators read disjoint capture fields. Under
+        // `element_extras` BOTH transports emit the nine scalars for every
+        // element, so a channel that ignored the request answers with zero
+        // `n_terms` fields and the case fails instead of comparing nothing; and
+        // both emit `PhaseLosses` for every element too, so a channel that sent
+        // the scalars but not the array is caught by the second rail rather than
+        // by a length assert on the first element. `pl_kw` is skipped when empty
+        // on the wire (a 0-phase `UPFCControl` legitimately has none), so the
+        // rail counts the elements whose array is NON-empty — every live
+        // circuit has at least one such element (the `Vsource`).
         if c.compare_element_extras {
             capture_guard::require_capture(
                 "compare_element_extras",
@@ -587,15 +601,29 @@ pub(crate) fn compare_capture(
                 cp.elements.iter().filter(|e| e.n_terms.is_some()).count(),
                 &ctx,
             );
+            capture_guard::require_capture(
+                "compare_element_extras",
+                channel_tag(channel),
+                cp.elements.iter().filter(|e| !e.pl_kw.is_empty()).count(),
+                &ctx,
+            );
             // The channel travels with the capture for one reason only: the
             // "no meter" sentinel is spelled per channel and is folded per
             // channel (`harness::oracle_meter_name`, G1.3d(i) audit settlement).
             let ch = channel.props_channel();
             for ec in &cp.elements {
-                match el_rewrites.get(&ec.name.to_lowercase()) {
-                    Some(rw) => compare_element_extras(&snaps, rw, ch, &ctx),
-                    None => compare_element_extras(&snaps, ec, ch, &ctx),
-                }
+                // A ledger `element` scope rewrites only the sub-channels it
+                // names (`ledger.rs::rewrite_element_selected`,
+                // `SUBCHANNEL_FIELDS`). The ten discrete extras are on NO
+                // sub-channel, so `compare_element_extras` always sees the
+                // untouched oracle values — a discrete divergence can never be
+                // masked by a scope. `PhaseLosses` IS the seventh sub-channel
+                // (G1.3d(ii)): a scope selecting `phase_losses` overwrites
+                // `pl_kw`/`pl_kvar` with the port's values (x0.001), which is
+                // exactly how the ten measured widenings neutralize it here.
+                let cap = el_rewrites.get(&ec.name.to_lowercase()).unwrap_or(ec);
+                compare_element_extras(&snaps, cap, ch, &ctx);
+                compare_element_phase_losses(&snaps, cap, tol, &ctx, channels);
             }
         }
 

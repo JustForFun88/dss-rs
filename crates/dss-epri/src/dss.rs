@@ -55,13 +55,38 @@ pub type Pcl = (Vec<f64>, Vec<f64>, Vec<f64>);
 /// G1.3a derived capture ([`Engine::element_polar`]).
 pub type Polar3 = (Vec<f64>, Vec<f64>, Vec<f64>);
 
-/// `NumTerminals`, `NumConductors`, `NumPhases`, `EnergyMeter` for one element
-/// — the unconditional half of the GOLDEN_REBASE G1.3d(i) discrete-extras
-/// capture ([`Engine::element_extras`]). The meter name is the **raw** DDLL
-/// string, i.e. `"0"` when the element has no meter (`CktElementS`'s pre-`case`
-/// default, `DDLL/DCktElement.pas:421`); normalizing that against the capi
-/// channel's `""` is the comparator's job, not the capture's.
-pub type Extras = (i32, i32, i32, String);
+/// The nine unconditional discrete per-element scalars of the GOLDEN_REBASE
+/// G1.3d capture ([`Engine::element_extras`]): the four shape/name reads of
+/// part (i) and the five control-derived reads of part (ii). A named struct
+/// rather than a nine-tuple — at that width a positional read is a bug waiting
+/// for the next field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Extras {
+    /// `CktElementI(0)` `NTerms` — `DDLL/DCktElement.pas:139`.
+    pub n_terms: i32,
+    /// `CktElementI(1)` `NConds` — `:144`.
+    pub n_conds: i32,
+    /// `CktElementI(2)` `NPhases` — `:149`.
+    pub n_phases: i32,
+    /// `CktElementS(4)` `EnergyMeter`, the **raw** DDLL string: `"0"` when the
+    /// element has no meter (`CktElementS`'s pre-`case` default,
+    /// `DDLL/DCktElement.pas:421`); normalizing that against the capi channel's
+    /// `""` is the comparator's job, not the capture's.
+    pub energy_meter: String,
+    /// `CktElementI(9)` `ControlElementList.listSize` — `:237`. No `Enabled`
+    /// filter: a disabled control still occupies its slot.
+    pub num_controls: i32,
+    /// `CktElementI(10)` — the **1-based** position of the first
+    /// Fuse/Recloser/Relay in that list, `0` when it has none (`:242-258`).
+    pub ocp_dev_index: i32,
+    /// `CktElementI(11)` `GetOCPDeviceType` — `:259`,
+    /// `Common/Utilities.pas:3165` (1 = Fuse, 2 = Recloser, 3 = Relay, 0 = none).
+    pub ocp_dev_type: i32,
+    /// `CktElementI(8)` — any `CapControl`/`RegControl` in the list (`:222`).
+    pub has_volt_control: bool,
+    /// `CktElementI(7)` — any `SwtControl` in the list (`:207`).
+    pub has_switch_control: bool,
+}
 
 /// One generic C-API call request for [`Engine::ffi_dispatch`]. `kind` selects
 /// the ABI shape (`"i"`/`"f"`/`"s"`/`"v"`); only the matching scalar
@@ -486,6 +511,48 @@ impl Engine {
         self.v_f64s(self.dll.ckt_element_v, 16)
     }
 
+    /// Read `PhaseLosses` on the active element — the **first** read of the
+    /// GOLDEN_REBASE G1.3d(ii) element capture, ahead of
+    /// [`Engine::element_pcl`]'s own group-A pair.
+    ///
+    /// `CktElementV(6)` (`DDLL/DCktElement.pas:637-658`) is
+    /// `TDSSCktElement.GetPhaseLosses` (`Common/CktElement.pas:1075-1116`),
+    /// whose first act on an enabled element is `ComputeIterminal` (`:1088`):
+    /// a cache-aware **group-A** read ([`modes::CKT_ELEMENT_PHASE_LOSSES`]), so
+    /// the §1.1(a)/D3 order puts it before every read that fills a scratch
+    /// buffer through `GetCurrents`.
+    ///
+    /// Returned flat `[re, im, …]`, `NPhases` complex, in **kW/kvar**: the arm
+    /// scales every value by `0.001` at `:651` (capi does the same at
+    /// `CAPI/CAPI_Alt.pas:464`), unlike `Losses`, which is W/var. A disabled
+    /// element yields `NPhases` zeros (`Common/CktElement.pas:1114-1116`) and a
+    /// 0-phase element (`UPFCControl`, which never assigns `Nterms` —
+    /// `Controls/UPFCControl.pas:230-246`) an empty array, neither touching
+    /// `NodeRef` — so, unlike `NodeOrder`, this read needs no enabled/terminal
+    /// predicate and the two channels' shapes already agree (measured).
+    ///
+    /// Carries the same single user-model retry as [`Engine::element_pcl`]:
+    /// with `element_extras` on, this is the read that fires — and clears — a
+    /// Generator model=6's #567 priming warning.
+    pub fn element_phase_losses(&self, warn: bool, ctx: &str) -> Result<Vec<f64>, EngineError> {
+        for attempt in 0..2 {
+            let pl = self.ckt_element_phase_losses()?; // capture-order: PhaseLosses (A)
+            let (errno, desc) = self.poll_error();
+            if errno == 0 {
+                return Ok(pl);
+            }
+            if warn && USER_MODEL.contains(&errno) && attempt == 0 {
+                continue; // priming read fired + cleared the warning; retry once
+            }
+            return Err(EngineError::Dss {
+                errno,
+                desc,
+                ctx: ctx.to_string(),
+            });
+        }
+        unreachable!()
+    }
+
     /// Read **Losses, then Powers, then Currents** on the active element — the
     /// §1.1(a)/D3 capture order (`GOLDEN_REBASE_PLAN.md`, coordinator decision
     /// D3): both cache-aware group-A reads run before the group-B `Currents`,
@@ -561,17 +628,34 @@ impl Engine {
         unreachable!()
     }
 
-    /// Read `NumTerminals`, `NumConductors`, `NumPhases` and `EnergyMeter` on
-    /// the active element — the unconditional half of the GOLDEN_REBASE
-    /// G1.3d(i) discrete-extras capture (`CktElementI(0)`/`(1)`/`(2)` at
-    /// `DDLL/DCktElement.pas:139`/`:144`/`:149`, `CktElementS(4)` at `:442`;
-    /// capi `CAPI/CAPI_CktElement.pas:182-211` and `:672-687`).
+    /// Read the nine unconditional discrete scalars of the GOLDEN_REBASE
+    /// G1.3d capture on the active element: `NumTerminals`, `NumConductors`,
+    /// `NumPhases` and `EnergyMeter` (part (i) — `CktElementI(0)`/`(1)`/`(2)`
+    /// at `DDLL/DCktElement.pas:139`/`:144`/`:149`, `CktElementS(4)` at `:442`;
+    /// capi `CAPI/CAPI_CktElement.pas:182-211` and `:672-687`), then
+    /// `NumControls`, `OCPDevIndex`, `OCPDevType`, `HasVoltControl` and
+    /// `HasSwitchControl` (part (ii) — `CktElementI(9)`/`(10)`/`(11)`/`(8)`/`(7)`
+    /// at `:237`/`:242`/`:259`/`:222`/`:207`; capi
+    /// `CAPI/CAPI_CktElement.pas:939`/`:951`/`:978`/`:689`/`:713`).
     ///
-    /// All four modes are `ModeEffect::Pure` (group **C**): they read a field,
-    /// never `ComputeIterminal`, so this helper may sit anywhere in the capture
-    /// order and — unlike [`Engine::element_pcl`] / [`Engine::element_polar`] —
-    /// takes no `warn` flag: a pure read cannot fire the user-model priming
-    /// warning those two absorb. The error slot is still drained here
+    /// The five part-(ii) reads all answer from the element's
+    /// `ControlElementList` (`Common/CktElement.pas:100`), which
+    /// `TControlElem.Set_ControlledElement` maintains
+    /// (`Controls/ControlElem.pas:113-131`), and none of them touches
+    /// `Iterminal`. Neither `NumControls` nor the OCP scan filters on
+    /// `Enabled`: a disabled control keeps its slot and still wins
+    /// `GetOCPDeviceType` (`Common/Utilities.pas:3165-3184` has no `Enabled`
+    /// test) — measured on both channels, and the reason the port recomputes
+    /// these live rather than reading its registration-time latch.
+    ///
+    /// All nine modes are group **C**: seven are `ModeEffect::Pure`, and the two
+    /// `Has*` are `ModeEffect::Impure` only because their `First`/`Next` walk
+    /// leaves that list's cursor moved (`:209-218`, `:224-233`) — unobservable,
+    /// since every consumer restarts with `First`/`Get(i)`. So this helper may
+    /// sit anywhere in the capture order and — unlike [`Engine::element_pcl`] /
+    /// [`Engine::element_polar`] / [`Engine::element_phase_losses`] — takes no
+    /// `warn` flag: none of these reads can fire the user-model priming warning
+    /// those absorb. The error slot is still drained here
     /// ([`Engine::assert_clean`]) so an errno is attributed to its own element
     /// rather than to the next one's `element_pcl`.
     ///
@@ -584,9 +668,26 @@ impl Engine {
         let n_terms = self.ckt_element_num_terminals()?; // capture-order: NumTerminals (C)
         let n_conds = self.ckt_element_num_conductors()?; // capture-order: NumConductors (C)
         let n_phases = self.ckt_element_num_phases()?; // capture-order: NumPhases (C)
-        let meter = self.ckt_element_energy_meter()?; // capture-order: EnergyMeter (C)
+        let energy_meter = self.ckt_element_energy_meter()?; // capture-order: EnergyMeter (C)
+        let num_controls = self.ckt_element_num_controls()?; // capture-order: NumControls (C)
+        let ocp_dev_index = self.ckt_element_ocp_dev_index()?; // capture-order: OCPDevIndex (C)
+        let ocp_dev_type = self.ckt_element_ocp_dev_type()?; // capture-order: OCPDevType (C)
+        // capture-order: HasVoltControl (C)
+        let has_volt_control = self.ckt_element_has_volt_control()?;
+        // capture-order: HasSwitchControl (C)
+        let has_switch_control = self.ckt_element_has_switch_control()?;
         self.assert_clean(ctx)?;
-        Ok((n_terms, n_conds, n_phases, meter))
+        Ok(Extras {
+            n_terms,
+            n_conds,
+            n_phases,
+            energy_meter,
+            num_controls,
+            ocp_dev_index,
+            ocp_dev_type,
+            has_volt_control,
+            has_switch_control,
+        })
     }
 
     // ---- solution scalars -------------------------------------------------
@@ -1153,6 +1254,41 @@ impl Engine {
         }
     }
 
+    /// An `I` row whose Pascal codomain is exactly `{0, 1}`, decoded as a
+    /// `bool` — never `!= 0`.
+    ///
+    /// Every `CktElementI` arm starts from the family default `Result := 0`
+    /// (`DDLL/DCktElement.pas:137`) and a boolean arm only ever raises it to
+    /// `1`, so any other reply is the family's unknown-mode sentinel `-1`
+    /// (`:308`) — this DLL revision does not serve the mode — and must be an
+    /// error rather than a truthy answer. `codomain` names the Pascal lines the
+    /// message cites.
+    fn read_bool01(&self, spec: &ModeSpec, codomain: &str) -> Result<bool, EngineError> {
+        match self.read_mode_i(spec)? {
+            0 => Ok(false),
+            1 => Ok(true),
+            other => Err(EngineError::Other(format!(
+                "{spec}: replied {other}, but the case arm's codomain is {{0, 1}} \
+                 (DCktElement.pas{codomain})"
+            ))),
+        }
+    }
+
+    /// An `I` row that reports a count, a 1-based position or a small tag —
+    /// every one of them non-negative by construction (the family default is
+    /// `Result := 0`, `DDLL/DCktElement.pas:137`). A negative reply is the
+    /// unknown-mode sentinel `-1` (`:308`), never data, so it is an error
+    /// instead of a silently-cast count.
+    fn read_count(&self, spec: &ModeSpec) -> Result<i32, EngineError> {
+        match self.read_mode_i(spec)? {
+            v if v >= 0 => Ok(v),
+            other => Err(EngineError::Other(format!(
+                "{spec}: replied {other}, but this arm's codomain is the non-negative integers \
+                 (DCktElement.pas:137); -1 is the CktElementI unknown-mode sentinel (:308)"
+            ))),
+        }
+    }
+
     /// The `i32` array of a `myType = 1` `V` row.
     fn read_mode_ints(&self, spec: &ModeSpec) -> Result<Vec<i32>, EngineError> {
         match self.read_mode(spec)? {
@@ -1203,28 +1339,45 @@ impl Engine {
     }
 
     /// `CktElementI(7)` `CktElement.HasSwitchControl` — `DCktElement.pas:207`. See [`modes::CKT_ELEMENT_HAS_SWITCH_CONTROL`].
-    pub fn ckt_element_has_switch_control(&self) -> Result<i32, EngineError> {
-        self.read_mode_i(&modes::CKT_ELEMENT_HAS_SWITCH_CONTROL)
+    ///
+    /// Decoded **strictly**, for the reason spelled out at
+    /// [`Engine::ckt_element_enabled`]: the arm's codomain is exactly `{0, 1}`
+    /// (the `CktElementI` default `Result := 0` at `DCktElement.pas:137`, set to
+    /// `1` and `Exit`ed on the first `SWT_CONTROL` at `:210-215`), so under a
+    /// `!= 0` decode the family's unknown-mode sentinel `-1` (`:308`) would read
+    /// as "a switch control is attached".
+    pub fn ckt_element_has_switch_control(&self) -> Result<bool, EngineError> {
+        self.read_bool01(&modes::CKT_ELEMENT_HAS_SWITCH_CONTROL, ":137, :207-221")
     }
 
     /// `CktElementI(8)` `CktElement.HasVoltControl` — `DCktElement.pas:222`. See [`modes::CKT_ELEMENT_HAS_VOLT_CONTROL`].
-    pub fn ckt_element_has_volt_control(&self) -> Result<i32, EngineError> {
-        self.read_mode_i(&modes::CKT_ELEMENT_HAS_VOLT_CONTROL)
+    ///
+    /// Decoded strictly, exactly as
+    /// [`Engine::ckt_element_has_switch_control`]: codomain `{0, 1}`
+    /// (`DCktElement.pas:137`, the `CAP_CONTROL, REG_CONTROL: Result := 1` +
+    /// `Exit` at `:225-231`).
+    pub fn ckt_element_has_volt_control(&self) -> Result<bool, EngineError> {
+        self.read_bool01(&modes::CKT_ELEMENT_HAS_VOLT_CONTROL, ":137, :222-236")
     }
 
     /// `CktElementI(9)` `CktElement.NumControls` — `DCktElement.pas:237`. See [`modes::CKT_ELEMENT_NUM_CONTROLS`].
+    /// A list size: [`Engine::read_count`] rejects a negative reply.
     pub fn ckt_element_num_controls(&self) -> Result<i32, EngineError> {
-        self.read_mode_i(&modes::CKT_ELEMENT_NUM_CONTROLS)
+        self.read_count(&modes::CKT_ELEMENT_NUM_CONTROLS)
     }
 
     /// `CktElementI(10)` `CktElement.OCPDevIndex` — `DCktElement.pas:242`. See [`modes::CKT_ELEMENT_OCP_DEV_INDEX`].
+    /// A 1-based list position or `0`: [`Engine::read_count`] rejects a negative
+    /// reply.
     pub fn ckt_element_ocp_dev_index(&self) -> Result<i32, EngineError> {
-        self.read_mode_i(&modes::CKT_ELEMENT_OCP_DEV_INDEX)
+        self.read_count(&modes::CKT_ELEMENT_OCP_DEV_INDEX)
     }
 
     /// `CktElementI(11)` `CktElement.OCPDevType` — `DCktElement.pas:259`. See [`modes::CKT_ELEMENT_OCP_DEV_TYPE`].
+    /// `GetOCPDeviceType`'s codomain is `0..3` (`Common/Utilities.pas:3165-3184`):
+    /// [`Engine::read_count`] rejects a negative reply.
     pub fn ckt_element_ocp_dev_type(&self) -> Result<i32, EngineError> {
-        self.read_mode_i(&modes::CKT_ELEMENT_OCP_DEV_TYPE)
+        self.read_count(&modes::CKT_ELEMENT_OCP_DEV_TYPE)
     }
 
     /// `CktElementI(12)` `CktElement.Enabled` — `DCktElement.pas:263`. See [`modes::CKT_ELEMENT_ENABLED`].

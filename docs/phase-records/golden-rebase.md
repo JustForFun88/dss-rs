@@ -2823,3 +2823,24 @@ row against the pre-fix lock.
   so the port side stays pinned in-engine (TESTING.md names the residual). Refuted: 18 forced
   single-channel cases DO define an EnergyMeter (live capi probe: `controls/combo/combo_metering.dss`
   → `Transformer.tr` = `em`).
+- **G1.3d(ii)** (2026-09-05, lane `lane-e`; D2/D4/D7) — `PhaseLosses` + the five control-derived
+  scalars (`NumControls`, `OCPDevIndex`, `OCPDevType`, `HasVoltControl`, `HasSwitchControl`) on both
+  channels over the same **440** cases, completing `compare_element_extras` and §G1.3d.
+  `CktElement::phase_losses` ports r4133 `Common/CktElement.pas:1078-1120`; the five scalars read a
+  newly derived per-element `ControlElementList` (r4133 `Controls/ControlElem.pas:113-131`,
+  remove-then-append, re-run by every `RecalcElementData`, `Relay.pas:955`) that `Show Controlled` and
+  the reliability sweep now share. **0 new ledger entries / 0 new causes** (58 / 31), **10** measured
+  widenings onto the new `phase_losses` sub-channel, 0 golden bytes, no band moved, `WP_G1_MODES` 97.
+  `PhaseLosses` is the first channel to JOIN `LANE_SKIP_ELEM_POWERS` on the two `newton*` decks (same
+  cache-aware `ComputeIterminal`; the red measured first, 55.5× / 34.4× the band), and its floor is a
+  derivation of `assert_power_close` (`tests/TOLERANCE_NOTES.md` §G1.3d(ii)). Two divergences, pinned,
+  unledgered: r4133's per-edit re-attach vs capi 0.14.5's property-write-only `ControlledElement`
+  (`docs/upgrade/DIVERGENCES.md` L9, `ocp_dev_type_follows_the_last_attach_order`) and a disabled OCP
+  control still winning the scan (`a_disabled_ocp_control_still_wins_the_ocp_scan`). Adjacent defect
+  A-1 fixed here (`section_device_type_is_the_live_ocp_scan_not_the_registration_latch`, zero
+  golden/corpus movement); A-2 recorded in STATUS, owned by G1.6/G1.6b. Details: plan §G1.3d part (ii)
+  and TESTING.md. Pins **30**, held against this prose by
+  `every_pin_the_g13d2_record_names_exists_and_is_cited` — `exec::tests::element_extras` (19, +11),
+  `harness::element_extras_pins` (23, +4), `harness::phase_loss_bands` (10, incl.
+  `an_error_inside_the_band_passes_and_one_outside_it_fails`), 3 `ledger::*`, 1 `capture_order::*`, 1
+  `exec::tests::reliability::*`. Commits and gate totals: filled by the sub-step's own commit (P/S).

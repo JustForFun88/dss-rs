@@ -115,6 +115,26 @@ fn elem_cd<'a>(dss: &'a Dss, full: &str) -> &'a CktElementData {
     panic!("element {full} not found");
 }
 
+/// The `OCPDeviceType` of a meter's 1-based feeder section, as
+/// `Export Sections`' `DeviceType` column renders it.
+fn section_device_type(dss: &Dss, meter: &str, section: usize) -> OcpDeviceType {
+    for class in &dss.classes {
+        if !class.props.class_name().eq_ignore_ascii_case("energymeter") {
+            continue;
+        }
+        for i in 0..class.arena.len() {
+            if class.arena.obj(i).data().name().eq_ignore_ascii_case(meter) {
+                let em = class
+                    .arena
+                    .get::<crate::elements::meter::energymeter::EnergyMeter>(i)
+                    .expect("energymeter arena holds EnergyMeter objects");
+                return em.feeder_sections()[section].ocp_device_type;
+            }
+        }
+    }
+    panic!("meter {meter} not found");
+}
+
 fn bus_f64(dss: &Dss, bus: &str, f: impl Fn(&crate::circuit::bus::Bus) -> f64) -> f64 {
     let ckt = dss.circuit.as_ref().unwrap();
     let idx = ckt.bus_list.find(bus).expect("bus not found");
@@ -428,11 +448,14 @@ fn enable_then_disable_leaves_ocp_flag_stale() {
     );
 }
 
-/// Two OCP controls switching the same line: `GetOCPDeviceType` reports the
-/// **first** one defined (Pascal scans `ControlElementList` and stops at the
-/// first Fuse/Recloser/Relay). Oracle `Meters.OCPDeviceType`: fuse-first ⇒ 1,
-/// recloser-first ⇒ 2 (`tools/golden/probe_reliability.py`). The recloser
-/// always contributes `HasAutoOCPDevice` regardless of order.
+/// Two OCP controls switching the same line: the registration latch
+/// `CktElementData::ocp_device_type` records the **first** one defined. Both
+/// are enabled here and attach in definition order, so the live
+/// `GetOCPDeviceType` scan agrees with it (the case where they part is
+/// [`section_device_type_is_the_live_ocp_scan_not_the_registration_latch`]).
+/// Oracle `Meters.OCPDeviceType`: fuse-first ⇒ 1, recloser-first ⇒ 2
+/// (`tools/golden/probe_reliability.py`). The recloser always contributes
+/// `HasAutoOCPDevice` regardless of order.
 #[test]
 fn ocp_device_type_first_registered_wins() {
     let feeder = |first: &str, second: &str| -> Dss {
@@ -481,6 +504,63 @@ fn ocp_device_type_first_registered_wins() {
         elem_cd(&rec_first, "line.l1").ocp_device_type,
         OcpDeviceType::Recloser,
         "recloser defined first wins"
+    );
+}
+
+/// The feeder section's `DeviceType` is the **live** `GetOCPDeviceType` scan
+/// (r4133 `Meters/EnergyMeter.pas:2538` calls it inside the section sweep;
+/// `Common/Utilities.pas:3165-3184` is the scan, dss_capi `EnergyMeter.pas:2494`
+/// / `Utilities.pas:1996-2018`), never the registration-time latch
+/// `CktElementData::ocp_device_type`.
+///
+/// `line.l1` carries a **disabled** `Fuse` attached first and an enabled
+/// `Relay`. `HasOCPDevice` is `Enabled`-guarded, so the relay alone raises it
+/// and the latch (first *enabled* OCP control wins) records `Relay` = **3**;
+/// the scan has no `Enabled` filter, so the disabled fuse still occupies slot 1
+/// of the `ControlElementList` and wins — **1** (`FUSE`). Both oracles agree
+/// with the scan: pinned capi `Meters.OCPDeviceType == 1` for this exact deck
+/// (`tmp/g13d2/probe_f5_ocp.py`, G1.3d(ii) F5), and the API-level
+/// `CktElement.OCPDevType` is `1` on both channels
+/// (`exec::tests::element_extras::a_disabled_ocp_control_still_wins_the_ocp_scan`).
+#[test]
+fn section_device_type_is_the_live_ocp_scan_not_the_registration_latch() {
+    let mut dss = Dss::new();
+    dss.command("New circuit.t basekv=12.47 bus1=src phases=3");
+    dss.command(
+        "New line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1              faultrate=0.2 pctperm=80 repair=4",
+    );
+    dss.command(
+        "New line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.1 x1=0.1              faultrate=0.3 pctperm=90 repair=5",
+    );
+    dss.command("New load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 numcust=10");
+    dss.command("New load.ld2 bus1=b2 phases=3 kv=12.47 kw=200 numcust=25");
+    dss.command(
+        "New fuse.fd monitoredobj=line.l1 monitoredterm=1              switchedobj=line.l1 switchedterm=1 enabled=no",
+    );
+    dss.command(
+        "New relay.r type=current monitoredobj=line.l1 monitoredterm=1              switchedobj=line.l1 switchedterm=1 phasetrip=100000 groundtrip=100000 delay=0.1",
+    );
+    dss.command("New energymeter.m1 element=line.l1 terminal=1");
+    dss.command("Set voltagebases=[12.47]");
+    dss.command("CalcVoltageBases");
+    dss.command("Solve mode=snap");
+    dss.command("Relcalc");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let cd = elem_cd(&dss, "line.l1");
+    assert!(
+        cd.flags.contains(ElemFlags::HAS_OCP_DEVICE),
+        "the enabled relay raises HasOCPDevice"
+    );
+    assert_eq!(
+        cd.ocp_device_type,
+        OcpDeviceType::Relay,
+        "the registration latch still records the first ENABLED OCP control (3)"
+    );
+    assert_eq!(
+        section_device_type(&dss, "m1", 1),
+        OcpDeviceType::Fuse,
+        "the section reports the live scan (disabled fuse = 1), not the latch (relay = 3)"
     );
 }
 

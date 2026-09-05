@@ -709,6 +709,76 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
   not the fold — is what keeps that unreachable (G1.3d(i) audit settlement,
   2026-09-05).
 
+- **§G1.3d(ii) — `PhaseLosses`** (`harness::compare_element_phase_losses`,
+  `GOLDEN_REBASE_PLAN.md` WP-G1 G1.3d): the one numeric field of the surface, and
+  the **only** new band in it. **No existing floor moves and no new tolerance
+  class is introduced** — the band is derived from `assert_power_close`'s
+  per-conductor policy, which is the floor the gate already applies to every
+  `Powers` cell.
+
+  1. **The derivation.** r4133 `Common/CktElement.pas:1093-1112` forms
+     `PhaseLosses[i] = Σ_{j=0}^{nterms-1} V_k·conj(I_k)` with `k = j·NConds + i`,
+     i.e. one phase's entry is the sum of the *same* per-conductor products the
+     `powers` channel bands one at a time. The admitted error of a sum is the sum
+     of the admitted errors, so
+
+         allowed_kW(i) = Σ_j ( i_abs·max(1, |V_kj|) + i_rel·|S_kj| ),
+         |V_kj| = |P_kW[k]| / |I_A[k]|   (assert_power_close's own recovery)
+
+     — `harness::phase_loss_band`. This is the identical construction
+     `compare_element_channels` already uses for `Get_Losses` (`losses = Σ_k S_k`
+     over **all** conductors) and `residual_band` uses for a terminal's current
+     sum (§G1.3a derivation 4), restricted to the conductors of one phase. It is
+     therefore **strictly tighter** than the whole-element `Get_Losses` band it is
+     a subset of: measured on the `phase_loss_bands::line_pair` fixture the three
+     phase bands are `0.00031648320000000007`, `0.00030929039999999996`,
+     `0.00031360607999999997` kW, summing to `0.00093937968` = the `Get_Losses`
+     band exactly when `NConds == NPhases`, while adding a neutral conductor moves
+     the whole-element band to `0.0009593886185452729` and leaves the phase sum
+     unchanged.
+  2. **Why the rejection leg is expressed in bands, not in "1e-6 rel".** A phase
+     loss is a near-cancellation of two large summands (~863 kVA each on that
+     fixture against a 1.25 kW answer), so the band is `2.53e-4` *relative to the
+     answer* while being tight against the summands that produce it. A relative
+     mutation smaller than that proves nothing: the pins therefore drive the
+     comparator at 0.5 band (passes) and 1.5 bands (fails)
+     (`harness::phase_loss_bands::an_error_inside_the_band_passes_and_one_outside_it_fails`),
+     and the live non-vacuity demo used a 1e-2 relative mutation, which cleared
+     the band by 4–6 orders on every gated case.
+  3. **The oracle-side identity that makes it a derivation, not a guess.**
+     Measured on the real capture path (both transports, three decks): for every
+     element with `NConds == NPhases`, `Σ_i pl_kw[i] == loss_w[0]·1e-3` and
+     `Σ_i pl_kvar[i] == loss_w[1]·1e-3` to better than `1e-9` relative — the
+     oracle's own `PhaseLosses` really is its `Losses` bucketed by phase, so
+     inheriting the `Losses` policy is inheritance, not analogy. The port side of
+     the same identity is pinned in-engine
+     (`exec::tests::element_extras::phase_losses_are_watts_and_sum_to_get_losses`,
+     banded at `1e-13·Σ_k |V_k·conj(I_k)|` — the reassociation bound, ~75× the
+     `n·ε·Σ|terms|` estimate and ~12 orders below the smallest real disagreement;
+     measured gap `7.275958e-12` W).
+  4. **The `Get_Losses` trust guard is deliberately NOT copied.** The
+     whole-element band carries an oracle-self-consistency escape for a *measured*
+     capi015 daily-freeze quirk on a rev this gate does not run
+     (`docs/upgrade/DIVERGENCES.md` §"capi015 daily `CktElement.Losses`
+     staleness"). An untriggered twin
+     here could only mask, so `compare_element_phase_losses` has none; the
+     identity is asserted positively instead (3 above).
+  5. **Cross-channel headroom** (capi_v0145 vs r4133 on the same request, three
+     control decks): the worst absolute gap is `1.672560756560415e-09` kW on
+     `vsource.source.pl_kw[2]` of `Test/indmachtest/Master.DSS` (capi
+     `-8039.588751957046`, r4133 `-8039.5887519553735`, `2.08e-13` relative), and
+     the worst *relative* gap `1.4966018598108593e-11` on
+     `vsource.source.pl_kvar[1]` of `controls/relay/relay_oc_sym.dss` — orders
+     under the band on both channels, so it is neither vacuous nor exceeded by the
+     transports themselves.
+  6. **Where the band is deliberately not consulted at all.** On the two `newton*`
+     decks `PhaseLosses` joins `LANE_SKIP_ELEM_POWERS` (both lanes) for the same
+     stale-`Iterminal` reason as `Powers`/`Losses`; that is a lane exclusion, not a
+     floor, and it was measured first — 55.5× / 34.4× the band on `Vsource.source`
+     phase 0. Ten committed `element` ledger scopes were widened onto the new
+     `phase_losses` sub-channel, again by measurement; a ledger envelope there is
+     evaluated with this same band, so no scope can admit more than the floor
+     plus its own pinned envelope.
 - **Dynamics fixpoint residuals** (`dSpeed`/`dTheta`/`speed`) are pinned against
   the oracle's actual (small, non-zero) value, not `≈0`: `dSpeed = (Pshaft +
   electrical_power)/Mmass` is a ~1.5e-8-rel residual the oracle reproduces; a value
@@ -1553,12 +1623,12 @@ dated). What was checked, and against what:
 | claim here | landed at | verdict |
 |---|---|---|
 | the floor is `2e-4` relative | `R4133_DISPLAY_FLOOR` at `harness/props_norm.rs:895` (`Option<f64>` = `Some(2e-4)`) | unchanged |
-| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:5074`) | unchanged |
+| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:5991`) | unchanged |
 | the four derivation rows (6.431124e-05 / 1.374769e-03 / 4.404256e-03 / 5.524501e-02) | the constant's own doc table, `props_norm.rs:786-792` | identical, both places |
 | 1 951 vendored spellings claimed (from 2 006, less the 55 the mechanism clause refuses) | `props_r4133_replay::CLAIMED_DISPLAY_FLOOR` = 1951 (`props_r4133_replay.rs:565`) | unchanged |
-| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:999-1008` and `:1016-1025` (`i_rel`/`i_abs`) | unchanged |
-| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1191-1200` and `:1180-1189` | unchanged |
-| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:3966` (asserted as `i_abs / floor`) | unchanged |
+| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:1072-1081` and `:1089-1098` (`i_rel`/`i_abs`) | unchanged |
+| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1264-1273` and `:1253-1262` | unchanged |
+| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:4883` (asserted as `i_abs / floor`) | unchanged |
 | no `Tolerances` field, no `tol_for` tier moved by this plan | `Tolerances` has no props field; the floor is read only by `props_norm` | unchanged |
 
 The floor therefore still sits **3.110×** above the worst cell it claims and
