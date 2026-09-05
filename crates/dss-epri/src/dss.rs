@@ -1760,6 +1760,61 @@ impl Engine {
         self.read_mode_strings(&modes::BUS_ALL_PDE_AT_BUS)
     }
 
+    // -- Bus reliability columns (GOLDEN_REBASE G1.6(ii)) ---------------------
+    // The eight per-bus columns of fastdss' `IBus._columns`
+    // (`DSS-Python@origin/fastdss` `dss/IBus.py:19-53`) that the EnergyMeter
+    // `RelCalc` sweep writes. Every read answers for the **active bus**, so a
+    // caller selects with [`Engine::set_active_bus`] first; see the group's
+    // block comment in [`modes`] for the shared `ActiveBusIndex > 0` guard.
+
+    /// `BUSF(6)` `Bus.Lambda` — `DBus.pas:129`. See [`modes::BUS_LAMBDA`].
+    pub fn bus_lambda(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::BUS_LAMBDA)
+    }
+
+    /// `BUSF(7)` `Bus.N_interrupts` — `DBus.pas:136`. See [`modes::BUS_N_INTERRUPTS`].
+    pub fn bus_n_interrupts(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::BUS_N_INTERRUPTS)
+    }
+
+    /// `BUSF(8)` `Bus.Int_Duration` — `DBus.pas:143`. See [`modes::BUS_INT_DURATION`].
+    pub fn bus_int_duration(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::BUS_INT_DURATION)
+    }
+
+    /// `BUSF(9)` `Bus.Cust_Interrupts` — `DBus.pas:150`. See [`modes::BUS_CUST_INTERRUPTS`].
+    pub fn bus_cust_interrupts(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::BUS_CUST_INTERRUPTS)
+    }
+
+    /// `BUSF(10)` `Bus.Cust_Duration` — `DBus.pas:157`. See [`modes::BUS_CUST_DURATION`].
+    pub fn bus_cust_duration(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::BUS_CUST_DURATION)
+    }
+
+    /// `BUSF(11)` `Bus.TotalMiles` — `DBus.pas:164`. See [`modes::BUS_TOTAL_MILES`].
+    pub fn bus_total_miles(&self) -> Result<f64, EngineError> {
+        self.read_mode_f(&modes::BUS_TOTAL_MILES)
+    }
+
+    /// `BUSI(4)` `Bus.N_Customers` — `DBus.pas:60`. See [`modes::BUS_N_CUSTOMERS`].
+    ///
+    /// Goes through the family's **integer** entry point (`BUSI`), not `BUSF`:
+    /// `BusTotalNumCustomers` is a `longint`, and mode 4 on the `F` shape is
+    /// `Bus.Y - Write` (`DBus.pas:113-121`) — it would store the generic
+    /// reader's neutral `0.0` into the bus coordinate and set `Coorddefined`.
+    /// The collision is a row of [`modes::EXCLUDED_WRITE_MODES`], not a comment.
+    pub fn bus_n_customers(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::BUS_N_CUSTOMERS)
+    }
+
+    /// `BUSI(5)` `Bus.SectionID` — `DBus.pas:67`. See [`modes::BUS_SECTION_ID`],
+    /// which records why a `-1` here is data and not necessarily the `I`
+    /// unknown-mode sentinel.
+    pub fn bus_section_id(&self) -> Result<i32, EngineError> {
+        self.read_mode_i(&modes::BUS_SECTION_ID)
+    }
+
     // -- Circuit --------------------------------------------------------------
     /// `CircuitV(0)` `Circuit.Losses` — `DCircuit.pas:294`. See [`modes::CIRCUIT_LOSSES`].
     pub fn circuit_losses(&self) -> Result<Vec<f64>, EngineError> {

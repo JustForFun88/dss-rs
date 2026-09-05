@@ -470,6 +470,28 @@ Oracle-backed pin without a new capture: the `est8` deck minus its
   cache is stamped and neither engine recomputes). **Priority: low** — but it is a live
   read-that-mutates in the port, so it belongs to whoever owns the variables surface.
 
+### 1.19 `RelCalc` zone-boundary semantics — what `Bus.TotalMiles` and its siblings mean on a nested head bus
+- **Deferred by:** `GOLDEN_REBASE_PLAN.md` G1.6(i) (audit settlement AT-1, 2026-09-05) and handed on
+  by G1.6(ii) (2026-09-05), whose gated population holds no witness: its only two-meter deck
+  (`tests/corpus/controls/energymeter/midi_energymeter.dss`) aborts at 52902 before a section exists,
+  and the four `DOCTechNote` decks that would supply one are out of the population.
+- **What (measured on both oracles).** `DoLambdaCalcs` zeroes only `BusFltRate` /
+  `Bus_Num_Interrupt` circuit-wide (r4133 `Executive/ExecHelper.pas:4432-4437`), while
+  `BusTotalMiles` and its siblings are zeroed **per meter**, on the FROM bus of that meter's
+  `SequenceList` (`Meters/EnergyMeter.pas:2471-2472` → `PDElements/PDElement.pas:313-327`), and read
+  on the TO bus (`:105-111`). A bus on a zone boundary is therefore zeroed by the inner meter and
+  read by the outer one: for a nested pair `Bus.TotalMiles(src)` walks `2.0 → 3.0 → 3.0` when the
+  outer meter is declared first, and is `3.0` from run 1 when the inner one is. Both oracles do the
+  same, so the port mirrors them; reported upstream as
+  `investigations/to_opendss/61-relcalc-cross-zone-accumulator-leak.md` and frozen by the G1.6(i)
+  pin with its run-count and declaration-order arms.
+- **What is open** is not the pin but the *correct* value: circuit-wide zeroing would fix
+  idempotence, not order-independence, and nothing has decided whether a nested head bus should read
+  the outer zone's miles (`3.0`) or its own (`2.0`). Needs a deliberate semantics decision **plus a
+  witness deck** — a two-meter nested feeder in the corpus, gated on both channels — before any
+  engine change. **Priority: low**: no gated case reaches it today, and R-14(d) kept G1.6(i)/(ii) out
+  of `solution/meters/reliability.rs`.
+
 ---
 
 ## 2. Owned deferrals — NOT orphans (a live plan tracks them; do not re-port here)

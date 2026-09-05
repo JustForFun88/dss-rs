@@ -415,10 +415,16 @@ pub(super) fn make_meter_zone_lists(
     );
 }
 
-/// Pascal `TEnergyMeterObj.TotalUpDownstreamCustomers` (l.1693): backward sweep
-/// over the sequence list (end branches first) summing `BranchNumCustomers`
-/// into `BranchTotalCustomers` and up each parent link.
-fn total_up_downstream_customers(
+/// Pascal `TEnergyMeterObj.TotalUpDownstreamCustomers` (r4133
+/// `Version8/Source/Meters/EnergyMeter.pas:1629`, dss_capi `:1693`): backward
+/// sweep over the sequence list (end branches first) summing
+/// `BranchNumCustomers` into `BranchTotalCustomers` and up each parent link.
+///
+/// Two call sites, exactly as r4133: the tail of the zone build
+/// (`MakeMeterZoneLists`) and the head of `CalcReliabilityIndices`
+/// (`EnergyMeter.pas:2468`), which re-runs it so the roll-up sees `RelCalc`'s
+/// own `AssumeRestoration` — hence the module-wide visibility.
+pub(in crate::solution::meters) fn total_up_downstream_customers(
     sequence_list: &[ElemId],
     assume_restoration: bool,
     store: &mut dyn ElemStore,
@@ -452,8 +458,14 @@ fn total_up_downstream_customers(
         }
         // Roll up into the parent unless this is an automatic OCP device and we
         // are assuming restoration (then downstream customers are restored and
-        // not counted upstream). OCP devices are Phase 7, so `has_ocp` is never
-        // set today and this always rolls up — but the guard is now faithful.
+        // not counted upstream) — r4133 `EnergyMeter.pas:1691-1693`.
+        // The guard is LIVE, not dead code: `HAS_OCP_DEVICE` and
+        // `HAS_AUTO_OCP_DEVICE` are set whenever a Fuse/Recloser/Relay
+        // registers its controlled element (`exec/command.rs::SetOcpDevice`),
+        // and `RelCalc restore=y` on `controls/energymeter/midi_relcalc.dss`
+        // takes this branch — measured by
+        // `exec::tests::reliability::relcalc_recomputes_the_customer_totals_it_depends_on`
+        // (`src.N_Customers` 30 without the flag, 0 with it).
         if let Some(p) = parent
             && !(has_ocp && assume_restoration && has_auto)
         {

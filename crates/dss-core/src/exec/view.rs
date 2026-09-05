@@ -2253,7 +2253,7 @@ pub struct FeederSectionView {
     pub sum_branch_flt_rates: f64,
     /// `Meters.AvgRepairTime` = `AverageRepairTime` = `SumFltRatesXRepairHrs /
     /// SumBranchFltRates` — an **unguarded** division on all three engines
-    /// (port `solution/meters/reliability.rs:259`; r4133
+    /// (port `solution/meters/reliability.rs:293`; r4133
     /// `Version8/Source/Meters/EnergyMeter.pas` `AverageRepairTime`), so a
     /// section whose branches all have `faultrate=0` evaluates to `NaN`
     /// identically everywhere.
@@ -2486,6 +2486,104 @@ impl Dss {
             }
         }
         totals
+    }
+}
+
+/// One bus's reliability columns — the eight `IBus` fields the fastdss harness
+/// archives for every bus (`DSS-Python@origin/fastdss:dss/IBus.py:19-53`
+/// `_columns`, dumped through the iterable `ActiveCircuit.ActiveBus`,
+/// `tests/save_outputs.py:351`).
+///
+/// Oracle sources, column by column: capi `CAPI/CAPI_Bus.pas`
+/// (`Bus_Get_Int_Duration` `:462`, `Bus_Get_Lambda` `:473`,
+/// `Bus_Get_Cust_Duration` `:484`, `Bus_Get_Cust_Interrupts` `:495`,
+/// `Bus_Get_N_Customers` `:506`, `Bus_Get_N_interrupts` `:517`,
+/// `Bus_Get_TotalMiles` `:604`, `Bus_Get_SectionID` `:614`); r4133 the `BUSF`
+/// modes 6-11 (`Version8/Source/DDLL/DBus.pas:129-170`) and the `BUSI` modes
+/// 4-5 (`:60-73`). Every arm on both channels is a bare `TDSSBus` field read
+/// behind "a bus is active" — no `Assigned` walk, no allocation, no state
+/// write — so the surface is order-free with respect to the element captures.
+///
+/// The values are whatever the reliability machinery last left on the bus, and
+/// reading them runs none of it: `lambda_` / `total_miles` / `n_customers` are
+/// the backward sweep's accumulators (`TPDElement.CalcFltRate`, r4133
+/// `Version8/Source/PDElements/PDElement.pas:106-116`), the other five are set
+/// by `TEnergyMeterObj.CalcReliabilityIndices` (r4133
+/// `Version8/Source/Meters/EnergyMeter.pas:2488-2494`, `:2571-2573`,
+/// `:2610-2611`; port `solution/meters/reliability.rs`).
+///
+/// Field spelling mirrors the capture wire keys one-for-one, so a single macro
+/// extracts this view and the harness's `BusReliabilityCap` alike. That is the
+/// only reason `lambda_` carries a trailing underscore: the capi capture builds
+/// its row in Python, where `lambda` cannot be spelled as an identifier.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BusReliabilityView {
+    /// The bus's (lowercased) name, `Circuit.AllBusNames` spelling.
+    pub name: String,
+    /// `Bus.Cust_Duration` = `TDSSBus.BusCustDurations`: accumulated customer
+    /// outage durations. A single **assignment** per zone load bus (r4133
+    /// `EnergyMeter.pas:2610-2611`), not an accumulation.
+    pub cust_duration: f64,
+    /// `Bus.Cust_Interrupts` = `BusCustInterrupts`: accumulated customer
+    /// interruptions.
+    pub cust_interrupts: f64,
+    /// `Bus.Int_Duration` = `Bus_Int_Duration`: average annual interruption
+    /// duration, `Source_IntDuration + FeederSections[SectionID].
+    /// AverageRepairTime` for a bus with a section (r4133
+    /// `EnergyMeter.pas:2571-2573`). That repair time is an unguarded division
+    /// on all three engines, so a section whose branches all have
+    /// `faultrate = 0` propagates `NaN` here identically everywhere (the
+    /// [`FeederSectionView::avg_repair_time`] note).
+    pub int_duration: f64,
+    /// `Bus.Lambda` = `BusFltRate`: accumulated downstream failure rate,
+    /// faults/yr.
+    pub lambda_: f64,
+    /// `Bus.N_Customers` = `BusTotalNumCustomers`: customers served from this
+    /// bus (integer on both channels — capi returns `Integer`, r4133 `BUSI(4)`
+    /// a `longint`).
+    pub n_customers: i32,
+    /// `Bus.N_interrupts` = `Bus_Num_Interrupt`: interruptions/yr at this bus.
+    pub n_interrupts: f64,
+    /// `Bus.SectionID` = `BusSectionID`: the feeder section this bus belongs
+    /// to. Three values are reachable and all three are reported verbatim: `0`
+    /// from `TDSSBus.Create` and for the span above the first OCP device
+    /// (r4133 `EnergyMeter.pas:2494`), `-1` = "not set" while a zone's
+    /// accumulators are zeroed (`Bus::zero_reliability_accums`, Pascal
+    /// `TDSSBus.ZeroReliabilityAccums`), and `1..=SectionCount` afterwards.
+    pub section_id: i32,
+    /// `Bus.TotalMiles` = `BusTotalMiles`: line miles downstream of this bus.
+    pub total_miles: f64,
+}
+
+impl Dss {
+    /// Every bus's reliability columns in `Circuit::buses` order — the
+    /// `BusList` order `Circuit.AllBusNames` reports and both oracle captures
+    /// walk (capi `CAPI_Circuit.pas`, r4133 `DCircuit.pas:439`), so the two
+    /// sides align index by index. Empty when no circuit exists.
+    ///
+    /// Pure field reads off [`crate::circuit::bus::Bus`] (see
+    /// [`BusReliabilityView`] for the per-column Pascal sources): this runs no
+    /// reliability sweep, allocates no accumulator and moves no active-object
+    /// cursor, so — unlike the oracle walk, which must `SetActiveBus` before
+    /// every row — it can be called at any point without perturbing anything.
+    pub fn bus_reliability(&self) -> Vec<BusReliabilityView> {
+        let Some(ckt) = self.circuit.as_ref() else {
+            return Vec::new();
+        };
+        ckt.buses
+            .iter()
+            .map(|b| BusReliabilityView {
+                name: b.name.clone(),
+                cust_duration: b.bus_cust_durations,
+                cust_interrupts: b.bus_cust_interrupts,
+                int_duration: b.bus_int_duration,
+                lambda_: b.bus_flt_rate,
+                n_customers: b.bus_total_num_customers,
+                n_interrupts: b.bus_num_interrupt,
+                section_id: b.bus_section_id,
+                total_miles: b.bus_total_miles,
+            })
+            .collect()
     }
 }
 
@@ -3156,5 +3254,134 @@ mod bus_sc_tests {
             Complex64::new(12.329071484855646, 0.0),
             "max |Voc| after harmonics",
         );
+    }
+}
+
+#[cfg(test)]
+mod bus_reliability_tests {
+    use super::*;
+
+    /// The two-section radial feeder of `exec::tests::reliability::ocp_feeder`
+    /// with the recloser on the *second* line, so the forward sweep opens
+    /// section 1 below `b1`, and with `l2` twice as long so the miles
+    /// accumulators differ from the failure rates. Every one of the eight
+    /// columns then takes a value no other column takes on the same bus, which
+    /// is what makes the table below a mapping test and not a smoke test.
+    fn relcalc_feeder() -> Dss {
+        let mut dss = Dss::new();
+        dss.command("New circuit.busrel basekv=12.47 bus1=src phases=3");
+        dss.command(
+            "New line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 \
+                 faultrate=0.2 pctperm=80 repair=4",
+        );
+        dss.command(
+            "New line.l2 bus1=b1 bus2=b2 length=2 units=mi r1=0.1 x1=0.1 \
+                 faultrate=0.3 pctperm=90 repair=5",
+        );
+        dss.command("New load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 numcust=10");
+        dss.command("New load.ld2 bus1=b2 phases=3 kv=12.47 kw=200 numcust=25");
+        dss.command(
+            "New recloser.r1 monitoredobj=line.l2 monitoredterm=1 \
+                 switchedobj=line.l2 switchedterm=1",
+        );
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve mode=snap");
+        dss.command("Relcalc");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    /// Every column reads the `TDSSBus` field it names, and no other. The three
+    /// rows are the whole feeder after `RelCalc`, pinned as `Debug` strings
+    /// (shortest round-trip, so a last-ULP move reds too):
+    ///
+    /// * `src` — `lambda_ = 0.16` (`l1`'s `BranchFltRate = 0.2·80%·1 mi`; `l2`'s
+    ///   0.54 stops at the recloser, r4133
+    ///   `Version8/Source/PDElements/PDElement.pas:114-117`), `total_miles = 3`
+    ///   (1 + 2), `n_customers = 35`.
+    /// * `b1` — 25 customers and 2 miles below it, no accumulated rate (the OCP
+    ///   device on `l2` isolates it).
+    /// * `b2` — section 1, `n_interrupts = 0.54`, `int_duration = 5`
+    ///   (`Source_IntDuration = 0` + the section's `AverageRepairTime`, r4133
+    ///   `Version8/Source/Meters/EnergyMeter.pas:2571-2573`) and
+    ///   `cust_duration = (0 + 25)·1·5·0.54 = 67.5` (`:2610-2611`).
+    ///
+    /// The six `f64` columns hold six pairwise-different vectors and the two
+    /// `i32` ones two more, so any transposition of two columns moves at least
+    /// one of these rows.
+    #[test]
+    fn bus_reliability_maps_every_column_to_its_own_bus_field() {
+        let dss = relcalc_feeder();
+        let rows: Vec<String> = dss
+            .bus_reliability()
+            .iter()
+            .map(|r| format!("{r:?}"))
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                "BusReliabilityView { name: \"src\", cust_duration: 0.0, \
+                 cust_interrupts: 0.0, int_duration: 0.0, lambda_: 0.16, \
+                 n_customers: 35, n_interrupts: 0.0, section_id: 0, \
+                 total_miles: 3.0 }",
+                "BusReliabilityView { name: \"b1\", cust_duration: 0.0, \
+                 cust_interrupts: 0.0, int_duration: 0.0, lambda_: 0.0, \
+                 n_customers: 25, n_interrupts: 0.0, section_id: 0, \
+                 total_miles: 2.0 }",
+                "BusReliabilityView { name: \"b2\", cust_duration: 67.5, \
+                 cust_interrupts: 0.0, int_duration: 5.0, lambda_: 0.0, \
+                 n_customers: 0, n_interrupts: 0.54, section_id: 1, \
+                 total_miles: 0.0 }",
+            ]
+        );
+    }
+
+    /// The walk is `BusList` order — the same sequence, spelling and length as
+    /// [`Dss::all_bus_voltages`], which is what lets the live comparator align
+    /// the two channels' rows by index — and it is total on a circuit-less
+    /// engine.
+    #[test]
+    fn bus_reliability_walks_the_bus_list_and_survives_no_circuit() {
+        let dss = relcalc_feeder();
+        let rows = dss.bus_reliability();
+        let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, ["src", "b1", "b2"]);
+        let voltage_names: Vec<String> =
+            dss.all_bus_voltages().into_iter().map(|v| v.name).collect();
+        assert_eq!(names, voltage_names);
+
+        assert!(Dss::new().bus_reliability().is_empty());
+    }
+
+    /// Without a reliability sweep every column is at its `TDSSBus.Create`
+    /// default — `0`/`0.0`, never the `-1` that `ZeroReliabilityAccums` parks
+    /// in `section_id` mid-sweep (port `circuit/bus.rs`, Pascal
+    /// `TDSSBus.Create` / `TDSSBus.ZeroReliabilityAccums`). Both oracles report
+    /// the same zeros there, so a capture taken before `RelCalc` is comparable
+    /// rather than undefined.
+    #[test]
+    fn bus_reliability_is_zero_before_relcalc() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.busrel0 basekv=12.47 bus1=src phases=3");
+        dss.command("New line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 faultrate=0.2");
+        dss.command("New load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 numcust=10");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        for r in dss.bus_reliability() {
+            assert_eq!(
+                format!("{r:?}"),
+                format!(
+                    "BusReliabilityView {{ name: {:?}, cust_duration: 0.0, \
+                     cust_interrupts: 0.0, int_duration: 0.0, lambda_: 0.0, \
+                     n_customers: 0, n_interrupts: 0.0, section_id: 0, \
+                     total_miles: 0.0 }}",
+                    r.name
+                )
+            );
+        }
     }
 }

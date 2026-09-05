@@ -1156,7 +1156,7 @@ decision, not a reliability one — so it is not made here.
 without a zero test on **all three** engines: r4133
 `Version8/Source/Meters/EnergyMeter.pas:2563`, capi 0.14.5
 `src/Meters/EnergyMeter.pas:2518`, port `average_repair_time`
-(`crates/dss-core/src/solution/meters/reliability.rs:293`). A feeder section whose
+(`crates/dss-core/src/solution/meters/reliability.rs:327`). A feeder section whose
 branches all carry `faultrate=0` therefore evaluates `0.0 / 0.0` and yields
 `NaN` — identically everywhere, since IEEE-754 fixes that result and the port
 performs the same single division on the same two f64 accumulators.
@@ -1304,6 +1304,51 @@ plus the data-driven `tests/golden_allocation.rs`. What the corpus deck adds is
 the LIVE half — `Meters.CalcCurrent`/`AllocFactors` defined on both oracle
 channels — and that is all it is asked to add (G1.6(i) audit settlement,
 finding AT-5).
+
+### The per-bus columns (G1.6(ii)) — exact, one level down, and why no band is derived
+
+`harness::compare_bus_reliability` compares the eight `Export BusReliability`
+columns — `Lambda`, `N_interrupts`, `N_Customers`, `Cust_Interrupts`,
+`Cust_Duration`, `Int_Duration`, `TotalMiles`, `SectionID` — at
+**`rel = abs = 0`**, discrete and continuous alike. It takes no `Tolerances`
+parameter at all, so the exactness cannot be relaxed one call site at a time.
+
+The derivation is the section above, one level down. The eight columns are the
+same arithmetic the meter indices are built out of: sums of deck literals
+(`faultrate`, `repair`, `RelWeighting`, `length`) and integer customer counts,
+accumulated in a fixed zone-walk order (r4133
+`Version8/Source/Meters/EnergyMeter.pas:2470-2616`; port `calc_reliability_indices`,
+`crates/dss-core/src/solution/meters/reliability.rs:107`). Four of them are already pinned **bit-for-bit
+against both oracles** by transitivity through the G1.6(i) pin
+`relcalc_indices_match_both_oracles_on_the_duty_deck`: on
+`modes:time/midi_duty_ctrl.dss` `N_interrupts == SAIFI`,
+`Cust_Interrupts == CustInterrupts`, `Int_Duration == AvgRepairTime` and
+`Cust_Duration == SAIDI`, and those four identities are re-asserted directly by
+`bus_reliability_columns_match_both_oracles_on_the_duty_deck`. `TotalMiles` and
+`Lambda` are plain running sums of the same deck literals; `N_Customers` and
+`SectionID` are integers. Independently measured: the two oracle engines return
+this whole surface bit-identically on every case both can compile (400/400
+cells equal under `==`, 2026-09-05). **A Rust gap on this surface is therefore
+an order bug or a port bug, never a floor** — no new tier, no new constant, and
+no existing band moves.
+
+Two carry-overs rather than new rules. `Int_Duration =
+Source_IntDuration + FeederSections[SectionID].AverageRepairTime` inherits the
+unguarded division documented above, so `NaN`/`±inf` **agreement** counts as
+agreement through the same `rel_num_eq`, while `NaN` against a finite number
+fails — an invariant of the comparator, which **no payload can exercise**: a
+non-finite never survives either transport (capi's `json.dumps` emits the bare
+token `NaN`, the r4133 side `null`, and the caps' non-`Option` `f64` fields
+refuse both, so such a cell fails the decode loudly rather than comparing as a
+plausible `0`; pinned by
+`a_non_finite_reliability_cell_fails_the_decode_on_both_transports`, G1.6(ii)
+audit settlement). And the exact compares here depend on `serde_json`'s
+`float_roundtrip` exactly as the meter arm's do (decisions D11/D18).
+
+Non-vacuity of the exact rule is pinned offline as well as live:
+`every_bus_reliability_column_is_compared_per_bus` corrupts each of the eight
+columns in turn, on both channels, and requires the comparator to red naming
+that column.
 
 ## Bus voltage surface (GOLDEN_REBASE G1.4a, `harness::compare_bus`)
 
