@@ -315,6 +315,7 @@ version = "0.1.0"
 dependencies = [
  "comfy-table",
  "criterion",
+ "dss-epri",
  "dss-metis",
  "dss-parser",
  "dss-sparse",

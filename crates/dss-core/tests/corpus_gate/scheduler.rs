@@ -136,16 +136,86 @@ fn force_properties(source: &str, c: &mut SolvableCase, fam_props: bool) {
 /// **The forced property population, pinned** — `(cases forced, of them
 /// `engines: "both"`, `engines: "r4133"`, `engines: "capi_v0145"`)`.
 ///
-/// Measured off the four manifests at RP4.1's audit settlement (2026-09-03),
+/// Measured off the four manifests at RP4.1's audit settlement (2026-09-03) and
 /// re-derived by [`the_property_forcing_rule_is_every_live_non_large_case`] on
-/// every run: 523 cases → 519 live → **440** forced once the 79 live
-/// `kind=large*` decks (all of them `solvable_now`) come off, of which **396**
-/// gate the r4133 channel (313 `both` + 83 r4133-only) and 44 are capi-only.
+/// every run: 526 cases → 522 live → **443** forced once the 79 live
+/// `kind=large*` decks (all of them `solvable_now`) come off, of which **399**
+/// gate the r4133 channel (312 `both` + 87 r4133-only) and 44 are capi-only.
 ///
-/// 440 is exactly the census population every property measurement in
+/// Moved from `(440, 313, 83, 44)` by GOLDEN_REBASE G1.4a (2026-09-04,
+/// coordinator decisions D12/D14): three `both` GICTransformer decks
+/// (`asymmetric:gic/gic_midi.dss`, `asymmetric:gic/gictransformer_gic.dss`,
+/// `solvable_now:…/GICExample/GIC_Example.dss`) became `r4133`-only because capi
+/// 0.14.5 is nondeterministic on them, and the split-out
+/// `modes:makeposseq/makeposseq_gic.dss` joined the corpus on the same channel.
+/// GOLDEN_REBASE G1.6(i) then added `controls:energymeter/midi_relcalc.dss`
+/// (`both`, `micro`) — the corpus's only `AllocateLoads` deck — so the two
+/// lanes' cases met at the 2026-09-05 merges: 524 -> **526** cases, 520 -> 522
+/// live, `(441, 310, 87, 44)` -> `(443, 312, 87, 44)` (`midi_relcalc` for
+/// G1.6(i), `faultstudy_micro` for G1.5).
+///
+/// 443 is the census population every property measurement in
 /// `R4133_PROPS_PLAN.md` rests on ([`run_props_census`] walks the same set), so
-/// this lock also keeps the census and the gate talking about one population.
-const FORCED_PROPS_POPULATION: (usize, usize, usize, usize) = (440, 313, 83, 44);
+/// this lock also keeps the census and the gate talking about one population —
+/// the FROZEN census extracts under `tests/corpus/props_r4133/` are a 2026-08-08
+/// data lock and stay at the population of that day.
+const FORCED_PROPS_POPULATION: (usize, usize, usize, usize) = (443, 312, 87, 44);
+
+/// Apply the per-source **element-extras** forcing rule to a live case
+/// (`GOLDEN_REBASE_PLAN.md` §1.1(e), G1.3d(i)).
+///
+/// Same shape and the same one cost guard as [`force_properties`] /
+/// [`force_derived`]: **every live case, minus `kind=large*` on the
+/// `solvable_now` arm.** Both channels honour the request
+/// (`engines::build_run_request`'s `element_extras` key), so there is no channel
+/// predicate here either — writing one would be the same tautology
+/// [`force_properties`] documents.
+///
+/// **No opt-in list, deliberately.** [`force_derived`] carries
+/// [`DERIVED_MANIFEST_OPT_INS`] because the fastdss reference harness *skips*
+/// `Residuals` on those two decks, so gating them is where our comparator is
+/// strictly stronger than the harness we are reaching parity with. That same
+/// table — `.inputs/DSS-Python` `origin/fastdss`
+/// `tests/compare_outputs.py:32-88` `KNOWN_COM_DIFF` — has **no** row for
+/// `NodeOrder`, `EnergyMeter` or the three counts, so there is no deck an
+/// opt-in would buy anything on: a const here would be dead weight that reads
+/// like a decision.
+///
+/// Kept as a **separate** function with a separate lock
+/// ([`FORCED_ELEMENT_EXTRAS_POPULATION`]) rather than folded into
+/// [`force_derived`], for the reason that one is kept separate from
+/// [`force_properties`]: the two rules answer to different sub-steps
+/// (G1.3d(ii) widens this flag, G1.3b/c widen that one), and a later divergence
+/// must show as its own lock's diff.
+fn force_element_extras(source: &str, c: &mut SolvableCase) {
+    match source {
+        "solvable_now" => {
+            if !c.kind.starts_with("large") {
+                c.compare_element_extras = true;
+            }
+        }
+        _ => c.compare_element_extras = true,
+    }
+}
+
+/// **The forced element-extras population, pinned** — `(cases with
+/// `compare_element_extras` on, of them `engines: "both"`, `engines: "r4133"`,
+/// `engines: "capi_v0145"`)`.
+///
+/// Measured off the four manifests at G1.3d(i) (2026-09-04, re-derived at the
+/// merge into `update` 2026-09-05 after G1.4a's D12/D14 corpus flips) and by
+/// [`the_element_extras_forcing_rule_is_every_live_non_large_case`] on every
+/// run: exactly [`FORCED_PROPS_POPULATION`]'s live non-`large` population,
+/// because the rule is the same one and there are no opt-ins
+/// ([`force_element_extras`]). It is nevertheless its own const: the two rules
+/// are free to diverge, and a divergence must land as a reviewed diff here.
+///
+/// It exists for the reason [`FORCED_DERIVED_POPULATION`] does — the
+/// population lock fingerprints the **manifest** flag (`Case::rigor`'s `elemx=`
+/// token in `population_lock.rs`), not the effective one, so a re-mask of
+/// [`force_element_extras`] would stop comparing the five discrete channels on
+/// every one of these cases without moving one byte of `population.lock.json`.
+const FORCED_ELEMENT_EXTRAS_POPULATION: (usize, usize, usize, usize) = (443, 312, 87, 44);
 
 /// **The property-forcing rule is a rule, not a habit** — the static half of
 /// RP4.1's re-mask alarm (audit settlement, 2026-09-03).
@@ -154,8 +224,8 @@ const FORCED_PROPS_POPULATION: (usize, usize, usize, usize) = (440, 313, 83, 44)
 /// nothing else can see it: `population.lock.json` fingerprints manifest flags
 /// and per-case ledger tags, not scheduler code, and the live guard
 /// `props_norm::assert_r4133_props_compare_ran` is a boolean — a *partial*
-/// re-mask (re-adding `gates_capi()`, which would drop the 83 r4133-only cases
-/// while the 313 `both` ones keep walking) passes it. This test is the one that
+/// re-mask (re-adding `gates_capi()`, which would drop the 87 r4133-only cases
+/// while the 312 `both` ones keep walking) passes it. This test is the one that
 /// does not: it walks the four manifests without an oracle and asserts the
 /// forced set **is** the live non-`large` population, cell for cell, with the
 /// per-`engines` split pinned by [`FORCED_PROPS_POPULATION`].
@@ -219,6 +289,558 @@ fn the_property_forcing_rule_is_every_live_non_large_case() {
     );
 }
 
+/// Apply the per-source **PDElements**-forcing rule to a live case
+/// (`GOLDEN_REBASE_PLAN.md` §G1.6b).
+///
+/// The rule is [`force_properties`]': **every live case**, with the same one
+/// cost guard — `kind=large*` decks stay out on the `solvable_now` arm. It is
+/// deliberately the same population, so the two whole-model surfaces the gate
+/// forces (properties and PDElements) never drift into talking about different
+/// case sets; [`FORCED_PDELEMENTS_POPULATION`] re-derives it and pins the split.
+///
+/// Two shape notes, both deliberate:
+///
+/// * no channel predicate — `gates_capi() || gates_r4133()` is a tautology over
+///   the three legal `engines` values, and a tautological guard reads like a
+///   filter while filtering nothing (the RegControl no-load-zone precedent,
+///   CLAUDE.md). Both transports capture the walk
+///   (`tools/oracle/oracle_server.py::capture_pd_elements`,
+///   `crates/dss-epri/src/capture.rs::capture_pd_elements`), and D2 requires
+///   both channels in the same commit;
+/// * no family-flag parameter — [`force_properties`] takes `fam_props` because
+///   `Family` carries a per-family `compare_all_properties`; there is no such
+///   knob for this surface and inventing one would be a false switch (all three
+///   families would set it). The family arm therefore forces unconditionally,
+///   exactly what `fam_props` evaluates to for all three families today, and
+///   the missing `large` guard on that arm is asserted inert by
+///   [`the_pdelements_forcing_rule_is_every_live_non_large_case`] rather than
+///   assumed.
+///
+/// Cost: measured ≈ 5 µs per PD element on the capi channel (1 283 elements in
+/// 5.9 ms), i.e. well under a second added across the whole population against
+/// a ~155 s corpus gate.
+fn force_pdelements(source: &str, c: &mut SolvableCase) {
+    match source {
+        "solvable_now" => {
+            if !c.kind.starts_with("large") {
+                c.compare_pdelements = true;
+            }
+        }
+        // family: the surface applies to every live family deck.
+        _ => c.compare_pdelements = true,
+    }
+}
+
+/// **The forced PDElements population, pinned** — `(cases forced, of them
+/// `engines: "both"`, `engines: "r4133"`, `engines: "capi_v0145"`)`.
+///
+/// Identical to [`FORCED_PROPS_POPULATION`] by construction (both rules are
+/// "every live case, minus `kind=large*` on `solvable_now`"), and re-derived —
+/// never copied — by [`the_pdelements_forcing_rule_is_every_live_non_large_case`]
+/// on every run. It is written out rather than aliased so that a future
+/// divergence between the two rules shows up as a lock diff on the surface that
+/// moved, instead of silently following the other one.
+const FORCED_PDELEMENTS_POPULATION: (usize, usize, usize, usize) = (443, 312, 87, 44);
+
+/// Apply the per-source **derived-channel** forcing rule to a live case
+/// (`GOLDEN_REBASE_PLAN.md` §1.1(e), G1.3a).
+///
+/// Same shape and the same one cost guard as [`force_properties`]: **every live
+/// case, minus `kind=large*` on the `solvable_now` arm.** Both channels honor
+/// the request (`engines::build_run_request`'s `derived` key), so there is no
+/// channel predicate here either — writing one would be the same tautology
+/// [`force_properties`] documents.
+///
+/// Kept as a **separate** function and a separate lock
+/// ([`FORCED_DERIVED_POPULATION`]) rather than folded into the property rule
+/// even though the two forcing rules coincide today (the populations already
+/// differ by the two opt-ins): they answer to different plans (the RP4.1
+/// census vs WP-G1's surface roll-out), and a later divergence of the rules
+/// — G1.3b/c widen this flag's surface, and a heavy deck could earn an
+/// opt-out from one and not the other — must show as its own lock's diff.
+///
+/// The family arm carries no `large` test, exactly like [`force_properties`]';
+/// it is inert while no family deck is `kind=large*`, which
+/// [`the_property_forcing_rule_is_every_live_non_large_case`] asserts over this
+/// very population rather than assuming.
+///
+/// A manifest may also set `compare_derived` itself, which only ever ADDS — see
+/// [`DERIVED_MANIFEST_OPT_INS`].
+fn force_derived(source: &str, c: &mut SolvableCase) {
+    match source {
+        "solvable_now" => {
+            if !c.kind.starts_with("large") {
+                c.compare_derived = true;
+            }
+        }
+        _ => c.compare_derived = true,
+    }
+}
+
+/// The cases whose **manifest** switches `compare_derived` on, on top of
+/// [`force_derived`]'s rule — pinned here so an opt-in is a reviewed line of
+/// Rust, not a JSON key nobody re-reads.
+///
+/// Both are `kind=large_near_ideal_source` (hence outside the cost guard) but
+/// carry only 8 and 5 elements, so the guard's cost rationale does not apply to
+/// them; and they are exactly the two decks the fastdss reference harness
+/// **skips** `Residuals` on — `.inputs/DSS-Python` `origin/fastdss`
+/// `tests/compare_outputs.py:56-59` ("Close enough for the system"). Gating them
+/// is where our comparator is strictly stronger than the harness we are reaching
+/// parity with (`GOLDEN_REBASE_PLAN.md` §1.1), so the opt-in is the point, not a
+/// convenience.
+const DERIVED_MANIFEST_OPT_INS: &[&str] = &[
+    "solvable_now:Test/AutoTrans/Auto3bus.dss",
+    "solvable_now:Test/AutoTrans/AutoHLT.dss",
+];
+
+/// **The forced derived-channel population, pinned** — `(cases with
+/// `compare_derived` on, of them `engines: "both"`, `engines: "r4133"`,
+/// `engines: "capi_v0145"`)`.
+///
+/// Measured off the four manifests at G1.3a (2026-09-04), moved from
+/// `(442, 315, 83, 44)` by G1.4a's D12/D14 channel flip and from
+/// `(443, 312, 87, 44)` by G1.6(i)'s new deck at the 2026-09-05 lane merge (see
+/// [`FORCED_PROPS_POPULATION`]), and re-derived by
+/// [`the_derived_forcing_rule_is_every_live_non_large_case_plus_the_opt_ins`] on
+/// every run: [`FORCED_PROPS_POPULATION`]'s 443 live non-`large` cases plus the
+/// two [`DERIVED_MANIFEST_OPT_INS`] decks (both `engines: "both"`).
+///
+/// The population lock fingerprints the **manifest** flag, not the effective
+/// one ([`Case::rigor`]'s `derived=` token in `population_lock.rs`), so a
+/// re-mask of [`force_derived`] would move 443 cases without moving one byte of
+/// `population.lock.json`. This const is the only thing that sees it — the
+/// reason [`FORCED_PROPS_POPULATION`] exists, applied to the second rule.
+const FORCED_DERIVED_POPULATION: (usize, usize, usize, usize) = (445, 314, 87, 44);
+
+/// **The PDElements-forcing rule is a rule, not a habit** — the static half of
+/// G1.6b's re-mask alarm, modeled on
+/// [`the_property_forcing_rule_is_every_live_non_large_case`] and load-bearing
+/// for the same reason: `population.lock.json` fingerprints the *manifest*
+/// `compare_pdelements` flag (`population_lock.rs::rigor`'s `pde=` token), and
+/// no manifest sets it — the whole population is scheduler-forced, so the lock
+/// cannot see a re-mask here at all.
+///
+/// `harness::assert_pd_elements_compare_ran` is the live half, and it is a
+/// boolean: re-adding a channel predicate (say `gates_capi()`, which drops the
+/// 87 `engines: "r4133"` cases while the 312 `both` ones keep walking) passes
+/// it. This test does not — it walks the four manifests without an oracle and
+/// asserts the forced set **is** the live non-`large` population, cell for
+/// cell, with the per-`engines` split pinned by
+/// [`FORCED_PDELEMENTS_POPULATION`].
+#[test]
+fn the_pdelements_forcing_rule_is_every_live_non_large_case() {
+    let cases = build_unified_cases();
+    let mut forced = (0usize, 0usize, 0usize, 0usize);
+    let mut wrong: Vec<String> = Vec::new();
+    for uc in &cases {
+        let live = uc.class == CaseClass::Live;
+        let large = uc.case.kind.starts_with("large");
+        let family = uc.label.split(':').next() != Some("solvable_now");
+        assert!(
+            !(family && large),
+            "{}: a family deck is `kind={}` — `force_pdelements`' family arm carries no `large` \
+             cost guard, so this case would be PDElements-forced without review. Add the guard, \
+             or re-classify the deck.",
+            uc.label,
+            uc.case.kind
+        );
+        // The rule, per source: every live case, minus `large` on
+        // `solvable_now`. A manifest may also set the flag itself, which only
+        // ever ADDS (none does today — the `props=0`-everywhere shape).
+        let expected = live && !large;
+        if uc.case.compare_pdelements != expected {
+            wrong.push(format!(
+                "{}: kind={} engines={} class={} → compare_pdelements={} (expected {expected})",
+                uc.label,
+                uc.case.kind,
+                uc.case.engines,
+                if live { "live" } else { "not-live" },
+                uc.case.compare_pdelements,
+            ));
+        }
+        if uc.case.compare_pdelements {
+            forced.0 += 1;
+            match uc.case.engines.as_str() {
+                "both" => forced.1 += 1,
+                "r4133" => forced.2 += 1,
+                _ => forced.3 += 1,
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "the PDElements-forcing rule is `every live non-`large` case` since GOLDEN_REBASE G1.6b \
+         (2026-09-04) — these cases disagree with it:\n  {}",
+        wrong.join("\n  ")
+    );
+    assert_eq!(
+        forced, FORCED_PDELEMENTS_POPULATION,
+        "(forced, both, r4133-only, capi-only) moved. A DROP in the r4133 halves is a re-mask of \
+         the PDElements request — the thing `harness::assert_pd_elements_compare_ran` cannot \
+         see once the `both` half keeps it green. A legitimate corpus change moves this lock \
+         together with `population.lock.json`."
+    );
+    // The two forced surfaces must stay one population (see
+    // `FORCED_PDELEMENTS_POPULATION`): a divergence here means one of the two
+    // rules moved without the other, which is a review, not a silent split.
+    assert_eq!(
+        forced, FORCED_PROPS_POPULATION,
+        "the PDElements and property forcing rules have drifted apart"
+    );
+}
+
+/// **The derived-channel forcing rule is a rule, not a habit** (G1.3a) — the
+/// twin of [`the_property_forcing_rule_is_every_live_non_large_case`], for the
+/// same reason: `population.lock.json` fingerprints the *manifest* flag, so a
+/// re-mask of [`force_derived`] (a channel predicate, a widened `large` guard, a
+/// dropped source arm) would silently stop comparing
+/// `CurrentsMagAng`/`VoltagesMagAng`/`Residuals` on hundreds of cases while
+/// every lock, every ledger digest and the two opt-in decks stayed green.
+///
+/// It walks the four manifests without an oracle and asserts the flagged set
+/// **is** `live non-large` ∪ [`DERIVED_MANIFEST_OPT_INS`], case by case, with
+/// the per-`engines` split pinned by [`FORCED_DERIVED_POPULATION`]. Each opt-in
+/// is additionally required to be a live case the rule would *not* have covered
+/// — otherwise the entry is dead weight that reads like a decision.
+#[test]
+fn the_derived_forcing_rule_is_every_live_non_large_case_plus_the_opt_ins() {
+    let cases = build_unified_cases();
+    let mut flagged = (0usize, 0usize, 0usize, 0usize);
+    let mut wrong: Vec<String> = Vec::new();
+    let mut opt_in_seen: Vec<&str> = Vec::new();
+    for uc in &cases {
+        let live = uc.class == CaseClass::Live;
+        let large = uc.case.kind.starts_with("large");
+        let opt_in = DERIVED_MANIFEST_OPT_INS.contains(&uc.label.as_str());
+        if opt_in {
+            opt_in_seen.push(uc.label.as_str());
+            assert!(
+                live && large,
+                "{}: listed in `DERIVED_MANIFEST_OPT_INS`, but it is {} and kind={} — the \
+                 forcing rule already covers it, so the manifest key is dead weight. Drop the \
+                 key and the entry.",
+                uc.label,
+                if live { "live" } else { "not-live" },
+                uc.case.kind
+            );
+        }
+        // The rule, per source: every live case, minus `large` on `solvable_now`
+        // — plus the reviewed manifest opt-ins, which only ever ADD.
+        let expected = live && (!large || opt_in);
+        if uc.case.compare_derived != expected {
+            wrong.push(format!(
+                "{}: kind={} engines={} class={} → compare_derived={} (expected {expected})",
+                uc.label,
+                uc.case.kind,
+                uc.case.engines,
+                if live { "live" } else { "not-live" },
+                uc.case.compare_derived,
+            ));
+        }
+        if uc.case.compare_derived {
+            flagged.0 += 1;
+            match uc.case.engines.as_str() {
+                "both" => flagged.1 += 1,
+                "r4133" => flagged.2 += 1,
+                _ => flagged.3 += 1,
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "the derived-channel forcing rule is `every live non-`large` case, plus \
+         DERIVED_MANIFEST_OPT_INS` (GOLDEN_REBASE_PLAN.md G1.3a) — these cases disagree with \
+         it:\n  {}",
+        wrong.join("\n  ")
+    );
+    assert_eq!(
+        opt_in_seen, DERIVED_MANIFEST_OPT_INS,
+        "an opt-in label matched no case (a renamed or dropped deck): the manifest key it names \
+         is gone, so the entry masks nothing and must be pruned"
+    );
+    assert_eq!(
+        flagged, FORCED_DERIVED_POPULATION,
+        "(flagged, both, r4133-only, capi-only) moved. A DROP means the derived channels stopped \
+         being compared on that many cases — invisible to `population.lock.json`, which records \
+         the manifest flag and not `force_derived`'s effect. A legitimate corpus change moves \
+         this lock together with the lock file."
+    );
+}
+
+/// Force the **bus voltage surface** on (`GOLDEN_REBASE_PLAN.md` G1.4a, §1.1(d)).
+///
+/// The manifests set `compare_bus` on no case (526 × `bus=0` in
+/// `population.lock.json`), exactly as they set `compare_all_properties` on
+/// none: a surface that is only compared where a manifest opts in is a surface
+/// nobody compares. The rule is therefore the same one
+/// [`force_properties`] runs — **every live case whose `kind` does not start
+/// with `large`** — written once here, for every source: unlike the property
+/// arm there is no family-level bus flag to OR in, and the `large` cost guard
+/// is not source-specific (that no family deck is `large` is asserted by
+/// [`the_property_forcing_rule_is_every_live_non_large_case`], so the two rules
+/// select the same 443 cases and the two surfaces talk about one population).
+///
+/// The surface is the fastdss `ActiveBus` facade (`origin/fastdss`
+/// `tests/save_outputs.py:351` over `dss/IBus.py:19-53` `_columns`); the arms
+/// wired at G1.4a are the ones capi 0.14.5 and r4133 run identically —
+/// `puVoltages` (`CAPI/CAPI_Alt.pas:2251-2280` == `DDLL/DBus.pas:399-430`),
+/// `VMagAngle` (`:2573-2597` == `:659-689`), `puVmagAngle` (`:2540-2571` ==
+/// `:690-723`), `Nodes`/`kVBase` (`:2143-2163` == `:319-345`) and the
+/// circuit-level `AllBusVmagPu` (`CAPI_Circuit.pas:521-548` ==
+/// `DDLL/DCircuit.pas:481-500`).
+///
+/// Cost, measured in the sub-step's micro-parts F2/F3: ~8.4 µs per bus on the
+/// capi transport and ~7–8 µs on the r4133 one, over the ~99.7 k bus-steps this
+/// rule selects ⇒ well under a second per channel per gate run.
+fn force_bus(c: &mut SolvableCase) {
+    if !c.kind.starts_with("large") {
+        c.compare_bus = true;
+    }
+}
+
+/// **The forced bus population, pinned** — `(cases forced, of them
+/// `engines: "both"`, `engines: "r4133"`, `engines: "capi_v0145"`)`, the same
+/// shape (and, by construction, the same numbers) as
+/// [`FORCED_PROPS_POPULATION`].
+///
+/// Its own lock, not an alias of the property one: `population.lock.json`
+/// fingerprints the **manifest** flag (`bus=0` on all 526 cases), so nothing
+/// else in the tree can see this rule at all. G1.0 requires a force rule to
+/// ship with its own population pin (`TESTING.md` §"adding a live surface"), and
+/// a silent narrowing here — a channel predicate, a second `kind` prefix — would
+/// otherwise leave the gate green on a smaller corpus.
+const FORCED_BUS_POPULATION: (usize, usize, usize, usize) = (443, 312, 87, 44);
+
+/// **The bus-forcing rule is a rule, not a habit** — the static twin of
+/// [`the_property_forcing_rule_is_every_live_non_large_case`] for G1.4a.
+///
+/// Walks the four manifests without an oracle and asserts that the forced set
+/// **is** the live non-`large` population, case for case, with the per-`engines`
+/// split pinned by [`FORCED_BUS_POPULATION`]. `capture_guard::require_capture`
+/// inside the runner proves the flag never greens on an empty capture; this
+/// test proves the flag is actually ON where it should be, which no capture
+/// guard can see.
+#[test]
+fn the_bus_forcing_rule_is_every_live_non_large_case() {
+    let cases = build_unified_cases();
+    let mut forced = (0usize, 0usize, 0usize, 0usize);
+    let mut wrong: Vec<String> = Vec::new();
+    for uc in &cases {
+        let live = uc.class == CaseClass::Live;
+        let expected = live && !uc.case.kind.starts_with("large");
+        if uc.case.compare_bus != expected {
+            wrong.push(format!(
+                "{}: kind={} engines={} class={} → compare_bus={} (expected {expected})",
+                uc.label,
+                uc.case.kind,
+                uc.case.engines,
+                if live { "live" } else { "not-live" },
+                uc.case.compare_bus,
+            ));
+        }
+        if uc.case.compare_bus {
+            forced.0 += 1;
+            match uc.case.engines.as_str() {
+                "both" => forced.1 += 1,
+                "r4133" => forced.2 += 1,
+                _ => forced.3 += 1,
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "the bus-forcing rule is `every live non-`large` case` (GOLDEN_REBASE G1.4a) — these          cases disagree with it:
+  {}",
+        wrong.join("
+  ")
+    );
+    assert_eq!(
+        forced, FORCED_BUS_POPULATION,
+        "(forced, both, r4133-only, capi-only) moved. A DROP is a narrowing of the bus surface          that nothing else can see: `population.lock.json` fingerprints the MANIFEST flag, which          is `bus=0` on every case. A legitimate corpus change moves this lock together with          `population.lock.json` and `FORCED_PROPS_POPULATION`."
+    );
+}
+
+/// Force the **short-circuit surface** on (`GOLDEN_REBASE_PLAN.md` G1.5,
+/// §1.1(d)).
+///
+/// The same predicate as [`force_bus`] — **every live case whose `kind` does
+/// not start with `large`** — and deliberately so: the six short-circuit arms
+/// are appended to the ONE per-bus walk `compare_bus` drives on both
+/// transports (`oracle_server.py::capture_all_buses`,
+/// `dss-epri::capture::capture_all_buses`), so a case that compares the bus
+/// surface can compare this one for the cost of six more reads, and a case
+/// that does not cannot compare it at all. That implication is asserted, never
+/// or-ed in behind the manifest's back: in `engines::build_run_request` at
+/// runtime and in [`the_zsc_forcing_rule_is_every_live_non_large_case`]
+/// statically.
+///
+/// The arms, with their Pascal pairs — capi `src/CAPI/CAPI_Alt.pas` ==
+/// r4133 `Version8/Source/DDLL/DBus.pas`: `Zsc1` (`:2294-2303` == `:461-474`),
+/// `Zsc0` (`:2283-2292` == `:476-489`), `ZscMatrix` (`:2305-2334` ==
+/// `:431-459`), `YscMatrix` (`:2336-2365` == `:491-518`), `Isc`
+/// (`:2202-2224` == `:374-397`) and `Voc` (`:2227-2249` == `:351-372`). Only
+/// four vendored decks plus the G1.5 micro deck run a fault study, but `Voc`
+/// is live on every `PreserveNodeVoltages` deck (`Common/Ymatrix.pas:170`
+/// refreshes `VBus` from `BuildYMatrix`) and the not-run SENTINEL shape is
+/// itself gated everywhere else — which is what makes the wide population
+/// worth its cost.
+///
+/// Cost, measured end-to-end (read + JSON + transport) in the sub-step's
+/// micro-part F3 on the matrices-present worst case (`IEEE123Master-SC`,
+/// 133 buses x 10 steps): **28.8 µs per bus-step** on the capi transport and
+/// **2.14 µs** on the r4133 one, i.e. ≲ 3 s per channel per gate run over the
+/// ~99.7 k bus-steps this rule selects — and much less in practice, since a
+/// bus with no matrix ships one or two doubles.
+fn force_zsc(c: &mut SolvableCase) {
+    if !c.kind.starts_with("large") {
+        c.compare_zsc = true;
+    }
+}
+
+/// **The forced short-circuit population, pinned** — `(cases forced, of them
+/// `engines: "both"`, `engines: "r4133"`, `engines: "capi_v0145"`)`, the same
+/// shape as [`FORCED_BUS_POPULATION`] and, because the two rules share a
+/// predicate, the same numbers. Its own lock all the same:
+/// `population.lock.json` fingerprints the **manifest** flag (`zsc=0` on every
+/// case but the G1.5 micro deck), so nothing else in the tree can see this
+/// rule, and a silent narrowing here — a channel predicate, a second `kind`
+/// prefix — would leave the gate green on a smaller corpus.
+const FORCED_ZSC_POPULATION: (usize, usize, usize, usize) = (443, 312, 87, 44);
+
+/// **The short-circuit forcing rule is a rule, not a habit** — the static twin
+/// of [`the_bus_forcing_rule_is_every_live_non_large_case`] for G1.5, plus the
+/// `compare_zsc ⇒ compare_bus` implication the shared per-bus walk rests on
+/// (checked on the FORCED case, i.e. after both rules have run, so a manifest
+/// that sets `compare_zsc` on a case the bus rule skips fails here rather than
+/// in the middle of a gate run).
+#[test]
+fn the_zsc_forcing_rule_is_every_live_non_large_case() {
+    let cases = build_unified_cases();
+    let mut forced = (0usize, 0usize, 0usize, 0usize);
+    let mut wrong: Vec<String> = Vec::new();
+    for uc in &cases {
+        let live = uc.class == CaseClass::Live;
+        let expected = live && !uc.case.kind.starts_with("large");
+        if uc.case.compare_zsc != expected {
+            wrong.push(format!(
+                "{}: kind={} engines={} class={} → compare_zsc={} (expected {expected})",
+                uc.label,
+                uc.case.kind,
+                uc.case.engines,
+                if live { "live" } else { "not-live" },
+                uc.case.compare_zsc,
+            ));
+        }
+        if uc.case.compare_zsc && !uc.case.compare_bus {
+            wrong.push(format!(
+                "{}: compare_zsc without compare_bus — the six short-circuit arms ride the                  bus walk (GOLDEN_REBASE_PLAN.md G1.5 §2.a)",
+                uc.label,
+            ));
+        }
+        if uc.case.compare_zsc {
+            forced.0 += 1;
+            match uc.case.engines.as_str() {
+                "both" => forced.1 += 1,
+                "r4133" => forced.2 += 1,
+                _ => forced.3 += 1,
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "the short-circuit forcing rule is `every live non-`large` case` (GOLDEN_REBASE          G1.5) — these cases disagree with it:
+  {}",
+        wrong.join("
+  ")
+    );
+    assert_eq!(
+        forced, FORCED_ZSC_POPULATION,
+        "(forced, both, r4133-only, capi-only) moved. A DROP is a narrowing of the          short-circuit surface that nothing else can see: `population.lock.json`          fingerprints the MANIFEST flag. A legitimate corpus change moves this lock          together with `population.lock.json`, `FORCED_BUS_POPULATION` and          `FORCED_PROPS_POPULATION`."
+    );
+}
+
+/// **The element-extras forcing rule is a rule, not a habit** (G1.3d(i)) — the
+/// twin of
+/// [`the_derived_forcing_rule_is_every_live_non_large_case_plus_the_opt_ins`],
+/// for the same reason: `population.lock.json` fingerprints the *manifest*
+/// flag, so a re-mask of [`force_element_extras`] (a channel predicate, a
+/// widened `large` guard, a dropped source arm) would silently stop comparing
+/// `NumTerminals`/`NumConductors`/`NumPhases`/`EnergyMeter`/`NodeOrder` on
+/// hundreds of cases while every lock and every ledger digest stayed green.
+///
+/// It walks the four manifests without an oracle and asserts the flagged set
+/// **is** the live non-`large` population, case by case, with the per-`engines`
+/// split pinned by [`FORCED_ELEMENT_EXTRAS_POPULATION`]. The absence of an
+/// opt-in table is asserted too, in the only way that survives a rename: the
+/// expected set carries no exception, so a manifest key switching the flag on
+/// for a `large` deck reds here instead of quietly widening the population
+/// ([`force_element_extras`] documents why there is nothing to opt in).
+///
+/// The model here (`live && !large`, for **every** source) is one notch stricter
+/// than [`force_element_extras`], whose `large` exception sits on the
+/// `solvable_now` arm alone — the family arm ORs the flag on with no `kind`
+/// test. The two agree only while no family deck is `large`, so that premise is
+/// asserted rather than assumed (the
+/// [`the_property_forcing_rule_is_every_live_non_large_case`] precedent, G1.3d(i)
+/// audit settlement 2026-09-05): a family deck growing into `large` is a review,
+/// not a silently forced extras sweep and not a confusing red here.
+#[test]
+fn the_element_extras_forcing_rule_is_every_live_non_large_case() {
+    let cases = build_unified_cases();
+    let mut flagged = (0usize, 0usize, 0usize, 0usize);
+    let mut wrong: Vec<String> = Vec::new();
+    for uc in &cases {
+        let live = uc.class == CaseClass::Live;
+        let large = uc.case.kind.starts_with("large");
+        let family = uc.label.split(':').next() != Some("solvable_now");
+        assert!(
+            !(family && large),
+            "{}: a family deck is `kind={}` — `force_element_extras`' family arm carries no \
+             `large` cost guard, so this case would be extras-forced without review. Add the \
+             guard, or re-classify the deck.",
+            uc.label,
+            uc.case.kind
+        );
+        // The rule, per source: every live case, minus `large` on `solvable_now`
+        // (equivalently `live && !large` while the assert above holds).
+        let expected = live && !large;
+        if uc.case.compare_element_extras != expected {
+            wrong.push(format!(
+                "{}: kind={} engines={} class={} → compare_element_extras={} \
+                 (expected {expected})",
+                uc.label,
+                uc.case.kind,
+                uc.case.engines,
+                if live { "live" } else { "not-live" },
+                uc.case.compare_element_extras,
+            ));
+        }
+        if uc.case.compare_element_extras {
+            flagged.0 += 1;
+            match uc.case.engines.as_str() {
+                "both" => flagged.1 += 1,
+                "r4133" => flagged.2 += 1,
+                _ => flagged.3 += 1,
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "the element-extras forcing rule is `every live non-`large` case` \
+         (GOLDEN_REBASE_PLAN.md G1.3d(i)) — these cases disagree with it:\n  {}",
+        wrong.join("\n  ")
+    );
+    assert_eq!(
+        flagged, FORCED_ELEMENT_EXTRAS_POPULATION,
+        "(flagged, both, r4133-only, capi-only) moved. A DROP means the ten discrete extras \
+         (the three counts, `NodeOrder`, `EnergyMeter` and the five control-derived scalars) \
+         AND `PhaseLosses` stopped being compared on that many cases — invisible to \
+         `population.lock.json`, which records the manifest flag and not `force_element_extras`' \
+         effect. A legitimate corpus change moves this lock together with the lock file."
+    );
+}
+
 // ---------------------------------------------------------------------------
 // GOLDEN_REBASE G1.7 — the topology surface: its forced population and the two
 // decline populations (coordinator decisions D15/D16)
@@ -265,9 +887,12 @@ fn force_topology(c: &mut SolvableCase) {
 ///
 /// Re-derived from the four manifests by
 /// [`the_topology_forcing_rule_is_every_live_non_large_case`] on every run:
-/// 523 cases → 519 live → **440** forced once the 79 live `kind=large*` decks
-/// come off, of which 313 are `both`, 83 r4133-only and 44 capi-only (measured
-/// 2026-09-05). Identical to [`FORCED_PROPS_POPULATION`] by construction, and
+/// 526 cases → 522 live → **443** forced once the 79 live `kind=large*` decks
+/// come off, of which 312 are `both`, 87 r4133-only and 44 capi-only (re-measured
+/// 2026-09-05 on the merged tree, after D12/D14 moved four `GICTransformer`
+/// decks onto `r4133` and added `modes:makeposseq/makeposseq_gic.dss`, and after
+/// G1.6(i) added `controls:energymeter/midi_relcalc.dss`). Identical to
+/// [`FORCED_PROPS_POPULATION`] by construction, and
 /// the test asserts that equality instead of leaving it a comment: the two
 /// rules are one population by design, so a drift between them is a review.
 ///
@@ -278,7 +903,7 @@ fn force_topology(c: &mut SolvableCase) {
 /// also fixes the two G1.7 decline populations: [`TOPOLOGY_STALE_DECLINES`] and
 /// [`LOOPED_PAIR_WINDOW_DECLINES`] were measured over exactly this set, so
 /// narrowing it moves them too.
-const FORCED_TOPOLOGY_POPULATION: (usize, usize, usize, usize) = (440, 313, 83, 44);
+const FORCED_TOPOLOGY_POPULATION: (usize, usize, usize, usize) = (443, 312, 87, 44);
 
 /// **The manifest rows that declare `compare_topology` themselves**, with the
 /// gating channel each one carries.
@@ -625,9 +1250,11 @@ fn force_inc_matrix(c: &mut SolvableCase) {
 ///
 /// Re-derived from the four manifests by
 /// [`the_inc_matrix_forcing_rule_is_every_live_non_large_case`] on every run:
-/// 523 cases → 519 live → **440** forced once the live `kind=large*` decks come
-/// off, of which 313 are `both`, 83 r4133-only and 44 capi-only (measured
-/// 2026-09-05). Identical to [`FORCED_TOPOLOGY_POPULATION`] and
+/// 526 cases → 522 live → **443** forced once the live `kind=large*` decks come
+/// off, of which 312 are `both`, 87 r4133-only and 44 capi-only (measured
+/// 2026-09-05 on the merged tree; `(440, 313, 83, 44)` on the lane, before G1.4a's
+/// D12/D14 flips and the three micro decks the other lanes added). Identical to
+/// [`FORCED_TOPOLOGY_POPULATION`] and
 /// [`FORCED_PROPS_POPULATION`] by construction, and the test asserts those
 /// equalities instead of leaving them a comment.
 ///
@@ -638,7 +1265,7 @@ fn force_inc_matrix(c: &mut SolvableCase) {
 /// fixes settlement S-INC's decline population: `harness::inc_matrix`'s
 /// `INC_UPSTREAM_ROW_DECLINES` was measured over exactly this set, so narrowing
 /// it moves that constant too.
-const FORCED_INC_MATRIX_POPULATION: (usize, usize, usize, usize) = (440, 313, 83, 44);
+const FORCED_INC_MATRIX_POPULATION: (usize, usize, usize, usize) = (443, 312, 87, 44);
 
 /// **The manifest rows that declare `compare_inc_matrix` themselves**, with the
 /// gating channel each one carries.
@@ -857,6 +1484,11 @@ fn make_case(
     };
     if class == CaseClass::Live {
         force_properties(source, &mut c, fam_props);
+        force_pdelements(source, &mut c);
+        force_derived(source, &mut c);
+        force_bus(&mut c);
+        force_zsc(&mut c);
+        force_element_extras(source, &mut c);
         force_topology(&mut c);
         force_inc_matrix(&mut c);
     }

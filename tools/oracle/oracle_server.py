@@ -69,8 +69,9 @@ def _tolerant_read(fn, tolerate_user_model: bool):
     correct Yprim-only values). Any other errno re-raises — a real failure is
     never masked.
 
-    `capture_all_elements` keeps its own inline copy of this retry so that
-    established capture stays byte-identical; the two are deduped at merge.
+    `capture_all_elements` calls this one definition too (its inline copy was
+    deduped into this helper at the D7 lane merge, 2026-09-05); the absorbed
+    errno set and the single retry are therefore identical on both paths.
     """
     import dss as _dss
 
@@ -160,12 +161,134 @@ def capture_solution_scalars(sol) -> dict:
     }
 
 
-def capture_all_elements(ckt, tolerate_user_model: bool = False) -> list:
+def _polar_pair(flat) -> tuple:
+    """De-interleave a Pascal `[mag, ang, mag, ang, ...]` polar array into a
+    `(mags, angs)` pair — the `i_re`/`i_im`, `p_kw`/`p_kvar` convention
+    `gen_checkpoints.capture_element` already uses, so the Rust comparator
+    never does stride-2 index arithmetic. Angles are degrees on the
+    `(-180, 180]` branch cut (`Ctopolardeg` -> `CDang`, r4133
+    `Shared/Ucomplex.pas:118`)."""
+    vals = list(flat)
+    return [float(x) for x in vals[0::2]], [float(x) for x in vals[1::2]]
+
+
+def _re_im_pair(flat) -> tuple:
+    """De-interleave a Pascal complex `[re, im, re, im, ...]` array into a
+    `(res, ims)` pair — the same `i_re`/`i_im`, `p_kw`/`p_kvar` convention
+    `gen_checkpoints.capture_element` uses, so the Rust comparator never does
+    stride-2 index arithmetic.
+
+    Identical arithmetic to `_polar_pair`, deliberately NOT the same function:
+    the name is what tells the reader (and the comparator author) that the two
+    halves are rectangular components, not `(magnitude, angle)`."""
+    vals = list(flat)
+    return [float(x) for x in vals[0::2]], [float(x) for x in vals[1::2]]
+
+
+def capture_all_elements(
+    ckt,
+    tolerate_user_model: bool = False,
+    derived: bool = False,
+    element_extras: bool = False,
+) -> list:
     """Every circuit element's terminal currents (A), powers (kW/kvar), and
-    losses (W/var — `CktElement.Losses`, the engine's own Get_Losses path).
+    losses (W/var — `CktElement.Losses`, the engine's own Get_Losses path);
+    under `derived` also `Enabled` and the three polar channels
+    `CurrentsMagAng` / `VoltagesMagAng` / `Residuals` (GOLDEN_REBASE G1.3a);
+    under `element_extras` also `Enabled` and the discrete index/name scalars
+    `NumTerminals` / `NumConductors` / `NumPhases` / `EnergyMeter` / `NodeOrder`
+    (GOLDEN_REBASE G1.3d(i)).
 
     The plan mandates comparing *all* element currents/powers/losses (not just
     the selected set), so the live gate captures the whole element list here.
+
+    Capture order is contractual (GOLDEN_REBASE_PLAN.md §1.1(a), D3) and is
+    asserted from the `capture-order: NAME (A|B|C)` markers below by
+    `crates/dss-core/tests/capture_order.rs` — a marker sits on the read line
+    itself, or on the comment line immediately above it when the read does not
+    fit; a call into another capture helper declares the reads that helper
+    performs, in its order:
+
+      A  cache-aware reads answered through `ComputeIterminal` — `Powers`,
+         `Losses` (r4133 `Common/CktElement.pas:707` `Get_Losses`, capi
+         `Common/CktElement.pas:601`), `TotalPowers`, `PhaseLosses`;
+      B  reads that run `GetCurrents` into a scratch buffer — `Currents`,
+         `CurrentsMagAng` (capi `CAPI/CAPI_Alt.pas:1043`), `Residuals` (capi
+         `CAPI/CAPI_CktElement.pas:541`, r4133 `DDLL/DCktElement.pas:827`,
+         both carrying the `(i-1)*Nconds` terminal offset), `SeqCurrents`,
+         `CplxSeqCurrents`, `SeqPowers`;
+      C  order-free reads — the element selectors, discrete state, and the
+         voltages (`VoltagesMagAng` reads `NodeV[NodeRef[i]]` only, capi
+         `CAPI/CAPI_Alt.pas:1072`).
+
+    Every A read must precede every B read: `TPCElement.GetTerminalCurrents`
+    fills the CALLER's buffer yet still stamps `IterminalSolutionCount` (r4133
+    `PCElements/PCElement.pas:247`, stamp at `:265`; capi `:107`, stamp at
+    `:126`), leaving `Iterminal` itself stale while the cache reads as fresh,
+    so a cache-aware read that follows one can answer from that stale cache
+    (CLAUDE.md upstream bug 4, harmonics `Powers`-after-`Currents`).
+    `Losses` is therefore read BEFORE `gc.capture_element` rather than after
+    it — a reordering of two group-A reads, so no captured value moves
+    (proven byte-for-byte on IEEE13, two harmonics decks and the two
+    user-model decks; G1.3a record).
+
+    `derived` (request key `"derived"`, manifest flag `compare_derived`): the
+    three polar channels are read for `Enabled` elements ONLY. r4133's
+    `CktElementV(19)` (`VoltagesMagAng`, `DDLL/DCktElement.pas:1099`)
+    dereferences `NodeRef^[i]` with no nil guard and kills the worker on a
+    never-enabled element, where capi returns its 1-element `DefaultResult`
+    (`CAPI/CAPI_Alt.pas:1081` guards `elem.NodeRef = NIL`); capturing enabled
+    elements only removes that crash class AND makes the two channels' shapes
+    identical, so no sentinel normalization is owed. `enabled` itself is
+    captured for every element and compared exactly.
+
+    `element_extras` (request key `"element_extras"`, manifest flag
+    `compare_element_extras`): the discrete index/name scalars (G1.3d(i)), the
+    five control-derived scalars and `PhaseLosses` (G1.3d(ii)). Nine of those
+    ten are read for EVERY element; only `NodeOrder` is conditional (below).
+
+    The four G1.3d(i) scalars are pure field reads
+    (`CAPI/CAPI_CktElement.pas:182-211` for the counts, `:672-687` for
+    `EnergyMeter`; r4133 `DDLL/DCktElement.pas:139`/`:144`/`:149`/`:442`).
+
+    The five G1.3d(ii) control-derived scalars — `NumControls`
+    (`CAPI/CAPI_CktElement.pas:939`, r4133 `DDLL/DCktElement.pas:237`),
+    `OCPDevIndex` (`:951` / `:242`), `OCPDevType` (`:978` / `:259`),
+    `HasVoltControl` (`:689` / `:222`) and `HasSwitchControl` (`:713` / `:207`)
+    — all answer from the element's `ControlElementList` and never touch
+    `Iterminal`, so they are order-free (group C). The two `Has*` reads do move
+    that list's cursor (`ModeEffect::Impure`), which is unobservable: every
+    consumer restarts the walk with `First`/`Get(i)`.
+
+    `PhaseLosses` (`CAPI/CAPI_CktElement.pas:327` -> `CAPI/CAPI_Alt.pas:449`,
+    r4133 `DDLL/DCktElement.pas:637`) is the exception: it is
+    `TDSSCktElement.GetPhaseLosses` (capi `Common/CktElement.pas:879`, r4133
+    `Common/CktElement.pas:1075`), whose first act on an enabled element is
+    `ComputeIterminal` (capi `:896`, r4133 `:1090`) — a cache-aware group-**A**
+    read, and therefore the FIRST element read this body issues, ahead of
+    `Losses` and of the group-B `Currents` inside `gc.capture_element`. It is
+    read for EVERY element, enabled or not: both engines zero-fill a disabled
+    one (capi guards `(not FEnabled) or (NodeRef = NIL)` at
+    `Common/CktElement.pas:890`, r4133 takes the `Else … CZERO` branch at
+    `Common/CktElement.pas:1118-1119`), so — unlike `NodeOrder` — no capture
+    predicate is owed. Units are **kW/kvar**, both transports scaling by
+    `0.001` (capi `CAPI/CAPI_Alt.pas:464`, r4133 `DDLL/DCktElement.pas:651`) —
+    unlike `Losses`, which is W/var.
+
+    `NodeOrder` is read only for an element that is `Enabled` **and** has
+    `NumTerminals > 0`:
+      * a never-enabled element never got `SetNodeRef`, so `NodeRef` is nil:
+        capi raises 15013 (`CAPI/CAPI_CktElement.pas:900-906`) and r4133 dereferences
+        the nil pointer at `DDLL/DCktElement.pas:1048` with no guard;
+      * a 0-terminal element is legitimate (`UPFCControl` never assigns
+        `Nterms` — r4133 `Controls/UPFCControl.pas:230-246`), and there the two
+        transports disagree in *shape*: r4133 mode 17 returns a 0-length array
+        (`setlength(myIntArray, NTerms*Nconds)`, `:1043`) while capi takes the
+        same nil-`NodeRef` branch and raises 15013.
+    Not issuing the read removes the asymmetry instead of normalizing it (the
+    `derived` precedent); the comparator asserts both sides are empty there, so
+    the skip cannot hide a payload. `enabled` is emitted under this flag too —
+    the predicate must be visible to the comparator, never assumed.
 
     `tolerate_user_model` (CF-C Port 2): a Generator model=6 whose user-written
     model is not loaded fires DoSimpleMsg #567 the FIRST time its terminal
@@ -173,25 +296,60 @@ def capture_all_elements(ckt, tolerate_user_model: bool = False) -> list:
     correct (Yprim-only) currents and clears the error, so a second read returns
     them cleanly (verified: read 1 raises #567 + zeroes Error.Number, read 2 OK).
     We absorb that single priming raise (retry once) exactly as the official
-    Direct DLL warns-and-continues; any other errno re-raises.
+    Direct DLL warns-and-continues; any other errno re-raises. Under the D3
+    order that priming raise lands on the first cache-aware read of the element
+    rather than on `Powers`: `PhaseLosses` when `element_extras` is on, `Losses`
+    otherwise. `_read` wraps each read individually, so either absorber is
+    correct — it is the same recompute, and it clears the warning either way.
     """
-    import dss as _dss
-
     def _read(fn):
-        try:
-            return fn()
-        except _dss.DSSException as e:
-            errno = e.args[0] if e.args else None
-            if not (tolerate_user_model and errno in _USER_MODEL_ERRNOS):
-                raise
-            return fn()  # priming read fired the warning + cleared it; retry is cached
+        # One definition of the priming retry, shared with `capture_aggregates`
+        # (the dedup its doc promised at the D7 lane merge, 2026-09-05).
+        return _tolerant_read(fn, tolerate_user_model)
 
     out = []
-    for name in ckt.AllElementNames:
+    el = ckt.ActiveCktElement  # capture-order: ActiveCktElement (C)
+    for name in ckt.AllElementNames:  # capture-order: AllElementNames (C)
+        ckt.SetActiveElement(name)  # capture-order: SetActiveElement (C)
+        enabled = bool(el.Enabled)  # capture-order: Enabled (C)
+        pl = None
+        if element_extras:
+            pl = _read(lambda: el.PhaseLosses)  # capture-order: PhaseLosses (A)
+        loss = _read(lambda: el.Losses)  # capture-order: Losses (A)
+        # capture-order: Powers (A), Currents (B)
         cap = _read(lambda: gc.capture_element(ckt, name))
-        # capture_element leaves the element active; Losses reads it.
-        loss = _read(lambda: ckt.ActiveCktElement.Losses)
         cap["loss_w"] = [float(loss[0]), float(loss[1])]
+        if derived or element_extras:
+            cap["enabled"] = enabled
+        if derived and enabled:
+            cma = _read(lambda: el.CurrentsMagAng)  # capture-order: CurrentsMagAng (B)
+            res = _read(lambda: el.Residuals)  # capture-order: Residuals (B)
+            vma = _read(lambda: el.VoltagesMagAng)  # capture-order: VoltagesMagAng (C)
+            cap["cma_mag"], cap["cma_ang"] = _polar_pair(cma)
+            cap["res_mag"], cap["res_ang"] = _polar_pair(res)
+            cap["vma_mag"], cap["vma_ang"] = _polar_pair(vma)
+        if element_extras:
+            n_terms = int(el.NumTerminals)  # capture-order: NumTerminals (C)
+            cap["n_terms"] = n_terms
+            cap["n_conds"] = int(el.NumConductors)  # capture-order: NumConductors (C)
+            cap["n_phases"] = int(el.NumPhases)  # capture-order: NumPhases (C)
+            # The RAW oracle spelling: `''` here (capi returns NIL, which
+            # dss-python's `_get_string` maps to the empty string) is the "no
+            # meter" sentinel, and the r4133 channel spells the same state `'0'`
+            # (`CktElementS`'s pre-`case` default, `DDLL/DCktElement.pas:421`).
+            # Normalizing the two is the comparator's job, not the capture's.
+            cap["energy_meter"] = str(el.EnergyMeter)  # capture-order: EnergyMeter (C)
+            cap["pl_kw"], cap["pl_kvar"] = _re_im_pair(pl)
+            cap["num_controls"] = int(el.NumControls)  # capture-order: NumControls (C)
+            cap["ocp_dev_index"] = int(el.OCPDevIndex)  # capture-order: OCPDevIndex (C)
+            cap["ocp_dev_type"] = int(el.OCPDevType)  # capture-order: OCPDevType (C)
+            # capture-order: HasVoltControl (C)
+            cap["has_volt_control"] = bool(el.HasVoltControl)
+            # capture-order: HasSwitchControl (C)
+            cap["has_switch_control"] = bool(el.HasSwitchControl)
+            if enabled and n_terms > 0:
+                order = el.NodeOrder  # capture-order: NodeOrder (C)
+                cap["node_order"] = [int(v) for v in order]
         out.append(cap)
     return out
 
@@ -348,6 +506,389 @@ def capture_all_meters(ckt) -> list:
     return out
 
 
+def capture_reliability(ckt, aborted: bool, message: str) -> dict:
+    """The `Meters` reliability surface, read AFTER the executive `RelCalc`
+    (`GOLDEN_REBASE_PLAN.md` §1.1, sub-step G1.6(i)).
+
+    `RelCalc` (`Executive/ExecCommands.pas:154` -> `TExecHelper.DoLambdaCalcs`,
+    r4133 `Executive/ExecHelper.pas:4404-4440`; capi `ExecCommands.pas:631` ->
+    `ExecHelper.pas:4847`) is the only thing that ever fills these fields, and
+    **no live corpus deck runs it** — so without driving it the whole
+    reliability half of the meter surface would compare `0 == 0`. The gate
+    therefore drives it itself, exactly once per case, right after the LAST
+    solve: it is NOT idempotent (`Bus.TotalMiles` accumulates —
+    `13.825757575757578 -> 22.348484848484844` on
+    `modes/time/midi_duty_ctrl.dss`, measured on both oracle channels), so a
+    per-step drive would be semantically garbage.
+
+    READ-ORDER CONTRACT — three rules, all asserted statically by
+    `crates/dss-core/tests/reliability_pins.rs`:
+
+    1. per meter, the non-section fields in `IMeters._columns` order (the
+       fastdss harness's own record order, `dss/IMeters.py:13-42`); `ZonePCE`
+       is not in `_columns` and is appended right after `AllBranchesInZone`;
+    2. a section field is read ONLY after `SetActiveSection(k)`. The selection
+       lives on the METER (`COM_ActiveSection`, capi `CAPI_Meters.pas:729-740`;
+       `pMeter.ActiveSection`, r4133 `DDLL/DMeters.pas:254-262`) and the meter
+       walk never resets it (capi `Meters_Get_First`/`_Next` `:153-167` ->
+       `Generic_CktElement_Get_First`/`_Next`; r4133 `DMeters.pas:38-71`), so a
+       section read without a preceding `SetActiveSection` returns the
+       previously selected section. With none selected — or an out-of-range
+       index — `InvalidActiveSection` (`CAPI_Meters.pas:122-134`) yields 0/0.0
+       and, under `DSS_CAPI_EXT_ERRORS`, raises: measured on the pinned oracle,
+       both cases raise `(#5055, 'Invalid active section. Has SetActiveSection
+       been called?')`, so this rule is a hard requirement here, not just a
+       stale-value hazard. The loop below selects every `k in 1..=NumSections`,
+       so a meter whose calc aborted (`NumSections == 0`) reads no section
+       field at all;
+    3. `Meters.Totals` is read LAST, after the `First`/`Next` walk has
+       finished. It calls `TotalizeMeters` (`CAPI_Meters.pas:279-290`, `:287`
+       -> `Common/Circuit.pas:2347-2360`; r4133 `DMeters.pas:566` ->
+       `Circuit.pas:2520-2538`), which walks `EnergyMeters` itself and destroys
+       the meter cursor. The fastdss harness says so verbatim
+       (`tests/save_outputs.py:332-333`, *"This breaks the iteration"*), and it
+       is measured on BOTH channels: on
+       `controls/energymeter/midi_energymeter.dss` (meters `em`, `em2`) a
+       mid-walk `Totals` read makes the very next `Meters.Next` return 0, so the
+       clean walk `['em', 'em2']` silently truncates to `['em']`.
+
+    This surface is group **C** of the §1.1(a) capture-order partition: none of
+    its reads calls `GetCurrents` into a scratch buffer — `CalcCurrent` returns
+    `Cabs` of the STORED `CalculatedCurrent` array (`CAPI_Meters.pas:335-350`),
+    `AllocFactors` a `Move` of `PhsAllocationFactor` (`:379-392`) — so it
+    neither imposes anything on the element capture order nor inherits anything
+    from it.
+
+    Fastdss parity, both directions, deliberately: we are STRICTLY STRONGER on
+    the sections (fastdss captures the first section only,
+    `tests/save_outputs.py:284-291`; we capture every one), and we deliberately
+    do NOT re-read `SeqListSize` / `CountBranches` / `CountEndElements` (the
+    lengths of the three ordered lists compared outright below) or
+    `MeteredElement` / `MeteredTerminal` / `Peakcurrent` (EnergyMeter properties
+    #0 / #1 / #6 — `EnergyMeter.pas:480-486` — already live-compared by
+    `capture_all_properties`). `CountEndElements` is additionally a do-not-call
+    on the r4133 DDLL arm, which dereferences `BranchList.ZoneEndsList` with no
+    nil guard (`DMeters.pas:156-164`, against capi's `CheckBranchList(5500)` --
+    `CAPI_Meters.pas:543`; 5501 is `AllBranchesInZone`, 5502 `AllEndElements`).
+
+    `aborted` / `message` are NOT reads: they carry the outcome of the `RelCalc`
+    command itself (errno 52902, `Meters/EnergyMeter.pas:2456` capi == `:2502`
+    r4133 == the port's `solution/meters/reliability.rs` text). The error COUNT
+    is deliberately not reported — the port raises once per failing meter while
+    dss-python raises once per command.
+    """
+    meters = []
+    m = ckt.Meters
+
+    # Same placeholder/artifact filter as `capture_all_meters` (the C-API
+    # `['NONE']` DefaultResult and the Delphi trailing-separator empty entry).
+    def _lst(v):
+        xs = [s for s in (str(s).strip() for s in v) if s]
+        return [] if xs == ["NONE"] else xs
+
+    i = m.First
+    while i:
+        # --- rule 1: reads in `IMeters._columns` order (index in the comment).
+        name = str(m.Name)  # _columns[0]
+        alloc_factors = [float(x) for x in m.AllocFactors]  # _columns[6]
+        ends = _lst(m.AllEndElements)  # _columns[7]
+        saifikw = float(m.SAIFIKW)  # _columns[8]
+        saidi = float(m.SAIDI)  # _columns[10]
+        total_customers = int(m.TotalCustomers)  # _columns[11]
+        saifi = float(m.SAIFI)  # _columns[13]
+        cust_interrupts = float(m.CustInterrupts)  # _columns[14]
+        calc_current = [float(x) for x in m.CalcCurrent]  # _columns[16]
+        branches = _lst(m.AllBranchesInZone)  # _columns[17]
+        pce = _lst(m.ZonePCE)  # (not in _columns)
+        num_sections = int(m.NumSections)  # _columns[18]
+        # --- rule 2: still inside the per-meter walk, one selection per section.
+        sections = []
+        for k in range(1, num_sections + 1):
+            m.SetActiveSection(k)
+            sections.append(
+                {
+                    "idx": k,
+                    # discrete (compared exactly)
+                    "num_section_customers": int(m.NumSectionCustomers),
+                    "num_section_branches": int(m.NumSectionBranches),
+                    "sect_seq_idx": int(m.SectSeqIdx),
+                    "sect_total_cust": int(m.SectTotalCust),
+                    "ocp_device_type": int(m.OCPDeviceType),
+                    # continuous
+                    "sum_branch_flt_rates": float(m.SumBranchFltRates),
+                    "avg_repair_time": float(m.AvgRepairTime),
+                    "fault_rate_x_repair_hrs": float(m.FaultRateXRepairHrs),
+                }
+            )
+        meters.append(
+            {
+                "name": name,
+                "total_customers": total_customers,
+                "saifi": saifi,
+                "saifikw": saifikw,
+                "saidi": saidi,
+                "cust_interrupts": cust_interrupts,
+                "calc_current": calc_current,
+                "alloc_factors": alloc_factors,
+                # ORDERED zone lists — own reads. `capture_all_meters` compares
+                # the same three lists as a case-insensitive SET (deliberately,
+                # see its comment); the ordered assertion lives on these copies.
+                "branches": branches,
+                "ends": ends,
+                "pce": pce,
+                "num_sections": num_sections,
+                "sections": sections,
+            }
+        )
+        i = m.Next
+
+    # --- rule 3: LAST, after the walk. `TotalizeMeters` destroys the cursor.
+    totals = [float(x) for x in m.Totals]
+    return {
+        "aborted": bool(aborted),
+        "message": str(message),
+        "meters": meters,
+        "totals": totals,
+    }
+
+
+def capture_pd_elements(ckt) -> list:
+    """Every ENABLED PD element's `PDElements` interface record — the thirteen
+    `IPDElements._columns` fields of the fastdss parity target plus the parent's
+    full name (`GOLDEN_REBASE_PLAN.md` §1.1 row 10, sub-step G1.6b).
+
+    Membership and order are the circuit's `PDElements` pointer list, walked by
+    `PDElements_Get_First`/`_Get_Next` (`CAPI/CAPI_PDElements.pas:129-143` ->
+    `Generic_CktElement_Get_First`/`_Next`, `CAPI/CAPI_Utils.pas:721-758`), which
+    skip `not Enabled` and assign `ActiveCktElement` from the list. `Fault`
+    objects are `FAULTOBJECT + NON_PCPD_ELEM` (`PDElements/Fault.pas:114`) and so
+    never appear; the six classes that do are Line / Transformer / AutoTrans /
+    Capacitor / Reactor / GICTransformer (`Common/Circuit.pas:2242-2248`).
+
+    READ-ORDER CONTRACT — `ParentPDElement` is read LAST, and nothing but the
+    parent-name read may follow it. `PDElements_Get_ParentPDElement`
+    (`CAPI/CAPI_PDElements.pas:245-257`; the r4133 DDLL arm
+    `Version8/Source/DDLL/DPDELements.pas:88-97` is identical) does
+    `ActiveCircuit.ActiveCktElement := elem.ParentPDElement` and never restores
+    it, so every field read after it returns the *parent's* value. fastdss reads
+    it second (`_columns` order) and so contaminates its own records: measured,
+    215 cells of the 138-element IEEE123 walk move — identically on both channels
+    (e.g. `Line.l1.Totalcustomers` 1 -> 91, `Line.l2.Numcustomers` 0 -> 1).
+    Reading it last makes the mutation free and lets us read the parent's FULL
+    name off `ActiveCktElement` (`CktElement_Get_Name` returns `elem.FullName`,
+    `CAPI/CAPI_CktElement.pas:172-180`) — the strictly stronger half of the
+    comparison (88 distinct values on IEEE123 against the `ClassIndex`'s 85).
+    The iteration itself is immune: `Get_Next` advances the pointer list, not
+    `ActiveCktElement` (`CAPI/CAPI_Utils.pas:740-758`). Asserted statically by
+    `crates/dss-core/tests/pd_elements_pins.rs`.
+
+    `parent_name` is read ONLY when `parent_class_index` is non-zero: with a NIL
+    parent the getter leaves the active element alone ("leaves ActiveCktElement
+    as is", `CAPI/CAPI_PDElements.pas:251`) and a name read would echo the
+    element's own name instead of the empty string.
+    """
+    out = []
+    pde = ckt.PDElements
+    i = pde.First
+    while i:
+        # The twelve order-free fields, in the record order. `IsShunt` is a bool
+        # here and 0/1 on the r4133 DDLL — both capture sides emit a bool.
+        rec = {
+            "name": str(pde.Name),
+            "accumulated_l": float(pde.AccumulatedL),
+            "from_terminal": int(pde.FromTerminal),
+            "is_shunt": bool(pde.IsShunt),
+            "num_customers": int(pde.Numcustomers),
+            "section_id": int(pde.SectionID),
+            "fault_rate": float(pde.FaultRate),
+            "repair_time": float(pde.RepairTime),
+            "total_miles": float(pde.TotalMiles),
+            "total_customers": int(pde.Totalcustomers),
+            "pct_permanent": float(pde.pctPermanent),
+            "lambda": float(pde.Lambda),
+        }
+        # LAST field read of the record (the contract above); it moves
+        # `ActiveCktElement` to the parent, so the parent's full name is read
+        # immediately after it and nothing else may come between.
+        rec["parent_class_index"] = int(pde.ParentPDElement)
+        rec["parent_name"] = (
+            str(ckt.ActiveCktElement.Name) if rec["parent_class_index"] else ""
+        )
+        out.append(rec)
+        i = pde.Next
+    return out
+
+
+#: The six G1.5 short-circuit arms, in the order [`capture_all_buses`] reads
+#: them — the same order the r4133 transport uses
+#: (`crates/dss-epri/src/capture.rs::capture_all_buses`). Always present in the
+#: wire shape, empty when the request did not ask for them.
+_SC_KEYS = ("zsc1", "zsc0", "zsc", "ysc", "isc", "voc")
+
+#: What THIS transport publishes for `Bus.ZscMatrix`/`Bus.YscMatrix` when the
+#: bus has no short-circuit matrix (`pBus.Zsc = NIL`): `DefaultResult`'s single
+#: `0.0` (`CAPI/CAPI_Utils.pas:212-221`, the `DSS_CAPI_COM_DEFAULTS` branch —
+#: on in the pinned 0.15.7 build). r4133's arm publishes one `CZero` instead,
+#: i.e. 2 doubles (`DDLL/DBus.pas:433-434`); the two sentinels are normalized to
+#: "no matrix" by the comparator, never compared as values.
+_CAPI_SC_SENTINEL_LEN = 1
+
+
+def capture_all_buses(ckt, want_sc: bool) -> list:
+    """Every bus's node set, kV base, the three per-node voltage surfaces and —
+    when `want_sc` — the six short-circuit arms.
+
+    GOLDEN_REBASE_PLAN.md WP-G1 G1.4a (the `compare_bus` surface) + G1.5 (the
+    `compare_zsc` surface, appended to this same walk). Walked in
+    `ckt.AllBusNames` order — the engine's own `BusList` order, which
+    `SetActiveBus`'s returned 0-based index re-asserts per bus (a failed lookup
+    leaves the previous bus active, which would otherwise silently attribute one
+    bus's voltages to another).
+
+    Per bus (`origin/fastdss` `dss/IBus.py:19-53` `_columns` — the parity
+    target):
+
+    * `nodes` — `Bus.Nodes`: the bus's node NUMBERS in **ascending** order, not
+      the bus's internal insertion order (`CAPI_Alt.pas:2143-2163` == r4133
+      `DBus.pas:319-345`; both walk `repeat NodeIdx := FindIdx(jj); inc(jj)
+      until NodeIdx > 0` and report `GetNum(NodeIdx)`). Verified live on a
+      `.2.1.3`-declared bus: `AllNodeNames` is `b1.2, b1.1, b1.3` while `Nodes`
+      is `[1, 2, 3]`.
+    * `kv_base` — `Bus.kVBase` in kV. Both engines derive the per-unit divisor
+      as `BaseFactor = 1000·kVBase` when positive, else `1.0` — the branch
+      11 480 of the corpus's 209 211 buses take.
+    * `pu_voltages` — `NodeV[GetRef]/BaseFactor`, `2·NumNodes` interleaved
+      (re, im), in that same ascending-node-number order
+      (`CAPI_Alt.pas:2251-2280` == r4133 `DBus.pas:399-430`).
+    * `vmag_angle` — `2·NumNodes` interleaved (magnitude in V, angle in degrees)
+      (`CAPI_Alt.pas:2573-2597` == r4133 `DBus.pas:659-689`).
+    * `pu_vmag_angle` — the same pairs with only the magnitude divided by
+      `BaseFactor` (`CAPI_Alt.pas:2540-2571` == r4133 `DBus.pas:690-723`).
+
+    All four value surfaces are the identical algorithm on both gating channels
+    (re-read at HEAD). The bus quantities that do diverge between the channels
+    (`SeqVoltages`/`CplxSeqVoltages`, `VLL`/`puVLL`) belong to G1.4c and are
+    deliberately NOT read here — `VLL`/`puVLL` additionally hang the r4133
+    channel on the NEV decks (coordinator decision D8).
+
+    G1.5's six short-circuit arms are appended to THIS walk (never a second
+    `SetActiveBus` pass), in the fixed order `zsc1, zsc0, zsc, ysc, isc, voc`,
+    and only when `want_sc`; the keys are always emitted, empty when it is off,
+    so the wire shape does not depend on the request:
+
+    * `zsc1` / `zsc0` — `Bus.Zsc1` = `Zs - Zm` / `Bus.Zsc0` = `Zs + 2*Zm`, one
+      complex each, ALWAYS 2 doubles (`CAPI_Alt.pas:2294-2303` / `:2283-2292`
+      write `2` unconditionally; the `Zsc = NIL` case is `cZERO` from
+      capi `Common/Bus.pas:216-232` == r4133 `Bus.pas:215-229`). `AvgOffDiagonal`
+      divides only `If Ntimes > 0` (capi `Shared/Ucmatrix.pas:372-387` ==
+      r4133 `:369-383`), so on a 1-node bus `Zm = 0` and
+      `Zsc1 == Zsc0 == Zsc[0,0]`.
+    * `zsc` / `ysc` — `Bus.ZscMatrix` / `Bus.YscMatrix`, row-major (`i` outer,
+      `j` inner) `2*n*n` doubles (`CAPI_Alt.pas:2305-2334` / `:2336-2365` ==
+      r4133 `DBus.pas:431-459` / `:491-518`). Both matrices exist only after a
+      fault study / `ZscRefresh` built them (`SolveFaultStudy`, capi
+      `SolutionAlgs.pas:852-894` == r4133 `SolutionAlgs.pas:875-912`); until
+      then this transport publishes its `DefaultResult` SENTINEL of
+      `_CAPI_SC_SENTINEL_LEN` double(s) (`CAPI_Utils.pas:212-221` with
+      `DSS_CAPI_COM_DEFAULTS` on in the pinned build) while r4133 publishes one
+      `CZero`, i.e. 2 — a shape difference the comparator normalizes.
+    * `isc` / `voc` — `Bus.Isc` (`BusCurrent`) / `Bus.Voc` (`VBus`), `2*n`
+      doubles (`CAPI_Alt.pas:2202-2224` / `:2227-2249`). `VBus`/`BusCurrent`
+      are never NIL on THIS transport: `TDSSBus.AllocateBusState`
+      (`Common/Bus.pas:250-256`) uses `AllocMem`, which returns a non-nil block
+      even at `FNumNodesThisBus = 0`, so the corpus's two 0-node buses report
+      `2*0 = 0` doubles here — where r4133's `Reallocmem(VBus, 0)`
+      (`Bus.pas:246-260`) frees the pointer and its arm falls back to the
+      2-double `CZero` sentinel. Measured on `Test/REACTORTest.DSS` and
+      `Test/Source012Test.dss` (`loadbus2`).
+
+    Every SC array is indexed by the bus's INTERNAL (insertion) node index, not
+    by ascending node number: `Zsc`/`Ysc` are built column by column over
+    the bus's internal index (`pBus.RefNo[i]` in capi `ComputeYsc`,
+    `SolutionAlgs.pas:788-816`; `GetRef(i)` in r4133 `:800-832`) and `VBus`/`BusCurrent` are stored per internal
+    index — unlike the three voltage surfaces above, whose `FindIdx` walk sorts
+    ascending. Measured on a `bus2=b2.2.1.3` deck: the odd `Zsc` diagonal sits
+    at index 1 (the node the 1-phase shunt is on), which ascending order would
+    have put at index 0.
+
+    Capture-order class: **group C, order-free** (GOLDEN_REBASE_PLAN.md §1.1(a),
+    coordinator decision D3). Every read goes straight to `Solution.NodeV`
+    (`CAPI_Alt.pas:2276`) and touches neither `ComputeIterminal` nor
+    `ActiveCktElement`; only `ActiveBusIndex` moves. The fixed per-bus read
+    order below is therefore a contract the capture-order test asserts, not a
+    staleness hazard.
+
+    Shapes are asserted, never assumed: a `2·len(nodes)` mismatch fails the case
+    loudly instead of shipping a short row the comparator would misread as a
+    length divergence. That also catches a process running with
+    `DSS.AdvancedTypes = True`, where these accessors return complex arrays of
+    half the length (the pinned oracle runs with the default `False`). A 0-node
+    bus (2 in the corpus: `loadbus2` of `Test/REACTORTest.DSS` and
+    `Test/Source012Test.dss`) returns empty arrays and passes the same assert.
+    """
+    out = []
+    for i, name in enumerate(ckt.AllBusNames):
+        idx = ckt.SetActiveBus(name)
+        if idx != i:
+            raise RuntimeError(
+                f"bus capture: SetActiveBus({name!r}) returned {idx}, expected {i} "
+                "(AllBusNames must be the engine's BusList order)"
+            )
+        b = ckt.ActiveBus
+        nodes = [int(x) for x in b.Nodes]
+        cap = {
+            "name": str(b.Name),
+            "kv_base": float(b.kVBase),
+            "nodes": nodes,
+            "pu_voltages": [float(x) for x in b.puVoltages],
+            "vmag_angle": [float(x) for x in b.VMagAngle],
+            "pu_vmag_angle": [float(x) for x in b.puVmagAngle],
+        }
+        for key in ("pu_voltages", "vmag_angle", "pu_vmag_angle"):
+            if len(cap[key]) != 2 * len(nodes):
+                raise RuntimeError(
+                    f"bus capture: {name}.{key} returned {len(cap[key])} values, "
+                    f"expected 2*{len(nodes)} for nodes {nodes}"
+                )
+        cap.update({k: [] for k in _SC_KEYS})
+        if want_sc:
+            cap["zsc1"] = [float(x) for x in b.Zsc1]
+            cap["zsc0"] = [float(x) for x in b.Zsc0]
+            cap["zsc"] = [float(x) for x in b.ZscMatrix]
+            cap["ysc"] = [float(x) for x in b.YscMatrix]
+            cap["isc"] = [float(x) for x in b.Isc]
+            cap["voc"] = [float(x) for x in b.Voc]
+            n = len(nodes)
+            for key, want in (
+                ("zsc1", (2,)),
+                ("zsc0", (2,)),
+                ("zsc", (_CAPI_SC_SENTINEL_LEN, 2 * n * n)),
+                ("ysc", (_CAPI_SC_SENTINEL_LEN, 2 * n * n)),
+                ("isc", (2 * n,)),
+                ("voc", (2 * n,)),
+            ):
+                if len(cap[key]) not in want:
+                    raise RuntimeError(
+                        f"bus capture: {name}.{key} returned {len(cap[key])} values, "
+                        f"expected one of {want} for nodes {nodes} (see "
+                        "capture_all_buses' docstring for each arm's Pascal shape)"
+                    )
+        out.append(cap)
+    return out
+
+
+def capture_all_bus_vmag_pu(ckt) -> list:
+    """`Circuit.AllBusVmagPu` — every NODE's per-unit voltage magnitude.
+
+    Ordered bus-list order x the bus's INTERNAL node index (`GetRef(j)` for
+    `j = 1..NumNodesThisBus`, i.e. the `AllNodeNames` order) — a different
+    permutation from the ascending-node-number order of the per-bus arrays in
+    [`capture_all_buses`] AND from the gated `YNodeOrder`
+    (`CAPI_Circuit.pas:521-548` == r4133 `Circuit.AllBusMagPu`,
+    `DCircuit.pas:481-500`, which share the `BaseFactor` rule). Read once per
+    checkpoint; order-free (group C).
+    """
+    return [float(x) for x in ckt.AllBusVmagPu]
 def _topo_names(v) -> list:
     """Normalize one `ITopology` string array to its comparable shape.
 
@@ -630,6 +1171,22 @@ _TOLERATED_COMPILE_ERRNOS = {250}
 # Redirect chain); EarlyAbort is toggled per request in main() and restored.
 _USER_MODEL_ERRNOS = {567, 570, 1570}
 
+# G1.6(i). A SEPARATE, deliberately narrow scope: the ONE DoSimpleMsg number the
+# executive `RelCalc` raises as its own by-design abort, tolerated ONLY around
+# that command and never at compile or solve (hence not folded into
+# `_TOLERATED_COMPILE_ERRNOS` above).
+#   52902 — "Error: No Overcurrent Protection device (Relay, Recloser, or Fuse)
+#           defined. Aborting Reliability calc." — raised per meter whose zone
+#           carries no OCP device (`Meters/EnergyMeter.pas:2456` capi ==
+#           r4133 `:2502`). The reliability calc then leaves that meter at
+#           `SectionCount = 0`; the Rust engine reports the identical text on
+#           `Dss::errors()` (`solution/meters/reliability.rs`) and the r4133
+#           bridge tolerates the same single number (`crates/dss-epri`), so the
+#           three engines' abort is compared, not masked (`aborted`/`message`
+#           of `capture_reliability`).
+# Any other errno out of `RelCalc` re-raises — a real failure is never swallowed.
+_RELCALC_TOLERATED_ERRNOS = {52902}
+
 
 def _set_early_abort(d, val) -> bool:
     """Best-effort `DSS.Error.EarlyAbort = val`. Returns True on success; a
@@ -668,9 +1225,37 @@ def run_case(d, req: dict) -> dict:
     # (heavy: elements x props x steps queries) — the Rust property gate and the
     # env-gated `corpus_live_properties` pilot force it.
     want_all_props = bool(req.get("all_properties", False))
+    # GOLDEN_REBASE G1.3a (manifest flag `compare_derived`): the per-element
+    # polar channels `CurrentsMagAng` / `VoltagesMagAng` / `Residuals` plus
+    # `Enabled`. Opt-in because the three extra reads roughly double the
+    # per-element payload; the same request key reaches the r4133 worker
+    # unchanged (`corpus_gate::engines::build_run_request`).
+    want_derived = bool(req.get("derived", False))
+    # G1.4a bus surface (`compare_bus`): the per-bus voltage arrays plus the
+    # circuit-level `AllBusVmagPu`. Opt-in — cheap (41 ms for the 4 876-bus
+    # 8500-Node deck) but it doubles a large deck's JSON payload.
+    want_buses = bool(req.get("buses", False))
+    # GOLDEN_REBASE G1.3d(i) (manifest flag `compare_element_extras`): the
+    # per-element discrete index/name scalars `NumTerminals`/`NumConductors`/
+    # `NumPhases`/`EnergyMeter`/`NodeOrder` plus `Enabled`. Same one-key-for-the
+    # -whole-surface shape as `derived`, honored by both transports.
+    want_element_extras = bool(req.get("element_extras", False))
     # GOLDEN_REBASE G1.7 (`compare_topology`): the six order-free `ITopology`
     # reads, captured strictly LAST in the step (see `capture_topology`).
     want_topology = bool(req.get("topology", False))
+    # G1.5 bus short-circuit surface (`compare_zsc`): the six `Zsc1`/`Zsc0`/
+    # `ZscMatrix`/`YscMatrix`/`Isc`/`Voc` arms, appended to the SAME per-bus walk
+    # `buses` drives — so `zsc` without `buses` would silently ship nothing.
+    # The gate expresses the implication in the request builder
+    # (`corpus_gate::engines::build_run_request`); this transport refuses the
+    # malformed request loudly rather than returning an empty surface.
+    want_zsc = bool(req.get("zsc", False))
+    if want_zsc and not want_buses:
+        raise RuntimeError(
+            "request asks for the bus short-circuit surface (zsc) without the "
+            "bus surface it is appended to — the six SC arms share the one "
+            "per-bus walk (GOLDEN_REBASE_PLAN.md WP-G1 G1.5 §2.a)"
+        )
     # GOLDEN_REBASE G1.8 (`compare_inc_matrix`): the flat `CalcIncMatrix` +
     # `CalcLaplacian` pair and its four reads, captured after `topology`, i.e.
     # strictly last of all (see `capture_inc_matrix`).
@@ -688,6 +1273,19 @@ def run_case(d, req: dict) -> dict:
     # incidental monitors would surface ill-defined snapshot-sampling edge cases
     # (e.g. a monitor defined after the master's only Solve) unrelated to the gate.
     check_mm = bool(req.get("check_meters_monitors", False))
+    # G1.6b: the per-PD-element `PDElements` interface walk. Opt-in (the Rust
+    # scheduler forces it on every live non-`large` case); when off the checkpoint
+    # carries `None`, not `[]`, so the gate can tell "not requested" apart from
+    # "requested, and this circuit simply has no PD element" (96 of the 372 walked
+    # live cases have none) — `harness::capture_guard::require_capture_opt`.
+    want_pde = bool(req.get("pd_elements", False))
+    # G1.6(i): the `Meters` reliability surface (manifest flag
+    # `compare_reliability`). The ONLY request flag that DRIVES an executive
+    # command — `RelCalc`, once, after the last solve — because no live corpus
+    # deck runs it and the whole surface would otherwise compare `0 == 0`. Off
+    # -> every checkpoint carries `None`; on -> only the LAST one carries the
+    # payload (`harness::capture_guard::require_capture_opt`).
+    want_rel = bool(req.get("reliability", False))
     # CF-C Port 2 user-model decks: tolerate the `_USER_MODEL_ERRNOS` at compile
     # AND at every solve (EarlyAbort is turned off around this call in main()).
     warn_and_continue = bool(req.get("warn_and_continue", False))
@@ -700,6 +1298,22 @@ def run_case(d, req: dict) -> dict:
             node_order = None
             checkpoints = []
             d.Text.Command = "clear"
+            # D13: `clear` does NOT reset `DefaultBaseFreq` on this channel
+            # either. dss_capi keeps it per `TDSSContext`, initialized once from
+            # `GlobalDefaultBaseFreq` = 60.0 (`Common/DSSClass.pas:1278`,
+            # `Common/DSSGlobals.pas:143`); `TExecutive.Clear`
+            # (`Executive/Executive.pas:268-318`) never touches it, and the only
+            # assignments are `Set DefaultBaseFrequency`
+            # (`Executive/ExecOptions.pas:257` with no circuit, `:611` with one)
+            # and the JSON circuit loader (`CAPI/CAPI_Obj.pas:2919`). This server
+            # is long-lived, so a 50 Hz deck would otherwise leak its base
+            # frequency into every later deck of the sweep, while the Rust engine
+            # starts each case at 60 Hz (`crates/dss-core/src/exec/construct.rs:173`).
+            # Restore that starting point before the compile; a deck that wants
+            # 50 Hz still sets it itself. (No registry counterpart here: unlike
+            # r4133, dss_capi has none and rejects `Set RegistryUpdate`
+            # outright — `Executive/ExecOptions.pas:259-260`, error 302.)
+            d.Text.Command = "Set DefaultBaseFrequency=60"
             try:
                 d.Text.Command = f'Compile "{case_path}"'
             except _dss.DSSException as e:
@@ -717,7 +1331,7 @@ def run_case(d, req: dict) -> dict:
                 d.Text.Command = c
 
             ckt = d.ActiveCircuit
-            for _ in range(n_steps):
+            for step in range(n_steps):
                 try:
                     d.Text.Command = "solve"
                 except _dss.DSSException as e:
@@ -733,6 +1347,41 @@ def run_case(d, req: dict) -> dict:
                 # WPG.5: read GlobalResult right after the solve, before any
                 # `?`-query capture below overwrites `Text.Result`.
                 global_result = str(d.Text.Result) if want_global_result else ""
+                # G1.6(i): drive the executive `RelCalc` ONCE, on the LAST step
+                # only, HERE — after `Text.Result` has been read (`RelCalc`
+                # overwrites it with its own reply) and before every capture of
+                # this checkpoint, so the reliability payload and the fields it
+                # feeds (`PDElements.{AccumulatedL,Lambda,TotalMiles,SectionID}`,
+                # `Bus.*`, EnergyMeter properties #19-23) are read post-calc on
+                # all three engines at the same point. Never per step: the calc
+                # is not idempotent (see `capture_reliability`).
+                rel_aborted = False
+                rel_message = ""
+                if want_rel and step == n_steps - 1:
+                    # The exception IS the detection, on every case: dss-python
+                    # raises whenever the error pointer is set and exceptions
+                    # are enabled (`dss/_cffi_api_util.py`, `using_exceptions`),
+                    # and `DoSimpleMsg` sets `DSS.ErrorNumber` unconditionally
+                    # -- `DSS_CAPI_EARLY_ABORT` only decides `Redirect_Abort`
+                    # (`Common/DSSGlobals.pas:259-265`). So a case that opted
+                    # into `warn_and_continue` (EarlyAbort False) still lands
+                    # here; nothing can take the 52902 silently. (G1.6(i) audit
+                    # settlement, finding AT-9: measured claim, not an
+                    # assumption -- the whole `_USER_MODEL_ERRNOS` block above
+                    # exists for the same reason.)
+                    try:
+                        d.Text.Command = "RelCalc"
+                    except _dss.DSSException as e:
+                        # Only 52902, the by-design "no OCP device in the zone"
+                        # abort; anything else is a real failure and re-raises.
+                        errno = e.args[0] if e.args else None
+                        if errno not in _RELCALC_TOLERATED_ERRNOS:
+                            raise
+                        rel_aborted = True
+                        rel_message = str(e.args[1]) if len(e.args) > 1 else ""
+                        log(
+                            f"oracle: tolerated RelCalc abort #{errno} on {case_path}"
+                        )
                 # G1.9 (GOLDEN_REBASE_PLAN.md, §1.1(a) + decision D3) — the
                 # circuit aggregates and the solution scalars, read HERE and
                 # nowhere later, for two independent reasons:
@@ -751,7 +1400,10 @@ def run_case(d, req: dict) -> dict:
                 #    Reading before any First/Next walk removes the interaction
                 #    by construction.
                 # `global_result` above still comes first: it reads `Text.Result`,
-                # which any later `?` query would overwrite.
+                # which any later `?` query would overwrite, and G1.6(i)'s
+                # once-per-case `RelCalc` sits between the two — a
+                # state-changing command, so it precedes every read of this
+                # checkpoint (both transports place it identically).
                 # The source order is asserted by
                 # `crates/dss-core/tests/capture_order.rs`.
                 aggregates = capture_aggregates(ckt, warn_and_continue)
@@ -789,17 +1441,51 @@ def run_case(d, req: dict) -> dict:
                         "y": gc.capture_system_y(d) if full_csc else None,
                         "y_fingerprint": gc.capture_fingerprint(d),
                         "yprims": [gc.capture_yprim(ckt, nm) for nm in sel],
-                        "elements": capture_all_elements(ckt, warn_and_continue),
+                        "elements": capture_all_elements(
+                            ckt, warn_and_continue, want_derived, want_element_extras
+                        ),
                         "injection": gc.capture_injection(d),
                         "transformers": disc["transformers"],
                         "regcontrols": disc["regcontrols"],
                         "capacitors": disc["capacitors"],
                         "monitors": capture_all_monitors(ckt) if check_mm else [],
                         "meters": capture_all_meters(ckt) if check_mm else [],
+                        # G1.6(i): immediately AFTER the meters — the two meter
+                        # walks stay adjacent — and BEFORE `pd_elements`, whose
+                        # `ParentPDElement` hijack must remain the checkpoint's
+                        # last active-element mutation. `Meters.Totals` (the
+                        # last read inside) destroys the meter cursor, so it
+                        # must not precede `capture_all_meters`. `None` on every
+                        # step but the last, and whenever the flag is off, so
+                        # the gate can tell "not requested / not this step" from
+                        # "requested, and this circuit simply has no meter";
+                        # `crates/dss-epri`'s `run_case` uses the identical slot.
+                        "reliability": (
+                            capture_reliability(ckt, rel_aborted, rel_message)
+                            if want_rel and step == n_steps - 1
+                            else None
+                        ),
+                        # G1.6b: AFTER the meters, BEFORE the probes. The walk
+                        # mutates the active element (`ParentPDElement`), and
+                        # every reader below re-selects its own element
+                        # (`? el.prop` / `SetActiveElement`), so this is the one
+                        # slot where it perturbs nothing; `crates/dss-epri`'s
+                        # `run_case` uses the identical slot.
+                        "pd_elements": capture_pd_elements(ckt) if want_pde else None,
                         "probes": capture_probes(d, probes),
                         "variables": capture_variables(ckt, variables),
                         "eventlog": (capture_eventlog(d, ckt) if want_eventlog else []),
                         "ctrlqueue": capture_ctrlqueue(ckt) if want_ctrlqueue else [],
+                        # G1.4a + G1.5: order-free (group C) bus reads — they move
+                        # only `ActiveBusIndex`, so their slot is free; kept here,
+                        # ahead of the property sweep, so the `?` queries below stay
+                        # the last reads of the step.
+                        "buses": (
+                            capture_all_buses(ckt, want_zsc) if want_buses else []
+                        ),
+                        "all_bus_vmag_pu": (
+                            capture_all_bus_vmag_pu(ckt) if want_buses else []
+                        ),
                         # WP8.5b: read after every established capture above, so
                         # the property sweep's `?` queries never perturb any
                         # other read's active-element state. Only G1.7's

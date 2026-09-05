@@ -1048,7 +1048,48 @@
    ],
    "pending": false,
    "wp": "WPG.21",
-   "note": "MakePosSequence shunt coverage: Capacitor SpecType 1 (kvar 600 -> [200], kV 12.47 -> 7.19956), 2 (cuf), 3 (cmatrix); Reactor SpecType 1 (kvar 200 -> 66.667), 2 (R+jX kept), 3 (rmatrix/xmatrix averaged R=0.26667 X=3), 4 (Z1 sym); Fault; GICTransformer. All -> phases=1; cap/reactor/fault/GICxfmr default grounded bus2 gets the IsGroundBus `.0` re-append (e.g. cap_kvar bus2=b1.0). Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 2 iters, 3 nodes); feature-sensitive. Pending until WPG.21 A2."
+   "note": "MakePosSequence shunt coverage: Capacitor SpecType 1 (kvar 600 -> [200], kV 12.47 -> 7.19956), 2 (cuf), 3 (cmatrix); Reactor SpecType 1 (kvar 200 -> 66.667), 2 (R+jX kept), 3 (rmatrix/xmatrix averaged R=0.26667 X=3), 4 (Z1 sym); Fault. All -> phases=1; cap/reactor/fault default grounded bus2 gets the IsGroundBus `.0` re-append (e.g. cap_kvar bus2=b1.0). The GICTransformer this deck used to carry moved to makeposseq_gic.dss at GOLDEN_REBASE G1.4a (2026-09-04, D12/D14) because the capi 0.14.5 oracle is nondeterministic on GICTransformer decks; without it this deck is deterministic on capi (20/20 fresh processes) and keeps its full-precision capi gating. Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 2 iters, 3 nodes); feature-sensitive. Pending until WPG.21 A2."
+  },
+  {
+   "path": "makeposseq/makeposseq_gic.dss",
+   "engines": "r4133",
+   "ad": "off:too-small",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "GICTransformer.gt",
+     "props": [
+      "phases",
+      "bush",
+      "busnh",
+      "r1",
+      "type"
+     ]
+    },
+    {
+     "element": "Vsource.source",
+     "props": [
+      "phases",
+      "basekv"
+     ]
+    },
+    {
+     "element": "Load.ld1",
+     "props": [
+      "phases",
+      "kv",
+      "kw",
+      "kvar"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.21",
+   "note": "MakePosSequence GICTransformer coverage, split out of makeposseq_shunt.dss at GOLDEN_REBASE G1.4a (2026-09-04, coordinator decisions D12/D14). Gated on r4133 ONLY: the pinned dss_capi 0.14.5 oracle is nondeterministic across fresh processes on any deck that instantiates a GICTransformer (7 bad runs of 60 with the element, 0 of 40 without; r4133 80/80 bit-identical, and 20/20 on this deck). Covers TGICTransformerObj.MakePosSequence -- `Phases=1` plus the inherited bus strip (r4133 PDElements/GICTransformer.pas:736-747 == pinned dss_capi 0.14.5 src/PDElements/GICTransformer.pas:588-593; CktElement.pas:1352-1363), so busH/busNH both collapse to b1. Every other reduced parameter is chosen so r4133's Format('%-.5g') command-string round trip is EXACT (Vsource.pas:1396-1402, Load.pas:2305-2332, Line.pas:1591-1596): basekv = 7.2*sqrt(3) -> line-neutral 7.2, kw=900 -> 300/phase, pf=1 -> kvar 0. r4133-validated 2026-09-04 (epri-worker, 20 fresh one-shot processes bit-identical; 2 nodes / 2 buses after the reduction, src kVBase 7.2)."
   },
   {
    "path": "makeposseq/makeposseq_pc.dss",
@@ -1102,6 +1143,7 @@
   },
   {
    "path": "makeposseq/makeposseq_ctrl.dss",
+   "compare_reliability": true,
    "engines": "capi_v0145",
    "ad": "off:save-roundtrip-control",
    "kind": "micro",
@@ -1242,6 +1284,7 @@
   },
   {
    "path": "time/midi_duty_ctrl.dss",
+   "compare_reliability": true,
    "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
@@ -1553,6 +1596,54 @@
    "wp": "WP-U1.2",
    "engines": "r4133",
    "note": "UPGRADE_PLAN WP-U1.2 row D3 (LineGeometry.pas:1060-1064): spacing ratings from the MINIMUM over PHASE conductors, not conductor 1. Phase wires [big small big] have differing normamps and the neutral (neut, normamps=999) is excluded (index > FNphases). capi015 (0.15.x): Line.l1 normamps = min(600,400,600)=400, emergamps = the governing phase's 500 (probed 2026-07-16, bit-identical across two processes). 0.14.5 took conductor 1 (600/800). Ratings do not affect V/I/P, so the observable is probed on normamps/emergamps."
+  },
+  {
+   "path": "faultstudy/faultstudy_micro.dss",
+   "engines": "both",
+   "ad": "off:too-small",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "compare_zsc": true,
+   "probes": [
+    {
+     "element": "Line.l2",
+     "props": [
+      "phases",
+      "bus1",
+      "bus2",
+      "linecode",
+      "length",
+      "units"
+     ]
+    },
+    {
+     "element": "Reactor.rsh",
+     "props": [
+      "phases",
+      "bus1",
+      "r",
+      "x"
+     ]
+    },
+    {
+     "element": "Load.ld1",
+     "props": [
+      "phases",
+      "bus1",
+      "conn",
+      "kv",
+      "kw",
+      "pf",
+      "model"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "GOLDEN_REBASE G1.5",
+   "note": "GOLDEN_REBASE G1.5 (2026-09-05, lane lane-b): the micro-tier witness for the bus short-circuit surface (Bus.Zsc1/Zsc0/ZscMatrix/YscMatrix/Isc/Voc). The corpus' other four fault-study decks (IEEE123Master-SC, ieee34Mod2_SC_Case_II, ieee37_SC_Currents, NEVTestCase/Run_NEV) are all kind=feeder, so this is the only case comparing the surface at the micro tier's 1e-6 abs + 1e-9 rel band (the feeder tier is 1e-6 + 1e-8, and 1e-5 + 1e-7 for Isc). It is also the only case where the surface's ORDERING convention is observable: line.l2 bus1=b1.1.2.3 bus2=b2.2.1.3 gives b2 the insertion node order [2,1,3] while Bus.Nodes reports [1,2,3], and the 1-phase reactor.rsh on b2.1 makes the Zsc diagonal position-dependent (Zsc[1][1] ~ 1.665+1.662j ohm vs ~1.063+2.874j at [0][0]/[2][2]), so a comparator that sorted this surface by ascending node number would red only here. The whole surface is indexed by the internal index on both channels (r4133 DDLL/DBus.pas:431-459/:374-397/:351-372 == capi CAPI/CAPI_Alt.pas:2305-2334/:2202-2224/:2227-2249). The deck leaves the solution in FaultStudy mode and the gate's single step runs the study once (a second study restarts from the first one's unit-injection residual, SolutionAlgs.pas:884-892, and moves Voc/Isc by ~1.2e-4 rel). Oracle-validated 2026-09-05 on both channels (dss-python 0.15.7 / capi 0.14.5 and the EPRI r4133 DLL agree to ~1e-15 relative on every arm; r4133 bit-identical over 20 fresh one-shot worker processes, the D14 determinism procedure). compare_zsc is the only G1 surface flag any manifest sets; the scheduler force rule turns it on for every other live non-large case, and it implies compare_bus (the six SC arms ride the one per-bus walk, G1.5 section 2.a)."
   }
  ]
 }

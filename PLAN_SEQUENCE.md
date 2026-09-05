@@ -98,12 +98,16 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               (self-snapshot `props/`), are unblocked; G1.2 (the
                               ESPVLControl corpus deck, the last zero-coverage
                               class) landed 2026-08-29 on `r4133-props`, and
-                              G1.0 (the WP-G1 rails) and G1.9 (circuit
-                              aggregates + solution scalars) landed 2026-09-04,
-                              the latter in lane `lane-s` per decision D7;
-                              G1.7 (the topology interface) followed in the same
-                              lane 2026-09-05; G1.3a-d and the remainder of
-                              G1.4-G1.11c remain; WP-G3–G5 queued.
+                              G1.0 (the WP-G1 rails) landed 2026-09-04, and
+                              with it G1.9 (circuit aggregates + solution
+                              scalars) and G1.7 (the topology interface, on
+                              2026-09-05) in lane `lane-s`, G1.6b (PDElements)
+                              in `lane-m`, G1.3a (per-element polar channels)
+                              and G1.3d(i) (terminal/phase counts, NodeOrder,
+                              EnergyMeter) in `lane-e`, and G1.4a (the bus
+                              voltage surface) in `lane-b`, per decision D7;
+                              G1.3b-d(ii) + the rest of G1.4-G1.11c remain;
+                              WP-G3–G5 queued.
                               Added 2026-08-22 per the user's request.
  5b. R4133_PROPS_PLAN.md      **COMPLETE 2026-09-04** (authored + opened
      (docs/plans-archive/)    2026-08-22; moved to `docs/plans-archive/` by its

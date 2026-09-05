@@ -383,6 +383,7 @@
   },
   {
    "path": "combo/midi_protection.dss",
+   "compare_reliability": true,
    "note": "WP-U2.1 handoff restore: the three-tier fuse-save race (backup relay -> midline recloser -> lateral fuse) re-armed on the version-consistent r4133 chain (Fuse U2.1 / Recloser U2.2 / Relay U2.3). The fuse melts phase 1 of L6 on the recloser's delayed cycle at Sec=0.9 while the recloser reclose restores the other phases and the backup relay never trips (probe-verified on oddie:r4133). Recloser/Relay per-phase state arrays + the per-phase event log compared vs oddie:r4133 (the r4133 Relay 'Debug Sample' lines are dropped from the capture in both lanes since GOLDEN_REBASE_PLAN.md G2.2d: the engine writes them under DebugTrace, as every sibling trace line does). EnergyMeter registers/zone + the mode-0 monitor channels are compared vs oddie:r4133 too (check_meters_monitors): the comparator now normalizes the Delphi monitor-CSV header artifact (leading-space + trailing-empty columns).",
    "engines": "r4133",
    "ad": "off:too-small",
@@ -425,6 +426,7 @@
   },
   {
    "path": "combo/combo_protection.dss",
+   "compare_reliability": true,
    "note": "WP-U2.1 handoff restore: the classic three-tier fuse-save race (substation backup relay -> midline recloser -> lateral fuse) re-armed on the version-consistent r4133 chain (Fuse U2.1 / Recloser U2.2 / Relay U2.3). The recloser FAST shot clears at Sec=0.4, the fuse melts the faulted phase on the delayed cycle at Sec=0.5, the recloser recloses restoring service except the blown phase, and the backup relay never trips (probe-verified on oddie:r4133). Recloser/Relay per-phase state arrays + the per-phase event log compared vs oddie:r4133. EnergyMeter registers/zone + the mode-0 monitor channels are compared vs oddie:r4133 too (check_meters_monitors): the comparator now normalizes the Delphi monitor-CSV header artifact (leading-space + trailing-empty columns).",
    "engines": "r4133",
    "ad": "pf",
@@ -1299,6 +1301,7 @@
   },
   {
    "path": "energymeter/midi_energymeter.dss",
+   "compare_reliability": true,
    "engines": "both",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
@@ -1323,6 +1326,28 @@
      ]
     }
    ]
+  },
+  {
+   "path": "energymeter/midi_relcalc.dss",
+   "compare_reliability": true,
+   "engines": "both",
+   "ad": "off:unclassified-new-deck",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "EnergyMeter.em",
+     "props": [
+      "element",
+      "terminal"
+     ]
+    }
+   ],
+   "note": "GOLDEN_REBASE G1.6(i): the ONLY corpus deck that runs the executive `AllocateLoads`, and therefore the only place `Meters.CalcCurrent` / `Meters.AllocFactors` are DEFINED on either oracle -- `TMeterElement.AllocateSensorArrays` ReallocMems both arrays without zeroing them (r4133 Meters/MeterElement.pas:45-52) and only `CalcAllocationFactors` (:54-72), driven solely by `DoAllocateLoadsCmd` (Executive/ExecHelper.pas:2624-2683), ever writes them; everywhere else the harness `RELIABILITY_SKIP_FIELDS` drops the two fields as an uninitialized read. Also the only `both`-channel multi-section zone (three Reclosers -> NumSections 3, OCPDeviceType 2, SectSeqIdx 1/2/4). Loads are kW-spec on purpose so `SAIFIkW` stays a function of deck literals (see the deck header). Oracle-validated: two fresh processes bit-identical on BOTH channels, and the two oracles agree bit-for-bit on every scalar, section field and `Meters.Totals` slot; only the two solve-derived arrays differ between them (<= 3.3e-14 rel), which is why they alone are compared on the current tier. Feature-sensitive: commenting out the trailing `AllocateLoads` gives alloc_factors/calc_current [0,0,0] and leaves every zone load's AllocationFactor at 0.5."
   },
   {
    "path": "monitor/midi_monitor.dss",

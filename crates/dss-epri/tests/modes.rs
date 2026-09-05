@@ -87,9 +87,12 @@ fn solved_ieee13() -> Engine {
 }
 
 /// Re-select the fixture the family rows read from. Called before **every**
-/// mode: eight rows are [`ModeEffect::Impure`] and move a cursor
-/// (`PDElements.ParentPDElement` moves `ActiveCktElement` itself), so without
-/// this a later row would silently read a different object.
+/// mode: fifteen rows are [`ModeEffect::Impure`] and move a cursor or a memoized
+/// structure (`PDElements.ParentPDElement` moves `ActiveCktElement` itself; the
+/// five `Circuit` loss/power rows, the two `CktElement.Has*Control` rows and
+/// `Meters.Totals` walk a `PointerList` to exhaustion or re-totalize; the six
+/// `Topology` rows build and memoize `GetTopology` and move its cursor), so
+/// without this a later row would silently read a different object.
 fn select_fixture(e: &Engine) {
     // `Meters.First` (`MetersI(0)`, `DMeters.pas:32-52`) sets `ActiveCktElement`
     // to the meter object itself, so it must run BEFORE the element selection —
@@ -116,7 +119,11 @@ fn r4133_mode_capability_is_complete_for_wp_g1() {
     the_bus_v_sentinel_is_only_caught_by_containment(&e);
     the_do_not_call_modes_are_refused_before_any_ffi(&e);
     every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(&e);
+    distinguishing_readings_separate_same_shape_modes_within_a_family(&e);
     r4133_solution_flags_are_zero_one_ints(&e);
+    the_parent_read_hijacks_the_active_element_and_the_capture_reads_it_last(&e);
+    // LAST: this phase runs `RelCalc` and adds elements to the circuit.
+    the_relcalc_protocol_and_the_section_cursor(&e);
     // Nothing in the walk left a non-zero errno behind for the next caller.
     let (errno, desc) = e.poll_error();
     assert_eq!(errno, 0, "the mode walk left errno {errno} set: {desc}");
@@ -148,9 +155,86 @@ fn the_fixture_selects_the_line_the_bus_and_the_meter(e: &Engine) {
         "the PDElements cursor must see the Line (its default faultrate), not the meter"
     );
     select_fixture(e);
+    // `CktElementI(12)`'s codomain is {0, 1} (`DCktElement.pas:137`, `:263`), so
+    // the strict decode must read the live element as enabled — under a `!= 0`
+    // decode the family's `-1` unknown-mode sentinel (`:308`) would read the
+    // same way, which is what routes a capture into `CktElementV(19)`'s
+    // unguarded `NodeRef^[i]` (`:1099`).
+    assert!(
+        e.ckt_element_enabled().unwrap(),
+        "Line.650632 is enabled in IEEE13"
+    );
+    select_fixture(e);
     assert_eq!(e.bus_distance().unwrap(), 1.2192, "bus 671's DistFromMeter");
     select_fixture(e);
     assert_eq!(e.solution_iterations().unwrap(), 2, "IEEE13 snapshot solve");
+}
+
+/// G1.0 audit settlement (T4): the walk above proves *capability* — that each
+/// mode exists and decodes into its declared shape — not *identity*: a mode
+/// index transposed with a sibling of the same family and shape would still
+/// classify `Served`. These are exact readings of the vendored r4133 DLL on the
+/// vendored IEEE13 fixture (measured 2026-09-04) chosen so that a transposition
+/// inside a family moves the number, family by family.
+///
+/// `Meters` is deliberately absent: every one of its `I:20..27` / `F:0..6`
+/// reliability registers reads `0` / `0.0` on this fixture (no `RelCalc`), so no
+/// pin there could discriminate. G1.6 wires that surface and gets its own
+/// values; the full per-mode value validation is D2's job for each surface
+/// sub-step, not this rail's.
+fn distinguishing_readings_separate_same_shape_modes_within_a_family(e: &Engine) {
+    // Circuit V:0 (whole-circuit PD losses, W) vs V:1 (Line losses only, kW) vs
+    // V:3 (source power) — three `myType = 3` rows of one family.
+    select_fixture(e);
+    assert_eq!(
+        e.circuit_losses().unwrap(),
+        vec![112_391.709_058_989_2, 327_860.856_436_449_6],
+        "Circuit.Losses (V:0)"
+    );
+    select_fixture(e);
+    assert_eq!(
+        e.circuit_line_losses().unwrap(),
+        vec![106.484_751_187_618_73, 317.175_285_717_855_73],
+        "Circuit.LineLosses (V:1) — a different mode of the same family and shape"
+    );
+    select_fixture(e);
+    assert_eq!(
+        e.circuit_total_power().unwrap(),
+        vec![-3_567.053_778_419_098_3, -1_736.439_510_362_667_5],
+        "Circuit.TotalPower (V:3)"
+    );
+    // Topology I:0 vs its two I siblings, which are both 0 on this radial deck.
+    select_fixture(e);
+    assert_eq!(
+        e.topology_num_loops().unwrap(),
+        1,
+        "Topology.NumLoops (I:0)"
+    );
+    // PDElements: two `I` and two `F` rows that are pairwise distinct.
+    select_fixture(e);
+    assert_eq!(
+        e.pd_elements_total_customers().unwrap(),
+        15,
+        "PDElements.TotalCustomers (I:5)"
+    );
+    select_fixture(e);
+    assert_eq!(
+        e.pd_elements_from_terminal().unwrap(),
+        1,
+        "PDElements.FromTerminal (I:7)"
+    );
+    select_fixture(e);
+    assert_eq!(
+        e.pd_elements_pct_permanent().unwrap(),
+        20.0,
+        "PDElements.PctPermanent (F:2)"
+    );
+    select_fixture(e);
+    assert_eq!(
+        e.pd_elements_repair_time().unwrap(),
+        3.0,
+        "PDElements.RepairTime (F:6)"
+    );
 }
 
 /// **The G1.0 acceptance**: every mode WP-G1 will read is served by the
@@ -327,6 +411,7 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
     chk!(CKT_ELEMENT_NUM_CONTROLS, e.ckt_element_num_controls());
     chk!(CKT_ELEMENT_OCP_DEV_INDEX, e.ckt_element_ocp_dev_index());
     chk!(CKT_ELEMENT_OCP_DEV_TYPE, e.ckt_element_ocp_dev_type());
+    chk!(CKT_ELEMENT_ENABLED, e.ckt_element_enabled());
     chk!(CKT_ELEMENT_HAS_OCP_DEVICE, e.ckt_element_has_ocp_device());
     chk!(CKT_ELEMENT_ENERGY_METER, e.ckt_element_energy_meter());
     chk!(CKT_ELEMENT_PHASE_LOSSES, e.ckt_element_phase_losses());
@@ -355,6 +440,7 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
     // Bus
     chk!(BUS_DISTANCE, e.bus_distance());
     chk!(BUS_SEQ_VOLTAGES, e.bus_seq_voltages());
+    chk!(BUS_NODES, e.bus_nodes());
     chk!(BUS_VOC, e.bus_voc());
     chk!(BUS_ISC, e.bus_isc());
     chk!(BUS_PU_VOLTAGES, e.bus_pu_voltages());
@@ -374,6 +460,7 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
     chk!(CIRCUIT_LINE_LOSSES, e.circuit_line_losses());
     chk!(CIRCUIT_SUBSTATION_LOSSES, e.circuit_substation_losses());
     chk!(CIRCUIT_TOTAL_POWER, e.circuit_total_power());
+    chk!(CIRCUIT_ALL_BUS_NAMES, e.circuit_all_bus_names());
     chk!(CIRCUIT_ALL_ELEMENT_LOSSES, e.circuit_all_element_losses());
     chk!(CIRCUIT_ALL_BUS_MAG_PU, e.circuit_all_bus_mag_pu());
     chk!(CIRCUIT_ALL_BUS_DISTANCES, e.circuit_all_bus_distances());
@@ -381,6 +468,7 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
     // Meters
     chk!(METERS_TOTAL_CUSTOMERS, e.meters_total_customers());
     chk!(METERS_NUM_SECTIONS, e.meters_num_sections());
+    chk!(METERS_SET_ACTIVE_SECTION, e.meters_set_active_section(1));
     chk!(METERS_OCP_DEVICE_TYPE, e.meters_ocp_device_type());
     chk!(
         METERS_NUM_SECTION_CUSTOMERS,
@@ -439,6 +527,9 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
     chk!(SOLUTION_INC_MATRIX_COLS, e.solution_inc_matrix_cols());
     chk!(SOLUTION_LAPLACIAN, e.solution_laplacian());
     // PDElements
+    chk!(PD_ELEMENTS_FIRST, e.pd_elements_first());
+    chk!(PD_ELEMENTS_NEXT, e.pd_elements_next());
+    chk!(PD_ELEMENTS_NAME, e.pd_elements_name());
     chk!(PD_ELEMENTS_IS_SHUNT, e.pd_elements_is_shunt());
     chk!(PD_ELEMENTS_NUM_CUSTOMERS, e.pd_elements_num_customers());
     chk!(PD_ELEMENTS_TOTAL_CUSTOMERS, e.pd_elements_total_customers());
@@ -543,4 +634,319 @@ fn the_five_circuit_aggregate_rows_are_impure() {
             "{row}: the Impure payload must name the Iterminal refresh, got: {why}"
         );
     }
+}
+
+/// The behavioural half of GOLDEN_REBASE G1.6b's read-order contract: the
+/// `ParentPDElement` trap is real on this DLL, and
+/// [`dss_epri::capture::capture_pd_elements`] does not fall into it.
+///
+/// `PDElementsI(6)` (`DPDELements.pas:88-97`) does
+/// `ActiveCktElement := ActivePDElement.ParentPDElement` and never restores it,
+/// so every field read after it in the same record returns the **parent's**
+/// value. fastdss reads it second (`IPDElements._columns`) and contaminates 215
+/// of the 138-element IEEE123 walk's own cells (measured on both oracle
+/// channels, 2026-09-04), which is why the capture reads it last.
+///
+/// Every number below was read off the vendored r4133 DLL on this fixture
+/// (2026-09-04); the trap is only *observable* on a pair whose values differ, so
+/// the `assert_ne!` guards this test against becoming a tautology.
+fn the_parent_read_hijacks_the_active_element_and_the_capture_reads_it_last(e: &Engine) {
+    select_fixture(e);
+    // (1) The trap, live. `Line.632670` serves 10 downstream customers; its
+    // parent `Line.650632` serves 15.
+    e.set_active_element("Line.632670");
+    let own = e.pd_elements_total_customers().unwrap();
+    assert_eq!(own, 10, "Line.632670's own BranchTotalCustomers");
+    assert_eq!(
+        e.pd_elements_parent_pd_element().unwrap(),
+        1,
+        "Line.650632's ClassIndex (1-based, per-class creation order)"
+    );
+    let after = e.pd_elements_total_customers().unwrap();
+    assert_eq!(
+        after, 15,
+        "the read AFTER the parent read returns the parent's value"
+    );
+    assert_ne!(
+        after, own,
+        "the parent and the child must differ, or this test proves nothing"
+    );
+    assert_eq!(
+        e.pd_elements_name().unwrap(),
+        "Line.650632",
+        "the name read off the hijacked cursor is the parent's"
+    );
+
+    // (2) The capture is immune: it reads the parent last, so the record keeps
+    // the element's own twelve values and carries the parent separately.
+    let walk = dss_epri::capture::capture_pd_elements(e).expect("capture_pd_elements");
+    assert_eq!(
+        walk.len(),
+        19,
+        "IEEE13 + EnergyMeter.m1 has 19 enabled PD elements"
+    );
+    assert_eq!(
+        walk[0].name, "Transformer.sub",
+        "the walk is the circuit's PDElements pointer-list order"
+    );
+    let rec = walk
+        .iter()
+        .find(|r| r.name == "Line.632670")
+        .expect("Line.632670 is in the walk");
+    assert_eq!(
+        rec.total_customers, own,
+        "the capture kept the element's own value, not the parent's {after}"
+    );
+    assert_eq!(rec.num_customers, 3);
+    assert_eq!(rec.from_terminal, 1, "FromTerminal is 1-based upstream");
+    assert!(!rec.is_shunt);
+    assert_eq!(rec.fault_rate, 0.1);
+    assert_eq!(rec.pct_permanent, 20.0);
+    assert_eq!(rec.repair_time, 3.0);
+    assert_eq!(rec.parent_class_index, 1);
+    assert_eq!(rec.parent_name, "Line.650632");
+    // No `RelCalc` ran on this deck, so the four reliability-sweep fields are
+    // untouched zeros (GOLDEN_REBASE G1.6(i) is the sub-step that fills them).
+    assert_eq!(
+        (
+            rec.section_id,
+            rec.lambda,
+            rec.accumulated_l,
+            rec.total_miles
+        ),
+        (0, 0.0, 0.0, 0.0)
+    );
+
+    // (3) A root branch has no parent: the DDLL leaves `ActiveCktElement` alone
+    // there (`DPDELements.pas:92`), so the capture must skip the name read
+    // rather than echo the element's own name.
+    let root = walk
+        .iter()
+        .find(|r| r.name == "Line.650632")
+        .expect("Line.650632 is in the walk");
+    assert_eq!(root.total_customers, 15);
+    assert_eq!(
+        (root.parent_class_index, root.parent_name.as_str()),
+        (0, "")
+    );
+
+    // (4) The shunt classification is a real two-valued field on this fixture.
+    let shunts: Vec<&str> = walk
+        .iter()
+        .filter(|r| r.is_shunt)
+        .map(|r| r.name.as_str())
+        .collect();
+    assert_eq!(shunts, vec!["Capacitor.cap1", "Capacitor.cap2"]);
+}
+
+/// The r4133 half of GOLDEN_REBASE G1.6(i)'s run protocol, proven against the
+/// DLL itself: the `RelCalc` abort is tolerated *and reported*, the feeder-section
+/// cursor behaves as [`dss_epri::capture::capture_reliability`] assumes, and
+/// `Meters.Totals` ends the meter walk.
+///
+/// Runs **last** in the phase sequence because it executes `RelCalc` and adds a
+/// Recloser and a second EnergyMeter to the circuit — which is also what makes
+/// it the discharge of G1.6b's deferred demo: the four reliability-sweep
+/// `PDElements` fields are zero for every phase above (asserted there) and live
+/// here.
+///
+/// Every literal below was read off the vendored r4133 DLL on this fixture
+/// (2026-09-04).
+fn the_relcalc_protocol_and_the_section_cursor(e: &Engine) {
+    select_fixture(e);
+
+    // (1) The zone of `m1` holds no overcurrent device, so `RelCalc` aborts per
+    // meter with 52902 (`Meters/EnergyMeter.pas:2502`). `Engine::relcalc`
+    // tolerates exactly that errno and hands the text back — the abort is a
+    // compared observable, not a bridge detail — and the message is character
+    // for character the one dss-python raises on the same deck.
+    let abort = e
+        .relcalc()
+        .expect("RelCalc must not fail the case on 52902");
+    assert!(abort.aborted, "IEEE13 + m1 has no OCP device in the zone");
+    assert_eq!(
+        abort.message,
+        "Error: No Overcurrent Protection device (Relay, Recloser, or Fuse) defined. \
+         Aborting Reliability calc."
+    );
+    assert!(e.meters_first(), "the walk must restart after RelCalc");
+    assert_eq!(
+        e.meters_num_sections().unwrap(),
+        0,
+        "an aborted calc defines no sections"
+    );
+
+    // (2) With a Recloser on the metered branch the calc completes: no abort, an
+    // empty message, and one section carrying real numbers.
+    e.post("New Recloser.rec1 MonitoredObj=Line.650632 MonitoredTerm=1")
+        .expect("add a Recloser to the zone");
+    e.solve(false).expect("re-solve with the Recloser");
+    let done = e.relcalc().expect("RelCalc with an OCP device present");
+    assert!(!done.aborted, "the zone now has a Recloser");
+    assert!(done.message.is_empty());
+    assert!(e.meters_first());
+    assert_eq!(e.meters_num_sections().unwrap(), 1);
+    e.meters_set_active_section(1).unwrap();
+    assert_eq!(
+        (
+            e.meters_ocp_device_type().unwrap(),
+            e.meters_num_section_customers().unwrap(),
+            e.meters_num_section_branches().unwrap(),
+            e.meters_sect_seq_idx().unwrap(),
+            e.meters_sect_total_cust().unwrap(),
+        ),
+        (2, 15, 13, 1, 15),
+        "section 1 = the Recloser section (1 = Fuse, 2 = Recloser, 3 = Relay)"
+    );
+    assert_eq!(e.meters_sum_branch_flt_rates().unwrap(), 26896.006560000395);
+    assert_eq!(
+        e.meters_fault_rate_x_repair_hrs().unwrap(),
+        80688.01968000119
+    );
+    assert_eq!(e.meters_avg_repair_time().unwrap(), 3.0000000000000004);
+    assert_eq!(
+        (
+            e.meters_saifi().unwrap(),
+            e.meters_saifi_kw().unwrap(),
+            e.meters_saidi().unwrap(),
+            e.meters_cust_interrupts().unwrap(),
+            e.meters_total_customers().unwrap(),
+        ),
+        (
+            164.00001999999998,
+            164.00002,
+            492.0000600000001,
+            2460.0002999999997,
+            15
+        )
+    );
+
+    // (3) The section cursor is a **per-meter** field the meter walk never
+    // resets (`DMeters.pas:254-264`), which is why the capture selects before
+    // every section block; `0` and any out-of-range index deselect (the `Else`
+    // arm), after which the eight section reads answer `0`.
+    assert!(e.meters_first());
+    assert_eq!(
+        e.meters_ocp_device_type().unwrap(),
+        2,
+        "Meters.First must not reset ActiveSection"
+    );
+    e.meters_set_active_section(0).unwrap();
+    assert_eq!(e.meters_ocp_device_type().unwrap(), 0, "0 deselects");
+    e.meters_set_active_section(99).unwrap();
+    assert_eq!(
+        (
+            e.meters_ocp_device_type().unwrap(),
+            e.meters_avg_repair_time().unwrap()
+        ),
+        (0, 0.0),
+        "an index past SectionCount deselects too"
+    );
+
+    // (4) `Meters.Totals` calls `TotalizeMeters` (`DMeters.pas:566` ->
+    // `Common/Circuit.pas:2520-2538`), which walks `EnergyMeters.First`/`Next`
+    // itself and so **ends** an in-progress walk. Two meters make that
+    // observable: with one, the truncation would be invisible.
+    e.post("New EnergyMeter.m2 element=Line.632670 terminal=1")
+        .expect("add a second EnergyMeter");
+    e.solve(false).expect("re-solve with two meters");
+    assert!(e.meters_first());
+    assert!(e.meters_next(), "two meters: Next finds the second");
+    assert!(e.meters_first());
+    let totals = e.meters_totals().unwrap();
+    assert_eq!(totals.len(), 67, "NumEMRegisters = 32 + 5*7");
+    assert!(
+        !e.meters_next(),
+        "Totals totalizes over EnergyMeters.First/Next and leaves the cursor \
+         past the end — the capture must read it LAST"
+    );
+
+    // (5) The capture itself, end to end. `m2`'s zone has no OCP device, so this
+    // `RelCalc` aborts again — per meter: `m1` still gets its section, and the
+    // reported abort is the command's, exactly as the capi transport reports it.
+    let rel = e.relcalc().expect("RelCalc over both meters");
+    assert!(rel.aborted, "m2's zone has no OCP device");
+    let cap = dss_epri::capture::capture_reliability(e, &rel).expect("capture_reliability");
+    assert!(cap.aborted);
+    assert_eq!(cap.message, abort.message, "the same 52902 text");
+    assert_eq!(cap.totals.len(), 67);
+    let names: Vec<&str> = cap.meters.iter().map(|m| m.name.as_str()).collect();
+    assert_eq!(names, vec!["m1", "m2"], "Meters.First/Next order");
+    let m1 = &cap.meters[0];
+    assert_eq!(m1.num_sections, 1);
+    assert_eq!(m1.sections.len(), 1);
+    assert_eq!(m1.sections[0].idx, 1);
+    assert_eq!(m1.sections[0].ocp_device_type, 2);
+    assert_eq!(
+        m1.branches,
+        vec![
+            "Line.650632",
+            "Line.632645",
+            "Line.645646",
+            "Line.632633",
+            "Transformer.xfm1"
+        ],
+        "the zone list is the BranchList walk order (DMeters.pas:706-734)"
+    );
+    assert_eq!(m1.ends, vec!["Line.645646", "Transformer.xfm1"]);
+    assert_eq!(
+        m1.pce,
+        vec![
+            "Load.645",
+            "Load.646",
+            "Load.634a",
+            "Load.634b",
+            "Load.634c"
+        ]
+    );
+    let m2 = &cap.meters[1];
+    assert_eq!(
+        (m2.num_sections, m2.sections.len()),
+        (0, 0),
+        "the aborted meter has no sections, and the capture still records it"
+    );
+    // `CalcCurrent`/`AllocFactors` are NPhases long on both meters. Their
+    // *values* are an uninitialised read on this engine — `AllocateSensorArrays`
+    // (`Meters/MeterElement.pas:45-52`) `ReallocMem`s without zeroing and only
+    // `AllocateLoads` ever writes them — so only the shape is asserted here
+    // (measured on this fixture: `m2.alloc_factors[2] = 1.10343781146e-312`,
+    // process-dependent garbage; GOLDEN_REBASE G1.6(i) decision D-i-3).
+    for m in &cap.meters {
+        assert_eq!(m.calc_current.len(), 3);
+        assert_eq!(m.alloc_factors.len(), 3);
+    }
+
+    // (6) G1.6b's deferred non-vacuity demo, discharged: the four
+    // reliability-sweep `PDElements` fields are all zero before `RelCalc`
+    // (asserted in the phase above) and live after it. `m1`'s zone completed, so
+    // its branches also carry a `SectionID`; `m2`'s aborted after the backward
+    // sweep, which is why its branch has `Lambda`/`AccumulatedL`/`TotalMiles`
+    // but `SectionID` 0.
+    let walk = dss_epri::capture::capture_pd_elements(e).expect("capture_pd_elements");
+    let in_m1 = walk
+        .iter()
+        .find(|r| r.name == "Line.650632")
+        .expect("Line.650632");
+    assert_eq!(
+        (
+            in_m1.section_id,
+            in_m1.lambda,
+            in_m1.accumulated_l,
+            in_m1.total_miles
+        ),
+        (1, 40.0, 66.0, 0.625)
+    );
+    let in_m2 = walk
+        .iter()
+        .find(|r| r.name == "Line.632670")
+        .expect("Line.632670");
+    assert_eq!(
+        (
+            in_m2.section_id,
+            in_m2.lambda,
+            in_m2.accumulated_l,
+            in_m2.total_miles
+        ),
+        (0, 13.34, 98.00002, 0.928030303030303)
+    );
 }

@@ -341,8 +341,9 @@ pub fn all_terminals_closed(elem: &dyn crate::elements::traits::CktElement) -> b
 /// constructor and in both bus setters (r4133 `PDElements/GICTransformer.pas:445`,
 /// `:217`, `:254`) yet is a plain `PD_ELEMENT` (`:95`): upstream buckets it by
 /// ALL its terminals, so it is a tree BRANCH and can close a loop — which is
-/// what both oracles report on `modes/makeposseq/makeposseq_shunt.dss`, where
-/// `GICTransformer.gt` has both terminals on `b1`. A **Fault** is the second
+/// what r4133 reports on `modes/makeposseq/makeposseq_gic.dss`, where
+/// `GICTransformer.gt` has both terminals on `b1` (that deck is the `r4133`-gated
+/// split of `makeposseq_shunt.dss`, coordinator decisions D12/D14). A **Fault** is the second
 /// (`PDElements/Fault.pas:244`, `:409`, cleared at `:300` once `Bus2` names a
 /// different bus) and is `FAULTOBJECT + NON_PCPD_ELEM` (`:114`), so
 /// `IsShuntElement` answers `FALSE` for it too; it never reaches the call sites

@@ -260,3 +260,76 @@ fn branch_customers(dss: &Dss, full: &str) -> (i32, i32) {
     }
     panic!("element {full} not found");
 }
+
+/// `MakeBusList` must not cost the circuit its meter zones (GOLDEN_REBASE
+/// G1.6b/D9). `TDSSCircuit.ReProcessBusDefs` rebuilds them in its own tail —
+/// r4133 `Common/Circuit.pas:2411` `DoResetMeterZones(ActorID);  // Fix up meter
+/// zones to correspond`, capi `Common/Circuit.pas:2246` — immediately before
+/// `BusNameRedefined := False`. The port used to hoist that reset into
+/// `build_y_matrix`, so the `MakeBusList` verb
+/// (`ExecCommands.pas` → [`Dss::do_make_bus_list_cmd`]) consumed the flag and
+/// the following `solve` skipped the rebuild: every meter kept the empty zone it
+/// was created with. `Test/indmachtest/Master.DSS` (`Redirect EnergyMeter.DSS` →
+/// `MakeBusList` → `Buscoords`) is the corpus case that exposed it.
+///
+/// Both oracles on this five-command circuit report `Line.l1` `Numcustomers` 1 /
+/// `Totalcustomers` 2 and `Line.l2` `Numcustomers` 1 / `Totalcustomers` 1 with
+/// `ParentPDElement` = `Line.l1`; the port reported 0 / 0 and no parent with
+/// `MakeBusList` in the script, and the oracle numbers without it. The assertion
+/// is that both scripts now agree with the oracles.
+#[test]
+fn makebuslist_keeps_the_meter_zones() {
+    fn build(make_bus_list: bool) -> Dss {
+        let mut dss = Dss::new();
+        for c in [
+            "New circuit.mbl basekv=12.47 bus1=b1",
+            "New line.l1 bus1=b1 bus2=b2 length=1",
+            "New line.l2 bus1=b2 bus2=b3 length=1",
+            "New load.ld2 bus1=b2 kV=12.47 kW=10",
+            "New load.ld3 bus1=b3 kV=12.47 kW=10",
+            "New energymeter.m1 element=line.l1 terminal=1",
+        ] {
+            dss.command(c);
+        }
+        if make_bus_list {
+            dss.command("MakeBusList");
+        }
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    for make_bus_list in [false, true] {
+        let dss = build(make_bus_list);
+        let z = dss.meter_zone("m1").expect("m1 zone");
+        assert_eq!(
+            z.all_branches_in_zone,
+            vec!["Line.l1", "Line.l2"],
+            "MakeBusList={make_bus_list}: the zone must hold both branches"
+        );
+
+        let pde = dss.pd_elements();
+        let by_name = |n: &str| {
+            pde.iter()
+                .find(|p| p.name == n)
+                .unwrap_or_else(|| panic!("{n} in the PDElements walk"))
+        };
+        let l1 = by_name("Line.l1");
+        let l2 = by_name("Line.l2");
+        assert_eq!(
+            (l1.num_customers, l1.total_customers),
+            (1, 2),
+            "MakeBusList={make_bus_list}: Line.l1 customers (oracles: 1 / 2)"
+        );
+        assert_eq!(
+            (l2.num_customers, l2.total_customers),
+            (1, 1),
+            "MakeBusList={make_bus_list}: Line.l2 customers (oracles: 1 / 1)"
+        );
+        assert_eq!(
+            l2.parent_name, "Line.l1",
+            "MakeBusList={make_bus_list}: Line.l2's parent (oracles: Line.l1)"
+        );
+        assert_eq!(l1.parent_name, "", "Line.l1 is the zone root");
+    }
+}
