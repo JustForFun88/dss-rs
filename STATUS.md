@@ -141,28 +141,28 @@ R4133_PROPS RP4.1 (above); **G1.2** (the ESPVLControl deck) 2026-08-29;
 `42454b64`): the manifest flag vocabulary, explicit `channels`, the
 capture-presence guard and the r4133 bridge rails, whose mode probe
 **discharges the G1.11 mode-capability acceptance for the whole WP**. The
-per-element surface landed on lane `lane-e` (D7), each with its settlement and
-zero golden bytes: **G1.3a** 2026-09-04 (`d8e71991` / `588e0bfe`) — `Enabled` +
-the three polar channels over 442 cases, A/B/C capture order enforced, **1**
-new ledger entry (`DIVERGENCES.md` L8) + **13** widenings, **4 959 / 0 / 5**
-per lane, Δ = 0; **G1.3d(i)** 2026-09-05 (D19; `e4d99806` + `b7d7da2a` /
-`c9c4ac09`) — the per-element counts, `NodeOrder` and `EnergyMeter` exactly
-over 440 cases + the D19 `MakeBusList` zone-reset cherry-pick, **0** entries,
-**5 392 / 0 / 5**; **G1.3d(ii)** 2026-09-05 (`e6d66d66` / `43108993`) —
-`PhaseLosses` + the five control-derived scalars, **§G1.3d complete**, the
-first channel to join `LANE_SKIP_ELEM_POWERS`, **0** entries + **10**
-widenings, `DIVERGENCES.md` L9, **5 784 / 0 / 5**, Δ = 0; **G1.3b** 2026-09-05
-(D24; `40a65ffd` / `3d350ce6`) — `SeqCurrents`/`SeqVoltages`/`SeqPowers` over
-the same 442 cases, an r4133-only `SEQ_C012` band term, the n/A `SeqPowers`
-sentinel folded channel-scoped, r4133's 1φ-posseq slot defect unreproduced and
-unledgered behind an arm census pinning the r4133 `0` and railing (297 896, 79)
-at documented floors, **0** entries + **31** widenings, **6 570 / 0 / 5** per
-lane, Δ = 0. Full records in `golden-rebase.md` §WP-G1.
-**Next.** **`GOLDEN_REBASE_PLAN.md` G1.3c** on the element lane; bus / PD-meter
-/ singles lanes in parallel (D7). Then G1.4–G1.11c and WP-G3–G5 — inside which
-**G3.4**/**G3.5**, blocked since 2026-08-08, are runnable. Queued behind
-GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING,
-UPGRADE.
+**per-element surface is complete** on lane `lane-e` (D7) — each sub-step with
+its settlement, zero golden bytes and Δ = 0, records in `golden-rebase.md`
+§WP-G1: **G1.3a** 2026-09-04 (`d8e71991` / `588e0bfe`) — `Enabled` + the three
+polar channels over 442 cases, A/B/C capture order enforced, **1** ledger entry
++ 13 widenings, **4 959 / 0 / 5**; **G1.3d(i)** 2026-09-05 (D19; `e4d99806` +
+`b7d7da2a` / `c9c4ac09`) — the counts, `NodeOrder`, `EnergyMeter` + the D19
+`MakeBusList` zone-reset, **5 392 / 0 / 5**; **G1.3d(ii)** 2026-09-05
+(`e6d66d66` / `43108993`) — `PhaseLosses` + the five control scalars (**§G1.3d
+complete**), first into `LANE_SKIP_ELEM_POWERS`, **5 784 / 0 / 5**; **G1.3b**
+2026-09-05 (D24; `40a65ffd` / `3d350ce6`) — the three sequence surfaces, an
+r4133-only `SEQ_C012` term, the n/A fold and the r4133 1-phase posseq defect
+railed by an arm census, **6 570 / 0 / 5**; **G1.3c** 2026-09-06 — `CplxSeq*` +
+`TotalPowers` at G1.3b's own band (the complex compare adds the angle), closing
+`compare_derived` at thirteen fields, `TotalPowers` the fourth
+`LANE_SKIP_ELEM_POWERS` channel on the two `newton*` decks (red measured live
+on both channels first), **7 318 / 0 / 5** per lane, `lane_diff` PASS Δ = 0.
+G1.3b and G1.3c each add **0** ledger entries and **31** measured widenings.
+**Next.** the element chain closes with G1.3c's merge; the bus, PD/meter and
+singles lanes continue in parallel (D7) through the rest of G1.4–G1.11c, then
+WP-G3–G5 — inside which **G3.4**/**G3.5**, blocked since 2026-08-08, are
+runnable. Queued behind GOLDEN_REBASE: `WASM_USERMODELS`, RESONANCE,
+MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the

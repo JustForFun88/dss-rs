@@ -16,10 +16,11 @@ use serde_json::json;
 use crate::engines::{CaseResult, Channel, Oracle};
 use crate::harness::{
     self, ExportPolicy, RowPolicy, Tolerances, capture_guard, compare_all_properties,
-    compare_ctrlqueue, compare_discrete, compare_element_channels, compare_element_derived,
-    compare_element_extras, compare_element_phase_losses, compare_element_seq, compare_eventlog,
-    compare_export, compare_fingerprint, compare_injection, compare_meter, compare_monitor,
-    compare_probe, compare_system_y, compare_variables, compare_yprim, lane, tol_for,
+    compare_ctrlqueue, compare_discrete, compare_element_channels, compare_element_cplx_seq,
+    compare_element_derived, compare_element_extras, compare_element_phase_losses,
+    compare_element_seq, compare_element_total_powers, compare_eventlog, compare_export,
+    compare_fingerprint, compare_injection, compare_meter, compare_monitor, compare_probe,
+    compare_system_y, compare_variables, compare_yprim, lane, tol_for,
 };
 use crate::manifest::{EngineChannel, SolvableCase};
 
@@ -577,6 +578,32 @@ pub(crate) fn compare_capture(
                 cp.elements.iter().filter(|e| !e.seq_i.is_empty()).count(),
                 &ctx,
             );
+            // G1.3c's two, for the same reason: `compare_element_total_powers`
+            // and `compare_element_cplx_seq` read capture fields disjoint from
+            // each other and from the two rails above, so a channel that
+            // honoured the request for the polar and magnitude arrays but not
+            // for `TotalPowers` (a group-**A** read, issued at the head of the
+            // element) or not for the complex pair must fail the case rather
+            // than compare nothing — with its own sentence, never a shared one.
+            // Both arrays are empty on a disabled element (the capture skips
+            // those) and on a 0-terminal one, so each rail counts the elements
+            // whose array is NON-empty; every live circuit has at least one (the
+            // `Vsource`).
+            capture_guard::require_capture(
+                "compare_derived (TotalPowers)",
+                channel_tag(channel),
+                cp.elements.iter().filter(|e| !e.tp_kw.is_empty()).count(),
+                &ctx,
+            );
+            capture_guard::require_capture(
+                "compare_derived (CplxSeqCurrents)",
+                channel_tag(channel),
+                cp.elements
+                    .iter()
+                    .filter(|e| !e.cseq_i_re.is_empty())
+                    .count(),
+                &ctx,
+            );
             // The channel travels with the capture for one reason only: the
             // `SeqPowers` "not available" sentinel is spelled per channel and is
             // folded per channel (`harness::na_seq_power`, G1.3b D-b2), and the
@@ -605,6 +632,16 @@ pub(crate) fn compare_capture(
                 {
                     harness::record_seq_arm(arm, seq_channel);
                 }
+                // G1.3c, beside — never instead of — the three above, on the
+                // same possibly-rewritten cap: the un-`Cabs`'d complex pair
+                // (r4133 `DDLL/DCktElement.pas:931-975`/`:885-928`, capi
+                // `CAPI/CAPI_Alt.pas:898-925`/`:872-895`), which needs the
+                // channel for the r4133-only truncated-matrix band term and for
+                // its measured 0-terminal shapes, and the per-terminal
+                // `TotalPowers` sums (`:1109-1139` / `:1108-1141`), which need
+                // neither. Neither records a census (coordinator decision D24).
+                compare_element_cplx_seq(&snaps, cap, tol, &ctx, seq_channel, channels);
+                compare_element_total_powers(&snaps, cap, tol, &ctx, channels);
             }
         }
 

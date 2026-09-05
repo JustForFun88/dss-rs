@@ -685,6 +685,57 @@ transform.
 
 `CplxSeqCurrents`, `CplxSeqVoltages`, `TotalPowers`.
 
+> **2026-09-06 — AS EXECUTED (lane `lane-e`).** `CplxSeqCurrents`, `CplxSeqVoltages` and
+> `TotalPowers` compare live on **both** channels over the `compare_derived` population,
+> unchanged at **442** cases (`FORCED_DERIVED_POPULATION` `(442, 315, 83, 44)` — the third
+> sub-step in a row to widen this flag's *fields*, not its population), through one purely
+> additive extension of G1.3b's accessor: `exec/view.rs::snapshot_elements` already computed
+> the 012 vectors and threw them away, and already held the per-conductor `V·conj(I)`.
+> **No** new manifest flag, **no** new force rule and **no** new r4133 mode — `WP_G1_MODES`
+> stays **97**; modes 13/14/20 existed and were proven `Served` by G1.0, and the two new
+> `dss-epri` helpers (`element_total_powers`, `element_cplx_seq`) only call them.
+> **0 new ledger entries, 0 new causes** (58 / 31 unchanged), **31** measured per-sub-channel
+> widenings over **11** committed `element` scopes, 0 golden bytes, no existing band moved.
+> Five corrections to this section's forecast, and one coordinator decision leaned on:
+>
+> * **Neither G1.3b divergence reaches this surface, and that was measured.** D-b2 (the n/A
+>   sentinel spelling) does not exist here: modes 13/14 write `Cmplx(-1.0, 0.0)`
+>   (`DDLL/DCktElement.pas:60`/`:106`) and capi's `i012[i] := -1` / `V012[i] := -1`
+>   (`CAPI/CAPI_Alt.pas:268`/`:324`) is the same complex value — cross-channel max `|Δ| = 0.0`
+>   over `upfc_dual`'s not-available elements — so there is **no `na_seq_power` twin, no fold
+>   and no comparator normalization**, and the port's spelling is pinned instead
+>   (`cplx_seq_na_sentinel_is_minus_one_plus_zero_j_on_both_engines`). D-b1 (r4133's
+>   1φ-positive-sequence slot/stride defect) is confined to mode 9's *inlined* copy: the shared
+>   `CalcSeq*` helpers index a **1-based** buffer at `iV := 2` / `Inc(iV, 3)`, i.e. 0-based
+>   slot 1, exactly as capi. So **no new census** is added (D24) — the existing
+>   `assert_seq_arm_population` covers the arm unchanged.
+> * **`TotalPowers` joins `LANE_SKIP_ELEM_POWERS`; the two `CplxSeq*` do not.**
+>   `GetPhasePower` opens with the cache-aware `ComputeIterminal` (r4133
+>   `Common/CktElement.pas:1049`), so the surface carries CLAUDE.md bug 5 upstream — measured
+>   on the **live gate, both channels, before the bit was written**: `newton.dss` |Δ|
+>   `4.5155082046702575e-4` kVA against an allowed `2.2953166227444328e-5` (capi;
+>   `4.5155081076231536e-4` on r4133), `newton_feeder.dss` `5.213217790400988e-3` against
+>   `2.1128110294679937e-4` — ~20x the band on every channel, pinned by
+>   `newton_total_powers_match_the_normal_algorithm` (the port's own Newton-vs-normal gap
+>   `3.320142298909114e-11` kVA). The two `CplxSeq*` reach `GetCurrents` into a scratch buffer
+>   and stay compared, so those two decks **gain** two oracle-compared channels.
+> * **`TotalPowers` is stronger than fastdss, not parity with it.** fastdss carries it in
+>   `ICktElement._columns` but *removes* it in the COM/Oddie configuration
+>   (`tests/save_outputs.py:199-200`); gating it on both of our channels exceeds the parity
+>   target this WP is chasing (synthesis C5).
+> * **The widening count is 31, not the forecast "≈ 27".** Six scoped rounds to a fixpoint,
+>   each widening only entries whose own channel had just printed its own failing sample
+>   (`measured.g13c_cplx_first_failure` / `measured.g13c_total_powers_first_failure`,
+>   `g13c_date`): ten entries took all three names,
+>   `capi-capcontrol-time-bus-is-the-capacitors` took `cplx_seq_voltages` **alone** (a control
+>   element carries no terminal current), and the four `r4133-*-injection-ulp` **divergence**
+>   entries were again measured NOT to fail and keep their committed lists.
+> * **Two shape asymmetries survive the enabled-only rule and are comparator business, 0
+>   ledger rows** (D4, the `no_seq_payload` precedent): on a 0-terminal element capi's
+>   `NodeRef = NIL` early returns put `[0.0]`/`[0.0]` on `tp_kw`/`tp_kvar` and `[0.0]` on
+>   `cseq_v_re` (`CAPI_Alt.pas:1119-1123`, `:877`) where r4133's `setlength(…, NTerms)`
+>   collapses to nothing. Both are admitted by two-sided emptiness predicates and pinned.
+
 ### G1.3d — per-element discrete extras
 
 `PhaseLosses`, `NodeOrder`, `EnergyMeter`, `OCPDevType`, `OCPDevIndex`,

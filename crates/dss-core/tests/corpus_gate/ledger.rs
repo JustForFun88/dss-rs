@@ -33,8 +33,9 @@ use dss_core::exec::SeqArm;
 use dss_core::support::complexutil::Polar;
 
 use crate::harness::{
-    ElementCap, Injection, MonitorCap, ProbeCap, PropsCap, PropsChannel, SEQ_C012, Tolerances,
-    phase_loss_band, polar_angle_band, residual_band, seq_band, seq_power_band, wrapped_deg,
+    ElementCap, Injection, MonitorCap, ProbeCap, PropsCap, SEQ_C012, Tolerances, phase_loss_band,
+    polar_angle_band, residual_band, seq_band, seq_power_band, seq_terminal_bands,
+    total_power_band, wrapped_deg,
 };
 use crate::manifest::EngineChannel;
 
@@ -614,6 +615,26 @@ const EXCLUSION_FIELDS: [&str; 10] = [
 /// are neither envelope-checked nor rewritten, so no `seq_*` scope can mask a
 /// discrete miss, which is the same guarantee the ten discrete extras get by
 /// having no sub-channel at all.
+///
+/// G1.3c (2026-09-05) added `cplx_seq_currents`, `cplx_seq_voltages` and
+/// `total_powers` — `CktElement.CplxSeqCurrents` / `CplxSeqVoltages`, the
+/// **un-`Cabs`'d** output of the very transform `seq_currents`/`seq_voltages`
+/// report the magnitudes of (r4133 `DDLL/DCktElement.pas:931-975` / `:885-928`
+/// over `CalcSeqCurrents` `:30-80` / `CalcSeqVoltages` `:84-122`; capi
+/// `CAPI/CAPI_Alt.pas:898-925` / `:872-895`), and `CktElement.TotalPowers`, the
+/// per-terminal sum of `GetPhasePower` with `0.001` applied once to the sum
+/// (r4133 `:1109-1139`, capi `:1108-1141`). The complex pair inherits the
+/// `seq_*` rule verbatim — only [`seq_slot_is_banded`] slots are
+/// envelope-checked and rewritten, at the same per-terminal
+/// `harness::seq_terminal_bands` the comparator bands them with, so **no
+/// `cplx_seq_*` scope can mask a discrete miss** either: the `(-1, 0)`
+/// not-available payload and the exact zeros beside the positive-sequence slot
+/// stay the ORACLE's and `harness::compare_element_cplx_seq` keeps comparing
+/// them exactly. `total_powers` is banded per terminal by
+/// `harness::total_power_band`, the per-conductor power floor summed over that
+/// terminal's conductors — the `harness::phase_loss_band` construction on the
+/// other index set — and is rewritten straight through,
+/// both sides being kW/kvar.
 const SUBCHANNEL_FIELDS: &[(&str, &[&str])] = &[(
     "element",
     &[
@@ -627,6 +648,9 @@ const SUBCHANNEL_FIELDS: &[(&str, &[&str])] = &[(
         "seq_currents",
         "seq_voltages",
         "seq_powers",
+        "cplx_seq_currents",
+        "cplx_seq_voltages",
+        "total_powers",
     ],
 )];
 
@@ -1842,8 +1866,11 @@ fn envelope_element(
     // measures nothing trips `Scope::dead_channels` instead of masking.
     let arm = snap.seq_arm;
     let seq_wanted = want("seq_currents") || want("seq_voltages") || want("seq_powers");
-    // `(bv, bi)` per terminal, computed once for all three blocks below.
-    let seq_bands: Vec<(f64, f64)> = if seq_wanted && !ec.seq_i.is_empty() {
+    // G1.3c: the complex twins are the same transform read without `Cabs`, so
+    // they ride on the same per-terminal bands and the same banded-slot rule.
+    let cplx_wanted = want("cplx_seq_currents") || want("cplx_seq_voltages");
+    // `(bv, bi)` per terminal, computed once for all five blocks below.
+    let seq_bands: Vec<(f64, f64)> = if (seq_wanted || cplx_wanted) && !ec.seq_i.is_empty() {
         let (nterms, nconds) = (snap.n_terms, snap.n_conds);
         let yorder = nterms * nconds;
         // The same shape tie `harness::compare_element_seq` asserts before
@@ -1878,17 +1905,37 @@ fn envelope_element(
             snap.seq_voltages.len(),
             snap.seq_powers.len()
         );
-        // The truncated-matrix term applies on the r4133 channel only, and only
-        // where a matrix actually runs (the three-phase arm) — the same
-        // `(channel, arm)` pair `harness::compare_element_seq` keys it on. The
-        // entry's own channel is the one the gate compares this cap against.
-        let c012 = match (e.channel.props_channel(), arm) {
-            (PropsChannel::R4133, SeqArm::ThreePhase) => SEQ_C012,
-            _ => 0.0,
-        };
+        // G1.3c: the complex halves are `3·NTerms` too (both engines size them
+        // at `3*NTerms` and copy the same transform's output — r4133
+        // `DDLL/DCktElement.pas:889`/`:935`, capi `CAPI/CAPI_Alt.pas:874`/`:900`),
+        // asserted only when a scope actually names one of them so an entry
+        // written for the magnitude channels keeps its own message.
+        assert!(
+            !cplx_wanted
+                || (ec.cseq_i_re.len() == 3 * nterms
+                    && ec.cseq_i_im.len() == 3 * nterms
+                    && ec.cseq_v_re.len() == 3 * nterms
+                    && ec.cseq_v_im.len() == 3 * nterms
+                    && snap.cplx_seq_currents.len() == 3 * nterms
+                    && snap.cplx_seq_voltages.len() == 3 * nterms),
+            "{ctx}: ledger `{}` element {}: a `cplx_seq_*` scope on a capture \
+             whose complex halves do not match {nterms} terminal(s) (oracle {} / \
+             {} / {} / {}; rust {} / {}) — the sequence band is built from that \
+             layout",
+            e.id,
+            ec.name,
+            ec.cseq_i_re.len(),
+            ec.cseq_i_im.len(),
+            ec.cseq_v_re.len(),
+            ec.cseq_v_im.len(),
+            snap.cplx_seq_currents.len(),
+            snap.cplx_seq_voltages.len()
+        );
         // The conductors each arm actually transforms: the terminal's first
         // three (r4133 `:47-49`, capi `:252-254`) or, on the positive-sequence
-        // arm, its first one (r4133 `:764-766`, capi `:559-561`).
+        // arm, its first one (r4133 `:764-766`, capi `:559-561`) — the slice
+        // `harness::seq_terminal_bands` takes, asserted here because that helper
+        // is the arithmetic only and the caller owns its own message.
         let taken = if arm == SeqArm::ThreePhase { 3 } else { 1 };
         assert!(
             taken <= nconds,
@@ -1897,16 +1944,13 @@ fn envelope_element(
             e.id,
             ec.name
         );
-        ec.cma_mag
-            .chunks(nconds)
-            .zip(ec.vma_mag.chunks(nconds))
-            .map(|(icnk, vcnk)| {
-                (
-                    seq_band(&vcnk[..taken], tol.v_rel, tol.v_abs, c012),
-                    seq_band(&icnk[..taken], tol.i_rel, tol.i_abs, c012),
-                )
-            })
-            .collect()
+        // The one shared walk (`GOLDEN_REBASE_PLAN.md` G1.3c): the envelope must
+        // be evaluated at exactly the band `harness::compare_element_seq` and
+        // `harness::compare_element_cplx_seq` judge the same sample with,
+        // including the r4133-only truncated-matrix term the helper keys on
+        // `(channel, arm)`. The entry's own channel is the one the gate compares
+        // this cap against.
+        seq_terminal_bands(ec, snap, e.channel.props_channel(), tol)
     } else {
         Vec::new()
     };
@@ -1972,6 +2016,117 @@ fn envelope_element(
     }
     if block.get() {
         sc.mark_channel_exceeded("seq_powers");
+    }
+    // G1.3c. `CplxSeqCurrents`/`CplxSeqVoltages` are the same `Calc*` output
+    // read without `Cabs` (r4133 `DDLL/DCktElement.pas:931-975`/`:885-928`, capi
+    // `CAPI/CAPI_Alt.pas:898-925`/`:872-895`), so they are banded by the same
+    // per-terminal `(bv, bi)` — `harness::seq_band` bounds the COMPLEX
+    // difference of the transform and the magnitude channel only ever used it
+    // through `||a| − |b|| <= |a − b|` — and cover exactly the same banded slots
+    // ([`seq_slot_is_banded`]). The discrete slots are left to the comparator's
+    // own exact assertions on both sides, which is what keeps a `cplx_seq_*`
+    // scope from excusing a wrong `(-1, 0)` sentinel or a wrong
+    // positive-sequence slot.
+    block.set(false);
+    if want("cplx_seq_currents") {
+        for (t, (_, bi)) in seq_bands.iter().enumerate() {
+            for k in 0..3 {
+                let slot = 3 * t + k;
+                if !seq_slot_is_banded(arm, slot) {
+                    continue;
+                }
+                let a = snap.cplx_seq_currents[slot];
+                let (er, ei) = (ec.cseq_i_re[slot], ec.cseq_i_im[slot]);
+                let diff = ((a.re - er).powi(2) + (a.im - ei).powi(2)).sqrt();
+                let base = (er.powi(2) + ei.powi(2)).sqrt();
+                record(&format!("cseq_i[{slot}]"), diff, base, *bi);
+            }
+        }
+    }
+    if block.get() {
+        sc.mark_channel_exceeded("cplx_seq_currents");
+    }
+    block.set(false);
+    if want("cplx_seq_voltages") {
+        for (t, (bv, _)) in seq_bands.iter().enumerate() {
+            for k in 0..3 {
+                let slot = 3 * t + k;
+                if !seq_slot_is_banded(arm, slot) {
+                    continue;
+                }
+                let a = snap.cplx_seq_voltages[slot];
+                let (er, ei) = (ec.cseq_v_re[slot], ec.cseq_v_im[slot]);
+                let diff = ((a.re - er).powi(2) + (a.im - ei).powi(2)).sqrt();
+                let base = (er.powi(2) + ei.powi(2)).sqrt();
+                record(&format!("cseq_v[{slot}]"), diff, base, *bv);
+            }
+        }
+    }
+    if block.get() {
+        sc.mark_channel_exceeded("cplx_seq_voltages");
+    }
+    // G1.3c. `TotalPowers[j] = 0.001 · Σ_{i<nconds} NodeV·conj(Iterminal)` at
+    // `k = j·nconds + i` (r4133 `DDLL/DCktElement.pas:1123-1134`, capi
+    // `CAPI/CAPI_Alt.pas:1128-1139`) — the same products this cap reports as
+    // `powers`, bucketed by TERMINAL where `phase_losses` buckets them by phase,
+    // so an entry whose cause moves `powers`/`losses` moves this too. Banded by
+    // `harness::total_power_band`, the per-conductor power band summed over that
+    // terminal's conductors: the very floor `harness::compare_element_total_powers`
+    // gates the unpinned samples with. Both sides are kW/kvar (each engine
+    // scales inside its own arm), so unlike `phase_losses` nothing is scaled
+    // here. Inert rather than special-cased whenever the case's
+    // `compare_derived` flag is off (the capture then carries no `tp_kw`) and on
+    // a **0-terminal** element, where capi's `NodeRef = NIL` early return
+    // (`CAPI/CAPI_Alt.pas:1119-1123`) puts a two-double `DefaultResult` sentinel
+    // on the wire that is NOT a reading: there is no terminal to band, and
+    // `harness::compare_element_total_powers` already compares that shape
+    // two-sidedly (`harness::no_total_power_payload`) under every channel policy.
+    block.set(false);
+    if want("total_powers") && !ec.tp_kw.is_empty() && snap.n_terms > 0 {
+        let (nterms, nconds) = (snap.n_terms, snap.n_conds);
+        // The same layout tie `harness::compare_element_total_powers` asserts
+        // before indexing `k = j·nconds + i`; it runs on this element too, so a
+        // shape miss fails there with its own message rather than panicking on
+        // an index here.
+        let layout_ok = nterms > 0
+            && nconds > 0
+            && nterms * nconds == ec.p_kw.len()
+            && ec.p_kw.len() == ec.p_kvar.len()
+            && ec.p_kw.len() == ec.i_re.len()
+            && ec.i_re.len() == ec.i_im.len();
+        assert!(
+            layout_ok,
+            "{ctx}: ledger `{}` element {}: NTerms·NConds ({nterms}·{nconds}) does \
+             not match the captured Powers/Currents layout \
+             ({} / {} / {} / {}) — the TotalPowers band is built from those \
+             conductors",
+            e.id,
+            ec.name,
+            ec.p_kw.len(),
+            ec.p_kvar.len(),
+            ec.i_re.len(),
+            ec.i_im.len()
+        );
+        // Bounded by the element's own terminal count as well as by both
+        // sides' lengths: an over-long payload on either side is a shape miss
+        // `harness::compare_element_total_powers` reports with its own message,
+        // never an index off the end of the conductor block the band reads.
+        for (j, ((kw, kvar), a)) in ec
+            .tp_kw
+            .iter()
+            .zip(&ec.tp_kvar)
+            .zip(&snap.total_powers)
+            .take(nterms)
+            .enumerate()
+        {
+            let band = total_power_band(ec, j, nconds, tol.i_rel, tol.i_abs);
+            let diff = ((a.re - kw).powi(2) + (a.im - kvar).powi(2)).sqrt();
+            let base = (kw.powi(2) + kvar.powi(2)).sqrt();
+            record(&format!("tp[{j}]"), diff, base, band);
+        }
+    }
+    if block.get() {
+        sc.mark_channel_exceeded("total_powers");
     }
     LedgerView::mark_applied(e);
     if exceeded.get() {
@@ -2090,6 +2245,60 @@ fn rewrite_element_selected(
         ) {
             cap.seq_p_kw[k] = snap.seq_powers[k].re;
             cap.seq_p_kvar[k] = snap.seq_powers[k].im;
+        }
+    }
+    // G1.3c: the complex sequence pair. Same units on both sides (neither engine
+    // scales — r4133 `DDLL/DCktElement.pas:919-925`/`:966-972` copy the
+    // transform's own amps/volts, capi `CAPI/CAPI_Alt.pas:917-923`/`:889-893` do
+    // the same), so the pin writes both halves straight through — writing only
+    // the real part would leave `harness::compare_element_cplx_seq` comparing
+    // the port's imaginary part against the oracle's, i.e. an entry that pins
+    // half a channel. Only the arm's BANDED slots are neutralized (the same
+    // `seq_slots` filter the magnitude channels use), so the `(-1, 0)`
+    // not-available payload and the exact zeros beside the positive-sequence
+    // slot stay the ORACLE's and no `cplx_seq_*` scope can excuse a discrete
+    // miss (pinned slot by slot, from both sides, by
+    // `the_cplx_rewrite_and_the_cplx_envelope_cover_the_same_slots`).
+    if want("cplx_seq_currents") {
+        for k in seq_slots(
+            cap.cseq_i_re
+                .len()
+                .min(cap.cseq_i_im.len())
+                .min(snap.cplx_seq_currents.len()),
+        ) {
+            cap.cseq_i_re[k] = snap.cplx_seq_currents[k].re;
+            cap.cseq_i_im[k] = snap.cplx_seq_currents[k].im;
+        }
+    }
+    if want("cplx_seq_voltages") {
+        for k in seq_slots(
+            cap.cseq_v_re
+                .len()
+                .min(cap.cseq_v_im.len())
+                .min(snap.cplx_seq_voltages.len()),
+        ) {
+            cap.cseq_v_re[k] = snap.cplx_seq_voltages[k].re;
+            cap.cseq_v_im[k] = snap.cplx_seq_voltages[k].im;
+        }
+    }
+    // G1.3c: `TotalPowers`. Both sides are kW/kvar — each engine applies its
+    // `0.001` to the terminal SUM inside its own arm (r4133
+    // `DDLL/DCktElement.pas:1134`, capi `CAPI/CAPI_Alt.pas:1138-1139`) and
+    // `ElementSnapshot::total_powers` is accumulated and scaled the same way —
+    // so, unlike `phase_losses`, the pin writes the value straight through. Every
+    // terminal is a banded sample (there is no discrete arm here), and the
+    // snapshot length joins the `min` so a shape mismatch survives to
+    // `harness::compare_element_total_powers`' own length assert instead of
+    // panicking on an index.
+    if want("total_powers") {
+        for j in 0..cap
+            .tp_kw
+            .len()
+            .min(cap.tp_kvar.len())
+            .min(snap.total_powers.len())
+        {
+            cap.tp_kw[j] = snap.total_powers[j].re;
+            cap.tp_kvar[j] = snap.total_powers[j].im;
         }
     }
 }
@@ -2821,6 +3030,14 @@ fn polar_envelope_fixture() -> (Entry, ElementCap, dss_core::exec::ElementSnapsh
         seq_currents: Vec::new(),
         seq_voltages: Vec::new(),
         seq_powers: Vec::new(),
+        // G1.3c added these three; this fixture reaches neither
+        // `harness::compare_element_cplx_seq` nor
+        // `harness::compare_element_total_powers`, and the `cplx_seq_*` /
+        // `total_powers` sub-channel tests below build their own payload on top
+        // of it (`cplx_seq_envelope_fixture`, `total_power_envelope_fixture`).
+        cplx_seq_currents: Vec::new(),
+        cplx_seq_voltages: Vec::new(),
+        total_powers: Vec::new(),
         bus_names: vec!["b".to_string()],
         powers: vec![num_complex::Complex64::new(0.0, 0.0)],
         currents: vec![num_complex::Complex64::new(0.0, 0.0)],
@@ -3331,4 +3548,468 @@ fn the_seq_rewrite_and_the_seq_envelope_cover_the_same_slots() {
             );
         }
     }
+}
+
+// --- the G1.3c sub-channels (GOLDEN_REBASE G1.3c F4) ------------------------
+
+/// A divergence entry scoped to **both** complex sequence channels of one
+/// element, on the very payload [`seq_envelope_fixture`] shapes for the same
+/// [`SeqArm`] — the complex pair is the same transform read without `Cabs`
+/// (r4133 `DDLL/DCktElement.pas:931-975`/`:885-928`, capi
+/// `CAPI/CAPI_Alt.pas:898-925`/`:872-895`), so the two fixtures agree slot for
+/// slot: a banded slot is `(1000, 0)` (magnitude `1000`, the number the
+/// magnitude fixture carries), the not-available arm is the shared `(-1, 0)`
+/// sentinel, and the slots beside the positive-sequence one are exact zeros.
+///
+/// The bands are therefore the same two: `1e-6 + 1e-9*1000 = 2e-6` on
+/// `capi_v0145`, `2e-6 + SEQ_C012*1000` on `r4133`; the entry keeps the
+/// `injection-ulp` family's committed envelope (`2e-5 + 1e-8*base`).
+#[cfg(test)]
+fn cplx_seq_envelope_fixture(
+    arm: SeqArm,
+    channel: EngineChannel,
+) -> (Entry, ElementCap, dss_core::exec::ElementSnapshot) {
+    let (mut entry, mut cap, mut snap) = seq_envelope_fixture(arm, channel);
+    entry.id = "test-cplx-seq-envelope".to_string();
+    entry.scopes[0].channels = vec![
+        "cplx_seq_currents".to_string(),
+        "cplx_seq_voltages".to_string(),
+    ];
+    let n = 3 * snap.n_terms;
+    let mut re = vec![0.0; n];
+    let im = vec![0.0; n];
+    for (k, slot) in re.iter_mut().enumerate() {
+        if seq_slot_is_banded(arm, k) {
+            *slot = 1000.0;
+        } else if arm == SeqArm::NotAvailable {
+            // The one spelling both engines write on this surface — no fold.
+            *slot = -1.0;
+        }
+    }
+    let complex: Vec<num_complex::Complex64> = re
+        .iter()
+        .zip(&im)
+        .map(|(a, b)| num_complex::Complex64::new(*a, *b))
+        .collect();
+    // The derived capture always carries `enabled`; the two comparator-driving
+    // tests below read it, and no envelope test does.
+    cap.enabled = Some(true);
+    cap.cseq_i_re = re.clone();
+    cap.cseq_i_im = im.clone();
+    cap.cseq_v_re = re;
+    cap.cseq_v_im = im;
+    snap.cplx_seq_currents = complex.clone();
+    snap.cplx_seq_voltages = complex;
+    (entry, cap, snap)
+}
+
+/// The `cplx_seq_*` envelope bands each banded slot with the same per-terminal
+/// `harness::seq_terminal_bands` the comparator uses — on the **complex**
+/// difference — and attributes the floor-exceed to the sub-channel that produced
+/// it, the two-sided accounting every older sub-channel gets.
+#[test]
+fn the_cplx_seq_envelope_bands_the_sample_and_attributes_the_exceed() {
+    let tol = crate::harness::tol_for("micro");
+    // The fixture's band, stated so the numbers below are not magic: the same
+    // 2e-6 A `seq_currents` is judged at, now bounding |diff| of the complex
+    // value.
+    let bi = seq_band(&[1000.0; 3], tol.i_rel, tol.i_abs, 0.0);
+    assert!(
+        (bi - 2e-6).abs() < 1e-18,
+        "the fixture's band moved: {bi:e}"
+    );
+
+    // (a) inside the floor: nothing to mask, so both channels are STALE.
+    let (entry, cap, snap) =
+        cplx_seq_envelope_fixture(SeqArm::ThreePhase, EngineChannel::CapiV0145);
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    assert!(
+        !entry.exceeded_floor.load(Ordering::Relaxed),
+        "a sample inside its floor must not count as a divergence"
+    );
+    assert_eq!(
+        entry.scopes[0].dead_channels(),
+        vec!["cplx_seq_currents", "cplx_seq_voltages"]
+    );
+
+    // (b) above the floor and inside the entry's envelope (2e-5 + 1e-8*1000):
+    //     the exceed is recorded against `cplx_seq_currents`, not its sibling.
+    let (entry, cap, mut snap) =
+        cplx_seq_envelope_fixture(SeqArm::ThreePhase, EngineChannel::CapiV0145);
+    snap.cplx_seq_currents[0].im += 1e-5;
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    assert!(
+        entry.exceeded_floor.load(Ordering::Relaxed),
+        "1e-5 A is 5x the 2e-6 A band and must be recorded"
+    );
+    assert_eq!(entry.scopes[0].dead_channels(), vec!["cplx_seq_voltages"]);
+
+    // (c) the voltage channel on its own band, from the same walk.
+    let (entry, cap, mut snap) =
+        cplx_seq_envelope_fixture(SeqArm::ThreePhase, EngineChannel::CapiV0145);
+    snap.cplx_seq_voltages[2].re += 1e-5;
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    assert_eq!(entry.scopes[0].dead_channels(), vec!["cplx_seq_currents"]);
+}
+
+/// …and a sample outside the entry's committed envelope still fails the gate:
+/// the widening is a bounded pin, never a blanket.
+#[test]
+#[should_panic(expected = "cseq_i[0]")]
+fn the_cplx_seq_envelope_still_fails_outside_the_committed_bound() {
+    let tol = crate::harness::tol_for("micro");
+    let (entry, cap, mut snap) =
+        cplx_seq_envelope_fixture(SeqArm::ThreePhase, EngineChannel::CapiV0145);
+    // 1e-4 A: over 3x the entry's 3e-5 A envelope at |I012| = 1000 A.
+    snap.cplx_seq_currents[0].im += 1e-4;
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+}
+
+/// The reason this surface is worth a sub-channel of its own: the envelope
+/// measures the **complex** difference, so a pure phase rotation — invisible to
+/// the magnitude channel, which sees `|1000·e^{j.theta}| = 1000` — is recorded
+/// here.
+///
+/// A rotation of `1e-8` rad moves the 012 current by `1e-5 A` (above the
+/// `2e-6 A` floor, inside the entry's `3e-5 A` envelope) while its magnitude
+/// moves by `5e-14 A`, eleven orders under the same floor: the scope's
+/// `seq_currents` half measures nothing and is reported stale, its
+/// `cplx_seq_currents` half records the divergence. (The ledger-level half of
+/// the sub-step's M1 demo.)
+#[test]
+fn the_cplx_envelope_sees_a_rotation_the_magnitude_channel_cannot() {
+    let tol = crate::harness::tol_for("micro");
+    let (mut entry, cap, mut snap) =
+        cplx_seq_envelope_fixture(SeqArm::ThreePhase, EngineChannel::CapiV0145);
+    entry.scopes[0].channels = vec!["seq_currents".to_string(), "cplx_seq_currents".to_string()];
+    let rotated = snap.cplx_seq_currents[0] * num_complex::Complex64::from_polar(1.0, 1e-8);
+    let dc = (rotated - snap.cplx_seq_currents[0]).norm();
+    let dm = (rotated.norm() - snap.seq_currents[0]).abs();
+    assert!(
+        (2e-6..3e-5).contains(&dc) && dm < 1e-12,
+        "the fixture must rotate without moving the magnitude \
+         (|diff complex| {dc:e}, |diff magnitude| {dm:e})"
+    );
+    snap.cplx_seq_currents[0] = rotated;
+    snap.seq_currents[0] = rotated.norm();
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    assert!(
+        entry.exceeded_floor.load(Ordering::Relaxed),
+        "the rotation is a divergence the complex channel must record"
+    );
+    assert_eq!(
+        entry.scopes[0].dead_channels(),
+        vec!["seq_currents"],
+        "the magnitude channel cannot see a rotation and must be reported stale"
+    );
+}
+
+/// A sub-channel the scope does NOT name is not envelope-checked…
+#[test]
+fn a_masked_cplx_channel_is_not_envelope_checked() {
+    let tol = crate::harness::tol_for("micro");
+    let (mut entry, cap, mut snap) =
+        cplx_seq_envelope_fixture(SeqArm::ThreePhase, EngineChannel::CapiV0145);
+    entry.scopes[0].channels = vec!["cplx_seq_currents".to_string()];
+    // 1 V on the voltages — five orders over the entry's envelope — and the
+    // scope does not name that channel, so nothing here is measured…
+    snap.cplx_seq_voltages[0].re += 1.0;
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    // …while the named channel was measured and, being clean, is reported stale.
+    assert_eq!(entry.scopes[0].dead_channels(), vec!["cplx_seq_currents"]);
+}
+
+/// …and one it does name still hits the envelope, so the selector cannot become
+/// a blanket bypass.
+#[test]
+#[should_panic(expected = "cseq_v[0]")]
+fn an_unmasked_cplx_channel_still_hits_the_envelope() {
+    let tol = crate::harness::tol_for("micro");
+    let (mut entry, cap, mut snap) =
+        cplx_seq_envelope_fixture(SeqArm::ThreePhase, EngineChannel::CapiV0145);
+    entry.scopes[0].channels = vec!["cplx_seq_voltages".to_string()];
+    snap.cplx_seq_voltages[0].re += 1.0;
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+}
+
+/// The exclusion half: a `cplx_seq_*` scope rewrites BOTH halves of the
+/// capture's complex arrays from the snapshot — same units, no scaling — and
+/// touches nothing else, the magnitude channels included.
+#[test]
+fn a_cplx_seq_scope_rewrites_the_capture_in_the_wires_own_units() {
+    let (entry, mut cap, mut snap) =
+        cplx_seq_envelope_fixture(SeqArm::ThreePhase, EngineChannel::CapiV0145);
+    snap.cplx_seq_currents = vec![
+        num_complex::Complex64::new(11.0, -12.0),
+        num_complex::Complex64::new(13.0, 14.0),
+        num_complex::Complex64::new(15.0, -16.0),
+    ];
+    snap.cplx_seq_voltages = vec![
+        num_complex::Complex64::new(21.0, 22.0),
+        num_complex::Complex64::new(23.0, -24.0),
+        num_complex::Complex64::new(25.0, 26.0),
+    ];
+    cap.i_re[0] = 7.0;
+    rewrite_element_selected(&mut cap, &entry.scopes[0], &snap);
+    assert_eq!(cap.cseq_i_re, vec![11.0, 13.0, 15.0]);
+    assert_eq!(cap.cseq_i_im, vec![-12.0, 14.0, -16.0]);
+    assert_eq!(cap.cseq_v_re, vec![21.0, 23.0, 25.0]);
+    assert_eq!(cap.cseq_v_im, vec![22.0, -24.0, 26.0]);
+    assert_eq!(
+        cap.seq_i,
+        vec![1000.0; 3],
+        "the magnitude sibling is a different sub-channel and must be left alone"
+    );
+    assert_eq!(
+        cap.i_re[0], 7.0,
+        "an unselected sub-channel must be left alone"
+    );
+}
+
+/// **The discrete rail.** The `cplx_seq_*` envelope and rewrite cover exactly the
+/// slots [`seq_slot_is_banded`] calls banded — measured slot by slot, on all
+/// three arms, from both sides. That is what stops any `cplx_seq_*` ledger scope
+/// from excusing a discrete miss: the not-available arm's `(-1, 0)` payload
+/// (r4133 `DDLL/DCktElement.pas:60`/`:106`, capi `CAPI/CAPI_Alt.pas:268`/`:324`)
+/// and the exact zeros beside the positive-sequence slot stay the oracle's, so
+/// `harness::compare_element_cplx_seq` keeps comparing them exactly.
+#[test]
+fn the_cplx_rewrite_and_the_cplx_envelope_cover_the_same_slots() {
+    let tol = crate::harness::tol_for("micro");
+    for arm in [
+        SeqArm::ThreePhase,
+        SeqArm::PosSeqSinglePhase,
+        SeqArm::NotAvailable,
+    ] {
+        let n = cplx_seq_envelope_fixture(arm, EngineChannel::CapiV0145)
+            .1
+            .cseq_i_re
+            .len();
+        assert!(n > 0, "{arm:?}: the fixture must carry a payload");
+        for k in 0..n {
+            let banded = seq_slot_is_banded(arm, k);
+
+            // The envelope side: a gap above the floor and inside the committed
+            // envelope is recorded iff the slot is banded.
+            let (entry, cap, mut snap) = cplx_seq_envelope_fixture(arm, EngineChannel::CapiV0145);
+            snap.cplx_seq_currents[k].im += 1e-5;
+            envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+            assert_eq!(
+                !entry.scopes[0]
+                    .dead_channels()
+                    .contains(&"cplx_seq_currents"),
+                banded,
+                "{arm:?} slot {k}: envelope coverage disagrees with seq_slot_is_banded"
+            );
+
+            // The rewrite side: the slot is neutralized iff it is banded.
+            let (entry, mut cap, mut snap) =
+                cplx_seq_envelope_fixture(arm, EngineChannel::CapiV0145);
+            let before = (cap.cseq_i_re[k], cap.cseq_i_im[k]);
+            snap.cplx_seq_currents[k] = num_complex::Complex64::new(12345.0, -678.0);
+            rewrite_element_selected(&mut cap, &entry.scopes[0], &snap);
+            assert_eq!(
+                (cap.cseq_i_re[k], cap.cseq_i_im[k]) == (12345.0, -678.0),
+                banded,
+                "{arm:?} slot {k}: rewrite coverage disagrees with seq_slot_is_banded \
+                 (was {before:?}, now {:?})",
+                (cap.cseq_i_re[k], cap.cseq_i_im[k])
+            );
+        }
+    }
+}
+
+/// The discrete rail stated from the comparator's side, on the arm that has no
+/// banded slot at all: a scope naming both complex channels neutralizes NOTHING
+/// on the not-available arm, so a port emitting the wrong sentinel still reds
+/// through the rewrite.
+#[test]
+#[should_panic(expected = "not-available arm")]
+fn a_discrete_cplx_slot_is_never_neutralized_by_a_scope() {
+    let tol = crate::harness::tol_for("micro");
+    let (entry, mut cap, mut snap) =
+        cplx_seq_envelope_fixture(SeqArm::NotAvailable, EngineChannel::CapiV0145);
+    // The port spells r4133's `(-1, 0)` as `(-1, -1)` — capi's SeqPowers
+    // sentinel, which this surface does NOT share (G1.3c §1.2, measured at the
+    // wire on both channels).
+    snap.cplx_seq_currents[0] = num_complex::Complex64::new(-1.0, -1.0);
+    rewrite_element_selected(&mut cap, &entry.scopes[0], &snap);
+    crate::harness::compare_element_cplx_seq(
+        std::slice::from_ref(&snap),
+        &cap,
+        &tol,
+        "unit",
+        crate::harness::PropsChannel::CapiV0145,
+        crate::harness::ElemChannels::ALL,
+    );
+}
+
+/// A divergence entry scoped to one element's `total_powers`, on the
+/// single-terminal single-conductor payload whose `Powers`/`Currents` layout the
+/// band indexes through: |V| = 1 kV at 1 A, so `Powers[0] = TotalPowers[0] =
+/// 1 kW` — the identity `harness::total_power_band` is derived from, and the same
+/// one [`phase_loss_envelope_fixture`] uses on the other index set.
+///
+/// Both sides are kW/kvar here: each engine applies its `0.001` to the terminal
+/// SUM inside its own arm (r4133 `DDLL/DCktElement.pas:1134`, capi
+/// `CAPI/CAPI_Alt.pas:1138-1139`) and `ElementSnapshot::total_powers` is scaled
+/// the same way, so — unlike `phase_losses` — nothing is converted at either the
+/// envelope or the rewrite.
+#[cfg(test)]
+fn total_power_envelope_fixture() -> (Entry, ElementCap, dss_core::exec::ElementSnapshot) {
+    let (mut entry, mut cap, mut snap) = phase_loss_envelope_fixture();
+    entry.id = "test-total-power-envelope".to_string();
+    entry.scopes[0].channels = vec!["total_powers".to_string()];
+    // The derived capture always carries `enabled`; the shape-rail test below
+    // reads it, and no envelope test does.
+    cap.enabled = Some(true);
+    cap.tp_kw = vec![1.0];
+    cap.tp_kvar = vec![0.0];
+    snap.total_powers = vec![num_complex::Complex64::new(1.0, 0.0)];
+    (entry, cap, snap)
+}
+
+/// The `total_powers` envelope bands each terminal with
+/// `harness::total_power_band` and attributes the floor-exceed to that
+/// sub-channel — the same two-sided accounting the ten older sub-channels get.
+#[test]
+fn the_total_power_envelope_bands_the_terminal_and_attributes_the_exceed() {
+    let tol = crate::harness::tol_for("micro");
+    // band = i_abs·max(1, |V_kv|) + i_rel·|S| = 1e-6·1 + 1e-9·1 = 1.001e-6 kW —
+    // over the one conductor of this terminal, i.e. `phase_loss_band`'s number
+    // on the other index set.
+    let band = total_power_band(
+        &total_power_envelope_fixture().1,
+        0,
+        1,
+        tol.i_rel,
+        tol.i_abs,
+    );
+    assert!(
+        (band - 1.001e-6).abs() < 1e-18,
+        "the fixture's band moved: {band:e}"
+    );
+
+    // (a) inside the floor: nothing to mask, so the sub-channel is STALE.
+    let (entry, cap, snap) = total_power_envelope_fixture();
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    assert!(
+        !entry.exceeded_floor.load(Ordering::Relaxed),
+        "a sample inside its floor must not count as a divergence"
+    );
+    assert_eq!(entry.scopes[0].dead_channels(), vec!["total_powers"]);
+
+    // (b) above the floor and inside the entry's envelope (2e-5 + 1e-8 kVA):
+    //     the exceed is recorded against `total_powers`, not a sibling.
+    let (entry, cap, mut snap) = total_power_envelope_fixture();
+    snap.total_powers[0].im += 1e-5;
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    assert!(
+        entry.exceeded_floor.load(Ordering::Relaxed),
+        "1e-5 kVA is 10x the 1.001e-6 kVA band and must be recorded"
+    );
+    assert!(entry.scopes[0].dead_channels().is_empty());
+}
+
+/// …and a sample outside the entry's committed envelope still fails the gate.
+#[test]
+#[should_panic(expected = "tp[0]")]
+fn the_total_power_envelope_still_fails_outside_the_committed_bound() {
+    let tol = crate::harness::tol_for("micro");
+    let (entry, cap, mut snap) = total_power_envelope_fixture();
+    // 1e-4 kVA: 5x the entry's 2.001e-5 kVA envelope.
+    snap.total_powers[0].re += 1e-4;
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+}
+
+/// The exclusion half: a `total_powers` scope rewrites the capture's kW/kvar
+/// halves from the snapshot **unscaled** — the contrast with
+/// `a_phase_losses_scope_rewrites_the_capture_in_kw`, whose snapshot is W/var —
+/// and touches nothing else.
+#[test]
+fn a_total_powers_scope_rewrites_the_capture_in_the_wires_own_units() {
+    let (entry, mut cap, mut snap) = total_power_envelope_fixture();
+    snap.total_powers[0] = num_complex::Complex64::new(-2.5, 0.75);
+    cap.i_re[0] = 7.0;
+    rewrite_element_selected(&mut cap, &entry.scopes[0], &snap);
+    assert_eq!(cap.tp_kw, vec![-2.5]);
+    assert_eq!(cap.tp_kvar, vec![0.75]);
+    assert_eq!(
+        cap.pl_kw,
+        vec![1.0],
+        "an unselected sub-channel must be left alone"
+    );
+    assert_eq!(
+        cap.p_kw,
+        vec![1.0],
+        "an unselected sub-channel must be left alone"
+    );
+}
+
+/// The `total_powers` twin of the discrete rail: the surface has no discrete arm,
+/// so what a scope must never excuse here is a **shape** miss. The rewrite is
+/// bounded by the shorter of the two sides, so an oracle payload the port does
+/// not match in length survives to `harness::compare_element_total_powers`' own
+/// length assertion — which runs under every channel policy, `CURRENTS_ONLY`
+/// (the masked one, `total_powers: false`) included.
+#[test]
+#[should_panic(expected = "oracle TotalPowers length")]
+fn a_discrete_total_power_shape_is_never_neutralized_by_a_scope() {
+    let tol = crate::harness::tol_for("micro");
+    let (entry, mut cap, mut snap) = total_power_envelope_fixture();
+    // A two-terminal oracle payload against the port's one terminal.
+    cap.tp_kw = vec![1.0, 2.0];
+    cap.tp_kvar = vec![0.0, 0.0];
+    // The envelope survives it too: its walk is bounded by the element's own
+    // terminal count, so an over-long oracle payload never indexes off the end
+    // of the conductor block the band reads — it reaches the comparator instead.
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    rewrite_element_selected(&mut cap, &entry.scopes[0], &snap);
+    assert_eq!(
+        cap.tp_kw,
+        vec![1.0, 2.0],
+        "the rewrite must not extend or truncate the oracle payload"
+    );
+    snap.total_powers = vec![num_complex::Complex64::new(1.0, 0.0)];
+    crate::harness::compare_element_total_powers(
+        std::slice::from_ref(&snap),
+        &cap,
+        &tol,
+        "unit",
+        crate::harness::ElemChannels::CURRENTS_ONLY,
+    );
+}
+
+/// A 0-terminal element carries capi's two-double `DefaultResult` sentinel
+/// (`CAPI/CAPI_Alt.pas:1119-1123`) and nothing on r4133 — a shape, not a reading.
+/// The envelope must therefore stay inert there (there is no terminal to band)
+/// while `harness::compare_element_total_powers` keeps comparing the shape
+/// two-sidedly, and the scope that measured nothing is reported STALE rather
+/// than quietly passing.
+#[test]
+fn a_zero_terminal_total_power_sentinel_is_not_envelope_checked() {
+    let tol = crate::harness::tol_for("micro");
+    let (entry, mut cap, mut snap) = total_power_envelope_fixture();
+    snap.n_terms = 0;
+    snap.total_powers = Vec::new();
+    cap.n_terms = Some(0);
+    // The measured capi shape on `controls/upfc/upfc_dual.dss`'s
+    // `UPFCControl.myupfcctrl` (GOLDEN_REBASE G1.3c F2).
+    cap.tp_kw = vec![0.0];
+    cap.tp_kvar = vec![0.0];
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    assert!(
+        !entry.exceeded_floor.load(Ordering::Relaxed),
+        "a sentinel shape is not a divergence"
+    );
+    assert_eq!(entry.scopes[0].dead_channels(), vec!["total_powers"]);
+    // …and the shape is still compared, by the comparator, under the MASKED
+    // policy: the sentinel is accepted, a one-sided payload would not be.
+    crate::harness::compare_element_total_powers(
+        std::slice::from_ref(&snap),
+        &cap,
+        &tol,
+        "unit",
+        crate::harness::ElemChannels::CURRENTS_ONLY,
+    );
 }
