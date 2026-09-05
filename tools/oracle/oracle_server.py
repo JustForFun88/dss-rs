@@ -590,12 +590,93 @@ def capture_reliability(ckt, aborted: bool, message: str) -> dict:
 
     # --- rule 3: LAST, after the walk. `TotalizeMeters` destroys the cursor.
     totals = [float(x) for x in m.Totals]
+    # G1.6(ii): the per-bus half of the same post-`RelCalc` surface, nested
+    # under this payload's own "buses" key (NOT the checkpoint's top-level
+    # `buses`, which is G1.4a's voltage capture). Read through its own function
+    # (see there) so rule 3 stays literally true -- the meter handle is never
+    # touched again -- and after `totals` so the payload reads
+    # meters-then-buses; the bus reads themselves are order-free (group C) and
+    # move only `ActiveBusIndex`.
+    buses = capture_bus_reliability(ckt)
     return {
         "aborted": bool(aborted),
         "message": str(message),
         "meters": meters,
         "totals": totals,
+        "buses": buses,
     }
+
+
+def capture_bus_reliability(ckt) -> list:
+    """Every bus's eight reliability columns, read AFTER the executive `RelCalc`
+    (`GOLDEN_REBASE_PLAN.md` §1.1, sub-step G1.6(ii)).
+
+    The parity target is `origin/fastdss` `dss/IBus.py:19-53` `_columns`, which
+    the fastdss harness archives for every bus through the iterable
+    `dss.ActiveCircuit.ActiveBus` (`tests/save_outputs.py:351`); of its 33
+    entries these eight are the reliability half. They are read in that
+    `_columns` order — `Cust_Duration` (`:25`), `Cust_Interrupts` (`:26`),
+    `Int_Duration` (`:29`), `Lambda` (`:31`), `N_Customers` (`:32`),
+    `N_interrupts` (`:33`), `SectionID` (`:34`), `TotalMiles` (`:36`) — with the
+    list's DUPLICATE `Cust_Interrupts` entry (`dss/IBus.py:27`) collapsed to a
+    single read: reading a pure field twice proves nothing and would make the
+    read-order pin ambiguous.
+
+    Every one of the eight is a plain field read off the active `TDSSBus`,
+    guarded only by "is a bus active": capi `CAPI_Bus.pas:462-526` (`_activeObj`
+    then `Bus_Int_Duration` / `BusFltRate` / `BusCustDurations` /
+    `BusCustInterrupts` / `BusTotalNumCustomers` / `Bus_Num_Interrupt`) and
+    `:604-622` (`BusTotalMiles`, `BusSectionID`); r4133 serves the same fields
+    through `BUSF(6..11)` (`Version8/Source/DDLL/DBus.pas:129-170`) and
+    `BUSI(4..5)` (`:60-73`). The port's mirror is `circuit/bus.rs:48-63`.
+
+    Capture-order class: **group C, order-free** (`GOLDEN_REBASE_PLAN.md`
+    §1.1(a), coordinator decision D3). No arm calls `ComputeIterminal` or
+    `GetCurrents`, none writes engine state, and the only cursor that moves is
+    `ActiveBusIndex` — which [`capture_all_buses`], the one later reader of it,
+    re-selects per bus anyway. This is a SEPARATE function from
+    [`capture_reliability`] on purpose: the read-order pins scan that body for
+    its `Meters`-handle reads and require `Totals` to be the last of them
+    (`crates/dss-core/tests/reliability_pins.rs`), so the bus block gets its own
+    scanned body and its own order test instead of perturbing that rule.
+
+    READ-ORDER CONTRACT: the bus is SELECTED before every read of it, and the
+    selection is verified — `SetActiveBus` returns the 0-based `BusList` index
+    and a failed lookup leaves the PREVIOUS bus active, which would silently
+    attribute one bus's reliability row to another. [`capture_all_buses`] makes
+    the same assertion for the same reason. With no bus active the capi arms
+    return 0/0.0 (`CAPI_Bus.pas:466`) and the r4133 integer arms -1
+    (`DBus.pas:73-75`) — plausible-looking values that must never be captured by
+    accident.
+
+    Wire spelling: `Lambda` travels as `lambda_`, because `lambda` is a keyword
+    in both Python and Rust; the rename is identical on both sides
+    (`BusReliabilityCap`). Do not "fix" it.
+    """
+    rows = []
+    for i, name in enumerate(ckt.AllBusNames):
+        idx = ckt.SetActiveBus(name)
+        if idx != i:
+            raise RuntimeError(
+                f"bus reliability capture: SetActiveBus({name!r}) returned {idx}, "
+                f"expected {i} (AllBusNames must be the engine's BusList order)"
+            )
+        b = ckt.ActiveBus
+        rows.append(
+            {
+                "name": str(b.Name),
+                # `IBus._columns` order, the duplicate collapsed.
+                "cust_duration": float(b.Cust_Duration),
+                "cust_interrupts": float(b.Cust_Interrupts),
+                "int_duration": float(b.Int_Duration),
+                "lambda_": float(b.Lambda),
+                "n_customers": int(b.N_Customers),
+                "n_interrupts": float(b.N_interrupts),
+                "section_id": int(b.SectionID),
+                "total_miles": float(b.TotalMiles),
+            }
+        )
+    return rows
 
 
 def capture_pd_elements(ckt) -> list:

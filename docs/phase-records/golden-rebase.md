@@ -3058,3 +3058,36 @@ row against the pre-fix lock.
   `exec::tests::allocation`.
 
   merge: lane lane-m -> update, see git log
+
+- **G1.6(ii)** (2026-09-05, lane `lane-m`; **D7** lanes, **D20**/**D22** the engine fix) — the **eight
+  per-bus reliability columns** `Export BusReliability` renders (`IBus._columns` on `origin/fastdss`)
+  compared live on both oracle channels. They ride inside part (i)'s payload (`ReliabilityCap.buses`),
+  so no new flag and no runner change: same `RelCalc`-once protocol, same manifest-set population of
+  **6 cases** (4 capi-gating / 50 buses, 5 r4133-gating / 84 buses), corpus unchanged at 525 cases and
+  no `FORCED_*` lock moved. Compared **exactly** (`rel = abs = 0`, no `Tolerances` parameter;
+  derivation `tests/TOLERANCE_NOTES.md` §"The per-bus columns (G1.6(ii))"), counts and name sequence
+  asserted before the ledger hook, keys `bus:<busname>:<field>` on the existing `reliability` field —
+  **0 ledger entries** (budget 10; the two oracles agree bit-for-bit, 400/400 shared cells).
+  `WP_G1_MODES` **103 → 111** (`BusF` 6-11 + `BusI` 4-5, `DDLL/DBus.pas:129-170`/`:60-73`), all
+  `Served`, no r4133 decline owed; `EXCLUDED_WRITE_MODES` gains `Bus F:4` (`Bus.Y - Write`).
+  Pins: `bus_reliability_columns_match_both_oracles_on_the_duty_deck`,
+  `bus_reliability_sections_and_durations_on_the_relcalc_deck`,
+  `bus_reliability_survives_the_52902_abort`,
+  `bus_reliability_columns_on_the_capi_only_and_r4133_only_decks`,
+  `bus_int_duration_stays_in_the_meters_zone_on_the_live_population` (the Q4 record — the multi-meter
+  duration divergence is unreachable on this population, and on the four out-of-population
+  `DOCTechNote` decks the regime is the deterministic in-range one, measured over repeated fresh
+  oracle processes on both channels; the brief's "8 mandatory exclusions" budget is superseded),
+  `every_bus_reliability_column_is_read_by_some_transport`. **D20/D22 engine fix**, its own commit
+  ahead of the surface commit: `calc_reliability_indices` regains
+  `AssumeRestoration := AssumeRestoration_input;` + `TotalUpDownstreamCustomers;` (r4133
+  `Meters/EnergyMeter.pas:2466-2468`, the assignment moving from the caller into the callee as r4133
+  places it) — a **measured capi divergence, unreachable on the corpus**: zero on goldens, corpus,
+  ledger and locks, non-zero only on one in-engine dss_capi-pinned literal under `RelCalc <restore>`,
+  where r3723/r4088/r4133 all agree with the port and dss_capi 0.14.5
+  (`EnergyMeter.pas:2411-2427`) dropped the call. That literal is re-pinned with both numbers by
+  `relcalc_assume_restoration_changes_auto_ocp_interruptions` and the restored call is exercised by
+  `relcalc_recomputes_the_customer_totals_it_depends_on`; `docs/upgrade/DIVERGENCES.md` §D22 records
+  it, no EPRI report owed. Detail: `GOLDEN_REBASE_PLAN.md` §G1.6 as-executed (ii), `TESTING.md`
+  §"The per-bus reliability arm". Commits: `3e65ae2d` (D20/D22 engine fix) + the surface commit
+  + docs. Gate: filled in by the ritual Commit/Settle stages.

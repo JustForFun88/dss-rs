@@ -556,6 +556,16 @@ impl LedgerRuntime {
 /// re-assert. Its COUNTS (meter walk length, section count, array lengths) stay
 /// unconditional whatever the ledger says, so an exclusion can only ever drop a
 /// value compare, never hide a missing meter.
+///
+/// G1.6(ii) put the per-BUS half of that payload under the same field, in its
+/// own key namespace: `bus:<busname>:<field>` (`bus:mid:int_duration`) — three
+/// colon-separated segments behind a reserved `bus:` prefix, built by
+/// `harness::bus_rel_key`. It cannot collide with a meter key (one colon, or the
+/// bare `totals`), and the one spelling that could — a meter literally named
+/// `bus:<x>` — is refused by `compare_reliability` rather than left to
+/// convention. The eight columns are compared exactly too, and their counts (bus
+/// walk length, name sequence) stay unconditional for the same reason. No entry
+/// of either shape exists today.
 const LEDGER_FIELDS: [&str; 15] = [
     "iterations",
     "voltages",
