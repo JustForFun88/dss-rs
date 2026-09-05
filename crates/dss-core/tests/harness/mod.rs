@@ -3242,7 +3242,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:1545-1550` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:1579-1584` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -3271,7 +3271,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:1545-1550` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:1579-1584` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -3335,7 +3335,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     **compare** on r4133. The exclusion is a statement about the 0.14.5
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
-    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1545-1550`
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1579-1584`
     //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
@@ -3381,7 +3381,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///
 /// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1545-1550` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1579-1584` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
@@ -3574,7 +3574,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1545-1550`
+    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1579-1584`
     /// forbids masking there, plus the two `pctperm` rows RP2.1 measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {
@@ -8036,7 +8036,7 @@ pub struct FeederSectionCap {
     /// on all three engines, so a section whose branches all carry
     /// `faultrate=0` is `0/0 = NaN` identically everywhere (r4133
     /// `Version8/Source/Meters/EnergyMeter.pas` `AverageRepairTime`; port
-    /// `solution/meters/reliability.rs:259`). [`rel_num_eq`] is what makes that
+    /// `solution/meters/reliability.rs:293`). [`rel_num_eq`] is what makes that
     /// agreement, and only that agreement, pass.
     pub avg_repair_time: f64,
     pub fault_rate_x_repair_hrs: f64,
@@ -8076,6 +8076,72 @@ pub struct MeterReliabilityCap {
     pub sections: Vec<FeederSectionCap>,
 }
 
+/// One bus's reliability columns as **both** channels serialize them
+/// (`oracle_server.capture_bus_reliability`'s row dict == `dss-epri`'s
+/// `BusReliabilityCap`), each row read behind that bus's own selection.
+///
+/// The eight columns are the `IBus` reliability fields the fastdss harness
+/// archives for every bus (`DSS-Python@origin/fastdss:dss/IBus.py:19-53`
+/// `_columns`, dumped through the iterable `ActiveCircuit.ActiveBus` at
+/// `tests/save_outputs.py:351`); that list spells `Cust_Interrupts` twice and
+/// both transports collapse the duplicate to one read.
+///
+/// Sources, column by column: capi `CAPI/CAPI_Bus.pas` `Bus_Get_Int_Duration`
+/// `:462`, `_Lambda` `:473`, `_Cust_Duration` `:484`, `_Cust_Interrupts` `:495`,
+/// `_N_Customers` `:506`, `_N_interrupts` `:517`, `_TotalMiles` `:604`,
+/// `_SectionID` `:614`; r4133 the `BUSF` modes 6-11
+/// (`Version8/Source/DDLL/DBus.pas:129-170`) and the `BUSI` modes 4-5 (`:60-73`,
+/// whose "no such mode" arm answers `-1`, `:74-75`). Every arm on both channels
+/// is a bare `TDSSBus` field read behind `ActiveBusIndex > 0` — no
+/// `ComputeIterminal`, no `GetCurrents`, no scratch buffer, no state write — so
+/// the bus block is **group C** of the plan's §1.1(a) capture-order partition:
+/// order-free, and it imposes nothing on the element captures.
+///
+/// `lambda_` carries `Bus.Lambda`. The trailing underscore is the wire key on
+/// both transports because `lambda` is a keyword in Python (where the capi row
+/// is built) and in Rust — do not "fix" it on one side only; that spelling is
+/// what lets one macro extract this cap and `dss_core`'s `BusReliabilityView`.
+///
+/// No `#[serde(default)]` anywhere: a channel that drops a column must fail
+/// loudly here rather than compare a zero ([`FeederSectionCap`]'s rule).
+#[derive(Debug, Clone, Deserialize)]
+pub struct BusReliabilityCap {
+    /// `Bus.Name`, in `Circuit.AllBusNames` (= `BusList`) order — the order
+    /// `Dss::bus_reliability` walks, so the two sides align index by index.
+    pub name: String,
+    /// `TDSSBus.BusCustDurations`, a single **assignment** per zone load bus
+    /// (r4133 `Meters/EnergyMeter.pas:2610-2611`), not an accumulation.
+    pub cust_duration: f64,
+    /// `TDSSBus.BusCustInterrupts`.
+    pub cust_interrupts: f64,
+    /// `TDSSBus.Bus_Int_Duration` = `Source_IntDuration +
+    /// FeederSections[SectionID].AverageRepairTime` (r4133
+    /// `EnergyMeter.pas:2572-2573`), so it inherits the unguarded
+    /// `SumFltRatesXRepairHrs / SumBranchFltRates` of
+    /// [`FeederSectionCap::avg_repair_time`] (`:2563`): a section whose branches
+    /// all carry `faultrate=0` propagates `NaN` here identically on all three
+    /// engines, which is why the values go through [`rel_num_eq`].
+    pub int_duration: f64,
+    /// `TDSSBus.BusFltRate`, the backward sweep's accumulated failure rate.
+    pub lambda_: f64,
+    /// `TDSSBus.BusTotalNumCustomers` — an integer on both channels (capi
+    /// returns `Integer`, r4133 `BUSI(4)` a `longint`).
+    pub n_customers: i32,
+    /// `TDSSBus.Bus_Num_Interrupt`.
+    pub n_interrupts: f64,
+    /// `TDSSBus.BusSectionID`. Three values are reachable and all three are
+    /// data, compared verbatim: `0` from `TDSSBus.Create` and for the span above
+    /// the first OCP device (r4133 `EnergyMeter.pas:2494`), `-1` = "signify not
+    /// set" while a zone's accumulators are zeroed
+    /// (`PDElements/PDElement.pas:326`), and `1..=SectionCount` afterwards. The
+    /// `-1` collides with the bridge's integer sentinel, which is why the r4133
+    /// arm proves its rows by the selection index and never by a value shape
+    /// (`crates/dss-epri/src/capture.rs::capture_bus_reliability`).
+    pub section_id: i32,
+    /// `TDSSBus.BusTotalMiles`.
+    pub total_miles: f64,
+}
+
 /// One channel's whole reliability payload for the LAST checkpoint of a case.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ReliabilityCap {
@@ -8089,6 +8155,15 @@ pub struct ReliabilityCap {
     /// `Meters.Totals` — the masked register sum over every meter of the
     /// circuit list (`TotalizeMeters`), read LAST on both transports.
     pub totals: Vec<f64>,
+    /// The eight `IBus` reliability columns for **every** bus, in
+    /// `Circuit.AllBusNames` order (`GOLDEN_REBASE_PLAN.md` §G1.6 sub-step
+    /// (ii)). Both transports read the block AFTER `totals`
+    /// (`oracle_server.capture_bus_reliability`, `dss-epri`
+    /// `capture::capture_bus_reliability`) and nest it in this payload rather
+    /// than at checkpoint level, where `buses` is G1.4a's voltage capture.
+    /// No `#[serde(default)]`: a transport that stops emitting the block must
+    /// fail the decode, never compare an empty walk.
+    pub buses: Vec<BusReliabilityCap>,
 }
 
 /// What the *port's* `RelCalc` did, as the runner observed it: the new
@@ -8100,7 +8175,7 @@ pub struct ReliabilityCap {
 ///
 /// The two sides are compared as **boolean + message**, never as a count: the
 /// port reports one error per failing meter
-/// (`solution/meters/reliability.rs:44-50` collects per meter) while
+/// (`solution/meters/reliability.rs:53-57` collects per meter) while
 /// dss-python raises once per command, so on a multi-meter deck the counts
 /// legitimately differ. The text is byte-identical on all three engines
 /// (measured on `controls:energymeter/midi_energymeter.dss`).
@@ -8241,6 +8316,29 @@ macro_rules! rel_section_fields {
     }};
 }
 
+/// The eight per-bus reliability columns, in the frozen order both transports
+/// read them (fastdss `IBus._columns` with its duplicate `Cust_Interrupts`
+/// collapsed). A macro rather than two functions so it expands over **both**
+/// [`BusReliabilityCap`] and `dss_core`'s `BusReliabilityView` — a field renamed
+/// on either type stops this file compiling, which is the whole check the view
+/// side gets here: `dss_core::exec` does not re-export that type, so it cannot
+/// be named in a test.
+macro_rules! rel_bus_fields {
+    ($x:expr) => {{
+        let b = $x;
+        [
+            ("cust_duration", RelVal::F(b.cust_duration)),
+            ("cust_interrupts", RelVal::F(b.cust_interrupts)),
+            ("int_duration", RelVal::F(b.int_duration)),
+            ("lambda_", RelVal::F(b.lambda_)),
+            ("n_customers", RelVal::I(b.n_customers)),
+            ("n_interrupts", RelVal::F(b.n_interrupts)),
+            ("section_id", RelVal::I(b.section_id)),
+            ("total_miles", RelVal::F(b.total_miles)),
+        ]
+    }};
+}
+
 /// The two per-phase array fields [`RELIABILITY_SKIP_FIELDS`] may name — the
 /// register test's vocabulary, so a row naming a field that does not exist is
 /// refused.
@@ -8360,6 +8458,14 @@ static RELIABILITY_WALKS: [AtomicUsize; 2] = [const { AtomicUsize::new(0) }; 2];
 /// …and the meters those payloads compared.
 static RELIABILITY_METERS: [AtomicUsize; 2] = [const { AtomicUsize::new(0) }; 2];
 
+/// Gating reliability payloads whose per-BUS half this process compared, per
+/// channel, indexed by [`pd_channel_slot`] (GOLDEN_REBASE G1.6(ii)). Separate
+/// from [`RELIABILITY_WALKS`] on purpose: the bus rows ride inside the meter
+/// payload, so only their own counter can see them stop being compared.
+static BUS_RELIABILITY_WALKS: [AtomicUsize; 2] = [const { AtomicUsize::new(0) }; 2];
+/// …and the buses those payloads compared.
+static BUS_RELIABILITY_BUSES: [AtomicUsize; 2] = [const { AtomicUsize::new(0) }; 2];
+
 /// Which [`RELIABILITY_SKIP_FIELDS`] row covers `(channel, field)`, if any.
 ///
 /// A pure function so both directions are provable offline — the shipped
@@ -8387,6 +8493,39 @@ pub fn reliability_walk_counters() -> (usize, usize, usize, usize) {
         RELIABILITY_WALKS[1].load(AtomicOrd::Relaxed),
         RELIABILITY_METERS[1].load(AtomicOrd::Relaxed),
     )
+}
+
+/// What [`compare_bus_reliability`] has counted in this process, as
+/// `(capi payloads, capi buses, r4133 payloads, r4133 buses)`.
+///
+/// **Never drive [`compare_bus_reliability`] from a `#[cfg(test)]` test in this
+/// module.** These statics are process-global and the live gate's epilogue
+/// (`corpus_gate.rs`) asserts on them, so a unit test in the same binary that
+/// moved them would green [`assert_bus_reliability_compare_ran`] on a run where
+/// the gate compared nothing. That is why both directions of the rule are pinned
+/// over injected counters ([`check_bus_reliability_compare_ran`]) and why a
+/// comparator drive belongs in a binary without the epilogue
+/// (`tests/reliability_pins.rs`).
+pub fn bus_reliability_walk_counters() -> (usize, usize, usize, usize) {
+    (
+        BUS_RELIABILITY_WALKS[0].load(AtomicOrd::Relaxed),
+        BUS_RELIABILITY_BUSES[0].load(AtomicOrd::Relaxed),
+        BUS_RELIABILITY_WALKS[1].load(AtomicOrd::Relaxed),
+        BUS_RELIABILITY_BUSES[1].load(AtomicOrd::Relaxed),
+    )
+}
+
+/// The per-VALUE `tests/corpus/ledger.json` key one bus column answers to:
+/// `bus:<busname>:<field>`, lowercased (GOLDEN_REBASE G1.6(ii)).
+///
+/// Both halves of the reliability payload share the one `reliability` ledger
+/// field (`corpus_gate/ledger.rs`), selected by `name_re`, so the two key
+/// namespaces must be disjoint: a meter key is `<meter>:<field>` (two segments)
+/// or the bare `totals`, a bus key is three segments behind the reserved `bus:`
+/// prefix. The only way to forge one is a meter literally named `bus:<x>`, which
+/// [`compare_reliability`] refuses outright rather than leaves to convention.
+fn bus_rel_key(bus: &str, field: &str) -> String {
+    format!("bus:{}:{}", bus.to_lowercase(), field)
 }
 
 /// One [`RELIABILITY_SKIP_FIELDS`] row's live `(visits, hits)`, or `None` when
@@ -8608,6 +8747,17 @@ pub fn compare_reliability(
 
     for (a, e) in act.iter().zip(&exp.meters) {
         let name_lc = e.name.to_lowercase();
+        // The per-value ledger namespace is shared with the per-bus half
+        // ([`bus_rel_key`]): meter keys are `<meter>:<field>`, bus keys
+        // `bus:<bus>:<field>`. A meter named `bus:<x>` would forge a bus key —
+        // no vendored deck names one that way, so the disjointness is asserted
+        // rather than assumed (G1.6(ii)).
+        assert!(
+            !name_lc.starts_with("bus:"),
+            "{ctx}: meter {:?} would forge a `bus:` per-value ledger key — the `reliability` \
+             field reserves that prefix for the per-bus reliability columns",
+            e.name,
+        );
         let dropped = |field: &str| ledger_skip(&format!("{name_lc}:{field}"));
         let av = rel_meter_scalars!(a);
         let ev = rel_meter_scalars!(e);
@@ -8828,9 +8978,109 @@ pub fn compare_reliability(
         }
     }
 
+    // The per-BUS half of the same payload (GOLDEN_REBASE G1.6(ii)), in the
+    // slot both transports capture it in: after `Meters.Totals`, which is the
+    // last read the meter arm may make (`TotalizeMeters` destroys the meter
+    // cursor). The bus block itself is order-free — group C of the plan's
+    // §1.1(a) partition — so it constrains nothing and is constrained by
+    // nothing; it sits here so the whole reliability payload keeps ONE entry
+    // point and `corpus_gate/runner.rs` needs no second call.
+    compare_bus_reliability(dss, &exp.buses, channel, ctx, ledger_skip);
+
     let slot = pd_channel_slot(channel);
     RELIABILITY_WALKS[slot].fetch_add(1, AtomicOrd::Relaxed);
     RELIABILITY_METERS[slot].fetch_add(exp.meters.len(), AtomicOrd::Relaxed);
+}
+
+/// Compare one channel's per-bus reliability columns against the engine's
+/// (`GOLDEN_REBASE_PLAN.md` §G1.6, sub-step (ii)).
+///
+/// The eight `IBus` columns for **every** bus: the six `Export BusReliability`
+/// renders at 11 significant digits on two byte goldens
+/// (`report/export/reliability.rs`), plus `Cust_Duration` and `SectionID`, which
+/// nothing witnessed before this surface.
+///
+/// **Counts are unconditional.** The bus count and the whole name sequence are
+/// asserted before `ledger_skip` is consulted, so an exclusion can only ever
+/// drop a VALUE compare, never hide a missing or misaligned bus — the rule the
+/// meter arm states, one level down. Both oracles walk `Circuit.AllBusNames`
+/// (capi `CAPI/CAPI_Circuit.pas`, r4133 `Version8/Source/DDLL/DCircuit.pas:439`)
+/// and `SetActiveBus` before every row, asserting the returned index; the port's
+/// `Dss::bus_reliability` walks `Circuit::buses` — the same `BusList` order.
+///
+/// **Every value is compared EXACTLY** (`rel = abs = 0`), integers and doubles
+/// alike, with [`rel_num_eq`]'s NaN/±inf agreement rule for the doubles. This
+/// comparator takes no [`Tolerances`] at all, and that is the statement: the
+/// eight columns are the same arithmetic [`compare_reliability`] compares one
+/// level up — sums of deck literals (`faultrate`, `repair`, `RelWeighting`,
+/// `length`) and integer customer counts accumulated in a fixed zone-walk order
+/// (r4133 `Version8/Source/Meters/EnergyMeter.pas:2488-2611`; port
+/// `solution/meters/reliability.rs::calc_reliability_indices`) — and the two
+/// **independent** oracle engines return them bit-identical: G1.6(ii) parts F1
+/// and F4 measured 400/400 cells equal under `==` on the four cases both
+/// channels gate, through two independent transports, and four of the eight are
+/// already pinned bit-for-bit against both oracles by transitivity through
+/// `reliability_pins.rs::relcalc_indices_match_both_oracles_on_the_duty_deck`.
+/// A Rust gap here is an order bug, never a floor; derivation in
+/// `tests/TOLERANCE_NOTES.md` §"The `Meters` reliability surface (G1.6(i))".
+///
+/// `ledger_skip` is the same per-VALUE hook [`compare_reliability`] threads,
+/// keyed by [`bus_rel_key`]. **No entry exists today** — G1.6(ii) measured zero
+/// divergences on either channel; the hook is wired so a future measured one has
+/// somewhere to go that `LEDGER_FIELDS` can police.
+pub fn compare_bus_reliability(
+    dss: &Dss,
+    exp: &[BusReliabilityCap],
+    channel: PropsChannel,
+    ctx: &str,
+    ledger_skip: &dyn Fn(&str) -> bool,
+) {
+    let tag = channel.tag();
+    let act = dss.bus_reliability();
+    assert_eq!(
+        act.len(),
+        exp.len(),
+        "{ctx}: reliability bus walk length differs against `{tag}`: Rust {} vs oracle {}. \
+         Both sides walk the circuit's `BusList` — the port `Circuit::buses`, the oracle \
+         `Circuit.AllBusNames` with a `SetActiveBus` before every row.",
+        act.len(),
+        exp.len(),
+    );
+    if let Some(k) = act
+        .iter()
+        .zip(exp)
+        .position(|(a, e)| !a.name.eq_ignore_ascii_case(&e.name))
+    {
+        panic!(
+            "{ctx}: reliability bus walk differs against `{tag}` at index {k}: Rust `{}` vs \
+             oracle `{}` (membership or order)",
+            act[k].name, exp[k].name,
+        );
+    }
+    for (a, e) in act.iter().zip(exp) {
+        let av = rel_bus_fields!(a);
+        let ev = rel_bus_fields!(e);
+        for ((fa, va), (fe, ve)) in av.iter().zip(ev.iter()) {
+            debug_assert_eq!(fa, fe, "both extractions are the one macro");
+            if ledger_skip(&bus_rel_key(&e.name, fa)) {
+                continue;
+            }
+            assert!(
+                va.matches(*ve),
+                "{ctx}: bus {} reliability column `{fa}` differs against `{tag}`: Rust {} vs \
+                 oracle {}. This surface is compared EXACTLY (rel = abs = 0): the two oracle \
+                 engines are bit-identical on all eight columns, so a difference is a bug, \
+                 never a floor.",
+                e.name,
+                va.render(),
+                ve.render(),
+            );
+        }
+    }
+
+    let slot = pd_channel_slot(channel);
+    BUS_RELIABILITY_WALKS[slot].fetch_add(1, AtomicOrd::Relaxed);
+    BUS_RELIABILITY_BUSES[slot].fetch_add(exp.len(), AtomicOrd::Relaxed);
 }
 
 /// **Fail-on-nothing-ran for the whole reliability surface** — the G1.6(i) half
@@ -8868,6 +9118,47 @@ fn check_reliability_compare_ran(capi: (usize, usize), r4133: (usize, usize)) {
          the manifests (never scheduler-forced — the predicate \"has an EnergyMeter\" is not a \
          manifest field), so a zero here means the rows were lost, a transport stopped honoring \
          `reliability`, or the drive was removed.",
+        capi.0,
+        capi.1,
+        r4133.0,
+        r4133.1,
+    );
+}
+
+/// **Fail-on-nothing-ran for the per-BUS half of the reliability surface**
+/// (G1.6(ii)), the twin of [`assert_reliability_compare_ran`] and its successor
+/// in the same epilogue.
+///
+/// The meter half's guard cannot see this half collapse: the bus rows ride
+/// INSIDE the same payload, so a transport that stopped emitting `buses`, a
+/// `#[serde(default)]` slipped onto the field, or the
+/// [`compare_bus_reliability`] call dropped from [`compare_reliability`] would
+/// leave the meter counters happy while every bus of every flagged case went
+/// uncompared. Both channels must have compared at least one bus, because a
+/// surface wired on one channel only is what the plan's D2 forbids.
+///
+/// Silent under `DSS_GATE_ONLY` for the reason its neighbours are: a filtered
+/// run may legitimately hold no case that gates a given channel.
+pub fn assert_bus_reliability_compare_ran() {
+    if std::env::var("DSS_GATE_ONLY").is_ok() {
+        return;
+    }
+    let (cw, cb, rw, rb) = bus_reliability_walk_counters();
+    check_bus_reliability_compare_ran((cw, cb), (rw, rb));
+}
+
+/// The rule itself, over **injected** counters — the split exists for the reason
+/// [`check_reliability_compare_ran`]'s does: the shipped statics cannot be
+/// zeroed once a gate run has moved them, so both directions are pinned offline.
+fn check_bus_reliability_compare_ran(capi: (usize, usize), r4133: (usize, usize)) {
+    assert!(
+        capi.1 > 0 && r4133.1 > 0,
+        "the per-bus reliability compare never reached one of the two channels: capi_v0145 {} \
+         payload(s) / {} bus(es), r4133 {} payload(s) / {} bus(es). Since GOLDEN_REBASE \
+         G1.6(ii) every reliability payload carries the eight `IBus` reliability columns for \
+         every bus under its `buses` key, on both transports; a zero here means a transport \
+         stopped emitting the block, the manifest rows were lost, or the call was dropped from \
+         `compare_reliability`.",
         capi.0,
         capi.1,
         r4133.0,
@@ -9241,5 +9532,147 @@ mod reliability_tests {
         assert!(reliability_skip_applies(&mk(vec![0.0, 0.0, 0.0])));
         assert!(!reliability_skip_applies(&mk(vec![0.0, 0.0, 1.0])));
         assert!(!reliability_skip_applies(&mk(vec![0.5, 0.5, 0.5])));
+    }
+
+    fn bus_row() -> BusReliabilityCap {
+        BusReliabilityCap {
+            name: "lb".to_string(),
+            cust_duration: 6.048007583148559,
+            cust_interrupts: 0.8141999999999999,
+            int_duration: 2.856984478935699,
+            lambda_: 0.0435,
+            n_customers: 4,
+            n_interrupts: 0.20354999999999998,
+            section_id: 2,
+            total_miles: 0.6,
+        }
+    }
+
+    /// The bus extraction covers its eight keys, in the frozen read order, with
+    /// the right type on each. The *port* side of the same macro is checked by
+    /// the compiler: [`compare_bus_reliability`] expands it over
+    /// `BusReliabilityView` too, so a field renamed there stops this file
+    /// compiling.
+    #[test]
+    fn the_bus_field_extraction_is_the_frozen_keys_in_read_order() {
+        let b = bus_row();
+        let got = rel_bus_fields!(&b);
+        let names: Vec<&str> = got.iter().map(|(n, _)| *n).collect();
+        assert_eq!(
+            names,
+            vec![
+                "cust_duration",
+                "cust_interrupts",
+                "int_duration",
+                "lambda_",
+                "n_customers",
+                "n_interrupts",
+                "section_id",
+                "total_miles",
+            ]
+        );
+        // The two integer columns are typed as integers: `n_customers` and
+        // `section_id` must never compare through the float arm, where
+        // `rel_num_eq` would admit a `NaN == NaN` agreement they cannot have.
+        assert_eq!(got[4].1, RelVal::I(4));
+        assert_eq!(got[6].1, RelVal::I(2));
+        assert_eq!(got[0].1, RelVal::F(6.048007583148559));
+        assert!(!RelVal::I(2).matches(RelVal::F(2.0)));
+    }
+
+    /// The wire row deserializes at the shipped spelling — `lambda_` with its
+    /// trailing underscore, `n_customers`/`section_id` as integers — and a
+    /// channel that drops ANY of the nine columns fails loudly (no
+    /// `#[serde(default)]` on this cap, ever).
+    #[test]
+    fn the_bus_wire_row_deserializes_and_a_dropped_column_fails() {
+        // `modes:time/midi_duty_ctrl.dss` bus `mid`, at the precision both
+        // transports put on the wire (G1.6(ii) parts F2/F4, bit-identical).
+        let fields = [
+            ("name", "\"MID\""),
+            ("cust_duration", "0.0"),
+            ("cust_interrupts", "0.11200000000000002"),
+            ("int_duration", "2.999999999999999"),
+            ("lambda_", "0.036000000000000004"),
+            ("n_customers", "2"),
+            ("n_interrupts", "0.05600000000000001"),
+            ("section_id", "1"),
+            ("total_miles", "1.8"),
+        ];
+        let json = |skip: &str| -> String {
+            let body: Vec<String> = fields
+                .iter()
+                .filter(|(k, _)| *k != skip)
+                .map(|(k, v)| format!("\"{k}\":{v}"))
+                .collect();
+            format!("{{{}}}", body.join(","))
+        };
+        let b: BusReliabilityCap = serde_json::from_str(&json("")).expect("wire shape");
+        assert_eq!(b.name, "MID");
+        assert_eq!(b.lambda_, 0.036000000000000004);
+        assert_eq!(b.n_customers, 2);
+        assert_eq!(b.section_id, 1);
+        // `float_roundtrip` (D11/D18) is what makes the 17-digit token decode
+        // to the port's own bit pattern; without it this surface would red at
+        // 1 ULP with no arithmetic having happened.
+        assert_eq!(
+            b.cust_interrupts.to_bits(),
+            0.11200000000000002f64.to_bits()
+        );
+        for (k, _) in fields {
+            let err = serde_json::from_str::<BusReliabilityCap>(&json(k))
+                .expect_err("a payload without a column must be refused");
+            assert!(format!("{err}").contains(k), "{err}");
+        }
+    }
+
+    /// The per-value ledger key: lowercased, three colon-separated segments
+    /// behind the reserved `bus:` prefix, and disjoint from the meter arm's
+    /// `<meter>:<field>` and the bare `totals`.
+    #[test]
+    fn the_bus_ledger_key_is_lowercased_and_disjoint_from_the_meter_keys() {
+        assert_eq!(bus_rel_key("MID", "int_duration"), "bus:mid:int_duration");
+        assert_eq!(bus_rel_key("lb", "section_id"), "bus:lb:section_id");
+        let key = bus_rel_key("Loadb", "total_miles");
+        assert_eq!(key.matches(':').count(), 2, "{key}");
+        assert!(key.starts_with("bus:"), "{key}");
+        // A meter key carries exactly ONE colon while the meter's own name
+        // carries none, so it can never equal a three-segment bus key — not
+        // even for a meter named `bus`, whose `bus:saidi` is two segments.
+        for meter in ["em", "em2", "bus", "BUS"] {
+            for field in ["saidi", "saifi", "num_sections"] {
+                let m = format!("{}:{field}", meter.to_lowercase());
+                assert_eq!(m.matches(':').count(), 1, "{m}");
+                assert_ne!(m, bus_rel_key(meter, field), "{m}");
+            }
+        }
+        // The one spelling that COULD forge a bus key is a meter whose own name
+        // starts with `bus:` — which is exactly the predicate
+        // `compare_reliability` asserts against before it builds any key.
+        assert_eq!(
+            format!("{}:{}", "bus:mid".to_lowercase(), "int_duration"),
+            bus_rel_key("mid", "int_duration"),
+        );
+        assert!("bus:mid".starts_with("bus:"), "the guard's predicate");
+        assert!(!"totals".starts_with("bus:"));
+    }
+
+    /// Both directions of the "did the per-bus half run at all" rule.
+    #[test]
+    fn the_bus_reliability_surface_must_run_on_both_channels() {
+        check_bus_reliability_compare_ran((4, 50), (5, 90));
+        for bad in [((0, 0), (5, 90)), ((4, 50), (0, 0)), ((1, 0), (1, 0))] {
+            let payload =
+                std::panic::catch_unwind(|| check_bus_reliability_compare_ran(bad.0, bad.1))
+                    .expect_err("a channel that compared no bus must fail");
+            let msg = payload
+                .downcast_ref::<String>()
+                .cloned()
+                .unwrap_or_else(|| "<non-string panic>".to_string());
+            assert!(
+                msg.contains("never reached one of the two channels"),
+                "{msg}"
+            );
+        }
     }
 }

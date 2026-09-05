@@ -153,15 +153,19 @@ meter extras and **the run protocol** — the gate drives the executive `RelCalc
 case and six flagged cases compare the indices, every section, `CalcCurrent`/`AllocFactors`,
 `Meters.Totals` and the **ordered** zone lists, exact but for three cells banded from
 existing tiers (**D17a**), **0** new entries, one pinned skip closed on the corpus's only
-`AllocateLoads` deck (524 → **525** cases), G1.6b's two deferrals discharged (**D11/D18**).
-No golden byte moved, |Δ| = 0 throughout; `WP_G1_MODES` **103**, ledger **54** / 31 causes;
-G1.3d(ii), G1.3b/c, G1.4b/c, G1.5, G1.6(ii), G1.7, G1.8, G1.10–G1.11c and WP-G3–G5 remain.
+`AllocateLoads` deck (524 → **525** cases), G1.6b's two deferrals discharged (**D11/D18**);
+and **G1.6(ii)** (2026-09-05, `lane-m`, `3e65ae2d` + the surface commit), the eight per-bus
+reliability columns inside that same payload — 6 cases / 50 capi + 84 r4133 buses, compared
+exactly, keys `bus:<bus>:<field>` on the existing `reliability` field, **0** new entries, plus
+the **D20/D22** engine fix (`calc_reliability_indices` recomputes `TotalUpDownstreamCustomers`,
+r4133 `EnergyMeter.pas:2466-2468`) whose only footprint is a measured capi divergence under
+`RelCalc <restore>`, unreachable on the corpus (`DIVERGENCES.md` §D22).
+No golden byte moved, |Δ| = 0 throughout; `WP_G1_MODES` **111**, ledger **54** / 31 causes;
+G1.3d(ii), G1.3b/c, G1.4b/c, G1.5, G1.7, G1.8, G1.10–G1.11c and WP-G3–G5 remain.
 
-**Next.** Element lane **G1.3d(ii)** → G1.3b → G1.3c; `lane-m` **G1.6(ii)** (the eight
-per-bus reliability columns + `Bus.Int_Duration`, on G1.6(i)'s population and protocol — it
-also owns or hands on the AT-1 zone-boundary decision below); `lane-s` **G1.7** → G1.8 →
-G1.10a–c; bus lane **G1.5** → G1.4c (D8) → G1.4b, then WP-G3–G5; queued: `WASM_USERMODELS`,
-RESONANCE, MULTITHREADING, UPGRADE.
+**Next.** Element lane **G1.3d(ii)** → G1.3b → G1.3c; `lane-s` **G1.7** → G1.8 →
+G1.10a–c; bus lane **G1.5** → G1.4c (D8) → G1.4b, then WP-G3–G5; the PD/meter lane's chain is
+complete with G1.6(ii); queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children, needs
 MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the `UpgradeRung` escape
@@ -338,8 +342,12 @@ each row's measured cost.
   upstream defect `to_opendss/61-relcalc-cross-zone-accumulator-leak.md`, pinned with its
   run-count and declaration-order arms. Unfixable inside G1.6(i) (R-14(d)); the correct
   value for a nested head bus needs a semantics decision (3.0 vs 2.0 at the zone boundary —
-  circuit-wide zeroing fixes idempotence, not order-independence). **G1.6(ii) gates the
-  `Bus.*` columns this perturbs** — it owns that decision or hands it on.
+  circuit-wide zeroing fixes idempotence, not order-independence). **G1.6(ii) HANDED IT ON**
+  (2026-09-05): its six-case flagged population holds exactly one two-meter deck
+  (`midi_energymeter`) and both of its meters abort at 52902 before any section is allocated, so
+  no nested zone-boundary bus is gated live and the semantics decision has no witness to settle
+  it against; the four `DOCTechNote` decks that would supply one are out of the population by
+  D-i-2. The pin and the `to_opendss` report stand; the decision needs its own step.
 
 **Carried-forward and residual-floor items — the rows still open.** Full text, closed rows
 and all: [`follow-ups-carried.md`](docs/phase-records/follow-ups-carried.md).

@@ -124,6 +124,7 @@ fn r4133_mode_capability_is_complete_for_wp_g1() {
     the_parent_read_hijacks_the_active_element_and_the_capture_reads_it_last(&e);
     // LAST: this phase runs `RelCalc` and adds elements to the circuit.
     the_relcalc_protocol_and_the_section_cursor(&e);
+    the_bus_reliability_columns_are_live_after_relcalc(&e);
     // Nothing in the walk left a non-zero errno behind for the next caller.
     let (errno, desc) = e.poll_error();
     assert_eq!(errno, 0, "the mode walk left errno {errno} set: {desc}");
@@ -455,6 +456,14 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
     chk!(BUS_PU_VMAG_ANGLE, e.bus_pu_vmag_angle());
     chk!(BUS_ALL_PCE_AT_BUS, e.bus_all_pce_at_bus());
     chk!(BUS_ALL_PDE_AT_BUS, e.bus_all_pde_at_bus());
+    chk!(BUS_LAMBDA, e.bus_lambda());
+    chk!(BUS_N_INTERRUPTS, e.bus_n_interrupts());
+    chk!(BUS_INT_DURATION, e.bus_int_duration());
+    chk!(BUS_CUST_INTERRUPTS, e.bus_cust_interrupts());
+    chk!(BUS_CUST_DURATION, e.bus_cust_duration());
+    chk!(BUS_TOTAL_MILES, e.bus_total_miles());
+    chk!(BUS_N_CUSTOMERS, e.bus_n_customers());
+    chk!(BUS_SECTION_ID, e.bus_section_id());
     // Circuit
     chk!(CIRCUIT_LOSSES, e.circuit_losses());
     chk!(CIRCUIT_LINE_LOSSES, e.circuit_line_losses());
@@ -948,5 +957,132 @@ fn the_relcalc_protocol_and_the_section_cursor(e: &Engine) {
             in_m2.total_miles
         ),
         (0, 13.34, 98.00002, 0.928030303030303)
+    );
+}
+
+/// **The G1.6(ii) bridge measurement.** The eight per-bus reliability columns
+/// ([`modes::BUS_LAMBDA`] … [`modes::BUS_SECTION_ID`]) read live off the
+/// vendored r4133 DLL, on the state the phase above leaves behind: `m1`'s zone
+/// has a completed `RelCalc` (one Recloser section) and `m2`'s aborted at 52902
+/// after its backward sweep — the two regimes the corpus population holds
+/// (`controls:energymeter/midi_relcalc.dss` vs `…/midi_energymeter.dss`).
+///
+/// It proves **identity**, not merely capability: six `F` rows and two `I` rows
+/// are same-shape siblings of one family, so a transposed mode index would sail
+/// through the `Served` walk. Every literal is an exact reading measured
+/// 2026-09-05 on this fixture, and the closing loop re-derives the
+/// discrimination instead of trusting the hand-picked buses — for each pair of
+/// same-shape rows there must be a bus where the two disagree.
+///
+/// `SectionID` never reads `-1` here, which is a fact about the sweep and not a
+/// coincidence: `ZeroReliabilityAccums` writes `-1 // signify not set`
+/// (`PDElements/PDElement.pas:326`) *before* the forward sweep, which then
+/// stamps the head bus (`Meters/EnergyMeter.pas:2494`) and every TO bus
+/// (`PDElement.pas:179-181`) — including on an aborting meter, because
+/// `CalcNum_Int` runs for the whole `SequenceList` *before* the `SectionCount=0`
+/// abort (`EnergyMeter.pas:2497-2504`). That is why `m2`'s zone reads
+/// `SectionID = 0` below rather than `-1`, and it is what makes a `-1` reply
+/// from this row ambiguous with the family's `I` sentinel in general (see
+/// [`modes::BUS_SECTION_ID`]).
+fn the_bus_reliability_columns_are_live_after_relcalc(e: &Engine) {
+    /// `(lambda, n_interrupts, int_duration, cust_interrupts, cust_duration,
+    ///   total_miles)` and `(n_customers, section_id)` for one bus.
+    fn read_bus(e: &Engine, name: &str) -> ([f64; 6], [i32; 2]) {
+        assert!(e.set_active_bus(name) >= 0, "bus {name} must exist");
+        (
+            [
+                e.bus_lambda().unwrap(),
+                e.bus_n_interrupts().unwrap(),
+                e.bus_int_duration().unwrap(),
+                e.bus_cust_interrupts().unwrap(),
+                e.bus_cust_duration().unwrap(),
+                e.bus_total_miles().unwrap(),
+            ],
+            [e.bus_n_customers().unwrap(), e.bus_section_id().unwrap()],
+        )
+    }
+
+    // `m1`'s completed zone: interrupted buses inside section 1. The three
+    // rows differ bus by bus — 633 carries the customer *interruptions*, 634
+    // the customer *durations*, 645 both — so no transposition of F:9/F:10
+    // survives all three.
+    assert_eq!(
+        read_bus(e, "633"),
+        ([0.0, 66.0, 3.0, 198.0, 0.0, 0.0], [3, 1]),
+        "633 — inside m1's Recloser section"
+    );
+    assert_eq!(
+        read_bus(e, "634"),
+        ([0.0, 66.0, 3.0, 0.0, 198.0, 0.0], [0, 1]),
+        "634 — the transformer's secondary, no customers of its own"
+    );
+    assert_eq!(
+        read_bus(e, "645"),
+        (
+            [6.0, 66.0, 3.0, 66.0, 396.0, 0.056_818_181_818_181_816],
+            [1, 1]
+        ),
+        "645 — the only bus where all six F rows are non-zero at once"
+    );
+    // `m2`'s aborted zone: the backward sweep populated Lambda / TotalMiles /
+    // N_Customers, the forward sweep left every interruption column at zero and
+    // stamped `SectionID = 0` (not `-1`).
+    assert_eq!(
+        read_bus(e, "632"),
+        (
+            [98.000_02, 0.0, 0.0, 0.0, 0.0, 0.928_030_303_030_303],
+            [10, 0]
+        ),
+        "632 — m2's head bus after the 52902 abort"
+    );
+    assert_eq!(
+        read_bus(e, "671"),
+        (
+            [58.000_02, 0.0, 0.0, 0.0, 0.0, 0.549_242_424_242_424_2],
+            [6, 0]
+        ),
+        "671 — downstream of m2's abort"
+    );
+    // A bus in neither completed section, reached only by the backward sweep of
+    // `m1`: `TotalMiles`/`N_Customers` live, everything else zero.
+    assert_eq!(
+        read_bus(e, "rg60"),
+        ([0.0, 0.0, 0.0, 0.0, 0.0, 0.625], [5, 0]),
+        "rg60 — m1's head bus"
+    );
+
+    // Identity, re-derived over every bus of the circuit: two rows of the same
+    // shape must disagree somewhere, or a swapped mode index would be
+    // invisible. (`Lambda` vs `Cust_Duration` and the two `I` rows are the
+    // pairs that need the whole walk, not one bus.)
+    let names = e.circuit_all_bus_names().expect("Circuit.AllBusNames");
+    assert_eq!(names.len(), 16, "IEEE13 has 16 buses");
+    let table: Vec<([f64; 6], [i32; 2])> = names.iter().map(|n| read_bus(e, n)).collect();
+    const F_ROWS: [&str; 6] = [
+        "Lambda",
+        "N_interrupts",
+        "Int_Duration",
+        "Cust_Interrupts",
+        "Cust_Duration",
+        "TotalMiles",
+    ];
+    for i in 0..6 {
+        for j in (i + 1)..6 {
+            assert!(
+                table.iter().any(|(f, _)| f[i] != f[j]),
+                "Bus.{} and Bus.{} agree on every bus — a transposed mode index would \n                 pass unnoticed",
+                F_ROWS[i],
+                F_ROWS[j]
+            );
+        }
+    }
+    assert!(
+        table.iter().any(|(_, i)| i[0] != i[1]),
+        "Bus.N_Customers and Bus.SectionID agree on every bus"
+    );
+    // No `-1` anywhere: every zone bus was re-stamped by the forward sweep.
+    assert!(
+        table.iter().all(|(_, i)| i[1] >= 0),
+        "an unstamped SectionID (-1) would collide with the I sentinel"
     );
 }
