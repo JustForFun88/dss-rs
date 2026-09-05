@@ -586,6 +586,24 @@ pub struct BusVoltageView {
     pub name: String,
     /// `TDSSBus.kVBase`, line-to-neutral kV; `0.0` = not set.
     pub kv_base: f64,
+    /// `Bus.Distance`: `TDSSBus.DistFromMeter`, the distance in **km** from
+    /// this bus back to the head of the EnergyMeter zone that owns it — the
+    /// zone walk's own accumulator, published verbatim by both engines
+    /// (r4133 `DDLL/DBus.pas:122-128`, `BUSF` mode 5, == capi
+    /// `CAPI/CAPI_Bus.pas:419-427` -> `CAPI/CAPI_Alt.pas:2071-2074`; fastdss
+    /// dumps it with the rest of `IBus._columns`, `dss/IBus.py:28` on
+    /// `origin/fastdss`).
+    ///
+    /// It is a **zone-build output, not a solve output**: it is written only by
+    /// `MakeMeterZoneLists` (r4133 `Meters/EnergyMeter.pas:1833-1836` == port
+    /// `solution/meters/zones/build.rs:240-251`, which adds
+    /// `len · ConvertLineUnits(units, UNITS_KM)` per *line* branch and carries
+    /// the parent's value across every non-line branch) and reset to `0.0` at
+    /// the zone origin (`build.rs:178`). A circuit with no EnergyMeter — or a
+    /// bus outside every meter's zone — therefore reports `0.0`, which is a
+    /// real assertion (the port must not invent a distance), not a missing
+    /// value. Neither engine has a sentinel for "no meter".
+    pub distance: f64,
     /// User node numbers on the bus (`Nodes`), **insertion** order.
     pub nodes: Vec<i32>,
     /// `Bus.puVoltages`: `NodeV / BaseFactor`, ascending node number.
@@ -793,6 +811,11 @@ fn bus_voltage_view(ckt: &Circuit, bus_idx: usize, sc: &SymComp) -> BusVoltageVi
     BusVoltageView {
         name: bus.name.clone(),
         kv_base: bus.kv_base,
+        // Read by reference off the zone-build accumulator both oracles publish
+        // verbatim (`DBus.pas:127` == `CAPI_Alt.pas:2073`); nothing is derived
+        // here, so the report path (`report/export/profile.rs:132`) and this
+        // API surface can never disagree about a bus's distance.
+        distance: bus.dist_from_meter,
         nodes: bus.nodes.clone(),
         pu_voltages,
         vmag_angle,
@@ -1617,6 +1640,50 @@ impl Dss {
                 // (`support/line_constants/tests.rs`,
                 // `naive_modulus_equals_hypot_until_the_square_overflows`).
                 out.push(node_voltage(ckt, bus.get_ref(j)).norm() / base_factor);
+            }
+        }
+        out
+    }
+
+    /// `Circuit.AllBusDistances`: every bus's [`BusVoltageView::distance`]
+    /// (`TDSSBus.DistFromMeter`, km) in `BusList` order — `for i := 0 to
+    /// NumBuses-1 do Result[i] := Buses[i+1].DistFromMeter`
+    /// (r4133 `DDLL/DCircuit.pas:566-580`, `CircuitV` mode 12, == capi
+    /// `CAPI/CAPI_Circuit.pas:671-688`; fastdss `dss/ICircuit.py:106`). Length
+    /// = `NumBuses`, aligned with `Circuit.AllBusNames`, which is what capi's
+    /// own comment promises (*"in an array that aligns with the buslist"*).
+    ///
+    /// Empty when no circuit exists. It publishes the zone-build accumulator
+    /// unchanged — see [`BusVoltageView::distance`] for who writes it and why a
+    /// meterless circuit's all-zero vector is an assertion rather than a gap.
+    pub fn all_bus_distances(&self) -> Vec<f64> {
+        match self.circuit.as_ref() {
+            Some(ckt) => ckt.buses.iter().map(|b| b.dist_from_meter).collect(),
+            None => Vec::new(),
+        }
+    }
+
+    /// `Circuit.AllNodeDistances`: the owning bus's
+    /// [`BusVoltageView::distance`] repeated once per node, walked **bus ×
+    /// internal node index** — `for i := 1 to NumBuses do for j := 1 to
+    /// Buses[i].NumNodesThisBus do Result[k] := Buses[i].DistFromMeter`
+    /// (r4133 `DDLL/DCircuit.pas:582-604`, `CircuitV` mode 13, == capi
+    /// `CAPI/CAPI_Circuit.pas:697-722`, whose comment says *"Array sequence is
+    /// same as all bus Vmag and Vmagpu"*; fastdss `dss/ICircuit.py:113`).
+    /// Length = `NumNodes`.
+    ///
+    /// That is the SAME permutation as [`Dss::all_bus_vmag_pu`] (convention 2 —
+    /// the `AllNodeNames` order) and neither the ascending-node-number order of
+    /// [`BusVoltageView`] nor `YNodeOrder`; the value is constant across a
+    /// bus's nodes, so only the run *lengths* carry the ordering information.
+    pub fn all_node_distances(&self) -> Vec<f64> {
+        let Some(ckt) = self.circuit.as_ref() else {
+            return Vec::new();
+        };
+        let mut out = Vec::with_capacity(ckt.num_nodes);
+        for bus in &ckt.buses {
+            for _ in 0..bus.num_nodes_this_bus() {
+                out.push(bus.dist_from_meter);
             }
         }
         out
@@ -2865,6 +2932,147 @@ mod bus_voltage_tests {
         assert_eq!(views.len(), ckt.buses.len());
         let names: Vec<&str> = views.iter().map(|v| v.name.as_str()).collect();
         assert_eq!(names, vec!["sourcebus", "b1", "b2", "b3"]);
+    }
+}
+
+/// `Bus.Distance` / `Circuit.AllBusDistances` / `Circuit.AllNodeDistances`
+/// (GOLDEN_REBASE_PLAN.md WP-G1 G1.4b) — the zone-build accumulator all three
+/// surfaces publish verbatim.
+#[cfg(test)]
+mod bus_distance_tests {
+    use super::*;
+
+    /// A radial 2-branch feeder with ONE EnergyMeter at the head, lengths
+    /// declared in km so the expected distances are the line lengths
+    /// themselves: `sourcebus = 0`, `b1 = 1`, `b2 = 1 + 2 = 3`, and the
+    /// meterless spur `b3` off `sourcebus` at `0`.
+    fn meter_deck() -> Dss {
+        let mut dss = Dss::new();
+        dss.command("New circuit.dist basekv=12.47 pu=1.0 phases=3 bus1=sourcebus");
+        dss.command(
+            "New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        );
+        dss.command("New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.3 c1=0 length=2 units=km");
+        // Outside the meter's zone: reached from `sourcebus`, which is upstream
+        // of the meter's terminal, so the zone walk never visits it.
+        dss.command(
+            "New Line.spur bus1=sourcebus bus2=b3 phases=3 r1=0.1 x1=0.3 c1=0 length=5 units=km",
+        );
+        dss.command("New Load.ld bus1=b2 phases=3 kv=12.47 kw=500 pf=0.95");
+        dss.command("New EnergyMeter.em element=Line.l1 terminal=1");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    /// The view publishes `TDSSBus.DistFromMeter` by reference — the same
+    /// number the zone walk wrote (`solution/meters/zones/build.rs:240-251`)
+    /// and the same one both oracles read (`DBus.pas:127` ==
+    /// `CAPI_Alt.pas:2073`). Line lengths in km sum EXACTLY here: 1 and 1+2.
+    #[test]
+    fn bus_distance_is_the_zone_walk_accumulator() {
+        let dss = meter_deck();
+        let ckt = dss.circuit().expect("circuit");
+        for (name, want) in [
+            ("sourcebus", 0.0),
+            ("b1", 1.0),
+            ("b2", 3.0),
+            // Never visited by the zone walk: still the `Bus::new` default.
+            ("b3", 0.0),
+        ] {
+            let v = dss
+                .bus_voltages(name)
+                .unwrap_or_else(|| panic!("bus {name}"));
+            assert_eq!(v.distance, want, "{name}.Distance");
+            let ib = ckt.bus_list.find(name).expect("bus index");
+            assert_eq!(
+                v.distance, ckt.buses[ib].dist_from_meter,
+                "{name}: the view must not derive its own distance"
+            );
+        }
+    }
+
+    /// The same feeder with the EnergyMeter line deleted from the deck.
+    fn meterless_deck() -> Dss {
+        let mut dss = Dss::new();
+        dss.command("New circuit.nodist basekv=12.47 pu=1.0 phases=3 bus1=sourcebus");
+        dss.command(
+            "New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        );
+        dss.command("New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.3 c1=0 length=2 units=km");
+        dss.command("New Load.ld bus1=b2 phases=3 kv=12.47 kw=500 pf=0.95");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    /// A circuit with no EnergyMeter reports 0 for every bus — both engines
+    /// publish the untouched field, and there is no "no meter" sentinel. The
+    /// port must not invent a distance from the line lengths it does know.
+    #[test]
+    fn a_meterless_circuit_has_no_distances() {
+        let dss = meterless_deck();
+        assert!(
+            dss.all_bus_distances().iter().all(|&d| d == 0.0),
+            "no EnergyMeter ⇒ every DistFromMeter is the 0.0 default"
+        );
+        assert!(dss.all_node_distances().iter().all(|&d| d == 0.0));
+        assert_eq!(
+            dss.all_bus_distances().len(),
+            dss.circuit().expect("circuit").buses.len(),
+            "the all-zero vector is still one entry per bus, not an empty reply"
+        );
+    }
+
+    /// `AllBusDistances` is `BusList` order (`DCircuit.pas:576-577` ==
+    /// `CAPI_Circuit.pas:684-687`), i.e. exactly the `all_bus_voltages` /
+    /// `AllBusNames` sequence.
+    #[test]
+    fn all_bus_distances_is_the_bus_list_order() {
+        let dss = meter_deck();
+        let views = dss.all_bus_voltages();
+        let all = dss.all_bus_distances();
+        assert_eq!(all.len(), views.len());
+        let names: Vec<&str> = views.iter().map(|v| v.name.as_str()).collect();
+        assert_eq!(names, vec!["sourcebus", "b1", "b2", "b3"]);
+        assert_eq!(all, vec![0.0, 1.0, 3.0, 0.0]);
+        for (v, &d) in views.iter().zip(all.iter()) {
+            assert_eq!(v.distance, d, "bus {}", v.name);
+        }
+    }
+
+    /// `AllNodeDistances` repeats each bus's value once per node, walked bus ×
+    /// INTERNAL node index (`DCircuit.pas:592-599` ==
+    /// `CAPI_Circuit.pas:713-720`) — the `AllNodeNames` permutation, the same
+    /// one [`Dss::all_bus_vmag_pu`] uses and NOT `YNodeOrder`.
+    #[test]
+    fn all_node_distances_repeats_each_bus_value_per_node() {
+        let dss = meter_deck();
+        let ckt = dss.circuit().expect("circuit");
+        let all = dss.all_node_distances();
+        assert_eq!(all.len(), ckt.num_nodes);
+        assert_eq!(
+            all.len(),
+            dss.all_bus_vmag_pu().len(),
+            "the two circuit arrays share one walk"
+        );
+        // 4 three-phase buses ⇒ 3 slots each, in bus-list order.
+        assert_eq!(
+            all,
+            vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 3.0, 3.0, 3.0, 0.0, 0.0, 0.0]
+        );
+        let mut k = 0;
+        for bus in &ckt.buses {
+            for _ in 0..bus.num_nodes_this_bus() {
+                assert_eq!(all[k], bus.dist_from_meter, "bus {}", bus.name);
+                k += 1;
+            }
+        }
+        assert_eq!(k, all.len());
     }
 }
 

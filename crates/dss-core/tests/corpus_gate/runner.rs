@@ -896,6 +896,45 @@ pub(crate) fn compare_capture(
             harness::compare_bus(dss, &cp.buses, tol, v_excluded, &ctx);
             harness::compare_all_bus_vmag_pu(dss, &cp.all_bus_vmag_pu, tol, v_excluded, &ctx);
 
+            // The DISTANCE half of the SAME per-bus walk (GOLDEN_REBASE_PLAN.md
+            // G1.4b): `Bus.Distance` plus the two circuit-level views of the
+            // very same field, `Circuit.AllBusDistances` and
+            // `Circuit.AllNodeDistances`. Like the two blocks below it rides
+            // `compare_bus` — no flag of its own — and is class C (order-free):
+            // all three arms return the stored `TDSSBus.DistFromMeter` and move
+            // only `ActiveBusIndex` (`CAPI/CAPI_Alt.pas:2071-2074`,
+            // `CAPI_Circuit.pas:671-688`/`:697-722` == r4133 `DDLL/DBus.pas:122-128`,
+            // `DCircuit.pas:566-580`/`:582-604`).
+            //
+            // `v_excluded` is deliberately NOT passed: the distance is a
+            // zone-build output, not an image of `Solution.NodeV`, so a
+            // `voltages` ledger cause cannot explain a divergence here and
+            // suppressing it would hide a zone-build bug behind an unrelated
+            // triage. Compared exactly (`rel = abs = 0`).
+            //
+            // What a real upstream divergence gets instead is its own ledger
+            // field, `distance`, selected per BUS (coordinator decision D29
+            // step 3). The closure is passed rather than a precomputed flag
+            // because `excluded()` records the scope's hit when it answers, and
+            // `compare_bus_distances` asks it only once the exact equality has
+            // already failed — so a hit means "masked a real divergence" and a
+            // fixed upstream leaves the scope STALE.
+            //
+            // The returned non-zero count feeds the run-wide fail-on-stale
+            // population (`harness::assert_distance_compare_ran`, called once
+            // from the gate epilogue). This is the ONE recording call site — the
+            // harness' own drives must not record, or the population stops being
+            // a property of the corpus.
+            let nonzero_distances = harness::compare_bus_distances(
+                dss,
+                &cp.buses,
+                &cp.all_bus_distances,
+                &cp.all_node_distances,
+                &|bus: &str| excluded("distance", Some(bus)),
+                &ctx,
+            );
+            harness::record_distance_compare(nonzero_distances);
+
             // The SEQUENCE + LINE-TO-LINE half of the SAME per-bus walk
             // (GOLDEN_REBASE_PLAN.md G1.4c): `Bus.SeqVoltages`/
             // `CplxSeqVoltages`/`VLL`/`puVLL`, four arms appended to the one

@@ -130,6 +130,19 @@ pub(crate) struct Checkpoint {
     /// r4133 `Circuit.AllBusMagPu`, `DCircuit.pas:481-500`.
     #[serde(default)]
     pub(crate) all_bus_vmag_pu: Vec<f64>,
+    /// G1.4b: `Circuit.AllBusDistances` — each bus's `DistFromMeter` in km,
+    /// `BusList` order, the same sequence [`Checkpoint::buses`] walks
+    /// (`CAPI_Circuit.pas:671-688` == r4133 `DCircuit.pas:566-580`, `CircuitV`
+    /// 12). Rides the `compare_bus` flag on both transports.
+    #[serde(default)]
+    pub(crate) all_bus_distances: Vec<f64>,
+    /// G1.4b: `Circuit.AllNodeDistances` — the owning bus's `DistFromMeter`
+    /// repeated once per node, in the SAME permutation as
+    /// [`Checkpoint::all_bus_vmag_pu`] (bus x internal node index,
+    /// `CAPI_Circuit.pas:697-722` == r4133 `DCircuit.pas:582-604`, `CircuitV`
+    /// 13) — not the per-bus ascending-node-number order.
+    #[serde(default)]
+    pub(crate) all_node_distances: Vec<f64>,
     /// `GOLDEN_REBASE_PLAN.md` G1.7 — the six order-free `ITopology` quantities.
     /// Unlike G1.9's two, this surface is **flag-gated**
     /// (`SolvableCase::compare_topology`), so `None` is the honest reply when the
