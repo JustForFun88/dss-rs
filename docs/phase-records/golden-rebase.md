@@ -3307,25 +3307,25 @@ row against the pre-fix lock.
   coincides with S-VLL (AC-1, live-proven on NEV `13kvbus`); `puVLL` and r4133 non-vacuity drives
   added. Recorded: `Export SeqVoltages`' ground substitution → `ORPHANED_GAPS.md` §1.19.
 - **G1.4b** (2026-09-05, lane `lane-b`, bus chain — **D7**, split by **D26**) — the bus **distance**
-  surface (`Bus.Distance`, `AllBusDistances`, `AllNodeDistances`) live on both oracle channels, riding
-  G1.4a's per-bus capture and `compare_bus`: no new flag, no force rule, no lock cell, no golden byte.
-  All three are views of the one zone-build field `DistFromMeter` (r4133 `DDLL/DBus.pas:122-128`,
-  `DDLL/DCircuit.pas:566-580` / `:582-604`), read **by reference** in `exec/view.rs` and compared
-  **exactly** (`rel = abs = 0`, derived in `tests/TOLERANCE_NOTES.md` §"Bus distance surface"), behind
-  the fail-on-stale `DISTANCE_POPULATION = (867, 79_137)` and three scratch non-vacuity drives, each red
-  on **both** channels. **D26** split the at-bus half out to a new **G1.4d** (the r4133 criterion leaves
-  capi diverging on 60 cases over three mechanisms) — a plan amendment the user has not seen. **D29**
-  step 1 was measured and refused (r4133's `MergeWith` renames a line without updating `DeviceList`,
-  `PDElements/Line.pas:1684` vs `Common/Circuit.pas:2195-2214`, so the DDLL captures another element —
-  `investigations/to_opendss/68`), so `modes:reduce/midi_reduce.dss` stays capi-gated and its capi-only
-  `kft`→`km` divergence is excluded by the new **`distance`** ledger field (exclusion-only, per-VALUE by
-  bus name, consulted only after the exact equality fails): one entry
-  `reduce-merge-units-lost-midi-capi-distance` (ledger 54 → **55**), pinned by
-  `the_reduced_midi_deck_reports_the_merged_lines_kft_distances`; **D9**'s `MakeBusList` fix is this
-  surface's live observable, pinned by
-  `the_make_bus_list_decks_report_the_zone_distances_both_oracles_measure`. Details: `TESTING.md`, the
-  plan's §G1.4 note. Commits: stamped by the commit step. Gate: `corpus_gate` **290 / 0 / 0** and **526/526** cases in
-  both lanes (186.9 s / 167.7 s), ledger **55** entries / **1 567** hits / 0 stale (the new entry 3),
-  `DISTANCE_POPULATION` (867, 79 137) identical in both; `golden.lock.json` and `tests/golden/**`
-  untouched; `lane_diff` **PASS** for `exec/view.rs` — max |Δ| = 0 on every gated kind over
-  3 221 146 records / 526 cases.
+  surface (`Bus.Distance`, `AllBusDistances`, `AllNodeDistances`) live on both channels on G1.4a's
+  per-bus capture: no new flag, no force rule, no lock cell, no golden byte. All three publish the ONE
+  zone-build field `DistFromMeter` (r4133 `DDLL/DBus.pas:122-128`, `DDLL/DCircuit.pas:566-580`/`:582-604`,
+  written at `Meters/EnergyMeter.pas:1833-1838`), read by reference and compared **exactly**
+  (`rel = abs = 0`, `tests/TOLERANCE_NOTES.md` §"Bus distance surface") behind
+  `DISTANCE_POPULATION = (867, 79_137)`. **D26** moved the at-bus half to a new **G1.4d** (plan amendment,
+  unseen by the user); **D29** step 1 was measured and refused (r4133's `MergeWith` renames a line without
+  updating `DeviceList` — `PDElements/Line.pas:1684`, `to_opendss/68`), so `modes:reduce/midi_reduce.dss`
+  stays capi-gated behind the new **`distance`** ledger field: one entry
+  `reduce-merge-units-lost-midi-capi-distance` (54 → **55**) pinned by
+  `the_reduced_midi_deck_reports_the_merged_lines_kft_distances`, and D9's `MakeBusList` fix is pinned live
+  by `the_make_bus_list_decks_report_the_zone_distances_both_oracles_measure`. Details: `TESTING.md`, the
+  plan's §G1.4 note. Commits `1aa08d9c` + the settlement (sha stamped by the follow-up docs commit); both
+  lanes **526/526**, ledger **55** / **1 567** hits / 0 stale, `lane_diff` **PASS** max |Δ| = 0.
+  **Audit settlement** (2026-09-06; 15 findings, 12 distinct — 10 fixed / 2 recorded / 0 refuted): the
+  comparator gained the committed offline drives its own doc claimed
+  (`harness::bus_distance_comparator_tests`), a METERED `both` cross-transport pin
+  (`the_two_transports_agree_on_the_bus_distances_of_a_metered_both_case`), the population guard's growth
+  direction, the `G1_4B_PINS` registry, D29's channel rule as a machine guard
+  (`no_r4133_gated_case_reduces_by_merging`), eight re-pointed citations and two corrected populations.
+  Recorded: the oracles' `[0.0]` no-circuit sentinel (documented at the accessor; the port keeps `[]`) and
+  the third per-(case, channel, step) `all_bus_voltages()` rebuild (pre-existing pattern → G1.4d).
