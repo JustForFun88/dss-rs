@@ -692,6 +692,7 @@ pub fn sys_ctx(ckt: &Circuit) -> SysCtx {
         year: s.year,
         dbl_hour: s.dbl_hour,
         solution_count: s.solution_count,
+        iteration: s.iteration,
         loads_need_updating: s.loads_need_updating,
         neglect_load_y: ckt.neglect_load_y,
         long_line_correction: ckt.long_line_correction,

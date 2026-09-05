@@ -2009,6 +2009,14 @@ impl Dss {
             write_shape_save(output_directory, last_result, ss, errors);
         }
 
+        // Deferred debug-trace creates (Storage `DebugTrace=yes`): like the shape
+        // saves above, the property hook cannot reach `OutputDirectory`, so it
+        // queued the file name + header (built with the phase/variable counts of
+        // that instant, as Pascal's `CASE` arm does) and the object writes and
+        // closes the file here — before `end_edit`, matching Pascal's in-hook
+        // `AssignFile`/`ReWrite` (r4133 `PCElements/Storage.pas:1073-1085`).
+        active_arena[oi].open_debug_traces(output_directory, errors);
+
         // Thread the live snapshot (built above) into `end_edit` so the
         // side-effect `RecalcElementData` runs against the current circuit state.
         active_arena[oi].end_edit(&live_sys);
