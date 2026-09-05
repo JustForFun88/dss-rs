@@ -63,6 +63,20 @@ pub struct RelCalcResult {
     pub message: String,
 }
 
+/// `CurrentsMagAng`, `Residuals`, `VoltagesMagAng` (each the flat
+/// `[mag, ang, ...]` array the DDLL writes, angles in degrees on the
+/// `(-180, 180]` branch cut) for one **enabled** element — the GOLDEN_REBASE
+/// G1.3a derived capture ([`Engine::element_polar`]).
+pub type Polar3 = (Vec<f64>, Vec<f64>, Vec<f64>);
+
+/// `NumTerminals`, `NumConductors`, `NumPhases`, `EnergyMeter` for one element
+/// — the unconditional half of the GOLDEN_REBASE G1.3d(i) discrete-extras
+/// capture ([`Engine::element_extras`]). The meter name is the **raw** DDLL
+/// string, i.e. `"0"` when the element has no meter (`CktElementS`'s pre-`case`
+/// default, `DDLL/DCktElement.pas:421`); normalizing that against the capi
+/// channel's `""` is the comparator's job, not the capture's.
+pub type Extras = (i32, i32, i32, String);
+
 /// One generic C-API call request for [`Engine::ffi_dispatch`]. `kind` selects
 /// the ABI shape (`"i"`/`"f"`/`"s"`/`"v"`); only the matching scalar
 /// (`iarg`/`farg`[`/farg2`](FfiCall::farg2)/`sarg`) is used. `vset` (V only)
@@ -102,7 +116,11 @@ pub enum FfiOut {
 const TOLERATED_COMPILE: &[i32] = &[250];
 /// User-written-model errnos (`oracle_server._USER_MODEL_ERRNOS`), tolerated at
 /// compile + every solve/read only when the case opts in via `warn_and_continue`.
-const USER_MODEL: &[i32] = &[567, 570, 1570];
+///
+/// The **one** Rust-side definition: [`crate::capture`] carried a hand-synced
+/// twin from G1.9 until the 2026-09-05 lane merge folded it away (that
+/// handoff's "dedup at merge"), so a change here now reaches both readers.
+pub(crate) const USER_MODEL: &[i32] = &[567, 570, 1570];
 /// The **only** errno the executive `RelCalc` may raise without failing the case
 /// (`oracle_server._RELCALC_TOLERATED_ERRNOS`, the same narrow scope on the capi
 /// transport): `52902` "No Overcurrent Protection device (Relay, Recloser, or
@@ -133,7 +151,63 @@ pub struct Engine {
 impl Engine {
     /// Load the r4133 DLL (leaking its `Library` handle — see [`Engine`]) and run
     /// the init sequence (`UNIFIED_GATE_PLAN.md` §2.2): `DSSI(8,0)` disable forms
-    /// → read Version. All subsequent DLL calls happen on this same thread.
+    /// → read Version → `Set RegistryUpdate=No` →
+    /// `Set DefaultBaseFrequency=60`. All subsequent DLL calls happen
+    /// on this same thread.
+    ///
+    /// # `Set RegistryUpdate=No` — the process-global registry channel (D13)
+    ///
+    /// r4133 keeps `DefaultBaseFreq` in `HKCU\Software\OpenDSS`, section
+    /// `MainSect`, value `BaseFrequency`: the key is
+    /// `TIniRegSave.Create('\Software\' + ProgramName)` with
+    /// `ProgramName := 'OpenDSS'` (`Common/DSSGlobals.pas:2093`, `:2078`;
+    /// `Shared/IniRegSave.pas:63-71`). `ReadDSS_Registry` loads it
+    /// (`Common/DSSGlobals.pas:1005`) from `TExecutive.Create`
+    /// (`Executive/Executive.pas:124`) — i.e. once, at DLL load, before this
+    /// bridge can issue anything — and `WriteDSS_Registry` writes it back
+    /// (`Common/DSSGlobals.pas:1022`) from `TExecutive.Destroy`
+    /// (`Executive/Executive.pas:141`), reached through the unit `Finalization`
+    /// (`Common/DSSGlobals.pas:2159` → `LocalFinalization`) at process exit. The
+    /// write is guarded by `UpdateRegistry` (`Common/DSSGlobals.pas:1015`), which
+    /// defaults to `TRUE` (`:2131`) and is the `RegistryUpdate` option 102
+    /// (`Executive/ExecOptions.pas:146`), settable with no circuit active
+    /// (`:574`, inside `DoSetCmd_NoCircuit` `:545`, dispatched by
+    /// `Executive/ExecCommands.pas:641-644`).
+    ///
+    /// So without this command every worker process leaks its last
+    /// `DefaultBaseFreq` into the machine-wide registry and the next worker
+    /// process — in any worktree — reads it back as its startup default. Measured
+    /// against this DLL (2026-09-04): a worker that runs
+    /// `Set DefaultBaseFrequency=37` and exits leaves `BaseFrequency = 37` in the
+    /// key; with this command issued first the key does not move.
+    ///
+    /// # `Set DefaultBaseFrequency=60` — the init reset (D13)
+    ///
+    /// `Set RegistryUpdate=No` stops this process from *writing* the key; it
+    /// cannot undo the *read*, which has already happened. `ReadDSS_Registry`
+    /// assigns `DefaultBaseFreq := StrToInt(DSS_Registry.ReadString(
+    /// 'BaseFrequency', '60'))` (`Common/DSSGlobals.pas:1005`) from
+    /// `TExecutive.Create` (`Executive/Executive.pas:124`), i.e. at DLL load,
+    /// before this bridge can issue anything — so a session that starts while
+    /// the key holds `50` (left there by any pre-fix worker on this machine)
+    /// begins at 50 Hz. [`Engine::clear`] covers every gate path (`run_case`
+    /// clears before it compiles), but a bare probe session that only issues
+    /// `exec` never clears and would inherit the registry value, so the reset
+    /// is issued once here as well. Both land the bridge on the port's own
+    /// starting point: `Dss::new()` sets `default_base_freq: 60.0`
+    /// (`crates/dss-core/src/exec/construct.rs:173`).
+    ///
+    /// `Get RegistryUpdate` cannot be used to observe the flag: r4133's
+    /// `DoGetCmd` case 102 assigns `UpdateRegistry := InterpretYesNo(Param)`
+    /// instead of appending a result (`Executive/ExecOptions.pas:1314`), so it
+    /// returns the empty string *and* clobbers the flag. The pin is the registry
+    /// value itself (`tests/protocol.rs`).
+    ///
+    /// The capi channel needs no counterpart: dss_capi keeps `DefaultBaseFreq`
+    /// per `TDSSContext` with no registry at all
+    /// (`.inputs/dss_capi/src/Common/DSSClass.pas:1278`) and rejects option 102
+    /// outright (`.inputs/dss_capi/src/Executive/ExecOptions.pas:259-260`,
+    /// `DoSimpleMsg(... 302)`).
     pub fn new(dll_path: &Path) -> Result<Engine, EngineError> {
         let dll = Dll::load(dll_path).map_err(EngineError::Other)?;
         // Never `FreeLibrary`: dropping the DLL deadlocks in its finalization
@@ -154,6 +228,17 @@ impl Engine {
         };
         // Clear any stray error from the setup commands.
         let _ = eng.poll_error();
+        // D13: stop this process from persisting `DefaultBaseFreq` (and
+        // `LastFile`/`DataPath`) into `HKCU\Software\OpenDSS` on exit — see the
+        // fn doc. Strict: a DLL that does not accept the option must fail loudly,
+        // never leave the registry channel open.
+        eng.command_strict("Set RegistryUpdate=No", "init")?;
+        // D13: the registry read already happened at DLL load
+        // (`Common/DSSGlobals.pas:1005`), so start this session from the port's
+        // own default (`crates/dss-core/src/exec/construct.rs:173`, 60 Hz)
+        // instead of whatever the key held — a bare probe session that never
+        // calls `clear` would otherwise inherit it. Strict for the same reason.
+        eng.command_strict("Set DefaultBaseFrequency=60", "init")?;
         Ok(eng)
     }
 
@@ -265,8 +350,33 @@ impl Engine {
 
     // ---- compile / solve --------------------------------------------------
 
+    /// `clear` + the per-case `DefaultBaseFreq` reset (D13).
+    ///
+    /// r4133's `clear` (`Executive/ExecHelper.pas:987-995` → `TExecutive.Clear`,
+    /// `Executive/Executive.pas:234-275`) resets `DefaultEarthModel`,
+    /// `LogQueries` and `MaxAllocationIterations` but **not** `DefaultBaseFreq`:
+    /// the only assignments to it are `Set DefaultBaseFrequency`
+    /// (`Executive/ExecOptions.pas:573` with no circuit, `:829` with one), the
+    /// registry read at DLL load (see [`Engine::new`]) and the unit
+    /// initialization's `DefaultBaseFreq := 60.0`
+    /// (`Common/DSSGlobals.pas:2055`), which runs once per DLL load. So a deck
+    /// that sets 50 Hz leaks it into every later deck this process compiles —
+    /// `TDSSCircuit.Create` takes `Fundamental := DefaultBaseFreq`
+    /// (`Common/Circuit.pas:416`) and the default `Vsource` follows.
+    ///
+    /// Measured against this DLL (2026-09-04): `Set DefaultBaseFrequency=50` →
+    /// `clear` → `new circuit.…` reports `Get DefaultBaseFrequency` = 50 and
+    /// `? Vsource.source.frequency` = 50.
+    ///
+    /// The port starts every case from a fresh `Dss::new()` whose
+    /// `default_base_freq` is `60.0`
+    /// (`crates/dss-core/src/exec/construct.rs:173`), so the bridge restores that
+    /// same starting point after every `clear`. A deck that wants 50 Hz still
+    /// gets it: the reset precedes the `Compile`.
     pub fn clear(&self) -> Result<(), EngineError> {
-        self.command_strict("clear", "clear").map(|_| ())
+        self.command_strict("clear", "clear")?;
+        self.command_strict("Set DefaultBaseFrequency=60", "clear")?;
+        Ok(())
     }
 
     /// Compile a deck; tolerate `{250}` (+ user-model errnos when `warn`).
@@ -513,17 +623,22 @@ impl Engine {
         self.v_f64s(self.dll.ckt_element_v, 12)
     }
 
+    /// Terminal currents, flat `[re, im, ...]`. See
+    /// [`modes::CKT_ELEMENT_CURRENTS`] — D3 capture group **B**.
     pub fn element_currents(&self) -> Vec<f64> {
-        self.v_f64s(self.dll.ckt_element_v, 3)
+        self.v_f64s(self.dll.ckt_element_v, modes::CKT_ELEMENT_CURRENTS.mode)
     }
 
+    /// Per-conductor powers, flat `[kW, kvar, ...]`. See
+    /// [`modes::CKT_ELEMENT_POWERS`] — D3 capture group **A**.
     pub fn element_powers(&self) -> Vec<f64> {
-        self.v_f64s(self.dll.ckt_element_v, 4)
+        self.v_f64s(self.dll.ckt_element_v, modes::CKT_ELEMENT_POWERS.mode)
     }
 
-    /// Total losses `[re, im]` in W/var (`CktElement.Losses`, one complex).
+    /// Total losses `[re, im]` in W/var (`CktElement.Losses`, one complex). See
+    /// [`modes::CKT_ELEMENT_LOSSES`] — D3 capture group **A**.
     pub fn element_losses(&self) -> Vec<f64> {
-        self.v_f64s(self.dll.ckt_element_v, 5)
+        self.v_f64s(self.dll.ckt_element_v, modes::CKT_ELEMENT_LOSSES.mode)
     }
 
     pub fn element_variable_names(&self) -> Vec<String> {
@@ -543,16 +658,27 @@ impl Engine {
         self.v_f64s(self.dll.ckt_element_v, 16)
     }
 
-    /// Read Powers then Currents then Losses on the active element, with a single
-    /// user-model retry (`oracle_server.capture_all_elements`'s `_read`): a
-    /// Generator model=6 fires #567 on the first current recompute after a solve,
-    /// which the recompute itself clears — so a retry returns the cached, correct
-    /// Yprim-only currents.
+    /// Read **Losses, then Powers, then Currents** on the active element — the
+    /// §1.1(a)/D3 capture order (`GOLDEN_REBASE_PLAN.md`, coordinator decision
+    /// D3): both cache-aware group-A reads run before the group-B `Currents`,
+    /// which fills a *scratch* buffer while still stamping the element's
+    /// `IterminalSolutionCount` (`PCElements/PCElement.pas:247-266`) and can
+    /// therefore starve a cache-aware read that follows it. The name and the
+    /// returned tuple keep their `(powers, currents, losses)` shape — only the
+    /// read order moved (GOLDEN_REBASE G1.3a; both reordered reads are group A,
+    /// so no captured value can change, proven byte-for-byte on IEEE13, two
+    /// harmonics decks and the two user-model decks).
+    ///
+    /// One user-model retry (`oracle_server.capture_all_elements`'s `_read`): a
+    /// Generator model=6 fires #567 on the first current recompute after a
+    /// solve — under this order that is the `Losses` read rather than `Powers`
+    /// — which the recompute itself clears, so a retry returns the cached,
+    /// correct Yprim-only values.
     pub fn element_pcl(&self, warn: bool, ctx: &str) -> Result<Pcl, EngineError> {
         for attempt in 0..2 {
-            let powers = self.element_powers();
-            let currents = self.element_currents();
-            let losses = self.element_losses();
+            let losses = self.element_losses(); // capture-order: Losses (A)
+            let powers = self.element_powers(); // capture-order: Powers (A)
+            let currents = self.element_currents(); // capture-order: Currents (B)
             let (errno, desc) = self.poll_error();
             if errno == 0 {
                 return Ok((powers, currents, losses));
@@ -567,6 +693,72 @@ impl Engine {
             });
         }
         unreachable!()
+    }
+
+    /// Read `CurrentsMagAng`, `Residuals` and `VoltagesMagAng` on the active
+    /// element — the GOLDEN_REBASE G1.3a derived capture, in D3 order (the two
+    /// group-B reads first; `VoltagesMagAng` is group C, reading
+    /// `NodeV[NodeRef[i]]` only) and with the same single user-model retry as
+    /// [`Engine::element_pcl`], so an errno is attributed to its own element.
+    ///
+    /// **Only ever called on an `Enabled` element**
+    /// ([`Engine::ckt_element_enabled`], checked at the one call site
+    /// `crate::capture::capture_all_elements`): `CktElementV(19)` dereferences
+    /// `NodeRef^[i]` with no nil guard (`DCktElement.pas:1099`, where capi has
+    /// one at `CAPI/CAPI_Alt.pas:1081`) and **kills the process** on a
+    /// never-enabled element — measured on `controls/fuse/midi_fuse.dss`'s
+    /// `Line.tie`. Capturing enabled elements only removes that crash class and
+    /// makes the two oracle channels' shapes identical, so no sentinel
+    /// normalization is owed.
+    pub fn element_polar(&self, warn: bool, ctx: &str) -> Result<Polar3, EngineError> {
+        for attempt in 0..2 {
+            // capture-order: CurrentsMagAng (B)
+            let cma = self.ckt_element_currents_mag_ang()?;
+            let res = self.ckt_element_residuals()?; // capture-order: Residuals (B)
+            // capture-order: VoltagesMagAng (C)
+            let vma = self.ckt_element_voltages_mag_ang()?;
+            let (errno, desc) = self.poll_error();
+            if errno == 0 {
+                return Ok((cma, res, vma));
+            }
+            if warn && USER_MODEL.contains(&errno) && attempt == 0 {
+                continue; // priming read fired + cleared the warning; retry once
+            }
+            return Err(EngineError::Dss {
+                errno,
+                desc,
+                ctx: ctx.to_string(),
+            });
+        }
+        unreachable!()
+    }
+
+    /// Read `NumTerminals`, `NumConductors`, `NumPhases` and `EnergyMeter` on
+    /// the active element — the unconditional half of the GOLDEN_REBASE
+    /// G1.3d(i) discrete-extras capture (`CktElementI(0)`/`(1)`/`(2)` at
+    /// `DDLL/DCktElement.pas:139`/`:144`/`:149`, `CktElementS(4)` at `:442`;
+    /// capi `CAPI/CAPI_CktElement.pas:182-211` and `:672-687`).
+    ///
+    /// All four modes are `ModeEffect::Pure` (group **C**): they read a field,
+    /// never `ComputeIterminal`, so this helper may sit anywhere in the capture
+    /// order and — unlike [`Engine::element_pcl`] / [`Engine::element_polar`] —
+    /// takes no `warn` flag: a pure read cannot fire the user-model priming
+    /// warning those two absorb. The error slot is still drained here
+    /// ([`Engine::assert_clean`]) so an errno is attributed to its own element
+    /// rather than to the next one's `element_pcl`.
+    ///
+    /// `NodeOrder` is deliberately **not** part of this helper: it is read
+    /// conditionally (`Enabled` and `NumTerminals > 0`, see
+    /// `crate::capture::capture_all_elements`), and a conditional read inside an
+    /// unconditional helper would make the helper's declared capture-order
+    /// sequence a lie.
+    pub fn element_extras(&self, ctx: &str) -> Result<Extras, EngineError> {
+        let n_terms = self.ckt_element_num_terminals()?; // capture-order: NumTerminals (C)
+        let n_conds = self.ckt_element_num_conductors()?; // capture-order: NumConductors (C)
+        let n_phases = self.ckt_element_num_phases()?; // capture-order: NumPhases (C)
+        let meter = self.ckt_element_energy_meter()?; // capture-order: EnergyMeter (C)
+        self.assert_clean(ctx)?;
+        Ok((n_terms, n_conds, n_phases, meter))
     }
 
     // ---- solution scalars -------------------------------------------------
@@ -941,6 +1133,14 @@ impl Engine {
     /// `vset = None` reads the array getter for `mode`; `vset = Some(_)` drives the
     /// SET mode, handing the array in via `myPointer`. The caller polls
     /// [`Engine::poll_error`] afterwards for the structured errno surface.
+    ///
+    /// This is the crate's **single chokepoint**: [`Engine::probe_mode`],
+    /// [`Engine::read_mode`], every typed accessor and the worker's raw
+    /// `{"cmd":"ffi"}` command all funnel through it, so the
+    /// [`modes::DO_NOT_CALL`] register is enforced here — a triple on it is an
+    /// `Err` and the DLL is never touched, whatever the caller. (`probe_mode`
+    /// still consults the register itself, because its contract is to report the
+    /// refusal as a typed [`ModeStatus`] rather than as an error.)
     pub fn ffi_dispatch(&self, call: FfiCall) -> Result<FfiOut, EngineError> {
         let FfiCall {
             family,
@@ -952,6 +1152,14 @@ impl Engine {
             sarg,
             vset,
         } = call;
+        if let Some(k) = ModeKind::from_tag(kind)
+            && let Some(refusal) = modes::check_callable(family, k, mode)
+        {
+            return Err(EngineError::Other(format!(
+                "{family}{}:{mode} is on the do-not-call register: {refusal}",
+                k.as_str().to_ascii_uppercase()
+            )));
+        }
         let fam = self
             .families
             .get(family)
@@ -1027,6 +1235,19 @@ impl Engine {
     /// so a shape change in a future DLL revision fails loudly instead of being
     /// decoded as garbage.
     ///
+    /// **Sentinel classification.** The `myType` check alone does not separate a
+    /// served string array from the `V` unknown-mode reply, which also carries
+    /// tag 4 — the two `Solution.IncMatrix{Rows,Cols}` rows would decode
+    /// `"Error, paratemer not recognized"` as data — so a tag-4 reply is run
+    /// through [`modes::classify_v`] and an [`modes::ModeStatus::UnknownMode`]
+    /// verdict is an `Err`. On `I`/`F` no such check is possible: the sentinel is
+    /// the plain value `-1` / `-1.0`, which several served modes may return
+    /// legally (module doc of [`crate::modes`]), so classifying here would turn
+    /// legitimate data into an error. The guarantee for those shapes is
+    /// `r4133_mode_capability_is_complete_for_wp_g1`, which classifies **all**
+    /// table rows through [`Engine::probe_mode`] against the git-tracked DLL and
+    /// therefore trips the moment a re-vendored revision drops a mode.
+    ///
     /// Drives the mode with the neutral argument (`0` / `0.0` / `""`, the array
     /// *getter* for `V`), which is sound because every table row is a getter
     /// (`modes::EXCLUDED_WRITE_MODES` records the two arms that are not, and a
@@ -1050,6 +1271,15 @@ impl Engine {
                     EngineError::Other(format!("{spec}: a V row must declare its myType tag"))
                 })?;
                 if v.type_tag() == want {
+                    if let crate::families::VData::Strings(ss) = v
+                        && let ModeStatus::UnknownMode { sentinel } =
+                            modes::classify_v(v.type_tag(), ss)
+                    {
+                        return Err(EngineError::Other(format!(
+                            "{spec}: the DLL replied with the V unknown-mode sentinel \
+                             {sentinel:?} — this revision does not serve the mode"
+                        )));
+                    }
                     Ok(out)
                 } else {
                     Err(EngineError::Other(format!(
@@ -1200,6 +1430,27 @@ impl Engine {
         self.read_mode_i(&modes::CKT_ELEMENT_OCP_DEV_TYPE)
     }
 
+    /// `CktElementI(12)` `CktElement.Enabled` — `DCktElement.pas:263`. See [`modes::CKT_ELEMENT_ENABLED`].
+    ///
+    /// Decodes **strictly**. The arm's codomain is exactly `{0, 1}` (the
+    /// `CktElementI` default `Result := 0` at `DCktElement.pas:137`, raised to 1
+    /// only when `Enabled`), so anything else is an error rather than a truthy
+    /// "enabled": under a `!= 0` decode the family's unknown-mode sentinel `-1`
+    /// (`DCktElement.pas:308`) would read as *enabled* and route the derived
+    /// capture into `CktElementV(19)`'s unguarded `NodeRef^[i]` dereference
+    /// (`:1099`), which kills the process.
+    pub fn ckt_element_enabled(&self) -> Result<bool, EngineError> {
+        match self.read_mode_i(&modes::CKT_ELEMENT_ENABLED)? {
+            0 => Ok(false),
+            1 => Ok(true),
+            other => Err(EngineError::Other(format!(
+                "{}: replied {other}, but the case arm's codomain is {{0, 1}} \
+                 (DCktElement.pas:137, :263)",
+                modes::CKT_ELEMENT_ENABLED
+            ))),
+        }
+    }
+
     /// `CktElementI(15)` `CktElement.HasOCPDevice` — `DCktElement.pas:300`. See [`modes::CKT_ELEMENT_HAS_OCP_DEVICE`].
     pub fn ckt_element_has_ocp_device(&self) -> Result<i32, EngineError> {
         self.read_mode_i(&modes::CKT_ELEMENT_HAS_OCP_DEVICE)
@@ -1274,6 +1525,16 @@ impl Engine {
     /// `BUSV(1)` `Bus.SeqVoltages` — `DBus.pas:285`. See [`modes::BUS_SEQ_VOLTAGES`].
     pub fn bus_seq_voltages(&self) -> Result<Vec<f64>, EngineError> {
         self.read_mode_doubles(&modes::BUS_SEQ_VOLTAGES)
+    }
+
+    /// `BUSV(2)` `Bus.Nodes` — `DBus.pas:319`. See [`modes::BUS_NODES`].
+    ///
+    /// The active bus's node **numbers** in ascending order (not the bus's
+    /// internal insertion order), the same order every per-node array of this
+    /// family uses — see [`modes::BUS_NODES`] for the shared `FindIdx` walk and
+    /// its capi twin.
+    pub fn bus_nodes(&self) -> Result<Vec<i32>, EngineError> {
+        self.read_mode_ints(&modes::BUS_NODES)
     }
 
     /// `BUSV(3)` `Bus.Voc` — `DBus.pas:351`. See [`modes::BUS_VOC`].
@@ -1365,6 +1626,16 @@ impl Engine {
     /// `CircuitV(3)` `Circuit.TotalPower` — `DCircuit.pas:349`. See [`modes::CIRCUIT_TOTAL_POWER`].
     pub fn circuit_total_power(&self) -> Result<Vec<f64>, EngineError> {
         self.read_mode_doubles(&modes::CIRCUIT_TOTAL_POWER)
+    }
+
+    /// `CircuitV(7)` `Circuit.AllBusNames` — `DCircuit.pas:439`. See
+    /// [`modes::CIRCUIT_ALL_BUS_NAMES`].
+    ///
+    /// Every bus name in `BusList` order — the walk order of the per-bus
+    /// capture, which re-asserts it bus by bus through
+    /// [`Engine::set_active_bus`]'s returned index.
+    pub fn circuit_all_bus_names(&self) -> Result<Vec<String>, EngineError> {
+        self.read_mode_strings(&modes::CIRCUIT_ALL_BUS_NAMES)
     }
 
     /// `CircuitV(8)` `Circuit.AllElementLosses` — `DCircuit.pas:458`. See [`modes::CIRCUIT_ALL_ELEMENT_LOSSES`].

@@ -54,6 +54,12 @@ pub use regen::{regen, snapshot_bytes, snapshot_text};
 /// comparing nothing.
 pub mod capture_guard;
 
+/// `GOLDEN_REBASE_PLAN.md` WP-G1 sub-step G1.9: the five `Circuit` aggregates
+/// and the ten `Solution` scalars — capture structs, the shared per-element
+/// loss envelope ([`aggregates::element_loss_allowance_kw`], which
+/// [`compare_element_channels`] itself calls) and the two live comparators.
+pub mod aggregates;
+
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -62,6 +68,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrd};
 
 use dss_core::exec::{Dss, ElementSnapshot, MeterReliabilityView, PdElementView};
+use dss_core::support::complexutil::Polar;
 use num_complex::Complex64;
 use serde::Deserialize;
 
@@ -856,7 +863,27 @@ pub struct YFingerprint {
 /// `loss_w` (W, var — the oracle `CktElement.Losses`, i.e. the engine's own
 /// `Get_Losses` path) is captured by the live gate only; committed checkpoint
 /// goldens predate it and leave it empty (skipped).
-#[derive(Debug, Deserialize)]
+///
+/// The last seven fields are the `GOLDEN_REBASE_PLAN.md` G1.3a **derived polar
+/// channels**, present only when the case's `compare_derived` manifest flag is
+/// on — `enabled` for every element, the six arrays for *enabled* elements only
+/// (a never-enabled element has no `NodeRef`, where r4133 `VoltagesMagAng`
+/// dereferences nil and capi answers a one-element sentinel). Both transports
+/// emit exactly this shape (`tools/oracle/oracle_server.py`,
+/// `crates/dss-epri/src/capture.rs`), de-interleaved into magnitude and angle
+/// the way `i_re`/`i_im` already are, so the comparator never does stride-2
+/// index arithmetic. All seven are `serde(default)`: an off-flag reply and
+/// every committed checkpoint golden simply leave them absent.
+///
+/// The **last five** are the G1.3d(i) **discrete index/name extras**, present
+/// only when the case's `compare_element_extras` manifest flag is on — the three
+/// counts and `EnergyMeter` for *every* element (all four are pure field reads
+/// on both engines), `NodeOrder` only for an element that is `Enabled` **and**
+/// has `NumTerminals > 0` (neither transport survives a nil `NodeRef`). They are
+/// `serde(default)` for the same reason as the seven above, and they are
+/// compared exactly, by [`compare_element_extras`], with no tolerance and no
+/// ledger sub-channel.
+#[derive(Debug, Default, Clone, Deserialize)]
 pub struct ElementCap {
     pub name: String,
     pub i_re: Vec<f64>,
@@ -865,6 +892,80 @@ pub struct ElementCap {
     pub p_kvar: Vec<f64>,
     #[serde(default)]
     pub loss_w: Vec<f64>,
+    /// `CktElement.Enabled` (r4133 `DDLL/DCktElement.pas:263`, the `CktElementI`
+    /// read arm) — captured for EVERY element under the flag, so the
+    /// enabled-only polar capture can never silently drop one. Structure, not a
+    /// value channel: [`compare_element_derived`] compares it exactly and no
+    /// sub-channel selector can mask it.
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    /// `CktElement.CurrentsMagAng` magnitudes (A), conductor-minor inside
+    /// terminal-major — r4133 `DDLL/DCktElement.pas:1058` (mode `18`), capi
+    /// `CAPI/CAPI_Alt.pas:1043`; a fastdss `_columns` surface
+    /// (`dss/ICktElement.py:64` on `origin/fastdss`).
+    #[serde(default)]
+    pub cma_mag: Vec<f64>,
+    /// `CurrentsMagAng` angles (degrees, `(-180, 180]` — `CDANG`, r4133
+    /// `Shared/Ucomplex.pas:118`).
+    #[serde(default)]
+    pub cma_ang: Vec<f64>,
+    /// `CktElement.Residuals` magnitudes (A), one per **terminal** — r4133
+    /// `DDLL/DCktElement.pas:827` (mode `11`, the `k := (i-1)*Nconds` offset at
+    /// `:842`), capi `CAPI/CAPI_CktElement.pas:541` (offset `:562`); fastdss
+    /// `dss/ICktElement.py:67`.
+    #[serde(default)]
+    pub res_mag: Vec<f64>,
+    /// `Residuals` angles (degrees).
+    #[serde(default)]
+    pub res_ang: Vec<f64>,
+    /// `CktElement.VoltagesMagAng` magnitudes (V), same conductor layout as
+    /// `cma_mag` — r4133 `DDLL/DCktElement.pas:1082` (mode `19`), capi
+    /// `CAPI/CAPI_Alt.pas:1072`; fastdss `dss/ICktElement.py:58`.
+    #[serde(default)]
+    pub vma_mag: Vec<f64>,
+    /// `VoltagesMagAng` angles (degrees).
+    #[serde(default)]
+    pub vma_ang: Vec<f64>,
+    /// `CktElement.NumTerminals` (`NTerms`) — r4133
+    /// `DDLL/DCktElement.pas:139` (`CktElementI` mode `0`), capi
+    /// `CAPI/CAPI_CktElement.pas:202`; a fastdss `_columns` surface
+    /// (`dss/ICktElement.py` on `origin/fastdss`). Captured for EVERY element
+    /// under the flag, which is why its absence is what
+    /// [`compare_element_extras`] reads as "this element was captured without
+    /// the flag" (the element-level twin of [`capture_guard::require_capture`]).
+    #[serde(default)]
+    pub n_terms: Option<i32>,
+    /// `CktElement.NumConductors` (`NConds`) — r4133 `DDLL/DCktElement.pas:144`
+    /// (mode `1`), capi `CAPI/CAPI_CktElement.pas:182`.
+    #[serde(default)]
+    pub n_conds: Option<i32>,
+    /// `CktElement.NumPhases` (`NPhases`) — r4133 `DDLL/DCktElement.pas:149`
+    /// (mode `2`), capi `CAPI/CAPI_CktElement.pas:192`. Not derivable from the
+    /// other two: `NConds` is `NPhases` plus the neutral conductors.
+    #[serde(default)]
+    pub n_phases: Option<i32>,
+    /// `CktElement.EnergyMeter`, **raw**: each transport's own "no meter"
+    /// spelling is preserved here and normalized by [`oracle_meter_name`] —
+    /// capi returns `NIL` (`CAPI/CAPI_CktElement.pas:672-687`), which the pinned
+    /// dss-python renders as the empty string, and r4133 returns the
+    /// `CktElementS` family default `'0'` (`DDLL/DCktElement.pas:421`, left
+    /// untouched by arm `4` at `:442-449` when `HasEnergyMeter` is clear).
+    #[serde(default)]
+    pub energy_meter: Option<String>,
+    /// `CktElement.NodeOrder`: the bus-local node number of every conductor
+    /// slot, conductor-minor inside terminal-major (length `NTerms · NConds`),
+    /// ground = `0` — r4133 `DDLL/DCktElement.pas:1032` (`CktElementV` mode
+    /// `17`, the `GetNodeNum(NodeRef^[j])` map at `:1048`), capi
+    /// `CAPI/CAPI_CktElement.pas:885`. Emitted only for an element that is `Enabled`
+    /// **and** has `NumTerminals > 0`; [`compare_element_extras`] asserts the
+    /// resulting shape on both sides rather than assuming it.
+    ///
+    /// Unrelated to the checkpoint-level `node_order` of
+    /// `crates/dss-epri/src/capture.rs::CaseResult`, which is the **Y node name
+    /// order** of the whole circuit; the two live in different JSON objects and
+    /// share nothing but the word.
+    #[serde(default)]
+    pub node_order: Vec<i32>,
 }
 
 /// The node injection-current vector (RHS of Y*V=I), nodes 1..n.
@@ -1389,6 +1490,13 @@ pub struct ElemChannels {
     pub currents: bool,
     pub powers: bool,
     pub losses: bool,
+    /// `CurrentsMagAng` — the polar rendering of `currents`
+    /// (`GOLDEN_REBASE_PLAN.md` G1.3a).
+    pub currents_mag_ang: bool,
+    /// `VoltagesMagAng` — `NodeV` read through the element's own `NodeRef`.
+    pub voltages_mag_ang: bool,
+    /// `Residuals` — the per-terminal conductor sum of `currents`.
+    pub residuals: bool,
 }
 
 impl ElemChannels {
@@ -1397,13 +1505,28 @@ impl ElemChannels {
         currents: true,
         powers: true,
         losses: true,
+        currents_mag_ang: true,
+        voltages_mag_ang: true,
+        residuals: true,
     };
     /// Currents only: the `S = V·conj(I)` channels are a deliberate divergence
     /// in this lane and are pinned by their own expected-value test instead.
+    ///
+    /// The three G1.3a derived channels stay **on** here, deliberately: the
+    /// Newton staleness lives in the cache-aware read path
+    /// (`Get_Powers`/`Get_Losses` reusing `ComputeIterminal`, r4133
+    /// `Common/CktElement.pas:632-640`), while `Currents` — and therefore
+    /// `CurrentsMagAng` and `Residuals`, which are renderings of it — come from
+    /// a fresh `GetCurrents`, and `VoltagesMagAng` reads `NodeV` and never
+    /// touches `Iterminal` at all. So the two `newton*` decks *gain* three
+    /// compared channels; nothing joins `lane::LANE_SKIP_ELEM_POWERS`.
     pub const CURRENTS_ONLY: Self = Self {
         currents: true,
         powers: false,
         losses: false,
+        currents_mag_ang: true,
+        voltages_mag_ang: true,
+        residuals: true,
     };
 }
 
@@ -1474,15 +1597,12 @@ pub fn compare_element_channels(
     // Captured by the live gate only; old checkpoint goldens leave it empty.
     // The allowed error is the exact accumulation of the per-conductor power
     // tolerance: losses = Σ_k S_k, so |δ(losses)| ≤ Σ_k (abs·|V_k| + rel·|S_k|)
-    // — no new tolerance class, just the conductor policy summed.
+    // — no new tolerance class, just the conductor policy summed. Since
+    // GOLDEN_REBASE G1.9 that sum lives in
+    // `aggregates::element_loss_allowance_kw`, so the circuit-aggregate
+    // comparator propagates the identical envelope instead of a second one.
     if channels.losses && exp.loss_w.len() == 2 {
-        let mut allowed_kw = 0.0;
-        for k in 0..exp.p_kw.len() {
-            let p_mag = (exp.p_kw[k].powi(2) + exp.p_kvar[k].powi(2)).sqrt();
-            let i_mag = (exp.i_re[k].powi(2) + exp.i_im[k].powi(2)).sqrt();
-            let vkv = if i_mag > 1e-12 { p_mag / i_mag } else { 1.0 };
-            allowed_kw += tol.i_abs * vkv.max(1.0) + tol.i_rel * p_mag;
-        }
+        let allowed_kw = aggregates::element_loss_allowance_kw(exp, tol);
         let allowed_w = allowed_kw * 1000.0;
         let (ar, ai) = snap.loss_w;
         let (er, ei) = (exp.loss_w[0], exp.loss_w[1]);
@@ -1516,6 +1636,1357 @@ pub fn compare_element_channels(
              |diff| = {diff:e} > allowed {allowed_w:e}",
             exp.name
         );
+    }
+}
+
+/// Degrees per radian at **full** f64 precision.
+///
+/// A tolerance is not a printed value: the truncated `57.29577951` that `CDANG`
+/// multiplies by (r4133 `Shared/Ucomplex.pas:118`, `TRUNCATED_RAD_TO_DEG` in
+/// `dss_core::support::complexutil`) belongs inside the kernel that *renders* an
+/// angle, never inside the band that *judges* one. This is the same constant the
+/// `compare_monitor` angle companion term uses (tests/TOLERANCE_NOTES.md
+/// §monitor-f32-floor).
+const POLAR_RAD_TO_DEG: f64 = 57.29577951308232;
+
+/// `|a − b|` for two angles in degrees, taken **on the circle**: the raw
+/// difference is folded into `[−180, 180]` first.
+///
+/// `CDANG` returns `(−180, 180]`, so a phasor sitting astride the negative real
+/// axis reads `+179.99999999032846 °` on one engine and `−179.99999999032846 °`
+/// on the other for an imaginary part of ±1e-18 — a raw gap of
+/// `359.9999999806569 °` for a physical gap of `1.9343133317306638e-08 °`
+/// (measured, pinned by `the_angle_comparison_is_wrap_aware`). Wrapping is not a
+/// relaxation, it is what "angle" means: a genuine sign flip still measures a
+/// full `180 °`, which no band this module emits can admit — the angle band's
+/// ceiling is [`POLAR_RAD_TO_DEG`] (see [`polar_angle_band`]).
+///
+/// NaN propagates (`NaN <= band` is false), so a NaN angle fails loudly instead
+/// of slipping through.
+pub fn wrapped_deg(diff: f64) -> f64 {
+    ((diff + 180.0).rem_euclid(360.0) - 180.0).abs()
+}
+
+/// The angular image of an accepted magnitude band: how far the *argument* of a
+/// phasor may move when its magnitude is known only to ±`allowed_mag`.
+///
+/// The set inherited here is a **disc**, not a per-component rectangle:
+/// [`assert_complex_close_c`] bands the *modulus* of the complex difference
+/// (`|Δz| ≤ abs + rel·|z|`, the `diff`/`allowed` lines of that function), so
+/// `arg` maps it onto exactly `±asin(allowed_mag/|z|)` radians. What this
+/// function returns is that image's **linearization**,
+/// `rad2deg · allowed_mag/|z|` degrees — the same construction as the
+/// voltage-scaled power floor (`assert_power_close`) and the `compare_monitor`
+/// angle companion term. Since `asin(x) ≥ x` the linearization is never
+/// *looser* than the exact image: the angle channel can only be stricter than
+/// the complex band it renders, never more permissive (pinned by
+/// `the_angle_band_is_the_conservative_linearization_of_its_exact_image`; the
+/// gap `asin(x)/x − 1 = x²/6 + O(x⁴)` is under one f64 ulp at every magnitude
+/// the corpus judges). At healthy magnitudes the band is far *tighter* than any
+/// base band (6.6e-6 ° at 683 A on the feeder tier).
+///
+/// Returns `None` when `|oracle_mag| ≤ allowed_mag`: there the phasor is
+/// indistinguishable from zero at the accepted precision and its angle carries
+/// **no** information — the two oracle channels report angles up to 180 ° apart
+/// for one and the same ~1e-12 A current. The magnitude is never masked, so the
+/// channel stays two-sided. And because the mask fires exactly where the image
+/// would reach `rad2deg · 1`, the emitted band can never exceed
+/// [`POLAR_RAD_TO_DEG`] by construction (pinned by
+/// `the_angle_band_never_exceeds_one_radian_in_degrees`).
+pub fn polar_angle_band(allowed_mag: f64, oracle_mag: f64) -> Option<f64> {
+    let m = oracle_mag.abs();
+    (m > allowed_mag).then(|| POLAR_RAD_TO_DEG * allowed_mag / m)
+}
+
+/// One polar channel compared sample-by-sample against its de-interleaved oracle
+/// arrays, with a caller-supplied magnitude band per sample.
+///
+/// Lengths are asserted here as well as in [`compare_element_derived`]: this
+/// helper is the one place a mismatched pair could otherwise compare a prefix.
+fn polar_close_with(
+    actual: &[Polar],
+    om: &[f64],
+    oa: &[f64],
+    allowed_mag: impl Fn(usize) -> f64,
+    ctx: &str,
+) {
+    assert_eq!(
+        om.len(),
+        oa.len(),
+        "{ctx}: the oracle magnitude ({}) and angle ({}) arrays disagree",
+        om.len(),
+        oa.len()
+    );
+    assert_eq!(
+        actual.len(),
+        om.len(),
+        "{ctx}: length mismatch (rust {} vs oracle {})",
+        actual.len(),
+        om.len()
+    );
+    for (k, (a, (m, ang))) in actual.iter().zip(om.iter().zip(oa)).enumerate() {
+        let allowed = allowed_mag(k);
+        let dm = (a.mag - m).abs();
+        assert!(
+            dm <= allowed,
+            "{ctx} [{k}]: magnitude {} vs oracle {m} (|diff| = {dm:e} > allowed {allowed:e})",
+            a.mag
+        );
+        // Below its own magnitude band the phasor has no argument to compare —
+        // documented mask, tests/TOLERANCE_NOTES.md §G1.3a.
+        let Some(allowed_ang) = polar_angle_band(allowed, *m) else {
+            continue;
+        };
+        let da = wrapped_deg(a.ang - ang);
+        assert!(
+            da <= allowed_ang,
+            "{ctx} [{k}]: angle {} deg vs oracle {ang} deg (wrapped |diff| = {da:e} > \
+             allowed {allowed_ang:e} at |mag| = {m:e})",
+            a.ang
+        );
+    }
+}
+
+/// A polar channel whose re/im original is already gated at
+/// `|Δz| ≤ abs + rel·|z|` — the **disc** [`assert_complex_close_c`] admits, not
+/// a per-component rectangle (pinned by
+/// `the_inherited_current_band_is_a_disc_not_a_rectangle`).
+///
+/// The magnitude inherits that band exactly — `||a| − |b|| ≤ |a − b|` (reverse
+/// triangle inequality), and the bound is attained at `a = z(1 ± ρ/|z|)`, so the
+/// magnitude channel admits neither more nor less than the disc does — and the
+/// angle gets its angular image ([`polar_angle_band`]). Nothing is calibrated
+/// here; both floors are images of the already-gated `i_rel/i_abs` and
+/// `v_rel/v_abs` tiers (tests/TOLERANCE_NOTES.md §G1.3a).
+pub fn polar_close(actual: &[Polar], om: &[f64], oa: &[f64], rel: f64, abs: f64, ctx: &str) {
+    polar_close_with(actual, om, oa, |k| abs + rel * om[k].abs(), ctx);
+}
+
+/// The magnitude band of terminal `t`'s `Residuals` sample: the residual is the
+/// **sum** of that terminal's `nconds` conductor currents
+/// (r4133 `DDLL/DCktElement.pas:842`), so its band is the sum of their bands —
+/// `|δ(Σ_c I_c)| ≤ Σ_c (abs + rel·|I_c|) = nconds·abs + rel·Σ_c|I_c|`.
+///
+/// Exactly the derivation `compare_element_channels` already uses for
+/// `Get_Losses` (`losses = Σ_k S_k`), transplanted to the current sum: no new
+/// tolerance class, just the conductor policy summed. The bound is *exact*, not
+/// slack — the Minkowski sum of the conductors' discs is the disc of the summed
+/// radius, attained when their errors are collinear. It matters because the
+/// residual is a near-cancellation by construction (≈0 on a balanced terminal).
+pub fn residual_band(exp: &ElementCap, t: usize, nconds: usize, rel: f64, abs: f64) -> f64 {
+    let sum: f64 = (0..nconds)
+        .map(|c| {
+            let k = t * nconds + c;
+            exp.i_re[k].hypot(exp.i_im[k])
+        })
+        .sum();
+    nconds as f64 * abs + rel * sum
+}
+
+/// `Residuals` compared per terminal at the conductor-sum band
+/// ([`residual_band`]), angles wrap-aware and masked below their own band.
+pub fn residual_close(actual: &[Polar], exp: &ElementCap, rel: f64, abs: f64, ctx: &str) {
+    let nterms = exp.res_mag.len();
+    assert!(nterms > 0, "{ctx}: the oracle reports no terminal");
+    assert_eq!(
+        exp.i_re.len() % nterms,
+        0,
+        "{ctx}: {} conductor slots do not divide into {nterms} terminals",
+        exp.i_re.len()
+    );
+    let nconds = exp.i_re.len() / nterms;
+    polar_close_with(
+        actual,
+        &exp.res_mag,
+        &exp.res_ang,
+        |t| residual_band(exp, t, nconds, rel, abs),
+        ctx,
+    );
+}
+
+/// Does this *oracle* polar channel say "nothing to report"?
+///
+/// Two shapes mean that, and they are the two the transports actually produce:
+///
+/// * **empty** — r4133's answer and the engine's. r4133 has no nil-`NodeRef`
+///   guard on mode 19, but it sizes the result at `NConds·Nterms` and its
+///   `for i := 1 to numcond` loop never runs when that is 0
+///   (`DDLL/DCktElement.pas:1082-1100`), so a 0-terminal element yields a
+///   0-length array;
+/// * the capi **`DefaultResult` sentinel** — with `DSS_CAPI_COM_DEFAULTS` on
+///   (dss-python's default) a guarded read hands back a **one-element `[0.0]`**
+///   array (`CAPI/CAPI_Utils.pas:212-221`), which de-interleaves into
+///   `mag = [0.0]`, `ang = []`. `Alt_CE_Get_VoltagesMagAng` takes that path
+///   whenever `elem.NodeRef = NIL` (`CAPI/CAPI_Alt.pas:1080-1084`) — which on an
+///   element with no terminals is unconditional — and
+///   `Alt_CE_Get_CurrentsMagAng` (`:1043-1052`) / `Alt_CE_Get_Residuals` reach
+///   the same sentinel through their `MissingSolution` guard.
+///
+/// A capture-boundary **sentinel shape**, therefore, not a divergence: it is
+/// normalized here (coordinator decision D4, the `PROPS_NORM_R4133` precedent)
+/// for 0 ledger rows, and pinned by
+/// `derived_polar_floors::the_capi_default_result_sentinel_reads_as_no_payload`.
+/// It is consulted **only** where a real payload would have length
+/// `yorder = 0`, so the sentinel can never hide a reading, and only on the
+/// oracle side — the engine has no sentinel and must be strictly empty.
+fn no_polar_payload(mag: &[f64], ang: &[f64]) -> bool {
+    (mag.is_empty() || mag == [0.0]) && ang.is_empty()
+}
+
+/// Compare one element's **derived polar channels** against a capture:
+/// `Enabled`, `CurrentsMagAng`, `VoltagesMagAng`, `Residuals`
+/// (`GOLDEN_REBASE_PLAN.md` WP-G1 G1.3a).
+///
+/// Runs only when the case's `compare_derived` manifest flag is on, *alongside*
+/// — never instead of — [`compare_element_channels`].
+///
+/// **Structure, asserted under every channel policy** (a value exclusion may
+/// never excuse a shape or an existence miss — the rule
+/// [`compare_element_channels`] already follows): the element exists in the Rust
+/// snapshot; `Enabled` matches exactly; a **disabled** element carries no oracle
+/// payload at all (asserted here — the *port* keeps the shape and reads zero
+/// there, which is not an oracle-comparable fact and is pinned in-engine by
+/// `exec::tests::derived_polar::a_never_enabled_element_has_no_polar_payload`);
+/// a **0-terminal** element, which `UPFCControl` legitimately is (r4133
+/// `Version8/Source/Controls/UPFCControl.pas:230-246`), carries no payload on
+/// **either** side, up to the capi sentinel shape ([`no_polar_payload`]); and
+/// every array length matches on both sides. The
+/// enabled-only capture is what makes the two oracle transports agree in shape —
+/// a never-enabled element has no `NodeRef`, where r4133 dereferences nil
+/// (`DDLL/DCktElement.pas:1099`, no guard) and capi returns a one-element
+/// sentinel (`CAPI/CAPI_Alt.pas:1081`) — so no sentinel normalization is owed,
+/// and `enabled` being compared exactly is what keeps that skip honest.
+///
+/// **Floors** (derivations in tests/TOLERANCE_NOTES.md §G1.3a):
+/// `CurrentsMagAng` inherits the already-gated complex current band
+/// (`i_abs + i_rel·|I|`), `VoltagesMagAng` the node-voltage band
+/// (`v_abs + v_rel·|V|`), `Residuals` the conductor-sum band
+/// ([`residual_band`]); every angle gets the angular image of its own magnitude
+/// band, wrap-aware. No tolerance is calibrated here.
+pub fn compare_element_derived(
+    snaps: &[ElementSnapshot],
+    exp: &ElementCap,
+    tol: &Tolerances,
+    ctx: &str,
+    channels: ElemChannels,
+) {
+    let snap = snaps
+        .iter()
+        .find(|s| s.name.eq_ignore_ascii_case(&exp.name))
+        .unwrap_or_else(|| panic!("{ctx}: no element {}", exp.name));
+    // `enabled` is emitted for EVERY element under the flag; its absence means
+    // the capture ran without the flag, which the comparator must never paper
+    // over (the element-level twin of `capture_guard::require_capture`).
+    let enabled = exp.enabled.unwrap_or_else(|| {
+        panic!(
+            "{ctx} {}: the derived capture carries no `enabled` field — the case's \
+             `compare_derived` flag is on but this element was captured without it",
+            exp.name
+        )
+    });
+    assert_eq!(
+        snap.enabled, enabled,
+        "{ctx} {}: Enabled differs (rust {} vs oracle {enabled})",
+        exp.name, snap.enabled
+    );
+    if !enabled {
+        assert!(
+            exp.cma_mag.is_empty()
+                && exp.cma_ang.is_empty()
+                && exp.vma_mag.is_empty()
+                && exp.vma_ang.is_empty()
+                && exp.res_mag.is_empty()
+                && exp.res_ang.is_empty(),
+            "{ctx} {}: a disabled element must carry no polar payload \
+             (cma {}/{}, vma {}/{}, res {}/{}) — the capture read channels it \
+             must skip",
+            exp.name,
+            exp.cma_mag.len(),
+            exp.cma_ang.len(),
+            exp.vma_mag.len(),
+            exp.vma_ang.len(),
+            exp.res_mag.len(),
+            exp.res_ang.len()
+        );
+        return;
+    }
+    let yorder = exp.i_re.len();
+    let nterms = snap.bus_names.len();
+    // A **0-terminal** element is legitimate, and every engine agrees on it:
+    // `TUPFCControlObj.Create` (r4133 `Version8/Source/Controls/UPFCControl.pas:230-246`
+    // — capi 0.14.5 `src/Controls/UPFCControl.pas:151-164` is the same code) never
+    // assigns `Nterms`/`Nphases`/`Setbus`, unlike every other control class
+    // (`Controls/CapControl.pas:481-483`: `Nterms := 1; // this forces allocation
+    // of terminals and conductors in base class`) — that class sets them only in
+    // `MakePosSequence` (`UPFCControl.pas:284-293`). So an enabled `UPFCControl`
+    // carries `Nterms = 0`, `Yorder = 0` and six legitimately empty channels.
+    // Accepted **two-sidedly**, like the disabled branch above: an element that
+    // grows a payload on either side still fails, so the acceptance can never
+    // swallow a real capture. The one shape the oracle side may add is the capi
+    // `DefaultResult` sentinel — see [`no_polar_payload`].
+    if yorder == 0 && nterms == 0 {
+        assert!(
+            no_polar_payload(&exp.cma_mag, &exp.cma_ang)
+                && no_polar_payload(&exp.vma_mag, &exp.vma_ang)
+                && no_polar_payload(&exp.res_mag, &exp.res_ang)
+                && snap.currents_mag_ang.is_empty()
+                && snap.voltages_mag_ang.is_empty()
+                && snap.residuals.is_empty(),
+            "{ctx} {}: a 0-terminal element must carry no polar payload on either \
+             side (oracle cma {}/{}, vma {}/{}, res {}/{}; rust cma {}, vma {}, \
+             res {})",
+            exp.name,
+            exp.cma_mag.len(),
+            exp.cma_ang.len(),
+            exp.vma_mag.len(),
+            exp.vma_ang.len(),
+            exp.res_mag.len(),
+            exp.res_ang.len(),
+            snap.currents_mag_ang.len(),
+            snap.voltages_mag_ang.len(),
+            snap.residuals.len()
+        );
+        return;
+    }
+    assert!(
+        nterms > 0 && yorder.is_multiple_of(nterms),
+        "{ctx} {}: {yorder} conductor slots do not divide into {nterms} terminals",
+        exp.name
+    );
+    let shape = |what: &str, om: &[f64], oa: &[f64], rust: usize, want: usize| {
+        assert_eq!(
+            om.len(),
+            want,
+            "{ctx} {}: oracle {what} magnitude length {} != {want}",
+            exp.name,
+            om.len()
+        );
+        assert_eq!(
+            oa.len(),
+            want,
+            "{ctx} {}: oracle {what} angle length {} != {want}",
+            exp.name,
+            oa.len()
+        );
+        assert_eq!(
+            rust, want,
+            "{ctx} {}: rust {what} length {rust} != {want}",
+            exp.name
+        );
+    };
+    shape(
+        "CurrentsMagAng",
+        &exp.cma_mag,
+        &exp.cma_ang,
+        snap.currents_mag_ang.len(),
+        yorder,
+    );
+    shape(
+        "VoltagesMagAng",
+        &exp.vma_mag,
+        &exp.vma_ang,
+        snap.voltages_mag_ang.len(),
+        yorder,
+    );
+    shape(
+        "Residuals",
+        &exp.res_mag,
+        &exp.res_ang,
+        snap.residuals.len(),
+        nterms,
+    );
+
+    if channels.currents_mag_ang {
+        polar_close(
+            &snap.currents_mag_ang,
+            &exp.cma_mag,
+            &exp.cma_ang,
+            tol.i_rel,
+            tol.i_abs,
+            &format!("{ctx} {} CurrentsMagAng", exp.name),
+        );
+    }
+    if channels.voltages_mag_ang {
+        polar_close(
+            &snap.voltages_mag_ang,
+            &exp.vma_mag,
+            &exp.vma_ang,
+            tol.v_rel,
+            tol.v_abs,
+            &format!("{ctx} {} VoltagesMagAng", exp.name),
+        );
+    }
+    if channels.residuals {
+        residual_close(
+            &snap.residuals,
+            exp,
+            tol.i_rel,
+            tol.i_abs,
+            &format!("{ctx} {} Residuals", exp.name),
+        );
+    }
+}
+
+/// The three floor derivations of the G1.3a polar channels, pinned directly
+/// (no oracle) the way `harness_power_floor.rs` pins the voltage-scaled power
+/// floor: the wrap, the angular image and its ceiling, and the conductor-sum
+/// residual band. Each carries its rejection leg, so none of them is a one-sided
+/// "accepts everything" green.
+#[cfg(test)]
+mod derived_polar_floors {
+    use super::{
+        ElemChannels, ElementCap, ElementSnapshot, POLAR_RAD_TO_DEG, Polar, assert_complex_close_c,
+        compare_element_derived, no_polar_payload, polar_angle_band, polar_close, residual_band,
+        residual_close, tol_for, wrapped_deg,
+    };
+    use dss_core::support::complexutil::cdang;
+    use num_complex::Complex64;
+    use std::f64::consts::SQRT_2;
+
+    /// The feeder tier's current floors — the ones the `cma`/`res` channels use.
+    const REL: f64 = 1e-7;
+    const ABS: f64 = 1e-5;
+
+    /// A phasor astride the negative real axis reads at both ends of `CDANG`'s
+    /// `(−180, 180]` range: on the line the two readings are a full turn apart,
+    /// on the circle they are 1.9e-8 ° apart. The comparator must use the second
+    /// number — and must still see a genuine sign flip as a half turn.
+    #[test]
+    fn the_angle_comparison_is_wrap_aware() {
+        let plus = cdang(Complex64::new(-1.0, 1e-18));
+        let minus = cdang(Complex64::new(-1.0, -1e-18));
+        assert_eq!(plus, 179.99999999032846);
+        assert_eq!(minus, -179.99999999032846);
+        assert_eq!((plus - minus).abs(), 359.9999999806569);
+        assert_eq!(wrapped_deg(plus - minus), 1.9343133317306638e-08);
+        // So the real comparator accepts the pair on a healthy 1 A magnitude at
+        // the *micro* tier (1e-9 rel / 1e-6 abs → a 5.7e-5 ° angle band).
+        polar_close(
+            &[Polar {
+                mag: 1.0,
+                ang: plus,
+            }],
+            &[1.0],
+            &[minus],
+            1e-9,
+            1e-6,
+            "branch cut",
+        );
+        // Wrapping is not a blanket relaxation: a sign flip still measures a
+        // full half turn, from either side of the cut.
+        assert_eq!(wrapped_deg(180.0), 180.0);
+        assert_eq!(wrapped_deg(-180.0), 180.0);
+        assert!(wrapped_deg(f64::NAN).is_nan());
+    }
+
+    /// The rejection leg of the wrap: 180 ° is above the angle band's ceiling
+    /// (`POLAR_RAD_TO_DEG`), so a flipped phasor fails however it is wrapped.
+    #[test]
+    #[should_panic(expected = "angle")]
+    fn a_sign_flipped_angle_still_fails_the_band() {
+        polar_close(
+            &[Polar { mag: 1.0, ang: 0.0 }],
+            &[1.0],
+            &[180.0],
+            1e-9,
+            1e-6,
+            "flip",
+        );
+    }
+
+    /// The angular image of a magnitude band is bounded by one radian in
+    /// degrees, and the mask fires exactly at the boundary `|mag| ≤ band` — i.e.
+    /// the angle is skipped precisely where it would otherwise be compared at
+    /// ≥ 57.3 °, which is no comparison at all.
+    #[test]
+    fn the_angle_band_never_exceeds_one_radian_in_degrees() {
+        let mut engaged = 0;
+        for e in -12..=6 {
+            let mag = 10f64.powi(e);
+            let allowed = ABS + REL * mag;
+            match polar_angle_band(allowed, mag) {
+                None => assert!(
+                    mag <= allowed,
+                    "the mask fired at |mag| = {mag:e} > allowed {allowed:e}"
+                ),
+                Some(b) => {
+                    assert!(
+                        mag > allowed,
+                        "the mask failed to fire at |mag| = {mag:e} <= allowed {allowed:e}"
+                    );
+                    assert!(
+                        b > 0.0 && b <= POLAR_RAD_TO_DEG,
+                        "band {b:e} deg outside (0, {POLAR_RAD_TO_DEG}] at |mag| = {mag:e}"
+                    );
+                    engaged += 1;
+                }
+            }
+        }
+        assert!(
+            engaged >= 6,
+            "the sweep never left the mask ({engaged} banded samples)"
+        );
+        // The ceiling is approached only from below, one ulp outside the mask…
+        let b = polar_angle_band(1.0, 1.0 + f64::EPSILON).expect("just outside the mask");
+        assert_eq!(b, 57.29577951308231);
+        assert!(b < POLAR_RAD_TO_DEG);
+        // …and exactly at the boundary the angle is skipped, never compared at a
+        // 57.3 ° band.
+        assert_eq!(polar_angle_band(1.0, 1.0), None);
+        assert_eq!(polar_angle_band(1.0, -1.0), None);
+        // At a healthy magnitude the image is far tighter than the base band:
+        // 683 A at the feeder tier gets 6.57e-6 °.
+        assert_eq!(
+            polar_angle_band(ABS + REL * 683.0, 683.0),
+            Some(6.5684619851747365e-06)
+        );
+    }
+
+    /// One synthetic 3-conductor terminal: the residual band is the **sum** of
+    /// the three conductor bands, not one conductor's band, because the residual
+    /// is their sum.
+    #[test]
+    fn the_residual_floor_is_the_sum_of_the_conductor_bands() {
+        let exp = synthetic_terminal();
+        // 3·1e-5 + 1e-7·600 = 9e-5 A (in f64: 8.999999999999999e-05), where the
+        // single-sample band would be 1e-5 + 1e-7·600 = 7e-5 A.
+        let band = residual_band(&exp, 0, 3, REL, ABS);
+        assert_eq!(band, 8.999999999999999e-05);
+        assert_eq!(ABS + REL * 600.0, 7e-05);
+        assert!(band > ABS + REL * 600.0);
+        // Accepted just inside the band (8.900000000267028e-05 A of error)…
+        residual_close(
+            &[Polar {
+                mag: 600.0 + 8.9e-5,
+                ang: 0.0,
+            }],
+            &exp,
+            REL,
+            ABS,
+            "inside",
+        );
+        // …and the angle that comes with it is banded by the image of THIS band.
+        assert_eq!(polar_angle_band(band, 600.0), Some(8.594366926962348e-6));
+    }
+
+    /// The rejection leg of the residual band: 9.099999999762076e-05 A of error
+    /// on the same terminal is outside 8.999999999999999e-05 A and fails.
+    #[test]
+    #[should_panic(expected = "magnitude")]
+    fn a_residual_above_the_conductor_sum_band_fails() {
+        residual_close(
+            &[Polar {
+                mag: 600.0 + 9.1e-5,
+                ang: 0.0,
+            }],
+            &synthetic_terminal(),
+            REL,
+            ABS,
+            "outside",
+        );
+    }
+
+    /// One terminal, three conductors carrying 100/200/300 A real, so
+    /// `Σ_c |I_c| = 600 A` exactly and the residual is 600 A at 0 °.
+    fn synthetic_terminal() -> ElementCap {
+        ElementCap {
+            name: "line.synthetic".to_string(),
+            i_re: vec![100.0, 200.0, 300.0],
+            i_im: vec![0.0, 0.0, 0.0],
+            res_mag: vec![600.0],
+            res_ang: vec![0.0],
+            ..ElementCap::default()
+        }
+    }
+
+    /// The set the polar channels are images **of** is a disc, not a rectangle:
+    /// [`assert_complex_close_c`] (`harness/mod.rs:799-801`) bands the *modulus*
+    /// of the complex difference, `|Δz| ≤ abs + rel·|z|`. A per-component band
+    /// would admit a rectangle whose modulus reaches `√2·abs + rel·|z|` at 45 °
+    /// — this test rejects exactly that error, which is why no `√2` appears in
+    /// any of the derivations of tests/TOLERANCE_NOTES.md §G1.3a.
+    #[test]
+    fn the_inherited_current_band_is_a_disc_not_a_rectangle() {
+        // 600 A at 45 °, feeder tier: rho = 1e-5 + 1e-7·600 = 7e-5 A.
+        let m = 600.0;
+        let z = Complex64::new(m / SQRT_2, m / SQRT_2);
+        let rho = ABS + REL * m;
+        assert_eq!(rho, 7e-5);
+        // A diagonal error of the disc radius is admitted…
+        let d = rho * (1.0 - 1e-9) / SQRT_2;
+        assert_complex_close_c(&[z + Complex64::new(d, d)], &[z], REL, ABS, "disc");
+        // …and the Minkowski bound of the per-component rectangle at 45 ° —
+        // `√2·abs + rel·|z|` = 7.414213562373095e-5 A, 1.059× the disc radius —
+        // is NOT (rejection leg below). That bound is attained: it is the modulus
+        // of the rectangle's own corner, to the last ulp.
+        let rect = SQRT_2 * ABS + REL * m;
+        assert_eq!(rect, 7.414213562373095e-5);
+        assert_eq!(rect / rho, 1.0591733660532994);
+        let corner = Complex64::new(ABS + REL * m / SQRT_2, ABS + REL * m / SQRT_2).norm();
+        assert_eq!(corner, 7.414213562373094e-5);
+        assert!((rect - corner).abs() <= f64::EPSILON * rect);
+    }
+
+    /// The rejection leg: an error of the rectangle's diagonal reach fails the
+    /// disc band, so a later "the gate bands re and im separately" reading
+    /// cannot be reintroduced silently.
+    #[test]
+    #[should_panic(expected = "entry 0 differs")]
+    fn the_rectangles_diagonal_reach_fails_the_disc_band() {
+        let m = 600.0;
+        let z = Complex64::new(m / SQRT_2, m / SQRT_2);
+        let d = (SQRT_2 * ABS + REL * m) / SQRT_2;
+        assert_complex_close_c(&[z + Complex64::new(d, d)], &[z], REL, ABS, "disc");
+    }
+
+    /// The angle band is the **linearization** of the exact angular image of the
+    /// disc: `arg` maps `D(z, ρ)` onto `±asin(ρ/|z|)`, and `asin(x) ≥ x`, so
+    /// `rad2deg·ρ/|z|` is never *looser* than the exact image — the channel can
+    /// only be stricter than the band it inherits, never more permissive.
+    #[test]
+    fn the_angle_band_is_the_conservative_linearization_of_its_exact_image() {
+        // Everywhere the gap is above f64 noise, the band is strictly tighter.
+        for e in -6..=0 {
+            let x = 10f64.powi(e);
+            let band = POLAR_RAD_TO_DEG * x;
+            let exact = POLAR_RAD_TO_DEG * x.asin();
+            assert!(
+                band < exact,
+                "band {band:e} !< exact image {exact:e} at x = {x:e}"
+            );
+        }
+        // At the widest band the live corpus ever emitted (37.0083678180735 ° on
+        // `midi_fuse` residuals, x = 0.6459178692144925) the exact image is
+        // 40.23452908031853 ° — the emitted band is 8.7 % tighter, with no
+        // consequence: the whole `midi_fuse` residual-angle channel measures
+        // ≤ 3.9428730418000316e-7 of its band.
+        let x = 37.0083678180735 / POLAR_RAD_TO_DEG;
+        assert_eq!(x, 0.6459178692144925);
+        assert_eq!(POLAR_RAD_TO_DEG * x.asin(), 40.23452908031853);
+        // At the magnitudes the corpus actually judges (x ≈ 1.6e-9) the two are
+        // the same f64 to within one ulp of the multiplication order: the
+        // `combo_mesh_asym` micro-tier sample of §G1.3a.
+        let m = 1.4616566273058197e3;
+        let rho = 1e-6 + 1e-9 * m;
+        let band = polar_angle_band(rho, m).expect("far outside the mask");
+        assert_eq!(band, 9.649498570331597e-8);
+        let exact = POLAR_RAD_TO_DEG * (rho / m).asin();
+        assert_eq!(exact, 9.649498570331596e-8);
+        assert!((band - exact).abs() <= f64::EPSILON * exact);
+    }
+
+    /// An **enabled** `UPFCControl`: `TUPFCControlObj.Create` (r4133
+    /// `Version8/Source/Controls/UPFCControl.pas:230-246`, capi 0.14.5
+    /// `src/Controls/UPFCControl.pas:151-164`) never assigns
+    /// `Nterms`/`Nphases`/`Setbus`, so the element carries 0 terminals, 0
+    /// conductor slots and six empty channels on every engine.
+    fn zero_terminal_pair() -> (Vec<ElementSnapshot>, ElementCap) {
+        let snap = ElementSnapshot {
+            name: "UPFCControl.myupfcctrl".to_string(),
+            enabled: true,
+            bus_names: Vec::new(),
+            powers: Vec::new(),
+            currents: Vec::new(),
+            loss_w: (0.0, 0.0),
+            currents_mag_ang: Vec::new(),
+            voltages_mag_ang: Vec::new(),
+            residuals: Vec::new(),
+            n_terms: 0,
+            n_conds: 0,
+            n_phases: 0,
+            node_order: Vec::new(),
+            energy_meter: None,
+        };
+        let cap = ElementCap {
+            name: "UPFCControl.myupfcctrl".to_string(),
+            enabled: Some(true),
+            ..ElementCap::default()
+        };
+        (vec![snap], cap)
+    }
+
+    /// The empty acceptance itself: with both sides empty the comparator returns
+    /// instead of tripping the `yorder % nterms` shape assert (which read
+    /// `0 conductor slots do not divide into 0 terminals` on all nine
+    /// `UPFCControl` corpus cases).
+    #[test]
+    fn a_zero_terminal_element_is_accepted_when_both_sides_are_empty() {
+        let (snaps, cap) = zero_terminal_pair();
+        compare_element_derived(&snaps, &cap, &tol_for("feeder"), "upfc", ElemChannels::ALL);
+    }
+
+    /// Rejection leg 1 — the **oracle** grows a payload the port does not have.
+    #[test]
+    #[should_panic(expected = "0-terminal element must carry no polar payload")]
+    fn a_zero_terminal_element_with_an_oracle_payload_fails() {
+        let (snaps, mut cap) = zero_terminal_pair();
+        cap.cma_mag = vec![1.0];
+        cap.cma_ang = vec![0.0];
+        compare_element_derived(&snaps, &cap, &tol_for("feeder"), "upfc", ElemChannels::ALL);
+    }
+
+    /// The one shape the oracle side may add on a 0-terminal element: the capi
+    /// `DefaultResult` COM sentinel. `Alt_CE_Get_VoltagesMagAng` returns
+    /// one-element `[0.0]` whenever `elem.NodeRef = NIL`
+    /// (`CAPI/CAPI_Alt.pas:1080-1084` → `CAPI/CAPI_Utils.pas:212-221`), which
+    /// de-interleaves into `mag = [0.0]`, `ang = []`; r4133 and the engine both
+    /// report an empty array. Measured live on all nine `UPFCControl` corpus
+    /// cases, CapiV0145 channel only, as `vma 1/0`.
+    #[test]
+    fn the_capi_default_result_sentinel_reads_as_no_payload() {
+        assert!(no_polar_payload(&[], &[]));
+        assert!(no_polar_payload(&[0.0], &[]));
+        // …and nothing else does: a real one-sample reading, a non-zero
+        // sentinel-shaped magnitude, or an angle without a magnitude all fail.
+        assert!(!no_polar_payload(&[0.0], &[0.0]));
+        assert!(!no_polar_payload(&[1.0], &[]));
+        assert!(!no_polar_payload(&[0.0, 0.0], &[]));
+        assert!(!no_polar_payload(&[], &[0.0]));
+        // End to end: the sentinel on the channel that actually carries it.
+        let (snaps, mut cap) = zero_terminal_pair();
+        cap.vma_mag = vec![0.0];
+        compare_element_derived(&snaps, &cap, &tol_for("feeder"), "upfc", ElemChannels::ALL);
+    }
+
+    /// The sentinel acceptance is a *shape* rule, not a value one: a one-element
+    /// magnitude that is not the sentinel's `0.0` still fails.
+    #[test]
+    #[should_panic(expected = "0-terminal element must carry no polar payload")]
+    fn a_sentinel_shaped_but_non_zero_oracle_payload_fails() {
+        let (snaps, mut cap) = zero_terminal_pair();
+        cap.vma_mag = vec![1e-30];
+        compare_element_derived(&snaps, &cap, &tol_for("feeder"), "upfc", ElemChannels::ALL);
+    }
+
+    /// Rejection leg 2 — the **port** grows a payload the oracle does not have,
+    /// which is the direction a one-sided `is_empty()` check on `exp` would miss.
+    #[test]
+    #[should_panic(expected = "0-terminal element must carry no polar payload")]
+    fn a_zero_terminal_element_with_a_port_payload_fails() {
+        let (mut snaps, cap) = zero_terminal_pair();
+        snaps[0].residuals = vec![Polar { mag: 1.0, ang: 0.0 }];
+        compare_element_derived(&snaps, &cap, &tol_for("feeder"), "upfc", ElemChannels::ALL);
+    }
+
+    /// The acceptance is scoped to `Yorder == 0 && Nterms == 0`: conductor slots
+    /// without terminals still hit the shape assert, so the branch cannot be
+    /// used to wave a real shape miss through.
+    #[test]
+    #[should_panic(expected = "conductor slots do not divide into 0 terminals")]
+    fn conductor_slots_without_terminals_still_fail_the_shape_assert() {
+        let (snaps, mut cap) = zero_terminal_pair();
+        cap.i_re = vec![1.0, 2.0];
+        cap.i_im = vec![0.0, 0.0];
+        compare_element_derived(&snaps, &cap, &tol_for("feeder"), "upfc", ElemChannels::ALL);
+    }
+
+    /// …and the mirror — terminals without conductor slots — falls through to the
+    /// per-channel length asserts, which catch it on `Residuals` (one entry per
+    /// terminal).
+    #[test]
+    #[should_panic(expected = "oracle Residuals magnitude length 0 != 1")]
+    fn terminals_without_conductor_slots_still_fail_the_length_asserts() {
+        let (mut snaps, cap) = zero_terminal_pair();
+        snaps[0].bus_names = vec!["b1".to_string()];
+        compare_element_derived(&snaps, &cap, &tol_for("feeder"), "upfc", ElemChannels::ALL);
+    }
+}
+
+/// The oracle's **raw** `CktElement.EnergyMeter` string, read as "the bare name
+/// of the meter that meters this element, or `None` when none does".
+///
+/// The two transports spell "no meter" differently, which is a capture-boundary
+/// **sentinel shape** rather than a divergence — coordinator decision D4, the
+/// [`props_norm`] and [`no_polar_payload`] precedent — so it is normalized here
+/// for **0 ledger rows** and pinned by
+/// `element_extras_pins::the_no_meter_sentinel_is_normalized_on_both_channels`:
+///
+/// * **capi** returns `NIL` (`CAPI/CAPI_CktElement.pas:672-687`: `Result := NIL`
+///   unless `Flg.HasEnergyMeter in elem.Flags`, `pd.MeterObj.Name` at `:685`),
+///   which the pinned dss-python renders as the empty string;
+/// * **r4133** returns `'0'` — the `CktElementS` family default assigned before
+///   the `case` (`DDLL/DCktElement.pas:421`) and left untouched by arm `4`
+///   (`:442-449`), whose `MeterObj.Name` read is itself guarded by
+///   `HasEnergyMeter` at `:444`.
+///
+/// **Each channel's own sentinel, not both** (G1.3d(i) audit settlement,
+/// 2026-09-05). Folding `'0'` on the capi channel too would have been free
+/// blindness: capi never spells "no meter" that way, so there `0` is a name
+/// like any other and a port that lost a meter named `0` reds
+/// (`a_meter_named_zero_reds_instead_of_passing`). Symmetrically, an empty
+/// string from r4133 is not a sentinel — it is an unexpected transport answer,
+/// and it reds rather than being absorbed.
+///
+/// On the **r4133** channel a meter literally *named* `0` remains undecidable,
+/// and the ambiguity cuts **both** ways: a port that lost such a meter would
+/// compare `None == None` and pass. The earlier claim here — "can only produce a
+/// false failure, never a false pass" — was true in one direction only. What
+/// makes the collision unreachable is the corpus census
+/// (`extras_population::no_corpus_energymeter_is_named_zero` in
+/// `crates/dss-core/tests/corpus_manifest.rs`: 1 310 decks, 92 distinct meter
+/// names, none of them `0`), and the residual itself is asserted rather than
+/// assumed by
+/// `element_extras_pins::the_r4133_zero_sentinel_is_undecidable_and_the_census_is_the_guard`.
+fn oracle_meter_name(raw: &str, channel: PropsChannel) -> Option<&str> {
+    match (channel, raw) {
+        (PropsChannel::CapiV0145, "") | (PropsChannel::R4133, "0") => None,
+        (_, name) => Some(name),
+    }
+}
+
+/// Compare one element's **discrete index/name extras** against a capture:
+/// `NumTerminals`, `NumConductors`, `NumPhases`, `EnergyMeter` and `NodeOrder`
+/// (`GOLDEN_REBASE_PLAN.md` WP-G1 sub-step G1.3d(i)).
+///
+/// Runs when the case's `compare_element_extras` manifest flag is on,
+/// *alongside* — never instead of — [`compare_element_channels`] and
+/// [`compare_element_derived`].
+///
+/// **Everything here is discrete, so everything is compared exactly.** There is
+/// no `Tolerances` argument, no [`ElemChannels`] selector and no ledger
+/// sub-channel: a mismatch on an index or a name is a port bug or an upstream
+/// defect, never a floor, and the ledger's `divergence` envelope
+/// (`max_abs`/`max_rel`) has no meaning for it. Consequence, stated so it is not
+/// discovered by surprise: the first live mismatch **stops** the sub-step and the
+/// mechanism is designed then, rather than shipping exclusion machinery that
+/// `every_exclusion_field_is_honoured_by_the_runtime` could never exercise. A
+/// committed `element` scope cannot reach these fields either — the ledger's
+/// `clone_element_cap` is a full `ec.clone()`
+/// (`corpus_gate/ledger.rs:1695-1697`) and `rewrite_element_selected` (`:1702`)
+/// writes only its six named value channels (`currents`, `powers`, `losses`,
+/// `currents_mag_ang`, `voltages_mag_ang`, `residuals`).
+///
+/// **Structure, asserted under every policy** (the rule [`compare_element_channels`]
+/// already follows: a value exclusion may never excuse a shape or an existence
+/// miss):
+///
+/// * the element exists in the Rust snapshot, and the capture carries all four
+///   scalars plus `Enabled` — their absence means the flag is on and the element
+///   was captured without them, the element-level twin of
+///   [`capture_guard::require_capture`];
+/// * `Enabled` matches exactly. It is re-asserted here rather than borrowed from
+///   [`compare_element_derived`], because the two flags are independent and the
+///   `NodeOrder` capture predicate rests on this bit;
+/// * the three counts match exactly, and two internal ties bind them to shapes
+///   that were *already* gated: the port's own `bus_names` list (which
+///   [`compare_element_derived`] uses as its terminal count) and the oracle's
+///   `Currents` length (`Yorder = NTerms · NConds`);
+/// * `NodeOrder` is compared slot by slot when the element is enabled with at
+///   least one terminal; on a **0-terminal** element both sides must be empty
+///   (two-sided, so a payload on either side still fails); on a **disabled**
+///   element only the *oracle* side must be empty — the capture skips the read
+///   there, while the port legitimately keeps the mapping it was last given (an
+///   element disabled after a solve; pinned in-engine by
+///   `exec::tests::element_extras::a_disabled_element_keeps_the_node_order_it_was_given`).
+///
+/// Capture predicate, from the sources rather than from caution: mode `17`
+/// dereferences `NodeRef^[j]` with no nil guard (r4133
+/// `DDLL/DCktElement.pas:1048`) and capi raises 15013 from its nil-`NodeRef`
+/// guard (`CAPI/CAPI_CktElement.pas:900-906`), so a never-enabled element is not read;
+/// and on a 0-terminal element (`UPFCControl` never assigns `Nterms` — r4133
+/// `Controls/UPFCControl.pas:230-246`) r4133 would answer a 0-length array where
+/// capi raises, so not issuing the read removes that shape asymmetry instead of
+/// normalizing it.
+///
+/// `channel` is read for exactly one thing: [`oracle_meter_name`] folds the
+/// "no meter" sentinel of the channel the capture came from, and only that one
+/// (the capi `''` and the r4133 `'0'` are different spellings of the same state,
+/// coordinator decision D4). Nothing else here is channel-dependent — every
+/// field is compared identically on both.
+///
+/// No tolerance is introduced or consulted anywhere in this function
+/// (tests/TOLERANCE_NOTES.md §G1.3d(i)).
+pub fn compare_element_extras(
+    snaps: &[ElementSnapshot],
+    exp: &ElementCap,
+    channel: PropsChannel,
+    ctx: &str,
+) {
+    let snap = snaps
+        .iter()
+        .find(|s| s.name.eq_ignore_ascii_case(&exp.name))
+        .unwrap_or_else(|| panic!("{ctx}: no element {}", exp.name));
+    fn missing(ctx: &str, name: &str, field: &str) -> String {
+        format!(
+            "{ctx} {name}: the extras capture carries no `{field}` field — the \
+             case's `compare_element_extras` flag is on but this element was \
+             captured without it"
+        )
+    }
+    let n_terms = exp
+        .n_terms
+        .unwrap_or_else(|| panic!("{}", missing(ctx, &exp.name, "n_terms")));
+    let n_conds = exp
+        .n_conds
+        .unwrap_or_else(|| panic!("{}", missing(ctx, &exp.name, "n_conds")));
+    let n_phases = exp
+        .n_phases
+        .unwrap_or_else(|| panic!("{}", missing(ctx, &exp.name, "n_phases")));
+    let raw_meter = exp
+        .energy_meter
+        .as_deref()
+        .unwrap_or_else(|| panic!("{}", missing(ctx, &exp.name, "energy_meter")));
+    let enabled = exp
+        .enabled
+        .unwrap_or_else(|| panic!("{}", missing(ctx, &exp.name, "enabled")));
+
+    assert_eq!(
+        snap.enabled, enabled,
+        "{ctx} {}: Enabled differs (rust {} vs oracle {enabled})",
+        exp.name, snap.enabled
+    );
+
+    let count = |what: &str, rust: usize, oracle: i32| {
+        let want = usize::try_from(oracle)
+            .unwrap_or_else(|_| panic!("{ctx} {}: oracle {what} is negative ({oracle})", exp.name));
+        assert_eq!(
+            rust, want,
+            "{ctx} {}: {what} differs (rust {rust} vs oracle {oracle})",
+            exp.name
+        );
+    };
+    count("NumTerminals", snap.n_terms, n_terms);
+    count("NumConductors", snap.n_conds, n_conds);
+    count("NumPhases", snap.n_phases, n_phases);
+
+    // The two ties. Neither is an independent measurement — `bus_names` is built
+    // over `1..=nterms` (`exec/view.rs`) and `Yorder` is `NTerms · NConds` on
+    // every engine — but they are what makes the newly gated counts do work for
+    // channels that were already gated: from here on the oracle's `NumTerminals`
+    // stands behind `compare_element_derived`'s terminal count, and its
+    // `NumConductors` behind the length of every per-conductor array.
+    assert_eq!(
+        snap.bus_names.len(),
+        snap.n_terms,
+        "{ctx} {}: the port's bus-name list ({}) disagrees with its own \
+         NumTerminals ({})",
+        exp.name,
+        snap.bus_names.len(),
+        snap.n_terms
+    );
+    if enabled && !exp.i_re.is_empty() {
+        assert_eq!(
+            snap.n_terms * snap.n_conds,
+            exp.i_re.len(),
+            "{ctx} {}: NTerms·NConds ({} · {}) != the oracle's Currents length ({})",
+            exp.name,
+            snap.n_terms,
+            snap.n_conds,
+            exp.i_re.len()
+        );
+    }
+
+    // Exact, with no case folding: both engines lowercase the name in the
+    // EnergyMeter constructor (r4133 `Meters/EnergyMeter.pas:921`
+    // `Name := LowerCase(...)`, capi `src/Meters/EnergyMeter.pas:952`
+    // `AnsiLowerCase`) and so does the port (`elements/ckt.rs:258`).
+    assert_eq!(
+        snap.energy_meter.as_deref(),
+        oracle_meter_name(raw_meter, channel),
+        "{ctx} {}: EnergyMeter differs (rust {:?} vs oracle {raw_meter:?})",
+        exp.name,
+        snap.energy_meter
+    );
+
+    if snap.n_terms == 0 {
+        assert!(
+            exp.node_order.is_empty() && snap.node_order.is_empty(),
+            "{ctx} {}: a 0-terminal element must carry no NodeOrder on either \
+             side (oracle {}, rust {})",
+            exp.name,
+            exp.node_order.len(),
+            snap.node_order.len()
+        );
+        return;
+    }
+    if !enabled {
+        assert!(
+            exp.node_order.is_empty(),
+            "{ctx} {}: a disabled element must carry no oracle NodeOrder ({} \
+             slots) — the capture read a channel it must skip",
+            exp.name,
+            exp.node_order.len()
+        );
+        return;
+    }
+    let want = snap.n_terms * snap.n_conds;
+    assert_eq!(
+        exp.node_order.len(),
+        want,
+        "{ctx} {}: oracle NodeOrder length {} != NTerms·NConds ({want})",
+        exp.name,
+        exp.node_order.len()
+    );
+    assert_eq!(
+        snap.node_order.len(),
+        want,
+        "{ctx} {}: rust NodeOrder length {} != NTerms·NConds ({want})",
+        exp.name,
+        snap.node_order.len()
+    );
+    assert_eq!(
+        snap.node_order, exp.node_order,
+        "{ctx} {}: NodeOrder differs (rust {:?} vs oracle {:?})",
+        exp.name, snap.node_order, exp.node_order
+    );
+}
+
+/// The G1.3d(i) discrete-extras pins: the no-meter sentinel normalization and
+/// the comparator's structural rules, pinned directly (no oracle) the way
+/// `derived_polar_floors` pins the polar bands. Every acceptance carries its
+/// rejection leg, so none of them is a one-sided "accepts everything" green.
+#[cfg(test)]
+mod element_extras_pins {
+    use super::{
+        ElementCap, ElementSnapshot, PropsChannel, compare_element_extras, oracle_meter_name,
+    };
+
+    /// The measured `Line.l1` of the in-engine fixture deck
+    /// (`exec::tests::element_extras`): 2 terminals × 3 conductors, 3 phases,
+    /// metered by `EnergyMeter.Feeder`, `NodeOrder = [1, 2, 3, 1, 2, 3]`. The
+    /// oracle side is spelled the way the **capi** transport spells it (a bare
+    /// name, no sentinel).
+    fn metered_line() -> (Vec<ElementSnapshot>, ElementCap) {
+        let snap = ElementSnapshot {
+            name: "Line.l1".to_string(),
+            enabled: true,
+            bus_names: vec!["src.1.2.3".to_string(), "b1.1.2.3".to_string()],
+            powers: vec![num_complex::Complex64::new(0.0, 0.0); 6],
+            currents: vec![num_complex::Complex64::new(0.0, 0.0); 6],
+            loss_w: (0.0, 0.0),
+            currents_mag_ang: Vec::new(),
+            voltages_mag_ang: Vec::new(),
+            residuals: Vec::new(),
+            n_terms: 2,
+            n_conds: 3,
+            n_phases: 3,
+            node_order: vec![1, 2, 3, 1, 2, 3],
+            energy_meter: Some("feeder".to_string()),
+        };
+        let cap = ElementCap {
+            name: "Line.l1".to_string(),
+            i_re: vec![0.0; 6],
+            i_im: vec![0.0; 6],
+            enabled: Some(true),
+            n_terms: Some(2),
+            n_conds: Some(3),
+            n_phases: Some(3),
+            energy_meter: Some("feeder".to_string()),
+            node_order: vec![1, 2, 3, 1, 2, 3],
+            ..ElementCap::default()
+        };
+        (vec![snap], cap)
+    }
+
+    /// An **enabled** `UPFCControl` (r4133
+    /// `Version8/Source/Controls/UPFCControl.pas:230-246` never assigns
+    /// `Nterms`): 0 terminals, 0 conductors, no `NodeOrder` read on either
+    /// transport. The oracle side carries the **r4133** no-meter sentinel `'0'`
+    /// here, so the fixture exercises the other spelling too.
+    fn zero_terminal() -> (Vec<ElementSnapshot>, ElementCap) {
+        let snap = ElementSnapshot {
+            name: "UPFCControl.myupfcctrl".to_string(),
+            enabled: true,
+            bus_names: Vec::new(),
+            powers: Vec::new(),
+            currents: Vec::new(),
+            loss_w: (0.0, 0.0),
+            currents_mag_ang: Vec::new(),
+            voltages_mag_ang: Vec::new(),
+            residuals: Vec::new(),
+            n_terms: 0,
+            n_conds: 0,
+            n_phases: 0,
+            node_order: Vec::new(),
+            energy_meter: None,
+        };
+        let cap = ElementCap {
+            name: "UPFCControl.myupfcctrl".to_string(),
+            enabled: Some(true),
+            n_terms: Some(0),
+            n_conds: Some(0),
+            n_phases: Some(0),
+            energy_meter: Some("0".to_string()),
+            ..ElementCap::default()
+        };
+        (vec![snap], cap)
+    }
+
+    /// The acceptance leg: the measured fixture compares clean end to end.
+    #[test]
+    fn the_measured_fixture_element_compares_clean() {
+        let (snaps, cap) = metered_line();
+        compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "fixture");
+    }
+
+    /// Both transports' "no meter" spellings mean the same thing — capi's `''`
+    /// (`Result := NIL`, `CAPI/CAPI_CktElement.pas:677`) and r4133's `'0'` (the
+    /// `CktElementS` pre-`case` default, `DDLL/DCktElement.pas:421`) — but each
+    /// is folded **only on its own channel**, and nothing else is normalized: a
+    /// real name, including a numeric one the corpus actually carries
+    /// (`EnergyMeter.25607`), stays itself on both.
+    #[test]
+    fn the_no_meter_sentinel_is_normalized_on_both_channels() {
+        use PropsChannel::{CapiV0145 as CAPI, R4133 as R4};
+        assert_eq!(oracle_meter_name("", CAPI), None);
+        assert_eq!(oracle_meter_name("0", R4), None);
+        // Each channel folds its OWN spelling only (audit settlement 2026-09-05):
+        // capi never says `'0'`, so there it is a name; r4133 never says `''`, so
+        // there an empty answer is unexpected and reds instead of being absorbed.
+        assert_eq!(oracle_meter_name("0", CAPI), Some("0"));
+        assert_eq!(oracle_meter_name("", R4), Some(""));
+        for ch in [CAPI, R4] {
+            assert_eq!(oracle_meter_name("feeder", ch), Some("feeder"));
+            assert_eq!(oracle_meter_name("25607", ch), Some("25607"));
+            assert_eq!(oracle_meter_name("00", ch), Some("00"));
+            assert_eq!(oracle_meter_name("0.0", ch), Some("0.0"));
+            assert_eq!(oracle_meter_name(" ", ch), Some(" "));
+        }
+        // End to end, on both spellings, against a port that says `None`.
+        let (snaps, mut cap) = zero_terminal();
+        compare_element_extras(&snaps, &cap, PropsChannel::R4133, "r4133 sentinel");
+        cap.energy_meter = Some(String::new());
+        compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "capi sentinel");
+    }
+
+    /// The collision leg: on the **r4133** channel a meter literally *named* `0`
+    /// is indistinguishable from the sentinel, and a port that HAS the name reds
+    /// against the folded `None` rather than passing silently. (The corpus
+    /// carries no such name; `extras_population::no_corpus_energymeter_is_named_zero`
+    /// in `crates/dss-core/tests/corpus_manifest.rs` is the census.)
+    #[test]
+    #[should_panic(expected = "EnergyMeter differs")]
+    fn a_meter_named_zero_reds_instead_of_passing() {
+        let (mut snaps, mut cap) = metered_line();
+        snaps[0].energy_meter = Some("0".to_string());
+        cap.energy_meter = Some("0".to_string());
+        compare_element_extras(&snaps, &cap, PropsChannel::R4133, "collision");
+    }
+
+    /// …and the **other** direction of that same collision, asserted rather than
+    /// assumed (G1.3d(i) audit settlement, 2026-09-05): a port that *lost* a
+    /// meter named `0` compares `None == None` on r4133 and **passes**. The fold
+    /// is therefore not self-detecting, and the corpus census — not the fold —
+    /// is what keeps the case unreachable. On **capi** the same pair reds,
+    /// because that channel's sentinel is `''` and `0` is just a name there.
+    #[test]
+    fn the_r4133_zero_sentinel_is_undecidable_and_the_census_is_the_guard() {
+        let (mut snaps, mut cap) = metered_line();
+        snaps[0].energy_meter = None;
+        cap.energy_meter = Some("0".to_string());
+        // r4133: indistinguishable from "no meter" — this passes, and saying so
+        // out loud is the point of the pin.
+        compare_element_extras(&snaps, &cap, PropsChannel::R4133, "r4133 undecidable");
+        // capi: the same capture is a real name, and losing it is a failure.
+        let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "capi decidable");
+        }))
+        .expect_err("a port that lost a meter named `0` must fail on the capi channel");
+        let msg = err
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| err.downcast_ref::<&str>().copied())
+            .unwrap_or("");
+        assert!(
+            msg.contains("EnergyMeter differs"),
+            "the capi panic reads {msg:?}"
+        );
+    }
+
+    /// The name is compared with **no** case folding — both engines and the port
+    /// lowercase it in the constructor (r4133 `Meters/EnergyMeter.pas:921`,
+    /// capi `src/Meters/EnergyMeter.pas:952`, port `elements/ckt.rs:258`), so a
+    /// capture that came back in the deck's spelling is a finding, not noise.
+    #[test]
+    #[should_panic(expected = "EnergyMeter differs")]
+    fn the_meter_name_is_compared_without_case_folding() {
+        let (snaps, mut cap) = metered_line();
+        cap.energy_meter = Some("Feeder".to_string());
+        compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "case");
+    }
+
+    /// A metered element whose meter the port failed to resolve must red, in the
+    /// direction a one-sided "the oracle said nothing" check would miss.
+    #[test]
+    #[should_panic(expected = "EnergyMeter differs")]
+    fn a_port_that_lost_the_meter_name_fails() {
+        let (mut snaps, cap) = metered_line();
+        snaps[0].energy_meter = None;
+        compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "lost meter");
+    }
+
+    /// The element-level twin of `capture_guard::require_capture`: all four
+    /// scalars **and** `Enabled` are emitted for every element under the flag, so
+    /// a missing one means the element was captured without it. Never papered
+    /// over — each absence names its own field.
+    #[test]
+    fn the_extras_comparator_requires_the_capture_to_carry_them() {
+        /// Removes one required field from an otherwise complete capture.
+        type Drop = fn(&mut ElementCap);
+        let drop: [(&str, Drop); 5] = [
+            ("n_terms", |c| c.n_terms = None),
+            ("n_conds", |c| c.n_conds = None),
+            ("n_phases", |c| c.n_phases = None),
+            ("energy_meter", |c| c.energy_meter = None),
+            ("enabled", |c| c.enabled = None),
+        ];
+        for (field, remove) in drop {
+            let (snaps, mut cap) = metered_line();
+            remove(&mut cap);
+            let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "no-capture");
+            }))
+            .expect_err(&format!("a capture without `{field}` must fail the case"));
+            let msg = err
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| err.downcast_ref::<&str>().copied())
+                .unwrap_or("");
+            assert!(
+                msg.contains(&format!("carries no `{field}` field")),
+                "the panic for a missing `{field}` reads {msg:?}"
+            );
+        }
+    }
+
+    /// The three counts are compared exactly, each in its own right —
+    /// `NumPhases` in particular is the one no other channel's shape implies.
+    #[test]
+    fn the_counts_are_compared_exactly() {
+        for (what, corrupt) in [
+            ("NumTerminals", 0usize),
+            ("NumConductors", 1usize),
+            ("NumPhases", 2usize),
+        ] {
+            let (mut snaps, cap) = metered_line();
+            match corrupt {
+                0 => snaps[0].n_terms += 1,
+                1 => snaps[0].n_conds += 1,
+                _ => snaps[0].n_phases += 1,
+            }
+            let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "count");
+            }))
+            .expect_err(&format!("a corrupted {what} must fail"));
+            let msg = err
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| err.downcast_ref::<&str>().copied())
+                .unwrap_or("");
+            assert!(
+                msg.contains(&format!("{what} differs")),
+                "the panic for a corrupted {what} reads {msg:?}"
+            );
+        }
+    }
+
+    /// The `Yorder` tie: the oracle's own counts must explain the length of the
+    /// currents array it sent under the same capture.
+    #[test]
+    #[should_panic(expected = "the oracle's Currents length")]
+    fn the_counts_must_explain_the_oracle_currents_length() {
+        let (snaps, mut cap) = metered_line();
+        cap.i_re.push(0.0);
+        compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "yorder");
+    }
+
+    /// `NodeOrder` is compared slot by slot: a rotation keeps every value and the
+    /// length and still fails.
+    #[test]
+    #[should_panic(expected = "NodeOrder differs")]
+    fn the_node_order_is_compared_slot_by_slot() {
+        let (snaps, mut cap) = metered_line();
+        cap.node_order = vec![2, 3, 1, 1, 2, 3];
+        compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "rotate");
+    }
+
+    /// …and its length must be `NTerms · NConds` on **both** sides.
+    #[test]
+    #[should_panic(expected = "oracle NodeOrder length 5")]
+    fn a_short_oracle_node_order_fails() {
+        let (snaps, mut cap) = metered_line();
+        cap.node_order.pop();
+        compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "short oracle");
+    }
+
+    #[test]
+    #[should_panic(expected = "rust NodeOrder length 5")]
+    fn a_short_port_node_order_fails() {
+        let (mut snaps, cap) = metered_line();
+        snaps[0].node_order.pop();
+        compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "short rust");
+    }
+
+    /// A 0-terminal element carries no `NodeOrder` on either side (the read is
+    /// never issued), accepted two-sidedly.
+    #[test]
+    fn a_zero_terminal_element_has_no_node_order_on_either_side() {
+        let (snaps, cap) = zero_terminal();
+        compare_element_extras(&snaps, &cap, PropsChannel::R4133, "upfc");
+    }
+
+    #[test]
+    #[should_panic(expected = "0-terminal element must carry no NodeOrder")]
+    fn a_zero_terminal_element_with_an_oracle_node_order_fails() {
+        let (snaps, mut cap) = zero_terminal();
+        cap.node_order = vec![1];
+        compare_element_extras(&snaps, &cap, PropsChannel::R4133, "upfc");
+    }
+
+    #[test]
+    #[should_panic(expected = "0-terminal element must carry no NodeOrder")]
+    fn a_zero_terminal_element_with_a_port_node_order_fails() {
+        let (mut snaps, cap) = zero_terminal();
+        snaps[0].node_order = vec![1];
+        compare_element_extras(&snaps, &cap, PropsChannel::R4133, "upfc");
+    }
+
+    /// A **disabled** element: the capture skips the `NodeOrder` read (a
+    /// never-enabled element has no `NodeRef`), so only the *oracle* side must be
+    /// empty. The port keeps the mapping it was last given — an element disabled
+    /// **after** a solve still carries its full `NodeOrder`, measured and pinned
+    /// in-engine by
+    /// `exec::tests::element_extras::a_disabled_element_keeps_the_node_order_it_was_given`
+    /// — so requiring the port to be empty here would red on every deck that
+    /// switches an element out.
+    #[test]
+    fn a_disabled_element_keeps_its_port_node_order_while_the_oracle_stays_silent() {
+        let (mut snaps, mut cap) = metered_line();
+        snaps[0].enabled = false;
+        cap.enabled = Some(false);
+        cap.node_order = Vec::new();
+        // The port still carries [1, 2, 3, 1, 2, 3] — and the counts, the meter
+        // and `Enabled` itself are all still compared.
+        compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "disabled");
+    }
+
+    #[test]
+    #[should_panic(expected = "disabled element must carry no oracle NodeOrder")]
+    fn a_disabled_element_with_an_oracle_node_order_fails() {
+        let (mut snaps, mut cap) = metered_line();
+        snaps[0].enabled = false;
+        cap.enabled = Some(false);
+        compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "disabled");
+    }
+
+    /// `Enabled` is re-asserted here, not borrowed from
+    /// [`super::compare_element_derived`]: the two manifest flags are
+    /// independent, and this bit is the `NodeOrder` capture predicate.
+    #[test]
+    #[should_panic(expected = "Enabled differs")]
+    fn enabled_is_compared_by_this_comparator_too() {
+        let (mut snaps, cap) = metered_line();
+        snaps[0].enabled = false;
+        compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "enabled");
+    }
+
+    /// An element the oracle sent and the port does not have is an existence
+    /// miss, never a silent skip.
+    #[test]
+    #[should_panic(expected = "no element Line.l1")]
+    fn an_element_missing_from_the_snapshot_fails() {
+        let (_, cap) = metered_line();
+        compare_element_extras(&[], &cap, PropsChannel::CapiV0145, "missing");
     }
 }
 
@@ -1771,7 +3242,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:1240-1246` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:1545-1550` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -1800,7 +3271,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:1240-1246` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:1545-1550` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -1864,7 +3335,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     **compare** on r4133. The exclusion is a statement about the 0.14.5
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
-    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1240-1246`
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1545-1550`
     //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
@@ -1910,7 +3381,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///
 /// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1240-1246` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1545-1550` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
@@ -2103,7 +3574,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1240-1246`
+    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1545-1550`
     /// forbids masking there, plus the two `pctperm` rows RP2.1 measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {
@@ -3414,7 +4885,10 @@ pub fn compare_all_properties(
 /// type (plan §1.2, the channel-threading trap). The corpus_gate call sites map
 /// `EngineChannel` onto this (`EngineChannel::props_channel`). **Both** property
 /// walks read it since RP2.1: the gating [`compare_all_properties`] (through
-/// [`PropsPolicy`]) and the census [`collect_prop_divergences`].
+/// [`PropsPolicy`]) and the census [`collect_prop_divergences`]. Since
+/// GOLDEN_REBASE G1.3d(i) [`compare_element_extras`] reads it too (its no-meter
+/// sentinel is channel-specific), so the name is historical: this is the
+/// harness's channel type, not a property-only one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PropsChannel {
     /// The pinned dss-python oracle (dss_capi 0.14.5).
@@ -5473,6 +6947,605 @@ mod pd_elements_tests {
         let never_hit = fire([105, 105], [105, 0]);
         assert!(never_hit.contains("excluded nothing"), "{never_hit}");
         assert!(never_hit.contains("accumulated_l"), "{never_hit}");
+    }
+}
+
+// GOLDEN_REBASE_PLAN.md WP-G1 sub-step G1.4a: the per-bus voltage surface.
+//
+// The bus flavours of the solved node voltages both oracles publish —
+// `Bus.puVoltages`, `Bus.VMagAngle`, `Bus.puVMagAngle` and the circuit-level
+// `Circuit.AllBusVmagPu` (the fastdss harness dumps the whole `IBus`/`ICircuit`
+// `_columns` set, `origin/fastdss` `tests/save_outputs.py:348,351`). Captured by
+// `tools/oracle/oracle_server.py::capture_all_buses` (capi channel) and
+// `crates/dss-epri/src/capture.rs::capture_all_buses` (r4133 channel); read back
+// from the engine through `Dss::all_bus_voltages` / `Dss::all_bus_vmag_pu`
+// (`crates/dss-core/src/exec/view.rs`).
+//
+// **Three ordering conventions meet here and must never be mixed.**
+//   1. ascending node NUMBER, per bus — the three `BusCap` value arrays: the
+//      `repeat NodeIdx := FindIdx(jj); inc(jj) until NodeIdx > 0` walk both
+//      engines run (`CAPI/CAPI_Alt.pas:2251-2280` == r4133
+//      `Version8/Source/DDLL/DBus.pas:399-430`);
+//   2. bus-list order x the bus's INTERNAL node index — `all_bus_vmag_pu`
+//      (`CAPI_Circuit.pas:521-548` == `DCircuit.pas:481-500`);
+//   3. `YNodeOrder` — the node-voltage channel's own permutation, gated
+//      separately in `corpus_gate/runner.rs`.
+// `BusVoltageView::nodes` keeps the bus's INSERTION order, a fourth one; both
+// oracles report `Bus.Nodes` ascending (`CAPI_Alt.pas:2143-2163` ==
+// `DBus.pas:319-345`), so `compare_bus` sorts before it compares.
+//
+// **Tolerances: this surface adds no new constant.** Every band is the exact
+// image of the already-calibrated node-voltage band `v_abs + v_rel*|V|` (the
+// `assert_complex_close` in `runner.rs`, over the same `Solution.NodeV` these
+// quantities are read from) under an engine-identical exact transformation.
+// Derivations: tests/TOLERANCE_NOTES.md §"Bus voltage surface (GOLDEN_REBASE
+// G1.4a)".
+// ---------------------------------------------------------------------------
+
+/// One bus's captured voltage surface — the `compare_bus` wire shape both
+/// transports emit, GOLDEN_REBASE_PLAN.md WP-G1 G1.4a. Parity target
+/// `origin/fastdss` `dss/IBus.py:19-53` `_columns`.
+///
+/// All three value arrays are `2 * nodes.len()` doubles (interleaved re/im for
+/// `pu_voltages`, `(magnitude, angle°)` pairs for the two polar ones) and share
+/// ONE ordering convention: **ascending node number** (see the module block
+/// above). `nodes` is ascending too, on both channels.
+///
+/// The divergent bus quantities (`SeqVoltages`/`CplxSeqVoltages`, `VLL`/`puVLL`)
+/// are G1.4c's and are deliberately absent (coordinator decision D8); they
+/// arrive as further `#[serde(default)]` fields, so an older capture stays
+/// readable.
+#[derive(Debug, Deserialize)]
+pub struct BusCap {
+    /// `Bus.Name`, in `Circuit.AllBusNames` (= `BusList`) order.
+    pub name: String,
+    /// `Bus.kVBase` in kV; `<= 0` = not set.
+    pub kv_base: f64,
+    /// `Bus.Nodes` — the bus's node NUMBERS, ascending
+    /// (`CAPI_Alt.pas:2143-2163` == r4133 `DBus.pas:319-345`).
+    pub nodes: Vec<i32>,
+    /// `NodeV / BaseFactor`, interleaved (re, im).
+    pub pu_voltages: Vec<f64>,
+    /// Interleaved (magnitude in V, angle in degrees)
+    /// (`CAPI_Alt.pas:2573-2597` == r4133 `DBus.pas:659-689`).
+    pub vmag_angle: Vec<f64>,
+    /// Interleaved (magnitude in per unit, angle in degrees) — only the
+    /// magnitude is divided by `BaseFactor`
+    /// (`CAPI_Alt.pas:2540-2571` == r4133 `DBus.pas:690-723`).
+    pub pu_vmag_angle: Vec<f64>,
+}
+
+/// The `BaseFactor` both engines divide the per-unit bus quantities by:
+/// `1000 * kVBase`, or `1.0` when the bus has no base (`CAPI_Alt.pas:2262-2265`
+/// == `DBus.pas:413-414` == `CAPI_Circuit.pas:538-541` == `DCircuit.pas:493`).
+/// Taken from the ORACLE's `kv_base`, which [`compare_bus`] has already pinned
+/// exactly against the port's — so the two engines scale by the same bits and
+/// the divide contributes no error of its own.
+fn bus_base_factor(kv_base: f64) -> f64 {
+    if kv_base > 0.0 { 1000.0 * kv_base } else { 1.0 }
+}
+
+/// The angular band a magnitude band implies — the **exact** image, in degrees.
+///
+/// The oracle publishes `(|V|, arg V)` of the same `Solution.NodeV[k]` the
+/// node-voltage channel compares at `|dV| <= v_abs + v_rel*|V|`. The set of
+/// phasors within `eps` of `V` subtends a half-angle `asin(eps/|V|)` about
+/// `arg V` while `eps < |V|`, and the whole circle once `eps >= |V|`, so
+///
+/// ```text
+/// allowed_deg = if eps >= |V| { 180 } else { degrees(asin(eps / |V|)) },
+/// eps = v_abs + v_rel * |V|
+/// ```
+///
+/// is the tightest band that cannot red on a voltage the node channel accepts.
+/// `f64::to_degrees` multiplies by `180/PI = 57.29577951308232`, the same
+/// full-precision constant [`compare_monitor`]'s polar-angle band uses; that
+/// band is this one linearized (`asin x ≈ x`), which agrees to `<2e-3` relative
+/// while `eps/|V| <= 0.1` — the whole healthy regime — but *under*-estimates the
+/// image as `eps/|V| → 1`. Bus magnitudes legitimately reach the absolute floor
+/// (unenergized buses; the `NEVTestCase` neutral-earth buses sit at ~2 V), so
+/// the exact arcsine is used here rather than its linearization. Saturating at
+/// 180° is not a free pass: the magnitude channel still pins `|V|` itself inside
+/// `eps` on its own row, so a bus whose angle is unconstrained is exactly a bus
+/// whose voltage is at or below the floor in both engines.
+fn bus_angle_band_deg(mag_v: f64, tol: &Tolerances) -> f64 {
+    if mag_v > 0.0 {
+        let ratio = (tol.v_abs + tol.v_rel * mag_v) / mag_v;
+        if ratio >= 1.0 {
+            180.0
+        } else {
+            ratio.asin().to_degrees()
+        }
+    } else {
+        // A zero (or non-finite) magnitude carries no angular information at
+        // all; the whole wrapped range is the honest band. `NaN > 0.0` is
+        // false, so it lands here too.
+        180.0
+    }
+}
+
+/// Wrap-aware polar-angle compare against [`bus_angle_band_deg`]`(mag_v)`.
+/// `mag_v` is the SAME sample's magnitude **in volts** (the pu channel multiplies
+/// its per-unit magnitude back by `BaseFactor`), so both polar flavours share one
+/// physical band.
+fn bus_polar_close(actual_deg: f64, expected_deg: f64, mag_v: f64, tol: &Tolerances, what: &str) {
+    let d = wrapped_deg(actual_deg - expected_deg);
+    let allowed = bus_angle_band_deg(mag_v, tol);
+    assert!(
+        d.abs() <= allowed,
+        "{what}: angle differs: {actual_deg} vs {expected_deg} deg \
+         (wrapped |diff| = {:.3e} > allowed {allowed:.3e} at |V| = {mag_v:e} V)",
+        d.abs()
+    );
+}
+
+/// Compare every bus's captured voltage surface against the engine's, in
+/// `BusList` order (GOLDEN_REBASE_PLAN.md G1.4a).
+///
+/// Structure per bus, strongest first:
+/// * the bus **name sequence** — the port's `BusList` order against the oracle's
+///   `AllBusNames`, case-insensitively. An independent pin: `YNodeOrder` (gated
+///   in `runner.rs`) is a different permutation and never witnesses a bus that
+///   carries no node.
+/// * `nodes` — exact integer equality after sorting the port's insertion-order
+///   list (both oracles publish ascending node numbers; see the module block).
+/// * `kv_base` — compared **exactly**. Both engines derive it by the same
+///   `SetVoltageBases` walk (`Solution.pas:1103` == r4133 `:2541`,
+///   `kVBase := NearestBasekV/SQRT3`) from the same legal-base list, so a
+///   disagreement is a finding, not a floor. NOTE: the base *search* scale is a
+///   Stage-F lane row (`compat::kv_base_search_scale`, truncated `0.001732` in
+///   the parity lane vs `SQRT3/1000` in the default lane) that can only pick a
+///   different legal base when the estimate sits within 2.93e-5 of a tie between
+///   two adjacent bases — a lane-dependent failure here is that knife edge, not
+///   a floor to widen.
+/// * the three value arrays — images of the node-voltage band; see
+///   [`bus_angle_band_deg`] and tests/TOLERANCE_NOTES.md.
+///
+/// `voltages_excluded` is set by the caller when the divergence ledger already
+/// excludes this case/channel's `voltages` field DECK-WIDE
+/// (`LedgerView::bus_arrays_suppressed(step)` — a `voltages` scope that names a
+/// node subset excludes fewer nodes than the arrays cover and suppresses
+/// nothing here). The bus quantities are exact
+/// images of exactly those node voltages, so re-comparing them would re-raise a
+/// divergence that has already been triaged and pinned — one structural rule
+/// instead of a ledger row per case. It suppresses ONLY the three continuous
+/// arrays: the bus count, the name sequence, `nodes`, `kv_base` and every array
+/// length stay compared, so the surface's own content (the orderings, the bus
+/// identity, the voltage bases) is never unwitnessed.
+pub fn compare_bus(
+    dss: &Dss,
+    exp: &[BusCap],
+    tol: &Tolerances,
+    voltages_excluded: bool,
+    ctx: &str,
+) {
+    let views = dss.all_bus_voltages();
+    assert_eq!(
+        views.len(),
+        exp.len(),
+        "{ctx}: bus count differs ({} vs {})",
+        views.len(),
+        exp.len()
+    );
+    for (i, (v, e)) in views.iter().zip(exp).enumerate() {
+        assert!(
+            v.name.eq_ignore_ascii_case(&e.name),
+            "{ctx}: bus {i} name differs: {} vs {}",
+            v.name,
+            e.name
+        );
+        let mut nodes = v.nodes.clone();
+        nodes.sort_unstable();
+        assert_eq!(
+            nodes, e.nodes,
+            "{ctx}: bus {} nodes differ (port insertion order {:?})",
+            e.name, v.nodes
+        );
+        assert_eq!(v.kv_base, e.kv_base, "{ctx}: bus {} kVBase differs", e.name);
+        let n = nodes.len();
+        for (arr, what) in [
+            (&e.pu_voltages, "puVoltages"),
+            (&e.vmag_angle, "VMagAngle"),
+            (&e.pu_vmag_angle, "puVMagAngle"),
+        ] {
+            assert_eq!(
+                arr.len(),
+                2 * n,
+                "{ctx}: bus {} {what} length {} is not 2*{n}",
+                e.name,
+                arr.len()
+            );
+        }
+        if voltages_excluded {
+            continue;
+        }
+        let base_factor = bus_base_factor(e.kv_base);
+        // `puVoltages` = `NodeV / BaseFactor` componentwise
+        // (`CAPI_Alt.pas:2277-2280` == `DBus.pas:423`, `cdivreal`): the
+        // node-voltage band divided by the same exact constant.
+        let actual: Vec<f64> = v.pu_voltages.iter().flat_map(|c| [c.re, c.im]).collect();
+        assert_complex_close(
+            &actual,
+            &e.pu_voltages,
+            tol.v_rel,
+            tol.v_abs / base_factor,
+            &format!("{ctx}: bus {} puVoltages", e.name),
+        );
+        for (k, node) in nodes.iter().enumerate() {
+            // `VMagAngle`: magnitude in volts — the reverse triangle inequality
+            // maps the node-voltage band onto it unchanged.
+            let (am, aa) = v.vmag_angle[k];
+            let (em, ea) = (e.vmag_angle[2 * k], e.vmag_angle[2 * k + 1]);
+            let allowed = tol.v_abs + tol.v_rel * em.abs();
+            assert!(
+                (am - em).abs() <= allowed,
+                "{ctx}: bus {} node {node} VMagAngle magnitude differs: {am} vs {em} \
+                 (|diff| = {:.3e} > allowed {allowed:.3e})",
+                e.name,
+                (am - em).abs()
+            );
+            bus_polar_close(
+                aa,
+                ea,
+                em.abs(),
+                tol,
+                &format!("{ctx}: bus {} node {node} VMagAngle", e.name),
+            );
+            // `puVMagAngle`: the same magnitude over `BaseFactor`, same angle.
+            let (apm, apa) = v.pu_vmag_angle[k];
+            let (epm, epa) = (e.pu_vmag_angle[2 * k], e.pu_vmag_angle[2 * k + 1]);
+            let allowed = tol.v_abs / base_factor + tol.v_rel * epm.abs();
+            assert!(
+                (apm - epm).abs() <= allowed,
+                "{ctx}: bus {} node {node} puVMagAngle magnitude differs: {apm} vs {epm} \
+                 (|diff| = {:.3e} > allowed {allowed:.3e})",
+                e.name,
+                (apm - epm).abs()
+            );
+            bus_polar_close(
+                apa,
+                epa,
+                epm.abs() * base_factor,
+                tol,
+                &format!("{ctx}: bus {} node {node} puVMagAngle", e.name),
+            );
+        }
+    }
+}
+
+/// Compare `Circuit.AllBusVmagPu` — every NODE's per-unit voltage magnitude in
+/// **convention 2** (bus-list order × the bus's internal node index, i.e. the
+/// `AllNodeNames` permutation), `CAPI_Circuit.pas:521-548` ==
+/// `DCircuit.pas:481-500`.
+///
+/// The band is per-entry `v_abs / BaseFactor(bus) + v_rel * |expected|`, the
+/// image of the node-voltage band under that bus's own scaling. The per-entry
+/// `BaseFactor` is rebuilt from the port's bus list — the same walk the engine
+/// accessor uses, whose per-bus `kv_base` [`compare_bus`] pins exactly against
+/// the oracle in the same block; the length identity
+/// `Σ nodes == len(AllBusVmagPu)` is asserted here, so the per-bus walk
+/// (convention 1) and the circuit walk (convention 2) cannot drift apart
+/// silently.
+///
+/// `voltages_excluded`: see [`compare_bus`] — the oracle length compare and the
+/// port-internal length identity both still run; only the per-entry values are
+/// dropped.
+pub fn compare_all_bus_vmag_pu(
+    dss: &Dss,
+    exp: &[f64],
+    tol: &Tolerances,
+    voltages_excluded: bool,
+    ctx: &str,
+) {
+    let actual = dss.all_bus_vmag_pu();
+    assert_eq!(
+        actual.len(),
+        exp.len(),
+        "{ctx}: AllBusVmagPu length differs ({} vs {})",
+        actual.len(),
+        exp.len()
+    );
+    // Convention 2 walks each bus's nodes by INTERNAL index, so the label below
+    // is the insertion-order node number — deliberately not the sorted one
+    // `compare_bus` uses. Built BEFORE the `voltages_excluded` return: the
+    // port-internal identity `Σ nodes == len(AllBusVmagPu)` (the circuit walk
+    // against the per-bus walk) is not an oracle comparison and holds on a
+    // suppressed case too (G1.4a audit settlement AC-7).
+    let mut base: Vec<(String, i32, f64)> = Vec::with_capacity(actual.len());
+    for v in dss.all_bus_voltages() {
+        let bf = bus_base_factor(v.kv_base);
+        for node in &v.nodes {
+            base.push((v.name.clone(), *node, bf));
+        }
+    }
+    assert_eq!(
+        base.len(),
+        actual.len(),
+        "{ctx}: AllBusVmagPu length {} disagrees with the bus-list node total {}",
+        actual.len(),
+        base.len()
+    );
+    if voltages_excluded {
+        return;
+    }
+    for (k, (a, e)) in actual.iter().zip(exp).enumerate() {
+        let (name, node, bf) = &base[k];
+        let allowed = tol.v_abs / bf + tol.v_rel * e.abs();
+        assert!(
+            (a - e).abs() <= allowed,
+            "{ctx}: AllBusVmagPu entry {k} ({name}.{node}) differs: {a} vs {e} \
+             (|diff| = {:.3e} > allowed {allowed:.3e})",
+            (a - e).abs()
+        );
+    }
+}
+
+#[cfg(test)]
+mod bus_comparator_tests {
+    use super::{
+        BusCap, Tolerances, bus_angle_band_deg, compare_all_bus_vmag_pu, compare_bus, tol_for,
+        wrapped_deg,
+    };
+    use dss_core::exec::Dss;
+
+    /// The deck of `exec/view.rs::bus_voltage_tests` (G1.4a F1), which exercises
+    /// all three orderings at once: `b3` is declared `.2.1.3` (insertion order
+    /// ≠ ascending node number) and `b1` gains nodes 2 and 3 only after `b2`
+    /// was handed its node ref (convention 2 ≠ `YNodeOrder`).
+    fn solved() -> Dss {
+        let mut dss = Dss::new();
+        for c in [
+            "clear",
+            "New circuit.busview basekv=12.47 pu=1.0 phases=3 bus1=sourcebus",
+            "New Line.l1 bus1=sourcebus.1 bus2=b1.1 phases=1 r1=0.1 x1=0.3 c1=0 length=1",
+            "New Line.l2 bus1=b1.1 bus2=b2.1 phases=1 r1=0.1 x1=0.3 c1=0 length=1",
+            "New Line.l3 bus1=sourcebus.2.3 bus2=b1.2.3 phases=2 r1=0.1 x1=0.3 c1=0 length=1",
+            "New Line.l4 bus1=sourcebus.1.2.3 bus2=b3.2.1.3 phases=3 r1=0.1 x1=0.3 c1=0 length=1",
+            "New Load.ld bus1=b1.1 phases=1 kv=7.2 kw=500 pf=0.95",
+            "Set voltagebases=[12.47]",
+            "CalcVoltageBases",
+            "Solve",
+        ] {
+            dss.command(c);
+        }
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    /// Build the capture the oracles would send for this deck out of the port's
+    /// own view — the positive control every negative drive below perturbs.
+    fn capture(dss: &Dss) -> Vec<BusCap> {
+        dss.all_bus_voltages()
+            .iter()
+            .map(|v| {
+                let mut nodes = v.nodes.clone();
+                nodes.sort_unstable();
+                BusCap {
+                    name: v.name.clone(),
+                    kv_base: v.kv_base,
+                    nodes,
+                    pu_voltages: v.pu_voltages.iter().flat_map(|c| [c.re, c.im]).collect(),
+                    vmag_angle: v.vmag_angle.iter().flat_map(|p| [p.0, p.1]).collect(),
+                    pu_vmag_angle: v.pu_vmag_angle.iter().flat_map(|p| [p.0, p.1]).collect(),
+                }
+            })
+            .collect()
+    }
+
+    /// [`wrapped_deg`] folds the ±180° seam (a phasor whose angle the two engines
+    /// report as +179.999… and −179.999… is 2e-3° apart, not 360°), and
+    /// [`bus_angle_band_deg`] is the exact arcsine image of the magnitude band,
+    /// saturating at 180° once the band swallows the magnitude.
+    #[test]
+    fn the_bus_angle_band_wraps_the_seam_and_images_the_magnitude_band() {
+        assert_eq!(wrapped_deg(0.0), 0.0);
+        assert_eq!(wrapped_deg(180.0), 180.0);
+        assert_eq!(wrapped_deg(-180.0), 180.0);
+        // The seam: +179.999 vs -179.999 is 0.002 deg apart.
+        let d = wrapped_deg(179.999 - (-179.999));
+        assert!((d.abs() - 0.002).abs() < 1e-9, "{d}");
+        // …and it stays exact through a full turn.
+        assert_eq!(wrapped_deg(360.0), 0.0);
+
+        let tol: Tolerances = tol_for("feeder"); // v_abs 1e-6 V, v_rel 1e-8
+        // Healthy magnitude: the band is the arcsine image, and within 2e-3
+        // relative of the linearized `compare_monitor` construction.
+        let mag = 7199.557856794634_f64;
+        let eps = tol.v_abs + tol.v_rel * mag;
+        let got = bus_angle_band_deg(mag, &tol);
+        assert_eq!(got, (eps / mag).asin().to_degrees());
+        let linear = 57.29577951308232 * eps / mag;
+        assert!((got / linear - 1.0).abs() < 2e-3, "{got} vs {linear}");
+        // At/below the absolute floor the angle carries no information: the
+        // band saturates at the full wrapped range (the magnitude itself is
+        // still pinned inside `eps` on its own row).
+        assert_eq!(bus_angle_band_deg(tol.v_abs / 2.0, &tol), 180.0);
+        assert_eq!(bus_angle_band_deg(0.0, &tol), 180.0);
+    }
+
+    /// Positive control: the comparator accepts the engine's own surface, and
+    /// still accepts it when every value is nudged by (just under) its band —
+    /// so the bands below are live, not vacuously wide.
+    #[test]
+    fn compare_bus_accepts_the_engines_own_surface_and_its_band() {
+        let dss = solved();
+        let tol = tol_for("feeder");
+        let exp = capture(&dss);
+        compare_bus(&dss, &exp, &tol, false, "positive control");
+        compare_all_bus_vmag_pu(
+            &dss,
+            &dss.all_bus_vmag_pu(),
+            &tol,
+            false,
+            "positive control",
+        );
+
+        // Nudge each channel by 90% of its own allowed band.
+        let nudged: Vec<BusCap> = exp
+            .iter()
+            .map(|e| {
+                let bf = if e.kv_base > 0.0 {
+                    1000.0 * e.kv_base
+                } else {
+                    1.0
+                };
+                let pu_step = 0.9 * tol.v_abs / bf;
+                let v_step = 0.9 * tol.v_abs;
+                BusCap {
+                    name: e.name.clone(),
+                    kv_base: e.kv_base,
+                    nodes: e.nodes.clone(),
+                    // The complex band is on |Δ|, so split the nudge over re/im.
+                    pu_voltages: e
+                        .pu_voltages
+                        .iter()
+                        .map(|x| x + pu_step / std::f64::consts::SQRT_2)
+                        .collect(),
+                    vmag_angle: e
+                        .vmag_angle
+                        .iter()
+                        .enumerate()
+                        .map(|(i, x)| if i % 2 == 0 { x + v_step } else { *x })
+                        .collect(),
+                    pu_vmag_angle: e
+                        .pu_vmag_angle
+                        .iter()
+                        .enumerate()
+                        .map(|(i, x)| if i % 2 == 0 { x + pu_step } else { *x })
+                        .collect(),
+                }
+            })
+            .collect();
+        compare_bus(&dss, &nudged, &tol, false, "band drive");
+    }
+
+    /// Non-vacuity (§1.1(f) corruption (i)): a per-unit base off by the
+    /// `1000×` factor — the divide that makes `puVoltages` per-unit — reds this
+    /// comparator while node voltages, Y, elements and `node_order` all stay
+    /// green (they never see `BaseFactor` at all).
+    #[test]
+    #[should_panic(expected = "puVoltages")]
+    fn a_pu_base_off_by_the_kv_factor_reds_the_bus_comparator() {
+        let dss = solved();
+        let mut exp = capture(&dss);
+        for x in &mut exp[1].pu_voltages {
+            *x *= 1000.0;
+        }
+        compare_bus(&dss, &exp, &tol_for("feeder"), false, "corruption (i)");
+    }
+
+    /// Non-vacuity (§1.1(f) corruption (ii)): the per-bus arrays delivered in
+    /// the bus's INSERTION order instead of ascending node number. Only
+    /// convention 1 sees it — `b3` is declared `.2.1.3`, and 83 767 corpus buses
+    /// carry such a non-prefix node set.
+    #[test]
+    #[should_panic(expected = "VMagAngle magnitude")]
+    fn insertion_order_instead_of_ascending_node_number_reds_the_bus_comparator() {
+        let dss = solved();
+        let mut exp = capture(&dss);
+        let b3 = exp
+            .iter_mut()
+            .find(|b| b.name == "b3")
+            .expect("bus b3 declared .2.1.3");
+        assert_eq!(b3.nodes, vec![1, 2, 3]);
+        // Insertion order 2,1,3 => swap the first two node slots (pairs).
+        for arr in [&mut b3.vmag_angle, &mut b3.pu_vmag_angle] {
+            arr.swap(0, 2);
+            arr.swap(1, 3);
+        }
+        compare_bus(&dss, &exp, &tol_for("feeder"), false, "corruption (ii)");
+    }
+
+    /// `voltages_excluded` suppresses the three continuous arrays and NOTHING
+    /// else: a corrupted `kv_base` (a discrete, solution-independent quantity)
+    /// still reds, so the rule cannot hide a bus-identity or voltage-base defect.
+    #[test]
+    #[should_panic(expected = "kVBase differs")]
+    fn the_voltage_exclusion_still_pins_kv_base() {
+        let dss = solved();
+        let mut exp = capture(&dss);
+        for x in &mut exp[1].pu_voltages {
+            *x *= 1000.0; // would red — but is excluded
+        }
+        exp[1].kv_base += 1.0; // …this must not be
+        compare_bus(&dss, &exp, &tol_for("feeder"), true, "exclusion drive");
+    }
+
+    /// Non-vacuity of the ANGLE channel (G1.4a audit settlement T2): the
+    /// magnitude rows are the ones the two committed corruptions above trip, so
+    /// the wrap-aware angle compare needs its own drive. 1e-3° is ~1700× the
+    /// band at 7.2 kV (`asin(eps/|V|)` ≈ 5.8e-7°).
+    #[test]
+    #[should_panic(expected = "VMagAngle: angle differs")]
+    fn an_out_of_band_angle_reds_the_bus_comparator() {
+        let dss = solved();
+        let mut exp = capture(&dss);
+        let b3 = exp
+            .iter_mut()
+            .find(|b| b.name == "b3")
+            .expect("bus b3 declared .2.1.3");
+        b3.vmag_angle[1] += 1e-3; // node 1's angle only — magnitudes untouched
+        compare_bus(&dss, &exp, &tol_for("feeder"), false, "angle drive");
+    }
+
+    /// …and the per-unit angle channel is compared too: the same nudge on
+    /// `puVMagAngle` alone (both magnitudes and the volt-angle left exact) reds.
+    #[test]
+    #[should_panic(expected = "puVMagAngle: angle differs")]
+    fn an_out_of_band_pu_angle_reds_the_bus_comparator() {
+        let dss = solved();
+        let mut exp = capture(&dss);
+        let b3 = exp
+            .iter_mut()
+            .find(|b| b.name == "b3")
+            .expect("bus b3 declared .2.1.3");
+        b3.pu_vmag_angle[1] += 1e-3;
+        compare_bus(&dss, &exp, &tol_for("feeder"), false, "pu angle drive");
+    }
+
+    /// The ±180° seam is folded, not compared raw: an oracle that reports every
+    /// angle a full turn away is accepted (`wrapped_deg`), while the 1e-3° drives
+    /// above still red — so the fold is not a free pass.
+    #[test]
+    fn a_full_turn_of_angle_is_accepted_by_the_bus_comparator() {
+        let dss = solved();
+        let mut exp = capture(&dss);
+        for b in &mut exp {
+            for arr in [&mut b.vmag_angle, &mut b.pu_vmag_angle] {
+                for (i, x) in arr.iter_mut().enumerate() {
+                    if i % 2 == 1 {
+                        *x -= 360.0;
+                    }
+                }
+            }
+        }
+        compare_bus(&dss, &exp, &tol_for("feeder"), false, "seam drive");
+    }
+
+    /// Non-vacuity of `compare_all_bus_vmag_pu` (G1.4a audit settlement T1): the
+    /// circuit-level walk (convention 2 — bus-list order × INTERNAL node index)
+    /// has its own accessor and its own comparator, and neither corruption above
+    /// touches it. 1e-3 pu is ~1e5× its per-entry band.
+    #[test]
+    #[should_panic(expected = "AllBusVmagPu entry")]
+    fn a_corrupted_all_bus_vmag_pu_entry_reds_the_comparator() {
+        let dss = solved();
+        let mut exp = dss.all_bus_vmag_pu();
+        assert!(exp.len() > 3, "deck must have several nodes");
+        exp[3] += 1e-3;
+        compare_all_bus_vmag_pu(&dss, &exp, &tol_for("feeder"), false, "vmagpu drive");
+    }
+
+    /// …and under `voltages_excluded` the length compare against the oracle
+    /// still runs (only the per-entry values are dropped), so a node the oracle
+    /// does not report cannot slip through a suppressed case.
+    #[test]
+    #[should_panic(expected = "AllBusVmagPu length differs")]
+    fn the_voltage_exclusion_still_pins_the_all_bus_vmag_pu_length() {
+        let dss = solved();
+        let mut exp = dss.all_bus_vmag_pu();
+        exp.pop();
+        compare_all_bus_vmag_pu(&dss, &exp, &tol_for("feeder"), true, "exclusion drive");
     }
 }
 

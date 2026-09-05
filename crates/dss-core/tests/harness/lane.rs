@@ -140,6 +140,21 @@ const LANE_SKIP_ELEM_POWERS: &[&str] =
 /// Which element sub-channels the corpus gate oracle-compares for the case
 /// `label` — [`ElemChannels::ALL`] everywhere except [`LANE_SKIP_ELEM_POWERS`],
 /// in either lane.
+///
+/// # G1.3a: the three derived polar channels do NOT join the exclusion
+///
+/// `CurrentsMagAng`, `VoltagesMagAng` and `Residuals`
+/// (`GOLDEN_REBASE_PLAN.md` G1.3a) stay compared on the two `newton*` decks.
+/// The staleness above is confined to the **cache-aware** read path —
+/// `Get_Powers`/`Get_Losses` reuse `ComputeIterminal`, which returns the stamped
+/// `Iterminal` untouched when the solution count already matches (r4133
+/// `Common/CktElement.pas:632-640`, called from `Get_Power` `:666` at `:680` and
+/// from `Get_Losses` `:707` at `:743`). The three new surfaces do not use it:
+/// upstream reads them through a scratch `GetCurrents`
+/// (r4133 `DDLL/DCktElement.pas:837`/`:1069`) and `VoltagesMagAng` only reads
+/// `NodeV` through `NodeRef` (`:1096-1100`), never `Iterminal`. So the two decks
+/// *gain* three oracle-compared channels here — a strengthening, not a widening
+/// — and [`ElemChannels::CURRENTS_ONLY`] keeps all three `true`.
 pub fn elem_channels_for(label: &str) -> ElemChannels {
     if LANE_SKIP_ELEM_POWERS.contains(&label) {
         ElemChannels::CURRENTS_ONLY
@@ -1022,12 +1037,37 @@ mod tests {
         for label in LANE_SKIP_ELEM_POWERS {
             let ch = elem_channels_for(label);
             assert!(ch.currents, "{label}: currents stay gated in every lane");
+            // Field by field, not just `== CURRENTS_ONLY`: comparing a value
+            // against the very constant it was built from is a tautology, so
+            // flipping a field OF the constant would silently drop that channel
+            // on every gated case in both lanes (G1.3a audit settlement).
+            assert!(
+                ch.currents_mag_ang && ch.voltages_mag_ang && ch.residuals,
+                "{label}: the G1.3a polar channels stay gated in every lane —                  they render `Currents`/`NodeV`, not the cache-aware                  `Get_Powers`/`Get_Losses` read the Newton staleness lives in"
+            );
+            assert!(
+                !ch.powers && !ch.losses,
+                "{label}: powers/losses are the excluded pair"
+            );
             assert_eq!(
                 ch,
                 ElemChannels::CURRENTS_ONLY,
                 "{label}: powers/losses are excluded in both lanes"
             );
         }
+        // The unexcluded default is every channel — the same anti-tautology
+        // rule applied to `ALL` itself, so a field flipped there cannot go
+        // unnoticed either.
+        let all = ElemChannels::ALL;
+        assert!(
+            all.currents
+                && all.powers
+                && all.losses
+                && all.currents_mag_ang
+                && all.voltages_mag_ang
+                && all.residuals,
+            "ElemChannels::ALL must compare every channel; a `false` here              removes that channel from every gated case in both lanes"
+        );
         // Nothing else is excluded — including a label that merely *contains* an
         // excluded one (the match is exact, not a substring).
         for label in [
