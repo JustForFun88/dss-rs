@@ -134,7 +134,7 @@ WP-G2 — condensed records" (full session records precede it there).
 
 **GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened 2026-08-08; since 2026-09-04 its chains run in parallel
 **lanes**, D7, merged one sub-step at a time). Landed: **G1.1**, killed and delivered by `R4133_PROPS_PLAN.md` RP4.1 2026-09-03
-(**G3.4**/**G3.5** unblocked); **G1.2** (the ESPVLControl deck) 2026-08-29; and, 2026-09-04/05, the rails plus eight surfaces,
+(**G3.4**/**G3.5** unblocked); **G1.2** (the ESPVLControl deck) 2026-08-29; and, 2026-09-04/05, the rails plus nine surfaces,
 each with its full record in [`golden-rebase.md`](docs/phase-records/golden-rebase.md) — **G1.0** (`c4b67a6e` + `42454b64`), the
 flag vocabulary, exclusion `channels`, the capture guard and the r4133 bridge, whose mode probe **discharges G1.11**; **G1.9**
 (`lane-s`, `9757d26c` + `f27f9598`), `Circuit` aggregates + `Solution` scalars; **G1.6b** (`lane-m`, `06808a6d` + `e1e18367` +
@@ -154,13 +154,17 @@ settlement `SC_STUDY_POPULATION` fail-on-stale (**0** new); and **G1.3d(ii)** (`
 `PhaseLosses` + the five control-derived scalars — **§G1.3d complete** — on a floor derived from `assert_power_close`, the first
 channel to join `LANE_SKIP_ELEM_POWERS`, with the per-edit control re-attach (`DIVERGENCES.md` L9), the disabled-OCP scan and
 adjacent defect A-1 fixed behind a fail-on-stale multi-control census (**0** new; its ten `phase_losses` widenings land as
-**eight**, D12/D14 having deleted the two capi GIC entries it also widened). The lanes' micro decks met here: corpus **526**
-cases / 522 live, `FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,ZSC,TOPOLOGY}_POPULATION` = (443, 312, 87, 44) and
-`FORCED_DERIVED_POPULATION` = (445, 314, 87, 44); no golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **103**, ledger **54** / 31
-causes; G1.3b/c, G1.4b/c, G1.6(ii), G1.8, G1.10–G1.11c and WP-G3–G5 remain.
+**eight**, D12/D14 having deleted the two capi GIC entries it also widened); and **G1.6(ii)** (`lane-m`, `3e65ae2d` + `572954e6` +
+`fc4dfa73`), the eight per-bus reliability columns inside G1.6(i)'s payload — 6 cases / 50 capi + 84 r4133 buses, exact, keys
+`bus:<bus>:<field>` on the existing `reliability` field, plus the **D20/D22** engine fix (`calc_reliability_indices` recomputes
+`TotalUpDownstreamCustomers`, r4133 `EnergyMeter.pas:2466-2468`) whose only footprint is a capi divergence under `RelCalc
+<restore>`, unreachable on the corpus (`DIVERGENCES.md` §D22) — **the PD/meter chain closes here** (**0** new). The lanes' micro
+decks met here: corpus **526** cases / 522 live, `FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,ZSC,TOPOLOGY}_POPULATION` = (443,
+312, 87, 44) and `FORCED_DERIVED_POPULATION` = (445, 314, 87, 44); no golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **111**,
+ledger **54** / 31 causes; G1.3b/c, G1.4b/c, G1.8, G1.10–G1.11c and WP-G3–G5 remain.
 
-**Next.** Element lane **G1.3b** → G1.3c; `lane-m` **G1.6(ii)** (the eight per-bus reliability columns + `Bus.Int_Duration`, on G1.6(i)'s population
-and protocol — it also owns or hands on the AT-1 zone-boundary decision below); `lane-s` **G1.8** (incidence/Laplacian) → G1.10a–c; bus lane **G1.4c**
+**Next.** Element lane **G1.3b** → G1.3c; the PD/meter lane's chain is complete with G1.6(ii)
+(the AT-1 zone-boundary decision it hands on is owned by `ORPHANED_GAPS.md` §1.19); `lane-s` **G1.8** (incidence/Laplacian) → G1.10a–c; bus lane **G1.4c**
 (D8) → G1.4b, then WP-G3–G5; queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children, needs
@@ -321,11 +325,13 @@ each row's measured cost.
   (first seen at G1.2, 2026-08-29). Unfiltered `cargo test --workspace` runs intermittently leave
   untracked deck-written exports in the tracked corpus tree — nearly always
   `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*` / `AutoHLT_*` `.txt`, from the
-  decks' own `export … file=` lines). **Twenty-eight sightings** 2026-08-29 … 2026-09-05 (G1.2 ×2,
+  decks' own `export … file=` lines). **Thirty sightings** 2026-08-29 … 2026-09-05 (G1.2 ×2,
   §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2, §RP3.10 ×3, §RP5.1 ×1, G1.0 ×2, G1.9 ×2, G1.6b ×1, G1.7 ×3,
   the G1.7 merge ×1, G1.6(i) ×2 — one of those, after a settlement gate + `lane_diff`, was 22 `.txt` plus a 0-byte
   `controls/gfm/DA3ABD.tmp`, a new shape — the G1.6(i) merge ×1, the G1.5 merge ×2 (two `AutoHLT_*`, then three `auto3bus_*`), the
-  G1.3d(ii) merge ×2 (`AutoAuto_HL_current.txt` + `auto3bus_load_voltage.txt`; the first alone again at the gate)), 1 … 36 files, varying between runs of the *same*
+  G1.3d(ii) merge ×2 (`AutoAuto_HL_current.txt` + `auto3bus_load_voltage.txt`; the first alone again at the gate), G1.6(ii) ×1 (12: 5 `AutoTrans` exports
+  + 7 `IEEE8500u_Mon_storage_*` csv; its settlement gate then clean first attempt), the G1.6(ii) merge ×1 (8 `auto3bus_*` at the five-command gate)),
+  1 … 36 files, varying between runs of the *same*
   tree (measured at §RP3.13) and once with an unreproducible `corpus_gate` `137
   passed; 1 failed`; every set was removed before its commit and both lanes were green with the
   files present, no tracked corpus or golden byte ever moving, so the leak costs hygiene only. **It
@@ -338,19 +344,13 @@ each row's measured cost.
   + restore) owes a gate-contention measurement in a file every lane is editing (**D7**); start
   with `DSS_GATE_JOBS=1` per G2.2d.
 - **`RelCalc` leaks reliability accumulators across meter zones — engine finding, OPEN
-  (GOLDEN_REBASE G1.6(i) audit settlement AT-1, 2026-09-05).** `DoLambdaCalcs` zeroes only
-  `BusFltRate`/`Bus_Num_Interrupt` circuit-wide (`ExecHelper.pas:4432-4441`);
-  `BusTotalMiles` and its siblings are zeroed per meter on the FROM bus of that meter's
-  `SequenceList` (`EnergyMeter.pas:2471-2472` → `PDElement.pas:313-328`) and read on the TO
-  bus (`:105-111`), so a zone-boundary bus is zeroed by the inner meter and read by the
-  outer one: nested pair, `Bus.TotalMiles(src)` = `2.0 → 3.0 → 3.0` declared outer-first but
-  `3.0` from run 1 inner-first — **measured identical on both oracles**, so the port mirrors
-  them. Intent contradicts behaviour (r4133's own "Zero reliability accumulators" comment) →
-  upstream defect `to_opendss/61-relcalc-cross-zone-accumulator-leak.md`, pinned with its
-  run-count and declaration-order arms. Unfixable inside G1.6(i) (R-14(d)); the correct
-  value for a nested head bus needs a semantics decision (3.0 vs 2.0 at the zone boundary —
-  circuit-wide zeroing fixes idempotence, not order-independence). **G1.6(ii) gates the
-  `Bus.*` columns this perturbs** — it owns that decision or hands it on.
+  (GOLDEN_REBASE G1.6(i) audit settlement AT-1, 2026-09-05).** `BusTotalMiles` and its siblings are
+  zeroed per meter on its `SequenceList`'s FROM bus and read on the TO bus, so a zone-boundary bus
+  is zeroed by the inner meter and read by the outer one — measured identical on both oracles, so
+  the port mirrors them; upstream defect `to_opendss/61-relcalc-cross-zone-accumulator-leak.md`,
+  pinned with its run-count and declaration-order arms. What is open is the *correct* value at a
+  nested head bus; G1.6(ii) **handed it on** (2026-09-05) — no WP-G1 population holds a witness
+  deck. **Owner: `ORPHANED_GAPS.md` §1.19** (full statement, citations and priority there).
 
 **Carried-forward and residual-floor items — the rows still open.** Full text, closed rows
 and all: [`follow-ups-carried.md`](docs/phase-records/follow-ups-carried.md).

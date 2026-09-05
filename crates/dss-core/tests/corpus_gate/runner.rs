@@ -418,7 +418,7 @@ pub(crate) fn compare_capture(
         // The abort (errno 52902, a zone with no OCP device) is a compared
         // observable, not a failure: the port pushes its message onto
         // `Dss::errors` (`exec/solve.rs::do_relcalc_cmd` ->
-        // `solution/meters/reliability.rs:44-50`, one per failing meter) and
+        // `solution/meters/reliability.rs:53-57`, one per failing meter) and
         // `compare_reliability` asserts boolean+message symmetry against the
         // channel. Reading the new lines here is also what keeps the next step's
         // `baseline_errors` assert meaningful - and there is no next step.

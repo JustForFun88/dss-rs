@@ -233,7 +233,7 @@ today:
 |---|---|---|---|
 | 1 | per-element SeqCurrents / SeqVoltages / SeqPowers / CplxSeq* / Residuals / *MagAng / TotalPowers | `tests/golden/reports/export_seq*` | G1.3a–c |
 | 2 | Bus Zsc1 / Zsc0 / ZscMatrix / YscMatrix / Isc / Voc | `fault_study` golden | G1.5 |
-| 3 | meter extras: CalcCurrent, AllocFactors, Totals, SAIFI/SAIFIKW/SAIDI/CustInterrupts, active-section fields (fastdss captures the FIRST section only — parity = at least that), **ordered** zone vectors (the live gate already set-compares `AllBranchesInZone`/`AllEndElements`/`ZonePCE` — `harness/mod.rs:2022-2041`, `oracle_server.py:226-246`; the gap is order + the extras, NOT the lists' existence), **plus the per-bus reliability columns** `Bus.Lambda / N_interrupts / N_Customers / Cust_Interrupts / Cust_Duration / Int_Duration / TotalMiles / SectionID` (`IBus._columns` on `origin/fastdss` — the very columns `Export BusReliability` renders and the `BUS_INT_DURATION` surface, hence the G2.2a-before-G1.6 ordering). CAIDI does **not** exist in the DSS-Python API on either branch — it is gated only if the r4133 DLL exposes it (measure in G1.11c), else documented as not-comparable (**as executed 2026-09-05, part (i)**: the set compare is `compare_meter`'s `cmp_members`, `harness/mod.rs:6064-6079` — **not** `:2022-2041`, a stale citation — and the ordered arm is `compare_reliability`, `harness/mod.rs:8755-8790`; CAIDI **is** compared, as EnergyMeter property #22 through `compare_all_properties` on both channels, so "not-comparable" was never written; see §G1.6) | `reliability`/`export_busreliability*` goldens | G1.6 |
+| 3 | meter extras: CalcCurrent, AllocFactors, Totals, SAIFI/SAIFIKW/SAIDI/CustInterrupts, active-section fields (fastdss captures the FIRST section only — parity = at least that), **ordered** zone vectors (the live gate already set-compares `AllBranchesInZone`/`AllEndElements`/`ZonePCE` — `harness/mod.rs:2022-2041`, `oracle_server.py:226-246`; the gap is order + the extras, NOT the lists' existence), **plus the per-bus reliability columns** `Bus.Lambda / N_interrupts / N_Customers / Cust_Interrupts / Cust_Duration / Int_Duration / TotalMiles / SectionID` (`IBus._columns` on `origin/fastdss` — the very columns `Export BusReliability` renders and the `BUS_INT_DURATION` surface, hence the G2.2a-before-G1.6 ordering). CAIDI does **not** exist in the DSS-Python API on either branch — it is gated only if the r4133 DLL exposes it (measure in G1.11c), else documented as not-comparable (**as executed 2026-09-05, part (i)**: the set compare is `compare_meter`'s `cmp_members`, `harness/mod.rs:6064-6079` — **not** `:2022-2041`, a stale citation — and the ordered arm is `compare_reliability`, `harness/mod.rs:8755-8790`; CAIDI **is** compared, as EnergyMeter property #22 through `compare_all_properties` on both channels, so "not-comparable" was never written; see §G1.6) (**as executed 2026-09-05, part (ii)**: the eight per-bus columns ride inside part (i)’s payload — compared exactly, **0** ledger rows, `WP_G1_MODES` 103 → 111; the G2.2a-before-G1.6 ordering held and the multi-meter `Bus_Int_Duration` divergence is unreachable on the flagged population, so no golden byte moved) | `reliability`/`export_busreliability*` goldens | G1.6 |
 | 4 | Topology interface: NumLoops, NumIsolatedBranches/Loads, AllLoopedPairs, AllIsolatedBranches/Loads | `show_topology`/`show_isolated` goldens | G1.7 |
 | 5 | Bus.Distance, AllBusDistances, AllNodeDistances | `profile` goldens | G1.4 |
 | 6 | Solution.IncMatrix/IncMatrixCols/IncMatrixRows/Laplacian (fastdss-branch-only additions — exactly why the reference is `origin/fastdss`) | `inc_matrix/` goldens | G1.8 |
@@ -986,6 +986,47 @@ renders.
 > — so the mask arm is pinned in-engine (`meter_totals_is_the_masked_register_sum`) and the
 > gate-level demo is a value drive instead. Exact float compares on this surface (and on G1.6b's)
 > depend on `serde_json`'s `float_roundtrip`: decision **D11/D18**, committed on this lane.
+> Full record: `docs/phase-records/golden-rebase.md` §"GOLDEN_REBASE WP-G1 — records".
+
+> **As executed — part (ii) (2026-09-05, lane `lane-m`; decisions D7, D20, D22).** The eight
+> per-bus columns `Export BusReliability` renders (`IBus._columns` on `origin/fastdss`) —
+> `Lambda`, `N_interrupts`, `N_Customers`, `Cust_Interrupts`, `Cust_Duration`, `Int_Duration`,
+> `TotalMiles`, `SectionID` — ride **inside** part (i)'s reliability payload
+> (`ReliabilityCap.buses`), so they inherit its protocol unchanged: `RelCalc` once on the last
+> step, payload on that checkpoint only, the same **manifest-set, never forced** population of
+> **6 cases** (4 capi-gating / 50 buses, 5 r4133-gating / 84 buses; corpus unchanged at 526 cases on the merged tree
+> and no `FORCED_*` lock moves). No flag is added — part (i)'s `compare_reliability` carries both
+> arms. Compared **exactly** (`rel = abs = 0`, no `Tolerances` parameter at all; derivation in
+> `tests/TOLERANCE_NOTES.md` §"The per-bus columns (G1.6(ii))"), with bus count and name sequence
+> asserted *before* the ledger hook, ledger keys `bus:<busname>:<field>` on the existing
+> `reliability` per-value field (**no `LEDGER_FIELDS` change**) and the meter namespace proved
+> disjoint. **0 ledger entries** (budget 10) — the two oracles return the whole surface
+> bit-identically (400/400 shared cells equal under `==`). `WP_G1_MODES` **103 → 111**: six `BusF`
+> arms (`DDLL/DBus.pas:129/136/143/150/157/164`) and two `BusI` arms (`:60/67`), all
+> `ModeEffect::Pure` and all `Served` on the vendored DLL — **no r4133 decline is owed** (D2);
+> `EXCLUDED_WRITE_MODES` gains a fifth row, `Bus F:4` (`Bus.Y - Write`, `DBus.pas:113-121`), a
+> *shape* collision with `Bus I:4` rather than a reader's write twin, pinned by an explicit shape
+> assertion. `SectionID = -1` is legal (`PDElements/PDElement.pas:326`) and collides with the `I`
+> sentinel, so that row's identity is proven by value; no bus on the six decks reads it.
+>
+> * **The dossier's "8 mandatory exclusions" budget is superseded, and the Q4 measurement inverts
+>   the brief's premise.** The multi-meter `Bus_Int_Duration` divergence needs two meters **and** a
+>   completed section allocation; of the six flagged cases exactly one has two meters
+>   (`midi_energymeter`) and both abort at 52902 before any section exists, so it is unreachable
+>   here — and on the four `DOCTechNote` decks where it *is* reachable (out of the population by
+>   D-i-2) repeated fresh oracle processes on both channels returned identical vectors, i.e. the
+>   deterministic in-range regime (a), not the nondeterministic OOB regime (b). Nothing is owed;
+>   the witness stays the `export_busreliability_multimeter` golden and its G2.2a pin.
+> * **One 1:1 port gap was found in this sub-step's own code path and fixed here** (D20, CLAUDE.md
+>   "port gaps immediately"), in its own commit ahead of the surface commit:
+>   `calc_reliability_indices` regains `AssumeRestoration := AssumeRestoration_input;` +
+>   `TotalUpDownstreamCustomers;` (r4133 `Meters/EnergyMeter.pas:2466-2468`), the assignment moving
+>   from the caller into the callee as r4133 places it. **D22 ratifies it as measured, not as
+>   "zero footprint":** zero on goldens, corpus, ledger and locks, but non-zero on one in-engine
+>   dss_capi-pinned literal under `RelCalc <restore>` — a **measured capi divergence, unreachable
+>   on the corpus** (dss_capi 0.14.5 `EnergyMeter.pas:2411-2427` dropped the call; r3723, r4088 and
+>   r4133 all agree with the port). The literal is re-pinned with both numbers, never relaxed;
+>   `docs/upgrade/DIVERGENCES.md` §D22 records it and no EPRI report is owed.
 > Full record: `docs/phase-records/golden-rebase.md` §"GOLDEN_REBASE WP-G1 — records".
 
 ### G1.6b — PDElements interface

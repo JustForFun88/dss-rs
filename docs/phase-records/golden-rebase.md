@@ -3290,3 +3290,51 @@ row against the pre-fix lock.
   (diff-mapped) so `operational_docs_line_citations_point_at_the_line_they_name` is green.
 
   merge: lane lane-e -> update, see git log
+
+- **G1.6(ii)** (2026-09-05, lane `lane-m`; **D7**, **D20**/**D22**) — the eight per-bus reliability
+  columns (`IBus._columns`; r4133 `DDLL/DBus.pas:60-73`, `:129-170`) live-compared on both oracle
+  channels inside part (i)'s payload: no new flag, same `RelCalc`-once protocol, same 6-case
+  population (4 capi / 50 buses, 5 r4133 / 84), **exactly** (`rel = abs = 0`), keys
+  `bus:<bus>:<field>` on the existing `reliability` field — **0 ledger entries**, no golden byte, no
+  lock moved; `WP_G1_MODES` 103 → **111**, `EXCLUDED_WRITE_MODES` gains `Bus F:4`. **D20/D22**, its
+  own commit ahead of the surface: `calc_reliability_indices` regains `AssumeRestoration := …` +
+  `TotalUpDownstreamCustomers` (r4133 `Meters/EnergyMeter.pas:2466-2468`) — a **measured capi
+  divergence, unreachable on the corpus** (`docs/upgrade/DIVERGENCES.md` §D22). The pins, the Q4
+  `Bus.Int_Duration` measurement and the exactness derivation: `TESTING.md` §"The per-bus
+  reliability arm", `tests/TOLERANCE_NOTES.md` §"The per-bus columns (G1.6(ii))",
+  `GOLDEN_REBASE_PLAN.md` §G1.6 as-executed (ii). Commits: `3e65ae2d` (D20/D22) + `572954e6`
+  (surface) + `fc4dfa73` (audit settlement) **+ docs**. Gate (both lanes, after the settlement): the
+  five commands exit 0, **6 307 passed / 0 failed / 5 ignored** over 78 binaries, corpus gate
+  525/525, ledger 54 entries / 0 stale, no golden byte and no lock moved; `lane_diff` `VERDICT:
+  PASS`, max |Δ| = 0 on all eight kinds (525 cases / 3 221 054 records).
+
+  *Audit settlement* (2026-09-05, `fc4dfa73`): 11 findings — **9 fixed / 2 recorded /
+  0 refuted**. Fixed: the roll-up guard's "dead code" comment (it is live — `RelCalc restore=y` takes
+  it); the restore-regime per-bus columns, now asserted for the PORT exactly in both regimes; the
+  `NaN`-agreement claim, corrected to what the transports do (a non-finite fails the decode loudly)
+  and pinned by `a_non_finite_reliability_cell_fails_the_decode_on_both_transports`; the eight-column
+  non-vacuity, moved out of a log into `every_bus_reliability_column_is_compared_per_bus`; the
+  mode-table sum; this record's length, shas and gate; a named owner for the zone-boundary decision
+  (`ORPHANED_GAPS.md` §1.19); and the r4133 half of the four pin tables re-measured from scratch here
+  — a fresh `epri-worker` capture reproduces all **55** pinned per-bus tuples bit-for-bit.
+  **Recorded:** the pre-existing corpus dropping leak (an oracle-side I/O race on a deck-written
+  export, unowned by this sub-step — droppings deleted, never staged); and the citation checker
+  staying Rust-only, since `.pas` lives in the gitignored `.inputs/` — the 115 Pascal citations this
+  sub-step adds were swept mechanically here and all resolve.
+
+  Merged-tree checks: `fmt` + `clippy` clean in both lanes, `corpus_gate` **526/526** cases
+  (282 / 0 / 0 in the default lane), ledger 54 entries / 1 564 hits / 0 stale; every census
+  re-derived on the merged tree is unmoved — bus reliability capi **4** payload(s) / **50** bus(es)
+  and r4133 **5** / **84**, control census **298 536 / 3 190 / 18 / 18**, `SC_STUDY_POPULATION`
+  (10, 646), D15 (16, 135) / D16 (8, 96), every `FORCED_*` population, `WP_G1_MODES` **111**;
+  `population.lock.json` regenerated with **no diff**, `golden.lock.json` untouched, and the 26
+  `file:LINE` citations the merge shifted re-pointed. Two cross-lane marker collisions fixed in
+  `corpus_gate.rs`: this sub-step's nested `"buses"` key made both slot markers of
+  `the_bus_capture_reads_in_one_fixed_order_on_both_transports` ambiguous against G1.5's
+  parenthesised checkpoint slot — re-spelled `capture_all_buses(ckt, want_zsc)` and `"buses": (`.
+
+  Merged-tree gate (both lanes): the five commands exit 0, **7 436 passed / 0 failed / 5 ignored**
+  per lane; `lane_diff` `VERDICT: PASS`, max |Δ| = 0 on all eight kinds (526 cases /
+  3 221 146 records).
+
+  merge: lane lane-m -> update, see git log
