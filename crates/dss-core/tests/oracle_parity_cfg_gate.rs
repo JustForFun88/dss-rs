@@ -4916,3 +4916,228 @@ fn every_pin_the_g13d2_record_names_exists_and_is_cited() {
         bad.join("\n  ")
     );
 }
+
+/// Every test the GOLDEN_REBASE **G1.3b** record, `TESTING.md`,
+/// `tests/TOLERANCE_NOTES.md` and the widened `ledger.json` entries name as a
+/// pin still exists, in the file they say it lives in — G1.0's registry rule
+/// ([`every_pin_the_g10_record_names_exists_and_is_cited`]) applied to the
+/// per-element sequence surface (G1.3b audit settlement, 2026-09-05: the
+/// sub-step shipped without it).
+///
+/// It is load-bearing for the same reason its four siblings are, and one more:
+/// G1.3b adds **no** ledger entry at all, so for each of its three cross-channel
+/// divergences — r4133's 1φ-posseq slot/stride defect, the n/A `SeqPowers`
+/// sentinel fold and the truncated-matrix `SEQ_C012` term — the *only* thing
+/// standing between a deleted pin and an unproven claim is the pin. The two
+/// group rows also own the EXACT member counts of the two modules, so a pin
+/// dropped from a counted group is visible even when no name here mentions it.
+#[test]
+fn every_pin_the_g13b_record_names_exists_and_is_cited() {
+    const ENGINE: &str = "crates/dss-core/src/exec/tests/derived_seq.rs";
+    const HARNESS: &str = "crates/dss-core/tests/harness/mod.rs";
+    const LEDGER: &str = "crates/dss-core/tests/corpus_gate/ledger.rs";
+    const G13B_PINS: &[(&str, &str)] = &[
+        // Engine — the accessor's own three arms (`crate::exec::tests::derived_seq`).
+        ("the_seq_arm_follows_nphases_and_the_circuit_model", ENGINE),
+        (
+            "seq_powers_positive_sequence_lands_in_the_positive_slot_of_each_terminal",
+            ENGINE,
+        ),
+        (
+            "the_gic_posseq_deck_keeps_every_terminal_power_in_its_positive_slot",
+            ENGINE,
+        ),
+        (
+            "seq_powers_na_sentinel_is_r4133s_minus_one_plus_zero_j",
+            ENGINE,
+        ),
+        (
+            "seq_currents_and_seq_voltages_are_one_on_the_na_arm",
+            ENGINE,
+        ),
+        (
+            "seq_currents_are_the_012_magnitudes_of_the_terminals_own_conductors",
+            ENGINE,
+        ),
+        ("seq_powers_are_three_times_the_012_kva_product", ENGINE),
+        ("a_never_enabled_element_has_no_seq_payload", ENGINE),
+        ("a_zero_terminal_element_has_no_seq_slots", ENGINE),
+        // Comparator — the floors and their tightness (`harness::seq_floors`).
+        (
+            "the_c012_constant_is_the_matrix_difference_row_sum",
+            HARNESS,
+        ),
+        (
+            "the_c012_bound_is_attained_by_the_aligned_phase_vector",
+            HARNESS,
+        ),
+        ("the_sequence_magnitude_base_is_not_a_bound", HARNESS),
+        (
+            "the_012_band_base_is_the_phase_magnitude_not_the_sequence_magnitude",
+            HARNESS,
+        ),
+        (
+            "the_seq_power_band_is_the_image_of_its_two_factor_bands",
+            HARNESS,
+        ),
+        (
+            "the_r4133_channel_carries_the_extra_truncated_matrix_term",
+            HARNESS,
+        ),
+        ("an_error_inside_the_band_passes", HARNESS),
+        // … the three arms, compared discretely.
+        (
+            "a_nonzero_zero_sequence_slot_on_the_posseq_arm_reds",
+            HARNESS,
+        ),
+        ("the_r4133_posseq_slot_layout_reds", HARNESS),
+        ("the_na_power_sentinel_fold_is_channel_scoped", HARNESS),
+        ("the_capi_sentinel_on_the_r4133_channel_fails", HARNESS),
+        ("the_port_emitting_the_capi_sentinel_fails", HARNESS),
+        (
+            "a_port_claiming_the_na_arm_against_real_values_fails",
+            HARNESS,
+        ),
+        (
+            "a_port_claiming_the_posseq_arm_against_the_na_capture_fails",
+            HARNESS,
+        ),
+        ("an_arm_that_contradicts_nphases_fails", HARNESS),
+        (
+            "the_capi_default_result_sentinel_is_the_only_extra_zero_terminal_shape",
+            HARNESS,
+        ),
+        // … and the D-b1 population guard, both directions plus D24's rail.
+        (
+            "the_seq_arm_population_holds_at_the_measured_census",
+            HARNESS,
+        ),
+        (
+            "the_seq_arm_population_fires_when_another_deck_brings_the_arm_to_r4133",
+            HARNESS,
+        ),
+        (
+            "the_seq_arm_population_fires_when_the_r4133_arm_stops_gating",
+            HARNESS,
+        ),
+        (
+            "the_seq_arm_population_fires_when_the_capi_arm_is_never_reached",
+            HARNESS,
+        ),
+        (
+            "the_seq_arm_population_fires_when_the_capi_arm_collapses",
+            HARNESS,
+        ),
+        (
+            "the_seq_arm_population_fires_when_nothing_was_counted",
+            HARNESS,
+        ),
+        (
+            "a_fixture_call_on_the_r4133_posseq_arm_does_not_move_the_census",
+            HARNESS,
+        ),
+        // The three `seq_*` ledger sub-channels (envelope + rewrite + coverage).
+        (
+            "the_seq_envelope_bands_the_sample_and_attributes_the_exceed",
+            LEDGER,
+        ),
+        (
+            "the_seq_envelope_still_fails_outside_the_committed_bound",
+            LEDGER,
+        ),
+        (
+            "the_seq_envelope_carries_the_truncated_matrix_term_on_r4133_only",
+            LEDGER,
+        ),
+        ("a_masked_seq_channel_is_not_envelope_checked", LEDGER),
+        ("an_unmasked_seq_channel_still_hits_the_envelope", LEDGER),
+        (
+            "a_seq_scope_rewrites_the_capture_in_the_wires_own_units",
+            LEDGER,
+        ),
+        (
+            "the_seq_rewrite_and_the_seq_envelope_cover_the_same_slots",
+            LEDGER,
+        ),
+        (
+            "an_exclusion_scope_neutralizes_the_whole_posseq_seq_powers_array",
+            LEDGER,
+        ),
+    ];
+    // `(module path as the prose spells it, file, EXACT member count, rows this
+    // registry must carry inside that module)` — the G1.3d(ii) shape, counted
+    // per group and not per file.
+    const G13B_PIN_GROUPS: &[(&str, &str, usize, usize)] = &[
+        ("exec::tests::derived_seq", ENGINE, 9, 9),
+        ("harness::seq_floors", HARNESS, 36, 23),
+    ];
+    let root = repo_root();
+    let prose: String = [
+        "TESTING.md",
+        "docs/phase-records/golden-rebase.md",
+        "tests/TOLERANCE_NOTES.md",
+        "tests/corpus/ledger.json",
+    ]
+    .iter()
+    .map(|d| std::fs::read_to_string(root.join(d)).unwrap_or_else(|e| panic!("read {d}: {e}")))
+    .collect();
+    let read = |file: &str| {
+        std::fs::read_to_string(root.join(file)).unwrap_or_else(|e| panic!("read {file}: {e}"))
+    };
+    let mut bad = Vec::new();
+    let mut cited = 0usize;
+    for (pin, file) in G13B_PINS {
+        let src = read(file);
+        let decl = format!("fn {pin}(");
+        if src.matches(&decl).count() != 1 {
+            bad.push(format!(
+                "{pin}: expected exactly one `{decl}` in {file}, found {}",
+                src.matches(&decl).count()
+            ));
+        }
+        if prose.contains(*pin) {
+            cited += 1;
+        }
+    }
+    for (group, file, want, own) in G13B_PIN_GROUPS {
+        if !prose.contains(*group) {
+            bad.push(format!(
+                "{group}: no longer named by TESTING.md, the phase record, \
+                 TOLERANCE_NOTES or the ledger — a pin group nothing claims is not a group"
+            ));
+        }
+        let src = read(file);
+        let member = group.rsplit("::").next().unwrap_or(group);
+        let body = match src.split_once(&format!("mod {member} {{")) {
+            Some((_, rest)) => rest.split("\n}").next().unwrap_or(rest).to_string(),
+            None => src.clone(),
+        };
+        let got = body.matches("#[test]").count();
+        if got != *want {
+            bad.push(format!(
+                "{group}: the prose claims {want} pins, the module carries {got} — \
+                 re-count the record and this table in the same commit"
+            ));
+        }
+        let rows = G13B_PINS
+            .iter()
+            .filter(|(p, f)| f == file && body.contains(&format!("fn {p}(")))
+            .count();
+        if rows < *own {
+            bad.push(format!(
+                "{group}: {rows} registry rows inside that module against {own} \
+                 pins this sub-step claims there"
+            ));
+        }
+    }
+    assert!(
+        cited >= 8,
+        "the prose no longer names ANY G1.3b pin individually ({cited} found) — \
+         either the record was rewritten or this registry drifted off the sub-step"
+    );
+    assert!(
+        bad.is_empty(),
+        "G1.3b pin registry is stale (rename/delete the pin AND its prose in one commit):\n  {}",
+        bad.join("\n  ")
+    );
+}

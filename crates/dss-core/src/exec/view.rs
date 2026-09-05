@@ -51,6 +51,42 @@ pub struct MeterZoneView {
     pub register_names: Vec<String>,
 }
 
+/// Which arm of the oracles' per-element symmetrical-component transform an
+/// element takes: the three-way branch that all three sequence surfaces open
+/// with — `NPhases <> 3` first, then `(NPhases = 1) and PositiveSequence`.
+///
+/// r4133 `Version8/Source/DDLL/DCktElement.pas:41`/`:43` (`CalcSeqCurrents`),
+/// `:92`/`:94` (`CalcSeqVoltages`) and `:752`/`:754` (`CktElementV` mode `9`,
+/// `SeqPowers`, which inlines its own copy of the same branch); capi
+/// `CAPI/CAPI_Alt.pas:245`/`:248` (`_CalcSeqCurrents`), `:305`/`:308`
+/// (`CalcSeqVoltages`) and `:551`/`:553` (`Alt_CE_Get_SeqPowers_`).
+///
+/// Both engines branch on the element's own `NPhases` and on the **circuit**'s
+/// `PositiveSequence` flag (`Set CktModel=Positive`,
+/// `Executive/ExecOptions.pas:786`; also set by `MakePosSeq`,
+/// `Executive/ExecHelper.pas:3077`) — never on a value — so the arm is a
+/// discrete property of the model and the live gate compares it as a flag with
+/// zero tolerance. Each arm answers with a different *shape*: a transform, one
+/// populated slot per terminal with exact zeros beside it, or a constant
+/// sentinel. That is what makes the selector checkable at all — no capture
+/// field spells the arm out, so the comparator derives it from the port's own
+/// structural state and then asserts the shape the oracle actually returned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeqArm {
+    /// `NPhases = 3`: the 012 transform of the terminal's first three
+    /// conductors.
+    ThreePhase,
+    /// `NPhases = 1` in a positive-sequence circuit: no transform runs — the
+    /// single conductor's own quantity is reported as the positive-sequence
+    /// component of its terminal, and the zero- and negative-sequence slots
+    /// stay exactly zero.
+    PosSeqSinglePhase,
+    /// Anything else (2-phase, 4-or-more-phase, or 1-phase in a circuit that is
+    /// not positive-sequence): upstream fills the whole result with an "n/A"
+    /// sentinel instead of computing anything.
+    NotAvailable,
+}
+
 /// Per-element snapshot for the golden feeder gate: mirrors dss-python's
 /// `CktElement.Powers`/`Currents` over the oracle's `First/Next` iteration
 /// (= creation) order.
@@ -220,6 +256,51 @@ pub struct ElementSnapshot {
     /// `DDLL/DCktElement.pas:207-221` (mode `7`), capi
     /// `CAPI/CAPI_CktElement.pas:713-734`.
     pub has_switch_control: bool,
+    /// Which arm of the sequence transform this element takes — derived from
+    /// `n_phases` and the circuit's positive-sequence flag exactly as both
+    /// oracles derive it (see [`SeqArm`]). Not an oracle *surface* of its own:
+    /// it is the discrete selector behind the three arrays below, compared by
+    /// the live gate through the shape each arm forces on them.
+    pub seq_arm: SeqArm,
+    /// `CktElement.SeqCurrents`: `Cabs` of the terminal current's
+    /// symmetrical components, `(0, +, -)` per terminal, conductor-minor inside
+    /// terminal-major — length `3 * n_terms` (amps). r4133
+    /// `DDLL/DCktElement.pas:700-737` (`CktElementV` mode `8`) over
+    /// `CalcSeqCurrents` `:30-80`; capi `CAPI/CAPI_Alt.pas:490-527`
+    /// (`Alt_CE_Get_SeqCurrents`) over `_CalcSeqCurrents` `:236-290`. A fastdss
+    /// `ICktElement._columns` surface (`dss/ICktElement.py:65`/`:483` on
+    /// `origin/fastdss`).
+    ///
+    /// **Not** the `Export SeqCurrents` report path
+    /// (`report/export/seq_currents.rs`), which branches on `nphases >= 3`,
+    /// carries the report's own rating/`Iresidual` logic and has no sentinel
+    /// arm at all — a frozen golden that must not be re-plumbed
+    /// (`GOLDEN_REBASE_PLAN.md` WP-G1: no golden byte moves).
+    pub seq_currents: Vec<f64>,
+    /// `CktElement.SeqVoltages`: `Cabs` of the symmetrical components of the
+    /// node voltages this element's `NodeRef` points at, same `(0, +, -)`
+    /// layout and length (volts). r4133 `DDLL/DCktElement.pas:660-698` (mode
+    /// `7`) over `CalcSeqVoltages` `:84-122`; capi `CAPI/CAPI_Alt.pas:620-659`
+    /// (`Alt_CE_Get_SeqVoltages`) over `CalcSeqVoltages` `:294-338`; fastdss
+    /// `dss/ICktElement.py:59`/`:501`.
+    pub seq_voltages: Vec<f64>,
+    /// `CktElement.SeqPowers`: the per-terminal sequence powers
+    /// `V012_k * conj(I012_k) * 0.003`, same `(0, +, -)` layout and length.
+    /// r4133 `DDLL/DCktElement.pas:739-797` (mode `9`, which inlines its own
+    /// copy of the branch rather than calling the two `Calc*` helpers); capi
+    /// `CAPI/CAPI_Alt.pas:529-593` (`Alt_CE_Get_SeqPowers_`, facade `:594-618`);
+    /// fastdss `dss/ICktElement.py:62`/`:492`.
+    ///
+    /// **kW/kvar here**, unlike [`loss_w`](Self::loss_w) and
+    /// [`phase_losses`](Self::phase_losses), which stay in W/var: those two are
+    /// scaled by `0.001` at the *API boundary*, so their kW rendering is a
+    /// capture encoding, whereas the `0.003` here is applied *inside* the arm
+    /// on both engines (r4133 `:767` and `:788` `cmulreal(..., 0.003)`, capi
+    /// `:561` and `:588-590`) and is part of what the quantity *is* — a
+    /// three-phase kVA conversion, applied unconditionally and **not** the
+    /// `PositiveSequence` x3 that `Get_Powers` applies to
+    /// [`powers`](Self::powers).
+    pub seq_powers: Vec<num_complex::Complex64>,
 }
 
 /// `(n, [(row, col, value)])` — the assembled, unfactored system Y as 0-based
@@ -743,6 +824,17 @@ impl Dss {
         // order. Same helper `Show Controlled` uses, so the report and this
         // reader cannot drift.
         let control_lists = crate::circuit::controls::derive_control_lists(classes, ckt);
+        // The 012 matrix pair for the three sequence surfaces below, built
+        // once for the whole snapshot. `SymComp::default()` is
+        // [`SymComp::precise`](crate::support::mathutil::SymComp::precise),
+        // which is what `Shared/mathutil.pas:548` `SelectAs2pVersion(False)`
+        // leaves both oracles on by default — capi bit-for-bit. r4133's own
+        // globals are built by inverting the truncated-`sin 60` matrix
+        // (`Shared/mathutil.pas:302-303` + `:562-564`), a different matrix that
+        // `SymComp::official` models exactly; the resulting gap on the `r4133`
+        // gating channel is a measured *floor*, not a second kernel, and is
+        // carried by the comparator (`tests/TOLERANCE_NOTES.md` §G1.3b).
+        let sym_comp = crate::support::mathutil::SymComp::default();
         let mut out = Vec::with_capacity(ckt.ckt_elements.len());
         for &r in &ckt.ckt_elements {
             let class_name = classes[r.class_ord()].props.class_name();
@@ -919,6 +1011,124 @@ impl Dss {
                     })
                     .collect()
             };
+            // The three sequence surfaces (`SeqCurrents`, `SeqVoltages`,
+            // `SeqPowers`) — like the polar three above, renderings of state
+            // this loop already holds, formed from the one fresh terminal
+            // current and the converged `NodeV` rather than by a second read
+            // path. Upstream reaches each of them through its own entry point,
+            // and each allocates a scratch buffer and calls `GetCurrents`
+            // again: r4133 `DDLL/DCktElement.pas:660-698` (mode `7`) over
+            // `CalcSeqVoltages` `:84-122`, `:700-737` (mode `8`) over
+            // `CalcSeqCurrents` `:30-80`, and `:739-797` (mode `9`), which
+            // inlines its own copy of both; capi `CAPI/CAPI_Alt.pas:620-659`,
+            // `:490-527` and `:529-593` over `CalcSeqVoltages` `:294-338` /
+            // `_CalcSeqCurrents` `:236-290`.
+            //
+            // Three deliberate divergences from the oracles are settled here,
+            // each pinned in `exec::tests::derived_seq` and excluded
+            // field-by-field on the channel it belongs to:
+            //
+            // 1. the **positive-sequence 1-phase arm** writes slot `3t+1` of
+            //    each terminal, with `3t` and `3t+2` left at zero. That is what
+            //    every `Calc*` helper does on both engines (`iV := 2` on a
+            //    ONE-based `pComplexArray`, `Inc(iV, 3)`: r4133 `:50`/`:55`,
+            //    `:97`/`:102`, capi `:255`/`:261`, `:312`/`:318`) and what
+            //    capi's `SeqPowers` does on its ZERO-based result
+            //    (`iCount := 1`, `inc(icount, 3)`, `:555`/`:562`). r4133's
+            //    mode 9 transplanted the 1-based `2` into the 0-based array and
+            //    kept a stride of 1 (`Count := 2` `:760`, `inc(count)` `:768`),
+            //    so it writes slots `2, 3, 4, …` — one slot late and walking
+            //    over the next terminals. The port emits the correct layout;
+            //    the defect is reported upstream and is oracle-gated live on
+            //    the `capi_v0145` channel, which has it right.
+            // 2. the **n/A sentinel of `SeqPowers`** is r4133's `(-1, 0)`
+            //    (`:772`), not capi's `(-1, -1)` (`:567`); r4133 is the
+            //    behavioral authority and it is also the spelling both engines
+            //    already agree on for the two magnitude arrays, whose sentinel
+            //    is `Cabs(-1 + 0j) = 1.0` on either side (`:60`, `:106`,
+            //    `:268`, `:324`). The capi spelling is normalized in the
+            //    comparator, gated on the arm, never on the value.
+            // 3. the **0.003** is applied here, inside the arm, exactly as both
+            //    engines apply it (r4133 `:767`/`:788`, capi `:561`/`:588-590`)
+            //    — a three-phase kVA conversion that is NOT the
+            //    `PositiveSequence` ×3 of `Get_Powers`.
+            //
+            // Terminal chunks, never a flat offset (the `depascalize_metrics_
+            // gate` ceiling): `chunks` refuses a zero width, so a
+            // conductor-less element takes width `1` and yields nothing, and a
+            // `node_ref` that is empty or shorter than `yorder` (a disabled
+            // element that grew phases — see `voltages_mag_ang` above) reads
+            // its missing slots as ground, the same safe-`.get()` discipline.
+            let seq_arm = if cd.nphases == 3 {
+                SeqArm::ThreePhase
+            } else if cd.nphases == 1 && positive_seq {
+                SeqArm::PosSeqSinglePhase
+            } else {
+                SeqArm::NotAvailable
+            };
+            let mut seq_currents: Vec<f64> = Vec::with_capacity(3 * cd.nterms);
+            let mut seq_voltages: Vec<f64> = Vec::with_capacity(3 * cd.nterms);
+            let mut seq_powers: Vec<num_complex::Complex64> = Vec::with_capacity(3 * cd.nterms);
+            {
+                let width = cd.nconds.max(1);
+                let mut term_currents = currents.chunks(width);
+                let mut term_nodes = cd.node_ref.chunks(width);
+                for _ in 0..cd.nterms {
+                    let i_chunk = term_currents.next().unwrap_or(&[]);
+                    let n_chunk = term_nodes.next().unwrap_or(&[]);
+                    let cur = |j: usize| {
+                        i_chunk
+                            .get(j)
+                            .copied()
+                            .unwrap_or(num_complex::Complex64::ZERO)
+                    };
+                    let volt = |j: usize| {
+                        node_v
+                            .get(n_chunk.get(j).copied().unwrap_or(0))
+                            .copied()
+                            .unwrap_or(num_complex::Complex64::ZERO)
+                    };
+                    match seq_arm {
+                        SeqArm::ThreePhase => {
+                            let iph = [cur(0), cur(1), cur(2)];
+                            let vph = [volt(0), volt(1), volt(2)];
+                            let mut i012 = [num_complex::Complex64::ZERO; 3];
+                            let mut v012 = [num_complex::Complex64::ZERO; 3];
+                            sym_comp.phase_to_sym(&iph, &mut i012);
+                            sym_comp.phase_to_sym(&vph, &mut v012);
+                            for (v, i) in v012.into_iter().zip(i012) {
+                                seq_currents.push(i.norm());
+                                seq_voltages.push(v.norm());
+                                seq_powers.push(v * i.conj() * 0.003);
+                            }
+                        }
+                        SeqArm::PosSeqSinglePhase => {
+                            // The terminal's FIRST conductor only, into the
+                            // positive-sequence slot.
+                            let (v, i) = (volt(0), cur(0));
+                            seq_currents.extend([0.0, i.norm(), 0.0]);
+                            seq_voltages.extend([0.0, v.norm(), 0.0]);
+                            seq_powers.extend([
+                                num_complex::Complex64::ZERO,
+                                v * i.conj() * 0.003,
+                                num_complex::Complex64::ZERO,
+                            ]);
+                        }
+                        SeqArm::NotAvailable => {
+                            // A sentinel, not a reading: `1.0` is `Cabs` of the
+                            // `-1` both engines write here, so it is
+                            // indistinguishable from a real 1 A / 1 V. The
+                            // disambiguator is `seq_arm` itself — a consumer
+                            // reads the arm, never the value (G1.3b audit
+                            // settlement, 2026-09-05; pinned by
+                            // `seq_currents_and_seq_voltages_are_one_on_the_na_arm`).
+                            seq_currents.extend([1.0; 3]);
+                            seq_voltages.extend([1.0; 3]);
+                            seq_powers.extend([num_complex::Complex64::new(-1.0, 0.0); 3]);
+                        }
+                    }
+                }
+            }
             // `NodeOrder`: the same `GetNodeNum(NodeRef^[j])` walk the
             // `Export NodeOrder` renderer performs
             // (`report/export/node_order.rs:35-38`, Pascal `WriteNodeList`),
@@ -1009,6 +1219,10 @@ impl Dss {
                 ocp_dev_type,
                 has_volt_control,
                 has_switch_control,
+                seq_arm,
+                seq_currents,
+                seq_voltages,
+                seq_powers,
             });
         }
         // NCIM needs **no** reporting override here any more (RP3.13). Two used
