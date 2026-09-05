@@ -56,12 +56,14 @@ pub struct RunRequest {
     /// reply is byte-identical to a pre-G1.3a one.
     #[serde(default)]
     pub derived: bool,
-    /// Manifest flag `compare_element_extras` (GOLDEN_REBASE G1.3d(i)): capture
-    /// `CktElement.Enabled` plus the discrete index/name scalars
-    /// `NumTerminals` / `NumConductors` / `NumPhases` / `EnergyMeter` for every
-    /// element, and `NodeOrder` for the ones that are enabled with at least one
-    /// terminal. Absent or `false` ⇒ none of those keys is emitted and the
-    /// reply is byte-identical to a pre-G1.3d(i) one.
+    /// Manifest flag `compare_element_extras` (GOLDEN_REBASE G1.3d): capture
+    /// `CktElement.Enabled`, the discrete index/name scalars
+    /// `NumTerminals` / `NumConductors` / `NumPhases` / `EnergyMeter` (part (i)),
+    /// the five control-derived scalars `NumControls` / `OCPDevIndex` /
+    /// `OCPDevType` / `HasVoltControl` / `HasSwitchControl` and `PhaseLosses`
+    /// (part (ii)) for every element, and `NodeOrder` for the ones that are
+    /// enabled with at least one terminal. Absent or `false` ⇒ none of those
+    /// keys is emitted and the reply is byte-identical to a pre-G1.3d one.
     #[serde(default)]
     pub element_extras: bool,
     #[serde(default)]
@@ -208,6 +210,30 @@ struct ElementCap {
     /// [`capture_all_elements`]).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     node_order: Vec<i32>,
+    // The GOLDEN_REBASE G1.3d(ii) additions, emitted under the same
+    // `RunRequest::element_extras` flag and skipped when empty/absent, so an
+    // off-flag reply keeps the byte-for-byte shape it had before G1.3d(ii)
+    // (`oracle_server.capture_all_elements` emits exactly the same keys).
+    /// `PhaseLosses`, de-interleaved into kW and kvar the way `p_kw`/`p_kvar`
+    /// already are. Length `NPhases` each — empty for a 0-phase element
+    /// (`UPFCControl`), which is why the pair is skipped-when-empty rather than
+    /// `Option`: an empty capture and an empty reading are the same fact here.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pl_kw: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pl_kvar: Vec<f64>,
+    /// The five control-derived scalars [`Engine::element_extras`] reads —
+    /// present for EVERY element under the flag (none of them is conditional).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    num_controls: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ocp_dev_index: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ocp_dev_type: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    has_volt_control: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    has_switch_control: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -544,8 +570,9 @@ fn capture_injection(flat: &[f64]) -> Injection {
 /// skip cannot hide one.
 ///
 /// Under `extras` (manifest flag `compare_element_extras`, GOLDEN_REBASE
-/// G1.3d(i)) each element also reports `Enabled` and the four discrete scalars
-/// [`Engine::element_extras`] reads, plus `NodeOrder` (`CktElementV(17)`,
+/// G1.3d) each element also reports `Enabled`, `PhaseLosses` and the nine
+/// discrete scalars [`Engine::element_extras`] reads, plus `NodeOrder`
+/// (`CktElementV(17)`,
 /// `DDLL/DCktElement.pas:1032`) for the elements that are **enabled** and have
 /// **at least one terminal**. Both conditions come from the sources, not from
 /// caution: mode 17 dereferences `NodeRef^[j]` with no nil guard (`:1048`), so a
@@ -556,6 +583,15 @@ fn capture_injection(flat: &[f64]) -> Injection {
 /// (`CAPI/CAPI_CktElement.pas:900-906`) — not issuing the read removes that shape
 /// asymmetry instead of normalizing it. The comparator asserts both sides are
 /// empty there, so neither skip can hide a payload.
+///
+/// `PhaseLosses` (GOLDEN_REBASE G1.3d(ii), [`Engine::element_phase_losses`]) is
+/// the one addition that is NOT order-free: it runs `GetPhaseLosses`' own
+/// `ComputeIterminal` (r4133 `Common/CktElement.pas:1088`), so it is group **A**
+/// and is issued FIRST — ahead of `element_pcl`'s `Losses`/`Powers` — which is
+/// what keeps every group-A read of the element ahead of the group-B `Currents`.
+/// It is read for every element, enabled or not: `GetPhaseLosses` zero-fills a
+/// disabled one (`:1114-1116`) without touching `NodeRef`, so it needs neither
+/// of the two predicates above.
 ///
 /// Every read line carries a machine-checkable `capture-order: NAME (A|B|C)`
 /// marker whose group is [`crate::modes::capture_group_of`]'s — a call into
@@ -579,6 +615,11 @@ fn capture_all_elements(
         } else {
             None
         };
+        let mut pl = Vec::new();
+        if extras {
+            let ctx = format!("element {name} phase losses");
+            pl = engine.element_phase_losses(warn, &ctx)?; // capture-order: PhaseLosses (A)
+        }
         // capture-order: Losses (A), Powers (A), Currents (B)
         let (powers, currents, losses) = engine.element_pcl(warn, &format!("element {name}"))?;
         let (i_re, i_im) = deinterleave(&currents);
@@ -606,6 +647,13 @@ fn capture_all_elements(
             n_phases: None,
             energy_meter: None,
             node_order: Vec::new(),
+            pl_kw: Vec::new(),
+            pl_kvar: Vec::new(),
+            num_controls: None,
+            ocp_dev_index: None,
+            ocp_dev_type: None,
+            has_volt_control: None,
+            has_switch_control: None,
         };
         if derived && enabled == Some(true) {
             // capture-order: CurrentsMagAng (B), Residuals (B), VoltagesMagAng (C)
@@ -617,12 +665,20 @@ fn capture_all_elements(
         }
         if extras {
             // capture-order: NumTerminals (C), NumConductors (C), NumPhases (C), EnergyMeter (C)
-            let (n_terms, n_conds, n_phases, meter) =
-                engine.element_extras(&format!("element {} extras", cap.name))?;
+            // capture-order: NumControls (C), OCPDevIndex (C), OCPDevType (C)
+            // capture-order: HasVoltControl (C), HasSwitchControl (C)
+            let ex = engine.element_extras(&format!("element {} extras", cap.name))?;
+            let n_terms = ex.n_terms;
             cap.n_terms = Some(n_terms);
-            cap.n_conds = Some(n_conds);
-            cap.n_phases = Some(n_phases);
-            cap.energy_meter = Some(meter);
+            cap.n_conds = Some(ex.n_conds);
+            cap.n_phases = Some(ex.n_phases);
+            cap.energy_meter = Some(ex.energy_meter);
+            (cap.pl_kw, cap.pl_kvar) = deinterleave(&pl);
+            cap.num_controls = Some(ex.num_controls);
+            cap.ocp_dev_index = Some(ex.ocp_dev_index);
+            cap.ocp_dev_type = Some(ex.ocp_dev_type);
+            cap.has_volt_control = Some(ex.has_volt_control);
+            cap.has_switch_control = Some(ex.has_switch_control);
             if enabled == Some(true) && n_terms > 0 {
                 cap.node_order = engine.ckt_element_node_order()?; // capture-order: NodeOrder (C)
                 engine.assert_clean(&format!("element {} node order", cap.name))?;

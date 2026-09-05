@@ -118,17 +118,21 @@ pub(crate) struct SolvableCase {
     /// `NumConductors` (`origin/fastdss` `dss/ICktElement.py:35-38,46-52,56,69`;
     /// r4133 `DDLL/DCktElement.pas` `CktElementI`/`CktElementS`).
     ///
-    /// **Live since G1.3d(i)** (`wired: true` in [`G1_SURFACE_FLAGS`]): the flag
-    /// today carries the four pure scalars `NumTerminals`/`NumConductors`/
+    /// **Live since G1.3d(i)** (`wired: true` in [`G1_SURFACE_FLAGS`]), and
+    /// **complete since G1.3d(ii)** (2026-09-05). G1.3d(i) brought the four pure
+    /// scalars `NumTerminals`/`NumConductors`/
     /// `NumPhases` (r4133 `DDLL/DCktElement.pas:139`/`:144`/`:149`, `CktElementI`
     /// arms 0..2; capi `CAPI/CAPI_CktElement.pas:182-211`) and `EnergyMeter`
     /// (`:442`, `CktElementS(4)`; capi `:672-687`), plus `NodeOrder`
     /// (`:1032-1056`, `CktElementV(17)`; capi `CAPI/CAPI_CktElement.pas:885-917`) on
     /// elements that are `Enabled` **and** carry `NumTerminals > 0` — the two
     /// conditions under which neither transport dereferences a nil `NodeRef`.
-    /// G1.3d(ii) widens this same flag with `PhaseLosses` and the
-    /// control-derived extras (`OCPDev*`, `Has*Control`, `NumControls`) rather
-    /// than adding its own, so a case that opts in now gains those with it.
+    /// G1.3d(ii) widened this same flag with `PhaseLosses`
+    /// (`CktElementV(6)`; capi `CAPI/CAPI_Alt.pas:449-467`) and the
+    /// control-derived extras `OCPDevType`/`OCPDevIndex`,
+    /// `HasVoltControl`/`HasSwitchControl` and `NumControls`
+    /// (`CktElementI` arms 7..11) rather than adding its own, so the flag now
+    /// carries the whole surface and the forced population never moved.
     #[serde(default)]
     pub(crate) compare_element_extras: bool,
     /// G1.4: the **bus** surface — `puVoltages`/`puVmagAngle`/`VMagAngle`/`VLL`/

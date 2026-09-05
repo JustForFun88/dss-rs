@@ -874,6 +874,14 @@ pub struct YFingerprint {
 /// `serde(default)` for the same reason as the seven above, and they are
 /// compared exactly, by [`compare_element_extras`], with no tolerance and no
 /// ledger sub-channel.
+///
+/// The **last seven** are the G1.3d(ii) additions, riding the same
+/// `compare_element_extras` flag: `PhaseLosses` (`pl_kw`/`pl_kvar` — the one
+/// *numeric* member of the group, compared by
+/// [`compare_element_phase_losses`] at a band derived from the per-conductor
+/// power band) and the five control-derived discrete scalars, which
+/// [`compare_element_extras`] compares exactly beside the other five. Each is
+/// `serde(default)` for the same reason as everything above it.
 #[derive(Debug, Default, Clone, Deserialize)]
 pub struct ElementCap {
     pub name: String,
@@ -957,6 +965,71 @@ pub struct ElementCap {
     /// share nothing but the word.
     #[serde(default)]
     pub node_order: Vec<i32>,
+    /// `CktElement.PhaseLosses` active halves (**kW**), de-interleaved the way
+    /// `p_kw`/`p_kvar` already are: the per-**phase** complex loss
+    /// `Σ_terminals NodeV[NodeRef[k]]·conj(Iterminal[k])` at `k = j·NConds + i`,
+    /// neutral conductors ignored, ×3 under positive sequence — r4133
+    /// `Common/CktElement.pas:1078-1116` (`TDSSCktElement.GetPhaseLosses`),
+    /// capi `src/Common/CktElement.pas:879-912`. A fastdss `_columns` surface
+    /// (`dss/ICktElement.py:69` on `origin/fastdss`; its harness subtracts only
+    /// `Handle`, `IsIsolated` and `HasOCPDevice`, `tests/save_outputs.py:169`).
+    ///
+    /// **kW/kvar here, W/var in the engine.** Both transports scale by `0.001`
+    /// at the API boundary — r4133 `DDLL/DCktElement.pas:637-658` (`CktElementV`
+    /// mode `6`, the `cmulreal(…, 0.001)` at `:650`), capi
+    /// `CAPI/CAPI_Alt.pas:449-467` (the `*= 0.001` loop at `:462-465`, facade
+    /// `CAPI/CAPI_CktElement.pas:327-338`) — so the conversion lives in exactly
+    /// one place, [`compare_element_phase_losses`], like the re/im interleave.
+    ///
+    /// Length `NPhases`, and **empty is a reading rather than an absence**: a
+    /// 0-phase element (`UPFCControl`, r4133
+    /// `Controls/UPFCControl.pas:230-246`) legitimately has none — which is why
+    /// the pair is `Vec` and not `Option`, and why the runner's non-vacuity rail
+    /// counts the elements whose `pl_kw` is *non-empty*.
+    #[serde(default)]
+    pub pl_kw: Vec<f64>,
+    /// `PhaseLosses` reactive halves (**kvar**) — see [`Self::pl_kw`]. The two
+    /// lengths are asserted equal on the oracle side, so the capi
+    /// `DefaultResult` one-element sentinel (`CAPI/CAPI_Utils.pas:212-221`,
+    /// reachable through `Alt_CE_Get_PhaseLosses`' `MissingSolution` guard,
+    /// `CAPI/CAPI_Alt.pas:455-459`) fails loudly instead of de-interleaving into
+    /// a silent `mag = [0.0]`, `ang = []` pair. It was never observed on a
+    /// solved case, so it is deliberately not normalized.
+    #[serde(default)]
+    pub pl_kvar: Vec<f64>,
+    /// `CktElement.NumControls` = `ControlElementList.ListSize`, with **no**
+    /// `Enabled` filter on either channel — r4133 `DDLL/DCktElement.pas:237-241`
+    /// (`CktElementI` mode `9`), capi `CAPI/CAPI_CktElement.pas:939-948`;
+    /// fastdss `dss/ICktElement.py:38`. Captured for EVERY element under the
+    /// flag.
+    #[serde(default)]
+    pub num_controls: Option<i32>,
+    /// `CktElement.OCPDevIndex` — the **1-based** position in
+    /// `ControlElementList` of the first Fuse/Recloser/Relay, `0` when there is
+    /// none: r4133 `DDLL/DCktElement.pas:242-258` (mode `10`), capi
+    /// `CAPI/CAPI_CktElement.pas:951-976`; fastdss `dss/ICktElement.py:50`.
+    #[serde(default)]
+    pub ocp_dev_index: Option<i32>,
+    /// `CktElement.OCPDevType` — `GetOCPDeviceType`'s code for that same first
+    /// OCP member (`1` Fuse, `2` Recloser, `3` Relay, `0` none): r4133
+    /// `Common/Utilities.pas:3165-3184` reached from
+    /// `DDLL/DCktElement.pas:259-262` (mode `11`), capi
+    /// `CAPI/CAPI_CktElement.pas:978-988`; fastdss `dss/ICktElement.py:49`.
+    /// Neither scan has an `Enabled` test, so a **disabled** OCP control still
+    /// wins it (measured on both channels, G1.3d(ii) §1.3-1).
+    #[serde(default)]
+    pub ocp_dev_type: Option<i32>,
+    /// `CktElement.HasVoltControl` — "any member of `ControlElementList` is a
+    /// `CAP_CONTROL` or a `REG_CONTROL`": r4133 `DDLL/DCktElement.pas:222-236`
+    /// (mode `8`), capi `CAPI/CAPI_CktElement.pas:689-710`; fastdss
+    /// `dss/ICktElement.py:46`.
+    #[serde(default)]
+    pub has_volt_control: Option<bool>,
+    /// `CktElement.HasSwitchControl` — "any member is a `SWT_CONTROL`": r4133
+    /// `DDLL/DCktElement.pas:207-221` (mode `7`), capi
+    /// `CAPI/CAPI_CktElement.pas:713-734`; fastdss `dss/ICktElement.py:47`.
+    #[serde(default)]
+    pub has_switch_control: Option<bool>,
 }
 
 /// The node injection-current vector (RHS of Y*V=I), nodes 1..n.
@@ -1488,6 +1561,11 @@ pub struct ElemChannels {
     pub voltages_mag_ang: bool,
     /// `Residuals` — the per-terminal conductor sum of `currents`.
     pub residuals: bool,
+    /// `PhaseLosses` — the same `S = V·conj(I)` product as `powers`, bucketed by
+    /// phase (`GOLDEN_REBASE_PLAN.md` G1.3d(ii)). Shares `powers`/`losses`'
+    /// exclusion cause, not the polar channels' exemption: see
+    /// [`Self::CURRENTS_ONLY`].
+    pub phase_losses: bool,
 }
 
 impl ElemChannels {
@@ -1499,6 +1577,7 @@ impl ElemChannels {
         currents_mag_ang: true,
         voltages_mag_ang: true,
         residuals: true,
+        phase_losses: true,
     };
     /// Currents only: the `S = V·conj(I)` channels are a deliberate divergence
     /// in this lane and are pinned by their own expected-value test instead.
@@ -1510,7 +1589,22 @@ impl ElemChannels {
     /// `CurrentsMagAng` and `Residuals`, which are renderings of it — come from
     /// a fresh `GetCurrents`, and `VoltagesMagAng` reads `NodeV` and never
     /// touches `Iterminal` at all. So the two `newton*` decks *gain* three
-    /// compared channels; nothing joins `lane::LANE_SKIP_ELEM_POWERS`.
+    /// compared channels.
+    ///
+    /// # G1.3d(ii): `PhaseLosses` DOES join the exclusion
+    ///
+    /// `GetPhaseLosses` opens with the very same cache-aware `ComputeIterminal`
+    /// (r4133 `Common/CktElement.pas:1088`, capi `src/Common/CktElement.pas:897`)
+    /// that `Get_Powers`/`Get_Losses` reuse, and forms the identical
+    /// `NodeV·conj(Iterminal)` products — merely bucketed by phase instead of
+    /// summed. So no oracle channel reports it at the converged `NodeV` on those
+    /// two decks either, and it is dropped here for the same
+    /// `POWERS_REUSE_STALE_NEWTON_ITERMINAL` teardown row, in **both** lanes. Only the *value* compare is dropped:
+    /// [`compare_element_phase_losses`] asserts the array shapes under every
+    /// channel policy, and the port-side identity `Σ_i PhaseLosses[i] = Losses`
+    /// is pinned in-engine by
+    /// `dss_core::exec::tests::element_extras::phase_losses_are_watts_and_sum_to_get_losses`
+    /// beside the row's own `newton_powers_match_the_normal_algorithm`.
     pub const CURRENTS_ONLY: Self = Self {
         currents: true,
         powers: false,
@@ -1518,6 +1612,7 @@ impl ElemChannels {
         currents_mag_ang: true,
         voltages_mag_ang: true,
         residuals: true,
+        phase_losses: false,
     };
 }
 
@@ -2290,6 +2385,12 @@ mod derived_polar_floors {
             n_phases: 0,
             node_order: Vec::new(),
             energy_meter: None,
+            phase_losses: Vec::new(),
+            num_controls: 0,
+            ocp_dev_index: 0,
+            ocp_dev_type: 0,
+            has_volt_control: false,
+            has_switch_control: false,
         };
         let cap = ElementCap {
             name: "UPFCControl.myupfcctrl".to_string(),
@@ -2430,7 +2531,13 @@ fn oracle_meter_name(raw: &str, channel: PropsChannel) -> Option<&str> {
 
 /// Compare one element's **discrete index/name extras** against a capture:
 /// `NumTerminals`, `NumConductors`, `NumPhases`, `EnergyMeter` and `NodeOrder`
-/// (`GOLDEN_REBASE_PLAN.md` WP-G1 sub-step G1.3d(i)).
+/// (`GOLDEN_REBASE_PLAN.md` WP-G1 sub-step G1.3d(i)), plus the five
+/// control-derived scalars `NumControls`, `OCPDevIndex`, `OCPDevType`,
+/// `HasVoltControl` and `HasSwitchControl` (sub-step G1.3d(ii)).
+///
+/// The sixth G1.3d(ii) field, `PhaseLosses`, is **numeric** and is therefore
+/// compared by [`compare_element_phase_losses`] instead — kept out of this
+/// function precisely so its "no tolerance anywhere" contract below stays true.
 ///
 /// Runs when the case's `compare_element_extras` manifest flag is on,
 /// *alongside* — never instead of — [`compare_element_channels`] and
@@ -2465,6 +2572,19 @@ fn oracle_meter_name(raw: &str, channel: PropsChannel) -> Option<&str> {
 ///   that were *already* gated: the port's own `bus_names` list (which
 ///   [`compare_element_derived`] uses as its terminal count) and the oracle's
 ///   `Currents` length (`Yorder = NTerms · NConds`);
+/// * the five control-derived scalars match exactly, with **no `Enabled`
+///   filter** anywhere — upstream's list membership and its OCP scan have none
+///   (r4133 `Controls/ControlElem.pas:113-131`, `Common/Utilities.pas:3165-3184`),
+///   so a *disabled* OCP control still occupies its slot and still wins
+///   (measured on both channels; pinned in-engine by
+///   `exec::tests::element_extras::a_disabled_ocp_control_still_wins_the_ocp_scan`).
+///   Two internal ties bind them the way the `Yorder` tie binds the counts, and
+///   both are asserted on the **oracle** side, where they are properties of the
+///   Pascal scan rather than of the port: `OCPDevIndex == 0` exactly when
+///   `OCPDevType == 0` (one `repeat … until (i > listSize) or (Result > 0)`
+///   walk produces both — r4133 `DDLL/DCktElement.pas:242-258`), and
+///   `OCPDevIndex <= NumControls` (the index is a position in the list whose
+///   size `NumControls` is);
 /// * `NodeOrder` is compared slot by slot when the element is enabled with at
 ///   least one terminal; on a **0-terminal** element both sides must be empty
 ///   (two-sided, so a payload on either side still fails); on a **disabled**
@@ -2523,6 +2643,24 @@ pub fn compare_element_extras(
     let enabled = exp
         .enabled
         .unwrap_or_else(|| panic!("{}", missing(ctx, &exp.name, "enabled")));
+    // The five G1.3d(ii) control-derived scalars: emitted for EVERY element
+    // under the same flag (neither transport makes one conditional), so an
+    // absent one means the element was captured without the flag.
+    let num_controls = exp
+        .num_controls
+        .unwrap_or_else(|| panic!("{}", missing(ctx, &exp.name, "num_controls")));
+    let ocp_dev_index = exp
+        .ocp_dev_index
+        .unwrap_or_else(|| panic!("{}", missing(ctx, &exp.name, "ocp_dev_index")));
+    let ocp_dev_type = exp
+        .ocp_dev_type
+        .unwrap_or_else(|| panic!("{}", missing(ctx, &exp.name, "ocp_dev_type")));
+    let has_volt_control = exp
+        .has_volt_control
+        .unwrap_or_else(|| panic!("{}", missing(ctx, &exp.name, "has_volt_control")));
+    let has_switch_control = exp
+        .has_switch_control
+        .unwrap_or_else(|| panic!("{}", missing(ctx, &exp.name, "has_switch_control")));
 
     assert_eq!(
         snap.enabled, enabled,
@@ -2582,6 +2720,47 @@ pub fn compare_element_extras(
         snap.energy_meter
     );
 
+    // The five control-derived scalars. Discrete, exact, and with no `Enabled`
+    // filter: the port recomputes all five on every read from the derived
+    // `ControlElementList` (`dss_core::circuit::controls::derive_control_lists`),
+    // the way both oracles do, rather than from the registration-time
+    // `CktElementData::ocp_device_type` latch the reliability sweep uses.
+    count("NumControls", snap.num_controls, num_controls);
+    count("OCPDevIndex", snap.ocp_dev_index, ocp_dev_index);
+    assert_eq!(
+        snap.ocp_dev_type, ocp_dev_type,
+        "{ctx} {}: OCPDevType differs (rust {} vs oracle {ocp_dev_type})",
+        exp.name, snap.ocp_dev_type
+    );
+    assert_eq!(
+        snap.has_volt_control, has_volt_control,
+        "{ctx} {}: HasVoltControl differs (rust {} vs oracle {has_volt_control})",
+        exp.name, snap.has_volt_control
+    );
+    assert_eq!(
+        snap.has_switch_control, has_switch_control,
+        "{ctx} {}: HasSwitchControl differs (rust {} vs oracle {has_switch_control})",
+        exp.name, snap.has_switch_control
+    );
+
+    // The two OCP ties, asserted on the ORACLE side: both are properties of the
+    // single Pascal walk that produces the pair (`repeat … until (i > listSize)
+    // or (Result > 0)`, r4133 `DDLL/DCktElement.pas:242-258`; `GetOCPDeviceType`
+    // scans the same list, `Common/Utilities.pas:3165-3184`), so a capture in
+    // which they disagree is a transport bug rather than an engine divergence
+    // — and the port is held to the same shape by the `assert_eq!`s above.
+    assert_eq!(
+        ocp_dev_index == 0,
+        ocp_dev_type == 0,
+        "{ctx} {}: the oracle's OCPDevIndex ({ocp_dev_index}) and OCPDevType          ({ocp_dev_type}) must be zero together — one list scan produces both",
+        exp.name
+    );
+    assert!(
+        ocp_dev_index <= num_controls,
+        "{ctx} {}: the oracle's OCPDevIndex ({ocp_dev_index}) exceeds its own          NumControls ({num_controls}) — the index is a 1-based position in that list",
+        exp.name
+    );
+
     if snap.n_terms == 0 {
         assert!(
             exp.node_order.is_empty() && snap.node_order.is_empty(),
@@ -2625,6 +2804,590 @@ pub fn compare_element_extras(
     );
 }
 
+/// The magnitude band of phase `i`'s `PhaseLosses` sample (kW): the per-conductor
+/// power band of [`assert_power_close`], summed over exactly the conductors
+/// `GetPhaseLosses` sums.
+///
+/// `PhaseLosses[i] = Σ_{j<nterms} NodeV[NodeRef[k]]·conj(Iterminal[k])` at
+/// `k = j·nconds + i` (r4133 `Common/CktElement.pas:1093-1112`), i.e. the very
+/// products the capture already reports as `Powers[k]` — so the accepted error
+/// is `Σ_j (abs·max(1, |V_k|) + rel·|S_k|)` with `|V_k| = |P_kW[k]| / |I_A[k]|`,
+/// the same voltage-scaled floor and the same recovery of `|V|` that
+/// [`assert_power_close`] uses per conductor.
+///
+/// **No new tolerance class and no new constant**: this is the identical
+/// construction [`compare_element_channels`] already applies to `Get_Losses`
+/// (`losses = Σ_k S_k` over *all* conductors) and [`residual_band`] applies to a
+/// terminal's current sum, restricted to one phase's `nterms` conductors. Being
+/// a strict subset of the `Get_Losses` sum, it is strictly **tighter** than that
+/// band (pinned by
+/// `phase_loss_bands::the_phase_bands_sum_to_at_most_the_get_losses_band`).
+/// Derivation in tests/TOLERANCE_NOTES.md §G1.3d(ii).
+pub fn phase_loss_band(
+    exp: &ElementCap,
+    phase: usize,
+    nterms: usize,
+    nconds: usize,
+    rel: f64,
+    abs: f64,
+) -> f64 {
+    (0..nterms)
+        .map(|j| {
+            let k = j * nconds + phase;
+            let p_mag = (exp.p_kw[k].powi(2) + exp.p_kvar[k].powi(2)).sqrt();
+            let i_mag = (exp.i_re[k].powi(2) + exp.i_im[k].powi(2)).sqrt();
+            // |V_kv| = |P_kW| / |I_A| (terminal kV), exactly as
+            // `assert_power_close` recovers it; `max(1, …)` never tightens
+            // below the established floor.
+            let vkv = if i_mag > 1e-12 { p_mag / i_mag } else { 1.0 };
+            abs * vkv.max(1.0) + rel * p_mag
+        })
+        .sum()
+}
+
+/// Compare one element's `PhaseLosses` against a capture — the numeric member of
+/// the G1.3d(ii) extras group (`GOLDEN_REBASE_PLAN.md` WP-G1 sub-step G1.3d(ii)).
+///
+/// Runs when the case's `compare_element_extras` manifest flag is on,
+/// *alongside* — never instead of — [`compare_element_extras`],
+/// [`compare_element_channels`] and [`compare_element_derived`], on the same
+/// (possibly ledger-rewritten) capture the other three see.
+///
+/// **The ×0.001 lives here and nowhere else.** The engine reports W/var
+/// (`ElementSnapshot::phase_losses`, like `loss_w`); both oracle surfaces scale
+/// by `0.001` at the API boundary — r4133 `DDLL/DCktElement.pas:637-658`
+/// (`CktElementV` mode `6`, `cmulreal(cBuffer^[i], 0.001)` at `:650`), capi
+/// `CAPI/CAPI_Alt.pas:449-467` (`Result[i] *= 0.001` at `:464-467`) — so the
+/// kW/kvar rendering is a capture-boundary encoding, converted at this one site
+/// exactly as the interleaved re/im pair is de-interleaved at one site.
+///
+/// **Structure, asserted under every channel policy** (the rule
+/// [`compare_element_channels`] and [`compare_element_derived`] already follow:
+/// a value exclusion may never excuse a shape or an existence miss): the element
+/// exists in the Rust snapshot; the oracle's kW and kvar halves are the same
+/// length — which is what makes the capi `DefaultResult` one-element sentinel
+/// (`CAPI/CAPI_Utils.pas:212-221`, reachable through `Alt_CE_Get_PhaseLosses`'
+/// `MissingSolution` guard, `CAPI/CAPI_Alt.pas:455-459`) fail loudly rather than
+/// de-interleave into a silent `[0.0]`/`[]` pair; both sides have exactly
+/// `NumPhases` samples, including the **zero** of a 0-phase element
+/// (`UPFCControl` never assigns `Nphases`, r4133
+/// `Controls/UPFCControl.pas:230-246`; measured `n = 0` on r4133 and `[]` on
+/// capi, so this is a two-sided emptiness and not a normalization); and a
+/// **disabled** element still carries `NumPhases` zeros on every engine, because
+/// neither oracle skips the read — r4133 zero-fills in the `Else` arm
+/// (`Common/CktElement.pas:1117-1119`) and capi in its
+/// `(not FEnabled) or (NodeRef = NIL)` guard (`src/Common/CktElement.pas:890-894`),
+/// as does the port.
+///
+/// **Value**, gated on `channels.phase_losses` — false only on the two `newton*`
+/// decks, in both lanes, for the
+/// `POWERS_REUSE_STALE_NEWTON_ITERMINAL` teardown row, whose marker lives beside
+/// [`lane::elem_channels_for`] ([`ElemChannels::CURRENTS_ONLY`]): each phase is banded by
+/// [`phase_loss_band`], the per-conductor power band summed over that phase's
+/// conductors. No tolerance is calibrated here.
+///
+/// **The `phase_losses` ledger sub-channel exists because the live drive
+/// measured it** (G1.3d(ii) F4, 2026-09-05), not on speculation: the unfiltered
+/// 523-case gate reported eight (case, channel) pairs failing here, every one of
+/// them on a deck that already carries an `element` scope selecting
+/// `powers`/`losses` for the same cause. `corpus_gate/ledger.rs` therefore
+/// declares `phase_losses` in `SUBCHANNEL_FIELDS` and honours it in both
+/// handlers — `rewrite_element_selected` writes `pl_kw`/`pl_kvar` back from the
+/// snapshot (×0.001) and `envelope_element` bands them with
+/// [`phase_loss_band`]. **Nothing was widened that was not measured failing**:
+/// the four `r4133-*-injection-ulp` divergences select `losses` and were
+/// measured NOT to fail here. What is gate-ENFORCED and what is not, precisely:
+/// the per-sub-channel staleness check (`Scope::dead_channels`,
+/// `corpus_gate/ledger.rs:399-421`) fails the gate on a name that masks nothing
+/// only for a `divergence` entry — an `exclusion` fetches no verdict
+/// (`LedgerView::excluded`) and so is never policed by it. All ten widened
+/// entries are `exclusion`s, so what stands behind each of them is the
+/// per-entry measurement recorded in its own
+/// `measured.g13d2_phase_losses_first_failure`, and the enforced half was
+/// proved live on a deliberate eleventh widening of a `divergence` entry
+/// (F4 M5, reverted).
+pub fn compare_element_phase_losses(
+    snaps: &[ElementSnapshot],
+    exp: &ElementCap,
+    tol: &Tolerances,
+    ctx: &str,
+    channels: ElemChannels,
+) {
+    let snap = snaps
+        .iter()
+        .find(|s| s.name.eq_ignore_ascii_case(&exp.name))
+        .unwrap_or_else(|| panic!("{ctx}: no element {}", exp.name));
+    let n_phases = exp.n_phases.unwrap_or_else(|| {
+        panic!(
+            "{ctx} {}: the extras capture carries no `n_phases` field — the \
+             case's `compare_element_extras` flag is on but this element was \
+             captured without it",
+            exp.name
+        )
+    });
+    assert_eq!(
+        exp.pl_kw.len(),
+        exp.pl_kvar.len(),
+        "{ctx} {}: the oracle's PhaseLosses kW ({}) and kvar ({}) halves \
+         disagree — an odd-length payload de-interleaved (the capi \
+         `DefaultResult` sentinel is one such)",
+        exp.name,
+        exp.pl_kw.len(),
+        exp.pl_kvar.len()
+    );
+    let want = usize::try_from(n_phases).unwrap_or_else(|_| {
+        panic!(
+            "{ctx} {}: oracle NumPhases is negative ({n_phases})",
+            exp.name
+        )
+    });
+    assert_eq!(
+        exp.pl_kw.len(),
+        want,
+        "{ctx} {}: oracle PhaseLosses length {} != NumPhases ({want})",
+        exp.name,
+        exp.pl_kw.len()
+    );
+    assert_eq!(
+        snap.phase_losses.len(),
+        want,
+        "{ctx} {}: rust PhaseLosses length {} != NumPhases ({want})",
+        exp.name,
+        snap.phase_losses.len()
+    );
+    if want == 0 || !channels.phase_losses {
+        return;
+    }
+
+    // The conductor layout the band indexes through. Both counts come from the
+    // same capture and are compared exactly by [`compare_element_extras`]; the
+    // `Yorder` tie below is what keeps `k = j·nconds + i` inside the captured
+    // arrays — asserted, never assumed.
+    let nterms = usize::try_from(exp.n_terms.unwrap_or_else(|| {
+        panic!(
+            "{ctx} {}: the extras capture carries no `n_terms` field",
+            exp.name
+        )
+    }))
+    .unwrap_or_else(|_| panic!("{ctx} {}: oracle NumTerminals is negative", exp.name));
+    let nconds = usize::try_from(exp.n_conds.unwrap_or_else(|| {
+        panic!(
+            "{ctx} {}: the extras capture carries no `n_conds` field",
+            exp.name
+        )
+    }))
+    .unwrap_or_else(|_| panic!("{ctx} {}: oracle NumConductors is negative", exp.name));
+    assert!(
+        want <= nconds,
+        "{ctx} {}: NumPhases ({want}) exceeds NumConductors ({nconds})",
+        exp.name
+    );
+    assert_eq!(
+        nterms * nconds,
+        exp.p_kw.len(),
+        "{ctx} {}: NTerms·NConds ({nterms} · {nconds}) != the oracle's Powers \
+         length ({}) — the PhaseLosses band is built from those conductors",
+        exp.name,
+        exp.p_kw.len()
+    );
+    assert_eq!(
+        exp.p_kw.len(),
+        exp.p_kvar.len(),
+        "{ctx} {}: the oracle's Powers kW/kvar halves disagree",
+        exp.name
+    );
+    assert_eq!(
+        exp.p_kw.len(),
+        exp.i_re.len(),
+        "{ctx} {}: the oracle's Powers and Currents lengths disagree",
+        exp.name
+    );
+    assert_eq!(
+        exp.i_re.len(),
+        exp.i_im.len(),
+        "{ctx} {}: the oracle's Currents re/im halves disagree",
+        exp.name
+    );
+
+    for i in 0..want {
+        let allowed = phase_loss_band(exp, i, nterms, nconds, tol.i_rel, tol.i_abs);
+        // W/var → kW/kvar: componentwise on `Complex64`, the same two
+        // multiplications `snapshot_elements` applies to `Powers`.
+        let a = snap.phase_losses[i] * 0.001;
+        let (er, ei) = (exp.pl_kw[i], exp.pl_kvar[i]);
+        let diff = ((a.re - er).powi(2) + (a.im - ei).powi(2)).sqrt();
+        assert!(
+            diff <= allowed,
+            "{ctx} {}: PhaseLosses phase {i} differs: actual ({}, {}) kW/kvar vs \
+             expected ({er}, {ei}); |diff| = {diff:e} > allowed {allowed:e}",
+            exp.name,
+            a.re,
+            a.im
+        );
+    }
+}
+
+/// The G1.3d(ii) `PhaseLosses` pins: the derived band and the comparator's
+/// structural rules, pinned directly (no oracle) the way `derived_polar_floors`
+/// pins the polar bands. Every acceptance carries its rejection leg.
+#[cfg(test)]
+mod phase_loss_bands {
+    use super::{
+        ElemChannels, ElementCap, ElementSnapshot, Tolerances, compare_element_phase_losses,
+        phase_loss_band, tol_for,
+    };
+    use num_complex::Complex64;
+
+    /// A physically consistent 2-terminal / 3-conductor / 3-phase line at
+    /// 7.2 kV L-N carrying ~118 A with a small series loss: `Powers[k] =
+    /// V_k·conj(I_k)·0.001` and `PhaseLosses[i] = Σ_j V_k·conj(I_k)` at
+    /// `k = j·3 + i` — the exact identity `GetPhaseLosses` computes (r4133
+    /// `Common/CktElement.pas:1093-1112`), so the port side is the oracle side
+    /// ×1000 and the two agree to zero.
+    ///
+    /// The fixture is synthetic (the live numbers are what the corpus gate
+    /// compares); what it pins is the band algebra and the shape rules, at
+    /// magnitudes where the loss is a **near-cancellation** of the two terminal
+    /// powers — 1.25 kW out of two ~863 kVA summands. That is the physical
+    /// situation the band is derived for, and it is why the accepted error is
+    /// set by the summands (3.16e-4 kW) and not by the answer.
+    fn line_pair() -> (Vec<ElementSnapshot>, ElementCap) {
+        let pl_w = [
+            (1248.3880943264812, 1412.3963200937724),
+            (1196.3719237295445, 1353.5464734231937),
+            (1227.58162608766, 1388.8563814254594),
+        ];
+        let snap = ElementSnapshot {
+            name: "Line.l1".to_string(),
+            enabled: true,
+            bus_names: vec!["src.1.2.3".to_string(), "b1.1.2.3".to_string()],
+            powers: vec![Complex64::new(0.0, 0.0); 6],
+            currents: vec![Complex64::new(0.0, 0.0); 6],
+            loss_w: (0.0, 0.0),
+            currents_mag_ang: Vec::new(),
+            voltages_mag_ang: Vec::new(),
+            residuals: Vec::new(),
+            n_terms: 2,
+            n_conds: 3,
+            n_phases: 3,
+            node_order: Vec::new(),
+            energy_meter: None,
+            phase_losses: pl_w.iter().map(|&(r, i)| Complex64::new(r, i)).collect(),
+            num_controls: 0,
+            ocp_dev_index: 0,
+            ocp_dev_type: 0,
+            has_volt_control: false,
+            has_switch_control: false,
+        };
+        let cap = ElementCap {
+            name: "Line.l1".to_string(),
+            i_re: vec![
+                108.756934444398,
+                -94.20248509323407,
+                -10.284377644223671,
+                -108.756934444398,
+                94.20248509323407,
+                10.284377644223671,
+            ],
+            i_im: vec![
+                -50.714191408883934,
+                -65.96129018037028,
+                117.55097437482597,
+                50.714191408883934,
+                65.96129018037028,
+                -117.55097437482597,
+            ],
+            p_kw: vec![
+                783.0499279996657,
+                750.422847666346,
+                769.9990958663378,
+                -781.8015399053392,
+                -749.2264757426165,
+                -768.7715142402501,
+            ],
+            p_kvar: vec![
+                365.1421781439643,
+                349.9279207212994,
+                359.0564751748979,
+                -363.72978182387055,
+                -348.5743742478762,
+                -357.66761879347246,
+            ],
+            enabled: Some(true),
+            n_terms: Some(2),
+            n_conds: Some(3),
+            n_phases: Some(3),
+            pl_kw: pl_w.iter().map(|&(r, _)| r * 0.001).collect(),
+            pl_kvar: pl_w.iter().map(|&(_, i)| i * 0.001).collect(),
+            ..ElementCap::default()
+        };
+        (vec![snap], cap)
+    }
+
+    /// The same three phases with a fourth, **neutral** conductor per terminal —
+    /// the shape `GetPhaseLosses` ignores by construction (`i` runs to
+    /// `Fnphases`, not `FNconds`).
+    fn line_cap_with_neutral() -> ElementCap {
+        let (_, base) = line_pair();
+        let ins = |v: &[f64], n: (f64, f64)| -> Vec<f64> {
+            let mut out = v[0..3].to_vec();
+            out.push(n.0);
+            out.extend_from_slice(&v[3..6]);
+            out.push(n.1);
+            out
+        };
+        ElementCap {
+            i_re: ins(&base.i_re, (3.5, -3.5)),
+            i_im: ins(&base.i_im, (1.25, -1.25)),
+            p_kw: ins(&base.p_kw, (0.047, -0.04225)),
+            p_kvar: ins(&base.p_kvar, (-0.001, 0.0032500000000000003)),
+            n_conds: Some(4),
+            ..base
+        }
+    }
+
+    fn feeder() -> Tolerances {
+        tol_for("feeder")
+    }
+
+    /// The acceptance leg: a port that reproduces the identity exactly compares
+    /// clean, and the band it was judged against is the measured
+    /// `Σ_j (i_abs·max(1, |V_k|) + i_rel·|S_k|)` of that phase's two conductors.
+    #[test]
+    fn the_measured_line_compares_clean_at_the_derived_band() {
+        let (snaps, cap) = line_pair();
+        compare_element_phase_losses(&snaps, &cap, &feeder(), "phase losses", ElemChannels::ALL);
+        let t = feeder();
+        let bands: Vec<f64> = (0..3)
+            .map(|i| phase_loss_band(&cap, i, 2, 3, t.i_rel, t.i_abs))
+            .collect();
+        assert_eq!(
+            bands,
+            vec![
+                0.00031648320000000007,
+                0.00030929039999999996,
+                0.00031360607999999997
+            ]
+        );
+        // 3.16e-4 kW against a 1.25 kW loss is 2.5e-4 *relative to the answer* —
+        // the near-cancellation the fixture doc describes. Relative to the
+        // summands it is the tier's own 1e-7 rel + 1e-5 abs·|V|, and nothing
+        // else: no floor is calibrated here.
+        assert!(bands[0] / cap.pl_kw[0] > 2.5e-4 && bands[0] / cap.pl_kw[0] < 2.6e-4);
+    }
+
+    /// The band is the `Get_Losses` band restricted to the phase's conductors —
+    /// so summing it over **every** conductor slot reproduces the whole-element
+    /// band `compare_element_channels` uses (same helper, no second copy of the
+    /// formula), and summing it over the phases alone is *at most* that: equal
+    /// when `NConds == NPhases`, strictly less as soon as a neutral exists.
+    #[test]
+    fn the_phase_bands_sum_to_at_most_the_get_losses_band() {
+        let t = feeder();
+        let (_, cap) = line_pair();
+        let phases: f64 = (0..3)
+            .map(|i| phase_loss_band(&cap, i, 2, 3, t.i_rel, t.i_abs))
+            .sum();
+        let all: f64 = (0..3)
+            .map(|c| phase_loss_band(&cap, c, 2, 3, t.i_rel, t.i_abs))
+            .sum();
+        // `NConds == NPhases`: the same set of conductors, hence the same sum.
+        assert_eq!(phases, all);
+        assert_eq!(phases, 0.00093937968);
+
+        let cap4 = line_cap_with_neutral();
+        let phases4: f64 = (0..3)
+            .map(|i| phase_loss_band(&cap4, i, 2, 4, t.i_rel, t.i_abs))
+            .sum();
+        let all4: f64 = (0..4)
+            .map(|c| phase_loss_band(&cap4, c, 2, 4, t.i_rel, t.i_abs))
+            .sum();
+        // The phase conductors are the same three, so their band is unchanged…
+        assert_eq!(phases4, phases);
+        // …and it is strictly under the whole-element band by the neutrals'
+        // contribution — the sense in which this band is the tighter one.
+        // (The 4-conductor whole-element band, summed conductor-group by
+        // conductor-group as `phase_loss_band` groups them.)
+        assert_eq!(all4, 0.0009593886185452729);
+        assert!(phases4 < all4);
+    }
+
+    /// The two-sided calibration: an error just inside the band passes and one
+    /// just outside it fails, on the same fixture.
+    ///
+    /// The perturbation is expressed **in units of the band**, not as a relative
+    /// error of the answer: at a 1.25 kW loss built from two ~863 kVA summands a
+    /// 1e-6 *relative* error is 400× under the band and would prove nothing. The
+    /// band's own scale is the only honest yardstick here.
+    #[test]
+    fn an_error_inside_the_band_passes_and_one_outside_it_fails() {
+        let t = feeder();
+        let (_, probe) = line_pair();
+        let band = phase_loss_band(&probe, 0, 2, 3, t.i_rel, t.i_abs);
+        assert_eq!(band, 0.00031648320000000007);
+
+        // Inside: half a band, in W on the port side.
+        let (mut snaps, cap) = line_pair();
+        snaps[0].phase_losses[0] += Complex64::new(0.5 * band * 1000.0, 0.0);
+        compare_element_phase_losses(&snaps, &cap, &t, "inside", ElemChannels::ALL);
+
+        // One ulp: indistinguishable, obviously inside.
+        let (mut snaps, cap) = line_pair();
+        let re = snaps[0].phase_losses[0].re;
+        snaps[0].phase_losses[0].re = f64::from_bits(re.to_bits() + 1);
+        compare_element_phase_losses(&snaps, &cap, &t, "one ulp", ElemChannels::ALL);
+
+        // Outside: 1.5 bands.
+        let (mut snaps, cap) = line_pair();
+        snaps[0].phase_losses[0] += Complex64::new(0.0, 1.5 * band * 1000.0);
+        let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            compare_element_phase_losses(&snaps, &cap, &t, "outside", ElemChannels::ALL);
+        }))
+        .expect_err("an error of 1.5 bands must fail");
+        let msg = err
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| err.downcast_ref::<&str>().copied())
+            .unwrap_or("");
+        assert!(
+            msg.contains("PhaseLosses phase 0 differs"),
+            "the panic reads {msg:?}"
+        );
+    }
+
+    /// Every phase is banded in its own right — a corrupted *third* phase is not
+    /// hidden by two clean ones.
+    #[test]
+    #[should_panic(expected = "PhaseLosses phase 2 differs")]
+    fn each_phase_is_compared_separately() {
+        let (mut snaps, cap) = line_pair();
+        snaps[0].phase_losses[2] += Complex64::new(1.0, 0.0);
+        compare_element_phase_losses(&snaps, &cap, &feeder(), "phase 2", ElemChannels::ALL);
+    }
+
+    /// The lane exclusion drops the **value** compare only: with
+    /// `phase_losses = false` a wildly wrong value passes (that is what the
+    /// exclusion means, and saying it out loud is the point of the pin) while a
+    /// shape mismatch still fails.
+    #[test]
+    fn the_lane_exclusion_drops_the_value_but_never_the_shape() {
+        let (mut snaps, cap) = line_pair();
+        snaps[0].phase_losses[0] = Complex64::new(1e9, -1e9);
+        compare_element_phase_losses(
+            &snaps,
+            &cap,
+            &feeder(),
+            "newton",
+            ElemChannels::CURRENTS_ONLY,
+        );
+        const { assert!(!ElemChannels::CURRENTS_ONLY.phase_losses) };
+
+        let (mut snaps, cap) = line_pair();
+        snaps[0].phase_losses.pop();
+        let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            compare_element_phase_losses(
+                &snaps,
+                &cap,
+                &feeder(),
+                "newton",
+                ElemChannels::CURRENTS_ONLY,
+            );
+        }))
+        .expect_err("a shape mismatch must fail under every channel policy");
+        let msg = err
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| err.downcast_ref::<&str>().copied())
+            .unwrap_or("");
+        assert!(
+            msg.contains("rust PhaseLosses length 2 != NumPhases (3)"),
+            "the panic reads {msg:?}"
+        );
+    }
+
+    /// Both sides must carry exactly `NumPhases` samples — the oracle side too,
+    /// which is what catches a capture that answered with the capi
+    /// `DefaultResult` sentinel or with an off-flag empty array.
+    #[test]
+    fn both_sides_must_carry_numphases_samples() {
+        for (what, wreck) in [
+            ("oracle PhaseLosses length 2", 0usize),
+            ("oracle PhaseLosses length 0", 1usize),
+            ("kW (3) and kvar (2) halves", 2usize),
+        ] {
+            let (snaps, mut cap) = line_pair();
+            match wreck {
+                0 => {
+                    cap.pl_kw.pop();
+                    cap.pl_kvar.pop();
+                }
+                1 => {
+                    cap.pl_kw.clear();
+                    cap.pl_kvar.clear();
+                }
+                _ => {
+                    cap.pl_kvar.pop();
+                }
+            }
+            let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                compare_element_phase_losses(&snaps, &cap, &feeder(), "shape", ElemChannels::ALL);
+            }))
+            .expect_err(&format!("a capture whose {what} is wrong must fail"));
+            let msg = err
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| err.downcast_ref::<&str>().copied())
+                .unwrap_or("");
+            assert!(msg.contains(what), "the panic reads {msg:?}");
+        }
+    }
+
+    /// A 0-phase element (`UPFCControl`) carries no `PhaseLosses` on either
+    /// side, accepted two-sidedly — measured `n = 0` on r4133 and `[]` on capi,
+    /// so this is a real emptiness and not a sentinel normalization.
+    #[test]
+    fn a_zero_phase_element_is_empty_on_both_sides() {
+        let (mut snaps, mut cap) = line_pair();
+        snaps[0].phase_losses.clear();
+        snaps[0].n_phases = 0;
+        cap.pl_kw.clear();
+        cap.pl_kvar.clear();
+        cap.n_phases = Some(0);
+        compare_element_phase_losses(&snaps, &cap, &feeder(), "upfc", ElemChannels::ALL);
+    }
+
+    /// The element must exist in the snapshot — an existence miss is never a
+    /// silent skip, under any channel policy.
+    #[test]
+    #[should_panic(expected = "no element Line.l1")]
+    fn an_element_missing_from_the_snapshot_fails_the_phase_loss_compare() {
+        let (_, cap) = line_pair();
+        compare_element_phase_losses(&[], &cap, &feeder(), "missing", ElemChannels::CURRENTS_ONLY);
+    }
+
+    /// `NumPhases` is required here too: an element captured without the
+    /// `compare_element_extras` flag must fail the case rather than compare an
+    /// empty pair against an empty pair.
+    #[test]
+    #[should_panic(expected = "carries no `n_phases` field")]
+    fn the_comparator_requires_the_capture_to_carry_numphases() {
+        let (snaps, mut cap) = line_pair();
+        cap.n_phases = None;
+        compare_element_phase_losses(&snaps, &cap, &feeder(), "no flag", ElemChannels::ALL);
+    }
+
+    /// The band is built from the oracle's own `Powers`/`Currents`, so the
+    /// capture must explain its conductor layout: `NTerms·NConds` slots.
+    #[test]
+    #[should_panic(expected = "the oracle's Powers")]
+    fn the_band_requires_a_consistent_conductor_layout() {
+        let (snaps, mut cap) = line_pair();
+        cap.p_kw.push(0.0);
+        cap.p_kvar.push(0.0);
+        compare_element_phase_losses(&snaps, &cap, &feeder(), "layout", ElemChannels::ALL);
+    }
+}
+
 /// The G1.3d(i) discrete-extras pins: the no-meter sentinel normalization and
 /// the comparator's structural rules, pinned directly (no oracle) the way
 /// `derived_polar_floors` pins the polar bands. Every acceptance carries its
@@ -2640,6 +3403,10 @@ mod element_extras_pins {
     /// metered by `EnergyMeter.Feeder`, `NodeOrder = [1, 2, 3, 1, 2, 3]`. The
     /// oracle side is spelled the way the **capi** transport spells it (a bare
     /// name, no sentinel).
+    ///
+    /// No control targets it in that deck, so all five G1.3d(ii) control
+    /// scalars read zero/false — the *absence* half of the surface, which
+    /// [`controlled_line`] complements with the presence half.
     fn metered_line() -> (Vec<ElementSnapshot>, ElementCap) {
         let snap = ElementSnapshot {
             name: "Line.l1".to_string(),
@@ -2656,6 +3423,12 @@ mod element_extras_pins {
             n_phases: 3,
             node_order: vec![1, 2, 3, 1, 2, 3],
             energy_meter: Some("feeder".to_string()),
+            phase_losses: vec![num_complex::Complex64::new(0.0, 0.0); 3],
+            num_controls: 0,
+            ocp_dev_index: 0,
+            ocp_dev_type: 0,
+            has_volt_control: false,
+            has_switch_control: false,
         };
         let cap = ElementCap {
             name: "Line.l1".to_string(),
@@ -2667,6 +3440,13 @@ mod element_extras_pins {
             n_phases: Some(3),
             energy_meter: Some("feeder".to_string()),
             node_order: vec![1, 2, 3, 1, 2, 3],
+            pl_kw: vec![0.0; 3],
+            pl_kvar: vec![0.0; 3],
+            num_controls: Some(0),
+            ocp_dev_index: Some(0),
+            ocp_dev_type: Some(0),
+            has_volt_control: Some(false),
+            has_switch_control: Some(false),
             ..ElementCap::default()
         };
         (vec![snap], cap)
@@ -2693,6 +3473,12 @@ mod element_extras_pins {
             n_phases: 0,
             node_order: Vec::new(),
             energy_meter: None,
+            phase_losses: Vec::new(),
+            num_controls: 0,
+            ocp_dev_index: 0,
+            ocp_dev_type: 0,
+            has_volt_control: false,
+            has_switch_control: false,
         };
         let cap = ElementCap {
             name: "UPFCControl.myupfcctrl".to_string(),
@@ -2701,9 +3487,34 @@ mod element_extras_pins {
             n_conds: Some(0),
             n_phases: Some(0),
             energy_meter: Some("0".to_string()),
+            num_controls: Some(0),
+            ocp_dev_index: Some(0),
+            ocp_dev_type: Some(0),
+            has_volt_control: Some(false),
+            has_switch_control: Some(false),
             ..ElementCap::default()
         };
         (vec![snap], cap)
+    }
+
+    /// The measured `Line.l1` of the control fixture
+    /// (`exec::tests::element_extras::control_fixture`): a 3-phase line carrying
+    /// a `Relay`, a `Fuse` and a `SwtControl`, i.e. `NumControls = 3`,
+    /// `OCPDevIndex = 1`, `OCPDevType = 3` (Relay), `HasVoltControl = false`,
+    /// `HasSwitchControl = true` — the same five values both oracle channels
+    /// reported for it (G1.3d(ii) §1.3-1). The *presence* half of the surface;
+    /// [`metered_line`] carries the absence half.
+    fn controlled_line() -> (Vec<ElementSnapshot>, ElementCap) {
+        let (mut snaps, mut cap) = metered_line();
+        snaps[0].num_controls = 3;
+        snaps[0].ocp_dev_index = 1;
+        snaps[0].ocp_dev_type = 3;
+        snaps[0].has_switch_control = true;
+        cap.num_controls = Some(3);
+        cap.ocp_dev_index = Some(1);
+        cap.ocp_dev_type = Some(3);
+        cap.has_switch_control = Some(true);
+        (snaps, cap)
     }
 
     /// The acceptance leg: the measured fixture compares clean end to end.
@@ -2817,12 +3628,17 @@ mod element_extras_pins {
     fn the_extras_comparator_requires_the_capture_to_carry_them() {
         /// Removes one required field from an otherwise complete capture.
         type Drop = fn(&mut ElementCap);
-        let drop: [(&str, Drop); 5] = [
+        let drop: [(&str, Drop); 10] = [
             ("n_terms", |c| c.n_terms = None),
             ("n_conds", |c| c.n_conds = None),
             ("n_phases", |c| c.n_phases = None),
             ("energy_meter", |c| c.energy_meter = None),
             ("enabled", |c| c.enabled = None),
+            ("num_controls", |c| c.num_controls = None),
+            ("ocp_dev_index", |c| c.ocp_dev_index = None),
+            ("ocp_dev_type", |c| c.ocp_dev_type = None),
+            ("has_volt_control", |c| c.has_volt_control = None),
+            ("has_switch_control", |c| c.has_switch_control = None),
         ];
         for (field, remove) in drop {
             let (snaps, mut cap) = metered_line();
@@ -2972,6 +3788,103 @@ mod element_extras_pins {
         let (mut snaps, cap) = metered_line();
         snaps[0].enabled = false;
         compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "enabled");
+    }
+
+    /// The acceptance leg of the G1.3d(ii) five: the measured control-bearing
+    /// element compares clean end to end.
+    #[test]
+    fn the_measured_controlled_element_compares_clean() {
+        let (snaps, cap) = controlled_line();
+        compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "controlled");
+    }
+
+    /// …and each of the five is compared in its own right: corrupting exactly
+    /// one of them on the port side reds with that field's own message. The two
+    /// booleans are corrupted in **both** directions, since a one-sided flip
+    /// would be caught by an `any`-shaped bug only half the time.
+    #[test]
+    fn the_control_extras_are_compared_exactly() {
+        type Corrupt = fn(&mut ElementSnapshot);
+        let cases: [(&str, Corrupt); 7] = [
+            ("NumControls", |s| s.num_controls += 1),
+            ("OCPDevIndex", |s| s.ocp_dev_index += 1),
+            ("OCPDevType", |s| s.ocp_dev_type = 2),
+            ("HasVoltControl", |s| s.has_volt_control = true),
+            ("HasSwitchControl", |s| s.has_switch_control = false),
+            ("HasVoltControl", |s| {
+                s.has_volt_control = true;
+                s.has_switch_control = true;
+            }),
+            ("HasSwitchControl", |s| {
+                s.has_volt_control = false;
+                s.has_switch_control = false;
+            }),
+        ];
+        for (what, corrupt) in cases {
+            let (mut snaps, cap) = controlled_line();
+            corrupt(&mut snaps[0]);
+            let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "extras");
+            }))
+            .expect_err(&format!("a corrupted {what} must fail"));
+            let msg = err
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| err.downcast_ref::<&str>().copied())
+                .unwrap_or("");
+            assert!(
+                msg.contains(&format!("{what} differs")),
+                "the panic for a corrupted {what} reads {msg:?}"
+            );
+        }
+    }
+
+    /// The first OCP tie, on the **oracle** side: one `repeat … until (i >
+    /// listSize) or (Result > 0)` walk produces both scalars (r4133
+    /// `DDLL/DCktElement.pas:242-258`, `Common/Utilities.pas:3165-3184`), so a
+    /// capture in which exactly one of them is zero is a transport bug. Both
+    /// directions of the disagreement are exercised.
+    #[test]
+    fn the_oracle_ocp_index_and_type_are_zero_together() {
+        for (idx, ty) in [(Some(0), Some(3)), (Some(1), Some(0))] {
+            let (snaps, mut cap) = controlled_line();
+            cap.ocp_dev_index = idx;
+            cap.ocp_dev_type = ty;
+            // Keep the port in step so the plain equality asserts pass first and
+            // the tie is what actually reds.
+            let mut snaps = snaps;
+            snaps[0].ocp_dev_index = usize::try_from(idx.unwrap()).unwrap();
+            snaps[0].ocp_dev_type = ty.unwrap();
+            let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "ocp tie");
+            }))
+            .expect_err("an oracle OCP pair that is half zero must fail");
+            let msg = err
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| err.downcast_ref::<&str>().copied())
+                .unwrap_or("");
+            assert!(
+                msg.contains("must be zero together"),
+                "the panic for {idx:?}/{ty:?} reads {msg:?}"
+            );
+        }
+        // …and the two legitimate pairs still pass.
+        let (snaps, cap) = controlled_line();
+        compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "ocp present");
+        let (snaps, cap) = metered_line();
+        compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "ocp absent");
+    }
+
+    /// The second OCP tie: `OCPDevIndex` is a 1-based position in the list whose
+    /// size is `NumControls`, so it can never exceed it.
+    #[test]
+    #[should_panic(expected = "exceeds its own")]
+    fn the_oracle_ocp_index_cannot_exceed_the_control_count() {
+        let (mut snaps, mut cap) = controlled_line();
+        snaps[0].ocp_dev_index = 4;
+        cap.ocp_dev_index = Some(4);
+        compare_element_extras(&snaps, &cap, PropsChannel::CapiV0145, "ocp bound");
     }
 
     /// An element the oracle sent and the port does not have is an existence
@@ -3236,7 +4149,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:1183-1188` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:1253-1258` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -3265,7 +4178,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:1183-1188` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:1253-1258` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -3329,7 +4242,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     **compare** on r4133. The exclusion is a statement about the 0.14.5
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
-    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1183-1188`
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1253-1258`
     //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
@@ -3375,7 +4288,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///
 /// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1183-1188` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1253-1258` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
@@ -3568,7 +4481,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1183-1188`
+    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1253-1258`
     /// forbids masking there, plus the two `pctperm` rows RP2.1 measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {
