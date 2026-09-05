@@ -22,6 +22,11 @@ mod flags;
 use build::make_meter_zone_lists;
 use flags::{set_has_meter_flag, set_has_sensor_flag};
 
+/// The customer roll-up, re-exported for [`super::reliability`]: r4133 calls it
+/// from both the zone build and `CalcReliabilityIndices`
+/// (`Version8/Source/Meters/EnergyMeter.pas:2468`).
+pub(super) use build::total_up_downstream_customers;
+
 /// Pascal `TDSSCircuit.DoResetMeterZones` (Circuit.pas l.2145): rebuild every
 /// meter's zone whenever the bus lists were rebuilt, unless the zones are
 /// locked. With `zones_locked = false` (the default) the zones are rebuilt on

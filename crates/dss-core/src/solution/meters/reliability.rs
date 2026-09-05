@@ -10,6 +10,7 @@ use crate::elements::pc::load::Load;
 use crate::elements::traits::{CktElement, ElemId, ElemStore, TypedStore};
 
 use super::meter_mut;
+use super::zones::total_up_downstream_customers;
 
 // ===================== Reliability (WP6.6) ==================================
 
@@ -22,11 +23,20 @@ fn pd_from_bus(store: &dyn ElemStore, r: ElemId) -> usize {
     .bus_idx()
 }
 
-/// Pascal `TExecHelper.DoLambdaCalcs` (ExecHelper.pas l.4847): zero every bus's
-/// `BusFltRate`/`Bus_Num_Interrupt`, then run `CalcReliabilityIndices` on each
-/// EnergyMeter. The caller (the executive) has already checked at least one
-/// meter exists and parsed the `AssumeRestoration` flag. Returns the per-meter
-/// error messages (Pascal calls `DoSimpleMsg` and continues the loop).
+/// Pascal `TExecHelper.DoLambdaCalcs` (r4133
+/// `Version8/Source/Executive/ExecHelper.pas:4404-4442`, dss_capi
+/// `ExecHelper.pas:4847`): zero every bus's `BusFltRate`/`Bus_Num_Interrupt`,
+/// then run `CalcReliabilityIndices` on each EnergyMeter. The caller (the
+/// executive) has already checked at least one meter exists and parsed the
+/// `AssumeRestoration` flag. Returns the per-meter error messages (Pascal calls
+/// `DoSimpleMsg` and continues the loop).
+///
+/// r4133 hands the flag to `CalcReliabilityIndices(AssumeRestoration, ActorID)`
+/// (`ExecHelper.pas:4440`) and the callee stores it on the meter itself
+/// (`EnergyMeter.pas:2467`), *after* the zone check — so a meter with no zone
+/// keeps the flag it had. dss_capi 0.14.5 instead assigns
+/// `pMeter.AssumeRestoration` in this loop (`ExecHelper.pas:4884`); r4133 is the
+/// behavioral authority, so the assignment lives in the callee here too.
 pub(crate) fn calc_all_reliability_indices(
     ckt: &mut Circuit,
     store: &mut dyn ElemStore,
@@ -41,9 +51,6 @@ pub(crate) fn calc_all_reliability_indices(
     let mut errors = Vec::new();
     let meters = ckt.energy_meters.clone();
     for meter_ref in meters {
-        // Pascal `pMeter.AssumeRestoration := AssumeRestoration` before the calc;
-        // the field is also read by the next zone build's customer roll-up.
-        meter_mut(store, meter_ref).set_assume_restoration(assume_restoration);
         if let Err(e) = calc_reliability_indices(meter_ref, assume_restoration, ckt, store) {
             errors.push(e);
         }
@@ -51,9 +58,11 @@ pub(crate) fn calc_all_reliability_indices(
     errors
 }
 
-/// Pascal `TEnergyMeterObj.CalcReliabilityIndices` (EnergyMeter.pas l.2411):
-/// the backward fault-rate sweep, the forward interruption sweep (which counts
-/// the feeder *sections* delimited by OCP devices), then SAIFI/SAIDI/CAIDI.
+/// Pascal `TEnergyMeterObj.CalcReliabilityIndices` (r4133
+/// `Version8/Source/Meters/EnergyMeter.pas:2449`, dss_capi `:2411`): store the
+/// `AssumeRestoration` flag and re-run the customer roll-up, then the backward
+/// fault-rate sweep, the forward interruption sweep (which counts the feeder
+/// *sections* delimited by OCP devices), then SAIFI/SAIDI/CAIDI.
 ///
 /// A zone with no OCP device (no enabled Relay/Recloser/Fuse on any branch) has
 /// `SectionCount == 0` and the sweep aborts with error 52902 exactly as the
@@ -80,6 +89,31 @@ fn calc_reliability_indices(
         // Pascal `not Assigned(SequenceList)` (zone never built).
         return Err(format!("{meter_full} Zone not defined properly."));
     }
+
+    // r4133 `AssumeRestoration := AssumeRestoration_input;` +
+    // `TotalUpDownstreamCustomers;` (EnergyMeter.pas:2467-2468), between the
+    // zone check and the zeroing loop: the roll-up is re-run so
+    // `BranchTotalCustomers` — and with it `BusTotalNumCustomers`,
+    // `BusCustInterrupts`, `FeederSection.TotalCustomers` and every SAIDI term
+    // below — is computed under *this* `RelCalc`'s restoration flag rather than
+    // the one the last zone build happened to use. Every EPRI revision carries
+    // the call, r3723 (the SVN base of the pinned oracle) included; dss_capi
+    // 0.14.5 dropped it in its own refactor (`EnergyMeter.pas:2411-2427` goes
+    // straight from the zone check to the zeroing loop) and therefore weights
+    // the sections with the totals the last zone build left. r4133 is the
+    // behavioral authority (CLAUDE.md), so the port follows it: the divergence
+    // is unreachable on the corpus (no gate case passes the flag — measured)
+    // and is named on both sides by
+    // `exec::tests::reliability::relcalc_recomputes_the_customer_totals_it_depends_on`
+    // and `…::relcalc_assume_restoration_changes_auto_ocp_interruptions`.
+    //
+    // r4133's own `Not Assigned(BranchList)` guard (`:1638-1642`, message 529)
+    // cannot fire here: the only writer of both lists is `install_zone`, whose
+    // three call sites either pass a tree together with a non-empty sequence
+    // list or pass an empty sequence list — which the check above already
+    // rejected.
+    meter_mut(store, meter_ref).set_assume_restoration(assume_restoration);
+    total_up_downstream_customers(&seq, assume_restoration, store);
 
     // Zero reliability accumulators (each PD element zeros its FROM bus).
     for &r in seq.iter().rev() {
