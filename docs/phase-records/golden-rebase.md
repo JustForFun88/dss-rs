@@ -2795,11 +2795,11 @@ row against the pre-fix lock.
   witness); no new tolerance constant, no golden byte. Rules, floors and pins:
   `TESTING.md` + `tests/TOLERANCE_NOTES.md` §"Short-circuit surface", the plan's §G1.5 note, and
   the `exec::view::bus_sc_tests` / `harness::bus_short_circuit_tests` modules.
-  Commits: `7d920701` (surface) + `SETTLE_SHA` (audit settlement). Gate: both lanes
+  Commits: `7d920701` (surface) + `5d206bdb` (audit settlement). Gate: both lanes
   **5 134 / 0 / 5 ignored**, corpus 525/525, ledger 53 entries / 1 516 hits / 0 stale, D11(2)
   8 pairs, `tests/golden` untouched, `lane_diff` `PASS` max |Δ| = 0 (at `7d920701`; the settlement
   moves no executable product code).
-  *Audit settlement (2026-09-05, `SETTLE_SHA`):* 14 findings, 11 distinct — **8 fixed, 2 recorded,
+  *Audit settlement (2026-09-05, `5d206bdb`):* 14 findings, 11 distinct — **8 fixed, 2 recorded,
   1 refuted**. Fixed: the `bus_sc_tests` band had abs/rel transposed (now the `micro` tier's own
   `1e-6` + `1e-9`, deck header and manifest note with it); the surface's non-trivial half gained a
   fail-on-stale (`SC_STUDY_POPULATION = (10, 646)`, recorded from the runner, asserted in the gate
