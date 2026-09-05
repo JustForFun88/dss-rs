@@ -1073,6 +1073,116 @@ fn check_do_not_call_still_refuses_bus_levels(src: &str, rel: &str) -> Result<()
     Ok(())
 }
 
+/// The capi transport's two incidence normalizers must still REFUSE a shape they
+/// were not written for.
+///
+/// `_inc_ints` implements rule N1 — drop the one trailing cell capi allocates and
+/// never writes (`CAPI_Solution.pas:873`/`:910`) — and the sub-step's KILL
+/// CRITERION is that the cell is 0 and the length is `3·NZero + 1`
+/// (`GOLDEN_REBASE_PLAN.md` §G1.8). Both are enforced in Python, where no Rust
+/// test reaches them; an edit that kept the strip and dropped the zero-check
+/// (`return xs[:-1]` unconditionally) would leave every existing test green,
+/// because the gate-side `assert_transport_shape` only re-asserts the fixpoint
+/// `len % 3 == 0` — and a capi reply whose last cell stopped being the unwritten
+/// slot would then be silently truncated. Same shape for `_inc_names`' rule N3:
+/// the one-element `''` sentinel is dropped ONLY where the engine can reach it
+/// (`sentinel_ok`), and any other blank raises. The r4133 twins have real unit
+/// tests (`crates/dss-epri/src/capture.rs`); this is their capi counterpart,
+/// written as a source-text gate for the reason every rule in this file is.
+/// (G1.8 audit settlement, finding G18-T2.)
+fn check_capi_incidence_normalizers(src: &str, rel: &str) -> Result<(), String> {
+    for (header, needles) in [
+        (
+            "def _inc_ints(",
+            &[
+                "len(xs) % 3 != 1",
+                "xs[-1] != 0",
+                "raise ValueError",
+                "return xs[:-1]",
+            ][..],
+        ),
+        (
+            "def _inc_names(",
+            &["if not sentinel_ok:", "raise ValueError", "return xs"][..],
+        ),
+    ] {
+        let body = py_def_body(src, header, rel)?;
+        for needle in needles {
+            if !body.contains(needle) {
+                return Err(format!(
+                    "{rel}: `{header}…` no longer contains `{needle}`. The G1.8 \
+                     transport normalizations must RAISE on a shape they were not \
+                     written for, never repair it silently: the trailing-cell \
+                     contract is this sub-step's kill criterion, and the empty \
+                     name sentinel may be dropped only where the engine can reach \
+                     it."
+                ));
+            }
+        }
+        if body.matches("raise ValueError").count() < 2 {
+            return Err(format!(
+                "{rel}: `{header}…` has fewer than two `raise ValueError` arms — \
+                 one of the two refusals was dropped"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn the_capi_incidence_transport_refuses_a_shape_it_was_not_written_for() {
+    let rel = "tools/oracle/oracle_server.py";
+    check_capi_incidence_normalizers(&read(rel), rel).unwrap_or_else(|e| panic!("{e}"));
+
+    // Non-vacuity: a normalizer that strips the cell without checking it, and
+    // one that drops the sentinel unconditionally, must both be refused.
+    let ok = "\
+def _inc_ints(v, what: str) -> list:
+    xs = [int(x) for x in v]
+    if len(xs) % 3 != 1:
+        raise ValueError(what)
+    if xs[-1] != 0:
+        raise ValueError(what)
+    return xs[:-1]
+
+
+def _inc_names(v, sentinel_ok: bool, what: str) -> list:
+    xs = [str(s) for s in v]
+    if len(xs) == 1 and xs[0].strip() == \"\":
+        if not sentinel_ok:
+            raise ValueError(what)
+        return []
+    if [i for i, s in enumerate(xs) if not s.strip()]:
+        raise ValueError(what)
+    return xs
+";
+    assert!(check_capi_incidence_normalizers(ok, "synthetic").is_ok());
+
+    for (what, mutated) in [
+        (
+            "the trailing-cell zero check",
+            ok.replace("    if xs[-1] != 0:\n        raise ValueError(what)\n", ""),
+        ),
+        (
+            "the length check",
+            ok.replace(
+                "    if len(xs) % 3 != 1:\n        raise ValueError(what)\n",
+                "",
+            ),
+        ),
+        (
+            "the sentinel guard",
+            ok.replace(
+                "        if not sentinel_ok:\n            raise ValueError(what)\n",
+                "",
+            ),
+        ),
+    ] {
+        check_capi_incidence_normalizers(&mutated, "synthetic")
+            .expect_err(&format!("{what} was dropped and the gate stayed green"));
+    }
+}
+
 #[test]
 fn capi_capture_reads_the_incidence_surface_last() {
     let rel = "tools/oracle/oracle_server.py";

@@ -164,10 +164,14 @@ fn corpus_gate_all_cases_match_engines() {
     // (it advances for every reactor, r4133 `Common/Solution.pas:3039`, while
     // the port emits dense rows) and the comparator therefore compares its
     // remapped answer. Re-derived from this run and pinned in both directions;
-    // it lives beside the comparator (`harness::inc_matrix`) rather than in the
-    // scheduler because that module has no manifest access and arms itself on
-    // the run's own comparison counter.
-    harness::inc_matrix::assert_declines_are_the_pinned_population();
+    // the rule lives beside the comparator (`harness::inc_matrix`, which has no
+    // manifest access) while its ARMING predicate is read off the manifests here
+    // — the G1.7 shape, restored by the G1.8 audit settlement so that a deleted
+    // or per-channel-narrowed `if c.compare_inc_matrix` block in the runner reds
+    // instead of silencing the whole surface.
+    harness::inc_matrix::assert_declines_are_the_pinned_population(
+        scheduler::inc_matrix_requested_channels(),
+    );
     // And the GLOBAL half of the r4133 property accounting (plan §RP4.1): the
     // two per-row asserts BELOW say nothing when NO row was visited, which is
     // exactly what a re-mask of the r4133 property request would produce — a

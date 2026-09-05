@@ -314,7 +314,7 @@ fn the_upstream_row_map_reconstructs_the_nev_test_case_cursor() {
 /// **Pin 6 — the Laplacian is `IncMatᵀ · IncMat`, and it is blind to the row gaps.**
 ///
 /// `CalcLaplacian` is literally `Laplacian := IncMat.Transpose().multiply(IncMat)`
-/// (r4133 `Executive/ExecCommands.pas:907-917`, capi `:421-432`). Both of its
+/// (r4133 `Executive/ExecCommands.pas:911-917`, capi `:421-432`). Both of its
 /// indices are **bus columns**, so a skipped row shifts nothing — which is why
 /// the live gate compares the Laplacian arm without the
 /// [`view::IncMatrixView::upstream_row_index`] remap. Checked as a value map
@@ -383,7 +383,7 @@ fn an_empty_incidence_matrix_still_reports_every_bus_column() {
 /// live all the same.**
 ///
 /// `CalcLaplacian` before any `CalcIncMatrix` raises 8877 in this port and in capi
-/// (`Executive/ExecCommands.pas:423-427`); r4133 `:907-917` has no guard and would
+/// (`Executive/ExecCommands.pas:423-427`); r4133 `:911-917` has no guard and would
 /// dereference NIL. [`Dss::inc_matrix_view`] therefore issues `CalcIncMatrix`
 /// first and reports the diagnostics the pair pushed **relative to the engine's
 /// existing log**, so the live gate sees a swapped or dropped build in the same
@@ -423,10 +423,16 @@ fn the_incidence_pair_pushes_no_diagnostics_and_the_guard_is_live() {
 /// finds nothing and the cursor runs off the end, so the `-1` lands on column
 /// `NumBuses - 1` (`:3030-3035`). On `reactor_asym.dss` the delta shunt
 /// `Reactor.rdel` (bus `b3`, column 3) therefore draws an edge to `b4`, the **last**
-/// bus in `BusList` — and it does move the Laplacian. Both oracles do the same;
-/// this is a *which element is a row* defect, registered for the WP-G2 teardown
-/// rather than fixed in a comparison sub-step, so the port reproduces it and the
-/// pin states the current behaviour.
+/// bus in `BusList` — and it does move the Laplacian. Both oracles emit that same
+/// edge at row **5** (`inc_matrix_pins.rs`'s measured oracle array `ASYM_INC`),
+/// because this deck also trips the row cursor settlement S-INC settles; the port
+/// numbers it **4** in its dense rows, so only the column pair is
+/// channel-independent. This is a *which element is a row* defect, registered for
+/// the WP-G2 teardown rather than fixed in a comparison sub-step, so the port
+/// reproduces it and the pin states the current behaviour. The teardown's exit
+/// value is **no row at all** for a 1-terminal reactor — it is a shunt, not a
+/// branch — which costs a comparator-side reconstruction of the phantom row and
+/// of its `NumBuses - 1` fallback column, i.e. a settlement of its own.
 #[test]
 fn a_one_terminal_reactor_becomes_a_phantom_branch_to_the_last_bus() {
     let mut dss = compile_corpus_deck("asymmetric/reactor/reactor_asym.dss");
@@ -454,13 +460,15 @@ fn a_one_terminal_reactor_becomes_a_phantom_branch_to_the_last_bus() {
 
 /// **Pin 10 — Q3, reproduced: the reactor walk has no `Enabled` test.**
 ///
-/// `AddLines2IncMatrix` (`:2862`), `AddXfmr2IncMatrix` and
-/// `AddSeriesCap2IncMatrix` (`:2962`) all skip disabled elements;
+/// `AddLines2IncMatrix` (`:2862`), `AddXfmr2IncMatrix` (`:2916`) and
+/// `AddSeriesCap2IncMatrix` (`:2964`) all skip disabled elements;
 /// `AddSeriesReac2IncMatrix` (r4133 `Common/Solution.pas:3011-3040`) tests nothing
 /// but `bus2`. A disabled series reactor is therefore a matrix row while a
-/// disabled line and a disabled series capacitor on the same buses are not — 2
-/// rows here, not 1 and not 4. Registered for the WP-G2 teardown; both oracles
-/// agree, so the port reproduces it.
+/// disabled line and a disabled series capacitor on the same buses are not — **3**
+/// rows on this deck, where the reactor walk carrying its siblings' `Enabled`
+/// test would give **2** (the teardown's exit value) and no walk having one would
+/// give **5** (both lines, the capacitor and the reactor). Registered for the
+/// WP-G2 teardown; both oracles agree, so the port reproduces it for now.
 #[test]
 fn a_disabled_series_reactor_is_still_a_row() {
     let mut dss = build(&[

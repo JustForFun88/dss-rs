@@ -151,22 +151,22 @@ the six CLAUDE.md §"Known upstream bugs" reproduced in any lane. Full record:
 [`golden-rebase.md`](docs/phase-records/golden-rebase.md) section "GOLDEN_REBASE
 WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 
-**GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened
-2026-08-08; since 2026-09-04 its independent chains run in parallel **lanes** —
-worktrees `.claude/worktrees/lane-*`, D7 — and `update` takes merges only, one
-lane sub-step at a time). Landed: **G1.1**, delivered by `R4133_PROPS_PLAN.md`
-RP4.1 2026-09-03 (**G1.1 satisfied**, **G3.4**/**G3.5** unblocked); **G1.2**
-(the ESPVLControl deck) 2026-08-29; **G1.0** 2026-09-04, the WP rails, whose
-96-mode probe **also discharges G1.11's mode-capability acceptance for the
-whole WP**; and three `lane-s` surfaces, each with 0 ledger entries, 0 golden
-bytes, no floor, no port bug, kill criteria not met — **G1.9** (2026-09-04,
+**GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened 2026-08-08;
+since 2026-09-04 its chains run in parallel **lanes** (D7,
+`.claude/worktrees/lane-*`) and `update` takes merges only, one lane sub-step at
+a time). Landed: **G1.1**, delivered by `R4133_PROPS_PLAN.md` RP4.1 2026-09-03
+(**G3.4**/**G3.5** unblocked); **G1.2** (the ESPVLControl deck) 2026-08-29;
+**G1.0** 2026-09-04, the WP rails, whose 96-mode probe **also discharges G1.11's
+mode-capability acceptance**; and three `lane-s` surfaces, each 0 ledger entries
+/ 0 golden bytes / no floor, kill criteria not met — **G1.9** (2026-09-04,
 `9757d26c` + `f27f9598`), five `Circuit` aggregates + ten `Solution` scalars,
 universal; **G1.7** (2026-09-05, `8fc32991` + `898f8a86`), the six order-free
 `Topology` rows on 440 live non-`large` cases (lock +7 `topo=`), stale tree +
 window dedup **asserted, not excluded** (D15/D16, `(16, 135)` / `(8, 96)`);
-**G1.8** (2026-09-05), the four flat incidence/Laplacian quantities on the same
-440 (lock +6 `incm=`), the reactor row cursor likewise (S-INC, `(4, 5)`; and
-§G3.2c re-scoped). Full record: same file, "GOLDEN_REBASE WP-G1 — records".
+**G1.8** (2026-09-05, `2cadc808` + `f3436c77` + `<settle>`), the four flat
+incidence/Laplacian quantities on the same 440 (lock +6 `incm=`), the reactor
+row cursor likewise (S-INC, `(4, 5)`; §G3.2c re-scoped). Full record: same file,
+§"GOLDEN_REBASE WP-G1 — records".
 
 **Next.** Lane `lane-s` takes **G1.10a** (run-file artifacts), then G1.10b/c;
 the element lane runs G1.3a→3d→3b→3c, the bus lane G1.4a→G1.5→G1.4c→G1.4b, the
