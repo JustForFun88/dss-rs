@@ -1085,7 +1085,7 @@ accumulator, so the API surface and the profile report cannot disagree); the
 comparator is `harness::compare_bus_distances`. Four things about it are worth
 knowing:
 
-* **It rides `compare_bus` — no flag of its own, no force rule, no lock cell.**
+* **It rides `compare_bus` — no flag of its own, no force rule, no lock *flag* cell** (the one `population.lock.json` cell that moved is a `ledger=` digest).
   The three reads join the per-bus walk `compare_bus` already pays for, so the
   population is that flag's 443 forced live non-`large` cases.
 * **It is compared EXACTLY (`rel = abs = 0`) and takes no `Tolerances` at all.**
