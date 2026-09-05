@@ -7,7 +7,7 @@
 //! A live corpus comparison is opt-in per case: a manifest `compare_*` flag
 //! turns a surface on (`corpus_gate/manifest.rs`), the scheduler may force it
 //! for a whole population (`corpus_gate/scheduler.rs::force_properties`, whose
-//! forced set is pinned at `FORCED_PROPS_POPULATION` = 442 live non-`large`
+//! forced set is pinned at `FORCED_PROPS_POPULATION` = 443 live non-`large`
 //! cases), and the runner then walks *that channel's* capture. Every comparator
 //! in this harness is written as "for each item the oracle sent, assert the Rust
 //! value" — so an **absent or empty capture makes it compare nothing and pass**.

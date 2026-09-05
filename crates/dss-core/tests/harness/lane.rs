@@ -100,8 +100,8 @@ pub const PARITY: bool = cfg!(feature = "oracle-parity");
 /// part of `cargo test` at all.
 pub const ITER_SLACK: i32 = 1;
 
-/// The corpus cases whose element `Powers`/`Losses` **neither** lane
-/// oracle-compares — the drift model's "deliberate divergences … excluded
+/// The corpus cases whose element `Powers`/`Losses`/`PhaseLosses` **neither**
+/// lane oracle-compares — the drift model's "deliberate divergences … excluded
 /// field-by-field" row, and the only such exclusion in the suite.
 ///
 /// CLAUDE.md upstream bug 5, torn down in both lanes by
@@ -123,8 +123,12 @@ pub const ITER_SLACK: i32 = 1;
 /// exclusion stays these two decks' two channels and nothing wider.
 ///
 /// **What still gates them**: the element name set, terminal **currents**, node
-/// voltages, the system Y, discrete state, and the iteration count — everything
-/// except the two `S = V·conj(I)` channels. Those are pinned by
+/// voltages, the system Y, discrete state, the ten discrete per-element extras
+/// and the iteration count — everything except the three `S = V·conj(I)`
+/// channels (`Powers`, `Losses` and, since G1.3d(ii), `PhaseLosses` — the same
+/// products bucketed by phase, reached through the same cache-aware
+/// `ComputeIterminal`; `harness::compare_element_phase_losses` still asserts its
+/// array shapes there). Those are pinned by
 /// `dss_core::exec::tests::newton::newton_powers_match_the_normal_algorithm`,
 /// which asserts the Newton powers equal the *normal* algorithm's on the same
 /// deck to 1e-8 kVA (upstream's stale read differs by ≥ 1e-1 kVA) — and the
@@ -133,13 +137,45 @@ pub const ITER_SLACK: i32 = 1;
 const LANE_SKIP_ELEM_POWERS: &[&str] =
     &["modes:newton/newton.dss", "modes:newton/newton_feeder.dss"];
 
-// LANE-EXCLUSION(POWERS_REUSE_STALE_NEWTON_ITERMINAL): the two decks' powers and
-// losses are dropped from the oracle compare in **both** lanes — no oracle
-// channel reports them at the converged `NodeV`, so there is no lane in which
-// comparing them would be right.
+// LANE-EXCLUSION(POWERS_REUSE_STALE_NEWTON_ITERMINAL): the two decks' powers,
+// losses and per-phase losses are dropped from the oracle compare in **both**
+// lanes — no oracle channel reports them at the converged `NodeV`, so there is
+// no lane in which comparing them would be right.
 /// Which element sub-channels the corpus gate oracle-compares for the case
 /// `label` — [`ElemChannels::ALL`] everywhere except [`LANE_SKIP_ELEM_POWERS`],
 /// in either lane.
+///
+/// # G1.3a: the three derived polar channels do NOT join the exclusion
+///
+/// `CurrentsMagAng`, `VoltagesMagAng` and `Residuals`
+/// (`GOLDEN_REBASE_PLAN.md` G1.3a) stay compared on the two `newton*` decks.
+/// The staleness above is confined to the **cache-aware** read path —
+/// `Get_Powers`/`Get_Losses` reuse `ComputeIterminal`, which returns the stamped
+/// `Iterminal` untouched when the solution count already matches (r4133
+/// `Common/CktElement.pas:632-640`, called from `Get_Power` `:666` at `:680` and
+/// from `Get_Losses` `:707` at `:743`). The three new surfaces do not use it:
+/// upstream reads them through a scratch `GetCurrents`
+/// (r4133 `DDLL/DCktElement.pas:837`/`:1069`) and `VoltagesMagAng` only reads
+/// `NodeV` through `NodeRef` (`:1096-1100`), never `Iterminal`. So the two decks
+/// *gain* three oracle-compared channels here — a strengthening, not a widening
+/// — and [`ElemChannels::CURRENTS_ONLY`] keeps all three `true`.
+///
+/// # G1.3d(ii): `PhaseLosses` DOES join it
+///
+/// The fourth surface added since — `PhaseLosses`
+/// (`GOLDEN_REBASE_PLAN.md` G1.3d(ii)) — is on the other side of that same
+/// line: `GetPhaseLosses` opens with the identical cache-aware
+/// `ComputeIterminal` (r4133 `Common/CktElement.pas:1090`, capi
+/// `src/Common/CktElement.pas:896`) and forms the identical
+/// `NodeV·conj(Iterminal)` products, merely bucketed by phase instead of summed,
+/// so no oracle channel reports it at the converged `NodeV` on these two decks
+/// either. [`ElemChannels::CURRENTS_ONLY`] therefore clears
+/// `phase_losses` — the value compare only; the port-side identity
+/// `Σ_i PhaseLosses[i] = Losses` is pinned in-engine by
+/// `dss_core::exec::tests::element_extras::phase_losses_are_watts_and_sum_to_get_losses`
+/// beside this row's own `newton_powers_match_the_normal_algorithm`, and
+/// `harness::compare_element_phase_losses` keeps asserting the array shapes on
+/// these decks under every channel policy.
 pub fn elem_channels_for(label: &str) -> ElemChannels {
     if LANE_SKIP_ELEM_POWERS.contains(&label) {
         ElemChannels::CURRENTS_ONLY
@@ -1014,20 +1050,65 @@ mod tests {
     }
 
     /// The one element-channel exclusion: the `newton*` decks' `Powers`/
-    /// `Losses` are dropped in **both** lanes since `GOLDEN_REBASE_PLAN.md`
-    /// G2.3 (no oracle channel reports them at the converged `NodeV`), their
-    /// **currents** are kept in both, and no other case is touched.
+    /// `Losses`/`PhaseLosses` are dropped in **both** lanes since
+    /// `GOLDEN_REBASE_PLAN.md` G2.3 (G1.3d(ii) for the third), because no oracle
+    /// channel reports them at the converged `NodeV`; their **currents** are
+    /// kept in both, and no other case is touched.
     #[test]
     fn newton_powers_are_the_only_element_channel_exclusion() {
+        // The case list itself, spelled out (the `LANE_SKIP_PROPS` precedent,
+        // G1.3d(ii) audit settlement 2026-09-05): the loop below and the
+        // negative list further down both pass for a list that GREW, and since
+        // G1.3d(ii) one more entry drops THREE oracle-compared channels — not
+        // two — on a whole case in both lanes. A third deck must be argued for
+        // in this assertion, in the doc block above and in the record, or not
+        // at all.
+        assert_eq!(
+            LANE_SKIP_ELEM_POWERS,
+            &["modes:newton/newton.dss", "modes:newton/newton_feeder.dss"],
+            "the element-channel exclusion is these two Newton decks and \
+             nothing else; widening it hides Powers, Losses AND PhaseLosses on \
+             that case in both lanes"
+        );
         for label in LANE_SKIP_ELEM_POWERS {
             let ch = elem_channels_for(label);
             assert!(ch.currents, "{label}: currents stay gated in every lane");
+            // Field by field, not just `== CURRENTS_ONLY`: comparing a value
+            // against the very constant it was built from is a tautology, so
+            // flipping a field OF the constant would silently drop that channel
+            // on every gated case in both lanes (G1.3a audit settlement).
+            assert!(
+                ch.currents_mag_ang && ch.voltages_mag_ang && ch.residuals,
+                "{label}: the G1.3a polar channels stay gated in every lane — \
+                 they render `Currents`/`NodeV`, not the cache-aware \
+                 `Get_Powers`/`Get_Losses` read the Newton staleness lives in"
+            );
+            assert!(
+                !ch.powers && !ch.losses && !ch.phase_losses,
+                "{label}: powers, losses and per-phase losses are the excluded \
+                 triple (G1.3d(ii) added the third)"
+            );
             assert_eq!(
                 ch,
                 ElemChannels::CURRENTS_ONLY,
                 "{label}: powers/losses are excluded in both lanes"
             );
         }
+        // The unexcluded default is every channel — the same anti-tautology
+        // rule applied to `ALL` itself, so a field flipped there cannot go
+        // unnoticed either.
+        let all = ElemChannels::ALL;
+        assert!(
+            all.currents
+                && all.powers
+                && all.losses
+                && all.currents_mag_ang
+                && all.voltages_mag_ang
+                && all.residuals
+                && all.phase_losses,
+            "ElemChannels::ALL must compare every channel; a `false` here \
+             removes that channel from every gated case in both lanes"
+        );
         // Nothing else is excluded — including a label that merely *contains* an
         // excluded one (the match is exact, not a substring).
         for label in [

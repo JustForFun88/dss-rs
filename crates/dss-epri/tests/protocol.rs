@@ -533,6 +533,47 @@ fn ymatrix_before_compile_is_guarded_not_a_crash() {
     w.quit();
 }
 
+/// G1.0 audit settlement: the [`dss_epri::modes::DO_NOT_CALL`] register is
+/// enforced at the FFI **chokepoint** (`Engine::ffi_dispatch`), not only inside
+/// the typed accessors — so the worker's raw `{"cmd":"ffi"}` channel, the one a
+/// probe author reaches for first, cannot dispatch either memory-unsafe mode.
+///
+/// Both are r4133 defects: `Solution` V:2 `BusLevels` writes `ArrSize+1`
+/// elements into an `ArrSize`-long array (`DSolution.pas:580-582`), and `Bus`
+/// V:17 `ZSC012Matrix` calls `Zsc.MtrxMult(As2p)` with no `Assigned(Zsc)` guard
+/// (`DBus.pas:803-838`) — a **measured** process kill of this very worker on a
+/// bus with no fault study (G1.0 probe, 2026-09-04). The `ping` at the end is
+/// the non-vacuity: a refusal that still dispatched would take the worker with
+/// it and the test could not reach it.
+#[test]
+fn the_raw_ffi_command_refuses_the_do_not_call_modes() {
+    let mut w = WorkerProc::spawn();
+    // A live circuit, so the refusal is not an artefact of there being nothing
+    // to read: `Bus` V:17 kills the worker exactly on a solved deck.
+    for line in DECK {
+        w.exec(line);
+    }
+    w.exec("solve");
+    for (family, mode, name) in [("Solution", 2, "BusLevels"), ("Bus", 17, "ZSC012Matrix")] {
+        let r = w.request(json!({"cmd": "ffi", "family": family, "kind": "v", "mode": mode}));
+        assert_eq!(
+            r["ok"], false,
+            "{family} V:{mode} ({name}) must be refused by the chokepoint: {r}"
+        );
+        let err = r["error"].as_str().unwrap_or_default();
+        assert!(
+            err.contains("do-not-call"),
+            "{family} V:{mode} ({name}) was refused for the wrong reason: {r}"
+        );
+    }
+    let pong = w.ok(json!({"cmd": "ping"}));
+    assert_eq!(
+        pong["pong"], true,
+        "the worker did not survive the do-not-call requests"
+    );
+    w.quit();
+}
+
 /// G1.0 / WP-G1 rail: the **two-double `XxxF` ABI**. `CmathLibF(mode; arg1,
 /// arg2: double)` (`DCmathLib.pas:5`, impl `:12`) and `CircuitF(mode; arg1,
 /// arg2: double)` (`DCircuit.pas:27`, impl `:193`) are the only two of the 42
@@ -546,7 +587,7 @@ fn ymatrix_before_compile_is_guarded_not_a_crash() {
 ///
 /// Every reading below is pinned by **exact** equality; none is 90°-clean,
 /// because r4133's own complex math is built on two truncated constants:
-/// `CDANG(a) = ATAN2(a.re, a.im) * 57.29577951` (`Ucomplex.pas:117-120`) over
+/// `CDANG(a) = ATAN2(a.re, a.im) * 57.29577951` (`Ucomplex.pas:118-121`) over
 /// OpenDSS's hand-written `ATAN2` with `CONST PI = 3.14159265359`
 /// (`Ucomplex.pas:96-111`). So `Cdang(0+1j)` is `(3.14159265359/2)·57.29577951`
 /// = `89.99999999516423`, **not** `90.0`, and `Cdang(3+4j)` is

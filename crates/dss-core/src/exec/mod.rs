@@ -79,7 +79,10 @@ mod view;
 pub(crate) use helpers::*;
 pub(crate) use registry::{ClassStore, DssClass, ForeignClasses};
 pub(crate) use tables::{EXEC_COMMANDS, EXEC_OPTIONS, PLOT_OPTIONS, cmd, opt};
-pub use view::{ElementSnapshot, MeterZoneView, MonitorView, SystemYCsc};
+pub use view::{
+    ElementSnapshot, FeederSectionView, MeterReliabilityView, MeterZoneView, MonitorView,
+    PdElementView, SystemYCsc,
+};
 
 /// The plot/visualize callback (`DSS.DSSPlotCallback`): given the assembled
 /// `plotParams` JSON string, returns an `i32` (Pascal ignores it; kept for

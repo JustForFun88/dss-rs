@@ -236,6 +236,8 @@ impl CktElement for Line {
             branch_flt_rate: self.fault_rate * self.pct_perm * 0.01 * self.len,
             hrs_to_repair: self.hrs_to_repair,
             miles_this_line: self.miles_this_line,
+            fault_rate: self.fault_rate,
+            pct_perm: self.pct_perm,
         }
     }
 

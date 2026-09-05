@@ -421,11 +421,15 @@ impl Dss {
         self.last_result = format!("Sub-Circuits Created: {n}");
     }
 
-    /// Force the meter-zone rebuild that `BuildYMatrix`'s `ReprocessBusDefs` tail
-    /// runs (Ymatrix.pas → Circuit.pas:2246). Adding the `Zone_i` meters does not
-    /// redefine buses, so the automatic `bus_name_redefined` path in
-    /// `build_y_matrix` would not fire; we call `do_reset_meter_zones` directly
-    /// (as `exec/reduce.rs` does) so `SaveFeeders` sees each new meter's zone.
+    /// Force the meter-zone rebuild that `ReprocessBusDefs` ends with (r4133
+    /// `Common/Circuit.pas:2411`, capi `:2246`; port side
+    /// `circuit/circuit.rs::reprocess_bus_defs`, which `BuildYMatrix` reaches
+    /// only when `BusNameRedefined`). Adding the `Zone_i` meters does not
+    /// redefine buses, so that path never fires here; this is the one call with
+    /// no Pascal line of its own — a port-side compensation so `SaveFeeders`
+    /// sees each new meter's zone. `exec/reduce.rs:1172` calls
+    /// `do_reset_meter_zones` directly too, but for its own Pascal reason
+    /// (`TEnergyMeterObj.ReduceZone`'s `MakeMeterZoneLists`).
     pub(super) fn reset_meter_zones_for_tear(&mut self) {
         let Dss {
             classes, circuit, ..

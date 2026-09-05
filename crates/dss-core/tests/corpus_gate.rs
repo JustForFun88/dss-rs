@@ -178,12 +178,30 @@ fn corpus_gate_all_cases_match_engines() {
     // that stopped occurring must fail rather than quietly become a no-op.
     // Self-silencing under `DSS_GATE_ONLY` and in the parity lane.
     harness::lane::assert_reround_cells_are_live();
+    // And the population fact behind GOLDEN_REBASE G1.3d(ii)'s D-ii-1 costing
+    // ZERO ledger rows: no gated element carries two controls, so r4133's
+    // per-edit `Set_ControlledElement` re-attach (which the port follows) can
+    // never reorder a list against capi 0.14.5's here. Re-derived from the
+    // oracle's own `NumControls` on every full run, and loud in both directions
+    // (a two-control element, or a census that counted nothing) — the D15/D16
+    // shape, added by the G1.3d(ii) audit settlement.
+    harness::assert_no_multi_control_element();
     // And for G2.4's monitor-channel normalization, which needs it for the
     // opposite reason: since both lanes' engines now report the empty channel, a
     // client that stopped padding would make the transform a silent no-op rather
     // than a loud mismatch. Self-silencing when no unflushed monitor was
     // compared, so `DSS_GATE_ONLY` runs do not trip it.
     harness::lane::assert_monitor_pad_is_live();
+    // And the same fail-on-stale discipline for GOLDEN_REBASE G1.7's two
+    // topology settlements (coordinator decisions D15/D16), which deliberately
+    // write NO ledger rows: the populations where the comparator rebases the
+    // isolation half onto the port's step-0 answer (upstream's memoized tree)
+    // and where upstream's window scan drops a looped pair are re-derived from
+    // this run and must equal their pinned constants in both directions. Placed
+    // with the other live rails, i.e. after the per-case failures are reported:
+    // a failing case may not have reached its topology compare, and a census
+    // measured from a partial run would be noise on top of a real failure.
+    scheduler::assert_topology_declines_are_the_pinned_population();
     // And the GLOBAL half of the r4133 property accounting (plan §RP4.1): the
     // two per-row asserts BELOW say nothing when NO row was visited, which is
     // exactly what a re-mask of the r4133 property request would produce — a
@@ -228,6 +246,58 @@ fn corpus_gate_all_cases_match_engines() {
     // the seam ran (RP4.1 audit settlement) — because a narrowed row can only
     // ever count a divergent cell.
     harness::props_norm::assert_echo_rows_are_live();
+    // And the two GOLDEN_REBASE G1.6b PDElements guards, in that order for the
+    // reason the property pair is in that order: "did the walk run at all, on
+    // BOTH channels" is the precondition that makes the per-row verdicts mean
+    // anything. The first one exists because the per-case rail cannot be a
+    // count contract here — 96 of the 372 walked live capi cases legitimately
+    // hold no PD element, so `[] == []` is a valid case outcome and a global
+    // collapse to zero would be silently green. The second is the fail-on-stale
+    // for `PD_SKIP_FIELDS`, whose eight rows each drop an oracle cell that is
+    // read out of uninitialized memory; a row that stops excluding a divergence
+    // is a mask over nothing. Both self-silence under `DSS_GATE_ONLY`.
+    let (pd_cw, pd_ce, pd_rw, pd_re) = harness::pd_walk_counters();
+    eprintln!(
+        "corpus_gate PDElements: capi_v0145 {pd_cw} walk(s) / {pd_ce} element(s), \
+         r4133 {pd_rw} walk(s) / {pd_re} element(s)"
+    );
+    for r in harness::PD_SKIP_FIELDS {
+        let (v, h) = harness::pd_skip_counters(r.channel, r.class, r.field)
+            .expect("every shipped row is findable by its own key");
+        eprintln!(
+            "corpus_gate PDElements skip {}/{}.{}: {v} visit(s), {h} hit(s)",
+            r.channel, r.class, r.field
+        );
+    }
+    harness::assert_pd_elements_compare_ran();
+    harness::assert_pd_skip_rows_are_live();
+    // And the two GOLDEN_REBASE G1.6(i) reliability guards, in the same order
+    // and for the same reason: "did the surface run at all, on BOTH channels"
+    // is what makes the per-row verdicts mean anything. The first one exists
+    // because `compare_reliability` is a MANIFEST flag with no scheduler force
+    // rule (the predicate "defines an EnergyMeter" is not a manifest field), so
+    // losing the rows would silently compare nothing. The second is the
+    // fail-on-stale for `RELIABILITY_SKIP_FIELDS`, whose four rows drop the two
+    // `Meters` arrays both oracles read out of uninitialized memory until a deck
+    // runs `AllocateLoads`; that table is policed on VISITS only - its `hits`
+    // are printed here because a fresh `ReallocMem` region often reads back as
+    // the port's own 0.0, which would make a hit rule fail at random. Both
+    // self-silence under `DSS_GATE_ONLY`.
+    let (rel_cw, rel_cm, rel_rw, rel_rm) = harness::reliability_walk_counters();
+    eprintln!(
+        "corpus_gate reliability: capi_v0145 {rel_cw} payload(s) / {rel_cm} meter(s), \
+         r4133 {rel_rw} payload(s) / {rel_rm} meter(s)"
+    );
+    for r in harness::RELIABILITY_SKIP_FIELDS {
+        let (v, h) = harness::reliability_skip_counters(r.channel, r.field)
+            .expect("every shipped row is findable by its own key");
+        eprintln!(
+            "corpus_gate reliability skip {}/{}: {v} visit(s), {h} hit(s)",
+            r.channel, r.field
+        );
+    }
+    harness::assert_reliability_compare_ran();
+    harness::assert_reliability_skip_rows_are_live();
     // And for G1.5's short-circuit surface, for the first reason again: its
     // content gate is `assert_eq!(port_ran, oracle_ran)`, which is equally
     // satisfied when NEITHER side ran a study, so a deck that quietly stopped

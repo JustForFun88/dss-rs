@@ -784,6 +784,7 @@
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 1,
+   "compare_topology": true,
    "selected_elements": [
     "*"
    ],
@@ -1142,6 +1143,7 @@
   },
   {
    "path": "makeposseq/makeposseq_ctrl.dss",
+   "compare_reliability": true,
    "engines": "capi_v0145",
    "ad": "off:save-roundtrip-control",
    "kind": "micro",
@@ -1282,6 +1284,7 @@
   },
   {
    "path": "time/midi_duty_ctrl.dss",
+   "compare_reliability": true,
    "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",

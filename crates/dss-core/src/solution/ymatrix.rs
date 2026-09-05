@@ -132,10 +132,11 @@ pub fn build_y_matrix(
     // Recount buses/nodes if bus definitions changed — this changes the node
     // references into the system Y matrix.
     if ckt.bus_name_redefined {
+        // Pascal `BuildYMatrix` (r4133 `Ymatrix.pas:174`, capi `:304`):
+        // `IF (BusNameRedefined) THEN ReProcessBusDefs` — nothing else. The
+        // meter-zone rebuild is `ReprocessBusDefs`' own tail
+        // (`Circuit.pas:2411` / capi `:2246`), so it is NOT paired here.
         ckt.reprocess_bus_defs(env.store, env.parser, env.vars, env.errors);
-        // Pascal `ReprocessBusDefs` tail (Circuit.pas l.2246): rebuild the meter
-        // zones now that the bus references are current.
-        crate::solution::meters::do_reset_meter_zones(ckt, env.store);
     }
 
     let y_matrix_size = ckt.num_nodes;

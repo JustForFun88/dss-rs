@@ -2,6 +2,7 @@
 //! element that carries a control, followed by the control element(s) acting on it.
 
 use crate::circuit::Circuit;
+use crate::circuit::controls::derive_control_lists;
 use crate::elements::traits::ElemId;
 use crate::exec::registry::DssClass;
 
@@ -20,38 +21,23 @@ fn full_name(classes: &[DssClass], r: ElemId) -> String {
 /// writes its `FullName` then `, <control FullName> ` per control in
 /// `ControlElementList` order (Pascal `FSWrite(F, Format(', %s ', [FullName]))`).
 ///
-/// The Rust port materialises no `HasControl` flag / `ControlElementList` (the
-/// model stores only the forward control→element reference,
-/// [`CktElement::controlled_element`](crate::elements::traits::CktElement::controlled_element)),
-/// so the per-PD list is derived by scanning `ckt.controls` (creation order) and
-/// matching each control's `controlled_element()`. This reproduces the exact
-/// observable: `ControlElementList` insertion order == control creation order ==
-/// `ckt.controls` order, and a control reassigned to a different element follows
-/// its *current* target — the final state of Pascal's remove-then-add
-/// `Set_ControlledElement`. The whole report is read-only (PHASE8_PLAN §2.1).
+/// The Rust port materialises no `HasControl` flag / `ControlElementList`; the
+/// per-element list is derived from the circuit-wide attach order by the shared
+/// [`derive_control_lists`], the same derivation
+/// [`Dss::snapshot_elements`](crate::exec::Dss::snapshot_elements)'s
+/// `NumControls`/`OCPDev*`/`Has*Control` readers use — one order, so the report
+/// and the API surface cannot drift. The whole report is read-only
+/// (PHASE8_PLAN §2.1).
 pub(crate) fn show_controlled(classes: &[DssClass], ckt: &Circuit) -> String {
+    let lists = derive_control_lists(classes, ckt);
     let mut s = String::new();
-    for &pd in &ckt.pd_elements {
-        // The controls acting on this PD element, in creation order (Pascal's
-        // `ControlElementList` for `pdelem`).
-        let controls: Vec<ElemId> = ckt
-            .controls
-            .iter()
-            .copied()
-            .filter(|&cr| {
-                classes[cr.class_ord()]
-                    .arena
-                    .try_ckt_elem(cr.index())
-                    .and_then(|ce| ce.controlled_element())
-                    == Some(pd)
-            })
-            .collect();
+    for pd in &ckt.pd_elements {
         // Pascal's `if Flg.HasControl in pdelem.Flags` — no controls → not written.
-        if controls.is_empty() {
+        let Some(controls) = lists.get(pd) else {
             continue;
-        }
-        s.push_str(&full_name(classes, pd));
-        for cr in controls {
+        };
+        s.push_str(&full_name(classes, *pd));
+        for &cr in controls {
             s.push_str(&format!(", {} ", full_name(classes, cr)));
         }
         s.push('\n');

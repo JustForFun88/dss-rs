@@ -8,14 +8,17 @@
 
 mod common;
 
+mod aggregates;
 mod allocation;
 mod autoadd;
 mod autotrans_xfmrcode;
 mod base_frequency;
 mod compat_quirks;
 mod controls;
+mod derived_polar;
 mod distribute_uuids;
 mod dynamics;
+mod element_extras;
 mod energymeter_registers;
 mod energymeter_zones;
 mod espvl_control;
@@ -32,6 +35,7 @@ mod ncim;
 mod newton;
 mod open_close;
 mod options_timing;
+mod pd_elements;
 mod pvsystem;
 mod reduce;
 mod reliability;
@@ -40,6 +44,7 @@ mod select;
 mod solve;
 mod storage;
 mod time_series;
+mod topology;
 mod upfc;
 mod upstream_stubs;
 mod vccs;

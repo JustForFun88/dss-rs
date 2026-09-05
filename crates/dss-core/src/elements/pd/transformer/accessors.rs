@@ -34,6 +34,8 @@ impl CktElement for Transformer {
             branch_flt_rate: self.fault_rate * self.pct_perm * 0.01,
             hrs_to_repair: self.hrs_to_repair,
             miles_this_line: 0.0,
+            fault_rate: self.fault_rate,
+            pct_perm: self.pct_perm,
         }
     }
 

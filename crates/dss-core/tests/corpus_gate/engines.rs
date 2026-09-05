@@ -26,9 +26,11 @@ use std::time::{Duration, Instant};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::harness::aggregates::{AggregatesCap, SolutionScalarsCap};
+use crate::harness::topology::TopologyCap;
 use crate::harness::{
-    BusCap, ElementCap, Injection, MeterCap, MonitorCap, ProbeCap, PropsCap, VariablesCap,
-    YFingerprint, YMat, YPrim,
+    BusCap, ElementCap, Injection, MeterCap, MonitorCap, PdElementCap, ProbeCap, PropsCap,
+    ReliabilityCap, VariablesCap, YFingerprint, YMat, YPrim,
 };
 use crate::manifest::SolvableCase;
 
@@ -79,6 +81,25 @@ pub(crate) struct Checkpoint {
     pub(crate) monitors: Vec<MonitorCap>,
     #[serde(default)]
     pub(crate) meters: Vec<MeterCap>,
+    /// GOLDEN_REBASE G1.6b: the `PDElements` interface walk. `Option`, not
+    /// `Vec`: 96 of the 372 walked live capi cases legitimately hold no PD
+    /// element, so `None` ("the channel was not asked / did not answer") must
+    /// stay distinguishable from `Some([])` ("asked, this circuit has none").
+    /// Both transports emit exactly that (`oracle_server.py` sends `null` with
+    /// the flag off; `dss-epri`'s `Checkpoint.pd_elements` is the same
+    /// `Option`), and `capture_guard::require_capture_opt` is what turns the
+    /// first shape into a case failure.
+    #[serde(default)]
+    pub(crate) pd_elements: Option<Vec<PdElementCap>>,
+    /// GOLDEN_REBASE G1.6(i): the `Meters` reliability payload, carried by the
+    /// LAST checkpoint only — `RelCalc` runs once per case, after the last
+    /// solve, on all three engines (it is not idempotent). `Option` for the
+    /// [`super::harness::capture_guard::require_capture_opt`] reason
+    /// [`Self::pd_elements`] is one, with the extra step dimension: `None`
+    /// means "not requested, or not this step", `Some` with an empty `meters`
+    /// list means "requested, and this circuit has no enabled meter".
+    #[serde(default)]
+    pub(crate) reliability: Option<ReliabilityCap>,
     #[serde(default)]
     pub(crate) probes: Vec<ProbeCap>,
     #[serde(default)]
@@ -89,6 +110,16 @@ pub(crate) struct Checkpoint {
     pub(crate) ctrlqueue: Vec<String>,
     #[serde(default)]
     pub(crate) all_properties: Vec<PropsCap>,
+    /// `GOLDEN_REBASE_PLAN.md` G1.9 — the five `Circuit` aggregates. Optional
+    /// in the schema only so a transport that predates the surface deserializes;
+    /// the comparator DEMANDS it on every live case (the surface is unflagged
+    /// and universal), so `None` fails the case rather than skipping it.
+    #[serde(default)]
+    pub(crate) aggregates: Option<AggregatesCap>,
+    /// `GOLDEN_REBASE_PLAN.md` G1.9 — the ten `Solution` scalars, same
+    /// presence contract as [`Checkpoint::aggregates`].
+    #[serde(default)]
+    pub(crate) solution_scalars: Option<SolutionScalarsCap>,
     /// G1.4a: every bus's voltage surface, in the oracle's `BusList` order.
     #[serde(default)]
     pub(crate) buses: Vec<BusCap>,
@@ -99,6 +130,20 @@ pub(crate) struct Checkpoint {
     /// r4133 `Circuit.AllBusMagPu`, `DCircuit.pas:481-500`.
     #[serde(default)]
     pub(crate) all_bus_vmag_pu: Vec<f64>,
+    /// `GOLDEN_REBASE_PLAN.md` G1.7 — the six order-free `ITopology` quantities.
+    /// Unlike G1.9's two, this surface is **flag-gated**
+    /// (`SolvableCase::compare_topology`), so `None` is the honest reply when the
+    /// case did not request it; the comparator's presence rail
+    /// (`harness::capture_guard::require_capture_opt`) turns `None` into a
+    /// failure exactly when the flag IS on.
+    ///
+    /// Both transports read it **strictly last** in a step — the first
+    /// `Topology` read builds the memoized tree and rewrites
+    /// `Checked`/`IsIsolated`/`BusChecked` on every element (r4133
+    /// `Common/Circuit.pas:2932-2950`, `:2937-2947`) — and
+    /// `crates/dss-core/tests/capture_order.rs` asserts that from their source.
+    #[serde(default)]
+    pub(crate) topology: Option<TopologyCap>,
 }
 
 /// The per-case wall-clock deadline for a single oracle request
@@ -146,8 +191,30 @@ pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
         "buses": c.compare_bus,
         "zsc": c.compare_zsc,
         "all_properties": c.compare_all_properties,
+        "pd_elements": c.compare_pdelements,
+        "reliability": c.compare_reliability,
+        // G1.7: both transports honor this key (`oracle_server.py` reads
+        // `req["topology"]`, `dss-epri`'s `RunRequest::topology`) and both read
+        // the surface strictly last in the step.
+        "topology": c.compare_topology,
         "global_result": c.compare_global_result,
         "autoadd_log": c.compare_autoadd_log,
+        // WP-G1 G1.3a: the per-element derived polar channels. One key for the
+        // whole `compare_derived` surface, honored by BOTH transports —
+        // `tools/oracle/oracle_server.py::capture_all_elements` (capi_v0145) and
+        // `crates/dss-epri/src/capture.rs::RunRequest::derived` (r4133) — so the
+        // two channels can never disagree about what was requested. Absent ⇒ off
+        // on both, which is what keeps an off-flag reply byte-identical to the
+        // pre-G1.3a payload.
+        "derived": c.compare_derived,
+        // WP-G1 G1.3d(i): the per-element discrete index/name scalars
+        // (`NumTerminals`/`NumConductors`/`NumPhases`/`EnergyMeter`/`NodeOrder`
+        // plus `Enabled`). One key for the whole `compare_element_extras`
+        // surface, honored by BOTH transports —
+        // `tools/oracle/oracle_server.py::capture_all_elements` (capi_v0145)
+        // and `crates/dss-epri/src/capture.rs::RunRequest::element_extras`
+        // (r4133). Absent ⇒ off on both. G1.3d(ii) widens the same key.
+        "element_extras": c.compare_element_extras,
         "warn_and_continue": !c.expect_warnings.is_empty(),
     })
 }

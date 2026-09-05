@@ -33,9 +33,24 @@ pub(crate) struct ProbeSpec {
     pub(crate) props: Vec<String>,
 }
 
+/// One manifest case.
+///
+/// `deny_unknown_fields` (G1.0 audit settlement): every field below is
+/// `#[serde(default)]`, so without it a misspelled key — `compare_zsc_`,
+/// `compare_zsC` — deserializes cleanly to `false`, the unwired-flag gate never
+/// fires, the lock records the flag as off and the author believes the surface
+/// is on. That is exactly the silent vacuity the G1.0 rails exist to close, so
+/// an unknown key is a load error naming the case.
 #[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct SolvableCase {
     pub(crate) path: String,
+    /// Free-text authoring rationale (`tests/corpus/modes/manifest.json`). Never
+    /// read by the gate; declared so `deny_unknown_fields` above can refuse a
+    /// key that is *not* one of ours.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub(crate) notes: String,
     #[serde(default = "default_kind")]
     pub(crate) kind: String,
     #[serde(default)]
@@ -88,6 +103,13 @@ pub(crate) struct SolvableCase {
     /// `SeqPowers`, `CplxSeqVoltages`/`CplxSeqCurrents`, `TotalPowers`
     /// (`.inputs/DSS-Python` `origin/fastdss` `dss/ICktElement.py:53,58-69`
     /// `_columns`; r4133 transport `DDLL/DCktElement.pas` `CktElementV`).
+    ///
+    /// **Live since G1.3a** (`wired: true` in [`G1_SURFACE_FLAGS`]): the flag
+    /// today carries `Enabled` + `CurrentsMagAng`/`VoltagesMagAng`/`Residuals`
+    /// (`DDLL/DCktElement.pas:1058`/`:1082`/`:827`). G1.3b adds the symmetrical
+    /// components and G1.3c `TotalPowers`; both extend this same flag rather
+    /// than adding their own, so a case that opts in now gains those channels
+    /// with them.
     #[serde(default)]
     pub(crate) compare_derived: bool,
     /// G1.3d: the per-element **discrete extras** — `PhaseLosses`, `NodeOrder`,
@@ -95,6 +117,22 @@ pub(crate) struct SolvableCase {
     /// `HasSwitchControl`, `NumControls`, `NumTerminals`/`NumPhases`/
     /// `NumConductors` (`origin/fastdss` `dss/ICktElement.py:35-38,46-52,56,69`;
     /// r4133 `DDLL/DCktElement.pas` `CktElementI`/`CktElementS`).
+    ///
+    /// **Live since G1.3d(i)** (`wired: true` in [`G1_SURFACE_FLAGS`]), and
+    /// **complete since G1.3d(ii)** (2026-09-05). G1.3d(i) brought the four pure
+    /// scalars `NumTerminals`/`NumConductors`/
+    /// `NumPhases` (r4133 `DDLL/DCktElement.pas:139`/`:144`/`:149`, `CktElementI`
+    /// arms 0..2; capi `CAPI/CAPI_CktElement.pas:182-211`) and `EnergyMeter`
+    /// (`:442`, `CktElementS(4)`; capi `:672-687`), plus `NodeOrder`
+    /// (`:1032-1056`, `CktElementV(17)`; capi `CAPI/CAPI_CktElement.pas:885-917`) on
+    /// elements that are `Enabled` **and** carry `NumTerminals > 0` — the two
+    /// conditions under which neither transport dereferences a nil `NodeRef`.
+    /// G1.3d(ii) widened this same flag with `PhaseLosses`
+    /// (`CktElementV(6)`; capi `CAPI/CAPI_Alt.pas:449-467`) and the
+    /// control-derived extras `OCPDevType`/`OCPDevIndex`,
+    /// `HasVoltControl`/`HasSwitchControl` and `NumControls`
+    /// (`CktElementI` arms 7..11) rather than adding its own, so the flag now
+    /// carries the whole surface and the forced population never moved.
     #[serde(default)]
     pub(crate) compare_element_extras: bool,
     /// G1.4: the **bus** surface — `origin/fastdss` `dss/IBus.py:19-53`
@@ -127,18 +165,41 @@ pub(crate) struct SolvableCase {
     pub(crate) compare_zsc: bool,
     /// G1.6: the **meter extras + per-bus reliability** surface — `CalcCurrent`,
     /// `AllocFactors`, `SAIFI`/`SAIFIKW`/`SAIDI`/`CustInterrupts`, the ordered
-    /// zone vectors and the active-section fields (`origin/fastdss`
-    /// `dss/IMeters.py:13-42` `_columns`), plus `Bus.Lambda`/`N_interrupts`/
-    /// `N_Customers`/`Cust_Interrupts`/`Cust_Duration`/`Int_Duration`/
-    /// `TotalMiles`/`SectionID` (`dss/IBus.py:25-36`). Also drives the executive
-    /// `RelCalc` the surface needs (`save_outputs.py:117-129`); r4133
-    /// `DDLL/DMeters.pas`.
+    /// zone vectors, the active-section fields and `Meters.Totals`
+    /// (`origin/fastdss` `dss/IMeters.py:13-42` `_columns`; r4133
+    /// `DDLL/DMeters.pas`). **Wired 2026-09-04 by G1.6(i)**; the per-bus
+    /// reliability columns (`Bus.Lambda`/`N_interrupts`/`N_Customers`/
+    /// `Cust_Interrupts`/`Cust_Duration`/`Int_Duration`/`TotalMiles`/
+    /// `SectionID`, `dss/IBus.py:25-36`) join the same payload at G1.6(ii).
+    ///
+    /// It is the ONLY flag that also DRIVES an executive command: no vendored
+    /// deck runs `RelCalc` (measured: the two that do are `expect_solve_abort`),
+    /// so without driving it the whole reliability half would compare `0 == 0`.
+    /// The gate therefore runs it once per case on the LAST step, on all three
+    /// engines (`corpus_gate/runner.rs`); it is not idempotent, so never per
+    /// step.
+    ///
+    /// Set by the MANIFESTS, never scheduler-forced — and the absence of a
+    /// `force_reliability` beside [`super::scheduler::force_pdelements`] is a
+    /// decision, not an omission: the predicate is "this deck defines an
+    /// EnergyMeter", which is not a manifest field, and forcing the flag
+    /// circuit-wide would fire the executive's `28724 No EnergyMeter Objects
+    /// Defined` on the ~340 meterless cases on three engines. The population is
+    /// therefore the manifest set, which `population.lock.json` records through
+    /// `population_lock::rigor`'s `rel=` token; `harness::
+    /// assert_reliability_compare_ran` is the fail-on-nothing-ran half.
     #[serde(default)]
     pub(crate) compare_reliability: bool,
-    /// G1.6b: the **PDElements** interface walk — `AccumulatedL`,
-    /// `ParentPDElement`, `FromTerminal`, `IsShunt`, `Numcustomers`, `SectionID`,
-    /// `RepairTime`, `Totalcustomers`, `Lambda` (`origin/fastdss`
-    /// `dss/IPDElements.py:26-40` `_columns`; r4133 `DDLL/DPDELements.pas`).
+    /// G1.6b: the **PDElements** interface walk — all THIRTEEN
+    /// `IPDElements._columns` fields (`Name`, `AccumulatedL`,
+    /// `ParentPDElement`, `FromTerminal`, `IsShunt`, `Numcustomers`,
+    /// `SectionID`, `FaultRate`, `RepairTime`, `TotalMiles`, `Totalcustomers`,
+    /// `pctPermanent`, `Lambda` — `origin/fastdss` `dss/IPDElements.py:26-40`;
+    /// r4133 `DDLL/DPDELements.pas`) plus the parent's full name, which the
+    /// `ParentPDElement` active-element hijack hands out for free. **Wired
+    /// 2026-09-04**; forced on every live non-`large` case by
+    /// `scheduler::force_pdelements`, so no manifest sets it (the
+    /// `compare_all_properties` shape).
     #[serde(default)]
     pub(crate) compare_pdelements: bool,
     /// G1.7: the **topology** interface — `NumLoops`, `NumIsolatedBranches`/
@@ -537,16 +598,30 @@ pub(crate) struct G1Flag {
 /// declaration order in [`SolvableCase`] and the token order in
 /// `population_lock.rs::rigor()`.
 pub(crate) const G1_SURFACE_FLAGS: &[G1Flag] = &[
+    // Wired by G1.3a (2026-09-04) — request key `derived` in
+    // `engines::build_run_request`, capture in `tools/oracle/oracle_server.py`
+    // + `crates/dss-epri/src/capture.rs`, comparator
+    // `harness::compare_element_derived` behind
+    // `capture_guard::require_capture` in `runner::compare_capture`. G1.3b/c
+    // widen the same flag's surface; the row stays as it is.
     G1Flag {
         name: "compare_derived",
         sub_step: "G1.3a-c",
-        wired: false,
+        wired: true,
         get: |c| c.compare_derived,
     },
+    // Wired by G1.3d(i) (2026-09-04) — request key `element_extras` in
+    // `engines::build_run_request`, capture in `tools/oracle/oracle_server.py`
+    // + `crates/dss-epri/src/capture.rs` (`Engine::element_extras` in `dss.rs`
+    // for the four pure scalars; the conditional `NodeOrder` read stays at the
+    // call site), comparator `harness::compare_element_extras` behind
+    // `capture_guard::require_capture` in `runner::compare_capture`. G1.3d(ii)
+    // widens the same flag's surface (`PhaseLosses`, the control-derived
+    // extras); the row stays as it is.
     G1Flag {
         name: "compare_element_extras",
         sub_step: "G1.3d",
-        wired: false,
+        wired: true,
         get: |c| c.compare_element_extras,
     },
     G1Flag {
@@ -564,19 +639,19 @@ pub(crate) const G1_SURFACE_FLAGS: &[G1Flag] = &[
     G1Flag {
         name: "compare_reliability",
         sub_step: "G1.6",
-        wired: false,
+        wired: true,
         get: |c| c.compare_reliability,
     },
     G1Flag {
         name: "compare_pdelements",
         sub_step: "G1.6b",
-        wired: false,
+        wired: true,
         get: |c| c.compare_pdelements,
     },
     G1Flag {
         name: "compare_topology",
         sub_step: "G1.7",
-        wired: false,
+        wired: true,
         get: |c| c.compare_topology,
     },
     G1Flag {
@@ -1019,11 +1094,12 @@ fn no_unwired_g1_surface_flag_is_set_in_any_manifest() {
     }
 }
 
-/// Non-vacuity for the rail above (§1.1(f)): the manifests set none of the ten
-/// flags today, so the walk passes on an empty premise. Drive each flag on a
-/// synthetic case and assert the refusal actually fires — and that a wired flag
-/// (simulated by reading the row's own `wired`) is the only thing that lets one
-/// through.
+/// Non-vacuity for the rail above (§1.1(f)): only `compare_topology` is declared
+/// in the manifests today (G1.7, on its seven witness decks —
+/// `scheduler::TOPOLOGY_DECLARED_IN_MANIFEST`), so for the other nine flags the
+/// walk passes on an empty premise. Drive each flag on a synthetic case and
+/// assert the refusal actually fires — and that a wired flag (simulated by
+/// reading the row's own `wired`) is the only thing that lets one through.
 #[test]
 fn an_unwired_g1_surface_flag_on_a_case_is_refused() {
     for f in G1_SURFACE_FLAGS {
