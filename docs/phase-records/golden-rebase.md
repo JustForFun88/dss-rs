@@ -2968,3 +2968,55 @@ row against the pre-fix lock.
   eight kinds (524 cases, 3 220 881 records).
 
   merge: lane lane-b -> update, see git log
+- **G1.3d(i)** (2026-09-04/05, lane `lane-e`; D4/D7/D19/D19′) — per-element `NumTerminals`/
+  `NumConductors`/`NumPhases`, `NodeOrder` and `EnergyMeter` on **both** channels, compared exactly
+  (r4133 `DDLL/DCktElement.pas:139`/`:144`/`:149`/`:442`/`:1032-1056`; capi
+  `CAPI/CAPI_CktElement.pas:182-211`/`:672-687`/`:885-917`). `Enabled` is re-emitted and re-asserted
+  because the `NodeOrder` capture predicate (enabled + terminals; `:1048` nil-derefs, capi raises
+  15013) rests on it. **0 ledger entries, 0 widenings, 0 golden bytes, no floor**; one D4
+  normalization — the no-meter sentinel, folded per channel. Forced on **441** cases
+  (`FORCED_ELEMENT_EXTRAS_POPULATION` `(441, 310, 87, 44)` on `update`; `(440, 313, 83, 44)`
+  on the lane, re-derived at the merge after G1.4a's D12/D14 corpus flips). Pins: `exec::tests::element_extras::*`
+  (8), `harness::element_extras_pins::*` (19, 12 `should_panic` legs),
+  `corpus_manifest::extras_population::*` (3), plus
+  `scheduler::the_element_extras_forcing_rule_is_every_live_non_large_case` and
+  `capture_order::a_group_c_read_may_sit_between_a_group_a_and_a_group_b_read` — 32 in all, held
+  against this prose by `oracle_parity_cfg_gate::every_pin_the_g13d1_record_names_exists_and_is_cited`.
+  Both G1.3d verdicts (`Lines.Yprim` already witnessed, residual 235/523 `selected_elements`;
+  `LineGeometries.R/X/Zmatrix` dropped) and the two settled STOPs (D19/D19′ D9 cherry-pick; the
+  census↔live-gate file race) are recorded in TESTING.md and plan §G1.3d. Commits: `e4d99806`
+  (D19′ cherry-pick), `b7d7da2a`, audit settlement `c9c4ac09`, + docs (this record). Gate after the
+  settlement, both lanes: **5 392 / 0 / 5**, fmt + clippy clean, `corpus_gate` 523/523, ledger 58
+  entries / 0 stale, goldens + `population.lock.json` byte-untouched, `lane_diff` PASS max |Δ| = 0
+  on all eight gated kinds over 523 cases / 3 220 861 records (5 370 / 0 / 5 at `b7d7da2a`; the
+  +22 are one new pin seen from the 22 harness-linking test binaries).
+- **G1.3d(i) audit settlement** (2026-09-05, `c9c4ac09`) — 15 findings: **12 fixed / 2 recorded /
+  1 refuted**. Fixed: 15 capi `NodeOrder` citations
+  re-pointed from the Alt-API twin to `CAPI/CAPI_CktElement.pas:885-917` (`:900-906` = the 15013
+  guard), the entry point dss-python really calls; `oracle_meter_name` folds only its own channel's
+  sentinel; the D19′ pin asserts the parent *identity* `Line.l1`; the forcing-rule test asserts its
+  family-arm premise; four prose defects, this record's length among them. Recorded: `NodeOrder` is
+  never oracle-compared on an element disabled *after* a solve — both oracles would answer (r4133
+  `Common/CktElement.pas:438-465` keeps `NodeRef`) but no transport says whether it was allocated,
+  so the port side stays pinned in-engine (TESTING.md names the residual). Refuted: 18 forced
+  single-channel cases DO define an EnergyMeter (live capi probe: `controls/combo/combo_metering.dss`
+  → `Transformer.tr` = `em`).
+
+  *On `update` after the merge (2026-09-05):* the lane's figures are its own. On the merged
+  tree the D19′ duplicate folds away — the four engine files of `e4d99806` are byte-identical
+  to G1.6b's `06808a6d` already on `update`, and the only conflict, the pin
+  `makebuslist_keeps_the_meter_zones`, is resolved toward `update`'s `Dss::pd_elements()` walk
+  (same three assertions, `Line.l2` parent identity included; lane-e's `branch_parent`/
+  `branch_parent_name` helpers go with it, nothing else used them). `FORCED_ELEMENT_EXTRAS_POPULATION`
+  re-derived (440, 313, 83, 44) → **(441, 310, 87, 44)** — an INCREASE, G1.4a's D12/D14 corpus
+  flips — and it is now the same population as `FORCED_PROPS_POPULATION`/`FORCED_BUS_POPULATION`.
+  `WP_G1_MODES` stays `update`'s **102** (G1.3d(i) adds no row and live-compares five of them);
+  the extras census keeps lane-e's `corpus_manifest.rs` placement (F5 STOP-2, the structural race
+  removal). Merged-tree checks: fmt + clippy clean in both lanes, corpus gate **524/524**
+  (`corpus_gate` binary 218 / 0 / 0 default, 218 / 0 / 0 parity), ledger **54** entries /
+  **1 564** hits / 0 stale, D11(2) still 8 pairs, r4133 props 1 670 walks / 151 783 elements,
+  `population.lock.json` regenerated with **zero cell diff** and `golden.lock.json` unmoved;
+  the full five-command gate reads **5 941 / 0 failed / 5 ignored** per lane and `lane_diff`
+  **PASS** with max |Δ| = 0 on all eight kinds (524 cases, 3 220 881 records).
+
+  merge: lane lane-e -> update, see git log

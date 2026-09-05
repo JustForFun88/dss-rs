@@ -148,31 +148,31 @@ the six CLAUDE.md §"Known upstream bugs" reproduced in any lane. Full record:
 WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 
 **GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened 2026-08-08;
-since 2026-09-04 its chains run in parallel **lanes** — worktrees `lane-*`, D7 —
-merged into `update` one sub-step at a time). Landed: **G1.1**, killed on day
-one and delivered by `R4133_PROPS_PLAN.md` RP4.1 2026-09-03 (**G1.1 satisfied**,
-**G3.4**/**G3.5** unblocked); **G1.2** (the ESPVLControl deck) 2026-08-29; and,
-on 2026-09-04/05, the rails and four surfaces — **G1.0** (`c4b67a6e` +
-`42454b64`/`14bb0f23`), the flag vocabulary, exclusion `channels`, the
-capture-presence guard and the r4133 bridge whose mode probe **discharges G1.11
-for the whole WP**; **G1.9** (`lane-s`, `9757d26c` + `f27f9598`), the `Circuit`
-aggregates + `Solution` scalars; **G1.6b** (`lane-m`, `06808a6d` + `e1e18367` +
-`c6a3c0a8`), the `PDElements` walk and the **D9** engine fix; **G1.3a**
-(`lane-e`, `d8e71991` + `588e0bfe` + `9f9c723d`), per-element `Enabled` + the
-three polar channels, **1** new entry (`DIVERGENCES.md` L8) + **13** widenings;
-**G1.4a** (`lane-b`, `6b0dbd32` + `be01e413` + `10417d99` + `7063faad`), the bus
-surface's divergence-free half (**0** new entries; **D8** deferred the rest to a
-new G1.4c), **D11(1)** the workspace `float_roundtrip`, **D12**/**D14** the four
-`GICTransformer` decks onto `r4133` alone (ledger −4, corpus 523 → 524) and
-**D13** the worker's registry leak. No golden byte moved, `lane_diff` |Δ| = 0
-throughout; `WP_G1_MODES` **102**, ledger **54** / 31 causes; G1.3b–d, G1.4b/c,
-G1.5–G1.8, G1.10–G1.11c, WP-G3–G5 remain.
+since 2026-09-04 its chains run in parallel **lanes**, D7, merged into `update`
+one sub-step at a time). Landed: **G1.1**, killed on day one and delivered by
+`R4133_PROPS_PLAN.md` RP4.1 2026-09-03 (**G3.4**/**G3.5** unblocked); **G1.2**
+(the ESPVLControl deck) 2026-08-29; and, 2026-09-04/05, the rails plus five
+surfaces — **G1.0** (`c4b67a6e` + `42454b64`), the flag vocabulary, exclusion
+`channels`, the capture guard and the r4133 bridge whose mode probe **discharges
+G1.11**; **G1.9** (`lane-s`, `9757d26c` + `f27f9598`), `Circuit` aggregates +
+`Solution` scalars; **G1.6b** (`lane-m`, `06808a6d` + `e1e18367` + `c6a3c0a8`),
+the `PDElements` walk + the **D9** engine fix; **G1.3a** (`lane-e`, `d8e71991` +
+`588e0bfe` + `9f9c723d`), `Enabled` + the three polar channels (**1** new entry,
+`DIVERGENCES.md` L8, + **13** widenings); **G1.4a** (`lane-b`, `6b0dbd32` +
+`be01e413` + `10417d99`), the bus surface's divergence-free half (**0** new;
+**D8** defers the rest to G1.4c), with **D11(1)** `float_roundtrip`,
+**D12**/**D14** the four `GICTransformer` decks onto `r4133` (ledger −4, corpus
+523 → 524) and **D13** the worker's registry leak; **G1.3d(i)** (`lane-e`,
+`e4d99806` + `b7d7da2a` + `c9c4ac09`), the per-element counts, `NodeOrder` and
+`EnergyMeter` on both channels, compared exactly (**0** new entries, no floor;
+**D19′** folded the duplicate D9 pick away at the merge). No golden byte moved,
+|Δ| = 0 throughout; `WP_G1_MODES` **102**, ledger **54** / 31 causes; G1.3d(ii),
+G1.3b/c, G1.4b/c, G1.5–G1.8, G1.10–G1.11c and WP-G3–G5 remain.
 
-**Next.** Element lane **G1.3d(i)** (then G1.3d(ii) → G1.3b → G1.3c); `lane-m`
-**G1.6(i)** (meter extras + per-bus reliability; it drives `RelCalc` and owes
-the non-vacuity of G1.6b's four zone-derived fields); `lane-s` **G1.7**
-(topology), then G1.8, G1.10a–c; bus lane **G1.5** → G1.4c (D8) → G1.4b. Then
-WP-G3–G5 (**G3.4**/**G3.5** runnable); queued: `WASM_USERMODELS`, RESONANCE,
+**Next.** Element lane **G1.3d(ii)** → G1.3b → G1.3c; `lane-m` **G1.6(i)**
+(meter extras + per-bus reliability; it owes G1.6b's zone fields their
+non-vacuity); `lane-s` **G1.7** → G1.8 → G1.10a–c; bus lane **G1.5** → G1.4c
+(D8) → G1.4b, then WP-G3–G5; queued: `WASM_USERMODELS`, RESONANCE,
 MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,

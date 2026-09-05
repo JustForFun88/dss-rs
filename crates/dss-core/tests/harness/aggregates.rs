@@ -699,6 +699,13 @@ mod tests {
             res_ang: Vec::new(),
             vma_mag: Vec::new(),
             vma_ang: Vec::new(),
+            // The G1.3d(i) element-extras channels are likewise unread by
+            // `compare_aggregates`; spelled out for the same reason.
+            n_terms: None,
+            n_conds: None,
+            n_phases: None,
+            energy_meter: None,
+            node_order: Vec::new(),
         }
     }
 
@@ -744,6 +751,13 @@ mod tests {
                 res_ang: Vec::new(),
                 vma_mag: Vec::new(),
                 vma_ang: Vec::new(),
+                // The G1.3d(i) element-extras channels are likewise unread by
+                // `compare_aggregates`; spelled out for the same reason.
+                n_terms: None,
+                n_conds: None,
+                n_phases: None,
+                energy_meter: None,
+                node_order: Vec::new(),
             })
             .collect();
         let losses = dss.losses();
@@ -816,6 +830,13 @@ mod tests {
             res_ang: Vec::new(),
             vma_mag: Vec::new(),
             vma_ang: Vec::new(),
+            // The G1.3d(i) element-extras channels are likewise unread by
+            // `compare_aggregates`; spelled out for the same reason.
+            n_terms: None,
+            n_conds: None,
+            n_phases: None,
+            energy_meter: None,
+            node_order: Vec::new(),
         };
         for v in &mut rewritten.i_re {
             *v += 1.0;

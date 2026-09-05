@@ -173,12 +173,18 @@ def _polar_pair(flat) -> tuple:
 
 
 def capture_all_elements(
-    ckt, tolerate_user_model: bool = False, derived: bool = False
+    ckt,
+    tolerate_user_model: bool = False,
+    derived: bool = False,
+    element_extras: bool = False,
 ) -> list:
     """Every circuit element's terminal currents (A), powers (kW/kvar), and
     losses (W/var — `CktElement.Losses`, the engine's own Get_Losses path);
     under `derived` also `Enabled` and the three polar channels
-    `CurrentsMagAng` / `VoltagesMagAng` / `Residuals` (GOLDEN_REBASE G1.3a).
+    `CurrentsMagAng` / `VoltagesMagAng` / `Residuals` (GOLDEN_REBASE G1.3a);
+    under `element_extras` also `Enabled` and the discrete index/name scalars
+    `NumTerminals` / `NumConductors` / `NumPhases` / `EnergyMeter` / `NodeOrder`
+    (GOLDEN_REBASE G1.3d(i)).
 
     The plan mandates comparing *all* element currents/powers/losses (not just
     the selected set), so the live gate captures the whole element list here.
@@ -223,6 +229,26 @@ def capture_all_elements(
     identical, so no sentinel normalization is owed. `enabled` itself is
     captured for every element and compared exactly.
 
+    `element_extras` (request key `"element_extras"`, manifest flag
+    `compare_element_extras`): the discrete index/name scalars. The four
+    scalars are read for EVERY element — all four are pure field reads
+    (`CAPI/CAPI_CktElement.pas:182-211` for the counts, `:672-687` for
+    `EnergyMeter`; r4133 `DDLL/DCktElement.pas:139`/`:144`/`:149`/`:442`) — and
+    `NodeOrder` only for an element that is `Enabled` **and** has
+    `NumTerminals > 0`:
+      * a never-enabled element never got `SetNodeRef`, so `NodeRef` is nil:
+        capi raises 15013 (`CAPI/CAPI_CktElement.pas:900-906`) and r4133 dereferences
+        the nil pointer at `DDLL/DCktElement.pas:1048` with no guard;
+      * a 0-terminal element is legitimate (`UPFCControl` never assigns
+        `Nterms` — r4133 `Controls/UPFCControl.pas:230-246`), and there the two
+        transports disagree in *shape*: r4133 mode 17 returns a 0-length array
+        (`setlength(myIntArray, NTerms*Nconds)`, `:1043`) while capi takes the
+        same nil-`NodeRef` branch and raises 15013.
+    Not issuing the read removes the asymmetry instead of normalizing it (the
+    `derived` precedent); the comparator asserts both sides are empty there, so
+    the skip cannot hide a payload. `enabled` is emitted under this flag too —
+    the predicate must be visible to the comparator, never assumed.
+
     `tolerate_user_model` (CF-C Port 2): a Generator model=6 whose user-written
     model is not loaded fires DoSimpleMsg #567 the FIRST time its terminal
     currents are recomputed after a solve; the recompute still produces the
@@ -247,15 +273,29 @@ def capture_all_elements(
         # capture-order: Powers (A), Currents (B)
         cap = _read(lambda: gc.capture_element(ckt, name))
         cap["loss_w"] = [float(loss[0]), float(loss[1])]
-        if derived:
+        if derived or element_extras:
             cap["enabled"] = enabled
-            if enabled:
-                cma = _read(lambda: el.CurrentsMagAng)  # capture-order: CurrentsMagAng (B)
-                res = _read(lambda: el.Residuals)  # capture-order: Residuals (B)
-                vma = _read(lambda: el.VoltagesMagAng)  # capture-order: VoltagesMagAng (C)
-                cap["cma_mag"], cap["cma_ang"] = _polar_pair(cma)
-                cap["res_mag"], cap["res_ang"] = _polar_pair(res)
-                cap["vma_mag"], cap["vma_ang"] = _polar_pair(vma)
+        if derived and enabled:
+            cma = _read(lambda: el.CurrentsMagAng)  # capture-order: CurrentsMagAng (B)
+            res = _read(lambda: el.Residuals)  # capture-order: Residuals (B)
+            vma = _read(lambda: el.VoltagesMagAng)  # capture-order: VoltagesMagAng (C)
+            cap["cma_mag"], cap["cma_ang"] = _polar_pair(cma)
+            cap["res_mag"], cap["res_ang"] = _polar_pair(res)
+            cap["vma_mag"], cap["vma_ang"] = _polar_pair(vma)
+        if element_extras:
+            n_terms = int(el.NumTerminals)  # capture-order: NumTerminals (C)
+            cap["n_terms"] = n_terms
+            cap["n_conds"] = int(el.NumConductors)  # capture-order: NumConductors (C)
+            cap["n_phases"] = int(el.NumPhases)  # capture-order: NumPhases (C)
+            # The RAW oracle spelling: `''` here (capi returns NIL, which
+            # dss-python's `_get_string` maps to the empty string) is the "no
+            # meter" sentinel, and the r4133 channel spells the same state `'0'`
+            # (`CktElementS`'s pre-`case` default, `DDLL/DCktElement.pas:421`).
+            # Normalizing the two is the comparator's job, not the capture's.
+            cap["energy_meter"] = str(el.EnergyMeter)  # capture-order: EnergyMeter (C)
+            if enabled and n_terms > 0:
+                order = el.NodeOrder  # capture-order: NodeOrder (C)
+                cap["node_order"] = [int(v) for v in order]
         out.append(cap)
     return out
 
@@ -675,6 +715,11 @@ def run_case(d, req: dict) -> dict:
     # circuit-level `AllBusVmagPu`. Opt-in — cheap (41 ms for the 4 876-bus
     # 8500-Node deck) but it doubles a large deck's JSON payload.
     want_buses = bool(req.get("buses", False))
+    # GOLDEN_REBASE G1.3d(i) (manifest flag `compare_element_extras`): the
+    # per-element discrete index/name scalars `NumTerminals`/`NumConductors`/
+    # `NumPhases`/`EnergyMeter`/`NodeOrder` plus `Enabled`. Same one-key-for-the
+    # -whole-surface shape as `derived`, honored by both transports.
+    want_element_extras = bool(req.get("element_extras", False))
     # WPG.5 (AutoAdd): `DSS.GlobalResult` after each solve (the winner + figure)
     # and the `<CircuitName_>AutoAddLog.csv` the search writes. `Text.Result` is
     # captured IMMEDIATELY after `solve`, before any `?`-query capture overwrites
@@ -812,7 +857,7 @@ def run_case(d, req: dict) -> dict:
                         "y_fingerprint": gc.capture_fingerprint(d),
                         "yprims": [gc.capture_yprim(ckt, nm) for nm in sel],
                         "elements": capture_all_elements(
-                            ckt, warn_and_continue, want_derived
+                            ckt, warn_and_continue, want_derived, want_element_extras
                         ),
                         "injection": gc.capture_injection(d),
                         "transformers": disc["transformers"],

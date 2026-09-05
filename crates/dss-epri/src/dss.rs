@@ -55,6 +55,14 @@ pub type Pcl = (Vec<f64>, Vec<f64>, Vec<f64>);
 /// G1.3a derived capture ([`Engine::element_polar`]).
 pub type Polar3 = (Vec<f64>, Vec<f64>, Vec<f64>);
 
+/// `NumTerminals`, `NumConductors`, `NumPhases`, `EnergyMeter` for one element
+/// — the unconditional half of the GOLDEN_REBASE G1.3d(i) discrete-extras
+/// capture ([`Engine::element_extras`]). The meter name is the **raw** DDLL
+/// string, i.e. `"0"` when the element has no meter (`CktElementS`'s pre-`case`
+/// default, `DDLL/DCktElement.pas:421`); normalizing that against the capi
+/// channel's `""` is the comparator's job, not the capture's.
+pub type Extras = (i32, i32, i32, String);
+
 /// One generic C-API call request for [`Engine::ffi_dispatch`]. `kind` selects
 /// the ABI shape (`"i"`/`"f"`/`"s"`/`"v"`); only the matching scalar
 /// (`iarg`/`farg`[`/farg2`](FfiCall::farg2)/`sarg`) is used. `vset` (V only)
@@ -643,6 +651,34 @@ impl Engine {
             });
         }
         unreachable!()
+    }
+
+    /// Read `NumTerminals`, `NumConductors`, `NumPhases` and `EnergyMeter` on
+    /// the active element — the unconditional half of the GOLDEN_REBASE
+    /// G1.3d(i) discrete-extras capture (`CktElementI(0)`/`(1)`/`(2)` at
+    /// `DDLL/DCktElement.pas:139`/`:144`/`:149`, `CktElementS(4)` at `:442`;
+    /// capi `CAPI/CAPI_CktElement.pas:182-211` and `:672-687`).
+    ///
+    /// All four modes are `ModeEffect::Pure` (group **C**): they read a field,
+    /// never `ComputeIterminal`, so this helper may sit anywhere in the capture
+    /// order and — unlike [`Engine::element_pcl`] / [`Engine::element_polar`] —
+    /// takes no `warn` flag: a pure read cannot fire the user-model priming
+    /// warning those two absorb. The error slot is still drained here
+    /// ([`Engine::assert_clean`]) so an errno is attributed to its own element
+    /// rather than to the next one's `element_pcl`.
+    ///
+    /// `NodeOrder` is deliberately **not** part of this helper: it is read
+    /// conditionally (`Enabled` and `NumTerminals > 0`, see
+    /// `crate::capture::capture_all_elements`), and a conditional read inside an
+    /// unconditional helper would make the helper's declared capture-order
+    /// sequence a lie.
+    pub fn element_extras(&self, ctx: &str) -> Result<Extras, EngineError> {
+        let n_terms = self.ckt_element_num_terminals()?; // capture-order: NumTerminals (C)
+        let n_conds = self.ckt_element_num_conductors()?; // capture-order: NumConductors (C)
+        let n_phases = self.ckt_element_num_phases()?; // capture-order: NumPhases (C)
+        let meter = self.ckt_element_energy_meter()?; // capture-order: EnergyMeter (C)
+        self.assert_clean(ctx)?;
+        Ok((n_terms, n_conds, n_phases, meter))
     }
 
     // ---- solution scalars -------------------------------------------------
