@@ -2544,3 +2544,85 @@ non-vacuously by `…::the_gictransformer_channel_guard_refuses_a_capi_gated_dec
 `FORCED_PROPS_POPULATION` / `FORCED_BUS_POPULATION` move
 `(440, 313, 83, 44) → (441, 310, 87, 44)` (three flips + one new case), both
 re-derived from the manifests on every run.
+
+## G1.4c — Bus `SeqVoltages`/`CplxSeqVoltages` and `VLL`/`puVLL`: the port's semantics differ from **both** oracles — GOLDEN_REBASE G1.4c, 2026-09-05
+
+*(`G1.4c` is the GOLDEN_REBASE sub-step; the coordinator decisions cited are that
+session's **D4**, **D8**, **D15**/**D16** and **D21**.)*
+
+**Three upstream defects, one surface.** On these four `IBus` arms the port, the
+pinned capi 0.14.5 and EPRI r4133 give three different answers, and neither
+oracle answer is defensible:
+
+1. **Sequence quantities are gated on the node COUNT, not on the phases
+   present.** r4133 `DDLL/DBus.pas:298-299` returns `-1, -1, -1` whenever
+   `NumNodesThisBus <> 3` — its own comment says *"Signify seq voltages n/A for
+   less then 3 phases"*, so a 4-node bus that carries phases 1, 2 and 3 is
+   declined although its V012 is perfectly defined. capi 0.14.5 clamps
+   `Nvalues > 3` to 3 first (`CAPI/CAPI_Alt.pas:2172-2186`) and therefore
+   answers there — the two oracles split on `n > 3`.
+2. **Both substitute GROUND for a missing phase.** `Vph[i] := NodeV[Find(i)]`
+   with `Find` returning `0` (the ground slot) for an absent node
+   (`DBus.pas:305` == `CAPI_Alt.pas:2190`), so a `[1,2,10]` bus gets a V012
+   computed over a fabricated 0 V phase. Physically meaningless, and it
+   contradicts the same comment.
+3. **The line-to-line pairing polls the node BEFORE it wraps.** Both arms walk
+   `jj` with `NodeIdxj := FindIdx(jj); if jj > 3 then jj := 1 else inc(jj)`
+   (r4133 `DBus.pas:580-584`, capi `CAPI_Alt.pas:2500-2523`), so on a
+   `[1,2,3,4]` bus the third pair is `V3 - V4` instead of `V3 - V1`, on
+   `[1,2,10]` the second pair is the exact negative of the first, and on
+   `[1,10]` r4133 pairs node 1 **with itself**. r4133's own report path wraps
+   *first* (`Common/ShowResults.pas:193-194`: `k := jj; IF k > 3 Then k := 1;
+   kk := FindIdx(k)`), and the commented-out original two lines below the loop
+   (`DBus.pas:586-587`) are that same wrap-first code — intent contradicts
+   behaviour inside one engine. r4133 additionally **hangs**: its second loop is
+   an unbounded `repeat`, so a bus whose node numbers miss `{jj₀+1} ∪ {1,2,3,4}`
+   spins forever (measured 20.011 s TIMEOUT on `NEVTestCase` `double-1`); capi
+   bounded the same loop to three tries in 2020 (`CAPI_Alt.pas:2512-2514`) and
+   says so in its own comment.
+
+**What the port does (S-SEQ / S-VLL, D4 chain → D8 trigger 3 → D21).**
+`Bus.SeqVoltages` / `CplxSeqVoltages` are published **iff the bus carries nodes
+1, 2 and 3** (r4133's stated intent, and the only case where symmetrical
+components are defined); `Bus.VLL` / `puVLL` are the line-to-line voltages over
+the phase nodes actually present — three pairs, the single pair, or nothing below
+two phases — which is what `ShowResults.pas:193-194` computes. No upstream walk
+is reproduced anywhere in the engine, in either lane. The **report** paths are
+deliberately untouched (`report/export/seq_voltages.rs` keeps the ground
+substitution, `report/show/voltages.rs` keeps its wrap-first pairing): they are
+byte goldens of an upstream *report*, and the split between that convention and
+the API semantics is pinned on both sides.
+
+**How the divergence is gated — 0 ledger rows.** Instead of excluding the
+divergent buses, `harness::compare_bus_seq_and_vll` classifies every bus from its
+node set alone and closes the four divergent classes with a **positive assertion
+of the upstream mechanism over the port's own state** (`oracle ==
+upstream_walk(port node voltages)`, the D15/D16 settlement shape): the decline
+rules are asserted in both directions against the `-1` sentinel, and the two
+Pascal pairing loops are transcribed literally in the harness. The r4133 hang is
+refused before any FFI by a **state-dependent** register in the bridge
+(`modes::bus_vll_would_hang`, `STATE_DEPENDENT_REFUSALS`, `Engine::bus_vll_pair`),
+whose verdict is cross-checked against the harness' independent replay. Four
+run-wide populations fail on stale in both directions:
+`R4133_SEQ_SENTINEL_POPULATION` (10, 129), `SEQ_GROUND_SUBSTITUTION_POPULATION`
+(4, 54), `VLL_UPSTREAM_PAIRING_DECLINES` (16, 196), `R4133_VLL_HANG_POPULATION`
+(2, 12). One tolerance constant is added, `C_012 = 5.30e-10` (r4133's truncated
+`sin60` in `Ap2s`; `tests/TOLERANCE_NOTES.md` §"Bus sequence and line-to-line
+voltages"), and no band moves.
+
+**Pins** (each naming both numbers): `bus_seq_voltages_need_all_three_phase_nodes`,
+`bus_vll_pairs_only_the_phase_nodes_the_bus_carries`,
+`bus_pu_vll_divides_by_the_line_to_line_base`,
+`bus_node_v_is_the_raw_voltage_behind_the_per_unit_arrays` (`exec/view.rs`);
+`the_upstream_vll_walk_reproduces_the_ten_measured_bus_classes`,
+`the_port_and_the_two_channels_state_their_availability_differently`,
+`the_wrap_before_probe_pairing_reds_the_four_node_bus`,
+`a_payload_that_contradicts_its_own_bus_class_reds_the_comparator`,
+`the_seq_vll_population_rules_fail_in_both_directions`,
+`the_seq_and_line_to_line_bands_are_the_documented_images` (harness);
+`bus_vll_would_hang_refuses_exactly_the_measured_corpus_class`,
+`the_two_refusal_registers_are_disjoint_and_state_dependent_rows_are_read_modes`
+(`crates/dss-epri`). Upstream-ready reports:
+`investigations/to_opendss/64-bus-vll-infinite-loop-no-node-1-to-4.md`,
+`65-bus-vll-pairing-probes-before-wrapping.md`,
+`66-bus-seqvoltages-node-count-and-ground-substitution.md`.

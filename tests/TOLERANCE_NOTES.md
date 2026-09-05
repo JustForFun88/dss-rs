@@ -1012,6 +1012,95 @@ identity and every array length. The negative drives
 `the_voltage_exclusion_still_pins_zsc_ysc_and_the_lengths` and
 `the_voltage_exclusion_drops_only_the_voc_and_isc_values` prove both halves.
 
+## Bus sequence and line-to-line voltages (GOLDEN_REBASE G1.4c, `harness::compare_bus_seq_and_vll`)
+
+`compare_bus_seq_and_vll` gates the four arms of the same `IBus` facade the two
+sections above gate the voltage and short-circuit arms of — `Bus.SeqVoltages`,
+`Bus.CplxSeqVoltages`, `Bus.VLL`, `Bus.puVLL` — read on the same per-bus walk.
+It adds **one** constant, `C_012`, and no existing band moves. Everything else is
+again the exact image of the already-calibrated node-voltage band
+`eps = v_abs + v_rel*|V|` over the very same `Solution.NodeV`, so like
+`compare_bus` this surface cannot red where the `voltages` channel is green; its
+gating value is the discrete content (which channel answers, which pairs it
+walked, which call the bridge refused). In the order the comparator applies them:
+
+1. **Availability, sentinels, lengths, the refusal bit — discrete, no band.**
+   Each channel's decline rule is asserted in **both** directions against the
+   payload (capi declines a bus with `< 3` nodes after its `Nvalues > 3` clamp,
+   r4133 whenever `NumNodes <> 3`), and a decline must be the exact three/six
+   `-1.0` sentinel. `puVLL`'s base and the node set are already compared exactly
+   by `compare_bus`. A disagreement here is a finding, not a floor.
+2. **`SeqVoltages` / `CplxSeqVoltages` — the row-sum image.** `V012 = Ap2s*Vph`
+   with `sum_j |Ap2s[i][j]| = 1` on every row (row 0 is `3*(1/3)`; rows 1 and 2
+   are `1/3 + |a|/3 + |a^2|/3` with `|a| = 0.9999999999999999` in f64), so
+
+   > `allowed = v_abs + v_rel * max_j |Vph_j|`, `rel = 0`
+
+   per complex component, and the same number on `|V012_i|` by the reverse
+   triangle inequality `| |a| - |b| | <= |a - b|`. **The band is driven by the
+   PHASE magnitude, never by `|V012_i|`.** `V0` and `V2` on a balanced bus are
+   near-total cancellations of three approximately equal phasors — the report
+   twin's measured floor is 1e-11 V at feeder scale (§WP8.2 sub-step 2b) — so a
+   band proportional to the *result* would be orders of magnitude tighter than
+   the arithmetic that produced it and would red on rounding alone.
+3. **`C_012 = 5.30e-10`, the r4133 channel only, rows `i` in {1, 2}.** r4133
+   builds `Ap2s` from the truncated `sin60 = 0.866025403` and inverts it
+   **numerically** (`Version8/Source/Shared/mathutil.pas:302-303` `SetAMatrix`,
+   `:562-564` `SetAMatrix(Ap2s); Ap2s.Invert`), while the pinned capi 0.14.5 and
+   the port use `0.8660254037844387` with the analytic inverse (capi
+   `src/Shared/mathutil.pas:250-268`, selected at `:548`;
+   `support::mathutil::SymComp::precise`, the engine default). Two entries per
+   row differ by `dsin60/3`, so the **analytic ceiling** of the relative gap is
+
+   > `2 * (0.8660254037844387 - 0.866025403) / 3 = 5.229591574599605e-10`
+
+   of `max_j |Vph_j|`, and the adopted constant is that ceiling rounded up:
+   `C_012 = 5.30e-10` = 1.0134634654343510x it (coordinator decision **D21**;
+   the same constant, same derivation, is lane-e's G1.3b element-surface term —
+   one definition survives the merge, reconciled by the ceiling, never by the
+   larger value). Row 0 gets **no** `C_012` term: its entries are identical to
+   ~1 ulp. Measured, not assumed:
+
+   | measurement | worst relative gap | of the ceiling |
+   |---|---|---|
+   | live, every r4133-gated live non-`large` case (390 decks, 13 830 buses with node set exactly {1,2,3}) | `5.229587392548124e-10` | **0.9999992003101158** |
+   | deterministic 2 000-triple LCG sweep at feeder scale (in the harness' own test) | `5.187062517473203e-10` | 0.9918676140345324 |
+   | row 0, both measurements | `2.668531449088572e-16` | ~5e-7 |
+
+   The live worst sits at `IEEE123Master-SC` bus `sourcebus`, row 2, where
+   `max_j |Vph_j| = 0.011679086742365917` V (the ratio is scale-free; the
+   absolute gap there is ~6.1e-12 V). The bound is tight (99.99992 % reached) and
+   is **not** exceeded, which is the point: a measurement **above** the analytic
+   ceiling would be a bug in the transform or the transport, never a reason to
+   widen `C_012`. In-tree corroboration of the same truncation:
+   `sym_comp_official_vs_precise_gap_is_the_truncated_sin60_constant`.
+4. **`VLL` — a difference of two node voltages.** `V_ij = Vph_i - Vph_j`, so
+
+   > `allowed = 2*v_abs + v_rel * (|Vph_i| + |Vph_j|)`, `rel = 0`
+
+   **`puVLL`** is that quantity over the **line-to-line** base
+   `BaseFactor_LL = 1000 * kVBase * sqrt(3)` (or `1.0` when `kVBase` is unset —
+   a live branch here, e.g. `indmachtest` `sourcebus`), which `compare_bus`
+   already pins exactly, so its band is `allowed / BaseFactor_LL`. Both engines
+   compute `sqrt(3)` as `Sqrt(3.0)` (r4133 `Common/DSSGlobals.pas:2033` == capi
+   `:733`), so there is no compat site and no extra term on this surface.
+   Expect `puVLL` *tighter* than the node band on floating common-mode decks —
+   do not widen it there.
+5. **No polar channel exists on this surface**, so **D10**'s wrap-aware polar
+   derivation does not apply and no angle band is derived here.
+6. **The port-internal identities are exact, not banded**, and are asserted even
+   when a case's `voltages` field is ledger-excluded: the port's `SeqVoltages` is
+   exactly `|CplxSeqVoltages|` and both are exactly `Ap2s * Vph` over the port's
+   own node voltages (an independent replay inside the harness), and its `VLL` is
+   exactly `V_a - V_b` over the pairs it publishes. `voltages_excluded` narrows
+   to the oracle-compared **values** only — availability, sentinels, the refusal
+   bit and every length stay compared — exactly as in the two sections above.
+
+Non-vacuity of the bands is not argued, it is driven: the sub-step's acceptance
+reds the live gate with a `10x`-band perturbation on a `SeqVoltages` magnitude
+(measured 6.649e-3 against an allowed 6.649e-4 at `max_j |Vph_j|` = 66 388 V) and
+on a `VLL` entry (5.106e-4 against 5.120e-5), each on a named case.
+
 ## r4133 event-log masks (`harness::EVENTLOG_MASKS`, §1.3-3)
 
 `compare_eventlog` compares the cumulative event log line-for-line (numeric

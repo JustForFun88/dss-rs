@@ -241,7 +241,7 @@ today:
 | 8 | run-produced files: **every** `*.csv` the deck emits under DataPath (fastdss archives and compares them all, incl. the forced `export profile phases=all` — DI CSVs are just the closedi subset); `save circuit` output **file set** (fastdss archives it but never compares — `compare_outputs.py:426-529` has no `.dss` branch — so our file-set + round-trip check is strictly stronger; state that, don't claim parity) | `di_*`/`save_*` goldens | G1.10 |
 | 9 | CktElement discrete extras: PhaseLosses, NodeOrder, EnergyMeter, OCPDevType, OCPDevIndex, HasVoltControl, HasSwitchControl, NumControls, NumTerminals/NumPhases/NumConductors; LineGeometries.Rmatrix/Xmatrix/Zmatrix (measure-first); Lines.Yprim (verify it is already witnessed by the per-element YPrim live compare, record in TESTING.md) | scattered `props/`/report goldens | G1.3d |
 | 10 | PDElements interface: AccumulatedL, ParentPDElement, FromTerminal, IsShunt, Numcustomers, SectionID, RepairTime, Totalcustomers, Lambda | `reliability` goldens (partially) | G1.6b |
-| 11 | Bus extras: VLL/puVLL, VMagAngle, AllPCEatBus/AllPDEatBus | `export_seq*`/`profile` goldens | G1.4 |
+| 11 | Bus extras: VLL/puVLL, VMagAngle, AllPCEatBus/AllPDEatBus | `export_seq*`/`profile` goldens | G1.4 (VMagAngle: G1.4a; VLL/puVLL: G1.4c, landed 2026-09-05; AllPCEatBus/AllPDEatBus: G1.4b) |
 
 Where our gate is already stronger than fastdss (monitor channels, event log,
 control queue, full Y/YPrim/injection, discrete state, two channels at once,
@@ -651,6 +651,56 @@ only; manifest-flagged).
 > commit) — that machine-wide channel, not the scheduler, was the "21 red, all
 > `R4133`" parity run, and the operating rule ("one gate or probe per worktree at a
 > time") is in `TESTING.md`. Full record:
+> `docs/phase-records/golden-rebase.md` §"WP-G1 — records".
+
+> **As executed — G1.4c (2026-09-05, lane `lane-b`, D7).** Landed whole, on both
+> channels, riding G1.4a's per-bus capture, comparator call site and flag: **no**
+> new manifest flag, **no** new force rule and **no** `population.lock.json` move
+> (regenerated in-step, `git diff` empty). D8's diagnosis held; its *shape* was
+> strengthened by **D21**. Six things this section did not say:
+> **(1)** The port's own semantics are settled and are neither oracle's:
+> **S-SEQ** — `SeqVoltages`/`CplxSeqVoltages` exist iff the bus carries nodes 1,
+> 2 and 3 (r4133's stated intent, `DDLL/DBus.pas:299`, against its own node-*count*
+> test at `:298` and capi's `Nvalues > 3` clamp at `CAPI_Alt.pas:2172-2186`,
+> both of which then substitute **ground** for an absent phase, `DBus.pas:305` ==
+> `CAPI_Alt.pas:2190`) — and **S-VLL** — `VLL`/`puVLL` over the phase nodes
+> actually present, which is what r4133's own report path computes
+> (`Common/ShowResults.pas:193-194`). This settles D8's trigger 3 in the same
+> shape for both quantity families.
+> **(2)** A **third** upstream defect, shared by both oracles and unseen by the
+> STOP note: the L-L pairing loop polls `FindIdx(jj)` *before* the
+> `jj > 3 ⇒ jj := 1` wrap (`DBus.pas:575-584` == `CAPI_Alt.pas:2500-2523`), so a
+> `[1,2,3,4]` bus pairs phase 3 with node **4** and a `[1,10]` bus pairs node 1
+> with **itself** — while the commented-out original right below the loop
+> (`DBus.pas:586-587`) and `ShowResults` both wrap first. Three
+> `investigations/to_opendss/` reports were written, not the two planned (64, 65,
+> 66).
+> **(3)** The divergent buses are **not** excluded, as D8 proposed, but closed
+> with a *positive* assertion of the upstream walk over the port's own state
+> (`oracle == upstream_walk(port)`, the D15/D16 shape) — strictly stronger, and
+> no bus is left unwitnessed: **0** ledger rows (53 unchanged), and the ledger-free
+> seeding report over both channels on all 521 live cases attributes **0** of its
+> 200 non-matches to this surface.
+> **(4)** The r4133 hang is refused by a **state-dependent** register in the
+> bridge (`modes::bus_vll_would_hang` + `STATE_DEPENDENT_REFUSALS`, disjoint from
+> `DO_NOT_CALL`; the one dispatcher `Engine::bus_vll_pair` re-reads `Bus.Nodes`
+> itself), cross-checked against the harness' independent replay of the same loop.
+> Measured: TIMEOUT at 20.011 s on `NEVTestCase` `double-1` vs 0.000 s on
+> `13kvbus`; bridge cost +2.94–3.54 µs/bus (≤ 0.74 s per full run). This is the
+> **D2** mode-capability record for `BUSV(11)`/`BUSV(12)` — served, refused per
+> bus, never silently capi-only (`TESTING.md` §"The r4133 bridge").
+> **(5)** Four run-wide populations fail on stale in both directions and are
+> printed as `corpus_gate seq/vll:` — `R4133_SEQ_SENTINEL_POPULATION` **(10, 129)**,
+> `SEQ_GROUND_SUBSTITUTION_POPULATION` **(4, 54)**,
+> `VLL_UPSTREAM_PAIRING_DECLINES` **(16, 196)**, `R4133_VLL_HANG_POPULATION`
+> **(2, 12)**; the offline predictions were wrong for the first and third and the
+> live measurement ruled (`modes:makeposseq/makeposseq_gic.dss` reaches none of
+> the classes — `makeposseq` leaves its buses single-node).
+> **(6)** One tolerance constant is added, `C_012 = 5.30e-10` (D21's shared
+> constant with G1.3b): the analytic ceiling `2·Δsin60/3 = 5.229591574599605e-10`
+> rounded up, live worst `5.229587392548124e-10` over 390 decks / 13 830
+> three-node buses = 0.9999992 of the ceiling. **0** golden bytes;
+> `lane_diff` **PASS**, max |Δ| = 0. Full record:
 > `docs/phase-records/golden-rebase.md` §"WP-G1 — records".
 
 ### G1.5 — short-circuit surface
