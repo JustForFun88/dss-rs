@@ -20,6 +20,7 @@ fn test_sys() -> SysCtx {
         year: 0,
         dbl_hour: 0.0,
         solution_count: 0,
+        iteration: 0,
         loads_need_updating: false,
         neglect_load_y: false,
         long_line_correction: false,

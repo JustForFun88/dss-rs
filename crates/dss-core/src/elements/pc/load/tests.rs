@@ -660,6 +660,7 @@ fn direct_shortcut_selects_yprim_currents() {
     load.kv_load_base = 12.47;
     let snap = SysCtx {
         solution_count: 1,
+        iteration: 0,
         ..default_recalc_ctx()
     };
     load.set_nominal_load(&snap);
@@ -683,6 +684,7 @@ fn direct_shortcut_selects_yprim_currents() {
     // Direct read: expect exactly YPrim · Vterminal.
     let direct = SysCtx {
         solution_count: 2,
+        iteration: 0,
         last_solution_was_direct: true,
         ncim: false,
         ..default_recalc_ctx()
@@ -740,6 +742,7 @@ fn direct_shortcut_selects_yprim_currents() {
     // SolutionCount → model current again.
     let snap2 = SysCtx {
         solution_count: 3,
+        iteration: 0,
         ..default_recalc_ctx()
     };
     let mut i_after = vec![Complex64::ZERO; 4];
