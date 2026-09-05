@@ -68,14 +68,28 @@ impl SymComp {
     ///
     /// **Not a compat site, and not selected in either lane** (Stage F row 3,
     /// resolved as *no split*): `mathutil.pas:548` ends its initialization with
-    /// `SelectAs2pVersion(False)`, so the pinned oracle uses [`Self::precise`],
-    /// and this pair is reachable upstream only through the
-    /// `DSSCompatFlag.BadPrecision` env flag (`CAPI_DSS.pas:315`) that no gating
-    /// oracle sets. It is kept compiled — like `compat::cdiv_std_impl` — as the
-    /// measured comparison partner that keeps the "no split" verdict asserted
-    /// rather than narrated (`tests::sym_comp_official_vs_precise_gap_is_the_
-    /// truncated_sin60_constant` pins the 4.50e-10 relative gap). Deleting it
-    /// would delete the evidence; see `dss_core::compat`'s module header.
+    /// `SelectAs2pVersion(False)`, so the pinned dss_capi 0.14.5 oracle uses
+    /// [`Self::precise`], that pair is reachable there only through the
+    /// `DSSCompatFlag.BadPrecision` env flag (`CAPI_DSS.pas:315`) which no gating
+    /// oracle sets, and the engine itself never selects this one.
+    ///
+    /// What it is kept for is no longer a museum piece: it reproduces the **EPRI
+    /// r4133 gating channel's** matrices exactly. That build has no
+    /// `SelectAs2pVersion` switch at all: it fills both globals from the
+    /// truncated `sin 60°` literal `0.866025403`
+    /// (`Version8/Source/Shared/mathutil.pas:302-303`) and obtains `Ap2s` by
+    /// *numerically inverting* that matrix (`:562-564`). So r4133 transforms
+    /// phase quantities with a measurably different matrix, and every 012
+    /// quantity the live corpus gate compares against that channel carries an
+    /// extra **absolute** floor term for it (`GOLDEN_REBASE_PLAN.md` G1.3b; the
+    /// derivation and the measured constant live in `tests/TOLERANCE_NOTES.md`
+    /// §G1.3b and are re-derived on every run by `harness::seq_floors`, which
+    /// recovers the matrix difference by pushing the three unit basis vectors
+    /// through both variants). `tests::sym_comp_official_vs_precise_gap_is_the_
+    /// truncated_sin60_constant` pins the 4.50e-10 relative gap on one vector —
+    /// the same analytic constant seen on a single input. Deleting this variant
+    /// would delete the model of a gating oracle; see `dss_core::compat`'s
+    /// module header.
     pub fn official() -> Self {
         let a = c(-0.5, 0.866025403);
         let aa = c(-0.5, -0.866025403);

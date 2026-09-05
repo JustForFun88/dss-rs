@@ -176,6 +176,20 @@ const LANE_SKIP_ELEM_POWERS: &[&str] =
 /// beside this row's own `newton_powers_match_the_normal_algorithm`, and
 /// `harness::compare_element_phase_losses` keeps asserting the array shapes on
 /// these decks under every channel policy.
+/// # G1.3b: the three sequence channels do NOT join it — `SeqPowers` included
+///
+/// `SeqCurrents`, `SeqVoltages` and `SeqPowers`
+/// (`GOLDEN_REBASE_PLAN.md` G1.3b) land back on the polar three's side of that
+/// same line, and the third of them is the one worth naming: it is a **power**
+/// channel that is nevertheless not stale here. r4133's `CktElementV` mode `9`
+/// fills its own scratch buffer through `GetCurrents`
+/// (`DDLL/DCktElement.pas:758`, `:778`) and reads `Solution.NodeV` directly, and
+/// capi's `Alt_CE_Get_SeqPowers_` does the same (`CAPI/CAPI_Alt.pas:549`); modes
+/// `7`/`8` go through `CalcSeqVoltages`/`CalcSeqCurrents`, which also call
+/// `GetCurrents` / read `NodeV`. **None of the three takes the cache-aware
+/// `ComputeIterminal` path**, so all three stay `true` in
+/// [`ElemChannels::CURRENTS_ONLY`] and the two `newton*` decks gain three more
+/// oracle-compared channels rather than a fourth exclusion.
 pub fn elem_channels_for(label: &str) -> ElemChannels {
     if LANE_SKIP_ELEM_POWERS.contains(&label) {
         ElemChannels::CURRENTS_ONLY
@@ -1084,6 +1098,10 @@ mod tests {
                  `Get_Powers`/`Get_Losses` read the Newton staleness lives in"
             );
             assert!(
+                ch.seq_currents && ch.seq_voltages && ch.seq_powers,
+                "{label}: the G1.3b sequence channels stay gated in every lane \n                 - all three read a scratch `GetCurrents` and/or `NodeV` (r4133 \n                 `DDLL/DCktElement.pas:758`/`:778`, capi \n                 `CAPI/CAPI_Alt.pas:549`), never the cache-aware \n                 `ComputeIterminal`, so `SeqPowers` is a POWER channel that does \n                 NOT share the Newton exclusion"
+            );
+            assert!(
                 !ch.powers && !ch.losses && !ch.phase_losses,
                 "{label}: powers, losses and per-phase losses are the excluded \
                  triple (G1.3d(ii) added the third)"
@@ -1105,7 +1123,10 @@ mod tests {
                 && all.currents_mag_ang
                 && all.voltages_mag_ang
                 && all.residuals
-                && all.phase_losses,
+                && all.phase_losses
+                && all.seq_currents
+                && all.seq_voltages
+                && all.seq_powers,
             "ElemChannels::ALL must compare every channel; a `false` here \
              removes that channel from every gated case in both lanes"
         );

@@ -2864,3 +2864,29 @@ row against the pre-fix lock.
   `divergence` entries — an exclusion covers causes that cannot be re-measured reliably (four of the
   ten widenings sit on D12's self-disagreeing capi GIC decks), reason now in TESTING.md and
   `ledger.rs`.
+- **G1.3b** (2026-09-05, lane `lane-e`; D4/D7/D24) — per-element `SeqCurrents`, `SeqVoltages` and
+  `SeqPowers` on both channels over the same **442** `compare_derived` cases (the sub-step widens the
+  flag's *fields*, not its population), from one new `exec/view.rs::snapshot_elements` accessor over
+  `SymComp::phase_to_sym`; `WP_G1_MODES` stays **97**. **0 new ledger entries / 0 new causes**
+  (58 / 31), **31** measured widenings over 11 `element` scopes, 0 golden bytes, no band moved, and
+  no channel joins `LANE_SKIP_ELEM_POWERS` (all three reads take a scratch `GetCurrents` and/or
+  `Solution.NodeV`, never `ComputeIterminal`). Three cross-channel divergences, none reproduced and
+  none ledgered: r4133's 1φ-positive-sequence slot/stride defect (`DDLL/DCktElement.pas:760`/`:768`
+  against capi `CAPI/CAPI_Alt.pas:555`/`:562`; report
+  `investigations/to_opendss/67-seqpowers-posseq-slot-stride.md`) has **zero** r4133 exposure —
+  **297 896** compared element rows, **79** on the 1φ arm via capi, **0** via r4133, both lanes — so
+  it costs 0 rows and buys the fail-on-stale census `assert_seq_arm_population` plus
+  `seq_powers_positive_sequence_lands_in_the_positive_slot_of_each_terminal`; the n/A `SeqPowers`
+  sentinel (`CAPI_Alt.pas:567` `(-1,-1)` vs `DCktElement.pas:772` `(-1,0)`, while both magnitude
+  arrays read `1.0` on both channels) is a channel-scoped comparator fold in the `PROPS_NORM_R4133`
+  shape (`na_seq_power`, pinned in all three directions), not hundreds of rows; and the two engines'
+  different 012 matrices cost one r4133-only absolute term `SEQ_C012 · max_j|Xph_j|`, `SEQ_C012` =
+  `5.229590094302253e-10` re-derived in-tree from `SymComp::official()` (`Shared/mathutil.pas:302-303`
+  + `:562-564`), its phase base and tightness proved in `tests/TOLERANCE_NOTES.md` §G1.3b. Per **D24**
+  the arm census is recorded by the corpus-gate runner, never by the comparator
+  (`a_fixture_call_on_the_r4133_posseq_arm_does_not_move_the_census`). Detail: plan §G1.3b,
+  TESTING.md; **8** pins in `exec::tests::derived_seq`, **34** in `harness::seq_floors` (21 rejection
+  legs), **7** in `ledger::*`, plus the `element_seq` body in `capture_order.rs` (14/14).
+  Commits `TBD-G13B-SHA` + docs (this record); gate **6 547 / 0 / 5** per lane (five commands, exit 0,
+  unfiltered), `lane_diff` PASS max |Δ| = 0 on every gated kind (523 cases,
+  4 825 419 compared values).

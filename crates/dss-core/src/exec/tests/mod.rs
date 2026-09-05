@@ -15,6 +15,7 @@ mod base_frequency;
 mod compat_quirks;
 mod controls;
 mod derived_polar;
+mod derived_seq;
 mod distribute_uuids;
 mod dynamics;
 mod element_extras;

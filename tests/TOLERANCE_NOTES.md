@@ -684,6 +684,191 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
   (`ledger::a_masked_polar_angle_is_not_envelope_checked` and its rejecting twin
   `::an_unmasked_polar_angle_still_hits_the_envelope`).
 
+- **§G1.3b — the per-element sequence transform** (`harness::compare_element_seq`,
+  `GOLDEN_REBASE_PLAN.md` WP-G1 G1.3b): `CktElement.SeqCurrents`, `SeqVoltages`
+  and `SeqPowers` are the **012 transform** of quantities the gate already
+  compares, so — like §G1.3a — every band here is the *image* of an existing,
+  already-calibrated tier band. **One new constant** is introduced,
+  `harness::SEQ_C012`, and it is not a tolerance in the calibrated sense: it is a
+  measured property of the r4133 channel's own matrix. No tier value moves and no
+  new tolerance class is added.
+
+  1. **Both channels: the base is the PHASE magnitude, never the sequence
+     magnitude.** `X012 = Ap2s · Xph` with every `|Ap2s[k][j]| = 1/3`, so
+
+         |ΔX012_k| ≤ (1/3)·Σ_j |ΔXph_j| ≤ (1/3)·Σ_j (x_abs + x_rel·|Xph_j|)
+                   = x_abs + x_rel·mean_j |Xph_j|
+
+     (`harness::seq_band`) — the exact image of the **disc**
+     `assert_complex_close_c` admits on the phase quantities (§G1.3a derivation
+     0), so no coefficient moves. The phase magnitudes are read off the oracle's
+     own `CurrentsMagAng`/`VoltagesMagAng` arrays, captured in the same `derived`
+     block, exactly as `residual_band`/`phase_loss_band` build their bands from
+     the captured side. Comparing *magnitudes* against a complex band is
+     legitimate by the reverse triangle inequality `||a| − |b|| ≤ |a − b|`
+     (§G1.3a derivation 1).
+
+     Shrinking the base to `|X012_k|` is what is **not** justified: the zero- and
+     negative-sequence components are near-cancellations of three large phase
+     phasors, and banding a cancellation residual against the residual is what
+     CLAUDE.md's decomposition rule forbids. Measured, that naive form fails a
+     live case by **×56.74** — `Test/Stevenson.dss` `Vsource.source` terminal 0,
+     negative-sequence slot: `|ΔV012| = 5.6738466845180485e-05 V` against a band
+     of `1.0000000871253881e-06 V`, because `|V012_2| = 8.71253881e-6 V` while
+     `max_j |Vph_j| = 133934 V`. Reproduced offline (with the `mean ≥ max/3` lower
+     bound on the emitted band, ×7.9 the gap) by
+     `harness::seq_floors::the_012_band_base_is_the_phase_magnitude_not_the_sequence_magnitude`.
+
+  2. **r4133 only: the truncated 012 matrix** — an extra **absolute** term
+     `SEQ_C012 · max_j |Xph_j|`. r4133 has no `SelectAs2pVersion` switch: it fills
+     `As2p` from the truncated `sin 60° = 0.866025403`
+     (`Version8/Source/Shared/mathutil.pas:302-303`) and obtains `Ap2s` by
+     *numerically inverting* that matrix (`:562-564`), while capi 0.14.5 and the
+     port use `0.8660254037844387` with the analytic inverse (`mathutil.pas:548`,
+     `SelectAs2pVersion(False)`). `dss_core::support::mathutil::SymComp::official`
+     models r4133's pair exactly — which is what that variant is kept for — and
+     with `Δ = Ap2s_official − Ap2s_precise`,
+
+         |Δ·Xph|_k ≤ (Σ_j |Δ_kj|)·max_j |Xph_j| ≤ SEQ_C012 · max_j |Xph_j|,
+         SEQ_C012 = max_k Σ_j |Δ_kj| = 5.229590094302253e-10
+
+     The three row sums are
+     `1.895269253967044e-16 / 5.229589539190756e-10 / 5.229590094302253e-10`: the
+     zero-sequence row carries essentially none of the gap, so the constant is a
+     *row* maximum, not a matrix-wide norm. Measured **offline by decomposition,
+     never by a sweep**, and re-derived on every run by
+     `harness::seq_floors::the_c012_constant_is_the_matrix_difference_row_sum`,
+     which recovers each `Δ_kj` by pushing the three unit basis vectors through
+     the two public transforms (the matrices are private). The bound is **tight**,
+     proved by construction rather than by sampling: the aligned unit phase vector
+     `Xph_j = conj(Δ_kj)/|Δ_kj|` attains the row sum exactly
+     (`…::the_c012_bound_is_attained_by_the_aligned_phase_vector`).
+
+     *Why this number and not the probe's.* r4133 does not write its `Ap2s` down;
+     it computes it with `TcMatrix.Invert`, so the constant depends on that
+     inversion's rounding, and `SymComp::official()` is the port of exactly that
+     routine on exactly that input. The offline probe that seeded the sub-step
+     used `numpy.linalg.inv` and landed on `5.229591207093893e-10` — a different
+     algorithm's rounding of the same inverse, `1.1e-16` absolute / `2.1e-7`
+     relative away. Nothing rides on the choice (the live gap sits at
+     `0.857 … 0.866 ×` the term either way), but the in-tree model is the one that
+     can be re-derived on every run, and padding to the larger of the two would be
+     a widening with no evidence behind it.
+
+     *Rejection leg.* Expressed against the **sequence** magnitude — the shape the
+     G1.3b dossier proposed — the same constant is not a bound at all: a
+     20 000-vector deterministic sweep attains `9.050363665547023e-10` of that
+     base, **×1.7306067019301536** `SEQ_C012`, while against the phase magnitude
+     the worst of the same samples is `5.223836917544907e-10` = `0.99885 ×` the
+     constant (`…::the_sequence_magnitude_base_is_not_a_bound`).
+
+     *Live corroboration.* Worst measured `|capi − r4133|` gap against the modelled
+     term, over the production capture path: **0.866 ×** on IEEE13
+     (`Transformer.sub` T1 slot 1, `1.0877183740376495e-06 V` against
+     `1.2559946253541167e-06 V`), **0.866 ×** on `Test/Stevenson.dss` (`Line.long`
+     T1 slot 1, `5.1040653488598764e-05 V` against `5.893669718227228e-05 V`) and
+     **0.857 ×** on IEEE13 `Line.650632` T1 slot 1. The one apparent outlier is a
+     degenerate terminal whose phase magnitudes are `~7.5e-12 A` (IEEE13
+     `Line.671680` T1 slot 2, absolute gap `2.050644227460387e-12 A`) — seven
+     orders under `i_abs`, which is exactly why the `x_abs` term is kept whole.
+     No measured gap exceeds the modelled term, so G1.3b's kill criterion
+     ("a measured r4133 gap above the modelled term by more than ~3×") does not
+     fire.
+
+     The term is an **addition**, never a relaxation, and its size depends on the
+     tier: at the `feeder` tier's `i_rel = 1e-7` it is `7.8e-3` of the ordinary
+     `rel·mean` term, while at the `micro` tier's `1e-9` it is comparable to it
+     (`SEQ_C012·max / (rel·mean) ≈ 0.52·max/mean`). That is why "switch the port to
+     `SymComp::official()`" is a *weak* non-vacuity probe — it would pass at the
+     feeder tier — and is not used as this sub-step's demo
+     (`…::the_r4133_channel_carries_the_extra_truncated_matrix_term`).
+
+  3. **`SeqPowers` = the image of its two factor bands.**
+     `S012_k = 0.003 · V012_k · conj(I012_k)`, so
+
+         |ΔS012_k| ≤ 0.003·( bv·|I012_k| + |V012_k|·bi + bv·bi )
+                   = 0.003·( bv·(|I012_k| + bi) + |V012_k|·bi )
+
+     (`harness::seq_power_band`), second-order term included, with `|V012_k|` and
+     `|I012_k|` the oracle's own magnitudes. Not a new class: it is the same
+     "image of the already-accepted factor bands" construction
+     `assert_power_close`'s voltage-scaled floor uses, applied to the 012 factors
+     instead of the phase ones. The bound is **attained** — perturbing a real `V`
+     by `+bv` and a real `I` by `+bi` moves the product by exactly the band — so
+     it is a derivation and not a padded guess
+     (`…::the_seq_power_band_is_the_image_of_its_two_factor_bands`).
+
+     The `0.003` is **not** a capture encoding the way `PhaseLosses`' `0.001` is:
+     both engines apply it *inside* the arm (r4133
+     `DDLL/DCktElement.pas:767`/`:788`, capi `CAPI/CAPI_Alt.pas:561`/`:588-589`),
+     so the reported quantity IS three-phase kVA and the band carries the same
+     factor. It is a fixed conversion, unconditional, and not the
+     `PositiveSequence` ×3 that `Powers` applies. Verified at the wire on
+     `Line.650632`: `|S012_k|` equals `0.003·|V012_k|·|I012_k|` to
+     `≤ 3.1e-16` relative on all three slots.
+
+  4. **The discrete parts carry no tolerance at all** — the three-arm selector,
+     the exact `0.0` slots of the 1φ-positive-sequence arm, and the two n/A
+     sentinels are compared **exactly**, under every channel policy. No capture
+     field spells the arm out, so `compare_element_seq` derives it from the port's
+     own structural state (`NPhases` and the circuit's `PositiveSequence` flag,
+     never a value) and then asserts the shape that arm forces on the oracle side;
+     a wrong arm on either side is contradicted by exact zeros or exact sentinels
+     standing against real numbers. That is the whole non-vacuity argument for the
+     selector, and it is pinned in both directions
+     (`…::a_port_claiming_the_na_arm_against_real_values_fails`,
+     `…::a_port_claiming_the_posseq_arm_against_the_na_capture_fails`,
+     `…::a_nonzero_zero_sequence_slot_on_the_posseq_arm_reds`,
+     `…::an_arm_that_contradicts_nphases_fails`).
+
+     The one **spelling fold** on that arm is *not a tolerance* either — see the
+     `PROPS_NORM_R4133` section below for the standard this follows. Both engines
+     return `Cabs(-1 + 0j) = 1.0` for the two magnitude reads (measured over
+     IEEE13's 26 not-available elements, 0 exceptions on either channel), and they
+     differ only in the `SeqPowers` sentinel: r4133 writes `cmplx(-1.0, 0)`
+     (`DDLL/DCktElement.pas:772`), capi 0.14.5 `cmplx(-1.0, -1.0)`
+     (`CAPI/CAPI_Alt.pas:567`). The port follows r4133 (the behavioral authority),
+     so `harness::na_seq_power` folds capi's spelling — gated on the **structural**
+     arm, never on a value, and **each channel's own spelling only**, so `(-1, -1)`
+     arriving from r4133 reds instead of being absorbed
+     (`…::the_na_power_sentinel_fold_is_channel_scoped`,
+     `…::the_capi_sentinel_on_the_r4133_channel_fails`,
+     `…::the_port_emitting_the_capi_sentinel_fails`). As ledger rows this would
+     have been hundreds of entries — an instant kill-criterion trip — which is why
+     it is a comparator-level normalization with a pin, per coordinator decision
+     D4.
+
+     The 0-terminal shape (`UPFCControl`, `Controls/UPFCControl.pas:230-246`) is
+     the same kind of capture-boundary fact and is accepted two-sidedly by
+     `harness::no_seq_payload`: r4133 returns four empty arrays, capi returns
+     `seq_i = []`, `seq_v = [0.0]`, `seq_p = ([0.0], [])` — the `DefaultResult` COM
+     sentinel (`CAPI/CAPI_Utils.pas:212-221`) — and nothing else reads as "no
+     payload"
+     (`…::the_capi_default_result_sentinel_is_the_only_extra_zero_terminal_shape`
+     and its two rejection legs).
+
+  5. **Measured headroom.** Worst multiple of the emitted band over the live
+     cross-oracle gaps (`capi_v0145` vs `r4133`, IEEE13 + `Test/Stevenson.dss` +
+     the three `line_posseq_*` decks): **0.2725** on `SeqVoltages`, **0.0302** on
+     `SeqCurrents`, **0.2705** on `SeqPowers` — ≥ 3.7× headroom, so the band is
+     neither vacuous nor exceeded by the transports themselves. The largest raw
+     `|capi − r4133|` disagreements on IEEE13 are `1.9793119747646415e-06 A`
+     (`seq_i`, `Line.671692` slot 0), `3.006929182447493e-05 V` (`seq_v`,
+     `Transformer.sub` slot 1) and `3.455423666309798e-06 kW` (`seq_p_kw`,
+     `Vsource.source` slot 1); the only non-numeric one is the n/A sentinel of
+     derivation 4.
+
+  6. **Where the bands are deliberately not consulted at all** — nowhere. None of
+     the three channels joins `LANE_SKIP_ELEM_POWERS`, `SeqPowers` included:
+     r4133's mode `9` fills its scratch buffer through `GetCurrents`
+     (`DDLL/DCktElement.pas:758`, `:778`) and reads `Solution.NodeV` directly, and
+     capi's `Alt_CE_Get_SeqPowers_` does the same (`CAPI/CAPI_Alt.pas:549`), so
+     none of them takes the cache-aware `ComputeIterminal` path
+     (`Common/CktElement.pas:632-640`) the Newton staleness lives in. The two
+     `newton*` decks therefore *gain* three oracle-compared channels — one of them
+     a power channel — rather than a fourth exclusion (`harness::lane`,
+     `ElemChannels::CURRENTS_ONLY`).
+
 - **§G1.3d(i) — the per-element discrete extras** (`harness::compare_element_extras`,
   `GOLDEN_REBASE_PLAN.md` WP-G1 G1.3d): `CktElement.NumTerminals`,
   `NumConductors`, `NumPhases`, `NodeOrder` and `EnergyMeter` are **discrete** —
@@ -1344,6 +1529,20 @@ reds at 1e-2, and a corrupted token or boolean reds too — since RP2.4 "wrong"
 means *outside the floor*, and those probes were re-measured to stay so), and no
 `Tolerances` field or tier is touched by either sub-step.
 
+**Three comparators outside `compare_all_properties` now follow this standard**,
+each with the same two properties — spelling only, and each channel's own
+spelling only: `harness::oracle_meter_name` (§G1.3d(i)),
+`harness::no_polar_payload` (§G1.3a) and, since G1.3b,
+`harness::na_seq_power` and `harness::no_seq_payload`. The last pair is worth
+naming here because it is the largest of them by exposure: capi 0.14.5 spells the
+`SeqPowers` "not available" sentinel `cmplx(-1.0, -1.0)`
+(`CAPI/CAPI_Alt.pas:567`) where r4133 — and therefore the port — spells it
+`cmplx(-1.0, 0)` (`DDLL/DCktElement.pas:772`), on **every** element with
+`NPhases ≠ 3` that is not 1-phase-positive-sequence, i.e. hundreds of cases. As
+ledger rows that would trip G1.3b's kill criterion at once; as a spelling fold it
+costs zero rows, is gated on the structurally-derived arm rather than on any
+value, and reds when the wrong channel produces it (§G1.3b derivation 4).
+
 The rows are evidence-bound and both-ways live: each cites its census pair by
 `(pair, bin, cells)` in `tests/corpus/props_r4133/`, the offline replay proves
 every row claims at least one real census spelling, and per-row hit counters
@@ -1623,12 +1822,12 @@ dated). What was checked, and against what:
 | claim here | landed at | verdict |
 |---|---|---|
 | the floor is `2e-4` relative | `R4133_DISPLAY_FLOOR` at `harness/props_norm.rs:895` (`Option<f64>` = `Some(2e-4)`) | unchanged |
-| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:6157`) | unchanged |
+| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:7874`) | unchanged |
 | the four derivation rows (6.431124e-05 / 1.374769e-03 / 4.404256e-03 / 5.524501e-02) | the constant's own doc table, `props_norm.rs:786-792` | identical, both places |
 | 1 951 vendored spellings claimed (from 2 006, less the 55 the mechanism clause refuses) | `props_r4133_replay::CLAIMED_DISPLAY_FLOOR` = 1951 (`props_r4133_replay.rs:565`) | unchanged |
-| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:1072-1081` and `:1089-1098` (`i_rel`/`i_abs`) | unchanged |
-| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1264-1273` and `:1253-1262` | unchanged |
-| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:5049` (asserted as `i_abs / floor`) | unchanged |
+| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:1120-1129` and `:1137-1146` (`i_rel`/`i_abs`) | unchanged |
+| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1312-1321` and `:1301-1310` | unchanged |
+| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:6766` (asserted as `i_abs / floor`) | unchanged |
 | no `Tolerances` field, no `tol_for` tier moved by this plan | `Tolerances` has no props field; the floor is read only by `props_norm` | unchanged |
 
 The floor therefore still sits **3.110×** above the worst cell it claims and
