@@ -660,6 +660,40 @@ pub(crate) fn compare_capture(
             let v_excluded = ledger.is_some_and(|v| v.bus_arrays_suppressed(i));
             harness::compare_bus(dss, &cp.buses, tol, v_excluded, &ctx);
             harness::compare_all_bus_vmag_pu(dss, &cp.all_bus_vmag_pu, tol, v_excluded, &ctx);
+
+            // The short-circuit half of the SAME per-bus walk
+            // (GOLDEN_REBASE_PLAN.md G1.5): `Bus.Zsc1`/`Zsc0`/`ZscMatrix`/
+            // `YscMatrix`/`Isc`/`Voc`, six arms appended to the one
+            // `SetActiveBus` sweep the block above already paid for. That is
+            // why `compare_zsc` implies `compare_bus` (asserted in
+            // `engines::build_run_request`, where the two flags meet) and why
+            // it is nested here instead of opening a second `if`. Class C
+            // too: every arm reads `Zsc`/`Ysc`/`VBus`/`BusCurrent` off the bus
+            // object and moves only `ActiveBusIndex` (`CAPI/CAPI_Alt.pas:2202-2365`
+            // == r4133 `DDLL/DBus.pas:351-518`), so nothing here can stale a
+            // cached `Iterminal`.
+            //
+            // `v_excluded` is reused NARROWED: `compare_bus_short_circuit`
+            // suppresses only the `Voc`/`Isc` values (a snapshot of the triaged
+            // `Solution.NodeV` and its `Ysc*Voc` image) while `Zsc`/`Ysc`/
+            // `Zsc1`/`Zsc0` — functions of `Y` alone — stay compared, along
+            // with the study bit, the bus identity and every length.
+            if c.compare_zsc {
+                capture_guard::require_capture(
+                    "compare_zsc",
+                    channel_tag(channel),
+                    cp.buses.len(),
+                    &ctx,
+                );
+                harness::compare_bus_short_circuit(
+                    dss,
+                    &cp.buses,
+                    tol,
+                    channel.props_channel(),
+                    v_excluded,
+                    &ctx,
+                );
+            }
         }
 
         if c.compare_all_properties {

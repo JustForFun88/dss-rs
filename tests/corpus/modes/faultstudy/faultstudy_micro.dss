@@ -1,0 +1,43 @@
+! faultstudy_micro.dss — the GOLDEN_REBASE G1.5 short-circuit witness at the TIGHTEST tier.
+! Added 2026-09-05 (lane `lane-b`, §1.1(f) "at least one gated case per channel"): the whole
+! `Bus.Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix`/`Isc`/`Voc` surface only exists after a fault
+! study, and the corpus's other four fault-study decks (IEEE123Master-SC, ieee34Mod2_SC_Case_II,
+! ieee37_SC_Currents, NEVTestCase/Run_NEV) are all `kind: feeder`. This deck carries the same
+! surface at `kind: micro`, where the band is 1e-9 abs + 1e-6 rel instead of 1e-8 + 1e-6.
+!
+! Two properties earn its size — neither is reachable on the vendored decks:
+!  * `line.l2 bus1=b1.1.2.3 bus2=b2.2.1.3` gives `b2` the INSERTION node order [2,1,3], which is
+!    not its ascending `Bus.Nodes` order [1,2,3]. The whole G1.5 surface is indexed by the
+!    internal (insertion) index — r4133 `DDLL/DBus.pas:431-459` and capi `CAPI/CAPI_Alt.pas:2305-2334`
+!    walk `Zsc.GetElement(i,j)` over `1..NumNodesThisBus`, and `Isc`/`Voc` walk `BusCurrent[i]`/
+!    `VBus[i]` (`DBus.pas:374-397`/`:351-372`) — while `compare_bus`'s arrays are ascending
+!    (convention 1). A comparator that sorted this surface by node number would pass on every
+!    other deck in the corpus and red only here.
+!  * `reactor.rsh bus1=b2.1 phases=1 R=5` puts a 5 ohm shunt on node 1 ALONE, so `Zsc`'s diagonal
+!    is position-dependent: `Zsc[1][1]` (internal index 1 = node 1) is ~1.665+1.662j ohm against
+!    ~1.063+2.874j at [0][0] and [2][2]. Without it the matrix would be permutation-symmetric and
+!    the ordering claim untestable.
+!
+! Driving: the deck compiles to a solved power flow and leaves the solution in FaultStudy mode;
+! the gate's single step (`n_steps: 1`) issues the `solve` that runs `SolveFaultStudy`
+! (r4133 `Common/SolutionAlgs.pas:875-912` == capi `src/Common/SolutionAlgs.pas`), so the compared
+! state is the FIRST study. Do not append `solve mode=faultstudy` here: a second study restarts
+! from the first one's unit-injection residual (`LoadModel := ADMITTANCE` + `SolveDirect`,
+! `SolutionAlgs.pas:884-892`) and moves `Voc`/`Isc` by ~1.2e-4 relative on both channels.
+!
+! Oracle-validated 2026-09-05 on BOTH channels (dss-python 0.15.7 / capi 0.14.5 and the EPRI
+! r4133 DLL): the two agree to ~1e-15 relative on every arm, and r4133 is bit-identical over 20
+! fresh one-shot worker processes (the D14 determinism procedure).
+clear
+set defaultbasefrequency=60
+new circuit.scmicro basekv=12.47 pu=1.0 phases=3 bus1=sourcebus r1=0.5 x1=1.5 r0=1.0 x0=3.0
+new linecode.lc3 nphases=3 r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0 units=km
+new linecode.lc1 nphases=1 r1=0.4 x1=1.2 c1=0 units=km
+new line.l1 bus1=sourcebus bus2=b1 linecode=lc3 length=1 units=km
+new line.l2 bus1=b1.1.2.3 bus2=b2.2.1.3 linecode=lc3 length=1 units=km
+new reactor.rsh bus1=b2.1 phases=1 R=5 X=0
+new load.ld1 bus1=b2.2.1.3 phases=3 conn=wye kv=12.47 kw=100 pf=0.95 model=1
+set voltagebases=[12.47]
+calcvoltagebases
+solve
+set mode=faultstudy
