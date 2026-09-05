@@ -132,43 +132,36 @@ reproduced in any lane. Full record:
 [`golden-rebase.md`](docs/phase-records/golden-rebase.md) section "GOLDEN_REBASE WP-G0 /
 WP-G2 — condensed records" (full session records precede it there).
 
-**GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened 2026-08-08; since 2026-09-04
-its chains run in parallel **lanes**, D7, merged one sub-step at a time). Landed: **G1.1**, killed
-and delivered by `R4133_PROPS_PLAN.md` RP4.1 2026-09-03 (**G3.4**/**G3.5** unblocked); **G1.2**
-(the ESPVLControl deck) 2026-08-29; and, 2026-09-04/05, the rails plus seven surfaces — **G1.0**
-(`c4b67a6e` + `42454b64`), the flag vocabulary, exclusion `channels`, the capture guard and the
-r4133 bridge (its mode probe **discharges G1.11**); **G1.9** (`lane-s`, `9757d26c` + `f27f9598`),
-`Circuit` aggregates + `Solution` scalars; **G1.6b** (`lane-m`, `06808a6d` + `e1e18367` +
-`c6a3c0a8`), the `PDElements` walk + the **D9** engine fix; **G1.3a** (`lane-e`, `d8e71991` +
-`588e0bfe` + `9f9c723d`), `Enabled` + the three polar channels (**1** new entry, `DIVERGENCES.md`
-L8, + **13** widenings); **G1.4a** (`lane-b`, `6b0dbd32` + `be01e413` + `10417d99`), the bus
-surface's divergence-free half (**0** new; **D8** defers the rest to G1.4c), with **D11(1)**
-`float_roundtrip`, **D12**/**D14** the four `GICTransformer` decks onto `r4133` (ledger −4, corpus
-523 → 524) and **D13** the worker's registry leak; **G1.3d(i)** (`lane-e`, `e4d99806` + `b7d7da2a`
-+ `c9c4ac09`), the per-element counts, `NodeOrder` and `EnergyMeter`, exact (**0** new); **G1.7**
-(`lane-s`, `8fc32991` + `898f8a86` + `434a6b51` + `1314431a`), the six order-free `Topology` rows,
-the memoized-tree and window-dedup defects **asserted, not excluded** (**D15**/**D16**,
-fail-on-stale `(16, 135)` / `(8, 96)`), two port gaps fixed en route (**0** new, no floor);
-**G1.6(i)** (`lane-m`, `e343d9e8` + `96d7540a` + `bcc835b6`), meter extras and **the run protocol**
-— the gate drives the executive `RelCalc` once per case and six flagged cases compare the indices,
-every section, `CalcCurrent`/`AllocFactors`, `Meters.Totals` and the **ordered** zone lists, exact
-but for three tier-banded cells (**D17a**), **0** new, one pinned skip closed on the corpus's only
-`AllocateLoads` deck, G1.6b's deferrals discharged (**D11/D18**); and **G1.5** (`lane-b`,
-`7d920701` + `5d206bdb` + docs), the bus short-circuit surface
-(`Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix`/`Isc`/`Voc`) read as **precomputed state** on G1.4a's
-per-bus walk, the channels' not-run sentinels normalized (**D4**), D11(2) narrowed to the
-`Voc`/`Isc` values, a port gap closed in step (`ReduceAlgs`' `kVBase <= 0` branch skipped
-`Solution.UpdateVBus`, r4133 `Meters/ReduceAlgs.pas:500-508`) and a settlement
-`SC_STUDY_POPULATION` fail-on-stale (**0** new). The two lanes' micro decks met here: corpus 524 →
-**526** cases / 522 live, `FORCED_{PROPS,BUS,ZSC,TOPOLOGY}_POPULATION` = (443, 312, 87, 44); no
-golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **103**, ledger **54** / 31 causes; G1.3d(ii),
-G1.3b/c, G1.4b/c, G1.6(ii), G1.8, G1.10–G1.11c and WP-G3–G5 remain.
+**GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened 2026-08-08; since 2026-09-04 its chains run in parallel
+**lanes**, D7, merged one sub-step at a time). Landed: **G1.1**, killed and delivered by `R4133_PROPS_PLAN.md` RP4.1 2026-09-03
+(**G3.4**/**G3.5** unblocked); **G1.2** (the ESPVLControl deck) 2026-08-29; and, 2026-09-04/05, the rails plus eight surfaces,
+each with its full record in [`golden-rebase.md`](docs/phase-records/golden-rebase.md) — **G1.0** (`c4b67a6e` + `42454b64`), the
+flag vocabulary, exclusion `channels`, the capture guard and the r4133 bridge, whose mode probe **discharges G1.11**; **G1.9**
+(`lane-s`, `9757d26c` + `f27f9598`), `Circuit` aggregates + `Solution` scalars; **G1.6b** (`lane-m`, `06808a6d` + `e1e18367` +
+`c6a3c0a8`), the `PDElements` walk + the **D9** engine fix; **G1.3a** (`lane-e`, `d8e71991` + `588e0bfe` + `9f9c723d`),
+`Enabled` + the three polar channels (**1** new entry, `DIVERGENCES.md` L8, + **13** widenings); **G1.4a** (`lane-b`, `6b0dbd32`
++ `be01e413` + `10417d99`), the bus surface's divergence-free half (**0** new; **D8** defers the rest to G1.4c), with **D11(1)**
+`float_roundtrip`, **D12**/**D14** the four `GICTransformer` decks onto `r4133` (ledger −4) and **D13** the worker's registry
+leak; **G1.3d(i)** (`lane-e`, `e4d99806` + `b7d7da2a` + `c9c4ac09`), the per-element counts, `NodeOrder` and `EnergyMeter`,
+exact (**0** new); **G1.7** (`lane-s`, `8fc32991` + `898f8a86` + `434a6b51` + `1314431a`), the six order-free `Topology` rows
+with the memoized-tree and window-dedup defects **asserted, not excluded** (**D15**/**D16**, fail-on-stale `(16, 135)` / `(8,
+96)`; two port gaps fixed en route, **0** new); **G1.6(i)** (`lane-m`, `e343d9e8` + `96d7540a` + `bcc835b6`), meter extras and
+**the run protocol** — the executive `RelCalc` driven once per case, the indices, sections, `CalcCurrent`/`AllocFactors`,
+`Meters.Totals` and the **ordered** zone lists exact but for three tier-banded cells (**D17a**, **D11/D18**, **0** new);
+**G1.5** (`lane-b`, `7d920701` + `5d206bdb` + docs), the bus short-circuit surface read as **precomputed state** on G1.4a's
+per-bus walk, sentinels normalized (**D4**), D11(2) narrowed to `Voc`/`Isc`, a `ReduceAlgs` port gap closed in step and a
+settlement `SC_STUDY_POPULATION` fail-on-stale (**0** new); and **G1.3d(ii)** (`lane-e`, `e6d66d66` + `43108993` + `d8090b6b`),
+`PhaseLosses` + the five control-derived scalars — **§G1.3d complete** — on a floor derived from `assert_power_close`, the first
+channel to join `LANE_SKIP_ELEM_POWERS`, with the per-edit control re-attach (`DIVERGENCES.md` L9), the disabled-OCP scan and
+adjacent defect A-1 fixed behind a fail-on-stale multi-control census (**0** new; its ten `phase_losses` widenings land as
+**eight**, D12/D14 having deleted the two capi GIC entries it also widened). The lanes' micro decks met here: corpus **526**
+cases / 522 live, `FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,ZSC,TOPOLOGY}_POPULATION` = (443, 312, 87, 44) and
+`FORCED_DERIVED_POPULATION` = (445, 314, 87, 44); no golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **103**, ledger **54** / 31
+causes; G1.3b/c, G1.4b/c, G1.6(ii), G1.8, G1.10–G1.11c and WP-G3–G5 remain.
 
-**Next.** Element lane **G1.3d(ii)** → G1.3b → G1.3c; `lane-m` **G1.6(ii)** (the eight per-bus
-reliability columns + `Bus.Int_Duration`, on G1.6(i)'s population and protocol — it also owns or
-hands on the AT-1 zone-boundary decision below); `lane-s` **G1.8** (incidence/Laplacian) →
-G1.10a–c; bus lane **G1.4c** (D8) → G1.4b, then WP-G3–G5; queued: `WASM_USERMODELS`, RESONANCE,
-MULTITHREADING, UPGRADE.
+**Next.** Element lane **G1.3b** → G1.3c; `lane-m` **G1.6(ii)** (the eight per-bus reliability columns + `Bus.Int_Duration`, on G1.6(i)'s population
+and protocol — it also owns or hands on the AT-1 zone-boundary decision below); `lane-s` **G1.8** (incidence/Laplacian) → G1.10a–c; bus lane **G1.4c**
+(D8) → G1.4b, then WP-G3–G5; queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children, needs
 MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the `UpgradeRung` escape
@@ -211,6 +204,14 @@ each row's measured cost.
 > count. The rows still open are listed after the standing follow-ups below.
 
 ### Standing open follow-ups (actionable)
+
+- **The port never clears `HAS_OCP_DEVICE`/`HAS_AUTO_OCP_DEVICE` — OPEN** (adjacent defect A-2, GOLDEN_REBASE G1.3d(ii), lane
+  `lane-e`, 2026-09-05). r4133 clears both at the head of every control `RecalcElementData` and re-sets them only `If Enabled`
+  (`Controls/Relay.pas:946-964`); the port's `RefAction::SetOcpDevice` only *includes* them, so the two `DG_Prot_Fdr.dss` decks
+  (`engines: "both"`) keep a feeder-section head the oracles dropped. Blast radius = the whole reliability sweep, so **G1.6 /
+  G1.6b own it**. Sibling **A-1 is fixed** (live `GetOCPDeviceType`, pinned by
+  `section_device_type_is_the_live_ocp_scan_not_the_registration_latch`); retiring the now test-only
+  `CktElementData::ocp_device_type` latch is A-1's tail.
 
 - **The two WindGen power-flow decks keep almost no oracle-compared solved state — OPEN,
   recorded by the R4133_PROPS §RP3.10 audit settlement (AT-1, 2026-09-04).**
@@ -320,12 +321,12 @@ each row's measured cost.
   (first seen at G1.2, 2026-08-29). Unfiltered `cargo test --workspace` runs intermittently leave
   untracked deck-written exports in the tracked corpus tree — nearly always
   `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*` / `AutoHLT_*` `.txt`, from the
-  decks' own `export … file=` lines). **Twenty-six sightings** 2026-08-29 … 2026-09-05 (G1.2 ×2,
+  decks' own `export … file=` lines). **Twenty-eight sightings** 2026-08-29 … 2026-09-05 (G1.2 ×2,
   §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2, §RP3.10 ×3, §RP5.1 ×1, G1.0 ×2, G1.9 ×2, G1.6b ×1, G1.7 ×3,
-  the G1.7 merge ×1, G1.6(i) ×2 — one of those, after a settlement gate + `lane_diff`, was 22
-  `.txt` plus a 0-byte `controls/gfm/DA3ABD.tmp`, a new shape — the G1.6(i) merge ×1, the G1.5
-  merge ×2 (two `AutoHLT_*`, then three `auto3bus_*`)), 1 … 36 files, varying between runs
-  of the *same* tree (measured at §RP3.13) and once with an unreproducible `corpus_gate` `137
+  the G1.7 merge ×1, G1.6(i) ×2 — one of those, after a settlement gate + `lane_diff`, was 22 `.txt` plus a 0-byte
+  `controls/gfm/DA3ABD.tmp`, a new shape — the G1.6(i) merge ×1, the G1.5 merge ×2 (two `AutoHLT_*`, then three `auto3bus_*`), the
+  G1.3d(ii) merge ×2 (`AutoAuto_HL_current.txt` + `auto3bus_load_voltage.txt`; the first alone again at the gate)), 1 … 36 files, varying between runs of the *same*
+  tree (measured at §RP3.13) and once with an unreproducible `corpus_gate` `137
   passed; 1 failed`; every set was removed before its commit and both lanes were green with the
   files present, no tracked corpus or golden byte ever moving, so the leak costs hygiene only. **It
   is a drop-order race, not a missing sweep:** `impl Drop for CorpusGuard`
