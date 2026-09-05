@@ -159,7 +159,7 @@ whose mode probe **discharges the G1.11 mode-capability acceptance for the whole
 On lane `lane-m`: **G1.6b** (2026-09-04, `06808a6d` + `e1e18367` + `c6a3c0a8`) — the
 `PDElements` walk, 13 fastdss columns, both channels, exact, 0 ledger rows, eight
 pinned skip cells for an uninitialized read in **both** oracles, plus the D9 fix; and
-**G1.6(i)** (2026-09-05, `e343d9e8` + the surface commit) — meter extras and **the run
+**G1.6(i)** (2026-09-05, `e343d9e8` + `96d7540a` + `bcc835b6`) — meter extras and **the run
 protocol**: the gate drives the executive `RelCalc` once per case on six flagged cases
 and compares the indices, the section fields, `CalcCurrent`/`AllocFactors`,
 `Meters.Totals` and the **ordered** zone lists, exact but for three cells banded from
