@@ -106,9 +106,17 @@ pub(crate) struct SolvableCase {
     /// the per-bus `Nodes`/`kVBase` (`:319-345` == `:2143-2163`) and the
     /// circuit-level `AllBusVmagPu` (`DCircuit.pas:481-500` ==
     /// `CAPI_Circuit.pas:521-548`) — the arms both oracles run identically.
-    /// **Still to come on this same flag:** `SeqVoltages`/`CplxSeqVoltages` and
-    /// `VLL`/`puVLL` (G1.4c — the channels disagree there), `AllPCEatBus`/
-    /// `AllPDEatBus`/`Distance` + `AllBusDistances`/`AllNodeDistances` (G1.4b).
+    /// **Wired by G1.4c (2026-09-05, settlement D21):** `SeqVoltages`
+    /// (`DBus.pas:284-317` == `CAPI_Alt.pas:2165-2200`), `CplxSeqVoltages`
+    /// (`:520-547` == `:2367-2398`), `VLL` (`:549-602` == `:2473-2537`) and
+    /// `puVLL` (`:603-658` == `:2400-2470`) — the arms the two oracles do NOT
+    /// run alike (capi clamps `Nvalues > 3`, r4133 does not; both poll
+    /// `FindIdx(jj)` before the `jj > 3` wrap, where capi bails after three
+    /// tries and r4133 loops forever). They ride THIS flag and add none of
+    /// their own: no new capture slot, no new force rule, no
+    /// `population.lock.json` move (`harness::compare_bus_seq_and_vll`).
+    /// **Still to come on this same flag:** `AllPCEatBus`/`AllPDEatBus`/
+    /// `Distance` + `AllBusDistances`/`AllNodeDistances` (G1.4b).
     #[serde(default)]
     pub(crate) compare_bus: bool,
     /// G1.5: the bus **short-circuit** surface — `Zsc1`/`Zsc0`/`ZscMatrix`/

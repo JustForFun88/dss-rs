@@ -151,27 +151,27 @@ WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 **GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened
 2026-08-08). Landed: **G1.1** (killed; satisfied by `R4133_PROPS_PLAN.md` RP4.1,
 2026-09-03, unblocking **G3.4**/**G3.5**), **G1.2** (ESPVLControl deck,
-2026-08-29), **G1.0** (rails D1/D2/D3, 2026-09-04, `c4b67a6e`, whose mode probe
-**also discharges the G1.11 mode-capability acceptance for the whole WP**),
-**G1.4a** (2026-09-04/05, lane `lane-b`, D7; `6b0dbd32` + `be01e413` +
-`10417d99`) — the bus surface's divergence-free half, **D8** spinning off
-**G1.4c**, the workspace `serde_json` `float_roundtrip` (**D11(1)**) and two
-oracle-side faults caught (**D12**/**D14** GICTransformer nondeterminism,
-ledger 57 → 53; **D13** the worker's registry leak) — and **G1.5** (2026-09-05,
-same lane; `7d920701` + `5d206bdb` + docs): the short-circuit surface on both
-channels as **precomputed state**, sentinels normalized per channel (**D4**),
-D11(2) narrowed to `Voc`/`Isc`, a port gap closed in-step (`ReduceAlgs` skipped
-`Solution.UpdateVBus`), the corpus's only `micro`-band deck (524 → **525** /
-521 live) and, from its settlement (8 fixed / 2 recorded / 1 refuted), a
-fail-on-stale for the non-trivial half. Both: **0** new ledger entries, **0**
-golden bytes; the lane gates at **5 134 / 0 / 5**, `lane_diff` PASS max |Δ| =
-0. G1.3a–d, G1.4b/c, G1.6–G1.11c, WP-G3–G5 remain.
+2026-08-29), **G1.0** (rails D1/D2/D3, `c4b67a6e`, whose mode probe **also
+discharges the G1.11 mode-capability acceptance for the whole WP**) and the bus
+chain on lane `lane-b` (**D7**): **G1.4a** (`6b0dbd32` + `be01e413` + `10417d99`)
+— the divergence-free half, **D8** spinning off G1.4c, `serde_json`
+`float_roundtrip` (**D11(1)**), two oracle-side faults (**D12**/**D14** GIC
+nondeterminism, ledger 57 → 53; **D13** the registry leak); **G1.5**
+(`7d920701` + `5d206bdb`) — the short-circuit surface as **precomputed state**,
+per-channel sentinel normalizations (**D4**), a port gap closed in-step
+(`ReduceAlgs` skipped `Solution.UpdateVBus`), corpus 524 → **525**; and
+**G1.4c** (2026-09-05) — the sequence and line-to-line arms, where port, capi
+and r4133 all differ: the port publishes the physically correct answer
+(S-SEQ/S-VLL, **D21**), the comparator asserts each oracle's own walk over the
+port's state (D15/D16) instead of excluding it, and the r4133 `VLL` **hang** is
+refused per bus. All three: **0** new ledger entries, **0** golden bytes, no lock
+move, `lane_diff` PASS max |Δ| = 0. G1.3a–d, G1.4b, G1.6–G1.11c, WP-G3–G5 remain.
 
-**Next.** Bus lane (`lane-b`): **G1.4c** (D8 — the sequence quantities and
-`VLL`/`puVLL` behind the r4133 hang guard), then **G1.4b**; in parallel element
-lane G1.3a–d, PD/meter lane G1.6b→G1.6, singles G1.9/G1.7/G1.8/G1.10a–c, `update`
-taking one lane sub-step at a time by a merge agent (D7). Then G1.11a–c,
-WP-G3–G5 and the lines parked below.
+**Next.** Bus lane (`lane-b`): **G1.4b** (`Bus.Distance`/`AllBusDistances`/
+`AllNodeDistances`, `AllPCEatBus`/`AllPDEatBus`); in parallel element lane
+G1.3a–d, PD/meter lane G1.6b→G1.6, singles G1.9/G1.7/G1.8/G1.10a–c, `update`
+taking one lane sub-step at a time by a merge agent (D7). Then G1.11a–c, WP-G3–G5
+and the lines parked below.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
