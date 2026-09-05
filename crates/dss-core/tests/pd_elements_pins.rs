@@ -573,9 +573,12 @@ fn pd_elements_shunt_reliability_inputs_survive_the_meter_zone() {
 /// `total_miles` **and** `section_id` on the series branches (asserted below),
 /// which proves the four zeros above are live state and not getters that always
 /// answer 0. The shunt rows stay 0 even then, because a shunt PD element is on
-/// the meter's PC list and never enters `SequenceList`. The oracle-compared
-/// coverage of those four fields — no live case runs `RelCalc` — is owed by
-/// **G1.6(i)**; this pin is the port-side half only.
+/// the meter's PC list and never enters `SequenceList`. This pin is the
+/// port-side half; the oracle-compared half is **discharged** — G1.6(i) makes
+/// the gate drive `RelCalc` itself on the cases that carry
+/// `compare_reliability: true`, so the four fields are live and compared on
+/// both channels (`tests/reliability_pins.rs::`
+/// `pd_elements_relcalc_fields_are_live_after_relcalc`).
 #[test]
 fn pd_elements_shunt_branch_flt_rate_survives_the_meter_zone() {
     let (mut dss, _guard) = midi_protection();
@@ -675,8 +678,11 @@ fn pd_elements_walk_on_the_gated_combo_deck() {
     }
     assert_eq!(walk.iter().filter(|v| v.is_shunt).count(), 4);
 
-    // The four `RelCalc`-fed fields are zero on every row without `RelCalc`;
-    // G1.6(i) owns their multi-valued demo.
+    // The four `RelCalc`-fed fields are zero on every row without `RelCalc`.
+    // Their multi-valued half is `tests/reliability_pins.rs::
+    // pd_elements_relcalc_fields_are_live_after_relcalc` (G1.6(i)), which runs
+    // `RelCalc` on three gated decks — one per channel shape — and pins a
+    // non-zero witness row on each.
     for v in &walk {
         assert_eq!(v.section_id, 0, "{}", v.name);
         assert_eq!(v.total_miles, 0.0, "{}", v.name);

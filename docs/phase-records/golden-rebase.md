@@ -2795,7 +2795,8 @@ row against the pre-fix lock.
   surface: `do_reset_meter_zones` returns to `reprocess_bus_defs`' tail (r4133 `Common/Circuit.pas:2411`,
   capi `:2246`) — `MakeBusList` was bypassing it and left every EnergyMeter an empty zone; pin
   `makebuslist_keeps_the_meter_zones`, one corpus deck changes state. The four zone-derived columns
-  compare 0 on every live case (no deck runs `RelCalc`): non-vacuity **owed by G1.6(i)**. Detail — the
+  compare 0 on every live case (no deck ran `RelCalc`): non-vacuity **owed by G1.6(i)** and
+  **discharged there on 2026-09-05** (see its record below). Detail — the
   column list, the exactness derivation, `WP_G1_MODES` 96 → 99, the two deviations from the plan's
   letter: `GOLDEN_REBASE_PLAN.md` §G1.6b as-executed, `TESTING.md` §"The `PDElements` walk".
   Commits: `06808a6d` (D9), `e1e18367` (surface), `c6a3c0a8` (audit settlement) + docs. Gate: five
@@ -3123,3 +3124,55 @@ row against the pre-fix lock.
   keeps G1.4a's bus reads ahead of `all_properties` with `capture_topology` strictly after it.
 
   merge: lane lane-s -> update, see git log
+
+- **G1.6(i)** (2026-09-05, lane `lane-m`; **D7**, **D17a** `Meters.Totals` at the energy tier, **D18/D11**
+  the JSON decoder) — **meter extras + the run protocol**, the only WP-G1 sub-step that changes how a case
+  is *run*: no live deck ran `CalcReliabilityIndices`, so the gate drives the executive `RelCalc` **once**
+  per case, on the last step, on all three engines (it is not idempotent), tolerating errno **52902** alone
+  (r4133 `Meters/EnergyMeter.pas:2502`) and comparing the abort. Six manifest-flagged cases compare the
+  indices, every section, `CalcCurrent`/`AllocFactors`, `Meters.Totals` and the zone lists' new ordered arm
+  — exact but for three cells banded from existing tiers. **0 ledger entries:** the two arrays both oracles
+  read uninitialised (r4133 `Meters/MeterElement.pas:45-52`, report
+  `investigations/to_opendss/62-metered-sensor-arrays-are-never-initialised.md`) are excluded per (channel,
+  field) in `harness::RELIABILITY_SKIP_FIELDS`, pinned
+  `meter_alloc_factors_are_zero_until_allocateloads_runs`, and compared live on the new
+  `controls:energymeter/midi_relcalc.dss` (523 → **524** cases); G1.6b's two deferrals are discharged
+  (`pd_elements_relcalc_fields_are_live_after_relcalc`, `tests/TOLERANCE_NOTES.md:812`). Detail:
+  `GOLDEN_REBASE_PLAN.md` §G1.6 as-executed (i), `TESTING.md` §"The `Meters` reliability surface".
+  Commits: `e343d9e8` (D11 hunk), `96d7540a` (surface), `bcc835b6` (audit settlement) **+ docs**. Gate:
+  five commands exit 0 in both lanes, **5 011 passed / 0 failed / 5 ignored** per lane; corpus gate
+  524/524, ledger 57 entries / 0 stale, no golden byte and no lock content moved; `lane_diff`
+  `VERDICT: PASS`, max |Δ| = 0 on all eight kinds (524 cases / 3 221 034 records).
+  *Audit settlement* (`bcc835b6`): 20 findings — **15 fixed / 3 recorded / 2 refuted**. Fixed: the
+  `alloc_factors` band gains the denominator floor its derivation always claimed (no band below `i_abs`,
+  loud triage instead of a silent pass); `RelCalc` keeps every error line, not just the first; the
+  accumulator pin's order claim is made true by a branch-point fixture whose 3-term sweep sum is
+  association-sensitive (`0.6400000000000001`, bit-identical on both oracles); the doc-quoted pins and the
+  `kind=large*` cost guard gain register tests; two off-by-one citations and three damaged diagnostic
+  strings repaired; the R-1 state-neutrality partition, the `Meters.Totals` 1e-4 exposure and the
+  `AllocateLoads` coverage split are written down. **Recorded:** AT-1 — the pin freezing upstream's
+  cross-zone accumulator leak stands, the leak being confirmed on BOTH oracles and also making the FIRST
+  run depend on meter declaration order (`2.0/3.0` vs `3.0/3.0`); reported as
+  `investigations/to_opendss/61-relcalc-cross-zone-accumulator-leak.md`, ordering arm added to the pin, the
+  correct-value fix left as an **engine finding** (R-14(d) forbids `solution/meters/reliability.rs` here)
+  and carried in STATUS's standing follow-ups because G1.6(ii) gates the columns it perturbs. **Refuted:**
+  AT-9 — dss-python raises on the 52902 whatever `EarlyAbort` says (`DSSGlobals.pas:259-265` sets
+  `ErrorNumber` unconditionally); AT-5 — the kW-rewriting `AllocateLoads` branch is oracle-pinned in
+  `exec::tests::allocation`.
+
+  *Merged into `update` 2026-09-05*, on top of G1.7 — every conflict was G1.7's topology surface
+  against this one, resolved by keeping both: `engines.rs` sends both request keys (reliability,
+  then topology strictly last), `capture_order.rs` (update's canonical file) gained a
+  `reliability` anchor so the topology-last gate asserts topology after the reliability capture
+  too, with its own negative case, and TESTING.md / `tests/TOLERANCE_NOTES.md` / this record keep
+  both sides' sections with every shifted `file:LINE` citation re-pointed
+  (`oracle_parity_cfg_gate::operational_docs_line_citations_point_at_the_line_they_name` walks
+  108 + 16 of them). Re-derived on the merged **525**-case tree: `FORCED_TOPOLOGY_POPULATION`
+  (441, 310, 87, 44) → **(442, 311, 87, 44)**, the moving case being `midi_relcalc`, while
+  `TOPOLOGY_STALE_DECLINES` (16, 135) and `LOOPED_PAIR_WINDOW_DECLINES` (8, 96) did **not** move;
+  `WP_G1_MODES` **103**, `LEDGER_FIELDS` **15** (the union), `ledger.json` untouched (54 entries /
+  1 564 hits / 0 stale), `population.lock.json` regenerated with no diff beyond the auto-merge and
+  `golden.lock.json` unmoved. Merged-tree checks: fmt + clippy clean in both lanes, `corpus_gate`
+  **525/525** cases (238 / 0 / 0 in the default lane).
+
+  merge: lane lane-m -> update, see git log
