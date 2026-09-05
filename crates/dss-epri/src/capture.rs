@@ -76,6 +76,14 @@ pub struct RunRequest {
     /// reply is byte-identical to a pre-G1.3a one.
     #[serde(default)]
     pub derived: bool,
+    /// Manifest flag `compare_element_extras` (GOLDEN_REBASE G1.3d(i)): capture
+    /// `CktElement.Enabled` plus the discrete index/name scalars
+    /// `NumTerminals` / `NumConductors` / `NumPhases` / `EnergyMeter` for every
+    /// element, and `NodeOrder` for the ones that are enabled with at least one
+    /// terminal. Absent or `false` ⇒ none of those keys is emitted and the
+    /// reply is byte-identical to a pre-G1.3d(i) one.
+    #[serde(default)]
+    pub element_extras: bool,
     #[serde(default)]
     pub global_result: bool,
     #[serde(default)]
@@ -208,6 +216,27 @@ struct ElementCap {
     vma_mag: Vec<f64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     vma_ang: Vec<f64>,
+    // The GOLDEN_REBASE G1.3d(i) discrete extras, emitted only under
+    // `RunRequest::element_extras` — every one is skipped when empty/absent, so
+    // an off-flag reply keeps the byte-for-byte shape it had before G1.3d(i)
+    // (`oracle_server.capture_all_elements` emits exactly the same keys).
+    /// `NumTerminals` / `NumConductors` / `NumPhases` — present for EVERY
+    /// element under the flag (all three are pure field reads on both engines).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    n_terms: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    n_conds: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    n_phases: Option<i32>,
+    /// `EnergyMeter`, RAW: `"0"` is this channel's "no meter" sentinel
+    /// (`DDLL/DCktElement.pas:421`) where capi spells the same state `""`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    energy_meter: Option<String>,
+    /// `NodeOrder` — bus-local node number per conductor per terminal, read
+    /// only for an `Enabled` element with `NumTerminals > 0` (see
+    /// [`capture_all_elements`]).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    node_order: Vec<i32>,
 }
 
 #[derive(Serialize)]
@@ -475,7 +504,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             }
             engine.assert_clean("yprims")?;
 
-            let elements = capture_all_elements(engine, warn, req.derived)?;
+            let elements = capture_all_elements(engine, warn, req.derived, req.element_extras)?;
 
             let inj = engine.injection_raw(engine.num_nodes());
             let injection = capture_injection(&inj);
@@ -801,6 +830,20 @@ fn capture_solution_scalars(engine: &Engine) -> Result<SolutionScalarsCap, Engin
 /// `element_polar`), while `enabled` itself is captured for every element so the
 /// skip cannot hide one.
 ///
+/// Under `extras` (manifest flag `compare_element_extras`, GOLDEN_REBASE
+/// G1.3d(i)) each element also reports `Enabled` and the four discrete scalars
+/// [`Engine::element_extras`] reads, plus `NodeOrder` (`CktElementV(17)`,
+/// `DDLL/DCktElement.pas:1032`) for the elements that are **enabled** and have
+/// **at least one terminal**. Both conditions come from the sources, not from
+/// caution: mode 17 dereferences `NodeRef^[j]` with no nil guard (`:1048`), so a
+/// never-enabled element kills the worker exactly as `CktElementV(19)` does;
+/// and on a 0-terminal element (`UPFCControl` never assigns `Nterms` —
+/// `Controls/UPFCControl.pas:230-246`) this channel would return a 0-length
+/// array while capi raises 15013 from its nil-`NodeRef` guard
+/// (`CAPI/CAPI_CktElement.pas:900-906`) — not issuing the read removes that shape
+/// asymmetry instead of normalizing it. The comparator asserts both sides are
+/// empty there, so neither skip can hide a payload.
+///
 /// Every read line carries a machine-checkable `capture-order: NAME (A|B|C)`
 /// marker whose group is [`crate::modes::capture_group_of`]'s — a call into
 /// another capture helper declares the reads that helper performs, in its order
@@ -812,12 +855,13 @@ fn capture_all_elements(
     engine: &Engine,
     warn: bool,
     derived: bool,
+    extras: bool,
 ) -> Result<Vec<ElementCap>, EngineError> {
     let names = engine.all_element_names(); // capture-order: AllElementNames (C)
     let mut out = Vec::with_capacity(names.len());
     for name in names {
         engine.set_active_element(&name); // capture-order: SetActiveElement (C)
-        let enabled = if derived {
+        let enabled = if derived || extras {
             Some(engine.ckt_element_enabled()?) // capture-order: Enabled (C)
         } else {
             None
@@ -844,14 +888,32 @@ fn capture_all_elements(
             res_ang: Vec::new(),
             vma_mag: Vec::new(),
             vma_ang: Vec::new(),
+            n_terms: None,
+            n_conds: None,
+            n_phases: None,
+            energy_meter: None,
+            node_order: Vec::new(),
         };
-        if enabled == Some(true) {
+        if derived && enabled == Some(true) {
             // capture-order: CurrentsMagAng (B), Residuals (B), VoltagesMagAng (C)
             let (cma, res, vma) =
                 engine.element_polar(warn, &format!("element {} derived", cap.name))?;
             (cap.cma_mag, cap.cma_ang) = deinterleave(&cma);
             (cap.res_mag, cap.res_ang) = deinterleave(&res);
             (cap.vma_mag, cap.vma_ang) = deinterleave(&vma);
+        }
+        if extras {
+            // capture-order: NumTerminals (C), NumConductors (C), NumPhases (C), EnergyMeter (C)
+            let (n_terms, n_conds, n_phases, meter) =
+                engine.element_extras(&format!("element {} extras", cap.name))?;
+            cap.n_terms = Some(n_terms);
+            cap.n_conds = Some(n_conds);
+            cap.n_phases = Some(n_phases);
+            cap.energy_meter = Some(meter);
+            if enabled == Some(true) && n_terms > 0 {
+                cap.node_order = engine.ckt_element_node_order()?; // capture-order: NodeOrder (C)
+                engine.assert_clean(&format!("element {} node order", cap.name))?;
+            }
         }
         out.push(cap);
     }

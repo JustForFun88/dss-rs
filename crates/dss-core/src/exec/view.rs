@@ -103,6 +103,64 @@ pub struct ElementSnapshot {
     /// report path and is not on this surface (pinned by
     /// `exec::tests::derived_polar::residuals_sum_the_rows_own_terminal`).
     pub residuals: Vec<Polar>,
+    /// `CktElement.NumTerminals` — `NTerms`. Pascal r4133
+    /// `DDLL/DCktElement.pas:139` (`CktElementI` mode `0`), capi
+    /// `CAPI/CAPI_CktElement.pas:202`; fastdss `dss/ICktElement.py` `_columns`.
+    pub n_terms: usize,
+    /// `CktElement.NumConductors` — `NConds`. Pascal r4133
+    /// `DDLL/DCktElement.pas:144` (mode `1`), capi `CAPI/CAPI_CktElement.pas:182`.
+    pub n_conds: usize,
+    /// `CktElement.NumPhases` — `NPhases`. Pascal r4133
+    /// `DDLL/DCktElement.pas:149` (mode `2`), capi `CAPI/CAPI_CktElement.pas:192`.
+    ///
+    /// Not derivable from the other two: `NConds` is `NPhases` plus the neutral
+    /// conductors, so this is the only channel that sees the phase count itself.
+    pub n_phases: usize,
+    /// `CktElement.NodeOrder`: the bus-local node number of every conductor
+    /// slot, conductor-minor inside terminal-major (length
+    /// `n_terms · n_conds = yorder`), ground = `0`. Pascal r4133
+    /// `DDLL/DCktElement.pas:1032` (`CktElementV` mode `17`, the
+    /// `GetNodeNum(NodeRef^[j])` map at `:1048` over `Common/Utilities.pas:1718`),
+    /// capi `CAPI/CAPI_Alt.pas:953` (`Alt_CE_Get_NodeOrder`, the same
+    /// allocation at `:968` and double loop at `:970-977`). The same mapping the `Export NodeOrder` report
+    /// renders (`report/export/node_order.rs:35-38`) — read here from the
+    /// element's own `NodeRef` so the two paths cannot drift (pinned by
+    /// `exec::tests::element_extras::node_order_matches_the_export_nodeorder_row`).
+    ///
+    /// **Empty** when the element has no `NodeRef` yet (never energized — the
+    /// state where capi raises 15013 at `CAPI_CktElement.pas:900-906` and r4133
+    /// dereferences nil at `DCktElement.pas:1048`) or when it has no terminals
+    /// at all (`UPFCControl`, r4133 `Controls/UPFCControl.pas:230-246`). A
+    /// `NodeRef` shorter than `yorder` — reachable on a *disabled* element that
+    /// grew phases, since only `set_node_ref` resizes it
+    /// (`elements/ckt.rs:382`) and `reprocess_bus_defs` re-runs it for enabled
+    /// elements only — reads the missing slots as ground, the same safe-`.get()`
+    /// discipline [`voltages_mag_ang`](Self::voltages_mag_ang) uses.
+    pub node_order: Vec<i32>,
+    /// `CktElement.EnergyMeter`: the **bare** name of the EnergyMeter metering
+    /// this element, or `None` when none does. Pascal r4133
+    /// `DDLL/DCktElement.pas:442` (`CktElementS` mode `4`: `MeterObj.Name` only
+    /// under `HasEnergyMeter`, else the family default `'0'` from `:421`), capi
+    /// `CAPI/CAPI_CktElement.pas:672` (`Result := NIL` unless
+    /// `Flg.HasEnergyMeter in elem.Flags`).
+    ///
+    /// The flag marks exactly the elements a meter *meters*, not the whole
+    /// zone: `SetHasMeterFlag` clears it on every PD element and sets it on
+    /// each enabled meter's `MeteredElement` (r4133
+    /// `Meters/EnergyMeter.pas:1712-1719`, ported in
+    /// `solution/meters/zones/flags.rs::set_has_meter_flag`), while
+    /// `MakeMeterZoneLists` is what assigns that element's `MeterObj := Self`
+    /// (`:1777`/`:1782`) — which is why upstream's unconditional
+    /// `pPDElem.MeterObj.Name` dereference is nil-safe. The port asserts both
+    /// halves (`HAS_ENERGY_METER` **and** a resolvable `meter_obj`) instead of
+    /// assuming the second. The name is stored lowercase by the shared
+    /// constructor (`elements/ckt.rs:258`), exactly as both oracles store it
+    /// (r4133 `Meters/EnergyMeter.pas:921` `Name := LowerCase(...)`, capi
+    /// `src/Meters/EnergyMeter.pas:952` `AnsiLowerCase`), so the channel is
+    /// compared with no case folding. The two oracles' "no meter" sentinels
+    /// (`''` on capi, `'0'` on r4133) are a capture-boundary shape normalized
+    /// in the harness comparator; the engine's answer is simply `None`.
+    pub energy_meter: Option<String>,
 }
 
 /// `(n, [(row, col, value)])` — the assembled, unfactored system Y as 0-based
@@ -428,6 +486,25 @@ impl Dss {
         // (an order-dependent, stale-Iterminal engine bug we do NOT reproduce;
         // full analysis + IEEE-1459 proof live in the git-ignored
         // investigations/oracle-powers-currents-harmonic/).
+        // `EnergyMeter` (`ElementSnapshot::energy_meter`) reports the *bare*
+        // meter name, so every `meter_obj` back-pointer has to be resolved
+        // against the EnergyMeter arena. That resolution happens once, here,
+        // before the element loop takes its own mutable borrow of `classes`.
+        let meter_names: std::collections::HashMap<ElemId, String> = ckt
+            .energy_meters
+            .iter()
+            .map(|&m| {
+                (
+                    m,
+                    classes[m.class_ord()]
+                        .arena
+                        .obj(m.index())
+                        .data()
+                        .name()
+                        .to_string(),
+                )
+            })
+            .collect();
         let mut out = Vec::with_capacity(ckt.ckt_elements.len());
         for &r in &ckt.ckt_elements {
             let class_name = classes[r.class_ord()].props.class_name();
@@ -595,6 +672,48 @@ impl Dss {
                     })
                     .collect()
             };
+            // `NodeOrder`: the same `GetNodeNum(NodeRef^[j])` walk the
+            // `Export NodeOrder` renderer performs
+            // (`report/export/node_order.rs:35-38`, Pascal `WriteNodeList`),
+            // read here from the element's own `NodeRef` rather than by calling
+            // that renderer — the export path is a frozen golden and must not be
+            // touched (`GOLDEN_REBASE_PLAN.md` WP-G1: no golden byte moves).
+            // `yorder == nterms · nconds` by construction (`elements/ckt.rs:326`),
+            // which is the length both oracles allocate
+            // (r4133 `DCktElement.pas:1043`, capi `CAPI_CktElement.pas:908`).
+            //
+            // Both engines answer this from `NodeRef` alone, with no `Enabled`
+            // guard, so the empty answer here means exactly "no mapping yet":
+            // it is the state where capi warns 15013 and returns its
+            // `DefaultResult` (`CAPI_CktElement.pas:900-906`) and r4133, which has no
+            // guard, dereferences the nil pointer at `:1048`. A `NodeRef`
+            // shorter than `yorder` (a disabled element that grew phases —
+            // see the `voltages_mag_ang` note above) reads its missing slots as
+            // ground, the `GetNodeNum(0) = 0` answer
+            // (r4133 `Common/Utilities.pas:1718`).
+            let node_order: Vec<i32> = if cd.node_ref.is_empty() || cd.nterms == 0 {
+                Vec::new()
+            } else {
+                (0..yorder)
+                    .map(|i| {
+                        let n = cd.node_ref.get(i).copied().unwrap_or(0);
+                        ckt.map_node_to_bus.get(n).map_or(0, |m| m.node_num)
+                    })
+                    .collect()
+            };
+            // `EnergyMeter`: the metering meter's bare name, under upstream's
+            // own `HasEnergyMeter` predicate (r4133 `DCktElement.pas:442-449`,
+            // capi `CAPI_CktElement.pas:682-685`), with the `MeterObj`
+            // back-pointer resolved through the pre-pass above instead of
+            // dereferenced blind.
+            let energy_meter = if cd
+                .flags
+                .contains(crate::elements::ckt::ElemFlags::HAS_ENERGY_METER)
+            {
+                cd.meter_obj.and_then(|m| meter_names.get(&m).cloned())
+            } else {
+                None
+            };
             out.push(ElementSnapshot {
                 name,
                 enabled: cd.enabled,
@@ -605,6 +724,11 @@ impl Dss {
                 currents_mag_ang,
                 voltages_mag_ang,
                 residuals,
+                n_terms: cd.nterms,
+                n_conds: cd.nconds,
+                n_phases: cd.nphases,
+                node_order,
+                energy_meter,
             });
         }
         // NCIM needs **no** reporting override here any more (RP3.13). Two used
