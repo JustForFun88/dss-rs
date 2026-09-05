@@ -458,8 +458,14 @@ pub(in crate::solution::meters) fn total_up_downstream_customers(
         }
         // Roll up into the parent unless this is an automatic OCP device and we
         // are assuming restoration (then downstream customers are restored and
-        // not counted upstream). OCP devices are Phase 7, so `has_ocp` is never
-        // set today and this always rolls up — but the guard is now faithful.
+        // not counted upstream) — r4133 `EnergyMeter.pas:1691-1693`.
+        // The guard is LIVE, not dead code: `HAS_OCP_DEVICE` and
+        // `HAS_AUTO_OCP_DEVICE` are set whenever a Fuse/Recloser/Relay
+        // registers its controlled element (`exec/command.rs::SetOcpDevice`),
+        // and `RelCalc restore=y` on `controls/energymeter/midi_relcalc.dss`
+        // takes this branch — measured by
+        // `exec::tests::reliability::relcalc_recomputes_the_customer_totals_it_depends_on`
+        // (`src.N_Customers` 30 without the flag, 0 with it).
         if let Some(p) = parent
             && !(has_ocp && assume_restoration && has_auto)
         {
