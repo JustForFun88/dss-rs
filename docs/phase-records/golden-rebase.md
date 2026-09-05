@@ -2484,10 +2484,11 @@ row against the pre-fix lock.
 
 > Plan: `GOLDEN_REBASE_PLAN.md` §WP-G1. G1.1 is handed to `R4133_PROPS_PLAN.md`
 > RP4.1 (kill criterion fired, see §1) and **delivered by it on 2026-09-03** —
-> the unmask shipped and RP4.1's own kill criterion did not fire. The sub-steps
-> that do not depend on it
-> land on `r4133-props`, the branch that currently holds the fail-on-stale
-> `population.lock.json` / `ledger.json` (single-branch lock discipline).
+> the unmask shipped and RP4.1's own kill criterion did not fire. Execution was
+> single-branch on `r4133-props` until it merged; since **D7** (2026-09-04) the
+> remaining sub-steps run in parallel `lane-*` worktrees and `update` takes one
+> lane sub-step at a time through a merge agent, which regenerates
+> `population.lock.json` and unions `ledger.json` (both stay fail-on-stale).
 
 - **G1.2** (2026-08-29) — **class `ESPVLControl` now has live corpus coverage**
   (it had none: no vendored deck and no family deck instantiated it, and
@@ -2813,18 +2814,17 @@ row against the pre-fix lock.
   panic — `nodes`/`ref_no` grow only inside `reprocess_bus_defs`, whose tail re-allocates `vbus`.
   Reports `tmp/g15/audit_{code,tests}/report.md`, table `tmp/g15/settle.md`.
 
-- **G1.4c** (2026-09-05, lane `lane-b`, bus chain — **D7**) — the bus **sequence** and
-  **line-to-line** arms (`SeqVoltages`/`CplxSeqVoltages`/`VLL`/`puVLL`) on both oracle channels, on
-  G1.4a's per-bus capture: no new flag, no lock move, no golden byte, **0** ledger rows. Per
-  **D4**/**D8**/**D21** the port answers S-SEQ / S-VLL (r4133's stated intent `DDLL/DBus.pas:299`
-  against its node-*count* test `:298`, and `Common/ShowResults.pas:193-194` against the pre-wrap
-  poll `:575-584`); each divergent bus is closed by a positive mechanism assertion
-  (**D15**/**D16**) behind four fail-on-stale populations and `C_012 = 5.30e-10`, and r4133's
-  `VLL` hang is refused per bus by the new `crates/dss-epri` register (**D2**). Details:
-  `TESTING.md`, `tests/TOLERANCE_NOTES.md` §"Bus sequence and line-to-line voltages",
-  `DIVERGENCES.md` §G1.4c, the plan's §G1.4 note, `investigations/to_opendss/` 64-66. Commits
-  `74cb0ef6` + `6fc63848`; gate green in both lanes (**5 339 / 0 / 5**, corpus **525/525**,
-  ledger 53 / 0 stale, `lane_diff` PASS max |Δ| = 0).
+- **G1.4c** (2026-09-05, lane `lane-b`, bus chain — **D7**) — the bus **sequence** and **line-to-line** arms
+  (`SeqVoltages`/`CplxSeqVoltages`/`VLL`/`puVLL`) live on both oracle channels, on G1.4a's per-bus capture:
+  no new flag, no lock move, no golden byte, **0** ledger rows. Per **D4**/**D8**/**D21** the port answers
+  S-SEQ / S-VLL — r4133's own stated intent (`DDLL/DBus.pas:299` against its node-*count* test `:298`;
+  `Common/ShowResults.pas:193-194` against the pre-wrap poll `:575-584`); every divergent bus is closed by a
+  positive mechanism assertion (**D15**/**D16**) behind four fail-on-stale populations and `C_012 = 5.30e-10`,
+  and r4133's `VLL` hang is refused per bus by the new `crates/dss-epri` register (**D2**). Details:
+  `TESTING.md`, `tests/TOLERANCE_NOTES.md`, `DIVERGENCES.md` §G1.4c, the plan's §G1.4 note,
+  `investigations/to_opendss/` 64-66. Commits `74cb0ef6` (surface) + `6fc63848` (settlement) + docs; both
+  lanes **5 339 / 0 / 5 ignored** over 75 binaries, corpus **525/525**, ledger 53 / 0 stale, `lane_diff`
+  **PASS** max |Δ| = 0.
   **Audit settlement** (15 findings, 12 distinct — 7 fixed / 5 recorded / 0 refuted):
   the port's own `VLL`/`puVLL` are now asserted on **every** bus, not only where the oracle's walk
   coincides with S-VLL (AC-1, live-proven on NEV `13kvbus`); `puVLL` and r4133 non-vacuity drives
