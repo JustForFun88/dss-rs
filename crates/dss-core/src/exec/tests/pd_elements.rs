@@ -295,7 +295,7 @@ fn pd_elements_parent_is_the_upline_branch_by_name_and_class_index() {
 
 /// **Pin (G1.6b-6).** `section_id`, `total_miles`, `lambda` and `accumulated_l`
 /// are the four fields the EnergyMeter *reliability sweep* writes
-/// (`solution/meters/reliability.rs:113-115,180`; Pascal `CalcFltRate`'s only
+/// (`solution/meters/reliability.rs:147-149,214`; Pascal `CalcFltRate`'s only
 /// caller is `EnergyMeter.pas:2479` inside `CalcReliabilityIndices`, and
 /// `BranchSectionID`/`AccumulatedMilesDownStream` come from
 /// `PDElements/PDElement.pas:106-110,183`). On a merely metered-and-solved
