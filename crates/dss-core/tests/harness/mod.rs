@@ -58,7 +58,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use dss_core::exec::{Dss, ElementSnapshot};
+use dss_core::exec::{Dss, ElementSnapshot, SeqArm};
 use dss_core::support::complexutil::Polar;
 use num_complex::Complex64;
 use serde::Deserialize;
@@ -1030,6 +1030,54 @@ pub struct ElementCap {
     /// `CAPI/CAPI_CktElement.pas:713-734`; fastdss `dss/ICktElement.py:47`.
     #[serde(default)]
     pub has_switch_control: Option<bool>,
+    /// `CktElement.SeqCurrents` — `Cabs` of the terminal current's
+    /// symmetrical components, `(0, +, -)` per terminal, length `3 * NTerms`
+    /// (amps). r4133 `DDLL/DCktElement.pas:700-737` (`CktElementV` mode `8`,
+    /// `Cabs` at `:719`) over `CalcSeqCurrents` `:30-80`; capi
+    /// `CAPI/CAPI_Alt.pas:490-527` (`Alt_CE_Get_SeqCurrents`) over
+    /// `_CalcSeqCurrents` `:236-290`; a fastdss `ICktElement._columns` surface
+    /// (`dss/ICktElement.py:65` on `origin/fastdss`).
+    ///
+    /// A **magnitude** on both engines, so — unlike `cma_mag`/`cma_ang` — there
+    /// is no angle half and nothing to de-interleave. Emitted for `Enabled`
+    /// elements only, under the same `derived` request as the polar three
+    /// (`GOLDEN_REBASE_PLAN.md` WP-G1 G1.3b), and compared by
+    /// [`compare_element_seq`].
+    #[serde(default)]
+    pub seq_i: Vec<f64>,
+    /// `CktElement.SeqVoltages` — the same transform applied to the node
+    /// voltages this element's `NodeRef` points at, same layout and length
+    /// (volts). r4133 `DDLL/DCktElement.pas:660-698` (mode `7`, `Cabs` at
+    /// `:680`) over `CalcSeqVoltages` `:84-122`; capi
+    /// `CAPI/CAPI_Alt.pas:620-659` over `CalcSeqVoltages` `:294-338`; fastdss
+    /// `dss/ICktElement.py:59`.
+    #[serde(default)]
+    pub seq_v: Vec<f64>,
+    /// `CktElement.SeqPowers` active halves (**kW**), de-interleaved the way
+    /// `p_kw`/`p_kvar` already are: `V012_k · conj(I012_k) · 0.003` per
+    /// terminal, `3 * NTerms` of them. r4133 `DDLL/DCktElement.pas:739-797`
+    /// (mode `9`, which inlines its own copy of the three-arm branch instead of
+    /// calling the two `Calc*` helpers); capi `CAPI/CAPI_Alt.pas:529-593`
+    /// (`Alt_CE_Get_SeqPowers_`, facade `:594-618`); fastdss
+    /// `dss/ICktElement.py:62`.
+    ///
+    /// **The wire unit IS kW/kvar**, and that is not a capture encoding the way
+    /// `pl_kw`'s `0.001` is: both engines apply the `0.003` *inside* the arm
+    /// (r4133 `:767`/`:788`, capi `:561`/`:588-589`), so it is part of what the
+    /// quantity is — a fixed three-phase kVA conversion, applied
+    /// unconditionally and **not** the `PositiveSequence` x3 that `Powers`
+    /// applies. The engine therefore stores `ElementSnapshot::seq_powers`
+    /// already scaled, and [`compare_element_seq`] converts nothing.
+    #[serde(default)]
+    pub seq_p_kw: Vec<f64>,
+    /// `SeqPowers` reactive halves (**kvar**) — see [`Self::seq_p_kw`]. The two
+    /// lengths are asserted equal on the oracle side, so the capi
+    /// `DefaultResult` one-element sentinel (`CAPI/CAPI_Utils.pas:212-221`)
+    /// fails loudly instead of de-interleaving into a silent `[0.0]`/`[]` pair
+    /// — except on a 0-terminal element, where it is the measured shape and is
+    /// accepted by [`no_seq_payload`].
+    #[serde(default)]
+    pub seq_p_kvar: Vec<f64>,
 }
 
 /// The node injection-current vector (RHS of Y*V=I), nodes 1..n.
@@ -1566,6 +1614,15 @@ pub struct ElemChannels {
     /// exclusion cause, not the polar channels' exemption: see
     /// [`Self::CURRENTS_ONLY`].
     pub phase_losses: bool,
+    /// `SeqCurrents` — the 012 transform of the terminal's own conductor
+    /// currents (`GOLDEN_REBASE_PLAN.md` G1.3b).
+    pub seq_currents: bool,
+    /// `SeqVoltages` — the same transform over `NodeV[NodeRef[.]]`.
+    pub seq_voltages: bool,
+    /// `SeqPowers` — `0.003 * V012 * conj(I012)`. A **power** channel that
+    /// nonetheless does NOT share `powers`/`losses`/`phase_losses`' `newton*`
+    /// exclusion: see [`Self::CURRENTS_ONLY`].
+    pub seq_powers: bool,
 }
 
 impl ElemChannels {
@@ -1578,6 +1635,9 @@ impl ElemChannels {
         voltages_mag_ang: true,
         residuals: true,
         phase_losses: true,
+        seq_currents: true,
+        seq_voltages: true,
+        seq_powers: true,
     };
     /// Currents only: the `S = V·conj(I)` channels are a deliberate divergence
     /// in this lane and are pinned by their own expected-value test instead.
@@ -1605,6 +1665,22 @@ impl ElemChannels {
     /// is pinned in-engine by
     /// `dss_core::exec::tests::element_extras::phase_losses_are_watts_and_sum_to_get_losses`
     /// beside the row's own `newton_powers_match_the_normal_algorithm`.
+    ///
+    /// # G1.3b: the three sequence channels do NOT join it — `SeqPowers` included
+    ///
+    /// `SeqCurrents`, `SeqVoltages` and `SeqPowers`
+    /// (`GOLDEN_REBASE_PLAN.md` G1.3b) stay `true` here, and the third of them is
+    /// the part worth saying out loud: it is a **power** channel that is
+    /// nevertheless on the polar three's side of the cache line. `SeqPowers`
+    /// does not read `Get_Powers` — r4133 fills its own scratch buffer through
+    /// `GetCurrents` (`DDLL/DCktElement.pas:758`, `:778`) and reads
+    /// `Solution.NodeV` directly, and capi's `Alt_CE_Get_SeqPowers_` does the
+    /// same (`CAPI/CAPI_Alt.pas:549`), while modes `7`/`8` go through the two
+    /// `Calc*` helpers, which also call `GetCurrents` / read `NodeV`. **None of
+    /// the three takes the cache-aware `ComputeIterminal` path** (r4133
+    /// `Common/CktElement.pas:632-640`) the Newton staleness lives in, so on the
+    /// two `newton*` decks these three are compared like everywhere else — the
+    /// decks *gain* three more oracle-compared channels, one of them a power.
     pub const CURRENTS_ONLY: Self = Self {
         currents: true,
         powers: false,
@@ -1613,6 +1689,9 @@ impl ElemChannels {
         voltages_mag_ang: true,
         residuals: true,
         phase_losses: false,
+        seq_currents: true,
+        seq_voltages: true,
+        seq_powers: true,
     };
 }
 
@@ -2124,9 +2203,9 @@ pub fn compare_element_derived(
 #[cfg(test)]
 mod derived_polar_floors {
     use super::{
-        ElemChannels, ElementCap, ElementSnapshot, POLAR_RAD_TO_DEG, Polar, assert_complex_close_c,
-        compare_element_derived, no_polar_payload, polar_angle_band, polar_close, residual_band,
-        residual_close, tol_for, wrapped_deg,
+        ElemChannels, ElementCap, ElementSnapshot, POLAR_RAD_TO_DEG, Polar, SeqArm,
+        assert_complex_close_c, compare_element_derived, no_polar_payload, polar_angle_band,
+        polar_close, residual_band, residual_close, tol_for, wrapped_deg,
     };
     use dss_core::support::complexutil::cdang;
     use num_complex::Complex64;
@@ -2391,6 +2470,12 @@ mod derived_polar_floors {
             ocp_dev_type: 0,
             has_volt_control: false,
             has_switch_control: false,
+            // A 0-terminal element takes no arm and carries no slots: the
+            // three vectors are empty by construction (`3 * NTerms = 0`).
+            seq_arm: SeqArm::NotAvailable,
+            seq_currents: Vec::new(),
+            seq_voltages: Vec::new(),
+            seq_powers: Vec::new(),
         };
         let cap = ElementCap {
             name: "UPFCControl.myupfcctrl".to_string(),
@@ -3174,8 +3259,8 @@ pub fn compare_element_phase_losses(
 #[cfg(test)]
 mod phase_loss_bands {
     use super::{
-        ElemChannels, ElementCap, ElementSnapshot, Tolerances, compare_element_phase_losses,
-        phase_loss_band, tol_for,
+        ElemChannels, ElementCap, ElementSnapshot, SeqArm, Tolerances,
+        compare_element_phase_losses, phase_loss_band, tol_for,
     };
     use num_complex::Complex64;
 
@@ -3219,6 +3304,14 @@ mod phase_loss_bands {
             ocp_dev_type: 0,
             has_volt_control: false,
             has_switch_control: false,
+            // 3-phase, 2 terminals: `SeqArm::ThreePhase` with `3 * NTerms`
+            // slots, zero-valued like the currents/powers above (this fixture
+            // drives another comparator; the shape is kept consistent so it
+            // stays usable).
+            seq_arm: SeqArm::ThreePhase,
+            seq_currents: vec![0.0; 6],
+            seq_voltages: vec![0.0; 6],
+            seq_powers: vec![Complex64::new(0.0, 0.0); 6],
         };
         let cap = ElementCap {
             name: "Line.l1".to_string(),
@@ -3536,7 +3629,8 @@ mod phase_loss_bands {
 #[cfg(test)]
 mod element_extras_pins {
     use super::{
-        ElementCap, ElementSnapshot, PropsChannel, compare_element_extras, oracle_meter_name,
+        ElementCap, ElementSnapshot, PropsChannel, SeqArm, compare_element_extras,
+        oracle_meter_name,
     };
 
     /// The measured `Line.l1` of the in-engine fixture deck
@@ -3570,6 +3664,14 @@ mod element_extras_pins {
             ocp_dev_type: 0,
             has_volt_control: false,
             has_switch_control: false,
+            // 3-phase, 2 terminals: `SeqArm::ThreePhase` with `3 * NTerms`
+            // slots, zero-valued like the currents/powers above (this fixture
+            // drives another comparator; the shape is kept consistent so it
+            // stays usable).
+            seq_arm: SeqArm::ThreePhase,
+            seq_currents: vec![0.0; 6],
+            seq_voltages: vec![0.0; 6],
+            seq_powers: vec![num_complex::Complex64::new(0.0, 0.0); 6],
         };
         let cap = ElementCap {
             name: "Line.l1".to_string(),
@@ -3620,6 +3722,12 @@ mod element_extras_pins {
             ocp_dev_type: 0,
             has_volt_control: false,
             has_switch_control: false,
+            // A 0-terminal element takes no arm and carries no slots: the
+            // three vectors are empty by construction (`3 * NTerms = 0`).
+            seq_arm: SeqArm::NotAvailable,
+            seq_currents: Vec::new(),
+            seq_voltages: Vec::new(),
+            seq_powers: Vec::new(),
         };
         let cap = ElementCap {
             name: "UPFCControl.myupfcctrl".to_string(),
@@ -4063,6 +4171,1616 @@ mod element_extras_pins {
     }
 }
 
+// ---------------------------------------------------------------------------
+// GOLDEN_REBASE_PLAN.md WP-G1 G1.3b — the per-element sequence transform.
+//
+// `CktElement.SeqCurrents` / `SeqVoltages` / `SeqPowers`: one comparator, one
+// derived floor, three arms. Everything this sub-step adds to this file lives
+// between here and the end of `seq_floors`.
+// ---------------------------------------------------------------------------
+
+/// `max_k Σ_j |Ap2s_official[k][j] − Ap2s_precise[k][j]|` — the L1 row-sum norm
+/// of the difference between the two 012 matrices the two gating oracles use.
+///
+/// r4133 has no `SelectAs2pVersion` switch: it fills `As2p` from the
+/// **truncated** `sin 60° = 0.866025403`
+/// (`Version8/Source/Shared/mathutil.pas:302-303`) and obtains `Ap2s` by
+/// *numerically inverting* that matrix (`:562-564`), while capi 0.14.5 — and the
+/// port — use the full `0.8660254037844387` with the analytic inverse
+/// (`SelectAs2pVersion(False)`, `mathutil.pas:548`). So the r4133 channel
+/// transforms phase quantities with a measurably different matrix, and every 012
+/// quantity compared against it carries an extra **absolute** term
+/// `SEQ_C012 · max_j |Xph_j|` — see [`seq_band`].
+///
+/// Measured **offline, by decomposition, never by a sweep** (CLAUDE.md), and
+/// re-derived on every run by
+/// `seq_floors::the_c012_constant_is_the_matrix_difference_row_sum`, which
+/// recovers each `Δ_kj` by pushing the three unit basis vectors through
+/// `SymComp::precise().phase_to_sym` and `SymComp::official().phase_to_sym` (the
+/// matrices themselves are private). The three row sums are
+/// `1.895269253967044e-16 / 5.229589539190756e-10 / 5.229590094302253e-10`: the
+/// zero-sequence row carries essentially none of it, which is why the constant
+/// is a *row* maximum and not a matrix-wide norm.
+///
+/// **Why the value is taken from `SymComp::official()` and not from a numpy
+/// probe.** r4133 does not *write down* its `Ap2s`; it computes it by running
+/// `TcMatrix.Invert` on the truncated `A`, so the constant depends on the
+/// inversion's own rounding. `SymComp::official()` is the port of that routine
+/// on that input, which is exactly why the variant is kept — the offline probe
+/// that seeded this sub-step used `numpy.linalg.inv` instead and landed on
+/// `5.229591207093893e-10`, a **different algorithm's** rounding of the same
+/// inverse (`1.1e-16` absolute, `2.1e-7` relative away). The two are
+/// indistinguishable in the live measurement, whose worst gap sits at `0.857`
+/// … `0.866 ×` this term, so nothing rides on the choice — but the in-tree
+/// model is the one that can be re-derived on every run, and padding the
+/// constant to the larger of the two would be a widening with no evidence
+/// behind it. Derivation in tests/TOLERANCE_NOTES.md §G1.3b.
+pub const SEQ_C012: f64 = 5.229590094302253e-10;
+
+/// The three-phase kVA scaling both engines apply **inside** the `SeqPowers` arm
+/// (r4133 `DDLL/DCktElement.pas:767`/`:788`, capi
+/// `CAPI/CAPI_Alt.pas:561`/`:588-589`), so it is part of what the quantity is
+/// rather than a capture encoding: `V [V] · I [A] · 0.003` is the reported
+/// three-phase kVA. The band below is expressed in the same unit and therefore
+/// carries the same factor.
+const SEQ_KVA_SCALE: f64 = 0.003;
+
+/// The band one 012 component inherits from the phase quantities it is a linear
+/// combination of.
+///
+/// `X012 = Ap2s · Xph` with every `|Ap2s[k][j]| = 1/3`, so
+///
+/// ```text
+/// |ΔX012_k| ≤ (1/3) Σ_j |ΔXph_j| ≤ (1/3) Σ_j (abs + rel·|Xph_j|)
+///           = abs + rel · mean_j |Xph_j|
+/// ```
+///
+/// — the exact image of the **disc** [`assert_complex_close_c`] already admits
+/// on the phase quantities (§G1.3a derivation 0), so no coefficient moves and no
+/// tolerance class is added. `c012` is [`SEQ_C012`] on the r4133 channel (the
+/// truncated-matrix term) and `0.0` on capi; it is `0.0` on the
+/// 1φ-positive-sequence arm on **both** channels, where no matrix runs at all.
+///
+/// The base is the **phase** magnitude, never `|X012_k|`: the zero- and
+/// negative-sequence components are near-cancellations of three large phase
+/// phasors, and banding a cancellation residual against the residual is what
+/// CLAUDE.md's decomposition rule forbids — measured, the naive form fails a
+/// live case by ×56.74
+/// (`seq_floors::the_012_band_base_is_the_phase_magnitude_not_the_sequence_magnitude`).
+pub fn seq_band(phase_mags: &[f64], rel: f64, abs: f64, c012: f64) -> f64 {
+    assert!(
+        !phase_mags.is_empty(),
+        "the 012 band needs at least one phase magnitude"
+    );
+    let n = phase_mags.len() as f64;
+    let mean = phase_mags.iter().map(|x| x.abs()).sum::<f64>() / n;
+    let max = phase_mags.iter().fold(0.0f64, |m, x| m.max(x.abs()));
+    abs + rel * mean + c012 * max
+}
+
+/// The band of one sequence **power** slot, in the reported three-phase kVA.
+///
+/// `S012_k = 0.003 · V012_k · conj(I012_k)`, so with `|ΔV012_k| ≤ bv` and
+/// `|ΔI012_k| ≤ bi`
+///
+/// ```text
+/// |ΔS012_k| ≤ 0.003 · ( bv·|I012_k| + |V012_k|·bi + bv·bi )
+///           = 0.003 · ( bv·(|I012_k| + bi) + |V012_k|·bi )
+/// ```
+///
+/// — the second-order term kept, and the bound is **attained** (pinned by
+/// `seq_floors::the_seq_power_band_is_the_image_of_its_two_factor_bands`), so it
+/// is not slack. Same "image of the already-accepted factor bands" construction
+/// [`assert_power_close`]'s voltage-scaled floor uses, applied to the 012 factors
+/// instead of the phase ones; no new tolerance class.
+///
+/// `v012`/`i012` are the **oracle's own** magnitudes, the way
+/// [`assert_power_close`] and [`phase_loss_band`] build their bands from the
+/// captured side.
+pub fn seq_power_band(bv: f64, bi: f64, v012: f64, i012: f64) -> f64 {
+    SEQ_KVA_SCALE * (bv * (i012.abs() + bi) + v012.abs() * bi)
+}
+
+/// The `SeqPowers` "not available" sentinel as **this** channel spells it, folded
+/// to the one spelling the port emits.
+///
+/// The two engines disagree on the n/A power sentinel and on nothing else in
+/// this surface: r4133 writes `cmplx(-1.0, 0)` (`DDLL/DCktElement.pas:772`) and
+/// capi 0.14.5 writes `cmplx(-1.0, -1.0)` (`CAPI/CAPI_Alt.pas:567`), while both
+/// return `Cabs(-1 + 0j) = 1.0` for the two magnitude reads (measured at the
+/// wire over IEEE13's 26 not-available elements: 0 exceptions on either
+/// channel). The port follows r4133 — the behavioral authority — so capi's
+/// `(-1, -1)` is the outlier and is folded here.
+///
+/// A capture-boundary **spelling** fold, not a tolerance ([`props_norm`] and
+/// [`oracle_meter_name`] are the precedents; coordinator decision D4): it is
+/// consulted **only** on the structurally-derived [`SeqArm::NotAvailable`] arm —
+/// never on a value — so a real `−1 kW − j1 kvar` terminal of a 3-phase element
+/// is still compared normally, and it folds **each channel's own** spelling
+/// only: `(-1, -1)` arriving from r4133 is not a sentinel there and reds (pinned
+/// by `seq_floors::the_na_power_sentinel_fold_is_channel_scoped`). Recorded
+/// beside the `PROPS_NORM_R4133` "not a tolerance" section of
+/// tests/TOLERANCE_NOTES.md.
+fn na_seq_power(kw: f64, kvar: f64, channel: PropsChannel) -> (f64, f64) {
+    match (channel, kw, kvar) {
+        (PropsChannel::CapiV0145, -1.0, -1.0) => (-1.0, 0.0),
+        _ => (kw, kvar),
+    }
+}
+
+/// Does this *oracle* sequence capture say "nothing to report"?
+///
+/// The 0-terminal twin of [`no_polar_payload`], with the shapes **measured** at
+/// the wire on the three `UPFCControl` decks (`controls/upfc/upfc_dual.dss`,
+/// `controls/upfc/upfc_statcom.dss`, `asymmetric/upfc/midi_upfc_asym.dss`):
+///
+/// * **r4133** — all four arrays empty. Modes `7`/`8`/`9` size their result at
+///   `3 · NTerms` and their loops never run when that is `0`;
+/// * **capi** — `seq_i = []` (`Alt_CE_Get_SeqCurrents` has no `NodeRef` guard, so
+///   it genuinely returns a 0-length array), `seq_v = [0.0]`, and
+///   `seq_p_kw = [0.0]` / `seq_p_kvar = []` — the `DefaultResult` COM sentinel
+///   (`CAPI/CAPI_Utils.pas:212-221`) reached through `Alt_CE_Get_SeqVoltages`'
+///   and `Alt_CE_Get_SeqPowers`' `NodeRef = NIL` guards, the single double of the
+///   power one de-interleaving into `([0.0], [])`.
+///
+/// Consulted **only** where a real payload would have length `3 · NTerms = 0`, so
+/// the sentinel can never hide a reading, and only on the oracle side — the
+/// engine has no sentinel and must be strictly empty. Pinned by
+/// `seq_floors::the_capi_default_result_sentinel_is_the_only_extra_zero_terminal_shape`.
+fn no_seq_payload(seq_i: &[f64], seq_v: &[f64], kw: &[f64], kvar: &[f64]) -> bool {
+    let mag_ok = |v: &[f64]| v.is_empty() || v == [0.0];
+    mag_ok(seq_i) && mag_ok(seq_v) && (kw.is_empty() || kw == [0.0]) && kvar.is_empty()
+}
+
+/// How many gated element rows the corpus gate's derived loop has recorded
+/// (the arm [`compare_element_seq`] classified and handed back).
+static SEQ_ARM_SEEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// …how many of those took the 1φ-positive-sequence arm on the `capi_v0145`
+/// channel (the arm whose layout D-b1 is about)…
+static SEQ_ARM_POSSEQ_CAPI: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// …and how many on the `r4133` channel, where the measured population is
+/// **zero** (see [`assert_seq_arm_population`]).
+static SEQ_ARM_POSSEQ_R4133: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+/// Record one gated element's sequence arm, per channel.
+///
+/// One call per compared element **per channel per step** — row counts over the
+/// gating population, not distinct-element counts, exactly like
+/// [`record_control_census`].
+///
+/// The single caller is the corpus gate's derived loop
+/// (`corpus_gate/runner.rs`, the `c.compare_derived` block), which records the
+/// arm [`compare_element_seq`] hands back; the comparator itself records
+/// nothing (coordinator decision **D24**, 2026-09-05). That is what keeps the
+/// census the *gating* population: `seq_floors` calls the comparator at 24
+/// fixture sites in this same test binary — six of them deliberately on the
+/// 1-phase positive-sequence arm, four of those with [`PropsChannel::R4133`] —
+/// and under the mandatory `cargo test --workspace` shape those calls used to
+/// land in these statics, so the epilogue guard read `(297 915, 81, 4)` instead
+/// of the gate-only `(297 896, 79, 0)` and failed every time. Pinned by
+/// `seq_floors::a_fixture_call_on_the_r4133_posseq_arm_does_not_move_the_census`.
+pub fn record_seq_arm(arm: SeqArm, channel: PropsChannel) {
+    use std::sync::atomic::Ordering::Relaxed;
+    SEQ_ARM_SEEN.fetch_add(1, Relaxed);
+    if arm == SeqArm::PosSeqSinglePhase {
+        match channel {
+            PropsChannel::CapiV0145 => SEQ_ARM_POSSEQ_CAPI.fetch_add(1, Relaxed),
+            PropsChannel::R4133 => SEQ_ARM_POSSEQ_R4133.fetch_add(1, Relaxed),
+        };
+    }
+}
+
+/// What [`record_seq_arm`] has counted, as
+/// `(element rows, 1φ-posseq rows on capi_v0145, 1φ-posseq rows on r4133)`.
+pub fn seq_arm_counters() -> (usize, usize, usize) {
+    use std::sync::atomic::Ordering::Relaxed;
+    (
+        SEQ_ARM_SEEN.load(Relaxed),
+        SEQ_ARM_POSSEQ_CAPI.load(Relaxed),
+        SEQ_ARM_POSSEQ_R4133.load(Relaxed),
+    )
+}
+
+/// **The population guard behind D-b1's zero ledger rows.**
+///
+/// `GOLDEN_REBASE_PLAN.md` G1.3b settles a real r4133 defect in the
+/// 1φ-positive-sequence arm of `SeqPowers`: mode `9` writes that arm with
+/// `Count := 2` and `inc(count)` (`DDLL/DCktElement.pas:760`, `:768`) — the
+/// 1-based `iV := 2` / `Inc(iV, 3)` of `CalcSeqCurrents` (`:50`, `:55`)
+/// transplanted onto a **0-based** dynamic array with the wrong stride — so the
+/// terminal's positive-sequence power lands in slot `3t+2` and then walks into
+/// the next terminal's slots, while capi's `iCount := 1` / `inc(icount, 3)`
+/// (`CAPI/CAPI_Alt.pas:555`, `:562`) is right. The port emits capi's layout
+/// because it is the correct one, and that costs **zero** ledger rows for one
+/// measured reason only: the r4133-gated corpus never reaches this arm (the four
+/// r4133-gated `CktModel=Positive` decks have no 1-phase element; the six decks
+/// that do — `modes/makeposseq/*` — are `capi_v0145`-only), while the capi
+/// channel gates the correct layout live.
+///
+/// That population fact is load-bearing, so it is re-derived on every full run
+/// instead of stated in prose (the D15/D16 precedent, and
+/// [`assert_no_multi_control_element`] one sub-step earlier): the moment a case
+/// brings the arm onto the r4133 channel this fails and says so, instead of the
+/// case quietly reddening on a slot mismatch.
+///
+/// Silent under `DSS_GATE_ONLY` for the reason
+/// [`props_norm::assert_r4133_props_compare_ran`] is: a filtered run is not the
+/// population. The mandatory gate never sets the variable.
+pub fn assert_seq_arm_population() {
+    if std::env::var("DSS_GATE_ONLY").is_ok() {
+        return;
+    }
+    let (seen, posseq_capi, posseq_r4133) = seq_arm_counters();
+    eprintln!(
+        "corpus_gate sequence-arm census: {seen} element row(s), {posseq_capi} on the \
+         1-phase positive-sequence arm via capi_v0145, {posseq_r4133} via r4133"
+    );
+    check_seq_arm_population(seen, posseq_capi, posseq_r4133);
+}
+
+/// The rule itself, over **injected** counters — split out for the reason
+/// [`check_control_census`] is: the shipped statics cannot be rewound once the
+/// gate has moved them, so both directions are pinned offline
+/// (`seq_floors::the_seq_arm_population_*`).
+fn check_seq_arm_population(seen: usize, posseq_capi: usize, posseq_r4133: usize) {
+    assert_eq!(
+        posseq_r4133, 0,
+        "the 1-phase positive-sequence arm reached the r4133 channel on \
+         {posseq_r4133} element row(s), where GOLDEN_REBASE_PLAN.md G1.3b \
+         measured zero. r4133 `DDLL/DCktElement.pas:760`/`:768` writes that arm's \
+         SeqPowers into the wrong slot with the wrong stride, so the port — which \
+         follows capi's correct layout — must disagree there: triage the deck that \
+         brought the arm onto that channel and give it a field-scoped `seq_powers` \
+         ledger entry with its own pin before this constant moves."
+    );
+    assert!(
+        posseq_capi > 0,
+        "no gated element took the 1-phase positive-sequence arm on the capi_v0145 \
+         channel ({seen} element row(s) classified). That arm's correct layout is \
+         oracle-gated ONLY there — the six `modes/makeposseq/*` decks — so a zero \
+         here means D-b1 is no longer gated by anything but its in-engine pin."
+    );
+    assert!(
+        seen > 0,
+        "the sequence-arm census counted nothing: the gating sequence compare never \
+         ran at all"
+    );
+}
+
+/// Compare one element's **sequence channels** against a capture: `SeqCurrents`,
+/// `SeqVoltages`, `SeqPowers` (`GOLDEN_REBASE_PLAN.md` WP-G1 G1.3b).
+///
+/// Runs when the case's `compare_derived` manifest flag is on, *alongside* —
+/// never instead of — [`compare_element_derived`] and
+/// [`compare_element_channels`], on the same (possibly ledger-rewritten) capture
+/// they see.
+///
+/// # The three arms, and why the selector is checkable at all
+///
+/// All three oracle surfaces open with the same two-test branch — `NPhases <> 3`
+/// first, then `(NPhases = 1) and PositiveSequence` (r4133
+/// `DDLL/DCktElement.pas:41`/`:43`, `:92`/`:94`, `:752`/`:754`; capi
+/// `CAPI/CAPI_Alt.pas:245`/`:248`, `:305`/`:308`, `:551`/`:553`) — and **no
+/// capture field spells the arm out**. So the comparator takes the arm from the
+/// port's own structural state ([`SeqArm`], derived from `NPhases` and the
+/// circuit's `PositiveSequence` flag, never from a value) and then asserts the
+/// *shape* that arm predicts on the oracle side. Each arm forces a different
+/// shape, which is what makes a wrong arm on **either** side fail loudly:
+///
+/// * [`SeqArm::NotAvailable`] — every magnitude slot is exactly `1.0`
+///   (`Cabs(-1 + 0j)`, both engines) and every power slot is exactly the
+///   channel's n/A sentinel ([`na_seq_power`]);
+/// * [`SeqArm::PosSeqSinglePhase`] — slots `3t` and `3t+2` are exactly `0.0` on
+///   both sides and only slot `3t+1` carries a value;
+/// * [`SeqArm::ThreePhase`] — every slot is a real transformed value.
+///
+/// A port that claimed the wrong arm would be contradicted by exact zeros or
+/// exact sentinels standing against real numbers, in both directions. That is the
+/// plan's "three-arm branch selector compared as a discrete flag": zero
+/// tolerance, and no oracle field needed to carry it.
+///
+/// **Structure, asserted under every channel policy** (the rule
+/// [`compare_element_channels`] and [`compare_element_derived`] already follow):
+/// the element exists in the Rust snapshot; `Enabled` matches exactly and a
+/// **disabled** element carries no oracle payload (the capture must skip it —
+/// r4133 mode `9` guards neither `Enabled` nor `NodeRef`); a **0-terminal**
+/// element carries none on either side, up to the capi sentinel shape
+/// ([`no_seq_payload`]); all four arrays are `3 · NTerms` long on both sides; and
+/// the arm's discrete slots are compared exactly.
+///
+/// **Floors** (derivations in tests/TOLERANCE_NOTES.md §G1.3b): [`seq_band`] for
+/// the two magnitude channels and [`seq_power_band`] for the powers, both images
+/// of the already-calibrated `i_*`/`v_*` tier bands, plus the r4133-only
+/// [`SEQ_C012`] term. No tolerance is calibrated here, and none of the three
+/// channels joins the `newton*` exclusion (see [`ElemChannels::CURRENTS_ONLY`]).
+///
+/// # The census is the caller's, never this function's
+///
+/// Returns the arm this element was classified under — `Some(arm)` exactly on
+/// the rows the D-b1 population guard counts (enabled, at least one terminal,
+/// shapes agreed), `None` on the two structural early returns. The corpus gate's
+/// runner feeds that straight into [`record_seq_arm`]; **this comparator records
+/// nothing** (coordinator decision **D24**, 2026-09-05, the
+/// [`record_control_census`] precedent), so the 24 `seq_floors` fixture calls in
+/// this same test binary cannot move the shipped counters. There is one
+/// classification and not two: the arm is `snap.seq_arm`, read once here and
+/// handed out.
+pub fn compare_element_seq(
+    snaps: &[ElementSnapshot],
+    exp: &ElementCap,
+    tol: &Tolerances,
+    ctx: &str,
+    channel: PropsChannel,
+    channels: ElemChannels,
+) -> Option<SeqArm> {
+    let snap = snaps
+        .iter()
+        .find(|s| s.name.eq_ignore_ascii_case(&exp.name))
+        .unwrap_or_else(|| panic!("{ctx}: no element {}", exp.name));
+    // `enabled` is emitted for EVERY element under the flag; its absence means
+    // the capture ran without it, which the comparator must never paper over
+    // (the element-level twin of `capture_guard::require_capture`).
+    let enabled = exp.enabled.unwrap_or_else(|| {
+        panic!(
+            "{ctx} {}: the derived capture carries no `enabled` field — the case's \
+             `compare_derived` flag is on but this element was captured without it",
+            exp.name
+        )
+    });
+    assert_eq!(
+        snap.enabled, enabled,
+        "{ctx} {}: Enabled differs (rust {} vs oracle {enabled})",
+        exp.name, snap.enabled
+    );
+    if !enabled {
+        assert!(
+            exp.seq_i.is_empty()
+                && exp.seq_v.is_empty()
+                && exp.seq_p_kw.is_empty()
+                && exp.seq_p_kvar.is_empty(),
+            "{ctx} {}: a disabled element must carry no sequence payload \
+             (seq_i {}, seq_v {}, seq_p {}/{}) — the capture read channels it must \
+             skip",
+            exp.name,
+            exp.seq_i.len(),
+            exp.seq_v.len(),
+            exp.seq_p_kw.len(),
+            exp.seq_p_kvar.len()
+        );
+        return None;
+    }
+    let nterms = snap.n_terms;
+    // A **0-terminal** element is legitimate (`TUPFCControlObj.Create` never
+    // assigns `Nterms`, r4133 `Controls/UPFCControl.pas:230-246`) and is accepted
+    // two-sidedly, like the disabled branch above: a payload on either side still
+    // fails, so the acceptance can never swallow a real capture.
+    if nterms == 0 {
+        assert!(
+            no_seq_payload(&exp.seq_i, &exp.seq_v, &exp.seq_p_kw, &exp.seq_p_kvar)
+                && snap.seq_currents.is_empty()
+                && snap.seq_voltages.is_empty()
+                && snap.seq_powers.is_empty(),
+            "{ctx} {}: a 0-terminal element must carry no sequence payload on either \
+             side (oracle seq_i {}, seq_v {}, seq_p {}/{}; rust {}, {}, {})",
+            exp.name,
+            exp.seq_i.len(),
+            exp.seq_v.len(),
+            exp.seq_p_kw.len(),
+            exp.seq_p_kvar.len(),
+            snap.seq_currents.len(),
+            snap.seq_voltages.len(),
+            snap.seq_powers.len()
+        );
+        return None;
+    }
+    let want = 3 * nterms;
+    assert_eq!(
+        exp.seq_p_kw.len(),
+        exp.seq_p_kvar.len(),
+        "{ctx} {}: the oracle's SeqPowers kW ({}) and kvar ({}) halves disagree — an \
+         odd-length payload de-interleaved (the capi `DefaultResult` sentinel is one \
+         such)",
+        exp.name,
+        exp.seq_p_kw.len(),
+        exp.seq_p_kvar.len()
+    );
+    for (what, oracle, rust) in [
+        ("SeqCurrents", exp.seq_i.len(), snap.seq_currents.len()),
+        ("SeqVoltages", exp.seq_v.len(), snap.seq_voltages.len()),
+        ("SeqPowers", exp.seq_p_kw.len(), snap.seq_powers.len()),
+    ] {
+        assert_eq!(
+            oracle, want,
+            "{ctx} {}: oracle {what} length {oracle} != 3·NTerms ({want})",
+            exp.name
+        );
+        assert_eq!(
+            rust, want,
+            "{ctx} {}: rust {what} length {rust} != 3·NTerms ({want})",
+            exp.name
+        );
+    }
+
+    let arm = snap.seq_arm;
+    // The half of the branch that IS derivable without the circuit's
+    // `PositiveSequence` flag, asserted rather than trusted: `NPhases = 3` is the
+    // three-phase arm and nothing else takes it, and the positive-sequence arm is
+    // 1-phase by construction.
+    assert_eq!(
+        arm == SeqArm::ThreePhase,
+        snap.n_phases == 3,
+        "{ctx} {}: the port's sequence arm {arm:?} contradicts its own NPhases ({}) \
+         — `NPhases <> 3` is the first test of every one of the three oracle \
+         surfaces",
+        exp.name,
+        snap.n_phases
+    );
+    if arm == SeqArm::PosSeqSinglePhase {
+        assert_eq!(
+            snap.n_phases, 1,
+            "{ctx} {}: the port took the positive-sequence arm on a {}-phase element",
+            exp.name, snap.n_phases
+        );
+    }
+
+    if arm == SeqArm::NotAvailable {
+        // The not-available arm is entirely discrete: both engines fill the
+        // magnitudes with `Cabs(-1 + 0j) = 1.0` and the powers with their own
+        // spelling of the `−1` sentinel. Compared exactly, under every channel
+        // policy — a value exclusion may not excuse a discrete miss.
+        for k in 0..want {
+            assert_eq!(
+                (exp.seq_i[k], exp.seq_v[k]),
+                (1.0, 1.0),
+                "{ctx} {}: slot {k} of the not-available arm must read exactly \
+                 (1.0, 1.0) from the oracle (`Cabs(-1 + 0j)`, r4133 \
+                 `DDLL/DCktElement.pas:60`/`:106`, capi \
+                 `CAPI/CAPI_Alt.pas:268`/`:324`), got ({}, {})",
+                exp.name,
+                exp.seq_i[k],
+                exp.seq_v[k]
+            );
+            assert_eq!(
+                na_seq_power(exp.seq_p_kw[k], exp.seq_p_kvar[k], channel),
+                (-1.0, 0.0),
+                "{ctx} {}: slot {k} of the not-available arm must read the {} n/A \
+                 SeqPowers sentinel, got ({}, {}) — r4133 writes `cmplx(-1.0, 0)` \
+                 (`DDLL/DCktElement.pas:772`) and capi 0.14.5 `cmplx(-1.0, -1.0)` \
+                 (`CAPI/CAPI_Alt.pas:567`); each channel's own spelling folds, the \
+                 other one does not",
+                exp.name,
+                channel.tag(),
+                exp.seq_p_kw[k],
+                exp.seq_p_kvar[k]
+            );
+            assert_eq!(
+                (snap.seq_currents[k], snap.seq_voltages[k]),
+                (1.0, 1.0),
+                "{ctx} {}: rust slot {k} of the not-available arm must read exactly \
+                 (1.0, 1.0)",
+                exp.name
+            );
+            assert_eq!(
+                (snap.seq_powers[k].re, snap.seq_powers[k].im),
+                (-1.0, 0.0),
+                "{ctx} {}: rust slot {k} of the not-available arm must read r4133's \
+                 `(-1, 0)` sentinel",
+                exp.name
+            );
+        }
+        return Some(arm);
+    }
+
+    // Both banded arms read the terminal's own phase magnitudes off the ORACLE's
+    // polar arrays — the same capture, the same `derived` block, already gated by
+    // `compare_element_derived` — the way `residual_band` and `phase_loss_band`
+    // build their bands from the captured side.
+    let nconds = snap.n_conds;
+    assert!(
+        nconds > 0,
+        "{ctx} {}: {nterms} terminal(s) with 0 conductors",
+        exp.name
+    );
+    let yorder = nterms * nconds;
+    for (what, got) in [
+        ("CurrentsMagAng", exp.cma_mag.len()),
+        ("VoltagesMagAng", exp.vma_mag.len()),
+    ] {
+        assert_eq!(
+            got, yorder,
+            "{ctx} {}: the sequence band needs the oracle's {what} magnitudes \
+             (length {got} != NTerms·NConds = {yorder}) — they are captured in the \
+             same `derived` block",
+            exp.name
+        );
+    }
+    // The truncated-matrix term applies on the r4133 channel only, and only where
+    // a matrix actually runs (the three-phase arm).
+    let c012 = match (channel, arm) {
+        (PropsChannel::R4133, SeqArm::ThreePhase) => SEQ_C012,
+        _ => 0.0,
+    };
+    // The conductors each arm actually transforms: the terminal's first three
+    // (r4133 `:47-49`, capi `:252-254`) or, on the positive-sequence arm, its
+    // first one (r4133 `:764-766`, capi `:559-561`).
+    let taken = if arm == SeqArm::ThreePhase { 3 } else { 1 };
+    assert!(
+        taken <= nconds,
+        "{ctx} {}: the {arm:?} arm reads {taken} conductor(s) of a terminal that has \
+         {nconds}",
+        exp.name
+    );
+    for (t, (icnk, vcnk)) in exp
+        .cma_mag
+        .chunks(nconds)
+        .zip(exp.vma_mag.chunks(nconds))
+        .enumerate()
+    {
+        let bi = seq_band(&icnk[..taken], tol.i_rel, tol.i_abs, c012);
+        let bv = seq_band(&vcnk[..taken], tol.v_rel, tol.v_abs, c012);
+        for k in 0..3 {
+            let slot = 3 * t + k;
+            // On the positive-sequence arm the zero- and negative-sequence slots
+            // are exactly `0.0` on BOTH sides — the discrete half of that arm's
+            // identification, compared under every channel policy.
+            if arm == SeqArm::PosSeqSinglePhase && k != 1 {
+                assert_eq!(
+                    (
+                        exp.seq_i[slot],
+                        exp.seq_v[slot],
+                        exp.seq_p_kw[slot],
+                        exp.seq_p_kvar[slot]
+                    ),
+                    (0.0, 0.0, 0.0, 0.0),
+                    "{ctx} {}: slot {slot} of the positive-sequence arm must be \
+                     exactly zero on the oracle side (only slot 3t+1 is written — \
+                     capi `CAPI/CAPI_Alt.pas:555`/`:562`; r4133 \
+                     `DDLL/DCktElement.pas:760`/`:768` writes the wrong slot with \
+                     the wrong stride, which is the D-b1 defect)",
+                    exp.name
+                );
+                assert_eq!(
+                    (
+                        snap.seq_currents[slot],
+                        snap.seq_voltages[slot],
+                        snap.seq_powers[slot].re,
+                        snap.seq_powers[slot].im
+                    ),
+                    (0.0, 0.0, 0.0, 0.0),
+                    "{ctx} {}: rust slot {slot} of the positive-sequence arm must be \
+                     exactly zero",
+                    exp.name
+                );
+                continue;
+            }
+            if channels.seq_currents {
+                let d = (snap.seq_currents[slot] - exp.seq_i[slot]).abs();
+                assert!(
+                    d <= bi,
+                    "{ctx} {}: SeqCurrents[{slot}] differs: actual {} vs expected {}; \
+                     |diff| = {d:e} > allowed {bi:e}",
+                    exp.name,
+                    snap.seq_currents[slot],
+                    exp.seq_i[slot]
+                );
+            }
+            if channels.seq_voltages {
+                let d = (snap.seq_voltages[slot] - exp.seq_v[slot]).abs();
+                assert!(
+                    d <= bv,
+                    "{ctx} {}: SeqVoltages[{slot}] differs: actual {} vs expected {}; \
+                     |diff| = {d:e} > allowed {bv:e}",
+                    exp.name,
+                    snap.seq_voltages[slot],
+                    exp.seq_v[slot]
+                );
+            }
+            if channels.seq_powers {
+                let bs = seq_power_band(bv, bi, exp.seq_v[slot], exp.seq_i[slot]);
+                let (ar, ai) = (snap.seq_powers[slot].re, snap.seq_powers[slot].im);
+                let (er, ei) = (exp.seq_p_kw[slot], exp.seq_p_kvar[slot]);
+                let d = ((ar - er).powi(2) + (ai - ei).powi(2)).sqrt();
+                assert!(
+                    d <= bs,
+                    "{ctx} {}: SeqPowers[{slot}] differs: actual ({ar}, {ai}) vs \
+                     expected ({er}, {ei}); |diff| = {d:e} > allowed {bs:e}",
+                    exp.name
+                );
+            }
+        }
+    }
+    Some(arm)
+}
+
+/// The G1.3b sequence-transform pins: the `SEQ_C012` constant re-derived from
+/// the two 012 matrices, the two band derivations, the three-arm selector, the
+/// D-b2 sentinel fold and the D-b1 population guard — pinned directly (no
+/// oracle) the way `derived_polar_floors` and `phase_loss_bands` pin theirs.
+/// Every acceptance carries its rejection leg.
+#[cfg(test)]
+mod seq_floors {
+    use super::{
+        ElemChannels, ElementCap, ElementSnapshot, PropsChannel, SEQ_C012, SeqArm, Tolerances,
+        check_seq_arm_population, compare_element_seq, na_seq_power, no_seq_payload,
+        seq_arm_counters, seq_band, seq_power_band, tol_for,
+    };
+    use dss_core::support::mathutil::SymComp;
+    use num_complex::Complex64;
+
+    /// The `feeder` tier — the one every fixture below is judged at.
+    fn feeder() -> Tolerances {
+        tol_for("feeder")
+    }
+
+    /// `Δ = Ap2s_official − Ap2s_precise`, recovered column by column by pushing
+    /// the three unit basis vectors through the two public transforms (the
+    /// matrices themselves are private to `SymComp`).
+    fn matrix_difference() -> [[Complex64; 3]; 3] {
+        let precise = SymComp::precise();
+        let official = SymComp::official();
+        let mut d = [[Complex64::new(0.0, 0.0); 3]; 3];
+        for (j, col) in (0..3).enumerate() {
+            let mut vph = [Complex64::new(0.0, 0.0); 3];
+            vph[col] = Complex64::new(1.0, 0.0);
+            let (mut p, mut o) = ([Complex64::new(0.0, 0.0); 3], [Complex64::new(0.0, 0.0); 3]);
+            precise.phase_to_sym(&vph, &mut p);
+            official.phase_to_sym(&vph, &mut o);
+            for k in 0..3 {
+                d[k][j] = o[k] - p[k];
+            }
+        }
+        d
+    }
+
+    /// A deterministic `[-1, 1)` sample — xorshift64, so the two sweeps below are
+    /// reproducible and carry no `rand` dependency.
+    fn xorshift(state: &mut u64) -> f64 {
+        *state ^= *state << 13;
+        *state ^= *state >> 7;
+        *state ^= *state << 17;
+        ((*state >> 11) as f64) / ((1u64 << 53) as f64) * 2.0 - 1.0
+    }
+
+    /// **The constant, re-derived on every run.** r4133 builds its `Ap2s` by
+    /// numerically inverting the truncated-`sin 60°` `A`
+    /// (`Shared/mathutil.pas:302-303`, `:562-564`), capi and the port use the
+    /// analytic `A/3` at full precision — so the r4133 channel's 012 transform is
+    /// a *different matrix*, and `SEQ_C012` is the L1 row-sum norm of the
+    /// difference, i.e. the tight bound of `|Δ·Xph|_k` against `max_j |Xph_j|`.
+    #[test]
+    fn the_c012_constant_is_the_matrix_difference_row_sum() {
+        let d = matrix_difference();
+        let rows: Vec<f64> = d
+            .iter()
+            .map(|r| r.iter().map(|z| z.norm()).sum::<f64>())
+            .collect();
+        // The zero-sequence row is (1/3, 1/3, 1/3) in BOTH variants up to the
+        // inverse's own rounding, so it carries essentially none of the gap: the
+        // constant is a row maximum, not a matrix-wide sum.
+        assert!(
+            rows[0] < 1e-15,
+            "the zero-sequence row moved: {:e}",
+            rows[0]
+        );
+        let worst = rows.iter().fold(0.0f64, |m, x| m.max(*x));
+        assert_eq!(
+            worst, SEQ_C012,
+            "the measured matrix difference ({worst:e}) is no longer the pinned \
+             SEQ_C012 ({SEQ_C012:e}); rows = {rows:?}"
+        );
+    }
+
+    /// …and the bound is **attained**, not slack: the aligned unit phase vector
+    /// `Xph_j = conj(Δ_kj)/|Δ_kj|` (every `|Xph_j| = 1`) makes `|Δ·Xph|_k` equal
+    /// the row sum exactly. So `SEQ_C012 · max_j |Xph_j|` is the smallest
+    /// constant-times-max term that bounds the transform gap — proof by
+    /// construction, not by a sweep.
+    #[test]
+    fn the_c012_bound_is_attained_by_the_aligned_phase_vector() {
+        let d = matrix_difference();
+        // The row the constant is the sum OF — measured, not assumed.
+        let k = (0..3)
+            .max_by(|a, b| {
+                let row = |r: usize| d[r].iter().map(|z| z.norm()).sum::<f64>();
+                row(*a).total_cmp(&row(*b))
+            })
+            .expect("three rows");
+        assert_eq!(k, 2, "the worst row moved");
+        let mut vph = [Complex64::new(0.0, 0.0); 3];
+        for j in 0..3 {
+            vph[j] = d[k][j].conj() / d[k][j].norm();
+            assert!((vph[j].norm() - 1.0).abs() < 1e-15, "the driver is a unit");
+        }
+        let (mut p, mut o) = ([Complex64::new(0.0, 0.0); 3], [Complex64::new(0.0, 0.0); 3]);
+        SymComp::precise().phase_to_sym(&vph, &mut p);
+        SymComp::official().phase_to_sym(&vph, &mut o);
+        let attained = (o[k] - p[k]).norm();
+        let band = seq_band(&[1.0, 1.0, 1.0], 0.0, 0.0, SEQ_C012);
+        assert_eq!(band, SEQ_C012, "with rel = abs = 0 the band IS the term");
+        assert!(
+            attained <= band && attained >= band * (1.0 - 1e-9),
+            "the aligned driver attains {attained:e} against a term of {band:e}"
+        );
+    }
+
+    /// **The rejection leg of the base.** Expressed against the *sequence*
+    /// magnitude `max_j |X012_j|` — the shape the G1.3b dossier proposed — the
+    /// same constant is not a bound at all: a 20 000-vector deterministic sweep
+    /// attains `9.050363665547023e-10` of that base — **×1.7306067019301536**
+    /// `SEQ_C012` — because `X012` can near-cancel while `Xph` cannot. Against the
+    /// **phase** magnitude the bound holds on every one of the same samples
+    /// (worst `5.223836917544907e-10`, i.e. `0.99885 ×` the constant, so the sweep
+    /// also corroborates the tightness the aligned driver above proves exactly).
+    #[test]
+    fn the_sequence_magnitude_base_is_not_a_bound() {
+        let (precise, official) = (SymComp::precise(), SymComp::official());
+        let mut state = 0x2545_f491_4f6c_dd1du64;
+        let (mut worst_ph, mut worst_012) = (0.0f64, 0.0f64);
+        for _ in 0..20_000 {
+            let mut vph = [Complex64::new(0.0, 0.0); 3];
+            for slot in vph.iter_mut() {
+                *slot = Complex64::new(xorshift(&mut state), xorshift(&mut state));
+            }
+            let (mut p, mut o) = ([Complex64::new(0.0, 0.0); 3], [Complex64::new(0.0, 0.0); 3]);
+            precise.phase_to_sym(&vph, &mut p);
+            official.phase_to_sym(&vph, &mut o);
+            let gap = p
+                .iter()
+                .zip(&o)
+                .fold(0.0f64, |m, (a, b)| m.max((a - b).norm()));
+            let max_ph = vph.iter().fold(0.0f64, |m, z| m.max(z.norm()));
+            let max_012 = p.iter().fold(0.0f64, |m, z| m.max(z.norm()));
+            worst_ph = worst_ph.max(gap / max_ph);
+            worst_012 = worst_012.max(gap / max_012);
+        }
+        assert!(
+            worst_ph <= SEQ_C012 * (1.0 + 1e-9),
+            "the phase-magnitude base is not a bound after all: {worst_ph:e} > \
+             {SEQ_C012:e}"
+        );
+        assert!(
+            worst_012 > SEQ_C012 * 1.5,
+            "the sequence-magnitude base looked like a bound ({worst_012:e} vs \
+             {SEQ_C012:e}) — the sweep is too small to find the near-cancelling \
+             vectors it must refute"
+        );
+    }
+
+    /// **Why the ordinary band's base is the phase magnitude too**, live numbers.
+    /// `Test/Stevenson.dss` `Vsource.source` terminal 0, negative-sequence slot:
+    /// the port↔r4133 gap is `5.6738466845180485e-05 V` while `|V012_2|` is only
+    /// `8.71253881e-6 V`, so the naive `v_abs + v_rel·|V012_k|` band fails by
+    /// **×56.74**. The band this module emits is built from the terminal's phase
+    /// magnitudes (`max_j |Vph_j| = 133934 V` there), and even its *guaranteed*
+    /// part — `mean ≥ max/3` for three non-negative magnitudes — already clears
+    /// the gap by 7.8 ×.
+    #[test]
+    fn the_012_band_base_is_the_phase_magnitude_not_the_sequence_magnitude() {
+        let tol = feeder();
+        let gap = 5.6738466845180485e-05_f64;
+        let v012 = 8.712_538_81e-6_f64;
+        let naive = tol.v_abs + tol.v_rel * v012;
+        assert_eq!(naive, 1.000_000_087_125_388_1e-06);
+        assert!(
+            gap / naive > 56.7,
+            "the naive band no longer fails: ×{}",
+            gap / naive
+        );
+        // The three phase magnitudes of that terminal are not all equal, but any
+        // three non-negative numbers have `mean ≥ max/3`, so this is a LOWER
+        // bound on the band the comparator actually emits there.
+        let max_ph = 133_934.0_f64;
+        let floor = seq_band(&[max_ph, 0.0, 0.0], tol.v_rel, tol.v_abs, 0.0);
+        assert_eq!(floor, tol.v_abs + tol.v_rel * max_ph / 3.0);
+        assert!(
+            floor / gap > 7.5,
+            "the phase-magnitude band lost its headroom: ×{}",
+            floor / gap
+        );
+    }
+
+    /// The `SeqPowers` band is the exact image of its two factor bands, second-order
+    /// term included — and it is **attained**, so it is a derivation and not a
+    /// padded guess: perturbing a real `V` by `+bv` and a real `I` by `+bi` moves
+    /// `0.003·V·conj(I)` by exactly `seq_power_band(bv, bi, |V|, |I|)`.
+    #[test]
+    fn the_seq_power_band_is_the_image_of_its_two_factor_bands() {
+        let (v, i) = (7100.0_f64, 190.0_f64);
+        let (bv, bi) = (7.2e-5_f64, 3e-5_f64);
+        let s = 0.003 * v * i;
+        let moved = 0.003 * (v + bv) * (i + bi);
+        let band = seq_power_band(bv, bi, v, i);
+        assert_eq!(band, 0.00068004000648);
+        // Expanded, the perturbation IS the band's three terms — same expression,
+        // different association.
+        let expanded = 0.003 * (bv * i + v * bi + bv * bi);
+        assert!(
+            (expanded - band).abs() <= 4.0 * f64::EPSILON * band,
+            "the expansion {expanded:e} is not the band {band:e}"
+        );
+        // Taken as a literal difference of the two products it agrees only to the
+        // cancellation floor of that subtraction — `|S| = 4047 kVA` against a
+        // `6.8e-4 kVA` band, so one ulp of `S` is already `7e-10` of the band.
+        // That floor is a property of measuring the band this way, not of the
+        // band.
+        assert!(
+            (moved - s - band).abs() <= 8.0 * f64::EPSILON * s,
+            "the worst-aligned perturbation {} does not attain the band {band:e}",
+            moved - s
+        );
+        // The second-order term is really in there: dropping it is strictly
+        // smaller, so the band can never be reproduced by the two first-order
+        // terms alone.
+        let first_order = 0.003 * (bv * i + v * bi);
+        assert!(first_order < band);
+    }
+
+    /// A 3-phase, 2-terminal line whose port and oracle sides agree exactly:
+    /// three unequal conductor magnitudes per terminal (so `mean` and `max`
+    /// differ and the `SEQ_C012` term is visible), and `S012 = 0.003·V012·I012`
+    /// with both factors real.
+    fn three_phase_pair() -> (Vec<ElementSnapshot>, ElementCap) {
+        let seq_i = vec![10.0, 190.0, 40.0, 10.0, 190.0, 40.0];
+        let seq_v = vec![50.0, 7100.0, 60.0, 50.0, 7100.0, 60.0];
+        let seq_p_kw: Vec<f64> = seq_v
+            .iter()
+            .zip(&seq_i)
+            .map(|(v, i)| 0.003 * v * i)
+            .collect();
+        let seq_p_kvar = vec![0.0; 6];
+        let snap = ElementSnapshot {
+            name: "Line.l1".to_string(),
+            enabled: true,
+            bus_names: vec!["src.1.2.3".to_string(), "b1.1.2.3".to_string()],
+            powers: vec![Complex64::new(0.0, 0.0); 6],
+            currents: vec![Complex64::new(0.0, 0.0); 6],
+            loss_w: (0.0, 0.0),
+            currents_mag_ang: Vec::new(),
+            voltages_mag_ang: Vec::new(),
+            residuals: Vec::new(),
+            n_terms: 2,
+            n_conds: 3,
+            n_phases: 3,
+            node_order: Vec::new(),
+            energy_meter: None,
+            phase_losses: Vec::new(),
+            num_controls: 0,
+            ocp_dev_index: 0,
+            ocp_dev_type: 0,
+            has_volt_control: false,
+            has_switch_control: false,
+            seq_arm: SeqArm::ThreePhase,
+            seq_currents: seq_i.clone(),
+            seq_voltages: seq_v.clone(),
+            seq_powers: seq_p_kw
+                .iter()
+                .zip(&seq_p_kvar)
+                .map(|(p, q)| Complex64::new(*p, *q))
+                .collect(),
+        };
+        let cap = ElementCap {
+            name: "Line.l1".to_string(),
+            enabled: Some(true),
+            cma_mag: vec![100.0, 200.0, 300.0, 100.0, 200.0, 300.0],
+            vma_mag: vec![7200.0, 7100.0, 7000.0, 7200.0, 7100.0, 7000.0],
+            seq_i,
+            seq_v,
+            seq_p_kw,
+            seq_p_kvar,
+            ..ElementCap::default()
+        };
+        (vec![snap], cap)
+    }
+
+    /// The band the fixture's terminal 0 gets, per channel: `abs + rel·mean`
+    /// everywhere, plus `SEQ_C012·max` on r4133 only.
+    #[test]
+    fn the_r4133_channel_carries_the_extra_truncated_matrix_term() {
+        let tol = feeder();
+        let iph = [100.0, 200.0, 300.0];
+        let capi = seq_band(&iph, tol.i_rel, tol.i_abs, 0.0);
+        let r4133 = seq_band(&iph, tol.i_rel, tol.i_abs, SEQ_C012);
+        assert_eq!(capi, 2.9999999999999997e-5);
+        let term = SEQ_C012 * 300.0;
+        assert_eq!(term, 1.568877028290676e-7);
+        // The two bands differ by exactly that term, up to the last ulp of the
+        // subtraction of two 3e-5-sized sums.
+        assert!(
+            (r4133 - capi - term).abs() <= 4.0 * f64::EPSILON * capi,
+            "the r4133 band is not the capi band plus the C012 term:              {r4133:e} − {capi:e} vs {term:e}"
+        );
+        assert!(r4133 > capi, "the r4133 band must be the wider one");
+        // The extra term is an ADDITION, never a relaxation — but how small it is
+        // depends on the tier, and that is worth pinning: at the `feeder` tier's
+        // `i_rel = 1e-7` it is 7.8e-3 of the ordinary `rel·mean` term, while at
+        // the `micro` tier's `1e-9` it is *comparable* to it
+        // (`SEQ_C012·max / (rel·mean)` ≈ `0.52·max/mean`). That is why "switch
+        // the port to `SymComp::official()`" is a **weak** non-vacuity probe —
+        // at the feeder tier it would pass — and is not used as this sub-step's
+        // demo.
+        let rel_term = capi - tol.i_abs;
+        assert_eq!(rel_term, 1.9999999999999998e-5);
+        assert!(
+            (7e-3..8e-3).contains(&(term / rel_term)),
+            "the C012/rel ratio moved at the feeder tier: {}",
+            term / rel_term
+        );
+        let micro_rel_term = tol_for("micro").i_rel * 200.0;
+        assert!(
+            term / micro_rel_term > 0.5,
+            "at the micro tier the C012 term is no longer comparable to the rel              term ({}), which would make the `official()` mutation a usable demo              after all",
+            term / micro_rel_term
+        );
+    }
+
+    /// The comparator accepts an error at half the band and rejects one at one
+    /// and a half — on all three channels, at the values the fixture actually
+    /// carries.
+    #[test]
+    fn an_error_inside_the_band_passes() {
+        let tol = feeder();
+        let (mut snaps, cap) = three_phase_pair();
+        let bi = seq_band(&[100.0, 200.0, 300.0], tol.i_rel, tol.i_abs, 0.0);
+        let bv = seq_band(&[7200.0, 7100.0, 7000.0], tol.v_rel, tol.v_abs, 0.0);
+        let bs = seq_power_band(bv, bi, 7100.0, 190.0);
+        snaps[0].seq_currents[1] += 0.5 * bi;
+        snaps[0].seq_voltages[1] += 0.5 * bv;
+        snaps[0].seq_powers[4] += Complex64::new(0.0, 0.5 * bs);
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &tol,
+            "seq",
+            PropsChannel::CapiV0145,
+            ElemChannels::ALL,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "SeqCurrents[1] differs")]
+    fn a_current_outside_the_band_fails() {
+        let tol = feeder();
+        let (mut snaps, cap) = three_phase_pair();
+        let bi = seq_band(&[100.0, 200.0, 300.0], tol.i_rel, tol.i_abs, 0.0);
+        snaps[0].seq_currents[1] += 1.5 * bi;
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &tol,
+            "seq",
+            PropsChannel::CapiV0145,
+            ElemChannels::ALL,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "SeqVoltages[4] differs")]
+    fn a_voltage_outside_the_band_fails() {
+        let tol = feeder();
+        let (mut snaps, cap) = three_phase_pair();
+        let bv = seq_band(&[7200.0, 7100.0, 7000.0], tol.v_rel, tol.v_abs, 0.0);
+        snaps[0].seq_voltages[4] += 1.5 * bv;
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &tol,
+            "seq",
+            PropsChannel::CapiV0145,
+            ElemChannels::ALL,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "SeqPowers[1] differs")]
+    fn a_power_outside_the_band_fails() {
+        let tol = feeder();
+        let (mut snaps, cap) = three_phase_pair();
+        let bi = seq_band(&[100.0, 200.0, 300.0], tol.i_rel, tol.i_abs, 0.0);
+        let bv = seq_band(&[7200.0, 7100.0, 7000.0], tol.v_rel, tol.v_abs, 0.0);
+        let bs = seq_power_band(bv, bi, 7100.0, 190.0);
+        snaps[0].seq_powers[1] += Complex64::new(1.5 * bs, 0.0);
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &tol,
+            "seq",
+            PropsChannel::CapiV0145,
+            ElemChannels::ALL,
+        );
+    }
+
+    /// Slot ordering is load-bearing and a scale mutation cannot prove it: the
+    /// zero- and negative-sequence slots of an unbalanced terminal are far apart,
+    /// so swapping them reds.
+    #[test]
+    #[should_panic(expected = "SeqCurrents[0] differs")]
+    fn swapping_the_zero_and_negative_sequence_slots_fails() {
+        let tol = feeder();
+        let (mut snaps, cap) = three_phase_pair();
+        snaps[0].seq_currents.swap(0, 2);
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &tol,
+            "seq",
+            PropsChannel::CapiV0145,
+            ElemChannels::ALL,
+        );
+    }
+
+    /// The lane selector is honoured per channel — and, because none of the three
+    /// is in the `newton*` exclusion, `CURRENTS_ONLY` still compares all three
+    /// (`ElemChannels::CURRENTS_ONLY`, G1.3b paragraph).
+    #[test]
+    #[should_panic(expected = "SeqPowers[1] differs")]
+    fn the_currents_only_lane_policy_still_compares_seq_powers() {
+        let tol = feeder();
+        let (mut snaps, cap) = three_phase_pair();
+        snaps[0].seq_powers[1] += Complex64::new(1.0, 0.0);
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &tol,
+            "seq",
+            PropsChannel::CapiV0145,
+            ElemChannels::CURRENTS_ONLY,
+        );
+    }
+
+    /// …while a selector that IS cleared drops only that channel's value compare:
+    /// the same corruption passes with `seq_powers: false`, and the structural
+    /// asserts still run.
+    #[test]
+    fn a_cleared_selector_drops_only_that_channels_values() {
+        let tol = feeder();
+        let (mut snaps, cap) = three_phase_pair();
+        snaps[0].seq_powers[1] += Complex64::new(1.0, 0.0);
+        let ch = ElemChannels {
+            seq_powers: false,
+            ..ElemChannels::ALL
+        };
+        compare_element_seq(&snaps, &cap, &tol, "seq", PropsChannel::CapiV0145, ch);
+    }
+
+    /// A 1-phase element in a `CktModel=Positive` circuit: two terminals, one
+    /// conductor each, the terminal's own quantity in slot `3t+1` and **exact
+    /// zeros** beside it. That layout is capi's (`CAPI/CAPI_Alt.pas:555`/`:562`)
+    /// and the port's; r4133's `Count := 2` / `inc(count)` writes slots `2, 3`
+    /// instead, which is D-b1.
+    fn posseq_pair() -> (Vec<ElementSnapshot>, ElementCap) {
+        let seq_i = vec![0.0, 50.0, 0.0, 0.0, 50.0, 0.0];
+        let seq_v = vec![0.0, 2400.0, 0.0, 0.0, 2400.0, 0.0];
+        let seq_p_kw = vec![0.0, 360.0, 0.0, 0.0, -360.0, 0.0];
+        let seq_p_kvar = vec![0.0; 6];
+        let snap = ElementSnapshot {
+            name: "Line.l1".to_string(),
+            enabled: true,
+            bus_names: vec!["src.1".to_string(), "b1.1".to_string()],
+            powers: vec![Complex64::new(0.0, 0.0); 2],
+            currents: vec![Complex64::new(0.0, 0.0); 2],
+            loss_w: (0.0, 0.0),
+            currents_mag_ang: Vec::new(),
+            voltages_mag_ang: Vec::new(),
+            residuals: Vec::new(),
+            n_terms: 2,
+            n_conds: 1,
+            n_phases: 1,
+            node_order: Vec::new(),
+            energy_meter: None,
+            phase_losses: Vec::new(),
+            num_controls: 0,
+            ocp_dev_index: 0,
+            ocp_dev_type: 0,
+            has_volt_control: false,
+            has_switch_control: false,
+            seq_arm: SeqArm::PosSeqSinglePhase,
+            seq_currents: seq_i.clone(),
+            seq_voltages: seq_v.clone(),
+            seq_powers: seq_p_kw.iter().map(|p| Complex64::new(*p, 0.0)).collect(),
+        };
+        let cap = ElementCap {
+            name: "Line.l1".to_string(),
+            enabled: Some(true),
+            cma_mag: vec![50.0, 50.0],
+            vma_mag: vec![2400.0, 2400.0],
+            seq_i,
+            seq_v,
+            seq_p_kw,
+            seq_p_kvar,
+            ..ElementCap::default()
+        };
+        (vec![snap], cap)
+    }
+
+    /// The positive-sequence arm compares clean, and its band carries **no**
+    /// `SEQ_C012` term on either channel — no matrix runs there.
+    #[test]
+    fn the_positive_sequence_arm_compares_on_both_channels() {
+        let (snaps, cap) = posseq_pair();
+        for channel in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            compare_element_seq(
+                &snaps,
+                &cap,
+                &feeder(),
+                "posseq",
+                channel,
+                ElemChannels::ALL,
+            );
+        }
+    }
+
+    /// **D-b1's rejection leg.** r4133's layout — `Count := 2` then `inc(count)`,
+    /// so the positive-sequence power lands in slot `3t+2` and then walks into the
+    /// next terminal's slots — reds on the very first banded slot, because the
+    /// value it should carry has moved out of it. This is the shape the population
+    /// guard promises never reaches the r4133 channel.
+    #[test]
+    #[should_panic(expected = "SeqPowers[1] differs")]
+    fn the_r4133_posseq_slot_layout_reds() {
+        let (snaps, mut cap) = posseq_pair();
+        // capi/port `[0, S, 0, 0, S', 0]` vs r4133 `[0, 0, S, S', 0, 0]`.
+        cap.seq_p_kw = vec![0.0, 0.0, 360.0, -360.0, 0.0, 0.0];
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &feeder(),
+            "posseq",
+            PropsChannel::R4133,
+            ElemChannels::ALL,
+        );
+    }
+
+    /// …and the exact-zero rail catches the half a band could not: junk in a
+    /// zero- or negative-sequence slot, with the positive one left correct, is
+    /// rejected with **no** tolerance at all. That is what makes the arm's
+    /// identification discrete rather than "small enough".
+    #[test]
+    #[should_panic(expected = "positive-sequence arm must be exactly zero on the oracle side")]
+    fn a_nonzero_zero_sequence_slot_on_the_posseq_arm_reds() {
+        let (snaps, mut cap) = posseq_pair();
+        cap.seq_p_kw[2] = 360.0;
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &feeder(),
+            "posseq",
+            PropsChannel::R4133,
+            ElemChannels::ALL,
+        );
+    }
+
+    /// The same rail on the **port** side, and at a magnitude no band would ever
+    /// admit as noise being irrelevant: `1e-30` kW in a slot that must be `0.0`.
+    #[test]
+    #[should_panic(expected = "rust slot 0 of the positive-sequence arm must be exactly zero")]
+    fn a_nonzero_port_zero_sequence_slot_on_the_posseq_arm_reds() {
+        let (mut snaps, cap) = posseq_pair();
+        snaps[0].seq_currents[0] = 1e-30;
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &feeder(),
+            "posseq",
+            PropsChannel::R4133,
+            ElemChannels::ALL,
+        );
+    }
+
+    /// A 2-phase element: the not-available arm, whose whole payload is the two
+    /// engines' sentinels. `channel` picks the `SeqPowers` spelling.
+    fn na_pair(channel: PropsChannel) -> (Vec<ElementSnapshot>, ElementCap) {
+        let snap = ElementSnapshot {
+            name: "Load.634a".to_string(),
+            enabled: true,
+            bus_names: vec!["b1.1.2".to_string()],
+            powers: vec![Complex64::new(0.0, 0.0); 2],
+            currents: vec![Complex64::new(0.0, 0.0); 2],
+            loss_w: (0.0, 0.0),
+            currents_mag_ang: Vec::new(),
+            voltages_mag_ang: Vec::new(),
+            residuals: Vec::new(),
+            n_terms: 1,
+            n_conds: 2,
+            n_phases: 2,
+            node_order: Vec::new(),
+            energy_meter: None,
+            phase_losses: Vec::new(),
+            num_controls: 0,
+            ocp_dev_index: 0,
+            ocp_dev_type: 0,
+            has_volt_control: false,
+            has_switch_control: false,
+            seq_arm: SeqArm::NotAvailable,
+            seq_currents: vec![1.0; 3],
+            seq_voltages: vec![1.0; 3],
+            seq_powers: vec![Complex64::new(-1.0, 0.0); 3],
+        };
+        let kvar = match channel {
+            PropsChannel::CapiV0145 => vec![-1.0; 3],
+            PropsChannel::R4133 => vec![0.0; 3],
+        };
+        let cap = ElementCap {
+            name: "Load.634a".to_string(),
+            enabled: Some(true),
+            cma_mag: vec![12.0, 12.0],
+            vma_mag: vec![277.0, 277.0],
+            seq_i: vec![1.0; 3],
+            seq_v: vec![1.0; 3],
+            seq_p_kw: vec![-1.0; 3],
+            seq_p_kvar: kvar,
+            ..ElementCap::default()
+        };
+        (vec![snap], cap)
+    }
+
+    /// **D-b2.** Both channels return `Cabs(-1 + 0j) = 1.0` for the two magnitude
+    /// reads, so only the power sentinel is spelled differently — and each
+    /// channel's own spelling folds, the other one does not.
+    #[test]
+    fn the_na_power_sentinel_fold_is_channel_scoped() {
+        // capi 0.14.5 `CAPI/CAPI_Alt.pas:567` writes `(-1, -1)`; r4133
+        // `DDLL/DCktElement.pas:772` writes `(-1, 0)`, which the port emits.
+        assert_eq!(
+            na_seq_power(-1.0, -1.0, PropsChannel::CapiV0145),
+            (-1.0, 0.0)
+        );
+        assert_eq!(na_seq_power(-1.0, 0.0, PropsChannel::R4133), (-1.0, 0.0));
+        // r4133 never spells it capi's way, so there `(-1, -1)` is not a sentinel
+        // and stays put (and then reds against the port's `(-1, 0)`).
+        assert_eq!(na_seq_power(-1.0, -1.0, PropsChannel::R4133), (-1.0, -1.0));
+        // A ledger-rewritten capi cap already carries the port's spelling; it
+        // passes through untouched, which is why the fold cannot fight a rewrite.
+        assert_eq!(
+            na_seq_power(-1.0, 0.0, PropsChannel::CapiV0145),
+            (-1.0, 0.0)
+        );
+        // And it is a spelling rule, not a value one: nothing else folds.
+        assert_eq!(
+            na_seq_power(-1.0, -2.0, PropsChannel::CapiV0145),
+            (-1.0, -2.0)
+        );
+        assert_eq!(
+            na_seq_power(-2.0, -1.0, PropsChannel::CapiV0145),
+            (-2.0, -1.0)
+        );
+        // End to end, on both channels' own captures.
+        for channel in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            let (snaps, cap) = na_pair(channel);
+            compare_element_seq(&snaps, &cap, &feeder(), "na", channel, ElemChannels::ALL);
+        }
+    }
+
+    /// The rejection leg of the fold: capi's spelling arriving on the r4133
+    /// channel is not absorbed.
+    #[test]
+    #[should_panic(expected = "n/A SeqPowers sentinel")]
+    fn the_capi_sentinel_on_the_r4133_channel_fails() {
+        let (snaps, mut cap) = na_pair(PropsChannel::R4133);
+        cap.seq_p_kvar = vec![-1.0; 3];
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &feeder(),
+            "na",
+            PropsChannel::R4133,
+            ElemChannels::ALL,
+        );
+    }
+
+    /// …and the port emitting capi's spelling reds on the r4133 channel too — the
+    /// mutation that proves the fold is a normalization of the *capture*, not a
+    /// blanket accept of either spelling.
+    #[test]
+    #[should_panic(expected = "rust slot 0 of the not-available arm")]
+    fn the_port_emitting_the_capi_sentinel_fails() {
+        let (mut snaps, cap) = na_pair(PropsChannel::R4133);
+        snaps[0].seq_powers = vec![Complex64::new(-1.0, -1.0); 3];
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &feeder(),
+            "na",
+            PropsChannel::R4133,
+            ElemChannels::ALL,
+        );
+    }
+
+    /// A wrong arm fails in both directions, because each arm forces a shape the
+    /// others contradict: a port claiming the not-available arm against a real
+    /// transformed capture…
+    #[test]
+    #[should_panic(expected = "not-available arm must read exactly")]
+    fn a_port_claiming_the_na_arm_against_real_values_fails() {
+        let (mut snaps, mut cap) = na_pair(PropsChannel::CapiV0145);
+        cap.seq_i = vec![3.0, 11.0, 2.0];
+        cap.seq_v = vec![100.0, 277.0, 90.0];
+        snaps[0].seq_currents = vec![3.0, 11.0, 2.0];
+        snaps[0].seq_voltages = vec![100.0, 277.0, 90.0];
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &feeder(),
+            "na",
+            PropsChannel::CapiV0145,
+            ElemChannels::ALL,
+        );
+    }
+
+    /// …and a port claiming the positive-sequence arm against the sentinel
+    /// capture the oracle really returned.
+    #[test]
+    #[should_panic(expected = "positive-sequence arm must be exactly zero on the oracle side")]
+    fn a_port_claiming_the_posseq_arm_against_the_na_capture_fails() {
+        let (mut snaps, cap) = posseq_pair();
+        let (_, na) = na_pair(PropsChannel::CapiV0145);
+        let mut cap = ElementCap {
+            seq_i: vec![1.0; 6],
+            seq_v: vec![1.0; 6],
+            seq_p_kw: vec![-1.0; 6],
+            seq_p_kvar: vec![-1.0; 6],
+            ..cap
+        };
+        cap.name = na.name.clone();
+        snaps[0].name = na.name;
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &feeder(),
+            "na",
+            PropsChannel::CapiV0145,
+            ElemChannels::ALL,
+        );
+    }
+
+    /// The arm the port claims must agree with its own `NPhases` on the half of
+    /// the branch that needs no circuit flag.
+    #[test]
+    #[should_panic(expected = "contradicts its own NPhases")]
+    fn an_arm_that_contradicts_nphases_fails() {
+        let (mut snaps, cap) = three_phase_pair();
+        snaps[0].seq_arm = SeqArm::NotAvailable;
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &feeder(),
+            "seq",
+            PropsChannel::CapiV0145,
+            ElemChannels::ALL,
+        );
+    }
+
+    /// An **enabled** `UPFCControl`: 0 terminals, so `3 · NTerms = 0` slots on
+    /// every engine — the two-sided emptiness [`no_seq_payload`] accepts.
+    fn zero_terminal_pair() -> (Vec<ElementSnapshot>, ElementCap) {
+        let snap = ElementSnapshot {
+            name: "UPFCControl.myupfcctrl".to_string(),
+            enabled: true,
+            bus_names: Vec::new(),
+            powers: Vec::new(),
+            currents: Vec::new(),
+            loss_w: (0.0, 0.0),
+            currents_mag_ang: Vec::new(),
+            voltages_mag_ang: Vec::new(),
+            residuals: Vec::new(),
+            n_terms: 0,
+            n_conds: 0,
+            n_phases: 0,
+            node_order: Vec::new(),
+            energy_meter: None,
+            phase_losses: Vec::new(),
+            num_controls: 0,
+            ocp_dev_index: 0,
+            ocp_dev_type: 0,
+            has_volt_control: false,
+            has_switch_control: false,
+            seq_arm: SeqArm::NotAvailable,
+            seq_currents: Vec::new(),
+            seq_voltages: Vec::new(),
+            seq_powers: Vec::new(),
+        };
+        let cap = ElementCap {
+            name: "UPFCControl.myupfcctrl".to_string(),
+            enabled: Some(true),
+            ..ElementCap::default()
+        };
+        (vec![snap], cap)
+    }
+
+    /// The one extra shape the oracle side may add on a 0-terminal element is the
+    /// capi `DefaultResult` sentinel, **measured** at the wire: `seq_i = []`,
+    /// `seq_v = [0.0]`, `seq_p = ([0.0], [])`. Nothing else reads as "no payload".
+    #[test]
+    fn the_capi_default_result_sentinel_is_the_only_extra_zero_terminal_shape() {
+        // r4133: all four empty. capi: the measured sentinel.
+        assert!(no_seq_payload(&[], &[], &[], &[]));
+        assert!(no_seq_payload(&[], &[0.0], &[0.0], &[]));
+        // …and nothing else does: a real one-sample reading, a non-zero
+        // sentinel-shaped value, a kvar without a kW, or two samples all fail.
+        assert!(!no_seq_payload(&[1.0], &[], &[], &[]));
+        assert!(!no_seq_payload(&[], &[1e-30], &[], &[]));
+        assert!(!no_seq_payload(&[], &[], &[0.0], &[0.0]));
+        assert!(!no_seq_payload(&[], &[], &[], &[0.0]));
+        assert!(!no_seq_payload(&[0.0, 0.0], &[], &[], &[]));
+        // End to end, both shapes.
+        let (snaps, cap) = zero_terminal_pair();
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &feeder(),
+            "upfc",
+            PropsChannel::R4133,
+            ElemChannels::ALL,
+        );
+        let (snaps, mut cap) = zero_terminal_pair();
+        cap.seq_v = vec![0.0];
+        cap.seq_p_kw = vec![0.0];
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &feeder(),
+            "upfc",
+            PropsChannel::CapiV0145,
+            ElemChannels::ALL,
+        );
+    }
+
+    /// Rejection leg 1 — the **oracle** grows a payload the port does not have.
+    #[test]
+    #[should_panic(expected = "0-terminal element must carry no sequence payload")]
+    fn a_zero_terminal_element_with_an_oracle_seq_payload_fails() {
+        let (snaps, mut cap) = zero_terminal_pair();
+        cap.seq_i = vec![1.0, 1.0, 1.0];
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &feeder(),
+            "upfc",
+            PropsChannel::CapiV0145,
+            ElemChannels::ALL,
+        );
+    }
+
+    /// Rejection leg 2 — the **port** grows one the oracle does not have, the
+    /// direction a one-sided check on `exp` would miss.
+    #[test]
+    #[should_panic(expected = "0-terminal element must carry no sequence payload")]
+    fn a_zero_terminal_element_with_a_port_seq_payload_fails() {
+        let (mut snaps, cap) = zero_terminal_pair();
+        snaps[0].seq_currents = vec![1.0];
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &feeder(),
+            "upfc",
+            PropsChannel::CapiV0145,
+            ElemChannels::ALL,
+        );
+    }
+
+    /// A **disabled** element: the capture must skip all four arrays, and a
+    /// payload there means the enabled-only rule broke (which on r4133 mode `9`
+    /// would be a nil-`NodeRef` read).
+    #[test]
+    #[should_panic(expected = "disabled element must carry no sequence payload")]
+    fn a_disabled_element_with_a_payload_fails() {
+        let (mut snaps, mut cap) = three_phase_pair();
+        snaps[0].enabled = false;
+        cap.enabled = Some(false);
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &feeder(),
+            "seq",
+            PropsChannel::CapiV0145,
+            ElemChannels::ALL,
+        );
+    }
+
+    /// A capture that ran without the flag is a failure, not a silent skip — the
+    /// element-level twin of `capture_guard::require_capture`.
+    #[test]
+    #[should_panic(expected = "carries no `enabled` field")]
+    fn a_capture_without_the_flag_fails() {
+        let (snaps, mut cap) = three_phase_pair();
+        cap.enabled = None;
+        compare_element_seq(
+            &snaps,
+            &cap,
+            &feeder(),
+            "seq",
+            PropsChannel::CapiV0145,
+            ElemChannels::ALL,
+        );
+    }
+
+    /// A shape miss is never excused by a value exclusion: the length assert runs
+    /// under every channel policy.
+    #[test]
+    #[should_panic(expected = "oracle SeqCurrents length 3 != 3·NTerms (6)")]
+    fn a_short_oracle_array_fails_under_every_policy() {
+        let (snaps, mut cap) = three_phase_pair();
+        cap.seq_i.truncate(3);
+        let ch = ElemChannels {
+            seq_currents: false,
+            seq_voltages: false,
+            seq_powers: false,
+            ..ElemChannels::ALL
+        };
+        compare_element_seq(&snaps, &cap, &feeder(), "seq", PropsChannel::CapiV0145, ch);
+    }
+
+    /// The D-b1 population guard, both directions, over **injected** counters.
+    #[test]
+    fn the_seq_arm_population_holds_while_the_arm_stays_off_r4133() {
+        check_seq_arm_population(298_565, 1_234, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "reached the r4133 channel")]
+    fn the_seq_arm_population_fires_when_the_arm_reaches_r4133() {
+        check_seq_arm_population(298_565, 1_234, 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "no gated element took the 1-phase positive-sequence arm")]
+    fn the_seq_arm_population_fires_when_the_capi_arm_is_never_reached() {
+        check_seq_arm_population(298_565, 0, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "sequence-arm census counted nothing")]
+    fn the_seq_arm_population_fires_when_nothing_was_counted() {
+        check_seq_arm_population(0, 1, 0);
+    }
+
+    /// **The D24 immunity rail** (coordinator decision, 2026-09-05): a fixture
+    /// call to the comparator must leave the shipped census alone, so that the
+    /// numbers `assert_seq_arm_population` judges are the *gating* population
+    /// and nothing else. The rail is this module itself — the call below is the
+    /// 1φ-positive-sequence arm on `PropsChannel::R4133`, i.e. exactly the shape
+    /// whose four fixture rows made the epilogue guard read
+    /// `(297 915, 81, 4)` and fail under `cargo test --workspace` while the same
+    /// tree passed a one-test run at `(297 896, 79, 0)`. The comparator now only
+    /// *returns* the arm; [`super::record_seq_arm`] is the runner's call.
+    ///
+    /// `SEQ_ARM_POSSEQ_R4133` is the one counter that can be asserted from a
+    /// test thread while the ~200 s gate test runs beside it: the gating
+    /// population contributes **zero** to it (that is precisely what
+    /// `assert_seq_arm_population` asserts, and a run where it did not would be
+    /// red there too), whereas `seen` and the capi counter are incremented
+    /// continuously by the gate and have no deterministic value here. It is also
+    /// the counter this rail exists for.
+    #[test]
+    fn a_fixture_call_on_the_r4133_posseq_arm_does_not_move_the_census() {
+        let (snaps, cap) = posseq_pair();
+        let arm = compare_element_seq(
+            &snaps,
+            &cap,
+            &feeder(),
+            "posseq",
+            PropsChannel::R4133,
+            ElemChannels::ALL,
+        );
+        assert_eq!(
+            arm,
+            Some(SeqArm::PosSeqSinglePhase),
+            "the comparator must hand the classified arm back to its caller: the \
+             census has no other source"
+        );
+        let (_seen, _posseq_capi, posseq_r4133) = seq_arm_counters();
+        assert_eq!(
+            posseq_r4133, 0,
+            "a fixture call to `compare_element_seq` moved the shipped \
+             sequence-arm census (SEQ_ARM_POSSEQ_R4133 = {posseq_r4133}). The census \
+             must be recorded by the corpus gate's runner only (coordinator \
+             decision D24): a comparator-side census counts these fixtures too, and \
+             the epilogue guard then judges the gating population plus whatever \
+             this module ran."
+        );
+    }
+}
+
 /// One element-specific state probe: the value string of `element`'s property
 /// `prop` — oracle `Properties(p).Val` vs the Rust `?` query (both render via
 /// the class property surface). Compared as a numeric skeleton (numbers by
@@ -4315,7 +6033,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:1253-1258` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:1438-1443` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -4344,7 +6062,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:1253-1258` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:1438-1443` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -4408,7 +6126,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     **compare** on r4133. The exclusion is a statement about the 0.14.5
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
-    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1253-1258`
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1438-1443`
     //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
@@ -4454,7 +6172,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///
 /// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1253-1258` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1438-1443` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
@@ -4647,7 +6365,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1253-1258`
+    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1438-1443`
     /// forbids masking there, plus the two `pctperm` rows RP2.1 measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {

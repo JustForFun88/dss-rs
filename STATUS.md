@@ -134,35 +134,35 @@ the six CLAUDE.md §"Known upstream bugs" reproduced in any lane. Full record:
 [`golden-rebase.md`](docs/phase-records/golden-rebase.md) section "GOLDEN_REBASE
 WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 
-**GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened 2026-08-08).
-Landed: **G1.1** killed on day one and satisfied instead by R4133_PROPS RP4.1
-(above), whose live r4133 property compare unblocks **G3.4**/**G3.5**; **G1.2**
-(the ESPVLControl deck, the last zero-coverage class) 2026-08-29; **G1.0** — the
-rails ahead of G1.3a (D1/D2/D3) — 2026-09-04 (`c4b67a6e`, settlement `42454b64`):
-the ten-flag manifest vocabulary in **one** lock regen, explicit `channels`, the
-capture-presence guard and the r4133 bridge rails, whose mode probe **discharges
-the G1.11 mode-capability acceptance for the whole WP**; **G1.3a** 2026-09-04 on
-lane `lane-e` (D7; `d8e71991`, settlement `588e0bfe`): `Enabled` + per-element
-`CurrentsMagAng`/`VoltagesMagAng`/`Residuals` on both channels over 442 cases, the
-A/B/C capture order enforced, `WP_G1_MODES` 96 → 97, **1** new ledger entry
-(`DIVERGENCES.md` L8) + **13** measured widenings, **4 959 / 0 / 5** per lane,
-Δ = 0; **G1.3d(i)** 2026-09-05 (D4/D19; `e4d99806` + `b7d7da2a`, settlement
-`c9c4ac09`): the per-element counts, `NodeOrder` and `EnergyMeter` over 440 cases
-compared exactly, both G1.3d verdicts and the D19 `MakeBusList` zone-reset
-cherry-pick, **0** ledger entries, **5 392 / 0 / 5** per lane, Δ = 0, audit 15
-findings (12 fixed / 2 recorded / 1 refuted); **G1.3d(ii)** 2026-09-05 (`e6d66d66`,
-settlement `43108993`, + docs): `PhaseLosses` + the five control-derived scalars over the
-same 440 cases — **§G1.3d complete** — a derived floor, the first channel to join
-`LANE_SKIP_ELEM_POWERS`, **0** new ledger entries + **10** measured widenings, A-1 fixed,
-`DIVERGENCES.md` L9, **5 784 / 0 / 5** per lane, Δ = 0; audit 18 findings (13 fixed /
-1 recorded / 0 refuted), the real one: `MakePosSeq` must NOT re-attach. No golden byte moved in any.
-G1.3b–c, G1.4–G1.11c and WP-G3–G5 remain; full records in the same file, section
-"GOLDEN_REBASE WP-G1 — records".
-**Next.** **`GOLDEN_REBASE_PLAN.md` G1.3b** on the element lane (then G1.3c),
-with the bus, PD/meter and singles lanes running in parallel per D7. Then
-G1.4–G1.11c and WP-G3–G5 — inside which **G3.4**/**G3.5**, blocked since
-2026-08-08, are runnable. Queued behind GOLDEN_REBASE: `WASM_USERMODELS`
-follow-ups, RESONANCE, MULTITHREADING, UPGRADE.
+**GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened
+2026-08-08). Landed: **G1.1** killed on day one and satisfied instead by
+R4133_PROPS RP4.1 (above); **G1.2** (the ESPVLControl deck) 2026-08-29;
+**G1.0** — the rails ahead of G1.3a (D1/D2/D3) — 2026-09-04 (`c4b67a6e` /
+`42454b64`): the manifest flag vocabulary, explicit `channels`, the
+capture-presence guard and the r4133 bridge rails, whose mode probe
+**discharges the G1.11 mode-capability acceptance for the whole WP**. The
+per-element surface landed on lane `lane-e` (D7), each with its settlement and
+zero golden bytes: **G1.3a** 2026-09-04 (`d8e71991` / `588e0bfe`) — `Enabled` +
+the three polar channels over 442 cases, A/B/C capture order enforced, **1**
+new ledger entry (`DIVERGENCES.md` L8) + **13** widenings, **4 959 / 0 / 5**
+per lane, Δ = 0; **G1.3d(i)** 2026-09-05 (D19; `e4d99806` + `b7d7da2a` /
+`c9c4ac09`) — the per-element counts, `NodeOrder` and `EnergyMeter` exactly
+over 440 cases + the D19 `MakeBusList` zone-reset cherry-pick, **0** entries,
+**5 392 / 0 / 5**; **G1.3d(ii)** 2026-09-05 (`e6d66d66` / `43108993`) —
+`PhaseLosses` + the five control-derived scalars, **§G1.3d complete**, the
+first channel to join `LANE_SKIP_ELEM_POWERS`, **0** entries + **10**
+widenings, `DIVERGENCES.md` L9, **5 784 / 0 / 5**, Δ = 0; **G1.3b** 2026-09-05
+(D24; `TBD-G13B-SHA`) — `SeqCurrents`/`SeqVoltages`/`SeqPowers` over the same
+442 cases, an r4133-only `SEQ_C012` band term, the n/A `SeqPowers` sentinel
+folded channel-scoped, r4133's 1φ-posseq slot defect unreproduced and
+unledgered behind a fail-on-stale (297 896, 79, 0) arm census, **0** entries +
+**31** widenings, **6 547 / 0 / 5** per lane, Δ = 0. Full records in
+`golden-rebase.md` §WP-G1.
+**Next.** **`GOLDEN_REBASE_PLAN.md` G1.3c** on the element lane; bus / PD-meter
+/ singles lanes in parallel (D7). Then G1.4–G1.11c and WP-G3–G5 — inside which
+**G3.4**/**G3.5**, blocked since 2026-08-08, are runnable. Queued behind
+GOLDEN_REBASE: `WASM_USERMODELS` follow-ups, RESONANCE, MULTITHREADING,
+UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
