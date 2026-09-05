@@ -990,9 +990,9 @@ only; manifest-flagged).
 > on **both** channels: a perturbed distance (`+1e-9` on non-zero buses) reds
 > `[CapiV0145]` and `[R4133]`; a distance invented where the zone walk wrote none reds
 > both on meterless decks; and a node array one entry short reds the length rails on both.
-> **0** golden bytes; gate **526/526 in both lanes**, ledger 55 entries / 1567 hits;
-> `lane_diff` owed for `exec/view.rs`, expected max |Δ| = 0. Full record:
-> `docs/phase-records/golden-rebase.md` §"WP-G1 — records".
+> **0** golden bytes; gate **7 741 / 0 / 5 ignored in both lanes** over 79 binaries, corpus
+> **526/526**, ledger 55 entries / 1567 hits; `lane_diff` **PASS**, max |Δ| = 0 on every kind
+> (`exec/view.rs` moved). Full record: `docs/phase-records/golden-rebase.md` §"WP-G1 — records".
 
 > **G1.4d — the at-bus lists `AllPCEatBus` / `AllPDEatBus`** (new sub-step, split out of
 > G1.4b by **D26** on 2026-09-05; tier `opus-xhigh`; bus chain order

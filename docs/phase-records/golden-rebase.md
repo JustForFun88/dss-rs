@@ -3308,19 +3308,20 @@ row against the pre-fix lock.
   added. Recorded: `Export SeqVoltages`' ground substitution → `ORPHANED_GAPS.md` §1.19.
 - **G1.4b** (2026-09-05, lane `lane-b`, bus chain — **D7**, split by **D26**) — the bus **distance**
   surface (`Bus.Distance`, `AllBusDistances`, `AllNodeDistances`) live on both channels on G1.4a's
-  per-bus capture: no new flag, no force rule, no lock cell, no golden byte. All three publish the ONE
-  zone-build field `DistFromMeter` (r4133 `DDLL/DBus.pas:122-128`, `DDLL/DCircuit.pas:566-580`/`:582-604`,
-  written at `Meters/EnergyMeter.pas:1833-1838`), read by reference and compared **exactly**
-  (`rel = abs = 0`, `tests/TOLERANCE_NOTES.md` §"Bus distance surface") behind
-  `DISTANCE_POPULATION = (867, 79_137)`. **D26** moved the at-bus half to a new **G1.4d** (plan amendment,
-  unseen by the user); **D29** step 1 was measured and refused (r4133's `MergeWith` renames a line without
-  updating `DeviceList` — `PDElements/Line.pas:1684`, `to_opendss/68`), so `modes:reduce/midi_reduce.dss`
-  stays capi-gated behind the new **`distance`** ledger field: one entry
-  `reduce-merge-units-lost-midi-capi-distance` (54 → **55**) pinned by
-  `the_reduced_midi_deck_reports_the_merged_lines_kft_distances`, and D9's `MakeBusList` fix is pinned live
-  by `the_make_bus_list_decks_report_the_zone_distances_both_oracles_measure`. Details: `TESTING.md`, the
-  plan's §G1.4 note. Commits `1aa08d9c` (surface) + `03565bf7` (audit settlement); both
-  lanes **526/526**, ledger **55** / **1 567** hits / 0 stale, `lane_diff` **PASS** max |Δ| = 0.
+  per-bus capture: no new flag, no force rule, no golden byte, and the only `population.lock.json` move
+  is one `ledger=` digest cell. All three publish the ONE zone-build field `DistFromMeter` (written at
+  `Meters/EnergyMeter.pas:1833-1838`), read by reference and compared **exactly** (`rel = abs = 0`,
+  `tests/TOLERANCE_NOTES.md` §"Bus distance surface") behind `DISTANCE_POPULATION = (867, 79_137)`.
+  **D26** moved the at-bus half to a new **G1.4d** (plan amendment, unseen by the user); **D29** step 1
+  was measured and refused (r4133's `MergeWith` renames a line without updating `DeviceList` —
+  `PDElements/Line.pas:1684`, `to_opendss/68`), so `modes:reduce/midi_reduce.dss` stays capi-gated behind
+  the new **`distance`** ledger field: one entry `reduce-merge-units-lost-midi-capi-distance`
+  (54 → **55**) pinned by `the_reduced_midi_deck_reports_the_merged_lines_kft_distances`, and D9's
+  `MakeBusList` fix is pinned live by
+  `the_make_bus_list_decks_report_the_zone_distances_both_oracles_measure`. Details: `TESTING.md`, the
+  plan's §G1.4 note. Commits `1aa08d9c` (surface) + `03565bf7` (settlement) + docs; both lanes
+  **7 741 / 0 / 5 ignored** over 79 binaries, corpus **526/526**, ledger **55** / **1 567** hits /
+  0 stale, `lane_diff` **PASS** max |Δ| = 0.
   **Audit settlement** (2026-09-06; 15 findings, 12 distinct — 10 fixed / 2 recorded / 0 refuted): the
   comparator gained the committed offline drives its own doc claimed
   (`harness::bus_distance_comparator_tests`), a METERED `both` cross-transport pin
