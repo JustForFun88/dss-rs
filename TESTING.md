@@ -434,9 +434,9 @@ asserts the request order; the golden path already states the rule at
 **The `PDElements` walk (G1.6b, 2026-09-04).** `compare_pdelements` turns on the
 per-PD-element walk fastdss compares wholesale — the **13** `IPDElements._columns`
 of `DSS-Python@origin/fastdss` plus `parent_name` — on every live non-`large`
-case (`force_pdelements`, `crates/dss-core/tests/corpus_gate/scheduler.rs:252`;
+case (`force_pdelements`, `crates/dss-core/tests/corpus_gate/scheduler.rs:255`;
 the forced split is re-derived and pinned by `FORCED_PDELEMENTS_POPULATION`,
-`crates/dss-core/tests/corpus_gate/scheduler.rs:273`). The port side is
+`crates/dss-core/tests/corpus_gate/scheduler.rs:276`). The port side is
 `Dss::pd_elements` (`crates/dss-core/src/exec/view.rs:778`), a `&self` read of
 `CktElementData`; the comparator is `harness::compare_pd_elements`
 (`crates/dss-core/tests/harness/mod.rs:5018`), which asserts the walk first
@@ -498,7 +498,7 @@ second run re-accumulates `Bus.TotalMiles` (`13.825757575757578 →
 `relcalc_is_not_idempotent_and_the_gate_runs_it_once`). The payload therefore lives
 on the last checkpoint only, and the runner asserts exactly that before it compares
 anything. Port side: `Dss::meter_reliability` / `Dss::meter_totals`
-(`crates/dss-core/src/exec/view.rs:1325` / `:1453`) — `&self` reads of solved state,
+(`crates/dss-core/src/exec/view.rs:1325` / `:1454`) — `&self` reads of solved state,
 the reliability math itself untouched. Comparator: `harness::compare_reliability`
 (`crates/dss-core/tests/harness/mod.rs:6466`). The flag is **manifest-set, never
 forced** (six cases): "has an EnergyMeter" is not a manifest field, and forcing it
@@ -530,7 +530,7 @@ Seven rules come with the surface.
 * **Errno 52902 is tolerated — and only it — on both transports.** A zone with no
   OCP device aborts the calc (r4133 `Meters/EnergyMeter.pas:2502`, capi `:2456`),
   which is a **compared observable**, not an error to swallow:
-  `_RELCALC_TOLERATED_ERRNOS` (`tools/oracle/oracle_server.py:534`) and
+  `_RELCALC_TOLERATED_ERRNOS` (`tools/oracle/oracle_server.py:535`) and
   `RELCALC_TOLERATED` (`crates/dss-epri/src/dss.rs:112`) are separate single-value
   scopes, every other errno (28724 included) still fails the case, and the comparator
   asserts abort symmetry on the **boolean and the message, never the count** — the
@@ -844,7 +844,7 @@ link `corpus_gate`; recording the effective flag would mean a second copy of
 exists to prevent. The effective set is instead pinned where it is computed, and
 more strongly than a lock column could be: `corpus_gate/scheduler.rs` re-derives
 the forced population from the four manifests on **every** run and asserts it
-against `FORCED_PROPS_POPULATION` = (440, 313, 83, 44), which also pins the
+against `FORCED_PROPS_POPULATION` = (441, 314, 83, 44), which also pins the
 per-`engines` split. **Obligation (GOLDEN_REBASE G1.0):** a scheduler force rule
 for a WP-G1 flag ships in the same commit as its own `FORCED_<FLAG>_POPULATION`
 pin and its re-derivation test — the RP4.1 precedent — or the effective
@@ -1300,8 +1300,8 @@ skipped on capi only, because their Rust tables are r4133-shaped
 so a wholesale re-mask reports as one line instead of 19 stale-row messages; a
 *partial* re-mask is caught instead by the forcing-rule lock
 `scheduler::the_property_forcing_rule_is_every_live_non_large_case`
-(`corpus_gate/scheduler.rs:169`, `FORCED_PROPS_POPULATION` = (440, 313, 83, 44)
-at `:148`).
+(`corpus_gate/scheduler.rs:172`, `FORCED_PROPS_POPULATION` = (441, 314, 83, 44)
+at `:151`).
 
 **Where the rest of the machinery is documented:** the measurement knob
 `DSS_PROPS_CENSUS` and its `claims` disposition mode — §"Vendored r4133 property
