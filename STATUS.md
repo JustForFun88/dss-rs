@@ -338,17 +338,17 @@ the site comment carries each row's measured cost.
   `corpus_guard_overlapping_guards_still_sweep`) plus the case-insensitive
   collision `corpus_gate/runner.rs:42-55` (the same file appears both
   `Auto3bus_HL_current.txt` and `auto3bus_hl_current.txt`). **Twelve sightings**
-  2026-08-29 … 2026-09-04 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2,
-  §RP3.10 ×3, §RP5.1 ×1), the set varying in size (1 … 36 files) and in case
-  between successive runs of the *same* tree — the nondeterminism itself was
-  measured at §RP3.13 — and once accompanied by an unreproducible `corpus_gate`
-  `137 passed; 1 failed` whose most likely cause is this race. Every set was
-  removed before the commit — by exact name, `git clean -fd` scoped to the deck
-  tree (§RP3.10), or by hand (§RP5.1) — and both lanes were green with the files
-  present, no tracked corpus or golden byte ever moving, so the leak costs
-  hygiene only. Per-run detail is in the per-WP records (`r4133-props-rp3.md`,
-  `-rp4.md`, `golden-rebase.md`). Twelve sightings make it a pattern, not a
-  fluke: whoever picks it up should start with `DSS_GATE_JOBS=1` per G2.2d.
+  2026-08-29 … 2026-09-04 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2, §RP3.10
+  ×3, §RP5.1 ×1), then a set on nearly every unfiltered run of the lane-b
+  bus chain (G1.4a, G1.5, G1.4c, 2026-09-04…05), which retired the per-run
+  tally; the set varies in size (1 … 36 files) and in case between successive
+  runs of the *same* tree — the nondeterminism was measured at §RP3.13 — and
+  once came with an unreproducible `corpus_gate` `137 passed; 1 failed` whose
+  likeliest cause is this race. Every set was removed before the commit (exact
+  name, `git clean -fd` on the deck tree, or by hand) and both lanes were green
+  with the files present, no tracked corpus or golden byte ever moving — hygiene
+  only. Per-run detail: `r4133-props-rp3.md`, `-rp4.md`, `golden-rebase.md`. A
+  pattern, not a fluke: start with `DSS_GATE_JOBS=1` per G2.2d.
 
 **Carried-forward and residual-floor items — the rows still open.** Full text,
 closed rows and all:
