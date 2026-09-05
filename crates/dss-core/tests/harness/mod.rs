@@ -73,7 +73,7 @@ use std::path::PathBuf;
 // (`PD_SKIP_VISITS` …), spelled like `props_norm`'s.
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrd};
 
-use dss_core::exec::{Dss, ElementSnapshot, PdElementView};
+use dss_core::exec::{Dss, ElementSnapshot, MeterReliabilityView, PdElementView};
 use dss_core::support::complexutil::Polar;
 use num_complex::Complex64;
 use serde::Deserialize;
@@ -3248,7 +3248,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:1325-1330` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:1545-1550` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -3277,7 +3277,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:1325-1330` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:1545-1550` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -3341,7 +3341,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     **compare** on r4133. The exclusion is a statement about the 0.14.5
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
-    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1325-1330`
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1545-1550`
     //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
@@ -3387,7 +3387,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///
 /// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1325-1330` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1545-1550` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
@@ -3580,7 +3580,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1325-1330`
+    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1545-1550`
     /// forbids masking there, plus the two `pctperm` rows RP2.1 measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {
@@ -6479,9 +6479,18 @@ pub fn pd_skip_counters(channel: &str, class: &str, field: &str) -> Option<(usiz
 /// `Val` and Rust `str::parse::<f64>` both round correctly, or an untouched
 /// `0.0` — so a difference is a bug, not a floor
 /// (`tests/TOLERANCE_NOTES.md`). Four of the fourteen fields (`section_id`,
-/// `total_miles`, `lambda`, `accumulated_l`) are 0 on every walked case because
-/// no live deck runs `RelCalc`: comparing them asserts the port does not
-/// populate them prematurely, and their non-vacuity demo is owed by G1.6(i).
+/// `total_miles`, `lambda`, `accumulated_l`) are fed only by `CalcReliabilityIndices`
+/// (`PDElement.pas:89-178`). **G1.6(i) discharged their non-vacuity demo**: the
+/// gate now drives the executive `RelCalc` once per `compare_reliability` case,
+/// before this comparator runs, so on those cases all four are live accumulated
+/// values that are compared against the oracle for real — 3 of 3 PD rows on
+/// `modes:time/midi_duty_ctrl.dss` (`both`), 4 of 6 on
+/// `modes:makeposseq/makeposseq_ctrl.dss` (`capi_v0145`) and 37 of 41 on
+/// `controls:combo/midi_protection.dss` (`r4133`), pinned with their values by
+/// `tests/reliability_pins.rs::pd_elements_relcalc_fields_are_live_after_relcalc`.
+/// Elsewhere they stay 0 and comparing them asserts the port does not populate
+/// them prematurely. They remain in the exact set — the re-derivation the
+/// G1.6b section of `tests/TOLERANCE_NOTES.md` owed is discharged there.
 ///
 /// The only cells not compared are [`PD_SKIP_FIELDS`]', which the channel reads
 /// out of uninitialized memory; each one is still *visited* and accounted, so a
@@ -7989,5 +7998,1254 @@ pub fn compare_export(oracle: &str, rust: &str, policy: &ExportPolicy, ctx: &str
                 );
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GOLDEN_REBASE G1.6(i): the `Meters` reliability surface.
+//
+// The dss-python `ActiveCircuit.Meters` fields the fastdss harness archives
+// once per case (`DSS-Python@origin/fastdss:dss/IMeters.py:13-42` `_columns`,
+// written by `tests/save_outputs.py:283-291` + `:330-332`), captured live on
+// both channels (`tools/oracle/oracle_server.py::capture_reliability`,
+// `crates/dss-epri/src/capture.rs::capture_reliability`) and compared against
+// `Dss::meter_reliability` + `Dss::meter_totals`.
+//
+// It is the one surface whose capture DRIVES an executive command: nothing in
+// the corpus runs `RelCalc` (`Executive/ExecCommands.pas:154` ->
+// `TExecHelper.DoLambdaCalcs`, r4133 `Executive/ExecHelper.pas:4404-4440`), so
+// every reliability field would compare `0 == 0`. All three engines run it once
+// per case, on the LAST step, right after the solve reply is read — see
+// `corpus_gate/runner.rs` for the drive and the two transports for the read
+// order (`SetActiveSection` before every section field; `Meters.Totals` last,
+// because `TotalizeMeters` destroys the meter cursor).
+// ---------------------------------------------------------------------------
+
+/// One feeder section of one meter, exactly as **both** channels serialize it
+/// (`oracle_server.capture_reliability`'s section dict == `dss-epri`'s
+/// `FeederSectionCap`), read behind its own `Meters.SetActiveSection`.
+///
+/// No `#[serde(default)]` anywhere: a channel that drops a field must fail
+/// loudly here rather than compare a zero.
+#[derive(Debug, Clone, Deserialize)]
+pub struct FeederSectionCap {
+    /// The 1-based `SetActiveSection` argument this row was read at.
+    pub idx: i32,
+    pub num_section_customers: i32,
+    pub num_section_branches: i32,
+    pub sect_seq_idx: i32,
+    pub sect_total_cust: i32,
+    /// 1 = Fuse, 2 = Recloser, 3 = Relay; 0 = none.
+    pub ocp_device_type: i32,
+    pub sum_branch_flt_rates: f64,
+    /// `SumFltRatesXRepairHrs / SumBranchFltRates` — an **unguarded** division
+    /// on all three engines, so a section whose branches all carry
+    /// `faultrate=0` is `0/0 = NaN` identically everywhere (r4133
+    /// `Version8/Source/Meters/EnergyMeter.pas` `AverageRepairTime`; port
+    /// `solution/meters/reliability.rs:259`). [`rel_num_eq`] is what makes that
+    /// agreement, and only that agreement, pass.
+    pub avg_repair_time: f64,
+    pub fault_rate_x_repair_hrs: f64,
+}
+
+/// One meter's reliability record as both channels serialize it.
+///
+/// `caidi` is deliberately **absent**: neither channel has a `CAIDI` API mode,
+/// so no capture can carry it. It still reaches the live gate — it is
+/// EnergyMeter property `CAIDI` (index 22 of `AllPropertyNames`), which
+/// [`compare_all_properties`] compares on both channels since `R4133_PROPS`
+/// RP4.1, and it moves `0 -> 3` on `modes:time/midi_duty_ctrl.dss` the moment
+/// `RelCalc` runs. It is therefore compared, never "not comparable".
+#[derive(Debug, Clone, Deserialize)]
+pub struct MeterReliabilityCap {
+    pub name: String,
+    pub total_customers: i32,
+    pub saifi: f64,
+    /// The API spells it `SAIFIkW`; the wire key is `saifikw` and the Rust
+    /// spelling matches `MeterReliabilityView::saifi_kw` so one macro can
+    /// extract both sides.
+    #[serde(rename = "saifikw")]
+    pub saifi_kw: f64,
+    pub saidi: f64,
+    pub cust_interrupts: f64,
+    /// `|CalculatedCurrent[k]|`, `k` in `0..NPhases` — see
+    /// [`RELIABILITY_SKIP_FIELDS`] for why it is not compared until an
+    /// `AllocateLoads` has run.
+    pub calc_current: Vec<f64>,
+    /// `PhsAllocationFactor[0..NPhases]`; same caveat.
+    pub alloc_factors: Vec<f64>,
+    /// The three zone lists in the oracles' own `BranchList` walk order.
+    pub branches: Vec<String>,
+    pub ends: Vec<String>,
+    pub pce: Vec<String>,
+    pub num_sections: i32,
+    pub sections: Vec<FeederSectionCap>,
+}
+
+/// One channel's whole reliability payload for the LAST checkpoint of a case.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ReliabilityCap {
+    /// The channel's `RelCalc` hit the by-design "no OCP device in the zone"
+    /// abort (errno 52902, `Meters/EnergyMeter.pas:2502`).
+    pub aborted: bool,
+    /// The abort message verbatim; `""` when it did not abort.
+    pub message: String,
+    /// Every **enabled** meter, in `Meters.First`/`Next` order.
+    pub meters: Vec<MeterReliabilityCap>,
+    /// `Meters.Totals` — the masked register sum over every meter of the
+    /// circuit list (`TotalizeMeters`), read LAST on both transports.
+    pub totals: Vec<f64>,
+}
+
+/// What the *port's* `RelCalc` did, as the runner observed it: the new
+/// `Dss::errors()` entries the command pushed.
+///
+/// It travels as a parameter rather than being derived inside
+/// [`compare_reliability`] because only the caller knows the error baseline —
+/// `Dss::errors()` is cumulative for the whole case.
+///
+/// The two sides are compared as **boolean + message**, never as a count: the
+/// port reports one error per failing meter
+/// (`solution/meters/reliability.rs:44-50` collects per meter) while
+/// dss-python raises once per command, so on a multi-meter deck the counts
+/// legitimately differ. The text is byte-identical on all three engines
+/// (measured on `controls:energymeter/midi_energymeter.dss`).
+///
+/// The lines beyond the first are **kept**, not discarded (G1.6(i) audit
+/// settlement, finding B/3): the drive is the LAST thing the runner does on
+/// the last step, so the per-step `Dss::errors()` baseline assert
+/// (`corpus_gate/runner.rs`) never runs again after it, and a second,
+/// *different* error raised inside `RelCalc` would otherwise be invisible.
+/// [`compare_reliability`] asserts every line carries the one tolerated abort
+/// text before it compares the message to the oracle's.
+#[derive(Debug, Clone, Default)]
+pub struct RelCalcOutcome {
+    pub aborted: bool,
+    pub message: String,
+    /// Every error line the command appended, in order (`message` is the
+    /// first). Compared for uniformity, never for its count.
+    pub messages: Vec<String>,
+}
+
+impl RelCalcOutcome {
+    /// Build the outcome from the error lines `RelCalc` appended.
+    pub fn from_new_errors(new: &[String]) -> Self {
+        Self {
+            aborted: !new.is_empty(),
+            message: new.first().cloned().unwrap_or_default(),
+            messages: new.to_vec(),
+        }
+    }
+}
+
+/// Equality as this surface defines it: **exact** (`rel = abs = 0`), with the
+/// non-finite agreement rule.
+///
+/// Exactness is not an aspiration: on `modes:time/midi_duty_ctrl.dss` the two
+/// independent oracle engines return bit-identical doubles for every
+/// reliability number (`SAIFI 0.05600000000000001`, `SAIDI
+/// 0.16799999999999998`, `CustInterrupts 0.11200000000000002`,
+/// `SumBranchFltRates 0.0031360000000000008`, `AvgRepairTime
+/// 2.999999999999999`, `FaultRateXRepairHrs 0.009408`). Two engines agreeing
+/// to the last bit means the arithmetic is order-identical — sums over integer
+/// customer counts and deck literals in a fixed zone-walk order — so a Rust gap
+/// is an **order bug**, not a floor (`tests/TOLERANCE_NOTES.md`).
+///
+/// G1.6(i) micro-part **F2s** re-measured that claim where it looked broken: the
+/// 15 cells the live gate reported as 1-ULP Rust↔oracle gaps (9 distinct values,
+/// `accumulated_l` / `total_miles` / `cust_interrupts` / `saifikw` /
+/// `sum_branch_flt_rates`, on BOTH channels) are **not** arithmetic at all. The
+/// raw JSON number token each oracle puts on the wire round-trips to the port's
+/// f64 bit-for-bit — 15/15, measured at the wire on both transports — and it
+/// is the gate's own decoder that
+/// loses the last bit: `serde_json` without the `float_roundtrip` feature parses
+/// a 17-significant-digit token as `significand as f64` then one multiply or
+/// divide by a power of ten, i.e. two roundings. That is exactly the defect
+/// coordinator decision **D11** fixes workspace-wide (`serde_json` +
+/// `float_roundtrip`); **D18** landed the identical hunk on this branch, so the
+/// gate already decodes every oracle float exactly and the artifact is gone.
+/// It was a transport artifact throughout, never a port or oracle value.
+/// So this surface stays exact and gains no floor — derivation in
+/// `tests/TOLERANCE_NOTES.md` §"The `Meters` reliability surface (G1.6(i))",
+/// both numbers pinned by
+/// `dss_core::exec::tests::reliability::reliability_accumulators_are_correctly_rounded_f64_sums`.
+///
+/// `NaN == NaN` and `+inf == +inf` / `-inf == -inf` count as agreement because
+/// they are the *same* unguarded arithmetic on both sides
+/// ([`FeederSectionCap::avg_repair_time`]); `NaN` against a finite number, and
+/// `+inf` against `-inf`, are failures.
+fn rel_num_eq(a: f64, b: f64) -> bool {
+    a == b || (a.is_nan() && b.is_nan())
+}
+
+/// One reliability field's value, type-tagged so the comparator can walk the
+/// meter scalars and the section fields uniformly (one message shape, one
+/// accounting site).
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum RelVal {
+    F(f64),
+    I(i32),
+}
+
+impl RelVal {
+    fn matches(self, other: Self) -> bool {
+        match (self, other) {
+            (RelVal::F(a), RelVal::F(b)) => rel_num_eq(a, b),
+            (RelVal::I(a), RelVal::I(b)) => a == b,
+            _ => false,
+        }
+    }
+
+    /// Full-precision rendering for a failure message (`{:?}` on `f64` is the
+    /// shortest round-tripping decimal, so a denormal reads as `2.8e-309`
+    /// rather than `0`).
+    fn render(self) -> String {
+        match self {
+            RelVal::F(x) => format!("{x:?}"),
+            RelVal::I(x) => x.to_string(),
+        }
+    }
+}
+
+/// The per-meter scalar fields, in the frozen order the capture reads them.
+/// A macro rather than two functions so it expands over **both**
+/// [`MeterReliabilityCap`] and `dss_core`'s `MeterReliabilityView` — a field
+/// renamed on either type stops this file compiling.
+macro_rules! rel_meter_scalars {
+    ($x:expr) => {{
+        let m = $x;
+        [
+            ("total_customers", RelVal::I(m.total_customers)),
+            ("saifi", RelVal::F(m.saifi)),
+            ("saifi_kw", RelVal::F(m.saifi_kw)),
+            ("saidi", RelVal::F(m.saidi)),
+            ("cust_interrupts", RelVal::F(m.cust_interrupts)),
+            ("num_sections", RelVal::I(m.num_sections)),
+        ]
+    }};
+}
+
+/// The nine fields of one feeder section, in read order; expands over both
+/// [`FeederSectionCap`] and `dss_core`'s `FeederSectionView`.
+macro_rules! rel_section_fields {
+    ($x:expr) => {{
+        let s = $x;
+        [
+            ("idx", RelVal::I(s.idx)),
+            ("num_section_customers", RelVal::I(s.num_section_customers)),
+            ("num_section_branches", RelVal::I(s.num_section_branches)),
+            ("sect_seq_idx", RelVal::I(s.sect_seq_idx)),
+            ("sect_total_cust", RelVal::I(s.sect_total_cust)),
+            ("ocp_device_type", RelVal::I(s.ocp_device_type)),
+            ("sum_branch_flt_rates", RelVal::F(s.sum_branch_flt_rates)),
+            ("avg_repair_time", RelVal::F(s.avg_repair_time)),
+            (
+                "fault_rate_x_repair_hrs",
+                RelVal::F(s.fault_rate_x_repair_hrs),
+            ),
+        ]
+    }};
+}
+
+/// The two per-phase array fields [`RELIABILITY_SKIP_FIELDS`] may name — the
+/// register test's vocabulary, so a row naming a field that does not exist is
+/// refused.
+const RELIABILITY_ARRAY_FIELDS: [&str; 2] = ["calc_current", "alloc_factors"];
+
+/// One `Meters` array field an oracle channel reads out of **uninitialized
+/// memory**, excluded field-by-field with its pin. See
+/// [`RELIABILITY_SKIP_FIELDS`] for the mechanism and the measurements.
+pub struct ReliabilitySkipRow {
+    /// [`PropsChannel::tag`] of the channel whose value is garbage.
+    pub channel: &'static str,
+    /// The [`RELIABILITY_ARRAY_FIELDS`] key this row drops on that channel.
+    pub field: &'static str,
+    /// The expected-value test that pins the port's correct value against the
+    /// measured garbage (`GOLDEN_REBASE_PLAN.md` §1.1(e)).
+    pub pin: &'static str,
+    /// The upstream source line the defect lives on.
+    pub cite: &'static str,
+}
+
+/// **The `Meters` cells no oracle channel can be compared on until the deck has
+/// run `AllocateLoads`** — a proven uninitialized read, present on BOTH
+/// oracles.
+///
+/// `TMeterElement.AllocateSensorArrays` `ReallocMem`s `PhsAllocationFactor` and
+/// `CalculatedCurrent` **without zeroing them** (r4133
+/// `Version8/Source/Meters/MeterElement.pas:45-52`; capi 0.14.5 carries the
+/// identical code), and the only thing that ever writes them is
+/// `TMeterElement.CalcAllocationFactors` (`:54-72`), whose sole driver is
+/// `TExecHelper.DoAllocateLoadsCmd` (r4133
+/// `Version8/Source/Executive/ExecHelper.pas:2624-2683`). **No vendored corpus
+/// deck runs `AllocateLoads`**, so on every live case but one `Meters.CalcCurrent`
+/// and `Meters.AllocFactors` answer from whatever was on the heap. The port
+/// zero-initializes both arrays (`elements/meter/meter_element.rs:106,111`), so
+/// it is right and upstream is undefined.
+///
+/// The one exception is `controls:energymeter/midi_relcalc.dss`, added by
+/// G1.6(i) part F3 for exactly this reason: it ends in `AllocateLoads`, so both
+/// fields are defined there and compared on **both** channels with no exclusion
+/// at all — see the Scope paragraph below and
+/// `crates/dss-core/tests/reliability_pins.rs`.
+///
+/// **Measured** (G1.6(i) part R, three fresh `epri-worker` processes): on
+/// `controls:combo/combo_protection.dss` r4133 `Meters.AllocFactors` came back
+/// `[2.806806272625585e-309, 2.121995791e-314, 2.37e-322]` in run 1 and
+/// `[…, …, 2.4e-322]` in runs 2-3 — denormal garbage that **changes across
+/// processes**. An envelope over such a value is not a fact, so this is a
+/// harness exclusion, not a `tests/corpus/ledger.json` row (the
+/// [`PD_SKIP_FIELDS`] precedent and coordinator decision D4).
+///
+/// **Scope — (channel, field) AND the port's own regime.** A row is consulted
+/// only where `CalcAllocationFactors` has demonstrably not run for that meter,
+/// which [`reliability_skip_applies`] reads off the PORT: after that call every
+/// `PhsAllocationFactor[i]` is `SensorCurrent[i]/|I_i|` or, when the current is
+/// zero, exactly `1.0` (`meter_element.rs:117-136`, r4133
+/// `MeterElement.pas:54-72`), and the EnergyMeter constructor seeds
+/// `SensorCurrent := 400 A` (`elements/meter/energymeter/mod.rs:328`) — so an
+/// all-zero `alloc_factors` on the port means the writer never ran. The moment
+/// a deck runs `AllocateLoads`, both fields are compared on both channels with
+/// no exclusion at all.
+///
+/// Honest limit, stated the way [`PD_SKIP_FIELDS`]' is: the predicate is the
+/// port's own state, so a port that *failed* to run an allocation it should
+/// have run would suppress these two arrays instead of reding. That is what the
+/// `AllocateLoads` deck and its pin exist for — on
+/// `controls:energymeter/midi_relcalc.dss` the port's factors are non-zero, the
+/// predicate is false, and both fields are compared live on both channels
+/// (measured: 0 skip visits on that case, 25 on the rest of the flagged
+/// population). Measured non-vacuity, G1.6(i) F3: perturbing the port's
+/// `calc_current` or `alloc_factors` by 1e-6 relative reds that case on
+/// `capi_v0145` **and** on `r4133` — four scratch drives, restored
+/// byte-identically.
+pub const RELIABILITY_SKIP_FIELDS: &[ReliabilitySkipRow] = &[
+    ReliabilitySkipRow {
+        channel: "capi_v0145",
+        field: "calc_current",
+        pin: "meter_alloc_factors_are_zero_until_allocateloads_runs",
+        cite: "dss_capi/src/Meters/MeterElement.pas AllocateSensorArrays (ReallocMem, \
+                no zeroing) + to_opendss/62-metered-sensor-arrays-are-never-initialised.md",
+    },
+    ReliabilitySkipRow {
+        channel: "capi_v0145",
+        field: "alloc_factors",
+        pin: "meter_alloc_factors_are_zero_until_allocateloads_runs",
+        cite: "dss_capi/src/Meters/MeterElement.pas AllocateSensorArrays (ReallocMem, \
+                no zeroing) + to_opendss/62-metered-sensor-arrays-are-never-initialised.md",
+    },
+    ReliabilitySkipRow {
+        channel: "r4133",
+        field: "calc_current",
+        pin: "meter_alloc_factors_are_zero_until_allocateloads_runs",
+        cite: "Version8/Source/Meters/MeterElement.pas:45-52 + \
+                to_opendss/62-metered-sensor-arrays-are-never-initialised.md",
+    },
+    ReliabilitySkipRow {
+        channel: "r4133",
+        field: "alloc_factors",
+        pin: "meter_alloc_factors_are_zero_until_allocateloads_runs",
+        cite: "Version8/Source/Meters/MeterElement.pas:45-52 + \
+                to_opendss/62-metered-sensor-arrays-are-never-initialised.md",
+    },
+];
+
+/// Per-row visit counter, indexed exactly like [`RELIABILITY_SKIP_FIELDS`]:
+/// cells the row was consulted about.
+static RELIABILITY_SKIP_VISITS: [AtomicUsize; RELIABILITY_SKIP_FIELDS.len()] =
+    [const { AtomicUsize::new(0) }; RELIABILITY_SKIP_FIELDS.len()];
+/// Per-row hit counter: visits whose two sides differed by more than the
+/// field's own band ([`reliability_array_band`]) — i.e. visits where the row
+/// was load-bearing.
+static RELIABILITY_SKIP_HITS: [AtomicUsize; RELIABILITY_SKIP_FIELDS.len()] =
+    [const { AtomicUsize::new(0) }; RELIABILITY_SKIP_FIELDS.len()];
+
+/// Gating reliability payloads this process compared, per channel, indexed by
+/// [`pd_channel_slot`].
+static RELIABILITY_WALKS: [AtomicUsize; 2] = [const { AtomicUsize::new(0) }; 2];
+/// …and the meters those payloads compared.
+static RELIABILITY_METERS: [AtomicUsize; 2] = [const { AtomicUsize::new(0) }; 2];
+
+/// Which [`RELIABILITY_SKIP_FIELDS`] row covers `(channel, field)`, if any.
+///
+/// A pure function so both directions are provable offline — the shipped
+/// counters cannot be rewound once a gate run has moved them.
+fn reliability_skip_row(channel: &str, field: &str) -> Option<usize> {
+    RELIABILITY_SKIP_FIELDS
+        .iter()
+        .position(|r| r.channel == channel && r.field == field)
+}
+
+/// Whether [`RELIABILITY_SKIP_FIELDS`] may speak about this meter at all: the
+/// port's allocation factors are still all exactly zero, i.e.
+/// `CalcAllocationFactors` never ran (see the table's doc for why that is an
+/// iff on the port side).
+fn reliability_skip_applies(a: &MeterReliabilityView) -> bool {
+    a.alloc_factors.iter().all(|x| *x == 0.0)
+}
+
+/// What [`compare_reliability`] has counted in this process, as
+/// `(capi payloads, capi meters, r4133 payloads, r4133 meters)`.
+pub fn reliability_walk_counters() -> (usize, usize, usize, usize) {
+    (
+        RELIABILITY_WALKS[0].load(AtomicOrd::Relaxed),
+        RELIABILITY_METERS[0].load(AtomicOrd::Relaxed),
+        RELIABILITY_WALKS[1].load(AtomicOrd::Relaxed),
+        RELIABILITY_METERS[1].load(AtomicOrd::Relaxed),
+    )
+}
+
+/// One [`RELIABILITY_SKIP_FIELDS`] row's live `(visits, hits)`, or `None` when
+/// the table has no such row.
+pub fn reliability_skip_counters(channel: &str, field: &str) -> Option<(usize, usize)> {
+    let i = reliability_skip_row(channel, field)?;
+    Some((
+        RELIABILITY_SKIP_VISITS[i].load(AtomicOrd::Relaxed),
+        RELIABILITY_SKIP_HITS[i].load(AtomicOrd::Relaxed),
+    ))
+}
+
+/// The comparison band for the two per-phase `Meters` arrays — the ONLY
+/// non-exact cells of the reliability surface, and the existing **current**
+/// tier rather than a new floor. Returns `0.0` (i.e. exact) for every other
+/// field name and for the cases where both engines take an exact branch.
+///
+/// Every other number this surface reports is integer customer counts and deck
+/// literals summed in a fixed zone-walk order, which is why [`rel_num_eq`] is
+/// exact. These two are not:
+///
+/// * `Meters.CalcCurrent[k]` is `Cabs(CalculatedCurrent[k])` — the metered
+///   element's own terminal current at the solve `CalcAllocationFactors` ran on
+///   (r4133 `Version8/Source/Meters/MeterElement.pas:54-72`; capi reads the
+///   stored array, `CAPI_Meters.pas:335-350`). It is the same `|GetCurrents|`
+///   quantity [`compare_element`] gates at `tol.i_rel`/`i_abs`, so it inherits
+///   that tier verbatim — nothing here widens anything.
+/// * `Meters.AllocFactors[k]` is `SensorCurrent[k] / Cabs(CalculatedCurrent[k])`
+///   with `SensorCurrent` a deck literal (`peakcurrent=`, else the constructor's
+///   400 A), so its band is the **image** of the current band under that
+///   division and not a band of its own: `|Δf|/|f| = |Δ|I||/|I| ≤ i_rel +
+///   i_abs/|I|`. `i_ref` is the larger of the two engines' `|I|` for the same
+///   phase, so the propagated band is the tighter, not the looser, reading.
+///   When both are exactly `0.0` the Pascal takes its `ELSE
+///   PhsAllocationFactor^[i] := 1.0` branch (`MeterElement.pas:68`) on both
+///   sides and there is nothing to propagate: the band collapses to `0.0` and
+///   the compare is exact again.
+///
+/// **The denominator is band-limited from below**, the way the `SeqCurrents
+/// %I…` rule this derivation cites is (`tests/TOLERANCE_NOTES.md`,
+/// `ColTol::gate`): the image band `|f|·(i_rel + i_abs/|I|)` is only a band
+/// while `|I|` is distinguishable from zero. Once `|I| < i_abs` the term
+/// `i_abs/|I|` exceeds 1 and the "band" admits the whole value — the compare
+/// would go silently vacuous with no counter and no message, which is exactly
+/// the failure the `SeqCurrents` note calls load-bearing. So this returns
+/// `None` there and [`compare_reliability`] turns it into a **loud** triage
+/// failure instead of a pass; `i_ref == 0.0` on both sides stays the exact
+/// arm. G1.6(i) audit settlement (finding A/4).
+///
+/// Measured on the one deck where the two fields are defined at all
+/// (`controls:energymeter/midi_relcalc.dss`, G1.6(i) part F3): the two
+/// **independent oracle engines** differ from each other by up to `3.30e-14`
+/// relative on `calc_current` (`115.69585353499478` capi vs
+/// `115.69585353499097` r4133) and `3.30e-14` on `alloc_factors`
+/// (`1.0372022534386103` vs `1.0372022534386445`), while every scalar, section
+/// field and `Meters.Totals` slot of the same payload is bit-identical. Two
+/// KLU-based engines disagreeing at that scale is the proof that these cells
+/// are solve-derived; the micro tier (`i_rel = 1e-9`, `i_abs = 1e-6`) leaves
+/// ~4-5 orders of headroom. Derivation in `tests/TOLERANCE_NOTES.md`.
+fn reliability_array_band(
+    field: &str,
+    oracle: f64,
+    port_current: f64,
+    oracle_current: f64,
+    tol: &Tolerances,
+) -> Option<f64> {
+    match field {
+        "calc_current" => Some(tol.i_abs + tol.i_rel * oracle.abs()),
+        // A non-finite current on either side: `f64::max` would quietly
+        // ignore the NaN and band the cell off the other engine's current,
+        // so rule it out before the denominator is formed.
+        "alloc_factors" if !port_current.is_finite() || !oracle_current.is_finite() => None,
+        "alloc_factors" => {
+            let i_ref = port_current.abs().max(oracle_current.abs());
+            if i_ref == 0.0 {
+                // Both engines took the Pascal's `ELSE … := 1.0` branch: no
+                // division happened on either side, so nothing propagates.
+                Some(0.0)
+            } else if i_ref >= tol.i_abs {
+                Some(oracle.abs() * (tol.i_rel + tol.i_abs / i_ref))
+            } else {
+                // Denominator inside its own absolute band: `S/|I|` is a
+                // noise/noise form with no derivable band.
+                None
+            }
+        }
+        _ => Some(0.0),
+    }
+}
+
+/// Compare one channel's reliability payload against the engine's
+/// (`GOLDEN_REBASE_PLAN.md` §G1.6, sub-step (i)).
+///
+/// Order of assertions: the `RelCalc` outcome first (a channel that aborted
+/// where the port did not has nothing worth comparing below it), then the meter
+/// walk — length and name **sequence**, case-insensitively, because both
+/// oracles' `Meters.First`/`Next` skips disabled meters and visits the
+/// `EnergyMeters` pointer list in creation order (r4133 `DDLL/DMeters.pas:32-71`
+/// loops `If pMeter.Enabled`; capi `CAPI/CAPI_Meters.pas:153-167` routes through
+/// `Generic_CktElement_Get_First`/`_Next`), which is exactly what
+/// `Dss::meter_reliability` walks — then every field, then `Meters.Totals`.
+///
+/// Every *reliability* value is compared **exactly** — see [`rel_num_eq`] for
+/// the measured justification and for the NaN/±inf rule. The exceptions are the
+/// three cells that are not reliability arithmetic at all, and they are why
+/// this function takes a [`Tolerances`]: `Meters.Totals`, the masked sum of the
+/// very energy registers [`compare_meter`] compares at
+/// `tol.energy_rel`/`energy_abs` (coordinator decision **D17a**), and the two
+/// per-phase arrays `Meters.CalcCurrent`/`Meters.AllocFactors`, which are
+/// functions of the metered element's terminal currents and therefore carry the
+/// current tier — see [`reliability_array_band`]. Both inherit an existing tier
+/// on the quantity they are made of; neither is a new band. Derivations in
+/// `tests/TOLERANCE_NOTES.md` §"The `Meters` reliability surface (G1.6(i))".
+///
+/// The three zone lists are compared here **in order** — length, then
+/// case-insensitive membership, then element-by-element sequence. Both
+/// oracles emit them in their own zone-walk order (capi
+/// `CAPI/CAPI_Meters.pas:589-595` and r4133
+/// `Version8/Source/DDLL/DMeters.pas:706-733` walk
+/// `BranchList.First`/`GoForward` for `AllBranchesInZone`, `:682-705` for
+/// `AllEndElements`, `:735-758` emits `GetPCEatZone`'s own array), and the
+/// port returns `sequence_list()`, pushed by the same tree walk
+/// (`solution/meters/zones/build.rs:194`) — so the sequences are expected to
+/// agree, and G1.6(i) measured that they do: bit-identical on every flagged
+/// case, on both channels (part F2 §3, re-run and extended to the sixth case
+/// in part F4). The ordered arm is therefore **unconditional**, not per-kind.
+/// [`compare_meter`]'s deliberate order-independence is untouched: it compares
+/// the same three lists as sets for the reason its own doc gives, and this
+/// surface layers the stronger contract on top rather than changing it.
+/// Comparing them here is not redundant with [`compare_meter`] either: this
+/// surface is flagged independently of `check_meters_monitors`, and
+/// `modes:makeposseq/makeposseq_ctrl.dss` gates it without the meter capture.
+///
+/// The only cells not compared are [`RELIABILITY_SKIP_FIELDS`]', which the
+/// channel reads out of uninitialized memory; each one is still *visited* and
+/// accounted, plus whatever `ledger_skip` names.
+///
+/// `ledger_skip` is the per-VALUE `tests/corpus/ledger.json` hook, threaded as a
+/// closure for the reason `compare_variables`' is: the harness compiles into ~20
+/// test binaries and must not know the ledger. Its key is the lowercased
+/// `<meter>:<field>` pair for every per-meter value (`em:saidi`,
+/// `em:sum_branch_flt_rates` — a section field is named once and dropped for
+/// every section of that meter) and the bare `totals` for the circuit-level
+/// array. It can only ever drop a VALUE compare: the walk length, the meter
+/// names, the section count and the array lengths are asserted before it is
+/// consulted, so an exclusion cannot hide a missing meter, section or phase.
+/// **No entry exists today** (G1.6(i) measured zero divergences on either
+/// channel); the hook is wired so a future measured one has somewhere to go
+/// that `LEDGER_FIELDS` can police.
+pub fn compare_reliability(
+    dss: &Dss,
+    exp: &ReliabilityCap,
+    rust: &RelCalcOutcome,
+    channel: PropsChannel,
+    ctx: &str,
+    tol: &Tolerances,
+    ledger_skip: &dyn Fn(&str) -> bool,
+) {
+    let tag = channel.tag();
+    assert_eq!(
+        rust.aborted, exp.aborted,
+        "{ctx}: `RelCalc` abort differs against `{tag}`: Rust aborted={} ({:?}) vs oracle \
+         aborted={} ({:?}). The abort is the by-design errno 52902 \
+         (`Meters/EnergyMeter.pas:2502`) raised when a meter's zone holds no OCP device; both \
+         engines run the command at the same point, so an asymmetric abort is a port bug.",
+        rust.aborted, rust.message, exp.aborted, exp.message,
+    );
+    if exp.aborted {
+        // Every line the port's `RelCalc` appended, not just the first: this is
+        // the last drive of the case, so no later `Dss::errors()` baseline
+        // assert would see a second, different error (audit settlement B/3).
+        if let Some(other) = rust
+            .messages
+            .iter()
+            .find(|m| m.trim() != rust.message.trim())
+        {
+            panic!(
+                "{ctx}: `RelCalc` appended {} error line(s) and they are not all the one \
+                 tolerated abort: first {:?}, also {:?}. Only errno 52902 (no OCP device \
+                 in the zone, one line per failing meter) is by design here; a second, \
+                 different error out of the same command is a real failure and must not \
+                 be swallowed.",
+                rust.messages.len(),
+                rust.message,
+                other,
+            );
+        }
+        assert_eq!(
+            rust.message.trim(),
+            exp.message.trim(),
+            "{ctx}: `RelCalc` abort message differs against `{tag}` (the text is byte-identical \
+             on all three engines — capi, r4133 and the port's own \
+             `solution/meters/reliability.rs`)"
+        );
+    }
+
+    let act = dss.meter_reliability();
+    assert_eq!(
+        act.len(),
+        exp.meters.len(),
+        "{ctx}: reliability meter walk length differs against `{tag}`: Rust {} vs oracle {} \
+         (Rust {:?}, oracle {:?}). The walk is the ENABLED EnergyMeter list in creation order.",
+        act.len(),
+        exp.meters.len(),
+        act.iter().map(|m| &m.name).collect::<Vec<_>>(),
+        exp.meters.iter().map(|m| &m.name).collect::<Vec<_>>(),
+    );
+    if let Some(k) = act
+        .iter()
+        .zip(&exp.meters)
+        .position(|(a, e)| !a.name.eq_ignore_ascii_case(&e.name))
+    {
+        panic!(
+            "{ctx}: reliability meter walk differs against `{tag}` at index {k}: Rust `{}` vs \
+             oracle `{}` (membership or order)",
+            act[k].name, exp.meters[k].name,
+        );
+    }
+
+    for (a, e) in act.iter().zip(&exp.meters) {
+        let name_lc = e.name.to_lowercase();
+        let dropped = |field: &str| ledger_skip(&format!("{name_lc}:{field}"));
+        let av = rel_meter_scalars!(a);
+        let ev = rel_meter_scalars!(e);
+        for ((fa, va), (fe, ve)) in av.iter().zip(ev.iter()) {
+            debug_assert_eq!(fa, fe, "both extractions are the one macro");
+            if dropped(fa) {
+                continue;
+            }
+            assert!(
+                va.matches(*ve),
+                "{ctx}: meter {} reliability field `{fa}` differs against `{tag}`: Rust {} vs \
+                 oracle {}. This surface is compared EXACTLY (rel = abs = 0): the two oracle \
+                 engines are bit-identical on it, so a difference is a bug, never a floor.",
+                e.name,
+                va.render(),
+                ve.render(),
+            );
+        }
+
+        // The section rows. `num_sections` was compared above, so a payload
+        // whose `sections` array disagrees with its own count is a transport
+        // fault, not a divergence — say so separately.
+        assert_eq!(
+            e.sections.len(),
+            e.num_sections.max(0) as usize,
+            "{ctx}: meter {} `{tag}` payload carries {} section(s) for NumSections {} — the \
+             capture must read every `1..=NumSections`",
+            e.name,
+            e.sections.len(),
+            e.num_sections,
+        );
+        assert_eq!(
+            a.sections.len(),
+            e.sections.len(),
+            "{ctx}: meter {} section count differs against `{tag}`: Rust {} vs oracle {}",
+            e.name,
+            a.sections.len(),
+            e.sections.len(),
+        );
+        for (sa, se) in a.sections.iter().zip(&e.sections) {
+            let sav = rel_section_fields!(sa);
+            let sev = rel_section_fields!(se);
+            for ((fa, va), (fe, ve)) in sav.iter().zip(sev.iter()) {
+                debug_assert_eq!(fa, fe, "both extractions are the one macro");
+                if dropped(fa) {
+                    continue;
+                }
+                assert!(
+                    va.matches(*ve),
+                    "{ctx}: meter {} section {} field `{fa}` differs against `{tag}`: Rust {} vs \
+                     oracle {}",
+                    e.name,
+                    se.idx,
+                    va.render(),
+                    ve.render(),
+                );
+            }
+        }
+
+        // The two per-phase arrays. Lengths are compared unconditionally (both
+        // sides report `NPhases` entries); the VALUES go through
+        // `RELIABILITY_SKIP_FIELDS` while the port's regime says the oracle is
+        // reading uninitialized memory.
+        let skippable = reliability_skip_applies(a);
+        for (field, va, ve) in [
+            ("calc_current", &a.calc_current, &e.calc_current),
+            ("alloc_factors", &a.alloc_factors, &e.alloc_factors),
+        ] {
+            assert_eq!(
+                va.len(),
+                ve.len(),
+                "{ctx}: meter {} `{field}` length differs against `{tag}`: Rust {} vs oracle {} \
+                 (both sides report NPhases entries)",
+                e.name,
+                va.len(),
+                ve.len(),
+            );
+            if dropped(field) {
+                continue;
+            }
+            let skip = reliability_skip_row(tag, field).filter(|_| skippable);
+            for (k, (x, y)) in va.iter().zip(ve.iter()).enumerate() {
+                // These two are the ONLY cells of this surface that are not
+                // deck-literal arithmetic: both are functions of the metered
+                // element's terminal currents at the solve
+                // `CalcAllocationFactors` ran on, so they carry the
+                // faer-vs-KLU floor every current carries (see
+                // [`reliability_array_band`]).
+                let i_port = a.calc_current.get(k).copied().unwrap_or(0.0);
+                let i_oracle = e.calc_current.get(k).copied().unwrap_or(0.0);
+                let band = reliability_array_band(field, *y, i_port, i_oracle, tol);
+                let equal = rel_num_eq(*x, *y) || band.is_some_and(|b| (x - y).abs() <= b);
+                if let Some(i) = skip {
+                    RELIABILITY_SKIP_VISITS[i].fetch_add(1, AtomicOrd::Relaxed);
+                    if !equal {
+                        RELIABILITY_SKIP_HITS[i].fetch_add(1, AtomicOrd::Relaxed);
+                    }
+                    continue;
+                }
+                // The denominator gate. A ratio whose denominator is inside its
+                // own absolute band has no derivable band, so it must not be
+                // admitted silently — see [`reliability_array_band`].
+                assert!(
+                    band.is_some(),
+                    "{ctx}: meter {} `{field}[{k}]` against `{tag}`: the metered current \
+                     is |I| = {:.3e} A (port {i_port:?}, oracle {i_oracle:?}), inside the \
+                     tier's own absolute band i_abs = {:.3e} A, so `SensorCurrent/|I|` is \
+                     a noise/noise form with no derivable band (the `SeqCurrents %I` \
+                     band-limited-denominator precedent, `tests/TOLERANCE_NOTES.md`). \
+                     Triage this deck before the cell is compared, never widen the band.",
+                    e.name,
+                    i_port.abs().max(i_oracle.abs()),
+                    tol.i_abs,
+                );
+                let band = band.unwrap_or(0.0);
+                assert!(
+                    equal,
+                    "{ctx}: meter {} `{field}[{k}]` differs against `{tag}`: Rust {x:?} vs oracle \
+                     {y:?} (|diff| = {:.3e} > band {band:.3e}). The exclusion \
+                     `RELIABILITY_SKIP_FIELDS` did NOT apply here, so this deck ran \
+                     `AllocateLoads` and both sides are defined (port alloc_factors = {:?}).",
+                    e.name,
+                    (x - y).abs(),
+                    a.alloc_factors,
+                );
+            }
+        }
+
+        // The three zone lists: length exact, membership as a case-insensitive
+        // set, and then the **order**, element by element (see the fn doc for
+        // the walks the order contract comes from and the measurement that
+        // turned this arm on). The two assertions are kept apart on purpose:
+        // "the port walks a different zone" and "the port walks the same zone
+        // in a different order" are different bugs and must not print the same
+        // message. The set arm alone cannot see a multiplicity error either —
+        // `controls:energymeter/midi_energymeter.dss` legitimately reports
+        // `Transformer.t8` twice in `ends` — which the ordered arm does.
+        for (what, la, le) in [
+            ("branches", &a.branches, &e.branches),
+            ("ends", &a.ends, &e.ends),
+            ("pce", &a.pce, &e.pce),
+        ] {
+            assert_eq!(
+                la.len(),
+                le.len(),
+                "{ctx}: meter {} {what} list length differs against `{tag}`: Rust {} vs oracle {}",
+                e.name,
+                la.len(),
+                le.len(),
+            );
+            if dropped(what) {
+                continue;
+            }
+            let lower =
+                |v: &[String]| -> Vec<String> { v.iter().map(|s| s.to_lowercase()).collect() };
+            let (va, ve) = (lower(la), lower(le));
+            let set = |v: &[String]| -> BTreeSet<String> { v.iter().cloned().collect() };
+            let (sa, se) = (set(&va), set(&ve));
+            assert!(
+                sa == se,
+                "{ctx}: meter {} {what} membership differs against `{tag}` \
+                 (Rust∖oracle={:?}, oracle∖Rust={:?})",
+                e.name,
+                sa.difference(&se).collect::<Vec<_>>(),
+                se.difference(&sa).collect::<Vec<_>>(),
+            );
+            if let Some(k) = va.iter().zip(&ve).position(|(x, y)| x != y) {
+                panic!(
+                    "{ctx}: meter {} {what} ORDER differs against `{tag}` at index {k}: Rust \
+                     {:?} vs oracle {:?} (same members, different sequence). Both oracles emit \
+                     these lists in their own zone-walk order — `BranchList.First`/`GoForward` \
+                     for branches and ends (capi `CAPI/CAPI_Meters.pas:589-595`, r4133 \
+                     `Version8/Source/DDLL/DMeters.pas:706-733` and `:682-705`) and \
+                     `GetPCEatZone` order for the PCE list (r4133 `:735-758`) — and the port \
+                     returns `sequence_list()`, pushed by the same tree walk \
+                     (`solution/meters/zones/build.rs:194`). Rust {va:?} vs oracle {ve:?}",
+                    e.name, va[k], ve[k],
+                );
+            }
+        }
+    }
+
+    // `Meters.Totals` — the masked register sum over EVERY meter of the circuit
+    // list (no `Enabled` filter, unlike the walk above), in creation order.
+    let totals = dss.meter_totals();
+    assert_eq!(
+        totals.len(),
+        exp.totals.len(),
+        "{ctx}: `Meters.Totals` length differs against `{tag}`: Rust {} vs oracle {} \
+         (NumEMRegisters = 32 + 5*7 = 67)",
+        totals.len(),
+        exp.totals.len(),
+    );
+    if !ledger_skip("totals") {
+        for (i, (x, y)) in totals.iter().zip(&exp.totals).enumerate() {
+            // The **energy-accumulation** tier, not this surface's exactness
+            // rule (coordinator decision D17a): every slot is a masked sum of
+            // the very registers `compare_meter` compares at
+            // `tol.energy_rel`/`energy_abs`, so it inherits their floor — a sum
+            // of quantities that are not exact cannot itself be exact. It is
+            // not a new band: `tests/TOLERANCE_NOTES.md` carries the derivation
+            // and the measured worst slot.
+            let allowed = tol.energy_abs + tol.energy_rel * y.abs();
+            let ok = if x.is_nan() || y.is_nan() {
+                x.is_nan() && y.is_nan()
+            } else {
+                (x - y).abs() <= allowed
+            };
+            assert!(
+                ok,
+                "{ctx}: `Meters.Totals[{i}]` differs against `{tag}`: Rust {x:?} vs oracle {y:?} \
+                 (|diff|={:.3e} > allowed {allowed:.3e}; `TotalizeMeters` = Σ registers·Mask \
+                 over the circuit's meter list — r4133 `Common/Circuit.pas:2520-2538`, capi \
+                 `Common/Circuit.pas:2347-2360` — compared at the energy tier the summed \
+                 registers themselves use)",
+                (x - y).abs(),
+            );
+        }
+    }
+
+    let slot = pd_channel_slot(channel);
+    RELIABILITY_WALKS[slot].fetch_add(1, AtomicOrd::Relaxed);
+    RELIABILITY_METERS[slot].fetch_add(exp.meters.len(), AtomicOrd::Relaxed);
+}
+
+/// **Fail-on-nothing-ran for the whole reliability surface** — the G1.6(i) half
+/// of plan §1.1(f), modeled on [`assert_pd_elements_compare_ran`].
+///
+/// The per-case rail ([`capture_guard::require_capture_opt`]) can only see an
+/// absent payload on a case whose flag is on; it cannot see the flag going off
+/// everywhere. A collapse to zero — the manifest rows lost, a transport
+/// dropping the request, `RelCalc` no longer driven — would compare nothing at
+/// all and pass. This fails unless **each** gating channel compared at least
+/// one meter, because a surface wired on one channel only is what the plan's D2
+/// forbids.
+///
+/// Silent under `DSS_GATE_ONLY` for the reason its neighbours are: a filtered
+/// run may legitimately hold no case that gates a given channel.
+pub fn assert_reliability_compare_ran() {
+    if std::env::var("DSS_GATE_ONLY").is_ok() {
+        return;
+    }
+    let (cw, cm, rw, rm) = reliability_walk_counters();
+    check_reliability_compare_ran((cw, cm), (rw, rm));
+}
+
+/// The rule itself, over **injected** counters — the split exists for the
+/// reason [`check_pd_elements_compare_ran`]'s does: the shipped statics cannot
+/// be zeroed once a gate run has moved them, so both directions are pinned
+/// offline.
+fn check_reliability_compare_ran(capi: (usize, usize), r4133: (usize, usize)) {
+    assert!(
+        capi.1 > 0 && r4133.1 > 0,
+        "the reliability compare never reached one of the two channels: capi_v0145 {} \
+         payload(s) / {} meter(s), r4133 {} payload(s) / {} meter(s). Since GOLDEN_REBASE \
+         G1.6(i) the `compare_reliability` manifest flag drives the executive `RelCalc` on all \
+         three engines and compares the whole `Meters` reliability surface; the flag is set by \
+         the manifests (never scheduler-forced — the predicate \"has an EnergyMeter\" is not a \
+         manifest field), so a zero here means the rows were lost, a transport stopped honoring \
+         `reliability`, or the drive was removed.",
+        capi.0,
+        capi.1,
+        r4133.0,
+        r4133.1,
+    );
+}
+
+/// **Fail-on-stale for [`RELIABILITY_SKIP_FIELDS`]**: every row must still be
+/// consulted about cells that exist.
+///
+/// One arm only, and the asymmetry with [`assert_pd_skip_rows_are_live`] is
+/// deliberate and measured:
+///
+/// * `visits == 0` — the row's `(channel, field)` never occurred in the
+///   uninitialized regime anywhere in the population, so it excludes nothing
+///   that exists. **Fails.**
+/// * `hits == 0` is **not** a failure here. The excluded value is a fresh
+///   `ReallocMem` region rather than a live heap pointer, and such a region very
+///   often reads back as `0.0` — the port's own correct value. Measured: capi
+///   `modes:time/midi_duty_ctrl.dss` returns `[0.0, 0.0, 0.0]` for both arrays
+///   while r4133 `controls:combo/combo_protection.dss` returns
+///   `[2.806806272625585e-309, 2.121995791e-314, 2.37e-322]`, varying across
+///   processes. "The two sides agreed" is therefore luck, not evidence that the
+///   defect is gone, and a rule that failed on it would red the gate at random.
+///   The count is printed by the gate epilogue instead, so a channel that stops
+///   producing garbage entirely is visible without being fatal.
+///
+/// Silent under `DSS_GATE_ONLY`, and silent when the surface never ran on both
+/// channels — that case is [`assert_reliability_compare_ran`]'s, invoked first.
+pub fn assert_reliability_skip_rows_are_live() {
+    if std::env::var("DSS_GATE_ONLY").is_ok() {
+        return;
+    }
+    let read = |c: &[AtomicUsize]| -> Vec<usize> {
+        c.iter().map(|c| c.load(AtomicOrd::Relaxed)).collect()
+    };
+    let (_, cm, _, rm) = reliability_walk_counters();
+    check_reliability_skip_rows_are_live(
+        RELIABILITY_SKIP_FIELDS,
+        &read(&RELIABILITY_SKIP_VISITS),
+        cm > 0 && rm > 0,
+    );
+}
+
+/// The staleness rule over **injected** counters (see
+/// [`assert_reliability_skip_rows_are_live`]); `surface_ran` is false when the
+/// compare did not reach some channel, which silences it.
+fn check_reliability_skip_rows_are_live(
+    table: &[ReliabilitySkipRow],
+    visits: &[usize],
+    surface_ran: bool,
+) {
+    assert_eq!(
+        table.len(),
+        visits.len(),
+        "the counters are indexed exactly like the table"
+    );
+    if !surface_ran {
+        return;
+    }
+    let stale: Vec<String> = table
+        .iter()
+        .enumerate()
+        .filter_map(|(i, r)| {
+            if visits[i] > 0 {
+                return None;
+            }
+            Some(format!(
+                "stale reliability skip row: {}/{} was never consulted — no `{}`-gating case \
+                     in the population reached it with the port's allocation factors still \
+                     untouched. Cited: {}, pinned by `{}`",
+                r.channel, r.field, r.channel, r.cite, r.pin
+            ))
+        })
+        .collect();
+    assert!(
+        stale.is_empty(),
+        "{}\n— each row drops a `Meters` array from the oracle compare, so it must name a \
+         regime that is really there (GOLDEN_REBASE_PLAN.md §1.1(e)).",
+        stale.join("\n")
+    );
+}
+
+#[cfg(test)]
+mod reliability_tests {
+    use super::*;
+
+    fn section() -> FeederSectionCap {
+        FeederSectionCap {
+            idx: 1,
+            num_section_customers: 2,
+            num_section_branches: 3,
+            sect_seq_idx: 4,
+            sect_total_cust: 5,
+            ocp_device_type: 6,
+            sum_branch_flt_rates: 7.0,
+            avg_repair_time: 8.0,
+            fault_rate_x_repair_hrs: 9.0,
+        }
+    }
+
+    /// **The `alloc_factors` band is band-limited from below** (G1.6(i) audit
+    /// settlement, finding A/4). Three regimes, one per arm of
+    /// [`reliability_array_band`]:
+    ///
+    /// * both currents exactly `0.0` — the Pascal's `ELSE … := 1.0` branch on
+    ///   both sides, nothing propagated, `Some(0.0)` = exact;
+    /// * a real current — the propagated image band, which must stay far below
+    ///   the value it guards (here `1e-8` against a value of `1.0`);
+    /// * a current inside the tier's own `i_abs` — `None`, so
+    ///   [`compare_reliability`] fails loudly instead of admitting the cell.
+    ///
+    /// Before the settlement the last regime returned `|f|·1e3` at
+    /// `i_ref = 1e-9`, i.e. a 100 000 % relative error passed with no counter
+    /// and no message.
+    #[test]
+    fn the_alloc_factors_band_is_band_limited_from_below() {
+        let tol = tol_for("micro");
+        assert_eq!(tol.i_abs, 1e-6, "the micro tier's current floor");
+
+        // Both engines took the `1.0` branch: exact.
+        assert_eq!(
+            reliability_array_band("alloc_factors", 1.0, 0.0, 0.0, &tol),
+            Some(0.0),
+        );
+
+        // A real metered current: the image band, ~1e-8 on a ~1.0 ratio at
+        // 115.7 A — four orders below the value, as the derivation says.
+        let real = reliability_array_band("alloc_factors", 1.0372, 115.69, 115.69, &tol)
+            .expect("a loaded phase has a derivable band");
+        assert!(
+            real < 1.0372 * 1e-7,
+            "the propagated band on a loaded phase must stay far below the value: {real:e}"
+        );
+
+        // Denominator inside its own absolute band: no band at all.
+        for i_ref in [1e-9, 1e-7, 9.99e-7] {
+            assert_eq!(
+                reliability_array_band("alloc_factors", 1.0, i_ref, i_ref, &tol),
+                None,
+                "|I| = {i_ref:e} A is inside i_abs = {:e}",
+                tol.i_abs,
+            );
+        }
+        // Exactly at the floor it is a band again, and a bounded one.
+        let at = reliability_array_band("alloc_factors", 1.0, 1e-6, 1e-6, &tol)
+            .expect("|I| == i_abs is the first admitted denominator");
+        assert!(
+            at <= 1.0 * (1.0 + tol.i_rel),
+            "bounded at the floor: {at:e}"
+        );
+
+        // Non-finite currents never produce a band either — and the NaN must
+        // be ruled out BEFORE `f64::max`, which returns the other operand and
+        // would otherwise band the cell off a current the port never reported.
+        for (a, b) in [(f64::NAN, 0.5), (0.5, f64::NAN), (f64::INFINITY, 0.5)] {
+            assert_eq!(
+                reliability_array_band("alloc_factors", 1.0, a, b, &tol),
+                None,
+                "({a:?}, {b:?}) must not yield a band"
+            );
+        }
+
+        // `calc_current` divides by nothing, so it always has one.
+        assert_eq!(
+            reliability_array_band("calc_current", 115.0, 0.0, 0.0, &tol),
+            Some(tol.i_abs + tol.i_rel * 115.0),
+        );
+    }
+
+    /// The two extractions cover their keys, in the frozen read order, with the
+    /// right type on each. The *port* side of the same macros is checked by the
+    /// compiler: they expand over `MeterReliabilityView`/`FeederSectionView`
+    /// too, so a field renamed there stops `harness/mod.rs` compiling.
+    #[test]
+    fn the_field_extractions_are_the_frozen_keys_in_read_order() {
+        let s = section();
+        let got = rel_section_fields!(&s);
+        let names: Vec<&str> = got.iter().map(|(n, _)| *n).collect();
+        assert_eq!(
+            names,
+            vec![
+                "idx",
+                "num_section_customers",
+                "num_section_branches",
+                "sect_seq_idx",
+                "sect_total_cust",
+                "ocp_device_type",
+                "sum_branch_flt_rates",
+                "avg_repair_time",
+                "fault_rate_x_repair_hrs",
+            ]
+        );
+        assert_eq!(got[0].1, RelVal::I(1));
+        assert_eq!(got[6].1, RelVal::F(7.0));
+
+        let m = MeterReliabilityCap {
+            name: "em".to_string(),
+            total_customers: 11,
+            saifi: 1.0,
+            saifi_kw: 2.0,
+            saidi: 3.0,
+            cust_interrupts: 4.0,
+            calc_current: vec![0.0],
+            alloc_factors: vec![0.0],
+            branches: vec![],
+            ends: vec![],
+            pce: vec![],
+            num_sections: 1,
+            sections: vec![section()],
+        };
+        let got = rel_meter_scalars!(&m);
+        let names: Vec<&str> = got.iter().map(|(n, _)| *n).collect();
+        assert_eq!(
+            names,
+            vec![
+                "total_customers",
+                "saifi",
+                "saifi_kw",
+                "saidi",
+                "cust_interrupts",
+                "num_sections",
+            ]
+        );
+        assert_eq!(got[0].1, RelVal::I(11));
+        assert_eq!(got[2].1, RelVal::F(2.0));
+    }
+
+    /// The wire key for `SAIFIkW` is `saifikw` on both transports; the Rust
+    /// field is `saifi_kw` so one macro serves the cap and the view.
+    #[test]
+    fn the_saifikw_wire_key_deserializes_into_saifi_kw() {
+        let m: MeterReliabilityCap = serde_json::from_str(
+            r#"{"name":"em","total_customers":1,"saifi":0.5,"saifikw":0.25,"saidi":1.5,
+                "cust_interrupts":2.5,"calc_current":[],"alloc_factors":[],"branches":[],
+                "ends":[],"pce":[],"num_sections":0,"sections":[]}"#,
+        )
+        .expect("wire shape");
+        assert_eq!(m.saifi_kw, 0.25);
+    }
+
+    /// A channel that drops a field must fail loudly (no `#[serde(default)]`).
+    #[test]
+    fn a_dropped_field_fails_deserialization() {
+        let err = serde_json::from_str::<MeterReliabilityCap>(
+            r#"{"name":"em","total_customers":1,"saifi":0.5,"saifikw":0.25,"saidi":1.5,
+                "cust_interrupts":2.5,"calc_current":[],"alloc_factors":[],"branches":[],
+                "ends":[],"pce":[],"num_sections":0}"#,
+        )
+        .expect_err("a payload without `sections` must be refused");
+        assert!(format!("{err}").contains("sections"), "{err}");
+    }
+
+    /// The NaN/±inf agreement arm (dossier Q5): the unguarded
+    /// `SumFltRatesXRepairHrs / SumBranchFltRates` is `0/0` on every engine, so
+    /// `NaN == NaN` is agreement — and `NaN` against a number is not.
+    #[test]
+    fn nan_agrees_with_nan_and_never_with_a_number() {
+        assert!(rel_num_eq(f64::NAN, f64::NAN));
+        assert!(!rel_num_eq(f64::NAN, 0.0));
+        assert!(!rel_num_eq(0.0, f64::NAN));
+        assert!(rel_num_eq(f64::INFINITY, f64::INFINITY));
+        assert!(rel_num_eq(f64::NEG_INFINITY, f64::NEG_INFINITY));
+        assert!(!rel_num_eq(f64::INFINITY, f64::NEG_INFINITY));
+        assert!(!rel_num_eq(f64::INFINITY, f64::MAX));
+        // Exactness: one ULP apart must FAIL — there is no tolerance here.
+        assert!(rel_num_eq(0.0031360000000000008, 0.0031360000000000008));
+        assert!(!rel_num_eq(
+            0.0031360000000000008,
+            f64::from_bits(0.0031360000000000008f64.to_bits() + 1)
+        ));
+        // The measured UB denormal against the port's correct 0.0.
+        assert!(!rel_num_eq(0.0, 2.806806272625585e-309));
+        assert!(RelVal::F(0.0).matches(RelVal::F(-0.0)));
+        assert!(!RelVal::I(1).matches(RelVal::F(1.0)));
+        assert_eq!(
+            RelVal::F(2.806806272625585e-309).render(),
+            "2.806806272625585e-309"
+        );
+    }
+
+    /// The skip lookup is scoped to its own channel and field in both
+    /// directions, and names only fields the record has.
+    #[test]
+    fn the_reliability_skip_lookup_matches_only_its_own_channel_and_field() {
+        assert!(reliability_skip_row("capi_v0145", "alloc_factors").is_some());
+        assert!(reliability_skip_row("r4133", "alloc_factors").is_some());
+        assert!(reliability_skip_row("capi_v0145", "calc_current").is_some());
+        assert!(reliability_skip_row("capi_v0145", "saifi").is_none());
+        assert!(reliability_skip_row("r3723", "alloc_factors").is_none());
+        for r in RELIABILITY_SKIP_FIELDS {
+            assert!(
+                RELIABILITY_ARRAY_FIELDS.contains(&r.field),
+                "row {}/{} names a field the record does not have",
+                r.channel,
+                r.field
+            );
+            assert!(
+                r.channel == PropsChannel::CapiV0145.tag()
+                    || r.channel == PropsChannel::R4133.tag(),
+                "row names an unknown channel {:?}",
+                r.channel
+            );
+            assert!(!r.pin.is_empty() && !r.cite.is_empty());
+        }
+    }
+
+    /// Both directions of the "did the surface run at all" rule.
+    #[test]
+    fn the_reliability_surface_must_run_on_both_channels() {
+        check_reliability_compare_ran((1, 2), (1, 2));
+        for bad in [((0, 0), (1, 2)), ((1, 2), (0, 0))] {
+            let payload = std::panic::catch_unwind(|| check_reliability_compare_ran(bad.0, bad.1))
+                .expect_err("a channel that compared no meter must fail");
+            let msg = payload
+                .downcast_ref::<String>()
+                .cloned()
+                .unwrap_or_else(|| "<non-string panic>".to_string());
+            assert!(
+                msg.contains("never reached one of the two channels"),
+                "{msg}"
+            );
+        }
+    }
+
+    /// The staleness rule: a never-consulted row fails; a consulted row whose
+    /// two sides happened to agree does NOT (the `hits` count is luck — see
+    /// [`assert_reliability_skip_rows_are_live`]).
+    #[test]
+    fn a_never_consulted_reliability_skip_row_is_stale_but_a_zero_hit_one_is_not() {
+        let table = &RELIABILITY_SKIP_FIELDS[..2];
+        check_reliability_skip_rows_are_live(table, &[0, 0], false);
+        check_reliability_skip_rows_are_live(table, &[7, 9], true);
+        let payload =
+            std::panic::catch_unwind(|| check_reliability_skip_rows_are_live(table, &[7, 0], true))
+                .expect_err("a row that was never consulted must fail");
+        let msg = payload
+            .downcast_ref::<String>()
+            .cloned()
+            .unwrap_or_else(|| "<non-string panic>".to_string());
+        assert!(msg.contains("never consulted"), "{msg}");
+        assert!(msg.contains("alloc_factors"), "{msg}");
+        assert!(
+            !msg.contains("calc_current"),
+            "only the stale row is reported: {msg}"
+        );
+    }
+
+    /// The port-side regime predicate: all-zero allocation factors mean
+    /// `CalcAllocationFactors` never ran, and any written value takes the
+    /// exclusion off — including the `1.0` the writer stores for a zero
+    /// current.
+    #[test]
+    fn the_skip_regime_is_the_ports_untouched_allocation_arrays() {
+        let mk = |alloc: Vec<f64>| MeterReliabilityView {
+            name: "em".to_string(),
+            total_customers: 0,
+            saifi: 0.0,
+            saifi_kw: 0.0,
+            saidi: 0.0,
+            cust_interrupts: 0.0,
+            caidi: 0.0,
+            calc_current: vec![0.0; alloc.len()],
+            alloc_factors: alloc,
+            branches: Vec::new(),
+            ends: Vec::new(),
+            pce: Vec::new(),
+            num_sections: 0,
+            sections: Vec::new(),
+        };
+        assert!(reliability_skip_applies(&mk(vec![0.0, 0.0, 0.0])));
+        assert!(!reliability_skip_applies(&mk(vec![0.0, 0.0, 1.0])));
+        assert!(!reliability_skip_applies(&mk(vec![0.5, 0.5, 0.5])));
     }
 }

@@ -1015,6 +1015,11 @@ struct Anchors {
     elements: &'static str,
     /// The discrete-state capture, which drives `Transformers.First/Next`.
     discrete: &'static str,
+    /// G1.6(i)'s reliability capture — driven between the meter walk and
+    /// the PD-element walk (its own slot gate lives in
+    /// `crates/dss-core/tests/reliability_pins.rs`); named here so the
+    /// topology-last rule below covers it too.
+    reliability: &'static str,
     /// The WP8.5b property sweep, read after every established capture.
     properties: &'static str,
     /// G1.7's topology capture — read after `properties`, i.e. last of all.
@@ -1082,6 +1087,7 @@ const CAPI_CALLS: Anchors = Anchors {
     aggregates: "capture_aggregates(ckt",
     elements: "capture_all_elements(",
     discrete: "gc.capture_discrete(ckt",
+    reliability: "capture_reliability(ckt",
     properties: "capture_all_properties(d, ckt",
     topology: "capture_topology(ckt",
 };
@@ -1096,6 +1102,7 @@ const R4133_CALLS: Anchors = Anchors {
     aggregates: "capture_aggregates(engine",
     elements: "capture_all_elements(engine",
     discrete: "capture_discrete(engine",
+    reliability: "capture_reliability(engine",
     properties: "capture_all_properties(engine",
     topology: "capture_topology(engine",
 };
@@ -1124,6 +1131,7 @@ fn the_gate_rejects_a_swapped_or_renamed_capture() {
         aggregates: "capture_aggregates(",
         elements: "capture_all_elements(",
         discrete: "capture_discrete(",
+        reliability: "capture_reliability(",
         properties: "capture_all_properties(",
         topology: "capture_topology(",
     };
@@ -1164,6 +1172,7 @@ fn check_topology_last(src: &str, a: &Anchors, rel: &str) -> Result<(), String> 
     let topology = offset_after(src, a.topology, run, rel)?;
     for (what, needle) in [
         ("the WP8.5b property sweep", a.properties),
+        ("the G1.6(i) reliability capture", a.reliability),
         ("the per-element capture", a.elements),
         ("the discrete-state capture", a.discrete),
         ("the G1.9 aggregates", a.aggregates),
@@ -1601,20 +1610,33 @@ fn capture_topology(engine: &Engine) -> Result<TopologyCap, EngineError> {
         aggregates: "capture_aggregates(",
         elements: "capture_all_elements(",
         discrete: "capture_discrete(",
+        reliability: "capture_reliability(",
         properties: "capture_all_properties(",
         topology: "capture_topology(",
     };
     let ok = "fn run_case( capture_aggregates(x); capture_discrete(x); \
-              capture_all_elements(x); capture_all_properties(x); capture_topology(x);";
+              capture_all_elements(x); capture_reliability(x); capture_all_properties(x); \
+              capture_topology(x);";
     assert!(check_topology_last(ok, &a, "synthetic").is_ok());
 
     let early = "fn run_case( capture_aggregates(x); capture_discrete(x); capture_topology(x); \
-                 capture_all_elements(x); capture_all_properties(x);";
+                 capture_all_elements(x); capture_reliability(x); \
+                 capture_all_properties(x);";
     let err = check_topology_last(early, &a, "synthetic").expect_err("topology ran first");
     assert!(err.contains("property sweep"), "{err}");
 
+    // ...and the same rule now covers the G1.6(i) slot: a topology read placed
+    // before the reliability capture would take that capture's `Meters.Totals`
+    // tail on a tree-rewritten circuit, so it is rejected too.
+    let before_rel = "fn run_case( capture_aggregates(x); capture_discrete(x); \
+                      capture_all_elements(x); capture_all_properties(x); \
+                      capture_topology(x); capture_reliability(x);";
+    let err = check_topology_last(before_rel, &a, "synthetic").expect_err("topology ran first");
+    assert!(err.contains("reliability capture"), "{err}");
+
     let renamed = "fn run_case( capture_aggregates(x); capture_discrete(x); \
-                   capture_all_elements(x); capture_all_properties(x); grab_topology(x);";
+                   capture_all_elements(x); capture_reliability(x); \
+                   capture_all_properties(x); grab_topology(x);";
     let err = check_topology_last(renamed, &a, "synthetic").expect_err("the anchor is gone");
     assert!(err.contains("could not find"), "{err}");
 

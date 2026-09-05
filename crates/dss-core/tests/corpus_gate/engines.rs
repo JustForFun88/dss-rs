@@ -30,7 +30,7 @@ use crate::harness::aggregates::{AggregatesCap, SolutionScalarsCap};
 use crate::harness::topology::TopologyCap;
 use crate::harness::{
     BusCap, ElementCap, Injection, MeterCap, MonitorCap, PdElementCap, ProbeCap, PropsCap,
-    VariablesCap, YFingerprint, YMat, YPrim,
+    ReliabilityCap, VariablesCap, YFingerprint, YMat, YPrim,
 };
 use crate::manifest::SolvableCase;
 
@@ -91,6 +91,15 @@ pub(crate) struct Checkpoint {
     /// first shape into a case failure.
     #[serde(default)]
     pub(crate) pd_elements: Option<Vec<PdElementCap>>,
+    /// GOLDEN_REBASE G1.6(i): the `Meters` reliability payload, carried by the
+    /// LAST checkpoint only — `RelCalc` runs once per case, after the last
+    /// solve, on all three engines (it is not idempotent). `Option` for the
+    /// [`super::harness::capture_guard::require_capture_opt`] reason
+    /// [`Self::pd_elements`] is one, with the extra step dimension: `None`
+    /// means "not requested, or not this step", `Some` with an empty `meters`
+    /// list means "requested, and this circuit has no enabled meter".
+    #[serde(default)]
+    pub(crate) reliability: Option<ReliabilityCap>,
     #[serde(default)]
     pub(crate) probes: Vec<ProbeCap>,
     #[serde(default)]
@@ -172,6 +181,7 @@ pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
         "buses": c.compare_bus,
         "all_properties": c.compare_all_properties,
         "pd_elements": c.compare_pdelements,
+        "reliability": c.compare_reliability,
         // G1.7: both transports honor this key (`oracle_server.py` reads
         // `req["topology"]`, `dss-epri`'s `RunRequest::topology`) and both read
         // the surface strictly last in the step.

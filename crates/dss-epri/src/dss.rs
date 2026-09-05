@@ -49,6 +49,20 @@ impl std::error::Error for EngineError {}
 /// Powers, Currents, Losses (each flat `[re, im, ...]`) for one element.
 pub type Pcl = (Vec<f64>, Vec<f64>, Vec<f64>);
 
+/// What the executive `RelCalc` did (GOLDEN_REBASE G1.6(i)) — an *observable*
+/// of the reliability surface, not a bridge detail: a zone with no overcurrent
+/// device aborts the calculation on every engine, and the gate compares the
+/// abort (and its text) across the three of them.
+#[derive(Debug, Clone)]
+pub struct RelCalcResult {
+    /// The command hit the tolerated `52902` abort
+    /// (`Meters/EnergyMeter.pas:2502`).
+    pub aborted: bool,
+    /// The abort's message, verbatim from `ErrorDesc`; empty when it did not
+    /// abort.
+    pub message: String,
+}
+
 /// `CurrentsMagAng`, `Residuals`, `VoltagesMagAng` (each the flat
 /// `[mag, ang, ...]` array the DDLL writes, angles in degrees on the
 /// `(-180, 180]` branch cut) for one **enabled** element — the GOLDEN_REBASE
@@ -102,7 +116,18 @@ pub enum FfiOut {
 const TOLERATED_COMPILE: &[i32] = &[250];
 /// User-written-model errnos (`oracle_server._USER_MODEL_ERRNOS`), tolerated at
 /// compile + every solve/read only when the case opts in via `warn_and_continue`.
-const USER_MODEL: &[i32] = &[567, 570, 1570];
+///
+/// The **one** Rust-side definition: [`crate::capture`] carried a hand-synced
+/// twin from G1.9 until the 2026-09-05 lane merge folded it away (that
+/// handoff's "dedup at merge"), so a change here now reaches both readers.
+pub(crate) const USER_MODEL: &[i32] = &[567, 570, 1570];
+/// The **only** errno the executive `RelCalc` may raise without failing the case
+/// (`oracle_server._RELCALC_TOLERATED_ERRNOS`, the same narrow scope on the capi
+/// transport): `52902` "No Overcurrent Protection device (Relay, Recloser, or
+/// Fuse) defined. Aborting Reliability calc." — `Meters/EnergyMeter.pas:2502`,
+/// raised per meter whose zone holds no OCP device. Deliberately *not* a member
+/// of [`TOLERATED_COMPILE`]: the tolerance exists for one command only.
+const RELCALC_TOLERATED: &[i32] = &[52902];
 
 /// The engine handle: the DLL entry points plus its self-reported version.
 ///
@@ -279,6 +304,19 @@ impl Engine {
         tolerated: &[i32],
         ctx: &str,
     ) -> Result<String, EngineError> {
+        self.command_tolerating_report(cmd, tolerated, ctx)
+            .map(|(reply, _)| reply)
+    }
+
+    /// [`Engine::command_tolerating`], keeping the tolerated `(errno, desc)`
+    /// instead of only logging it — for the caller whose *tolerated* error is
+    /// itself a captured observable ([`Engine::relcalc`]).
+    fn command_tolerating_report(
+        &self,
+        cmd: &str,
+        tolerated: &[i32],
+        ctx: &str,
+    ) -> Result<(String, Option<(i32, String)>), EngineError> {
         let reply = self.raw_command(cmd);
         let (errno, desc) = self.poll_error();
         if errno != 0 && !tolerated.contains(&errno) {
@@ -290,8 +328,9 @@ impl Engine {
         }
         if errno != 0 {
             eprintln!("epri-worker: tolerated non-fatal #{errno} on `{cmd}` ({ctx})");
+            return Ok((reply, Some((errno, desc))));
         }
-        Ok(reply)
+        Ok((reply, None))
     }
 
     /// Escalate a lingering error after a capture read (no tolerance). A clean
@@ -382,6 +421,47 @@ impl Engine {
         let reply = self.command_strict(cmd, "exec")?;
         self.wait_for_actor()?;
         Ok(reply)
+    }
+
+    /// Run the executive `RelCalc` — the reliability half of the model
+    /// (GOLDEN_REBASE G1.6(i); the capi transport issues the same command at the
+    /// same point of the step, `oracle_server.run_case`).
+    ///
+    /// `RelCalc` is `ExecCommand[100]` -> `DoLambdaCalcs`
+    /// (`Executive/ExecCommands.pas:154`, `:869`; `Executive/ExecHelper.pas:4404`):
+    /// it zeroes every bus's `BusFltRate`/`Bus_Num_Interrupt` and then runs
+    /// `TEnergyMeterObj.CalcReliabilityIndices` over `EnergyMeters.First`/`Next`
+    /// (`ExecHelper.pas:4417`, `:4439-4441`) — so, like `Meters.Totals`, it leaves
+    /// meter pointer-list cursor past the last meter and any following walk must
+    /// start from `Meters.First`.
+    ///
+    /// It is **not idempotent** (`Bus.TotalMiles` accumulates), which is why the
+    /// gate runs it exactly once per case, on the last step.
+    ///
+    /// Tolerates errno [`RELCALC_TOLERATED`] **only**, and *reports* it: the
+    /// abort is compared across engines. Everything else still fails the case —
+    /// notably `28724` "No EnergyMeter Objects Defined"
+    /// (`ExecHelper.pas:4418-4421`), which is exactly what a
+    /// `compare_reliability` flag on a meterless deck would produce and must
+    /// never pass silently.
+    ///
+    /// Blocks on the solver actor afterwards for the same reason
+    /// [`Engine::exec_wait`] does: the command dispatches no solve of its own,
+    /// but no capture may race a busy actor.
+    pub fn relcalc(&self) -> Result<RelCalcResult, EngineError> {
+        let (_reply, tolerated) =
+            self.command_tolerating_report("RelCalc", RELCALC_TOLERATED, "relcalc")?;
+        self.wait_for_actor()?;
+        Ok(match tolerated {
+            Some((_errno, desc)) => RelCalcResult {
+                aborted: true,
+                message: desc,
+            },
+            None => RelCalcResult {
+                aborted: false,
+                message: String::new(),
+            },
+        })
     }
 
     /// `ParallelV(1)` = `ActorStatus[]` (0 = busy, 1 = done).
@@ -1225,6 +1305,37 @@ impl Engine {
         }
     }
 
+    /// Drive an `I` row that takes a **selector argument** — today exactly
+    /// [`modes::METERS_SET_ACTIVE_SECTION`] (see the "one declared selector"
+    /// paragraph on [`ModeSpec`]).
+    ///
+    /// Same rails as [`Engine::read_mode`]: the [`modes::DO_NOT_CALL`] refusal
+    /// before any FFI and a shape check on the reply — only the neutral `0` is
+    /// replaced by the caller's index, which is the whole point (the neutral
+    /// drive would deselect instead of select).
+    fn select_mode_i(&self, spec: &ModeSpec, arg: i32) -> Result<i32, EngineError> {
+        if let Some(refusal) = modes::check_callable(spec.family, spec.kind, spec.mode) {
+            return Err(EngineError::Other(format!("{spec}: {refusal}")));
+        }
+        if spec.kind != ModeKind::I {
+            return Err(EngineError::Other(format!(
+                "{spec}: a selector must be an I row"
+            )));
+        }
+        match self.ffi_dispatch(FfiCall {
+            family: spec.family,
+            kind: spec.kind.as_str(),
+            mode: spec.mode,
+            iarg: arg,
+            ..Default::default()
+        })? {
+            FfiOut::I(v) => Ok(v),
+            other => Err(EngineError::Other(format!(
+                "{spec}: expected I, got {other:?}"
+            ))),
+        }
+    }
+
     /// The scalar `f64` of an `F` row.
     fn read_mode_f(&self, spec: &ModeSpec) -> Result<f64, EngineError> {
         match self.read_mode(spec)? {
@@ -1556,6 +1667,32 @@ impl Engine {
     /// `MetersI(21)` `Meters.NumSections` — `DMeters.pas:244`. See [`modes::METERS_NUM_SECTIONS`].
     pub fn meters_num_sections(&self) -> Result<i32, EngineError> {
         self.read_mode_i(&modes::METERS_NUM_SECTIONS)
+    }
+
+    /// `MetersI(22)` `Meters.SetActiveSection` — `DMeters.pas:254`. See
+    /// [`modes::METERS_SET_ACTIVE_SECTION`].
+    ///
+    /// Selects the 1-based feeder section every `MetersI(23..27)` /
+    /// `MetersF(4..6)` read then answers for, on the **active meter**; `0` (or
+    /// any index outside `1..=NumSections`) deselects, after which those eight
+    /// reads return `0` (`DMeters.pas:254-264`). The selection is a per-meter
+    /// field the `Meters.First`/`Next` walk never resets, so every section block
+    /// of a capture must select first.
+    ///
+    /// The arm assigns no `Result`, so the family default `0` (`DMeters.pas:30`)
+    /// is the only legal reply: a `-1` is the family's unknown-mode sentinel
+    /// ([`modes::classify_i`]) — a DLL that does not serve the selector at all,
+    /// where every section read would silently answer for section 0 — and is
+    /// escalated instead of being decoded as success.
+    pub fn meters_set_active_section(&self, section: i32) -> Result<(), EngineError> {
+        let reply = self.select_mode_i(&modes::METERS_SET_ACTIVE_SECTION, section)?;
+        match modes::classify_i(reply) {
+            ModeStatus::Served => Ok(()),
+            other => Err(EngineError::Other(format!(
+                "{}: {other}",
+                modes::METERS_SET_ACTIVE_SECTION
+            ))),
+        }
     }
 
     /// `MetersI(23)` `Meters.OCPDeviceType` — `DMeters.pas:265`. See [`modes::METERS_OCP_DEVICE_TYPE`].
