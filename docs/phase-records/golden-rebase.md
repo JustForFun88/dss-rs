@@ -3059,22 +3059,22 @@ row against the pre-fix lock.
 
   merge: lane lane-m -> update, see git log
 
-- **G1.6(ii)** (2026-09-05, lane `lane-m`; **D7** lanes, **D20**/**D22** the engine fix) — the eight
-  per-bus reliability columns (`IBus._columns`; r4133 `DDLL/DBus.pas:129-170`, `:60-73`) live-compared
-  on both oracle channels inside part (i)'s payload: no new flag, same `RelCalc`-once protocol, same
-  6-case population (4 capi / 50 buses, 5 r4133 / 84 buses), **exactly** (`rel = abs = 0`), keys
+- **G1.6(ii)** (2026-09-05, lane `lane-m`; **D7**, **D20**/**D22**) — the eight per-bus reliability
+  columns (`IBus._columns`; r4133 `DDLL/DBus.pas:60-73`, `:129-170`) live-compared on both oracle
+  channels inside part (i)'s payload: no new flag, same `RelCalc`-once protocol, same 6-case
+  population (4 capi / 50 buses, 5 r4133 / 84), **exactly** (`rel = abs = 0`), keys
   `bus:<bus>:<field>` on the existing `reliability` field — **0 ledger entries**, no golden byte, no
   lock moved; `WP_G1_MODES` 103 → **111**, `EXCLUDED_WRITE_MODES` gains `Bus F:4`. **D20/D22**, its
   own commit ahead of the surface: `calc_reliability_indices` regains `AssumeRestoration := …` +
   `TotalUpDownstreamCustomers` (r4133 `Meters/EnergyMeter.pas:2466-2468`) — a **measured capi
-  divergence, unreachable on the corpus** (`docs/upgrade/DIVERGENCES.md` §D22). The eight pins, the Q4
-  `Bus.Int_Duration` record and the floors: `TESTING.md` §"The per-bus reliability arm",
-  `tests/TOLERANCE_NOTES.md` §"The per-bus columns (G1.6(ii))", `GOLDEN_REBASE_PLAN.md` §G1.6
-  as-executed (ii). Commits: `3e65ae2d` (D20/D22) + `572954e6` (surface) + the settlement below.
-  Gate after the settlement: five commands exit 0 in **both** lanes, 78 binaries,
-  **6 307 passed / 0 failed / 5 ignored** each (6 263 + the two new offline drives × 22 harness
-  binaries); ledger unchanged at 54 entries with fail-on-stale green, no golden byte, no lock moved;
-  `lane_diff` `VERDICT: PASS`, max |Δ| = 0 on all eight kinds (525 cases / 3 221 054 records).
+  divergence, unreachable on the corpus** (`docs/upgrade/DIVERGENCES.md` §D22). The pins, the Q4
+  `Bus.Int_Duration` measurement and the exactness derivation: `TESTING.md` §"The per-bus
+  reliability arm", `tests/TOLERANCE_NOTES.md` §"The per-bus columns (G1.6(ii))",
+  `GOLDEN_REBASE_PLAN.md` §G1.6 as-executed (ii). Commits: `3e65ae2d` (D20/D22) + `572954e6`
+  (surface) + `fc4dfa73` (audit settlement) **+ docs**. Gate (both lanes, after the settlement): the
+  five commands exit 0, **6 307 passed / 0 failed / 5 ignored** over 78 binaries, corpus gate
+  525/525, ledger 54 entries / 0 stale, no golden byte and no lock moved; `lane_diff` `VERDICT:
+  PASS`, max |Δ| = 0 on all eight kinds (525 cases / 3 221 054 records).
 
   *Audit settlement* (2026-09-05, `fc4dfa73`): 11 findings — **9 fixed / 2 recorded /
   0 refuted**. Fixed: the roll-up guard's "dead code" comment (it is live — `RelCalc restore=y` takes
