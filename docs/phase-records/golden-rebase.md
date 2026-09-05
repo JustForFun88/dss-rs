@@ -3176,3 +3176,50 @@ row against the pre-fix lock.
   **525/525** cases (238 / 0 / 0 in the default lane).
 
   merge: lane lane-m -> update, see git log
+- **G1.5** (2026-09-05, lane `lane-b`, bus chain — **D7**) — **the short-circuit surface**
+  (`Bus.Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix`/`Isc`/`Voc`) live on both channels for every live
+  non-`large*` case, on G1.4a's per-bus capture (`compare_zsc ⇒ compare_bus`, asserted, never
+  or-ed): **precomputed state only** — the gate never runs or refreshes a study — the discrete
+  "study ran" bit before any number, the matrices row-major over the bus's **internal** node index
+  (r4133 `DDLL/DBus.pas:431-459`/`:374-397`/`:351-372`, `Common/Bus.pas:215-229`). Port gap closed
+  in-step: `ReduceAlgs`' `kVBase <= 0` branch skipped `Solution.UpdateVBus`
+  (r4133 `Meters/ReduceAlgs.pas:500-508`), leaving `Bus.Voc` stale. **0 new ledger entries** (the
+  per-channel not-run sentinels are comparator normalizations, **D4**; **D11(2)** narrows here to
+  `Voc`/`Isc`), no new tolerance constant, no golden byte; corpus 524 → **525**
+  (`modes/faultstudy/faultstudy_micro.dss`, the `micro`-band witness). Rules, floors and pins:
+  `TESTING.md`, `tests/TOLERANCE_NOTES.md` §"Short-circuit surface", the plan's §G1.5 note, and the
+  `exec::view::bus_sc_tests` / `harness::bus_short_circuit_tests` modules.
+  Commits: `7d920701` (surface) + `5d206bdb` (audit settlement) + docs. Gate at `7d920701`: fmt +
+  clippy clean and **5 130 / 0 / 5 ignored** per lane, `lane_diff` **PASS**, max |Δ| = 0 over
+  4 825 571 values; final tree **5 134 / 0 / 5 ignored** per lane over 75 binaries (the settlement
+  moves no executable product statement, so no second `lane_diff` is owed), corpus 525/525, ledger
+  53 entries / 1 516 hits / 0 stale, D11(2) 8 (case, channel) pairs, `tests/golden` untouched.
+  *Audit settlement (2026-09-05, `5d206bdb`):* 14 findings, 11 distinct — **8 fixed, 2 recorded,
+  1 refuted**. Fixed: the `bus_sc_tests` band had abs/rel transposed (now the `micro` tier's own
+  `1e-6` + `1e-9`, deck header and manifest note with it); the surface's non-trivial half gained a
+  fail-on-stale (`SC_STUDY_POPULATION = (10, 646)`, recorded from the runner, asserted in the gate
+  epilogue, pinned both ways) — `port_ran == oracle_ran` is equally true when NEITHER ran; **D2**'s
+  cross-transport check now covers the six SC arms; the row-major flatten got the executable guard
+  the measured-vacuous transpose demo left it without; the value drives run on both channels; a
+  wrong-rev `YMatrix.pas` citation and the 0.42-vs-**0.61** population worst were corrected.
+  Recorded: the κ measurement ran after F4's bands (outcome unchanged — branch (i), no band moved);
+  the bands are re-used tier constants, derived in `TOLERANCE_NOTES`. Refuted: `update_vbus` cannot
+  panic — `nodes`/`ref_no` grow only inside `reprocess_bus_defs`, whose tail re-allocates `vbus`.
+  Reports `tmp/g15/audit_{code,tests}/report.md`, table `tmp/g15/settle.md`.
+
+  *On `update` after the merge (2026-09-05):* the lane's figures are its own; merged with
+  G1.6(i)'s `midi_relcalc` deck the corpus reads **526** cases / 522 live / 366 `both`, so the two
+  decks together moved every live-non-`large` lock: `FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,
+  ZSC,TOPOLOGY}_POPULATION` are **(443, 312, 87, 44)**, up from the (441, 310, 87, 44) population
+  either deck saw, and `FORCED_DERIVED_POPULATION` — that set plus its two `Test/AutoTrans`
+  opt-ins — is **(445, 314, 87, 44)**, all seven re-derived by their own tests; while
+  `SC_STUDY_POPULATION` **(10, 646)**, `TOPOLOGY_STALE_DECLINES` (16, 135),
+  `LOOPED_PAIR_WINDOW_DECLINES` (8, 96), `WP_G1_MODES` 103 and `LEDGER_FIELDS` 15 did **not**
+  (`midi_relcalc` runs no fault study, `faultstudy_micro` is single-step and radial).
+  `ledger.json` untouched by both sides (54 entries / 31 causes, 1 564 hits / 0 stale),
+  `population.lock.json` regenerated with no diff beyond the two case rows, `golden.lock.json`
+  unmoved. Merged-tree checks: fmt + clippy clean in both lanes, `corpus_gate` **526/526** cases
+  (256 / 0 / 0 in the default lane), D11(2) still 8 (case, channel) pairs, the 24 TESTING.md
+  citations the merge shifted re-pointed.
+
+  merge: lane lane-b -> update, see git log

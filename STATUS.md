@@ -132,40 +132,43 @@ reproduced in any lane. Full record:
 [`golden-rebase.md`](docs/phase-records/golden-rebase.md) section "GOLDEN_REBASE WP-G0 /
 WP-G2 — condensed records" (full session records precede it there).
 
-**GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened 2026-08-08; since
-2026-09-04 its chains run in parallel **lanes**, D7, merged into `update` one sub-step at a
-time). Landed: **G1.1**, killed on day one and delivered by `R4133_PROPS_PLAN.md` RP4.1
-2026-09-03 (**G3.4**/**G3.5** unblocked); **G1.2** (the ESPVLControl deck) 2026-08-29; and,
-2026-09-04/05, the rails plus six surfaces — **G1.0** (`c4b67a6e` + `42454b64`), the flag
-vocabulary, exclusion `channels`, the capture guard and the r4133 bridge whose mode probe
-**discharges G1.11**; **G1.9** (`lane-s`, `9757d26c` + `f27f9598`), `Circuit` aggregates +
-`Solution` scalars; **G1.6b** (`lane-m`, `06808a6d` + `e1e18367` + `c6a3c0a8`), the
-`PDElements` walk + the **D9** engine fix; **G1.3a** (`lane-e`, `d8e71991` + `588e0bfe` +
-`9f9c723d`), `Enabled` + the three polar channels (**1** new entry, `DIVERGENCES.md` L8, +
-**13** widenings); **G1.4a** (`lane-b`, `6b0dbd32` + `be01e413` + `10417d99`), the bus
+**GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened 2026-08-08; since 2026-09-04
+its chains run in parallel **lanes**, D7, merged one sub-step at a time). Landed: **G1.1**, killed
+and delivered by `R4133_PROPS_PLAN.md` RP4.1 2026-09-03 (**G3.4**/**G3.5** unblocked); **G1.2**
+(the ESPVLControl deck) 2026-08-29; and, 2026-09-04/05, the rails plus seven surfaces — **G1.0**
+(`c4b67a6e` + `42454b64`), the flag vocabulary, exclusion `channels`, the capture guard and the
+r4133 bridge (its mode probe **discharges G1.11**); **G1.9** (`lane-s`, `9757d26c` + `f27f9598`),
+`Circuit` aggregates + `Solution` scalars; **G1.6b** (`lane-m`, `06808a6d` + `e1e18367` +
+`c6a3c0a8`), the `PDElements` walk + the **D9** engine fix; **G1.3a** (`lane-e`, `d8e71991` +
+`588e0bfe` + `9f9c723d`), `Enabled` + the three polar channels (**1** new entry, `DIVERGENCES.md`
+L8, + **13** widenings); **G1.4a** (`lane-b`, `6b0dbd32` + `be01e413` + `10417d99`), the bus
 surface's divergence-free half (**0** new; **D8** defers the rest to G1.4c), with **D11(1)**
-`float_roundtrip`, **D12**/**D14** the four `GICTransformer` decks onto `r4133` (ledger −4,
-corpus 523 → 524) and **D13** the worker's registry leak; **G1.3d(i)** (`lane-e`, `e4d99806`
-+ `b7d7da2a` + `c9c4ac09`), the per-element counts, `NodeOrder` and `EnergyMeter`, exact
-(**0** new; **D19′** at the merge); **G1.7** (`lane-s`, 2026-09-05, `8fc32991` + `898f8a86` +
-`434a6b51` + `1314431a`), the six order-free `Topology` rows over
-`FORCED_TOPOLOGY_POPULATION` = (442, 311, 87, 44) after this merge, with the memoized-tree
-and window-dedup upstream defects **asserted, not excluded** (**D15**/**D16**, fail-on-stale
-`(16, 135)` / `(8, 96)`) and two port gaps fixed en route (**0** new, no floor); and
-**G1.6(i)** (`lane-m`, 2026-09-05, `e343d9e8` + `96d7540a` + `bcc835b6`), meter extras and
-**the run protocol** — the gate drives the executive `RelCalc` once per case and six flagged
-cases compare the indices, every section, `CalcCurrent`/`AllocFactors`, `Meters.Totals` and
-the **ordered** zone lists, exact but for three cells banded from existing tiers (**D17a**),
-**0** new entries, one pinned skip closed on the corpus's only `AllocateLoads` deck
-(524 → **525** cases), G1.6b's two deferrals discharged (**D11/D18**). No golden byte moved,
-|Δ| = 0 throughout; `WP_G1_MODES` **103**, ledger **54** / 31 causes; G1.3d(ii), G1.3b/c,
-G1.4b/c, G1.5, G1.6(ii), G1.8, G1.10–G1.11c and WP-G3–G5 remain.
+`float_roundtrip`, **D12**/**D14** the four `GICTransformer` decks onto `r4133` (ledger −4, corpus
+523 → 524) and **D13** the worker's registry leak; **G1.3d(i)** (`lane-e`, `e4d99806` + `b7d7da2a`
++ `c9c4ac09`), the per-element counts, `NodeOrder` and `EnergyMeter`, exact (**0** new); **G1.7**
+(`lane-s`, `8fc32991` + `898f8a86` + `434a6b51` + `1314431a`), the six order-free `Topology` rows,
+the memoized-tree and window-dedup defects **asserted, not excluded** (**D15**/**D16**,
+fail-on-stale `(16, 135)` / `(8, 96)`), two port gaps fixed en route (**0** new, no floor);
+**G1.6(i)** (`lane-m`, `e343d9e8` + `96d7540a` + `bcc835b6`), meter extras and **the run protocol**
+— the gate drives the executive `RelCalc` once per case and six flagged cases compare the indices,
+every section, `CalcCurrent`/`AllocFactors`, `Meters.Totals` and the **ordered** zone lists, exact
+but for three tier-banded cells (**D17a**), **0** new, one pinned skip closed on the corpus's only
+`AllocateLoads` deck, G1.6b's deferrals discharged (**D11/D18**); and **G1.5** (`lane-b`,
+`7d920701` + `5d206bdb` + docs), the bus short-circuit surface
+(`Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix`/`Isc`/`Voc`) read as **precomputed state** on G1.4a's
+per-bus walk, the channels' not-run sentinels normalized (**D4**), D11(2) narrowed to the
+`Voc`/`Isc` values, a port gap closed in step (`ReduceAlgs`' `kVBase <= 0` branch skipped
+`Solution.UpdateVBus`, r4133 `Meters/ReduceAlgs.pas:500-508`) and a settlement
+`SC_STUDY_POPULATION` fail-on-stale (**0** new). The two lanes' micro decks met here: corpus 524 →
+**526** cases / 522 live, `FORCED_{PROPS,BUS,ZSC,TOPOLOGY}_POPULATION` = (443, 312, 87, 44); no
+golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **103**, ledger **54** / 31 causes; G1.3d(ii),
+G1.3b/c, G1.4b/c, G1.6(ii), G1.8, G1.10–G1.11c and WP-G3–G5 remain.
 
-**Next.** Element lane **G1.3d(ii)** → G1.3b → G1.3c; `lane-m` **G1.6(ii)** (the eight
-per-bus reliability columns + `Bus.Int_Duration`, on G1.6(i)'s population and protocol — it
-also owns or hands on the AT-1 zone-boundary decision below); `lane-s` **G1.8**
-(incidence/Laplacian) → G1.10a–c; bus lane **G1.5** → G1.4c (D8) → G1.4b, then WP-G3–G5;
-queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
+**Next.** Element lane **G1.3d(ii)** → G1.3b → G1.3c; `lane-m` **G1.6(ii)** (the eight per-bus
+reliability columns + `Bus.Int_Duration`, on G1.6(i)'s population and protocol — it also owns or
+hands on the AT-1 zone-boundary decision below); `lane-s` **G1.8** (incidence/Laplacian) →
+G1.10a–c; bus lane **G1.4c** (D8) → G1.4b, then WP-G3–G5; queued: `WASM_USERMODELS`, RESONANCE,
+MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children, needs
 MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the `UpgradeRung` escape
@@ -223,7 +226,7 @@ each row's measured cost.
   "r4133"`, same delta/daily paths: both engines then take the same arm, so node V, the RHS,
   the elements, Y and YPrim are compared again with no ledger entry. Not built inside the
   settlement because two new manifest cases are a measured population change (the lock's
-  anti-shrink accounting, the 523-case count in `CLAUDE.md`, `TESTING.md` and
+  anti-shrink accounting, the 526-case count in `CLAUDE.md`, `TESTING.md` and
   `corpus_gate/scheduler.rs`), i.e. its own sub-step with its own audit pair, owing the
   usual live measurement that the new decks compare clean on every channel. Full text: the
   §RP3.10 record.
@@ -258,8 +261,8 @@ each row's measured cost.
   guard (`!kind.starts_with("large")`), so of the 365 `both` cases **311** compare their
   property table; the same guard also leaves 14 r4133-only and 11 capi-only `large` decks
   out, but those two never had one. The forced population is pinned
-  (`FORCED_PROPS_POPULATION` = (442, 311, 87, 44) since G1.4a's D12/D14 flip and G1.6(i)'s
-  deck — the gap itself unchanged at 54 — asserted by
+  (`FORCED_PROPS_POPULATION` = (443, 312, 87, 44) since G1.4a's D12/D14 flip and the G1.6(i)/G1.5
+  decks — the gap itself unchanged at 54 — asserted by
   `the_property_forcing_rule_is_every_live_non_large_case`), so it is measured, bounded and
   locked. Pricing a `large`-deck property sweep stays available to GOLDEN_REBASE, owed by
   nothing: `r4133-props-rp5.md` §RP5.2.
@@ -312,28 +315,27 @@ each row's measured cost.
   re-probe the skip-bearing cases with `DSS_GATE_SEED_LEDGER=1
   DSS_GATE_SEED_ONLY=<case>` and delete any entry whose cause upstream has fixed,
   so the r4133 channel re-lights instead of staying dark forever.
-- **`CorpusGuard` leaks deck-written artifacts under concurrency — mechanism MEASURED
-  at GOLDEN_REBASE G1.6b (2026-09-04, audit settlement T5); still OPEN, owed a hygiene
-  sub-step** (first seen at G1.2, 2026-08-29). Unfiltered `cargo test --workspace`
-  runs intermittently leave untracked deck-written exports in the tracked corpus tree
-  — nearly always `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*` /
-  `AutoHLT_*` `.txt`, from the decks' own `export … file=` lines). **Twenty-four
-  sightings** 2026-08-29 … 2026-09-05 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2, §RP3.10 ×3,
-  §RP5.1 ×1, G1.0 ×2, G1.9 ×2, G1.6b ×1, G1.7 ×3, the G1.7 merge ×1, G1.6(i) ×2 — one of
-  those, after a settlement gate + `lane_diff`, was 22 `.txt` plus a 0-byte
-  `controls/gfm/DA3ABD.tmp`, a new shape — and the G1.6(i) merge ×1), 1 … 36 files, varying between
-  runs of the *same* tree (measured at §RP3.13) and once with an unreproducible
-  `corpus_gate` `137 passed; 1 failed`; every set was removed before its commit and
-  both lanes were green with the files present, no tracked corpus or golden byte ever
-  moving, so the leak costs hygiene only. **It is a drop-order race, not a missing
-  sweep:** `impl Drop for CorpusGuard` (`corpus_gate/runner.rs:161-190`) releases the
-  directory lock *before* `sweep_created` and the restore loop run, so a sibling case
-  starting in that window (`Test/AutoTrans` holds five cases in one directory)
-  photographs the outgoing case's exports as "vendored" and its own drop rewrites them
-  — only files under `RESTORE_MAX`; scoped or single-binary runs leave it clean, and
-  the case-insensitive collision at `runner.rs:42-55` compounds it. The fix (hold the
-  lock across sweep + restore) owes a gate-contention measurement in a file every lane
-  is editing (**D7**); start with `DSS_GATE_JOBS=1` per G2.2d.
+- **`CorpusGuard` leaks deck-written artifacts under concurrency — mechanism MEASURED at
+  GOLDEN_REBASE G1.6b (2026-09-04, audit settlement T5); still OPEN, owed a hygiene sub-step**
+  (first seen at G1.2, 2026-08-29). Unfiltered `cargo test --workspace` runs intermittently leave
+  untracked deck-written exports in the tracked corpus tree — nearly always
+  `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*` / `AutoHLT_*` `.txt`, from the
+  decks' own `export … file=` lines). **Twenty-six sightings** 2026-08-29 … 2026-09-05 (G1.2 ×2,
+  §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2, §RP3.10 ×3, §RP5.1 ×1, G1.0 ×2, G1.9 ×2, G1.6b ×1, G1.7 ×3,
+  the G1.7 merge ×1, G1.6(i) ×2 — one of those, after a settlement gate + `lane_diff`, was 22
+  `.txt` plus a 0-byte `controls/gfm/DA3ABD.tmp`, a new shape — the G1.6(i) merge ×1, the G1.5
+  merge ×2 (two `AutoHLT_*`, then three `auto3bus_*`)), 1 … 36 files, varying between runs
+  of the *same* tree (measured at §RP3.13) and once with an unreproducible `corpus_gate` `137
+  passed; 1 failed`; every set was removed before its commit and both lanes were green with the
+  files present, no tracked corpus or golden byte ever moving, so the leak costs hygiene only. **It
+  is a drop-order race, not a missing sweep:** `impl Drop for CorpusGuard`
+  (`corpus_gate/runner.rs:161-190`) releases the directory lock *before* `sweep_created` and the
+  restore loop run, so a sibling case starting in that window (`Test/AutoTrans` holds five cases in
+  one directory) photographs the outgoing case's exports as "vendored" and its own drop rewrites
+  them — only files under `RESTORE_MAX`; scoped or single-binary runs leave it clean, and the
+  case-insensitive collision at `runner.rs:42-55` compounds it. The fix (hold the lock across sweep
+  + restore) owes a gate-contention measurement in a file every lane is editing (**D7**); start
+  with `DSS_GATE_JOBS=1` per G2.2d.
 - **`RelCalc` leaks reliability accumulators across meter zones — engine finding, OPEN
   (GOLDEN_REBASE G1.6(i) audit settlement AT-1, 2026-09-05).** `DoLambdaCalcs` zeroes only
   `BusFltRate`/`Bus_Num_Interrupt` circuit-wide (`ExecHelper.pas:4432-4441`);

@@ -113,6 +113,12 @@ fn corpus_gate_all_cases_match_engines() {
     // `Solution.NodeV` — because re-raising that one triaged cause per bus would
     // mean ten new ledger rows for a divergence already pinned. Bus count, name
     // sequence, `nodes`, `kv_base` and every array length stay compared there.
+    // G1.5 extends the same flag to exactly two more arrays and no further:
+    // `harness::compare_bus_short_circuit` drops the `Voc` and `Isc` VALUES —
+    // `Voc` is a copy of that same `NodeV` (`Common/Solution.pas:4070-4083`) and
+    // `Isc = Ysc·Voc` (`SolutionAlgs.pas:785-796`) — while `Zsc`/`Ysc`/`Zsc1`/
+    // `Zsc0` stay fully compared, being functions of `Y` alone and independent
+    // of the solution vector that was triaged.
     // It is not a mask and must never read as one, so every suppressed case is
     // listed next to the entry that caused it
     // (`ledger::LedgerRuntime::bus_array_suppressions`, driven both ways by
@@ -147,6 +153,13 @@ fn corpus_gate_all_cases_match_engines() {
             let first = f.reason.lines().next().unwrap_or("<no message>");
             msg.push_str(&format!("  {}\n      {first}\n", f.label));
         }
+        // Printed BEFORE the panic on purpose (G1.5 audit settlement): a panic
+        // message travels through the process-global panic hook, which another
+        // test in this binary may have replaced while it drives an expected
+        // failure (`harness`' own `reds`). The run report is the only diagnosis
+        // a red gate leaves behind — a 2026-09-05 red printed the summary and
+        // the ledger table but no case list at all — so it goes out on its own.
+        eprintln!("{msg}");
         panic!("{msg}");
     }
     // Fail-on-stale (§1.3 runtime rule / §5 R3): every applicable ledger entry
@@ -277,6 +290,21 @@ fn corpus_gate_all_cases_match_engines() {
     }
     harness::assert_reliability_compare_ran();
     harness::assert_reliability_skip_rows_are_live();
+    // And for G1.5's short-circuit surface, for the first reason again: its
+    // content gate is `assert_eq!(port_ran, oracle_ran)`, which is equally
+    // satisfied when NEITHER side ran a study, so a deck that quietly stopped
+    // solving one would leave the whole non-trivial half of the surface
+    // comparing sentinel lengths, `Zsc1`/`Zsc0` = 0 and a zero `Isc` — green
+    // over nothing, and invisible to `population.lock.json` (which fingerprints
+    // the manifest flag) and to `MODES_REQUIRED` (which fingerprints the deck
+    // path). The pair is re-derived on every run and asserted exactly, so it
+    // fails on a drop AND on a growth (G1.5 audit settlement, T1).
+    let (sc_walks, sc_buses) = harness::sc_study_counters();
+    eprintln!(
+        "corpus_gate short-circuit: {sc_walks} walk(s) carrying a real matrix, \
+         {sc_buses} bus(es) compared full"
+    );
+    harness::assert_sc_study_compare_ran();
 }
 
 /// The property census (`R4133_PROPS_PLAN.md` RP0.2, `DSS_PROPS_CENSUS`): walk
@@ -431,6 +459,21 @@ const BUS_READ_ORDER: [(&str, &str); 5] = [
     ("b.puVmagAngle", "engine.bus_pu_vmag_angle()"),
 ];
 
+/// The six per-bus SHORT-CIRCUIT reads (GOLDEN_REBASE G1.5), same table shape:
+/// capi marker first, r4133 marker second. They are appended to the ONE per-bus
+/// walk [`BUS_READ_ORDER`] measures — not a second `SetActiveBus` pass — so the
+/// two tables together are the whole per-bus read order on both transports.
+/// (`CAPI_Alt.pas:2294`/`:2283`/`:2305`/`:2336`/`:2202`/`:2227` == r4133
+/// `DDLL/DBus.pas:461`/`:476`/`:431`/`:491`/`:374`/`:351`.)
+const SC_READ_ORDER: [(&str, &str); 6] = [
+    ("b.Zsc1", "engine.bus_zsc1()"),
+    ("b.Zsc0", "engine.bus_zsc0()"),
+    ("b.ZscMatrix", "engine.bus_zsc_matrix()"),
+    ("b.YscMatrix", "engine.bus_ysc_matrix()"),
+    ("b.Isc", "engine.bus_isc()"),
+    ("b.Voc", "engine.bus_voc()"),
+];
+
 /// Read a repo file (`rel` is repo-relative) for a source-order assertion.
 fn repo_text(rel: &str) -> String {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -489,7 +532,12 @@ fn assert_source_order(hay: &str, markers: &[&str], what: &str) {
 ///    active-element cursor);
 /// 2. the per-bus read order, identical on both transports ([`BUS_READ_ORDER`]);
 /// 3. the group-C claim itself: neither bus-capture body touches an
-///    element-scoped accessor, which is what would make the slot matter.
+///    element-scoped accessor, which is what would make the slot matter;
+/// 4. (G1.5) that the six short-circuit arms took **no slot of their own**: the
+///    `zsc` request field is consumed inside this same `"buses"` slot, as the
+///    argument of the one `capture_all_buses` call, so the list in (1) is
+///    complete and stays complete. Their read ORDER is
+///    [`the_short_circuit_capture_reads_in_one_fixed_order_on_both_transports`].
 #[test]
 fn the_bus_capture_reads_in_one_fixed_order_on_both_transports() {
     // ---- capi transport: tools/oracle/oracle_server.py ---------------------
@@ -505,6 +553,26 @@ fn the_bus_capture_reads_in_one_fixed_order_on_both_transports() {
             "\"all_properties\":",
         ],
         "oracle_server.py checkpoint slot",
+    );
+    // (4) G1.5 rides this slot: the `zsc` request field reaches the checkpoint
+    // only as the argument of the ONE `capture_all_buses` call inside the
+    // `"buses"` slot. A future sub-step that gave the short-circuit arms their
+    // own checkpoint key would move that call out from between these two
+    // offsets and fail here instead of silently changing the read order.
+    let py_sc_call = sole_offset(
+        &py,
+        "capture_all_buses(ckt, want_zsc)",
+        "oracle_server.py zsc rides the bus slot",
+    );
+    let py_buses = sole_offset(&py, "\"buses\":", "oracle_server.py checkpoint slot");
+    let py_vmag = sole_offset(
+        &py,
+        "\"all_bus_vmag_pu\":",
+        "oracle_server.py checkpoint slot",
+    );
+    assert!(
+        py_buses < py_sc_call && py_sc_call < py_vmag,
+        "oracle_server.py: the `zsc` arms must be captured inside the `\"buses\"`          checkpoint slot (offsets {py_buses} < {py_sc_call} < {py_vmag})"
     );
     let py_body = fn_body(&py, "def capture_all_buses(", |l| l.starts_with("def "));
     let py_code = strip_python_docstring(&py_body);
@@ -526,6 +594,18 @@ fn the_bus_capture_reads_in_one_fixed_order_on_both_transports() {
             "req.all_properties",
         ],
         "capture.rs run_case slot",
+    );
+    // (4), r4133 side: same rule, same shape.
+    let rs_sc_call = sole_offset(
+        &rs,
+        "capture_all_buses(engine, req.zsc)",
+        "capture.rs zsc rides the bus slot",
+    );
+    let rs_buses = sole_offset(&rs, "req.buses", "capture.rs run_case slot");
+    let rs_props = sole_offset(&rs, "req.all_properties", "capture.rs run_case slot");
+    assert!(
+        rs_buses < rs_sc_call && rs_sc_call < rs_props,
+        "capture.rs: the `zsc` arms must be captured inside the `req.buses` block          (offsets {rs_buses} < {rs_sc_call} < {rs_props})"
     );
     let rs_body = fn_body(&rs, "fn capture_all_buses(", |l| l == "}");
     let rs_code = strip_rust_line_comments(&rs_body);
@@ -555,6 +635,113 @@ fn the_bus_capture_reads_in_one_fixed_order_on_both_transports() {
                 "{what}: {f:?} appears in a capture documented as group C \
                  (order-free) — an element-scoped read there breaks the \
                  §1.1(a)/D3 partition; re-classify the block or drop the read"
+            );
+        }
+    }
+}
+
+/// The SHORT-CIRCUIT capture order is a CONTRACT too, on both transports
+/// (GOLDEN_REBASE_PLAN.md G1.5 §2.a; the §1.1(a)/D3 partition).
+///
+/// Like the five voltage arms, all six of `Zsc1`/`Zsc0`/`ZscMatrix`/
+/// `YscMatrix`/`Isc`/`Voc` are **group C — order-free**: each one moves only
+/// `ActiveBusIndex` and then reads a field of the bus object
+/// (`Bus.Zsc`/`Ysc`/`BusCurrent`/`VBus` — capi `CAPI/CAPI_Alt.pas:2202-2365`,
+/// r4133 `DDLL/DBus.pas:351-518`), never `ComputeIterminal` (group A) and never
+/// `GetCurrents` into a scratch buffer (group B). The order is pinned as a
+/// contract BETWEEN the two transports, so a divergence is the engines' and
+/// never the harness'.
+///
+/// Three things are asserted, all off the transports' own source text:
+/// 1. the six SC markers appear in the same order on both transports
+///    ([`SC_READ_ORDER`]);
+/// 2. they sit AFTER the five [`BUS_READ_ORDER`] reads, in the same
+///    `capture_all_buses` body — i.e. they extend the one per-bus walk instead
+///    of opening a second `SetActiveBus` pass (the walk's checkpoint slot is
+///    pinned by [`the_bus_capture_reads_in_one_fixed_order_on_both_transports`],
+///    which this test deliberately does not repeat);
+/// 3. the two claims that are specific to THIS surface and that no other test
+///    covers: the SC segment touches no element-scoped accessor (group C), and
+///    it never RUNS or refreshes a study. `Zsc`/`Ysc` exist only because the
+///    case's own deck solved a fault study (`Common/SolutionAlgs.pas:875-912`);
+///    a `ZscRefresh`/`Solve` inside the capture would make the oracle answer a
+///    question the gate asked rather than the one the deck did — self-fulfilling
+///    on every one of the ~440 forced cases whose deck runs no study at all.
+#[test]
+fn the_short_circuit_capture_reads_in_one_fixed_order_on_both_transports() {
+    // ---- capi transport: tools/oracle/oracle_server.py ---------------------
+    let py = repo_text("tools/oracle/oracle_server.py");
+    let py_body = fn_body(&py, "def capture_all_buses(", |l| l.starts_with("def "));
+    let py_code = strip_python_docstring(&py_body);
+    // (1) + (2) in one pass: the five voltage markers then the six SC markers.
+    let capi_markers: Vec<&str> = BUS_READ_ORDER
+        .iter()
+        .map(|(c, _)| *c)
+        .chain(SC_READ_ORDER.iter().map(|(c, _)| *c))
+        .collect();
+    assert_source_order(
+        &py_code,
+        &capi_markers,
+        "oracle_server.py capture_all_buses (voltage arms then SC arms)",
+    );
+
+    // ---- r4133 transport: crates/dss-epri/src/capture.rs -------------------
+    let rs = repo_text("crates/dss-epri/src/capture.rs");
+    let rs_body = fn_body(&rs, "fn capture_all_buses(", |l| l == "}");
+    let rs_code = strip_rust_line_comments(&rs_body);
+    let epri_markers: Vec<&str> = BUS_READ_ORDER
+        .iter()
+        .map(|(_, r)| *r)
+        .chain(SC_READ_ORDER.iter().map(|(_, r)| *r))
+        .collect();
+    assert_source_order(
+        &rs_code,
+        &epri_markers,
+        "capture.rs capture_all_buses (voltage arms then SC arms)",
+    );
+
+    // ---- (3) the two claims this surface adds ------------------------------
+    // Scanned on the SC SEGMENT only — from the first SC marker to the end of
+    // the body — so this is a statement about the block G1.5 added, not a
+    // re-run of the whole-body scan the voltage test already does. Comments and
+    // docstrings are stripped, so the prose that EXPLAINS a rule cannot trip it.
+    for (what, code, first, forbidden) in [
+        (
+            "oracle_server.py capture_all_buses",
+            py_code.as_str(),
+            SC_READ_ORDER[0].0,
+            // element-scoped (group A/B) + anything that would (re)run a study
+            [
+                "ActiveCktElement",
+                "SetActiveElement",
+                "ZscRefresh",
+                "Solve",
+            ]
+            .as_slice(),
+        ),
+        (
+            "capture.rs capture_all_buses",
+            rs_code.as_str(),
+            SC_READ_ORDER[0].1,
+            [
+                "set_active_element",
+                ".element_",
+                "zsc_refresh",
+                ".solve(",
+                "command(",
+            ]
+            .as_slice(),
+        ),
+    ] {
+        let at = sole_offset(code, first, what);
+        let segment = &code[at..];
+        for f in forbidden {
+            assert!(
+                !segment.contains(f),
+                "{what}: {f:?} appears in the short-circuit segment — either it is an \
+                 element-scoped read inside a block documented as group C (order-free), \
+                 or it re-runs/refreshes the study the DECK is supposed to have run \
+                 (GOLDEN_REBASE_PLAN.md G1.5 §2.a). Re-classify the block or drop the read"
             );
         }
     }
@@ -707,6 +894,166 @@ fn the_two_transports_agree_on_the_bus_capture_of_a_gated_both_case() {
         "cross-transport bus capture on asymmetric:line/line_asym.dss: \
          worst |capi − r4133| = {worst:.3e} V"
     );
+}
+
+/// D2's cross-transport validation for the **short-circuit** arms (G1.5 audit
+/// settlement, T4). Its bus-surface sibling above sets `compare_bus` only, so
+/// `build_run_request` ships `"zsc": false` and no `Zsc`/`Ysc`/`Isc`/`Voc`
+/// value was ever compared transport-to-transport in CI. What this catches
+/// that a Rust-vs-oracle red catches more slowly: a wiring defect on ONE
+/// transport — the node arrays permuted into ascending order, a swapped
+/// `Zsc1`/`Zsc0` slot, `Isc` read where `Voc` belongs, an unscaled arm — shows
+/// up here as "the two oracles disagree", which localizes it to the bridge
+/// instead of the engine. A TRANSPOSED matrix read stays invisible to it, as
+/// it is to every value comparison in the suite (`Zsc`/`Ysc` are symmetric to
+/// ≤ 4.66e-10 corpus-wide — the measurement that made spec §4's transpose demo
+/// vacuous); that convention is pinned offline instead, by
+/// `exec::view::bus_sc_tests::flatten_row_major_walks_i_outer_on_an_asymmetric_matrix`.
+///
+/// The deck is `modes:faultstudy/faultstudy_micro.dss` — `engines: "both"`,
+/// `kind: micro`, one step, no ledger entry, and the only corpus case that runs
+/// a fault study at the tightest tier. Its `b2` is reached as `bus2=b2.2.1.3`
+/// with a 1-phase 5 Ω reactor on node `1`, so the `Zsc` diagonal is
+/// position-dependent (`[1][1]` ≈ 1.665+1.662j Ω against ≈ 1.063+2.874j at
+/// `[0][0]`/`[2][2]`): a permuted or transposed read on either transport moves
+/// ~0.6 Ω, six orders past the band.
+///
+/// The band is **twice** the tier's, by the same triangle argument the bus
+/// sibling uses: each transport is within one band of the port (the gate
+/// asserts precisely that, on both channels), so `|A − B| ≤ 2·band`.
+#[test]
+fn the_two_transports_agree_on_the_short_circuit_capture_of_a_gated_both_case() {
+    let mut case = load_family("modes")
+        .into_iter()
+        .find(|c| c.path == "faultstudy/faultstudy_micro.dss")
+        .expect("modes:faultstudy/faultstudy_micro.dss must be in the family manifest");
+    assert_eq!(
+        case.engines, "both",
+        "the cross-transport check needs a case both channels gate"
+    );
+    assert!(
+        case.compare_zsc,
+        "the manifest row must carry compare_zsc: this is the surface's witness deck"
+    );
+    case.compare_bus = true; // scheduler::force_bus; `compare_zsc` implies it
+    let abs = family_file("modes", &case.path);
+    let req = engines::build_run_request(&abs, &case);
+
+    let capi = Oracle::for_spec(None).run_case(&abs, &case);
+    let resp = engines::EpriOneShot::new().call(&req);
+    assert!(resp.ok, "r4133 one-shot failed: {:?}", resp.error);
+    let epri: engines::CaseResult =
+        serde_json::from_value(resp.result.expect("r4133 ok response missing result"))
+            .expect("r4133 malformed CaseResult");
+
+    let tol = harness::tol_for(&case.kind);
+    assert_eq!(
+        capi.checkpoints.len(),
+        epri.checkpoints.len(),
+        "the transports disagree on the step count"
+    );
+    let mut worst: f64 = 0.0;
+    let mut full_matrices = 0usize;
+    for (s, (a, b)) in capi.checkpoints.iter().zip(&epri.checkpoints).enumerate() {
+        assert_eq!(
+            a.buses.len(),
+            b.buses.len(),
+            "step {s}: bus count differs between the transports"
+        );
+        for (ba, bb) in a.buses.iter().zip(&b.buses) {
+            assert!(
+                ba.name.eq_ignore_ascii_case(&bb.name),
+                "step {s}: bus name differs: {} vs {}",
+                ba.name,
+                bb.name
+            );
+            let n = ba.nodes.len();
+            // Every arm, per entry, at twice its own tier band — the same
+            // assignment the comparator makes (`v_*` for the impedances and
+            // `Voc`, `y_*` for `Ysc`, `i_*` for `Isc`).
+            for (what, xa, xb, rel, ab) in [
+                ("Zsc1", &ba.zsc1, &bb.zsc1, tol.v_rel, tol.v_abs),
+                ("Zsc0", &ba.zsc0, &bb.zsc0, tol.v_rel, tol.v_abs),
+                ("ZscMatrix", &ba.zsc, &bb.zsc, tol.v_rel, tol.v_abs),
+                ("YscMatrix", &ba.ysc, &bb.ysc, tol.y_rel, tol.y_abs),
+                ("Isc", &ba.isc, &bb.isc, tol.i_rel, tol.i_abs),
+                ("Voc", &ba.voc, &bb.voc, tol.v_rel, tol.v_abs),
+            ] {
+                assert_eq!(
+                    xa.len(),
+                    xb.len(),
+                    "step {s}: bus {} {what} length differs between the transports",
+                    ba.name
+                );
+                if what == "ZscMatrix" && n >= 2 && xa.len() == 2 * n * n {
+                    full_matrices += 1;
+                }
+                for (k, (x, y)) in xa.iter().zip(xb).enumerate() {
+                    let allowed = 2.0 * (ab + rel * y.abs());
+                    assert!(
+                        (x - y).abs() <= allowed,
+                        "step {s}: bus {} {what} entry {k}: capi {x} vs r4133 {y} \
+                         (|diff| = {:.3e} > allowed {allowed:.3e})",
+                        ba.name,
+                        (x - y).abs()
+                    );
+                    worst = worst.max((x - y).abs());
+                }
+            }
+        }
+    }
+    // Non-vacuity, twice over: this deck runs a study, so the comparison above
+    // must have walked real `n x n` matrices and not two agreeing sentinels…
+    assert!(
+        full_matrices >= 3,
+        "the cross-transport short-circuit check compared {full_matrices} full \
+         matrices; the deck must publish one per bus after its fault study"
+    );
+    // …and the content it walked is position-dependent on BOTH transports, so
+    // a node-order defect on either one is a ~0.6 Ω move against a ~1e-6 band.
+    for (tag, cp) in [
+        ("capi", &capi.checkpoints[0]),
+        ("r4133", &epri.checkpoints[0]),
+    ] {
+        let b2 = cp
+            .buses
+            .iter()
+            .find(|b| b.name.eq_ignore_ascii_case("b2"))
+            .expect("the deck's b2");
+        assert_eq!(b2.zsc.len(), 2 * 3 * 3, "{tag}: b2 must carry a 3x3 Zsc");
+        let d = |k: usize| Complex64::new(b2.zsc[2 * (3 * k + k)], b2.zsc[2 * (3 * k + k) + 1]);
+        assert!(
+            (d(1) - d(0)).norm() > 0.5,
+            "{tag}: b2's Zsc diagonal must stay position-dependent (the 1-phase \
+             reactor on node 1), got {} vs {}",
+            d(1),
+            d(0)
+        );
+    }
+    eprintln!(
+        "cross-transport short-circuit capture on modes:faultstudy/faultstudy_micro.dss: \
+         {full_matrices} full matrices, worst |capi − r4133| = {worst:.3e}"
+    );
+}
+
+/// The short-circuit surface's fail-on-stale, pinned in **both** directions
+/// offline (G1.5 audit settlement, T1). The shipped statics cannot be rewound
+/// once a gate run has moved them, so the rule is exercised through its
+/// injected-counter form — the same split
+/// `harness::props_norm::check_r4133_props_compare_ran` uses.
+#[test]
+fn the_short_circuit_study_guard_is_silent_on_the_measured_population() {
+    harness::check_sc_study_compare_ran(10, 646);
+}
+
+/// …and fires when the corpus stops running fault studies — the regression
+/// the comparator's own `assert_eq!(port_ran, oracle_ran)` cannot see, because
+/// it is equally satisfied when NEITHER side ran one.
+#[test]
+#[should_panic(expected = "not (10, 646)")]
+fn the_short_circuit_study_guard_fires_when_a_deck_stops_solving_a_study() {
+    // one deck's two channels gone: 10 - 2 walks, 646 - 2*3 buses
+    harness::check_sc_study_compare_ran(8, 640);
 }
 
 /// The text of the function whose signature line contains `head`, up to the
