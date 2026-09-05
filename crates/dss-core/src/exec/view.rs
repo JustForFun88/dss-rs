@@ -198,11 +198,22 @@ pub struct BusScView {
 ///   avoid some corner cases that resulted in infinite loops"*) is upstream's own
 ///   acknowledgement that r4133's unbounded `repeat` hangs.
 ///
-/// The engine's *report* paths keep the upstream conventions byte-for-byte —
-/// `report/export/seq_voltages.rs:38-48` ground-substitutes, and
-/// `report/show/voltages.rs:190-192` wraps before probing — because they are byte
-/// goldens. Only this API surface carries the port's own semantics, and the two
-/// are pinned separately.
+/// The engine's *report* paths still carry the upstream conventions, for two
+/// different reasons. `report/show/voltages.rs:191-193` wraps the phase number
+/// *before* the lookup, which is r4133's OWN correct order
+/// (`Common/ShowResults.pas:193-194`) — that path reproduces no defect. The
+/// ground substitution, on the other hand, IS the defect, and
+/// `report/export/seq_voltages.rs:39-41` (and `report/show/voltages.rs:73-75`)
+/// still reproduces it. It is **not** held in place by golden bytes: measured
+/// 2026-09-05, every voltage-report golden runs
+/// `IEEETestCases/13Bus/IEEE13Nodeckt.dss`, whose bus specs carry only node
+/// numbers 1-3, so no bus there can have >= 3 nodes with a phase missing and the
+/// substituting branch is never reached — fixing it would move zero golden
+/// bytes. It stays only because what an *export* should print instead is a
+/// report-semantics decision outside WP-G1's scope (which moves no golden byte
+/// at all); it is tracked, with that measurement, as `ORPHANED_GAPS.md` §1.19.
+/// Only this API surface carries the port's own semantics, and the two are
+/// pinned separately.
 ///
 /// The fastdss harness drops `VLL`/`puVLL` from `IBus._columns` altogether in
 /// this configuration (`tests/save_outputs.py:205-207` on `origin/fastdss`,
@@ -297,7 +308,7 @@ fn phase_refs(bus: &crate::circuit::bus::Bus) -> [Option<usize>; 3] {
 /// The transform is the engine default [`SymComp::precise`] — the pair
 /// `Phase2SymComp` runs on the pinned capi oracle (`Shared/mathutil.pas:548`
 /// ends initialization with `SelectAs2pVersion(False)`) and the pair
-/// `report/export/seq_voltages.rs:44` uses, so the two in-tree sequence surfaces
+/// `report/export/seq_voltages.rs:45` uses, so the two in-tree sequence surfaces
 /// cannot drift apart numerically. r4133 builds its `Ap2s` from the truncated
 /// `sin 60° = 0.866025403` and inverts it numerically, which is a measured
 /// ~5e-10 relative offset on `V1`/`V2`, not a semantic difference
@@ -325,10 +336,13 @@ fn bus_seq_voltages(
 /// phase has no line-to-line voltage, and neither has a bus of pure
 /// neutral/return nodes.
 ///
-/// This is what r4133's own report path computes for the same bus
+/// This is the pairing ORDER r4133's own report path uses
 /// (`Common/ShowResults.pas:193-194` wraps the phase number *before* looking the
-/// node up). The two DDLL / C-API arms poll before wrapping and therefore pair
-/// phase 3 with node 4, or a node with itself — see [`BusVoltageView`].
+/// node up), which is why a `[1, 2, 3, 4]` bus closes on phase 1 there and on
+/// node 4 in the API. The report path is not identical to S-VLL on every bus —
+/// with a phase missing it still pairs against `GetRef(0)`, i.e. ground, where
+/// S-VLL declines. The two DDLL / C-API arms poll before wrapping and therefore
+/// pair phase 3 with node 4, or a node with itself — see [`BusVoltageView`].
 fn bus_line_to_line(
     ckt: &Circuit,
     bus: &crate::circuit::bus::Bus,

@@ -2813,31 +2813,19 @@ row against the pre-fix lock.
   panic — `nodes`/`ref_no` grow only inside `reprocess_bus_defs`, whose tail re-allocates `vbus`.
   Reports `tmp/g15/audit_{code,tests}/report.md`, table `tmp/g15/settle.md`.
 
-- **G1.4c** (2026-09-05, lane `lane-b`, bus chain — **D7**) — **the bus sequence and
-  line-to-line arms** (`Bus.SeqVoltages`/`CplxSeqVoltages`/`VLL`/`puVLL`) live on both channels,
-  on G1.4a's per-bus capture and flag (no new flag, no force rule, no lock move — regenerated
-  diff-empty). The first surface where port, capi 0.14.5 and r4133 all differ: the port publishes
-  **S-SEQ** (sequence iff nodes 1/2/3 are all present — r4133's stated intent `DDLL/DBus.pas:299`
-  against its own node-*count* test `:298`, capi's clamp `CAPI_Alt.pas:2172-2186`, both
-  ground-substituting at `DBus.pas:305` == `:2190`) and **S-VLL** (L-L over the phases present —
-  `Common/ShowResults.pas:193-194`, against the pre-wrap poll `DBus.pas:575-584` ==
-  `CAPI_Alt.pas:2500-2523`); **D4**/**D8** trigger 3/**D21**, with the divergent buses closed by a
-  *positive* mechanism assertion in the **D15**/**D16** shape instead of an exclusion — **0** ledger
-  rows (53 unchanged; the ledger-free seeding run over both channels on all 521 live cases
-  attributes 0 of 200 non-matches here), 0 golden bytes. r4133's `VLL` **hang** (20.011 s TIMEOUT on
-  NEV `double-1`, 0.000 s on `13kvbus`) is refused per bus by the new state-dependent register in
-  `crates/dss-epri` (+2.94–3.54 µs/bus) — the **D2** mode-capability record for
-  `BUSV(11)`/`BUSV(12)`. One new constant, `C_012 = 5.30e-10` (live worst 5.229587392548124e-10 =
-  0.9999992 of the analytic ceiling over 390 decks / 13 830 buses). Four fail-on-stale populations,
-  printed as `corpus_gate seq/vll:`: (10, 129) / (4, 54) / (16, 196) / (2, 12). Rules, floors and
-  pins: `TESTING.md` (the bus sequence/L-L surface + §"The r4133 bridge"),
-  `tests/TOLERANCE_NOTES.md` §"Bus sequence and line-to-line voltages", `DIVERGENCES.md` §G1.4c,
-  the plan's §G1.4 as-executed note, and the `exec::view::bus_seq_vll_tests` /
-  `harness::bus_seq_vll_comparator_tests` / `dss-epri::modes::tests` modules; three upstream reports
-  `investigations/to_opendss/64-bus-vll-infinite-loop-no-node-1-to-4.md`,
-  `65-bus-vll-pairing-probes-before-wrapping.md`,
-  `66-bus-seqvoltages-node-count-and-ground-substitution.md`.
-  Commits: `<filled at commit>` (the surface) + docs. Gate: five non-vacuity drives red the live gate
-  on named cases; the committed five-command gate is green in both lanes — fmt + clippy clean,
-  **5 339 / 0 / 5 ignored** per lane over 75 binaries, corpus gate **525/525**, ledger 53 entries /
-  0 stale, `lane_diff` **PASS** max |Δ| = 0 over 3 220 973 records / 525 cases.
+- **G1.4c** (2026-09-05, lane `lane-b`, bus chain — **D7**) — the bus **sequence** and
+  **line-to-line** arms (`SeqVoltages`/`CplxSeqVoltages`/`VLL`/`puVLL`) on both oracle channels, on
+  G1.4a's per-bus capture: no new flag, no lock move, no golden byte, **0** ledger rows. Per
+  **D4**/**D8**/**D21** the port answers S-SEQ / S-VLL (r4133's stated intent `DDLL/DBus.pas:299`
+  against its node-*count* test `:298`, and `Common/ShowResults.pas:193-194` against the pre-wrap
+  poll `:575-584`); each divergent bus is closed by a positive mechanism assertion
+  (**D15**/**D16**) behind four fail-on-stale populations and `C_012 = 5.30e-10`, and r4133's
+  `VLL` hang is refused per bus by the new `crates/dss-epri` register (**D2**). Details:
+  `TESTING.md`, `tests/TOLERANCE_NOTES.md` §"Bus sequence and line-to-line voltages",
+  `DIVERGENCES.md` §G1.4c, the plan's §G1.4 note, `investigations/to_opendss/` 64-66. Commits
+  `74cb0ef6` + `<settlement sha>`; gate green in both lanes (**5 339 / 0 / 5**, corpus **525/525**,
+  ledger 53 / 0 stale, `lane_diff` PASS max |Δ| = 0).
+  **Audit settlement** (15 findings, 12 distinct — 7 fixed / 5 recorded / 0 refuted):
+  the port's own `VLL`/`puVLL` are now asserted on **every** bus, not only where the oracle's walk
+  coincides with S-VLL (AC-1, live-proven on NEV `13kvbus`); `puVLL` and r4133 non-vacuity drives
+  added. Recorded: `Export SeqVoltages`' ground substitution → `ORPHANED_GAPS.md` §1.19.
