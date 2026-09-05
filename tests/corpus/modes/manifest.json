@@ -784,6 +784,7 @@
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 1,
+   "compare_topology": true,
    "selected_elements": [
     "*"
    ],

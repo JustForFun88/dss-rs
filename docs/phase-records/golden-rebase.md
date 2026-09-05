@@ -3020,3 +3020,106 @@ row against the pre-fix lock.
   **PASS** with max |Δ| = 0 on all eight kinds (524 cases, 3 220 881 records).
 
   merge: lane lane-e -> update, see git log
+- **G1.7** (2026-09-05, lane `lane-s`, decisions **D2**/**D3**/**D4**/**D7**/**D15**/**D16**) — the
+  six order-free `Topology` rows (`DDLL/DTopology.pas:65-98`, `:270-390`; capi
+  `CAPI_Topology.pas:81-215`, `:369-405`) go live on **both** channels in one commit: new
+  `exec/view.rs::topology_view` (the port never memoizes — upstream frees `Branch_List` only at
+  `Common/Circuit.pas:703`/`:2308`), captures in `oracle_server.py` and `dss-epri/capture.rs` read
+  **strictly last**, a zero-tolerance `harness/topology.rs` comparator, `compare_topology`
+  `wired: true` forced on every live non-`large` case (`FORCED_TOPOLOGY_POPULATION`,
+  440 = 313/83/44 on the lane, re-derived at the merge — below; seven decks also declaring it
+  so the lock sees it) — **no floor,
+  0 ledger entries, 0 new `LEDGER_FIELDS`, 0 golden bytes**; the lock moved by exactly seven
+  `topo=` tokens. **No FFI added** (G1.0 had bound the six modes; D2 discharged). Two upstream
+  defects are asserted, never excluded: the memoized tree (D15 — the four isolation fields
+  compared at step 0 and while the port's topology is unmoved, else `oracle(k) == port(0)`) and
+  the overlapping-window pair dedup (D16 — `oracle.looped_pairs == window_dedup(port candidates)`,
+  `DTopology.pas:286-296`), pinned by `TOPOLOGY_STALE_DECLINES = (16, 135)` and
+  `LOOPED_PAIR_WINDOW_DECLINES = (8, 96)` (fail-on-stale both ways over 3 314 compared triples
+  on the lane, 3 312 on the merged tree — both constants unmoved)
+  plus `topology_pins::{topology_reads_a_freshly_built_tree, looped_pairs_lose_the_straddling_window}`.
+  **Two port gaps found and fixed in-part**, in this same commit:
+  adjacency routed by `TPDElement.IsShunt` instead of `IsShuntElement` (r4133
+  `Common/Utilities.pas:1262-1274`), which hid every GICTransformer loop (pin
+  `a_gictransformer_is_a_tree_branch_and_can_close_a_loop`); and `set_nconds` forcing a terminal
+  reallocation r4133's `Set_NTerms` guard (`CktElement.pas:386`) skips, which unwired every
+  terminal on a no-op `Phases=` re-set (pins `a_no_op_set_nconds_keeps_the_terminal_state`,
+  `a_second_makeposseq_keeps_the_circuit_connected`). The B16 gap, the two shape normalizations,
+  the settlements and the two `investigations/to_opendss/` reports: `TESTING.md` §"The unified
+  corpus gate" + §"The r4133 bridge", `tests/TOLERANCE_NOTES.md` §G1.7, the plan's dated §G1.7
+  note; **28** `file.rs:LINE` citations in `TESTING.md` / `tests/TOLERANCE_NOTES.md` were
+  re-pointed after `harness/mod.rs` (+6) and `corpus_gate.rs` (+10) shifted under them
+  (`operational_docs_line_citations_point_at_the_line_they_name` was red until they were).
+  Commits: `8fc32991` (surface, one commit carrying both port-gap fixes) + `898f8a86`
+  (audit settlement) + `434a6b51` and this record (docs).
+  Gate at `8fc32991`: fmt + clippy clean in both lanes, `cargo test
+  --workspace` **5 043 / 0 failed / 5 ignored** per lane (+317 on G1.9's 4 726 — 121 in the
+  new `topology_pins` binary, 8 `harness::topology` cases in each of the other 22 of the
+  23 binaries carrying `mod harness`, the rest in-engine and gate code), 523 manifest
+  cases (519 compared) green on both channels in both lanes, census
+  3 314 / (16, 135) / (8, 96), ledger 57 entries / 1 588 hits / 0 stale, `golden_lock` + `population_lock` + `oracle_parity_cfg_gate` green,
+  no golden byte; `lane_diff` run (product code moved — `exec/view.rs`, `ckt_tree/mod.rs`,
+  `solution/topology.rs`, `elements/ckt.rs`): **PASS**, max |Δ| = 0 on all eight gated kinds
+  over 3 220 861 records, 0 iteration drifts.
+
+  **Audit settlement** (2026-09-05, `lane-s`, `898f8a86`) — 15 findings (13 distinct):
+  **10 fixed / 3 recorded / 0 refuted**, no port bug, no behavior change, 0 ledger rows.
+  Fixed: the "each in its own commit" claim in `TESTING.md` + the plan note (one commit);
+  the missing sha; four `harness/mod.rs:A-B` citations, plus the rail that let a range END
+  rot — `operational_docs_line_citations_point_at_the_line_they_name` now reads it and
+  anchors inside the range (three failure directions driven; it found a fifth stale
+  citation); `Fault` named as the second class where `TPDElement.IsShunt` and
+  `IsShuntElement` part (r4133 `PDElements/Fault.pas:244`, `:409`, `:114` — off
+  `pd_elements`, so unreachable); `get_topology`'s no-cache reason; the harness
+  `window_dedup`/`per_pair_dedup` made case-sensitive like the Pascal `=` and the port's
+  `==` (`the_dedup_models_match_names_case_sensitively`; census unmoved); a `debug_assert!`
+  on the `loop_elem` invariant; `the_oracle_side_shape_arms_have_teeth` now drives arms 1-2
+  through the real comparator; the measured trailing-empty population (134/46 reads over
+  65/21 cases) in `TESTING.md`; and the G1.9-shaped registry
+  `the_g1_7_pins_the_docs_cite_exist_exactly_once` (14 names with expected definition
+  counts — `window_dedup` = 2 twins). Recorded, not fixed: the per-case decline table stays
+  runtime output (`harness::topology::decline_report()`, quoted in every mismatch message)
+  rather than transcribed into a record already over length; the 135 declined case-steps
+  have no oracle answer to compare the port's fresh one against (D15's inherent residual —
+  a step that starts or stops declining still reds); and **D12 — pending sync**: the four
+  GICTransformer decks sit inside the forced topology population, `makeposseq_shunt.dss` on
+  the capi channel, until lane-b's flip to `r4133` lands (no masking — a bad capi process
+  reds). Gate, both lanes: fmt + clippy clean,
+  **5 067 / 0 failed / 5 ignored** (+24 = 23 `mod harness` binaries + the cfg gate), census
+  3 314 / (16, 135) / (8, 96) and ledger 57 / 1 588 hits / 0 stale unmoved, no lock or
+  golden byte; `lane_diff` re-run: **PASS**, max |Δ| = 0 over 3 220 861 records — the
+  final-tree totals for G1.7.
+
+  **Merged-tree checks** (merge into `update`, 2026-09-05).
+  `FORCED_TOPOLOGY_POPULATION` re-derived (440, 313, 83, 44) -> **(441, 310, 87, 44)** — G1.4a's
+  D12/D14 corpus flips (three `GICTransformer` decks onto `r4133`, the new `makeposseq_gic.dss`),
+  so it is again the same population as `FORCED_PROPS_POPULATION`/`FORCED_BUS_POPULATION`; the
+  census re-measures **3 312** triples with **D15 `(16, 135)` and D16 `(8, 96)` unmoved**. That
+  also discharges the settlement's "D12 — pending sync" clause: on `update` the GICTransformer
+  line no longer sits in the capi-gated `makeposseq_shunt.dss` — D14 moved it into the
+  `r4133`-gated `makeposseq_gic.dss` — so no capi-gated case in the forced topology population
+  instantiates one, which `no_capi_gated_case_instantiates_a_gictransformer` enforces. `WP_G1_MODES` stays `update`'s **102** (G1.7 adds no row — G1.0 had
+  bound the six topology modes). Checks: fmt + clippy clean in both lanes, corpus gate
+  **524/524** (`corpus_gate` binary 229 / 0 / 0 default), ledger **54** entries / **1 564** hits /
+  0 stale, `population.lock.json` regenerated (the same seven `topo=` tokens over 524 rows) and
+  `golden.lock.json` unmoved, `oracle_parity_cfg_gate` 18/18, `capture_order` 22/22,
+  `topology_pins` 174/174. **Pin 8 re-pointed**: D14 had moved the `new gictransformer.gt`
+  line out of `makeposseq_shunt.dss` after lane-s branched, so
+  `a_gictransformer_is_a_tree_branch_and_can_close_a_loop` was asserting on a deck that no
+  longer holds a GICTransformer (measured `NumLoops` 0 against its literal 1). It now drives
+  BOTH halves of the class switch, one deck each: `makeposseq_gic.dss` for the branch half
+  (r4133 one-shot, `NumLoops` **1**, `AllLoopedPairs` `[Line.feed, GICTransformer.gt]`) and
+  the now GIC-free `makeposseq_shunt.dss` for the converse (r4133 **0** loops and an EMPTY
+  candidate list, a strictly sharper guard than the old "no capacitor among the candidates").
+  Non-vacuity driven both ways in a scratch copy and restored (sha256 checked): routing by
+  `TPDElement.IsShunt` again reds half (a) at `NumLoops` 0 vs 1, and a class switch that
+  answers `false` for everything reds half (b) at 4 vs 0. A further **39** `file.rs:LINE`
+  citations in `TESTING.md` /
+  `tests/TOLERANCE_NOTES.md` were re-pointed where the merge shifted `harness/mod.rs`,
+  `corpus_gate.rs`, `corpus_gate/runner.rs`, `exec/view.rs` and `dss-epri/{capture,dss}.rs`
+  under them. Conflict resolutions: `capture_order.rs` kept `update`'s marker gate and folded
+  G1.7's six order-free rows + the no-cursor test into it (one `Lang`, both `code_of` and
+  `code_only`); `runner.rs` runs the PDElements walk and then topology last; `oracle_server.py`
+  keeps G1.4a's bus reads ahead of `all_properties` with `capture_topology` strictly after it.
+
+  merge: lane lane-s -> update, see git log
