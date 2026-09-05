@@ -23,7 +23,7 @@
 //!    defect (mode 9, `Count := 2` with stride 1) does not reach this surface;
 //! 4. that `TotalPowers` sums `GetPhasePower`'s conductor slots per terminal in
 //!    **W/var** and scales the total by `0.001` once (r4133
-//!    `DCktElement.pas:1134`, capi `CAPI_Alt.pas:1138-1139`), not per
+//!    `DCktElement.pas:1132`, capi `CAPI_Alt.pas:1138-1139`), not per
 //!    conductor;
 //! 5. that a disabled element reports zeros and a 0-terminal element reports
 //!    nothing — the two shapes both captures normalize away.
@@ -140,7 +140,7 @@ fn cplx_seq_currents_are_the_012_components_whose_magnitudes_are_seq_currents() 
     // Leg 2 — the kernel: each terminal's three slots are
     // `SymComp::default().phase_to_sym` of that terminal's own first three
     // conductor currents (`k := (j-1)*NConds` on both engines: r4133
-    // `DCktElement.pas:47`/`:53`, capi `CAPI_Alt.pas:280`/`:316`).
+    // `DCktElement.pas:69`/`:70`, capi `CAPI_Alt.pas:279`/`:281`).
     let sym = SymComp::default();
     for (t, chunk) in l.currents.chunks(l.n_conds).take(l.n_terms).enumerate() {
         let iph = [chunk[0], chunk[1], chunk[2]];
@@ -437,8 +437,8 @@ fn cplx_seq_positive_sequence_lands_in_the_positive_slot_of_each_terminal() {
 
 // Expected-value pin — `TotalPowers` sums `GetPhasePower`'s conductor slots of
 // ONE terminal (`myInit := (j-1)*NConds+1 … myEnd := NConds*j`: r4133
-// `DCktElement.pas:1123-1124`, capi `CAPI_Alt.pas:1132-1133`) in W/var and
-// scales the sum by `0.001` ONCE (r4133 `:1134`, capi `:1138-1139`). Summing
+// `DCktElement.pas:1126-1127`, capi `CAPI_Alt.pas:1132-1133`) in W/var and
+// scales the sum by `0.001` ONCE (r4133 `:1132`, capi `:1138-1139`). Summing
 // the already-scaled `Powers` instead re-rounds per conductor; the port
 // accumulates unscaled, so the two forms differ only by that rounding.
 /// Each terminal's `total_powers` is that terminal's own conductor sum, and the

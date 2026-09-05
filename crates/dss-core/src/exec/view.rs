@@ -336,7 +336,7 @@ pub struct ElementSnapshot {
     /// [`powers`](Self::powers)' conductors, `kW + j·kvar`, length `n_terms`.
     /// r4133 `DDLL/DCktElement.pas:1109-1139` (`CktElementV` mode `20`: the
     /// `myInit := (j-1)*NConds+1 … myEnd := NConds*j` conductor walk at
-    /// `:1123-1124` and `cmulreal(…, 0.001)` at `:1134`); capi
+    /// `:1126-1127` and `cmulreal(…, 0.001)` at `:1132`); capi
     /// `CAPI/CAPI_Alt.pas:1108-1141` (`Alt_CE_Get_TotalPowers`, the same walk
     /// and `total.re * 0.001` at `:1138-1139`), facade
     /// `CAPI/CAPI_CktElement.pas:1043-1053`. A fastdss `_columns` entry
@@ -484,7 +484,7 @@ impl Dss {
             // `TotalPowers` (r4133 `DDLL/DCktElement.pas:1109-1139` mode `20`,
             // capi `CAPI/CAPI_Alt.pas:1108-1141`) accumulates the SAME
             // `GetPhasePower` slots this loop fills, in W/var, and scales the
-            // per-terminal total by `0.001` once (r4133 `:1134`, capi
+            // per-terminal total by `0.001` once (r4133 `:1132`, capi
             // `:1138-1139`) — so it is summed here, unscaled, rather than from
             // the already-scaled `powers` below. A disabled or never-energized
             // element keeps its `nterms` zeros: `GetPhasePower`'s `Else … CZERO`

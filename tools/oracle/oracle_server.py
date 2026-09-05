@@ -174,7 +174,7 @@ def capture_all_elements(
     `CAPI/CAPI_Alt.pas:1108`, facade `CAPI/CAPI_CktElement.pas:1043`; r4133
     `CktElementV(20)`, `DDLL/DCktElement.pas:1109`) is the per-terminal sum of
     `GetPhasePower`'s conductor block with the **total** scaled by `0.001` once
-    (capi `:1138-1139`, r4133 `:1134`), so it is kW/kvar, `NTerms` complex; it
+    (capi `:1138-1139`, r4133 `:1132`), so it is kW/kvar, `NTerms` complex; it
     runs `GetPhasePower`'s own `ComputeIterminal` (`Common/CktElement.pas:1049`)
     and is therefore group **A** — issued at the head of the element, beside
     `PhaseLosses`, never from this derived block. `CplxSeqCurrents`
@@ -185,7 +185,7 @@ def capture_all_elements(
 
     Enabled-only is again what keeps the two channels' shapes equal rather than
     a crash guard here: capi's extra `NodeRef = NIL` tests (`:1119` on
-    `TotalPowers`, `:877` on `CplxSeqVoltages`) return the 1-element
+    `TotalPowers`, `:878` on `CplxSeqVoltages`) return the 1-element
     `DefaultResult` / a 2-double zero where r4133 answers `NTerms` zeros
     (mode 20 has no such guard) or a 1-element `CZero` seeded before its
     `If Enabled` (`:887-888`, `:933-934`) — measured on

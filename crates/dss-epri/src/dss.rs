@@ -707,7 +707,7 @@ impl Engine {
     /// `CktElementV(20)` (`DDLL/DCktElement.pas:1109-1139`) sums
     /// `GetPhasePower`'s buffer over each terminal's own conductor block
     /// (`myInit := (j-1)*NConds+1 … myEnd := NConds*j`, `:1126-1127`) and scales
-    /// the **total** by `0.001` once (`:1134`), so the returned flat
+    /// the **total** by `0.001` once (`:1132`), so the returned flat
     /// `[re, im, …]` is `NTerms` complex values in **kW/kvar**. capi's
     /// `Alt_CE_Get_TotalPowers` (`CAPI/CAPI_Alt.pas:1108-1141`) is the same sum
     /// with the same single scaling (`:1138-1139`).
@@ -801,8 +801,8 @@ impl Engine {
     /// answers `[]` on both modes where capi returns `CplxSeqCurrents = []`
     /// (agreeing) but the 1-double `DefaultResult` `[0.0]` for
     /// `CplxSeqVoltages`, whose extra `MissingSolution … or (NodeRef = NIL)`
-    /// guard (`CAPI/CAPI_Alt.pas:877`) `CplxSeqCurrents` does not carry
-    /// (`:905`); measured on `controls/upfc/upfc_dual.dss`. That remaining
+    /// guard (`CAPI/CAPI_Alt.pas:878`) `CplxSeqCurrents` does not carry
+    /// (`:906`); measured on `controls/upfc/upfc_dual.dss`. That remaining
     /// difference is the comparator's business, not the capture's — the same
     /// split `element_seq` already documents.
     pub fn element_cplx_seq(&self, warn: bool, ctx: &str) -> Result<CplxSeq2, EngineError> {

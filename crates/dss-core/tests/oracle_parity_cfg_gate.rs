@@ -4915,3 +4915,289 @@ fn every_pin_the_g13b_record_names_exists_and_is_cited() {
         bad.join("\n  ")
     );
 }
+
+/// Every test the GOLDEN_REBASE **G1.3c** record, `TESTING.md`,
+/// `tests/TOLERANCE_NOTES.md` and the widened `ledger.json` entries name as a
+/// pin still exists, in the file they say it lives in — G1.0's registry rule
+/// ([`every_pin_the_g10_record_names_exists_and_is_cited`]) applied to the
+/// per-element complex-sequence and total-power surface (G1.3c audit
+/// settlement, 2026-09-06: the sub-step shipped without it, as G1.3b had).
+///
+/// It is load-bearing for the same reason its five siblings are, and one more:
+/// G1.3c adds **no** ledger entry either, so for each of its three claims that
+/// cost zero rows — the `TotalPowers` Newton exclusion, the n/A sentinel being
+/// `(-1, 0)` on BOTH engines (no fold owed) and D-b1's positive-sequence slot
+/// defect not reaching modes 13/14 — the only thing between a deleted pin and
+/// an unproven doc claim is the pin. The two group rows also own the EXACT
+/// member counts of the two modules, so a pin dropped from a counted group is
+/// visible even when no name here mentions it.
+#[test]
+fn every_pin_the_g13c_record_names_exists_and_is_cited() {
+    const ENGINE: &str = "crates/dss-core/src/exec/tests/derived_totals.rs";
+    const NEWTON: &str = "crates/dss-core/src/exec/tests/newton.rs";
+    const HARNESS: &str = "crates/dss-core/tests/harness/mod.rs";
+    const LEDGER: &str = "crates/dss-core/tests/corpus_gate/ledger.rs";
+    const ORDER: &str = "crates/dss-core/tests/capture_order.rs";
+    const G13C_PINS: &[(&str, &str)] = &[
+        // Engine — the accessor's own arms and the two shapes
+        // (`crate::exec::tests::derived_totals`).
+        (
+            "cplx_seq_currents_are_the_012_components_whose_magnitudes_are_seq_currents",
+            ENGINE,
+        ),
+        (
+            "cplx_seq_voltages_are_the_012_components_of_the_terminals_node_voltages",
+            ENGINE,
+        ),
+        (
+            "cplx_seq_na_sentinel_is_minus_one_plus_zero_j_on_both_engines",
+            ENGINE,
+        ),
+        (
+            "cplx_seq_positive_sequence_lands_in_the_positive_slot_of_each_terminal",
+            ENGINE,
+        ),
+        (
+            "total_powers_are_the_terminal_sums_of_the_phase_powers",
+            ENGINE,
+        ),
+        ("total_powers_are_zero_on_a_disabled_element", ENGINE),
+        ("a_zero_terminal_element_has_no_total_powers", ENGINE),
+        // The `TotalPowers` Newton exclusion — the ONLY thing standing behind
+        // `LANE_SKIP_ELEM_POWERS`' fourth channel (`crate::exec::tests::newton`).
+        ("newton_total_powers_match_the_normal_algorithm", NEWTON),
+        // Comparator — the two floors, their tightness and every shape/discrete
+        // leg (`harness::cplx_seq_and_total_power_floors`).
+        ("the_three_phase_fixture_is_green_on_both_channels", HARNESS),
+        (
+            "the_cplx_seq_band_is_the_complex_image_of_the_phase_bands",
+            HARNESS,
+        ),
+        (
+            "a_phase_error_outside_the_disc_leaves_the_cplx_seq_band",
+            HARNESS,
+        ),
+        (
+            "the_r4133_channel_carries_the_truncated_matrix_term_here_too",
+            HARNESS,
+        ),
+        (
+            "the_total_power_band_is_the_conductor_sum_of_the_power_floor",
+            HARNESS,
+        ),
+        ("an_error_inside_the_total_power_band_passes", HARNESS),
+        ("an_error_outside_the_total_power_band_fails", HARNESS),
+        (
+            "seq_terminal_bands_reproduces_the_two_inline_copies",
+            HARNESS,
+        ),
+        ("a_pure_phase_rotation_reds_the_complex_compare", HARNESS),
+        (
+            "a_pure_phase_rotation_leaves_the_magnitude_compare_green",
+            HARNESS,
+        ),
+        ("an_error_inside_the_cplx_seq_band_passes", HARNESS),
+        ("an_error_outside_the_cplx_seq_band_fails", HARNESS),
+        (
+            "the_positive_sequence_arm_is_accepted_when_only_slot_3t_plus_1_is_written",
+            HARNESS,
+        ),
+        (
+            "a_port_writing_the_wrong_positive_sequence_slot_reds",
+            HARNESS,
+        ),
+        (
+            "an_oracle_writing_a_nonzero_zero_sequence_slot_reds",
+            HARNESS,
+        ),
+        (
+            "the_not_available_sentinel_is_minus_one_plus_zero_j_on_both_channels",
+            HARNESS,
+        ),
+        (
+            "the_seq_powers_sentinel_spelling_is_not_accepted_here",
+            HARNESS,
+        ),
+        (
+            "a_port_emitting_a_wrong_na_sentinel_reds_even_when_masked",
+            HARNESS,
+        ),
+        (
+            "a_disabled_element_carries_no_payload_on_either_surface",
+            HARNESS,
+        ),
+        (
+            "a_disabled_element_with_a_total_power_payload_reds",
+            HARNESS,
+        ),
+        ("a_disabled_element_with_a_cplx_seq_payload_reds", HARNESS),
+        (
+            "the_zero_terminal_cplx_seq_shapes_are_the_measured_ones",
+            HARNESS,
+        ),
+        (
+            "the_zero_terminal_total_power_shapes_are_the_measured_ones",
+            HARNESS,
+        ),
+        (
+            "a_zero_terminal_element_is_accepted_when_both_cplx_sides_are_empty",
+            HARNESS,
+        ),
+        (
+            "a_zero_terminal_element_accepts_the_measured_capi_sentinels",
+            HARNESS,
+        ),
+        (
+            "a_zero_terminal_element_with_a_real_total_power_reds",
+            HARNESS,
+        ),
+        ("a_zero_terminal_element_with_a_real_cplx_seq_reds", HARNESS),
+        (
+            "a_short_total_power_payload_on_a_real_element_reds",
+            HARNESS,
+        ),
+        ("an_odd_cplx_seq_payload_reds", HARNESS),
+        ("a_short_port_cplx_seq_vector_reds", HARNESS),
+        (
+            "currents_only_keeps_the_cplx_seq_channels_and_drops_total_powers",
+            HARNESS,
+        ),
+        (
+            "a_cleared_total_powers_bit_drops_the_value_but_not_the_shape",
+            HARNESS,
+        ),
+        (
+            "a_cleared_total_powers_bit_still_reds_a_shape_miss",
+            HARNESS,
+        ),
+        // The three `cplx_seq_*`/`total_powers` ledger sub-channels
+        // (envelope + rewrite + the discrete guards).
+        (
+            "the_cplx_seq_envelope_bands_the_sample_and_attributes_the_exceed",
+            LEDGER,
+        ),
+        (
+            "the_cplx_seq_envelope_still_fails_outside_the_committed_bound",
+            LEDGER,
+        ),
+        (
+            "the_cplx_envelope_sees_a_rotation_the_magnitude_channel_cannot",
+            LEDGER,
+        ),
+        ("a_masked_cplx_channel_is_not_envelope_checked", LEDGER),
+        ("an_unmasked_cplx_channel_still_hits_the_envelope", LEDGER),
+        (
+            "a_cplx_seq_scope_rewrites_the_capture_in_the_wires_own_units",
+            LEDGER,
+        ),
+        (
+            "the_cplx_rewrite_and_the_cplx_envelope_cover_the_same_slots",
+            LEDGER,
+        ),
+        (
+            "a_discrete_cplx_slot_is_never_neutralized_by_a_scope",
+            LEDGER,
+        ),
+        (
+            "the_total_power_envelope_bands_the_terminal_and_attributes_the_exceed",
+            LEDGER,
+        ),
+        (
+            "the_total_power_envelope_still_fails_outside_the_committed_bound",
+            LEDGER,
+        ),
+        (
+            "a_total_powers_scope_rewrites_the_capture_in_the_wires_own_units",
+            LEDGER,
+        ),
+        (
+            "a_discrete_total_power_shape_is_never_neutralized_by_a_scope",
+            LEDGER,
+        ),
+        (
+            "a_zero_terminal_total_power_sentinel_is_not_envelope_checked",
+            LEDGER,
+        ),
+        // D3's capture-order partition for the one group-A read this adds.
+        (
+            "total_powers_is_a_group_a_read_issued_before_the_currents_read",
+            ORDER,
+        ),
+    ];
+    // `(module path as the prose spells it, file, EXACT member count, rows this
+    // registry must carry inside that module)` — the G1.3b shape, counted per
+    // group and not per file.
+    const G13C_PIN_GROUPS: &[(&str, &str, usize, usize)] = &[
+        ("exec::tests::derived_totals", ENGINE, 7, 7),
+        ("harness::cplx_seq_and_total_power_floors", HARNESS, 33, 33),
+    ];
+    let root = repo_root();
+    let prose: String = [
+        "TESTING.md",
+        "docs/phase-records/golden-rebase.md",
+        "tests/TOLERANCE_NOTES.md",
+        "tests/corpus/ledger.json",
+    ]
+    .iter()
+    .map(|d| std::fs::read_to_string(root.join(d)).unwrap_or_else(|e| panic!("read {d}: {e}")))
+    .collect();
+    let read = |file: &str| {
+        std::fs::read_to_string(root.join(file)).unwrap_or_else(|e| panic!("read {file}: {e}"))
+    };
+    let mut bad = Vec::new();
+    let mut cited = 0usize;
+    for (pin, file) in G13C_PINS {
+        let src = read(file);
+        let decl = format!("fn {pin}(");
+        if src.matches(&decl).count() != 1 {
+            bad.push(format!(
+                "{pin}: expected exactly one `{decl}` in {file}, found {}",
+                src.matches(&decl).count()
+            ));
+        }
+        if prose.contains(*pin) {
+            cited += 1;
+        }
+    }
+    for (group, file, want, own) in G13C_PIN_GROUPS {
+        if !prose.contains(*group) {
+            bad.push(format!(
+                "{group}: no longer named by TESTING.md, the phase record, \
+                 TOLERANCE_NOTES or the ledger — a pin group nothing claims is not a group"
+            ));
+        }
+        let src = read(file);
+        let member = group.rsplit("::").next().unwrap_or(group);
+        let body = match src.split_once(&format!("mod {member} {{")) {
+            Some((_, rest)) => rest.split("\n}").next().unwrap_or(rest).to_string(),
+            None => src.clone(),
+        };
+        let got = body.matches("#[test]").count();
+        if got != *want {
+            bad.push(format!(
+                "{group}: the prose claims {want} pins, the module carries {got} — \
+                 re-count the record and this table in the same commit"
+            ));
+        }
+        let rows = G13C_PINS
+            .iter()
+            .filter(|(p, f)| f == file && body.contains(&format!("fn {p}(")))
+            .count();
+        if rows < *own {
+            bad.push(format!(
+                "{group}: {rows} registry rows inside that module against {own} \
+                 pins this sub-step claims there"
+            ));
+        }
+    }
+    assert!(
+        cited >= 12,
+        "the prose no longer names ANY G1.3c pin individually ({cited} found, 16 at the \
+         settlement) — either the record was rewritten or this registry drifted off it"
+    );
+    assert!(
+        bad.is_empty(),
+        "G1.3c pin registry is stale (rename/delete the pin AND its prose in one commit):\n  {}",
+        bad.join("\n  ")
+    );
+}

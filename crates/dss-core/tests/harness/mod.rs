@@ -1095,7 +1095,7 @@ pub struct ElementCap {
     /// `CAPI/CAPI_CktElement.pas:1043-1053`.
     ///
     /// **The wire unit IS kW/kvar**, and the `0.001` is applied **once, to the
-    /// summed W/var**, inside each engine's own arm (r4133 `:1134`, capi
+    /// summed W/var**, inside each engine's own arm (r4133 `:1132`, capi
     /// `:1138-1139`) — so, unlike [`Self::pl_kw`], nothing is scaled at the
     /// comparator: `ElementSnapshot::total_powers` is already in the same unit
     /// and [`compare_element_total_powers`] converts nothing.
@@ -1781,7 +1781,7 @@ impl ElemChannels {
     /// `TotalPowers` is on the other side: it is the per-terminal sum of
     /// `GetPhasePower`, whose first act is the cache-aware `ComputeIterminal`
     /// (r4133 `Common/CktElement.pas:1049`, reached from mode `20`
-    /// `DDLL/DCktElement.pas:1130`), i.e. the identical stale-cache path
+    /// `DDLL/DCktElement.pas:1120`), i.e. the identical stale-cache path
     /// `Get_Powers`/`Get_Losses`/`GetPhaseLosses` take — so it is dropped for
     /// the same `POWERS_REUSE_STALE_NEWTON_ITERMINAL` teardown row, in **both**
     /// lanes, and measured first — by the **live gate**, on **both** channels,
@@ -4488,8 +4488,8 @@ pub fn seq_power_band(bv: f64, bi: f64, v012: f64, i012: f64) -> f64 {
 /// The three inputs the band needs are all structural: the port's own arm
 /// ([`ElementSnapshot::seq_arm`]) picks how many conductors the transform
 /// actually reads — the terminal's first three on the three-phase arm (r4133
-/// `DDLL/DCktElement.pas:47-49`, capi `CAPI/CAPI_Alt.pas:252-254`), its first
-/// one on the 1φ-positive-sequence arm (r4133 `:764-766`, capi `:559-561`) —
+/// `DDLL/DCktElement.pas:69-70`, capi `CAPI/CAPI_Alt.pas:279-281`), its first
+/// one on the 1φ-positive-sequence arm (r4133 `:53-54`, capi `:259-260`) —
 /// the `(channel, arm)` pair decides whether the r4133 truncated-matrix term
 /// [`SEQ_C012`] applies (only where a matrix runs, i.e. the three-phase arm on
 /// that channel), and the phase magnitudes come from the oracle's own
@@ -4591,10 +4591,10 @@ fn no_seq_payload(seq_i: &[f64], seq_v: &[f64], kw: &[f64], kvar: &[f64]) -> boo
 /// (`NTerms = 0`) on **both** transports (`GOLDEN_REBASE_PLAN.md` G1.3c F2):
 ///
 /// * **r4133** — all four halves empty. Modes `13`/`14` size their result at
-///   `3 · NTerms` (`DDLL/DCktElement.pas:889`/`:935`) and copy nothing when that
+///   `3 · NTerms` (`DDLL/DCktElement.pas:900`/`:946`) and copy nothing when that
 ///   is `0`;
 /// * **capi** — `cseq_i = ([], [])` (`Alt_CE_Get_ComplexSeqCurrents` has no
-///   `NodeRef` guard, `CAPI/CAPI_Alt.pas:905`, so it genuinely returns a
+///   `NodeRef` guard, `CAPI/CAPI_Alt.pas:906`, so it genuinely returns a
 ///   0-length array) and `cseq_v = ([0.0], [])` — the single-double
 ///   `DefaultResult` COM sentinel (`CAPI/CAPI_Utils.pas:212-221`) reached through
 ///   `Alt_CE_Get_ComplexSeqVoltages`' `NodeRef = NIL` guard (`:878`),
@@ -4615,7 +4615,7 @@ fn no_cplx_seq_payload(i_re: &[f64], i_im: &[f64], v_re: &[f64], v_im: &[f64]) -
 ///
 /// Measured on the same 0-terminal `UPFCControl` element, and here the two
 /// channels differ by a whole complex: **r4133** returns nothing (mode `20`
-/// sizes its result at `NTerms`, `DDLL/DCktElement.pas:1113`), while **capi**
+/// sizes its result at `NTerms`, `DDLL/DCktElement.pas:1118`), while **capi**
 /// takes its `MissingSolution(elem) or (elem.NodeRef = NIL)` early return
 /// (`CAPI/CAPI_Alt.pas:1119-1123`) and emits **two** doubles, de-interleaving to
 /// `([0.0], [0.0])`. Exactly those two shapes are accepted — a one-sided

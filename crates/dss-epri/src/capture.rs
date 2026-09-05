@@ -265,7 +265,7 @@ struct ElementCap {
     /// `TotalPowers`, de-interleaved into kW and kvar the way `p_kw`/`p_kvar`
     /// already are. `NTerms` each — the per-terminal sum of `GetPhasePower`'s
     /// conductor block, scaled by `0.001` **once**, inside the engine's own arm
-    /// (`DDLL/DCktElement.pas:1134`, capi `CAPI/CAPI_Alt.pas:1138-1139`), so
+    /// (`DDLL/DCktElement.pas:1132`, capi `CAPI/CAPI_Alt.pas:1138-1139`), so
     /// the wire unit IS kW/kvar. Enabled-only, like the two blocks above, and
     /// here purely to keep the channels' shapes equal: mode 20 has no
     /// `NodeRef` guard where capi has one (see
