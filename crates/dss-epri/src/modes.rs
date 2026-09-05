@@ -1010,22 +1010,50 @@ pub const BUS_PU_VMAG_ANGLE: ModeSpec = ModeSpec::array(
     ModeEffect::Pure,
 );
 /// `BUSV(18)` — qualified names of the PC elements connected at the bus.
+///
+/// **Impure**, unlike its capi twin: `DBus.pas:849` calls
+/// `TDSSCircuit.getPCEatBus` (`Common/Circuit.pas:1540-1581`), which walks the
+/// element list of every `TPCClass` — plus `Capacitor` and `Reactor`, matched by
+/// name (`:1559`) — with `DSS_Class.First`/`Next` (`:1563`, `:1572`). capi
+/// answers the same question with a `TDSSPointerEnumerator`
+/// (`Shared/DSSPointerList.pas:17-27`), which carries its own index and touches
+/// no global cursor.
 pub const BUS_ALL_PCE_AT_BUS: ModeSpec = ModeSpec::array(
     "Bus",
     18,
     "Bus.AllPCEatBus",
     "DBus.pas:840",
     4,
-    ModeEffect::Pure,
+    ModeEffect::Impure(
+        "walks the element list of every TPCClass — plus Capacitor and Reactor, matched by name \
+         (Common/Circuit.pas:1559) — with DSS_Class.First/Next to exhaustion inside getPCEatBus \
+         (Common/Circuit.pas:1563-1572), and TDSSClass.Get_First/Get_Next \
+         (Common/DSSClass.pas:342-371) assign ActiveCircuit.ActiveCktElement (:352, :367) and \
+         ActiveDSSObject (:348, :363) — leaving them on the last element of the last non-empty PC \
+         class walked and each walked class's own ActiveElement cursor one past its ElementCount \
+         (:359)",
+    ),
 );
 /// `BUSV(19)` — qualified names of the PD elements connected at the bus.
+///
+/// **Impure**, for the same reason as [`BUS_ALL_PCE_AT_BUS`]: `DBus.pas:876`
+/// calls `TDSSCircuit.getPDEatBus` (`Common/Circuit.pas:1493-1535`), which walks
+/// the element list of every `TPDClass` (`:1513`) with `DSS_Class.First`/`Next`
+/// (`:1517`, `:1527`).
 pub const BUS_ALL_PDE_AT_BUS: ModeSpec = ModeSpec::array(
     "Bus",
     19,
     "Bus.AllPDEatBus",
     "DBus.pas:867",
     4,
-    ModeEffect::Pure,
+    ModeEffect::Impure(
+        "walks the element list of every TPDClass (Common/Circuit.pas:1513) with \
+         DSS_Class.First/Next to exhaustion inside getPDEatBus (Common/Circuit.pas:1517-1527), and \
+         TDSSClass.Get_First/Get_Next (Common/DSSClass.pas:342-371) assign \
+         ActiveCircuit.ActiveCktElement (:352, :367) and ActiveDSSObject (:348, :363) — leaving \
+         them on the last element of the last non-empty PD class walked and each walked class's own \
+         ActiveElement cursor one past its ElementCount (:359)",
+    ),
 );
 
 // -- Circuit (DCircuit.pas) -------------------------------------------------
