@@ -2789,16 +2789,17 @@ row against the pre-fix lock.
   "study ran" bit before any number, the matrices row-major over the bus's **internal** node index
   (r4133 `DDLL/DBus.pas:431-459`/`:374-397`/`:351-372`, `Common/Bus.pas:215-229`). Port gap closed
   in-step: `ReduceAlgs`' `kVBase <= 0` branch skipped `Solution.UpdateVBus`
-  (r4133 `Meters/ReduceAlgs.pas:500-508`), leaving `Bus.Voc` stale. **0 new ledger entries**; the
-  per-channel not-run sentinels are comparator normalizations (**D4**) and **D11(2)** narrows here
-  to `Voc`/`Isc`. Corpus 524 → **525** (`modes/faultstudy/faultstudy_micro.dss`, the `micro`-band
-  witness); no new tolerance constant, no golden byte. Rules, floors and pins:
-  `TESTING.md` + `tests/TOLERANCE_NOTES.md` §"Short-circuit surface", the plan's §G1.5 note, and
-  the `exec::view::bus_sc_tests` / `harness::bus_short_circuit_tests` modules.
-  Commits: `7d920701` (surface) + `5d206bdb` (audit settlement). Gate: both lanes
-  **5 134 / 0 / 5 ignored**, corpus 525/525, ledger 53 entries / 1 516 hits / 0 stale, D11(2)
-  8 pairs, `tests/golden` untouched, `lane_diff` `PASS` max |Δ| = 0 (at `7d920701`; the settlement
-  moves no executable product code).
+  (r4133 `Meters/ReduceAlgs.pas:500-508`), leaving `Bus.Voc` stale. **0 new ledger entries** (the
+  per-channel not-run sentinels are comparator normalizations, **D4**; **D11(2)** narrows here to
+  `Voc`/`Isc`), no new tolerance constant, no golden byte; corpus 524 → **525**
+  (`modes/faultstudy/faultstudy_micro.dss`, the `micro`-band witness). Rules, floors and pins:
+  `TESTING.md`, `tests/TOLERANCE_NOTES.md` §"Short-circuit surface", the plan's §G1.5 note, and the
+  `exec::view::bus_sc_tests` / `harness::bus_short_circuit_tests` modules.
+  Commits: `7d920701` (surface) + `5d206bdb` (audit settlement) + docs. Gate at `7d920701`: fmt +
+  clippy clean and **5 130 / 0 / 5 ignored** per lane, `lane_diff` **PASS**, max |Δ| = 0 over
+  4 825 571 values; final tree **5 134 / 0 / 5 ignored** per lane over 75 binaries (the settlement
+  moves no executable product statement, so no second `lane_diff` is owed), corpus 525/525, ledger
+  53 entries / 1 516 hits / 0 stale, D11(2) 8 (case, channel) pairs, `tests/golden` untouched.
   *Audit settlement (2026-09-05, `5d206bdb`):* 14 findings, 11 distinct — **8 fixed, 2 recorded,
   1 refuted**. Fixed: the `bus_sc_tests` band had abs/rel transposed (now the `micro` tier's own
   `1e-6` + `1e-9`, deck header and manifest note with it); the surface's non-trivial half gained a
