@@ -2823,7 +2823,7 @@ row against the pre-fix lock.
   `VLL` hang is refused per bus by the new `crates/dss-epri` register (**D2**). Details:
   `TESTING.md`, `tests/TOLERANCE_NOTES.md` §"Bus sequence and line-to-line voltages",
   `DIVERGENCES.md` §G1.4c, the plan's §G1.4 note, `investigations/to_opendss/` 64-66. Commits
-  `74cb0ef6` + `<settlement sha>`; gate green in both lanes (**5 339 / 0 / 5**, corpus **525/525**,
+  `74cb0ef6` + `6fc63848`; gate green in both lanes (**5 339 / 0 / 5**, corpus **525/525**,
   ledger 53 / 0 stale, `lane_diff` PASS max |Δ| = 0).
   **Audit settlement** (15 findings, 12 distinct — 7 fixed / 5 recorded / 0 refuted):
   the port's own `VLL`/`puVLL` are now asserted on **every** bus, not only where the oracle's walk

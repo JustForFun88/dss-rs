@@ -160,7 +160,7 @@ nondeterminism, ledger 57 → 53; **D13** the registry leak); **G1.5**
 (`7d920701` + `5d206bdb`) — the short-circuit surface as **precomputed state**,
 per-channel sentinel normalizations (**D4**), a port gap closed in-step
 (`ReduceAlgs` skipped `Solution.UpdateVBus`), corpus 524 → **525**; and
-**G1.4c** (`74cb0ef6` + `<settlement sha>`) — the sequence and line-to-line arms, where port, capi
+**G1.4c** (`74cb0ef6` + `6fc63848`) — the sequence and line-to-line arms, where port, capi
 and r4133 all differ: the port publishes the physically correct answer
 (S-SEQ/S-VLL, **D21**), the comparator asserts each oracle's own walk over the
 port's state (D15/D16) instead of excluding it, and the r4133 `VLL` **hang** is
