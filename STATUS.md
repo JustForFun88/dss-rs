@@ -152,7 +152,7 @@ over 440 cases + the D19 `MakeBusList` zone-reset cherry-pick, **0** entries,
 `PhaseLosses` + the five control-derived scalars, **§G1.3d complete**, the
 first channel to join `LANE_SKIP_ELEM_POWERS`, **0** entries + **10**
 widenings, `DIVERGENCES.md` L9, **5 784 / 0 / 5**, Δ = 0; **G1.3b** 2026-09-05
-(D24; `40a65ffd` / settlement) — `SeqCurrents`/`SeqVoltages`/`SeqPowers` over
+(D24; `40a65ffd` / `3d350ce6`) — `SeqCurrents`/`SeqVoltages`/`SeqPowers` over
 the same 442 cases, an r4133-only `SEQ_C012` band term, the n/A `SeqPowers`
 sentinel folded channel-scoped, r4133's 1φ-posseq slot defect unreproduced and
 unledgered behind an arm census pinning the r4133 `0` and railing (297 896, 79)
