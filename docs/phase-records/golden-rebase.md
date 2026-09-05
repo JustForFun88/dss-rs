@@ -2899,7 +2899,7 @@ row against the pre-fix lock.
   `harness::cplx_seq_and_total_power_floors` / **13** `ledger::*` / 1 `capture_order::*`. `548bc7b8`
   + the settlement below; gate **7 319 / 0 / 5** per lane after it (**7 318** at `548bc7b8`),
   `lane_diff` PASS max |Δ| = 0; the settlement moved no product line (comment-only in `src/`).
-- **G1.3c audit settlement** (2026-09-06) — 11 findings: **7 fixed / 4 recorded / 0 refuted**
+- **G1.3c audit settlement** (2026-09-06, `a15e2ae3`) — 11 findings: **7 fixed / 4 recorded / 0 refuted**
   (`tmp/g13c/settle.md`). Fixed: the missing registry `every_pin_the_g13c_record_names_exists_and_is_cited`
   (55 pins, both group counts — the one **major**); a fourth `require_capture` rail on `cseq_v_re`
   (`runner.rs:615`) driven empty on **both** channels, plus the r4133 leg of the `CplxSeqCurrents` rail;
