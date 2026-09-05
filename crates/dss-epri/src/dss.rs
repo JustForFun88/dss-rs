@@ -661,7 +661,7 @@ impl Engine {
     /// where the two magnitude modes do guard (`If Enabled` at `:711` / `:671`).
     /// capi is no safer on that read: `Alt_CE_Get_SeqPowers` skips the
     /// `Enabled` test (`CAPI/CAPI_Alt.pas:604`, commented out) and resizes the
-    /// result to `3 * NTerms` complex slots at `:607` before its helper exits
+    /// result to `3 * NTerms` complex slots at `:608` before its helper exits
     /// on `(not Enabled) or (NodeRef = NIL)` at `:544`, returning
     /// uninitialized memory.
     ///

@@ -703,8 +703,11 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
      `assert_complex_close_c` admits on the phase quantities (§G1.3a derivation
      0), so no coefficient moves. The phase magnitudes are read off the oracle's
      own `CurrentsMagAng`/`VoltagesMagAng` arrays, captured in the same `derived`
-     block, exactly as `residual_band`/`phase_loss_band` build their bands from
-     the captured side. Comparing *magnitudes* against a complex band is
+     block **as the ledger hands them to the comparator**, exactly as
+     `residual_band`/`phase_loss_band` build their bands from the captured side
+     (on an entry whose `element` scope rewrites a polar sub-channel the base is
+     the port's magnitude there; those divergences are ULP-scale, so the band
+     moves only in its last digits — G1.3b audit settlement, 2026-09-05). Comparing *magnitudes* against a complex band is
      legitimate by the reverse triangle inequality `||a| − |b|| ≤ |a − b|`
      (§G1.3a derivation 1).
 
@@ -1822,12 +1825,12 @@ dated). What was checked, and against what:
 | claim here | landed at | verdict |
 |---|---|---|
 | the floor is `2e-4` relative | `R4133_DISPLAY_FLOOR` at `harness/props_norm.rs:895` (`Option<f64>` = `Some(2e-4)`) | unchanged |
-| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:7874`) | unchanged |
+| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:7934`) | unchanged |
 | the four derivation rows (6.431124e-05 / 1.374769e-03 / 4.404256e-03 / 5.524501e-02) | the constant's own doc table, `props_norm.rs:786-792` | identical, both places |
 | 1 951 vendored spellings claimed (from 2 006, less the 55 the mechanism clause refuses) | `props_r4133_replay::CLAIMED_DISPLAY_FLOOR` = 1951 (`props_r4133_replay.rs:565`) | unchanged |
 | capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:1120-1129` and `:1137-1146` (`i_rel`/`i_abs`) | unchanged |
 | the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1312-1321` and `:1301-1310` | unchanged |
-| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:6766` (asserted as `i_abs / floor`) | unchanged |
+| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:6826` (asserted as `i_abs / floor`) | unchanged |
 | no `Tolerances` field, no `tol_for` tier moved by this plan | `Tolerances` has no props field; the floor is read only by `props_norm` | unchanged |
 
 The floor therefore still sits **3.110×** above the worst cell it claims and

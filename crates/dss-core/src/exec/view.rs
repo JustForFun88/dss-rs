@@ -695,6 +695,13 @@ impl Dss {
                             ]);
                         }
                         SeqArm::NotAvailable => {
+                            // A sentinel, not a reading: `1.0` is `Cabs` of the
+                            // `-1` both engines write here, so it is
+                            // indistinguishable from a real 1 A / 1 V. The
+                            // disambiguator is `seq_arm` itself — a consumer
+                            // reads the arm, never the value (G1.3b audit
+                            // settlement, 2026-09-05; pinned by
+                            // `seq_currents_and_seq_voltages_are_one_on_the_na_arm`).
                             seq_currents.extend([1.0; 3]);
                             seq_voltages.extend([1.0; 3]);
                             seq_powers.extend([num_complex::Complex64::new(-1.0, 0.0); 3]);

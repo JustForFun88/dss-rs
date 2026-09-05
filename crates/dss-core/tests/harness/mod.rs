@@ -4274,9 +4274,13 @@ pub fn seq_band(phase_mags: &[f64], rel: f64, abs: f64, c012: f64) -> f64 {
 /// [`assert_power_close`]'s voltage-scaled floor uses, applied to the 012 factors
 /// instead of the phase ones; no new tolerance class.
 ///
-/// `v012`/`i012` are the **oracle's own** magnitudes, the way
-/// [`assert_power_close`] and [`phase_loss_band`] build their bands from the
-/// captured side.
+/// `v012`/`i012` are the **captured** magnitudes — the oracle's own, as the
+/// ledger hands them to the comparator — the way [`assert_power_close`] and
+/// [`phase_loss_band`] build their bands from the captured side. On an entry
+/// whose `element` scope rewrites a polar sub-channel the base is therefore the
+/// port's magnitude there, the property those two bands already have; the
+/// rewritten divergences are ULP-scale, so the band moves in its last digits
+/// (G1.3b audit settlement, 2026-09-05).
 pub fn seq_power_band(bv: f64, bi: f64, v012: f64, i012: f64) -> f64 {
     SEQ_KVA_SCALE * (bv * (i012.abs() + bi) + v012.abs() * bi)
 }
@@ -4331,6 +4335,31 @@ fn no_seq_payload(seq_i: &[f64], seq_v: &[f64], kw: &[f64], kvar: &[f64]) -> boo
     let mag_ok = |v: &[f64]| v.is_empty() || v == [0.0];
     mag_ok(seq_i) && mag_ok(seq_v) && (kw.is_empty() || kw == [0.0]) && kvar.is_empty()
 }
+
+/// The sequence-arm census as measured over the whole gated population on
+/// 2026-09-05, in both lanes: `(element rows, 1-phase-posseq rows on
+/// capi_v0145, 1-phase-posseq rows on r4133)`.
+///
+/// Only the last number is *pinned*: it is the load-bearing one (see
+/// [`check_seq_arm_population`]). The other two are railed by
+/// [`SEQ_ARM_CENSUS_FLOORS`], the [`check_control_census`] shape - a lane may
+/// legitimately retire or re-gate a deck, so a census that moved by a deck must
+/// not red the gate, while a census that collapsed must.
+const SEQ_ARM_CENSUS_MEASURED: (usize, usize, usize) = (297_896, 79, 0);
+
+/// The floors under the two measured counts of [`SEQ_ARM_CENSUS_MEASURED`].
+///
+/// `seen` (measured 297 896) catches a compare that stopped running or a mass
+/// un-gating of `compare_derived`; `posseq_capi` (measured 79, contributed by
+/// the six `modes/makeposseq/*` decks) catches the collapse D-b1's zero ledger
+/// rows actually rest on - the correct 1-phase-posseq layout is oracle-gated on
+/// that channel alone, so if all but one of those decks stopped gating the arm
+/// the claim would be carried by the in-engine pin only. Both floors sit well
+/// under the measurement (about 2/3 and 3/4 of it) so that D14's split of
+/// `makeposseq_shunt`, D12's four GICTransformer re-gatings or one retired deck
+/// pass; they are re-derived - never lowered - when a population change is
+/// deliberate.
+const SEQ_ARM_CENSUS_FLOORS: (usize, usize) = (200_000, 60);
 
 /// How many gated element rows the corpus gate's derived loop has recorded
 /// (the arm [`compare_element_seq`] classified and handed back).
@@ -4423,28 +4452,46 @@ pub fn assert_seq_arm_population() {
 /// [`check_control_census`] is: the shipped statics cannot be rewound once the
 /// gate has moved them, so both directions are pinned offline
 /// (`seq_floors::the_seq_arm_population_*`).
+///
+/// **What is pinned and what is railed** (G1.3b audit settlement, 2026-09-05,
+/// the [`check_control_census`] shape): the r4133 count is pinned *exactly* at
+/// [`SEQ_ARM_CENSUS_MEASURED`]`.2 = 0` — it is the one number that would hide a
+/// wrong comparison. The other two are the measured population under the
+/// documented [`SEQ_ARM_CENSUS_FLOORS`], not literals: a lane that retires or
+/// re-gates a deck moves them by design, while the two failures this guard
+/// exists for — the compare not running at all, and the capi-side gating of the
+/// 1φ-posseq layout collapsing — still red.
 fn check_seq_arm_population(seen: usize, posseq_capi: usize, posseq_r4133: usize) {
+    let (want_seen, want_capi, want_r4133) = SEQ_ARM_CENSUS_MEASURED;
+    let (floor_seen, floor_capi) = SEQ_ARM_CENSUS_FLOORS;
     assert_eq!(
-        posseq_r4133, 0,
+        posseq_r4133, want_r4133,
         "the 1-phase positive-sequence arm reached the r4133 channel on \
          {posseq_r4133} element row(s), where GOLDEN_REBASE_PLAN.md G1.3b \
          measured zero. r4133 `DDLL/DCktElement.pas:760`/`:768` writes that arm's \
-         SeqPowers into the wrong slot with the wrong stride, so the port — which \
-         follows capi's correct layout — must disagree there: triage the deck that \
+         SeqPowers into the wrong slot with the wrong stride, so the port - which \
+         follows capi's correct layout - must disagree there: triage the deck that \
          brought the arm onto that channel and give it a field-scoped `seq_powers` \
          ledger entry with its own pin before this constant moves."
     );
     assert!(
-        posseq_capi > 0,
-        "no gated element took the 1-phase positive-sequence arm on the capi_v0145 \
-         channel ({seen} element row(s) classified). That arm's correct layout is \
-         oracle-gated ONLY there — the six `modes/makeposseq/*` decks — so a zero \
-         here means D-b1 is no longer gated by anything but its in-engine pin."
+        seen >= floor_seen,
+        "the sequence-arm census counted {seen} element row(s), under the floor \
+         {floor_seen} ({want_seen} measured 2026-09-05 over the full gated \
+         population). Zero means the gating sequence compare never ran at all; a \
+         large shrink means `compare_derived` was un-gated over much of the \
+         corpus - re-derive the population before this floor moves."
     );
     assert!(
-        seen > 0,
-        "the sequence-arm census counted nothing: the gating sequence compare never \
-         ran at all"
+        posseq_capi >= floor_capi,
+        "only {posseq_capi} gated element row(s) took the 1-phase \
+         positive-sequence arm on the capi_v0145 channel, under the floor \
+         {floor_capi} ({want_capi} measured 2026-09-05, out of {seen} classified \
+         rows). That arm's correct layout is oracle-gated ONLY there - the six \
+         `modes/makeposseq/*` decks - so a collapse here leaves D-b1 gated by \
+         nothing but its in-engine pin \
+         `seq_powers_positive_sequence_lands_in_the_positive_slot_of_each_terminal`. \
+         Re-triage which deck stopped gating the arm before this floor moves."
     );
 }
 
@@ -5710,28 +5757,41 @@ mod seq_floors {
         compare_element_seq(&snaps, &cap, &feeder(), "seq", PropsChannel::CapiV0145, ch);
     }
 
-    /// The D-b1 population guard, both directions, over **injected** counters.
+    /// The D-b1 population guard, every direction, over **injected** counters —
+    /// driven at the census actually measured on 2026-09-05
+    /// ([`super::SEQ_ARM_CENSUS_MEASURED`]).
     #[test]
     fn the_seq_arm_population_holds_while_the_arm_stays_off_r4133() {
-        check_seq_arm_population(298_565, 1_234, 0);
+        let (seen, capi, r4133) = super::SEQ_ARM_CENSUS_MEASURED;
+        check_seq_arm_population(seen, capi, r4133);
     }
 
     #[test]
     #[should_panic(expected = "reached the r4133 channel")]
     fn the_seq_arm_population_fires_when_the_arm_reaches_r4133() {
-        check_seq_arm_population(298_565, 1_234, 1);
+        check_seq_arm_population(297_896, 79, 1);
     }
 
     #[test]
-    #[should_panic(expected = "no gated element took the 1-phase positive-sequence arm")]
+    #[should_panic(expected = "only 0 gated element row(s) took")]
     fn the_seq_arm_population_fires_when_the_capi_arm_is_never_reached() {
-        check_seq_arm_population(298_565, 0, 0);
+        check_seq_arm_population(297_896, 0, 0);
+    }
+
+    /// The shrink the old `> 0` rail could not see (G1.3b audit settlement):
+    /// five of the six `modes/makeposseq/*` decks moving off `capi_v0145` would
+    /// leave one deck's worth of rows and D-b1 gated by its in-engine pin
+    /// alone. That is a failure now, not a green.
+    #[test]
+    #[should_panic(expected = "only 13 gated element row(s) took")]
+    fn the_seq_arm_population_fires_when_the_capi_arm_collapses() {
+        check_seq_arm_population(297_896, 13, 0);
     }
 
     #[test]
-    #[should_panic(expected = "sequence-arm census counted nothing")]
+    #[should_panic(expected = "census counted 0 element row(s)")]
     fn the_seq_arm_population_fires_when_nothing_was_counted() {
-        check_seq_arm_population(0, 1, 0);
+        check_seq_arm_population(0, 79, 0);
     }
 
     /// **The D24 immunity rail** (coordinator decision, 2026-09-05): a fixture
@@ -6033,7 +6093,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:1438-1443` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:1441-1446` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -6062,7 +6122,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:1438-1443` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:1441-1446` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -6126,7 +6186,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     **compare** on r4133. The exclusion is a statement about the 0.14.5
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
-    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1438-1443`
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1441-1446`
     //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
@@ -6172,7 +6232,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///
 /// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1438-1443` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1441-1446` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
@@ -6365,7 +6425,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1438-1443`
+    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1441-1446`
     /// forbids masking there, plus the two `pctperm` rows RP2.1 measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {
