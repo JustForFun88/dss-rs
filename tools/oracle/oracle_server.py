@@ -96,7 +96,8 @@ def capture_all_elements(
     under `derived` also `Enabled`, the three polar channels
     `CurrentsMagAng` / `VoltagesMagAng` / `Residuals` (GOLDEN_REBASE G1.3a) and
     the three sequence channels `SeqPowers` / `SeqCurrents` / `SeqVoltages`
-    (GOLDEN_REBASE G1.3b);
+    (GOLDEN_REBASE G1.3b) and the complex-sequence + per-terminal-total trio
+    `TotalPowers` / `CplxSeqCurrents` / `CplxSeqVoltages` (GOLDEN_REBASE G1.3c);
     under `element_extras` also `Enabled` and the discrete index/name scalars
     `NumTerminals` / `NumConductors` / `NumPhases` / `EnergyMeter` / `NodeOrder`
     (GOLDEN_REBASE G1.3d(i)).
@@ -167,6 +168,33 @@ def capture_all_elements(
     (capi `:561` and `:588-589`, r4133 `:767` and `:788`) — a fixed 3-phase kVA
     conversion, unconditional, and NOT the `PositiveSequence` x3 that `Powers`
     applies at the API boundary.
+
+    The same `derived` flag carries the three GOLDEN_REBASE G1.3c channels,
+    also `Enabled`-only. `TotalPowers` (`Alt_CE_Get_TotalPowers`,
+    `CAPI/CAPI_Alt.pas:1108`, facade `CAPI/CAPI_CktElement.pas:1043`; r4133
+    `CktElementV(20)`, `DDLL/DCktElement.pas:1109`) is the per-terminal sum of
+    `GetPhasePower`'s conductor block with the **total** scaled by `0.001` once
+    (capi `:1138-1139`, r4133 `:1134`), so it is kW/kvar, `NTerms` complex; it
+    runs `GetPhasePower`'s own `ComputeIterminal` (`Common/CktElement.pas:1049`)
+    and is therefore group **A** — issued at the head of the element, beside
+    `PhaseLosses`, never from this derived block. `CplxSeqCurrents`
+    (`:898` / `CktElementV(14)`, `:931`) and `CplxSeqVoltages` (`:872` /
+    `CktElementV(13)`, `:885`) are the un-`Cabs`'d output of the very helpers
+    `SeqCurrents`/`SeqVoltages` take the modulus of, `3 * NTerms` complex each,
+    de-interleaved like `seq_p_kw`/`seq_p_kvar`.
+
+    Enabled-only is again what keeps the two channels' shapes equal rather than
+    a crash guard here: capi's extra `NodeRef = NIL` tests (`:1119` on
+    `TotalPowers`, `:877` on `CplxSeqVoltages`) return the 1-element
+    `DefaultResult` / a 2-double zero where r4133 answers `NTerms` zeros
+    (mode 20 has no such guard) or a 1-element `CZero` seeded before its
+    `If Enabled` (`:887-888`, `:933-934`) — measured on
+    `controls/fuse/midi_fuse.dss`'s never-enabled `Line.tie`
+    (capi `TotalPowers = [0.0, 0.0]`, `CplxSeq* = [0.0]`). The one shape gap
+    the rule does NOT close is the 0-terminal `UPFCControl` (`nt = 0`, enabled):
+    capi answers `CplxSeqCurrents = []` but `CplxSeqVoltages = [0.0]` from that
+    `NodeRef` guard, and `TotalPowers = [0.0, 0.0]`; that is the comparator's
+    business, as with `SeqVoltages`/`SeqPowers` already.
 
     `element_extras` (request key `"element_extras"`, manifest flag
     `compare_element_extras`): the discrete index/name scalars (G1.3d(i)), the
@@ -247,6 +275,9 @@ def capture_all_elements(
         pl = None
         if element_extras:
             pl = _read(lambda: el.PhaseLosses)  # capture-order: PhaseLosses (A)
+        tp = None
+        if derived and enabled:
+            tp = _read(lambda: el.TotalPowers)  # capture-order: TotalPowers (A)
         loss = _read(lambda: el.Losses)  # capture-order: Losses (A)
         # capture-order: Powers (A), Currents (B)
         cap = _read(lambda: gc.capture_element(ckt, name))
@@ -266,6 +297,11 @@ def capture_all_elements(
             cap["seq_p_kw"], cap["seq_p_kvar"] = _re_im_pair(seq_p)
             cap["seq_i"] = [float(x) for x in seq_i]
             cap["seq_v"] = [float(x) for x in seq_v]
+            cseq_i = _read(lambda: el.CplxSeqCurrents)  # capture-order: CplxSeqCurrents (B)
+            cseq_v = _read(lambda: el.CplxSeqVoltages)  # capture-order: CplxSeqVoltages (C)
+            cap["tp_kw"], cap["tp_kvar"] = _re_im_pair(tp)
+            cap["cseq_i_re"], cap["cseq_i_im"] = _re_im_pair(cseq_i)
+            cap["cseq_v_re"], cap["cseq_v_im"] = _re_im_pair(cseq_v)
         if element_extras:
             n_terms = int(el.NumTerminals)  # capture-order: NumTerminals (C)
             cap["n_terms"] = n_terms
