@@ -161,6 +161,16 @@ pub(crate) fn oracle_timeout() -> Duration {
 /// The `oracle_server.py` `run` request for a case — the single builder both
 /// transports share (byte-compatible with the pre-Phase-B request).
 pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
+    // G1.5: the six short-circuit arms are appended to the ONE per-bus walk
+    // `buses` drives on BOTH transports, so `zsc` alone would ship an empty
+    // surface that `require_capture` — not the comparator — would have to
+    // catch. Asserted here, where the two flags meet, instead of or-ing them
+    // into the request behind the manifest's back (§2.a).
+    assert!(
+        c.compare_bus || !c.compare_zsc,
+        "{case_path}: compare_zsc without compare_bus — the short-circuit arms \
+         ride the bus walk; set both (GOLDEN_REBASE_PLAN.md WP-G1 G1.5 §2.a)"
+    );
     let probes: Vec<Value> = c
         .probes
         .iter()
@@ -179,6 +189,7 @@ pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
         "eventlog": c.compare_eventlog,
         "ctrlqueue": c.compare_ctrlqueue,
         "buses": c.compare_bus,
+        "zsc": c.compare_zsc,
         "all_properties": c.compare_all_properties,
         "pd_elements": c.compare_pdelements,
         "reliability": c.compare_reliability,

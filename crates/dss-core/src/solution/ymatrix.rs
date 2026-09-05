@@ -64,7 +64,22 @@ pub fn initialize_node_vbase(ckt: &mut Circuit) {
 /// `pBus.VBus <> NIL` — here `!bus.vbus.is_empty()`, which holds for every bus
 /// once `ReprocessBusDefs` has allocated bus state (`Circuit.pas` l.2205-2206).
 /// `ref_no[j]` is the 0-based global node index (ground = 0 → `node_v[0]` = 0).
-fn update_vbus(ckt: &mut Circuit) {
+///
+/// `pub(crate)` because the reduction algorithms call it directly as well
+/// (r4133 `Meters/ReduceAlgs.pas:409` and `:505`, capi `:412` / `:492` — see
+/// [`crate::exec::Dss::red_head_base_kv`]).
+///
+/// The `vbus[j]` / `node_v[ref_no[j]]` indexing is total by construction and
+/// deliberately not re-guarded: `nodes`/`ref_no` grow only through the single
+/// `nodes.push` / `ref_no.push` pair in `Circuit::process_bus_defs`, which runs
+/// only from `reprocess_bus_defs`, whose tail re-runs `Bus::allocate_bus_state`
+/// for EVERY bus and so restores `vbus.len() == nodes.len() == ref_no.len()`.
+/// Upstream has no such guarantee — it writes past `VBus` when
+/// `NumNodesThisBus` grew without a realloc — so a length reconciliation here
+/// would pad an invariant the port maintains, not port one. (GOLDEN_REBASE G1.5
+/// audit settlement AC-7: `red_head_base_kv` gave up a `.get()`-total read when
+/// it gained this call; the invariant above is why that is safe.)
+pub(crate) fn update_vbus(ckt: &mut Circuit) {
     let node_v = &ckt.solution.node_v;
     for bus in &mut ckt.buses {
         if bus.vbus.is_empty() {
@@ -101,8 +116,9 @@ pub fn build_y_matrix(
 ) -> SolveResult {
     // Pascal `BuildYMatrix` brackets the rebuild with `UpdateVBus()` /
     // `RestoreNodeVfromVbus()` when `Solution.PreserveNodeVoltages` is set
-    // (Ymatrix.pas l.298/l.449), so node voltages survive a Y rebuild that
-    // renumbers nodes. The flag is set entering Harmonic/HarmonicT (WP7.6) and
+    // (r4133 `Common/YMatrix.pas:170`/`:282` == capi `Ymatrix.pas` l.298/l.449,
+    // the rev the port was written against), so node voltages survive a Y
+    // rebuild that renumbers nodes. The flag is set entering Harmonic/HarmonicT (WP7.6) and
     // Dynamic (WP7.7). `update_vbus` snapshots the present node voltages *before*
     // the (possible) `ReprocessBusDefs`; `restore_node_v_from_vbus` at the tail
     // writes them back. Whenever the node count is unchanged (the harmonics
