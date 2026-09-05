@@ -958,10 +958,14 @@ it, and no tier constant moves. In the order the comparator applies them:
    Measured (G1.5 part R) over the three decks surveyed there: `K` is 1..12 on
    every bus except `IEEE123Master-SC:610` (`K = 1.10e8`; common mode
    `+j1.536e6` ohm over a ~0.017 ohm differential) and `Run_NEV:tertiary`
-   (`K = 9.52e6`, `+j3.227e6` ohm over ~0.053 ohm), where the predicted floor is
-   `K * u * ||Ysc||_inf = 2.9e-7` S. The live run adds a fourth deck with the
-   same signature — `ieee37_SC_Currents` bus `775`, a 1.38e6 ohm common mode
-   against a ~34 S `Ysc` entry — and it is the population worst. What admits all
+   (`K = 9.52e6`, `+j3.227e6` ohm over ~0.053 ohm), where the predicted floor
+   `K * u * ||Ysc||_inf` is `5.847e-7` S and `2.081e-9` S respectively
+   (re-derived from each bus's own `||Zsc||_inf`/`||Ysc||_inf` in the F5
+   instrumented run; the spec's single 2.9e-7 estimate predated the
+   measurement). The live run adds a fourth deck with the same signature —
+   `ieee37_SC_Currents` bus `775`, a 1.38e6 ohm common mode against a ~34 S
+   `Ysc` entry — and it is the worst of this conditioning family (the worst over
+   all six arms is item 6's `Voc`). What admits all
    of them is the tier's ABSOLUTE term: the worst `|dYsc|` anywhere is 1.37e-7 S
    against `y_abs = 1e-6` (0.117 of band), and `Isc` inherits the statement at
    `i_abs` (worst 0.065). **No relative band is widened, no tier constant moves,

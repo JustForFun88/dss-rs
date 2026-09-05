@@ -492,7 +492,7 @@ knowing:
   nodes than the bus arrays cover, so it suppresses nothing here (G1.4a audit
   settlement, 2026-09-05). Bus count,
   name sequence, `nodes`, `kv_base` and every array length stay compared, which
-  `the_voltage_exclusion_still_pins_kv_base` (`mod.rs:5627`) drives negatively.
+  `the_voltage_exclusion_still_pins_kv_base` (`mod.rs:5727`) drives negatively.
   It is not a mask and does not read as one: every suppressed case is listed in
   the gate summary next to the entry that caused it
   (`ledger::LedgerRuntime::bus_array_suppressions`,
@@ -503,7 +503,7 @@ Every one goes straight to `Solution.NodeV` (`CAPI_Alt.pas:2276` == r4133
 `DDLL/DBus.pas:423`) and moves only `ActiveBusIndex`, so no bus read stales a
 cached `Iterminal` or is staled by one. What
 `the_bus_capture_reads_in_one_fixed_order_on_both_transports`
-(`crates/dss-core/tests/corpus_gate.rs:458`) pins is therefore the agreement of
+(`crates/dss-core/tests/corpus_gate.rs:480`) pins is therefore the agreement of
 the two transports, not a staleness hazard: the same five per-bus quantities in
 the same order on the capi and r4133 sides, the bus block after
 `variables`/`eventlog`/`ctrlqueue` and before `all_properties` (which stays the
@@ -526,7 +526,7 @@ knowing:
   forced cases, whose decks run none (five run one). The capture-order test
   asserts that the short-circuit segment calls no refresh on either transport
   (`the_short_circuit_capture_reads_in_one_fixed_order_on_both_transports`,
-  `crates/dss-core/tests/corpus_gate.rs:587`), and the comparator's **first**
+  `crates/dss-core/tests/corpus_gate.rs:609`), and the comparator's **first**
   assertion is the discrete "study ran" bit, before any number.
 * **A third ordering convention.** These arrays are indexed by the bus's
   *internal* (insertion) node index — `for i … for j … Zsc.GetElement(i, j)`,
@@ -557,11 +557,32 @@ knowing:
   `NodeV`), `y_*` for `YscMatrix` (`= Zsc⁻¹`), `i_*` for `Isc` (`= Ysc·Voc`);
   the derivations, the dense-inversion conditioning argument and the measured
   headroom are in `tests/TOLERANCE_NOTES.md` §"Short-circuit surface". Measured
-  worst over the whole forced population: 0.42 of the allowed band (`Zsc0` at
-  `ieee37_SC_Currents` bus `775`), and the two conditioning outliers
+  worst over the whole forced population: **0.61** of the allowed band (`Voc` at
+  `IEEE123Master-SC` bus `610`, |V| = 277 V — ~1.6× headroom at the surface's
+  tightest point; the worst over the five impedance/current arms alone is 0.42,
+  `Zsc0` at `ieee37_SC_Currents` bus `775`), and the two conditioning outliers
   (`IEEE123Master-SC:610`, κ = 1.10e8; `Run_NEV:tertiary`, κ = 9.52e6) land
   **below** the predicted `κ·u·‖Ysc‖∞` floor. **0** new ledger entries on either
   channel.
+* **The non-trivial half is fail-on-stale** (G1.5 audit settlement). The
+  comparator's content gate is `port_ran == oracle_ran`, which is equally true
+  when NEITHER side ran a study — so a deck that stopped solving one would leave
+  the whole surface green over sentinels and zeros, invisible to
+  `population.lock.json` (which fingerprints the manifest flag) and to
+  `MODES_REQUIRED` (the deck path). `harness::compare_bus_short_circuit`
+  therefore returns how many buses it walked a full `n×n` matrix on, the runner
+  records it (`harness::record_sc_study_compare`, the gate's only call site —
+  the harness' own drives are deliberately not counted), and the gate epilogue
+  prints `corpus_gate short-circuit: …` and asserts
+  `SC_STUDY_POPULATION = (10, 646)` **exactly**: five study decks
+  (`IEEE123Master-SC`, `ieee34Mod2_SC_Case_II`, `ieee37_SC_Currents`,
+  `NEVTestCase/Run_NEV`, `modes:faultstudy/faultstudy_micro`) × two channels,
+  323 buses each way. It fails on a drop AND on a growth, is silent under
+  `DSS_GATE_ONLY`, and both directions are pinned offline in `corpus_gate.rs`.
+  The two transports are also compared **to each other** on all six arms of the
+  micro deck, at twice the tier band
+  (`the_two_transports_agree_on_the_short_circuit_capture_of_a_gated_both_case`,
+  **D2**).
 * **The D11(2) suppression extends here, narrowly.** On a case whose `voltages`
   field is ledger-excluded deck-wide, the surface drops the `Voc` and `Isc`
   *values* — and nothing else: `Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix` stay
@@ -1199,7 +1220,7 @@ written, never which value it is; anything else is an exclusion, not a rule.
 that the four per-kind locks (`NORM_ROWS` … `NORM_ENUM_SYNONYM_ROWS`,
 `props_norm.rs:742-764`) partition it, so a row cannot be added without moving a
 documented number. *Liveness:* `props_norm::assert_norm_rows_are_live`
-(`props_norm.rs:1412`, called in the gate epilogue, `corpus_gate.rs:212`) fails
+(`props_norm.rs:1412`, called in the gate epilogue, `corpus_gate.rs:219`) fails
 a full run in which a row was visited and folded nothing — the fail-on-stale
 half. The offline half is the replay (§"The r4133 props replay accounting"):
 every row must claim at least one vendored example row. Only the **live** half
@@ -1243,7 +1264,7 @@ converse guard `a_capi_witness_is_a_pair_the_capi_channel_can_compare` refuses a
 tied to the table both ways by
 `props_r4133_replay::every_echo_row_pin_is_a_test_that_exists`. *Liveness:*
 `props_norm::assert_echo_rows_are_live` (`props_norm.rs:2657`,
-`corpus_gate.rs:223`) — `visits > 0 && hits == 0` for a pair-scoped row,
+`corpus_gate.rs:230`) — `visits > 0 && hits == 0` for a pair-scoped row,
 `visits == 0` for a narrowed one (a narrowed row counts only covered cells, so
 `visits == hits` by construction and the first arm cannot fire on it).
 
@@ -1287,7 +1308,7 @@ skipped on capi only, because their Rust tables are r4133-shaped
 `recloser_and_relay_are_whole_element_skipped_on_capi_only`, `mod.rs:2255`).
 
 **Did the chain run at all?** `props_norm::assert_r4133_props_compare_ran`
-(`props_norm.rs:2841`) runs first in the gate epilogue (`corpus_gate.rs:200`),
+(`props_norm.rs:2841`) runs first in the gate epilogue (`corpus_gate.rs:207`),
 so a wholesale re-mask reports as one line instead of 19 stale-row messages; a
 *partial* re-mask is caught instead by the forcing-rule lock
 `scheduler::the_property_forcing_rule_is_every_live_non_large_case`

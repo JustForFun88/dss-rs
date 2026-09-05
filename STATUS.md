@@ -158,14 +158,14 @@ WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 quantities and `VLL`/`puVLL` to a new **G1.4c**, plus the workspace `serde_json`
 `float_roundtrip` (**D11(1)**) and two oracle-side faults caught (**D12**/**D14**
 GICTransformer nondeterminism, ledger 57 → 53; **D13** the worker's registry
-leak) — and **G1.5** (2026-09-05, same lane): the short-circuit surface whole on
-both channels, `Zsc*`/`Ysc*`/`Isc`/`Voc` per bus as **precomputed state** (the
-gate never runs a study), row-major over the internal node index, both channels'
+leak) — and **G1.5** (2026-09-05, same lane): the whole short-circuit surface on
+both channels as **precomputed state**, row-major over the internal node index,
 sentinels normalized per channel (**D4**), D11(2) narrowed to `Voc`/`Isc`, a port
-gap closed in-step (`ReduceAlgs` skipped `Solution.UpdateVBus`) and the corpus's
-only `micro`-band short-circuit deck (524 → **525** cases / 521 live). Both: **0**
-new ledger entries and **0** golden bytes; **5 130 / 0 / 5** per lane, `lane_diff`
-PASS max |Δ| = 0 in both. G1.3a–d, G1.4b/c, G1.6–G1.11c, WP-G3–G5 remain.
+gap closed in-step (`ReduceAlgs` skipped `Solution.UpdateVBus`), the corpus's only
+`micro`-band deck (524 → **525** / 521 live) and, from its audit settlement
+(8 fixed / 2 recorded / 1 refuted), a fail-on-stale for the non-trivial half.
+Both: **0** new ledger entries, **0** golden bytes; **5 134 / 0 / 5** per lane,
+`lane_diff` PASS max |Δ| = 0. G1.3a–d, G1.4b/c, G1.6–G1.11c, WP-G3–G5 remain.
 
 **Next.** Bus lane (`lane-b`): **G1.4c** (D8 — the sequence quantities and
 `VLL`/`puVLL` behind the r4133 hang guard), then **G1.4b**; in parallel element

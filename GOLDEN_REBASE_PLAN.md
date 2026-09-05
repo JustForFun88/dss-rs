@@ -693,8 +693,9 @@ populated, never re-runs the study). Manifest flag on the faultstudy-family case
 > `Solution.UpdateVBus` (r4133 `Meters/ReduceAlgs.pas:500-508`, capi `:487-494`),
 > which refreshes the very `VBus` array `Bus.Voc` publishes; the returned kV base
 > is unchanged, the side effect is not.
-> **Measured:** the whole forced population on both channels — worst 0.42 of the
-> allowed band (`Zsc0`, `ieee37_SC_Currents` bus `775`), the two conditioning
+> **Measured:** the whole forced population on both channels — worst **0.61** of
+> the allowed band (`Voc`, `IEEE123Master-SC` bus `610`; 0.42 over the five
+> impedance/current arms alone, `Zsc0` at `ieee37_SC_Currents` bus `775`), the two conditioning
 > outliers (`IEEE123Master-SC:610` κ = 1.10e8, `Run_NEV:tertiary` κ = 9.52e6)
 > **below** the predicted `κ·u·‖Ysc‖∞` floor, **0** new ledger entries, **0**
 > golden bytes, **no** new tolerance constant (every band is an existing tier).
