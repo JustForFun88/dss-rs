@@ -153,16 +153,16 @@ complete**), first into `LANE_SKIP_ELEM_POWERS`, **5 784 / 0 / 5**; **G1.3b**
 2026-09-05 (D24; `40a65ffd` / `3d350ce6`) — the three sequence surfaces, an
 r4133-only `SEQ_C012` term, the n/A fold and the r4133 1-phase posseq defect
 railed by an arm census, **6 570 / 0 / 5**; **G1.3c** 2026-09-06 (`548bc7b8` /
-`a15e2ae3`) — `CplxSeq*` + `TotalPowers` close `compare_derived` at thirteen
-fields, `TotalPowers` the fourth `LANE_SKIP_ELEM_POWERS` channel on the two
-`newton*` decks (red measured on both channels first; the settlement added the
-pin registry and a `cseq_v_re` capture rail), **7 319 / 0 / 5** per lane, Δ = 0.
-G1.3b and G1.3c each add **0** ledger entries and **31** measured widenings.
-**Next.** the element chain closes with G1.3c's merge; the bus, PD/meter and
-singles lanes continue in parallel (D7) through the rest of G1.4–G1.11c, then
-WP-G3–G5 — inside which **G3.4**/**G3.5**, blocked since 2026-08-08, are
-runnable. Queued behind GOLDEN_REBASE: `WASM_USERMODELS`, RESONANCE,
-MULTITHREADING, UPGRADE.
+`a15e2ae3`) — `CplxSeq*` + `TotalPowers` close `compare_derived` at thirteen fields,
+`TotalPowers` the fourth `LANE_SKIP_ELEM_POWERS` channel on the two `newton*` decks (red
+measured on both channels first; the settlement added the pin registry and a `cseq_v_re`
+capture rail), **7 319 / 0 / 5** per lane, Δ = 0. G1.3b and G1.3c each add **0** ledger
+entries and **31** measured widenings. **Next.** G1.3c is the element chain's last
+sub-step, so lane `lane-e` closes at its merge into `update`; the bus (G1.4a → G1.5 →
+G1.4c → G1.4b, D8), PD/meter (G1.6b → G1.6(i) → G1.6(ii)) and singles (G1.7 / G1.8 /
+G1.9 / G1.10a–c) chains continue in parallel (D7), then G1.11a–c + the G1.11′ record,
+then WP-G3–G5 — inside which **G3.4**/**G3.5**, blocked since 2026-08-08, are runnable.
+Queued behind GOLDEN_REBASE: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
