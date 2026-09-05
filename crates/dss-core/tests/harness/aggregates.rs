@@ -706,6 +706,15 @@ mod tests {
             n_phases: None,
             energy_meter: None,
             node_order: Vec::new(),
+            // The G1.3d(ii) `PhaseLosses` + control-derived channels are unread by
+            // `compare_aggregates` too; spelled out for the same reason.
+            pl_kw: Vec::new(),
+            pl_kvar: Vec::new(),
+            num_controls: None,
+            ocp_dev_index: None,
+            ocp_dev_type: None,
+            has_volt_control: None,
+            has_switch_control: None,
         }
     }
 
@@ -758,6 +767,15 @@ mod tests {
                 n_phases: None,
                 energy_meter: None,
                 node_order: Vec::new(),
+                // The G1.3d(ii) `PhaseLosses` + control-derived channels are unread by
+                // `compare_aggregates` too; spelled out for the same reason.
+                pl_kw: Vec::new(),
+                pl_kvar: Vec::new(),
+                num_controls: None,
+                ocp_dev_index: None,
+                ocp_dev_type: None,
+                has_volt_control: None,
+                has_switch_control: None,
             })
             .collect();
         let losses = dss.losses();
@@ -837,6 +855,15 @@ mod tests {
             n_phases: None,
             energy_meter: None,
             node_order: Vec::new(),
+            // The G1.3d(ii) `PhaseLosses` + control-derived channels are unread by
+            // `compare_aggregates` too; spelled out for the same reason.
+            pl_kw: Vec::new(),
+            pl_kvar: Vec::new(),
+            num_controls: None,
+            ocp_dev_index: None,
+            ocp_dev_type: None,
+            has_volt_control: None,
+            has_switch_control: None,
         };
         for v in &mut rewritten.i_re {
             *v += 1.0;

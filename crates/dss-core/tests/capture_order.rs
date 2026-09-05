@@ -184,12 +184,14 @@ struct CaptureBody {
 /// The capi channel's element capture, its helper, and the r4133 channel's
 /// four bodies.
 ///
-/// `oracle_server.capture_all_elements` reads `Losses` **before** delegating to
-/// `gen_checkpoints.capture_element` (which reads `Powers` then `Currents`):
-/// two group-A reads followed by the group-B one. `dss.rs::element_pcl` is the
-/// r4133 mirror of exactly that, `element_polar` adds the three G1.3a derived
-/// channels, and `element_extras` the four unconditional G1.3d(i) discrete
-/// scalars (`NodeOrder`, the conditional fifth, stays at the call site).
+/// `oracle_server.capture_all_elements` reads `PhaseLosses` and then `Losses`
+/// **before** delegating to `gen_checkpoints.capture_element` (which reads
+/// `Powers` then `Currents`): three group-A reads followed by the group-B one.
+/// `dss.rs::element_phase_losses` + `element_pcl` are the r4133 mirror of
+/// exactly that, `element_polar` adds the three G1.3a derived channels, and
+/// `element_extras` the nine unconditional G1.3d discrete scalars — the four of
+/// part (i) plus the five control-derived ones of part (ii) (`NodeOrder`, the
+/// conditional tenth, stays at the call site).
 const BODIES: &[CaptureBody] = &[
     CaptureBody {
         key: "oracle_server.capture_all_elements",
@@ -205,6 +207,7 @@ const BODIES: &[CaptureBody] = &[
             "AllElementNames",
             "SetActiveElement",
             "Enabled",
+            "PhaseLosses",
             "Losses",
             "Powers",
             "Currents",
@@ -215,6 +218,11 @@ const BODIES: &[CaptureBody] = &[
             "NumConductors",
             "NumPhases",
             "EnergyMeter",
+            "NumControls",
+            "OCPDevIndex",
+            "OCPDevType",
+            "HasVoltControl",
+            "HasSwitchControl",
             "NodeOrder",
         ],
     },
@@ -232,6 +240,18 @@ const BODIES: &[CaptureBody] = &[
         receivers: &[],
         exempt: PY_NOT_A_READ,
         declared: &["SetActiveElement", "ActiveCktElement", "Powers", "Currents"],
+    },
+    CaptureBody {
+        key: "element_phase_losses",
+        file: "crates/dss-epri/src/dss.rs",
+        func: "element_phase_losses",
+        lang: Lang::Rust,
+        family: "CktElement",
+        marked: true,
+        receivers: &["self"],
+        // Not a read of the element: it drains the DLL's error slot.
+        exempt: &["poll_error"],
+        declared: &["PhaseLosses"],
     },
     CaptureBody {
         key: "element_pcl",
@@ -267,7 +287,17 @@ const BODIES: &[CaptureBody] = &[
         // Not a read of the element: it drains the DLL's error slot
         // (`Engine::check_read`), the same role `poll_error` plays above.
         exempt: &["assert_clean"],
-        declared: &["NumTerminals", "NumConductors", "NumPhases", "EnergyMeter"],
+        declared: &[
+            "NumTerminals",
+            "NumConductors",
+            "NumPhases",
+            "EnergyMeter",
+            "NumControls",
+            "OCPDevIndex",
+            "OCPDevType",
+            "HasVoltControl",
+            "HasSwitchControl",
+        ],
     },
     CaptureBody {
         key: "capture.capture_all_elements",
@@ -285,6 +315,7 @@ const BODIES: &[CaptureBody] = &[
             "AllElementNames",
             "SetActiveElement",
             "Enabled",
+            "PhaseLosses",
             "Losses",
             "Powers",
             "Currents",
@@ -295,6 +326,11 @@ const BODIES: &[CaptureBody] = &[
             "NumConductors",
             "NumPhases",
             "EnergyMeter",
+            "NumControls",
+            "OCPDevIndex",
+            "OCPDevType",
+            "HasVoltControl",
+            "HasSwitchControl",
             "NodeOrder",
         ],
     },
@@ -311,6 +347,7 @@ fn body(key: &str) -> &'static CaptureBody {
 fn helper_key(member: &str) -> Option<&'static str> {
     match member {
         "capture_element" => Some("capture_element"),
+        "element_phase_losses" => Some("element_phase_losses"),
         "element_pcl" => Some("element_pcl"),
         "element_polar" => Some("element_polar"),
         "element_extras" => Some("element_extras"),
@@ -970,6 +1007,33 @@ fn the_gate_fires_when_a_read_disappears() {
     let (b, text) = capi();
     let bad = check(b, &drop_line(&text, "el.Residuals"));
     assert_fires(&bad, "sequence");
+}
+
+/// The A-before-B rule stated for the surface GOLDEN_REBASE G1.3d(ii) adds:
+/// `PhaseLosses` (`CktElementV(6)`, r4133 `DDLL/DCktElement.pas:637`) is
+/// `TDSSCktElement.GetPhaseLosses`, whose first act is `ComputeIterminal`
+/// (r4133 `Common/CktElement.pas:1090`, capi `Common/CktElement.pas:896`) — so
+/// it is group **A** and must precede the group-B `Currents`.
+///
+/// The mistake this guards is the natural one: appending the read to the
+/// `element_extras` tail, where the other nine G1.3d scalars live, instead of
+/// hoisting it to the head of the element. Moving it past the `capture_element`
+/// delegation on the capi transport, and past `element_pcl` on the r4133 one,
+/// must fire `order:` on both.
+#[test]
+fn the_gate_fires_when_phase_losses_moves_after_the_currents_read() {
+    let (b, text) = capi();
+    assert!(check(b, &text).is_empty(), "the real body must be clean");
+    let moved = move_line_after(&text, "el.PhaseLosses", "gc.capture_element");
+    assert_ne!(moved, text, "the mutation must actually move a line");
+    assert_fires(&check(b, &moved), "order");
+
+    let r = body("capture.capture_all_elements");
+    let rt = body_text(r);
+    assert!(check(r, &rt).is_empty(), "the real body must be clean");
+    let moved = move_line_after(&rt, "engine.element_phase_losses", "engine.element_pcl");
+    assert_ne!(moved, rt, "the mutation must actually move a line");
+    assert_fires(&check(r, &moved), "order");
 }
 
 /// The rule that covers `gen_checkpoints.capture_element`, which carries no

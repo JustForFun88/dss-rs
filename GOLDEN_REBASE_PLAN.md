@@ -712,6 +712,106 @@ in TESTING.md instead of double-capturing.
 >   `corpus_gate/runner.rs` into the oracle-free `corpus_manifest.rs` binary — the race is
 >   removed structurally, with no weakened assertion, no retry and no skip.
 
+> **2026-09-05 — AS EXECUTED (lane `lane-e`), part (ii).** `PhaseLosses` and the five
+> control-derived scalars `NumControls`, `OCPDevIndex`, `OCPDevType`, `HasVoltControl`,
+> `HasSwitchControl` compare live on **both** channels over the same **440** cases
+> (`FORCED_ELEMENT_EXTRAS_POPULATION` `(440, 313, 83, 44)`, unchanged — this sub-step widens the
+> flag's *fields*, not its population), which completes the `compare_element_extras` surface and
+> §G1.3d as a whole. **0 new ledger entries, 0 new causes** (58 / 31 unchanged on the lane), **10** measured
+> widenings of committed `element` scopes, 0 golden bytes, no existing band moved.
+> *(On `update` after the merge: the population is **443** = (443, 312, 87, 44) and the ledger **54** / 31 —
+> `gic-pct-r2-honoured-{gictransformer,midi}-capi` were already deleted by G1.4a's **D12**/**D14**, so two of
+> the ten widenings went with their entries and **eight** land; `makeposseq-cuf-applied-capi`'s sample was
+> re-measured on the moved deck and still fails. Phase record, merge note.)*
+>
+> * **`PhaseLosses` is ported, not derived from `Losses`.** The port had no `GetPhaseLosses`;
+>   `CktElement::phase_losses` (`elements/traits.rs`) is r4133
+>   `Common/CktElement.pas:1078-1120` loop-for-loop — `ComputeIterminal` at `:1090`, the phase
+>   loop `:1093-1112` summing `NodeV[NodeRef[(j-1)*FNconds+i]]·conj(Iterminal[…])` over the
+>   element's terminals and skipping `n = 0`, ×3 under positive sequence, `CZERO` zero-fill on
+>   `!FEnabled` (`:1118-1119`). It returns **W/var**; the oracles' ×0.001 (r4133
+>   `DDLL/DCktElement.pas:637` mode 6, the `cmulreal(…, 0.001)` at `:651`; capi
+>   `CAPI/CAPI_Alt.pas:449-467`, the multiply at `:466`) is a capture-boundary encoding applied
+>   at exactly one site, the comparator.
+> * **The band is a derivation, not a new class** (`tests/TOLERANCE_NOTES.md` §G1.3d(ii)):
+>   `harness::phase_loss_band` sums `assert_power_close`'s per-conductor floor over exactly the
+>   conductors `GetPhaseLosses` sums, i.e. the construction `Get_Losses` already applies over
+>   *all* of them, restricted to one phase — strictly tighter, and no `Tolerances` field is read
+>   or written. The `Get_Losses` oracle-self-consistency trust escape is deliberately **not**
+>   copied (it exists for a capi015 quirk on a rev this gate does not run).
+> * **`PhaseLosses` DOES join `LANE_SKIP_ELEM_POWERS`** on the two `newton*` decks, unlike G1.3a's
+>   three polar channels: it opens with the same cache-aware `ComputeIterminal` as
+>   `Get_Powers`/`Get_Losses`, so no oracle reports it at the converged `NodeV`
+>   (CLAUDE.md bug 5 / G2.3). **Measured before the bit was added**, both decks red on
+>   `Vsource.source` phase 0 at 55.5× / 34.4× the band (`|Δ| = 4.8559011331706704e-4` and
+>   `2.460687672864992e-3` kVA) — bit-identical to the `Powers` figures the row already records,
+>   which is the mechanism, not a coincidence. The five discrete scalars stay compared there.
+>   *(Audit settlement, 2026-09-05: that first measurement stopped at the `capi_v0145` channel,
+>   because a case aborts on its first failing channel. Re-measured on the **`r4133`** channel by
+>   flipping the two cases to `engines: "r4133"` in a scratch copy: same element, same phase,
+>   `|Δ| = 4.855901044093186e-4 > 8.753018514278278e-6` and
+>   `2.4606876731535624e-3 > 7.144000397412528e-5` kVA — i.e. both gating channels carry the
+>   staleness, as CLAUDE.md bug 5 says of every official rev. Nothing was committed from that copy.)*
+> * **D-ii-1 — the control list is attach-ordered, and r4133 re-attaches on every edit.** Pascal's
+>   per-element `ControlElementList` is remove-then-append (`Controls/ControlElem.pas:113-131`,
+>   `RemoveSelfFromControlElementList` at `:81-99`); r4133 re-runs
+>   `ControlledElement := CktElements.Get(DevIndex)` inside **`RecalcElementData`**, i.e. on every
+>   Edit (`Relay.pas:955` from `:626`; `Recloser.pas:702`, `SwtControl.pas:332`,
+>   `CapControl.pas:580`, `RegControl.pas:693`), while capi 0.14.5 makes `ControlledElement` a
+>   property-write target only (`Controls/Relay.pas:439-441`). Measured: after
+>   `edit relay.r delay=0.05`, r4133 answers `OCPDevType` **1** (the fuse, the relay having moved
+>   to the end) and capi **3**. The port follows r4133 — a new `Circuit::control_attach_order`
+>   maintained at the port's `RecalcElementData` moment, derived per element by
+>   `circuit::controls::derive_control_lists`, which `Show Controlled` now shares so the report and
+>   the API cannot drift. **0 ledger rows:** no corpus deck carries a *heterogeneous*
+>   multi-control element, so the divergence is not observable in the gate; it is pinned by
+>   `ocp_dev_type_follows_the_last_attach_order` (port 1, r4133 1, capi 3) and recorded in
+>   `docs/upgrade/DIVERGENCES.md` **L9**.
+>   *(Audit settlement, 2026-09-05. The census quoted here — 60 controlled elements,
+>   `max NumControls = 1` — was a live capi walk of `tests/corpus/controls/**` only, and does NOT
+>   hold over the gated population: the whole-gate census now re-derived on every run finds
+>   **18** (case, channel, step, element) rows with ≥ 2 controls, out of 3 184 controlled rows in
+>   298 565. All 18 are Relay-ONLY lists — `Line.thev` under `Relay.21src` + `Relay.21rev` in the
+>   eight Distance/TD21 relay decks, `Line.motorleads` under `Relay.{mfrov/uv,mfr46,mfr47}` in
+>   `controls:fuse/indmach_r4133/indmach_{snap,dyn}.dss` — so every permutation answers the same
+>   `OCPDevIndex = 1` / `OCPDevType = 3` and the conclusion stands, now on the right premise. The
+>   counts are pinned fail-on-stale in both directions by
+>   `harness::assert_no_multi_control_element`, called from the gate epilogue.)*
+> * **D-ii-2 — a *disabled* OCP control still holds its slot and still wins the scan** (r4133
+>   `Common/Utilities.pas:3165-3184` has no `Enabled` test; both channels agree). The accessors
+>   therefore recompute from the derived list with no `Enabled` filter anywhere, instead of reading
+>   the port's registration latch `CktElementData::ocp_device_type`, which is written for the first
+>   *enabled* OCP control and answers `3` where both oracles answer `1`. Pinned by
+>   `a_disabled_ocp_control_still_wins_the_ocp_scan` (names all three numbers).
+> * **Ledger: one new sub-channel, ten measured widenings, no new entry.** `phase_losses` joins
+>   `SUBCHANNEL_FIELDS`' `element` list (seven names now) in the same commit, and both ledger
+>   handlers honour it — `rewrite_element_selected` writes the port's kW/kvar back and
+>   `envelope_element` bands each phase with the same derived floor. Ten committed `element` scopes
+>   that already select `powers`/`losses` were widened onto it, each **only** after the live gate
+>   printed its own failing sample on its own channel (`measured.g13d2_phase_losses_first_failure`):
+>   `mmf-accept-set-honoured-capi`, `makeposseq-cuf-applied-capi`,
+>   `gic-pct-r2-honoured-{gictransformer,midi}-{capi,r4133}` and
+>   `windgen-qmode0-constant-q-{daily,snapdelta,dyn,dynfault}-r4133`. The four
+>   `r4133-*-injection-ulp` entries (which select `losses`) were measured **not** to fail and keep
+>   their committed lists; `capi-capcontrol-time-bus-is-the-capacitors` likewise (a CapControl has
+>   no `Iterminal`, so its `PhaseLosses` is zero on both sides). The staleness half is proved live:
+>   a deliberate eleventh widening of `r4133-indmach-injection-ulp` was reported STALE by
+>   `Scope::dead_channels` on an unfiltered run, then reverted.
+> * **No mode, no capability gap.** All six r4133 modes already existed and were proven `Served` by
+>   G1.0, so `WP_G1_MODES` stays **97** and `crates/dss-epri/src/modes.rs` is byte-untouched.
+>   Measured on a 0-phase element (`UPFCControl`, `controls/upfc/upfc_dual.dss`): `CktElementV(6)`
+>   returns a 0-length array and the worker survives, capi returns `[]` — no capture predicate, no
+>   sentinel normalization and **no `DoNotCall` row** is owed.
+> * **Adjacent defect A-1 fixed here; A-2 recorded.** The reliability sweep's
+>   `pSection.OCPDeviceType` was the same registration latch where Pascal calls
+>   `GetOCPDeviceType` live (r4133 `Meters/EnergyMeter.pas:2538`); it now calls the shared live
+>   scan (`solution/meters/reliability.rs::live_ocp_device_type`), measured at **zero** golden and
+>   corpus movement and pinned by
+>   `section_device_type_is_the_live_ocp_scan_not_the_registration_latch`. **A-2** — the port never
+>   clears `HAS_OCP_DEVICE`/`HAS_AUTO_OCP_DEVICE` where r4133 clears them at the head of every
+>   control `RecalcElementData` (`Controls/Relay.pas:946-964`) — is deliberately untouched (its
+>   blast radius is the whole reliability sweep) and is recorded in STATUS as owned by G1.6/G1.6b.
+
 ### G1.4 — bus surface: pu-voltages, seq voltages, distances, extras
 
 `Bus.puVmagAngle`/`puVoltages`/`AllBusVmagPu`, `Bus.SeqVoltages`/`CplxSeqVoltages`,
