@@ -272,9 +272,11 @@ fn bus_voltage_view(ckt: &Circuit, bus_idx: usize) -> BusVoltageView {
 /// each `Zsc` column is a separate `Y·V = e_i` solve, and the measured
 /// `|Z_ij − Z_ji|` reaches 4.66e-10 (IEEE123Master-SC bus `610`) with *no*
 /// off-diagonal pair bit-equal on any of the three decks measured (of four) —
-/// so a transposed flatten would be a silent, band-invisible error, not a
-/// caught one. The convention is therefore held by this citation and by
-/// [`BusScView`]'s ordering block, not by a value comparison.
+/// so a transposed flatten would be a silent, band-invisible error on the
+/// corpus, not a caught one. The convention is therefore held by this
+/// citation, by [`BusScView`]'s ordering block and by the offline pin
+/// `bus_sc_tests::flatten_row_major_walks_i_outer_on_an_asymmetric_matrix`
+/// (G1.5 audit settlement AC-4) — never by an oracle value comparison.
 fn flatten_row_major(m: &crate::support::cmatrix::CMatrix) -> Vec<num_complex::Complex64> {
     let n = m.order();
     let mut out = Vec::with_capacity(n * n);
@@ -1502,7 +1504,10 @@ mod bus_sc_tests {
     use num_complex::Complex64;
 
     /// `micro`-tier band, the harness' own numbers for this kind of case
-    /// (`tests/harness/mod.rs::tol_for`: `v`/`y`/`i` = `1e-9` abs + `1e-6` rel).
+    /// (`tests/harness/mod.rs::tol_for`: `v`/`y`/`i` = `1e-6` abs + `1e-9`
+    /// rel — the abs/rel pair the corpus gate applies to this very deck, and
+    /// the pair `harness::tol_for` is pinned to by
+    /// `the_short_circuit_surface_adds_no_tolerance_constant`).
     /// Every oracle literal below is a live reading of the *same* deck on both
     /// channels — dss-python 0.15.7 / capi 0.14.5 and the EPRI r4133 DLL — which
     /// agree with each other to ~1e-15 relative and with the port to ~1e-12 abs.
@@ -1529,11 +1534,57 @@ mod bus_sc_tests {
     /// deck, and the errors these pins exist to catch (a transposed or
     /// ascending-sorted index, an absent matrix) are 0.6 ohm / 800 V wide.
     fn close(got: Complex64, want: Complex64, what: &str) {
-        let allowed = 1e-9 + 1e-6 * want.norm();
+        let allowed = 1e-6 + 1e-9 * want.norm();
         assert!(
             (got - want).norm() <= allowed,
             "{what}: {got} vs oracle {want} (|diff| = {:.6e} > allowed {allowed:.3e})",
             (got - want).norm()
+        );
+    }
+
+    /// **The row-major convention, driven** (GOLDEN_REBASE G1.5 audit
+    /// settlement, AC-4). Spec §4's non-vacuity demo 1 — transpose the flatten
+    /// and watch the live gate red — was measured VACUOUS and dropped: `Zsc`
+    /// and `Ysc` are symmetric to ≤ 4.66e-10 on every bus of every corpus deck
+    /// that runs a study, six orders inside the band, so no oracle comparison
+    /// anywhere can tell `m.get(i, j)` from `m.get(j, i)`. That left
+    /// [`flatten_row_major`]'s convention — the one both oracles publish
+    /// (`For i … For j … Zsc.GetElement(i, j)`, r4133 `DDLL/DBus.pas:445-450`
+    /// == capi `CAPI/CAPI_Alt.pas:2318-2330`) — carried by a citation alone.
+    ///
+    /// This pins it where symmetry cannot hide it: a deliberately ASYMMETRIC
+    /// matrix whose `(i, j)` entry is `10·i + j`, so the row-major flatten is
+    /// `[00, 01, 02, 10, …]` while the transposed walk would be
+    /// `[00, 10, 20, 01, …]` — different in all six off-diagonal slots. The
+    /// same literals also separate it from `CMatrix`'s COLUMN-major backing
+    /// store (`support/cmatrix/mod.rs:45-47`), which is the transpose here, so
+    /// the day someone "optimizes" the loop into a `values().to_vec()` this
+    /// test reds instead of the surface silently publishing `Zscᵀ`.
+    #[test]
+    fn flatten_row_major_walks_i_outer_on_an_asymmetric_matrix() {
+        let mut m = crate::support::cmatrix::CMatrix::new(3);
+        for i in 0..3 {
+            for j in 0..3 {
+                m.set(i, j, Complex64::new((10 * i + j) as f64, 0.0));
+            }
+        }
+        let got: Vec<f64> = flatten_row_major(&m).iter().map(|c| c.re).collect();
+        assert_eq!(
+            got,
+            vec![0.0, 1.0, 2.0, 10.0, 11.0, 12.0, 20.0, 21.0, 22.0],
+            "flatten_row_major must walk `i` outer / `j` inner, the read order of \
+             both oracles' `BUSV` matrix arms"
+        );
+        let stored: Vec<f64> = m.values().iter().map(|c| c.re).collect();
+        assert_eq!(
+            stored,
+            vec![0.0, 10.0, 20.0, 1.0, 11.0, 21.0, 2.0, 12.0, 22.0],
+            "CMatrix stores column-major — the premise of the explicit walk"
+        );
+        assert_ne!(
+            got, stored,
+            "on an asymmetric matrix the row-major flatten and the backing store \
+             must differ, or this pin proves nothing"
         );
     }
 
@@ -1860,7 +1911,7 @@ mod bus_sc_tests {
     /// The fault study is **not** the only writer of `Voc`: `BuildYMatrix`
     /// brackets the rebuild with `UpdateVBus` / `RestoreNodeVfromVbus` whenever
     /// `Solution.PreserveNodeVoltages` is set (r4133
-    /// `Common/YMatrix.pas:298`/`:449` == `solution::ymatrix::build_y_matrix`),
+    /// `Common/YMatrix.pas:170`/`:282` == `solution::ymatrix::build_y_matrix`),
     /// and that flag is set entering Harmonic/HarmonicT and Dynamic mode. So a
     /// harmonics deck publishes a live `Voc` (and an `Isc` derived from it)
     /// while `Zsc`/`Ysc` stay `None` — which is exactly why the harness
