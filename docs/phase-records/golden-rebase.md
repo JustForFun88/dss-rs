@@ -2843,3 +2843,40 @@ row against the pre-fix lock.
   3 314 / (16, 135) / (8, 96) and ledger 57 / 1 588 hits / 0 stale unmoved, no lock or
   golden byte; `lane_diff` re-run: **PASS**, max |Δ| = 0 over 3 220 861 records — the
   final-tree totals for G1.7.
+
+- **G1.8** (2026-09-05, lane `lane-s`, decisions **D2**/**D3**/**D4**/**D7**) — the four flat
+  incidence quantities (`Solution.IncMatrix`, `Laplacian`, `IncMatrixRows`, `IncMatrixCols`;
+  r4133 `DDLL/DSolution.pas:542-667`, capi `CAPI/CAPI_Solution.pas:860-1021`) go live on **both**
+  channels in one surface commit: `exec/view.rs::inc_matrix_view` drives
+  `CalcIncMatrix`+`CalcLaplacian` through the real dispatch and implements the getter's
+  `IncMat_Ordered` branch the CSV writer does not (`DSolution.pas:616-631`); both captures read
+  the pair **strictly last** (on r4133 it moves `ActiveCktElement`, `Common/Solution.pas:3007-3010`,
+  and it must follow the read that memoizes `Branch_List`); `harness/inc_matrix.rs` compares
+  integers, indices and names exactly. Forced on every live non-`large` case (440 = 313/83/44,
+  `FORCED_INC_MATRIX_POPULATION` asserted equal to the topology and property populations; six decks
+  declare it so the lock sees the surface) — **no floor, 0 ledger entries, 0 new `LEDGER_FIELDS`,
+  0 golden bytes**, lock +6 `incm=` tokens, **no FFI or mode added** (D2 discharged by G1.0).
+  **Settlement S-INC**: both oracles advance the incidence row cursor for *every* reactor
+  (`Common/Solution.pas:3039`, outside the `:3015` guard, unlike `:2885`/`:2938`/`:2986`), so the
+  port emits dense rows (own commit, ahead of the surface) and the comparator asserts upstream's
+  numbering positively — `remap(port, upstream_row_index) == oracle`, Laplacian unmapped — pinned by
+  `INC_UPSTREAM_ROW_DECLINES = (4, 5)` (fail-on-stale both ways) plus `inc_matrix_pins::{the_incidence_row_cursor_skips_a_shunt_reactor,
+  the_row_cursor_settlement_holds_on_the_corpus_witness, the_laplacian_is_blind_to_the_row_cursor}`.
+  Two further defects of the same walk are reproduced on purpose and registered under §WP-G2;
+  **§G3.2c is re-scoped here** (dated note under both sections: 8 `*_flat_*` stems go, 20 `*_org_*`
+  stay — `Calc_Inc_Matrix_Org` calls `GetTopology` and `BusLevels` is unreadable on r4133).
+  Rules and evidence: `TESTING.md` §"The unified corpus gate" + §"The r4133 bridge",
+  `tests/TOLERANCE_NOTES.md` §G1.8, the plan's §G1.8 note; 34 `file.rs:LINE` doc citations were
+  re-pointed after `harness/mod.rs` (+7) and `corpus_gate.rs` (+9) shifted under them, and the
+  22 names those documents cite are guarded by
+  `oracle_parity_cfg_gate::the_g1_8_pins_the_docs_cite_exist_exactly_once` (the G1.9 / G1.7
+  registry pattern, added by the self-check pass).
+  Commits: `2cadc808` (dense rows, alone) + `<sha>` (the surface — lock regen, docs and this
+  record inside; the sha is filled by the docs commit that follows it).
+  Gate: fmt + clippy clean; the unfiltered corpus gate 523/523 on both channels in **both lanes**
+  with ledger 57 entries / 0 stale, `inc_matrix` 3 314 compared triples and declines (4, 5) over 10
+  channel visits; `DSS_GATE_DUMP` bit-identical across serial one-shot, persistent-parallel and
+  shuffled; `golden_lock` / `population_lock` / `oracle_parity_cfg_gate` green, no golden byte;
+  `lane_diff` was owed — product code moved (`solution/inc_matrix.rs`, `exec/view.rs`) — and ran
+  at the ritual's gate stage: `VERDICT: PASS`, **max |Δ| = 0** on all eight dumped kinds over
+  3 220 861 records, 0 iteration drift.

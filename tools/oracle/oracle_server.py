@@ -431,6 +431,149 @@ def capture_topology(ckt) -> dict:
     }
 
 
+def _inc_ints(v, what: str) -> list:
+    """Normalize one capi incidence / Laplacian integer array (G1.8 rule N1).
+
+    `Solution_Get_IncMatrix` / `Solution_Get_Laplacian` allocate `NZero * 3 + 1`
+    integers and fill only the first `NZero * 3`
+    (`.inputs/dss_capi/src/CAPI/CAPI_Solution.pas:910` and `:873`, both carrying
+    the upstream `//TODO: remove the +1`), so the wire always carries exactly ONE
+    trailing cell that is not part of the triple stream; a NIL matrix answers
+    `DefaultResult(ResultPtr, ResultCount)`, which is the same single zero
+    (`CAPI_Utils.pas:201-210`). r4133's DDLL has no such slot — it returns
+    `NZero * 3`, or the one-element `[0]` when the matrix is NIL
+    (`Version8/Source/DDLL/DSolution.pas:542-568`, `:640-667`) — so dropping the
+    cell HERE, in the transport, is what makes the two channels byte-identical
+    (measured: 358 both-gated cases, 0 disagreements on all four quantities).
+
+    The pinned dss-python (0.15.7, `dss/ISolution.py:616-631` / `:651-668`) hands
+    the C array through untouched. Its `origin/fastdss` successor appends a COM
+    compatibility zero when `len % 3 == 0` (`dss/ISolution.py:609-631`,
+    `:652-673`) — inert against a backend that already allocates the `+1`, and the
+    reason this rule is written as "drop exactly one trailing zero" rather than
+    "drop the last cell".
+
+    The shape is this sub-step's KILL CRITERION (GOLDEN_REBASE_PLAN.md §G1.8), so
+    anything else RAISES: a length that is not `3 * k + 1`, or a trailing cell
+    that is not 0. Measured over the whole live capi population, both arrays:
+    1733 / 1733 steps `len % 3 == 1` with the trailing cell 0.
+    """
+    xs = [int(x) for x in v]
+    if len(xs) % 3 != 1:
+        raise ValueError(
+            f"capi {what}: length {len(xs)} is not `3*NZero + 1` — the trailing-cell "
+            f"contract of CAPI_Solution.pas:873 / :910 changed (head {xs[:6]!r})"
+        )
+    if xs[-1] != 0:
+        raise ValueError(
+            f"capi {what}: the trailing cell is {xs[-1]}, not 0 — it is NOT the "
+            f"unwritten `+1` slot and must not be dropped (length {len(xs)})"
+        )
+    return xs[:-1]
+
+
+def _inc_names(v, sentinel_ok: bool, what: str) -> list:
+    """Normalize one capi incidence row / column name array (G1.8 rule N3).
+
+    capi answers an absent list with `DefaultResult(..., '')` — a ONE-element
+    array holding the empty string, not an empty array (`CAPI_Solution.pas:961`
+    for `Inc_Mat_Rows = NIL`; `:988`, `:995` and `:1010` for the three
+    `IncMatrixCols` exits; `CAPI_Utils.pas:234-243`). r4133 writes the word
+    `None` in the same places (`DDLL/DSolution.pas:605`, `:636`). Both mean "no
+    names", and both map to `[]`.
+
+    The sentinel is accepted ONLY where the engine can actually reach it —
+    `IncMatrixRows` when the incidence matrix carries no triple, `IncMatrixCols`
+    when the circuit has no buses. A one-element `''` anywhere else, or any blank
+    entry inside a real list, is a shape change and RAISES: this normalization
+    must never quietly swallow a missing row or column name (the `_topo_names`
+    precedent above). Measured: 104 of 1733 live capi steps take the rows
+    sentinel, 0 take the cols sentinel (`IncMatrixCols` was `AllBusNames` on
+    1733 / 1733 steps).
+
+    Case is left alone: the comparator matches each entry case-insensitively,
+    because the port's bus names are `HashList`-lowercased while its row names
+    are `Class.name` with a capitalized class.
+    """
+    xs = [str(s) for s in v]
+    if len(xs) == 1 and xs[0].strip() == "":
+        if not sentinel_ok:
+            raise ValueError(
+                f"capi {what}: the empty sentinel {xs!r} came back where the engine "
+                "cannot reach it (a non-empty incidence matrix / a circuit with buses)"
+            )
+        return []
+    blank = [i for i, s in enumerate(xs) if not s.strip()]
+    if blank:
+        raise ValueError(
+            f"capi {what}: unexpected empty entries at {blank}: {xs!r} "
+            "(only the one-element empty sentinel is ever dropped)"
+        )
+    return xs
+
+
+def capture_inc_matrix(d, ckt) -> dict:
+    """The flat incidence-matrix / Laplacian surface of GOLDEN_REBASE G1.8.
+
+    Issues the executive pair `CalcIncMatrix` (ordinal 108) then `CalcLaplacian`
+    (111) — `.inputs/dss_capi/src/Executive/ExecCommands.pas:406-409` and
+    `:421-433`; r4133 `Version8/Source/Executive/ExecCommands.pas:911-917` — and
+    reads the four flat quantities back in the order below:
+    `Solution.IncMatrix`, `Solution.Laplacian`, `Solution.IncMatrixRows`,
+    `Solution.IncMatrixCols` (`dss/ISolution.py:609` / `:652` / `:643` / `:634`
+    on `origin/fastdss`; `:618` / `:653` / `:644` / `:635` in the pinned 0.15.7).
+
+    NEVER the ordered builder `CalcIncMatrix_O` (109) and never
+    `Solution.BusLevels`: the first calls `GetTopology`, which builds the very
+    tree G1.7's census is defined on, and the second walks one element past its
+    own array on r4133 (`DDLL/DSolution.pas:578-582`; it sits on the bridge's
+    `DO_NOT_CALL` register). Both omissions are asserted by
+    `crates/dss-core/tests/capture_order.rs`, not only by this comment.
+
+    **Read strictly last in the step — after `all_properties` AND after
+    `topology`.** Two reasons:
+
+    * the pair is not `ActiveCktElement`-neutral on the r4133 channel:
+      `AddSeriesReac2IncMatrix` re-points `LastClassReferenced` /
+      `ActiveDSSClass` and then calls `ActiveDSSClass.First`
+      (r4133 `Common/Solution.pas:3007-3010`), which reassigns the active
+      element. The pinned capi walks the same reactors with a typed class
+      iterator and leaves the active element alone
+      (`.inputs/dss_capi/src/Common/Solution.pas:1464-1473`), but both transports
+      capture in the same order by construction, so the stronger channel sets the
+      rule for both;
+    * `Calc_Inc_Matrix` is a solution-state write — it recreates or resets
+      `IncMat`, refills `Inc_Mat_Rows` and clears `IncMat_Ordered`
+      (`Common/Solution.pas:1507-1526`) — and it must follow the topology read,
+      which is the one that builds and memoizes `Branch_List` (see
+      `capture_topology`).
+
+    `IncMatrixCols` is therefore always read after a FLAT build, where
+    `IncMat_Ordered` is false and both engines answer every bus in `BusList`
+    order instead of `Inc_Mat_Cols` (capi `CAPI_Solution.pas:991` + `:1008-1018`;
+    r4133 `DSolution.pas:616` + `:627-629`) — measured equal to `AllBusNames` on
+    1733 / 1733 live capi steps.
+
+    The two transport normalizations are `_inc_ints` (N1) and `_inc_names` (N3)
+    above; nothing is normalized in the comparator. The returned dict is the
+    shape the r4133 bridge returns and the Rust side deserializes: four keys,
+    with the two integer arrays FLAT (`row, col, value` triples in insertion
+    order) and already normalized.
+    """
+    sol = ckt.Solution
+    d.Text.Command = "CalcIncMatrix"
+    d.Text.Command = "CalcLaplacian"
+    inc = _inc_ints(sol.IncMatrix, "IncMatrix")
+    lap = _inc_ints(sol.Laplacian, "Laplacian")
+    return {
+        "inc_matrix": inc,
+        "laplacian": lap,
+        "rows": _inc_names(sol.IncMatrixRows, not inc, "IncMatrixRows"),
+        "cols": _inc_names(sol.IncMatrixCols, int(ckt.NumBuses) == 0, "IncMatrixCols"),
+    }
+
+
+
 # OpenDSS `Show`/`Export`/`Save` write report files into the compiled case's
 # directory (`OutputDirectory := DataDirectory := <case dir>` in
 # `DSSGlobals.SetDataPath`, which `Compile` calls). The live gate only compares
@@ -528,6 +671,10 @@ def run_case(d, req: dict) -> dict:
     # GOLDEN_REBASE G1.7 (`compare_topology`): the six order-free `ITopology`
     # reads, captured strictly LAST in the step (see `capture_topology`).
     want_topology = bool(req.get("topology", False))
+    # GOLDEN_REBASE G1.8 (`compare_inc_matrix`): the flat `CalcIncMatrix` +
+    # `CalcLaplacian` pair and its four reads, captured after `topology`, i.e.
+    # strictly last of all (see `capture_inc_matrix`).
+    want_inc_matrix = bool(req.get("inc_matrix", False))
     # WPG.5 (AutoAdd): `DSS.GlobalResult` after each solve (the winner + figure)
     # and the `<CircuitName_>AutoAddLog.csv` the search writes. `Text.Result` is
     # captured IMMEDIATELY after `solve`, before any `?`-query capture overwrites
@@ -669,6 +816,17 @@ def run_case(d, req: dict) -> dict:
                         # side's `Option<TopologyCap>` tells "not captured" from
                         # "captured empty".
                         "topology": (capture_topology(ckt) if want_topology else None),
+                        # G1.8: read after `topology`, i.e. STRICTLY LAST of
+                        # the whole step — the pair rewrites solution state
+                        # and (on r4133) moves `ActiveCktElement`, and it must
+                        # not precede the topology read that memoizes
+                        # `Branch_List`. `None` (not an empty dict) when the
+                        # case does not request it, so the Rust side's
+                        # `Option<..>` tells "not captured" from "captured
+                        # empty".
+                        "inc_matrix": (
+                            capture_inc_matrix(d, ckt) if want_inc_matrix else None
+                        ),
                         "global_result": global_result,
                         # G1.9 — read at the top of the step (see the block
                         # above); listed last only because the dict is

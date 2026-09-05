@@ -744,6 +744,30 @@ pub(crate) fn compare_capture(
             // channel, so the reference is per run and never shared.
             harness::topology::compare_topology(dss, topo, &ctx, label, i, &mut topo_step0);
         }
+
+        // `GOLDEN_REBASE_PLAN.md` G1.8 — the flat incidence surface, compared
+        // AFTER the topology block and therefore last of the whole step, exactly
+        // as both transports capture it (`oracle_server.py::run_case`,
+        // `dss-epri::capture::run`; `crates/dss-core/tests/capture_order.rs`
+        // asserts the source order on both). Two independent reasons, neither of
+        // them cosmetic: `Dss::inc_matrix_view` REBUILDS solution state
+        // (`IncMat`, `Laplacian`, `Inc_Mat_Rows`, `IncMat_Ordered`) and on r4133
+        // the same pair also moves `ActiveCktElement`
+        // (`AddSeriesReac2IncMatrix` -> `ActiveDSSClass.First`, r4133
+        // `Common/Solution.pas:3007-3010`); and it must FOLLOW the topology
+        // read, whose memoized `Branch_List` is what G1.7's two decline censuses
+        // are defined on. Flag-gated, so the `capture_guard` rail applies: the
+        // flag ON with nothing captured FAILS the case instead of comparing
+        // nothing.
+        if c.compare_inc_matrix {
+            let inc = capture_guard::require_capture_opt(
+                "compare_inc_matrix",
+                channel_tag(channel),
+                cp.inc_matrix.as_ref(),
+                &ctx,
+            );
+            harness::inc_matrix::compare_inc_matrix(dss, inc, channel_tag(channel), &ctx, label, i);
+        }
     }
 
     if c.compare_autoadd_log {

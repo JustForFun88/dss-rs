@@ -27,6 +27,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::harness::aggregates::{AggregatesCap, SolutionScalarsCap};
+use crate::harness::inc_matrix::IncMatrixCap;
 use crate::harness::topology::TopologyCap;
 use crate::harness::{
     ElementCap, Injection, MeterCap, MonitorCap, ProbeCap, PropsCap, VariablesCap, YFingerprint,
@@ -115,6 +116,22 @@ pub(crate) struct Checkpoint {
     /// `crates/dss-core/tests/capture_order.rs` asserts that from their source.
     #[serde(default)]
     pub(crate) topology: Option<TopologyCap>,
+    /// `GOLDEN_REBASE_PLAN.md` G1.8 — the four flat incidence quantities
+    /// (`IncMatrix`, `Laplacian`, `IncMatrixRows`, `IncMatrixCols`), read after
+    /// one `CalcIncMatrix` + `CalcLaplacian` pair. Flag-gated exactly like
+    /// [`Checkpoint::topology`] (`SolvableCase::compare_inc_matrix`), with the
+    /// same presence contract: `None` is honest when the case did not request
+    /// it, and `harness::capture_guard` turns `None` into a failure exactly when
+    /// the flag IS on.
+    ///
+    /// Both transports read it **strictly last** in a step, after `topology`:
+    /// building the matrix is a state write that on r4133 also moves
+    /// `ActiveCktElement` (`AddSeriesReac2IncMatrix` calls `ActiveDSSClass.First`,
+    /// `Common/Solution.pas:3007-3010`), and it must not precede the topology
+    /// read that memoizes `Branch_List`.
+    /// `crates/dss-core/tests/capture_order.rs` asserts that from their source.
+    #[serde(default)]
+    pub(crate) inc_matrix: Option<IncMatrixCap>,
 }
 
 /// The per-case wall-clock deadline for a single oracle request
@@ -154,6 +171,12 @@ pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
         // `req["topology"]`, `dss-epri`'s `RunRequest::topology`) and both read
         // the surface strictly last in the step.
         "topology": c.compare_topology,
+        // G1.8: same contract — both transports honor this key
+        // (`oracle_server.py` reads `req["inc_matrix"]`, `dss-epri`'s
+        // `RunRequest::inc_matrix`) and both drive the `CalcIncMatrix` +
+        // `CalcLaplacian` pair and read its four quantities STRICTLY LAST in
+        // the step, after `topology`.
+        "inc_matrix": c.compare_inc_matrix,
         "global_result": c.compare_global_result,
         "autoadd_log": c.compare_autoadd_log,
         "warn_and_continue": !c.expect_warnings.is_empty(),

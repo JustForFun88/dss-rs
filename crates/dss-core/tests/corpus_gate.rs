@@ -159,6 +159,15 @@ fn corpus_gate_all_cases_match_engines() {
     // a failing case may not have reached its topology compare, and a census
     // measured from a partial run would be noise on top of a real failure.
     scheduler::assert_topology_declines_are_the_pinned_population();
+    // And for G1.8's settlement S-INC, which writes no ledger rows either: the
+    // population where upstream's incidence ROW CURSOR runs past `Inc_Mat_Rows`
+    // (it advances for every reactor, r4133 `Common/Solution.pas:3039`, while
+    // the port emits dense rows) and the comparator therefore compares its
+    // remapped answer. Re-derived from this run and pinned in both directions;
+    // it lives beside the comparator (`harness::inc_matrix`) rather than in the
+    // scheduler because that module has no manifest access and arms itself on
+    // the run's own comparison counter.
+    harness::inc_matrix::assert_declines_are_the_pinned_population();
     // And the GLOBAL half of the r4133 property accounting (plan §RP4.1): the
     // two per-row asserts BELOW say nothing when NO row was visited, which is
     // exactly what a re-mask of the r4133 property request would produce — a
