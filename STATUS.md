@@ -156,7 +156,7 @@ census (**0** new; its ten `phase_losses` widenings land as **eight**, D12/D14 h
 And **G1.4c** (`lane-b`, `74cb0ef6` + `6fc63848` + docs), the bus **sequence** and **line-to-line** arms on G1.4a's per-bus walk, where
 port, capi and r4133 all differ: the port publishes the physically correct answer (S-SEQ/S-VLL, **D21**), each oracle's own walk over the
 port's state is **asserted** rather than excluded (**D15**/**D16**, four fail-on-stale populations + the shared `C_012` ceiling) and
-r4133's `VLL` **hang** is refused per bus (**D2**; `DIVERGENCES.md` §G1.4c, `to_opendss/` 64-66) — **0** new. And **G1.4b** (`lane-b`),
+r4133's `VLL` **hang** is refused per bus (**D2**; `DIVERGENCES.md` §G1.4c, `to_opendss/` 64-66) — **0** new. And **G1.4b** (`lane-b`, `1aa08d9c` + settlement),
 the bus **distance** surface on the same walk, compared **exactly** (`rel = abs = 0`), with `DISTANCE_POPULATION` **(867, 79 137)**
 fail-on-stale and D9's `MakeBusList` fix pinned live: **D26** split its at-bus half into a NEW sub-step **G1.4d** (the r4133 criterion
 leaves capi diverging on 60 cases / 3 mechanisms; the port will answer S4) — **a plan amendment the user has not seen**; **D29** refused

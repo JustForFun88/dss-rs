@@ -486,7 +486,7 @@ struct BusCap {
     /// `CAPI_Alt.pas:2071-2074`). G1.4b.
     ///
     /// A zone-build output, not a solve output: `MakeMeterZoneLists` writes it
-    /// (`Meters/EnergyMeter.pas:1833-1836`), so a circuit with no EnergyMeter —
+    /// (`Meters/EnergyMeter.pas:1833-1838`), so a circuit with no EnergyMeter —
     /// or a bus outside every meter's zone — reports the untouched `0.0`.
     /// Neither channel has a "no meter" sentinel.
     distance: f64,

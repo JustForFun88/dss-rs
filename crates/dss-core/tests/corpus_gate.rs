@@ -1117,6 +1117,116 @@ fn the_two_transports_agree_on_the_bus_capture_of_a_gated_both_case() {
     );
 }
 
+/// D2's cross-transport validation for the **distance** arm, on a case that
+/// actually has a meter zone (G1.4b audit settlement, AC-4).
+///
+/// The bus-capture check above rides `asymmetric:line/line_asym.dss`, which
+/// defines no EnergyMeter: every `Distance` it compares is `0.0` against `0.0`,
+/// so it pins the SHAPE (neither transport invents a distance) and not the
+/// quantity. `controls:energymeter/energymeter_sym.dss` gates on both channels
+/// and carries a real zone — `line.feed` (src→m1) and `line.lat` (m1→m2), each
+/// `length=1` with `units` unset, and `ConvertLineUnits` returns `1.0` whenever
+/// either side is `UNITS_NONE` (`Shared/LineUnits.pas:110-115`), so the walk's
+/// own sum is `src = 0`, `m1 = 1`, `m2 = 2` km. That makes this the place where
+/// the two transports are pinned against each other on a NON-ZERO
+/// `DistFromMeter`, exactly (`rel = abs = 0`, no band anywhere), across all 24
+/// daily steps — a stale `ActiveBusIndex` or a misindexed `CircuitV` mode on
+/// either side reds here instead of hiding behind an all-zero comparison.
+#[test]
+fn the_two_transports_agree_on_the_bus_distances_of_a_metered_both_case() {
+    let mut case = load_family("controls")
+        .into_iter()
+        .find(|c| c.path == "energymeter/energymeter_sym.dss")
+        .expect("controls:energymeter/energymeter_sym.dss must be in the family manifest");
+    assert_eq!(
+        case.engines, "both",
+        "the cross-transport check needs a case both channels gate"
+    );
+    case.compare_bus = true; // scheduler::force_bus
+    let abs = family_file("controls", &case.path);
+    let req = engines::build_run_request(&abs, &case);
+
+    let capi = Oracle::for_spec(None).run_case(&abs, &case);
+    let resp = engines::EpriOneShot::new().call(&req);
+    assert!(resp.ok, "r4133 one-shot failed: {:?}", resp.error);
+    let epri: engines::CaseResult =
+        serde_json::from_value(resp.result.expect("r4133 ok response missing result"))
+            .expect("r4133 malformed CaseResult");
+
+    assert_eq!(
+        capi.checkpoints.len(),
+        epri.checkpoints.len(),
+        "the transports disagree on the step count"
+    );
+    assert!(
+        !capi.checkpoints.is_empty(),
+        "the metered case captured no step"
+    );
+    let mut nonzero = 0usize;
+    for (s, (a, b)) in capi.checkpoints.iter().zip(&epri.checkpoints).enumerate() {
+        assert_eq!(
+            a.buses.len(),
+            b.buses.len(),
+            "step {s}: bus count differs between the transports"
+        );
+        // The zone walk's own numbers, by NAME — the deck's three buses, in
+        // whatever order the two BusLists report them.
+        let mut seen: Vec<(String, f64)> = Vec::new();
+        for (ba, bb) in a.buses.iter().zip(&b.buses) {
+            assert!(
+                ba.name.eq_ignore_ascii_case(&bb.name),
+                "step {s}: bus name differs: {} vs {}",
+                ba.name,
+                bb.name
+            );
+            assert_eq!(
+                ba.distance, bb.distance,
+                "step {s}: bus {} Distance differs: capi {} vs r4133 {} km \
+                 (a zone-build output — compared exactly on both transports)",
+                ba.name, ba.distance, bb.distance
+            );
+            if ba.distance != 0.0 {
+                nonzero += 1;
+            }
+            seen.push((ba.name.to_ascii_lowercase(), ba.distance));
+        }
+        seen.sort_by(|x, y| x.0.cmp(&y.0));
+        assert_eq!(
+            seen,
+            vec![
+                ("m1".to_string(), 1.0),
+                ("m2".to_string(), 2.0),
+                ("src".to_string(), 0.0),
+            ],
+            "step {s}: the meter zone's own km moved (both transports agree with each other, \
+             so a move here is upstream's, not a transport's)"
+        );
+        assert_eq!(
+            (a.all_bus_distances.len(), a.all_node_distances.len()),
+            (a.buses.len(), a.buses.iter().map(|bu| bu.nodes.len()).sum()),
+            "step {s}: the capi distance arrays disagree with its own bus walk"
+        );
+        assert_eq!(
+            a.all_bus_distances, b.all_bus_distances,
+            "step {s}: AllBusDistances differs between the transports"
+        );
+        assert_eq!(
+            a.all_node_distances, b.all_node_distances,
+            "step {s}: AllNodeDistances differs between the transports"
+        );
+    }
+    assert_eq!(
+        nonzero,
+        2 * capi.checkpoints.len(),
+        "the comparison is vacuous unless m1 and m2 carry a non-zero distance at every step"
+    );
+    eprintln!(
+        "cross-transport bus distances on controls:energymeter/energymeter_sym.dss: \
+         {} step(s), {nonzero} non-zero bus distance(s), capi == r4133 exactly",
+        capi.checkpoints.len()
+    );
+}
+
 /// D2's cross-transport validation for the **short-circuit** arms (G1.5 audit
 /// settlement, T4). Its bus-surface sibling above sets `compare_bus` only, so
 /// `build_run_request` ships `"zsc": false` and no `Zsc`/`Ysc`/`Isc`/`Voc`
@@ -1294,6 +1404,18 @@ fn the_distance_guard_is_silent_on_the_measured_population() {
 fn the_distance_guard_fires_when_a_deck_stops_building_its_meter_zone() {
     // one 4-bus deck's two channels gone: 2 walks, 2*2 non-zero buses
     harness::check_distance_compare_ran(865, 79_133);
+}
+
+/// ...and on a GROWTH — a new metered case, a new step or a channel that
+/// starts gating. Both directions are driven because both documents that
+/// describe the pair claim both (`TESTING.md`, and the constant's own doc):
+/// the rule is one `assert_eq!` over the tuple, so a growth must be
+/// re-derived off a completed run and moved deliberately, never absorbed.
+#[test]
+#[should_panic(expected = "not (867, 79137)")]
+fn the_distance_guard_fires_when_a_metered_case_arrives() {
+    // one 4-bus deck's two channels added: 2 walks, 2*2 non-zero buses
+    harness::check_distance_compare_ran(869, 79_141);
 }
 
 /// GOLDEN_REBASE G1.4b — the two `MakeBusList` decks of coordinator decision

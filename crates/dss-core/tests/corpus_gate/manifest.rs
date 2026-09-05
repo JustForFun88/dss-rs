@@ -1363,3 +1363,257 @@ fn the_gictransformer_channel_guard_refuses_a_capi_gated_deck() {
         "an r4133-gated GICTransformer case must be allowed"
     );
 }
+
+// ---------------------------------------------------------------------------
+// A MERGING `Reduce` renames elements, so its deck cannot gate on r4133
+// (GOLDEN_REBASE G1.4b, coordinator decision D29 step 3 — `TESTING.md`
+// §"the bus distance surface"; the machine form of that rule is this section,
+// added by the G1.4b audit settlement, finding AT-5).
+// ---------------------------------------------------------------------------
+
+/// Every corpus deck whose `Reduce` runs a strategy that MERGES lines,
+/// relative to `tests/corpus/`, sorted.
+///
+/// Pinned as a closed set for the reason [`GICTRANSFORMER_DECKS`] is: the
+/// per-case scan below reads only the deck a case names, so a `Reduce` hidden
+/// one `Redirect` deeper would slip past it. A new deck here fails this test and
+/// forces the channel review — r4133's `TLineObj.MergeWith` renames the
+/// surviving object in place (`Version8/Source/PDElements/Line.pas:1684`)
+/// without updating `TDSSCircuit.DeviceList`, so `SetElementActive` finds
+/// nothing, leaves `ActiveCktElement` where it was
+/// (`Common/Circuit.pas:2195-2214`) and the DDLL silently captures ANOTHER
+/// element; gating such a deck on r4133 would ledger a mis-addressed capture as
+/// if it were a divergence (measured in G1.4b F2, reported upstream as
+/// `investigations/to_opendss/68-mergewith-rename-leaves-devicelist-stale.md`).
+/// capi 0.14.5 does not share the rename bug, so these decks gate on
+/// `capi_v0145` alone until upstream fixes it.
+const REDUCE_MERGE_DECKS: &[&str] = &[
+    "modes/reduce/midi_reduce.dss",
+    "modes/reduce/reduce_default.dss",
+    "modes/reduce/reduce_keeplist.dss",
+    "modes/reduce/reduce_mergeparallel.dss",
+    "modes/reduce/reduce_shortlines.dss",
+    "modes/reduce/reduce_switches.dss",
+];
+
+/// Does this `Set ReduceOption=` value select a strategy that calls
+/// `TLineObj.MergeWith` (and therefore renames)?
+///
+/// r4133 decides on the option's FIRST LETTER only
+/// (`Executive/ExecHelper.pas:3089-3129` `DoSetReduceStrategy`), and the
+/// merging arms of `TEnergyMeterObj.ReduceZone`
+/// (`Meters/EnergyMeter.pas:2299-2312`) are `rsShortlines`
+/// (`Meters/ReduceAlgs.pas:214`, `:258`), `rsMergeParallel` (`:54`),
+/// `rsSwitches` (`:319`) and the `rsDefault` fall-through (`:361`) — i.e. `D`,
+/// `M`, `S` (both `SWITCH…` and `SHORTLINES`). `B` (breakloop), `E` (ends /
+/// dangling) and `L` (laterals) disable or re-parent branches and never merge.
+/// An EMPTY or UNKNOWN option is merging too: `DoSetReduceStrategy` assigns
+/// `rsDefault` BEFORE the case statement and only warns
+/// (`ExecHelper.pas:3098`, `:3126`), and a circuit that was never given the
+/// option starts at `rsDefault` (`Common/Circuit.pas:588`), so a bare `Reduce`
+/// merges.
+fn reduce_strategy_merges(option: &str) -> bool {
+    !matches!(
+        option.trim().to_ascii_uppercase().chars().next(),
+        Some('B') | Some('E') | Some('L')
+    )
+}
+
+/// Does this deck text issue a `Reduce` that merges?
+///
+/// Comment-stripped (`!` and `//`, the DSS comment rules) so a prose mention is
+/// not a command, and the verb must be the statement's FIRST token — the
+/// `reduce=y` of a `LineGeometry` (Kron reduction, a property on a `~`
+/// continuation) is a different token in a different position and is never a
+/// `Reduce` command.
+fn deck_reduces_by_merging(text: &str) -> bool {
+    let mut option = String::new(); // never set ⇒ rsDefault ⇒ merging
+    for line in text.lines() {
+        let code = line.split('!').next().unwrap_or_default();
+        let code = code.split("//").next().unwrap_or_default();
+        let lower = code.to_ascii_lowercase();
+        let mut toks = lower.split_whitespace();
+        let Some(first) = toks.next() else { continue };
+        if first == "set" || first == "~" {
+            // `set reduceoption=ends`, and the spaced `set reduceoption = ends`.
+            let rest: Vec<&str> = toks.collect();
+            let joined = rest.join(" ").replace(" = ", "=").replace(" =", "=");
+            for tok in joined.split_whitespace() {
+                if let Some(v) = tok.strip_prefix("reduceoption=") {
+                    option = v.trim_matches('"').to_string();
+                }
+            }
+            continue;
+        }
+        if first == "reduce" && reduce_strategy_merges(&option) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Collect every `.dss` under `dir` that [`deck_reduces_by_merging`] accepts,
+/// as forward-slashed paths relative to `base`.
+fn collect_reduce_merge_decks(dir: &Path, base: &Path, out: &mut Vec<String>) {
+    for entry in std::fs::read_dir(dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display())) {
+        let p = entry.expect("dir entry").path();
+        if p.is_dir() {
+            collect_reduce_merge_decks(&p, base, out);
+            continue;
+        }
+        if !p.extension().is_some_and(|e| e.eq_ignore_ascii_case("dss")) {
+            continue;
+        }
+        let text = String::from_utf8_lossy(
+            &std::fs::read(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display())),
+        )
+        .into_owned();
+        if deck_reduces_by_merging(&text) {
+            out.push(
+                p.strip_prefix(base)
+                    .expect("under corpus root")
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
+        }
+    }
+}
+
+/// The refusal itself, factored out so the negative drive can fire it without
+/// mutating the corpus.
+fn assert_reduce_merge_case_gates_capi(label: &str, engines: &str) {
+    assert_eq!(
+        engines, "capi_v0145",
+        "{label}: this deck's `Reduce` MERGES lines, and r4133's `TLineObj.MergeWith` renames the \
+         surviving object (`Version8/Source/PDElements/Line.pas:1684`) without updating \
+         `TDSSCircuit.DeviceList`, so every later `SetElementActive` on a merged line silently \
+         leaves the PREVIOUS element active (`Common/Circuit.pas:2195-2214`) and the DDLL captures \
+         another element. Such a deck must gate on `capi_v0145` ALONE, not `{engines}`, until \
+         upstream fixes the rename — otherwise the ledger would carry a mis-addressed capture as \
+         if it were a divergence. GOLDEN_REBASE G1.4b, coordinator decision D29 — see TESTING.md \
+         and investigations/to_opendss/68."
+    );
+}
+
+/// **No r4133-gated case reduces by merging** (D29 step 3).
+///
+/// Two rails in one test, the [`no_capi_gated_case_instantiates_a_gictransformer`]
+/// shape: the corpus-wide census pins WHICH decks merge
+/// ([`REDUCE_MERGE_DECKS`]), and the manifest walk pins that every gated case
+/// naming one of them declares `engines: "capi_v0145"`.
+#[test]
+fn no_r4133_gated_case_reduces_by_merging() {
+    let root = corpus_root();
+    let mut found: Vec<String> = Vec::new();
+    collect_reduce_merge_decks(&root, &root, &mut found);
+    found.sort();
+    assert_eq!(
+        found, REDUCE_MERGE_DECKS,
+        "the set of corpus decks whose `Reduce` merges lines moved. Every one of them must gate on \
+         capi_v0145 alone (r4133's MergeWith rename leaves DeviceList stale — D29); update \
+         REDUCE_MERGE_DECKS in the same commit that adds or removes one."
+    );
+
+    let mut checked: Vec<String> = Vec::new();
+    for c in load_solvable() {
+        let rel = format!("electricdss-tst/{}", c.path.replace('\\', "/"));
+        if REDUCE_MERGE_DECKS.contains(&rel.as_str()) {
+            let label = format!("solvable_now:{}", c.path);
+            assert_reduce_merge_case_gates_capi(&label, &c.engines);
+            checked.push(label);
+        }
+    }
+    for fam in FAMILIES {
+        for c in load_family(fam.name) {
+            let rel = format!("{}/{}", fam.name, c.path.replace('\\', "/"));
+            if REDUCE_MERGE_DECKS.contains(&rel.as_str()) {
+                let label = format!("{}:{}", fam.name, c.path);
+                assert_reduce_merge_case_gates_capi(&label, &c.engines);
+                checked.push(label);
+            }
+        }
+    }
+    assert_eq!(
+        checked.len(),
+        REDUCE_MERGE_DECKS.len(),
+        "every merging-reduce deck is a gated case exactly once; walked {checked:?}"
+    );
+}
+
+/// Non-vacuity for the guard above (§1.1(f)): the scanner must separate a
+/// merging strategy from a non-merging one, a command from a property, and the
+/// refusal must fire on both r4133-gating spellings.
+#[test]
+fn the_reduce_merge_channel_guard_refuses_an_r4133_gated_deck() {
+    // The strategy rule, letter by letter (`ExecHelper.pas:3101-3127`).
+    for merging in [
+        "default",
+        "d",
+        "mergeparallel",
+        "shortlines",
+        "switch",
+        "switches",
+    ] {
+        assert!(
+            reduce_strategy_merges(merging),
+            "{merging:?} calls MergeWith"
+        );
+    }
+    for keeps in ["breakloop", "ends", "laterals", "Ends", "LATERALS"] {
+        assert!(!reduce_strategy_merges(keeps), "{keeps:?} never merges");
+    }
+    // Empty and unknown leave `rsDefault` in place — merging.
+    assert!(reduce_strategy_merges(""));
+    assert!(reduce_strategy_merges("zzz"));
+
+    // The scanner, driven on real deck text (never written to disk).
+    let merging = std::fs::read_to_string(corpus_root().join("modes/reduce/reduce_default.dss"))
+        .expect("read reduce_default.dss");
+    assert!(deck_reduces_by_merging(&merging));
+    let breakloop =
+        std::fs::read_to_string(corpus_root().join("modes/reduce/reduce_breakloop.dss"))
+            .expect("read reduce_breakloop.dss");
+    assert!(
+        breakloop.to_ascii_lowercase().contains("reduce"),
+        "the drive is vacuous unless the deck really issues a Reduce"
+    );
+    assert!(
+        !deck_reduces_by_merging(&breakloop),
+        "breakloop opens a loop; it never calls MergeWith"
+    );
+    // A bare `Reduce` with no option merges (the circuit starts at rsDefault).
+    assert!(deck_reduces_by_merging("new circuit.x\nreduce\n"));
+    // …and the option is honoured whichever spacing the deck uses.
+    assert!(!deck_reduces_by_merging(
+        "set reduceoption = laterals\nReduce\n"
+    ));
+    for clean in [
+        "// reduce",
+        "! set reduceoption=default\n! reduce",
+        "~ reduce=y",
+        "new linegeometry.g1 nconds=4 reduce=y",
+    ] {
+        assert!(
+            !deck_reduces_by_merging(clean),
+            "{clean:?} issues no Reduce command"
+        );
+    }
+
+    // The refusal: both r4133-gating spellings must panic, `capi_v0145` must not.
+    for engines in ["r4133", "both"] {
+        let payload = std::panic::catch_unwind(|| {
+            assert_reduce_merge_case_gates_capi("modes:mutated_reduce.dss", engines)
+        })
+        .expect_err("an r4133-gated merging-reduce case must be refused");
+        let msg = crate::runner::panic_msg(payload);
+        assert!(
+            msg.contains("mutated_reduce.dss") && msg.contains("capi_v0145") && msg.contains("D29"),
+            "the refusal must name the case, the channel and the decision; got {msg:?}"
+        );
+    }
+    assert!(
+        std::panic::catch_unwind(|| assert_reduce_merge_case_gates_capi("ok", "capi_v0145"))
+            .is_ok(),
+        "a capi-gated merging-reduce case must be allowed"
+    );
+}

@@ -595,7 +595,7 @@ pub struct BusVoltageView {
     /// `origin/fastdss`).
     ///
     /// It is a **zone-build output, not a solve output**: it is written only by
-    /// `MakeMeterZoneLists` (r4133 `Meters/EnergyMeter.pas:1833-1836` == port
+    /// `MakeMeterZoneLists` (r4133 `Meters/EnergyMeter.pas:1833-1838` == port
     /// `solution/meters/zones/build.rs:240-251`, which adds
     /// `len · ConvertLineUnits(units, UNITS_KM)` per *line* branch and carries
     /// the parent's value across every non-line branch) and reset to `0.0` at
@@ -1656,6 +1656,19 @@ impl Dss {
     /// Empty when no circuit exists. It publishes the zone-build accumulator
     /// unchanged — see [`BusVoltageView::distance`] for who writes it and why a
     /// meterless circuit's all-zero vector is an assertion rather than a gap.
+    ///
+    /// **The no-circuit reply is `[]`, not the oracles' `[0.0]`** (same for
+    /// [`Dss::all_node_distances`]): both Pascal arms pre-seed a ONE-element
+    /// zero buffer and return it when there is no active circuit — r4133
+    /// `DDLL/DCircuit.pas:568-569` (`setlength(myDBLArray, 1); myDBLArray[0]
+    /// := 0`) and capi's `DefaultResult` (`CAPI/CAPI_Utils.pas:212-221`,
+    /// itself `[]` when `DSS_CAPI_COM_DEFAULTS=0`). That sentinel is an FFI
+    /// artifact of returning a pointer + count, not a value: it makes "no
+    /// circuit" indistinguishable from a real one-bus reading. The port keeps
+    /// the empty vector every other `Dss::all_*` accessor returns; nothing
+    /// gated can see the difference (the gate always has a circuit, and
+    /// `capture_guard::require_capture` fails a 0-bus capture), so it is a
+    /// deliberate API convention, recorded in the G1.4b audit settlement.
     pub fn all_bus_distances(&self) -> Vec<f64> {
         match self.circuit.as_ref() {
             Some(ckt) => ckt.buses.iter().map(|b| b.dist_from_meter).collect(),
