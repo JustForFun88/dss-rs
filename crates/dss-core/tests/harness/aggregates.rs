@@ -715,6 +715,13 @@ mod tests {
             ocp_dev_type: None,
             has_volt_control: None,
             has_switch_control: None,
+            // The G1.3b sequence channels (`SeqCurrents`/`SeqVoltages`/
+            // `SeqPowers`) are unread by `compare_aggregates` too; spelled out
+            // for the same reason.
+            seq_i: Vec::new(),
+            seq_v: Vec::new(),
+            seq_p_kw: Vec::new(),
+            seq_p_kvar: Vec::new(),
         }
     }
 
@@ -776,6 +783,13 @@ mod tests {
                 ocp_dev_type: None,
                 has_volt_control: None,
                 has_switch_control: None,
+                // The G1.3b sequence channels (`SeqCurrents`/`SeqVoltages`/
+                // `SeqPowers`) are unread by `compare_aggregates` too; spelled
+                // out for the same reason.
+                seq_i: Vec::new(),
+                seq_v: Vec::new(),
+                seq_p_kw: Vec::new(),
+                seq_p_kvar: Vec::new(),
             })
             .collect();
         let losses = dss.losses();
@@ -864,6 +878,13 @@ mod tests {
             ocp_dev_type: None,
             has_volt_control: None,
             has_switch_control: None,
+            // The G1.3b sequence channels (`SeqCurrents`/`SeqVoltages`/
+            // `SeqPowers`) are unread by `compare_aggregates` too; spelled out
+            // for the same reason.
+            seq_i: Vec::new(),
+            seq_v: Vec::new(),
+            seq_p_kw: Vec::new(),
+            seq_p_kvar: Vec::new(),
         };
         for v in &mut rewritten.i_re {
             *v += 1.0;

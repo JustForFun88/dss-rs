@@ -186,6 +186,23 @@ fn corpus_gate_all_cases_match_engines() {
     // (a two-control element, or a census that counted nothing) — the D15/D16
     // shape, added by the G1.3d(ii) audit settlement.
     harness::assert_no_multi_control_element();
+    // And the population fact behind GOLDEN_REBASE G1.3b's D-b1 costing ZERO
+    // ledger rows: the 1-phase positive-sequence arm of `SeqPowers` — the one
+    // r4133 fills with the wrong slot and stride (`DDLL/DCktElement.pas:760`,
+    // `:768`, against capi's correct `CAPI/CAPI_Alt.pas:555`/`:562`, which the
+    // port follows) — is reached on the `capi_v0145` channel, where the correct
+    // layout is oracle-gated live, and on the `r4133` channel never. Re-derived
+    // from the port's own structural arm on every full run and loud in BOTH
+    // directions (the arm reaching r4133, or the capi side going quiet), the
+    // same D15/D16 shape as the census above.
+    //
+    // Counted at the gating call site — `corpus_gate/runner.rs`'s derived loop,
+    // which records the arm `harness::compare_element_seq` hands it back — and
+    // never inside that comparator (coordinator decision D24, 2026-09-05), for
+    // the reason the r4133 props guard below counts at its call site rather than
+    // off the tables: `harness::seq_floors`' 24 sibling fixtures in THIS binary
+    // call the comparator, six of them on the very arm this guard counts.
+    harness::assert_seq_arm_population();
     // And for G2.4's monitor-channel normalization, which needs it for the
     // opposite reason: since both lanes' engines now report the empty channel, a
     // client that stopped padding would make the transform a silent no-op rather

@@ -81,7 +81,7 @@ pub(crate) use registry::{ClassStore, DssClass, ForeignClasses};
 pub(crate) use tables::{EXEC_COMMANDS, EXEC_OPTIONS, PLOT_OPTIONS, cmd, opt};
 pub use view::{
     ElementSnapshot, FeederSectionView, MeterReliabilityView, MeterZoneView, MonitorView,
-    PdElementView, SystemYCsc,
+    PdElementView, SeqArm, SystemYCsc,
 };
 
 /// The plot/visualize callback (`DSS.DSSPlotCallback`): given the assembled

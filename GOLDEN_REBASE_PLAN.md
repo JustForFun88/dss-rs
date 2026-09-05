@@ -631,6 +631,81 @@ from the already-gated I/V tier, documented in TOLERANCE_NOTES. Ledger triage pe
 `SymComp::phase_to_sym` (§1.1(b)), one floor derivation for the whole linear
 transform.
 
+> **2026-09-05 — AS EXECUTED (lane `lane-e`).** `SeqCurrents`, `SeqVoltages` and `SeqPowers`
+> compare live on **both** channels over the `compare_derived` population, unchanged at **442**
+> cases (`FORCED_DERIVED_POPULATION` `(442, 315, 83, 44)` — this sub-step widens the flag's
+> *fields*, not its population), through one new accessor that `exec/view.rs::snapshot_elements`
+> fills from the fresh terminal current and the converged `NodeV` it already holds
+> (`report/export/seq_*` and `report/show/*` untouched). **No** new manifest flag and **no** new
+> r4133 mode — `WP_G1_MODES` stays **97**, modes 7/8/9 already existed and were proven `Served`
+> by G1.0. **0 new ledger entries, 0 new causes** (58 / 31 unchanged), **31** measured
+> per-sub-channel widenings over **11** committed `element` scopes, 0 golden bytes, no existing
+> band moved. Five corrections to this section's §3/§4.2 forecast, plus one coordinator decision:
+>
+> * **D-b2 is a `SeqPowers`-only divergence.** On the two magnitude arrays both oracles emit
+>   `Cabs(-1 + 0j) = 1.0` on the not-available arm (r4133 `DDLL/DCktElement.pas:680`/`:719`, capi
+>   `CAPI/CAPI_Alt.pas:268`/`:324`), so only the power sentinel differs — r4133 `:772`
+>   `cmplx(-1.0, 0)` against capi `:567` `cmplx(-1.0, -1.0)`. The engine emits r4133's spelling
+>   and the capi capture is folded at the comparator boundary (`harness::na_seq_power`), gated on
+>   the structurally derived arm and on each channel's own spelling — a normalization beside the
+>   `PROPS_NORM_R4133` precedent, **not** the hundreds of ledger rows the forecast implied. Proved
+>   load-bearing *and* channel-scoped live: with the fold disabled the two capi-gating decks red
+>   and the r4133-only deck stays green.
+> * **The floor base is the phase magnitude, and the constant is `5.229590094302253e-10`.** A
+>   20 000-vector deterministic sweep puts the sequence-magnitude base at **×1.73** the constant —
+>   it is not a bound — while the phase base is attained exactly by the aligned unit vector
+>   (`the_c012_bound_is_attained_by_the_aligned_phase_vector`). `SEQ_C012` is the row sum of
+>   `|precise − official|` re-derived in-tree from `SymComp::official()`, i.e. from r4133's own
+>   `TcMatrix.Invert` output (`Shared/mathutil.pas:302-303` + `:562-564`), not from a numpy
+>   inverse (the spec's `5.229591207093893e-10`, `2.1e-7` apart) and not the dossier's `4.5e-10`.
+>   Measured live the r4133 gap is `0.857 … 0.866 ×` the modelled term, so the third kill
+>   criterion does not fire either way. The term is added on the r4133 three-phase arm only; the
+>   capi channel keeps the ordinary `i_*`/`v_*` bands.
+> * **D-b1 costs 0 ledger rows and buys a population guard instead.** r4133's 1φ-positive-sequence
+>   slot/stride defect (`DDLL/DCktElement.pas:760` `Count := 2` + `:768` `inc(count)` on a 0-based
+>   array, against capi `CAPI/CAPI_Alt.pas:555` `iCount := 1` + `:562` `inc(icount, 3)`) has **zero**
+>   exposure on the gated corpus. **11** vendored decks raise `CktModel=Positive` at all (audit
+>   settlement 2026-09-05, correcting this note's first count): the six `modes/makeposseq/*`, which
+>   are `capi_v0145`-gated; four `engines=both` decks — `asymmetric/line/line_posseq_{ctor,linecode,
+>   phases}_asym.dss` and `Test/Stevenson.dss` — which ARE r4133-gated but carry no 1-phase element,
+>   so the arm is never reached there; and `StevensonPflow.dss`, `large` and outside the derived
+>   population. Measured over the whole gated population — **297 896** compared element rows, **79**
+>   on the 1φ arm via `capi_v0145`, **0** via `r4133`. The engine emits the correct `(0, S+, 0)`
+>   layout; the fact is carried positively by the census `harness::assert_seq_arm_population` (the
+>   `0` pinned exactly, the two measured counts railed by the documented floors of
+>   `SEQ_ARM_CENSUS_FLOORS` — audit settlement) and by
+>   `seq_powers_positive_sequence_lands_in_the_positive_slot_of_each_terminal`, with the upstream
+>   report at `investigations/to_opendss/67-seqpowers-posseq-slot-stride.md`.
+> * **No channel joins `LANE_SKIP_ELEM_POWERS`.** All three reads take a scratch `GetCurrents`
+>   and/or read `Solution.NodeV` directly (r4133 `DCktElement.pas:758`/`:778`, capi
+>   `CAPI_Alt.pas:549`) and never the cache-aware `ComputeIterminal`
+>   (`Common/CktElement.pas:632-640`), so `SeqPowers` — unlike G1.3d(ii)'s `PhaseLosses` — is
+>   oracle-compared on the two `newton*` decks like the rest.
+> * **The sequence-arm census is recorded by the corpus-gate runner, never by the comparator**
+>   (coordinator decision **D24**, after the first relaunch): `harness::seq_floors`' fixture calls
+>   live in the same test binary as the gate, so a comparator-side counter read
+>   `(297 915, 81, 4)` instead of the gate-only `(297 896, 79, 0)`. `compare_element_seq` now
+>   *returns* the arm it classified and the runner records it beside its `record_control_census`
+>   call — one classification, not two.
+
+> **2026-09-05 — AMENDED AT THE LANDING (coordinator decision D31).** Merging G1.3b into `update`
+> put this surface together with D12/D14's new r4133-gated deck
+> `modes/makeposseq/makeposseq_gic.dss`, whose `solve → makeposseq → solve` tail leaves all four of
+> its elements on the 1φ-positive-sequence arm of the `r4133` channel — an interaction neither
+> branch carried alone, and the first corpus case ever to reach that arm there. Measured on the
+> merged tree (the live gate, plus a one-shot `epri-worker` probe on the deck as it stands): **4**
+> element rows, `seq_powers` only — `SeqCurrents`/`SeqVoltages` go through `Calc*`, are right on
+> r4133 and stay compared. So the D-b1 bullet above changes on exactly one point: the defect costs
+> **one** r4133 ledger row, `r4133-posseq-seqpowers-slot-gic` (scope `element`/`seq_powers`, cause
+> `posseq-seqpowers-slot-stride`), pinned on that very deck by
+> `the_gic_posseq_deck_keeps_every_terminal_power_in_its_positive_slot` (both layouts' numbers for
+> all four elements), and `SEQ_ARM_CENSUS_MEASURED` moves `(297 896, 79, 0)` → `(297 867, 78, 4)` (the
+> first two re-derived on the merged tree: `update`'s population, and one capi 1φ row fewer since D14
+> moved the `GICTransformer` off `makeposseq_shunt.dss`) —
+> the guard's own precondition (a field-scoped entry plus its pin) met before the constant moved,
+> and it now reds in both directions. `SEQ_ARM_CENSUS_FLOORS` `(200 000, 60)`, every band, every
+> golden byte and the engine are unchanged; ledger **54 → 55** entries / **31 → 32** causes.
+
 ### G1.3c — per-element complex sequence + totals
 
 `CplxSeqCurrents`, `CplxSeqVoltages`, `TotalPowers`.
