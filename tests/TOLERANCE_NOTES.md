@@ -1341,6 +1341,129 @@ compared, so nothing the bus surface uniquely witnesses is dropped. One
 structural rule, no ledger rows, and the negative drive
 `the_voltage_exclusion_still_pins_kv_base` proves the suppression is not a mask.
 
+## Short-circuit surface (GOLDEN_REBASE G1.5, `harness::compare_bus_short_circuit`)
+
+`compare_bus_short_circuit` gates the six short-circuit arms of the same `IBus`
+facade the section above gates the voltage arms of — `Bus.Zsc1`, `Bus.Zsc0`,
+`Bus.ZscMatrix`, `Bus.YscMatrix`, `Bus.Isc`, `Bus.Voc` — read by the SAME
+per-bus walk (six reads appended after the five voltage ones, on both
+transports). **This surface adds no tolerance constant either**: every band is
+an existing tier number applied to the quantity whose derivation already covers
+it, and no tier constant moves. In the order the comparator applies them:
+
+1. **Two discrete rows come first, and they are shapes, not numbers.** `Zsc`/`Ysc`
+   do not exist until `AllocateAllSCParms` runs inside the FaultStudy solve
+   (`Common/SolutionAlgs.pas:773-781`), and the two channels publish DIFFERENT
+   not-run sentinels: capi 0.14.5 one double (`DefaultResult`,
+   `CAPI/CAPI_Utils.pas:212-221`), r4133 two (the `CZero` prelude,
+   `DDLL/DBus.pas:433-434`) — and, at a 0-node bus, capi ZERO doubles for
+   `Isc`/`Voc` (`AllocMem(0)` is non-nil, `Common/Bus.pas:250-256`) against
+   r4133's two (`Reallocmem(VBus, 0)` frees the pointer, `:246-260`). The
+   comparator compares the per-circuit "study ran" bit first and normalizes both
+   sentinel shapes to "no matrix" / "no nodes" (coordinator decision D4: a
+   sentinel-SHAPE difference is a comparator-level normalization plus a pin,
+   never a ledger row and never a tolerance). Both numbers are pinned by
+   `the_two_channels_publish_different_zsc_sentinels`. Nothing here is a floor.
+2. **`ZscMatrix` is a SOLVE, not an assembly — so it takes the VOLTAGE band.**
+   Column `i` of `Zsc` is the node-voltage answer to `Y*V = e_i` on the same
+   factored `Y` the power flow uses, restricted to the bus (`ComputeYsc`,
+   `Common/SolutionAlgs.pas:800-832` ==
+   `solution/solution/fault_study.rs::compute_ysc`); the injection is exactly
+   `1 + 0j` A (`Common/SolutionAlgs.pas:812-819`), so the node-voltage band maps onto it numerically
+   unchanged — `v_abs` re-read as ohms, `v_rel` being scale-invariant:
+
+   > `allowed = v_abs + v_rel * |expected|`, in ohms.
+
+   `y_abs`/`y_rel` is an *assembly* floor (the stamped `Yprim` sum) and is the
+   wrong tier for a solved quantity; it is deliberately not used for `Zsc`.
+3. **`Voc` is a copy of `NodeV`** (`UpdateVBus`, `Common/Solution.pas:4070-4083`
+   == `solution::ymatrix::update_vbus`), so it takes the node-voltage band
+   unchanged — the identity image, not merely a bound. It is live on far more
+   than the fault-study decks: `BuildYMatrix` refreshes `VBus` whenever
+   `PreserveNodeVoltages` is on (`Common/Ymatrix.pas:170`), i.e. on every
+   harmonics/dynamics deck, and it is exactly zero (on all three engines)
+   everywhere else.
+4. **`Zsc1`/`Zsc0` are averages of `Zsc` entries** — `Zs -/+ Zm` over the
+   averaged diagonal and upper-triangle off-diagonal (`Shared/Ucmatrix.pas:356-383`
+   == `support/cmatrix::avg_diagonal` / `avg_off_diagonal`), so the same band is
+   applied to them. The bound is not free: `Zsc1 = Zs - Zm` is a DIFFERENCE, and
+   on a floating-zero-sequence bus the two summands share a huge common mode, so
+   an entrywise band on `Zsc` does not formally imply one on `Zsc1`. The
+   measurement settles it, and settles it the *good* way — the error cancels
+   with the common mode: at the corpus's extreme buses (`ieee37_SC_Currents:775`,
+   `IEEE123Master-SC:610`, `Run_NEV:tertiary`) `Zsc0`, the arm that KEEPS the
+   common mode, runs at 0.415 / 0.362 / 0.047 of its band while `Zsc1`, the
+   differential arm, runs at 1.3e-5 / 1.0e-3 / 4.6e-4 — two to four orders
+   TIGHTER. The table below is the standing evidence; growth of the `Zsc1`
+   column relative to the `Zsc0` one is a finding, not a band to widen.
+   (`AvgOffDiagonal` divides only `If Ntimes > 0`, so `Zm = 0` on a 1-node bus
+   and `Zsc1 == Zsc0 == Zsc[0][0]` there — a shape fact, not a tolerance fact;
+   pinned by `zsc1_collapses_to_the_single_entry_on_a_one_node_bus`.)
+5. **`YscMatrix` and `Isc` carry an inversion cancellation that the tier's
+   ABSOLUTE term already covers.** `Ysc = Zsc^-1` through the Gauss-Jordan
+   no-exchange kernel all three engines share
+   (`Common/SolutionAlgs.pas:828-829`, `support/cmatrix::invert` ==
+   `compat::invert_gj_no_exchange_impl`), and `Isc = Ysc * Voc` (`ComputeIsc`,
+   `:785-796`). On a floating-zero-sequence bus `Zsc` is a huge common mode — the
+   reciprocal of the anti-float `Y_PPM` adder — plus a tiny differential part, so
+   the inversion loses `log10 K` digits with `K = ||Zsc||_inf * ||Ysc||_inf`.
+   Measured (G1.5 part R) over the three decks surveyed there: `K` is 1..12 on
+   every bus except `IEEE123Master-SC:610` (`K = 1.10e8`; common mode
+   `+j1.536e6` ohm over a ~0.017 ohm differential) and `Run_NEV:tertiary`
+   (`K = 9.52e6`, `+j3.227e6` ohm over ~0.053 ohm), where the predicted floor
+   `K * u * ||Ysc||_inf` is `5.847e-7` S and `2.081e-9` S respectively
+   (re-derived from each bus's own `||Zsc||_inf`/`||Ysc||_inf` in the F5
+   instrumented run; the spec's single 2.9e-7 estimate predated the
+   measurement). The live run adds a fourth deck with the same signature —
+   `ieee37_SC_Currents` bus `775`, a 1.38e6 ohm common mode against a ~34 S
+   `Ysc` entry — and it is the worst of this conditioning family (the worst over
+   all six arms is item 6's `Voc`). What admits all
+   of them is the tier's ABSOLUTE term: the worst `|dYsc|` anywhere is 1.37e-7 S
+   against `y_abs = 1e-6` (0.117 of band), and `Isc` inherits the statement at
+   `i_abs` (worst 0.065). **No relative band is widened, no tier constant moves,
+   and no `Ysc`/`Isc` entry is excluded anywhere** — the R1 decision tree of the
+   sub-step spec lands in branch (i).
+6. **Measured headroom** (2026-09-05, lane `lane-b`; the live corpus gate over
+   the whole forced population — the 442 cases x their gating channel(s), every
+   (case, step, channel) short-circuit comparison green). The number is
+   `worst |diff| / allowed`; 1.0 would be a failure. `Zsc`/`Ysc`/`Isc` are
+   non-trivial on the four vendored decks that run a fault study (the fourth
+   spells it `solve mode=f`, `ieee37_SC_Currents.dss:111`), listed per channel
+   below, and on the `micro`-band `faultstudy_micro` deck (worst 1.9e-6, `Voc`);
+   the rest compares sentinel shapes, exact zeros and a live `Voc`:
+
+   | case (`feeder`) | channel | Zsc1 | Zsc0 | ZscMatrix | YscMatrix | Isc | Voc |
+   |---|---|---|---|---|---|---|---|
+   | `ieee37_SC_Currents` | capi | 1.34e-5 | **0.4155** | **0.4154** | **0.1167** | 0.0409 | 0.4422 |
+   | `ieee37_SC_Currents` | r4133 | 8.33e-6 | 0.4155 | 0.4154 | 0.0872 | 0.0348 | 0.4422 |
+   | `IEEE123Master-SC` | capi | 1.04e-3 | 0.3620 | 0.3619 | 0.0858 | 0.0544 | **0.6098** |
+   | `IEEE123Master-SC` | r4133 | 1.04e-3 | 0.3620 | 0.3619 | 0.0935 | **0.0650** | 0.6098 |
+   | `NEVTestCase/Run_NEV` | capi | 4.59e-4 | 0.0469 | 0.0469 | 1.12e-4 | 2.26e-3 | 5.64e-6 |
+   | `NEVTestCase/Run_NEV` | r4133 | 4.59e-4 | 0.0469 | 0.0469 | 1.40e-4 | 2.96e-3 | 5.63e-6 |
+   | `ieee34Mod2_SC_Case_II` | capi | 2.59e-4 | 2.59e-4 | 2.63e-4 | 8.21e-7 | 3.51e-5 | 7.32e-4 |
+   | `ieee34Mod2_SC_Case_II` | r4133 | 2.56e-4 | 3.32e-4 | 3.29e-4 | 1.06e-6 | 4.32e-5 | 9.34e-4 |
+
+   Worst `Voc` on a deck that never ran a study: `fuse/indmach_r4133/indmach_dyn`
+   0.110 (r4133), `Test/Dynamic_Kundur` / `Dynamic_KundurDynExp` 0.0445 (r4133),
+   `FreqScan/Run_Scan` 3.80e-3 (capi) — the same node-voltage floor those decks
+   already run at on the `voltages` channel.
+
+   The population worst over all six arms is 0.61 (`Voc` at `IEEE123Master-SC`
+   bus `610`, `|V| = 277 V`), i.e. the surface has ~1.6x headroom at its tightest
+   point and cannot red where `voltages` is green — the same statement, and for
+   the same algebraic reason, as the bus voltage surface above.
+
+**The narrowed `voltages_excluded`.** The bus voltage surface suppresses its
+three continuous arrays on a case whose `voltages` field is ledger-excluded
+deck-wide (D11(2), section above). This surface reuses the SAME flag but narrows
+it to `Voc` and `Isc` alone: `Voc` is a snapshot of the very `Solution.NodeV`
+that was triaged and `Isc = Ysc * Voc` is its image, while `Zsc`, `Ysc`, `Zsc1`
+and `Zsc0` are functions of `Y` alone — independent of the solution vector — and
+therefore stay fully compared on those cases, as do the study bit, the bus
+identity and every array length. The negative drives
+`the_voltage_exclusion_still_pins_zsc_ysc_and_the_lengths` and
+`the_voltage_exclusion_drops_only_the_voc_and_isc_values` prove both halves.
+
 ## r4133 event-log masks (`harness::EVENTLOG_MASKS`, §1.3-3)
 
 `compare_eventlog` compares the cumulative event log line-for-line (numeric

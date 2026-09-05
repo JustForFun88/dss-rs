@@ -46,7 +46,7 @@ unified `corpus_gate_all_cases_match_engines` test
   channels (probes, event log, control queue, meters/monitors);
 - `modes/` — solve modes, solution algorithms, input formats, executive
   verbs (Monte Carlo, load-duration, Time, AutoAdd, Newton, binary/CSV
-  shapes, harmonics-mode decks, BatchEdit, Reduce).
+  shapes, harmonics-mode decks, BatchEdit, Reduce, fault study).
 
 A case with `pending: true` covers a feature the port does not implement yet
 (GAPS_PLAN.md §3.1): the gate asserts the Rust engine errors **loudly** on it;

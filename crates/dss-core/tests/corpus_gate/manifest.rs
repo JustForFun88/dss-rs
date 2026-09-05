@@ -621,7 +621,7 @@ pub(crate) const G1_SURFACE_FLAGS: &[G1Flag] = &[
     G1Flag {
         name: "compare_zsc",
         sub_step: "G1.5",
-        wired: false,
+        wired: true,
         get: |c| c.compare_zsc,
     },
     G1Flag {
@@ -943,6 +943,14 @@ const MODES_REQUIRED: &[&str] = &[
     "windgen/windgen_dyn.dss",
     "windgen/windgen_dyn_fault.dss",
     "upgrade/upgrade_linecs_eqspacing.dss",
+    // GOLDEN_REBASE G1.5 (2026-09-05, lane `lane-b`): the micro-tier witness
+    // for the bus short-circuit surface. The corpus' four vendored
+    // fault-study decks are all `kind: "feeder"`, so this is the only case
+    // that compares `Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix`/`Isc`/`Voc` at the
+    // `micro` band — and the only one whose `b2` has an insertion node order
+    // (`[2,1,3]`) different from its ascending one, which is what makes the
+    // surface's indexing convention observable at all.
+    "faultstudy/faultstudy_micro.dss",
 ];
 
 pub(crate) const MODES: Family = Family {

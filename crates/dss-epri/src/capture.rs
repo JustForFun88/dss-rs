@@ -79,6 +79,15 @@ pub struct RunRequest {
     /// ([`capture_all_buses`]) plus the checkpoint-level `AllBusVmagPu`.
     #[serde(default)]
     pub buses: bool,
+    /// G1.5 `compare_zsc`: append the six short-circuit arms
+    /// (`Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix`/`Isc`/`Voc`) to the ONE per-bus
+    /// walk [`Self::buses`] drives — never a second `SetActiveBus` pass.
+    /// Requires [`Self::buses`]: without it the walk does not run at all, so
+    /// [`run_case`] refuses the malformed request instead of silently shipping
+    /// an empty surface (the gate asserts the implication one level up, in
+    /// `corpus_gate::engines::build_run_request`).
+    #[serde(default)]
+    pub zsc: bool,
     #[serde(default)]
     pub all_properties: bool,
     /// Manifest flag `compare_derived` (GOLDEN_REBASE G1.3a): capture
@@ -423,9 +432,12 @@ struct VariablesCap {
 /// channel, `DBus.pas:575-583`) belong to G1.4c and are deliberately not read
 /// (coordinator decision D8).
 ///
-/// All three value arrays are `2 * nodes.len()` doubles in ONE order --
+/// All three VOLTAGE arrays are `2 * nodes.len()` doubles in ONE order --
 /// **ascending node number** — and never the bus's internal insertion order:
 /// see [`crate::modes::BUS_NODES`] for the `FindIdx` walk all four arms share.
+/// The six G1.5 short-circuit arrays below are the other convention — the bus's
+/// INTERNAL node index — and are captured only when the request sets `zsc`
+/// ([`RunRequest::zsc`]); see [`capture_all_buses`].
 #[derive(Serialize)]
 struct BusCap {
     /// `Circuit.AllBusNames` entry i, re-asserted as the active bus by
@@ -446,7 +458,50 @@ struct BusCap {
     /// `Bus.puVMagAngle` — the same pairs with only the magnitude divided by
     /// `BaseFactor` (`BUSV(14)`, `DBus.pas:690-723` == `CAPI_Alt.pas:2540-2571`).
     pu_vmag_angle: Vec<f64>,
+    /// `Bus.Zsc1` = `Zs - Zm`, ONE complex = 2 doubles, always (`BUSV(7)`,
+    /// `DBus.pas:461-474` == `CAPI_Alt.pas:2294-2303`; both write the
+    /// 1-element array unconditionally). `cZERO` while `Zsc` is unassigned
+    /// (`Common/Bus.pas:222-229` == capi `:225-232`). `AvgOffDiagonal` divides
+    /// only `If Ntimes > 0` (`Shared/Ucmatrix.pas:369-383` == capi `:372-387`),
+    /// so a 1-node bus has `Zm = 0` and `zsc1 == zsc0 == zsc[0]`.
+    zsc1: Vec<f64>,
+    /// `Bus.Zsc0` = `Zs + 2*Zm`, same shape and guard (`BUSV(8)`,
+    /// `DBus.pas:476-489` == `CAPI_Alt.pas:2283-2292`).
+    zsc0: Vec<f64>,
+    /// `Bus.ZscMatrix` — row-major (`i` outer, `j` inner) `2*n*n` doubles
+    /// (`BUSV(6)`, `DBus.pas:431-459` == `CAPI_Alt.pas:2305-2334`), or the
+    /// [`R4133_SC_SENTINEL_LEN`] sentinel while the bus has no matrix.
+    zsc: Vec<f64>,
+    /// `Bus.YscMatrix` — the same shape, `Ysc = Zsc^-1` (`BUSV(9)`,
+    /// `DBus.pas:491-518` == `CAPI_Alt.pas:2336-2365`).
+    ysc: Vec<f64>,
+    /// `Bus.Isc` — `BusCurrent`, `2*n` doubles (`BUSV(4)`, `DBus.pas:374-397`
+    /// == `CAPI_Alt.pas:2202-2224`).
+    isc: Vec<f64>,
+    /// `Bus.Voc` — `VBus`, `2*n` doubles (`BUSV(3)`, `DBus.pas:351-372` ==
+    /// `CAPI_Alt.pas:2227-2249`). Refreshed by the fault study AND by
+    /// `BuildYMatrix` under `PreserveNodeVoltages` (`Ymatrix.pas:170`), so it
+    /// is live on harmonics/dynamics decks too.
+    voc: Vec<f64>,
 }
+
+/// What THIS transport publishes for `Bus.ZscMatrix`/`Bus.YscMatrix` — and for
+/// `Bus.Isc`/`Bus.Voc` on a 0-node bus — when the underlying pointer is nil:
+/// the `setlength(myCmplxArray, 1); myCmplxArray[0] := CZero` prelude every
+/// `BUSV` arm opens with, i.e. **2** doubles (`DDLL/DBus.pas:433-434` for
+/// `Zsc`, `:493-494` for `Ysc`, `:353-354` for `Voc`, `:376-377` for `Isc`).
+///
+/// The capi transport publishes ONE double there instead (`DefaultResult`,
+/// `CAPI/CAPI_Utils.pas:212-221` under `DSS_CAPI_COM_DEFAULTS`) — and, for
+/// `Isc`/`Voc` at a 0-node bus, ZERO doubles, because capi's
+/// `TDSSBus.AllocateBusState` uses `AllocMem` (`Common/Bus.pas:250-256`),
+/// whose 0-byte block is non-nil, while r4133's `Reallocmem(VBus, 0)`
+/// (`Common/Bus.pas:246-260`) frees the pointer. Measured on
+/// `Test/REACTORTest.DSS` / `Test/Source012Test.dss` (`loadbus2`): capi
+/// `(isc, voc) = (0, 0)` vs r4133 `(2, 2)`. The comparator normalizes both
+/// sentinel shapes to "no matrix" / "no nodes"; they are never compared as
+/// values.
+const R4133_SC_SENTINEL_LEN: usize = 2;
 
 /// One element's every-property dump (§2.2 all-properties parity — a **gating**
 /// capture since R4133_PROPS RP4.1, 2026-09-03; report tooling only before it).
@@ -680,7 +735,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 Vec::new()
             };
             let (buses, all_bus_vmag_pu) = if req.buses {
-                let buses = capture_all_buses(engine)?;
+                let buses = capture_all_buses(engine, req.zsc)?;
                 let all_bus_vmag_pu = capture_all_bus_vmag_pu(engine)?;
                 let nodes: usize = buses.iter().map(|b| b.nodes.len()).sum();
                 if all_bus_vmag_pu.len() != nodes {
@@ -692,6 +747,17 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                     )));
                 }
                 (buses, all_bus_vmag_pu)
+            } else if req.zsc {
+                // G1.5: the six SC arms ride the per-bus walk above, so asking
+                // for them without the bus surface would ship nothing at all.
+                // Refuse loudly (the gate asserts the same implication in
+                // `corpus_gate::engines::build_run_request`).
+                return Err(EngineError::Other(
+                    "request asks for the bus short-circuit surface (zsc) without the bus \
+                     surface it is appended to: the six SC arms share the one per-bus walk \
+                     (GOLDEN_REBASE_PLAN.md WP-G1 G1.5 section 2.a)"
+                        .into(),
+                ));
             } else {
                 (Vec::new(), Vec::new())
             };
@@ -1546,7 +1612,23 @@ pub fn all_properties_dump(engine: &Engine) -> Result<Vec<PropsCap>, EngineError
 /// 0-node bus — 2 in the corpus — yields empty arrays and passes at `0 == 0`),
 /// and the node numbers must come back strictly ascending, which is what makes
 /// this capture comparable to the port's sorted view.
-fn capture_all_buses(engine: &Engine) -> Result<Vec<BusCap>, EngineError> {
+///
+/// `want_sc` (G1.5, request field `zsc`) appends the six short-circuit arms to
+/// THIS walk — never a second `SetActiveBus` pass — in the fixed order
+/// `zsc1, zsc0, zsc, ysc, isc, voc`, matching `oracle_server.capture_all_buses`
+/// arm for arm; the fields are always serialized, empty when it is off. They
+/// are group C as well: `BUSV` 3/4/6/7/8/9 read `Zsc`/`Ysc`/`VBus`/
+/// `BusCurrent` off the bus object with no `ComputeIterminal` and no
+/// `ActiveCktElement` (all six are [`crate::modes::ModeEffect::Pure`]).
+///
+/// Unlike the three voltage surfaces, every SC array is indexed by the bus's
+/// INTERNAL (insertion) node index: `Zsc`/`Ysc` are built column by column over
+/// the bus's internal index (`GetRef(i)` in `ComputeYsc`,
+/// `Common/SolutionAlgs.pas:800-832`; `pBus.RefNo[i]` in capi `:788-816`) and `VBus`/`BusCurrent` are stored per internal index. Their own
+/// shapes are asserted per arm against [`R4133_SC_SENTINEL_LEN`] — a violation
+/// fails the case loudly instead of shipping a short row the comparator would
+/// misread as a value divergence.
+fn capture_all_buses(engine: &Engine, want_sc: bool) -> Result<Vec<BusCap>, EngineError> {
     let names = engine.circuit_all_bus_names()?;
     let mut out = Vec::with_capacity(names.len());
     for (i, name) in names.iter().enumerate() {
@@ -1581,6 +1663,43 @@ fn capture_all_buses(engine: &Engine) -> Result<Vec<BusCap>, EngineError> {
                 )));
             }
         }
+        let (zsc1, zsc0, zsc, ysc, isc, voc) = if want_sc {
+            (
+                engine.bus_zsc1()?,
+                engine.bus_zsc0()?,
+                engine.bus_zsc_matrix()?,
+                engine.bus_ysc_matrix()?,
+                engine.bus_isc()?,
+                engine.bus_voc()?,
+            )
+        } else {
+            Default::default()
+        };
+        if want_sc {
+            let n = nodes.len();
+            // `Isc`/`Voc` publish `2*n` doubles from the allocated
+            // `BusCurrent`/`VBus`, EXCEPT on a 0-node bus, where
+            // `Reallocmem(ptr, 0)` frees the pointer and the arm falls back to
+            // the sentinel (see `R4133_SC_SENTINEL_LEN`).
+            let per_node = if n == 0 { R4133_SC_SENTINEL_LEN } else { 2 * n };
+            let matrix = [R4133_SC_SENTINEL_LEN, 2 * n * n];
+            for (key, v, want) in [
+                ("zsc1", &zsc1, &[2usize][..]),
+                ("zsc0", &zsc0, &[2][..]),
+                ("zsc", &zsc, &matrix[..]),
+                ("ysc", &ysc, &matrix[..]),
+                ("isc", &isc, &[per_node][..]),
+                ("voc", &voc, &[per_node][..]),
+            ] {
+                if !want.contains(&v.len()) {
+                    return Err(EngineError::Other(format!(
+                        "bus capture: {name}.{key} returned {} values, expected one of \
+                         {want:?} for nodes {nodes:?} (see BusCap for each arm's Pascal shape)",
+                        v.len()
+                    )));
+                }
+            }
+        }
         out.push(BusCap {
             name: name.clone(),
             kv_base,
@@ -1588,6 +1707,12 @@ fn capture_all_buses(engine: &Engine) -> Result<Vec<BusCap>, EngineError> {
             pu_voltages,
             vmag_angle,
             pu_vmag_angle,
+            zsc1,
+            zsc0,
+            zsc,
+            ysc,
+            isc,
+            voc,
         });
     }
     engine.assert_clean("buses")?;

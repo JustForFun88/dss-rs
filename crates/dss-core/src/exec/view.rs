@@ -167,23 +167,71 @@ pub struct ElementSnapshot {
 /// coordinates, returned by [`Dss::system_y_csc`].
 pub type SystemYCsc = (usize, Vec<(usize, usize, num_complex::Complex64)>);
 
-/// A bus's short-circuit results after a FaultStudy solve — the dss-python
-/// `Bus.Zsc1`/`Zsc0`/`Isc` surface (`TDSSBus`). `isc`/`vbus` are empty until a
-/// FaultStudy has allocated the bus quantities.
+/// A bus's short-circuit results — the dss-python / COM `Bus.Zsc1`, `Zsc0`,
+/// `ZscMatrix`, `YscMatrix`, `Isc` and `Voc` surface. The fastdss harness dumps
+/// all six with the rest of `IBus._columns` (`dss/IBus.py:30`/`:39`/`:41-44`,
+/// walked from `tests/save_outputs.py:350` on `origin/fastdss`).
+///
+/// Pascal, per field — r4133 `Version8/Source/DDLL/DBus.pas`, `BUSV` modes
+/// 3 `Voc` (`:351-372`), 4 `Isc` (`:374-397`), 6 `ZscMatrix` (`:431-459`),
+/// 7 `Zsc1` (`:461-475`), 8 `Zsc0` (`:476-490`), 9 `YscMatrix` (`:491-518`);
+/// capi `src/CAPI/CAPI_Alt.pas`, `Alt_Bus_Get_Voc` (`:2227-2249`), `_Isc`
+/// (`:2202-2224`), `_ZscMatrix` (`:2305-2334`), `_Zsc1` (`:2294-2303`),
+/// `_Zsc0` (`:2283-2292`), `_YscMatrix` (`:2336-2365`). `Zsc1`/`Zsc0` are
+/// `TDSSBus.Get_Zsc1` = `Zs − Zm` and `Get_Zsc0` = `Zs + 2·Zm` over `Zsc`'s
+/// averaged diagonal/off-diagonal (`Common/Bus.pas:222-229` / `:215-220`,
+/// capi identical).
+///
+/// **Ordering — convention 2, not convention 1.** Every array here is indexed
+/// by the bus's *internal* node index: the oracles read `GetRef(i)` /
+/// `Zsc.GetElement(i, j)` straight off `TDSSBus`, so the index is
+/// `TDSSBus.Nodes`' **insertion** order — the order [`Self::nodes`] reports.
+/// [`BusVoltageView`]'s arrays are ordered by ascending node *number* instead
+/// (convention 1, the `repeat FindIdx(jj)` walk of `CAPI_Alt.pas:2270-2275` ==
+/// `DBus.pas:415-421`, which is also what `Bus.Nodes` itself publishes —
+/// `Alt_Bus_Get_Nodes`, `CAPI_Alt.pas:2143-2163`), and `YNodeOrder` is a third
+/// permutation. The three must never be mixed. Measured, not assumed: on
+/// `line.l2 bus1=b1.1.2.3 bus2=b2.2.1.3` with a single 1-phase shunt on node 1,
+/// both oracles put the odd `Zsc` diagonal at index **1** — node 1's insertion
+/// slot — and not at index 0 (pinned by
+/// `the_short_circuit_arrays_are_indexed_by_internal_node_index`).
+///
+/// `zsc`/`ysc` stay `None` until a FaultStudy solve (or `ZscRefresh`) runs
+/// `AllocateBusQuantities`; both oracles publish a one-entry `CZero`/default
+/// sentinel in that state, so "no matrix" is a *shape*, never a zero matrix.
+/// `isc`/`vbus` are different: `ReProcessBusDefs` allocates and zeroes them for
+/// every bus (`Common/Circuit.pas:2407-2408` == `circuit::Circuit::reprocess_bus_defs`), so
+/// after the first `BuildYMatrix` they are always `NumNodesThisBus` long.
 #[derive(Debug, Clone)]
 pub struct BusScView {
-    /// User node numbers on the bus (`Nodes`).
+    /// The bus's (lowercased) name, `Circuit.AllBusNames` spelling.
+    pub name: String,
+    /// User node numbers on the bus (`Nodes`), **insertion** order — the index
+    /// every other field of this view is in. (`Bus.Nodes` on both oracles is
+    /// the same set sorted ascending; the harness sorts before comparing.)
     pub nodes: Vec<i32>,
     /// `Zsc1`: positive-sequence short-circuit impedance.
     pub zsc1: num_complex::Complex64,
     /// `Zsc0`: zero-sequence short-circuit impedance.
     pub zsc0: num_complex::Complex64,
+    /// `ZscMatrix`: the node-frame short-circuit impedance matrix, flattened
+    /// **row-major** (`i` outer, `j` inner) — see [`flatten_row_major`].
+    /// `None` until a FaultStudy allocates it.
+    pub zsc: Option<Vec<num_complex::Complex64>>,
+    /// `YscMatrix` = `Zsc⁻¹`: `Ysc.CopyFrom(Zsc); Ysc.invert`
+    /// (`Common/SolutionAlgs.pas:828-829`, inside `ComputeYsc` `:800-832` ==
+    /// `solution/solution/fault_study.rs::compute_ysc`). Same row-major
+    /// flattening and the same `None` rule as [`Self::zsc`].
+    pub ysc: Option<Vec<num_complex::Complex64>>,
     /// `Isc` / `BusCurrent`: per-node short-circuit current (= `Ysc · VBus`).
     pub isc: Vec<num_complex::Complex64>,
-    /// The bus's stored `VBus` — the open-circuit (Voc) voltage captured by
-    /// `UpdateVBus` during the study. Note this is **not** dss-python
-    /// `Bus.Voltages`, which returns the live `NodeV` (after a FaultStudy that is
-    /// the last `ComputeYsc` unit-injection residual, not the Voc).
+    /// The bus's stored `VBus` — `Bus.Voc`, the open-circuit voltage captured by
+    /// `UpdateVBus`. Note this is **not** dss-python `Bus.Voltages`, which
+    /// returns the live `NodeV` (after a FaultStudy that is the last
+    /// `ComputeYsc` unit-injection residual, not the Voc). `UpdateVBus` also
+    /// runs from `BuildYMatrix` under `PreserveNodeVoltages`
+    /// (`Common/Ymatrix.pas:170` == `solution::ymatrix::update_vbus`), so `vbus` is
+    /// live on harmonics/dynamics decks that never ran a study.
     pub vbus: Vec<num_complex::Complex64>,
 }
 
@@ -512,6 +560,50 @@ fn bus_voltage_view(ckt: &Circuit, bus_idx: usize) -> BusVoltageView {
         pu_voltages,
         vmag_angle,
         pu_vmag_angle,
+    }
+}
+
+/// Flatten a bus short-circuit matrix the way both oracles publish it —
+/// `for i := 1 to Nelements do for j := 1 to Nelements do … GetElement(i, j)`
+/// (r4133 `DBus.pas:445-450` == capi `CAPI_Alt.pas:2318-2330`), i.e.
+/// **row-major**, `i` outer.
+///
+/// This has to stay an explicit `(i, j)` walk: `CMatrix` stores column-major
+/// (`support/cmatrix/mod.rs:45-47`), so handing out the backing store would
+/// publish the transpose. `Zsc` and `Ysc` are symmetric only to solver noise —
+/// each `Zsc` column is a separate `Y·V = e_i` solve, and the measured
+/// `|Z_ij − Z_ji|` reaches 4.66e-10 (IEEE123Master-SC bus `610`) with *no*
+/// off-diagonal pair bit-equal on any of the three decks measured (of four) —
+/// so a transposed flatten would be a silent, band-invisible error on the
+/// corpus, not a caught one. The convention is therefore held by this
+/// citation, by [`BusScView`]'s ordering block and by the offline pin
+/// `bus_sc_tests::flatten_row_major_walks_i_outer_on_an_asymmetric_matrix`
+/// (G1.5 audit settlement AC-4) — never by an oracle value comparison.
+fn flatten_row_major(m: &crate::support::cmatrix::CMatrix) -> Vec<num_complex::Complex64> {
+    let n = m.order();
+    let mut out = Vec::with_capacity(n * n);
+    for i in 0..n {
+        for j in 0..n {
+            out.push(m.get(i, j));
+        }
+    }
+    out
+}
+
+/// Build one [`BusScView`] over bus `bus_idx` (`BusList` index). Pure reads off
+/// `TDSSBus`: no `ComputeIterminal`, no active-element state, nothing cached —
+/// the same "group C, order-free" property the oracles' own `BUSV` arms have.
+fn bus_sc_view(ckt: &Circuit, bus_idx: usize) -> BusScView {
+    let b = &ckt.buses[bus_idx];
+    BusScView {
+        name: b.name.clone(),
+        nodes: b.nodes.clone(),
+        zsc1: b.get_zsc1(),
+        zsc0: b.get_zsc0(),
+        zsc: b.zsc.as_ref().map(flatten_row_major),
+        ysc: b.ysc.as_ref().map(flatten_row_major),
+        isc: b.bus_current.clone(),
+        vbus: b.vbus.clone(),
     }
 }
 
@@ -1146,20 +1238,27 @@ impl Dss {
         ))
     }
 
-    /// Read a bus's short-circuit results after a FaultStudy solve — the
-    /// dss-python `Bus.Zsc1`/`Zsc0`/`Isc` surface. `name` is the bus name
-    /// (case-insensitive). `None` if no such bus exists.
+    /// Read one bus's short-circuit results — the dss-python `Bus.Zsc1` /
+    /// `Zsc0` / `ZscMatrix` / `YscMatrix` / `Isc` / `Voc` surface (see
+    /// [`BusScView`] for the ordering contract and the Pascal citations).
+    /// `name` is the bus name (case-insensitive, like `SetActiveBus`); `None`
+    /// if no such bus exists.
     pub fn bus_short_circuit(&self, name: &str) -> Option<BusScView> {
         let ckt = self.circuit.as_ref()?;
         let idx = ckt.bus_list.find(name)?;
-        let b = &ckt.buses[idx];
-        Some(BusScView {
-            nodes: b.nodes.clone(),
-            zsc1: b.get_zsc1(),
-            zsc0: b.get_zsc0(),
-            isc: b.bus_current.clone(),
-            vbus: b.vbus.clone(),
-        })
+        Some(bus_sc_view(ckt, idx))
+    }
+
+    /// Every bus's [`BusScView`] in `BusList` order — the order
+    /// `Circuit.AllBusNames` reports and the order [`Dss::all_bus_voltages`]
+    /// walks, so the two views pair up index for index (which is what lets the
+    /// harness capture both surfaces in a single `SetActiveBus` sweep). Empty
+    /// when no circuit exists.
+    pub fn all_bus_short_circuit(&self) -> Vec<BusScView> {
+        match self.circuit.as_ref() {
+            Some(ckt) => (0..ckt.buses.len()).map(|i| bus_sc_view(ckt, i)).collect(),
+            None => Vec::new(),
+        }
     }
 
     /// Read one bus's solved voltages — the dss-python `Bus.puVoltages` /
@@ -2460,5 +2559,493 @@ mod bus_voltage_tests {
         assert_eq!(views.len(), ckt.buses.len());
         let names: Vec<&str> = views.iter().map(|v| v.name.as_str()).collect();
         assert_eq!(names, vec!["sourcebus", "b1", "b2", "b3"]);
+    }
+}
+
+#[cfg(test)]
+mod bus_sc_tests {
+    use super::*;
+    use num_complex::Complex64;
+
+    /// `micro`-tier band, the harness' own numbers for this kind of case
+    /// (`tests/harness/mod.rs::tol_for`: `v`/`y`/`i` = `1e-6` abs + `1e-9`
+    /// rel — the abs/rel pair the corpus gate applies to this very deck, and
+    /// the pair `harness::tol_for` is pinned to by
+    /// `the_short_circuit_surface_adds_no_tolerance_constant`).
+    /// Every oracle literal below is a live reading of the *same* deck on both
+    /// channels — dss-python 0.15.7 / capi 0.14.5 and the EPRI r4133 DLL — which
+    /// agree with each other to ~1e-15 relative and with the port to ~1e-12 abs.
+    ///
+    /// **Driving matters for `Voc`/`Isc`, and the literals are the deck driven
+    /// as written.** `SolveFaultStudy` sets `LoadModel := ADMITTANCE` and takes
+    /// its open-circuit voltages from a `SolveDirect`
+    /// (`Common/SolutionAlgs.pas:884-892`), so a *second* fault study starts
+    /// from the first one's unit-injection residual and lands ~1.2e-4 relative
+    /// away: on this deck `Voc[0]` is `6933.784990446535 + 971.5021007848138j`
+    /// after `solve; solve mode=faultstudy` but `6934.538221643409 +
+    /// 971.9391266606829j` when a bare `solve` is appended (measured on both
+    /// channels — `tmp/g15/f1/voc_micro{,_r4133}.json`). `Zsc`/`Ysc` are
+    /// identical either way, being functions of `Y` alone.
+    ///
+    /// **Measured worsts on this deck** (port vs capi / port vs r4133, as the
+    /// baseline a later tightening would start from): `Zsc` 3.39e-15 / 4.99e-15
+    /// abs (1.44e-15 / 2.12e-15 rel), `Ysc` 7.73e-16 abs (1.64e-15 rel), `Isc`
+    /// 2.09e-12 / 1.85e-12 abs (6.4e-16 rel), `Voc` 1.22e-11 / 1.15e-11 abs
+    /// (2.28e-15 rel) — the same order as the two oracles' own disagreement
+    /// (capi vs r4133: `Zsc` 2.89e-15, `Voc` 1.15e-11), i.e. the faer-vs-KLU
+    /// last-ulp floor. The band stays the `micro` tier's rather than these
+    /// numbers on purpose: it is the band the corpus gate applies to this very
+    /// deck, and the errors these pins exist to catch (a transposed or
+    /// ascending-sorted index, an absent matrix) are 0.6 ohm / 800 V wide.
+    fn close(got: Complex64, want: Complex64, what: &str) {
+        let allowed = 1e-6 + 1e-9 * want.norm();
+        assert!(
+            (got - want).norm() <= allowed,
+            "{what}: {got} vs oracle {want} (|diff| = {:.6e} > allowed {allowed:.3e})",
+            (got - want).norm()
+        );
+    }
+
+    /// **The row-major convention, driven** (GOLDEN_REBASE G1.5 audit
+    /// settlement, AC-4). Spec §4's non-vacuity demo 1 — transpose the flatten
+    /// and watch the live gate red — was measured VACUOUS and dropped: `Zsc`
+    /// and `Ysc` are symmetric to ≤ 4.66e-10 on every bus of every corpus deck
+    /// that runs a study, six orders inside the band, so no oracle comparison
+    /// anywhere can tell `m.get(i, j)` from `m.get(j, i)`. That left
+    /// [`flatten_row_major`]'s convention — the one both oracles publish
+    /// (`For i … For j … Zsc.GetElement(i, j)`, r4133 `DDLL/DBus.pas:445-450`
+    /// == capi `CAPI/CAPI_Alt.pas:2318-2330`) — carried by a citation alone.
+    ///
+    /// This pins it where symmetry cannot hide it: a deliberately ASYMMETRIC
+    /// matrix whose `(i, j)` entry is `10·i + j`, so the row-major flatten is
+    /// `[00, 01, 02, 10, …]` while the transposed walk would be
+    /// `[00, 10, 20, 01, …]` — different in all six off-diagonal slots. The
+    /// same literals also separate it from `CMatrix`'s COLUMN-major backing
+    /// store (`support/cmatrix/mod.rs:45-47`), which is the transpose here, so
+    /// the day someone "optimizes" the loop into a `values().to_vec()` this
+    /// test reds instead of the surface silently publishing `Zscᵀ`.
+    #[test]
+    fn flatten_row_major_walks_i_outer_on_an_asymmetric_matrix() {
+        let mut m = crate::support::cmatrix::CMatrix::new(3);
+        for i in 0..3 {
+            for j in 0..3 {
+                m.set(i, j, Complex64::new((10 * i + j) as f64, 0.0));
+            }
+        }
+        let got: Vec<f64> = flatten_row_major(&m).iter().map(|c| c.re).collect();
+        assert_eq!(
+            got,
+            vec![0.0, 1.0, 2.0, 10.0, 11.0, 12.0, 20.0, 21.0, 22.0],
+            "flatten_row_major must walk `i` outer / `j` inner, the read order of \
+             both oracles' `BUSV` matrix arms"
+        );
+        let stored: Vec<f64> = m.values().iter().map(|c| c.re).collect();
+        assert_eq!(
+            stored,
+            vec![0.0, 10.0, 20.0, 1.0, 11.0, 21.0, 2.0, 12.0, 22.0],
+            "CMatrix stores column-major — the premise of the explicit walk"
+        );
+        assert_ne!(
+            got, stored,
+            "on an asymmetric matrix the row-major flatten and the backing store \
+             must differ, or this pin proves nothing"
+        );
+    }
+
+    /// The GOLDEN_REBASE G1.5 micro deck, byte-for-byte the circuit that
+    /// `tests/corpus/modes/faultstudy/faultstudy_micro.dss` carries into the
+    /// corpus gate. Two properties make it worth its size:
+    ///
+    /// * `line.l2 bus1=b1.1.2.3 bus2=b2.2.1.3` gives `b2` the insertion order
+    ///   `[2, 1, 3]`, which is *not* its ascending node order `[1, 2, 3]`;
+    /// * `reactor.rsh bus1=b2.1 R=5` puts a 5 ohm shunt on node 1 alone, so the
+    ///   `Zsc`/`Ysc` diagonal is position-dependent and the two orders are
+    ///   observably different rather than merely nominally so.
+    ///
+    /// Returned solved but *before* the fault study, so each test drives the
+    /// study itself.
+    fn sc_micro() -> Dss {
+        let mut dss = Dss::new();
+        dss.command("Set DefaultBaseFrequency=60");
+        dss.command(
+            "new circuit.scmicro basekv=12.47 pu=1.0 phases=3 bus1=sourcebus \
+             r1=0.5 x1=1.5 r0=1.0 x0=3.0",
+        );
+        dss.command("new linecode.lc3 nphases=3 r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0 units=km");
+        dss.command("new linecode.lc1 nphases=1 r1=0.4 x1=1.2 c1=0 units=km");
+        dss.command("new line.l1 bus1=sourcebus bus2=b1 linecode=lc3 length=1 units=km");
+        dss.command("new line.l2 bus1=b1.1.2.3 bus2=b2.2.1.3 linecode=lc3 length=1 units=km");
+        dss.command("new reactor.rsh bus1=b2.1 phases=1 R=5 X=0");
+        dss.command("new load.ld1 bus1=b2.2.1.3 phases=3 conn=wye kv=12.47 kw=100 pf=0.95 model=1");
+        dss.command("set voltagebases=[12.47]");
+        dss.command("calcvoltagebases");
+        dss.command("solve");
+        assert!(dss.errors().is_empty(), "snap solve: {:?}", dss.errors());
+        dss
+    }
+
+    fn fault_study(dss: &mut Dss) {
+        dss.command("solve mode=faultstudy");
+        assert!(dss.errors().is_empty(), "faultstudy: {:?}", dss.errors());
+    }
+
+    /// `zsc`/`ysc` are a **shape**, not a zero matrix: `TDSSBus.Zsc` stays
+    /// unassigned until `AllocateBusQuantities` runs inside the FaultStudy
+    /// solve (`Common/SolutionAlgs.pas:773-781` == `fault_study.rs:57`), and
+    /// `Get_Zsc1`/`Get_Zsc0` return `cZERO` in that state
+    /// (`Common/Bus.pas:215-229`). Both oracles publish a one-entry
+    /// `CZero`/default sentinel there, which is why the harness compares the
+    /// "study ran" bit before any number.
+    ///
+    /// `isc`/`vbus` are the contrast: `ReProcessBusDefs` allocates and zeroes
+    /// them for every bus (`Common/Circuit.pas:2407-2408`), so they are already
+    /// `NumNodesThisBus` long — and exactly zero — before the study.
+    #[test]
+    fn zsc_is_absent_until_a_fault_study_runs() {
+        let mut dss = sc_micro();
+
+        let before = dss.all_bus_short_circuit();
+        assert_eq!(before.len(), 3, "sourcebus, b1, b2");
+        for v in &before {
+            assert!(v.zsc.is_none(), "bus {}: Zsc before the study", v.name);
+            assert!(v.ysc.is_none(), "bus {}: Ysc before the study", v.name);
+            assert_eq!(v.zsc1, Complex64::ZERO, "bus {}: Zsc1 cZERO arm", v.name);
+            assert_eq!(v.zsc0, Complex64::ZERO, "bus {}: Zsc0 cZERO arm", v.name);
+            assert_eq!(v.isc.len(), v.nodes.len(), "bus {}: Isc length", v.name);
+            assert_eq!(v.vbus.len(), v.nodes.len(), "bus {}: Voc length", v.name);
+            assert!(
+                v.isc.iter().all(|c| *c == Complex64::ZERO),
+                "bus {}: Isc is allocated but untouched before the study",
+                v.name
+            );
+        }
+
+        fault_study(&mut dss);
+
+        for v in &dss.all_bus_short_circuit() {
+            let n = v.nodes.len();
+            assert_eq!(
+                v.zsc.as_ref().map(Vec::len),
+                Some(n * n),
+                "bus {}: Zsc is n*n after the study",
+                v.name
+            );
+            assert_eq!(
+                v.ysc.as_ref().map(Vec::len),
+                Some(n * n),
+                "bus {}: Ysc is n*n after the study",
+                v.name
+            );
+            assert_ne!(v.zsc1, Complex64::ZERO, "bus {}: Zsc1 is live", v.name);
+            assert_ne!(v.zsc0, Complex64::ZERO, "bus {}: Zsc0 is live", v.name);
+        }
+    }
+
+    /// **Convention 2.** `ZscMatrix`, `YscMatrix`, `Isc` and `Voc` are indexed
+    /// by the bus's *internal* node index — the oracles walk `GetRef(i)` /
+    /// `Zsc.GetElement(i, j)` directly (r4133 `DBus.pas:431-459`/`:491-518` ==
+    /// capi `CAPI_Alt.pas:2305-2334`/`:2336-2365`) with no `FindIdx` sort — so
+    /// the slot order is `TDSSBus.Nodes`' insertion order, not the ascending
+    /// node order `Bus.Nodes` itself publishes (`CAPI_Alt.pas:2143-2163`).
+    ///
+    /// On `b2` (declared `.2.1.3`, insertion `[2, 1, 3]`) the 5 ohm shunt sits
+    /// on node **1**, i.e. internal index **1**. Both oracles put the odd
+    /// diagonal there: `Zsc[1][1] = 1.665278843631496 + 1.662460471266969j`
+    /// against `Zsc[0][0] = 1.0633872484998361 + 2.873778548090103j`. Ascending
+    /// order would have put it at index 0, and the gap is 0.6 ohm — six orders
+    /// above any band. `Ysc` says the same thing in closed form: the shunt is
+    /// `1/5 = 0.2 S` and `Ysc[1][1] - Ysc[0][0] = 0.2 + 0j`.
+    #[test]
+    fn the_short_circuit_arrays_are_indexed_by_internal_node_index() {
+        let mut dss = sc_micro();
+        fault_study(&mut dss);
+
+        let v = dss.bus_short_circuit("B2").expect("bus b2");
+        assert_eq!(v.name, "b2", "case-insensitive lookup, BusList spelling");
+        assert_eq!(v.nodes, vec![2, 1, 3], "declared bus2=b2.2.1.3");
+
+        let z = v.zsc.as_ref().expect("study ran");
+        let y = v.ysc.as_ref().expect("study ran");
+        assert_eq!(z.len(), 9);
+        assert_eq!(y.len(), 9);
+
+        // Row-major: entry (i, j) is z[i * 3 + j].
+        close(
+            z[0],
+            Complex64::new(1.0633872484998361, 2.873778548090103),
+            "Zsc[0][0]",
+        );
+        close(
+            z[4],
+            Complex64::new(1.665278843631496, 1.662460471266969),
+            "Zsc[1][1]",
+        );
+        close(
+            z[8],
+            Complex64::new(1.0633872484998352, 2.8737785480901032),
+            "Zsc[2][2]",
+        );
+        close(
+            z[1],
+            Complex64::new(0.4998250387875434, 0.4970654339231112),
+            "Zsc[0][1]",
+        );
+        close(
+            z[2],
+            Complex64::new(0.36149275755946514, 0.7764976346466627),
+            "Zsc[0][2]",
+        );
+
+        // The ordering claim as an inequality no band can absorb: the odd
+        // diagonal sits at the insertion slot of node 1, not at slot 0.
+        assert_eq!(
+            v.nodes[1], 1,
+            "internal index 1 is node 1, the shunt's node"
+        );
+        assert!(
+            (z[4] - z[0]).norm() > 0.5,
+            "Zsc[1][1] {} must differ from Zsc[0][0] {} by the shunt, not by noise",
+            z[4],
+            z[0]
+        );
+
+        // `Ysc`: the 5 ohm shunt is exactly 0.2 S on its own diagonal slot.
+        close(
+            y[0],
+            Complex64::new(0.11671451166612462, -0.3484256569058215),
+            "Ysc[0][0]",
+        );
+        close(
+            y[4],
+            Complex64::new(0.3167145116661245, -0.3484256569058213),
+            "Ysc[1][1]",
+        );
+        close(
+            y[8],
+            Complex64::new(0.11671451166612454, -0.34842565690582167),
+            "Ysc[2][2]",
+        );
+        close(
+            y[4] - y[0],
+            Complex64::new(0.2, 0.0),
+            "Ysc[1][1] - Ysc[0][0] = 1/R",
+        );
+
+        // `Voc` carries the same index: the sag is at slot 1. capi values;
+        // r4133 agrees to 1.1e-11 abs (6933.784990446525 + 971.5021007848129j,
+        // -4473.628028729489 - 2952.8238120661385j, -3849.24186153543 +
+        // 7214.584823013563j).
+        assert_eq!(v.vbus.len(), 3);
+        close(
+            v.vbus[0],
+            Complex64::new(6933.784990446535, 971.5021007848138),
+            "Voc[0]",
+        );
+        close(
+            v.vbus[1],
+            Complex64::new(-4473.628028729488, -2952.8238120661385),
+            "Voc[1]",
+        );
+        close(
+            v.vbus[2],
+            Complex64::new(-3849.2418615354186, 7214.584823013565),
+            "Voc[2]",
+        );
+        assert!(
+            v.vbus[1].norm() < v.vbus[0].norm(),
+            "the shunted node sags, and it is slot 1"
+        );
+
+        // `Isc = Ysc * Voc`, length n on the same index. capi values; r4133
+        // agrees to 8e-13 abs.
+        assert_eq!(v.isc.len(), 3);
+        close(
+            v.isc[0],
+            Complex64::new(1028.2406633473126, -3085.47655441101),
+            "Isc[0]",
+        );
+        close(
+            v.isc[1],
+            Complex64::new(-3186.134740270875, 652.1195203877785),
+            "Isc[1]",
+        );
+        close(
+            v.isc[2],
+            Complex64::new(2157.80036243219, 2433.9836703768838),
+            "Isc[2]",
+        );
+    }
+
+    /// `AvgOffDiagonal` divides only when it summed something
+    /// (`Shared/Ucmatrix.pas:369-383` == `support/cmatrix/mod.rs:273-282`), so a
+    /// one-node bus has `Zm = 0` and `Zsc1 = Zs - 0`, `Zsc0 = Zs + 2*0` collapse
+    /// onto the single entry — bit-exactly, not within a band.
+    ///
+    /// Oracle witness for the same identity: IEEE123Master-SC carries **57**
+    /// one-node buses, and on bus `2` both channels report
+    /// `Zsc1 = Zsc0 = Zsc[0][0]` = `0.12160973905653437 + 0.4051399884521036j`
+    /// (capi) and `0.12160973905653336 + 0.40513998845210436j` (r4133) — the
+    /// same three numbers each time.
+    #[test]
+    fn zsc1_collapses_to_the_single_entry_on_a_one_node_bus() {
+        let mut dss = Dss::new();
+        dss.command("Set DefaultBaseFrequency=60");
+        dss.command(
+            "New Circuit.sc1 basekv=12.47 phases=3 bus1=sourcebus pu=1.0 \
+             R1=0.5 X1=1.5 R0=1.0 X0=3.0",
+        );
+        dss.command(
+            "New Line.spur bus1=sourcebus.1 bus2=b3.1 phases=1 r1=0.4 x1=1.2 c1=0 length=1",
+        );
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("calcv");
+        dss.command("solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        fault_study(&mut dss);
+
+        let v = dss.bus_short_circuit("b3").expect("bus b3");
+        assert_eq!(v.nodes, vec![1], "a one-node bus");
+        let z = v.zsc.as_ref().expect("study ran");
+        assert_eq!(z.len(), 1, "1x1");
+        assert_eq!(v.zsc1, z[0], "Zsc1 = Zs - Zm with Zm = 0");
+        assert_eq!(v.zsc0, z[0], "Zsc0 = Zs + 2*Zm with Zm = 0");
+
+        // A three-node bus in the same circuit does not collapse, so the
+        // identity above is the degeneracy and not a tautology of the code.
+        let src = dss.bus_short_circuit("sourcebus").expect("sourcebus");
+        assert_eq!(src.nodes.len(), 3);
+        assert_ne!(src.zsc1, src.zsc0, "Zm != 0 on a 3-node bus");
+    }
+
+    /// Nothing between solves clears `Zsc`/`Ysc`: they are dropped only by a
+    /// bus-list rebuild (`RestoreBusInfo` restores `VBus` but not the matrices
+    /// — `circuit::Circuit::reprocess_bus_defs`), so a later solve in another mode leaves the
+    /// study's matrices standing, entry for entry. That is the state
+    /// `NEVTestCase/Run_NEV.dss` gates on: `set mode=Faultstudy; solve` followed
+    /// by `solve mode=harmonics`, with the 13-node `tertiary` bus still
+    /// reporting a 13x13 `Zsc` afterwards.
+    #[test]
+    fn zsc_survives_a_later_non_faultstudy_solve() {
+        let mut dss = sc_micro();
+        fault_study(&mut dss);
+        let before = dss.bus_short_circuit("b2").expect("bus b2");
+        let z0 = before.zsc.clone().expect("study ran");
+        let y0 = before.ysc.clone().expect("study ran");
+        let (zsc1, zsc0) = (before.zsc1, before.zsc0);
+
+        dss.command("solve mode=harmonics");
+        assert!(dss.errors().is_empty(), "harmonics: {:?}", dss.errors());
+
+        let after = dss.bus_short_circuit("b2").expect("bus b2");
+        assert_eq!(after.zsc.as_deref(), Some(&z0[..]), "Zsc untouched");
+        assert_eq!(after.ysc.as_deref(), Some(&y0[..]), "Ysc untouched");
+        assert_eq!(after.zsc1, zsc1);
+        assert_eq!(after.zsc0, zsc0);
+        assert_eq!(after.nodes, vec![2, 1, 3], "and still on the same index");
+    }
+
+    /// `all_bus_short_circuit` walks `BusList` — the same sequence
+    /// `all_bus_voltages` and `Circuit.AllBusNames` use — so the harness can
+    /// capture both bus surfaces in one `SetActiveBus` sweep and pair them by
+    /// index.
+    #[test]
+    fn all_bus_short_circuit_is_the_bus_list_order() {
+        let mut dss = sc_micro();
+        fault_study(&mut dss);
+
+        let sc = dss.all_bus_short_circuit();
+        let v = dss.all_bus_voltages();
+        assert_eq!(sc.len(), v.len());
+        let names: Vec<&str> = sc.iter().map(|b| b.name.as_str()).collect();
+        assert_eq!(names, vec!["sourcebus", "b1", "b2"]);
+        for (a, b) in sc.iter().zip(&v) {
+            assert_eq!(a.name, b.name, "paired by index");
+            assert_eq!(a.nodes, b.nodes, "both views keep insertion order");
+        }
+        // The by-name accessor is the same builder.
+        for a in &sc {
+            let one = dss.bus_short_circuit(&a.name).expect("by name");
+            assert_eq!(one.zsc, a.zsc);
+            assert_eq!(one.ysc, a.ysc);
+            assert_eq!(one.isc, a.isc);
+            assert_eq!(one.vbus, a.vbus);
+        }
+    }
+
+    /// The fault study is **not** the only writer of `Voc`: `BuildYMatrix`
+    /// brackets the rebuild with `UpdateVBus` / `RestoreNodeVfromVbus` whenever
+    /// `Solution.PreserveNodeVoltages` is set (r4133
+    /// `Common/YMatrix.pas:170`/`:282` == `solution::ymatrix::build_y_matrix`),
+    /// and that flag is set entering Harmonic/HarmonicT and Dynamic mode. So a
+    /// harmonics deck publishes a live `Voc` (and an `Isc` derived from it)
+    /// while `Zsc`/`Ysc` stay `None` — which is exactly why the harness
+    /// compares the discrete "study ran" bit and the `Voc` values as two
+    /// independent facts instead of gating one on the other.
+    ///
+    /// Oracle witness for the same shape, both channels
+    /// (`tmp/g15/voc_exposure.json`): `modes/harmonics/harmonict` reports no
+    /// `Zsc` on any of its 3 buses with `max |Voc| = 64.49615498313288` V (its
+    /// three harmonics siblings 59.10 / 97.55 / 90.13 V), against
+    /// `max |Voc| = 0` on all ten `modes/reduce/*` decks, which never set the
+    /// flag. On this deck the port's own maximum is 12.329071484855646 V.
+    #[test]
+    fn voc_is_refreshed_by_preserve_node_voltages_not_only_by_the_fault_study() {
+        let mut dss = sc_micro();
+        for b in dss.all_bus_short_circuit() {
+            assert!(b.zsc.is_none(), "{}: no study has run", b.name);
+            assert!(
+                b.vbus.iter().all(|v| *v == Complex64::new(0.0, 0.0)),
+                "{}: VBus is the allocation zero after a plain solve, {:?}",
+                b.name,
+                b.vbus
+            );
+        }
+
+        dss.command("solve mode=harmonics");
+        assert!(dss.errors().is_empty(), "harmonics: {:?}", dss.errors());
+
+        let after = dss.all_bus_short_circuit();
+        for b in &after {
+            assert!(
+                b.zsc.is_none() && b.ysc.is_none(),
+                "{}: a harmonics solve must not fabricate a short-circuit matrix",
+                b.name
+            );
+        }
+        let worst = after
+            .iter()
+            .flat_map(|b| b.vbus.iter())
+            .map(|v| v.norm())
+            .fold(0.0_f64, f64::max);
+        assert!(
+            worst > 1.0,
+            "PreserveNodeVoltages must have refreshed VBus, got max |Voc| = {worst}"
+        );
+
+        // The values themselves, on the bus whose insertion order is [2, 1, 3]
+        // — so the refresh lands on this surface's own index, not the ascending
+        // one. (`close` is the `micro` band; these are the port's readings.)
+        let b2 = after.iter().find(|b| b.name == "b2").expect("bus b2");
+        assert_eq!(b2.nodes, vec![2, 1, 3]);
+        close(
+            b2.vbus[0],
+            Complex64::new(11.97308377213697, -2.941303905425441),
+            "Voc[0] after harmonics",
+        );
+        close(
+            b2.vbus[1],
+            Complex64::new(2.1154414072085364, -0.45083050936453944),
+            "Voc[1] after harmonics",
+        );
+        close(
+            b2.vbus[2],
+            Complex64::new(-0.44918965561215307, 11.369826732190017),
+            "Voc[2] after harmonics",
+        );
+        close(
+            Complex64::new(worst, 0.0),
+            Complex64::new(12.329071484855646, 0.0),
+            "max |Voc| after harmonics",
+        );
     }
 }
