@@ -164,7 +164,7 @@ const FORCED_PROPS_POPULATION: (usize, usize, usize, usize) = (442, 311, 87, 44)
 /// and per-case ledger tags, not scheduler code, and the live guard
 /// `props_norm::assert_r4133_props_compare_ran` is a boolean — a *partial*
 /// re-mask (re-adding `gates_capi()`, which would drop the 87 r4133-only cases
-/// while the 310 `both` ones keep walking) passes it. This test is the one that
+/// while the 311 `both` ones keep walking) passes it. This test is the one that
 /// does not: it walks the four manifests without an oracle and asserts the
 /// forced set **is** the live non-`large` population, cell for cell, with the
 /// per-`engines` split pinned by [`FORCED_PROPS_POPULATION`].
@@ -230,7 +230,7 @@ fn the_property_forcing_rule_is_every_live_non_large_case() {
 
 /// Force the **bus voltage surface** on (`GOLDEN_REBASE_PLAN.md` G1.4a, §1.1(d)).
 ///
-/// The manifests set `compare_bus` on no case (524 × `bus=0` in
+/// The manifests set `compare_bus` on no case (525 × `bus=0` in
 /// `population.lock.json`), exactly as they set `compare_all_properties` on
 /// none: a surface that is only compared where a manifest opts in is a surface
 /// nobody compares. The rule is therefore the same one

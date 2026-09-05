@@ -154,18 +154,18 @@ WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 2026-08-29), **G1.0** (rails D1/D2/D3, 2026-09-04, `c4b67a6e`, whose mode probe
 **also discharges the G1.11 mode-capability acceptance for the whole WP**),
 **G1.4a** (2026-09-04/05, lane `lane-b`, D7; `6b0dbd32` + `be01e413` +
-`10417d99`) — the bus surface's divergence-free half, **D8** moving the sequence
-quantities and `VLL`/`puVLL` to a new **G1.4c**, plus the workspace `serde_json`
-`float_roundtrip` (**D11(1)**) and two oracle-side faults caught (**D12**/**D14**
-GICTransformer nondeterminism, ledger 57 → 53; **D13** the worker's registry
-leak) — and **G1.5** (2026-09-05, same lane): the whole short-circuit surface on
-both channels as **precomputed state**, row-major over the internal node index,
-sentinels normalized per channel (**D4**), D11(2) narrowed to `Voc`/`Isc`, a port
-gap closed in-step (`ReduceAlgs` skipped `Solution.UpdateVBus`), the corpus's only
-`micro`-band deck (524 → **525** / 521 live) and, from its audit settlement
-(8 fixed / 2 recorded / 1 refuted), a fail-on-stale for the non-trivial half.
-Both: **0** new ledger entries, **0** golden bytes; **5 134 / 0 / 5** per lane,
-`lane_diff` PASS max |Δ| = 0. G1.3a–d, G1.4b/c, G1.6–G1.11c, WP-G3–G5 remain.
+`10417d99`) — the bus surface's divergence-free half, **D8** spinning off
+**G1.4c**, the workspace `serde_json` `float_roundtrip` (**D11(1)**) and two
+oracle-side faults caught (**D12**/**D14** GICTransformer nondeterminism,
+ledger 57 → 53; **D13** the worker's registry leak) — and **G1.5** (2026-09-05,
+same lane; `7d920701` + `5d206bdb` + docs): the short-circuit surface on both
+channels as **precomputed state**, sentinels normalized per channel (**D4**),
+D11(2) narrowed to `Voc`/`Isc`, a port gap closed in-step (`ReduceAlgs` skipped
+`Solution.UpdateVBus`), the corpus's only `micro`-band deck (524 → **525** /
+521 live) and, from its settlement (8 fixed / 2 recorded / 1 refuted), a
+fail-on-stale for the non-trivial half. Both: **0** new ledger entries, **0**
+golden bytes; the lane gates at **5 134 / 0 / 5**, `lane_diff` PASS max |Δ| =
+0. G1.3a–d, G1.4b/c, G1.6–G1.11c, WP-G3–G5 remain.
 
 **Next.** Bus lane (`lane-b`): **G1.4c** (D8 — the sequence quantities and
 `VLL`/`puVLL` behind the r4133 hang guard), then **G1.4b**; in parallel element
