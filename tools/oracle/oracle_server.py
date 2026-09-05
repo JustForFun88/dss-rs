@@ -311,7 +311,8 @@ def capture_reliability(ckt, aborted: bool, message: str) -> dict:
     #0 / #1 / #6 — `EnergyMeter.pas:480-486` — already live-compared by
     `capture_all_properties`). `CountEndElements` is additionally a do-not-call
     on the r4133 DDLL arm, which dereferences `BranchList.ZoneEndsList` with no
-    nil guard (`DMeters.pas:156-164`, against capi's `CheckBranchList(5501)`).
+    nil guard (`DMeters.pas:156-164`, against capi's `CheckBranchList(5500)` --
+    `CAPI_Meters.pas:543`; 5501 is `AllBranchesInZone`, 5502 `AllEndElements`).
 
     `aborted` / `message` are NOT reads: they carry the outcome of the `RelCalc`
     command itself (errno 52902, `Meters/EnergyMeter.pas:2456` capi == `:2502`
@@ -653,6 +654,17 @@ def run_case(d, req: dict) -> dict:
                 rel_aborted = False
                 rel_message = ""
                 if want_rel and step == n_steps - 1:
+                    # The exception IS the detection, on every case: dss-python
+                    # raises whenever the error pointer is set and exceptions
+                    # are enabled (`dss/_cffi_api_util.py`, `using_exceptions`),
+                    # and `DoSimpleMsg` sets `DSS.ErrorNumber` unconditionally
+                    # -- `DSS_CAPI_EARLY_ABORT` only decides `Redirect_Abort`
+                    # (`Common/DSSGlobals.pas:259-265`). So a case that opted
+                    # into `warn_and_continue` (EarlyAbort False) still lands
+                    # here; nothing can take the 52902 silently. (G1.6(i) audit
+                    # settlement, finding AT-9: measured claim, not an
+                    # assumption -- the whole `_USER_MODEL_ERRNOS` block above
+                    # exists for the same reason.)
                     try:
                         d.Text.Command = "RelCalc"
                     except _dss.DSSException as e:

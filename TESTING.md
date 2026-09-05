@@ -500,15 +500,33 @@ on the last checkpoint only, and the runner asserts exactly that before it compa
 anything. Port side: `Dss::meter_reliability` / `Dss::meter_totals`
 (`crates/dss-core/src/exec/view.rs:1325` / `:1453`) — `&self` reads of solved state,
 the reliability math itself untouched. Comparator: `harness::compare_reliability`
-(`crates/dss-core/tests/harness/mod.rs:6428`). The flag is **manifest-set, never
+(`crates/dss-core/tests/harness/mod.rs:6466`). The flag is **manifest-set, never
 forced** (six cases): "has an EnergyMeter" is not a manifest field, and forcing it
 circuit-wide would fire `28724 No EnergyMeter Objects Defined` on ~340 meterless
 decks — so there is no `FORCED_RELIABILITY_POPULATION` lock, deliberately. `large*`
-decks stay out under the same cost guard `force_properties`/`force_pdelements` apply,
-which is why the multi-meter `Bus_Int_Duration` divergence keeps its existing witness
-(the `export_busreliability_multimeter` golden and its G2.2a pin) and gains no live
-one. Six rules come with the surface.
+decks stay out for the same cost reason `force_properties`/`force_pdelements` keep
+them out, and since the G1.6(i) audit settlement that is an enforced guard, not just
+a decision: `reliability_pins.rs::no_large_case_gates_the_reliability_surface` fails
+if any `kind=large*` manifest row sets the flag. That is why the multi-meter
+`Bus_Int_Duration` divergence keeps its existing witness (the
+`export_busreliability_multimeter` golden and its G2.2a pin) and gains no live one.
+Seven rules come with the surface.
 
+* **Driving `RelCalc` is state-neutral, and the partition it rests on is what makes
+  that claim falsifiable.** The command runs at the SAME point on all three engines and
+  after every per-step assert, so each comparator of the last checkpoint sees
+  post-calc state on both sides. What it is ALLOWED to move is exactly the
+  reliability-derived state: EnergyMeter properties #19-23 (`SAIFI`, `SAIDI`,
+  `CustInterrupts`, `SAIFIkW`, `CAIDI`) plus `TotalCustomers`/`NumSections`, the
+  reliability halves of `PDElements.*` (`AccumulatedL`, `Lambda`, `TotalMiles`,
+  `SectionID`, `Numcustomers`, `Totalcustomers`) and of `Bus.*` (G1.6(ii)'s columns),
+  and `Meters.Totals` via `TotalizeMeters`. Anything else moving — node voltages, `Y`,
+  element currents/powers, monitor channels, energy registers, the event log, the
+  control queue — is an engine finding and a STOP, never a re-baseline. Nothing
+  enforces the partition by construction; it is carried by the existing comparators,
+  which all run after the drive on the six flagged cases in both lanes, and by
+  `lane_diff` over the same state (G1.6(i) measured them unmoved before the surface
+  was wired).
 * **Errno 52902 is tolerated — and only it — on both transports.** A zone with no
   OCP device aborts the calc (r4133 `Meters/EnergyMeter.pas:2502`, capi `:2456`),
   which is a **compared observable**, not an error to swallow:
@@ -540,8 +558,12 @@ one. Six rules come with the surface.
   floor (derivations in `tests/TOLERANCE_NOTES.md`). The exceptions are
   `Meters.Totals`, which is `Σ registers·Mask` and rides the **energy** tier its own
   summands ride — so a `Totals` regression demo must exceed 1e-4 relative to be a demo
-  at all — and `calc_current`/`alloc_factors`, which ride the **current** tier and its
-  image under `SensorCurrent/|I|`. `AverageRepairTime` is an unguarded division on all
+  at all, so the 67 slots are not part of the exactness headline — and
+  `calc_current`/`alloc_factors`, which ride the **current** tier and its image under
+  `SensorCurrent/|I|`. That image is **band-limited from below**: a metered current
+  inside its own `i_abs` yields no band at all and the comparator then fails loudly
+  for triage instead of admitting the cell (the `SeqCurrents %I` precedent;
+  unit-tested over the three regimes). `AverageRepairTime` is an unguarded division on all
   three engines, so `NaN`/`±inf` agreement counts as agreement while `NaN` against a
   finite number fails.
 * **An exact float compare needs `float_roundtrip`** (decisions **D11/D18**). The
@@ -568,13 +590,19 @@ one. Six rules come with the surface.
   `CalcAllocationFactors` `:54-72` writes them, and its sole driver is
   `TExecHelper.DoAllocateLoadsCmd`, `Executive/ExecHelper.pas:2624-2683`) — measured
   denormal garbage that changes across processes, hence excluded per (channel, case,
-  field) in `RELIABILITY_SKIP_FIELDS` (`crates/dss-core/tests/harness/mod.rs:6230`),
+  field) in `RELIABILITY_SKIP_FIELDS` (`crates/dss-core/tests/harness/mod.rs:6243`),
   never enveloped, each row carrying its citation and a pin that a register test
   requires to name a real `#[test]`. The corpus's only `AllocateLoads` deck,
   `tests/corpus/controls/energymeter/midi_relcalc.dss` (`both`, three sections), is
   where both fields **are** compared live on both channels; the global rails
   `assert_reliability_compare_ran` and `assert_reliability_skip_rows_are_live` fail a
-  run in which a gating channel compared nothing or a row excluded nothing.
+  run in which a gating channel compared nothing or a row was never consulted. Note
+  what that liveness rule polices: **visits, not hits**. The garbage the oracles read
+  is denormal (`~2.8e-309`), inside `i_abs` anyway, so the rows record 50 visits and 0
+  hits on the current population and are not load-bearing there — they exist for the
+  values that would NOT be denormal, and the regime itself is proven by the
+  three-process probe. Reported upstream as
+  `investigations/to_opendss/62-metered-sensor-arrays-are-never-initialised.md`.
 
 Three parity notes, recorded rather than assumed. We capture **every** section, where
 fastdss reads section 1 only (`save_outputs.py:283-291`) — strictly stronger.

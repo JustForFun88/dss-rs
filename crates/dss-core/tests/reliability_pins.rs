@@ -696,7 +696,7 @@ fn pd_elements_relcalc_fields_are_live_after_relcalc() {
         },
         RelCalcLiveCase {
             deck: "controls/combo/midi_protection.dss",
-            steps: 1,
+            steps: 24,
             family: "controls",
             engines: "r4133",
             witness: "Line.bb1_2",
@@ -1396,6 +1396,122 @@ fn is_a_test_fn(name: &str) -> bool {
     })
 }
 
+/// **No `kind=large*` case gates the reliability surface.**
+///
+/// `corpus_gate::manifest`'s doc calls the absence of a `force_reliability`
+/// rule a decision under the same cost guard `force_properties` /
+/// `force_pdelements` apply. Those two have real `kind=large*` predicates and
+/// pinned populations; `compare_reliability` is manifest-set only, so nothing
+/// but this test stops a `large` deck being flagged and paying for a whole
+/// extra `RelCalc` + payload on three engines (G1.6(i) audit settlement,
+/// finding AC-9: the word 'guard' now names something).
+#[test]
+fn no_large_case_gates_the_reliability_surface() {
+    let mut large = 0usize;
+    let mut flagged = 0usize;
+    let mut offenders: Vec<String> = Vec::new();
+    for rel in RELIABILITY_MANIFESTS {
+        let text = read_source(rel);
+        let json: serde_json::Value =
+            serde_json::from_str(&text).unwrap_or_else(|e| panic!("{rel}: {e}"));
+        for case in json["cases"].as_array().expect("`cases` is an array") {
+            let kind = case["kind"].as_str().unwrap_or_default();
+            let is_large = kind.starts_with("large");
+            let is_rel = case["compare_reliability"].as_bool() == Some(true);
+            large += usize::from(is_large);
+            flagged += usize::from(is_rel);
+            if is_large && is_rel {
+                offenders.push(format!(
+                    "{rel}: {} (kind={kind})",
+                    case["path"].as_str().unwrap_or("?")
+                ));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "these `kind=large*` case(s) set `compare_reliability`: {offenders:?}. \
+         The surface drives an extra executive `RelCalc` and captures a full \
+         meter payload on all three engines; keep it off the large decks, or \
+         re-pin this guard in the same commit that deliberately admits one."
+    );
+    // Non-vacuous in both directions: the scan really saw large decks AND
+    // really saw the flag somewhere.
+    assert!(
+        large >= 80,
+        "the scan found only {large} `kind=large*` case(s)"
+    );
+    assert!(
+        flagged >= 6,
+        "the scan found only {flagged} flagged case(s)"
+    );
+}
+
+/// Every corpus manifest the population is built from.
+const RELIABILITY_MANIFESTS: &[&str] = &[
+    "tests/corpus/asymmetric/manifest.json",
+    "tests/corpus/controls/manifest.json",
+    "tests/corpus/modes/manifest.json",
+    "tests/corpus/manifests/solvable_now.json",
+];
+/// The G1.6(i) pins that `TESTING.md`, `tests/TOLERANCE_NOTES.md` and the
+/// phase record quote by NAME.
+///
+/// The four `RELIABILITY_SKIP_FIELDS` rows are guarded by
+/// [`every_reliability_skip_row_pin_names_a_real_test`] because an exclusion
+/// whose pin is gone is a mask over nothing. These are the other direction:
+/// a doc sentence that names a pin is only evidence while that pin exists,
+/// and nothing stopped a rename from leaving the sentence pointing at
+/// nothing (G1.6(i) audit settlement, finding AT-7).
+const RELIABILITY_PINS_QUOTED_IN_DOCS: &[&str] = &[
+    "caidi_is_saidi_over_saifi_on_a_reliability_deck",
+    "meter_alloc_factors_are_zero_until_allocateloads_runs",
+    "meter_allocation_factors_are_the_peak_current_over_the_metered_current",
+    "meter_totals_is_the_masked_register_sum",
+    "pd_elements_relcalc_fields_are_live_after_relcalc",
+    "relcalc_abort_is_symmetric_on_a_zone_without_ocp",
+    "relcalc_is_not_idempotent_and_the_gate_runs_it_once",
+    "reliability_accumulators_are_correctly_rounded_f64_sums",
+];
+
+/// The three documents whose sentences name the pins above.
+const RELIABILITY_PIN_DOCS: &[&str] = &[
+    "TESTING.md",
+    "tests/TOLERANCE_NOTES.md",
+    "docs/phase-records/golden-rebase.md",
+];
+
+/// **Every pin the docs name exists, and every name in the list is really
+/// quoted somewhere** — the guard fails in both directions, so neither the
+/// list nor a doc sentence can rot on its own.
+#[test]
+fn every_reliability_pin_named_in_the_docs_exists() {
+    let docs: Vec<String> = RELIABILITY_PIN_DOCS
+        .iter()
+        .map(|d| read_source(d))
+        .collect();
+    for pin in RELIABILITY_PINS_QUOTED_IN_DOCS {
+        assert!(
+            is_a_test_fn(pin),
+            "the docs name `{pin}` as an expected-value pin, but no `#[test] fn \
+             {pin}` exists in {RELIABILITY_PIN_SOURCES:?}. A doc sentence \
+             pointing at a renamed or deleted test is evidence of nothing \
+             (CLAUDE.md; `GOLDEN_REBASE_PLAN.md` §1.1(e))."
+        );
+        assert!(
+            docs.iter().any(|d| d.contains(*pin)),
+            "`{pin}` is listed here as doc-quoted but appears in none of \
+             {RELIABILITY_PIN_DOCS:?} — drop it from the list, or restore the \
+             sentence that named it"
+        );
+    }
+    // Not vacuous in either direction.
+    assert!(!RELIABILITY_PINS_QUOTED_IN_DOCS.is_empty());
+    assert!(!is_a_test_fn(
+        "relcalc_is_not_idempotent_and_the_gate_runs_it_twice"
+    ));
+    assert!(docs.iter().all(|d| !d.is_empty()));
+}
 /// **Every `RELIABILITY_SKIP_FIELDS` row names a `#[test]` that exists.**
 ///
 /// The four shipped rows all name

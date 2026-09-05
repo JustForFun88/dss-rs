@@ -1387,7 +1387,8 @@ impl Dss {
                     let slot = em.feeder_sections().get(idx as usize);
                     debug_assert!(
                         slot.is_some(),
-                        "EnergyMeter {name}: SectionCount {num_sections} exceeds                          the FeederSections array ({} slots)",
+                        "EnergyMeter {name}: SectionCount {num_sections} exceeds the \
+                         FeederSections array ({} slots)",
                         em.feeder_sections().len()
                     );
                     let s = slot?;
