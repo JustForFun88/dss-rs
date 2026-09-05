@@ -1063,7 +1063,7 @@ walked, which call the bridge refused). In the order the comparator applies them
 
    | measurement | worst relative gap | of the ceiling |
    |---|---|---|
-   | live, every r4133-gated live non-`large` case (390 decks, 13 830 buses with node set exactly {1,2,3}) | `5.229587392548124e-10` | **0.9999992003101158** |
+   | live, 390 r4133-gated live non-`large` decks (13 830 buses with node set exactly {1,2,3}); 8 further decks did not compile/solve inside the standalone probe harness (user-model DLL / probe working-directory failures, not gate failures) and are not in the count | `5.229587392548124e-10` | **0.9999992003101158** |
    | deterministic 2 000-triple LCG sweep at feeder scale (in the harness' own test) | `5.187062517473203e-10` | 0.9918676140345324 |
    | row 0, both measurements | `2.668531449088572e-16` | ~5e-7 |
 

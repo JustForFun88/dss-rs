@@ -2576,7 +2576,9 @@ oracle answer is defensible:
    kk := FindIdx(k)`), and the commented-out original two lines below the loop
    (`DBus.pas:586-587`) are that same wrap-first code — intent contradicts
    behaviour inside one engine. r4133 additionally **hangs**: its second loop is
-   an unbounded `repeat`, so a bus whose node numbers miss `{jj₀+1} ∪ {1,2,3,4}`
+   an unbounded `repeat`, so a bus whose node numbers miss `{jj₀} ∪ {1,2,3,4}`
+   (`jj₀` = the node the first loop found **plus one**, the spelling
+   `modes::bus_vll_would_hang` uses)
    spins forever (measured 20.011 s TIMEOUT on `NEVTestCase` `double-1`); capi
    bounded the same loop to three tries in 2020 (`CAPI_Alt.pas:2512-2514`) and
    says so in its own comment.
@@ -2586,12 +2588,19 @@ oracle answer is defensible:
 1, 2 and 3** (r4133's stated intent, and the only case where symmetrical
 components are defined); `Bus.VLL` / `puVLL` are the line-to-line voltages over
 the phase nodes actually present — three pairs, the single pair, or nothing below
-two phases — which is what `ShowResults.pas:193-194` computes. No upstream walk
-is reproduced anywhere in the engine, in either lane. The **report** paths are
-deliberately untouched (`report/export/seq_voltages.rs` keeps the ground
-substitution, `report/show/voltages.rs` keeps its wrap-first pairing): they are
-byte goldens of an upstream *report*, and the split between that convention and
-the API semantics is pinned on both sides.
+two phases — the pairing ORDER `ShowResults.pas:193-194` uses (that report path
+is not S-VLL on every bus: with a phase missing it still pairs against ground).
+No upstream walk is reproduced anywhere in the engine's API surface, in either
+lane. The **report** paths are untouched here for two different reasons:
+`report/show/voltages.rs` keeps the wrap-first pairing, which is r4133's own
+correct order and no defect at all, while `report/export/seq_voltages.rs` keeps
+the ground substitution, which **is** the defect. That one is not held in place
+by golden bytes (measured 2026-09-05: every voltage-report golden runs
+`IEEE13Nodeckt.dss`, whose buses carry node numbers 1-3 only, so the substituting
+branch is never reached and fixing it would move zero bytes) but by scope — what
+an export should print instead is a report-semantics decision outside WP-G1. It
+is tracked as `ORPHANED_GAPS.md` §1.19. The split between the report convention
+and the API semantics is pinned on both sides.
 
 **How the divergence is gated — 0 ledger rows.** Instead of excluding the
 divergent buses, `harness::compare_bus_seq_and_vll` classifies every bus from its
@@ -2610,7 +2619,9 @@ run-wide populations fail on stale in both directions:
 `sin60` in `Ap2s`; `tests/TOLERANCE_NOTES.md` §"Bus sequence and line-to-line
 voltages"), and no band moves.
 
-**Pins** (each naming both numbers): `bus_seq_voltages_need_all_three_phase_nodes`,
+**Pins** (the oracle-facing ones naming both numbers; the two `pu`/`node_v`
+identities below are port-internal and name no oracle number):
+`bus_seq_voltages_need_all_three_phase_nodes`,
 `bus_vll_pairs_only_the_phase_nodes_the_bus_carries`,
 `bus_pu_vll_divides_by_the_line_to_line_base`,
 `bus_node_v_is_the_raw_voltage_behind_the_per_unit_arrays` (`exec/view.rs`);
