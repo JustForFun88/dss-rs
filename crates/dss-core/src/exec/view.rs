@@ -3,6 +3,7 @@
 //! Split out of `exec/mod.rs`.
 
 use super::*;
+use crate::circuit::controls::{ControlCategory, control_category};
 use crate::report::export::json::{
     JsonOpts, build as json_build, circuit as json_circuit, serialize as json_serialize,
 };
@@ -161,6 +162,64 @@ pub struct ElementSnapshot {
     /// (`''` on capi, `'0'` on r4133) are a capture-boundary shape normalized
     /// in the harness comparator; the engine's answer is simply `None`.
     pub energy_meter: Option<String>,
+    /// `CktElement.PhaseLosses`: the complex losses of each **phase** (length
+    /// `n_phases`), `Σ_terminals NodeV[NodeRef[k]]·conj(Iterminal[k])` at
+    /// `k = j·NConds + i`, neutral conductors ignored —
+    /// [`CktElement::phase_losses`](crate::elements::traits::CktElement::phase_losses),
+    /// the port of r4133 `Common/CktElement.pas:1078-1116`
+    /// (`TDSSCktElement.GetPhaseLosses`).
+    ///
+    /// **W/var here**, like [`loss_w`](Self::loss_w): both oracle surfaces scale
+    /// by `0.001` at the API boundary — r4133 `DDLL/DCktElement.pas:636-658`
+    /// (`CktElementV` mode `6`), capi `CAPI/CAPI_Alt.pas:449-467`
+    /// (`Alt_CE_Get_PhaseLosses`, facade `CAPI/CAPI_CktElement.pas:327-338`) —
+    /// so the kW/kvar rendering is a capture-boundary encoding and lives in the
+    /// harness comparator, exactly as the interleaved re/im array does. A
+    /// fastdss `ICktElement._columns` surface
+    /// (`git -C .inputs/DSS-Python show origin/fastdss:dss/ICktElement.py`).
+    ///
+    /// This is a **cache-aware** quantity (`ComputeIterminal`,
+    /// `Common/CktElement.pas:1088`) like `Powers`/`Losses`, so it is read from
+    /// the one fresh terminal current this snapshot computes and it shares their
+    /// `newton*` lane exclusion (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`).
+    pub phase_losses: Vec<num_complex::Complex64>,
+    /// `CktElement.NumControls` — `ControlElementList.ListSize`, with **no**
+    /// `Enabled` filter on either channel: r4133 `DDLL/DCktElement.pas:237-241`
+    /// (`CktElementI` mode `9`), capi `CAPI/CAPI_CktElement.pas:939-948`.
+    /// A fastdss `ICktElement._columns` surface.
+    ///
+    /// Derived, with the four scalars below, from
+    /// [`crate::circuit::controls::derive_control_lists`] — the port stores only
+    /// the forward control → element reference.
+    pub num_controls: usize,
+    /// `CktElement.OCPDevIndex` — the **1-based** position in
+    /// `ControlElementList` of the first Fuse/Recloser/Relay, `0` when there is
+    /// none: r4133 `DDLL/DCktElement.pas:242-258` (mode `10`), capi
+    /// `CAPI/CAPI_CktElement.pas:951-976` (the identical
+    /// `repeat … until (i > listSize) or (Result > 0)`).
+    pub ocp_dev_index: usize,
+    /// `CktElement.OCPDevType` — `GetOCPDeviceType`'s code for that same first
+    /// OCP member: `1` Fuse, `2` Recloser, `3` Relay, `0` none. r4133
+    /// `Common/Utilities.pas:3165-3184` (reached from `DDLL/DCktElement.pas:259-262`,
+    /// mode `11`), capi `CAPI/CAPI_CktElement.pas:978-988`.
+    ///
+    /// Recomputed from the list on every read, never latched: upstream's scan
+    /// has no `Enabled` test, so a **disabled** OCP control still occupies its
+    /// slot and still wins (measured on both channels; pinned by
+    /// `exec::tests::element_extras::a_disabled_ocp_control_still_wins_the_ocp_scan`).
+    /// The reliability sweep's `CktElementData::ocp_device_type` is a different,
+    /// registration-time latch and is deliberately not read here.
+    pub ocp_dev_type: i32,
+    /// `CktElement.HasVoltControl` — "any member of `ControlElementList` is a
+    /// `CAP_CONTROL` or a `REG_CONTROL`": r4133 `DDLL/DCktElement.pas:222-236`
+    /// (mode `8`; its `else Result := 0` is re-evaluated per member but the loop
+    /// `Exit`s on a hit, so it is still "any"), capi
+    /// `CAPI/CAPI_CktElement.pas:689-710`.
+    pub has_volt_control: bool,
+    /// `CktElement.HasSwitchControl` — "any member is a `SWT_CONTROL`": r4133
+    /// `DDLL/DCktElement.pas:207-221` (mode `7`), capi
+    /// `CAPI/CAPI_CktElement.pas:713-734`.
+    pub has_switch_control: bool,
 }
 
 /// `(n, [(row, col, value)])` — the assembled, unfactored system Y as 0-based
@@ -256,6 +315,14 @@ impl Dss {
                 )
             })
             .collect();
+        // Pascal gives every element its own `ControlElementList`
+        // (`Common/CktElement.pas:100`, `:223`); the port stores only the
+        // forward control → element reference, so the five control-derived
+        // scalars read a map derived once here — before the element loop takes
+        // its own mutable borrow of `classes` — from the circuit-wide attach
+        // order. Same helper `Show Controlled` uses, so the report and this
+        // reader cannot drift.
+        let control_lists = crate::circuit::controls::derive_control_lists(classes, ckt);
         let mut out = Vec::with_capacity(ckt.ckt_elements.len());
         for &r in &ckt.ckt_elements {
             let class_name = classes[r.class_ord()].props.class_name();
@@ -337,6 +404,15 @@ impl Dss {
             // (`refresh_iterminal` stamps it for this `SolutionCount`), i.e.
             // Powers and Losses are one and the same current by construction.
             let loss = elem.losses(&sys, &node_v);
+            // `PhaseLosses` — the same cache-aware `ComputeIterminal`
+            // (r4133 `Common/CktElement.pas:1088`), so it reads the one current
+            // Powers and Losses just used: the `refresh_iterminal` above stamped
+            // it for this `SolutionCount`. Read here, before the Currents
+            // refresh below, so this element's three cache-aware quantities are
+            // one and the same current — the port-side twin of the capture-order
+            // rule the two oracle transports obey (§1.1(a): group A before
+            // group B).
+            let phase_losses = elem.phase_losses(&sys, &node_v);
             // Currents: fresh recompute from the converged `NodeV` (oracle
             // `GetCurrents`), overwriting the `Iterminal` cache after Powers/Losses.
             if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
@@ -465,6 +541,33 @@ impl Dss {
             } else {
                 None
             };
+            // The five control-derived scalars, all read off this element's
+            // `ControlElementList` (derived above) with no `Enabled` filter
+            // anywhere — neither oracle has one: r4133
+            // `DDLL/DCktElement.pas:207-262` (`CktElementI` modes `7`-`11`) and
+            // `Common/Utilities.pas:3165-3184`, capi
+            // `CAPI/CAPI_CktElement.pas:689-988`. An element with no control has
+            // no map entry (Pascal's empty list): `0`/`0`/`0`/false/false.
+            let controls: &[ElemId] = control_lists.get(&r).map_or(&[], Vec::as_slice);
+            let num_controls = controls.len();
+            let has_switch_control = controls
+                .iter()
+                .any(|&c| control_category(c) == ControlCategory::Swt);
+            let has_volt_control = controls.iter().any(|&c| {
+                matches!(
+                    control_category(c),
+                    ControlCategory::Cap | ControlCategory::Reg
+                )
+            });
+            // One scan serves both OCP scalars — upstream runs the same
+            // "stop at the first Fuse/Recloser/Relay" loop twice, once returning
+            // the 1-based position (`OCPDevIndex`) and once the class code
+            // (`OCPDevType`), so they can only ever be zero together.
+            let ocp = controls
+                .iter()
+                .position(|&c| control_category(c).is_ocp())
+                .map(|p| (p + 1, control_category(controls[p]).ocp_code()));
+            let (ocp_dev_index, ocp_dev_type) = ocp.unwrap_or((0, 0));
             out.push(ElementSnapshot {
                 name,
                 enabled: cd.enabled,
@@ -480,6 +583,12 @@ impl Dss {
                 n_phases: cd.nphases,
                 node_order,
                 energy_meter,
+                phase_losses,
+                num_controls,
+                ocp_dev_index,
+                ocp_dev_type,
+                has_volt_control,
+                has_switch_control,
             });
         }
         // NCIM needs **no** reporting override here any more (RP3.13). Two used

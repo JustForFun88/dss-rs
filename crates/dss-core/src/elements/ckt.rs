@@ -178,12 +178,21 @@ pub struct CktElementData {
     pub accumulated_miles_downstream: f64,
     /// `BranchSectionID`: feeder section this branch belongs to.
     pub branch_section_id: i32,
-    /// [`OcpDeviceType`] of the over-current-protection control at the head of
-    /// this branch's section. Set when an enabled Relay/Recloser/Fuse resolves
-    /// its controlled element (the first OCP control registered wins, matching
-    /// Pascal `GetOCPDeviceType`'s `ControlElementList` scan, which stops at the
-    /// first match). Read only by the reliability sweep when `HAS_OCP_DEVICE`
-    /// is set.
+    /// Registration record: the [`OcpDeviceType`] of the **first enabled**
+    /// over-current-protection control that resolved its controlled element to
+    /// this one (`exec/command.rs`, `RefAction::SetOcpDevice`, first write
+    /// wins — the same write that raises `HAS_OCP_DEVICE`).
+    ///
+    /// **Not** Pascal's `GetOCPDeviceType` and no longer read by the
+    /// reliability sweep (GOLDEN_REBASE G1.3d(ii), adjacent defect A-1): that
+    /// scan has no `Enabled` filter and answers from the live
+    /// `ControlElementList` order, so the two disagree whenever the element's
+    /// first list member is a disabled or later-attached control of another
+    /// class. The sweep recomputes it at
+    /// `solution::meters::reliability::live_ocp_device_type` (r4133
+    /// `Meters/EnergyMeter.pas:2538`), pinned by
+    /// `exec::tests::reliability::section_device_type_is_the_live_ocp_scan_not_the_registration_latch`.
+    /// Retiring this field is A-1's tail; it is read only by tests today.
     pub ocp_device_type: OcpDeviceType,
 }
 

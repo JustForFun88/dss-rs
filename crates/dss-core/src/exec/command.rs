@@ -2176,6 +2176,33 @@ pub(super) fn apply_edit_signal_tail(
             }
         }
     }
+
+    // Pascal `RecalcElementData` of a control ends by re-assigning
+    // `ControlledElement`, which is the property setter
+    // `TControlElem.Set_ControlledElement` (r4133
+    // `Controls/ControlElem.pas:113-131`): remove self from the previous
+    // target's `ControlElementList`, append to the new target's. r4133 runs it
+    // on EVERY edit (`Controls/Relay.pas:955` from `:626`; `Recloser.pas:702`,
+    // `SwtControl.pas:332`, `CapControl.pas:580`, `RegControl.pas:693`,
+    // `Controls/fuse.pas`), so a re-edited control moves to the end of its
+    // element's list. capi 0.14.5 instead makes `ControlledElement` a
+    // property-write target (`Controls/Relay.pas:439-441`) and leaves the order
+    // alone on a re-edit — r4133 is the behavioral authority (`DIVERGENCES.md`).
+    //
+    // This is that moment: the edit is over (`end_edit` = `RecalcElementData`
+    // has run, and so have the deferred ref-actions), so `controlled_element()`
+    // is the control's final target for this edit. Guarded on the class kind —
+    // only a `TControlElem` has a `ControlElementList` membership to maintain.
+    if classes[ci].kind == Some(crate::circuit::ElemKind::Control)
+        && let Some(ckt) = circuit.as_mut()
+    {
+        let attached = classes[ci]
+            .arena
+            .try_ckt_elem(oi)
+            .and_then(|ce| ce.controlled_element())
+            .is_some();
+        ckt.reattach_control(classes[ci].arena.id(oi), attached);
+    }
 }
 
 /// Apply a resolved generic file-backed numeric-array directive (WPG.19, Pascal

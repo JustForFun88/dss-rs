@@ -2496,3 +2496,63 @@ field-by-field by `tests/corpus/ledger.json` entry
 needs no entry at all**, and both numbers are pinned by
 `dss_core::exec::tests::derived_polar::capcontrol_time_voltages_follow_the_monitored_elements_terminal`.
 No EPRI report is owed — r4133 is the side that is right.
+
+## L9 — a control re-attaches to the END of its element's `ControlElementList` on every Edit (capi 0.14.5 only on a `SwitchedObj` write) — GOLDEN_REBASE G1.3d(ii), 2026-09-05
+
+**Observable.** `CktElement.OCPDevIndex` / `OCPDevType` / `NumControls` /
+`HasVoltControl` / `HasSwitchControl` all answer from the element's
+`ControlElementList`, so their answer depends on the list's ORDER whenever an
+element carries controls of more than one class. Probed on a 3-phase line
+carrying `Relay.r`, `Fuse.f` and `SwtControl.s` (attached in that order): all
+three engines report `OCPDevType = 3` (Relay) after the build; after
+`edit relay.r delay=0.05` + `solve`, **EPRI r4133 answers 1 (the Fuse)** because
+the relay moved to the end of the list, while **dss_capi 0.14.5 still answers 3**.
+
+**EPRI r4133 (the authority).** `TControlElem.Set_ControlledElement`
+(`Version8/Source/Controls/ControlElem.pas:113-131`) is a remove-then-append:
+`RemoveSelfFromControlElementList` (`:81-99`) rebuilds the list omitting self,
+then `ControlElementList.Add(Self)` appends at the end. r4133 re-assigns
+`ControlledElement := ActiveCircuit[ActorID].CktElements.Get(DevIndex)` inside
+**`RecalcElementData`** — i.e. on **every** edit — for each of the six control
+classes that join a list (`Controls/Relay.pas:955`, reached from `:626`;
+`Recloser.pas:702`, `SwtControl.pas:332`, `CapControl.pas:580`,
+`RegControl.pas:693`, `fuse.pas:470`). **capi 0.14.5** instead makes
+`ControlledElement` a property-write target
+(`.inputs/dss_capi/src/Controls/Relay.pas:439-441`: `PropertyOffset[SwitchedObj]
+:= @obj.FControlledElement`, `PropertyWriteFunction := @SetControlledElement`),
+so an edit that does not write `SwitchedObj` leaves the list order untouched.
+
+**Decision — port follows r4133.** The port materialised no `ControlElementList`
+at all (`report/show/controlled.rs` scanned `Circuit::controls`, i.e. *creation*
+order, and `CktElementData::ocp_device_type` was a latch written once at
+registration). G1.3d(ii) adds the list as a circuit-wide attach order
+(`Circuit::control_attach_order`, maintained by `Circuit::reattach_control` at
+the port's `RecalcElementData` moment) bucketed per element by
+`circuit::controls::derive_control_lists`, which `Show Controlled`, the five
+`CktElement` scalars and the reliability sweep's live `GetOCPDeviceType` all
+share. `Circuit::controls` — the *sampling* order, which no oracle exposes and
+which a reorder would move control-action event logs — is deliberately untouched.
+
+**Nothing is masked: the divergence costs 0 ledger rows because it is not
+observable on the corpus.** It needs an element carrying controls of two classes
+*and* a later re-edit; a live capi census over `tests/corpus/controls/**` (106
+decks, 97 compiled) finds 60 controlled elements with `max NumControls = 1` and
+**zero** elements with two controls, and the one static heterogeneous candidate
+in the whole corpus is a merge artefact of two self-contained decks. Both numbers
+are pinned in-engine by
+`dss_core::exec::tests::element_extras::ocp_dev_type_follows_the_last_attach_order`
+(port and r4133 `1`, capi 0.14.5 `3`), with
+`the_control_sampling_order_is_not_reordered_by_a_re_edit` guarding the sampling
+order and `only_six_control_classes_join_an_elements_control_list` guarding the
+class set. No EPRI report is owed — r4133 is the side that is right; capi 0.14.5
+is a numeric oracle only.
+
+**A second, non-divergent fact settled with it.** `GetOCPDeviceType`
+(r4133 `Common/Utilities.pas:3165-3184`) has **no `Enabled` test**, so a
+*disabled* OCP control still holds its slot and still wins the scan; both
+channels agree (`Line.l2` with a disabled `Fuse.fd` ahead of an enabled
+`Relay.rd` reads `OCPDevType = 1` on capi and on r4133). The port's registration
+latch answered `3` there, so the accessors recompute from the derived list with
+no `Enabled` filter anywhere — pinned by
+`a_disabled_ocp_control_still_wins_the_ocp_scan`, and the same live scan replaced
+the latch in the reliability sweep (`Meters/EnergyMeter.pas:2538`).

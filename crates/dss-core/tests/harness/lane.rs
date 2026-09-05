@@ -100,8 +100,8 @@ pub const PARITY: bool = cfg!(feature = "oracle-parity");
 /// part of `cargo test` at all.
 pub const ITER_SLACK: i32 = 1;
 
-/// The corpus cases whose element `Powers`/`Losses` **neither** lane
-/// oracle-compares — the drift model's "deliberate divergences … excluded
+/// The corpus cases whose element `Powers`/`Losses`/`PhaseLosses` **neither**
+/// lane oracle-compares — the drift model's "deliberate divergences … excluded
 /// field-by-field" row, and the only such exclusion in the suite.
 ///
 /// CLAUDE.md upstream bug 5, torn down in both lanes by
@@ -123,8 +123,12 @@ pub const ITER_SLACK: i32 = 1;
 /// exclusion stays these two decks' two channels and nothing wider.
 ///
 /// **What still gates them**: the element name set, terminal **currents**, node
-/// voltages, the system Y, discrete state, and the iteration count — everything
-/// except the two `S = V·conj(I)` channels. Those are pinned by
+/// voltages, the system Y, discrete state, the ten discrete per-element extras
+/// and the iteration count — everything except the three `S = V·conj(I)`
+/// channels (`Powers`, `Losses` and, since G1.3d(ii), `PhaseLosses` — the same
+/// products bucketed by phase, reached through the same cache-aware
+/// `ComputeIterminal`; `harness::compare_element_phase_losses` still asserts its
+/// array shapes there). Those are pinned by
 /// `dss_core::exec::tests::newton::newton_powers_match_the_normal_algorithm`,
 /// which asserts the Newton powers equal the *normal* algorithm's on the same
 /// deck to 1e-8 kVA (upstream's stale read differs by ≥ 1e-1 kVA) — and the
@@ -133,10 +137,10 @@ pub const ITER_SLACK: i32 = 1;
 const LANE_SKIP_ELEM_POWERS: &[&str] =
     &["modes:newton/newton.dss", "modes:newton/newton_feeder.dss"];
 
-// LANE-EXCLUSION(POWERS_REUSE_STALE_NEWTON_ITERMINAL): the two decks' powers and
-// losses are dropped from the oracle compare in **both** lanes — no oracle
-// channel reports them at the converged `NodeV`, so there is no lane in which
-// comparing them would be right.
+// LANE-EXCLUSION(POWERS_REUSE_STALE_NEWTON_ITERMINAL): the two decks' powers,
+// losses and per-phase losses are dropped from the oracle compare in **both**
+// lanes — no oracle channel reports them at the converged `NodeV`, so there is
+// no lane in which comparing them would be right.
 /// Which element sub-channels the corpus gate oracle-compares for the case
 /// `label` — [`ElemChannels::ALL`] everywhere except [`LANE_SKIP_ELEM_POWERS`],
 /// in either lane.
@@ -155,6 +159,23 @@ const LANE_SKIP_ELEM_POWERS: &[&str] =
 /// `NodeV` through `NodeRef` (`:1096-1100`), never `Iterminal`. So the two decks
 /// *gain* three oracle-compared channels here — a strengthening, not a widening
 /// — and [`ElemChannels::CURRENTS_ONLY`] keeps all three `true`.
+///
+/// # G1.3d(ii): `PhaseLosses` DOES join it
+///
+/// The fourth surface added since — `PhaseLosses`
+/// (`GOLDEN_REBASE_PLAN.md` G1.3d(ii)) — is on the other side of that same
+/// line: `GetPhaseLosses` opens with the identical cache-aware
+/// `ComputeIterminal` (r4133 `Common/CktElement.pas:1088`, capi
+/// `src/Common/CktElement.pas:897`) and forms the identical
+/// `NodeV·conj(Iterminal)` products, merely bucketed by phase instead of summed,
+/// so no oracle channel reports it at the converged `NodeV` on these two decks
+/// either. [`ElemChannels::CURRENTS_ONLY`] therefore clears
+/// `phase_losses` — the value compare only; the port-side identity
+/// `Σ_i PhaseLosses[i] = Losses` is pinned in-engine by
+/// `dss_core::exec::tests::element_extras::phase_losses_are_watts_and_sum_to_get_losses`
+/// beside this row's own `newton_powers_match_the_normal_algorithm`, and
+/// `harness::compare_element_phase_losses` keeps asserting the array shapes on
+/// these decks under every channel policy.
 pub fn elem_channels_for(label: &str) -> ElemChannels {
     if LANE_SKIP_ELEM_POWERS.contains(&label) {
         ElemChannels::CURRENTS_ONLY
