@@ -23,7 +23,7 @@
 //! `crates/dss-core/tests/capture_order.rs` rather than merely stated here:
 //!
 //! * **`Solution.BusLevels`** (`SolutionV` mode 2, `DSolution.pas:569-588`)
-//!   sizes its buffer `length(Inc_Mat_Levels) - 1` (`:578`) and then writes
+//!   sizes its buffer `length(Inc_Mat_Levels) - 1` (`:577`) and then writes
 //!   `0..ArrSize` **inclusive** (`:581`) — one element past the end. The r4133
 //!   bridge refuses the mode before the call
 //!   (`crates/dss-epri/src/modes.rs`'s `DO_NOT_CALL` register), and a quantity
@@ -447,16 +447,44 @@ static ROW_VISITS: AtomicUsize = AtomicUsize::new(0);
 /// non-vacuity half: a census of `0 / 0` means nothing was compared, not that
 /// nothing declined.
 static COMPARED: AtomicUsize = AtomicUsize::new(0);
+/// Of [`COMPARED`], the ones on the `capi_v0145` channel.
+static COMPARED_CAPI: AtomicUsize = AtomicUsize::new(0);
+/// Of [`COMPARED`], the ones on the `r4133` channel.
+static COMPARED_R4133: AtomicUsize = AtomicUsize::new(0);
 
 /// What the live gate measured in this process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DeclineCensus {
     /// `(case, step, channel)` incidence comparisons run.
     pub compared: usize,
+    /// Of [`DeclineCensus::compared`], the `capi_v0145` ones.
+    pub compared_capi: usize,
+    /// Of [`DeclineCensus::compared`], the `r4133` ones.
+    pub compared_r4133: usize,
     /// S-INC: `(cases, case-steps)` whose row map is not the identity.
     pub rows: (usize, usize),
     /// S-INC channel visits (a `both` case-step counts twice).
     pub row_visits: usize,
+}
+
+/// Which gating channels the **manifests** ask the incidence surface for, read
+/// off the four manifests by the caller (`corpus_gate::scheduler`) rather than
+/// off this run's own counters — the arming predicate G1.7 landed
+/// (`scheduler::assert_topology_declines_are_the_pinned_population`) and the
+/// reason a re-mask of the comparator's call site cannot go quiet here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RequestedChannels {
+    /// A live case gated `capi_v0145` or `both` requests `compare_inc_matrix`.
+    pub capi: bool,
+    /// A live case gated `r4133` or `both` requests `compare_inc_matrix`.
+    pub r4133: bool,
+}
+
+impl RequestedChannels {
+    /// Any live case requests the surface at all.
+    pub fn any(self) -> bool {
+        self.capi || self.r4133
+    }
 }
 
 fn lock<T>(m: &'static Mutex<T>) -> std::sync::MutexGuard<'static, T> {
@@ -476,6 +504,8 @@ pub fn decline_census() -> DeclineCensus {
     let rows = lock(&ROW_DECLINES);
     DeclineCensus {
         compared: COMPARED.load(AtomicOrd::Relaxed),
+        compared_capi: COMPARED_CAPI.load(AtomicOrd::Relaxed),
+        compared_r4133: COMPARED_R4133.load(AtomicOrd::Relaxed),
         rows: cases_and_steps(&rows),
         row_visits: ROW_VISITS.load(AtomicOrd::Relaxed),
     }
@@ -537,23 +567,27 @@ pub const INC_UPSTREAM_ROW_DECLINES: (usize, usize) = (4, 5);
 ///
 /// * `DSS_GATE_ONLY` is set — a filtered run holds a filtered population, so its
 ///   census cannot be the pinned one (the mandatory gate never sets it).
-/// * No comparison ran at all, which while G1.8's surface flag is unwired is the
-///   honest state of the world. Unlike G1.7's twin, this arming predicate is the
-///   run's own comparison counter rather than a re-read of the manifests, for
-///   two reasons: this module compiles into ~20 test binaries that have no
-///   manifest access, and the counter is *tighter* — it observes the surface
-///   actually being consumed rather than being declared. It gives up nothing,
-///   because the three ways the surface could go quiet are each caught elsewhere
-///   and loudly: a masked capture request fails
-///   [`capture_guard::require_capture_opt`] at the first flagged case, a dropped
-///   manifest declaration moves `tests/corpus/manifests/population.lock.json`,
-///   and a changed force rule fails `corpus_gate::scheduler`'s forced-population
-///   re-derivation.
-pub fn assert_declines_are_the_pinned_population() {
+/// * **No manifest case requests the surface at all** — a fact about the
+///   manifests, which is why `requested` is read off them by the caller
+///   (`corpus_gate::scheduler::inc_matrix_requested_channels`) and passed in:
+///   this module compiles into ~20 test binaries that have no manifest access.
+///
+/// It is emphatically **not** silent when the manifests do request the surface
+/// and nothing was compared. That is the G1.8 audit-settlement fix (2026-09-05,
+/// findings G18-CODE-1 / G18-T1): the previous arming predicate was this run's
+/// own `compared` counter, so deleting or narrowing the comparator's call site
+/// (`corpus_gate::runner`'s `if c.compare_inc_matrix` block) silenced the whole
+/// surface with a green gate — [`capture_guard::require_capture_opt`] lives
+/// INSIDE that block, `population.lock.json` records only the manifest flag, and
+/// the forced-population re-derivation only sees the scheduler-side flag. The
+/// per-channel halves catch the *partial* re-mask the total cannot see (a
+/// `channel == CapiV0145` guard would leave `compared > 0` while the 83
+/// r4133-only cases stopped being compared).
+pub fn assert_declines_are_the_pinned_population(requested: RequestedChannels) {
     if std::env::var("DSS_GATE_ONLY").is_ok() {
         return;
     }
-    check_census(decline_census(), &decline_report());
+    check_census(decline_census(), &decline_report(), requested);
 }
 
 /// The rule itself, over **injected** values — split out for the reason
@@ -562,25 +596,53 @@ pub fn assert_declines_are_the_pinned_population() {
 /// depending on whether some other test in the same binary happened to run a
 /// comparison first.
 #[track_caller]
-fn check_census(census: DeclineCensus, report: &str) {
-    if census.compared == 0 {
+fn check_census(census: DeclineCensus, report: &str, requested: RequestedChannels) {
+    if !requested.any() {
         assert_eq!(
-            census.rows,
-            (0, 0),
-            "no (case, step, channel) triple reached `compare_inc_matrix`, yet \
-             the S-INC census recorded declines: {census:?}"
+            (census.compared, census.rows),
+            (0, (0, 0)),
+            "no manifest case requests `compare_inc_matrix`, yet the incidence \
+             comparator ran: {census:?}"
         );
         eprintln!(
             "corpus_gate inc_matrix: the surface is not requested by any live \
-             case (GOLDEN_REBASE G1.8 F6 wires the flag) — nothing to re-derive"
+             case — nothing to re-derive"
         );
         return;
     }
     eprintln!(
-        "corpus_gate inc_matrix: {} compared (case, step, channel) triple(s); \
-         S-INC row-cursor declines {:?} ({} channel visit(s))\n  {report}",
-        census.compared, census.rows, census.row_visits,
+        "corpus_gate inc_matrix: {} compared (case, step, channel) triple(s) \
+         ({} capi_v0145, {} r4133); S-INC row-cursor declines {:?} ({} channel \
+         visit(s))\n  {report}",
+        census.compared,
+        census.compared_capi,
+        census.compared_r4133,
+        census.rows,
+        census.row_visits,
     );
+    assert!(
+        census.compared > 0,
+        "the incidence compare never ran: a live case requests \
+         `compare_inc_matrix` but no (case, step, channel) triple reached \
+         `harness::inc_matrix::compare_inc_matrix`. The request is masked off \
+         somewhere between the manifest and the comparator's call site \
+         (`corpus_gate::runner`'s `if c.compare_inc_matrix` block, \
+         `build_run_request`, the capture sites) — settlement S-INC's population \
+         below would then be trivially 0 and its pins would say nothing."
+    );
+    for (channel, requested, ran) in [
+        ("capi_v0145", requested.capi, census.compared_capi),
+        ("r4133", requested.r4133, census.compared_r4133),
+    ] {
+        assert!(
+            !requested || ran > 0,
+            "the incidence compare never ran on `{channel}`, yet a live case \
+             gated on it requests `compare_inc_matrix`: {census:?}. A per-channel \
+             re-mask at the comparator's call site is invisible to the total \
+             above — all four S-INC declining decks are `both`-gated, so they \
+             keep recording through the other channel."
+        );
+    }
     assert_eq!(
         census.rows, INC_UPSTREAM_ROW_DECLINES,
         "the S-INC row-cursor decline population moved (measured {:?}, pinned \
@@ -692,6 +754,16 @@ pub fn compare_inc_matrix(
         record_row_decline(case, step);
     }
     COMPARED.fetch_add(1, AtomicOrd::Relaxed);
+    // Per channel too, so a re-mask that keeps ONE channel walking still reds in
+    // the epilogue (G1.8 audit settlement, finding G18-T1). An unknown tag is
+    // counted in the total only — `PropsChannel::tag` is the single producer
+    // (`corpus_gate::runner::channel_tag`) and the epilogue's per-channel arms
+    // are keyed on exactly those two spellings.
+    match channel {
+        "capi_v0145" => COMPARED_CAPI.fetch_add(1, AtomicOrd::Relaxed),
+        "r4133" => COMPARED_R4133.fetch_add(1, AtomicOrd::Relaxed),
+        _ => 0,
+    };
 }
 
 #[cfg(test)]
@@ -981,22 +1053,55 @@ mod tests {
     fn the_census_epilogue_self_silences_only_on_an_empty_run() {
         let c = |compared, rows| DeclineCensus {
             compared,
+            compared_capi: compared / 2,
+            compared_r4133: compared - compared / 2,
             rows,
             row_visits: 0,
         };
-        // Nothing compared: silent (the state while F6 has not wired the flag).
-        check_census(c(0, (0, 0)), "report");
-        // Nothing compared yet declines recorded: impossible, and refused.
-        let msg = panic_message(|| check_census(c(0, (1, 1)), "report"));
-        assert!(
-            msg.contains("yet the S-INC census recorded declines"),
-            "{msg}"
+        let both = RequestedChannels {
+            capi: true,
+            r4133: true,
+        };
+        let none = RequestedChannels {
+            capi: false,
+            r4133: false,
+        };
+        // Nothing REQUESTED: silent — a fact about the manifests, not about this
+        // run's counters (G1.8 audit settlement, G18-CODE-1 / G18-T1).
+        check_census(c(0, (0, 0)), "report", none);
+        // Nothing requested yet the comparator ran: impossible, and refused.
+        let msg = panic_message(|| check_census(c(4, (0, 0)), "report", none));
+        assert!(msg.contains("yet the incidence comparator ran"), "{msg}");
+        let msg = panic_message(|| check_census(c(0, (1, 1)), "report", none));
+        assert!(msg.contains("yet the incidence comparator ran"), "{msg}");
+        // Requested but never compared — the call site went quiet. The OLD
+        // predicate passed here; this is the finding's regression test.
+        let msg = panic_message(|| check_census(c(0, (0, 0)), "report", both));
+        assert!(msg.contains("the incidence compare never ran"), "{msg}");
+        // And requested on a channel that never ran, while the other did.
+        let one_sided = DeclineCensus {
+            compared: 880,
+            compared_capi: 880,
+            compared_r4133: 0,
+            rows: INC_UPSTREAM_ROW_DECLINES,
+            row_visits: 0,
+        };
+        let msg = panic_message(move || check_census(one_sided, "report", both));
+        assert!(msg.contains("never ran on `r4133`"), "{msg}");
+        // …and the same census is fine when only capi is requested.
+        check_census(
+            one_sided,
+            "report",
+            RequestedChannels {
+                capi: true,
+                r4133: false,
+            },
         );
         // The pinned population, exactly: silent.
-        check_census(c(880, INC_UPSTREAM_ROW_DECLINES), "report");
+        check_census(c(880, INC_UPSTREAM_ROW_DECLINES), "report", both);
         // A shrink and a growth both red, and the message names both numbers.
         for measured in [(3, 5), (5, 6), (0, 0)] {
-            let msg = panic_message(move || check_census(c(880, measured), "the report"));
+            let msg = panic_message(move || check_census(c(880, measured), "the report", both));
             assert!(msg.contains(&format!("measured {measured:?}")), "{msg}");
             assert!(
                 msg.contains(&format!("pinned {INC_UPSTREAM_ROW_DECLINES:?}")),

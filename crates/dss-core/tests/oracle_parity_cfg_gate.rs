@@ -4145,10 +4145,15 @@ fn the_g1_7_pins_the_docs_cite_exist_exactly_once() {
 /// NOT in the list — `capture_order.rs` names it in two search needles and once
 /// more in a synthetic fixture, so a count there would pin test scaffolding
 /// rather than the capture.
-const G1_8_PINS: [(&str, usize); 22] = [
+const G1_8_PINS: [(&str, usize); 26] = [
     // the capture-order gates (`crates/dss-core/tests/capture_order.rs`)
     ("capi_capture_reads_the_incidence_surface_last", 1),
     ("r4133_capture_reads_the_incidence_surface_last", 1),
+    ("check_inc_matrix_last", 1),
+    (
+        "the_capi_incidence_transport_refuses_a_shape_it_was_not_written_for",
+        1,
+    ),
     (
         "the_incidence_capture_issues_calcincmatrix_then_calclaplacian",
         1,
@@ -4190,6 +4195,20 @@ const G1_8_PINS: [(&str, usize); 22] = [
     ("compare_inc_matrix", 1),
     ("inc_matrix_view", 1),
     ("inc_matrix_cols", 1),
+    // the r4133 bridge's two typed integer accessors
+    ("solution_inc_matrix", 1),
+    ("solution_laplacian", 1),
+];
+
+/// The G1.8 **constants** the same documents cite by name — the `fn {pin}(`
+/// needle above cannot see them, so `INC_UPSTREAM_ROW_DECLINES` (cited by three
+/// of the four documents, and the whole of settlement S-INC's fail-on-stale
+/// discipline) sat outside the guard until the G1.8 audit settlement
+/// (finding G18-T3).
+const G1_8_CONSTS: [(&str, usize); 3] = [
+    ("INC_UPSTREAM_ROW_DECLINES", 1),
+    ("FORCED_INC_MATRIX_POPULATION", 1),
+    ("INC_MATRIX_DECLARED_IN_MANIFEST", 1),
 ];
 
 /// The documents that cite the G1.8 names, same rule as [`G1_9_PIN_DOCS`].
@@ -4230,6 +4249,24 @@ fn the_g1_8_pins_the_docs_cite_exist_exactly_once() {
             docs.iter().any(|d| d.contains(pin)),
             "the G1.8 name `{pin}` is in this registry but no longer named by any \
              of {} — either restore the citation or drop it from the list",
+            G1_8_PIN_DOCS.join(" / ")
+        );
+    }
+
+    for (konst, want) in G1_8_CONSTS {
+        let needle = format!("const {konst}");
+        let defs: usize = sources.iter().map(|t| t.matches(&needle).count()).sum();
+        assert_eq!(
+            defs,
+            want,
+            "the G1.8 constant `{konst}` is defined {defs} times in the tree, \
+             expected exactly {want} — {} cite it by name",
+            G1_8_PIN_DOCS.join(" / ")
+        );
+        assert!(
+            docs.iter().any(|d| d.contains(konst)),
+            "the G1.8 constant `{konst}` is in this registry but no longer named \
+             by any of {} — either restore the citation or drop it from the list",
             G1_8_PIN_DOCS.join(" / ")
         );
     }
