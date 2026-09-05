@@ -4327,7 +4327,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:1895-1900` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:1896-1901` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -4356,7 +4356,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:1895-1900` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:1896-1901` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -4420,7 +4420,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     **compare** on r4133. The exclusion is a statement about the 0.14.5
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
-    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1895-1900`
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1896-1901`
     //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
@@ -4466,7 +4466,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///
 /// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1895-1900` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1896-1901` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
@@ -4659,7 +4659,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1895-1900`
+    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1896-1901`
     /// forbids masking there, plus the two `pctperm` rows RP2.1 measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {
@@ -8457,7 +8457,7 @@ pub fn compare_all_bus_vmag_pu(
 // second capture.
 //
 // **This surface is not a solve output.** `DistFromMeter` is written only by
-// the EnergyMeter zone build (r4133 `Meters/EnergyMeter.pas:1833-1836` == port
+// the EnergyMeter zone build (r4133 `Meters/EnergyMeter.pas:1833-1838` == port
 // `solution/meters/zones/build.rs:240-251`, which adds
 // `len · ConvertLineUnits(units, UNITS_KM)` per *line* branch and carries the
 // parent's value across every other branch) and reset to `0.0` at the zone
@@ -8486,10 +8486,12 @@ static DISTANCE_BUSES: AtomicUsize = AtomicUsize::new(0);
 /// EXACTLY, so the number fails on a drop **and** on a growth.
 ///
 /// It is this surface's fail-on-stale, and it exists because the comparator is
-/// an equality over a field that is `0.0` on the ~480 corpus cases with no
-/// EnergyMeter: on those the whole surface is the (real, but trivial) shape
-/// assertion "the port invents no distance", and a regression that stopped the
-/// zone walk from writing distances at all would leave every one of them green.
+/// an equality over a field that is `0.0` on the ~370 forced cases with no
+/// EnergyMeter (a static scan following `Redirect`/`Compile` finds one in
+/// **70** of the 443 — `TESTING.md`): on those the whole surface is the
+/// (real, but trivial) shape assertion "the port invents no distance", and a
+/// regression that stopped the zone walk from writing distances at all would
+/// leave every one of them green.
 /// `population.lock.json` cannot see it either — it fingerprints the manifest
 /// FLAG (this surface sets none of its own, it rides `compare_bus`) and
 /// `MODES_REQUIRED` the deck PATH, never that a deck still builds a meter zone.
@@ -8499,7 +8501,7 @@ static DISTANCE_BUSES: AtomicUsize = AtomicUsize::new(0);
 /// F2's one measured divergence was settled by the `distance` ledger exclusion
 /// (coordinator decision D29 step 3). Never guessed: 867 gating compares over
 /// both channels and every gated step carried at least one non-zero
-/// `DistFromMeter`, and 79 137 individual buses did — the ~40 metered decks
+/// `DistFromMeter`, and 79 137 individual buses did — the 70 metered cases
 /// times their channels, steps and bus counts.
 const DISTANCE_POPULATION: (usize, usize) = (867, 79_137);
 
@@ -8507,9 +8509,10 @@ const DISTANCE_POPULATION: (usize, usize) = (867, 79_137);
 /// distances.
 ///
 /// The single caller is `corpus_gate/runner.rs`'s `compare_bus` block. The
-/// harness' own unit drives call [`compare_bus_distances`] directly and are
-/// deliberately NOT counted, for the reason [`record_sc_study_compare`] gives:
-/// they run in this same test binary and would make the population unstable.
+/// harness' own unit drives ([`bus_distance_comparator_tests`]) call
+/// [`compare_bus_distances`] directly and are deliberately NOT counted, for the
+/// reason [`record_sc_study_compare`] gives: they run in this same test binary
+/// and would make the population unstable.
 pub fn record_distance_compare(nonzero_buses: usize) {
     if nonzero_buses > 0 {
         DISTANCE_WALKS.fetch_add(1, AtomicOrd::Relaxed);
@@ -8561,7 +8564,7 @@ pub fn check_distance_compare_ran(walks: usize, buses: usize) {
 ///
 /// Runs AFTER [`compare_bus`], which pins the bus count and the name sequence
 /// first; the name is re-checked here per bus so the function is honest when
-/// called alone (the harness' own drives do).
+/// called alone, as the offline drives in [`bus_distance_comparator_tests`] do.
 ///
 /// Structure, strongest first:
 /// * every LENGTH — the oracle's two arrays against the port's, and both
@@ -8701,6 +8704,259 @@ pub fn compare_bus_distances(
         );
     }
     nonzero
+}
+
+/// Committed offline drives for [`compare_bus_distances`] — the negative
+/// controls §1.1(f) asks every G1 comparator for, in the shape its three
+/// per-bus siblings use ([`bus_comparator_tests`], [`bus_short_circuit_tests`],
+/// [`bus_seq_vll_comparator_tests`]).
+///
+/// G1.4b shipped the surface with the plan-sanctioned *scratch* corruption only
+/// (a corrupted `exec/view.rs`, run once and reverted), so nothing in the tree
+/// held the comparator's failing direction, and its own doc claimed drives that
+/// did not exist (G1.4b audit AC-1 / AT-1, settled 2026-09-06). These are those
+/// drives: they perturb the ORACLE side of a live port capture, so no product
+/// code is touched, and each rail is pinned by its own panic message.
+///
+/// The one assertion no offline drive can reach is the "port invents no
+/// distance" guard — it fires on the PORT's own state (a non-zero distance from
+/// a circuit that holds no EnergyMeter), unreachable without corrupting the
+/// engine; its evidence stays the scratch drive logged in the G1.4b handoff.
+#[cfg(test)]
+mod bus_distance_comparator_tests {
+    use super::{BusCap, compare_bus_distances};
+    use dss_core::exec::Dss;
+
+    /// The metered radial of `exec/view.rs::bus_distance_tests` (G1.4b F1):
+    /// lengths in km, so the zone walk's `Σ len · ConvertLineUnits` is exactly
+    /// `sourcebus = 0`, `b1 = 1`, `b2 = 1 + 2 = 3`, and the spur `b3` sits
+    /// outside the meter's zone at `0`. Two non-zero buses — enough for a nudge
+    /// to be a real divergence and for the return value to be non-trivial.
+    fn metered() -> Dss {
+        let mut dss = Dss::new();
+        for c in [
+            "clear",
+            "New circuit.dist basekv=12.47 pu=1.0 phases=3 bus1=sourcebus",
+            "New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+            "New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.3 c1=0 length=2 units=km",
+            "New Line.spur bus1=sourcebus bus2=b3 phases=3 r1=0.1 x1=0.3 c1=0 length=5 units=km",
+            "New Load.ld bus1=b2 phases=3 kv=12.47 kw=500 pf=0.95",
+            "New EnergyMeter.em element=Line.l1 terminal=1",
+            "Set voltagebases=[12.47]",
+            "CalcVoltageBases",
+            "Solve",
+        ] {
+            dss.command(c);
+        }
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    /// The capture both transports send for this deck, built from the port's
+    /// own view — the positive control every drive below perturbs. Only the
+    /// fields [`compare_bus_distances`] reads are filled (`name`, `distance`,
+    /// and `kv_base`/`nodes` for the shape); the voltage and short-circuit
+    /// arrays belong to the other comparators' drives.
+    fn capture(dss: &Dss) -> (Vec<BusCap>, Vec<f64>, Vec<f64>) {
+        let caps = dss
+            .all_bus_voltages()
+            .iter()
+            .map(|v| {
+                let mut nodes = v.nodes.clone();
+                nodes.sort_unstable();
+                BusCap {
+                    name: v.name.clone(),
+                    kv_base: v.kv_base,
+                    distance: v.distance,
+                    nodes,
+                    pu_voltages: Vec::new(),
+                    vmag_angle: Vec::new(),
+                    pu_vmag_angle: Vec::new(),
+                    zsc1: Vec::new(),
+                    zsc0: Vec::new(),
+                    zsc: Vec::new(),
+                    ysc: Vec::new(),
+                    isc: Vec::new(),
+                    voc: Vec::new(),
+                    seq_voltages: Vec::new(),
+                    cplx_seq_voltages: Vec::new(),
+                    vll: Vec::new(),
+                    pu_vll: Vec::new(),
+                    vll_declined: false,
+                }
+            })
+            .collect();
+        (caps, dss.all_bus_distances(), dss.all_node_distances())
+    }
+
+    /// The ledger closure of a case with no `distance` entry: nothing excluded.
+    fn nothing(_: &str) -> bool {
+        false
+    }
+
+    /// Positive control: the comparator accepts the engine's own surface, the
+    /// fixture really carries the two non-zero distances the drives perturb,
+    /// and the returned count is the one `record_distance_compare` receives.
+    #[test]
+    fn compare_bus_distances_accepts_the_engines_own_surface() {
+        let dss = metered();
+        let (exp, all_bus, all_node) = capture(&dss);
+        assert_eq!(
+            all_bus,
+            vec![0.0, 1.0, 3.0, 0.0],
+            "the drives below are vacuous unless the zone walk really wrote km"
+        );
+        let nonzero = compare_bus_distances(
+            &dss,
+            &exp,
+            &all_bus,
+            &all_node,
+            &nothing,
+            "positive control",
+        );
+        assert_eq!(nonzero, 2, "b1 and b2 carry a non-zero DistFromMeter");
+        assert_eq!(all_node.len(), 12, "4 three-phase buses × 3 nodes");
+    }
+
+    /// A wrong oracle distance on ONE bus reds — the surface's whole point, and
+    /// the compare is `rel = abs = 0`, so a 1-ULP nudge is already a divergence.
+    #[test]
+    #[should_panic(expected = "bus b1 Distance differs")]
+    fn a_nudged_oracle_distance_reds() {
+        let dss = metered();
+        let (mut exp, all_bus, all_node) = capture(&dss);
+        exp[1].distance = f64::from_bits(exp[1].distance.to_bits() + 1);
+        compare_bus_distances(&dss, &exp, &all_bus, &all_node, &nothing, "nudge");
+    }
+
+    /// …and the `distance` ledger field covers exactly the bus it names: the
+    /// divergence on `b1` is masked, and the closure is consulted ONLY for the
+    /// bus that actually diverged (which is what makes a ledger hit mean
+    /// "masked a real divergence" rather than "matched a name").
+    #[test]
+    fn a_distance_exclusion_covers_only_the_bus_it_names() {
+        let dss = metered();
+        let (mut exp, all_bus, mut all_node) = capture(&dss);
+        exp[1].distance = 42.0;
+        // The oracle's own two identities must still hold on the excluded bus.
+        let mut oracle_all_bus = all_bus.clone();
+        oracle_all_bus[1] = 42.0;
+        all_node[3] = 42.0;
+        all_node[4] = 42.0;
+        all_node[5] = 42.0;
+        let asked = std::cell::RefCell::new(Vec::<String>::new());
+        let only_b1 = |name: &str| {
+            asked.borrow_mut().push(name.to_string());
+            name.eq_ignore_ascii_case("b1")
+        };
+        compare_bus_distances(
+            &dss,
+            &exp,
+            &oracle_all_bus,
+            &all_node,
+            &only_b1,
+            "exclusion",
+        );
+        assert_eq!(
+            asked.into_inner(),
+            vec!["b1".to_string()],
+            "the ledger is consulted lazily, only for a bus that already failed the equality"
+        );
+    }
+
+    /// An exclusion that names another bus does NOT cover this one — the scope
+    /// is per bus name, never per case.
+    #[test]
+    #[should_panic(expected = "bus b1 Distance differs")]
+    fn a_distance_exclusion_naming_another_bus_still_reds() {
+        let dss = metered();
+        let (mut exp, all_bus, all_node) = capture(&dss);
+        exp[1].distance = 42.0;
+        let only_b2 = |name: &str| name.eq_ignore_ascii_case("b2");
+        compare_bus_distances(&dss, &exp, &all_bus, &all_node, &only_b2, "wrong scope");
+    }
+
+    /// The ORACLE-internal identity `AllBusDistances[i] == Bus.Distance` — what
+    /// pins that the oracle's array really is in `BusList` order. An exclusion
+    /// must not silence it: an entry masks a VALUE, never the oracle's shape.
+    #[test]
+    #[should_panic(expected = "is not in BusList order")]
+    fn an_oracle_all_bus_distances_out_of_bus_list_order_reds() {
+        let dss = metered();
+        let (exp, all_bus, all_node) = capture(&dss);
+        let mut oracle_all_bus = all_bus.clone();
+        oracle_all_bus.swap(1, 2);
+        let everything = |_: &str| true;
+        compare_bus_distances(
+            &dss,
+            &exp,
+            &oracle_all_bus,
+            &all_node,
+            &everything,
+            "shuffled",
+        );
+    }
+
+    /// …and the same identity on the node array, whose run lengths are the only
+    /// ordering information it carries.
+    #[test]
+    #[should_panic(expected = "node array is the bus array expanded")]
+    fn a_nudged_oracle_node_entry_reds() {
+        let dss = metered();
+        let (exp, all_bus, mut all_node) = capture(&dss);
+        all_node[4] = 99.0;
+        compare_bus_distances(&dss, &exp, &all_bus, &all_node, &nothing, "node nudge");
+    }
+
+    /// The length rails: a transport that shipped a short node array — or, via
+    /// `#[serde(default)]`, none at all — fails instead of being compared over
+    /// the prefix. Drive C of the G1.4b handoff, made permanent.
+    #[test]
+    #[should_panic(expected = "the oracle's AllNodeDistances has 11 entries")]
+    fn a_short_oracle_node_array_reds() {
+        let dss = metered();
+        let (exp, all_bus, mut all_node) = capture(&dss);
+        all_node.pop();
+        compare_bus_distances(
+            &dss,
+            &exp,
+            &all_bus,
+            &all_node,
+            &nothing,
+            "short node array",
+        );
+    }
+
+    /// …and the same for the bus-level array.
+    #[test]
+    #[should_panic(expected = "the oracle's AllBusDistances has 0 entries")]
+    fn an_empty_oracle_bus_array_reds() {
+        let dss = metered();
+        let (exp, _all_bus, all_node) = capture(&dss);
+        compare_bus_distances(&dss, &exp, &[], &all_node, &nothing, "empty bus array");
+    }
+
+    /// The per-bus name check — what makes the index-for-index pairing honest
+    /// even when this comparator is called alone.
+    #[test]
+    #[should_panic(expected = "bus 1 name differs")]
+    fn a_renamed_bus_reds() {
+        let dss = metered();
+        let (mut exp, all_bus, all_node) = capture(&dss);
+        exp[1].name = "b9".to_string();
+        compare_bus_distances(&dss, &exp, &all_bus, &all_node, &nothing, "renamed");
+    }
+
+    /// A capture with a bus missing fails on the count before anything is
+    /// compared — the pairing is never silently truncated.
+    #[test]
+    #[should_panic(expected = "bus count differs")]
+    fn a_short_capture_reds() {
+        let dss = metered();
+        let (mut exp, all_bus, all_node) = capture(&dss);
+        exp.pop();
+        compare_bus_distances(&dss, &exp, &all_bus, &all_node, &nothing, "short capture");
+    }
 }
 
 // ---------------------------------------------------------------------------

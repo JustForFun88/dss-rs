@@ -775,7 +775,7 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
     * `distance` — `Bus.Distance`, i.e. `TDSSBus.DistFromMeter` in km, published
       verbatim (`CAPI_Bus.pas:419-427` -> `CAPI_Alt.pas:2071-2074` == r4133
       `DBus.pas:122-128`, `BUSF` 5). G1.4b. A zone-build output, not a solve
-      output: `MakeMeterZoneLists` writes it (`Meters/EnergyMeter.pas:1833-1836`)
+      output: `MakeMeterZoneLists` writes it (`Meters/EnergyMeter.pas:1833-1838`)
       and a circuit with no EnergyMeter — or a bus no meter's zone reaches —
       reports the untouched `0.0`. There is no "no meter" sentinel on either
       channel, so the all-zero vector is a real assertion about the port.
