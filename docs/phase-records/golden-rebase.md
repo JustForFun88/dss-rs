@@ -2815,7 +2815,7 @@ row against the pre-fix lock.
   `solution/topology.rs`, `elements/ckt.rs`): **PASS**, max |Δ| = 0 on all eight gated kinds
   over 3 220 861 records, 0 iteration drifts.
 
-  **Audit settlement** (2026-09-05, `lane-s`) — 15 findings (13 distinct):
+  **Audit settlement** (2026-09-05, `lane-s`, `898f8a86`) — 15 findings (13 distinct):
   **10 fixed / 3 recorded / 0 refuted**, no port bug, no behavior change, 0 ledger rows.
   Fixed: the "each in its own commit" claim in `TESTING.md` + the plan note (one commit);
   the missing sha; four `harness/mod.rs:A-B` citations, plus the rail that let a range END
