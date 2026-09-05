@@ -132,40 +132,40 @@ reproduced in any lane. Full record:
 [`golden-rebase.md`](docs/phase-records/golden-rebase.md) section "GOLDEN_REBASE WP-G0 /
 WP-G2 — condensed records" (full session records precede it there).
 
-**GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened 2026-08-08; since 2026-09-04 its chains run in parallel
-**lanes**, D7, merged one sub-step at a time). Landed: **G1.1**, killed and delivered by `R4133_PROPS_PLAN.md` RP4.1 2026-09-03
-(**G3.4**/**G3.5** unblocked); **G1.2** (the ESPVLControl deck) 2026-08-29; and, 2026-09-04/05, the rails plus nine surfaces,
-each with its full record in [`golden-rebase.md`](docs/phase-records/golden-rebase.md) — **G1.0** (`c4b67a6e` + `42454b64`), the
-flag vocabulary, exclusion `channels`, the capture guard and the r4133 bridge, whose mode probe **discharges G1.11**; **G1.9**
-(`lane-s`, `9757d26c` + `f27f9598`), `Circuit` aggregates + `Solution` scalars; **G1.6b** (`lane-m`, `06808a6d` + `e1e18367` +
-`c6a3c0a8`), the `PDElements` walk + the **D9** engine fix; **G1.3a** (`lane-e`, `d8e71991` + `588e0bfe` + `9f9c723d`),
-`Enabled` + the three polar channels (**1** new entry, `DIVERGENCES.md` L8, + **13** widenings); **G1.4a** (`lane-b`, `6b0dbd32`
-+ `be01e413` + `10417d99`), the bus surface's divergence-free half (**0** new; **D8** defers the rest to G1.4c), with **D11(1)**
-`float_roundtrip`, **D12**/**D14** the four `GICTransformer` decks onto `r4133` (ledger −4) and **D13** the worker's registry
-leak; **G1.3d(i)** (`lane-e`, `e4d99806` + `b7d7da2a` + `c9c4ac09`), the per-element counts, `NodeOrder` and `EnergyMeter`,
-exact (**0** new); **G1.7** (`lane-s`, `8fc32991` + `898f8a86` + `434a6b51` + `1314431a`), the six order-free `Topology` rows
-with the memoized-tree and window-dedup defects **asserted, not excluded** (**D15**/**D16**, fail-on-stale `(16, 135)` / `(8,
-96)`; two port gaps fixed en route, **0** new); **G1.6(i)** (`lane-m`, `e343d9e8` + `96d7540a` + `bcc835b6`), meter extras and
-**the run protocol** — the executive `RelCalc` driven once per case, the indices, sections, `CalcCurrent`/`AllocFactors`,
-`Meters.Totals` and the **ordered** zone lists exact but for three tier-banded cells (**D17a**, **D11/D18**, **0** new);
-**G1.5** (`lane-b`, `7d920701` + `5d206bdb` + docs), the bus short-circuit surface read as **precomputed state** on G1.4a's
-per-bus walk, sentinels normalized (**D4**), D11(2) narrowed to `Voc`/`Isc`, a `ReduceAlgs` port gap closed in step and a
-settlement `SC_STUDY_POPULATION` fail-on-stale (**0** new); and **G1.3d(ii)** (`lane-e`, `e6d66d66` + `43108993` + `d8090b6b`),
-`PhaseLosses` + the five control-derived scalars — **§G1.3d complete** — on a floor derived from `assert_power_close`, the first
-channel to join `LANE_SKIP_ELEM_POWERS`, with the per-edit control re-attach (`DIVERGENCES.md` L9), the disabled-OCP scan and
-adjacent defect A-1 fixed behind a fail-on-stale multi-control census (**0** new; its ten `phase_losses` widenings land as
-**eight**, D12/D14 having deleted the two capi GIC entries it also widened); and **G1.6(ii)** (`lane-m`, `3e65ae2d` + `572954e6` +
-`fc4dfa73`), the eight per-bus reliability columns inside G1.6(i)'s payload — 6 cases / 50 capi + 84 r4133 buses, exact, keys
+**GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened 2026-08-08; since 2026-09-04 its chains run in parallel **lanes**, D7, merged one
+sub-step at a time). Landed: **G1.1**, killed and delivered by `R4133_PROPS_PLAN.md` RP4.1 2026-09-03 (**G3.4**/**G3.5** unblocked); **G1.2** (the
+ESPVLControl deck) 2026-08-29; and, 2026-09-04/05, the rails plus nine surfaces, each with its full record in
+[`golden-rebase.md`](docs/phase-records/golden-rebase.md) — **G1.0** (`c4b67a6e` + `42454b64`), the flag vocabulary, exclusion `channels`, the capture
+guard and the r4133 bridge, whose mode probe **discharges G1.11**; **G1.9** (`lane-s`, `9757d26c` + `f27f9598`), `Circuit` aggregates + `Solution`
+scalars; **G1.6b** (`lane-m`, `06808a6d` + `e1e18367` + `c6a3c0a8`), the `PDElements` walk + the **D9** engine fix; **G1.3a** (`lane-e`, `d8e71991` +
+`588e0bfe` + `9f9c723d`), `Enabled` + the three polar channels (**1** new entry, `DIVERGENCES.md` L8, + **13** widenings); **G1.4a** (`lane-b`,
+`6b0dbd32` + `be01e413` + `10417d99`), the bus surface's divergence-free half (**0** new; **D8** defers the rest to G1.4c), with **D11(1)**
+`float_roundtrip`, **D12**/**D14** the four `GICTransformer` decks onto `r4133` (ledger −4) and **D13** the worker's registry leak; **G1.3d(i)**
+(`lane-e`, `e4d99806` + `b7d7da2a` + `c9c4ac09`), the per-element counts, `NodeOrder` and `EnergyMeter`, exact (**0** new); **G1.7** (`lane-s`,
+`8fc32991` + `898f8a86` + `434a6b51` + `1314431a`), the six order-free `Topology` rows with the memoized-tree and window-dedup defects **asserted, not
+excluded** (**D15**/**D16**, fail-on-stale `(16, 135)` / `(8, 96)`; two port gaps fixed en route, **0** new); **G1.6(i)** (`lane-m`, `e343d9e8` +
+`96d7540a` + `bcc835b6`), meter extras and **the run protocol** — the executive `RelCalc` driven once per case, the indices, sections,
+`CalcCurrent`/`AllocFactors`, `Meters.Totals` and the **ordered** zone lists exact but for three tier-banded cells (**D17a**, **D11/D18**, **0** new);
+**G1.5** (`lane-b`, `7d920701` + `5d206bdb` + docs), the bus short-circuit surface read as **precomputed state** on G1.4a's per-bus walk, sentinels
+normalized (**D4**), D11(2) narrowed to `Voc`/`Isc`, a `ReduceAlgs` port gap closed in step and a settlement `SC_STUDY_POPULATION` fail-on-stale
+(**0** new); and **G1.3d(ii)** (`lane-e`, `e6d66d66` + `43108993` + `d8090b6b`), `PhaseLosses` + the five control-derived scalars — **§G1.3d
+complete** — on a floor derived from `assert_power_close`, the first channel to join `LANE_SKIP_ELEM_POWERS`, with the per-edit control re-attach
+(`DIVERGENCES.md` L9), the disabled-OCP scan and adjacent defect A-1 fixed behind a fail-on-stale multi-control census (**0** new; its ten
+`phase_losses` widenings land as **eight**, D12/D14 having deleted the two capi GIC entries it also widened); and **G1.6(ii)** (`lane-m`, `3e65ae2d` +
+`572954e6` + `fc4dfa73`), the eight per-bus reliability columns inside G1.6(i)'s payload — 6 cases / 50 capi + 84 r4133 buses, exact, keys
 `bus:<bus>:<field>` on the existing `reliability` field, plus the **D20/D22** engine fix (`calc_reliability_indices` recomputes
-`TotalUpDownstreamCustomers`, r4133 `EnergyMeter.pas:2466-2468`) whose only footprint is a capi divergence under `RelCalc
-<restore>`, unreachable on the corpus (`DIVERGENCES.md` §D22) — **the PD/meter chain closes here** (**0** new). The lanes' micro
-decks met here: corpus **526** cases / 522 live, `FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,ZSC,TOPOLOGY}_POPULATION` = (443,
-312, 87, 44) and `FORCED_DERIVED_POPULATION` = (445, 314, 87, 44); no golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **111**,
-ledger **54** / 31 causes; G1.3b/c, G1.4b/c, G1.8, G1.10–G1.11c and WP-G3–G5 remain.
+`TotalUpDownstreamCustomers`, r4133 `EnergyMeter.pas:2466-2468`) whose only footprint is a capi divergence under `RelCalc <restore>`, unreachable on
+the corpus (`DIVERGENCES.md` §D22) — **the PD/meter chain closes here** (**0** new); and **G1.3b** (`lane-e`, `40a65ffd` + `3d350ce6` + `ef110b71`),
+per-element `SeqCurrents`/`SeqVoltages`/`SeqPowers` on both channels — **31** widenings on 11 `element` scopes, the n/A power sentinel a
+channel-scoped fold, `SEQ_C012 = 5.229590094302253e-10` the r4133-only 012-matrix term — landing under **D31**: `makeposseq_gic.dss` (D12/D14's flip)
+is the only case reaching the 1φ-posseq arm on `r4133`, so r4133's slot/stride defect costs **1** entry + a both-numbers pin, census `(297 896, 79,
+0)` → `(297 867, 78, 4)`, re-derived on the merged tree. The lanes' micro decks met here: corpus **526** cases / 522 live,
+`FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,ZSC,TOPOLOGY}_POPULATION` = (443, 312, 87, 44) and `FORCED_DERIVED_POPULATION` = (445, 314, 87, 44); no
+golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **111**, ledger **55** / 32 causes; G1.3c, G1.4b/c, G1.8, G1.10–G1.11c and WP-G3–G5 remain.
 
-**Next.** Element lane **G1.3b** → G1.3c; the PD/meter lane's chain is complete with G1.6(ii)
-(the AT-1 zone-boundary decision it hands on is owned by `ORPHANED_GAPS.md` §1.19); `lane-s` **G1.8** (incidence/Laplacian) → G1.10a–c; bus lane **G1.4c**
-(D8) → G1.4b, then WP-G3–G5; queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
+**Next.** `lane-e` **G1.3c** (running); `lane-s` **G1.10a** (running, after G1.8); `lane-b` **G1.4b** (running, after G1.4c/D8); `lane-m` idle,
+G1.4d next — its chain closed with G1.6(ii) (the AT-1 zone-boundary decision it hands on is owned by `ORPHANED_GAPS.md` §1.19); then G1.11a–c and
+WP-G3–G5; queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children, needs
 MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the `UpgradeRung` escape

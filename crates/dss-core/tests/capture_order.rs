@@ -182,13 +182,14 @@ struct CaptureBody {
 }
 
 /// The capi channel's element capture, its helper, and the r4133 channel's
-/// four bodies.
+/// five bodies.
 ///
 /// `oracle_server.capture_all_elements` reads `PhaseLosses` and then `Losses`
 /// **before** delegating to `gen_checkpoints.capture_element` (which reads
 /// `Powers` then `Currents`): three group-A reads followed by the group-B one.
 /// `dss.rs::element_phase_losses` + `element_pcl` are the r4133 mirror of
-/// exactly that, `element_polar` adds the three G1.3a derived channels, and
+/// exactly that, `element_polar` adds the three G1.3a derived channels,
+/// `element_seq` the three G1.3b symmetrical-component ones, and
 /// `element_extras` the nine unconditional G1.3d discrete scalars — the four of
 /// part (i) plus the five control-derived ones of part (ii) (`NodeOrder`, the
 /// conditional tenth, stays at the call site).
@@ -214,6 +215,9 @@ const BODIES: &[CaptureBody] = &[
             "CurrentsMagAng",
             "Residuals",
             "VoltagesMagAng",
+            "SeqPowers",
+            "SeqCurrents",
+            "SeqVoltages",
             "NumTerminals",
             "NumConductors",
             "NumPhases",
@@ -277,6 +281,18 @@ const BODIES: &[CaptureBody] = &[
         declared: &["CurrentsMagAng", "Residuals", "VoltagesMagAng"],
     },
     CaptureBody {
+        key: "element_seq",
+        file: "crates/dss-epri/src/dss.rs",
+        func: "element_seq",
+        lang: Lang::Rust,
+        family: "CktElement",
+        marked: true,
+        receivers: &["self"],
+        // Not a read of the element: it drains the DLL's error slot.
+        exempt: &["poll_error"],
+        declared: &["SeqPowers", "SeqCurrents", "SeqVoltages"],
+    },
+    CaptureBody {
         key: "element_extras",
         file: "crates/dss-epri/src/dss.rs",
         func: "element_extras",
@@ -322,6 +338,9 @@ const BODIES: &[CaptureBody] = &[
             "CurrentsMagAng",
             "Residuals",
             "VoltagesMagAng",
+            "SeqPowers",
+            "SeqCurrents",
+            "SeqVoltages",
             "NumTerminals",
             "NumConductors",
             "NumPhases",
@@ -350,6 +369,7 @@ fn helper_key(member: &str) -> Option<&'static str> {
         "element_phase_losses" => Some("element_phase_losses"),
         "element_pcl" => Some("element_pcl"),
         "element_polar" => Some("element_polar"),
+        "element_seq" => Some("element_seq"),
         "element_extras" => Some("element_extras"),
         _ => None,
     }

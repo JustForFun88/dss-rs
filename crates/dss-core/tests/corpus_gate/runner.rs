@@ -18,9 +18,9 @@ use crate::harness::{
     self, ExportPolicy, RelCalcOutcome, RowPolicy, Tolerances, capture_guard,
     compare_all_properties, compare_ctrlqueue, compare_discrete, compare_element_channels,
     compare_element_derived, compare_element_extras, compare_element_phase_losses,
-    compare_eventlog, compare_export, compare_fingerprint, compare_injection, compare_meter,
-    compare_monitor, compare_pd_elements, compare_probe, compare_reliability, compare_system_y,
-    compare_variables, compare_yprim, lane, tol_for,
+    compare_element_seq, compare_eventlog, compare_export, compare_fingerprint, compare_injection,
+    compare_meter, compare_monitor, compare_pd_elements, compare_probe, compare_reliability,
+    compare_system_y, compare_variables, compare_yprim, lane, tol_for,
 };
 use crate::manifest::{EngineChannel, SolvableCase};
 
@@ -644,12 +644,29 @@ pub(crate) fn compare_capture(
         // pins one of the new sub-channels neutralizes it here too, and an
         // unscoped element is compared against the untouched oracle cap.
         //
+        // G1.3b rides on the same flag: the per-element symmetrical-component
+        // surfaces `SeqCurrents` / `SeqVoltages` / `SeqPowers` (r4133
+        // `DDLL/DCktElement.pas:700-737` / `:660-698` / `:739-797`; capi
+        // `CAPI/CAPI_Alt.pas:490-527` / `:620-659` / `:529-593`), captured in the
+        // same `derived` block and compared by `harness::compare_element_seq`
+        // beside — never instead of — the polar comparator, on the same
+        // (possibly ledger-rewritten) caps.
+        //
         // The guard is the flag's own non-vacuity rail: under `derived` BOTH
         // transports emit `enabled` for every element (present even on the
         // disabled ones, whose polar channels the capture must skip — r4133
         // `CktElementV(19)` dereferences a nil `NodeRef` there), so a channel
         // that ignored the request answers with zero `enabled` fields and the
         // case fails instead of comparing nothing.
+        //
+        // There are two of them, for the reason `compare_element_extras` has
+        // two (G1.3d(ii) audit settlement): the two comparators read disjoint
+        // capture fields, so a channel that honoured the request for the polar
+        // arrays but not the sequence ones must fail the case rather than
+        // compare nothing, and the two refusals must not print the same
+        // sentence. `seq_i` is empty on a disabled element and on a 0-terminal
+        // one (`UPFCControl`), so the rail counts the elements whose array is
+        // NON-empty — every live circuit has at least one (the `Vsource`).
         if c.compare_derived {
             capture_guard::require_capture(
                 "compare_derived",
@@ -657,10 +674,39 @@ pub(crate) fn compare_capture(
                 cp.elements.iter().filter(|e| e.enabled.is_some()).count(),
                 &ctx,
             );
+            capture_guard::require_capture(
+                "compare_derived (SeqCurrents)",
+                channel_tag(channel),
+                cp.elements.iter().filter(|e| !e.seq_i.is_empty()).count(),
+                &ctx,
+            );
+            // The channel travels with the capture for one reason only: the
+            // `SeqPowers` "not available" sentinel is spelled per channel and is
+            // folded per channel (`harness::na_seq_power`, G1.3b D-b2), and the
+            // r4133-only truncated-matrix term rides on the same argument.
+            let seq_channel = channel.props_channel();
             for ec in &cp.elements {
-                match el_rewrites.get(&ec.name.to_lowercase()) {
-                    Some(rw) => compare_element_derived(&snaps, rw, tol, &ctx, channels),
-                    None => compare_element_derived(&snaps, ec, tol, &ctx, channels),
+                // A ledger `element` scope rewrites only the sub-channels it
+                // names, so both comparators see the untouched oracle values on
+                // every channel the scope does not select.
+                let cap = el_rewrites.get(&ec.name.to_lowercase()).unwrap_or(ec);
+                compare_element_derived(&snaps, cap, tol, &ctx, channels);
+                // The gating population's sequence-arm census — the guard behind
+                // D-b1 costing zero ledger rows (`harness::
+                // assert_seq_arm_population`, checked in the gate's epilogue).
+                // Recorded HERE and never inside the comparator (coordinator
+                // decision D24, the `record_control_census` line below): the
+                // `harness::seq_floors` fixtures call `compare_element_seq` in
+                // this same test binary, several of them on the very arm the
+                // guard counts, so a comparator-side census reads the gating
+                // population plus the fixtures under the mandatory
+                // `cargo test --workspace` shape. The comparator hands back the
+                // arm it classified (`None` for the disabled and 0-terminal
+                // rows it returns on), so there is one classification, not two.
+                if let Some(arm) =
+                    compare_element_seq(&snaps, cap, tol, &ctx, seq_channel, channels)
+                {
+                    harness::record_seq_arm(arm, seq_channel);
                 }
             }
         }

@@ -193,8 +193,10 @@ def capture_all_elements(
 ) -> list:
     """Every circuit element's terminal currents (A), powers (kW/kvar), and
     losses (W/var — `CktElement.Losses`, the engine's own Get_Losses path);
-    under `derived` also `Enabled` and the three polar channels
-    `CurrentsMagAng` / `VoltagesMagAng` / `Residuals` (GOLDEN_REBASE G1.3a);
+    under `derived` also `Enabled`, the three polar channels
+    `CurrentsMagAng` / `VoltagesMagAng` / `Residuals` (GOLDEN_REBASE G1.3a) and
+    the three sequence channels `SeqPowers` / `SeqCurrents` / `SeqVoltages`
+    (GOLDEN_REBASE G1.3b);
     under `element_extras` also `Enabled` and the discrete index/name scalars
     `NumTerminals` / `NumConductors` / `NumPhases` / `EnergyMeter` / `NodeOrder`
     (GOLDEN_REBASE G1.3d(i)).
@@ -241,6 +243,30 @@ def capture_all_elements(
     elements only removes that crash class AND makes the two channels' shapes
     identical, so no sentinel normalization is owed. `enabled` itself is
     captured for every element and compared exactly.
+
+    The same `derived` flag also carries the three GOLDEN_REBASE G1.3b sequence
+    channels — `SeqPowers` (`CktElementV(9)`, r4133
+    `DDLL/DCktElement.pas:739`; capi `Alt_CE_Get_SeqPowers`
+    `CAPI/CAPI_Alt.pas:594` -> `Alt_CE_Get_SeqPowers_` `:529`), `SeqCurrents`
+    (`CktElementV(8)`, `:700`; capi `:490`) and `SeqVoltages`
+    (`CktElementV(7)`, `:660`; capi `:620`) — read for `Enabled` elements ONLY.
+    Here that rule is load-bearing on BOTH engines, not just a shape
+    normalization: r4133's mode 9 has neither an `Enabled` nor a `NodeRef`
+    guard and dereferences `NodeRef^[k+1]` (`:765`) on a never-enabled element,
+    while capi's outer `Alt_CE_Get_SeqPowers` deliberately skips the `Enabled`
+    test (`:604`, commented out) yet still resizes the result buffer to
+    `3 * NTerms` complex slots at `:608` **before** the helper's own
+    `(not Enabled) or (NodeRef = NIL)` guard exits at `:544` — so a disabled
+    element with a live `NodeRef` returns uninitialized memory. (The two
+    magnitude reads do guard: capi `:501` / `:633`, r4133 `:711` / `:671`.)
+
+    `SeqCurrents` and `SeqVoltages` are magnitudes only (`Cabs`, r4133 `:719` /
+    `:680`), `3 * NTerms` doubles each, so they are captured flat. `SeqPowers`
+    is complex and de-interleaved by `_re_im_pair` like `p_kw`/`p_kvar`; its
+    unit is **kW/kvar** because both engines apply `* 0.003` inside the arm
+    (capi `:561` and `:588-589`, r4133 `:767` and `:788`) — a fixed 3-phase kVA
+    conversion, unconditional, and NOT the `PositiveSequence` x3 that `Powers`
+    applies at the API boundary.
 
     `element_extras` (request key `"element_extras"`, manifest flag
     `compare_element_extras`): the discrete index/name scalars (G1.3d(i)), the
@@ -328,6 +354,12 @@ def capture_all_elements(
             cap["cma_mag"], cap["cma_ang"] = _polar_pair(cma)
             cap["res_mag"], cap["res_ang"] = _polar_pair(res)
             cap["vma_mag"], cap["vma_ang"] = _polar_pair(vma)
+            seq_p = _read(lambda: el.SeqPowers)  # capture-order: SeqPowers (B)
+            seq_i = _read(lambda: el.SeqCurrents)  # capture-order: SeqCurrents (B)
+            seq_v = _read(lambda: el.SeqVoltages)  # capture-order: SeqVoltages (C)
+            cap["seq_p_kw"], cap["seq_p_kvar"] = _re_im_pair(seq_p)
+            cap["seq_i"] = [float(x) for x in seq_i]
+            cap["seq_v"] = [float(x) for x in seq_v]
         if element_extras:
             n_terms = int(el.NumTerminals)  # capture-order: NumTerminals (C)
             cap["n_terms"] = n_terms

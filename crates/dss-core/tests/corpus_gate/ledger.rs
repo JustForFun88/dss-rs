@@ -29,11 +29,12 @@ use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
 
+use dss_core::exec::SeqArm;
 use dss_core::support::complexutil::Polar;
 
 use crate::harness::{
-    ElementCap, Injection, MonitorCap, ProbeCap, PropsCap, Tolerances, phase_loss_band,
-    polar_angle_band, residual_band, wrapped_deg,
+    ElementCap, Injection, MonitorCap, ProbeCap, PropsCap, PropsChannel, SEQ_C012, Tolerances,
+    phase_loss_band, polar_angle_band, residual_band, seq_band, seq_power_band, wrapped_deg,
 };
 use crate::manifest::EngineChannel;
 
@@ -679,6 +680,19 @@ const EXCLUSION_FIELDS: [&str; 11] = [
 /// only those (`measured.g13d2_phase_losses_first_failure` on each), and the
 /// four `r4133-*-injection-ulp` divergences were measured NOT to fail and keep
 /// their committed lists.
+///
+/// G1.3b (2026-09-05) added `seq_currents`, `seq_voltages` and `seq_powers` —
+/// the per-element symmetrical-component surfaces `CktElement.SeqCurrents` /
+/// `SeqVoltages` / `SeqPowers` (r4133 `DDLL/DCktElement.pas:700-737` /
+/// `:660-698` / `:739-797`; capi `CAPI/CAPI_Alt.pas:490-527` / `:620-659` /
+/// `:529-593`), handled by [`envelope_element`] and [`rewrite_element_selected`]
+/// like the seven before them, with one property the seven do not need: only the
+/// slots [`harness::compare_element_seq`] **bands** are covered here (see
+/// [`seq_slot_is_banded`]). The discrete slots — the whole not-available arm's
+/// `1.0`/sentinel payload and the exact zeros beside the positive-sequence one —
+/// are neither envelope-checked nor rewritten, so no `seq_*` scope can mask a
+/// discrete miss, which is the same guarantee the ten discrete extras get by
+/// having no sub-channel at all.
 const SUBCHANNEL_FIELDS: &[(&str, &[&str])] = &[(
     "element",
     &[
@@ -689,6 +703,9 @@ const SUBCHANNEL_FIELDS: &[(&str, &[&str])] = &[(
         "voltages_mag_ang",
         "residuals",
         "phase_losses",
+        "seq_currents",
+        "seq_voltages",
+        "seq_powers",
     ],
 )];
 
@@ -1167,7 +1184,7 @@ impl LedgerView<'_> {
                 let cap = rewrites
                     .entry(lname.clone())
                     .or_insert_with(|| clone_element_cap(ec));
-                rewrite_element_selected(cap, sc, snap);
+                rewrite_element_selected(cap, sc, snap, e.kind == Kind::Exclusion);
             }
         }
         rewrites
@@ -1643,12 +1660,46 @@ impl LedgerView<'_> {
     }
 }
 
+/// Is slot `k` of a sequence array a **banded** sample on this arm, or one of
+/// the arm's discrete slots? (`GOLDEN_REBASE_PLAN.md` G1.3b.)
+///
+/// The one predicate behind both halves of the `seq_*` sub-channels, so the
+/// envelope check and the rewrite cover exactly the same slots by construction
+/// (pinned by [`the_seq_rewrite_and_the_seq_envelope_cover_the_same_slots`]):
+///
+/// * [`SeqArm::ThreePhase`] — every slot is a transformed value that
+///   `harness::compare_element_seq` bands with `harness::seq_band` /
+///   `harness::seq_power_band`, so every slot is envelope-checked and
+///   neutralizable;
+/// * [`SeqArm::PosSeqSinglePhase`] — only slot `3t+1` carries a value; `3t` and
+///   `3t+2` are compared as **exact** zeros on both sides (capi
+///   `CAPI/CAPI_Alt.pas:555`/`:562`; r4133 `DDLL/DCktElement.pas:760`/`:768`
+///   writes the wrong slot with the wrong stride — the D-b1 defect the port does
+///   not reproduce);
+/// * [`SeqArm::NotAvailable`] — the whole payload is discrete (`Cabs(-1+0j) =
+///   1.0` magnitudes and the channel's own `−1` power sentinel, folded at the
+///   capture boundary by `harness::na_seq_power`), so **no** slot is banded.
+///
+/// A ledger scope may therefore never mask a discrete sequence miss: an entry
+/// widened onto `seq_*` over an element whose arm has no banded slot measures
+/// nothing and is reported STALE by `Scope::dead_channels`, which is the honest
+/// signal rather than a silent pass.
+fn seq_slot_is_banded(arm: SeqArm, k: usize) -> bool {
+    match arm {
+        SeqArm::ThreePhase => true,
+        SeqArm::PosSeqSinglePhase => k % 3 == 1,
+        SeqArm::NotAvailable => false,
+    }
+}
+
 /// Envelope-check one element's selected sub-channels against the Rust snapshot.
 /// Layout matches `ElementSnapshot`: `currents`/`powers` are complex per
 /// conductor (A, kW+j·kvar) while the oracle `ElementCap` splits re/im into
 /// parallel arrays; `loss_w` is a `(re, im)` tuple vs the oracle's 2-vector.
 /// G1.3a's three polar channels are `Vec<Polar>` on the Rust side against the
-/// oracle's de-interleaved `*_mag`/`*_ang` pair.
+/// oracle's de-interleaved `*_mag`/`*_ang` pair. G1.3b's three sequence channels
+/// are `3·NTerms`-long arrays whose banded slots are selected by
+/// [`seq_slot_is_banded`].
 fn envelope_element(
     e: &Entry,
     sc: &Scope,
@@ -1886,6 +1937,161 @@ fn envelope_element(
     if block.get() {
         sc.mark_channel_exceeded("phase_losses");
     }
+    // G1.3b. The three sequence channels — `SeqCurrents` / `SeqVoltages`
+    // (`Cabs` of the 012 components, r4133 `DDLL/DCktElement.pas:700-737` /
+    // `:660-698`) and `SeqPowers` (`0.003·V012·conj(I012)`, `:739-797`) — banded
+    // by `harness::seq_band` and `harness::seq_power_band`, the images of the
+    // already-calibrated `i_*`/`v_*` tier bands over the terminal's own phase
+    // magnitudes, plus the r4133-only `SEQ_C012` truncated-matrix term
+    // (`Shared/mathutil.pas:302-303`/`:562-564`). Those are the same floors
+    // `harness::compare_element_seq` gates the unpinned samples with, over the
+    // same oracle-side `CurrentsMagAng`/`VoltagesMagAng` magnitudes, so a ledger
+    // envelope here is measured on exactly the scale it excludes.
+    //
+    // Only the arm's BANDED slots take part ([`seq_slot_is_banded`]): the
+    // not-available arm and the exact zeros beside the positive-sequence one are
+    // discrete on both sides, so an envelope over them would be a number
+    // bounding a comparison the gate makes exactly — and, symmetrically,
+    // `rewrite_element_selected` leaves them alone, which is what keeps a
+    // discrete sequence miss unmaskable by any scope.
+    //
+    // Empty whenever the case's `compare_derived` flag is off (the capture then
+    // carries no `seq_i` at all) and on a 0-terminal element, so the blocks are
+    // inert rather than special-cased — and a scope widened onto a channel that
+    // measures nothing trips `Scope::dead_channels` instead of masking.
+    let arm = snap.seq_arm;
+    let seq_wanted = want("seq_currents") || want("seq_voltages") || want("seq_powers");
+    // `(bv, bi)` per terminal, computed once for all three blocks below.
+    let seq_bands: Vec<(f64, f64)> = if seq_wanted && !ec.seq_i.is_empty() {
+        let (nterms, nconds) = (snap.n_terms, snap.n_conds);
+        let yorder = nterms * nconds;
+        // The same shape tie `harness::compare_element_seq` asserts before
+        // building its bands; it runs on this element too, so a genuine shape
+        // miss fails there with its own message rather than slicing out of
+        // range here.
+        assert!(
+            nterms > 0
+                && nconds > 0
+                && ec.cma_mag.len() == yorder
+                && ec.vma_mag.len() == yorder
+                && ec.seq_i.len() == 3 * nterms
+                && ec.seq_v.len() == 3 * nterms
+                && ec.seq_p_kw.len() == 3 * nterms
+                && ec.seq_p_kvar.len() == 3 * nterms
+                && snap.seq_currents.len() == 3 * nterms
+                && snap.seq_voltages.len() == 3 * nterms
+                && snap.seq_powers.len() == 3 * nterms,
+            "{ctx}: ledger `{}` element {}: a `seq_*` scope on a capture whose \
+             layout does not match {nterms} terminal(s) x {nconds} conductor(s) \
+             (CurrentsMagAng {} / VoltagesMagAng {}; seq {} / {} / {} / {}; rust \
+             seq {} / {} / {}) — the sequence band is built from that layout",
+            e.id,
+            ec.name,
+            ec.cma_mag.len(),
+            ec.vma_mag.len(),
+            ec.seq_i.len(),
+            ec.seq_v.len(),
+            ec.seq_p_kw.len(),
+            ec.seq_p_kvar.len(),
+            snap.seq_currents.len(),
+            snap.seq_voltages.len(),
+            snap.seq_powers.len()
+        );
+        // The truncated-matrix term applies on the r4133 channel only, and only
+        // where a matrix actually runs (the three-phase arm) — the same
+        // `(channel, arm)` pair `harness::compare_element_seq` keys it on. The
+        // entry's own channel is the one the gate compares this cap against.
+        let c012 = match (e.channel.props_channel(), arm) {
+            (PropsChannel::R4133, SeqArm::ThreePhase) => SEQ_C012,
+            _ => 0.0,
+        };
+        // The conductors each arm actually transforms: the terminal's first
+        // three (r4133 `:47-49`, capi `:252-254`) or, on the positive-sequence
+        // arm, its first one (r4133 `:764-766`, capi `:559-561`).
+        let taken = if arm == SeqArm::ThreePhase { 3 } else { 1 };
+        assert!(
+            taken <= nconds,
+            "{ctx}: ledger `{}` element {}: the {arm:?} arm reads {taken} \
+             conductor(s) of a terminal that has {nconds}",
+            e.id,
+            ec.name
+        );
+        ec.cma_mag
+            .chunks(nconds)
+            .zip(ec.vma_mag.chunks(nconds))
+            .map(|(icnk, vcnk)| {
+                (
+                    seq_band(&vcnk[..taken], tol.v_rel, tol.v_abs, c012),
+                    seq_band(&icnk[..taken], tol.i_rel, tol.i_abs, c012),
+                )
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    block.set(false);
+    if want("seq_currents") {
+        for (t, (_, bi)) in seq_bands.iter().enumerate() {
+            for k in 0..3 {
+                let slot = 3 * t + k;
+                if !seq_slot_is_banded(arm, slot) {
+                    continue;
+                }
+                record(
+                    &format!("seq_i[{slot}]"),
+                    (snap.seq_currents[slot] - ec.seq_i[slot]).abs(),
+                    ec.seq_i[slot].abs(),
+                    *bi,
+                );
+            }
+        }
+    }
+    if block.get() {
+        sc.mark_channel_exceeded("seq_currents");
+    }
+    block.set(false);
+    if want("seq_voltages") {
+        for (t, (bv, _)) in seq_bands.iter().enumerate() {
+            for k in 0..3 {
+                let slot = 3 * t + k;
+                if !seq_slot_is_banded(arm, slot) {
+                    continue;
+                }
+                record(
+                    &format!("seq_v[{slot}]"),
+                    (snap.seq_voltages[slot] - ec.seq_v[slot]).abs(),
+                    ec.seq_v[slot].abs(),
+                    *bv,
+                );
+            }
+        }
+    }
+    if block.get() {
+        sc.mark_channel_exceeded("seq_voltages");
+    }
+    block.set(false);
+    if want("seq_powers") {
+        for (t, (bv, bi)) in seq_bands.iter().enumerate() {
+            for k in 0..3 {
+                let slot = 3 * t + k;
+                if !seq_slot_is_banded(arm, slot) {
+                    continue;
+                }
+                // The wire and the snapshot are BOTH kW/kvar here (the `0.003`
+                // is applied inside the arm on both engines, not at the API
+                // boundary the way `PhaseLosses`' `0.001` is), so no scaling.
+                let band = seq_power_band(*bv, *bi, ec.seq_v[slot], ec.seq_i[slot]);
+                let (ar, ai) = (snap.seq_powers[slot].re, snap.seq_powers[slot].im);
+                let (er, ei) = (ec.seq_p_kw[slot], ec.seq_p_kvar[slot]);
+                let diff = ((ar - er).powi(2) + (ai - ei).powi(2)).sqrt();
+                let base = (er.powi(2) + ei.powi(2)).sqrt();
+                record(&format!("seq_p[{slot}]"), diff, base, band);
+            }
+        }
+    }
+    if block.get() {
+        sc.mark_channel_exceeded("seq_powers");
+    }
     LedgerView::mark_applied(e);
     if exceeded.get() {
         LedgerView::mark_exceeded(e);
@@ -1909,6 +2115,7 @@ fn rewrite_element_selected(
     cap: &mut ElementCap,
     sc: &Scope,
     snap: &dss_core::exec::ElementSnapshot,
+    exclusion: bool,
 ) {
     let want = |ch: &str| sc.channels.is_empty() || sc.channels.iter().any(|c| c == ch);
     if want("currents") {
@@ -1965,6 +2172,71 @@ fn rewrite_element_selected(
         {
             cap.pl_kw[i] = snap.phase_losses[i].re * 0.001;
             cap.pl_kvar[i] = snap.phase_losses[i].im * 0.001;
+        }
+    }
+    // G1.3b: the three sequence channels. Both sides are already in the same
+    // units — the `0.003` is applied INSIDE the arm on both engines (r4133
+    // `DDLL/DCktElement.pas:767`/`:788`, capi `CAPI/CAPI_Alt.pas:561`/`:588-590`)
+    // rather than at the API boundary the way `PhaseLosses`' `0.001` is — so the
+    // pin writes the value straight through.
+    //
+    // Only the arm's BANDED slots are neutralized ([`seq_slot_is_banded`], the
+    // same predicate `envelope_element` bands with): the not-available arm's
+    // `1.0`/sentinel payload and the exact zeros beside the positive-sequence
+    // slot stay the ORACLE's, so `harness::compare_element_seq` keeps comparing
+    // them exactly — a `seq_*` scope neutralizes a floor divergence and can
+    // never excuse a discrete miss (pinned slot by slot, from both the rewrite
+    // and the envelope side, by
+    // `the_seq_rewrite_and_the_seq_envelope_cover_the_same_slots`). The snapshot
+    // lengths join the bound so a shape mismatch survives to that comparator's
+    // own length assert instead of panicking on an index here.
+    let seq_slots = |n: usize| (0..n).filter(|k| seq_slot_is_banded(snap.seq_arm, *k));
+    if want("seq_currents") {
+        for k in seq_slots(cap.seq_i.len().min(snap.seq_currents.len())) {
+            cap.seq_i[k] = snap.seq_currents[k];
+        }
+    }
+    if want("seq_voltages") {
+        for k in seq_slots(cap.seq_v.len().min(snap.seq_voltages.len())) {
+            cap.seq_v[k] = snap.seq_voltages[k];
+        }
+    }
+    // `seq_powers` on the 1φ-positive-sequence arm is the ONE place where an
+    // `exclusion` reaches further than the banded slot, and only there
+    // (coordinator decision **D31**, 2026-09-05). On that arm the whole
+    // `SeqPowers` result is one mode-9 write, and r4133's defect misplaces it:
+    // the value lands in slot `3t+2` and the correct slot `3t+1` is left zero
+    // (`DDLL/DCktElement.pas:760`/`:768` against capi's correct
+    // `CAPI/CAPI_Alt.pas:555`/`:562`). An entry that names `seq_powers` there but
+    // neutralized only `3t+1` would exclude nothing — the divergence is entirely
+    // in the cells it did not touch. So a `Kind::Exclusion` neutralizes every
+    // slot of that arm's power array, and NOTHING else changes:
+    //
+    // * a `divergence` keeps the banded slot alone, so its envelope still covers
+    //   every cell it neutralizes
+    //   (`the_seq_rewrite_and_the_seq_envelope_cover_the_same_slots`);
+    // * `seq_currents`/`seq_voltages` are untouched in both kinds — they come out
+    //   of `Calc*`, which r4133 writes correctly, which is why D31's scope names
+    //   `seq_powers` alone;
+    // * the not-available arm is untouched in both kinds, so no scope can excuse
+    //   a sentinel miss;
+    // * the PORT's own exact zeros are asserted by `harness::compare_element_seq`
+    //   outside every scope, so an engine writing r4133's slot still reds here.
+    let seq_power_slots = |n: usize| {
+        (0..n).filter(move |k| {
+            seq_slot_is_banded(snap.seq_arm, *k)
+                || (exclusion && snap.seq_arm == SeqArm::PosSeqSinglePhase)
+        })
+    };
+    if want("seq_powers") {
+        for k in seq_power_slots(
+            cap.seq_p_kw
+                .len()
+                .min(cap.seq_p_kvar.len())
+                .min(snap.seq_powers.len()),
+        ) {
+            cap.seq_p_kw[k] = snap.seq_powers[k].re;
+            cap.seq_p_kvar[k] = snap.seq_powers[k].im;
         }
     }
 }
@@ -2921,6 +3193,14 @@ fn polar_envelope_fixture() -> (Entry, ElementCap, dss_core::exec::ElementSnapsh
         ocp_dev_type: 0,
         has_volt_control: false,
         has_switch_control: false,
+        // G1.3b added these four; this fixture reaches
+        // `harness::compare_element_seq` through none of its callers, and the
+        // `seq_*` sub-channel tests below build their own payload on top of it
+        // (`seq_envelope_fixture`).
+        seq_arm: SeqArm::NotAvailable,
+        seq_currents: Vec::new(),
+        seq_voltages: Vec::new(),
+        seq_powers: Vec::new(),
         bus_names: vec!["b".to_string()],
         powers: vec![num_complex::Complex64::new(0.0, 0.0)],
         currents: vec![num_complex::Complex64::new(0.0, 0.0)],
@@ -3124,7 +3404,7 @@ fn a_phase_losses_scope_rewrites_the_capture_in_kw() {
     let (entry, mut cap, mut snap) = phase_loss_envelope_fixture();
     snap.phase_losses[0] = num_complex::Complex64::new(-2500.0, 750.0);
     cap.i_re[0] = 7.0;
-    rewrite_element_selected(&mut cap, &entry.scopes[0], &snap);
+    rewrite_element_selected(&mut cap, &entry.scopes[0], &snap, false);
     assert_eq!(cap.pl_kw, vec![-2.5]);
     assert_eq!(cap.pl_kvar, vec![0.75]);
     assert_eq!(
@@ -3137,4 +3417,352 @@ fn a_phase_losses_scope_rewrites_the_capture_in_kw() {
         vec![1.0],
         "an unselected sub-channel must be left alone"
     );
+}
+
+// --- the three `seq_*` sub-channels (GOLDEN_REBASE G1.3b F4) ----------------
+
+/// A divergence entry scoped to all three of one element's sequence channels,
+/// on a payload shaped by the requested [`SeqArm`]:
+///
+/// * [`SeqArm::ThreePhase`] — 1 terminal x 3 conductors, every slot banded;
+/// * [`SeqArm::PosSeqSinglePhase`] — 2 terminals x 1 conductor, only slots 1 and
+///   4 banded (`3t+1`);
+/// * [`SeqArm::NotAvailable`] — 1 terminal x 1 conductor, no slot banded and the
+///   payload the two engines' sentinels produce.
+///
+/// The phase magnitudes are `1000 A` / `1000 V` on every conductor, so at the
+/// `micro` tier the two magnitude bands are `1e-6 + 1e-9*1000 = 2e-6` on
+/// `capi_v0145` and `2e-6 + SEQ_C012*1000` on `r4133`, and the power band is
+/// `0.003*(2e-6*(1000 + 2e-6) + 1000*2e-6) = 1.2e-5` kVA. The entry keeps the
+/// `injection-ulp` family's committed envelope (`2e-5 + 1e-8*base`).
+#[cfg(test)]
+fn seq_envelope_fixture(
+    arm: SeqArm,
+    channel: EngineChannel,
+) -> (Entry, ElementCap, dss_core::exec::ElementSnapshot) {
+    let (mut entry, mut cap, mut snap) = polar_envelope_fixture();
+    entry.id = "test-seq-envelope".to_string();
+    entry.channel = channel;
+    entry.scopes[0].channels = vec![
+        "seq_currents".to_string(),
+        "seq_voltages".to_string(),
+        "seq_powers".to_string(),
+    ];
+    let (nterms, nconds, nphases) = match arm {
+        SeqArm::ThreePhase => (1usize, 3usize, 3usize),
+        SeqArm::PosSeqSinglePhase => (2, 1, 1),
+        SeqArm::NotAvailable => (1, 1, 2),
+    };
+    let yorder = nterms * nconds;
+    snap.n_terms = nterms;
+    snap.n_conds = nconds;
+    snap.n_phases = nphases;
+    snap.seq_arm = arm;
+    cap.n_terms = Some(nterms as i32);
+    cap.n_conds = Some(nconds as i32);
+    cap.n_phases = Some(nphases as i32);
+    cap.cma_mag = vec![1000.0; yorder];
+    cap.cma_ang = vec![0.0; yorder];
+    cap.vma_mag = vec![1000.0; yorder];
+    cap.vma_ang = vec![0.0; yorder];
+    cap.i_re = vec![0.0; yorder];
+    cap.i_im = vec![0.0; yorder];
+    snap.currents = vec![num_complex::Complex64::new(0.0, 0.0); yorder];
+    snap.currents_mag_ang = vec![
+        Polar {
+            mag: 1000.0,
+            ang: 0.0
+        };
+        yorder
+    ];
+    let n = 3 * nterms;
+    let mut mag = vec![0.0; n];
+    let mut kw = vec![0.0; n];
+    let kvar = vec![0.0; n];
+    for k in 0..n {
+        if seq_slot_is_banded(arm, k) {
+            // 0.003 * 1000 V * 1000 A = 3000 kW, the identity the power band is
+            // derived from.
+            mag[k] = 1000.0;
+            kw[k] = 3000.0;
+        } else if arm == SeqArm::NotAvailable {
+            // `Cabs(-1 + 0j)` and r4133's `(-1, 0)` power sentinel — the arm's
+            // whole payload, discrete on both sides.
+            mag[k] = 1.0;
+            kw[k] = -1.0;
+        }
+    }
+    cap.seq_i = mag.clone();
+    cap.seq_v = mag.clone();
+    cap.seq_p_kw = kw.clone();
+    cap.seq_p_kvar = kvar.clone();
+    snap.seq_currents = mag.clone();
+    snap.seq_voltages = mag;
+    snap.seq_powers = kw
+        .iter()
+        .zip(&kvar)
+        .map(|(a, b)| num_complex::Complex64::new(*a, *b))
+        .collect();
+    (entry, cap, snap)
+}
+
+/// The `seq_*` envelope bands each slot with `harness::seq_band` /
+/// `harness::seq_power_band` and attributes the floor-exceed to the sub-channel
+/// that produced it — the same two-sided accounting the seven older
+/// sub-channels get.
+#[test]
+fn the_seq_envelope_bands_the_sample_and_attributes_the_exceed() {
+    let tol = crate::harness::tol_for("micro");
+    // The fixture's bands, stated so the numbers below are not magic.
+    let bi = seq_band(&[1000.0; 3], tol.i_rel, tol.i_abs, 0.0);
+    assert!(
+        (bi - 2e-6).abs() < 1e-18,
+        "the fixture's band moved: {bi:e}"
+    );
+    // 0.003*(2e-6*(1000 + 2e-6) + 1000*2e-6) = 1.2e-5 + 1.2e-11, the
+    // second-order term kept (`harness::seq_power_band`).
+    let bs = seq_power_band(bi, bi, 1000.0, 1000.0);
+    assert!(
+        (bs - 1.2000000012000002e-5).abs() < 1e-20,
+        "the power band moved: {bs:e}"
+    );
+
+    // (a) inside the floor: nothing to mask, so all three are STALE.
+    let (entry, cap, snap) = seq_envelope_fixture(SeqArm::ThreePhase, EngineChannel::CapiV0145);
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    assert!(
+        !entry.exceeded_floor.load(Ordering::Relaxed),
+        "a sample inside its floor must not count as a divergence"
+    );
+    assert_eq!(
+        entry.scopes[0].dead_channels(),
+        vec!["seq_currents", "seq_voltages", "seq_powers"]
+    );
+
+    // (b) above the floor and inside the entry's envelope (2e-5 + 1e-8*1000):
+    //     the exceed is recorded against `seq_currents`, not a sibling.
+    let (entry, cap, mut snap) = seq_envelope_fixture(SeqArm::ThreePhase, EngineChannel::CapiV0145);
+    snap.seq_currents[0] += 1e-5;
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    assert!(
+        entry.exceeded_floor.load(Ordering::Relaxed),
+        "1e-5 A is 5x the 2e-6 A band and must be recorded"
+    );
+    assert_eq!(
+        entry.scopes[0].dead_channels(),
+        vec!["seq_voltages", "seq_powers"]
+    );
+
+    // (c) the power channel on its own scale: 4e-5 kVA is 3.3x its 1.2e-5 band
+    //     and inside its own envelope (2e-5 + 1e-8*3000 kVA).
+    let (entry, cap, mut snap) = seq_envelope_fixture(SeqArm::ThreePhase, EngineChannel::CapiV0145);
+    snap.seq_powers[2].im += 4e-5;
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    assert_eq!(
+        entry.scopes[0].dead_channels(),
+        vec!["seq_currents", "seq_voltages"]
+    );
+}
+
+/// …and a sample outside the entry's committed envelope still fails the gate:
+/// the widening is a bounded pin, never a blanket.
+#[test]
+#[should_panic(expected = "seq_i[0]")]
+fn the_seq_envelope_still_fails_outside_the_committed_bound() {
+    let tol = crate::harness::tol_for("micro");
+    let (entry, cap, mut snap) = seq_envelope_fixture(SeqArm::ThreePhase, EngineChannel::CapiV0145);
+    // 1e-4 A: over 3x the entry's 3e-5 A envelope at |I012| = 1000 A.
+    snap.seq_currents[0] += 1e-4;
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+}
+
+/// The r4133 channel — and only it — carries the truncated-matrix term
+/// (`SEQ_C012 * max_j |Xph_j|`, `Shared/mathutil.pas:302-303` + `:562-564`), on
+/// the three-phase arm where a matrix actually runs. A gap of `2.3e-6 A` sits
+/// between the two channels' bands: `capi_v0145` records it as a floor-exceed,
+/// `r4133` does not.
+#[test]
+fn the_seq_envelope_carries_the_truncated_matrix_term_on_r4133_only() {
+    let tol = crate::harness::tol_for("micro");
+    let capi = seq_band(&[1000.0; 3], tol.i_rel, tol.i_abs, 0.0);
+    let r4133 = seq_band(&[1000.0; 3], tol.i_rel, tol.i_abs, SEQ_C012);
+    assert!(
+        capi < 2.3e-6 && 2.3e-6 < r4133,
+        "the probe must sit between the two bands ({capi:e} .. {r4133:e})"
+    );
+    for (channel, dead) in [
+        (EngineChannel::CapiV0145, false),
+        (EngineChannel::R4133, true),
+    ] {
+        let (entry, cap, mut snap) = seq_envelope_fixture(SeqArm::ThreePhase, channel);
+        snap.seq_currents[0] += 2.3e-6;
+        envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+        assert_eq!(
+            entry.scopes[0].dead_channels().contains(&"seq_currents"),
+            dead,
+            "{channel:?}: the truncated-matrix term is r4133's alone"
+        );
+    }
+}
+
+/// A sub-channel the scope does NOT name is not envelope-checked…
+#[test]
+fn a_masked_seq_channel_is_not_envelope_checked() {
+    let tol = crate::harness::tol_for("micro");
+    let (mut entry, cap, mut snap) =
+        seq_envelope_fixture(SeqArm::ThreePhase, EngineChannel::CapiV0145);
+    entry.scopes[0].channels = vec!["seq_currents".to_string()];
+    // 1 kVA on the powers — five orders over the entry's envelope — and the
+    // scope does not name that channel, so nothing here is measured…
+    snap.seq_powers[0].re += 1.0;
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    // …while the named channel was measured and, being clean, is reported stale.
+    assert_eq!(entry.scopes[0].dead_channels(), vec!["seq_currents"]);
+}
+
+/// …and one it does name still hits the envelope, so the selector cannot become
+/// a blanket bypass.
+#[test]
+#[should_panic(expected = "seq_p[0]")]
+fn an_unmasked_seq_channel_still_hits_the_envelope() {
+    let tol = crate::harness::tol_for("micro");
+    let (mut entry, cap, mut snap) =
+        seq_envelope_fixture(SeqArm::ThreePhase, EngineChannel::CapiV0145);
+    entry.scopes[0].channels = vec!["seq_powers".to_string()];
+    snap.seq_powers[0].re += 1.0;
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+}
+
+/// The exclusion half: a `seq_*` scope rewrites the capture's sequence arrays
+/// from the snapshot — same units, no scaling — and touches nothing else.
+#[test]
+fn a_seq_scope_rewrites_the_capture_in_the_wires_own_units() {
+    let (entry, mut cap, mut snap) =
+        seq_envelope_fixture(SeqArm::ThreePhase, EngineChannel::CapiV0145);
+    snap.seq_currents = vec![11.0, 12.0, 13.0];
+    snap.seq_voltages = vec![21.0, 22.0, 23.0];
+    snap.seq_powers = vec![
+        num_complex::Complex64::new(-2500.0, 750.0),
+        num_complex::Complex64::new(1.0, 2.0),
+        num_complex::Complex64::new(3.0, 4.0),
+    ];
+    cap.i_re[0] = 7.0;
+    rewrite_element_selected(&mut cap, &entry.scopes[0], &snap, false);
+    assert_eq!(cap.seq_i, vec![11.0, 12.0, 13.0]);
+    assert_eq!(cap.seq_v, vec![21.0, 22.0, 23.0]);
+    assert_eq!(cap.seq_p_kw, vec![-2500.0, 1.0, 3.0]);
+    assert_eq!(cap.seq_p_kvar, vec![750.0, 2.0, 4.0]);
+    assert_eq!(
+        cap.i_re[0], 7.0,
+        "an unselected sub-channel must be left alone"
+    );
+    assert_eq!(
+        cap.cma_mag,
+        vec![1000.0; 3],
+        "an unselected sub-channel must be left alone"
+    );
+}
+
+/// **The discrete rail.** The envelope and the rewrite cover exactly the slots
+/// [`seq_slot_is_banded`] calls banded — measured slot by slot, on all three
+/// arms, from both sides: a slot the envelope measures is one the rewrite
+/// neutralizes, and a discrete slot is neither. That is what stops any `seq_*`
+/// ledger scope from excusing a discrete miss (the not-available arm's
+/// `1.0`/sentinel payload, or the exact zeros beside the positive-sequence slot
+/// that r4133's `DDLL/DCktElement.pas:760`/`:768` fills wrongly).
+#[test]
+fn the_seq_rewrite_and_the_seq_envelope_cover_the_same_slots() {
+    let tol = crate::harness::tol_for("micro");
+    for arm in [
+        SeqArm::ThreePhase,
+        SeqArm::PosSeqSinglePhase,
+        SeqArm::NotAvailable,
+    ] {
+        let n = seq_envelope_fixture(arm, EngineChannel::CapiV0145)
+            .1
+            .seq_i
+            .len();
+        assert!(n > 0, "{arm:?}: the fixture must carry a payload");
+        for k in 0..n {
+            let banded = seq_slot_is_banded(arm, k);
+
+            // The envelope side: a gap above the floor and inside the committed
+            // envelope is recorded iff the slot is banded.
+            let (entry, cap, mut snap) = seq_envelope_fixture(arm, EngineChannel::CapiV0145);
+            snap.seq_currents[k] += 1e-5;
+            envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+            assert_eq!(
+                !entry.scopes[0].dead_channels().contains(&"seq_currents"),
+                banded,
+                "{arm:?} slot {k}: envelope coverage disagrees with seq_slot_is_banded"
+            );
+
+            // The rewrite side: the slot is neutralized iff it is banded.
+            let (entry, mut cap, mut snap) = seq_envelope_fixture(arm, EngineChannel::CapiV0145);
+            let before = cap.seq_i[k];
+            snap.seq_currents[k] = 12345.0;
+            rewrite_element_selected(&mut cap, &entry.scopes[0], &snap, false);
+            assert_eq!(
+                cap.seq_i[k] == 12345.0,
+                banded,
+                "{arm:?} slot {k}: rewrite coverage disagrees with seq_slot_is_banded \
+                 (was {before}, now {})",
+                cap.seq_i[k]
+            );
+        }
+    }
+}
+
+/// **The one exception to the rail above, and its exact width** (coordinator
+/// decision **D31**, 2026-09-05). On the 1φ-positive-sequence arm the whole
+/// `SeqPowers` result is a single mode-9 write, and r4133 misplaces it — the
+/// value lands in slot `3t+2`, the correct `3t+1` stays zero — so an
+/// `exclusion` that names `seq_powers` there and neutralized only the banded
+/// slot would exclude nothing at all. It therefore neutralizes every slot of
+/// that arm's power array; a `divergence` still does not (its envelope must
+/// keep covering everything it neutralizes), the two magnitude arrays are
+/// untouched in both kinds, and so is the not-available arm.
+#[test]
+fn an_exclusion_scope_neutralizes_the_whole_posseq_seq_powers_array() {
+    for arm in [
+        SeqArm::ThreePhase,
+        SeqArm::PosSeqSinglePhase,
+        SeqArm::NotAvailable,
+    ] {
+        let n = seq_envelope_fixture(arm, EngineChannel::R4133)
+            .1
+            .seq_i
+            .len();
+        for k in 0..n {
+            let banded = seq_slot_is_banded(arm, k);
+            let widened = arm == SeqArm::PosSeqSinglePhase;
+            for exclusion in [false, true] {
+                let (entry, mut cap, mut snap) = seq_envelope_fixture(arm, EngineChannel::R4133);
+                snap.seq_powers[k] = num_complex::Complex64::new(4242.0, 24.0);
+                snap.seq_currents[k] = 12345.0;
+                snap.seq_voltages[k] = 12345.0;
+                rewrite_element_selected(&mut cap, &entry.scopes[0], &snap, exclusion);
+                assert_eq!(
+                    (cap.seq_p_kw[k], cap.seq_p_kvar[k]) == (4242.0, 24.0),
+                    banded || (exclusion && widened),
+                    "{arm:?} slot {k}, exclusion {exclusion}: the `seq_powers` \
+                     rewrite must cover the banded slots always and the whole \
+                     positive-sequence arm when the entry is an exclusion"
+                );
+                // …and nothing else moved with it: the two magnitude arrays keep
+                // the banded-slot rule under BOTH kinds, which is what keeps
+                // D31's scope honest at `seq_powers` alone.
+                assert_eq!(
+                    cap.seq_i[k] == 12345.0,
+                    banded,
+                    "{arm:?} slot {k}, exclusion {exclusion}: seq_currents coverage moved"
+                );
+                assert_eq!(
+                    cap.seq_v[k] == 12345.0,
+                    banded,
+                    "{arm:?} slot {k}, exclusion {exclusion}: seq_voltages coverage moved"
+                );
+            }
+        }
+    }
 }

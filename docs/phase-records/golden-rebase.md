@@ -3338,3 +3338,50 @@ row against the pre-fix lock.
   3 221 146 records).
 
   merge: lane lane-m -> update, see git log
+- **G1.3b** (2026-09-05, lane `lane-e`; D4/D7/D24) — per-element `SeqCurrents`, `SeqVoltages`,
+  `SeqPowers` on both channels over the 442 `compare_derived` cases, one new `exec/view.rs` accessor;
+  **0 new ledger entries / 0 causes** (58 / 31), **31** measured widenings on 11 `element` scopes,
+  0 golden bytes, no band moved. Three cross-channel divergences, none reproduced or ledgered:
+  r4133's 1φ-posseq slot/stride defect (`DDLL/DCktElement.pas:760`/`:768` against capi
+  `CAPI/CAPI_Alt.pas:555`/`:562`; report `to_opendss/67-seqpowers-posseq-slot-stride.md`) has zero
+  r4133 exposure — census (297 896, 79, 0) behind `assert_seq_arm_population`; the n/A `SeqPowers`
+  sentinel (`:772` against `:567`) is the channel-scoped `na_seq_power` fold; the two 012 matrices
+  cost the r4133-only `SEQ_C012 = 5.229590094302253e-10` (`Shared/mathutil.pas:302-303`+`:562-564`).
+  Detail: plan §G1.3b, TESTING.md, TOLERANCE_NOTES §G1.3b; pins **8** `exec::tests::derived_seq` /
+  **35** `harness::seq_floors` (22 legs) / **7** `ledger::*`. `40a65ffd` / `3d350ce6` + docs;
+  gate **6 570 / 0 / 5** per lane after the settlement (6 547 at `40a65ffd`), `lane_diff` PASS max |Δ| = 0.
+- **G1.3b audit settlement** (2026-09-05, `3d350ce6`) — 15 findings: **12 fixed / 3 recorded / 0 refuted**. The
+  arm census now pins the r4133 `0` exactly and rails the two measured counts at the documented
+  `SEQ_ARM_CENSUS_FLOORS` (new leg `the_seq_arm_population_fires_when_the_capi_arm_collapses`);
+  registry `every_pin_the_g13b_record_names_exists_and_is_cited` added; the plan's D-b1 population
+  premise corrected (11 decks raise `CktModel=Positive`, four r4133-gated but 2φ/3φ); six Pascal/pin
+  citations (`CAPI_Alt.pas:608` not `:607`, the dangling `a_discrete_seq_slot_*`); both commit-sha
+  placeholders in this record and STATUS; this record trimmed. Recorded, not fixed: `SEQ_C012`'s in-tree
+  `SymComp::official()` source (2.1e-7 tighter), the n/A magnitude sentinel `1.0` as a convention
+  `seq_arm` disambiguates, `dead_channels` policing `divergence` entries only (`ledger.rs:414-418`).
+- **G1.3b landed on `update`** (2026-09-05, coordinator decision **D31**) — the merge put the
+  sequence surface together with D12/D14's r4133-gated `modes/makeposseq/makeposseq_gic.dss`, the
+  first corpus case to reach the 1φ-posseq arm on that channel: 4 element rows at step 0,
+  `seq_powers` only (`seq_i`/`seq_v` are right on r4133 and stay compared) — measured by the live
+  gate and a one-shot `epri-worker` probe on the merged tree. Settled exactly as the census tripwire
+  prescribed: ledger **54 → 55** entries / **31 → 32** causes (`r4133-posseq-seqpowers-slot-gic`,
+  scope `element`/`seq_powers`, cause `posseq-seqpowers-slot-stride`, report
+  `to_opendss/67-seqpowers-posseq-slot-stride.md`), the both-numbers pin
+  `the_gic_posseq_deck_keeps_every_terminal_power_in_its_positive_slot`, an `exclusion`
+  naming `seq_powers` widened to neutralize the whole posseq power array (it would otherwise exclude
+  nothing — the defect is entirely in the cells the banded-slot rule left alone; `divergence`, the two
+  magnitude channels, the n/A arm and the port's own zeros are unchanged, measured slot by slot on all
+  three arms by `an_exclusion_scope_neutralizes_the_whole_posseq_seq_powers_array`), and only then
+  `SEQ_ARM_CENSUS_MEASURED` `(297 896, 79, 0)` → `(297 867, 78, 4)` (all three re-derived on the merged
+  tree; the capi count drops one row because D14 moved the `GICTransformer` off `makeposseq_shunt.dss`),
+  now red in both directions
+  (`the_seq_arm_population_fires_when_another_deck_brings_the_arm_to_r4133`,
+  `the_seq_arm_population_fires_when_the_r4133_arm_stops_gating`) with D24's rail re-cast as a
+  bounded delta. `SEQ_ARM_CENSUS_FLOORS` `(200 000, 60)`, every band, the engine and every golden
+  byte unchanged; pins **9** `exec::tests::derived_seq` / **36** `harness::seq_floors` (23 legs).
+
+  Merged-tree gate (both lanes): the five commands exit 0, **8 282 passed / 0 failed /
+  5 ignored** per lane; `lane_diff` `VERDICT: PASS`, max |Δ| = 0 on all eight kinds
+  (526 cases / 3 221 146 records).
+
+  merge: lane lane-e -> update, see git log
