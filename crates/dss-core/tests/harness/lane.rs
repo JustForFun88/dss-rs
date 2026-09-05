@@ -212,7 +212,7 @@ const LANE_SKIP_ELEM_POWERS: &[&str] =
 /// `TotalPowers` is the one G1.3c surface on the other side of the line: it is
 /// the per-terminal sum of `GetPhasePower`, whose first act is the cache-aware
 /// `ComputeIterminal` (r4133 `Common/CktElement.pas:1049`, reached from mode
-/// `20` at `DDLL/DCktElement.pas:1130`; capi `CAPI/CAPI_Alt.pas:1126`), so no
+/// `20` at `DDLL/DCktElement.pas:1120`; capi `CAPI/CAPI_Alt.pas:1127`), so no
 /// oracle channel reports it at the converged `NodeV` here either. Measured by
 /// the **live corpus gate**, on BOTH gating channels, with the bit forced ON
 /// (G1.3c F5, 2026-09-06; step 0, `Vsource.source` terminal 0; the two decks

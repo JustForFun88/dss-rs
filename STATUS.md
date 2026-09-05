@@ -152,11 +152,11 @@ polar channels over 442 cases, A/B/C capture order enforced, **1** ledger entry
 complete**), first into `LANE_SKIP_ELEM_POWERS`, **5 784 / 0 / 5**; **G1.3b**
 2026-09-05 (D24; `40a65ffd` / `3d350ce6`) — the three sequence surfaces, an
 r4133-only `SEQ_C012` term, the n/A fold and the r4133 1-phase posseq defect
-railed by an arm census, **6 570 / 0 / 5**; **G1.3c** 2026-09-06 — `CplxSeq*` +
-`TotalPowers` at G1.3b's own band (the complex compare adds the angle), closing
-`compare_derived` at thirteen fields, `TotalPowers` the fourth
-`LANE_SKIP_ELEM_POWERS` channel on the two `newton*` decks (red measured live
-on both channels first), **7 318 / 0 / 5** per lane, `lane_diff` PASS Δ = 0.
+railed by an arm census, **6 570 / 0 / 5**; **G1.3c** 2026-09-06 (`548bc7b8` +
+settlement) — `CplxSeq*` + `TotalPowers` close `compare_derived` at thirteen
+fields, `TotalPowers` the fourth `LANE_SKIP_ELEM_POWERS` channel on the two
+`newton*` decks (red measured on both channels first; the settlement added the
+pin registry and a `cseq_v_re` capture rail), **7 319 / 0 / 5** per lane, Δ = 0.
 G1.3b and G1.3c each add **0** ledger entries and **31** measured widenings.
 **Next.** the element chain closes with G1.3c's merge; the bus, PD/meter and
 singles lanes continue in parallel (D7) through the rest of G1.4–G1.11c, then

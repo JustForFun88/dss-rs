@@ -2887,19 +2887,26 @@ row against the pre-fix lock.
   `seq_arm` disambiguates, `dead_channels` policing `divergence` entries only (`ledger.rs:414-418`).
 - **G1.3c** (2026-09-06, lane `lane-e`; D4/D7/D24) — per-element `CplxSeqCurrents`, `CplxSeqVoltages`
   and `TotalPowers` on both channels over the same 442 `compare_derived` cases, completing the flag's
-  thirteen fields (one additive `exec/view.rs` accessor, two additive `dss-epri` helpers,
-  `WP_G1_MODES` still 97 — modes 13/14/20 were already `Served`). **0 new ledger entries / 0 causes**
-  (58 / 31), **31** measured widenings on 11 `element` scopes, 0 golden bytes, no band moved. Neither
-  G1.3b divergence reaches this surface, both measured: the n/A sentinel is `(-1, 0)` on **both**
-  engines (r4133 `DDLL/DCktElement.pas:60`/`:106`, capi `CAPI/CAPI_Alt.pas:268`/`:324`; cross-channel
-  max |Δ| = 0.0), and D-b1's posseq slot defect lives only in mode 9's inlined copy — so no fold, no
-  normalization, no new census (D24). `TotalPowers` becomes the fourth `LANE_SKIP_ELEM_POWERS` channel
-  on the two `newton*` decks (`GetPhasePower` opens with `ComputeIterminal`, r4133
-  `Common/CktElement.pas:1049`; red measured live on **both** channels first at ~20x the band) while
-  both `CplxSeq*` stay compared there — gating it is **stronger than fastdss**, which drops it in the
-  COM/Oddie configuration (`tests/save_outputs.py:199-200`). Detail: plan §G1.3c, TESTING.md,
-  TOLERANCE_NOTES §G1.3c; pins **7** `exec::tests::derived_totals` + 1 `exec::tests::newton` / **33**
-  `harness::cplx_seq_and_total_power_floors` / **13** `ledger::*` / 1 `capture_order::*`. Gate
-  **7 318 / 0 / 5** per lane (five commands, exit 0, unfiltered); `lane_diff` **PASS**, max |Δ| = 0
-  (523 cases / 3 220 861 records; `exec/view.rs` moved). Commits and the settlement sha are added by
-  this record's follow-up docs commit (the G1.3b precedent `ef110b71`).
+  thirteen fields; **0 new ledger entries / 0 causes** (58 / 31), **31** measured widenings on 11
+  `element` scopes, 0 golden bytes, no band moved, `WP_G1_MODES` still 97. Neither G1.3b divergence
+  reaches here, both measured: the n/A sentinel is `(-1, 0)` on **both** engines (r4133
+  `DDLL/DCktElement.pas:60`/`:106`, capi `CAPI/CAPI_Alt.pas:268`/`:324`) and D-b1's posseq defect lives
+  only in mode 9 — no fold, no census (D24). `TotalPowers` becomes the fourth `LANE_SKIP_ELEM_POWERS`
+  channel on the two `newton*` decks (`GetPhasePower` opens with `ComputeIterminal`, r4133
+  `Common/CktElement.pas:1049`; ~20x the band on both channels), the `CplxSeq*` pair stays compared —
+  gating it at all is stronger than fastdss. Detail: plan §G1.3c, TESTING.md, TOLERANCE_NOTES §G1.3c;
+  pins **7** `exec::tests::derived_totals` + 1 `exec::tests::newton` / **33**
+  `harness::cplx_seq_and_total_power_floors` / **13** `ledger::*` / 1 `capture_order::*`. `548bc7b8`
+  + the settlement below; gate **7 319 / 0 / 5** per lane after it (**7 318** at `548bc7b8`),
+  `lane_diff` PASS max |Δ| = 0; the settlement moved no product line (comment-only in `src/`).
+- **G1.3c audit settlement** (2026-09-06) — 11 findings: **7 fixed / 4 recorded / 0 refuted**
+  (`tmp/g13c/settle.md`). Fixed: the missing registry `every_pin_the_g13c_record_names_exists_and_is_cited`
+  (55 pins, both group counts — the one **major**); a fourth `require_capture` rail on `cseq_v_re`
+  (`runner.rs:615`) driven empty on **both** channels, plus the r4133 leg of the `CplxSeqCurrents` rail;
+  ~20 Pascal anchors re-pointed at the construct they name (copy loops `:906-910`/`:952-956` vs capi's
+  copy-free `ResultPtr` writes, `setlength` `:900`/`:946`/`:1118`, `GetPhasePower` `:1120`, `cmulreal`
+  `:1132`, guards `:878`/`:906`); the ledger's G1.3c date; this record trimmed. Recorded: `dead_channels`
+  polices `divergence` entries only (139 `element` sub-channel names, 128 on exclusions — noted in
+  `ledger.rs`), the three `envelope_element` branches no divergence selects yet (fixture-covered;
+  inventing a row to make them live is the mask WP-G1 forbids), ranges stopping 1-2 lines short of a
+  procedure's `end;`, and coordinator note "D28", absent in this lane.
