@@ -20,6 +20,11 @@ the pinned dss-python oracle (`tools/golden/PIN.txt`).
   Property parity was gated only against this pinned capi oracle until
   R4133_PROPS RP4.1 (2026-09-03); the r4133 bridge's own `capture_all_properties`
   now gates the r4133 channel the same way.
+  The `"topology": true` request field (GOLDEN_REBASE G1.7, 2026-09-05) adds
+  `capture_topology`: the six order-free `ITopology` rows (`NumLoops`,
+  `NumIsolated*`, `AllLoopedPairs`, `AllIsolated*`), read **strictly last** in the
+  step because the first `Topology` read builds the memoized branch tree; the
+  twelve cursor rows are never read (they reassign `ActiveCktElement`).
 - **`corpus_guard.py`** — restores the vendored corpus tree after a run (the
   engine writes reports/DI files next to each deck); the Rust side has a mirror
   `CorpusGuard`.

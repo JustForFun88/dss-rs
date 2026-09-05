@@ -44,6 +44,7 @@ mod select;
 mod solve;
 mod storage;
 mod time_series;
+mod topology;
 mod upfc;
 mod upstream_stubs;
 mod vccs;
