@@ -2827,20 +2827,39 @@ row against the pre-fix lock.
   scalars (`NumControls`, `OCPDevIndex`, `OCPDevType`, `HasVoltControl`, `HasSwitchControl`) on both
   channels over the same **440** cases, completing `compare_element_extras` and §G1.3d.
   `CktElement::phase_losses` ports r4133 `Common/CktElement.pas:1078-1120`; the five scalars read a
-  newly derived per-element `ControlElementList` (r4133 `Controls/ControlElem.pas:113-131`,
-  remove-then-append, re-run by every `RecalcElementData`, `Relay.pas:955`) that `Show Controlled` and
-  the reliability sweep now share. **0 new ledger entries / 0 new causes** (58 / 31), **10** measured
+  derived per-element `ControlElementList` (r4133 `Controls/ControlElem.pas:113-131`,
+  remove-then-append, re-run by every `RecalcElementData`, `Relay.pas:955`) that `Show Controlled`
+  and the reliability sweep share. **0 new ledger entries / 0 new causes** (58 / 31), **10** measured
   widenings onto the new `phase_losses` sub-channel, 0 golden bytes, no band moved, `WP_G1_MODES` 97.
-  `PhaseLosses` is the first channel to JOIN `LANE_SKIP_ELEM_POWERS` on the two `newton*` decks (same
-  cache-aware `ComputeIterminal`; the red measured first, 55.5× / 34.4× the band), and its floor is a
-  derivation of `assert_power_close` (`tests/TOLERANCE_NOTES.md` §G1.3d(ii)). Two divergences, pinned,
-  unledgered: r4133's per-edit re-attach vs capi 0.14.5's property-write-only `ControlledElement`
-  (`docs/upgrade/DIVERGENCES.md` L9, `ocp_dev_type_follows_the_last_attach_order`) and a disabled OCP
-  control still winning the scan (`a_disabled_ocp_control_still_wins_the_ocp_scan`). Adjacent defect
-  A-1 fixed here (`section_device_type_is_the_live_ocp_scan_not_the_registration_latch`, zero
-  golden/corpus movement); A-2 recorded in STATUS, owned by G1.6/G1.6b. Details: plan §G1.3d part (ii)
-  and TESTING.md. Pins **30**, held against this prose by
-  `every_pin_the_g13d2_record_names_exists_and_is_cited` — `exec::tests::element_extras` (19, +11),
-  `harness::element_extras_pins` (23, +4), `harness::phase_loss_bands` (10, incl.
-  `an_error_inside_the_band_passes_and_one_outside_it_fails`), 3 `ledger::*`, 1 `capture_order::*`, 1
-  `exec::tests::reliability::*`. Commits and gate totals: filled by the sub-step's own commit (P/S).
+  `PhaseLosses` joins `LANE_SKIP_ELEM_POWERS` on the two `newton*` decks (same cache-aware
+  `ComputeIterminal`; red measured first on both channels, 55.5× / 34.4× the band); its floor is a
+  derivation of `assert_power_close` (`tests/TOLERANCE_NOTES.md` §G1.3d(ii)). Two divergences pinned
+  and unledgered: r4133's per-edit re-attach vs capi's property-write-only `ControlledElement`
+  (`DIVERGENCES.md` L9, `ocp_dev_type_follows_the_last_attach_order`) and a disabled OCP control
+  still winning the scan (`a_disabled_ocp_control_still_wins_the_ocp_scan`). Adjacent defect A-1
+  fixed here (`section_device_type_is_the_live_ocp_scan_not_the_registration_latch`); A-2 recorded
+  in STATUS, owned by G1.6/G1.6b. Details: plan §G1.3d part (ii) and TESTING.md. Pins **34** in
+  `every_pin_the_g13d2_record_names_exists_and_is_cited` — `exec::tests::element_extras` (20),
+  `harness::element_extras_pins` (26), `harness::phase_loss_bands` (10), 3 `ledger::*`, 1
+  `capture_order::*`, 1 `exec::tests::reliability::*`. Commits `e6d66d66` + the settlement below;
+  gate **5 784 / 0 / 5** per lane (five commands, exit 0, unfiltered), `lane_diff` max |Δ| = 0.
+- **G1.3d(ii) audit settlement** (2026-09-05) — 18 findings (9 code / 9 tests, all Minor/Note;
+  4 raised by both auditors, so 14 distinct): **13 fixed**, **1 recorded**, 0 refuted. The real one: the port re-attached every
+  control during `MakePosSeq`, which r4133 never does — its control `MakePosSequence` overrides end
+  in `inherited` and never reach `RecalcElementData` (`Relay.pas:1008`, `Recloser.pas:738`,
+  `SwtControl.pas:367`, `CapControl.pas:656`, `RegControl.pas:1491`; `Fuse` has none;
+  `ExecHelper.pas:3069-3086`), so the re-attach moved out of the shared post-edit tail into
+  `exec::command::reattach_edited_control`, pinned by `makeposseq_does_not_reattach_controls`. Also:
+  a fail-on-stale population guard for D-ii-1's zero rows (`assert_no_multi_control_element`, 3 pins)
+  which **corrected the sub-step's own premise** — the quoted census covered `controls/**` only,
+  while the gated population holds **18** multi-control rows (3 184 controlled of 298 565), all of
+  them Relay-ONLY lists, so the conclusion stands on the right fact and the counts are now pinned,
+  `LANE_SKIP_ELEM_POWERS` locked to its two labels + the 7th `ElemChannels` bit added to the
+  anti-tautology asserts, the G1.3d(i) pin-count lock made exact again where no successor owns it and
+  the G1.3d(ii) row check made per-group, the newton red re-measured on the **r4133** channel
+  (`4.855901044093186e-4 > 8.753018514278278e-6`, `2.4606876731535624e-3 > 7.144000397412528e-5`),
+  and 21 wrong Pascal line citations swept (`:1090` `ComputeIterminal`, `:1118-1119` zero-fill,
+  DDLL `:637-659`/`:651`, capi `:896`). Recorded, not fixed: `Scope::dead_channels` still polices only
+  `divergence` entries — an exclusion covers causes that cannot be re-measured reliably (four of the
+  ten widenings sit on D12's self-disagreeing capi GIC decks), reason now in TESTING.md and
+  `ledger.rs`.

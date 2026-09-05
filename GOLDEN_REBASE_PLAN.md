@@ -718,7 +718,7 @@ in TESTING.md instead of double-capturing.
 >   loop `:1093-1112` summing `NodeV[NodeRef[(j-1)*FNconds+i]]·conj(Iterminal[…])` over the
 >   element's terminals and skipping `n = 0`, ×3 under positive sequence, `CZERO` zero-fill on
 >   `!FEnabled` (`:1118-1119`). It returns **W/var**; the oracles' ×0.001 (r4133
->   `DDLL/DCktElement.pas:637` mode 6, the `cmulreal(…, 0.001)` at `:650`; capi
+>   `DDLL/DCktElement.pas:637` mode 6, the `cmulreal(…, 0.001)` at `:651`; capi
 >   `CAPI/CAPI_Alt.pas:449-467`, the multiply at `:466`) is a capture-boundary encoding applied
 >   at exactly one site, the comparator.
 > * **The band is a derivation, not a new class** (`tests/TOLERANCE_NOTES.md` §G1.3d(ii)):
@@ -734,6 +734,12 @@ in TESTING.md instead of double-capturing.
 >   `Vsource.source` phase 0 at 55.5× / 34.4× the band (`|Δ| = 4.8559011331706704e-4` and
 >   `2.460687672864992e-3` kVA) — bit-identical to the `Powers` figures the row already records,
 >   which is the mechanism, not a coincidence. The five discrete scalars stay compared there.
+>   *(Audit settlement, 2026-09-05: that first measurement stopped at the `capi_v0145` channel,
+>   because a case aborts on its first failing channel. Re-measured on the **`r4133`** channel by
+>   flipping the two cases to `engines: "r4133"` in a scratch copy: same element, same phase,
+>   `|Δ| = 4.855901044093186e-4 > 8.753018514278278e-6` and
+>   `2.4606876731535624e-3 > 7.144000397412528e-5` kVA — i.e. both gating channels carry the
+>   staleness, as CLAUDE.md bug 5 says of every official rev. Nothing was committed from that copy.)*
 > * **D-ii-1 — the control list is attach-ordered, and r4133 re-attaches on every edit.** Pascal's
 >   per-element `ControlElementList` is remove-then-append (`Controls/ControlElem.pas:113-131`,
 >   `RemoveSelfFromControlElementList` at `:81-99`); r4133 re-runs
@@ -745,11 +751,20 @@ in TESTING.md instead of double-capturing.
 >   to the end) and capi **3**. The port follows r4133 — a new `Circuit::control_attach_order`
 >   maintained at the port's `RecalcElementData` moment, derived per element by
 >   `circuit::controls::derive_control_lists`, which `Show Controlled` now shares so the report and
->   the API cannot drift. **0 ledger rows:** no corpus deck carries a heterogeneous multi-control
->   element (live capi census over `tests/corpus/controls/**`: 60 controlled elements,
->   `max NumControls = 1`), so the divergence is not observable in the gate; it is pinned by
+>   the API cannot drift. **0 ledger rows:** no corpus deck carries a *heterogeneous*
+>   multi-control element, so the divergence is not observable in the gate; it is pinned by
 >   `ocp_dev_type_follows_the_last_attach_order` (port 1, r4133 1, capi 3) and recorded in
 >   `docs/upgrade/DIVERGENCES.md` **L9**.
+>   *(Audit settlement, 2026-09-05. The census quoted here — 60 controlled elements,
+>   `max NumControls = 1` — was a live capi walk of `tests/corpus/controls/**` only, and does NOT
+>   hold over the gated population: the whole-gate census now re-derived on every run finds
+>   **18** (case, channel, step, element) rows with ≥ 2 controls, out of 3 184 controlled rows in
+>   298 565. All 18 are Relay-ONLY lists — `Line.thev` under `Relay.21src` + `Relay.21rev` in the
+>   eight Distance/TD21 relay decks, `Line.motorleads` under `Relay.{mfrov/uv,mfr46,mfr47}` in
+>   `controls:fuse/indmach_r4133/indmach_{snap,dyn}.dss` — so every permutation answers the same
+>   `OCPDevIndex = 1` / `OCPDevType = 3` and the conclusion stands, now on the right premise. The
+>   counts are pinned fail-on-stale in both directions by
+>   `harness::assert_no_multi_control_element`, called from the gate epilogue.)*
 > * **D-ii-2 — a *disabled* OCP control still holds its slot and still wins the scan** (r4133
 >   `Common/Utilities.pas:3165-3184` has no `Enabled` test; both channels agree). The accessors
 >   therefore recompute from the derived list with no `Enabled` filter anywhere, instead of reading

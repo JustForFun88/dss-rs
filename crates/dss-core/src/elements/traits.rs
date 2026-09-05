@@ -926,7 +926,7 @@ pub trait CktElement: Send {
         result
     }
 
-    /// `GetPhaseLosses` (r4133 `Common/CktElement.pas:1078-1116`): the complex
+    /// `GetPhaseLosses` (r4133 `Common/CktElement.pas:1078-1120`): the complex
     /// losses of each **phase**, i.e. `Get_Losses`' `Σ NodeV[ref]·conj(Iterminal)`
     /// bucketed by phase index instead of summed flat —
     /// `Σ_{j=0..NTerms-1} NodeV[NodeRef[k]]·conj(Iterminal[k])` with
@@ -938,12 +938,12 @@ pub trait CktElement: Send {
     ///
     /// Length is always `NPhases`: a disabled element (or one whose `NodeRef` is
     /// still empty, where Pascal would dereference nil) gets Pascal's `else`
-    /// zero-fill (`:1114`) rather than an empty vector, so the reported shape
+    /// zero-fill (`:1118-1119`) rather than an empty vector, so the reported shape
     /// never depends on the solve state.
     ///
     /// **Units: W/var**, like [`Self::losses`] and unlike `Powers`. Both oracle
     /// surfaces scale by `0.001` at the API boundary — r4133 `CktElementV`
-    /// mode `6` (`DDLL/DCktElement.pas:636-658`), capi `Alt_CE_Get_PhaseLosses`
+    /// mode `6` (`DDLL/DCktElement.pas:637-659`), capi `Alt_CE_Get_PhaseLosses`
     /// (`CAPI/CAPI_Alt.pas:449-467`, facade `CAPI/CAPI_CktElement.pas:327-338`) —
     /// so that kW/kvar rendering is a capture-boundary encoding and lives in the
     /// harness comparator, exactly as the re/im interleave does. Pinned by

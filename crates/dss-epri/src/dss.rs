@@ -517,7 +517,7 @@ impl Engine {
     ///
     /// `CktElementV(6)` (`DDLL/DCktElement.pas:637-658`) is
     /// `TDSSCktElement.GetPhaseLosses` (`Common/CktElement.pas:1075-1116`),
-    /// whose first act on an enabled element is `ComputeIterminal` (`:1088`):
+    /// whose first act on an enabled element is `ComputeIterminal` (`:1090`):
     /// a cache-aware **group-A** read ([`modes::CKT_ELEMENT_PHASE_LOSSES`]), so
     /// the §1.1(a)/D3 order puts it before every read that fills a scratch
     /// buffer through `GetCurrents`.
@@ -525,7 +525,7 @@ impl Engine {
     /// Returned flat `[re, im, …]`, `NPhases` complex, in **kW/kvar**: the arm
     /// scales every value by `0.001` at `:651` (capi does the same at
     /// `CAPI/CAPI_Alt.pas:464`), unlike `Losses`, which is W/var. A disabled
-    /// element yields `NPhases` zeros (`Common/CktElement.pas:1114-1116`) and a
+    /// element yields `NPhases` zeros (`Common/CktElement.pas:1118-1119`) and a
     /// 0-phase element (`UPFCControl`, which never assigns `Nterms` —
     /// `Controls/UPFCControl.pas:230-246`) an empty array, neither touching
     /// `NodeRef` — so, unlike `NodeOrder`, this read needs no enabled/terminal
