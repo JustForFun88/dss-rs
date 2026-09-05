@@ -748,8 +748,8 @@ the symbol name in TESTING.md — never a silent capi-only fallback.
 superseded — the DLL has **no** `*_Get_*` symbols. It is the grouped DDLL API, one
 entry point per (family, ABI shape) with the property selected by a mode index, so
 the acceptance is the **mode probe**, and G1.0 executed it once for all of WP-G1:
-all 96 modes these three sub-steps need classify `Served` (99 since G1.6b added the
-PDElements walk arms), the expected-miss list is
+all 96 modes these three sub-steps need classify `Served` (**100** since G1.6b added the
+PDElements walk arms and G1.6(i) the `Meters` selector), the expected-miss list is
 empty (`crates/dss-epri/tests/modes.rs`). The `X_Get_Y` spellings below and above
 name the *properties* to capture, not symbols to bind. See the WP-G1 preamble note
 and TESTING.md §"The r4133 bridge — entry points, mode capability, do-not-call".)*
@@ -762,8 +762,10 @@ Serving G1.4 + G1.5: `Bus_Get_puVmagAngle/SeqVoltages/CplxSeqVoltages/Distance/`
 
 ### G1.11c — r4133 channel: Meters/Topology/Solution/Circuit families
 
-Serving G1.6–G1.9 (incl. the CAIDI capability measurement of G1.6). A group the
-DLL cannot serve stays capi-only with a one-line note in TESTING.md.
+Serving G1.6–G1.9. A group the DLL cannot serve stays capi-only with a one-line note in
+TESTING.md. (**2026-09-05, G1.6(i):** the CAIDI capability measurement is moot — CAIDI has
+no API mode on either channel and is EnergyMeter property #22 of `AllPropertyNames`,
+live-compared through `compare_all_properties` on both channels; see §G1.6 as-executed.)
 
 ---
 
