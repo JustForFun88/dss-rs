@@ -852,8 +852,8 @@ pub const METERS_SET_ACTIVE_SECTION: ModeSpec = ModeSpec::scalar(
     "Meters.SetActiveSection",
     "DMeters.pas:254",
     ModeEffect::Impure(
-        "sets pMeter.ActiveSection (DMeters.pas:254-264) — the per-meter cursor \r
-         every MetersI 23-27 / MetersF 4-6 section read answers from; never reset \r
+        "sets pMeter.ActiveSection (DMeters.pas:254-264) — the per-meter cursor \
+         every MetersI 23-27 / MetersF 4-6 section read answers from; never reset \
          by Meters.First/Next",
     ),
 );

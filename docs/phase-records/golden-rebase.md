@@ -2769,28 +2769,32 @@ row against the pre-fix lock.
   leak is a **drop-order race**, not a missing sweep — mechanism, negative controls and why it is not
   fixed here are in STATUS's standing follow-up.
 
-- **G1.6(i)** (2026-09-05, lane `lane-m`; decisions **D7** lanes, **D17a** `Meters.Totals` at the energy
-  tier, **D18/D11** the JSON decoder) — **meter extras + the run protocol**, the only WP-G1 sub-step that
-  changes how a case is *run*: no live deck ran `CalcReliabilityIndices`, so the gate drives the executive
-  `RelCalc` **once** per case, on the last step, on all three engines (not idempotent), tolerating errno
-  **52902** alone (r4133 `Meters/EnergyMeter.pas:2502`) and comparing the abort as boolean + message.
-  Six manifest-flagged cases compare the indices, all active sections, `CalcCurrent`/`AllocFactors`,
-  `Meters.Totals` and the zone lists' new ordered arm — exact but for three cells banded from existing
-  tiers. **0 ledger entries:** both oracles read `CalcCurrent`/`AllocFactors` out of uninitialised memory
-  until a deck runs `AllocateLoads` (r4133 `Meters/MeterElement.pas:45-52`), so those are excluded per
-  (channel, case, field) in `harness::RELIABILITY_SKIP_FIELDS`, pinned
-  `meter_alloc_factors_are_zero_until_allocateloads_runs`, and compared for real on the corpus's only
-  `AllocateLoads` deck `controls:energymeter/midi_relcalc.dss` (523 → **524** cases). G1.6b's two
-  deferrals are discharged: pin `pd_elements_relcalc_fields_are_live_after_relcalc` and the affirmative
-  re-derivation at `tests/TOLERANCE_NOTES.md:812`. Detail — the three D-i decisions, the read-order
-  contract, `WP_G1_MODES` 99 → 100 and the one vacuous demo recipe: `GOLDEN_REBASE_PLAN.md` §G1.6
-  as-executed (i) and `TESTING.md` §"The `Meters` reliability surface (G1.6(i))". Commits: `e343d9e8`
-  (the D11 `serde_json` hunk, on this lane by itself) + the surface commit (sha named by the settle
-  step). Gate: fmt clean; `corpus_gate` **164 / 0**, 524/524 cases, in **both** lanes, ledger 57 entries
-  / 1 588 hits / 0 stale; `oracle_parity_cfg_gate` 13, `population_lock` 2, `golden_lock` 4 with **no
-  digest moved**. Seventeen `file:LINE` citations that this sub-step's own insertions pushed out of
-  place were re-pointed (TESTING.md, `TOLERANCE_NOTES.md`, five `harness/mod.rs` comments), and the
-  523/519 case counts in `CLAUDE.md` and `TESTING.md` corrected to 524/520 (with TESTING.md’s
-  family and `both`-channel splits, part S). The five-command workspace gate is
-  green in both lanes (4 987 passed / 0 failed / 5 ignored) and the owed `lane_diff` (F1a moved
-  `exec/view.rs`) returns `max |Δ| = 0` on all eight kinds, 0 iteration drift.
+- **G1.6(i)** (2026-09-05, lane `lane-m`; decisions **D7**, **D17a** `Meters.Totals` at the energy tier,
+  **D18/D11** the JSON decoder) — **meter extras + the run protocol**, the only WP-G1 sub-step that changes
+  how a case is *run*: no live deck ran `CalcReliabilityIndices`, so the gate drives the executive `RelCalc`
+  **once** per case, on the last step, on all three engines (it is not idempotent), tolerating errno **52902**
+  alone (r4133 `Meters/EnergyMeter.pas:2502`) and comparing the abort as boolean + message. Six
+  manifest-flagged cases compare the indices, every section, `CalcCurrent`/`AllocFactors`, `Meters.Totals`
+  and the zone lists' new ordered arm — exact but for three cells banded from existing tiers. **0 ledger
+  entries:** the two arrays both oracles read uninitialised (r4133 `Meters/MeterElement.pas:45-52`) are
+  excluded per (channel, field) in `harness::RELIABILITY_SKIP_FIELDS`, pinned
+  `meter_alloc_factors_are_zero_until_allocateloads_runs`, and compared live on the new
+  `controls:energymeter/midi_relcalc.dss` (523 → **524** cases); G1.6b's two deferrals are discharged
+  (`pd_elements_relcalc_fields_are_live_after_relcalc`, `tests/TOLERANCE_NOTES.md:812`). Detail:
+  `GOLDEN_REBASE_PLAN.md` §G1.6 as-executed (i) and `TESTING.md` §"The `Meters` reliability surface".
+  Commits `e343d9e8` (D11 hunk) + `96d7540a`; gate green in both lanes, `lane_diff` max |Δ| = 0.
+  **Audit settlement** `<settle-sha>`: 20 findings — 15 fixed / 3 recorded / 2 refuted. Fixed: the
+  `alloc_factors` band gains the denominator floor its derivation always claimed (no band below `i_abs`,
+  loud triage instead of a silent pass, three regimes unit-tested); `RelCalc` keeps every error line, not
+  just the first; the accumulator pin's order claim is made true by a branch-point fixture whose 3-term
+  sweep sum is association-sensitive (`0.6400000000000001`, bit-identical on both oracles); the doc-quoted
+  pins and the `kind=large*` cost guard gain register tests; two off-by-one citations and three damaged
+  diagnostic strings repaired; the R-1 state-neutrality partition, the `Meters.Totals` 1e-4 exposure and
+  the `AllocateLoads` coverage split are now written down. **Recorded:** AT-1 — the pin freezing
+  upstream's cross-zone accumulator leak stands, because the leak is confirmed on BOTH oracles and also
+  makes the FIRST run depend on meter declaration order (`2.0/3.0` vs `3.0/3.0`, capi and r4133 alike);
+  reported as `investigations/to_opendss/61-relcalc-cross-zone-accumulator-leak.md`, the ordering arm added
+  to the pin, and the correct-value fix left as an **engine finding** for the step that owns
+  `solution/meters/reliability.rs` (R-14(d) forbids it here). **Refuted:** AT-9 — dss-python raises on the
+  52902 whatever `EarlyAbort` says (`DSSGlobals.pas:259-265` sets `ErrorNumber` unconditionally); AT-5 — the
+  kW-rewriting branch of `AllocateLoads` is oracle-pinned in `exec::tests::allocation`.
