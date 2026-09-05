@@ -49,6 +49,11 @@ impl std::error::Error for EngineError {}
 /// Powers, Currents, Losses (each flat `[re, im, ...]`) for one element.
 pub type Pcl = (Vec<f64>, Vec<f64>, Vec<f64>);
 
+/// `Bus.VLL` and `Bus.puVLL` for ONE bus, each flat `[re, im, ...]` and each
+/// the same length — the pair [`Engine::bus_vll_pair`] either produces whole
+/// or refuses whole, because one guard verdict decides both arms.
+pub type BusVllPair = (Vec<f64>, Vec<f64>);
+
 /// One generic C-API call request for [`Engine::ffi_dispatch`]. `kind` selects
 /// the ABI shape (`"i"`/`"f"`/`"s"`/`"v"`); only the matching scalar
 /// (`iarg`/`farg`[`/farg2`](FfiCall::farg2)/`sarg`) is used. `vset` (V only)
@@ -1312,15 +1317,68 @@ impl Engine {
     }
 
     /// `BUSV(11)` `Bus.VLL` — `DBus.pas:549`. See [`modes::BUS_VLL`].
+    ///
+    /// **Unguarded.** This arm does not terminate on every bus
+    /// ([`modes::bus_vll_would_hang`], [`modes::STATE_DEPENDENT_REFUSALS`]), so
+    /// it is safe only where the caller already knows the bus's node numbers
+    /// pair — the mode-capability proof walk drives it on IEEE13 `671`
+    /// (`crates/dss-epri/tests/modes.rs`). Every walk over arbitrary buses goes
+    /// through [`Self::bus_vll_pair`].
     pub fn bus_vll(&self) -> Result<Vec<f64>, EngineError> {
         self.read_mode_doubles(&modes::BUS_VLL)
     }
 
     /// `BUSV(12)` `Bus.PuVLL` — `DBus.pas:603`. See [`modes::BUS_PU_VLL`].
+    ///
+    /// **Unguarded**, exactly like [`Self::bus_vll`] and on exactly the same
+    /// buses (`DBus.pas:631-640` is the same pairing loop): reach it through
+    /// [`Self::bus_vll_pair`].
     pub fn bus_pu_vll(&self) -> Result<Vec<f64>, EngineError> {
         self.read_mode_doubles(&modes::BUS_PU_VLL)
     }
 
+    /// `BUSV(11)` **and** `BUSV(12)` for the active bus, behind the
+    /// state-dependent do-not-call guard: `Ok(Some((vll, pu_vll)))` when the
+    /// pairing loop is bounded on this bus, `Ok(None)` when it is not and the
+    /// bridge therefore **never dispatches either mode** (G1.4c).
+    ///
+    /// r4133 pairs phases with two unbounded `repeat` loops that probe `jj`
+    /// *before* wrapping it (`DDLL/DBus.pas:575-584`, `:631-640`), so a bus
+    /// whose node numbers miss `{jj0} u {1,2,3,4}` spins forever inside the DLL
+    /// — live-measured as a worker TIMEOUT on NEVTestCase `double-1`
+    /// (nodes `10,31,32,33,41,42,43`). A hang yields no oracle value at all, so
+    /// the refusal is decided *before* the call, from the bus's own node numbers
+    /// read through `Bus.Nodes` ([`modes::BUS_NODES`], `DBus.pas:319-345`),
+    /// whose own `jj` scan is bounded. [`modes::bus_vll_would_hang`] is the
+    /// predicate; both modes are registered in
+    /// [`modes::STATE_DEPENDENT_REFUSALS`] and this is their only dispatcher.
+    ///
+    /// The nodes are read **here** rather than passed in: one read serves both
+    /// arms (they cannot disagree) and no caller can hand the guard a stale node
+    /// list. The cost is one extra `BUSV(2)` per bus.
+    ///
+    /// Prefer this over the raw [`Self::bus_vll`] / [`Self::bus_pu_vll`] in any
+    /// walk over arbitrary buses; those two dispatch unguarded.
+    pub fn bus_vll_pair(&self) -> Result<Option<BusVllPair>, EngineError> {
+        // The register is load-bearing, not documentation: losing a row must
+        // break this accessor rather than silently restore the hang.
+        for spec in [&modes::BUS_VLL, &modes::BUS_PU_VLL] {
+            if modes::state_dependent_refusal(spec.family, spec.kind, spec.mode).is_none() {
+                return Err(EngineError::Other(format!(
+                    "{spec}: the VLL pairing arms must stay on \
+                     modes::STATE_DEPENDENT_REFUSALS — dispatching them without \
+                     modes::bus_vll_would_hang hangs the worker (DBus.pas:580-584)"
+                )));
+            }
+        }
+        let nodes = self.bus_nodes()?;
+        if modes::bus_vll_would_hang(&nodes).is_some() {
+            return Ok(None);
+        }
+        let vll = self.bus_vll()?;
+        let pu_vll = self.bus_pu_vll()?;
+        Ok(Some((vll, pu_vll)))
+    }
     /// `BUSV(13)` `Bus.VMagAngle` — `DBus.pas:659`. See [`modes::BUS_VMAG_ANGLE`].
     pub fn bus_vmag_angle(&self) -> Result<Vec<f64>, EngineError> {
         self.read_mode_doubles(&modes::BUS_VMAG_ANGLE)

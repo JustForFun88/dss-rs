@@ -243,6 +243,25 @@ fn corpus_gate_all_cases_match_engines() {
          {sc_buses} bus(es) compared full"
     );
     harness::assert_sc_study_compare_ran();
+    // And for G1.4c's four exception classes, for the SECOND reason: none of
+    // them is excluded — each is closed by a POSITIVE assertion of the upstream
+    // mechanism over the port's own state (`oracle == upstream_walk(port)`, the
+    // D15/D16 settlement shape). A deck that stopped carrying its class would
+    // leave that assertion running over nothing, and one that started carrying
+    // it would go unnoticed, so the four `(walks, buses)` pairs are re-derived
+    // on every run and asserted EXACTLY — failing on a drop AND on a growth.
+    // Invisible to `population.lock.json`, which fingerprints the manifest flag:
+    // this surface rides `compare_bus` and sets no flag of its own.
+    let sv = harness::seq_vll_counters();
+    eprintln!(
+        "corpus_gate seq/vll: r4133 sentinel {:?}, ground substitution {:?}, \
+         VLL pairing declines {:?}, r4133 hang refusals {:?} (walk(s), bus(es))",
+        sv.r4133_seq_sentinel,
+        sv.seq_ground_substitution,
+        sv.vll_upstream_pairing_declines,
+        sv.r4133_vll_hang
+    );
+    harness::assert_seq_vll_populations();
 }
 
 /// The property census (`R4133_PROPS_PLAN.md` RP0.2, `DSS_PROPS_CENSUS`): walk
@@ -395,6 +414,29 @@ const BUS_READ_ORDER: [(&str, &str); 5] = [
     ("b.puVoltages", "engine.bus_pu_voltages()"),
     ("b.VMagAngle", "engine.bus_vmag_angle()"),
     ("b.puVmagAngle", "engine.bus_pu_vmag_angle()"),
+];
+
+/// The four per-bus SEQUENCE + LINE-TO-LINE reads (GOLDEN_REBASE G1.4c), same
+/// table shape: capi marker first, r4133 marker second. They are inserted
+/// BETWEEN the five voltage arms and the six short-circuit ones of the ONE
+/// per-bus walk [`BUS_READ_ORDER`] measures, so the three tables together are
+/// the whole per-bus read order on both transports.
+/// (`CAPI/CAPI_Alt.pas:2165`/`:2367`/`:2473`/`:2400` == r4133
+/// `DDLL/DBus.pas:284`/`:520`/`:549`/`:603`.)
+///
+/// The r4133 transport serves BOTH line-to-line arms from a single guarded
+/// call — `Engine::bus_vll_pair`, which re-reads `Bus.Nodes` itself and refuses
+/// `BUSV(11)`/`BUSV(12)` whole where `DBus.pas:580-584` would not terminate —
+/// so the `puVLL` row's r4133 marker is the destructuring that publishes
+/// `pu_vll` out of that one call, which is the position capi's `b.puVLL` read
+/// occupies. That the capture reaches the two arms ONLY through the guard is
+/// asserted by
+/// [`the_sequence_and_line_to_line_capture_reads_in_one_fixed_order_on_both_transports`].
+const SEQ_VLL_READ_ORDER: [(&str, &str); 4] = [
+    ("b.SeqVoltages", "engine.bus_seq_voltages()"),
+    ("b.CplxSeqVoltages", "engine.bus_cplx_seq_voltages()"),
+    ("b.VLL", "engine.bus_vll_pair()"),
+    ("b.puVLL", "Some((vll, pu_vll))"),
 ];
 
 /// The six per-bus SHORT-CIRCUIT reads (GOLDEN_REBASE G1.5), same table shape:
@@ -683,6 +725,107 @@ fn the_short_circuit_capture_reads_in_one_fixed_order_on_both_transports() {
             );
         }
     }
+}
+
+/// The SEQUENCE + LINE-TO-LINE capture order is a CONTRACT too, on both
+/// transports (GOLDEN_REBASE_PLAN.md G1.4c §2.a/§4.2; the §1.1(a)/D3
+/// partition).
+///
+/// All four of `SeqVoltages`/`CplxSeqVoltages`/`VLL`/`puVLL` are **group C —
+/// order-free**: each one moves only `ActiveBusIndex` and then reads
+/// `Solution.NodeV` through the bus object (`CAPI/CAPI_Alt.pas:2190`, `:2386`,
+/// `:2532`, `:2464` == r4133 `DDLL/DBus.pas:305`, `:536`, `:588`, `:644`),
+/// never `ComputeIterminal` (group A) and never `GetCurrents` into a scratch
+/// buffer (group B). The order is pinned as a contract BETWEEN the two
+/// transports — the two captures must ship the same four quantities read the
+/// same way, so a divergence is the engines' and never the harness'.
+///
+/// Three things are asserted, all off the transports' own source text:
+/// 1. all **15** per-bus markers — [`BUS_READ_ORDER`], then
+///    [`SEQ_VLL_READ_ORDER`], then [`SC_READ_ORDER`] — appear in that one order
+///    on both transports. The four new arms therefore extend the single
+///    `capture_all_buses` walk whose checkpoint slot
+///    [`the_bus_capture_reads_in_one_fixed_order_on_both_transports`] pins;
+///    they take no slot and no request field of their own (the surface rides
+///    `compare_bus`, `manifest::Case::compare_bus`).
+/// 2. the claim specific to THIS surface on the r4133 side: the capture reaches
+///    `BUSV(11)`/`BUSV(12)` **only** through the guarded dispatcher
+///    `Engine::bus_vll_pair`. The raw `bus_vll`/`bus_pu_vll` accessors still
+///    exist for the mode-table proof walk, and a capture that called one of
+///    them directly would hang the whole gate on the `NEVTestCase`
+///    `double-1..6` buses (`dss-epri::modes::bus_vll_would_hang`,
+///    `DBus.pas:580-584`) instead of recording a refusal.
+/// 3. and on the capi side: that transport never claims a refusal — its
+///    `vll_declined` is the constant `False`, emitted after the two L-L arms.
+///    Its partner scan is bounded (`CAPI_Alt.pas:2512-2514`, `for k := 1 to 3`),
+///    and the comparator's `SecondLoopHang` cross-check of the harness' replay
+///    against the bridge's own predicate is only meaningful because exactly one
+///    transport is free to refuse.
+#[test]
+fn the_sequence_and_line_to_line_capture_reads_in_one_fixed_order_on_both_transports() {
+    // ---- capi transport: tools/oracle/oracle_server.py ---------------------
+    let py = repo_text("tools/oracle/oracle_server.py");
+    let py_body = fn_body(&py, "def capture_all_buses(", |l| l.starts_with("def "));
+    let py_code = strip_python_docstring(&py_body);
+    // (1) the whole per-bus read order in one pass: 5 voltage + 4 G1.4c + 6 SC.
+    let capi_markers: Vec<&str> = BUS_READ_ORDER
+        .iter()
+        .map(|(c, _)| *c)
+        .chain(SEQ_VLL_READ_ORDER.iter().map(|(c, _)| *c))
+        .chain(SC_READ_ORDER.iter().map(|(c, _)| *c))
+        .collect();
+    assert_eq!(
+        capi_markers.len(),
+        15,
+        "the per-bus read order is 5 voltage + 4 sequence/L-L + 6 short-circuit arms"
+    );
+    assert_source_order(
+        &py_code,
+        &capi_markers,
+        "oracle_server.py capture_all_buses (voltage, sequence/L-L, then SC arms)",
+    );
+
+    // ---- r4133 transport: crates/dss-epri/src/capture.rs -------------------
+    let rs = repo_text("crates/dss-epri/src/capture.rs");
+    let rs_body = fn_body(&rs, "fn capture_all_buses(", |l| l == "}");
+    let rs_code = strip_rust_line_comments(&rs_body);
+    let epri_markers: Vec<&str> = BUS_READ_ORDER
+        .iter()
+        .map(|(_, r)| *r)
+        .chain(SEQ_VLL_READ_ORDER.iter().map(|(_, r)| *r))
+        .chain(SC_READ_ORDER.iter().map(|(_, r)| *r))
+        .collect();
+    assert_source_order(
+        &rs_code,
+        &epri_markers,
+        "capture.rs capture_all_buses (voltage, sequence/L-L, then SC arms)",
+    );
+
+    // ---- (2) the L-L arms go through the guard, never around it ------------
+    for raw in ["engine.bus_vll()", "engine.bus_pu_vll()"] {
+        assert!(
+            !rs_code.contains(raw),
+            "capture.rs capture_all_buses: {raw:?} is the UNGUARDED accessor — the \
+             capture must reach `BUSV(11)`/`BUSV(12)` only through \
+             `engine.bus_vll_pair()`, which refuses the pair on a bus whose partner \
+             scan would not terminate (GOLDEN_REBASE G1.4c; DBus.pas:580-584)"
+        );
+    }
+
+    // ---- (3) the capi transport never refuses ------------------------------
+    let declined = sole_offset(
+        &py_code,
+        "cap[\"vll_declined\"] = False",
+        "oracle_server.py capture_all_buses vll_declined",
+    );
+    let pu_vll = sole_offset(&py_code, "b.puVLL", "oracle_server.py capture_all_buses");
+    assert!(
+        declined > pu_vll,
+        "oracle_server.py capture_all_buses: `vll_declined` must be the constant \
+         `False` emitted alongside the two L-L arms (offsets {pu_vll} then {declined}) \
+         — this transport's partner scan is bounded (`CAPI_Alt.pas:2512-2514`) and \
+         cannot refuse"
+    );
 }
 
 /// D2's cross-transport validation of the bus capture, live (G1.4a audit

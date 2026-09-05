@@ -211,11 +211,13 @@ struct VariablesCap {
 ///
 /// Parity target: fastdss' `IBus._columns` (`origin/fastdss` `dss/IBus.py:19-53`,
 /// reached through `save_state`'s `ActiveBus`, `tests/save_outputs.py:351`).
-/// The four surfaces below are the ones both gating channels compute with the
-/// identical algorithm; the bus quantities that diverge
-/// (`SeqVoltages`/`CplxSeqVoltages`, `VLL`/`puVLL` — the latter also hang this
-/// channel, `DBus.pas:575-583`) belong to G1.4c and are deliberately not read
-/// (coordinator decision D8).
+/// The first four surfaces below are the ones both gating channels compute
+/// with the identical algorithm. The four G1.4c arms after the short-circuit
+/// block — `SeqVoltages`/`CplxSeqVoltages` and `VLL`/`puVLL` — do NOT: the
+/// two channels split structurally on the bus's node set (this transport has
+/// no `Nvalues > 3` clamp on the sequence arms and its L-L pairing loop can
+/// hang, see [`BusCap::vll_declined`]), so the comparator recognizes each
+/// shape from the port's own node numbers rather than comparing sentinels.
 ///
 /// All three VOLTAGE arrays are `2 * nodes.len()` doubles in ONE order --
 /// **ascending node number** — and never the bus's internal insertion order:
@@ -268,6 +270,37 @@ struct BusCap {
     /// `BuildYMatrix` under `PreserveNodeVoltages` (`Ymatrix.pas:170`), so it
     /// is live on harmonics/dynamics decks too.
     voc: Vec<f64>,
+    /// `Bus.SeqVoltages` — the three `Cabs(V012[i])` magnitudes, ALWAYS 3
+    /// doubles: the arm publishes `SizeOf(double) * 3` unconditionally
+    /// (`BUSV(1)`, `DBus.pas:284-317`, `:315-316`). `-1.0` x3 whenever
+    /// `NumNodesThisBus <> 3` (`:296-297`) — and, unlike capi
+    /// (`CAPI_Alt.pas:2172-2186`), with NO `Nvalues > 3` clamp, so the two
+    /// channels split on a bus with more than three nodes.
+    seq_voltages: Vec<f64>,
+    /// `Bus.CplxSeqVoltages` — the same three components complex, 6 doubles
+    /// (`BUSV(10)`, `DBus.pas:520-547`), `cmplx(-1,-1)` x3 under the same
+    /// `Nvalues <> 3` test (`:531-532`) and the same missing clamp.
+    cplx_seq_voltages: Vec<f64>,
+    /// `Bus.VLL` — line-to-line voltages (`BUSV(11)`, `DBus.pas:549-601`):
+    /// 6 doubles (three pairs) on a bus with `>= 3` nodes, 2 doubles on any
+    /// other — one pair when it has exactly 2 (`Nvalues = 2 => 1`, `:563`), or
+    /// the `cmplx(-99999, 0)` marker of the `Nvalues <= 1` branch (`:594`).
+    /// EMPTY when [`Self::vll_declined`].
+    vll: Vec<f64>,
+    /// `Bus.puVLL` — the same pairs over `BaseFactor_LL = 1000*kVBase*sqrt3`,
+    /// or `1.0` when `kVBase <= 0` (`BUSV(12)`, `DBus.pas:603-657`, `:622-623`
+    /// == `CAPI_Alt.pas:2427-2430`). Same shape and same emptiness rule as
+    /// [`Self::vll`]: one guard decides both.
+    pu_vll: Vec<f64>,
+    /// THIS transport refused to compute `VLL`/`puVLL` for this bus: r4133's
+    /// pairing loop probes `jj` before wrapping it and would not terminate on
+    /// this node set ([`crate::modes::bus_vll_would_hang`],
+    /// `DBus.pas:580-584`), so neither mode was dispatched and both arrays
+    /// are empty. A hang yields no oracle value at all, which is why this is
+    /// a captured FACT the comparator asserts against its own replay of the
+    /// walk — never a silent gap. Always `false` on the capi transport, whose
+    /// second loop is the bounded `for k := 1 to 3` of `CAPI_Alt.pas:2500`.
+    vll_declined: bool,
 }
 
 /// What THIS transport publishes for `Bus.ZscMatrix`/`Bus.YscMatrix` — and for
@@ -806,7 +839,8 @@ pub fn all_properties_dump(engine: &Engine) -> Result<Vec<PropsCap>, EngineError
 /// r4133 half of the `compare_bus` capture, a field-for-field port of
 /// `oracle_server.capture_all_buses` over the typed mode accessors
 /// ([`crate::modes`] rows `Circuit.AllBusNames`, `Bus.Nodes`, `Bus.puVoltages`,
-/// `Bus.VMagAngle`, `Bus.puVMagAngle`; `Bus.kVBase` is `BUSF(0)`).
+/// `Bus.VMagAngle`, `Bus.puVMagAngle`, `Bus.SeqVoltages`,
+/// `Bus.CplxSeqVoltages`, `Bus.VLL`, `Bus.puVLL`; `Bus.kVBase` is `BUSF(0)`).
 ///
 /// Walked in `BusList` order, which `SetActiveBus`'s returned 0-based index
 /// (`DCircuit.pas:247-250`, `ActiveBusIndex - 1`) re-asserts per bus: a failed
@@ -823,6 +857,17 @@ pub fn all_properties_dump(engine: &Engine) -> Result<Vec<PropsCap>, EngineError
 /// 0-node bus — 2 in the corpus — yields empty arrays and passes at `0 == 0`),
 /// and the node numbers must come back strictly ascending, which is what makes
 /// this capture comparable to the port's sorted view.
+///
+/// The four G1.4c arms (`SeqVoltages`, `CplxSeqVoltages`, `VLL`, `puVLL`) are
+/// read unconditionally, after the five voltage arms and before the
+/// conditional short-circuit block — group C as well (`DBus.pas:305`, `:536`,
+/// `:588`, `:644` read `Solution.NodeV` only). `VLL`/`puVLL` go through the
+/// state-dependent guard [`Engine::bus_vll_pair`], the crate's ONLY dispatcher
+/// of `BUSV(11)`/`BUSV(12)`: on a bus whose node set would spin the pairing
+/// loop forever it publishes empty arrays plus [`BusCap::vll_declined`]
+/// instead of hanging the worker. Their shapes are derived from the node
+/// count, not assumed: 3 and 6 doubles for the sequence arms, and 6 (three
+/// pairs) or 2 (one pair, or the `-99999` marker) for the L-L pair.
 ///
 /// `want_sc` (G1.5, request field `zsc`) appends the six short-circuit arms to
 /// THIS walk — never a second `SetActiveBus` pass — in the fixed order
@@ -872,6 +917,56 @@ fn capture_all_buses(engine: &Engine, want_sc: bool) -> Result<Vec<BusCap>, Engi
                     v.len(),
                     nodes.len()
                 )));
+            }
+        }
+        // G1.4c, still group C (order-free): both sequence arms and the two
+        // L-L arms read `Solution.NodeV` plus the bus object only
+        // (`DBus.pas:305`, `:536`, `:588`, `:644`), with no `ComputeIterminal`
+        // and no `ActiveCktElement`. The order below is the CONTRACT between
+        // the two transports, asserted by the capture-order test.
+        let seq_voltages = engine.bus_seq_voltages()?;
+        let cplx_seq_voltages = engine.bus_cplx_seq_voltages()?;
+        // The ONLY dispatcher of `BUSV(11)`/`BUSV(12)` in this crate's capture
+        // path: it re-reads `Bus.Nodes` itself and refuses the pair whole when
+        // the pairing loop would not terminate.
+        let (vll, pu_vll, vll_declined) = match engine.bus_vll_pair()? {
+            Some((vll, pu_vll)) => (vll, pu_vll, false),
+            None => (Vec::new(), Vec::new(), true),
+        };
+        for (key, v, want) in [
+            ("seq_voltages", &seq_voltages, 3usize),
+            ("cplx_seq_voltages", &cplx_seq_voltages, 6),
+        ] {
+            if v.len() != want {
+                return Err(EngineError::Other(format!(
+                    "bus capture: {name}.{key} returned {} values, expected {want} \
+                     (DBus.pas:315-316 / :546-547 publish a fixed length)",
+                    v.len()
+                )));
+            }
+        }
+        if vll_declined {
+            // The `Nvalues <= 1` branch never enters a loop (`DBus.pas:594`,
+            // `:650`), so a refusal there would be the guard misfiring.
+            if nodes.len() < 2 {
+                return Err(EngineError::Other(format!(
+                    "bus capture: {name} has nodes {nodes:?} but the VLL guard \
+                     refused — DBus.pas:563/:594 cannot loop below 2 nodes"
+                )));
+            }
+        } else {
+            // `Nvalues > 3 => 3` then `= 2 => 1` (`:561-563`): three pairs on a
+            // bus with `>= 3` nodes, one complex on every other — either one
+            // L-L pair or the `-99999` marker.
+            let want = if nodes.len() >= 3 { 6 } else { 2 };
+            for (key, v) in [("vll", &vll), ("pu_vll", &pu_vll)] {
+                if v.len() != want {
+                    return Err(EngineError::Other(format!(
+                        "bus capture: {name}.{key} returned {} values, expected {want} \
+                         for nodes {nodes:?} (DBus.pas:561-563, :594)",
+                        v.len()
+                    )));
+                }
             }
         }
         let (zsc1, zsc0, zsc, ysc, isc, voc) = if want_sc {
@@ -924,6 +1019,11 @@ fn capture_all_buses(engine: &Engine, want_sc: bool) -> Result<Vec<BusCap>, Engi
             ysc,
             isc,
             voc,
+            seq_voltages,
+            cplx_seq_voltages,
+            vll,
+            pu_vll,
+            vll_declined,
         });
     }
     engine.assert_clean("buses")?;

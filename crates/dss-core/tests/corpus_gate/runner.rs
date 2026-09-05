@@ -661,6 +661,43 @@ pub(crate) fn compare_capture(
             harness::compare_bus(dss, &cp.buses, tol, v_excluded, &ctx);
             harness::compare_all_bus_vmag_pu(dss, &cp.all_bus_vmag_pu, tol, v_excluded, &ctx);
 
+            // The SEQUENCE + LINE-TO-LINE half of the SAME per-bus walk
+            // (GOLDEN_REBASE_PLAN.md G1.4c): `Bus.SeqVoltages`/
+            // `CplxSeqVoltages`/`VLL`/`puVLL`, four arms appended to the one
+            // `SetActiveBus` sweep the block above already paid for — hence a
+            // second call on `cp.buses` rather than a second capture or a
+            // second flag (the surface rides `compare_bus`, as
+            // `manifest::Case::compare_bus` documents). Class C too: every arm
+            // reads `Solution.NodeV` and the bus object only
+            // (`CAPI/CAPI_Alt.pas:2190`/`:2532` == r4133 `DDLL/DBus.pas:305`/
+            // `:588`), so nothing here can stale a cached `Iterminal`.
+            //
+            // It runs AFTER `compare_bus`, which pins the bus count, the name
+            // sequence and the node sets first: this comparator classifies each
+            // bus from its NODE SET and would otherwise be able to read a
+            // divergent structure as a divergent class.
+            //
+            // `v_excluded` is reused NARROWED, exactly as the short-circuit arm
+            // below reuses it: it drops the sequence/L-L VALUES only, while
+            // every availability rule (each channel's own sentinel), every
+            // length, the `vll_declined` cross-check and the port-internal
+            // identities stay compared.
+            //
+            // The returned class counts feed the run-wide fail-on-stale
+            // populations (`harness::assert_seq_vll_populations`, called once
+            // from the gate epilogue). This is the ONE recording call site —
+            // the harness' own drives must not record, or the populations stop
+            // being a property of the corpus.
+            let seq_vll = harness::compare_bus_seq_and_vll(
+                dss,
+                &cp.buses,
+                tol,
+                channel.props_channel(),
+                v_excluded,
+                &ctx,
+            );
+            harness::record_seq_vll_populations(seq_vll);
+
             // The short-circuit half of the SAME per-bus walk
             // (GOLDEN_REBASE_PLAN.md G1.5): `Bus.Zsc1`/`Zsc0`/`ZscMatrix`/
             // `YscMatrix`/`Isc`/`Voc`, six arms appended to the one
