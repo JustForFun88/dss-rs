@@ -703,7 +703,11 @@ and series-first returns the same thirty Laplacian integers in the same order wh
 incidence row moves 3 to 2. The declining population is re-derived on every run and
 pinned in both directions as `INC_UPSTREAM_ROW_DECLINES = (4 cases, 5 case-steps)`
 (`harness::inc_matrix::assert_declines_are_the_pinned_population`, called from the gate
-epilogue, silent only under `DSS_GATE_ONLY` or while no live case requests the surface):
+epilogue, silent only under `DSS_GATE_ONLY` or when the manifests request the surface on
+neither channel — the arming predicate is read off the four manifests by
+`scheduler::inc_matrix_requested_channels`, never off the run's own counters, so a
+deleted or per-channel-narrowed `if c.compare_inc_matrix` block in the runner reds here
+instead of silencing the surface with a green gate):
 `NEVMASTER.DSS`, `Run_NEV.dss`, `asymmetric:reactor/reactor_asym.dss` and
 `midi_reactor_asym.dss` steps 0 and 1 — 10 channel visits over 3 314 compared
 `(case, step, channel)` triples. The expected-value pins naming both numbers are
@@ -714,14 +718,17 @@ oracle row 3 with three row names),
 `investigations/to_opendss/63-incidence-row-cursor-counts-skipped-reactors.md` (local only).
 
 **Two further defects of the same walk are reproduced on purpose, and registered.**
-`GetBus(2)` on a one-terminal reactor returns a blank string, so the `.0` test that
-classifies a reactor as series never fires, the bus search then misses and the column
+`GetBus(2)` on a one-terminal reactor returns a blank string, so the `.0` test that would
+classify the reactor as *shunt* never fires, the bus search then misses and the column
 falls back to the LAST bus of the list: `asymmetric:reactor/reactor_asym.dss`'s
-`Reactor.rdel` gets the triples `(4,3,+1)` `(4,4,-1)`, an edge to `b4` in a five-bus
-list. And the reactor walk carries no `Enabled` test where its three siblings do, so a
-disabled series reactor is still a row. Both are *which element becomes a row* — a
-modelling decision, not an indexing one — so they are left as they are for now, stated
-with both numbers by
+`Reactor.rdel` gets an edge from `b3` to `b4` in a five-bus list — the port's dense
+triples `(4,3,+1)` `(4,4,-1)`, which both oracles emit at row **5** because the same deck
+also trips the row cursor above (`ASYM_INC` in `inc_matrix_pins.rs`; only the column pair
+is channel-independent). And the reactor walk carries no `Enabled` test where its three
+siblings do (r4133 `Common/Solution.pas:2862`, `:2916`, `:2964`), so a disabled series
+reactor is still a row.
+Both are *which element becomes a row* — a modelling decision, not an indexing one — so
+they are left as they are for now, stated with both numbers by
 `exec::tests::inc_matrix::a_one_terminal_reactor_becomes_a_phantom_branch_to_the_last_bus`
 and `::a_disabled_series_reactor_is_still_a_row`, and registered as teardown candidates
 in `GOLDEN_REBASE_PLAN.md` §WP-G2 with the same upstream report.
@@ -759,10 +766,16 @@ the sentinel triple (capi `['']`, r4133 `['None']`, port `[]`);
 IEEE13 columns in `BusList` order against the `CalcIncMatrix_O` order, which first
 differs at index 3); and `calclaplacian_without_calcincmatrix_raises_8877` states the
 port's own guard. The r4133 twin named above is literally
-`r4133_capture_reads_the_incidence_surface_last`; the dense-row fix is pinned in-engine
+`r4133_capture_reads_the_incidence_surface_last`, and its strictly-last rule is the
+predicate `check_inc_matrix_last`; the dense-row fix is pinned in-engine
 by `solution::inc_matrix::tests::the_reactor_row_cursor_advances_only_on_an_emitted_row`
 and the six manifest declarations by
-`scheduler::the_inc_matrix_surface_is_declared_on_every_gating_channel`.
+`scheduler::the_inc_matrix_surface_is_declared_on_every_gating_channel`. The capi
+transport's own two refusals — the kill criterion (the `+1` cell must be 0, the length
+`3·NZero + 1`) and the empty-name sentinel — live in Python, where no Rust test reaches
+them, so they are gated from the source text by
+`capture_order::the_capi_incidence_transport_refuses_a_shape_it_was_not_written_for`
+(the r4133 twins have real unit tests in `crates/dss-epri/src/capture.rs`).
 
 ### The divergence ledger (`tests/corpus/ledger.json`)
 
@@ -1358,7 +1371,7 @@ written, never which value it is; anything else is an exclusion, not a rule.
 that the four per-kind locks (`NORM_ROWS` … `NORM_ENUM_SYNONYM_ROWS`,
 `props_norm.rs:742-764`) partition it, so a row cannot be added without moving a
 documented number. *Liveness:* `props_norm::assert_norm_rows_are_live`
-(`props_norm.rs:1412`, called in the gate epilogue, `corpus_gate.rs:203`) fails
+(`props_norm.rs:1412`, called in the gate epilogue, `corpus_gate.rs:207`) fails
 a full run in which a row was visited and folded nothing — the fail-on-stale
 half. The offline half is the replay (§"The r4133 props replay accounting"):
 every row must claim at least one vendored example row. Only the **live** half
@@ -1402,7 +1415,7 @@ converse guard `a_capi_witness_is_a_pair_the_capi_channel_can_compare` refuses a
 tied to the table both ways by
 `props_r4133_replay::every_echo_row_pin_is_a_test_that_exists`. *Liveness:*
 `props_norm::assert_echo_rows_are_live` (`props_norm.rs:2657`,
-`corpus_gate.rs:214`) — `visits > 0 && hits == 0` for a pair-scoped row,
+`corpus_gate.rs:218`) — `visits > 0 && hits == 0` for a pair-scoped row,
 `visits == 0` for a narrowed one (a narrowed row counts only covered cells, so
 `visits == hits` by construction and the first arm cannot fire on it).
 
@@ -1446,7 +1459,7 @@ skipped on capi only, because their Rust tables are r4133-shaped
 `recloser_and_relay_are_whole_element_skipped_on_capi_only`, `mod.rs:2268`).
 
 **Did the chain run at all?** `props_norm::assert_r4133_props_compare_ran`
-(`props_norm.rs:2841`) runs first in the gate epilogue (`corpus_gate.rs:191`),
+(`props_norm.rs:2841`) runs first in the gate epilogue (`corpus_gate.rs:195`),
 so a wholesale re-mask reports as one line instead of 19 stale-row messages; a
 *partial* re-mask is caught instead by the forcing-rule lock
 `scheduler::the_property_forcing_rule_is_every_live_non_large_case`

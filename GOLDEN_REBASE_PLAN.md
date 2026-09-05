@@ -885,8 +885,10 @@ in every commit (all fail-on-stale):
 > the `.0` test that classifies a reactor as shunt never fires; the bus search then misses
 > and the fallback column is the LAST bus of the list. Witness
 > `asymmetric:reactor/reactor_asym.dss`: `Reactor.rdel` (1 terminal, delta shunt) gets a
-> row and the triples `(4,3,+1)` `(4,4,-1)`, an edge from `b3` to `b4` in a five-bus list,
-> and it moves the Laplacian. Both oracles and the port agree. (b) **The reactor walk has
+> row — an edge from `b3` to `b4` in a five-bus list, and it moves the Laplacian. The
+> triples are `(4,3,+1)` `(4,4,-1)` in the PORT's dense numbering and `(5,3,+1)` `(5,4,-1)`
+> on **both** oracles, which the same deck's row cursor shifts (settlement S-INC): the edge
+> and its column pair are what all three agree on, not the row index. (b) **The reactor walk has
 > no `Enabled` test**, unlike its three siblings (`:2862`, `:2916`, `:2964`), so a disabled
 > series reactor is still a row; no corpus deck disables one today, so it is currently
 > unexposed. Current behaviour is stated with both numbers by

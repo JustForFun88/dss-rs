@@ -687,16 +687,35 @@ const INC_MATRIX_DECLARED_IN_MANIFEST: &[(&str, &str)] = &[
     ("controls:fuse/indmach_r4133/indmach_dyn.dss", "r4133"),
 ];
 
+/// Which gating channels the manifests ask the incidence surface for — the
+/// arming half of `harness::inc_matrix`'s decline census, read HERE because that
+/// module compiles into ~20 test binaries with no manifest access (the G1.7
+/// predicate in [`assert_topology_declines_are_the_pinned_population`], moved
+/// across the module boundary by the G1.8 audit settlement).
+pub(crate) fn inc_matrix_requested_channels() -> harness::inc_matrix::RequestedChannels {
+    let mut out = harness::inc_matrix::RequestedChannels {
+        capi: false,
+        r4133: false,
+    };
+    for uc in build_unified_cases()
+        .iter()
+        .filter(|uc| uc.class == CaseClass::Live && uc.case.compare_inc_matrix)
+    {
+        out.capi |= uc.case.engines == "both" || uc.case.engines == "capi_v0145";
+        out.r4133 |= uc.case.engines == "both" || uc.case.engines == "r4133";
+    }
+    out
+}
+
 /// **The incidence-forcing rule is a rule, not a habit** — the G1.8 twin of
 /// [`the_topology_forcing_rule_is_every_live_non_large_case`], and for the same
 /// reason: nothing else can see [`force_inc_matrix`]. `population.lock.json`
-/// fingerprints manifest flags, and the live census
-/// `harness::inc_matrix::assert_declines_are_the_pinned_population` arms on the
-/// run's own comparison counter, so a *partial* re-mask (say a `gates_capi()`
-/// guard, which would drop the 83 r4133-only cases while the 313 `both` ones
-/// keep walking) passes both. This test walks the four manifests without an
-/// oracle and asserts the forced set **is** the live non-`large` population,
-/// cell for cell.
+/// fingerprints manifest flags only, and the live census
+/// `harness::inc_matrix::assert_declines_are_the_pinned_population` sees the
+/// SHAPE of the re-mask (nothing compared, or nothing compared on one channel)
+/// rather than its size — a rule narrowed from 440 cases to 400 leaves both
+/// green. This test walks the four manifests without an oracle and asserts the
+/// forced set **is** the live non-`large` population, cell for cell.
 #[test]
 fn the_inc_matrix_forcing_rule_is_every_live_non_large_case() {
     let cases = build_unified_cases();

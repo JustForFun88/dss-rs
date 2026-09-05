@@ -222,7 +222,7 @@ pub struct TopologyView {
 ///
 /// Two members of the same Pascal family are deliberately absent.
 /// `Solution.BusLevels` (`SolutionV` mode 2, `DSolution.pas:569-588`) sizes its
-/// buffer `length(Inc_Mat_Levels) - 1` (`:578`) and then writes `0..ArrSize`
+/// buffer `length(Inc_Mat_Levels) - 1` (`:577`) and then writes `0..ArrSize`
 /// **inclusive** (`:581`) — one element past the end, so the r4133 bridge refuses
 /// the mode before the call (`crates/dss-epri/src/modes.rs` `DO_NOT_CALL`), and a
 /// surface only one channel can answer is not a gate. The hierarchical
@@ -284,7 +284,7 @@ pub struct IncMatrixView {
     /// The contract is **0**, and the gate asserts it in the same step: the port
     /// guards `CalcLaplacian` with error 8877 when no incidence matrix exists
     /// (`exec::command`'s `do_calc_laplacian`, capi
-    /// `Executive/ExecCommands.pas:421-432`; r4133 `:907-917` has no guard at all
+    /// `Executive/ExecCommands.pas:421-432`; r4133 `:911-917` has no guard at all
     /// and would dereference NIL), so a swapped or dropped `CalcIncMatrix` shows
     /// up here rather than one step later in the runner's own error-count check.
     pub new_errors: usize,
