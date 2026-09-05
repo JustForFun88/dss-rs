@@ -182,6 +182,12 @@ struct Checkpoint {
     ctrlqueue: Vec<String>,
     buses: Vec<BusCap>,
     all_bus_vmag_pu: Vec<f64>,
+    /// G1.4b: `Circuit.AllBusDistances`, one `DistFromMeter` per bus in
+    /// `BusList` order; empty when the run did not request the bus surface.
+    all_bus_distances: Vec<f64>,
+    /// G1.4b: `Circuit.AllNodeDistances`, the owning bus's `DistFromMeter` per
+    /// node in the `AllNodeNames` permutation; same emptiness rule.
+    all_node_distances: Vec<f64>,
     all_properties: Vec<PropsCap>,
     global_result: String,
     aggregates: AggregatesCap,
@@ -475,6 +481,15 @@ struct BusCap {
     /// `BaseFactor = 1000 * kVBase` when positive, else `1.0`
     /// (`DBus.pas:413-414` == `CAPI_Alt.pas:2262-2265`).
     kv_base: f64,
+    /// `Bus.Distance` — `TDSSBus.DistFromMeter` in km, published verbatim
+    /// (`BUSF(5)`, `DBus.pas:122-128` == capi `CAPI_Bus.pas:419-427` ->
+    /// `CAPI_Alt.pas:2071-2074`). G1.4b.
+    ///
+    /// A zone-build output, not a solve output: `MakeMeterZoneLists` writes it
+    /// (`Meters/EnergyMeter.pas:1833-1836`), so a circuit with no EnergyMeter —
+    /// or a bus outside every meter's zone — reports the untouched `0.0`.
+    /// Neither channel has a "no meter" sentinel.
+    distance: f64,
     /// `Bus.Nodes` — node numbers, ascending (`BUSV(2)`, `DBus.pas:319-345`).
     nodes: Vec<i32>,
     /// `Bus.puVoltages` — `NodeV[GetRef]/BaseFactor`, interleaved `(re, im)`
@@ -793,10 +808,30 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             } else {
                 Vec::new()
             };
-            let (buses, all_bus_vmag_pu) = if req.buses {
+            let (buses, all_bus_vmag_pu, all_bus_distances, all_node_distances) = if req.buses {
                 let buses = capture_all_buses(engine, req.zsc)?;
                 let all_bus_vmag_pu = capture_all_bus_vmag_pu(engine)?;
+                // G1.4b: the two circuit-level views of the same
+                // `DistFromMeter` the per-bus walk above read one bus at a time.
+                let all_bus_distances = capture_all_bus_distances(engine)?;
+                let all_node_distances = capture_all_node_distances(engine)?;
                 let nodes: usize = buses.iter().map(|b| b.nodes.len()).sum();
+                if all_bus_distances.len() != buses.len() {
+                    return Err(EngineError::Other(format!(
+                        "bus capture: AllBusDistances has {} values but the per-bus walk saw {} \
+                         buses (DCircuit.pas:574 sizes it NumBuses)",
+                        all_bus_distances.len(),
+                        buses.len()
+                    )));
+                }
+                if all_node_distances.len() != nodes {
+                    return Err(EngineError::Other(format!(
+                        "bus capture: AllNodeDistances has {} values but the per-bus walk saw \
+                         {nodes} nodes over {} buses",
+                        all_node_distances.len(),
+                        buses.len()
+                    )));
+                }
                 if all_bus_vmag_pu.len() != nodes {
                     return Err(EngineError::Other(format!(
                         "bus capture: AllBusVmagPu has {} values but the per-bus walk saw {nodes} \
@@ -805,7 +840,12 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                         buses.len()
                     )));
                 }
-                (buses, all_bus_vmag_pu)
+                (
+                    buses,
+                    all_bus_vmag_pu,
+                    all_bus_distances,
+                    all_node_distances,
+                )
             } else if req.zsc {
                 // G1.5: the six SC arms ride the per-bus walk above, so asking
                 // for them without the bus surface would ship nothing at all.
@@ -818,7 +858,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                         .into(),
                 ));
             } else {
-                (Vec::new(), Vec::new())
+                (Vec::new(), Vec::new(), Vec::new(), Vec::new())
             };
             // Read LAST (after every other capture), like `oracle_server.run_case`:
             // the `? name.Like`/`? name.prop` sweep perturbs the active-element
@@ -866,6 +906,8 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 ctrlqueue,
                 buses,
                 all_bus_vmag_pu,
+                all_bus_distances,
+                all_node_distances,
                 all_properties,
                 global_result,
                 aggregates,
@@ -1742,6 +1784,11 @@ fn capture_all_buses(engine: &Engine, want_sc: bool) -> Result<Vec<BusCap>, Engi
         }
         let nodes = engine.bus_nodes()?;
         let kv_base = engine.bus_kvbase();
+        // G1.4b, group C: `BUSF(5)` returns the stored `DistFromMeter` and
+        // touches nothing (`DBus.pas:122-128`). Read here, with the bus's other
+        // scalar attribute and ahead of the value arrays, so both transports
+        // share ONE per-bus read order (`oracle_server.py::capture_all_buses`).
+        let distance = engine.bus_distance()?;
         let pu_voltages = engine.bus_pu_voltages()?;
         let vmag_angle = engine.bus_vmag_angle()?;
         let pu_vmag_angle = engine.bus_pu_vmag_angle()?;
@@ -1854,6 +1901,7 @@ fn capture_all_buses(engine: &Engine, want_sc: bool) -> Result<Vec<BusCap>, Engi
         out.push(BusCap {
             name: name.clone(),
             kv_base,
+            distance,
             nodes,
             pu_voltages,
             vmag_angle,
@@ -1887,6 +1935,32 @@ fn capture_all_buses(engine: &Engine, want_sc: bool) -> Result<Vec<BusCap>, Engi
 fn capture_all_bus_vmag_pu(engine: &Engine) -> Result<Vec<f64>, EngineError> {
     let v = engine.circuit_all_bus_mag_pu()?;
     engine.assert_clean("all_bus_vmag_pu")?;
+    Ok(v)
+}
+
+/// `Circuit.AllBusDistances` — each bus's `DistFromMeter` (km) in `BusList`
+/// order (`CircuitV(12)`, `DCircuit.pas:566-580` == `CAPI_Circuit.pas:671-688`,
+/// whose comment reads *"in an array that aligns with the buslist"*).
+/// GOLDEN_REBASE_PLAN.md WP-G1 G1.4b.
+///
+/// Length = `NumBuses`, checked by the caller against the per-bus walk, so this
+/// array and [`capture_all_buses`]' per-bus `distance` cannot drift apart
+/// silently.
+fn capture_all_bus_distances(engine: &Engine) -> Result<Vec<f64>, EngineError> {
+    let v = engine.circuit_all_bus_distances()?;
+    engine.assert_clean("all_bus_distances")?;
+    Ok(v)
+}
+
+/// `Circuit.AllNodeDistances` — the owning bus's `DistFromMeter` repeated once
+/// per node, walked bus x the bus's INTERNAL node index (`CircuitV(13)`,
+/// `DCircuit.pas:582-604` == `CAPI_Circuit.pas:697-722`: *"Array sequence is
+/// same as all bus Vmag and Vmagpu"*), i.e. the [`capture_all_bus_vmag_pu`]
+/// permutation and NOT the ascending-node-number order of the per-bus arrays.
+/// Length = `NumNodes`, checked by the caller.
+fn capture_all_node_distances(engine: &Engine) -> Result<Vec<f64>, EngineError> {
+    let v = engine.circuit_all_node_distances()?;
+    engine.assert_clean("all_node_distances")?;
     Ok(v)
 }
 

@@ -1623,6 +1623,75 @@ reds the live gate with a `10x`-band perturbation on a `SeqVoltages` magnitude
 (measured 6.649e-3 against an allowed 6.649e-4 at `max_j |Vph_j|` = 66 388 V) and
 on a `VLL` entry (5.106e-4 against 5.120e-5), each on a named case.
 
+## Bus distance surface (GOLDEN_REBASE G1.4b, `harness::compare_bus_distances`)
+
+`compare_bus_distances` gates the three views of the ONE field
+`TDSSBus.DistFromMeter` that the same per-bus walk publishes — `Bus.Distance`,
+`Circuit.AllBusDistances`, `Circuit.AllNodeDistances` — and takes **no
+`Tolerances` argument at all**: every value is compared with `rel = abs = 0`.
+That is a derivation, not an optimism.
+
+**Why it is exact.** `DistFromMeter` is not a solve output. It is written once
+per zone build, by the loop
+
+> `if isLineElement(branch) then Buses[to].DistFromMeter := Buses[from].DistFromMeter + Len * ConvertLineUnits(LengthUnits, UNITS_KM) else Buses[to].DistFromMeter := Buses[from].DistFromMeter`
+
+(r4133 `Version8/Source/Meters/EnergyMeter.pas:1833-1838`, capi
+`src/Meters/EnergyMeter.pas:1894-1898`, port — the `dist_from_meter` assignment in
+`crates/dss-core/src/solution/meters/zones/build.rs:240-251`), off a `0.0`
+`dist_from_meter` planted at the zone head (`EnergyMeter.pas:1790`/`:1841`,
+`build.rs:178`). So
+each compared number is a running sum whose every ingredient is bit-identical on
+the three engines:
+
+* **`Len`** is a deck literal. FPC `Val` and Rust `str::parse::<f64>` are both
+  correctly-rounded decimal→binary64, so the two bit patterns are equal, not
+  merely close (the same argument the `PDElements` section above makes).
+* **`ConvertLineUnits(u, UNITS_KM)`** is `From_Meters(KM) * To_Meters(u)` over a
+  hard-coded table — and the three tables agree entry for entry, including the
+  one entry that could have differed: `To_Meters(UNITS_MILES) = 1609.344` in
+  r4133 `Version8/Source/Shared/LineUnits.pas:81`, in capi
+  `src/Shared/LineUnits.pas:108` and in the port's `LineUnits::Miles` arm
+  (`crates/dss-core/src/support/line_units/mod.rs:85`). The `1609.3` that lives
+  in `Version7/Source/Deprecated_LazDSS/Shared/LineUnits.pas:84` and
+  `Version8/Source/CMD_Lazz/Shared/LineUnits.pas:84` is in **neither** shipped
+  build, and the live r4133 DLL was measured to confirm it: a metered 0.5/1/1 mi
+  feeder (`controls/combo/combo_protection.dss`) reports `4.02336` km on the
+  r4133 channel, i.e. `2.5 · 1.609344`, bit-equal to capi.
+* **the summation order** is the zone walk's own breadth-first branch order,
+  which is the same walk on all three engines (it is the walk the corpus gate
+  already compares through `Meters.AllBranchesInZone` / `SectionID` /
+  `PDElements`), so there is no re-association to round differently.
+
+**And it was measured, not only argued.** Cross-channel, over the real capture
+paths of both transports: 7 decks at F1 (`tmp/g14b/dist_xchan.json`,
+`f1_probe.json`) and the metered decks at F2 (`tmp/g14b/f2_xchan.json`,
+`f2_pins.json`) return `AllBusDistances` and `AllNodeDistances` equal **as raw
+f64 lists**, no tolerance. Port-vs-oracle exactness is the live gate itself,
+green in both lanes over the whole metered population.
+
+**No arithmetic is performed by the comparator either** — the two circuit-level
+arrays are the per-bus value copied and run-length expanded, and the comparator
+asserts exactly that on both sides. A difference of any size is therefore a bug
+(a wrong unit factor, a wrong walk order, a missing zone rebuild — this is the
+surface on which coordinator decision **D9**'s `MakeBusList` fix is observable),
+never a floor to widen.
+
+**One thing this surface deliberately does NOT inherit.** `compare_bus`'s
+`voltages_excluded` rule does not reach it: the three bus voltage arrays are
+exact images of `Solution.NodeV`, so a `voltages` ledger cause explains them,
+while `DistFromMeter` never touches the solver. Suppressing distances on a
+`voltages`-excluded case would hide a zone-build bug behind an unrelated triage.
+
+**Non-vacuity is a population, not an argument.** The field is `0.0` on the ~370
+compared cases with no EnergyMeter (70 of the 443 forced ones have one — a
+static scan, not a gate), where the content is "the port invents no distance". The gate therefore counts the
+walks that carried a NON-zero distance and pins the pair exactly in both
+directions (`harness::DISTANCE_POPULATION`, printed on the run's own
+`corpus_gate distance:` line); the two `MakeBusList` decks are additionally
+pinned to the oracles' own measured kilometres by
+`the_make_bus_list_decks_report_the_zone_distances_both_oracles_measure`.
+
 ## r4133 event-log masks (`harness::EVENTLOG_MASKS`, §1.3-3)
 
 `compare_eventlog` compares the cumulative event log line-for-line (numeric
