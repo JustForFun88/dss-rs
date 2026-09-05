@@ -3242,7 +3242,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:1579-1584` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:1590-1595` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -3271,7 +3271,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:1579-1584` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:1590-1595` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -3335,7 +3335,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     **compare** on r4133. The exclusion is a statement about the 0.14.5
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
-    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1579-1584`
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1590-1595`
     //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
@@ -3381,7 +3381,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///
 /// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1579-1584` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1590-1595` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
@@ -3574,7 +3574,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1579-1584`
+    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1590-1595`
     /// forbids masking there, plus the two `pctperm` rows RP2.1 measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {
@@ -8037,7 +8037,9 @@ pub struct FeederSectionCap {
     /// `faultrate=0` is `0/0 = NaN` identically everywhere (r4133
     /// `Version8/Source/Meters/EnergyMeter.pas` `AverageRepairTime`; port
     /// `solution/meters/reliability.rs:293`). [`rel_num_eq`] is what makes that
-    /// agreement, and only that agreement, pass.
+    /// agreement, and only that agreement, pass — in the comparator; on the
+    /// wire a non-finite is refused by the decode instead
+    /// ([`a_non_finite_reliability_cell_fails_the_decode_on_both_transports`]).
     pub avg_repair_time: f64,
     pub fault_rate_x_repair_hrs: f64,
 }
@@ -8120,7 +8122,11 @@ pub struct BusReliabilityCap {
     /// `SumFltRatesXRepairHrs / SumBranchFltRates` of
     /// [`FeederSectionCap::avg_repair_time`] (`:2563`): a section whose branches
     /// all carry `faultrate=0` propagates `NaN` here identically on all three
-    /// engines, which is why the values go through [`rel_num_eq`].
+    /// engines. [`rel_num_eq`] admits that agreement in the comparator, but no
+    /// `NaN` can reach it through either transport — both wire encodings are
+    /// refused by this non-`Option` `f64`, so a non-finite cell fails the decode
+    /// loudly instead of comparing as a plausible `0`
+    /// ([`a_non_finite_reliability_cell_fails_the_decode_on_both_transports`]).
     pub int_duration: f64,
     /// `TDSSBus.BusFltRate`, the backward sweep's accumulated failure rate.
     pub lambda_: f64,
@@ -8242,7 +8248,11 @@ impl RelCalcOutcome {
 /// `NaN == NaN` and `+inf == +inf` / `-inf == -inf` count as agreement because
 /// they are the *same* unguarded arithmetic on both sides
 /// ([`FeederSectionCap::avg_repair_time`]); `NaN` against a finite number, and
-/// `+inf` against `-inf`, are failures.
+/// `+inf` against `-inf`, are failures. That arm is a comparator invariant only:
+/// neither JSON transport can deliver a non-finite — capi's `json.dumps` emits
+/// the bare token `NaN`, r4133's `serde_json` writes `null`, and both are
+/// refused by the caps' non-`Option` fields
+/// ([`a_non_finite_reliability_cell_fails_the_decode_on_both_transports`]).
 fn rel_num_eq(a: f64, b: f64) -> bool {
     a == b || (a.is_nan() && b.is_nan())
 }
@@ -9673,6 +9683,138 @@ mod reliability_tests {
                 msg.contains("never reached one of the two channels"),
                 "{msg}"
             );
+        }
+    }
+
+    /// **A non-finite reliability cell never reaches [`rel_num_eq`] — it fails
+    /// the decode, loudly, on both transports** (G1.6(ii) audit settlement,
+    /// findings AC-4 / AT-6).
+    ///
+    /// `Int_Duration` and [`FeederSectionCap::avg_repair_time`] inherit an
+    /// unguarded `0/0`, so a `NaN` is physically reachable in all three
+    /// engines. It is not reachable *through the wire*: the capi transport
+    /// serializes with Python's `json.dumps`, whose default `allow_nan` emits
+    /// the bare token `NaN` that `serde_json` refuses, and the r4133 transport
+    /// serializes with `serde_json`, which renders every non-finite `f64` as
+    /// `null` — refused in turn by these non-`Option` fields. Both ends are
+    /// fail-loud (a decode error, never a plausible `0`), so the `NaN == NaN`
+    /// arm of [`rel_num_eq`] is a comparator invariant that no JSON payload can
+    /// exercise. Pinning it here keeps the three doc sites honest.
+    #[test]
+    fn a_non_finite_reliability_cell_fails_the_decode_on_both_transports() {
+        // What the r4133 transport actually puts on the wire for a non-finite.
+        assert_eq!(serde_json::to_string(&f64::NAN).unwrap(), "null");
+        assert_eq!(serde_json::to_string(&f64::INFINITY).unwrap(), "null");
+
+        let bus = |int_duration: &str| {
+            format!(
+                "{{\"name\":\"MID\",\"cust_duration\":0.0,\"cust_interrupts\":0.0,\
+                 \"int_duration\":{int_duration},\"lambda_\":0.0,\"n_customers\":2,\
+                 \"n_interrupts\":0.0,\"section_id\":1,\"total_miles\":1.8}}"
+            )
+        };
+        let sec = |avg_repair_time: &str| {
+            format!(
+                "{{\"idx\":1,\"num_section_customers\":2,\"num_section_branches\":3,\
+                 \"sect_seq_idx\":4,\"sect_total_cust\":5,\"ocp_device_type\":6,\
+                 \"sum_branch_flt_rates\":0.0,\"avg_repair_time\":{avg_repair_time},\
+                 \"fault_rate_x_repair_hrs\":0.0}}"
+            )
+        };
+        serde_json::from_str::<BusReliabilityCap>(&bus("2.5")).expect("a finite cell decodes");
+        serde_json::from_str::<FeederSectionCap>(&sec("2.5")).expect("a finite cell decodes");
+        // `null` is the r4133 spelling, `NaN`/`Infinity` Python's; all four are
+        // refused on both caps.
+        for token in ["null", "NaN", "Infinity", "-Infinity"] {
+            serde_json::from_str::<BusReliabilityCap>(&bus(token)).expect_err(
+                "a non-finite `int_duration` must fail the decode, never compare as a 0",
+            );
+            serde_json::from_str::<FeederSectionCap>(&sec(token)).expect_err(
+                "a non-finite `avg_repair_time` must fail the decode, never compare as a 0",
+            );
+        }
+    }
+
+    /// **Per-column non-vacuity of [`compare_bus_reliability`]** (G1.6(ii) audit
+    /// settlement, finding AT-4): corrupting ONE column of the oracle row reds
+    /// the comparator, for each of the eight in turn and on both channels, with
+    /// the failing column named in the message.
+    ///
+    /// The sub-step proved this live, by rebuilding the engine with a corrupted
+    /// accessor and re-running the gate once per column — evidence that lives in
+    /// a log, not in the tree. This is the same claim, permanent and offline:
+    /// the drive enumerates the columns out of `rel_bus_fields!` itself, so a
+    /// ninth column added to the macro without a perturbation arm fails here
+    /// rather than sliding in uncompared.
+    ///
+    /// Every drive panics *inside* the value loop, before
+    /// [`BUS_RELIABILITY_WALKS`] / [`BUS_RELIABILITY_BUSES`] are touched, so the
+    /// test cannot move the per-channel counts the gate epilogue prints — which
+    /// is also why the passing direction is not driven here (the live gate is
+    /// that direction, on 134 buses).
+    #[test]
+    fn every_bus_reliability_column_is_compared_per_bus() {
+        let mut dss = Dss::new();
+        for cmd in [
+            "new circuit.busdrive basekv=12.47 pu=1.0 phases=3 bus1=sourcebus",
+            "new line.l1 bus1=sourcebus bus2=b1 length=1",
+            "new load.la bus1=b1 kv=12.47 kw=10",
+            "solve",
+        ] {
+            dss.command(cmd);
+        }
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+        let base: Vec<BusReliabilityCap> = dss
+            .bus_reliability()
+            .into_iter()
+            .map(|b| BusReliabilityCap {
+                name: b.name,
+                cust_duration: b.cust_duration,
+                cust_interrupts: b.cust_interrupts,
+                int_duration: b.int_duration,
+                lambda_: b.lambda_,
+                n_customers: b.n_customers,
+                n_interrupts: b.n_interrupts,
+                section_id: b.section_id,
+                total_miles: b.total_miles,
+            })
+            .collect();
+        assert!(base.len() >= 2, "the drive needs buses to corrupt");
+
+        let columns: Vec<&'static str> =
+            rel_bus_fields!(&base[0]).iter().map(|(f, _)| *f).collect();
+        assert_eq!(columns.len(), 8, "the frozen column list moved");
+
+        let last = base.len() - 1;
+        for field in columns {
+            let mut exp = base.clone();
+            let row = &mut exp[last];
+            match field {
+                "cust_duration" => row.cust_duration += 1.0,
+                "cust_interrupts" => row.cust_interrupts += 1.0,
+                "int_duration" => row.int_duration += 1.0,
+                "lambda_" => row.lambda_ += 1.0,
+                "n_customers" => row.n_customers += 1,
+                "n_interrupts" => row.n_interrupts += 1.0,
+                "section_id" => row.section_id += 1,
+                "total_miles" => row.total_miles += 1.0,
+                other => panic!("column `{other}` has no perturbation arm — add one"),
+            }
+            for channel in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+                let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    compare_bus_reliability(&dss, &exp, channel, "audit drive", &|_| false)
+                }))
+                .expect_err("a corrupted column must red the comparator");
+                let msg = payload
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .unwrap_or_else(|| "<non-string panic>".to_string());
+                assert!(
+                    msg.contains(field) && msg.contains("differs against"),
+                    "{msg}"
+                );
+            }
         }
     }
 }

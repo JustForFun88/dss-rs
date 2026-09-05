@@ -1266,8 +1266,19 @@ Two carry-overs rather than new rules. `Int_Duration =
 Source_IntDuration + FeederSections[SectionID].AverageRepairTime` inherits the
 unguarded division documented above, so `NaN`/`±inf` **agreement** counts as
 agreement through the same `rel_num_eq`, while `NaN` against a finite number
-fails. And the exact compares here depend on `serde_json`'s `float_roundtrip`
-exactly as the meter arm's do (decisions D11/D18).
+fails — an invariant of the comparator, which **no payload can exercise**: a
+non-finite never survives either transport (capi's `json.dumps` emits the bare
+token `NaN`, the r4133 side `null`, and the caps' non-`Option` `f64` fields
+refuse both, so such a cell fails the decode loudly rather than comparing as a
+plausible `0`; pinned by
+`a_non_finite_reliability_cell_fails_the_decode_on_both_transports`, G1.6(ii)
+audit settlement). And the exact compares here depend on `serde_json`'s
+`float_roundtrip` exactly as the meter arm's do (decisions D11/D18).
+
+Non-vacuity of the exact rule is pinned offline as well as live:
+`every_bus_reliability_column_is_compared_per_bus` corrupts each of the eight
+columns in turn, on both channels, and requires the comparator to red naming
+that column.
 
 ## Bus voltage surface (GOLDEN_REBASE G1.4a, `harness::compare_bus`)
 

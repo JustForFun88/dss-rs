@@ -652,7 +652,13 @@ fn compile_midi_relcalc() -> Dss {
 ///    `SAIDI = 0.27623590504451034`), dss_capi 0.14.5 keeps the build-time totals
 ///    (`30`, `30`, `SAIDI = 0.5496409495548961`). Everything else — SAIFI
 ///    `0.11267537091988129`, SAIFIkW `0.11966863270777478`, CustInterrupts
-///    `3.79716` and every other bus column — agrees on all three engines.
+///    `3.79716` and every other bus column — agrees on all three engines, and
+///    the port's side of that sentence is asserted here rather than asserted of
+///    the oracles only (audit settlement AC-5): `(N_interrupts, Cust_Duration,
+///    Int_Duration)` are pinned bus by bus in BOTH regimes, **exactly**, down to
+///    the last-ULP-distinct `Int_Duration` the flag moves on `lb`/`lc`
+///    (`2.856984478935699` without it, `2.8569844789356984` with it — both
+///    oracles report the same pair, and the port reproduces both bit patterns).
 #[test]
 fn relcalc_recomputes_the_customer_totals_it_depends_on() {
     let eps = 1e-12;
@@ -713,6 +719,66 @@ fn relcalc_recomputes_the_customer_totals_it_depends_on() {
             n,
             "restore section {idx}"
         );
+    }
+
+    // The per-bus columns the doc above claims agree on all three engines are
+    // asserted for the PORT too (audit settlement AC-5), from the same measured
+    // capture: `(n_interrupts, cust_duration, int_duration)`, which the
+    // restoration flag moves on every sectioned bus, and which the two oracles
+    // return identically in both regimes.
+    let cols = |dss: &Dss, bus: &str| {
+        let b = dss
+            .bus_reliability()
+            .into_iter()
+            .find(|b| b.name.eq_ignore_ascii_case(bus))
+            .expect("bus not found");
+        (b.n_interrupts, b.cust_duration, b.int_duration)
+    };
+    for (bus, want) in [
+        ("src", (0.0, 0.0, 0.0)),
+        ("mid", (0.068_25, 0.0, 4.5)),
+        ("la", (0.169_05, 9.340_012_5, 2.5)),
+        (
+            "lb",
+            (
+                0.203_549_999_999_999_98,
+                6.048_007_583_148_559,
+                2.856_984_478_935_699,
+            ),
+        ),
+        (
+            "lc",
+            (
+                0.203_549_999_999_999_98,
+                2.558_772_439_024_390_4,
+                2.856_984_478_935_699,
+            ),
+        ),
+    ] {
+        assert_eq!(cols(&base, bus), want, "no-flag bus columns {bus}");
+    }
+    for (bus, want) in [
+        ("src", (0.0, 0.0, 0.0)),
+        ("mid", (0.068_25, 0.0, 4.5)),
+        ("la", (0.100_8, 5.569_2, 2.5)),
+        (
+            "lb",
+            (
+                0.135_299_999_999_999_98,
+                4.020_119_999_999_999_5,
+                2.856_984_478_935_698_4,
+            ),
+        ),
+        (
+            "lc",
+            (
+                0.135_299_999_999_999_98,
+                1.700_819_999_999_999_8,
+                2.856_984_478_935_698_4,
+            ),
+        ),
+    ] {
+        assert_eq!(cols(&restored, bus), want, "restore bus columns {bus}");
     }
 
     // Without the restored call the two runs would be identical: that they are
