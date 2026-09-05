@@ -735,6 +735,359 @@ fn the_element_extras_forcing_rule_is_every_live_non_large_case() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// GOLDEN_REBASE G1.7 — the topology surface: its forced population and the two
+// decline populations (coordinator decisions D15/D16)
+// ---------------------------------------------------------------------------
+
+/// Apply the G1.7 topology-forcing rule to a live case.
+///
+/// The surface is six of the nine `ITopology` fields the fastdss harness dumps
+/// (`origin/fastdss` `dss/ITopology.py:10-20` `_columns`, reached from
+/// `tests/save_outputs.py:372`): `NumLoops`, `NumIsolatedBranches`,
+/// `NumIsolatedLoads`, `AllLoopedPairs`, `AllIsolatedBranches`,
+/// `AllIsolatedLoads` — r4133 `Version8/Source/DDLL/DTopology.pas:65-94` (the
+/// three counts) and `:270-390` (the three lists), capi 0.14.5
+/// `src/CAPI/CAPI_Topology.pas:81-97`/`:113-215`/`:369-405`. The other three
+/// (`ActiveLevel`, `BranchName`, `ActiveBranch`) are deliberately not compared:
+/// reading them reassigns `ActiveCircuit.ActiveCktElement`
+/// (`DTopology.pas:29-54`, `:96-160`, `:170-186`) and would poison the
+/// per-element capture — the justified parity gap TESTING.md records.
+///
+/// The rule is **every live case whose `kind` does not start with `large`** —
+/// deliberately the same population [`force_properties`] forces, so the gate
+/// reasons about ONE forced set instead of two ([`FORCED_TOPOLOGY_POPULATION`]
+/// asserts the two stay equal). It costs six extra reads per checkpoint per
+/// channel; both oracles memoize the branch tree (r4133
+/// `Common/Circuit.pas:2932-2950`) so the read is nearly free there, while the
+/// port rebuilds it on every call (it never caches — CLAUDE.md), and that is
+/// what the plan's `kind=large*` cost guard buys here: the 8500-Node class
+/// carries hundreds of loops over dozens of steps, in both lanes.
+///
+/// Unlike [`force_properties`] there is no per-source arm: no family deck is
+/// `kind=large*` (asserted by
+/// [`the_property_forcing_rule_is_every_live_non_large_case`]), so one rule
+/// covers all four manifests. A manifest may also declare the flag itself,
+/// which only ever ADDS — and must, for the surface to reach the anti-shrink
+/// lock at all ([`TOPOLOGY_DECLARED_IN_MANIFEST`]).
+fn force_topology(c: &mut SolvableCase) {
+    if !c.kind.starts_with("large") {
+        c.compare_topology = true;
+    }
+}
+
+/// **The forced topology population, pinned** — `(cases forced, of them
+/// `engines: "both"`, `engines: "r4133"`, `engines: "capi_v0145"`)`.
+///
+/// Re-derived from the four manifests by
+/// [`the_topology_forcing_rule_is_every_live_non_large_case`] on every run:
+/// 524 cases → 520 live → **441** forced once the 79 live `kind=large*` decks
+/// come off, of which 310 are `both`, 87 r4133-only and 44 capi-only (re-measured
+/// 2026-09-05 on the merged tree, after D12/D14 moved four `GICTransformer`
+/// decks onto `r4133` and added `modes:makeposseq/makeposseq_gic.dss`). Identical to [`FORCED_PROPS_POPULATION`] by construction, and
+/// the test asserts that equality instead of leaving it a comment: the two
+/// rules are one population by design, so a drift between them is a review.
+///
+/// The lock this constant backs up is `population.lock.json`, which records the
+/// **manifest** flag (`population_lock.rs::rigor`'s `topo=` token) and therefore
+/// cannot see the scheduler-side forcing at all — the same blind spot RP4.1's
+/// property lock has, and the reason both rules carry a re-derivation test. It
+/// also fixes the two G1.7 decline populations: [`TOPOLOGY_STALE_DECLINES`] and
+/// [`LOOPED_PAIR_WINDOW_DECLINES`] were measured over exactly this set, so
+/// narrowing it moves them too.
+const FORCED_TOPOLOGY_POPULATION: (usize, usize, usize, usize) = (441, 310, 87, 44);
+
+/// **The manifest rows that declare `compare_topology` themselves**, with the
+/// gating channel each one carries.
+///
+/// The forcing rule above is invisible to `population.lock.json`, so without at
+/// least one declared row the surface would arm the whole gate while leaving the
+/// anti-shrink lock byte-identical — and switching it off again would leave no
+/// diff either. These seven decks are the §1.1(f) acceptance witnesses: every
+/// gating channel is represented (`capi_v0145`, `r4133`, `both`), and each row's
+/// measured step-0 answer is non-trivial in at least one of the six quantities,
+/// so the declaration is a statement about real values and not about zeros
+/// (`tmp/g17` probes, 2026-09-04; the numbers are quoted in the G1.7 record):
+///
+/// * `13Bus/IEEE13Nodeckt.dss` — 3 looped pairs → `NumLoops = 1` (the halving).
+/// * `Microgrid/ISource/Master.DSS` — all three counts non-zero (1 / 3 / 4).
+/// * `HarmonicsTMode/IEEE_519.DSS` — the capi-only channel, 0 / 2 / 2.
+/// * `controls:fuse/indmach_r4133/indmach_dyn.dss` — the r4133-only channel,
+///   1 / 7 / 4.
+/// * `controls:recloser/recloser_perm.dss` — the D15 pin deck (24 steps, the
+///   memoization witness).
+/// * `asymmetric:combo/combo_mesh_asym.dss` — the deliberately meshed deck,
+///   `NumLoops = 2`.
+/// * `modes:reduce/reduce_breakloop.dss` — `NumIsolatedBranches = 1`
+///   (`Line.l1`), also the capi trailing-empty witness.
+const TOPOLOGY_DECLARED_IN_MANIFEST: &[(&str, &str)] = &[
+    (
+        "solvable_now:Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS",
+        "capi_v0145",
+    ),
+    (
+        "solvable_now:Version8/Distrib/Examples/Microgrid/ISource/Master.DSS",
+        "both",
+    ),
+    (
+        "solvable_now:Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+        "both",
+    ),
+    ("asymmetric:combo/combo_mesh_asym.dss", "both"),
+    ("controls:fuse/indmach_r4133/indmach_dyn.dss", "r4133"),
+    ("controls:recloser/recloser_perm.dss", "r4133"),
+    ("modes:reduce/reduce_breakloop.dss", "both"),
+];
+
+/// **The topology-forcing rule is a rule, not a habit** — the G1.7 twin of
+/// [`the_property_forcing_rule_is_every_live_non_large_case`], and for the same
+/// reason: nothing else can see [`force_topology`]. `population.lock.json`
+/// fingerprints manifest flags, and the live census
+/// [`assert_topology_declines_are_the_pinned_population`] only asks whether the
+/// surface ran at all, so a *partial* re-mask (say a `gates_capi()` guard, which
+/// would drop the 83 r4133-only cases while the 313 `both` ones keep walking)
+/// passes both. This test walks the four manifests without an oracle and asserts
+/// the forced set **is** the live non-`large` population, cell for cell.
+#[test]
+fn the_topology_forcing_rule_is_every_live_non_large_case() {
+    let cases = build_unified_cases();
+    let mut forced = (0usize, 0usize, 0usize, 0usize);
+    let mut wrong: Vec<String> = Vec::new();
+    for uc in &cases {
+        let live = uc.class == CaseClass::Live;
+        let large = uc.case.kind.starts_with("large");
+        // The rule: every live case, minus `large`. A manifest may also declare
+        // the flag itself, which only ever ADDS — so a declared row outside the
+        // rule (a `large` deck, or a pending/abort/deferred one) is a review,
+        // not a silent widening, and reds here.
+        let expected = live && !large;
+        if uc.case.compare_topology != expected {
+            wrong.push(format!(
+                "{}: kind={} engines={} class={} → compare_topology={} (expected {expected})",
+                uc.label,
+                uc.case.kind,
+                uc.case.engines,
+                if live { "live" } else { "not-live" },
+                uc.case.compare_topology,
+            ));
+        }
+        if uc.case.compare_topology {
+            forced.0 += 1;
+            match uc.case.engines.as_str() {
+                "both" => forced.1 += 1,
+                "r4133" => forced.2 += 1,
+                _ => forced.3 += 1,
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "the topology-forcing rule is `every live non-`large` case` (GOLDEN_REBASE G1.7, \
+         2026-09-05) — these cases disagree with it:\n  {}",
+        wrong.join("\n  ")
+    );
+    assert_eq!(
+        forced, FORCED_TOPOLOGY_POPULATION,
+        "(forced, both, r4133-only, capi-only) moved. A DROP in either r4133 half is a \
+         per-channel re-mask of the topology request — the thing the live census cannot see, \
+         because it only asks whether the surface ran at all. It also re-measures \
+         `TOPOLOGY_STALE_DECLINES` / `LOOPED_PAIR_WINDOW_DECLINES`, which were derived over \
+         exactly this population. A legitimate corpus change moves this lock together with \
+         `population.lock.json`."
+    );
+    assert_eq!(
+        FORCED_TOPOLOGY_POPULATION, FORCED_PROPS_POPULATION,
+        "G1.7 forces the topology surface over the SAME population as the property surface (one \
+         rule, one set to reason about — `force_topology`'s doc). If that is deliberately no \
+         longer true, narrow one rule, drop this assertion, and re-measure the two topology \
+         decline constants, which are a function of this population."
+    );
+}
+
+/// **The surface reaches the anti-shrink lock** — the static half of the G1.7
+/// acceptance (`GOLDEN_REBASE_PLAN.md` §1.1(f): the flag is set on at least one
+/// case per gating channel).
+///
+/// [`force_topology`] arms the gate but is scheduler code; only a *declared*
+/// manifest row reaches `population_lock.rs::rigor`'s `topo=` token, so this
+/// test pins exactly which rows carry the declaration and on which channel.
+/// Deleting one — the cheapest way to shrink the surface's recorded footprint —
+/// fails here and in `population.lock.json`, never silently.
+#[test]
+fn the_topology_surface_is_declared_on_every_gating_channel() {
+    let mut declared: Vec<(String, String)> = Vec::new();
+    for c in load_solvable() {
+        if c.compare_topology {
+            declared.push((format!("solvable_now:{}", c.path), c.engines.clone()));
+        }
+    }
+    for fam in FAMILIES {
+        for c in load_family(fam.name) {
+            if c.compare_topology {
+                declared.push((format!("{}:{}", fam.name, c.path), c.engines.clone()));
+            }
+        }
+    }
+    declared.sort();
+    let mut want: Vec<(String, String)> = TOPOLOGY_DECLARED_IN_MANIFEST
+        .iter()
+        .map(|(l, e)| ((*l).to_string(), (*e).to_string()))
+        .collect();
+    want.sort();
+    assert_eq!(
+        declared, want,
+        "the manifest declarations of `compare_topology` moved. They are what puts the surface \
+         into `population.lock.json` (the `topo=` rigor token) — the scheduler-side \
+         `force_topology` is invisible to it — so this set is pinned, and a change to it belongs \
+         in the same commit as a regenerated lock."
+    );
+    for ch in ["capi_v0145", "r4133", "both"] {
+        assert!(
+            declared.iter().any(|(_, e)| e == ch),
+            "no manifest case declares `compare_topology` with engines={ch:?}; \
+             GOLDEN_REBASE_PLAN.md §1.1(f) wants the flag set on at least one case per gating \
+             channel, so that each channel's capture path is exercised by a declared row and not \
+             only by the scheduler's forcing rule"
+        );
+    }
+}
+
+/// **D15 — the population whose isolation half is answered from upstream's
+/// stale tree**, as `(cases, case-steps)`.
+///
+/// Both oracles memoize `Branch_List` (r4133 `Common/Circuit.pas:2932-2950`,
+/// freed only in `Destroy` `:703` and `DoResetMeterZones` `:2308`; capi
+/// identical) and invalidate nothing on a conductor open/close, so once a Relay,
+/// Recloser or SwtControl has operated they answer `NumIsolated*` / `Isolated*`
+/// from the tree built at step 0. The port never caches (CLAUDE.md: an upstream
+/// defect is never reproduced), so at those steps
+/// `harness::topology::compare_topology` rebases the isolation half onto the
+/// port's OWN step-0 answer and asserts the memoization contract instead of
+/// comparing against the fresh one — a positive assertion, not an exclusion, and
+/// 0 `ledger.json` rows.
+///
+/// Measured 2026-09-04 (`tmp/g17/STOP.md`, one fresh compile per step over all
+/// 105 multi-step r4133-gating live cases plus the 10 capi-gating multi-step
+/// cases whose conductor state changes): 15 `controls/*` cases on the r4133
+/// channel plus `modes/time/midi_duty_ctrl.dss`, which is `engines: "both"` and
+/// declines identically on both channels — the pair is counted ONCE here (the
+/// channel visits behind it are reported separately by the census).
+const TOPOLOGY_STALE_DECLINES: (usize, usize) = (16, 135);
+
+/// **D16 — the population where upstream's looped-pair dedup measurably drops a
+/// pair the port keeps**, as `(cases, case-steps)`.
+///
+/// Upstream scans its flat name buffer in overlapping windows (`i := i + 1` over
+/// `(buf[i-1], buf[i])`, r4133 `DDLL/DTopology.pas:286-296`, capi
+/// `CAPI_Topology.pas:180-190`) while its own comment says "see if we already
+/// found this pair", so a genuinely new candidate that equals a straddling
+/// window is dropped. The port keeps the correct per-pair dedup and the
+/// comparator asserts `oracle.looped_pairs ==
+/// harness::topology::window_dedup(port candidates)`; this constant counts where
+/// that model and the port's own list part company — compared by content, not
+/// by length, since the two rules keep different buffers — i.e. where the
+/// defect actually bites.
+///
+/// Measured 2026-09-04 over the forced topology population (every live
+/// non-`large` case): six multi-step `controls/midi_*` decks — `midi_protection`
+/// (24 steps), `midi_recloser_perm` (24), `midi_recloser_temp` (16),
+/// `midi_swtcontrol` (12), `midi_relay_4647` (10), `midi_fuse` (8) — plus the
+/// single-step `epri_dpv/M1/Master_NoPV.dss` and
+/// `ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss`. It is a function of that
+/// population: the LVTestCase and ckt24 feeders diverge the same way but are
+/// `kind=large*` and therefore out of the compare (the same live non-`large`
+/// rule [`force_properties`] applies).
+const LOOPED_PAIR_WINDOW_DECLINES: (usize, usize) = (8, 96);
+
+/// **Both decline populations are re-derived on every full gate run and pinned
+/// in BOTH directions** — the fail-on-stale rule coordinator decisions D15 and
+/// D16 attach to their 0-ledger-row settlements.
+///
+/// A population that GREW means the port (or upstream) started declining
+/// somewhere new and nobody looked; one that SHRANK means a decline stopped
+/// happening, so the pin behind it is a statement about nothing. Either way the
+/// gate must fail rather than absorb it — the ledger's own fail-on-stale
+/// discipline (`ledger::assert_all_hit`) applied to a settlement that
+/// deliberately writes no ledger rows.
+///
+/// Silent in two documented situations, and in no others:
+///
+/// * `DSS_GATE_ONLY` is set — a filtered run holds a filtered population, so its
+///   census cannot be the pinned one (the mandatory gate never sets it).
+/// * No manifest case requests `compare_topology` at all. That is a **fact about
+///   the manifests**, re-read here rather than assumed: while G1.7's surface flag
+///   is unwired the census is legitimately empty, and the moment the flag is
+///   forced or set the assertion arms itself — including the `compared > 0`
+///   non-vacuity check, which is what catches a later re-mask of the request.
+pub(crate) fn assert_topology_declines_are_the_pinned_population() {
+    if std::env::var("DSS_GATE_ONLY").is_ok() {
+        return;
+    }
+    let requested = build_unified_cases()
+        .iter()
+        .filter(|uc| uc.class == CaseClass::Live)
+        .any(|uc| uc.case.compare_topology);
+    let census = harness::topology::decline_census();
+    if !requested {
+        assert_eq!(
+            (census.compared, census.stale, census.window),
+            (0, (0, 0), (0, 0)),
+            "no manifest case requests `compare_topology`, yet the topology \
+             comparator ran: {census:?}"
+        );
+        eprintln!(
+            "corpus_gate topology: the surface is not requested by any live case \
+             (GOLDEN_REBASE G1.7 F6 wires the flag) — nothing to re-derive"
+        );
+        return;
+    }
+    eprintln!(
+        "corpus_gate topology: {} compared (case, step, channel) triple(s); \
+         D15 stale declines {:?} ({} channel visit(s)), D16 window declines {:?} \
+         ({} channel visit(s))\n  {}",
+        census.compared,
+        census.stale,
+        census.stale_visits,
+        census.window,
+        census.window_visits,
+        harness::topology::decline_report()
+    );
+    assert!(
+        census.compared > 0,
+        "the topology compare never ran: a live case requests \
+         `compare_topology` but no (case, step, channel) triple reached \
+         `harness::topology::compare_topology`. The request is masked off \
+         somewhere between the manifest and the transports \
+         (`build_run_request`, the capture sites) — the two populations below \
+         would then be trivially 0 and their pins would say nothing."
+    );
+    assert_eq!(
+        census.stale,
+        TOPOLOGY_STALE_DECLINES,
+        "the D15 stale-tree decline population moved (measured {:?}, pinned {:?}). \
+         It is re-derived on every run and fails in BOTH directions: a bigger \
+         population means a case-step started answering from a stale tree with \
+         nobody looking, a smaller one means the settlement now covers less than \
+         it claims. Re-measure, move the constant WITH the record, and re-read \
+         the pin `topology_pins::topology_reads_a_freshly_built_tree`.\n{}",
+        census.stale,
+        TOPOLOGY_STALE_DECLINES,
+        harness::topology::decline_report()
+    );
+    assert_eq!(
+        census.window,
+        LOOPED_PAIR_WINDOW_DECLINES,
+        "the D16 window-scan decline population moved (measured {:?}, pinned \
+         {:?}) — same rule, both directions. A shrink is the interesting one: it \
+         would mean upstream's `i := i + 1` scan stopped dropping straddling \
+         pairs, which is the defect the whole settlement is built on \
+         (`topology_pins::looped_pairs_lose_the_straddling_window`).\n{}",
+        census.window,
+        LOOPED_PAIR_WINDOW_DECLINES,
+        harness::topology::decline_report()
+    );
+}
+
 /// Build one unified case, applying the exact per-source property-forcing +
 /// classification of the pre-Phase-B gates.
 fn make_case(
@@ -771,6 +1124,7 @@ fn make_case(
         force_derived(source, &mut c);
         force_bus(&mut c);
         force_element_extras(source, &mut c);
+        force_topology(&mut c);
     }
     let weight = kind_weight(&c.kind) * (c.n_steps.max(1) as u64);
     let dir_key = dir_key_of(&abs);

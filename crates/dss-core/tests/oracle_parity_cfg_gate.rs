@@ -3364,7 +3364,14 @@ const LINE_CITED_DOCS: &[(&str, usize)] = &[
 /// resolved against it.
 ///
 /// An empty path is the bare form itself.
-fn file_citations_in(line: &str) -> Vec<(String, Option<usize>)> {
+///
+/// The third element is the END of a `:A-B` range citation. G1.7's audit found
+/// it unread: only the digits before the `-` were parsed, so a range end could
+/// name a line past the file, or drift out from under the symbol the sentence
+/// spells, without a word (four `harness/mod.rs:A-B` rows had done exactly
+/// that). A range is a claim about a BLOCK, so the anchor must sit inside the
+/// whole block — see [`operational_docs_line_citations_point_at_the_line_they_name`].
+fn file_citations_in(line: &str) -> Vec<(String, Option<usize>, Option<usize>)> {
     let chars: Vec<char> = line.chars().collect();
     let is_path = |c: char| c.is_ascii_alphanumeric() || matches!(c, '_' | '/' | '.' | '-');
     let mut out = Vec::new();
@@ -3379,7 +3386,8 @@ fn file_citations_in(line: &str) -> Vec<(String, Option<usize>)> {
             }
             if j > i + 2 {
                 let n: String = chars[i + 2..j].iter().collect();
-                out.push((String::new(), n.parse::<usize>().ok()));
+                let (end, j) = range_end(&chars, j);
+                out.push((String::new(), n.parse::<usize>().ok(), end));
                 i = j;
                 continue;
             }
@@ -3409,6 +3417,7 @@ fn file_citations_in(line: &str) -> Vec<(String, Option<usize>)> {
         // A `:LINE` suffix, if the run is immediately followed by one.
         let mut j = end;
         let mut lineno = None;
+        let mut lineend = None;
         if chars.get(j) == Some(&':') {
             let mut k = j + 1;
             while chars.get(k).is_some_and(char::is_ascii_digit) {
@@ -3417,13 +3426,34 @@ fn file_citations_in(line: &str) -> Vec<(String, Option<usize>)> {
             if k > j + 1 {
                 let n: String = chars[j + 1..k].iter().collect();
                 lineno = n.parse::<usize>().ok();
+                let (e, k) = range_end(&chars, k);
+                lineend = e;
                 j = k;
             }
         }
-        out.push((run, lineno));
+        out.push((run, lineno, lineend));
         i = i.max(j);
     }
     out
+}
+
+/// The `-B` half of a `:A-B` range citation, read from just past the `A`.
+///
+/// Returns the end line and the new cursor; `(None, j)` when what follows is a
+/// hyphen that is not a range (`props_norm.rs:895-ish` prose, a dashed word).
+fn range_end(chars: &[char], j: usize) -> (Option<usize>, usize) {
+    if chars.get(j) != Some(&'-') {
+        return (None, j);
+    }
+    let mut k = j + 1;
+    while chars.get(k).is_some_and(char::is_ascii_digit) {
+        k += 1;
+    }
+    if k == j + 1 {
+        return (None, j);
+    }
+    let n: String = chars[j + 1..k].iter().collect();
+    (n.parse::<usize>().ok(), k)
 }
 
 /// The backticked Rust identifiers a documentation line names, `::`-tails only.
@@ -3516,7 +3546,7 @@ fn operational_docs_line_citations_point_at_the_line_they_name() {
                 idents.extend(backticked_idents(lines[i - 1]));
             }
 
-            for (tok, lineno) in file_citations_in(line) {
+            for (tok, lineno, lineend) in file_citations_in(line) {
                 let cited = if tok.is_empty() {
                     match &last_file {
                         Some(f) => f.clone(),
@@ -3588,6 +3618,20 @@ fn operational_docs_line_citations_point_at_the_line_they_name() {
                     ));
                     continue;
                 }
+                // A `:A-B` range: the END must be a real line of the same file
+                // and must not precede the start. Before G1.7's audit settlement
+                // the end was never parsed at all.
+                if let Some(end) = lineend
+                    && (end < ln || end > src.len())
+                {
+                    bad.push(format!(
+                        "    {doc}:{}: `{cited}:{ln}-{end}` is not a range of \
+                         {target} ({} lines)",
+                        i + 1,
+                        src.len()
+                    ));
+                    continue;
+                }
                 if idents.is_empty() {
                     // Before RP5.2's audit settlement this was a silent
                     // `continue`, which made the citation existence-only: any
@@ -3607,13 +3651,20 @@ fn operational_docs_line_citations_point_at_the_line_they_name() {
                     ));
                     continue;
                 }
-                let lo = ln.saturating_sub(4);
-                let hi = (ln + 3).min(src.len());
+                // A single line is anchored in a small window around it; a RANGE
+                // is a claim about the whole block, so the symbol must sit inside
+                // the block itself — the settlement rule that catches an end
+                // drifting off the values the sentence names.
+                let (lo, hi) = match lineend {
+                    Some(end) => (ln - 1, end.min(src.len())),
+                    None => (ln.saturating_sub(4), (ln + 3).min(src.len())),
+                };
                 let window = src[lo..hi].join("\n");
                 if !idents.iter().any(|id| window.contains(id.as_str())) {
                     bad.push(format!(
                         "    {doc}:{}: `{cited}:{ln}` — {target} lines {}-{} name \
-                         none of {:?}",
+                         none of {:?} (a `:A-B` citation is anchored inside the \
+                         range itself)",
                         i + 1,
                         lo + 1,
                         hi,
@@ -4549,4 +4600,82 @@ fn every_pin_the_g13d1_record_names_exists_and_is_cited() {
   "
         )
     );
+}
+
+/// The G1.7 (topology surface) names the operational docs and the phase record
+/// cite, with the number of definitions each one must have in the tree.
+///
+/// The G1.9 registry above is the precedent; G1.7's audit round found the twin
+/// missing while three documents cited eighteen G1.7 identifiers by hand. The
+/// count is part of the claim: `window_dedup` is **two** definitions on purpose
+/// — the gate-side model in `harness/topology.rs` and its engine-side duplicate
+/// in `exec/tests/topology.rs`, which live in different compilation targets and
+/// must both keep the Pascal's indices (`DDLL/DTopology.pas:277-301`). Everything
+/// else is one.
+const G1_7_PINS: [(&str, usize); 14] = [
+    // in-engine pins (`exec/tests/topology.rs`, `elements/ckt.rs`)
+    ("a_gictransformer_is_a_tree_branch_and_can_close_a_loop", 1),
+    ("a_second_makeposseq_keeps_the_circuit_connected", 1),
+    ("a_no_op_set_nconds_keeps_the_terminal_state", 1),
+    // the two both-numbers pins (`tests/topology_pins.rs`)
+    ("topology_reads_a_freshly_built_tree", 1),
+    ("looped_pairs_lose_the_straddling_window", 1),
+    // the rails (`corpus_gate/scheduler.rs`, `capture_order.rs`)
+    ("the_topology_forcing_rule_is_every_live_non_large_case", 1),
+    ("assert_topology_declines_are_the_pinned_population", 1),
+    (
+        "the_r4133_bridge_exposes_only_the_six_order_free_topology_rows",
+        1,
+    ),
+    // the comparator and the two transports' normalizers
+    ("compare_topology", 1),
+    ("normalize_topo_names", 1),
+    ("per_pair_dedup", 1),
+    ("topo_names", 1),
+    ("topology_view", 1),
+    // the deliberate twin — see the doc above
+    ("window_dedup", 2),
+];
+
+/// The documents that cite the G1.7 names, same rule as [`G1_9_PIN_DOCS`].
+const G1_7_PIN_DOCS: [&str; 4] = [
+    "TESTING.md",
+    "tests/TOLERANCE_NOTES.md",
+    "GOLDEN_REBASE_PLAN.md",
+    "docs/phase-records/golden-rebase.md",
+];
+
+#[test]
+fn the_g1_7_pins_the_docs_cite_exist_exactly_once() {
+    let root = repo_root();
+    let sources: Vec<String> = rust_sources(&root)
+        .iter()
+        .map(|p| fs::read_to_string(p).expect("source is readable"))
+        .collect();
+    let docs: Vec<String> = G1_7_PIN_DOCS
+        .iter()
+        .map(|rel| {
+            fs::read_to_string(root.join(rel))
+                .unwrap_or_else(|e| panic!("{rel} is part of the G1.7 doc surface: {e}"))
+        })
+        .collect();
+
+    for (pin, want) in G1_7_PINS {
+        let needle = format!("fn {pin}(");
+        let defs: usize = sources.iter().map(|t| t.matches(&needle).count()).sum();
+        assert_eq!(
+            defs,
+            want,
+            "the G1.7 name `{pin}` is defined {defs} times in the tree, expected \
+             exactly {want} — {} cite it by name, so a rename, a deletion or an \
+             undocumented second copy must red here instead of leaving them stale",
+            G1_7_PIN_DOCS.join(" / ")
+        );
+        assert!(
+            docs.iter().any(|d| d.contains(pin)),
+            "the G1.7 name `{pin}` is in this registry but no longer named by any \
+             of {} — either restore the citation or drop it from the list",
+            G1_7_PIN_DOCS.join(" / ")
+        );
+    }
 }

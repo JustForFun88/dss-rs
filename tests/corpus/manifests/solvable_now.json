@@ -619,7 +619,8 @@
    "path": "Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS",
    "engines": "capi_v0145",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "compare_topology": true
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS",
@@ -1213,7 +1214,8 @@
    "path": "Version8/Distrib/Examples/Microgrid/ISource/Master.DSS",
    "engines": "both",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "compare_topology": true
   },
   {
    "path": "Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss",
@@ -1620,6 +1622,7 @@
     "set mode=daily stepsize=1h number=1"
    ],
    "n_steps": 24,
+   "compare_topology": true,
    "selected_elements": [
     "line.650632",
     "transformer.reg1"
