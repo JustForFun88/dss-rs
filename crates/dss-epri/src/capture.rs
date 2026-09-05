@@ -586,11 +586,11 @@ fn capture_injection(flat: &[f64]) -> Injection {
 ///
 /// `PhaseLosses` (GOLDEN_REBASE G1.3d(ii), [`Engine::element_phase_losses`]) is
 /// the one addition that is NOT order-free: it runs `GetPhaseLosses`' own
-/// `ComputeIterminal` (r4133 `Common/CktElement.pas:1088`), so it is group **A**
+/// `ComputeIterminal` (r4133 `Common/CktElement.pas:1090`), so it is group **A**
 /// and is issued FIRST — ahead of `element_pcl`'s `Losses`/`Powers` — which is
 /// what keeps every group-A read of the element ahead of the group-B `Currents`.
 /// It is read for every element, enabled or not: `GetPhaseLosses` zero-fills a
-/// disabled one (`:1114-1116`) without touching `NodeRef`, so it needs neither
+/// disabled one (`:1118-1119`) without touching `NodeRef`, so it needs neither
 /// of the two predicates above.
 ///
 /// Every read line carries a machine-checkable `capture-order: NAME (A|B|C)`

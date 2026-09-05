@@ -164,13 +164,13 @@ def capture_all_elements(
     r4133 `DDLL/DCktElement.pas:637`) is the exception: it is
     `TDSSCktElement.GetPhaseLosses` (capi `Common/CktElement.pas:879`, r4133
     `Common/CktElement.pas:1075`), whose first act on an enabled element is
-    `ComputeIterminal` (capi `:896`, r4133 `:1088`) — a cache-aware group-**A**
+    `ComputeIterminal` (capi `:896`, r4133 `:1090`) — a cache-aware group-**A**
     read, and therefore the FIRST element read this body issues, ahead of
     `Losses` and of the group-B `Currents` inside `gc.capture_element`. It is
     read for EVERY element, enabled or not: both engines zero-fill a disabled
     one (capi guards `(not FEnabled) or (NodeRef = NIL)` at
     `Common/CktElement.pas:890`, r4133 takes the `Else … CZERO` branch at
-    `Common/CktElement.pas:1114-1116`), so — unlike `NodeOrder` — no capture
+    `Common/CktElement.pas:1118-1119`), so — unlike `NodeOrder` — no capture
     predicate is owed. Units are **kW/kvar**, both transports scaling by
     `0.001` (capi `CAPI/CAPI_Alt.pas:464`, r4133 `DDLL/DCktElement.pas:651`) —
     unlike `Losses`, which is W/var.

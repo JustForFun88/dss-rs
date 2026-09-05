@@ -493,8 +493,9 @@ fn the_element_extras_forcing_rule_is_every_live_non_large_case() {
     );
     assert_eq!(
         flagged, FORCED_ELEMENT_EXTRAS_POPULATION,
-        "(flagged, both, r4133-only, capi-only) moved. A DROP means the four index/name scalars \
-         and `NodeOrder` stopped being compared on that many cases — invisible to \
+        "(flagged, both, r4133-only, capi-only) moved. A DROP means the ten discrete extras \
+         (the three counts, `NodeOrder`, `EnergyMeter` and the five control-derived scalars) \
+         AND `PhaseLosses` stopped being compared on that many cases — invisible to \
          `population.lock.json`, which records the manifest flag and not `force_element_extras`' \
          effect. A legitimate corpus change moves this lock together with the lock file."
     );

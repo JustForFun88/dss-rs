@@ -969,14 +969,14 @@ pub struct ElementCap {
     /// `p_kw`/`p_kvar` already are: the per-**phase** complex loss
     /// `Σ_terminals NodeV[NodeRef[k]]·conj(Iterminal[k])` at `k = j·NConds + i`,
     /// neutral conductors ignored, ×3 under positive sequence — r4133
-    /// `Common/CktElement.pas:1078-1116` (`TDSSCktElement.GetPhaseLosses`),
+    /// `Common/CktElement.pas:1078-1120` (`TDSSCktElement.GetPhaseLosses`),
     /// capi `src/Common/CktElement.pas:879-912`. A fastdss `_columns` surface
     /// (`dss/ICktElement.py:69` on `origin/fastdss`; its harness subtracts only
     /// `Handle`, `IsIsolated` and `HasOCPDevice`, `tests/save_outputs.py:169`).
     ///
     /// **kW/kvar here, W/var in the engine.** Both transports scale by `0.001`
     /// at the API boundary — r4133 `DDLL/DCktElement.pas:637-658` (`CktElementV`
-    /// mode `6`, the `cmulreal(…, 0.001)` at `:650`), capi
+    /// mode `6`, the `cmulreal(…, 0.001)` at `:651`), capi
     /// `CAPI/CAPI_Alt.pas:449-467` (the `*= 0.001` loop at `:462-465`, facade
     /// `CAPI/CAPI_CktElement.pas:327-338`) — so the conversion lives in exactly
     /// one place, [`compare_element_phase_losses`], like the re/im interleave.
@@ -1594,7 +1594,7 @@ impl ElemChannels {
     /// # G1.3d(ii): `PhaseLosses` DOES join the exclusion
     ///
     /// `GetPhaseLosses` opens with the very same cache-aware `ComputeIterminal`
-    /// (r4133 `Common/CktElement.pas:1088`, capi `src/Common/CktElement.pas:897`)
+    /// (r4133 `Common/CktElement.pas:1090`, capi `src/Common/CktElement.pas:896`)
     /// that `Get_Powers`/`Get_Losses` reuse, and forms the identical
     /// `NodeV·conj(Iterminal)` products — merely bucketed by phase instead of
     /// summed. So no oracle channel reports it at the converged `NodeV` on those
@@ -2752,12 +2752,15 @@ pub fn compare_element_extras(
     assert_eq!(
         ocp_dev_index == 0,
         ocp_dev_type == 0,
-        "{ctx} {}: the oracle's OCPDevIndex ({ocp_dev_index}) and OCPDevType          ({ocp_dev_type}) must be zero together — one list scan produces both",
+        "{ctx} {}: the oracle's OCPDevIndex ({ocp_dev_index}) and OCPDevType \
+         ({ocp_dev_type}) must be zero together — one list scan produces both",
         exp.name
     );
     assert!(
         ocp_dev_index <= num_controls,
-        "{ctx} {}: the oracle's OCPDevIndex ({ocp_dev_index}) exceeds its own          NumControls ({num_controls}) — the index is a 1-based position in that list",
+        "{ctx} {}: the oracle's OCPDevIndex ({ocp_dev_index}) exceeds its own \
+         NumControls ({num_controls}) — the index is a 1-based position in \
+         that list",
         exp.name
     );
 
@@ -2801,6 +2804,144 @@ pub fn compare_element_extras(
         snap.node_order, exp.node_order,
         "{ctx} {}: NodeOrder differs (rust {:?} vs oracle {:?})",
         exp.name, snap.node_order, exp.node_order
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The multi-control census (G1.3d(ii) audit settlement, 2026-09-05)
+// ---------------------------------------------------------------------------
+
+/// Oracle `NumControls` values the **gating** extras compare has seen…
+static CONTROL_CENSUS_SEEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// …how many of them carried at least one control…
+static CONTROL_CENSUS_CONTROLLED: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+/// …how many carried **two or more**…
+static CONTROL_CENSUS_MULTI: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+/// …and how many of THOSE also carry an OCP member (`OCPDevType != 0`), the
+/// shape in which the list order becomes observable.
+static CONTROL_CENSUS_MULTI_OCP: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+/// The measured `(multi, multi_ocp)` population, 2026-09-05 — see
+/// [`assert_no_multi_control_element`] for the two deck families behind it and
+/// why every one of those lists is Relay-only. Fail-on-stale in both directions.
+const CONTROL_CENSUS_MULTI_MEASURED: (usize, usize) = (18, 18);
+
+/// Record one gated element's oracle `NumControls` / `OCPDevType`.
+///
+/// One call per compared element **per channel per step** — the counters are row
+/// counts over the gating population, not distinct-element counts.
+///
+/// The single caller is the corpus gate's extras loop
+/// (`corpus_gate/runner.rs`, the `c.compare_element_extras` block), so the
+/// census counts the gating population and nothing else.
+pub fn record_control_census(num_controls: Option<i32>, ocp_dev_type: Option<i32>) {
+    use std::sync::atomic::Ordering::Relaxed;
+    let Some(n) = num_controls else { return };
+    CONTROL_CENSUS_SEEN.fetch_add(1, Relaxed);
+    if n >= 1 {
+        CONTROL_CENSUS_CONTROLLED.fetch_add(1, Relaxed);
+    }
+    if n >= 2 {
+        CONTROL_CENSUS_MULTI.fetch_add(1, Relaxed);
+        if ocp_dev_type.is_some_and(|t| t != 0) {
+            CONTROL_CENSUS_MULTI_OCP.fetch_add(1, Relaxed);
+        }
+    }
+}
+
+/// What [`record_control_census`] has counted, as
+/// `(elements, with ≥ 1 control, with ≥ 2, with ≥ 2 incl. an OCP member)`.
+pub fn control_census_counters() -> (usize, usize, usize, usize) {
+    use std::sync::atomic::Ordering::Relaxed;
+    (
+        CONTROL_CENSUS_SEEN.load(Relaxed),
+        CONTROL_CENSUS_CONTROLLED.load(Relaxed),
+        CONTROL_CENSUS_MULTI.load(Relaxed),
+        CONTROL_CENSUS_MULTI_OCP.load(Relaxed),
+    )
+}
+
+/// **The population guard behind D-ii-1's zero ledger rows.**
+///
+/// `GOLDEN_REBASE_PLAN.md` G1.3d(ii) settles a real r4133↔capi divergence — r4133
+/// re-runs `TControlElem.Set_ControlledElement` inside every control's
+/// `RecalcElementData` and moves the control to the END of its element's
+/// `ControlElementList` (`Controls/ControlElem.pas:113-131`,
+/// `Controls/Relay.pas:955` from `:626`), while capi 0.14.5 only re-attaches on a
+/// `SwitchedObj` write (`Controls/Relay.pas:439-441`) — with **no** ledger row,
+/// because `OCPDevIndex`/`OCPDevType` can only move when a reordering changes
+/// *which* member is the first OCP one. The port follows r4133
+/// (`DIVERGENCES.md` L9), so that population fact is load-bearing: the day a deck
+/// gives one element an OCP control **and** a control of another class, the capi
+/// channel can start disagreeing with the port on a **discrete** field.
+///
+/// This is that fact, re-derived on every full run instead of stated in prose
+/// (the D15/D16 precedent, and the `extras_population::no_corpus_energymeter_is_
+/// named_zero` shape one sub-step earlier) — and writing it corrected the
+/// sub-step's own claim, whose live census had covered only
+/// `tests/corpus/controls/**`. Multi-control elements **do** exist in the gated
+/// population: **18** (case, channel, step, element) rows, all of them from two
+/// families — `Line.thev` under `Relay.21src` + `Relay.21rev` in the eight
+/// Distance/TD21 relay decks (`Test/{,Reverse}{Distance,TD21}RelayTest.DSS` and
+/// their `Version8/Distrib/Examples/DistanceRelays/` twins) and `Line.motorleads`
+/// under `Relay.{mfrov/uv,mfr46,mfr47}` in `controls:fuse/indmach_r4133/
+/// indmach_{snap,dyn}.dss`. **Every member of both lists is a Relay**, so every
+/// permutation answers the same `OCPDevIndex = 1`, `OCPDevType = 3`, and the other
+/// three scalars are order-free by construction (`.len()` and two `any()` walks).
+/// The counts are therefore pinned exactly, fail-on-stale in **both** directions:
+/// one more (or one fewer) multi-control element must be re-triaged against D-ii-1
+/// before this constant moves.
+///
+/// Silent under `DSS_GATE_ONLY` for the reason
+/// [`props_norm::assert_r4133_props_compare_ran`] is: a filtered run is not the
+/// population. The mandatory gate never sets the variable.
+pub fn assert_no_multi_control_element() {
+    if std::env::var("DSS_GATE_ONLY").is_ok() {
+        return;
+    }
+    let (seen, controlled, multi, multi_ocp) = control_census_counters();
+    eprintln!(
+        "corpus_gate control census: {seen} element(s), {controlled} with a control, \
+         {multi} with two or more, {multi_ocp} of those with an OCP device"
+    );
+    check_control_census(seen, controlled, multi, multi_ocp);
+}
+
+/// The rule itself, over **injected** counters — split out for the reason
+/// [`props_norm::check_r4133_props_compare_ran`]'s twin is: the shipped statics
+/// cannot be rewound once the gate has moved them, so both directions are pinned
+/// offline (`element_extras_pins::the_control_census_*`).
+///
+/// The two `(multi, multi_ocp)` counts are exact (see
+/// [`assert_no_multi_control_element`]); `seen`/`controlled` are floors, loose on
+/// purpose (another lane may add or retire a deck) but non-vacuous: a census that
+/// stopped counting — the extras request re-masked, the recording call dropped —
+/// fails here instead of greening. Measured 2026-09-05 over the full gated
+/// population: 298 565 / 3 184 / 18 / 18.
+fn check_control_census(seen: usize, controlled: usize, multi: usize, multi_ocp: usize) {
+    assert_eq!(
+        (multi, multi_ocp),
+        CONTROL_CENSUS_MULTI_MEASURED,
+        "the multi-control population moved (now {multi} element row(s) with two \
+         or more controls, {multi_ocp} of them carrying an OCP device, out of \
+         {seen} gated rows). GOLDEN_REBASE_PLAN.md G1.3d(ii)'s D-ii-1 costs ZERO \
+         ledger rows only while every such list is homogeneous: r4133's per-edit \
+         re-attach (which the port follows) reorders the list against capi \
+         0.14.5's, and with an OCP member beside a control of another class that \
+         moves OCPDevIndex/OCPDevType — DISCRETE fields, compared exactly on both \
+         channels and maskable by no ledger scope. Re-triage the deck that moved \
+         this count (are its list's members all of one control class?) before \
+         updating the constant."
+    );
+    assert!(
+        seen > 0 && controlled >= 1_000,
+        "the control census looks broken: {seen} element row(s), {controlled} with \
+         a control (measured 2026-09-05 over the full gated population: \
+         298 565 / 3 184). A zero `seen` means the gating extras compare never ran \
+         at all."
     );
 }
 
@@ -2856,7 +2997,7 @@ pub fn phase_loss_band(
 /// **The ×0.001 lives here and nowhere else.** The engine reports W/var
 /// (`ElementSnapshot::phase_losses`, like `loss_w`); both oracle surfaces scale
 /// by `0.001` at the API boundary — r4133 `DDLL/DCktElement.pas:637-658`
-/// (`CktElementV` mode `6`, `cmulreal(cBuffer^[i], 0.001)` at `:650`), capi
+/// (`CktElementV` mode `6`, `cmulreal(cBuffer^[i], 0.001)` at `:651`), capi
 /// `CAPI/CAPI_Alt.pas:449-467` (`Result[i] *= 0.001` at `:464-467`) — so the
 /// kW/kvar rendering is a capture-boundary encoding, converted at this one site
 /// exactly as the interleaved re/im pair is de-interleaved at one site.
@@ -3894,6 +4035,31 @@ mod element_extras_pins {
     fn an_element_missing_from_the_snapshot_fails() {
         let (_, cap) = metered_line();
         compare_element_extras(&[], &cap, PropsChannel::CapiV0145, "missing");
+    }
+
+    /// The population guard behind D-ii-1's zero ledger rows, accepting
+    /// direction: the measured population (18 multi-control rows, all of them
+    /// Relay-only lists) is what makes the r4133 per-edit re-attach unobservable.
+    #[test]
+    fn the_control_census_passes_on_the_measured_population() {
+        super::check_control_census(298_565, 3_184, 18, 18);
+    }
+
+    /// …and its refusing direction, in **both** ways it can break: a
+    /// multi-control population that grew (a nineteenth row — D-ii-1 may become
+    /// observable) or shrank, and a census that counted nothing (the gating
+    /// extras compare stopped running).
+    #[test]
+    #[should_panic(expected = "the multi-control population moved")]
+    fn the_control_census_fires_on_a_new_multi_control_element() {
+        super::check_control_census(298_565, 3_184, 19, 19);
+    }
+
+    /// The non-vacuity half of the same rule.
+    #[test]
+    #[should_panic(expected = "the control census looks broken")]
+    fn the_control_census_fires_when_nothing_was_counted() {
+        super::check_control_census(0, 0, 18, 18);
     }
 }
 

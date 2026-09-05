@@ -972,7 +972,7 @@ fn the_gate_fires_when_a_read_disappears() {
 /// The A-before-B rule stated for the surface GOLDEN_REBASE G1.3d(ii) adds:
 /// `PhaseLosses` (`CktElementV(6)`, r4133 `DDLL/DCktElement.pas:637`) is
 /// `TDSSCktElement.GetPhaseLosses`, whose first act is `ComputeIterminal`
-/// (r4133 `Common/CktElement.pas:1088`, capi `Common/CktElement.pas:896`) — so
+/// (r4133 `Common/CktElement.pas:1090`, capi `Common/CktElement.pas:896`) — so
 /// it is group **A** and must precede the group-B `Currents`.
 ///
 /// The mistake this guards is the natural one: appending the read to the
