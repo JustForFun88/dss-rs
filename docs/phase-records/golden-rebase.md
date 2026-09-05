@@ -2783,7 +2783,7 @@ row against the pre-fix lock.
   (`pd_elements_relcalc_fields_are_live_after_relcalc`, `tests/TOLERANCE_NOTES.md:812`). Detail:
   `GOLDEN_REBASE_PLAN.md` §G1.6 as-executed (i) and `TESTING.md` §"The `Meters` reliability surface".
   Commits `e343d9e8` (D11 hunk) + `96d7540a`; gate green in both lanes, `lane_diff` max |Δ| = 0.
-  **Audit settlement** `<settle-sha>`: 20 findings — 15 fixed / 3 recorded / 2 refuted. Fixed: the
+  **Audit settlement** `bcc835b6`: 20 findings — 15 fixed / 3 recorded / 2 refuted. Fixed: the
   `alloc_factors` band gains the denominator floor its derivation always claimed (no band below `i_abs`,
   loud triage instead of a silent pass, three regimes unit-tested); `RelCalc` keeps every error line, not
   just the first; the accumulator pin's order claim is made true by a branch-point fixture whose 3-term
