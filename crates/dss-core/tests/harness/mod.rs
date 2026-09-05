@@ -66,6 +66,13 @@ pub mod aggregates;
 /// normalizations and one fully discrete, zero-tolerance live comparator.
 pub mod topology;
 
+/// `GOLDEN_REBASE_PLAN.md` WP-G1 sub-step G1.8: the flat branch-to-node
+/// incidence surface — `IncMatrix`, `Laplacian`, `IncMatrixRows`,
+/// `IncMatrixCols` — as a capture struct, the gate-side statement of the three
+/// transport shape normalizations, one fully discrete, zero-tolerance live
+/// comparator and settlement S-INC's decline census.
+pub mod inc_matrix;
+
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;

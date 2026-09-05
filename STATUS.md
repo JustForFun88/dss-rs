@@ -158,17 +158,17 @@ lane sub-step at a time). Landed: **G1.1**, delivered by `R4133_PROPS_PLAN.md`
 RP4.1 2026-09-03 (**G1.1 satisfied**, **G3.4**/**G3.5** unblocked); **G1.2**
 (the ESPVLControl deck) 2026-08-29; **G1.0** 2026-09-04, the WP rails, whose
 96-mode probe **also discharges G1.11's mode-capability acceptance for the
-whole WP**; **G1.9** (lane `lane-s`, 2026-09-04, `9757d26c` + `f27f9598`;
-audits 13 findings, no port bug), the five `Circuit` aggregates and ten
-`Solution` scalars universal on both channels; **G1.7** (lane `lane-s`,
-2026-09-05, `8fc32991` + `898f8a86`; audits 15 findings, no port bug), the six
-order-free `Topology` rows on both channels, 440 live non-`large` cases (lock
-+7 `topo=`), the memoized-tree and window-dedup defects **asserted, not
-excluded** (D15/D16, fail-on-stale `(16, 135)` / `(8, 96)`), two port gaps
-fixed en route. All: 0 ledger entries, 0 golden bytes, no new floor, kill
-criteria not met. Full record: same file, section "GOLDEN_REBASE WP-G1 — records".
+whole WP**; and three `lane-s` surfaces, each with 0 ledger entries, 0 golden
+bytes, no floor, no port bug, kill criteria not met — **G1.9** (2026-09-04,
+`9757d26c` + `f27f9598`), five `Circuit` aggregates + ten `Solution` scalars,
+universal; **G1.7** (2026-09-05, `8fc32991` + `898f8a86`), the six order-free
+`Topology` rows on 440 live non-`large` cases (lock +7 `topo=`), stale tree +
+window dedup **asserted, not excluded** (D15/D16, `(16, 135)` / `(8, 96)`);
+**G1.8** (2026-09-05), the four flat incidence/Laplacian quantities on the same
+440 (lock +6 `incm=`), the reactor row cursor likewise (S-INC, `(4, 5)`; and
+§G3.2c re-scoped). Full record: same file, "GOLDEN_REBASE WP-G1 — records".
 
-**Next.** Lane `lane-s` takes **G1.8** (incidence/Laplacian), then G1.10a–c;
+**Next.** Lane `lane-s` takes **G1.10a** (run-file artifacts), then G1.10b/c;
 the element lane runs G1.3a→3d→3b→3c, the bus lane G1.4a→G1.5→G1.4c→G1.4b, the
 PD/meter lane G1.6b→G1.6(i)→G1.6(ii), merged into `update` one sub-step at a
 time. Then WP-G3–G5, inside which **G3.4**/**G3.5** are runnable. Queued behind

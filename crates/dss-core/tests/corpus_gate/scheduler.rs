@@ -571,6 +571,241 @@ pub(crate) fn assert_topology_declines_are_the_pinned_population() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// GOLDEN_REBASE G1.8 — the incidence-matrix surface: its forced population and
+// the manifest rows that carry the declaration into the anti-shrink lock
+// ---------------------------------------------------------------------------
+
+/// Apply the G1.8 incidence-forcing rule to a live case.
+///
+/// The surface is the four flat incidence quantities the fastdss harness dumps
+/// for `Solution` — `IncMatrix`, `Laplacian`, `IncMatrixCols`, `IncMatrixRows`
+/// (`origin/fastdss` `tests/save_outputs.py:187`, built by the `CalcIncMatrix` /
+/// `CalcLaplacian` pair the same harness issues at `:117-118`). They are read on
+/// r4133 from `Version8/Source/DDLL/DSolution.pas:542-568` (`IncMatrix`),
+/// `:589-608` (rows), `:609-639` (cols) and `:640-666` (`Laplacian`); on capi
+/// 0.14.5 from `src/CAPI/CAPI_Solution.pas:897-926`, `:953-971`, `:979-1021` and
+/// `:860-889` — the two integer getters allocating one cell too many (`:910`,
+/// `:873`, each carrying upstream's own `//TODO: remove the +1`), which the capi
+/// capture drops after asserting it is zero.
+///
+/// Two neighbours of that group are deliberately never requested on either
+/// channel. `BusLevels` (`DSolution.pas:569-588`) does
+/// `setlength(myIntArray, ArrSize)` and then `for IMIdx := 0 to ArrSize` — one
+/// write past the array — and therefore sits on the bridge's do-not-call
+/// register (`crates/dss-epri/src/modes.rs:271-280`). The ORDERED builder
+/// `Calc_Inc_Matrix_Org` (`Common/Solution.pas:3146`) calls `GetTopology`
+/// (`:3173`), which rebuilds and re-memoizes the branch tree G1.7's two decline
+/// censuses are defined on; the flat `Calc_Inc_Matrix` (`:3046`) is what this
+/// surface drives, and the golden `*_org_*` stems keep covering the other one.
+///
+/// The rule is **every live case whose `kind` does not start with `large`** —
+/// deliberately the same population [`force_properties`] and [`force_topology`]
+/// force, so the gate keeps reasoning about ONE forced set
+/// ([`FORCED_INC_MATRIX_POPULATION`] asserts all three stay equal). The cost
+/// guard is what buys the surface: the live `large*` decks are a small slice of
+/// the corpus but over half of the capi oracle's wall time and payload, and
+/// nothing caches the matrix — the pair rebuilds it from scratch on every call,
+/// on both oracles and on the port.
+///
+/// As with [`force_topology`] there is no per-source arm (no family deck is
+/// `kind=large*`, asserted by
+/// [`the_property_forcing_rule_is_every_live_non_large_case`]), and a manifest
+/// may also declare the flag itself — which only ever ADDS, and is the only way
+/// the surface reaches `population.lock.json` at all
+/// ([`INC_MATRIX_DECLARED_IN_MANIFEST`]).
+fn force_inc_matrix(c: &mut SolvableCase) {
+    if !c.kind.starts_with("large") {
+        c.compare_inc_matrix = true;
+    }
+}
+
+/// **The forced incidence population, pinned** — `(cases forced, of them
+/// `engines: "both"`, `engines: "r4133"`, `engines: "capi_v0145"`)`.
+///
+/// Re-derived from the four manifests by
+/// [`the_inc_matrix_forcing_rule_is_every_live_non_large_case`] on every run:
+/// 523 cases → 519 live → **440** forced once the live `kind=large*` decks come
+/// off, of which 313 are `both`, 83 r4133-only and 44 capi-only (measured
+/// 2026-09-05). Identical to [`FORCED_TOPOLOGY_POPULATION`] and
+/// [`FORCED_PROPS_POPULATION`] by construction, and the test asserts those
+/// equalities instead of leaving them a comment.
+///
+/// The lock it backs up is `population.lock.json`, which records the **manifest**
+/// flag (`population_lock.rs::rigor`'s `incm=` token) and cannot see the
+/// scheduler-side forcing at all — the same blind spot the property and topology
+/// rules carry, and the reason all three have a re-derivation test. It also
+/// fixes settlement S-INC's decline population: `harness::inc_matrix`'s
+/// `INC_UPSTREAM_ROW_DECLINES` was measured over exactly this set, so narrowing
+/// it moves that constant too.
+const FORCED_INC_MATRIX_POPULATION: (usize, usize, usize, usize) = (440, 313, 83, 44);
+
+/// **The manifest rows that declare `compare_inc_matrix` themselves**, with the
+/// gating channel each one carries.
+///
+/// The forcing rule above is invisible to `population.lock.json`, so without at
+/// least one declared row the surface would arm the whole gate while leaving the
+/// anti-shrink lock byte-identical — and switching it off again would leave no
+/// diff either. These six decks are the §1.1(f) acceptance witnesses: every
+/// gating channel is represented (`capi_v0145`, `r4133`, `both`), and each row's
+/// measured step-0 answer is non-trivial in at least one of the four quantities
+/// (`tmp/g18` probes, 2026-09-05; both channels agree exactly after the capture
+/// normalizations, so one set of numbers describes both):
+///
+/// * `asymmetric:capacitor/midi_capacitor_asym.dss` — `both`; all four row
+///   builders (lines, transformers, series capacitors, series reactors) fire in
+///   one deck: 39 rows / 36 cols, 79 incidence and 112 Laplacian triples.
+/// * `asymmetric:reactor/reactor_asym.dss` — `both`; the settlement S-INC
+///   witness: 6 rows / 5 cols, 12 triples, upstream's largest row index **6**
+///   against **6** row names, because its shunt `Reactor.rsh` still advances the
+///   row cursor (r4133 `Common/Solution.pas:3039`).
+/// * `solvable_now:Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss` —
+///   `both`, 24 steps of 17 rows / 16 cols, 34 incidence and 46 Laplacian
+///   triples; the deck every other WP-G1 surface is also declared on.
+/// * `solvable_now:Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS` — the
+///   `capi_v0145`-only channel: 7 rows / 8 cols, 14 and 22 triples.
+/// * `controls:fuse/indmach_r4133/indmach_dyn.dss` — the `r4133`-only channel:
+///   2 steps of 13 rows / 12 cols, 26 and 34 triples.
+/// * `solvable_now:Test/CableParameters.dss` — `both`, and the only declared
+///   deck with an **empty** `IncMat`: the raw payload is r4133's bare `[0]`
+///   sentinel (`DSolution.pas:545-546`) / capi's lone unwritten `+1` cell, and
+///   `IncMatrixRows` arrives as `['']` on capi (`CAPI_Solution.pas:959`) and
+///   `['None']` on r4133 (`DSolution.pas:605`). The sentinel path is therefore
+///   declared, not merely forced.
+const INC_MATRIX_DECLARED_IN_MANIFEST: &[(&str, &str)] = &[
+    ("solvable_now:Test/CableParameters.dss", "both"),
+    (
+        "solvable_now:Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS",
+        "capi_v0145",
+    ),
+    (
+        "solvable_now:Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+        "both",
+    ),
+    ("asymmetric:capacitor/midi_capacitor_asym.dss", "both"),
+    ("asymmetric:reactor/reactor_asym.dss", "both"),
+    ("controls:fuse/indmach_r4133/indmach_dyn.dss", "r4133"),
+];
+
+/// **The incidence-forcing rule is a rule, not a habit** — the G1.8 twin of
+/// [`the_topology_forcing_rule_is_every_live_non_large_case`], and for the same
+/// reason: nothing else can see [`force_inc_matrix`]. `population.lock.json`
+/// fingerprints manifest flags, and the live census
+/// `harness::inc_matrix::assert_declines_are_the_pinned_population` arms on the
+/// run's own comparison counter, so a *partial* re-mask (say a `gates_capi()`
+/// guard, which would drop the 83 r4133-only cases while the 313 `both` ones
+/// keep walking) passes both. This test walks the four manifests without an
+/// oracle and asserts the forced set **is** the live non-`large` population,
+/// cell for cell.
+#[test]
+fn the_inc_matrix_forcing_rule_is_every_live_non_large_case() {
+    let cases = build_unified_cases();
+    let mut forced = (0usize, 0usize, 0usize, 0usize);
+    let mut wrong: Vec<String> = Vec::new();
+    for uc in &cases {
+        let live = uc.class == CaseClass::Live;
+        let large = uc.case.kind.starts_with("large");
+        // The rule: every live case, minus `large`. A manifest may also declare
+        // the flag itself, which only ever ADDS — so a declared row outside the
+        // rule (a `large` deck, or a pending/abort/deferred one) is a review,
+        // not a silent widening, and reds here.
+        let expected = live && !large;
+        if uc.case.compare_inc_matrix != expected {
+            wrong.push(format!(
+                "{}: kind={} engines={} class={} → compare_inc_matrix={} (expected {expected})",
+                uc.label,
+                uc.case.kind,
+                uc.case.engines,
+                if live { "live" } else { "not-live" },
+                uc.case.compare_inc_matrix,
+            ));
+        }
+        if uc.case.compare_inc_matrix {
+            forced.0 += 1;
+            match uc.case.engines.as_str() {
+                "both" => forced.1 += 1,
+                "r4133" => forced.2 += 1,
+                _ => forced.3 += 1,
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "the incidence-forcing rule is `every live non-`large` case` (GOLDEN_REBASE G1.8, \
+         2026-09-05) — these cases disagree with it:\n  {}",
+        wrong.join("\n  ")
+    );
+    assert_eq!(
+        forced, FORCED_INC_MATRIX_POPULATION,
+        "(forced, both, r4133-only, capi-only) moved. A DROP in either r4133 half is a \
+         per-channel re-mask of the incidence request — the thing the live census cannot see, \
+         because it only counts the comparisons that did run. It also re-measures \
+         `harness::inc_matrix::INC_UPSTREAM_ROW_DECLINES`, which was derived over exactly this \
+         population. A legitimate corpus change moves this lock together with \
+         `population.lock.json`."
+    );
+    assert_eq!(
+        FORCED_INC_MATRIX_POPULATION, FORCED_TOPOLOGY_POPULATION,
+        "G1.8 forces the incidence surface over the SAME population as the topology surface (one \
+         rule, one set to reason about — `force_inc_matrix`'s doc). If that is deliberately no \
+         longer true, narrow one rule, drop this assertion, and re-measure \
+         `INC_UPSTREAM_ROW_DECLINES`, which is a function of this population."
+    );
+    assert_eq!(
+        FORCED_INC_MATRIX_POPULATION, FORCED_PROPS_POPULATION,
+        "…and the same population as the property surface, which is where the `live non-`large`` \
+         rule came from (RP0.1/RP0.2's census). Three rules, one forced set."
+    );
+}
+
+/// **The surface reaches the anti-shrink lock** — the static half of the G1.8
+/// acceptance (`GOLDEN_REBASE_PLAN.md` §1.1(f): the flag is set on at least one
+/// case per gating channel).
+///
+/// [`force_inc_matrix`] arms the gate but is scheduler code; only a *declared*
+/// manifest row reaches `population_lock.rs::rigor`'s `incm=` token, so this
+/// test pins exactly which rows carry the declaration and on which channel.
+/// Deleting one — the cheapest way to shrink the surface's recorded footprint —
+/// fails here and in `population.lock.json`, never silently.
+#[test]
+fn the_inc_matrix_surface_is_declared_on_every_gating_channel() {
+    let mut declared: Vec<(String, String)> = Vec::new();
+    for c in load_solvable() {
+        if c.compare_inc_matrix {
+            declared.push((format!("solvable_now:{}", c.path), c.engines.clone()));
+        }
+    }
+    for fam in FAMILIES {
+        for c in load_family(fam.name) {
+            if c.compare_inc_matrix {
+                declared.push((format!("{}:{}", fam.name, c.path), c.engines.clone()));
+            }
+        }
+    }
+    declared.sort();
+    let mut want: Vec<(String, String)> = INC_MATRIX_DECLARED_IN_MANIFEST
+        .iter()
+        .map(|(l, e)| ((*l).to_string(), (*e).to_string()))
+        .collect();
+    want.sort();
+    assert_eq!(
+        declared, want,
+        "the manifest declarations of `compare_inc_matrix` moved. They are what puts the surface \
+         into `population.lock.json` (the `incm=` rigor token) — the scheduler-side \
+         `force_inc_matrix` is invisible to it — so this set is pinned, and a change to it \
+         belongs in the same commit as a regenerated lock."
+    );
+    for ch in ["capi_v0145", "r4133", "both"] {
+        assert!(
+            declared.iter().any(|(_, e)| e == ch),
+            "no manifest case declares `compare_inc_matrix` with engines={ch:?}; \
+             GOLDEN_REBASE_PLAN.md §1.1(f) wants the flag set on at least one case per gating \
+             channel, so that each channel's capture path is exercised by a declared row and not \
+             only by the scheduler's forcing rule"
+        );
+    }
+}
+
 /// Build one unified case, applying the exact per-source property-forcing +
 /// classification of the pre-Phase-B gates.
 fn make_case(
@@ -604,6 +839,7 @@ fn make_case(
     if class == CaseClass::Live {
         force_properties(source, &mut c, fam_props);
         force_topology(&mut c);
+        force_inc_matrix(&mut c);
     }
     let weight = kind_weight(&c.kind) * (c.n_steps.max(1) as u64);
     let dir_key = dir_key_of(&abs);

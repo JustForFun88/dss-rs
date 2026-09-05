@@ -120,7 +120,8 @@
    "path": "Test/CableParameters.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "engines": "both"
+   "engines": "both",
+   "compare_inc_matrix": true
   },
   {
    "path": "Test/Cable_constants.DSS",
@@ -615,7 +616,8 @@
    "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1,
-   "compare_topology": true
+   "compare_topology": true,
+   "compare_inc_matrix": true
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS",
@@ -1618,6 +1620,7 @@
    ],
    "n_steps": 24,
    "compare_topology": true,
+   "compare_inc_matrix": true,
    "selected_elements": [
     "line.650632",
     "transformer.reg1"

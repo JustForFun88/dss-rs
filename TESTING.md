@@ -486,7 +486,8 @@ absent or empty, the case **fails**, naming the flag, the channel tag and the
 case. It is never a silent skip, because every comparator in the harness is a
 "for each item the oracle sent" walk and an empty capture passes one trivially.
 The day-one callers were `compare_all_properties` and `compare_autoadd_log`
-in `corpus_gate/runner.rs`; G1.7's `compare_topology` is the third (2026-09-05).
+in `corpus_gate/runner.rs`; G1.7's `compare_topology` is the third and G1.8's
+`compare_inc_matrix` the fourth (2026-09-05).
 
 **Capture order is contractual on the capi channel** (`GOLDEN_REBASE_PLAN.md`
 §1.1(a), restated 2026-09-04). Per element, in three groups:
@@ -505,9 +506,10 @@ victim. G1.3a is the sub-step that first adds group-B reads, and its capture tes
 asserts the request order; the golden path already states the rule at
 `tools/golden/gen_checkpoints.py::capture_element`.
 
-**G1.7's topology surface is group C but is read strictly last** — after
-`all_properties` — on both transports, and `crates/dss-core/tests/capture_order.rs`
-asserts that from the two capture sources. Its six rows (`NumLoops`,
+**G1.7's topology surface is group C but is read after `all_properties`** on
+both transports — only G1.8's incidence pair follows it (see below) — and
+`crates/dss-core/tests/capture_order.rs` asserts both orderings from the two
+capture sources. Its six rows (`NumLoops`,
 `NumIsolatedBranches`, `NumIsolatedLoads`, `AllLoopedPairs`,
 `AllIsolatedBranches`, `AllIsolatedLoads`) are order-free in themselves, but the
 FIRST `Topology` read of a step is what BUILDS the memoized branch tree and
@@ -615,6 +617,152 @@ reallocation that Pascal's own `Set_NTerms` guard (`Common/CktElement.pas:349-36
 `MakePosSequence` does — wiped every terminal's bus and node refs without raising
 `BusNameRedefined`, leaving the model bus-unresolved. The topology walk was the
 first compared surface that could see either.
+
+**G1.8 — the incidence matrix and the Laplacian, read strictly last.**
+`CalcIncMatrix` then `CalcLaplacian` are issued on both transports and the four flat
+quantities (`Solution.IncMatrix`, `Laplacian`, `IncMatrixRows`, `IncMatrixCols`) read
+back in that order, after G1.7's topology block and therefore last in the step. Two
+independent reasons, both written into the capture doc comments. (i) On r4133 the pair
+is not a pure read: `AddSeriesReac2IncMatrix` re-points `LastClassReferenced` and
+`ActiveDSSClass` and then calls `ActiveDSSClass.First` (`Common/Solution.pas:3007-3010`),
+which moves `ActiveCircuit.ActiveCktElement`, so it must not precede any per-element or
+property read. The pinned capi 0.14.5 walks the reactors with a typed class iterator and
+leaves `ActiveCktElement` alone, so the rule comes from the stronger channel and is
+applied to both. (ii) It must follow the topology read that memoizes `Branch_List`, on
+which G1.7's two censuses are defined. `crates/dss-core/tests/capture_order.rs` asserts
+all of it from the two capture sources — the incidence call follows `topology`, which
+follows `all_properties` (`capi_capture_reads_the_incidence_surface_last` and its r4133
+twin); exactly those two commands are issued, in that order, and exactly those four
+members are read (`the_incidence_capture_issues_calcincmatrix_then_calclaplacian`); with
+a synthetic negative drive for each direction
+(`the_incidence_gates_reject_a_swapped_or_early_capture`). The order *inside* the pair is
+a contract, not a convention: r4133's `CalcLaplacian` has no `Assigned(IncMat)` guard
+(`Executive/ExecCommands.pas:911-917`) and nil-derefs inside the DLL, while dss_capi
+(`Executive/ExecCommands.pas:421-433`) and the port both raise 8877.
+
+**The ordered builder and `BusLevels` are deliberately out of the live gate.**
+`Calc_Inc_Matrix_Org` calls `GetTopology` (`Common/Solution.pas:3146`, `:3173`), which
+would rebuild and re-memoize the branch tree G1.7's `TOPOLOGY_STALE_DECLINES` and
+`LOOPED_PAIR_WINDOW_DECLINES` are defined on; and `BusLevels` can never be read on r4133
+— `DSolution.pas:580-582` does `setlength(myIntArray, ArrSize)` and then
+`for IMIdx := 0 to ArrSize`, a one-element heap overflow — so it sits on the bridge's
+do-not-call register — the `BusLevels` row, `crates/dss-epri/src/modes.rs:272-279` —
+and is refused before any FFI reaches the DLL. Neither is issued or read on either transport, asserted from the
+source text by `capture_order.rs::neither_capture_calls_calcincmatrix_o_or_reads_buslevels`
+(whose second half re-asserts the register row itself). That is also why
+`GOLDEN_REBASE_PLAN.md` §G3.2c keeps the twenty `*_org_*` golden stems of
+`tests/golden/inc_matrix/` — they are the only witness of the ordered builder, of
+`BusLevels` and of the CSV writer `report/export/inc_matrix.rs`, and the writer and the
+getter deliberately differ on `IncMatrixCols` — and deletes only the eight `*_flat_*`
+ones, whose values are exactly what this surface now gates live.
+
+**Three transport normalizations, all asserted, none of them in the comparator.**
+(N1) capi over-allocates one cell for each integer array (`CAPI_Solution.pas:910`,
+`:873`, both carrying the upstream "TODO: remove the +1"): `oracle_server.py` checks
+that the trailing cell is 0, drops it, and refuses any length that is not `3*NZero + 1`
+— measured 0 non-zero cells and 0 bad lengths over 1 733 steps, which is this sub-step's
+kill criterion expressed in the transport. (N2) r4133 answers a nil or empty matrix with
+the one-cell `[0]` sentinel (`DSolution.pas:544`, `:642`), decoded to the empty list;
+every other length must be `3*NZero` — measured 104 sentinel steps of 1 756 and no third
+shape. (N3) an empty name list is a single blank token on capi
+(`CAPI_Solution.pas:961`) and the single token `None` on r4133 (`DSolution.pas:605`);
+each is decoded to the empty list only where the engine can actually reach it, and any
+other empty entry raises rather than silently losing a name. `harness::inc_matrix` does
+not repeat the repairs — it asserts the capture is already at the fixpoint, so a
+transport that stops normalizing fails there instead of comparing a phantom cell as
+data. After N1-N3 the two channels were byte-identical on all four quantities across the
+358 both-gated cases of the sub-step's own sweeps.
+
+**Names are byte-identical by construction; the compare is case-insensitive anyway.**
+Both oracles store bus names lowercased — `THashList.Add` keeps `LowerCase(S)` ("make
+copy of whole string, lower case", r4133 `Shared/HashList.pas:268`, `:281`; capi
+`HashList.pas:224`) — and a row label is a hardcoded capitalized class prefix plus the
+element's already-lowercase `Name` (`Common/Solution.pas:3019` and its three siblings),
+which is exactly the port's spelling. Measured on a probe circuit whose buses are
+declared `SourceBus`, `BusUpper`, `MiXeD`: the oracle answers `sourcebus`, `busupper`,
+`mixed` and rows `Line.l1`, `Line.l2`. The ASCII-case-insensitive equality in the
+comparator is therefore belt-and-braces rather than load-bearing, and it is the only
+slack: both lists are compared in **sequence** order, at zero tolerance, because both
+sides are creation-order walks.
+
+**Settlement S-INC — the reactor row cursor is asserted, not excluded (0 ledger rows).**
+Both oracles advance the incidence row cursor for EVERY reactor: `inc(ActiveIncCell[0])`
+sits at `Common/Solution.pas:3039`, outside the `:3015` emit guard, unlike the three
+sibling walks (Lines `:2885`, Transformers `:2938`, series Capacitors `:2986`). A series
+reactor that follows a skipped shunt one therefore carries a row index that does not
+index `Inc_Mat_Rows` — contradicting the surface's own contract, since `Inc_Mat_Rows` is
+the PD-element name per incidence row and is exported under the header
+`B2N Incidence Matrix Row Names (PDElements)`. Per CLAUDE.md the port emits **dense**
+rows (`solution/inc_matrix.rs::add_series_reactors`, fixed in its own commit ahead of the
+surface) and the comparator re-derives upstream's numbering positively:
+`remap(port.inc_matrix, upstream_row_index) == oracle.inc_matrix`, where
+`IncMatrixView::upstream_row_index` maps the j-th reactor of the circuit's own reactor
+list to `base + j`. The Laplacian arm compares **unmapped**, because the Laplacian is
+blind to an empty row — measured on both channels: the same circuit declared shunt-first
+and series-first returns the same thirty Laplacian integers in the same order while the
+incidence row moves 3 to 2. The declining population is re-derived on every run and
+pinned in both directions as `INC_UPSTREAM_ROW_DECLINES = (4 cases, 5 case-steps)`
+(`harness::inc_matrix::assert_declines_are_the_pinned_population`, called from the gate
+epilogue, silent only under `DSS_GATE_ONLY` or while no live case requests the surface):
+`NEVMASTER.DSS`, `Run_NEV.dss`, `asymmetric:reactor/reactor_asym.dss` and
+`midi_reactor_asym.dss` steps 0 and 1 — 10 channel visits over 3 314 compared
+`(case, step, channel)` triples. The expected-value pins naming both numbers are
+`inc_matrix_pins::the_incidence_row_cursor_skips_a_shunt_reactor` (port row 2 against
+oracle row 3 with three row names),
+`inc_matrix_pins::the_row_cursor_settlement_holds_on_the_corpus_witness` and
+`inc_matrix_pins::the_laplacian_is_blind_to_the_row_cursor`; the upstream report is
+`investigations/to_opendss/63-incidence-row-cursor-counts-skipped-reactors.md` (local only).
+
+**Two further defects of the same walk are reproduced on purpose, and registered.**
+`GetBus(2)` on a one-terminal reactor returns a blank string, so the `.0` test that
+classifies a reactor as series never fires, the bus search then misses and the column
+falls back to the LAST bus of the list: `asymmetric:reactor/reactor_asym.dss`'s
+`Reactor.rdel` gets the triples `(4,3,+1)` `(4,4,-1)`, an edge to `b4` in a five-bus
+list. And the reactor walk carries no `Enabled` test where its three siblings do, so a
+disabled series reactor is still a row. Both are *which element becomes a row* — a
+modelling decision, not an indexing one — so they are left as they are for now, stated
+with both numbers by
+`exec::tests::inc_matrix::a_one_terminal_reactor_becomes_a_phantom_branch_to_the_last_bus`
+and `::a_disabled_series_reactor_is_still_a_row`, and registered as teardown candidates
+in `GOLDEN_REBASE_PLAN.md` §WP-G2 with the same upstream report.
+
+**Population, flag, lock and contamination.** `compare_inc_matrix` (`incm=`) is forced on
+every live non-`large` case — the same 440 (313 `both`, 83 `r4133`, 44 `capi_v0145`) that
+carry the property and topology surfaces, which
+`scheduler::the_inc_matrix_forcing_rule_is_every_live_non_large_case` re-derives from the
+four manifests and pins as `FORCED_INC_MATRIX_POPULATION`, asserting equality with both
+sibling constants instead of commenting it. `large*` stays out on cost: 65 capi cases /
+88 steps are 56 % of that channel's time in the pair and 57 % of its payload. Six decks
+also *declare* the flag (`scheduler::INC_MATRIX_DECLARED_IN_MANIFEST`, all three gating
+channels represented; one of them, `solvable_now:Test/CableParameters.dss`, has an EMPTY
+`IncMat`, so the sentinel path is declared and not merely forced), because
+`population.lock.json` fingerprints the manifest flag and cannot see scheduler-side
+forcing — the same blind spot the property and topology surfaces have. The lock moved by
+exactly six `incm=0` to `incm=1` tokens, and `population_lock` was red before the regen,
+which is the proof the six declarations reach it. The surface is fully discrete, so it
+introduces no floor anywhere; see `tests/TOLERANCE_NOTES.md` §G1.8. Contamination: the
+whole 523-case manifest was dumped three ways — serial one-shot, persistent-parallel and
+persistent-parallel-shuffled — and all 523 labels are bit-identical; no `write_gate_dump`
+strip rule is owed for capi's `+1` cell, because the transport drops it before the
+checkpoint exists.
+
+**The G1.8 pins, by name** — registered in
+`oracle_parity_cfg_gate.rs::the_g1_8_pins_the_docs_cite_exist_exactly_once`, so a rename
+or a deletion reds here instead of leaving this section stale. Transport and getter
+shape, in `crates/dss-core/tests/inc_matrix_pins.rs`:
+`capi_incmatrix_carries_one_trailing_zero` and
+`capi_and_r4133_incmatrix_lengths_differ_by_one` state the two raw lengths a later
+cleanup of N1/N2 would have to move (IEEE13 `IncMatrix` 103 capi against 102 r4133,
+`Laplacian` 139 against 138); `an_empty_incidence_matrix_reads_back_as_no_rows` states
+the sentinel triple (capi `['']`, r4133 `['None']`, port `[]`);
+`inc_matrix_cols_are_the_bus_list_when_unordered` states the getter branch (the sixteen
+IEEE13 columns in `BusList` order against the `CalcIncMatrix_O` order, which first
+differs at index 3); and `calclaplacian_without_calcincmatrix_raises_8877` states the
+port's own guard. The r4133 twin named above is literally
+`r4133_capture_reads_the_incidence_surface_last`; the dense-row fix is pinned in-engine
+by `solution::inc_matrix::tests::the_reactor_row_cursor_advances_only_on_an_emitted_row`
+and the six manifest declarations by
+`scheduler::the_inc_matrix_surface_is_declared_on_every_gating_channel`.
 
 ### The divergence ledger (`tests/corpus/ledger.json`)
 
@@ -1174,20 +1322,20 @@ property cell of a live non-`large` case is asserted on **both** channels. The
 two channels do not spell values identically, so the r4133 side runs a
 **channel-scoped claim chain** whose links are consulted in one fixed order and
 never on `capi_v0145`. One function holds the whole order —
-`harness::compare_prop_lists` (`crates/dss-core/tests/harness/mod.rs:3258`) —
-and links 2-4 are `PropsPolicy` methods gated on `is_r4133()` (`mod.rs:3461`,
-`:3504`; the channel type is `PropsChannel`, `mod.rs:3425`). Link 1 is the
+`harness::compare_prop_lists` (`crates/dss-core/tests/harness/mod.rs:3265`) —
+and links 2-4 are `PropsPolicy` methods gated on `is_r4133()` (`mod.rs:3468`,
+`:3511`; the channel type is `PropsChannel`, `mod.rs:3432`). Link 1 is the
 deliberate exception: `skip_prop` is a free function taking the channel, so its
 `LANE_SKIP_PROPS` half stays channel-blind (row 1 below says so).
 
 | # | link | seam | what it does | if it does not claim |
 |---|---|---|---|---|
-| 0 | shape allowlist `PROPS_015X` | `filter_015x`, `mod.rs:3273` | drops a Rust-side prop the capture cannot carry — **shape only** | the name walk fails |
-| 1 | skip rows `SKIP_PROPS` / `LANE_SKIP_PROPS` | `skip_prop`, `mod.rs:3293` (rule at `:2039`) | value-only skip, per channel | fall through |
-| 2 | normalization `PROPS_NORM_R4133` | `PropsPolicy::normalize`, `mod.rs:3302` | **re-spells** the oracle side when a typed rule proves the two are the same value | both raw spellings continue |
-| 3 | echo table `PROPS_ECHO_R4133` | `PropsPolicy::echo_excluded`, `mod.rs:3313` | drops the **value** compare of that cell (name + index order still assert) | fall through |
-| 4 | display floor `R4133_DISPLAY_FLOOR` | `PropsPolicy::under_display_floor`, `mod.rs:3323` | passes a numeric cell that is our value rendered to r4133's own digits | the cell reaches the assert |
-| 5 | the assert | `assert_value_matches_tol`, `mod.rs:3332` | the case's tier floors (`tol_for`) | **gate red, both spellings in the message** |
+| 0 | shape allowlist `PROPS_015X` | `filter_015x`, `mod.rs:3280` | drops a Rust-side prop the capture cannot carry — **shape only** | the name walk fails |
+| 1 | skip rows `SKIP_PROPS` / `LANE_SKIP_PROPS` | `skip_prop`, `mod.rs:3300` (rule at `:2046`) | value-only skip, per channel | fall through |
+| 2 | normalization `PROPS_NORM_R4133` | `PropsPolicy::normalize`, `mod.rs:3309` | **re-spells** the oracle side when a typed rule proves the two are the same value | both raw spellings continue |
+| 3 | echo table `PROPS_ECHO_R4133` | `PropsPolicy::echo_excluded`, `mod.rs:3320` | drops the **value** compare of that cell (name + index order still assert) | fall through |
+| 4 | display floor `R4133_DISPLAY_FLOOR` | `PropsPolicy::under_display_floor`, `mod.rs:3330` | passes a numeric cell that is our value rendered to r4133's own digits | the cell reaches the assert |
+| 5 | the assert | `assert_value_matches_tol`, `mod.rs:3339` | the case's tier floors (`tol_for`) | **gate red, both spellings in the message** |
 
 A divergence the ledger owns is handled outside this chain, by the case's
 `property`-scoped `ledger.json` entry (`corpus_gate/ledger.rs:1116`, `:1151`) —
@@ -1210,7 +1358,7 @@ written, never which value it is; anything else is an exclusion, not a rule.
 that the four per-kind locks (`NORM_ROWS` … `NORM_ENUM_SYNONYM_ROWS`,
 `props_norm.rs:742-764`) partition it, so a row cannot be added without moving a
 documented number. *Liveness:* `props_norm::assert_norm_rows_are_live`
-(`props_norm.rs:1412`, called in the gate epilogue, `corpus_gate.rs:194`) fails
+(`props_norm.rs:1412`, called in the gate epilogue, `corpus_gate.rs:203`) fails
 a full run in which a row was visited and folded nothing — the fail-on-stale
 half. The offline half is the replay (§"The r4133 props replay accounting"):
 every row must claim at least one vendored example row. Only the **live** half
@@ -1254,7 +1402,7 @@ converse guard `a_capi_witness_is_a_pair_the_capi_channel_can_compare` refuses a
 tied to the table both ways by
 `props_r4133_replay::every_echo_row_pin_is_a_test_that_exists`. *Liveness:*
 `props_norm::assert_echo_rows_are_live` (`props_norm.rs:2657`,
-`corpus_gate.rs:205`) — `visits > 0 && hits == 0` for a pair-scoped row,
+`corpus_gate.rs:214`) — `visits > 0 && hits == 0` for a pair-scoped row,
 `visits == 0` for a narrowed one (a narrowed row counts only covered cells, so
 `visits == hits` by construction and the first arm cannot fire on it).
 
@@ -1268,37 +1416,37 @@ r4133 side must be our number rounded to the significant digits r4133 itself
 printed). It touches no `Tolerances` field, no `tol_for` tier, no golden and no
 model quantity, and it is unreachable on `capi_v0145`
 (`props_policy_tests::the_capi_channel_never_applies_the_display_floor`,
-`mod.rs:2471`). Its derivation — the measured worst cell, the empty band, the
+`mod.rs:2478`). Its derivation — the measured worst cell, the empty band, the
 `%.Ng` site table and the 55 refused spellings — is
 `tests/TOLERANCE_NOTES.md` §"r4133 props display floor".
 
 **The `SKIP_PROPS` dispositions (plan §1.2).** `skip_prop` is channel-aware
-since RP2.1 (`mod.rs:2039`), because after RP4.1 a channel-blind row would
+since RP2.1 (`mod.rs:2046`), because after RP4.1 a channel-blind row would
 value-mask the r4133 channel by accident. Every one of the **17** `SKIP_PROPS`
-rows (`mod.rs:1592`) is dispositioned exactly once, in its own row comment —
+rows (`mod.rs:1599`) is dispositioned exactly once, in its own row comment —
 **17 = 10 + 7**, the first two lists below. The third list is a separate table
 (`LANE_SKIP_PROPS` is not a `SKIP_PROPS` row and the partition lock does not
 union it), shown here because `skip_prop` consults it on the same call:
 
 | list | rows | on r4133 | why |
 |---|---|---|---|
-| `SKIP_PROPS_CAPI_ONLY` (`mod.rs:1948`) | 10 | **compared** | the justification is a 0.14.5-capture fact: the three changed defaults (`Fuse.FuseCurve`, `Fuse.RatedCurrent`, `RegControl.RevThreshold`), the two `pctperm` rows (`Capacitor`, `Reactor`), and RP3.8's five `''`-render rows (`IndMach012.PF`, the four `StorageController` totals) |
-| `SKIP_PROPS_BOTH_CHANNELS` (`mod.rs:1989`) | 7 | **skipped** | channel-independent facts — the heap-garbage matrix reads (`Capacitor.CMatrix`, `Reactor.RMatrix`/`XMatrix`, `Fault.GMatrix`, `Transformer.WdgCurrents`) and the two `FaultRate` rows |
-| `LANE_SKIP_PROPS` (`mod.rs:2029`) | 1 | **skipped, deliberately channel-blind** | `(Monitor, BaseFreq)` — an upstream bug BOTH gating oracles share (`Monitor.pas` r4133:552); the port's correct value is pinned by `monitor_basefreq_inherits_the_fundamental` |
+| `SKIP_PROPS_CAPI_ONLY` (`mod.rs:1955`) | 10 | **compared** | the justification is a 0.14.5-capture fact: the three changed defaults (`Fuse.FuseCurve`, `Fuse.RatedCurrent`, `RegControl.RevThreshold`), the two `pctperm` rows (`Capacitor`, `Reactor`), and RP3.8's five `''`-render rows (`IndMach012.PF`, the four `StorageController` totals) |
+| `SKIP_PROPS_BOTH_CHANNELS` (`mod.rs:1996`) | 7 | **skipped** | channel-independent facts — the heap-garbage matrix reads (`Capacitor.CMatrix`, `Reactor.RMatrix`/`XMatrix`, `Fault.GMatrix`, `Transformer.WdgCurrents`) and the two `FaultRate` rows |
+| `LANE_SKIP_PROPS` (`mod.rs:2036`) | 1 | **skipped, deliberately channel-blind** | `(Monitor, BaseFreq)` — an upstream bug BOTH gating oracles share (`Monitor.pas` r4133:552); the port's correct value is pinned by `monitor_basefreq_inherits_the_fundamental` |
 
 *Partition lock:*
 `skip_props_disposition_tests::every_skip_props_row_has_an_r4133_disposition`
-(`mod.rs:2079`) fails on a row listed twice, in neither list, or deleted from
+(`mod.rs:2086`) fails on a row listed twice, in neither list, or deleted from
 `SKIP_PROPS` — a new skip cannot silently inherit "masked on r4133 too". The
 channel-blindness of the `LANE_SKIP_PROPS` row has its own pin
-(`the_monitor_basefreq_exclusion_is_channel_blind`, `mod.rs:2236`). The two
+(`the_monitor_basefreq_exclusion_is_channel_blind`, `mod.rs:2243`). The two
 **whole-element** skips are channel-scoped the same way: Recloser and Relay are
 skipped on capi only, because their Rust tables are r4133-shaped
-(`skip_whole_element`, `mod.rs:3208`;
-`recloser_and_relay_are_whole_element_skipped_on_capi_only`, `mod.rs:2261`).
+(`skip_whole_element`, `mod.rs:3215`;
+`recloser_and_relay_are_whole_element_skipped_on_capi_only`, `mod.rs:2268`).
 
 **Did the chain run at all?** `props_norm::assert_r4133_props_compare_ran`
-(`props_norm.rs:2841`) runs first in the gate epilogue (`corpus_gate.rs:182`),
+(`props_norm.rs:2841`) runs first in the gate epilogue (`corpus_gate.rs:191`),
 so a wholesale re-mask reports as one line instead of 19 stale-row messages; a
 *partial* re-mask is caught instead by the forcing-rule lock
 `scheduler::the_property_forcing_rule_is_every_live_non_large_case`
@@ -1462,6 +1610,20 @@ non-use, asserted from the source text by
 Note for any later surface that walks `PDElements`/`PCElements`: the four list
 modes leave those `TPointerList` cursors at the end, so a reader after the
 topology capture must re-seek with `.First`.
+
+**Incidence (G1.8): nothing was owed here either.** G1.0 had already bound and
+classified `SolutionV(1)`/`(3)`/`(4)`/`(5)` as `Served`
+(`modes::SOLUTION_INC_MATRIX`, `_ROWS`, `_COLS`, `SOLUTION_LAPLACIAN`) with one
+typed accessor each (`solution_inc_matrix` … `solution_laplacian`,
+`crates/dss-epri/src/dss.rs:1471-1490`), so G1.8 added **no FFI and no mode**;
+its `dss.rs` diff is the block comment recording the read order and what is not
+bound. `SolutionV(2)` `Solution.BusLevels` stays on the do-not-call register and
+is never bound (the `BusLevels` row, `crates/dss-epri/src/modes.rs:272-279`); since the
+capture never
+issues `CalcIncMatrix_O`, `IncMat_Ordered` is always FALSE and `IncMatrixCols`
+therefore always answers the whole `BusList` (`DSolution.pas:616-632`) — which is
+the branch the port's accessor has to reproduce and the CSV writer deliberately
+does not.
 
 
 ## Environment variables

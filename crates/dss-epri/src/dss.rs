@@ -937,10 +937,12 @@ impl Engine {
     // funnels through [`Engine::read_mode`], which refuses a do-not-call mode
     // before any FFI and checks the reply's shape against the row.
     //
-    // These are **rails**, not capture: no gate path calls them yet. Each WP-G1
-    // surface sub-step wires the rows it needs into `crate::capture` and
-    // compares them against the capi channel on a gated `both` case
-    // (`GOLDEN_REBASE_PLAN.md` WP-G1, coordinator decision D2).
+    // Each accessor starts life as a **rail**: G1.0 bound the whole table
+    // before any gate path used one, and each WP-G1 surface sub-step then wires
+    // the rows it needs into `crate::capture` and compares them against the capi
+    // channel on a gated `both` case (`GOLDEN_REBASE_PLAN.md` WP-G1, coordinator
+    // decision D2). So a row no capture calls yet is normal, and a row a capture
+    // does call names its sub-step in that `capture_*` function's doc.
 
     /// Read one WP-G1 mode ([`modes::ModeSpec`]) generically — the path every
     /// typed accessor below shares, and the one a table-driven test walks.
@@ -1458,6 +1460,14 @@ impl Engine {
         self.read_mode_f(&modes::SOLUTION_DBL_HOUR)
     }
 
+    // The four flat-incidence rows, read in this order by
+    // `crate::capture::capture_inc_matrix` (G1.8) after it issues
+    // `CalcIncMatrix` + `CalcLaplacian`. `SolutionV(2)` `Solution.BusLevels` is
+    // deliberately not bound — it is on [`modes::DO_NOT_CALL`]
+    // (`DSolution.pas:578-582`, a one-element heap overflow) — and the capture
+    // never issues `CalcIncMatrix_O`, so `IncMat_Ordered` is always FALSE
+    // (`Common/Solution.pas:3066`) and `IncMatrixCols` always answers the whole
+    // `BusList` (`DSolution.pas:616-632`).
     /// `SolutionV(1)` `Solution.IncMatrix` — `DSolution.pas:542`. See [`modes::SOLUTION_INC_MATRIX`].
     pub fn solution_inc_matrix(&self) -> Result<Vec<i32>, EngineError> {
         self.read_mode_ints(&modes::SOLUTION_INC_MATRIX)

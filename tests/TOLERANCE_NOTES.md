@@ -1360,12 +1360,12 @@ dated). What was checked, and against what:
 | claim here | landed at | verdict |
 |---|---|---|
 | the floor is `2e-4` relative | `R4133_DISPLAY_FLOOR` at `harness/props_norm.rs:895` (`Option<f64>` = `Some(2e-4)`) | unchanged |
-| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:3323`) | unchanged |
+| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:3330`) | unchanged |
 | the four derivation rows (6.431124e-05 / 1.374769e-03 / 4.404256e-03 / 5.524501e-02) | the constant's own doc table, each row's gap measured as `display_rel` (`props_norm.rs:783-792`) | identical, both places |
 | 1 951 vendored spellings claimed (from 2 006, less the 55 the mechanism clause refuses) | `props_r4133_replay::CLAIMED_DISPLAY_FLOOR` = 1951 (`props_r4133_replay.rs:565`) | unchanged |
-| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:916-925` and `:933-942` (`i_rel`/`i_abs`) | unchanged |
-| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1108-1117` and `:1097-1106` | unchanged |
-| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:2514` (asserted as `i_abs / floor`) | unchanged |
+| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:923-932` and `:940-949` (`i_rel`/`i_abs`) | unchanged |
+| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1115-1124` and `:1104-1113` | unchanged |
+| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:2521` (asserted as `i_abs / floor`) | unchanged |
 | no `Tolerances` field, no `tol_for` tier moved by this plan | `Tolerances` has no props field; the floor is read only by `props_norm` | unchanged |
 
 The floor therefore still sits **3.110×** above the worst cell it claims and
@@ -1576,6 +1576,40 @@ nothing to bite on and a band would only be able to hide a real divergence. The
 two measured Rust↔oracle differences on this surface are structural upstream
 defects, not numerics, and are handled by positive assertions with zero ledger
 rows (`TESTING.md` §"The two topology settlements"), never by a tolerance.
+
+
+## G1.8 incidence matrix / Laplacian (`harness::inc_matrix`) — **no floor, deliberately**
+
+The incidence surface introduces **no tolerance of any kind**, in either lane, and — as
+with G1.7 — the absence is a decision. All four compared quantities are discrete:
+`Solution.IncMatrix` and `Solution.Laplacian` are flat `(row, col, value)` triples of
+`i32` (the values are `+1` / `-1` in the incidence matrix and small integer degrees and
+off-diagonals in the Laplacian), and `IncMatrixRows` / `IncMatrixCols` are lists of
+qualified element names and bus names. Integers are compared with `assert_eq!` at every
+position and lengths first; names with an ASCII-case-insensitive equality, in **sequence**
+order, because both sides are creation-order walks (`Inc_Mat_Rows` grows one entry per
+emitted row, r4133 `Common/Solution.pas:3018`; the columns are `BusList` order).
+
+The case-insensitivity is belt-and-braces, not a band: both oracles store bus names
+lowercased (`THashList.Add` keeps `LowerCase(S)`, r4133 `Shared/HashList.pas:268`,
+`:281`) and build a row label as a hardcoded capitalized class prefix plus the element's
+already-lowercase `Name` (`Common/Solution.pas:3019`), so the spellings coincide with the
+port's — measured, `SourceBus`/`BusUpper`/`MiXeD` come back as `sourcebus`/`busupper`/
+`mixed`. It admits case, never a different name, a different order or a missing entry.
+
+Nothing on this surface can accumulate a floating-point error: no quantity is a sum, a
+product or a solve output — the builder walks four element lists and writes `+1` / `-1`
+per terminal, and the Laplacian is an exact integer product of that matrix with its own
+transpose — so the "prove the floor by decomposition" rule has nothing to bite on and a
+band could only hide a real divergence. The three shape differences between the two
+channels (capi's over-allocated trailing cell, r4133's one-cell `[0]` sentinel, the two
+spellings of an empty name list) are decoded in the **transports** with asserts, and the
+comparator asserts the fixpoint rather than repeating the repair; they are not tolerances
+and no value passes through them. The one measured Rust↔oracle difference — upstream's
+incidence row cursor advancing for a skipped shunt reactor
+(`Common/Solution.pas:3039` against its three siblings) — is a structural upstream
+defect, handled by a positive assertion of upstream's own numbering with zero ledger rows
+and a fail-on-stale population (`TESTING.md` §"Settlement S-INC"), never by a tolerance.
 
 
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)
