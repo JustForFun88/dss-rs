@@ -64,7 +64,11 @@ pub fn initialize_node_vbase(ckt: &mut Circuit) {
 /// `pBus.VBus <> NIL` — here `!bus.vbus.is_empty()`, which holds for every bus
 /// once `ReprocessBusDefs` has allocated bus state (`Circuit.pas` l.2205-2206).
 /// `ref_no[j]` is the 0-based global node index (ground = 0 → `node_v[0]` = 0).
-fn update_vbus(ckt: &mut Circuit) {
+///
+/// `pub(crate)` because the reduction algorithms call it directly as well
+/// (r4133 `Meters/ReduceAlgs.pas:409` and `:505`, capi `:412` / `:492` — see
+/// [`crate::exec::Dss::red_head_base_kv`]).
+pub(crate) fn update_vbus(ckt: &mut Circuit) {
     let node_v = &ckt.solution.node_v;
     for bus in &mut ckt.buses {
         if bus.vbus.is_empty() {

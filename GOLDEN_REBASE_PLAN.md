@@ -659,6 +659,49 @@ only; manifest-flagged).
 precomputed-state semantics of `Export Faultstudy` — the gate reads what the solve
 populated, never re-runs the study). Manifest flag on the faultstudy-family cases.
 
+> **As executed (2026-09-05, lane `lane-b`).** Landed whole, on both channels,
+> for every live non-`large*` case, riding G1.4a's per-bus capture and
+> comparator (`compare_zsc ⇒ compare_bus`, asserted three times — the request
+> builder and a loud refusal in each transport — never written as an `||`).
+> Four corrections and two additions to this section:
+> **(1)** The surface carries a **third** ordering convention: the two matrices
+> are row-major over the bus's *internal* (insertion) node index (r4133
+> `DDLL/DBus.pas:445-450` == capi `CAPI_Alt.pas:2318-2330`), not the ascending
+> node number of G1.4a's arrays, and `CMatrix` stores column-major — so the
+> flatten is an explicit `(i, j)` walk with the convention pinned by two live
+> witnesses (the micro deck below and `Run_NEV`) rather than by a comment.
+> **(2)** The two channels publish **different** not-run sentinels (capi 1
+> double, r4133 2) and a second, 0-node split on `Isc`/`Voc` (capi 0, r4133 2);
+> both are shape differences of an empty quantity, so per **D4** they are
+> comparator-level normalizations **per channel** with one pin — 0 ledger rows —
+> and the one genuine collision (r4133 at a 1-node bus) is closed positively by
+> asserting the oracle's pair is `CZero`. The comparator's first assertion is the
+> discrete "study ran" bit, before any number.
+> **(3)** There are **four** vendored decks that run a study, not three:
+> `ieee37_SC_Currents.dss` spells it `solve mode=f`, which a `grep faultstudy`
+> misses; it is the population worst on `Zsc0`/`ZscMatrix`/`YscMatrix`. All four
+> are `kind: feeder`, so the sub-step also authors the corpus's only `micro`-band
+> short-circuit deck, `modes/faultstudy/faultstudy_micro.dss` (a new sub-family),
+> and — correcting this plan's standing prediction — `population.lock.json`
+> **does** move here: one new case row, the only hand-set `compare_zsc` in the
+> tree, so the lock fingerprints the surface (`zsc=1`) and a later narrowing is
+> visible in it. The scheduler's `force_zsc` turns the surface on for every live
+> non-`large*` case regardless (`FORCED_ZSC_POPULATION = (442, 311, 87, 44)`,
+> re-derived, not trusted).
+> **(4)** A port gap found in spec and closed in-step under "port gaps
+> immediately": `ReduceAlgs`' `kVBase <= 0` branch skipped Pascal's
+> `Solution.UpdateVBus` (r4133 `Meters/ReduceAlgs.pas:500-508`, capi `:487-494`),
+> which refreshes the very `VBus` array `Bus.Voc` publishes; the returned kV base
+> is unchanged, the side effect is not.
+> **Measured:** the whole forced population on both channels — worst 0.42 of the
+> allowed band (`Zsc0`, `ieee37_SC_Currents` bus `775`), the two conditioning
+> outliers (`IEEE123Master-SC:610` κ = 1.10e8, `Run_NEV:tertiary` κ = 9.52e6)
+> **below** the predicted `κ·u·‖Ysc‖∞` floor, **0** new ledger entries, **0**
+> golden bytes, **no** new tolerance constant (every band is an existing tier).
+> The R-5 "singular bus" arm never occurred: no non-finite entry in any
+> short-circuit comparison of the run. Full record:
+> `docs/phase-records/golden-rebase.md` §"WP-G1 — records".
+
 ### G1.6 — meter extras + per-bus reliability
 
 **Ordering: G2.2a lands first (it moves `Bus.Int_Duration` on multi-meter decks);

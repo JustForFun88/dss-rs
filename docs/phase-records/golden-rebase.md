@@ -2781,3 +2781,66 @@ row against the pre-fix lock.
   fmt + clippy clean in both lanes, `cargo test --workspace` **4 835 / 0 failed / 5 ignored** in
   both lanes (75 binaries each), corpus gate 524/524, ledger 53 entries / 1 516 hits / 0 stale, the
   D11(2) report still 8 (case, channel) pairs, `tests/golden` untouched.
+
+- **G1.5** (2026-09-05, lane `lane-b`, bus chain — **D7**) — **the short-circuit
+  surface**, live on both channels for every live non-`large*` case, riding
+  G1.4a's per-bus capture and comparator (`compare_zsc ⇒ compare_bus`, asserted
+  three times, never an `||`): per bus `Zsc1`, `Zsc0`, `ZscMatrix`, `YscMatrix`,
+  `Isc`, `Voc` — r4133 `DDLL/DBus.pas:461`/`:476`/`:431`/`:491`/`:374`/`:351` ==
+  capi `CAPI_Alt.pas:2294`/`:2283`/`:2305`/`:2336`/`:2202`/`:2227`, with
+  `Get_Zsc1 = Zs − Zm` / `Get_Zsc0 = Zs + 2·Zm` (`Common/Bus.pas:215-229`) —
+  read as **precomputed state**: the gate never runs or refreshes a study, and
+  the comparator's first assertion is the discrete "study ran" bit. The matrices
+  flatten row-major over the bus's *internal* node index (`DBus.pas:445-450` ==
+  `CAPI_Alt.pas:2318-2330`), a third ordering convention beside G1.4a's
+  ascending-node arrays and `YNodeOrder`. Also closed in-step ("port gaps
+  immediately"): `ReduceAlgs`' `kVBase <= 0` branch skipped Pascal's
+  `Solution.UpdateVBus` (r4133 `Meters/ReduceAlgs.pas:500-508`, capi `:487-494`)
+  — same kV base, the per-bus `VBus` refresh that `Bus.Voc` publishes was
+  missing. **Exclusions: none — 0 new ledger entries on either channel.** The
+  two channels' not-run sentinels (capi 1 double, r4133 2) and their 0-node
+  `Isc`/`Voc` split (0 vs 2) are per-channel comparator normalizations (**D4**),
+  the r4133 1-node collision closed positively by a `CZero` assertion;
+  **D11(2)** narrows here to the `Voc`/`Isc` values only. No new tolerance
+  constant, no golden byte, ledger unchanged at 53; corpus 524 → **525** / 521
+  live (new sub-family deck `modes/faultstudy/faultstudy_micro.dss`, the only
+  `micro`-band short-circuit case and the tree's only hand-set `compare_zsc`, so
+  `population.lock.json` does move), `FORCED_{PROPS,BUS,ZSC}_POPULATION`
+  re-derived to `(442, 311, 87, 44)`, `WP_G1_MODES` still 98. Measured worsts,
+  the conditioning argument and the four vendored fault-study decks (the fourth,
+  `ieee37_SC_Currents`, spells it `solve mode=f`): `tests/TOLERANCE_NOTES.md`
+  §"Short-circuit surface"; the surface's rules: `TESTING.md` §"The short-circuit
+  surface"; the corrections to the plan: its §G1.5 as-executed note.
+  Pins: `zsc_is_absent_until_a_fault_study_runs`,
+  `the_short_circuit_arrays_are_indexed_by_internal_node_index`,
+  `zsc1_collapses_to_the_single_entry_on_a_one_node_bus`,
+  `zsc_survives_a_later_non_faultstudy_solve`,
+  `voc_is_refreshed_by_preserve_node_voltages_not_only_by_the_fault_study`,
+  `all_bus_short_circuit_is_the_bus_list_order` (`exec/view.rs`),
+  `a_reduce_without_a_kv_base_refreshes_every_buses_vbus`
+  (`exec/tests/reduce.rs`), `the_two_channels_publish_different_zsc_sentinels`,
+  `the_r4133_one_node_ambiguity_is_closed_by_a_czero_assertion`,
+  `the_study_bit_is_compared_before_any_number`,
+  `the_voltage_exclusion_drops_only_the_voc_and_isc_values`,
+  `the_voltage_exclusion_still_pins_zsc_ysc_and_the_lengths`,
+  `an_unrecognized_matrix_length_fails_loudly`,
+  `the_short_circuit_surface_adds_no_tolerance_constant` (`harness/mod.rs`),
+  `the_zsc_forcing_rule_is_every_live_non_large_case` (`scheduler.rs`),
+  `the_short_circuit_capture_reads_in_one_fixed_order_on_both_transports`
+  (`corpus_gate.rs`). Non-vacuity: the ascending-node permutation reds the micro
+  deck (1.35 Ω) and `Run_NEV` (0.67 Ω) on both channels; an always-`Some` empty
+  matrix reds the study bit with each channel's own sentinel length in the
+  message; the plan's transpose demo was measured **vacuous** (`Zsc`/`Ysc` are
+  symmetric to ≤ 4.66e-10 — `Zsc` restricts a reciprocal `Y⁻¹`) and dropped with
+  reason.
+  Commits: `<sha>` (stamped by the docs commit that lands this record).
+  Gate: `cargo fmt --all --check` clean; the FULL corpus gate unfiltered in
+  **both** lanes — 525/525 cases, 0 failed (default 335.7 s, parity 217.6 s),
+  ledger 53 entries / 1 516 hits / 0 stale, the D11(2) report still 8 (case,
+  channel) pairs; `oracle_parity_cfg_gate` / `population_lock` / `golden_lock`
+  green and `git status --porcelain -- tests/golden` empty. `cargo test
+  --workspace` **5 130 / 0 failed / 5 ignored** per lane over 75 binaries (the
+  five ignored are the pre-existing set), and `lane_diff` — owed because
+  `exec/view.rs` + `exec/reduce.rs` + `solution/ymatrix.rs` moved — `VERDICT:
+  PASS`, max |Δ| = 0 on all eight kinds over 4 825 571 compared values,
+  iteration drift 0.
