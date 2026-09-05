@@ -2826,25 +2826,26 @@ row against the pre-fix lock.
 - **G1.3d(ii)** (2026-09-05, lane `lane-e`; D2/D4/D7) — `PhaseLosses` + the five control-derived
   scalars (`NumControls`, `OCPDevIndex`, `OCPDevType`, `HasVoltControl`, `HasSwitchControl`) on both
   channels over the same **440** cases, completing `compare_element_extras` and §G1.3d.
-  `CktElement::phase_losses` ports r4133 `Common/CktElement.pas:1078-1120`; the five scalars read a
-  derived per-element `ControlElementList` (r4133 `Controls/ControlElem.pas:113-131`,
-  remove-then-append, re-run by every `RecalcElementData`, `Relay.pas:955`) that `Show Controlled`
-  and the reliability sweep share. **0 new ledger entries / 0 new causes** (58 / 31), **10** measured
-  widenings onto the new `phase_losses` sub-channel, 0 golden bytes, no band moved, `WP_G1_MODES` 97.
-  `PhaseLosses` joins `LANE_SKIP_ELEM_POWERS` on the two `newton*` decks (same cache-aware
-  `ComputeIterminal`; red measured first on both channels, 55.5× / 34.4× the band); its floor is a
-  derivation of `assert_power_close` (`tests/TOLERANCE_NOTES.md` §G1.3d(ii)). Two divergences pinned
-  and unledgered: r4133's per-edit re-attach vs capi's property-write-only `ControlledElement`
-  (`DIVERGENCES.md` L9, `ocp_dev_type_follows_the_last_attach_order`) and a disabled OCP control
-  still winning the scan (`a_disabled_ocp_control_still_wins_the_ocp_scan`). Adjacent defect A-1
-  fixed here (`section_device_type_is_the_live_ocp_scan_not_the_registration_latch`); A-2 recorded
-  in STATUS, owned by G1.6/G1.6b. Details: plan §G1.3d part (ii) and TESTING.md. Pins **34** in
-  `every_pin_the_g13d2_record_names_exists_and_is_cited` — `exec::tests::element_extras` (20),
-  `harness::element_extras_pins` (26), `harness::phase_loss_bands` (10), 3 `ledger::*`, 1
-  `capture_order::*`, 1 `exec::tests::reliability::*`. Commits `e6d66d66` + the settlement below;
-  gate **5 784 / 0 / 5** per lane (five commands, exit 0, unfiltered), `lane_diff` max |Δ| = 0.
-- **G1.3d(ii) audit settlement** (2026-09-05) — 18 findings (9 code / 9 tests, all Minor/Note;
-  4 raised by both auditors, so 14 distinct): **13 fixed**, **1 recorded**, 0 refuted. The real one: the port re-attached every
+  `CktElement::phase_losses` ports r4133 `Common/CktElement.pas:1078-1120`; the five scalars read the
+  derived per-element `ControlElementList` (`Controls/ControlElem.pas:113-131`, re-run by every
+  `RecalcElementData`, `Relay.pas:955`) that `Show Controlled` and the reliability sweep share.
+  **0 new ledger entries / 0 new causes** (58 / 31), **10** measured widenings onto the new
+  `phase_losses` sub-channel, 0 golden bytes, no band moved, `WP_G1_MODES` 97; the floor derives from
+  `assert_power_close` (`tests/TOLERANCE_NOTES.md` §G1.3d(ii)) and `PhaseLosses` joins
+  `LANE_SKIP_ELEM_POWERS` on the two `newton*` decks (same cache-aware `ComputeIterminal`, red
+  measured first on both channels). Unledgered but pinned: the per-edit re-attach
+  (`DIVERGENCES.md` L9, `ocp_dev_type_follows_the_last_attach_order`), the disabled OCP control
+  (`a_disabled_ocp_control_still_wins_the_ocp_scan`), adjacent defect A-1
+  (`section_device_type_is_the_live_ocp_scan_not_the_registration_latch`); A-2 recorded in STATUS,
+  owned by G1.6/G1.6b. Detail: plan §G1.3d part (ii), TESTING.md; **34** pins in
+  `every_pin_the_g13d2_record_names_exists_and_is_cited` (`exec::tests::element_extras` 20,
+  `harness::element_extras_pins` 26, `harness::phase_loss_bands` 10, 3 `ledger::*`, 1
+  `capture_order::*`, 1 `exec::tests::reliability::*`). Commits `e6d66d66` + settlement `43108993`
+  + docs (this record); gate **5 784 / 0 / 5** per lane (five commands, exit 0, unfiltered),
+  `lane_diff` PASS max |Δ| = 0.
+- **G1.3d(ii) audit settlement** (2026-09-05, `43108993`) — 18 findings (9 code / 9 tests, all
+  Minor/Note; 4 raised by both auditors, so 14 distinct): **13 fixed**, **1 recorded**, 0 refuted.
+  The real one: the port re-attached every
   control during `MakePosSeq`, which r4133 never does — its control `MakePosSequence` overrides end
   in `inherited` and never reach `RecalcElementData` (`Relay.pas:1008`, `Recloser.pas:738`,
   `SwtControl.pas:367`, `CapControl.pas:656`, `RegControl.pas:1491`; `Fuse` has none;
