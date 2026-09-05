@@ -3076,7 +3076,7 @@ row against the pre-fix lock.
   binaries); ledger unchanged at 54 entries with fail-on-stale green, no golden byte, no lock moved;
   `lane_diff` `VERDICT: PASS`, max |Δ| = 0 on all eight kinds (525 cases / 3 221 054 records).
 
-  *Audit settlement* (2026-09-05, SETTLE_SHA_PLACEHOLDER): 11 findings — **9 fixed / 2 recorded /
+  *Audit settlement* (2026-09-05, `fc4dfa73`): 11 findings — **9 fixed / 2 recorded /
   0 refuted**. Fixed: the roll-up guard's "dead code" comment (it is live — `RelCalc restore=y` takes
   it); the restore-regime per-bus columns, now asserted for the PORT exactly in both regimes; the
   `NaN`-agreement claim, corrected to what the transports do (a non-finite fails the decode loudly)
