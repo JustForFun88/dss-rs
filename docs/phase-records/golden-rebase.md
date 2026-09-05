@@ -2804,7 +2804,7 @@ row against the pre-fix lock.
   note; **28** `file.rs:LINE` citations in `TESTING.md` / `tests/TOLERANCE_NOTES.md` were
   re-pointed after `harness/mod.rs` (+6) and `corpus_gate.rs` (+10) shifted under them
   (`operational_docs_line_citations_point_at_the_line_they_name` was red until they were).
-  Commit: one surface commit carrying both port-gap fixes (sha in STATUS §1).
+  Commit: `8fc32991`, one surface commit carrying both port-gap fixes.
   Gate on the final tree: fmt + clippy clean in both lanes, `cargo test
   --workspace` **5 043 / 0 failed / 5 ignored** per lane (+317 on G1.9's 4 726 — 121 in the
   new `topology_pins` binary, 8 `harness::topology` cases in each of the 22 binaries carrying
@@ -2814,3 +2814,30 @@ row against the pre-fix lock.
   no golden byte; `lane_diff` run (product code moved — `exec/view.rs`, `ckt_tree/mod.rs`,
   `solution/topology.rs`, `elements/ckt.rs`): **PASS**, max |Δ| = 0 on all eight gated kinds
   over 3 220 861 records, 0 iteration drifts.
+
+  **Audit settlement** (2026-09-05, `lane-s`) — 15 findings (13 distinct):
+  **10 fixed / 3 recorded / 0 refuted**, no port bug, no behavior change, 0 ledger rows.
+  Fixed: the "each in its own commit" claim in `TESTING.md` + the plan note (one commit);
+  the missing sha; four `harness/mod.rs:A-B` citations, plus the rail that let a range END
+  rot — `operational_docs_line_citations_point_at_the_line_they_name` now reads it and
+  anchors inside the range (three failure directions driven; it found a fifth stale
+  citation); `Fault` named as the second class where `TPDElement.IsShunt` and
+  `IsShuntElement` part (r4133 `PDElements/Fault.pas:244`, `:409`, `:114` — off
+  `pd_elements`, so unreachable); `get_topology`'s no-cache reason; the harness
+  `window_dedup`/`per_pair_dedup` made case-sensitive like the Pascal `=` and the port's
+  `==` (`the_dedup_models_match_names_case_sensitively`; census unmoved); a `debug_assert!`
+  on the `loop_elem` invariant; `the_oracle_side_shape_arms_have_teeth` now drives arms 1-2
+  through the real comparator; the measured trailing-empty population (134/46 reads over
+  65/21 cases) in `TESTING.md`; and the G1.9-shaped registry
+  `the_g1_7_pins_the_docs_cite_exist_exactly_once` (14 names with expected definition
+  counts — `window_dedup` = 2 twins). Recorded, not fixed: the per-case decline table stays
+  runtime output (`harness::topology::decline_report()`, quoted in every mismatch message)
+  rather than transcribed into a record already over length; the 135 declined case-steps
+  have no oracle answer to compare the port's fresh one against (D15's inherent residual —
+  a step that starts or stops declining still reds); and **D12 — pending sync**: the four
+  GICTransformer decks sit inside the forced topology population, `makeposseq_shunt.dss` on
+  the capi channel, until lane-b's flip to `r4133` lands (no masking — a bad capi process
+  reds). Gate, both lanes: fmt + clippy clean,
+  **5 067 / 0 failed / 5 ignored** (+24 = 23 `mod harness` binaries + the cfg gate), census
+  3 314 / (16, 135) / (8, 96) and ledger 57 / 1 588 hits / 0 stale unmoved, no lock or
+  golden byte; `lane_diff` re-run: **PASS**, max |Δ| = 0 over 3 220 861 records.

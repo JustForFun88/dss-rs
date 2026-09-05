@@ -305,6 +305,13 @@ fn preview_pairs(v: &[(String, String)]) -> String {
 /// model cannot drift into a paraphrase. Its twin inside the engine's own test
 /// tree is `dss_core::exec::tests::topology::window_dedup` — a deliberate
 /// duplicate: the two live in different compilation targets.
+///
+/// Names are matched with `==`, not [`eq`]: Pascal's `=` on `QualifiedName` is
+/// case-sensitive (`DTopology.pas:290-292`, capi `CAPI_Topology.pas:184-188`),
+/// the port's own dedup (`exec/view.rs`) is too, and the sequence this runs over
+/// comes entirely from the port's element store in one spelling. The
+/// case-insensitive [`eq`] belongs where an ORACLE name meets a PORT name — the
+/// comparator arms, never the model (G1.7 audit settlement).
 pub fn window_dedup(candidates: &[(String, String)]) -> Vec<(String, String)> {
     let mut buf: Vec<String> = Vec::new();
     for (a, b) in candidates {
@@ -313,10 +320,10 @@ pub fn window_dedup(candidates: &[(String, String)]) -> Vec<(String, String)> {
         let mut i: isize = 1;
         while i <= k && !found {
             let (p, q) = (&buf[(i - 1) as usize], &buf[i as usize]);
-            if eq(p, a) && eq(q, b) {
+            if p == a && q == b {
                 found = true;
             }
-            if eq(p, b) && eq(q, a) {
+            if p == b && q == a {
                 found = true;
             }
             i += 1;
@@ -339,13 +346,15 @@ pub fn window_dedup(candidates: &[(String, String)]) -> Vec<(String, String)> {
 /// The gate re-derives it here so `TopologyView::looped_pairs` stays gated even
 /// though the oracle arm compares against [`window_dedup`]: the port's two
 /// fields must agree with each other, exactly as the oracle's counts must agree
-/// with its own lists ([`compare_topology`], arms 2 and 3).
+/// with its own lists ([`compare_topology`], arms 2 and 3). Case-sensitive for
+/// the same reason [`window_dedup`] is: it models the port's own `==` over the
+/// port's own candidate sequence.
 pub fn per_pair_dedup(candidates: &[(String, String)]) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::new();
     for (a, b) in candidates {
         let seen = out
             .iter()
-            .any(|(p, q)| (eq(p, a) && eq(q, b)) || (eq(p, b) && eq(q, a)));
+            .any(|(p, q)| (p == a && q == b) || (p == b && q == a));
         if !seen {
             out.push((a.clone(), b.clone()));
         }
@@ -354,6 +363,11 @@ pub fn per_pair_dedup(candidates: &[(String, String)]) -> Vec<(String, String)> 
 }
 
 /// DSS identifiers are case-insensitive (the harness convention everywhere).
+///
+/// Used **only** where an oracle-supplied name meets a port-supplied one (the
+/// comparator arms). The two dedup models above are deliberately `==`: they
+/// transcribe rules whose Pascal / Rust originals are case-sensitive and run
+/// over one engine's names.
 fn eq(a: &str, b: &str) -> bool {
     a.eq_ignore_ascii_case(b)
 }
@@ -800,8 +814,9 @@ mod tests {
     /// Run `f` and return the panic message (the `capture_guard::tests`
     /// extractor; each harness module keeps its own — they compile into
     /// separate test binaries).
-    fn panic_message(f: impl FnOnce() + std::panic::UnwindSafe) -> String {
-        let payload = std::panic::catch_unwind(f).expect_err("the arm must panic");
+    fn panic_message(f: impl FnOnce()) -> String {
+        let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
+            .expect_err("the arm must panic");
         if let Some(m) = payload.downcast_ref::<&str>() {
             (*m).to_string()
         } else if let Some(m) = payload.downcast_ref::<String>() {
@@ -978,14 +993,17 @@ mod tests {
         let keep = p(&[("a", "b"), ("c", "d"), ("a", "d")]);
         assert_eq!(window_dedup(&keep), keep);
         assert_eq!(per_pair_dedup(&keep), keep);
-        // Case-insensitive on both sides (DSS identifiers are).
+        // Names are matched case-SENSITIVELY by both models, as Pascal's `=`
+        // and the port's `==` do; a differently-spelled repeat therefore
+        // survives both. See `the_dedup_models_match_names_case_sensitively`
+        // for why that can never bite on live data.
         assert_eq!(
             window_dedup(&p(&[("A", "B"), ("b", "a")])),
-            p(&[("A", "B")])
+            p(&[("A", "B"), ("b", "a")])
         );
         assert_eq!(
             per_pair_dedup(&p(&[("A", "B"), ("b", "a")])),
-            p(&[("A", "B")])
+            p(&[("A", "B"), ("b", "a")])
         );
     }
 
@@ -1102,29 +1120,81 @@ mod tests {
 
     /// The two oracle-side shape rules run **before** the port is consulted, so a
     /// self-inconsistent or truncated transport read is reported as a transport
-    /// failure and never as a Rust divergence. Driven on the capture directly
-    /// (the arms are pure equalities over `TopologyCap`; no engine needed).
+    /// failure and never as a Rust divergence.
+    ///
+    /// Driven through the real [`compare_topology`], because that is the only
+    /// place the arms live (G1.7 audit settlement: this test used to assert
+    /// properties of its own fixture and so could not fail for the reason its
+    /// name gives). Both arms panic *before* `dss.topology_view()`, which is why
+    /// an engine with no circuit is enough — and why the census statics, written
+    /// by arms 5 and 6, stay untouched by this case.
     #[test]
     fn the_oracle_side_shape_arms_have_teeth() {
-        let cap = TopologyCap {
+        let cap = |pairs: &[&str], n_br: i32, br: &[&str]| TopologyCap {
             num_loops: 1,
-            num_isolated_branches: 2,
+            num_isolated_branches: n_br,
             num_isolated_loads: 0,
-            looped_pairs: s(&["Line.a", "Line.b"]),
-            isolated_branches: s(&["Line.l2"]),
+            looped_pairs: s(pairs),
+            isolated_branches: s(br),
             isolated_loads: s(&[]),
         };
-        assert_ne!(
-            cap.num_isolated_branches,
-            cap.isolated_branches.len() as i32,
-            "a count that disagrees with its own list must not compare equal"
+
+        // Arm 1 — an odd `looped_pairs` length is a truncated transport read.
+        // It must be caught before the pairing, which silently drops the tail.
+        let odd = cap(&["Line.a", "Line.b", "Line.c"], 0, &[]);
+        assert_eq!(pairs_of(&odd.looped_pairs).len(), 1, "the tail is dropped");
+        let mut dss = Dss::new();
+        let mut step0 = None;
+        let msg = panic_message(|| {
+            compare_topology(&mut dss, &odd, "ctx", "case", 0, &mut step0);
+        });
+        assert!(msg.contains("has odd length 3"), "{msg}");
+        assert!(msg.contains("truncated transport read"), "{msg}");
+
+        // Arm 2 — a count that disagrees with its own list is the oracle
+        // contradicting itself, not a Rust divergence. This is the arm the S2
+        // trailing-empty normalization rests on: a transport that dropped a real
+        // name would arrive normalized-looking with count 2 and one entry.
+        let mismatched = cap(&["Line.a", "Line.b"], 2, &["Line.l2"]);
+        let msg = panic_message(|| {
+            compare_topology(&mut dss, &mismatched, "ctx", "case", 0, &mut step0);
+        });
+        assert!(msg.contains("the oracle contradicts itself"), "{msg}");
+        assert!(msg.contains("NumIsolatedBranches = 2"), "{msg}");
+        assert!(step0.is_none(), "neither arm may reach the isolation half");
+    }
+
+    /// The two dedup models keep the Pascal's / the port's own case-sensitive
+    /// `=`, so the harness twins are the transcriptions their docs claim.
+    ///
+    /// Cannot bite on live data (two DSS elements cannot differ only in case, and
+    /// every candidate comes from the port's own store in one spelling), which is
+    /// exactly why the divergence had to be pinned rather than argued: before the
+    /// G1.7 audit settlement both models compared with `eq_ignore_ascii_case`
+    /// while their engine-side twins used `==`.
+    #[test]
+    fn the_dedup_models_match_names_case_sensitively() {
+        let mixed = vec![
+            ("Line.a".to_string(), "Line.b".to_string()),
+            ("LINE.A".to_string(), "line.b".to_string()),
+        ];
+        assert_eq!(
+            window_dedup(&mixed).len(),
+            2,
+            "Pascal's `=` on QualifiedName is case-sensitive (DTopology.pas:290-292)"
         );
-        assert_eq!(cap.num_isolated_loads, cap.isolated_loads.len() as i32);
-        assert_eq!(cap.looped_pairs.len() % 2, 0);
-        // Why the even-length assert must run first: the pairing silently drops
-        // an odd tail, which would turn a truncated read into a shorter list.
-        let odd = s(&["Line.a", "Line.b", "Line.c"]);
-        assert_ne!(odd.len() % 2, 0);
-        assert_eq!(pairs_of(&odd).len(), 1);
+        assert_eq!(
+            per_pair_dedup(&mixed).len(),
+            2,
+            "the port's own dedup compares with `==` (exec/view.rs)"
+        );
+        // Same spelling, reversed orientation: dropped by both, as upstream and
+        // the port both test the pair in either order.
+        let same = vec![
+            ("Line.a".to_string(), "Line.b".to_string()),
+            ("Line.b".to_string(), "Line.a".to_string()),
+        ];
+        assert_eq!(window_dedup(&same).len(), 1);
+        assert_eq!(per_pair_dedup(&same).len(), 1);
     }
 }

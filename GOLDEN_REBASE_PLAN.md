@@ -665,8 +665,8 @@ compared).
 > `oracle.looped_pairs == window_dedup(port candidates)` for the pair list — with two
 > fail-on-stale populations, `TOPOLOGY_STALE_DECLINES = (16 cases, 135 case-steps)` and
 > `LOOPED_PAIR_WINDOW_DECLINES = (8, 96)`, over 3 314 compared (case, step, channel) triples.
-> (4) **Two PORT gaps the new surface exposed were fixed in-part**, each in its own commit
-> ahead of the surface: topology adjacency routed by `TPDElement.IsShunt` instead of Pascal's
+> (4) **Two PORT gaps the new surface exposed were fixed in-part**, both inside the
+> surface commit: topology adjacency routed by `TPDElement.IsShunt` instead of Pascal's
 > class-switched `IsShuntElement` (capi `Shared/CktTree.pas:522-528`, r4133
 > `Common/Utilities.pas:1262-1274`), which hid every `GICTransformer` loop; and
 > `CktElementData::set_nconds` forcing a terminal reallocation that r4133's own guard
