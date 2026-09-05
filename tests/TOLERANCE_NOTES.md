@@ -825,7 +825,8 @@ decoder: `serde_json` without the `float_roundtrip` feature decodes a
 power of ten — two roundings — landing 1 ULP away (measured directly against
 `str::parse`: 9 of 9 tokens misparsed, each to exactly the value the gate printed
 as `oracle`). That is the defect coordinator decision **D11** fixes
-workspace-wide (`serde_json` + `float_roundtrip`, lane `lane-b`); with the
+workspace-wide (`serde_json` + `float_roundtrip`); **D18** landed the same
+hunk on this branch, so the gate decodes every oracle float exactly. With the
 feature on, the five reliability-flagged cases are green in both lanes
 (measured). `SectionID` is discrete and untouched. Both numbers are pinned by
 `exec::tests::reliability::reliability_accumulators_are_correctly_rounded_f64_sums`
@@ -868,6 +869,17 @@ non-zero slots over the two channels, worst relative deviation
 five orders of magnitude inside the tier. The structural identity behind the
 inheritance — masked sum, every meter, creation order — is pinned by
 `exec::tests::reliability::meter_totals_is_the_masked_register_sum`.
+
+**What that tier does NOT guard, stated plainly** (G1.6(i) audit settlement,
+finding AT-2): `1e-4` rel / `1e-4` abs against a measured spread of
+`7.450981e-10` means a `Totals` regression below `1e-4` relative — and, below
+`|value| ≈ 0.111`, below `1e-4` absolute — passes here. The 67 slots are
+therefore **not** covered by this surface's exactness headline; the real guard
+on their shape is the in-engine identity pin named above (masked sum, every
+meter, creation order, all 67 slots asserted against the registers), and each
+summand is separately compared by `compare_meter` at the same tier. Tightening
+the band would be a change to the ENERGY tier itself — a PORTING_PLAN §4
+decision, not a reliability one — so it is not made here.
 
 ### The unguarded `AverageRepairTime` division — NaN and ±inf agree, NaN vs a number does not
 
@@ -922,12 +934,25 @@ first-order motion of `f` is
 ```
 
 which is what the harness computes, with `|I| = max(|I_port|, |I_oracle|)` as
-the denominator gate (the larger of the two, so a near-zero port current cannot
+the denominator (the larger of the two, so a near-zero port current cannot
 inflate the band) and an **exact** compare when both currents are zero — which
-is exactly the Pascal's `ELSE PhsAllocationFactor^[i] := 1.0` branch, where no
-division happened on either side. This mirrors the band-limited-denominator rule
-already documented for the `SeqCurrents %I…` columns: a ratio inherits its
-numerator's band divided by a denominator that is never allowed to vanish.
+is exactly the Pascal's `ELSE PhsAllocationFactor^[i] := 1.0` branch
+(`MeterElement.pas:68`), where no division happened on either side.
+
+**The denominator is band-limited from below, and that bound is enforced.**
+The expression above is a band only while `|I|` is distinguishable from zero:
+once `|I| < i_abs` the term `i_abs/|I|` exceeds 1 and the "band" admits the
+whole value, so the cell would stop being compared with no counter and no
+message. `harness::reliability_array_band` therefore returns **no band** for
+`0 < |I| < i_abs` (and for a non-finite current), and `compare_reliability`
+turns that into a **loud triage failure** rather than a pass; `|I| == 0` on
+both sides stays the exact arm. This is the same lower bound the
+band-limited-denominator rule for the `SeqCurrents %I…` columns calls
+load-bearing (`0 < |I1| < 1e-6 A`, `ColTol::gate` above) — a ratio inherits its
+numerator's band divided by a denominator that is never allowed to vanish, and
+before the G1.6(i) audit settlement (finding A/4) only the sentence said so:
+the code admitted `|f|·1e3` at `|I| = 1e-9 A`. The three regimes are unit-tested
+by `harness::reliability_tests::the_alloc_factors_band_is_band_limited_from_below`.
 
 Measured on `controls:energymeter/midi_relcalc.dss`, the only corpus deck that
 runs `AllocateLoads` (G1.6(i) part F3; port, capi 0.14.5 and EPRI r4133 all read
@@ -1000,6 +1025,16 @@ scalar stayed bit-identical. The shipped deck uses kW-spec loads for exactly
 this reason (recorded in its header and manifest note); a future reliability
 deck must do the same, or `SAIFIkW` leaves the exact set and needs its own
 derivation here.
+
+That choice costs no coverage of `AllocateLoads` itself: the kW-rewriting
+branch of `Set_AllocationFactor` — the one this deck deliberately avoids — is
+oracle-pinned in-engine by `exec::tests::allocation::allocateloads_kwh_spec_loads`
+(kWh/`cfactor` spec) and `::allocateloads_single_phase_per_phase_factor`
+(`xfkva`/`allocationfactor` spec), both asserting the rewritten `Loads.kW`,
+plus the data-driven `tests/golden_allocation.rs`. What the corpus deck adds is
+the LIVE half — `Meters.CalcCurrent`/`AllocFactors` defined on both oracle
+channels — and that is all it is asked to add (G1.6(i) audit settlement,
+finding AT-5).
 
 ## r4133 event-log masks (`harness::EVENTLOG_MASKS`, §1.3-3)
 

@@ -654,6 +654,38 @@ fn nested_meter_feeder() -> Dss {
     dss
 }
 
+/// [`nested_meter_feeder`] with the meters declared in the OPPOSITE order —
+/// the INNER meter `m2` first, so `EnergyMeters` walks it before the outer
+/// `m1`. Same circuit, same zones; only the creation order differs, which is
+/// the order both oracles' `DoLambdaCalcs` loop follows (r4133
+/// `Executive/ExecHelper.pas:4438-4441`).
+fn nested_meter_feeder_inner_first() -> Dss {
+    let mut dss = Dss::new();
+    dss.command("New circuit.t basekv=12.47 bus1=src phases=3");
+    dss.command(
+        "New line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 \
+             faultrate=0.2 pctperm=80 repair=4",
+    );
+    dss.command(
+        "New line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.1 x1=0.1 \
+             faultrate=0.3 pctperm=90 repair=5",
+    );
+    dss.command(
+        "New line.l3 bus1=b2 bus2=b3 length=1 units=mi r1=0.1 x1=0.1 \
+             faultrate=0.4 pctperm=70 repair=6",
+    );
+    dss.command("New load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 numcust=10");
+    dss.command("New load.ld2 bus1=b2 phases=3 kv=12.47 kw=200 numcust=25");
+    dss.command("New load.ld3 bus1=b3 phases=3 kv=12.47 kw=150 numcust=7");
+    dss.command("New energymeter.m2 element=line.l3 terminal=1");
+    dss.command("New energymeter.m1 element=line.l1 terminal=1");
+    dss.command("Set voltagebases=[12.47]");
+    dss.command("CalcVoltageBases");
+    dss.command("Solve mode=snap");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss
+}
+
 /// The named meter's raw registers and `TotalsMask`.
 fn meter_regs_and_mask(dss: &Dss, name: &str) -> (Vec<f64>, Vec<f64>) {
     for class in &dss.classes {
@@ -751,6 +783,36 @@ fn meter_totals_is_the_masked_register_sum() {
 /// exactly `em2`'s zone mileage) and `PDElements.TotalMiles` with it; on the
 /// single-meter `modes:makeposseq/makeposseq_ctrl.dss` nothing moves at all.
 /// Both halves are asserted here, on the port.
+///
+/// **The same leak also makes the FIRST run depend on meter creation order,
+/// and this test says so** (G1.6(i) audit settlement, finding AT-1). With the
+/// inner meter declared first, `DoLambdaCalcs` walks it first, so the outer
+/// meter reads the already-written boundary bus on run 1 and lands on the
+/// shifted answer immediately. That is not the port's reading of the Pascal:
+/// **both** oracles do it, measured through the transports the gate uses
+/// (`tmp/g16i/settle/probe_settle*.py`, re-runnable) —
+/// `AccumulatedMilesDownStream(line.l1)` on a three-line nested pair is
+/// `2.0 → 3.0 → 3.0` over three runs with the OUTER meter first and
+/// `3.0 → 3.0 → 3.0` with the INNER meter first, identically on
+/// dss_capi 0.14.5 and on the EPRI r4133 DDLL. The port reproduces neither
+/// engine by choice: it is loop-for-loop the cited Pascal, and the ordering
+/// arm below asserts that all three engines agree.
+///
+/// **Ruling (coordinator decision D4 chain, recorded in the G1.6(i) audit
+/// settlement).** r4133's own comment calls the loop "Zero reliability
+/// accumulators", so the sweep is *intended* to start from zeroed
+/// accumulators; on a multi-meter circuit it does not, and the answer then
+/// depends on run count and declaration order. Intent contradicts behaviour
+/// ⇒ upstream defect, reported in
+/// `investigations/to_opendss/61-relcalc-cross-zone-accumulator-leak.md`.
+/// Fixing it is an ENGINE change in `solution/meters/reliability.rs`, which
+/// G1.6(i) is explicitly forbidden to touch (brief R-14(d)) and which needs a
+/// semantics decision this sub-step does not own: the physically correct
+/// `Bus.TotalMiles` for a nested head bus is arguable (3.0 counts the inner
+/// zone as downstream, 2.0 stops at the zone boundary). So it is recorded as
+/// an engine finding for its own step; until then this test pins what all
+/// three engines do, which is what keeps the one-shot gate protocol honest …
+/// a port that quietly diverged here would otherwise go unnoticed.
 #[test]
 fn relcalc_is_not_idempotent_and_the_gate_runs_it_once() {
     // Single meter: the zone's own zeroing covers every bus it writes.
@@ -790,7 +852,34 @@ fn relcalc_is_not_idempotent_and_the_gate_runs_it_once() {
     assert_eq!(
         bus_total_miles(&dss, "src"),
         3.0,
-        "and then it is a fixpoint: the inner zone re-derives the same mileage          every run, so the outer chain stays at the once-shifted value"
+        "and then it is a fixpoint: the inner zone re-derives the same \
+         mileage every run, so the outer chain stays at the once-shifted value"
+    );
+    // Declaration order, same circuit: with the INNER meter first the outer
+    // zone reads the already-written boundary bus on the FIRST run. Both
+    // oracles measure 3.0 there (capi 0.14.5 and EPRI r4133; the probes are
+    // cited in the doc above); the port must agree, run for run.
+    let mut inner_first = nested_meter_feeder_inner_first();
+    for run in 1..=3 {
+        inner_first.command("Relcalc");
+        assert_eq!(
+            bus_total_miles(&inner_first, "src"),
+            3.0,
+            "run {run}: with `m2` declared before `m1` the outer chain is \
+             shifted from the very first RelCalc: both oracles read \
+             AccumulatedMilesDownStream(line.l1) = 3.0 on run 1 here, against \
+             2.0 with the outer meter first"
+        );
+        assert_eq!(
+            bus_total_miles(&inner_first, "b2"),
+            1.0,
+            "run {run}: m2's own zone is unaffected"
+        );
+    }
+    assert_eq!(
+        accum_miles(&inner_first, "line.l1"),
+        3.0,
+        "and the PD element carries the same shifted value"
     );
 }
 
@@ -965,6 +1054,46 @@ fn last_bit_feeder() -> Dss {
     dss
 }
 
+/// The accumulation-ORDER fixture: one head line into a bus with THREE
+/// laterals, so `AccumFltRate`'s `accumsum(FromBus.BusFltRate, ...)`
+/// (r4133 `PDElements/PDElement.pas:105-114`) sums three non-zero terms into
+/// the same bus, in the backward-sweep order
+/// `For idx := SequenceList.ListSize downto 1`
+/// (r4133 `Meters/EnergyMeter.pas:2475-2482`). `0.1`, `0.2` and `0.3` are
+/// chosen because IEEE addition is NOT associative on them:
+/// `(0.1+0.2)+0.3 = 0.6000000000000001` while `0.1+(0.2+0.3) = 0.6`, so a
+/// re-association or a re-ordered zone walk moves the pinned literal. A
+/// two-summand chain cannot do that (addition IS commutative), which is why
+/// [`last_bit_feeder`] alone could not carry the order claim (G1.6(i) audit
+/// settlement, finding AT-3).
+fn branch_point_feeder() -> Dss {
+    let mut dss = Dss::new();
+    dss.command("New circuit.t basekv=12.47 bus1=src phases=3");
+    for (name, bus2, rate) in [
+        ("l1", "b1", 0.04),
+        ("la", "ba", 0.1),
+        ("lb", "bb", 0.2),
+        ("lc", "bc", 0.3),
+    ] {
+        let bus1 = if name == "l1" { "src" } else { "b1" };
+        dss.command(&format!(
+            "New line.{name} bus1={bus1} bus2={bus2} length=1 units=mi r1=0.1 \
+             x1=0.1 faultrate={rate} pctperm=100 repair=5"
+        ));
+    }
+    for (n, bus) in [(1, "ba"), (2, "bb"), (3, "bc")] {
+        dss.command(&format!(
+            "New load.ld{n} bus1={bus} phases=3 kv=12.47 kw=100 numcust=10"
+        ));
+    }
+    dss.command("New energymeter.m1 element=line.l1 terminal=1");
+    dss.command("Set voltagebases=[12.47]");
+    dss.command("CalcVoltageBases");
+    dss.command("Solve mode=snap");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss
+}
+
 /// **The reliability accumulators are plain IEEE-754 double sums in the Pascal
 /// sweep order, and they are right down to the last bit.**
 ///
@@ -984,7 +1113,7 @@ fn last_bit_feeder() -> Dss {
 /// reliability surface (G1.6(i))".
 ///
 /// This pin freezes the port's side with **both numbers** at each cell, so a
-/// future change of accumulation order or precision is caught here and never
+/// future change of precision is caught here and never
 /// again confused with a transport artifact:
 ///
 /// * `AccumulatedBrFltRate(l1) = 0.04 + 0.2` is `0.24000000000000002` (bits
@@ -1035,5 +1164,37 @@ fn reliability_accumulators_are_correctly_rounded_f64_sums() {
     assert_ne!(
         own, 0.9469696969696968,
         "one ULP BELOW: the lossily-decoded reading, not a computed value"
+    );
+
+    // --- the accumulation ORDER ------------------------------------------
+    // Three laterals summing into one bus, in the backward-sweep order. The
+    // sum is association-sensitive, so this literal moves if the zone walk or
+    // the summation order ever changes. Both oracles read exactly this double
+    // for `PDElements.AccumulatedL(Line.l1)` on the same deck: dss_capi 0.14.5
+    // and EPRI r4133 (DDLL `PDElementsF` mode 5) both return
+    // 0.6400000000000001 (probes in `tmp/g16i/settle/`).
+    let mut branch = branch_point_feeder();
+    branch.command("Relcalc");
+    let head = accum_flt_rate(&branch, "line.l1");
+    assert_eq!(
+        head.to_bits(),
+        0.6400000000000001_f64.to_bits(),
+        "AccumulatedBrFltRate(l1) = ((0.1 + 0.2) + 0.3) + 0.04 in the sweep \
+         order = 0.6400000000000001 (0x{:016x}), got {head:?} (0x{:016x}); \
+         both oracles return this exact double",
+        0.6400000000000001_f64.to_bits(),
+        head.to_bits(),
+    );
+    // Non-vacuity of the ORDER claim: the other association is a different
+    // double, so a re-ordered walk cannot pass the assertion above.
+    assert_ne!(
+        (0.1 + (0.2 + 0.3)) + 0.04,
+        ((0.1 + 0.2) + 0.3) + 0.04,
+        "the fixture is only an order pin while the two associations differ"
+    );
+    assert_ne!(
+        head,
+        (0.1 + (0.2 + 0.3)) + 0.04,
+        "the head must carry the sweep-order sum, not the reverse association"
     );
 }

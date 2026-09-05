@@ -1771,7 +1771,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:1205-1211` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:1240-1246` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -1800,7 +1800,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:1205-1211` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:1240-1246` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -1864,7 +1864,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     **compare** on r4133. The exclusion is a statement about the 0.14.5
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
-    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1205-1211`
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1240-1246`
     //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
@@ -1910,7 +1910,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///
 /// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1205-1211` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1240-1246` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
@@ -2103,7 +2103,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1205-1211`
+    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1240-1246`
     /// forbids masking there, plus the two `pctperm` rows RP2.1 measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {
@@ -6031,10 +6031,21 @@ pub struct ReliabilityCap {
 /// dss-python raises once per command, so on a multi-meter deck the counts
 /// legitimately differ. The text is byte-identical on all three engines
 /// (measured on `controls:energymeter/midi_energymeter.dss`).
+///
+/// The lines beyond the first are **kept**, not discarded (G1.6(i) audit
+/// settlement, finding B/3): the drive is the LAST thing the runner does on
+/// the last step, so the per-step `Dss::errors()` baseline assert
+/// (`corpus_gate/runner.rs`) never runs again after it, and a second,
+/// *different* error raised inside `RelCalc` would otherwise be invisible.
+/// [`compare_reliability`] asserts every line carries the one tolerated abort
+/// text before it compares the message to the oracle's.
 #[derive(Debug, Clone, Default)]
 pub struct RelCalcOutcome {
     pub aborted: bool,
     pub message: String,
+    /// Every error line the command appended, in order (`message` is the
+    /// first). Compared for uniformity, never for its count.
+    pub messages: Vec<String>,
 }
 
 impl RelCalcOutcome {
@@ -6043,6 +6054,7 @@ impl RelCalcOutcome {
         Self {
             aborted: !new.is_empty(),
             message: new.first().cloned().unwrap_or_default(),
+            messages: new.to_vec(),
         }
     }
 }
@@ -6071,8 +6083,9 @@ impl RelCalcOutcome {
 /// a 17-significant-digit token as `significand as f64` then one multiply or
 /// divide by a power of ten, i.e. two roundings. That is exactly the defect
 /// coordinator decision **D11** fixes workspace-wide (`serde_json` +
-/// `float_roundtrip`), landed on lane `lane-b`; until this branch syncs it the
-/// affected cells red on a transport artifact, never on a port or oracle value.
+/// `float_roundtrip`); **D18** landed the identical hunk on this branch, so the
+/// gate already decodes every oracle float exactly and the artifact is gone.
+/// It was a transport artifact throughout, never a port or oracle value.
 /// So this surface stays exact and gains no floor — derivation in
 /// `tests/TOLERANCE_NOTES.md` §"The `Meters` reliability surface (G1.6(i))",
 /// both numbers pinned by
@@ -6232,25 +6245,29 @@ pub const RELIABILITY_SKIP_FIELDS: &[ReliabilitySkipRow] = &[
         channel: "capi_v0145",
         field: "calc_current",
         pin: "meter_alloc_factors_are_zero_until_allocateloads_runs",
-        cite: "dss_capi/src/Meters/MeterElement.pas AllocateSensorArrays (ReallocMem, no zeroing)",
+        cite: "dss_capi/src/Meters/MeterElement.pas AllocateSensorArrays (ReallocMem, \
+                no zeroing) + to_opendss/62-metered-sensor-arrays-are-never-initialised.md",
     },
     ReliabilitySkipRow {
         channel: "capi_v0145",
         field: "alloc_factors",
         pin: "meter_alloc_factors_are_zero_until_allocateloads_runs",
-        cite: "dss_capi/src/Meters/MeterElement.pas AllocateSensorArrays (ReallocMem, no zeroing)",
+        cite: "dss_capi/src/Meters/MeterElement.pas AllocateSensorArrays (ReallocMem, \
+                no zeroing) + to_opendss/62-metered-sensor-arrays-are-never-initialised.md",
     },
     ReliabilitySkipRow {
         channel: "r4133",
         field: "calc_current",
         pin: "meter_alloc_factors_are_zero_until_allocateloads_runs",
-        cite: "Version8/Source/Meters/MeterElement.pas:45-52",
+        cite: "Version8/Source/Meters/MeterElement.pas:45-52 + \
+                to_opendss/62-metered-sensor-arrays-are-never-initialised.md",
     },
     ReliabilitySkipRow {
         channel: "r4133",
         field: "alloc_factors",
         pin: "meter_alloc_factors_are_zero_until_allocateloads_runs",
-        cite: "Version8/Source/Meters/MeterElement.pas:45-52",
+        cite: "Version8/Source/Meters/MeterElement.pas:45-52 + \
+                to_opendss/62-metered-sensor-arrays-are-never-initialised.md",
     },
 ];
 
@@ -6331,9 +6348,20 @@ pub fn reliability_skip_counters(channel: &str, field: &str) -> Option<(usize, u
 ///   i_abs/|I|`. `i_ref` is the larger of the two engines' `|I|` for the same
 ///   phase, so the propagated band is the tighter, not the looser, reading.
 ///   When both are exactly `0.0` the Pascal takes its `ELSE
-///   PhsAllocationFactor^[i] := 1.0` branch (`MeterElement.pas:66-67`) on both
+///   PhsAllocationFactor^[i] := 1.0` branch (`MeterElement.pas:68`) on both
 ///   sides and there is nothing to propagate: the band collapses to `0.0` and
 ///   the compare is exact again.
+///
+/// **The denominator is band-limited from below**, the way the `SeqCurrents
+/// %I…` rule this derivation cites is (`tests/TOLERANCE_NOTES.md`,
+/// `ColTol::gate`): the image band `|f|·(i_rel + i_abs/|I|)` is only a band
+/// while `|I|` is distinguishable from zero. Once `|I| < i_abs` the term
+/// `i_abs/|I|` exceeds 1 and the "band" admits the whole value — the compare
+/// would go silently vacuous with no counter and no message, which is exactly
+/// the failure the `SeqCurrents` note calls load-bearing. So this returns
+/// `None` there and [`compare_reliability`] turns it into a **loud** triage
+/// failure instead of a pass; `i_ref == 0.0` on both sides stays the exact
+/// arm. G1.6(i) audit settlement (finding A/4).
 ///
 /// Measured on the one deck where the two fields are defined at all
 /// (`controls:energymeter/midi_relcalc.dss`, G1.6(i) part F3): the two
@@ -6351,18 +6379,28 @@ fn reliability_array_band(
     port_current: f64,
     oracle_current: f64,
     tol: &Tolerances,
-) -> f64 {
+) -> Option<f64> {
     match field {
-        "calc_current" => tol.i_abs + tol.i_rel * oracle.abs(),
+        "calc_current" => Some(tol.i_abs + tol.i_rel * oracle.abs()),
+        // A non-finite current on either side: `f64::max` would quietly
+        // ignore the NaN and band the cell off the other engine's current,
+        // so rule it out before the denominator is formed.
+        "alloc_factors" if !port_current.is_finite() || !oracle_current.is_finite() => None,
         "alloc_factors" => {
             let i_ref = port_current.abs().max(oracle_current.abs());
-            if i_ref > 0.0 && i_ref.is_finite() {
-                oracle.abs() * (tol.i_rel + tol.i_abs / i_ref)
+            if i_ref == 0.0 {
+                // Both engines took the Pascal's `ELSE … := 1.0` branch: no
+                // division happened on either side, so nothing propagates.
+                Some(0.0)
+            } else if i_ref >= tol.i_abs {
+                Some(oracle.abs() * (tol.i_rel + tol.i_abs / i_ref))
             } else {
-                0.0
+                // Denominator inside its own absolute band: `S/|I|` is a
+                // noise/noise form with no derivable band.
+                None
             }
         }
-        _ => 0.0,
+        _ => Some(0.0),
     }
 }
 
@@ -6444,6 +6482,25 @@ pub fn compare_reliability(
         rust.aborted, rust.message, exp.aborted, exp.message,
     );
     if exp.aborted {
+        // Every line the port's `RelCalc` appended, not just the first: this is
+        // the last drive of the case, so no later `Dss::errors()` baseline
+        // assert would see a second, different error (audit settlement B/3).
+        if let Some(other) = rust
+            .messages
+            .iter()
+            .find(|m| m.trim() != rust.message.trim())
+        {
+            panic!(
+                "{ctx}: `RelCalc` appended {} error line(s) and they are not all the one \
+                 tolerated abort: first {:?}, also {:?}. Only errno 52902 (no OCP device \
+                 in the zone, one line per failing meter) is by design here; a second, \
+                 different error out of the same command is a real failure and must not \
+                 be swallowed.",
+                rust.messages.len(),
+                rust.message,
+                other,
+            );
+        }
         assert_eq!(
             rust.message.trim(),
             exp.message.trim(),
@@ -6566,14 +6623,10 @@ pub fn compare_reliability(
                 // `CalcAllocationFactors` ran on, so they carry the
                 // faer-vs-KLU floor every current carries (see
                 // [`reliability_array_band`]).
-                let band = reliability_array_band(
-                    field,
-                    *y,
-                    a.calc_current.get(k).copied().unwrap_or(0.0),
-                    e.calc_current.get(k).copied().unwrap_or(0.0),
-                    tol,
-                );
-                let equal = rel_num_eq(*x, *y) || (x - y).abs() <= band;
+                let i_port = a.calc_current.get(k).copied().unwrap_or(0.0);
+                let i_oracle = e.calc_current.get(k).copied().unwrap_or(0.0);
+                let band = reliability_array_band(field, *y, i_port, i_oracle, tol);
+                let equal = rel_num_eq(*x, *y) || band.is_some_and(|b| (x - y).abs() <= b);
                 if let Some(i) = skip {
                     RELIABILITY_SKIP_VISITS[i].fetch_add(1, AtomicOrd::Relaxed);
                     if !equal {
@@ -6581,6 +6634,22 @@ pub fn compare_reliability(
                     }
                     continue;
                 }
+                // The denominator gate. A ratio whose denominator is inside its
+                // own absolute band has no derivable band, so it must not be
+                // admitted silently — see [`reliability_array_band`].
+                assert!(
+                    band.is_some(),
+                    "{ctx}: meter {} `{field}[{k}]` against `{tag}`: the metered current \
+                     is |I| = {:.3e} A (port {i_port:?}, oracle {i_oracle:?}), inside the \
+                     tier's own absolute band i_abs = {:.3e} A, so `SensorCurrent/|I|` is \
+                     a noise/noise form with no derivable band (the `SeqCurrents %I` \
+                     band-limited-denominator precedent, `tests/TOLERANCE_NOTES.md`). \
+                     Triage this deck before the cell is compared, never widen the band.",
+                    e.name,
+                    i_port.abs().max(i_oracle.abs()),
+                    tol.i_abs,
+                );
+                let band = band.unwrap_or(0.0);
                 assert!(
                     equal,
                     "{ctx}: meter {} `{field}[{k}]` differs against `{tag}`: Rust {x:?} vs oracle \
@@ -6825,6 +6894,75 @@ mod reliability_tests {
             avg_repair_time: 8.0,
             fault_rate_x_repair_hrs: 9.0,
         }
+    }
+
+    /// **The `alloc_factors` band is band-limited from below** (G1.6(i) audit
+    /// settlement, finding A/4). Three regimes, one per arm of
+    /// [`reliability_array_band`]:
+    ///
+    /// * both currents exactly `0.0` — the Pascal's `ELSE … := 1.0` branch on
+    ///   both sides, nothing propagated, `Some(0.0)` = exact;
+    /// * a real current — the propagated image band, which must stay far below
+    ///   the value it guards (here `1e-8` against a value of `1.0`);
+    /// * a current inside the tier's own `i_abs` — `None`, so
+    ///   [`compare_reliability`] fails loudly instead of admitting the cell.
+    ///
+    /// Before the settlement the last regime returned `|f|·1e3` at
+    /// `i_ref = 1e-9`, i.e. a 100 000 % relative error passed with no counter
+    /// and no message.
+    #[test]
+    fn the_alloc_factors_band_is_band_limited_from_below() {
+        let tol = tol_for("micro");
+        assert_eq!(tol.i_abs, 1e-6, "the micro tier's current floor");
+
+        // Both engines took the `1.0` branch: exact.
+        assert_eq!(
+            reliability_array_band("alloc_factors", 1.0, 0.0, 0.0, &tol),
+            Some(0.0),
+        );
+
+        // A real metered current: the image band, ~1e-8 on a ~1.0 ratio at
+        // 115.7 A — four orders below the value, as the derivation says.
+        let real = reliability_array_band("alloc_factors", 1.0372, 115.69, 115.69, &tol)
+            .expect("a loaded phase has a derivable band");
+        assert!(
+            real < 1.0372 * 1e-7,
+            "the propagated band on a loaded phase must stay far below the value: {real:e}"
+        );
+
+        // Denominator inside its own absolute band: no band at all.
+        for i_ref in [1e-9, 1e-7, 9.99e-7] {
+            assert_eq!(
+                reliability_array_band("alloc_factors", 1.0, i_ref, i_ref, &tol),
+                None,
+                "|I| = {i_ref:e} A is inside i_abs = {:e}",
+                tol.i_abs,
+            );
+        }
+        // Exactly at the floor it is a band again, and a bounded one.
+        let at = reliability_array_band("alloc_factors", 1.0, 1e-6, 1e-6, &tol)
+            .expect("|I| == i_abs is the first admitted denominator");
+        assert!(
+            at <= 1.0 * (1.0 + tol.i_rel),
+            "bounded at the floor: {at:e}"
+        );
+
+        // Non-finite currents never produce a band either — and the NaN must
+        // be ruled out BEFORE `f64::max`, which returns the other operand and
+        // would otherwise band the cell off a current the port never reported.
+        for (a, b) in [(f64::NAN, 0.5), (0.5, f64::NAN), (f64::INFINITY, 0.5)] {
+            assert_eq!(
+                reliability_array_band("alloc_factors", 1.0, a, b, &tol),
+                None,
+                "({a:?}, {b:?}) must not yield a band"
+            );
+        }
+
+        // `calc_current` divides by nothing, so it always has one.
+        assert_eq!(
+            reliability_array_band("calc_current", 115.0, 0.0, 0.0, &tol),
+            Some(tol.i_abs + tol.i_rel * 115.0),
+        );
     }
 
     /// The two extractions cover their keys, in the frozen read order, with the
