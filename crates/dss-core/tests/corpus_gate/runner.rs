@@ -17,9 +17,10 @@ use crate::engines::{CaseResult, Channel, Oracle};
 use crate::harness::{
     self, ExportPolicy, RelCalcOutcome, RowPolicy, Tolerances, capture_guard,
     compare_all_properties, compare_ctrlqueue, compare_discrete, compare_element_channels,
-    compare_eventlog, compare_export, compare_fingerprint, compare_injection, compare_meter,
-    compare_monitor, compare_pd_elements, compare_probe, compare_reliability, compare_system_y,
-    compare_variables, compare_yprim, lane, tol_for,
+    compare_element_derived, compare_element_extras, compare_eventlog, compare_export,
+    compare_fingerprint, compare_injection, compare_meter, compare_monitor, compare_pd_elements,
+    compare_probe, compare_reliability, compare_system_y, compare_variables, compare_yprim, lane,
+    tol_for,
 };
 use crate::manifest::{EngineChannel, SolvableCase};
 
@@ -593,6 +594,110 @@ pub(crate) fn compare_capture(
             }
         }
 
+        // `GOLDEN_REBASE_PLAN.md` G1.9 — the five `Circuit` aggregates and the
+        // ten `Solution` scalars. The surface is UNFLAGGED and universal (no
+        // `G1_SURFACE_FLAGS` row, no rigor token, no forced population), so the
+        // capture is demanded on every live case of every gating channel; the
+        // `capture_guard` rail is not reused because its message is
+        // manifest-flag shaped and there is no flag to name here.
+        let agg = cp.aggregates.as_ref().unwrap_or_else(|| {
+            panic!(
+                "{ctx}: the `{}` capture carries no `aggregates` member. G1.9 is an \
+                 unflagged, universal surface — every live case must compare it, so \
+                 an absent capture FAILS the case instead of silently comparing \
+                 nothing (GOLDEN_REBASE_PLAN.md §1.1(f)).",
+                channel_tag(channel)
+            )
+        });
+        let scalars = cp.solution_scalars.as_ref().unwrap_or_else(|| {
+            panic!(
+                "{ctx}: the `{}` capture carries no `solution_scalars` member \
+                 (unflagged universal surface — see the `aggregates` refusal above).",
+                channel_tag(channel)
+            )
+        });
+        harness::aggregates::compare_aggregates(
+            dss,
+            agg,
+            &snaps,
+            &cp.elements,
+            &el_rewrites,
+            tol,
+            channels,
+            &ctx,
+        );
+        harness::aggregates::compare_solution_scalars(
+            dss,
+            scalars,
+            cp.iterations,
+            channel.iterations_exact(),
+            &ctx,
+        );
+        // WP-G1 G1.3a: the per-element **derived** channels — `Enabled` plus
+        // the polar renderings `CurrentsMagAng` / `VoltagesMagAng` / `Residuals`
+        // (r4133 `DDLL/DCktElement.pas:1058`/`:1082`/`:827`). Compared on the
+        // same caps the loop above just used, so a ledger `element` scope that
+        // pins one of the new sub-channels neutralizes it here too, and an
+        // unscoped element is compared against the untouched oracle cap.
+        //
+        // The guard is the flag's own non-vacuity rail: under `derived` BOTH
+        // transports emit `enabled` for every element (present even on the
+        // disabled ones, whose polar channels the capture must skip — r4133
+        // `CktElementV(19)` dereferences a nil `NodeRef` there), so a channel
+        // that ignored the request answers with zero `enabled` fields and the
+        // case fails instead of comparing nothing.
+        if c.compare_derived {
+            capture_guard::require_capture(
+                "compare_derived",
+                channel_tag(channel),
+                cp.elements.iter().filter(|e| e.enabled.is_some()).count(),
+                &ctx,
+            );
+            for ec in &cp.elements {
+                match el_rewrites.get(&ec.name.to_lowercase()) {
+                    Some(rw) => compare_element_derived(&snaps, rw, tol, &ctx, channels),
+                    None => compare_element_derived(&snaps, ec, tol, &ctx, channels),
+                }
+            }
+        }
+
+        // WP-G1 G1.3d(i): the per-element **discrete index/name extras** —
+        // `NumTerminals` / `NumConductors` / `NumPhases` (r4133
+        // `DDLL/DCktElement.pas:139`/`:144`/`:149`), `EnergyMeter` (`:442`) and
+        // `NodeOrder` (`:1032`). Everything here is discrete and compared
+        // exactly: no tolerance, no `ElemChannels` selector, no ledger
+        // sub-channel.
+        //
+        // Fed from the same `el_rewrites`-or-raw caps as the two loops above so
+        // the block keeps their shape, which costs nothing and hides nothing: a
+        // ledger rewrite is a full `clone_element_cap` (`ledger.rs:1695-1697`,
+        // `ec.clone()`) with only its six named value channels overwritten
+        // (`rewrite_element_selected`, `:1702`), so the five extras fields it
+        // hands back are always the untouched oracle ones.
+        //
+        // The guard is the flag's own non-vacuity rail: under `element_extras`
+        // BOTH transports emit the four scalars for every element, so a channel
+        // that ignored the request answers with zero `n_terms` fields and the
+        // case fails instead of comparing nothing.
+        if c.compare_element_extras {
+            capture_guard::require_capture(
+                "compare_element_extras",
+                channel_tag(channel),
+                cp.elements.iter().filter(|e| e.n_terms.is_some()).count(),
+                &ctx,
+            );
+            // The channel travels with the capture for one reason only: the
+            // "no meter" sentinel is spelled per channel and is folded per
+            // channel (`harness::oracle_meter_name`, G1.3d(i) audit settlement).
+            let ch = channel.props_channel();
+            for ec in &cp.elements {
+                match el_rewrites.get(&ec.name.to_lowercase()) {
+                    Some(rw) => compare_element_extras(&snaps, rw, ch, &ctx),
+                    None => compare_element_extras(&snaps, ec, ch, &ctx),
+                }
+            }
+        }
+
         compare_discrete(dss, &cp.transformers, &cp.regcontrols, &cp.capacitors, &ctx);
 
         // A ledger monitor scope neutralizes only its pinned channel_idx (rewrites
@@ -718,6 +823,37 @@ pub(crate) fn compare_capture(
                 &global_result_policy(),
                 &format!("{ctx} GlobalResult"),
             );
+        }
+
+        // The bus voltage surface (GOLDEN_REBASE_PLAN.md G1.4a). Placed here to
+        // mirror the capi transport's capture slot — after `ctrlqueue`, before
+        // the `all_properties` `?` sweep that must stay last
+        // (`tools/oracle/oracle_server.py`). Every bus read is class C
+        // (order-free) under §1.1(a)/D3: both engines read `Solution.NodeV`
+        // directly (`CAPI/CAPI_Alt.pas:2275` == r4133 `DDLL/DBus.pas:423`) and
+        // move only `ActiveBusIndex`, so nothing here can stale a cached
+        // `Iterminal`.
+        //
+        // `voltages_excluded` is the one structural rule this surface needs: the
+        // bus bands are exact images of the node-voltage band over the SAME
+        // `Solution.NodeV` (`harness::compare_bus`), so on a case whose
+        // `voltages` field is already ledger-excluded DECK-WIDE the bus arrays
+        // would re-raise a divergence that is already triaged and pinned — ten
+        // new ledger rows for one cause. It suppresses only the three continuous
+        // arrays; the bus count, the name sequence, `nodes`, `kv_base` and every
+        // array length stay compared on those cases too. A `voltages` scope that
+        // names a node subset (`node_re`) suppresses NOTHING here — it would be
+        // far wider than its cause; see `LedgerView::bus_arrays_suppressed`.
+        if c.compare_bus {
+            capture_guard::require_capture(
+                "compare_bus",
+                channel_tag(channel),
+                cp.buses.len(),
+                &ctx,
+            );
+            let v_excluded = ledger.is_some_and(|v| v.bus_arrays_suppressed(i));
+            harness::compare_bus(dss, &cp.buses, tol, v_excluded, &ctx);
+            harness::compare_all_bus_vmag_pu(dss, &cp.all_bus_vmag_pu, tol, v_excluded, &ctx);
         }
 
         if c.compare_all_properties {

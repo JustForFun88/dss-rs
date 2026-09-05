@@ -26,9 +26,10 @@ use std::time::{Duration, Instant};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::harness::aggregates::{AggregatesCap, SolutionScalarsCap};
 use crate::harness::{
-    ElementCap, Injection, MeterCap, MonitorCap, PdElementCap, ProbeCap, PropsCap, ReliabilityCap,
-    VariablesCap, YFingerprint, YMat, YPrim,
+    BusCap, ElementCap, Injection, MeterCap, MonitorCap, PdElementCap, ProbeCap, PropsCap,
+    ReliabilityCap, VariablesCap, YFingerprint, YMat, YPrim,
 };
 use crate::manifest::SolvableCase;
 
@@ -108,6 +109,26 @@ pub(crate) struct Checkpoint {
     pub(crate) ctrlqueue: Vec<String>,
     #[serde(default)]
     pub(crate) all_properties: Vec<PropsCap>,
+    /// `GOLDEN_REBASE_PLAN.md` G1.9 — the five `Circuit` aggregates. Optional
+    /// in the schema only so a transport that predates the surface deserializes;
+    /// the comparator DEMANDS it on every live case (the surface is unflagged
+    /// and universal), so `None` fails the case rather than skipping it.
+    #[serde(default)]
+    pub(crate) aggregates: Option<AggregatesCap>,
+    /// `GOLDEN_REBASE_PLAN.md` G1.9 — the ten `Solution` scalars, same
+    /// presence contract as [`Checkpoint::aggregates`].
+    #[serde(default)]
+    pub(crate) solution_scalars: Option<SolutionScalarsCap>,
+    /// G1.4a: every bus's voltage surface, in the oracle's `BusList` order.
+    #[serde(default)]
+    pub(crate) buses: Vec<BusCap>,
+    /// G1.4a: `Circuit.AllBusVmagPu` — every NODE's per-unit voltage magnitude,
+    /// in bus-list order x the bus's INTERNAL node index (the `AllNodeNames`
+    /// permutation, which is neither the per-bus ascending-node-number order of
+    /// [`BusCap`] nor the gated `YNodeOrder`). `CAPI_Circuit.pas:521-548` ==
+    /// r4133 `Circuit.AllBusMagPu`, `DCircuit.pas:481-500`.
+    #[serde(default)]
+    pub(crate) all_bus_vmag_pu: Vec<f64>,
 }
 
 /// The per-case wall-clock deadline for a single oracle request
@@ -142,11 +163,28 @@ pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
         "variables": c.compare_variables,
         "eventlog": c.compare_eventlog,
         "ctrlqueue": c.compare_ctrlqueue,
+        "buses": c.compare_bus,
         "all_properties": c.compare_all_properties,
         "pd_elements": c.compare_pdelements,
         "reliability": c.compare_reliability,
         "global_result": c.compare_global_result,
         "autoadd_log": c.compare_autoadd_log,
+        // WP-G1 G1.3a: the per-element derived polar channels. One key for the
+        // whole `compare_derived` surface, honored by BOTH transports —
+        // `tools/oracle/oracle_server.py::capture_all_elements` (capi_v0145) and
+        // `crates/dss-epri/src/capture.rs::RunRequest::derived` (r4133) — so the
+        // two channels can never disagree about what was requested. Absent ⇒ off
+        // on both, which is what keeps an off-flag reply byte-identical to the
+        // pre-G1.3a payload.
+        "derived": c.compare_derived,
+        // WP-G1 G1.3d(i): the per-element discrete index/name scalars
+        // (`NumTerminals`/`NumConductors`/`NumPhases`/`EnergyMeter`/`NodeOrder`
+        // plus `Enabled`). One key for the whole `compare_element_extras`
+        // surface, honored by BOTH transports —
+        // `tools/oracle/oracle_server.py::capture_all_elements` (capi_v0145)
+        // and `crates/dss-epri/src/capture.rs::RunRequest::element_extras`
+        // (r4133). Absent ⇒ off on both. G1.3d(ii) widens the same key.
+        "element_extras": c.compare_element_extras,
         "warn_and_continue": !c.expect_warnings.is_empty(),
     })
 }
@@ -607,12 +645,38 @@ fn epri_worker_bin() -> PathBuf {
                 .chain(std::iter::once(root.join("target")))
                 .map(|d| d.join(profile).join(exe))
                 .collect();
+            // Freshness, not mere existence (G1.4a audit settlement T5): a scoped
+            // `cargo test -p dss-core --test corpus_gate` does NOT rebuild the
+            // bridge, so an existing binary can predate a `crates/dss-epri`
+            // change — which is how a scoped r4133 run could silently gate
+            // against a worker without the D13 registry pins (measured: F9's
+            // first poisoned-registry probe read 50/50 off a four-minute-old
+            // worker, 60/60 after a rebuild). An out-of-date binary falls
+            // through to the build below.
+            let epri = root.join("crates").join("dss-epri");
+            let src_mtime = [
+                newest_mtime(&epri.join("src")),
+                file_mtime(&epri.join("Cargo.toml")),
+            ]
+            .into_iter()
+            .flatten()
+            .max();
             if let Some(found) = candidates.iter().find(|p| p.is_file()) {
-                return found.clone();
+                let bin_mtime = found.metadata().ok().and_then(|m| m.modified().ok());
+                match (bin_mtime, src_mtime) {
+                    // Unknown timestamps: keep the historical behaviour.
+                    (None, _) | (_, None) => return found.clone(),
+                    (Some(b), Some(s)) if b >= s => return found.clone(),
+                    _ => eprintln!(
+                        "epri-worker at {} is older than crates/dss-epri — rebuilding it…",
+                        found.display()
+                    ),
+                }
+            } else {
+                // Fallback: build it once (covers `cargo test -p dss-core`
+                // invocations that did not build the whole workspace).
+                eprintln!("epri-worker not found at {candidates:?} — building it once…");
             }
-            // Fallback: build it once (covers `cargo test -p dss-core` invocations
-            // that did not build the whole workspace).
-            eprintln!("epri-worker not found at {candidates:?} — building it once…");
             let mut cmd =
                 Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string()));
             cmd.arg("build")
@@ -638,6 +702,73 @@ fn epri_worker_bin() -> PathBuf {
                 .clone()
         })
         .clone()
+}
+
+/// The r4133 channel's premise, asserted rather than assumed (G1.4a audit
+/// settlement T5): the `epri-worker` the gate resolves is not older than the
+/// bridge sources it was built from. [`epri_worker_bin`] rebuilds a stale one,
+/// so this test fails only if the rebuild itself failed to refresh the binary —
+/// and it names the hazard the D13 rule (`TESTING.md`) depends on: a scoped
+/// `cargo test -p dss-core --test corpus_gate` builds no workspace binary.
+///
+/// `DSS_EPRI_WORKER` is an explicit operator override (a hand-built or archived
+/// bridge): the resolver honours it verbatim, so the freshness claim is about
+/// the resolved default only.
+#[test]
+fn the_epri_worker_binary_is_not_older_than_its_bridge_sources() {
+    let bin = epri_worker_bin();
+    assert!(
+        bin.is_file(),
+        "epri-worker did not resolve to a file: {bin:?}"
+    );
+    if std::env::var_os("DSS_EPRI_WORKER").is_some() {
+        eprintln!("DSS_EPRI_WORKER override in effect ({bin:?}) — freshness is the operator's");
+        return;
+    }
+    let root: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", ".."].iter().collect();
+    let epri = root.join("crates").join("dss-epri");
+    let src = [
+        newest_mtime(&epri.join("src")),
+        file_mtime(&epri.join("Cargo.toml")),
+    ]
+    .into_iter()
+    .flatten()
+    .max()
+    .expect("crates/dss-epri sources must be readable");
+    let got = file_mtime(&bin).expect("epri-worker must be stat-able");
+    assert!(
+        got >= src,
+        "{} is older than crates/dss-epri ({got:?} < {src:?}) — a scoped corpus-gate run \
+         would compare the r4133 channel against a stale bridge",
+        bin.display()
+    );
+}
+
+/// Modification time of one file, or `None` when it cannot be stat'd.
+fn file_mtime(p: &std::path::Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(p).ok().and_then(|m| m.modified().ok())
+}
+
+/// Newest modification time under `dir` (recursively), ignoring anything that
+/// cannot be stat'd. `None` when the tree is unreadable or empty — the caller
+/// then keeps its historical behaviour rather than guessing staleness.
+fn newest_mtime(dir: &std::path::Path) -> Option<std::time::SystemTime> {
+    let mut newest: Option<std::time::SystemTime> = None;
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return None;
+    };
+    for entry in rd.flatten() {
+        let p = entry.path();
+        let t = if p.is_dir() {
+            newest_mtime(&p)
+        } else {
+            entry.metadata().ok().and_then(|m| m.modified().ok())
+        };
+        if let Some(t) = t {
+            newest = Some(newest.map_or(t, |n| n.max(t)));
+        }
+    }
+    newest
 }
 
 /// Spawn a persistent `epri-worker` process with drain threads (mirrors

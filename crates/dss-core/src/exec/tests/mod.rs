@@ -8,14 +8,17 @@
 
 mod common;
 
+mod aggregates;
 mod allocation;
 mod autoadd;
 mod autotrans_xfmrcode;
 mod base_frequency;
 mod compat_quirks;
 mod controls;
+mod derived_polar;
 mod distribute_uuids;
 mod dynamics;
+mod element_extras;
 mod energymeter_registers;
 mod energymeter_zones;
 mod espvl_control;
