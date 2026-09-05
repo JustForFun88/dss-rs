@@ -6,22 +6,35 @@
 //! (`CaseResult { node_order, n_steps, checkpoints, autoadd_log }`), so the Rust
 //! gate's `serde` deserialize accepts it unchanged (bit-diff-proven against the
 //! Python path by `xcheck_bridge.py`, itself retired with that stack in Phase
-//! E). Read order within a step matches `oracle_server` exactly (notably
-//! Powers-before-Currents in the element capture — the harmonics stale-`Iterminal`
-//! ordering, CLAUDE.md).
+//! E). Read order within a step matches `oracle_server` exactly — notably the
+//! §1.1(a)/D3 group-A-before-group-B rule in the element capture
+//! (Losses, Powers, then Currents: the harmonics stale-`Iterminal` ordering,
+//! CLAUDE.md), which every read line declares with a `capture-order:` marker.
 
 use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::dss::{Engine, EngineError};
+use crate::dss::{Engine, EngineError, RelCalcResult};
 use crate::guard::CorpusGuard;
 
 /// Retry a non-converged case in-process up to this many times
 /// (`oracle_server._RUN_ATTEMPTS`): absorbs the engine's occasional
 /// fresh-process convergence misfire without masking a real non-convergence.
 const RUN_ATTEMPTS: usize = 3;
+
+/// The user-written-model `DoSimpleMsg` errnos the official Direct DLL warns on
+/// and solves through — [`crate::dss::USER_MODEL`], the single Rust-side
+/// definition (mirrored on the capi transport by
+/// `oracle_server._USER_MODEL_ERRNOS`).
+///
+/// Needed here because G1.9 made the group-A aggregates the FIRST post-solve
+/// read that recomputes `Iterminal`, so on a `warn_and_continue` deck the single
+/// priming warning now fires inside [`capture_aggregates`] instead of
+/// `Engine::element_pcl`. G1.9's hand-synced local copy was folded into the
+/// `dss` one at the 2026-09-05 lane merge (its "dedup at merge" handoff).
+use crate::dss::USER_MODEL as USER_MODEL_ERRNOS;
 
 // ---------------------------------------------------------------------------
 // Request (deserialized from the line-JSON `run` message).
@@ -38,6 +51,22 @@ pub struct RunRequest {
     pub selected_elements: Vec<String>,
     #[serde(default)]
     pub check_meters_monitors: bool,
+    /// Capture the `PDElements` walk (GOLDEN_REBASE G1.6b). The capi channel
+    /// spells the same request key (`oracle_server.run_case`), so the two
+    /// transports are requested and ordered identically.
+    #[serde(default)]
+    pub pd_elements: bool,
+    /// Drive the executive `RelCalc` and capture the reliability surface
+    /// (GOLDEN_REBASE G1.6(i)). The capi channel spells the same request key
+    /// (`oracle_server.run_case`), so both transports run the command at the
+    /// same point of the same step and read the same fields.
+    ///
+    /// This is the only request flag that *changes how the case is run* rather
+    /// than only what is read: without it no live-compared corpus deck ever
+    /// executes `CalcReliabilityIndices`, and the whole reliability half would
+    /// compare `0 == 0`.
+    #[serde(default)]
+    pub reliability: bool,
     #[serde(default)]
     pub probes: Vec<ProbeSpec>,
     #[serde(default)]
@@ -61,6 +90,26 @@ pub struct RunRequest {
     pub zsc: bool,
     #[serde(default)]
     pub all_properties: bool,
+    /// Manifest flag `compare_derived` (GOLDEN_REBASE G1.3a): capture
+    /// `CktElement.Enabled` for every element and the three polar channels
+    /// `CurrentsMagAng` / `Residuals` / `VoltagesMagAng` for the **enabled**
+    /// ones. Absent or `false` ⇒ none of the seven keys is emitted and the
+    /// reply is byte-identical to a pre-G1.3a one.
+    #[serde(default)]
+    pub derived: bool,
+    /// Manifest flag `compare_element_extras` (GOLDEN_REBASE G1.3d): capture
+    /// `CktElement.Enabled`, the discrete index/name scalars
+    /// `NumTerminals` / `NumConductors` / `NumPhases` / `EnergyMeter` (part (i)),
+    /// the five control-derived scalars `NumControls` / `OCPDevIndex` /
+    /// `OCPDevType` / `HasVoltControl` / `HasSwitchControl` and `PhaseLosses`
+    /// (part (ii)) for every element, and `NodeOrder` for the ones that are
+    /// enabled with at least one terminal. Absent or `false` ⇒ none of those
+    /// keys is emitted and the reply is byte-identical to a pre-G1.3d one.
+    #[serde(default)]
+    pub element_extras: bool,
+    /// `GOLDEN_REBASE_PLAN.md` G1.7 — the six order-free `Topology` reads.
+    #[serde(default)]
+    pub topology: bool,
     #[serde(default)]
     pub global_result: bool,
     #[serde(default)]
@@ -117,6 +166,16 @@ struct Checkpoint {
     capacitors: BTreeMap<String, Vec<i32>>,
     monitors: Vec<MonitorCap>,
     meters: Vec<MeterCap>,
+    /// `None` when the run did not request `RelCalc`; `Some(_)` on **exactly
+    /// one** checkpoint of a requesting run — the last one (see
+    /// [`capture_reliability`]). Sits between `meters` and `pd_elements`
+    /// because that is where the reads happen.
+    reliability: Option<ReliabilityCap>,
+    /// `None` when the run did not request the walk — distinct from `Some([])`,
+    /// "requested, and this circuit has no enabled PD element" (96 of the 372
+    /// walked live cases). The gate's capture guard refuses `None` on a case
+    /// whose manifest set the flag.
+    pd_elements: Option<Vec<PdElementCap>>,
     probes: Vec<ProbeCap>,
     variables: Vec<VariablesCap>,
     eventlog: Vec<String>,
@@ -125,6 +184,9 @@ struct Checkpoint {
     all_bus_vmag_pu: Vec<f64>,
     all_properties: Vec<PropsCap>,
     global_result: String,
+    aggregates: AggregatesCap,
+    solution_scalars: SolutionScalarsCap,
+    topology: Option<TopologyCap>,
 }
 
 #[derive(Serialize)]
@@ -161,6 +223,76 @@ struct ElementCap {
     p_kw: Vec<f64>,
     p_kvar: Vec<f64>,
     loss_w: Vec<f64>,
+    // The GOLDEN_REBASE G1.3a derived channels, emitted only under
+    // `RunRequest::derived` — every one is skipped when empty/absent, so an
+    // off-flag reply keeps the byte-for-byte shape it had before G1.3a
+    // (`oracle_server.capture_all_elements` emits exactly the same keys).
+    /// `CktElement.Enabled` — present for EVERY element under the flag, so the
+    /// enabled-only polar capture below can never silently drop an element.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    enabled: Option<bool>,
+    /// `CurrentsMagAng`, de-interleaved into magnitude (A) and angle (degrees)
+    /// the way `i_re`/`i_im` already are, so the comparator never does stride-2
+    /// index arithmetic.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    cma_mag: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    cma_ang: Vec<f64>,
+    /// `Residuals` — one `(magnitude, angle)` pair per terminal.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    res_mag: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    res_ang: Vec<f64>,
+    /// `VoltagesMagAng` — magnitude (V) and angle (degrees) per conductor.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    vma_mag: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    vma_ang: Vec<f64>,
+    // The GOLDEN_REBASE G1.3d(i) discrete extras, emitted only under
+    // `RunRequest::element_extras` — every one is skipped when empty/absent, so
+    // an off-flag reply keeps the byte-for-byte shape it had before G1.3d(i)
+    // (`oracle_server.capture_all_elements` emits exactly the same keys).
+    /// `NumTerminals` / `NumConductors` / `NumPhases` — present for EVERY
+    /// element under the flag (all three are pure field reads on both engines).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    n_terms: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    n_conds: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    n_phases: Option<i32>,
+    /// `EnergyMeter`, RAW: `"0"` is this channel's "no meter" sentinel
+    /// (`DDLL/DCktElement.pas:421`) where capi spells the same state `""`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    energy_meter: Option<String>,
+    /// `NodeOrder` — bus-local node number per conductor per terminal, read
+    /// only for an `Enabled` element with `NumTerminals > 0` (see
+    /// [`capture_all_elements`]).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    node_order: Vec<i32>,
+    // The GOLDEN_REBASE G1.3d(ii) additions, emitted under the same
+    // `RunRequest::element_extras` flag and skipped when empty/absent, so an
+    // off-flag reply keeps the byte-for-byte shape it had before G1.3d(ii)
+    // (`oracle_server.capture_all_elements` emits exactly the same keys).
+    /// `PhaseLosses`, de-interleaved into kW and kvar the way `p_kw`/`p_kvar`
+    /// already are. Length `NPhases` each — empty for a 0-phase element
+    /// (`UPFCControl`), which is why the pair is skipped-when-empty rather than
+    /// `Option`: an empty capture and an empty reading are the same fact here.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pl_kw: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pl_kvar: Vec<f64>,
+    /// The five control-derived scalars [`Engine::element_extras`] reads —
+    /// present for EVERY element under the flag (none of them is conditional).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    num_controls: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ocp_dev_index: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ocp_dev_type: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    has_volt_control: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    has_switch_control: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -188,6 +320,115 @@ struct MeterCap {
     branches: Vec<String>,
     ends: Vec<String>,
     pce: Vec<String>,
+}
+
+/// The reliability surface of one case (GOLDEN_REBASE G1.6(i)), captured once —
+/// on the last checkpoint, right after the executive `RelCalc` ran.
+///
+/// Key names and types are the contract on the wire (the worker serializes
+/// through `serde_json::Value`, which sorts object keys, so JSON order carries
+/// no meaning); they match `oracle_server.capture_reliability` field for field,
+/// which is what the gate's harness deserializes on both channels.
+#[derive(Serialize)]
+pub struct ReliabilityCap {
+    /// The `RelCalc` hit the tolerated `52902` abort ([`Engine::relcalc`]).
+    pub aborted: bool,
+    /// The abort message, verbatim; empty when it did not abort.
+    pub message: String,
+    /// Every **enabled** meter, in `Meters.First`/`Next` order.
+    pub meters: Vec<MeterReliabilityCap>,
+    /// `Meters.Totals` — read LAST, see [`capture_reliability`].
+    pub totals: Vec<f64>,
+}
+
+/// One meter's reliability record. Field order here is the *shape* contract, not
+/// the read order — see [`capture_reliability`], which reads in
+/// `IMeters._columns` order.
+#[derive(Serialize)]
+pub struct MeterReliabilityCap {
+    pub name: String,
+    /// `MetersI(20)`: `BusTotalNumCustomers` of the first sequence-list
+    /// element's `FromTerminal` bus (`DMeters.pas:232-242`).
+    pub total_customers: i32,
+    pub saifi: f64,
+    /// `MetersF(1)`; the API spells it `SAIFIkW`.
+    pub saifikw: f64,
+    pub saidi: f64,
+    pub cust_interrupts: f64,
+    /// `MetersV(6)`: `Cabs(CalculatedCurrent[k+1])`, `k = 0..NPhases-1` —
+    /// **no** `MeteredTerminal` offset (`DMeters.pas:609-624`), unlike the
+    /// writer `TMeterElement.CalcAllocationFactors`.
+    pub calc_current: Vec<f64>,
+    /// `MetersV(8)`: `PhsAllocationFactor[1..NPhases]` (`DMeters.pas:645-661`).
+    pub alloc_factors: Vec<f64>,
+    /// The three zone lists, **ordered** as the DDLL's `BranchList` walk emits
+    /// them (`DMeters.pas:706-734`, `:682-705`, `:735-762`); the existing
+    /// `meters` capture compares the same names as a set.
+    pub branches: Vec<String>,
+    pub ends: Vec<String>,
+    pub pce: Vec<String>,
+    pub num_sections: i32,
+    pub sections: Vec<FeederSectionCap>,
+}
+
+/// One feeder section of one meter, read behind its own
+/// `Meters.SetActiveSection`.
+#[derive(Serialize)]
+pub struct FeederSectionCap {
+    /// The 1-based index handed to `Meters.SetActiveSection`.
+    pub idx: i32,
+    pub num_section_customers: i32,
+    pub num_section_branches: i32,
+    pub sect_seq_idx: i32,
+    pub sect_total_cust: i32,
+    /// 1 = Fuse, 2 = Recloser, 3 = Relay (`EnergyMeter.pas`); 0 = none.
+    pub ocp_device_type: i32,
+    pub sum_branch_flt_rates: f64,
+    /// `SumFltRatesXRepairHrs / SumBranchFltRates`, **unguarded** on every
+    /// engine — a section with no fault rate is `0/0 = NaN` identically
+    /// everywhere.
+    pub avg_repair_time: f64,
+    pub fault_rate_x_repair_hrs: f64,
+}
+
+/// One enabled PD element's `PDElements` record (GOLDEN_REBASE G1.6b): the
+/// thirteen columns `IPDElements._columns` compares wholesale on
+/// `DSS-Python origin/fastdss:dss/IPDElements.py`, plus `parent_name` — the
+/// parent's full name, which `ParentPDElement`'s active-element hijack hands
+/// out for free and which is immune to the `ClassIndex` ambiguity a bare
+/// per-class index carries.
+///
+/// Field order **is** the read order, and the read order is the contract: the
+/// twelve order-free reads first, then `parent_class_index`
+/// (`DPDELements.pas:88-97` reassigns `ActiveCktElement` to the parent and never
+/// restores it), then the parent's name off that hijacked cursor. The key
+/// *names* and types are the contract on the wire — the worker's
+/// `serde_json::Value` sorts object keys, so JSON order carries no meaning —
+/// and they match `oracle_server.capture_pd_elements` field for field, which is
+/// what `harness::PdElementCap` deserializes on both channels.
+#[derive(Serialize)]
+pub struct PdElementCap {
+    pub name: String,
+    pub accumulated_l: f64,
+    /// 1-based, as the DDLL reports it (`TPDElement.FromTerminal`); 0 = unset.
+    pub from_terminal: i32,
+    /// `PDElementsI(3)` answers 0/1; normalized to the `bool` the capi channel
+    /// returns, so the two transports agree on the JSON shape.
+    pub is_shunt: bool,
+    pub num_customers: i32,
+    pub section_id: i32,
+    pub fault_rate: f64,
+    pub repair_time: f64,
+    /// `AccumulatedMilesDownStream` (`DPDELements.pas:201-209`) — a different
+    /// quantity from `Bus.TotalMiles`.
+    pub total_miles: f64,
+    pub total_customers: i32,
+    pub pct_permanent: f64,
+    pub lambda: f64,
+    /// The parent's `ClassIndex` (1-based, per-class creation order), 0 = none.
+    pub parent_class_index: i32,
+    /// The parent's full `Class.Name`, `""` when there is no parent.
+    pub parent_name: String,
 }
 
 #[derive(Serialize)]
@@ -333,6 +574,67 @@ pub struct PropsCap {
     pub props: Vec<(String, String)>,
 }
 
+/// The five `Circuit` aggregates of `GOLDEN_REBASE_PLAN.md` G1.9, in the exact
+/// shape `oracle_server.capture_aggregates` emits.
+///
+/// The units are in the key names because r4133 does not scale them uniformly:
+/// `Circuit.Losses` (`DDLL/DCircuit.pas:294` -> `Common/Circuit.pas:2436-2443`)
+/// is raw **W/var**, while `LineLosses` (`DCircuit.pas:305-325`),
+/// `SubstationLosses` (`:327-347`), `TotalPower` (`:349-368`) and
+/// `AllElementLosses` (`:458-479`) all carry the arm's own
+/// `cmulreal(..., 0.001)` and are kW/kvar.
+#[derive(Serialize)]
+struct AggregatesCap {
+    losses_w: Vec<f64>,
+    line_losses_kw: Vec<f64>,
+    substation_losses_kw: Vec<f64>,
+    total_power_kw: Vec<f64>,
+    all_element_losses_kw: Vec<f64>,
+}
+
+/// The ten `Solution` scalars of G1.9, in the exact shape
+/// `oracle_server.capture_solution_scalars` emits.
+///
+/// `iterations` and `dbl_hour` are deliberately absent — [`Checkpoint`] already
+/// carries and the gate already compares them.
+#[derive(Serialize)]
+struct SolutionScalarsCap {
+    mode: i32,
+    hour: i32,
+    year: i32,
+    control_iterations: i32,
+    total_iterations: i32,
+    most_iterations_done: i32,
+    /// `SolutionI(42)` is a `0|1` int (`DSolution.pas:226-230`); normalized to
+    /// the capi transport's JSON `bool` here, at the bridge.
+    control_actions_done: bool,
+    /// `SolutionI(37)`, same `0|1` normalization (`DSolution.pas:192-197`).
+    system_y_changed: bool,
+    seconds: f64,
+    load_mult: f64,
+}
+
+/// The six `Topology` quantities of `GOLDEN_REBASE_PLAN.md` G1.7, in the exact
+/// shape `oracle_server.capture_topology` emits (identical JSON keys, identical
+/// normalized list shape) — the six rows of `DDLL/DTopology.pas` that never
+/// touch `ActiveCircuit.ActiveCktElement`. See [`capture_topology`].
+///
+/// `looped_pairs` is FLAT, `[a0, b0, a1, b1, ...]`: `TopologyV(0)`
+/// (`DTopology.pas:270-305`) writes the two `QualifiedName`s of one looped pair
+/// as two consecutive entries. The comparator pairs them up; the count is NOT
+/// its length — `num_loops` is the `IsLoopedHere` tally halved
+/// (`DTopology.pas:65-73`, `Result := Result div 2`), so IEEE13 answers
+/// `num_loops = 1` with three pairs.
+#[derive(Serialize)]
+struct TopologyCap {
+    num_loops: i32,
+    num_isolated_branches: i32,
+    num_isolated_loads: i32,
+    looped_pairs: Vec<String>,
+    isolated_branches: Vec<String>,
+    isolated_loads: Vec<String>,
+}
+
 // ---------------------------------------------------------------------------
 // The run.
 // ---------------------------------------------------------------------------
@@ -362,6 +664,43 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             } else {
                 String::new()
             };
+
+            // GOLDEN_REBASE G1.6(i): the executive `RelCalc` runs exactly ONCE
+            // per case — on the LAST step, after the solve reply has been read
+            // (`RelCalc` overwrites `Text.Result` with its own empty reply) and
+            // BEFORE every capture of this checkpoint, which is the slot
+            // `oracle_server.run_case` uses on the capi transport. It is not
+            // idempotent (`Bus.TotalMiles` accumulates across calls), so a
+            // per-step drive would be semantically wrong, not merely slower.
+            let relcalc = if req.reliability && step + 1 == req.n_steps {
+                Some(engine.relcalc()?)
+            } else {
+                None
+            };
+
+            // G1.9 (`GOLDEN_REBASE_PLAN.md`, §1.1(a) + decision D3) — the circuit
+            // aggregates and the solution scalars, read HERE and nowhere later,
+            // for two independent reasons:
+            //  * group A before group B. Every aggregate is a
+            //    `Get_Losses`/`Get_Power` read, i.e. a `ComputeIterminal`
+            //    (`Common/CktElement.pas:743` / `:677-680`) over the elements it
+            //    walks, while `capture_all_elements` below issues Powers *then*
+            //    `Currents` per element — and `Currents` is the read that fills a
+            //    scratch buffer. Group A therefore runs first.
+            //  * cursor hygiene. `Losses` walks PDElements, `LineLosses` walks
+            //    Lines, `SubstationLosses` walks Transformers, `TotalPower` walks
+            //    Sources and `AllElementLosses` walks CktElements
+            //    (`DDLL/DCircuit.pas:294/313/335/356/468`), each leaving that
+            //    `TPointerList` cursor at the end — and `capture_discrete` below
+            //    drives `Transformers.First/Next`. Reading before any First/Next
+            //    walk removes the interaction by construction.
+            // G1.6(i)'s once-per-case `RelCalc` above precedes this block: a
+            // state-changing command runs ahead of every read of the
+            // checkpoint, on both transports.
+            // Mirrors `oracle_server.run_case` exactly; the source order of both
+            // transports is asserted by `crates/dss-core/tests/capture_order.rs`.
+            let aggregates = capture_aggregates(engine, warn)?;
+            let solution_scalars = capture_solution_scalars(engine)?;
 
             // selected_elements=["*"] -> every YPrim-bearing element (rebuilt each
             // solve so a deck that adds an element mid-solve is covered).
@@ -406,7 +745,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             }
             engine.assert_clean("yprims")?;
 
-            let elements = capture_all_elements(engine, warn)?;
+            let elements = capture_all_elements(engine, warn, req.derived, req.element_extras)?;
 
             let inj = engine.injection_raw(engine.num_nodes());
             let injection = capture_injection(&inj);
@@ -421,6 +760,25 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 capture_meters(engine)?
             } else {
                 Vec::new()
+            };
+
+            // The reliability reads sit between the meter walk and the
+            // PD-elements walk on both transports; `Some` on exactly the step
+            // whose `RelCalc` ran (the last one).
+            let reliability = match &relcalc {
+                Some(rel) => Some(capture_reliability(engine, rel)?),
+                None => None,
+            };
+
+            // After the meters and BEFORE the probes — the slot
+            // `oracle_server.run_case` gives it, so the two transports issue the
+            // walk at the same point of the step. The walk is an active-element
+            // mutator (`PDElements.First/Next/ParentPDElement`), so its
+            // placement is fixed, not incidental.
+            let pd_elements = if req.pd_elements {
+                Some(capture_pd_elements(engine)?)
+            } else {
+                None
             };
 
             let probes = capture_probes(engine, &req.probes)?;
@@ -470,6 +828,18 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             } else {
                 Vec::new()
             };
+            // G1.7 — read STRICTLY LAST, after `all_properties`, on both
+            // transports (`oracle_server.run_case` does the same; the source
+            // order of both is asserted by
+            // `crates/dss-core/tests/capture_order.rs`). Why last, and why
+            // these six modes only: see [`capture_topology`].
+            let topology = if req.topology {
+                let cap = capture_topology(engine)?;
+                engine.assert_clean("topology")?;
+                Some(cap)
+            } else {
+                None
+            };
 
             let _ = step;
             checkpoints.push(Checkpoint {
@@ -488,6 +858,8 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 capacitors,
                 monitors,
                 meters,
+                reliability,
+                pd_elements,
                 probes,
                 variables,
                 eventlog,
@@ -496,6 +868,9 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 all_bus_vmag_pu,
                 all_properties,
                 global_result,
+                aggregates,
+                solution_scalars,
+                topology,
             });
         }
 
@@ -630,13 +1005,157 @@ fn capture_injection(flat: &[f64]) -> Injection {
     }
 }
 
+/// Group A of the step capture (`GOLDEN_REBASE_PLAN.md` G1.9): the five
+/// `Circuit` aggregates, read before any group-B (`Currents`) read and before
+/// any `First/Next` walk. See the call site in [`run_case`] for the ordering
+/// argument and the Pascal citations.
+///
+/// The retry mirrors `Engine::element_pcl`: on a `warn_and_continue` deck the
+/// first post-solve `ComputeIterminal` fires one non-fatal user-model
+/// `DoSimpleMsg` (#567/#570/#1570) and clears it, and since G1.9 that first
+/// recompute happens here. The reads are pure, so repeating all five is
+/// idempotent; anything but a tolerated errno — and any errno at all on the
+/// second attempt — is returned as an error, never absorbed.
+fn capture_aggregates(engine: &Engine, warn: bool) -> Result<AggregatesCap, EngineError> {
+    for attempt in 0..2 {
+        let losses = engine.circuit_losses()?;
+        let line_losses = engine.circuit_line_losses()?;
+        let substation_losses = engine.circuit_substation_losses()?;
+        let total_power = engine.circuit_total_power()?;
+        let all_element_losses = engine.circuit_all_element_losses()?;
+        let (errno, desc) = engine.poll_error();
+        if errno == 0 {
+            return Ok(AggregatesCap {
+                losses_w: complex_pair(&losses, "Circuit.Losses")?,
+                line_losses_kw: complex_pair(&line_losses, "Circuit.LineLosses")?,
+                substation_losses_kw: complex_pair(&substation_losses, "Circuit.SubstationLosses")?,
+                total_power_kw: complex_pair(&total_power, "Circuit.TotalPower")?,
+                all_element_losses_kw: all_element_losses,
+            });
+        }
+        if warn && USER_MODEL_ERRNOS.contains(&errno) && attempt == 0 {
+            continue; // priming read fired + cleared the warning; retry once
+        }
+        return Err(EngineError::Dss {
+            errno,
+            desc,
+            ctx: "aggregates".to_string(),
+        });
+    }
+    unreachable!()
+}
+
+/// A `myType = 3` single-element complex reply as the `[re, im]` pair the capi
+/// transport emits.
+///
+/// The length is checked, not padded: all four `CircuitV` aggregate modes do
+/// `setlength(myCmplxArray, 1)` unconditionally before any `nil` test
+/// (`DDLL/DCircuit.pas:293-303`, `:305-325`, `:327-347`, `:349-368`), so a
+/// reply that is not exactly two doubles is a transport failure, never a value.
+/// Padding it would be indistinguishable from the true answer for
+/// `SubstationLosses`, which is a legitimate `(0, 0)` on every deck without a
+/// `sub=yes` transformer (G1.9 audit CODE-3 / T4).
+fn complex_pair(v: &[f64], what: &str) -> Result<Vec<f64>, EngineError> {
+    if v.len() != 2 {
+        return Err(EngineError::Other(format!(
+            "{what}: the DLL returned {} double(s) for a myType=3 complex \
+             reply, expected exactly 2 (`DDLL/DCircuit.pas` sets length 1 \
+             unconditionally, so this is a transport failure)",
+            v.len()
+        )));
+    }
+    Ok(vec![v[0], v[1]])
+}
+
+/// Group C of the step capture: the ten order-free `Solution` scalars of G1.9.
+///
+/// The two flag reads come back from r4133 as `0|1` ints
+/// (`DSolution.pas:192-197` and `:226-230`, both `IF ... THEN Result := 1`), so
+/// the `!= 0` here is the bridge-level normalization that keeps this transport's
+/// `CaseResult` JSON byte-shape-identical to `oracle_server`'s, whose
+/// dss-python reads are already Python `bool`s. Pinned by
+/// `tests/modes.rs::r4133_solution_flags_are_zero_one_ints`.
+fn capture_solution_scalars(engine: &Engine) -> Result<SolutionScalarsCap, EngineError> {
+    let cap = SolutionScalarsCap {
+        mode: engine.solution_mode()?,
+        hour: engine.solution_hour()?,
+        year: engine.solution_year()?,
+        control_iterations: engine.solution_control_iterations()?,
+        total_iterations: engine.solution_total_iterations()?,
+        most_iterations_done: engine.solution_most_iterations_done()?,
+        control_actions_done: engine.solution_control_actions_done()? != 0,
+        system_y_changed: engine.solution_system_y_changed()? != 0,
+        seconds: engine.solution_seconds()?,
+        load_mult: engine.solution_load_mult()?,
+    };
+    engine.assert_clean("solution scalars")?;
+    Ok(cap)
+}
+
 /// `capture_all_elements`: every element's terminal currents/powers/losses, read
-/// Powers-then-Currents-then-Losses with the user-model retry.
-fn capture_all_elements(engine: &Engine, warn: bool) -> Result<Vec<ElementCap>, EngineError> {
-    let names = engine.all_element_names();
+/// Losses-then-Powers-then-Currents (the §1.1(a)/D3 order —
+/// [`Engine::element_pcl`]) with the user-model retry.
+///
+/// Under `derived` (manifest flag `compare_derived`, GOLDEN_REBASE G1.3a) each
+/// element also reports `CktElement.Enabled`, and every **enabled** element the
+/// three polar channels [`Engine::element_polar`] reads. Disabled elements are
+/// skipped there deliberately: `CktElementV(19)` kills the process on an element
+/// whose `NodeRef` was never allocated (spec §1.4-H1, and the doc of
+/// `element_polar`), while `enabled` itself is captured for every element so the
+/// skip cannot hide one.
+///
+/// Under `extras` (manifest flag `compare_element_extras`, GOLDEN_REBASE
+/// G1.3d) each element also reports `Enabled`, `PhaseLosses` and the nine
+/// discrete scalars [`Engine::element_extras`] reads, plus `NodeOrder`
+/// (`CktElementV(17)`,
+/// `DDLL/DCktElement.pas:1032`) for the elements that are **enabled** and have
+/// **at least one terminal**. Both conditions come from the sources, not from
+/// caution: mode 17 dereferences `NodeRef^[j]` with no nil guard (`:1048`), so a
+/// never-enabled element kills the worker exactly as `CktElementV(19)` does;
+/// and on a 0-terminal element (`UPFCControl` never assigns `Nterms` —
+/// `Controls/UPFCControl.pas:230-246`) this channel would return a 0-length
+/// array while capi raises 15013 from its nil-`NodeRef` guard
+/// (`CAPI/CAPI_CktElement.pas:900-906`) — not issuing the read removes that shape
+/// asymmetry instead of normalizing it. The comparator asserts both sides are
+/// empty there, so neither skip can hide a payload.
+///
+/// `PhaseLosses` (GOLDEN_REBASE G1.3d(ii), [`Engine::element_phase_losses`]) is
+/// the one addition that is NOT order-free: it runs `GetPhaseLosses`' own
+/// `ComputeIterminal` (r4133 `Common/CktElement.pas:1090`), so it is group **A**
+/// and is issued FIRST — ahead of `element_pcl`'s `Losses`/`Powers` — which is
+/// what keeps every group-A read of the element ahead of the group-B `Currents`.
+/// It is read for every element, enabled or not: `GetPhaseLosses` zero-fills a
+/// disabled one (`:1118-1119`) without touching `NodeRef`, so it needs neither
+/// of the two predicates above.
+///
+/// Every read line carries a machine-checkable `capture-order: NAME (A|B|C)`
+/// marker whose group is [`crate::modes::capture_group_of`]'s — a call into
+/// another capture helper declares the reads that helper performs, in its order
+/// (`crates/dss-core/tests/capture_order.rs` is the gate). A *selector*
+/// (`AllElementNames`, `SetActiveElement`) has no mode row: it moves a cursor
+/// rather than reading a quantity, so it is order-free by construction and the
+/// gate declares it, not the mode table.
+fn capture_all_elements(
+    engine: &Engine,
+    warn: bool,
+    derived: bool,
+    extras: bool,
+) -> Result<Vec<ElementCap>, EngineError> {
+    let names = engine.all_element_names(); // capture-order: AllElementNames (C)
     let mut out = Vec::with_capacity(names.len());
     for name in names {
-        engine.set_active_element(&name);
+        engine.set_active_element(&name); // capture-order: SetActiveElement (C)
+        let enabled = if derived || extras {
+            Some(engine.ckt_element_enabled()?) // capture-order: Enabled (C)
+        } else {
+            None
+        };
+        let mut pl = Vec::new();
+        if extras {
+            let ctx = format!("element {name} phase losses");
+            pl = engine.element_phase_losses(warn, &ctx)?; // capture-order: PhaseLosses (A)
+        }
+        // capture-order: Losses (A), Powers (A), Currents (B)
         let (powers, currents, losses) = engine.element_pcl(warn, &format!("element {name}"))?;
         let (i_re, i_im) = deinterleave(&currents);
         let (p_kw, p_kvar) = deinterleave(&powers);
@@ -644,14 +1163,63 @@ fn capture_all_elements(engine: &Engine, warn: bool) -> Result<Vec<ElementCap>, 
             losses.first().copied().unwrap_or(0.0),
             losses.get(1).copied().unwrap_or(0.0),
         ];
-        out.push(ElementCap {
+        let mut cap = ElementCap {
             name,
             i_re,
             i_im,
             p_kw,
             p_kvar,
             loss_w,
-        });
+            enabled,
+            cma_mag: Vec::new(),
+            cma_ang: Vec::new(),
+            res_mag: Vec::new(),
+            res_ang: Vec::new(),
+            vma_mag: Vec::new(),
+            vma_ang: Vec::new(),
+            n_terms: None,
+            n_conds: None,
+            n_phases: None,
+            energy_meter: None,
+            node_order: Vec::new(),
+            pl_kw: Vec::new(),
+            pl_kvar: Vec::new(),
+            num_controls: None,
+            ocp_dev_index: None,
+            ocp_dev_type: None,
+            has_volt_control: None,
+            has_switch_control: None,
+        };
+        if derived && enabled == Some(true) {
+            // capture-order: CurrentsMagAng (B), Residuals (B), VoltagesMagAng (C)
+            let (cma, res, vma) =
+                engine.element_polar(warn, &format!("element {} derived", cap.name))?;
+            (cap.cma_mag, cap.cma_ang) = deinterleave(&cma);
+            (cap.res_mag, cap.res_ang) = deinterleave(&res);
+            (cap.vma_mag, cap.vma_ang) = deinterleave(&vma);
+        }
+        if extras {
+            // capture-order: NumTerminals (C), NumConductors (C), NumPhases (C), EnergyMeter (C)
+            // capture-order: NumControls (C), OCPDevIndex (C), OCPDevType (C)
+            // capture-order: HasVoltControl (C), HasSwitchControl (C)
+            let ex = engine.element_extras(&format!("element {} extras", cap.name))?;
+            let n_terms = ex.n_terms;
+            cap.n_terms = Some(n_terms);
+            cap.n_conds = Some(ex.n_conds);
+            cap.n_phases = Some(ex.n_phases);
+            cap.energy_meter = Some(ex.energy_meter);
+            (cap.pl_kw, cap.pl_kvar) = deinterleave(&pl);
+            cap.num_controls = Some(ex.num_controls);
+            cap.ocp_dev_index = Some(ex.ocp_dev_index);
+            cap.ocp_dev_type = Some(ex.ocp_dev_type);
+            cap.has_volt_control = Some(ex.has_volt_control);
+            cap.has_switch_control = Some(ex.has_switch_control);
+            if enabled == Some(true) && n_terms > 0 {
+                cap.node_order = engine.ckt_element_node_order()?; // capture-order: NodeOrder (C)
+                engine.assert_clean(&format!("element {} node order", cap.name))?;
+            }
+        }
+        out.push(cap);
     }
     Ok(out)
 }
@@ -732,6 +1300,188 @@ fn capture_meters(engine: &Engine) -> Result<Vec<MeterCap>, EngineError> {
         has = engine.meters_next();
     }
     engine.assert_clean("meters")?;
+    Ok(out)
+}
+
+/// The reliability surface (GOLDEN_REBASE G1.6(i)): every meter's reliability
+/// indices, its three ordered zone lists, its allocation state and each of its
+/// feeder sections, plus the circuit-wide `Meters.Totals`.
+///
+/// Called **after** [`capture_meters`] and **before** [`capture_pd_elements`] —
+/// the slot `oracle_server.run_case` gives it — and only on the step whose
+/// [`Engine::relcalc`] just ran, whose outcome comes in as `rel`.
+///
+/// # The read order is the contract
+/// 1. per meter, the non-section fields in `IMeters._columns` order
+///    (`DSS-Python origin/fastdss:dss/IMeters.py:13-42`), with `ZonePCE` — which
+///    `_columns` does not list — appended to the two zone lists;
+/// 2. still inside the per-meter loop, `Meters.SetActiveSection(k)` for
+///    `k in 1..=NumSections` followed by that section's eight fields, again in
+///    `_columns` order. `ActiveSection` is a per-meter field the meter walk never
+///    resets (`DMeters.pas:254-264`), so a section read without its selector
+///    would answer for the previous section;
+/// 3. `Meters.Totals` **last, after the walk has finished**: it calls
+///    `TotalizeMeters` (`DMeters.pas:566` -> `Common/Circuit.pas:2520-2538`),
+///    which itself walks `EnergyMeters.First`/`Next` and so leaves the meter
+///    cursor past the end — reading it mid-walk silently truncates the capture
+///    (measured on both transports; fastdss says the same at
+///    `save_outputs.py:330-332`).
+///
+/// This is group **C** of the capture-order partition (`GOLDEN_REBASE_PLAN.md`
+/// §1.1(a), coordinator decision D3): not one read here goes through
+/// `GetCurrents` into a scratch buffer (`Meters.CalcCurrent` returns the
+/// *stored* `CalculatedCurrent` array, `DMeters.pas:609-624`), so this surface
+/// neither imposes anything on the element capture order nor inherits anything
+/// from it.
+///
+/// Stronger than fastdss on purpose: `save_outputs.py:283-291` captures the
+/// **first** section only, this captures every one of them.
+pub fn capture_reliability(
+    engine: &Engine,
+    rel: &RelCalcResult,
+) -> Result<ReliabilityCap, EngineError> {
+    let mut meters = Vec::new();
+    // `RelCalc` itself walked `EnergyMeters.First`/`Next` to the end
+    // (`ExecHelper.pas:4417`, `:4439-4441`), so the walk must restart from `First`.
+    let mut has = engine.meters_first();
+    while has {
+        // `IMeters._columns` order, section fields excluded (step 1 above).
+        let name = engine.meter_name();
+        let alloc_factors = engine.meters_alloc_factors()?;
+        let ends = lst(engine.meter_all_end_elements());
+        let saifikw = engine.meters_saifi_kw()?;
+        let saidi = engine.meters_saidi()?;
+        let total_customers = engine.meters_total_customers()?;
+        let saifi = engine.meters_saifi()?;
+        let cust_interrupts = engine.meters_cust_interrupts()?;
+        let calc_current = engine.meters_calc_current()?;
+        let branches = lst(engine.meter_all_branches_in_zone());
+        let pce = lst(engine.meter_zone_pce());
+        let num_sections = engine.meters_num_sections()?;
+        // Step 2: select, then read that section's fields — again in
+        // `_columns` order (`NumSectionCustomers`, `SectSeqIdx`,
+        // `SumBranchFltRates`, `AvgRepairTime`, `SectTotalCust`,
+        // `OCPDeviceType`, `FaultRateXRepairHrs`, `NumSectionBranches`).
+        let mut sections = Vec::with_capacity(num_sections.max(0) as usize);
+        for idx in 1..=num_sections {
+            engine.meters_set_active_section(idx)?;
+            let num_section_customers = engine.meters_num_section_customers()?;
+            let sect_seq_idx = engine.meters_sect_seq_idx()?;
+            let sum_branch_flt_rates = engine.meters_sum_branch_flt_rates()?;
+            let avg_repair_time = engine.meters_avg_repair_time()?;
+            let sect_total_cust = engine.meters_sect_total_cust()?;
+            let ocp_device_type = engine.meters_ocp_device_type()?;
+            let fault_rate_x_repair_hrs = engine.meters_fault_rate_x_repair_hrs()?;
+            let num_section_branches = engine.meters_num_section_branches()?;
+            sections.push(FeederSectionCap {
+                idx,
+                num_section_customers,
+                num_section_branches,
+                sect_seq_idx,
+                sect_total_cust,
+                ocp_device_type,
+                sum_branch_flt_rates,
+                avg_repair_time,
+                fault_rate_x_repair_hrs,
+            });
+        }
+        meters.push(MeterReliabilityCap {
+            name,
+            total_customers,
+            saifi,
+            saifikw,
+            saidi,
+            cust_interrupts,
+            calc_current,
+            alloc_factors,
+            branches,
+            ends,
+            pce,
+            num_sections,
+            sections,
+        });
+        has = engine.meters_next();
+    }
+    // Step 3: LAST, after the walk — `TotalizeMeters` ends it.
+    let totals = engine.meters_totals()?;
+    engine.assert_clean("reliability")?;
+    Ok(ReliabilityCap {
+        aborted: rel.aborted,
+        message: rel.message.clone(),
+        meters,
+        totals,
+    })
+}
+
+/// The `PDElements` walk (GOLDEN_REBASE G1.6b): every **enabled** PD element of
+/// the circuit, in `PDElements` pointer-list order (`DPDELements.pas:27-59`
+/// skips the disabled ones, exactly like the capi channel's
+/// `Generic_CktElement_Get_First/Next`).
+///
+/// The read order inside a record is load-bearing.
+/// `PDElementsI(6)` (`PDElements.ParentPDElement`, `DPDELements.pas:88-97`)
+/// does `ActiveCktElement := ActivePDElement.ParentPDElement` and never restores
+/// it, so **every** field read after it in the same record returns the
+/// *parent's* value: fastdss reads it second (`IPDElements._columns`) and
+/// contaminates 215 of the 138-element IEEE123 walk's own cells (measured on
+/// both channels, 2026-09-04). This capture therefore reads it **last**, and
+/// only then reads the name off the hijacked cursor to obtain `parent_name`.
+/// When there is no parent the DDLL leaves `ActiveCktElement` alone
+/// (`DPDELements.pas:92` "leaves ActiveCktElement as is"), so the name read is
+/// skipped — it would echo the element's own name.
+///
+/// The iteration itself survives the hijack: `First`/`Next` drive the circuit's
+/// `PDElements` pointer list, not `ActiveCktElement`.
+///
+/// The walk length is **not** `PDElements.Count` (`PDElementsI(0)` returns the
+/// raw `ListSize`, disabled elements included): measured on a two-line circuit
+/// with one `enabled=no` line, `I:0` = 2 while the walk yields the one enabled
+/// element. A circuit with no PD element at all returns an empty `Vec` — 96 of
+/// the 372 walked live corpus cases are in that shape, so the gate's guard is
+/// presence-based, never `len() > 0`.
+pub fn capture_pd_elements(engine: &Engine) -> Result<Vec<PdElementCap>, EngineError> {
+    let mut out = Vec::new();
+    let mut has = engine.pd_elements_first()?;
+    while has {
+        // The twelve order-free reads, in the `IPDElements._columns` order.
+        let name = engine.pd_elements_name()?;
+        let accumulated_l = engine.pd_elements_accumulated_l()?;
+        let from_terminal = engine.pd_elements_from_terminal()?;
+        let is_shunt = engine.pd_elements_is_shunt()? != 0;
+        let num_customers = engine.pd_elements_num_customers()?;
+        let section_id = engine.pd_elements_section_id()?;
+        let fault_rate = engine.pd_elements_fault_rate()?;
+        let repair_time = engine.pd_elements_repair_time()?;
+        let total_miles = engine.pd_elements_total_miles()?;
+        let total_customers = engine.pd_elements_total_customers()?;
+        let pct_permanent = engine.pd_elements_pct_permanent()?;
+        let lambda = engine.pd_elements_lambda()?;
+        // LAST: this moves `ActiveCktElement` to the parent (see the doc above).
+        let parent_class_index = engine.pd_elements_parent_pd_element()?;
+        let parent_name = if parent_class_index != 0 {
+            engine.pd_elements_name()?
+        } else {
+            String::new()
+        };
+        out.push(PdElementCap {
+            name,
+            accumulated_l,
+            from_terminal,
+            is_shunt,
+            num_customers,
+            section_id,
+            fault_rate,
+            repair_time,
+            total_miles,
+            total_customers,
+            pct_permanent,
+            lambda,
+            parent_class_index,
+            parent_name,
+        });
+        has = engine.pd_elements_next()?;
+    }
+    engine.assert_clean("pd_elements")?;
     Ok(out)
 }
 
@@ -826,6 +1576,101 @@ fn capture_all_properties(engine: &Engine) -> Result<Vec<PropsCap>, EngineError>
         });
     }
     Ok(out)
+}
+
+/// The G1.7 topology capture: the six order-free `Topology` rows, read LAST in
+/// the step (after [`capture_all_properties`]) on both transports.
+///
+/// Two independent reasons for "last", the stronger one first:
+///  * the FIRST `Topology` read is what BUILDS the tree — every arm goes through
+///    `ActiveTree = ActiveCircuit.GetTopology` (`DDLL/DTopology.pas:13-17`),
+///    which memoizes it (`Common/Circuit.pas:2932-2950`) and on the way rewrites
+///    `Checked` / `IsIsolated` / `BusChecked` on every element (`:2937-2947`).
+///    Nothing in today's capture reads those flags, but reading last makes that
+///    independent of every future addition — the argument that put
+///    `all_properties` last.
+///  * `TopologyI(1)`/`(2)` and `TopologyV(1)`/`(2)` walk
+///    `ActiveCircuit.PDElements` / `PCElements` `.First`/`.Next` to exhaustion
+///    (`DTopology.pas:75-84`, `:85-94`, `:319-352`, `:354-390`; recorded as
+///    `modes::TOPOLOGY_*`'s `TOPO_PD_LIST` / `TOPO_PC_LIST` effects), leaving
+///    those `TPointerList` cursors at the end, where `Circuit.NextPDElement` /
+///    `NextPCElement` would resume.
+///
+/// These six are also the only `Topology` rows that never assign
+/// `ActiveCircuit.ActiveCktElement`: the cursor rows — `ActiveBranch`,
+/// `BranchName`, `ActiveLevel`, `First`/`Next`, `ForwardBranch`,
+/// `BackwardBranch`, `LoopedBranch`, `ParallelBranch`, `FirstLoad`/`NextLoad`
+/// (`DTopology.pas:29-54`, `:96-160`, `:170-186`) and all of `TopologyS` — do,
+/// and would poison the per-element capture, so they are never called. That
+/// absence is asserted from this file's source text by
+/// `crates/dss-core/tests/capture_order.rs` (`GOLDEN_REBASE_PLAN.md` G1.7, the
+/// B16 parity gap: three of `ITopology`'s nine fastdss columns are deliberately
+/// not captured).
+fn capture_topology(engine: &Engine) -> Result<TopologyCap, EngineError> {
+    // Same read order as `oracle_server.capture_topology`: the three counts,
+    // then the three name lists.
+    let num_loops = engine.topology_num_loops()?;
+    let num_isolated_branches = engine.topology_num_isolated_branches()?;
+    let num_isolated_loads = engine.topology_num_isolated_loads()?;
+    let looped_pairs = topo_names(
+        engine.topology_all_looped_pairs()?,
+        "Topology.AllLoopedPairs",
+    )?;
+    let isolated_branches = topo_names(
+        engine.topology_all_isolated_branches()?,
+        "Topology.AllIsolatedBranches",
+    )?;
+    let isolated_loads = topo_names(
+        engine.topology_all_isolated_loads()?,
+        "Topology.AllIsolatedLoads",
+    )?;
+    Ok(TopologyCap {
+        num_loops,
+        num_isolated_branches,
+        num_isolated_loads,
+        looped_pairs,
+        isolated_branches,
+        isolated_loads,
+    })
+}
+
+/// Normalize one `TopologyV` string reply to the list shape both transports
+/// emit — the transport-side sentinel decode, and nothing else.
+///
+/// r4133 pre-seeds `TStr[0] := 'NONE'` and emits that single token for an empty
+/// list (`DTopology.pas:271-275`, `:319-325`, `:354-360`); capi's
+/// `DefaultResult(..., 'NONE')` (`CAPI/CAPI_Utils.pas:115`) does the same, so
+/// `["NONE"] -> []` is a shared decode of "no entries", never a value. A
+/// qualified name is always `Class.name`, so a bare `NONE` can never be a real
+/// entry. Measured on the whole population: 1 281 / 1 555 / 1 694 sentinel
+/// replies over 455 r4133-gating cases, and the capi channel byte-identical
+/// after its own normalization (`GOLDEN_REBASE_PLAN.md` G1.7 §3.1-S1/§3.2).
+///
+/// Every other shape is REFUSED rather than repaired. In particular an empty
+/// entry is a transport failure on this channel, never a value: r4133 filters
+/// them at the source — `DTopology.pas:283-297`, `:337-347`, `:372-382` all
+/// write only `if TStr[i] <> ''` — and 4 530 list reads over those 455 cases
+/// returned exactly zero empty entries. The capi transport is the one that
+/// appends a single trailing `''` (`CAPI_Topology.pas:126-132` sets
+/// `Length := k + 1` and then copies `Length(Result)` entries, while
+/// `AllLoopedPairs` at `:100-115` starts from `k := -1` and does not), and it
+/// drops exactly that one in `oracle_server._topo_names`. That arm has no
+/// counterpart here on purpose: swallowing an empty would hide precisely the
+/// shape change this check exists to catch.
+fn topo_names(v: Vec<String>, what: &str) -> Result<Vec<String>, EngineError> {
+    if v.len() == 1 && v[0] == "NONE" {
+        return Ok(Vec::new());
+    }
+    if let Some(i) = v.iter().position(String::is_empty) {
+        return Err(EngineError::Other(format!(
+            "{what}: an empty entry at index {i} of {} \
+             — r4133 filters empties at the source \
+             (DTopology.pas:337-347), so this is a transport failure, \
+             never a value: {v:?}",
+            v.len()
+        )));
+    }
+    Ok(v)
 }
 
 /// Oracle-free smoke hook (§2.4): dump every element's every property for the
@@ -1114,4 +1959,64 @@ fn read_autoadd_log(engine: &Engine, case_path: &str) -> Option<String> {
     let log = dir.join(format!("{name}_AutoAddLog.csv"));
     let raw = std::fs::read_to_string(log).ok()?;
     Some(raw.replace("\r\n", "\n").replace('\r', "\n"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{complex_pair, topo_names};
+
+    /// A `myType = 3` reply is exactly two doubles or it is a transport
+    /// failure — the bridge must never pad one into a plausible `(0, 0)`
+    /// (`Circuit.SubstationLosses` is a legitimate `(0, 0)` on most decks, so a
+    /// padded short read would be indistinguishable from the true value).
+    /// `DDLL/DCircuit.pas:293-303` sets length 1 unconditionally.
+    #[test]
+    fn complex_pair_refuses_a_reply_that_is_not_two_doubles() {
+        assert_eq!(complex_pair(&[1.5, -2.5], "x").unwrap(), vec![1.5, -2.5]);
+        for short in [&[][..], &[1.0][..], &[1.0, 2.0, 3.0][..]] {
+            let err = complex_pair(short, "Circuit.SubstationLosses")
+                .expect_err("a reply of the wrong length must be an error, not a padded pair");
+            let msg = err.to_string();
+            assert!(
+                msg.contains("Circuit.SubstationLosses") && msg.contains("expected exactly 2"),
+                "unhelpful message: {msg}"
+            );
+        }
+    }
+
+    /// The `TopologyV` sentinel decode, and the shape checks around it (G1.7).
+    ///
+    /// `["NONE"]` is r4133's "no entries" reply (`DTopology.pas:271-275` seeds
+    /// `TStr[0] := 'NONE'`), so it decodes to an empty list; a qualified name is
+    /// always `Class.name`, so nothing real is swallowed. An EMPTY entry is
+    /// refused rather than dropped: r4133 filters empties at the source
+    /// (`DTopology.pas:337-347`) and 4 530 list reads over the 455 r4133-gating
+    /// corpus cases returned none, so one arriving is a transport failure. (The
+    /// capi transport is the one with a single trailing `''`,
+    /// `CAPI_Topology.pas:126-132`; it drops it in `oracle_server._topo_names`.)
+    #[test]
+    fn topo_names_decodes_the_none_sentinel_and_refuses_an_empty_entry() {
+        let n = |v: &[&str]| topo_names(v.iter().map(|s| s.to_string()).collect(), "x");
+        assert_eq!(n(&["NONE"]).unwrap(), Vec::<String>::new());
+        assert_eq!(n(&[]).unwrap(), Vec::<String>::new());
+        // A real one-entry list, and a name that merely contains NONE, survive.
+        assert_eq!(n(&["Line.l1"]).unwrap(), vec!["Line.l1".to_string()]);
+        assert_eq!(n(&["Load.none"]).unwrap(), vec!["Load.none".to_string()]);
+        assert_eq!(
+            n(&["NONE", "Line.l1"]).unwrap(),
+            vec!["NONE".to_string(), "Line.l1".to_string()]
+        );
+        for bad in [&["Line.l1", ""][..], &["", "Line.l1"][..], &["", ""][..]] {
+            let err = topo_names(
+                bad.iter().map(|s| s.to_string()).collect(),
+                "Topology.AllIsolatedBranches",
+            )
+            .expect_err("an empty entry must be an error, not a silent drop");
+            let msg = err.to_string();
+            assert!(
+                msg.contains("Topology.AllIsolatedBranches") && msg.contains("empty entry"),
+                "unhelpful message: {msg}"
+            );
+        }
+    }
 }

@@ -178,12 +178,21 @@ pub struct CktElementData {
     pub accumulated_miles_downstream: f64,
     /// `BranchSectionID`: feeder section this branch belongs to.
     pub branch_section_id: i32,
-    /// [`OcpDeviceType`] of the over-current-protection control at the head of
-    /// this branch's section. Set when an enabled Relay/Recloser/Fuse resolves
-    /// its controlled element (the first OCP control registered wins, matching
-    /// Pascal `GetOCPDeviceType`'s `ControlElementList` scan, which stops at the
-    /// first match). Read only by the reliability sweep when `HAS_OCP_DEVICE`
-    /// is set.
+    /// Registration record: the [`OcpDeviceType`] of the **first enabled**
+    /// over-current-protection control that resolved its controlled element to
+    /// this one (`exec/command.rs`, `RefAction::SetOcpDevice`, first write
+    /// wins — the same write that raises `HAS_OCP_DEVICE`).
+    ///
+    /// **Not** Pascal's `GetOCPDeviceType` and no longer read by the
+    /// reliability sweep (GOLDEN_REBASE G1.3d(ii), adjacent defect A-1): that
+    /// scan has no `Enabled` filter and answers from the live
+    /// `ControlElementList` order, so the two disagree whenever the element's
+    /// first list member is a disabled or later-attached control of another
+    /// class. The sweep recomputes it at
+    /// `solution::meters::reliability::live_ocp_device_type` (r4133
+    /// `Meters/EnergyMeter.pas:2538`), pinned by
+    /// `exec::tests::reliability::section_device_type_is_the_live_ocp_scan_not_the_registration_latch`.
+    /// Retiring this field is A-1's tail; it is read only by tests today.
     pub ocp_device_type: OcpDeviceType,
 }
 
@@ -329,8 +338,26 @@ impl CktElementData {
         self.complex_buffer.resize(self.yorder, Complex64::ZERO);
     }
 
-    /// Pascal `Set_NConds`: changing the conductor count reallocates the
-    /// terminal info and flags `BusNameRedefined`.
+    /// Pascal `Set_NConds` (r4133 `Common/CktElement.pas:349-361`): changing the
+    /// conductor count flags `BusNameRedefined` and re-runs
+    /// [`Self::set_nterms`], whose own guard decides whether the terminals are
+    /// reallocated.
+    ///
+    /// `Set_Nterms(FNterms)` is passed the *unchanged* terminal count on
+    /// purpose: the reallocation test inside it is
+    /// `(value <> FNterms) OR (Value * Fnconds <> Yorder)`
+    /// (`CktElement.pas:386`), and `Yorder` still holds the OLD
+    /// `nterms * nconds` product, so a real `nconds` change reallocates while a
+    /// no-op set does nothing at all. Forcing the reallocation here instead
+    /// (`self.nterms = 0` before the call, this port until 2026-09-04) wiped
+    /// every terminal's `bus_ref`, `term_node_ref`, `conductors_closed` and
+    /// `terminals_checked` on a set that changed nothing — and, precisely
+    /// because nothing changed, `signal_bus_name_redefined` stayed false, so no
+    /// later `ReProcessBusDefs` ever restored them. A second `MakePosSequence`
+    /// on an already-converted circuit (`Phases=1` re-set on a 1-phase element)
+    /// hit exactly that and left the whole model bus-unresolved: the topology
+    /// walk then reported every element isolated
+    /// (`exec::tests::topology::a_second_makeposseq_keeps_the_circuit_connected`).
     pub fn set_nconds(&mut self, value: usize) {
         if value == 0 {
             return; // Pascal records error 749 and exits
@@ -340,8 +367,6 @@ impl CktElementData {
         }
         self.nconds = value;
         let nterms = self.nterms;
-        // Force reallocation (Pascal calls Set_Nterms(FNterms)).
-        self.nterms = 0;
         self.set_nterms(nterms);
     }
 
@@ -701,6 +726,55 @@ mod tests {
         assert!(!cd.conductor_closed(1, 5));
         cd.set_conductor_closed(1, 5, false); // ignored — out of range
         assert!(!cd.conductor_closed(1, 5));
+    }
+
+    /// **Pascal `Set_NTerms`' reallocation guard, seen through `Set_NConds`**
+    /// (r4133 `Common/CktElement.pas:386`, `IF (value <> FNterms) OR (Value *
+    /// Fnconds <> Yorder)`): a `set_nconds` that changes nothing must leave the
+    /// terminals — bus refs, node refs, open conductors, checked flags —
+    /// exactly as they were, while a real change reallocates them.
+    ///
+    /// The port used to force the reallocation (`self.nterms = 0` before
+    /// `set_nterms`), which silently unresolved every bus reference on a no-op
+    /// set *and* left `signal_bus_name_redefined` false, so nothing restored
+    /// them; `a_second_makeposseq_keeps_the_circuit_connected`
+    /// (`exec::tests::topology`) is the end-to-end witness.
+    #[test]
+    fn a_no_op_set_nconds_keeps_the_terminal_state() {
+        let mut cd = CktElementData::new("e", 0);
+        cd.set_nconds(3);
+        cd.set_nterms(2);
+        // The state `ReProcessBusDefs` / the solve fill in, plus an open
+        // conductor and a walk mark.
+        cd.terminals[0].bus_ref = Some(7);
+        cd.terminals[1].bus_ref = Some(9);
+        cd.terminals[0].term_node_ref = vec![1, 2, 3];
+        cd.set_conductor_closed(1, 2, false);
+        cd.terminals_checked[0] = true;
+        cd.signal_bus_name_redefined = false;
+
+        // A set that changes nothing: no reallocation, no signal.
+        cd.set_nconds(3);
+        assert_eq!(cd.terminals[0].bus_ref, Some(7), "bus ref survives a no-op");
+        assert_eq!(cd.terminals[1].bus_ref, Some(9));
+        assert_eq!(cd.terminals[0].term_node_ref, vec![1, 2, 3]);
+        assert!(!cd.conductor_closed(1, 2), "an open conductor stays open");
+        assert!(cd.terminals_checked[0]);
+        assert!(
+            !cd.signal_bus_name_redefined,
+            "nothing changed, so nothing may ask for a bus-list rebuild"
+        );
+
+        // A real change reallocates (Pascal's `Value * Fnconds <> Yorder` arm)
+        // and asks for the rebuild that re-resolves the fresh terminals.
+        cd.set_nconds(1);
+        assert_eq!(cd.nconds, 1);
+        assert_eq!(cd.nterms, 2, "the terminal count itself is unchanged");
+        assert_eq!(cd.yorder, 2);
+        assert_eq!(cd.terminals[0].bus_ref, None, "a fresh terminal is unwired");
+        assert!(cd.conductor_closed(1, 1), "a fresh terminal is closed");
+        assert!(!cd.terminals_checked[0]);
+        assert!(cd.signal_bus_name_redefined);
     }
 
     /// Pascal local `IsGroundBus` (`CktElement.pas:1101`) quirk table,
