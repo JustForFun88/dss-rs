@@ -53,9 +53,11 @@ pub struct RunRequest {
     /// `CktElement.Enabled` for every element and the three polar channels
     /// `CurrentsMagAng` / `Residuals` / `VoltagesMagAng` for the **enabled**
     /// ones, and (GOLDEN_REBASE G1.3b) the three sequence channels
-    /// `SeqPowers` / `SeqCurrents` / `SeqVoltages` for the enabled ones too.
-    /// Absent or `false` ⇒ none of the eleven keys is emitted and the reply is
-    /// byte-identical to a pre-G1.3a one.
+    /// `SeqPowers` / `SeqCurrents` / `SeqVoltages` for the enabled ones too,
+    /// and (GOLDEN_REBASE G1.3c) `TotalPowers` / `CplxSeqCurrents` /
+    /// `CplxSeqVoltages`, also enabled-only.
+    /// Absent or `false` ⇒ none of the seventeen keys is emitted and the reply
+    /// is byte-identical to a pre-G1.3a one.
     #[serde(default)]
     pub derived: bool,
     /// Manifest flag `compare_element_extras` (GOLDEN_REBASE G1.3d): capture
@@ -256,6 +258,34 @@ struct ElementCap {
     seq_p_kw: Vec<f64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     seq_p_kvar: Vec<f64>,
+    // The GOLDEN_REBASE G1.3c additions, emitted under the SAME
+    // `RunRequest::derived` flag as the two blocks above and skipped when
+    // empty, so an off-flag reply keeps the byte-for-byte shape it had before
+    // G1.3c (`oracle_server.capture_all_elements` emits exactly the same keys).
+    /// `TotalPowers`, de-interleaved into kW and kvar the way `p_kw`/`p_kvar`
+    /// already are. `NTerms` each — the per-terminal sum of `GetPhasePower`'s
+    /// conductor block, scaled by `0.001` **once**, inside the engine's own arm
+    /// (`DDLL/DCktElement.pas:1134`, capi `CAPI/CAPI_Alt.pas:1138-1139`), so
+    /// the wire unit IS kW/kvar. Enabled-only, like the two blocks above, and
+    /// here purely to keep the channels' shapes equal: mode 20 has no
+    /// `NodeRef` guard where capi has one (see
+    /// [`crate::dss::Engine::element_total_powers`]).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tp_kw: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tp_kvar: Vec<f64>,
+    /// `CplxSeqCurrents` and `CplxSeqVoltages`, de-interleaved the same way —
+    /// the un-`Cabs`'d 012 components whose moduli `seq_i`/`seq_v` are,
+    /// `3 * NTerms` each, amps and volts
+    /// (see [`crate::dss::Engine::element_cplx_seq`]).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    cseq_i_re: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    cseq_i_im: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    cseq_v_re: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    cseq_v_im: Vec<f64>,
 }
 
 #[derive(Serialize)]
@@ -602,6 +632,18 @@ fn capture_injection(flat: &[f64]) -> Injection {
 /// de-interleaved into kW/kvar the way `p_kw`/`p_kvar` are; the two magnitude
 /// channels are flat.
 ///
+/// The same flag again carries the GOLDEN_REBASE G1.3c trio, on the same
+/// enabled-only rule: `TotalPowers` ([`Engine::element_total_powers`]) —
+/// cache-aware, hence read from the head of the element beside `PhaseLosses`
+/// and never from the derived block — plus `CplxSeqCurrents` and
+/// `CplxSeqVoltages` ([`Engine::element_cplx_seq`]), the un-`Cabs`'d values
+/// whose moduli `seq_i`/`seq_v` already are. On all three the enabled-only rule
+/// is shape-normalizing rather than a crash guard (modes 13/14 seed a 1-element
+/// `CZero` default before their `If Enabled`; mode 20 takes `GetPhasePower`'s
+/// `Else … CZERO` branch), which is exactly what makes it the *right* rule:
+/// capi's extra `NodeRef = NIL` guards would otherwise answer a different
+/// length on the very same element.
+///
 /// Under `extras` (manifest flag `compare_element_extras`, GOLDEN_REBASE
 /// G1.3d) each element also reports `Enabled`, `PhaseLosses` and the nine
 /// discrete scalars [`Engine::element_extras`] reads, plus `NodeOrder`
@@ -653,6 +695,11 @@ fn capture_all_elements(
             let ctx = format!("element {name} phase losses");
             pl = engine.element_phase_losses(warn, &ctx)?; // capture-order: PhaseLosses (A)
         }
+        let mut tp = Vec::new();
+        if derived && enabled == Some(true) {
+            let ctx = format!("element {name} total powers");
+            tp = engine.element_total_powers(warn, &ctx)?; // capture-order: TotalPowers (A)
+        }
         // capture-order: Losses (A), Powers (A), Currents (B)
         let (powers, currents, losses) = engine.element_pcl(warn, &format!("element {name}"))?;
         let (i_re, i_im) = deinterleave(&currents);
@@ -691,6 +738,12 @@ fn capture_all_elements(
             seq_v: Vec::new(),
             seq_p_kw: Vec::new(),
             seq_p_kvar: Vec::new(),
+            tp_kw: Vec::new(),
+            tp_kvar: Vec::new(),
+            cseq_i_re: Vec::new(),
+            cseq_i_im: Vec::new(),
+            cseq_v_re: Vec::new(),
+            cseq_v_im: Vec::new(),
         };
         if derived && enabled == Some(true) {
             // capture-order: CurrentsMagAng (B), Residuals (B), VoltagesMagAng (C)
@@ -705,6 +758,12 @@ fn capture_all_elements(
             (cap.seq_p_kw, cap.seq_p_kvar) = deinterleave(&seq_p);
             cap.seq_i = seq_i;
             cap.seq_v = seq_v;
+            // capture-order: CplxSeqCurrents (B), CplxSeqVoltages (C)
+            let (cseq_i, cseq_v) =
+                engine.element_cplx_seq(warn, &format!("element {} complex sequence", cap.name))?;
+            (cap.cseq_i_re, cap.cseq_i_im) = deinterleave(&cseq_i);
+            (cap.cseq_v_re, cap.cseq_v_im) = deinterleave(&cseq_v);
+            (cap.tp_kw, cap.tp_kvar) = deinterleave(&tp);
         }
         if extras {
             // capture-order: NumTerminals (C), NumConductors (C), NumPhases (C), EnergyMeter (C)

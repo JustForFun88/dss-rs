@@ -63,18 +63,20 @@
 //! # Non-vacuity
 //!
 //! The checker is a pure function over body text, so the demo runs on every
-//! `cargo test`: each of the ten mutation tests below feeds a *deliberately
+//! `cargo test`: each of the eleven mutation tests below feeds a *deliberately
 //! corrupted copy* of a real body through the same checker and asserts that the
 //! intended rule — not merely *something* — fires. Between them they cover
 //! moving `Losses` back after `Currents`, stripping a marker off a read,
 //! smuggling in a brand-new undeclared read (on both the Python and the Rust
 //! transport), a malformed marker, a marker no read consumes, a group that
 //! contradicts the mode table, a name the table does not know, a read that
-//! disappears, and a helper call that misdeclares the helper's order. One
-//! further mutation states the rule's *positive* half — a group-**C** read moved
-//! between a group-A and a group-B read raises the declaration-bookkeeping
-//! violation but **not** the `order:` one, because C is order-free by
-//! construction. No file on disk is ever mutated.
+//! disappears, a helper call that misdeclares the helper's order, and the
+//! group-**A** `TotalPowers` moved past the group-B `Currents` on both
+//! transports. Two further mutations state the rule's *positive* half — a
+//! group-**C** read moved between a group-A and a group-B read raises the
+//! declaration-bookkeeping violation but **not** the `order:` one, because C is
+//! order-free by construction, and the two live bodies really do declare
+//! `TotalPowers` ahead of `Currents`. No file on disk is ever mutated.
 //!
 //! # Platform
 //!
@@ -147,12 +149,18 @@ struct CaptureBody {
 /// `oracle_server.capture_all_elements` reads `PhaseLosses` and then `Losses`
 /// **before** delegating to `gen_checkpoints.capture_element` (which reads
 /// `Powers` then `Currents`): three group-A reads followed by the group-B one.
-/// `dss.rs::element_phase_losses` + `element_pcl` are the r4133 mirror of
-/// exactly that, `element_polar` adds the three G1.3a derived channels,
-/// `element_seq` the three G1.3b symmetrical-component ones, and
-/// `element_extras` the nine unconditional G1.3d discrete scalars — the four of
-/// part (i) plus the five control-derived ones of part (ii) (`NodeOrder`, the
-/// conditional tenth, stays at the call site).
+/// `dss.rs::element_phase_losses` + `element_total_powers` + `element_pcl` are
+/// the r4133 mirror of exactly that, `element_polar` adds the three G1.3a
+/// derived channels, `element_seq` the three G1.3b symmetrical-component ones,
+/// `element_cplx_seq` the two G1.3c complex ones, and `element_extras` the nine
+/// unconditional G1.3d discrete scalars — the four of part (i) plus the five
+/// control-derived ones of part (ii) (`NodeOrder`, the conditional tenth, stays
+/// at the call site).
+///
+/// `TotalPowers` (G1.3c) is the second conditional group-**A** read and gets its
+/// own helper for the same reason `PhaseLosses` did: it must be issued at the
+/// head of the element, ahead of `element_pcl`'s group-B `Currents`, while
+/// `element_pcl` itself is unconditional.
 const BODIES: &[CaptureBody] = &[
     CaptureBody {
         key: "oracle_server.capture_all_elements",
@@ -169,6 +177,7 @@ const BODIES: &[CaptureBody] = &[
             "SetActiveElement",
             "Enabled",
             "PhaseLosses",
+            "TotalPowers",
             "Losses",
             "Powers",
             "Currents",
@@ -178,6 +187,8 @@ const BODIES: &[CaptureBody] = &[
             "SeqPowers",
             "SeqCurrents",
             "SeqVoltages",
+            "CplxSeqCurrents",
+            "CplxSeqVoltages",
             "NumTerminals",
             "NumConductors",
             "NumPhases",
@@ -230,6 +241,18 @@ const BODIES: &[CaptureBody] = &[
         declared: &["Losses", "Powers", "Currents"],
     },
     CaptureBody {
+        key: "element_total_powers",
+        file: "crates/dss-epri/src/dss.rs",
+        func: "element_total_powers",
+        lang: Lang::Rust,
+        family: "CktElement",
+        marked: true,
+        receivers: &["self"],
+        // Not a read of the element: it drains the DLL's error slot.
+        exempt: &["poll_error"],
+        declared: &["TotalPowers"],
+    },
+    CaptureBody {
         key: "element_polar",
         file: "crates/dss-epri/src/dss.rs",
         func: "element_polar",
@@ -251,6 +274,18 @@ const BODIES: &[CaptureBody] = &[
         // Not a read of the element: it drains the DLL's error slot.
         exempt: &["poll_error"],
         declared: &["SeqPowers", "SeqCurrents", "SeqVoltages"],
+    },
+    CaptureBody {
+        key: "element_cplx_seq",
+        file: "crates/dss-epri/src/dss.rs",
+        func: "element_cplx_seq",
+        lang: Lang::Rust,
+        family: "CktElement",
+        marked: true,
+        receivers: &["self"],
+        // Not a read of the element: it drains the DLL's error slot.
+        exempt: &["poll_error"],
+        declared: &["CplxSeqCurrents", "CplxSeqVoltages"],
     },
     CaptureBody {
         key: "element_extras",
@@ -292,6 +327,7 @@ const BODIES: &[CaptureBody] = &[
             "SetActiveElement",
             "Enabled",
             "PhaseLosses",
+            "TotalPowers",
             "Losses",
             "Powers",
             "Currents",
@@ -301,6 +337,8 @@ const BODIES: &[CaptureBody] = &[
             "SeqPowers",
             "SeqCurrents",
             "SeqVoltages",
+            "CplxSeqCurrents",
+            "CplxSeqVoltages",
             "NumTerminals",
             "NumConductors",
             "NumPhases",
@@ -328,8 +366,10 @@ fn helper_key(member: &str) -> Option<&'static str> {
         "capture_element" => Some("capture_element"),
         "element_phase_losses" => Some("element_phase_losses"),
         "element_pcl" => Some("element_pcl"),
+        "element_total_powers" => Some("element_total_powers"),
         "element_polar" => Some("element_polar"),
         "element_seq" => Some("element_seq"),
+        "element_cplx_seq" => Some("element_cplx_seq"),
         "element_extras" => Some("element_extras"),
         _ => None,
     }
@@ -889,10 +929,12 @@ fn the_gate_fires_on_an_unmarked_read() {
     let bad = check(b, &text.replace("  # capture-order: Residuals (B)", ""));
     assert_fires(&bad, "unmarked");
 
-    // A new capi read, silently added.
+    // A new capi read, silently added. `Voltages` (`CktElementV(4)`) is a read
+    // this body genuinely does not perform — G1.3c turned `TotalPowers`, the
+    // old stand-in here, into a real declared read.
     let bad = check(
         b,
-        &insert_after(&text, "el.Enabled", "        probe = el.TotalPowers"),
+        &insert_after(&text, "el.Enabled", "        probe = el.Voltages"),
     );
     assert_fires(&bad, "unmarked");
 
@@ -930,7 +972,7 @@ fn the_gate_fires_on_a_marker_no_read_consumes() {
         &insert_after(
             &text,
             "out.append(cap)",
-            "        # capture-order: TotalPowers (A)",
+            "        # capture-order: Voltages (B)",
         ),
     );
     assert_fires(&bad, "marker");
@@ -939,11 +981,7 @@ fn the_gate_fires_on_a_marker_no_read_consumes() {
     // does not consume because that read already declares itself.
     let bad = check(
         b,
-        &insert_after(
-            &text,
-            "el.Enabled",
-            "        # capture-order: TotalPowers (A)",
-        ),
+        &insert_after(&text, "el.Enabled", "        # capture-order: Voltages (B)"),
     );
     assert_fires(&bad, "marker");
 }
@@ -1012,6 +1050,60 @@ fn the_gate_fires_when_phase_losses_moves_after_the_currents_read() {
     let rt = body_text(r);
     assert!(check(r, &rt).is_empty(), "the real body must be clean");
     let moved = move_line_after(&rt, "engine.element_phase_losses", "engine.element_pcl");
+    assert_ne!(moved, rt, "the mutation must actually move a line");
+    assert_fires(&check(r, &moved), "order");
+}
+
+/// The member GOLDEN_REBASE G1.3c adds to the A-before-B rule: `TotalPowers`
+/// (`CktElementV(20)`, r4133 `DDLL/DCktElement.pas:1109`; capi
+/// `Alt_CE_Get_TotalPowers`, `CAPI/CAPI_Alt.pas:1108`) is the per-terminal sum
+/// of `TDSSCktElement.GetPhasePower` (`Common/CktElement.pas:1041`), whose
+/// first act on an enabled element is `ComputeIterminal` (`:1049`) — the same
+/// cache-aware path `Powers` takes. So it is group **A** and must be issued
+/// before the group-B `Currents`, on both transports.
+///
+/// Stated in both directions, because the negative half alone would pass on a
+/// body that never reads `TotalPowers` at all: first the *positive* claim (the
+/// mode table says `A`, and both live bodies really do declare it ahead of
+/// `Currents`), then the mutation that moves the read past the currents read
+/// and must fire `order:`.
+#[test]
+fn total_powers_is_a_group_a_read_issued_before_the_currents_read() {
+    assert_eq!(
+        capture_group_of("CktElement", "TotalPowers"),
+        Some('A'),
+        "`TotalPowers` sums `GetPhasePower`, whose first act is `ComputeIterminal` \
+         (Common/CktElement.pas:1049) — the mode table must classify it as group A"
+    );
+    for key in [
+        "oracle_server.capture_all_elements",
+        "capture.capture_all_elements",
+    ] {
+        let b = body(key);
+        assert!(check(b, &body_text(b)).is_empty(), "{key} must be clean");
+        let pos = |n: &str| {
+            b.declared
+                .iter()
+                .position(|d| *d == n)
+                .unwrap_or_else(|| panic!("{key} does not declare `{n}`"))
+        };
+        assert!(
+            pos("TotalPowers") < pos("Currents"),
+            "{key} declares TotalPowers at {} and Currents at {} — the group-A read must come \
+             first",
+            pos("TotalPowers"),
+            pos("Currents")
+        );
+    }
+
+    let (b, text) = capi();
+    let moved = move_line_after(&text, "el.TotalPowers", "gc.capture_element");
+    assert_ne!(moved, text, "the mutation must actually move a line");
+    assert_fires(&check(b, &moved), "order");
+
+    let r = body("capture.capture_all_elements");
+    let rt = body_text(r);
+    let moved = move_line_after(&rt, "engine.element_total_powers", "engine.element_pcl");
     assert_ne!(moved, rt, "the mutation must actually move a line");
     assert_fires(&check(r, &moved), "order");
 }

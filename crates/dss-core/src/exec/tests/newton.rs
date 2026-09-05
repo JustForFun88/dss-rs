@@ -127,6 +127,88 @@ fn newton_powers_match_the_normal_algorithm() {
     );
 }
 
+// EXPECTED-VALUE-PIN(POWERS_REUSE_STALE_NEWTON_ITERMINAL): the same torn-down
+// row on
+// the `TotalPowers` surface (`GOLDEN_REBASE_PLAN.md` G1.3c). `TotalPowers` sums
+// `GetPhasePower`'s conductor slots per terminal (r4133
+// `DDLL/DCktElement.pas:1109-1139` over `Common/CktElement.pas:1041-1071`, capi
+// `CAPI/CAPI_Alt.pas:1108-1141`), so it routes through the same cache-aware
+// `ComputeIterminal` as `Powers`/`Losses` and carries the same one-Newton-step
+// staleness upstream — and the terminal sum does NOT cancel it: measured on the
+// pinned dss_capi 0.14.5 oracle (`tmp/g13c/probe_newton.py`, 2026-09-05, the
+// reported `TotalPowers` against a terminal sum of `V·conj(I)` rebuilt from a
+// fresh `Currents` + `VoltagesMagAng`, whose own reconstruction noise is
+// ≤ 2.1e-7 kVA on the Load rows) it is **0.6831564014868734 kVA** on
+// `modes/newton/newton.dss` (`Line.l1`, and 0.68315640148 kVA on
+// `Vsource.source`) and **2.1850404626011652 kVA** on `newton_feeder.dss`
+// (`Vsource.source` / `Transformer.sub`) — larger than the per-conductor
+// `Powers` staleness on the same decks (0.528 / 0.755 kVA). Both figures are the
+// compile-state reading; in the gate's own state (one `solve` further,
+// `tools/oracle/oracle_server.py:612-632`) the same stale read is
+// 4.5155082046702575e-4 / 5.213217790400988e-3 kVA off the port on
+// `Vsource.source` terminal 0 — still ~20x the comparator's band on BOTH
+// channels (G1.3c F5, 2026-09-06; `tests/harness/lane.rs::elem_channels_for`).
+// Both lanes
+// therefore exclude the field on those two decks
+// (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`) and this pin is what the
+// exclusion owes.
+/// The Newton run's `TotalPowers` are the *normal* algorithm's — the surface no
+/// oracle channel reports correctly after `Set algorithm=Newton`.
+#[test]
+fn newton_total_powers_match_the_normal_algorithm() {
+    let mut newton = solve_with("Newton");
+    let mut normal = solve_with("Normal");
+    let sn = newton.snapshot_elements();
+    let so = normal.snapshot_elements();
+    assert_eq!(sn.len(), so.len());
+    let (mut worst, mut worst_at) = (0.0_f64, String::new());
+    let mut compared = 0usize;
+    for (a, b) in sn.iter().zip(&so) {
+        assert_eq!(a.name, b.name, "snapshot order");
+        assert_eq!(
+            a.total_powers.len(),
+            b.total_powers.len(),
+            "{}: TotalPowers length",
+            a.name,
+        );
+        for (x, y) in a.total_powers.iter().zip(&b.total_powers) {
+            compared += 1;
+            if (x - y).norm() > worst {
+                worst = (x - y).norm();
+                worst_at.clone_from(&a.name);
+            }
+        }
+    }
+    assert!(compared > 0, "no terminal was compared");
+    // Measured 3.320e-11 kVA (`Vsource.source`) — the cross-algorithm voltage
+    // floor, ten orders below the 6.832e-1 kVA the stale read shows on this
+    // very deck.
+    assert!(
+        worst < 1e-8,
+        "both lanes must report the fresh terminal totals under Newton too \
+         (measured 3.320e-11 kVA; the upstream stale read is 6.832e-1 kVA at \
+         Line.l1 / Vsource.source); got {worst:.3e} kVA at {worst_at}",
+    );
+    // And the totals really are the terminal sums under Newton as well, so the
+    // pin cannot be satisfied by two equally stale reads.
+    for e in &sn {
+        for (t, chunk) in e
+            .powers
+            .chunks(e.n_conds.max(1))
+            .take(e.n_terms)
+            .enumerate()
+        {
+            let s: num_complex::Complex64 = chunk.iter().sum();
+            assert!(
+                (e.total_powers[t] - s).norm() <= 1e-9 + 1e-12 * s.norm(),
+                "{} terminal {t}: TotalPowers {} kVA vs Σ Powers {s} kVA",
+                e.name,
+                e.total_powers[t],
+            );
+        }
+    }
+}
+
 /// **The replacement Newton-dispatch tripwire** — stronger than the gate signal
 /// both lanes give up, and running in *both* lanes.
 ///
