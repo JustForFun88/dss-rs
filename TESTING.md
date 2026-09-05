@@ -433,7 +433,7 @@ an_absent_capture_fails, the_message_names_the_flag_the_channel_the_context_and_
 `SeqCurrents`, `SeqVoltages` (012 magnitudes, A and V) and `SeqPowers`
 (complex kW/kvar) compare live on both channels through
 `harness::compare_element_seq`
-(`crates/dss-core/tests/harness/mod.rs:4509`), a **sibling** of
+(`crates/dss-core/tests/harness/mod.rs:4556`), a **sibling** of
 `compare_element_derived` rather than an edit of it, over the same
 `compare_derived` flag and the same 442 forced cases. The engine side is one new
 accessor inside `exec/view.rs::snapshot_elements` (never `report/export/seq_*`,
@@ -457,7 +457,7 @@ are not obvious from the field names:
   `cmplx(-1.0, -1.0)` (`CAPI_Alt.pas:567`) — while both magnitude arrays read
   `Cabs(-1 + 0j) = 1.0` on both channels (`DCktElement.pas:680`/`:719`,
   `CAPI_Alt.pas:268`/`:324`). The engine emits r4133's spelling and
-  `harness::na_seq_power` (`mod.rs:4304`) folds the capi capture onto it, gated
+  `harness::na_seq_power` (`mod.rs:4308`) folds the capi capture onto it, gated
   on the structurally derived arm and on that channel's own spelling only. It is
   a comparator-level normalization in the `PROPS_NORM_R4133` sense — **not a
   tolerance and not a ledger row** (it would otherwise cost hundreds, i.e. the
@@ -488,7 +488,7 @@ are not obvious from the field names:
   `seq_slot_is_banded` (`crates/dss-core/tests/corpus_gate/ledger.rs:1568`),
   pinned slot by slot on all three arms by
   `the_seq_rewrite_and_the_seq_envelope_cover_the_same_slots`
-  (`ledger.rs:3293`); a `seq_*` scope over an element with no banded slot
+  (`ledger.rs:3294`); a `seq_*` scope over an element with no banded slot
   measures nothing and is reported STALE rather than passing silently.
 * **The 1φ-positive-sequence population is a fail-on-stale census, recorded by
   the runner.** r4133's `SeqPowers` writes the single positive-sequence value
@@ -499,9 +499,17 @@ are not obvious from the field names:
   never reaches that arm. It does not: **297 896** compared element rows, **79**
   on the 1φ arm via `capi_v0145`, **0** via `r4133`, identical in both lanes —
   hence **0 ledger rows** for the defect and instead
-  `harness::assert_seq_arm_population` (`mod.rs:4410`), which fails in both
-  directions, plus the engine pin
+  `harness::assert_seq_arm_population` (`mod.rs:4439`), plus the engine pin
   `seq_powers_positive_sequence_lands_in_the_positive_slot_of_each_terminal`.
+  What that guard enforces (G1.3b audit settlement, 2026-09-05, the
+  `check_control_census` shape): the **r4133 count is pinned exactly at 0** — the
+  one number that would hide a wrong comparison — while the two measured counts
+  are railed by the documented floors `SEQ_ARM_CENSUS_FLOORS` (200 000 rows,
+  60 capi 1φ rows) against `SEQ_ARM_CENSUS_MEASURED`, so a lane that retires or
+  re-gates a deck passes while the two failures the guard exists for — the
+  compare not running, and the capi-side gating of the 1φ layout collapsing to
+  one deck's worth of rows — red
+  (`the_seq_arm_population_fires_when_the_capi_arm_collapses`).
   The count is incremented **only** from the corpus-gate runner's loop
   (`harness::record_seq_arm`,
   `crates/dss-core/tests/corpus_gate/runner.rs:606`), the
@@ -510,8 +518,8 @@ are not obvious from the field names:
   coordinator decision D24, pinned by
   `a_fixture_call_on_the_r4133_posseq_arm_does_not_move_the_census`. The rule
   generalises: **a population census is recorded by the runner, never by a
-  comparator, and its pinned numbers are the ones measured under the full test
-  binary**, not a filtered run.
+  comparator, and the numbers it judges are the ones measured under the full
+  test binary**, not a filtered run.
 
 **G1.3d(i) — the per-element discrete extras** (2026-09-04/05, lane `lane-e`).
 `harness::compare_element_extras`
@@ -1469,19 +1477,19 @@ property cell of a live non-`large` case is asserted on **both** channels. The
 two channels do not spell values identically, so the r4133 side runs a
 **channel-scoped claim chain** whose links are consulted in one fixed order and
 never on `capi_v0145`. One function holds the whole order —
-`harness::compare_prop_lists` (`crates/dss-core/tests/harness/mod.rs:7515`) —
-and links 2-4 are `PropsPolicy` methods gated on `is_r4133()` (`mod.rs:7719`,
-`:7764`; the channel type is `PropsChannel`, `mod.rs:7685`). Link 1 is the
+`harness::compare_prop_lists` (`crates/dss-core/tests/harness/mod.rs:7575`) —
+and links 2-4 are `PropsPolicy` methods gated on `is_r4133()` (`mod.rs:7779`,
+`:7824`; the channel type is `PropsChannel`, `mod.rs:7745`). Link 1 is the
 deliberate exception: `skip_prop` is a free function taking the channel, so its
 `LANE_SKIP_PROPS` half stays channel-blind (row 1 below says so).
 
 | # | link | seam | what it does | if it does not claim |
 |---|---|---|---|---|
-| 0 | shape allowlist `PROPS_015X` | `filter_015x`, `mod.rs:7438` | drops a Rust-side prop the capture cannot carry — **shape only** | the name walk fails |
-| 1 | skip rows `SKIP_PROPS` / `LANE_SKIP_PROPS` | `skip_prop`, `mod.rs:6299` (channel rule at `:6305`) | value-only skip, per channel | fall through |
-| 2 | normalization `PROPS_NORM_R4133` | `PropsPolicy::normalize`, `mod.rs:7788` | **re-spells** the oracle side when a typed rule proves the two are the same value | both raw spellings continue |
-| 3 | echo table `PROPS_ECHO_R4133` | `PropsPolicy::echo_excluded`, `mod.rs:7833` | drops the **value** compare of that cell (name + index order still assert) | fall through |
-| 4 | display floor `R4133_DISPLAY_FLOOR` | `PropsPolicy::under_display_floor`, `mod.rs:7875` | passes a numeric cell that is our value rendered to r4133's own digits | the cell reaches the assert |
+| 0 | shape allowlist `PROPS_015X` | `filter_015x`, `mod.rs:7498` | drops a Rust-side prop the capture cannot carry — **shape only** | the name walk fails |
+| 1 | skip rows `SKIP_PROPS` / `LANE_SKIP_PROPS` | `skip_prop`, `mod.rs:6359` (channel rule at `:6365`) | value-only skip, per channel | fall through |
+| 2 | normalization `PROPS_NORM_R4133` | `PropsPolicy::normalize`, `mod.rs:7848` | **re-spells** the oracle side when a typed rule proves the two are the same value | both raw spellings continue |
+| 3 | echo table `PROPS_ECHO_R4133` | `PropsPolicy::echo_excluded`, `mod.rs:7893` | drops the **value** compare of that cell (name + index order still assert) | fall through |
+| 4 | display floor `R4133_DISPLAY_FLOOR` | `PropsPolicy::under_display_floor`, `mod.rs:7935` | passes a numeric cell that is our value rendered to r4133's own digits | the cell reaches the assert |
 | 5 | the assert | `assert_value_matches_tol`, `mod.rs:332` | the case's tier floors (`tol_for`) | **gate red, both spellings in the message** |
 
 A divergence the ledger owns is handled outside this chain, by the case's
@@ -1563,34 +1571,34 @@ r4133 side must be our number rounded to the significant digits r4133 itself
 printed). It touches no `Tolerances` field, no `tol_for` tier, no golden and no
 model quantity, and it is unreachable on `capi_v0145`
 (`props_policy_tests::the_capi_channel_never_applies_the_display_floor`,
-`mod.rs:6731`). Its derivation — the measured worst cell, the empty band, the
+`mod.rs:6791`). Its derivation — the measured worst cell, the empty band, the
 `%.Ng` site table and the 55 refused spellings — is
 `tests/TOLERANCE_NOTES.md` §"r4133 props display floor".
 
 **The `SKIP_PROPS` dispositions (plan §1.2).** `skip_prop` is channel-aware
-since RP2.1 (`skip_prop`, `mod.rs:6168`), because after RP4.1 a channel-blind row would
+since RP2.1 (`skip_prop`, `mod.rs:6228`), because after RP4.1 a channel-blind row would
 value-mask the r4133 channel by accident. Every one of the **17** `SKIP_PROPS`
-rows (`SKIP_PROPS`, `mod.rs:5851`) is dispositioned exactly once, in its own row comment —
+rows (`SKIP_PROPS`, `mod.rs:5911`) is dispositioned exactly once, in its own row comment —
 **17 = 10 + 7**, the first two lists below. The third list is a separate table
 (`LANE_SKIP_PROPS` is not a `SKIP_PROPS` row and the partition lock does not
 union it), shown here because `skip_prop` consults it on the same call:
 
 | list | rows | on r4133 | why |
 |---|---|---|---|
-| `SKIP_PROPS_CAPI_ONLY` (`mod.rs:6207`) | 10 | **compared** | the justification is a 0.14.5-capture fact: the three changed defaults (`Fuse.FuseCurve`, `Fuse.RatedCurrent`, `RegControl.RevThreshold`), the two `pctperm` rows (`Capacitor`, `Reactor`), and RP3.8's five `''`-render rows (`IndMach012.PF`, the four `StorageController` totals) |
-| `SKIP_PROPS_BOTH_CHANNELS` (`mod.rs:6248`) | 7 | **skipped** | channel-independent facts — the heap-garbage matrix reads (`Capacitor.CMatrix`, `Reactor.RMatrix`/`XMatrix`, `Fault.GMatrix`, `Transformer.WdgCurrents`) and the two `FaultRate` rows |
-| `LANE_SKIP_PROPS` (`mod.rs:6288`) | 1 | **skipped, deliberately channel-blind** | `(Monitor, BaseFreq)` — an upstream bug BOTH gating oracles share (`Monitor.pas` r4133:552); the port's correct value is pinned by `monitor_basefreq_inherits_the_fundamental` |
+| `SKIP_PROPS_CAPI_ONLY` (`mod.rs:6267`) | 10 | **compared** | the justification is a 0.14.5-capture fact: the three changed defaults (`Fuse.FuseCurve`, `Fuse.RatedCurrent`, `RegControl.RevThreshold`), the two `pctperm` rows (`Capacitor`, `Reactor`), and RP3.8's five `''`-render rows (`IndMach012.PF`, the four `StorageController` totals) |
+| `SKIP_PROPS_BOTH_CHANNELS` (`mod.rs:6308`) | 7 | **skipped** | channel-independent facts — the heap-garbage matrix reads (`Capacitor.CMatrix`, `Reactor.RMatrix`/`XMatrix`, `Fault.GMatrix`, `Transformer.WdgCurrents`) and the two `FaultRate` rows |
+| `LANE_SKIP_PROPS` (`mod.rs:6348`) | 1 | **skipped, deliberately channel-blind** | `(Monitor, BaseFreq)` — an upstream bug BOTH gating oracles share (`Monitor.pas` r4133:552); the port's correct value is pinned by `monitor_basefreq_inherits_the_fundamental` |
 
 *Partition lock:*
 `skip_props_disposition_tests::every_skip_props_row_has_an_r4133_disposition`
-(`mod.rs:6339`) fails on a row listed twice, in neither list, or deleted from
+(`mod.rs:6399`) fails on a row listed twice, in neither list, or deleted from
 `SKIP_PROPS` — a new skip cannot silently inherit "masked on r4133 too". The
 channel-blindness of the `LANE_SKIP_PROPS` row has its own pin
-(`the_monitor_basefreq_exclusion_is_channel_blind`, `mod.rs:6496`). The two
+(`the_monitor_basefreq_exclusion_is_channel_blind`, `mod.rs:6556`). The two
 **whole-element** skips are channel-scoped the same way: Recloser and Relay are
 skipped on capi only, because their Rust tables are r4133-shaped
-(`skip_whole_element`, `mod.rs:7468`;
-`recloser_and_relay_are_whole_element_skipped_on_capi_only`, `mod.rs:6521`).
+(`skip_whole_element`, `mod.rs:7528`;
+`recloser_and_relay_are_whole_element_skipped_on_capi_only`, `mod.rs:6581`).
 
 **Did the chain run at all?** `props_norm::assert_r4133_props_compare_ran`
 (`props_norm.rs:2841`) runs first in the gate epilogue (`corpus_gate.rs:197`),

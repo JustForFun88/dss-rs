@@ -2864,29 +2864,24 @@ row against the pre-fix lock.
   `divergence` entries — an exclusion covers causes that cannot be re-measured reliably (four of the
   ten widenings sit on D12's self-disagreeing capi GIC decks), reason now in TESTING.md and
   `ledger.rs`.
-- **G1.3b** (2026-09-05, lane `lane-e`; D4/D7/D24) — per-element `SeqCurrents`, `SeqVoltages` and
-  `SeqPowers` on both channels over the same **442** `compare_derived` cases (the sub-step widens the
-  flag's *fields*, not its population), from one new `exec/view.rs::snapshot_elements` accessor over
-  `SymComp::phase_to_sym`; `WP_G1_MODES` stays **97**. **0 new ledger entries / 0 new causes**
-  (58 / 31), **31** measured widenings over 11 `element` scopes, 0 golden bytes, no band moved, and
-  no channel joins `LANE_SKIP_ELEM_POWERS` (all three reads take a scratch `GetCurrents` and/or
-  `Solution.NodeV`, never `ComputeIterminal`). Three cross-channel divergences, none reproduced and
-  none ledgered: r4133's 1φ-positive-sequence slot/stride defect (`DDLL/DCktElement.pas:760`/`:768`
-  against capi `CAPI/CAPI_Alt.pas:555`/`:562`; report
-  `investigations/to_opendss/67-seqpowers-posseq-slot-stride.md`) has **zero** r4133 exposure —
-  **297 896** compared element rows, **79** on the 1φ arm via capi, **0** via r4133, both lanes — so
-  it costs 0 rows and buys the fail-on-stale census `assert_seq_arm_population` plus
-  `seq_powers_positive_sequence_lands_in_the_positive_slot_of_each_terminal`; the n/A `SeqPowers`
-  sentinel (`CAPI_Alt.pas:567` `(-1,-1)` vs `DCktElement.pas:772` `(-1,0)`, while both magnitude
-  arrays read `1.0` on both channels) is a channel-scoped comparator fold in the `PROPS_NORM_R4133`
-  shape (`na_seq_power`, pinned in all three directions), not hundreds of rows; and the two engines'
-  different 012 matrices cost one r4133-only absolute term `SEQ_C012 · max_j|Xph_j|`, `SEQ_C012` =
-  `5.229590094302253e-10` re-derived in-tree from `SymComp::official()` (`Shared/mathutil.pas:302-303`
-  + `:562-564`), its phase base and tightness proved in `tests/TOLERANCE_NOTES.md` §G1.3b. Per **D24**
-  the arm census is recorded by the corpus-gate runner, never by the comparator
-  (`a_fixture_call_on_the_r4133_posseq_arm_does_not_move_the_census`). Detail: plan §G1.3b,
-  TESTING.md; **8** pins in `exec::tests::derived_seq`, **34** in `harness::seq_floors` (21 rejection
-  legs), **7** in `ledger::*`, plus the `element_seq` body in `capture_order.rs` (14/14).
-  Commits `TBD-G13B-SHA` + docs (this record); gate **6 547 / 0 / 5** per lane (five commands, exit 0,
-  unfiltered), `lane_diff` PASS max |Δ| = 0 on every gated kind (523 cases,
-  4 825 419 compared values).
+- **G1.3b** (2026-09-05, lane `lane-e`; D4/D7/D24) — per-element `SeqCurrents`, `SeqVoltages`,
+  `SeqPowers` on both channels over the 442 `compare_derived` cases, one new `exec/view.rs` accessor;
+  **0 new ledger entries / 0 causes** (58 / 31), **31** measured widenings on 11 `element` scopes,
+  0 golden bytes, no band moved. Three cross-channel divergences, none reproduced or ledgered:
+  r4133's 1φ-posseq slot/stride defect (`DDLL/DCktElement.pas:760`/`:768` against capi
+  `CAPI/CAPI_Alt.pas:555`/`:562`; report `to_opendss/67-seqpowers-posseq-slot-stride.md`) has zero
+  r4133 exposure — census (297 896, 79, 0) behind `assert_seq_arm_population`; the n/A `SeqPowers`
+  sentinel (`:772` against `:567`) is the channel-scoped `na_seq_power` fold; the two 012 matrices
+  cost the r4133-only `SEQ_C012 = 5.229590094302253e-10` (`Shared/mathutil.pas:302-303`+`:562-564`).
+  Detail: plan §G1.3b, TESTING.md, TOLERANCE_NOTES §G1.3b; pins **8** `exec::tests::derived_seq` /
+  **35** `harness::seq_floors` (22 legs) / **7** `ledger::*`. `40a65ffd` + the settlement below;
+  gate **6 547 / 0 / 5** per lane, `lane_diff` PASS max |Δ| = 0.
+- **G1.3b audit settlement** (2026-09-05) — 15 findings: **12 fixed / 3 recorded / 0 refuted**. The
+  arm census now pins the r4133 `0` exactly and rails the two measured counts at the documented
+  `SEQ_ARM_CENSUS_FLOORS` (new leg `the_seq_arm_population_fires_when_the_capi_arm_collapses`);
+  registry `every_pin_the_g13b_record_names_exists_and_is_cited` added; the plan's D-b1 population
+  premise corrected (11 decks raise `CktModel=Positive`, four r4133-gated but 2φ/3φ); six Pascal/pin
+  citations (`CAPI_Alt.pas:608` not `:607`, the dangling `a_discrete_seq_slot_*`); both commit-sha
+  placeholders in this record and STATUS; this record trimmed. Recorded, not fixed: `SEQ_C012`'s in-tree
+  `SymComp::official()` source (2.1e-7 tighter), the n/A magnitude sentinel `1.0` as a convention
+  `seq_arm` disambiguates, `dead_channels` policing `divergence` entries only (`ledger.rs:414-418`).

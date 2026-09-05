@@ -2065,8 +2065,9 @@ fn rewrite_element_selected(
     // `1.0`/sentinel payload and the exact zeros beside the positive-sequence
     // slot stay the ORACLE's, so `harness::compare_element_seq` keeps comparing
     // them exactly — a `seq_*` scope neutralizes a floor divergence and can
-    // never excuse a discrete miss (pinned by
-    // `a_discrete_seq_slot_is_never_neutralized_by_a_scope`). The snapshot
+    // never excuse a discrete miss (pinned slot by slot, from both the rewrite
+    // and the envelope side, by
+    // `the_seq_rewrite_and_the_seq_envelope_cover_the_same_slots`). The snapshot
     // lengths join the bound so a shape mismatch survives to that comparator's
     // own length assert instead of panicking on an index here.
     let seq_slots = |n: usize| (0..n).filter(|k| seq_slot_is_banded(snap.seq_arm, *k));

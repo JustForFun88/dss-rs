@@ -527,8 +527,8 @@ fn seq_powers_are_three_times_the_012_kva_product() {
 // `Alt_CE_Get_SeqVoltages` (`CAPI_Alt.pas:633`) and `Alt_CE_Get_SeqCurrents`
 // (`:501`). `SeqPowers` is the load-bearing one: r4133's mode 9 has NEITHER an
 // `Enabled` nor a `NodeRef` guard and would dereference nil at `:781`, while
-// capi's facade skips the `Enabled` test (`:605`, commented out) and its helper
-// exits at `:544` AFTER the caller already resized the result at `:607`,
+// capi's facade skips the `Enabled` test (`:604`, commented out) and its helper
+// exits at `:544` AFTER the caller already resized the result at `:608`,
 // returning uninitialized memory. Both captures therefore read the three
 // surfaces for `Enabled` elements only; this pin is the engine-side half.
 /// A never-enabled element keeps the `3·NTerms` shape and reads all zeros.

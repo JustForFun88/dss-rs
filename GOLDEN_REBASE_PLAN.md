@@ -657,11 +657,16 @@ transform.
 > * **D-b1 costs 0 ledger rows and buys a population guard instead.** r4133's 1φ-positive-sequence
 >   slot/stride defect (`DDLL/DCktElement.pas:760` `Count := 2` + `:768` `inc(count)` on a 0-based
 >   array, against capi `CAPI/CAPI_Alt.pas:555` `iCount := 1` + `:562` `inc(icount, 3)`) has **zero**
->   exposure on the gated corpus: only 12 vendored decks can raise `CktModel=Positive` at all, and
->   the six that both raise it and are gated are `capi_v0145`-gated. Measured over the whole gated
->   population — **297 896** compared element rows, **79** on the 1φ arm via `capi_v0145`, **0** via
->   `r4133`. The engine emits the correct `(0, S+, 0)` layout; the fact is carried positively by the
->   fail-on-stale census `harness::assert_seq_arm_population` and by
+>   exposure on the gated corpus. **11** vendored decks raise `CktModel=Positive` at all (audit
+>   settlement 2026-09-05, correcting this note's first count): the six `modes/makeposseq/*`, which
+>   are `capi_v0145`-gated; four `engines=both` decks — `asymmetric/line/line_posseq_{ctor,linecode,
+>   phases}_asym.dss` and `Test/Stevenson.dss` — which ARE r4133-gated but carry no 1-phase element,
+>   so the arm is never reached there; and `StevensonPflow.dss`, `large` and outside the derived
+>   population. Measured over the whole gated population — **297 896** compared element rows, **79**
+>   on the 1φ arm via `capi_v0145`, **0** via `r4133`. The engine emits the correct `(0, S+, 0)`
+>   layout; the fact is carried positively by the census `harness::assert_seq_arm_population` (the
+>   `0` pinned exactly, the two measured counts railed by the documented floors of
+>   `SEQ_ARM_CENSUS_FLOORS` — audit settlement) and by
 >   `seq_powers_positive_sequence_lands_in_the_positive_slot_of_each_terminal`, with the upstream
 >   report at `investigations/to_opendss/67-seqpowers-posseq-slot-stride.md`.
 > * **No channel joins `LANE_SKIP_ELEM_POWERS`.** All three reads take a scratch `GetCurrents`

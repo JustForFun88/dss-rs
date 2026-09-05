@@ -596,8 +596,9 @@ fn capture_injection(flat: &[f64]) -> Injection {
 /// is load-bearing rather than shape-normalizing: `CktElementV(9)`
 /// (`SeqPowers`) guards neither `Enabled` nor `NodeRef` and dereferences
 /// `NodeRef^[k+1]` at `DDLL/DCktElement.pas:765`, and capi's own read is no
-/// safer (`CAPI/CAPI_Alt.pas:604` skips the `Enabled` test, `:607` resizes the
-/// buffer before the helper's guard at `:544` exits). `SeqPowers` is
+/// safer (`CAPI/CAPI_Alt.pas:604` skips the `Enabled` test, `:608` resizes the
+/// result before the helper's guard at `:544` exits; `:607` is the scratch
+/// `cBuffer`). `SeqPowers` is
 /// de-interleaved into kW/kvar the way `p_kw`/`p_kvar` are; the two magnitude
 /// channels are flat.
 ///

@@ -155,10 +155,10 @@ def capture_all_elements(
     guard and dereferences `NodeRef^[k+1]` (`:765`) on a never-enabled element,
     while capi's outer `Alt_CE_Get_SeqPowers` deliberately skips the `Enabled`
     test (`:604`, commented out) yet still resizes the result buffer to
-    `3 * NTerms` complex slots at `:607` **before** the helper's own
+    `3 * NTerms` complex slots at `:608` **before** the helper's own
     `(not Enabled) or (NodeRef = NIL)` guard exits at `:544` — so a disabled
     element with a live `NodeRef` returns uninitialized memory. (The two
-    magnitude reads do guard: capi `:501` / `:632`, r4133 `:711` / `:671`.)
+    magnitude reads do guard: capi `:501` / `:633`, r4133 `:711` / `:671`.)
 
     `SeqCurrents` and `SeqVoltages` are magnitudes only (`Cabs`, r4133 `:719` /
     `:680`), `3 * NTerms` doubles each, so they are captured flat. `SeqPowers`
