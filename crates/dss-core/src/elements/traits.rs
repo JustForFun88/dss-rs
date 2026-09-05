@@ -848,20 +848,16 @@ pub trait CktElement: Send {
     /// the circuit element this control acts on, or `None` for a non-control
     /// element (and for the fleet controls that act on a *list* of elements
     /// rather than a single one). The reverse of Pascal's
-    /// `ControlledElement.ControlElementList` — the reports that need the
-    /// forward `PDElement → controls` mapping (`ShowControlledElements`,
-    /// `ShowTopology`) derive it by scanning `Circuit.controls` and matching this.
-    /// `Circuit.controls` is in creation order, so the derived per-element list
-    /// reproduces the Pascal `ControlElementList` insertion order, and a control
-    /// reassigned to a different target follows its *current* target — the same
-    /// final state as Pascal's remove-then-add `Set_ControlledElement`. **Known
-    /// narrow limitation:** when a control's element ref is *re-edited* after a
-    /// second control already registered on the same target, Pascal's remove-then-
-    /// add re-appends the re-edited control to the *end* of that target's list,
-    /// whereas the creation-order derive keeps the original order — so the two
-    /// disagree only for ≥2 controls on one element with a post-creation
-    /// element-ref edit (probe-only; no corpus deck hits it — the fully-faithful
-    /// fix would materialise the whole `ControlElementList`, disproportionate here).
+    /// `ControlledElement.ControlElementList`: every consumer that needs the
+    /// forward `element → controls` mapping in Pascal's list ORDER goes through
+    /// [`crate::circuit::controls::derive_control_lists`], which projects the
+    /// circuit-wide attach order ([`crate::circuit::Circuit::reattach_control`],
+    /// the port of `TControlElem.Set_ControlledElement`'s remove-then-add) onto
+    /// this reference. Do not re-derive an order from `Circuit.controls`: that
+    /// list is the *sampling* order and `Set_ControlledElement` never touches it,
+    /// so the two disagree as soon as a control is re-edited after a second
+    /// control registered on the same target (r4133 re-runs
+    /// `Set_ControlledElement` on every `RecalcElementData`).
     /// Default `None`; every control overrides it to return
     /// `self.ccd.controlled_element`.
     fn controlled_element(&self) -> Option<ElemId> {
@@ -939,6 +935,75 @@ pub trait CktElement: Send {
             result *= 3.0;
         }
         result
+    }
+
+    /// `GetPhaseLosses` (r4133 `Common/CktElement.pas:1078-1120`): the complex
+    /// losses of each **phase**, i.e. `Get_Losses`' `Σ NodeV[ref]·conj(Iterminal)`
+    /// bucketed by phase index instead of summed flat —
+    /// `Σ_{j=0..NTerms-1} NodeV[NodeRef[k]]·conj(Iterminal[k])` with
+    /// `k = j·NConds + i` (0-based; Pascal's `k := (j-1)*FNconds + i`), ground
+    /// refs (`n = 0`) skipped, ×3 under positive sequence. Neutral conductors
+    /// are ignored by construction — the walk stops at `i < NPhases` — which is
+    /// what makes this *not* a partition of [`Self::losses`] on an element with
+    /// `NConds > NPhases`.
+    ///
+    /// Length is always `NPhases`: a disabled element (or one whose `NodeRef` is
+    /// still empty, where Pascal would dereference nil) gets Pascal's `else`
+    /// zero-fill (`:1118-1119`) rather than an empty vector, so the reported shape
+    /// never depends on the solve state.
+    ///
+    /// **Units: W/var**, like [`Self::losses`] and unlike `Powers`. Both oracle
+    /// surfaces scale by `0.001` at the API boundary — r4133 `CktElementV`
+    /// mode `6` (`DDLL/DCktElement.pas:637-659`), capi `Alt_CE_Get_PhaseLosses`
+    /// (`CAPI/CAPI_Alt.pas:449-467`, facade `CAPI/CAPI_CktElement.pas:327-338`) —
+    /// so that kW/kvar rendering is a capture-boundary encoding and lives in the
+    /// harness comparator, exactly as the re/im interleave does. Pinned by
+    /// `exec::tests::element_extras::phase_losses_are_watts_and_sum_to_get_losses`.
+    ///
+    /// The ×3 positive-sequence scaling is hoisted out of the accumulation loop
+    /// (Pascal multiplies each term, `CmulReal(..., 3.0)` at `:1103`) — the same
+    /// hoist [`Self::losses`] and [`Self::terminal_power`] already make, so the
+    /// three routines stay one convention; the reassociation is exact-in-spirit
+    /// and far below the oracle floor on the positive-sequence decks the gate
+    /// runs.
+    fn phase_losses(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> Vec<Complex64> {
+        let nphases = self.cd().nphases;
+        if !self.cd().enabled || self.cd().node_ref.is_empty() {
+            return vec![Complex64::ZERO; nphases];
+        }
+        self.compute_iterminal(sys, node_v);
+        let cd = self.cd();
+        let mut out = vec![Complex64::ZERO; nphases];
+        // Walk terminal-major chunks rather than flat `k = j·NConds + i` offset
+        // arithmetic: the offset lives only in the `elements::ckt` accessors
+        // (`elements/ckt.rs:415-419`), the `residuals` discipline. `chunks_exact`
+        // truncates a `node_ref` shorter than `yorder` exactly as `losses()`'
+        // `zip` does, and refuses a zero width — an element with no conductors
+        // also has no phases, so the zero-fill above is already the answer.
+        // `nphases.min(nconds)` is a bounds guard, not a policy: the two counts
+        // are independent fields here as in Pascal (`Set_NPhases` writes both),
+        // and no element class leaves more phases than conductors.
+        let phases = nphases.min(cd.nconds);
+        if cd.nconds > 0 {
+            for (nodes, curr) in cd
+                .node_ref
+                .chunks_exact(cd.nconds)
+                .zip(cd.iterminal.chunks_exact(cd.nconds))
+            {
+                for (i, c_loss) in out[..phases].iter_mut().enumerate() {
+                    let n = nodes[i];
+                    if n > 0 {
+                        *c_loss += node_v[n] * curr[i].conj();
+                    }
+                }
+            }
+        }
+        if sys.positive_sequence {
+            for c_loss in &mut out {
+                *c_loss *= 3.0;
+            }
+        }
+        out
     }
 
     /// `NormAmps` rating (PD elements override; 0 = no rating, like Pascal's

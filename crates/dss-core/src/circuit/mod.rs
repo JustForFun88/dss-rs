@@ -5,6 +5,7 @@ pub mod auto_add;
 pub mod bus;
 pub mod circuit;
 pub mod ckt_tree;
+pub mod controls;
 pub mod coverage;
 pub mod tearing;
 pub mod terminal;

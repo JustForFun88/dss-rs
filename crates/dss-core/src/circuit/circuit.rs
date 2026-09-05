@@ -145,7 +145,26 @@ pub struct Circuit {
     /// scans every enabled UPFC).
     pub upfcs: Vec<ElemId>,
     /// Control elements (RegControl/CapControl/...): no Yprim, not PD/PC.
+    ///
+    /// Pascal `ActiveCircuit.Controls`, in creation order — the order the
+    /// control loop *samples* in (`Sample_DoControlActions`). It is NOT the
+    /// order of any element's `ControlElementList`; see
+    /// [`Self::control_attach_order`].
     pub controls: Vec<ElemId>,
+    /// The circuit-wide chronological *attach* order of the controls, i.e. the
+    /// one list from which every element's Pascal `ControlElementList` is
+    /// derived ([`crate::circuit::controls::derive_control_lists`]).
+    ///
+    /// `TControlElem.Set_ControlledElement` (r4133
+    /// `Controls/ControlElem.pas:113-131`) removes the control from its previous
+    /// target's list and **appends** it to the new target's, and r4133 re-runs
+    /// that pair on every `RecalcElementData` — so a re-edited control moves to
+    /// the END of its element's list. [`Self::reattach_control`] is that
+    /// remove-then-append, kept once here instead of per element.
+    ///
+    /// Deliberately separate from [`Self::controls`]: reordering the sampling
+    /// list would change `DoControlActions`' order and therefore the event log.
+    pub control_attach_order: Vec<ElemId>,
     /// Monitor elements (Phase 6): no Yprim, not PD/PC; device list + own list.
     pub monitors: Vec<ElemId>,
     /// EnergyMeter elements (Phase 6): no Yprim, not PD/PC; device list + own
@@ -374,6 +393,7 @@ impl Circuit {
             ind_machines: Vec::new(),
             upfcs: Vec::new(),
             controls: Vec::new(),
+            control_attach_order: Vec::new(),
             monitors: Vec::new(),
             energy_meters: Vec::new(),
             sensors: Vec::new(),
@@ -569,6 +589,31 @@ impl Circuit {
             ElemKind::Sensor => self.sensors.push(r),
         }
         elem.cd_mut().handle = Some(self.ckt_elements.len() as u32);
+    }
+
+    /// Pascal `TControlElem.Set_ControlledElement`
+    /// (r4133 `Controls/ControlElem.pas:113-131`): drop control `r` from the
+    /// list it currently sits in, then append it to its new target's — expressed
+    /// once on the circuit-wide [`Self::control_attach_order`], from which every
+    /// element's `ControlElementList` is projected
+    /// ([`crate::circuit::controls::derive_control_lists`]).
+    ///
+    /// `attached` is `Assigned(Value)`: a control whose element reference did
+    /// not resolve (`ControlledElement := nil`, r4133 `Controls/Relay.pas:983`)
+    /// is removed and not re-appended. Called from the port's
+    /// `RecalcElementData` moment — the tail of every control edit
+    /// (`exec/command.rs::apply_edit_signal_tail`) — because upstream re-assigns
+    /// `ControlledElement` there on *every* edit, not only when the element-ref
+    /// property is written (capi 0.14.5 differs; `DIVERGENCES.md`, r4133 is the
+    /// authority). Pinned by
+    /// `exec::tests::element_extras::ocp_dev_type_follows_the_last_attach_order`.
+    ///
+    /// [`Self::controls`] — the sampling order — is deliberately untouched.
+    pub fn reattach_control(&mut self, r: ElemId, attached: bool) {
+        self.control_attach_order.retain(|&c| c != r);
+        if attached {
+            self.control_attach_order.push(r);
+        }
     }
 
     /// Pascal `AddBus`: find-or-create the bus, then allocate global node

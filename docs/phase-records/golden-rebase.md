@@ -3223,3 +3223,70 @@ row against the pre-fix lock.
   citations the merge shifted re-pointed.
 
   merge: lane lane-b -> update, see git log
+
+- **G1.3d(ii)** (2026-09-05, lane `lane-e`; D2/D4/D7) — `PhaseLosses` + the five control-derived
+  scalars (`NumControls`, `OCPDevIndex`, `OCPDevType`, `HasVoltControl`, `HasSwitchControl`) on both
+  channels over the same **440** cases, completing `compare_element_extras` and §G1.3d.
+  `CktElement::phase_losses` ports r4133 `Common/CktElement.pas:1078-1120`; the five scalars read the
+  derived per-element `ControlElementList` (`Controls/ControlElem.pas:113-131`, re-run by every
+  `RecalcElementData`, `Relay.pas:955`) that `Show Controlled` and the reliability sweep share.
+  **0 new ledger entries / 0 new causes** (58 / 31), **10** measured widenings onto the new
+  `phase_losses` sub-channel, 0 golden bytes, no band moved, `WP_G1_MODES` 97; the floor derives from
+  `assert_power_close` (`tests/TOLERANCE_NOTES.md` §G1.3d(ii)) and `PhaseLosses` joins
+  `LANE_SKIP_ELEM_POWERS` on the two `newton*` decks (same cache-aware `ComputeIterminal`, red
+  measured first on both channels). Unledgered but pinned: the per-edit re-attach
+  (`DIVERGENCES.md` L9, `ocp_dev_type_follows_the_last_attach_order`), the disabled OCP control
+  (`a_disabled_ocp_control_still_wins_the_ocp_scan`), adjacent defect A-1
+  (`section_device_type_is_the_live_ocp_scan_not_the_registration_latch`); A-2 recorded in STATUS,
+  owned by G1.6/G1.6b. Detail: plan §G1.3d part (ii), TESTING.md; **34** pins in
+  `every_pin_the_g13d2_record_names_exists_and_is_cited` (`exec::tests::element_extras` 20,
+  `harness::element_extras_pins` 26, `harness::phase_loss_bands` 10, 3 `ledger::*`, 1
+  `capture_order::*`, 1 `exec::tests::reliability::*`). Commits `e6d66d66` + settlement `43108993`
+  + docs (this record); gate **5 784 / 0 / 5** per lane (five commands, exit 0, unfiltered),
+  `lane_diff` PASS max |Δ| = 0.
+- **G1.3d(ii) audit settlement** (2026-09-05, `43108993`) — 18 findings (9 code / 9 tests, all
+  Minor/Note; 4 raised by both auditors, so 14 distinct): **13 fixed**, **1 recorded**, 0 refuted.
+  The real one: the port re-attached every
+  control during `MakePosSeq`, which r4133 never does — its control `MakePosSequence` overrides end
+  in `inherited` and never reach `RecalcElementData` (`Relay.pas:1008`, `Recloser.pas:738`,
+  `SwtControl.pas:367`, `CapControl.pas:656`, `RegControl.pas:1491`; `Fuse` has none;
+  `ExecHelper.pas:3069-3086`), so the re-attach moved out of the shared post-edit tail into
+  `exec::command::reattach_edited_control`, pinned by `makeposseq_does_not_reattach_controls`. Also:
+  a fail-on-stale population guard for D-ii-1's zero rows (`assert_no_multi_control_element`, 3 pins)
+  which **corrected the sub-step's own premise** — the quoted census covered `controls/**` only,
+  while the gated population holds **18** multi-control rows (3 184 controlled of 298 565), all of
+  them Relay-ONLY lists, so the conclusion stands on the right fact and the counts are now pinned,
+  `LANE_SKIP_ELEM_POWERS` locked to its two labels + the 7th `ElemChannels` bit added to the
+  anti-tautology asserts, the G1.3d(i) pin-count lock made exact again where no successor owns it and
+  the G1.3d(ii) row check made per-group, the newton red re-measured on the **r4133** channel
+  (`4.855901044093186e-4 > 8.753018514278278e-6`, `2.4606876731535624e-3 > 7.144000397412528e-5`),
+  and 21 wrong Pascal line citations swept (`:1090` `ComputeIterminal`, `:1118-1119` zero-fill,
+  DDLL `:637-659`/`:651`, capi `:896`). Recorded, not fixed: `Scope::dead_channels` still polices only
+  `divergence` entries — an exclusion covers causes that cannot be re-measured reliably (four of the
+  ten widenings sit on D12's self-disagreeing capi GIC decks), reason now in TESTING.md and
+  `ledger.rs`.
+
+  *On `update` after the merge (2026-09-05):* the lane's figures are its own. Ten conflicts,
+  all resolved keeping both surfaces; the only semantic one is the ledger. The lane's **ten**
+  `phase_losses` widenings land as **eight**: `gic-pct-r2-honoured-{gictransformer,midi}-capi`
+  were deleted on `update` by G1.4a's **D12/D14** (those decks now gate `r4133`-only), so the
+  widening goes with the entry and the r4133 twins keep theirs — ledger **54** entries / 31 causes,
+  unchanged by this merge. `makeposseq-cuf-applied-capi` was the one three-way entry (both sides
+  edited it): `match` unioned, both sides' `source` paragraphs kept, and its `phase_losses` sample
+  **re-measured on the merged tree** — D12/D14 had moved that deck's solve, so the lane's number no
+  longer existed; the widening was re-driven alone and still fails
+  (`Vsource.source` phase 0, `|Δ| = 5.0822934012897065e1 > 4.385766432859287e-5`), so it is kept.
+  Re-derived on the merged 526-case tree and **unmoved**: all seven forced populations
+  (443, 312, 87, 44) / `FORCED_DERIVED` (445, 314, 87, 44), `SC_STUDY_POPULATION` (10, 646),
+  `TOPOLOGY_STALE_DECLINES` (16, 135), `LOOPED_PAIR_WINDOW_DECLINES` (8, 96), D11(2) 8 (case,
+  channel) pairs, `WP_G1_MODES` **103**, `LEDGER_FIELDS` 15; the control census re-measured
+  **298 536 / 3 190 / 18 / 18** (the exact `(18, 18)` half unmoved, the two floors moved with the
+  merged corpus). One merge gap fixed: `harness/aggregates.rs` (G1.9) builds three `ElementCap`
+  literals, which the seven new fields left incomplete — spelled out, not defaulted, per that
+  fixture's own rule. Merged-tree checks: `fmt` + `clippy` clean in both lanes, `corpus_gate`
+  **526/526** cases (276 / 0 / 0 in the default lane), ledger 54 entries / 1 564 hits / 0 stale,
+  `population.lock.json` regenerated (8 rows, `@digest` only), `golden.lock.json` and
+  `tests/golden/**` untouched, and the 61 `file.rs:LINE` citations the merge shifted re-pointed
+  (diff-mapped) so `operational_docs_line_citations_point_at_the_line_they_name` is green.
+
+  merge: lane lane-e -> update, see git log

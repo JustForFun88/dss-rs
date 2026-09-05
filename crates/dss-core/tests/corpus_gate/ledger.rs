@@ -32,8 +32,8 @@ use serde_json::Value;
 use dss_core::support::complexutil::Polar;
 
 use crate::harness::{
-    ElementCap, Injection, MonitorCap, ProbeCap, PropsCap, Tolerances, polar_angle_band,
-    residual_band, wrapped_deg,
+    ElementCap, Injection, MonitorCap, ProbeCap, PropsCap, Tolerances, phase_loss_band,
+    polar_angle_band, residual_band, wrapped_deg,
 };
 use crate::manifest::EngineChannel;
 
@@ -404,6 +404,21 @@ impl LedgerRuntime {
             // names whole artifacts it never fetches a verdict for (see
             // [`LedgerView::excluded`]), so its sub-channels stay backed by the
             // measured provenance recorded in the entry itself.
+            //
+            // Deliberate, not an omission (G1.3d(ii) audit settlement,
+            // 2026-09-05, which widened `exclusion` scopes onto `phase_losses`
+            // -- ten on the lane, eight after the merge into `update`): an
+            // `exclusion` is what a cause gets when its channel cannot be
+            // measured *reliably*. The worked case is the one that settlement
+            // met -- two of its widenings sat on GICTransformer decks whose capi
+            // 0.14.5 oracle disagrees with ITSELF across processes (coordinator
+            // decision D12), so a "did this mask anything on THIS run" verdict
+            // would be a coin flip and a STALE report a flaky gate. (Those two
+            // capi entries are gone here, D12/D14 having moved their decks to
+            // r4133; the reason stays because it is the general rule, and the
+            // structural half above holds on every channel.) What stands behind
+            // an exclusion is instead the measured first failure recorded in the
+            // entry (`measured.*` + `source`), and TESTING.md states the rule.
             for sc in e.scopes.iter().filter(|sc| !sc.channels.is_empty()) {
                 if e.kind != Kind::Divergence {
                     continue;
@@ -645,6 +660,15 @@ const EXCLUSION_FIELDS: [&str; 11] = [
 /// that were measured failing on that entry's own channel (see each entry's
 /// `measured.g13a_polar_first_failure`); `r4133-indmachmidi-injection-ulp` was
 /// measured NOT to fail and keeps the original three.
+///
+/// G1.3d(ii) (2026-09-05) added `phase_losses` — `CktElement.PhaseLosses`
+/// (r4133 `Common/CktElement.pas:1078-1120`), the same `V·conj(I)` products
+/// `powers` carries, bucketed by phase — handled by [`envelope_element`] and
+/// [`rewrite_element_selected`] like the six before it. Same discipline: the
+/// live drive measured which committed scopes actually fail on it and widened
+/// only those (`measured.g13d2_phase_losses_first_failure` on each), and the
+/// four `r4133-*-injection-ulp` divergences were measured NOT to fail and keep
+/// their committed lists.
 const SUBCHANNEL_FIELDS: &[(&str, &[&str])] = &[(
     "element",
     &[
@@ -654,6 +678,7 @@ const SUBCHANNEL_FIELDS: &[(&str, &[&str])] = &[(
         "currents_mag_ang",
         "voltages_mag_ang",
         "residuals",
+        "phase_losses",
     ],
 )];
 
@@ -1785,6 +1810,72 @@ fn envelope_element(
     if block.get() {
         sc.mark_channel_exceeded("residuals");
     }
+    block.set(false);
+    // G1.3d(ii). `PhaseLosses[i] = Σ_j NodeV[NodeRef[k]]·conj(Iterminal[k])` at
+    // `k = j·nconds + i` (r4133 `Common/CktElement.pas:1093-1112`) — the very
+    // products this cap already reports as `powers`, bucketed by phase — so an
+    // entry whose cause moves `powers`/`losses` moves this too. Banded by
+    // `harness::phase_loss_band`, the per-conductor power band summed over that
+    // phase's conductors: the same floor `compare_element_phase_losses` gates
+    // the unpinned samples with, so a ledger envelope here is measured on the
+    // scale it excludes. The capture is kW/kvar and the snapshot W/var, so the
+    // ×0.001 is applied here exactly as the comparator applies it at its one
+    // site. Empty whenever the case's `compare_element_extras` flag is off (the
+    // capture then carries no `pl_kw` at all) and on a 0-phase element, so the
+    // block is inert rather than special-cased — and a scope widened onto a
+    // channel that measures nothing trips `Scope::dead_channels` instead of
+    // masking.
+    if want("phase_losses") && !ec.pl_kw.is_empty() {
+        let counts = ec.n_terms.zip(ec.n_conds);
+        let (nterms, nconds) = counts.unwrap_or_else(|| {
+            panic!(
+                "{ctx}: ledger `{}` element {}: a `phase_losses` scope on a \
+                 capture that carries PhaseLosses but no NTerms/NConds — \
+                 the band is built from that conductor layout",
+                e.id, ec.name
+            )
+        });
+        let (nterms, nconds) = (
+            usize::try_from(nterms).expect("oracle NumTerminals is negative"),
+            usize::try_from(nconds).expect("oracle NumConductors is negative"),
+        );
+        // The same layout tie `harness::compare_element_phase_losses` asserts
+        // before indexing `k = j·nconds + i`; it runs on this element too, so a
+        // shape miss fails there with its own message rather than panicking on
+        // an index here.
+        let layout_ok = nterms * nconds == ec.p_kw.len()
+            && ec.p_kw.len() == ec.p_kvar.len()
+            && ec.p_kw.len() == ec.i_re.len()
+            && ec.i_re.len() == ec.i_im.len();
+        assert!(
+            layout_ok,
+            "{ctx}: ledger `{}` element {}: NTerms·NConds ({nterms}·{nconds}) does \
+             not match the captured Powers/Currents layout \
+             ({} / {} / {} / {})",
+            e.id,
+            ec.name,
+            ec.p_kw.len(),
+            ec.p_kvar.len(),
+            ec.i_re.len(),
+            ec.i_im.len()
+        );
+        for (i, ((kw, kvar), p)) in ec
+            .pl_kw
+            .iter()
+            .zip(&ec.pl_kvar)
+            .zip(&snap.phase_losses)
+            .enumerate()
+        {
+            let band = phase_loss_band(ec, i, nterms, nconds, tol.i_rel, tol.i_abs);
+            let a = *p * 0.001;
+            let diff = ((a.re - kw).powi(2) + (a.im - kvar).powi(2)).sqrt();
+            let base = (kw.powi(2) + kvar.powi(2)).sqrt();
+            record(&format!("pl[{i}]"), diff, base, band);
+        }
+    }
+    if block.get() {
+        sc.mark_channel_exceeded("phase_losses");
+    }
     LedgerView::mark_applied(e);
     if exceeded.get() {
         LedgerView::mark_exceeded(e);
@@ -1847,6 +1938,23 @@ fn rewrite_element_selected(
         for t in 0..cap.res_mag.len().min(cap.res_ang.len()) {
             cap.res_mag[t] = snap.residuals[t].mag;
             cap.res_ang[t] = snap.residuals[t].ang;
+        }
+    }
+    // G1.3d(ii): the snapshot is W/var and the capture kW/kvar (each oracle
+    // scales at its API boundary — r4133 `DDLL/DCktElement.pas:651`, capi
+    // `CAPI/CAPI_Alt.pas:464-467`), so the pin writes the SCALED value, the same
+    // ×0.001 `harness::compare_element_phase_losses` applies. The snapshot
+    // length joins the `min` so that a shape mismatch survives to that
+    // comparator's own length assert instead of panicking on an index here.
+    if want("phase_losses") {
+        for i in 0..cap
+            .pl_kw
+            .len()
+            .min(cap.pl_kvar.len())
+            .min(snap.phase_losses.len())
+        {
+            cap.pl_kw[i] = snap.phase_losses[i].re * 0.001;
+            cap.pl_kvar[i] = snap.phase_losses[i].im * 0.001;
         }
     }
 }
@@ -2794,6 +2902,15 @@ fn polar_envelope_fixture() -> (Entry, ElementCap, dss_core::exec::ElementSnapsh
         n_phases: 1,
         node_order: Vec::new(),
         energy_meter: None,
+        // G1.3d(ii) added these six; this fixture reaches neither
+        // `harness::compare_element_extras` nor
+        // `harness::compare_element_phase_losses`.
+        phase_losses: Vec::new(),
+        num_controls: 0,
+        ocp_dev_index: 0,
+        ocp_dev_type: 0,
+        has_volt_control: false,
+        has_switch_control: false,
         bus_names: vec!["b".to_string()],
         powers: vec![num_complex::Complex64::new(0.0, 0.0)],
         currents: vec![num_complex::Complex64::new(0.0, 0.0)],
@@ -2906,5 +3023,108 @@ fn a_widened_sub_channel_that_masks_nothing_is_reported_stale() {
     assert!(
         rt.assert_all_hit().is_ok(),
         "a sub-channel that masks something must pass"
+    );
+}
+
+// --- the `phase_losses` sub-channel (GOLDEN_REBASE G1.3d(ii) F4) ------------
+
+/// A divergence entry scoped to one element's `phase_losses`, on a
+/// single-terminal single-conductor payload whose `Powers`/`Currents` layout the
+/// band indexes through: |V| = 1 kV at 1 A, so `Powers[0] = PhaseLosses[0] =
+/// 1 kW` — the identity `phase_loss_band` is derived from.
+#[cfg(test)]
+fn phase_loss_envelope_fixture() -> (Entry, ElementCap, dss_core::exec::ElementSnapshot) {
+    let (mut entry, mut cap, mut snap) = polar_envelope_fixture();
+    entry.id = "test-phase-loss-envelope".to_string();
+    entry.scopes[0].channels = vec!["phase_losses".to_string()];
+    cap.n_terms = Some(1);
+    cap.n_conds = Some(1);
+    cap.n_phases = Some(1);
+    cap.i_re = vec![1.0];
+    cap.i_im = vec![0.0];
+    cap.p_kw = vec![1.0];
+    cap.p_kvar = vec![0.0];
+    cap.pl_kw = vec![1.0];
+    cap.pl_kvar = vec![0.0];
+    snap.powers = vec![num_complex::Complex64::new(1.0, 0.0)];
+    snap.currents = vec![num_complex::Complex64::new(1.0, 0.0)];
+    // The engine reports W/var; the capture kW/kvar. Equal values here.
+    snap.phase_losses = vec![num_complex::Complex64::new(1000.0, 0.0)];
+    (entry, cap, snap)
+}
+
+/// The `phase_losses` envelope bands each phase with `harness::phase_loss_band`
+/// and attributes the floor-exceed to that sub-channel — the same two-sided
+/// accounting the six older sub-channels get.
+#[test]
+fn the_phase_loss_envelope_bands_the_sample_and_attributes_the_exceed() {
+    let tol = crate::harness::tol_for("micro");
+    // band = i_abs·max(1, |V_kv|) + i_rel·|S| = 1e-6·1 + 1e-9·1 = 1.001e-6 kW.
+    let band = phase_loss_band(
+        &phase_loss_envelope_fixture().1,
+        0,
+        1,
+        1,
+        tol.i_rel,
+        tol.i_abs,
+    );
+    assert!(
+        (band - 1.001e-6).abs() < 1e-18,
+        "the fixture's band moved: {band:e}"
+    );
+
+    // (a) inside the floor: nothing to mask, so the sub-channel is STALE.
+    let (entry, cap, snap) = phase_loss_envelope_fixture();
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    assert!(
+        !entry.exceeded_floor.load(Ordering::Relaxed),
+        "a sample inside its floor must not count as a divergence"
+    );
+    assert_eq!(entry.scopes[0].dead_channels(), vec!["phase_losses"]);
+
+    // (b) above the floor and inside the entry's envelope (2e-5 + 1e-8 kW):
+    //     the exceed is recorded against `phase_losses`, not a sibling.
+    let (entry, cap, mut snap) = phase_loss_envelope_fixture();
+    snap.phase_losses[0].re = 1000.0 + 1e-2;
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    assert!(
+        entry.exceeded_floor.load(Ordering::Relaxed),
+        "1e-5 kW is 10x the 1e-6 kW band and must be recorded"
+    );
+    assert!(entry.scopes[0].dead_channels().is_empty());
+}
+
+/// …and a sample outside the entry's committed envelope still fails the gate:
+/// the widening is a bounded pin, never a blanket.
+#[test]
+#[should_panic(expected = "pl[0]")]
+fn the_phase_loss_envelope_still_fails_outside_the_committed_bound() {
+    let tol = crate::harness::tol_for("micro");
+    let (entry, cap, mut snap) = phase_loss_envelope_fixture();
+    // 1e-4 kW: 5x the entry's 2.001e-5 kW envelope.
+    snap.phase_losses[0].re = 1000.0 + 1e-1;
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+}
+
+/// The exclusion half: a `phase_losses` scope rewrites the capture's kW/kvar
+/// halves from the snapshot — with the ×0.001 — so `compare_element_phase_losses`
+/// sees them equal, and touches nothing else.
+#[test]
+fn a_phase_losses_scope_rewrites_the_capture_in_kw() {
+    let (entry, mut cap, mut snap) = phase_loss_envelope_fixture();
+    snap.phase_losses[0] = num_complex::Complex64::new(-2500.0, 750.0);
+    cap.i_re[0] = 7.0;
+    rewrite_element_selected(&mut cap, &entry.scopes[0], &snap);
+    assert_eq!(cap.pl_kw, vec![-2.5]);
+    assert_eq!(cap.pl_kvar, vec![0.75]);
+    assert_eq!(
+        cap.i_re,
+        vec![7.0],
+        "an unselected sub-channel must be left alone"
+    );
+    assert_eq!(
+        cap.p_kw,
+        vec![1.0],
+        "an unselected sub-channel must be left alone"
     );
 }

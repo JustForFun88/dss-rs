@@ -178,6 +178,14 @@ fn corpus_gate_all_cases_match_engines() {
     // that stopped occurring must fail rather than quietly become a no-op.
     // Self-silencing under `DSS_GATE_ONLY` and in the parity lane.
     harness::lane::assert_reround_cells_are_live();
+    // And the population fact behind GOLDEN_REBASE G1.3d(ii)'s D-ii-1 costing
+    // ZERO ledger rows: no gated element carries two controls, so r4133's
+    // per-edit `Set_ControlledElement` re-attach (which the port follows) can
+    // never reorder a list against capi 0.14.5's here. Re-derived from the
+    // oracle's own `NumControls` on every full run, and loud in both directions
+    // (a two-control element, or a census that counted nothing) — the D15/D16
+    // shape, added by the G1.3d(ii) audit settlement.
+    harness::assert_no_multi_control_element();
     // And for G2.4's monitor-channel normalization, which needs it for the
     // opposite reason: since both lanes' engines now report the empty channel, a
     // client that stopped padding would make the transform a silent no-op rather

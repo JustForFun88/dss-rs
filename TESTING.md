@@ -406,7 +406,7 @@ switched off later with no lock diff at all:
 | manifest flag | rigor token | owning sub-step | surface |
 | --- | --- | --- | --- |
 | `compare_derived` | `derived=` | G1.3a–c | per-element `CurrentsMagAng`/`VoltagesMagAng`/`Residuals`, `SeqCurrents`/`SeqVoltages`/`SeqPowers`, `CplxSeq*`, `TotalPowers`. **Wired since G1.3a (2026-09-04)**, which serves the first third — `Enabled` plus the three polar channels; the sequence surfaces follow in G1.3b/c |
-| `compare_element_extras` | `elemx=` | G1.3d | `PhaseLosses`, `NodeOrder`, `EnergyMeter`, `OCPDevType`/`OCPDevIndex`, `HasVoltControl`/`HasSwitchControl`, `NumControls`, `NumTerminals`/`NumPhases`/`NumConductors`. **Wired since G1.3d(i) (2026-09-04/05)**, which serves the index/name scalars — the three counts, `NodeOrder` and `EnergyMeter`; `PhaseLosses` and the control-derived extras follow in G1.3d(ii) |
+| `compare_element_extras` | `elemx=` | G1.3d | `PhaseLosses`, `NodeOrder`, `EnergyMeter`, `OCPDevType`/`OCPDevIndex`, `HasVoltControl`/`HasSwitchControl`, `NumControls`, `NumTerminals`/`NumPhases`/`NumConductors`. **Complete since G1.3d(ii) (2026-09-05)**: G1.3d(i) landed the index/name scalars (the three counts, `NodeOrder`, `EnergyMeter`), G1.3d(ii) `PhaseLosses` and the five control-derived scalars — all ten fields compare on both channels, over the same **443** forced cases — `FORCED_ELEMENT_EXTRAS_POPULATION` = (443, 312, 87, 44), the population G1.3d(i) already had (the sub-step widened the flag's *fields*, not its population; the lane measured it at 440 before G1.4a/G1.5/G1.6(i)'s corpus moves reached it at this merge) |
 | `compare_bus` | `bus=` | G1.4a–c | **live (G1.4a):** `Nodes`/`kVBase`, `puVoltages`/`puVmagAngle`/`VMagAngle`, `AllBusVmagPu`; **owed:** `Distance`/`AllBusDistances`/`AllNodeDistances` + `AllPCEatBus`/`AllPDEatBus` (G1.4b), `SeqVoltages`/`CplxSeqVoltages` + `VLL`/`puVLL` (G1.4c) |
 | `compare_zsc` | `zsc=` | G1.5 | **live (G1.5):** `Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix`/`Isc`/`Voc`, per bus, on the same walk as `compare_bus` |
 | `compare_reliability` | `rel=` | G1.6 | meter extras + the per-bus reliability columns; also drives the executive `RelCalc` |
@@ -466,7 +466,7 @@ linear functional of the per-element `currents`/`powers`/`losses` the ledger
 already partitions, so re-pinning a scoped element's echo in the sum would grow
 the ledger for a divergence it already owns. `compare_aggregates` therefore feeds
 its value arm from the runner's accepted `LedgerView::element_rewrites`
-(`crates/dss-core/tests/corpus_gate/ledger.rs:1081`) — the same caps
+(`crates/dss-core/tests/corpus_gate/ledger.rs:1106`) — the same caps
 `compare_element_channels` is handed one loop above. Where a **deck-wide**
 `element` scope selects `losses`, every summand is rewritten and the value arm
 is then a self-comparison on that deck. That is inherent, not a comparator
@@ -491,7 +491,7 @@ ledger: **0** entries and 0 new `LEDGER_FIELDS`. Bands and their derivations:
 `tests/TOLERANCE_NOTES.md` §"G1.9 circuit aggregates + solution scalars".
 
 **A flag may not be set before its surface exists.** `G1_SURFACE_FLAGS`
-(`crates/dss-core/tests/corpus_gate/manifest.rs:588`) carries each flag's owning
+(`crates/dss-core/tests/corpus_gate/manifest.rs:592`) carries each flag's owning
 sub-step and a `wired` bit; the structural family gate refuses any manifest case
 that sets a flag whose `wired` is still `false`, because the request builder
 would not send it, the oracle would return nothing, and the case would compare an
@@ -532,8 +532,10 @@ an_absent_capture_fails, the_message_names_the_flag_the_channel_the_context_and_
 
 **G1.3d(i) — the per-element discrete extras** (2026-09-04/05, lane `lane-e`).
 `harness::compare_element_extras`
-(`crates/dss-core/tests/harness/mod.rs:2505`) compares `NumTerminals`,
-`NumConductors`, `NumPhases`, `NodeOrder` and `EnergyMeter` **exactly**: it takes
+(`crates/dss-core/tests/harness/mod.rs:2625`) compares `NumTerminals`,
+`NumConductors`, `NumPhases`, `NodeOrder` and `EnergyMeter` **exactly** — and,
+since G1.3d(ii), the five control-derived scalars `NumControls`, `OCPDevIndex`,
+`OCPDevType`, `HasVoltControl` and `HasSwitchControl` on the same terms: it takes
 no `Tolerances` argument and owns **no** ledger sub-channel, so a divergence in
 discrete state cannot be masked by a committed `element` scope — it is a gate red
 and a STOP (`tests/TOLERANCE_NOTES.md` §G1.3d(i) says why no floor exists here).
@@ -562,17 +564,17 @@ Five things about it that are not obvious from the field names:
   whether `NodeRef` was ever allocated, and guessing wrong kills the r4133
   worker. Demanding an empty port vector instead would red every deck that
   switches an element out. Pinned both ways in `element_extras_pins`
-  (`mod.rs:2645`).
+  (`mod.rs:3549`).
 * **"No meter" is a two-channel spelling, folded at the capture boundary — each
   channel's OWN sentinel, and the census is what makes it safe** (coordinator
   decision D4, 0 ledger rows): capi returns `''` (`Result := NIL`,
   `CAPI/CAPI_CktElement.pas:672-687`), r4133 returns `'0'` (the `CktElementS`
   pre-`case` default, `DDLL/DCktElement.pas:421`; arm 4 at `:442-449` is guarded
   by `HasEnergyMeter` at `:444`). `harness::oracle_meter_name`
-  (`mod.rs:2436`) takes the channel and folds only that channel's spelling, so on
+  (`mod.rs:2537`) takes the channel and folds only that channel's spelling, so on
   the capi side a meter literally named `0` is a name like any other and a port
   that lost it reds (`a_meter_named_zero_reds_instead_of_passing`,
-  `mod.rs:2765`). On the **r4133** side the collision is genuinely undecidable and
+  `mod.rs:3717`). On the **r4133** side the collision is genuinely undecidable and
   cuts BOTH ways — a port that lost a meter named `0` would compare `None ==
   None` and pass (asserted, not assumed, by
   `the_r4133_zero_sentinel_is_undecidable_and_the_census_is_the_guard`). What
@@ -586,11 +588,104 @@ Five things about it that are not obvious from the field names:
   per enabled meter carries a name and every other element of the zone reports
   none.
 * **Two unrelated `node_order` fields share the name.** The per-element
-  `ElementCap::node_order` (`mod.rs:968`) is the bus-local node number per
+  `ElementCap::node_order` (`mod.rs:976`) is the bus-local node number per
   conductor per terminal; the checkpoint-level `CaseResult::node_order`
   (`crates/dss-epri/src/capture.rs:144`) is the **Y node name order** of the
   whole circuit. They live in different JSON objects and share nothing but the
   word; both field docs say so.
+
+**G1.3d(ii) — `PhaseLosses` and the control-derived extras** (2026-09-05, lane
+`lane-e`). The same flag, the same population (**443** on `update`; 440 on the lane), the last six fields of the surface.
+The five control scalars fold into `compare_element_extras` above (exact, no
+`Tolerances`, no sub-channel); `PhaseLosses` is numeric and therefore gets its
+own comparator, `harness::compare_element_phase_losses`
+(`crates/dss-core/tests/harness/mod.rs:3063`), precisely so that function's
+"everything here is discrete" contract stays literally true. Six things worth
+knowing:
+
+* **The band is a derivation, not a new class.** `harness::phase_loss_band`
+  (`mod.rs:2967`) sums `assert_power_close`'s per-conductor floor
+  `abs·max(1,|V_k|) + rel·|S_k|` over exactly the conductors `GetPhaseLosses`
+  sums (`k = j·NConds + i`, r4133 `Common/CktElement.pas:1093-1112`) — the same
+  construction `compare_element_channels` already applies to `Get_Losses` over
+  *all* conductors, restricted to one phase, hence strictly tighter. No
+  `Tolerances` field is read or written; the derivation and its measured
+  headroom are `tests/TOLERANCE_NOTES.md` §G1.3d(ii). The `Get_Losses`
+  oracle-self-consistency trust escape is deliberately **not** copied here (it
+  exists for a capi015 quirk on a rev this gate does not run, so a twin could
+  only mask).
+* **Shape is asserted under every channel policy, the value only under the
+  channel bit.** Both oracle halves must be the same length and both sides must
+  carry exactly `NumPhases` samples — the zero of a 0-phase `UPFCControl`
+  included — so a capi one-element `DefaultResult` sentinel reds instead of
+  de-interleaving into a silent `[0.0]`. The engine keeps `PhaseLosses` in
+  **W/var** (`CktElement::phase_losses`,
+  `crates/dss-core/src/elements/traits.rs:958`); the oracles' ×0.001 (r4133
+  `DDLL/DCktElement.pas:651`, capi `CAPI/CAPI_Alt.pas:466`) is a
+  capture-boundary encoding applied at exactly one site, this comparator.
+* **`PhaseLosses` is the first channel to JOIN `LANE_SKIP_ELEM_POWERS`**
+  (`crates/dss-core/tests/harness/lane.rs:137`), where G1.3a's three polar
+  channels did not: `GetPhaseLosses` opens with the same cache-aware
+  `ComputeIterminal` as `Get_Powers`/`Get_Losses`, so on the two `newton*` decks
+  no oracle reports it at the converged `NodeV` (CLAUDE.md bug 5 / G2.3). The
+  seventh `ElemChannels` bit (`ElemChannels::phase_losses`, `mod.rs:1568`) is
+  `true` in `ALL` and `false` in `CURRENTS_ONLY`, and the exclusion was
+  **measured before it was added, on BOTH gating channels**: both decks red on
+  `Vsource.source` phase 0 at 55.5× / 34.4× the band, on figures bit-identical
+  to the `Powers` numbers the same row already records. The `r4133` half needed
+  its own scratch run (a case aborts on its first failing channel, so the capi
+  red hides the r4133 one) — G1.3d(ii) audit settlement, 2026-09-05. The five
+  discrete scalars stay compared there.
+* **The control-derived scalars read a DERIVED list, with no `Enabled`
+  filter.** Pascal keeps a per-element `ControlElementList`; the port keeps a
+  circuit-wide attach order (`Circuit::reattach_control`,
+  `crates/dss-core/src/circuit/circuit.rs:612`) and buckets it per element on
+  demand (`circuit::controls::derive_control_lists`,
+  `crates/dss-core/src/circuit/controls.rs:119`), which `Show Controlled` and
+  the reliability sweep's live `GetOCPDeviceType` scan (`live_ocp_device_type`,
+  `crates/dss-core/src/solution/meters/reliability.rs:50`) now share, so the
+  report, the API surface and the sweep cannot drift apart. A **disabled** OCP
+  control still holds its slot and still wins the scan on both oracles (r4133
+  `Common/Utilities.pas:3165-3184` has no `Enabled` test), which is why the
+  accessors recompute instead of reading the registration latch.
+* **The population guard behind D-ii-1's zero ledger rows** (added by the
+  G1.3d(ii) audit settlement, 2026-09-05, in the D15/D16 shape): the divergence
+  between r4133's per-edit re-attach and capi 0.14.5's needs an element whose list
+  holds an OCP control **beside a control of another class** before
+  `OCPDevIndex`/`OCPDevType` can move. The whole-gate census — the oracle's own
+  `NumControls`/`OCPDevType`, recorded at the gating call site
+  (`harness::record_control_census`) and checked in the gate's epilogue
+  (`harness::assert_no_multi_control_element`) — measures **298 565** compared
+  (case, channel, step, element) rows, **3 184** with a control and **18** with two
+  or more, every one of the 18 a **Relay-only** list (`Line.thev` in the eight
+  Distance/TD21 relay decks, `Line.motorleads` in the two `indmach_r4133` decks),
+  so every permutation answers the same `OCPDevIndex = 1` / `OCPDevType = 3`. The
+  `(18, 18)` pair is pinned exactly and fails on stale in **both** directions (a
+  new or retired multi-control element must be re-triaged against D-ii-1); `seen`
+  and `controlled` carry non-vacuity floors. Silent under `DSS_GATE_ONLY`, which
+  is not the population. **It also corrected the sub-step's own claim**: the
+  census quoted in the record covered `tests/corpus/controls/**` only, where
+  `max NumControls` really is 1.
+* **Mode capability, measured, not assumed (D2's record):** all six r4133 modes
+  already existed and were proven `Served` by G1.0 — `WP_G1_MODES` stays 97 and
+  `crates/dss-epri/src/modes.rs` is byte-untouched — and on a **0-phase**
+  element (`UPFCControl`, `controls/upfc/upfc_dual.dss`) `CktElementV(6)`
+  returns a 0-length array and the worker survives, where capi returns `[]`. No
+  capture predicate, no sentinel normalization and **no `DoNotCall` row** is
+  owed for this group. The runner's non-vacuity rail counts elements with a
+  **non-empty** `pl_kw` (`require_capture`,
+  `crates/dss-core/tests/corpus_gate/runner.rs:707`) rather than key presence,
+  because r4133 omits the key on a 0-phase element while capi sends `[]`.
+* **Trap, measured while proving the r4133 rail non-vacuous:** `cargo test -p
+  dss-core` recompiles the `dss-epri` *library* but does **not** rebuild the
+  `epri-worker` *binary* the gate actually launches, so a scoped `-p dss-core`
+  run after an r4133-capture edit can pass **vacuously** against a stale worker.
+  Run `cargo build -p dss-epri --bins` first; `cargo test --workspace` builds it,
+  so the commit gate is unaffected. Second observation for the same registry
+  channel as coordinator decision D13: the DLL reads **`DataPath`** from
+  `HKCU\Software\OpenDSS` too, so a fresh `epri-worker` in one worktree can
+  resolve a *relative* deck path against another worktree's last-used directory
+  — probes pass absolute paths (D13/D14 pending sync on this lane).
 
 **The corpus meter-name census lives in the oracle-free binary, on purpose.**
 `no_corpus_energymeter_is_named_zero` (`crates/dss-core/tests/corpus_manifest.rs:292`,
@@ -610,6 +705,24 @@ one and only one gate runs per worktree (coordinator decision D13). A parallel
 test runner (`cargo-nextest`) or two concurrent `cargo test` invocations in one
 worktree would put a live-gate writer back beside this walk.
 
+**The AD sweep is the residual co-tenant of that binary** (measured 2026-09-05,
+GOLDEN_REBASE G1.3d(ii) commit gate). `corpus_ad_matches_normal_mode` still runs
+in `corpus_gate` beside the live gate, and it compiles corpus decks under a
+`CorpusGuard` that snapshots and restores the deck's directory while the live
+gate is writing exports into the same tree. Under cross-lane load (D7 permits
+concurrent gates in *different* worktrees) it red once on
+`Test/IEEE13_LineAndCableSpacing.dss` with `ad-init: You must create a new
+circuit object first`, then passed in **41.62 s** run alone in the same tree and
+again inside a full unfiltered drive. Two things to know before believing such a
+red: it is **not** a divergence — that message is only the first error recorded
+after `set ADiakoptics=True`, i.e. the benign `Set DefaultBaseFrequency` the deck
+re-issues on the tearing re-compile, not the reason `solution.adiakoptics` stayed
+false; and the test's code path is byte-untouched by the surfaces WP-G1 adds
+(`crates/dss-core/tests/corpus_gate.rs`, and `CorpusGuard` at
+`crates/dss-core/tests/corpus_gate/runner.rs:65`). Re-run it with the worktree
+and the machine quiet before triaging it, exactly as D13 prescribes for the
+`ckt24` oracle-budget reds below.
+
 **`Lines.Yprim` is already witnessed; `LineGeometries.Rmatrix/Xmatrix/Zmatrix`
 leaves the parity claim** (the two G1.3d documentation verdicts). `Lines_Get_Yprim`
 (`CAPI/CAPI_Lines.pas:777-796`) and `CktElement_Get_Yprim`
@@ -626,10 +739,10 @@ differ only in bookkeeping outside the payload — mode 12 `Exit`s on a nil
 regardless (`DLines.pas:794-795`). Whenever there is a YPrim at all, both arms
 copy the same `GetYprimValues(ALL_YPRIM)` block. The gate already captures and compares
 `CktElement.Yprim` live on both channels (`tools/oracle/oracle_server.py:1149`,
-`crates/dss-epri/src/capture.rs:684` over `Engine::element_yprim`
-(`crates/dss-epri/src/dss.rs:622`), Rust side `compare_yprim` at
+`crates/dss-epri/src/capture.rs:710` over `Engine::element_yprim`
+(`crates/dss-epri/src/dss.rs:647`), Rust side `compare_yprim` at
 `corpus_gate/runner.rs:558` → `harness::compare_yprim`
-(`crates/dss-core/tests/harness/mod.rs:1369`)), so a
+(`crates/dss-core/tests/harness/mod.rs:1442`)), so a
 second `Lines`-shaped capture would add no information. **The honest residual is
 coverage, not spelling:** YPrim is compared only for a case's
 `selected_elements`, and over the four manifests **238 of 526** cases declare a
@@ -685,9 +798,9 @@ of `DSS-Python@origin/fastdss` plus `parent_name` — on every live non-`large`
 case (`force_pdelements`, `crates/dss-core/tests/corpus_gate/scheduler.rs:321`;
 the forced split is re-derived and pinned by `FORCED_PDELEMENTS_POPULATION`,
 `crates/dss-core/tests/corpus_gate/scheduler.rs:342`). The port side is
-`Dss::pd_elements` (`crates/dss-core/src/exec/view.rs:1420`), a `&self` read of
+`Dss::pd_elements` (`crates/dss-core/src/exec/view.rs:1529`), a `&self` read of
 `CktElementData`; the comparator is `harness::compare_pd_elements`
-(`crates/dss-core/tests/harness/mod.rs:6498`), which asserts the walk first
+(`crates/dss-core/tests/harness/mod.rs:7577`), which asserts the walk first
 (length, then the name sequence case-insensitively — the oracle's
 `PDElements.Count` is the raw `ListSize` and is deliberately **not** used) and
 then all fourteen fields **exactly**, `rel = abs = 0`: nothing on this surface is
@@ -711,17 +824,17 @@ come with it.
   `require_capture_opt` (presence, not count), and the capture is `null` when the
   flag is off and `[]` when it is on over a PD-less circuit. The hole that leaves
   is closed globally: `assert_pd_elements_compare_ran`
-  (`crates/dss-core/tests/harness/mod.rs:6578`) fails the run unless **each**
+  (`crates/dss-core/tests/harness/mod.rs:7657`) fails the run unless **each**
   gating channel compared at least one non-empty walk.
 * **`PD_SKIP_FIELDS` is fail-on-stale.** Both oracles read four cells out of
   uninitialized memory on in-zone shunt Capacitors/Reactors (`EnergyMeter.pas`
   assigns through `pPCelem: TPCElement`; nondeterministic across processes and, on
   r4133, within one), so those cells are excluded per (channel, class, field) in
-  `PD_SKIP_FIELDS` (`crates/dss-core/tests/harness/mod.rs:6312`) — never
+  `PD_SKIP_FIELDS` (`crates/dss-core/tests/harness/mod.rs:7391`) — never
   enveloped, and never wider than measured. The scope is the element too, not the
   class: a row is consulted only where that write lands, on an in-zone **shunt**
   Capacitor/Reactor (`pd_skip_applies`,
-  `crates/dss-core/tests/harness/mod.rs:6436`, port state
+  `crates/dss-core/tests/harness/mod.rs:7515`, port state
   `PdElementView::in_meter_zone`), so a series member of either class and a shunt
   one outside every zone stay fully compared — the defect is measured on 22
   (capi) / 29 (r4133) of the 372 / 431 walked cases. `fault_rate`/`pct_permanent`
@@ -730,7 +843,7 @@ come with it.
   Every row carries its Pascal citation and the pin that holds its value, a
   register test refuses a silent add or drop, a second one refuses a `pin` no
   `#[test]` defines, and `assert_pd_skip_rows_are_live`
-  (`crates/dss-core/tests/harness/mod.rs:6631`) fails a row that excluded nothing
+  (`crates/dss-core/tests/harness/mod.rs:7710`) fails a row that excluded nothing
   in the whole run. The gate epilogue prints every row's visit/hit counts.
 
 **The bus voltage surface (`compare_bus`, live since G1.4a, 2026-09-04).** Per
@@ -738,9 +851,9 @@ bus, in the engine's own `BusList` order: `Nodes`, `kVBase`, `puVoltages`,
 `VMagAngle`, `puVmagAngle`, plus the checkpoint-level `AllBusVmagPu` — the four
 quantities capi 0.14.5 and r4133 compute by byte-identical algorithms. The port
 side is `Dss::all_bus_voltages` / `Dss::all_bus_vmag_pu`
-(`crates/dss-core/src/exec/view.rs:1277`, `:1301`), the comparators are
-`harness::compare_bus` (`crates/dss-core/tests/harness/mod.rs:7156`) and
-`compare_all_bus_vmag_pu` (`mod.rs:7274`). Four things about it are worth
+(`crates/dss-core/src/exec/view.rs:1386`, `:1410`), the comparators are
+`harness::compare_bus` (`crates/dss-core/tests/harness/mod.rs:8235`) and
+`compare_all_bus_vmag_pu` (`mod.rs:8353`). Four things about it are worth
 knowing:
 
 * **Three ordering conventions meet here and must not be mixed.** The per-bus
@@ -772,18 +885,18 @@ knowing:
   nodes than the bus arrays cover, so it suppresses nothing here (G1.4a audit
   settlement, 2026-09-05). Bus count,
   name sequence, `nodes`, `kv_base` and every array length stay compared, which
-  `the_voltage_exclusion_still_pins_kv_base` (`mod.rs:8068`) drives negatively.
+  `the_voltage_exclusion_still_pins_kv_base` (`mod.rs:9147`) drives negatively.
   It is not a mask and does not read as one: every suppressed case is listed in
   the gate summary next to the entry that caused it
   (`ledger::LedgerRuntime::bus_array_suppressions`,
-  `crates/dss-core/tests/corpus_gate/ledger.rs:505`).
+  `crates/dss-core/tests/corpus_gate/ledger.rs:520`).
 
 **Bus reads are group C on both transports, and their order is a contract.**
 Every one goes straight to `Solution.NodeV` (`CAPI_Alt.pas:2276` == r4133
 `DDLL/DBus.pas:423`) and moves only `ActiveBusIndex`, so no bus read stales a
 cached `Iterminal` or is staled by one. What
 `the_bus_capture_reads_in_one_fixed_order_on_both_transports`
-(`crates/dss-core/tests/corpus_gate.rs:542`) pins is therefore the agreement of
+(`crates/dss-core/tests/corpus_gate.rs:550`) pins is therefore the agreement of
 the two transports, not a staleness hazard: the same five per-bus quantities in
 the same order on the capi and r4133 sides, the bus block after
 `variables`/`eventlog`/`ctrlqueue` and before `all_properties` (which stays the
@@ -795,9 +908,9 @@ capture.
 the *same* per-bus walk `compare_bus` already runs — the flag implies
 `compare_bus` and the implication is asserted three times (the request builder
 and a loud refusal in each transport), never written as an `||`. The port side
-is `Dss::all_bus_short_circuit` (`crates/dss-core/src/exec/view.rs:1257`), the
+is `Dss::all_bus_short_circuit` (`crates/dss-core/src/exec/view.rs:1366`), the
 comparator is `harness::compare_bus_short_circuit`
-(`crates/dss-core/tests/harness/mod.rs:7593`). Five things about it are worth
+(`crates/dss-core/tests/harness/mod.rs:8672`). Five things about it are worth
 knowing:
 
 * **The gate reads what the deck's own solve populated; it never runs a study.**
@@ -806,7 +919,7 @@ knowing:
   forced cases, whose decks run none (five run one). The capture-order test
   asserts that the short-circuit segment calls no refresh on either transport
   (`the_short_circuit_capture_reads_in_one_fixed_order_on_both_transports`,
-  `crates/dss-core/tests/corpus_gate.rs:671`), and the comparator's **first**
+  `crates/dss-core/tests/corpus_gate.rs:679`), and the comparator's **first**
   assertion is the discrete "study ran" bit, before any number.
 * **A third ordering convention.** These arrays are indexed by the bus's
   *internal* (insertion) node index — `for i … for j … Zsc.GetElement(i, j)`,
@@ -820,9 +933,9 @@ knowing:
 * **The two channels publish different "no matrix" sentinels, normalized at the
   comparator.** capi returns **1** double (`CAPI_Utils.pas:212-221`'s
   `DefaultResult` under `DSS_CAPI_COM_DEFAULTS`, `CAPI_SC_SENTINEL_LEN`,
-  `crates/dss-core/tests/harness/mod.rs:7373`), r4133 **2** (the
+  `crates/dss-core/tests/harness/mod.rs:8452`), r4133 **2** (the
   `setlength(…,1); [0] := CZero` prelude at `DDLL/DBus.pas:433-434`,
-  `R4133_SC_SENTINEL_LEN`, `mod.rs:7387`); at a **0-node** bus the same split
+  `R4133_SC_SENTINEL_LEN`, `mod.rs:8466`); at a **0-node** bus the same split
   hits `Isc`/`Voc` (capi 0 doubles, r4133 2 — `AllocMem`'s non-nil 0-byte block
   vs `Reallocmem`'s free, capi `Common/Bus.pas:250-256` vs r4133
   `Common/Bus.pas:246-260`). Both are shape differences of an empty quantity, so
@@ -1017,9 +1130,9 @@ second run re-accumulates `Bus.TotalMiles` (`13.825757575757578 →
 `relcalc_is_not_idempotent_and_the_gate_runs_it_once`). The payload therefore lives
 on the last checkpoint only, and the runner asserts exactly that before it compares
 anything. Port side: `Dss::meter_reliability` / `Dss::meter_totals`
-(`crates/dss-core/src/exec/view.rs:2231` / `:2360`) — `&self` reads of solved state,
+(`crates/dss-core/src/exec/view.rs:2340` / `:2469`) — `&self` reads of solved state,
 the reliability math itself untouched. Comparator: `harness::compare_reliability`
-(`crates/dss-core/tests/harness/mod.rs:9776`). The flag is **manifest-set, never
+(`crates/dss-core/tests/harness/mod.rs:10855`). The flag is **manifest-set, never
 forced** (six cases): "has an EnergyMeter" is not a manifest field, and forcing it
 circuit-wide would fire `28724 No EnergyMeter Objects Defined` on ~340 meterless
 decks — so there is no `FORCED_RELIABILITY_POPULATION` lock, deliberately. `large*`
@@ -1050,7 +1163,7 @@ Seven rules come with the surface.
   OCP device aborts the calc (r4133 `Meters/EnergyMeter.pas:2502`, capi `:2456`),
   which is a **compared observable**, not an error to swallow:
   `_RELCALC_TOLERATED_ERRNOS` (`tools/oracle/oracle_server.py:911`) and
-  `RELCALC_TOLERATED` (`crates/dss-epri/src/dss.rs:130`) are separate single-value
+  `RELCALC_TOLERATED` (`crates/dss-epri/src/dss.rs:155`) are separate single-value
   scopes, every other errno (28724 included) still fails the case, and the comparator
   asserts abort symmetry on the **boolean and the message, never the count** — the
   port reports once per failing meter, dss-python once per command
@@ -1109,7 +1222,7 @@ Seven rules come with the surface.
   `CalcAllocationFactors` `:54-72` writes them, and its sole driver is
   `TExecHelper.DoAllocateLoadsCmd`, `Executive/ExecHelper.pas:2624-2683`) — measured
   denormal garbage that changes across processes, hence excluded per (channel, case,
-  field) in `RELIABILITY_SKIP_FIELDS` (`crates/dss-core/tests/harness/mod.rs:9553`),
+  field) in `RELIABILITY_SKIP_FIELDS` (`crates/dss-core/tests/harness/mod.rs:10632`),
   never enveloped, each row carrying its citation and a pin that a register test
   requires to name a real `#[test]`. The corpus's only `AllocateLoads` deck,
   `tests/corpus/controls/energymeter/midi_relcalc.dss` (`both`, three sections), is
@@ -1309,19 +1422,20 @@ the r4133 channel of the same case needs no entry).
 
 **`channels` names sub-channels, and must be spelled out** (GOLDEN_REBASE G1.0,
 2026-09-04). `element` is today the only field whose comparison has sub-channels
-(`currents`, `powers`, `losses`, and since G1.3a `currents_mag_ang`,
-`voltages_mag_ang`, `residuals`), and the runtime reads a scope's `channels` as
+(`currents`, `powers`, `losses`, since G1.3a `currents_mag_ang`,
+`voltages_mag_ang`, `residuals`, and since G1.3d(ii) `phase_losses` — seven), and
+the runtime reads a scope's `channels` as
 *empty ⇒ all of them* — so a committed entry written for the original three would
 silently widen onto every new element sub-channel WP-G1 adds (G1.3a–c), with no
 ledger diff and no population-lock trip. `SUBCHANNEL_FIELDS`
-(`crates/dss-core/tests/corpus_gate/ledger.rs:648`) closes that with three
+(`crates/dss-core/tests/corpus_gate/ledger.rs:672`) closes that with three
 load-time rules: a scope on such a field must carry a **non-empty** `channels`;
 every name in it must be one of that field's declared sub-channels (a typo like
 `"curents"` otherwise loads cleanly, selects nothing, and leaves the entry
 reporting itself applied while masking not one value); and a scope on any other
 field must carry no `channels` at all, since the runtime would never read it.
 "All sub-channels" survives only as a named, reviewed exception in
-`BARE_CHANNELS_ALLOWED` (`ledger.rs:666`), which is **empty**. The rules are
+`BARE_CHANNELS_ALLOWED` (`ledger.rs:691`), which is **empty**. The rules are
 driven both ways by `a_scope_that_misuses_channels_is_refused_at_load`. When a
 sub-step adds a new element sub-channel it adds the name to `SUBCHANNEL_FIELDS`
 **in the same commit**, so the committed exclusions keep the width they were
@@ -1340,6 +1454,30 @@ all: bounding an angle the gate never reads would need a ±180 ° "envelope" tha
 bounds nothing (`a_masked_polar_angle_is_not_envelope_checked` /
 `an_unmasked_polar_angle_still_hits_the_envelope`).
 
+G1.3d(ii) (2026-09-05) is the second: `phase_losses` joins the list in the commit
+that starts comparing it, and both handlers honour it —
+`rewrite_element_selected` writes the port's kW/kvar back with the comparator's
+own ×0.001, and `envelope_element` bands each phase with `harness::phase_loss_band`
+so a ledger envelope is again measured on the comparator's own scale. **8** of the
+13 committed `element` scopes carry it, each **only** after the
+live gate printed its own failing sample on its own channel
+(`measured.g13d2_phase_losses_first_failure`), iterating to a fixpoint:
+`mmf-accept-set-honoured-capi`, `makeposseq-cuf-applied-capi`,
+`gic-pct-r2-honoured-{gictransformer,midi}-r4133` and
+`windgen-qmode0-constant-q-{daily,snapdelta,dyn,dynfault}-r4133`. (The lane measured
+**ten**: `gic-pct-r2-honoured-{gictransformer,midi}-capi` were widened too, and were
+already deleted on `update` by G1.4a's **D12**/**D14** — those decks gate `r4133`-only
+now — so the widening went with the entry at the merge. `makeposseq-cuf-applied-capi`'s
+sample was re-measured there, the same deck having moved under D14.) The four
+`r4133-*-injection-ulp` entries select `losses` but were measured **not** to fail on
+`phase_losses`, and keep their committed lists; so does
+`capi-capcontrol-time-bus-is-the-capacitors` (a CapControl carries no `Iterminal`,
+so its `PhaseLosses` is zero on both sides). **All eight are `exclusion`s**, which the
+per-sub-channel staleness rule below does not police — what stands behind each is
+the per-entry measurement, and the `divergence` half of the same rule was proved
+live by a deliberate eleventh widening of `r4133-indmach-injection-ulp` that an
+unfiltered run reported STALE before it was reverted.
+
 **A widened sub-channel has to keep masking something** (G1.3a audit settlement,
 2026-09-04). `applied`/`exceeded_floor` are per ENTRY, so a scope widened onto a
 sub-channel that diverges by nothing rides on a sibling channel's divergence for
@@ -1355,6 +1493,24 @@ the case). An **`exclusion`** entry is not policed this way, for the reason
 `LedgerView::excluded` gives: it names whole artifacts the runner never fetches
 a verdict for, so there is no measurement to attribute; its sub-channels stay
 backed by the `measured` provenance the entry itself carries.
+
+**Why that asymmetry stays** (recorded 2026-09-05, G1.3d(ii) audit settlement,
+after the `exclusion` scopes were widened onto `phase_losses`): an `exclusion` is
+what a cause gets precisely when its channel cannot be measured *reliably*. The
+worked case is the one the settlement met — two of the widenings it made sat on
+GICTransformer decks whose pinned capi 0.14.5 oracle disagrees with itself across
+fresh processes (coordinator decision **D12**), so a
+"this mask caught nothing on this run" verdict would be a coin flip and the
+resulting STALE report a flaky gate — the opposite of fail-on-stale's purpose.
+(Those two capi entries are gone on `update`, D12/D14 having moved their decks to
+`r4133`; the reason is kept because it is the general rule, and the structural
+half above — an exclusion names artifacts no verdict is ever fetched for — holds
+on every channel.) An
+exclusion's liveness is therefore carried by its own recorded first failure
+(`source` + `measured.*`, both mandatory) and by the entry-level "every entry
+must be hit" rule, not by a per-run re-measurement. Widening one is a *measured*
+act (`GOLDEN_REBASE_PLAN.md` §G1.3d AS EXECUTED lists each of the ten with its
+sample); pruning one is a manual re-measurement.
 
 **Adding a comparison surface to the ledger** — the recipe every WP-G1 surface
 sub-step follows, since no field or handler may exist before the comparator it
@@ -1460,6 +1616,18 @@ cleanest post-move run *faster* than every G1.3a measurement. None of these runs
 had the machine to itself (D7 lanes gate concurrently from separate `target`
 dirs), so a number tighter than "no signal above the ±20 s spread" would need
 repeated paired runs on a quiet machine.
+**Cost (G1.3d(ii)):** the six further reads per element (one of them a
+`2·NPhases` array) again show **no signal above the concurrency spread** on the
+default lane — the final unfiltered `cargo test -p dss-core --test corpus_gate`
+drive measured **181.07 s**, inside G1.3d(i)'s own 164.8 s … 218.7 s. The parity
+drive of the same bytes measured **246.93 s** against G1.3d(i)'s 180.6 s /
+180.9 s, and that gap is **not** attributed here: none of these runs had the
+machine to itself (D7 lanes gate concurrently), and the intermediate drives of
+the same tree ranged 232 s … 650 s purely with load — one of them tripping the
+fixed 120 s per-case oracle budget on the three `large_ultra_switch` `ckt24`
+decks, which this surface does not even flag (they pass in 61.85 s when the
+worktree is quiet, D13). A paired quiet-machine measurement is what would settle
+it, and none was run.
 **Cost (G1.3a, Q-8):** the three extra
 reads per enabled element cost ~+3 µs/element on the capi channel and roughly
 double the per-element JSON payload; end to end
@@ -1792,23 +1960,23 @@ property cell of a live non-`large` case is asserted on **both** channels. The
 two channels do not spell values identically, so the r4133 side runs a
 **channel-scoped claim chain** whose links are consulted in one fixed order and
 never on `capi_v0145`. One function holds the whole order —
-`harness::compare_prop_lists` (`crates/dss-core/tests/harness/mod.rs:4729`) —
-and links 2-4 are `PropsPolicy` methods gated on `is_r4133()` (`mod.rs:4272`,
-`:4972`; the channel type is `PropsChannel`, `mod.rs:4238`). Link 1 is the
+`harness::compare_prop_lists` (`crates/dss-core/tests/harness/mod.rs:5808`) —
+and links 2-4 are `PropsPolicy` methods gated on `is_r4133()` (`mod.rs:5351`,
+`:6051`; the channel type is `PropsChannel`, `mod.rs:5317`). Link 1 is the
 deliberate exception: `skip_prop` is a free function taking the channel, so its
 `LANE_SKIP_PROPS` half stays channel-blind (row 1 below says so).
 
 | # | link | seam | what it does | if it does not claim |
 |---|---|---|---|---|
-| 0 | shape allowlist `PROPS_015X` | `filter_015x`, `mod.rs:4529` | drops a Rust-side prop the capture cannot carry — **shape only** | the name walk fails |
-| 1 | skip rows `SKIP_PROPS` / `LANE_SKIP_PROPS` | `skip_prop`, `mod.rs:3507` (channel rule at `:3522`) | value-only skip, per channel | fall through |
-| 2 | normalization `PROPS_NORM_R4133` | `PropsPolicy::normalize`, `mod.rs:4993` | **re-spells** the oracle side when a typed rule proves the two are the same value | both raw spellings continue |
-| 3 | echo table `PROPS_ECHO_R4133` | `PropsPolicy::echo_excluded`, `mod.rs:5032` | drops the **value** compare of that cell (name + index order still assert) | fall through |
-| 4 | display floor `R4133_DISPLAY_FLOOR` | `PropsPolicy::under_display_floor`, `mod.rs:5089` | passes a numeric cell that is our value rendered to r4133's own digits | the cell reaches the assert |
+| 0 | shape allowlist `PROPS_015X` | `filter_015x`, `mod.rs:5608` | drops a Rust-side prop the capture cannot carry — **shape only** | the name walk fails |
+| 1 | skip rows `SKIP_PROPS` / `LANE_SKIP_PROPS` | `skip_prop`, `mod.rs:4586` (channel rule at `:4601`) | value-only skip, per channel | fall through |
+| 2 | normalization `PROPS_NORM_R4133` | `PropsPolicy::normalize`, `mod.rs:6072` | **re-spells** the oracle side when a typed rule proves the two are the same value | both raw spellings continue |
+| 3 | echo table `PROPS_ECHO_R4133` | `PropsPolicy::echo_excluded`, `mod.rs:6111` | drops the **value** compare of that cell (name + index order still assert) | fall through |
+| 4 | display floor `R4133_DISPLAY_FLOOR` | `PropsPolicy::under_display_floor`, `mod.rs:6168` | passes a numeric cell that is our value rendered to r4133's own digits | the cell reaches the assert |
 | 5 | the assert | `assert_value_matches_tol`, `mod.rs:347` | the case's tier floors (`tol_for`) | **gate red, both spellings in the message** |
 
 A divergence the ledger owns is handled outside this chain, by the case's
-`property`-scoped `ledger.json` entry (`corpus_gate/ledger.rs:1303`, `:1360`) —
+`property`-scoped `ledger.json` entry (`corpus_gate/ledger.rs:1324`, `:1360`) —
 which is why the triage order below ends there and not before.
 
 **Link 2 — the normalization table** `PROPS_NORM_R4133` (`harness/props_norm.rs:560`). **168 rows**
@@ -1828,7 +1996,7 @@ written, never which value it is; anything else is an exclusion, not a rule.
 that the four per-kind locks (`NORM_ROWS` … `NORM_ENUM_SYNONYM_ROWS`,
 `props_norm.rs:742-764`) partition it, so a row cannot be added without moving a
 documented number. *Liveness:* `props_norm::assert_norm_rows_are_live`
-(`props_norm.rs:1412`, called in the gate epilogue, `corpus_gate.rs:229`) fails
+(`props_norm.rs:1412`, called in the gate epilogue, `corpus_gate.rs:237`) fails
 a full run in which a row was visited and folded nothing — the fail-on-stale
 half. The offline half is the replay (§"The r4133 props replay accounting"):
 every row must claim at least one vendored example row. Only the **live** half
@@ -1872,7 +2040,7 @@ converse guard `a_capi_witness_is_a_pair_the_capi_channel_can_compare` refuses a
 tied to the table both ways by
 `props_r4133_replay::every_echo_row_pin_is_a_test_that_exists`. *Liveness:*
 `props_norm::assert_echo_rows_are_live` (`props_norm.rs:2657`,
-`corpus_gate.rs:240`) — `visits > 0 && hits == 0` for a pair-scoped row,
+`corpus_gate.rs:248`) — `visits > 0 && hits == 0` for a pair-scoped row,
 `visits == 0` for a narrowed one (a narrowed row counts only covered cells, so
 `visits == hits` by construction and the first arm cannot fire on it).
 
@@ -1886,37 +2054,37 @@ r4133 side must be our number rounded to the significant digits r4133 itself
 printed). It touches no `Tolerances` field, no `tol_for` tier, no golden and no
 model quantity, and it is unreachable on `capi_v0145`
 (`props_policy_tests::the_capi_channel_never_applies_the_display_floor`,
-`mod.rs:3945`). Its derivation — the measured worst cell, the empty band, the
+`mod.rs:5024`). Its derivation — the measured worst cell, the empty band, the
 `%.Ng` site table and the 55 refused spellings — is
 `tests/TOLERANCE_NOTES.md` §"r4133 props display floor".
 
 **The `SKIP_PROPS` dispositions (plan §1.2).** `skip_prop` is channel-aware
-since RP2.1 (`skip_prop`, `mod.rs:3507`), because after RP4.1 a channel-blind row would
+since RP2.1 (`skip_prop`, `mod.rs:4586`), because after RP4.1 a channel-blind row would
 value-mask the r4133 channel by accident. Every one of the **17** `SKIP_PROPS`
-rows (`SKIP_PROPS`, `mod.rs:3066`) is dispositioned exactly once, in its own row comment —
+rows (`SKIP_PROPS`, `mod.rs:4145`) is dispositioned exactly once, in its own row comment —
 **17 = 10 + 7**, the first two lists below. The third list is a separate table
 (`LANE_SKIP_PROPS` is not a `SKIP_PROPS` row and the partition lock does not
 union it), shown here because `skip_prop` consults it on the same call:
 
 | list | rows | on r4133 | why |
 |---|---|---|---|
-| `SKIP_PROPS_CAPI_ONLY` (`mod.rs:3422`) | 10 | **compared** | the justification is a 0.14.5-capture fact: the three changed defaults (`Fuse.FuseCurve`, `Fuse.RatedCurrent`, `RegControl.RevThreshold`), the two `pctperm` rows (`Capacitor`, `Reactor`), and RP3.8's five `''`-render rows (`IndMach012.PF`, the four `StorageController` totals) |
-| `SKIP_PROPS_BOTH_CHANNELS` (`mod.rs:3448`) | 7 | **skipped** | channel-independent facts — the heap-garbage matrix reads (`Capacitor.CMatrix`, `Reactor.RMatrix`/`XMatrix`, `Fault.GMatrix`, `Transformer.WdgCurrents`) and the two `FaultRate` rows |
-| `LANE_SKIP_PROPS` (`mod.rs:3503`) | 1 | **skipped, deliberately channel-blind** | `(Monitor, BaseFreq)` — an upstream bug BOTH gating oracles share (`Monitor.pas` r4133:552); the port's correct value is pinned by `monitor_basefreq_inherits_the_fundamental` |
+| `SKIP_PROPS_CAPI_ONLY` (`mod.rs:4501`) | 10 | **compared** | the justification is a 0.14.5-capture fact: the three changed defaults (`Fuse.FuseCurve`, `Fuse.RatedCurrent`, `RegControl.RevThreshold`), the two `pctperm` rows (`Capacitor`, `Reactor`), and RP3.8's five `''`-render rows (`IndMach012.PF`, the four `StorageController` totals) |
+| `SKIP_PROPS_BOTH_CHANNELS` (`mod.rs:4527`) | 7 | **skipped** | channel-independent facts — the heap-garbage matrix reads (`Capacitor.CMatrix`, `Reactor.RMatrix`/`XMatrix`, `Fault.GMatrix`, `Transformer.WdgCurrents`) and the two `FaultRate` rows |
+| `LANE_SKIP_PROPS` (`mod.rs:4582`) | 1 | **skipped, deliberately channel-blind** | `(Monitor, BaseFreq)` — an upstream bug BOTH gating oracles share (`Monitor.pas` r4133:552); the port's correct value is pinned by `monitor_basefreq_inherits_the_fundamental` |
 
 *Partition lock:*
 `skip_props_disposition_tests::every_skip_props_row_has_an_r4133_disposition`
-(`mod.rs:3553`) fails on a row listed twice, in neither list, or deleted from
+(`mod.rs:4632`) fails on a row listed twice, in neither list, or deleted from
 `SKIP_PROPS` — a new skip cannot silently inherit "masked on r4133 too". The
 channel-blindness of the `LANE_SKIP_PROPS` row has its own pin
-(`the_monitor_basefreq_exclusion_is_channel_blind`, `mod.rs:3704`). The two
+(`the_monitor_basefreq_exclusion_is_channel_blind`, `mod.rs:4783`). The two
 **whole-element** skips are channel-scoped the same way: Recloser and Relay are
 skipped on capi only, because their Rust tables are r4133-shaped
-(`skip_whole_element`, `mod.rs:4682`;
-`recloser_and_relay_are_whole_element_skipped_on_capi_only`, `mod.rs:3735`).
+(`skip_whole_element`, `mod.rs:5761`;
+`recloser_and_relay_are_whole_element_skipped_on_capi_only`, `mod.rs:4814`).
 
 **Did the chain run at all?** `props_norm::assert_r4133_props_compare_ran`
-(`props_norm.rs:2841`) runs first in the gate epilogue (`corpus_gate.rs:217`),
+(`props_norm.rs:2841`) runs first in the gate epilogue (`corpus_gate.rs:225`),
 so a wholesale re-mask reports as one line instead of 19 stale-row messages; a
 *partial* re-mask is caught instead by the forcing-rule lock
 `scheduler::the_property_forcing_rule_is_every_live_non_large_case`
@@ -1983,7 +2151,7 @@ The `S` literals are transcribed verbatim, upstream wording and typo included �
   that default is exactly why the capture folds `'0'` (r4133) and `''` (capi) to
   "no meter" before comparing — see the D4 fold above.
 * **A family this crate has not measured is refused, not guessed.** `probe_mode`
-  (`crates/dss-epri/src/dss.rs:1065`) refuses an `S` probe on a family with no
+  (`crates/dss-epri/src/dss.rs:1166`) refuses an `S` probe on a family with no
   `S_SENTINELS` row, and a `V` probe on a family in `V_WITHOUT_SENTINEL`
   (`crates/dss-epri/src/modes.rs:180` — `CapacitorsV` writes **no** sentinel at
   all), rather than reporting a silent `Served`.
@@ -1993,7 +2161,7 @@ WP-G1 needs live once, as `ModeSpec` rows in `WP_G1_MODES`
 (`crates/dss-epri/src/modes.rs:1605`), each carrying its (family, kind, mode)
 triple, the `D*.pas` line of the `case` arm it transcribes, the `myType` tag a
 `V` arm assigns, and any state the arm moves. `Engine::read_mode`
-(`crates/dss-epri/src/dss.rs:1255`) takes the row **by reference** — a mode number
+(`crates/dss-epri/src/dss.rs:1356`) takes the row **by reference** — a mode number
 cannot drift between the table and its reader — and rejects a reply whose shape is
 not the row's, so a future DLL revision fails loudly instead of decoding garbage.
 `r4133_mode_capability_is_complete_for_wp_g1`
@@ -2135,7 +2303,7 @@ a comment nobody reads
 `TOPOLOGY_NUM_LOOPS` … `TOPOLOGY_ALL_ISOLATED_LOADS`, effects `TOPO_TREE` /
 `TOPO_PD_LIST` / `TOPO_PC_LIST`) with one typed accessor each, from
 `topology_num_loops` to `topology_all_isolated_loads`
-(`crates/dss-epri/src/dss.rs:1775-1800`), so G1.7 added **no FFI**. The family's
+(`crates/dss-epri/src/dss.rs:1928-1953`), so G1.7 added **no FFI**. The family's
 remaining modes — `TopologyI(3..12)`, all of `TopologyS`, and `TopologyV`'s cursor
 arms — are never bound and never called: they reassign
 `ActiveCircuit.ActiveCktElement` and would poison the per-element capture of the
