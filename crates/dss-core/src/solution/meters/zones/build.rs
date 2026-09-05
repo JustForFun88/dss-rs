@@ -415,10 +415,16 @@ pub(super) fn make_meter_zone_lists(
     );
 }
 
-/// Pascal `TEnergyMeterObj.TotalUpDownstreamCustomers` (l.1693): backward sweep
-/// over the sequence list (end branches first) summing `BranchNumCustomers`
-/// into `BranchTotalCustomers` and up each parent link.
-fn total_up_downstream_customers(
+/// Pascal `TEnergyMeterObj.TotalUpDownstreamCustomers` (r4133
+/// `Version8/Source/Meters/EnergyMeter.pas:1629`, dss_capi `:1693`): backward
+/// sweep over the sequence list (end branches first) summing
+/// `BranchNumCustomers` into `BranchTotalCustomers` and up each parent link.
+///
+/// Two call sites, exactly as r4133: the tail of the zone build
+/// (`MakeMeterZoneLists`) and the head of `CalcReliabilityIndices`
+/// (`EnergyMeter.pas:2468`), which re-runs it so the roll-up sees `RelCalc`'s
+/// own `AssumeRestoration` — hence the module-wide visibility.
+pub(in crate::solution::meters) fn total_up_downstream_customers(
     sequence_list: &[ElemId],
     assume_restoration: bool,
     store: &mut dyn ElemStore,

@@ -486,12 +486,34 @@ fn ocp_device_type_first_registered_wins() {
 
 /// `AssumeRestoration` changes the downstream auto-OCP interruption count
 /// (Pascal forward sweep: `if AssumeRestoration and HasAutoOCPDevice then
-/// Bus_Num_Interrupt := AccumulatedBrFltRate` *resets* instead of accumulating).
-/// A 3-section feeder with auto-reclosers on the head (l1) and a downstream line
-/// (l3) makes No vs Yes diverge in SAIFI/SAIFIkW/CustInterrupts; SAIDI is
-/// restoration-independent (section fault-rate × repair × customers). High
-/// pickups keep the snapshot solve from tripping. Oracle: dss-python 0.15.7
-/// (`tools/golden/probe_reliability.py`).
+/// Bus_Num_Interrupt := AccumulatedBrFltRate` *resets* instead of accumulating)
+/// **and** — since `CalcReliabilityIndices` re-runs `TotalUpDownstreamCustomers`
+/// under the flag (r4133 `Version8/Source/Meters/EnergyMeter.pas:2467-2468`) —
+/// the customer totals every SAIDI term is weighted by. A 3-section feeder with
+/// auto-reclosers on the head (l1) and a downstream line (l3) makes No vs Yes
+/// diverge in SAIFI/SAIFIkW/CustInterrupts/SAIDI. High pickups keep the snapshot
+/// solve from tripping.
+///
+/// **Both numbers, `RelCalc yes` (measured 2026-09-05,
+/// `tmp/g16ii/probe_f7_r4133.py` / `probe_f7_capi.py`).** The port follows r4133
+/// — r3723, r4088 and r4133 all carry the call — while dss_capi 0.14.5 dropped
+/// it (`src/Meters/EnergyMeter.pas:2411-2432` goes straight from the zone check
+/// to the zeroing loop) and therefore weights the sections with the totals the
+/// last zone build left behind:
+///
+/// | quantity | port == r4133 | dss_capi 0.14.5 |
+/// |---|---|---|
+/// | `SAIDI` | `2.1583333333333337` | `2.4899999999999998` |
+/// | `Bus.N_Customers` `src` | `35` | `42` |
+/// | `Bus.N_Customers` `b1` | `25` | `32` |
+/// | `Bus.Cust_Interrupts` `b1` | `10.750000000000002` | `13.760000000000002` |
+/// | `Bus.Cust_Duration` `b1` | `69.64999999999999` | `83.58` |
+/// | section 1 `SectTotalCust` | `35` | `42` |
+///
+/// `RelCalc no` is bit-identical on all three engines (the flag the zone build
+/// used and the flag `RelCalc` passes agree, so the re-run is idempotent), which
+/// is why the whole corpus population — which never passes the flag — is
+/// untouched by the restoration.
 #[test]
 fn relcalc_assume_restoration_changes_auto_ocp_interruptions() {
     let build = |dss: &mut Dss| {
@@ -531,23 +553,174 @@ fn relcalc_assume_restoration_changes_auto_ocp_interruptions() {
     build(&mut no);
     no.command("Relcalc no");
     assert!((meter_f64(&no, "m1", prop::SAIFI) - 0.513_333_333_333_333_4).abs() < eps);
-    assert!((meter_f64(&no, "m1", prop::SAIDI) - 2.49).abs() < eps);
+    assert!((meter_f64(&no, "m1", prop::SAIDI) - 2.489_999_999_999_999_8).abs() < eps);
     assert!((meter_f64(&no, "m1", prop::SAIFI_KW) - 0.596_666_666_666_666_7).abs() < eps);
-    assert!((meter_f64(&no, "m1", prop::CUST_INTERRUPTS) - 21.56).abs() < eps);
+    assert!((meter_f64(&no, "m1", prop::CUST_INTERRUPTS) - 21.560_000_000_000_002).abs() < eps);
+    // The totals the zone build left (`AssumeRestoration` false there too), so
+    // the re-run under `no` reproduces them exactly: all three engines agree.
+    assert_eq!(bus_total_custs(&no, "src"), 42);
+    assert_eq!(bus_total_custs(&no, "b1"), 32);
+    assert!((bus_f64(&no, "b1", |b| b.bus_cust_interrupts) - 13.760_000_000_000_002).abs() < eps);
+    assert!((bus_f64(&no, "b1", |b| b.bus_cust_durations) - 83.58).abs() < eps);
+    assert_eq!(section_total_cust(&no, "m1", 1), 42);
 
     let mut yes = Dss::new();
     build(&mut yes);
     yes.command("Relcalc yes");
     // Restoration resets the downstream section count → lower SAIFI/CustInt.
+    // These three come from the loads\' own `numcust`/`kW` and the bus
+    // interruption counts, so they never depended on the customer roll-up: all
+    // three engines agree here too.
     assert!((meter_f64(&yes, "m1", prop::SAIFI) - 0.441_666_666_666_666_76).abs() < eps);
-    assert!((meter_f64(&yes, "m1", prop::SAIDI) - 2.49).abs() < eps);
     assert!((meter_f64(&yes, "m1", prop::SAIFI_KW) - 0.453_333_333_333_333_4).abs() < eps);
-    assert!((meter_f64(&yes, "m1", prop::CUST_INTERRUPTS) - 18.55).abs() < eps);
+    assert!((meter_f64(&yes, "m1", prop::CUST_INTERRUPTS) - 18.550_000_000_000_004).abs() < eps);
+    // The re-run half: r4133 (and r3723/r4088) recompute the totals under the
+    // restoration flag, so the head section loses everything below the
+    // downstream recloser. dss_capi 0.14.5 reports the stale `42`/`32`/`2.49`
+    // of the `no` run above — the divergence this pin names on both sides.
+    assert!((meter_f64(&yes, "m1", prop::SAIDI) - 2.158_333_333_333_333_7).abs() < eps);
+    assert_eq!(bus_total_custs(&yes, "src"), 35, "capi 0.14.5 reports 42");
+    assert_eq!(bus_total_custs(&yes, "b1"), 25, "capi 0.14.5 reports 32");
+    assert!((bus_f64(&yes, "b1", |b| b.bus_cust_interrupts) - 10.750_000_000_000_002).abs() < eps);
+    assert!((bus_f64(&yes, "b1", |b| b.bus_cust_durations) - 69.649_999_999_999_99).abs() < eps);
+    assert_eq!(
+        section_total_cust(&yes, "m1", 1),
+        35,
+        "capi 0.14.5 reports 42"
+    );
+    // b2/b3 sit below the downstream recloser and keep their own totals on
+    // every engine — the restoration only cuts the roll-up *upward*.
+    assert_eq!(bus_total_custs(&no, "b2"), 7);
+    assert_eq!(bus_total_custs(&yes, "b2"), 7);
+    assert_eq!(section_total_cust(&no, "m1", 2), 7);
+    assert_eq!(section_total_cust(&yes, "m1", 2), 7);
 
     // Both reclosers head a section; l3 reports recloser device type.
     assert_eq!(
         elem_cd(&no, "line.l3").ocp_device_type,
         OcpDeviceType::Recloser
+    );
+}
+
+/// `SectTotalCust` of the 1-based feeder section `idx` of meter `name`.
+fn section_total_cust(dss: &Dss, name: &str, idx: i32) -> i32 {
+    let m = dss
+        .meter_reliability()
+        .into_iter()
+        .find(|m| m.name.eq_ignore_ascii_case(name))
+        .expect("meter not found");
+    m.sections
+        .iter()
+        .find(|s| s.idx == idx)
+        .unwrap_or_else(|| panic!("meter {name} has no section {idx}"))
+        .sect_total_cust
+}
+
+/// The gate\'s own reliability deck, compiled from the vendored corpus tree
+/// (never `.inputs/`). It writes no file — no `export`/`show`/`save`, and its
+/// trailing `AllocateLoads` only solves — so no directory guard is needed (the
+/// `exec::tests::controls::compile_corpus_deck` precedent).
+fn compile_midi_relcalc() -> Dss {
+    let deck = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/corpus/controls/energymeter/midi_relcalc.dss");
+    assert!(deck.is_file(), "vendored corpus deck missing: {deck:?}");
+    let mut dss = Dss::new();
+    dss.command(&format!("compile \"{}\"", deck.display()));
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss
+}
+
+/// **The pin that makes the restored `TotalUpDownstreamCustomers` call
+/// observable** (r4133 `Version8/Source/Meters/EnergyMeter.pas:2467-2468`, in
+/// `CalcReliabilityIndices` between the `SequenceList` check and the zeroing
+/// loop; port `solution/meters/reliability.rs::calc_reliability_indices`).
+///
+/// Deck: `tests/corpus/controls/energymeter/midi_relcalc.dss` — the gate\'s own
+/// three-section reliability case, whose three Reclosers all set
+/// `HasAutoOCPDevice`, so the restoration flag really cuts the roll-up.
+///
+/// Two halves, both measured 2026-09-05 against the two gating oracles
+/// (`tmp/g16ii/probe_f7_relcalc_deck.py`, raw JSON `tmp/g16ii/f7_relcalc_deck.json`):
+///
+/// 1. **`RelCalc` with no flag — the corpus path — is bit-identical on capi
+///    0.14.5 and r4133**, and the re-run changes nothing, because the zone build
+///    already rolled the customers up with `AssumeRestoration = false`. That is
+///    the zero-footprint half: every gate case drives `RelCalc` without a flag.
+/// 2. **`RelCalc restore=y` separates the engines**: the port and r4133 recompute
+///    (`src.N_Customers = 0`, section 1 `SectTotalCust = 0`,
+///    `SAIDI = 0.27623590504451034`), dss_capi 0.14.5 keeps the build-time totals
+///    (`30`, `30`, `SAIDI = 0.5496409495548961`). Everything else — SAIFI
+///    `0.11267537091988129`, SAIFIkW `0.11966863270777478`, CustInterrupts
+///    `3.79716` and every other bus column — agrees on all three engines.
+#[test]
+fn relcalc_recomputes_the_customer_totals_it_depends_on() {
+    let eps = 1e-12;
+
+    // (1) The corpus path: no flag, so the re-run is idempotent and all three
+    // engines return the same numbers.
+    let mut base = compile_midi_relcalc();
+    base.command("RelCalc");
+    assert!(base.errors().is_empty(), "{:?}", base.errors());
+    assert!((meter_f64(&base, "em", prop::SAIFI) - 0.180_925_370_919_881_3).abs() < eps);
+    assert!((meter_f64(&base, "em", prop::SAIDI) - 0.549_640_949_554_896_1).abs() < eps);
+    assert!((meter_f64(&base, "em", prop::SAIFI_KW) - 0.187_918_632_707_774_8).abs() < eps);
+    assert!((meter_f64(&base, "em", prop::CUST_INTERRUPTS) - 6.097_185_000_000_000_5).abs() < eps);
+    for (bus, n) in [("src", 30), ("mid", 30), ("la", 0), ("lb", 4), ("lc", 0)] {
+        assert_eq!(bus_total_custs(&base, bus), n, "no-flag N_Customers {bus}");
+    }
+    for (idx, n) in [(1, 30), (2, 13), (3, 17)] {
+        assert_eq!(
+            section_total_cust(&base, "em", idx),
+            n,
+            "no-flag section {idx}"
+        );
+    }
+
+    // (2) `restore=y`: only the recomputed totals and the SAIDI they weight move.
+    let mut restored = compile_midi_relcalc();
+    restored.command("RelCalc restore=y");
+    assert!(restored.errors().is_empty(), "{:?}", restored.errors());
+    assert_eq!(
+        bus_total_custs(&restored, "src"),
+        0,
+        "r4133 recomputes to 0; dss_capi 0.14.5 keeps 30"
+    );
+    assert_eq!(
+        section_total_cust(&restored, "em", 1),
+        0,
+        "r4133 recomputes to 0; dss_capi 0.14.5 keeps 30"
+    );
+    assert!(
+        (meter_f64(&restored, "em", prop::SAIDI) - 0.276_235_905_044_510_34).abs() < eps,
+        "r4133 0.27623590504451034; dss_capi 0.14.5 0.5496409495548961, got {}",
+        meter_f64(&restored, "em", prop::SAIDI)
+    );
+    // The quantities the roll-up never fed stay put on all three engines.
+    assert!((meter_f64(&restored, "em", prop::SAIFI) - 0.112_675_370_919_881_29).abs() < eps);
+    assert!((meter_f64(&restored, "em", prop::SAIFI_KW) - 0.119_668_632_707_774_78).abs() < eps);
+    assert!((meter_f64(&restored, "em", prop::CUST_INTERRUPTS) - 3.797_16).abs() < eps);
+    for (bus, n) in [("mid", 30), ("la", 0), ("lb", 4), ("lc", 0)] {
+        assert_eq!(
+            bus_total_custs(&restored, bus),
+            n,
+            "restore N_Customers {bus}"
+        );
+    }
+    for (idx, n) in [(2, 13), (3, 17)] {
+        assert_eq!(
+            section_total_cust(&restored, "em", idx),
+            n,
+            "restore section {idx}"
+        );
+    }
+
+    // Without the restored call the two runs would be identical: that they are
+    // not is what proves the call is live rather than dead code.
+    assert_ne!(
+        bus_total_custs(&base, "src"),
+        bus_total_custs(&restored, "src"),
+        "the restored TotalUpDownstreamCustomers must change the totals under restore=y"
     );
 }
 
@@ -766,7 +939,7 @@ fn meter_totals_is_the_masked_register_sum() {
 /// `Version8/Source/PDElements/PDElement.pas:313-328`) zeroes only the FROM
 /// bus of each element of the meter's **own** `SequenceList` (r4133
 /// `Meters/EnergyMeter.pas:2471-2472`), while `AccumFltRate` (`PDElement.pas:
-/// 93-120`, port `solution/meters/reliability.rs:108-118`) reads
+/// 93-120`, port `solution/meters/reliability.rs:142-152`) reads
 /// `ToBus.BusTotalMiles`. On a nested pair of meters the boundary bus is the
 /// TO bus of the outer zone and the FROM bus of the inner one, so the inner
 /// meter's miles from run *n* are read back as the outer meter's downstream
@@ -887,7 +1060,7 @@ fn relcalc_is_not_idempotent_and_the_gate_runs_it_once() {
 /// **no zero guard** on any of the three engines — r4133
 /// `Version8/Source/Meters/EnergyMeter.pas:2563`, dss_capi
 /// `src/Meters/EnergyMeter.pas:2518`, port
-/// `solution/meters/reliability.rs:259` — so a section whose branches all have
+/// `solution/meters/reliability.rs:293` — so a section whose branches all have
 /// `faultrate=0` evaluates to `0.0 / 0.0 = NaN` identically everywhere, and
 /// the reliability comparator's NaN rule (`NaN == NaN` is agreement, `NaN`
 /// against a finite number is a failure) is what compares it. No case in the
