@@ -772,6 +772,13 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
     * `kv_base` — `Bus.kVBase` in kV. Both engines derive the per-unit divisor
       as `BaseFactor = 1000·kVBase` when positive, else `1.0` — the branch
       11 480 of the corpus's 209 211 buses take.
+    * `distance` — `Bus.Distance`, i.e. `TDSSBus.DistFromMeter` in km, published
+      verbatim (`CAPI_Bus.pas:419-427` -> `CAPI_Alt.pas:2071-2074` == r4133
+      `DBus.pas:122-128`, `BUSF` 5). G1.4b. A zone-build output, not a solve
+      output: `MakeMeterZoneLists` writes it (`Meters/EnergyMeter.pas:1833-1836`)
+      and a circuit with no EnergyMeter — or a bus no meter's zone reaches —
+      reports the untouched `0.0`. There is no "no meter" sentinel on either
+      channel, so the all-zero vector is a real assertion about the port.
     * `pu_voltages` — `NodeV[GetRef]/BaseFactor`, `2·NumNodes` interleaved
       (re, im), in that same ascending-node-number order
       (`CAPI_Alt.pas:2251-2280` == r4133 `DBus.pas:399-430`).
@@ -895,6 +902,11 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
         cap = {
             "name": str(b.Name),
             "kv_base": float(b.kVBase),
+            # G1.4b, read here — with the bus's other scalar attribute, ahead of
+            # the value arrays — so both transports share one per-bus read order
+            # (`crates/dss-epri/src/capture.rs::capture_all_buses`). Group C:
+            # `Alt_Bus_Get_Distance` returns a stored field and touches nothing.
+            "distance": float(b.Distance),
             "nodes": nodes,
             "pu_voltages": [float(x) for x in b.puVoltages],
             "vmag_angle": [float(x) for x in b.VMagAngle],
@@ -976,6 +988,34 @@ def capture_all_bus_vmag_pu(ckt) -> list:
     checkpoint; order-free (group C).
     """
     return [float(x) for x in ckt.AllBusVmagPu]
+
+
+def capture_all_bus_distances(ckt) -> list:
+    """`Circuit.AllBusDistances` — each bus's `DistFromMeter` (km), BusList order.
+
+    GOLDEN_REBASE_PLAN.md WP-G1 G1.4b. `for i := 0 to NumBuses-1 do Result[i] :=
+    Buses[i+1].DistFromMeter` (`CAPI_Circuit.pas:671-688` == r4133
+    `DCircuit.pas:566-580`, `CircuitV` 12) — capi's own comment: *"in an array
+    that aligns with the buslist"*, i.e. the same sequence
+    [`capture_all_buses`] walks. Length = `NumBuses`. Order-free (group C).
+    """
+    return [float(x) for x in ckt.AllBusDistances]
+
+
+def capture_all_node_distances(ckt) -> list:
+    """`Circuit.AllNodeDistances` — the owning bus's `DistFromMeter` per node.
+
+    GOLDEN_REBASE_PLAN.md WP-G1 G1.4b. Walked bus x the bus's INTERNAL node
+    index (`for i := 1 to NumBuses do for j := 1 to NumNodesThisBus`,
+    `CAPI_Circuit.pas:697-722` == r4133 `DCircuit.pas:582-604`, `CircuitV` 13) —
+    the `AllNodeNames` permutation, which capi's own comment names (*"Array
+    sequence is same as all bus Vmag and Vmagpu"*): the same order as
+    [`capture_all_bus_vmag_pu`], NOT the ascending-node-number order of the
+    per-bus arrays. Length = `NumNodes`. Order-free (group C).
+    """
+    return [float(x) for x in ckt.AllNodeDistances]
+
+
 def _topo_names(v) -> list:
     """Normalize one `ITopology` string array to its comparable shape.
 
@@ -1425,6 +1465,16 @@ def run_case(d, req: dict) -> dict:
                         ),
                         "all_bus_vmag_pu": (
                             capture_all_bus_vmag_pu(ckt) if want_buses else []
+                        ),
+                        # G1.4b: the two circuit-level distance arrays, read in
+                        # the same order-free slot and behind the same
+                        # `compare_bus` flag as the per-bus `distance` above —
+                        # one surface, three views of `DistFromMeter`.
+                        "all_bus_distances": (
+                            capture_all_bus_distances(ckt) if want_buses else []
+                        ),
+                        "all_node_distances": (
+                            capture_all_node_distances(ckt) if want_buses else []
                         ),
                         # WP8.5b: read after every established capture above, so
                         # the property sweep's `?` queries never perturb any

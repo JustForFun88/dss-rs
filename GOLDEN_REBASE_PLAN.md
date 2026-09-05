@@ -156,7 +156,8 @@ WP-G3 is fully landed; WP-G5 is last.
 > the rest of WP-G1 and for WP-G3/WP-G4. Sub-steps that share no accessor,
 > comparator or exclusion list (the 2026-08-29 synthesis chains: element
 > G1.3a → G1.3d(i) → G1.3d(ii) → G1.3b → G1.3c; bus G1.4a → G1.5 → G1.4b
-> (**2026-09-04**, D8: now G1.4a → G1.5 → G1.4c → G1.4b — §G1.4's as-executed note);
+> (**2026-09-04**, D8: now G1.4a → G1.5 → G1.4c → G1.4b; **2026-09-05**, D26 splits
+> the last one again: G1.4a → G1.5 → G1.4c → G1.4b → G1.4d — §G1.4's as-executed notes);
 > PD/meter G1.6b → G1.6(i) → G1.6(ii); the singles G1.7 / G1.8 / G1.9 /
 > G1.10a–c) run as **lanes** in per-lane git worktrees (`.claude/worktrees/lane-*`,
 > branches `lane-*`) branched from `update`. `update` stays the integration branch
@@ -216,7 +217,12 @@ audits on `opus-xhigh` exec rows are themselves `opus-xhigh`.
 `G1.4` row's `opus-high+` — three engine-semantics triggers, a new engine accessor and
 the per-bus capture struct G1.5/G1.6(ii) inherit — and its spin-off **G1.4c** is
 `opus-xhigh` too, for those triggers plus the `crates/dss-epri` do-not-call guard the
-r4133 `VLL` hang needs. The `G1.4` row above now stands for **G1.4b** alone.)*
+r4133 `VLL` hang needs. The `G1.4` row above now stands for **G1.4b** alone.
+**2026-09-05**, coordinator decision **D26**: G1.4b is split once more — the `G1.4` row's
+`opus-high+` is what **G1.4b** (the distances) actually ran at, and the spun-off
+**G1.4d** (the at-bus lists `AllPCEatBus`/`AllPDEatBus`) is `opus-xhigh`: new engine code
+for a criterion that is neither oracle's, three measured oracle mechanisms and a
+two-sided assertion against an artifact that is not a function of port state.)*
 
 ## 1. Plan-wide design decisions
 
@@ -235,13 +241,13 @@ today:
 | 2 | Bus Zsc1 / Zsc0 / ZscMatrix / YscMatrix / Isc / Voc | `fault_study` golden | G1.5 |
 | 3 | meter extras: CalcCurrent, AllocFactors, Totals, SAIFI/SAIFIKW/SAIDI/CustInterrupts, active-section fields (fastdss captures the FIRST section only — parity = at least that), **ordered** zone vectors (the live gate already set-compares `AllBranchesInZone`/`AllEndElements`/`ZonePCE` — `harness/mod.rs:2022-2041`, `oracle_server.py:226-246`; the gap is order + the extras, NOT the lists' existence), **plus the per-bus reliability columns** `Bus.Lambda / N_interrupts / N_Customers / Cust_Interrupts / Cust_Duration / Int_Duration / TotalMiles / SectionID` (`IBus._columns` on `origin/fastdss` — the very columns `Export BusReliability` renders and the `BUS_INT_DURATION` surface, hence the G2.2a-before-G1.6 ordering). CAIDI does **not** exist in the DSS-Python API on either branch — it is gated only if the r4133 DLL exposes it (measure in G1.11c), else documented as not-comparable (**as executed 2026-09-05, part (i)**: the set compare is `compare_meter`'s `cmp_members`, `harness/mod.rs:6064-6079` — **not** `:2022-2041`, a stale citation — and the ordered arm is `compare_reliability`, `harness/mod.rs:8755-8790`; CAIDI **is** compared, as EnergyMeter property #22 through `compare_all_properties` on both channels, so "not-comparable" was never written; see §G1.6) | `reliability`/`export_busreliability*` goldens | G1.6 |
 | 4 | Topology interface: NumLoops, NumIsolatedBranches/Loads, AllLoopedPairs, AllIsolatedBranches/Loads | `show_topology`/`show_isolated` goldens | G1.7 |
-| 5 | Bus.Distance, AllBusDistances, AllNodeDistances | `profile` goldens | G1.4 |
+| 5 | Bus.Distance, AllBusDistances, AllNodeDistances | `profile` goldens | G1.4 (**landed 2026-09-05 as G1.4b**; §G1.4's as-executed note) |
 | 6 | Solution.IncMatrix/IncMatrixCols/IncMatrixRows/Laplacian (fastdss-branch-only additions — exactly why the reference is `origin/fastdss`) | `inc_matrix/` goldens | G1.8 |
 | 7 | circuit aggregates: TotalPower, Losses, LineLosses, SubstationLosses, **AllElementLosses**, plus the Solution scalars ControlIterations / Totaliterations / MostIterationsDone / ControlActionsDone / SystemYChanged / Seconds / LoadMult / Year / Hour / Mode | `export_losses`/`summary` goldens | G1.9 |
 | 8 | run-produced files: **every** `*.csv` the deck emits under DataPath (fastdss archives and compares them all, incl. the forced `export profile phases=all` — DI CSVs are just the closedi subset); `save circuit` output **file set** (fastdss archives it but never compares — `compare_outputs.py:426-529` has no `.dss` branch — so our file-set + round-trip check is strictly stronger; state that, don't claim parity) | `di_*`/`save_*` goldens | G1.10 |
 | 9 | CktElement discrete extras: PhaseLosses, NodeOrder, EnergyMeter, OCPDevType, OCPDevIndex, HasVoltControl, HasSwitchControl, NumControls, NumTerminals/NumPhases/NumConductors; LineGeometries.Rmatrix/Xmatrix/Zmatrix (measure-first); Lines.Yprim (verify it is already witnessed by the per-element YPrim live compare, record in TESTING.md) | scattered `props/`/report goldens | G1.3d |
 | 10 | PDElements interface: AccumulatedL, ParentPDElement, FromTerminal, IsShunt, Numcustomers, SectionID, RepairTime, Totalcustomers, Lambda (**as executed 2026-09-04: 13 columns** — also FaultRate, TotalMiles, pctPermanent — plus `parent_name`; see §G1.6b) | `reliability` goldens (partially) | G1.6b |
-| 11 | Bus extras: VLL/puVLL, VMagAngle, AllPCEatBus/AllPDEatBus | `export_seq*`/`profile` goldens | G1.4 (VMagAngle: G1.4a; VLL/puVLL: G1.4c, landed 2026-09-05; AllPCEatBus/AllPDEatBus: G1.4b) |
+| 11 | Bus extras: VLL/puVLL, VMagAngle, AllPCEatBus/AllPDEatBus | `export_seq*`/`profile` goldens | G1.4 (VMagAngle: G1.4a; VLL/puVLL: G1.4c, landed 2026-09-05; AllPCEatBus/AllPDEatBus: **G1.4d**, split out of G1.4b by D26) |
 
 Where our gate is already stronger than fastdss (monitor channels, event log,
 control queue, full Y/YPrim/injection, discrete state, two channels at once,
@@ -921,6 +927,90 @@ only; manifest-flagged).
 > three-node buses = 0.9999992 of the ceiling. **0** golden bytes;
 > `lane_diff` **PASS**, max |Δ| = 0. Full record:
 > `docs/phase-records/golden-rebase.md` §"WP-G1 — records".
+
+> **As executed — G1.4b (2026-09-05, lane `lane-b`, D7).** The sub-step **STOPPED at
+> spec time** on its at-bus half and was split by coordinator decision **D26**: with the
+> brief's criterion (the port implements r4133's terminal-1/2 *name* test) the
+> `capi_v0145` channel still diverges on **60** capi-gating cases over **three**
+> mechanisms — 3rd-terminal inclusions, disabled elements dropped, and stale node refs
+> after `Reduce` — six times the §1.1(f) budget, and the third is not a function of the
+> port's state at all. r4133's own header (*"all PDE connected to the bus"*,
+> `Common/Circuit.pas:1490-1492`) contradicts its behaviour, so under the D4 chain the
+> port must compute a criterion that is **neither** oracle's. G1.4b therefore lands the
+> **distances** only; the at-bus lists become **G1.4d** (below).
+>
+> Distances as executed: `Bus.Distance`, `AllBusDistances` and `AllNodeDistances` are
+> three views of the ONE zone-build field `TDSSBus.DistFromMeter`, published **by
+> reference** by `exec/view.rs` and compared by a new sibling of `compare_bus`,
+> `harness::compare_bus_distances`, on the same per-bus walk — **no** new manifest flag,
+> **no** new force rule, **no** `population.lock.json` flag move (the one cell that moved
+> is a `ledger=` digest), **0** golden bytes. Floor: **`rel = abs = 0`**, no `Tolerances`
+> argument at all — the two oracles are bit-identical to each other and to the port
+> (measured on 10 decks incl. a `units=miles` one, which also settles that the shipped
+> r4133 build uses `Shared/LineUnits.pas:81`'s `1609.344`), derived in
+> `tests/TOLERANCE_NOTES.md` §"Bus distance surface". The comparator asserts lengths,
+> the port-internal identity `AllBusDistances[i] == Bus.Distance == AllNodeDistances[k]`,
+> the **oracle**-internal form of the same (which is what pins that the oracle's array is
+> in `BusList` order), the values exactly, and "the port invents no distance".
+>
+> Four things this section did not say:
+> **(1)** **D29 was executed step 1 first and came back dirty for an unpredicted reason.**
+> Re-gating `modes:reduce/midi_reduce.dss` on r4133 fails on `Line.l2a~l2b`'s YPrim by
+> exactly ×2, because r4133's `TLineObj.MergeWith` renames the surviving object in place
+> (`Version8/Source/PDElements/Line.pas:1684`) and never updates
+> `TDSSCircuit.DeviceList`: `SetElementActive` (`Common/Circuit.pas:2195-2214`) finds
+> nothing, leaves `ActiveCktElement` where it was, and the DDLL silently captures
+> **another element** (measured cursor-by-cursor; capi 0.14.5 does not share it; blast
+> radius on today's corpus is zero because no `both`/`r4133`-gated deck renames an
+> element). Re-gating would have ledgered a mis-addressed capture, so the settlement is
+> D29 **branch 3**: the deck stays `capi_v0145`-gated and the one real divergence — capi
+> loses the merged lines' `LengthUnits` and consumes `4 kft` as `4 km`, so `l2e` reads
+> `5.524` against the port's and r4133's `2.7432` — is excluded bus-by-bus through a new
+> **`distance`** ledger field (exclusion-only, **per-VALUE**, keyed by BUS name, consulted
+> only *after* the exact equality has already failed so a hit means *masked a real
+> divergence*) by the single entry `reduce-merge-units-lost-midi-capi-distance`
+> (`cause_ref: line-merge-length-units-reset`, three `name_re` scopes), pinned by
+> `the_reduced_midi_deck_reports_the_merged_lines_kft_distances`. Ledger 54 → **55**.
+> `investigations/to_opendss/68-mergewith-rename-leaves-devicelist-stale.md` reports it upstream.
+> **(2)** The surface's fail-on-stale is a **run-wide** pair, not a case count:
+> `DISTANCE_POPULATION = (867, 79_137)` — gating compares carrying at least one non-zero
+> `DistFromMeter`, and the buses that carried one — re-derived on every run, asserted in
+> both directions and printed as `corpus_gate distance:`. It exists because the
+> comparator is an equality over a field that is `0.0` on the ~370 meterless cases:
+> without it a regression that stopped the zone walk writing distances would leave every
+> one of them green. **The R part's "40 metered cases" was an undercount** — its probe
+> reached only 369 of the 442 cases it meant to cover; a static scan that follows
+> `Redirect`/`Compile` over the **443** forced (`compare_bus`) cases finds **70** that
+> instantiate an EnergyMeter. Neither number gates anything; the run-wide pair does.
+> **(3)** The surface is the live observable of **D9**'s `MakeBusList` fix: its two decks
+> report all-zero distances without it, so the comparison would be green over nothing.
+> `the_make_bus_list_decks_report_the_zone_distances_both_oracles_measure` pins all 20 of
+> their distance literals (9 of them non-zero) against both oracles.
+> **(4)** Non-vacuity was driven three ways in a scratch copy (never committed), each red
+> on **both** channels: a perturbed distance (`+1e-9` on non-zero buses) reds
+> `[CapiV0145]` and `[R4133]`; a distance invented where the zone walk wrote none reds
+> both on meterless decks; and a node array one entry short reds the length rails on both.
+> **0** golden bytes; gate **526/526 in both lanes**, ledger 55 entries / 1567 hits;
+> `lane_diff` owed for `exec/view.rs`, expected max |Δ| = 0. Full record:
+> `docs/phase-records/golden-rebase.md` §"WP-G1 — records".
+
+> **G1.4d — the at-bus lists `AllPCEatBus` / `AllPDEatBus`** (new sub-step, split out of
+> G1.4b by **D26** on 2026-09-05; tier `opus-xhigh`; bus chain order
+> G1.4a → G1.5 → G1.4c → G1.4b → **G1.4d**). Criterion **S4** — the port computes the
+> physically correct answer, which is neither oracle's: a PD-class element with **any**
+> terminal at the bus under the `bus1 <> bus2` shunt filter; a PC-class element (plus
+> Capacitor/Reactor, Vsource/Isource, Fault, per r4133's own class sets) with terminal 1
+> at the bus; disabled elements **included**. Each channel is closed by a *positive*
+> mechanism assertion over the port's state in the D15/D16/D21 shape — r4133's list ==
+> the port's entries whose terminal 1 or 2 is at the bus; capi's == the capi fast-path
+> walk of the same state — with four fail-on-stale populations and **0** ledger rows.
+> Class C (capi naming a *disabled* element at a foreign bus through stale node refs, an
+> artifact that is not a function of port state) is closed two-sidedly with its own
+> population `CAPI_STALE_NODEREF_ADDS = (8, 11)` and a both-numbers pin, never an
+> exclusion. The `ModeEffect` correction (`crates/dss-epri/src/modes.rs`: `BUSV(18)`/`(19)`
+> are Impure — `DSSClass.pas:342-371`) lands there in its own commit ahead of the surface,
+> and three `investigations/to_opendss/` reports at the next free numbers. Brief:
+> `tmp/g14d/brief.md`. **This split is a plan amendment the user has not seen yet.**
 
 ### G1.5 — short-circuit surface
 
