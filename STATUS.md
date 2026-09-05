@@ -154,7 +154,7 @@ case and six flagged cases compare the indices, every section, `CalcCurrent`/`Al
 `Meters.Totals` and the **ordered** zone lists, exact but for three cells banded from
 existing tiers (**D17a**), **0** new entries, one pinned skip closed on the corpus's only
 `AllocateLoads` deck (524 → **525** cases), G1.6b's two deferrals discharged (**D11/D18**);
-and **G1.6(ii)** (2026-09-05, `lane-m`, `3e65ae2d` + the surface commit), the eight per-bus
+and **G1.6(ii)** (2026-09-05, `lane-m`, `3e65ae2d` + `572954e6` + settlement), the eight per-bus
 reliability columns inside that same payload — 6 cases / 50 capi + 84 r4133 buses, compared
 exactly, keys `bus:<bus>:<field>` on the existing `reliability` field, **0** new entries, plus
 the **D20/D22** engine fix (`calc_reliability_indices` recomputes `TotalUpDownstreamCustomers`,
@@ -347,7 +347,8 @@ each row's measured cost.
   (`midi_energymeter`) and both of its meters abort at 52902 before any section is allocated, so
   no nested zone-boundary bus is gated live and the semantics decision has no witness to settle
   it against; the four `DOCTechNote` decks that would supply one are out of the population by
-  D-i-2. The pin and the `to_opendss` report stand; the decision needs its own step.
+  D-i-2. The pin and the `to_opendss` report stand; **owner: `ORPHANED_GAPS.md` §1.19** (named by the
+  G1.6(ii) audit settlement, 2026-09-05: no WP-G1 sub-step's population holds a witness deck).
 
 **Carried-forward and residual-floor items — the rows still open.** Full text, closed rows
 and all: [`follow-ups-carried.md`](docs/phase-records/follow-ups-carried.md).

@@ -1368,6 +1368,11 @@ fn the_reliability_read_order_guard_rejects_a_contaminated_capture() {
 const RELIABILITY_PIN_SOURCES: &[&str] = &[
     "crates/dss-core/tests/reliability_pins.rs",
     "crates/dss-core/src/exec/tests/reliability.rs",
+    // The harness' own offline drives (G1.6(ii) audit settlement): the
+    // per-column non-vacuity of `compare_bus_reliability` and the fail-loud
+    // decode of a non-finite cell are pinned where the comparator and the caps
+    // live, so the docs that name them are covered by the same guard.
+    "crates/dss-core/tests/harness/mod.rs",
 ];
 
 /// Every `pin: "…"` of `harness::RELIABILITY_SKIP_FIELDS`, read out of the
@@ -1476,12 +1481,14 @@ const RELIABILITY_MANIFESTS: &[&str] = &[
 /// and nothing stopped a rename from leaving the sentence pointing at
 /// nothing (G1.6(i) audit settlement, finding AT-7).
 const RELIABILITY_PINS_QUOTED_IN_DOCS: &[&str] = &[
+    "a_non_finite_reliability_cell_fails_the_decode_on_both_transports",
     "bus_int_duration_stays_in_the_meters_zone_on_the_live_population",
     "bus_reliability_columns_match_both_oracles_on_the_duty_deck",
     "bus_reliability_columns_on_the_capi_only_and_r4133_only_decks",
     "bus_reliability_sections_and_durations_on_the_relcalc_deck",
     "bus_reliability_survives_the_52902_abort",
     "caidi_is_saidi_over_saifi_on_a_reliability_deck",
+    "every_bus_reliability_column_is_compared_per_bus",
     "every_bus_reliability_column_is_read_by_some_transport",
     "meter_alloc_factors_are_zero_until_allocateloads_runs",
     "meter_allocation_factors_are_the_peak_current_over_the_metered_current",

@@ -806,7 +806,7 @@ on the last checkpoint only, and the runner asserts exactly that before it compa
 anything. Port side: `Dss::meter_reliability` / `Dss::meter_totals`
 (`crates/dss-core/src/exec/view.rs:1915` / `:2044`) — `&self` reads of solved state,
 the reliability math itself untouched. Comparator: `harness::compare_reliability`
-(`crates/dss-core/tests/harness/mod.rs:8678`). The flag is **manifest-set, never
+(`crates/dss-core/tests/harness/mod.rs:8688`). The flag is **manifest-set, never
 forced** (six cases): "has an EnergyMeter" is not a manifest field, and forcing it
 circuit-wide would fire `28724 No EnergyMeter Objects Defined` on ~340 meterless
 decks — so there is no `FORCED_RELIABILITY_POPULATION` lock, deliberately. `large*`
@@ -896,7 +896,7 @@ Seven rules come with the surface.
   `CalcAllocationFactors` `:54-72` writes them, and its sole driver is
   `TExecHelper.DoAllocateLoadsCmd`, `Executive/ExecHelper.pas:2624-2683`) — measured
   denormal garbage that changes across processes, hence excluded per (channel, case,
-  field) in `RELIABILITY_SKIP_FIELDS` (`crates/dss-core/tests/harness/mod.rs:8414`),
+  field) in `RELIABILITY_SKIP_FIELDS` (`crates/dss-core/tests/harness/mod.rs:8424`),
   never enveloped, each row carrying its citation and a pin that a register test
   requires to name a real `#[test]`. The corpus's only `AllocateLoads` deck,
   `tests/corpus/controls/energymeter/midi_relcalc.dss` (`both`, three sections), is
@@ -938,7 +938,7 @@ reliability math untouched; transports
 `capture_bus_reliability` on both arms
 (`tools/oracle/oracle_server.py:610`, `crates/dss-epri/src/capture.rs:1344`); comparator
 `harness::compare_bus_reliability`
-(`crates/dss-core/tests/harness/mod.rs:9031`), called from inside
+(`crates/dss-core/tests/harness/mod.rs:9041`), called from inside
 `compare_reliability` so the payload keeps one entry point. Six rules come with
 the arm.
 
@@ -1009,6 +1009,14 @@ population and Q4 record),
 two that carry the restored call —
 `relcalc_recomputes_the_customer_totals_it_depends_on` and
 `relcalc_assume_restoration_changes_auto_ocp_interruptions`.
+Two offline drives sit beside them in the harness (G1.6(ii) audit settlement):
+`every_bus_reliability_column_is_compared_per_bus` corrupts each of the eight
+columns in turn, on both channels, and requires the comparator to red naming
+that column (the per-column non-vacuity of §1.1(f), in the tree rather than in a
+log), and `a_non_finite_reliability_cell_fails_the_decode_on_both_transports`
+pins what actually happens to a `NaN`: capi puts the bare token `NaN` on the
+wire, r4133 `null`, and both caps refuse it, so a non-finite cell fails the
+decode loudly instead of comparing as a plausible `0`.
 
 ### The divergence ledger (`tests/corpus/ledger.json`)
 
@@ -1927,7 +1935,8 @@ Three rules that table carries, each of which a capture must respect:
   `DMeters.pas:261`), so the generic table walk stays sound while the capture
   drives it with a real 1-based index. Hence **111** rows today, not 116 (the
   table was 96 before G1.6b's three `PDElements` walk arms, G1.3a's
-  `CktElement.Enabled` + `CktElementI(12)`, G1.4a's `Bus.Nodes` +
+  `CktElementI(12)` — its `CktElement.Enabled` twin is an
+  `EXCLUDED_WRITE_MODES` row, never a table row — G1.4a's `Bus.Nodes` +
   `Circuit.AllBusNames`, G1.6(i)'s `Meters.SetActiveSection` and G1.6(ii)'s
   **eight** per-bus reliability arms — `BusF` 6-11 `Lambda`/`N_interrupts`/
   `Int_Duration`/`Cust_Interrupts`/`Cust_Duration`/`TotalMiles`
